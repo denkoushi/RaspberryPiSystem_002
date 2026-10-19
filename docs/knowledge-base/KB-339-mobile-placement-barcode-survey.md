@@ -2,6 +2,12 @@
 
 最終更新: 2026-04-25（**V27 パレット可視化 部品カード UI**）・2026-04-24（**V26 購買照会バーコード即時確定**）・2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
 
+## FSEIBAN OCR snap（2026-10-15）
+
+印字製番の誤読で日程の完全一致照合が失敗するため、既存OCR抽出後に日程の有効製番へ重み付き距離で補正する。近接候補を区別できない場合は作業者が候補ボタンで選択する。移動票の製番は補正のヒントに使わない（実在する別製番へ寄せて取り違えを見逃さないため）。自動補正は類似文字の置換2文字までに限る。取得失敗時は既存抽出値へフォールバックする。
+
+契約・閾値・キャッシュの詳細は [API仕様](../api/mobile-placement.md#post-apimobile-placementparse-actual-slip-image) を参照。ローカル実装のみで、本番反映は未実施。
+
 ## V27（2026-04-25）キオスク／配膳 パレット可視化 部品カード UI（`PalletVizItemCard`） {#v27-pallet-viz-item-card-ui-2026-04-25}
 
 - **目的**: 確定静プレビュー（[pallet-viz-card-layout-preview.html](../design-previews/pallet-viz-card-layout-preview.html)）に合わせ、**専用ページ** `/kiosk/pallet-visualization`・**配膳スマホ** `/kiosk/mobile-placement/pallet-viz`・**持出左ペイン埋め込み**（`PalletVizEmbeddedPanel`）で **同じ部品カード**を共有する。固定カード高・ラベー付きグリッドをやめ、**可変高**・**1.5 倍相当タイポ**（`palletVizItemCardTokens`）・**外寸は非表示**（DTO/マッピングの `outsideDimensionsDisplay` は温存・表示層は参照しない）。
@@ -278,6 +284,12 @@
 - **自動回帰**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **50s**・Mac / Tailscale・2026-04-13 実測）。
 - **知見**: **同一 Pi5 へ `update-all-clients.sh` を並列起動しない**（[deployment.md](../guides/deployment.md)）。複数台は **1 本のシェルで前段成功後に次段**。
 - **トラブルシュート**: Vitest で **`No QueryClient set`** → キオスクページのスモークは **`QueryClientProvider` + `QueryClient({ defaultOptions: { queries: { retry: false } } })`** で包む。**UI が古い** → Pi5 の `web` イメージ更新確認のうえ **キオスクでハードリロード**（Tailscale URLの SPA は Pi5 配信）。
+
+### 2026-10-16: 現品票の注文番号とスマホ読取
+
+- 現品票の1次元バーコードは注文番号（FKOBAINO、10桁）。製造orderを優先検索し、未解決なら購買照会の全候補から製番・部品照合キーが移動票と一致する行を検査する。候補が1行でも無条件には採用しない。
+- `/kiosk/mobile-placement` だけネイティブ `BarcodeDetector` を優先し、対応形式がそろう場合は1280×720を希望するストリームで読む。非対応時は従来のZXingを使い、確定ルールは共通。画像OCRは補助として残す。
+- 契約は [mobile-placement API](../api/mobile-placement.md)、現場手順は [照合](../kiosk-operation-guide/mobile-placement.md) を参照。実機の速度確認・本番反映は未実施。
 
 ## References
 

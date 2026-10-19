@@ -15,6 +15,7 @@ interface AuthState {
     opts?: { totpCode?: string; backupCode?: string; rememberMe?: boolean }
   ) => Promise<void>;
   logout: () => void;
+  updateSession: (response: AuthResponse) => void;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -88,6 +89,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
+  const updateSession = useCallback((response: AuthResponse) => {
+    setToken(response.accessToken);
+    setUser(response.user);
+    setAuthToken(response.accessToken);
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as { expiresAt?: string };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        token: response.accessToken,
+        user: response.user,
+        refresh: response.refreshToken,
+        expiresAt: parsed.expiresAt
+      }));
+    }
+  }, []);
+
   const logout = useCallback(() => {
     setToken(null);
     setUser(null);
@@ -101,9 +118,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       token,
       loading,
       login,
-      logout
+      logout,
+      updateSession
     }),
-    [loading, login, logout, token, user]
+    [loading, login, logout, token, user, updateSession]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

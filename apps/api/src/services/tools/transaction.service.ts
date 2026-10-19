@@ -1,4 +1,4 @@
-import type { Prisma, Transaction } from '@prisma/client';
+import type { Loan, Prisma, Transaction } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 
 export interface TransactionQuery {
@@ -12,7 +12,7 @@ export interface TransactionQuery {
 }
 
 export interface TransactionWithRelations extends Transaction {
-  loan: {
+  loan: Loan & {
     id: string;
     item: { id: string; itemCode: string; name: string; nfcTagUid: string | null };
     employee: { id: string; employeeCode: string; displayName: string; nfcTagUid: string | null };
@@ -84,4 +84,3 @@ export class TransactionService {
     };
   }
 }
-

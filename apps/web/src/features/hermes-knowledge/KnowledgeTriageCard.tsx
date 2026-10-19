@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 
 import { getApiErrorMessage } from '../../api/errors';
 
+import { KnowledgeFieldPicker } from './KnowledgeFieldPicker';
 import {
-  decideTriage, fetchWorkTypes, searchProcedureTopics,
+  decideTriage, searchProcedureTopics,
   type ProcedureTopicView, type TriageDestination, type TriageSuggestionsView, type TriageView,
 } from './knowledgeTriageApi';
 
@@ -22,7 +23,7 @@ export type KnowledgeTriageCardProps = {
 };
 
 type View = 'choose' | 'new' | 'search';
-const button = 'w-full rounded-lg border border-slate-400 bg-white px-3 py-2 text-left disabled:opacity-50';
+const button = 'h-11 max-w-full rounded-lg border border-slate-400 bg-white px-3 py-2 text-left disabled:opacity-50';
 
 export function KnowledgeTriageCard(props: KnowledgeTriageCardProps) {
   const { intakeId, suggestions, tagUid } = props;
@@ -86,36 +87,23 @@ function NewTopicForm({ suggestions, scannedPartNumber, busy, onBack, onSubmit }
   onSubmit: (topic: Extract<TriageDestination, { newTopic: unknown }>['newTopic'], title: string) => void;
 }) {
   const proposal = suggestions?.proposal;
-  const [workTypes, setWorkTypes] = useState<string[]>([]);
   const [target, setTarget] = useState(proposal?.parts.target ?? '');
   const [workType, setWorkType] = useState(proposal?.parts.workType ?? '');
   const [detail, setDetail] = useState(proposal?.parts.detail ?? '');
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetchWorkTypes(controller.signal).then(list => {
-      if (controller.signal.aborted) return;
-      setWorkTypes(list); setWorkType(current => list.includes(current) ? current : list[0] ?? '');
-    }).catch(() => undefined);
-    return () => controller.abort();
-  }, []);
   const title = [target.trim(), workType, detail.trim()].filter(Boolean).join('｜');
   const partNumber = proposal?.identifiers.partNumber ?? scannedPartNumber ?? undefined;
   return (
-    <form className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2" onSubmit={event => {
+    <form className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2" onSubmit={event => {
       event.preventDefault();
       if (target.trim() && workType) onSubmit({ target: target.trim(), workType, ...(detail.trim() ? { detail: detail.trim() } : {}), ...(partNumber ? { partNumber } : {}) }, title);
     }}>
       <p className="font-semibold">新しい案件{proposal ? <span className="ml-1.5 rounded bg-violet-100 px-1.5 text-[11px] text-violet-700">AIの案を修正できます</span> : null}</p>
-      <label className="grid gap-1 text-xs text-slate-600">対象（品番・部品名、または事柄）
-        <input value={target} onChange={event => setTarget(event.target.value)} maxLength={80} required className="rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
+      <label className="flex flex-col items-start gap-1 text-xs text-slate-600">対象（品番・部品名、または事柄）
+        <input value={target} onChange={event => setTarget(event.target.value)} maxLength={80} required className="h-11 w-52 max-w-full rounded border border-slate-300 px-2 text-sm text-slate-900" />
       </label>
-      <label className="grid gap-1 text-xs text-slate-600">作業の種類
-        <select value={workType} onChange={event => setWorkType(event.target.value)} required className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900">
-          {workTypes.map(name => <option key={name} value={name}>{name}</option>)}
-        </select>
-      </label>
-      <label className="grid gap-1 text-xs text-slate-600">補足（任意）
-        <input value={detail} onChange={event => setDetail(event.target.value)} maxLength={40} className="rounded border border-slate-300 px-2 py-1.5 text-sm text-slate-900" />
+      <KnowledgeFieldPicker requiresApproval={Boolean(partNumber || proposal?.reviewTier === 'approval_required')} value={workType} disabled={busy} onChange={name => setWorkType(name)} />
+      <label className="flex flex-col items-start gap-1 text-xs text-slate-600">補足（任意）
+        <input value={detail} onChange={event => setDetail(event.target.value)} maxLength={40} className="h-11 w-52 max-w-full rounded border border-slate-300 px-2 text-sm text-slate-900" />
       </label>
       <p className="rounded border border-dashed border-slate-400 bg-white px-2 py-1.5">タイトル：{title || '（対象と作業の種類を入れてください）'}</p>
       <div className="flex justify-between gap-2">

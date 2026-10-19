@@ -6,7 +6,7 @@ import {
   resolveDrawingMime
 } from './part-measurement-drawing-import-mime.js';
 import { convertDrawingUploadToPreviewBuffer } from './part-measurement-drawing-preview.js';
-import { PartMeasurementDrawingStorage } from './part-measurement-drawing-storage.js';
+import { PartMeasurementDrawingStorage, type DrawingSourceKind } from './part-measurement-drawing-storage.js';
 
 export type DrawingImportInput = {
   buffer: Buffer;
@@ -17,6 +17,8 @@ export type DrawingImportInput = {
 export type DrawingImportResult = {
   relativeUrl: string;
   contentType: string;
+  /** PDF/TIFF 取込時の原本キー。画像を直接取り込んだ場合は保存画像が原本なので null */
+  sourceStorageKey: string | null;
 };
 
 function wrapStorageError(error: unknown): never {
@@ -33,35 +35,32 @@ function wrapStorageError(error: unknown): never {
   throw error;
 }
 
-async function importPdfDrawing(buffer: Buffer): Promise<DrawingImportResult> {
-  const { buffer: jpegBuffer } = await convertDrawingUploadToPreviewBuffer({
-    buffer,
-    mimetype: 'application/pdf',
-    filename: 'drawing.pdf'
-  });
+async function importConvertedDrawing(
+  buffer: Buffer,
+  kind: DrawingSourceKind,
+  mimetype: string,
+  filename: string
+): Promise<DrawingImportResult> {
+  const { buffer: jpegBuffer } = await convertDrawingUploadToPreviewBuffer({ buffer, mimetype, filename });
+  let saved: { relativeUrl: string; contentType: string };
   try {
-    return await PartMeasurementDrawingStorage.saveDrawing(jpegBuffer, 'image/jpeg');
+    saved = await PartMeasurementDrawingStorage.saveDrawing(jpegBuffer, 'image/jpeg');
   } catch (error) {
     wrapStorageError(error);
   }
-}
-
-async function importTiffDrawing(buffer: Buffer): Promise<DrawingImportResult> {
-  const { buffer: jpegBuffer } = await convertDrawingUploadToPreviewBuffer({
-    buffer,
-    mimetype: 'image/tiff',
-    filename: 'drawing.tiff'
-  });
   try {
-    return await PartMeasurementDrawingStorage.saveDrawing(jpegBuffer, 'image/jpeg');
+    const { storageKey } = await PartMeasurementDrawingStorage.saveDrawingSource(buffer, kind);
+    return { ...saved, sourceStorageKey: storageKey };
   } catch (error) {
-    wrapStorageError(error);
+    await PartMeasurementDrawingStorage.deleteDrawing(saved.relativeUrl).catch(() => undefined);
+    throw error;
   }
 }
 
 async function importImageDrawing(buffer: Buffer, mime: string): Promise<DrawingImportResult> {
   try {
-    return await PartMeasurementDrawingStorage.saveDrawing(buffer, mime);
+    const saved = await PartMeasurementDrawingStorage.saveDrawing(buffer, mime);
+    return { ...saved, sourceStorageKey: null };
   } catch (error) {
     wrapStorageError(error);
   }
@@ -69,7 +68,7 @@ async function importImageDrawing(buffer: Buffer, mime: string): Promise<Drawing
 
 /**
  * 図面ファイル（画像、PDF、TIFF）を取り込み、保存済み storage URL を返す。
- * PDF/TIFF は JPEG 化してから保存する。
+ * PDF/TIFF は表示用に JPEG 化して保存し、原本も別キーで保持する。
  */
 export async function importDrawingAndSave(input: DrawingImportInput): Promise<DrawingImportResult> {
   const { buffer, mimetype, filename } = input;
@@ -93,14 +92,22 @@ export async function importDrawingAndSave(input: DrawingImportInput): Promise<D
   }
 
   if (kind === 'pdf') {
-    return importPdfDrawing(buffer);
+    return importConvertedDrawing(buffer, 'pdf', 'application/pdf', 'drawing.pdf');
   }
 
   if (kind === 'tiff') {
-    return importTiffDrawing(buffer);
+    return importConvertedDrawing(buffer, 'tiff', 'image/tiff', 'drawing.tiff');
   }
 
   return importImageDrawing(buffer, resolvedMime);
+}
+
+/** 図面と原本をまとめて回収する（未参照時のみ呼ぶ） */
+export async function deleteImportedDrawing(result: Pick<DrawingImportResult, 'relativeUrl' | 'sourceStorageKey'>): Promise<void> {
+  await PartMeasurementDrawingStorage.deleteDrawing(result.relativeUrl).catch(() => undefined);
+  if (result.sourceStorageKey) {
+    await PartMeasurementDrawingStorage.deleteDrawingSource(result.sourceStorageKey);
+  }
 }
 
 /** multipart 読込前に MIME/拡張子から入力上限を決める */

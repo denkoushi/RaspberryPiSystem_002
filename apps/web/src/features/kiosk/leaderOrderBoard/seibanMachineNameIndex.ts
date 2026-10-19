@@ -1,4 +1,4 @@
-import { toHalfWidthAscii } from '../productionSchedule/machineName';
+import { isMachinePartCode } from '../productionSchedule/machineName';
 
 import type { ProductionScheduleRow } from '../../../api/client';
 
@@ -6,14 +6,6 @@ type ScheduleRowData = {
   FSEIBAN?: string;
   FHINCD?: string;
   FHINMEI?: string;
-};
-
-const normalizeComparisonText = (value: string | null | undefined): string =>
-  toHalfWidthAscii((value ?? '').trim()).toUpperCase();
-
-const isMachinePartCode = (fhincd: string | null | undefined): boolean => {
-  const normalized = normalizeComparisonText(fhincd);
-  return normalized.startsWith('MH') || normalized.startsWith('SH');
 };
 
 /**

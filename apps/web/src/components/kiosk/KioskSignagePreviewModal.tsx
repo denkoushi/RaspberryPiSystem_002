@@ -2,14 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, getKioskSignagePreviewOptions, putKioskSignagePreviewSelection } from '../../api/client';
-import { buildSignageCurrentImageUrlSearchParams } from '../../lib/signage/buildSignageCurrentImageUrl';
+import { signageQueryKeys } from '../../api/queryKeys/signage';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 
 type KioskSignagePreviewModalProps = {
   isOpen: boolean;
   onClose: () => void;
-  /** このキオスク端末の apiKey（未設定時プレビューや表示ラベルに使用） */
+  /** このキオスク自身の認証情報。対象端末のキーはブラウザへ渡さない。 */
   kioskClientKey: string;
 };
 
@@ -28,7 +28,7 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
   const latestFetchIdRef = useRef(0);
 
   const optionsQuery = useQuery({
-    queryKey: ['kiosk-signage-preview-options'],
+    queryKey: signageQueryKeys.kioskPreviewOptionsAll,
     queryFn: getKioskSignagePreviewOptions,
     enabled: isOpen,
     staleTime: 0,
@@ -37,27 +37,25 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
   const selectionMutation = useMutation({
     mutationFn: putKioskSignagePreviewSelection,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-signage-preview-options'] });
+      void queryClient.invalidateQueries({ queryKey: signageQueryKeys.kioskPreviewOptionsAll });
     },
   });
 
   const options = optionsQuery.data;
-  const effectivePreviewApiKey = options?.effectivePreviewApiKey ?? kioskClientKey;
-  const selectedApiKey = options?.selectedApiKey ?? null;
+  const effectivePreviewClientDeviceId = options?.effectivePreviewClientDeviceId;
+  const selectedClientDeviceId = options?.selectedClientDeviceId ?? null;
   const candidates = options?.candidates ?? [];
 
-  const fetchImage = useCallback(async (previewTargetApiKey: string) => {
+  const fetchImage = useCallback(async (clientDeviceId?: string) => {
     const fetchId = latestFetchIdRef.current + 1;
     latestFetchIdRef.current = fetchId;
     try {
       setIsImageLoading(true);
       setError(null);
-      const response = await api.get('/signage/current-image', {
+      const response = await api.get('/kiosk/signage-preview/image', {
         responseType: 'blob',
-        params: buildSignageCurrentImageUrlSearchParams({
-          clientKey: previewTargetApiKey,
-          cacheBust: Date.now(),
-        }),
+        headers: { 'x-client-key': kioskClientKey },
+        params: { clientDeviceId, t: Date.now() },
       });
       const blob = response.data as Blob;
       const url = URL.createObjectURL(blob);
@@ -77,7 +75,7 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
         setIsImageLoading(false);
       }
     }
-  }, []);
+  }, [kioskClientKey]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -97,9 +95,9 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
     }
 
     setImageUrl(null);
-    void fetchImage(effectivePreviewApiKey);
+    void fetchImage(effectivePreviewClientDeviceId);
     intervalRef.current = setInterval(() => {
-      void fetchImage(effectivePreviewApiKey);
+      void fetchImage(effectivePreviewClientDeviceId);
     }, 30000);
 
     return () => {
@@ -108,7 +106,7 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
         intervalRef.current = null;
       }
     };
-  }, [isOpen, options, optionsQuery.isLoading, effectivePreviewApiKey, fetchImage]);
+  }, [isOpen, options, optionsQuery.isLoading, effectivePreviewClientDeviceId, fetchImage]);
 
   useEffect(() => {
     return () => {
@@ -150,7 +148,7 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
     const next = value.length > 0 ? value : null;
     try {
       setError(null);
-      await selectionMutation.mutateAsync({ signagePreviewTargetApiKey: next });
+      await selectionMutation.mutateAsync({ signagePreviewTargetClientDeviceId: next });
     } catch (err) {
       const message = err instanceof Error ? err.message : '設定の保存に失敗しました';
       setError(message);
@@ -203,23 +201,23 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
               id="kiosk-signage-preview-target"
               className="w-full max-w-md rounded-md border-2 border-slate-400 bg-white px-3 py-2 text-sm font-medium text-slate-900 shadow-sm"
               disabled={isOptionsLoading || isSelectBusy}
-              value={selectedApiKey ?? ''}
+              value={selectedClientDeviceId ?? ''}
               onChange={(e) => void handleSelectChange(e.target.value)}
             >
-              <option value="">自端末のAPIキーでプレビュー（デフォルト）</option>
+              <option value="">自端末のサイネージをプレビュー（デフォルト）</option>
               {candidates.map((c) => (
-                <option key={c.id} value={c.apiKey}>
+                <option key={c.id} value={c.id}>
                   {formatClientLabel(c.name, c.location)}
                 </option>
               ))}
             </select>
             <p className="text-sm text-slate-600">
-              登録済みサイネージ端末（apiKey に &quot;signage&quot; を含む）向けのレンダ結果を表示します。選択はこのキオスク端末に保存され、30秒ごとに自動更新します。
+              登録済みサイネージ端末向けのレンダ結果を表示します。選択はこのキオスク端末に保存され、30秒ごとに自動更新します。
             </p>
           </div>
           <Button
             type="button"
-            onClick={() => void fetchImage(effectivePreviewApiKey)}
+            onClick={() => void fetchImage(effectivePreviewClientDeviceId)}
             disabled={!canRefresh}
             className="bg-emerald-600 text-white hover:bg-emerald-500 shrink-0"
           >

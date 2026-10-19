@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -283,6 +283,13 @@ const expandedFallbackSequence: AssemblyProcedureSequenceDto = {
   ]
 };
 
+// Hermes の uiRevision は要領書シーケンスの現在ページを含む。解決前に押すと、応答後の
+// revision 更新で案内が破棄され、表示されるかが解決と応答の順序に依存するため先に待つ。
+async function findHermesButtonAfterProcedureSettles() {
+  await screen.findByText(/手順 1\/2/, undefined, { timeout: 5000 });
+  return screen.getByRole('button', { name: 'Hermesに確認' });
+}
+
 function renderPage(withAccessGrant = true) {
   return render(
     <MemoryRouter
@@ -352,7 +359,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByRole('heading', { name: '組立作業' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '組立トップ' })).toHaveAttribute('href', '/kiosk/assembly');
+    expect(screen.getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
     expect(screen.queryByRole('link', { name: 'テンプレ' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Excel' })).not.toBeInTheDocument();
     expect(screen.queryByText('要領書 / ページ送り')).not.toBeInTheDocument();
@@ -362,6 +369,41 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
     expect(screen.queryByText('BOLT-1')).not.toBeInTheDocument();
     expect(screen.getAllByText('丸数字 1').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('labels the missing-session back link as 組立へ戻る', async () => {
+    mockGetAssemblyWorkSession.mockResolvedValue(null);
+    renderPage();
+
+    expect(await screen.findByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
+  });
+
+  it('places restart after history and restarts only after confirmation', async () => {
+    mockRestartAssemblyArea.mockResolvedValue(session);
+    renderPage();
+
+    const restart = await screen.findByRole('button', { name: 'やり直し' });
+    expect(restart).toHaveClass('min-h-11', 'self-start', 'border-[#e5484d]');
+    expect(restart.previousElementSibling?.previousElementSibling).toBe(screen.getByRole('heading', { name: '履歴' }));
+    expect(restart.parentElement?.lastElementChild).toBe(restart);
+    fireEvent.click(restart);
+    expect(mockRestartAssemblyArea).not.toHaveBeenCalled();
+    const dialog = within(screen.getByRole('dialog', { name: 'このエリアをやり直しますか？' }));
+    expect(dialog.getAllByRole('button').map((button) => button.textContent)).toEqual(['キャンセル', 'やり直す']);
+    fireEvent.click(dialog.getByRole('button', { name: 'やり直す' }));
+
+    await waitFor(() => expect(mockRestartAssemblyArea).toHaveBeenCalledExactlyOnceWith('session-1', { reason: '画面操作によるエリアやり直し' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not restart when confirmation is cancelled', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'やり直し' }));
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockRestartAssemblyArea).not.toHaveBeenCalled();
   });
 
   it('falls back to the process position when the current area name is blank', async () => {
@@ -439,12 +481,14 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     });
     renderPage();
 
-    expect(await screen.findByRole('button', { name: 'Hermesに確認' })).toBeEnabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Hermesに確認' }));
-    await screen.findByText('案内は現在利用できません。作業画面はそのまま使用できます。');
+    const button = await findHermesButtonAfterProcedureSettles();
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    const unavailableMessage = await screen.findByText('案内は現在利用できません。作業画面はそのまま使用できます。');
     fireEvent.change(screen.getByPlaceholderText('トルク値'), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: 'トルク記録' }));
     await waitFor(() => expect(mockRecordAssemblyTorque).toHaveBeenCalledWith('session-1', expect.objectContaining({ value: 10 })));
+    expect(unavailableMessage).toBeInTheDocument();
   });
 
   it('renders a ready Hermes guide with its evidence and current-bolt target', async () => {
@@ -465,7 +509,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     }));
     renderPage();
 
-    const button = await screen.findByRole('button', { name: 'Hermesに確認' });
+    const button = await findHermesButtonAfterProcedureSettles();
     fireEvent.click(button);
 
     expect(await screen.findByText('締結部を対角順に10 N-mで締め付けます。')).toBeInTheDocument();

@@ -10,6 +10,7 @@ import {
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources
 } from '../../api/hooks';
+import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import { KioskDatePickerModal } from '../../components/kiosk/KioskDatePickerModal';
 import { KioskNoteModal } from '../../components/kiosk/KioskNoteModal';
 import { readProductionBuildConfig } from '../../config/productionBuildConfig';
@@ -225,13 +226,12 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const writePause =
     mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
 
-  const invalidateScheduleQueries = useCallback(() =>
+  const invalidateRelatedQueries = useCallback(() =>
     Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] }),
       queryClient.invalidateQueries({
-        queryKey: ['kiosk-production-schedule-due-management-manual-order-overview']
+        queryKey: productionScheduleQueryKeys.dueManagementManualOrderOverviewAll
       }),
-      queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule-manual-order-resource-assignments'] })
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.manualOrderResourceAssignmentsAll })
     ]), [queryClient]);
 
   const {
@@ -252,7 +252,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         note,
         onSettled: () => {
           onSettled();
-          void invalidateScheduleQueries().catch(() => {});
+          void invalidateRelatedQueries().catch(() => {});
         }
       });
     },
@@ -262,7 +262,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         dueDate,
         onSettled: () => {
           onSettled();
-          void invalidateScheduleQueries().catch(() => {});
+          void invalidateRelatedQueries().catch(() => {});
         }
       });
     }
@@ -526,9 +526,9 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   }, []);
 
   const handleSplitSaved = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-board'] });
-    void invalidateScheduleQueries();
-  }, [invalidateScheduleQueries, queryClient]);
+    void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
+    void invalidateRelatedQueries();
+  }, [invalidateRelatedQueries, queryClient]);
 
   const handleOpenInspectionDigitalInput = useCallback(
     (row: LeaderBoardRow, selectedResourceCd: string) => {
@@ -756,7 +756,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         onSaved={handleSplitSaved}
       />
       <KioskNoteModal
-        isOpen={isNoteModalOpen}
+        isOpen={isNoteModalOpen} pending={notePending}
         value={editingNoteValue}
         maxLength={100}
         onCancel={closeNoteModal}
@@ -769,7 +769,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         }}
       />
       <KioskDatePickerModal
-        isOpen={isDueDatePickerOpen}
+        isOpen={isDueDatePickerOpen} pending={dueDatePending}
         value={editingDueDateValue}
         onCancel={closeDueDatePicker}
         onCommit={commitDueDate}
@@ -783,7 +783,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         />
       ) : null}
       <KioskDatePickerModal
-        isOpen={dueAssist.isDatePickerOpen}
+        isOpen={dueAssist.isDatePickerOpen} pending={dueAssist.dueUpdatePending}
         value={dueAssist.editingDueDate}
         onCancel={dueAssist.closeDatePicker}
         onCommit={(next) => void dueAssist.commitDueDate(next)}

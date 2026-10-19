@@ -1,8 +1,11 @@
+import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
+import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
+import { getProcedureVideoScheduler } from '../services/assembly/procedure-video.scheduler.js';
 import type { FastifyInstance } from 'fastify';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
-import { getBusinessHermesNightlyScheduler } from '../services/assembly/business-hermes-nightly.scheduler.js';
+import { getBusinessHermesNightlyScheduler } from '../services/business-hermes/business-hermes-nightly.scheduler.js';
 import { getBackupScheduler } from '../services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from '../services/imports/csv-import-scheduler.js';
 import { getKioskDocumentGmailScheduler } from '../services/kiosk-documents/kiosk-document-gmail.scheduler.js';
@@ -10,12 +13,17 @@ import { getKioskDocumentOcrScheduler } from '../services/kiosk-documents/kiosk-
 import { getWorkInstructionGmailScheduler } from '../services/work-instructions/work-instruction-gmail.scheduler.js';
 import { getGmailTrashCleanupScheduler } from '../services/gmail/gmail-trash-cleanup.scheduler.js';
 import { getDueManagementTuningOrchestrator } from '../services/production-schedule/auto-tuning/tuning-orchestrator.service.js';
+import { getFkojunstMailSupersededPruneScheduler } from '../services/production-schedule/fkojunst-status-mail-superseded-prune.scheduler.js';
 import { getAlertsDispatcher } from '../services/alerts/alerts-dispatcher.js';
 import { getAlertsDbDispatcher } from '../services/alerts/alerts-db-dispatcher.js';
 import { getAlertsIngestor } from '../services/alerts/alerts-ingestor.js';
+import { getClientNetworkLogRetentionScheduler } from '../services/clients/client-network-log-retention.scheduler.js';
+import { getClientHeartbeatMonitor } from '../services/clients/client-heartbeat-monitor.js';
 import { loadAlertsDispatcherConfig } from '../services/alerts/alerts-config.js';
 import { getPhotoToolLabelScheduler } from '../services/tools/photo-tool-label/photo-tool-label.scheduler.js';
 import { getPartMeasurementDrawingOcrScheduler } from '../services/part-measurement/part-measurement-drawing-ocr.scheduler.js';
+import { getPartMeasurementDrawingDimensionMapScheduler } from '../services/part-measurement/part-measurement-drawing-dimension-map.scheduler.js';
+import { isPartMeasurementDrawingDimensionMapEnabled } from '../services/part-measurement/part-measurement-drawing-dimension-map.service.js';
 import {
   FileStorageIntegrityBackfillService,
   getFileStorageIntegrityBackfillScheduler,
@@ -121,11 +129,25 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
   } else {
     logger.info('Signage render scheduler is disabled by environment');
   }
+  if (isPartMeasurementDrawingDimensionMapEnabled()) {
+    definitions.push({
+      name: 'part-measurement-drawing-dimension-map',
+      start: () => {
+        getPartMeasurementDrawingDimensionMapScheduler().start();
+        logger.info('Part measurement drawing dimension map scheduler started');
+      },
+      stop: () => {
+        getPartMeasurementDrawingDimensionMapScheduler().stop();
+      },
+    });
+  }
 
   return [
     ...definitions,
     { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
       stop: () => getBusinessHermesNightlyScheduler().stop() },
+    { name: 'fkojunst-mail-superseded-prune', start: () => getFkojunstMailSupersededPruneScheduler().start(),
+      stop: () => getFkojunstMailSupersededPruneScheduler().stop() },
     {
       name: 'file-storage-integrity-backfill',
       start: () => {
@@ -171,6 +193,7 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
         getKioskDocumentGmailScheduler().stop();
       },
     },
+    { name: 'procedure-video', start: () => getProcedureVideoScheduler().start(), stop: () => getProcedureVideoScheduler().stop() },
     {
       name: 'kiosk-document-ocr',
       start: async () => {
@@ -227,6 +250,29 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'client-network-log-retention',
+      start: () => getClientNetworkLogRetentionScheduler().start(),
+      stop: () => getClientNetworkLogRetentionScheduler().stop(),
+    },
+    {
+      name: 'client-heartbeat-monitor',
+      start: async () => {
+        // Alerts are only delivered to Slack by the DB dispatcher.
+        const alertsConfig = await loadAlertsDispatcherConfig();
+        if (alertsConfig.mode === 'db') {
+          await getClientHeartbeatMonitor().start();
+        }
+      },
+      stop: async () => {
+        await getClientHeartbeatMonitor().stop();
+      },
+    },
+    {
+      name: 'system-notice-evaluator',
+      start: () => getSystemNoticeEvaluator().start(),
+      stop: () => getSystemNoticeEvaluator().stop(),
+    },
+    {
       name: 'alerts-ingestor',
       start: async () => {
         await getAlertsIngestor().start();
@@ -246,6 +292,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'procedure-material-image-description',
+      start: () => { getProcedureMaterialImageDescriptionScheduler().start(); },
+      stop: () => { getProcedureMaterialImageDescriptionScheduler().stop(); },
+    },
+    {
       name: 'part-measurement-drawing-ocr',
       start: async () => {
         await getPartMeasurementDrawingOcrScheduler().start();
@@ -263,18 +314,25 @@ export function listPostListenSchedulerNames(): string[] {
   return [
     'hermes-knowledge',
     'signage-render',
+    'part-measurement-drawing-dimension-map',
     'business-hermes-nightly',
+    'fkojunst-mail-superseded-prune',
     'file-storage-integrity-backfill',
     'backup',
     'csv-import',
     'kiosk-document-gmail',
+    'procedure-video',
     'kiosk-document-ocr',
     'work-instruction-gmail',
     'gmail-trash-cleanup',
     'due-management-tuning',
     'alerts-dispatcher',
+    'client-network-log-retention',
+    'client-heartbeat-monitor',
+    'system-notice-evaluator',
     'alerts-ingestor',
     'photo-tool-label',
+    'procedure-material-image-description',
     'part-measurement-drawing-ocr',
   ];
 }

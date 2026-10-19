@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Knowledge Review Chat Preview</title>
+  <!-- Static preview for ExecPlan hermes-knowledge-procedures milestones 3b and 4. All content is fictional. -->
+  <style>
+    :root {
+      --ink: #0f172a; --muted: #475569; --line: #e2e8f0; --soft: #f8fafc;
+      --accent: #1d4ed8; --accent-soft: #dbeafe; --ok: #15803d; --ok-soft: #dcfce7;
+      --warn: #b45309; --warn-soft: #fef3c7; --ai: #7c3aed; --ai-soft: #ede9fe; --ng: #b91c1c; --ng-soft: #fee2e2;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Segoe UI", sans-serif; color: var(--ink); background: #334155; }
+    .bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px; background: #0f172a; color: #fff; font-size: 13px; align-items: center; }
+    .bar button { border: 1px solid #94a3b8; background: transparent; color: #fff; border-radius: 6px; padding: 5px 9px; font-size: 13px; cursor: pointer; }
+    .bar button[aria-pressed="true"] { background: #fff; color: #0f172a; }
+    .kiosk { position: relative; height: calc(100dvh - 48px); min-height: 640px; background: repeating-linear-gradient(0deg, #e2e8f0 0 38px, #f1f5f9 38px 76px); }
+    .kiosk::before { content: "（キオスク画面・サンプル）"; position: absolute; left: 24px; top: 20px; color: #64748b; font-size: 18px; }
+    .chat { position: absolute; right: 16px; bottom: 16px; width: min(380px, calc(100vw - 24px)); max-height: calc(100% - 32px); background: #fff; border-radius: 12px; box-shadow: 0 12px 32px rgba(15,23,42,.35); display: flex; flex-direction: column; overflow: hidden; }
+    .chat.wide { width: min(760px, calc(100vw - 32px)); height: calc(100% - 32px); }
+    .chat.wide .body { flex: 1; }
+    .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+    .chat-head strong { font-size: 15px; }
+    .head-actions { display: flex; gap: 6px; }
+    .icon-btn { width: 36px; height: 36px; border: 1px solid #94a3b8; background: #fff; border-radius: 8px; font-size: 18px; line-height: 1; cursor: pointer; }
+    .modes { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+    .modes span { border: 1px solid #cbd5e1; border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+    .modes span.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .body { overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 14px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 13px; background: var(--soft); border: 1px solid var(--line); }
+    .chip.who { background: var(--ok-soft); border-color: #86efac; color: var(--ok); }
+    .chip.todo { background: var(--warn-soft); border-color: #fcd34d; color: var(--warn); font-weight: 600; cursor: pointer; }
+    .chip.find { background: var(--accent-soft); border-color: #93c5fd; color: var(--accent); cursor: pointer; }
+    button.btn { border: 1px solid #94a3b8; background: #fff; border-radius: 8px; padding: 9px 14px; font-size: 14px; cursor: pointer; }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button.ok { background: var(--ok); color: #fff; border-color: var(--ok); }
+    button.ng { color: var(--ng); border-color: #fca5a5; }
+    .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+    .item { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 10px; cursor: pointer; font: inherit; }
+    .item .t { font-weight: 600; font-size: 14px; }
+    .tag { font-size: 11px; border-radius: 4px; padding: 1px 6px; }
+    .tag.ai { color: var(--ai); background: var(--ai-soft); }
+    .tag.wait { color: var(--warn); background: var(--warn-soft); }
+    .tag.rep { color: var(--ng); background: var(--ng-soft); }
+    .tag.pub { color: var(--ok); background: var(--ok-soft); }
+    .step { border-left: 3px solid var(--accent); padding: 6px 10px; background: var(--soft); border-radius: 0 8px 8px 0; }
+    .step h4 { margin: 0 0 4px; font-size: 14px; }
+    .step p { margin: 0; font-size: 13px; line-height: 1.6; }
+    .step .caution { margin-top: 4px; font-size: 12px; color: var(--warn); }
+    .step .src { margin-top: 4px; font-size: 11px; color: var(--muted); }
+    .thumbs { display: flex; gap: 6px; margin-top: 6px; }
+    .thumbs span { width: 96px; height: 72px; border-radius: 6px; background: #cbd5e1; display: grid; place-items: center; font-size: 10px; color: #475569; }
+    .footer { border-top: 1px solid var(--line); padding: 10px 12px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+    .footer .grow { margin-right: auto; }
+    input[type=text], textarea { border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; font: inherit; font-size: 14px; }
+    textarea { width: 100%; min-height: 60px; resize: none; }
+    .tagwait { display: flex; align-items: center; gap: 10px; padding: 12px; border: 2px dashed #93c5fd; border-radius: 12px; background: #eff6ff; font-size: 15px; }
+    .tagwait .icon { font-size: 28px; }
+    .banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
+    .banner.ai { background: var(--ai-soft); color: var(--ai); }
+    .banner.ok { background: var(--ok-soft); color: var(--ok); }
+    .banner button { border: 1px solid currentColor; background: #fff; color: inherit; border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+    [data-view] { display: none; }
+    .admin { position: absolute; left: 24px; top: 60px; width: 560px; background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 4px 16px rgba(15,23,42,.2); font-size: 14px; }
+    .admin table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .admin th, .admin td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+    .admin select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid #cbd5e1; }
+    .admin tr.unmapped td { background: var(--warn-soft); }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <span>場面:</span>
+    <button data-go="home">1 タグ後(班長)</button>
+    <button data-go="list">2 承認待ち一覧</button>
+    <button data-go="review">3 内容を見て承認</button>
+    <button data-go="return">4 差し戻し</button>
+    <button data-go="find">5 手順書をさがす</button>
+    <button data-go="read">6 閲覧と誤り報告</button>
+    <button data-go="report">7 誤り報告の入力</button>
+    <button data-go="admin">8 管理: 職位の対応表</button>
+  </div>
+  <div class="kiosk">
+    <div class="admin" data-view="admin">
+      <strong>職位の対応表</strong>
+      <table>
+        <tr><th>職位名(名簿)</th><th>人数</th><th>段階</th></tr>
+        <tr><td>主任</td><td>6</td><td><select><option>班長相当</option></select></td></tr>
+        <tr><td>係長</td><td>3</td><td><select><option>係長相当</option></select></td></tr>
+        <tr><td>課長</td><td>2</td><td><select><option>課長相当</option></select></td></tr>
+        <tr class="unmapped"><td>主事 <span class="tag wait">未設定</span></td><td>4</td><td><select><option>一般</option><option>班長相当</option><option>係長相当</option><option>課長相当</option></select></td></tr>
+        <tr class="unmapped"><td>工師 <span class="tag wait">未設定</span></td><td>1</td><td><select><option>一般</option><option>班長相当</option><option>係長相当</option><option>課長相当</option></select></td></tr>
+      </table>
+      <div class="row" style="margin-top:10px"><span class="muted">未設定は一般(承認不可)</span><button class="btn primary">保存</button></div>
+    </div>
+
+    <div class="chat" id="chat">
+      <div class="chat-head">
+        <strong>Hermes</strong>
+        <div class="head-actions"><button class="icon-btn" id="widen" title="広げる">⤢</button><button class="icon-btn">×</button></div>
+      </div>
+      <div class="modes"><span>検索</span><span class="on">ナレッジ</span><span>JEV記録</span></div>
+
+      <div class="body" data-view="home">
+        <div class="chips">
+          <span class="chip who">👤 山田 太郎</span>
+          <span class="chip todo" data-go="list">✅ 承認待ち 3</span>
+          <span class="chip find" data-go="find">📖 手順書</span>
+        </div>
+        <div class="card muted">(この下は今までどおり: 自分の未仕分けの投稿と入力欄)</div>
+      </div>
+
+      <div class="body" data-view="list">
+        <div class="row"><strong>承認待ち 3</strong><button class="btn" data-go="home">戻る</button></div>
+        <button class="item" data-go="review"><span class="t">部品A｜段取り</span><span class="muted">6手順・写真3・10/03 投稿 佐藤 <span class="tag wait">新規</span></span></button>
+        <button class="item" data-go="review"><span class="t">部品B｜切削｜仕上げ</span><span class="muted">4手順・写真1・10/02 投稿 鈴木 <span class="tag wait">改版 2→3</span></span></button>
+        <button class="item" data-go="review"><span class="t">技能検定｜申し込み</span><span class="muted">5手順・10/04 <span class="tag rep">誤り報告: 締切は6月末では</span></span></button>
+      </div>
+
+      <div class="body" data-view="review return">
+        <div class="row"><strong>部品A｜段取り</strong><span class="tag wait">承認待ち</span></div>
+        <div class="step"><h4>1. 治具を取り付ける</h4><p>治具 J-12 をテーブル中央に置き、4 か所を締める。</p><div class="caution">⚠ 切粉を拭いてから置く</div><div class="thumbs"><span>写真1</span><span>写真2</span></div><div class="src">出典: メモ 10/03 佐藤「治具J-12を中央に…」</div></div>
+        <div class="step"><h4>2. 原点を合わせる</h4><p>基準面にタッチセンサを当てて X・Y を合わせる。</p><div class="src">出典: 写真 10/03 佐藤</div></div>
+        <div class="step"><h4>3. 試し削り</h4><p>1 個削り、寸法を測ってから続ける。</p><div class="caution">❓ 要確認: メモ2件で送り速度が違う</div><div class="src">出典: メモ 10/03 佐藤、メモ 10/02 鈴木</div></div>
+      </div>
+      <div class="footer" data-view="review">
+        <button class="btn grow" data-go="list">戻る</button>
+        <button class="btn ng" data-go="return">差し戻し</button>
+        <button class="btn ok" data-go="list">承認して公開</button>
+      </div>
+      <div class="footer" data-view="return" style="flex-direction:column;align-items:stretch">
+        <textarea placeholder="差し戻しの理由"></textarea>
+        <div class="row"><button class="btn" data-go="review">やめる</button><button class="btn ng" data-go="list">差し戻す</button></div>
+      </div>
+
+      <div class="body" data-view="find">
+        <div class="row"><input type="text" placeholder="🔍 名前・品番" style="width:220px" /><button class="btn" data-go="home">戻る</button></div>
+        <button class="item" data-go="read"><span class="t">技能検定｜申し込み</span><span class="muted">5手順・9/27 公開 <span class="tag ai">AI作成</span></span></button>
+        <button class="item" data-go="read"><span class="t">部品A｜段取り</span><span class="muted">6手順・10/04 公開 <span class="tag pub">承認 山田</span></span></button>
+      </div>
+
+      <div class="body" data-view="read report">
+        <div class="row"><strong>技能検定｜申し込み</strong><button class="btn" data-go="find">戻る</button></div>
+        <div class="banner ai"><span><strong>AI作成</strong></span><button data-go="report">誤りを報告</button></div>
+        <div class="step"><h4>1. 所属長の了承をもらう</h4><p>所属長に受検の希望を伝えて了承をもらう。</p><div class="src">出典: メモ 9/27「所属長に受検の希望を…」</div></div>
+        <div class="step"><h4>2. 申込書を書く</h4><p>総務で申込書を受け取り、必要事項を書く。</p><div class="src">出典: メモ 9/27</div></div>
+      </div>
+      <div class="footer" data-view="read">
+        <span class="muted grow">1 / 5</span><button class="btn">前へ</button><button class="btn primary">次へ</button>
+      </div>
+      <div class="footer" data-view="report" style="flex-direction:column;align-items:stretch">
+        <div class="tagwait"><span class="icon">📶</span><span>社員タグ</span><span class="chip who" style="margin-left:auto">👤 佐藤 花子</span></div>
+        <textarea placeholder="どこが違うか"></textarea>
+        <div class="row"><button class="btn" data-go="read">やめる</button><button class="btn primary" data-go="find">報告する</button></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const chat = document.getElementById('chat');
+    const wideViews = new Set(['review', 'return', 'read', 'report']);
+    function go(view) {
+      document.querySelectorAll('[data-view]').forEach(el => {
+        const on = el.dataset.view.split(' ').includes(view);
+        el.style.display = on ? (el.classList.contains('admin') ? 'block' : 'flex') : 'none';
+      });
+      chat.style.display = view === 'admin' ? 'none' : 'flex';
+      chat.classList.toggle('wide', wideViews.has(view));
+      document.querySelectorAll('.bar button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.go === view)));
+    }
+    document.addEventListener('click', e => { const t = e.target.closest('[data-go]'); if (t) go(t.dataset.go); });
+    document.getElementById('widen').addEventListener('click', () => chat.classList.toggle('wide'));
+    go('home');
+  </script>
+</body>
+</html>

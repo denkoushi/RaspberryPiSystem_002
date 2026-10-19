@@ -69,6 +69,36 @@ Design goal: legitimate kiosk (client-key) and admin (JWT) flows keep working; o
 - **Production deploy (2026-07-02)**: `./scripts/update-all-clients.sh main ... --detach --follow`, Run ID `20260702-205710-10848`. PLAY RECAP `failed=0 / unreachable=0` on all 7 hosts (Pi5 + Pi4×5 + Pi3); summary success true; Pi5 repo → `b1172baf`; `docker-api-1` healthy.
 - **Real-device verify**: `scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**. Targeted checks against prod API: unauthenticated `return`/`cancel`/`delete`/`active?clientId=` → **401**; valid client-key `active` → **200**; storage path-traversal (raw `%2e%2e` / `..%2f`, both with valid key) → **500 with no `/etc/passwd` leak** (containment error, file access blocked). Kiosk/admin flows unaffected.
 
+## Public signage schedule DTO — local correction (2026-10-03)
+
+- Base: `ee424d21412614baae39b405364ed1eb65524316` (PR準備時の最新 `origin/main`、Pi5配備済み版と一致)。開始時の基点 `38aac71fba22f9c27e00b58fcd27d187f7952b16` からfast-forwardで取り込み、専用 branch `fix/signage-public-schedule-dto-20261003` を維持した。
+- 匿名 `GET /api/signage/schedules` は表示に使うフィールドだけを明示的に返す公開DTOへ変更した。`targetClientKeys` と、将来追加される認証用フィールドは公開レスポンスへ自動的に混入しない。
+- 内部の取得・端末照合・ローテーション、および認証済み `/schedules/management` の割当情報は維持した。端末ID移行、認証キー交換、他APIの認証変更は対象外。
+- 回帰再現: 修正前は新しい匿名レスポンス検査だけが失敗し、残り4件は成功。修正後の公開DTO・管理権限・空一覧の回帰テストは5件成功。
+- ローカル検証: 既存schema 17件、ローテーション・管理・画像配信6件、専用DBの一覧・作成・端末別content/JPEG統合11件が成功（計39件）。統合テストの他16件は `-t` の対象外。変更ファイルのESLint、API TypeScript build、`git diff --check` も成功。テスト専用 `LOG_LEVEL=silent` が許可値外で初回起動に失敗したため、`error` に訂正して失敗対象を1回再実行した。
+- DBはローカルDockerのloopbackに限定した専用コンテナ、合成データ、tmpfsを使用。既存DB/volumeは変更せず、検証後に専用コンテナを停止・自動削除した。保存先も今回専用の一時ディレクトリとした。
+- この節のテスト結果はローカル検証の証拠であり、本番反映の証拠ではない。配備の成否は後続の標準release runのsystemd/Ansible結果と非破壊post-checkで確認する。過去に露出した認証キーの失効・交換は本修正に含めず、本修正だけでは過去の露出を解消しない。
+
+## Kiosk signage preview and loan response DTOs — local correction (2026-10-04)
+
+- 専用 branch `fix/kiosk-preview-and-loan-secret-dto-20261004`、基点 `b515dd18632a5feb2cf047742c0d3c4b5a9c1aff` でローカル修正・検証を実施。開始時の未コミット変更はなく、他作業のbranch/worktreeは変更していない。
+- Kiosk previewの候補・選択・レスポンスは端末IDと表示用フィールドのみ。画像は利用中端末自身の `x-client-key` で新しい `/api/kiosk/signage-preview/image` を呼び、サーバー側で自端末または登録済みsignage候補への参照を認可する。他端末のキーをブラウザへ返さず、画像ルートには標準rate limitを適用し、配信実績は更新しない。
+- 既存String列 `signagePreviewTargetApiKey` は互換アダプター内で旧キー値と新ID値を解決する。GETはDBを書き換えず、新しい選択保存はIDを格納する。schema/migration変更なし。元の画像配信・管理画面および公開schedule DTOは維持した。
+- APIとWebは同じ修正を含むreleaseで配備し、キャッシュ済みの旧Webを再読み込みする必要がある。旧Webのキー指定PUTは受理するが、レスポンスにキーは返さない。旧APIへのrollbackは新ID参照を解釈できずキー露出も再開するため、通常の互換rollbackとは扱えない。
+- 後続の承認済みキー交換では、旧キーが有効な間に残存するpreview参照をIDへ移行し、schedule割当のキー参照も整合させる必要がある。候補判定は従来のサーバー側キーに `signage` を含む規約を継続するため、交換でもその規約を維持するか、役割情報を別途設計する。
+- 共通の明示的allowlist DTOをtoolsのactive・borrow・photo-borrow・return・cancel・assign-client、履歴内Loan、measuring-instrumentsとriggingの借用・返却へ適用。表示・操作用フィールドを維持し、ClientDeviceの認証キー、Userのpassword/MFA/backup codes、NFC認証識別子、内部idempotencyフィールドを返さない。User表示はID/usernameに限定する。
+- 初回ローカル検証は61件成功（API unit 26、Web関連14、専用DB統合21）。統合の他39件は指定した対象外。API/Web ESLint・TypeScriptを含むbuild、`git diff --check` は成功。認可、旧参照互換、保存、表示消費側、共通DTO適用箇所を手動レビューした。
+- 初回の古い生成Prisma/shared-types、コピー済み依存の欠けたfont asset、vector拡張のないテストDBは、専用worktree内の再生成・lockfile固定offline依存準備・標準pgvectorテストDBへの切替で解決した。業務sourceや既存DBの環境依存問題を追加修正したものではない。
+- DBはloopback限定・tmpfs・専用ラベル付きコンテナと合成fixtureのみを使用し、検証後にID/ラベルを照合して今回の2コンテナだけを停止・削除した。実在のキーや業務データをテストへ持ち込まず、本番DB・設定・運用状態は変更していない。
+- 初回ローカル検証終了時点ではcommit/push/PR/CI/main統合/release/deployとキー発行・交換・失効は未実施。全体E2E・全suite・本番動作検証はその完了証拠に含めない。既に露出したキーは後続の失効・交換が必要であり、ローカル修正の成功を本番の安全性の証明として扱わない。
+
+### PR #1679 review follow-up (2026-10-04)
+
+- 最新main `907d1e5024b94f89143d27bd03bf1fb809a2bf29`（busboy 3.2.2を含む）を履歴改変なしで取り込み、PR #1679を作成した。initial head `4bfde908` の必須check `ci-required`、`codeql`、`gitleaks`、`torque-release-required` は成功し、API全shard・E2E全shard・coverage・runtime rehearsalも成功した。
+- Codexレビューで履歴の `details.itemSnapshot.nfcTagUid` / `employeeSnapshot.nfcTagUid` が残ることを確認した。認証済み履歴readerへNFC識別子が返る経路であり、同じHTTP境界の修正としてdetails自体も表示用allowlistへ変更した。snapshotのID/code/name、資産のmanagementNumber、note/reason、photo、端末再割当、使用前点検のsourceは維持し、未知のnested fieldも除外する。DB内の監査snapshotは変更しない。
+- 合成unitの追加検査は修正前に2件失敗して再現した。DB統合でもADMIN/VIEWERの履歴レスポンスからNFC値・フィールドを除外し、借用・返却・取消後の表示名を維持する検査を追加した。修正後の最終commitに対するhosted CIとレビュー完了をmerge前の証拠とする。
+- 追加の非required `CodeQL` checkは既存alert #1 (`js/insufficient-password-hash`) を報告した。同じ位置・同じflowは既存main `d2549924` にもopenで存在する（初検出2026-04-21）。SHA256は `signage-render-storage.ts:20` の端末別cache filename生成に使われ、パスワード認証用の保存/照合ではない。処理・filename互換を変えず、alertのdismiss、source suppression、required check/rulesの変更は行っていない。この追加checkを成功と報告しない。
+
 ## Open Items
 
 Operator-side (require secret rotation and/or Pi redeploy; not executed here per safety policy): see [security-hardening-remediation Runbook](../runbooks/security-hardening-remediation.md). Design-level items (per-resource storage ACL, JWT revocation, cookie-based session, query-string key removal, metrics/backup-health auth) tracked as future work.

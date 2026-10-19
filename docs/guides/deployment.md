@@ -106,6 +106,17 @@ scripts/update-all-clients.sh
 
 旧control planeや削除済みentrypointを標準手順の入力や操作として使用しない。
 
+## Pi4 キオスクの更新予告
+
+通常更新では、prepare 成功後に各キオスクへ60秒の保存予告を出し、メンテナンス中画面へ移ってからブラウザを再起動する。
+成功・ロールバック後は表示を解除し、リリース終了時にもrun単位で一括解除する。torque cutoverは対象外。
+予告とメンテナンスのackをそれぞれ最大30秒確認する。ackがない端末は警告を出して次へ進み、予告の60秒待機は省略する。
+1台あたり追加時間は最大約2分（scheduledAtの待機上限の余裕を含め約125秒）。client ID未設定の端末も警告して従来どおり進む。
+緊急時は `--skip-kiosk-notice` を付けると、その実行だけ予告とメンテナンス表示を出さずに再起動する（入力中の内容は消える。既定は予告あり）。
+予告の表示に失敗した場合は警告を出して予告なしで更新を続け、表示の解除は必ず試みる。
+表示が残っても、開始時刻から30分を超えるとAPIが期限切れと判定し、次のポーリングで通常画面へ戻る。
+それより早い解除と確認は[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md#キオスクがメンテナンス中のまま)に従う。
+
 ## 実行前確認
 
 1. 対象branchが指す40文字SHAをCIの成功結果と照合し、inventoryを確定する。公開CLIはbranchを受け取り、plan出力の`releaseSha`で実値を確認する。
@@ -117,7 +128,7 @@ scripts/update-all-clients.sh
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 ```
 
-`--print-plan` はinventoryとAnsibleのlist-hosts/list-tasksを確認し、必要な場合は公開署名済みrelease-setをローカル検証するだけで、remote host、service、database、inventory、stateを変更しない。対象を限定する場合は `--limit PATTERN`、全fleetを明示する場合だけ `--full-fleet` を使う。
+`--print-plan` はinventoryとAnsibleのlist-hosts/list-tasksを確認し、必要な場合は公開署名済みrelease-setをローカル検証するだけで、remote host、service、database、inventory、stateを変更しない。planに出たイメージ（API/Web、Pi4 agent、Pi3 Signage）がレジストリに存在するかも確認し、無ければ実行前にエラーで止まる。対象にPi4が含まれる場合は `pi4ReleaseFiles` を出力する。`skipped:` のときは、そのrelease setがPi4 agentを1つも含まないため、ランチャー、ブラウザunit、status-agentのファイルはPi4へ配られない（`release_kiosk` はagentと一緒の時だけこれらをstageする）。対象を限定する場合は `--limit PATTERN`、全fleetを明示する場合だけ `--full-fleet` を使う。
 
 ## 標準実行
 

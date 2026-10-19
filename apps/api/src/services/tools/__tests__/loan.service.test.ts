@@ -85,11 +85,11 @@ describe('LoanService', () => {
 
       vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(mockClient as any);
 
-      const result = await loanService.resolveClientId(clientId, undefined);
+      const result = await loanService.resolveClientId(clientId, 'test-key');
 
       expect(result).toBe(clientId);
       expect(prisma.clientDevice.findUnique).toHaveBeenCalledWith({
-        where: { id: clientId },
+        where: { apiKey: 'test-key' },
       });
     });
 
@@ -98,10 +98,10 @@ describe('LoanService', () => {
 
       vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(null);
 
-      await expect(loanService.resolveClientId(clientId, undefined)).rejects.toThrow(
+      await expect(loanService.resolveClientId(clientId, undefined, false)).rejects.toThrow(
         ApiError,
       );
-      await expect(loanService.resolveClientId(clientId, undefined)).rejects.toThrow(
+      await expect(loanService.resolveClientId(clientId, undefined, false)).rejects.toThrow(
         '指定されたクライアントが存在しません',
       );
     });
@@ -127,21 +127,28 @@ describe('LoanService', () => {
 
       await expect(loanService.resolveClientId(undefined, apiKey)).rejects.toThrow(ApiError);
       await expect(loanService.resolveClientId(undefined, apiKey)).rejects.toThrow(
-        'クライアント API キーが不正です',
+        '無効なクライアントキーです',
       );
     });
 
-    it('clientIdもapiKeyHeaderも指定されていない場合、undefinedを返す', async () => {
-      const result = await loanService.resolveClientId(undefined, undefined);
-
-      expect(result).toBeUndefined();
+    it('キー無しは401エラーを投げる', async () => {
+      await expect(loanService.resolveClientId(undefined, undefined)).rejects.toMatchObject({ statusCode: 401 });
+      await expect(loanService.resolveClientId('client-123', undefined)).rejects.toMatchObject({ statusCode: 401 });
     });
 
-    it('apiKeyHeaderが配列の場合、クライアント解決をスキップする', async () => {
-      const result = await loanService.resolveClientId(undefined, ['key1', 'key2']);
+    it('clientId指定時も不正キーは401エラーを投げる', async () => {
+      vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(null);
+      await expect(loanService.resolveClientId('client-123', 'invalid-key')).rejects.toMatchObject({ statusCode: 401 });
+    });
 
-      expect(result).toBeUndefined();
-      expect(prisma.clientDevice.findUnique).not.toHaveBeenCalled();
+    it('JWT認証済みの呼び出し元は端末未指定を許可する', async () => {
+      expect(await loanService.resolveClientId(undefined, undefined, false)).toBeUndefined();
+    });
+
+    it('apiKeyHeaderが配列の場合もキーを検証する', async () => {
+      vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: 'client-123' } as never);
+      expect(await loanService.resolveClientId(undefined, ['key1', 'key2'])).toBe('client-123');
+      expect(prisma.clientDevice.findUnique).toHaveBeenCalledWith({ where: { apiKey: 'key1' } });
     });
   });
 

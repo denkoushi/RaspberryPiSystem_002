@@ -1,8 +1,11 @@
 // One JEV call per turn. Choice options come only from code-found candidates.
 // evaluate is injectable; the default transport follows hermes-jev-record-pilot.
+import { defaultEvaluate } from './jev-evaluate.mjs';
 import { performance } from 'node:perf_hooks';
-import { catalogEntries } from './catalog.mjs';
+import { catalogEntries, definitionForCatalog } from './catalog.mjs';
+import { CAUSE_CATEGORIES, CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
+import { contentSpans, contentTokens, relevanceQuery, stripListedTerms } from './structural-text.mjs';
 import { enumeratedChoiceGroups } from './value-index.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay, referenceDate } from './period-parse.mjs';
 
@@ -39,6 +42,7 @@ function previousPlanSummary(previousPlan) {
   const summary = {
     sources: previousPlan.sources ?? [],
     filters: previousPlan.filters ?? [],
+    ...(previousPlan.causeCategory !== undefined ? { causeCategory: previousPlan.causeCategory } : {}),
     semanticQuery: typeof previousPlan.semanticQuery === 'string' ? previousPlan.semanticQuery : '',
     sort: previousPlan.sort ?? null,
     limit: previousPlan.limit ?? null,
@@ -86,7 +90,13 @@ function answersOf(result) {
 // Decision receipt: which option each question chose, with its confidence and the top
 // alternatives. Choice ids are mapped to their option text so a field answer reads as the
 // chosen value. The receipt holds no record text.
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-09-29';
+// The only source with a saved cause classification (see worker.mjs loadCauseById).
+const CAUSE_SOURCE = 'nonconformity';
+
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-19';
+
+// Choice ids that read on their own in a receipt; other choices map to their option text.
+const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry)$/u;
 
 export function summarizeAnswers(questions, answers) {
   const summary = {};
@@ -97,7 +107,7 @@ export function summarizeAnswers(questions, answers) {
       continue;
     }
     if (question?.type === 'choice') {
-      const label = (option) => (id === 'turn' || id === 'sort' || id === 'scope' || id === 'limit' || id === 'period'
+      const label = (option) => (PLAIN_CHOICE.test(id)
         ? option
         : (question.criteria?.[option] ?? option));
       const probabilities = answer.probabilities && typeof answer.probabilities === 'object' ? answer.probabilities : {};
@@ -169,26 +179,40 @@ function mergeFilters(filters) {
   return merged;
 }
 
-async function defaultEvaluate(input) {
-  const provider = process.env.HERMES_JEV_PROVIDER;
-  const payload = { ...input, model: 'typesafe-ai/jev', maxRetries: 0 };
-  if (provider === 'typesafe-direct' || (provider == null && process.env.TYPESAFE_API_KEY)) {
-    const { createTypesafeDirectEvaluate } = await import('../hermes-jev-record-pilot.mjs');
-    return createTypesafeDirectEvaluate()(payload);
-  }
-  if (provider && provider !== 'vercel-ai-gateway') {
-    throw new Error(`unsupported HERMES_JEV_PROVIDER: ${provider}`);
-  }
-  const { experimental_evaluate: evaluate } = await import('ai');
-  return evaluate(payload);
+// Follow-up turns decide each condition of the previous plan on its own instead of one
+// new-search-or-refine label for the whole turn, so a request can keep one condition,
+// replace another, and add to a third. Whether the request names a new value for the same
+// field comes from the value questions; JEV answers only yes/no questions: does the request
+// drop the condition, and does it add to the previous values. A probe on 2026-09-30 showed a
+// three-way keep/replace/add choice kept the previous department for 「組立１課の不適合２件」
+// and 「部署を問わずに」. The number of questions grows with the previous conditions, not with
+// wordings.
+const CONTENT_CARRY_OPTIONS = [
+  { id: 'same', description: '`request` は新しい内容を述べていない。`previous_plan` の内容を指す言い方か、組織・期間・件数などの条件だけを変えている' },
+  { id: 'new', description: '`request` が `previous_plan` とは別の、何が起きたか（現象・不具合・原因・処置）を述べている' },
+];
+
+function validFilter(filter) {
+  return filter && typeof filter.source === 'string' && typeof filter.field === 'string'
+    && typeof filter.op === 'string' && Array.isArray(filter.values);
+}
+
+function conditionText(entries, filter) {
+  const label = labelOf(entries, filter.source, filter.field);
+  const values = filter.values.map(String);
+  if (filter.op === 'between') return `${label}が${values[0]}から${values[1]}まで`;
+  if (filter.op === 'after') return `${label}が${values[0]}より後`;
+  if (filter.op === 'before') return `${label}が${values[0]}より前`;
+  return `${label}が${values.join('、')}`;
 }
 
 export function createPlanner({ evaluate = defaultEvaluate } = {}) {
   if (typeof evaluate !== 'function') throw new TypeError('evaluate must be a function');
   return {
-    async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null, shownCount = 0 }) {
+    async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null, shownCount = 0, pageContext = null }) {
       if (typeof question !== 'string' || !question.trim()) throw new TypeError('question must be a non-empty string');
       if (!Array.isArray(candidates)) throw new TypeError('candidates must be an array');
+      const currentEntity = /この|現在の|いまの|今の/u.test(question) ? pageContext?.entity : null;
       const hasPrevious = Boolean(previousPlan && typeof previousPlan === 'object');
       // With a previous plan in state, name `request` so each judgment reads the current
       // utterance. First turns keep the original wording.
@@ -208,6 +232,17 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           && group.values.every((value) => typeof value === 'string'));
       const asked = fromIndex ? usable : usable.slice(0, Math.max(enumeratedFields, 1));
       const questions = {};
+      questions.cause = choiceQuestion(
+        `${said('質問', '`request`')}が不適合の要因・原因の区分を指定しているときだけ、その区分を一つ選ぶ。現象や部品の説明だけで要因の区分を言っていなければ none。`,
+        [...CAUSE_CATEGORIES.map(({ id, label, description }) => ({ id, description: `${label}: ${description}` })),
+          { id: NONE, description: '要因では絞らない' }],
+      );
+      const previousCause = CAUSE_CATEGORIES.find(({ id }) => id === previousPlan?.causeCategory);
+      if (previousCause) questions.drop_cause = {
+        type: 'noul',
+        instructions: `\`request\` は前の条件「要因が${previousCause.label}」を外す、または要因を問わないことを求めているか。`,
+        criteria: { true: '要因の条件を外す、または要因を問わない。', false: 'この条件に触れていない、または別の要因を指定している。' },
+      };
       const optionMap = new Map();
       if (fromIndex) {
         const sourceOptions = entries.map((entry) => ({
@@ -240,11 +275,34 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         );
         optionMap.set(key, { group, options });
       });
-      if (hasPrevious) {
-        questions.turn = choiceQuestion('`request` は `previous_plan` を土台にした続きの依頼か、`request` だけで完結する新しい検索か。', [
-          { id: 'new_search', description: '`request` だけで探す条件が完結している、または `previous_plan` の組織や範囲を外す・置き換える（例: 全部門で、〇〇課の最近の不適合N件、別の不具合の不適合）' },
-          { id: 'refine', description: '`request` が `previous_plan` の結果をさらに絞る・件数を変える・組織を追加する（例: そのうち〇〇の、〇〇に限定して、N件にして、〇〇も見る）' },
-        ]);
+      const previousFilters = hasPrevious && Array.isArray(previousPlan.filters) ? previousPlan.filters.filter(validFilter) : [];
+      previousFilters.forEach((filter, index) => {
+        const condition = conditionText(entries, filter);
+        questions[`drop_${index}`] = {
+          type: 'noul',
+          instructions: `\`request\` は、\`previous_plan\` の条件「${condition}」を外す、またはその項目を問わないことを求めているか。`,
+          criteria: {
+            true: 'この条件を外す、またはこの項目を問わない。',
+            false: 'この条件に触れていない、または別の値を指定している。',
+          },
+        };
+        if (filter.op === 'eq' || filter.op === 'in') {
+          questions[`add_${index}`] = {
+            type: 'noul',
+            instructions: `\`request\` は、\`previous_plan\` の条件「${condition}」を残したまま、同じ項目の別の値も対象に加えることを求めているか。`,
+            criteria: {
+              true: '前の値を残し、別の値も加えて両方を対象にする。',
+              false: '前の値を残さずに替える、この項目に触れていない、または加える値がない。',
+            },
+          };
+        }
+      });
+      const previousQuery = hasPrevious && typeof previousPlan.semanticQuery === 'string' ? previousPlan.semanticQuery.trim() : '';
+      if (previousQuery) {
+        questions.contentCarry = choiceQuestion(
+          '`request` の内容条件（何が起きたか）を、`previous_plan` の内容条件と比べて一つ選ぶ。',
+          CONTENT_CARRY_OPTIONS,
+        );
       }
       questions.sort = choiceQuestion(
         said('', '`request` に合う') + '結果の並べ方を一つ選ぶ。内容の質問は意味の近さ順が既定。最近・直近・新しい順・最新のように新しさを求めているときだけ日付が新しい順。内容がなく絞り込みだけのときは日付が新しい順。',
@@ -279,7 +337,16 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           },
         };
       }
-      questions.content = {
+      // The relevance judge rejects a matching record when the query still carries request wording such
+      // as 「…はほかにある」 (2026-09-29), so JEV picks the part that states the content condition.
+      const spans = contentSpans(question);
+      if (spans.length) {
+        questions.contentSpan = choiceQuestion(
+          said('質問', '`request`') + 'のうち、探したい記録の内容を表している部分を一つ選ぶ。すでに示した記録を除く指示や、依頼・問いかけの言い回しは含めない。',
+          spans.map((span, index) => ({ id: `s${index}`, description: span })),
+        );
+      }
+      if (!previousQuery) questions.content = {
         type: 'noul',
         instructions: said('質問', '`request`') + 'は、組織・日付の順序・件数とは別に、何が起きたか（現象・不具合・原因・処置）という内容条件を指定しているか。',
         criteria: {
@@ -293,6 +360,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         model: 'typesafe-ai/jev',
         state: {
           request: question,
+          ...(currentEntity ? { page_context: { kind: currentEntity.kind, value: currentEntity.value } } : {}),
           ...(hasPrevious ? { previous_plan: previousPlanSummary(previousPlan) } : {}),
           relatedHistory: [],
           confirmationPending: null,
@@ -306,12 +374,16 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const scopeIds = entries.map((entry) => entry.id);
       const scopeChoice = fromIndex ? scopeChoiceOf(answers.scope, scopeIds) : scopeIds[0];
       const outOfScope = fromIndex && scopeChoice === OUT_OF_SCOPE;
+      const causeChoice = chosen(answers.cause, [...CAUSE_CATEGORY_IDS, NONE]);
+      const causeDropped = Boolean(previousCause && chosen(answers.drop_cause, ['true', 'false']) === 'true');
+      const chosenCause = outOfScope ? null : (causeChoice && causeChoice !== NONE ? causeChoice : (!causeDropped ? previousCause?.id : null));
       const selected = [];
       const resolvedTerms = [];
+      const ambiguous = [];
       if (!outOfScope) {
         for (const [key, mapped] of optionMap) {
           if (mapped.clarify) {
-            unresolved.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
+            ambiguous.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
             continue;
           }
           const picked = fromIndex || linked
@@ -319,9 +391,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
             : null;
           if (fromIndex || linked) {
             if (picked.kind === 'clarify') {
-              unresolved.push({ term: mapped.group.field, candidates: picked.values });
+              ambiguous.push({ term: mapped.group.field, candidates: picked.values });
             } else if (picked.kind === 'low') {
-              unresolved.push({ term: mapped.group.field, candidates: picked.values.slice(0, 5) });
+              ambiguous.push({ term: mapped.group.field, candidates: picked.values.slice(0, 5) });
             } else if (picked.kind === 'values' && picked.values.length) {
               selected.push({
                 source: mapped.group.source,
@@ -330,6 +402,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
                 values: picked.values,
               });
               resolvedTerms.push(...picked.values);
+              if (mapped.group.term !== mapped.group.field) resolvedTerms.push(mapped.group.term);
             }
             continue;
           }
@@ -346,31 +419,61 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
             continue;
           }
           selected.push({ source: mapped.group.source, field: mapped.group.field, op: 'eq', values: [value] });
-          resolvedTerms.push(mapped.group.term);
+          resolvedTerms.push(value, mapped.group.term);
         }
       }
-      const turn = hasPrevious ? chosen(answers.turn, ['new_search', 'refine']) : 'new_search';
-      if (hasPrevious && !turn) unresolved.push({ term: 'turn', candidates: ['new_search', 'refine'] });
       const sortChoice = chosen(answers.sort, ['recent', 'relevance']);
       void sortChoice;
       const limitAllowed = fromIndex ? [...LIMIT_OPTIONS, LIMIT_UNSPECIFIED] : LIMIT_OPTIONS;
       const limitChoice = chosen(answers.limit, limitAllowed);
       const limitExplicit = fromIndex ? Boolean(limitChoice && limitChoice !== LIMIT_UNSPECIFIED) : Boolean(limitChoice);
       if (!fromIndex && !limitChoice) unresolved.push({ term: 'limit', candidates: [...LIMIT_OPTIONS] });
-      const contentChoice = chosen(answers.content, ['true', 'false']);
+      const contentCarry = previousQuery ? chosen(answers.contentCarry, CONTENT_CARRY_OPTIONS.map((option) => option.id)) : null;
+      const contentChoice = previousQuery
+        ? (contentCarry ? 'true' : null)
+        : chosen(answers.content, ['true', 'false']);
+      const spanChoice = spans.length ? chosen(answers.contentSpan, spans.map((_, index) => `s${index}`)) : null;
+      const contentSpan = spanChoice ? spans[Number(spanChoice.slice(1))] : null;
       const excludeShown = questions.excludeShown ? chosen(answers.excludeShown, ['true', 'false'], EXCLUDE_SHOWN_ACCEPT_AT) === 'true' : false;
       if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
-
-      const carried = turn === 'refine' && Array.isArray(previousPlan?.filters)
-        ? previousPlan.filters
-          .filter((filter) => filter && typeof filter.source === 'string' && typeof filter.field === 'string' && typeof filter.op === 'string' && Array.isArray(filter.values))
-          .map((filter) => ({ source: filter.source, field: filter.field, op: filter.op, values: [...filter.values] }))
+      const ambiguousDropped = contentChoice === 'true'
+        ? ambiguous.map(({ term, candidates }) => ({ field: term, candidates }))
         : [];
-      const plannedSources = outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id));
+      if (contentChoice !== 'true') unresolved.push(...ambiguous);
+
+      let plannedSources = outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id));
+      // Page identifiers are already known by the screen; their use is gated in code,
+      // rather than depending on a model's choice of candidate values.
+      const pageFilters = [];
+      let pageContextUsed = false;
+      if (currentEntity && !outOfScope) {
+        const sourceOwners = entries.filter((entry) => {
+          const attributes = definitionForCatalog(entry).pageContextAttributes;
+          return attributes && Object.hasOwn(attributes, currentEntity.kind) && attributes[currentEntity.kind] === null;
+        });
+        if (sourceOwners.length) {
+          plannedSources = sourceOwners.map((entry) => entry.id);
+          pageContextUsed = true;
+        } else {
+          const fieldFor = (entry) => {
+            const attributes = definitionForCatalog(entry).pageContextAttributes;
+            return attributes ? (attributes[currentEntity.kind] ?? null) : currentEntity.kind;
+          };
+          const owners = entries.filter((entry) => entry.fields.some((field) => field.key === fieldFor(entry) && field.filterable));
+          const selectedOwners = owners.filter((entry) => plannedSources.includes(entry.id));
+          const targets = selectedOwners.length ? selectedOwners : owners.slice(0, 1);
+          if (targets.length) {
+            plannedSources = targets.map((entry) => entry.id);
+            pageFilters.push(...targets.map((entry) => ({ source: entry.id, field: fieldFor(entry), op: 'eq', values: [currentEntity.value] })));
+            pageContextUsed = true;
+          }
+        }
+      }
+
       const dateOwner = entries.find((entry) => plannedSources.includes(entry.id) && entry.fields.some((field) => field.role === 'date'));
       const dateKey = dateOwner?.fields.find((field) => field.role === 'date')?.key ?? null;
       const dated = [];
-      const recentField = dateField(entries);
+      const recentField = dateField(entries.filter(entry => plannedSources.includes(entry.id)));
       if (dateOwner && dateKey && periodChoices.length) {
         let picked = periodChoices.length === 1 ? periodChoices[0] : null;
         if (periodAmbiguous) {
@@ -382,17 +485,46 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         const filter = picked ? periodFilter(dateOwner.id, dateKey, picked) : null;
         if (filter) dated.push(filter);
       }
-      const filters = mergeFilters([...carried, ...selected, ...dated]);
+      // A previous condition whose field the request names again is replaced, unless the request
+      // adds to it. A condition the request does not name is kept, unless the request drops it.
+      // Decided after the period filter, so a new period replaces the previous one.
+      const named = new Set([...selected, ...dated].map((filter) => `${filter.source}\u0000${filter.field}`));
+      const carried = previousFilters.flatMap((filter, index) => {
+        const same = named.has(`${filter.source}\u0000${filter.field}`);
+        const decision = same
+          ? chosen(answers[`add_${index}`], ['true', 'false']) === 'true'
+          : chosen(answers[`drop_${index}`], ['true', 'false']) !== 'true';
+        return decision ? [{ source: filter.source, field: filter.field, op: filter.op, values: [...filter.values] }] : [];
+      });
+      const pageFields = new Set(pageFilters.map((filter) => `${filter.source}\u0000${filter.field}`));
+      // Shared facet values can be selected in several sources; only the chosen scope applies.
+      const filters = mergeFilters([
+        ...[...carried, ...selected, ...dated].filter((filter) => plannedSources.includes(filter.source) && !pageFields.has(`${filter.source}\u0000${filter.field}`)),
+        ...pageFilters,
+      ]);
       const judged = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
-      // A refine turn without content of its own keeps the previous content condition,
+      // A follow-up that does not restate its content keeps the previous content condition,
       // for example "そのうち三島工場資材課の" after "錆の不適合".
-      const previousQuery = turn === 'refine' && typeof previousPlan?.semanticQuery === 'string'
-        ? previousPlan.semanticQuery.trim()
-        : '';
-      const carriedQuery = judged === false && previousQuery ? previousQuery : '';
-      const jev = carriedQuery ? true : judged;
+      const carriedQuery = contentCarry === 'same' ? previousQuery : '';
+      const previousSpan = carriedQuery && typeof previousPlan?.contentSpan === 'string' ? previousPlan.contentSpan : null;
+      // A short department form such as 「機構設計2課(製造)」 is not a listed term, so its pieces
+      // would survive as content tokens; any token inside a selected value is part of the filter.
+      const selectedValues = selected.flatMap((filter) => filter.values)
+        .map((value) => String(value).normalize('NFKC').replace(/\s+/gu, '').toLowerCase());
+      // The cause store classifies only the source that owns it; a cause heard in a question about
+      // another source is not a filter there (it would match nothing).
+      const causeCategory = chosenCause && plannedSources.includes(CAUSE_SOURCE) ? chosenCause : null;
+      // Strip only the selected label's tokens, not a hand-maintained list of cause synonyms.
+      const causeTerms = causeCategory ? contentTokens(relevanceQuery(CAUSE_CATEGORIES.find(({ id }) => id === causeCategory).label)) : [];
+      // The causal predicate is request structure once JEV has selected a category.
+      const residualQuestion = causeCategory ? question.replace(/が原因(?:のやつ)?/gu, ' ') : question;
+      const residualTokens = contentTokens(relevanceQuery(stripListedTerms(residualQuestion, [...resolvedTerms, ...causeTerms])))
+        .filter((token) => !selectedValues.some((value) => value.includes(token)));
+      const hardFilter = hasAppliedHardFilter({ filters, causeCategory }, catalog);
+      const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
+      const jev = residualOverride ? false : judged;
       const finalContent = jev === true && unresolved.length === 0;
-      const sortMode = resolveSort(question, jev, hasAppliedHardFilter({ filters }, catalog));
+      const sortMode = resolveSort(question, jev, hardFilter);
       const sort = sortMode === 'recent' && recentField
         ? { field: recentField, direction: 'desc' }
         : 'relevance';
@@ -400,8 +532,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         schema: QUERY_PLAN_SCHEMA,
         sources: plannedSources,
         filters: outOfScope ? [] : filters,
+        ...(causeCategory ? { causeCategory } : {}),
         semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
           filters,
+          causeCategory,
           diagnostics: { contentDecision: { jev } },
         }, catalog) ? '' : (carriedQuery || question.trim()),
         sort,
@@ -409,9 +543,12 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
-          contentDecision: { jev, residualTokens: [], final: finalContent },
+          causeDecision: { chosen: causeCategory ?? null, ...(causeDropped ? { dropped: true } : {}) },
+          contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
+          ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
+          ...(carriedQuery ? (previousSpan ? { contentSpan: previousSpan } : {}) : (contentSpan ? { contentSpan } : {})),
           ...(excludeShown ? { excludeShown: true } : {}),
         },
       };
@@ -419,9 +556,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         plan,
         timings: { planMs },
         receipt: {
+          ...(pageContext ? { pageContext: { used: pageContextUsed, kind: pageContext.entity.kind, value: pageContext.entity.value } } : {}),
           model: typeof evaluated?.model === 'string' ? evaluated.model : null,
           questionVersion: PLANNER_QUESTION_VERSION,
-          turn: hasPrevious ? (turn ?? 'unresolved') : 'first',
+          turn: hasPrevious ? 'followup' : 'first',
           answers: summarizeAnswers(questions, answers),
           fields: Object.fromEntries([...optionMap].map(([key, mapped]) => [key, mapped.group.field ?? mapped.group.term ?? null])),
         },

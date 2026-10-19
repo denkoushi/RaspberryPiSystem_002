@@ -71,11 +71,12 @@ export function AssemblyProcedurePreviewDialog({
             {pages.map((page) => (
               <figure key={page.pageIndex} className="rounded border border-slate-300 bg-white p-2 shadow-sm">
                 <figcaption className="mb-2 text-sm font-bold text-slate-700">{page.pageIndex + 1}ページ目</figcaption>
-                <div className="relative">
+                {/* Shrink-wrap the image so overlays share the page box, not the letterboxed column. */}
+                <div className="relative mx-auto w-fit max-w-full">
                   <KioskDocumentPageImage
                     pageUrl={page.imageRelativePath}
                     alt={`${currentDocument.name} ${page.pageIndex + 1}ページ目`}
-                    className="max-h-[62vh] w-full object-contain"
+                    className="block max-h-[62vh] w-auto max-w-full"
                     loadingFallback={<p className="p-6 text-center text-sm text-slate-500">画像を読み込み中…</p>}
                     errorFallback={<p className="p-6 text-center text-sm text-red-600">画像を読み込めません。</p>}
                   />
@@ -89,9 +90,17 @@ export function AssemblyProcedurePreviewDialog({
           </div>
         </div>
         {error ? <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={onClose}>
+            閉じる
+          </Button>
+          {!isDraft && onCreateTemplate ? (
+            <Button data-kiosk-sop-target="assembly-template-create-from-procedure" type="button" variant="primary" className="min-h-11" onClick={() => onCreateTemplate(currentDocument)}>
+              この手順書でテンプレートを新規作成
+            </Button>
+          ) : null}
           {isDraft && onPublish ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               <Input
                 type="password"
                 inputMode="numeric"
@@ -107,14 +116,6 @@ export function AssemblyProcedurePreviewDialog({
               </Button>
             </div>
           ) : null}
-          {!isDraft && onCreateTemplate ? (
-            <Button data-kiosk-sop-target="assembly-template-create-from-procedure" type="button" variant="primary" className="min-h-11" onClick={() => onCreateTemplate(currentDocument)}>
-              この手順書でテンプレートを新規作成
-            </Button>
-          ) : null}
-          <Button type="button" variant="secondary" className="min-h-11" disabled={busy} onClick={onClose}>
-            閉じる
-          </Button>
         </div>
       </div>
     </Dialog>

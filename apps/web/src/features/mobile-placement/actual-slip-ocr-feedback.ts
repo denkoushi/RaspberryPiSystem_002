@@ -5,6 +5,9 @@ export type ActualSlipOcrStatus = 'idle' | 'success' | 'no_candidate' | 'error';
 
 export type ActualSlipOcrFeedback = {
   status: ActualSlipOcrStatus;
+  fseibanRaw: string | null;
+  fseibanMatch: 'exact' | 'corrected' | 'ambiguous' | 'none';
+  fseibanCandidates: string[];
   manufacturingOrder10: string | null;
   fseiban: string | null;
   /** OCR 本文の先頭のみ（確認用。長文は切り詰め） */
@@ -17,6 +20,9 @@ export type ActualSlipOcrFeedback = {
 
 export const initialActualSlipOcrFeedback: ActualSlipOcrFeedback = {
   status: 'idle',
+  fseibanRaw: null,
+  fseibanMatch: 'none',
+  fseibanCandidates: [],
   manufacturingOrder10: null,
   fseiban: null,
   ocrPreview: null,

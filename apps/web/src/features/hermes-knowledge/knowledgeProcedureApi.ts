@@ -13,3 +13,7 @@ export async function getKnowledgeProcedure(procedureId: string, signal?: AbortS
   );
   return data.procedure;
 }
+
+export function knowledgeProcedureImagePath(procedureId: string, imageId: string) {
+  return `/api/hermes-knowledge/procedures/${encodeURIComponent(procedureId)}/images/${encodeURIComponent(imageId)}`;
+}

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 
-import { inventoryThumbnailUrl, type InventoryImport, type InventoryItem } from '../../../../api/client';
+import { inventoryThumbnailUrl, type InventoryImport, type InventoryItem, type InventoryToolFieldSuggestion } from '../../../../api/client';
 import {
   useInventoryImportMessages,
   useInventoryImports,
@@ -8,17 +9,36 @@ import {
   useInventoryLocations,
   useInventoryMutations,
 } from '../../../../api/hooks';
-import { InventoryPhotoDialog } from '../../../../components/kiosk/InventoryPhotoDialog';
+import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
+import { useDismissOnOutside } from '../../../../hooks/useDismissOnOutside';
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
+import { ArrowLeftIcon, ArrowRightIcon, RotateRightIcon, CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
+import {
+  invSetupTargets,
+  invButtonGo,
+  invButtonSm,
+  invButtonSmGhost,
+  invError,
+  invField,
+  invLabel,
+  invLabelNumber,
+  invPanel,
+  invSeg,
+  invSegAdd,
+  invSuccess,
+} from '../inventoryUi';
 import { NfcPrompt } from '../NfcPrompt';
 
+import { InventoryExistingItemPicker } from './InventoryExistingItemPicker';
 import { InventoryUnitPicker } from './InventoryUnitPicker';
+import { setupErrorText as errorText } from './setupError';
+import { touchSetupPin } from './setupPinSession';
+import { ToolValueBoard } from './ToolValueBoard';
 import { useArmedNfcRead } from './useArmedNfcRead';
 
 import type { NfcEvent } from '../../../../hooks/useNfcStream';
 
-type Draft = {
-  photosChecked: boolean;
+export type Draft = {
   mode: 'NEW_ITEM' | 'EXISTING_ITEM' | null;
   itemId: string;
   itemName: string;
@@ -26,12 +46,17 @@ type Draft = {
   model: string;
   usage: string;
   unit: string | null;
+  maker: string;
+  toolName: string;
+  workMaterial: string;
+  toolSize: string;
   /** Shelf area chosen for this item, "<machine> <direction>". */
   area: string;
   shelfId: string;
   drawerId: string;
   drawerLabel: string;
   itemTagUid: string;
+  manualUid: string;
   quantity: string;
 };
 
@@ -41,7 +66,6 @@ const QUANTITY_MAX_DIGITS = 6;
 
 function emptyDraft(candidate: InventoryImport | null): Draft {
   return {
-    photosChecked: false,
     mode: null,
     itemId: '',
     itemName: '',
@@ -49,26 +73,31 @@ function emptyDraft(candidate: InventoryImport | null): Draft {
     model: '',
     usage: '',
     unit: null,
+    maker: '',
+    toolName: '',
+    workMaterial: '',
+    toolSize: '',
     area: '',
     shelfId: '',
     drawerId: '',
     drawerLabel: '',
     itemTagUid: '',
+    manualUid: '',
     quantity: '',
   };
 }
 
 /** What is done and what is left, in the order a worker does it. */
-export function registrationChecklist(draft: Draft, photoCount: number): CheckItem[] {
+export function registrationChecklist(draft: Draft): CheckItem[] {
   const items: CheckItem[] = [
-    { id: 'photos', label: '写真の確認', done: draft.photosChecked, detail: draft.photosChecked ? `${photoCount}枚` : 'まだ' },
     {
       id: 'mode',
       label: '新規か既存か',
       done: draft.mode === 'NEW_ITEM' || (draft.mode === 'EXISTING_ITEM' && Boolean(draft.itemId)),
       detail: draft.mode === 'NEW_ITEM' ? '新規' : draft.mode === 'EXISTING_ITEM' ? (draft.itemId ? draft.itemName : '追加先を選ぶ') : 'まだ',
     },
-    { id: 'names', label: '名前・単位', done: true, optional: true, detail: `単位 ${draft.unit || '個'}` },
+    { id: 'names', label: '名前・工具情報', done: true, optional: true, detail: draft.name },
+    { id: 'unit', label: '単位', done: true, optional: true, detail: draft.unit || '個' },
   ];
   if (draft.mode === 'EXISTING_ITEM') return items;
   return [
@@ -79,42 +108,30 @@ export function registrationChecklist(draft: Draft, photoCount: number): CheckIt
   ];
 }
 
-function errorText(error: unknown): string {
-  const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
-  if (message) return message;
-  return error instanceof Error ? error.message : '処理に失敗しました';
-}
-
-// Fixed, content-sized controls: 44px high, width from the label, never stretched to the screen.
-const choiceBase = 'h-11 rounded-lg px-4 text-base font-bold disabled:cursor-not-allowed';
-const choiceOn = `${choiceBase} border-2 border-sky-400 bg-sky-950/60 text-white`;
-const choiceOff = `${choiceBase} border border-white/25 bg-slate-800 text-white/90 hover:bg-slate-700`;
-const numberOn = 'h-11 w-16 rounded-lg border-2 border-sky-400 bg-sky-950/60 text-base font-bold text-white';
-const numberOff = 'h-11 w-16 rounded-lg border border-white/25 bg-slate-800 text-base font-bold text-white/90 hover:bg-slate-700 disabled:border-slate-800 disabled:bg-slate-950 disabled:text-sm disabled:font-normal disabled:text-white/30';
-const directionOn = 'h-11 w-14 rounded-lg border-2 border-sky-400 bg-sky-950/60 text-base font-bold text-white';
-const directionOff = 'h-11 w-14 rounded-lg border border-white/25 bg-slate-800 text-base font-bold text-white/90 hover:bg-slate-700';
-const addClass = 'h-11 rounded-lg border border-dashed border-white/40 px-3 text-sm text-white/85 hover:bg-slate-800 disabled:opacity-40';
-const smallButton = 'h-9 rounded-md border border-white/25 bg-slate-800 px-3 text-sm text-white hover:bg-slate-700 disabled:opacity-40';
-const inputClass = 'h-10 rounded-md border border-white/25 bg-slate-950 px-2.5 text-base text-white focus:border-sky-400 focus:outline-none';
-const keyClass = 'h-11 w-[60px] rounded-md border border-white/15 bg-slate-800 text-lg font-bold text-white hover:bg-slate-700';
+// Fixed, content-sized controls: never stretched to the screen.
+const keyClass = 'h-11 w-12 rounded-lg border border-inv-line2 bg-inv-s2 text-[17px] font-black text-inv-text hover:bg-inv-s3';
+const iconSm = `${invButtonSm} w-11 px-0`;
 
 function StepMark({ number, done, current }: { number: number; done: boolean; current: boolean }) {
-  if (done) return <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-bold text-white" aria-hidden="true">✓</span>;
+  if (done) return <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-inv-green text-inv-green-ink" aria-label="完了">✓</span>;
   return (
-    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold ${current ? 'border-amber-400 text-amber-300' : 'border-slate-500 text-slate-400'}`} aria-hidden="true">
+    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-black ${current ? 'border-inv-amber text-inv-amber' : 'border-inv-line2 text-inv-faint'}`} aria-hidden="true">
       {number}
     </span>
   );
 }
 
-function Row({ id, number, title, done, current, alignTop, children }: { id: string; number: number; title: string; done: boolean; current: boolean; alignTop?: boolean; children: ReactNode }) {
+function Row({ id, number, title, done, current, aside, children, bounded = false }: { id: string; number: number; title: string; done: boolean; current: boolean; aside?: ReactNode; children: ReactNode; bounded?: boolean }) {
   return (
-    <section id={`registration-${id}`} aria-label={title} className={`grid grid-cols-[150px_minmax(0,1fr)] gap-3 border-b border-slate-800 py-3 last:border-b-0 ${alignTop ? 'items-start' : 'items-center'}`}>
-      <div className={`flex items-center gap-2 ${alignTop ? 'pt-2.5' : ''}`}>
-        <StepMark number={number} done={done} current={current} />
-        <h3 className="text-base font-bold text-white">{title}</h3>
+    <section id={`registration-${id}`} aria-label={title} className={`${invPanel} flex min-w-0 flex-col gap-2 p-3 ${bounded ? 'min-h-0 flex-1' : 'shrink-0'}`}>
+      <div className="flex shrink-0 items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <StepMark number={number} done={done} current={current} />
+          <h3 className="text-[15px] font-black">{title}</h3>
+        </div>
+        {aside}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className={`min-w-0 ${bounded ? 'flex min-h-0 flex-1 flex-col gap-2' : ''}`}>{children}</div>
     </section>
   );
 }
@@ -125,45 +142,113 @@ function QuantityKeypad({ value, onChange }: { value: string; onChange: (next: s
     onChange(`${value}${digit}`.replace(/^0+(?=\d)/, ''));
   };
   return (
-    <div role="group" aria-label="最初の数のテンキー" className="grid grid-cols-[repeat(3,60px)] gap-1.5">
+    <div role="group" aria-label="最初の数のテンキー" className="grid grid-cols-[repeat(6,48px)] gap-1.5">
       {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0'].map((digit) => (
         <button key={digit} type="button" className={keyClass} onClick={() => press(digit)}>{digit}</button>
       ))}
-      <button type="button" className={`${keyClass} text-sm font-normal`} onClick={() => onChange(value.slice(0, -1))}>消す</button>
-      <button type="button" className={`${keyClass} text-sm font-normal text-amber-200`} onClick={() => onChange('')}>クリア</button>
+      <button type="button" className={`${keyClass} text-[13px] font-bold text-inv-muted`} onClick={() => onChange(value.slice(0, -1))}>削除</button>
+      <button type="button" className={`${keyClass} text-[13px] font-bold text-inv-muted`} onClick={() => onChange('')}>クリア</button>
     </div>
   );
 }
 
-export function InventoryRegistrationTab({ accessPassword }: { accessPassword: string }) {
-  const importsQuery = useInventoryImports(accessPassword);
-  const messagesQuery = useInventoryImportMessages(accessPassword);
+type TextFieldKey = 'name' | 'model' | 'usage' | 'maker' | 'toolName' | 'workMaterial' | 'toolSize';
+const TEXT_FIELDS: Array<{ key: TextFieldKey; label: string; aria?: string }> = [
+  { key: 'name', label: '名前', aria: 'アイテム名' },
+  { key: 'model', label: '型式' },
+  { key: 'maker', label: 'メーカー' },
+  { key: 'toolName', label: '工具名' },
+  { key: 'workMaterial', label: '被削材' },
+  { key: 'toolSize', label: '工具寸法' },
+  { key: 'usage', label: '用途' },
+];
+export type RegistrationState = {
+  selectedId: string | null;
+  draft: Draft | null;
+  completed?: { candidateId: string; labelNumber?: number; name: string; location: string };
+};
+
+export function InventoryRegistrationTab({ accessPassword, registration, setRegistration }: {
+  accessPassword: string;
+  registration: RegistrationState;
+  setRegistration: Dispatch<SetStateAction<RegistrationState>>;
+}) {
+  const importsQuery = useInventoryImports(accessPassword, true);
+  const messagesQuery = useInventoryImportMessages(accessPassword, true);
   const locationsQuery = useInventoryLocations();
-  const mutations = useInventoryMutations(accessPassword);
-  const candidates = useMemo(() => importsQuery.data ?? [], [importsQuery.data]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const candidate = candidates.find((entry) => entry.id === selectedId) ?? candidates[0] ?? null;
-  const [draft, setDraft] = useState<Draft>(() => emptyDraft(candidate));
+  const mutations = useInventoryMutations(accessPassword, true);
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const [undoDismiss, setUndoDismiss] = useState<{ candidate: InventoryImport; draft: Draft } | null>(null);
+  const registered = registration.completed ?? null;
+  const [suggestion, setSuggestion] = useState<{ candidateId: string; photoId: string; result: InventoryToolFieldSuggestion } | null>(null);
+  const [reading, setReading] = useState(false);
+  const suggestionGenerationRef = useRef(0);
+  const [working, setWorking] = useState(false);
+  const [errorAt, setErrorAt] = useState('register');
+  // Newest first, like the unregistered cards on the daily list.
+  const candidates = useMemo(() => [...(importsQuery.data ?? [])].filter((entry) => !hiddenIds.includes(entry.id) && entry.status !== 'DISMISSED' && entry.status !== 'REGISTERED').sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)), [importsQuery.data, hiddenIds]);
+  const { selectedId } = registration;
+  const registrationRef = useRef(registration);
+  registrationRef.current = registration;
+  const completedIdRef = useRef<string | null>(null);
+  const setSelectedId = (id: string | null) => setRegistration({ selectedId: id, draft: null });
+  const candidate = selectedId ? candidates.find((entry) => entry.id === selectedId) ?? null : candidates.find((entry) => entry.id !== completedIdRef.current) ?? null;
+  const draft = registration.draft ?? emptyDraft(candidate);
+  const setDraft = useCallback((update: SetStateAction<Draft>) => {
+    setUndoDismiss(null);
+    setRegistration((current) => ({
+      selectedId: current.selectedId ?? candidate?.id ?? null,
+      draft: typeof update === 'function' ? update(current.draft ?? emptyDraft(candidate)) : update,
+    }));
+  }, [candidate, setRegistration]);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [confirmDeletePhotoId, setConfirmDeletePhotoId] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
+  const [readPhotoId, setReadPhotoId] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
-  const [manualUid, setManualUid] = useState('');
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [photoPage, setPhotoPage] = useState(0);
+  const lastPhotoPage = Math.max(0, Math.ceil((candidate?.photos.length ?? 0) / 2) - 1);
+  const currentPhotoPage = Math.min(photoPage, lastPhotoPage);
+  const [candidatesOpen, setCandidatesOpen] = useState(false);
+  const candidatesRef = useRef<HTMLDivElement>(null);
+  const candidatesButtonRef = useRef<HTMLButtonElement>(null);
+  useDismissOnOutside(candidatesRef, candidatesOpen, () => setCandidatesOpen(false));
+  const candidateIndex = candidates.findIndex((entry) => entry.id === candidate?.id);
+  const chooseCandidate = (id: string) => { setSelectedId(id); setDone(null); setCandidatesOpen(false); };
+  useEffect(() => { setPhotoPage((page) => Math.min(page, lastPhotoPage)); }, [lastPhotoPage]);
   const itemsQuery = useInventoryItems(draft.mode !== null);
+  const selectedItem = itemsQuery.data?.find((item) => item.id === draft.itemId);
   const waitingForTag = draft.mode === 'NEW_ITEM' && Boolean(draft.drawerId) && !draft.itemTagUid;
   const read = useArmedNfcRead(waitingForTag);
   const handledRef = useRef<NfcEvent | null>(null);
   const failedMessages = (messagesQuery.data ?? []).filter((entry) => entry.outcome === 'RETRYABLE' || entry.outcome === 'PROCESSING');
-  const photoPending = mutations.deleteImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
+  const photoPending = mutations.deleteImportPhoto.isPending || mutations.rotateImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
 
   // A different candidate starts over.
   const candidateId = candidate?.id ?? null;
   useEffect(() => {
-    setDraft(emptyDraft(candidate));
+    if (!registered && candidate && !registration.draft) setRegistration({ selectedId: candidate.id, draft: emptyDraft(candidate) });
+  }, [candidate, registration.draft, setRegistration, registered]);
+
+  // The chosen candidate is gone (registered on another terminal): fall back to the newest one.
+  const selectedGone = Boolean(selectedId) && !candidate && importsQuery.data !== undefined && !importsQuery.isFetching;
+  useEffect(() => {
+    if (selectedGone && !registered) setRegistration({ selectedId: null, draft: null });
+  }, [selectedGone, setRegistration, registered]);
+
+  useEffect(() => {
     setError(null);
     setConfirmDeletePhotoId(null);
     setManualOpen(false);
+    setSuggestion(null);
+    setReadPhotoId(null);
+    setPhotoPage(0);
+    setCandidatesOpen(false);
+    setSelectedPhoto(null);
+    suggestionGenerationRef.current += 1;
+    setReading(false);
     // Only the candidate identity matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidateId]);
@@ -171,8 +256,9 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
   useEffect(() => {
     if (!read || handledRef.current === read) return;
     handledRef.current = read;
+    touchSetupPin();
     setDraft((current) => ({ ...current, itemTagUid: read.uid }));
-  }, [read]);
+  }, [read, setDraft]);
 
   // The mail location is the machine; the shelf area is "<machine> <direction>" or another machine's area.
   const machine = candidate?.area ?? '';
@@ -184,9 +270,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
   useEffect(() => {
     if (draft.mode !== 'NEW_ITEM' || draft.area || !defaultArea || itemsQuery.isLoading) return;
     setDraft((current) => (current.area ? current : { ...current, area: defaultArea }));
-  }, [defaultArea, draft.area, draft.mode, itemsQuery.isLoading]);
-  const selectedSplit = splitArea(draft.area);
-  const selectedDirection = selectedSplit.machine === machine ? selectedSplit.direction : null;
+  }, [defaultArea, draft.area, draft.mode, itemsQuery.isLoading, setDraft]);
   const otherAreas = useMemo(
     () => [...new Set((locationsQuery.data ?? []).map((shelf) => shelf.area))].filter((area) => splitArea(area).machine !== machine).sort((a, b) => a.localeCompare(b, 'ja')),
     [locationsQuery.data, machine],
@@ -212,13 +296,14 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
       const parent = areaShelves.find((entry) => entry.id === autoSelect.shelfId);
       const created = parent?.drawers.find((drawer) => drawer.drawerNumber === autoSelect.drawerNumber);
       if (!parent || !created) return;
-      setDraft((current) => ({ ...current, drawerId: created.id, drawerLabel: `${parent.area}・棚${parent.shelfNumber}・引出し${created.drawerNumber}`, itemTagUid: '' }));
+      setDraft((current) => ({ ...current, drawerId: created.id, drawerLabel: `${parent.area}・棚${parent.shelfNumber}・引き出し${created.drawerNumber}`, itemTagUid: '' }));
     }
     setAutoSelect(null);
-  }, [areaShelves, autoSelect]);
+  }, [areaShelves, autoSelect, setDraft]);
   const createShelf = async () => {
     if (!candidate) return;
     setError(null);
+    setErrorAt('place');
     try {
       if (!draft.area) return;
       await mutations.createShelf.mutateAsync({ area: draft.area, shelfNumber: nextShelfNumber });
@@ -230,6 +315,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
   const createDrawer = async () => {
     if (!shelf) return;
     setError(null);
+    setErrorAt('place');
     try {
       await mutations.createDrawer.mutateAsync({ shelfId: shelf.id, drawerNumber: nextDrawerNumber });
       setAutoSelect({ kind: 'drawer', shelfId: shelf.id, drawerNumber: nextDrawerNumber });
@@ -238,7 +324,7 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
     }
   };
   const update = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
-  const checklist = registrationChecklist(draft, candidate?.photos.length ?? 0);
+  const checklist = registrationChecklist(draft);
   const remaining = checklist.filter((entry) => !entry.done).length;
   const currentId = checklist.find((entry) => !entry.done)?.id ?? null;
   const isDone = (id: string) => checklist.find((entry) => entry.id === id)?.done ?? false;
@@ -250,24 +336,45 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
     if (target < 0 || target >= ids.length) return;
     [ids[index], ids[target]] = [ids[target], ids[index]];
     setError(null);
+    setErrorAt('photos');
     void mutations.reorderImportPhotos.mutateAsync({ payloadId: candidate.id, photoIds: ids }).catch((caught) => setError(errorText(caught)));
+  };
+  const rotatePhoto = (photoId: string) => {
+    if (!candidate) return;
+    setError(null);
+    setErrorAt('photos');
+    void mutations.rotateImportPhoto.mutateAsync({ payloadId: candidate.id, photoId }).catch((caught) => setError(errorText(caught)));
   };
   const deletePhoto = (photoId: string) => {
     if (!candidate) return;
     setConfirmDeletePhotoId(null);
     setError(null);
+    setErrorAt('photos');
     void mutations.deleteImportPhoto.mutateAsync({ payloadId: candidate.id, photoId }).catch((caught) => setError(errorText(caught)));
   };
+  // Only coming back from an existing item clears what that item filled in; a name or tool
+  // information entered before this button is pressed must survive it.
+  const chooseNew = () => {
+    if (draft.mode === 'NEW_ITEM') return;
+    if (draft.mode === 'EXISTING_ITEM' && draft.itemId) {
+      update({ mode: 'NEW_ITEM', area: '', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', manualUid: '', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate?.sourceItemId ?? ''}`, model: '', usage: '', unit: null, maker: '', toolName: '', workMaterial: '', toolSize: '' });
+      return;
+    }
+    update({ mode: 'NEW_ITEM', itemId: '', itemName: '' });
+  };
   const chooseExisting = (item: InventoryItem) => {
-    update({ itemId: item.id, itemName: item.name, name: item.name, model: item.model ?? '', usage: item.usage ?? '', unit: item.unit });
+    update({ itemId: item.id, itemName: item.name, name: item.name, model: item.model ?? '', usage: item.usage ?? '', unit: item.unit, maker: item.maker ?? '', toolName: item.toolName ?? '', workMaterial: item.workMaterial ?? '', toolSize: item.toolSize ?? '' });
   };
 
   const register = async () => {
-    if (!candidate || !draft.mode || remaining > 0) return;
+    if (!candidate || !draft.mode || remaining > 0 || working) return;
+    setUndoDismiss(null);
+    setErrorAt('register');
     setError(null);
+    setWorking(true);
     const isNew = draft.mode === 'NEW_ITEM';
     try {
-      await mutations.registerImport.mutateAsync({
+      const result = await mutations.registerImport.mutateAsync({
         id: candidate.id,
         input: {
           mode: draft.mode,
@@ -280,235 +387,351 @@ export function InventoryRegistrationTab({ accessPassword }: { accessPassword: s
           itemTagUid: isNew ? draft.itemTagUid || undefined : undefined,
           initialQuantity: isNew ? Number(draft.quantity || '0') : undefined,
           unit: draft.unit,
+          maker: draft.maker,
+          toolName: draft.toolName,
+          workMaterial: draft.workMaterial,
+          toolSize: draft.toolSize,
         },
       });
       setDone(`候補 #${candidate.sourceItemId} を登録しました`);
-      setSelectedId(null);
+      setHiddenIds((ids) => [...ids, candidate.id]);
+      completedIdRef.current = candidate.id;
+      setRegistration({ selectedId: candidate.id, draft, completed: { candidateId: candidate.id, labelNumber: result.compartment?.labelNumber, name: result.item.name, location: isNew ? draft.drawerLabel : '写真を追加しました' } });
     } catch (caught) {
       setError(errorText(caught));
+    } finally {
+      setWorking(false);
     }
   };
 
+  const dismiss = async () => {
+    if (!candidate || working) return;
+    setWorking(true);
+    setUndoDismiss(null);
+    setErrorAt('register');
+    setError(null);
+    try {
+      await mutations.dismissImport.mutateAsync(candidate.id);
+      if (registrationRef.current.selectedId === candidate.id) setUndoDismiss({ candidate, draft });
+      setHiddenIds((ids) => [...ids, candidate.id]);
+      setDone(`候補 #${candidate.sourceItemId} は登録しません`);
+      setRegistration((current) => current.selectedId === candidate.id ? {
+        selectedId: candidates.find((entry) => entry.id !== candidate.id)?.id ?? null, draft: null,
+      } : current);
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setWorking(false);
+    }
+  };
+  const restore = async () => {
+    if (!undoDismiss || working) return;
+    setWorking(true);
+    const beforeRestore = registrationRef.current;
+    setErrorAt('undo');
+    setError(null);
+    try {
+      await mutations.restoreImport.mutateAsync(undoDismiss.candidate.id);
+      setHiddenIds((ids) => ids.filter((id) => id !== undoDismiss.candidate.id));
+      setRegistration((current) => current === beforeRestore ? { selectedId: undoDismiss.candidate.id, draft: undoDismiss.draft } : current);
+      setUndoDismiss(null);
+      setDone('候補を戻しました');
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setWorking(false);
+    }
+  };
+  const readPhoto = async () => {
+    const photo = candidate?.photos.find((entry) => entry.id === readPhotoId) ?? candidate?.photos[0];
+    if (!candidate || !photo || reading) return;
+    const generation = ++suggestionGenerationRef.current;
+    setReading(true);
+    setSuggestion(null);
+    const unavailable: InventoryToolFieldSuggestion = { model: [], maker: [], status: 'unavailable' };
+    try {
+      const result = await mutations.suggestToolFields.mutateAsync({ source: 'import', payloadId: candidate.id, photoId: photo.id });
+      if (generation === suggestionGenerationRef.current) setSuggestion({ candidateId: candidate.id, photoId: photo.id, result });
+    } catch {
+      if (generation === suggestionGenerationRef.current) setSuggestion({ candidateId: candidate.id, photoId: photo.id, result: unavailable });
+    } finally { if (generation === suggestionGenerationRef.current) setReading(false); }
+  };
+  const visibleSuggestion = suggestion?.candidateId === candidateId ? suggestion.result : null;
+  const suggestionFailed = visibleSuggestion && (visibleSuggestion.status === 'unavailable' || !visibleSuggestion.model.length && !visibleSuggestion.maker.length);
+  const localError = (target: string) => <div className="h-8 shrink-0 overflow-hidden text-sm leading-4">{error && errorAt === target ? <p className="line-clamp-2 text-[#ffd0d0]" role="alert">{error}</p> : null}</div>;
+
   const retryPanel = failedMessages.length > 0 ? (
-    <section className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-400/40 bg-amber-950/40 px-3 py-2 text-sm text-white/85" aria-label="取込エラー">
-      <span className="font-bold text-white">写真メールの取込に失敗:</span>
+    <section className="flex flex-wrap items-center gap-3 rounded-xl border border-inv-amber/40 bg-inv-amber/[0.12] px-3 py-2 text-sm text-[#ffe8bf]" aria-label="取込エラー">
+      <span className="font-bold">写真メールの取込に失敗:</span>
       {failedMessages.map((entry) => (
-        <span key={entry.id} className="flex items-center gap-2">
+        <span key={entry.id} className="flex flex-col gap-1">
           {entry.errorMessage ?? '再試行できるエラー'}
-          <button type="button" className={smallButton} disabled={mutations.retryImport.isPending} onClick={() => void mutations.retryImport.mutateAsync(entry.id).catch((caught) => setError(errorText(caught)))}>もう一度取り込む</button>
+          <button type="button" className={invButtonSm} disabled={mutations.retryImport.isPending} onClick={() => { setErrorAt(entry.id); setError(null); void mutations.retryImport.mutateAsync(entry.id).catch((caught) => setError(errorText(caught))); }}>もう一度取り込む</button>
+          {localError(entry.id)}
         </span>
       ))}
     </section>
   ) : null;
-  const doneBanner = done ? <p className="rounded-lg border border-emerald-400/60 bg-emerald-900/40 px-3 py-2 text-base font-semibold text-emerald-100" role="status">{done}</p> : null;
+  const doneBanner = <div className="flex h-12 shrink-0 items-center gap-3 overflow-hidden">
+    {done ? <p className="min-w-0 truncate text-base font-bold text-[#d7fbe9]" role="status">{done}</p> : null}
+    {undoDismiss ? <button type="button" className={invButtonSmGhost} disabled={working} onClick={() => void restore()}>元に戻す</button> : null}
+    {errorAt === 'undo' ? localError('undo') : null}
+  </div>;
+
+  if (registered) {
+    return <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 pt-4`}>
+      {doneBanner}
+      <section className={`${invPanel} flex flex-1 flex-col items-center justify-center gap-5 p-6 text-center`} aria-label="登録完了">
+        <h2 className="text-xl font-black">{registered.labelNumber !== undefined ? '登録しました　タグと引き出しに書く番号' : '写真を追加しました'}</h2>
+        {registered.labelNumber !== undefined ? <span className={`${invLabelNumber} border-[3px] px-7 py-2 text-[88px] leading-[1.1]`}>{formatInventoryLabelNumber(registered.labelNumber)}</span> : null}
+        <p className="max-w-full truncate text-inv-muted">{registered.name} ／ {registered.location}</p>
+        <button type="button" className={invButtonGo} onClick={() => { setRegistration({ selectedId: candidates.find((entry) => entry.id !== registered.candidateId)?.id ?? null, draft: null }); }}>次へ</button>
+      </section>
+    </div>;
+  }
 
   if (!candidate) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className={`${invSetupTargets} flex flex-col gap-3`}>
         {doneBanner}
         {retryPanel}
-        <p className="rounded-lg border border-white/15 bg-slate-900/60 p-6 text-center text-base text-white/70">{importsQuery.isLoading ? '読み込み中…' : '登録待ちの候補はありません'}</p>
+        <p className={`${invPanel} p-6 text-center text-base text-inv-muted`}>{importsQuery.isLoading ? '読み込み中…' : '登録待ちの候補はありません'}</p>
       </div>
     );
   }
 
-  let stepNumber = 1;
+  let stepNumber = 0;
   const next = () => { stepNumber += 1; return stepNumber; };
 
   return (
-    <div className="flex flex-col gap-3">
-      {doneBanner}
+    <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 pt-4`}>
+      {done || undoDismiss || errorAt === 'undo' && error ? doneBanner : null}
       {retryPanel}
-      <div className="grid h-[calc(100dvh-11rem)] min-h-[640px] grid-cols-[692px_minmax(0,1fr)_340px] gap-4">
-        <section aria-label="写真の確認" className="flex min-h-0 flex-col gap-2.5 rounded-lg border border-slate-700 bg-slate-900/70 p-3.5">
+      <div className="relative grid min-h-0 flex-1 grid-cols-[420px_minmax(0,1fr)_minmax(0,1fr)] gap-4">
+        {/* The photos stay in front of the shade so the name can be chosen while looking at them. */}
+        <section aria-label="写真の確認" className={`${invPanel} flex min-h-0 flex-col gap-3 p-4 ${optionsOpen ? 'relative z-[45]' : ''}`}>
           <div className="flex items-center gap-2">
-            <StepMark number={1} done={isDone('photos')} current={currentId === 'photos'} />
-            <h3 className="text-base font-bold text-white">写真の確認</h3>
-            <span className="truncate text-sm text-white/60">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
+            <h3 className="text-[15px] font-black">写真の確認</h3><span className="text-sm font-bold">候補 #{candidate.sourceItemId}</span>
+            <span className="min-w-0 flex-1 truncate text-xs text-inv-faint">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
           </div>
-          {candidate.photos.length === 0 ? <p className="text-sm text-white/60">写真はありません</p> : null}
-          <div className="grid min-h-0 grid-cols-2 content-start gap-2.5 overflow-y-auto">
-            {candidate.photos.map((photo, index) => (
-              <figure key={photo.id} className="rounded-lg border border-slate-700 bg-slate-950 p-1.5">
-                <button type="button" className="block w-full" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
-                  <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-60 w-full rounded object-cover" />
-                </button>
-                {confirmDeletePhotoId === photo.id ? (
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <span className="flex-1 text-sm text-red-100">この写真を消しますか？</span>
-                    <button type="button" className="h-9 rounded-md bg-red-600 px-3 text-sm font-bold text-white disabled:opacity-40" disabled={photoPending} onClick={() => deletePhoto(photo.id)}>消す</button>
-                    <button type="button" className={smallButton} onClick={() => setConfirmDeletePhotoId(null)}>やめる</button>
-                  </div>
-                ) : (
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <button type="button" className={`${smallButton} w-11`} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || photoPending} onClick={() => movePhoto(index, -1)}>←</button>
-                    <button type="button" className={`${smallButton} w-11`} aria-label={`写真${index + 1}を後ろへ`} disabled={index === candidate.photos.length - 1 || photoPending} onClick={() => movePhoto(index, 1)}>→</button>
-                    <span className="flex-1" />
-                    <button type="button" className="h-9 rounded-md border border-red-400 px-3 text-sm text-red-100 hover:bg-red-950 disabled:opacity-40" aria-label={`写真${index + 1}を削除`} disabled={photoPending} onClick={() => setConfirmDeletePhotoId(photo.id)}>削除</button>
-                  </div>
-                )}
-              </figure>
-            ))}
+          {candidate.photos.length === 0 ? <p className="text-sm text-inv-faint">写真はありません</p> : null}
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-3">
+            {candidate.photos.slice(currentPhotoPage * 2, currentPhotoPage * 2 + 2).map((photo, pageIndex) => {
+              const index = currentPhotoPage * 2 + pageIndex;
+              return (
+                <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
+                  <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => { setReadPhotoId(photo.id); setSelectedPhoto(photo.id); }}>
+                    <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line bg-inv-bg object-contain" />
+                  </button>
+                  {confirmDeletePhotoId === photo.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex-1 text-sm text-[#ffb3b3]">この写真を削除しますか？</span>
+                      <button type="button" className={`${invButtonSm} border-inv-red/60 text-[#ffb3b3]`} disabled={photoPending} onClick={() => deletePhoto(photo.id)}>削除</button>
+                      <button type="button" className={invButtonSmGhost} onClick={() => setConfirmDeletePhotoId(null)}>やめる</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || photoPending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>
+                      <button type="button" className={iconSm} aria-label={`写真${index + 1}を後ろへ`} disabled={index === candidate.photos.length - 1 || photoPending} onClick={() => movePhoto(index, 1)}><ArrowRightIcon size={16} /></button>
+                      <button type="button" className={iconSm} aria-label={`写真${index + 1}を右に回す`} title={`写真${index + 1}を右に回す`} disabled={photoPending} onClick={() => rotatePhoto(photo.id)}><RotateRightIcon /></button>
+                      <span className="flex-1" />
+                      <button type="button" className={`${iconSm} border-inv-red/45 bg-transparent text-[#ffb3b3] hover:bg-inv-red/10`} aria-label={`写真${index + 1}を削除`} disabled={photoPending} onClick={() => setConfirmDeletePhotoId(photo.id)}><TrashIcon /></button>
+                    </div>
+                  )}
+                </figure>
+              );
+            })}
           </div>
-          <div className="mt-auto flex items-center gap-2.5">
-            <button type="button" aria-pressed={draft.photosChecked} className={draft.photosChecked ? `${choiceBase} border-2 border-emerald-500 bg-emerald-950 text-emerald-100` : choiceOff} onClick={() => update({ photosChecked: !draft.photosChecked })}>
-              {draft.photosChecked ? '✓ 写真を確認した' : '写真を確認した'}
-            </button>
-            <span className="text-sm text-white/60">写真タップで拡大、拡大した写真をタップで戻る</span>
-          </div>
+          {candidate.photos.length > 2 ? <div className="flex shrink-0 items-center justify-center gap-3" role="group" aria-label="写真のページ">
+            <button type="button" className={iconSm} aria-label="前の写真ページ" disabled={currentPhotoPage === 0} onClick={() => setPhotoPage(currentPhotoPage - 1)}>＜</button>
+            <span className="text-sm tabular-nums">{currentPhotoPage * 2 + 1}–{Math.min(currentPhotoPage * 2 + 2, candidate.photos.length)} / {candidate.photos.length}</span>
+            <button type="button" className={iconSm} aria-label="次の写真ページ" disabled={currentPhotoPage === lastPhotoPage} onClick={() => setPhotoPage(currentPhotoPage + 1)}>＞</button>
+          </div> : null}
+          {localError('photos')}
         </section>
 
-        <div className="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/70 px-4 py-1.5">
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
           <Row id="mode" number={next()} title="新規か既存か" done={isDone('mode')} current={currentId === 'mode'}>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={draft.mode === 'NEW_ITEM' ? choiceOn : choiceOff} onClick={() => update({ mode: 'NEW_ITEM', area: '', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', itemId: '', itemName: '', name: `ItemlistRaspi ${candidate.sourceItemId}`, model: '', usage: '' })}>新規登録</button>
-              <button type="button" aria-pressed={draft.mode === 'EXISTING_ITEM'} className={draft.mode === 'EXISTING_ITEM' ? choiceOn : choiceOff} onClick={() => update({ mode: 'EXISTING_ITEM', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', quantity: '' })}>既存のアイテムに写真を追加</button>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={invSeg(draft.mode === 'NEW_ITEM')} onClick={chooseNew}>新規登録</button>
+              <button type="button" aria-pressed={draft.mode === 'EXISTING_ITEM'} className={invSeg(draft.mode === 'EXISTING_ITEM')} onClick={() => update({ mode: 'EXISTING_ITEM', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', quantity: '' })}>既存のアイテムに写真を追加</button>
             </div>
             {draft.mode === 'EXISTING_ITEM' ? (
-              <div className="mt-2 flex max-h-44 flex-wrap gap-2 overflow-y-auto" aria-label="追加先のアイテム">
-                {itemsQuery.isLoading ? <p className="text-sm text-white/60">読み込み中…</p> : null}
-                {(itemsQuery.data ?? []).map((item) => (
-                  <button key={item.id} type="button" aria-pressed={item.id === draft.itemId} className={`flex h-14 w-64 items-center gap-2 rounded-lg border px-2 text-left text-white ${item.id === draft.itemId ? 'border-2 border-sky-400 bg-sky-950/60' : 'border-slate-700 bg-slate-950 hover:bg-slate-800'}`} onClick={() => chooseExisting(item)}>
-                    {item.photos[0] ? <img src={inventoryThumbnailUrl(item.photos[0].photoUrl)} alt="" className="h-10 w-10 rounded object-cover" /> : <span className="h-10 w-10 rounded bg-slate-800" aria-hidden="true" />}
-                    <span className="min-w-0"><span className="block truncate text-sm font-bold">{item.name}</span><span className="text-xs text-white/60">{item.itemCode}</span></span>
-                  </button>
-                ))}
-              </div>
+              draft.itemId ? <div className="mt-2 flex h-16 items-center gap-2.5 rounded-xl border-2 border-inv-cyan bg-inv-cyan/[0.12] px-2.5">
+                {selectedItem?.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(selectedItem.photos[0].photoUrl)} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
+                <span className="min-w-0 flex-1 truncate text-base font-black">{draft.itemName}</span>
+                <span className="shrink-0 text-[13px] text-inv-muted">追加先</span>
+              </div> : <div className="mt-2 flex h-16 items-center rounded-xl border border-dashed border-inv-cyan px-3.5 text-base font-bold text-inv-cyan">→ 右の一覧から追加先を選ぶ</div>
             ) : null}
           </Row>
 
-          <Row id="names" number={next()} title="名前・単位" done={isDone('names')} current={false} alignTop>
-            <div className="grid grid-cols-[64px_auto] items-center justify-start gap-2">
-              <label htmlFor="registration-name" className="text-sm text-white/60">名前</label>
-              <input id="registration-name" aria-label="アイテム名" className={`${inputClass} w-[360px]`} value={draft.name} onChange={(event) => update({ name: event.target.value })} />
-              <label htmlFor="registration-model" className="text-sm text-white/60">型式</label>
-              <input id="registration-model" aria-label="型式" placeholder="省略可" className={`${inputClass} w-60`} value={draft.model} onChange={(event) => update({ model: event.target.value })} />
-              <label htmlFor="registration-usage" className="text-sm text-white/60">用途</label>
-              <input id="registration-usage" aria-label="用途" placeholder="省略可" className={`${inputClass} w-[360px]`} value={draft.usage} onChange={(event) => update({ usage: event.target.value })} />
-              <span className="text-sm text-white/60">単位</span>
-              <InventoryUnitPicker value={draft.unit} onChange={(unit) => update({ unit })} accessPassword={accessPassword} />
+          <Row
+            id="names"
+            number={next()}
+            title="名前・工具情報"
+            done={isDone('names')}
+            current={false}
+            bounded
+            aside={<div className="flex gap-2"><button type="button" className={invButtonSm} disabled={reading || !candidate.photos.length} onClick={() => void readPhoto()}>{reading ? '読み取り中…' : '写真から読む'}</button><button type="button" aria-expanded={optionsOpen} className={`${invButtonSm} self-start border-inv-cyan bg-inv-cyan/[0.12] text-[#dff8ff] hover:bg-inv-cyan/20`} onClick={() => setOptionsOpen((open) => !open)}><ChevronDownIcon />登録済みから選ぶ</button></div>}
+          >
+            <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-x-3 gap-y-2 overflow-y-auto">
+              {TEXT_FIELDS.map((field) => (
+                <div key={field.key} className={`flex min-w-0 flex-col gap-1 ${field.key === 'name' ? 'col-span-2' : ''}`}>
+                  <span className={invLabel}>{field.label}</span>
+                  <input aria-label={field.aria ?? field.label} placeholder={field.key === 'name' ? undefined : '省略可'} className={`${invField} h-11 w-full`} value={draft[field.key]} onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)} />
+                  {(field.key === 'model' || field.key === 'maker') && visibleSuggestion?.[field.key].length ? <div className="flex h-11 shrink-0 gap-1.5 overflow-x-auto" role="group" aria-label={`${field.label}の読取候補`}>
+                    {visibleSuggestion[field.key].map((value) => <button key={value} type="button" aria-pressed={draft[field.key] === value} className={`${invSeg(draft[field.key] === value)} h-11 shrink-0 whitespace-nowrap font-mono`} onClick={() => update({ [field.key]: value })}>{value}</button>)}
+                  </div> : null}
+                </div>
+              ))}
+            </div>
+            {suggestionFailed ? <p role="status" className="shrink-0 text-sm text-inv-red">読み取れませんでした</p> : null}
+          </Row>
+
+          <Row id="unit" number={next()} title="単位" done current={false}>
+            <div className="max-h-36 overflow-y-auto">
+            <InventoryUnitPicker value={draft.unit} onChange={(unit) => update({ unit })} accessPassword={accessPassword} />
             </div>
           </Row>
 
-          {draft.mode !== 'EXISTING_ITEM' ? (
+        </div>
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
+          {draft.mode === 'EXISTING_ITEM' ? (
+            <InventoryExistingItemPicker
+              key={candidate.id}
+              items={itemsQuery.data ?? []}
+              isLoading={itemsQuery.isLoading}
+              machine={splitArea(candidate.area).machine}
+              selectedItem={selectedItem}
+              stepMark={<StepMark number={next()} done={Boolean(draft.itemId)} current={!draft.itemId} />}
+              onChoose={chooseExisting}
+              onClear={() => update({ itemId: '', itemName: '' })}
+            />
+          ) : (
             <>
-              <Row id="place" number={next()} title="置き場所" done={isDone('place')} current={currentId === 'place'} alignTop>
-                <div className="flex flex-col gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="加工機と向き">
-                    <span className="w-14 text-sm text-white/60">加工機</span>
-                    <span className="flex h-11 items-center rounded-lg border border-slate-700 bg-slate-950 px-3 font-bold text-white">{machine}</span>
-                    <span className="w-3" />
+              <Row id="place" number={next()} title="置き場所" done={isDone('place')} current={currentId === 'place'} bounded>
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
+                  <p aria-label="選んだ置き場所" className="shrink-0 truncate rounded-xl border border-inv-line2 bg-inv-bg px-3 py-2 text-lg font-black">{draft.area || 'エリア'}・{shelf ? `棚${shelf.shelfNumber}` : '棚'}・{draft.drawerId ? `引き出し${shelf?.drawers.find((drawer) => drawer.id === draft.drawerId)?.drawerNumber ?? '—'}` : '引き出し'}</p>
+                  <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="加工機と向き">
+                    <span className={`${invLabel} w-[52px]`}>エリア</span>
                     {AREA_DIRECTIONS.map((direction) => (
-                      <button key={direction} type="button" aria-label={`${machine} ${direction}`} aria-pressed={direction === selectedDirection} className={direction === selectedDirection ? directionOn : directionOff} onClick={() => chooseArea(composeArea(machine, direction))}>{direction}</button>
+                      <button key={direction} type="button" aria-label={`${machine} ${direction}`} aria-pressed={composeArea(machine, direction) === draft.area} className={invSeg(composeArea(machine, direction) === draft.area)} onClick={() => chooseArea(composeArea(machine, direction))}>{composeArea(machine, direction)}</button>
                     ))}
-                    {previousArea && draft.area === previousArea ? <span className="ml-2 text-sm text-white/60">前回この加工機で使った場所</span> : null}
+                    {previousArea && draft.area === previousArea ? <span className="ml-2 text-xs text-inv-faint">前回と同じ</span> : null}
                   </div>
                   {otherAreas.length > 0 ? (
-                    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="ほかの加工機の棚">
-                      <span className="w-14 text-sm text-white/60">ほか</span>
-                      <span className="text-sm text-white/60">ほかの加工機の棚に置く:</span>
+                    <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="ほかの加工機の棚">
+                      <span className={`${invLabel} w-[52px]`}>ほか</span>
                       {otherAreas.map((area) => (
-                        <button key={area} type="button" aria-pressed={area === draft.area} className={`h-9 rounded-lg px-2.5 text-sm ${area === draft.area ? 'border-2 border-sky-400 bg-sky-950/60 font-bold text-white' : 'border border-white/25 bg-slate-800 text-white/90 hover:bg-slate-700'}`} onClick={() => chooseArea(area)}>{area}</button>
+                        <button key={area} type="button" aria-pressed={area === draft.area} className={`${invSeg(area === draft.area)} h-11 text-sm`} onClick={() => chooseArea(area)}>{area}</button>
                       ))}
                     </div>
                   ) : null}
-                  <div className="flex items-center gap-2 rounded-md bg-slate-950 px-2.5 py-1.5">
-                    <span className="text-sm text-white/60">エリア</span>
-                    <span className="font-bold text-white">{draft.area || '—'}</span>
-                    {draft.area && areaShelves.length === 0 ? <span className="ml-2 text-sm text-amber-100">このエリアの棚はまだありません</span> : null}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="棚">
-                    <span className="w-14 text-sm text-white/60">棚</span>
+                  {draft.area && areaShelves.length === 0 ? <p className="shrink-0 text-xs text-inv-amber">{draft.area} の棚はまだありません</p> : null}
+                  <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="棚">
+                    <span className={`${invLabel} w-[52px]`}>棚</span>
                     {areaShelves.map((entry) => (
-                      <button key={entry.id} type="button" aria-label={`棚${entry.shelfNumber}`} aria-pressed={entry.id === draft.shelfId} className={entry.id === draft.shelfId ? numberOn : numberOff} onClick={() => update({ shelfId: entry.id, drawerId: '', drawerLabel: '', itemTagUid: '' })}>{entry.shelfNumber}</button>
+                      <button key={entry.id} type="button" aria-label={`棚${entry.shelfNumber}`} aria-pressed={entry.id === draft.shelfId} className={invSeg(entry.id === draft.shelfId)} onClick={() => update({ shelfId: entry.id, drawerId: '', drawerLabel: '', itemTagUid: '' })}>{entry.shelfNumber}</button>
                     ))}
-                    <button type="button" className={addClass} disabled={creating || !draft.area} onClick={() => void createShelf()}>＋ 棚{nextShelfNumber}を作る</button>
+                    <button type="button" className={invSegAdd} aria-label={`棚${nextShelfNumber}を作る`} disabled={creating || !draft.area} onClick={() => void createShelf()}><PlusIcon />棚{nextShelfNumber}</button>
                   </div>
                   {shelf ? (
-                    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="引き出し">
-                      <span className="w-14 text-sm text-white/60">引出し</span>
-                      {shelf.drawers.map((drawer) => {
-                        const used = drawer.compartments.length > 0;
-                        return (
-                          <button key={drawer.id} type="button" disabled={used} aria-label={`引出し${drawer.drawerNumber}${used ? ' 使用中' : ''}`} aria-pressed={drawer.id === draft.drawerId} className={drawer.id === draft.drawerId ? numberOn : numberOff} onClick={() => update({ drawerId: drawer.id, drawerLabel: `${shelf.area}・棚${shelf.shelfNumber}・引出し${drawer.drawerNumber}`, itemTagUid: '' })}>
-                            {drawer.drawerNumber}{used ? ' 使用' : ''}
-                          </button>
-                        );
-                      })}
-                      <button type="button" className={addClass} disabled={creating} onClick={() => void createDrawer()}>＋ 引出し{nextDrawerNumber}を作る</button>
+                    <div className="flex min-h-0 flex-1 flex-wrap content-start items-center gap-1.5 overflow-y-auto [&>button]:shrink-0" role="group" aria-label="引き出し">
+                      <span className={`${invLabel} w-[52px]`}>引き出し</span>
+                      {shelf.drawers.map((drawer) => (
+                        <button key={drawer.id} type="button" aria-label={`引き出し${drawer.drawerNumber}`} aria-pressed={drawer.id === draft.drawerId} className={invSeg(drawer.id === draft.drawerId)} onClick={() => update({ drawerId: drawer.id, drawerLabel: `${shelf.area}・棚${shelf.shelfNumber}・引き出し${drawer.drawerNumber}`, itemTagUid: '' })}>
+                          {drawer.drawerNumber}
+                        </button>
+                      ))}
+                      <button type="button" className={invSegAdd} aria-label={`引き出し${nextDrawerNumber}を作る`} disabled={creating} onClick={() => void createDrawer()}><PlusIcon /></button>
                     </div>
                   ) : null}
                 </div>
+                {localError('place')}
               </Row>
 
               <Row id="tag" number={next()} title="アイテムタグ" done={isDone('tag')} current={currentId === 'tag'}>
-                {!draft.drawerId ? <p className="text-sm text-white/60">置き場所のあと</p> : null}
+                {!draft.drawerId ? <p className="text-sm text-inv-faint">置き場所のあと</p> : null}
                 {waitingForTag ? (
                   <div className="flex flex-wrap items-center gap-3">
                     <NfcPrompt size="small" tone="amber" label="アイテムタグ" sub={draft.drawerLabel} />
                     {manualOpen ? (
                       <span className="flex items-center gap-2">
-                        <input aria-label="タグのID" placeholder="タグのID" className={`${inputClass} w-56`} value={manualUid} onChange={(event) => setManualUid(event.target.value)} />
-                        <button type="button" className={smallButton} disabled={!manualUid.trim()} onClick={() => { update({ itemTagUid: manualUid.trim() }); setManualUid(''); setManualOpen(false); }}>使う</button>
+                        <input aria-label="タグのID" placeholder="タグのID" className={`${invField} w-56`} value={draft.manualUid} onChange={(event) => update({ manualUid: event.target.value })} />
+                        <button type="button" className={invButtonSm} disabled={!draft.manualUid.trim()} onClick={() => { update({ itemTagUid: draft.manualUid.trim(), manualUid: '' }); setManualOpen(false); }}>使う</button>
                       </span>
                     ) : (
-                      <button type="button" className="text-sm text-sky-300 underline" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
+                      <button type="button" className="inline-flex min-h-11 min-w-11 items-center text-[13px] text-inv-cyan underline underline-offset-2" onClick={() => setManualOpen(true)}>IDを手で入れる</button>
                     )}
                   </div>
                 ) : null}
                 {draft.itemTagUid ? (
                   <div className="flex items-center gap-3">
-                    <p className="text-base text-white">タグ {draft.itemTagUid} を読み取りました</p>
-                    <button type="button" className={smallButton} onClick={() => update({ itemTagUid: '' })}>読み直す</button>
+                    <span className={`inline-flex h-11 items-center gap-2 rounded-full border-[1.5px] px-4 text-[15px] font-bold ${invSuccess}`}><CheckIcon />タグ <span className="font-mono">{draft.itemTagUid}</span></span>
+                    <button type="button" className={invButtonSmGhost} onClick={() => update({ itemTagUid: '' })}>読み直す</button>
                   </div>
                 ) : null}
               </Row>
 
-              <Row id="quantity" number={next()} title="最初の数" done={isDone('quantity')} current={currentId === 'quantity'} alignTop>
+              <Row id="quantity" number={next()} title="最初の数" done={isDone('quantity')} current={currentId === 'quantity'}>
                 <div className="flex items-start gap-4">
                   <div className="flex items-center gap-1.5">
-                    <output aria-label="最初の数" className="flex h-11 w-28 items-center justify-end rounded-md border border-white/25 bg-slate-950 px-2.5 text-xl font-bold text-white">{draft.quantity === '' ? '—' : draft.quantity}</output>
-                    <span className="text-white/60">{draft.unit || '個'}</span>
+                    <output aria-label="最初の数" className={`${invField} flex w-28 items-center justify-end text-xl font-black tabular-nums`}>{draft.quantity === '' ? '—' : draft.quantity}</output>
+                    <span className="text-inv-muted">{draft.unit || '個'}</span>
                   </div>
                   <QuantityKeypad value={draft.quantity} onChange={(value) => update({ quantity: value })} />
                 </div>
               </Row>
             </>
-          ) : null}
+          )}
         </div>
 
-        <aside aria-label="登録の進み具合" className="flex min-h-0 flex-col gap-2 rounded-lg border border-slate-700 bg-slate-900/70 p-3.5">
-          <h3 className="text-base font-bold text-white">候補 #{candidate.sourceItemId} の登録</h3>
-          {candidates.length > 1 ? (
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="メールで届いた候補">
-              {candidates.map((entry) => (
-                <button key={entry.id} type="button" aria-pressed={entry.id === candidate.id} className={`h-9 rounded-md px-2.5 text-sm ${entry.id === candidate.id ? 'border-2 border-sky-400 bg-sky-950/60 font-bold text-white' : 'border border-slate-700 bg-slate-950 text-white/80'}`} onClick={() => { setSelectedId(entry.id); setDone(null); }}>
-                  #{entry.sourceItemId}（写真{entry.photos.length}）
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <ul className="flex flex-col gap-1.5">
-            {checklist.map((entry) => {
-              const current = entry.id === currentId;
-              return (
-                <li key={entry.id} className={`flex h-10 items-center gap-2.5 rounded-md px-2.5 ${current ? 'border border-amber-600 bg-amber-950/60' : 'bg-slate-950'}`}>
-                  <span className={`w-4 font-bold ${entry.done ? 'text-emerald-400' : current ? 'text-amber-300' : 'text-slate-500'}`} aria-hidden="true">{entry.done ? '✓' : '○'}</span>
-                  <span className={`flex-1 truncate ${entry.done ? 'text-white' : current ? 'text-amber-100' : 'text-white/60'}`}>{entry.label}{entry.done ? '' : '（まだ）'}</span>
-                  <span className={`max-w-[9rem] truncate text-sm ${current ? 'text-amber-100' : 'text-white/50'}`}>{current ? 'いまここ' : entry.detail}</span>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="flex-1" />
-          {error ? <p className="rounded border border-red-400/50 bg-red-950/60 px-3 py-2 text-sm text-red-100" role="alert">{error}</p> : null}
-          <p className="text-center text-base font-bold text-white" aria-live="polite">{remaining === 0 ? '登録できます' : `あと ${remaining} つ`}</p>
-          <button type="button" className="h-[52px] rounded-lg bg-emerald-600 text-lg font-bold text-white hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-white/40" disabled={remaining > 0 || mutations.registerImport.isPending} onClick={() => void register()}>
-            {mutations.registerImport.isPending ? '登録中…' : '登録する'}
-          </button>
-        </aside>
+        {optionsOpen ? (
+          <>
+            <div className="fixed inset-0 z-40 bg-[#05080d]/60" aria-hidden="true" onClick={() => setOptionsOpen(false)} />
+            <ToolValueBoard
+              accessPassword={accessPassword}
+              current={{ name: draft.name, maker: draft.maker, toolName: draft.toolName, workMaterial: draft.workMaterial, toolSize: draft.toolSize, model: draft.model, usage: draft.usage }}
+              onChange={(field, value) => update({ [field]: value } as Partial<Draft>)}
+              onRenamed={(field, from, to) => setDraft((current) => (current[field] === from ? { ...current, [field]: to } : current))}
+              provisionalName={draft.mode === 'EXISTING_ITEM' ? undefined : `ItemlistRaspi ${candidate.sourceItemId}`}
+              onClose={() => setOptionsOpen(false)}
+              className="absolute inset-y-0 left-[436px] right-0 z-50 shadow-[0_30px_80px_rgba(0,0,0,0.6),0_0_0_1px_rgba(57,208,240,0.25)]"
+            />
+          </>
+        ) : null}
       </div>
-      <InventoryPhotoDialog photoUrl={selectedPhoto?.url ?? null} alt={selectedPhoto?.alt ?? ''} onClose={() => setSelectedPhoto(null)} />
+      <section aria-label="メールで届いた候補" className={`${invPanel} relative flex shrink-0 items-center gap-3 p-2.5`}>
+        <div ref={candidatesRef}>
+          <button ref={candidatesButtonRef} type="button" className={invButtonSm} aria-expanded={candidatesOpen} onClick={() => setCandidatesOpen((open) => !open)}>登録待ち {candidates.length}</button>
+          {candidatesOpen ? <div role="region" aria-label="登録待ちの一覧" className={`${invPanel} absolute inset-x-0 bottom-full z-50 mb-2 grid max-h-[60dvh] grid-cols-8 gap-2 overflow-y-auto p-3 shadow-xl`}>
+            {candidates.map((entry) => {
+              const selected = entry.id === candidate.id;
+              const photo = entry.photos[0];
+              return <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} disabled={mutations.registerImport.isPending} className={`flex min-w-0 flex-col gap-2 rounded-xl border p-2 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { chooseCandidate(entry.id); candidatesButtonRef.current?.focus(); }}>
+                <span className="block h-20 w-full overflow-hidden rounded-lg bg-inv-s3">
+                  {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+                </span>
+                <b className="max-w-full truncate text-sm">候補 #{entry.sourceItemId}</b>
+                <span className="line-clamp-2 break-all text-xs text-inv-muted">{entry.area}</span>
+              </button>;
+            })}
+          </div> : null}
+        </div>
+        <p aria-label="選択中の候補" className="min-w-0 max-w-sm truncate text-sm font-bold">候補 #{candidate.sourceItemId}・{draft.mode === 'EXISTING_ITEM' ? draft.itemName || draft.name : draft.name}</p>
+        <div className="flex shrink-0 gap-2" role="group" aria-label="候補の切り替え">
+          <button type="button" className={iconSm} aria-label="前の候補" disabled={candidateIndex <= 0 || mutations.registerImport.isPending} onClick={() => chooseCandidate(candidates[candidateIndex - 1].id)}>＜</button>
+          <button type="button" className={iconSm} aria-label="次の候補" disabled={candidateIndex >= candidates.length - 1 || mutations.registerImport.isPending} onClick={() => chooseCandidate(candidates[candidateIndex + 1].id)}>＞</button>
+        </div>
+        <span className="flex-1" />
+        <div className="flex shrink-0 items-center gap-3" aria-label="登録操作">
+          {error && errorAt === 'register' ? <p className={`max-w-60 text-sm ${invError}`} role="alert">{error}</p> : null}
+          <button type="button" className={invButtonSmGhost} disabled={working} onClick={() => void dismiss()}>登録しない</button>
+          <p className="whitespace-nowrap text-lg font-black tabular-nums" aria-live="polite">{remaining === 0 ? '登録できます' : `あと ${remaining} つ`}</p>
+          <button type="button" className={`${invButtonGo} h-14 text-lg disabled:border-inv-line2 disabled:bg-inv-s2 disabled:text-inv-muted disabled:opacity-100`} disabled={remaining > 0 || working || mutations.registerImport.isPending} onClick={() => void register()}>{mutations.registerImport.isPending ? '登録中…' : '登録する'}</button>
+        </div>
+      </section>
+      {selectedPhoto ? <InventoryPhotoReadDialog key={candidate.id} photos={candidate.photos.map(photo => ({ ...photo, alt: photo.filename }))} initialPhotoId={selectedPhoto} source={{ source: 'import', payloadId: candidate.id }} accessPassword={accessPassword} values={draft} onApply={(field, value) => update({ [field]: value })} onClose={() => setSelectedPhoto(null)} /> : null}
     </div>
   );
 }

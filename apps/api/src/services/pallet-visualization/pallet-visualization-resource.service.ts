@@ -1,9 +1,8 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { toUpperTrimmedCode as normalizeCd } from '../../lib/string-normalize.js';
 import { getResourceNameMapByResourceCds } from '../production-schedule/resource-master.service.js';
 import { DEFAULT_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
-
-const normalizeCd = (value: string): string => value.trim().toUpperCase();
 
 export async function assertMachineCdRegistered(machineCdRaw: string): Promise<string> {
   const machineCd = normalizeCd(machineCdRaw);

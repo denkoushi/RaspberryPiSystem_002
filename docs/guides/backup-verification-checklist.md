@@ -1,6 +1,6 @@
 # バックアップ検証チェックリスト
 
-最終更新: 2026-02-08
+最終更新: 2026-09-30
 
 ## 目的
 
@@ -13,8 +13,12 @@
 
 ## 自動検証（Pi5 systemd timer）
 
-- 月次: `backup-verify-monthly.timer`
-- 四半期: `backup-verify-quarterly.timer`
+- 月次: `backup-verify-monthly.timer`（毎月第1日曜 03:30、`Sun *-*-01..07`）
+- 四半期: `backup-verify-quarterly.timer`（1・4・7・10月の第1日曜 04:00）
+- どちらも `scripts/server/run-in-active-api.sh` 経由で、稼働中の blue/green API スロット内で実行する。
+
+> 2026-09-30 修正: 以前の `Sun *-*-01` は「1日が日曜の月だけ」を意味し、年2〜3回しか動いていなかった。
+> また旧 `docker compose -f docker-compose.server.yml exec -T api` は blue/green 化後に `api` サービスが無く失敗していた。
 
 ログ確認:
 
@@ -25,11 +29,11 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 
 ### 手動実行（必要時）
 
-systemdを待たずに、APIコンテナ内で検証スクリプトを直接実行できます。
+systemdを待たずに、稼働中のAPIコンテナ内で検証スクリプトを直接実行できます。失敗時の結果JSONは標準エラーに出ます。
 
 ```bash
 cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+scripts/server/run-in-active-api.sh \
   node /app/apps/api/dist/scripts/verify-backups.js --mode=monthly --max-age-days=35 --max-download-mb=50
 ```
 
@@ -37,7 +41,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 
 ```bash
 cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+scripts/server/run-in-active-api.sh \
   node /app/apps/api/dist/scripts/verify-backups.js --mode=quarterly --max-age-days=110 --max-download-mb=50
 ```
 

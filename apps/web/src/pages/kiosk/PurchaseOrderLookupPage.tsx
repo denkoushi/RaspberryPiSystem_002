@@ -3,15 +3,31 @@ import {
   BARCODE_FORMAT_PRESET_PURCHASE_ORDER,
   KIOSK_STANDARD_BARCODE_SCAN_SESSION,
 } from '../../features/barcode-scan';
+import { useIsPhoneViewport } from '../../features/mobile-placement/ui/useIsPhoneViewport';
 import {
   PurchaseOrderLookupBackBar,
   PurchaseOrderLookupResultList,
   purchaseOrderLookupKioskTheme,
   usePurchaseOrderLookup
 } from '../../features/purchase-order-lookup';
+import { PurchaseOrderLookupPhoneView } from '../../features/purchase-order-lookup/components/PurchaseOrderLookupPhoneView';
 
 export function PurchaseOrderLookupPage() {
   const mp = usePurchaseOrderLookup();
+  const isPhone = useIsPhoneViewport();
+
+  if (isPhone) {
+    return <>
+      <PurchaseOrderLookupPhoneView lookup={mp} />
+      <BarcodeScanModal
+        open={mp.scanOpen}
+        formats={BARCODE_FORMAT_PRESET_PURCHASE_ORDER}
+        {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
+        onSuccess={mp.onScanSuccess}
+        onAbort={() => mp.setScanOpen(false)}
+      />
+    </>;
+  }
 
   const statusText = mp.loading
     ? '照会中…'

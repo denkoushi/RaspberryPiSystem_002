@@ -3,6 +3,7 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { logger } from '../../lib/logger.js';
 import { assertKioskApiClientKeyValid } from '../../services/clients/client-device-auth.service.js';
 import {
+  getPartMeasurementDrawingDimensionMapService,
   getPartMeasurementDrawingOcrService,
   PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY,
   PartMeasurementResolveService,
@@ -23,6 +24,7 @@ import { registerVisualTemplateRoutes } from './visual-templates.js';
 import { registerSheetRoutes } from './sheets.js';
 import { registerProductionTemplateReadRoutes } from './production-templates-read.js';
 import { registerSelfInspectionRoutes } from './self-inspection.js';
+import { registerSelfInspectionReductionRoutes } from './self-inspection-reduction.js';
 import { registerProductionTemplateCreateRoutes } from './production-templates-create.js';
 import { registerInspectionDrawingTemplateRoutes } from './inspection-drawing-templates.js';
 import { registerProductionTemplateLifecycleRoutes } from './production-templates-lifecycle.js';
@@ -90,6 +92,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     const visualTemplateService = new PartMeasurementVisualTemplateService();
     const measurementLabelSettingsService = new InspectionDrawingMeasurementLabelSettingsService();
     const drawingOcrService = getPartMeasurementDrawingOcrService();
+    const drawingDimensionMapService = getPartMeasurementDrawingDimensionMapService();
 
     const enqueueDrawingOcrAndWake = async (
       visualTemplateId: string | null | undefined,
@@ -144,6 +147,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     visualTemplateService,
     measurementLabelSettingsService,
     drawingOcrService,
+    drawingDimensionMapService,
     enqueueDrawingOcrAndWake,
     createInspectionDrawingEvaluationSetup
   };
@@ -152,6 +156,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
   registerSheetRoutes(app, deps);
   registerProductionTemplateReadRoutes(app, deps);
   registerSelfInspectionRoutes(app, deps);
+  registerSelfInspectionReductionRoutes(app, deps);
   registerProductionTemplateCreateRoutes(app, deps);
   registerInspectionDrawingMeasurementLabelSettingRoutes(app, deps);
   registerInspectionDrawingTemplateRoutes(app, deps);

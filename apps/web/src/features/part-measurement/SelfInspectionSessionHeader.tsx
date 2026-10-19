@@ -32,9 +32,6 @@ type Props = {
   onZoomOut: () => void;
   onFitToView: () => void;
   onResumeGuide: () => void;
-  onNextPoint: () => void;
-  /** 次の blur 1 回だけガイド進行を抑止（pointer/touch の実行直前。Tab の onFocus では立てない） */
-  onPrepareNextPoint?: () => void;
   onBackToList: () => void;
   onReset?: () => void;
   resetDisabled?: boolean;
@@ -61,8 +58,6 @@ export function SelfInspectionSessionHeader({
   onZoomOut,
   onFitToView,
   onResumeGuide,
-  onNextPoint,
-  onPrepareNextPoint,
   onBackToList,
   onReset,
   resetDisabled = false,
@@ -123,6 +118,13 @@ export function SelfInspectionSessionHeader({
         </p>
       </div>
       <div className={selfInspectionSessionToolbarSlotClassName} data-self-inspection-session-toolbar>
+        {onReset ? (
+          <div className="mr-2 shrink-0 border-r border-[#344252] pr-3">
+            <SelfInspectionKioskButton type="button" size="compact" tone="danger" disabled={resetDisabled} onClick={onReset}>
+              初期化
+            </SelfInspectionKioskButton>
+          </div>
+        ) : null}
         {onToggleWorkbenchCamera ? (
           <SelfInspectionKioskButton
             type="button"
@@ -151,26 +153,6 @@ export function SelfInspectionSessionHeader({
         >
           再開
         </SelfInspectionKioskButton>
-        <SelfInspectionKioskButton
-          type="button"
-          size="compact"
-          onPointerDownCapture={() => onPrepareNextPoint?.()}
-          onPointerDown={() => onPrepareNextPoint?.()}
-          onTouchStart={() => onPrepareNextPoint?.()}
-          onClick={onNextPoint}
-        >
-          次の測定点
-        </SelfInspectionKioskButton>
-        {onReset ? (
-          <SelfInspectionKioskButton
-            type="button"
-            size="compact"
-            disabled={resetDisabled}
-            onClick={onReset}
-          >
-            初期化
-          </SelfInspectionKioskButton>
-        ) : null}
         <SelfInspectionKioskButton type="button" size="compact" onClick={onBackToList}>
           一覧へ
         </SelfInspectionKioskButton>

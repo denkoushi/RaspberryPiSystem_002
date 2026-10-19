@@ -91,6 +91,7 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       requestId: request.id,
       clientId: query.clientId,
       level: query.level,
+      category: query.category,
       limit: query.limit,
       since: query.since
     });

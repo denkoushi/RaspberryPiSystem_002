@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { sourceDefinitions } from '../hermes-source-definition.mjs';
 import { periodSpans } from './period-parse.mjs';
 
 const raw = JSON.parse(readFileSync(new URL('./query-structural-words.json', import.meta.url), 'utf8'));
@@ -12,9 +13,8 @@ if (!Array.isArray(rawParticles) || rawParticles.some((word) => typeof word !== 
 }
 
 export const structuralWords = Object.freeze([...rawWords].sort((left, right) => right.length - left.length));
-const sourceLabels = JSON.parse(readFileSync(new URL('./source-labels.json', import.meta.url), 'utf8'));
 // Source names such as 不適合 appear in every record of that source, so they never narrow a search.
-export const sourceLabelWords = Object.freeze(Object.values(sourceLabels).filter((label) => typeof label === 'string' && label));
+export const sourceLabelWords = Object.freeze(Object.values(sourceDefinitions).map((definition) => definition.label).filter((label) => typeof label === 'string' && label));
 export const functionParticles = Object.freeze([...rawParticles].sort((left, right) => right.length - left.length));
 
 const COUNT_EXPRESSION = /[0-9０-９]+件|[〇零一二三四五六七八九十百千万]+件/gu;
@@ -137,4 +137,26 @@ export function relevanceQuery(text, filterValues = []) {
   const tokens = query.split(TOKEN_GAP).filter(Boolean);
   const kept = tokens.filter((token) => !isFilterToken(token, filterValues));
   return kept.length === tokens.length ? query : kept.join(' ');
+}
+
+// Candidate parts of a question for the planner to pick the content condition from. The question is
+// cut only at grammar: the topic particle は, which usually separates the content from the request
+// (「…件はありますか」, 「…案件はほかにある」), and punctuation. が and も are not cut, because they
+// sit inside a condition such as 「割れが出た」. No phrase such as ほかに is listed; JEV picks the part,
+// and the whole question is always one of the choices.
+const CLAUSE_BREAK = /[\s、，,。？?！!は]+/u;
+const SPAN_PUNCTUATION = /[、，,。？?！!]/gu;
+export const MAX_CONTENT_SPANS = 5;
+
+export function contentSpans(text) {
+  const whole = contentQuery(String(text ?? '').normalize('NFKC').replace(SPAN_PUNCTUATION, ' ')).trim();
+  if (!whole) return [];
+  const clauses = [];
+  for (const piece of whole.split(CLAUSE_BREAK)) {
+    const trimmed = trimParticleEdges(piece.normalize('NFKC'));
+    if (trimmed.length < 2 || isParticleFragment(trimmed) || clauses.includes(trimmed)) continue;
+    clauses.push(trimmed);
+  }
+  if (clauses.length < 2) return [];
+  return [...clauses.slice(0, MAX_CONTENT_SPANS), whole];
 }

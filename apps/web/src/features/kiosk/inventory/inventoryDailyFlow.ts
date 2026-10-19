@@ -83,3 +83,17 @@ export function groupCompartmentsByLocation(items: InventoryItem[]): InventoryAr
         })),
     }));
 }
+
+/** When a drawer was last taken from, as a short badge: 2分前, 3時間前, 昨日, 9/28. */
+export function issuedLabel(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  const minutes = Math.floor((now.getTime() - at.getTime()) / 60000);
+  if (minutes < 1) return 'たった今';
+  if (minutes < 60) return `${minutes}分前`;
+  if (minutes < 12 * 60) return `${Math.floor(minutes / 60)}時間前`;
+  const day = (value: Date) => new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric' }).format(value);
+  if (day(at) === day(now)) return '今日';
+  if (day(at) === day(new Date(now.getTime() - 86400000))) return '昨日';
+  return new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric' }).format(at);
+}

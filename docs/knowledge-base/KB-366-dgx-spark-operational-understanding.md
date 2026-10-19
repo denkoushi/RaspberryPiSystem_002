@@ -12,7 +12,7 @@ category: knowledge-base
 
 2026-05-25 に **`private_ok` 強制停止（`stop-force`）** の本番反映と、その前後の運用確認・議論で整理した **「Spark 上で何が動いているか」** の正本。DGX リソース画面の見方、メモリ KPI の意味、27B/35B の関係、Comfy との両立可否を、後から読んでも迷わないよう **FAQ 形式**で集約する。
 
-**関連**: [KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[Runbook dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment §2026-05-25](../archive/deployments/2026-05.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·[KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)
+**関連**: [KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md)·[KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[Runbook dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment §2026-05-25](../archive/deployments/2026-05.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·KB-379（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md`）
 
 ---
 
@@ -137,7 +137,7 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 
 **フル同時は無理に近い（設計上も運用上も切り替え前提）。**
 
-- 27B（vLLM）だけでも **数十 GB 級**の占有（実測・KB 上 **~57GB** の言及あり: [KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·[KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)）。
+- 27B（vLLM）だけでも **数十 GB 級**の占有（実測・KB 上 **~57GB** の言及あり: [KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)·KB-379（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md`））。
 - Comfy（FLUX 等）も **数十 GB 級**になり得る。
 - **`gpu-memory-utilization` を少し下げても**、**両方フルは基本無理**。**業務モード ⇔ 私用モード**でどちらかを止める運用が正本。
 
@@ -169,7 +169,7 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 1. `/admin/tools/dgx-resource` を開く。
 2. **運用ガイド**から **業務→私用**（または同等シナリオ）を選び、確認→実行。
 3. KPI で **Unified Mem が大きく下がる**こと、必要なら DGX で `docker ps` に **`system-prod-trtllm` が無い**ことを確認。
-4. Comfy を使う場合は **別途** Mac SSH トンネル等（[KB-378](./KB-378-dgx-private-comfyui-mac-ssh-access.md)）。**`private_ok` は Mac の `127.0.0.1:8188` 経路を変えない。**
+4. Comfy を使う場合は **別途** Mac SSH トンネル等（KB-378（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md`））。**`private_ok` は Mac の `127.0.0.1:8188` 経路を変えない。**
 
 ---
 
@@ -191,7 +191,7 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 | `--gpu-memory-utilization 0.85` で空きメモリ不足 | **`0.65`** に下げて起動確認 |
 | vision 系ロードが Hermes テキスト `/task` に不要 | **`--hf-overrides "{\"language_model_only\": true}"`** |
 
-**repo 例示（secret ではない）**: [`control-server.env.example`](../../scripts/dgx-local-llm-system/systemd/control-server.env.example) · [Runbook §Phase2 blue 最小例](../runbooks/dgx-system-prod-local-llm.md) · [KB `/task` profile restore §blue 502](./KB-private-pi5-hermes-task-dgx-profile-restore.md#追記--blue-backend-起動失敗で-v1models-5022026-06-05)。
+**repo 例示（secret ではない）**: [`control-server.env.example`](../../scripts/dgx-local-llm-system/systemd/control-server.env.example) · [Runbook §Phase2 blue 最小例](../runbooks/dgx-system-prod-local-llm.md) · KB `/task` profile restore §blue 502（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-task-dgx-profile-restore.md`）。
 
 **起動待ち**: 初回は重みロード・compile・autotuneで **数分**。起動中 `/v1/models` が **`Connection reset by peer`** でも **コンテナ生存なら待つ**。
 

@@ -1,7 +1,11 @@
 import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AssemblyProcedureDocumentBlankService } from '../../../services/assembly/assembly-procedure-document-blank.service.js';
+import { ProcedureMaterialPlacementService } from '../../../services/assembly/procedure-material-placement.service.js';
+
+import { AssemblyProcedureDocumentEditLeaseService } from '../../../services/assembly/assembly-procedure-document-edit-lease.service.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import {
@@ -76,6 +80,7 @@ function buildMultipartBody(params: {
 
 function buildHarness() {
   const service = {
+    addBlankPage: vi.fn(async () => makeRevision()),
     listHistory: vi.fn(async () => [makeRevision()]),
     createRevision: vi.fn(async () => makeRevision()),
     saveOverlays: vi.fn(async () => makeRevision()),
@@ -109,11 +114,50 @@ function buildHarness() {
 }
 
 describe('assembly procedure revision routes', () => {
+  beforeEach(() => { vi.spyOn(AssemblyProcedureDocumentEditLeaseService.prototype, 'assertCanWrite').mockResolvedValue(undefined); });
   let app: ReturnType<typeof Fastify> | null = null;
 
   afterEach(async () => {
     if (app) await app.close();
     app = null;
+    vi.restoreAllMocks();
+  });
+
+  it('creates blank documents, appends pages and returns material draft elements', async () => {
+    const harness = buildHarness(); app = harness.app;
+    const blank = vi.spyOn(AssemblyProcedureDocumentBlankService.prototype, 'create').mockResolvedValue(makeRevision() as never);
+    const element = { id: 'text', kind: 'TEXT' as const, text: '本文', pageIndex: 0, zIndex: 0, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.8, heightRatio: 0.2 } };
+    const place = vi.spyOn(ProcedureMaterialPlacementService.prototype, 'place').mockResolvedValue({ element });
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const created = await app.inject({ method: 'POST', url: '/assembly/procedure-documents/blank', payload: { name: '白紙' } });
+    expect(created.statusCode).toBe(200); expect(created.json().document.status).toBe('draft');
+    expect(blank).toHaveBeenCalledWith('白紙');
+    const withAssignment = vi.spyOn(AssemblyProcedureDocumentBlankService.prototype, 'createWithAssignment').mockResolvedValue({ document: makeRevision(), assignmentError: '割り当てに失敗しました' } as never);
+    const assigned = await app.inject({ method: 'POST', url: '/assembly/procedure-documents/blank', payload: { name: '白紙2', assignment: { modelCode: 'DFD1', processId: 'cutting' } } });
+    expect(assigned.statusCode).toBe(200);
+    expect(assigned.json().assignmentError).toContain('割り当てに失敗');
+    expect(withAssignment).toHaveBeenCalledWith('白紙2', { modelCode: 'DFD1', processId: 'cutting' });
+    expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, accessPassword: '1234' } })).statusCode).toBe(200);
+    expect(harness.service.addBlankPage).toHaveBeenCalledWith({ holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, accessPassword: '1234' });
+    const placed = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0, accessPassword: '1234' } });
+    expect(placed.json().element).toEqual(element);
+    expect(place).toHaveBeenCalledWith({ holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });
+  });
+
+  it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
+    const harness = buildHarness(); app = harness.app;
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => { throw new ApiError(403, '権限がありません'); } }, harness.service as never, harness.assetsService as never);
+    expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents${suffix}`, payload: { name: '白紙', pageIndex: 0, expectedEditVersion: 0 } })).statusCode).toBe(403);
+    expect(harness.service.addBlankPage).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 and the placement error for discarded materials', async () => {
+    const harness = buildHarness(); app = harness.app;
+    vi.spyOn(ProcedureMaterialPlacementService.prototype, 'place').mockRejectedValue(new ApiError(409, '捨てた素材は配置できません'));
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0 } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toBe('捨てた素材は配置できません');
   });
 
   it('registers history/create/save/discard routes and forwards passwords and edit versions', async () => {
@@ -158,6 +202,7 @@ describe('assembly procedure revision routes', () => {
       payload: {
         accessPassword: '2520',
         expectedEditVersion: 4,
+        appliedCaptionElementIds: ['caption-id'],
         elements: [
           {
             kind: 'TEXT',
@@ -174,7 +219,8 @@ describe('assembly procedure revision routes', () => {
         documentId,
         accessPassword: '2520',
         expectedEditVersion: 4,
-        elements: [expect.objectContaining({ kind: 'TEXT', text: '確認' })]
+        elements: [expect.objectContaining({ kind: 'TEXT', text: '確認' })],
+        appliedCaptionElementIds: ['caption-id']
       })
     );
 
@@ -185,7 +231,7 @@ describe('assembly procedure revision routes', () => {
       payload: { accessPassword: '2520', expectedEditVersion: 4 }
     });
     expect(discarded.statusCode).toBe(200);
-    expect(harness.service.discardRevision).toHaveBeenCalledWith({
+    expect(harness.service.discardRevision).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
       documentId,
       accessPassword: '2520',
       expectedEditVersion: 4
@@ -220,7 +266,7 @@ describe('assembly procedure revision routes', () => {
       payload: multipartPayload.body
     });
     expect(uploaded.statusCode).toBe(200);
-    expect(harness.assetsService.uploadOverlayImage).toHaveBeenCalledWith({
+    expect(harness.assetsService.uploadOverlayImage).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
       documentId,
       accessPassword: '2520',
       bytes: Buffer.from('png'),
@@ -231,7 +277,8 @@ describe('assembly procedure revision routes', () => {
     const region = {
       accessPassword: '2520',
       pageIndex: 0,
-      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 }
+      bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 },
+      overlays: [{ assetId: 'material', bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 }, zIndex: 1, objectFit: 'fill', opacity: 0.5 }]
     };
     const imageRegion = await app.inject({
       method: 'POST',
@@ -240,7 +287,7 @@ describe('assembly procedure revision routes', () => {
       payload: region
     });
     expect(imageRegion.statusCode).toBe(200);
-    expect(harness.assetsService.createImageRegion).toHaveBeenCalledWith({
+    expect(harness.assetsService.createImageRegion).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
       documentId,
       ...region
     });

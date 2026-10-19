@@ -5,6 +5,7 @@ import { requireKioskClientDevice } from '../../services/clients/client-device-a
 import {
   TorqueTrainingService,
   TorqueTrainingKioskSettingsService,
+  TorqueTrainingTeamSummaryService,
   TorqueTrainingWrenchPreparationService
 } from '../../services/torque-training/index.js';
 import {
@@ -34,6 +35,7 @@ export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promis
   const service = new TorqueTrainingService();
   const kioskSettingsService = new TorqueTrainingKioskSettingsService();
   const preparationService = new TorqueTrainingWrenchPreparationService();
+  const teamSummaryService = new TorqueTrainingTeamSummaryService();
   const canAdmin = authorizeRoles('ADMIN');
   const kioskSettingsRateLimit = { max: 10, timeWindow: '1 minute' };
 
@@ -41,6 +43,11 @@ export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promis
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     void clientDevice;
     return { programs: await service.listPrograms(false) };
+  });
+
+  app.get('/torque-training/team-summary', async (request) => {
+    await requireKioskClientDevice(request.headers['x-client-key']);
+    return teamSummaryService.summary();
   });
 
   app.post('/torque-training/operator-context', async (request) => {

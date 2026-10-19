@@ -22,6 +22,9 @@ const mfaInitiateSchema = z.object({
 });
 
 const mfaActivateSchema = z.object({
+  password: z.string().min(1),
+  currentCode: z.string().optional(),
+  currentBackupCode: z.string().optional(),
   secret: z.string().min(10),
   code: z.string().min(6),
   backupCodes: z.array(z.string().min(4)).min(1)

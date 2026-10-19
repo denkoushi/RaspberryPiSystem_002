@@ -176,6 +176,8 @@ Phase A2 composes exact Git HEAD, systemd active/oneshot, status identity, and e
 
 Phase A3 composes the existing idempotent `rollback-manifest.py` and `terminal-runtime-manifest.py` capture functions inside `terminal_manifest_capture.py`. The archive starts without Ansible become, proves the live SSH user and `/home/<user>`, then elevates the same archive once. File and runtime results remain separate and are validated against their original expected paths, destination set, repository HEAD, counts, rollback tags, and SHA-256 digests. Cleanup and rollback continue to use their previous transports and sealed references.
 
+2026-10-17 note: `terminal_manifest_capture.py` does not exist, and the standard fleet deploy does not call `rollback-manifest.py` or `terminal-runtime-manifest.py`. Only CI contract tests use them. They are kept on purpose for this phase (see `docs/plans/code-health-refactor-execplan.md`, Decision Log); treat them as not used in production until a change wires them in.
+
 ## Concrete Steps
 
 Work from `/Users/tsudatakashi/RaspberryPiSystem_002` on branch `chore/deploy-speed-telemetry`.

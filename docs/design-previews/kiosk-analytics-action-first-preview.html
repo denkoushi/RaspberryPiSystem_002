@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0">
+<title>キオスク集計 モック</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap">
+<style>
+/* layout: 1920x1080 の実寸ステージを幅に合わせて縮小。上から 操作帯 → 指標 → 4列（未返却・社員・資産・今日） */
+:root{
+  color-scheme:dark;
+  --bg:#0a101c; --surface:#121a2a; --surface-2:#18233a; --line:rgba(160,180,220,.14);
+  --text:#f4f6fb; --muted:#9aa8c0; --faint:#63718c;
+  --borrow:#f9853a; --return:#19b98a; --alert:#ff5d55; --alert-bg:rgba(255,93,85,.12);
+  --page:#05080f;
+  --font:'Noto Sans JP',system-ui,-apple-system,'Hiragino Sans',sans-serif;
+}
+html,body{height:auto}
+body{background:var(--page);color:var(--text);font-family:var(--font);padding-block:20px;padding-inline:16px}
+.wrap{max-width:1920px;margin-inline:auto;display:flex;flex-direction:column;gap:16px}
+.note{color:var(--muted);font-size:13px;line-height:1.7;display:flex;flex-wrap:wrap;gap:6px 20px}
+.note b{color:var(--text);font-weight:700}
+.viewport{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;border-radius:6px;outline:1px solid var(--line)}
+.stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;background:var(--bg);display:flex;flex-direction:column;font-variant-numeric:tabular-nums}
+
+/* 既存ヘッダー（変更なし・参考表示） */
+.kh{height:60px;flex:none;display:flex;align-items:center;gap:28px;padding:0 20px;background:#0d1524;border-bottom:1px solid var(--line);color:var(--faint);font-size:17px;font-weight:500}
+.kh .on{color:var(--text);font-weight:700;box-shadow:0 2px 0 var(--text);line-height:58px}
+.kh .sp{margin-left:auto}
+
+.main{flex:1;min-height:0;padding:16px;display:flex;flex-direction:column;gap:14px}
+
+/* 操作帯 */
+.bar{height:48px;flex:none;display:flex;align-items:center;gap:20px}
+.seg{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:3px}
+.seg button{all:unset;cursor:pointer;height:40px;padding:0 20px;border-radius:7px;font-size:17px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:8px}
+.seg button[aria-pressed="true"]{background:var(--text);color:#0a101c}
+.seg button:focus-visible,.step button:focus-visible,.pick:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.seg svg{width:20px;height:20px}
+.step{display:inline-flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;height:48px}
+.step button{all:unset;cursor:pointer;width:48px;height:46px;display:grid;place-items:center;color:var(--muted);font-size:22px}
+.step .ym{min-width:150px;text-align:center;font-size:19px;font-weight:700}
+.pick{all:unset;cursor:pointer;height:46px;padding:0 16px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:16px;color:var(--muted);display:flex;align-items:center;gap:10px}
+.bar .right{margin-left:auto;display:flex;align-items:center;gap:20px;color:var(--faint);font-size:15px}
+
+/* 指標 */
+.hero{height:190px;flex:none;display:grid;grid-template-columns:1.15fr 1.15fr 1fr 1fr 1.7fr;gap:14px}
+.tile{overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;min-width:0}
+.tile h3{margin:0;font-size:16px;font-weight:700;color:var(--muted);letter-spacing:.04em}
+.big{font-size:76px;font-weight:900;line-height:1;margin-top:auto;display:flex;align-items:baseline;gap:10px;letter-spacing:-.02em}
+.big small{font-size:22px;font-weight:700;color:var(--muted);letter-spacing:0}
+.sub{margin-top:10px;font-size:15px;color:var(--muted);display:flex;align-items:center;gap:10px;height:20px}
+.meter{flex:1;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--borrow);border-radius:4px}
+.tile.alert{background:linear-gradient(180deg,var(--alert-bg),transparent 140%),var(--surface);border-color:rgba(255,93,85,.45)}
+.tile.alert h3,.tile.alert .big{color:var(--alert)}
+.tile.calm .big{color:var(--return)}
+.up{color:var(--borrow);font-weight:700}.dn{color:var(--return);font-weight:700}
+.trend{flex:1;display:flex;align-items:flex-end;gap:18px;margin-top:8px;min-height:0}
+.trend .m{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+.trend .pair{display:flex;align-items:flex-end;gap:4px;height:84px}
+.trend .pair i{width:18px;border-radius:3px 3px 0 0;display:block;opacity:.5}
+.trend .m.now .pair i{opacity:1}
+.trend .m span{font-size:14px;color:var(--faint)}
+.trend .m.now span{color:var(--text);font-weight:700}
+.legend{display:flex;gap:16px;font-size:14px;color:var(--muted);margin-left:auto}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.tile .head{display:flex;align-items:center}
+
+/* 4列 */
+.cols{flex:1;min-height:0;display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+.panel>header{height:54px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--line)}
+.panel h2{margin:0;font-size:18px;font-weight:700}
+.count{font-size:18px;font-weight:900}
+.chip{font-size:14px;font-weight:700;padding:3px 10px;border-radius:999px}
+.chip.alert{background:var(--alert-bg);color:var(--alert)}
+.chip.b{color:var(--borrow);background:rgba(249,133,58,.12)}.chip.r{color:var(--return);background:rgba(25,185,138,.12)}
+.panel header .right{margin-left:auto;display:flex;gap:8px;color:var(--faint);font-size:14px}
+.list{flex:1;min-height:0;overflow:hidden;margin:0;padding:6px 0;list-style:none;display:flex;flex-direction:column}
+.list li{flex:1;max-height:66px;min-height:0;display:flex;align-items:center;gap:14px;padding:0 20px;border-bottom:1px solid rgba(160,180,220,.07)}
+.list li:last-child{border-bottom:0}
+.t1{font-size:17px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.t2{font-size:14px;color:var(--muted);white-space:nowrap}
+.code{color:var(--muted);font-weight:400;margin-right:8px}
+/* 未返却 */
+.open .who{width:108px;flex:none;font-size:16px;color:var(--text)}
+.open .nm{flex:1}
+.open .due{flex:none;font-size:15px;color:var(--muted);width:96px;text-align:right}
+.open li.over .due{color:var(--alert);font-weight:700}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--faint)}
+.over .dot{background:var(--alert);box-shadow:0 0 0 4px var(--alert-bg)}
+/* ランキング */
+.rank .no{width:24px;flex:none;text-align:center;font-size:16px;font-weight:900;color:var(--faint)}
+.rank li:nth-child(-n+3) .no{color:var(--text)}
+.rank .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+.rank .track{height:8px;border-radius:4px;background:var(--surface-2);display:flex;overflow:hidden}
+.rank .track i{display:block;height:100%}
+.rank .num{flex:none;width:74px;text-align:right;font-size:18px;font-weight:700}
+.rank .num em{font-style:normal;color:var(--faint);font-weight:400;margin:0 4px}
+.cb{color:var(--borrow)}.cr{color:var(--return)}
+/* 今日 */
+.today .tm{width:52px;flex:none;font-size:16px;color:var(--muted)}
+.kind{flex:none;width:48px;height:26px;border-radius:6px;font-size:14px;font-weight:700;display:grid;place-items:center}
+.kind.b{background:rgba(249,133,58,.14);color:var(--borrow)}.kind.r{background:rgba(25,185,138,.14);color:var(--return)}
+.today .nm{flex:1}
+.today .who{flex:none;font-size:15px;color:var(--muted);max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+
+<div class="wrap">
+  <div class="viewport" id="vp">
+    <div class="stage" id="stage">
+      <div class="kh" aria-hidden="true">
+        <span>持出</span><span>返却</span><span>計測機器</span><span>吊具</span><span>順位ボード</span><span class="on">集計</span><span>要領書</span>
+        <span class="sp">14:32</span>
+      </div>
+      <div class="main">
+        <div class="bar">
+          <div class="seg" role="group" aria-label="対象" id="tabs">
+            <button type="button" data-k="rigging" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6"/><circle cx="12" cy="11" r="2"/><path d="M12 13v2a4 4 0 1 1-4 4"/></svg>吊具</button>
+            <button type="button" data-k="items" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-2.4z"/></svg>アイテム</button>
+            <button type="button" data-k="instruments" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="8" width="20" height="8" rx="1"/><path d="M6 8v3M10 8v4M14 8v3M18 8v4"/></svg>計測機器</button>
+          </div>
+          <div class="step" role="group" aria-label="対象月">
+            <button type="button" id="prev" aria-label="前の月">‹</button>
+            <span class="ym" id="ym"></span>
+            <button type="button" id="next" aria-label="次の月">›</button>
+          </div>
+          <button type="button" class="pick" id="pick"><span id="pickLabel"></span><span aria-hidden="true">▾</span></button>
+          <div class="right">
+            <div class="seg" role="group" aria-label="表示件数">
+              <button type="button" aria-pressed="true">上位10</button>
+              <button type="button" aria-pressed="false">全件</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero">
+          <div class="tile">
+            <h3>貸出中</h3>
+            <div class="big"><span id="kOpen"></span><small id="kTotal"></small></div>
+            <div class="sub"><span class="meter"><i id="kMeter"></i></span><span id="kFree"></span></div>
+          </div>
+          <div class="tile" id="overTile">
+            <h3>期限超過</h3>
+            <div class="big"><span id="kOver"></span><small>件</small></div>
+            <div class="sub" id="kOverSub"></div>
+          </div>
+          <div class="tile">
+            <h3><span class="mLabel"></span> 持出</h3>
+            <div class="big"><span id="kB"></span><small>件</small></div>
+            <div class="sub" id="kBSub"></div>
+          </div>
+          <div class="tile">
+            <h3><span class="mLabel"></span> 返却</h3>
+            <div class="big"><span id="kR"></span><small>件</small></div>
+            <div class="sub" id="kRSub"></div>
+          </div>
+          <div class="tile">
+            <div class="head"><h3>6か月の推移</h3>
+              <div class="legend"><span><i style="background:var(--borrow)"></i>持出</span><span><i style="background:var(--return)"></i>返却</span></div>
+            </div>
+            <div class="trend" id="trend"></div>
+          </div>
+        </div>
+
+        <div class="cols">
+          <section class="panel">
+            <header><h2>未返却</h2><span class="count" id="openCount"></span><span class="chip alert" id="openOver"></span><div class="right">期限の早い順</div></header>
+            <ul class="list open" id="openList"></ul>
+          </section>
+          <section class="panel">
+            <header><h2>社員別</h2><div class="right"><span class="cb">持出</span>/<span class="cr">返却</span></div></header>
+            <ul class="list rank" id="empList"></ul>
+          </section>
+          <section class="panel">
+            <header><h2 id="assetTitle"></h2><div class="right">持出回数</div></header>
+            <ul class="list rank" id="assetList"></ul>
+          </section>
+          <section class="panel">
+            <header><h2>今日</h2><span class="chip b" id="tB"></span><span class="chip r" id="tR"></span></header>
+            <ul class="list today" id="todayList"></ul>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="note">
+    <span><b>実寸</b> 1920×1080（幅に合わせて縮小表示）</span>
+    <span><b>操作できる所</b> 吊具／アイテム／計測機器、月の ‹ ›</span>
+    <span><b>数値・氏名</b> すべて見本データ</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  var PEOPLE=['佐藤 健一','鈴木 大輔','高橋 誠','田中 直樹','伊藤 翔太','渡辺 和也','山本 浩','中村 拓海','小林 悠','加藤 亮','吉田 学','山田 隆','佐々木 涼','松本 剛'];
+  var DS={
+    rigging:{label:'吊具',unit:'台',total:48,open:12,over:3,pre:'R-',names:['ワイヤースリング 2t','ナイロンスリング 1t','チェーンスリング 3t','シャックル 2t','アイボルト M16','吊りクランプ 1t','ラウンドスリング 2t','ワイヤースリング 5t','天秤 2t','フック付チェーン 1t','ナイロンスリング 3t','シャックル 5t','アイボルト M20','吊りクランプ 2t']},
+    items:{label:'アイテム',unit:'点',total:126,open:19,over:1,pre:'T-',names:['トルクレンチ 40N','電動ドライバー','六角レンチセット','エアーグラインダー','ハンドリフター','マグネットスタンド','タップセット M6','インパクトレンチ','リーマ φ10','バイス 150','センタードリル','ボーリングバー','エンドミル φ12','面取りカッター']},
+    instruments:{label:'計測機器',unit:'台',total:64,open:8,over:0,pre:'M-',names:['マイクロメータ 0-25','デジタルノギス 150','シリンダゲージ 18-35','ハイトゲージ 300','ダイヤルゲージ 0.01','ピンゲージセット','ブロックゲージ','内側マイクロ 25-50','デプスゲージ 150','三点マイクロ 20-25','トルクゲージ','ねじゲージ M10','粗さ計','硬度計']}
+  };
+  var state={k:'rigging',y:2026,m:10};
+  function rng(seed){var s=seed>>>0;return function(){s=(s*1664525+1013904223)>>>0;return s/4294967296}}
+  function $(id){return document.getElementById(id)}
+  function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+  function pad(n){return n<10?'0'+n:''+n}
+
+  function render(){
+    var d=DS[state.k], r=rng(state.k.length*977+state.y*13+state.m*101);
+    var isNow=state.y===2026&&state.m===10;
+    $('ym').textContent=state.y+'年'+state.m+'月';
+    $('pickLabel').textContent='すべての'+d.label;
+    document.querySelectorAll('.mLabel').forEach(function(e){e.textContent=state.m+'月'});
+    $('assetTitle').textContent=d.label+'別';
+
+    // 推移
+    var tr=[],i;
+    for(i=5;i>=0;i--){var mm=((state.m-1-i)%12+12)%12+1;var b=Math.round(d.total*(1.9+r()*1.5));tr.push({m:mm,b:b,r:Math.max(0,b-Math.round(r()*6))})}
+    var cur=tr[5],prev=tr[4],mx=Math.max.apply(null,tr.map(function(t){return t.b}));
+    var T=$('trend');T.textContent='';
+    tr.forEach(function(t,ix){var m=el('div','m'+(ix===5?' now':''));var p=el('div','pair');
+      var a=el('i');a.style.height=Math.round(t.b/mx*84)+'px';a.style.background='var(--borrow)';
+      var c=el('i');c.style.height=Math.round(t.r/mx*84)+'px';c.style.background='var(--return)';
+      p.appendChild(a);p.appendChild(c);m.appendChild(p);m.appendChild(el('span','',t.m+'月'));T.appendChild(m)});
+
+    // 指標
+    $('kOpen').textContent=d.open;$('kTotal').textContent='/ '+d.total+d.unit;
+    $('kMeter').style.width=Math.round(d.open/d.total*100)+'%';$('kFree').textContent='空き '+(d.total-d.open);
+    $('kOver').textContent=d.over;
+    $('overTile').className='tile '+(d.over>0?'alert':'calm');
+    $('kOverSub').textContent=d.over>0?'最長 4日':'すべて期限内';
+    $('kB').textContent=cur.b;$('kR').textContent=cur.r;
+    var diff=Math.round((cur.b-prev.b)/prev.b*100);
+    var s=$('kBSub');s.textContent='';s.appendChild(el('span',diff>=0?'up':'dn',(diff>=0?'▲ ':'▼ ')+Math.abs(diff)+'%'));s.appendChild(el('span','','前月比'));
+    $('kRSub').textContent='返却率 '+Math.min(100,Math.round(cur.r/cur.b*100))+'%';
+
+    // 未返却
+    $('openCount').textContent=d.open;
+    $('openOver').hidden=d.over===0;$('openOver').textContent='超過 '+d.over;
+    var L=$('openList');L.textContent='';
+    var n=Math.min(d.open,11);
+    for(i=0;i<n;i++){
+      var over=i<d.over, li=el('li',over?'over':'');
+      li.appendChild(el('span','dot'));
+      li.appendChild(el('span','who',PEOPLE[(i*5+state.k.length)%PEOPLE.length]));
+      var nm=el('span','t1 nm');nm.appendChild(el('span','code',d.pre+pad(3+i*4).padStart(3,'0')));nm.appendChild(document.createTextNode(d.names[(i*3+1)%d.names.length]));li.appendChild(nm);
+      li.appendChild(el('span','due',over?(4-i)+'日超過':'10/'+pad(Math.min(31,5+i))+' まで'));
+      L.appendChild(li);
+    }
+    if(d.open>n){var more=el('li');more.appendChild(el('span','t2','ほか '+(d.open-n)+' 件'));L.appendChild(more)}
+
+    // 社員別
+    var E=$('empList');E.textContent='';var top=Math.round(cur.b*0.19);
+    for(i=0;i<10;i++){
+      var b2=Math.max(1,Math.round(top*Math.pow(0.82,i))), r2=Math.max(0,b2-(r()<0.4?1:0)), w=(b2+r2)/(top*2)*100;
+      var li2=el('li');li2.appendChild(el('span','no',i+1));
+      var body=el('div','body');body.appendChild(el('span','t1',PEOPLE[i]));
+      var tk=el('div','track');var x=el('i');x.style.width=w*b2/(b2+r2)+'%';x.style.background='var(--borrow)';var y=el('i');y.style.width=w*r2/(b2+r2)+'%';y.style.background='var(--return)';
+      tk.appendChild(x);tk.appendChild(y);body.appendChild(tk);li2.appendChild(body);
+      var num=el('span','num');num.appendChild(el('span','cb',b2));num.appendChild(el('em','','/'));num.appendChild(el('span','cr',r2));li2.appendChild(num);
+      E.appendChild(li2);
+    }
+    // 資産別
+    var A=$('assetList');A.textContent='';var topA=Math.round(cur.b*0.11);
+    for(i=0;i<10;i++){
+      var v=Math.max(1,Math.round(topA*Math.pow(0.85,i)));
+      var li3=el('li');li3.appendChild(el('span','no',i+1));
+      var bd=el('div','body');var t=el('span','t1');t.appendChild(el('span','code',d.pre+pad(2+i*3).padStart(3,'0')));t.appendChild(document.createTextNode(d.names[i]));bd.appendChild(t);
+      var tk2=el('div','track');var z=el('i');z.style.width=v/topA*100+'%';z.style.background='var(--borrow)';tk2.appendChild(z);bd.appendChild(tk2);li3.appendChild(bd);
+      li3.appendChild(el('span','num cb',v));A.appendChild(li3);
+    }
+    // 今日
+    var D=$('todayList');D.textContent='';var tb=0,tr2=0,mins=14*60+26;
+    var rows=isNow?11:0;
+    for(i=0;i<rows;i++){
+      var isB=r()<0.58;if(isB)tb++;else tr2++;
+      var li4=el('li');li4.appendChild(el('span','tm',pad(Math.floor(mins/60))+':'+pad(mins%60)));
+      li4.appendChild(el('span','kind '+(isB?'b':'r'),isB?'持出':'返却'));
+      li4.appendChild(el('span','t1 nm',d.names[(i*5+2)%d.names.length]));
+      li4.appendChild(el('span','who',PEOPLE[(i*3+2)%PEOPLE.length].split(' ')[0]));
+      D.appendChild(li4);mins-=Math.round(12+r()*38);
+    }
+    $('tB').textContent='持出 '+tb;$('tR').textContent='返却 '+tr2;
+  }
+
+  $('tabs').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;state.k=b.dataset.k;
+    this.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});render()});
+  $('prev').addEventListener('click',function(){state.m--;if(state.m<1){state.m=12;state.y--}render()});
+  $('next').addEventListener('click',function(){if(state.y===2026&&state.m===10)return;state.m++;if(state.m>12){state.m=1;state.y++}render()});
+
+  function fit(){var w=$('vp').clientWidth;$('stage').style.transform='scale('+(w/1920)+')'}
+  window.addEventListener('resize',fit);fit();render();
+})();
+</script>
+</body>
+</html>

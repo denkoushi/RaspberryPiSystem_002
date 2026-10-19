@@ -13,6 +13,7 @@ import {
   useSelfInspectionNonconformities,
   useSelfInspectionSessions
 } from '../../api/hooks';
+import { useHermesPageContext } from '../../components/hermes/HermesPageContext';
 import { Button } from '../../components/ui/Button';
 import { useKeyboardWedgeScan } from '../../features/barcode-scan';
 import {
@@ -122,6 +123,7 @@ function nfcResolveErrorMessage(kind: 'duplicate' | 'instrument' | 'instrument_u
 export function KioskSelfInspectionPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { setPageContext, clearPageContext } = useHermesPageContext();
   const [productNo, setProductNo] = useState('');
   const [resourceCd, setResourceCd] = useState('');
   const [debouncedProductNo, setDebouncedProductNo] = useState('');
@@ -145,6 +147,10 @@ export function KioskSelfInspectionPage() {
     partNumber: instructionPartNumber,
     selectedTarget: instructionTarget,
     targets: instructionTargets,
+    targetCounts: instructionTargetCounts,
+    selectedManualSequence: instructionManualSequence,
+    hasWorkInstruction: instructionHasWorkInstruction,
+    manualErrorMessage: instructionManualErrorMessage,
     groupsQuery: instructionGroupsQuery,
     groupQuery: instructionGroupQuery,
     beginPartScan,
@@ -165,6 +171,16 @@ export function KioskSelfInspectionPage() {
     closeCandidateDialog: closeInstructionCandidateDialog,
     candidatePageSize: instructionCandidatePageSize
   } = useSelfInspectionWorkInstructions();
+  useEffect(() => {
+    const value = instructionPartNumber.trim();
+    if (value) {
+      setPageContext({ path: location.pathname, entity: { kind: 'partNumber', value } });
+    } else {
+      clearPageContext();
+    }
+    return clearPageContext;
+  }, [instructionPartNumber, location.pathname, setPageContext, clearPageContext]);
+
   const restoredWorkInstructionSearchRef = useRef<string | null>(null);
   const movementScanArmed = hidScanTarget === 'movement';
   const partScanArmed = hidScanTarget === 'part';
@@ -720,6 +736,7 @@ export function KioskSelfInspectionPage() {
         </div>
         <WorkInstructionTargetChips
           targets={instructionTargets}
+          counts={instructionTargetCounts}
           similarMatch={instructionSimilarMatch}
           onSelect={(target) => {
             setHidScanTarget(null);
@@ -727,6 +744,7 @@ export function KioskSelfInspectionPage() {
             openInstructionTarget(target);
           }}
         />
+        {instructionManualErrorMessage ? <p role="alert" title={instructionManualErrorMessage} className="max-w-[9rem] shrink-0 truncate text-xs text-rose-100">{instructionManualErrorMessage}</p> : null}
         <button
           type="button"
           aria-label="部品番号を1文字削除"
@@ -858,6 +876,8 @@ export function KioskSelfInspectionPage() {
         partNumber={instructionPartNumber}
         shootingTarget={instructionTarget ?? ''}
         group={instructionGroupQuery.data}
+        manualSequence={instructionManualSequence}
+        hasWorkInstruction={instructionHasWorkInstruction}
         isLoading={instructionGroupQuery.isLoading}
         errorMessage={
           instructionGroupQuery.isError ? '作業要領書の読み込みに失敗しました。' : undefined

@@ -3,8 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { mpKioskTheme } from '../ui/mobilePlacementKioskTheme';
+import { useIsPhoneViewport } from '../ui/useIsPhoneViewport';
 
 import { ShelfMacroOverviewGrid } from './components/ShelfMacroOverviewGrid';
+import { ShelfMasterPhonePage } from './components/ShelfMasterPhonePage';
 import { ShelfZoneLayoutDialog } from './components/ShelfZoneLayoutDialog';
 import { ShelfZoneRelocateDialog } from './components/ShelfZoneRelocateDialog';
 import { useClientCapabilities, useMachineMasters, useShelfLayoutSummary } from './useShelfMasterQueries';
@@ -14,6 +16,11 @@ import type { ShelfLayoutSummaryDto } from '../../../api/client';
 type UiTab = 'layout' | 'relocate';
 
 export function ShelfMasterPageContent() {
+  const isPhone = useIsPhoneViewport();
+  return isPhone ? <ShelfMasterPhonePage /> : <ShelfMasterDesktopContent />;
+}
+
+function ShelfMasterDesktopContent() {
   const navigate = useNavigate();
   const capsQuery = useClientCapabilities();
   const summaryQuery = useShelfLayoutSummary();

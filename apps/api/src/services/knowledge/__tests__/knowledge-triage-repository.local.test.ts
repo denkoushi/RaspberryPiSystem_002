@@ -24,7 +24,7 @@ const content = { formatVersion: 1 as const, steps: [{ id: 's1', title: 't', bod
 
 describe.skipIf(!enabled)('Knowledge triage PostgreSQL contract', () => {
   beforeEach(async () => {
-    if (await db.knowledgeWorkType.count() === 0) await ensureKnowledgeReferenceData(db, triage);
+    if (await db.knowledgeField.count() === 0) await ensureKnowledgeReferenceData(db, triage, procedures);
     await db.knowledgeTriage.deleteMany(); await db.knowledgeProcedureMaterial.deleteMany();
     await db.knowledgeProcedure.updateMany({ data: { publishedRevisionId: null } });
     await db.knowledgeProcedureRevision.deleteMany(); await db.knowledgeProcedure.deleteMany();
@@ -34,9 +34,9 @@ describe.skipIf(!enabled)('Knowledge triage PostgreSQL contract', () => {
   it('seeds work types once and opens poster-less triage for posts that predate triage', async () => {
     await db.knowledgeWorkType.deleteMany();
     await materials.enqueue('old-post', [item('古い素材')]);
-    await ensureKnowledgeReferenceData(db, triage);
+    await ensureKnowledgeReferenceData(db, triage, procedures);
     await db.knowledgeWorkType.update({ where: { name: '安全' }, data: { active: false } });
-    await ensureKnowledgeReferenceData(db, triage);
+    await ensureKnowledgeReferenceData(db, triage, procedures);
     const names = (await db.knowledgeWorkType.findMany({ orderBy: { sortOrder: 'asc' } })).map(row => row.name);
     expect(names[0]).toBe('段取り'); expect(names).toContain('申し込み・手続き'); expect(names.at(-1)).toBe('その他');
     expect((await db.knowledgeWorkType.findUniqueOrThrow({ where: { name: '安全' } })).active).toBe(false);
@@ -54,7 +54,7 @@ describe.skipIf(!enabled)('Knowledge triage PostgreSQL contract', () => {
     await expect(triage.decide('post-1', 'employee-2', { newTopic: { parts: { target: 'A', workType: '段取り' }, identifiers: {}, reviewTier: 'approval_required' } }))
       .rejects.toThrow('TRIAGE_NOT_YOURS');
     await expect(triage.decide('post-1', 'employee-1', { newTopic: { parts: { target: 'A', workType: '発明' }, identifiers: {}, reviewTier: 'approval_required' } }))
-      .rejects.toThrow('UNKNOWN_WORK_TYPE');
+      .rejects.toThrow('UNKNOWN_KNOWLEDGE_FIELD');
     const { procedureId } = await triage.decide('post-1', 'employee-1', { newTopic: { parts: { target: 'A テーブル', workType: '段取り', detail: 'クランプ' }, identifiers: { partNumber: 'P-1' }, reviewTier: 'approval_required' } });
     await expect(triage.decide('post-1', 'employee-1', { procedureId })).rejects.toThrow('TRIAGE_ALREADY_DECIDED');
 

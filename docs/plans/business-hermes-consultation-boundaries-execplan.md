@@ -10,7 +10,7 @@ Hermes consultation responses currently make one service responsible for upstrea
 
 - [x] (2026-09-09 10:05 JST) Created branch `feat/hermes-consultation-boundaries` with the lifecycle CLI at `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-consultation-boundaries`, anchored to `83684c8a870dd130954598da3af23fb22797bbb0`; the original dirty worktree was not modified.
 - [x] (2026-09-09 10:22 JST) Adopted only the consultation service/MCP changes, optional Web DTO and summary/detail UI changes, and official Hermes profile templates from the approved WIP. Runtime patches, comparison scripts, and unrelated documentation were excluded.
-- [x] (2026-09-09 10:23 JST) Moved Responses receive/parse/normalize functions to `apps/api/src/services/assembly/business-hermes-responses.ts` and evidence key validation, merging, and display projection to `apps/api/src/services/assembly/business-hermes-evidence.ts`.
+- [x] (2026-09-09 10:23 JST) Moved Responses receive/parse/normalize functions to `apps/api/src/services/business-hermes/business-hermes-responses.ts` and evidence key validation, merging, and display projection to `apps/api/src/services/business-hermes/business-hermes-evidence.ts`.
 - [x] (2026-09-09 10:24 JST) Reduced `SOUL.md.j2`, `CONTEXT.md.j2`, and `SKILL.md.j2` to their distinct responsibilities. JSON response keys, evidence display rules, record view rules, and confirmation shape remain in the API instruction contract only.
 - [x] (2026-09-09 10:19 JST) Completed local API/Web tests, builds, targeted lint, and diff checks; exact commands and results are recorded in the Validation section below.
 - [x] (2026-09-09 10:26 JST) Applied supervisor feedback: kept the source-ID meaning contrast and scan correction rule in their owning profiles, reduced MCP descriptions to I/O semantics, expanded the API-only display/state contract, and reran the focused API suite with 34 passing tests.
@@ -39,7 +39,7 @@ The implementation now has one-way dependencies from the consultation service to
 
 ## Context and Orientation
 
-`apps/api/src/services/assembly/business-hermes-consultation.service.ts` accepts a consultation message, loads the case, calls Hermes Responses, validates the response, persists the user and assistant messages, and returns the public consultation DTO. `business-hermes-responses.ts` owns stream/envelope parsing, model message extraction, canonical state extraction, and trusted tool-response parsing. `business-hermes-evidence.ts` owns evidence ID validation, deduplication, trusted record projection, and optional display fields. The service remains the only module that performs the upstream request and database writes.
+`apps/api/src/services/business-hermes/business-hermes-consultation.service.ts` accepts a consultation message, loads the case, calls Hermes Responses, validates the response, persists the user and assistant messages, and returns the public consultation DTO. `business-hermes-responses.ts` owns stream/envelope parsing, model message extraction, canonical state extraction, and trusted tool-response parsing. `business-hermes-evidence.ts` owns evidence ID validation, deduplication, trusted record projection, and optional display fields. The service remains the only module that performs the upstream request and database writes.
 
 `apps/web/src/api/domains/assembly.ts` keeps the optional wire fields, while `HermesChatPanel.tsx` renders the existing evidence cards and the adopted local summary/detail record control. `HermesFloatingChat.tsx` carries those fields between the API response and the panel. The business Hermes configuration template supplies the official profile, disables redundant auxiliary work, and leaves the fixed model selection unchanged.
 
@@ -65,7 +65,7 @@ Local validation evidence for this worktree is a successful API consultation tes
 
 The successful local commands were:
 
-    pnpm --filter @raspi-system/api test -- src/services/assembly/business-hermes-consultation.service.test.ts
+    pnpm --filter @raspi-system/api test -- src/services/business-hermes/business-hermes-consultation.service.test.ts
     Result: PASS — 1 file, 34 tests.
     pnpm --filter @raspi-system/web test -- src/components/hermes/HermesChatPanel.test.tsx
     Result: PASS — 1 file, 12 tests.
@@ -73,7 +73,7 @@ The successful local commands were:
     Result: PASS.
     pnpm --filter @raspi-system/web build
     Result: PASS — 2146 modules transformed.
-    ./node_modules/.bin/eslint src/services/assembly/business-hermes-consultation.service.ts src/services/assembly/business-hermes-responses.ts src/services/assembly/business-hermes-evidence.ts src/services/assembly/business-hermes-consultation.service.test.ts src/services/assembly/business-hermes-mcp.service.ts
+    ./node_modules/.bin/eslint src/services/business-hermes/business-hermes-consultation.service.ts src/services/business-hermes/business-hermes-responses.ts src/services/business-hermes/business-hermes-evidence.ts src/services/business-hermes/business-hermes-consultation.service.test.ts src/services/business-hermes/business-hermes-mcp.service.ts
     Result: PASS — run from `apps/api`.
     ./node_modules/.bin/eslint src/api/domains/assembly.ts src/components/hermes/HermesChatPanel.tsx src/components/hermes/HermesChatPanel.test.tsx src/components/hermes/HermesFloatingChat.tsx
     Result: PASS — run from `apps/web`.

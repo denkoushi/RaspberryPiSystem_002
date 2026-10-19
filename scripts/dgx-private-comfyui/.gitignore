@@ -1,5 +1,0 @@
-# Local overrides on DGX (never commit secrets or host-specific paths).
-.env
-compose.yaml
-compose.override.yaml
-Dockerfile

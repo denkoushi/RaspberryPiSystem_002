@@ -90,9 +90,13 @@ export type TorqueTrainingMetricApi = {
   conditionFingerprint: string;
   trainingName: string;
   targetBolt: string;
+  /** Added with the kiosk KPI band; older APIs may omit it. */
+  material?: string;
   attemptCount: number;
   passRate: number;
   meanAbsoluteErrorPercent: number;
+  /** Signed mean deviation; negative means under-tightened. */
+  meanDeviationPercent?: number;
   variationPercent: number;
   sessions: Array<{
     sessionId: string;
@@ -100,8 +104,34 @@ export type TorqueTrainingMetricApi = {
     attemptCount: number;
     passRate: number;
     meanAbsoluteErrorPercent: number;
+    meanDeviationPercent?: number;
     variationPercent: number;
   }>;
+};
+
+export type TorqueTrainingTeamSummaryApi = {
+  sessionCount: number;
+  operatorCount: number;
+  attemptCount: number;
+  passRate: number | null;
+  meanAbsoluteErrorPercent: number | null;
+  meanDeviationPercent: number | null;
+};
+
+export type TorqueTrainingTeamRecentSessionApi = {
+  sessionId: string;
+  completedAt: string | null;
+  employeeName: string;
+  trainingName: string;
+  targetBolt: string;
+  material: string;
+  judgements: Array<'OK' | 'UNDER' | 'OVER'>;
+};
+
+export type TorqueTrainingTeamOverviewApi = {
+  recent: TorqueTrainingTeamSummaryApi;
+  allTime: TorqueTrainingTeamSummaryApi;
+  recentSessions: TorqueTrainingTeamRecentSessionApi[];
 };
 
 export type TorqueTrainingOperatorContextApi = {
@@ -113,6 +143,11 @@ export type TorqueTrainingOperatorContextApi = {
 export async function listTorqueTrainingPrograms() {
   const { data } = await api.get<{ programs: TorqueTrainingProgramApi[] }>('/torque-training/programs');
   return data.programs;
+}
+
+export async function getTorqueTrainingTeamOverview() {
+  const { data } = await api.get<TorqueTrainingTeamOverviewApi>('/torque-training/team-summary');
+  return data;
 }
 
 export async function resolveTorqueTrainingOperator(uid: string) {

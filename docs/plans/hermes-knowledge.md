@@ -31,7 +31,7 @@ Synthetic checks demonstrate the local loop with real PostgreSQL and Git and inj
 
 ## Existing Responsibilities
 
-`apps/web/src/components/hermes/HermesFloatingChat.tsx` and `apps/api/src/services/assembly/business-hermes-consultation.service.ts` approach 1,000 lines and already own consultation state. Their display-string choice identity and speculative prefetch must not become the registration path. Add a focused knowledge intake module and only small composition changes there.
+`apps/web/src/components/hermes/HermesFloatingChat.tsx` and `apps/api/src/services/business-hermes/business-hermes-consultation.service.ts` approach 1,000 lines and already own consultation state. Their display-string choice identity and speculative prefetch must not become the registration path. Add a focused knowledge intake module and only small composition changes there.
 
 `services/hermes-answer-cache` already uses GPTCache, FAISS and SQLite FTS for source candidates. Exact-source facts certify existing source kinds, not generated knowledge. QMD remains an independent trial. Do not install another retrieval framework or replace those paths as part of this pilot.
 

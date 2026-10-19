@@ -13,7 +13,7 @@ import { pageRefKey } from '../assemblyTemplateDraft';
 
 import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
 
-export function AssemblyTemplateEditorInspectorPane() {
+export function AssemblyTemplateEditorInspectorPane({ embedded = false }: { embedded?: boolean }) {
   const {
     applySelectedConditionToRange,
     busy,
@@ -54,7 +54,11 @@ export function AssemblyTemplateEditorInspectorPane() {
   <section
     id="assembly-editor-settings-pane"
     data-testid="assembly-editor-settings-pane"
-    className="min-h-[32rem] min-w-0 overflow-x-hidden overflow-y-auto rounded border border-white/15 bg-slate-900/70 p-3 xl:min-h-0"
+    className={
+      embedded
+        ? 'min-w-0 p-2.5'
+        : 'min-h-[32rem] min-w-0 overflow-x-hidden overflow-y-auto rounded border border-[#27313b] bg-[#161c22] p-2.5 xl:min-h-0'
+    }
   >
     <div className="mb-3 flex min-w-0 items-center justify-between gap-2 border-b border-white/10 pb-2">
       <h2 className="min-w-0 truncate text-sm font-bold">選択内容</h2>
@@ -62,7 +66,7 @@ export function AssemblyTemplateEditorInspectorPane() {
         type="button"
         variant="ghostOnDark"
         aria-label="設定を閉じる"
-        className="min-h-10 !px-2 text-xs"
+        className="min-h-8 !px-2 text-xs"
         onClick={() => setInspectorMode('closed')}
       >
         ×
@@ -110,7 +114,7 @@ export function AssemblyTemplateEditorInspectorPane() {
         </div>
         {selectedCheckItem ? (
           <div className="mt-3 grid min-w-0 gap-3">
-            <div className="flex min-h-9 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
+            <div className="flex min-h-8 items-center justify-between gap-2 rounded border border-white/10 bg-slate-950/60 px-2">
               <span className="text-xs font-semibold text-white/70">
                 {imageMarkerHasCalloutTip(selectedCheckItem) ? '矢視 あり' : '矢視 なし'}
               </span>
@@ -133,7 +137,7 @@ export function AssemblyTemplateEditorInspectorPane() {
                 onChange={(e) => setCheckItemPatch(selectedCheckItem.id, { label: e.target.value })}
               />
             </label>
-            <label className="flex min-h-10 items-center gap-2 text-xs font-semibold text-white/80">
+            <label className="flex min-h-8 items-center gap-2 text-xs font-semibold text-white/80">
               <input
                 type="checkbox"
                 checked={selectedCheckItem.required ?? true}

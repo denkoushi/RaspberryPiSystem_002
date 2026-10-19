@@ -1,3 +1,4 @@
+import { CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { catalogEntries } from './catalog.mjs';
 import { normalizeForMatch } from './value-index.mjs';
 
@@ -56,6 +57,7 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
   for (const source of plan.sources) {
     if (!byId.has(source)) return fail(`unknown source: ${source}`);
   }
+  if (plan.causeCategory !== undefined && !CAUSE_CATEGORY_IDS.includes(plan.causeCategory)) return fail('unknown cause category');
   if (!Array.isArray(plan.filters)) return fail('filters must be an array');
 
   const filters = [];
@@ -127,24 +129,29 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
     : { field: plan.sort.field, direction: plan.sort.direction };
   const contentDecision = copyContentDecision(plan);
   const excludeShown = plan?.diagnostics?.excludeShown === true;
+  const contentSpan = typeof plan?.diagnostics?.contentSpan === 'string' && plan.diagnostics.contentSpan.trim()
+    ? plan.diagnostics.contentSpan.trim().slice(0, 200)
+    : null;
   return {
     ok: true,
     plan: freeze({
       schema: QUERY_PLAN_SCHEMA,
       sources: [...plan.sources],
       filters,
+      ...(plan.causeCategory !== undefined ? { causeCategory: plan.causeCategory } : {}),
       semanticQuery: plan.semanticQuery,
       sort,
       limit: plan.limit,
       display: [...plan.display],
       unresolved: [],
-      ...(contentDecision || excludeShown || plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false ? {
+      ...(contentDecision || contentSpan || excludeShown || plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false ? {
         diagnostics: {
           ...(contentDecision ? { contentDecision } : {}),
           ...(plan?.diagnostics?.limitExplicit === true || plan?.diagnostics?.limitExplicit === false
             ? { limitExplicit: plan.diagnostics.limitExplicit === true }
             : {}),
           ...(excludeShown ? { excludeShown } : {}),
+          ...(contentSpan ? { contentSpan } : {}),
         },
       } : {}),
     }),
@@ -162,6 +169,7 @@ function fieldOf(catalog, source, key) {
 }
 
 export function hasAppliedHardFilter(plan, catalog) {
+  if (CAUSE_CATEGORY_IDS.includes(plan?.causeCategory)) return true;
   const filters = Array.isArray(plan?.filters) ? plan.filters : [];
   return filters.some((filter) => {
     const field = fieldOf(catalog, filter?.source, filter?.field);

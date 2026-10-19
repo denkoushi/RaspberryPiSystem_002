@@ -1,5 +1,7 @@
 import {
   buildDefaultInspectionDrawingMeasurementLabelSettings,
+  isInspectionDrawingDepthLabel,
+  resolveInspectionDrawingGeneralToleranceForNominal,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -63,6 +65,7 @@ import {
   normalizeUniqueInspectionDrawingResourceCds,
   pointUsesGeometricTolerance,
   resolveInspectionDrawingCreateKeyCollisionForResources,
+  resolveInspectionDrawingCreateSaveBlockLabel,
   resolveInspectionDrawingCreateSaveBlockReason,
   resolveInspectionDrawingCreateSaveStatus,
   suggestInspectionDrawingTemplateName,
@@ -75,9 +78,9 @@ import { resolveVisualTemplateById } from '../../features/part-measurement/inspe
 import {
   createInspectionDrawingPoint,
   nextAvailableMarkerNo,
+  resolveInspectionDrawingPointSaveError,
   sortInspectionDrawingPointsByMarkerNo,
-  swapInspectionDrawingMarkerNo,
-  toleranceBoundsFromPoint
+  swapInspectionDrawingMarkerNo
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
 import { partMeasurementDrawingPreviewConvertingLabel } from '../../features/part-measurement/partMeasurementDrawingLocalPreview';
 import {
@@ -273,14 +276,18 @@ export function KioskInspectionDrawingCreatePage() {
       : null;
   const visualOcrPending =
     visualOcrLoading || visualOcrStatus?.status === 'pending' || visualOcrStatus?.status === 'processing';
+  // 寸法マップがあれば候補はそこから出るので、OCR の準備状況は案内しない。
+  const visualDimensionMapReady = visualOcrStatus?.dimensionMap?.status === 'completed';
   const visualOcrNotice =
-    visualTemplateIdForOcr && visualOcrPending
-      ? 'OCR準備中'
-      : visualTemplateIdForOcr && visualOcrStatus?.status === 'failed'
-        ? 'OCR準備失敗（手入力は可能です）'
-        : visualTemplateIdForOcr && visualOcrError
-          ? visualOcrError
-          : null;
+    !visualTemplateIdForOcr || visualDimensionMapReady
+      ? null
+      : visualOcrPending
+        ? 'OCR準備中'
+        : visualOcrStatus?.status === 'failed'
+          ? 'OCR準備失敗（手入力は可能です）'
+          : visualOcrError
+            ? visualOcrError
+            : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -371,16 +378,15 @@ export function KioskInspectionDrawingCreatePage() {
         ? Boolean(saveFile && hasLocalRenderablePreview && !previewError && !previewResolving)
         : Boolean(isEditing && template?.visualTemplateId?.trim());
 
-  const pointsValid = useMemo(
-    () =>
-      points.length > 0 &&
-      points.every(
-        (pt) =>
-          pt.name.trim().length > 0 &&
-          !('error' in toleranceBoundsFromPoint(pt, { measurementLabelSettings }))
-      ),
-    [measurementLabelSettings, points]
-  );
+  const invalidPointMessage = useMemo(() => {
+    for (const pt of sortInspectionDrawingPointsByMarkerNo(points)) {
+      if (!pt.name.trim()) return `${pt.markerNo}番: 名称未入力`;
+      const pointError = resolveInspectionDrawingPointSaveError(pt, { measurementLabelSettings });
+      if (pointError) return `${pt.markerNo}番: ${pointError}`;
+    }
+    return null;
+  }, [measurementLabelSettings, points]);
+  const pointsValid = points.length > 0 && invalidPointMessage === null;
 
   const selfInspectionPayloadPreview = useMemo(
     () => buildSelfInspectionTemplateApiBody(selfInspectionMode, selfInspectionFixedCount),
@@ -399,6 +405,17 @@ export function KioskInspectionDrawingCreatePage() {
     keyCollision,
     saveBlockedByPreview
   });
+
+  const saveBlockLabel = saveBlockReason
+    ? resolveInspectionDrawingCreateSaveBlockLabel(
+        saveBlockReason,
+        saveBlockReason === 'invalid_points'
+          ? invalidPointMessage
+          : 'error' in selfInspectionPayloadPreview
+            ? selfInspectionPayloadPreview.error
+            : null
+      )
+    : null;
 
   const snapshotVisualTemplateId =
     visualSource === 'pickExisting'
@@ -895,11 +912,15 @@ export function KioskInspectionDrawingCreatePage() {
     });
   }, []);
 
+  // 候補は、夜間に作った寸法マップがあればそこから、無ければ OCR から出す（判断は API 側）。
+  const candidateSourceReady =
+    visualOcrStatus?.status === 'completed' || visualOcrStatus?.dimensionMap?.status === 'completed';
+
   const requestOcrCandidatesForPoint = useCallback(
     (point: InspectionDrawingPoint) => {
       const visualId = visualTemplateIdForOcr;
       if (!visualId) return;
-      if (visualOcrStatus?.status !== 'completed') return;
+      if (!candidateSourceReady) return;
       const requestId = ++ocrCandidateRequestSeqRef.current;
       setOcrCandidatesByPointId((prev) => ({
         ...prev,
@@ -921,7 +942,9 @@ export function KioskInspectionDrawingCreatePage() {
               markerNo: point.markerNo,
               limit: 5,
               measurementLabel: point.name.trim() || null,
-              depthMode: point.depthMode ?? 'measured'
+              depthMode: point.depthMode ?? 'measured',
+              calloutTipXRatio: point.calloutTipXRatio ?? null,
+              calloutTipYRatio: point.calloutTipYRatio ?? null
             },
             clientKey
           );
@@ -957,7 +980,7 @@ export function KioskInspectionDrawingCreatePage() {
         }
       })();
     },
-    [clientKey, visualOcrStatus?.status, visualTemplateIdForOcr]
+    [candidateSourceReady, clientKey, visualTemplateIdForOcr]
   );
 
   const handlePointChange = (
@@ -982,12 +1005,12 @@ export function KioskInspectionDrawingCreatePage() {
   };
 
   useEffect(() => {
-    if (visualOcrStatus?.status !== 'completed') return;
+    if (!candidateSourceReady) return;
     if (!selectedPoint) return;
     const current = ocrCandidatesByPointId[selectedPoint.id];
     if (current?.loading || current?.candidates.length || current?.status === 'completed') return;
     requestOcrCandidatesForPoint(selectedPoint);
-  }, [ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint, visualOcrStatus?.status]);
+  }, [candidateSourceReady, ocrCandidatesByPointId, requestOcrCandidatesForPoint, selectedPoint]);
 
   useEffect(() => {
     if (!markerSwapUndo) return;
@@ -1121,9 +1144,9 @@ export function KioskInspectionDrawingCreatePage() {
         setMessage('すべての測定点に名称を入れてください。');
         return;
       }
-      const bounds = toleranceBoundsFromPoint(pt, { measurementLabelSettings });
-      if ('error' in bounds) {
-        setMessage(`「${pt.name}」: ${bounds.error}`);
+      const pointError = resolveInspectionDrawingPointSaveError(pt, { measurementLabelSettings });
+      if (pointError) {
+        setMessage(`「${pt.name}」: ${pointError}`);
         return;
       }
     }
@@ -1412,6 +1435,7 @@ export function KioskInspectionDrawingCreatePage() {
             saveDisabled={saveDisabled}
             saveBusy={busy}
             saveStatus={saveStatus}
+            saveStatusText={saveStatus === 'blocked' ? saveBlockLabel : null}
             savedPrintPath={
               INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED && isEditing && templateId
                 ? kioskInspectionDrawingTemplatePrintPath(templateId)
@@ -1616,14 +1640,34 @@ export function KioskInspectionDrawingCreatePage() {
             ocrCandidateLoading={selectedPointOcrState?.loading ?? false}
             ocrCandidateError={selectedPointOcrState?.error ?? null}
             measurementLabelSettings={measurementLabelSettings}
-            onApplyOcrCandidate={(valueText) => {
+            onApplyOcrCandidate={(valueText, candidate) => {
               if (!selectedPoint) return;
-              updatePoint(
-                selectedPoint.id,
-                pointUsesGeometricTolerance(selectedPoint, { measurementLabelSettings })
-                  ? buildGeometricTolerancePointPatch(valueText)
-                  : { nominalRaw: valueText }
-              );
+              if (pointUsesGeometricTolerance(selectedPoint, { measurementLabelSettings })) {
+                updatePoint(selectedPoint.id, buildGeometricTolerancePointPatch(valueText));
+                return;
+              }
+              const patch: Partial<InspectionDrawingPoint> = { nominalRaw: valueText };
+              // 公差欄が両方空のときだけ案を入れる。図面の明記公差 → 普通公差表 の順（深さは下限 0 だけ）。
+              const toleranceEmpty =
+                selectedPoint.upperToleranceRaw.trim() === '' && selectedPoint.lowerToleranceRaw.trim() === '';
+              if (toleranceEmpty) {
+                const upper = candidate?.suggestedUpperTolerance ?? null;
+                const lower = candidate?.suggestedLowerTolerance ?? null;
+                if (candidate?.source === 'dimensionMap' && (upper !== null || lower !== null)) {
+                  if (upper !== null) patch.upperToleranceRaw = upper;
+                  if (lower !== null) patch.lowerToleranceRaw = lower;
+                } else if (isInspectionDrawingDepthLabel(selectedPoint.name)) {
+                  // 深さは下限 0 だけ。上限（+0・+3・+5）はねじの太さで決まるので空けておく
+                  patch.lowerToleranceRaw = '0';
+                } else {
+                  const general = resolveInspectionDrawingGeneralToleranceForNominal(Number(valueText));
+                  if (general !== null) {
+                    patch.upperToleranceRaw = `+${general}`;
+                    patch.lowerToleranceRaw = `-${general}`;
+                  }
+                }
+              }
+              updatePoint(selectedPoint.id, patch);
             }}
           />
         </aside>

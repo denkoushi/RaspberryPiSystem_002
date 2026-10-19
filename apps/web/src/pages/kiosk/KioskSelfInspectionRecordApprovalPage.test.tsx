@@ -2,7 +2,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { KIOSK_SELF_INSPECTION_LIST_PATH } from '../../features/part-measurement/selfInspectionRoutes';
+import {
+  KIOSK_SELF_INSPECTION_LIST_PATH,
+  KIOSK_SELF_INSPECTION_REDUCTION_PATH
+} from '../../features/part-measurement/selfInspectionRoutes';
 
 import { KioskSelfInspectionRecordApprovalPage } from './KioskSelfInspectionRecordApprovalPage';
 
@@ -224,6 +227,17 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
 
     fireEvent.click(returnLink);
     expect(await screen.findByText('自主検査一覧')).toBeInTheDocument();
+  });
+
+  it('keeps the header on one row and links 詳細 to the reduction insights page', () => {
+    renderPage();
+
+    const heading = screen.getByRole('heading', { name: '検査記録確認' });
+    expect(heading.parentElement?.className).toContain('flex-wrap');
+    expect(screen.queryByText('表示')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('製造order')).toHaveAttribute('placeholder', '製造order');
+    expect(screen.getByLabelText('資源CD')).toHaveAttribute('placeholder', '資源CD');
+    expect(screen.getByRole('link', { name: '詳細' })).toHaveAttribute('href', KIOSK_SELF_INSPECTION_REDUCTION_PATH);
   });
 
   it('maps completed_records to scope and resets selection/operation state on category changes', async () => {

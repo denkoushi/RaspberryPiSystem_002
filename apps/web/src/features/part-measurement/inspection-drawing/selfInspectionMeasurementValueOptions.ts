@@ -8,7 +8,7 @@ export type MeasurementValueOptionResult =
   | { mode: 'free_only'; reason?: string }
   | { mode: 'dropdown_and_free'; options: string[]; stepLabel: string };
 
-function decimalPlacesInRaw(raw: string): number {
+export function decimalPlacesInRaw(raw: string): number {
   const trimmed = raw.trim().replace(/,/g, '');
   if (!trimmed) return 0;
   const dot = trimmed.indexOf('.');

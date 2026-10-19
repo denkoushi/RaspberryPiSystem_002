@@ -10,10 +10,13 @@ import {
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
+import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
+
 import { prisma } from '../../../lib/prisma.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from './leaderboard-split-expansion.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard-part-footer-processes.service.js';
+import { buildLeaderboardMaterialArrivalByPartKeyForScheduleRows } from './leaderboard-part-material-arrival.service.js';
 
 type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
 
@@ -51,6 +54,8 @@ export async function decorateLeaderboardCompositeBoardShell(params: {
 }): Promise<{
   rowsWithDeco: LightShellRow[];
   leaderboardFooterChipsByPartKey?: Record<string, unknown>;
+  leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey?: Record<string, MaterialArrivalBasis>;
 }> {
   const deco = await decorateLeaderboardShellRowsForKiosk({
     orderedRowIds: params.mergedLightRows.map((r) => r.id),
@@ -61,7 +66,9 @@ export async function decorateLeaderboardCompositeBoardShell(params: {
   const decoMap = rowDecorationsToMap(deco.rowDecorations);
   return {
     rowsWithDeco: applyRowDecorationsToLightRows(params.mergedLightRows, decoMap),
-    leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>
+    leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>,
+    leaderboardMaterialArrivalByPartKey: deco.leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey: deco.leaderboardMaterialArrivalBasisByPartKey
   };
 }
 
@@ -77,6 +84,8 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
   rowsWithDeco: LightShellRow[];
   deltaRowsWithDeco?: LightShellRow[];
   leaderboardFooterChipsByPartKey?: Record<string, unknown>;
+  leaderboardMaterialArrivalByPartKey?: Record<string, MaterialArrivalStatus>;
+  leaderboardMaterialArrivalBasisByPartKey?: Record<string, MaterialArrivalBasis>;
 }> {
   const preferredDisplayRowIds = normalizeLeaderboardDisplayRowIdScope(
     params.mergedLightRows.map((r) => r.id)
@@ -93,7 +102,9 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
     const rowsWithDeco = applyRowDecorationsToLightRows(params.mergedLightRows, decoMap);
     return {
       rowsWithDeco,
-      leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>
+      leaderboardFooterChipsByPartKey: deco.leaderboardFooterChipsByPartKey as Record<string, unknown>,
+      leaderboardMaterialArrivalByPartKey: deco.leaderboardMaterialArrivalByPartKey,
+      leaderboardMaterialArrivalBasisByPartKey: deco.leaderboardMaterialArrivalBasisByPartKey
     };
   }
 
@@ -146,6 +157,9 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
     siteKey: params.siteKey,
     preferredDisplayRowIds
   });
+  const { leaderboardMaterialArrivalByPartKey, leaderboardMaterialArrivalBasisByPartKey } = await buildLeaderboardMaterialArrivalByPartKeyForScheduleRows(
+    params.mergedLightRows
+  );
 
   const rowsWithDeco = applyRowDecorationsToLightRows(params.mergedLightRows, decoMap);
   const decoRowById = new Map(rowsWithDeco.map((r) => [r.id, r]));
@@ -157,6 +171,8 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
   return {
     rowsWithDeco,
     ...(deltaRowsWithDeco !== undefined ? { deltaRowsWithDeco } : {}),
-    leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey as Record<string, unknown>
+    leaderboardFooterChipsByPartKey: leaderboardFooterChipsByPartKey as Record<string, unknown>,
+    leaderboardMaterialArrivalByPartKey,
+    leaderboardMaterialArrivalBasisByPartKey
   };
 }

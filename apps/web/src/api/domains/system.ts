@@ -1,5 +1,13 @@
 import { api } from '../http';
 
+export async function getLocalLlmAvailability(signal?: AbortSignal) {
+  const { data } = await api.get<{ available: boolean }>('/system/local-llm/availability', {
+    timeout: 5000,
+    signal
+  });
+  return data;
+}
+
 export interface SystemInfo {
   cpuTemp: number | null;
   cpuLoad: number;

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MobilePlacementPage } from './MobilePlacementPage';
 
@@ -74,24 +74,66 @@ vi.mock('../../features/mobile-placement/useMobilePlacementPageState', () => ({
   })
 }));
 
+function Destination() {
+  return <div>{useLocation().pathname}</div>;
+}
+
+function renderPage(state?: unknown) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[{ pathname: '/kiosk/mobile-placement', state }]}>
+        <Routes>
+          <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
+          <Route path="*" element={<Destination />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
+beforeEach(() => vi.clearAllMocks());
+
 describe('MobilePlacementPage', () => {
-  it('メインでは Zero2W 配膳パネルを出さず、一覧への導線だけを出す', () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } }
-    });
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/kiosk/mobile-placement']}>
-          <Routes>
-            <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    );
-
+  it('メインでは Zero2W 配膳パネルを出さず、メニューに一覧への導線を出す', () => {
+    renderPage();
     expect(screen.queryByRole('region', { name: 'Zero2W 棚番配膳の状態' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '棚番配膳一覧（Zero2W）' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zero2W 配膳' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '移動票を読む' })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
+    expect(screen.getByRole('dialog', { name: 'ほかの画面' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zero2W 配膳' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '棚マスタ' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['部品を探す', '/kiosk/mobile-placement/part-search'],
+    ['購買照会', '/kiosk/purchase-order-lookup'],
+    ['パレット', '/kiosk/mobile-placement/pallet-viz'],
+    ['Zero2W 配膳', '/kiosk/mobile-placement/zero2w-status'],
+    ['棚マスタ', '/kiosk/mobile-placement/shelf-master']
+  ])('%s のメニューで正しいルートを開く', (label, path) => {
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
+    fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
+    expect(screen.getByText(path)).toBeInTheDocument();
+  });
+
+  it('棚マスタから戻った state を一度復元する', () => {
+    const state = { transferOrder: 'T1', transferPart: 'P1', actualOrder: 'A1', actualFseiban: 'F1', actualPart: 'P1', slipResult: 'ok', shelfCode: '西-北-02', orderBarcode: 'T1' };
+    renderPage(state);
+    expect(noop.mock.calls.filter(([arg]) => arg === state)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
+    expect(noop.mock.calls.filter(([arg]) => arg === state)).toHaveLength(1);
+  });
+
+  it('写真入力の既存OCR処理へファイルを渡す', () => {
+    const { container } = renderPage();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['image'], 'slip.jpg', { type: 'image/jpeg' });
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(noop).toHaveBeenCalledWith(file);
+    expect(input.value).toBe('');
+    expect(input).toHaveAttribute('capture', 'environment');
   });
 });

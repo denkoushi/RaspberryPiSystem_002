@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { isAxiosError } from 'axios';
 
 import { api } from './client';
 
@@ -23,7 +23,7 @@ export async function fetchDgxResourceOverview(): Promise<DgxResourceOverview> {
   return data;
 }
 
-export async function fetchDgxResourceEvents(limit = 24): Promise<DgxResourceEventsResponse> {
+export async function fetchDgxResourceEvents(limit = 20): Promise<DgxResourceEventsResponse> {
   const { data } = await api.get<DgxResourceEventsResponse>(DGX_RESOURCE_EVENTS_PATH, { params: { limit } });
   return data;
 }
@@ -33,20 +33,16 @@ export async function postDgxResourceAction(body: DgxResourceActionBody): Promis
   return data;
 }
 
-type ApiErrorPayload = {
-  message?: string;
-  errorCode?: string;
-};
-
 export function getDgxResourceApiErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const d = error.response?.data as ApiErrorPayload | undefined;
-    if (typeof d?.message === 'string') {
-      return d.errorCode ? `${d.message} (${d.errorCode})` : d.message;
-    }
-    if (error.response?.status === 403) {
-      return 'この操作を行う権限がありません';
-    }
+  const code = isAxiosError<{ errorCode?: string }>(error) ? error.response?.data?.errorCode : undefined;
+  switch (code) {
+    case 'DGX_OPERATION_IN_PROGRESS': return '別の操作が進行中です。終わるまでお待ちください。';
+    case 'DGX_MODEL_PROFILE_UNKNOWN': return '選んだモデルが見つかりません。画面を更新してください。';
+    case 'DGX_MODEL_PROFILE_UNAVAILABLE': return 'このモデルは今は起動できません。メモリやモデルの状態を確認してください。';
+    case 'DGX_MODEL_PROFILES_UNAVAILABLE': return 'モデル一覧を取得できません。少し待ってお試しください。';
+    case 'DGX_RUNTIME_CONTROL_NOT_CONFIGURED':
+    case 'DGX_RUNTIME_TOKEN_MISSING':
+    case 'DGX_GATEWAY_UNCONFIGURED': return 'DGX を操作するための設定が足りません。管理者に確認してください。';
+    default: return '操作を完了できませんでした。状態を確認して、もう一度お試しください。';
   }
-  return error instanceof Error ? error.message : '予期しないエラーが発生しました';
 }

@@ -1,0 +1,160 @@
+import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
+
+import { Prisma, type ProcedureMaterialOrigin, type ProcedureMaterial } from '@prisma/client';
+
+import { ApiError } from '../../lib/errors.js';
+import { prisma as defaultPrisma } from '../../lib/prisma.js';
+import type { DurableFileStorePort } from '../file-storage/durable-file-store.port.js';
+import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
+
+import { normalizeWorkInstructionPartNumber } from '../work-instructions/domain/normalization.js';
+import { readPartNamesByPartNumbers, readMaterialMatchesByPartName } from '../work-instructions/repositories/prisma-work-instruction-part-names.js';
+
+function materialPartNumber(ref: Prisma.JsonValue | undefined): string | null {
+  return ref && typeof ref === 'object' && !Array.isArray(ref) && typeof ref.partNumber === 'string' ? normalizeWorkInstructionPartNumber(ref.partNumber) : null;
+}
+
+function publicMaterial(material: ProcedureMaterial) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Omit internal description state from API responses.
+  const { imageDescription, imageDescribedAt, imageDescribeAttempts, imageDescribeNextAttemptAt, ...visible } = material;
+  return { ...visible, text: material.kind === 'TEXT' ? material.text : null };
+}
+
+export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
+export class ProcedureMaterialService {
+  constructor(
+    private readonly db = defaultPrisma,
+    private readonly store: DurableFileStorePort = getFileStorageRuntime().store,
+    private readonly importer: Pick<AssemblyProcedureDraftImportService, 'importDraft'> = new AssemblyProcedureDraftImportService(),
+  ) {}
+
+  async list(options: { state: ProcedureMaterialState; origin?: ProcedureMaterialOrigin; q?: string; limit: number }) {
+    const where: Prisma.ProcedureMaterialWhereInput = {};
+    if (options.state === 'unplaced') Object.assign(where, { documentId: null, placedAt: null, discardedAt: null });
+    if (options.state === 'placed') Object.assign(where, { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] });
+    if (options.state === 'discarded') where.discardedAt = { not: null };
+    // This shelf exclusion applies only to the ordinary list, never semantic search.
+    if (options.origin) where.origin = options.origin;
+    else if (options.state === 'unplaced') where.origin = { not: 'APP' };
+    const matchedParts = new Map<string, string>();
+    if (options.q) {
+      const queries = [...new Set([options.q, options.q.normalize('NFKC')])];
+      const textMatches = queries.map((q) => ({ text: { contains: q, mode: 'insensitive' as const } }));
+      const messages = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: { not: null }, OR: textMatches }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
+      const scope = options.state === 'unplaced' ? Prisma.sql`material."documentId" IS NULL AND material."placedAt" IS NULL AND material."discardedAt" IS NULL`
+        : options.state === 'placed' ? Prisma.sql`material."discardedAt" IS NULL AND (material."documentId" IS NOT NULL OR material."placedAt" IS NOT NULL)`
+        : options.state === 'discarded' ? Prisma.sql`material."discardedAt" IS NOT NULL` : Prisma.sql`TRUE`;
+      for (const match of await readMaterialMatchesByPartName(this.db, options.q, scope)) matchedParts.set(match.id, match.partNumber);
+      const partMatches: Prisma.ProcedureMaterialWhereInput[] = matchedParts.size ? [{ id: { in: [...matchedParts.keys()] } }] : [];
+      const messageIds = messages.flatMap((material) => material.gmailMessageId === null ? [] : [material.gmailMessageId]);
+      where.AND = [{ OR: [...queries.flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]), ...textMatches, ...partMatches, ...(messageIds.length ? [{ gmailMessageId: { in: messageIds } }] : [])] }];
+    }
+    const materials = await this.db.procedureMaterial.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: options.limit });
+    // PDF and page text exists for search only; keep it out of the list payload.
+    const partNumberFor = (material: typeof materials[number]) => materialPartNumber(material.workInstructionRef) ?? matchedParts.get(material.id);
+    const partNames = await readPartNamesByPartNumbers(this.db, materials.flatMap((material) => partNumberFor(material) ?? []));
+    const appText = (material: ProcedureMaterial, key: string): string | null => {
+      const ref = material.origin === 'APP' ? material.appRef : null;
+      return ref && typeof ref === 'object' && !Array.isArray(ref) && typeof ref[key] === 'string' ? ref[key] as string : null;
+    };
+    const nameIds = [...new Set(materials.flatMap((material) => appText(material, 'nameId') ?? []))];
+    const employees = nameIds.length ? await this.db.employee.findMany({
+      where: { employeeCode: { in: nameIds } }, select: { employeeCode: true, displayName: true },
+    }) : [];
+    const employeeNames = new Map(employees.map((employee) => [employee.employeeCode, employee.displayName]));
+    return materials.map((material) => ({ ...publicMaterial(material),
+      category: appText(material, 'category'), note: appText(material, 'note'), location: appText(material, 'location'),
+      nameId: appText(material, 'nameId'), employeeName: employeeNames.get(appText(material, 'nameId') ?? '') ?? null,
+      partName: partNames.get(partNumberFor(material) ?? '') ?? null }));
+  }
+
+  async listRankRecordIds(state: 'unplaced' | 'placed') {
+    const materials = await this.db.procedureMaterial.findMany({
+      where: { discardedAt: null, ...(state === 'unplaced' ? { documentId: null, placedAt: null }
+        : { OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }) },
+      select: { id: true, gmailMessageId: true },
+      orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    });
+    // Allow both corpus versions while workers roll over from mail to material records.
+    return [...new Set(materials.flatMap(row => row.gmailMessageId === null
+      ? [`material:${row.id}`] : [`material:${row.id}`, `mail:${row.gmailMessageId}`]))];
+  }
+
+  async listRanked(recordIds: string[], options: { state: 'unplaced' | 'placed'; limit: number }) {
+    const mailIds = recordIds.filter(id => id.startsWith('mail:')).map(id => id.slice(5));
+    const materialIds = recordIds.filter(id => id.startsWith('material:')).map(id => id.slice(9));
+    if (!mailIds.length && !materialIds.length) return [];
+    const state = options.state === 'unplaced'
+      ? { documentId: null, placedAt: null }
+      : { OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] };
+    const materials = await this.db.procedureMaterial.findMany({
+      where: { discardedAt: null, AND: [state, { OR: [
+        { gmailMessageId: { in: mailIds } }, { id: { in: materialIds } },
+      ] }] },
+      orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    });
+    const byRecord = new Map<string, typeof materials>();
+    for (const material of materials) {
+      byRecord.set(`material:${material.id}`, [material]);
+      if (material.gmailMessageId === null) continue;
+      const key = `mail:${material.gmailMessageId}`;
+      const group = byRecord.get(key) ?? [];
+      group.push(material);
+      byRecord.set(key, group);
+    }
+    const seen = new Set<string>();
+    return [...new Set(recordIds)].flatMap(id => byRecord.get(id) ?? [])
+      .filter(material => !seen.has(material.id) && !!seen.add(material.id)).slice(0, options.limit)
+      .map(publicMaterial);
+  }
+
+  async readFile(id: string) {
+    const material = await this.db.procedureMaterial.findUnique({ where: { id } });
+    if (!material || material.kind !== 'PHOTO' || !material.storageKey) throw new ApiError(404, '写真がありません');
+    const bytes = await this.store.read(material.storageKey, { verifyIntegrity: true });
+    return { bytes, contentType: material.contentType ?? 'application/octet-stream' };
+  }
+
+  async createDocument(id: string) {
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ProcedureMaterial" WHERE "id" = ${id} FOR UPDATE`;
+      const material = await tx.procedureMaterial.findUnique({ where: { id } });
+      if (!material) throw new ApiError(404, '素材がありません');
+      if (material.kind !== 'PDF') throw new ApiError(400, 'PDF 素材だけ要領書を作成できます');
+      if (material.documentId) throw new ApiError(409, 'この PDF からは作成済みです');
+      if (material.discardedAt) throw new ApiError(409, '捨てた素材からは作成できません');
+      if (!material.storageKey) throw new ApiError(400, 'PDF の原本がありません');
+      const filename = material.originalFileName || '素材.pdf';
+      const buffer = await this.store.read(material.storageKey, { verifyIntegrity: true });
+      const document = await this.importer.importDraft({
+        name: material.subjectHint || filename.replace(/\.[^.]+$/, ''),
+        transaction: tx, avoidDuplicateName: true, buffer, mimetype: 'application/pdf', filename,
+        source: { sourceType: 'MANUAL', sourceAttachmentName: filename },
+      });
+      await tx.procedureMaterial.update({ where: { id }, data: { documentId: document.id, placedAt: new Date() } });
+      return { document: { id: document.id, name: document.name } };
+    }, { timeout: 120_000 });
+  }
+
+  async unplace(id: string) {
+    const updated = await this.db.procedureMaterial.updateMany({
+      where: { id, OR: [{ kind: { not: 'PDF' } }, { documentId: null }] },
+      data: { documentId: null, placedAt: null },
+    });
+    if (!updated.count) {
+      if (!await this.db.procedureMaterial.findUnique({ where: { id }, select: { id: true } })) throw new ApiError(404, '素材がありません');
+      throw new ApiError(409, '要領書を作成済みの PDF は配置を取り消せません');
+    }
+  }
+
+  async setDiscarded(id: string, discarded: boolean) {
+    // The conditional update also guards concurrent placement in Phase 2b.
+    const updated = await this.db.procedureMaterial.updateMany({
+      where: { id, documentId: null, placedAt: null }, data: { discardedAt: discarded ? new Date() : null },
+    });
+    if (!updated.count) {
+      if (!await this.db.procedureMaterial.findUnique({ where: { id }, select: { id: true } })) throw new ApiError(404, '素材がありません');
+      throw new ApiError(409, '配置済みの素材は変更できません');
+    }
+  }
+}

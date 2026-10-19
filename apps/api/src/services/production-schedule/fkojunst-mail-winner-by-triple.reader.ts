@@ -1,10 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
 
+import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
 import { buildFkojunstMailStatusKey } from './fkojunst-mail-status-key.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 import { buildMaxProductNoWinnerCondition } from './row-resolver/index.js';
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 type WinnerKeyRow = {
   id: string;

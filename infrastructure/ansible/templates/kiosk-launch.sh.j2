@@ -53,6 +53,13 @@ if [[ "${BROWSER_ENGINE}" == "chromium" ]]; then
 {% for flag in kiosk_browser_flags_chromium | default([]) %}
     {{ flag }}
 {% endfor %}
+{% if kiosk_server_cert_spki_sha256 | default('') | length > 0 %}
+    # Trust only the pinned server key; Chromium honours the list only with an explicit profile dir.
+    --ignore-certificate-errors-spki-list={{ kiosk_server_cert_spki_sha256 }}
+    --user-data-dir=/home/{{ ansible_user }}/.config/chromium
+{% else %}
+    --ignore-certificate-errors
+{% endif %}
     --app="${KIOSK_TARGET_URL}"
     --unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }},http://localhost:7071
     "${COMMON_FLAGS[@]}"
@@ -74,6 +81,11 @@ elif [[ "${BROWSER_ENGINE}" == "firefox" ]]; then
   PROFILE_ARGS=()
   if [[ "${KIOSK_FF_MINIMIZE}" == "1" ]] && [[ -d "${FF_PROFILE}" ]]; then
     PROFILE_ARGS=(--profile "${FF_PROFILE}")
+    # KB-412: WebDriver/Marionette 起動が prefs.js に残す focusmanager.testmode=true は
+    # キー入力が IBus へ渡らなくなる（日本語入力不可）。Firefox 起動前に除去する。
+    if [[ -f "${FF_PROFILE}/prefs.js" ]]; then
+      sed -i '/^user_pref("focusmanager\.testmode"/d' "${FF_PROFILE}/prefs.js" 2>/dev/null || true
+    fi
   fi
   exec "${BROWSER_BIN}" "${PROFILE_ARGS[@]}" "${FIREFOX_FLAGS[@]}" "${KIOSK_TARGET_URL}"
 else

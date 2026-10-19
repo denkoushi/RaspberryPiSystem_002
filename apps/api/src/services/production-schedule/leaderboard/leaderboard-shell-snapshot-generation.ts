@@ -1,21 +1,11 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
-import {
-  PRODUCTION_SCHEDULE_DASHBOARD_ID,
-  PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
-} from '../constants.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { fetchFkojunstStatusMailGenerationRevision } from '../fkojunst-status-mail-generation-revision.js';
 
-const LEADERBOARD_GENERATION_TRANSACTION_OPTIONS = Object.freeze({
-  maxWait: 15_000,
-  timeout: 60_000
-});
-
 type SnapshotMainAndAuxGenerationRow = {
-  rowsCount: bigint;
-  rowsLatestCreatedAt: Date | null;
-  rowsLatestUpdatedAt: Date | null;
+  rowsRevision: bigint | null;
   orderAssignmentUpdatedAt: Date | null;
   orderSplitCount: bigint;
   orderSplitUpdatedAt: Date | null;
@@ -23,24 +13,19 @@ type SnapshotMainAndAuxGenerationRow = {
   orderSplitAssignmentUpdatedAt: Date | null;
   globalRowRankUpdatedAt: Date | null;
   rowNoteUpdatedAt: Date | null;
+  progressCount: bigint;
   progressUpdatedAt: Date | null;
+  externalCompletionCount: bigint;
   externalCompletionUpdatedAt: Date | null;
   fkstUpdatedAt: Date | null;
   fkmailUpdatedAt: Date | null;
+  orderSupplementCount: bigint;
   orderSupplementUpdatedAt: Date | null;
   seibanDueDateUpdatedAt: Date | null;
   seibanProcessingDueDateUpdatedAt: Date | null;
   resourceCategoryUpdatedAt: Date | null;
   resourceCodeMappingUpdatedAt: Date | null;
 };
-
-type SnapshotMailGenerationRow = {
-  fkojunstStatusMailRowsCount: bigint;
-  fkojunstStatusMailRowsLatestCreatedAt: Date | null;
-  fkojunstStatusMailRowsLatestUpdatedAt: Date | null;
-};
-
-type SnapshotGenerationRow = SnapshotMainAndAuxGenerationRow & Partial<SnapshotMailGenerationRow>;
 
 function normalizeDate(value: Date | null | undefined): string {
   return value instanceof Date ? value.toISOString() : '';
@@ -56,28 +41,12 @@ export type LeaderboardShellSnapshotGenerationTokenDetails = {
   fkojunstStatusMailRowsRevision: string;
 };
 
-function resolveFkojunstStatusMailRowsRevision(params: {
-  row: SnapshotGenerationRow | undefined;
-  explicitRevision?: string;
-}): string {
-  const explicitRevision = params.explicitRevision?.trim();
-  if (explicitRevision != null && explicitRevision.length > 0) {
-    return explicitRevision;
-  }
-
-  return [
-    String(params.row?.fkojunstStatusMailRowsCount ?? 0n),
-    normalizeDate(params.row?.fkojunstStatusMailRowsLatestCreatedAt),
-    normalizeDate(params.row?.fkojunstStatusMailRowsLatestUpdatedAt)
-  ].join(':');
-}
-
 async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerationRow[]> {
   return prisma.$queryRaw<SnapshotMainAndAuxGenerationRow[]>(Prisma.sql`
     SELECT
-      "mainRowStats"."rowsCount",
-      "mainRowStats"."rowsLatestCreatedAt",
-      "mainRowStats"."rowsLatestUpdatedAt",
+      (SELECT "revision"
+       FROM "CsvDashboardRawRevision"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsRevision",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleOrderAssignment"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderAssignmentUpdatedAt",
@@ -99,9 +68,15 @@ async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerati
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleRowNote"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowNoteUpdatedAt",
+      (SELECT COUNT(*)::bigint
+       FROM "ProductionScheduleProgress"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "progressCount",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleProgress"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "progressUpdatedAt",
+      (SELECT COUNT(*)::bigint
+       FROM "ProductionScheduleExternalCompletion"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "externalCompletionCount",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleExternalCompletion"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "externalCompletionUpdatedAt",
@@ -111,6 +86,9 @@ async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerati
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleFkojunstMailStatus"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "fkmailUpdatedAt",
+      (SELECT COUNT(*)::bigint
+       FROM "ProductionScheduleOrderSupplement"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSupplementCount",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleOrderSupplement"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSupplementUpdatedAt",
@@ -126,26 +104,21 @@ async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerati
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleResourceCodeMapping"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "resourceCodeMappingUpdatedAt"
-    FROM (
-      SELECT
-        COUNT(*)::bigint AS "rowsCount",
-        MAX("createdAt") AS "rowsLatestCreatedAt",
-        MAX(COALESCE("updatedAt", "createdAt")) AS "rowsLatestUpdatedAt"
-      FROM "CsvDashboardRow"
-      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    ) AS "mainRowStats"
   `);
 }
 
 function buildLeaderboardShellSnapshotGenerationToken(params: {
-  row: SnapshotGenerationRow | undefined;
+  row: SnapshotMainAndAuxGenerationRow | undefined;
   fkojunstStatusMailRowsRevision: string;
 }): string {
   const { row, fkojunstStatusMailRowsRevision } = params;
+  if (row?.rowsRevision == null) {
+    throw new Error(
+      `[ProductionScheduleGenerationRevision] raw revision row is missing for dashboard ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`
+    );
+  }
   return JSON.stringify({
-    rowsCount: String(row?.rowsCount ?? 0n),
-    rowsLatestCreatedAt: normalizeDate(row?.rowsLatestCreatedAt),
-    rowsLatestUpdatedAt: normalizeDate(row?.rowsLatestUpdatedAt),
+    rowsRevision: String(row.rowsRevision),
     fkojunstStatusMailRowsRevision,
     orderAssignmentUpdatedAt: normalizeDate(row?.orderAssignmentUpdatedAt),
     orderSplitCount: String(row?.orderSplitCount ?? 0n),
@@ -154,10 +127,13 @@ function buildLeaderboardShellSnapshotGenerationToken(params: {
     orderSplitAssignmentUpdatedAt: normalizeDate(row?.orderSplitAssignmentUpdatedAt),
     globalRowRankUpdatedAt: normalizeDate(row?.globalRowRankUpdatedAt),
     rowNoteUpdatedAt: normalizeDate(row?.rowNoteUpdatedAt),
+    progressCount: String(row?.progressCount ?? 0n),
     progressUpdatedAt: normalizeDate(row?.progressUpdatedAt),
+    externalCompletionCount: String(row?.externalCompletionCount ?? 0n),
     externalCompletionUpdatedAt: normalizeDate(row?.externalCompletionUpdatedAt),
     fkstUpdatedAt: normalizeDate(row?.fkstUpdatedAt),
     fkmailUpdatedAt: normalizeDate(row?.fkmailUpdatedAt),
+    orderSupplementCount: String(row?.orderSupplementCount ?? 0n),
     orderSupplementUpdatedAt: normalizeDate(row?.orderSupplementUpdatedAt),
     seibanDueDateUpdatedAt: normalizeDate(row?.seibanDueDateUpdatedAt),
     seibanProcessingDueDateUpdatedAt: normalizeDate(row?.seibanProcessingDueDateUpdatedAt),
@@ -192,41 +168,14 @@ export async function readLeaderboardShellSnapshotGenerationToken(
 export async function readLeaderboardShellSnapshotGenerationTokenDetails(
   options?: ReadLeaderboardShellSnapshotGenerationTokenOptions
 ): Promise<LeaderboardShellSnapshotGenerationTokenDetails> {
-  const mainRows = await readMainAndAuxGenerationRow();
   const explicitMailRevision = options?.fkojunstStatusMailRowsRevision?.trim();
-  const mailRows =
+  const [mainRows, fkojunstStatusMailRowsRevision] = await Promise.all([
+    readMainAndAuxGenerationRow(),
     explicitMailRevision != null && explicitMailRevision.length > 0
-      ? []
-      : await prisma.$transaction(async (tx) => {
-          await tx.$executeRaw(Prisma.sql`SET LOCAL jit = off`);
-          return tx.$queryRaw<SnapshotMailGenerationRow[]>(Prisma.sql`
-            SELECT
-              COUNT(*)::bigint AS "fkojunstStatusMailRowsCount",
-              MAX(r."createdAt") AS "fkojunstStatusMailRowsLatestCreatedAt",
-              MAX(COALESCE(r."updatedAt", r."createdAt")) AS "fkojunstStatusMailRowsLatestUpdatedAt"
-            FROM "CsvDashboardRow" r
-            WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}
-              AND (
-                r."sourceIngestRunId" IS NULL
-                OR EXISTS (
-                  SELECT 1
-                  FROM "CsvDashboardIngestRun" ir
-                  WHERE ir."id" = r."sourceIngestRunId"
-                    AND ir."status" = 'COMPLETED'::"ImportStatus"
-                    AND ir."completedAt" IS NOT NULL
-                )
-              )
-          `);
-        }, LEADERBOARD_GENERATION_TRANSACTION_OPTIONS);
-
-  const row = {
-    ...mainRows[0],
-    ...mailRows[0]
-  };
-  const fkojunstStatusMailRowsRevision = resolveFkojunstStatusMailRowsRevision({
-    row,
-    explicitRevision: explicitMailRevision
-  });
+      ? Promise.resolve(explicitMailRevision)
+      : fetchFkojunstStatusMailGenerationRevision(prisma)
+  ]);
+  const row = mainRows[0];
 
   return {
     generationToken: buildLeaderboardShellSnapshotGenerationToken({
@@ -238,8 +187,7 @@ export async function readLeaderboardShellSnapshotGenerationTokenDetails(
 }
 
 /**
- * 製番 planning board 専用の世代 token。
- * shared shell/continue の rawMailRowsRevision 契約は維持し、board のみ永続 revision を使う。
+ * 製番 planning board 用の世代 token（shell と同じ永続 raw mail revision を使う）。
  */
 export async function readGrindingPlanningBoardSnapshotGenerationTokenDetails(): Promise<LeaderboardShellSnapshotGenerationTokenDetails> {
   const [mainRows, fkojunstStatusMailGenerationRevision] = await Promise.all([

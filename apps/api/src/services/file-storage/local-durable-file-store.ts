@@ -1,6 +1,8 @@
-import { createHash } from 'node:crypto';
-import { createReadStream, promises as fs, type Stats } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream, createWriteStream, promises as fs, type Stats } from 'node:fs';
 import path from 'node:path';
+import { Transform, type Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { logger } from '../../lib/logger.js';
 import type {
   DurableFileStorePort,
@@ -9,8 +11,10 @@ import type {
 } from './durable-file-store.port.js';
 import { FileStorageIntegrityCatalog } from './file-storage-integrity-catalog.js';
 import {
+  FileStorageAlreadyExistsError,
   FileStorageCapacityExhaustedError,
   FileStorageIntegrityMismatchError,
+  FileStorageInvalidPathError,
   FileStorageUnavailableError,
 } from './file-storage-errors.js';
 import {
@@ -69,11 +73,6 @@ export class LocalDurableFileStore implements DurableFileStorePort {
     }
   }
 
-  absolutePath(key: string): string {
-    const normalized = normalizeStorageKey(key);
-    return path.join(this.root, ...normalized.split('/'));
-  }
-
   async capacity(): Promise<FileSystemCapacity & { reserveBytes: number }> {
     const capacity = await this.capacityReader(this.root);
     const reserveBytes = Math.max(
@@ -96,6 +95,70 @@ export class LocalDurableFileStore implements DurableFileStorePort {
   async write(request: FileWriteRequest): Promise<StoredFileResult> {
     const [result] = await this.writeBatch([request]);
     return result!;
+  }
+
+  async writeStream(request: { key: string; source: Readable; integrity: boolean; sizeHint?: number }): Promise<StoredFileResult> {
+    let temporary: string | undefined;
+    let destination: string | undefined;
+    let committed = false;
+    try {
+      const key = normalizeStorageKey(request.key);
+      await this.assertCapacity(request.sizeHint ?? 0);
+      destination = await resolveSecureFile(this.root, key, { allowMissing: true });
+      const parent = path.dirname(destination);
+      temporary = path.join(parent, `.${path.basename(destination)}.${randomUUID()}.tmp`);
+      const handle = await fs.open(temporary, 'wx', 0o600);
+      const digest = createHash('sha256');
+      let size = 0;
+      const hash = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          digest.update(chunk);
+          size += chunk.length;
+          callback(null, chunk);
+        },
+      });
+      const sink = handle.createWriteStream({ autoClose: false });
+      try {
+        await pipeline(request.source, hash, sink);
+        await handle.sync();
+      } finally {
+        sink.destroy();
+        await handle.close();
+      }
+      try {
+        await fs.link(temporary, destination);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new FileStorageAlreadyExistsError();
+        throw error;
+      }
+      committed = true;
+      await fs.unlink(temporary);
+      await syncDirectory(parent);
+      const sha256 = digest.digest('hex');
+      if (request.integrity) await this.catalog.put({ storageKey: key, sha256, size });
+      return { key, sha256, size };
+    } catch (error) {
+      request.source.destroy();
+      if (committed && destination) {
+        try {
+          await fs.unlink(destination);
+          await syncDirectory(path.dirname(destination));
+        } catch (rollbackError) {
+          throw new FileStorageUnavailableError(rollbackError);
+        }
+      }
+      if ((error as NodeJS.ErrnoException).code === 'ENOSPC') throw new FileStorageCapacityExhaustedError();
+      if (
+        error instanceof FileStorageCapacityExhaustedError ||
+        error instanceof FileStorageIntegrityMismatchError ||
+        (typeof error === 'object' && error !== null && 'statusCode' in error)
+      ) {
+        throw error;
+      }
+      throw new FileStorageUnavailableError(error);
+    } finally {
+      if (temporary) await fs.unlink(temporary).catch(() => undefined);
+    }
   }
 
   async writeBatch(requests: readonly FileWriteRequest[]): Promise<StoredFileResult[]> {
@@ -205,16 +268,72 @@ export class LocalDurableFileStore implements DurableFileStorePort {
     if (options.verifyIntegrity) {
       const result = await this.catalog.verify(normalized, data);
       if (result === 'missing') {
-        if (await this.catalog.requiresCatalog()) {
-          throw new FileStorageIntegrityMismatchError();
-        }
-        logger.warn(
-          { storageKeyHash: await this.storageKeyHash(normalized) },
-          'Durable file has no integrity catalog record yet'
-        );
+        await this.handleMissingIntegrityRecord(normalized);
       }
     }
     return data;
+  }
+
+  async openReadStream(key: string, options: { start?: number; end?: number } = {}) {
+    const { start, end } = options;
+    if (
+      (start !== undefined && (!Number.isSafeInteger(start) || start < 0)) ||
+      (end !== undefined && (!Number.isSafeInteger(end) || end < 0)) ||
+      (start !== undefined && end !== undefined && start > end)
+    ) {
+      throw new RangeError('Invalid file byte range');
+    }
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: false });
+    const { size } = await fs.stat(file);
+    const record = await this.catalog.get(normalized);
+    if (!record) await this.handleMissingIntegrityRecord(normalized);
+    else if (record.size !== size) throw new FileStorageIntegrityMismatchError();
+    return { stream: createReadStream(file, { start, end }), size };
+  }
+
+  async list(namespace: string): Promise<string[]> {
+    const normalized = normalizeStorageKey(namespace);
+    if (!path.isAbsolute(this.root)) throw new FileStorageInvalidPathError();
+    let directory = this.root;
+    try {
+      for (const segment of ['', ...normalized.split('/')]) {
+        directory = path.join(directory, segment);
+        const stat = await fs.lstat(directory);
+        if (stat.isSymbolicLink() || !stat.isDirectory()) throw new FileStorageInvalidPathError();
+      }
+      return await fs.readdir(directory);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+  }
+
+  async copyToFile(key: string, destination: string, options: { verifyIntegrity: boolean }): Promise<void> {
+    const normalized = normalizeStorageKey(key);
+    const file = await resolveSecureFile(this.root, normalized, { allowMissing: false });
+    const digest = createHash('sha256');
+    let size = 0;
+    const hash = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        digest.update(chunk);
+        size += chunk.length;
+        callback(null, chunk);
+      },
+    });
+    await pipeline(createReadStream(file), hash, createWriteStream(destination));
+    if (options.verifyIntegrity) {
+      const result = await this.catalog.verifyMetadata(normalized, digest.digest('hex'), size);
+      if (result === 'missing') await this.handleMissingIntegrityRecord(normalized);
+    }
+  }
+
+  private async handleMissingIntegrityRecord(key: string): Promise<void> {
+    if (await this.catalog.requiresCatalog()) throw new FileStorageIntegrityMismatchError();
+    logger.warn(
+      { storageKeyHash: await this.storageKeyHash(key) },
+      'Durable file has no integrity catalog record yet'
+    );
   }
 
   async stat(key: string): Promise<Stats> {

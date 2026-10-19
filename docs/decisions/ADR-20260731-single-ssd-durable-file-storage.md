@@ -84,6 +84,37 @@ UUID固定で同じホストパスへmountすればAPI変更なしで移行で�
 対する別媒体への復旧は別計画で扱う。S3、MinIO、クラウド、追加SSD、既存
 ファイルの物理移行、DB migrationは今回含めない。
 
+## Amendment 2026-10-16: streaming reads
+
+S3互換ストレージへ差し替え可能な形に寄せるため、portへ
+`openReadStream(key, { start, end })`、`list(namespace)`、
+`copyToFile(key, destination, { verifyIntegrity })` を追加した。手順動画の配信は
+Rangeごとに動画全体を読み込みhashする方式をやめ、指定範囲だけをstreamで返す。
+streamでの範囲読取りはSHA-256を照合できないため、catalogのsizeとの一致だけを
+確認し、内容の照合は書込み時のhashとbackfill/scanに任せる。動画変換の入力は
+`copyToFile` で一時ファイルへ流しながら全体のSHA-256を照合する。手順資料のGCは
+`absolutePath()` ではなく `list()` を使う。
+
+`read()` は小さいファイルの既存利用者のため残す。
+
+### 追記 2026-10-16: streaming writes と直接fs利用の整理
+
+- portへ `writeStream({ key, source, integrity, sizeHint })` を追加した。新規作成
+  (`create`) 専用で、同じ場所の一時ファイルへ流しながらSHA-256とsizeを数え、fsync後に
+  `link` で確定してからcatalogへ記録する。catalog記録に失敗したら確定したファイルを消す。
+  `replace` は、`writeBatch` と同じ「旧内容へ戻す」巻き戻しをbuffer無しで守れないため
+  提供しない。書込み前に容量予備を確認し(`sizeHint` があればその分を加味する)、書込み中のENOSPCは
+  容量不足エラーにする。
+- 手順動画の変換結果はメモリへ読み込まずに `writeStream` で保存する。既存keyとの衝突は
+  `read().equals()` ではなく `hash()` のSHA-256で照合する。シーンのポスター生成の入力は
+  `copyToFile` で一時ファイルへ流す。Gmail取込の原本は添付の時点でbufferのため `write()` のまま。
+- 写真の年次削除は `list()`、部品測定図面の派生画像の確認と読出しは `stat()`/`read()` を
+  使い、node:fsの直接利用をやめた。
+- `absolutePath()` は利用者がいなくなったためportから削除した。
+- 次は直接fsのまま残す。CSVダッシュボードの古い月の削除は、portに「ディレクトリ」の概念が
+  無く空ディレクトリの片付けも要るため後続で扱う。PDFのページ画像、サイネージの描画画像、
+  ページ撮影画像は原本から作り直せるキャッシュで、durable objectとして扱わない。
+
 ## Alternatives considered
 
 クラウドまたはS3互換ストレージは、当面導入しないという運用方針のため見送った。

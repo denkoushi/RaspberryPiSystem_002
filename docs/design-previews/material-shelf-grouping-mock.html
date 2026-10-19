@@ -1,0 +1,116 @@
+<title>素材棚 分類モック</title>
+<style>
+  /* Layout: the kiosk shelf dialog at 1280x720, dark like the real editor; groups are collapsible rows of cards. */
+  :root {
+    --bg: #161c22; --panel: #1b222a; --line: #344252; --fg: #eef3f6; --muted: #9fadb9;
+    --accent: #3ba776; --accent-ink: #0b1a12; --chip: #27313b; --paper: #fdfcf7; --paper-ink: #1a1a1a;
+    --font: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font); margin: 0; padding-block: 16px; padding-inline: 16px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .note { color: var(--muted); font-size: 14px; margin: 0 0 14px; max-width: 70ch; line-height: 1.6; }
+  .frame { width: min(1248px, 100%); aspect-ratio: 1248 / 660; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 18px 26px; box-sizing: border-box; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 14px; margin-bottom: 28px; }
+  .bar { display: flex; align-items: center; gap: 12px; }
+  .bar h2 { font-size: 26px; margin: 0 14px 0 0; }
+  .tab { height: 44px; padding: 0 16px; border-radius: 10px; font-size: 19px; font-weight: 700; color: var(--muted); background: transparent; border: 0; font-family: inherit; }
+  .tab.on { background: var(--chip); color: var(--fg); }
+  .search { margin-left: auto; height: 44px; width: 300px; border: 2px solid #8aa0b4; border-radius: 8px; background: #fff; color: #334; padding: 0 12px; font-size: 19px; display: flex; align-items: center; }
+  .tools { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 19px; }
+  .tools .btn { height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 19px; font-family: inherit; }
+  .tools .btn.go { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700; margin-left: auto; height: 52px; padding: 0 22px; font-size: 21px; }
+  .groups { overflow: auto; display: grid; gap: 10px; align-content: start; min-width: 0; }
+  details { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 28px minmax(0,1fr) auto auto; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; font-size: 19px; font-weight: 700; }
+  summary::-webkit-details-marker { display: none; }
+  summary .tri { color: var(--muted); font-size: 14px; transform: rotate(0deg); transition: transform .15s; }
+  details[open] summary .tri { transform: rotate(90deg); }
+  summary .sub { color: var(--muted); font-weight: 500; font-size: 16px; }
+  summary .count { font-variant-numeric: tabular-nums; background: var(--chip); color: var(--fg); border-radius: 999px; padding: 2px 12px; font-size: 16px; font-weight: 600; }
+  summary .pick { height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 15px; font-family: inherit; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; padding: 0 14px 14px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #0f1419; display: grid; grid-template-rows: auto auto; }
+  .thumb { aspect-ratio: 4/3; display: grid; place-items: center; color: #d9e2ea; font-size: 15px; background: linear-gradient(135deg, #2b3a48, #1c2730); }
+  .thumb.paper { background: var(--paper); color: var(--paper-ink); font-size: 13px; padding: 10px; text-align: left; align-items: start; line-height: 1.5; }
+  .meta { padding: 8px 10px; font-size: 14px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+  .meta b { color: var(--fg); font-weight: 600; }
+  .chk { position: absolute; }
+  .legend { color: var(--muted); font-size: 14px; line-height: 1.7; max-width: 80ch; }
+  @media (max-width: 700px) { .frame { aspect-ratio: auto; } .search { width: 100%; } }
+</style>
+
+<h1>素材棚の分類(モック)</h1>
+<p class="note">全件を出しても見渡せるように、カードを「見出しで束ねて折りたたむ」形にします。見出しには件数と「この束を全部選ぶ」を付け、検索で絞ると該当する束だけが開きます。上辺の操作(今すぐ取り込む、捨てる、配置)は今のままです。</p>
+
+<div class="frame" aria-label="加工タブ">
+  <div class="bar">
+    <h2>素材</h2>
+    <button class="tab">未配置 (23)</button>
+    <button class="tab">配置済み</button>
+    <button class="tab">ナレッジから</button>
+    <button class="tab on">加工 (148)</button>
+    <div class="search">品番・工程で絞り込み</div>
+  </div>
+  <div class="tools"><span><b style="color:var(--fg)">0</b> 件を選択中</span><button class="btn">今すぐ取り込む</button><button class="btn go">現在ページに配置</button></div>
+  <div class="groups">
+    <details open>
+      <summary><span class="tri">▶</span><span>71-A61 <span class="sub">ハンドル組立 · 撮影対象 2 · 手順 1〜9</span></span><span class="count">18 枚</span><button class="pick">束を全部選ぶ</button></summary>
+      <div class="cards">
+        <div class="card"><div class="thumb">手順 1 写真</div><div class="meta"><b>ハンドル</b><span>手順 1</span></div></div>
+        <div class="card"><div class="thumb">手順 2 写真</div><div class="meta"><b>ハンドル</b><span>手順 2</span></div></div>
+        <div class="card"><div class="thumb">手順 3 写真</div><div class="meta"><b>ハンドル</b><span>手順 3</span></div></div>
+        <div class="card"><div class="thumb">手順 4 写真</div><div class="meta"><b>ハンドル</b><span>手順 4</span></div></div>
+        <div class="card"><div class="thumb">手順 5 写真</div><div class="meta"><b>ハンドル</b><span>手順 5</span></div></div>
+        <div class="card"><div class="thumb">手順 1 写真</div><div class="meta"><b>台座</b><span>手順 1</span></div></div>
+      </div>
+    </details>
+    <details>
+      <summary><span class="tri">▶</span><span>71-B12 <span class="sub">ベース加工 · 撮影対象 1 · 手順 1〜12</span></span><span class="count">12 枚</span><button class="pick">束を全部選ぶ</button></summary>
+    </details>
+    <details>
+      <summary><span class="tri">▶</span><span>80-C03 <span class="sub">シャフト研削 · 撮影対象 3 · 手順 1〜6</span></span><span class="count">31 枚</span><button class="pick">束を全部選ぶ</button></summary>
+    </details>
+    <details>
+      <summary><span class="tri">▶</span><span>80-C07 <span class="sub">シャフト切削 · 撮影対象 2 · 手順 1〜8</span></span><span class="count">22 枚</span><button class="pick">束を全部選ぶ</button></summary>
+    </details>
+    <details>
+      <summary><span class="tri">▶</span><span>92-D01 <span class="sub">カバー組立 · 撮影対象 4 · 手順 1〜15</span></span><span class="count">65 枚</span><button class="pick">束を全部選ぶ</button></summary>
+    </details>
+  </div>
+</div>
+
+<div class="frame" aria-label="未配置タブ">
+  <div class="bar">
+    <h2>素材</h2>
+    <button class="tab on">未配置 (23)</button>
+    <button class="tab">配置済み</button>
+    <button class="tab">ナレッジから</button>
+    <button class="tab">加工 (148)</button>
+    <div class="search">ヒントで絞り込み</div>
+  </div>
+  <div class="tools"><span><b style="color:var(--fg)">0</b> 件を選択中</span><button class="btn">今すぐ取り込む</button><button class="btn">捨てる</button><button class="btn go">現在ページに配置</button></div>
+  <div class="groups">
+    <details open>
+      <summary><span class="tri">▶</span><span>71-A61 検査工程 <span class="sub">メール · 10/07 09:27〜10:12</span></span><span class="count">9 件</span><button class="pick">束を全部選ぶ</button></summary>
+      <div class="cards">
+        <div class="card"><div class="thumb">ハンドル2.png</div><div class="meta"><b>写真</b><span>10/07 09:27</span></div></div>
+        <div class="card"><div class="thumb">Sample要領書PDF p1.jpg</div><div class="meta"><b>写真</b><span>10/07 09:39</span></div></div>
+        <div class="card"><div class="thumb">Sample要領書PDF p2.jpg</div><div class="meta"><b>写真</b><span>10/07 09:39</span></div></div>
+        <div class="card"><div class="thumb" style="font-size:28px;font-weight:700">PDF</div><div class="meta"><b>Sample要領書PDF.pdf</b><span>25 頁</span></div></div>
+        <div class="card"><div class="thumb paper">ねじは対角線順に仮締めし、最後に規定トルクで本締めする。</div><div class="meta"><b>文章</b><span>10/07 10:12</span></div></div>
+      </div>
+    </details>
+    <details>
+      <summary><span class="tri">▶</span><span>80-C03 組立工程 <span class="sub">メール · 10/06 16:40〜17:05</span></span><span class="count">11 件</span><button class="pick">束を全部選ぶ</button></summary>
+    </details>
+    <details>
+      <summary><span class="tri">▶</span><span>ヒントなし <span class="sub">メール · 10/05</span></span><span class="count">3 件</span><button class="pick">束を全部選ぶ</button></summary>
+    </details>
+  </div>
+</div>
+
+<p class="legend">
+  加工タブ: 品番ごとに 1 束(見出しに加工名・撮影対象の数・手順の範囲)。開くと撮影対象→手順の順でカードが並びます。制限の 60 件は外して全件を取りに行きます。<br>
+  未配置タブ: 件名のヒントごとに 1 束(同じヒントのメールを受信日時でまとめ、ヒントなしは最後)。写真・PDF ページ・PDF 本体・文章が同じ束に入ります。<br>
+  共通: 最初は先頭の束だけ開く。検索で絞ると、該当する束だけが開いた状態で残る。「束を全部選ぶ」で一度に配置できます。
+</p>

@@ -1,4 +1,5 @@
 ---
+client_agents_hardened: false
 release_sha: ""
 release_run_id: ""
 release_kiosk_project_dir: "{{ project_root | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"
@@ -13,3 +14,8 @@ release_kiosk_agent_services:
   - barcode-agent
   - torque-agent
 release_kiosk_min_disk_gb: 1
+# Controller checkout, independent of the Pi4 project path.
+release_kiosk_notice_project_dir: "{{ playbook_dir }}/../../.."
+release_kiosk_notice_enabled: true
+release_kiosk_notice_duration_seconds: 60
+release_kiosk_notice_ack_timeout_seconds: 30

@@ -1195,8 +1195,6 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
           fitToView();
         }}
         onResumeGuide={resumeGuided}
-        onPrepareNextPoint={consumeNextBlurGuideAdvance}
-        onNextPoint={goToNextPointManual}
         onBackToList={() => navigate('/kiosk/part-measurement/self-inspection')}
         onReset={isInspectorMode ? undefined : () => setResetPhase('destructive')}
         resetDisabled={resetDisabled}
@@ -1243,7 +1241,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
         onConfirm={confirmOutOfToleranceCommit}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-1 xl:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto xl:flex-row xl:overflow-visible">
         <div
           className={clsx(
             inspectionDrawingCanvasColumnClassName,
@@ -1290,7 +1288,7 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
         </div>
 
         <div
-          className="flex min-h-0 min-w-0 flex-col gap-2 xl:w-[360px] xl:shrink-0"
+          className="flex min-h-0 min-w-0 shrink-0 flex-col gap-2 xl:w-[360px]"
           data-testid="self-inspection-session-right-pane"
         >
           <SelfInspectionNfcRegistrationPanel
@@ -1425,22 +1423,34 @@ export function KioskSelfInspectionSessionPage({ mode = 'operator' }: Props) {
               />
             ) : null}
             <div
-              className="grid grid-cols-2 gap-1 rounded-md bg-slate-900/50 p-1"
+              className="grid w-full max-w-[360px] shrink-0 gap-1 rounded-md bg-slate-900/50 p-1"
               data-self-inspection-session-actions
             >
+              <div className="grid grid-cols-2 gap-1">
+                <SelfInspectionKioskButton
+                  type="button"
+                  size="compact"
+                  disabled={!saveActionState.enabled}
+                  highlighted={saveActionState.enabled}
+                  onPointerDownCapture={consumeNextBlurGuideAdvance}
+                  onClick={() => void persistCurrentEntry()}
+                >
+                  入力を保存
+                </SelfInspectionKioskButton>
+                <SelfInspectionKioskButton
+                  type="button"
+                  size="compact"
+                  onPointerDownCapture={() => consumeNextBlurGuideAdvance()}
+                  onPointerDown={() => consumeNextBlurGuideAdvance()}
+                  onTouchStart={() => consumeNextBlurGuideAdvance()}
+                  onClick={goToNextPointManual}
+                >
+                  次の測定点
+                </SelfInspectionKioskButton>
+              </div>
               <SelfInspectionKioskButton
                 type="button"
-                size="actionCompact"
-                disabled={!saveActionState.enabled}
-                highlighted={saveActionState.enabled}
-                onPointerDownCapture={consumeNextBlurGuideAdvance}
-                onClick={() => void persistCurrentEntry()}
-              >
-                入力を保存
-              </SelfInspectionKioskButton>
-              <SelfInspectionKioskButton
-                type="button"
-                size="actionCompact"
+                size="compact"
                 disabled={!completeActionState.enabled}
                 highlighted={completeActionState.enabled}
                 title={completeActionHint ?? undefined}

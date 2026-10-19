@@ -342,6 +342,7 @@ update-frequency: medium
 **学んだこと**: 
 - Debian bookworm系ではTrivyのAPTパッケージが提供されていないため、公式リリースを直接導入するのが確実
 - `freshclam`デーモンに任せれば手動`freshclam`は不要で、ログロックエラーも避けられる
+- 2026-10-17: 夜間スキャン（03:00〜04:17）がDBバックアップと同じUSB SSDを奪い合い、キオスクの応答が10秒を超えていた。Pi5の`/dev/sda`は`mq-deadline`で`ionice`が効かないため、各スキャンスクリプトはスキャン本体を`systemd-run --scope`（cgroup v2の`io.max`、スケジューラに依存しない）で読み書き各`security_scan_io_bandwidth_max`（既定30MB/秒、`security_scan_io_device`の裏のディスク）に制限し、`nice -n 19`で動かす。systemdが無い環境では`nice`だけ。ClamAVは14GBを約77分（平均3MB/秒）で読むので、上限で延びるのは瞬間的な読み込みの山だけ。`/opt/backups`はClamAV対象のまま。標準ローリング更新はserverロールを`host-config-only`で動かし`malware.yml`を飛ばすため、スキャンスクリプト・cron・`security_scan_*`を変えたときは、Pi5のcheckoutが対象コミットになった後に`ansible-playbook -i inventory.yml playbooks/prepare-pi5-security-scans.yml --limit raspberrypi5 --check --diff`で差分を確かめてから`--check --diff`を外して当てる
 
 **関連ファイル**: 
 - `infrastructure/ansible/roles/server/tasks/malware.yml`

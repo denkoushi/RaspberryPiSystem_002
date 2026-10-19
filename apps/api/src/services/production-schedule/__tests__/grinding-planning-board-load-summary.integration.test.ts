@@ -1,3 +1,4 @@
+import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { randomUUID } from 'node:crypto';
 
 import { Prisma } from '@prisma/client';
@@ -253,7 +254,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
         itemKey: buildGrindingPlanningBoardRowItemId(first.rowData), overrideResourceCd: 'G-02' }
     });
     const params = { client: db(), siteKey, category: 'grinding' as const, splitEnabled: false,
-      isResourceInCategory: (resourceCd: string, category: 'grinding' | 'cutting') =>
+      isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) =>
         category === 'grinding' && resourceCd.startsWith('G-') };
     const aggregate = await summaryReader()({ ...params,
       leaderboardMaterializedBaseWhere: Prisma.sql`
@@ -326,7 +327,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
       siteKey: fixture.siteKey,
       category: 'grinding' as const,
       splitEnabled: true,
-      isResourceInCategory: (resourceCd: string, category: 'grinding' | 'cutting') => category === 'grinding' && resourceCd.startsWith('G-')
+      isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => category === 'grinding' && resourceCd.startsWith('G-')
     };
     const summary = await summaryReader()({
       ...summaryParams,
@@ -492,7 +493,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
       siteKey,
       category: 'grinding' as const,
       splitEnabled: true,
-      isResourceInCategory: (resourceCd: string, category: 'grinding' | 'cutting') => category === 'grinding' && resourceCd.startsWith('G-')
+      isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => category === 'grinding' && resourceCd.startsWith('G-')
     };
     const materializedWhere = buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
       PRODUCTION_SCHEDULE_DASHBOARD_ID,

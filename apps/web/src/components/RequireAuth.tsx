@@ -21,5 +21,9 @@ export function RequireAuth({ children }: PropsWithChildren) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  if (user.mfaSetupRequired && location.pathname !== '/admin/security') {
+    return <Navigate to="/admin/security" replace />;
+  }
+
   return <>{children}</>;
 }

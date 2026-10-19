@@ -48,7 +48,7 @@ confirmed facts, unresolved items, corrections, and summary.
 
 ## Surprises & Discoveries
 
-- Observation: the route currently performs intent classification, deterministic API retrieval, and a chat completion. Evidence: `apps/api/src/services/assembly/business-hermes-chat.service.ts` and `business-hermes.service.ts`.
+- Observation: the route currently performs intent classification, deterministic API retrieval, and a chat completion. Evidence: `apps/api/src/services/business-hermes/business-hermes-chat.service.ts` and `business-hermes.service.ts`.
 - Observation: the current UI memory window is request-scoped and limited to twelve messages. Evidence: the existing chat input and service clipping behavior; this is not a durable consultation record.
 - Observation: source sharing is allowed. The same latest active nonconformity snapshot or published work-instruction source can support multiple independent cases; only consultation state and authorization context must be kept separate.
 - Observation: the fixed-image transport precondition and Pi5-approved synthetic DGX tool probe passed, but no natural-dialogue acceptance, Pi4 measurement, or production-record result is claimed by this plan.
@@ -80,10 +80,10 @@ so this does not establish a DGX product failure.
 The current endpoint is
 `apps/api/src/routes/assembly/business-hermes.ts`. It invokes
 `BusinessHermesChatService` in
-`apps/api/src/services/assembly/business-hermes-chat.service.ts`, which
+`apps/api/src/services/business-hermes/business-hermes-chat.service.ts`, which
 classifies the message, performs bounded nonconformity/work-instruction lookups,
 and calls `BusinessHermesService` in
-`apps/api/src/services/assembly/business-hermes.service.ts`. The upstream client
+`apps/api/src/services/business-hermes/business-hermes.service.ts`. The upstream client
 currently reads final chat-completions text. The current UI request carries at
 most twelve messages and does not persist a business consultation.
 

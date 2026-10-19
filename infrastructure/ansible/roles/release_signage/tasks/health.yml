@@ -5,3 +5,8 @@
 - name: Record verified Pi3 Signage health
   ansible.builtin.set_fact:
     release_signage_healthy: true
+
+# Runs only after the release is verified healthy. It has its own rescue, so
+# it can never send a healthy Signage release into rollback.
+- name: Watch the Pi3 SD card
+  ansible.builtin.import_tasks: host-status-agent-storage.yml

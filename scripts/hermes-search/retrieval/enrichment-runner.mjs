@@ -1,4 +1,5 @@
 // Incremental, resumable enrichment. A DGX failure backs off and never answers chat.
+import { isConversationalSource, recordSourceId } from '../hermes-source-definition.mjs';
 import { performance } from 'node:perf_hooks';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -51,7 +52,7 @@ export async function readIdAllowlist(filePath) {
 export function selectRecords(records) {
   return (records ?? []).map((row) => (
     row?.kind === 'nonconformity' ? recordFromAuthorizedRow(row) : row
-  )).filter((row) => row && typeof row.id === 'string' && row.id);
+  )).filter((row) => row && typeof row.id === 'string' && row.id && isConversationalSource(row.kind ?? recordSourceId(row)));
 }
 
 // Rows with aliases are schema v2 and rows without are v1; both are current.
@@ -77,10 +78,13 @@ export async function runEnrichmentBatch({
   const started = performance.now();
   const loaded = selectRecords(records);
   const allowlist = settings.idAllowlist ? await readIdAllowlist(settings.idAllowlist) : null;
-  const selected = allowlist ? loaded.filter((record) => allowlist.has(record.id)) : loaded;
+  // The id list sets the order, not the scope: listed records (the pilot subset) go first and every
+  // other record follows, so records added after the list was written are enriched too.
+  const listed = allowlist ? loaded.filter((record) => allowlist.has(record.id)) : [];
+  const selected = allowlist ? [...listed, ...loaded.filter((record) => !allowlist.has(record.id))] : loaded;
   const status = emptyStatus(settings, selected.length);
   status.allowlistCount = allowlist ? allowlist.size : 0;
-  status.allowlistMatched = allowlist ? selected.length : 0;
+  status.allowlistMatched = allowlist ? listed.length : 0;
   if (!settings.enabled) {
     status.reason = 'disabled';
     await publish(statusPath, status);

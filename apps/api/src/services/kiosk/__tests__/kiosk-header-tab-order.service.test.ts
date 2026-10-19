@@ -11,6 +11,7 @@ describe('kiosk-header-tab-order normalization', () => {
       'self_inspection',
       'instruments_borrow',
       'rigging_borrow',
+      'tag_desk',
       'production_schedule',
       'manual_order',
       'grinding_planning_board',
@@ -24,6 +25,7 @@ describe('kiosk-header-tab-order normalization', () => {
       'part_measurement',
       'inspection_drawing',
       'rigging_analytics',
+      'machine_signal',
       'due_management',
       'call'
     ]);
@@ -38,6 +40,7 @@ describe('kiosk-header-tab-order normalization', () => {
       'inventory_settings',
       'instruments_borrow',
       'rigging_borrow',
+      'tag_desk',
       'production_schedule',
       'manual_order',
       'leader_order_board',
@@ -52,6 +55,7 @@ describe('kiosk-header-tab-order normalization', () => {
       'part_measurement',
       'inspection_drawing',
       'rigging_analytics',
+      'machine_signal',
       'due_management',
       'call'
     ]);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deriveCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
-import { QUERY_PLAN_SCHEMA, validateQueryPlan } from './query-plan.mjs';
+import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance, validateQueryPlan } from './query-plan.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
@@ -85,4 +85,28 @@ test('validator accepts an indexed filter and rejects unknown source, field, op,
   assert.equal(validateQueryPlan(plan({
     filters: [{ source: 'nonconformity', field: 'condition', op: 'eq', values: ['paint drip'] }],
   }), catalog, valueIndex).ok, false);
+});
+
+test('cause category is optional, validated and carried outside catalog filters', () => {
+  const result = validateQueryPlan(plan({ causeCategory: 'check' }), catalog, valueIndex);
+  assert.equal(result.ok, true);
+  assert.equal(result.plan.causeCategory, 'check');
+  assert.deepEqual(result.plan.filters, []);
+  assert.equal(Object.hasOwn(validateQueryPlan(plan(), catalog, valueIndex).plan, 'causeCategory'), false);
+  for (const causeCategory of ['invalid', null, 1]) {
+    const invalid = validateQueryPlan(plan({ causeCategory }), catalog, valueIndex);
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.clarification.message, 'unknown cause category');
+  }
+});
+
+test('valid causes are hard filters and skip relevance only without content', () => {
+  for (const causeCategory of ['drawing', 'unknown']) {
+    assert.equal(hasAppliedHardFilter(plan({ causeCategory }), catalog), true);
+    assert.equal(shouldSkipRelevance(plan({ causeCategory, diagnostics: { contentDecision: { jev: false } } }), catalog), true);
+    assert.equal(shouldSkipRelevance(plan({ causeCategory, diagnostics: { contentDecision: { jev: true } } }), catalog), false);
+  }
+  for (const causeCategory of [undefined, null, '', 'invalid']) {
+    assert.equal(hasAppliedHardFilter(plan({ causeCategory }), catalog), false);
+  }
 });

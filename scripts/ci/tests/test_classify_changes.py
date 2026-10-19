@@ -85,7 +85,10 @@ class ClassifyChangesTests(unittest.TestCase):
         self.assertTrue(api["releasePair"])
 
         web = self.classify(Change("M", "apps/web/src/main.tsx"))
-        self.assertEqual(self.selected(web), {"repo_policy", "workspace_quality", "web", "kiosk_sop"})
+        self.assertEqual(
+            self.selected(web),
+            {"repo_policy", "workspace_quality", "web", "kiosk_sop", "e2e"},
+        )
         self.assertTrue(web["codeql"])
         self.assertTrue(web["releasePair"])
         self.assertEqual(web["pi4AgentServices"], [])
@@ -104,6 +107,50 @@ class ClassifyChangesTests(unittest.TestCase):
             {"repo_policy", "workspace_quality", "api", "db_infra"},
         )
 
+    def test_web_source_selects_e2e_but_unit_tests_and_generated_sop_do_not(self) -> None:
+        web_only = {"repo_policy", "workspace_quality", "web", "kiosk_sop"}
+        # The two changes that broke E2E on main without running it (#1632, #1620).
+        for path in (
+            "apps/web/src/layouts/AdminLayout.tsx",
+            "apps/web/src/features/assembly/AssemblyProcedureLibrarySection.tsx",
+            "apps/web/src/index.css",
+            "apps/web/vite.config.ts",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(self.selected(result), web_only | {"e2e"})
+                self.assertFalse(result["fullSuite"])
+                self.assertEqual(result["pi4AgentMatrix"], [])
+
+        for path in (
+            "apps/web/src/layouts/AdminLayout.test.tsx",
+            "apps/web/src/features/assembly/assemblyRowExpansion.test.ts",
+            "apps/web/src/generated/kiosk-sop/inspection-drawing/manifest.json",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(self.selected(result), web_only)
+
+    def test_hermes_search_is_an_api_image_input_not_an_unknown_path(self) -> None:
+        for path in (
+            "scripts/hermes-search/retrieval/rank.mjs",
+            "scripts/hermes-search/hermes-answer-extract.mjs",
+            "scripts/hermes-search/package-lock.json",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    self.selected(result), {"repo_policy", "api", "docker_security"}
+                )
+                self.assertFalse(result["fullSuite"])
+                self.assertEqual(result["failClosedReasons"], [])
+                self.assertTrue(result["codeql"])
+                self.assertTrue(result["dockerApi"])
+                self.assertFalse(result["dockerWeb"])
+                self.assertTrue(result["releasePair"])
+                self.assertTrue(result["runtimeRehearsal"])
+                self.assertEqual(result["pi4AgentMatrix"], [])
+
     def test_deploy_client_docker_and_e2e_paths(self) -> None:
         deploy = self.classify(
             Change("M", "scripts/deploy/standard-ansible-release.py")
@@ -118,6 +165,12 @@ class ClassifyChangesTests(unittest.TestCase):
         )
         self.assertFalse(deploy_test["releasePair"])
         self.assertFalse(deploy_test["runtimeRehearsal"])
+
+        for path in ('scripts/deploy/kiosk_release_notice.py',
+                     'scripts/deploy/tests/test_kiosk_release_notice.py'):
+            notice = self.classify(Change('A', path))
+            self.assertEqual(self.selected(notice), {'repo_policy', 'deploy_contract'})
+            self.assertEqual(notice['failClosedReasons'], [])
 
         client = self.classify(Change("M", "clients/nfc-agent/nfc_agent/main.py"))
         self.assertEqual(self.selected(client), {"repo_policy", "client"})
@@ -143,6 +196,11 @@ class ClassifyChangesTests(unittest.TestCase):
             "infrastructure/ansible/templates/raspi-google-drive-dr.env.j2",
             "infrastructure/ansible/templates/raspi-google-drive-dr.service.j2",
             "infrastructure/ansible/templates/raspi-google-drive-dr.timer.j2",
+            "scripts/pi4_sd_backup/runner.py",
+            "infrastructure/ansible/playbooks/deploy-pi4-sd-backup.yml",
+            "infrastructure/ansible/templates/raspi-pi4-sd-backup.env.j2",
+            "infrastructure/ansible/templates/raspi-pi4-sd-backup.service.j2",
+            "infrastructure/ansible/templates/raspi-pi4-sd-backup.timer.j2",
         )
 
         for path in paths:
@@ -153,7 +211,7 @@ class ClassifyChangesTests(unittest.TestCase):
                     {"repo_policy", "db_infra", "deploy_contract"},
                 )
                 self.assertFalse(result["fullSuite"])
-                self.assertFalse(result["codeql"])
+                self.assertEqual(result["codeql"], path.endswith(".py"))
                 self.assertFalse(result["dockerApi"])
                 self.assertFalse(result["dockerWeb"])
                 self.assertEqual(result["pi4AgentMatrix"], [])
@@ -185,7 +243,8 @@ class ClassifyChangesTests(unittest.TestCase):
                 result = self.classify(Change("M", path))
                 self.assertEqual(self.selected(result), {"repo_policy"})
                 self.assertFalse(result["fullSuite"])
-                self.assertFalse(result["codeql"])
+                # CodeQL analyzes Python as well as JavaScript/TypeScript.
+                self.assertTrue(result["codeql"])
                 self.assertFalse(result["dockerApi"])
                 self.assertFalse(result["dockerWeb"])
                 self.assertFalse(result["releasePair"])
@@ -228,9 +287,49 @@ class ClassifyChangesTests(unittest.TestCase):
                     {"linux/arm64", "linux/arm/v7"},
                 )
 
-        status = self.classify(Change("M", "clients/status-agent/status-agent.py"))
+        # Tests and docs of the status agent are not copied to a kiosk.
+        status = self.classify(Change("M", "clients/status-agent/tests/test_status_agent.py"))
         self.assertTrue(status["categories"]["client"])
         self.assertEqual(status["pi4AgentMatrix"], [])
+
+    def test_files_copied_to_pi4_kiosks_publish_a_deployable_release(self) -> None:
+        """release_kiosk stages these only with an agent and a signed release set."""
+
+        for path in (
+            "infrastructure/ansible/templates/kiosk-launch.sh.j2",
+            "infrastructure/ansible/templates/kiosk-browser.service.j2",
+            "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+            "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
+            "infrastructure/ansible/roles/kiosk/defaults/main.yml",
+            "infrastructure/ansible/inventory.yml",
+            "infrastructure/ansible/templates/status-agent.conf.j2",
+            "infrastructure/ansible/templates/nfc-agent.env.j2",
+            "infrastructure/ansible/roles/release_kiosk/tasks/prepare.yml",
+            "infrastructure/ansible/roles/release_kiosk/templates/client-compose.yml.j2",
+            "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+            "clients/status-agent/status-agent.py",
+            "clients/status-agent/storage_health.py",
+            "clients/status-agent/terminal_agent_health.py",
+            "clients/status-agent/status-agent.timer",
+            "scripts/client/pi4-storage-maintenance.sh",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    result["pi4AgentServices"],
+                    ["barcode-agent", "nfc-agent", "torque-agent"],
+                )
+                self.assertTrue(result["releasePair"])
+                self.assertFalse(result["fullSuite"])
+
+        # The kiosk role and its Firefox profile are not part of a release.
+        for path in (
+            "infrastructure/ansible/roles/kiosk/templates/firefox-user.js.j2",
+            "infrastructure/ansible/templates/signage-lite.tmpfiles.conf.j2",
+            "apps/api/src/app.ts",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(self.classify(Change("M", path))["pi4AgentServices"], [])
 
     def test_signage_artifact_inputs_select_only_the_focused_contract(self) -> None:
         for path in (
@@ -250,7 +349,12 @@ class ClassifyChangesTests(unittest.TestCase):
             with self.subTest(path=path):
                 result = self.classify(Change("M", path))
                 self.assertTrue(result["categories"]["signage_artifact"])
-                if path != "scripts/deploy/rolling_release/terminal_device_maintenance.py":
+                if path not in (
+                    "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+                    "clients/status-agent/status-agent.py",
+                    "clients/status-agent/storage_health.py",
+                    "clients/status-agent/terminal_agent_health.py",
+                ):
                     self.assertFalse(result["releasePair"])
                     self.assertFalse(result["dockerApi"])
                     self.assertFalse(result["dockerWeb"])

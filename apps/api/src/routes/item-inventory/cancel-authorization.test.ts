@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
-const { authorizeRolesMock, authorizeKioskMock, requireClientDeviceMock, cancelTransactionMock, correctStockMock, listHistoryMock, listPendingImportsMock, verifyDueManagementAccessPasswordMock, servicesMock } = vi.hoisted(() => {
+const { authorizeRolesMock, authorizeKioskMock, requireClientDeviceMock, cancelTransactionMock, correctStockMock, listHistoryMock, listPendingImportsMock, listPendingImportSummariesMock, verifyDueManagementAccessPasswordMock, servicesMock } = vi.hoisted(() => {
   const authorizeRoles = vi.fn((...roles: string[]) => async (request: any) => {
     if (request.headers.authorization === 'Bearer admin' && roles.includes('ADMIN')) {
       request.user = { id: 'admin-user', role: 'ADMIN' };
@@ -20,6 +20,7 @@ const { authorizeRolesMock, authorizeKioskMock, requireClientDeviceMock, cancelT
       correctStock: vi.fn(),
       listHistory: vi.fn(),
       listPendingImports: vi.fn(),
+      listPendingImportSummaries: vi.fn(),
     },
     ingestion: {
       retryRecord: vi.fn(),
@@ -34,6 +35,7 @@ const { authorizeRolesMock, authorizeKioskMock, requireClientDeviceMock, cancelT
     correctStockMock: services.inventory.correctStock,
     listHistoryMock: services.inventory.listHistory,
     listPendingImportsMock: services.inventory.listPendingImports,
+    listPendingImportSummariesMock: services.inventory.listPendingImportSummaries,
     verifyDueManagementAccessPasswordMock: vi.fn(),
     servicesMock: vi.fn(() => services),
   };
@@ -89,6 +91,22 @@ describe('item inventory cancellation authorization', () => {
     expect(response.statusCode).toBe(200);
     expect(verifyDueManagementAccessPasswordMock).toHaveBeenCalledWith({ location: 'shared', password: '2520' });
     expect(listPendingImportsMock).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it('lists pending candidate summaries for a kiosk without the settings password', async () => {
+    const app = Fastify();
+    listPendingImportSummariesMock.mockClear().mockResolvedValueOnce([]);
+    verifyDueManagementAccessPasswordMock.mockClear();
+    authorizeKioskMock.mockClear();
+    registerItemInventoryRoutes(app);
+
+    const response = await app.inject({ method: 'GET', url: '/item-inventory/import-summaries', headers: { 'x-client-key': 'terminal-secret' } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ imports: [] });
+    expect(authorizeKioskMock).toHaveBeenCalledOnce();
+    expect(verifyDueManagementAccessPasswordMock).not.toHaveBeenCalled();
     await app.close();
   });
 

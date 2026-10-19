@@ -1,14 +1,17 @@
 # NFCエージェント: 運用時は Ansible が clients/nfc-agent/.env を配布する。
 # 初回/手動セットアップ時は setup-nfc-agent.sh が .env 未存在なら .env.example をコピーして作成する。
+# Hardened variant: client_agents_hardened in the release_kiosk template; see runbook C-13
+# docs/runbooks/security-hardening-remediation.md.
 services:
   nfc-agent:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.nfc-agent
     network_mode: host
+    user: "0:0"
     privileged: true
     devices:
-      - "/dev/bus/usb:/dev/bus/usb"
+      - /dev/bus/usb:/dev/bus/usb
     env_file:
       - ../../clients/nfc-agent/.env
     volumes:
@@ -25,6 +28,7 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.barcode-agent
     network_mode: host
+    user: "0:0"
     privileged: true
     env_file:
       - ../../clients/barcode-agent/.env
@@ -37,6 +41,7 @@ services:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.torque-agent
     network_mode: host
+    user: "0:0"
     privileged: true
     env_file:
       - ../../clients/torque-agent/.env

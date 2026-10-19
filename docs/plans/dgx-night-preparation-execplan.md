@@ -20,6 +20,9 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
 - [x] (2026-09-29) Milestone 1 follow-up deployed (#1533, 548ab640).
 - [ ] Milestone 2: GPU query embedding on the DGX (deferred 2026-09-29, see Decision Log).
 - [ ] Milestone 2b: find and fix the slow request path from the Pi 5 to the DGX; query budget raised to 1,500 ms (2026-09-29).
+- [x] (2026-09-29) Milestone 3 first step: the enrichment id list became an order, so new records are enriched too.
+- [x] (2026-09-29) Learning loop, dry run: each night, missed Chat questions were searched again deeper and judged; accepted pairs were written as proposals only.
+- [x] (2026-10-03) Learning loop removed (see Decision Log). The synthetic question flywheel (`hermes-synthetic-question-flywheel-execplan.md`) replaces it.
 - [ ] Milestone 3: one night flow for every source.
 - [ ] Milestone 4: links between sources.
 - [ ] Milestone 5: adding a source without new night code.
@@ -51,6 +54,10 @@ After this plan, the DGX does the heavy work at night and stays fast in the day.
   Rationale: the CPU embedding service answers in tens of milliseconds once bulk embedding is kept to 04:00 to 06:00, so a permanent GPU reserve buys little and costs memory when the owner switches DGX models in the day. The measured delay sits in the path, and a 1,500 ms budget still fits the 5 s answer target.
   Date/Author: 2026-09-29, owner and Claude.
 
+- Decision: remove the dry-run learning loop.
+  Rationale: it needs floor workers to ask and fail first, and the owner rejected improvement that depends on user effort (2026-10-03). Nothing consumed its proposals. It assumed the day judge reads 15 candidates, which became 30 in #1642. The pass of 2026-10-02 found 0 questions. The synthetic question flywheel generates questions from the records instead.
+  Date/Author: 2026-10-03, owner and Claude.
+
 ## Outcomes & Retrospective
 
 Not started.
@@ -59,7 +66,7 @@ Not started.
 
 The DGX Spark is one machine with 20 CPU cores and about 121 GB of memory that the CPU and the GPU share. Two repositories touch it. This repository (`RaspberryPiSystem_002`) owns the business Pi 5, the business Hermes code, and the business LLM model profile. The repository `denkoushi/DGXSparkControlPlane` owns what runs on the DGX: the lease (which task may use the GPU), the business proxy, and the text embedding service. Changes to the DGX go to that repository first, with backward compatibility, and the Pi 5 side follows (see `AGENTS.md`, DGX Spark Control Plane Boundary).
 
-Enrichment is produced by `scripts/hermes-search/retrieval/enrichment-runner.mjs`, started by the API process on the Pi 5 (`apps/api/src/services/assembly/hermes-search-trial.service.ts`) every 5 minutes inside the window in `HERMES_RETRIEVAL_ENRICHMENT_WINDOW` (now `22-6`). It calls the business LLM on the DGX and writes `retrieval-enrichment.jsonl` on the Pi 5. Details and history are in `docs/plans/hermes-dgx-retrieval-enrichment.md`.
+Enrichment is produced by `scripts/hermes-search/retrieval/enrichment-runner.mjs`, started by the API process on the Pi 5 (`apps/api/src/services/business-hermes/hermes-search-trial.service.ts`) every 5 minutes inside the window in `HERMES_RETRIEVAL_ENRICHMENT_WINDOW` (now `22-6`). It calls the business LLM on the DGX and writes `retrieval-enrichment.jsonl` on the Pi 5. Details and history are in `docs/plans/hermes-dgx-retrieval-enrichment.md`.
 
 The meaning-based search keeps one vector per record in `retrieval-dense-dgx.bin` on the Pi 5. `createDenseRuntime` in `scripts/hermes-search/retrieval/dense-dgx.mjs` refreshes it after each corpus reload by sending changed records in batches of 8 to the DGX, and embeds each question within a time budget (`DEFAULT_EMBED_BUDGET_MS` in `scripts/hermes-search/retrieval/query-embedding.mjs`, 800 ms until 2026-09-29 and 1,500 ms after). On a timeout the answer uses word matching only and the receipt log line `Hermes search receipt` records `vectorStatus: timeout`.
 
@@ -82,6 +89,10 @@ In the Control Plane, make the embedding service use the GPU when decision D1 al
 A question embedding leaves the Pi 5 API container through the egress proxy (`HERMES_INFERENCE_EGRESS`, the `business-hermes-chat-egress` container) and reaches the DGX business gateway (`dgx-control-business-proxy.service`, `HERMES_INFERENCE_ORIGIN`), which forwards it to the embedding service on port 38110. Measure each hop separately, find where the 300 ms overhead and the multi-second jumps come from, and fix it on the side that owns it (egress in this repository, gateway in the Control Plane). At the end, question embedding from the Pi 5 stays under 150 ms for twenty calls in a row.
 
 Findings on 2026-09-29: the Pi 5 reaches the DGX over Tailscale through a public address (`tailscale status` shows `direct 1.73.131.208`), with a round trip of 76 to 108 ms. The egress proxy (`infrastructure/docker/business-hermes-egress/proxy.mjs`) sends `connection: close` upstream, and the DGX gateway (`agents/dgx/dgx_control/business_proxy.py` in the Control Plane) is a Python `BaseHTTPRequestHandler` that answers with HTTP/1.0 and closes each connection. Every question therefore opens a new TCP connection across the internet, which explains the steady 0.3 s, and a lost connection setup packet waits the TCP retry interval of 1 s and then 2 s, which matches the 1.8 to 3.8 s jumps. Keep-alive on the Pi 5 side alone would not help, because the gateway closes the connection and a Chat question sends only one embedding request. A real fix needs HTTP/1.1 keep-alive on the gateway, keep-alive in the egress proxy, and a small periodic request that keeps one connection warm. That is deferred until receipts from a few days show how often the 1,500 ms budget is still exceeded.
+
+### Learning loop from missed questions (removed 2026-10-03)
+
+From 2026-09-29 to 2026-10-03, the enrichment runner started a dry-run pass each night. The pass searched the day's missed Chat questions again and wrote proposals to `retrieval-learning-proposals.jsonl`. It was removed; the Decision Log gives the reasons. `retrieval-learning-state.json` and any proposals file on the Pi 5 are no longer read and can be deleted.
 
 ### Milestone 3: one night flow for every source
 

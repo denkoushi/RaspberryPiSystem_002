@@ -7,9 +7,11 @@ from pathlib import Path
 
 MODULE_DIR = Path(__file__).resolve().parents[1]
 ADAPTER = MODULE_DIR / "qwen38-flash-next-adapter.sh"
-UPSTREAM_HOST_LINE = "    --host 0.0.0.0 " + ("\\" * 2) + "\n"
+UPSTREAM_HOST_LINE = "    --host $BIND " + ("\\" * 2) + "\n"
 LOCAL_HOST_LINE = "    --host 127.0.0.1 " + ("\\" * 2) + "\n"
 READINESS_MARKER = 'info "Loading weights (~3-4 min). Following logs until ready..."\n'
+LAUNCH_LINE = 'bash "$LAUNCH_SCRIPT"\n'
+JA_VOCAB = MODULE_DIR / "qwen38-draft-vocab-ja-en-code-56k.txt"
 
 
 def create_adapter_fixture(
@@ -147,7 +149,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
                 capture.read_text(encoding="utf-8").strip(),
                 "Mia-AiLab/Qwen3.8-Flash-Next-NVFP4|system-prod-trtllm|"
                 "vllm/vllm-openai:qwen38-flash-next|system-prod-primary|"
-                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|bfloat16|files/draft_vocab_en_code_47k.txt|--ipc host -v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1",
+                f"{root / 'hf-cache'}|38083|262144|1|2048|fp8|true|0|0.71|--scheduling-policy priority|bfloat16|{JA_VOCAB}|--ipc host -v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1 -e TRITON_CACHE_DIR=/root/.cache/vllm/triton",
             )
             self.assertEqual(args_count_capture.read_text(encoding="utf-8").strip(), "2")
             self.assertEqual(
@@ -323,7 +325,7 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             capture = root / "capture"
             start_contents = (
                 "#!/usr/bin/env bash\n"
-                "printf '%s|%s|%s|%s' \"$ABLIT\" \"$MAMBA_SSM_CACHE_DTYPE\" \"$MTP_DRAFT_VOCAB\" \"$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
+                "printf '%s|%s|%s|%s|%s|%s|%s' \"$ABLIT\" \"$BIND\" \"$MTP_DISABLE_BLOCK_DROP\" \"${CHAT_TEMPLATE-unset}\" \"$MAMBA_SSM_CACHE_DTYPE\" \"$MTP_DRAFT_VOCAB\" \"$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
                 "cat <<'UPSTREAM_LAUNCH'\n"
                 "docker run \\\n"
                 + UPSTREAM_HOST_LINE
@@ -338,6 +340,9 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
                 recipe_env=(
                     "IMAGE=unused\n"
                     "ABLIT=1\n"
+                    "BIND=0.0.0.0\n"
+                    "MTP_DISABLE_BLOCK_DROP=0\n"
+                    "CHAT_TEMPLATE=files/chat-template/chat_template.jinja\n"
                     "MAMBA_SSM_CACHE_DTYPE=bfloat16\n"
                     "MTP_DRAFT_VOCAB=files/draft_vocab_en_code_47k.txt\n"
                     "EXTRA_DOCKER_ARGS='-e VLLM_USE_V2_MODEL_RUNNER=1'\n"
@@ -349,9 +354,105 @@ class Qwen38FlashAdapterTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 capture.read_text(encoding="utf-8"),
-                f"0|bfloat16|files/draft_vocab_en_code_47k.txt|-v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1",
+                f"0|127.0.0.1|1||bfloat16|{JA_VOCAB}|-v {root / 'home/.cache/vllm/business-patches/qwen38-gdn-meta.py'}:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py:ro -e VLLM_USE_V2_MODEL_RUNNER=1 -e TRITON_CACHE_DIR=/root/.cache/vllm/triton",
             )
 
+
+    def _fast_load_start(self):
+        return (
+            "#!/usr/bin/env bash\n"
+            "printf '%s|%s' \"$EXTRA_VLLM_ARGS\" \"$EXTRA_DOCKER_ARGS\" > \"$CAPTURE\"\n"
+            "cat \"$BASH_SOURCE\" > \"$SOURCE_CAPTURE\"\n"
+            "cat <<'UPSTREAM_LAUNCH'\n"
+            + UPSTREAM_HOST_LINE
+            + "UPSTREAM_LAUNCH\n"
+            + "cat <<'UPSTREAM_STEP6'\n"
+            + LAUNCH_LINE
+            + "UPSTREAM_STEP6\n"
+            + "cat <<'UPSTREAM_READINESS'\n"
+            + READINESS_MARKER
+            + "UPSTREAM_READINESS\n"
+        )
+
+    def test_adapter_enables_instanttensor_when_staged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = root / "capture"
+            source_capture = root / "source-capture"
+            _, env = create_adapter_fixture(root, self._fast_load_start())
+            staged = root / "home/.cache/vllm/pylib/instanttensor-0.2.0"
+            staged.mkdir(parents=True)
+            (staged / ".qwen38-instanttensor-ready").write_text("wheel=x\n", encoding="utf-8")
+            env.update({"CAPTURE": str(capture), "SOURCE_CAPTURE": str(source_capture)})
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            vllm_args, docker_args = capture.read_text(encoding="utf-8").split("|", 1)
+            self.assertEqual(vllm_args, "--scheduling-policy priority --load-format instanttensor")
+            self.assertTrue(docker_args.endswith(
+                "-e TRITON_CACHE_DIR=/root/.cache/vllm/triton"
+                " -e PYTHONPATH=/root/.cache/vllm/pylib/instanttensor-0.2.0"
+            ))
+            guard = MODULE_DIR / "qwen38_ple_loader_guard.py"
+            self.assertIn(
+                f'python3 {guard} "$OFFLOAD_DIR/worker.py" || exit 1\n' + LAUNCH_LINE,
+                source_capture.read_text(encoding="utf-8"),
+            )
+            self.assertIn("fast_load=1", result.stderr)
+
+    def test_adapter_keeps_safetensors_loader_when_not_staged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = root / "capture"
+            source_capture = root / "source-capture"
+            _, env = create_adapter_fixture(root, self._fast_load_start())
+            env.update({"CAPTURE": str(capture), "SOURCE_CAPTURE": str(source_capture)})
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            vllm_args, docker_args = capture.read_text(encoding="utf-8").split("|", 1)
+            self.assertEqual(vllm_args, "--scheduling-policy priority")
+            self.assertNotIn("PYTHONPATH", docker_args)
+            self.assertNotIn("qwen38_ple_loader_guard", source_capture.read_text(encoding="utf-8"))
+            self.assertIn("keeping the safetensors loader", result.stderr)
+
+    def test_adapter_rejects_fast_load_without_pinned_launch_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            start_contents = self._fast_load_start().replace(LAUNCH_LINE, "")
+            recipe, env = create_adapter_fixture(root, start_contents)
+            staged = root / "home/.cache/vllm/pylib/instanttensor-0.2.0"
+            staged.mkdir(parents=True)
+            (staged / ".qwen38-instanttensor-ready").write_text("wheel=x\n", encoding="utf-8")
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("expected exactly one pinned launch line, found 0", result.stderr)
+            self.assertEqual(list(recipe.glob(".business-qwen38-boundary-start.*")), [])
+
+    def test_adapter_forwards_selected_draft_vocab(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = root / "capture"
+            start_contents = (
+                "#!/usr/bin/env bash\n"
+                "printf '%s' \"$MTP_DRAFT_VOCAB\" > \"$CAPTURE\"\n"
+                "cat <<'UPSTREAM_LAUNCH'\n"
+                + UPSTREAM_HOST_LINE
+                + "UPSTREAM_LAUNCH\n"
+                + "cat <<'UPSTREAM_READINESS'\n"
+                + READINESS_MARKER
+                + "UPSTREAM_READINESS\n"
+            )
+            _, env = create_adapter_fixture(root, start_contents)
+            env.update({"CAPTURE": str(capture), "BLUE_QWEN38_DRAFT_VOCAB": "/srv/vocab.txt"})
+            result = subprocess.run([str(ADAPTER)], env={**os.environ, **env}, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(capture.read_text(encoding="utf-8"), "/srv/vocab.txt")
+
+    def test_shipped_japanese_draft_vocab_keeps_upstream_floor(self):
+        ids = [int(line) for line in JA_VOCAB.read_text(encoding="utf-8").split()]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(len(ids), 56262)
+        self.assertTrue(set(range(400)).issubset(ids))
 
 if __name__ == "__main__":
     unittest.main()

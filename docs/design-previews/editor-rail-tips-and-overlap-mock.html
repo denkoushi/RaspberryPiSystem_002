@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>要領書エディタ 記号と部品ペイン</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* layout: one 1920x1080 kiosk screen scaled to fit. columns: pages | parts | canvas | rail */
+:root{
+  --bg:#0f1317; --bar:#161c22; --panel:#1b222a; --line:#27313b; --line-2:#344252;
+  --fg:#eef3f6; --muted:#9fadb9; --accent:#3ba776; --accent-fg:#0b1a12; --warn:#f6b93b; --use:#5fc3e8; --danger:#e5484d; --focus:#7cc4ff;
+  --k-text:#f6b93b; --k-shape:#5fc3e8; --k-image:#3ba776;
+  --font:"Noto Sans JP",system-ui,-apple-system,"Hiragino Sans",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);padding-block:16px;padding-inline:16px}
+.wrap{max-width:1600px;margin:0 auto;display:grid;gap:12px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tab{min-height:44px;padding:0 16px;border:1px solid var(--line);background:var(--bar);color:var(--fg);border-radius:8px;font:inherit;font-weight:700;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.tab:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.cap{color:var(--muted);font-size:14px;margin-left:auto}
+.stage{position:relative;width:100%;aspect-ratio:16/9;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg)}
+.screen{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;font-size:22px}
+.scr{height:100%}
+.scr:not([data-active="true"]){display:none!important}
+svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+.ed{position:relative;height:100%;display:grid;grid-template-columns:120px 280px minmax(0,1fr) 64px;background:#0a0d10}
+.ed[data-parts="closed"]{grid-template-columns:120px 0 minmax(0,1fr) 64px}
+.ed[data-parts="closed"] .parts{display:none}
+.pages{background:var(--bar);border-right:1px solid var(--line);padding:10px 8px;display:grid;gap:8px;align-content:start;justify-items:center}
+.pages .pg{width:100px;aspect-ratio:1/1.414;background:#fff;border-radius:4px;border:2px solid transparent;position:relative}
+.pages .pg[aria-current="true"]{border-color:var(--use)}
+.pages .pg i{position:absolute;left:6px;bottom:4px;font-style:normal;font-family:var(--mono);font-size:14px;color:#333}
+.pages .add{width:100px;height:48px;border-radius:8px;border:1px dashed var(--line-2);color:var(--muted);display:grid;place-items:center;font-size:26px}
+
+/* parts pane: scaled copies of the parts themselves, front first */
+.parts{background:var(--bar);border-right:1px solid var(--line);display:grid;grid-template-rows:auto 1fr auto;min-height:0}
+.parts .ph{height:56px;display:flex;align-items:center;gap:10px;padding:0 12px 0 16px;border-bottom:1px solid var(--line)}
+.parts .ph h3{margin:0;font-size:19px;font-weight:900;letter-spacing:.06em}
+.parts .ph .c{font-family:var(--mono);color:var(--muted);font-size:16px}
+.plist{display:grid;gap:6px;padding:8px;align-content:start;overflow:auto}
+.part{height:112px;display:grid;grid-template-columns:minmax(0,1fr) 28px;align-items:center;gap:6px;padding:8px;border-radius:10px;border:1px solid var(--line);background:#fff;cursor:pointer;position:relative;font:inherit;text-align:left}
+.part:hover{border-color:var(--line-2)}
+.part[aria-selected="true"]{border-color:var(--use);box-shadow:0 0 0 2px var(--use)}
+.part .mini{position:relative;height:96px;display:grid;place-items:center;overflow:hidden}
+.part .mini .box{position:relative;display:block}
+.part .mini .ov{position:absolute;left:0!important;top:0!important;transform-origin:0 0;cursor:default;pointer-events:none}
+.part .no{font-family:var(--mono);font-size:14px;color:var(--muted);text-align:right}
+.part[aria-selected="true"] .no{color:var(--use)}
+.part.hid{opacity:.4}
+.pfoot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:8px;border-top:1px solid var(--line)}
+.pfoot button{height:48px;border:1px solid var(--line-2);border-radius:8px;background:transparent;color:var(--fg);font:inherit;cursor:pointer;display:grid;place-items:center}
+.pfoot button svg{width:24px;height:24px}
+.pfoot button:disabled{opacity:.35;cursor:default}
+.toggle{position:absolute;left:120px;top:50%;width:22px;height:72px;transform:translateY(-50%);border:1px solid var(--line-2);border-left:none;border-radius:0 8px 8px 0;background:var(--bar);color:var(--muted);display:grid;place-items:center;cursor:pointer;z-index:5}
+.ed:not([data-parts="closed"]) .toggle{left:400px}
+.toggle svg{width:14px;height:14px}
+
+.canvas{position:relative;display:grid;place-items:center;padding:16px;min-width:0}
+.sheet{background:#fff;color:#111;height:1040px;aspect-ratio:1/1.414;border:1px solid #777;padding:40px;font-size:18px;display:grid;grid-template-rows:auto 1fr;gap:16px;position:relative;overflow:hidden}
+.sheet .hd{display:grid;grid-template-columns:1fr 2fr 1fr 3fr;border:1px solid #333;font-size:16px}
+.sheet .hd span{padding:6px 8px;border-right:1px solid #333}
+.sheet .grid{border:1px solid #333;background:repeating-linear-gradient(to bottom,transparent 0 56px,#333 56px 57px)}
+.crumb{position:absolute;left:16px;top:12px;height:36px;display:flex;align-items:center;gap:10px;padding:0 12px;border-radius:8px;background:rgba(22,28,34,.85);border:1px solid var(--line-2);font-size:18px;color:var(--muted);max-width:70%}
+.crumb b{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb i{opacity:.5;font-style:normal}
+.crumb .tag{height:26px;display:inline-flex;align-items:center;padding:0 10px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);font-size:15px;font-weight:700;white-space:nowrap}
+.toast{position:absolute;left:16px;bottom:16px;height:44px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:8px;background:rgba(22,28,34,.92);border:1px solid var(--line-2);font-size:18px}
+.toast i{width:10px;height:10px;border-radius:50%;background:var(--accent);font-style:normal}
+
+/* rail: icons only; hover (kiosk: long press) shows the verb */
+.rail{background:var(--bar);border-left:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0}
+.rb{width:48px;height:48px;border-radius:10px;border:1px solid var(--line-2);background:transparent;color:var(--fg);display:grid;place-items:center;flex:none;position:relative;cursor:pointer;font:inherit;padding:0}
+.rb svg{width:26px;height:26px}
+.rb.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.rb.warn{border-color:var(--warn);color:var(--warn)}
+.rb.danger{border-color:transparent;color:var(--danger)}
+.rb[aria-pressed="true"]{background:var(--line)}
+.rb .n{position:absolute;right:-4px;top:-4px;min-width:20px;height:20px;border-radius:10px;background:var(--warn);color:var(--accent-fg);font-size:13px;font-weight:900;display:grid;place-items:center;padding:0 5px}
+.tip{position:absolute;right:62px;top:50%;transform:translateY(-50%) translateX(6px);height:40px;display:flex;align-items:center;padding:0 14px;border-radius:8px;background:rgba(22,28,34,.98);border:1px solid var(--line-2);box-shadow:0 10px 30px rgba(0,0,0,.45);color:var(--fg);font-size:18px;font-weight:700;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s,transform .12s;z-index:5}
+.tip::after{content:"";position:absolute;right:-6px;top:50%;width:10px;height:10px;background:rgba(22,28,34,.98);border-right:1px solid var(--line-2);border-top:1px solid var(--line-2);transform:translateY(-50%) rotate(45deg)}
+.rb:hover .tip,.rb:focus-visible .tip,.rb[data-show="true"] .tip{opacity:1;transform:translateY(-50%) translateX(0)}
+.pfoot button{position:relative}
+.pfoot .tip{right:auto;left:50%;top:-46px;transform:translateX(-50%) translateY(6px)}
+.pfoot .tip::after{right:auto;left:50%;top:auto;bottom:-6px;transform:translateX(-50%) rotate(135deg)}
+.pfoot button:hover .tip,.pfoot button:focus-visible .tip{opacity:1;transform:translateX(-50%) translateY(0)}
+.sep{width:36px;height:1px;background:var(--line-2);margin:4px 0}
+.gap{flex:1}
+
+/* overlays */
+.ov{position:absolute;cursor:pointer;touch-action:none}
+.ov.image{background:linear-gradient(135deg,#8a9aa6,#4c5a66 60%,#2f3a44);border-radius:2px;display:grid;place-items:center;color:rgba(255,255,255,.55)}
+.ov.image svg{width:64px;height:64px}
+.ov.shape{border:3px solid #d8262f;background:transparent}
+.ov.text{display:grid;place-items:center;font-size:26px;font-weight:900;color:#111;background:rgba(255,255,255,.72);line-height:1.2;padding:6px 10px}
+.ov.arrow svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;stroke:#d8262f;stroke-width:5}
+.ov[aria-selected="true"]{outline:3px solid var(--use);outline-offset:1px}
+.ov .h{position:absolute;width:16px;height:16px;background:var(--use);border:2px solid #fff;border-radius:3px;display:none}
+.ov[aria-selected="true"] .h{display:block}
+.ov .h:nth-of-type(1){left:-9px;top:-9px}.ov .h:nth-of-type(2){right:-9px;top:-9px}.ov .h:nth-of-type(3){left:-9px;bottom:-9px}.ov .h:nth-of-type(4){right:-9px;bottom:-9px}
+.ov[data-hidden="true"]{display:none}
+
+/* inspector (unchanged, overlap controls removed) */
+.insp{position:absolute;right:80px;top:16px;width:340px;background:rgba(22,28,34,.96);border:1px solid var(--line-2);border-radius:14px;padding:16px;display:grid;gap:12px}
+.insp h5{margin:0;font-size:20px;font-weight:900;display:flex;align-items:center;gap:10px}
+.insp h5 i{width:12px;height:12px;border-radius:3px;font-style:normal}
+.insp h5 .x{margin-left:auto;width:40px;height:40px;border-radius:8px;border:1px solid var(--line-2);display:grid;place-items:center;color:var(--muted);font-size:18px}
+.insp .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.insp label{display:grid;gap:4px;font-size:15px;color:var(--muted)}
+.insp .in{height:44px;border:1px solid var(--line-2);border-radius:8px;background:var(--panel);display:flex;align-items:center;padding:0 10px;font-family:var(--mono);color:var(--fg);font-size:18px}
+.insp .acts{display:flex;gap:8px}
+.insp .acts span{flex:1;height:44px;display:grid;place-items:center;border:1px solid var(--line-2);border-radius:8px;font-size:17px;font-weight:700}
+.insp .acts span.danger{color:var(--danger);border-color:transparent}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-for="a">部品ペインを開いた状態</button>
+    <button class="tab" role="tab" aria-selected="false" data-for="b">部品ペインを閉じた状態</button>
+    <span class="cap" id="cap">右端は記号だけ。乗せる(キオスクは長押し)と動詞が 1 語出る。左から 2 列目の「部品」ペインは、紙に置いたものの縮小版をそのまま前から順に並べる。押すと紙の上でも選ばれ、▲▼ で順番を変える</span>
+  </div>
+  <div class="stage"><div class="screen" id="screen">
+
+    <section class="scr ed" data-active="true" id="a">
+      <div class="pages"><div class="pg" aria-current="true"><i>1</i></div><div class="pg"><i>2</i></div><div class="pg"><i>3</i></div><div class="add">＋</div></div>
+      <aside class="parts" aria-label="部品">
+        <div class="ph"><h3>部品</h3><span class="c" id="pcount">4</span></div>
+        <div class="plist" id="plist" role="listbox" aria-label="このページの部品"></div>
+        <div class="pfoot">
+          <button id="up" aria-label="前へ出す"><svg viewBox="0 0 24 24"><path d="M6 14l6-6 6 6"/></svg><span class="tip">前へ出す</span></button>
+          <button id="down" aria-label="後ろへ下げる"><svg viewBox="0 0 24 24"><path d="M6 10l6 6 6-6"/></svg><span class="tip">後ろへ下げる</span></button>
+          <button id="hide" aria-label="隠す"><svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/></svg><span class="tip">隠す</span></button>
+        </div>
+      </aside>
+      <button class="toggle" aria-label="部品ペインを閉じる" data-toggle><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="canvas">
+        <div class="sheet" id="sheet"><div class="hd"><span>型番</span><span>DFD6362XYZ-3943173</span><span>工程</span><span>組立</span></div><div class="grid"></div>
+          <div class="ov image" data-id="img" data-kind="image" data-name="写真" data-sub="ベアリング圧入.jpg" style="left:110px;top:300px;width:430px;height:310px;z-index:1"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M8 6l1.5-2h5L16 6"/></svg><b class="h"></b><b class="h"></b><b class="h"></b><b class="h"></b></div>
+          <div class="ov shape" data-id="rect" data-kind="shape" data-name="四角" data-sub="赤 · 線 3" style="left:290px;top:420px;width:310px;height:230px;z-index:2"><b class="h"></b><b class="h"></b><b class="h"></b><b class="h"></b></div>
+          <div class="ov arrow" data-id="arw" data-kind="shape" data-name="矢印" data-sub="赤 · 左下向き" style="left:470px;top:330px;width:120px;height:140px;z-index:3"><svg viewBox="0 0 120 140"><path d="M110 10L18 128"/><path d="M18 128l6-30M18 128l30-6"/></svg><b class="h"></b><b class="h"></b><b class="h"></b><b class="h"></b></div>
+          <div class="ov text" data-id="txt" data-kind="text" data-name="ここを先に締める" data-sub="文字 · 26" style="left:330px;top:480px;width:250px;height:92px;z-index:4">ここを先に<br>締める<b class="h"></b><b class="h"></b><b class="h"></b><b class="h"></b></div>
+        </div>
+        <div class="crumb"><b>DFD6362XYZ-3943173</b><i>›</i>組立 › 組立<i>›</i><b>DFD6362XYZ-3943173_組立_組立</b><span class="tag">作る · 下書き 第1版</span></div>
+        <div class="insp" role="dialog" aria-label="選択中の部品" id="insp">
+          <h5><i id="insp-sw"></i><span id="insp-title">ここを先に締める</span><span class="x">✕</span></h5>
+          <div class="row"><label>左<span class="in">44.9 %</span></label><label>上<span class="in">46.2 %</span></label><label>幅<span class="in">34.0 %</span></label><label>高さ<span class="in">8.8 %</span></label></div>
+          <div class="acts"><span>複製</span><span class="danger">削除</span></div>
+        </div>
+        <div class="toast"><i></i>保存しました 13:02</div>
+      </div>
+      <nav class="rail" aria-label="エディタ操作">
+        <button class="rb primary"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg><span class="tip">保存する</span></button>
+        <button class="rb warn"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 12h10M12 9v6"/></svg><span class="tip">公開する</span></button>
+        <span class="sep"></span>
+        <button class="rb"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg><span class="n">12</span><span class="tip">素材を置く</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg><span class="tip">動画をつなぐ</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg><span class="tip">文字を置く</span></button>
+        <button class="rb" data-show="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><circle cx="16.5" cy="16.5" r="3.5"/></svg><span class="tip">図形を置く</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg><span class="tip">範囲を選ぶ</span></button>
+        <span class="sep"></span>
+        <button class="rb"><svg viewBox="0 0 24 24"><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 010 10h-3"/></svg><span class="tip">元に戻す</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><path d="M15 14l4-4-4-4"/><path d="M19 10h-9a5 5 0 000 10h3"/></svg><span class="tip">やり直す</span></button>
+        <span class="gap"></span>
+        <button class="rb danger"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg><span class="tip">削除する</span></button>
+        <span class="sep"></span>
+        <button class="rb"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span class="tip">工房へ戻る</span></button>
+      </nav>
+    </section>
+
+    <section class="scr ed" id="b" data-parts="closed">
+      <div class="pages"><div class="pg" aria-current="true"><i>1</i></div><div class="pg"><i>2</i></div><div class="pg"><i>3</i></div><div class="add">＋</div></div>
+      <aside class="parts"></aside>
+      <button class="toggle" aria-label="部品ペインを開く" data-toggle><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      <div class="canvas">
+        <div class="sheet"><div class="hd"><span>型番</span><span>DFD6362XYZ-3943173</span><span>工程</span><span>組立</span></div><div class="grid"></div>
+          <div class="ov image" style="left:110px;top:300px;width:430px;height:310px;z-index:1"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="4"/><path d="M8 6l1.5-2h5L16 6"/></svg></div>
+          <div class="ov shape" style="left:290px;top:420px;width:310px;height:230px;z-index:2"></div>
+          <div class="ov arrow" style="left:470px;top:330px;width:120px;height:140px;z-index:3"><svg viewBox="0 0 120 140"><path d="M110 10L18 128"/><path d="M18 128l6-30M18 128l30-6"/></svg></div>
+          <div class="ov text" style="left:330px;top:480px;width:250px;height:92px;z-index:4">ここを先に<br>締める</div>
+        </div>
+        <div class="crumb"><b>DFD6362XYZ-3943173</b><i>›</i>組立 › 組立<i>›</i><b>DFD6362XYZ-3943173_組立_組立</b><span class="tag">作る · 下書き 第1版</span></div>
+        <div class="toast"><i></i>保存しました 13:02</div>
+      </div>
+      <nav class="rail" aria-label="エディタ操作">
+        <button class="rb primary"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg><span class="tip">保存する</span></button>
+        <button class="rb warn"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 12h10M12 9v6"/></svg><span class="tip">公開する</span></button>
+        <span class="sep"></span>
+        <button class="rb"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg><span class="n">12</span><span class="tip">素材を置く</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg><span class="tip">動画をつなぐ</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg><span class="tip">文字を置く</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><circle cx="16.5" cy="16.5" r="3.5"/></svg><span class="tip">図形を置く</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/></svg><span class="tip">範囲を選ぶ</span></button>
+        <span class="sep"></span>
+        <button class="rb"><svg viewBox="0 0 24 24"><path d="M9 14l-4-4 4-4"/><path d="M5 10h9a5 5 0 010 10h-3"/></svg><span class="tip">元に戻す</span></button>
+        <button class="rb"><svg viewBox="0 0 24 24"><path d="M15 14l4-4-4-4"/><path d="M19 10h-9a5 5 0 000 10h3"/></svg><span class="tip">やり直す</span></button>
+        <span class="gap"></span>
+        <button class="rb danger"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13"/></svg><span class="tip">削除する</span></button>
+        <span class="sep"></span>
+        <button class="rb"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span class="tip">工房へ戻る</span></button>
+      </nav>
+    </section>
+
+  </div></div>
+</div>
+<script>
+const screen = document.getElementById('screen');
+const fit = () => { const w = screen.parentElement.clientWidth; screen.style.transform = `scale(${w / 1920})`; };
+new ResizeObserver(fit).observe(screen.parentElement); fit();
+const caps = {
+  a: '右端は記号だけ。乗せる(キオスクは長押し)と動詞が 1 語出る。左から 2 列目の「部品」ペインは、紙に置いたものの縮小版をそのまま前から順に並べる。押すと紙の上でも選ばれ、▲▼ で順番を変える',
+  b: 'ペインは境目のつまみで閉じられる。閉じると紙が広くなる。開閉は端末ごとに覚える',
+};
+for (const tab of document.querySelectorAll('.tab')) tab.addEventListener('click', () => {
+  for (const t of document.querySelectorAll('.tab')) t.setAttribute('aria-selected', String(t === tab));
+  for (const s of document.querySelectorAll('.scr')) s.dataset.active = String(s.id === tab.dataset.for);
+  document.getElementById('cap').textContent = caps[tab.dataset.for];
+});
+for (const b of document.querySelectorAll('.rb, .pfoot button')) {
+  let timer = null;
+  b.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') return; timer = setTimeout(() => { b.dataset.show = 'true'; }, 500); });
+  const stop = () => { clearTimeout(timer); setTimeout(() => { delete b.dataset.show; }, 1200); };
+  b.addEventListener('pointerup', stop); b.addEventListener('pointerleave', stop); b.addEventListener('pointercancel', stop);
+}
+for (const b of document.querySelectorAll('.rb[data-show]')) b.addEventListener('pointerenter', () => { delete b.dataset.show; }, { once: true });
+for (const t of document.querySelectorAll('[data-toggle]')) t.addEventListener('click', () => {
+  const ed = t.closest('.ed'); const closed = ed.dataset.parts !== 'closed'; ed.dataset.parts = closed ? 'closed' : 'open';
+});
+
+// parts pane: front-most first; select, reorder, hide
+const sheet = document.getElementById('sheet');
+const ovs = [...sheet.querySelectorAll('.ov')];
+const kindColor = { text: 'var(--k-text)', shape: 'var(--k-shape)', image: 'var(--k-image)' };
+const unusedIcons = {
+  text: '<svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg>',
+  shape: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><circle cx="16.5" cy="16.5" r="3.5"/></svg>',
+  image: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg>',
+};
+let selected = ovs.find((el) => el.dataset.id === 'txt');
+const ordered = () => [...ovs].sort((a, b) => Number(b.style.zIndex) - Number(a.style.zIndex));
+function render() {
+  const list = ordered();
+  for (const el of ovs) el.setAttribute('aria-selected', String(el === selected));
+  const plist = document.getElementById('plist'); plist.innerHTML = '';
+  for (const [i, el] of list.entries()) {
+    const row = document.createElement('button'); row.className = 'part' + (el.dataset.hidden === 'true' ? ' hid' : ''); row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(el === selected)); row.dataset.pick = el.dataset.id; row.setAttribute('aria-label', el.dataset.name);
+    const mini = document.createElement('span'); mini.className = 'mini';
+    const copy = el.cloneNode(true); copy.removeAttribute('aria-selected'); copy.removeAttribute('data-hidden'); for (const h of copy.querySelectorAll('.h')) h.remove();
+    const w = el.offsetWidth, h = el.offsetHeight, sc = Math.min(224 / w, 96 / h);
+    copy.style.transform = `scale(${sc})`; copy.style.zIndex = '';
+    const box = document.createElement('span'); box.className = 'box'; box.style.width = `${w * sc}px`; box.style.height = `${h * sc}px`;
+    box.appendChild(copy); mini.appendChild(box); row.appendChild(mini);
+    const no = document.createElement('span'); no.className = 'no'; no.textContent = String(i + 1); row.appendChild(no);
+    plist.appendChild(row);
+  }
+  document.getElementById('pcount').textContent = String(list.length);
+  const idx = list.indexOf(selected);
+  document.getElementById('up').disabled = !selected || idx === 0;
+  document.getElementById('down').disabled = !selected || idx === list.length - 1;
+  document.getElementById('hide').querySelector('span').textContent = selected?.dataset.hidden === 'true' ? '出す' : '隠す';
+  const insp = document.getElementById('insp');
+  insp.hidden = !selected;
+  if (selected) { document.getElementById('insp-title').textContent = selected.dataset.name; document.getElementById('insp-sw').style.background = kindColor[selected.dataset.kind]; }
+}
+document.getElementById('plist').addEventListener('click', (e) => { const b = e.target.closest('[data-pick]'); if (!b) return; selected = ovs.find((el) => el.dataset.id === b.dataset.pick); render(); });
+for (const el of ovs) el.addEventListener('click', (e) => { e.stopPropagation(); selected = el; render(); });
+sheet.addEventListener('click', () => { selected = null; render(); });
+const swap = (dir) => { const list = ordered(); const i = list.indexOf(selected); const j = i + dir; if (j < 0 || j >= list.length) return; const z = list[i].style.zIndex; list[i].style.zIndex = list[j].style.zIndex; list[j].style.zIndex = z; render(); };
+document.getElementById('up').addEventListener('click', () => swap(-1));
+document.getElementById('down').addEventListener('click', () => swap(1));
+document.getElementById('hide').addEventListener('click', () => { if (!selected) return; selected.dataset.hidden = selected.dataset.hidden === 'true' ? 'false' : 'true'; render(); });
+render();
+</script>
+</body>
+</html>

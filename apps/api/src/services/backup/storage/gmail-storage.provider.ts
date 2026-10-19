@@ -10,6 +10,7 @@ import { AdaptiveRateController } from '../adaptive-rate-controller.js';
 import {
   assertCsvGmailSubjectPatternAllowed,
   isItemInventoryGmailSubject,
+  isProcedureMaterialGmailSubject,
   isWorkInstructionGmailSubject,
 } from '../../gmail/gmail-subject-reservation.policy.js';
 
@@ -248,7 +249,7 @@ export class GmailStorageProvider implements StorageProvider {
         seen.add(messageId);
         const message = await this.gmailClient.getMessage(messageId);
         const subject = message?.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject')?.value ?? '';
-        if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject)) {
+        if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject) || isProcedureMaterialGmailSubject(subject)) {
           ownedSeen = true;
           logger?.info(
             { messageId, messageSubject: subject },

@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
-import { HermesSearchTrialService } from '../../services/assembly/hermes-search-trial.service.js';
-import { createReceiptLog, type ReceiptLog } from '../../services/assembly/hermes-search-receipt-log.js';
+import { HermesSearchTrialService, type HermesPrincipal } from '../../services/business-hermes/hermes-search-trial.service.js';
+import { createReceiptLog, type ReceiptLog } from '../../services/business-hermes/hermes-search-receipt-log.js';
 
 const SAFE_DIAGNOSTIC_STAGES = new Set(['jev_query', 'worker_request']);
 const SAFE_DIAGNOSTIC_EXCEPTION_TYPES = new Set(['TypeSafeDirectError', 'AbortError', 'RangeError', 'ReferenceError', 'SyntaxError', 'TypeError', 'Error']);
@@ -49,13 +49,28 @@ export async function registerHermesSearchTrialRoutes(
     catch { return reply.code(503).send({code:'HERMES_SEARCH_UNAVAILABLE',message:'JEV記録検索を利用できません。'}); }
   });
   app.post('/assembly/hermes-search-trial/answer', {preHandler,config:{rateLimit:{max:12,timeWindow:'1 minute'}}}, async (request,reply) => {
-    const {question, sessionId} = z.object({
+    const {question, sessionId, pageContext, refine} = z.object({
       question: z.string().trim().min(1).max(4000),
-      sessionId: z.string().uuid().optional()
+      sessionId: z.string().uuid().optional(),
+      refine: z.object({
+        axis: z.enum(['organization', 'month', 'cause']),
+        field: z.string().trim().min(1).max(80),
+        value: z.string().trim().min(1).max(80),
+        planId: z.string().max(64).optional(),
+      }).strict().optional(),
+      pageContext: z.object({
+        path: z.string().max(200),
+        entity: z.object({
+          kind: z.enum(['partNumber', 'drawingNumber', 'nonconformityNo', 'procedureId']),
+          value: z.string().min(1).max(200)
+        }).strict()
+      }).strict().optional()
     }).strict().parse(request.body);
     if (!service.isEnabled()) return reply.code(503).send({code:'HERMES_SEARCH_DISABLED',message:'JEV記録検索は無効です。'});
     try {
-      const { receipt, ...answer } = await service.answer(question, sessionId);
+      // The authorizer gives a registered kiosk key precedence over JWT, including when both are sent.
+      const kind = request.headers['x-client-key'] ? 'kiosk' : request.user!.role.toLowerCase() as HermesPrincipal['kind'];
+      const { receipt, ...answer } = await service.answer(question, sessionId, pageContext, { principal: { kind }, ...(refine ? { refine } : {}) });
       if (receipt) {
         // One line per answer with the question text and the planner decisions. Record text
         // is not included; the kiosk response never carries the receipt.

@@ -1,3 +1,5 @@
+import type { Prisma } from '@prisma/client';
+
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { importAssemblyProcedureDocumentPagesAndSave } from '../../lib/assembly-procedure-document-import.js';
 import {
@@ -17,6 +19,7 @@ export type AssemblyProcedureDraftSource =
       gmailInternalDateMs: number;
       gmailDedupeKey: string;
     }
+  | { sourceType: 'MANUAL'; sourceAttachmentName: string }
   | undefined;
 
 export class AssemblyProcedureDraftImportService {
@@ -27,10 +30,12 @@ export class AssemblyProcedureDraftImportService {
 
   async importDraft(params: {
     name: string;
+    avoidDuplicateName?: boolean;
     buffer: Buffer;
     mimetype: string;
     filename: string;
     source?: AssemblyProcedureDraftSource;
+    transaction?: Prisma.TransactionClient;
   }): Promise<AssemblyProcedureDocumentRecord> {
     const imported = await importAssemblyProcedureDocumentPagesAndSave(
       {
@@ -43,6 +48,7 @@ export class AssemblyProcedureDraftImportService {
     try {
       return await this.procedureService.create({
         name: params.name,
+        avoidDuplicateName: params.avoidDuplicateName,
         pages: imported.pages.map((page) => ({ imageRelativePath: page.imageRelativePath })),
         source: params.source,
         sourceAsset: {
@@ -50,7 +56,7 @@ export class AssemblyProcedureDraftImportService {
           kind: 'SOURCE',
           originalFileName: params.filename
         }
-      });
+      }, params.transaction);
     } catch (error) {
       await Promise.all(
         imported.pages.map((page) =>

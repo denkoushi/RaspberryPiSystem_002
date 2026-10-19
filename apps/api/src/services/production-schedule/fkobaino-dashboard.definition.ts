@@ -57,6 +57,14 @@ export function buildProductionScheduleFkobainoDashboardDefinition() {
         order: 5,
         required: false,
       },
+      {
+        internalName: 'FKOBAIST',
+        displayName: '入荷ステイタス',
+        csvHeaderCandidates: ['FKOBAIST'],
+        dataType: 'string',
+        order: 6,
+        required: false,
+      },
     ],
     templateType: 'TABLE' as const,
     templateConfig: {

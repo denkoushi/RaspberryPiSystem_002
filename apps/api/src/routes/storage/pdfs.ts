@@ -1,3 +1,5 @@
+import { sendStorageReadError } from './shared.js';
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PdfStorage } from '../../lib/pdf-storage.js';
 import { authorizeRoles } from '../../lib/auth.js';
@@ -20,7 +22,7 @@ export function registerPdfStorageRoutes(app: FastifyInstance): void {
    * PDFファイルを配信する
    * パス例: /api/storage/pdfs/filename.pdf
    */
-  app.get('/storage/pdfs/*', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/storage/pdfs/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
     // client-keyがあれば認証をスキップ
     const headerKey = request.headers['x-client-key'];
     if (!headerKey) {
@@ -56,14 +58,11 @@ export function registerPdfStorageRoutes(app: FastifyInstance): void {
     } catch (error) {
       if (error instanceof ApiError) throw error;
       const err = error instanceof Error ? error : new Error(String(error));
-      
-      // ファイルが存在しない場合
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return reply.status(404).send({ message: 'PDFが見つかりません' });
-      }
-
-      request.log.error({ err, pdfUrl: `/api/storage/pdfs/${urlPath}` }, 'PDFの読み込みに失敗しました');
-      return reply.status(500).send({ message: 'PDFの読み込みに失敗しました' });
+      return sendStorageReadError(request, reply, err, {
+        notFoundMessage: 'PDFが見つかりません',
+        failedMessage: 'PDFの読み込みに失敗しました',
+        logContext: { err, pdfUrl: `/api/storage/pdfs/${urlPath}` },
+      });
     }
   });
 }

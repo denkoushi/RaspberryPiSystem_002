@@ -13,7 +13,7 @@
     "blueServerImage": "vllm/vllm-openai:qwen38-flash-next@sha256:3b0e188ffceb3d07e09c3cb5215433a0020eacf02d7f882ed3a8bfd15454477e",
     "blueServerAdapter": "qwen38_flash_next",
     "blueUpstreamRecipeDir": "/srv/dgx/system-prod/third-party/qwen38-flash-next",
-    "blueUpstreamRecipeRevision": "d03809008834124e80223c3482f2ddb59577a48f",
+    "blueUpstreamRecipeRevision": "b8439110eec0230facbe4ddf0dffe01b8f769be0",
     "blueModelRevision": "925d7be6c14c6c9442ef83e8f05b5a3c39304f69"
   },
   "runtimeProfile": {

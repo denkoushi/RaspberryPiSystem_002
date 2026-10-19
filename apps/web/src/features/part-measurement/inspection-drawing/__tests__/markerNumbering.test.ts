@@ -7,6 +7,7 @@ import {
   mergeInspectionDrawingPointPatch,
   nextAvailableMarkerNo,
   parseDisplayMarkerAsMarkerNo,
+  resolveInspectionDrawingPointSaveError,
   sortInspectionDrawingPointsByMarkerNo,
   swapInspectionDrawingMarkerNo,
   templateItemToDrawingPoint
@@ -317,5 +318,28 @@ describe('markerNumbering', () => {
     expect(loaded.nominalRaw).toBe('');
     expect(loaded.lowerToleranceRaw).toBe('');
     expect(loaded.upperToleranceRaw).toBe('');
+  });
+
+  it('treats a pipe-thread judgement point as savable without tolerances', () => {
+    const pt = {
+      ...createInspectionDrawingPoint(0.2, 0.4, 1),
+      name: 'ネジ穴深さ',
+      threadNominal: '管用',
+      valueKind: 'judgement' as const
+    };
+    expect(resolveInspectionDrawingPointSaveError(pt)).toBeNull();
+    expect(drawingPointToTemplateItemInput(pt, 0)).toMatchObject({
+      measurementLabel: 'ネジ穴深さ',
+      measurementPoint: 'ネジ穴深さ 管用',
+      valueKind: 'judgement',
+      nominalValue: null,
+      lowerLimit: null,
+      upperLimit: null
+    });
+  });
+
+  it('still reports missing tolerances for numeric points before saving', () => {
+    const pt = { ...createInspectionDrawingPoint(0.2, 0.4, 1), name: '穴径' };
+    expect(resolveInspectionDrawingPointSaveError(pt)).toBe('基準値を入力してください');
   });
 });

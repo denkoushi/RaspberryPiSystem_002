@@ -18,6 +18,8 @@ export interface ClientDevice {
   canProxyOtherDevices?: boolean;
   /** キオスクのサイネージプレビュー参照先（API が返す場合のみ） */
   signagePreviewTargetApiKey?: string | null;
+  /** 稼働状況（ClientStatusEntry.clientId）との紐づけ。status-agent 未報告なら null */
+  statusClientId?: string | null;
   lastSeenAt?: string | null;
   createdAt: string;
   updatedAt: string;

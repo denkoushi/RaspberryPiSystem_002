@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>加工要領書を編集 — 組立手順書に合わせた UI/UX プレビュー</title>
+<style>
+:root{--bg:#0a0d10;--panel:#161c22;--border:#344252;--line:#27313b;--fg:#eef3f6;
+  --muted:#9fadb9;--cyan:#5fc3e8;--green:#3ba776;--amber:#f6b93b;--red:#e5484d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,sans-serif}
+button,input,select,textarea{font:inherit}button{cursor:pointer;color:inherit;border:1px solid var(--border);
+  border-radius:8px;background:transparent;min-width:44px;min-height:44px;padding:0 12px}
+button:hover{background:var(--line)}button:disabled{opacity:.4;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{
+  outline:3px solid var(--cyan);outline-offset:2px}button[aria-pressed=true]{background:var(--line)}
+[hidden]{display:none!important}.wrap{padding:20px;max-width:1960px;margin:auto}.intro{display:flex;align-items:baseline;gap:20px}
+h1{font-size:24px;margin:0 0 16px}.intro span{color:var(--muted);font-size:14px}.states{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.states button{font-size:14px}.states button[aria-pressed=true]{border-color:var(--cyan);color:var(--cyan)}
+.viewport{width:100%;position:relative;overflow:clip}.stage{width:1920px;height:1080px;position:relative;transform-origin:top left;overflow:clip;background:var(--bg)}
+.kh{height:60px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;gap:32px;align-items:center;padding:0 24px;font-size:18px}
+.kh .on{color:var(--cyan);font-weight:700}.spacer{flex:1}.kh .spacer{text-align:right;color:var(--muted)}
+.editor{height:1020px;display:grid;grid-template-columns:120px minmax(0,1fr) 64px;position:relative;overflow:hidden}
+.steps{padding:10px 8px;background:var(--panel);border-right:1px solid var(--line);overflow:hidden;min-height:0}
+#steps-list{display:grid;justify-items:center;gap:8px}.step-card{width:100px;padding:0;display:block;border:0;background:transparent;text-align:left}
+.thumb{display:block;width:100px;height:75px;position:relative;border:2px solid transparent;border-radius:4px;background:white;overflow:hidden}
+.step-card[aria-current=true] .thumb{border-color:var(--cyan)}.step-card[aria-pressed=true]{background:transparent}
+.thumb>svg{width:100%;height:100%;display:block}.thumb svg text{display:none}.step-num{position:absolute;left:6px;bottom:4px;font:14px ui-monospace,monospace;color:#333;background:white;padding:0 3px}
+.dot{display:inline-block;width:8px;height:8px;background:var(--amber);border-radius:50%;flex:none}.thumb .dot{position:absolute;top:6px;right:6px}
+.canvas{position:relative;min-width:0;min-height:0;padding:60px 16px 16px;overflow:hidden}.photo-zone{height:100%;display:grid;place-items:center;min-width:0}
+.canvas.comparing .photo-zone{margin-right:396px}.canvas.inspecting .photo-zone{margin-right:356px}
+.canvas.comparing.inspecting .photo-zone{margin-right:752px}.canvas.inspecting .comparison{right:372px}.photo{position:relative;background:white;touch-action:none;flex:none}
+.sheet,.annotations{position:absolute;inset:0}.sheet>svg{width:100%;height:100%;display:block}.annotations{pointer-events:none}
+.annotation{position:absolute;pointer-events:auto;min-width:44px;min-height:44px;outline:0;cursor:move}
+.annotation.selected{outline:2px solid var(--cyan)}.annotation.reviewing:not(.selected){outline:2px dashed var(--amber)}
+.annotation>div{overflow:hidden}.annotation-text{white-space:pre-wrap;display:flex;width:100%;height:100%;align-items:flex-start;overflow-wrap:anywhere}
+.annotation-image,.annotation-shape,.annotation>div>svg{width:100%;height:100%;display:block}
+.attention{position:absolute;right:-10px;top:-10px;background:var(--amber);border-radius:50%;color:var(--bg);font-size:14px;font-weight:900;width:20px;height:20px;text-align:center;pointer-events:none}
+.handle{position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;min-width:44px;padding:0;border:0;background:transparent!important;border-radius:0}
+.handle::after{content:'';position:absolute;width:14px;height:14px;left:15px;top:15px;border:2px solid white;background:var(--cyan);border-radius:3px}
+.drag-preview{position:absolute;z-index:100;border:2px dashed var(--cyan);background:#5fc3e814;pointer-events:none}
+.chips{position:absolute;left:16px;top:8px;z-index:140;display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);white-space:nowrap}
+.crumb,.small-chip{height:44px;border:1px solid var(--border);background:#161c22eb;border-radius:8px;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:18px}
+.crumb{min-width:0}.crumb b{color:var(--fg)}.crumb>span:not(.tag){color:var(--muted)}.crumb i{font-style:normal;color:var(--muted)}
+.tag{height:26px;font-size:15px;font-weight:700;border:1px solid var(--green);color:var(--green);border-radius:999px;padding:0 10px;display:flex;align-items:center}
+.sources{display:flex;align-items:center;gap:4px;margin:-5px 0}.sources button{min-height:44px;font-size:16px;border:0;border-radius:6px;padding:0 10px;display:flex;align-items:center;gap:8px}
+.sources button[aria-pressed=true]{color:var(--fg)}.small-chip{font-size:15px;gap:8px}.small-chip.review-chip{color:var(--amber);min-height:44px}
+.green{color:var(--green)}.amber{color:var(--amber)}.muted{color:var(--muted)}.red{color:var(--red)}
+.toast{position:absolute;left:16px;bottom:16px;z-index:150;height:44px;max-width:calc(100% - 428px);display:flex;align-items:center;gap:10px;
+  padding:0 14px;border:1px solid var(--border);border-radius:8px;background:#161c22eb;font-size:18px;white-space:nowrap;pointer-events:none}
+.toast::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--green);flex:none}
+.rail{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;min-height:0}
+.rb{width:48px;height:48px;border-radius:10px;border:1px solid var(--border);padding:0;display:grid;place-items:center;flex:none;position:relative}
+.icon{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.rb.primary,.primary{background:var(--green);border-color:var(--green);color:#0b1a12}.rb.warn{border-color:var(--amber);color:var(--amber)}
+.rb.danger,.danger{color:var(--red)}.rb.danger,.rb.back{border-color:transparent}.rb.back{color:var(--muted)}
+.badge{position:absolute;right:-4px;top:-4px;min-width:20px;height:20px;padding:0 5px;background:var(--amber);color:#0b1a12;border-radius:10px;font-size:13px;font-weight:900;display:grid;place-items:center}
+.sep{width:36px;height:1px;background:var(--border);margin:4px 0;flex:none}
+.more-menu{position:absolute;right:80px;z-index:180;width:280px;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--panel)}
+.more-menu button{display:flex;align-items:center;gap:10px;width:100%;height:48px;border:0;border-radius:6px;text-align:left}
+.more-menu hr{border:0;border-top:1px solid var(--border);margin:8px 4px}.more-menu .soon{color:var(--muted);opacity:1}
+.soon-pill{margin-left:auto;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--line)}
+.inspector{position:absolute;right:16px;top:64px;z-index:160;width:340px;padding:16px;border:1px solid var(--border);border-radius:14px;background:#161c22f5;display:grid;gap:8px}
+.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.panel-heading h2{font-size:20px;font-weight:900;margin:0}
+.close{height:44px;width:44px;padding:0;color:var(--muted);display:grid;place-items:center}.close .icon{width:22px;height:22px}
+.row{display:flex;align-items:center;gap:8px}.between{justify-content:space-between}.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+label{display:grid;gap:2px;font-size:14px;line-height:1.4;font-weight:600;min-width:0}input,select,textarea{border:1px solid var(--border);border-radius:4px;background:white;color:#161c22;font-size:18px;min-height:44px;min-width:0;width:100%;padding:6px 8px}
+input[type=color]{padding:4px}input[type=checkbox]{width:18px;height:18px;min-height:18px;flex:none;margin:0;accent-color:var(--cyan)}textarea{resize:none;height:96px}
+fieldset{margin:0;min-width:0;border:0;padding:0;display:grid;gap:4px}legend{font-size:14px;font-weight:700;line-height:20px;padding:0}
+fieldset.box{padding:6px;border:1px solid var(--line);border-radius:4px}fieldset.box legend{font-size:12px;color:var(--muted);padding:0 4px}
+.check{display:flex;align-items:center;min-height:44px;gap:6px}.mask-row{display:grid;grid-template-columns:1fr 94px;gap:6px}.mask-row label:last-child{font-size:12px}
+.attrs-actions{justify-content:space-between}.attrs-actions button,.two button{font-size:14px}.text-controls{display:grid;gap:4px}
+.endpoints{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.endpoints label{font-size:12px}.endpoints input{padding:4px;font-size:18px}
+.source-memo{border:1px solid var(--line);border-radius:8px;padding:12px;color:var(--muted);font-size:14px}.source-memo p{color:var(--fg);font-size:18px;margin:8px 0 0}
+.orphan{display:grid;gap:8px;border:1px solid var(--amber);border-radius:8px;padding:12px}.orphan h3{font-size:16px;margin:0;color:var(--amber)}
+.orphan p{font-size:16px;margin:0}.orphan .source-label{font-size:12px;color:var(--muted)}.orphan .two button{padding:0 4px}
+.comparison{position:absolute;right:16px;top:64px;bottom:16px;width:380px;z-index:120;display:grid;grid-template-rows:44px minmax(0,1fr) minmax(0,1fr);gap:12px}
+.comparison>.panel-heading h2{font-size:18px}
+.compare-pane{background:var(--panel);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;padding:12px;min-height:0}
+.compare-pane header{display:flex;align-items:center;justify-content:space-between;font-size:18px}.compare-pane header span{font-size:14px;color:var(--muted)}
+.comparison-sheet{position:relative;flex:1;min-height:0;display:grid;place-items:center}.comparison-sheet svg{width:100%;max-height:100%}
+.compare-note{position:absolute;top:29%;left:40%;background:white;color:#161c22;font-size:12px}.compare-pane p{font-size:14px;margin:6px 0;color:var(--muted)}
+.compare-pane footer{font-size:12px;color:var(--muted)}
+.range-picker{position:absolute;z-index:170;width:280px;background:var(--panel);padding:12px;border:1px solid var(--border);border-radius:14px;display:grid;gap:8px}
+.range-picker h2{font-size:20px;margin:0}.range-picker p{font-size:14px;color:var(--muted);margin:0}.range-picker .row button{flex:1;padding:0 6px;font-size:16px}
+.drawer-layer{position:absolute;inset:60px 0 0;z-index:250;background:#0a0d1080}.drawer{position:absolute;right:0;top:0;bottom:0;width:440px;padding:24px;background:var(--panel);border-left:1px solid var(--border)}
+.drawer h2{font-size:20px;margin:0}.drawer h3{font-size:14px;margin:24px 0 20px}.timeline{list-style:none;padding:0;margin:0}
+.timeline li{position:relative;padding:0 0 24px 24px;border-left:1px solid var(--border);margin-left:4px}
+.timeline li::before{content:'';position:absolute;top:4px;left:-4px;width:8px;height:8px;border-radius:50%;background:var(--green)}
+.timeline li:nth-child(2)::before{background:var(--cyan)}.timeline strong{display:block;font-size:16px;margin-bottom:8px}
+.timeline .meta{display:flex;gap:12px;color:var(--muted);font-size:12px;margin-bottom:4px}.timeline .change{font-size:14px;color:var(--muted)}
+.revision{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px}.revision .meta{font-size:12px;color:var(--muted);margin-top:8px}
+.revision button{margin-top:12px;font-size:14px}.mini-chip{font-size:14px;color:var(--amber)}
+.modal-layer{position:absolute;inset:60px 0 0;z-index:400;background:#0a0d10b3;display:grid;place-items:center}
+.modal{width:540px;padding:24px;background:var(--panel);border:1px solid var(--border);border-radius:14px}.modal h2{margin:0;font-size:24px}
+.modal p{font-size:18px;color:var(--muted);margin:12px 0 24px}.dialog-actions{display:flex;justify-content:flex-end;gap:8px}
+.candidate-list{display:grid;gap:8px;margin:16px 0}.nfc{position:absolute;inset:60px 0 0;background:var(--bg);z-index:300;display:grid;place-items:center}
+.nfc-back{position:absolute;top:16px;right:24px}.nfc-content{text-align:center}.nfc-scan{width:176px;height:176px;margin:0 auto 32px;color:var(--cyan)}
+.nfc-scan .icon{width:160px;height:160px}.nfc h2{font-size:28px;letter-spacing:.12em;margin:0}.nfc p{font-size:18px;color:var(--muted)}
+.notes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:20px;font-size:14px;color:var(--muted)}.notes h2{font-size:16px;color:var(--fg);margin:0}.notes ul{padding-left:20px;line-height:1.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="intro"><h1>加工要領書を編集</h1><span>組立手順書エディタに合わせた UI/UX · 1920 × 1080 · 架空のデータ</span></header>
+  <nav class="states" aria-label="プレビューの状態">
+    <button data-preset="normal" aria-pressed="true">写真を見る（通常）</button>
+    <button data-preset="text">注釈を選択中（文章）</button>
+    <button data-preset="shape">注釈を選択中（図形）</button>
+    <button data-preset="image">注釈を選択中（画像）</button>
+    <button data-preset="range">範囲を選択中</button>
+    <button data-preset="more">その他メニュー</button>
+    <button data-preset="memo">メモ</button>
+    <button data-preset="migration">新しい原本あり＋比較</button>
+    <button data-preset="history">履歴</button>
+    <button data-preset="publish">公開の確認</button>
+    <button data-preset="conflict">保存の競合</button>
+    <button data-preset="recovery">下書きの復元</button>
+    <button data-preset="nfc">社員タグ認証</button>
+  </nav>
+  <div class="viewport" id="viewport"><div class="stage" id="stage">
+    <div class="kh" id="kiosk-header" aria-label="既存ヘッダーの参考表示">
+      <span>持出</span><span>返却</span><span>計測機器</span><span>吊具</span><span>順位ボード</span>
+      <span>集計</span><span class="on">要領書</span><span class="spacer">第1工場 · 旋盤エリア</span><span>14:32</span>
+    </div>
+    <main class="editor" id="editor">
+      <aside class="steps" aria-label="手順一覧"><div id="steps-list"></div></aside>
+      <section class="canvas" id="canvas" aria-label="加工要領書キャンバス">
+        <div class="photo-zone" id="photo-zone"><div class="photo" id="photo" aria-label="注釈を配置する原本">
+          <div class="sheet" id="drawing"></div><div class="annotations" id="annotations"></div>
+          <div class="drag-preview" id="drag-preview" hidden></div>
+        </div></div>
+        <div class="chips">
+          <div class="crumb"><b>MH-4521-A</b><i>›</i><span id="target-name">旋盤 第1工程</span><i>›</i>
+            <div class="sources" aria-label="原本の切替">
+              <button data-source="lathe" aria-pressed="true" title="旋盤の原本">旋盤<i class="dot" id="source-dot" title="新しい原本あり" hidden></i></button>
+              <button data-source="inspection" aria-pressed="false" title="検査の原本">検査</button>
+            </div><span class="tag">下書き 第7版</span>
+          </div>
+          <div class="small-chip"><span class="green" id="save-status" role="status" aria-live="polite">保存済み</span></div>
+          <button class="small-chip review-chip" data-action="review" title="次の要確認へ" aria-label="次の要確認へ" id="review-label" hidden>要確認 3</button>
+          <div class="small-chip amber" id="migration-chip" hidden>新しい原本あり</div>
+        </div>
+        <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+        <aside class="comparison" id="comparison" aria-label="原本の比較" hidden></aside>
+        <aside class="inspector" id="inspector" aria-label="編集欄" hidden></aside>
+        <section class="range-picker" id="range-picker" aria-label="注釈の種類" hidden></section>
+      </section>
+      <nav class="rail" id="rail" aria-label="エディタ操作"></nav>
+      <aside class="more-menu" id="more-menu" aria-label="その他" hidden></aside>
+    </main>
+    <div class="drawer-layer" id="drawer-layer" hidden>
+      <section class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="history-title" tabindex="-1">
+        <div class="row between"><h2 id="history-title">履歴</h2><button class="close" data-action="close-history" aria-label="履歴を閉じる" title="履歴を閉じる"></button></div>
+          <h3>操作</h3>
+          <ol class="timeline">
+            <li><strong>下書きを保存</strong><div class="meta"><span>田中 健</span><time>今日 14:28</time></div><div class="meta">旋盤端末 01</div><span class="change">文章 2 件・図形 1 件を変更</span></li>
+            <li><strong>新しい原本へ移す</strong><div class="meta"><span>佐藤 美咲</span><time>今日 13:52</time></div><div class="meta">旋盤端末 02</div><span class="change">注釈 6 件・メモ 2 件を移した</span></li>
+            <li><strong>版 7 を公開</strong><div class="meta"><span>田中 健</span><time>10/05 16:10</time></div><div class="meta">旋盤端末 01</div><span class="change">変更 3 件</span></li>
+          </ol>
+          <h3>版と旧画像</h3>
+          <article class="revision"><div class="row between"><strong>版 8</strong><span class="mini-chip">下書き</span></div><div class="meta">10/07 13:45 · 画像 6 件</div></article>
+          <article class="revision"><div class="row between"><strong>版 7</strong><span class="green">公開中</span></div><div class="meta">10/05 16:10 · 画像 6 件</div></article>
+          <article class="revision" id="old-revision"><div class="row between"><strong>版 6</strong><span class="muted">旧版</span></div><div class="meta">10/02 09:20 · 画像 6 件</div><button class="danger" data-action="delete-old"></button></article>
+      </section>
+    </div>
+    <div class="modal-layer" id="modal-layer" hidden>
+      <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-description" tabindex="-1"></section>
+    </div>
+    <section class="nfc" id="nfc" hidden aria-label="社員認証">
+      <button class="nfc-back" data-action="nfc-back">戻る</button>
+      <div class="nfc-content"><div class="nfc-scan" id="nfc-symbol"></div><h2>社員タグ</h2>
+        <p id="nfc-message" role="status">社員タグをリーダーにかざしてください。</p>
+        <button class="primary" data-action="nfc-read">タグを読み取る（モック）</button></div>
+    </section>
+    <input type="file" id="image-file" accept="image/*" hidden>
+  </div></div>
+  <div class="notes">
+    <section><h2>この画面の目的</h2><ul>
+      <li>写真を見る・写真に注釈を付ける</li>
+    </ul></section>
+    <section><h2>組立手順書の編集画面と揃えた点</h2><ul>
+      <li>配色、記号レール、ボタンの形と色</li>
+      <li>注釈の編集欄、白い入力欄、%表示</li>
+      <li>短い言葉、確認画面、複製と削除</li>
+    </ul></section>
+    <section><h2>この画面だけのもの</h2><ul>
+      <li>横長の写真、番号だけのサムネイル</li>
+      <li>メモ、新しい原本との比較、要確認</li>
+      <li>原本の切替、行き先のないメモ</li>
+    </ul></section>
+  </div>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const paths = {
+  back:'<path d="M15 5l-7 7 7 7"/>',
+  save:'<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
+  publish:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 12h10M12 9v6"/>',
+  text:'<path d="M5 6h14M12 6v13"/>',
+  shape:'<rect x="4" y="4" width="7" height="7"/><circle cx="16.5" cy="16.5" r="3.5"/>',
+  image:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/>',
+  range:'<rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/>',
+  memo:'<path d="M5 3h10l4 4v14H5zM14 3v5h5M8 12h8M8 16h6"/>',
+  compare:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M6 8h3M15 16h3"/>',
+  more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+  history:'<path d="M3 11a9 9 0 1 1 3 8M3 5v6h6M12 7v5l3 2"/>',
+  trash:'<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/>',
+  close:'<path d="M6 6l12 12M6 18L18 6"/>',
+  nfc:'<rect x="2" y="7" width="13" height="13" rx="2"/><path d="M6 7V4h5v3"/><circle cx="8.5" cy="12" r="1.5"/><path d="M5.5 17a3 3 0 0 1 6 0M17 10a5 5 0 0 1 0 7M19 7a9 9 0 0 1 0 13"/>'
+};
+function icon(name){return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">${paths[name]}</svg>`;}
+function escapeHTML(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const names=['段取り・芯出し','外径荒加工','段部仕上げ','溝入れ','面取り','寸法確認'];
+const sourceMemos=['突き出し 65 mm。芯振れを確認。','外径 φ32 まで荒加工。切込み 1.5 mm。','段部 φ24 を仕上げ。送り 0.08 mm。','溝幅 4 mm。刃先の欠けを確認。','端面 C1。バリを残さない。','外径と段差を測定。測定値を記録。'];
+/* Existing six-step inline SVG, reused for the canvas, thumbnails and comparison. */
+function drawing(step, version=8) {
+  const shift = step===4 ? 16 : 0;
+  const operation = names[step-1];
+  const dim = version===7 ? 'φ 32.5' : 'φ 32.0';
+  const hatches = Array.from({length:14}, (_,i)=>`<path d="M${184+i*9} 235v244"/>`).join('');
+  const toolX = [360,480,660,584,760,708][step-1];
+  const tip = step===4 ? 'M-8 0h16v46H-8z' : 'M-22 0h44l-12 46h-10z';
+  return `<svg viewBox="0 0 960 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="手順 ${step} ${operation}の段付きシャフト見本">
+  <rect width="960" height="720" fill="#eeeae1"/>
+  <g fill="#26323d" font-family="system-ui,sans-serif"><text x="36" y="44" font-size="16" letter-spacing="2">加工要領書 / MH-4521-A</text>
+  <text x="36" y="80" font-size="27" font-weight="700">${String(step).padStart(2,'0')}　${operation}</text>
+  <text x="804" y="44" font-size="14">原本 版 ${version}</text></g>
+  <path d="M36 104h888" stroke="#a5aaa8"/>
+  <rect x="36" y="128" width="888" height="476" fill="#d7dad7"/>
+  <path d="M36 504h888v100H36z" fill="#bec4c3"/>
+  <path d="M36 162h145v342H36z" fill="#7b8588"/><path d="M36 176h96v314H36z" fill="#939c9e"/>
+  <path d="M52 193h58v40H52zM52 436h58v36H52z" fill="#657277"/>
+  <path d="M118 220 174 198h138l20 30v258l-20 30H174l-56-22z" fill="#626f75" stroke="#414f56" stroke-width="3"/>
+  <path d="M174 198h138v318H174z" fill="#8d989c"/>
+  <g stroke="#65757c" stroke-width="3" opacity=".8">${hatches}</g>
+  <path d="M282 251h70v38h-70zM282 423h70v38h-70z" fill="#46555e"/>
+  <path d="M300 297h28v119h-28z" fill="#424f55"/>
+  <g transform="translate(0 ${shift})" stroke="#46545b" stroke-width="2">
+    <path d="M328 294h212v20h120v22h122v66H660v22H540v20H328z" fill="#b4bfc2"/>
+    <path d="M328 294h212v20h120v22h122v18H328z" fill="#d5dddd" stroke="none"/>
+    <path d="M328 406h212v18h120v-22h122v-14H328z" fill="#909da2" stroke="none"/>
+    <path d="M540 294v150M660 314v110M782 336v66M328 369h454" fill="none"/>
+    ${step>=4 ? '<path d="M579 314v110h10V314" fill="#5f6d75"/>' : ''}
+    ${step>=5 ? '<path d="m774 336 8 8M774 402l8-8"/>' : ''}
+  </g>
+  <path d="M344 369h504" stroke="#59666d" stroke-dasharray="14 5 3 5"/>
+  ${step<6 ? `<g transform="translate(${toolX} 471)"><path d="M-32 24h64v61h-64z" fill="#66747b" stroke="#3d4d56" stroke-width="3"/>
+  <path d="${tip}" transform="rotate(180)" fill="#b5afa0" stroke="#4d5654" stroke-width="2"/><circle cy="48" r="8" fill="#a4b0b6"/></g>` :
+  '<g stroke="#384950" stroke-width="6" fill="none"><path d="M676 306v-60h110v166M686 306v-40M776 412v22"/><path d="M704 246v-40h56v40" stroke-width="16"/></g>'}
+  <g stroke="#53606a" stroke-width="1.5" fill="none"><path d="M328 265v-65M540 270v-70M328 211h212M328 211l10-4m-10 4 10 4M540 211l-10-4m10 4-10 4"/>
+  <path d="M660 290v-78M782 318V212M660 224h122M660 224l10-4m-10 4 10 4M782 224l-10-4m10 4-10 4"/>
+  <path d="M803 336h62M803 402h62M852 336v66M852 336l-4 9m4-9 4 9M852 402l-4-9m4 9 4-9"/>
+  <path d="M355 481v72h185v-92M355 538h185"/></g>
+  <g font-family="system-ui,sans-serif" fill="#26323d" font-size="18"><text x="419" y="194">42 ±0.1</text><text x="686" y="204">28 ±0.05</text>
+  <text x="863" y="377">φ24</text><text x="410" y="531">${dim}</text></g>
+  <g fill="#26323d" font-family="system-ui,sans-serif"><text x="36" y="640" font-size="16">${sourceMemos[step-1]}</text>
+  <text x="36" y="684" font-size="13">NC旋盤　/　材質 S45C　/　単位 mm</text><text x="780" y="684" font-size="13">第1工程　${step} / 6</text></g>
+  </svg>`;
+}
+let nextId=10, editRevision=0, saveGeneration=0, returnFocus=null, imageRequest=null, gesture=null;
+const state={source:'lathe',step:2,selected:null,range:false,pending:null,memo:false,more:false,compare:false,migration:false,
+  dirty:false,busy:false,orphan:true,orphanTarget:3,memos:{},memoConfirmed:{},dialog:null,history:false,nfc:false,reviewCursor:null};
+const overlays=[
+  {id:1,source:'lathe',step:2,kind:'text',x:.38,y:.23,w:.32,h:.12,text:'切込み 1.5 mm\n仕上げ代を残す',font:2.5,bold:true,align:'left',color:'#161c22',mask:true,maskColor:'#ffffff',opacity:100,status:'ok'},
+  {id:2,source:'lathe',step:2,kind:'rectangle',x:.55,y:.43,w:.17,h:.2,color:'#e5484d',fill:'transparent',weight:.8,opacity:100,status:'review'},
+  {id:3,source:'lathe',step:3,kind:'text',x:.53,y:.22,w:.28,h:.12,text:'段差の角を確認',font:2.5,color:'#161c22',mask:true,maskColor:'#ffffff',opacity:100,status:'review'},
+  {id:4,source:'lathe',step:2,kind:'image',x:.07,y:.68,w:.2,h:.15,mask:true,maskColor:'#ffffff',opacity:100,status:'ok',fit:'contain'},
+  {id:5,source:'inspection',step:6,kind:'text',x:.48,y:.2,w:.28,h:.1,text:'測定値を記録',font:2.5,color:'#161c22',mask:true,maskColor:'#ffffff',opacity:100,status:'ok'}
+];
+const current=()=>overlays.find(o=>o.id===state.selected);
+const memoKey=()=>`${state.source}-${state.step}`;
+const memoValue=()=>state.memos[memoKey()]??sourceMemos[state.step-1];
+const reviews=()=>overlays.filter(o=>o.status!=='excluded'&&(o.status==='review'||o.step===0)).length+(state.orphan?1:0);
+function snapshot(){return JSON.stringify({overlays,memos:state.memos,memoConfirmed:state.memoConfirmed,orphan:state.orphan});}
+let savedSnapshot=snapshot(),publishedSnapshot=snapshot();
+function restoreSnapshot(value){const data=JSON.parse(value);overlays.splice(0,overlays.length,...data.overlays);
+  state.memos=data.memos;state.memoConfirmed=data.memoConfirmed;state.orphan=data.orphan;state.selected=null;}
+function dirty(){editRevision++;state.dirty=true;updateStatus();}
+function updateStatus(){
+  $('save-status').textContent=state.busy?'処理中':state.dirty?'未保存':'保存済み';
+  $('save-status').className=state.busy?'muted':state.dirty?'amber':'green';
+  $('review-label').textContent=`要確認 ${reviews()}`;$('review-label').hidden=reviews()===0;
+  renderRail();
+  document.querySelector('[data-action=save]').disabled=state.busy;
+  document.querySelector('[data-action=publish]').disabled=state.busy;
+}
+function notice(message){$('toast').textContent=message;$('toast').hidden=false;
+  clearTimeout(notice.timer);notice.timer=setTimeout(()=>$('toast').hidden=true,4000);}
+function fitStage(){const width=$('viewport').clientWidth;
+  $('stage').style.transform=`scale(${width/1920})`;
+  $('viewport').style.height=`${1080*width/1920}px`;
+}
+function fitPhoto(){const zone=$('photo-zone');const width=Math.min(zone.clientWidth,zone.clientHeight*4/3);
+  $('photo').style.width=`${width}px`;$('photo').style.height=`${width*.75}px`;renderAnnotations();}
+new ResizeObserver(()=>{fitStage();fitPhoto();}).observe($('viewport'));
+new ResizeObserver(fitPhoto).observe($('photo-zone'));
+function railButton(action,label,symbol,style=''){
+  return `<button class="rb ${style}" data-action="${action}" title="${label}" aria-label="${label}" aria-pressed="false">${icon(symbol)}</button>`;
+}
+$('rail').innerHTML=railButton('save','保存','save','primary')+railButton('publish','公開','publish','warn')+'<span class="sep"></span>'+
+  railButton('add-text','文字','text')+railButton('add-shape','図形','shape')+railButton('range','範囲','range')+
+  '<span class="sep"></span>'+railButton('more','その他','more')+'<span class="spacer"></span>'+railButton('back','戻る','back','back');
+const moreButton=document.querySelector('[data-action=more]');
+moreButton.setAttribute('aria-controls','more-menu');moreButton.setAttribute('aria-expanded','false');
+$('more-menu').innerHTML=[['memo','メモ','memo'],['compare','比較','compare'],['history','履歴','history'],['discard','下書きを捨てる','trash']].map(
+  ([action,label,symbol])=>`<button data-action="${action}"${action==='discard'?' class="danger"':''}>${icon(symbol)}<span>${label}</span></button>`).join('')+
+  `<hr><button class="soon" disabled>${icon('memo')}<span>手順書の素材</span><span class="soon-pill">準備中</span></button>`;
+$('nfc-symbol').innerHTML=icon('nfc');
+for(const button of document.querySelectorAll('[data-action=close-history]'))button.innerHTML=icon('close');
+for(const button of document.querySelectorAll('[data-action=delete-old]'))button.textContent='旧画像を削除';
+function renderRail(){
+  const pressed={'add-text':current()?.kind==='text','add-shape':current()&&!['text','image'].includes(current().kind),
+    range:state.range,more:state.more,memo:state.memo,compare:state.compare,history:state.history};
+  for(const [action,value] of Object.entries(pressed))document.querySelector(`[data-action="${action}"]`).setAttribute('aria-pressed',String(Boolean(value)));
+  moreButton.setAttribute('aria-expanded',String(state.more));moreButton.querySelector('.badge')?.remove();
+  if(reviews())moreButton.insertAdjacentHTML('beforeend',`<span class="badge" aria-label="要確認 ${reviews()}件">${reviews()}</span>`);
+}
+function renderMore(){
+  $('more-menu').hidden=!state.more;if(state.more)$('more-menu').style.top=`${moreButton.offsetTop}px`;
+  renderRail();
+}
+function closeMore(focus=false){state.more=false;renderMore();if(focus)moreButton.focus();}
+function renderSteps(){
+  $('steps-list').innerHTML=names.map((name,i)=>{
+    const step=i+1,review=overlays.some(o=>o.source===state.source&&o.step===step&&o.status==='review');
+    return `<button class="step-card" data-step="${step}" aria-current="${state.step===step}" aria-pressed="${state.step===step}"
+      aria-label="写真 ${step}${review?'・要確認':''}" title="写真 ${step}">
+      <span class="thumb">${drawing(step,state.migration?8:7)}<span class="step-num">${step}</span>${review?'<i class="dot" aria-hidden="true"></i>':''}</span>
+      </button>`;
+  }).join('');
+}
+const handles=[['nw',0,0],['ne',100,0],['se',100,100],['sw',0,100]];
+function shapePoints(o){return o.start&&o.end?{start:o.start,end:o.end}:{start:{x:o.x,y:o.y+o.h},end:{x:o.x+o.w,y:o.y}};}
+function renderAnnotations(){
+  const list=overlays.filter(o=>o.source===state.source&&o.step===state.step&&o.status!=='excluded');
+  $('annotations').innerHTML=list.map((o,index)=>{
+    const selected=state.selected===o.id;let content;
+    if(o.kind==='text')content=`<div class="annotation-text" style="font-size:${Math.max(12,(o.font||2.5)*$('photo').clientWidth/100)}px;
+      font-weight:${o.bold?700:400};color:${escapeHTML(o.color)};justify-content:${{left:'flex-start',center:'center',right:'flex-end'}[o.align||'left']};text-align:${o.align||'left'}">${escapeHTML(o.text)}</div>`;
+    else if(o.kind==='image'){
+      const fit=o.fit==='fill'?'none':o.fit==='cover'?'xMidYMid slice':'xMidYMid meet';
+      content=o.url?`<img class="annotation-image" src="${o.url}" alt="選択した画像" style="object-fit:${o.fit||'contain'}">`:
+        drawing(o.crop?.step||6,o.crop?.version||8).replace('viewBox=',`preserveAspectRatio="${fit}" viewBox=`);
+      if(o.crop)content=content.replace('0 0 960 720',`${o.crop.x*960} ${o.crop.y*720} ${o.crop.w*960} ${o.crop.h*720}`);
+    }else{
+      const points=shapePoints(o),x1=(points.start.x-o.x)/o.w*100,y1=(points.start.y-o.y)/o.h*100,
+        x2=(points.end.x-o.x)/o.w*100,y2=(points.end.y-o.y)/o.h*100;
+      const shape=o.kind==='ellipse'?'<ellipse cx="50" cy="50" rx="48" ry="48"/>':o.kind==='rectangle'?'<rect x="2" y="2" width="96" height="96"/>':
+        `<path d="M${x1} ${y1}L${x2} ${y2}"/>${o.kind==='arrow'?`<path d="M-18 -8L0 0 -18 8" transform="translate(${x2} ${y2}) rotate(${Math.atan2(y2-y1,x2-x1)*180/Math.PI})"/>`:''}`;
+      const stroke=Math.max(1,(o.weight||.8)/Math.max(o.w,o.h));
+      content=`<svg class="annotation-shape" viewBox="0 0 100 100" preserveAspectRatio="none" fill="${escapeHTML(o.fill||'transparent')}"
+        stroke="${escapeHTML(o.color)}" stroke-width="${stroke}">${shape}</svg>`;
+    }
+    return `<div class="annotation${selected?' selected':''}${o.status==='review'?' reviewing':''}" data-note="${o.id}" role="button" tabindex="0"
+      aria-label="${o.kind==='text'?'文章':o.kind==='image'?'画像':'図形・記号'}の注釈${o.status==='review'?'・要確認':''}" title="注釈を選択" aria-pressed="${selected}"
+      style="left:${o.x*100}%;top:${o.y*100}%;width:${o.w*100}%;height:${o.h*100}%;z-index:${index+1}">
+      <div style="width:100%;height:100%;opacity:${o.opacity/100};background:${o.mask?escapeHTML(o.maskColor||'#ffffff'):'transparent'}">${content}</div>
+      ${o.status==='review'?'<span class="attention" aria-hidden="true">!</span>':''}
+      ${selected&&!state.range?handles.map(([h,x,y])=>`<button class="handle" data-handle="${h}" aria-label="${h} の大きさ変更"
+        title="大きさ変更" style="left:${x}%;top:${y}%;cursor:${h}-resize"></button>`).join(''):''}</div>`;
+  }).join('');
+}
+function options(value,unassigned=false){return (unassigned?'<option value="0">行き先なし</option>':'')+
+  names.map((name,i)=>`<option value="${i+1}"${Number(value)===i+1?' selected':''}>${i+1} · ${name}</option>`).join('');}
+function selectField(key,label,values,value){return `<label>${label}<select data-input="${key}" aria-label="${label||'図形'}">${values.map(([v,text])=>
+  `<option value="${v}"${String(value)===String(v)?' selected':''}>${text}</option>`).join('')}</select></label>`;}
+function inputField(key,label,value,type='number',min=0,max=100,step=.5){return `<label>${label}<input type="${type}" data-input="${key}"
+  value="${escapeHTML(value)}"${type==='number'?` min="${min}" max="${max}" step="${step}"`:''}></label>`;}
+function panelHeader(title){return `<div class="panel-heading"><h2>${title}</h2><button class="close" data-action="deselect"
+  title="属性を閉じる" aria-label="属性を閉じる">${icon('close')}</button></div>`;}
+function renderInspector(){
+  const panel=$('inspector'),o=current();panel.hidden=!o&&!state.memo;
+  $('canvas').classList.toggle('inspecting',!panel.hidden);fitPhoto();if(state.pending)renderRangePicker();if(panel.hidden)return;
+  if(!o){
+    panel.innerHTML=panelHeader('作業メモ')+`<span class="muted">手順 ${state.step} · ${names[state.step-1]}</span>
+      <div class="source-memo"><span>原本 · 読み取り専用</span><p>${sourceMemos[state.step-1]}</p></div>
+      <label>表示するメモ<textarea id="memo-edit" data-input="memo">${escapeHTML(memoValue())}</textarea></label>
+      <div class="row"><button data-action="memo-reset">原本に戻す</button>
+        ${state.migration&&!state.memoConfirmed[memoKey()]?'<button data-action="memo-keep">このメモを維持</button>':''}</div>
+      ${state.orphan?`<article class="orphan"><h3>行き先のないメモ</h3><span class="source-label">元の手順 3 · 段部仕上げ</span>
+        <p>仕上げ後、段差の角を確認。</p><label>移す先の写真<select id="orphan-destination" data-input="orphanTarget">${options(state.orphanTarget)}</select></label>
+        <div class="two"><button data-action="orphan-move">ここへ移す</button><button data-action="orphan-source">原本に戻す</button></div></article>`:''}`;
+    return;
+  }
+  const text=o.kind==='text',image=o.kind==='image';let fields='';
+  if(text)fields=`<fieldset class="text-controls"><legend>文章</legend><textarea id="note-text" data-input="text">${escapeHTML(o.text)}</textarea>
+    <button data-action="candidates">この範囲で候補を再取得</button><div class="two">
+      ${inputField('font','文字サイズ (%)',o.font||2.5,'number',.5,20)}${inputField('color','文字色',o.color,'color')}
+      ${selectField('bold','太さ',[[false,'標準'],[true,'太字']],!!o.bold)}
+      ${selectField('align','揃え',[['left','左'],['center','中央'],['right','右']],o.align||'left')}</div></fieldset>`;
+  else if(image)fields=`<fieldset><legend>画像</legend><button data-action="replace-image">画像ファイルから差し替え</button>
+    ${selectField('fit','画像の収まり',[['contain','全体表示'],['cover','枠いっぱい'],['fill','引き伸ばす']],o.fit||'contain')}</fieldset>`;
+  else{
+    fields=`<fieldset><legend>図形</legend>${selectField('kind','',[['rectangle','矩形'],['ellipse','楕円'],['line','線'],['arrow','矢印']],o.kind)}
+      <div class="two">${inputField('color','線色',o.color,'color')}${inputField('fill','塗り色',o.fill||'transparent','text')}
+      ${inputField('weight','線の太さ (%)',o.weight||.8,'number',.1,20,.1)}</div></fieldset>`;
+    if(['line','arrow'].includes(o.kind)){
+      const points=shapePoints(o);fields+=`<fieldset class="box"><legend>線分の始点・終点</legend><div class="endpoints">`+
+        ['start','end'].flatMap(point=>['x','y'].map(axis=>inputField(`${point}-${axis}`,`${point==='start'?'始点':'終点'} ${axis.toUpperCase()} (%)`,
+          Math.round(points[point][axis]*1000)/10))).join('')+'</div></fieldset>';
+    }
+  }
+  panel.innerHTML=panelHeader(text?'文章':image?'画像':'図形・記号')+
+    `<div class="row attrs-actions"><button data-action="duplicate">複製</button><button class="danger" data-action="delete-note">削除</button></div>`+fields+
+    `<fieldset class="box"><legend>位置と大きさ (%)</legend><div class="two">`+
+      [['x','左'],['y','上'],['w','幅'],['h','高さ']].map(([key,label])=>inputField(key,label,Math.round(o[key]*1000)/10)).join('')+
+    `</div></fieldset>${inputField('opacity','不透明度 (%)',o.opacity)}
+    <fieldset class="box"><legend>重なり順と背景</legend><div class="two"><button data-action="front">前面へ</button><button data-action="rear">背面へ</button></div>
+      ${text||image?`<div class="mask-row"><label class="check"><input type="checkbox" data-input="mask"${o.mask?' checked':''}>背景を付ける</label>
+        ${inputField('maskColor','背景色',o.maskColor||'#ffffff','color')}</div>`:''}</fieldset>
+    <div class="two">${selectField('status','状態',[['ok','確認済み'],['review','要確認'],['excluded','対象外']],o.status)}
+      <label>手順<select data-input="step">${options(o.step,true)}</select></label></div>`;
+}
+function renderComparison(){
+  $('canvas').classList.toggle('comparing',state.compare);$('comparison').hidden=!state.compare;
+  if(state.compare)$('comparison').innerHTML=`<div class="panel-heading"><h2>原本の比較</h2><button class="close" data-action="close-compare" title="比較を閉じる" aria-label="比較を閉じる">${icon('close')}</button></div>`+
+    [['公開中',7],[state.migration?'新しい原本':'編集中の原本',state.migration?8:7]].map(([label,version])=>`<section class="compare-pane">
+    <header><strong class="${version===7?'green':'amber'}">${label}</strong><span>第${version}版</span></header>
+    <div class="comparison-sheet">${drawing(state.step,version)}${label==='公開中'&&state.step===2?'<span class="compare-note">切込み 1.0 mm</span>':''}</div>
+    <p>${state.step===2?(version===7?'外径 φ32.5 まで荒加工。':'外径 φ32.0 まで荒加工。'):sourceMemos[state.step-1]}</p>
+    <footer>${label==='公開中'?'10/05 16:10 公開':state.migration?'10/07 13:45 取込':'編集中'}</footer></section>`).join('');
+  fitPhoto();
+}
+function render(){
+  for(const button of document.querySelectorAll('[data-source]'))button.setAttribute('aria-pressed',String(button.dataset.source===state.source));
+  $('target-name').textContent=state.source==='lathe'?'旋盤 第1工程':'検査 第1工程';
+  $('migration-chip').hidden=!state.migration;$('source-dot').hidden=!state.migration;
+  $('drawing').innerHTML=drawing(state.step,state.migration?8:7);
+  $('photo').style.cursor=state.range?'crosshair':'default';
+  renderSteps();renderComparison();renderAnnotations();renderInspector();renderMore();updateStatus();renderRangePicker();
+}
+function selectNote(id){state.selected=id;state.memo=false;state.range=false;state.pending=null;render();}
+function addOverlay(kind,bbox={x:.38,y:.23,w:.28,h:.14},url=null,crop=false){
+  const note={id:nextId++,source:state.source,step:state.step,kind,...bbox,text:'ここに文章を入力',font:2.5,bold:false,align:'left',
+    color:kind==='text'?'#161c22':'#e5484d',fill:'transparent',weight:.8,opacity:100,status:'ok',mask:kind==='text',maskColor:'#ffffff',fit:'contain'};
+  if(url)note.url=url;
+  if(crop)note.crop={...bbox,step:state.step,version:state.migration?8:7};
+  overlays.push(note);dirty();selectNote(note.id);notice(`${kind==='text'?'文章':kind==='image'?'画像':'図形・記号'}を追加しました`);
+}
+function renderRangePicker(){
+  const picker=$('range-picker');picker.hidden=!state.pending;if(picker.hidden)return;
+  const bbox=state.pending,photo=$('photo'),canvas=$('canvas'),zone=$('photo-zone');
+  const photoRect=photo.getBoundingClientRect(),canvasRect=canvas.getBoundingClientRect(),scale=canvasRect.width/canvas.clientWidth;
+  const right=(zone.getBoundingClientRect().right-canvasRect.left)/scale;
+  picker.style.left=`${clamp((photoRect.left-canvasRect.left)/scale+(bbox.x+bbox.w)*photo.clientWidth,16,right-280)}px`;
+  picker.style.top=`${clamp((photoRect.top-canvasRect.top)/scale+(bbox.y+bbox.h)*photo.clientHeight+12,64,canvas.clientHeight-180)}px`;
+  picker.innerHTML=`<div class="panel-heading"><h2>注釈の種類</h2><button class="close" data-action="cancel-range" title="範囲を取り消す" aria-label="範囲を取り消す">${icon('close')}</button></div>
+    <p>選んだ範囲に追加します。</p><div class="row"><button data-kind="text">文章</button><button data-kind="image">画像</button><button data-kind="rectangle">図形</button></div>`;
+}
+function syncLayers(){
+  const modal=!!state.dialog,blocking=modal||state.history||state.nfc;
+  $('editor').inert=blocking;$('kiosk-header').inert=blocking;$('drawer-layer').hidden=!state.history;$('drawer').inert=modal;
+  $('nfc').hidden=!state.nfc;$('nfc').inert=modal;$('modal-layer').hidden=!modal;renderRail();
+}
+function closeDialog(){state.dialog=null;syncLayers();
+  if(returnFocus?.isConnected&&!returnFocus.closest('[inert]'))returnFocus.focus();
+  else (state.history?$('drawer'):document.querySelector('[data-action=save]')).focus();}
+function openDialog(type){
+  if(!state.dialog)returnFocus=document.activeElement;state.dialog=type;
+  const labels={
+    publish:['加工要領書を公開',`公開すると、この内容と要確認 ${reviews()} 件の注釈・メモが使用側に反映されます。`,'公開する','キャンセル'],
+    discard:['下書きを捨てる','この下書きを捨てて、公開中の内容に戻します。','下書きを捨てる','キャンセル'],
+    'delete-note':['注釈を削除','この注釈を削除します。','削除','キャンセル'],
+    'delete-old':['旧画像を削除','第6版の旧画像6件を削除します。','削除する','キャンセル'],
+    conflict:['別の社員が更新しました','あなたの未保存内容を保持しています。','保持内容を再保存','最新を再読込'],
+    reload:['最新内容を再読込','現在保持している未保存内容を破棄し、最新内容へ置き換えます。','最新内容へ置換','戻る'],
+    recovery:['端末に残った下書き','前回の編集途中データを復元してから保存できます。','復元','破棄'],
+    back:['編集を終了','未保存の変更を破棄して戻ります。','戻る','キャンセル']
+  };
+  if(type==='candidates')$('modal').innerHTML=`<h2 id="modal-title">文章の候補</h2><p id="modal-description">この範囲の文章を選択してください。</p>
+    <div class="candidate-list"><button data-candidate="切込み 1.5 mm">切込み 1.5 mm</button><button data-candidate="仕上げ代を残す">仕上げ代を残す</button></div>
+    <div class="dialog-actions"><button data-action="dialog-cancel">キャンセル</button><button data-action="manual-text">手入力</button></div>`;
+  else{
+    const [title,description,confirm,cancel]=labels[type];
+    $('modal').innerHTML=`<h2 id="modal-title">${title}</h2><p id="modal-description">${description}</p><div class="dialog-actions">
+      <button data-action="${type==='conflict'?'reload':type==='recovery'?'recovery-discard':'dialog-cancel'}">${cancel}</button>
+      <button class="${['discard','delete-note','delete-old','reload','back'].includes(type)?'danger':'primary'}" data-action="dialog-confirm">${confirm}</button></div>`;
+  }
+  syncLayers();$('modal').focus();
+}
+function openHistory(){returnFocus=document.activeElement;state.history=true;syncLayers();$('drawer').focus();}
+function save(){
+  if(state.busy)return;const content=snapshot(),revision=editRevision,generation=++saveGeneration;
+  state.busy=true;updateStatus();setTimeout(()=>{
+    if(generation!==saveGeneration)return;state.busy=false;state.dirty=editRevision!==revision;savedSnapshot=content;updateStatus();notice('保存しました 14:32');
+  },420);
+}
+function resetTransient(){state.history=false;state.dialog=null;state.nfc=false;state.memo=false;state.more=false;state.pending=null;state.range=false;state.selected=null;}
+function preset(name){
+  saveGeneration++;state.busy=false;resetTransient();state.source='lathe';state.step=2;state.compare=name==='migration';state.migration=name==='migration';
+  $('toast').hidden=true;gesture=null;$('drag-preview').hidden=true;
+  if(name==='conflict')state.dirty=true;
+  if(['text','shape','image'].includes(name)){
+    const kind={text:'text',shape:'rectangle',image:'image'}[name];
+    let note=overlays.find(o=>o.source==='lathe'&&o.kind===kind&&o.step>0&&o.status!=='excluded');
+    if(!note){addOverlay(kind);note=current();}state.step=note.step;state.selected=note.id;
+  }
+  if(name==='more')state.more=true;
+  if(name==='memo')state.memo=true;
+  if(name==='range'){state.range=true;notice('画像上で範囲をドラッグしてください');}
+  if(name==='nfc'){state.nfc=true;$('nfc-message').textContent='社員タグをリーダーにかざしてください。';}
+  for(const button of document.querySelectorAll('[data-preset]'))button.setAttribute('aria-pressed',String(button.dataset.preset===name));
+  render();syncLayers();if(name==='history')openHistory();
+  if(['publish','conflict','recovery'].includes(name))openDialog(name);
+}
+function confirmDialog(){
+  const type=state.dialog;
+  if(type==='publish'){state.dirty=false;savedSnapshot=publishedSnapshot=snapshot();notice('下書きを公開しました');}
+  if(type==='discard'){restoreSnapshot(publishedSnapshot);savedSnapshot=publishedSnapshot;state.dirty=false;notice('下書きを捨てました');}
+  if(type==='delete-note'){const index=overlays.findIndex(o=>o.id===state.selected);if(index>=0)overlays.splice(index,1);state.selected=null;dirty();}
+  if(type==='delete-old'){$('old-revision').innerHTML='<strong>版 6</strong><div class="meta">10/02 09:20 · 画像削除済み</div>';notice('旧画像 6 件を削除しました');}
+  if(type==='recovery'){
+    state.memos['lathe-2']='外径 φ32。切込み 1.5 mm。仕上げ代を残す。';
+    const note=overlays.find(o=>o.id===1);if(note)note.text='切込み 1.5 mm\n端面のバリを確認';dirty();notice('前回の下書きを復元しました');
+  }
+  if(type==='reload'){restoreSnapshot(savedSnapshot);state.dirty=false;notice('最新を読み込みました');}
+  if(type==='back'){restoreSnapshot(savedSnapshot);state.dirty=false;closeDialog();preset('nfc');return;}
+  closeDialog();render();if(type==='conflict')save();
+}
+function pickImage(replace=false){imageRequest={replace,id:current()?.id,source:state.source,step:state.step};$('image-file').click();}
+const actions={
+  save,publish:()=>openDialog('publish'),discard:()=>openDialog('discard'),back:()=>state.dirty?openDialog('back'):preset('nfc'),
+  'nfc-back':()=>preset('normal'),'nfc-read':()=>{
+    $('nfc-message').textContent='社員タグを確認中…';const button=document.querySelector('[data-action=nfc-read]');button.disabled=true;
+    setTimeout(()=>{button.disabled=false;if(!state.nfc)return;preset('normal');notice('社員タグを認証しました');},600);
+  },
+  'add-text':()=>addOverlay('text'),'add-shape':()=>addOverlay('rectangle'),
+  'replace-image':()=>pickImage(true),range:()=>{
+    state.range=!state.range;state.selected=null;state.memo=false;state.pending=null;render();if(state.range)notice('画像上で範囲をドラッグしてください');
+  },
+  'cancel-range':()=>{state.pending=null;state.range=false;render();},
+  more:()=>{state.more=!state.more;renderMore();if(state.more)$('more-menu').querySelector('button').focus();},
+  memo:()=>{state.memo=!state.memo;state.selected=null;state.range=false;state.pending=null;render();if(state.memo)$('memo-edit').focus();},
+  compare:()=>{state.compare=!state.compare;renderComparison();renderRail();},
+  'close-compare':()=>{state.compare=false;renderComparison();renderRangePicker();moreButton.focus();},history:openHistory,
+  'close-history':()=>{state.history=false;syncLayers();returnFocus?.focus();},
+  deselect:()=>{state.selected=null;state.memo=false;render();},
+  duplicate:()=>{const o=current();if(!o)return;const copy=JSON.parse(JSON.stringify(o));copy.id=nextId++;
+    const dx=Math.min(.025,1-copy.w-copy.x),dy=Math.min(.025,1-copy.h-copy.y);copy.x+=dx;copy.y+=dy;
+    for(const key of ['start','end'])if(copy[key]){copy[key].x+=dx;copy[key].y+=dy;}
+    overlays.push(copy);dirty();selectNote(copy.id);},
+  'delete-note':()=>openDialog('delete-note'),'delete-old':()=>openDialog('delete-old'),
+  front:()=>{const o=current();if(!o)return;const index=overlays.indexOf(o),next=overlays.findIndex((n,i)=>i>index&&n.source===o.source&&n.step===o.step);
+    if(next<0)return;[overlays[index],overlays[next]]=[overlays[next],overlays[index]];dirty();renderAnnotations();},
+  rear:()=>{const o=current();if(!o)return;const index=overlays.indexOf(o);let prev=-1;
+    overlays.forEach((n,i)=>{if(i<index&&n.source===o.source&&n.step===o.step)prev=i;});
+    if(prev<0)return;[overlays[index],overlays[prev]]=[overlays[prev],overlays[index]];dirty();renderAnnotations();},
+  'memo-reset':()=>{delete state.memos[memoKey()];dirty();render();},
+  'memo-keep':()=>{state.memoConfirmed[memoKey()]=true;dirty();renderInspector();},
+  'orphan-move':()=>{state.memos[`lathe-${state.orphanTarget}`]='仕上げ後、段差の角を確認。';state.source='lathe';state.step=state.orphanTarget;
+    state.orphan=false;dirty();render();},
+  'orphan-source':()=>{state.orphan=false;dirty();render();},
+  review:()=>{
+    const items=overlays.filter(o=>o.status!=='excluded'&&(o.status==='review'||o.step===0)).map(o=>o.id);if(state.orphan)items.push('memo');
+    if(!items.length){notice('すべて確認済みです');return;}
+    const next=items[(items.indexOf(state.reviewCursor)+1)%items.length];state.reviewCursor=next;
+    if(next==='memo'){state.source='lathe';state.selected=null;state.memo=true;state.range=false;state.pending=null;render();$('orphan-destination')?.focus();}
+    else{const o=overlays.find(n=>n.id===next);state.source=o.source;state.step=o.step||2;selectNote(next);}
+  },
+  candidates:()=>openDialog('candidates'),'manual-text':()=>{closeDialog();$('note-text')?.focus();},
+  'dialog-cancel':closeDialog,'dialog-confirm':confirmDialog,reload:()=>openDialog('reload'),
+  'recovery-discard':()=>{closeDialog();notice('端末の下書きを破棄しました');}
+};
+document.addEventListener('click',event=>{
+  const button=event.target.closest('button');
+  if(state.more&&!event.target.closest('#more-menu,[data-action=more]'))closeMore();
+  if(!button||button.disabled)return;
+  if(button.closest('#more-menu'))closeMore(true);
+  if(button.dataset.preset){preset(button.dataset.preset);return;}
+  if(button.dataset.action){actions[button.dataset.action]?.();return;}
+  if(button.dataset.step){state.step=Number(button.dataset.step);state.selected=null;state.pending=null;render();return;}
+  if(button.dataset.source){state.source=button.dataset.source;state.step=state.source==='inspection'?6:2;state.selected=null;state.pending=null;render();return;}
+  if(button.dataset.kind){const kind=button.dataset.kind,bbox=state.pending;if(!bbox)return;
+    state.pending=null;state.range=false;addOverlay(kind,bbox,null,kind==='image');return;}
+  if(button.dataset.candidate){const o=current();if(o){o.text=button.dataset.candidate;dirty();}closeDialog();render();}
+});
+function updateBox(o,next){
+  const original={x:o.x,y:o.y,w:o.w,h:o.h},points=shapePoints(o);
+  for(const [key,value] of Object.entries(next))o[key]=value;
+  if(['line','arrow'].includes(o.kind))for(const key of ['start','end'])o[key]={
+    x:o.x+(points[key].x-original.x)/original.w*o.w,y:o.y+(points[key].y-original.y)/original.h*o.h};
+}
+document.addEventListener('input',event=>{
+  const field=event.target,key=field.dataset.input;if(!key)return;
+  if(key==='memo'){state.memos[memoKey()]=field.value;dirty();return;}
+  if(key==='orphanTarget'){state.orphanTarget=Number(field.value);return;}
+  const o=current();if(!o)return;const value=field.type==='checkbox'?field.checked:field.value;
+  if(field.type==='number'&&(field.value.trim()===''||!Number.isFinite(Number(value))))return;
+  if(['x','y','w','h'].includes(key)){
+    const max=key==='x'?1-o.w:key==='y'?1-o.h:key==='w'?1-o.x:1-o.y;
+    updateBox(o,{[key]:clamp(Number(value)/100,(key==='w'||key==='h') ? .03 : 0,max)});
+  }else if(key.includes('-')){
+    const [point,axis]=key.split('-'),points=shapePoints(o);o.start={...points.start};o.end={...points.end};o[point][axis]=clamp(Number(value)/100,0,1);
+    o.x=Math.min(o.start.x,o.end.x);o.y=Math.min(o.start.y,o.end.y);o.w=Math.max(.03,Math.abs(o.end.x-o.start.x));o.h=Math.max(.03,Math.abs(o.end.y-o.start.y));
+    o.x=Math.min(o.x,1-o.w);o.y=Math.min(o.y,1-o.h);
+  }else if(key==='bold')o.bold=value==='true';
+  else if(['font','weight','opacity'].includes(key))o[key]=clamp(Number(value),Number(field.min),Number(field.max));
+  else if(key==='step')o.step=Number(value);else o[key]=value;
+  dirty();renderAnnotations();renderSteps();renderRail();
+  if(key==='step'){state.step=o.step||state.step;render();}
+  if(key==='kind'){if(['line','arrow'].includes(o.kind)){const points=shapePoints(o);o.start=points.start;o.end=points.end;}renderInspector();renderAnnotations();}
+  if(key.includes('-'))renderGeometryValues(o);
+});
+function renderGeometryValues(o){for(const key of ['x','y','w','h']){
+  const input=$('inspector').querySelector(`[data-input="${key}"]`);if(input)input.value=String(Math.round(o[key]*1000)/10);
+}}
+/* Local image files stay in memory; no upload or external image requests. */
+$('image-file').addEventListener('change',()=>{
+  const file=$('image-file').files[0],request=imageRequest;imageRequest=null;$('image-file').value='';if(!file||!request)return;
+  if(!file.type.startsWith('image/')){notice('画像ファイルを選択してください');return;}
+  const url=URL.createObjectURL(file);
+  if(request.replace){const note=overlays.find(o=>o.id===request.id);if(!note){URL.revokeObjectURL(url);return;}note.url=url;delete note.crop;dirty();renderAnnotations();}
+  else{state.source=request.source;state.step=request.step;addOverlay('image',undefined,url);}
+});
+function point(event){const rect=$('photo').getBoundingClientRect();
+  return {x:clamp((event.clientX-rect.left)/rect.width,0,1),y:clamp((event.clientY-rect.top)/rect.height,0,1)};}
+$('photo').addEventListener('pointerdown',event=>{
+  if(event.button!==0||state.busy)return;const p=point(event),target=event.target.closest('[data-note]'),handle=event.target.closest('[data-handle]');
+  if(state.range){gesture={mode:'draw',start:p};state.pending=null;$('range-picker').hidden=true;
+    const preview=$('drag-preview');preview.style.cssText=`left:${p.x*100}%;top:${p.y*100}%;width:0;height:0`;preview.hidden=false;
+  }else if(target){state.selected=Number(target.dataset.note);state.memo=false;const o=current();
+    gesture={mode:handle?'resize':'move',handle:handle?.dataset.handle,start:p,original:JSON.parse(JSON.stringify(o)),id:o.id};
+    renderAnnotations();renderInspector();renderRail();gesture.start=point(event);
+  }else{state.selected=null;state.memo=false;renderAnnotations();renderInspector();renderRail();return;}
+  gesture.pointerId=event.pointerId;event.preventDefault();$('photo').setPointerCapture(event.pointerId);
+});
+$('photo').addEventListener('pointermove',event=>{
+  if(!gesture||event.pointerId!==gesture.pointerId)return;const p=point(event),g=gesture,dx=p.x-g.start.x,dy=p.y-g.start.y;
+  if(g.mode==='draw'){
+    const preview=$('drag-preview');preview.style.left=`${Math.min(p.x,g.start.x)*100}%`;preview.style.top=`${Math.min(p.y,g.start.y)*100}%`;
+    preview.style.width=`${Math.abs(dx)*100}%`;preview.style.height=`${Math.abs(dy)*100}%`;
+  }else{
+    const o=overlays.find(n=>n.id===g.id),b=g.original;if(!o)return;Object.assign(o,JSON.parse(JSON.stringify(b)));
+    if(g.mode==='move')updateBox(o,{x:clamp(b.x+dx,0,1-b.w),y:clamp(b.y+dy,0,1-b.h)});
+    else{
+      let x=b.x,y=b.y,w=b.w,h=b.h;
+      if(g.handle.includes('e'))w=clamp(b.w+dx,.03,1-b.x);if(g.handle.includes('s'))h=clamp(b.h+dy,.03,1-b.y);
+      if(g.handle.includes('w')){x=clamp(b.x+dx,0,b.x+b.w-.03);w=b.x+b.w-x;}
+      if(g.handle.includes('n')){y=clamp(b.y+dy,0,b.y+b.h-.03);h=b.y+b.h-y;}
+      updateBox(o,{x,y,w,h});
+    }
+    renderAnnotations();renderGeometryValues(o);
+  }
+});
+$('photo').addEventListener('pointerup',event=>{
+  if(!gesture||event.pointerId!==gesture.pointerId)return;const g=gesture,p=point(event);gesture=null;$('drag-preview').hidden=true;
+  if($('photo').hasPointerCapture(event.pointerId))$('photo').releasePointerCapture(event.pointerId);
+  if(g.mode==='draw'){
+    const w=Math.abs(p.x-g.start.x),h=Math.abs(p.y-g.start.y);if(w<.02||h<.02)return;
+    state.pending={x:Math.min(p.x,g.start.x),y:Math.min(p.y,g.start.y),w,h};renderRangePicker();
+    $('range-picker').querySelector('[data-kind]')?.focus();
+  }else{
+    const o=overlays.find(n=>n.id===g.id);if(o&&['x','y','w','h'].some(key=>o[key]!==g.original[key]))dirty();renderInspector();
+  }
+});
+$('photo').addEventListener('pointercancel',()=>{
+  if(gesture?.original){const o=overlays.find(n=>n.id===gesture.id);if(o)Object.assign(o,gesture.original);}
+  gesture=null;$('drag-preview').hidden=true;renderAnnotations();if(current())renderGeometryValues(current());
+});
+$('drawer-layer').addEventListener('click',event=>{if(event.target===$('drawer-layer'))actions['close-history']();});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){
+    if(state.dialog)closeDialog();else if(state.history)actions['close-history']();else if(state.more)closeMore(true);else if(state.pending||state.range)actions['cancel-range']();else actions.deselect();return;
+  }
+  const root=state.dialog?$('modal'):state.history?$('drawer'):state.nfc?$('nfc'):null;
+  if(event.key==='Tab'&&root){
+    const controls=[...root.querySelectorAll('button,input,select,textarea,[tabindex="0"]')].filter(e=>!e.disabled&&!e.hidden),first=controls[0],last=controls.at(-1);
+    if(event.shiftKey&&(document.activeElement===first||document.activeElement===root)){event.preventDefault();last?.focus();}
+    else if(!event.shiftKey&&(document.activeElement===last||document.activeElement===root)){event.preventDefault();first?.focus();}return;
+  }
+  const note=event.target.closest('[data-note]');if(!note)return;
+  if(event.key==='Enter'||event.key===' '){event.preventDefault();selectNote(Number(note.dataset.note));
+    document.querySelector(`[data-note="${state.selected}"]`)?.focus();return;}
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){
+    event.preventDefault();state.selected=Number(note.dataset.note);const o=current(),amount=event.shiftKey ? .01 : .002;
+    const dx=event.key==='ArrowRight'?amount:event.key==='ArrowLeft'?-amount:0,dy=event.key==='ArrowDown'?amount:event.key==='ArrowUp'?-amount:0;
+    const handle=event.target.dataset.handle;let {x,y,w,h}=o;
+    if(handle){if(handle.includes('e'))w=clamp(w+dx,.03,1-x);if(handle.includes('s'))h=clamp(h+dy,.03,1-y);
+      if(handle.includes('w')){const next=clamp(x+dx,0,x+w-.03);w+=x-next;x=next;}
+      if(handle.includes('n')){const next=clamp(y+dy,0,y+h-.03);h+=y-next;y=next;}}
+    else{x=clamp(x+dx,0,1-w);y=clamp(y+dy,0,1-h);}
+    updateBox(o,{x,y,w,h});dirty();renderAnnotations();renderInspector();
+    const element=document.querySelector(`[data-note="${o.id}"]`);(handle?element.querySelector(`[data-handle="${handle}"]`):element)?.focus();
+  }
+});
+fitStage();render();
+</script>
+</body>
+</html>

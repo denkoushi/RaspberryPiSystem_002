@@ -35,6 +35,7 @@ export type SuggestionInput = {
   scannedPartNumber: string | null;
   topics: ProcedureTopic[];
   workTypes: string[];
+  fieldRoots?: Record<string, string>;
 };
 
 export interface ProcedureInferencePort {
@@ -45,6 +46,8 @@ export interface ProcedureInferencePort {
 /** Words that mark shop-floor work whose mistakes reach product quality. */
 const QUALITY_CRITICAL = /切削|段取|検査|測定|組立|組付|加工|研削|旋盤|フライス|トルク|締付|治具|寸法|公差/;
 const CONFIDENT = 0.8;
+// Owner rule: when unsure, require approval. Only the clerical branch of the field tree is clearly general knowledge.
+const AUTO_PUBLISH_ROOT_FIELD = '事務・教育';
 
 export function digestMaterial(material: ProcedureMaterial): MaterialDigest {
   const { source, organized } = material;
@@ -60,10 +63,10 @@ export function digestMaterial(material: ProcedureMaterial): MaterialDigest {
  * Quality-critical or uncertain topics always need an approval; only a confident,
  * clearly general topic may publish without one.
  */
-export function enforceReviewTier(header: ProcedureHeader, confidence: number): KnowledgeProcedureReviewTier {
+export function enforceReviewTier(header: ProcedureHeader, confidence: number, rootField?: string): KnowledgeProcedureReviewTier {
   if (header.reviewTier === 'approval_required' || confidence < CONFIDENT) return 'approval_required';
   const text = [header.title, header.category, header.identifiers.processName ?? ''].join(' ');
-  if (QUALITY_CRITICAL.test(text) || header.identifiers.partNumber || header.identifiers.drawingNumber) return 'approval_required';
+  if ((rootField !== undefined && rootField !== AUTO_PUBLISH_ROOT_FIELD) || QUALITY_CRITICAL.test(text) || header.identifiers.partNumber || header.identifiers.drawingNumber) return 'approval_required';
   return 'auto_publish';
 }
 
@@ -110,7 +113,7 @@ export function validateSuggestions(raw: RawSuggestion, input: SuggestionInput):
     const parts = titlePartsSchema.parse({ target, workType, ...(detail ? { detail } : {}) });
     const title = composeTitle(parts);
     const requestedTier = raw.proposal.reviewTier === 'auto_publish' ? 'auto_publish' : 'approval_required';
-    const reviewTier = enforceReviewTier({ title, category: workType, identifiers, reviewTier: requestedTier }, confidence);
+    const reviewTier = enforceReviewTier({ title, category: workType, identifiers, reviewTier: requestedTier }, confidence, input.fieldRoots?.[workType]);
     proposal = { parts, title, identifiers, reviewTier, reason: trimmed(raw.proposal.reason, 200) ?? '' };
   }
   return { candidates, proposal, confidence };

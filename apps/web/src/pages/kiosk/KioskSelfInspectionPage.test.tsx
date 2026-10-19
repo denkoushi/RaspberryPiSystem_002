@@ -1,17 +1,22 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { HermesPageContextProvider, useHermesPageContext } from '../../components/hermes/HermesPageContext';
 
 import { KioskSelfInspectionPage } from './KioskSelfInspectionPage';
 
 import type { ProductionScheduleRow } from '../../api/client';
+import type { AssemblyProcedureSequenceDto } from '../../features/assembly/types';
 import type { SelfInspectionSessionSummaryDto } from '../../features/part-measurement/types';
 import type { NfcEvent } from '../../hooks/useNfcStream';
+import type { ReactNode } from 'react';
 
 const mockUseKioskProductionSchedule = vi.fn();
 const mockUseKioskProductionScheduleResources = vi.fn();
 const mockUseSelfInspectionSessions = vi.fn();
 const mockUseSelfInspectionNonconformities = vi.fn();
+const mockUseProcedureManualsByPart = vi.fn();
 const mockUseWorkInstructionGroups = vi.fn();
 const mockUseWorkInstructionGroup = vi.fn();
 const mockIssueSelfInspectionPaperReport = vi.fn();
@@ -31,6 +36,7 @@ vi.mock('../../api/hooks', () => ({
   useKioskProductionScheduleResources: (...args: unknown[]) => mockUseKioskProductionScheduleResources(...args),
   useSelfInspectionSessions: (...args: unknown[]) => mockUseSelfInspectionSessions(...args),
   useSelfInspectionNonconformities: (...args: unknown[]) => mockUseSelfInspectionNonconformities(...args),
+  useProcedureManualsByPart: (...args: unknown[]) => mockUseProcedureManualsByPart(...args),
   useWorkInstructionGroups: (...args: unknown[]) => mockUseWorkInstructionGroups(...args),
   useWorkInstructionGroup: (...args: unknown[]) => mockUseWorkInstructionGroup(...args),
   useInvalidateSelfInspectionItem: () => ({
@@ -46,6 +52,8 @@ vi.mock('../../api/client', () => ({
   getWorkInstructionPartAlias: (...args: unknown[]) => mockGetWorkInstructionPartAlias(...args),
   putWorkInstructionPartAlias: (...args: unknown[]) => mockPutWorkInstructionPartAlias(...args)
 }));
+
+vi.mock('../../features/assembly/AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence }: { sequence: AssemblyProcedureSequenceDto }) => <div data-testid="manual-viewer">{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}</div> }));
 
 vi.mock('../../hooks/useNfcStream', () => ({
   useNfcStream: (enabled: boolean) => {
@@ -76,10 +84,13 @@ function buildScheduleRow(overrides: Partial<ProductionScheduleRow> = {}): Produ
   };
 }
 
-function pageTree(initialEntry = '/kiosk/part-measurement/self-inspection') {
+function pageTree(initialEntry = '/kiosk/part-measurement/self-inspection', observer?: ReactNode) {
   return (
     <MemoryRouter initialEntries={[initialEntry]}>
+      <HermesPageContextProvider>
+      {observer}
       <Routes>
+        <Route path="/kiosk" element={<div>home</div>} />
         <Route path="/kiosk/part-measurement/self-inspection" element={<KioskSelfInspectionPage />} />
         <Route path="/kiosk/part-measurement/self-inspection/start" element={<div>digital input opened</div>} />
         <Route
@@ -87,8 +98,18 @@ function pageTree(initialEntry = '/kiosk/part-measurement/self-inspection') {
           element={<div>paper print opened</div>}
         />
       </Routes>
+      </HermesPageContextProvider>
     </MemoryRouter>
   );
+}
+
+function PageContextObserver() {
+  const { pageContext } = useHermesPageContext();
+  const navigate = useNavigate();
+  return <>
+    <output data-testid="page-context">{JSON.stringify(pageContext)}</output>
+    <button onClick={() => navigate('/kiosk')}>leave page</button>
+  </>;
 }
 
 function renderPage(initialEntry?: string) {
@@ -169,6 +190,8 @@ async function scanPartHidText(text: string) {
 
 describe('KioskSelfInspectionPage HID scan workflow', () => {
   beforeEach(() => {
+    mockUseProcedureManualsByPart.mockReset();
+    mockUseProcedureManualsByPart.mockReturnValue({ data: { processes: [] }, isSuccess: true, isFetching: false, isError: false });
     scheduleRows = [];
     wipSessions = [];
     reviewPendingSessions = [];
@@ -354,6 +377,61 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
         })
       );
     });
+  });
+
+  it('unions manual chips, shows counts and switches the existing viewer between sources', async () => {
+    mockUseProcedureManualsByPart.mockImplementation(part => ({ data: { processes: part ? [
+      { processId: 'grinding', processName: '研削', sequence: { documents: [{ orderItemId: 'manual1', title: '公開手順書' }] } },
+      { processId: 'cutting', processName: '切削', sequence: { documents: [{ orderItemId: 'manual2', title: '切削手順書' }] } }
+    ] : [] }, isSuccess: true, isFetching: false }));
+    renderPage();
+    await scanPartHidText('MH001');
+    expect(screen.getByRole('button', { name: '研削' })).toHaveTextContent('2');
+    expect(screen.getByRole('button', { name: '切削' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '研削' }));
+    expect(screen.getByRole('tab', { name: '段取写真' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '手順書' }));
+    expect(screen.getByTestId('manual-viewer')).toHaveTextContent('公開手順書');
+  });
+
+  it('opens manuals-only matches without alias fallback or source tabs', async () => {
+    mockUseWorkInstructionGroups.mockReturnValue({ data: [], isSuccess: true, isFetching: false, isLoading: false });
+    mockUseProcedureManualsByPart.mockImplementation(part => ({ data: { processes: part ? [{ processId: 'cutting', processName: '切削', sequence: { documents: [{ orderItemId: 'manual', title: '部品手順書' }] } }] : [] }, isSuccess: true, isFetching: false }));
+    renderPage();
+    await scanPartHidText('PART-1');
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    expect(screen.getByTestId('manual-viewer')).toHaveTextContent('部品手順書');
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(mockGetWorkInstructionPartAlias).not.toHaveBeenCalled();
+    expect(mockGetWorkInstructionPartCandidates).not.toHaveBeenCalled();
+  });
+
+  it('keeps original chips and shows a nearby manual lookup error', async () => {
+    mockUseProcedureManualsByPart.mockImplementation(part => ({ data: undefined, isSuccess: !part, isError: Boolean(part), isFetching: false }));
+    renderPage();
+    await scanPartHidText('MH001');
+    expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('手順書を取得できませんでした。');
+    fireEvent.click(screen.getByRole('button', { name: '研削' }));
+    expect(screen.getByText('加工面を確認します。')).toBeInTheDocument();
+  });
+
+  it('registers scanned FHINCD, updates it, and clears it on clear and navigation', async () => {
+    render(pageTree(undefined, <PageContextObserver />));
+    const current = () => JSON.parse(screen.getByTestId('page-context').textContent ?? 'null');
+    expect(current()).toBeNull();
+    await scanPartHidText('mh001');
+    await waitFor(() => expect(current()).toEqual({ path: '/kiosk/part-measurement/self-inspection', entity: { kind: 'partNumber', value: 'MH001' } }));
+    await scanPartHidText('mh002');
+    await waitFor(() => expect(current()?.entity.value).toBe('MH002'));
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }));
+    await waitFor(() => expect(current()).toBeNull());
+    await scanPartHidText('mh001');
+    await waitFor(() => expect(current()?.entity.value).toBe('MH001'));
+    fireEvent.click(screen.getByText('leave page'));
+    await screen.findByText('home');
+    expect(current()).toBeNull();
   });
 
   it('scans FHINCD independently, shows titleless target chips, and opens instructions only after chip selection', async () => {
@@ -898,11 +976,32 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
     expect(screen.getByRole('button', { name: '研削' })).toBeInTheDocument();
   });
 
+  it('separates delete from candidate selection and keeps its confirmation guard', async () => {
+    scheduleRows = [buildScheduleRow()];
+    renderPage();
+    await scanHidText('0002178005');
+    const select = await screen.findByRole('button', { name: '検査方法を選択' });
+    const actions = select.closest('[data-testid="self-inspection-row-actions"]')!;
+    expect(actions).toHaveClass('gap-x-6', 'gap-y-6');
+    expect(actions.firstElementChild).toBe(within(actions as HTMLElement).getByRole('button', { name: '削除' }));
+    expect(select).toHaveClass('min-h-11');
+    fireEvent.click(within(actions as HTMLElement).getByRole('button', { name: '削除' }));
+    expect(screen.getByRole('dialog', { name: '自主検査アイテムを削除' })).toBeInTheDocument();
+    expect(mockInvalidateSelfInspectionItem).not.toHaveBeenCalled();
+  });
+
   it('requires a password and reason before invalidating a started row', async () => {
     wipSessions = [buildWipSession()];
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: '削除' }));
+    const actions = screen.getByTestId('self-inspection-row-actions');
+    const remove = within(actions).getByRole('button', { name: '削除' });
+    expect(actions.firstElementChild).toBe(remove);
+    expect(actions).toHaveClass('gap-x-6', 'gap-y-6');
+    expect(remove).toHaveClass('mr-auto');
+    expect(within(actions).getByRole('link', { name: '再開' })).toHaveClass('min-h-11');
+    fireEvent.click(remove);
+    expect(mockInvalidateSelfInspectionItem).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: '自主検査アイテムを削除' })).toBeInTheDocument();
     expect(screen.getByText(/この操作は取り消せません/)).toBeInTheDocument();
     const submit = screen.getByRole('button', { name: '削除する' });

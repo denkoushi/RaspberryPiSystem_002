@@ -19,13 +19,16 @@ let cachedEntry: MaterializedWinnerCacheEntry | undefined;
 let inflightBuild: InflightMaterializedWinnerBuild | undefined;
 
 /**
- * decorations 等、同一世代に跨る複数 POST で winner baseWhere を再計算しない。
- * shell/continue/board 等の他経路は従来どおり `resolveLeaderboardMaterializedBaseWhere` を使う。
+ * decorations / planning board / shell / continue の同一世代の winner baseWhere を再利用する。
+ * generationToken は readLeaderboardShellSnapshotGenerationToken /
+ * readGrindingPlanningBoardSnapshotGenerationToken が返す leaderboard shell snapshot 世代文字列を渡す。
+ * 非空の token を指定した場合は世代を再読込しない。
  */
 export async function resolveLeaderboardMaterializedBaseWhereWithGenerationCache(
-  prisma: PrismaClientLike
+  prisma: PrismaClientLike,
+  options?: { generationToken?: string }
 ): Promise<Prisma.Sql> {
-  const generationToken = await readLeaderboardShellSnapshotGenerationToken();
+  const generationToken = options?.generationToken || await readLeaderboardShellSnapshotGenerationToken();
 
   if (cachedEntry?.generationToken === generationToken) {
     return cachedEntry.baseWhere;

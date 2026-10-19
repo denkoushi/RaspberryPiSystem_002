@@ -1,18 +1,10 @@
+import { createTimeoutSignal } from '../../../lib/timeout-signal.js';
 import { emitInferenceCallOutcome } from '../observability/inference-observability.js';
 import { InferenceRouter } from '../routing/inference-router.js';
 
 import type { TextCompletionPort, TextCompletionRequest, TextCompletionResult } from '../ports/text-completion.port.js';
 import { InferenceDeferredError } from '../ports/text-completion.port.js';
 import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from './openai-chat-response.util.js';
-
-const createTimeoutSignal = (timeoutMs: number): { signal: AbortSignal; cleanup: () => void } => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  return {
-    signal: controller.signal,
-    cleanup: () => clearTimeout(timeout),
-  };
-};
 
 function inputSizeForMessages(messages: TextCompletionRequest['messages']): number {
   return messages.reduce((acc, m) => acc + Buffer.byteLength(m.content, 'utf8'), 0);

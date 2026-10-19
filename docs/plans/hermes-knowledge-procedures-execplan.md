@@ -16,6 +16,12 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-04) 投稿前の行き先選択をローカル実装: 対象検索・最近の対象 → 対象別の案件／新しい案件 → 入力。分野の3段階選択を投稿前と既存仕分けフォームで共用し、行き先付き受付・全素材の自動割り当て・案件の作り直し要求・正規化した題名の同時作成防止を追加した。「おまかせ」は従来のAI候補と投稿後の仕分けを維持する。JEVによる候補出しは次のPRで行う。
+- [x] (2026-10-04) マイルストーン3a・3b・4 を PR #1688 で main へ統合し（merge `59fd917c27aaa77f6e8e60716fded218f44067e4`）、Pi5 へ標準ローリング更新で反映した（run `20261004-071005-139f6d`、`Result=success`、`ExecMainStatus=0`、recap `ok=268 changed=31 unreachable=0 failed=0`）。反映後、API/Web が同 SHA のイメージで起動、`/api/system/health` 200、migration `20261004100000_add_knowledge_procedure_reviews` 適用済み、新しいルートが未認証で 401 を確認した。本番の手順書は公開済み 1 件だけで、止まっていた下書きは無かった。職位の入った社員は 0 人、対応表は 0 件で、設定されるまで承認できる人はいない。オーナーが実機で「手順書」の閲覧を確認した。
+- [x] (2026-10-04) 投稿前の行き先選択の検証（Claude）: 使い捨て PostgreSQL で全 migration を適用し DB テスト 31 件、API の集中テスト 218 件、Web の全テスト、型検査、lint が成功した。検証時に 3 点を直した。承認なしで公開できる分野を最上位「事務・教育」だけに絞った（迷う場合は承認が要る側という決定に合わせる）。末端の分野は 1 回押すだけで選べるようにした。同じ題名の既存案件を探す処理を、識別行のない古い案件だけに限った。
+- [ ] 投稿前の行き先選択: PR、CI、main 統合、Pi5 反映、実機確認。
+- [ ] 入力後に JEV が行き先の候補を出す（DGX と比べてから切り替える）。分野の管理画面。
+
 - [x] (2026-09-26) 現状調査。ナレッジ試作の範囲、JEV の役割、横断検索の進捗を確認した。
 - [x] (2026-09-27) オーナー決定を記録した。本命は横断検索への合流、ナレッジ資料を TypeSafe/JEV（社外）へ送ってよい、DocJev と Hermes 標準機能の援用を評価する。
 - [x] (2026-09-27) 既存の手順データ（作業要領、組立手順書、キオスク要領書 PDF、自主検査図面）と手動編集機能を調査し、Context に記録した。
@@ -35,12 +41,19 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [ ] マイルストーン2c: PR、CI、main 統合、Pi5 反映、実際の投稿での確認。
 - [ ] 素材の付け替えによる統合・分割の操作（仕分け済みの素材を別の案件へ移す）は、班長の画面（マイルストーン3）で行う。
 - [ ] マイルストーン2b: 文字のある PDF の束を DocJev で分割・分類してから取り込む処理と、Excel の取り込み。
+- [x] (2026-10-04) マイルストーン3a: API・DB のローカル実装。職位名・段階対応表、NFC 承認と差し戻し、誤り報告、worker 起動時の既存 draft の承認待ち移行、CSV の職位取り込みを追加した。実装は Codex（gpt-6.1-sol）、検証は Claude。集中テスト 199 件と、使い捨て PostgreSQL での全 migration 適用・DB テスト 25 件が成功した。自動公開の新しい版が出たとき、誤り報告で承認待ちに戻っていた古い版を取り下げる修正を検証時に加えた。
+- [x] (2026-10-04) マイルストーン3b・4: デザイン案（`docs/design-previews/knowledge-review-chat-preview.html`、架空データ）をオーナーが承認した。名簿 CSV の職位の列名は「職位」とオーナーが決めた。
+- [x] (2026-10-04) マイルストーン3b・4の画面をローカル実装: 承認待ち、承認・差し戻し、公開済み一覧の名前・品番・図番フィルタ、1手順ずつの閲覧、誤り報告、職位の対応表。実装は Codex（gpt-6.1-sol）、検証は Claude。検証結果は Concrete Steps 参照。実機での見た目の確認は Pi5 反映後に行う。
+- [x] (2026-10-08) 職位の設定をキオスクのタグ管理へ集約し、本番 Pi5 へ反映: 社員の職位の編集（#1805）、はしご型の「職位の対応表」と部長相当・役員相当の追加（#1826、migration `20261007160000_expand_knowledge_position_ranks`）、社員の新規追加で部署が保存されない不具合の修正（#1830）。所有者が実機で、対応表の操作と保存、部長・役員の置き直し、新規追加時の部署の保存を確認した。
 - [ ] マイルストーン3: 確認の区分（承認が要るもの／自動公開）と、承認・誤り報告・修正の流れ。
 - [ ] マイルストーン4: Chat からの閲覧（主題名での直接表示）。
 - [ ] マイルストーン5: 写真への丸数字・チェック・切り抜きの自動付与（精度評価の後）。
 - [ ] マイルストーン6: 横断検索フェーズ1完了後、手順書を情報源として登録し、自然文の質問から探せるようにする。
 
 ## Surprises & Discoveries
+
+- Observation: 指定の `tsc --noEmit -p .` は既存の rootDir/include 不一致で TS6059 になり、`--rootDir .` の補助検査でも既存テスト等の型エラーが残る。今回の変更ファイルに型診断はなかった。
+  Evidence: ローカルの共有パッケージを build 後、`tsc --noEmit -p tsconfig.build.json` は成功した。Prisma 生成はホームキャッシュの書き込み制限を、既存エンジンの一時領域コピーで回避し、ネットワーク取得なしで成功した。
 
 - Observation: 手動編集機能は、切り抜き・丸数字・チェック・コメントを「ページ上の位置（割合）と種類」のデータとして持つ。
   Evidence: `apps/api/prisma/schema.prisma` の `AssemblyProcedureOverlayElement`（`xRatio`/`yRatio`/`widthRatio`/`heightRatio`、`kind`、`text`、`shapeKind`、画像 `assetId`）と、作業要領側の `WorkInstructionEditOverlay`。AI が同じ形のデータを出せば、表示と人による修正に既存の仕組みを使える。
@@ -66,6 +79,29 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Decision Log
 
+- Decision: 分野の初期データは 3 段・110 語とし、公開されている加工用語を土台に、本番の設備マスタと作業要領（切削・研削が中心）に出てくる枝だけを残す。各語に言い換えを持たせる。既存の作業の種類 11 個の名前はすべて含める。
+  Rationale: 履歴のない最初の投稿でも選べる入口を用意しつつ、選ぶ画面が重くならないようにする。言い換えは後の JEV の候補出しと検索に使う。
+  Date/Author: 2026-10-04 / オーナー（用語の案は Claude、オーナーが承認）
+- Decision: 人が先に行き先を決めた新しい案件は、分野の最上位が「事務・教育」で、品番・図番がなく、題名に品質に関わる語がない場合だけ自動公開にする。それ以外は承認が要る。
+  Rationale: 設備の操作や安全の手順も、誤りがそのまま使われると危険である。迷う場合は承認が要る側に倒す既存の決定に合わせる。
+  Date/Author: 2026-10-04 / Claude
+- Decision: 投稿前に対象と案件を選び、平らな作業の種類を共通の3段階の分野に置き換える。どの段でも選択でき、行き先が分からない投稿者には「おまかせ」を残す。入力後のJEV候補出しは次のPRに分ける。
+  Rationale: 案件が数千件になっても、対象で絞った数件の選択肢で投稿できるため。分野ごとの専用画面は作らない。
+  Date/Author: 2026-10-04 / オーナー
+- Decision: `KnowledgeField`、nullableな`KnowledgeProcedure.fieldId`と`KnowledgeTriage.presetProcedureId`、正規化した3部品題名の`KnowledgeTopicIdentity`を加算migrationで追加する。既存列へのFK追加はexpand-onlyで許されないため、分野と先決定案件の参照はコードで検証する。受付と先決定の保存、素材追加と割り当て・作り直し要求をそれぞれ同じトランザクションに入れる。新しい案件は題名ごとのロックと識別表で既存案件を再利用する。
+  Rationale: 既存データや制約を変更せず、再送・途中停止・同時作成でも投稿と素材を取りこぼさないため。
+  Date/Author: 2026-10-04 / Codex
+
+- Decision: マイルストーン3a は `KnowledgePositionRank` と `KnowledgeProcedureReview` を追加する。社員 ID は監査用のスカラ値とし、社員コード・氏名・タグ・職位名・段階は操作時の写しを保存する。新しい表の FK と CHECK は CREATE TABLE 内で定義し、既存表は nullable な職位列だけを加える。
+  Rationale: expand-only の制約を守り、名簿 CSV の置換で社員が再作成されても過去の承認記録を保持するため。
+  Date/Author: 2026-10-04 / Codex
+- Decision: 公開・承認・差し戻し・誤り報告・承認待ち投入は手順書行のロックで直列化し、状態競合を `PROCEDURE_REVIEW_CONFLICT` で拒否する。承認操作では在籍状態・タグ重複・対応表をトランザクション内でも再確認する。承認用 port は既存 port を拡張し、検索側の契約を変更しない。
+  Rationale: 二重承認と複数の承認待ちを防ぎ、ユーザーのロールではなく現在の社員情報で判断するため。
+  Date/Author: 2026-10-04 / Codex
+- Decision: CSV の内部列名を `positionName`、日本語の別名を `職位` とし、列定義が既に設定されていても任意列を補う。列なしは既存値を保持し、置換モードでの再作成時も保持する。空欄は null とする。
+  Rationale: 既存 CSV と管理済みの列定義を使った取り込みを継続できるため。
+  Date/Author: 2026-10-04 / Codex
+
 - Decision: 「探す」部分は、横断検索のフェーズ1完了後に、手順書を情報源として載せる形にする。
   Rationale: 「不適合情報と同じように取り出す」をそのまま満たし、試作の 20 件上限（質問ごとに全件を LLM へ渡す方式）を索引検索で解消できる。
   Date/Author: 2026-09-26 / オーナー
@@ -78,7 +114,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - Decision: 確認は種類で分ける。切削・段取り・検査・組立など品質に直結する手順は、班長相当以上の職位の人の承認後に公開する。一般知識は自動で公開し、「AI作成」と誤り報告ボタンを付ける。AI が区分に迷う場合は承認が要る側に倒す。
   Rationale: 投入は現場の全員が行うため、誤った手順がそのまま使われる危険を、品質に効く範囲だけ人が止める。すべてを承認制にすると承認待ちが溜まり、スケールしない。
   Date/Author: 2026-09-27 / オーナー（承認者の条件は次の決定で具体化した）
-- Decision: 承認者は、キオスクで社員の NFC タグをスキャンした人のうち、在籍中で職位が「班長相当」以上の人とする（ユーザーのロール `MANAGER` ではない）。職位の段階は 一般 → 班長相当 → 係長相当 → 課長相当 の 4 つ。名簿には人事データの職位名（主事、主任など多数）をそのまま持ち、職位名から段階への対応表を管理画面で保守する。対応表にない職位名は「一般」として扱い（承認できない）、名簿の取り込み結果に未対応の職位名として一覧表示する。承認記録には、既存の NFC 承認と同じく社員コード・氏名・タグ・職位名・段階の写しを残す。
+- Decision: 承認者は、キオスクで社員の NFC タグをスキャンした人のうち、在籍中で職位が「班長相当」以上の人とする（ユーザーのロール `MANAGER` ではない）。職位の段階は 一般 → 班長相当 → 係長相当 → 課長相当 → 部長相当 → 役員相当 の 6 つ。名簿には人事データの職位名（主事、主任など多数）をそのまま持ち、職位名から段階への対応表をキオスクのタグ管理の社員一覧上部「職位の対応表」で保守する。管理コンソールのメニューからは外す。対応表にない職位名は「一般」として扱い（承認できない）、名簿の取り込み結果に未対応の職位名として一覧表示する。承認記録には、既存の NFC 承認と同じく社員コード・氏名・タグ・職位名・段階の写しを残す。
   Rationale: 現場の承認は既存機能（自主検査の記録承認、組立の承認）と同じく社員タグで行うのが自然である。職位名は社内に無数にあるため、名前ではなく段階で判定し、名前の増減は対応表の保守で吸収する。人事データに職位の列があるので、名簿 CSV に 1 列足せば取り込める。既存の自主検査・組立の承認に同じ条件を付けるかは本計画の範囲外とする。
   Date/Author: 2026-09-27 / オーナー（対応表と未対応時の扱いは Claude の提案）
 - Decision: 写真への丸数字・チェック・切り抜きの自動付与は段階的に行う。最初は文章の構造化と写真の添付だけで公開し、位置の精度を評価してから加える。
@@ -135,7 +171,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Outcomes & Retrospective
 
-まだ実装していない。
+マイルストーン3a の API・DB をローカルで実装した。承認を要する新しい下書きと既存の停止した下書きは承認待ちへ進み、在籍中の班長相当以上の社員タグで承認・差し戻しできる。誤り報告は公開を取り下げ、承認待ちの最新版を残す。対応表の管理は、既存の ADMIN/MANAGER JWT API に加え、キオスクの端末キーと操作パスワードでも行える。ナレッジ無効時もタグ管理の対応表 API は利用できる。その後、マイルストーン3b・4の画面として承認・閲覧・誤り報告 UI と職位の管理 UI をローカル実装した。承認待ちにはその版への最新の誤り報告の理由を出し、タグ UID は POST 本文だけで送る。職位の人数は既存の社員一覧から集計する。修正操作、自然文からの検索、commit・統合・deploy は今回の画面実装に含めない。
 
 ## Context and Orientation
 
@@ -161,7 +197,7 @@ DocJev（https://github.com/jerryjliu/docjev 、Apache-2.0、Python 3.11+）は�
 
 マイルストーン2では、素材から下書きを作る。ナレッジボタンから入った素材は、既存の受付（`KnowledgeIntake`）を使って保存する。文字のある PDF は DocJev で分類・分割し、写真と画像は DGX の画像説明で中身を文章にする。Excel は `exceljs`（API に導入済み）でシートを表として読む。そのうえで LLM が素材を既存の主題に振り分けるか、新しい主題を提案し、主題ごとに時系列の手順へ並べ直す。各手順に出典を必須とし、出典のない手順は捨てる。素材どうしの食い違いと抜けは「要確認」として残す。新しい素材が同じ主題に入ると、下書きを作り直して前の版との差分を残す。試作の固定分類と 20 件上限は、主題単位の処理に置き換える。終わりには、見本の素材を順不同に投入すると、主題ごとの下書きが作られる。
 
-マイルストーン3では、確認の流れを作る。LLM が主題の確認区分（承認が要る／自動公開）を判定し、迷う場合は承認が要る側にする。承認が要る下書きは承認待ち一覧に出て、キオスクで社員タグをスキャンした班長相当以上の人が、承認・差し戻し・修正できる。そのために、名簿（`Employee`）に人事データの職位名を足し、名簿 CSV の取り込み（`apps/api/src/services/imports/importers/employee.ts`）に職位の列を加え、職位名から段階（一般／班長相当／係長相当／課長相当）への対応表と、その管理画面を作る。対応表にない職位名は一般として扱い、取り込み結果に一覧表示する。承認の判定は、既存の自主検査の記録承認（`apps/api/src/services/part-measurement/self-inspection/use-cases/record-approval.ts`）と同じくタグの UID から在籍中の社員を引き、段階が班長相当以上かを確かめる。修正は既存の手動編集画面を使えるよう、手順書の写真と書き込みを既存の形へ受け渡す。自動公開の手順書には「AI作成」と誤り報告ボタンを付け、報告があれば承認待ちに戻す。
+マイルストーン3では、確認の流れを作る。LLM が主題の確認区分（承認が要る／自動公開）を判定し、迷う場合は承認が要る側にする。承認が要る下書きは承認待ち一覧に出て、キオスクで社員タグをスキャンした班長相当以上の人が、承認・差し戻し・修正できる。そのために、名簿（`Employee`）に人事データの職位名を足し、名簿 CSV の取り込み（`apps/api/src/services/imports/importers/employee.ts`）に職位の列を加え、職位名から段階（一般／班長相当／係長相当／課長相当／部長相当／役員相当）への対応表を、タグ管理内の専用はしご画面で設定する。対応表にない職位名は一般として扱い、取り込み結果に一覧表示する。承認の判定は、既存の自主検査の記録承認（`apps/api/src/services/part-measurement/self-inspection/use-cases/record-approval.ts`）と同じくタグの UID から在籍中の社員を引き、段階が班長相当以上かを確かめる。修正は既存の手動編集画面を使えるよう、手順書の写真と書き込みを既存の形へ受け渡す。自動公開の手順書には「AI作成」と誤り報告ボタンを付け、報告があれば承認待ちに戻す。
 
 マイルストーン4では、Chat から見られるようにする。横断検索がまだないこの段階では、ナレッジモードで主題名や品番を言うと、公開済みの手順書を名前と識別子の一致で探し、テキストで要約して手順書ページへのリンクを出す。手順書ページには「次へ」で 1 手順ずつ進む表示を付ける。説明の仕方は Hermes の Skill に書く。
 
@@ -199,7 +235,27 @@ DocJev の評価は、セッションのスクラッチ領域で次のように�
 
 マイルストーン2a の検証も同じ手順で行った。API の集中テストは `src/services/knowledge`、`src/routes/__tests__/hermes-knowledge.test.ts`、`src/bootstrap/__tests__/start-post-listen-schedulers.test.ts` を対象にし、データベースのテストは `src/services/knowledge/__tests__/*.local.test.ts` をまとめて実行した。2026-09-27 の結果は、集中テスト 56 件と、データベースのテスト 11 件がすべて成功した（Poppler の実物テスト 1 件は環境変数を付けていないため対象外）。実際の DGX での振り分けと組み立ての品質は、Pi5 反映後に実際の素材で確かめる。
 
-マイルストーン2b 以降の具体的なコマンドは、着手するときに追記する。
+マイルストーン3a の集中検証は API ディレクトリで次を実行した。
+
+    pnpm exec prisma generate
+    pnpm exec vitest run src/services/knowledge src/routes/__tests__/hermes-knowledge.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts src/services/imports
+    pnpm exec tsc --noEmit -p .
+
+Prisma 生成はホームキャッシュの書き込み権限で失敗した後、既存の `darwin-arm64` と `linux-arm64-openssl-3.0.x` エンジンキャッシュを `/tmp/prisma-download/master/605197351a3c8bdd595af2d2a9bc3025bca48ea2/` にコピーし、`AWS_LAMBDA_FUNCTION_VERSION=knowledge-validation pnpm exec prisma generate` で成功した。この環境変数は Prisma の一時キャッシュ経路を選ぶため、検証コマンドだけに付けた。共有型の build もローカルの既存依存だけで実行した。
+
+集中検証は 197 件成功、25 件スキップ（DB と Poppler の条件付きテスト）、約 15 秒だった。起動時の呼び出し確認と CSV 置換時の職位保持を追加した後、その変更を含む単体テストは 21 件成功し、ルートの再検証は 31 件成功した。DB のテストは Codex の環境では実行できなかったため、Claude が使い捨て PostgreSQL で実行し、25 件すべて成功した。指定の tsc は既存 TS6059 で失敗し、`--rootDir .` の補助検査でも既存テスト等のエラーが残った。API が参照する `part-search-core` と `shelf-layout-core` のローカル build 後、本番コードに絞った `pnpm exec tsc --noEmit -p tsconfig.build.json` は成功した。
+
+リポジトリのルートで `COREPACK_ENABLE_NETWORK=0 scripts/ci/pnpm-exact.sh --filter @raspi-system/api --filter @raspi-system/shared-types lint --max-warnings=0` が成功し、後続の変更ファイルにも eslint を実行して成功した。新 migration の SQL は既存の `validate-expand-only-migrations.py` の `validate_sql` で `EXPAND_ONLY_VALIDATION_OK` となった。Docker が使える環境では、上記の使い捨て PostgreSQL 手順で全 migration を適用し、`KNOWLEDGE_DATABASE_TEST=1 pnpm exec vitest run src/services/knowledge/__tests__/knowledge-procedure-repository.local.test.ts`（14 件）を再実行する。
+
+マイルストーン3b・4の画面実装のローカル検証（2026-10-04）:
+
+- `pnpm --filter @raspi-system/shared-types build`: 成功。
+- Web: `pnpm exec vitest run src/features/hermes-knowledge/ src/components/hermes/ src/pages/admin/KnowledgePositionRanksPage.test.tsx`: 11 ファイル・94 件成功。初回は投稿用モックが承認待ち取得まで受けて 4 件失敗し、エンドポイントごとにモックを分けた後に成功した。
+- Web: `pnpm exec tsc --noEmit -p .`: 成功。
+- API: `pnpm exec vitest run src/services/knowledge src/routes/__tests__/hermes-knowledge.test.ts`: 94 件成功、27 件スキップ（DB 26 件・Poppler 1 件）。
+- API: `pnpm exec tsc --noEmit -p tsconfig.build.json`: 成功。
+- ルート: `COREPACK_ENABLE_NETWORK=0 scripts/ci/pnpm-exact.sh lint --max-warnings=0`: 成功。最後の変更ファイルにも eslint を実行した。
+- 新しい DB テストを含む `*.local.test.ts` は Codex の環境では実行できなかったため、Claude が使い捨て PostgreSQL で実行し、26 件すべて成功した（Poppler の 1 件は対象外）。API の集中テストは 200 件成功。本番 DB は使用していない。
 
 ## Validation and Acceptance
 
@@ -227,3 +283,5 @@ Revision note (2026-09-27): 承認者を「社員タグをスキャンした、�
 Revision note (2026-09-27): マイルストーン1の反映結果を記録し、マイルストーン2を 2a（素材キューと振り分け・組み立て）と 2b（DocJev と Excel）に分けた。保存経路の変更、確認区分の上書き、組み立て結果の検証、分類の自由化の決定を記録した。
 Revision note (2026-09-27): 実運用を想定した議論から、AI の単独振り分けをやめて投稿者が仕分けを決める方針に変え、マイルストーン2c（仕分け）を 2b より先に置いた。投稿ごとの社員タグ、任意のバーコード、保留と通知、3 部品のタイトルと作業の種類の一覧、付け替えによる統合・分割を記録した。
 Revision note (2026-09-27): マイルストーン2a の修正の反映結果と、マイルストーン2c（仕分け）の実装内容、タグ付き投稿で用途判定を省く決定、仕分けの単位と作り直しの決定を記録した。
+
+Revision note (2026-10-04): マイルストーン3a の API・DB のローカル実装、CSV の職位保持、競合制御、検証結果と Docker・既存型検査の制約を記録した。UI、commit、統合、deploy は後続の作業として残した。

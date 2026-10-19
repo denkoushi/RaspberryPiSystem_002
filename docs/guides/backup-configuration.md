@@ -2,7 +2,7 @@
 title: バックアップ設定ガイド
 tags: [運用, バックアップ, 設定, Dropbox]
 audience: [運用者, 開発者]
-last-verified: 2026-07-12
+last-verified: 2026-09-30
 related: [backup-and-restore.md, dropbox-setup-guide.md, monitoring.md]
 category: guides
 update-frequency: medium
@@ -65,11 +65,18 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 
 本ガイドでは、モジュール化されたバックアップ機能の設定方法を説明します。バックアップ機能は設定ファイルベースで動作し、ローカルストレージまたはDropboxへの自動バックアップをサポートします。
 
-## Pi5本番の現在方針（2026-08-04）
+## Pi5本番の現在方針（2026-09-30）
+
+- **Dropboxに秘密情報を置かない。** `.vault-pass`、`vault.yml`、`.env`、`backup.json`、証明書、`.ssh`、各端末のTailscale状態・nfc-agent `.env`・status-agent設定は、Dropboxのバックアップ対象から外した（2026-09-30）。これらはGoogle Driveの暗号化DR（[ADR-20260820](../decisions/ADR-20260820-google-drive-disaster-recovery.md)）に含まれる。キオスクはAnsibleで再構築し、新しい端末IDで復旧する。
+- **Dropboxへ送るバックアップは暗号化する。** `BACKUP_ENCRYPTION_KEY`（32バイトbase64、Vaultの `vault_backup_encryption_key` → `infrastructure/docker/.env`）があると、APIはAES-256-GCMで暗号化してから送る。保存先のパスは変えない。復元時は先頭の目印 `RPBKENC1` で暗号化済みか判定し、暗号化前の平文バックアップもそのまま復元できる。鍵が未設定の環境では従来どおり平文で送り、警告ログを出す。
+- **鍵の保全。** 鍵を失うと暗号化済みのDropboxバックアップは復元できない。鍵はVault（git管理・`.vault-pass` で復号）とGoogle Drive DR（`infrastructure/docker/.env` を含む）の両方に残る。
+- Dropboxの割り当ては2.15GBで、DBダンプは1本約460MB。DBのDropbox保持は3世代とし、長期の世代はGoogle Drive DR（日7/週5/月12）で持つ。
+
+## 旧方針（2026-08-04、2026-09-30に一部廃止）
+
 
 - `/app/storage/pdfs` は `enabled: false`。PDFは中核機能の稼働に必須ではないため、2GB Dropboxの推奨対象から外します。
-- `raspi4-sessaku-01` と `raspi4-assembly-01` のNFCエージェント `.env`、Tailscale状態、status-agent設定を `client-file` / `client-directory` の推奨対象として管理します。
-- 上記クライアント対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代です。
+- ~~キオスクのNFCエージェント `.env`、Tailscale状態、status-agent設定を推奨対象として管理する~~（2026-09-30廃止。秘密情報のため推奨カタログから削除）
 - 端末の `.ssh` は秘密鍵を含むためバックアップ対象にできません。復旧時は鍵を再生成し、承認済み公開鍵を再登録します。既存設定に `.ssh` ターゲットがある場合、その削除は本番設定変更として別承認で行います。
 - APIはホスト運用ユーザーの `.ssh` を参照しません。端末バックアップには、読み取り専用の専用鍵と固定 `known_hosts` だけを使用し、ホスト鍵が一致しない接続を拒否します。
 - APIは通常のAnsible inventoryやVaultパスワードも参照しません。通常inventoryから接続先とユーザーだけを抽出したroot管理の専用inventoryと、2本のバックアップPlaybookだけをread-onlyで使用します。
@@ -751,7 +758,7 @@ curl http://localhost:8080/api/backup \
 
 2. **アクセストークンの管理**: Dropboxアクセストークンは環境変数で管理することも検討してください
 
-3. **バックアップの暗号化**: 機密情報を含むバックアップは暗号化することを推奨します
+3. **バックアップの暗号化**: Dropboxへ送るバックアップは `BACKUP_ENCRYPTION_KEY` で暗号化される（上記「Pi5本番の現在方針」）。秘密情報そのものはDropboxの対象にしない
 
 4. **ネットワークセキュリティ**: Dropboxへの通信はTLS 1.2以上で保護され、証明書ピニングが実装されています
    - **証明書更新時の対応**: Dropboxが証明書を更新した場合、証明書ピニング検証が失敗しバックアップが500エラーになることがあります

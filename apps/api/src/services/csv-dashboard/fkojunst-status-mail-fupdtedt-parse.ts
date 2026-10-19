@@ -1,9 +1,9 @@
+import { toTrimmedString as normalizeToken } from '../../lib/string-normalize.js';
+
 /** Gmail `FKOJUNST_Status` の `FUPDTEDT` を現場 JST 壁時計として解釈する（Node/Postgres 実行 TZ に依存しない）。 */
 export const FKOJUNST_STATUS_MAIL_FUPDTEDT_WALL_CLOCK_TIMEZONE = 'Asia/Tokyo';
 
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-const normalizeToken = (value: unknown): string => String(value ?? '').trim();
 
 /** MM/DD/YYYY HH:mm:ss（FKOJUNST_Status CSV 従来） */
 export const FKOJUNST_STATUS_MAIL_FUPDTEDT_US_DATETIME_SEC =

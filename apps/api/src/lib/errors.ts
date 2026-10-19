@@ -1,3 +1,15 @@
+export class DomainHttpError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    message: string,
+    public readonly code?: string,
+    public readonly details?: unknown
+  ) {
+    super(message);
+    this.name = 'DomainHttpError';
+  }
+}
+
 export class ApiError extends Error {
   public details?: unknown;
   public code?: string;

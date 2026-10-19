@@ -1,53 +1,33 @@
-import clsx from 'clsx';
-
 import { AssemblyTemplateEditorAuthGate } from './AssemblyTemplateEditorAuthGate';
 import { AssemblyTemplateEditorCanvasPane } from './AssemblyTemplateEditorCanvasPane';
+import { AssemblyTemplateEditorCanvasToolbar } from './AssemblyTemplateEditorCanvasToolbar';
 import { useAssemblyTemplateEditor } from './AssemblyTemplateEditorContext';
 import { AssemblyTemplateEditorDialogs } from './AssemblyTemplateEditorDialogs';
-import { AssemblyTemplateEditorHeader } from './AssemblyTemplateEditorHeader';
-import { AssemblyTemplateEditorInspectorPane } from './AssemblyTemplateEditorInspectorPane';
 import { AssemblyTemplateEditorLeftPane } from './AssemblyTemplateEditorLeftPane';
+import { AssemblyTemplateEditorSideColumn } from './AssemblyTemplateEditorSideColumn';
+import { useAssemblyEditorWideLayout } from './useAssemblyEditorWideLayout';
 
 export function AssemblyTemplateEditorScreen() {
-  const {
-    accessGranted,
-    loading,
-    message,
-    procedurePaneOpen,
-    settingsPaneOpen
-  } = useAssemblyTemplateEditor();
-
+  const { accessGranted, loading, message, boltConditionPaneOpen, settingsPaneOpen } = useAssemblyTemplateEditor();
+  const wide = useAssemblyEditorWideLayout();
+  const docked = !wide && (boltConditionPaneOpen || settingsPaneOpen);
   if (loading || !accessGranted) return <AssemblyTemplateEditorAuthGate />;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 bg-slate-800 p-2 text-white">
-      <AssemblyTemplateEditorHeader />
+    <main
+      data-testid="assembly-unified-editor-workspace"
+      className={`relative grid min-h-0 flex-1 ${docked ? 'grid-cols-[280px_minmax(0,1fr)_320px_64px]' : 'grid-cols-[280px_minmax(0,1fr)_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`}
+    >
+      <AssemblyTemplateEditorLeftPane />
+      <AssemblyTemplateEditorCanvasPane />
+      <AssemblyTemplateEditorSideColumn floating={wide} />
+      <AssemblyTemplateEditorCanvasToolbar />
       {message ? (
-        <p className="rounded border border-white/15 bg-slate-900/80 px-3 py-2 text-sm font-semibold text-amber-200">
+        <p role="status" className="absolute bottom-4 left-[296px] right-20 z-30 rounded border border-[#344252] bg-[#161c22] px-3 py-2 text-sm font-semibold text-amber-200">
           {message}
         </p>
       ) : null}
-      <div
-        data-testid="assembly-unified-editor-workspace"
-        className={clsx(
-          'grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-auto xl:overflow-hidden',
-          procedurePaneOpen &&
-            settingsPaneOpen &&
-            'xl:grid-cols-[16rem_minmax(0,1fr)_20rem]',
-          procedurePaneOpen &&
-            !settingsPaneOpen &&
-            'xl:grid-cols-[16rem_minmax(0,1fr)]',
-          !procedurePaneOpen &&
-            settingsPaneOpen &&
-            'xl:grid-cols-[minmax(0,1fr)_20rem]',
-          !procedurePaneOpen && !settingsPaneOpen && 'xl:grid-cols-1'
-        )}
-      >
-        <AssemblyTemplateEditorLeftPane />
-        <AssemblyTemplateEditorCanvasPane />
-        <AssemblyTemplateEditorInspectorPane />
-      </div>
       <AssemblyTemplateEditorDialogs />
-    </div>
+    </main>
   );
 }

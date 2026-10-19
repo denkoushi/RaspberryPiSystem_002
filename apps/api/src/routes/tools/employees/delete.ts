@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { ApiError } from '../../../lib/errors.js';
+import { throwIfPrismaNotFound } from '../../../lib/prisma-errors.js';
 import { EmployeeService } from '../../../services/tools/employee.service.js';
 import { LoanService } from '../../../services/tools/loan.service.js';
 import { employeeParamsSchema } from './schemas.js';
@@ -25,10 +26,7 @@ export function registerEmployeeDeleteRoute(app: FastifyInstance, employeeServic
       const employee = await employeeService.delete(params.id);
       return { employee };
     } catch (error) {
-      // PrismaのP2025エラー（レコードが見つからない）を404に変換
-      if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
-        throw new ApiError(404, '従業員が見つかりません');
-      }
+      throwIfPrismaNotFound(error, '従業員が見つかりません');
       // P2003エラー（外部キー制約違反）をより分かりやすいメッセージに変換
       // このエラーは通常発生しない（データベースの外部キー制約がON DELETE SET NULLに設定されているため）
       // ただし、データベースの設定が正しく適用されていない場合に発生する可能性がある

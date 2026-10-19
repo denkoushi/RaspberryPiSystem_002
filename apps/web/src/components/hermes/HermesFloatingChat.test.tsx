@@ -1,9 +1,14 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render as testingRender, screen, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { useLocalLlmAvailability } from '../../api/hooks/local-llm';
 
 const mocks = vi.hoisted(() => ({
   clientKey: 'client-key-test',
+  poster: { tagUid: 'tag-1', name: '田中' },
   auth: { user: null, token: null },
   send: vi.fn(),
   getTrialScope: vi.fn(),
@@ -15,11 +20,18 @@ const mocks = vi.hoisted(() => ({
   updateConsultation: vi.fn(),
   cancelConsultation: vi.fn(),
   knowledgeGet: vi.fn(),
-  knowledgePost: vi.fn()
+  knowledgePost: vi.fn(),
+  pendingReviews: vi.fn(),
+  inquirySummary: vi.fn(),
+  inquiryList: vi.fn()
 }));
 
 vi.mock('../../api/client', () => ({
   getResolvedClientKey: () => mocks.clientKey,
+  getKioskInquirySummary: mocks.inquirySummary,
+  listKioskInquiries: mocks.inquiryList,
+  openKioskInquiry: vi.fn(),
+  replyToKioskInquiry: vi.fn(),
   cancelBusinessHermesConsultation: mocks.cancelConsultation,
   createBusinessHermesConsultation: mocks.createConsultation,
   getBusinessHermesConsultation: mocks.getConsultation,
@@ -31,22 +43,32 @@ vi.mock('../../api/client', () => ({
   updateBusinessHermesConsultation: mocks.updateConsultation
 }));
 
+vi.mock('../../features/kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: () => null }));
+
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => mocks.auth
 }));
 
 // Legacy behavior is exercised with the new capability explicitly disabled.
-vi.mock('../../api/http', () => ({ api: { get: mocks.knowledgeGet, post: mocks.knowledgePost } }));
+vi.mock('../../api/http', () => ({ api: {
+  get: (url: string, ...args: unknown[]) => url.endsWith('/subjects') ? Promise.resolve({ data: { subjects: [] } }) : mocks.knowledgeGet(url, ...args),
+  post: (url: string, ...args: unknown[]) => url.endsWith('/subjects/recent') ? Promise.resolve({ data: { subjects: [] } }) : mocks.knowledgePost(url, ...args),
+} }));
+vi.mock('../../features/hermes-knowledge/knowledgeReviewApi', async importOriginal => ({
+  ...await importOriginal<typeof import('../../features/hermes-knowledge/knowledgeReviewApi')>(),
+  listKnowledgePendingReviews: mocks.pendingReviews,
+}));
 // Tag scanning is covered by useKnowledgePoster; here an employee has already scanned.
 vi.mock('../../features/hermes-knowledge/useKnowledgePoster', () => ({
-  useKnowledgePoster: () => ({ poster: { tagUid: 'tag-1', name: '田中' }, pending: [], partNumber: null, setPartNumber: () => undefined,
+  useKnowledgePoster: (active: boolean) => ({ poster: active ? mocks.poster : null, pending: [], partNumber: null, setPartNumber: () => undefined,
     error: null, verifying: false, consume: () => null, clear: () => undefined, removePending: () => undefined }),
 }));
 
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {
+    inquiryMode?: { active: boolean; unreadCount: number; onSelect: () => void };
     mode?: 'legacy' | 'consultations';
-    messages: Array<{ id: string; content: string; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
+    messages: Array<{ id: string; content: string; planId?: string; display?: { records: Array<{ sourceLabel: string }> }; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
     draft: string;
     isBusy: boolean;
     isConsultationsLoading?: boolean;
@@ -60,9 +82,12 @@ vi.mock('./HermesChatPanel', () => ({
     recordPilotAvailable?: boolean;
     onKnowledgeModeChange?: (mode: 'search' | 'knowledge' | 'record-pilot') => void;
     conversationExtension?: ReactNode;
+    conversationContent?: ReactNode;
     attachmentControl?: ReactNode;
+    composerVisible?: boolean;
     onDraftChange: (value: string) => void;
     onSend: () => void;
+    onRefine?: (refine: { axis: 'organization' | 'month' | 'cause'; field: string; value: string }, label?: string, planId?: string) => void;
     onReset: () => void;
     onClose: () => void;
     onStop?: () => void;
@@ -81,9 +106,10 @@ vi.mock('./HermesChatPanel', () => ({
     <section data-testid="hermes-panel" style={props.style}>
       {props.onKnowledgeModeChange ? (
         <div data-testid="hermes-mode-selector">
-          <button type="button" aria-pressed={props.knowledgeMode === 'search'} onClick={() => props.onKnowledgeModeChange?.('search')}>検索</button>
-          <button type="button" aria-pressed={props.knowledgeMode === 'knowledge'} onClick={() => props.onKnowledgeModeChange?.('knowledge')}>ナレッジ</button>
-          {props.recordPilotAvailable ? <button type="button" aria-pressed={props.knowledgeMode === 'record-pilot'} onClick={() => props.onKnowledgeModeChange?.('record-pilot')}>JEV記録</button> : null}
+          <button type="button" aria-pressed={!props.inquiryMode?.active && props.knowledgeMode === 'search'} onClick={() => props.onKnowledgeModeChange?.('search')}>検索</button>
+          <button type="button" aria-pressed={!props.inquiryMode?.active && props.knowledgeMode === 'knowledge'} onClick={() => props.onKnowledgeModeChange?.('knowledge')}>ナレッジ</button>
+          {props.recordPilotAvailable ? <button type="button" aria-pressed={!props.inquiryMode?.active && props.knowledgeMode === 'record-pilot'} onClick={() => props.onKnowledgeModeChange?.('record-pilot')}>JEV記録</button> : null}
+          {props.inquiryMode ? <button type="button" aria-pressed={props.inquiryMode.active} onClick={props.inquiryMode.onSelect}>お問い合わせ {props.inquiryMode.unreadCount || ''}</button> : null}
         </div>
       ) : null}
       {props.mode === 'consultations' && props.onNewConsultation ? (
@@ -123,19 +149,28 @@ vi.mock('./HermesChatPanel', () => ({
       {props.messages.map((message) => (
         <div key={message.id}>
           <p>{message.content}</p>
+          {message.display ? <output data-testid="record-display">{JSON.stringify(message.display)}</output> : null}
+          {message.display && props.onRefine ? <button type="button" disabled={props.isBusy}
+            onClick={() => props.onRefine?.({ axis: 'cause', field: 'causeCategory', value: 'drawing' }, '図面・設計の誤り', message.planId)}>
+            この回答を絞る: {message.content}
+          </button> : null}
           {message.evidence?.map((evidence) => <p key={evidence.id}>{evidence.title}</p>)}
         </div>
       ))}
+      {props.onRefine ? <button type="button" disabled={props.isBusy} onClick={() => props.onRefine?.({ axis: 'organization', field: 'originDepartmentName', value: '組立' })}>組立 12</button> : null}
+      {props.onRefine ? <button type="button" disabled={props.isBusy} onClick={() => props.onRefine?.({ axis: 'cause', field: 'causeCategory', value: 'check' }, '確認・検査の漏れ')}>確認・検査の漏れ 12</button> : null}
       {props.error ? <p role="alert">{props.error}</p> : null}
       {props.consultationError ? <p role="alert">{props.consultationError}</p> : null}
+      {props.conversationContent ?? <>
       {props.conversationExtension}
       {props.attachmentControl}
-      <input
+      {props.composerVisible !== false ? <><input
         aria-label="Hermesへの質問"
         value={props.draft}
         onChange={(event) => props.onDraftChange(event.target.value)}
       />
-      <button type="button" onClick={props.onSend} disabled={props.isBusy}>送信</button>
+      <button type="button" onClick={props.onSend} disabled={props.isBusy}>送信</button></> : null}
+      </>}
       {props.isBusy && props.onStop ? <button type="button" onClick={props.onStop}>停止</button> : null}
       <button type="button" onClick={props.onReset}>{props.activeConsultation ? '相談一覧に戻る' : 'リセット'}</button>
       <button type="button" onClick={props.onClose}>閉じる</button>
@@ -152,15 +187,45 @@ const dispatchWedgeScan = (value: string, target: EventTarget = document.activeE
 };
 
 import { HermesFloatingChat } from './HermesFloatingChat';
+import { HermesPageContextProvider, useHermesPageContext } from './HermesPageContext';
 
+import type { HermesPageContext } from '../../api/domains/assembly';
 import type { CSSProperties, ReactNode } from 'react';
 
-function renderChat(path = '/kiosk/assembly') {
+function ContextControls({ value }: { value: HermesPageContext }) {
+  const { setPageContext, clearPageContext } = useHermesPageContext();
+  useEffect(() => { setPageContext(value); return clearPageContext; }, [value, setPageContext, clearPageContext]);
+  return <>
+    <button onClick={clearPageContext}>clear page context</button>
+    <button onClick={() => setPageContext({ ...value, entity: { ...value.entity, value: 'FH002' } })}>change page context</button>
+  </>;
+}
+
+function GuideRouteControls() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  return <><button onClick={() => navigate('/kiosk/assembly/procedure-documents/example/edit')}>文書を開く</button><span data-testid="guide-route">{location.pathname}</span></>;
+}
+
+function render(ui: ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return testingRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider> });
+}
+
+function renderChat(path = '/kiosk/assembly', pageContext?: HermesPageContext) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <HermesFloatingChat />
+      <HermesPageContextProvider>
+        {pageContext ? <ContextControls value={pageContext} /> : null}
+        <HermesFloatingChat />
+      </HermesPageContextProvider>
     </MemoryRouter>
   );
+}
+
+function openSearch() {
+  fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+  fireEvent.click(screen.getByRole('button', { name: '検索' }));
 }
 
 function consultation(id: string, title = id) {
@@ -203,8 +268,23 @@ function consultationResponse(
 }
 
 describe('HermesFloatingChat', () => {
+  it('shows an AI badge and still opens chat when unavailable', async () => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: true });
+    renderChat();
+    const button = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    expect(button).toHaveAccessibleDescription('AI 未起動');
+    expect(button).toHaveTextContent('!');
+    expect(button).not.toHaveAttribute('title');
+    fireEvent.click(button);
+    expect(await screen.findByTestId('hermes-panel')).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+  });
+
   beforeEach(() => {
+    vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false });
     mocks.clientKey = 'client-key-test';
+    mocks.inquirySummary.mockReset().mockResolvedValue({ isReceiver: false, unreadCount: 0 });
+    mocks.inquiryList.mockReset().mockResolvedValue({ threads: [] });
     mocks.auth.user = null;
     mocks.auth.token = null;
     mocks.send.mockReset();
@@ -219,13 +299,156 @@ describe('HermesFloatingChat', () => {
     mocks.cancelConsultation.mockReset().mockResolvedValue(undefined);
     mocks.knowledgeGet.mockReset().mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: false } : { intakes: [] } }));
     mocks.knowledgePost.mockReset();
+    mocks.pendingReviews.mockReset().mockResolvedValue({ reviewer: { rank: 'leader' }, reviews: [] });
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it('pauses board decoration throughout a held pointer and resumes after inactivity', () => {
+  it('opens inquiries by default on kiosk pages with no unread inquiries', async () => {
+    renderChat();
+    await waitFor(() => expect(mocks.inquirySummary).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    expect(await screen.findByRole('button', { name: 'お問い合わせ' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('textbox', { name: 'Hermesへの質問' })).not.toBeInTheDocument();
+  });
+
+  it('reopens inquiries after switching to search and closing the panel', async () => {
+    renderChat();
+    openSearch();
+    expect(await screen.findByRole('textbox', { name: 'Hermesへの質問' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    expect(await screen.findByRole('button', { name: 'お問い合わせ' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('textbox', { name: 'Hermesへの質問' })).not.toBeInTheDocument();
+  });
+
+  it('opens the search composer by default on non-kiosk pages', async () => {
+    renderChat('/admin/kiosk-settings');
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    expect(await screen.findByRole('textbox', { name: 'Hermesへの質問' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: /お問い合わせ/ })).not.toBeInTheDocument();
+  });
+
+  it('opens the send form instead of the card prompt on a receiver with no unread inquiries', async () => {
+    mocks.inquirySummary.mockResolvedValue({ isReceiver: true, unreadCount: 0 });
+    renderChat();
+    fireEvent.click(await screen.findByRole('button', { name: /業務Hermesチャットを開く/ }));
+    expect(await screen.findByRole('button', { name: '一覧へ戻る' })).toBeInTheDocument();
+    expect(screen.queryByText('社員証をタッチ')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ戻る' }));
+    expect(screen.getByText('社員証をタッチ')).toBeInTheDocument();
+  });
+
+  it('opens the receiver list without a card prompt when login unlock is available', async () => {
+    mocks.inquirySummary.mockResolvedValue({ isReceiver: true, unreadCount: 1, loginUnlock: true });
+    renderChat();
+    fireEvent.click(await screen.findByRole('button', { name: 'お問い合わせ 未読 1 件' }));
+    expect(await screen.findByText('お問い合わせはありません')).toBeInTheDocument();
+    expect(screen.queryByText('社員証をタッチ')).not.toBeInTheDocument();
+    expect(mocks.inquiryList).toHaveBeenCalledWith(undefined, expect.any(AbortSignal));
+  });
+
+  it('opens inquiries from the orange trigger with an unread badge', async () => {
+    mocks.inquirySummary.mockResolvedValue({ isReceiver: true, unreadCount: 2 });
+    renderChat();
+    const trigger = await screen.findByRole('button', { name: 'お問い合わせ 未読 2 件' });
+    expect(trigger).toHaveClass('hermes-floating-trigger--inquiry-unread');
+    expect(trigger.querySelector('.hermes-floating-trigger__inquiry-count')).toHaveTextContent('2');
+    expect(trigger).toHaveTextContent('✉');
+    fireEvent.click(trigger);
+    expect(await screen.findByText('社員証をタッチ')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'お問い合わせ 2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('textbox', { name: 'Hermesへの質問' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    expect(screen.queryByText('社員証をタッチ')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Hermesへの質問' })).toBeInTheDocument();
+  });
+
+  it.each(['/admin/kiosk-settings', '/login', '/signage'])('does not request summary or offer inquiries at %s', async path => {
+    renderChat(path);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByTestId('hermes-panel');
+    expect(mocks.inquirySummary).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /お問い合わせ/ })).not.toBeInTheDocument();
+  });
+
+  it('does not request summary or offer inquiries without a resolved client key', async () => {
+    mocks.clientKey = '';
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByTestId('hermes-panel');
+    expect(mocks.inquirySummary).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /お問い合わせ/ })).not.toBeInTheDocument();
+  });
+
+  it.each(['手順書の作り方', '手順書はどうやって作るの?', '手順書を編集したい'])('offers local assembly guides for %s without creating or sending a consultation', async question => {
+    renderChat();
+    openSearch();
+    const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: question } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    expect(screen.getByText('どの手順書ですか?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '組立の手順書を登録' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '組立の手順書を編集' })).toBeInTheDocument();
+    expect(screen.queryByText('加工の作業手順書')).not.toBeInTheDocument();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('preserves guide progress across same-tab navigation, completes and offers the other guide', async () => {
+    render(<MemoryRouter initialEntries={['/kiosk/assembly']}><HermesPageContextProvider><GuideRouteControls /><HermesFloatingChat /></HermesPageContextProvider></MemoryRouter>);
+    openSearch();
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '手順書を編集したい' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    fireEvent.click(screen.getByRole('button', { name: '組立の手順書を編集' }));
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    expect(screen.getByText('手順 1 / 9')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /ライブラリへ移動/ }));
+    expect(screen.getByTestId('guide-route')).toHaveTextContent('/kiosk/assembly/library');
+    fireEvent.click(screen.getByRole('button', { name: '文書を開く' }));
+    expect(screen.getByText('手順 1 / 9')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    expect(screen.getByRole('heading', { name: '暗証番号を入力' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ライブラリへ移動/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    expect(screen.getByText('手順 1 / 9')).toBeInTheDocument();
+    for (let index = 0; index < 9; index++) fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    expect(screen.getByText('案内が完了しました')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '組立の手順書を登録' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '組立の手順書を編集' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '組立の手順書を登録' }));
+    expect(screen.getByRole('heading', { name: 'ファイルから登録' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '終了' }));
+    expect(screen.queryByRole('region', { name: '操作ガイド' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /業務Hermesチャットを開く/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('returns to questions and sends an unrelated question without guide history', async () => {
+    mocks.send.mockResolvedValue({ status: 'ready', message: '検索結果', evidence: [] });
+    renderChat();
+    openSearch();
+    await waitFor(() => expect(screen.queryByTestId('consultation-list')).not.toBeInTheDocument());
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '手順書の作り方' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    fireEvent.click(screen.getByRole('button', { name: '組立の手順書を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '質問に戻る' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '品番ABCの不適合は?' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+    expect(mocks.send.mock.calls[0][0].messages).toEqual([{ role: 'user', content: '品番ABCの不適合は?' }]);
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+  });
+
+  it('pauses decoration throughout a held pointer and resumes after inactivity', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
     renderChat('/kiosk/production-schedule/planning-board/');
     const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
@@ -258,11 +481,14 @@ describe('HermesFloatingChat', () => {
     expect(trigger).not.toHaveAttribute('data-interacting');
   });
 
-  it('keeps decoration running during interaction outside the board', () => {
+  it('pauses decoration during interaction on every screen', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
     renderChat();
     const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
-    fireEvent.pointerDown(window);
-    fireEvent.wheel(window);
+    expect(trigger).not.toHaveAttribute('data-interacting');
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(trigger).toHaveAttribute('data-interacting', 'true');
+    act(() => vi.advanceTimersByTime(1200));
     expect(trigger).not.toHaveAttribute('data-interacting');
   });
 
@@ -279,7 +505,7 @@ describe('HermesFloatingChat', () => {
 
   it('toggles the panel between standard and expanded sizes without clearing the draft', async () => {
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     const panel = await screen.findByTestId('hermes-panel');
     const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '入力中の質問' } });
@@ -299,6 +525,51 @@ describe('HermesFloatingChat', () => {
     expect(input).toHaveValue('入力中の質問');
   });
 
+  it('widens inquiries only, preserving height and the existing double-size override', async () => {
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    const panel = await screen.findByTestId('hermes-panel');
+    expect(panel.style.width).toBe('560px');
+    expect(panel.style.height).toBe('560px');
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    expect(panel.style.width).toBe('380px');
+    fireEvent.click(screen.getByRole('button', { name: /お問い合わせ/ }));
+    expect(panel.style.width).toBe('560px');
+    expect(panel.style.height).toBe('560px');
+    expect(Number.parseFloat(panel.style.left) + 560).toBeLessThanOrEqual(window.innerWidth - 12);
+    fireEvent.click(screen.getByRole('button', { name: '拡大' }));
+    expect(panel.style.width).toBe('760px');
+    expect(panel.style.height).toBe('744px');
+    fireEvent.click(screen.getByRole('button', { name: '標準' }));
+    expect(panel.style.width).toBe('560px');
+    fireEvent.click(screen.getByRole('button', { name: '検索' }));
+    expect(panel.style.width).toBe('380px');
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    expect(panel.style.width).toBe('380px');
+  });
+
+  it('mounts approval chips beside the poster and expands the opened review', async () => {
+    mocks.knowledgeGet.mockResolvedValue({ data: { enabled: true, intakes: [] } });
+    mocks.pendingReviews.mockResolvedValue({ reviewer: { rank: 'leader' }, reviews: [{
+      procedureId: 'p1', revisionId: 'r1', title: '部品Aの段取り', stepCount: 1, createdAt: '2026-10-04',
+      publishedRevisionNumber: null, reportComment: null,
+    }] });
+    mocks.knowledgePost.mockResolvedValue({ data: { procedure: {
+      formatVersion: 1, procedureId: 'p1', revisionId: 'r1', revisionNumber: 1, title: '部品Aの段取り', category: '段取り',
+      identifiers: {}, reviewTier: 'approval_required', state: 'pending_approval', createdAt: '2026-10-04', steps: [],
+    } } });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: '業務Hermesチャットを開く。ドラッグで移動できます' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    expect(await screen.findByText('👤 田中')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '✅ 承認待ち 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: /部品Aの段取り/ }));
+    expect(await screen.findByRole('button', { name: '承認して公開' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '標準' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '送信' })).not.toBeInTheDocument();
+    expect(mocks.knowledgePost).toHaveBeenCalledWith('/hermes-knowledge/reviews/r1/detail', { reviewerTagUid: 'tag-1' });
+  });
+
   it('routes the default search request through Chat without knowledge intake', async () => {
     mocks.knowledgeGet.mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: true } : { intakes: [] } }));
     mocks.send.mockResolvedValue({
@@ -312,7 +583,7 @@ describe('HermesFloatingChat', () => {
     });
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '三島工場機械課の最近の不適合情報を２件出して' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -346,9 +617,251 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce());
     expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: '旋盤加工で外径が大きい記録を探して' });
     expect(mocks.sendTrialAnswer.mock.calls[0][0].sessionId).toEqual(expect.any(String));
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).not.toHaveProperty('pageContext');
     expect(await screen.findByText('工程：旋盤加工。現象：外径が規格上限を0.12 mm超過。処置：再加工を実施。原因は記載なし。')).toBeInTheDocument();
     expect(mocks.send).not.toHaveBeenCalled();
     expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps the record display in the assistant message sent to the panel', async () => {
+    const display = { records: [{ sourceLabel: '不適合情報', fields: [{ label: '本文', value: '原文。', role: 'body' }] }],
+      notices: ['件数案内'], dataAsOf: '2026-10-08 06:30' };
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '元の回答', recordIds: ['1'], elapsedMs: 1, display });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'JEV記録' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '記録を探して' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    expect(JSON.parse((await screen.findByTestId('record-display')).textContent!)).toEqual(display);
+    expect(screen.getByText('元の回答')).toBeInTheDocument();
+  });
+
+  it('sends an earlier message planId after a newer answer and hides the record-pilot notice', async () => {
+    const display = { records: [{ sourceLabel: '不適合', fields: [] }], notices: [], dataAsOf: null };
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer
+      .mockResolvedValueOnce({ status: 'completed', answer: '最初の回答', planId: 'first-plan', display, recordIds: [], elapsedMs: 1 })
+      .mockResolvedValueOnce({ status: 'completed', answer: '次の回答', planId: 'second-plan', display, recordIds: [], elapsedMs: 1 })
+      .mockResolvedValueOnce({ status: 'completed', answer: '図面の回答', planId: 'third-plan', recordIds: [], elapsedMs: 1 });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'JEV記録' }));
+    expect(screen.queryByText(/JEV記録検索：/)).not.toBeInTheDocument();
+    for (const [question, answer] of [['一覧', '最初の回答'], ['7月', '次の回答']]) {
+      fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: question } });
+      fireEvent.click(screen.getByRole('button', { name: '送信' }));
+      await screen.findByText(answer);
+      await waitFor(() => expect(screen.getByRole('button', { name: '送信' })).not.toBeDisabled());
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'この回答を絞る: 最初の回答' }));
+    await screen.findByText('図面の回答');
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(3);
+    expect(mocks.sendTrialAnswer.mock.calls[2][0]).toMatchObject({
+      question: '図面・設計の誤りで絞り込む', sessionId: mocks.sendTrialAnswer.mock.calls[0][0].sessionId,
+      refine: { axis: 'cause', field: 'causeCategory', value: 'drawing', planId: 'first-plan' },
+    });
+    expect(screen.queryByText(/JEV記録検索：/)).not.toBeInTheDocument();
+  });
+
+  it('sends refine with a display question and the same record-pilot session', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '検索結果', recordIds: [], elapsedMs: 1 });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByRole('button', { name: 'JEV記録' });
+    expect(screen.queryByRole('button', { name: '組立 12' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'JEV記録' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '一覧' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await screen.findByText('検索結果');
+    fireEvent.click(screen.getByRole('button', { name: '組立 12' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(mocks.sendTrialAnswer.mock.calls[1][0]).toMatchObject({
+      question: '組立で絞り込む', sessionId: mocks.sendTrialAnswer.mock.calls[0][0].sessionId,
+      refine: { axis: 'organization', field: 'originDepartmentName', value: '組立' },
+    });
+    expect(screen.getByText('組立で絞り込む')).toBeInTheDocument();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends cause refine with a display question and the same record-pilot session', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '検索結果', recordIds: [], elapsedMs: 1 });
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByRole('button', { name: 'JEV記録' });
+    expect(screen.queryByRole('button', { name: '確認・検査の漏れ 12' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'JEV記録' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '一覧' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await screen.findByText('検索結果');
+    fireEvent.click(screen.getByRole('button', { name: '確認・検査の漏れ 12' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(mocks.sendTrialAnswer.mock.calls[1][0]).toMatchObject({
+      question: '確認・検査の漏れで絞り込む', sessionId: mocks.sendTrialAnswer.mock.calls[0][0].sessionId,
+      refine: { axis: 'cause', field: 'causeCategory', value: 'check' },
+    });
+    expect(screen.getByText('確認・検査の漏れで絞り込む')).toBeInTheDocument();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { enabled: true, kind: 'partNumber' as const, visible: true },
+    { enabled: false, kind: 'partNumber' as const, visible: false },
+    ...(['drawingNumber', 'nonconformityNo', 'procedureId'] as const).map(kind => ({ enabled: true, kind, visible: false })),
+    { enabled: true, kind: undefined, visible: false },
+  ])('gates part shortcuts by context and scope: $kind / $enabled', async ({ enabled, kind, visible }) => {
+    mocks.getTrialScope.mockResolvedValue({ enabled });
+    const pageContext = kind ? { path: '/kiosk/part-measurement/edit/sheet-1', entity: { kind, value: 'FH001' } } : undefined;
+    renderChat(pageContext?.path, pageContext);
+    const launcher = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    expect(launcher.querySelector('.hermes-floating-trigger__context-dot') !== null).toBe(kind === 'partNumber');
+    expect(screen.queryByRole('group', { name: '品番ショートカット' })).not.toBeInTheDocument();
+    expect(mocks.getTrialScope).not.toHaveBeenCalled();
+    expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
+    openSearch();
+    await waitFor(() => expect(mocks.getTrialScope).toHaveBeenCalledOnce());
+    await screen.findByTestId('hermes-panel');
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'JEV記録' }) !== null).toBe(enabled));
+    expect(screen.queryByRole('group', { name: '品番ショートカット' }) !== null).toBe(visible);
+    expect(launcher.querySelector('.hermes-floating-trigger__context-dot') !== null).toBe(kind === 'partNumber' && enabled);
+    expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(mocks.knowledgeGet).not.toHaveBeenCalled();
+    expect(mocks.listConsultations).toHaveBeenCalledOnce();
+    if (visible) {
+      expect(screen.getByText('FH001')).toBeInTheDocument();
+      expect(launcher).toHaveAttribute('title', 'この品番で検索できます');
+      fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+      expect(screen.queryByRole('group', { name: '品番ショートカット' })).not.toBeInTheDocument();
+    }
+  });
+
+  it.each(['不適合', '手順書'])('sends %s once via record-pilot immediately after switching and disables shortcuts while busy', async label => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.send.mockResolvedValue({ status: 'ready', message: '以前の回答', evidence: [] });
+    let resolveAnswer!: (value: { status: string; answer: string; recordIds: string[]; elapsedMs: number }) => void;
+    mocks.sendTrialAnswer.mockImplementation(() => new Promise(resolve => { resolveAnswer = resolve; }));
+    const pageContext = { path: '/kiosk/part-measurement/edit/sheet-1', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    openSearch();
+    const shortcut = await screen.findByRole('button', { name: label });
+    expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '以前の質問' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await screen.findByText('以前の回答');
+    fireEvent.click(shortcut);
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: `この品番の${label}`, pageContext });
+    expect(screen.getByRole('button', { name: 'JEV記録' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(`この品番の${label}`)).toBeInTheDocument();
+    expect(screen.queryByText('以前の質問')).not.toBeInTheDocument();
+    expect(screen.queryByText('以前の回答')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '不適合' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '手順書' })).toBeDisabled();
+    fireEvent.click(shortcut);
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.send).toHaveBeenCalledOnce();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+    expect(mocks.knowledgeGet).not.toHaveBeenCalled();
+    expect(mocks.getTrialScope).toHaveBeenCalledOnce();
+    await act(async () => resolveAnswer({ status: 'completed', answer: '回答', recordIds: [], elapsedMs: 1 }));
+    expect(screen.getByRole('button', { name: '不適合' })).not.toBeDisabled();
+    fireEvent.click(screen.getByText('clear page context'));
+    expect(screen.queryByRole('group', { name: '品番ショートカット' })).not.toBeInTheDocument();
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.getTrialScope).toHaveBeenCalledOnce();
+    expect(mocks.listConsultations).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the conversation when a shortcut is pressed in record-pilot mode', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '最初の回答', recordIds: [], elapsedMs: 1 });
+    const pageContext = { path: '/page', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '不適合' }));
+    await screen.findByText('最初の回答');
+    fireEvent.click(screen.getByRole('button', { name: '手順書' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('この品番の不適合')).toBeInTheDocument();
+    expect(screen.getByText('この品番の手順書')).toBeInTheDocument();
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it('sends a shortcut while the ordinary consultation list is still loading', async () => {
+    mocks.listConsultations.mockImplementation(() => new Promise(() => undefined));
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '回答', recordIds: [], elapsedMs: 1 });
+    const pageContext = { path: '/page', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: '手順書' }));
+    await screen.findByText('回答');
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: 'この品番の手順書', pageContext });
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    expect(screen.queryByText('相談を準備しています。少し待ってから送信してください。')).not.toBeInTheDocument();
+  });
+
+  it('does not fetch on part changes or reopening and sends the current part only on a tap', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '回答', recordIds: [], elapsedMs: 1 });
+    const pageContext = { path: '/page', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    fireEvent.click(screen.getByText('change page context'));
+    expect(mocks.getTrialScope).not.toHaveBeenCalled();
+    expect(mocks.listConsultations).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByRole('group', { name: '品番ショートカット' });
+    fireEvent.click(screen.getByText('clear page context'));
+    fireEvent.click(screen.getByText('change page context'));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    await screen.findByRole('group', { name: '品番ショートカット' });
+    expect(mocks.getTrialScope).toHaveBeenCalledOnce();
+    expect(mocks.listConsultations).toHaveBeenCalledOnce();
+    expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.knowledgeGet).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '不適合' }));
+    await screen.findByText('回答');
+    expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce();
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: 'この品番の不適合', pageContext: {
+      ...pageContext, entity: { kind: 'partNumber', value: 'FH002' },
+    } });
+  });
+
+  it('sends the latest page context only in JEV record mode and omits it after clearing', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: 'trial answer', recordIds: [], elapsedMs: 1 });
+    const pageContext = { path: '/kiosk/part-measurement/self-inspection', entity: { kind: 'partNumber' as const, value: 'FH001' } };
+    renderChat(pageContext.path, pageContext);
+    openSearch();
+    const pilotButton = await screen.findByRole('button', { name: 'JEV記録' });
+    const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: '通常検索' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.send).toHaveBeenCalledOnce());
+    expect(mocks.send.mock.calls[0][0]).not.toHaveProperty('pageContext');
+    await waitFor(() => expect(screen.getByRole('button', { name: '送信' })).not.toBeDisabled());
+    fireEvent.click(pilotButton);
+    fireEvent.change(input, { target: { value: 'この品番の不適合' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce());
+    expect(mocks.sendTrialAnswer.mock.calls[0][0]).toMatchObject({ question: 'この品番の不適合', pageContext });
+    await waitFor(() => expect(screen.getByRole('button', { name: '送信' })).not.toBeDisabled());
+    fireEvent.click(screen.getByText('clear page context'));
+    fireEvent.change(input, { target: { value: '最近の不適合' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(mocks.sendTrialAnswer.mock.calls[1][0]).not.toHaveProperty('pageContext');
   });
 
   it('keeps the record-pilot confirmation round trip on one session', async () => {
@@ -405,6 +918,7 @@ describe('HermesFloatingChat', () => {
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     const attachment = await screen.findByLabelText('写真・PDFを添付');
     const file = new File(['image'], '点検.jpg', { type: 'image/jpeg' });
@@ -423,6 +937,7 @@ describe('HermesFloatingChat', () => {
     });
     expect(mocks.knowledgePost).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     expect(await screen.findByLabelText('写真・PDFを添付')).toBeInTheDocument();
     expect(screen.getByText('点検.jpg')).toBeInTheDocument();
 
@@ -448,6 +963,7 @@ describe('HermesFloatingChat', () => {
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: 'ナレッジ登録を待つ入力' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -481,6 +997,7 @@ describe('HermesFloatingChat', () => {
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '処理中のナレッジ入力' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -513,6 +1030,7 @@ describe('HermesFloatingChat', () => {
     renderChat();
     fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
     fireEvent.click(screen.getByRole('button', { name: 'ナレッジ' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'おまかせ' }));
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '別業務の確認' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -532,6 +1050,8 @@ describe('HermesFloatingChat', () => {
       renderChat();
       fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
       const panel = await screen.findByTestId('hermes-panel');
+      fireEvent.click(screen.getByRole('button', { name: /お問い合わせ/ }));
+      expect(panel.style.width).toBe('296px');
       fireEvent.click(screen.getByRole('button', { name: '拡大' }));
       await waitFor(() => expect(panel.style.width).toBe('296px'));
       expect(panel.style.height).toBe('216px');
@@ -561,6 +1081,20 @@ describe('HermesFloatingChat', () => {
     });
     expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
     await waitFor(() => expect(trigger.style.left).not.toBe(initialLeft));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('hermes-chat-icon-position') ?? 'null')).toEqual({ left: parseFloat(trigger.style.left), top: parseFloat(trigger.style.top) }));
+    localStorage.removeItem('hermes-chat-icon-position');
+  });
+
+  it('restores the icon position the user left it at on this device', () => {
+    localStorage.setItem('hermes-chat-icon-position', JSON.stringify({ left: 40, top: 60 }));
+    try {
+      renderChat();
+      const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+      expect(trigger.style.left).toBe('40px');
+      expect(trigger.style.top).toBe('60px');
+    } finally {
+      localStorage.removeItem('hermes-chat-icon-position');
+    }
   });
 
   it('sends plain text history and drops an in-flight response after reset', async () => {
@@ -570,7 +1104,7 @@ describe('HermesFloatingChat', () => {
     });
     mocks.send.mockReturnValue(request);
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '<script>現場質問</script>' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -610,7 +1144,7 @@ describe('HermesFloatingChat', () => {
       });
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '旧端末での質問' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -652,7 +1186,7 @@ describe('HermesFloatingChat', () => {
     });
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '作業要領を見せて' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -675,7 +1209,7 @@ describe('HermesFloatingChat', () => {
     });
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     await waitFor(() => expect(screen.queryByTestId('consultation-list')).not.toBeInTheDocument());
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '旧方式で質問' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -695,7 +1229,7 @@ describe('HermesFloatingChat', () => {
     ]));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     await screen.findByTestId('consultation-list');
     const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '品番が分からない不適合を相談したい' } });
@@ -718,7 +1252,7 @@ describe('HermesFloatingChat', () => {
     ]));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     await screen.findByTestId('consultation-list');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
@@ -739,7 +1273,7 @@ describe('HermesFloatingChat', () => {
     mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     await screen.findByTestId('consultation-list');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
@@ -755,7 +1289,7 @@ describe('HermesFloatingChat', () => {
     mocks.listConsultations.mockImplementation(async () => ({ consultations: [], enabled: true }));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     await screen.findByTestId('consultation-list');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
@@ -790,7 +1324,7 @@ describe('HermesFloatingChat', () => {
       .mockResolvedValueOnce(consultationResponse(candidate, rejectedMessages));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 候補を確認する相談' }));
     await screen.findByText('対象を確認します。');
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '写真を見てください' } });
@@ -830,7 +1364,7 @@ describe('HermesFloatingChat', () => {
     ]));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '漏れについて相談したい' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -860,7 +1394,7 @@ describe('HermesFloatingChat', () => {
       .mockReturnValueOnce(pendingSelection);
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '漏れについて相談したい' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
     fireEvent.click(await screen.findByRole('button', { name: 'はい' }));
@@ -887,7 +1421,7 @@ describe('HermesFloatingChat', () => {
     ]));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 翌日の相談' }));
 
     expect(mocks.getConsultation).toHaveBeenCalledWith('case-reopen');
@@ -910,7 +1444,7 @@ describe('HermesFloatingChat', () => {
       ]));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 履歴を続けて見る相談' }));
     expect(await screen.findByText('最新の回答')).toBeInTheDocument();
 
@@ -933,7 +1467,7 @@ describe('HermesFloatingChat', () => {
     ));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 現在の相談名' }));
     await screen.findByText('現在の履歴');
     fireEvent.click(screen.getByRole('button', { name: '以前の履歴を読み込む' }));
@@ -962,7 +1496,7 @@ describe('HermesFloatingChat', () => {
     mocks.sendConsultationMessage.mockReturnValue(oldRequest);
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 案件A' }));
     await screen.findByText('case-aの履歴');
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '案件Aへの質問' } });
@@ -981,7 +1515,7 @@ describe('HermesFloatingChat', () => {
     mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
     mocks.createConsultation.mockResolvedValue({ ...item, messages: [] });
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '新規' }));
     await screen.findByText('先読み中の相談');
     expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument();
@@ -1001,7 +1535,7 @@ describe('HermesFloatingChat', () => {
       ]));
 
     renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '新規' }));
     await screen.findByText('停止できる相談');
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '最初の質問' } });
@@ -1026,14 +1560,14 @@ describe('HermesFloatingChat', () => {
     mocks.getConsultation.mockReturnValue(pendingDetail);
 
     const view = renderChat();
-    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 認証切替相談' }));
     expect(await screen.findByText('相談内容を読み込んでいます…')).toBeInTheDocument();
 
     mocks.auth.token = 'token-next';
     view.rerender(
       <MemoryRouter initialEntries={['/kiosk/assembly']}>
-        <HermesFloatingChat />
+        <HermesPageContextProvider><HermesFloatingChat /></HermesPageContextProvider>
       </MemoryRouter>
     );
     await waitFor(() => expect(screen.queryByText('相談内容を読み込んでいます…')).not.toBeInTheDocument());
@@ -1042,3 +1576,5 @@ describe('HermesFloatingChat', () => {
     await waitFor(() => expect(screen.queryByText('旧identityの詳細')).not.toBeInTheDocument());
   });
 });
+
+vi.mock('../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: vi.fn(() => ({ unavailable: false })) }));

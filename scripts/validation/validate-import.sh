@@ -27,10 +27,20 @@ echo "Admin Username: $ADMIN_USERNAME"
 echo ""
 
 # 1. 認証トークンの取得
+# MFAが有効なアカウントでは ADMIN_TOTP_CODE に認証アプリの6桁コードを指定する
 echo "1. 認証トークンを取得中..."
+LOGIN_BODY="{\"username\":\"$ADMIN_USERNAME\",\"password\":\"$ADMIN_PASSWORD\""
+if [ -n "$ADMIN_TOTP_CODE" ]; then
+  if ! [[ "$ADMIN_TOTP_CODE" =~ ^[0-9]{6}$ ]]; then
+    echo "❌ ADMIN_TOTP_CODE は6桁の数字で指定してください"
+    exit 1
+  fi
+  LOGIN_BODY+=",\"totpCode\":\"$ADMIN_TOTP_CODE\""
+fi
+LOGIN_BODY+="}"
 TOKEN_RESPONSE=$(curl -s -X POST "$API_BASE_URL/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"$ADMIN_USERNAME\",\"password\":\"$ADMIN_PASSWORD\"}")
+  -d "$LOGIN_BODY")
 
 if [ $? -ne 0 ]; then
   echo "❌ 認証に失敗しました"
@@ -42,6 +52,7 @@ TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
 if [ -z "$TOKEN" ]; then
   echo "❌ トークンの取得に失敗しました"
   echo "レスポンス: $TOKEN_RESPONSE"
+  echo "MFAが有効なアカウントでは、環境変数 ADMIN_TOTP_CODE に認証アプリの6桁コードを指定してください"
   exit 1
 fi
 

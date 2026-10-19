@@ -19,7 +19,7 @@
         fail_msg: >-
           Dedicated PostgreSQL superuser, application, and migration inputs
           are required and must use the fixed production roles and endpoint.
-        no_log: true
+      no_log: true
       when: '"server" in group_names'
 
     - name: Validate required Web variables

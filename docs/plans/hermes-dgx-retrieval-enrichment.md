@@ -1,6 +1,6 @@
 # Hermes DGX retrieval enrichment
 
-- Status: implemented locally, not merged, not released
+- Status: released 2026-09-25, full corpus enriched by 2026-10-01, turned off 2026-10-02 (a small gain, about 8% more relevant records shown, judged not worth 0.3 s and the overnight work; see `hermes-retrieval-accuracy-log.md`). The store stays on the Pi 5. Since 2026-10-02 the retrieval worker attaches it only while `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`.
 - Scope: offline per-record enrichment for Hermes retrieval on the business Pi 5
 
 ## Context
@@ -26,6 +26,8 @@ The second overnight pilot (2026-09-26) stored 930 of 1,000 records. All 78 cont
 The runner starts only after the retrieval worker is ready. When `HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`, the API now starts that worker when it starts, so a release no longer needs a Chat question before the overnight window. Before this, a release by another task on 2026-09-27 left the runner idle until a Chat request.
 
 The third night (2026-09-27) stored 997 of 1,000 records; 3 were still `truncated` at 1,200 tokens and were set aside. It also showed that rows with aliases (schema v2) were treated as stale and enriched again on every pass, which dropped v2 rows from 134 to 4. Both schema versions are now current. The full corpus (8,242 records) runs next with concurrency 2, through an allowlist file of every record id.
+
+Since 2026-09-29 the id list (`HERMES_RETRIEVAL_ENRICHMENT_IDS`) sets the order, not the scope: listed records are enriched first and every other record follows. Before, only listed records were enriched, so records registered after the 8,242-id list of 2026-09-28 would never have been prepared.
 
 The retrieval worker, when that file exists, sets `record.enrichment = { summary, queries, tags }`. `tags` are the flattened facet values plus any kept alias alternatives.
 
@@ -55,3 +57,22 @@ The paraphrase set has 16 cases, so a 0.06 difference is one case. DGX enrichmen
 The chat egress inactivity cap is 60 seconds. The client timeout stays at most 55 seconds. A silent DGX response longer than the cap fails and is retried on a later pass.
 
 Copying the store to a Mac uses the same on-host export style as `export-business-hermes-answer-sources.ts`. This repository has no authorized pull path for that private file.
+
+## Cause classification runtime
+
+The release runner forwards both `HERMES_RETRIEVAL_CAUSE_ENABLED` and `HERMES_RETRIEVAL_CAUSE_MAX_TEXTS` like the enrichment keys.
+
+Shipping a new version and changing a Hermes flag in the same release fails: the `--hermes-search-trial-maintenance on` path requires the same version to be running already, and the runner rolls back. Run a plain release first, then a second release with the maintenance option and the flag (observed 2026-10-17, runs 20261017-043810-86b783, -044447-39a851, -045105-4ed2f4).
+
+The separate JEV cause runner and its cadence are described in [the accuracy log](hermes-retrieval-accuracy-log.md#2026-10-17-要因で分ける-axis-from-jev-classification-of-不適合内容-change-not-a-measurement). It uses the existing `HERMES_JEV_PROVIDER` transport, independent of the enrichment gate.
+
+| Environment variable | Default / purpose |
+| --- | --- |
+| `HERMES_RETRIEVAL_CAUSE_ENABLED` | Off; only `true` starts the runner. Explicit `true`/`false` is forwarded by release and maintenance. |
+| `HERMES_RETRIEVAL_CAUSE_MAX_TEXTS` | `600` distinct texts per refresh; forwarded when explicitly set. |
+| `HERMES_RETRIEVAL_CAUSE_CONCURRENCY` | `1`; accepts `1` or `2` calls in flight. |
+| `HERMES_RETRIEVAL_CAUSE_ENTRY` | `/app/scripts/hermes-search/retrieval/cause-runner.mjs` |
+| `HERMES_RETRIEVAL_CAUSE_STORE` | `/app/storage/hermes-search/runtime/retrieval-cause.jsonl` |
+| `HERMES_RETRIEVAL_CAUSE_STATUS` | `/app/storage/hermes-search/runtime/retrieval-cause-status.json` |
+
+Failures are stored beside the JSONL as `retrieval-cause-failures.json`. Store, status, failures and runner logs contain hashes/counts and category metadata only, never record text. Reading the classification store is independent of the enable flag.

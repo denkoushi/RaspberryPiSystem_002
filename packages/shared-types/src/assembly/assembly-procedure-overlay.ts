@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import {
   overlayBBoxSchema,
   overlayElementInputSchema,
@@ -41,7 +43,9 @@ export const assemblyProcedureOverlayBBoxSchema = overlayBBoxSchema;
 export const assemblyProcedureRegionBBoxSchema = overlayRegionBBoxSchema;
 export const assemblyProcedureOverlayElementSchema = overlayElementSchema;
 export const assemblyProcedureOverlayElementInputSchema = overlayElementInputSchema;
-export const assemblyProcedureOverlaySaveInputSchema = overlaySaveInputSchema;
+export const assemblyProcedureOverlaySaveInputSchema = overlaySaveInputSchema.extend({
+  appliedCaptionElementIds: z.array(z.string().min(1).max(120)).max(200).optional()
+});
 export const assemblyProcedureOverlayRegionInputSchema = overlayRegionInputSchema;
 
 export type AssemblyProcedureOverlayElementInput = OverlayElementInput;

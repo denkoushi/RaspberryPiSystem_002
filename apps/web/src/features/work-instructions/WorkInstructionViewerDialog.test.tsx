@@ -4,14 +4,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkInstructionViewerDialog } from './WorkInstructionViewerDialog';
 
 import type { WorkInstructionGroup, WorkInstructionStep } from '../../api/domains/work-instructions';
+import type { AssemblyProcedureSequenceDto } from '../assembly/types';
 
 const { useProtectedImageBlobUrlMock } = vi.hoisted(() => ({
   useProtectedImageBlobUrlMock: vi.fn()
 }));
 
+
 vi.mock('../../hooks/useProtectedImageBlobUrl', () => ({
   useProtectedImageBlobUrl: useProtectedImageBlobUrlMock
 }));
+
+const manualSequence: AssemblyProcedureSequenceDto = {
+  mode: 'configured', reason: null, machineName: '', machineNameKey: '',
+  fallbackProcedureDocument: null,
+  documents: [{
+    orderItemId: 'one', sortOrder: 0, label: null,
+    documentType: 'assembly_procedure_document',
+    assemblyProcedureDocumentId: 'manual', kioskDocumentId: null,
+    title: '公開手順書', displayTitle: null, filename: 'manual.png',
+    confirmedDocumentNumber: null, confirmedSummaryText: null,
+    pageCount: 2, updatedAt: '', pageUrls: ['/page-one.png', '/page-two.png']
+  }]
+};
 
 function makeStep(
   id: string,
@@ -73,6 +88,63 @@ describe('WorkInstructionViewerDialog', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('defaults to original and switches to manuals when both sources exist', () => {
+    const view = renderViewer({ manualSequence });
+    expect(screen.getByRole('tab', { name: '段取写真' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('work-instruction-card-grid')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '手順書' }));
+    const rail = screen.getByRole('toolbar', { name: 'ページ操作' });
+    expect(within(rail).getByRole('tab', { name: '手順書' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByTestId('work-instruction-card-grid')).not.toBeInTheDocument();
+    fireEvent.click(within(rail).getByRole('tab', { name: '段取写真' }));
+    expect(screen.getByTestId('work-instruction-card-grid')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '手順書' }));
+    view.rerender(<WorkInstructionViewerDialog isOpen partNumber="PN-002" shootingTarget="FRONT" group={group} isLoading={false} manualSequence={manualSequence} onClose={vi.fn()} />);
+    expect(screen.getByRole('tab', { name: '段取写真' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('opens a manuals-only sequence without tabs or original loading/error messages', () => {
+    renderViewer({ group: undefined, hasWorkInstruction: false, isLoading: true, errorMessage: '原本エラー', manualSequence });
+    expect(screen.getByRole('toolbar', { name: 'ページ操作' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.queryByText('原本エラー')).not.toBeInTheDocument();
+  });
+
+  it('uses the full-height manual rail, closes via rail or Escape, and resets two-page mode', () => {
+    const onClose = vi.fn();
+    const props = { hasWorkInstruction: false, manualSequence, onClose };
+    const view = renderViewer(props);
+    const dialog = screen.getByRole('dialog', { name: '作業要領書' });
+    expect(dialog).toHaveClass('!p-0');
+    expect(dialog.firstElementChild).toHaveClass('h-dvh', '!w-full', '!rounded-none', '!border-0');
+    expect(dialog.querySelector('header')).toBeNull();
+    expect(screen.queryByTestId('assembly-procedure-sequence-toolbar')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '自主検査画面に戻る' })).not.toBeInTheDocument();
+    const rail = screen.getByRole('toolbar', { name: 'ページ操作' });
+    fireEvent.click(within(rail).getByRole('button', { name: '2 ページ表示' }));
+    expect(screen.getByTestId('procedure-page-spread')).toHaveAttribute('data-pages', '2');
+    fireEvent.click(within(rail).getByRole('button', { name: '幅いっぱい' }));
+    expect(screen.getByTestId('procedure-page-viewport')).toHaveAttribute('data-fit-mode', 'width');
+    fireEvent.click(within(rail).getByRole('button', { name: '閉じる' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(2);
+    const renderProps = { ...props, partNumber: 'PN-002', shootingTarget: 'FRONT', group, isLoading: false };
+    view.rerender(<WorkInstructionViewerDialog {...renderProps} isOpen />);
+    expect(screen.getByTestId('procedure-page-spread')).toHaveAttribute('data-pages', '1');
+    fireEvent.click(screen.getByRole('button', { name: '2 ページ表示' }));
+    view.rerender(<WorkInstructionViewerDialog {...renderProps} isOpen={false} />);
+    view.rerender(<WorkInstructionViewerDialog {...renderProps} isOpen />);
+    expect(screen.getByTestId('procedure-page-spread')).toHaveAttribute('data-pages', '1');
+  });
+
+  it('puts manual nonconformity in the page rail and opens details beside it', () => {
+    renderViewer({ hasWorkInstruction: false, manualSequence, nonconformityErrorMessage: '取得失敗' });
+    const rail = screen.getByRole('toolbar', { name: 'ページ操作' });
+    fireEvent.click(within(rail).getByRole('button', { name: '不適合情報' }));
+    expect(screen.getByRole('region', { name: '不適合情報' })).toHaveClass('fixed', 'right-[4.75rem]');
   });
 
   it('renders the flattened step order, display numbers, memo-only cards, and responsive grid contract', () => {

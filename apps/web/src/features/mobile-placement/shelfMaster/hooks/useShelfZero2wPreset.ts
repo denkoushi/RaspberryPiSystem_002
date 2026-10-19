@@ -147,12 +147,13 @@ export function useShelfZero2wPreset({ isOpen, onMessage }: Options) {
     [assignMutation, onMessage, selectedPi]
   );
 
-  const flushPendingPresets = useCallback(async (): Promise<boolean> => {
+  const flushPendingPresets = useCallback(async (validShelfCodes?: string[]): Promise<boolean> => {
     if (pendingAfterLayoutSave.length === 0) {
       return false;
     }
     const failures: string[] = [];
     for (const item of pendingAfterLayoutSave) {
+      if (validShelfCodes && !validShelfCodes.includes(item.shelfCodeRaw)) continue;
       try {
         await assignMutation.mutateAsync({
           clientDeviceId: item.clientDeviceId,
@@ -183,6 +184,9 @@ export function useShelfZero2wPreset({ isOpen, onMessage }: Options) {
     resetFlowInput,
     syncPiForShelf,
     queuePresetAfterAssign,
+    discardPendingPreset: (shelfCodeRaw: string) => {
+      setPendingAfterLayoutSave((queue) => queue.filter((p) => p.shelfCodeRaw !== shelfCodeRaw));
+    },
     applyPresetForExistingShelf,
     clearPresetForDevice,
     flushPendingPresets,

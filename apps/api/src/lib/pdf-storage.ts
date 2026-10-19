@@ -1,8 +1,10 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import sharp from 'sharp';
 import { convertPdfToImages, type PdfConversionOptions } from './pdf-converter.js';
 import { logger } from './logger.js';
+import { isSignageImageFilename } from './signage-upload-file-type.js';
 import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
 import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 import { syncDirectory } from '../services/file-storage/secure-atomic-file.js';
@@ -150,8 +152,9 @@ export class PdfStorage {
     ) {
       throw new Error('Invalid PDF storage path');
     }
+    let storedFile: Buffer;
     try {
-      await getFileStorageRuntime().store.read(`pdfs/${path.basename(resolvedPdfPath)}`, {
+      storedFile = await getFileStorageRuntime().store.read(`pdfs/${path.basename(resolvedPdfPath)}`, {
         verifyIntegrity: true,
       });
     } catch (error) {
@@ -176,12 +179,22 @@ export class PdfStorage {
     );
     try {
       await fs.mkdir(temporaryOutputDir, { recursive: false });
-      await convertPdfToImages(pdfFilePath, temporaryOutputDir, {
-        prefix: pdfId,
-        format: 'jpeg',
-        dpi,
-        quality,
-      });
+      if (isSignageImageFilename(pdfFilePath)) {
+        // 画像（JPEG・PNG）は 1 ページとして扱う。向き（EXIF）を正し、表示に十分な大きさへ収めて JPEG にする。
+        await sharp(storedFile)
+          .rotate()
+          .resize(3840, 2160, { fit: 'inside', withoutEnlargement: true })
+          .flatten({ background: '#ffffff' })
+          .jpeg({ quality: 90 })
+          .toFile(path.join(temporaryOutputDir, `${pdfId}-1.jpg`));
+      } else {
+        await convertPdfToImages(pdfFilePath, temporaryOutputDir, {
+          prefix: pdfId,
+          format: 'jpeg',
+          dpi,
+          quality,
+        });
+      }
       const generatedFiles = await fs.readdir(temporaryOutputDir);
       if (!generatedFiles.some((file) => file.endsWith('.jpg') || file.endsWith('.jpeg'))) {
         throw new Error('PDF conversion produced no pages');

@@ -1,4 +1,6 @@
 import importlib.util
+import http.client
+import io
 import json
 import sys
 import threading
@@ -7,8 +9,9 @@ from dataclasses import replace
 import tempfile
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "gateway-server.py"
@@ -587,6 +590,228 @@ class GatewayServerTests(unittest.TestCase):
         start_call = next(c for c in calls if c[1] == "http://control:39090/start")
         self.assertEqual(start_call[3]["X-Runtime-Control-Token"], "runtime-token")
         self.assertEqual(json.loads(start_call[2].decode("utf-8")), {"reason": "business-restore"})
+
+
+class GatewayStreamingTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module()
+        with patch.dict(self.module.os.environ, {"LLM_SHARED_TOKEN": "shared-token"}, clear=True):
+            self.config = self.module.load_config_from_env()
+        self.proxy_impl = Mock(return_value=(202, b"buffered response", "application/json"))
+
+    def _serve(self, handler):
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        thread.start()
+
+        def cleanup():
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=3)
+
+        self.addCleanup(cleanup)
+        return httpd
+
+    def _gateway(self, **config_changes):
+        config = replace(self.config, **config_changes)
+        return self._serve(self.module.make_handler(config, proxy_impl=self.proxy_impl))
+
+    def _request(self, httpd, body, path="/v1/chat/completions", token="shared-token"):
+        client = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=2)
+        self.addCleanup(client.close)
+        client.request("POST", path, body=body, headers={"X-LLM-Token": token, "Content-Type": "application/json"})
+        return client.getresponse()
+
+    def test_stream_arrives_before_upstream_finishes_and_blue_defaults_apply(self):
+        for backend, path, protocol in (
+            ("green", "/v1/chat/completions", "HTTP/1.1"),
+            ("green", "/v1/completions", "HTTP/1.0"),
+            ("blue", "/v1/chat/completions/", "HTTP/1.1"),
+        ):
+            with self.subTest(backend=backend, path=path, protocol=protocol):
+                release = threading.Event()
+                waiting = threading.Event()
+                finished = threading.Event()
+                received = []
+                first = b'data: {"delta":"hello"}\n\n'
+                rest = b'data: {"delta":" world"}\n\ndata: [DONE]\n\n'
+
+                class Upstream(BaseHTTPRequestHandler):
+                    def do_POST(self):
+                        received.append((self.path, self.rfile.read(int(self.headers["Content-Length"]))))
+                        self.send_response(201)
+                        self.send_header("Content-Type", "text/event-stream")
+                        self.end_headers()
+                        self.wfile.write(first)
+                        self.wfile.flush()
+                        waiting.set()
+                        if release.wait(timeout=3):
+                            self.wfile.write(rest)
+                            self.wfile.flush()
+                        finished.set()
+
+                    def log_message(self, *args):
+                        pass
+
+                upstream = self._serve(Upstream)
+                url = f"http://127.0.0.1:{upstream.server_port}"
+                gateway = self._gateway(active_backend=backend, green_backend_base_url=url, blue_backend_base_url=url)
+                self.addCleanup(release.set)
+                client = http.client.HTTPConnection("127.0.0.1", gateway.server_port, timeout=2)
+                self.addCleanup(client.close)
+                client._http_vsn = 10 if protocol == "HTTP/1.0" else 11
+                client._http_vsn_str = protocol
+                request_body = json.dumps({"stream": True, "messages": [{"role": "user", "content": "hi"}]}).encode()
+                try:
+                    client.request("POST", path, body=request_body, headers={"X-LLM-Token": "shared-token", "Content-Type": "application/json"})
+                    with client.getresponse() as response:
+                        self.assertEqual(response.status, 201)
+                        self.assertEqual(response.getheader("Content-Type"), "text/event-stream")
+                        self.assertEqual(response.getheader("Cache-Control"), "no-cache")
+                        self.assertEqual(response.getheader("Connection"), "close")
+                        self.assertIsNone(response.getheader("Content-Length"))
+                        self.assertIsNone(response.getheader("Transfer-Encoding"))
+                        self.assertEqual(response.read(len(first)), first)
+                        self.assertTrue(waiting.wait(timeout=1))
+                        self.assertFalse(finished.is_set())
+                        self.assertFalse(release.is_set())
+                        # Other requests remain serviceable while the upstream is blocked.
+                        with urllib.request.urlopen(f"http://127.0.0.1:{gateway.server_port}/healthz", timeout=2) as health:
+                            self.assertEqual(health.read(), b"ok\n")
+                        release.set()
+                        self.assertEqual(response.read(), rest)
+                finally:
+                    release.set()
+                self.assertTrue(finished.wait(timeout=1))
+                self.assertEqual(received[0][0], path)
+                payload = json.loads(received[0][1])
+                if backend == "blue":
+                    self.assertIs(payload["chat_template_kwargs"]["enable_thinking"], False)
+                else:
+                    self.assertEqual(received[0][1], request_body)
+        self.proxy_impl.assert_not_called()
+
+    def test_stream_bad_token_returns_403_before_rewriting_or_proxying(self):
+        gateway = self._gateway(active_backend="blue")
+        with patch.object(self.module.urllib.request, "urlopen") as upstream_open, patch.object(
+            self.module, "inject_blue_chat_completions_defaults"
+        ) as inject_defaults:
+            with self._request(gateway, b'{"stream":true}', token="wrong-token") as response:
+                self.assertEqual(response.status, 403)
+                self.assertEqual(response.read(), b"forbidden")
+            upstream_open.assert_not_called()
+            inject_defaults.assert_not_called()
+        self.proxy_impl.assert_not_called()
+
+    def test_stream_http_error_forwards_status_body_and_content_type(self):
+        error_body = b'{"error":"rate limited"}'
+
+        class Upstream(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(error_body)))
+                self.end_headers()
+                self.wfile.write(error_body)
+
+            def log_message(self, *args):
+                pass
+
+        upstream = self._serve(Upstream)
+        gateway = self._gateway(green_backend_base_url=f"http://127.0.0.1:{upstream.server_port}")
+        with self._request(gateway, b'{"stream":true}') as response:
+            self.assertEqual(response.status, 429)
+            self.assertEqual(response.getheader("Content-Type"), "application/json")
+            self.assertEqual(response.getheader("Content-Length"), str(len(error_body)))
+            self.assertEqual(response.read(), error_body)
+        self.proxy_impl.assert_not_called()
+
+    def test_stream_open_or_initial_read_failure_returns_buffered_502(self):
+        gateway = self._gateway()
+        for error, during_read in (
+            (urllib.error.URLError("unreachable"), False),
+            (TimeoutError("timed out"), False),
+            (TimeoutError("timed out"), True),
+        ):
+            with self.subTest(error=type(error).__name__, during_read=during_read):
+                upstream = io.BytesIO()
+                upstream.read1 = Mock(side_effect=error)
+                with patch.object(self.module.urllib.request, "urlopen", side_effect=None if during_read else error, return_value=upstream) as upstream_open:
+                    with self._request(gateway, b'{"stream":true}') as response:
+                        reason = error.reason if isinstance(error, urllib.error.URLError) else error
+                        expected = f"bad gateway: {reason}".encode()
+                        self.assertEqual(response.status, 502)
+                        self.assertEqual(response.getheader("Content-Type"), "text/plain; charset=utf-8")
+                        self.assertEqual(response.getheader("Content-Length"), str(len(expected)))
+                        self.assertEqual(response.read(), expected)
+                    self.assertEqual(upstream_open.call_args.kwargs["timeout"], 120)
+                if during_read:
+                    self.assertTrue(upstream.closed)
+        self.proxy_impl.assert_not_called()
+
+    def test_stream_read_failure_after_first_chunk_closes_without_second_response(self):
+        gateway = self._gateway()
+        first = b"data: hello\n\n"
+        upstream = io.BytesIO()
+        upstream.status = 200
+        upstream.headers = {"Content-Type": "text/event-stream"}
+        upstream.read1 = Mock(side_effect=[first, TimeoutError("timed out")])
+        with patch.object(self.module.urllib.request, "urlopen", return_value=upstream):
+            with self._request(gateway, b'{"stream":true}') as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.read(), first)
+        self.assertTrue(upstream.closed)
+        self.proxy_impl.assert_not_called()
+
+    def test_stream_client_disconnect_closes_upstream_without_raising(self):
+        handler_type = self.module.make_handler(self.config, proxy_impl=self.proxy_impl)
+        for error_type in (BrokenPipeError, ConnectionResetError):
+            for operation in ("write", "flush"):
+                with self.subTest(error=error_type.__name__, operation=operation):
+                    upstream = io.BytesIO(b"data: hello\n\n")
+                    upstream.status = 200
+                    upstream.headers = {"Content-Type": "text/event-stream"}
+                    handler = handler_type.__new__(handler_type)
+                    handler.send_response = Mock()
+                    handler.send_header = Mock()
+                    handler.end_headers = Mock()
+                    handler.wfile = Mock()
+                    getattr(handler.wfile, operation).side_effect = error_type("client disconnected")
+                    with patch.object(self.module.urllib.request, "urlopen", return_value=upstream):
+                        handler._proxy_stream("http://127.0.0.1:1/v1/chat/completions", b'{"stream":true}', {})
+                    self.assertTrue(upstream.closed)
+                    self.assertTrue(handler.close_connection)
+                    handler.send_response.assert_called_once_with(200)
+
+    def test_non_streaming_bodies_and_other_routes_keep_using_proxy_impl(self):
+        gateway = self._gateway()
+        cases = [
+            ("/v1/chat/completions", b'{"stream":false}'),
+            ("/v1/chat/completions", b'{"messages":[]}'),
+            ("/v1/chat/completions", b"not JSON"),
+            ("/v1/chat/completions", b"\xff"),
+            ("/v1/chat/completions", b'[{"stream":true}]'),
+            ("/v1/chat/completions", b'{"stream":1}'),
+            ("/v1/chat/completions", b'{"stream":"true"}'),
+            ("/v1/completions", b'{"stream":false}'),
+            ("/embed", b'{"stream":true}'),
+            ("/v1/embeddings", b'{"stream":true}'),
+        ]
+        with patch.object(self.module.urllib.request, "urlopen") as upstream_open:
+            for path, body in cases:
+                with self.subTest(path=path, body=body):
+                    with self._request(gateway, body, path=path) as response:
+                        self.assertEqual(response.status, 202)
+                        self.assertEqual(response.getheader("Content-Type"), "application/json")
+                        self.assertEqual(response.getheader("Content-Length"), "17")
+                        self.assertIsNone(response.getheader("Cache-Control"))
+                        self.assertIsNone(response.getheader("Connection"))
+                        self.assertEqual(response.read(), b"buffered response")
+                    url = self.config.embedding_base_url if path == "/embed" else self.config.green_backend_base_url
+                    self.proxy_impl.assert_called_with("POST", f"{url}{path}", body, {"Content-Type": "application/json"})
+            upstream_open.assert_not_called()
+        self.assertEqual(self.proxy_impl.call_count, len(cases))
 
 
 if __name__ == "__main__":

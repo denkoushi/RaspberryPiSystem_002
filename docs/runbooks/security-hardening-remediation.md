@@ -50,6 +50,7 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Files: `apps/api/prisma/seed.ts` (`admin`/`admin1234`, `client-*-key`), `apps/web/src/lib/client-key/config.ts` (fallback key), `infrastructure/ansible/inventory.yml` (plaintext keys), `scripts/register-clients.sh` (default admin pw), `docs/guides/api-key-policy.md` (real keys in docs).
 - Action: per-device high-entropy `x-client-key` stored in vault and rotated; make `VITE_DEFAULT_CLIENT_KEY` required in production web build; production seed must not create `admin1234` (force first-run random + change); scrub real keys from docs.
 - Risk: rotating a client key breaks that kiosk until its config/URL is updated. Rotate one device at a time.
+- Status (2026-10-06): every production device row has a per-device random credential; evidence and remaining closeout items are in [security-client-key-rotation-phase-b.md](../plans/security-client-key-rotation-phase-b.md).
 - Verify: old key returns 401; new key works on the target kiosk.
 
 ## C-5. Legacy due-management PIN `2520` (High)
@@ -68,9 +69,16 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 
 ## C-7. Admin IP allowlist on local TLS (High)
 
-- Repository preparation complete: local/production/Blue-Green Caddy use the same
+- Repository preparation complete: local/production Caddy use the same
   `@admin_protect`, Compose has no fallback, and standard preflight verifies the
   current management source before mutation.
+- Blue/Green correction (2026-10-01): the gateway and slot templates never had
+  `@admin_protect`, so production served `/admin` to every source reaching 443
+  (confirmed on the live gateway Caddyfile). The gateway now denies `/admin*`
+  outside the allowlist; see
+  [phase9-10-specifications.md](../security/phase9-10-specifications.md) for the
+  mechanism. Verified in production on 2026-10-01 (allowed source 200, Docker
+  network source 403); the temporary legacy route fixture has been removed.
 - Operational action still gated: run the separately approved
   `prepare-pi5-admin-network-policy.yml` once before deploying the new contract.
 - Risk: wrong CIDR locks admins out of `/admin`; the preparer rejects a list that
@@ -89,6 +97,97 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 
 - Action: accept keys via header only (drop `?key=`/`?clientKey=` in signage/webrtc + kiosk URL); require auth (or localhost) on `/system/metrics` and internal backup health.
 - Risk: signage/webrtc/kiosk bootstrapping may rely on the query param — migrate to header/localStorage first.
+
+## C-10. TalkPlaza vault files tracked in plaintext (Critical)
+
+- Finding (2026-10-12 security audit; the full report is kept in the private DGXSparkControlPlane repository under `docs/security/`): `infrastructure/ansible/host_vars/talkplaza-{pi5,pi4,signage01}/vault.yml` were committed **unencrypted** to the public repository from `0fd82a2f` (2026-01-14). They hold the TalkPlaza API JWT access/refresh secrets and the per-device `x-client-key` for `talkplaza-pi5-server`, `talkplaza-pi4-kiosk01` (shared by status-agent and NFC agent) and `talkplaza-signage01` (shared by status-agent and signage). Slack/Dropbox entries were empty. All seven values are **leaked**; they stay readable in git history even after this fix, so rotation is the remedy, not history rewriting.
+- Repository fix (branch `fix/talkplaza-vault-encrypt-rotate`): regenerate every value and encrypt the three files with `ansible-vault` via `scripts/security/rotate-talkplaza-vault.sh`; add `vault.yml.example` placeholders; remove the seven TalkPlaza `allowedPlaintext` entries from `security/production-secret-baseline.json` so CI fails closed if a plaintext vault reappears.
+- Status (2026-10-12): repository fix merged to main as #1935 (`7e289e51`); the audit report itself lives in the private DGXSparkControlPlane repository. **Host rollout is not applicable yet**: no TalkPlaza hardware exists (see [quick-start-deployment.md](../guides/quick-start-deployment.md); `inventory-talkplaza.yml` uses `ansible_connection: local` and placeholder `*.talkplaza.local` names that do not resolve), so the leaked values were never installed on any device or registered in the production database. When the site is built, provision it from the encrypted vault only and never register the leaked values from history; the steps below then apply as written, except that step 1 becomes first-time device registration instead of a rotation.
+- Host rollout (one device at a time, after the branch is merged):
+  1. On talkplaza-pi5, back up the DB, then rotate the three `ClientDevice` rows with `scripts/security/rotate-client-key.sh <ClientDevice UUID>` (`OLD_CLIENT_KEY` = the leaked value from git history, `NEW_CLIENT_KEY` = `ansible-vault view` of the new file). Order: pi5 server row, signage row, kiosk row.
+  2. Standard release to talkplaza-pi5 with `-i infrastructure/ansible/inventory-talkplaza.yml`. The API picks up the new JWT secrets; every signed-in session is invalidated and users must log in again.
+  3. Standard release to talkplaza-signage01, then talkplaza-pi4 (kiosk URL embeds the client key, so the kiosk browser restarts).
+- Risk: between the DB rotation and each terminal's release, that terminal's status-agent/NFC/signage calls return 401. Keep the window short and do it outside production hours.
+- Verify: old client keys return 401 on `/api/clients/status`; new keys succeed; kiosk borrow/return flow and signage display work; admin login works with a fresh session; `python3 scripts/ci/validate_production_secret_structure.py` passes on main.
+
+## C-11. MFA re-enrollment with only an access token / pre-MFA refresh tokens (High)
+
+- Finding (2026-10-12 security audit, private report): `POST /api/auth/mfa/activate` replaced the TOTP secret and backup codes with nothing but a valid access token, so a stolen access token could take over MFA on an admin account. `POST /api/auth/refresh` also upgraded refresh tokens minted before MFA was enabled into MFA-passed sessions without ever presenting a code.
+- Repository fix: #1938 (merged main `39465206`). `activateMfa` now requires the login password and, when MFA is already enabled, a current TOTP code or backup code (error code `MFA_REAUTH_REQUIRED`). `refresh()` rejects a refresh token whose payload lacks `mfaEnabled` once the user has MFA enabled. The admin Security page collects the extra fields. No migration.
+- Status (2026-10-12): **deployed to Pi5** with the standard release of main `e86016dc` (run `20261012-031115-d47fd4`, systemd active/exited/success, recap failed=0 rescued=0, health 200). Rollback reference: previous Pi5 SHA `9f7aa316`.
+- Production verification (2026-10-12): confirmed by the operator on the Pi5 admin UI after the release above. Admin login works, and the
+  MFA setup screen asks for the login password before activation. Result: OK. No further action for this item.
+- Operator-visible changes: the MFA setup form asks for the password (and the current code on re-enrollment); admins who set up MFA before this release and still hold an old refresh token must log in again once. Access tokens issued before activation stay valid until they expire (15 min), which is accepted.
+- Verify: `pnpm --filter @raspi-system/api exec vitest run src/routes/__tests__/admin-mfa-enforcement.test.ts`; on the device, re-enrollment without the current code returns 401 `MFA_REAUTH_REQUIRED`.
+
+## C-12. Gmail HTML attachments rendered to PDF with JavaScript and network enabled (High)
+
+- Finding (2026-10-12 security audit, private report): the kiosk-documents Playwright adapter rendered untrusted mail HTML with scripts enabled and no request interception, so anyone who can mail the ingestion mailbox could make the API container fetch arbitrary URLs (SSRF toward the Docker network, the Pi, Tailscale peers).
+- Repository fix: #1937 (merged main `02aa9bb0`). The browser context is created with `javaScriptEnabled: false` and every request is aborted via `context.route('**/*', ...)` before `setContent`; inline content and `data:` URLs still render. The shared Chromium launch flags (`--no-sandbox`) are tracked separately under C-6.
+- Status (2026-10-12): **deployed to Pi5** in the same release as C-11 (main `e86016dc`, run `20261012-031115-d47fd4`).
+- Operator-visible changes: remote images, external CSS/fonts and scripts in mail HTML no longer appear in the generated PDF.
+- Verify: `pnpm --filter @raspi-system/api exec vitest run src/services/kiosk-documents` (the real-Chromium integration test runs in CI).
+
+## C-13. Pi4 agent least-privilege mode (client_agents_hardened)
+
+`client_agents_hardened` is a per-terminal inventory boolean, defaulting to `false` in both the `client` and `release_kiosk` roles.
+The default uses the legacy privileged device/mount configuration and explicitly runs all three agents as `0:0`, even though the images
+have a default user of `10001:10001`. The static client Compose is the legacy reference; the release template selects the mode.
+
+When enabled, NFC, barcode and torque run as `10001:10001`, drop all capabilities and use `no-new-privileges:true`, with no added
+capabilities. Host networking, service/profile selection, environment files, restart policies and health checks are unchanged.
+
+- NFC adds numeric groups `46` (plugdev) and `104` (input), permits character majors 189 (USB) and 13 (input), and binds `/dev/bus/usb`
+  and `/dev/input` read-only. It retains `/run/pcscd:ro` and mounts its named volume at both `/data` and `/app/nfc-agent/data` to preserve
+  the relative queue-path default, including when using previous images.
+- Barcode adds group `20` (dialout), permits majors 166 (ttyACM) and 188 (ttyUSB), and binds `/dev:ro`. Serial nodes live directly in
+  `/dev`; the parent bind supports unplugged startup, replacement nodes and `/dev/serial` links without container recreation.
+- Torque adds group `104` (input), permits major 13, and binds `/dev/input:ro`. Exact wrench udev rules add `GROUP="input", MODE="0660"`.
+  The root host guard uses group `10001` and runtime directory `root:10001`, mode `0770`, for non-root intent writes.
+- Device cgroup rules allow `rw` without `m`; read-only binds prevent directory changes while allowing permitted device I/O.
+
+Prepare each terminal before enabling:
+
+1. Check `getent group plugdev dialout input` against GIDs `46/20/104`. The repository does not provision these numeric IDs. If they
+   differ, resolve the mismatch before enabling; do not assume group names alone grant access.
+2. Check `stat -Lc '%a %u %g %n'` on the actual USB, input and serial nodes. USB must grant plugdev access, serial must grant dialout
+   access, and torque/optional TS100 HID must grant input access. Do not use world-writable device permissions.
+3. Verify the installed `/run/pcscd/pcscd.comm` socket mode and actual card access as the agent user. The existing polkit rule allows
+   PC/SC access. A socket restricted to `0660` needs its actual numeric GID added to NFC's hardened `group_add` before enabling;
+   retain restricted socket permissions.
+4. Stop the affected agents and back up persistent queues. Identify the actual NFC/torque named volumes with `docker inspect`, without
+   guessing project prefixes. Use a maintenance container to `chown -R 10001:10001 /data` on each existing volume, including SQLite
+   sidecars. New volumes inherit image ownership and mode `0750`; image ownership does not change existing volumes. Preserve any NFC
+   queue held at `./data` inside the old container and copy it into the named volume before recreation covers that path.
+5. For torque, install the updated guard helper and render its unit and wrench udev rules with the terminal's hardened setting.
+   Reload systemd, restart the guard, reload/retrigger udev and verify `/run/torque-bluetooth-guard` is `root:10001`, mode `0770`, and the
+   exact wrench nodes are `input`, mode `0660`, before starting the hardened container. Controller identity selection remains unchanged.
+
+Enable only the prepared terminal by setting `client_agents_hardened: true` in that terminal's inventory host vars. Follow the standard
+release procedure in [deployment.md](../guides/deployment.md), inspect its plan and limit the release to that exact host:
+
+```bash
+scripts/update-all-clients.sh <release-branch> infrastructure/ansible/inventory.yml --print-plan --limit <terminal-host>
+scripts/update-all-clients.sh <release-branch> infrastructure/ansible/inventory.yml --limit <terminal-host>
+```
+
+Verify on that Pi4:
+
+1. Inspect each container: user `10001:10001`, privileged false, `CapDrop` includes `ALL`, no `CapAdd`, and `SecurityOpt` includes
+   `no-new-privileges`. Check the exact supplementary groups, device cgroup rules and read-only binds; confirm queue writes as that user.
+2. Read an NFC card through the host pcscd and confirm kiosk delivery and queue writes. If TS100 is enabled, check its configured
+   `/dev/input/by-id/...` reader too.
+3. Start barcode with the reader unplugged, plug in and scan, then unplug/re-plug and scan without recreating the container. Check the
+   configured ttyACM/ttyUSB and `/dev/serial` paths.
+4. Capture a torque value with exclusive evdev ownership. Verify lease intent updates and guard status, including disconnect and
+   lease-expiry fail-closed behavior. Run `curl -fsS http://127.0.0.1:7073/health` and confirm `ok: true`.
+5. Recreate/restart the agents and repeat hardware checks and queue persistence checks. Exercise release rollback: the release template
+   also renders with previous images, which must work with the selected mode and existing volumes. Record the release run ID and results.
+
+To roll back the mode, set `client_agents_hardened: false` for the same terminal and redeploy with the same exact host limit. Reapply
+its guard/udev templates in legacy mode: the unit omits the group/mode overrides and the helper defaults the runtime directory to `0755`.
+Legacy containers run as root and retain access to volumes owned by `10001:10001`; no reverse chown or volume deletion is needed.
+Preserve queue backups, verify NFC, barcode, torque and health again, and record the rollback run ID and result.
 
 ## Verification checklist (per item)
 

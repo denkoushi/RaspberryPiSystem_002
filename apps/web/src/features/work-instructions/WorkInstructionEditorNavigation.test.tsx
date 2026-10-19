@@ -85,71 +85,32 @@ function controller(overrides: Partial<WorkInstructionEditorController> = {}): W
 }
 
 describe('WorkInstructionEditorNavigation', () => {
-  it('shows only current blocker rows, keeps unassigned out of step indicators, and keeps row selection clickable', () => {
+  it('shows a source segment only for multiple rows and selects its row', () => {
     const current = controller();
     const view = render(<WorkInstructionEditorRowsPane controller={current} />);
-
-    expect(screen.getByTestId('work-instruction-editor-row-memo-review-row-1')).toHaveAccessibleName('メモ要確認（原本行 row-1）');
-    expect(screen.queryByTestId('work-instruction-editor-row-memo-review-row-2')).not.toBeInTheDocument();
-    expect(screen.getByTestId('work-instruction-editor-row-memo-review-row-3')).toHaveAccessibleName('メモ要確認（原本行 row-3）');
-
-    fireEvent.click(screen.getByRole('button', { name: /item 1/ }));
-    expect(current.selectRow).toHaveBeenCalledWith('row-1');
-
-    view.rerender(<WorkInstructionEditorRowsPane controller={controller({
-      memoOverridesByRevision: {
-        'draft-1': memoOverridesToMap([memoOverride('row-1-review', 'sharepoint:work-instructions:1:1', 'MIGRATED')]),
-        'draft-2': memoOverridesToMap([memoOverride('row-2-review', 'sharepoint:work-instructions:1:1', 'NEEDS_REVIEW')]),
-        'draft-3': memoOverridesToMap([memoOverride('memo-unassigned', null, 'UNASSIGNED')])
-      }
-    })} />);
-    expect(screen.queryByTestId('work-instruction-editor-row-memo-review-row-1')).not.toBeInTheDocument();
-    expect(screen.getByTestId('work-instruction-editor-row-memo-review-row-2')).toHaveAccessibleName('メモ要確認（原本行 row-2）');
-    expect(screen.getByTestId('work-instruction-editor-row-memo-review-row-3')).toHaveAccessibleName('メモ要確認（原本行 row-3）');
-
-    view.rerender(<WorkInstructionEditorRowsPane controller={controller({
-      memoOverridesByRevision: {
-        'draft-1': memoOverridesToMap([memoOverride('row-1-review', 'sharepoint:work-instructions:1:1', 'MIGRATED')]),
-        'draft-2': memoOverridesToMap([memoOverride('row-2-review', 'sharepoint:work-instructions:1:1', 'NEEDS_REVIEW')]),
-        'draft-3': memoOverridesToMap([{ ...memoOverride('memo-unassigned', null, 'UNASSIGNED'), action: 'USE_SOURCE' }])
-      }
-    })} />);
-    expect(screen.queryByTestId('work-instruction-editor-row-memo-review-row-3')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '原本 2' }));
+    expect(current.selectRow).toHaveBeenCalledWith('row-2');
+    expect(screen.queryByText(/item|移植/)).not.toBeInTheDocument();
+    view.rerender(<WorkInstructionEditorRowsPane controller={controller({ rows: current.rows.slice(0, 1) })} />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('shows review only on the affected step and keeps step selection clickable', () => {
-    const review = memoOverride('memo-review', 'sharepoint:work-instructions:1:1', 'NEEDS_REVIEW');
-    const unassigned = memoOverride('memo-unassigned', null, 'UNASSIGNED');
-    const current = controller({
-      activeMemoOverrides: memoOverridesToMap([review, unassigned]),
-      activeMemoOverridesArray: [review, unassigned]
-    });
+  it('marks the affected step and keeps unassigned memos out of thumbnails', () => {
+    const current = controller({ activeMemoOverridesArray: [memoOverride('review', makeStep(1).stepKey, 'NEEDS_REVIEW'), memoOverride('orphan', null, 'UNASSIGNED')] });
     render(<WorkInstructionEditorStepsPane controller={current} />);
-
-    expect(screen.getByTestId('work-instruction-editor-step-memo-review-sharepoint:work-instructions:1:1')).toHaveAccessibleName('メモ要確認（手順 1）');
-    expect(screen.queryByTestId('work-instruction-editor-step-memo-review-sharepoint:work-instructions:1:2')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /手順 1/ }));
-    expect(current.selectStep).toHaveBeenCalledWith('sharepoint:work-instructions:1:1');
+    expect(screen.getByTestId(`work-instruction-editor-step-memo-review-${makeStep(1).stepKey}`)).toHaveAccessibleName('要確認（手順 1）');
+    expect(screen.queryByTestId(`work-instruction-editor-step-memo-review-${makeStep(2).stepKey}`)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '手順 2', exact: true }));
+    expect(current.selectStep).toHaveBeenCalledWith(makeStep(2).stepKey);
   });
 
-  it('keeps the original labels when no operation is available', () => {
-    const current = controller();
-    render(<WorkInstructionEditorStepsPane controller={current} />);
-
-    expect(screen.getByRole('heading', { name: '手順' })).toBeInTheDocument();
-    expect(screen.queryByText(/^OP-/)).not.toBeInTheDocument();
-  });
-
-  it('shows the active operation in the heading and every labeled step while keeping selection clickable', () => {
+  it('shows numbers without operation or memo text and marks annotation review', () => {
     const step1 = { ...makeStep(1), operation: 'OP-01' };
-    const step2 = { ...makeStep(2), operation: 'OP-01' };
-    const current = controller({ activeSteps: [step1, step2], selectedStepKey: step1.stepKey });
+    const current = controller({ activeSteps: [step1], activeMemoOverridesArray: [], activeElements: [{ id: 'review', stepKey: step1.stepKey, migrationState: 'NEEDS_REVIEW' }] as WorkInstructionEditorController['activeElements'] });
     render(<WorkInstructionEditorStepsPane controller={current} />);
-
-    expect(screen.getByRole('heading', { name: '手順（OP-01）' })).toBeInTheDocument();
-    expect(screen.getAllByText('OP-01')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /手順 2/ }));
-    expect(current.selectStep).toHaveBeenCalledWith(step2.stepKey);
+    expect(screen.queryByText('OP-01')).not.toBeInTheDocument();
+    expect(screen.queryByText(step1.text)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '手順 1' })).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByTestId(`work-instruction-editor-step-memo-review-${step1.stepKey}`)).toBeInTheDocument();
   });
 });

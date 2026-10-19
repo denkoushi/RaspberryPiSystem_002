@@ -11,6 +11,7 @@ export type KioskNoteModalExtraAction = {
 
 type KioskNoteModalProps = {
   isOpen: boolean;
+  pending?: boolean;
   value: string;
   maxLength?: number;
   onCancel: () => void;
@@ -23,6 +24,7 @@ const DEFAULT_MAX_LENGTH = 100;
 
 export function KioskNoteModal({
   isOpen,
+  pending,
   value,
   maxLength = DEFAULT_MAX_LENGTH,
   onCancel,
@@ -33,6 +35,11 @@ export function KioskNoteModal({
   const normalizedValue = useMemo(() => value ?? '', [value]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastImeLogAtRef = useRef<number>(0);
+
+  const committed = useRef(false);
+  useEffect(() => {
+    if (!pending) committed.current = false;
+  }, [isOpen, pending]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -50,6 +57,9 @@ export function KioskNoteModal({
   };
 
   const handleCommit = () => {
+    if (!isOpen || pending || committed.current) return;
+    // Only callers that report pending get the once-per-open lock; others may keep the modal open on failure.
+    if (pending !== undefined) committed.current = true;
     onCommit(draft.slice(0, maxLength));
   };
 
@@ -144,7 +154,7 @@ export function KioskNoteModal({
           キャンセル
         </Button>
         <div className="flex-1" />
-        <Button type="button" variant="primary" onClick={handleCommit}>
+        <Button type="button" variant="primary" busy={pending} onClick={handleCommit}>
           保存
         </Button>
       </div>

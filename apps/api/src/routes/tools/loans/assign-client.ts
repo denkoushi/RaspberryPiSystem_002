@@ -1,3 +1,4 @@
+import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
 
 import { authorizeRoles } from '../../../lib/auth.js';
@@ -19,6 +20,6 @@ export function registerLoanAssignClientRoute(
       clientId: body.clientId,
       performedByUserId: request.user?.id,
     });
-    return { loan };
+    return { loan: toLoanResponse(loan) };
   });
 }

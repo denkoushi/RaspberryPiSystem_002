@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 
+import { invButtonSmGhost, invSurface, invSetupTargets } from '../../features/kiosk/inventory/inventoryUi';
 import { InventoryItemEditTab } from '../../features/kiosk/inventory/setup/InventoryItemEditTab';
 import { InventoryPinPad } from '../../features/kiosk/inventory/setup/InventoryPinPad';
-import { InventoryRegistrationTab } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
+import { InventoryRegistrationTab, type RegistrationState } from '../../features/kiosk/inventory/setup/InventoryRegistrationTab';
 import { InventoryShelvesTab } from '../../features/kiosk/inventory/setup/InventoryShelvesTab';
 import { InventoryTagsTab } from '../../features/kiosk/inventory/setup/InventoryTagsTab';
+import { clearSetupPin, readSetupPin, rememberSetupPin, subscribeSetupLock, touchSetupPin } from '../../features/kiosk/inventory/setup/setupPinSession';
 
 type SetupTab = 'review' | 'shelves' | 'tags' | 'items';
 
@@ -17,19 +19,30 @@ const TABS: Array<{ id: SetupTab; label: string }> = [
 ];
 
 export function KioskItemInventorySettingsPage() {
-  // The verified PIN lives only while this page is mounted; leaving it locks setup again.
-  const [accessPassword, setAccessPassword] = useState<string | null>(null);
-  const [tab, setTab] = useState<SetupTab>('review');
+  // A candidate card on the daily list opens its registration right after the PIN.
+  const location = useLocation();
+  const initialImportId = (location.state as { importId?: string } | null)?.importId ?? null;
+  const [accessPassword, setAccessPassword] = useState(readSetupPin);
+  useEffect(() => subscribeSetupLock(() => setAccessPassword(null)), []);
+  useEffect(() => {
+    if (!accessPassword) return;
+    touchSetupPin();
+  }, [accessPassword]);
+  const [registration, setRegistration] = useState<RegistrationState>({ selectedId: initialImportId, draft: null });
+  const [tab, setTab] = useState<SetupTab>(() => {
+    const requested = (location.state as { tab?: unknown } | null)?.tab;
+    return TABS.find((entry) => entry.id === requested)?.id ?? 'review';
+  });
 
-  if (!accessPassword) return <InventoryPinPad onUnlocked={setAccessPassword} />;
+  if (!accessPassword) return <InventoryPinPad onUnlocked={(pin) => { rememberSetupPin(pin); setAccessPassword(pin); }} />;
 
   return (
-    <section className="flex w-full flex-col gap-3">
+    <section className={`${invSurface} ${invSetupTargets}`} onClickCapture={touchSetupPin} onPointerDownCapture={touchSetupPin} onKeyDownCapture={touchSetupPin}>
       {/* Title, tabs and the way back share one row so the tab content gets the height. */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-white/15">
-        <h1 className="text-xl font-bold text-white">在庫の準備</h1>
-        <span className="rounded-full bg-amber-900/70 px-2.5 py-0.5 text-xs font-bold text-amber-100">解除中</span>
-        <div role="tablist" aria-label="在庫の準備" className="ml-4 flex gap-1">
+      <div className="flex shrink-0 flex-wrap items-center gap-4 border-b border-inv-line">
+        <h1 className="text-[22px] font-black tracking-[0.02em]">在庫の準備</h1>
+        <span className="rounded-md bg-inv-amber/[0.12] px-2 py-0.5 text-[11px] font-bold tracking-[0.08em] text-inv-amber">解除中</span>
+        <div role="tablist" aria-label="在庫の準備" className="ml-3 flex gap-0.5">
           {TABS.map((entry) => (
             <button
               key={entry.id}
@@ -37,18 +50,19 @@ export function KioskItemInventorySettingsPage() {
               role="tab"
               aria-selected={entry.id === tab}
               className={entry.id === tab
-                ? 'h-11 border-b-[3px] border-sky-400 px-4 text-base font-bold text-white'
-                : 'h-11 border-b-[3px] border-transparent px-4 text-base text-white/60 hover:text-white'}
+                ? 'h-12 border-b-[3px] border-inv-cyan px-[18px] text-base font-black text-inv-text'
+                : 'h-12 border-b-[3px] border-transparent px-[18px] text-base text-inv-muted hover:text-inv-text'}
               onClick={() => setTab(entry.id)}
             >
               {entry.label}
             </button>
           ))}
         </div>
-        <Link to="/kiosk/inventory" className="ml-auto inline-flex h-9 items-center rounded-md border border-white/20 px-3 text-sm text-white hover:bg-white/10">在庫操作に戻る</Link>
+        <button type="button" className={`${invButtonSmGhost} ml-auto`} onClick={clearSetupPin}>ロック</button>
+        <Link to="/kiosk/inventory" className={invButtonSmGhost}>在庫操作に戻る</Link>
       </div>
-      <div role="tabpanel" aria-label={TABS.find((entry) => entry.id === tab)?.label}>
-        {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} /> : null}
+      <div role="tabpanel" aria-label={TABS.find((entry) => entry.id === tab)?.label} className="flex min-h-0 flex-1 flex-col">
+        {tab === 'review' ? <InventoryRegistrationTab accessPassword={accessPassword} registration={registration} setRegistration={setRegistration} /> : null}
         {tab === 'shelves' ? <InventoryShelvesTab accessPassword={accessPassword} /> : null}
         {tab === 'tags' ? <InventoryTagsTab accessPassword={accessPassword} /> : null}
         {tab === 'items' ? <InventoryItemEditTab accessPassword={accessPassword} /> : null}

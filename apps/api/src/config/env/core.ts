@@ -59,6 +59,10 @@ export const coreEnvShape = {
     .default(60_000),
   JWT_ACCESS_SECRET: z.string().default('dev-access-secret-change-me'),
   JWT_REFRESH_SECRET: z.string().default('dev-refresh-secret-change-me'),
+  ADMIN_MFA_REQUIRED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('false')
+  ).transform((v) => v === 'true'),
   TOKEN_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_IN: z.string().default('7d'),
   LOG_LEVEL: z

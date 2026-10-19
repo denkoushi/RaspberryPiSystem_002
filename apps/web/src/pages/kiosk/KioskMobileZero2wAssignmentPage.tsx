@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { putMobilePlacementHaizenTargetPresetShelf } from '../../api/client';
+import { mobilePlacementQueryKeys } from '../../features/mobile-placement/mobilePlacementQueryKeys';
 import { mpKioskTheme } from '../../features/mobile-placement/ui/mobilePlacementKioskTheme';
 import { useHaizenTargetDevices } from '../../features/mobile-placement/useHaizenTargetDevices';
 import { useRegisteredShelves } from '../../features/mobile-placement/useRegisteredShelves';
@@ -60,7 +61,7 @@ export function KioskMobileZero2wAssignmentPage() {
       });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'haizen-target-devices'] });
+      await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.haizenTargetDevices });
     },
     onError: (error: unknown) => {
       setSaveError(error instanceof Error ? error.message : '保存に失敗しました');

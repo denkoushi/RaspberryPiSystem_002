@@ -17,7 +17,7 @@ import {
 } from './enrichment-contract.mjs';
 import { ENRICHMENT_MAX_TOKENS, withinWindow } from './enrichment-dgx.mjs';
 import {
-  MAX_CONTENT_ATTEMPTS, needsEnrichment, readIdAllowlist, runEnrichmentBatch,
+  MAX_CONTENT_ATTEMPTS, selectRecords, needsEnrichment, readIdAllowlist, runEnrichmentBatch,
 } from './enrichment-runner.mjs';
 import {
   failuresPathFor, readEnrichmentFailures, readEnrichmentStore, writeAtomic, writeEnrichmentStore,
@@ -196,7 +196,7 @@ test('a failed atomic write leaves the previous store intact', async () => {
   assert.equal(names.some((name) => name.includes('.tmp')), false);
 });
 
-test('an id allowlist keeps only listed records and rejects other file text', async () => {
+test('an id list puts listed records first, keeps the others, and rejects other file text', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'enrichment-ids-'));
   const allowPath = path.join(directory, 'ids.txt');
   const kept = '11111111-1111-4111-8111-111111111111';
@@ -221,8 +221,25 @@ test('an id allowlist keeps only listed records and rejects other file text', as
   assert.equal(status.reason, 'outside_window');
   assert.equal(status.allowlistCount, 1);
   assert.equal(status.allowlistMatched, 1);
-  assert.equal(status.corpusCount, 1);
+  assert.equal(status.corpusCount, 2);
   assert.equal(calls, 0);
+  const order = [];
+  const storePath = path.join(directory, 'order.jsonl');
+  const run = () => runEnrichmentBatch({
+    records: [{ ...records[1], id: dropped }, { ...records[0], id: kept }],
+    catalog, storePath, settings: { ...settings, window: '', maxRecords: 1 },
+    fetchImpl: async (url, options) => {
+      const user = JSON.parse(options.body).messages.at(-1).content;
+      const record = user.includes(records[0].condition.trim()) ? records[0] : records[1];
+      order.push(record === records[0] ? kept : dropped);
+      return chatResponse(record);
+    },
+    sleep: async () => {},
+    now: () => new Date('2026-01-15T03:30:00Z'),
+  });
+  await run();
+  await run();
+  assert.deepEqual(order, [kept, dropped]);
 });
 
 test('the enrichment window accepts an overnight range and rejects an open gate by default', () => {
@@ -472,4 +489,10 @@ test('the retrieval worker attaches the agreed enrichment shape when a store ent
   const replaced = await answering.replaceCorpus({ mode: 'full', records: [], asOf: '2026-01-15T00:00:00Z' });
   assert.equal(replaced.ok, true);
   assert.equal(replaced.count, 0);
+});
+
+
+test('enrichment excludes rank-only API rows and snapshot records', () => {
+  const hidden = { id: 'material', bodyText: 'private material' };
+  assert.deepEqual(selectRecords([...records, { ...hidden, kind: 'procedure_material' }, { ...hidden, sourceId: 'procedure_material' }]), records);
 });

@@ -87,7 +87,7 @@ Normal PR/CI/review/merge/standard Deploy applies to diagnostics too; compare th
 
 ## Context and Orientation
 
-`apps/api/src/services/assembly/business-hermes-nightly.service.ts` exports every source, selects four records, rereads catalogue references, asks DGX for up to two allowed aliases, writes immutable batch files and invokes `/maintenance/start`. `services/hermes-answer-cache/runtime.py` starts a local Python subprocess using those shared files and atomically switches `active.json`. `maintenance.py` and `facts.py` verify source-only facts and protected reference answers. The API rereads live details before returning cached answers.
+`apps/api/src/services/business-hermes/business-hermes-nightly.service.ts` exports every source, selects four records, rereads catalogue references, asks DGX for up to two allowed aliases, writes immutable batch files and invokes `/maintenance/start`. `services/hermes-answer-cache/runtime.py` starts a local Python subprocess using those shared files and atomically switches `active.json`. `maintenance.py` and `facts.py` verify source-only facts and protected reference answers. The API rereads live details before returning cached answers.
 
 The separate repository `/Users/tsudatakashi/DGXSparkControlPlane` owns admission, leases, private controls and DGX deployments. Its existing `/v1/hermes-search/*` API is synchronous model-only computation, not durable jobs. `agents/dgx/dgx_control/inference_admission.py` admits background calls only in spare capacity. `arbiter.py` drains admitted calls before private switching. A new CPU worker must participate in this boundary; merely starting a container does not provide cancellation.
 
@@ -149,7 +149,7 @@ Run the narrow tests below, then required hosted CI on exact PR heads. For coord
 
 ## Concrete Steps
 
-For remote preparation, work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-remote-preparation`. Use the existing pnpm workspace. Run focused tests from `apps/api` with `pnpm exec vitest run src/services/assembly/business-hermes-nightly-source-evidence.test.ts src/services/assembly/business-hermes-nightly-preparation.test.ts src/services/assembly/business-hermes-nightly-candidates.test.ts src/services/assembly/business-hermes-mcp.service.test.ts`. Add the new test paths as they are created. Run ESLint on changed TypeScript files. Do not use production credentials for fixtures.
+For remote preparation, work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--hermes-remote-preparation`. Use the existing pnpm workspace. Run focused tests from `apps/api` with `pnpm exec vitest run src/services/business-hermes/business-hermes-nightly-source-evidence.test.ts src/services/business-hermes/business-hermes-nightly-preparation.test.ts src/services/business-hermes/business-hermes-nightly-candidates.test.ts src/services/business-hermes/business-hermes-mcp.service.test.ts`. Add the new test paths as they are created. Run ESLint on changed TypeScript files. Do not use production credentials for fixtures.
 
 Deployment validation budget is 45 minutes of local validation; hosted CI provides broad checks. Follow the standard wrapper plan and exact-host deploy from `docs/guides/deployment.md`. Keep production unchanged if a required boundary is unverified.
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -113,7 +114,49 @@ PI4_AGENT_DOCKERFILES = frozenset(
     artifact.dockerfile for artifact in PI4_AGENT_ARTIFACTS
 )
 PI4_AGENT_SHARED_INPUTS = frozenset({".dockerignore", ".trivyignore"})
+# Files the release_kiosk role copies onto every Pi4 kiosk. The role stages
+# them only when the release set names at least one agent, and a Pi4 release
+# needs the signed release set of its exact SHA. A change to any of them must
+# therefore publish every agent image and the API/Web pair for that SHA.
+# Otherwise it is never delivered: on 2026-10-01 a launcher fix (#1608) reached
+# no kiosk because the deployed commit named no agent.
+PI4_KIOSK_RELEASE_FILES = frozenset(
+    {
+        "infrastructure/ansible/templates/kiosk-launch.sh.j2",
+        "infrastructure/ansible/templates/kiosk-browser.service.j2",
+        # Inputs the launcher is rendered from: release_kiosk includes the
+        # resolver, and the role defaults carry the browser flags.
+        "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+        "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
+        "infrastructure/ansible/roles/kiosk/defaults/main.yml",
+        # Host and group variables decide the browser engine, its flags and
+        # the agent env files. An inventory-only commit named no agent, so
+        # the release staged nothing on the kiosks (2026-10-02, #1650).
+        "infrastructure/ansible/inventory.yml",
+        "infrastructure/ansible/templates/status-agent.conf.j2",
+        "infrastructure/ansible/templates/nfc-agent.env.j2",
+        "infrastructure/ansible/templates/barcode-agent.env.j2",
+        "infrastructure/ansible/templates/torque-agent.env.j2",
+        "scripts/deploy/rolling_release/terminal_device_maintenance.py",
+        "clients/status-agent/status-agent.py",
+        "clients/status-agent/storage_health.py",
+        "clients/status-agent/network_health.py",
+        "clients/status-agent/terminal_agent_health.py",
+        "clients/status-agent/status-agent.timer",
+        "scripts/client/pi4-storage-maintenance.sh",
+    }
+)
+PI4_KIOSK_RELEASE_PREFIXES = ("infrastructure/ansible/roles/release_kiosk",)
+
+
+def is_pi4_kiosk_release_file(path: str) -> bool:
+    normalized = _normalize_path(path)
+    return normalized in PI4_KIOSK_RELEASE_FILES or any(
+        _has_prefix(normalized, prefix) for prefix in PI4_KIOSK_RELEASE_PREFIXES
+    )
 POLICY_PATHS = frozenset({".gitleaksignore"})
+WEB_UNIT_TEST_FILE = re.compile(r"\.test\.[cm]?[jt]sx?$")
+HERMES_SEARCH_PREFIX = "scripts/hermes-search"
 PI4_AGENT_NON_BUILD_GLOBAL_PATHS = frozenset(
     {
         "package.json",
@@ -143,6 +186,10 @@ GOOGLE_DR_OWNED_PATHS = frozenset(
         "infrastructure/ansible/templates/raspi-google-drive-dr.env.j2",
         "infrastructure/ansible/templates/raspi-google-drive-dr.service.j2",
         "infrastructure/ansible/templates/raspi-google-drive-dr.timer.j2",
+        "infrastructure/ansible/playbooks/deploy-pi4-sd-backup.yml",
+        "infrastructure/ansible/templates/raspi-pi4-sd-backup.env.j2",
+        "infrastructure/ansible/templates/raspi-pi4-sd-backup.service.j2",
+        "infrastructure/ansible/templates/raspi-pi4-sd-backup.timer.j2",
     }
 )
 COMPLETE_FLEET_ARTIFACT_PATHS = CI_CLASSIFIER_CONTRACT_PATHS | frozenset(
@@ -199,7 +246,12 @@ def _normalize_path(path: str) -> str:
 
 def requires_complete_fleet_artifacts(path: str) -> bool:
     """Return whether main must publish one exact-SHA artifact set for every profile."""
-    return _normalize_path(path) in COMPLETE_FLEET_ARTIFACT_PATHS
+    normalized = _normalize_path(path)
+    # A kiosk-file change is rolled out with --full-fleet like any other
+    # release, so the Pi3 artifact of that SHA has to exist as well.
+    return normalized in COMPLETE_FLEET_ARTIFACT_PATHS or is_pi4_kiosk_release_file(
+        normalized
+    )
 
 
 def pi4_agent_services_for_path(path: str) -> frozenset[str]:
@@ -207,7 +259,7 @@ def pi4_agent_services_for_path(path: str) -> frozenset[str]:
     normalized = _normalize_path(path)
     if normalized == ".github/workflows/torque-release.yml":
         return frozenset({"torque-agent"})
-    if normalized in PI4_AGENT_SHARED_INPUTS:
+    if normalized in PI4_AGENT_SHARED_INPUTS or is_pi4_kiosk_release_file(normalized):
         return PI4_AGENT_SERVICE_NAMES
 
     return frozenset(
@@ -269,6 +321,7 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
 
     if (
         _has_prefix(normalized, "scripts/google_drive_dr")
+        or _has_prefix(normalized, "scripts/pi4_sd_backup")
         or normalized in GOOGLE_DR_OWNED_PATHS
     ):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
@@ -293,12 +346,26 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
     if _has_prefix(normalized, "apps/api"):
         return frozenset({"repo_policy", "workspace_quality", "api"})
     if _has_prefix(normalized, "apps/web"):
-        return frozenset({"repo_policy", "workspace_quality", "web", "kiosk_sop"})
+        web = frozenset({"repo_policy", "workspace_quality", "web", "kiosk_sop"})
+        # Web-only PRs used to skip E2E, so a broken spec surfaced only on the
+        # next full-suite PR: #1632 and #1620 both broke main this way on 2026-10-02.
+        # Unit test files and generated SOP artifacts cannot change what E2E sees.
+        if WEB_UNIT_TEST_FILE.search(normalized) or _has_prefix(
+            normalized, "apps/web/src/generated/kiosk-sop"
+        ):
+            return web
+        return web | {"e2e"}
     if _has_prefix(normalized, "packages"):
         return frozenset({"repo_policy", "workspace_quality", "api", "web", "kiosk_sop"})
 
     if _has_prefix(normalized, "scripts/kiosk-sop"):
         return frozenset({"repo_policy", "kiosk_sop"})
+
+    # Dockerfile.api is the only image that copies this tree, and the API tests
+    # and the runtime rehearsal exercise it. The hermes-retrieval job runs its
+    # own tests on every event.
+    if _has_prefix(normalized, HERMES_SEARCH_PREFIX):
+        return frozenset({"repo_policy", "api", "docker_security"})
 
     if _has_prefix(normalized, "clients") or _has_prefix(normalized, "scripts/client"):
         return frozenset({"repo_policy", "client"})
@@ -364,6 +431,7 @@ def signage_artifact_for_path(path: str) -> bool:
         in {
             "clients/status-agent/status-agent.py",
             "clients/status-agent/storage_health.py",
+            "clients/status-agent/network_health.py",
             "clients/status-agent/terminal_agent_health.py",
             "clients/status-agent/status-agent.service",
             "clients/status-agent/status-agent.timer",
@@ -400,15 +468,17 @@ def categories_for_path(path: str) -> frozenset[str] | None:
 
 
 def codeql_for_path(path: str) -> bool:
-    """Return whether a known path can change JavaScript/TypeScript analysis."""
+    """Return whether a known path can change JavaScript/TypeScript or Python analysis."""
     normalized = _normalize_path(path)
     if normalized == ".github/workflows/torque-release.yml":
         return False
     return (
-        _has_prefix(normalized, "apps/api")
+        normalized.endswith(".py")
+        or _has_prefix(normalized, "apps/api")
         or _has_prefix(normalized, "apps/web")
         or _has_prefix(normalized, "packages")
         or _has_prefix(normalized, "e2e")
+        or _has_prefix(normalized, HERMES_SEARCH_PREFIX)
         or normalized in {"playwright.config.ts", "playwright.kiosk-sop.config.ts"}
         or normalized in {
             "package.json",
@@ -444,7 +514,9 @@ def docker_images_for_path(path: str) -> frozenset[str]:
         and PurePosixPath(normalized).name.startswith("Caddyfile")
     ):
         return frozenset({"web"})
-    if normalized == "infrastructure/docker/Dockerfile.api":
+    if normalized == "infrastructure/docker/Dockerfile.api" or _has_prefix(
+        normalized, HERMES_SEARCH_PREFIX
+    ):
         return frozenset({"api"})
     if _has_prefix(normalized, "infrastructure/docker") or normalized in GLOBAL_PATHS:
         return frozenset({"api", "web"})
@@ -476,6 +548,8 @@ def release_pair_for_path(path: str) -> bool:
         # A new torque composition still needs an API/Web pair for its exact,
         # rehearsal-bound three-component tuple. Unrelated Pi4 agents remain
         # independent of the normal v1 release pair.
+        return True
+    if is_pi4_kiosk_release_file(normalized):
         return True
     if normalized in PI4_AGENT_DOCKERFILES:
         return False

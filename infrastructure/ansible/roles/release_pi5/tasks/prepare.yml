@@ -142,6 +142,25 @@
     < (release_pi5_load.stdout | from_json).maxLoad | float
   changed_when: false
 
+- name: Require a bounded explicit administrator allowlist for the gateway
+  ansible.builtin.assert:
+    that:
+      - admin_allow_nets is defined
+      - admin_allow_nets is sequence
+      - admin_allow_nets is not string
+      - admin_allow_nets | length > 0
+      - admin_allow_nets | length <= 16
+      - admin_allow_nets | select('match', '^[0-9A-Fa-f:.]+/[0-9]{1,3}$') | list | length == admin_allow_nets | length
+    fail_msg: admin_allow_nets must contain between 1 and 16 explicit CIDRs.
+
+# Caddy reads this file only when it loads a route, so the live gateway keeps
+# its current policy until the staged candidate route is validated and reloaded.
+- name: Write the gateway administrator allowlist imported by known routes
+  ansible.builtin.copy:
+    dest: "{{ release_pi5_admin_allow_file }}"
+    content: "not remote_ip {{ admin_allow_nets | join(' ') }}\n"
+    mode: '0644'
+
 - name: Render the two known Pi5 routes from the explicit source template
   ansible.builtin.copy:
     src: "{{ release_pi5_gateway_template }}"
@@ -987,11 +1006,16 @@
     hermes_search_trial_artifact: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_TRIAL_ARTIFACT') }}"
     hermes_search_record_classification_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED') | lower }}"
     hermes_retrieval_v2_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_V2_ENABLED') | lower }}"
+    hermes_retrieval_sources: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') }}"
+    hermes_retrieval_cause_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_CAUSE_ENABLED') | lower }}"
+    hermes_retrieval_cause_max_texts: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_CAUSE_MAX_TEXTS') }}"
     hermes_retrieval_enrichment_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_ENABLED') | lower }}"
     hermes_retrieval_enrichment_max_records: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS') }}"
     hermes_retrieval_enrichment_concurrency: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY') }}"
     hermes_retrieval_enrichment_window: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_WINDOW') }}"
     hermes_retrieval_enrichment_ids: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_ENRICHMENT_IDS') }}"
+    hermes_flywheel_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_FLYWHEEL_ENABLED') | lower }}"
+    hermes_flywheel_max_questions: "{{ lookup('ansible.builtin.env', 'HERMES_FLYWHEEL_MAX_QUESTIONS') }}"
     hermes_retrieval_dense_provider: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_DENSE_PROVIDER') | lower }}"
     hermes_retrieval_dense_index_enabled: "{{ lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_DENSE_INDEX_ENABLED') | lower }}"
   when:
@@ -1126,9 +1150,26 @@
         select('match', '^HERMES_RETRIEVAL_V2_ENABLED=(true|false)$') | list | length) == 1
       - >-
         (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_SOURCES=') | list | length) in [0, 1]
+      - >-
+        lookup('ansible.builtin.env', 'HERMES_RETRIEVAL_SOURCES') == ''
+        or (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_SOURCES=[a-z_,]+$') | list | length) == 1
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
         select('match', '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED=') | list | length) == 0
         or (release_pi5_candidate_search_env.stdout | from_json |
         select('match', '^HERMES_RETRIEVAL_ENRICHMENT_ENABLED=(true|false)$') | list | length) == 1
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=') | list | length) == 0
+        or (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_RETRIEVAL_CAUSE_ENABLED=(true|false)$') | list | length) == 1
+      - >-
+        (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_FLYWHEEL_ENABLED=') | list | length) == 0
+        or (release_pi5_candidate_search_env.stdout | from_json |
+        select('match', '^HERMES_FLYWHEEL_ENABLED=(true|false)$') | list | length) == 1
       - >-
         (release_pi5_candidate_search_env.stdout | from_json |
         select('match', '^HERMES_RETRIEVAL_DENSE_PROVIDER=') | list | length) == 0

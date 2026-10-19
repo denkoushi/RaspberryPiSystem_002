@@ -22,6 +22,10 @@ const previewDocuments: AssemblyProcedureDocumentSummaryDto[] = [
     isActive: true,
     createdAt: now,
     updatedAt: now,
+    manualAssignments: [
+      { modelCode: 'FH-20A', modelCodeKey: 'FH-20A', processId: 'assembly', processName: '組立' },
+      { modelCode: 'FH-25B', modelCodeKey: 'FH-25B', processId: 'inspection', processName: '検査' }
+    ],
     activeTemplateCount: 3,
     totalTemplateCount: 5
   },
@@ -35,6 +39,7 @@ const previewDocuments: AssemblyProcedureDocumentSummaryDto[] = [
     isActive: true,
     createdAt: now,
     updatedAt: now,
+    manualAssignments: [],
     activeTemplateCount: 1,
     totalTemplateCount: 1
   }
@@ -115,7 +120,7 @@ export function KioskAssemblyLibraryPreviewPage() {
         templates={historyRows}
         onClose={() => setHistoryKey(null)}
       />
-      <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-auto 2xl:grid-cols-[33rem_minmax(0,1fr)] 2xl:overflow-hidden">
+      <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-2 overflow-auto">
         <AssemblyProcedureLibrarySection
           onRegisterClick={() => setUploadOpen(true)}
           previewDocuments={previewDocuments}

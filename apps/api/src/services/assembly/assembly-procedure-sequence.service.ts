@@ -1,3 +1,4 @@
+import type { ProcedureVideoSummary } from './procedure-video.service.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorageRenderAdapter } from '../kiosk-documents/adapters/pdf-storage-render.adapter.js';
@@ -27,6 +28,7 @@ import {
 export type AssemblyProcedureSequenceFallbackReason = 'not_configured' | 'no_enabled_documents' | 'no_page_images';
 
 export type AssemblyProcedureSequencePage = {
+  videos?: ProcedureVideoSummary[];
   source: 'kiosk_document' | 'assembly_procedure_document';
   documentId: string;
   pageIndex: number;
@@ -37,6 +39,7 @@ export type AssemblyProcedureSequencePage = {
 export type AssemblyProcedureSequenceAsset = AssemblyProcedureDocumentRevisionDto['assets'][string];
 
 export type AssemblyProcedureSequenceDocument = {
+  lastApproval?: AssemblyProcedureDocumentRevisionDto['lastApproval'];
   orderItemId: string;
   sortOrder: number;
   label: string | null;
@@ -154,7 +157,7 @@ function buildOverlayProjection(rows: AssemblyProcedureOverlayRow[]): {
   return { overlays, overlaysByPage, assets };
 }
 
-async function toSequenceDocument(
+export async function toSequenceDocument(
   item: AssemblyProcedureSequenceItemSummary,
   render: PdfStorageRenderAdapter,
   assemblyPagesByDocumentId: Map<string, Array<{ pageIndex: number; imageRelativePath: string }>>,
@@ -313,7 +316,7 @@ async function buildFallbackSequenceDocuments(
   ];
 }
 
-function buildProcedureSteps(
+export function buildProcedureSteps(
   documents: AssemblyProcedureSequenceDocument[],
   storedSteps: AssemblyTemplateProcedureStepSummary[]
 ): {

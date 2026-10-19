@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../../lib/auth.js';
+import { ApiError } from '../../../lib/errors.js';
 import { assertKioskApiClientKeyValid } from '../../../services/clients/client-device-auth.service.js';
 import { ItemLoanAnalyticsService } from '../../../services/tools/item-loan-analytics.service.js';
 import { itemLoanAnalyticsQuerySchema } from './schemas.js';
@@ -17,7 +18,8 @@ export function registerItemLoanAnalyticsRoute(app: FastifyInstance): void {
       try {
         await canView(request, reply);
         return;
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
         // fall back
       }
     }

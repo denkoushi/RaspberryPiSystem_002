@@ -1,5 +1,6 @@
 import type { KnowledgeReport } from '@raspi-system/shared-types';
 
+import type { TriageDestination } from './triage.port.js';
 import type { KnowledgeSource, OrganizedNote } from './knowledge-source.js';
 
 export type KnowledgeAction = 'save' | 'ask' | 'report' | 'delegate' | 'clarify';
@@ -12,7 +13,7 @@ export type Intake = {
   result: IntakeResult | null; errorCode: string | null; createdAt: Date;
   posterEmployeeId: string | null; posterNameSnapshot: string | null; scannedPartNumber: string | null;
 };
-export type IntakeReceipt = Pick<Intake, 'id' | 'ownerKey' | 'conversationId' | 'inputHash' | 'text' | 'files' | 'posterEmployeeId' | 'posterNameSnapshot' | 'scannedPartNumber'>;
+export type IntakeReceipt = Pick<Intake, 'id' | 'ownerKey' | 'conversationId' | 'inputHash' | 'text' | 'files' | 'posterEmployeeId' | 'posterNameSnapshot' | 'scannedPartNumber'> & { destination?: TriageDestination };
 export interface KnowledgeIntakeRepositoryPort {
   receive(input: IntakeReceipt): Promise<Intake>;
   accepted(id: string, owner: string): Promise<void>;

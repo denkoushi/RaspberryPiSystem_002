@@ -72,7 +72,9 @@ export type UseLeaderboardBoardTerminalCacheResult = {
 
 const EMPTY_DECORATIONS: AccumulatedLeaderboardDecorations = {
   rowDecorationsById: new Map(),
-  leaderboardFooterChipsByPartKey: {}
+  leaderboardFooterChipsByPartKey: {},
+  leaderboardMaterialArrivalByPartKey: {},
+  leaderboardMaterialArrivalBasisByPartKey: {}
 };
 
 export function useLeaderboardBoardTerminalCache(

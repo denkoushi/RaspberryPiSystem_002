@@ -18,7 +18,9 @@ export type SignageSlotKind =
   /** 配膳 Android 部品棚 9枠（JPEG・OrderPlacementBranchState 集約） */
   | 'mobile_placement_parts_shelf_grid'
   /** 自主検査 部品別進捗（JPEG・machineName 集約） */
-  | 'self_inspection_machine_board';
+  | 'self_inspection_machine_board'
+  /** 管理Webのページを撮影した画像（SignageWebCapture・FULL のみ） */
+  | 'web_page';
 
 /**
  * PDFスロットの設定
@@ -109,6 +111,13 @@ export interface SelfInspectionMachineBoardSlotConfig {
 }
 
 /**
+ * ページ撮影スロットの設定（撮影の中身は SignageWebCapture が持つ）
+ */
+export interface WebPageSlotConfig {
+  webCaptureId: string;
+}
+
+/**
  * スロット設定（kindに応じてconfigの型が変わる）
  */
 export interface SignageSlot {
@@ -122,7 +131,8 @@ export interface SignageSlot {
     | KioskProgressOverviewSlotConfig
     | KioskLeaderOrderCardsSlotConfig
     | MobilePlacementPartsShelfGridSlotConfig
-    | SelfInspectionMachineBoardSlotConfig;
+    | SelfInspectionMachineBoardSlotConfig
+    | WebPageSlotConfig;
 }
 
 /**

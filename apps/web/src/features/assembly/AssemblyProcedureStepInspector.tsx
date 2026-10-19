@@ -58,7 +58,7 @@ export function AssemblyProcedureStepCropInspector({
         <Button
           type="button"
           variant="ghostOnDark"
-          className="min-h-10 shrink-0 !px-2 text-xs"
+          className="min-h-8 shrink-0 !px-2 text-xs"
           aria-pressed={showFullPage}
           onClick={() => onShowFullPageChange(!showFullPage)}
         >
@@ -72,13 +72,13 @@ export function AssemblyProcedureStepCropInspector({
       />
       <div className="grid grid-cols-3 gap-1" role="group" aria-label="矩形位置の微調整">
         <span />
-        <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={readOnly} onClick={() => nudgeCrop(0, -ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO)}>↑</Button>
+        <Button type="button" variant="ghostOnDark" className="min-h-8" disabled={readOnly} onClick={() => nudgeCrop(0, -ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO)}>↑</Button>
         <span />
-        <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={readOnly} onClick={() => nudgeCrop(-ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO, 0)}>←</Button>
+        <Button type="button" variant="ghostOnDark" className="min-h-8" disabled={readOnly} onClick={() => nudgeCrop(-ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO, 0)}>←</Button>
         <span className="grid place-items-center text-[0.65rem] text-white/50">0.25%</span>
-        <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={readOnly} onClick={() => nudgeCrop(ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO, 0)}>→</Button>
+        <Button type="button" variant="ghostOnDark" className="min-h-8" disabled={readOnly} onClick={() => nudgeCrop(ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO, 0)}>→</Button>
         <span />
-        <Button type="button" variant="ghostOnDark" className="min-h-10" disabled={readOnly} onClick={() => nudgeCrop(0, ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO)}>↓</Button>
+        <Button type="button" variant="ghostOnDark" className="min-h-8" disabled={readOnly} onClick={() => nudgeCrop(0, ASSEMBLY_PROCEDURE_CROP_NUDGE_RATIO)}>↓</Button>
       </div>
     </div>
   );
@@ -144,7 +144,7 @@ export function AssemblyProcedureStepInspector({
             key={value}
             type="button"
             variant={step.emphasis === value ? 'primary' : 'ghostOnDark'}
-            className="min-h-10 !px-1 text-xs"
+            className="min-h-8 !px-1 text-xs"
             aria-pressed={step.emphasis === value}
             disabled={readOnly}
             onClick={() => onPatch({ emphasis: value })}

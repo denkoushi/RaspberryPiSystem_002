@@ -12,7 +12,7 @@ import sys
 import tempfile
 import types
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -191,31 +191,42 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
                                   limit="raspberrypi5", full_fleet=False, detach=True,
                                   torque_cutover=False)
-        env_name = "HERMES_RETRIEVAL_ENRICHMENT_ENABLED"
-        for value in (None, "false", "true"):
-            with self.subTest(value=value), mock.patch.dict(os.environ, {} if value is None else {env_name: value}, clear=True):
-                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
-                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
-                                             ("pi5",), "pi", hermes_environment=environment)
-                if value is None:
-                    self.assertNotIn(env_name, environment)
-                    self.assertFalse(any(env_name in item for item in command))
-                else:
-                    self.assertEqual(environment[env_name], value)
-                    self.assertIn(f"--setenv={env_name}={value}", command)
-        with mock.patch.dict(os.environ, {env_name: "yes"}, clear=True):
-            with self.assertRaisesRegex(MODULE.UsageError, "HERMES_RETRIEVAL_ENRICHMENT_ENABLED must be true or false"):
-                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+        for env_name in ("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", "HERMES_RETRIEVAL_CAUSE_ENABLED"):
+            for value in (None, "false", "true"):
+                with self.subTest(value=value), mock.patch.dict(os.environ, {} if value is None else {env_name: value}, clear=True):
+                    environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                    command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                                 ("pi5",), "pi", hermes_environment=environment)
+                    if value is None:
+                        self.assertNotIn(env_name, environment)
+                        self.assertFalse(any(env_name in item for item in command))
+                    else:
+                        self.assertEqual(environment[env_name], value)
+                        self.assertIn(f"--setenv={env_name}={value}", command)
+            with mock.patch.dict(os.environ, {env_name: "maybe"}, clear=True):
+                with self.assertRaisesRegex(MODULE.UsageError, f"{env_name} must be true or false"):
+                    MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
         with mock.patch.dict(os.environ, {
-            env_name: "true",
+            "HERMES_RETRIEVAL_ENRICHMENT_ENABLED": "true",
+            "HERMES_RETRIEVAL_CAUSE_ENABLED": "true",
+            "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS": "100",
             "HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS": "100",
             "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY": "1",
             "HERMES_RETRIEVAL_ENRICHMENT_WINDOW": "22-6",
         }, clear=True):
             environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
             self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS"], "100")
+            self.assertEqual(environment["HERMES_RETRIEVAL_CAUSE_ENABLED"], "true")
+            self.assertEqual(environment["HERMES_RETRIEVAL_CAUSE_MAX_TEXTS"], "100")
+            command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                         ("pi5",), "pi", hermes_environment=environment)
+            self.assertIn("--setenv=HERMES_RETRIEVAL_CAUSE_MAX_TEXTS=100", command)
             self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY"], "1")
             self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_WINDOW"], "22-6")
+        for cap_name in ("HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS", "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS"):
+            with self.subTest(cap_name=cap_name), mock.patch.dict(os.environ, {cap_name: "0"}, clear=True):
+                with self.assertRaisesRegex(MODULE.UsageError, f"{cap_name} must be a positive integer"):
+                    MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
         with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY": "3"}, clear=True):
             with self.assertRaisesRegex(MODULE.UsageError, "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY must be 1 or 2"):
                 MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
@@ -232,6 +243,121 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_ENRICHMENT_IDS": str(allow)}, clear=True):
                 with self.assertRaisesRegex(MODULE.UsageError, "only record ids"):
                     MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+
+    def test_maintenance_flywheel_settings_reach_systemd_without_defaulting(self) -> None:
+        args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
+                                  limit="raspberrypi5", full_fleet=False, detach=True,
+                                  torque_cutover=False)
+        for value in (None, "false", "true"):
+            with self.subTest(value=value), mock.patch.dict(os.environ, {} if value is None else {"HERMES_FLYWHEEL_ENABLED": value}, clear=True):
+                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                             ("pi5",), "pi", hermes_environment=environment)
+                if value is None:
+                    self.assertNotIn("HERMES_FLYWHEEL_ENABLED", environment)
+                    self.assertFalse(any("HERMES_FLYWHEEL_ENABLED" in item for item in command))
+                else:
+                    self.assertEqual(environment["HERMES_FLYWHEEL_ENABLED"], value)
+                    self.assertIn(f"--setenv=HERMES_FLYWHEEL_ENABLED={value}", command)
+        with mock.patch.dict(os.environ, {"HERMES_FLYWHEEL_ENABLED": "true", "HERMES_FLYWHEEL_MAX_QUESTIONS": "100"}, clear=True):
+            environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+            command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                         ("pi5",), "pi", hermes_environment=environment)
+            self.assertIn("--setenv=HERMES_FLYWHEEL_MAX_QUESTIONS=100", command)
+        with mock.patch.dict(os.environ, {"HERMES_FLYWHEEL_ENABLED": "yes"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "HERMES_FLYWHEEL_ENABLED must be true or false"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+        with mock.patch.dict(os.environ, {"HERMES_FLYWHEEL_MAX_QUESTIONS": "0"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "HERMES_FLYWHEEL_MAX_QUESTIONS must be a positive integer"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+
+    def test_hermes_flags_without_a_forwarding_path_fail_before_plan_or_mutation(self) -> None:
+        # Run 20261003-093810-c3d634 set HERMES_FLYWHEEL_ENABLED on a plain
+        # Pi5 release: it succeeded and the flag never reached the API.
+        plain = ["main", MODULE.DEFAULT_INVENTORY, "--limit", "raspberrypi5"]
+        for name, value in (
+            ("HERMES_FLYWHEEL_ENABLED", "true"),
+            ("HERMES_FLYWHEEL_MAX_QUESTIONS", "100"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", "true"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS", "10"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY", "1"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_WINDOW", "0-6"),
+            ("HERMES_RETRIEVAL_ENRICHMENT_IDS", "/private/ids.txt"),
+            ("HERMES_RETRIEVAL_CAUSE_ENABLED", "true"),
+            ("HERMES_RETRIEVAL_CAUSE_MAX_TEXTS", "10"),
+            ("HERMES_RETRIEVAL_DENSE_PROVIDER", "dgx"),
+            ("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", "true"),
+            ("HERMES_RETRIEVAL_V2_ENABLED", "true"),
+            ("HERMES_RETRIEVAL_SOURCES", "nonconformity,knowledge_procedure"),
+            ("HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED", "false"),
+        ):
+            for mode in (["--detach"], ["--print-plan"], []):
+                with self.subTest(name=name, mode=mode), mock.patch.dict(
+                    os.environ, {name: value}, clear=True
+                ), mock.patch.object(MODULE, "inventory_path") as inventory_path, mock.patch.object(
+                    MODULE, "run"
+                ) as run:
+                    with self.assertRaisesRegex(
+                        MODULE.UsageError, f"{name} would not be forwarded.*--hermes-search-trial-maintenance on"
+                    ):
+                        MODULE.main(plain + mode)
+                    inventory_path.assert_not_called()
+                    run.assert_not_called()
+
+        environment = {"HERMES_FLYWHEEL_ENABLED": "true"}
+        with mock.patch.dict(os.environ, environment, clear=True):
+            MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain + ["--hermes-search-trial-maintenance", "on"]))
+            MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain + ["--hermes-search-trial-maintenance", "off"]))
+        with mock.patch.dict(os.environ, {**environment, "HERMES_SEARCH_TRIAL_ENABLED": "false"}, clear=True):
+            MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain))
+        with mock.patch.dict(os.environ, {}, clear=True):
+            MODULE.reject_unforwarded_hermes_flags(MODULE.parse_arguments(plain))
+
+    def test_maintenance_retrieval_sources_reach_systemd_without_defaulting(self) -> None:
+        args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
+                                  limit="raspberrypi5", full_fleet=False, detach=True,
+                                  torque_cutover=False)
+        key = "HERMES_RETRIEVAL_SOURCES"
+        for value, expected in (
+            (None, None),
+            ("", None),
+            (" , , ", None),
+            ("nonconformity,knowledge_procedure", "nonconformity,knowledge_procedure"),
+            (" knowledge_procedure , nonconformity , knowledge_procedure ", "knowledge_procedure,nonconformity"),
+        ):
+            with self.subTest(value=value), mock.patch.dict(
+                os.environ, {"HERMES_SEARCH_TRIAL_JEV_ENABLED": "false", **({} if value is None else {key: value})}, clear=True
+            ):
+                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                             ("pi5",), "pi", hermes_environment=environment)
+                if expected is None:
+                    self.assertNotIn(key, environment)
+                    self.assertFalse(any(key in item for item in command))
+                else:
+                    self.assertEqual(environment[key], expected)
+                    self.assertIn(f"--setenv={key}={expected}", command)
+        with mock.patch.dict(os.environ, {key: "knowledge_procedure,unknown"}, clear=True):
+            with self.assertRaisesRegex(MODULE.UsageError, "^HERMES_RETRIEVAL_SOURCES contains an unknown source: unknown$"):
+                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+
+    def test_retrieval_sources_follow_the_shipped_definitions(self) -> None:
+        known = MODULE.retrieval_source_ids()
+        self.assertLessEqual({"nonconformity", "knowledge_procedure", "torque_training_session",
+                              "torque_training_operator", "torque_training_team"}, known)
+        every = ",".join(sorted(known))
+        with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_SOURCES": every}, clear=True):
+            self.assertEqual(MODULE.optional_retrieval_sources_setting(), every)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "added-source.json").write_text(
+                json.dumps({"schema": "hermes-source-definition/v1", "id": "added_source"}), encoding="utf-8")
+            (root / "other-contract.json").write_text(json.dumps({"schema": "other/v1", "id": "ignored"}), encoding="utf-8")
+            self.assertEqual(MODULE.retrieval_source_ids(root), frozenset({"added_source"}))
+            (root / "bad-id.json").write_text(
+                json.dumps({"schema": "hermes-source-definition/v1", "id": "Bad,Id"}), encoding="utf-8")
+            with self.assertRaisesRegex(MODULE.UsageError, "invalid id: bad-id.json"):
+                MODULE.retrieval_source_ids(root)
 
     def test_maintenance_dense_provider_reaches_systemd_without_defaulting(self) -> None:
         args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
@@ -714,12 +840,12 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         ), mock.patch.object(
             MODULE, "signage_identity"
         ) as signage_identity, mock.patch.object(
-            MODULE.os, "execvpe"
-        ) as execvpe, redirect_stdout(io.StringIO()) as output:
+            MODULE, "execute_ansible_with_cleanup", return_value=1
+        ) as execute, redirect_stdout(io.StringIO()) as output:
             self.assertEqual(MODULE.execute_standard_route(args), 1)
 
         signage_identity.assert_not_called()
-        command = execvpe.call_args.args[1]
+        command = execute.call_args.args[0]
         self.assertEqual(command[command.index("--tags") + 1], "pi5,pi4")
         self.assertEqual(command[-2:], ["--limit", "pi5:pi4-online"])
         event = json.loads(output.getvalue())
@@ -1046,10 +1172,10 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             MODULE, "preflight_optional_hosts", return_value=(selection, ())
         ), mock.patch.object(
             MODULE, "release_set_artifacts", return_value=artifacts
-        ), mock.patch.object(MODULE.os, "execvpe") as execvpe, redirect_stdout(io.StringIO()):
+        ), mock.patch.object(MODULE, "execute_ansible_with_cleanup", return_value=1) as execute, redirect_stdout(io.StringIO()):
             self.assertEqual(MODULE.execute_standard_route(args), 1)
 
-        command = execvpe.call_args.args[1]
+        command = execute.call_args.args[0]
         variables = json.loads(command[command.index("--extra-vars") + 1])
         self.assertEqual(variables["release_kiosk_torque_image"], torque_reference)
         self.assertEqual(variables["release_torque_protocol_version"], 1)
@@ -1098,6 +1224,81 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             images,
             {"pi4": [f"ghcr.io/denkoushi/raspisys-barcode-agent:{SHA}"]},
         )
+
+    def test_unpublished_plan_images_reports_only_missing_registry_tags(self) -> None:
+        document = {
+            "executionOrder": [
+                {"profile": "pi5", "images": [f"ghcr.io/denkoushi/raspisys-api:{SHA}-abc"]},
+                {"profile": "pi4", "images": ["release-set-v2:x:torque-agent"]},
+                {"profile": "pi3", "images": [f"ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}"]},
+            ]
+        }
+        inspected: list[str] = []
+
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            inspected.append(command[-1])
+            return completed(command, returncode=1 if "pi3-signage" in command[-1] else 0)
+
+        with mock.patch.object(MODULE, "run", side_effect=fake_run):
+            missing = MODULE.unpublished_plan_images(document)
+
+        self.assertEqual(missing, [f"ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}"])
+        # The torque cutover placeholder is not a registry reference.
+        self.assertEqual(len(inspected), 2)
+
+    def _print_plan(self, artifacts: object, fake_run: object, limit: str) -> tuple[int, str]:
+        inventory = {
+            "server": {"hosts": ["pi5"]},
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi5": {}, "pi4-a": {}}},
+        }
+        selected_inventory = {
+            "kiosk": {"hosts": ["pi4-a"]},
+            "_meta": {"hostvars": {"pi4-a": {}}},
+        }
+        with mock.patch.object(MODULE, "resolve_sha", return_value=SHA), mock.patch.object(
+            MODULE,
+            "inventory_path",
+            return_value=(Path("infrastructure/ansible/inventory.yml"), MODULE.DEFAULT_INVENTORY),
+        ), mock.patch.object(
+            MODULE, "inventory_document", side_effect=[inventory, selected_inventory]
+        ), mock.patch.object(
+            MODULE, "release_set_artifacts", return_value=artifacts
+        ), mock.patch.object(MODULE, "run", side_effect=fake_run), redirect_stdout(
+            io.StringIO()
+        ) as output, redirect_stderr(io.StringIO()) as errors:
+            code = MODULE.main(
+                ["--branch", "main", "--inventory", MODULE.DEFAULT_INVENTORY, "--limit", limit, "--print-plan"]
+            )
+        return code, output.getvalue() + errors.getvalue()
+
+    def test_print_plan_fails_before_any_release_when_an_agent_tag_is_missing(self) -> None:
+        artifacts = MODULE.ReleaseArtifacts("api", "web", None, None, ("nfc-agent",))
+
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            return completed(command, returncode=1 if command[:3] == ["docker", "manifest", "inspect"] else 0)
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            f"release artifacts are not published for this SHA: ghcr.io/denkoushi/raspisys-nfc-agent:{SHA}",
+        ):
+            self._print_plan(artifacts, fake_run, "pi4-a")
+
+    def test_print_plan_says_when_kiosk_files_will_not_be_delivered(self) -> None:
+        def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            return completed(command)
+
+        code, text = self._print_plan(
+            MODULE.ReleaseArtifacts("api", "web", None, None, ()), fake_run, "pi4-a"
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(text)["pi4ReleaseFiles"].startswith("skipped:"))
+
+        code, text = self._print_plan(
+            MODULE.ReleaseArtifacts("api", "web", None, None, ("nfc-agent",)), fake_run, "pi4-a"
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(text)["pi4ReleaseFiles"], "staged with the listed agents")
 
     def test_pi4_only_print_plan_uses_signed_empty_agent_services_authority(self) -> None:
         inventory = {
@@ -1206,6 +1407,29 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             },
         )
 
+    def test_notice_cleanup_preserves_ansible_result_and_runs_on_exception(self) -> None:
+        for outcome in (subprocess.CompletedProcess(['ansible-playbook'], 0),
+                        subprocess.CompletedProcess(['ansible-playbook'], 2),
+                        subprocess.CompletedProcess(['ansible-playbook'], -15),
+                        OSError('cannot launch')):
+            with self.subTest(outcome=outcome), mock.patch.object(
+                MODULE.subprocess, 'run', side_effect=[outcome, subprocess.CompletedProcess([], 0)]
+            ) as execute:
+                if isinstance(outcome, OSError):
+                    with self.assertRaises(OSError):
+                        MODULE.execute_ansible_with_cleanup(['ansible-playbook'], RUN_ID)
+                else:
+                    expected = outcome.returncode if outcome.returncode >= 0 else 128 - outcome.returncode
+                    self.assertEqual(MODULE.execute_ansible_with_cleanup(['ansible-playbook'], RUN_ID), expected)
+                cleanup = execute.call_args_list[-1].args[0]
+                self.assertEqual(cleanup[-3:], ['remove-run', '--run-id', RUN_ID])
+                self.assertEqual(cleanup[2:4], ['--file', str(MODULE.ROOT / 'config/deploy-status.json')])
+        with mock.patch.object(MODULE.subprocess, 'run', side_effect=[
+            subprocess.CompletedProcess([], 2), subprocess.TimeoutExpired('cleanup', 15)
+        ]), mock.patch('sys.stderr', new_callable=io.StringIO) as errors:
+            self.assertEqual(MODULE.execute_ansible_with_cleanup(['ansible-playbook'], RUN_ID), 2)
+            self.assertIn('WARNING', errors.getvalue())
+
     def test_detach_uses_existing_transient_systemd_primitive(self) -> None:
         args = argparse.Namespace(
             branch="main", inventory=MODULE.DEFAULT_INVENTORY, limit="pi4-a",
@@ -1220,6 +1444,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertNotIn("--wait", command)
         self.assertIn("--property=RemainAfterExit=yes", command)
         self.assertIn("--property=Type=exec", command)
+        self.assertIn(f"--property=ExecStopPost=-/usr/bin/python3 {MODULE.REMOTE_ROOT}/scripts/deploy/deploy-status-state.py --file {MODULE.REMOTE_ROOT}/config/deploy-status.json remove-run --run-id {RUN_ID}", command)
+        self.assertIn("--uid=pi", command)
         self.assertIn("git checkout --detach", rendered)
         self.assertIn("--execute-standard-route", rendered)
         self.assertNotIn("rolling-release.py", rendered)
@@ -1256,8 +1482,19 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "--property=WorkingDirectory=/opt/RaspberryPiSystem_002-staging",
             command,
         )
+        self.assertIn(f"--property=ExecStopPost=-/usr/bin/python3 {remote_root}/scripts/deploy/deploy-status-state.py --file {remote_root}/config/deploy-status.json remove-run --run-id {RUN_ID}", command)
         self.assertIn("cd /opt/RaspberryPiSystem_002-staging", script)
         self.assertNotIn("cd /opt/RaspberryPiSystem_002\n", script)
+
+    def test_skip_kiosk_notice_is_opt_in_and_forwarded_to_the_pi5_route(self) -> None:
+        plain = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi4-a"])
+        skipped = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi4-a", "--skip-kiosk-notice"])
+        self.assertFalse(plain.skip_kiosk_notice)
+        self.assertTrue(skipped.skip_kiosk_notice)
+        self.assertNotIn("--skip-kiosk-notice", MODULE.remote_script(plain, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",)))
+        self.assertIn(" --skip-kiosk-notice --limit pi4-a", MODULE.remote_script(skipped, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",)))
+        with self.assertRaises(MODULE.UsageError):
+            MODULE.parse_arguments(["--status", RUN_ID, "--skip-kiosk-notice"])
 
     def test_standard_route_contends_with_legacy_global_lock_before_git(self) -> None:
         args = argparse.Namespace(

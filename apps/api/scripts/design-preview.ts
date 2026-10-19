@@ -88,7 +88,7 @@ function sampleMeasuringInstrumentLoanInspectionTable(): TableVisualizationData 
     ],
     metadata: {
       targetDate: '2026-02-25',
-      sectionEquals: '加工担当部署',
+      sectionEquals: '機械課',
       totalUsers: 8,
       inspectedUsers: 4,
     },

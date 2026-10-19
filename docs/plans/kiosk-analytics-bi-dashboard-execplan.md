@@ -43,3 +43,23 @@
 - 追加: `analyticsDisplayPolicy.ts` / `analyticsDisplayPolicy.test.ts`、`kioskAnalyticsTheme.ts`、`KioskAnalyticsKpiStrip.tsx`。
 - 変更: `KioskRiggingAnalyticsPage.tsx`（KPI 帯・2×2 グリッド・テーブル除去）、`KioskAnalyticsPanels.tsx`（パネル整理、キオスク用の表示上限前提）。
 - 静的モック: [kiosk-analytics-bi-dashboard-preview.html](../design-previews/kiosk-analytics-bi-dashboard-preview.html)。
+
+## 再設計（2026-10-05）
+
+2×2 と円グラフの構成をやめ、未返却を主役にした 1 画面構成へ置き換えた。モックは `docs/design-previews/kiosk-analytics-action-first-preview.html`。
+
+- 操作帯: 対象（吊具／アイテム／計測機器）、期間ステッパー（月または日を前後に送る。今月・今日より先へは進めない）、絞り込み、上位10／全件。
+- 指標: 貸出中、期限超過（1 件以上で赤）、期間の持出（前月比）、期間の返却（返却率）、6か月の推移（`monthlyTrend`）。
+- 一覧: 未返却（超過 → 期限の早い順）、社員別、資産別、今日。上位モードはスクロールなし、全件モードはパネル内だけスクロール（上限 500 行）。
+- 表示上限は `ANALYTICS_KIOSK_DISPLAY_LIMITS`（社員 10、資産 10、今日 11、未返却 11）。文字は最小 14px。
+- API とレスポンス型は変更なし。「今日」の一覧は、画面右下に常駐する Hermes ボタンと重ならないよう下を空けている。
+
+### 実機確認（2026-10-07）
+
+Pi5 へ配布後（`a443c613`、run `20261005-100926-3ced2f`）、オーナーがキオスク実機で次の 5 点を確認し、すべて問題なしだった。
+
+- スクロールなしで 1 画面に収まり、文字が読める。
+- 未返却の一覧で、期限超過が赤で先頭に並び、借用者と期限が実際と合う。
+- 期間ステッパーで月を前後に送れ、今月より先へは進めない。
+- 対象（吊具／アイテム／計測機器）を切り替えても数字に不整合がない。
+- 「今日」の一覧の最終行が Hermes ボタンと重ならない。

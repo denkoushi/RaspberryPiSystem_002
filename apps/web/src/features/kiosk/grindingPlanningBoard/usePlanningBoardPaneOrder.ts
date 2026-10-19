@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX } from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
 
+import { pageZoom } from './pageZoom';
+
 const HOLD_MS = 450;
 
 function readOrder(key: string): string[] {
@@ -11,6 +13,20 @@ function readOrder(key: string): string[] {
   } catch {
     return [];
   }
+}
+
+function placeLine(drag: PaneDrag, target: HTMLElement | null) {
+  const line = drag.line!;
+  const lane = target?.getBoundingClientRect();
+  const from = drag.sourceLane?.getBoundingClientRect();
+  const bounds = drag.scrollParent?.getBoundingClientRect() ?? lane;
+  // Moving down lands below the target lane, moving up lands above its machine-name row.
+  const y = !lane || !from || !bounds ? NaN : from.top < lane.top ? lane.bottom
+    : (target!.querySelector('[data-gantt-lane-label]') ?? target!).getBoundingClientRect().top;
+  if (!bounds || !(y >= bounds.top && y <= bounds.bottom)) { line.classList.add('hidden'); return; }
+  line.classList.remove('hidden');
+  line.style.width = `${drag.scrollParent?.clientWidth ?? bounds.width / pageZoom()}px`;
+  line.style.transform = `translate3d(${bounds.left / pageZoom()}px, ${y / pageZoom() - 2}px, 0)`;
 }
 
 type PaneDrag = {
@@ -28,13 +44,20 @@ type PaneDrag = {
   targetOutline: string;
   originalOpacity: string;
   scrollParent: HTMLElement | null;
+  source: HTMLElement | null;
+  sourceOutline: string;
+  sourceOutlineOffset: string;
+  sourceBackground: string;
+  sourceLane: HTMLElement | null;
+  line: HTMLDivElement | null;
 };
 
 export function usePlanningBoardPaneOrder(
   resources: readonly string[],
   scope: string,
   paneAtPoint: (x: number, y: number) => HTMLElement | null,
-  disabled: boolean
+  disabled: boolean,
+  { startOnMove = false }: { startOnMove?: boolean } = {}
 ) {
   // Browser-local storage deliberately keeps each kiosk's layout independent.
   const key = `kiosk.planning-board.resource-panes:${scope}`;
@@ -53,7 +76,14 @@ export function usePlanningBoardPaneOrder(
     if (drag.timer !== null) clearTimeout(drag.timer);
     if (drag.frame !== null) cancelAnimationFrame(drag.frame);
     if (drag.target) drag.target.style.outline = drag.targetOutline;
+    if (drag.source) {
+      drag.source.style.outline = drag.sourceOutline;
+      drag.source.style.outlineOffset = drag.sourceOutlineOffset;
+      drag.source.style.backgroundColor = drag.sourceBackground;
+      delete drag.source.dataset.planningBoardDragSource;
+    }
     drag.ghost?.remove();
+    drag.line?.remove();
     drag.handle.style.opacity = drag.originalOpacity;
     if (drag.handle.hasPointerCapture?.(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId);
   }, []);
@@ -96,7 +126,7 @@ export function usePlanningBoardPaneOrder(
     const drag = pending.current;
     if (!drag?.ghost) return;
     drag.frame = null;
-    drag.ghost.style.transform = `translate3d(${drag.x + 12}px, ${drag.y + 12}px, 0)`;
+    drag.ghost.style.transform = `translate3d(${drag.x / pageZoom() + 12}px, ${drag.y / pageZoom() + 12}px, 0)`;
     if (drag.scrollParent) {
       const bounds = drag.scrollParent.getBoundingClientRect();
       const step = drag.y < bounds.top + 40 ? -12 : drag.y > bounds.bottom - 40 ? 12 : 0;
@@ -104,13 +134,54 @@ export function usePlanningBoardPaneOrder(
       if (drag.x >= bounds.left && drag.x <= bounds.right) drag.scrollParent.scrollTop += step;
       if (before !== drag.scrollParent.scrollTop) drag.frame = requestAnimationFrame(flush);
     }
-    const target = paneAtPoint(drag.x, drag.y);
+    const pane = paneAtPoint(drag.x, drag.y);
+    const target = pane === drag.source || pane === drag.sourceLane ? null : pane;
+    if (drag.line) placeLine(drag, target);
     if (target === drag.target) return;
     if (drag.target) drag.target.style.outline = drag.targetOutline;
     drag.target = target;
     drag.targetOutline = target?.style.outline ?? '';
-    if (target) target.style.outline = '2px solid rgb(110 231 183)';
+    if (target && !drag.line) target.style.outline = '2px solid rgb(110 231 183)';
   }, [paneAtPoint]);
+
+  const start = useCallback((drag: PaneDrag) => {
+    if (pending.current !== drag || drag.ghost) return;
+    if (drag.timer !== null) clearTimeout(drag.timer);
+    drag.timer = null;
+    const ghost = document.createElement('div');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.dataset.planningBoardPaneGhost = '';
+    ghost.textContent = drag.handle.textContent;
+    ghost.className = 'pointer-events-none fixed left-0 top-0 z-[70] rounded border-2 border-amber-400 bg-slate-900 px-3 py-2 text-[15px] font-bold text-white';
+    document.body.appendChild(ghost);
+    drag.ghost = ghost;
+    drag.handle.style.opacity = '0.45';
+    // In the gantt only the machine-name cell is framed so the bars stay readable.
+    const label = drag.handle.closest<HTMLElement>('[data-gantt-lane-label]');
+    const source = label ?? drag.handle.closest<HTMLElement>('[data-gantt-lane]')
+      ?? paneAtPoint(drag.startX, drag.startY) ?? drag.handle.closest<HTMLElement>('[data-resource-code]');
+    if (source) {
+      drag.source = source;
+      drag.sourceOutline = source.style.outline;
+      drag.sourceOutlineOffset = source.style.outlineOffset;
+      drag.sourceBackground = source.style.backgroundColor;
+      source.style.outline = '3px solid rgb(251 191 36)';
+      source.style.outlineOffset = '-3px';
+      if (!label) source.style.backgroundColor = 'rgba(251,191,36,0.12)';
+      source.dataset.planningBoardDragSource = 'true';
+    }
+    if (label) {
+      drag.sourceLane = label.closest<HTMLElement>('[data-gantt-lane]');
+      // The gantt shows one line where the lane will land instead of framing a whole wide lane.
+      const line = document.createElement('div');
+      line.setAttribute('aria-hidden', 'true');
+      line.dataset.planningBoardPaneLine = '';
+      line.className = 'pointer-events-none fixed left-0 top-0 z-[65] hidden h-1 rounded-full bg-emerald-300 shadow-[0_0_0_2px_rgb(2_6_23)]';
+      document.body.appendChild(line);
+      drag.line = line;
+    }
+    flush();
+  }, [flush, paneAtPoint]);
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>, resource: string) => {
     if (disabled || pending.current || event.button !== 0 || event.isPrimary === false) return;
@@ -120,39 +191,29 @@ export function usePlanningBoardPaneOrder(
     const drag: PaneDrag = {
       pointerId: event.pointerId, resource, handle,
       startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY,
-      timer: null, frame: null, ghost: null, target: null, targetOutline: '', originalOpacity: handle.style.opacity, scrollParent
+      timer: null, frame: null, ghost: null, target: null, targetOutline: '', originalOpacity: handle.style.opacity, scrollParent,
+      source: null, sourceOutline: '', sourceOutlineOffset: '', sourceBackground: '', sourceLane: null, line: null
     };
     pending.current = drag;
     handle.setPointerCapture?.(event.pointerId);
-    drag.timer = setTimeout(() => {
-      if (pending.current !== drag) return;
-      drag.timer = null;
-      const ghost = document.createElement('div');
-      ghost.setAttribute('aria-hidden', 'true');
-      ghost.dataset.planningBoardPaneGhost = '';
-      ghost.textContent = handle.textContent;
-      ghost.className = 'pointer-events-none fixed left-0 top-0 z-[70] rounded border border-emerald-300 bg-slate-900 px-3 py-2 text-[15px] font-bold text-white';
-      document.body.appendChild(ghost);
-      drag.ghost = ghost;
-      handle.style.opacity = '0.45';
-      flush();
-    }, HOLD_MS);
+    // A hold shows the frame too; with startOnMove, moving earlier starts at once.
+    drag.timer = setTimeout(() => start(drag), HOLD_MS);
     event.stopPropagation();
-  }, [disabled, flush]);
+  }, [disabled, start]);
 
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = pending.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    if (!drag.ghost && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX) {
-      clear();
-      return;
-    }
     drag.x = event.clientX;
     drag.y = event.clientY;
+    if (!drag.ghost && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) >= INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX) {
+      if (startOnMove) start(drag);
+      else { clear(); return; }
+    }
     if (drag.ghost && drag.frame === null) drag.frame = requestAnimationFrame(flush);
     event.preventDefault();
     event.stopPropagation();
-  }, [clear, flush]);
+  }, [clear, flush, start, startOnMove]);
 
   const onPointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = pending.current;

@@ -15,13 +15,30 @@
   ansible.builtin.set_fact:
     release_kiosk_switch_attempted: true
 
+- name: Ensure the kiosk user owns the labwc directory
+  ansible.builtin.file:
+    path: "{{ release_kiosk_labwc_dir }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ release_kiosk_user_gid.stdout }}"
+    mode: '0755'
+  register: release_kiosk_labwc_directory_install
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Capture original Pi4 file ownership for rollback
+  ansible.builtin.stat:
+    path: "{{ item.dest }}"
+  loop: "{{ release_kiosk_files }}"
+  register: release_kiosk_original_files
+  no_log: true
+
 - name: Install the staged Pi4 release files with standard backups
   ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
     remote_src: true
-    owner: root
-    group: root
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
     mode: "{{ item.mode }}"
     backup: true
   loop: "{{ release_kiosk_files }}"
@@ -31,7 +48,7 @@
 - name: Reload Pi4 systemd units after the staged file switch
   ansible.builtin.systemd:
     daemon_reload: true
-  when: release_kiosk_services | length > 0
+  when: release_kiosk_services | length > 0 or (manage_kiosk_browser | default(false) | bool)
 
 - name: Stage the torque candidate without starting ownership
   ansible.builtin.command: >-
@@ -53,12 +70,57 @@
     - not (release_torque_cutover | default(false) | bool)
     - release_kiosk_services | length > 0
 
+- name: Mark the labwc edit boundary
+  ansible.builtin.set_fact:
+    release_kiosk_labwc_edit_attempted: true
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Remove the obsolete labwc autostart override
+  ansible.builtin.file:
+    path: "{{ release_kiosk_labwc_dir }}/autostart"
+    state: absent
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - release_kiosk_legacy_autostart_obsolete | default(false) | bool
+
+- name: Apply the validated kiosk labwc configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - /usr/local/bin/kiosk-labwc-config.py
+      - "{{ release_kiosk_labwc_dir }}/rc.xml"
+  register: release_kiosk_labwc_edit
+  changed_when: release_kiosk_labwc_edit.stdout == 'changed'
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Reconfigure labwc for the kiosk user
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, /usr/local/bin/kiosk-hotcorner.py, --reconfigure]
+  become: true
+  become_user: "{{ ansible_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ release_kiosk_user_uid.stdout }}"
+  changed_when: true
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Restart the kiosk browser to apply the exact release SHA
   ansible.builtin.systemd:
     name: kiosk-browser.service
     state: restarted
     enabled: true
   when: not (release_torque_cutover | default(false) | bool)
+
+- name: Mark the hotcorner service start boundary
+  ansible.builtin.set_fact:
+    release_kiosk_hotcorner_start_attempted: true
+  when: manage_kiosk_browser | default(false) | bool
+
+- name: Enable and restart the kiosk hotcorner sensor
+  ansible.builtin.systemd:
+    name: kiosk-hotcorner.service
+    enabled: true
+    state: restarted
+  when: manage_kiosk_browser | default(false) | bool
 
 - name: Run the staged status-agent service once before its timer
   ansible.builtin.systemd:
@@ -70,5 +132,12 @@
   ansible.builtin.systemd:
     name: status-agent.timer
     state: restarted
+    enabled: true
+  when: release_kiosk_services | length > 0
+
+- name: Ensure the Pi4 storage maintenance timer is scheduled
+  ansible.builtin.systemd:
+    name: pi4-storage-maintenance.timer
+    state: started
     enabled: true
   when: release_kiosk_services | length > 0

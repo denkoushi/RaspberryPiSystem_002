@@ -149,6 +149,14 @@ update-frequency: high
 - 失敗ジョブの見分け: [ci-troubleshooting.md §ワークフロー構成](../guides/ci-troubleshooting.md#ワークフロー構成ジョブの見方)
 - `pnpm audit` critical がレジストリ側の一時変動で落ちる場合は **リトライ後も失敗なら** 該当パッケージの更新または例外方針を Decision Log で記録する
 
+**Toolchain 更新（2026-10-12）**:
+- API/Web/SOP generator と CI の workspace 実行環境を Node 24 に統一。API と SOP generator は既存 Hermes search worker の Node 24 digest を再利用する。
+- pnpm は npm registry で解決した最新 10.x の `10.34.6` を `packageManager` と exact engine に指定。CI の `pnpm/action-setup` と Docker の Corepack はこの宣言を読む。pnpm 10 は従来の audit endpoint を使うため、隔離された bulk audit client の pnpm 11 は維持する。
+- pnpm 10 install の ignored-build 警告から `onlyBuiltDependencies` を `@prisma/client`（client 生成）、`@prisma/engines`（engine 取得）、`prisma`（preinstall の実行環境検査）、`esbuild`（binary 準備）に限定。`tesseract.js` の postinstall は寄付案内のみで不要。Sharp と Playwright の現行版に install hook はなく、bcrypt は bcryptjs を使用する。
+- `pnpm.overrides`、依存バージョン、Prisma `5.22.0`、`@types/node` 20 を維持。pnpm 10 の `install --lockfile-only --no-frozen-lockfile` は既存 lockfile v9 をバイト不変で再生成し、frozen install が成功した。`.npmrc` は存在しない。
+- ローカル Node `v24.3.0` で shared-types/core packages/Web build、API focused tests（76 passed / 1 skipped）、SecurityPage（9 passed）、toolchain contracts（9 tests）、SOP source-digest tests（3 tests）、全 workspace lint が成功。API `tsc --noEmit` は既知の TS6059 5件のみ。ツールチェーン入力の変更に合わせ、SOP manifest の source digest だけを更新した。
+- `docker buildx build --platform linux/arm64 --target api -f infrastructure/docker/Dockerfile.api .` は成功（image: `sha256:5da897d65d1e6958b659bf67dbf7d9beea198985ba53f1113a7b62573db9af0b`）。ARM64 build/runtime 両方で Prisma `5.22.0` の generate が成功。禁止された `.env*` / `host_vars` を build context から外す一時 ignore は終了後に削除した。
+
 **関連ファイル**:
 - `.github/workflows/ci.yml`
 - `.github/actions/setup-pnpm-monorepo/action.yml`
@@ -786,6 +794,8 @@ update-frequency: high
 - **追記（2026-05-28）**: `usr/bin/caddy`（`stdlib`）で **CVE-2026-39823**・**CVE-2026-39825**・**CVE-2026-39826** が検出され、`security-docker` が **run `26569170631`** で failure。Go / Caddy の修正版へ即追従できないため、既存運用どおり **`.trivyignore`** に暫定追記し、ローカル `docker build` + `trivy image --severity HIGH,CRITICAL --ignore-unfixed raspisys-web:ci` で 0 件を確認してから再 push する。
 - **追記（2026-06-06）**: `usr/bin/caddy`（`stdlib`）で **CVE-2026-42504** が検出され、PR #403 の `security-docker` が failure。Trivy ログ上の修正版は Go **1.25.11 / 1.26.4** 以上だったため、抑止追加ではなく `infrastructure/docker/Dockerfile.web` の Caddy build stage を **`golang:1.26.4-alpine`** へ更新して対処する。
 - **追記（2026-06-17）**: `security-docker` の `Security scan (Trivy image web)` が `usr/bin/caddy`（`github.com/caddyserver/caddy/v2`）で **CVE-2026-52844 / CVE-2026-52845**（HIGH、fixed **2.11.4**）を検出し、run **`27661913361`** が failure。`infrastructure/docker/Dockerfile.web` の Caddy build stage 依存を **`v2.11.3` → `v2.11.4`** に更新して対処する。
+- **追記（2026-10-10）**: main の定期 CI（run **`37995527797`**、head `15a544a3`）で `Security scan (Trivy image web)` が `usr/bin/caddy` の HIGH 4 件を検出して failure。`golang.org/x/net` v0.56.0 の **CVE-2026-78669**（fixed **0.60.0**）と、`stdlib` v1.26.6 の **CVE-2026-78667 / CVE-2026-78669 / CVE-2026-97031**（fixed **1.26.9 / 1.27.2**）。修正版が公開済みだったため抑止は追加せず、`infrastructure/docker/Dockerfile.web` の Caddy build stage を **`golang:1.26.9-alpine`**、`replace golang.org/x/net` を **`v0.60.0`** へ更新して対処する。
+- **追記（2026-10-18）**: main の定期 CI（run **`39062958830`**）で `usr/bin/caddy` の `golang.org/x/text` v0.39.0 が **CVE-2026-56851**（HIGH、fixed 0.41.0）を検出して failure。修正版があるため `.trivyignore` には足さず、`replace golang.org/x/text` を **`v0.41.0`** に上げた。同じ run で Pi4 の nfc-agent イメージも Debian `libexpat1` 2.8.3-1~deb13u1（CVE-2026-66046 ほか HIGH 5 件、fixed **2.9.0-1~deb13u1**）で失敗したため、`Dockerfile.nfc-agent` の `--only-upgrade` と版の下限チェックに `libexpat1` を加えた。
 
 **統合ブランチ（2026-03-19）**:
 - `feat/production-schedule-ui-unify-caddy-secfix` で本 Caddy 自前ビルドと生産スケジュールUI統一（[frontend.md KB-307](./frontend.md#kb-307-生産スケジュールui統一登録製番資源cdドロップダウン併設)）を統合。

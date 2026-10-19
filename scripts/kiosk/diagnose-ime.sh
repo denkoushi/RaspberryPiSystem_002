@@ -104,6 +104,24 @@ else
   echo "im-launch.desktop override: なし"
 fi
 
+section "Firefox キオスクプロファイルの自動操作設定 (KB-412)"
+ff_prefs="$HOME/.mozilla/firefox/${KIOSK_FIREFOX_PROFILE_DIRNAME:-kiosk-system}/prefs.js"
+if [[ -f "$ff_prefs" ]]; then
+  if grep -q '^user_pref("focusmanager\.testmode", true)' "$ff_prefs" 2>/dev/null; then
+    echo "focusmanager.testmode: true (FAIL: キー入力が IBus へ渡らない)"
+    exit_code=1
+  else
+    echo "focusmanager.testmode: なし"
+  fi
+  if grep -q '^user_pref("remote\.prefs\.recommended\.applied", true)' "$ff_prefs" 2>/dev/null; then
+    echo "remote.prefs.recommended.applied: true (WebDriver/Marionette 起動の痕跡)"
+  else
+    echo "remote.prefs.recommended.applied: なし"
+  fi
+else
+  echo "prefs.js が存在しません: $ff_prefs"
+fi
+
 echo ""
 echo "=== 診断完了 (exit_code=$exit_code) ==="
 exit "$exit_code"

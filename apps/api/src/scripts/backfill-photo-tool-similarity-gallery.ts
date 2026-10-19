@@ -58,7 +58,10 @@ async function main(): Promise<number> {
   );
 
   const vision = new PhotoStorageVisionImageSource();
-  const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(env.PHOTO_TOOL_EMBEDDING_DIMENSION);
+  const galleryRepo = new PgPhotoToolSimilarityGalleryRepository(
+    env.PHOTO_TOOL_EMBEDDING_DIMENSION,
+    env.PHOTO_TOOL_EMBEDDING_MODEL_ID
+  );
   const galleryIndex = new PhotoToolGalleryIndexService(embedding, galleryRepo, vision);
   const backfill = new PhotoToolSimilarityGalleryBackfillService(galleryIndex);
 

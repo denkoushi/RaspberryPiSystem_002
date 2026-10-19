@@ -8,11 +8,11 @@ function eventKey(event: NfcEvent): string {
 
 /**
  * Listens to the NFC reader only while `armed`, and returns the first read that arrives after
- * arming. Setup registers new (unknown) tags, so it listens as a normal (legacy) subscriber;
- * the global inventory router is already off on the setup route.
+ * arming. Armed reads bypass inventory classification so employee/unknown tag UIDs are
+ * not sent to the inventory lookup. Disarming or unmounting releases this suppression.
  */
 export function useArmedNfcRead(armed: boolean): NfcEvent | null {
-  const event = useNfcStream(armed);
+  const event = useNfcStream(armed, undefined, { suppressInventoryRouting: true });
   const baselineRef = useRef<string | null>(null);
   const [read, setRead] = useState<NfcEvent | null>(null);
   const wasArmedRef = useRef(false);

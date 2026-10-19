@@ -59,6 +59,7 @@ function revisionDocument({
 
 const procedureSummary = Object.freeze({
   ...procedureDocument,
+  manualAssignments: [{ modelCode: 'FH-20A', modelCodeKey: 'FH-20A', processId: 'assembly', processName: '組立' }],
   activeTemplateCount: 1,
   totalTemplateCount: 1
 });
@@ -87,6 +88,7 @@ const sheets = new Set([
   'assembly-revision',
   'assembly-procedure-edit',
   'assembly-template-auth-basics',
+  'assembly-template-documents',
   'assembly-template-procedure',
   'assembly-template-markers',
   'assembly-template-save',
@@ -122,9 +124,26 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
   await page.route((url) => url.pathname.startsWith('/api/'), async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (/^\/api\/assembly\/procedure-documents\/[^/]+\/edit-lease$/.test(path)) {
+      if (request.method() === 'POST') {
+        return json(route, {
+          lease: {
+            holderLabel: '取説生成端末',
+            acquiredAt: '2026-08-21T00:00:00.000Z',
+            heartbeatAt: '2026-08-21T00:00:00.000Z',
+            expiresAt: '2026-08-21T00:05:00.000Z'
+          },
+          mine: true,
+          holderToken: 'sop-fixture'
+        });
+      }
+      if (request.method() === 'DELETE') return route.fulfill({ status: 204 });
+    }
     if (path === '/api/system/deploy-status') return json(route, { isMaintenance: false });
     if (path === '/api/kiosk/config') return json(route, { defaultMode: 'tag', clientStatus: null });
     if (path === '/api/kiosk/call/targets') return json(route, { selfClientId: 'sop-generator', targets: [] });
+    if (path === '/api/kiosk/inquiries/summary') return json(route, { isReceiver: false, unreadCount: 0 });
+    if (path === '/api/system/local-llm/availability') return json(route, { available: true });
     if (path === '/api/kiosk/employees') return json(route, { employees: [] });
     if (path === '/api/kiosk/production-schedule/resources') return json(route, { resources: [], resourceNameMap: {} });
     if (path === '/api/assembly/procedure-documents/preview' && request.method() === 'POST') {
@@ -173,6 +192,7 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
     if (path.endsWith('/discard-revision') && request.method() === 'POST') {
       return json(route, { document: procedureDocument });
     }
+    if (path === '/api/assembly/procedure-materials' && request.method() === 'GET') return json(route, { materials: [] });
     if (path === '/api/assembly/templates/summary') return json(route, { templates: [templateSummary] });
     if (path === '/api/assembly/library/filter-options') return json(route, { options: [] });
     if (path === '/api/torque-wrench-capability-groups') return json(route, { capabilityGroups: [] });
@@ -212,8 +232,8 @@ async function prepareSheet(page, sheetId) {
   }
   if (sheetId === 'assembly-document-editor-auth') return;
   if (sheetId.startsWith('assembly-document-editor-')) {
-    await page.locator('[data-kiosk-sop-target="assembly-document-editor-password"]').fill('0000');
-    await page.locator('[data-kiosk-sop-target="assembly-document-editor-authenticate"]').click();
+    const tenkey = page.locator('[data-kiosk-sop-target="assembly-document-editor-password"]');
+    for (const digit of '0000') await tenkey.getByRole('button', { name: digit, exact: true }).click();
     await page.locator('[data-kiosk-sop-target="assembly-document-editor-range-add"]').waitFor({ state: 'visible' });
 
     const selectRange = async () => {
@@ -255,7 +275,8 @@ async function prepareSheet(page, sheetId) {
       await overlayImages.last().waitFor({ state: 'visible' });
       await page.waitForFunction(() => {
         const images = [...document.querySelectorAll('[data-testid="assembly-procedure-overlay-layer"] img[src^="blob:"]')];
-        return images.length === 2 && images.every((image) => image.complete && image.naturalWidth > 0);
+        // The canvas, the page thumbnail and the parts pane each draw the placed image.
+        return images.length >= 2 && images.every((image) => image.complete && image.naturalWidth > 0);
       });
       return;
     }
@@ -279,10 +300,19 @@ async function prepareSheet(page, sheetId) {
   if (sheetId.startsWith('assembly-template-')) {
     await page.locator('[data-kiosk-sop-target="assembly-editor-password"]').fill('0000');
     await page.locator('[data-kiosk-sop-target="assembly-editor-authenticate"]').click();
+    if (sheetId === 'assembly-template-auth-basics' || sheetId === 'assembly-template-documents') {
+      await page.getByTestId('assembly-template-editor-left-pane')
+        .getByRole('tab', { name: '文書', exact: true }).click();
+    } else if (sheetId === 'assembly-template-procedure' || sheetId === 'assembly-template-markers') {
+      await page.getByTestId('assembly-template-editor-left-pane')
+        .getByRole('tab', { name: '工程', exact: true }).click();
+    }
     const target = sheetId === 'assembly-template-auth-basics'
       ? 'assembly-editor-model-code'
-      : sheetId === 'assembly-template-procedure'
+      : sheetId === 'assembly-template-documents'
         ? 'assembly-editor-document-add'
+        : sheetId === 'assembly-template-procedure'
+          ? 'assembly-editor-step-add-full'
         : sheetId === 'assembly-template-markers'
           ? 'assembly-editor-area-add'
           : 'assembly-editor-save';
@@ -299,6 +329,9 @@ const adapter = Object.freeze({
   prepareSheet,
   async waitForPageReady(page, sheetId) {
     assertSupportedSheet(sheetId);
+    if (sheetId === 'assembly-revision') {
+      await page.getByRole('link', { name: 'テンプレート', exact: true }).click();
+    }
     const target = sheetId.startsWith('assembly-document-editor-')
       ? 'assembly-document-editor-authenticate'
       : sheetId.startsWith('assembly-template-')

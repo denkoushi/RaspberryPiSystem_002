@@ -1,0 +1,148 @@
+<title>共通手順 モック</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0f13;--panel:#161c22;--line:#344252;--line2:#27313b;--fg:#eef3f6;--mute:#9fadb9;--dim:#5f6d7a;--green:#3ba776;--amber:#f6b93b;--blue:#7cc4ff;--red:#ff8a80}
+html,body{background:#05080b;color:var(--fg);font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif}
+body{padding-inline:16px;padding-block:12px}
+.note{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;font-size:14px;color:var(--mute)}
+.note button{height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);font-size:14px;cursor:pointer}
+.note button[aria-pressed=true]{border-color:var(--blue);color:var(--blue)}
+#fit{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:6px}
+#stage{width:1920px;height:1080px;transform-origin:0 0;background:var(--bg);position:relative;display:grid;grid-template-rows:64px 1fr}
+button{font-family:inherit;color:inherit;cursor:pointer}
+header{display:flex;align-items:center;gap:16px;padding:0 24px;border-bottom:1px solid var(--line2);font-size:26px;font-weight:700}
+.pill{font-size:17px;border:1px solid var(--amber);color:var(--amber);border-radius:99px;padding:3px 14px}
+.hbtn{margin-left:auto;height:48px;padding:0 18px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:18px}
+main{display:grid;grid-template-columns:460px 1fr;min-height:0}
+aside{border-right:1px solid var(--line2);padding:20px;display:flex;flex-direction:column;gap:16px}
+h3{margin:0;font-size:16px;letter-spacing:.08em;color:var(--mute);font-weight:600}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.b{min-height:56px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:20px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px}
+.b.on{border-color:var(--green);background:#3ba77626}
+.b small{font-size:15px;color:var(--mute);font-weight:500}
+.cats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cats .b{justify-content:space-between;padding:0 16px}
+.search{height:56px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font-size:20px;padding:0 16px;width:100%;box-sizing:border-box;font-family:inherit}
+.kana{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.kana button{height:52px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:20px;font-weight:700}
+.kana button.on{border-color:var(--blue);color:var(--blue)}
+.off{color:var(--dim);font-size:17px;padding:20px 4px}
+section.r{padding:20px 28px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.bar{display:flex;align-items:center;gap:12px;font-size:19px}
+.crumb{border:1px solid var(--line);border-radius:99px;padding:6px 14px;font-size:18px}
+.make{margin-left:auto;height:56px;padding:0 26px;border-radius:8px;border:1px solid var(--green);background:var(--green);color:#0b1a12;font-size:21px;font-weight:800}
+.rows{display:flex;flex-direction:column;gap:6px;overflow:auto}
+.row{display:grid;grid-template-columns:64px 1fr 170px 110px 90px 64px 64px;align-items:center;gap:14px;height:60px;padding:0 14px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);font-size:20px}
+.thumb{width:56px;height:42px;border-radius:4px;background:linear-gradient(135deg,#27313b,#3b4a5a)}
+.row b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{font-size:16px;color:var(--mute)}
+.st{font-size:15px;font-weight:700;border-radius:99px;padding:3px 0;text-align:center;border:1px solid}
+.st.p{color:var(--green);border-color:var(--green)}.st.d{color:var(--amber);border-color:var(--amber)}
+.ic{width:56px;height:48px;border-radius:8px;border:1px solid var(--line);background:transparent;font-size:17px;font-weight:700}
+.ic.v{border-color:var(--blue);color:var(--blue)}
+.empty{color:var(--mute);font-size:20px;padding:30px 4px}
+#ov{position:absolute;inset:0;background:#000a;display:flex;align-items:center;justify-content:center}
+.dlg{width:1180px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px 28px;display:grid;gap:16px}
+.dlg h2{margin:0;font-size:26px}
+.two{display:grid;grid-template-columns:1fr 430px;gap:28px}
+.col{display:grid;gap:14px;align-content:start}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips .b{min-height:52px;padding:0 18px;font-size:19px}
+.sim{border:1px solid var(--line2);border-radius:8px;padding:12px;display:grid;gap:8px;align-content:start;min-height:330px}
+.sim .hit{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:18px}
+.sim .hit.same{border-color:var(--red)}
+.sim .hit button{height:48px;padding:0 16px;border-radius:8px;border:1px solid var(--blue);background:transparent;color:var(--blue);font-size:17px;font-weight:700}
+.foot{display:flex;align-items:center;gap:14px;border-top:1px solid var(--line2);padding-top:16px}
+.prev{font-family:ui-monospace,Menlo,monospace;font-size:20px;color:var(--mute);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.warn{color:var(--red);font-size:17px;font-weight:700}
+.go{height:56px;padding:0 26px;border-radius:8px;border:1px solid var(--green);background:var(--green);color:#0b1a12;font-size:20px;font-weight:800}
+.go:disabled{opacity:.35;cursor:default}
+.cancel{height:56px;padding:0 22px;border-radius:8px;border:1px solid var(--line);background:transparent;font-size:20px;font-weight:700}
+.edt{margin-left:10px;height:44px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:transparent;font-size:16px;color:var(--blue)}
+.edrow{display:grid;grid-template-columns:1fr auto auto auto;gap:8px}
+.b:disabled{opacity:.35;cursor:default}
+#toast{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);background:var(--green);color:#0b1a12;font-weight:800;font-size:20px;padding:12px 24px;border-radius:8px}
+</style>
+
+<div class="note">モック（1920×1080 を縮小表示）。
+  <button id="mView" aria-pressed="false">見る</button><button id="mWork" aria-pressed="true">作る・直す</button>
+  <span>左の「共通」が新しい入口です。分類・かな・検索・「＋ 作る」が動きます。</span></div>
+<div id="fit"><div id="stage">
+  <header>要領書 <span class="pill" id="mode">作る・直す</span><button class="hbtn">組立へ戻る</button></header>
+  <main>
+    <aside>
+      <div class="seg" id="seg"></div>
+      <div id="left"></div>
+    </aside>
+    <section class="r">
+      <div class="bar"><span class="crumb" id="crumb"></span><span id="count"></span><button class="make" id="make">＋ 作る</button></div>
+      <div class="rows" id="rows"></div>
+    </section>
+  </main>
+  <div id="ov" hidden></div><div id="toast" hidden></div>
+</div></div>
+
+<script>
+const CATS=['工具','清掃','点検・保全','安全','段取り','その他'];
+const ACTS=['使い方','清掃','点検','交換','校正','片付け'];
+const KANA=['あ','か','さ','た','な','は','ま','や','ら','わ'];
+const docs=[
+ ['トルクレンチ','使い方','工具','た','p',6],['トルクレンチ','校正','工具','た','p',4],['マイクロメータ','使い方','工具','ま','p',5],
+ ['ノギス','使い方','工具','な','p',3],['エアブロー','使い方','工具','あ','d',2],
+ ['研削盤','清掃','清掃','か','p',8],['切削油タンク','清掃','清掃','さ','p',5],['作業台','清掃','清掃','さ','d',2],
+ ['研削盤','点検','点検・保全','か','p',7],['コンプレッサ','点検','点検・保全','か','p',4],['砥石','交換','点検・保全','た','p',9],
+ ['保護具','使い方','安全','は','p',3],['チャック','交換','段取り','た','d',4]
+].map(([t,a,c,k,s,n])=>({t,a,c,k,s,n}));
+let kind='共通',cat=null,kana=null,q='',mode='work';
+const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const name=d=>d.t+'_'+d.a;
+function list(){return docs.filter(d=>(!cat||d.c===cat)&&(!kana||d.k===kana)&&(!q||name(d).includes(q))&&(mode==='work'||d.s==='p'))}
+function draw(){
+ $('mode').textContent=mode==='work'?'作る・直す':'見る';$('mode').hidden=false;
+ $('mView').setAttribute('aria-pressed',mode==='view');$('mWork').setAttribute('aria-pressed',mode==='work');
+ $('seg').innerHTML=['機種','部品','共通'].map(k=>`<button class="b ${k===kind?'on':''}" data-kind="${k}">${k}</button>`).join('');
+ const common=kind==='共通';$('make').hidden=!(common&&mode==='work');
+ if(!common){$('left').innerHTML='<p class="off">いまの画面のまま（工程と'+kind+'を選ぶ）</p>';$('rows').innerHTML='<p class="empty">いまの一覧のまま</p>';$('crumb').textContent=kind;$('count').textContent='';return}
+ const cnt=c=>docs.filter(d=>d.c===c&&(mode==='work'||d.s==='p')).length;
+ $('left').innerHTML=`<div style="display:grid;gap:16px"><h3>分類</h3><div class="cats">${CATS.map(c=>`<button class="b ${c===cat?'on':''}" data-cat="${c}">${c}<small>${cnt(c)}</small></button>`).join('')}</div>
+  <h3>さがす</h3><input class="search" id="q" placeholder="名前で検索" value="${esc(q)}">
+  <div class="kana">${KANA.map(k=>`<button class="${k===kana?'on':''}" data-kana="${k}">${k}</button>`).join('')}</div></div>`;
+ const l=list();$('crumb').textContent='共通'+(cat?' › '+cat:'')+(kana?' › '+kana+'行':'');$('count').textContent=l.length+' 件';
+ $('rows').innerHTML=l.length?l.map(d=>`<div class="row"><span class="thumb"></span><b>${esc(name(d))}</b><span class="tag">${d.c}</span><span class="tag">${d.n} ページ</span><span class="st ${d.s}">${d.s==='p'?'公開':'下書き'}</span><button class="ic v">見る</button>${mode==='work'?'<button class="ic">直す</button>':'<span></span>'}</div>`).join(''):'<p class="empty">ありません</p>';
+ const i=$('q');i.oninput=()=>{q=i.value.trim();const p=i.selectionStart;draw();$('q').focus();$('q').setSelectionRange(p,p)};
+}
+let nc=null,nt='',na=null,ed=null,edv='',edSel=null;
+const used=(k,v)=>docs.some(d=>(k==='c'?d.c:d.a)===v);
+const edRow=k=>ed===k?`<div class="edrow"><input class="search" id="edv" placeholder="名前" value="${esc(edv)}"><button class="b" data-edsave="1">${edSel?'変更':'追加'}</button><button class="b" data-eddel="1" ${edSel&&!used(k,edSel)?'':'disabled'}>削除</button><button class="b on" data-eddone="1">完了</button></div>`:`<span></span>`;
+const edBtn=k=>ed?'':`<button class="edt" data-ed="${k}">編集</button>`;
+function dlg(){
+ const typed=nt.trim(),sim=typed?docs.filter(d=>d.t.includes(typed)||typed.includes(d.t)):(nc?docs.filter(d=>d.c===nc).slice(0,5):[]);
+ const same=typed&&na&&docs.find(d=>d.t===typed&&d.a===na),ok=nc&&typed&&na&&!same;
+ const known=[...new Set(docs.filter(d=>!nc||d.c===nc).map(d=>d.t))].slice(0,8);
+ $('ov').innerHTML=`<div class="dlg"><h2>共通の手順を作る</h2><div class="two"><div class="col">
+  <h3>分類${edBtn('c')}</h3><div class="chips">${CATS.map(c=>ed==='c'?`<button class="b ${c===edSel?'on':''}" data-edsel="${esc(c)}">${esc(c)}</button>`:`<button class="b ${c===nc?'on':''}" data-nc="${esc(c)}">${esc(c)}</button>`).join('')}</div>${edRow('c')}
+  <h3>対象</h3><input class="search" id="nt" placeholder="工具・設備の名前" value="${esc(nt)}">
+  <div class="chips">${known.map(t=>`<button class="b ${t===typed?'on':''}" data-nt="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+  <h3>作業${edBtn('a')}</h3><div class="chips">${ACTS.map(a=>ed==='a'?`<button class="b ${a===edSel?'on':''}" data-edsel="${esc(a)}">${esc(a)}</button>`:`<button class="b ${a===na?'on':''}" data-na="${esc(a)}">${esc(a)}</button>`).join('')}</div>${edRow('a')}</div>
+  <div class="col"><h3>似た手順 ${sim.length}</h3><div class="sim">${sim.length?sim.slice(0,5).map(d=>`<div class="hit ${same===d?'same':''}"><span><b>${esc(name(d))}</b><br><span class="tag">${d.c}・${d.s==='p'?'公開':'下書き'}</span></span><button data-open="1">これを直す</button></div>`).join(''):'<span class="tag">まだありません</span>'}</div></div></div>
+  <div class="foot"><span class="prev">${typed&&na?esc(typed+'_'+na):''}</span>${same?'<span class="warn">同じ手順があります</span>':''}<button class="cancel" data-close="1">やめる</button><button class="go" ${ok?'':'disabled'} data-create="1">作ってエディタへ</button></div></div>`;
+ const ev=$('edv');if(ev)ev.oninput=()=>{edv=ev.value};
+ const i=$('nt');i.oninput=()=>{nt=i.value;const p=i.selectionStart;dlg();$('nt').focus();$('nt').setSelectionRange(p,p)};
+}
+function toast(m){const t=$('toast');t.textContent=m;t.hidden=false;setTimeout(()=>t.hidden=true,1800)}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+ if(b.id==='mView'){mode='view';draw()}else if(b.id==='mWork'){mode='work';draw()}
+ else if(d.kind){kind=d.kind;draw()}else if(d.cat){cat=cat===d.cat?null:d.cat;draw()}else if(d.kana){kana=kana===d.kana?null:d.kana;draw()}
+ else if(d.ed){ed=d.ed;edv='';edSel=null;dlg()}
+ else if(d.edsel){edSel=edSel===d.edsel?null:d.edsel;edv=edSel||'';dlg()}
+ else if(d.edsave){const arr=ed==='c'?CATS:ACTS,v=edv.trim();if(!v||arr.includes(v)){toast(v?'同じ名前があります':'名前を入れてください');return}
+  if(edSel){arr[arr.indexOf(edSel)]=v;docs.forEach(x=>{if(ed==='c'&&x.c===edSel)x.c=v;if(ed==='a'&&x.a===edSel)x.a=v});if(nc===edSel)nc=v;if(na===edSel)na=v;if(cat===edSel)cat=v}else arr.push(v);edSel=null;edv='';dlg();draw()}
+ else if(d.eddel){const arr=ed==='c'?CATS:ACTS;arr.splice(arr.indexOf(edSel),1);if(nc===edSel)nc=null;if(na===edSel)na=null;edSel=null;edv='';dlg();draw()}
+ else if(d.eddone){ed=null;edSel=null;edv='';dlg()}
+ else if(b.id==='make'){nc=cat;nt='';na=null;ed=null;$('ov').hidden=false;dlg()}
+ else if(d.nc){nc=d.nc;dlg()}else if(d.nt){nt=d.nt;dlg()}else if(d.na){na=d.na;dlg()}
+ else if(d.close){$('ov').hidden=true}else if(d.open){$('ov').hidden=true;toast('エディタで開きます')}
+ else if(d.create){docs.unshift({t:nt.trim(),a:na,c:nc,k:null,s:'d',n:1});$('ov').hidden=true;cat=nc;kana=null;q='';draw();toast('作成しました')}
+ else if(b.classList.contains('ic'))toast(b.textContent==='見る'?'要領書を開きます':'エディタで開きます')});
+function fit(){const w=$('fit').clientWidth,s=Math.min(1,w/1920);$('stage').style.transform='scale('+s+')';$('fit').style.height=1080*s+'px'}
+addEventListener('resize',fit);draw();fit();
+</script>

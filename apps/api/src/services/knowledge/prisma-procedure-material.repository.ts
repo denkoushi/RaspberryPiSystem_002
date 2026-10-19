@@ -20,9 +20,21 @@ export class PrismaProcedureMaterialRepository implements ProcedureMaterialRepos
   constructor(private readonly db: PrismaClient) {}
 
   async enqueue(intakeId: string, items: Parameters<ProcedureMaterialRepositoryPort['enqueue']>[1]) {
-    await this.db.knowledgeProcedureMaterial.createMany({
-      data: items.map(({ source, organized }) => ({ id: randomUUID(), intakeId, sourceId: source.id, source: asJson(source), organized: asJson(organized) })),
-      skipDuplicates: true,
+    await this.db.$transaction(async tx => {
+      await tx.knowledgeProcedureMaterial.createMany({
+        data: items.map(({ source, organized }) => ({ id: randomUUID(), intakeId, sourceId: source.id, source: asJson(source), organized: asJson(organized) })),
+        skipDuplicates: true,
+      });
+      const triage = await tx.knowledgeTriage.findUnique({ where: { intakeId } });
+      if (!triage?.presetProcedureId) return;
+      const assigned = await tx.knowledgeProcedureMaterial.updateMany({ where: { intakeId, procedureId: null }, data: { state: 'assigned', procedureId: triage.presetProcedureId } });
+      if (assigned.count) {
+        await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedure" WHERE "id" = ${triage.presetProcedureId} FOR UPDATE`;
+        const topic = await tx.knowledgeProcedure.findUniqueOrThrow({ where: { id: triage.presetProcedureId } });
+        // A same-millisecond addition must still differ from an in-flight builder's request.
+        const buildRequestedAt = new Date(Math.max(Date.now(), (topic.buildRequestedAt?.getTime() ?? 0) + 1));
+        await tx.knowledgeProcedure.update({ where: { id: topic.id }, data: { buildRequestedAt, buildAttempts: 0, buildRetryAt: null, buildErrorCode: null } });
+      }
     });
   }
 

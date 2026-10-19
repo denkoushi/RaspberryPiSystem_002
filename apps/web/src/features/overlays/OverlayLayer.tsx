@@ -3,7 +3,7 @@ import {
   projectOverlayElementToCrop
 } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
@@ -40,6 +40,8 @@ export type OverlayLayerProps = {
   interactive?: boolean;
   onSelect?: (id: string) => void;
   onNudge?: (id: string, dxRatio: number, dyRatio: number) => void;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
   onUpdateBBox?: (id: string, bbox: OverlayBBox) => void;
   assets?: OverlayAssetMap;
   resolveAssetUrl?: (assetId: string, asset?: OverlayAsset) => string;
@@ -184,11 +186,39 @@ function pointToLocal(point: OverlayPoint, element: OverlayElement): OverlayPoin
 }
 
 function ShapeContent({ element }: { element: Extract<OverlayElement, { kind: 'SHAPE' }> }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const node = svgRef.current;
+    if (!node) return undefined;
+    const update = (width: number, height: number) => {
+      setSize((previous) => {
+        if (width <= 0 || height <= 0) return null;
+        return previous?.width === width && previous.height === height ? previous : { width, height };
+      });
+    };
+    const measure = () => {
+      const rect = node.getBoundingClientRect();
+      update(rect.width, rect.height);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(([entry]) => {
+      if (entry) update(entry.contentRect.width, entry.contentRect.height);
+    });
+    observer?.observe(node);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [element.shape, element.bbox.widthRatio, element.bbox.heightRatio]);
+
   const points = shapePoints(element);
   const start = pointToLocal(points.start, element);
   const end = pointToLocal(points.end, element);
   const stroke = element.strokeColor ?? '#0f172a';
   const fill = element.fillColor ?? 'transparent';
+  // The existing non-scaling stroke uses CSS pixels, unlike text sized in cqw.
   const strokeWidth = Math.max(1, Math.min(20, (element.strokeWidthRatio ?? 0.01) * 100));
   const common = { stroke, strokeWidth, fill, vectorEffect: 'non-scaling-stroke' as const };
   if (element.shape === 'ELLIPSE') {
@@ -196,10 +226,12 @@ function ShapeContent({ element }: { element: Extract<OverlayElement, { kind: 'S
   }
   if (element.shape === 'LINE' || element.shape === 'ARROW') {
     const markerId = `overlay-arrowhead-${element.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    const width = size?.width ?? 1;
+    const height = size?.height ?? 1;
     return (
-      <svg aria-hidden="true" className="absolute inset-0 h-full w-full overflow-hidden" viewBox="0 0 1 1">
-        {element.shape === 'ARROW' ? <defs><marker id={markerId} markerWidth="0.08" markerHeight="0.08" markerUnits="userSpaceOnUse" orient="auto" refX="0.075" refY="0.04" viewBox="0 0 0.08 0.08"><path d="M0 0 L0.08 0.04 L0 0.08 Z" fill={stroke} stroke="none" /></marker></defs> : null}
-        <line x1={start.xRatio} y1={start.yRatio} x2={end.xRatio} y2={end.yRatio} {...common} markerEnd={element.shape === 'ARROW' ? `url(#${markerId})` : undefined} />
+      <svg ref={svgRef} aria-hidden="true" className="absolute inset-0 h-full w-full overflow-hidden" viewBox={`0 0 ${width} ${height}`}>
+        {element.shape === 'ARROW' ? <defs><marker id={markerId} markerWidth={size ? 8 : 0.08} markerHeight={size ? 8 : 0.08} markerUnits={size ? 'strokeWidth' : 'userSpaceOnUse'} orient="auto" refX={size ? 0.08 : 0.075} refY="0.04" viewBox="0 0 0.08 0.08"><path d="M0 0 L0.08 0.04 L0 0.08 Z" fill={stroke} stroke="none" /></marker></defs> : null}
+        <line x1={start.xRatio * width} y1={start.yRatio * height} x2={end.xRatio * width} y2={end.yRatio * height} {...common} markerEnd={element.shape === 'ARROW' ? `url(#${markerId})` : undefined} />
       </svg>
     );
   }
@@ -219,16 +251,23 @@ function ImageContent({ element, assets, resolveAssetUrl }: {
   return <img src={blobUrl} alt="" className="h-full w-full" draggable={false} style={{ objectFit: element.objectFit ?? 'contain' }} />;
 }
 
-function OverlayContent({ element, assets, resolveAssetUrl }: {
+/** Text is sized against the source page width, so a cropped layer scales it up by the crop width. */
+export function overlayTextFontSize(fontSizeRatio: number | undefined, crop?: OverlayCropRect | null): string {
+  const cropScale = crop && crop.widthRatio > 0 ? 1 / crop.widthRatio : 1;
+  return `${Math.max(0.005, fontSizeRatio ?? 0.025) * 100 * cropScale}cqw`;
+}
+
+function OverlayContent({ element, assets, resolveAssetUrl, crop }: {
   element: OverlayElement;
   assets?: OverlayAssetMap;
   resolveAssetUrl: (assetId: string, asset?: OverlayAsset) => string;
+  crop?: OverlayCropRect | null;
 }): ReactNode {
   if (element.kind === 'TEXT') {
     const style: CSSProperties = {
       color: element.style?.color ?? '#0f172a',
       fontFamily: element.style?.fontFamily,
-      fontSize: `${Math.max(0.005, element.style?.fontSizeRatio ?? 0.025) * 100}cqw`,
+      fontSize: overlayTextFontSize(element.style?.fontSizeRatio, crop),
       fontWeight: element.style?.fontWeight ?? 'normal',
       textAlign: element.style?.align === 'center' ? 'center' : element.style?.align === 'end' ? 'right' : 'left'
     };
@@ -247,6 +286,8 @@ export function OverlayLayer({
   onSelect,
   onNudge,
   onUpdateBBox,
+  onInteractionStart,
+  onInteractionEnd,
   assets,
   resolveAssetUrl = defaultAssetUrl,
   className,
@@ -316,6 +357,7 @@ export function OverlayLayer({
       captureTarget,
       lastSourceBBox: source.bbox
     };
+    onInteractionStart?.();
     onSelect?.(source.id);
   };
 
@@ -324,13 +366,14 @@ export function OverlayLayer({
     if (!interaction || interaction.pointerId !== event.pointerId) return;
     if (!cancelled) applyPointerInteraction(event);
     pointerRef.current = null;
+    onInteractionEnd?.();
     if (interaction.captureTarget.hasPointerCapture?.(interaction.pointerId)) interaction.captureTarget.releasePointerCapture?.(interaction.pointerId);
     event.stopPropagation();
     event.preventDefault();
   };
 
   return (
-    <div ref={layerRef} className={clsx('pointer-events-none absolute inset-0 overflow-hidden', className)} data-testid={testId} style={{ containerType: 'inline-size' } as CSSProperties}>
+    <div ref={layerRef} className={clsx('pointer-events-none absolute inset-0 isolate overflow-hidden', className)} data-testid={testId} style={{ containerType: 'inline-size' } as CSSProperties}>
       {projected.map(({ source, element }) => {
         const selected = selectedOverlayId === element.id;
         const transformable = interactive && Boolean(onUpdateBBox) && selected;
@@ -369,7 +412,7 @@ export function OverlayLayer({
                 onNudge?.(element.id, event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0, event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0);
               } : undefined}
             >
-              <OverlayContent element={element} assets={assets} resolveAssetUrl={resolveAssetUrl} />
+              <OverlayContent element={element} assets={assets} resolveAssetUrl={resolveAssetUrl} crop={crop} />
             </div>
             {transformable ? (['nw', 'ne', 'sw', 'se'] as const).map((handle) => {
               const label = { nw: '左上', ne: '右上', sw: '左下', se: '右下' }[handle];

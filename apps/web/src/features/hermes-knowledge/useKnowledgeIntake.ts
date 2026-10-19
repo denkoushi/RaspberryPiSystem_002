@@ -4,7 +4,7 @@ import { getApiErrorMessage } from '../../api/errors';
 import { api } from '../../api/http';
 
 import type { TriageView } from './knowledgeTriageApi';
-import type { KnowledgeReport } from '@raspi-system/shared-types';
+import type { KnowledgeDestination, KnowledgeReport } from '@raspi-system/shared-types';
 
 export type KnowledgeIntakeView = {
   id: string; text: string; state: string; version: number; message: string; errorCode: string | null;
@@ -13,7 +13,7 @@ export type KnowledgeIntakeView = {
   posterName?: string | null; scannedPartNumber?: string | null; triage?: TriageView;
 };
 
-export type KnowledgePostAuthor = { tagUid: string; partNumber: string | null };
+export type KnowledgePostAuthor = { tagUid: string; partNumber: string | null; destination?: KnowledgeDestination };
 
 function conversationKey() {
   // The server scopes this opaque conversation ID to its authenticated owner.
@@ -95,7 +95,7 @@ export function useKnowledgeIntake(identity: string, consultationId: string | nu
       const encoded = [];
       for (const file of files) encoded.push({ filename: file.name, kind: file.type === 'application/pdf' ? 'pdf' : 'image', base64: await encodeFile(file) });
       const { data } = await api.post<KnowledgeIntakeView>('/hermes-knowledge/intakes', { id: submission.current.id, conversationId, text, files: encoded,
-        posterTagUid: author.tagUid, ...(author.partNumber ? { scannedPartNumber: author.partNumber } : {}) });
+        posterTagUid: author.tagUid, ...(author.destination ? { destination: author.destination } : {}), ...(author.partNumber ? { scannedPartNumber: author.partNumber } : {}) });
       tagByIntake.current.set(data.id, author.tagUid);
       onSent?.();
       if (active.current.identity !== scope.identity || active.current.conversationId !== scope.conversationId) return null;

@@ -7,12 +7,13 @@ import {
   BUSINESS_HERMES_CHAT_SCOPES,
   BusinessHermesChatService,
   type BusinessHermesChatUserMessage
-} from '../../services/assembly/business-hermes-chat.service.js';
-import { BusinessHermesService, BUSINESS_HERMES_EVENT_CODES } from '../../services/assembly/business-hermes.service.js';
+} from '../../services/business-hermes/business-hermes-chat.service.js';
+import { BusinessHermesService, BUSINESS_HERMES_EVENT_CODES } from '../../services/business-hermes/business-hermes.service.js';
 import {
   BusinessHermesConsultationService
-} from '../../services/assembly/business-hermes-consultation.service.js';
+} from '../../services/business-hermes/business-hermes-consultation.service.js';
 import type { requireClientDevice } from '../kiosk/shared.js';
+import { createReceiptLog, type ReceiptLog } from '../../services/business-hermes/hermes-search-receipt-log.js';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const guideBodySchema = z.object({
@@ -46,6 +47,7 @@ const consultationPatchSchema = z.object({ title: z.string().trim().max(200).nul
 type RequireClientDevice = typeof requireClientDevice;
 
 export type BusinessHermesRouteDeps = {
+  receiptLog?: ReceiptLog;
   requireClientDevice: RequireClientDevice;
   service?: BusinessHermesService;
   chatService?: Pick<BusinessHermesChatService, 'chat'>;
@@ -68,7 +70,7 @@ export async function registerBusinessHermesRoutes(
 ): Promise<void> {
   const service = deps.service ?? new BusinessHermesService();
   const chatService = deps.chatService ?? new BusinessHermesChatService({ hermes: service });
-  const consultationService = deps.consultationService ?? new BusinessHermesConsultationService();
+  const consultationService = deps.consultationService ?? new BusinessHermesConsultationService({ receiptLog: deps.receiptLog ?? createReceiptLog() });
 
   app.get('/assembly/business-hermes/consultations', {
     preHandler: async (request, reply) => {
@@ -146,7 +148,10 @@ export async function registerBusinessHermesRoutes(
       };
       reply.raw.once('close', onClose);
       try {
+        const clientDeviceId = !request.headers.authorization && request.headers['x-client-key']
+          ? (await deps.requireClientDevice(request.headers['x-client-key'])).clientDevice.id : undefined;
         return await consultationService.chat({
+          ...(clientDeviceId ? { clientDeviceId } : {}),
           consultationId: body.consultationId,
           message: body.message,
           selection: body.selection,

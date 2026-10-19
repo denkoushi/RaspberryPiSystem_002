@@ -3,10 +3,10 @@ import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
 import { ApiError } from '../../lib/errors.js';
 import {
+  deleteImportedDrawing,
   importDrawingAndSave,
   resolveDrawingMultipartReadLimit
 } from '../../lib/part-measurement-drawing-import.js';
-import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 
 
 
@@ -307,7 +307,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
             items
           });
 
-          const { relativeUrl } = await importDrawingAndSave({
+          const imported = await importDrawingAndSave({
             buffer: fileBuffer,
             mimetype,
             filename
@@ -324,7 +324,8 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
                 name: body.name,
                 items: body.items,
                 drawingUpload: {
-                  relativeUrl,
+                  relativeUrl: imported.relativeUrl,
+                  sourceStorageKey: imported.sourceStorageKey,
                   displayName: name
                 }
               },
@@ -340,7 +341,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
               sheet: serializeSheet(sheet)
             };
           } catch (error) {
-            await PartMeasurementDrawingStorage.deleteDrawing(relativeUrl).catch(() => undefined);
+            await deleteImportedDrawing(imported);
             throw error;
           }
         }

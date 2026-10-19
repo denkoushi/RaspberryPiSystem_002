@@ -1,17 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
-
-const normalizeFseibans = (items: string[]): string[] => {
-  const unique = new Set<string>();
-  const next: string[] = [];
-  for (const raw of items) {
-    const value = raw.trim();
-    if (!value || unique.has(value)) continue;
-    unique.add(value);
-    next.push(value);
-  }
-  return next.slice(0, 2000);
-};
+import { normalizeFseibanList } from './fseiban-list.js';
 
 export async function getDueManagementTriageSelections(locationKey: string): Promise<string[]> {
   const rows = await prisma.productionScheduleTriageSelection.findMany({
@@ -32,7 +21,7 @@ export async function replaceDueManagementTriageSelections(params: {
   selectedFseibans: string[];
 }): Promise<string[]> {
   const { locationKey } = params;
-  const selectedFseibans = normalizeFseibans(params.selectedFseibans);
+  const selectedFseibans = normalizeFseibanList(params.selectedFseibans);
 
   await prisma.$transaction(async (tx) => {
     await tx.productionScheduleTriageSelection.deleteMany({

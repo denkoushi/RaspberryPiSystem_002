@@ -38,7 +38,7 @@ type Props = {
   ocrCandidateStatus?: PartMeasurementDrawingOcrStatus | null;
   ocrCandidateLoading?: boolean;
   ocrCandidateError?: string | null;
-  onApplyOcrCandidate?: (valueText: string) => void;
+  onApplyOcrCandidate?: (valueText: string, candidate?: PartMeasurementDrawingOcrCandidateDto) => void;
   measurementLabelSettings?: readonly InspectionDrawingMeasurementLabelSetting[];
 };
 

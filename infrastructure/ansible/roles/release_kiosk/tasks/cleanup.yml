@@ -1,12 +1,15 @@
 ---
 - name: Remove only newly pulled unused Pi4 candidates before any switch
   ansible.builtin.command:
-    argv: [docker, image, rm, "{{ item.item }}"]
+    argv: [docker, image, rm, "{{ release_kiosk_candidate_images[item.item] }}"]
   loop: "{{ release_kiosk_pull.results | default([]) }}"
   register: release_kiosk_candidate_cleanup
   changed_when: release_kiosk_candidate_cleanup.rc == 0
   failed_when: false
   when:
+    # A failed pull leaves no image to remove; item.item is the service name,
+    # so the candidate reference has to be looked up.
+    - item.rc | default(1) == 0
     - item.changed | default(false) | bool
     - not (release_kiosk_switch_attempted | default(false) | bool)
     - release_kiosk_services | length > 0

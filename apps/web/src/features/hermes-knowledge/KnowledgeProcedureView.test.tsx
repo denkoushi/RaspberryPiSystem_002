@@ -46,16 +46,16 @@ describe('Knowledge procedure template', () => {
   });
 
   it('walks one step at a time with previous and next', () => {
-    render(<KnowledgeProcedureView procedure={procedure()} imagePathFor={() => null} />);
-    fireEvent.click(screen.getByRole('button', { name: '1手順ずつ' }));
-    expect(screen.getByText('手順 1 / 2')).toBeInTheDocument();
+    render(<KnowledgeProcedureView procedure={procedure()} imagePathFor={() => null} singleStep />);
+
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
     expect(screen.queryByText('ワークを取り付ける')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '◀ 前へ' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '次へ ▶' }));
-    expect(screen.getByText('手順 2 / 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '前へ' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+    expect(screen.getByText('2 / 2')).toBeInTheDocument();
     expect(screen.getByText('ワークを取り付ける')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '次へ ▶' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '全体を表示' }));
+    expect(screen.getByRole('button', { name: '次へ' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '前へ' }));
     expect(screen.getByText('治具を準備する')).toBeInTheDocument();
   });
 
@@ -71,6 +71,6 @@ describe('Knowledge procedure template', () => {
 
   it('marks unpublished revisions as awaiting approval', () => {
     render(<KnowledgeProcedureView procedure={procedure({ state: 'pending_approval' })} imagePathFor={() => null} />);
-    expect(screen.getByRole('status')).toHaveTextContent('下書き・承認待ち');
+    expect(screen.getByRole('status')).toHaveTextContent('承認待ち');
   });
 });

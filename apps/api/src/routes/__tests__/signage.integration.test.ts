@@ -1527,6 +1527,26 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
     expect(targetedRes.statusCode).toBe(200);
     expect(targetedRes.json().schedule.targetClientKeys).toEqual([clientA.apiKey]);
 
+    const publicList = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    expect(publicList.statusCode).toBe(200);
+    const publicTargeted = publicList.json().schedules.find(
+      (schedule: { id: string }) => schedule.id === targetedRes.json().schedule.id,
+    );
+    expect(publicTargeted).toBeDefined();
+    expect(publicTargeted).not.toHaveProperty('targetClientKeys');
+    expect(publicList.body).not.toContain(clientA.apiKey);
+
+    const managementList = await app.inject({
+      method: 'GET',
+      url: '/api/signage/schedules/management',
+      headers: createAuthHeader(adminToken),
+    });
+    expect(managementList.statusCode).toBe(200);
+    const managementTargeted = managementList.json().schedules.find(
+      (schedule: { id: string }) => schedule.id === targetedRes.json().schedule.id,
+    );
+    expect(managementTargeted?.targetClientKeys).toEqual([clientA.apiKey]);
+
     const forA = await app.inject({
       method: 'GET',
       url: '/api/signage/content',

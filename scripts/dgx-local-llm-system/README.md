@@ -181,6 +181,10 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
   - 既定は `cpu`。現状の `lmsysorg/sglang:latest` では GB10 の CUDA capability 警告を避けるため、まず CPU 動作を正とする
 - `EMBEDDING_NORMALIZE`
   - 既定 `true`。cosine 距離を使う前提で画像特徴を L2 normalize する
+- `EMBEDDING_BACKEND`
+  - 既定 `clip`。`embeddinggemma2` は `EMBEDDING_HF_MODEL=google/embeddinggemma-2` と sentence-transformers 6.1.0 以上が必要
+- `EMBEDDING_TRUNCATE_DIM`
+  - 既定は空（切り詰めなし）。先頭 N 次元を取り、`EMBEDDING_NORMALIZE=true` なら再正規化する（例: `512`）
 
 ## systemd（推奨・再起動耐性）
 
@@ -246,9 +250,13 @@ curl -sS -X POST http://127.0.0.1:38081/start \
 - `qwen38-flash-next-adapter.sh`
 - `prepare-qwen38-flash-next-cache.sh`
 
-manifest は `/srv/dgx/shared-models/registry/business_qwen38_flash_next_nvfp4/manifest.json` に配置する。upstream recipe は [`MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark`](https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark) を `/srv/dgx/system-prod/third-party/qwen38-flash-next` に固定 revision `d03809008834124e80223c3482f2ddb59577a48f` で checkout し、`.env` は同じ実行ユーザーの管理下で `.env.sample` から作成する。`HF_TOKEN` はその remote `.env` にだけ置く。image は manifest の arm64 digest、model cache は Hub commit `925d7be6c14c6c9442ef83e8f05b5a3c39304f69` に固定する。
+manifest は `/srv/dgx/shared-models/registry/business_qwen38_flash_next_nvfp4/manifest.json` に配置する。upstream recipe は [`MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark`](https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark) を `/srv/dgx/system-prod/third-party/qwen38-flash-next` に固定 revision `b8439110eec0230facbe4ddf0dffe01b8f769be0` で checkout し、`.env` は同じ実行ユーザーの管理下で `.env.sample` から作成する。`HF_TOKEN` はその remote `.env` にだけ置く。image は manifest の arm64 digest、model cache は Hub commit `925d7be6c14c6c9442ef83e8f05b5a3c39304f69` に固定する。
 
-業務adapterは公開元d038の高速化を固定設定として有効化する。起動時に `ABLIT=0`、`MAMBA_SSM_CACHE_DTYPE=bfloat16`、`MTP_DRAFT_VOCAB=files/draft_vocab_en_code_47k.txt` を明示し、`BLUE_EXTRA_DOCKER_ARGS`（または互換の `TRTLLM_EXTRA_DOCKER_ARGS`）を維持したまま `-e VLLM_USE_V2_MODEL_RUNNER=1` を追加する。これによりBF16 SSM・reduced draft vocabulary・V2 model runnerを同じ固定model/image、max seq=1、GMU=0.71、KV target=16、HOST reserve=26、localhostの業務制約で使う。ABLIT、dynamic schedule、YaRN、compile mode変更は有効化しない。47kファイルはrecipeの `SCRIPT_DIR` 相対で解決されるため、recipe checkoutがd038であることをverifyしてから起動する。既存remote `.env`にこれらの設定があってもadapterの固定値を優先する。不完全な固定snapshotは、通常起動と `prepare-ple` のどちらでも上流launcher実行前に停止する。
+業務adapterは公開元b843の高速化を固定設定として有効化する。起動時に `ABLIT=0`、`BIND=127.0.0.1`、`MTP_DISABLE_BLOCK_DROP=1`、`CHAT_TEMPLATE=`（checkpoint標準template）、`MAMBA_SSM_CACHE_DTYPE=bfloat16`、`MTP_DRAFT_VOCAB=files/draft_vocab_en_code_47k.txt` を明示し、`BLUE_EXTRA_DOCKER_ARGS`（または互換の `TRTLLM_EXTRA_DOCKER_ARGS`）を維持したまま `-e VLLM_USE_V2_MODEL_RUNNER=1` を追加する。これによりBF16 SSM・reduced draft vocabulary・V2 model runnerを同じ固定model/image、max seq=1、GMU=0.71、KV target=16、HOST reserve=26、localhostの業務制約で使う。ABLIT、dynamic schedule、YaRN、compile mode変更は有効化しない。47kファイルはrecipeの `SCRIPT_DIR` 相対で解決されるため、recipe checkoutがb843であることをverifyしてから起動する。上流の起動行 `--host $BIND` はremote `.env` の `BIND` に関係なく `--host 127.0.0.1` へ書き換える。既存remote `.env`にこれらの設定があってもadapterの固定値を優先する。d038からb843への更新はPLE staging bufferの幅の修正（上流 `00300aa`、公表値は平均NLL 1.397→1.344）とMTP block dropの抑止（2ターン目TTFT短縮）を取り込むためで、model revisionとimage digestは変えない。既存PLE packed tableはそのまま使えるが、準備markerがrecipe revisionを含むため、recipe更新後に `prepare-ple` → `verify` を再実行する。不完全な固定snapshotは、通常起動と `prepare-ple` のどちらでも上流launcher実行前に停止する。
+
+**起動短縮（instanttensor）**: 上流 [#82](https://github.com/MiaAI-Lab/Qwen3.8-Flash-Next-Single-DGX-Spark/issues/82) に従い、adapterは `--load-format instanttensor` で重みを読み、Tritonのカーネルキャッシュを `~/.cache/vllm/triton` に残す。パッケージは `prepare-qwen38-flash-next-cache.sh prepare-fast-load` が、sha256固定の `instanttensor` 0.2.0（cp312 aarch64 wheel）を固定imageの中で取得・照合し、`~/.cache/vllm/pylib/instanttensor-0.2.0` へ `--no-deps` で入れる。未配置なら従来のsafetensors読み込みのまま起動する（`BLUE_QWEN38_FAST_LOAD=0` でも同じ）。PLE offload workerは同じload configでcheckpoint全体をCPU側で読むため、instanttensorのままだと重みをGPUへ二重に載せてSparkがメモリ不足になる。起動のたびに上流が作り直す `files/ple_offload/worker.py` へ、launch直前に `qwen38_ple_loader_guard.py` でsafetensorsへ戻すガードを当てる（該当行が1か所でなければ起動しない）。2026-09-29の実測（b843、max seq=1、GMU=0.71）: start→/health 703秒 → 214秒（Tritonキャッシュ空）/ 163秒（2回目以降）。メイン重み 489秒 → 45秒、MTP重み 62秒 → 24秒、engine init 69秒 → 26秒。KVは約44万〜48万トークン（従来約50万）、起動中のNV_ERR_NO_MEMORYは1件（上流READMEの良性パターン）。
+
+**MTP draft vocabulary**: `BLUE_QWEN38_DRAFT_VOCAB` で切り替える（既定は同梱の `qwen38-draft-vocab-ja-en-code-56k.txt`、上流の `files/draft_vocab_en_code_47k.txt` へ戻せる、`full` で248k全体）。日本語の応答では47kの採用率が低い（2026-09-29、日本語5問・temperature 0: 23.2 tok/s、draft採用率11.7%）。候補として、47kを丸ごと残して日本語の頻出9,089 idを足した `qwen38-draft-vocab-ja-en-code-56k.txt`（56,262 id）を同梱する。材料はこのリポジトリの `docs/**/*.md` と、業務モデル自身の日本語出力30件（重み20）で、上流 `files/build_draft_vocab_extend.py` を固定imageの中で実行して作った。既定を56kへ切り替え、実機で速度と採用率を47kと比べる。遅くなった場合は47kへ戻す。
 
 Hermes の受入完了後、同じ実行ユーザーで `prepare-qwen38-flash-next-cache.sh plan` → `fetch` → `prepare-ple` → `verify` を順に実行する。`fetch` は固定 model revision を取得し、`prepare-ple` は upstream `start.sh --no-launch` による生成を行うため、いずれも明示的な変更操作である。verify が model shard、PLE artifact、upstream preparation marker、revision/image identity を確認してから、標準 DGX control route の `/start` に `modelProfileId=business_qwen38_flash_next_nvfp4` を渡して blue を切り替える。Pi5 は alias `system-prod-primary` を維持する。
 

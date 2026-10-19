@@ -20,9 +20,12 @@ export class PlaywrightHtmlToPdfAdapter implements HtmlToPdfPort {
     const browser = await getSharedChromium();
     const context = await browser.newContext({
       viewport: { width: 1280, height: 720 },
+      // Untrusted mail HTML must not execute scripts or fetch resources (SSRF).
+      javaScriptEnabled: false,
     });
     const page = await context.newPage();
     try {
+      await context.route('**/*', (route) => route.abort('blockedbyclient'));
       await page.setContent(html, {
         waitUntil: 'domcontentloaded',
         timeout: resolveTimeoutMs(),

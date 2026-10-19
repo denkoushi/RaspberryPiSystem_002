@@ -38,15 +38,24 @@ services:
       ALERTS_DIR: /app/alerts
       POWER_ACTIONS_DIR: /app/power-actions
       BACKUP_STORAGE_DIR: /opt/backups
+      # 大容量バックアップはRAM上の/tmp tmpfsを避け、ディスクへ保存する
+      BACKUP_TEMP_DIR: ${BACKUP_TEMP_DIR:-/opt/backups/.tmp}
       DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN:-}
       DROPBOX_APP_KEY: ${DROPBOX_APP_KEY:-}
       DROPBOX_APP_SECRET: ${DROPBOX_APP_SECRET:-}
       DROPBOX_REFRESH_TOKEN: ${DROPBOX_REFRESH_TOKEN:-}
+      # BACKUP_ENCRYPTION_KEY は env_file（PI5_ENV_FILE=compose.env）から渡す。ここで ${} 展開すると docker/.env の空値で上書きされる
       SLACK_KIOSK_SUPPORT_WEBHOOK_URL: ${SLACK_KIOSK_SUPPORT_WEBHOOK_URL:-}
       WEBRTC_ENABLED: ${WEBRTC_ENABLED:-true}
       PI5_SCHEDULER_LEADER_ENABLED: "1"
+      # Operation guide copied into the API image; unset disables the Hermes source.
+      KIOSK_OPERATION_GUIDE_DIR: /app/docs/kiosk-operation-guide
       PI5_SCHEDULER_LEASE_FILE: /app/alerts/.pi5-scheduler-leader
       PI5_SCHEDULER_LEASE_INTERVAL_MS: "2000"
+      # DGXリソースの「PI5 業務意図」を再起動・スロット切替後も残す（ホストの config/ に保存）
+      INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json
+      # ページ撮影（サイネージ）は同じスロットの Web の内部入口を開く。ホストへは公開されない。
+      SIGNAGE_WEB_CAPTURE_BASE_URL: http://web-blue
     volumes: &api-volumes
       - photo-storage:/app/storage/photos
       - thumbnail-storage:/app/storage/thumbnails
@@ -59,6 +68,8 @@ services:
       - assembly-procedure-assets-storage:/app/storage/assembly-procedure-assets
       - work-instruction-assets-storage:/app/storage/work-instruction-assets
       - knowledge-assets-storage:/app/storage/knowledge-assets
+      - procedure-materials-storage:/app/storage/procedure-materials
+      - procedure-videos-storage:/app/storage/procedure-videos
       - knowledge-git-storage:/app/storage/knowledge-git
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
@@ -122,7 +133,9 @@ services:
     env_file:
       - ../../apps/api/.env.example
       - ${PI5_ENV_FILE:-.env}
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      SIGNAGE_WEB_CAPTURE_BASE_URL: http://web-green
     volumes: *api-volumes
     networks: [pi5, business-hermes]
 
@@ -493,6 +506,12 @@ volumes:
   knowledge-assets-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-assets-storage
+  procedure-materials-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-materials-storage
+  procedure-videos-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage
   knowledge-git-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage

@@ -142,6 +142,8 @@
 
 ### 組立トルク訓練
 
+- `GET /api/torque-training/team-summary` は登録済み `x-client-key` で、全員分の `recent`（完了済み直近10回）と `allTime` の `sessionCount` / `operatorCount` / `attemptCount` / `passRate` / `meanAbsoluteErrorPercent` / `meanDeviationPercent`、および `recentSessions`（氏名・メニュー・5本の判定）を返す。除外済み・未完了は含めない。記録が無い指標は `null`
+- `POST /api/torque-training/operator-context` の `metrics` には `material` と `meanDeviationPercent`（符号付き平均。負は弱め）を追加で含める
 - `GET /api/torque-training/programs` は現行版を全件返し、`setupState`（`READY` / `UNASSIGNED` / `UNAVAILABLE`）と理由を含む。現在のレンチ設定値は準備可否の判定に含めない
 - `POST /api/torque-training/sessions/:id/wrench-preparations` は登録済み `x-client-key` を使用する
 - ボディは `uid`, `torqueWrenchProfileId`, `requestId`, `physicalSettingConfirmed: true` のみ。トルク値はセッションの訓練版からサーバーが確定する

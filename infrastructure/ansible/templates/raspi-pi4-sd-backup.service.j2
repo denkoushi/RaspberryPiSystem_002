@@ -1,0 +1,25 @@
+[Unit]
+Description=Weekly encrypted Pi4 SD-card backup to the Pi5 and Google Drive
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists={{ pi4_sd_backup_rclone_config }}
+ConditionPathExists={{ pi4_sd_backup_password_file }}
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory={{ pi4_sd_backup_install_root }}
+EnvironmentFile={{ pi4_sd_backup_env_file }}
+Environment=PYTHONPATH={{ pi4_sd_backup_install_root }}
+ExecStart=/usr/bin/python3 -m pi4_sd_backup.runner backup
+# The local backup takes a few hours; the first off-site copy over the slow
+# Internet link can take much longer. Later copies send only changed data.
+TimeoutStartSec=20h
+KillMode=control-group
+# Reading the kiosks' SD cards must not slow the Pi5 business services.
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal

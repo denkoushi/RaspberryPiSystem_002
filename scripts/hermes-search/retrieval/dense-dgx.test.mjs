@@ -294,11 +294,32 @@ test('the dense runtime applies day limits from the enrichment window', async ()
     now: () => new Date('2026-01-15T03:30:00Z'),
     sleep: async (ms) => { pauses.push(ms); },
   });
-  runtime.schedule(records, bodyFields);
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await runtime.schedule(records, bodyFields);
   assert.equal(sizes.reduce((sum, size) => sum + size, 0), DAY_MAX_EMBED);
   assert.ok(sizes.every((size) => size <= DAY_EMBED_BATCH));
   assert.equal(pauses.length, sizes.length - 1);
   assert.ok(pauses.every((ms) => ms === DAY_PAUSE_MS));
   assert.equal(runtime.entries().length, records.length - 4);
+});
+
+
+test('obsolete mail vectors cannot rank or consume the material re-embedding budget', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'hermes-material-migration-'));
+  const storePath = path.join(directory, 'dense.procedure_material');
+  const oldRecords = [{ id: 'mail:old', bodyText: 'old mail' }];
+  const embed = async texts => texts.map(() => vector(1));
+  await refreshDenseIndex({ records: oldRecords, bodyFields: ['bodyText'], storePath, embed });
+  const previous = await readDenseStore(storePath);
+  const current = [{ id: 'material:1', bodyText: 'first.pdf first content' }, { id: 'material:2', bodyText: 'second.png second content' }];
+  const ranked = await createDenseQueryRanker(() => previous, embed)('query', current);
+  assert.equal(ranked.ok, false);
+  const result = await refreshDenseIndex({ records: current, bodyFields: ['bodyText'], storePath, embed, maxEmbed: 1 });
+  assert.equal(result.embedded, 1);
+  assert.equal(result.deferred, 1);
+  assert.deepEqual((await readDenseStore(storePath)).map(entry => entry.id), ['material:1']);
+  const next = await refreshDenseIndex({ records: current, bodyFields: ['bodyText'], storePath, embed, maxEmbed: 1 });
+  assert.equal(next.embedded, 1);
+  assert.equal(next.skipped, 1);
+  assert.equal(next.deferred, 0);
+  assert.deepEqual((await readDenseStore(storePath)).map(entry => entry.id), ['material:1', 'material:2']);
 });

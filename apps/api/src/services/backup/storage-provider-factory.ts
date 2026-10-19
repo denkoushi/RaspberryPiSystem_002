@@ -1,6 +1,8 @@
 import type { StorageProvider } from './storage/storage-provider.interface.js';
 import { LocalStorageProvider } from './storage/local-storage.provider.js';
 import { DropboxStorageProvider } from './storage/dropbox-storage.provider.js';
+import { EncryptedStorageProvider } from './storage/encrypted-storage.provider.js';
+import { loadBackupEncryptionKey } from './storage/backup-encryption.js';
 import { DropboxOAuthService } from './dropbox-oauth.service.js';
 import { GmailStorageProvider } from './storage/gmail-storage.provider.js';
 import { GmailOAuthService } from './gmail-oauth.service.js';
@@ -73,7 +75,7 @@ export class StorageProviderFactory {
         const envBasePathRaw = process.env.DROPBOX_BASE_PATH;
         const envBasePath = typeof envBasePathRaw === 'string' ? envBasePathRaw.trim() : undefined;
 
-        return new DropboxStorageProvider({
+        const dropbox = new DropboxStorageProvider({
           accessToken: options.accessToken,
           // 運用上の上書き手段（拠点別にDropbox保存先を分離する用途）
           basePath: envBasePath ? envBasePath : options.basePath,
@@ -81,6 +83,13 @@ export class StorageProviderFactory {
           oauthService,
           onTokenUpdate: options.onTokenUpdate
         });
+        // 外部ストレージへは暗号化して送る。鍵が未配置の環境だけ従来どおり平文になる。
+        const encryptionKey = loadBackupEncryptionKey();
+        if (!encryptionKey) {
+          logger?.warn('[StorageProviderFactory] BACKUP_ENCRYPTION_KEY is not set; Dropbox backups are stored unencrypted');
+          return dropbox;
+        }
+        return new EncryptedStorageProvider(dropbox, encryptionKey);
       }
     ],
     [
