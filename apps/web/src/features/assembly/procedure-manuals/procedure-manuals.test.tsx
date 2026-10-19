@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,9 +26,9 @@ vi.mock('../../../api/client', () => ({
   getAssemblyProcedureDocumentRevisions: mocks.history, getKioskDocuments: mocks.pdfs, replaceProcedureManualAssignments: mocks.save
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({
-  AssemblyProcedureSequenceViewer: ({ sequence, initialDocumentId, showCurrentMarkerButton, onCurrentPageChange, onCurrentStepChange, layout, listOpen, onToggleList, twoPages, onToggleTwoPages }: { initialDocumentId?: string; listOpen?: boolean; onToggleList?: () => void; twoPages?: boolean; onToggleTwoPages?: () => void; layout?: string; onCurrentStepChange?: (step: null, index: number, total: number) => void; sequence: ProcedureManualDetailDto['sequence']; showCurrentMarkerButton?: boolean; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
+  AssemblyProcedureSequenceViewer: ({ sequence, initialDocumentId, showCurrentMarkerButton, onCurrentPageChange, onCurrentStepChange, layout, listOpen, onToggleList, twoPages, onToggleTwoPages, railNav }: { railNav?: ReactNode; initialDocumentId?: string; listOpen?: boolean; onToggleList?: () => void; twoPages?: boolean; onToggleTwoPages?: () => void; layout?: string; onCurrentStepChange?: (step: null, index: number, total: number) => void; sequence: ProcedureManualDetailDto['sequence']; showCurrentMarkerButton?: boolean; onCurrentPageChange?: (page: AssemblyProcedureSequencePageDto | null) => void }) => {
     useEffect(() => { onCurrentPageChange?.({ documentId: sequence.documents[0]?.assemblyProcedureDocumentId } as AssemblyProcedureSequencePageDto); onCurrentStepChange?.(null, 0, 2); }, [sequence, onCurrentPageChange, onCurrentStepChange]);
-    return <div data-testid="sequence-viewer" data-layout={layout} data-initial-document-id={initialDocumentId}><ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} twoPages={twoPages} onToggleTwoPages={onToggleTwoPages} total={2} />{sequence.documents.map((d) => <span key={d.orderItemId}>{d.title}</span>)}{showCurrentMarkerButton !== false ? <button>現在の丸数字へ</button> : null}</div>;
+    return <div data-testid="sequence-viewer" data-layout={layout} data-initial-document-id={initialDocumentId}><ProcedureManualPageRail listOpen={listOpen} onToggleList={onToggleList} twoPages={twoPages} onToggleTwoPages={onToggleTwoPages} total={2} nav={railNav} />{sequence.documents.map((d) => <span key={d.orderItemId}>{d.title}</span>)}{showCurrentMarkerButton !== false ? <button>現在の丸数字へ</button> : null}</div>;
   }
 }));
 
@@ -577,28 +577,24 @@ describe('procedure-manuals', () => {
   it.each([
     ['', '/kiosk/assembly/manuals/workshop'],
     ['?part=PART-1&process=cutting', '/kiosk/assembly/manuals/workshop?part=PART-1&process=cutting']
-  ])('keeps viewing navigation in a full-width header with the list open or closed: %s', async (query, workshopPath) => {
+  ])('keeps viewing navigation at the top of the page toolbar without a header bar: %s', async (query, workshopPath) => {
     mocks.processes.mockResolvedValue([...processes, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }]);
     render(<MemoryRouter initialEntries={[`/kiosk/assembly/manuals${query}`]}><ProcedureManualBrowser /></MemoryRouter>);
     await screen.findByRole('button', { name: '切削' });
     const split = screen.getByTestId('procedure-manuals-split');
     expect(split).toHaveClass('grid-cols-[460px_minmax(0,1fr)]', 'min-h-0');
     const left = screen.getByTestId('procedure-manuals-left');
-    const header = screen.getByRole('banner');
-    expect(header).toHaveClass('h-16');
-    expect(header.parentElement).toHaveClass('grid-rows-[64px_minmax(0,1fr)]');
-    expect(header.nextElementSibling).toBe(split);
-    expect(within(header).getByRole('heading', { name: '要領書' })).toBeVisible();
-    expect(within(header).getAllByRole('link').map(link => link.textContent)).toEqual(['作る・直す', '組立へ戻る']);
-    expect(within(header).getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', workshopPath);
-    expect(within(header).getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
-    expect(within(left).queryByRole('banner')).not.toBeInTheDocument();
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(split.previousElementSibling).toHaveClass('sr-only');
+    const toolbar = screen.getByRole('toolbar', { name: 'ページ操作' });
+    expect(within(toolbar).getAllByRole('link').map(link => link.getAttribute('aria-label'))).toEqual(['組立へ戻る', '作る・直す']);
+    expect(within(toolbar).getByRole('link', { name: '作る・直す' })).toHaveAttribute('href', workshopPath);
+    expect(within(toolbar).getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
+    expect(toolbar.firstElementChild).toBe(within(toolbar).getByRole('link', { name: '組立へ戻る' }));
     expect(within(left).queryByRole('link')).not.toBeInTheDocument();
     expect(screen.getByRole('region', { name: query ? '部品一覧' : '機種一覧' }).firstElementChild).toHaveTextContent('工程');
-    expect(screen.getByRole('region', { name: '要領書' })).not.toContainElement(header);
     fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
     expect(left).not.toBeVisible();
-    expect(header).toBeVisible();
     expect(screen.getAllByRole('link', { name: '作る・直す' })).toHaveLength(1);
   });
 
