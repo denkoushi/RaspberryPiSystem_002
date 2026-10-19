@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { resolveInventoryTag, type InventoryItem, type InventoryTag } from '../api/client';
+import { inventoryKeys } from '../api/queryKeys/itemInventory';
 import { resolveNfcRuntimeContract } from '../features/nfc/nfcRuntimeContract';
 
 import type { NfcStreamPolicy } from '../features/nfc/nfcPolicy';
@@ -83,8 +84,8 @@ const tagIndexes = new WeakMap<InventoryTag[], Map<string, InventoryTag>>();
 
 function cachedInventoryEvent(event: NfcEvent): NfcEvent | null {
   const client = [...hub.subscribers].find((subscriber) => subscriber.role === 'inventory' && subscriber.inventoryQueryClient)?.inventoryQueryClient;
-  if (!client || client.getQueryState(['inventory-tags'])?.status !== 'success') return null;
-  const tags = client.getQueryData<InventoryTag[]>(['inventory-tags']);
+  if (!client || client.getQueryState(inventoryKeys.tagsAll)?.status !== 'success') return null;
+  const tags = client.getQueryData<InventoryTag[]>(inventoryKeys.tagsAll);
   if (!tags) return null;
   let index = tagIndexes.get(tags);
   if (!index) {
@@ -95,7 +96,7 @@ function cachedInventoryEvent(event: NfcEvent): NfcEvent | null {
   if (!tag) return null;
   if (tag.kind !== 'ITEM') return { ...event, inventoryTag: tag };
   if (!tag.compartment) return { ...event, inventoryTag: tag, inventoryTagFromCache: true };
-  const items = client.getQueryData<InventoryItem[]>(['inventory-items']);
+  const items = client.getQueryData<InventoryItem[]>(inventoryKeys.itemsAll);
   const item = items?.find((entry) => entry.compartments.some((compartment) => compartment.id === tag.compartment?.id));
   const compartment = item?.compartments.find((entry) => entry.id === tag.compartment?.id);
   const complete = compartment && item && Array.isArray(item.photos) && Number.isFinite(compartment.stockQuantity);
