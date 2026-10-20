@@ -169,6 +169,23 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
                 self.assertFalse(empty({**clean, "release_kiosk_first_install_state": {"results": [{"item": path, "stat": {"exists": True}}]}}))
         self.assertFalse(empty({**clean, "ansible_facts": {"services": {"kiosk-browser.service": {}}}}))
 
+    def test_first_install_autologin_check_reads_lightdm_stderr(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/first_install_preflight.yml").read_text())
+        script = next(task for task in tasks if task["name"] == "Verify the preinstalled OS desktop and Docker prerequisites")["ansible.builtin.shell"]
+        lines = [line for line in script.splitlines() if "lightdm_config" in line]
+        self.assertEqual(len(lines), 2)
+        check = "set -euo pipefail\n" + "\n".join(lines).replace("{{ ansible_user }}", "kiosk-user") + "\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "lightdm"
+            def run(config_line: str) -> int:
+                # Real lightdm writes --show-config output to stderr only.
+                stub.write_text(f"#!/bin/sh\necho '[Seat:*]' >&2\necho '{config_line}' >&2\n")
+                stub.chmod(0o755)
+                env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}"}
+                return subprocess.run(["bash", "-c", check], env=env, capture_output=True).returncode
+            self.assertEqual(run("B  autologin-user=kiosk-user"), 0)
+            self.assertNotEqual(run("B  autologin-user=other-user"), 0)
+
     def test_first_install_empty_rollback_covers_prepare_and_switch_without_restore_images(self) -> None:
         root = ANSIBLE / "roles/release_kiosk/tasks"
         main = yaml.safe_load((root / "main.yml").read_text())[0]
