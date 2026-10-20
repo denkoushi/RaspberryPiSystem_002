@@ -96,3 +96,16 @@
     - name: Report that the Pi5 unattended security update policy was not applied
       ansible.builtin.debug:
         msg: "The unattended security update policy was not applied on {{ inventory_hostname }}; the release continues."
+
+# Same non-fatal host policy as above: a Tailscale failure only reports.
+- name: Converge the Pi5 Tailscale HTTPS entrance
+  when:
+    - "'server' in group_names"
+    - pi5_tailscale_https_hostname | default('') | length > 0
+  block:
+    - name: Apply the Pi5 Tailscale HTTPS entrance
+      ansible.builtin.import_tasks: host-tailscale-serve.yml
+  rescue:
+    - name: Report that the Pi5 Tailscale HTTPS entrance was not applied
+      ansible.builtin.debug:
+        msg: "The Tailscale HTTPS entrance was not applied on {{ inventory_hostname }}; the release continues."
