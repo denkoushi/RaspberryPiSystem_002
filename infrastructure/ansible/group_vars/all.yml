@@ -17,6 +17,8 @@ local_network:
   raspi4_assembly_01_ip: "192.168.10.177"
   # Kensaku-02（Pi4 7台目）— 初期セットアップ時の LAN 到達確認用
   raspi4_kensaku_02_ip: "192.168.10.180"
+  # Assembly-02（Pi4 8台目）— 初期セットアップ時の LAN 到達確認用
+  raspi4_assembly_02_ip: "192.168.10.217"
   raspberrypi3_ip: "192.168.128.152"
 
 # 通常運用（Tailscale経由）に使用するIPアドレス

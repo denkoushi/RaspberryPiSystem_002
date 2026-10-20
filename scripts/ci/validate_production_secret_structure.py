@@ -37,6 +37,7 @@ NORMAL_FACTORY_VAULT_PATHS = (
     "infrastructure/ansible/host_vars/raspi4-sessaku-01/vault.yml",
     "infrastructure/ansible/host_vars/raspi4-assembly-01/vault.yml",
     "infrastructure/ansible/host_vars/raspi4-kensaku-02/vault.yml",
+    "infrastructure/ansible/host_vars/raspi4-assembly-02/vault.yml",
 )
 READ_ONLY_PLACEHOLDER_PATH = (
     "infrastructure/ansible/normal-factory-vault-placeholders.yml"
@@ -79,6 +80,10 @@ REQUIRED_INVENTORY_REFERENCES = {
     "raspi4-kensaku-02": {
         "status_agent_client_key": "vault_raspi4_kensaku_02_status_agent_client_key",
         "nfc_agent_client_secret": "vault_raspi4_kensaku_02_nfc_agent_client_secret",
+    },
+    "raspi4-assembly-02": {
+        "status_agent_client_key": "vault_raspi4_assembly_02_status_agent_client_key",
+        "nfc_agent_client_secret": "vault_raspi4_assembly_02_nfc_agent_client_secret",
     },
     "raspberrypi3": {
         "status_agent_client_key": "vault_status_agent_client_key",
