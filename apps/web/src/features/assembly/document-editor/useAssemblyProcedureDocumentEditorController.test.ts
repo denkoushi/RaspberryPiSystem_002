@@ -160,6 +160,92 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.canUndo).toBe(false);
   });
 
+  it('applies overflow shrink through the normal undoable layout without inserting a page', async () => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/1.png', overlays: [text, image] }] }));
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    const shrunk = [text, { ...image, bbox: { ...range, widthRatio: range.widthRatio * 0.88, heightRatio: range.heightRatio * 0.88 } }];
+    apiMocks.suggestLayout.mockResolvedValue({ elements: [text, image], addedElementIds: [], changes: ['写真が1ページに入りきりません'],
+      overflow: { shrink: { elements: shrunk, changes: ['写真を縮めた'], scalePercent: 88 } } });
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    act(() => hook.result.current.layoutSuggestions.apply());
+    expect(hook.result.current.elements).toEqual(shrunk);
+    expect(hook.result.current.isDirty).toBe(true);
+    expect(apiMocks.addBlankPage).not.toHaveBeenCalled();
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([text, image]);
+    expect(hook.result.current.isDirty).toBe(false);
+  });
+
+  it('inserts after the current page, preserves draft assets, shifts unsaved edits and baseline, and undoes the split once', async () => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const other = { ...text, id: 'other', pageIndex: 1 };
+    const document = makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/1.png', overlays: [text, image] },
+      { pageIndex: 1, imageRelativePath: '/2.png', overlays: [other] }
+    ], assets: { photo: { assetId: 'photo', relativeUrl: '/photo.png', storageKey: 'photo', sha256: 'a', byteSize: 3, contentType: 'image/png', kind: 'OVERLAY_IMAGE' } } });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    const draftOther = { ...other, text: '後ろの未保存編集' } as AssemblyProcedureOverlayElement;
+    act(() => hook.result.current.updateElement(draftOther));
+    const added = { ...text, id: 'added', text: '写真の説明' } as AssemblyProcedureOverlayElement;
+    const split = { elements: [text], nextPageElements: [image, added].map(element => ({ ...element, pageIndex: 1 })), firstMovedPhotoNumber: 3, changes: ['2ページに分けた'] };
+    apiMocks.suggestLayout.mockResolvedValue({ elements: [text, image], addedElementIds: ['added'], changes: ['写真が1ページに入りきりません'], overflow: { split } });
+    apiMocks.addBlankPage.mockResolvedValue({ ...document, assets: {}, editVersion: 1, pages: [
+      document.pages[0], { pageIndex: 1, imageRelativePath: '/blank.png', overlays: [] },
+      { ...document.pages[1], pageIndex: 2, overlays: [{ ...other, pageIndex: 2 }] }
+    ] });
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    await act(async () => hook.result.current.layoutSuggestions.apply());
+    expect(apiMocks.addBlankPage).toHaveBeenCalledExactlyOnceWith({ id: document.id, holderToken: 'session-token', accessPassword: '1234', expectedEditVersion: 0, afterPageIndex: 0 });
+    expect(hook.result.current.selectedPageIndex).toBe(0);
+    expect(hook.result.current.selectedPageElements).toEqual(split.elements);
+    expect(hook.result.current.elements.filter(element => element.pageIndex === 1)).toEqual(split.nextPageElements);
+    expect(hook.result.current.elements.find(element => element.id === 'other')).toEqual({ ...draftOther, pageIndex: 2 });
+    expect(hook.result.current.document?.assets?.photo).toEqual(document.assets?.photo);
+    expect(hook.result.current.document?.editVersion).toBe(1);
+    expect(hook.result.current.message).toBe('2ページに分けました');
+    expect(hook.result.current.isDirty).toBe(true);
+    expect(hook.result.current.layoutSuggestions.appliedCaptionElementIds).toEqual(['added']);
+    expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements.filter(element => element.pageIndex === 1)).toEqual([]);
+    expect(hook.result.current.elements.filter(element => element.pageIndex === 0)).toEqual([text, image]);
+    expect(hook.result.current.isDirty).toBe(true);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements.find(element => element.id === 'other')).toEqual({ ...other, pageIndex: 2 });
+    expect(hook.result.current.isDirty).toBe(false);
+    act(() => { hook.result.current.redo(); });
+    act(() => { hook.result.current.redo(); });
+    apiMocks.saveOverlays.mockResolvedValue({ ...hook.result.current.document, editVersion: 2 });
+    await act(async () => hook.result.current.save());
+    expect(apiMocks.saveOverlays).toHaveBeenCalledWith(expect.objectContaining({ expectedEditVersion: 1, appliedCaptionElementIds: ['added'],
+      elements: expect.arrayContaining([...split.elements, ...split.nextPageElements, { ...draftOther, pageIndex: 2 }]) }));
+  });
+
+  it('keeps the draft intact and handles an insert edit-version conflict', async () => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/1.png', overlays: [text, image] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    apiMocks.suggestLayout.mockResolvedValue({ elements: [text, image], addedElementIds: [], changes: ['写真が1ページに入りきりません'], overflow: {
+      split: { elements: [text], nextPageElements: [{ ...image, pageIndex: 1 }], firstMovedPhotoNumber: 2, changes: ['2ページに分けた'] }
+    } });
+    apiMocks.addBlankPage.mockRejectedValue({ isAxiosError: true, response: { status: 409, data: { errorCode: 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT', details: { currentEditVersion: 2 } } } });
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    await act(async () => hook.result.current.layoutSuggestions.apply());
+    expect(hook.result.current.elements).toEqual([text, image]);
+    expect(hook.result.current.document?.pages).toHaveLength(1);
+    expect(hook.result.current.conflict).toBe(true);
+    expect(hook.result.current.message).toBe('ページを分けられませんでした');
+  });
+
   it.each([
     ['ASSEMBLY_PROCEDURE_LAYOUT_DOES_NOT_FIT', 422, 'このページは1枚に収まりません'],
     ['ASSEMBLY_PROCEDURE_LAYOUT_INFERENCE_FAILED', 502, 'いまは提案できません']

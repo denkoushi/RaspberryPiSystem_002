@@ -139,6 +139,9 @@ describe('assembly procedure revision routes', () => {
     expect(withAssignment).toHaveBeenCalledWith('白紙2', { modelCode: 'DFD1', processId: 'cutting' });
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, accessPassword: '1234' } })).statusCode).toBe(200);
     expect(harness.service.addBlankPage).toHaveBeenCalledWith({ holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, accessPassword: '1234' });
+    expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, afterPageIndex: 0 } })).statusCode).toBe(200);
+    expect(harness.service.addBlankPage).toHaveBeenLastCalledWith({ holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, afterPageIndex: 0, accessPassword: '' });
+    expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, afterPageIndex: -1 } })).statusCode).toBe(400);
     const placed = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0, accessPassword: '1234' } });
     expect(placed.json().element).toEqual(element);
     expect(place).toHaveBeenCalledWith({ holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });

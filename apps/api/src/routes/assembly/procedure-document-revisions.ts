@@ -128,7 +128,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
   });
   app.post('/assembly/procedure-documents/:id/pages/blank', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id } = idParamsSchema.parse(request.params);
-    const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0) }).parse(request.body);
+    const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0), afterPageIndex: z.number().int().min(0).optional() }).parse(request.body);
     return { document: serializeAssemblyProcedureDocumentRevision(await service.addBlankPage({ documentId: id, ...body, ...await resolveAssemblyProcedureEditWriter(request) })) };
   });
   app.post('/assembly/procedure-documents/:id/materials/:materialId/place', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {

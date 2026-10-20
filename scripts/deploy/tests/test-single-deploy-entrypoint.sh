@@ -34,6 +34,16 @@ test "${wrapper_status}" -eq 2 || fail "retired public option did not exit 2"
 grep -q -- 'unsupported by the standard Ansible route' <<<"${wrapper_output}" \
   || fail "retired option did not identify the standard route boundary"
 
+# Invalid first-install scopes must fail at parsing, before inventory or hosts.
+for scope in '--full-fleet' '--limit pi4-*' '--limit kiosk:&all'; do
+  set +e
+  output="$("${WRAPPER}" main infrastructure/ansible/inventory.yml --first-install ${scope} 2>&1)"
+  status=$?
+  set -e
+  test "${status}" -eq 2 || fail "first-install accepted unsafe scope: ${scope}"
+  grep -q -- '--first-install' <<<"${output}" || fail "missing first-install refusal"
+done
+
 SPY_DIR="${TMP_DIR}/spy"
 mkdir -p "${SPY_DIR}"
 for command in git docker ansible-playbook systemd-run systemctl nohup; do

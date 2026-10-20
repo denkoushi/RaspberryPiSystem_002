@@ -51,6 +51,10 @@
         else release_kiosk_enabled_services | intersect(release_kiosk_requested_services) | intersect(release_kiosk_service_allowlist)
       }}
 
+- name: Prove this Pi4 is empty before first-install mutation
+  ansible.builtin.import_tasks: first_install_preflight.yml
+  when: release_kiosk_first_install | bool
+
 - name: Reuse kiosk role browser executable resolution for release staging
   ansible.builtin.include_role:
     name: kiosk
@@ -157,6 +161,10 @@
     - "{{ release_kiosk_run_dir }}"
     - "{{ release_kiosk_stage_dir }}"
 
+- name: Provision the empty Pi4 runtime
+  ansible.builtin.import_tasks: first_install.yml
+  when: release_kiosk_first_install | bool
+
 - name: Build the enabled Pi4 image map
   ansible.builtin.set_fact:
     release_kiosk_candidate_images:
@@ -188,6 +196,7 @@
   register: release_kiosk_rollback_capture
   failed_when: false
   changed_when: true
+  when: not (release_kiosk_first_install | bool)
 
 - name: Record Pi4 rollback tags created by this run
   ansible.builtin.set_fact:
@@ -199,6 +208,7 @@
         | map(attribute='item')
         | list
       }}
+  when: not (release_kiosk_first_install | bool)
 
 - name: Require every enabled Pi4 agent image capture to succeed
   ansible.builtin.assert:
@@ -209,6 +219,7 @@
     fail_msg: >-
       Pi4 rollback image capture did not produce exactly one valid image for
       every enabled service; refusing to continue before the switch boundary.
+  when: not (release_kiosk_first_install | bool)
 
 - name: Verify captured rollback image identities are locally recoverable
   ansible.builtin.command:
@@ -216,12 +227,14 @@
   loop: "{{ release_kiosk_services }}"
   register: release_kiosk_rollback_identity
   changed_when: false
+  when: not (release_kiosk_first_install | bool)
 
 - name: Require immutable Linux rollback image IDs
   ansible.builtin.assert:
     that:
       - item.stdout is match('^sha256:[0-9a-f]{64}\\|linux\\|(arm64|arm)$')
   loop: "{{ release_kiosk_rollback_identity.results }}"
+  when: not (release_kiosk_first_install | bool)
 
 - name: Read Pi4 disk headroom before pulling candidates
   ansible.builtin.shell: |
@@ -300,7 +313,9 @@
     mode: '0600'
   vars:
     release_kiosk_compose_images: "{{ release_kiosk_rollback_images }}"
-  when: release_kiosk_services | length > 0
+  when:
+    - release_kiosk_services | length > 0
+    - not (release_kiosk_first_install | bool)
 
 - name: Render staged status-agent configuration
   ansible.builtin.template:
