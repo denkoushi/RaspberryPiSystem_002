@@ -13,16 +13,21 @@ import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
-import { ASSEMBLY_SITE_CONTEXT } from './procedure-site-context.js';
+import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
 import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts } from './procedure-layout.js';
 
 // Site knowledge only helps the department it was read from; grinding text
 // lost words to look-alike assembly terms (KB-420).
-const ASSEMBLY_TEXT_RULES = `- 聞き違い・誤変換と分かる語は、下の現場の知識にある語に直す(例: 「車高マン」→「シャコマン」)。意味を取り違えそうなら直さない。
+const siteRules = (example: string, context: string) => `- 聞き違い・誤変換と分かる語は、下の現場の知識にある語に直す(例: ${example})。意味を取り違えそうなら直さない。
 - 知識にある語に似ているだけでは置き換えない。知識に無い語はそのまま残す。
 - 現場の知識にあっても text に無い部品・数値・作業は足さない。
-${ASSEMBLY_SITE_CONTEXT}
+${context}
 `;
+const SITE_TEXT_RULES = {
+  assembly: siteRules('「車高マン」→「シャコマン」', ASSEMBLY_SITE_CONTEXT),
+  grinding: siteRules('「磁力マックス」→「磁力MAX」', GRINDING_SITE_CONTEXT),
+} as const;
+type ProcedureSite = keyof typeof SITE_TEXT_RULES;
 
 const textInstruction = (siteContext: string) => `あなたは工場の手順書を仕上げる編集者です。入力は手順書1ページ分の文章です。各 text を、作業者がすぐ読める最終形に書き直してください。
 規則:
@@ -79,16 +84,16 @@ export class ProcedureLayoutSuggestionService {
     }
   }
 
-  /** True when any revision of the document is filed under an assembly process (組立…). */
-  private async isAssemblyDocument(revisionRootId: string): Promise<boolean> {
-    const assembly = { name: { startsWith: '組立' } };
-    const count = await prisma.procedureManualAssignment.count({
-      where: {
-        assemblyProcedureDocument: { revisionMetadata: { revisionRootId } },
-        process: { OR: [assembly, { parent: assembly }] },
-      },
+  /** The department (組立 / 研削) any revision of the document is filed under, by process or parent process name. */
+  private async documentSite(revisionRootId: string): Promise<ProcedureSite | null> {
+    const assignments = await prisma.procedureManualAssignment.findMany({
+      where: { assemblyProcedureDocument: { revisionMetadata: { revisionRootId } } },
+      select: { process: { select: { name: true, parent: { select: { name: true } } } } },
     });
-    return count > 0;
+    const names = assignments.flatMap(({ process }) => [process.name, process.parent?.name ?? '']);
+    if (names.some(name => name.startsWith('組立'))) return 'assembly';
+    if (names.some(name => name.startsWith('研削'))) return 'grinding';
+    return null;
   }
 
   private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
@@ -101,7 +106,7 @@ export class ProcedureLayoutSuggestionService {
     if (document.status !== 'DRAFT' || !document.isActive || !document.revisionMetadata?.revisionRootId || !document.revisionMetadata.isRevisionHead) {
       throw new ApiError(409, '最新版の改版下書きだけ編集できます');
     }
-    const assemblySite = await this.isAssemblyDocument(document.revisionMetadata.revisionRootId);
+    const site = await this.documentSite(document.revisionMetadata.revisionRootId);
     const page = await prisma.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: params.documentId, pageIndex: params.pageIndex } } });
     if (!page) throw new ApiError(400, '指定ページが存在しません');
     let pageSize: { width: number; height: number };
@@ -137,7 +142,7 @@ export class ProcedureLayoutSuggestionService {
           params.signal.throwIfAborted();
           const result = await this.text.complete({
             useCase: 'business_hermes', maxTokens: 4000, temperature: 0, enableThinking: false, jsonOutput: true, signal: params.signal,
-            messages: [{ role: 'system', content: textInstruction(assemblySite ? ASSEMBLY_TEXT_RULES : '') }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
+            messages: [{ role: 'system', content: textInstruction(site ? SITE_TEXT_RULES[site] : '') }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
           });
           params.signal.throwIfAborted();
           elements = rewriteProcedureTexts(elements, JSON.parse(result.rawText) as unknown);
