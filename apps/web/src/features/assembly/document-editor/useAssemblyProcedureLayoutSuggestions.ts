@@ -8,7 +8,7 @@ import type { AssemblyProcedureOverlayElement, ProcedureLayoutSuggestionResponse
 type LayoutSuggestionState =
   | { status: 'idle' }
   | { status: 'pending'; seconds: number }
-  | { status: 'preview'; suggestion: ProcedureLayoutSuggestionResponse; before: boolean }
+  | { status: 'preview'; suggestion: ProcedureLayoutSuggestionResponse; before: boolean; selectedOption?: 'shrink' | 'split'; applying?: boolean }
   | { status: 'error'; message: string };
 
 export function useAssemblyProcedureLayoutSuggestions(input: {
@@ -20,14 +20,17 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
   disabled: boolean;
   onStart: () => void;
   onApply: (elements: AssemblyProcedureOverlayElement[]) => void;
+  onApplySplit?: (elements: AssemblyProcedureOverlayElement[], nextPageElements: AssemblyProcedureOverlayElement[]) => Promise<boolean>;
   onEditLeaseError: (error: unknown) => boolean;
 }) {
   const [state, setState] = useState<LayoutSuggestionState>({ status: 'idle' });
   const [appliedCaptionElementIds, setAppliedCaptionElementIds] = useState<string[]>([]);
   const request = useRef<AbortController | null>(null);
+  const applying = useRef(false);
   const locked = state.status === 'pending' || state.status === 'preview';
   const canSuggest = !input.disabled && input.elements.filter(element => element.kind === 'TEXT' || element.kind === 'IMAGE').length >= 2;
   const cancel = useCallback(() => {
+    if (applying.current) return;
     request.current?.abort();
     request.current = null;
     setState({ status: 'idle' });
@@ -54,7 +57,8 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
     try {
       const response = await suggestAssemblyProcedureLayout({ id: input.documentId, pageIndex: input.pageIndex, elements: input.elements, accessPassword: input.accessPassword, holderToken: input.holderToken, signal: controller.signal });
       if (request.current !== controller || controller.signal.aborted) return;
-      setState({ status: 'preview', suggestion: response, before: false });
+      setState({ status: 'preview', suggestion: response, before: false,
+        ...(response.overflow ? { selectedOption: response.overflow.shrink ? 'shrink' : 'split' } : {}) });
     } catch (error) {
       if (request.current !== controller || controller.signal.aborted) return;
       input.onEditLeaseError(error);
@@ -64,12 +68,25 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
       if (request.current === controller) request.current = null;
     }
   };
-  const proposal = state.status === 'preview' ? state.suggestion.elements : null;
+  const option = state.status === 'preview' && state.selectedOption ? state.suggestion.overflow?.[state.selectedOption] : undefined;
+  const proposal = state.status === 'preview' ? option?.elements ?? state.suggestion.elements : null;
   const apply = () => {
-    if (input.disabled || !proposal) return;
-    if (state.status === 'preview') {
+    if (input.disabled || !proposal || state.status !== 'preview' || applying.current) return;
+    const recordApplied = () => {
       setAppliedCaptionElementIds(current => [...new Set([...current, ...state.suggestion.addedElementIds])]);
+    };
+    if (state.selectedOption === 'split') {
+      if (!state.suggestion.overflow?.split || !input.onApplySplit) return;
+      applying.current = true;
+      setState({ ...state, applying: true });
+      return input.onApplySplit(proposal, state.suggestion.overflow.split.nextPageElements).then(success => {
+        if (success) recordApplied();
+        setState(success ? { status: 'idle' } : { status: 'error', message: 'ページを分けられませんでした' });
+      }).catch(() => {
+        setState({ status: 'error', message: 'ページを分けられませんでした' });
+      }).finally(() => { applying.current = false; });
     }
+    recordApplied();
     input.onApply(proposal);
     cancel();
   };
@@ -79,6 +96,7 @@ export function useAssemblyProcedureLayoutSuggestions(input: {
     previewElements: state.status === 'preview' && !state.before ? proposal?.map(element =>
       element.kind === 'TEXT' && state.suggestion.addedElementIds.includes(element.id)
         ? { ...element, mask: { enabled: true, color: '#fff2c6' } } : element) ?? null : null,
-    showBefore: (before: boolean) => setState(current => current.status === 'preview' ? { ...current, before } : current)
+    selectOption: (selectedOption: 'shrink' | 'split') => setState(current => current.status === 'preview' && !current.applying && current.suggestion.overflow?.[selectedOption] ? { ...current, selectedOption } : current),
+    showBefore: (before: boolean) => setState(current => current.status === 'preview' && !current.applying ? { ...current, before } : current)
   };
 }

@@ -252,10 +252,13 @@ export class AssemblyProcedureDocumentRevisionService {
     });
   }
 
-  async addBlankPage(params: AssemblyProcedureEditActor & { documentId: string; expectedEditVersion: number; accessPassword?: string }) {
+  async addBlankPage(params: AssemblyProcedureEditActor & { documentId: string; expectedEditVersion: number; accessPassword?: string; afterPageIndex?: number }) {
     await this.accessService.requireAccessPassword(params.accessPassword);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
+    }
+    if (params.afterPageIndex !== undefined && (!Number.isInteger(params.afterPageIndex) || params.afterPageIndex < 0)) {
+      throw new ApiError(400, '挿入先のページが不正です');
     }
     let imageRelativePath: string | undefined;
     try {
@@ -278,9 +281,32 @@ export class AssemblyProcedureDocumentRevisionService {
             { currentEditVersion: doc.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
         }
         const last = await tx.assemblyProcedureDocumentPage.aggregate({ where: { documentId: doc.id }, _max: { pageIndex: true } });
-        const page = await saveBlankProcedurePage();
+        let referenceImagePath: string | undefined;
+        if (params.afterPageIndex !== undefined) {
+          const afterPageIndex = params.afterPageIndex;
+          const target = await tx.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: doc.id, pageIndex: afterPageIndex } } });
+          if (!target) throw new ApiError(400, '挿入先のページが存在しません');
+          referenceImagePath = target.imageRelativePath;
+          const where = { assemblyProcedureDocumentId: doc.id, pageIndex: { gt: afterPageIndex } };
+          const references = await Promise.all([
+            tx.assemblyTemplateProcedureStep.count({ where }),
+            tx.assemblyTemplateBolt.count({ where }),
+            tx.assemblyTemplateCheckItem.count({ where })
+          ]);
+          if (references.some(count => count > 0)) throw new ApiError(409, '後ろのページがテンプレートで使われているため、ページを分けられません');
+          const pages = await tx.assemblyProcedureDocumentPage.findMany({ where: { documentId: doc.id, pageIndex: { gt: afterPageIndex } }, orderBy: { pageIndex: 'desc' } });
+          for (const page of pages) {
+            await tx.assemblyProcedureDocumentPage.update({ where: { documentId_pageIndex: { documentId: doc.id, pageIndex: page.pageIndex } }, data: { pageIndex: page.pageIndex + 1 } });
+          }
+          const links = await tx.procedureVideoLink.findMany({ where, orderBy: { pageIndex: 'desc' } });
+          for (const link of links) {
+            await tx.procedureVideoLink.update({ where: { id: link.id }, data: { pageIndex: link.pageIndex + 1 } });
+          }
+          await tx.assemblyProcedureCaptionFeedback.updateMany({ where: { documentId: doc.id, pageIndex: { gt: afterPageIndex } }, data: { pageIndex: { increment: 1 } } });
+        }
+        const page = await saveBlankProcedurePage(referenceImagePath);
         imageRelativePath = page.relativeUrl;
-        await tx.assemblyProcedureDocumentPage.create({ data: { documentId: doc.id, pageIndex: (last._max.pageIndex ?? -1) + 1, imageRelativePath } });
+        await tx.assemblyProcedureDocumentPage.create({ data: { documentId: doc.id, pageIndex: (params.afterPageIndex ?? last._max.pageIndex ?? -1) + 1, imageRelativePath } });
         await tx.assemblyProcedureDocumentRevision.update({ where: { documentId: doc.id }, data: { editVersion: { increment: 1 } } });
         const result = await tx.assemblyProcedureDocument.findUnique({ where: { id: doc.id }, include: revisionDocumentInclude });
         if (!result) throw new ApiError(500, 'ページ追加後の手順書を取得できませんでした');

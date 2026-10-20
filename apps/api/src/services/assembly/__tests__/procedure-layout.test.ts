@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { overlayElementSchema, type OverlayElement, type OverlayTextElement, type OverlayImageElement, type OverlayShapeElement } from '@raspi-system/shared-types';
 
-import { arrangeProcedureLayout, assignProcedureLayoutRows, estimateProcedureTextHeight, isValidProcedureTextRewrite, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts } from '../procedure-layout.js';
+import { arrangeProcedureLayout, assignProcedureLayoutRows, estimateProcedureTextHeight, isValidProcedureTextRewrite, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts, suggestProcedureLayoutOverflow } from '../procedure-layout.js';
 
 const page = { width: 1000, height: 1400 };
 const text = (id: string, y = 0.1, body = '架空ワークを固定する', font = 0.025): OverlayTextElement => ({ id, kind: 'TEXT', pageIndex: 0, text: body, bbox: { xRatio: 0.7, yRatio: y, widthRatio: 0.3, heightRatio: 0.15 }, zIndex: 2, style: { fontSizeRatio: font, color: '#334455' } });
@@ -22,6 +22,55 @@ function expectFits(elements: OverlayElement[]) {
 }
 
 describe('procedure layout geometry', () => {
+  const overflowInput = (count = 4) => Array.from({ length: count }, (_, i) => [
+    { ...photo(`p${i}`, i * 0.25), bbox: { xRatio: 0.04, yRatio: i * 0.25, widthRatio: 0.4, heightRatio: 0.25 } },
+    text(`t${i}`, i * 0.25, '固定する')
+  ]).flat();
+  const options = (elements: OverlayElement[]) => suggestProcedureLayoutOverflow({ elements, originalElements: elements, page, rows: assignProcedureLayoutRows(elements, page)!, pageIndex: 0 });
+  it('offers the largest fitting uniform photo scale and a balanced two-page split without mutating input', () => {
+    const input = overflowInput(); const before = structuredClone(input);
+    expect(() => run(input)).toThrow('Page does not fit');
+    const { shrink, split } = options(input);
+    expect(shrink?.scalePercent).toBe(88);
+    expectFits(shrink!.elements);
+    for (const image of shrink!.elements.filter(element => element.kind === 'IMAGE')) {
+      expect(image.bbox.widthRatio / image.bbox.heightRatio).toBeCloseTo(0.4 / 0.25);
+      expect(image.bbox.yRatio + image.bbox.heightRatio).toBeLessThanOrEqual(0.96);
+    }
+    expect(split?.firstMovedPhotoNumber).toBe(3);
+    expect(split!.elements.filter(element => element.kind === 'IMAGE').map(element => element.id)).toEqual(['p0', 'p1']);
+    expect(split!.nextPageElements.filter(element => element.kind === 'IMAGE').map(element => element.id)).toEqual(['p2', 'p3']);
+    expect(split!.nextPageElements.every(element => element.pageIndex === 1)).toBe(true);
+    expectPhotosUnchanged(input, [...split!.elements, ...split!.nextPageElements]);
+    expectFits(split!.elements); expectFits(split!.nextPageElements); expect(input).toEqual(before);
+  });
+  it('scales owned shapes and endpoints relative to the photo, and moves them with their split row', () => {
+    const attached: OverlayShapeElement = { id: 'arrow', kind: 'SHAPE', shape: 'ARROW', pageIndex: 0, zIndex: 3,
+      bbox: { xRatio: 0.1, yRatio: 0.55, widthRatio: 0.1, heightRatio: 0.04 }, start: { xRatio: 0.1, yRatio: 0.55 }, end: { xRatio: 0.2, yRatio: 0.59 } };
+    const free = { ...attached, id: 'free', bbox: { ...attached.bbox, xRatio: 0.8, yRatio: 0.8 } };
+    const { shrink, split } = options([...overflowInput(), attached, free]);
+    const moved = get(shrink!.elements, 'arrow') as OverlayShapeElement; const image = get(shrink!.elements, 'p2');
+    expect(moved.bbox.widthRatio).toBeCloseTo(0.088);
+    expect(moved.bbox.heightRatio).toBeCloseTo(0.0352);
+    expect(moved.start!.xRatio - image.bbox.xRatio).toBeCloseTo((0.1 - 0.04) * 0.88);
+    expect(moved.end!.yRatio - image.bbox.yRatio).toBeCloseTo((0.59 - 0.5) * 0.88);
+    expect(get(split!.nextPageElements, 'arrow').pageIndex).toBe(1);
+    expect(get(split!.elements, 'free')).toEqual(free);
+  });
+  it('prefers more rows on the current page for equal heights and omits impossible options', () => {
+    expect(options(overflowInput(3)).split!.firstMovedPhotoNumber).toBe(3);
+    const elements = [photo('p'), text('t', 0, '架'.repeat(10000))];
+    expect(options(elements)).toEqual({});
+    const single = [photo('p', 0.02), text('t', 0.02)];
+    single[0].bbox.heightRatio = 0.95;
+    expect(() => run(single)).toThrow('Page does not fit');
+    expect(options(single)).toMatchObject({ shrink: { scalePercent: 96 } });
+    expect(options(single).split).toBeUndefined();
+    const tallText = [photo('p1', 0.04), text('t1', 0.04, Array(25).fill('固定する').join('\n')), photo('p2', 0.5), text('t2', 0.5, Array(25).fill('固定する').join('\n'))];
+    expect(() => run(tallText)).toThrow('Page does not fit');
+    expect(options(tallText).shrink).toBeUndefined();
+    expect(options(tallText).split?.firstMovedPhotoNumber).toBe(2);
+  });
   it('repairs four slightly displaced left photos without changing their sizes or input objects', () => {
     const input = [0.029, 0.033, 0.033, 0.038].flatMap((x, i) => [photo(`p${i}`, 0.05 + i * 0.22, x), text(`t${i}`, 0.05 + i * 0.22)]);
     const copy = structuredClone(input);
