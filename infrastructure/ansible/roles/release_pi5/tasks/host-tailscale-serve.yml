@@ -1,0 +1,25 @@
+---
+# Tailscale issues and renews a publicly trusted certificate for the Pi5
+# tailnet hostname and proxies one extra port to the existing gateway. The
+# gateway, its certificate and the Blue/Green templates stay untouched, so any
+# release SHA can still be deployed or rolled back. Undo: `tailscale serve reset`.
+- name: Read the Pi5 Tailscale serve configuration
+  ansible.builtin.command:
+    argv: [tailscale, serve, status, --json]
+  register: release_pi5_tailscale_serve_status
+  changed_when: false
+
+- name: Publish the gateway on the Pi5 tailnet hostname with a trusted certificate
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - serve
+      - --bg
+      - "--https={{ pi5_tailscale_serve_https_port }}"
+      - "{{ pi5_tailscale_serve_target }}"
+  vars:
+    release_pi5_tailscale_serve_web: >-
+      {{ ((release_pi5_tailscale_serve_status.stdout | trim or '{}') | from_json).get('Web') or {} }}
+    release_pi5_tailscale_serve_proxy: >-
+      {{ ((release_pi5_tailscale_serve_web.get(pi5_tailscale_https_hostname ~ ':' ~ pi5_tailscale_serve_https_port) or {}).get('Handlers') or {}).get('/', {}).get('Proxy', '') }}
+  when: release_pi5_tailscale_serve_proxy != pi5_tailscale_serve_target

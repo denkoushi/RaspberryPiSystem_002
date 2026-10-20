@@ -1,15 +1,24 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../features/barcode-scan';
 import { HaizenHub } from '../../features/mobile-placement/haizen/HaizenHub';
+import { useHubBackGuard } from '../../features/mobile-placement/haizen/useHubBackGuard';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
+import { useIsPhoneViewport } from '../../features/mobile-placement/ui/useIsPhoneViewport';
 import { useMobilePlacementPageState } from '../../features/mobile-placement/useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../../features/mobile-placement/useOrderPlacementBranches';
 import { useRegisteredShelves } from '../../features/mobile-placement/useRegisteredShelves';
 
+import type { HaizenHubSheet } from '../../features/mobile-placement/haizen/HaizenHub';
+
 export function MobilePlacementPage() {
   const mp = useMobilePlacementPageState();
+  const [sheet, setSheet] = useState<HaizenHubSheet>(null);
+  const isPhone = useIsPhoneViewport();
+  useHubBackGuard(isPhone, mp.scanField !== null
+    ? () => mp.setScanField(null)
+    : sheet !== null ? () => setSheet(null) : null);
   const registeredShelvesQuery = useRegisteredShelves();
   const orderBranchesQuery = useOrderPlacementBranches(mp.orderBarcode);
   const suggestedNextBranchNo = useMemo(() => {
@@ -55,6 +64,8 @@ export function MobilePlacementPage() {
 
       <HaizenHub
         mp={mp}
+        sheet={sheet}
+        setSheet={setSheet}
         shelves={registeredShelvesQuery}
         branches={orderBranchesQuery}
         suggestedNextBranchNo={suggestedNextBranchNo}

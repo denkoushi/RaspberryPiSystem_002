@@ -10,6 +10,10 @@ all:
           ansible_command_timeout: 900
           unattended_upgrades_enabled: true
           tailscale_enabled: true
+          # 配膳スマホ用。Tailscale が正式な証明書を出し、既存の 443 へ中継する
+          pi5_tailscale_https_hostname: raspberrypi.tail7312a3.ts.net
+          pi5_tailscale_serve_https_port: 8443
+          pi5_tailscale_serve_target: https+insecure://127.0.0.1:443
           # 毎晩の DR。false にすると次の playbook 実行でタイマーが止まる
           google_drive_dr_timer_enabled: true
           # キオスクお問い合わせ（Slack通知）
