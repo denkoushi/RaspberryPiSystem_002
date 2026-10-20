@@ -190,6 +190,34 @@ describe('PlanningBoardGanttView', () => {
     expect(chips).toEqual(['26-1000', '26-2000', '26-9000']);
   });
 
+  it.each(['backward', 'forward'] as const)('scrolls to the earliest bar of a seiban when its legend chip is pressed in %s mode', (mode) => {
+    const items = [item(), item({ itemId: 'b', fhincd: 'P2' }), item({ itemId: 'c', fseiban: '26-1002', fhincd: 'P3' })];
+    const layout = buildPlanningBoardGanttLayout({ items, mode, allocation: 'alternate', view: 'resource', seibanOrder: [],
+      resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    render(<PlanningBoardGanttView {...props(items)} layout={layout} scale={2} colorBySeiban />);
+    const startOf = (id: string) => {
+      const bar = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).find((entry) => entry.item.itemId === id)!;
+      return bar.segments?.[0]?.start ?? bar.start ?? bar.end!;
+    };
+    const [earliest, later] = startOf('a') <= startOf('b') ? ['a', 'b'] : ['b', 'a'];
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const rect = (left: number, top: number, width: number) => ({ left, top, right: left + width, bottom: top + 40, width, height: 40 } as DOMRect);
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(rect(0, 100, 1000));
+    vi.spyOn(screen.getByTestId(`planning-gantt-bar-${earliest}`), 'getBoundingClientRect').mockReturnValue(rect(3000, 400, 80));
+    vi.spyOn(screen.getByTestId(`planning-gantt-bar-${later}`), 'getBoundingClientRect').mockReturnValue(rect(5000, 200, 80));
+    const scrollTo = vi.fn();
+    Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
+    const chip = within(screen.getByRole('group', { name: '製番の色分け凡例' })).getByRole('button', { name: '26-1001' });
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo.mock.calls[0]![0]).toMatchObject({ top: 264, behavior: 'smooth' });
+    expect(scrollTo.mock.calls[0]![0].left).toBeGreaterThan(2000);
+    // Pressing the same chip again only clears the spotlight.
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+  });
   it.each(['backward', 'forward'] as const)('spotlights a seiban from the legend and clears it in %s mode', (mode) => {
     const items = [item(), item({ itemId: 'b', fseiban: '26-1002', fhincd: 'P2' }),
       item({ itemId: 'c', fhincd: 'P3', isCompleted: true }),
