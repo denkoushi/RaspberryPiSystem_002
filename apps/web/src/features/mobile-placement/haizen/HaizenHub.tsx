@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 import { haizenPhoneColors as colors, haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
 import { HaizenHeader } from './HaizenHeader';
@@ -21,12 +19,14 @@ const menuTiles = [
   { label: '棚マスタ', hint: '工場の棚の配置を変える', path: '/kiosk/mobile-placement/shelf-master', icon: 'grid', color: colors.actual }
 ] as const;
 
-export function HaizenHub({ mp, shelves, branches, suggestedNextBranchNo, onNavigate, onShelfMaster, onPhoto }: {
+export type HaizenHubSheet = 'menu' | 'shelves' | 'inputs' | null;
+
+export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNextBranchNo, onNavigate, onShelfMaster, onPhoto }: {
   mp: HaizenState; shelves: ReturnType<typeof useRegisteredShelves>;
+  sheet: HaizenHubSheet; setSheet: (sheet: HaizenHubSheet) => void;
   branches: ReturnType<typeof useOrderPlacementBranches>; suggestedNextBranchNo: number;
   onNavigate: (path: string) => void; onShelfMaster: () => void; onPhoto: () => void;
 }) {
-  const [sheet, setSheet] = useState<'menu' | 'shelves' | 'inputs' | null>(null);
   const flow = useHaizenWorkflow(mp);
   const change = (setter: (value: string) => void, value: string, actual = false) => {
     setter(value);
