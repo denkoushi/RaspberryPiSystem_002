@@ -124,6 +124,7 @@ async function installApiFixtures(page, sheetId, unexpectedRequests) {
     if (path === '/api/part-measurement/inspection-drawing/measurement-label-settings') return route.fulfill({ json: { settings: [] } });
     if (path === '/api/part-measurement/visual-templates') return route.fulfill({ json: { visualTemplates: [visualTemplate] } });
     if (path === '/api/part-measurement/visual-templates/sop-visual-1/ocr') return route.fulfill({ json: { ocr: ocrStatus } });
+    if (path === '/api/part-measurement/visual-templates/sop-visual-1/placement-proposals') return route.fulfill({ json: { status: 'no-sibling', sourceDrawingName: null, proposals: [], unplaced: [] } });
     if (path === '/api/part-measurement/visual-templates/sop-visual-1/ocr/candidates') return route.fulfill({ json: { status: 'completed', candidates: [ocrCandidate], cache: ocrStatus } });
     if (path === visualTemplate.drawingImageRelativePath) return route.fulfill({ contentType: 'image/svg+xml', body: svgBody });
     unexpectedRequests.add(`${route.request().method()} ${path}`);

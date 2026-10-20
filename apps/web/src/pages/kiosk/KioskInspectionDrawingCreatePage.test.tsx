@@ -1,4 +1,5 @@
 import { buildDefaultInspectionDrawingMeasurementLabelSettings } from '@raspi-system/shared-types';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -57,6 +58,16 @@ vi.mock('../../api/hooks', async () => {
     })
   };
 });
+
+vi.mock('../../api/domains/part-measurement-placement', () => ({
+  getInspectionDrawingPlacementProposals: vi.fn(async () => ({
+    status: 'no-sibling',
+    sourceDrawingName: null,
+    proposals: [],
+    unplaced: []
+  })),
+  postInspectionDrawingPlacementDecisions: vi.fn(async () => ({ updated: 0 }))
+}));
 
 vi.mock('../../features/part-measurement/usePartMeasurementDrawingBlobUrl', () => ({
   usePartMeasurementDrawingBlobUrl: (path: string | null) => ({
@@ -172,16 +183,19 @@ const editPath = '/kiosk/part-measurement/inspection/templates/template-1/edit';
 
 async function renderPage(path = createPath) {
   await act(async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path={createPath} element={<KioskInspectionDrawingCreatePage />} />
-          <Route
-            path="/kiosk/part-measurement/inspection/templates/:templateId/edit"
-            element={<KioskInspectionDrawingCreatePage />}
-          />
-        </Routes>
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path={createPath} element={<KioskInspectionDrawingCreatePage />} />
+            <Route
+              path="/kiosk/part-measurement/inspection/templates/:templateId/edit"
+              element={<KioskInspectionDrawingCreatePage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
     );
   });
 }

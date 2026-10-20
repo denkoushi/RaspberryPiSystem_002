@@ -55,7 +55,7 @@ export function resolveWantedDimensionKind(
   return 'len';
 }
 
-function matchesWantedKind(dimension: PartMeasurementDrawingDimension, wanted: WantedKind): boolean {
+export function matchesWantedKind(dimension: PartMeasurementDrawingDimension, wanted: WantedKind): boolean {
   switch (wanted) {
     case 'depth':
       return dimension.depth !== null;
@@ -68,7 +68,7 @@ function matchesWantedKind(dimension: PartMeasurementDrawingDimension, wanted: W
   }
 }
 
-function candidateValue(dimension: PartMeasurementDrawingDimension, wanted: WantedKind): number | null {
+export function candidateValue(dimension: PartMeasurementDrawingDimension, wanted: WantedKind): number | null {
   const value = wanted === 'depth' ? dimension.depth : dimension.nominal;
   return value !== null && Number.isFinite(value) ? value : null;
 }

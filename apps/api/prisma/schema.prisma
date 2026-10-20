@@ -2933,6 +2933,9 @@ model PartMeasurementVisualTemplate {
   businessTemplates        PartMeasurementTemplate[]
   ocrCaches                PartMeasurementDrawingOcrCache[]
   dimensionMaps            PartMeasurementDrawingDimensionMap[]
+  placementRuns            PartMeasurementDrawingPlacementRun[] @relation("PlacementTarget")
+  sourcedPlacementRuns     PartMeasurementDrawingPlacementRun[] @relation("PlacementSource")
+  placementProposals       PartMeasurementDrawingPlacementProposal[]
 
   @@index([isActive, name])
   @@index([searchDigits(ops: raw("gin_trgm_ops"))], type: Gin, map: "PartMeasurementVisualTemplate_searchDigits_trgm_idx")
@@ -3000,6 +3003,63 @@ model PartMeasurementDrawingDimensionMap {
   @@unique([visualTemplateId, analysisVersion, drawingImageFingerprint], map: "PMDrawingDimMap_unique_visual_version_hash")
   @@index([visualTemplateId, status], map: "PMDrawingDimMap_idx_visual_status")
   @@index([status, nextAttemptAt, createdAt], map: "PMDrawingDimMap_idx_claim")
+}
+
+enum PartMeasurementDrawingPlacementProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  UNPLACED
+}
+
+model PartMeasurementDrawingPlacementRun {
+  id                      String @id @default(uuid())
+  visualTemplateId        String
+  drawingImageFingerprint String
+  analysisVersion         String
+  placementVersion        String
+  sourceVisualTemplateId  String?
+  sourceTemplateId        String?
+  rankingMethod           String
+  proposalCount           Int @default(0)
+  unplacedCount           Int @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  visualTemplate          PartMeasurementVisualTemplate @relation("PlacementTarget", fields: [visualTemplateId], references: [id], onDelete: Cascade)
+  sourceVisualTemplate    PartMeasurementVisualTemplate? @relation("PlacementSource", fields: [sourceVisualTemplateId], references: [id], onDelete: SetNull)
+  proposals               PartMeasurementDrawingPlacementProposal[]
+
+  @@unique([visualTemplateId, drawingImageFingerprint, analysisVersion, placementVersion], map: "PMDrawingPlacementRun_unique_visual_hash_versions")
+  @@index([sourceVisualTemplateId])
+}
+
+model PartMeasurementDrawingPlacementProposal {
+  id                String @id @default(uuid())
+  runId             String
+  visualTemplateId  String
+  sourceItemId      String
+  status            PartMeasurementDrawingPlacementProposalStatus @default(PROPOSED)
+  sortOrder         Int
+  measurementLabel  String
+  measurementPoint  String?
+  decimalPlaces     Int @default(6)
+  nominalValue      Decimal @db.Decimal(18, 6)
+  lowerLimit        Decimal? @db.Decimal(18, 6)
+  upperLimit        Decimal? @db.Decimal(18, 6)
+  depthMode         PartMeasurementDepthMode @default(MEASURED)
+  valueKind         PartMeasurementValueKind @default(NUMERIC)
+  markerXRatio      Decimal? @db.Decimal(10, 8)
+  markerYRatio      Decimal? @db.Decimal(10, 8)
+  dimension         Json?
+  candidates        Json
+  decidedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  run               PartMeasurementDrawingPlacementRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  visualTemplate    PartMeasurementVisualTemplate @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sourceItemId], map: "PMDrawingPlacementProposal_unique_run_item")
+  @@index([visualTemplateId])
 }
 
 /// 検査図面の同時作成・まとめて改版単位。
