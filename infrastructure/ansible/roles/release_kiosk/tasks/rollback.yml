@@ -1,10 +1,16 @@
 ---
+- name: Stop the first-install candidate before returning to empty
+  ansible.builtin.import_tasks: rollback_empty.yml
+  when: release_kiosk_first_install | bool
+
 - name: Stop the candidate hotcorner before restoring files
   ansible.builtin.systemd:
     name: kiosk-hotcorner.service
     state: stopped
     enabled: false
-  when: release_kiosk_hotcorner_start_attempted | default(false) | bool
+  when:
+    - not (release_kiosk_first_install | bool)
+    - release_kiosk_hotcorner_start_attempted | default(false) | bool
 
 - name: Restore backed-up Pi4 release files
   ansible.builtin.copy:
@@ -48,7 +54,7 @@
     - item.changed | default(false) | bool
     - item.backup_file is not defined
     - not release_kiosk_original_files.results[file_index].stat.exists
-    - item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))
+    - release_kiosk_first_install | bool or item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))
   no_log: true
 
 - name: Restore the original labwc directory ownership and mode
@@ -71,6 +77,7 @@
   register: release_kiosk_rollback_prerequisite_stats
   failed_when: false
   changed_when: false
+  when: not (release_kiosk_first_install | bool)
 
 - name: Fail closed when rollback prerequisites are missing
   ansible.builtin.assert:
@@ -78,6 +85,7 @@
     fail_msg: "Rollback prerequisite is missing: {{ item.item }}"
   loop: "{{ release_kiosk_rollback_prerequisite_stats.results | default([]) }}"
   no_log: true
+  when: not (release_kiosk_first_install | bool)
 
 - name: Restore Pi4 agents from the captured image tags without restarting torque ownership
   ansible.builtin.command: >-
@@ -85,6 +93,7 @@
     -f {{ release_kiosk_rollback_compose | quote }}
     create --force-recreate --no-build {{ release_kiosk_services | join(' ') }}
   when:
+    - not (release_kiosk_first_install | bool)
     - release_kiosk_switch_attempted | default(false) | bool
     - release_torque_cutover | default(false) | bool
     - release_kiosk_services | length > 0
@@ -96,6 +105,7 @@
     -f {{ release_kiosk_rollback_compose | quote }}
     up -d --no-build {{ release_kiosk_services | join(' ') }}
   when:
+    - not (release_kiosk_first_install | bool)
     - release_kiosk_switch_attempted | default(false) | bool
     - not (release_torque_cutover | default(false) | bool)
     - release_kiosk_services | length > 0
@@ -142,7 +152,9 @@
   ansible.builtin.systemd:
     name: kiosk-browser.service
     state: restarted
-  when: not (release_torque_cutover | default(false) | bool)
+  when:
+    - not (release_kiosk_first_install | bool)
+    - not (release_torque_cutover | default(false) | bool)
 
 - name: Restore the previous hotcorner service state
   ansible.builtin.systemd:
@@ -150,6 +162,7 @@
     enabled: "{{ release_kiosk_hotcorner_previous.status == 'enabled' }}"
     state: "{{ 'restarted' if release_kiosk_hotcorner_previous.state == 'running' else 'stopped' }}"
   when:
+    - not (release_kiosk_first_install | bool)
     - release_kiosk_hotcorner_start_attempted | default(false) | bool
     - release_kiosk_hotcorner_previous | length > 0
 
@@ -157,19 +170,29 @@
   ansible.builtin.systemd:
     name: status-agent.service
     state: started
-  when: release_kiosk_services | length > 0
+  when:
+    - not (release_kiosk_first_install | bool)
+    - release_kiosk_services | length > 0
 
 - name: Restart restored Pi4 status-agent timer
   ansible.builtin.systemd:
     name: status-agent.timer
     state: restarted
-  when: release_kiosk_services | length > 0
+  when:
+    - not (release_kiosk_first_install | bool)
+    - release_kiosk_services | length > 0
 
 - name: Verify the complete restored Pi4 runtime
   ansible.builtin.import_tasks: health_checks.yml
   vars:
     release_kiosk_check_hotcorner: "{{ release_kiosk_hotcorner_previous.state | default('') == 'running' }}"
-  when: not (release_torque_cutover | default(false) | bool)
+  when:
+    - not (release_kiosk_first_install | bool)
+    - not (release_torque_cutover | default(false) | bool)
+
+- name: Restore first-install provisioning files and verify empty runtime
+  ansible.builtin.import_tasks: rollback_first_install.yml
+  when: release_kiosk_first_install | bool
 
 - name: Record completed Pi4 rollback
   ansible.builtin.set_fact:
@@ -181,5 +204,14 @@
       Pi4 candidate failed health verification on {{ inventory_hostname }};
       previous files and agent images were restored.
   when:
+    - not (release_kiosk_first_install | bool)
     - release_kiosk_rollback_terminal_failure | default(true) | bool
     - not (release_torque_cutover | default(false) | bool)
+
+- name: Fail the release after verified empty rollback
+  ansible.builtin.fail:
+    msg: >-
+      Pi4 first-install failed on {{ inventory_hostname }}; candidate containers,
+      kiosk units and new runtime files were removed and desktop settings restored.
+      OS packages remain installed. Resolve the original failure before retrying.
+  when: release_kiosk_first_install | bool

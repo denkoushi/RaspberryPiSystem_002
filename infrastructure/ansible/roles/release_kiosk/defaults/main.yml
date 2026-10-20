@@ -1,5 +1,6 @@
 ---
 client_agents_hardened: false
+release_kiosk_first_install: false
 release_sha: ""
 release_run_id: ""
 release_kiosk_project_dir: "{{ project_root | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"

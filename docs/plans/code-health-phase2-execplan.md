@@ -30,8 +30,21 @@
   - [x] ファイル配信 9 ルートの読み込み失敗時の応答を `routes/storage/shared.ts` の `sendStorageReadError` へ集める（#2151）。応答とログは 1 文字も変えず、9 ルートの前後の値をテスト 57 件で固定した。パスがない 400 は文言と判定がルートごとに違うため、各ルートに残した。
   - [x] 図面テンプレートの 404/409 の 4 か所を `DomainHttpError` へ移す（#2152）。番号と文言は同じで、本文に `requestId` と `timestamp` が加わる。
   - 2026-10-19 に #2151 と #2152 を反映し、ユーザーの実機確認も済んだ。
-- [ ] 段階4: テストがあり変更の多い大きいファイルを分ける（在庫の service、製番ボードの画面、在庫の登録タブ、在庫の画面、組立の作業画面、組立の型定義）。
+- [x] 段階4: テストがあり変更の多い大きいファイルを分ける（在庫の service、製番ボードの画面、在庫の登録タブ、在庫の画面、組立の作業画面、組立の型定義）。
+  - [x] 在庫の service（`item-inventory.service.ts`、1234 → 186 行、#2156）。写真・選択肢・取込登録・入出庫などを別ファイルの関数へ移し、クラスは 1 行の呼び出しだけにした。公開名 8 個は再エクスポートで同じ。
+  - [x] 製番ボードの画面（`ProductionScheduleGrindingPlanningBoardPage.tsx`、1424 → 781 行、記録 1391 → 773、#2157）。600 行未満までは分けず、フックと表示の塊を `features/kiosk/grindingPlanningBoard/` へ移すところで止めた。
+  - [x] 在庫の画面（`KioskItemInventoryPage.tsx`、722 → 543 行、#2158）
+  - [x] 組立の型定義（`features/assembly/types.ts`、764 → 78 行、#2159）。7 ファイルへ移し、`types.ts` は再エクスポートだけにした。同じファイルを触る下書きの #1002 は main と衝突したまま止まっているので待たず、閉じずに残した。
+  - [x] 組立の作業画面（`KioskAssemblyWorkSessionPage.tsx`、797 → 514 行、#2161）。テストの安定化 #1538 を先にマージしてから分けた。
+  - [x] 在庫の登録タブ（`InventoryRegistrationTab.tsx`、737 → 543 行、#2171）。#2144 のマージ後に分けた。
+  - 2026-10-19 に #2156〜#2161 を反映し、「在庫」「製番ボード」「組立」の実機確認も済んだ。#2171 は反映と実機確認が残っている。行数の記録は、web で 4 件を外して 1 件を下げ、api で 1 件を外した。
 - [ ] 段階5: テストのない大きいファイル 6 本に、今の動きを固定するテストを足す。足し終えたものから分割を検討する。
+  - [ ] 検査図面の作成画面と自主検査の画面（各 12 件、#2174）。
+  - [ ] 納期管理の画面（12 件、#2176）。備考の保存に失敗したとき文言を出さずに入力欄を開いたままにする今の動きも、そのまま固定した。
+  - [ ] 部品測定のテンプレート処理（`part-measurement-template.service.ts`、10 件、#2178）。既存のテストで行の約 83% が通っていたので、残りの読み出しの入口だけに足した。
+  - [ ] 作業手順の保存処理（`prisma-work-instruction-repository.ts` ほか）。既存の結合テスト 45 件が CI で動いていなかったので、新しく書かずに CI で有効にする（#2177）。ローカルでは保存処理の行の通過率が 0% から約 67% になった。
+  - [ ] 手動順番の画面（12 件＋フック 2 件、#2179）。テストを書く途中で不具合が見つかったため、修正と合わせて段階5とは別の PR にした（下の Surprises を参照）。
+  - 2026-10-20 時点で 5 本とも PR を出し、マージと反映を進捗追跡セッションに渡した。分割の検討は、これらのマージ後に行う。
 - [ ] 段階6（要判断）: 共通のエラーハンドラーが受け止める Prisma の P2025 を 400 ではなく 404 で返す。
 - [ ] 段階7（要判断）: ESLint 8 を 9 へ上げ、設定を新しい形式へ移す。行数の歯止めの記録スクリプトも合わせて直す。
 
@@ -50,6 +63,14 @@
   Evidence: #2133〜#2135 の本文。
 - Observation: 鍵の名前を変える PR（#2142 で `inventoryKeys.items` → `itemsAll`）と、古い名前を使う別の PR（#2140）が前後してマージされると、両方とも単独では CI が通るのに main で `queryKey: undefined` になる。#2147 で直した（2026-10-19）。名前を変える PR は、同じ鍵を触る作業中の PR がないかをマージ前に確かめる。
   Evidence: main 966fe7f0 の CI（`inventorySetupMutations.test.tsx`）の失敗と #2147。
+- Observation: `node scripts/ci/max-lines-baseline.mjs update web` は、今回分けたファイル以外の記録も実際の行数まで下げる（段階4では毎回 `HermesFloatingChat.tsx` が 1083 → 1082 になった）。業務 Hermes のファイルは本計画で触らないため、その行は毎回手で元に戻し、`check` が通ることを確かめた。
+  Evidence: #2159、#2161、#2171 の作成時の `update web` の出力。
+- Observation: 組立の型定義を分けたとき、キオスクの操作マニュアルの元ファイル記録（`apps/web/src/generated/kiosk-sop/assembly-procedure-template/manifest.json`）が古いと commit 前のチェックで止まった。画面は変わらないので `pnpm kiosk-sop:source-refresh` で記録だけ更新した。
+  Evidence: #2159 の pre-commit の出力。
+- Observation: 段階5の前提の「テストのない 6 本」のうち api の 2 本は当てはまらなかった。テンプレート処理は既存のテストで約 83% 通っており、作業手順の保存処理にはテストがあったが、`WORK_INSTRUCTION_INTEGRATION=true` と 127.0.0.1 の DB を要求する作りで、CI（`localhost`）では一度も動いていなかった。
+  Evidence: カバレッジの出力と、`apps/api/src/**/work-instruction*.integration.test.ts` の冒頭の条件。
+- Observation: キオスクの「手動順番」画面で機器の「編集」を押すと、再描画が止まらなくなる（"Maximum update depth exceeded"）。`useManualOrderCardState` の返す関数が描画ごとに作り直され、それを依存にした画面の `useEffect` が毎回状態を書き換えていた。2026-03-20 の 76818cce から続いていた。現場で使っている画面のため、ユーザーの指示で急ぎの修正 PR（#2179）にした。
+  Evidence: #2179 のテスト。修正を外すと再発防止の 2 件が失敗する。
 
 ## Decision Log
 
