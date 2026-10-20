@@ -85,13 +85,16 @@ describe('procedure-manuals', () => {
     const cells = Array.from(row.children).slice(1, 6);
     expect(cells.map(cell => cell.textContent)).toEqual(['主軸', 'P-123', '加工', '研削', '仕上げ 確認']);
     cells.forEach(cell => expect(cell).toHaveClass('truncate'));
-    expect(cells[0]).toHaveClass('font-bold');
+    expect(cells[0]).toHaveClass('font-bold', 'text-[21px]');
     expect(cells[1]).toHaveClass('font-bold', 'font-mono');
     expect(cells[4]).toHaveClass('text-[#9fadb9]');
     expect(row).toHaveClass('min-h-[72px]');
     expect(row).toHaveAttribute('title', names[0]);
-    expect(Array.from(list.firstElementChild!.children).slice(1).map(cell => cell.textContent)).toEqual(['品名', '品番', '工程', '作業', '補足', 'ページ数']);
-    expect(list.firstElementChild).not.toHaveClass('sr-only');
+    const header = within(list).getByText('頁').parentElement!;
+    expect(Array.from(header.children).slice(1).map(cell => cell.textContent)).toEqual(['品名', '品番', '工程', '作業', '補足', '頁']);
+    expect(header).not.toHaveClass('sr-only');
+    expect(header).toHaveClass('grid-cols-[64px_minmax(0,1fr)_190px_64px_64px_150px_48px]');
+    expect(row).toHaveClass('grid-cols-[64px_minmax(0,1fr)_190px_64px_64px_150px_48px]');
     expect(within(list).queryByText('名前', { exact: true })).not.toBeInTheDocument();
     expect(within(list).queryByText('機種・部品')).not.toBeInTheDocument();
     for (const [index, expected] of [
@@ -99,8 +102,93 @@ describe('procedure-manuals', () => {
       [2, ['旧名称', 'DFD1', '組立', '検査', '—']],
       [3, ['親工程の旧名称', 'DFD1', '', '組立', '—']]
     ] as const) {
-      expect(Array.from(within(list).getByRole('button', { name: names[index] }).children).slice(1, 6).map(cell => cell.textContent)).toEqual(expected);
+      expect(Array.from(within(list).getByTitle(names[index]).children).slice(1, 6).map(cell => cell.textContent)).toEqual(expected);
     }
+  });
+
+  function mockPartOverview() {
+    mocks.processes.mockResolvedValue([...processes,
+      { ...processes[0], id: 'machining', name: '加工', subjectKind: 'PART' },
+      { ...processes[1], id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' },
+      { ...processes[1], id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }
+    ]);
+    const rows = ['X軸テーブル', 'X軸サドル', 'Yテーブル', 'サドル下面', 'ベッド'].map((name, index) => ({
+      ...publishedOverviewItem, title: `${name}_PART-${index + 1}_加工_研削_仕上げ`, assignmentId: `facet-${index}`,
+      modelCode: `PART-${index + 1}`, modelCodeKey: `PART-${index + 1}`, subjectKind: 'PART', processId: 'grinding'
+    }));
+    mocks.allOverview.mockResolvedValue({ processes: [
+      { processId: 'grinding', items: rows },
+      { processId: 'cutting', items: [{ ...rows[0], assignmentId: 'cutting-table', processId: 'cutting', title: '別名_PART-1_加工_切削' }] }
+    ] });
+    return rows;
+  }
+
+  it('filters by axis and name with cross-facet counts, toggles, and a process reset', async () => {
+    const rows = mockPartOverview();
+    render(<MemoryRouter initialEntries={['/?process=grinding']}><ProcedureManualBrowser /></MemoryRouter>);
+    const facetColumn = await screen.findByRole('complementary', { name: '軸と名称で絞り込み' });
+    const facets = within(facetColumn);
+    const list = screen.getByRole('region', { name: '要領書一覧' });
+    expect(list).toHaveClass('grid-cols-[190px_minmax(0,1fr)]', 'pr-16');
+    expect(list.firstElementChild).toBe(facetColumn);
+    expect(facets.getByText('5 / 5件')).toBeInTheDocument();
+    expect(facets.getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['X', 'Y', 'サドル', 'テーブル', 'ベッド']);
+    expect(facets.getByRole('button', { name: 'X' })).toHaveTextContent('X2');
+    expect(facets.getByRole('button', { name: 'サドル' })).toHaveTextContent('サドル2');
+    fireEvent.click(facets.getByRole('button', { name: 'X' }));
+    expect(facets.getByRole('button', { name: 'X' })).toHaveAttribute('aria-pressed', 'true');
+    expect(facets.getByText('2 / 5件')).toBeInTheDocument();
+    expect(facets.getByRole('button', { name: 'サドル' })).toHaveTextContent('サドル1');
+    expect(facets.getByRole('button', { name: 'ベッド' })).toBeDisabled();
+    expect(within(list).queryByRole('button', { name: rows[2].title })).not.toBeInTheDocument();
+    fireEvent.click(facets.getByRole('button', { name: 'サドル' }));
+    expect(facets.getByText('1 / 5件')).toBeInTheDocument();
+    expect(facets.getByRole('button', { name: 'X' })).toHaveTextContent('X1');
+    expect(facets.getByRole('button', { name: 'Y' })).toBeDisabled();
+    expect(facets.getByRole('button', { name: 'Y' })).toHaveTextContent('Y0');
+    expect(within(list).getByRole('button', { name: rows[1].title })).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: rows[0].title })).not.toBeInTheDocument();
+    fireEvent.click(facets.getByRole('button', { name: 'サドル' }));
+    expect(facets.getByText('2 / 5件')).toBeInTheDocument();
+    fireEvent.click(facets.getByRole('button', { name: '絞り込みを解除' }));
+    expect(facets.getByText('5 / 5件')).toBeInTheDocument();
+    expect(facets.queryByRole('button', { name: '絞り込みを解除' })).not.toBeInTheDocument();
+    fireEvent.click(facets.getByRole('button', { name: 'X' }));
+    fireEvent.click(facets.getByRole('button', { name: 'サドル' }));
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    expect(facets.getByText('1 / 1件')).toBeInTheDocument();
+    expect(facets.queryByRole('button', { name: '絞り込みを解除' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '研削' }));
+    expect(facets.getByText('5 / 5件')).toBeInTheDocument();
+    expect(facets.getByRole('button', { name: 'X' })).toHaveAttribute('aria-pressed', 'false');
+    expect(facets.getByRole('button', { name: 'サドル' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows the first known part name in viewing candidates and searches names as well as numbers', async () => {
+    mockPartOverview();
+    render(<MemoryRouter initialEntries={['/?process=grinding']}><ProcedureManualBrowser /></MemoryRouter>);
+    const candidates = within(await screen.findByRole('region', { name: '部品候補' }));
+    const candidate = candidates.getByRole('button', { name: 'PART-1' });
+    expect(within(candidate).getByText('X軸テーブル')).toHaveClass('text-xl', 'font-bold');
+    expect(within(candidate).getByText('PART-1')).toHaveClass('text-sm');
+    expect(within(candidate).queryByText('別名')).not.toBeInTheDocument();
+    const search = screen.getByRole('searchbox', { name: '部品検索' });
+    expect(search).toHaveAttribute('placeholder', '品名・品番で検索');
+    fireEvent.change(search, { target: { value: 'サドル' } });
+    expect(candidates.getByRole('button', { name: 'PART-2' })).toHaveTextContent('X軸サドル');
+    expect(candidates.queryByRole('button', { name: 'PART-1' })).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'PART-3' } });
+    expect(candidates.getByRole('button', { name: 'PART-3' })).toHaveTextContent('Yテーブル');
+    expect(candidates.queryByRole('button', { name: 'PART-2' })).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'PART-9' } });
+    expect(candidates.getByRole('button', { name: 'PART-9' })).toHaveTextContent('PART-9');
+  });
+
+  it('keeps the overview full width when there are no facet buttons', async () => {
+    render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
+    await screen.findByText('該当する要領書がありません');
+    expect(screen.queryByRole('complementary', { name: '軸と名称で絞り込み' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '要領書一覧' })).toHaveClass('grid-cols-[minmax(0,1fr)]', 'pr-16');
   });
 
   it('opens the list while nothing is selected, otherwise remembers the toggle and tolerates unavailable storage', async () => {
@@ -416,7 +504,7 @@ describe('procedure-manuals', () => {
     mocks.detail.mockResolvedValue({ ...emptyDetail, sequence: { ...emptyDetail.sequence, documents: [{ orderItemId: 'a', assemblyProcedureDocumentId: 'a', title: '公開文書A' }, { orderItemId: 'pub', assemblyProcedureDocumentId: 'v2', title: '公開組立手順' }] } });
     render(<MemoryRouter initialEntries={['/kiosk/assembly/manuals?process=assembly']}><ProcedureManualBrowser /></MemoryRouter>);
     const list = await screen.findByRole('region', { name: '要領書一覧' });
-    const row = await within(list).findByRole('button', { name: '公開組立手順' });
+    const row = await within(list).findByTitle('公開組立手順');
     expect(row).toHaveTextContent('DFD2');
     expect(row).toHaveTextContent('組立');
     expect(row).toHaveTextContent('3');
@@ -432,7 +520,7 @@ describe('procedure-manuals', () => {
     fireEvent.click(screen.getByRole('button', { name: '組立' }));
     expect(await screen.findByTestId('sequence-viewer')).not.toHaveAttribute('data-initial-document-id');
     fireEvent.click(screen.getByRole('button', { name: 'DFD2' }));
-    fireEvent.click(await screen.findByRole('button', { name: '公開組立手順' }));
+    fireEvent.click(await screen.findByTitle('公開組立手順'));
     expect(await screen.findByTestId('sequence-viewer')).toHaveAttribute('data-initial-document-id', 'v2');
     fireEvent.click(screen.getByRole('button', { name: 'DFD2' }));
     fireEvent.click(screen.getByRole('button', { name: 'DFD2' }));
@@ -592,7 +680,10 @@ describe('procedure-manuals', () => {
     expect(within(toolbar).getByRole('link', { name: '組立へ戻る' })).toHaveAttribute('href', '/kiosk/assembly');
     expect(toolbar.firstElementChild).toBe(within(toolbar).getByRole('link', { name: '組立へ戻る' }));
     expect(within(left).queryByRole('link')).not.toBeInTheDocument();
-    expect(screen.getByRole('region', { name: query ? '部品一覧' : '機種一覧' }).firstElementChild).toHaveTextContent('工程');
+    const pane = screen.getByRole('region', { name: query ? '部品一覧' : '機種一覧' });
+    expect(pane.firstElementChild).toBe(within(pane).getByRole('group', { name: '工程で絞り込み' }));
+    expect(within(pane).queryByRole('heading', { name: '工程' })).not.toBeInTheDocument();
+    expect(within(pane).queryByRole('heading', { name: query ? '部品' : '機種' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '一覧を開閉' }));
     expect(left).not.toBeVisible();
     expect(screen.getAllByRole('link', { name: '作る・直す' })).toHaveLength(1);
