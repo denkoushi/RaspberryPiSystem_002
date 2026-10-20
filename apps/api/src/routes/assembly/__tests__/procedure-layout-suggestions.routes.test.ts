@@ -67,6 +67,7 @@ describe('procedure layout suggestion routes', () => {
     const response = await app.inject({ method: 'POST', url, payload });
     expect(response.statusCode).toBe(200);
     const result = response.json();
+    expect(result).not.toHaveProperty('overflow');
     expect(result).not.toHaveProperty('plans');
     expect(result.elements.map((element: { id: string }) => element.id)).toEqual(elements.map(element => element.id));
     expect(result.addedElementIds).toEqual([]);
@@ -287,6 +288,27 @@ describe('procedure layout suggestion routes', () => {
     const next = await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements: first.json().elements } });
     expect(next.statusCode).toBe(200); expect(next.json().elements).toEqual(first.json().elements);
     expect(next.json().changes).toEqual(['直すところはありません']);
+  });
+
+  it('returns both overflow choices and keeps caption feedback on the original page', async () => {
+    register();
+    vi.mocked(vision.complete).mockResolvedValue({ rawText: 'ワークを固定する' } as never);
+    const input = Array.from({ length: 4 }, (_, i) => [
+      { ...elements[1], id: `photo-${i}`, bbox: { xRatio: 0.04, yRatio: i * 0.25, widthRatio: 0.4, heightRatio: 0.25 } },
+      { ...elements[0], id: `text-${i}`, text: '固定', bbox: { xRatio: 0.5, yRatio: i * 0.25, widthRatio: 0.4, heightRatio: 0.04 } }
+    ]).flat();
+    const response = await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements: input } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ elements: input, changes: ['写真が1ページに入りきりません'],
+      overflow: { shrink: { scalePercent: 88 }, split: { firstMovedPhotoNumber: 3 } } });
+    expect(response.json().addedElementIds).toHaveLength(4);
+    expect(response.json().overflow.split.nextPageElements.every((element: { pageIndex: number }) => element.pageIndex === 1)).toBe(true);
+    expect(prisma.assemblyProcedureCaptionFeedback.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([expect.objectContaining({ pageIndex: 0 })]), skipDuplicates: true
+    });
+    expect(vi.mocked(prisma.assemblyProcedureCaptionFeedback.createMany).mock.calls[0][0].data).toEqual(
+      expect.arrayContaining(response.json().addedElementIds.map((elementId: string) => expect.objectContaining({ elementId, pageIndex: 0 })))
+    );
   });
 
   it('returns the one-page fitting error when text alone overflows', async () => {
