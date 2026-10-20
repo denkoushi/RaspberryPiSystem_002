@@ -126,7 +126,9 @@
     command -v curl
     command -v openssl
     command -v chromium || command -v chromium-browser
-    lightdm --show-config | grep -Eq '^[[:space:]]*([A-Z][[:space:]]+)?autologin-user={{ ansible_user }}[[:space:]]*$'
+    # lightdm --show-config prints the merged configuration on stderr.
+    lightdm_config="$(lightdm --show-config 2>&1)"
+    grep -Eq '^[[:space:]]*([A-Z][[:space:]]+)?autologin-user={{ ansible_user }}[[:space:]]*$' <<<"${lightdm_config}"
     uid="$(id -u {{ ansible_user | quote }})"
     test -S "/run/user/${uid}/bus"
     test -S /tmp/.X11-unix/X0
