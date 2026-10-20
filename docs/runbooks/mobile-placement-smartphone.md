@@ -2,6 +2,16 @@
 
 最終更新: 2026-05-07（**Zero2W メイン軽量化・`/zero2w-status`・`haizenEdgeEnabled`・`HAIZEN_DISTRIBUTION_MODE`**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）／2026-05-04（**Zero2W 配膳追跡 `haizen-*` 初版**）／2026-04-24（**V26 購買照会バーコード即時確定**・[KB-339 §V26](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v26-purchase-order-barcode-instant-2026-04-24)・[deployment.md](../guides/deployment.md)）／2026-04-24（**V25 パレット可視化・カード単体スクロール**・[KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)・[deployment.md §2026-04-24](../guides/deployment.md)）／2026-04-24（**V24 一次元スキャン体感・Android 実機追記**・[KB-339 §V24](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)・[KB-297 §FKOBAINO](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）／2026-04-20（**V23 モバイル注文入力スキャン専用・棚チップ `grid-cols-3 sm:grid-cols-4`**・デプロイ Detach `20260420-211100-899` → `20260420-213004-29970`・fjv60 未・stale lock runId `20260420-212814-6231` は [deploy-status-recovery.md](./deploy-status-recovery.md) §5.2）／2026-04-18（**V22 キオスク高視認テーマ・プレビュー整合・Register/Verify 分割**／**Android ブラウザ殻方針: Chrome 継続 + Web UI/UX 改善（ADR/KB 追記）**）／2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク）**・**V20 部品検索（促音 `っ`/`ッ` の比較用写像・`q` 空でも機種名 `machineName` で suggest）**・**V19 部品検索（機種名 `machineName` AND・かな正規化拡張・数字パレット・プリセット追加）**・**V18 棚マスタ（`MobilePlacementShelf`・`GET/POST …/registered-shelves` / `POST …/shelves`）**・**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
 
+## Android Chrome アプリインストール（2026-10-20・Web側）
+
+- 公開信頼されたHTTPS証明書の導入後、Chromeで `/kiosk/mobile-placement?clientKey=...` を一度開き、メニューから「アプリをインストール」を選ぶ。以降はホーム画面の「配膳」から起動する。証明書変更・本番反映・Android実機検証はこのWeb変更とは別作業。
+- 起動先は `/kiosk/mobile-placement`（クエリなし）。既存のlocalStorageのclientKeyを使い、マニフェストやアイコンに認証情報は含めない。`display: standalone` でChromeのアドレスバーを表示せず、縦画面を指定する（OSのステータスバー等は残り得る）。
+- スコープは `/kiosk/`。メニューの購買照会 `/kiosk/purchase-order-lookup` もアプリ内で開く。Service Workerは導入せず、ローリング更新後もUIの取得は既存のサーバ配信に従う。
+- スマホ幅（既存判定の767px以下）のハブにだけ戻るガードを置く。Androidの戻るで入力を失わず、スキャンモーダルやボトムシートが開いていれば先に閉じる。サブ画面からブラウザの戻るでハブへ戻ったときは既存のsentinel履歴を再利用する。デスクトップ/Pi4向け幅ではガードを有効にしない。
+- `apps/web/public/manifest.webmanifest` とPNGアイコン3枚はViteのpublicコピーで配信する。Webイメージの `/etc/mime.types` に `application/manifest+json webmanifest` を追加し、Caddyのファイル配信でContent-Typeを確定する。gatewayはWebレスポンスをそのまま中継する。
+- 実機確認: ホームから起動してアドレスバーが出ないこと、購買照会への移動、ハブ入力中の戻る、スキャン/各シート中の戻る、サブ画面→ハブの反復を確認する。通常のChromeタブを開くだけではstandalone表示にならない。
+- ローカル検証（`feat/mobile-placement-pwa`）: `apps/web` で `pnpm exec vitest run src/features/mobile-placement src/pages/kiosk/MobilePlacementPage*` は31ファイル・124件成功、`pnpm exec tsc -b`・変更TS/TSX 6ファイルのESLint・`pnpm build` は成功。未生成だった `part-search-core`・`shelf-layout-core`・`kiosk-sop-core` は既存のbuildスクリプトで生成した。`dist` のマニフェストとPNG 3枚はpublic原本と一致し、PNG実寸も確認済み。maskableの絵柄は半径164px以内（安全領域204.8px）。Androidインストールと実配信のContent-Typeは実機未確認。
+
 ## Android ブラウザ殻（キオスク）方針メモ（2026-04-18）
 
 **背景**: 一般ブラウザ（Chrome）運用では、アドレスバー・検索 UI・タブ操作など **ブラウザ由来の誤操作**が起きうる。一方で配膳スマホは **紙票のフォーマット固定**・**スマホ 1 台**・**有償キオスクアプリ不可**・**端末機種バラつき**という制約がある。

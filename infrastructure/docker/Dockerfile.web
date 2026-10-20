@@ -134,6 +134,7 @@ RUN apk add --no-cache ca-certificates gettext \
       *) echo "$package remains below the CVE-2026-14456 fixed version: $installed_version" >&2; exit 1 ;; \
     esac; \
   done \
+  && printf 'application/manifest+json webmanifest\n' >> /etc/mime.types \
   && addgroup -g 1000 -S caddy \
   && adduser -u 1000 -S -D -H -G caddy caddy \
   && mkdir -p /srv/phase2-maintenance /data /config /var/log/caddy \
