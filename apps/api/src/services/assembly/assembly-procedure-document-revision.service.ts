@@ -31,6 +31,7 @@ import {
   type AssemblyProcedureOverlayElementInput
 } from './assembly-procedure-overlay.persistence.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
+import { resolveProcedureTextFeedback } from './procedure-text-feedback.js';
 import { resolveProcedureCaptionFeedback } from './procedure-caption-feedback.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { saveBlankProcedurePage } from './assembly-procedure-document-blank.service.js';
@@ -303,6 +304,7 @@ export class AssemblyProcedureDocumentRevisionService {
             await tx.procedureVideoLink.update({ where: { id: link.id }, data: { pageIndex: link.pageIndex + 1 } });
           }
           await tx.assemblyProcedureCaptionFeedback.updateMany({ where: { documentId: doc.id, pageIndex: { gt: afterPageIndex } }, data: { pageIndex: { increment: 1 } } });
+          await tx.assemblyProcedureTextFeedback.updateMany({ where: { documentId: doc.id, pageIndex: { gt: afterPageIndex } }, data: { pageIndex: { increment: 1 } } });
         }
         const page = await saveBlankProcedurePage(referenceImagePath);
         imageRelativePath = page.relativeUrl;
@@ -442,6 +444,21 @@ export class AssemblyProcedureDocumentRevisionService {
       }
     } catch (error) {
       logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_caption_feedback_save_failed');
+    }
+    try {
+      const feedback = await prisma.assemblyProcedureTextFeedback.findMany({
+        where: { documentId: params.documentId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+      });
+      const byId = new Map(normalized.map(element => [element.id, element]));
+      const seen = new Set<string>();
+      for (const row of feedback) {
+        if (seen.has(row.elementId)) continue;
+        seen.add(row.elementId);
+        const change = resolveProcedureTextFeedback(row, byId.get(row.elementId));
+        if (change) await prisma.assemblyProcedureTextFeedback.update({ where: { id: row.id }, data: { ...change, resolvedAt: new Date() } });
+      }
+    } catch (error) {
+      logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_text_feedback_save_failed');
     }
     await this.collectAssets(replacedAssetIds);
     return result;

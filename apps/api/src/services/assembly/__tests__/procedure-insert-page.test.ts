@@ -14,6 +14,7 @@ function fixture() {
   const links = [0, 1, 2].map(pageIndex => ({ assemblyProcedureDocumentId: 'doc', pageIndex, sortOrder: 0, id: `link-${pageIndex}` }));
   const feedback = [0, 1, 2].map(pageIndex => ({ documentId: 'doc', pageIndex }));
   feedback.push({ documentId: 'other', pageIndex: 1 });
+  const textFeedback = feedback.map(row => ({ ...row }));
   const revision = { editVersion: 4 };
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([{ id: 'doc', status: 'DRAFT', isActive: true, revisionRootId: 'doc', isRevisionHead: true, editVersion: 4 }]),
@@ -38,6 +39,9 @@ function fixture() {
         links.find(link => link.id === where.id)!.pageIndex = data.pageIndex;
       })
     },
+    assemblyProcedureTextFeedback: {
+      updateMany: vi.fn(async ({ where, data }) => { textFeedback.filter(row => row.documentId === where.documentId && row.pageIndex > where.pageIndex.gt).forEach(row => { row.pageIndex += data.pageIndex.increment; }); })
+    },
     assemblyProcedureCaptionFeedback: {
       updateMany: vi.fn(async ({ where, data }) => { feedback.filter(row => row.documentId === where.documentId && row.pageIndex > where.pageIndex.gt).forEach(row => { row.pageIndex += data.pageIndex.increment; }); })
     },
@@ -47,7 +51,7 @@ function fixture() {
     assemblyProcedureDocumentRevision: { update: vi.fn(async () => { revision.editVersion++; }) },
     assemblyProcedureDocument: { findUnique: vi.fn(async () => ({ pages, revisionMetadata: revision })) }
   };
-  return { tx, pages, overlays, links, feedback, revision };
+  return { tx, pages, overlays, links, feedback, textFeedback, revision };
 }
 
 describe('insert a blank procedure page', () => {
@@ -70,6 +74,8 @@ describe('insert a blank procedure page', () => {
     expect(data.pages.map(page => page.pageIndex)).toEqual([0, 2, 3, 1]);
     expect(data.overlays.map(element => element.pageIndex)).toEqual([0, 2, 3]);
     expect(data.links.map(link => link.pageIndex)).toEqual([0, 2, 3]);
+    expect(data.textFeedback.map(row => row.pageIndex)).toEqual([0, 2, 3, 1]);
+    expect(data.tx.assemblyProcedureTextFeedback.updateMany).toHaveBeenCalledOnce();
     expect(data.feedback.map(row => row.pageIndex)).toEqual([0, 2, 3, 1]);
     expect(data.tx.assemblyProcedureDocumentPage.update.mock.calls.map(([input]) => input.where.documentId_pageIndex.pageIndex)).toEqual([2, 1]);
     expect(data.tx.assemblyProcedureOverlayElement.updateMany).not.toHaveBeenCalled();
@@ -98,6 +104,7 @@ describe('insert a blank procedure page', () => {
     expect(data.pages.map(page => page.pageIndex)).toEqual([0, 1, 2, 3]);
     expect(data.tx.assemblyProcedureDocumentPage.update).not.toHaveBeenCalled();
     expect(data.tx.procedureVideoLink.update).not.toHaveBeenCalled();
+    expect(data.tx.assemblyProcedureTextFeedback.updateMany).not.toHaveBeenCalled();
     expect(data.tx.assemblyProcedureCaptionFeedback.updateMany).not.toHaveBeenCalled();
   });
   it('rejects a non-head revision and a lost lease before writing', async () => {

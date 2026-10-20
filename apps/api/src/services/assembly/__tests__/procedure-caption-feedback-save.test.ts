@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({
   assemblyProcedureDocumentPage: { findMany: vi.fn() },
   assemblyProcedureOverlayElement: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
   assemblyProcedureDocumentRevision: { update: vi.fn() },
+  assemblyProcedureTextFeedback: { findMany: vi.fn(), update: vi.fn() },
   assemblyProcedureCaptionFeedback: { findMany: vi.fn(), update: vi.fn() }
 }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: db }));
@@ -33,6 +34,7 @@ beforeEach(() => {
   db.assemblyProcedureOverlayElement.findMany.mockResolvedValue([]);
   db.assemblyProcedureDocument.findUnique.mockResolvedValue(saved);
   db.assemblyProcedureCaptionFeedback.findMany.mockResolvedValue([feedback]);
+  db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([]);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -80,5 +82,35 @@ describe('caption feedback after overlay save', () => {
     db.assemblyProcedureOverlayElement.createMany.mockRejectedValue(new Error('save failed'));
     await expect(save()).rejects.toThrow('save failed');
     expect(db.assemblyProcedureCaptionFeedback.findMany).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('text feedback after overlay save', () => {
+  const row = { ...feedback, originalText: 'Original line' };
+  it('resolves only the latest proposal for each element and re-resolves later edits', async () => {
+    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([row, { ...row, id: 'older' }]);
+    await save();
+    expect(db.assemblyProcedureTextFeedback.findMany).toHaveBeenCalledWith({ where: { documentId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledExactlyOnceWith({ where: { id: 'feedback' }, data: { outcome: 'KEPT', finalText: 'AI line', resolvedAt: expect.any(Date) } });
+    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([{ ...row, outcome: 'KEPT', finalText: 'AI line' }]);
+    await save([{ ...caption, text: 'Human line' }]);
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenLastCalledWith({ where: { id: 'feedback' }, data: { outcome: 'EDITED', finalText: 'Human line', resolvedAt: expect.any(Date) } });
+  });
+  it('resolves text even if caption feedback fails', async () => {
+    db.assemblyProcedureCaptionFeedback.findMany.mockRejectedValue(new Error('caption failed'));
+    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([row]);
+    await expect(save()).resolves.toBe(saved);
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledOnce();
+  });
+  it.each(['findMany', 'update'] as const)('does not fail a save when text feedback %s fails', async operation => {
+    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([row]);
+    db.assemblyProcedureTextFeedback[operation].mockRejectedValue(new Error('text failed'));
+    await expect(save()).resolves.toBe(saved);
+  });
+  it('does not resolve text feedback after a failed save', async () => {
+    db.$transaction.mockRejectedValue(new Error('save failed'));
+    await expect(save()).rejects.toThrow('save failed');
+    expect(db.assemblyProcedureTextFeedback.findMany).not.toHaveBeenCalled();
   });
 });

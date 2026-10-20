@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
+import { getProcedureTermLearningScheduler } from '../services/assembly/procedure-term-learning.scheduler.js';
 import { getBusinessHermesNightlyScheduler } from '../services/business-hermes/business-hermes-nightly.scheduler.js';
 import { getBackupScheduler } from '../services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from '../services/imports/csv-import-scheduler.js';
@@ -144,6 +145,8 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
 
   return [
     ...definitions,
+    { name: 'procedure-term-learning', start: () => getProcedureTermLearningScheduler().start(),
+      stop: () => getProcedureTermLearningScheduler().stop() },
     { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
       stop: () => getBusinessHermesNightlyScheduler().stop() },
     { name: 'fkojunst-mail-superseded-prune', start: () => getFkojunstMailSupersededPruneScheduler().start(),
@@ -315,6 +318,7 @@ export function listPostListenSchedulerNames(): string[] {
     'hermes-knowledge',
     'signage-render',
     'part-measurement-drawing-dimension-map',
+    'procedure-term-learning',
     'business-hermes-nightly',
     'fkojunst-mail-superseded-prune',
     'file-storage-integrity-backfill',
