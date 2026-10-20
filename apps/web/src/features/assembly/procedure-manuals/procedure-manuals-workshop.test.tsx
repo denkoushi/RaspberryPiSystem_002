@@ -83,6 +83,9 @@ describe('procedure-manuals workshop', () => {
     mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', items: namedItems }] });
     show(query);
     const row = await screen.findByRole('row', { name: namedItems[0].label });
+    const pane = within(screen.getByRole('region', { name: '機種一覧' }));
+    expect(pane.getByRole('heading', { name: '工程' })).toBeInTheDocument();
+    expect(pane.getByRole('heading', { name: '機種' })).toBeInTheDocument();
     const cells = within(row).getAllByRole('cell');
     expect(cells.slice(1, 6).map(cell => cell.textContent)).toEqual(['主軸', 'P-123', '加工', '研削', '仕上げ 確認']);
     cells.slice(1, 6).forEach(cell => expect(cell).toHaveClass('truncate'));
