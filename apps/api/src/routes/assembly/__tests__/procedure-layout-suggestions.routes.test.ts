@@ -43,6 +43,7 @@ describe('procedure layout suggestion routes', () => {
     vi.spyOn(AssemblyProcedureDocumentEditLeaseService.prototype, 'assertCanWrite').mockResolvedValue(undefined);
     vi.spyOn(AssemblyTemplateAccessService.prototype, 'requireAccessPassword').mockResolvedValue(undefined);
     vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ name: '架空の手順書', status: 'DRAFT', isActive: true, revisionMetadata: { revisionRootId: documentId, isRevisionHead: true } } as never);
+    vi.spyOn(prisma.procedureManualAssignment, 'count').mockResolvedValue(0);
     vi.spyOn(prisma.assemblyProcedureDocumentPage, 'findUnique').mockResolvedValue({ imageRelativePath: '/page.png' } as never);
     vi.spyOn(prisma.assemblyProcedureCaptionFeedback, 'createMany').mockResolvedValue({ count: 2 });
     vi.spyOn(prisma.assemblyProcedureAsset, 'findMany').mockResolvedValue([{ id: 'asset-photo', storageKey: 'photo-key' }] as never);
@@ -79,6 +80,20 @@ describe('procedure layout suggestion routes', () => {
     expect(JSON.parse(request.messages[1].content)).toEqual({ texts: [{ id: 'text', text: payload.elements[0].kind === 'TEXT' ? payload.elements[0].text : '' }] });
     expect(controller.ensureReady).toHaveBeenCalledWith('business_hermes');
     expect(controller.release).toHaveBeenCalledWith('business_hermes');
+  });
+
+  it('gives the assembly site knowledge only to documents filed under an assembly process', async () => {
+    register();
+    const payload = { pageIndex: 0, accessPassword: '1234', elements };
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    expect(vi.mocked(text.complete).mock.calls[0][0].messages[0].content).not.toContain('現場の知識');
+    expect(prisma.procedureManualAssignment.count).toHaveBeenCalledWith({ where: {
+      assemblyProcedureDocument: { revisionMetadata: { revisionRootId: documentId } },
+      process: { OR: [{ name: { startsWith: '組立' } }, { parent: { name: { startsWith: '組立' } } }] },
+    } });
+    vi.mocked(prisma.procedureManualAssignment.count).mockResolvedValue(1);
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    expect(vi.mocked(text.complete).mock.calls[1][0].messages[0].content).toContain('現場の知識(組立課');
   });
 
   it.each([new Error('upstream failed'), new InferenceDeferredError()])('returns 200 with original text and repaired layout after inference failure (%s)', async error => {
