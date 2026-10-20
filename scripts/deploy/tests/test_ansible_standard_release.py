@@ -109,7 +109,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         environment.tests["match"] = lambda value, pattern: re.match(pattern, value) is not None
         check = environment.compile_expression(condition)
         self.assertTrue(check(status_agent_client_key="client-key-raspi4-new-0123abcd"))
-        self.assertFalse(check(status_agent_client_key="0123456789abcdef" * 4))
+        self.assertFalse(check(status_agent_client_key="x" * 64))
 
     def test_first_install_registration_is_read_only_redacted_and_before_boundary(self) -> None:
         root = ANSIBLE / "roles/release_kiosk/tasks"
