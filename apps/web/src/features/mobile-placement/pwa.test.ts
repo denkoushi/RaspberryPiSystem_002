@@ -6,12 +6,12 @@ import { describe, expect, it } from 'vitest';
 import { haizenPhoneColors } from './ui/haizenPhoneTokens';
 
 const webRoot = process.cwd();
-const manifest = JSON.parse(readFileSync(join(webRoot, 'public/manifest.webmanifest'), 'utf8'));
+const manifest = JSON.parse(readFileSync(join(webRoot, 'public/manifest.json'), 'utf8'));
 
 describe('配膳 install manifest', () => {
   it('is linked from index.html with the phone background as theme color', () => {
     const html = new DOMParser().parseFromString(readFileSync(join(webRoot, 'index.html'), 'utf8'), 'text/html');
-    expect(html.querySelector('link[rel="manifest"]')?.getAttribute('href')).toBe('/manifest.webmanifest');
+    expect(html.querySelector('link[rel="manifest"]')?.getAttribute('href')).toBe('/manifest.json');
     expect(html.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe(haizenPhoneColors.bg);
   });
 

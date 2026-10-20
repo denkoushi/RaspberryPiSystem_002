@@ -8,9 +8,8 @@
 - 起動先は `/kiosk/mobile-placement`（クエリなし）。既存のlocalStorageのclientKeyを使い、マニフェストやアイコンに認証情報は含めない。`display: standalone` でChromeのアドレスバーを表示せず、縦画面を指定する（OSのステータスバー等は残り得る）。
 - スコープは `/kiosk/`。メニューの購買照会 `/kiosk/purchase-order-lookup` もアプリ内で開く。Service Workerは導入せず、ローリング更新後もUIの取得は既存のサーバ配信に従う。
 - スマホ幅（既存判定の767px以下）のハブにだけ戻るガードを置く。Androidの戻るで入力を失わず、スキャンモーダルやボトムシートが開いていれば先に閉じる。サブ画面からブラウザの戻るでハブへ戻ったときは既存のsentinel履歴を再利用する。デスクトップ/Pi4向け幅ではガードを有効にしない。
-- `apps/web/public/manifest.webmanifest` とPNGアイコン3枚はViteのpublicコピーで配信する。Webイメージの `/etc/mime.types` に `application/manifest+json webmanifest` を追加し、Caddyのファイル配信でContent-Typeを確定する。gatewayはWebレスポンスをそのまま中継する。
+- `apps/web/public/manifest.json` とPNGアイコン3枚はViteのpublicコピーで配信する。拡張子を `.json` にして、既存のファイル配信のまま `application/json` で返す。gatewayはWebレスポンスをそのまま中継する。
 - 実機確認: ホームから起動してアドレスバーが出ないこと、購買照会への移動、ハブ入力中の戻る、スキャン/各シート中の戻る、サブ画面→ハブの反復を確認する。通常のChromeタブを開くだけではstandalone表示にならない。
-- ローカル検証（`feat/mobile-placement-pwa`）: `apps/web` で `pnpm exec vitest run src/features/mobile-placement src/pages/kiosk/MobilePlacementPage*` は31ファイル・124件成功、`pnpm exec tsc -b`・変更TS/TSX 6ファイルのESLint・`pnpm build` は成功。未生成だった `part-search-core`・`shelf-layout-core`・`kiosk-sop-core` は既存のbuildスクリプトで生成した。`dist` のマニフェストとPNG 3枚はpublic原本と一致し、PNG実寸も確認済み。maskableの絵柄は半径164px以内（安全領域204.8px）。Androidインストールと実配信のContent-Typeは実機未確認。
 
 ## Android ブラウザ殻（キオスク）方針メモ（2026-04-18）
 
