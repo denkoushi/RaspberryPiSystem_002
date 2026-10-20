@@ -113,6 +113,9 @@
 - 型式（LMガイドや継手の型番）、文書番号、人名、社名は指示文に入れない。
 - 現場の理解を直すときは、この KB を先に直し、要約を合わせる。
 
+「整える」の提案と保存後の人の修正を記録し、同じ課の次回提案と夜間の用語学習に使う仕組みを追加した。
+仕様と検証記録は[学習ループの実装計画](../plans/procedure-tidy-learning-loop-execplan.md)を参照する。本番反映は未実施。
+
 ## References
 
 - `apps/api/src/services/assembly/procedure-site-context.ts`

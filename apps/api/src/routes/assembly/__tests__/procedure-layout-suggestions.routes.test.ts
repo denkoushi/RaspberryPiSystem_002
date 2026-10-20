@@ -45,6 +45,9 @@ describe('procedure layout suggestion routes', () => {
     vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ name: '架空の手順書', status: 'DRAFT', isActive: true, revisionMetadata: { revisionRootId: documentId, isRevisionHead: true } } as never);
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
     vi.spyOn(prisma.assemblyProcedureDocumentPage, 'findUnique').mockResolvedValue({ imageRelativePath: '/page.png' } as never);
+    vi.spyOn(prisma.assemblyProcedureTextFeedback, 'createMany').mockResolvedValue({ count: 1 });
+    vi.spyOn(prisma.assemblyProcedureTextFeedback, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.assemblyProcedureLearnedTerm, 'findMany').mockResolvedValue([]);
     vi.spyOn(prisma.assemblyProcedureCaptionFeedback, 'createMany').mockResolvedValue({ count: 2 });
     vi.spyOn(prisma.assemblyProcedureAsset, 'findMany').mockResolvedValue([{ id: 'asset-photo', storageKey: 'photo-key' }] as never);
     const buffer = await sharp({ create: { width: 1200, height: 1600, channels: 3, background: '#ffffff' } }).png().toBuffer();
@@ -83,6 +86,55 @@ describe('procedure layout suggestion routes', () => {
     expect(controller.release).toHaveBeenCalledWith('business_hermes');
   });
 
+  it('records rewritten texts with their originals and ignores unchanged texts', async () => {
+    register();
+    await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements } });
+    expect(prisma.assemblyProcedureTextFeedback.createMany).not.toHaveBeenCalled();
+    vi.mocked(text.complete).mockResolvedValue({ rawText: JSON.stringify({ texts: [{ id: 'text', text: '1. 部品を取り付ける' }] }), model: 'test' });
+    const response = await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements } });
+    expect(response.statusCode).toBe(200);
+    expect(prisma.assemblyProcedureTextFeedback.createMany).toHaveBeenCalledExactlyOnceWith({ data: [{
+      documentId, pageIndex: 0, elementId: 'text', site: null, documentName: '架空の手順書', originalText: elements[0].text, aiText: '1. 部品を取り付ける'
+    }] });
+  });
+
+  it('keeps rewritten text when text feedback insertion fails', async () => {
+    register();
+    vi.mocked(text.complete).mockResolvedValue({ rawText: JSON.stringify({ texts: [{ id: 'text', text: '1. 部品を取り付ける' }] }), model: 'test' });
+    vi.mocked(prisma.assemblyProcedureTextFeedback.createMany).mockRejectedValue(new Error('feedback failed'));
+    const response = await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().elements.find((element: { id: string }) => element.id === 'text').text).toBe('1. 部品を取り付ける');
+  });
+
+  it('uses corrections and terms only from the current site and preserves the prompt when empty or lookup fails', async () => {
+    register();
+    const payload = { pageIndex: 0, elements };
+    const system = () => vi.mocked(text.complete).mock.lastCall![0].messages[0].content;
+    for (const [site, name] of [['assembly', '組立'], ['grinding', '研削']]) {
+      vi.mocked(prisma.procedureManualAssignment.findMany).mockResolvedValue([{ process: { name, parent: null } }] as never);
+      await app.inject({ method: 'POST', url, payload });
+      const baseline = system();
+      vi.mocked(prisma.assemblyProcedureTextFeedback.findMany).mockImplementation(async ({ where }: any) => [{ aiText: `${where.site}誤り`, finalText: `${where.site}訂正` }] as never);
+      vi.mocked(prisma.assemblyProcedureLearnedTerm.findMany).mockImplementation(async ({ where }: any) => [{ wrongText: `${where.site}誤語`, rightText: `${where.site}正語` }] as never);
+      expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+      expect(system()).toContain(`AI: "${site}誤り" → 人: "${site}訂正"`);
+      expect(system()).toContain(`「${site}誤語」→「${site}正語」`);
+      expect(system()).not.toContain(site === 'assembly' ? 'grinding' : 'assembly');
+      expect(prisma.assemblyProcedureTextFeedback.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { site, outcome: 'EDITED', finalText: { not: null } } }));
+      expect(prisma.assemblyProcedureLearnedTerm.findMany).toHaveBeenLastCalledWith({ where: { site }, orderBy: { wrongText: 'asc' } });
+      for (const model of [prisma.assemblyProcedureTextFeedback, prisma.assemblyProcedureLearnedTerm]) {
+        vi.mocked(model.findMany).mockRejectedValueOnce(new Error('lookup failed'));
+        expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+        expect(system()).toBe(baseline);
+      }
+      vi.mocked(prisma.assemblyProcedureTextFeedback.findMany).mockResolvedValue([]);
+      vi.mocked(prisma.assemblyProcedureLearnedTerm.findMany).mockResolvedValue([]);
+      await app.inject({ method: 'POST', url, payload });
+      expect(system()).toBe(baseline);
+    }
+  });
+
   it('gives each department only its own site knowledge', async () => {
     register();
     const payload = { pageIndex: 0, accessPassword: '1234', elements };
@@ -91,6 +143,8 @@ describe('procedure layout suggestion routes', () => {
       .mockResolvedValue([{ process: { name, parent: parent ? { name: parent } : null } }] as never);
     expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
     expect(system(0)).not.toContain('現場の知識');
+    expect(prisma.assemblyProcedureTextFeedback.findMany).not.toHaveBeenCalled();
+    expect(prisma.assemblyProcedureLearnedTerm.findMany).not.toHaveBeenCalled();
     expect(prisma.procedureManualAssignment.findMany).toHaveBeenCalledWith({
       where: { assemblyProcedureDocument: { revisionMetadata: { revisionRootId: documentId } } },
       select: { process: { select: { name: true, parent: { select: { name: true } } } } },
@@ -242,6 +296,7 @@ describe('procedure layout suggestion routes', () => {
     controller.release.mockImplementationOnce(async () => { abort.abort(); });
     await expect(new ProcedureLayoutSuggestionService().suggest({ documentId, pageIndex: 0, elements: rowElements(), signal: abort.signal })).rejects.toMatchObject({ statusCode: 499 });
     expect(prisma.assemblyProcedureCaptionFeedback.createMany).not.toHaveBeenCalled();
+    expect(prisma.assemblyProcedureTextFeedback.createMany).not.toHaveBeenCalled();
   });
 
   it.each(['不明', 'ワークは不明', '', '架'.repeat(31), '\n空の1行目'])('does not add rejected vision text (%s)', async rawText => {
@@ -309,6 +364,19 @@ describe('procedure layout suggestion routes', () => {
     expect(vi.mocked(prisma.assemblyProcedureCaptionFeedback.createMany).mock.calls[0][0].data).toEqual(
       expect.arrayContaining(response.json().addedElementIds.map((elementId: string) => expect.objectContaining({ elementId, pageIndex: 0 })))
     );
+  });
+
+  it('records rewritten text even when the successful response offers overflow choices', async () => {
+    register();
+    const input = Array.from({ length: 4 }, (_, i) => [
+      { ...elements[1], id: `photo-${i}`, bbox: { xRatio: 0.04, yRatio: i * 0.25, widthRatio: 0.4, heightRatio: 0.25 } },
+      { ...elements[0], id: `text-${i}`, text: '1. 固定します', bbox: { xRatio: 0.5, yRatio: i * 0.25, widthRatio: 0.4, heightRatio: 0.04 } }
+    ]).flat();
+    vi.mocked(text.complete).mockResolvedValue({ rawText: JSON.stringify({ texts: [{ id: 'text-0', text: '1. 固定する' }] }), model: 'test' });
+    const response = await app.inject({ method: 'POST', url, payload: { pageIndex: 0, elements: input } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toHaveProperty('overflow');
+    expect(prisma.assemblyProcedureTextFeedback.createMany).toHaveBeenCalledExactlyOnceWith({ data: [expect.objectContaining({ elementId: 'text-0', originalText: '1. 固定します', aiText: '1. 固定する', pageIndex: 0 })] });
   });
 
   it('returns the one-page fitting error when text alone overflows', async () => {

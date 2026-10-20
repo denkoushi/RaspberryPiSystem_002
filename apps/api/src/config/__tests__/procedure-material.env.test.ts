@@ -5,10 +5,14 @@ import { procedureMaterialEnvShape } from '../env/procedure-material.js';
 const schema = z.object(procedureMaterialEnvShape);
 describe('procedure material image description configuration', () => {
   it('uses safe defaults and parses an explicit disabled flag', () => {
-    expect(schema.parse({})).toEqual({ PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_ENABLED: true,
+    expect(schema.parse({})).toEqual({ ASSEMBLY_PROCEDURE_TERM_LEARNING_ENABLED: 'true', PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_ENABLED: true,
       PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_CRON: '*/5 * * * *', PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_BATCH_SIZE: 3,
       PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED: false, PROCEDURE_MATERIAL_SPLIT_SUGGESTION_TIMEOUT_MS: 20000 });
     expect(schema.parse({ PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_ENABLED: 'false' }).PROCEDURE_MATERIAL_IMAGE_DESCRIPTION_ENABLED).toBe(false);
+  });
+  it('parses the term learning flag and rejects invalid values', () => {
+    expect(schema.parse({ ASSEMBLY_PROCEDURE_TERM_LEARNING_ENABLED: 'false' }).ASSEMBLY_PROCEDURE_TERM_LEARNING_ENABLED).toBe('false');
+    expect(schema.safeParse({ ASSEMBLY_PROCEDURE_TERM_LEARNING_ENABLED: 'yes' }).success).toBe(false);
   });
   it('accepts the split flag, optional key and timeout boundaries', () => {
     expect(schema.parse({ PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED: ' TRUE ', TYPESAFE_API_KEY: 'test-key' }))

@@ -133,6 +133,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'hermes-knowledge',
       'signage-render',
       'part-measurement-drawing-dimension-map',
+      'procedure-term-learning',
       'business-hermes-nightly',
       'fkojunst-mail-superseded-prune',
       'file-storage-integrity-backfill',

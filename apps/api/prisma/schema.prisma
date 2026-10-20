@@ -3297,6 +3297,43 @@ model AssemblyProcedureAsset {
   @@index([ownerDocumentId, createdAt], map: "AssemblyProcedureAsset_idx_owner_created")
 }
 
+enum AssemblyProcedureTextFeedbackOutcome {
+  PROPOSED
+  KEPT
+  EDITED
+  REVERTED
+}
+
+model AssemblyProcedureTextFeedback {
+  id           String                               @id @default(uuid())
+  documentId   String
+  pageIndex    Int
+  elementId    String
+  site         String?
+  documentName String
+  originalText String
+  aiText       String
+  finalText    String?
+  outcome      AssemblyProcedureTextFeedbackOutcome @default(PROPOSED)
+  createdAt    DateTime                             @default(now())
+  resolvedAt   DateTime?
+
+  @@index([documentId, elementId])
+  @@index([site, outcome, resolvedAt])
+}
+
+model AssemblyProcedureLearnedTerm {
+  id            String   @id @default(uuid())
+  site          String
+  wrongText     String
+  rightText     String
+  occurrences   Int
+  documentCount Int
+  updatedAt     DateTime @updatedAt
+
+  @@unique([site, wrongText])
+}
+
 model AssemblyProcedureCaptionFeedback {
   id           String                                  @id @default(uuid())
   documentId   String
