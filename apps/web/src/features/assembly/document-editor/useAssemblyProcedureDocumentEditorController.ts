@@ -12,6 +12,7 @@ import {
   isOverlayDraftSaveable,
   overlayDraftReducer,
   overlayDraftSnapshot,
+  shiftOverlayPages,
   updateOverlayBBox,
   type OverlayDraftAction
 } from './assemblyDocumentEditorDraft';
@@ -33,7 +34,11 @@ import type { AssemblyProcedureDocumentDto, AssemblyProcedureTextCandidateDto } 
 import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 type OverlayHistory = { past: AssemblyProcedureOverlayElement[][]; present: AssemblyProcedureOverlayElement[]; future: AssemblyProcedureOverlayElement[][]; dragStart: AssemblyProcedureOverlayElement[] | null };
-function historyReducer(state: OverlayHistory, action: OverlayDraftAction | { type: 'undo' } | { type: 'redo' } | { type: 'beginDrag' } | { type: 'endDrag' }): OverlayHistory {
+function historyReducer(state: OverlayHistory, action: OverlayDraftAction | { type: 'shiftPages'; afterPageIndex: number } | { type: 'undo' } | { type: 'redo' } | { type: 'beginDrag' } | { type: 'endDrag' }): OverlayHistory {
+  if (action.type === 'shiftPages') {
+    const shift = (elements: AssemblyProcedureOverlayElement[]) => shiftOverlayPages(elements, action.afterPageIndex);
+    return { past: state.past.map(shift), present: shift(state.present), future: state.future.map(shift), dragStart: state.dragStart ? shift(state.dragStart) : null };
+  }
   if (action.type === 'beginDrag') return { ...state, dragStart: state.present };
   if (action.type === 'endDrag') {
     if (!state.dragStart) return state;
@@ -164,6 +169,27 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     disabled: baseReadOnly || busy || conflict || !editLease.mine,
     onStart: () => { setSelectedOverlayId(null); setSelectionMode(false); setMessage(null); },
     onApply: proposed => { dispatch({ type: 'applyLayout', pageIndex: selectedPageIndex, elements: proposed }); setMessage('整えました。元に戻せます'); },
+    onApplySplit: async (proposed, nextPageElements) => {
+      if (!document) return false;
+      setBusy(true);
+      try {
+        const next = await addBlankAssemblyProcedurePage({ id: document.id, holderToken: editLease.holderToken, accessPassword: passwordInput, expectedEditVersion: document.editVersion ?? 0, afterPageIndex: selectedPageIndex });
+        setDocument(current => ({ ...next, assets: { ...next.assets, ...current?.assets } }));
+        setBaselineSnapshot(current => current === null ? null : overlayDraftSnapshot(shiftOverlayPages(JSON.parse(current) as AssemblyProcedureOverlayElement[], selectedPageIndex)));
+        dispatch({ type: 'shiftPages', afterPageIndex: selectedPageIndex });
+        dispatch({ type: 'splitLayout', pageIndex: selectedPageIndex, elements: proposed, nextPageElements });
+        setMessage('2ページに分けました');
+        return true;
+      } catch (error) {
+        const handled = onEditLeaseError(error);
+        if (!handled) {
+          const nextConflict = readDocumentEditorConflict(error);
+          if (nextConflict) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
+          setErrorMessage('ページを分けられませんでした');
+        }
+        return false;
+      } finally { setBusy(false); }
+    },
     onEditLeaseError
   });
   const readOnly = baseReadOnly || layoutSuggestions.locked;

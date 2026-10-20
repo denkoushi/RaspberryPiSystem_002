@@ -14,7 +14,7 @@ import type { TextCompletionPort } from '../inference/ports/text-completion.port
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 import { ASSEMBLY_SITE_CONTEXT } from './procedure-site-context.js';
-import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts } from './procedure-layout.js';
+import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts, suggestProcedureLayoutOverflow } from './procedure-layout.js';
 
 // Site knowledge only helps the department it was read from; grinding text
 // lost words to look-alike assembly terms (KB-420).
@@ -208,6 +208,15 @@ export class ProcedureLayoutSuggestionService {
       return procedureLayoutSuggestionResponseSchema.parse({ elements: result.elements, addedElementIds, changes: changes.length ? changes : ['直すところはありません'] });
     } catch (error) {
       params.signal.throwIfAborted();
+      if (error instanceof ProcedureLayoutError && error.message === 'Page does not fit' && rows) {
+        const overflow = suggestProcedureLayoutOverflow({ elements, page: pageSize, rows, originalElements: params.elements, pageIndex: params.pageIndex });
+        if (overflow.shrink || overflow.split) {
+          for (const option of [overflow.shrink, overflow.split]) {
+            if (option) option.changes = [...option.changes, ...textChanges, ...(addedElementIds.length ? [`写真を読んで ${addedElementIds.length} 行足した`] : [])].slice(0, 8);
+          }
+          return procedureLayoutSuggestionResponseSchema.parse({ elements: params.elements, addedElementIds, changes: ['写真が1ページに入りきりません'], overflow });
+        }
+      }
       if (error instanceof ProcedureLayoutError) throw new ApiError(422, 'このページは1枚に収まりません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_DOES_NOT_FIT');
       throw new ApiError(502, 'いまは提案できません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_INVALID_RESULT');
     }

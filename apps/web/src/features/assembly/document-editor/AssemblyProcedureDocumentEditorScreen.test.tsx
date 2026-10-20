@@ -71,7 +71,7 @@ function makeController(
     layoutSuggestions: {
       state: { status: 'idle' }, locked: false, canSuggest: false,
       start: vi.fn(async () => undefined), cancel: vi.fn(), apply: vi.fn(),
-      previewElements: null, showBefore: vi.fn()
+      previewElements: null, showBefore: vi.fn(), selectOption: vi.fn(), appliedCaptionElementIds: []
     },
     onEditLeaseError: vi.fn(() => false),
     beginOverlayDrag: vi.fn(),

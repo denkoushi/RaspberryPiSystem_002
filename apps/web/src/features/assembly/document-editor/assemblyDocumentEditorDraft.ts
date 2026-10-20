@@ -9,6 +9,7 @@ import type {
 export type OverlayDraftAction =
   | { type: 'replace'; elements: AssemblyProcedureOverlayElement[]; preserveHistory?: boolean }
   | { type: 'applyLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[] }
+  | { type: 'splitLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[]; nextPageElements: AssemblyProcedureOverlayElement[] }
   | { type: 'add'; element: AssemblyProcedureOverlayElement }
   | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
@@ -64,6 +65,10 @@ export function overlayDraftReducer(
   action: OverlayDraftAction
 ): AssemblyProcedureOverlayElement[] {
   switch (action.type) {
+    case 'splitLayout':
+      return [...state.filter(element => element.pageIndex !== action.pageIndex && element.pageIndex !== action.pageIndex + 1),
+        ...action.elements.map(element => ({ ...element, pageIndex: action.pageIndex })),
+        ...action.nextPageElements.map(element => ({ ...element, pageIndex: action.pageIndex + 1 }))];
     case 'applyLayout': {
       const proposed = new Map(action.elements.map(element => [element.id, element]));
       const existingIds = new Set(state.filter(element => element.pageIndex === action.pageIndex).map(element => element.id));
@@ -101,6 +106,10 @@ export function overlayDraftReducer(
     default:
       return state;
   }
+}
+
+export function shiftOverlayPages(elements: AssemblyProcedureOverlayElement[], afterPageIndex: number): AssemblyProcedureOverlayElement[] {
+  return elements.map(element => element.pageIndex > afterPageIndex ? { ...element, pageIndex: element.pageIndex + 1 } : element);
 }
 
 export function documentOverlayElements(document: AssemblyProcedureDocumentDto): AssemblyProcedureOverlayElement[] {
