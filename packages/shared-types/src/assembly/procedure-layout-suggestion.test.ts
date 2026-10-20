@@ -32,4 +32,15 @@ describe('procedure layout suggestion contracts', () => {
       { ...response, addedElementIds: ['text', 'text'] }, { ...response, changes: [] }
     ]) expect(procedureLayoutSuggestionResponseSchema.safeParse(invalid).success).toBe(false);
   });
+  it('validates added captions within every overflow alternative instead of the original elements', () => {
+    const added = { ...elements[0], id: 'added' };
+    const response = { elements, addedElementIds: ['added'], changes: ['写真が1ページに入りきりません'], overflow: {
+      shrink: { elements: [...elements, added], changes: ['写真を縮めた'], scalePercent: 88 },
+      split: { elements: [elements[0]], nextPageElements: [elements[1], added].map(element => ({ ...element, pageIndex: 1 })), changes: ['2ページに分けた'], firstMovedPhotoNumber: 2 }
+    } };
+    expect(procedureLayoutSuggestionResponseSchema.safeParse(response).success).toBe(true);
+    expect(procedureLayoutSuggestionResponseSchema.safeParse({ ...response, overflow: {} }).success).toBe(false);
+    expect(procedureLayoutSuggestionResponseSchema.safeParse({ ...response, overflow: { shrink: { ...response.overflow.shrink, elements } } }).success).toBe(false);
+    expect(procedureLayoutSuggestionResponseSchema.safeParse({ ...response, overflow: { shrink: { ...response.overflow.shrink, scalePercent: 49 } } }).success).toBe(false);
+  });
 });
