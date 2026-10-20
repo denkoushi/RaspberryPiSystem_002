@@ -31,7 +31,7 @@ update-frequency: medium
    ↓
 2. SSH鍵認証の設定（サーバーからクライアントへ）
    ↓
-3. Gitリポジトリのクローン
+3. 標準リリースの準備
    ↓
 4. status-agentの設定と起動
    ↓
@@ -216,23 +216,11 @@ ssh <ユーザー名>@<IPアドレス>
 
 ---
 
-## Step 3: Gitリポジトリのクローン
+## Step 3: 標準リリースの準備
 
-### 3.1 クライアント端末でリポジトリをクローン
+### 3.1 Pi4にリポジトリをクローンしない
 
-**クライアント端末で実行:**
-
-```bash
-# リポジトリをクローン
-cd /opt
-sudo git clone https://github.com/denkoushi/RaspberryPiSystem_002.git
-
-# 所有者を変更（必要に応じて）
-sudo chown -R <ユーザー名>:<ユーザー名> /opt/RaspberryPiSystem_002
-
-# 例:
-# sudo chown -R tools03:tools03 /opt/RaspberryPiSystem_002
-```
+標準releaseはSHA固定imageと配布ファイルだけを使用する。新規Pi4の `/opt/RaspberryPiSystem_002` は作成せず、空のまま初回導入へ進む。以降のinventory操作は管理側のリポジトリで行い、通常の変更・検証手順で反映する。
 
 ### 3.2 インベントリファイルへの追加
 
@@ -251,22 +239,19 @@ nano infrastructure/ansible/inventory.yml
 all:
   children:
     clients:
-      hosts:
-        # 既存のクライアント
-        raspberrypi4:
-          ansible_host: 192.168.128.102
-          ansible_user: tools03
-        raspberrypi3:
-          ansible_host: 192.168.128.152
-          ansible_user: signageras3
-        # 新規クライアントを追加
-        <ホスト名>:
-          ansible_host: <IPアドレス>
-          ansible_user: <ユーザー名>
-      vars:
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
-        ansible_python_interpreter: /usr/bin/python3
+      children:
+        kiosk:
+          hosts:
+            <ホスト名>:
+              ansible_host: <IPアドレス>
+              ansible_user: <ユーザー名>
+              manage_kiosk_browser: true
+              kiosk_initial_route: assembly
+              nfc_agent_client_id: <登録済みNFCクライアントID>
 ```
+
+status-agentとNFCの認証情報も既存のinventory/Vault契約に従って設定する。秘密値をコマンド例やログへ出さない。
+
 
 ### 3.3 Ansible接続テスト
 
@@ -291,285 +276,42 @@ ansible all -i infrastructure/ansible/inventory.yml -m ping
 
 ### 4.1 サーバー側でクライアントデバイスを登録
 
-**管理画面で実行:**
+初回導入より前に、inventoryの `status_agent_client_key` と同じキーをPi5の `ClientDevice.apiKey` へ登録する。status-agent/heartbeatは未登録端末を自動登録しない。
 
-1. ブラウザで管理画面にアクセス: `https://192.168.128.131/admin`
-2. 「クライアント端末管理」ページに移動
-3. 「新規追加」ボタンをクリック
-4. 以下の情報を入力:
-   - **名前**: クライアントの識別名（例: `Raspberry Pi 4 - キオスク1`）
-   - **クライアントID**: 一意のID（例: `raspberrypi4-kiosk1`）
-   - **APIキー**: 自動生成または手動入力
-   - **場所**: 設置場所（例: `1F 受付`）
-
-5. 「保存」ボタンをクリック
-
-**または、APIで直接登録:**
+**Pi5上で実行**（対象host名は実際の端末に置き換える）:
 
 ```bash
-# ログインしてトークンを取得
-TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+cd /opt/RaspberryPiSystem_002/infrastructure/ansible
+# 安全な方法で事前に設定済みの管理者資格情報をexportする（値を履歴へ書かない）
+export ADMIN_ACCESS_TOKEN
+# トークンの代わりにユーザー名・パスワードを使う場合:
+# export ADMIN_USERNAME ADMIN_PASSWORD
 
-# クライアントデバイスを登録
-curl -X POST http://192.168.128.131:8080/api/clients/devices \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Raspberry Pi 4 - キオスク1",
-    "clientId": "raspberrypi4-kiosk1",
-    "apiKey": "client-key-raspberrypi4-kiosk1",
-    "location": "1F 受付"
-  }'
+REGISTER_CLIENT_HOST=raspi4-assembly-02 DRY_RUN=1 ../../scripts/register-clients.sh
+# 対象host・clientId・key: resolved (redacted) を確認し、警告がなければ登録する
+REGISTER_CLIENT_HOST=raspi4-assembly-02 ../../scripts/register-clients.sh
 ```
 
-### 4.1.1 `register-clients.sh` を使う場合の注意（重複登録防止）
+APIの既定値はPi5ローカルの `http://127.0.0.1:8080/api`。必要な場合だけ `API_BASE_URL` を指定する。Ansibleはこのcwdの `ansible.cfg` のVault設定を使い、key/locationのテンプレートをcontroller上で解決する。DRY_RUNも変数を解決するが、APIへの接続・登録はしない。キーは一部も表示しない。解決失敗はhost名だけの警告でスキップするため、警告を解消し `[SUCCESS]` を確認してから初回導入へ進む。
 
-`scripts/register-clients.sh` は `inventory.yml` から `status_agent_client_key` を読み取り登録します。  
-未解決テンプレート（例: `{{ vault_status_agent_client_key ... }}`）が残っていると、誤ったAPIキーで重複登録されるため、実行前に必ずドライランで確認してください。
+`kiosk_initial_route` が設定されていれば登録時に反映する（組立端末は `assembly`、自主検査端末は `self_inspection`）。詳細な初回導入手順は [deployment.md](./deployment.md#空のpi4キオスクへの初回導入) を参照する。
+
+### 4.2 Pi4のagentとキオスクを標準経路で導入
+
+Pi4では、上記の端末登録とinventory設定後に [空のPi4キオスクへの初回導入](./deployment.md#空のpi4キオスクへの初回導入) を実施する。OS Desktop・Docker Compose・Desktop Autologinと稼働中のlabwcセッションが前提となる。廃止済みの `playbooks/deploy.yml`、手動のstatus設定コピー、`setup-nfc-agent.sh` は初回導入に使わない。先にstatus設定を置くと空端末の安全検証が拒否する。
 
 ```bash
-cd /opt/RaspberryPiSystem_002
-
-# 先にドライランで判定結果を確認（API登録は行わない）
-DRY_RUN=1 SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
-
-# 問題なければ本実行
-SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
-
-# 新規端末だけを登録し、既存端末のlastSeenAtを更新しない場合
-REGISTER_CLIENT_HOST=raspi4-assembly-01 SERVER_IP=100.106.158.2 ./scripts/register-clients.sh
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspi4-assembly-02 --first-install
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-assembly-02 --first-install
 ```
 
-**確認ポイント**:
-- `Skip client ... unresolved/invalid status_agent_client_key detected` が出る端末は、inventoryのキー定義を見直す
-- 実機に対応する端末のみが `[SUCCESS]` で登録される
-- 再実行してもクライアント件数が増えない（冪等）
+`release_kiosk` がstatus-agentとtimer、NFC等の有効なagent設定・container、IBus/Mozc・PC/SC、kiosk-browserとhotcornerを配置し、healthを確認する。Pi4上のGit cloneやChromium互換symlinkは不要で、インストール済みbrowserを解決する。次回からは `--first-install` を外す。Pi4以外はそれぞれの端末Runbookを使用する。
 
-**現時点での運用方針（2026-02-28）**:
-- **新規端末追加時は固定キーを使用することを推奨**
-  - 例: `raspi4-robodrill01`の`client-key-raspi4-robodrill01-kiosk1`（`inventory.yml`に直接文字列で定義）
-  - vault管理のテンプレート（`{{ vault_status_agent_client_key ... }}`）は`register-clients.sh`でスキップされる
-- **既存端末（`raspberrypi3`, `raspberrypi4`, `raspberrypi5`）について**:
-  - vaultで管理されているが、`register-clients.sh`はスキップされる
-  - 既存登録済みであれば `status-agent` の **`POST /api/clients/status`**（`x-client-key`）で継続運用できる
-  - 未登録の新端末は **先に `POST /api/clients` または `register-clients.sh` で登録**する（`status-agent` / `heartbeat` による自動登録はしない）
-- **場所（location）設定について**:
-  - `status_agent_location`は`register-clients.sh`で使用されるが、vaultテンプレートのためスキップされる
-  - `status-agent`はlocationを送信しないため、DBの`location`は`status-agent`のheartbeatでは更新されない
-  - 場所を設定する場合は、管理コンソールから直接編集するか、DB直接更新が必要（`UPDATE "ClientDevice" SET "location" = '...' WHERE "apiKey" = '...'`）
-  - `inventory.yml`の`status_agent_location`を更新した場合は、Pi5へのデプロイで反映される（将来の`register-clients.sh`実行時に使用される）
-- **端末別のキオスク起動先について**:
-  - inventoryに`kiosk_initial_route`がある場合、登録時に`ClientDevice.kioskInitialRoute`へ反映する
-  - 組立専用端末は`kiosk_initial_route: assembly`とし、`/kiosk/assembly`を起動先にする
-  - 自主検査専用端末は`kiosk_initial_route: self_inspection`とし、`/kiosk/part-measurement/self-inspection`を起動先にする
-- **vault管理のキーを直接登録する必要が出た場合**:
-  - 将来的にAnsible経由での変数解決方式へ移行することを検討（詳細は [KB-278](../knowledge-base/infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入) の「次のフェーズの検討タイミング」を参照）
+## Step 5: キオスク・NFCの確認
 
-### 4.2 クライアント端末でstatus-agentを設定
+標準runのstatus/recapが成功したことを確認し、実画面で日本語入力と初期routeを確認する。NFCを使う端末はUSBリーダーを接続し、`http://localhost:7071/api/agent/status` の `readerConnected: true` と実際のカード読み取りを確認する。端末側の設定ファイルやunitを手動で置き換えない。
 
-**クライアント端末で実行:**
-
-```bash
-cd /opt/RaspberryPiSystem_002
-
-# 設定ファイルのテンプレートをコピー
-sudo cp clients/status-agent/status-agent.conf.example /etc/raspi-status-agent.conf
-
-# 設定ファイルを編集
-sudo nano /etc/raspi-status-agent.conf
-```
-
-**設定内容:**
-
-```ini
-# APIサーバーのURL
-API_BASE_URL=http://192.168.128.131:8080/api
-
-# クライアントID（サーバー側で登録したID）
-CLIENT_ID=raspberrypi4-kiosk1
-
-# APIキー（サーバー側で登録したキー）
-CLIENT_KEY=client-key-raspberrypi4-kiosk1
-
-# ログファイルのパス（オプション）
-LOG_FILE=/var/log/raspi-status-agent.log
-
-# リクエストタイムアウト（秒）
-REQUEST_TIMEOUT=10
-
-# TLS証明書の検証をスキップ（社内ネットワーク限定）
-TLS_SKIP_VERIFY=1
-```
-
-### 4.3 status-agentの手動テスト
-
-**クライアント端末で実行:**
-
-```bash
-cd /opt/RaspberryPiSystem_002/clients/status-agent
-
-# ドライラン（実際には送信しない）
-STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf ./status-agent.py --dry-run
-
-# 実際に送信（ドライランを外す）
-STATUS_AGENT_CONFIG=/etc/raspi-status-agent.conf ./status-agent.py
-```
-
-**期待される結果:**
-- エラーなく実行される
-- サーバーのログに状態報告が記録される
-
-### 4.4 systemdサービスとして登録
-
-**クライアント端末で実行:**
-
-```bash
-cd /opt/RaspberryPiSystem_002
-
-# systemdサービスファイルをコピー
-sudo cp clients/status-agent/status-agent.service /etc/systemd/system/
-sudo cp clients/status-agent/status-agent.timer /etc/systemd/system/
-
-# systemdをリロード
-sudo systemctl daemon-reload
-
-# タイマーを有効化・起動
-sudo systemctl enable --now status-agent.timer
-
-# 状態確認
-systemctl status status-agent.timer
-systemctl status status-agent.service
-```
-
-**期待される結果:**
-- `status-agent.timer`が`active (waiting)`状態
-- `status-agent.service`が1分ごとに実行される
-
----
-
-## Step 5: kiosk-browser.serviceの設定と起動（キオスク端末の場合）
-
-**重要**: キオスク端末（研削メイン端末など）として使用する場合は、この手順を実行してください。
-
-### 5.1 chromium-browserシンボリックリンクの作成（Debian Trixie対応）
-
-**Debian Trixie（Debian 13）では`chromium-browser`パッケージが存在せず、`chromium`パッケージのみが利用可能です。**
-
-**⚠️ 注意（2026-02-28更新）**: 現在はAnsibleロール（`roles/kiosk/tasks/main.yml`）で自動化されており、デプロイ時に自動的にシンボリックリンクが作成されます。以下の手動手順は、Ansibleデプロイ前の初期セットアップ時のみ必要です。
-
-**クライアント端末で実行:**
-
-```bash
-# chromiumがインストールされているか確認
-which chromium || echo "chromium not found"
-
-# chromium-browserシンボリックリンクを作成
-sudo ln -sf /usr/bin/chromium /usr/bin/chromium-browser
-
-# 確認
-which chromium-browser && chromium-browser --version | head -1
-```
-
-**期待される結果:**
-- `/usr/bin/chromium-browser`が`/usr/bin/chromium`へのシンボリックリンクとして作成される
-- `chromium-browser --version`が正常に動作する
-
-### 5.2 kiosk-browser.serviceの有効化・起動
-
-**クライアント端末で実行:**
-
-```bash
-# systemdをリロード
-sudo systemctl daemon-reload
-
-# 自動起動を有効化
-sudo systemctl enable kiosk-browser.service
-
-# サービスを起動
-sudo systemctl start kiosk-browser.service
-
-# 状態確認
-systemctl status kiosk-browser.service --no-pager | head -15
-```
-
-**期待される結果:**
-- `kiosk-browser.service`が`active (running)`状態
-- `enabled`で自動起動が有効化されている
-- chromiumプロセスが実行中で、キオスクURLを開いている
-
-### 5.3 トラブルシューティング
-
-**エラー: `chromium-browser: not found`**
-- 原因: Debian Trixieでは`chromium-browser`パッケージが存在しない
-- 解決策: 上記5.1の手順でシンボリックリンクを作成
-
-**エラー: `kiosk-browser.service: Failed with result 'exit-code'`**
-- 原因: `chromium-browser`コマンドが見つからない
-- 解決策: シンボリックリンクの存在を確認（`ls -la /usr/bin/chromium-browser`）
-
-**ログ確認:**
-```bash
-# サービスログを確認
-journalctl -u kiosk-browser.service -n 20 --no-pager
-```
-
-**関連KB**: 
-- [KB-280: Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）](../knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出)
-- [KB-281: Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む）](../knowledge-base/infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む)
-
----
-
-## Step 5.5: NFCエージェントの設定と起動（キオスクでNFCを使う場合）
-
-**重要**: キオスク端末でNFCリーダー（工具持出・計測機器持出等）を使う場合は、この手順を実行してください。
-
-**注意（2026-03-05更新）**: 標準デプロイ（`update-all-clients.sh`）実行時、client role が自動で以下を実施します。
-
-- **pcscd**（PC/SC デーモン）と **pcsc-tools** の導入・起動
-- nfc-agent 用 `.env` の配布
-- Docker Compose による **nfc-agent** コンテナの起動・維持
-
-したがって、**inventory.yml に `nfc_agent_client_id` が定義された Pi4 に対して標準デプロイを実行すれば、NFCリーダーは正常動作します。** 以下の手順は **Ansibleデプロイ前の初期セットアップ時** または **手動復旧時** のみ必要です。
-
-### 5.5.1 前提条件
-
-- `inventory.yml` に `nfc_agent_client_id` と `nfc_agent_client_secret` が定義されていること
-- **Pi4 に Docker がインストールされていること**（未導入の場合、デプロイ時に fail します）
-- NFCリーダー（Sony RC-S300/S1 等）が USB 接続されていること
-
-**Docker が未導入の新規 Pi4 の場合**（2026-03-05 追記: raspi4-robodrill01 で発生した事象）:
-
-```bash
-# Pi4 で実行
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-# ログアウト・再ログイン後、docker コマンドが使えることを確認
-```
-
-### 5.5.2 手動セットアップ（デプロイ前のみ）
-
-**クライアント端末で実行:**
-
-```bash
-cd /opt/RaspberryPiSystem_002
-sudo scripts/client/setup-nfc-agent.sh
-```
-
-**期待される結果:**
-- `clients/nfc-agent/.env` が作成される（未存在時は `.env.example` からコピー）
-- Docker Compose で nfc-agent コンテナが起動する
-
-### 5.5.3 動作確認
-
-```bash
-curl http://localhost:7071/api/agent/status
-```
-
-期待: `readerConnected: true` が含まれる JSON が返ること。
-
-**関連**: [NFCリーダーのトラブルシューティング](../troubleshooting/nfc-reader-issues.md)、[KB-291](../knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md)
+問題がある場合は [デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md) と [NFCリーダーのトラブルシューティング](../troubleshooting/nfc-reader-issues.md) を参照する。
 
 ---
 

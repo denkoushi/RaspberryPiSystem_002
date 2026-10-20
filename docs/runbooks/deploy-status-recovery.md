@@ -39,6 +39,14 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-
 
 planの対象hostとroleを確認し、明示承認後にcanonical entrypointから新しいrunを開始する。途中taskだけの再開、個別hostへの直接Ansible、SSH先のcheckoutは行わない。
 
+### Pi4初回導入の失敗後
+
+登録確認のpreflightが失敗した場合は、まだ初期導入を開始していないためempty rollbackは実行しない。API接続とinventoryの資格情報を確認し、[Pi5での端末登録手順](../guides/deployment.md#空のpi4キオスクへの初回導入) をDRY_RUNから実施する。登録確認は `GET /api/kiosk/sites`（登録済み200、未登録401）で、`lastSeenAt` やstatusを更新しない。
+
+`--first-install` の復旧先は空のキオスクであり、以前のimageを復元しない。prepare段階の失敗も含め、候補unitを停止・無効化してcontainerと新規volumeを除去し、配置ファイルとIBus/labwc設定を復元する。aptで導入したOSパッケージはアンインストールしない。既存desktopの無関係なデータは保持する。
+
+journalで `Fail the release after verified empty rollback` と、元の失敗理由、recapを確認する。復旧検証に失敗した場合はstagingを保持するため、途中のtaskだけを再実行せず原因を調査する。接続断・電源断ではrescueが完走できない場合もある。既存状態を削除してpreflightを迂回しない。初回成功は `/var/lib/raspi-release/standard/completed-<inventory_hostname>.json` に残り、次回は通常更新を使う。旧来の標準releaseには完了markerがないため、既存 `/etc/raspi-release`・project・status設定・unitも初回導入を拒否する証拠として扱う。
+
 ## 3. 復旧できたことを確認する
 
 - 全対象roleが正常終了し、failed/unreachableが0である。

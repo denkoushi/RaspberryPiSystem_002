@@ -148,6 +148,7 @@ def parser() -> Parser:
     value.add_argument("--inventory")
     value.add_argument("--limit", default="")
     value.add_argument("--full-fleet", action="store_true")
+    value.add_argument("--first-install", action="store_true", help="install an empty Pi4 kiosk; requires exact kiosk host names")
     value.add_argument("--print-plan", action="store_true")
     value.add_argument("--detach", action="store_true")
     value.add_argument("--torque-cutover", action="store_true")
@@ -175,6 +176,12 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         setattr(args, name, explicit or positional)
     if args.full_fleet and args.limit:
         raise UsageError("--full-fleet cannot be combined with --limit")
+    if args.first_install:
+        if args.full_fleet or not args.limit or args.torque_cutover or args.hermes_search_trial_maintenance:
+            raise UsageError("--first-install requires exact Pi4 kiosk --limit hosts; full-fleet and other mutation modes are forbidden")
+        hosts = re.split(r"[:,]", args.limit)
+        if any(not SAFE_INVENTORY_HOST.fullmatch(host) for host in hosts) or len(set(hosts)) != len(hosts):
+            raise UsageError("--first-install --limit must be an exact host or colon/comma-separated host list; patterns are forbidden")
     if args.hermes_search_trial_maintenance and args.limit != "raspberrypi5":
         raise UsageError("Hermes search trial maintenance requires an exact --limit raspberrypi5")
     if args.hermes_search_trial_maintenance and (args.full_fleet or args.torque_cutover):
@@ -182,7 +189,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
     if args.status:
-        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.skip_kiosk_notice, args.hermes_search_trial_maintenance, args.execute_standard_route)):
+        if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.first_install, args.skip_kiosk_notice, args.hermes_search_trial_maintenance, args.execute_standard_route)):
             raise UsageError("--status accepts only RUN_ID and optional --inventory")
         if not RUN_ID.fullmatch(args.status):
             raise UsageError("run ID must use YYYYMMDD-HHMMSS-<6 lowercase hex>")
@@ -259,6 +266,23 @@ def selected_profiles(document: dict[str, Any]) -> tuple[tuple[str, tuple[str, .
     if selected - supported:
         raise UsageError("target selection includes hosts outside server/kiosk/signage")
     return tuple(result)
+
+
+def validate_first_install_selection(
+    args: argparse.Namespace,
+    document: dict[str, Any],
+    selection: tuple[tuple[str, tuple[str, ...]], ...],
+) -> None:
+    if not getattr(args, "first_install", False):
+        return
+    hosts = re.split(r"[:,]", args.limit)
+    selected = {host for _profile, members in selection for host in members}
+    if (
+        tuple(profile for profile, _hosts in selection) != ("pi4",)
+        or set(hosts) != selected
+        or any(host in document for host in hosts)
+    ):
+        raise UsageError("--first-install accepts exact Pi4 kiosk host names only, never Pi5, signage, groups or patterns")
 
 
 def validate_torque_cutover_selection(
@@ -590,6 +614,8 @@ def plan(
     )
     pi4_hosts = list(dict(selection).get("pi4", ()))
     variables = {"release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(selected_agents)}
+    if getattr(args, "first_install", False):
+        variables["release_kiosk_first_install"] = True
     if getattr(args, "hermes_search_trial_maintenance", None):
         variables["release_pi5_trial_maintenance"] = args.hermes_search_trial_maintenance
     if torque_cutover:
@@ -604,6 +630,8 @@ def plan(
     for listing in ("--list-hosts", "--list-tasks"):
         run(ansible_argv(str(inventory), args.limit, profiles, variables, listing, torque_cutover=torque_cutover), env=ansible_environment())
     result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "remoteRoot": str(remote_root), "agentServices": list(selected_agents), "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
+    if getattr(args, "first_install", False):
+        result["firstInstall"] = {"hosts": pi4_hosts, "rollbackTarget": "empty"}
     if torque_cutover:
         result["artifactResolution"] = (
             "signed-release-set-v2-before-service-quiesce"
@@ -646,6 +674,8 @@ def remote_script(
     internal = ["python3", "scripts/deploy/standard-ansible-release.py", "--execute-standard-route", "--branch", args.branch, "--inventory", relative, "--sha", sha, "--run-id", run_id, "--profiles", ",".join(profiles)]
     if getattr(args, "torque_cutover", False):
         internal.append("--torque-cutover")
+    if getattr(args, "first_install", False):
+        internal.append("--first-install")
     if getattr(args, "skip_kiosk_notice", False):
         internal.append("--skip-kiosk-notice")
     internal.extend(["--limit", args.limit] if args.limit else ["--full-fleet"])
@@ -1295,6 +1325,7 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     declared_profiles = tuple(args.profiles.split(","))
     selected = inventory_document(inventory, args.limit) if args.limit else inventory_document(inventory)
     requested_selection = selected_profiles(selected)
+    validate_first_install_selection(args, selected, requested_selection)
     if torque_cutover:
         validate_torque_cutover_selection(selected, requested_selection)
     if tuple(profile for profile, _hosts in requested_selection) != declared_profiles:
@@ -1302,6 +1333,8 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     reachable_selection, excluded = preflight_optional_hosts(
         selected, requested_selection
     )
+    if getattr(args, "first_install", False) and excluded:
+        raise RuntimeError("first-install requires every explicitly selected kiosk to be reachable")
     if torque_cutover and excluded:
         raise RuntimeError("torque cutover requires every selected torque kiosk to be reachable before quiesce")
     print(
@@ -1336,6 +1369,8 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
     pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
     variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(artifacts.agent_services)}
+    if getattr(args, "first_install", False):
+        variables["release_kiosk_first_install"] = True
     maintenance = os.environ.get("HERMES_SEARCH_TRIAL_MAINTENANCE", "")
     if maintenance:
         if maintenance not in {"on", "off"} or args.limit != "raspberrypi5" or requested_selection != (("pi5", ("raspberrypi5",)),):
@@ -1405,6 +1440,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     complete = inventory_document(inventory)
     selected = complete if not args.limit else inventory_document(inventory, args.limit)
     selection = selected_profiles(selected)
+    validate_first_install_selection(args, complete, selection)
     remote_root = server_release_root(complete)
     run_id = "plan-preview" if args.print_plan else new_run_id()
     hermes_environment = hermes_trial_maintenance_configuration(args, selection)

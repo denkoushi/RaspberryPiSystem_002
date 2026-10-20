@@ -351,6 +351,15 @@ category: knowledge-base
 - **効果（Pi5・同じ SQL を前後で 3 回ずつ）**: continue の形（materialized）**約 0.48 s → 約 0.12 s**、shell の形（correlated）**約 0.50 s → 約 0.004 s**。件数は前後とも同じ（0 件）。資源ごとの continue で約 0.36 s、shell で約 0.5 s の削減見込み。本番の API 計測（デプロイ後）は未実施。
 - **残り**: フィラー SQL（約 0.5 s・並べ替えに必要な JOIN を全候補行に実施）、winner 配列 2.9 MB の毎文送信、pp JOIN の見積り違い。
 
+## 加工種別 JOIN を返す行だけに（2026-10-20 · 初回 continue 4.5 s）
+
+- **症状**: 本番（main `5421e8b2`・6 資源）で初回 continue が **4.5 s**。`resourceTotals`（COUNT）2.1 s と、資源ごとの `resourceContinue` 3.7〜4.4 s（10 行しかない資源でも 3.7 s）が並列で走る。2 回目の continue は 2.2 s（件数はキャッシュに当たる）。
+- **見立て**: 1 文を単独で流すとフィラー約 0.5 s・COUNT 約 0.1 s（送信込み約 0.24 s）。本番の 3〜4 s は 6 資源の SQL が Pi5 上で同時に CPU を取り合った合計なので、1 文ごとの CPU を減らすのが効く。
+- **計測（Pi5・読み取り専用 psql・資源 587）**: フィラー（LIMIT 320）で、資源索引の見積り `rows=1`（実際 5,872 行）のため `pp`（加工種別・167 行）JOIN が候補 5,712 行ごとの seq scan になり、JOIN 条件で約 50 万行を捨てて約 0.23 s。
+- **修正**: `leaderboard-shell-row-projection.sql.ts` の共通 JOIN から `pp` を外し、SELECT 列の `processingType` をスカラー副問い合わせ（`LEADERBOARD_SHELL_PART_PROCESSING_TYPE_SUBQUERY`）にした。PostgreSQL は並べ替え・LIMIT の後（返す 320 行だけ）で評価する。`("csvDashboardId", "fhincd")` は一意索引なので、LEFT JOIN と結果は同じ（無ければ NULL）。手動行・フィラー・工程変更残りの 3 経路に効く。
+- **効果（Pi5・コードから生成した SQL を前後 3 回ずつ）**: 資源 587 の実行 **0.56〜0.65 s → 0.24〜0.25 s**、資源 586 **0.29〜0.33 s → 0.15 s**。返る 320 行の md5 は前後で一致。本番 API 計測（デプロイ後）は未実施。
+- **残り**: 順位 LATERAL（ord_pick / gr_pick）も並べ替え前に 3,079 回走る（約 30 ms）。winner 配列 2.9 MB の毎文送信（約 0.1 s / 文）。初回 continue の COUNT は、shell が `hasMore=true` のとき件数キャッシュを作らないため毎回走る（作る時期を変えるのは挙動の判断が要る）。
+
 ## Troubleshooting
 
 - **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。

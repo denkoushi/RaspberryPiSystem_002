@@ -2,6 +2,28 @@
 - name: Run Pi4 release health checks
   ansible.builtin.import_tasks: health_checks.yml
 
+- name: Verify first-install Japanese input in the active desktop
+  ansible.builtin.shell: |
+    set -eu
+    export DISPLAY=:0
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+    test "$(ibus engine)" = mozc-jp
+  become_user: '{{ ansible_user }}'
+  changed_when: false
+  when: release_kiosk_first_install | bool
+
+- name: Verify first-install PC/SC socket readiness
+  ansible.builtin.shell: |
+    set -eu
+    systemctl is-enabled --quiet pcscd.socket
+    systemctl is-active --quiet pcscd.socket
+    test -S /run/pcscd/pcscd.comm
+  changed_when: false
+  when:
+    - release_kiosk_first_install | bool
+    - "'nfc-agent' in release_kiosk_services"
+
 - name: Record verified Pi4 health
   ansible.builtin.set_fact:
     release_kiosk_healthy: true
