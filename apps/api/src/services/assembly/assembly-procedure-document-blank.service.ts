@@ -5,8 +5,12 @@ import { normalizeMachineNameForCompare } from '../production-schedule/machine-n
 import { AssemblyProcedureImageStorage } from '../../lib/assembly-procedure-image-storage.js';
 import { AssemblyProcedureDocumentService } from './assembly-procedure-document.service.js';
 
-export async function saveBlankProcedurePage() {
-  const bytes = await sharp({ create: { width: 1240, height: 1754, channels: 3, background: '#ffffff' } }).png().toBuffer();
+export async function saveBlankProcedurePage(referenceImagePath?: string) {
+  const size = referenceImagePath
+    ? await sharp((await AssemblyProcedureImageStorage.readImage(referenceImagePath)).buffer).metadata()
+    : { width: 1240, height: 1754 };
+  if (!size.width || !size.height) throw new Error('Missing page dimensions');
+  const bytes = await sharp({ create: { width: size.width, height: size.height, channels: 3, background: '#ffffff' } }).png().toBuffer();
   return AssemblyProcedureImageStorage.saveImage(bytes, 'image/png');
 }
 
