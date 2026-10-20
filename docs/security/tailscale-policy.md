@@ -34,7 +34,7 @@
 
 - `tag:admin` → `tag:server`: SSH（運用入口）
 - `tag:server` → `tag:kiosk` / `tag:signage`: SSH（更新・保守）
-- `tag:kiosk` / `tag:signage` → `tag:server`: HTTPS 443（UI/API）
+- `tag:kiosk` / `tag:signage` → `tag:server`: HTTPS 443（UI/API）。配膳スマホ（`tag:kiosk`）のアプリ入口として TCP 8443（Tailscale serve の正式証明書、2026-10-21 追加）
 - `tag:server` → `tag:llm`: TCP 38081（LocalLLM 入口、`X-LLM-Token` 必須）
 
 NFC（Pi4）について:
@@ -133,12 +133,12 @@ Tailscale SSHを使う場合は（有料プランでの利用を検討する場�
     {
       "src": ["tag:admin"],
       "dst": ["tag:server"],
-      "ip": ["tcp:22", "tcp:443", "tcp:5900"]
+      "ip": ["tcp:22", "tcp:443", "tcp:5900", "tcp:8443"]
     },
     {
       "src": ["tag:kiosk", "tag:signage"],
       "dst": ["tag:server"],
-      "ip": ["tcp:443"]
+      "ip": ["tcp:443", "tcp:8443"]
     },
     {
       "src": ["tag:server"],
