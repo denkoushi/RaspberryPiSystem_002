@@ -20,6 +20,7 @@
       when:
         - not (release_torque_cutover | default(false) | bool)
         - release_kiosk_notice_enabled | bool
+        - not (release_kiosk_first_install | bool)
 
     - name: Switch and verify one Pi4 kiosk
       block:
@@ -36,6 +37,31 @@
       rescue:
         - name: Restore the selected Pi4 kiosk
           ansible.builtin.import_tasks: rollback.yml
+          when: not (release_kiosk_first_install | bool)
+
+        - name: Propagate a first-install switch failure to empty rollback
+          ansible.builtin.fail:
+            msg: "{{ ansible_failed_result.msg | default('Pi4 first-install switch or health failed') }}"
+          when: release_kiosk_first_install | bool
+
+    - name: Persist completed first-install identity after verified health
+      ansible.builtin.copy:
+        dest: "{{ release_kiosk_run_root }}/completed-{{ inventory_hostname }}.json"
+        content: "{{ {'host': inventory_hostname, 'sha': release_sha, 'runId': release_run_id} | to_json }}\n"
+        owner: root
+        group: root
+        mode: '0600'
+      when: release_kiosk_first_install | bool
+  rescue:
+    - name: Return a failed first-install to empty, including prepare failures
+      ansible.builtin.import_tasks: rollback.yml
+      when:
+        - release_kiosk_first_install | bool
+        - release_kiosk_first_install_started | default(false) | bool
+
+    - name: Preserve the Pi4 release failure
+      ansible.builtin.fail:
+        msg: "{{ ansible_failed_result.msg | default('Pi4 release failed') }}"
   always:
     - name: Clear the Pi4 deploy-status display from Pi5
       ansible.builtin.command:
@@ -57,6 +83,7 @@
       when:
         - not (release_torque_cutover | default(false) | bool)
         - status_agent_client_id | default('') | trim | length > 0
+        - not (release_kiosk_first_install | bool)
 
     - name: Warn if the Pi4 deploy-status display could not be cleared
       ansible.builtin.debug:
@@ -65,4 +92,10 @@
 
     - name: Remove run-scoped Pi4 preparation data
       ansible.builtin.import_tasks: cleanup.yml
-      when: not (release_torque_cutover | default(false) | bool)
+      when:
+        - not (release_torque_cutover | default(false) | bool)
+        - >-
+          not (release_kiosk_first_install | bool)
+          or not (release_kiosk_first_install_started | default(false) | bool)
+          or release_kiosk_healthy | default(false) | bool
+          or release_kiosk_rolled_back | default(false) | bool
