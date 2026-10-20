@@ -2451,6 +2451,22 @@ class Pi5UnattendedSecurityUpgradeTests(unittest.TestCase):
 
 
 class Pi5CanonicalStandardRouteTests(unittest.TestCase):
+    def test_every_pi5_command_argv_item_is_a_string(self) -> None:
+        # YAML 1.1 turns bare on/off/yes/no into booleans, so `ufw allow in on`
+        # once ran as `ufw allow in True` and silently failed.
+        task_root = ANSIBLE / f"roles/{self.ROLE}/tasks"
+        for path in sorted(task_root.glob("*.yml")):
+            pending = list(yaml.safe_load(path.read_text(encoding="utf-8")) or [])
+            while pending:
+                task = pending.pop(0)
+                for section in ("block", "rescue", "always"):
+                    pending.extend(task.get(section, []))
+                command = task.get("ansible.builtin.command")
+                argv = command.get("argv") if isinstance(command, dict) else None
+                if isinstance(argv, list):
+                    for item in argv:
+                        self.assertIsInstance(item, str, f"{path.name}: {task.get('name')}: {argv}")
+
     def test_pi5_renders_and_runs_status_agent_outside_api_rollback(self) -> None:
         tasks = yaml.safe_load(self.task_text("main"))
         names = [task["name"] for task in tasks]

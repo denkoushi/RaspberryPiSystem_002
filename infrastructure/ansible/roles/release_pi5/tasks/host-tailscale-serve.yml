@@ -32,7 +32,7 @@
       - ufw
       - allow
       - in
-      - on
+      - 'on'
       - tailscale0
       - to
       - any
