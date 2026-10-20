@@ -100,6 +100,17 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertFalse(complete(release_kiosk_captured_services=[], release_kiosk_services=["nfc-agent"]))
         self.assertTrue(complete(release_kiosk_captured_services=["nfc-agent"], release_kiosk_services=["nfc-agent"]))
 
+    def test_first_install_requires_kiosk_client_key_prefix(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/first_install_preflight.yml").read_text())
+        task = next(t for t in tasks if t["name"] == "Validate first-install agent credentials without exposing them")
+        self.assertTrue(task["no_log"])
+        condition = next(c for c in task["ansible.builtin.assert"]["that"] if "client-key-" in c)
+        environment = Environment(undefined=StrictUndefined)
+        environment.tests["match"] = lambda value, pattern: re.match(pattern, value) is not None
+        check = environment.compile_expression(condition)
+        self.assertTrue(check(status_agent_client_key="client-key-raspi4-new-0123abcd"))
+        self.assertFalse(check(status_agent_client_key="0123456789abcdef" * 4))
+
     def test_first_install_registration_is_read_only_redacted_and_before_boundary(self) -> None:
         root = ANSIBLE / "roles/release_kiosk/tasks"
         prepare = yaml.safe_load((root / "prepare.yml").read_text())
