@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +11,8 @@ import { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import { useRegisteredShelves } from '../useRegisteredShelves';
 
 import { HaizenHub } from './HaizenHub';
+
+import type { HaizenHubSheet } from './HaizenHub';
 
 const mocks = vi.hoisted(() => ({ branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
 vi.mock('../../../api/client', () => ({
@@ -30,13 +33,14 @@ vi.mock('../useOrderPlacementBranches', () => ({ useOrderPlacementBranches: () =
 }) }));
 
 function Harness() {
+  const [sheet, setSheet] = useState<HaizenHubSheet>(null);
   const mp = useMobilePlacementPageState();
   const shelves = useRegisteredShelves();
   const branches = useOrderPlacementBranches(mp.orderBarcode);
   const navigate = useNavigate();
   return <>
     <BarcodeScanModal open={mp.scanField !== null} formats={mp.scanFormats} engine="auto-native" onSuccess={mp.onScanSuccess} onAbort={() => mp.setScanField(null)} />
-    <HaizenHub mp={mp} shelves={shelves} branches={branches} suggestedNextBranchNo={Math.max(0, ...mocks.branches.map((b) => b.branchNo)) + 1} onNavigate={navigate} onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master')} onPhoto={() => {}} />
+    <HaizenHub mp={mp} sheet={sheet} setSheet={setSheet} shelves={shelves} branches={branches} suggestedNextBranchNo={Math.max(0, ...mocks.branches.map((b) => b.branchNo)) + 1} onNavigate={navigate} onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master')} onPhoto={() => {}} />
   </>;
 }
 function mount() {
