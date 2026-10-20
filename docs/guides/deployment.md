@@ -61,6 +61,33 @@ wrapperの出力は次の契約で扱う。
 - mutationのJSONで返された `runId` と `statusCommand` だけを後続操作へ渡す。別のrun IDを作らず、別のDeployを起動しない。
 - `--status RUN_ID`のJSONに含まれるsystemdのraw fields（`ActiveState`、`SubState`、`Result`、`ExecMainStatus`）とjournalを、preflight除外、実行状態、Ansible recap、health、rollbackの一次証拠として読む。systemd oneshotの正常完了は実績上 `ActiveState=active`、`SubState=exited`、`Result=success`、`ExecMainStatus=0` である。`active`/`inactive`だけでDeploy中・完了を判定しない。`SubState=running`等の非終端なら「実行中」、`SubState=exited`かつ上記Result/ExecMainStatusとrecapが合格なら「完了」、runを開始していなければ「未実行」と報告し、raw fieldsを併記する。手書きの監視shellや独自の終了判定を追加しない。
 
+### 空のPi4キオスクへの初回導入
+
+新規のChromiumキオスクだけ、exact host名（複数なら `:` または `,` 区切り）と `--first-install` を指定する。Pi5・Signage・group・pattern・`--full-fleet` は不可。OS Desktop、Docker Compose、SSH/sudo、ネットワーク、端末登録とinventoryの認証情報は事前に整え、`raspi-config` で対象ユーザーのDesktop Autologinを有効にしてlabwcへログインしておく。
+
+先にPi5で対象端末を登録する。`status_agent_client_key` はPi5の `ClientDevice.apiKey` に存在する必要がある。管理者資格情報は安全な方法で環境変数へ事前設定し、値をコマンド履歴へ書かない。
+
+```bash
+cd /opt/RaspberryPiSystem_002/infrastructure/ansible
+export ADMIN_ACCESS_TOKEN
+# トークンの代わりに使う場合: export ADMIN_USERNAME ADMIN_PASSWORD
+REGISTER_CLIENT_HOST=raspi4-assembly-02 DRY_RUN=1 ../../scripts/register-clients.sh
+# host・clientId・key: resolved (redacted) を確認し、警告がなければ登録
+REGISTER_CLIENT_HOST=raspi4-assembly-02 ../../scripts/register-clients.sh
+```
+
+APIの既定値は `http://127.0.0.1:8080/api`。key/locationのVaultテンプレートは、このcwdの `ansible.cfg` 設定でcontroller上で解決する。DRY_RUNはAPI接続なしで解決だけを確認する。`[SUCCESS]` を確認後、リポジトリルートで初回導入を実行する。preflightはstatus-agentと同じAPI URL・TLS設定で読み取り専用の `GET /api/kiosk/sites` を呼び、未登録・API接続失敗なら導入開始前に停止する。
+
+```bash
+cd /opt/RaspberryPiSystem_002
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspi4-assembly-02 --first-install
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-assembly-02 --first-install
+```
+
+planの `firstInstall.hosts` と `rollbackTarget=empty` を確認する。実行時は停止済みを含むCompose project `docker` のcontainer/volume、既存project・status設定・kiosk unit・標準release状態がないことを検証し、既設端末なら通常実行を案内して拒否する。最小ディレクトリ、IBus/Mozc、jq、NFC用PC/SC、agent設定、browser/status/storage unitを導入する。Git clone、Docker group追加、ユーザーlabwc autostart追加は不要。Torque/BluetoothとFirefoxの初回構築は未対応でpreflight拒否となる。
+
+失敗時は候補containerと新規runtimeファイル/unitを撤去し、元のdesktop設定へ戻す（OSパッケージは残す）。完了後の次回更新は **`--first-install` を外した通常実行** とし、既存imageのrollback保護を使う。復旧条件は [初回導入の失敗後](../runbooks/deploy-status-recovery.md#pi4初回導入の失敗後) を参照。
+
 ## 事故を防ぐ標準順序
 
 1. **exact SHAと成果物を確定する**: 対象SHA、required CI/CodeQL/gitleaksの成功、対象profileに必要なAPI/Webまたは端末artifactのdigest/manifestを確認する。成功済みCIをMacで全再実行したり、`pnpm install`でlockfileを変更したりしない。
