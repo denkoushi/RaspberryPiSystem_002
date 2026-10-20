@@ -13,6 +13,7 @@ import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
+import { buildProcedureTextLearningPrompt } from './procedure-text-learning-prompt.js';
 import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
 import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts, suggestProcedureLayoutOverflow } from './procedure-layout.js';
 
@@ -67,13 +68,21 @@ export class ProcedureLayoutSuggestionService {
     try {
       params.signal.throwIfAborted();
       const feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[] = [];
-      const result = await this.buildSuggestion(params, feedback);
+      const textFeedback: Prisma.AssemblyProcedureTextFeedbackCreateManyInput[] = [];
+      const result = await this.buildSuggestion(params, feedback, textFeedback);
       params.signal.throwIfAborted();
       if (feedback.length) {
         try {
           await prisma.assemblyProcedureCaptionFeedback.createMany({ data: feedback, skipDuplicates: true });
         } catch (error) {
           logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_caption_feedback_proposal_failed');
+        }
+      }
+      if (textFeedback.length) {
+        try {
+          await prisma.assemblyProcedureTextFeedback.createMany({ data: textFeedback });
+        } catch (error) {
+          logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_text_feedback_proposal_failed');
         }
       }
       params.signal.throwIfAborted();
@@ -96,7 +105,7 @@ export class ProcedureLayoutSuggestionService {
     return null;
   }
 
-  private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
+  private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[], textFeedback: Prisma.AssemblyProcedureTextFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
     await this.access.requireAccessPassword(params.accessPassword);
     const document = await prisma.assemblyProcedureDocument.findUnique({
       where: { id: params.documentId },
@@ -117,6 +126,19 @@ export class ProcedureLayoutSuggestionService {
       pageSize = { width: metadata.width, height: metadata.height };
     } catch {
       throw new ApiError(422, 'ページ画像の寸法を取得できません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_DIMENSIONS_UNAVAILABLE');
+    }
+    let learningPrompt = '';
+    if (site) {
+      try {
+        const examples = await prisma.assemblyProcedureTextFeedback.findMany({
+          where: { site, outcome: 'EDITED', finalText: { not: null } },
+          orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }], take: 50, select: { aiText: true, finalText: true }
+        });
+        const terms = await prisma.assemblyProcedureLearnedTerm.findMany({ where: { site }, orderBy: { wrongText: 'asc' } });
+        learningPrompt = buildProcedureTextLearningPrompt(examples, terms);
+      } catch (error) {
+        logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_text_learning_lookup_failed');
+      }
     }
     const rows = assignProcedureLayoutRows(params.elements, pageSize);
     let elements = params.elements;
@@ -142,10 +164,17 @@ export class ProcedureLayoutSuggestionService {
           params.signal.throwIfAborted();
           const result = await this.text.complete({
             useCase: 'business_hermes', maxTokens: 4000, temperature: 0, enableThinking: false, jsonOutput: true, signal: params.signal,
-            messages: [{ role: 'system', content: textInstruction(site ? SITE_TEXT_RULES[site] : '') }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
+            messages: [{ role: 'system', content: textInstruction((site ? SITE_TEXT_RULES[site] : '') + learningPrompt) }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
           });
           params.signal.throwIfAborted();
           elements = rewriteProcedureTexts(elements, JSON.parse(result.rawText) as unknown);
+        }
+        for (const element of elements) {
+          const original = params.elements.find(candidate => candidate.id === element.id);
+          if (element.kind === 'TEXT' && original?.kind === 'TEXT' && element.text !== original.text) {
+            textFeedback.push({ documentId: params.documentId, pageIndex: params.pageIndex, elementId: element.id,
+              site, documentName: document.name, originalText: original.text, aiText: element.text });
+          }
         }
         const rewritten = elements.filter((element, index) => element.kind === 'TEXT' && params.elements[index].kind === 'TEXT' && element.text !== (params.elements[index] as OverlayTextElement).text).length;
         if (rewritten) textChanges.push(`文章 ${rewritten} 個を読みやすく書き直した`);
