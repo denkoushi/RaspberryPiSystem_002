@@ -14,6 +14,19 @@ import type { LeaderboardShellRankJoinContext } from './leaderboard-shell-rank-j
 export const LEADERBOARD_SHELL_DUE_SORT_EXPR = Prisma.sql`COALESCE("n"."dueDate", "supplement"."plannedEndDate")`;
 
 /**
+ * 品番ごとの加工種別（SELECT 列専用）。
+ * JOIN にすると資源の行数見積りが外れたとき候補行ごとに表を全件走査するため、
+ * スカラー副問い合わせにして ORDER BY / LIMIT の後（返す行だけ）で評価させる。
+ * ("csvDashboardId", "fhincd") は一意なので、LEFT JOIN と同じ結果（無ければ NULL）になる。
+ */
+export const LEADERBOARD_SHELL_PART_PROCESSING_TYPE_SUBQUERY = Prisma.sql`(
+      SELECT "pp"."processingType"
+      FROM "ProductionSchedulePartProcessingType" AS "pp"
+      WHERE "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
+    )`;
+
+/**
  * 可視性・装飾 JOIN + rank LATERAL（manual / expansion / filler 共通）。
  */
 export function buildLeaderboardShellRowAuxiliaryJoins(rankJoins: LeaderboardShellRankJoinContext): Prisma.Sql {
@@ -27,9 +40,6 @@ export function buildLeaderboardShellRowAuxiliaryJoins(rankJoins: LeaderboardShe
     LEFT JOIN "ProductionScheduleRowNote" AS "n"
       ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
-      ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
     LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -75,7 +85,7 @@ export function buildLeaderboardShellRowSelectList(rankJoins: LeaderboardShellRa
     ${rankJoins.processingOrderExpr} AS "processingOrder",
     ${rankJoins.globalRankExpr} AS "globalRank",
     NULLIF(TRIM("n"."note"), '') AS "note",
-    COALESCE("pp"."processingType", "n"."processingType") AS "processingType",
+    COALESCE(${LEADERBOARD_SHELL_PART_PROCESSING_TYPE_SUBQUERY}, "n"."processingType") AS "processingType",
     "n"."dueDate" AS "dueDate",
     "supplement"."plannedQuantity" AS "plannedQuantity",
     "supplement"."plannedStartDate" AS "plannedStartDate",
