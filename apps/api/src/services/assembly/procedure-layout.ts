@@ -1,4 +1,4 @@
-import { overlayElementSchema, type OverlayBBox, type OverlayElement, type OverlayImageElement, type OverlayTextElement } from '@raspi-system/shared-types';
+import { overlayElementSchema, type OverlayBBox, type OverlayElement, type OverlayImageElement, type OverlayTextElement, type ProcedureLayoutSuggestionResponse } from '@raspi-system/shared-types';
 import { z } from 'zod';
 
 export class ProcedureLayoutError extends Error {}
@@ -187,4 +187,69 @@ export function arrangeProcedureLayout(params: {
   if (scale < 1) changes.push(`文字を ${Math.round(scale * 100)}% にした(写真の大きさはそのまま)`);
   if (!changes.length && result.some(element => element !== byId.get(element.id))) changes.push('写真に付いた図形をそろえた');
   return { elements: result, changes };
+}
+
+export function suggestProcedureLayoutOverflow(params: {
+  elements: OverlayElement[];
+  page: { width: number; height: number };
+  rows: ProcedureLayoutRow[];
+  originalElements: OverlayElement[];
+  pageIndex: number;
+}): NonNullable<ProcedureLayoutSuggestionResponse['overflow']> {
+  const { elements, rows } = params;
+  const photos = elements.filter((element): element is OverlayImageElement => element.kind === 'IMAGE')
+    .sort((a, b) => b.zIndex - a.zIndex || a.id.localeCompare(b.id));
+  const owners = new Map(elements.filter(element => element.kind === 'SHAPE').map(element => {
+    const cx = element.bbox.xRatio + element.bbox.widthRatio / 2;
+    const cy = element.bbox.yRatio + element.bbox.heightRatio / 2;
+    return [element.id, photos.find(({ bbox: p }) => cx >= p.xRatio && cx <= p.xRatio + p.widthRatio && cy >= p.yRatio && cy <= p.yRatio + p.heightRatio)];
+  }));
+  const tryArrange = (input: OverlayElement[], selectedRows: ProcedureLayoutRow[]) => {
+    const ids = new Set(input.map(element => element.id));
+    try {
+      return arrangeProcedureLayout({ ...params, elements: input, rows: selectedRows, originalElements: params.originalElements.filter(element => ids.has(element.id)) });
+    } catch (error) {
+      if (error instanceof ProcedureLayoutError) return null;
+      throw error;
+    }
+  };
+  const overflow: NonNullable<ProcedureLayoutSuggestionResponse['overflow']> = {};
+  for (let percent = 98; percent >= 50; percent -= 2) {
+    const scale = percent / 100;
+    const scaled = elements.map(element => {
+      if (element.kind === 'IMAGE') return { ...element, bbox: { ...element.bbox, widthRatio: element.bbox.widthRatio * scale, heightRatio: element.bbox.heightRatio * scale } };
+      const owner = owners.get(element.id);
+      if (element.kind !== 'SHAPE' || !owner) return element;
+      const point = (p: { xRatio: number; yRatio: number }) => ({
+        xRatio: owner.bbox.xRatio + (p.xRatio - owner.bbox.xRatio) * scale,
+        yRatio: owner.bbox.yRatio + (p.yRatio - owner.bbox.yRatio) * scale
+      });
+      return { ...element, bbox: { ...point(element.bbox), widthRatio: element.bbox.widthRatio * scale, heightRatio: element.bbox.heightRatio * scale },
+        ...(element.start ? { start: point(element.start) } : {}), ...(element.end ? { end: point(element.end) } : {}) };
+    });
+    const result = tryArrange(scaled, rows);
+    if (result) {
+      overflow.shrink = { ...result, scalePercent: percent,
+        changes: [`写真を ${percent}% にした`, ...result.changes.map(change => change.replace('(写真の大きさはそのまま)', ''))].slice(0, 8) };
+      break;
+    }
+  }
+  let bestHeight = Infinity;
+  for (let k = 1; k < rows.length; k++) {
+    const movedIds = new Set(rows.slice(k).flatMap(row => [row.imageId, ...row.textIds]));
+    const moves = (element: OverlayElement) => movedIds.has(element.id) || movedIds.has(owners.get(element.id)?.id ?? '');
+    const current = tryArrange(elements.filter(element => !moves(element)), rows.slice(0, k));
+    const next = tryArrange(elements.filter(moves).map(element => ({ ...element, pageIndex: params.pageIndex + 1 })), rows.slice(k));
+    if (!current || !next) continue;
+    const height = (input: OverlayElement[], selectedRows: ProcedureLayoutRow[]) => {
+      const ids = new Set(selectedRows.flatMap(row => [row.imageId, ...row.textIds]));
+      return Math.max(...input.filter(element => ids.has(element.id)).map(element => element.bbox.yRatio + element.bbox.heightRatio)) - MARGIN;
+    };
+    const maxHeight = Math.max(height(current.elements, rows.slice(0, k)), height(next.elements, rows.slice(k)));
+    if (maxHeight > bestHeight + EPSILON) continue;
+    bestHeight = maxHeight;
+    overflow.split = { elements: current.elements, nextPageElements: next.elements, firstMovedPhotoNumber: k + 1,
+      changes: ['2ページに分けた', ...new Set([...current.changes, ...next.changes])].slice(0, 8) };
+  }
+  return overflow;
 }

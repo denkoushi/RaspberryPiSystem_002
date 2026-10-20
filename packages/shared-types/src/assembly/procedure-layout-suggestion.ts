@@ -37,10 +37,29 @@ export const procedureLayoutSuggestionRequestSchema = z.object({
 export const procedureLayoutSuggestionResponseSchema = z.object({
   elements: elementsSchema,
   addedElementIds: z.array(z.string().min(1).max(120)),
-  changes: z.array(z.string().trim().min(1).max(120)).min(1).max(8)
+  changes: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
+  overflow: z.object({
+    shrink: z.object({
+      elements: elementsSchema,
+      changes: z.array(z.string().trim().min(1).max(120)).min(1).max(8),
+      scalePercent: z.number().int().min(50).max(98)
+    }).optional(),
+    split: z.object({
+      elements: elementsSchema,
+      nextPageElements: elementsSchema,
+      firstMovedPhotoNumber: z.number().int().min(2),
+      changes: z.array(z.string().trim().min(1).max(120)).min(1).max(8)
+    }).optional()
+  }).refine(value => value.shrink || value.split, '収まる候補が必要です').optional()
 }).superRefine((response, ctx) => {
-  const texts = new Set(response.elements.filter(element => element.kind === 'TEXT').map(element => element.id));
-  if (new Set(response.addedElementIds).size !== response.addedElementIds.length || response.addedElementIds.some(id => !texts.has(id))) {
+  const candidates = response.overflow
+    ? [...(response.overflow.shrink ? [response.overflow.shrink.elements] : []),
+      ...(response.overflow.split ? [[...response.overflow.split.elements, ...response.overflow.split.nextPageElements]] : [])]
+    : [response.elements];
+  if (new Set(response.addedElementIds).size !== response.addedElementIds.length || candidates.some(elements => {
+    const texts = new Set(elements.filter(element => element.kind === 'TEXT').map(element => element.id));
+    return new Set(elements.map(element => element.id)).size !== elements.length || response.addedElementIds.some(id => !texts.has(id));
+  })) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: '追加した文章のidが不正です', path: ['addedElementIds'] });
   }
 });

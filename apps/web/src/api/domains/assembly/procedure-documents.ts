@@ -244,7 +244,7 @@ export async function createBlankAssemblyProcedureDocument(name: string, assignm
   return { ...data.document, assignmentError: data.assignmentError };
 }
 
-export async function addBlankAssemblyProcedurePage(input: { holderToken?: string | null; id: string; accessPassword: string; expectedEditVersion: number }) {
-  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/blank`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion }, procedureEditHeaders(input.holderToken));
+export async function addBlankAssemblyProcedurePage(input: { holderToken?: string | null; id: string; accessPassword: string; expectedEditVersion: number; afterPageIndex?: number }) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/blank`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion, ...(input.afterPageIndex === undefined ? {} : { afterPageIndex: input.afterPageIndex }) }, procedureEditHeaders(input.holderToken));
   return data.document;
 }
