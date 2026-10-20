@@ -509,7 +509,6 @@ all:
               nfc_agent_client_secret: "{{ vault_raspi4_kensaku_02_nfc_agent_client_secret }}"
             raspi4-assembly-02:
               # Assembly-02 キオスク（Pi4 8台目）
-              # NOTE: Tailscale IP 登録前は local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_assembly_02_ip | default(local_network.raspi4_assembly_02_ip) }}"
               ansible_user: raspi4-assembly-02
               kiosk_browser_engine: "chromium"

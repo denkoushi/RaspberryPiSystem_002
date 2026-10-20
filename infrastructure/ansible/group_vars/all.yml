@@ -32,6 +32,7 @@ tailscale_network:
   raspi4_sessaku_01_ip: "100.115.109.18"
   raspi4_assembly_01_ip: "100.68.35.46"
   raspi4_kensaku_02_ip: "100.93.139.16"
+  raspi4_assembly_02_ip: "100.66.122.32"
   raspberrypi3_ip: "100.105.224.86"
 
 # 現在有効なネットワーク設定（network_modeに応じて切り替え）
