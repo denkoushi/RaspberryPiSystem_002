@@ -142,6 +142,7 @@ Android Chrome でアプリとして入れるには、警告の出ない証明�
 - 入口: `https://raspberrypi.tail7312a3.ts.net:8443/kiosk/mobile-placement?clientKey=<apiKey>`（初回だけ `clientKey` 付き。保存先は入口ごとに別なので、IP の入口で保存した値は引き継がれない）
 - 既存の 443、gateway の証明書、Blue/Green のテンプレートは変えない。443 を Tailscale に渡すと IP で接続する端末が証明書不一致になるため、別ポートにしている
 - 設定は `infrastructure/ansible/roles/release_pi5/tasks/host-tailscale-serve.yml`（失敗してもリリースは止めない）。値は `inventory.yml` の `pi5_tailscale_*`
+- Pi5 の UFW は既定で受信拒否のため、同じ task で `ufw allow in on tailscale0 to any port 8443 proto tcp` を入れる（Tailscale 経由だけ）。これが無いと 8443 は接続待ちのまま時間切れになる（2026-10-20 初回反映で発生）
 - 確認: `curl -sI https://raspberrypi.tail7312a3.ts.net:8443/api/system/health` が 200、`openssl s_client` の発行者が Let's Encrypt
 - 取り消し: Pi5 で `sudo tailscale serve reset`（inventory から `pi5_tailscale_https_hostname` を外さないと次のデプロイで戻る）
 - Caddy 側で SNI ごとに証明書を切り替える案は、古い版へ戻すデプロイが通らなくなるため採らなかった
