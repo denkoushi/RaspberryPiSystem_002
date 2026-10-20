@@ -126,6 +126,17 @@ curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-
 1. `https://<Pi5-Tailscale-IP>/api/system/health` が JSON `status: ok` を返すこと
 2. ブラウザで `https://<Pi5-Tailscale-IP>/kiosk/mobile-placement?clientKey=<apiKey>` を開くこと
 
+### 正式な証明書の入口（アプリとして入れる場合・2026-10-20）
+
+Android Chrome でアプリとして入れるには、警告の出ない証明書が要る。Pi5 の標準デプロイが `tailscale serve --bg --https=8443 https+insecure://127.0.0.1:443` を設定し、Tailscale が `raspberrypi.tail7312a3.ts.net` の Let's Encrypt 証明書を発行・更新して既存の 443 へ中継する。
+
+- 入口: `https://raspberrypi.tail7312a3.ts.net:8443/kiosk/mobile-placement?clientKey=<apiKey>`（初回だけ `clientKey` 付き。保存先は入口ごとに別なので、IP の入口で保存した値は引き継がれない）
+- 既存の 443、gateway の証明書、Blue/Green のテンプレートは変えない。443 を Tailscale に渡すと IP で接続する端末が証明書不一致になるため、別ポートにしている
+- 設定は `infrastructure/ansible/roles/release_pi5/tasks/host-tailscale-serve.yml`（失敗してもリリースは止めない）。値は `inventory.yml` の `pi5_tailscale_*`
+- 確認: `curl -sI https://raspberrypi.tail7312a3.ts.net:8443/api/system/health` が 200、`openssl s_client` の発行者が Let's Encrypt
+- 取り消し: Pi5 で `sudo tailscale serve reset`（inventory から `pi5_tailscale_https_hostname` を外さないと次のデプロイで戻る）
+- Caddy 側で SNI ごとに証明書を切り替える案は、古い版へ戻すデプロイが通らなくなるため採らなかった
+
 ## 3. 業務フロー（V2・既定）
 
 **単一画面 `/kiosk/mobile-placement`**
