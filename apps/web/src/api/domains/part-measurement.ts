@@ -1,5 +1,7 @@
 import { api, apiBase } from '../http';
 
+export { getInspectionDrawingPlacementProposals, postInspectionDrawingPlacementDecisions } from './part-measurement-placement';
+
 import type {
   FindOrOpenPartMeasurementResponse,
   KioskInspectionDrawingTemplateSummaryDto,

@@ -42,6 +42,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
     visualTemplateService,
     drawingOcrService,
     drawingDimensionMapService,
+    drawingPlacementService,
     enqueueDrawingOcrAndWake
   } = deps;
 
@@ -150,6 +151,28 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           candidates: result.candidates.map(serializeDrawingOcrCandidate),
           cache: serializeDrawingOcrStatus(result.cache)
         };
+      }
+    );
+
+    app.get(
+      '/part-measurement/visual-templates/:id/placement-proposals',
+      { preHandler: allowView, config: { rateLimit: false } },
+      async (request) => {
+        const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+        return drawingPlacementService.listForEditor(id);
+      }
+    );
+
+    app.post(
+      '/part-measurement/visual-templates/:id/placement-proposals/decisions',
+      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      async (request) => {
+        const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+        const body = z.object({
+          approvedIds: z.array(z.string().uuid()).max(200).optional().default([]),
+          rejectedIds: z.array(z.string().uuid()).max(200).optional().default([])
+        }).parse(request.body);
+        return drawingPlacementService.recordDecisions(id, body);
       }
     );
 
