@@ -1,0 +1,111 @@
+---
+- name: Stop the IBus daemon only if this run introduced it
+  ansible.builtin.shell: |
+    export DISPLAY=:0
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+    if pgrep -u "$(id -u)" -x ibus-daemon >/dev/null; then
+      ibus exit
+    fi
+  become_user: '{{ ansible_user }}'
+  when: release_kiosk_first_install_ibus.rc == 1
+
+- name: Restore the preexisting user IBus settings
+  ansible.builtin.shell: |
+    set -eu
+    export DISPLAY=:0
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+    dconf reset -f /desktop/ibus/
+    dconf load /desktop/ibus/
+  args:
+    stdin: '{{ release_kiosk_first_install_dconf.stdout }}'
+  become_user: '{{ ansible_user }}'
+
+- name: Restore preexisting desktop and PC/SC files
+  ansible.builtin.copy:
+    src: '{{ release_kiosk_stage_dir }}/bootstrap-{{ file_index }}'
+    dest: '{{ item.item }}'
+    remote_src: true
+    owner: '{{ item.stat.uid }}'
+    group: '{{ item.stat.gid }}'
+    mode: '{{ item.stat.mode }}'
+  loop: '{{ release_kiosk_first_install_originals.results }}'
+  loop_control:
+    index_var: file_index
+  when: item.stat.exists
+
+- name: Remove first-install desktop and PC/SC files that did not previously exist
+  ansible.builtin.file:
+    path: '{{ item.item }}'
+    state: absent
+  loop: '{{ release_kiosk_first_install_originals.results }}'
+  when: not item.stat.exists
+
+- name: Restore preexisting desktop directory metadata
+  ansible.builtin.file:
+    path: '{{ item.item }}'
+    state: directory
+    owner: '{{ item.stat.uid }}'
+    group: '{{ item.stat.gid }}'
+    mode: '{{ item.stat.mode }}'
+  loop: '{{ release_kiosk_first_install_directories.results }}'
+  when: item.stat.exists
+
+- name: Remove only empty desktop directories introduced by first-install
+  ansible.builtin.command:
+    argv: [rmdir, --ignore-fail-on-non-empty, '{{ item.item }}']
+    removes: '{{ item.item }}'
+  loop: '{{ release_kiosk_first_install_directories.results }}'
+  when: not item.stat.exists
+
+- name: Reconfigure labwc after restoring the pre-bootstrap desktop configuration
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, '-', --reconfigure]
+    stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/kiosk-hotcorner.py') }}"
+  become_user: '{{ ansible_user }}'
+  environment:
+    XDG_RUNTIME_DIR: '/run/user/{{ release_kiosk_user_uid.stdout }}'
+  when: release_kiosk_labwc_edit_attempted | default(false) | bool
+  changed_when: true
+
+- name: Refresh services after a possibly partial package installation
+  ansible.builtin.service_facts:
+
+- name: Restore PC/SC activation after first-install failure
+  ansible.builtin.systemd:
+    name: '{{ item.item }}'
+    enabled: "{{ 'UnitFileState=enabled' in item.stdout_lines }}"
+    state: "{{ 'started' if 'ActiveState=active' in item.stdout_lines else 'stopped' }}"
+  loop: '{{ release_kiosk_first_install_pcsc.results }}'
+  when:
+    - "'nfc-agent' in release_kiosk_services"
+    - "'pcscd.service' in ansible_facts.services"
+
+- name: Remove only first-install owned runtime directories and completion marker
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: absent
+  loop:
+    - '{{ release_kiosk_project_dir }}'
+    - /etc/raspi-release
+    - /usr/local/lib/raspi-status-agent
+    - '{{ release_kiosk_run_root }}/completed-{{ inventory_hostname }}.json'
+
+- name: Reload systemd after removing first-install units
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Verify first-install runtime files are absent after rollback
+  ansible.builtin.stat:
+    path: '{{ item.dest }}'
+  loop: '{{ release_kiosk_files | default([]) }}'
+  register: release_kiosk_empty_files
+  no_log: true
+
+- name: Require empty runtime after first-install rollback
+  ansible.builtin.assert:
+    that: not item.stat.exists
+    fail_msg: First-install rollback left a runtime file; preserve staging and investigate before retrying.
+  loop: '{{ release_kiosk_empty_files.results }}'
+  no_log: true

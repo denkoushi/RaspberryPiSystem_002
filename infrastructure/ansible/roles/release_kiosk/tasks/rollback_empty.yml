@@ -1,0 +1,58 @@
+---
+- name: Mark first-install rollback as unverified until empty is restored
+  ansible.builtin.set_fact:
+    release_kiosk_healthy: false
+
+- name: Inspect candidate units before stopping first-install services
+  ansible.builtin.stat:
+    path: '/etc/systemd/system/{{ item }}'
+  loop:
+    - kiosk-browser.service
+    - kiosk-hotcorner.service
+    - status-agent.timer
+    - status-agent.service
+    - pi4-storage-maintenance.timer
+    - pi4-storage-maintenance.service
+  register: release_kiosk_empty_units
+
+- name: Reload partially installed first-install units before stopping them
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Stop and disable only first-install candidate units
+  ansible.builtin.systemd:
+    name: '{{ item.item }}'
+    state: stopped
+    enabled: false
+  loop: '{{ release_kiosk_empty_units.results }}'
+  when: item.stat.exists
+
+# A partial switch may not have installed every env_file yet. Label-scoped
+# removal does not parse Compose or require files/images that never existed.
+# Preflight proved this project had no containers or volumes before this run.
+- name: Remove the first-install candidate containers and their new volumes
+  ansible.builtin.shell: |
+    set -euo pipefail
+    containers="$(docker ps --all --filter label=com.docker.compose.project=docker --quiet)"
+    for container in ${containers}; do
+      docker container rm --force "${container}"
+    done
+    volumes="$(docker volume ls --filter label=com.docker.compose.project=docker --quiet)"
+    for volume in ${volumes}; do
+      docker volume rm "${volume}"
+    done
+  args:
+    executable: /bin/bash
+  when: release_kiosk_switch_attempted | default(false) | bool
+  changed_when: true
+
+- name: Verify first-install rollback left no Compose containers or volumes
+  ansible.builtin.shell: |
+    set -euo pipefail
+    containers="$(docker ps --all --filter label=com.docker.compose.project=docker --quiet)"
+    volumes="$(docker volume ls --filter label=com.docker.compose.project=docker --quiet)"
+    test -z "${containers}"
+    test -z "${volumes}"
+  args:
+    executable: /bin/bash
+  changed_when: false

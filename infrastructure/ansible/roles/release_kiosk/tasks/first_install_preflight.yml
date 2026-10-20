@@ -1,0 +1,165 @@
+---
+- name: Require an exact Pi4-only first-install scope and supported desktop
+  ansible.builtin.assert:
+    that:
+      - "'kiosk' in group_names"
+      - group_names | intersect(['server', 'signage']) | length == 0
+      - ansible_limit | default('') is match('^[A-Za-z0-9_.-]+([:,][A-Za-z0-9_.-]+)*$')
+      - ansible_limit | replace(',', ':') | split(':') | difference(groups['kiosk']) | length == 0
+      - inventory_hostname in (ansible_limit | replace(',', ':') | split(':'))
+      - not (release_torque_cutover | default(false) | bool)
+      - not (torque_agent_enabled | default(false) | bool)
+      - manage_kiosk_browser | default(false) | bool
+      - kiosk_browser_engine | default('chromium') == 'chromium'
+      - release_kiosk_compose_project == 'docker'
+      - release_kiosk_project_dir is match('^/opt/RaspberryPiSystem_002(-[A-Za-z0-9][A-Za-z0-9._-]*)?$')
+      - ansible_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+      - release_kiosk_services | length > 0
+      - release_kiosk_enabled_services | difference(release_kiosk_services) | length == 0
+    fail_msg: >-
+      First-install requires exact Pi4 kiosk hosts, a managed Chromium desktop,
+      and a release set containing every enabled agent. Torque/Bluetooth and Firefox
+      commissioning are not automated here; provision those prerequisites separately.
+      Do not use first-install to repair an existing kiosk; use the normal run.
+
+- name: Validate first-install agent credentials without exposing them
+  ansible.builtin.assert:
+    that:
+      - status_agent_client_id | default('') | length > 0
+      - status_agent_client_key | default('') | length > 0
+      - "'nfc-agent' not in release_kiosk_services or nfc_agent_client_secret | default('') | length > 0"
+    fail_msg: Register the client on Pi5 and supply its inventory credentials before first-install.
+  no_log: true
+
+- name: Require server-side client registration before first-install provisioning
+  block:
+    # Unlike /kiosk/config, /kiosk/sites authenticates a registered ClientDevice
+    # and only reads data; it does not update lastSeenAt or create telemetry.
+    - name: Verify the status-agent key is registered using a read-only API
+      ansible.builtin.uri:
+        url: "{{ (status_agent_api_base_url | default(api_base_url | default('http://127.0.0.1:8080/api'))) | regex_replace('/+$', '') }}/kiosk/sites"
+        method: GET
+        headers:
+          x-client-key: '{{ status_agent_client_key }}'
+        status_code: 200
+        follow_redirects: none
+        use_netrc: false
+        validate_certs: "{{ not (status_agent_tls_skip_verify | default('0') | bool) }}"
+        timeout: '{{ status_agent_request_timeout | default(10) | int }}'
+      changed_when: false
+      no_log: true
+  rescue:
+    - name: Explain the registration prerequisite without exposing credentials
+      ansible.builtin.fail:
+        msg: >-
+          Could not verify client registration or API connectivity;
+          register the client on Pi5 first: cd /opt/RaspberryPiSystem_002/infrastructure/ansible &&
+          REGISTER_CLIENT_HOST={{ inventory_hostname }} ../../scripts/register-clients.sh
+          (export ADMIN_ACCESS_TOKEN or ADMIN_USERNAME and ADMIN_PASSWORD; run with DRY_RUN=1 first).
+
+- name: Inspect all containers in the standard Compose project, including stopped agents
+  ansible.builtin.command:
+    argv: [docker, ps, --all, --filter, 'label=com.docker.compose.project=docker', --quiet]
+  register: release_kiosk_first_install_containers
+  changed_when: false
+
+- name: Inspect persistent volumes in the standard Compose project
+  ansible.builtin.command:
+    argv: [docker, volume, ls, --filter, 'label=com.docker.compose.project=docker', --quiet]
+  register: release_kiosk_first_install_volumes
+  changed_when: false
+
+- name: Inspect existing kiosk state without reading configuration or secrets
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+    follow: false
+  loop:
+    - /etc/systemd/system/kiosk-browser.service
+    - /etc/systemd/system/kiosk-hotcorner.service
+    - /etc/systemd/system/status-agent.service
+    - /etc/systemd/system/status-agent.timer
+    - /etc/systemd/system/pi4-storage-maintenance.service
+    - /etc/systemd/system/pi4-storage-maintenance.timer
+    - /usr/local/bin/kiosk-launch.sh
+    - /usr/local/bin/kiosk-hotcorner.py
+    - /usr/local/bin/kiosk-labwc-config.py
+    - /usr/local/bin/show-kiosk-panel.sh
+    - /usr/local/sbin/pi4-storage-maintenance.sh
+    - /etc/raspi-status-agent.conf
+    - /etc/raspi-release
+    - /usr/local/lib/raspi-status-agent
+    - '{{ release_kiosk_project_dir }}'
+    - '{{ release_kiosk_run_root }}/completed-{{ inventory_hostname }}.json'
+  register: release_kiosk_first_install_state
+
+- name: Inspect existing kiosk services
+  ansible.builtin.service_facts:
+
+- name: Prove this host has no prior kiosk or completed standard release
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_first_install_containers.stdout | trim | length == 0
+      - release_kiosk_first_install_volumes.stdout | trim | length == 0
+      - release_kiosk_first_install_state.results | selectattr('stat.exists') | list | length == 0
+      - >-
+        ansible_facts.services.keys() | list | intersect([
+          'kiosk-browser.service', 'kiosk-hotcorner.service', 'status-agent.service',
+          'status-agent.timer', 'pi4-storage-maintenance.service', 'pi4-storage-maintenance.timer'
+        ]) | length == 0
+    fail_msg: >-
+      First-install refused: containers, volumes, project, status configuration,
+      kiosk units or completed standard release state already exist. Use the normal
+      run to preserve rollback protection; do not delete state to bypass this check.
+
+- name: Verify the preinstalled OS desktop and Docker prerequisites
+  ansible.builtin.shell: |
+    set -euo pipefail
+    docker compose version
+    systemctl is-active --quiet lightdm.service
+    test -f /etc/xdg/labwc/rc.xml
+    test -f /etc/xdg/labwc/autostart
+    test -d /etc/polkit-1/rules.d
+    test -d /home/{{ ansible_user }}/.config
+    command -v dconf
+    command -v xset
+    command -v curl
+    command -v openssl
+    command -v chromium || command -v chromium-browser
+    lightdm --show-config | grep -Eq '^[[:space:]]*([A-Z][[:space:]]+)?autologin-user={{ ansible_user }}[[:space:]]*$'
+    uid="$(id -u {{ ansible_user | quote }})"
+    test -S "/run/user/${uid}/bus"
+    test -S /tmp/.X11-unix/X0
+    pgrep -u "${uid}" -x labwc >/dev/null
+  args:
+    executable: /bin/bash
+  register: release_kiosk_first_install_os
+  changed_when: false
+  failed_when: false
+
+- name: Require Desktop Autologin and an active labwc session before first-install
+  ansible.builtin.assert:
+    that: release_kiosk_first_install_os.rc == 0
+    fail_msg: >-
+      Install Raspberry Pi OS Desktop (labwc/Chromium, dconf, Xwayland, curl, openssl),
+      Docker with Compose, and enable Desktop Autologin for {{ ansible_user }} using
+      raspi-config, then reboot into that user's desktop before retrying first-install.
+      Docker group membership is not required: release and agent services run as root.
+
+- name: Capture PC/SC activation state before package installation
+  ansible.builtin.command:
+    argv: [systemctl, show, '{{ item }}', '--property=LoadState,UnitFileState,ActiveState']
+  loop: [pcscd.socket, pcscd.service]
+  register: release_kiosk_first_install_pcsc
+  changed_when: false
+  failed_when: false
+
+- name: Require unmasked PC/SC units when NFC is enabled
+  ansible.builtin.assert:
+    that:
+      - item.rc in [0, 1, 4]
+      - "'LoadState=masked' not in item.stdout_lines"
+      - "'LoadState=' in item.stdout"
+    fail_msg: Unmask and verify the OS PC/SC units before installing an NFC kiosk.
+  loop: '{{ release_kiosk_first_install_pcsc.results }}'
+  when: "'nfc-agent' in release_kiosk_services"
