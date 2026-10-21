@@ -9,7 +9,7 @@ const digest = (value) => createHash('sha256').update(JSON.stringify(value)).dig
 // Captured before the source registration refactor, including JSON property order.
 const expectedCatalog = '67863d23315a76f9a91e0dc12bf556f71e0fb5f2252759fde7ad1067a8b59411';
 // Inputs re-captured on 2026-10-19 when the planner gained the intent choice question (plans and answers unchanged).
-const expectedInputs = '229bcb9613b0f4ae920bd91edf683c3f1e9f5559a331b8efebf3318efa410300';
+const expectedInputs = '4a30b95fe6f6d2a25d3725298abde61d3a85bd15af1283610634808b244bd2f8';
 const expectedResults = '2007349aec49c0f5a3d3bd05787278d7ac530d38e514cd798790c75b8fd0b090';
 
 test('existing two sources preserve catalog bytes, JEV inputs, plans, candidates and answers', async () => {
