@@ -92,8 +92,10 @@ function answersOf(result) {
 // chosen value. The receipt holds no record text.
 // The only source with a saved cause classification (see worker.mjs loadCauseById).
 const CAUSE_SOURCE = 'nonconformity';
+// A classification bucket, never something a question asks for.
+const UNKNOWN_CAUSE = 'unknown';
 
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-19b';
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-21';
 
 // Choice ids that read on their own in a receipt; other choices map to their option text.
 const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry|intent|contentSpan)$/u;
@@ -243,7 +245,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       );
       questions.cause = choiceQuestion(
         `${said('質問', '`request`')}が不適合の要因・原因の区分を指定しているときだけ、その区分を一つ選ぶ。現象や部品の説明だけで要因の区分を言っていなければ none。`,
-        [...CAUSE_CATEGORIES.map(({ id, label, description }) => ({ id, description: `${label}: ${description}` })),
+        [...CAUSE_CATEGORIES.filter(({ id }) => id !== UNKNOWN_CAUSE).map(({ id, label, description }) => ({ id, description: `${label}: ${description}` })),
           { id: NONE, description: '要因では絞らない' }],
       );
       const previousCause = CAUSE_CATEGORIES.find(({ id }) => id === previousPlan?.causeCategory);
@@ -384,7 +386,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const scopeIds = entries.map((entry) => entry.id);
       const scopeChoice = fromIndex ? scopeChoiceOf(answers.scope, scopeIds) : scopeIds[0];
       const outOfScope = fromIndex && scopeChoice === OUT_OF_SCOPE;
-      const causeChoice = chosen(answers.cause, [...CAUSE_CATEGORY_IDS, NONE]);
+      const causeChoice = chosen(answers.cause, [...CAUSE_CATEGORY_IDS.filter((id) => id !== UNKNOWN_CAUSE), NONE]);
       const causeDropped = Boolean(previousCause && chosen(answers.drop_cause, ['true', 'false']) === 'true');
       const chosenCause = outOfScope ? null : (causeChoice && causeChoice !== NONE ? causeChoice : (!causeDropped ? previousCause?.id : null));
       const selected = [];
@@ -533,6 +535,12 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const hardFilter = hasAppliedHardFilter({ filters, causeCategory }, catalog);
       const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
       const jev = breakdown || residualOverride ? false : judged;
+      // The saved classification is one model pass over free text and often disagrees with the
+      // records a content question means (nights 17 and 18: 12 of 30 such rows matched neither
+      // target), so a cause heard in the question gates only plans without a content search.
+      // A cause inherited from a chip or the previous plan was chosen by the user and stays.
+      const causeOnContent = jev === true && Boolean(causeCategory) && causeCategory !== previousCause?.id;
+      const appliedCause = causeOnContent ? (causeDropped ? null : previousCause?.id ?? null) : causeCategory;
       const finalContent = jev === true && unresolved.length === 0;
       const sortMode = breakdown ? 'recent' : resolveSort(question, jev, hardFilter);
       const sort = sortMode === 'recent' && recentField
@@ -542,11 +550,11 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         schema: QUERY_PLAN_SCHEMA,
         sources: plannedSources,
         filters: outOfScope ? [] : filters,
-        ...(causeCategory ? { causeCategory } : {}),
+        ...(appliedCause ? { causeCategory: appliedCause } : {}),
         ...(breakdown ? { breakdown } : {}),
         semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
           filters,
-          causeCategory,
+          causeCategory: appliedCause,
           breakdown,
           diagnostics: { contentDecision: { jev } },
         }, catalog) ? '' : (carriedQuery || question.trim()),
@@ -556,7 +564,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
           intentDecision: { chosen: intent },
-          causeDecision: { chosen: causeCategory ?? null, ...(causeDropped ? { dropped: true } : {}) },
+          causeDecision: { chosen: appliedCause ?? null, ...(causeDropped ? { dropped: true } : causeOnContent ? { dropped: 'content_search', heard: causeCategory } : {}) },
           contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
           ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
           scope: outOfScope ? 'out_of_scope' : 'records',

@@ -50,6 +50,9 @@
     daemon_reload: true
   when: release_kiosk_services | length > 0 or (manage_kiosk_browser | default(false) | bool)
 
+- name: Apply reversible Pi4 kiosk host network configuration
+  ansible.builtin.import_tasks: network.yml
+
 - name: Stage the torque candidate without starting ownership
   ansible.builtin.command: >-
     docker compose --project-name {{ release_kiosk_compose_project | quote }}
