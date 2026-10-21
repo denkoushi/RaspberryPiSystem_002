@@ -69,6 +69,24 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
     expect(await screen.findByRole('checkbox', { name: '保守・7125 test' })).toBeInTheDocument();
   });
+  it('copies the app note from its bundle so it can be pasted into a text box', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const appPhoto = { ...photo, id: 'app-photo', origin: 'APP', category: '検査', note: '  ボルトを対角に締める\nトルク 25N·m  ', gmailMessageId: 'app-mail', subjectHint: '検査・ボルトを対角に締める' };
+    mocks.list.mockImplementation(async ({ state, origin }) => state === 'unplaced' && origin === 'APP' ? [appPhoto] : []);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={vi.fn()} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'アプリから' }));
+    const bundle = await screen.findByRole('button', { name: /^検査・/ });
+    fireEvent.click(within(bundle).getByRole('button', { name: 'メモをコピー' }));
+    expect(writeText).toHaveBeenCalledExactlyOnceWith('ボルトを対角に締める\nトルク 25N·m');
+    expect(await within(bundle).findByRole('button', { name: 'コピーしました' })).toBeInTheDocument();
+    expect(bundle).toHaveAttribute('aria-expanded', 'true');
+  });
+  it('shows no note copy button on mail bundles', async () => {
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={vi.fn()} />);
+    await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
+    expect(screen.queryByRole('button', { name: 'メモをコピー' })).not.toBeInTheDocument();
+  });
   it('discards and restores app photos while preserving mail bundles with photo filters', async () => {
     const appPhoto = { ...photo, id: 'app-photo', origin: 'APP', category: '保守', note: '7125 test', gmailMessageId: 'app-mail', subjectHint: '保守・7125 test' };
     let discarded = false;
