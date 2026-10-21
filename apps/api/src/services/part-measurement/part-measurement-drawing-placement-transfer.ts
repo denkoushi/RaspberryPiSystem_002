@@ -157,17 +157,16 @@ export function chooseSourceSibling(input: {
   targetMap: DimensionMap;
   siblings: PlacementSibling[];
 }): { sibling: PlacementSibling; template: PlacementSibling['templates'][number] } | null {
-  const family = drawingNameFamily(input.target.name);
-  if (!family) return null;
   const ranked = input.siblings
-    .filter((sibling) => sibling.id !== input.target.id && sibling.isActive && drawingNameFamily(sibling.name) === family)
-    .flatMap((sibling) => sibling.templates
+    .filter((sibling) => sibling.id !== input.target.id && sibling.isActive)
+    .flatMap((sibling, rank) => sibling.templates
       .filter((template) => template.isActive && template.items.length > 0)
       .map((template) => ({
         sibling,
         template,
+        rank,
         count: template.items.filter((item) => candidatesFor(input.targetMap, item).length > 0).length
       })))
-    .sort((a, b) => b.count - a.count || b.template.updatedAt.getTime() - a.template.updatedAt.getTime());
+    .sort((a, b) => b.count - a.count || b.template.updatedAt.getTime() - a.template.updatedAt.getTime() || a.rank - b.rank);
   return ranked[0] ? { sibling: ranked[0].sibling, template: ranked[0].template } : null;
 }

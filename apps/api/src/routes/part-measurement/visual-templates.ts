@@ -24,6 +24,7 @@ import {
 
 
 import {
+  processGroupSchema,
   optionalQueryTrueOnlyBooleanSchema,
   inspectionDrawingDigitQuerySchema,
   drawingOcrCandidateBodySchema,
@@ -159,7 +160,8 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       { preHandler: allowView, config: { rateLimit: false } },
       async (request) => {
         const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-        return drawingPlacementService.listForEditor(id);
+        const { processGroup } = z.object({ processGroup: processGroupSchema.default('cutting') }).parse(request.query);
+        return drawingPlacementService.listForEditor(id, processGroup === 'grinding' ? 'GRINDING' : 'CUTTING');
       }
     );
 

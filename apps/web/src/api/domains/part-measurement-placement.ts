@@ -1,5 +1,7 @@
 import { api } from '../http';
 
+import type { PartMeasurementProcessGroup } from '../../features/part-measurement/types';
+
 export type DrawingPlacementRow = {
   id: string;
   measurementLabel: string;
@@ -28,10 +30,10 @@ export type DrawingPlacementResponse = {
   unplaced: DrawingPlacementUnplaced[];
 };
 
-export async function getInspectionDrawingPlacementProposals(visualTemplateId: string, clientKey?: string) {
+export async function getInspectionDrawingPlacementProposals(visualTemplateId: string, processGroup: PartMeasurementProcessGroup, clientKey?: string) {
   const { data } = await api.get<DrawingPlacementResponse>(
     `/part-measurement/visual-templates/${visualTemplateId}/placement-proposals`,
-    { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
+    { params: { processGroup }, headers: clientKey ? { 'x-client-key': clientKey } : undefined }
   );
   return data;
 }

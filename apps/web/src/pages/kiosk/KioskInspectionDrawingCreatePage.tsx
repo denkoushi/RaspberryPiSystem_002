@@ -273,7 +273,7 @@ export function KioskInspectionDrawingCreatePage() {
       ? selectedVisualTemplateId
       : null;
   const placement = useInspectionDrawingPlacementProposals({
-    visualTemplateId: visualTemplateIdForOcr, clientKey, points, onPointsChange: setPoints,
+    visualTemplateId: visualTemplateIdForOcr, processGroup, clientKey, points, onPointsChange: setPoints,
     enabled: Boolean(canvasImageUrl) && !contentReadOnly && mode !== 'guidedTrial',
     onSelectPoint: setSelectedPointId, onPlaceMode: () => setMode('place')
   });

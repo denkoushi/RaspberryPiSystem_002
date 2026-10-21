@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   prisma: {
+    partMeasurementDrawingSiblingMatch: { findUnique: vi.fn() },
     partMeasurementDrawingPlacementRun: { findUnique: vi.fn(), create: vi.fn() },
     partMeasurementDrawingPlacementProposal: { updateMany: vi.fn() },
     partMeasurementVisualTemplate: { findUnique: vi.fn(), findMany: vi.fn() },
@@ -18,13 +19,15 @@ vi.mock('../../lib/prisma.js', () => ({ prisma: mocks.prisma }));
 vi.mock('./part-measurement-drawing-ocr.service.js', () => ({ getPartMeasurementDrawingOcrService: () => mocks.ocr }));
 vi.mock('./part-measurement-drawing-dimension-map.service.js', () => ({ getPartMeasurementDrawingDimensionMapService: () => mocks.maps }));
 
+vi.mock('./part-measurement-drawing-sibling-match.service.js', () => ({ PartMeasurementDrawingSiblingMatchService: class {} }));
+
 import { PartMeasurementDrawingPlacementService } from './part-measurement-drawing-placement.service.js';
 import { PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION } from './part-measurement-drawing-dimension-map-payload.js';
 
 const db = mocks.prisma;
 const decimal = (n: number | string) => new Prisma.Decimal(n);
-const target = { id: 'target', name: '3351-MD12 ブラケット(左)' };
-const source = { id: 'source', name: '3351-MD13 ブラケット(右)' };
+const target = { id: 'target', name: 'スタンド' };
+const source = { id: 'source', name: '足' };
 const payload = {
   image: { width: 2000, height: 1000 },
   dimensions: [{ text: '10', nominal: 10, kind: 'len', depth: null, xRatio: 0.5, yRatio: 0.5 }]
@@ -47,6 +50,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.ocr.getCurrentStatus.mockImplementation(async (id) => ({ drawingImageFingerprint: `${id}-hash` }));
   mocks.maps.getCompletedPayload.mockImplementation(async (id) => id === 'target' ? payload : null);
+  db.partMeasurementDrawingSiblingMatch.findUnique.mockResolvedValue({ status: 'MATCHED', siblings: [{ visualTemplateId: 'source', confidence: 0.9 }] });
   db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(null);
   db.partMeasurementVisualTemplate.findUnique.mockResolvedValue(target);
   db.partMeasurementVisualTemplate.findMany.mockResolvedValue([source]);
@@ -61,7 +65,7 @@ beforeEach(() => {
 describe('ensureRun', () => {
   it('requires a map for the current fingerprint before looking up or creating a run', async () => {
     mocks.maps.getCompletedPayload.mockResolvedValue(null);
-    expect(await service.ensureRun('target')).toEqual({ status: 'map-pending', run: null });
+    expect(await service.ensureRun('target', { processGroup: 'CUTTING' })).toEqual({ status: 'map-pending', run: null });
     expect(mocks.maps.getCompletedPayload).toHaveBeenCalledWith('target', 'target-hash');
     expect(db.partMeasurementDrawingPlacementRun.findUnique).not.toHaveBeenCalled();
     expect(db.$transaction).not.toHaveBeenCalled();
@@ -71,15 +75,50 @@ describe('ensureRun', () => {
     const cached = run();
     db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(cached);
     const reorder = vi.fn();
-    expect(await service.ensureRun('target', { reorder })).toEqual({ status: 'ready', run: cached });
+    expect(await service.ensureRun('target', { processGroup: 'CUTTING', reorder })).toEqual({ status: 'ready', run: cached });
     expect(db.partMeasurementDrawingPlacementRun.findUnique).toHaveBeenCalledWith(expect.objectContaining({
-      where: { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: {
+      where: { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion_processGroup: {
         visualTemplateId: 'target', drawingImageFingerprint: 'target-hash',
-        analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION, placementVersion: 'transfer-v1'
+        analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION, placementVersion: 'transfer-v2', processGroup: 'CUTTING'
       } }
     }));
     expect(db.partMeasurementVisualTemplate.findMany).not.toHaveBeenCalled();
     expect(reorder).not.toHaveBeenCalled();
+  });
+
+  it.each([null, { status: 'PENDING' }])('waits for sibling matching without running inference', async (match) => {
+    db.partMeasurementDrawingSiblingMatch.findUnique.mockResolvedValue(match);
+    expect(await service.ensureRun('target', { processGroup: 'CUTTING' })).toEqual({ status: 'map-pending', run: null });
+    expect(db.partMeasurementDrawingPlacementRun.findUnique).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('uses only matched visuals and templates of the requested process, irrespective of names', async () => {
+    await service.ensureRun('target', { processGroup: 'GRINDING' });
+    expect(db.partMeasurementVisualTemplate.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['source'] }, isActive: true }
+    }));
+    expect(db.partMeasurementTemplate.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ visualTemplateId: { in: ['source'] }, processGroup: 'GRINDING', isActive: true })
+    }));
+    expect(db.partMeasurementTemplateItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { template: { visualTemplateId: 'target', isActive: true, processGroup: 'GRINDING' } }
+    }));
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ sourceTemplateId: 'template', processGroup: 'GRINDING' });
+  });
+
+  it('does not fall back to another process when no template is available', async () => {
+    db.partMeasurementTemplate.findMany.mockResolvedValue([]);
+    await service.ensureRun('target', { processGroup: 'GRINDING' });
+    expect(db.partMeasurementTemplate.findMany).toHaveBeenCalledOnce();
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ sourceTemplateId: null, processGroup: 'GRINDING' });
+  });
+
+  it('persists NO_MATCH without searching templates', async () => {
+    db.partMeasurementDrawingSiblingMatch.findUnique.mockResolvedValue({ status: 'NO_MATCH', siblings: [] });
+    await service.ensureRun('target', { processGroup: 'CUTTING' });
+    expect(db.partMeasurementTemplate.findMany).not.toHaveBeenCalled();
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data.sourceTemplateId).toBeNull();
   });
 
   it('creates the run and proposals atomically and copies Decimal limits without conversion', async () => {
@@ -92,7 +131,7 @@ describe('ensureRun', () => {
         { ...sourceItem(), id: 'no-marker', markerYRatio: null }
       ]
     }]);
-    await service.ensureRun('target');
+    await service.ensureRun('target', { processGroup: 'CUTTING' });
     expect(db.$transaction).toHaveBeenCalledOnce();
     const data = db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data;
     expect(data).toMatchObject({
@@ -113,10 +152,10 @@ describe('ensureRun', () => {
 
   it('skips existing active target items when creating proposals', async () => {
     db.partMeasurementTemplateItem.findMany.mockResolvedValue([{ measurementLabel: '長さ', nominalValue: decimal(10) }]);
-    await service.ensureRun('target');
+    await service.ensureRun('target', { processGroup: 'CUTTING' });
     expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data.proposals.create).toEqual([]);
     expect(db.partMeasurementTemplateItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { template: { visualTemplateId: 'target', isActive: true } }
+      where: { template: { visualTemplateId: 'target', isActive: true, processGroup: 'CUTTING' } }
     }));
   });
 
@@ -124,12 +163,12 @@ describe('ensureRun', () => {
     db.partMeasurementVisualTemplate.findMany.mockResolvedValue([]);
     const empty = run({ sourceTemplateId: null, sourceVisualTemplate: null, proposals: [] });
     db.partMeasurementDrawingPlacementRun.create.mockResolvedValue(empty);
-    expect(await service.ensureRun('target')).toEqual({ status: 'no-sibling', run: empty });
+    expect(await service.ensureRun('target', { processGroup: 'CUTTING' })).toEqual({ status: 'no-sibling', run: empty });
     expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({
       sourceVisualTemplateId: null, sourceTemplateId: null, proposalCount: 0, unplacedCount: 0, proposals: { create: [] }
     });
     db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(empty);
-    expect((await service.ensureRun('target')).status).toBe('no-sibling');
+    expect((await service.ensureRun('target', { processGroup: 'CUTTING' })).status).toBe('no-sibling');
     expect(db.partMeasurementDrawingPlacementRun.create).toHaveBeenCalledOnce();
   });
 
@@ -137,16 +176,16 @@ describe('ensureRun', () => {
     const winner = run({ id: 'winner' });
     db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(winner);
     db.$transaction.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '5' }));
-    expect(await service.ensureRun('target')).toEqual({ status: 'ready', run: winner });
+    expect(await service.ensureRun('target', { processGroup: 'CUTTING' })).toEqual({ status: 'ready', run: winner });
   });
 
   it('does not swallow a transaction failure', async () => {
     db.$transaction.mockRejectedValue(new Error('storage failed'));
-    await expect(service.ensureRun('target')).rejects.toThrow('storage failed');
+    await expect(service.ensureRun('target', { processGroup: 'CUTTING' })).rejects.toThrow('storage failed');
   });
 
   it('records the optional reorder method', async () => {
-    await service.ensureRun('target', { reorder: async (_item, candidates) => candidates });
+    await service.ensureRun('target', { processGroup: 'CUTTING', reorder: async (_item, candidates) => candidates });
     expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data.rankingMethod).toBe('jev');
   });
 
@@ -158,7 +197,7 @@ describe('ensureRun', () => {
       ...candidate, score: i ? 0.8 : 0.2
     })).reverse());
     const reorderProvider = vi.fn(() => reorder);
-    await service.ensureRun('target', { reorderProvider });
+    await service.ensureRun('target', { processGroup: 'CUTTING', reorderProvider });
     expect(reorderProvider).toHaveBeenCalledWith('target', {
       sourceVisualTemplateId: 'source', sourceMap: expect.objectContaining({ image: payload.image })
     });
@@ -179,7 +218,7 @@ describe('listForEditor', () => {
       { ...proposal(), id: 'unplaced', status: 'UNPLACED' }
     ] }));
     db.partMeasurementTemplateItem.findMany.mockResolvedValue([{ measurementLabel: '幅', nominalValue: decimal(10) }]);
-    expect(await service.listForEditor('target')).toEqual({
+    expect(await service.listForEditor('target', 'CUTTING')).toEqual({
       status: 'ready', sourceDrawingName: source.name,
       proposals: [{
         id: 'proposal', sortOrder: 1, measurementPoint: '穴A', decimalPlaces: 3, measurementLabel: '長さ', nominalValue: 10,
@@ -193,7 +232,7 @@ describe('listForEditor', () => {
 
   it('returns the empty response while the map is pending', async () => {
     mocks.maps.getCompletedPayload.mockResolvedValue(null);
-    expect(await service.listForEditor('target')).toEqual({
+    expect(await service.listForEditor('target', 'CUTTING')).toEqual({
       status: 'map-pending', sourceDrawingName: null, proposals: [], unplaced: []
     });
   });
@@ -204,7 +243,7 @@ describe('listForEditor', () => {
         ...proposal(), measurementPoint: null, decimalPlaces: 0, depthMode: 'THROUGH', valueKind: 'JUDGEMENT', lowerLimit: null, upperLimit: null, dimension: null
       }]
     }));
-    expect(await service.listForEditor('target')).toMatchObject({
+    expect(await service.listForEditor('target', 'CUTTING')).toMatchObject({
       status: 'ready', sourceDrawingName: null,
       proposals: [{ measurementPoint: null, decimalPlaces: 0, depthMode: 'through', valueKind: 'judgement', lowerLimit: null, upperLimit: null, dimensionText: null }]
     });
@@ -237,25 +276,29 @@ describe('recordDecisions', () => {
 });
 
 describe('backfill', () => {
-  it('processes sequentially, forwards the provider, and continues after failures', async () => {
-    db.$queryRaw.mockResolvedValue([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }]);
+  it('matches sequentially before creating process-specific runs and continues after failures', async () => {
+    db.$queryRaw.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }])
+      .mockResolvedValueOnce([{ id: 'a', processGroup: 'CUTTING' }, { id: 'a', processGroup: 'GRINDING' }, { id: 'd', processGroup: 'CUTTING' }]);
     const events: string[] = [];
-    const worker = new PartMeasurementDrawingPlacementService();
-    const ensure = vi.spyOn(worker, 'ensureRun').mockImplementation(async (id) => {
+    const matcher = { match: vi.fn(async (id) => {
       events.push(`${id}-start`);
       await Promise.resolve();
       events.push(`${id}-end`);
       if (id === 'b') throw new Error('bad map');
-      return id === 'c' ? { status: 'map-pending', run: null } :
-        { status: id === 'd' ? 'no-sibling' : 'ready', run: run() as never };
+      return { status: id === 'c' ? 'PENDING' : id === 'd' ? 'NO_MATCH' : 'MATCHED', method: id === 'a' ? 'jev-vision' : 'name' };
+    }) };
+    const worker = new PartMeasurementDrawingPlacementService(undefined, undefined, matcher as never);
+    const ensure = vi.spyOn(worker, 'ensureRun').mockImplementation(async (id) => {
+      events.push(`${id}-run`);
+      return { status: id === 'd' ? 'no-sibling' : 'ready', run: run() as never };
     });
-    const reorder = vi.fn(async (_item, candidates) => candidates);
-    const provider = vi.fn(async () => reorder);
-    expect(await worker.backfill(4, provider)).toEqual({ scanned: 4, ready: 1, noSibling: 1, mapPending: 1, failed: 1 });
-    expect(events).toEqual(['a-start', 'a-end', 'b-start', 'b-end', 'c-start', 'c-end', 'd-start', 'd-end']);
-    expect(ensure).toHaveBeenCalledWith('a', { reorderProvider: provider });
-    const [sql, ...values] = db.$queryRaw.mock.calls[0];
-    expect(sql.join('')).toContain('r."drawingImageFingerprint" = m."drawingImageFingerprint"');
-    expect(values).toEqual([PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION, 'transfer-v1', 4]);
+    const provider = vi.fn();
+    expect(await worker.backfill(4, provider)).toEqual({ scanned: 4, matched: 1, noMatch: 1, deferred: 1, jev: 1,
+      ready: 2, noSibling: 1, mapPending: 0, failed: 1 });
+    expect(events).toEqual(['a-start', 'a-end', 'b-start', 'b-end', 'c-start', 'c-end', 'd-start', 'd-end', 'a-run', 'a-run', 'd-run']);
+    expect(ensure).toHaveBeenCalledWith('a', { processGroup: 'GRINDING', reorderProvider: provider });
+    const sql = db.$queryRaw.mock.calls[1][0].join('');
+    expect(sql).toContain('r."drawingImageFingerprint" = m."drawingImageFingerprint"');
+    expect(sql).toContain('r."processGroup" = p."processGroup"');
   });
 });

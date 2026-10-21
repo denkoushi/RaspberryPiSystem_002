@@ -2933,6 +2933,7 @@ model PartMeasurementVisualTemplate {
   businessTemplates        PartMeasurementTemplate[]
   ocrCaches                PartMeasurementDrawingOcrCache[]
   dimensionMaps            PartMeasurementDrawingDimensionMap[]
+  siblingMatches           PartMeasurementDrawingSiblingMatch[]
   placementRuns            PartMeasurementDrawingPlacementRun[] @relation("PlacementTarget")
   sourcedPlacementRuns     PartMeasurementDrawingPlacementRun[] @relation("PlacementSource")
   placementProposals       PartMeasurementDrawingPlacementProposal[]
@@ -3005,6 +3006,30 @@ model PartMeasurementDrawingDimensionMap {
   @@index([status, nextAttemptAt, createdAt], map: "PMDrawingDimMap_idx_claim")
 }
 
+enum PartMeasurementDrawingSiblingMatchStatus {
+  PENDING
+  MATCHED
+  NO_MATCH
+}
+
+model PartMeasurementDrawingSiblingMatch {
+  id                      String @id @default(uuid())
+  visualTemplateId        String
+  drawingImageFingerprint String
+  matchVersion            String
+  status                  PartMeasurementDrawingSiblingMatchStatus @default(PENDING)
+  method                  String
+  siblings                Json
+  attempts                Int @default(0)
+  lastError               String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  visualTemplate          PartMeasurementVisualTemplate @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([visualTemplateId, drawingImageFingerprint, matchVersion], map: "PMDrawingSiblingMatch_unique_visual_hash_version")
+  @@index([status, updatedAt], map: "PMDrawingSiblingMatch_idx_pending")
+}
+
 enum PartMeasurementDrawingPlacementProposalStatus {
   PROPOSED
   APPROVED
@@ -3018,6 +3043,7 @@ model PartMeasurementDrawingPlacementRun {
   drawingImageFingerprint String
   analysisVersion         String
   placementVersion        String
+  processGroup            PartMeasurementProcessGroup?
   sourceVisualTemplateId  String?
   sourceTemplateId        String?
   rankingMethod           String
@@ -3029,7 +3055,7 @@ model PartMeasurementDrawingPlacementRun {
   sourceVisualTemplate    PartMeasurementVisualTemplate? @relation("PlacementSource", fields: [sourceVisualTemplateId], references: [id], onDelete: SetNull)
   proposals               PartMeasurementDrawingPlacementProposal[]
 
-  @@unique([visualTemplateId, drawingImageFingerprint, analysisVersion, placementVersion], map: "PMDrawingPlacementRun_unique_visual_hash_versions")
+  @@unique([visualTemplateId, drawingImageFingerprint, analysisVersion, placementVersion, processGroup], map: "PMDrawingPlacementRun_unique_visual_hash_versions_process")
   @@index([sourceVisualTemplateId])
 }
 

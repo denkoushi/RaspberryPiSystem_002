@@ -12,6 +12,7 @@ import {
   PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
   PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION
 } from '../../services/part-measurement/part-measurement-drawing-dimension-map-payload.js';
+import { SIBLING_MATCH_VERSION } from '../../services/part-measurement/part-measurement-drawing-sibling-match.js';
 import { getPartMeasurementDrawingPlacementService } from '../../services/part-measurement/part-measurement-drawing-placement.service.js';
 
 // Uses the migrated CI Postgres database, like part-measurement.integration.test.ts.
@@ -29,6 +30,10 @@ describe('placement proposals API / Postgres', () => {
   const fingerprint = () => createHash('sha256').update(image).digest('hex');
 
   async function completedMap(visualTemplateId: string, hash = fingerprint()) {
+    await prisma.partMeasurementDrawingSiblingMatch.create({ data: {
+      visualTemplateId, drawingImageFingerprint: hash, matchVersion: SIBLING_MATCH_VERSION,
+      status: 'MATCHED', method: 'dgx-vision', siblings: [{ visualTemplateId: sourceId, confidence: 0.9 }]
+    } });
     return prisma.partMeasurementDrawingDimensionMap.create({
       data: {
         visualTemplateId, drawingImageFingerprint: hash, analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
@@ -45,10 +50,10 @@ describe('placement proposals API / Postgres', () => {
     });
   }
 
-  async function template(visualTemplateId: string, labels: string[]) {
+  async function template(visualTemplateId: string, labels: string[], processGroup: 'CUTTING' | 'GRINDING' = 'CUTTING') {
     return prisma.partMeasurementTemplate.create({
       data: {
-        visualTemplateId, name: family, fhincd: randomUUID(), resourceCd: 'PLACEMENT_TEST', processGroup: 'CUTTING',
+        visualTemplateId, name: family, fhincd: randomUUID(), resourceCd: 'PLACEMENT_TEST', processGroup,
         items: { create: labels.map((measurementLabel, sortOrder) => ({
           measurementLabel, sortOrder, datumSurface: 'A', measurementPoint: 'P',
           nominalValue: measurementLabel === 'missing' ? 99 : 10,
@@ -77,7 +82,7 @@ describe('placement proposals API / Postgres', () => {
     }));
     await prisma.partMeasurementVisualTemplate.createMany({
       data: ids.map((id, index) => {
-        const name = `3351-MD${12 + index} ${family}(${index ? '右' : '左'})`;
+        const name = `${index ? '足' : 'スタンド'} ${family}`;
         return { id, name, searchDigits: name.replace(/[^0-9]/g, ''), drawingImageRelativePath: `/api/storage/part-measurement-drawings/${id}.png` };
       })
     });
@@ -133,6 +138,37 @@ describe('placement proposals API / Postgres', () => {
     await completedMap(targetId);
     expect((await app.inject({ method: 'GET', url: url(), headers: createAuthHeader(viewer.token) })).json().status).toBe('ready');
     expect(await prisma.partMeasurementDrawingPlacementRun.count({ where: { visualTemplateId: targetId } })).toBe(2);
+  });
+
+  it('separates process runs and existing items, ignores v1 and never falls back across processes', async () => {
+    await completedMap(targetId);
+    await prisma.partMeasurementDrawingPlacementRun.create({ data: {
+      visualTemplateId: targetId, drawingImageFingerprint: fingerprint(),
+      analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION, placementVersion: 'transfer-v1', rankingMethod: 'position'
+    } });
+    await template(targetId, ['長さ'], 'GRINDING');
+    const headers = { 'x-client-key': client.apiKey };
+    const cutting = (await app.inject({ method: 'GET', url: url(), headers })).json();
+    expect(cutting.status).toBe('ready');
+    expect(cutting.proposals).toHaveLength(2);
+    const grinding = (await app.inject({ method: 'GET', url: `${url()}?processGroup=grinding`, headers })).json();
+    expect(grinding.status).toBe('no-sibling');
+    expect(grinding.proposals).toEqual([]);
+    expect((await app.inject({ method: 'GET', url: `${url()}?processGroup=invalid`, headers })).statusCode).toBe(400);
+    const runs = await prisma.partMeasurementDrawingPlacementRun.findMany({ where: { visualTemplateId: targetId, placementVersion: 'transfer-v2' } });
+    expect(runs.map((run) => run.processGroup).sort()).toEqual(['CUTTING', 'GRINDING']);
+  });
+
+  it('transfers and filters the grinding process independently of cutting', async () => {
+    await completedMap(targetId);
+    const source = await template(sourceId, ['長さ', '幅'], 'GRINDING');
+    await template(targetId, ['長さ'], 'GRINDING');
+    const headers = { 'x-client-key': client.apiKey };
+    const result = (await app.inject({ method: 'GET', url: `${url()}?processGroup=grinding`, headers })).json();
+    expect(result.status).toBe('ready');
+    expect(result.proposals.map((row: { measurementLabel: string }) => row.measurementLabel)).toEqual(['幅']);
+    const run = await prisma.partMeasurementDrawingPlacementRun.findFirstOrThrow({ where: { visualTemplateId: targetId } });
+    expect(run.sourceTemplateId).toBe(source.id);
   });
 
   it('filters saved items, scopes decisions to the drawing and PROPOSED state, and is idempotent', async () => {
@@ -193,12 +229,33 @@ describe('placement proposals API / Postgres', () => {
     expect(await prisma.partMeasurementDrawingPlacementProposal.count({ where: { visualTemplateId: targetId } })).toBe(0);
   });
 
+  it('backfills both matched processes and a single CUTTING run for NO_MATCH', async () => {
+    await completedMap(targetId);
+    await template(sourceId, ['長さ'], 'GRINDING');
+    const service = getPartMeasurementDrawingPlacementService();
+    await service.backfill(1000);
+    const runs = await prisma.partMeasurementDrawingPlacementRun.findMany({ where: { visualTemplateId: targetId } });
+    expect(runs.map((run) => run.processGroup).sort()).toEqual(['CUTTING', 'GRINDING']);
+    image = Buffer.from('no match image');
+    await completedMap(targetId);
+    await prisma.partMeasurementDrawingSiblingMatch.updateMany({
+      where: { visualTemplateId: targetId, drawingImageFingerprint: fingerprint() },
+      data: { status: 'NO_MATCH', siblings: [] }
+    });
+    await service.backfill(1000);
+    const empty = await prisma.partMeasurementDrawingPlacementRun.findMany({
+      where: { visualTemplateId: targetId, drawingImageFingerprint: fingerprint() }
+    });
+    expect(empty).toHaveLength(1);
+    expect(empty[0]).toMatchObject({ processGroup: 'CUTTING', sourceTemplateId: null });
+  });
+
   it('backfills only the latest map without repeatedly selecting an older unhandled fingerprint', async () => {
     const oldMap = await completedMap(targetId, 'old-unhandled');
     await prisma.partMeasurementDrawingDimensionMap.update({ where: { id: oldMap.id }, data: { createdAt: new Date(0) } });
     await completedMap(targetId);
     const service = getPartMeasurementDrawingPlacementService();
-    await service.ensureRun(targetId);
+    await service.ensureRun(targetId, { processGroup: 'CUTTING' });
     const ensure = vi.spyOn(service, 'ensureRun').mockResolvedValue({ status: 'map-pending', run: null });
     await service.backfill(1000);
     expect(ensure.mock.calls.map(([id]) => id)).not.toContain(targetId);

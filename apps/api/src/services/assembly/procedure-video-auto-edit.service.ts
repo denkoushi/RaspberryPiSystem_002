@@ -10,6 +10,7 @@ import { logger } from '../../lib/logger.js';
 import type { DurableFileStorePort } from '../file-storage/durable-file-store.port.js';
 import { getFileStorageRuntime } from '../file-storage/file-storage-runtime.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
+import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
 import { InferenceUnavailableError, type MultiImageVisionCompletionPort } from '../inference/ports/multi-image-vision-completion.port.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { LocalLlmRuntimeControllerPort } from '../inference/runtime/local-llm-runtime-control.port.js';
@@ -190,7 +191,7 @@ export class ProcedureVideoAutoEditService {
       } catch (error) {
         if (error instanceof ClaimLostError || ownership.signal.aborted) return;
         const skipped = error instanceof VideoSkippedError;
-        const unavailable = error instanceof InferenceUnavailableError;
+        const unavailable = error instanceof InferenceUnavailableError || error instanceof InferenceDeferredError;
         const attempts = candidate.attempts + (skipped || unavailable ? 0 : 1);
         await this.deps.db.procedureVideoAutoEditSuggestion.updateMany({ where: owned, data: {
           status: skipped ? 'SKIPPED' : attempts > 3 ? 'FAILED' : 'PENDING', attempts, processingToken: null,

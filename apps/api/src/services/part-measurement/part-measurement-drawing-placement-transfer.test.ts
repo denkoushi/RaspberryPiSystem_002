@@ -165,22 +165,24 @@ describe('chooseSourceSibling', () => {
     expect(chooseSourceSibling({ target, targetMap: map(), siblings: [older, less, newer] })?.sibling.id).toBe('newer');
   });
 
-  it('excludes self, inactive drawings/templates, other families and empty templates', () => {
+  it('excludes self, inactive drawings/templates, and empty templates', () => {
     const inactiveTemplate = sibling('inactive-template', [item]);
     inactiveTemplate.templates[0].isActive = false;
     expect(chooseSourceSibling({
       target, targetMap: map(), siblings: [
         sibling('target', [item]), { ...sibling('inactive', [item]), isActive: false },
-        { ...sibling('different', [item]), name: '足' }, sibling('empty', []), inactiveTemplate
+        sibling('empty', []), inactiveTemplate
       ]
     })).toBeNull();
   });
 
-  it('never matches an empty family', () => {
-    expect(chooseSourceSibling({
-      target: { id: 'target', name: '3351-MD12(左)' }, targetMap: map(),
-      siblings: [{ ...sibling('source', [item]), name: '3351-MD13(右)' }]
-    })).toBeNull();
+  it('accepts matched siblings with different or empty names and breaks ties by input rank', () => {
+    for (const name of ['スタンド', '3351-MD12(左)']) {
+      expect(chooseSourceSibling({
+        target: { id: 'target', name }, targetMap: map(),
+        siblings: [{ ...sibling('first', [item]), name: '足' }, sibling('second', [item])]
+      })?.sibling.id).toBe('first');
+    }
   });
 
   it('retains a valid sibling with zero matches so its items can be UNPLACED', () => {

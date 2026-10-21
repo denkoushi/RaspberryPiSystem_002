@@ -43,6 +43,8 @@ open_items:
 
 ## Progress
 
+- [x] (2026-10-21) Milestone 5: 夜間の内容ベース兄弟判定（sibling-v1）、工程別配置（transfer-v2）、工程別の Web クエリ・セッションをローカル実装。検証結果は「2026-10-21 の受入」に記録。
+- [ ] 2026-10-21 の migration を適用した Postgres で配置 proposals 統合テストを実行（CI）。本番反映後、夜間処理(0〜5 時台)の兄弟判定件数と JEV 使用件数をログで確認。
 - [x] (2026-10-03) Milestone 1: PDF/TIFF 取込時に原本を保持する。表示用画像と既存の丸数字座標は変えない。
 - [x] (2026-10-03) Milestone 2: DGX で図面を読ませる精度実験。
   - [x] (2026-10-03) 1 回目: 30 図面 330 項目で、画像 AI・PP-OCRv5・既存 OCR を比較し、組み合わせと「指定値の図面全体探索」を採点した（結果は Artifacts and Notes）。
@@ -67,6 +69,7 @@ open_items:
 
 ## Surprises & Discoveries
 
+- 観察 (2026-10-21): 複数画像推論は背景 HTTP 429/503 を一般の unavailable として返していた。兄弟判定で JEV に進まないよう `InferenceDeferredError` に揃え、既存動画処理も延期時の試行回数を維持するよう追従した。対象アダプタ・利用側 30 テスト成功。
 - 観察: PDF は取込時に 144dpi の JPEG へ変換され、元の PDF は捨てられていた。TIFF は縮小しないが JPEG 化していた。
   証拠: `apps/api/src/lib/part-measurement-drawing-import.ts`、`PART_MEASUREMENT_PDF_RENDER_DPI = 144`。
 - 観察: 図面閲覧システムから出力される PDF/TIFF は文字情報を持たない画像であり、出力側の解像度は上げられない。したがって PDF から文字を直接抜く方法（`pdftotext`）は使えず、原本からの高解像度再描画と画像 AI が主な手段になる。
@@ -95,6 +98,7 @@ open_items:
 
 ## Decision Log
 
+- 決定 (2026-10-21、利用者指定): 名前だけの兄弟選定を、寸法の共通組＋名前加点の上位 8 件と図面全体の DGX 判定に置き換える。JEV は既存フラグとキーがある場合の fallback とし、項目別の並べ替え経路は維持する。DGX が止まっているときの通常エラーはすぐ JEV、延期(429/503)は 2 回まで PENDING で待ち 3 回目に JEV。JEV も使えなければ 3 回目で名前に fallback。本番は inventory の `inspection_drawing_transfer_jev_enabled: true` で JEV を有効にする(利用者承認済み)。正常だが曖昧な DGX 結果は JEV が使えない場合も保持する。工程は兄弟判定に含めず、配置 run の一意キーと元・既存項目の絞り込みに含める。
 - 決定: Milestone 5 は経路 A だけを作る。案は `PartMeasurementTemplateItem` に列を足さず別テーブルに持ち、承認されたものだけを編集画面の通常の丸数字にする。TypeSafe JEV は候補の並べ替えにだけ使い、既定は無効のフラグで切り替える。
   理由: 案の状態を項目に持たせると、検査で使う全経路に「案は除く」条件が要り、漏れると AI 案が検査に混ざる。別テーブルなら保存経路を変えずに済む。JEV はオフライン評価で移し替えの一位を 63.2% → 74.6% に上げたが、画像機能は本番品質と明記されておらず、検査図面の切り出しを外部へ送ることの承認もまだ無い。
   日付: 2026-10-20
@@ -189,6 +193,7 @@ open_items:
 
 ## Outcomes & Retrospective
 
+2026-10-21 のローカル実装: 「スタンド」と「足」のように名前が違っても、保存済み MATCHED の兄弟から同じ工程の項目を提案できる。GET は兄弟判定未完了なら map-pending。DB migration と実推論・本番反映は未検証。検証の詳細は下記受入節を参照。
 Milestone 1 完了時点: 新しく取り込む PDF/TIFF 図面は原本が残るようになった。既存の表示、丸数字、OCR キャッシュの動作は変わらない。
 
 Milestone 2 の 1 回目（2026-10-03）: 組み合わせで一位一致が既存 OCR の 24.8% から約 55% まで上がる見込みを得たが、実用水準には届かない。残りの約 3 割は、正解の寸法が切り出しの外にあるか図面に書かれていない項目で、切り出し単位の改良では取れない。2 回目は図面全体の寸法一覧を使って選ばせる。
@@ -225,7 +230,7 @@ Milestone 5（案を先に置き、人が承認する）は二つの経路に分
 
 同日の追加決定: 経路 B は丸数字を自動で置かず、Milestone 4 の候補で人の配置を支える。Milestone 4 には、寸法を 2 つ選んで和を基準値にする操作を加える。
 
-Milestone 5 経路 A の実装計画（2026-10-20、利用者が画面の見本を承認）:
+Milestone 5 経路 A の旧実装計画（2026-10-20、利用者が画面の見本を承認。兄弟選定・工程・run 版は下記 2026-10-21 の受入契約で更新）:
 
 1. 兄弟図面探し。図面名を NFKC で正規化し、先頭の `3351-MD<数字>`・`7161`、途中の `MD<数字>`、括弧書き、先頭の `X軸/Y軸/Z軸/本体/Y` を除いた「名前の系統」が一致する、別の有効な図面を兄弟とする（オフライン評価の `base()` と同じ規則）。兄弟のうち、有効なテンプレートに丸数字のある項目を持ち、新図面へ写せる項目が最も多い 1 枚を元図面にする。
 2. 写し替え。元図面の項目ごとに、Milestone 4 と同じ規則で求めた寸法の種類と値が項目の基準値と一致する寸法を、新図面の寸法マップから集める（0.01 以内の重複は一つにまとめる）。元の丸数字（指差し先端があればその近い方）と同じ相対位置に最も近い寸法を選び、元図面で丸数字が寸法から離れていた分だけずらした位置に丸数字の案を置く（元図面に寸法マップが無いときは決まった幅だけずらす）。上下限は元の項目の値を写す。候補が無い項目は「未配置」とする。新図面に同じ項目名・基準値の項目がすでにあれば案を出さない。
@@ -260,6 +265,21 @@ Milestone 1 の検証（作業ディレクトリ `apps/api`）:
 期待結果: 型エラーなし、2 ファイル 9 テスト成功。`part-measurement.integration.test.ts` の PDF 取込テストは pdftoppm と Postgres がある CI で原本キーの保存を確認する。
 
 ## Validation and Acceptance
+
+### 2026-10-21 の受入: 内容ベース兄弟判定と工程別配置
+
+`PartMeasurementDrawingSiblingMatch` は visual・画像指紋・`sibling-v1` で一意。`part-measurement-drawing-sibling-match.ts` が純粋な候補選別と応答検証、同 `.service.ts` が画像読込・推論・再試行の保存を担当する。`INSPECTION_DRAWING_SIBLING_VISION_ENABLED` は既定 true、false では候補中の名前一致だけを使う。夜間 backfill は最新 COMPLETED map の未判定・PENDING を古い順に逐次判定し、その後 MATCHED の兄弟が持つ各工程、NO_MATCH は CUTTING で run を作る。
+
+配置 run は `transfer-v2` と processGroup を指定し、v1 を再利用しない。GET の `processGroup=cutting|grinding` は省略時 cutting。同じ工程の有効テンプレートだけを採用・既存項目除外の対象とし、他工程には fallback しない。Web は工程を送信し、工程変更でクエリと一時判断を切り替える。migration は `20261021120000_part_measurement_drawing_sibling_match`。DB 適用・巻戻しは今回実行していない。旧 run は残す。
+
+検証はリポジトリのパッケージ依存を build 後に実行。`.env*` の自動読込は一時 preload で禁止し、git コマンドを使わず編集前コピーとの比較で確認した。
+
+    pnpm --filter @raspi-system/api exec prisma generate
+    pnpm --filter @raspi-system/api exec tsc --noEmit -p tsconfig.build.json
+    pnpm --filter @raspi-system/web exec tsc --noEmit -p .
+    pnpm --filter @raspi-system/api exec vitest run src/services/part-measurement
+
+Prisma generate と両パッケージの上記型検査は成功。API の `tsc --noEmit -p .` は既存設定が rootDir 外の seed / scripts / vitest.config を含むため TS6059。本番用設定で補足した。API 全体は 374 成功・6 失敗・1 skipped（67 ファイル中 3 失敗）。失敗は全て localhost:5432 の DB に接続できない既存テスト。配置 proposals の Postgres 統合テストは更新したが実行せず、CI に残す。DGX / JEV の実通信も実行しない。最終の追加検証は兄弟判定サービス 17 件、配置 route 18 件、複数画像推論と既存動画処理 30 件が成功。Web は hook 9 件・page 13 件・API 通信 2 件が成功。変更 TS/TSX 22 ファイルの eslint はエラー 0、最終の API 本番設定と Web の型検査は再度成功。
 
 ### Milestone 5 経路 A の受入（2026-10-20、ローカル）
 
@@ -450,3 +470,4 @@ Milestone 3 以降で寸法マップの型（寸法 1 件 = 原文、基準値�
 改訂メモ: 2026-10-07 画像ファイルが無い visual template 6700f7bb の無効化（案 B）を本番で実施した記録と決定を追加した。
 改訂メモ: 2026-10-15 TypeSafe JEV の画像判定で、似た図面探し・兄弟図面への移し替え・候補の並べ替えをオフラインで測った結果と、移し替えだけを有力候補とする決定を追加した。
 改訂メモ: 2026-10-20 Milestone 5 経路 A の実装計画と、案を別テーブルに持つ決定を追加した。
+改訂メモ: 2026-10-21 内容ベースの兄弟判定と工程別配置を実装し、検証範囲・DB 未検証を記録した。
