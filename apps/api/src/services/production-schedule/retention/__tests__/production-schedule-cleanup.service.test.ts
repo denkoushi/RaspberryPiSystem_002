@@ -66,6 +66,42 @@ describe('production-schedule-cleanup.service', () => {
     expect(result.thresholdUtc.toISOString()).toBe('2025-02-19T00:00:00.000Z');
   });
 
+  it('deleteExpiredRowsOneYear: occurredAt index の範囲を (occurredAt, id) のキーセットで進める', async () => {
+    const svc = new ProductionScheduleCleanupService();
+    const nowUtc = new Date('2026-02-19T00:00:00.000Z');
+    const lastOccurredAt = new Date('2024-01-02T00:00:00.000Z');
+
+    // 前のテストで使われずに残った mockResolvedValueOnce を捨てる
+    vi.mocked(prisma.csvDashboardRow.findMany).mockReset();
+    vi.mocked(prisma.csvDashboardRow.findMany)
+      .mockResolvedValueOnce([
+        // batchSize の下限 50 件ちょうど返し、次のバッチへ進ませる（どれも updatedAt が新しく残す行）
+        ...Array.from({ length: 49 }, (_, i) => ({
+          id: `z${String(i).padStart(2, '0')}`,
+          occurredAt: new Date('2024-01-01T00:00:00.000Z'),
+          rowData: { updatedAt: '2026/2/18 12:00' },
+        })),
+        { id: 'a', occurredAt: lastOccurredAt, rowData: { updatedAt: '2026/2/18 12:00' } },
+      ] as never)
+      .mockResolvedValueOnce([] as never);
+
+    await svc.deleteExpiredRowsOneYear({ csvDashboardId: 'dash', nowUtc, batchSize: 50 });
+
+    const calls = vi.mocked(prisma.csvDashboardRow.findMany).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.[0]).toMatchObject({
+      where: { csvDashboardId: 'dash', occurredAt: { lt: new Date('2025-02-19T00:00:00.000Z') } },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    });
+    expect(calls[0]?.[0]?.where).not.toHaveProperty('OR');
+    expect(calls[1]?.[0]?.where).toEqual({
+      csvDashboardId: 'dash',
+      occurredAt: { lt: new Date('2025-02-19T00:00:00.000Z'), gte: lastOccurredAt },
+      OR: [{ occurredAt: { gt: lastOccurredAt } }, { occurredAt: lastOccurredAt, id: { gt: 'a' } }],
+    });
+    expect(prisma.csvDashboardRow.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('deleteDuplicateLosersGlobal: $executeRawの結果を合算し、0で停止する', async () => {
     const svc = new ProductionScheduleCleanupService();
     vi.mocked(prisma.$executeRaw).mockResolvedValueOnce(3 as never).mockResolvedValueOnce(0 as never);
