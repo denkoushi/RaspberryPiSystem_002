@@ -456,6 +456,62 @@ describe('mobile-placement API', () => {
     }
   });
 
+  it.each([
+    ['BE1N9321', 'exact', 'BE1N9321'],
+    ['8E1N9321', 'corrected', 'BE1N9321'],
+    ['ZZ999999', 'none', 'ZZ999999']
+  ] as const)('POST /api/mobile-placement/snap-fseiban-tokens snaps %s (%s)', async (raw, match, expected) => {
+    await prisma.csvDashboard.create({ data: {
+      id: PRODUCTION_SCHEDULE_DASHBOARD_ID, name: 'test schedule', columnDefinitions: {}, templateConfig: {}
+    } });
+    await prisma.csvDashboardRow.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+      rowData: { ProductNo: '0002178005', FSEIBAN: ' BE1N9321 ', FHINCD: 'H-1', FSIGENCD: 'G1', FKOJUN: '1' }
+    } });
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    const text = `製造オーダNo 0002178005\n製番 ${raw}`;
+    const res = await app.inject({
+      method: 'POST', url: '/api/mobile-placement/snap-fseiban-tokens',
+      headers: { 'x-client-key': clientApiKey }, payload: { tokens: [raw], text }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      engine: 'device', ocrText: text, ocrPreviewSafe: expect.any(String),
+      manufacturingOrder10: '0002178005', fseibanRaw: raw, fseibanMatch: match,
+      fseibanCandidates: match === 'none' ? [] : ['BE1N9321'], fseiban: expected
+    });
+  });
+
+  it('POST /api/mobile-placement/snap-fseiban-tokens accepts omitted text', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    const res = await app.inject({
+      method: 'POST', url: '/api/mobile-placement/snap-fseiban-tokens',
+      headers: { 'x-client-key': clientApiKey }, payload: { tokens: ['BA1S3332'] }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ engine: 'device', ocrText: '', manufacturingOrder10: null });
+  });
+
+  it('POST /api/mobile-placement/snap-fseiban-tokens requires a client key', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/mobile-placement/snap-fseiban-tokens', payload: { tokens: ['BE1N9321'] }
+    });
+    expect([401, 403]).toContain(res.statusCode);
+  });
+
+  it.each([
+    {}, { tokens: [] }, { tokens: [''] }, { tokens: ['A'.repeat(33)] },
+    { tokens: Array.from({ length: 51 }, () => 'BE1N9321') }, { tokens: [123] },
+    { tokens: ['BE1N9321'], text: 'a'.repeat(4001) }, { tokens: ['BE1N9321'], text: 123 }
+  ])('POST /api/mobile-placement/snap-fseiban-tokens rejects invalid body %#', async (payload) => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    const res = await app.inject({
+      method: 'POST', url: '/api/mobile-placement/snap-fseiban-tokens',
+      headers: { 'x-client-key': clientApiKey }, payload
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('POST /api/mobile-placement/register-order-placement creates event without updating Item', async () => {
     const { apiKey: clientApiKey } = await createTestClientDevice();
     await prisma.csvDashboard.upsert({
