@@ -160,7 +160,10 @@ describe('CSV feed freshness evaluator', () => {
     notice('frozen', 'recovered');
     expect(mocks.read).toHaveBeenCalledWith('csv-dashboards/feed/raw/new.csv', { verifyIntegrity: true });
   });
-  it.each([CSV_FEED_FROZEN_DAYS - 1 / DAY, CSV_FEED_FROZEN_DAYS])('evaluates frozen boundary at %s days without new runs', async (days) => {
+  it('uses 5 days as the frozen threshold', () => {
+    expect(CSV_FEED_FROZEN_DAYS).toBe(5);
+  });
+  it.each([4, CSV_FEED_FROZEN_DAYS - 1 / DAY, CSV_FEED_FROZEN_DAYS])('evaluates frozen boundary at %s days without new runs', async (days) => {
     mocks.state.mockResolvedValue(saved(days));
     mocks.query.mockResolvedValueOnce([run('before', 1)]);
     await evaluateCsvFeedFreshness(now);

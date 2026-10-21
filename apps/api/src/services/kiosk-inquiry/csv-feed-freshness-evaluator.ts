@@ -8,7 +8,8 @@ import { loadBackupConfigWithFkojunstImportScheduleEnsured } from '../imports/fk
 import { deliverSystemNotice } from './system-notice.service.js';
 
 export const CSV_FEED_EVALUATION_MS = 60 * 60 * 1000;
-export const CSV_FEED_FROZEN_DAYS = 7; // Placeholder; tune after observing production feeds.
+// Production raw files (9/1-10/21) showed at most 4.0 days without new lines on healthy daily feeds.
+export const CSV_FEED_FROZEN_DAYS = 5;
 export const CSV_FEED_MISSING_MIN_GRACE_MS = 48 * 60 * 60 * 1000;
 export const CSV_FEED_INTERVAL_SAMPLE = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
