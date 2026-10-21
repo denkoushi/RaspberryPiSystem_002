@@ -104,8 +104,8 @@ export class PartMeasurementDrawingSiblingMatchService {
         parsed.some((candidate) => candidate.confidence >= 0.3 && candidate.confidence < 0.7);
       if (!uncertain) return finish(siblings, 'dgx-vision');
     } catch (error) {
-      // A busy DGX is retried next tick; after three deferrals (e.g. DGX stopped) JEV decides instead.
-      if (error instanceof InferenceDeferredError && row.attempts < 3) return pending(error);
+      // A busy DGX is retried once next tick; on the second deferral (e.g. DGX stopped) JEV decides instead.
+      if (error instanceof InferenceDeferredError && row.attempts < 2) return pending(error);
       failure = error;
     }
     const jev = this.deps.jevConfig();

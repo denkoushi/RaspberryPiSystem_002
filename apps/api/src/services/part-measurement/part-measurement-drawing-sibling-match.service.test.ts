@@ -95,19 +95,16 @@ describe('drawing sibling match', () => {
     ] });
   });
 
-  it('keeps deferred inference PENDING for two attempts, then lets JEV decide', async () => {
+  it('keeps deferred inference PENDING once, then lets JEV decide', async () => {
     completeMany.mockRejectedValue(new InferenceDeferredError());
-    for (let i = 0; i < 2; i++) {
-      // eslint-disable-next-line no-await-in-loop
-      expect(await service.match('target')).toMatchObject({ status: 'PENDING', siblings: [] });
-    }
+    expect(await service.match('target')).toMatchObject({ status: 'PENDING', siblings: [] });
     expect(db.partMeasurementDrawingSiblingMatch.upsert).toHaveBeenLastCalledWith(expect.objectContaining({ update: { attempts: { increment: 1 } } }));
     expect(requestJevChoice).not.toHaveBeenCalled();
     expect(await service.match('target')).toMatchObject({ status: 'MATCHED', method: 'jev-vision' });
     expect(requestJevChoice).toHaveBeenCalledOnce();
   });
 
-  it('keeps deferred inference PENDING until the third attempt when JEV is unavailable, then uses names', async () => {
+  it('retries deferred inference until the third attempt when JEV is unavailable, then uses names', async () => {
     deps.jevConfig.mockReturnValue({ enabled: false, apiKey: '', timeoutMs: 20000 });
     completeMany.mockRejectedValue(new InferenceDeferredError());
     db.partMeasurementVisualTemplate.findUniqueOrThrow.mockResolvedValue({ id: 'target', name: '足(左)', drawingImageRelativePath: 'target.png' });
