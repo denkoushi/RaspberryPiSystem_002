@@ -3,6 +3,7 @@ import { catalogEntries } from './catalog.mjs';
 import { normalizeForMatch } from './value-index.mjs';
 
 export const QUERY_PLAN_SCHEMA = 'hermes-query-plan/v1';
+export const BREAKDOWN_AXES = ['cause', 'organization', 'month'];
 const OPS = new Set(['eq', 'in', 'not_in', 'before', 'after', 'between']);
 const DATE_OPS = new Set(['before', 'after', 'between']);
 const ENUMERATED_OPS = new Set(['eq', 'in', 'not_in']);
@@ -58,6 +59,7 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
     if (!byId.has(source)) return fail(`unknown source: ${source}`);
   }
   if (plan.causeCategory !== undefined && !CAUSE_CATEGORY_IDS.includes(plan.causeCategory)) return fail('unknown cause category');
+  if (plan.breakdown !== undefined && !BREAKDOWN_AXES.includes(plan.breakdown)) return fail('unknown breakdown axis');
   if (!Array.isArray(plan.filters)) return fail('filters must be an array');
 
   const filters = [];
@@ -139,6 +141,7 @@ export function validateQueryPlan(plan, catalog, valueIndex) {
       sources: [...plan.sources],
       filters,
       ...(plan.causeCategory !== undefined ? { causeCategory: plan.causeCategory } : {}),
+      ...(plan.sources.includes('nonconformity') && plan.breakdown ? { breakdown: plan.breakdown } : {}),
       semanticQuery: plan.semanticQuery,
       sort,
       limit: plan.limit,
@@ -178,8 +181,9 @@ export function hasAppliedHardFilter(plan, catalog) {
   });
 }
 
-/** Skip relevance only when a hard filter is applied and the content noul is false. */
+/** Breakdowns count the full filtered set; record searches also require content=false. */
 export function shouldSkipRelevance(plan, catalog) {
+  if (BREAKDOWN_AXES.includes(plan?.breakdown)) return true;
   if (plan?.diagnostics?.contentDecision?.jev !== false) return false;
   return hasAppliedHardFilter(plan, catalog);
 }

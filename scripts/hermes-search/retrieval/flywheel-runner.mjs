@@ -418,7 +418,7 @@ export async function runFlywheelNight({
     score ??= await makeLive({ records, catalog, evaluate });
     const live = { ...await score({ ...question, kind: 'filter', relevant: [] }) };
     live.reason ??= null;
-    const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog, causeById });
+    const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, groups: live.groups, breakdown: question.seed?.breakdown ?? live.plan?.breakdown, records: corpus, catalog, causeById });
     live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
     await logLive(question.id, live);
     const row = { at: now().toISOString(), source: 'synthetic', kind: 'filter', ...question,
@@ -447,7 +447,7 @@ export async function runFlywheelNight({
     const live = await score({ a: null, b: null, question: question.question, grades: null });
     await logLive(question.id, live);
     if (isFilterOnlyPlan(live.plan)) {
-      const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, records: corpus, catalog, causeById });
+      const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, groups: live.groups, breakdown: question.seed?.breakdown ?? live.plan?.breakdown, records: corpus, catalog, causeById });
       live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
       await appendFile(realFile, `${JSON.stringify({
         at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id),

@@ -1,3 +1,4 @@
+import { BREAKDOWN_AXES } from './query-plan.mjs';
 import { catalogEntries } from './catalog.mjs';
 import { CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { bareId } from './flywheel-pairs.mjs';
@@ -7,7 +8,7 @@ const recentSort = (sort) => sort === 'recent' || sort?.direction === 'desc';
 
 export function isFilterOnlyPlan(plan) {
   return Boolean(plan && (plan.semanticQuery == null || plan.semanticQuery === '')
-    && (plan.filters?.length > 0 || CAUSE_CATEGORY_IDS.includes(plan.causeCategory) || recentSort(plan.sort)));
+    && (BREAKDOWN_AXES.includes(plan.breakdown) || plan.filters?.length > 0 || CAUSE_CATEGORY_IDS.includes(plan.causeCategory) || recentSort(plan.sort)));
 }
 
 function matchesFilters(record, filters) {
@@ -58,7 +59,7 @@ export function filterOutcome({ live, filterCheck }) {
   return ['answer', 'no_result', 'no_other'].includes(live.outcome) && filterCheck.ok === true ? 'ok' : 'mismatch';
 }
 
-export function checkFilterAnswer({ plan, shown = [], records, catalog, causeById = null }) {
+export function checkFilterAnswer({ plan, shown = [], groups = [], breakdown = plan?.breakdown, records, catalog, causeById = null }) {
   const expected = expectedFilterResults({ plan, records, catalog, causeById });
   const ids = shown.map(bareId);
   if (!expected.supported) {
@@ -68,6 +69,21 @@ export function checkFilterAnswer({ plan, shown = [], records, catalog, causeByI
   const filtersOk = ids.every((id) => byId.has(id) && matchesFilters(byId.get(id), plan.filters ?? []) && matchesCause(byId.get(id), plan, causeById));
   const orderOk = ids.every((id, index) => id === expected.expectedIds[index]);
   const countOk = ids.length === Math.min(expected.limit, expected.matchedCount);
-  return { supported: true, filtersOk, orderOk, countOk, ok: filtersOk && orderOk && countOk,
+  let bucketsOk;
+  if (breakdown === 'cause') {
+    const counts = new Map();
+    for (const record of records) {
+      if (!matchesFilters(record, plan.filters ?? []) || !matchesCause(record, plan, causeById)) continue;
+      const value = causeById?.get(record.id);
+      if (CAUSE_CATEGORY_IDS.includes(value)) counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    const buckets = groups.find(group => group.axis === 'cause')?.buckets;
+    bucketsOk = plan.breakdown === 'cause' && Array.isArray(buckets) && buckets.length === counts.size
+      && new Set(buckets.map(bucket => bucket.value)).size === buckets.length
+      && buckets.every(bucket => counts.get(bucket.value) === bucket.count);
+  }
+  return { supported: true, filtersOk, orderOk, countOk,
+    ...(breakdown === 'cause' ? { bucketsOk } : {}),
+    ok: breakdown === 'cause' ? bucketsOk : filtersOk && orderOk && countOk,
     expectedIds: expected.expectedIds, shown: ids, matchedCount: expected.matchedCount };
 }

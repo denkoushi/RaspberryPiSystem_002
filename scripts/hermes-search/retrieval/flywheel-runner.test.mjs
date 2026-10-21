@@ -52,7 +52,7 @@ const jevEvaluate = async (input) => ({
 const liveShown = async (row) => ({ outcome: 'answer', reason: null, shown: [row.a], candidates: [row.a, row.b], judged: 30, loss: null, vectorStatus: 'ok', ms: 1 });
 
 function filterLive(row, corpus = records) {
-  const filters = [{ field: row.seed.field, op: 'eq', values: [row.seed.value] }];
+  const filters = row.seed.field ? [{ field: row.seed.field, op: 'eq', values: [row.seed.value] }] : [];
   if (row.seed.period) filters.push({ field: 'discoveredOn', op: 'between', values: [row.seed.period.from, row.seed.period.to] });
   const plan = { filters, semanticQuery: '', sort: 'recent', limit: row.seed.template === 'count3' ? 3 : 5 };
   const shown = expectedFilterResults({ plan, records: corpus, catalog: loadNonconformityCatalog() }).expectedIds;
@@ -1037,6 +1037,11 @@ test('nightly cause templates load the store and check both generated and real f
   const corpus = records.map(record => ({ ...record, discoveredOn: '2026-09-15' }));
   const causeById = new Map([[records[0].id, 'drawing']]);
   const live = async row => {
+    if (row.seed?.breakdown) {
+      const result = filterLive(row, corpus);
+      return { ...result, plan: { ...result.plan, breakdown: 'cause' },
+        groups: [{ axis: 'cause', buckets: [{ value: 'drawing', count: 1 }] }] };
+    }
     if (row.seed && !row.seed.cause) return filterLive(row, corpus);
     const filters = [];
     if (row.seed?.value) filters.push({ field: row.seed.field, op: 'eq', values: [row.seed.value] });
@@ -1051,6 +1056,9 @@ test('nightly cause templates load the store and check both generated and real f
   const rows = readFileSync(questionsPath(dir, '2026-10-03'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
   const causes = rows.filter(row => row.seed?.cause);
   assert.equal(causes.length, 2);
+  const breakdowns = rows.filter(row => row.seed?.breakdown);
+  assert.equal(breakdowns.length, 3);
+  assert.ok(breakdowns.every(row => row.filterCheck.bucketsOk === true && row.filterCheck.ok === true));
   for (const row of causes) {
     assert.equal(row.filterCheck.ok, true);
     assert.deepEqual(row.filterCheck.expectedIds, ['a1']);
