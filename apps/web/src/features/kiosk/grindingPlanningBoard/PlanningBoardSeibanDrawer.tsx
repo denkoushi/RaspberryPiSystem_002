@@ -1,6 +1,7 @@
 import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
+import { useSingleFlight } from '../../../hooks/useSingleFlight';
 import { KioskDigitTenkey } from '../KioskDigitTenkey';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
@@ -82,6 +83,7 @@ export function PlanningBoardSeibanDrawer({
   showCompletedCandidates,
   onShowCompletedCandidatesChange
 }: PlanningBoardSeibanDrawerProps) {
+  const { run: runCandidateRegistration, pending: candidateRegistrationPending } = useSingleFlight();
   const [query, setQuery] = useState('');
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [selectedCandidates, setSelectedCandidates] = useState<ReadonlySet<string>>(new Set());
@@ -163,7 +165,7 @@ export function PlanningBoardSeibanDrawer({
     });
   }, []);
 
-  const registerSelectedCandidates = async () => {
+  const registerSelectedCandidates = () => runCandidateRegistration(async () => {
     if (selectedCandidateCount === 0 || selectedWouldExceedLimit || orderDisabled) return;
     const fseibans = selectedCandidatesForRegistration.map((candidate) => candidate.fseiban);
     const saved = await onRegisterMany(fseibans);
@@ -174,7 +176,7 @@ export function PlanningBoardSeibanDrawer({
         return next;
       });
     }
-  };
+  });
 
   const candidateCards = useMemo(() => (
     <div className="mt-2 grid max-h-[min(42vh,28rem)] grid-cols-2 items-start gap-1.5 overflow-y-auto pr-1">
@@ -339,7 +341,8 @@ export function PlanningBoardSeibanDrawer({
                     type="button"
                     className="min-h-11 shrink-0 whitespace-nowrap rounded bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="選択した製番を登録"
-                    disabled={orderDisabled || selectedWouldExceedLimit}
+                    disabled={orderDisabled || selectedWouldExceedLimit || candidateRegistrationPending}
+                    aria-busy={candidateRegistrationPending}
                     onClick={() => void registerSelectedCandidates()}
                   >
                     登録

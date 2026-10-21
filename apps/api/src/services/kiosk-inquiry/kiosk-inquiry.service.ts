@@ -70,10 +70,10 @@ function notFound(): ApiError {
   return new ApiError(404, 'お問い合わせが見つかりません', undefined, 'KIOSK_INQUIRY_NOT_FOUND');
 }
 
-async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>): Promise<string | null> {
-  if (!isReceiver(device)) return null;
+export async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>): Promise<{ employeeId: string | null; canViewScreen: boolean }> {
+  if (!isReceiver(device)) return { employeeId: null, canViewScreen: false };
   if (!employeeTagUid) {
-    if (loginUser?.role === 'ADMIN' || loginUser?.role === 'MANAGER') return null;
+    if (loginUser?.role === 'ADMIN' || loginUser?.role === 'MANAGER') return { employeeId: null, canViewScreen: false };
     throw new ApiError(401, '社員証が必要です', undefined, 'KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED');
   }
   const employee = await employees.findByNfcTagUid(employeeTagUid);
@@ -83,7 +83,7 @@ async function authorizeReceiver(device: InquiryDevice, employeeTagUid?: string,
   if (!allowed) {
     throw new ApiError(403, 'この社員証は利用できません', undefined, 'KIOSK_INQUIRY_EMPLOYEE_NOT_ALLOWED');
   }
-  return allowed.employeeId;
+  return { employeeId: allowed.employeeId, canViewScreen: allowed.canViewScreen };
 }
 
 export async function createKioskInquiryThread(
@@ -115,18 +115,18 @@ export async function getKioskInquirySummary(device: InquiryDevice, loginUser?: 
 }
 
 export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {
-  await authorizeReceiver(device, employeeTagUid, loginUser);
+  const { canViewScreen } = await authorizeReceiver(device, employeeTagUid, loginUser);
   const threads = await prisma.kioskInquiryThread.findMany({
     where: { AND: [accessibleThreadWhere(device), { OR: [{ kind: 'INQUIRY' }, { noticeResolvedAt: null }] }] },
     orderBy: { lastMessageAt: 'desc' },
     take: isReceiver(device) ? 50 : 20,
     include: threadInclude
   });
-  return { threads: threads.map((thread) => presentThread(thread, receivesThread(device, thread.kind))) };
+  return { canViewScreen, threads: threads.map((thread) => presentThread(thread, receivesThread(device, thread.kind))) };
 }
 
 export async function openKioskInquiry(device: InquiryDevice, threadId: string, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {
-  await authorizeReceiver(device, employeeTagUid, loginUser);
+  const { canViewScreen } = await authorizeReceiver(device, employeeTagUid, loginUser);
   return prisma.$transaction(async (tx) => {
     const accessible = await tx.kioskInquiryThread.findFirst({ where: accessibleThreadWhere(device, threadId), select: { kind: true } });
     if (!accessible) throw notFound();
@@ -138,7 +138,7 @@ export async function openKioskInquiry(device: InquiryDevice, threadId: string, 
     });
     if (updated.count === 0) throw notFound();
     const thread = await tx.kioskInquiryThread.findUniqueOrThrow({ where: { id: threadId }, include: openInclude });
-    return presentOpenedThread(thread, receiver);
+    return { ...presentOpenedThread(thread, receiver), canViewScreen: receiver && canViewScreen };
   });
 }
 
@@ -149,7 +149,7 @@ export async function replyToKioskInquiry(
   employeeTagUid?: string,
   loginUser?: Pick<User, 'role'>
 ) {
-  const authorEmployeeId = await authorizeReceiver(device, employeeTagUid, loginUser);
+  const { employeeId: authorEmployeeId } = await authorizeReceiver(device, employeeTagUid, loginUser);
   return prisma.$transaction(async (tx) => {
     const accessible = await tx.kioskInquiryThread.findFirst({ where: accessibleThreadWhere(device, threadId), select: { kind: true } });
     if (!accessible) throw notFound();

@@ -1,5 +1,5 @@
 import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 
 import { inventoryThumbnailUrl, type InventoryImport, type InventoryItem, type InventoryToolFieldSuggestion } from '../../../../api/client';
 import {
@@ -12,7 +12,7 @@ import {
 import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { useDismissOnOutside } from '../../../../hooks/useDismissOnOutside';
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, ChevronDownIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
+import { CheckIcon, PlusIcon } from '../InventoryIcons';
 import {
   invSetupTargets,
   invButtonGo,
@@ -30,7 +30,10 @@ import {
 import { NfcPrompt } from '../NfcPrompt';
 
 import { InventoryExistingItemPicker } from './InventoryExistingItemPicker';
-import { InventoryUnitPicker } from './InventoryUnitPicker';
+import { RegistrationDetails } from './RegistrationDetails';
+import { emptyDraft, registrationChecklist, type Draft, type RegistrationState } from './registrationDraft';
+import { RegistrationPhotos } from './RegistrationPhotos';
+import { iconSm, QuantityKeypad, Row, StepMark } from './RegistrationRowParts';
 import { setupErrorText as errorText } from './setupError';
 import { touchSetupPin } from './setupPinSession';
 import { ToolValueBoard } from './ToolValueBoard';
@@ -38,135 +41,8 @@ import { useArmedNfcRead } from './useArmedNfcRead';
 
 import type { NfcEvent } from '../../../../hooks/useNfcStream';
 
-export type Draft = {
-  mode: 'NEW_ITEM' | 'EXISTING_ITEM' | null;
-  itemId: string;
-  itemName: string;
-  name: string;
-  model: string;
-  usage: string;
-  unit: string | null;
-  maker: string;
-  toolName: string;
-  workMaterial: string;
-  toolSize: string;
-  /** Shelf area chosen for this item, "<machine> <direction>". */
-  area: string;
-  shelfId: string;
-  drawerId: string;
-  drawerLabel: string;
-  itemTagUid: string;
-  manualUid: string;
-  quantity: string;
-};
-
-type CheckItem = { id: string; label: string; done: boolean; detail: string; optional?: boolean };
-
-const QUANTITY_MAX_DIGITS = 6;
-
-function emptyDraft(candidate: InventoryImport | null): Draft {
-  return {
-    mode: null,
-    itemId: '',
-    itemName: '',
-    name: candidate ? `ItemlistRaspi ${candidate.sourceItemId}` : '',
-    model: '',
-    usage: '',
-    unit: null,
-    maker: '',
-    toolName: '',
-    workMaterial: '',
-    toolSize: '',
-    area: '',
-    shelfId: '',
-    drawerId: '',
-    drawerLabel: '',
-    itemTagUid: '',
-    manualUid: '',
-    quantity: '',
-  };
-}
-
-/** What is done and what is left, in the order a worker does it. */
-export function registrationChecklist(draft: Draft): CheckItem[] {
-  const items: CheckItem[] = [
-    {
-      id: 'mode',
-      label: '新規か既存か',
-      done: draft.mode === 'NEW_ITEM' || (draft.mode === 'EXISTING_ITEM' && Boolean(draft.itemId)),
-      detail: draft.mode === 'NEW_ITEM' ? '新規' : draft.mode === 'EXISTING_ITEM' ? (draft.itemId ? draft.itemName : '追加先を選ぶ') : 'まだ',
-    },
-    { id: 'names', label: '名前・工具情報', done: true, optional: true, detail: draft.name },
-    { id: 'unit', label: '単位', done: true, optional: true, detail: draft.unit || '個' },
-  ];
-  if (draft.mode === 'EXISTING_ITEM') return items;
-  return [
-    ...items,
-    { id: 'place', label: '置き場所', done: Boolean(draft.drawerId), detail: draft.drawerId ? draft.drawerLabel : 'まだ' },
-    { id: 'tag', label: 'アイテムタグ', done: Boolean(draft.itemTagUid), detail: draft.itemTagUid ? '読み取り済み' : 'まだ' },
-    { id: 'quantity', label: '最初の数', done: draft.quantity !== '', detail: draft.quantity !== '' ? `${draft.quantity}${draft.unit || '個'}` : 'まだ' },
-  ];
-}
-
-// Fixed, content-sized controls: never stretched to the screen.
-const keyClass = 'h-11 w-12 rounded-lg border border-inv-line2 bg-inv-s2 text-[17px] font-black text-inv-text hover:bg-inv-s3';
-const iconSm = `${invButtonSm} w-11 px-0`;
-
-function StepMark({ number, done, current }: { number: number; done: boolean; current: boolean }) {
-  if (done) return <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-inv-green text-inv-green-ink" aria-label="完了">✓</span>;
-  return (
-    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-black ${current ? 'border-inv-amber text-inv-amber' : 'border-inv-line2 text-inv-faint'}`} aria-hidden="true">
-      {number}
-    </span>
-  );
-}
-
-function Row({ id, number, title, done, current, aside, children, bounded = false }: { id: string; number: number; title: string; done: boolean; current: boolean; aside?: ReactNode; children: ReactNode; bounded?: boolean }) {
-  return (
-    <section id={`registration-${id}`} aria-label={title} className={`${invPanel} flex min-w-0 flex-col gap-2 p-3 ${bounded ? 'min-h-0 flex-1' : 'shrink-0'}`}>
-      <div className="flex shrink-0 items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <StepMark number={number} done={done} current={current} />
-          <h3 className="text-[15px] font-black">{title}</h3>
-        </div>
-        {aside}
-      </div>
-      <div className={`min-w-0 ${bounded ? 'flex min-h-0 flex-1 flex-col gap-2' : ''}`}>{children}</div>
-    </section>
-  );
-}
-
-function QuantityKeypad({ value, onChange }: { value: string; onChange: (next: string) => void }) {
-  const press = (digit: string) => {
-    if (value.length >= QUANTITY_MAX_DIGITS) return;
-    onChange(`${value}${digit}`.replace(/^0+(?=\d)/, ''));
-  };
-  return (
-    <div role="group" aria-label="最初の数のテンキー" className="grid grid-cols-[repeat(6,48px)] gap-1.5">
-      {['7', '8', '9', '4', '5', '6', '1', '2', '3', '0'].map((digit) => (
-        <button key={digit} type="button" className={keyClass} onClick={() => press(digit)}>{digit}</button>
-      ))}
-      <button type="button" className={`${keyClass} text-[13px] font-bold text-inv-muted`} onClick={() => onChange(value.slice(0, -1))}>削除</button>
-      <button type="button" className={`${keyClass} text-[13px] font-bold text-inv-muted`} onClick={() => onChange('')}>クリア</button>
-    </div>
-  );
-}
-
-type TextFieldKey = 'name' | 'model' | 'usage' | 'maker' | 'toolName' | 'workMaterial' | 'toolSize';
-const TEXT_FIELDS: Array<{ key: TextFieldKey; label: string; aria?: string }> = [
-  { key: 'name', label: '名前', aria: 'アイテム名' },
-  { key: 'model', label: '型式' },
-  { key: 'maker', label: 'メーカー' },
-  { key: 'toolName', label: '工具名' },
-  { key: 'workMaterial', label: '被削材' },
-  { key: 'toolSize', label: '工具寸法' },
-  { key: 'usage', label: '用途' },
-];
-export type RegistrationState = {
-  selectedId: string | null;
-  draft: Draft | null;
-  completed?: { candidateId: string; labelNumber?: number; name: string; location: string };
-};
+export { registrationChecklist } from './registrationDraft';
+export type { Draft, RegistrationState } from './registrationDraft';
 
 export function InventoryRegistrationTab({ accessPassword, registration, setRegistration }: {
   accessPassword: string;
@@ -224,7 +100,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const read = useArmedNfcRead(waitingForTag);
   const handledRef = useRef<NfcEvent | null>(null);
   const failedMessages = (messagesQuery.data ?? []).filter((entry) => entry.outcome === 'RETRYABLE' || entry.outcome === 'PROCESSING');
-  const photoPending = mutations.deleteImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
+  const photoPending = mutations.deleteImportPhoto.isPending || mutations.rotateImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
 
   // A different candidate starts over.
   const candidateId = candidate?.id ?? null;
@@ -338,6 +214,12 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
     setError(null);
     setErrorAt('photos');
     void mutations.reorderImportPhotos.mutateAsync({ payloadId: candidate.id, photoIds: ids }).catch((caught) => setError(errorText(caught)));
+  };
+  const rotatePhoto = (photoId: string) => {
+    if (!candidate) return;
+    setError(null);
+    setErrorAt('photos');
+    void mutations.rotateImportPhoto.mutateAsync({ payloadId: candidate.id, photoId }).catch((caught) => setError(errorText(caught)));
   };
   const deletePhoto = (photoId: string) => {
     if (!candidate) return;
@@ -502,92 +384,23 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
       {done || undoDismiss || errorAt === 'undo' && error ? doneBanner : null}
       {retryPanel}
       <div className="relative grid min-h-0 flex-1 grid-cols-[420px_minmax(0,1fr)_minmax(0,1fr)] gap-4">
-        {/* The photos stay in front of the shade so the name can be chosen while looking at them. */}
-        <section aria-label="写真の確認" className={`${invPanel} flex min-h-0 flex-col gap-3 p-4 ${optionsOpen ? 'relative z-[45]' : ''}`}>
-          <div className="flex items-center gap-2">
-            <h3 className="text-[15px] font-black">写真の確認</h3><span className="text-sm font-bold">候補 #{candidate.sourceItemId}</span>
-            <span className="min-w-0 flex-1 truncate text-xs text-inv-faint">加工機 {candidate.area} ・ 分類 {candidate.category ?? '-'} ・ メモ {candidate.note ?? '-'}</span>
-          </div>
-          {candidate.photos.length === 0 ? <p className="text-sm text-inv-faint">写真はありません</p> : null}
-          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-3">
-            {candidate.photos.slice(currentPhotoPage * 2, currentPhotoPage * 2 + 2).map((photo, pageIndex) => {
-              const index = currentPhotoPage * 2 + pageIndex;
-              return (
-                <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
-                  <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => { setReadPhotoId(photo.id); setSelectedPhoto(photo.id); }}>
-                    <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line bg-inv-bg object-contain" />
-                  </button>
-                  {confirmDeletePhotoId === photo.id ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="flex-1 text-sm text-[#ffb3b3]">この写真を削除しますか？</span>
-                      <button type="button" className={`${invButtonSm} border-inv-red/60 text-[#ffb3b3]`} disabled={photoPending} onClick={() => deletePhoto(photo.id)}>削除</button>
-                      <button type="button" className={invButtonSmGhost} onClick={() => setConfirmDeletePhotoId(null)}>やめる</button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || photoPending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>
-                      <button type="button" className={iconSm} aria-label={`写真${index + 1}を後ろへ`} disabled={index === candidate.photos.length - 1 || photoPending} onClick={() => movePhoto(index, 1)}><ArrowRightIcon size={16} /></button>
-                      <span className="flex-1" />
-                      <button type="button" className={`${iconSm} border-inv-red/45 bg-transparent text-[#ffb3b3] hover:bg-inv-red/10`} aria-label={`写真${index + 1}を削除`} disabled={photoPending} onClick={() => setConfirmDeletePhotoId(photo.id)}><TrashIcon /></button>
-                    </div>
-                  )}
-                </figure>
-              );
-            })}
-          </div>
-          {candidate.photos.length > 2 ? <div className="flex shrink-0 items-center justify-center gap-3" role="group" aria-label="写真のページ">
-            <button type="button" className={iconSm} aria-label="前の写真ページ" disabled={currentPhotoPage === 0} onClick={() => setPhotoPage(currentPhotoPage - 1)}>＜</button>
-            <span className="text-sm tabular-nums">{currentPhotoPage * 2 + 1}–{Math.min(currentPhotoPage * 2 + 2, candidate.photos.length)} / {candidate.photos.length}</span>
-            <button type="button" className={iconSm} aria-label="次の写真ページ" disabled={currentPhotoPage === lastPhotoPage} onClick={() => setPhotoPage(currentPhotoPage + 1)}>＞</button>
-          </div> : null}
-          {localError('photos')}
-        </section>
+        <RegistrationPhotos
+          candidate={candidate} optionsOpen={optionsOpen}
+          currentPhotoPage={currentPhotoPage} lastPhotoPage={lastPhotoPage}
+          confirmDeletePhotoId={confirmDeletePhotoId} photoPending={photoPending}
+          setReadPhotoId={setReadPhotoId} setSelectedPhoto={setSelectedPhoto}
+          setConfirmDeletePhotoId={setConfirmDeletePhotoId} setPhotoPage={setPhotoPage}
+          deletePhoto={deletePhoto} movePhoto={movePhoto} rotatePhoto={rotatePhoto}
+          localError={localError}
+        />
 
-        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
-          <Row id="mode" number={next()} title="新規か既存か" done={isDone('mode')} current={currentId === 'mode'}>
-            <div className="flex flex-wrap gap-1.5">
-              <button type="button" aria-pressed={draft.mode === 'NEW_ITEM'} className={invSeg(draft.mode === 'NEW_ITEM')} onClick={chooseNew}>新規登録</button>
-              <button type="button" aria-pressed={draft.mode === 'EXISTING_ITEM'} className={invSeg(draft.mode === 'EXISTING_ITEM')} onClick={() => update({ mode: 'EXISTING_ITEM', shelfId: '', drawerId: '', drawerLabel: '', itemTagUid: '', quantity: '' })}>既存のアイテムに写真を追加</button>
-            </div>
-            {draft.mode === 'EXISTING_ITEM' ? (
-              draft.itemId ? <div className="mt-2 flex h-16 items-center gap-2.5 rounded-xl border-2 border-inv-cyan bg-inv-cyan/[0.12] px-2.5">
-                {selectedItem?.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(selectedItem.photos[0].photoUrl)} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
-                <span className="min-w-0 flex-1 truncate text-base font-black">{draft.itemName}</span>
-                <span className="shrink-0 text-[13px] text-inv-muted">追加先</span>
-              </div> : <div className="mt-2 flex h-16 items-center rounded-xl border border-dashed border-inv-cyan px-3.5 text-base font-bold text-inv-cyan">→ 右の一覧から追加先を選ぶ</div>
-            ) : null}
-          </Row>
-
-          <Row
-            id="names"
-            number={next()}
-            title="名前・工具情報"
-            done={isDone('names')}
-            current={false}
-            bounded
-            aside={<div className="flex gap-2"><button type="button" className={invButtonSm} disabled={reading || !candidate.photos.length} onClick={() => void readPhoto()}>{reading ? '読み取り中…' : '写真から読む'}</button><button type="button" aria-expanded={optionsOpen} className={`${invButtonSm} self-start border-inv-cyan bg-inv-cyan/[0.12] text-[#dff8ff] hover:bg-inv-cyan/20`} onClick={() => setOptionsOpen((open) => !open)}><ChevronDownIcon />登録済みから選ぶ</button></div>}
-          >
-            <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-x-3 gap-y-2 overflow-y-auto">
-              {TEXT_FIELDS.map((field) => (
-                <div key={field.key} className={`flex min-w-0 flex-col gap-1 ${field.key === 'name' ? 'col-span-2' : ''}`}>
-                  <span className={invLabel}>{field.label}</span>
-                  <input aria-label={field.aria ?? field.label} placeholder={field.key === 'name' ? undefined : '省略可'} className={`${invField} h-11 w-full`} value={draft[field.key]} onChange={(event) => update({ [field.key]: event.target.value } as Partial<Draft>)} />
-                  {(field.key === 'model' || field.key === 'maker') && visibleSuggestion?.[field.key].length ? <div className="flex h-11 shrink-0 gap-1.5 overflow-x-auto" role="group" aria-label={`${field.label}の読取候補`}>
-                    {visibleSuggestion[field.key].map((value) => <button key={value} type="button" aria-pressed={draft[field.key] === value} className={`${invSeg(draft[field.key] === value)} h-11 shrink-0 whitespace-nowrap font-mono`} onClick={() => update({ [field.key]: value })}>{value}</button>)}
-                  </div> : null}
-                </div>
-              ))}
-            </div>
-            {suggestionFailed ? <p role="status" className="shrink-0 text-sm text-inv-red">読み取れませんでした</p> : null}
-          </Row>
-
-          <Row id="unit" number={next()} title="単位" done current={false}>
-            <div className="max-h-36 overflow-y-auto">
-            <InventoryUnitPicker value={draft.unit} onChange={(unit) => update({ unit })} accessPassword={accessPassword} />
-            </div>
-          </Row>
-
-        </div>
+        <RegistrationDetails
+          accessPassword={accessPassword} candidate={candidate} draft={draft} selectedItem={selectedItem}
+          modeNumber={next()} namesNumber={next()} unitNumber={next()}
+          isDone={isDone} currentId={currentId} chooseNew={chooseNew} update={update}
+          reading={reading} readPhoto={readPhoto} optionsOpen={optionsOpen} setOptionsOpen={setOptionsOpen}
+          visibleSuggestion={visibleSuggestion} suggestionFailed={suggestionFailed}
+        />
         <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
           {draft.mode === 'EXISTING_ITEM' ? (
             <InventoryExistingItemPicker

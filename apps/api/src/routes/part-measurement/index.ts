@@ -4,6 +4,7 @@ import { logger } from '../../lib/logger.js';
 import { assertKioskApiClientKeyValid } from '../../services/clients/client-device-auth.service.js';
 import {
   getPartMeasurementDrawingDimensionMapService,
+  getPartMeasurementDrawingPlacementService,
   getPartMeasurementDrawingOcrService,
   PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY,
   PartMeasurementResolveService,
@@ -148,6 +149,7 @@ export async function registerPartMeasurementRoutes(app: FastifyInstance): Promi
     measurementLabelSettingsService,
     drawingOcrService,
     drawingDimensionMapService,
+    drawingPlacementService: getPartMeasurementDrawingPlacementService(),
     enqueueDrawingOcrAndWake,
     createInspectionDrawingEvaluationSetup
   };

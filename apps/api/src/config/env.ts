@@ -14,6 +14,7 @@ import {
 } from './env/core.js';
 import { dgxResourceEnvShape } from './env/dgx-resource.js';
 import { inferenceEnvShape } from './env/inference.js';
+import { inspectionDrawingEnvShape } from './env/inspection-drawing.js';
 import { ingestTuningEnvShape } from './env/ingest-tuning.js';
 import { kioskFlagsEnvShape } from './env/kiosk-flags.js';
 import { localLlmEnvShape } from './env/local-llm.js';
@@ -35,6 +36,7 @@ const envSchema = z
     ...localLlmEnvShape,
     ...dgxResourceEnvShape,
     ...inferenceEnvShape,
+    ...inspectionDrawingEnvShape,
     ...photoToolEnvShape,
     ...procedureMaterialEnvShape,
     ...procedureVideoEnvShape,

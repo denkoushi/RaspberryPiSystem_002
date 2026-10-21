@@ -128,6 +128,10 @@ async function installMarkerDragApiMocks(page: Page) {
       await route.fulfill({ json: { ocr: { status: 'completed' } } });
       return;
     }
+    if (path === `/api/part-measurement/visual-templates/${MARKER_DRAG_VISUAL_ID}/placement-proposals`) {
+      await route.fulfill({ json: { status: 'no-sibling', sourceDrawingName: null, proposals: [], unplaced: [] } });
+      return;
+    }
     if (path === `${MARKER_DRAG_DRAWING_PATH}`) {
       await route.fulfill({ body: markerDragDrawingSvg, contentType: 'image/svg+xml' });
       return;

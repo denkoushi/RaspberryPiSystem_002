@@ -8,6 +8,7 @@ import {
   createRiggingInspectionRecord,
   getRiggingInspectionRecords
 } from '../client';
+import { riggingQueryKeys } from '../queryKeys/rigging';
 
 import type {
   RiggingGear,
@@ -18,7 +19,7 @@ import type {
 
 export function useRiggingGears(params?: { search?: string; status?: RiggingStatus }) {
   return useQuery({
-    queryKey: ['rigging-gears', params],
+    queryKey: riggingQueryKeys.gears(params),
     queryFn: () => getRiggingGears(params)
   });
 }
@@ -28,22 +29,22 @@ export function useRiggingGearMutations() {
   const create = useMutation({
     mutationFn: (payload: Partial<RiggingGear> & { name: string; managementNumber: string }) =>
       createRiggingGear(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rigging-gears'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: riggingQueryKeys.gearsAll })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<RiggingGear> }) => updateRiggingGear(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rigging-gears'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: riggingQueryKeys.gearsAll })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteRiggingGear(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rigging-gears'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: riggingQueryKeys.gearsAll })
   });
   return { create, update, remove };
 }
 
 export function useRiggingInspectionRecords(riggingGearId?: string) {
   return useQuery({
-    queryKey: ['rigging-inspection-records', riggingGearId],
+    queryKey: riggingQueryKeys.inspectionRecords(riggingGearId),
     queryFn: async () => {
       if (!riggingGearId) return [] as RiggingInspectionRecord[];
       return getRiggingInspectionRecords(riggingGearId);
@@ -64,7 +65,7 @@ export function useRiggingInspectionRecordMutations() {
       notes?: string | null;
     }) => createRiggingInspectionRecord(payload),
     onSuccess: (_data, variables) =>
-      queryClient.invalidateQueries({ queryKey: ['rigging-inspection-records', variables.riggingGearId] })
+      queryClient.invalidateQueries({ queryKey: riggingQueryKeys.inspectionRecords(variables.riggingGearId) })
   });
   return { create };
 }

@@ -208,7 +208,9 @@ jobs:
               --reporter=default --reporter=blob \
               --outputFile.blob=vitest-blob/blob-${{ matrix.shard_id }}.json
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+          # 作業手順の保存処理の結合テストは、接続先が 127.0.0.1 のときだけ動く（localhost は不可）
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/borrow_return
+          WORK_INSTRUCTION_INTEGRATION: 'true'
           GRINDING_PLANNING_DUE_SCOPE_CI: '1'
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890

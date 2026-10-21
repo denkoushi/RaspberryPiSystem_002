@@ -24,6 +24,6 @@
     "eslint-plugin-import": "^2.29.1",
     "typescript": "^5.4.5",
     "vite": "6.4.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.11"
   }
 }

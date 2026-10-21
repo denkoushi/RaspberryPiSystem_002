@@ -8,6 +8,13 @@ import type { ProcedureMaterialDto } from './procedure-material-types';
 const candidate = { candidateKey: 'work:1', partNumber: 'MH-1', shootingTarget: '外径', step: 1, memo: '', assetId: 'asset', alreadyImported: false };
 
 describe('material shelf search boundaries', () => {
+  it('filters APP as its own source and offers it on the placed shelf', () => {
+    const app = { id: 'app', origin: 'APP', kind: 'PHOTO' } as ProcedureMaterialDto;
+    const mail = { ...app, id: 'mail', origin: 'GMAIL' } as ProcedureMaterialDto;
+    expect(filterShelfMaterials([app, mail], { ...emptyShelfFilters, sources: ['アプリ'] })).toEqual([app]);
+    render(<ShelfFilterChips tab="placed" hasWorkDates={false} filters={emptyShelfFilters} disabled={false} onChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'アプリ' })).toBeInTheDocument();
+  });
   it('marks all normalized case-insensitive matches and skips text whose normalization changes its length', () => {
     const { container } = render(<><ShelfHighlight text="MH-1 / mh-1" query="ＭＨ－１" /><ShelfHighlight text="㍉ MH-1" query="MH-1" /></>);
     expect([...container.querySelectorAll('mark')].map((mark) => mark.textContent)).toEqual(['MH-1', 'mh-1']);

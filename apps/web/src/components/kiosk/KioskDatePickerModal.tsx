@@ -5,6 +5,7 @@ import { Dialog } from '../ui/Dialog';
 
 type KioskDatePickerModalProps = {
   isOpen: boolean;
+  pending?: boolean;
   value: string;
   onCancel: () => void;
   onCommit: (next: string) => void;
@@ -37,6 +38,7 @@ const addMonths = (base: Date, delta: number) => new Date(base.getFullYear(), ba
 
 export function KioskDatePickerModal({
   isOpen,
+  pending,
   value,
   onCancel,
   onCommit,
@@ -50,6 +52,11 @@ export function KioskDatePickerModal({
     () => getMonthStart(selectedDate ?? today)
   );
 
+  const committed = useRef(false);
+  useEffect(() => {
+    if (!pending) committed.current = false;
+  }, [isOpen, pending]);
+
   useEffect(() => {
     if (!isOpen) return;
     setDisplayMonth(getMonthStart(selectedDate ?? today));
@@ -62,8 +69,11 @@ export function KioskDatePickerModal({
 
   const monthLabel = `${displayMonth.getFullYear()}年${displayMonth.getMonth() + 1}月`;
 
-  const handleCommitDate = (date: Date) => {
-    onCommit(toYmd(date));
+  const handleCommit = (next: string) => {
+    if (!isOpen || pending || committed.current) return;
+    // Only callers that report pending get the once-per-open lock; others may keep the modal open on failure.
+    if (pending !== undefined) committed.current = true;
+    onCommit(next);
   };
 
   const renderDayCell = (day: number) => {
@@ -75,7 +85,8 @@ export function KioskDatePickerModal({
       <button
         key={dateKey}
         type="button"
-        onClick={() => handleCommitDate(date)}
+        disabled={pending}
+        onClick={() => handleCommit(dateKey)}
         className={[
           'flex h-10 w-10 items-center justify-center rounded text-sm font-semibold transition-colors',
           isSelected ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-900 hover:bg-slate-200',
@@ -140,25 +151,25 @@ export function KioskDatePickerModal({
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" onClick={() => onCommit(todayKey)}>
+        <Button type="button" variant="secondary" disabled={pending} onClick={() => handleCommit(todayKey)}>
           今日
         </Button>
         <Button
           type="button"
           variant="secondary"
-          onClick={() => onCommit(toYmd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)))}
+          disabled={pending} onClick={() => handleCommit(toYmd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)))}
         >
           明日
         </Button>
         <Button
           type="button"
           variant="secondary"
-          onClick={() => onCommit(toYmd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2)))}
+          disabled={pending} onClick={() => handleCommit(toYmd(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2)))}
         >
           明後日
         </Button>
         <div className="flex-1" />
-        <Button type="button" variant="ghost" onClick={() => onCommit('')}>
+        <Button type="button" variant="ghost" disabled={pending} onClick={() => handleCommit('')}>
           クリア
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel}>

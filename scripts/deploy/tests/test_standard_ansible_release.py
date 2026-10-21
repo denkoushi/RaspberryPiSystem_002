@@ -68,6 +68,49 @@ def torque_capable_host(serial: str = "702902S") -> dict[str, object]:
 
 
 class StandardAnsibleReleaseTests(unittest.TestCase):
+    def test_first_install_rejects_unbounded_or_pattern_scope_before_backend(self) -> None:
+        for options in (
+            ["--full-fleet"], [], ["--limit", "pi4-*"], ["--limit", "kiosk:&all"],
+            ["--limit", "@hosts"], ["--limit", "pi4-a,"], ["--limit", "pi4-a:pi4-a"],
+            ["--limit", "pi4-a", "--torque-cutover"],
+        ):
+            with self.subTest(options=options), self.assertRaises(MODULE.UsageError):
+                MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--first-install", *options])
+
+    def test_first_install_requires_exact_kiosk_inventory_hosts(self) -> None:
+        document = {"kiosk": {"hosts": ["pi4-a", "pi4-b"]}, "server": {"hosts": ["pi5"]}}
+        for limit, selection in (
+            ("kiosk", (("pi4", ("pi4-a", "pi4-b")),)),
+            ("pi5", (("pi5", ("pi5",)),)),
+            ("pi3", (("pi3", ("pi3",)),)),
+            ("pi4-a:pi5", (("pi5", ("pi5",)), ("pi4", ("pi4-a",)))),
+            ("pi4-a:missing", (("pi4", ("pi4-a",)),)),
+        ):
+            args = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--first-install", "--limit", limit])
+            with self.subTest(limit=limit), self.assertRaises(MODULE.UsageError):
+                MODULE.validate_first_install_selection(args, document, selection)
+        for limit in ("pi4-a", "pi4-a:pi4-b", "pi4-a,pi4-b"):
+            args = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--first-install", "--limit", limit])
+            hosts = tuple(limit.replace(",", ":").split(":"))
+            MODULE.validate_first_install_selection(args, document, (("pi4", hosts),))
+
+    def test_first_install_plan_and_remote_forwarding_are_opt_in(self) -> None:
+        for enabled in (False, True):
+            args = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi4-a"] + (["--first-install"] if enabled else []))
+            commands = []
+            with mock.patch.object(MODULE, "run", side_effect=lambda command, **kwargs: commands.append(command) or completed(command)):
+                document = MODULE.plan(args, SHA, ROOT / MODULE.DEFAULT_INVENTORY, MODULE.DEFAULT_INVENTORY, (("pi4", ("pi4-a",)),))
+            self.assertEqual("firstInstall" in document, enabled)
+            if enabled:
+                self.assertEqual(document["firstInstall"], {"hosts": ["pi4-a"], "rollbackTarget": "empty"})
+            for command in commands:
+                variables = json.loads(command[command.index("--extra-vars") + 1])
+                self.assertEqual(variables.get("release_kiosk_first_install", False), enabled)
+                self.assertEqual("release_kiosk_first_install" in variables, enabled)
+            script = MODULE.remote_script(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",))
+            self.assertEqual("--first-install" in script, enabled)
+
+
     def test_answer_cache_sealed_seed_is_pi5_only_and_checksum_bound(self):
         args = argparse.Namespace(full_fleet=False)
         with tempfile.TemporaryDirectory() as directory:

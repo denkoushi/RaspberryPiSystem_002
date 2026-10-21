@@ -71,7 +71,9 @@
 
 - name: Restore the original Pi5 Compose environment before rollback
   ansible.builtin.set_fact:
-    release_pi5_compose_environment: "{{ release_pi5_rollback_compose_environment | default(release_pi5_compose_environment) }}"
+    release_pi5_compose_environment: "{{ release_pi5_rollback_compose_environment }}"
+  # Failures before prepare.yml captures the rollback environment have no Compose state to restore.
+  when: release_pi5_rollback_compose_environment is defined
 
 - name: Restore the previous Business Hermes egress runtime after a timeout transition
   block:
@@ -300,7 +302,9 @@
 
 - name: Restore the original Pi5 Compose environment after Business Hermes egress rollback
   ansible.builtin.set_fact:
-    release_pi5_compose_environment: "{{ release_pi5_rollback_compose_environment | default(release_pi5_compose_environment) }}"
+    release_pi5_compose_environment: "{{ release_pi5_rollback_compose_environment }}"
+  # Failures before prepare.yml captures the rollback environment have no Compose state to restore.
+  when: release_pi5_rollback_compose_environment is defined
 
 - name: Restore the previous Pi5 scheduler and route
   block:

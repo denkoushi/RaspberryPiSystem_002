@@ -6,6 +6,7 @@ import {
   INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX
 } from './inspectionDrawingCanvasPointer';
 
+import type { DrawingProposalMarker } from './proposalToDrawingPoint';
 import type { InspectionDrawingPoint } from './types';
 
 const point: InspectionDrawingPoint = {
@@ -80,7 +81,10 @@ function renderCanvas({
   onAddPoint = vi.fn(),
   onPointChange = vi.fn(),
   onSetCalloutTip = vi.fn(),
-  withPointChange = true
+  withPointChange = true,
+  proposalMarkers,
+  selectedProposalId,
+  onSelectProposal = vi.fn()
 }: {
   mode?: 'place' | 'callout' | 'test';
   zoom?: number;
@@ -88,11 +92,17 @@ function renderCanvas({
   onPointChange?: ReturnType<typeof vi.fn>;
   onSetCalloutTip?: ReturnType<typeof vi.fn>;
   withPointChange?: boolean;
+  proposalMarkers?: DrawingProposalMarker[];
+  selectedProposalId?: string | null;
+  onSelectProposal?: ReturnType<typeof vi.fn>;
 } = {}) {
   render(
     <InspectionDrawingCanvas
       imageUrl="/drawing.svg"
       points={[point]}
+      proposalMarkers={proposalMarkers}
+      selectedProposalId={selectedProposalId}
+      onSelectProposal={onSelectProposal}
       mode={mode}
       zoom={zoom}
       selectedPointId={null}
@@ -229,6 +239,36 @@ describe('InspectionDrawingCanvas marker dragging', () => {
     expect(onSelectPoint).toHaveBeenCalledTimes(1);
     expect(onSelectPoint).toHaveBeenCalledWith('point-1');
     expect(marker.parentElement).toHaveStyle({ left: '200px', top: '150px' });
+  });
+
+  it('renders accessible dashed proposals that select without dragging or placing a normal point', () => {
+    const onSelectProposal = vi.fn();
+    const proposal: DrawingProposalMarker = {
+      id: 'proposal-1', sortOrder: 0, markerNo: 2, measurementLabel: '内径', measurementPoint: null,
+      nominalValue: 56, lowerLimit: 55.98, upperLimit: 56.03, decimalPlaces: 3,
+      depthMode: 'measured', valueKind: 'numeric', markerXRatio: 0.6, markerYRatio: 0.4,
+      dimensionText: 'Φ56 h7'
+    };
+    const { viewport, onAddPoint, onPointChange } = renderCanvas({
+      proposalMarkers: [proposal], selectedProposalId: proposal.id, onSelectProposal
+    });
+    const marker = screen.getByRole('button', { name: 'AI案 2 内径' });
+    expect(marker).toHaveAttribute('aria-pressed', 'true');
+    expect(marker).toHaveClass('border-dashed', 'border-[3px]', 'border-[#d97706]', 'ring-blue-500');
+    expect(marker).toHaveStyle({ left: '480px', top: '240px' });
+    fireEvent.pointerDown(marker, { pointerId: 9, button: 0, clientX: 490, clientY: 260 });
+    fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 600, clientY: 300 });
+    fireEvent.pointerUp(viewport, { pointerId: 9, clientX: 600, clientY: 300 });
+    fireEvent.click(marker);
+    expect(onSelectProposal).toHaveBeenCalledWith(proposal.id);
+    expect(onAddPoint).not.toHaveBeenCalled();
+    expect(onPointChange).not.toHaveBeenCalled();
+    expect(marker).toHaveStyle({ left: '480px', top: '240px' });
+  });
+
+  it('does not render proposals when the optional prop is absent', () => {
+    renderCanvas();
+    expect(screen.queryByRole('button', { name: /AI案/ })).not.toBeInTheDocument();
   });
 
   it('updates the marker through one rAF per move and commits one clamped patch on pointerup', () => {

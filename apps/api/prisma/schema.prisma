@@ -179,6 +179,7 @@ model Employee {
   status                                        EmployeeStatus                                 @default(ACTIVE)
   createdAt                                     DateTime                                       @default(now())
   updatedAt                                     DateTime                                       @updatedAt
+  screenWatchSessions                           KioskScreenWatchSession[]
   kioskInquiryReceiver                          KioskInquiryReceiverEmployee?
   kioskInquiryMessages                          KioskInquiryMessage[]
   loans                                         Loan[]
@@ -507,6 +508,8 @@ model ClientDevice {
   canProxyOtherDevices                          Boolean                                        @default(false)
   inquiryReceiverEnabled                        Boolean                                        @default(false)
   systemNoticeReceiverEnabled                   Boolean                                        @default(false)
+  screenWatchViewerSessions                     KioskScreenWatchSession[] @relation("ScreenWatchViewer")
+  screenWatchTargetSessions                     KioskScreenWatchSession[] @relation("ScreenWatchTarget")
   kioskInquiryThreads                           KioskInquiryThread[]
   kioskInquiryMessages                          KioskInquiryMessage[]
   lastSeenAt                                    DateTime?
@@ -2930,6 +2933,9 @@ model PartMeasurementVisualTemplate {
   businessTemplates        PartMeasurementTemplate[]
   ocrCaches                PartMeasurementDrawingOcrCache[]
   dimensionMaps            PartMeasurementDrawingDimensionMap[]
+  placementRuns            PartMeasurementDrawingPlacementRun[] @relation("PlacementTarget")
+  sourcedPlacementRuns     PartMeasurementDrawingPlacementRun[] @relation("PlacementSource")
+  placementProposals       PartMeasurementDrawingPlacementProposal[]
 
   @@index([isActive, name])
   @@index([searchDigits(ops: raw("gin_trgm_ops"))], type: Gin, map: "PartMeasurementVisualTemplate_searchDigits_trgm_idx")
@@ -2997,6 +3003,63 @@ model PartMeasurementDrawingDimensionMap {
   @@unique([visualTemplateId, analysisVersion, drawingImageFingerprint], map: "PMDrawingDimMap_unique_visual_version_hash")
   @@index([visualTemplateId, status], map: "PMDrawingDimMap_idx_visual_status")
   @@index([status, nextAttemptAt, createdAt], map: "PMDrawingDimMap_idx_claim")
+}
+
+enum PartMeasurementDrawingPlacementProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  UNPLACED
+}
+
+model PartMeasurementDrawingPlacementRun {
+  id                      String @id @default(uuid())
+  visualTemplateId        String
+  drawingImageFingerprint String
+  analysisVersion         String
+  placementVersion        String
+  sourceVisualTemplateId  String?
+  sourceTemplateId        String?
+  rankingMethod           String
+  proposalCount           Int @default(0)
+  unplacedCount           Int @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  visualTemplate          PartMeasurementVisualTemplate @relation("PlacementTarget", fields: [visualTemplateId], references: [id], onDelete: Cascade)
+  sourceVisualTemplate    PartMeasurementVisualTemplate? @relation("PlacementSource", fields: [sourceVisualTemplateId], references: [id], onDelete: SetNull)
+  proposals               PartMeasurementDrawingPlacementProposal[]
+
+  @@unique([visualTemplateId, drawingImageFingerprint, analysisVersion, placementVersion], map: "PMDrawingPlacementRun_unique_visual_hash_versions")
+  @@index([sourceVisualTemplateId])
+}
+
+model PartMeasurementDrawingPlacementProposal {
+  id                String @id @default(uuid())
+  runId             String
+  visualTemplateId  String
+  sourceItemId      String
+  status            PartMeasurementDrawingPlacementProposalStatus @default(PROPOSED)
+  sortOrder         Int
+  measurementLabel  String
+  measurementPoint  String?
+  decimalPlaces     Int @default(6)
+  nominalValue      Decimal @db.Decimal(18, 6)
+  lowerLimit        Decimal? @db.Decimal(18, 6)
+  upperLimit        Decimal? @db.Decimal(18, 6)
+  depthMode         PartMeasurementDepthMode @default(MEASURED)
+  valueKind         PartMeasurementValueKind @default(NUMERIC)
+  markerXRatio      Decimal? @db.Decimal(10, 8)
+  markerYRatio      Decimal? @db.Decimal(10, 8)
+  dimension         Json?
+  candidates        Json
+  decidedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  run               PartMeasurementDrawingPlacementRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  visualTemplate    PartMeasurementVisualTemplate @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sourceItemId], map: "PMDrawingPlacementProposal_unique_run_item")
+  @@index([visualTemplateId])
 }
 
 /// 検査図面の同時作成・まとめて改版単位。
@@ -3292,6 +3355,43 @@ model AssemblyProcedureAsset {
 
   @@index([sha256], map: "AssemblyProcedureAsset_idx_sha256")
   @@index([ownerDocumentId, createdAt], map: "AssemblyProcedureAsset_idx_owner_created")
+}
+
+enum AssemblyProcedureTextFeedbackOutcome {
+  PROPOSED
+  KEPT
+  EDITED
+  REVERTED
+}
+
+model AssemblyProcedureTextFeedback {
+  id           String                               @id @default(uuid())
+  documentId   String
+  pageIndex    Int
+  elementId    String
+  site         String?
+  documentName String
+  originalText String
+  aiText       String
+  finalText    String?
+  outcome      AssemblyProcedureTextFeedbackOutcome @default(PROPOSED)
+  createdAt    DateTime                             @default(now())
+  resolvedAt   DateTime?
+
+  @@index([documentId, elementId])
+  @@index([site, outcome, resolvedAt])
+}
+
+model AssemblyProcedureLearnedTerm {
+  id            String   @id @default(uuid())
+  site          String
+  wrongText     String
+  rightText     String
+  occurrences   Int
+  documentCount Int
+  updatedAt     DateTime @updatedAt
+
+  @@unique([site, wrongText])
 }
 
 model AssemblyProcedureCaptionFeedback {
@@ -5406,6 +5506,7 @@ enum ProcedureMaterialKind {
 }
 
 enum ProcedureMaterialOrigin {
+  APP
   GMAIL
   KNOWLEDGE
   WORK_INSTRUCTION
@@ -5416,6 +5517,7 @@ model ProcedureMaterial {
   origin           ProcedureMaterialOrigin @default(GMAIL)
   knowledgeRef     Json?
   workInstructionRef Json?
+  appRef           Json?
   kind             ProcedureMaterialKind
   text             String?
   imageDescription String?
@@ -5594,10 +5696,11 @@ model ProcedureVideoComment {
 }
 
 model KioskInquiryReceiverEmployee {
-  id         String   @id @default(uuid())
-  employeeId String   @unique
-  createdAt  DateTime @default(now())
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  employeeId    String   @unique
+  canViewScreen Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model KioskInquiryThread {
@@ -5615,6 +5718,7 @@ model KioskInquiryThread {
   updatedAt            DateTime              @updatedAt
   senderClientDevice   ClientDevice?         @relation(fields: [senderClientDeviceId], references: [id], onDelete: Cascade)
   messages             KioskInquiryMessage[]
+  screenWatchSessions  KioskScreenWatchSession[]
 
   @@index([kind, noticeKey])
   @@index([receiverUnread])
@@ -5649,4 +5753,33 @@ model ProcedureManualCommonSubject {
   key     String @id
   name    String
   kanaRow String?
+}
+
+enum KioskScreenWatchStatus {
+  REQUESTED
+  ACTIVE
+  DENIED
+  ENDED
+  EXPIRED
+  FAILED
+}
+
+model KioskScreenWatchSession {
+  id                   String                 @id @default(uuid())
+  threadId             String
+  viewerEmployeeId     String?
+  viewerClientDeviceId String
+  targetClientDeviceId String
+  status               KioskScreenWatchStatus @default(REQUESTED)
+  requestedAt          DateTime               @default(now())
+  acceptedAt           DateTime?
+  endedAt              DateTime?
+  endReason            String?
+  thread               KioskInquiryThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  viewerEmployee       Employee?              @relation(fields: [viewerEmployeeId], references: [id], onDelete: SetNull)
+  viewerClientDevice   ClientDevice           @relation("ScreenWatchViewer", fields: [viewerClientDeviceId], references: [id])
+  targetClientDevice   ClientDevice           @relation("ScreenWatchTarget", fields: [targetClientDeviceId], references: [id])
+
+  @@index([threadId])
+  @@index([targetClientDeviceId, status])
 }

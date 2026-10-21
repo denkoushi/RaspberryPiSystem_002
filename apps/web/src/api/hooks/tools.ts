@@ -45,14 +45,14 @@ import type {
 
 export function useDepartments() {
   return useQuery({
-    queryKey: ['departments'],
+    queryKey: toolsQueryKeys.departmentsAll,
     queryFn: getDepartments
   });
 }
 
 export function useEmployees() {
   return useQuery({
-    queryKey: ['employees'],
+    queryKey: toolsQueryKeys.employeesAll,
     queryFn: getEmployees
   });
 }
@@ -97,22 +97,22 @@ export function useEmployeeMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (payload: Partial<Employee>) => createEmployee(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Employee> }) => updateEmployee(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteEmployee(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.employeesAll })
   });
   return { create, update, remove };
 }
 
 export function useItems() {
   return useQuery({
-    queryKey: ['items'],
+    queryKey: toolsQueryKeys.itemsAll,
     queryFn: getItems
   });
 }
@@ -121,15 +121,15 @@ export function useItemMutations() {
   const queryClient = useQueryClient();
   const create = useMutation({
     mutationFn: (payload: Partial<Item>) => createItem(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll })
   });
   const update = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: Partial<Item> }) => updateItem(id, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll })
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteItem(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['items'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.itemsAll })
   });
   return { create, update, remove };
 }
@@ -146,7 +146,7 @@ export function useActiveLoans(clientId?: string, clientKey?: string, options?: 
 
 export function usePhotoLabelReviews(limit = 50) {
   return useQuery({
-    queryKey: ['photo-label-reviews', limit],
+    queryKey: toolsQueryKeys.photoLabelReviews(limit),
     queryFn: () => listPhotoLabelReviews(limit),
   });
 }
@@ -160,9 +160,9 @@ export function usePatchPhotoLabelReview() {
       humanDisplayName?: string | null;
     }) => patchPhotoLabelReview(args.loanId, { quality: args.quality, humanDisplayName: args.humanDisplayName }),
     onSuccess: (_data, args) => {
-      queryClient.invalidateQueries({ queryKey: ['photo-label-reviews'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.photoLabelReviewsAll });
       queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
-      queryClient.invalidateQueries({ queryKey: ['photo-similar-candidates', args.loanId] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.photoSimilarCandidates(args.loanId) });
     },
   });
 }
@@ -172,16 +172,16 @@ export function usePostPhotoGallerySeed() {
   return useMutation({
     mutationFn: (args: { image: File; canonicalLabel: string }) => postPhotoGallerySeed(args),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['photo-label-reviews'] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.photoLabelReviewsAll });
       queryClient.invalidateQueries({ queryKey: toolsQueryKeys.loansAll });
-      queryClient.invalidateQueries({ queryKey: ['photo-similar-candidates', data.loanId] });
+      queryClient.invalidateQueries({ queryKey: toolsQueryKeys.photoSimilarCandidates(data.loanId) });
     },
   });
 }
 
 export function usePhotoSimilarCandidates(loanId: string, options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: ['photo-similar-candidates', loanId],
+    queryKey: toolsQueryKeys.photoSimilarCandidates(loanId),
     queryFn: () => getPhotoSimilarCandidates(loanId),
     enabled: options?.enabled !== false && Boolean(loanId),
   });
@@ -247,7 +247,7 @@ export function useTransactions(
   filters?: { startDate?: string; endDate?: string; employeeId?: string; itemId?: string; clientId?: string }
 ) {
   return useQuery({
-    queryKey: ['transactions', page, filters],
+    queryKey: toolsQueryKeys.transactions(page, filters),
     queryFn: () => getTransactions(page, filters),
     placeholderData: (previousData) => previousData
   });
@@ -257,7 +257,7 @@ export function useTransactions(
 
 export function useUnifiedItems(params?: UnifiedListParams) {
   return useQuery({
-    queryKey: ['unified-items', params],
+    queryKey: toolsQueryKeys.unifiedItems(params),
     queryFn: () => getUnifiedItems(params),
     placeholderData: (previous) => previous
   });

@@ -17,6 +17,7 @@ import type {
   PartMeasurementTemplateCandidateService,
   PartMeasurementTemplateService,
   PartMeasurementVisualTemplateService,
+  PartMeasurementDrawingPlacementService,
   InspectionDrawingMeasurementLabelSettingsService,
   SelfInspectionService
 } from '../../services/part-measurement/index.js';
@@ -1093,6 +1094,7 @@ export type PartMeasurementRouteDeps = {
   measurementLabelSettingsService: InspectionDrawingMeasurementLabelSettingsService;
   drawingOcrService: ReturnType<typeof getPartMeasurementDrawingOcrService>;
   drawingDimensionMapService: PartMeasurementDrawingDimensionMapService;
+  drawingPlacementService: PartMeasurementDrawingPlacementService;
   enqueueDrawingOcrAndWake: (
     visualTemplateId: string | null | undefined,
     context: string,

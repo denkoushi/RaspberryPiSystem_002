@@ -8,3 +8,4 @@ e17e470cbfafbecc0ec02d732a8cb91936b6d3dc:scripts/deploy/tests/test_standard_ansi
 # kept failing on this commit; the credential itself still needs the Phase B rotation described in
 # docs/plans/security-client-key-rotation-phase-a.md.
 8107c99c0d759f94bff247976809063a5272612d:scripts/deploy/verify-phase12-real.sh:curl-auth-header:219
+a3c7f3955740457fcaa994912d0d9f0f02448552:scripts/deploy/tests/test_ansible_standard_release.py:generic-api-key:112

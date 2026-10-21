@@ -87,10 +87,15 @@ import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard/lead
 import {
   getGrindingPlanningBoard,
   getGrindingPlanningBoardLoad,
+  scheduleGrindingPlanningBoardRewarm,
   updateGrindingPlanningBoardSeibanOrder,
   updateGrindingPlanningBoardPins,
   updateGrindingPlanningBoardResourceOrderBulk
 } from '../grinding-planning-board.service.js';
+
+import * as planningSource from '../grinding-planning-board/source.js';
+import { clearLeaderboardCanonicalRowCacheForTests } from '../leaderboard/leaderboard-canonical-row-cache.js';
+import { readPlanningSnapshotGenerationToken, reusablePlanningPayloads } from '../grinding-planning-board/state.js';
 
 let databaseGeneration = 0;
 
@@ -321,6 +326,225 @@ describe('grinding planning board service orchestration', () => {
     expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
     expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
     expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
+  });
+
+  describe('first-page background rewarm', () => {
+    beforeEach(() => {
+      clearLeaderboardCanonicalRowCacheForTests();
+      vi.spyOn(planningSource, 'readPlanningSource');
+    });
+    afterEach(() => vi.mocked(planningSource.readPlanningSource).mockRestore());
+
+    const createStore = () => createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const request = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const };
+    const changeGeneration = (version = 1, seibanOrder = ['ORDER-A']) => {
+      mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue({ ...mocks.state, version, seibanOrder });
+      mocks.prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue({ _count: { _all: version }, _max: { updatedAt: new Date(version) } });
+    };
+    const pauseMachineNames = () => {
+      let release!: () => void;
+      let started!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const entered = new Promise<void>((resolve) => { started = resolve; });
+      mocks.resolveSeibanMachineDisplayNamesBatched.mockImplementationOnce(async () => {
+        started();
+        await gate;
+        return { machineNames: { 'ORDER-A': 'Machine A' } };
+      });
+      return { entered, release };
+    };
+
+    it('stores a rebuilt payload without cursor or arrival work and reuses it on the next read', async () => {
+      const snapshotStore = createStore();
+      const params = { ...request, snapshotStore };
+      await getGrindingPlanningBoard(params);
+      changeGeneration();
+      const projection = mocks.projectGrindingPlanningBoard.getMockImplementation()!();
+      mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection, items: projection.items.map((item: object) => ({ ...item, itemRevision: 'rewarmed' })) });
+      const create = vi.spyOn(snapshotStore, 'create');
+      mocks.findMaterialArrivalStatusByPart.mockClear();
+      await scheduleGrindingPlanningBoardRewarm({ ...params, delayMs: 0 });
+      expect(create).not.toHaveBeenCalled();
+      expect(mocks.findMaterialArrivalStatusByPart).not.toHaveBeenCalled();
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
+      const cached = [...reusablePlanningPayloads.get(snapshotStore)!.values()][0]!;
+      expect(cached.generationToken).toBe(await readPlanningSnapshotGenerationToken(params.siteKey));
+      mocks.projectGrindingPlanningBoard.mockClear();
+      vi.mocked(planningSource.readPlanningSource).mockClear();
+      mocks.prisma.csvDashboardRow.findMany.mockClear();
+      mocks.prisma.$queryRaw.mockClear();
+      const response = await getGrindingPlanningBoard(params);
+      expect(response.items[0]?.itemRevision).toBe('rewarmed');
+      expect(planningSource.readPlanningSource).not.toHaveBeenCalled();
+      expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
+      expect(mocks.prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
+      expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+      const freshStore = createStore();
+      const cold = await getGrindingPlanningBoard({ ...params, snapshotStore: freshStore });
+      expect(cached.payload).toEqual(freshStore.get(cold.snapshotId!)!.payload);
+      expect(cached.orderedRowIds).toEqual(freshStore.get(cold.snapshotId!)!.orderedRowIds);
+    });
+
+    it.each([undefined, ['ORDER-A', 'ORDER-B', 'ORDER-B']])('recomputes selected seibans after an order write for raw filter %j', async (fseibans) => {
+      const actual = await vi.importActual<typeof import('../grinding-planning-board-projection.js')>('../grinding-planning-board-projection.js');
+      mocks.projectGrindingPlanningBoard.mockImplementation(actual.projectGrindingPlanningBoard);
+      const rows = ['ORDER-A', 'ORDER-B', 'ORDER-C'].map((fseiban, index) => ({ ...mocks.sourceRow, id: `source-${index}`, rowData: { ...mocks.sourceRow.rowData, FSEIBAN: fseiban } }));
+      const details = await mocks.prisma.csvDashboardRow.findMany();
+      mocks.prisma.csvDashboardRow.findMany.mockResolvedValue(rows.map((row) => ({ ...details[0], id: row.id })));
+      mocks.prisma.$queryRaw.mockResolvedValue(rows);
+      const snapshotStore = createStore();
+      const params = { ...request, snapshotStore, fseibans, includeLoad: false };
+      await getGrindingPlanningBoard(params);
+      changeGeneration(1, ['ORDER-B', 'ORDER-C', 'ORDER-A']);
+      await scheduleGrindingPlanningBoardRewarm({ ...params, delayMs: 0 });
+      const selected = fseibans ? ['ORDER-B', 'ORDER-A'] : ['ORDER-B', 'ORDER-C', 'ORDER-A'];
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenLastCalledWith(expect.objectContaining({ selectedFseibans: new Set(selected) }));
+      const entries = [...reusablePlanningPayloads.get(snapshotStore)!.entries()];
+      expect(entries).toHaveLength(1);
+      const [fingerprint, cached] = entries[0]!;
+      expect(JSON.parse(fingerprint).fseibans).toEqual(selected);
+      expect(cached.request.requestedFseibans).toEqual(fseibans ? ['ORDER-A', 'ORDER-B'] : undefined);
+      expect(cached.payload.items.map((item) => item.fseiban)).toEqual(selected);
+      const freshStore = createStore();
+      const cold = await getGrindingPlanningBoard({ ...params, snapshotStore: freshStore });
+      expect(cached.payload).toEqual(freshStore.get(cold.snapshotId!)!.payload);
+      expect(cached.orderedRowIds).toEqual(freshStore.get(cold.snapshotId!)!.orderedRowIds);
+      expect(cached.generationToken).toBe(await readPlanningSnapshotGenerationToken(params.siteKey));
+      mocks.projectGrindingPlanningBoard.mockClear();
+      expect((await getGrindingPlanningBoard(params)).seibanOrder).toEqual(selected);
+      expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
+    });
+
+    it('shares one cold build between concurrent reads while creating independent cursors', async () => {
+      const snapshotStore = createStore();
+      const params = { ...request, snapshotStore };
+      const [first, second] = await Promise.all([getGrindingPlanningBoard(params), getGrindingPlanningBoard(params)]);
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
+      expect(planningSource.readPlanningSource).toHaveBeenCalledTimes(1);
+      expect(first.snapshotId).not.toBe(second.snapshotId);
+      expect(first.items).toEqual(second.items);
+    });
+
+    it('lets a real read join a running rewarm', async () => {
+      const snapshotStore = createStore();
+      const params = { ...request, snapshotStore };
+      await getGrindingPlanningBoard(params);
+      changeGeneration();
+      const pause = pauseMachineNames();
+      const rewarm = scheduleGrindingPlanningBoardRewarm({ ...params, delayMs: 0 });
+      await pause.entered;
+      const read = getGrindingPlanningBoard(params);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      pause.release();
+      await Promise.all([rewarm, read]);
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
+      expect(planningSource.readPlanningSource).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries a rejected shared build once and removes the failed in-flight entry', async () => {
+      const params = { ...request, snapshotStore: createStore(), includeLoad: false };
+      mocks.resolveSeibanMachineDisplayNamesBatched.mockRejectedValueOnce(new Error('temporary source failure'));
+      const [first, joined] = await Promise.allSettled([getGrindingPlanningBoard(params), getGrindingPlanningBoard(params)]);
+      expect(first.status).toBe('rejected');
+      expect(joined.status).toBe('fulfilled');
+      expect(mocks.resolveSeibanMachineDisplayNamesBatched).toHaveBeenCalledTimes(2);
+      await getGrindingPlanningBoard(params);
+      expect(mocks.resolveSeibanMachineDisplayNamesBatched).toHaveBeenCalledTimes(2);
+    });
+
+    it('debounces two writes and skips a still-valid cached payload', async () => {
+      vi.useFakeTimers();
+      try {
+        const params = { ...request, snapshotStore: createStore() };
+        await getGrindingPlanningBoard(params);
+        changeGeneration();
+        const first = scheduleGrindingPlanningBoardRewarm(params);
+        await vi.advanceTimersByTimeAsync(100);
+        changeGeneration(2);
+        const second = scheduleGrindingPlanningBoardRewarm(params);
+        expect(second).toBe(first);
+        await vi.advanceTimersByTimeAsync(199);
+        expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        await Promise.all([first, second]);
+        expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
+        const unchanged = scheduleGrindingPlanningBoardRewarm(params);
+        await vi.advanceTimersByTimeAsync(200);
+        await unchanged;
+        expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
+      } finally { vi.useRealTimers(); }
+    });
+
+    it('collapses writes during a stale build into one follow-up and awaits its completion', async () => {
+      const params = { ...request, snapshotStore: createStore(), includeLoad: false };
+      await getGrindingPlanningBoard(params);
+      changeGeneration();
+      const pause = pauseMachineNames();
+      const first = scheduleGrindingPlanningBoardRewarm({ ...params, delayMs: 0 });
+      await pause.entered;
+      changeGeneration(2);
+      const second = scheduleGrindingPlanningBoardRewarm(params);
+      changeGeneration(3);
+      const third = scheduleGrindingPlanningBoardRewarm(params);
+      expect(second).toBe(first);
+      expect(third).toBe(first);
+      pause.release();
+      await first;
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(3);
+      const cached = [...reusablePlanningPayloads.get(params.snapshotStore)!.values()][0]!;
+      expect(cached.generationToken).toBe(await readPlanningSnapshotGenerationToken(params.siteKey));
+      await getGrindingPlanningBoard(params);
+      expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(3);
+    });
+
+    it('only rebuilds the three most recently used entries in the requested site and store', async () => {
+      vi.useFakeTimers();
+      try {
+        const snapshotStore = createStore();
+        const params = { ...request, snapshotStore, includeLoad: false };
+        const filters = [
+          { ...params, completionFilter: 'complete' as const },
+          { ...params, completionFilter: 'incomplete' as const },
+          { ...params, view: 'resource' as const },
+          { ...params, category: 'all' as const }
+        ];
+        for (const filter of filters) {
+          await getGrindingPlanningBoard(filter);
+          vi.advanceTimersByTime(10);
+        }
+        const oldest = [...reusablePlanningPayloads.get(snapshotStore)!.values()][0]!;
+        const expiresAtMs = oldest.expiresAtMs;
+        await getGrindingPlanningBoard(filters[0]!);
+        expect(oldest.lastUsedAtMs).toBe(Date.now());
+        expect(oldest.expiresAtMs).toBe(expiresAtMs);
+        await getGrindingPlanningBoard({ ...params, siteKey: 'site-b' });
+        const otherStore = createStore();
+        await getGrindingPlanningBoard({ ...params, snapshotStore: otherStore });
+        changeGeneration();
+        mocks.projectGrindingPlanningBoard.mockClear();
+        const pending = scheduleGrindingPlanningBoardRewarm(params);
+        await vi.advanceTimersByTimeAsync(200);
+        await pending;
+        expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(3);
+        const token = await readPlanningSnapshotGenerationToken(params.siteKey);
+        const entries = [...reusablePlanningPayloads.get(snapshotStore)!.values()];
+        expect(entries.filter((entry) => entry.generationToken === token)).toHaveLength(3);
+        expect(entries.find((entry) => entry.request.completionFilter === 'incomplete')!.generationToken).not.toBe(token);
+        expect(entries.find((entry) => entry.siteKey === 'site-b')!.generationToken).not.toBe(token);
+        expect([...reusablePlanningPayloads.get(otherStore)!.values()][0]!.generationToken).not.toBe(token);
+      } finally { vi.useRealTimers(); }
+    });
+
+    it('swallows background errors and allows a later rewarm to retry', async () => {
+      const params = { ...request, snapshotStore: createStore() };
+      await getGrindingPlanningBoard(params);
+      changeGeneration();
+      mocks.resolveSeibanMachineDisplayNamesBatched.mockRejectedValueOnce(new Error('source unavailable'));
+      await expect(scheduleGrindingPlanningBoardRewarm({ ...params, delayMs: 0 })).resolves.toBeUndefined();
+      await scheduleGrindingPlanningBoardRewarm({ ...params, delayMs: 0 });
+      const cached = [...reusablePlanningPayloads.get(params.snapshotStore)!.values()][0]!;
+      expect(cached.generationToken).toBe(await readPlanningSnapshotGenerationToken(params.siteKey));
+    });
   });
 
   it.each([
@@ -588,28 +812,27 @@ describe('grinding planning board service orchestration', () => {
     })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
   });
 
-  it('checks a valid cursor snapshot with two generation reads', async () => {
+  it('keeps the default at 160 and reads generation once per continuation capped at 640', async () => {
+    const projection = mocks.projectGrindingPlanningBoard.getMockImplementation()!();
+    const items = Array.from({ length: 1441 }, (_, index) => ({ ...projection.items[0], itemId: `row:${index}` }));
+    mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection, allItems: items, items });
     const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
-    const first = await getGrindingPlanningBoard({
-      siteKey: 'site-a',
-      category: 'grinding',
-      view: 'seiban',
-      pageSize: 1,
-      snapshotStore
-    });
-    mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockClear();
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, includeLoad: false, snapshotStore };
+    const first = await getGrindingPlanningBoard(params);
+    expect(first.items).toHaveLength(160);
+    expect(first.nextCursor).toBe('160');
 
-    const continued = await getGrindingPlanningBoard({
-      siteKey: 'site-a',
-      category: 'grinding',
-      view: 'seiban',
-      cursor: 0,
-      snapshotId: first.snapshotId,
-      snapshotStore
-    });
-
-    expect(continued.items).toHaveLength(1);
-    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
+    for (const [cursor, pageSize] of [[160, 640], [800, 641]]) {
+      vi.clearAllMocks();
+      const continued = await getGrindingPlanningBoard({ ...params, cursor, pageSize, snapshotId: first.snapshotId });
+      expect(continued.items).toEqual(items.slice(cursor, cursor + 640));
+      expect(continued.nextCursor).toBe(String(cursor + 640));
+      expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(1);
+      expect(mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique).toHaveBeenCalledTimes(2);
+      expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.aggregate).toHaveBeenCalledTimes(1);
+      expect(mocks.prisma.productionScheduleResourceMaster.aggregate).toHaveBeenCalledTimes(1);
+      expect(mocks.prisma.productionScheduleSeibanMachineNameSupplement.aggregate).toHaveBeenCalledTimes(1);
+    }
   });
 
   it('rejects a cursor when the before-read generation differs from the stored snapshot', async () => {
@@ -623,8 +846,7 @@ describe('grinding planning board service orchestration', () => {
     });
     mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockClear();
     mocks.readGrindingPlanningBoardSnapshotGenerationToken
-      .mockResolvedValueOnce('leaderboard-generation-2')
-      .mockResolvedValueOnce('leaderboard-generation-1');
+      .mockResolvedValueOnce('leaderboard-generation-2');
 
     await expect(getGrindingPlanningBoard({
       siteKey: 'site-a',
@@ -634,7 +856,7 @@ describe('grinding planning board service orchestration', () => {
       snapshotId: first.snapshotId,
       snapshotStore
     })).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
-    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
+    expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the registered display source bounded when the database has many rows', async () => {

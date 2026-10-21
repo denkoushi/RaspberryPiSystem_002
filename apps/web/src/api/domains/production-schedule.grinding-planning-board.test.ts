@@ -15,10 +15,10 @@ describe('grinding planning board requests', () => {
     const result = await getKioskGrindingPlanningBoardSnapshot({ category: 'grinding', view: 'seiban', completionFilter: 'incomplete' });
     expect(result.items.map((item) => item.itemId)).toEqual(['first', 'second']);
     expect(get).toHaveBeenNthCalledWith(1, '/kiosk/production-schedule/grinding-planning-board', {
-      params: { category: 'grinding', view: 'seiban', completionFilter: 'incomplete', cursor: 0, includeLoad: false }
+      params: { category: 'grinding', view: 'seiban', completionFilter: 'incomplete', cursor: 0, pageSize: 160, includeLoad: false }
     });
     expect(get).toHaveBeenNthCalledWith(2, '/kiosk/production-schedule/grinding-planning-board', {
-      params: { category: 'grinding', view: 'seiban', completionFilter: 'incomplete', cursor: 1, snapshotId: 's1', includeLoad: false }
+      params: { category: 'grinding', view: 'seiban', completionFilter: 'incomplete', cursor: 1, pageSize: 640, snapshotId: 's1', includeLoad: false }
     });
   });
 

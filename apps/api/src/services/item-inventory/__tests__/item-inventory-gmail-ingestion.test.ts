@@ -12,7 +12,7 @@ vi.mock('../item-inventory-gmail-packet-resolver.js', () => ({
 }));
 vi.mock('../../../lib/photo-storage.js', () => ({ PhotoStorage: { savePhoto: savePhotoMock } }));
 
-import { ItemInventoryGmailIngestionService } from '../item-inventory-gmail-ingestion.service.js';
+import { ITEM_INVENTORY_INGEST_RUNNING, ItemInventoryGmailIngestionService } from '../item-inventory-gmail-ingestion.service.js';
 
 const validPacket = {
   manifest: {
@@ -192,5 +192,35 @@ describe('ItemInventoryGmailIngestionService', () => {
     expect(gmail.getMessage).not.toHaveBeenCalled();
     expect(gmail.trashMessage).toHaveBeenCalledTimes(1);
     expect(messageStore.get('old-success')).toMatchObject({ mailCleanupCompleted: true, mailCleanupPending: false });
+  });
+  it('answers a retry pressed during the scheduled run with a 409 business error and leaves the record untouched', async () => {
+    const record = { id: 'record-1', gmailMessageId: 'retry-message', outcome: 'RETRYABLE', errorMessage: 'Referenced image is missing', nextRetryAt: new Date('2026-10-19T03:00:00Z'), updatedAt: new Date() };
+    const { db, messageStore } = createFakeDb(new Map([['record-1', record]]));
+    let releaseScheduled!: () => void;
+    const gmail = {
+      searchMessagesAll: vi.fn().mockImplementationOnce(() => new Promise<string[]>((resolve) => { releaseScheduled = () => resolve([]); })).mockResolvedValue([]),
+      getMessage: vi.fn(),
+      getAttachment: vi.fn(),
+      trashMessage: vi.fn(),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+
+    const scheduled = service.runOnce({ config: config(), allowWait: false });
+    await vi.waitFor(() => expect(gmail.searchMessagesAll).toHaveBeenCalled());
+    const busy = { statusCode: 409, code: ITEM_INVENTORY_INGEST_RUNNING, message: 'いま取込中です。少し待ってからもう一度押してください' };
+    await expect(service.retryRecord('record-1', { config: config(), allowWait: true })).rejects.toMatchObject(busy);
+    await expect(service.runOnce({ config: config(), allowWait: true, manual: true })).rejects.toMatchObject(busy);
+    expect(db.inventoryImportMessage.update).not.toHaveBeenCalled();
+    expect(messageStore.get('record-1')?.nextRetryAt).toEqual(record.nextRetryAt);
+
+    releaseScheduled();
+    await expect(scheduled).resolves.toMatchObject({ scanned: 0 });
+    await expect(service.runOnce({ config: config(), allowWait: false })).resolves.toBeDefined();
+  });
+
+  it('answers a retry for a missing record with 404', async () => {
+    const { db } = createFakeDb(new Map());
+    const service = new ItemInventoryGmailIngestionService(vi.fn(), db as never);
+    await expect(service.retryRecord('missing', { config: config(), allowWait: true })).rejects.toMatchObject({ statusCode: 404 });
   });
 });

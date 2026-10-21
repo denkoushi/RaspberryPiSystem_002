@@ -13,10 +13,24 @@ import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
-import { ASSEMBLY_SITE_CONTEXT } from './procedure-site-context.js';
-import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts } from './procedure-layout.js';
+import { buildProcedureTextLearningPrompt } from './procedure-text-learning-prompt.js';
+import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
+import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts, suggestProcedureLayoutOverflow } from './procedure-layout.js';
 
-const TEXT_INSTRUCTION = `あなたは工場の手順書を仕上げる編集者です。入力は手順書1ページ分の文章です。各 text を、作業者がすぐ読める最終形に書き直してください。
+// Site knowledge only helps the department it was read from; grinding text
+// lost words to look-alike assembly terms (KB-420).
+const siteRules = (example: string, context: string) => `- 聞き違い・誤変換と分かる語は、下の現場の知識にある語に直す(例: ${example})。意味を取り違えそうなら直さない。
+- 知識にある語に似ているだけでは置き換えない。知識に無い語はそのまま残す。
+- 現場の知識にあっても text に無い部品・数値・作業は足さない。
+${context}
+`;
+const SITE_TEXT_RULES = {
+  assembly: siteRules('「車高マン」→「シャコマン」', ASSEMBLY_SITE_CONTEXT),
+  grinding: siteRules('「磁力マックス」→「磁力MAX」', GRINDING_SITE_CONTEXT),
+} as const;
+type ProcedureSite = keyof typeof SITE_TEXT_RULES;
+
+const textInstruction = (siteContext: string) => `あなたは工場の手順書を仕上げる編集者です。入力は手順書1ページ分の文章です。各 text を、作業者がすぐ読める最終形に書き直してください。
 規則:
 - text にある数値・品名・数量・見出しは必ず残す。text に無い事実や数値を足さない。
 - 品名と数量の列挙は1行1品の箇条書き(・)にする。「A、B2個、C２個」は3行に分ける。
@@ -24,10 +38,7 @@ const TEXT_INSTRUCTION = `あなたは工場の手順書を仕上げる編集者
 - 見出し(第一工程目、使用治具、測定方法など)には番号や・を付けない。
 - 見出しだけの text、すでに読みやすい text はそのまま返す。
 - 1行が長くなっても文の途中では改行しない。
-- 聞き違い・誤変換と分かる語は、下の現場の知識にある語に直す(例: 「車高マン」→「シャコマン」)。意味を取り違えそうなら直さない。
-- 現場の知識にあっても text に無い部品・数値・作業は足さない。
-${ASSEMBLY_SITE_CONTEXT}
-例:
+${siteContext}例:
 入力: "加工前ボルトを締めて芯出し\nゲージで端の傾きを0.02以内にする。その後高さが0.5以内なら開始。切り込み5μ"
 出力: "1. ボルトを締めて芯出し\n2. ゲージで端の傾き 0.02 以内\n3. 高さ 0.5 以内なら加工開始\n切り込み 5μ"
 JSONだけを返す: {"texts":[{"id":"...","text":"..."}]}`;
@@ -57,13 +68,21 @@ export class ProcedureLayoutSuggestionService {
     try {
       params.signal.throwIfAborted();
       const feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[] = [];
-      const result = await this.buildSuggestion(params, feedback);
+      const textFeedback: Prisma.AssemblyProcedureTextFeedbackCreateManyInput[] = [];
+      const result = await this.buildSuggestion(params, feedback, textFeedback);
       params.signal.throwIfAborted();
       if (feedback.length) {
         try {
           await prisma.assemblyProcedureCaptionFeedback.createMany({ data: feedback, skipDuplicates: true });
         } catch (error) {
           logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_caption_feedback_proposal_failed');
+        }
+      }
+      if (textFeedback.length) {
+        try {
+          await prisma.assemblyProcedureTextFeedback.createMany({ data: textFeedback });
+        } catch (error) {
+          logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_text_feedback_proposal_failed');
         }
       }
       params.signal.throwIfAborted();
@@ -74,7 +93,19 @@ export class ProcedureLayoutSuggestionService {
     }
   }
 
-  private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
+  /** The department (組立 / 研削) any revision of the document is filed under, by process or parent process name. */
+  private async documentSite(revisionRootId: string): Promise<ProcedureSite | null> {
+    const assignments = await prisma.procedureManualAssignment.findMany({
+      where: { assemblyProcedureDocument: { revisionMetadata: { revisionRootId } } },
+      select: { process: { select: { name: true, parent: { select: { name: true } } } } },
+    });
+    const names = assignments.flatMap(({ process }) => [process.name, process.parent?.name ?? '']);
+    if (names.some(name => name.startsWith('組立'))) return 'assembly';
+    if (names.some(name => name.startsWith('研削'))) return 'grinding';
+    return null;
+  }
+
+  private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[], textFeedback: Prisma.AssemblyProcedureTextFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
     await this.access.requireAccessPassword(params.accessPassword);
     const document = await prisma.assemblyProcedureDocument.findUnique({
       where: { id: params.documentId },
@@ -84,6 +115,7 @@ export class ProcedureLayoutSuggestionService {
     if (document.status !== 'DRAFT' || !document.isActive || !document.revisionMetadata?.revisionRootId || !document.revisionMetadata.isRevisionHead) {
       throw new ApiError(409, '最新版の改版下書きだけ編集できます');
     }
+    const site = await this.documentSite(document.revisionMetadata.revisionRootId);
     const page = await prisma.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: params.documentId, pageIndex: params.pageIndex } } });
     if (!page) throw new ApiError(400, '指定ページが存在しません');
     let pageSize: { width: number; height: number };
@@ -94,6 +126,19 @@ export class ProcedureLayoutSuggestionService {
       pageSize = { width: metadata.width, height: metadata.height };
     } catch {
       throw new ApiError(422, 'ページ画像の寸法を取得できません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_DIMENSIONS_UNAVAILABLE');
+    }
+    let learningPrompt = '';
+    if (site) {
+      try {
+        const examples = await prisma.assemblyProcedureTextFeedback.findMany({
+          where: { site, outcome: 'EDITED', finalText: { not: null } },
+          orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }], take: 50, select: { aiText: true, finalText: true }
+        });
+        const terms = await prisma.assemblyProcedureLearnedTerm.findMany({ where: { site }, orderBy: { wrongText: 'asc' } });
+        learningPrompt = buildProcedureTextLearningPrompt(examples, terms);
+      } catch (error) {
+        logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_text_learning_lookup_failed');
+      }
     }
     const rows = assignProcedureLayoutRows(params.elements, pageSize);
     let elements = params.elements;
@@ -119,10 +164,17 @@ export class ProcedureLayoutSuggestionService {
           params.signal.throwIfAborted();
           const result = await this.text.complete({
             useCase: 'business_hermes', maxTokens: 4000, temperature: 0, enableThinking: false, jsonOutput: true, signal: params.signal,
-            messages: [{ role: 'system', content: TEXT_INSTRUCTION }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
+            messages: [{ role: 'system', content: textInstruction((site ? SITE_TEXT_RULES[site] : '') + learningPrompt) }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
           });
           params.signal.throwIfAborted();
           elements = rewriteProcedureTexts(elements, JSON.parse(result.rawText) as unknown);
+        }
+        for (const element of elements) {
+          const original = params.elements.find(candidate => candidate.id === element.id);
+          if (element.kind === 'TEXT' && original?.kind === 'TEXT' && element.text !== original.text) {
+            textFeedback.push({ documentId: params.documentId, pageIndex: params.pageIndex, elementId: element.id,
+              site, documentName: document.name, originalText: original.text, aiText: element.text });
+          }
         }
         const rewritten = elements.filter((element, index) => element.kind === 'TEXT' && params.elements[index].kind === 'TEXT' && element.text !== (params.elements[index] as OverlayTextElement).text).length;
         if (rewritten) textChanges.push(`文章 ${rewritten} 個を読みやすく書き直した`);
@@ -190,6 +242,15 @@ export class ProcedureLayoutSuggestionService {
       return procedureLayoutSuggestionResponseSchema.parse({ elements: result.elements, addedElementIds, changes: changes.length ? changes : ['直すところはありません'] });
     } catch (error) {
       params.signal.throwIfAborted();
+      if (error instanceof ProcedureLayoutError && error.message === 'Page does not fit' && rows) {
+        const overflow = suggestProcedureLayoutOverflow({ elements, page: pageSize, rows, originalElements: params.elements, pageIndex: params.pageIndex });
+        if (overflow.shrink || overflow.split) {
+          for (const option of [overflow.shrink, overflow.split]) {
+            if (option) option.changes = [...option.changes, ...textChanges, ...(addedElementIds.length ? [`写真を読んで ${addedElementIds.length} 行足した`] : [])].slice(0, 8);
+          }
+          return procedureLayoutSuggestionResponseSchema.parse({ elements: params.elements, addedElementIds, changes: ['写真が1ページに入りきりません'], overflow });
+        }
+      }
       if (error instanceof ProcedureLayoutError) throw new ApiError(422, 'このページは1枚に収まりません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_DOES_NOT_FIT');
       throw new ApiError(502, 'いまは提案できません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_INVALID_RESULT');
     }
