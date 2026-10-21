@@ -337,6 +337,36 @@ class GitAdapter:
 
         self._run(["worktree", "remove", str(worktree.path)])
 
+    def running_process_cwds(self) -> tuple[Path, ...]:
+        """Observe process cwd paths; incomplete observations must fail closed."""
+
+        try:
+            result = self.runner(
+                ("lsof", "-d", "cwd", "-F0n"),
+                cwd=str(self.repo_root),
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise GitAdapterError(f"process cwd check could not complete: {error}") from error
+        if result.returncode or result.stderr:
+            raise GitAdapterError("process cwd check failed or returned warnings")
+        paths: list[Path] = []
+        cwd_count = 0
+        for field in _decode(result.stdout).split("\x00"):
+            field = field.lstrip("\n")
+            if field == "fcwd":
+                cwd_count += 1
+            if field.startswith("n"):
+                path = Path(field[1:])
+                if not path.is_absolute():
+                    raise GitAdapterError("process cwd check returned an unreadable path")
+                paths.append(path.resolve())
+        if not paths or cwd_count != len(paths):
+            raise GitAdapterError("process cwd check returned missing paths")
+        return tuple(paths)
+
     def delete_local_branch_if_at(self, branch: str, expected_sha: str) -> None:
         """Compare-and-delete one local ref, preserving races and unrelated refs."""
 
