@@ -88,6 +88,8 @@ planの `firstInstall.hosts` と `rollbackTarget=empty` を確認する。実行
 
 失敗時は候補containerと新規runtimeファイル/unitを撤去し、元のdesktop設定へ戻す（OSパッケージは残す）。完了後の次回更新は **`--first-install` を外した通常実行** とし、既存imageのrollback保護を使う。復旧条件は [初回導入の失敗後](../runbooks/deploy-status-recovery.md#pi4初回導入の失敗後) を参照。
 
+Pi4キオスクでは `wf-panel-pi` が `kiosk-hotcorner.service` からログインセッション外で起動するため、Wi-Fi切替には従来のclient roleと同じ `/etc/NetworkManager/NetworkManager.conf` の `[main]` 内の `auth-polkit=false` が必要。通常更新・初回導入の両方で設定し、変更時だけNetworkManagerを再起動する（未導入ならスキップ）。失敗時は通常・初回とも元のファイルへ復元し、元がなければ削除する。
+
 ## 事故を防ぐ標準順序
 
 1. **exact SHAと成果物を確定する**: 対象SHA、required CI/CodeQL/gitleaksの成功、対象profileに必要なAPI/Webまたは端末artifactのdigest/manifestを確認する。成功済みCIをMacで全再実行したり、`pnpm install`でlockfileを変更したりしない。
