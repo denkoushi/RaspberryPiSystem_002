@@ -122,7 +122,7 @@ describe('rigging gear tag routes integration', () => {
     expect(row).toBeNull();
   });
 
-  it('DELETE /api/rigging-gear-tags/:tagId with nonexistent id returns current prisma error shape', async () => {
+  it('DELETE /api/rigging-gear-tags/:tagId with nonexistent id returns 404 with the prisma not-found shape', async () => {
     const missingTagId = randomUUID();
 
     const response = await app.inject({
@@ -131,10 +131,10 @@ describe('rigging gear tag routes integration', () => {
       headers: createAuthHeader(adminToken)
     });
 
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(404);
     const body = response.json() as { errorCode?: string; message?: string };
     expect(body.errorCode).toBe('P2025');
-    expect(body.message).toContain('P2025');
+    expect(body.message).toContain('対象のデータが見つかりません');
   });
 
   describe('GET /api/rigging-gears allowClientKey auth', () => {
