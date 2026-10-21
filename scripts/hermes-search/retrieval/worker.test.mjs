@@ -1193,3 +1193,87 @@ for (const causeById of [null, new Map(), new Map([['rec-alpha', 'drawing'], ['r
     assert.equal(inputs[1].previousPlan.causeCategory, available ? 'drawing' : undefined);
   });
 }
+
+test('breakdown answer contains only conditions and bucket counts while records remain available', async () => {
+  const rows = [
+    { id: 'a', discoveredOn: '2026-10-01', originDepartmentName: 'North Shop', condition: 'PRIVATE-BODY' },
+    { id: 'b', discoveredOn: '2026-10-02', originDepartmentName: 'North Shop', condition: 'PRIVATE-BODY' },
+    { id: 'c', discoveredOn: '2026-10-03', originDepartmentName: 'North Shop', condition: 'PRIVATE-BODY' },
+  ];
+  const answering = createRetrievalAnswering({ records: rows, catalog, causeById: new Map([['a', 'drawing'], ['b', 'drawing']]),
+    planner: { plan: async () => ({ plan: listPlan({ breakdown: 'cause', limit: 2,
+      filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] },
+        { source: 'nonconformity', field: 'discoveredOn', op: 'between', values: ['2026-10-01', '2026-10-31'] }],
+      diagnostics: { contentDecision: { jev: false, final: false }, intentDecision: { chosen: 'breakdown_cause' } } }) }) } });
+  const result = await answering.answer('内訳');
+  assert.equal(result.answer, 'North Shop・2026-10-01〜2026-10-31の不適合 3 件の要因の内訳: 図面・設計の誤り 2件（未分類 1件）');
+  assert.equal(result.display.records.length, 2);
+  assert.equal(result.display.groups[0].axis, 'cause');
+  assert.deepEqual(result.receipt.intentDecision, { chosen: 'breakdown_cause' });
+  assert.equal(JSON.stringify(result.receipt).includes('PRIVATE-BODY'), false);
+  const refined = await answering.answer('選択', result.session, { refine: { axis: 'cause', field: 'causeCategory', value: 'drawing', planId: result.planId } });
+  assert.equal(Object.hasOwn(refined.session.previousPlan, 'breakdown'), false);
+  assert.equal(refined.receipt.intentDecision.chosen, 'records');
+  assert.match(refined.answer, /PRIVATE-BODY/u);
+});
+
+test('empty cause store drops only cause breakdown and records the reason', async () => {
+  for (const breakdown of ['cause', 'organization', 'month']) {
+    const answering = createRetrievalAnswering({ records, catalog, causeById: new Map(),
+      planner: { plan: async () => ({ plan: listPlan({ breakdown }) }) } });
+    const result = await answering.answer('内訳');
+    assert.equal(result.receipt.breakdownDropped, breakdown === 'cause' ? 'store_empty' : undefined);
+    assert.equal(result.receipt.plan.breakdown, breakdown === 'cause' ? undefined : breakdown);
+    if (breakdown === 'cause') assert.equal(result.answer.includes('内訳:'), false);
+    else assert.equal(result.display.groups[0].axis, breakdown);
+  }
+});
+
+test('followup planning does not carry breakdown into previous state', async () => {
+  let calls = 0;
+  const answering = createRetrievalAnswering({ records, catalog, causeById: new Map([['rec-alpha', 'drawing']]), evaluate: async ({ state }) => {
+    if (calls++) assert.equal(Object.hasOwn(state.previous_plan, 'breakdown'), false);
+    return { answers: { intent: { type: 'choice', choice: calls === 1 ? 'breakdown_cause' : 'records' },
+      content: { type: 'noul', noul: false }, limit: { type: 'choice', choice: 'unspecified' } } };
+  } });
+  const first = await answering.answer('多い要因は?');
+  assert.equal(first.display.groups[0].axis, 'cause');
+  const next = await answering.answer('その中で先月は?', first.session);
+  assert.equal(next.receipt.intentDecision.chosen, 'records');
+  assert.equal(Object.hasOwn(next.session.previousPlan, 'breakdown'), false);
+  assert.equal(calls, 2);
+});
+
+test('empty breakdown answers report zero without record text', async () => {
+  const answering = createRetrievalAnswering({ records: [], catalog, causeById: new Map([['outside', 'drawing']]),
+    planner: { plan: async () => ({ plan: listPlan({ breakdown: 'cause', filters: [] }) }) } });
+  const result = await answering.answer('内訳');
+  assert.equal(result.answer, '全期間・全部署の不適合 0 件の要因の内訳: 該当なし');
+  assert.deepEqual(result.display.groups[0].buckets, []);
+});
+
+test('unfiltered cause breakdown with an empty store falls back to newest records', async () => {
+  let calls = 0;
+  const answering = createRetrievalAnswering({ records, catalog, causeById: new Map(), evaluate: async () => {
+    calls += 1;
+    return { answers: { intent: { type: 'choice', choice: 'breakdown_cause' }, content: { type: 'noul', noul: true } } };
+  } });
+  const result = await answering.answer('多い要因は?');
+  assert.equal(calls, 1);
+  assert.equal(result.receipt.outcome, 'answer');
+  assert.equal(result.receipt.breakdownDropped, 'store_empty');
+  assert.equal(result.receipt.plan.breakdown, undefined);
+  assert.equal(result.display.records.length, records.length);
+  assert.equal(result.answer.includes('内訳:'), false);
+  assert.deepEqual(result.recordIds, [...records].sort((a, b) => b.discoveredOn.localeCompare(a.discoveredOn))
+    .map(record => `nonconformity:${record.id}`));
+});
+
+test('breakdown conditions include cause labels without exposing other filter values', async () => {
+  const rows = [{ id: 'a', discoveredOn: '2026-10-01', originDepartmentName: 'North Shop', partNumber: 'PRIVATE-PART', condition: 'PRIVATE-BODY' }];
+  const answering = createRetrievalAnswering({ records: rows, catalog, causeById: new Map([['a', 'drawing']]),
+    planner: { plan: async () => ({ plan: listPlan({ breakdown: 'cause', causeCategory: 'drawing',
+      filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['PRIVATE-PART'] }] }) }) } });
+  const result = await answering.answer('内訳');
+  assert.equal(result.answer, '要因が図面・設計の誤りの不適合 1 件の要因の内訳: 図面・設計の誤り 1件');
+});

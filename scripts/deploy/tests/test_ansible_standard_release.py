@@ -78,6 +78,91 @@ def role_text(role: str) -> str:
 
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_kiosk_network_configuration_runs_after_normal_switch_boundary(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk/tasks"
+        main = yaml.safe_load((root / "main.yml").read_text())[0]["block"]
+        switch_block = next(task for task in main if task["name"] == "Switch and verify one Pi4 kiosk")
+        self.assertEqual(switch_block["block"][0]["ansible.builtin.import_tasks"], "switch.yml")
+        self.assertNotIn("when", switch_block["block"][0])
+        switch = yaml.safe_load((root / "switch.yml").read_text())
+        boundary = next(i for i, task in enumerate(switch)
+                        if task.get("ansible.builtin.set_fact", {}).get("release_kiosk_switch_attempted"))
+        network = next(i for i, task in enumerate(switch)
+                       if task.get("ansible.builtin.import_tasks") == "network.yml")
+        self.assertGreater(network, boundary)
+        self.assertNotIn("when", switch[network])  # Normal and first-install both converge.
+        tasks = yaml.safe_load((root / "network.yml").read_text())
+        self.assertEqual(tasks[0]["ansible.builtin.command"], "which nmcli")
+        self.assertIs(tasks[0]["changed_when"], False)
+        self.assertIs(tasks[0]["failed_when"], False)
+        guard = Environment().compile_expression(tasks[1]["when"])
+        self.assertTrue(guard(release_kiosk_nmcli={"rc": 0}))
+        self.assertFalse(guard(release_kiosk_nmcli={"rc": 1}))
+        block = tasks[1]["block"]
+        self.assertEqual(block[0]["ansible.builtin.stat"]["path"], "/etc/NetworkManager/NetworkManager.conf")
+        self.assertEqual(block[1]["ansible.builtin.copy"]["src"], block[0]["ansible.builtin.stat"]["path"])
+        edits = [task["ansible.builtin.lineinfile"] for task in block if "ansible.builtin.lineinfile" in task]
+        self.assertEqual([edit["path"] for edit in edits], ["/etc/NetworkManager/NetworkManager.conf"] * 2)
+        self.assertEqual(edits[0]["line"], "[main]")
+        self.assertTrue(edits[0]["create"])
+        self.assertEqual(edits[1]["regexp"], "^auth-polkit=")
+        self.assertEqual(edits[1]["line"], "auth-polkit=false")
+        self.assertEqual(edits[1]["insertafter"], r"^\[main\]")
+        restart = block[-1]
+        self.assertEqual(restart["ansible.builtin.systemd"], {"name": "NetworkManager", "state": "restarted"})
+        changed = Environment().compile_expression(restart["when"])
+        for section, auth in ((False, False), (True, False), (False, True), (True, True)):
+            self.assertEqual(changed(release_kiosk_network_main={"changed": section},
+                                     release_kiosk_network_auth={"changed": auth}), section or auth)
+
+    def test_kiosk_network_normal_rollback_restores_or_removes_before_health(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk/tasks"
+        rollback = yaml.safe_load((root / "rollback.yml").read_text())
+        restore = next(task for task in rollback if task["name"] == "Restore normal-release NetworkManager configuration")
+        self.assertLess(rollback.index(restore), next(i for i, task in enumerate(rollback)
+                        if task.get("ansible.builtin.import_tasks") == "health_checks.yml"))
+        self.assertIn("not (release_kiosk_first_install | bool)", restore["when"])
+        copy, remove, restart = restore["block"]
+        self.assertEqual(copy["ansible.builtin.copy"]["dest"], "/etc/NetworkManager/NetworkManager.conf")
+        self.assertTrue(copy["ansible.builtin.copy"]["remote_src"])
+        self.assertEqual(copy["ansible.builtin.copy"]["src"], "{{ release_kiosk_stage_dir }}/NetworkManager.conf.original")
+        for field, stat in (("owner", "uid"), ("group", "gid"), ("mode", "mode")):
+            self.assertIn("release_kiosk_network_original.stat." + stat, copy["ansible.builtin.copy"][field])
+        self.assertEqual(copy["when"], "release_kiosk_network_original.stat.exists")
+        self.assertEqual(remove["when"], "not release_kiosk_network_original.stat.exists")
+        self.assertEqual(remove["ansible.builtin.file"], {"path": "/etc/NetworkManager/NetworkManager.conf", "state": "absent"})
+        self.assertEqual(restart["ansible.builtin.systemd"], {"name": "NetworkManager", "state": "restarted"})
+        changed = Environment().compile_expression(restart["when"])
+        for copied, removed in (({}, {}), ({"changed": False}, {"changed": False}),
+                                ({"changed": True}, {}), ({}, {"changed": True})):
+            self.assertEqual(changed(release_kiosk_network_restore=copied, release_kiosk_network_remove=removed),
+                             bool(copied.get("changed") or removed.get("changed")))
+
+    def test_kiosk_network_first_install_backup_and_conditional_rollback_restart(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk/tasks"
+        bootstrap = yaml.safe_load((root / "first_install.yml").read_text())
+        files = bootstrap[0]["ansible.builtin.set_fact"]["release_kiosk_first_install_files"]
+        path = "/etc/NetworkManager/NetworkManager.conf"
+        self.assertIn(path, files)
+        capture = next(task for task in bootstrap if task.get("register") == "release_kiosk_first_install_originals")
+        self.assertEqual(capture["loop"], "{{ release_kiosk_first_install_files }}")
+        rollback = yaml.safe_load((root / "rollback_first_install.yml").read_text())
+        for register in ("release_kiosk_first_install_restored", "release_kiosk_first_install_removed"):
+            task = next(task for task in rollback if task.get("register") == register)
+            self.assertEqual(task["loop"], "{{ release_kiosk_first_install_originals.results }}")
+        restart = next(task for task in rollback if task.get("ansible.builtin.systemd", {}).get("name") == "NetworkManager")
+        installed = Environment().compile_expression(restart["when"][0])
+        self.assertFalse(installed(release_kiosk_nmcli={}))
+        self.assertFalse(installed(release_kiosk_nmcli={"rc": 1}))
+        self.assertTrue(installed(release_kiosk_nmcli={"rc": 0}))
+        changed = Environment().compile_expression(restart["when"][1])
+        for restored, removed, target, expected in ((False, False, path, False),
+                (True, False, path, True), (False, True, path, True),
+                (True, True, "/unrelated-desktop-file", False)):
+            result = lambda value: {"results": [{"item": {"item": target}, "changed": value}]}
+            self.assertEqual(changed(release_kiosk_first_install_restored=result(restored),
+                                     release_kiosk_first_install_removed=result(removed)), expected)
+
     def test_first_install_capture_guard_preserves_normal_fail_closed_assertion(self) -> None:
         root = ANSIBLE / "roles/release_kiosk"
         defaults = yaml.safe_load((root / "defaults/main.yml").read_text())
@@ -99,6 +184,17 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         complete = environment.compile_expression(assertions[0])
         self.assertFalse(complete(release_kiosk_captured_services=[], release_kiosk_services=["nfc-agent"]))
         self.assertTrue(complete(release_kiosk_captured_services=["nfc-agent"], release_kiosk_services=["nfc-agent"]))
+
+    def test_first_install_requires_kiosk_client_key_prefix(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/first_install_preflight.yml").read_text())
+        task = next(t for t in tasks if t["name"] == "Validate first-install agent credentials without exposing them")
+        self.assertTrue(task["no_log"])
+        condition = next(c for c in task["ansible.builtin.assert"]["that"] if "client-key-" in c)
+        environment = Environment(undefined=StrictUndefined)
+        environment.tests["match"] = lambda value, pattern: re.match(pattern, value) is not None
+        check = environment.compile_expression(condition)
+        self.assertTrue(check(status_agent_client_key="client-key-raspi4-new-0123abcd"))
+        self.assertFalse(check(status_agent_client_key="x" * 64))
 
     def test_first_install_registration_is_read_only_redacted_and_before_boundary(self) -> None:
         root = ANSIBLE / "roles/release_kiosk/tasks"

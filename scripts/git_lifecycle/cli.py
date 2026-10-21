@@ -63,7 +63,7 @@ EXIT_OPERATION = 4
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="git-lifecycle",
-        description="Safely start, audit, and finish one Git worktree task.",
+        description="Safely start, audit, and finish Git worktree tasks.",
     )
     parser.add_argument(
         "--repo", dest="global_repo", type=Path, default=None, help="repository or worktree path"
@@ -72,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     start = commands.add_parser("start", help="create a task worktree from origin/main")
     start.add_argument("--branch", required=True, help="new local branch name")
+    start.add_argument("--no-merged-cleanup", action="store_true", help="skip merged task cleanup")
     start.add_argument("--repo", dest="command_repo", type=Path, default=None, help=argparse.SUPPRESS)
 
     audit = commands.add_parser("audit", help="read and classify current worktrees")
@@ -82,6 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
     finish.add_argument("--worktree", required=True, type=Path, help="exact registered worktree path")
     finish.add_argument("--pr", required=True, type=_positive_integer, help="merged pull request number")
     finish.add_argument("--repo", dest="command_repo", type=Path, default=None, help=argparse.SUPPRESS)
+    merged = commands.add_parser("finish-merged", help="clean merged task worktrees under the task root")
+    merged.add_argument("--repo", dest="command_repo", type=Path, default=None, help=argparse.SUPPRESS)
     return parser
 
 
@@ -104,11 +107,13 @@ def main(
         git = git_adapter or GitAdapter.discover(repo_argument)
         github = github_adapter or GitHubAdapter(git.repo_root)
         if args.command == "start":
-            payload, code = _start(git, args.branch)
+            payload, code = _start(git, github, args.branch, merged_cleanup=not args.no_merged_cleanup)
         elif args.command == "finish":
             payload, code = _finish(git, github, args.worktree, args.pr)
         elif args.command == "audit":
             payload, code = _audit(git, github)
+        elif args.command == "finish-merged":
+            payload, code = _finish_merged(git, github)
         else:  # pragma: no cover - argparse enforces this
             raise LifecycleError(f"unsupported command: {args.command}")
     except (GitAdapterError, GitHubAdapterError, LifecycleError, OSError, ValueError) as error:
@@ -131,7 +136,13 @@ class LifecycleError(RuntimeError):
     """An operation could not safely proceed."""
 
 
-def _start(git: GitAdapter, branch: str) -> tuple[dict[str, Any], int]:
+def _start(
+    git: GitAdapter,
+    github: GitHubAdapter,
+    branch: str,
+    *,
+    merged_cleanup: bool = True,
+) -> tuple[dict[str, Any], int]:
     path = worktree_path_for_branch(git.repo_root, branch)
     payload = _base_payload("start", branch=branch, worktree=str(path))
     warnings: list[str] = []
@@ -165,6 +176,19 @@ def _start(git: GitAdapter, branch: str) -> tuple[dict[str, Any], int]:
         payload["warnings"] = [*warnings, f"worktree path already exists; preserving it: {path}"]
         return payload, EXIT_PROTECTED
 
+    if merged_cleanup:
+        try:
+            # Keep start's fetched origin/main snapshot and main observation:
+            # automatic cleanup must not fetch again or synchronize main.
+            cleanup, cleanup_code = _finish_merged(git, github, sync_main=False)
+            payload["merged_cleanup"] = cleanup
+            warnings.extend(cleanup["warnings"])
+            if cleanup_code != EXIT_OK:
+                warnings.append("merged_cleanup_failed: continuing start")
+        except Exception as error:
+            warnings.append(f"merged_cleanup_failed: {error}; continuing start")
+            payload["merged_cleanup"] = {"exit_code": EXIT_OPERATION, "warnings": [str(error)]}
+
     # The ref was resolved immediately after fetch.  Confirm it has not been
     # moved by another process before adding the new worktree.
     if git.resolve_commit("refs/remotes/origin/main") != origin_sha:
@@ -183,6 +207,9 @@ def _finish(
     github: GitHubAdapter,
     worktree_path: Path,
     pr_number: int,
+    *,
+    sync_main: bool = True,
+    check_process_cwds: bool = False,
 ) -> tuple[dict[str, Any], int]:
     payload = _base_payload("finish", worktree=str(worktree_path), pr=pr_number)
     payload["target_cleanup"] = "protected"
@@ -273,6 +300,18 @@ def _finish(
         warnings.append("pr_head_sha_missing")
         payload["warnings"] = warnings
         return payload, EXIT_PROTECTED
+    if check_process_cwds:
+        try:
+            path = observed.path.resolve()
+            process_cwds = git.running_process_cwds()
+        except Exception as error:
+            warnings.append(f"process_cwd_check_failed: {error}")
+            payload["warnings"] = warnings
+            return payload, EXIT_PROTECTED
+        if any(path == active or path in active.parents for active in process_cwds):
+            warnings.append("cwd_in_use")
+            payload["warnings"] = warnings
+            return payload, EXIT_PROTECTED
     try:
         git.remove_worktree(observed)
     except GitAdapterError as error:
@@ -293,9 +332,10 @@ def _finish(
 
     # Main synchronization is deliberately after and independent from target
     # cleanup.  A dirty/diverged main therefore cannot strand this task.
-    main_sync, sync_warnings = _sync_main(git)
-    payload["main_sync"] = main_sync
-    warnings.extend(sync_warnings)
+    if sync_main:
+        main_sync, sync_warnings = _sync_main(git)
+        payload["main_sync"] = main_sync
+        warnings.extend(sync_warnings)
     if pull_request.head_branch:
         try:
             present = git.remote_branch_exists(pull_request.head_branch)
@@ -308,6 +348,87 @@ def _finish(
                 warnings.append("remote_branch_retained_by_github")
     payload["warnings"] = warnings
     return payload, EXIT_OK
+
+
+def _finish_merged(
+    git: GitAdapter,
+    github: GitHubAdapter,
+    *,
+    sync_main: bool = True,
+) -> tuple[dict[str, Any], int]:
+    payload = _base_payload("finish-merged")
+    for group in ("removed", "protected", "skipped", "failed"):
+        payload[group] = []
+    audit, audit_code = _audit(git, github)
+    payload["warnings"].extend(audit["warnings"])
+    if audit_code != EXIT_OK:
+        payload["failed"].append({"reasons": ["audit_failed"]})
+    else:
+        task_root = worktree_path_for_branch(git.repo_root, "task").parent.resolve()
+        cwd = Path.cwd().resolve()
+        candidates: list[dict[str, Any]] = []
+        for record in audit["records"]:
+            item = {
+                "branch": record["branch"],
+                "worktree": record["worktree"],
+                "pr": record["pr"]["number"] if record["pr"] else None,
+            }
+            path = Path(item["worktree"]).resolve() if item["worktree"] else None
+            group = "protected"
+            if record["branch"] == "main" or path == git.repo_root.resolve():
+                reason = "main_worktree_protected"
+            elif path is None:
+                group, reason = "skipped", "missing_worktree"
+            elif path.parent != task_root or Path(item["worktree"]).parent.resolve() != task_root:
+                group, reason = "skipped", "outside_task_root"
+            elif cwd == path or path in cwd.parents:
+                reason = "current_cwd"
+            elif record["state"] != AuditState.MERGED_CLEAN.value:
+                reason = record["state"]
+            elif item["pr"] is None:
+                reason = "pr_number_missing"
+            else:
+                candidates.append(item)
+                continue
+            payload[group].append({**item, "reasons": [reason]})
+
+        process_cwds: tuple[Path, ...] | None = None
+        if candidates:
+            try:
+                process_cwds = git.running_process_cwds()
+            except Exception as error:
+                payload["warnings"].append(f"process_cwd_check_failed: {error}")
+        for item in candidates:
+            try:
+                path = Path(item["worktree"]).resolve()
+                if process_cwds is None:
+                    payload["protected"].append({**item, "reasons": ["process_cwd_check_failed"]})
+                    continue
+                if any(path == active or path in active.parents for active in process_cwds):
+                    payload["protected"].append({**item, "reasons": ["cwd_in_use"]})
+                    continue
+                result, code = _finish(
+                    git, github, path, item["pr"], sync_main=False, check_process_cwds=True
+                )
+                group = "removed" if code == EXIT_OK else "protected" if code == EXIT_PROTECTED else "failed"
+                payload[group].append({**result, "reasons": result["warnings"]})
+            except Exception as error:
+                payload["failed"].append({**item, "reasons": [str(error)]})
+
+        if sync_main and any(
+            item.get("worktree_removed") for item in [*payload["removed"], *payload["failed"]]
+        ):
+            try:
+                payload["main_sync"], warnings = _sync_main(git)
+                payload["warnings"].extend(warnings)
+            except Exception as error:
+                payload["warnings"].append(f"main_sync_failed: {error}")
+    payload["summary"] = {
+        "counts": {group: len(payload[group]) for group in ("removed", "protected", "skipped", "failed")}
+    }
+    code = EXIT_OPERATION if payload["failed"] else EXIT_OK
+    payload["exit_code"] = code
+    return payload, code
 
 
 def _audit(git: GitAdapter, github: GitHubAdapter) -> tuple[dict[str, Any], int]:

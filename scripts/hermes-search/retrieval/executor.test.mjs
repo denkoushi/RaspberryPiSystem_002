@@ -707,3 +707,27 @@ test('a cause condition does not narrow a source that has no cause store', async
   const withStore = await execute(list, { records: rows, catalog, causeById: new Map([['plain-0', 'drawing']]) });
   assert.deepEqual(withStore.results.map(row => row.recordId), ['plain-0']);
 });
+
+for (const breakdown of ['cause', 'organization', 'month']) {
+  test(`breakdown ${breakdown} groups even small and empty sets and selects its axis first`, async () => {
+    for (const count of [0, 3, 5, 8]) {
+      const rows = Array.from({ length: count }, (_, i) => ({ id: `b-${i}`, discoveredOn: `2026-10-${String(i + 1).padStart(2, '0')}`, originDepartmentName: 'North Shop' }));
+      const result = await execute(plan({ breakdown }), { records: rows, catalog,
+        causeById: new Map(rows.slice(0, 1).map(row => [row.id, 'drawing'])),
+        relevance: () => assert.fail('unexpected relevance call'), vector: () => assert.fail('unexpected vector call') });
+      assert.equal(result.groups[0].axis, breakdown);
+      assert.equal(result.results.length, Math.min(count, 5));
+      assert.deepEqual(result.results.map(row => row.recordId), [...rows].reverse().slice(0, 5).map(row => row.id));
+      const group = result.groups[0];
+      assert.equal(group.buckets.reduce((sum, bucket) => sum + bucket.count, group.otherCount), count);
+    }
+  });
+}
+
+test('cause breakdown retains an entirely unclassified filtered set', async () => {
+  const result = await execute(plan({ breakdown: 'cause' }), { records: [{ id: 'unclassified' }], catalog,
+    causeById: new Map([['outside', 'drawing']]) });
+  assert.equal(result.groups[0].axis, 'cause');
+  assert.deepEqual(result.groups[0].buckets, []);
+  assert.equal(result.groups[0].otherCount, 1);
+});

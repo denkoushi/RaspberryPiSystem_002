@@ -85,11 +85,15 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         outcome,
         reason: outcome === 'unavailable' || outcome === 'failed' ? result.receipt?.reason ?? result.reason ?? null : null,
         shown,
+        groups: (result.display?.groups ?? []).filter(group => group.axis === 'cause')
+          .map(group => ({ axis: 'cause', buckets: group.buckets.map(({ value, count }) => ({ value, count })) })),
         candidates,
         judged,
         loss: lossStage({ relevant: relevantIds(row), outcome, shown, candidates, judged }),
         vectorStatus: result.receipt?.timings?.vectorStatus ?? null,
         plan: result.receipt?.plan ?? null,
+        // Category ids only: which cause the planner applied, or heard and dropped.
+        causeDecision: result.receipt?.causeDecision ?? null,
         // The terms the planner could not resolve (field names, or its own questions such as
         // content, limit, period), so an ask-back can be diagnosed from the row the next morning.
         unresolved: Array.isArray(result.receipt?.unresolved) ? result.receipt.unresolved.filter((term) => typeof term === 'string' && term) : [],
