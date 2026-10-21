@@ -1,5 +1,6 @@
 import type {
   getKioskGrindingPlanningBoard,
+  getKioskGrindingPlanningBoardProcessChips,
   getKioskGrindingPlanningBoardLoad,
   getKioskGrindingPlanningBoardSeibanCandidates,
   getKioskGrindingPlanningBoardSnapshot,
@@ -63,6 +64,8 @@ export const productionScheduleQueryKeys = {
   manualOrderResourceAssignments: (siteKey?: string) =>
     ['kiosk-production-schedule-manual-order-resource-assignments', siteKey] as const,
   grindingPlanningBoardAll: ['kiosk-grinding-planning-board'] as const,
+  grindingPlanningBoardProcessChips: (parts: Parameters<typeof getKioskGrindingPlanningBoardProcessChips>[0]['parts']) =>
+    ['kiosk-grinding-planning-board', 'process-chips', parts] as const,
   grindingPlanningBoard: (params?: Parameters<typeof getKioskGrindingPlanningBoard>[0]) =>
     ['kiosk-grinding-planning-board', params] as const,
   grindingPlanningBoardLoadAll: ['kiosk-grinding-planning-board', 'load'] as const,
