@@ -96,7 +96,7 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
     || { echo "libexpat1 is below the required fixed version: ${expat_version}" >&2; exit 1; } \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
-  && python3 -m pip install --no-cache-dir --break-system-packages "protobuf>=6.33.5,<7" "pillow>=12.2.0,<13" "lxml>=6.1.0,<7" \
+  && python3 -m pip install --no-cache-dir --break-system-packages "protobuf>=6.33.5,<7" "pillow>=13.0.0,<14" "lxml>=6.1.0,<7" \
   && python3 -m pip install --no-cache-dir --break-system-packages "rapidocr==3.8.4" "onnxruntime==1.20.1" \
   && command -v ndlocr-lite \
   && ndlocr-lite --help >/dev/null \
