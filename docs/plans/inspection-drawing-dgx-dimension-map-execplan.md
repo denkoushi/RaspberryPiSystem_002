@@ -270,7 +270,7 @@ Milestone 1 の検証（作業ディレクトリ `apps/api`）:
 
 `PartMeasurementDrawingSiblingMatch` は visual・画像指紋・`sibling-v1` で一意。`part-measurement-drawing-sibling-match.ts` が純粋な候補選別と応答検証、同 `.service.ts` が画像読込・推論・再試行の保存を担当する。`INSPECTION_DRAWING_SIBLING_VISION_ENABLED` は既定 true、false では候補中の名前一致だけを使う。夜間 backfill は最新 COMPLETED map の未判定・PENDING を古い順に逐次判定し、その後 MATCHED の兄弟が持つ各工程、NO_MATCH は CUTTING で run を作る。
 
-配置 run は `transfer-v2` と processGroup を指定し、v1 を再利用しない。GET の `processGroup=cutting|grinding` は省略時 cutting。同じ工程の有効テンプレートだけを採用・既存項目除外の対象とし、他工程には fallback しない。Web は工程を送信し、工程変更でクエリと一時判断を切り替える。migration は `20261021120000_part_measurement_drawing_sibling_match`。DB 適用・巻戻しは今回実行していない。旧 run は残す。
+配置 run の placementVersion は `transfer-v2:CUTTING` / `transfer-v2:GRINDING` とし、v1 を再利用しない。工程を版文字列に入れたのは、既存の一意キーを変えずに expand-only の migration 検査を通すため（列追加や一意インデックス張り替えは検査で拒否される）。GET の `processGroup=cutting|grinding` は省略時 cutting。同じ工程の有効テンプレートだけを採用・既存項目除外の対象とし、他工程には fallback しない。Web は工程を送信し、工程変更でクエリと一時判断を切り替える。migration は `20261021120000_part_measurement_drawing_sibling_match`（新テーブルと enum の追加だけ）。DB 適用・巻戻しは今回実行していない。旧 run は残す。
 
 検証はリポジトリのパッケージ依存を build 後に実行。`.env*` の自動読込は一時 preload で禁止し、git コマンドを使わず編集前コピーとの比較で確認した。
 

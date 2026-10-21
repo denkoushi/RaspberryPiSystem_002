@@ -155,8 +155,8 @@ describe('placement proposals API / Postgres', () => {
     expect(grinding.status).toBe('no-sibling');
     expect(grinding.proposals).toEqual([]);
     expect((await app.inject({ method: 'GET', url: `${url()}?processGroup=invalid`, headers })).statusCode).toBe(400);
-    const runs = await prisma.partMeasurementDrawingPlacementRun.findMany({ where: { visualTemplateId: targetId, placementVersion: 'transfer-v2' } });
-    expect(runs.map((run) => run.processGroup).sort()).toEqual(['CUTTING', 'GRINDING']);
+    const runs = await prisma.partMeasurementDrawingPlacementRun.findMany({ where: { visualTemplateId: targetId, placementVersion: { startsWith: 'transfer-v2:' } } });
+    expect(runs.map((run) => run.placementVersion).sort()).toEqual(['transfer-v2:CUTTING', 'transfer-v2:GRINDING']);
   });
 
   it('transfers and filters the grinding process independently of cutting', async () => {
@@ -235,7 +235,7 @@ describe('placement proposals API / Postgres', () => {
     const service = getPartMeasurementDrawingPlacementService();
     await service.backfill(1000);
     const runs = await prisma.partMeasurementDrawingPlacementRun.findMany({ where: { visualTemplateId: targetId } });
-    expect(runs.map((run) => run.processGroup).sort()).toEqual(['CUTTING', 'GRINDING']);
+    expect(runs.map((run) => run.placementVersion).sort()).toEqual(['transfer-v2:CUTTING', 'transfer-v2:GRINDING']);
     image = Buffer.from('no match image');
     await completedMap(targetId);
     await prisma.partMeasurementDrawingSiblingMatch.updateMany({
@@ -247,7 +247,7 @@ describe('placement proposals API / Postgres', () => {
       where: { visualTemplateId: targetId, drawingImageFingerprint: fingerprint() }
     });
     expect(empty).toHaveLength(1);
-    expect(empty[0]).toMatchObject({ processGroup: 'CUTTING', sourceTemplateId: null });
+    expect(empty[0]).toMatchObject({ placementVersion: 'transfer-v2:CUTTING', sourceTemplateId: null });
   });
 
   it('backfills only the latest map without repeatedly selecting an older unhandled fingerprint', async () => {

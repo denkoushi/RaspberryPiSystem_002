@@ -3043,7 +3043,6 @@ model PartMeasurementDrawingPlacementRun {
   drawingImageFingerprint String
   analysisVersion         String
   placementVersion        String
-  processGroup            PartMeasurementProcessGroup?
   sourceVisualTemplateId  String?
   sourceTemplateId        String?
   rankingMethod           String
@@ -3055,7 +3054,7 @@ model PartMeasurementDrawingPlacementRun {
   sourceVisualTemplate    PartMeasurementVisualTemplate? @relation("PlacementSource", fields: [sourceVisualTemplateId], references: [id], onDelete: SetNull)
   proposals               PartMeasurementDrawingPlacementProposal[]
 
-  @@unique([visualTemplateId, drawingImageFingerprint, analysisVersion, placementVersion, processGroup], map: "PMDrawingPlacementRun_unique_visual_hash_versions_process")
+  @@unique([visualTemplateId, drawingImageFingerprint, analysisVersion, placementVersion], map: "PMDrawingPlacementRun_unique_visual_hash_versions")
   @@index([sourceVisualTemplateId])
 }
 

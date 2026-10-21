@@ -20,6 +20,9 @@ import { siblingMatchesSchema, SIBLING_MATCH_VERSION } from './part-measurement-
 import { PartMeasurementDrawingSiblingMatchService } from './part-measurement-drawing-sibling-match.service.js';
 
 export const PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION = 'transfer-v2';
+// The process is part of the version so the existing unique run key stays unchanged (expand-only migration).
+export const placementVersionFor = (processGroup: PartMeasurementProcessGroup) =>
+  `${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}:${processGroup}`;
 export type PlacementReorderProvider = (
   visualTemplateId: string, source: { sourceVisualTemplateId: string; sourceMap: DimensionMap | null }
 ) =>
@@ -111,13 +114,12 @@ export class PartMeasurementDrawingPlacementService {
     } });
     if (!match || match.status === 'PENDING') return { status: 'map-pending', run: null };
     const key = {
-      processGroup: options.processGroup,
       visualTemplateId,
       drawingImageFingerprint,
       analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
-      placementVersion: PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION
+      placementVersion: placementVersionFor(options.processGroup)
     };
-    const where = { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion_processGroup: key };
+    const where = { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: key };
     const existingRun = await prisma.partMeasurementDrawingPlacementRun.findUnique({ where, include: runInclude });
     if (existingRun) return runResult(existingRun);
     const target = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id: visualTemplateId } });
@@ -312,7 +314,7 @@ export class PartMeasurementDrawingPlacementService {
         SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r WHERE r."visualTemplateId" = m."id"
           AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
           AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
-          AND r."placementVersion" = ${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION} AND r."processGroup" = p."processGroup"
+          AND r."placementVersion" = (${`${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}:`}::text || p."processGroup"::text)
       )
       ORDER BY m."createdAt" ASC, m."id" ASC, p."processGroup" ASC LIMIT ${batchLimit}
     `;

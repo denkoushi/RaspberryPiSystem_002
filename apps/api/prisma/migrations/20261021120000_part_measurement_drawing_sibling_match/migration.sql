@@ -12,13 +12,10 @@ CREATE TABLE "PartMeasurementDrawingSiblingMatch" (
     "lastError" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "PartMeasurementDrawingSiblingMatch_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "PartMeasurementDrawingSiblingMatch_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "PartMeasurementDrawingSiblingMatch_visualTemplateId_fkey"
+      FOREIGN KEY ("visualTemplateId") REFERENCES "PartMeasurementVisualTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE UNIQUE INDEX "PMDrawingSiblingMatch_unique_visual_hash_version" ON "PartMeasurementDrawingSiblingMatch"("visualTemplateId", "drawingImageFingerprint", "matchVersion");
 CREATE INDEX "PMDrawingSiblingMatch_idx_pending" ON "PartMeasurementDrawingSiblingMatch"("status", "updatedAt");
-ALTER TABLE "PartMeasurementDrawingSiblingMatch" ADD CONSTRAINT "PartMeasurementDrawingSiblingMatch_visualTemplateId_fkey" FOREIGN KEY ("visualTemplateId") REFERENCES "PartMeasurementVisualTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-ALTER TABLE "PartMeasurementDrawingPlacementRun" ADD COLUMN "processGroup" "PartMeasurementProcessGroup";
-DROP INDEX "PMDrawingPlacementRun_unique_visual_hash_versions";
-CREATE UNIQUE INDEX "PMDrawingPlacementRun_unique_visual_hash_versions_process" ON "PartMeasurementDrawingPlacementRun"("visualTemplateId", "drawingImageFingerprint", "analysisVersion", "placementVersion", "processGroup");

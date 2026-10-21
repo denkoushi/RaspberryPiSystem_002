@@ -77,9 +77,9 @@ describe('ensureRun', () => {
     const reorder = vi.fn();
     expect(await service.ensureRun('target', { processGroup: 'CUTTING', reorder })).toEqual({ status: 'ready', run: cached });
     expect(db.partMeasurementDrawingPlacementRun.findUnique).toHaveBeenCalledWith(expect.objectContaining({
-      where: { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion_processGroup: {
+      where: { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: {
         visualTemplateId: 'target', drawingImageFingerprint: 'target-hash',
-        analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION, placementVersion: 'transfer-v2', processGroup: 'CUTTING'
+        analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION, placementVersion: 'transfer-v2:CUTTING'
       } }
     }));
     expect(db.partMeasurementVisualTemplate.findMany).not.toHaveBeenCalled();
@@ -104,14 +104,14 @@ describe('ensureRun', () => {
     expect(db.partMeasurementTemplateItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { template: { visualTemplateId: 'target', isActive: true, processGroup: 'GRINDING' } }
     }));
-    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ sourceTemplateId: 'template', processGroup: 'GRINDING' });
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ sourceTemplateId: 'template', placementVersion: 'transfer-v2:GRINDING' });
   });
 
   it('does not fall back to another process when no template is available', async () => {
     db.partMeasurementTemplate.findMany.mockResolvedValue([]);
     await service.ensureRun('target', { processGroup: 'GRINDING' });
     expect(db.partMeasurementTemplate.findMany).toHaveBeenCalledOnce();
-    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ sourceTemplateId: null, processGroup: 'GRINDING' });
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ sourceTemplateId: null, placementVersion: 'transfer-v2:GRINDING' });
   });
 
   it('persists NO_MATCH without searching templates', async () => {
@@ -299,6 +299,6 @@ describe('backfill', () => {
     expect(ensure).toHaveBeenCalledWith('a', { processGroup: 'GRINDING', reorderProvider: provider });
     const sql = db.$queryRaw.mock.calls[1][0].join('');
     expect(sql).toContain('r."drawingImageFingerprint" = m."drawingImageFingerprint"');
-    expect(sql).toContain('r."processGroup" = p."processGroup"');
+    expect(sql).toContain('|| p."processGroup"::text');
   });
 });
