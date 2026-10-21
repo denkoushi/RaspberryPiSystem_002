@@ -157,3 +157,27 @@ test('live scoring loads cause mappings and skips relevance for cause-only reque
   assert.deepEqual(live.shown, [records[0].id]);
   assert.equal(calls, 1);
 });
+
+test('live breakdown carries only cause bucket values and counts for checking', async () => {
+  const { buildCauseQuestions, conditionSha256 } = await import('./cause-categories.mjs');
+  const { CAUSE_STORE_SCHEMA, writeCauseStore } = await import('./cause-store.mjs');
+  const { checkFilterAnswer } = await import('./flywheel-filter-check.mjs');
+  const catalog = loadNonconformityCatalog();
+  const file = path.join(await mkdtemp(path.join(tmpdir(), 'live-breakdown-')), 'cause.jsonl');
+  const corpus = records.slice(0, 2);
+  const textSha256 = conditionSha256(corpus[0].condition);
+  await writeCauseStore(file, new Map([[textSha256, { schema: CAUSE_STORE_SCHEMA, textSha256, categoryId: 'drawing',
+    promptSha256: buildCauseQuestions([]).promptSha256, classifiedAt: '2026-10-19T00:00:00Z' }]]));
+  let calls = 0;
+  const score = await createLiveScorer({ records: corpus, catalog, env: { HERMES_RETRIEVAL_CAUSE_STORE: file,
+    HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' }, evaluate: async () => {
+    calls += 1;
+    return { answers: { intent: { type: 'choice', choice: 'breakdown_cause' }, content: { type: 'noul', noul: true } } };
+  } });
+  const result = await score({ kind: 'filter', question: '多い要因は?' });
+  assert.equal(calls, 1);
+  assert.equal(result.plan.breakdown, 'cause');
+  assert.deepEqual(result.groups, [{ axis: 'cause', buckets: [{ value: 'drawing', count: 1 }] }]);
+  assert.equal(checkFilterAnswer({ ...result, records: corpus, catalog, causeById: new Map([[corpus[0].id, 'drawing']]) }).ok, true);
+  assert.equal(JSON.stringify(result).includes(corpus[0].condition), false);
+});

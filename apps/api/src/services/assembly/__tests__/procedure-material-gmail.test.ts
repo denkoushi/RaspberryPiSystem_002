@@ -283,9 +283,18 @@ describe('procedure-material Gmail packet', () => {
     expect(packet.videos).toHaveLength(1);
     expect(packet.videos[0]).toMatchObject({ filename: 'clip.mp4', buffer, contentType: 'video/mp4' });
   });
-  it.each(['invalid', 'jpeg', 'truncated'] as const)('rejects inferred PNG attachments containing %s bytes', async (contents) => {
+  it.each([
+    ['photo.png', 'image/png', 'jpeg', 'image/jpeg'],
+    ['2_photo_1.jpeg', 'image/jpeg', 'png', 'image/png'],
+  ] as const)('imports mislabeled %s (%s) by its decoded %s format', async (filename, mimeType, format, contentType) => {
+    const buffer = await sharp(image).toFormat(format).toBuffer();
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, { mimeType })]), client: { getAttachment: vi.fn().mockResolvedValue(buffer) } });
+    expect(packet).toMatchObject({ skippedAttachments: 0, warnings: [] });
+    expect(packet.photos[0]).toMatchObject({ filename, buffer, contentType, width: 4, height: 3 });
+  });
+  it.each(['invalid', 'gif', 'truncated'] as const)('rejects inferred PNG attachments containing %s bytes', async (contents) => {
     const buffer = contents === 'invalid' ? Buffer.from('not an image')
-      : contents === 'jpeg' ? inlineImage : image.subarray(0, image.length - 20);
+      : contents === 'gif' ? await sharp(image).gif().toBuffer() : image.subarray(0, image.length - 20);
     const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(buffer) };
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('  ハンドル2.png  ', { mimeType: 'application/octet-stream' })]), client: attachmentClient });
     expect(packet).toMatchObject({ photos: [], videos: [], skippedAttachments: 1, warnings: ['ハンドル2.png: 画像を読み取れません'] });
@@ -853,6 +862,13 @@ describe('procedure-material app Gmail ingestion', () => {
     expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, duplicate: 2, messages: [{ trashed: true }] });
     expect(h.rows).toHaveLength(2);
     expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
+  });
+  it('saves an APP photo whose .jpeg attachment actually contains PNG bytes', async () => {
+    const png = await sharp(pageImage).png().toBuffer();
+    const parts = appParts().map((part) => part.filename === '1_photo_2.jpeg' ? { ...part, body: { data: png.toString('base64url') } } : part);
+    const h = appHarness(parts);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 2, retryable: 0, messages: [{ trashed: true }] });
+    expect(h.rows.map((row) => row.contentType)).toEqual(['image/jpeg', 'image/png']);
   });
   it.each(['missing', 'invalid-json', 'invalid-schema', 'wrong-source', 'wrong-list', 'duplicate-manifest', 'missing-photo', 'broken-photo', 'duplicate-photo', 'duplicate-index'])('leaves %s packets unread with no row or file saved', async (failure) => {
     let parts = appParts();

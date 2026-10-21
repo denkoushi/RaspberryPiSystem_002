@@ -3,6 +3,7 @@
 - name: Define the first-install files whose previous contents must survive rollback
   ansible.builtin.set_fact:
     release_kiosk_first_install_files:
+      - /etc/NetworkManager/NetworkManager.conf
       - /usr/local/bin/ibus-process-owner.sh
       - /usr/local/bin/ibus-kiosk-init.sh
       - /etc/polkit-1/rules.d/50-pcscd-allow-all.rules

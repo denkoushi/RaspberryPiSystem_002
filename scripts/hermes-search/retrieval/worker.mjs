@@ -1,4 +1,4 @@
-import { CAUSE_CATEGORY_IDS, conditionSha256, normalizeConditionText } from './cause-categories.mjs';
+import { causeLabel, CAUSE_CATEGORY_IDS, conditionSha256, normalizeConditionText } from './cause-categories.mjs';
 import { readCauseStore, causeStorePathFromEnv } from './cause-store.mjs';
 // JSON-lines worker for the lexical + one planner call + one relevance call path.
 // Vector ranking stays off unless HERMES_RETRIEVAL_VECTOR_ENABLED=true.
@@ -125,6 +125,7 @@ export function compactPlan(plan) {
       values: Array.isArray(filter.values) ? [...filter.values] : [],
     })) : [],
     ...(plan.causeCategory !== undefined ? { causeCategory: plan.causeCategory } : {}),
+    ...(plan.breakdown ? { breakdown: plan.breakdown } : {}),
     semanticQuery: typeof plan.semanticQuery === 'string' ? plan.semanticQuery : '',
     // The content part the judge read, so a follow-up that reuses the content judges the same text.
     ...(typeof plan.diagnostics?.contentSpan === 'string' && plan.diagnostics.contentSpan
@@ -194,6 +195,25 @@ function confirmationPending(question, clarification, answer) {
     confirmedInfo: {},
     unresolvedItems: requiredItems.map((item) => item.id),
   };
+}
+
+function formatBreakdown(plan, groups, total, catalog) {
+  const fields = catalogEntries(catalog).flatMap(entry => entry.fields);
+  const conditions = plan.filters.flatMap(filter => {
+    const field = fields.find(field => field.key === filter.field);
+    if (!['date', 'organization'].includes(field?.role)) return [];
+    const values = filter.values;
+    if (filter.op === 'between') return [`${values[0]}〜${values[1]}`];
+    if (filter.op === 'after') return [`${values[0]}より後`];
+    if (filter.op === 'before') return [`${values[0]}より前`];
+    return [`${values.join('・')}${filter.op === 'not_in' ? '以外' : ''}`];
+  });
+  if (plan.causeCategory) conditions.push(`要因が${causeLabel(plan.causeCategory)}`);
+  const group = groups?.find(group => group.axis === plan.breakdown);
+  const label = { cause: '要因', organization: '部署', month: '月' }[plan.breakdown];
+  const buckets = (group?.buckets ?? []).map(bucket => `${bucket.label} ${bucket.count}件`).join('、');
+  const other = group?.otherCount ? `（${group.otherLabel ?? 'その他'} ${group.otherCount}件）` : '';
+  return `${conditions.join('・') || '全期間・全部署'}の不適合 ${total} 件の${label}の内訳: ${buckets || (other ? '' : '該当なし')}${other}`;
 }
 
 function formatRecords(results, catalog) {
@@ -335,6 +355,7 @@ function refinedPlan(previousPlan, refine, catalog, valueIndex) {
       ...(previousPlan.contentSpan ? { contentSpan: previousPlan.contentSpan } : {}),
     },
   };
+  delete plan.breakdown;
   return validateQueryPlan(plan, catalog, valueIndex).ok ? plan : null;
 }
 
@@ -534,6 +555,11 @@ export function createRetrievalAnswering({
         searchPlan = { ...searchPlan };
         delete searchPlan.causeCategory;
       }
+      const breakdownDropped = searchPlan?.breakdown === 'cause' && !view.causeById?.size;
+      if (breakdownDropped) {
+        searchPlan = { ...searchPlan };
+        delete searchPlan.breakdown;
+      }
       const compact = compactPlan(searchPlan);
       // A screen-derived condition belongs to this turn only. Do not carry its
       // value into the next question through previous_plan when no pointer is used.
@@ -553,6 +579,8 @@ export function createRetrievalAnswering({
         plan: compact,
         ...(planned.plan?.diagnostics?.causeDecision ? { causeDecision: planned.plan.diagnostics.causeDecision } : {}),
         ...(causeFilterDropped ? { causeFilterDropped: 'store_empty' } : {}),
+        intentDecision: planned.plan?.diagnostics?.intentDecision ?? { chosen: 'records' },
+        ...(breakdownDropped ? { breakdownDropped: 'store_empty' } : {}),
         unresolved: Array.isArray(planned.plan?.unresolved) ? planned.plan.unresolved.map((item) => item?.term ?? null) : [],
         jev: planned.receipt ?? null,
         planMs: planned.timings?.planMs ?? null,
@@ -608,6 +636,8 @@ export function createRetrievalAnswering({
         executions.push(await execute({ ...plan, sources: [sourceId], filters: plan.filters.filter((filter) => filter.source === sourceId), sort }, {
           records: sourceView.records,
           causeById: sourceId === 'nonconformity' ? view.causeById : null,
+          // An unavailable classification still permits listing the full filtered set.
+          filterOnly: breakdownDropped,
           catalog: entry,
           lexicalCorpus: sourceView.lexicalCorpus,
           retriever: sourceDense?.queryEnabled ? 'hybrid' : 'lexical',
@@ -654,7 +684,8 @@ export function createRetrievalAnswering({
       if (executed.status === 'no_result') {
         return trialResult({
           status: 'completed',
-          answer: noResultAnswer(visibleCount),
+          answer: validation.plan.breakdown ? formatBreakdown(validation.plan, executed.groups, 0, visibleCatalog) : noResultAnswer(visibleCount),
+          ...(validation.plan.breakdown ? { display: { records: [], groups: executed.groups ?? [] } } : {}),
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: sessionPlan,
@@ -671,10 +702,12 @@ export function createRetrievalAnswering({
         noteDenseFallback(vectorStatus);
       }
       const formatted = formatRecords(executed.results, visibleCatalog);
-      const body = formatted.answer;
+      const body = validation.plan.breakdown
+        ? formatBreakdown(validation.plan, executed.groups, executed.coverage?.total ?? executed.results.length, visibleCatalog)
+        : formatted.answer;
       const notice = formatCoverageNotice(executed.coverage);
       // The requested-count shortfall stays in the receipt (`insufficient`) but is not shown: readers found the sentence confusing.
-      const answer = notice ? (body ? `${body}\n\n${notice}` : notice) : body;
+      const answer = notice && !validation.plan.breakdown ? (body ? `${body}\n\n${notice}` : notice) : body;
       return trialResult({
         status: 'completed',
         answer,

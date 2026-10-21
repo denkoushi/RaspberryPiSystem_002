@@ -34,6 +34,7 @@
   loop_control:
     index_var: file_index
   when: item.stat.exists
+  register: release_kiosk_first_install_restored
 
 - name: Remove first-install desktop and PC/SC files that did not previously exist
   ansible.builtin.file:
@@ -41,6 +42,18 @@
     state: absent
   loop: '{{ release_kiosk_first_install_originals.results }}'
   when: not item.stat.exists
+  register: release_kiosk_first_install_removed
+
+- name: Restart NetworkManager only after first-install rollback changes its configuration
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: restarted
+  when:
+    - release_kiosk_nmcli.rc | default(1) == 0
+    - >-
+      (release_kiosk_first_install_restored.results + release_kiosk_first_install_removed.results)
+      | selectattr('item.item', 'equalto', '/etc/NetworkManager/NetworkManager.conf')
+      | selectattr('changed', 'equalto', true) | list | length > 0
 
 - name: Restore preexisting desktop directory metadata
   ansible.builtin.file:

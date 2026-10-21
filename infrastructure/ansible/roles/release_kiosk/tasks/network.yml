@@ -1,0 +1,51 @@
+---
+- name: Check if NetworkManager is installed on the Pi4 kiosk
+  ansible.builtin.command: which nmcli
+  register: release_kiosk_nmcli
+  changed_when: false
+  failed_when: false
+
+- name: Configure Pi4 kiosk NetworkManager authorization
+  when: release_kiosk_nmcli.rc == 0
+  block:
+    - name: Capture the original NetworkManager configuration metadata
+      ansible.builtin.stat:
+        path: /etc/NetworkManager/NetworkManager.conf
+      register: release_kiosk_network_original
+
+    - name: Back up the original NetworkManager configuration for normal rollback
+      ansible.builtin.copy:
+        src: /etc/NetworkManager/NetworkManager.conf
+        dest: '{{ release_kiosk_stage_dir }}/NetworkManager.conf.original'
+        remote_src: true
+        mode: '0600'
+      changed_when: false
+      when:
+        - not (release_kiosk_first_install | bool)
+        - release_kiosk_network_original.stat.exists
+
+    - name: Ensure the NetworkManager main section exists
+      ansible.builtin.lineinfile:
+        path: /etc/NetworkManager/NetworkManager.conf
+        regexp: '^\[main\]'
+        line: '[main]'
+        create: true
+      register: release_kiosk_network_main
+
+    # wf-panel-pi is launched by a system service outside the logind session.
+    # Match the legacy client policy so inactive-session polkit cannot block Wi-Fi switching.
+    - name: Allow Pi4 kiosk Wi-Fi switching without polkit authorization
+      ansible.builtin.lineinfile:
+        path: /etc/NetworkManager/NetworkManager.conf
+        regexp: '^auth-polkit='
+        line: 'auth-polkit=false'
+        insertafter: '^\[main\]'
+      register: release_kiosk_network_auth
+
+    # NetworkManager must restart to apply auth-polkit; editing the file alone
+    # leaves the running daemon enforcing its previous authorization policy.
+    - name: Restart NetworkManager only after kiosk configuration changes
+      ansible.builtin.systemd:
+        name: NetworkManager
+        state: restarted
+      when: release_kiosk_network_main.changed or release_kiosk_network_auth.changed
