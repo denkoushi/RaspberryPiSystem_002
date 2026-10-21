@@ -65,6 +65,35 @@
     mode: "{{ release_kiosk_labwc_directory_original.stat.mode }}"
   when: release_kiosk_labwc_directory_install.changed | default(false) | bool
 
+- name: Restore normal-release NetworkManager configuration
+  when:
+    - not (release_kiosk_first_install | bool)
+    - release_kiosk_network_main.changed | default(false) or release_kiosk_network_auth.changed | default(false)
+  block:
+    - name: Restore the original NetworkManager file and metadata
+      ansible.builtin.copy:
+        src: '{{ release_kiosk_stage_dir }}/NetworkManager.conf.original'
+        dest: /etc/NetworkManager/NetworkManager.conf
+        remote_src: true
+        owner: '{{ release_kiosk_network_original.stat.uid }}'
+        group: '{{ release_kiosk_network_original.stat.gid }}'
+        mode: '{{ release_kiosk_network_original.stat.mode }}'
+      register: release_kiosk_network_restore
+      when: release_kiosk_network_original.stat.exists
+
+    - name: Remove the NetworkManager configuration introduced by this release
+      ansible.builtin.file:
+        path: /etc/NetworkManager/NetworkManager.conf
+        state: absent
+      register: release_kiosk_network_remove
+      when: not release_kiosk_network_original.stat.exists
+
+    - name: Restart NetworkManager only after normal rollback changes its configuration
+      ansible.builtin.systemd:
+        name: NetworkManager
+        state: restarted
+      when: release_kiosk_network_restore.changed | default(false) or release_kiosk_network_remove.changed | default(false)
+
 - name: Reload restored Pi4 systemd units
   ansible.builtin.systemd:
     daemon_reload: true

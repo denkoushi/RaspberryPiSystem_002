@@ -81,7 +81,7 @@ export async function runCases({ questions, records, catalog = loadNonconformity
   const cases = [];
   for (const [index, question] of picked.entries()) {
     const live = await score({ a: question.id, b: null, question: question.question, grades: null, relevantIds: question.relevant });
-    const filterCheck = question.kind === 'filter' ? checkFilterAnswer({ plan: live.plan, shown: live.shown, records, catalog, causeById }) : null;
+    const filterCheck = question.kind === 'filter' ? checkFilterAnswer({ plan: live.plan, shown: live.shown, groups: live.groups, breakdown: question.plan?.breakdown ?? live.plan?.breakdown, records, catalog, causeById }) : null;
     cases.push({ id: question.id, split: question.split, outcome: live.outcome, shown: live.shown, candidates: live.candidates, loss: live.loss, vectorStatus: live.vectorStatus, ms: live.ms,
       ...(filterCheck ? { filterCheck } : {}) });
     log(`${index + 1}/${picked.length} ${question.id} ${live.outcome} ${live.loss ?? 'shown'} ${live.ms}ms`);

@@ -238,14 +238,16 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     try {
       // eslint-disable-next-line no-await-in-loop
       const metadata = await openPhoto(buffer).metadata();
-      if (metadata.format !== PHOTO_FORMATS[contentType] || !metadata.width || !metadata.height) throw new Error('画像形式が一致しません');
+      // Senders mislabel files (e.g. PNG bytes named .jpeg); trust the decoded format when it is a supported photo.
+      const detectedType = Object.entries(PHOTO_FORMATS).find(([, format]) => format === metadata.format)?.[0];
+      if (!detectedType || !metadata.width || !metadata.height) throw new Error('画像形式が一致しません');
       // Validate the decoded pixels as well as the header before normalization.
       // eslint-disable-next-line no-await-in-loop
       await openPhoto(buffer).stats();
       // eslint-disable-next-line no-await-in-loop
-      const normalized = await normalizePhotoForStorage(buffer, contentType);
+      const normalized = await normalizePhotoForStorage(buffer, detectedType);
       if (appRef) resolvedAppPhotos.add(filename);
-      packet.photos.push({ ...(appRef ? { appRef } : {}), gmailDedupeKey: key, filename, ...normalized, contentType, sha256: createHash('sha256').update(normalized.buffer).digest('hex') });
+      packet.photos.push({ ...(appRef ? { appRef } : {}), gmailDedupeKey: key, filename, ...normalized, contentType: detectedType, sha256: createHash('sha256').update(normalized.buffer).digest('hex') });
     } catch (error) {
       const message = describePhotoError(error);
       const warning = message === PHOTO_STORAGE_SIZE_ERROR || message === PHOTO_PIXEL_LIMIT_ERROR ? message : '画像を読み取れません';

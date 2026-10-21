@@ -92,11 +92,13 @@ function answersOf(result) {
 // chosen value. The receipt holds no record text.
 // The only source with a saved cause classification (see worker.mjs loadCauseById).
 const CAUSE_SOURCE = 'nonconformity';
+// A classification bucket, never something a question asks for.
+const UNKNOWN_CAUSE = 'unknown';
 
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-19';
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-21';
 
 // Choice ids that read on their own in a receipt; other choices map to their option text.
-const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry)$/u;
+const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry|intent|contentSpan)$/u;
 
 export function summarizeAnswers(questions, answers) {
   const summary = {};
@@ -232,9 +234,18 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           && group.values.every((value) => typeof value === 'string'));
       const asked = fromIndex ? usable : usable.slice(0, Math.max(enumeratedFields, 1));
       const questions = {};
+      questions.intent = choiceQuestion(
+        `${said('質問', '`request`')}が求める答えの種類を一つ選ぶ。意図は今回の質問だけで判断する。`,
+        [
+          { id: 'records', description: '該当する記録を見たい' },
+          { id: 'breakdown_cause', description: '要因ごとの件数・多い要因を知りたい' },
+          { id: 'breakdown_organization', description: '部署ごとの件数を知りたい' },
+          { id: 'breakdown_month', description: '月ごとの件数を知りたい' },
+        ],
+      );
       questions.cause = choiceQuestion(
         `${said('質問', '`request`')}が不適合の要因・原因の区分を指定しているときだけ、その区分を一つ選ぶ。現象や部品の説明だけで要因の区分を言っていなければ none。`,
-        [...CAUSE_CATEGORIES.map(({ id, label, description }) => ({ id, description: `${label}: ${description}` })),
+        [...CAUSE_CATEGORIES.filter(({ id }) => id !== UNKNOWN_CAUSE).map(({ id, label, description }) => ({ id, description: `${label}: ${description}` })),
           { id: NONE, description: '要因では絞らない' }],
       );
       const previousCause = CAUSE_CATEGORIES.find(({ id }) => id === previousPlan?.causeCategory);
@@ -370,11 +381,12 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       });
       const planMs = Math.round(performance.now() - started);
       const answers = answersOf(evaluated);
+      const intent = chosen(answers.intent, ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']) ?? 'records';
       const unresolved = fromIndex ? [] : usable.slice(asked.length).map((group) => ({ term: group.term, candidates: [...group.values] }));
       const scopeIds = entries.map((entry) => entry.id);
       const scopeChoice = fromIndex ? scopeChoiceOf(answers.scope, scopeIds) : scopeIds[0];
       const outOfScope = fromIndex && scopeChoice === OUT_OF_SCOPE;
-      const causeChoice = chosen(answers.cause, [...CAUSE_CATEGORY_IDS, NONE]);
+      const causeChoice = chosen(answers.cause, [...CAUSE_CATEGORY_IDS.filter((id) => id !== UNKNOWN_CAUSE), NONE]);
       const causeDropped = Boolean(previousCause && chosen(answers.drop_cause, ['true', 'false']) === 'true');
       const chosenCause = outOfScope ? null : (causeChoice && causeChoice !== NONE ? causeChoice : (!causeDropped ? previousCause?.id : null));
       const selected = [];
@@ -435,11 +447,6 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const spanChoice = spans.length ? chosen(answers.contentSpan, spans.map((_, index) => `s${index}`)) : null;
       const contentSpan = spanChoice ? spans[Number(spanChoice.slice(1))] : null;
       const excludeShown = questions.excludeShown ? chosen(answers.excludeShown, ['true', 'false'], EXCLUDE_SHOWN_ACCEPT_AT) === 'true' : false;
-      if (!contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
-      const ambiguousDropped = contentChoice === 'true'
-        ? ambiguous.map(({ term, candidates }) => ({ field: term, candidates }))
-        : [];
-      if (contentChoice !== 'true') unresolved.push(...ambiguous);
 
       let plannedSources = outOfScope ? [] : (fromIndex && scopeIds.includes(scopeChoice) ? [scopeChoice] : entries.map((entry) => entry.id));
       // Page identifiers are already known by the screen; their use is gated in code,
@@ -470,6 +477,11 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         }
       }
 
+      const breakdown = intent !== 'records' && plannedSources.includes(CAUSE_SOURCE) ? intent.slice('breakdown_'.length) : null;
+      if (!breakdown && !contentChoice) unresolved.push({ term: 'content', candidates: ['true', 'false'] });
+      const ambiguousDropped = !breakdown && contentChoice === 'true'
+        ? ambiguous.map(({ term, candidates }) => ({ field: term, candidates })) : [];
+      if (breakdown || contentChoice !== 'true') unresolved.push(...ambiguous);
       const dateOwner = entries.find((entry) => plannedSources.includes(entry.id) && entry.fields.some((field) => field.role === 'date'));
       const dateKey = dateOwner?.fields.find((field) => field.role === 'date')?.key ?? null;
       const dated = [];
@@ -522,9 +534,15 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         .filter((token) => !selectedValues.some((value) => value.includes(token)));
       const hardFilter = hasAppliedHardFilter({ filters, causeCategory }, catalog);
       const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
-      const jev = residualOverride ? false : judged;
+      const jev = breakdown || residualOverride ? false : judged;
+      // The saved classification is one model pass over free text and often disagrees with the
+      // records a content question means (nights 17 and 18: 12 of 30 such rows matched neither
+      // target), so a cause heard in the question gates only plans without a content search.
+      // A cause inherited from a chip or the previous plan was chosen by the user and stays.
+      const causeOnContent = jev === true && Boolean(causeCategory) && causeCategory !== previousCause?.id;
+      const appliedCause = causeOnContent ? (causeDropped ? null : previousCause?.id ?? null) : causeCategory;
       const finalContent = jev === true && unresolved.length === 0;
-      const sortMode = resolveSort(question, jev, hardFilter);
+      const sortMode = breakdown ? 'recent' : resolveSort(question, jev, hardFilter);
       const sort = sortMode === 'recent' && recentField
         ? { field: recentField, direction: 'desc' }
         : 'relevance';
@@ -532,10 +550,12 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         schema: QUERY_PLAN_SCHEMA,
         sources: plannedSources,
         filters: outOfScope ? [] : filters,
-        ...(causeCategory ? { causeCategory } : {}),
+        ...(appliedCause ? { causeCategory: appliedCause } : {}),
+        ...(breakdown ? { breakdown } : {}),
         semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
           filters,
-          causeCategory,
+          causeCategory: appliedCause,
+          breakdown,
           diagnostics: { contentDecision: { jev } },
         }, catalog) ? '' : (carriedQuery || question.trim()),
         sort,
@@ -543,13 +563,14 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
-          causeDecision: { chosen: causeCategory ?? null, ...(causeDropped ? { dropped: true } : {}) },
+          intentDecision: { chosen: intent },
+          causeDecision: { chosen: appliedCause ?? null, ...(causeDropped ? { dropped: true } : causeOnContent ? { dropped: 'content_search', heard: causeCategory } : {}) },
           contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
           ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
-          ...(carriedQuery ? (previousSpan ? { contentSpan: previousSpan } : {}) : (contentSpan ? { contentSpan } : {})),
-          ...(excludeShown ? { excludeShown: true } : {}),
+          ...(!breakdown ? (carriedQuery ? (previousSpan ? { contentSpan: previousSpan } : {}) : (contentSpan ? { contentSpan } : {})) : {}),
+          ...(!breakdown && excludeShown ? { excludeShown: true } : {}),
         },
       };
       return {
