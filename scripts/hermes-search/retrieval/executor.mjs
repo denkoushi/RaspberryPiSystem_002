@@ -433,14 +433,14 @@ export function buildCoverage({ known, matchCount, shown, order }) {
   return { known: false, total: null, floor, shown, order };
 }
 
-function buildGroups(filtered, catalog, causeById) {
+function buildGroups(filtered, catalog, causeById, breakdown) {
   if (!catalog) return [];
   return [
     { axis: 'organization', role: 'organization', label: '部署', limit: 8 },
     { axis: 'month', role: 'date', label: '月', limit: 12 },
     { axis: 'cause', field: 'causeCategory', label: '要因', limit: 10 },
-  ].flatMap(({ axis, role, field: axisField, label, limit }) => {
-    if (axis === 'cause' && !filtered.some(record => CAUSE_CATEGORY_IDS.includes(causeById?.get(record.id)))) return [];
+  ].sort((left, right) => Number(right.axis === breakdown) - Number(left.axis === breakdown)).flatMap(({ axis, role, field: axisField, label, limit }) => {
+    if (axis === 'cause' && breakdown !== 'cause' && !filtered.some(record => CAUSE_CATEGORY_IDS.includes(causeById?.get(record.id)))) return [];
     const field = axisField ?? fieldsWithRole(catalog, role)[0];
     if (!field) return [];
     const counts = new Map();
@@ -653,7 +653,7 @@ async function prepareCandidateRanking(plan, options, records) {
     ? (vectorReady ? options.retriever : 'lexical')
     : 'lexical';
   const byId = new Map(filtered.map((record) => [record.id, record]));
-  const filteredOnly = !semanticQuery && hasAppliedHardFilter(plan, options.catalog);
+  const filteredOnly = !semanticQuery && (Boolean(plan.breakdown) || options.filterOnly === true || hasAppliedHardFilter(plan, options.catalog));
   let candidateIds = [];
   let ranked;
   const rowsOf = (ordered) => ordered
@@ -900,7 +900,8 @@ export async function execute(plan, options = {}) {
     requested: limit,
     returned: results.length,
     ...(coverage ? { coverage } : {}),
-    ...(coverage?.known === true && coverage.total > coverage.shown ? { groups: buildGroups(filtered, options.catalog, options.causeById) } : {}),
+    ...(plan.breakdown || (coverage?.known === true && coverage.total > coverage.shown)
+      ? { groups: buildGroups(filtered, options.catalog, options.causeById, plan.breakdown) } : {}),
     results,
     ...(options.stageDump ? { candidateIds } : {}),
     timings: {
