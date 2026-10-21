@@ -110,3 +110,29 @@ test('valid causes are hard filters and skip relevance only without content', ()
     assert.equal(hasAppliedHardFilter(plan({ causeCategory }), catalog), false);
   }
 });
+
+test('breakdown validates only the three supported axes', () => {
+  for (const breakdown of ['cause', 'organization', 'month']) {
+    const result = validateQueryPlan(plan({ breakdown }), catalog, valueIndex);
+    assert.equal(result.ok, true);
+    assert.equal(result.plan.breakdown, breakdown);
+  }
+  for (const breakdown of [null, '', 'invalid', 1, {}]) {
+    assert.equal(validateQueryPlan(plan({ breakdown }), catalog, valueIndex).ok, false);
+  }
+});
+
+test('breakdown skips relevance without any hard filter or content decision', () => {
+  for (const breakdown of ['cause', 'organization', 'month']) {
+    assert.equal(shouldSkipRelevance(plan({ breakdown }), catalog), true);
+    assert.equal(shouldSkipRelevance(plan({ breakdown, diagnostics: { contentDecision: { jev: true } } }), catalog), true);
+  }
+  assert.equal(shouldSkipRelevance(plan({ breakdown: 'invalid' }), catalog), false);
+});
+
+test('validation removes breakdown from an unrelated source', () => {
+  const other = { ...catalog, id: 'other' };
+  const result = validateQueryPlan(plan({ sources: ['other'], breakdown: 'month' }), other, valueIndex);
+  assert.equal(result.ok, true);
+  assert.equal(result.plan.breakdown ?? null, null);
+});

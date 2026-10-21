@@ -87,3 +87,23 @@ test('cause templates sample only populated categories and departments, excludin
   assert.equal(sample({ ...options, causeById: new Map() }).some(row => row.seed.cause), false);
   assert.equal(sample({ ...options, catalog: { ...catalog, fields: catalog.fields.slice(0, 1) } }).filter(row => row.seed.cause).length, 1);
 });
+
+test('breakdown templates require populated classifications and include scoped and unscoped periods', () => {
+  const corpus = [{ id: 'a', department: '第一部品質課' }, { id: 'b', department: '第二部機械課' }];
+  const options = { records: corpus, causeById: new Map([['a', 'drawing'], ['outside', 'check']]) };
+  const rows = sample(options).filter(row => row.seed.breakdown);
+  assert.equal(rows.length, 3);
+  assert.equal(new Set(rows.map(row => row.id)).size, 3);
+  assert.deepEqual(new Set(rows.map(row => row.question)), new Set(['今年多い要因は?', '第一部品質課で今年多い要因は?', '先月の不適合の要因の内訳']));
+  for (const row of rows) {
+    assert.equal(row.seed.breakdown, 'cause');
+    assert.equal(row.seed.cause, undefined);
+    assert.equal(row.seed.period.from, row.seed.template === 'breakdown_cause_year' ? '2026-01-01' : '2026-09-01');
+    assert.equal(row.seed.period.to, row.seed.template === 'breakdown_cause_year' ? '2026-12-31' : '2026-09-30');
+    assert.equal(row.seed.field, row.seed.value === null ? null : 'department');
+  }
+  for (const causeById of [null, new Map(), new Map([['outside', 'drawing']]), new Map([['a', 'invalid']])]) {
+    assert.equal(sample({ ...options, causeById }).some(row => row.seed.breakdown), false);
+  }
+  assert.equal(sample({ ...options, catalog: { ...catalog, fields: catalog.fields.slice(0, 1) } }).some(row => row.seed.breakdown), false);
+});

@@ -126,6 +126,10 @@ function assertChoicesFromCandidates(questions, candidateValues) {
     if (question.type === 'noul') continue;
     // Content span choices are parts of the request itself, cut by code.
     if (key === 'contentSpan') continue;
+    if (key === 'intent') {
+      assert.deepEqual(Object.keys(question.criteria), ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']);
+      continue;
+    }
     if (key === 'cause') {
       assert.deepEqual(question.criteria, { ...Object.fromEntries(CAUSE_CATEGORIES.map(({ id, label, description }) => [id, `${label}: ${description}`])), none: '要因では絞らない' });
       continue;
@@ -821,4 +825,50 @@ test('a cause heard in a question scoped to another source does not become a fil
   assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
   assert.equal(plan.diagnostics.causeDecision.chosen, null);
   assert.equal(plan.diagnostics.contentDecision.jev, true);
+});
+
+for (const intent of ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']) {
+  test(`intent choice ${intent} uses one call and controls content`, async () => {
+    let calls = 0;
+    const planner = createPlanner({ evaluate: async ({ questions }) => {
+      calls += 1;
+      assert.deepEqual(Object.keys(questions.intent.criteria), ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']);
+      return { answers: { intent: { type: 'choice', choice: intent }, content: { type: 'noul', noul: true } } };
+    } });
+    const { plan } = await planner.plan({ question: '今年多い要因は?', catalog, valueIndex: buildValueIndex([], catalog), now: '2026-10-19' });
+    assert.equal(calls, 1);
+    assert.equal(plan.breakdown ?? null, intent === 'records' ? null : intent.slice(10));
+    assert.deepEqual(plan.diagnostics.intentDecision, { chosen: intent });
+    assert.equal(plan.diagnostics.contentDecision.jev, intent === 'records');
+    assert.equal(plan.diagnostics.contentDecision.final, intent === 'records');
+    assert.equal(Boolean(plan.semanticQuery), intent === 'records');
+    assert.ok(plan.diagnostics.contentDecision.residualTokens.length > 0);
+    if (intent !== 'records') assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
+  });
+}
+
+test('breakdown is scoped to the classified source and not inherited in previous state', async () => {
+  const sources = loadCatalog(['nonconformity', 'knowledge_procedure']);
+  const planner = createPlanner({ evaluate: async ({ state }) => {
+    assert.equal(Object.hasOwn(state.previous_plan, 'breakdown'), false);
+    return { answers: { scope: { type: 'choice', choice: 'knowledge_procedure' },
+      intent: { type: 'choice', choice: 'breakdown_month' }, content: { type: 'noul', noul: true } } };
+  } });
+  const { plan } = await planner.plan({ question: '月別', catalog: sources, valueIndex: buildValueIndex([], sources),
+    previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: '', breakdown: 'cause' } });
+  assert.equal(plan.breakdown ?? null, null);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+});
+
+test('breakdown overrides missing content decisions and carried content', async () => {
+  for (const previousPlan of [null, { sources: ['nonconformity'], filters: [], semanticQuery: 'synthetic-content' }]) {
+    const planner = createPlanner({ evaluate: async () => ({ answers: {
+      intent: { type: 'choice', choice: 'breakdown_cause' }, contentCarry: { type: 'choice', choice: 'same' },
+    } }) });
+    const { plan } = await planner.plan({ question: '多い要因は?', catalog, valueIndex: buildValueIndex([], catalog), previousPlan });
+    assert.equal(plan.semanticQuery, '');
+    assert.equal(plan.diagnostics.contentDecision.jev, false);
+    assert.equal(plan.diagnostics.contentDecision.final, false);
+    assert.deepEqual(plan.unresolved, []);
+  }
 });
