@@ -1,12 +1,20 @@
+import fs from 'node:fs';
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import importPlugin from 'eslint-plugin-import';
+import unusedImports from 'eslint-plugin-unused-imports';
+import prettier from 'eslint-config-prettier';
+import globals from 'globals';
+
 // Size ratchet: new source files stay within 600 lines; files listed in the baseline were
 // already larger and are capped at their recorded size. Regenerate with
 // `node scripts/ci/max-lines-baseline.mjs update api` (it only lowers caps).
-const maxLinesBaseline = require('./eslint-max-lines-baseline.json');
+const maxLinesBaseline = JSON.parse(fs.readFileSync(new URL('./eslint-max-lines-baseline.json', import.meta.url), 'utf8'));
 const maxLinesOptions = { skipBlankLines: true, skipComments: true };
 const maxLinesOverrides = [
   {
     files: ['src/**/*.ts'],
-    excludedFiles: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/__tests__/**', 'src/test/**', 'src/generated/**'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/__tests__/**', 'src/test/**', 'src/generated/**'],
     rules: { 'max-lines': ['error', { max: 600, ...maxLinesOptions }] }
   },
   ...Object.entries(maxLinesBaseline).map(([file, max]) => ({
@@ -15,85 +23,102 @@ const maxLinesOverrides = [
   }))
 ];
 
-module.exports = {
-  root: true,
-  env: {
-    node: true,
-    es2022: true
-  },
-  parserOptions: {
-    sourceType: 'module',
-    project: './tsconfig.eslint.json'
-  },
-  plugins: ['unused-imports', 'import'],
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
-    'plugin:import/recommended',
-    'plugin:import/typescript',
-    'prettier'
-  ],
-  parser: '@typescript-eslint/parser',
-  rules: {
-    'unused-imports/no-unused-imports': 'error',
-    '@typescript-eslint/no-explicit-any': 'error',
-    'import/no-unresolved': 'off',
-    'import/order': 'off',
-    'import/no-cycle': 'error',
-    'import/no-restricted-paths': [
-      'error',
-      {
-        zones: [
-          {
-            target: './src/services',
-            from: './src/routes',
-            message: 'services層からroutes層への依存は禁止です（依存方向: routes -> services）。'
-          },
-          {
-            target: './src/lib',
-            from: './src/routes',
-            message: 'lib層からroutes層への依存は禁止です（依存方向: routes/services -> lib）。'
-          },
-          {
-            target: './src/lib',
-            from: './src/services',
-            message: 'lib層からservices層への依存は禁止です（依存方向: routes/services -> lib）。'
-          },
-          {
-            target: './src/routes/clients',
-            from: './src/routes/kiosk',
-            message: 'routes/kiosk から routes/clients への依存は禁止です（機能境界の横断を防止）。'
-          },
-          {
-            target: './src/routes/kiosk',
-            from: './src/routes/clients',
-            message: 'routes/clients から routes/kiosk への依存は禁止です（機能境界の横断を防止）。'
-          },
-          {
-            target: './src/routes/backup',
-            from: './src/routes/imports',
-            message: 'routes/imports から routes/backup への依存は禁止です（機能境界の横断を防止）。'
-          },
-          {
-            target: './src/routes/imports',
-            from: './src/routes/backup',
-            message: 'routes/backup から routes/imports への依存は禁止です（機能境界の横断を防止）。'
-          },
-          {
-            target: './src/routes/system',
-            from: './src/routes/kiosk',
-            message: 'routes/kiosk から routes/system への依存は禁止です（機能境界の横断を防止）。'
-          },
-          {
-            target: './src/routes/kiosk',
-            from: './src/routes/system',
-            message: 'routes/system から routes/kiosk への依存は禁止です（機能境界の横断を防止）。'
-          }
-        ]
+export default tseslint.config(
+  // Flat config includes JavaScript and dotfiles by default; retain the old .ts-only target set.
+  { ignores: ['**/node_modules/**', 'dist/**', '**/.*', '**/*.{js,cjs,mjs}'] },
+  {
+    files: ['**/*.ts'],
+    extends: [
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      importPlugin.flatConfigs.recommended,
+      importPlugin.flatConfigs.typescript,
+      prettier
+    ],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.es2022 },
+      sourceType: 'module',
+      parser: tseslint.parser,
+      parserOptions: {
+        project: './tsconfig.eslint.json',
+        tsconfigRootDir: import.meta.dirname
       }
-    ]
+    },
+    plugins: { 'unused-imports': unusedImports },
+    linterOptions: { reportUnusedDisableDirectives: 'off' },
+    rules: {
+      // Preserve ESLint 8 / typescript-eslint 7 recommended behavior.
+      'no-constant-binary-expression': 'off',
+      'no-empty-static-block': 'off',
+      'no-new-native-nonconstructor': 'off',
+      'no-unused-private-class-members': 'off',
+      '@typescript-eslint/no-unused-expressions': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { caughtErrors: 'none' }],
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-var-requires': 'error',
+      '@typescript-eslint/prefer-namespace-keyword': 'off',
+      // ban-types prohibited {} types, Function and boxed primitives, but allowed empty interfaces.
+      '@typescript-eslint/no-empty-object-type': ['error', { allowInterfaces: 'always' }],
+      'unused-imports/no-unused-imports': 'error',
+      '@typescript-eslint/no-explicit-any': 'error',
+      'import/no-unresolved': 'off',
+      'import/order': 'off',
+      'import/no-cycle': 'error',
+      'import/no-restricted-paths': [
+        'error',
+        {
+          zones: [
+            {
+              target: './src/services',
+              from: './src/routes',
+              message: 'services層からroutes層への依存は禁止です（依存方向: routes -> services）。'
+            },
+            {
+              target: './src/lib',
+              from: './src/routes',
+              message: 'lib層からroutes層への依存は禁止です（依存方向: routes/services -> lib）。'
+            },
+            {
+              target: './src/lib',
+              from: './src/services',
+              message: 'lib層からservices層への依存は禁止です（依存方向: routes/services -> lib）。'
+            },
+            {
+              target: './src/routes/clients',
+              from: './src/routes/kiosk',
+              message: 'routes/kiosk から routes/clients への依存は禁止です（機能境界の横断を防止）。'
+            },
+            {
+              target: './src/routes/kiosk',
+              from: './src/routes/clients',
+              message: 'routes/clients から routes/kiosk への依存は禁止です（機能境界の横断を防止）。'
+            },
+            {
+              target: './src/routes/backup',
+              from: './src/routes/imports',
+              message: 'routes/imports から routes/backup への依存は禁止です（機能境界の横断を防止）。'
+            },
+            {
+              target: './src/routes/imports',
+              from: './src/routes/backup',
+              message: 'routes/backup から routes/imports への依存は禁止です（機能境界の横断を防止）。'
+            },
+            {
+              target: './src/routes/system',
+              from: './src/routes/kiosk',
+              message: 'routes/kiosk から routes/system への依存は禁止です（機能境界の横断を防止）。'
+            },
+            {
+              target: './src/routes/kiosk',
+              from: './src/routes/system',
+              message: 'routes/system から routes/kiosk への依存は禁止です（機能境界の横断を防止）。'
+            }
+          ]
+        }
+      ]
+    }
   },
-  overrides: [
+  ...[
     ...maxLinesOverrides,
     {
       "files": [
@@ -236,5 +261,8 @@ module.exports = {
         'unused-imports/no-unused-imports': 'off'
       }
     }
-  ]
-};
+  ].map(config => ({
+    ...config,
+    files: config.files.map(file => ['**/*.ts', file])
+  }))
+);
