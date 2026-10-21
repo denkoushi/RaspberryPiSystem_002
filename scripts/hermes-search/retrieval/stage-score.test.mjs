@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planStage, scoreRun } from './stage-score.mjs';
+import { formatScoreTable, planStage, scoreRun } from './stage-score.mjs';
 import { execute, rrfCombine } from './executor.mjs';
 import { QUERY_PLAN_SCHEMA } from './query-plan.mjs';
 
@@ -59,6 +59,34 @@ test('stage score reports slot accuracy and candidate hit rates from synthetic i
   assert.equal(scored.all.precision, 1);
   assert.equal(scored.all.finalHit, 1);
   assert.equal(scored.categories.synthetic.n, 1);
+  const table = formatScoreTable('legacy', scored);
+  assert.match(table, /p50 p95 jevIn ans\n/u);
+  for (const line of table.split('\n').slice(2)) assert.match(line, / - -$/u);
+  assert.equal(scored.all.jevIn, null);
+  assert.equal(scored.all.ans, null);
+});
+
+test('stage score shows volume medians by category and excludes missing or invalid values', () => {
+  const gold = [
+    { id: 'a', category: 'measured' }, { id: 'b', category: 'measured' },
+    { id: 'c', category: 'measured' }, { id: 'old', category: 'legacy' },
+  ];
+  const scored = scoreRun(gold, { details: [
+    { id: 'a', volume: { jevInputChars: 0, answerChars: 100 } },
+    { id: 'b', volume: { jevInputChars: 40, answerChars: 200 } },
+    { id: 'c', volume: { jevInputChars: 80, answerChars: null } },
+    { id: 'old', volume: { jevInputChars: 'invalid', answerChars: Infinity } },
+  ] });
+  assert.equal(scored.all.jevIn, 40);
+  assert.equal(scored.all.ans, 100);
+  assert.equal(scored.categories.measured.jevIn, 40);
+  assert.equal(scored.categories.measured.ans, 100);
+  assert.equal(scored.categories.legacy.jevIn, null);
+  assert.equal(scored.categories.legacy.ans, null);
+  const table = formatScoreTable('new', scored);
+  assert.match(table, /\nall .* 40\.00 100\.00\n/u);
+  assert.match(table, /\nmeasured .* 40\.00 100\.00\n/u);
+  assert.match(table, /\nlegacy .* - -$/u);
 });
 
 test('rrfCombine and stage dump keep pre-relevance ids without changing the lexical top', async () => {
