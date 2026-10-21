@@ -666,6 +666,7 @@ export function HermesFloatingChat() {
     setIsConsultationsLoading(false);
     setIsConsultationDetailLoading(false);
     setMessageHistoryError(null);
+    recordPilotSessionIdRef.current = crypto.randomUUID();
   }, [closeScanner, consultationMode, invalidateChatRequest, invalidateMessageHistory, resetConversation]);
 
   const stopRequest = useCallback(() => {
