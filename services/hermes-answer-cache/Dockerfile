@@ -3,6 +3,9 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# fastembed (0.8.0 / 0.9.0) caps pillow<13, but the Pillow CVEs are fixed only in 13.0.0.
+# Text embedding does not use Pillow; the model warm-up below imports fastembed as a smoke test.
+RUN pip install --no-cache-dir "pillow==13.0.0"
 RUN python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/opt/models', threads=2)"
 RUN chmod -R a+rX /opt/models
 ENV HF_HUB_OFFLINE=1
