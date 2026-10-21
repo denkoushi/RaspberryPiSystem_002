@@ -27,8 +27,12 @@
     that:
       - status_agent_client_id | default('') | length > 0
       - status_agent_client_key | default('') | length > 0
+      # The kiosk web app ignores a ?clientKey= value without this prefix.
+      - status_agent_client_key is match('^client-key-')
       - "'nfc-agent' not in release_kiosk_services or nfc_agent_client_secret | default('') | length > 0"
-    fail_msg: Register the client on Pi5 and supply its inventory credentials before first-install.
+    fail_msg: >-
+      Register the client on Pi5 and supply its inventory credentials before first-install;
+      status_agent_client_key must start with client-key- for the kiosk screen to accept it.
   no_log: true
 
 - name: Require server-side client registration before first-install provisioning
