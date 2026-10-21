@@ -1,3 +1,5 @@
+import { extractManufacturingOrder10 } from '../../services/mobile-placement/genpyo-slip/genpyo-mo-extract.js';
+import { buildActualSlipOcrPreviewSafe } from '../../services/mobile-placement/actual-slip-ocr-preview.js';
 import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
 import type { MultipartFile } from '@fastify/multipart';
@@ -41,6 +43,11 @@ import {
 } from '../../services/mobile-placement/shelf-layout-edit.service.js';
 import { relocateMobilePlacementShelf } from '../../services/mobile-placement/shelf-relocate.service.js';
 import type { ImageOcrMimeType } from '../../services/ocr/ports/image-ocr.port.js';
+
+const snapFseibanTokensBodySchema = z.object({
+  tokens: z.array(z.string().min(1).max(32)).min(1).max(50),
+  text: z.string().max(4000).optional()
+});
 
 const registerBodySchema = z.object({
   shelfCodeRaw: z.string().min(1),
@@ -464,6 +471,30 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       };
     }
   );
+
+  app.post('/mobile-placement/snap-fseiban-tokens', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const body = snapFseibanTokensBodySchema.parse(request.body);
+    const ocrText = body.text ?? '';
+    const manufacturingOrder10 = extractManufacturingOrder10(ocrText);
+    const fseibanRaw = body.tokens[0];
+    let snap: FseibanSnapResult = { match: 'none', fseiban: null, candidates: [] };
+    try {
+      snap = snapFseiban(body.tokens, await getKnownFseibans());
+    } catch {
+      request.log.warn({ route: 'snap-fseiban-tokens' }, 'FSEIBAN lookup unavailable; using OCR result');
+    }
+    return {
+      engine: 'device',
+      ocrText,
+      ocrPreviewSafe: buildActualSlipOcrPreviewSafe(manufacturingOrder10 ?? '', fseibanRaw),
+      manufacturingOrder10,
+      fseibanRaw,
+      fseibanMatch: snap.match,
+      fseibanCandidates: snap.candidates,
+      fseiban: snap.fseiban ?? fseibanRaw
+    };
+  });
 
   app.post('/mobile-placement/register-order-placement', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);

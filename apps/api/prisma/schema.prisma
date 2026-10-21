@@ -1451,6 +1451,7 @@ model CsvDashboard {
   createdAt                      DateTime                                          @default(now())
   updatedAt                      DateTime                                          @updatedAt
   ingestRuns                     CsvDashboardIngestRun[]
+  feedFreshnessState             CsvFeedFreshnessState?
   rows                           CsvDashboardRow[]
   grindingPlanningBoardResourceCapacities ProductionScheduleGrindingPlanningBoardResourceCapacity[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
@@ -1461,6 +1462,15 @@ model CsvDashboard {
   @@index([gmailScheduleId])
   @@index([gmailSubjectPattern])
   @@index([configType, importType])
+}
+
+model CsvFeedFreshnessState {
+  csvDashboardId       String       @id
+  csvDashboard         CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+  lastComparedRunId    String?
+  lastComparedRunAt    DateTime?
+  lastContentChangedAt DateTime?
+  updatedAt            DateTime     @updatedAt
 }
 
 model CsvDashboardIngestRun {

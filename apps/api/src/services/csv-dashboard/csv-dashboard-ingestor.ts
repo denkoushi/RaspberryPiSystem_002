@@ -387,6 +387,11 @@ export class CsvDashboardIngestor {
             csvDashboardId: dashboardId,
             keyColumns,
             keys: dedupKeys,
+            // 生産スケジュール以外はキー列に式indexが無く、キー一致だけだと毎回ダッシュボード全行の
+            // JSON列を走査する。dataHash は dedupKeyColumns から作るので、今回のハッシュで候補を絞る。
+            dataHashes: isProductionScheduleDashboard
+              ? undefined
+              : ingestRows.map((row) => row.hash).filter((hash): hash is string => !!hash),
             winnerOrder: CsvDashboardIngestor.buildDedupWinnerOrder({
               isProductionScheduleDashboard,
               dashboardId

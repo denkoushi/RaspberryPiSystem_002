@@ -4545,6 +4545,9 @@ docker compose -f docker-compose.server.yml restart api
   - 可視化ダッシュボードの `dataSourceType=uninspected_machines` に、対象の `csvDashboardId` が設定されていること
   - サイネージスケジュールのスロットに、その可視化ダッシュボードが割り当てられていること
   - 設定が欠けている場合、画像上に `csvDashboardId is required` などのエラー文言が表示される
+- **7) 取込が1時間以上終わらず、次の回が `Import already running, skipping` になる（2026-10-21）**:
+  - 原因: 取込後の重複 loser 削除（`CsvDashboardDedupCleanupService.deleteDuplicateLosersForKeys`）が、キー列（`equipmentManagementNumber` 等）を `rowData` JSON から取り出して突き合わせていた。生産スケジュール以外のキー列には式indexが無いため、300キーごとに最低2回、ダッシュボード全行の JSON を読む DELETE になり、`CsvDashboardRow`（約656万行・9.4GB）の増加とともに IO 待ちで長時間化した。取込履歴は削除前に `COMPLETED` になるが、スケジューラの実行中フラグは削除が終わるまで残る
+  - 対策: 生産スケジュール以外の DEDUP ダッシュボードでは、今回取り込んだ行の `dataHash`（`dedupKeyColumns` から計算）で候補を `[csvDashboardId, dataHash]` index から絞り、その中でキー一致の判定をする。削除範囲は従来以下（狭まるだけ）。古い計算方式の `dataHash` を持つ重複は夜間の `deleteDuplicateLosersGlobally` が引き続き処理する
 
 ---
 

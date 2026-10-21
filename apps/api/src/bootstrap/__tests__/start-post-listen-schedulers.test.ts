@@ -149,6 +149,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'client-network-log-retention',
       'client-heartbeat-monitor',
       'system-notice-evaluator',
+      'csv-feed-freshness-evaluator',
       'alerts-ingestor',
       'photo-tool-label',
       'procedure-material-image-description',
