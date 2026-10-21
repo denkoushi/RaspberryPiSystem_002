@@ -85,6 +85,8 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         outcome,
         reason: outcome === 'unavailable' || outcome === 'failed' ? result.receipt?.reason ?? result.reason ?? null : null,
         shown,
+        groups: (result.display?.groups ?? []).filter(group => group.axis === 'cause')
+          .map(group => ({ axis: 'cause', buckets: group.buckets.map(({ value, count }) => ({ value, count })) })),
         candidates,
         judged,
         loss: lossStage({ relevant: relevantIds(row), outcome, shown, candidates, judged }),

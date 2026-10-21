@@ -102,6 +102,8 @@ replace golang.org/x/text => golang.org/x/text v0.41.0
 
 replace github.com/go-jose/go-jose/v3 => github.com/go-jose/go-jose/v3 v3.0.5
 replace github.com/go-jose/go-jose/v4 => github.com/go-jose/go-jose/v4 v4.1.4
+
+replace github.com/klauspost/compress => github.com/klauspost/compress v1.18.7
 EOF
 RUN cat <<'EOF' > main.go
 package main
