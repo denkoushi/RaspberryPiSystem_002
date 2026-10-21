@@ -1,5 +1,6 @@
 import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
 import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
+import { getCsvFeedFreshnessEvaluator } from '../services/kiosk-inquiry/csv-feed-freshness-evaluator.js';
 import { getProcedureVideoScheduler } from '../services/assembly/procedure-video.scheduler.js';
 import type { FastifyInstance } from 'fastify';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
@@ -276,6 +277,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: () => getSystemNoticeEvaluator().stop(),
     },
     {
+      name: 'csv-feed-freshness-evaluator',
+      start: () => getCsvFeedFreshnessEvaluator().start(),
+      stop: () => getCsvFeedFreshnessEvaluator().stop(),
+    },
+    {
       name: 'alerts-ingestor',
       start: async () => {
         await getAlertsIngestor().start();
@@ -334,6 +340,7 @@ export function listPostListenSchedulerNames(): string[] {
     'client-network-log-retention',
     'client-heartbeat-monitor',
     'system-notice-evaluator',
+    'csv-feed-freshness-evaluator',
     'alerts-ingestor',
     'photo-tool-label',
     'procedure-material-image-description',
