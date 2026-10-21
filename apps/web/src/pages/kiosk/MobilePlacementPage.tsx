@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../features/barcode-scan';
 import { HaizenHub } from '../../features/mobile-placement/haizen/HaizenHub';
 import { useHubBackGuard } from '../../features/mobile-placement/haizen/useHubBackGuard';
+import { isHaizenNativeAvailable } from '../../features/mobile-placement/haizenNative';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
 import { useIsPhoneViewport } from '../../features/mobile-placement/ui/useIsPhoneViewport';
 import { useMobilePlacementPageState } from '../../features/mobile-placement/useMobilePlacementPageState';
@@ -73,7 +74,10 @@ export function MobilePlacementPage() {
         onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master', {
           state: mp.buildShelfRegisterRouteState()
         })}
-        onPhoto={() => actualSlipFileInputRef.current?.click()}
+        onPhoto={() => {
+          if (isHaizenNativeAvailable()) void mp.scanActualSlipNative();
+          else actualSlipFileInputRef.current?.click();
+        }}
       />
     </div>
   );

@@ -182,21 +182,28 @@ export async function verifyMobilePlacementSlipMatch(payload: {
   return data;
 }
 
+export type ActualSlipOcrResponse = {
+  engine: string;
+  ocrText: string;
+  /** プレビュー用。無い場合は `ocrText` を表示に使う */
+  ocrPreviewSafe: string | null;
+  manufacturingOrder10: string | null;
+  fseiban: string | null;
+  fseibanRaw: string | null;
+  fseibanMatch: 'exact' | 'corrected' | 'ambiguous' | 'none';
+  fseibanCandidates: string[];
+};
+
 /** 現品票画像を OCR し、製造order（10桁）と製番候補を返す */
 export async function parseActualSlipImage(imageFile: File) {
   const form = new FormData();
   form.append('image', imageFile);
-  const { data } = await api.post<{
-    engine: string;
-    ocrText: string;
-    /** 数字・英数字 OCR のみ（プレビュー用。無い場合は `ocrText` を表示に使う） */
-    ocrPreviewSafe: string | null;
-    manufacturingOrder10: string | null;
-    fseiban: string | null;
-    fseibanRaw: string | null;
-    fseibanMatch: 'exact' | 'corrected' | 'ambiguous' | 'none';
-    fseibanCandidates: string[];
-  }>('/mobile-placement/parse-actual-slip-image', form);
+  const { data } = await api.post<ActualSlipOcrResponse>('/mobile-placement/parse-actual-slip-image', form);
+  return data;
+}
+
+export async function snapFseibanTokens(payload: { tokens: string[]; text?: string }) {
+  const { data } = await api.post<ActualSlipOcrResponse>('/mobile-placement/snap-fseiban-tokens', payload);
   return data;
 }
 
