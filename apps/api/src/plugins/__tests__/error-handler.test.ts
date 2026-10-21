@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { registerErrorHandler } from '../error-handler.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError, DomainHttpError } from '../../lib/errors.js';
@@ -84,6 +85,56 @@ describe('domain HTTP errors', () => {
       });
     } finally {
       vi.useRealTimers();
+      await instance.close();
+    }
+  });
+});
+
+describe('Prisma record not found (P2025)', () => {
+  async function app(error: unknown) {
+    const instance = Fastify({ genReqId: () => 'not-found-request' });
+    registerErrorHandler(instance);
+    instance.put('/items/:id', async () => { throw error; });
+    await instance.ready();
+    return instance;
+  }
+
+  it.each([
+    {
+      name: 'PrismaClientKnownRequestError',
+      error: new PrismaClientKnownRequestError('Record to update not found.', {
+        code: 'P2025',
+        clientVersion: 'test',
+        meta: { modelName: 'Item', cause: 'Record to update not found.' }
+      })
+    },
+    {
+      name: 'Prisma-like error from another runtime',
+      error: Object.assign(new Error('Record to delete does not exist.'), { code: 'P2025', meta: { modelName: 'Item' } })
+    }
+  ])('answers 404 instead of 400: $name', async ({ error }) => {
+    const instance = await app(error);
+    try {
+      const res = await instance.inject({ method: 'PUT', url: '/items/missing' });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toMatchObject({
+        message: expect.stringContaining('対象のデータが見つかりません'),
+        requestId: 'not-found-request',
+        errorCode: 'P2025',
+        details: { modelName: 'Item' }
+      });
+    } finally {
+      await instance.close();
+    }
+  });
+
+  it('keeps other Prisma errors at 400', async () => {
+    const instance = await app(new PrismaClientKnownRequestError('Value too long.', { code: 'P2000', clientVersion: 'test' }));
+    try {
+      const res = await instance.inject({ method: 'PUT', url: '/items/x' });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ errorCode: 'P2000' });
+    } finally {
       await instance.close();
     }
   });
