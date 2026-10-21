@@ -8,6 +8,9 @@
       terminal_release_mode must be full for provisioning/server convergence or
       release-only for one coordinator-owned terminal release.
 
+- name: Distrust compromised eMudhra certificate authorities in every mode
+  ansible.builtin.import_tasks: distrusted-intermediates.yml
+
 - name: Ensure repository parent directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}"

@@ -144,6 +144,11 @@
   order: inventory
   tags:
     - pi5
+  pre_tasks:
+    - name: Apply host certificate distrust before the Pi5 release
+      ansible.builtin.import_role:
+        name: common
+        tasks_from: distrusted-intermediates
   roles:
     - role: release_pi5
 
@@ -156,6 +161,11 @@
   order: inventory
   tags:
     - pi4
+  pre_tasks:
+    - name: Apply host certificate distrust before the kiosk release
+      ansible.builtin.import_role:
+        name: common
+        tasks_from: distrusted-intermediates
   roles:
     - role: release_kiosk
 
@@ -181,5 +191,10 @@
   order: inventory
   tags:
     - pi3
+  pre_tasks:
+    - name: Apply host certificate distrust before the signage release
+      ansible.builtin.import_role:
+        name: common
+        tasks_from: distrusted-intermediates
   roles:
     - role: release_signage
