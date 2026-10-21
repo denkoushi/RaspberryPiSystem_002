@@ -78,15 +78,45 @@ function MaterialCard({ title, query = '', source, date, checked, disabled, onCh
   </li>;
 }
 
-function MaterialBundle({ title, query = '', subtitle, count, photoCount, open, onToggle, onSelectAll, disabled, children, judging = false }: {
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // The kiosk may be served without a secure context, where the async clipboard API is unavailable.
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    try { return document.execCommand('copy'); } catch { return false; } finally { area.remove(); }
+  }
+}
+
+function CopyNoteButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (copied === null) return undefined;
+    const timer = window.setTimeout(() => setCopied(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return <button type="button" title={text} className="relative h-9 rounded-lg border border-[#344252] px-3 text-[15px] font-normal text-[#9fadb9] before:absolute before:-inset-y-1 before:inset-x-0" onClick={(event) => { event.stopPropagation(); void copyText(text).then(setCopied); }}>
+    {copied === null ? 'メモをコピー' : copied ? 'コピーしました' : 'コピーできません'}
+  </button>;
+}
+
+function MaterialBundle({ title, query = '', subtitle, count, photoCount, open, onToggle, onSelectAll, disabled, children, judging = false, note }: {
   title: string; query?: string; subtitle: string; count: number; photoCount?: boolean; open: boolean;
-  onToggle: () => void; onSelectAll?: () => void; disabled: boolean; children: ReactNode; judging?: boolean;
+  onToggle: () => void; onSelectAll?: () => void; disabled: boolean; children: ReactNode; judging?: boolean; note?: string | null;
 }) {
   return <details open={open} className="rounded-xl border border-[#344252] bg-[#1b222a]">
-    <summary role="button" tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onToggle(); } }} aria-expanded={open} className="grid min-h-[52px] cursor-pointer list-none grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-3 px-3.5 text-[19px] font-bold [&::-webkit-details-marker]:hidden" onClick={(event) => { event.preventDefault(); onToggle(); }}>
+    <summary role="button" tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onToggle(); } }} aria-expanded={open} className="grid min-h-[52px] cursor-pointer list-none grid-cols-[28px_minmax(0,1fr)_auto_auto_auto] items-center gap-3 px-3.5 text-[19px] font-bold [&::-webkit-details-marker]:hidden" onClick={(event) => { event.preventDefault(); onToggle(); }}>
       <span aria-hidden="true" className="text-sm text-[#9fadb9]">{open ? '▼' : '▶'}</span>
       <span className="min-w-0"><ShelfHighlight text={title} query={query} /> <span className="text-base font-medium text-[#9fadb9]">{subtitle}</span>{judging ? <MaterialSplitLoadingChip /> : null}</span>
       <span className="rounded-full bg-[#27313b] px-3 py-0.5 text-base font-semibold tabular-nums">{count} {photoCount ? '枚' : '件'}</span>
+      {note ? <CopyNoteButton text={note} /> : <span />}
       {onSelectAll ? <button type="button" disabled={disabled} className="relative h-9 rounded-lg border border-[#344252] px-3 text-[15px] font-normal text-[#9fadb9] before:absolute before:-inset-y-1 before:inset-x-0 disabled:opacity-40" onClick={(event) => { event.stopPropagation(); onSelectAll(); }}>束を全部選ぶ</button> : null}
     </summary>
     {open ? children : null}
@@ -370,7 +400,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
             const open = openGroups.get(key) ?? index === 0;
             const selectable = items.filter((item) => !materialDisabled(item)).map((item) => item.id);
             const suggestions = splitSuggestions.get(key, items);
-            return <MaterialBundle query={query} key={key} title={title} subtitle={subtitle} count={items.length} open={open} judging={suggestions?.loading} onToggle={() => { setOpenGroups((groups) => new Map(groups).set(key, !open)); }} onSelectAll={mode === 'replace' ? undefined : () => toggleGroup(selectable)} disabled={!selectable.length}>
+            return <MaterialBundle query={query} key={key} title={title} subtitle={subtitle} count={items.length} open={open} judging={suggestions?.loading} note={items[0]?.origin === 'APP' ? items[0].note?.trim() : null} onToggle={() => { setOpenGroups((groups) => new Map(groups).set(key, !open)); }} onSelectAll={mode === 'replace' ? undefined : () => toggleGroup(selectable)} disabled={!selectable.length}>
               <ul className="grid content-start gap-3.5 px-3.5 pb-3.5" style={gridStyle}><MaterialSplitContents items={items} entry={suggestions} choose={(beforeId, choice) => splitSuggestions.choose(key, items, beforeId, choice)} renderMaterials={renderMaterials} disabled={materialDisabled} onSelect={mode === 'replace' ? undefined : (pages) => toggleGroup(pages.map(page => page.id))} /></ul>
             </MaterialBundle>;
           })}
