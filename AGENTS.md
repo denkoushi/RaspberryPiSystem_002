@@ -32,7 +32,7 @@
 
 変更を伴う新規タスクで既存のタスクbranchまたはworktreeがない場合は、専用のfeature branchとlinked worktreeを1つ使う。既存タスクはそれを引き継ぐ。ユーザーのWIPをclean、reset、stash、checkoutしない。
 
-`python3 -m scripts.git_lifecycle.cli` を `.cursor/rules/20-git-workflow.mdc` に従って使い、rawな`git worktree add`や手動の一括削除を標準手順にしない。このCLIをDeploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightから呼び出さない。
+`python3 -m scripts.git_lifecycle.cli` を `.cursor/rules/20-git-workflow.mdc` に従って使い、rawな`git worktree add`や手動の一括削除を標準手順にしない。`start`はtask root直下のmerged-clean worktreeを`finish`と同じ個別安全確認で自動cleanupし、`finish-merged`でも手動実行できる（wildcard削除ではない）。このCLIをDeploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightから呼び出さない。
 
 ## Scope And Evidence
 

@@ -14,6 +14,7 @@ class GitHubAdapterError(RuntimeError):
     """The GitHub CLI could not provide a pull request observation."""
 
 
+GH_TIMEOUT_SECONDS = 180
 PR_JSON_FIELDS = (
     "number,state,mergedAt,baseRefName,headRefName,headRefOid,mergeCommit,"
     "headRepository,headRepositoryOwner,isCrossRepository"
@@ -47,7 +48,10 @@ class GitHubAdapter:
                 cwd=str(self.repo_root),
                 capture_output=True,
                 check=False,
+                timeout=GH_TIMEOUT_SECONDS,
             )
+        except subprocess.TimeoutExpired as error:
+            raise GitHubAdapterError(f"gh command timed out: {error}") from error
         except OSError as error:
             raise GitHubAdapterError(f"gh command could not start: {error}") from error
         if result.returncode:
