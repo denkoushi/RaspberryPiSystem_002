@@ -21,21 +21,29 @@
           staging_deploy_enabled must be explicitly enabled in private staging
           variables before this mutation playbook can run.
   tasks:
-    - name: Pull and verify Pi5 candidates without starting them
+    - name: Exclude weekly OS updates throughout this torque release phase
       block:
-        - name: Enter the Pi5 PREPARED boundary
-          ansible.builtin.include_role:
-            name: release_pi5
-            tasks_from: prefetch
-      rescue:
-        - name: Clean unused Pi5 candidates after PREPARED failure
-          ansible.builtin.include_role:
-            name: release_pi5
-            tasks_from: prefetch-cleanup
-        - name: Stop before kiosk mutation after Pi5 PREPARED failure
-          ansible.builtin.fail:
-            msg: Pi5 PREPARED failed before any torque endpoint was stopped.
-      when: not (staging_environment | default(false) | bool)
+        - name: Mark the release and wait for an in-flight OS updater
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Pull and verify Pi5 candidates without starting them
+          block:
+            - name: Enter the Pi5 PREPARED boundary
+              ansible.builtin.include_role:
+                name: release_pi5
+                tasks_from: prefetch
+          rescue:
+            - name: Clean unused Pi5 candidates after PREPARED failure
+              ansible.builtin.include_role:
+                name: release_pi5
+                tasks_from: prefetch-cleanup
+            - name: Stop before kiosk mutation after Pi5 PREPARED failure
+              ansible.builtin.fail:
+                msg: Pi5 PREPARED failed before any torque endpoint was stopped.
+          when: not (staging_environment | default(false) | bool)
+      always:
+        - name: Clear the release marker even if the torque phase failed
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
 
 - name: Stage every selected torque kiosk while current services remain unchanged
   hosts: kiosk
@@ -57,11 +65,19 @@
           staging_deploy_enabled must be explicitly enabled in private staging
           variables before this mutation playbook can run.
   tasks:
-    - name: Prepare this kiosk without quiescing it
-      ansible.builtin.include_role:
-        name: release_torque_cutover
-        tasks_from: prepared-kiosk
-      when: not (staging_environment | default(false) | bool)
+    - name: Exclude weekly OS updates throughout this torque release phase
+      block:
+        - name: Mark the release and wait for an in-flight OS updater
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Prepare this kiosk without quiescing it
+          ansible.builtin.include_role:
+            name: release_torque_cutover
+            tasks_from: prepared-kiosk
+          when: not (staging_environment | default(false) | bool)
+      always:
+        - name: Clear the release marker even if the torque phase failed
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
 
 - name: Aggregate PREPARED before any torque endpoint stops
   hosts: kiosk
@@ -70,11 +86,19 @@
   tags:
     - torque-cutover
   tasks:
-    - name: Cross the shared PREPARED boundary
-      ansible.builtin.include_role:
-        name: release_torque_cutover
-        tasks_from: prepared-finalize
-      when: not (staging_environment | default(false) | bool)
+    - name: Exclude weekly OS updates throughout this torque release phase
+      block:
+        - name: Mark the release and wait for an in-flight OS updater
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Cross the shared PREPARED boundary
+          ansible.builtin.include_role:
+            name: release_torque_cutover
+            tasks_from: prepared-finalize
+          when: not (staging_environment | default(false) | bool)
+      always:
+        - name: Clear the release marker even if the torque phase failed
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
 
 - name: Finalize PREPARED and clean Pi5 candidates on shared failure
   hosts: server
@@ -85,11 +109,19 @@
   tags:
     - torque-cutover
   tasks:
-    - name: Require every target before torque ownership is quiesced
-      ansible.builtin.include_role:
-        name: release_torque_cutover
-        tasks_from: prepared-control-plane
-      when: not (staging_environment | default(false) | bool)
+    - name: Exclude weekly OS updates throughout this torque release phase
+      block:
+        - name: Mark the release and wait for an in-flight OS updater
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Require every target before torque ownership is quiesced
+          ansible.builtin.include_role:
+            name: release_torque_cutover
+            tasks_from: prepared-control-plane
+          when: not (staging_environment | default(false) | bool)
+      always:
+        - name: Clear the release marker even if the torque phase failed
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
 
 - name: Quiesce all selected torque ownership endpoints before the API changes
   hosts: kiosk
@@ -99,11 +131,19 @@
   tags:
     - torque-cutover
   tasks:
-    - name: Attempt the complete quiesce boundary on this kiosk
-      ansible.builtin.include_role:
-        name: release_torque_cutover
-        tasks_from: quiesce-kiosk
-      when: not (staging_environment | default(false) | bool)
+    - name: Exclude weekly OS updates throughout this torque release phase
+      block:
+        - name: Mark the release and wait for an in-flight OS updater
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Attempt the complete quiesce boundary on this kiosk
+          ansible.builtin.include_role:
+            name: release_torque_cutover
+            tasks_from: quiesce-kiosk
+          when: not (staging_environment | default(false) | bool)
+      always:
+        - name: Clear the release marker even if the torque phase failed
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
 
 - name: Aggregate QUIESCED and restore all reachable kiosks on shared failure
   hosts: kiosk
@@ -113,11 +153,19 @@
   tags:
     - torque-cutover
   tasks:
-    - name: Cross the shared quiesce boundary
-      ansible.builtin.include_role:
-        name: release_torque_cutover
-        tasks_from: quiesce-finalize
-      when: not (staging_environment | default(false) | bool)
+    - name: Exclude weekly OS updates throughout this torque release phase
+      block:
+        - name: Mark the release and wait for an in-flight OS updater
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Cross the shared quiesce boundary
+          ansible.builtin.include_role:
+            name: release_torque_cutover
+            tasks_from: quiesce-finalize
+          when: not (staging_environment | default(false) | bool)
+      always:
+        - name: Clear the release marker even if the torque phase failed
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
 
 - name: Finalize QUIESCED before changing the control plane
   hosts: server
@@ -128,11 +176,19 @@
   tags:
     - torque-cutover
   tasks:
-    - name: Require every kiosk to be quiesced before Pi5 mutation
-      ansible.builtin.include_role:
-        name: release_torque_cutover
-        tasks_from: quiesce-control-plane
-      when: not (staging_environment | default(false) | bool)
+    - name: Exclude weekly OS updates throughout this torque release phase
+      block:
+        - name: Mark the release and wait for an in-flight OS updater
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Require every kiosk to be quiesced before Pi5 mutation
+          ansible.builtin.include_role:
+            name: release_torque_cutover
+            tasks_from: quiesce-control-plane
+          when: not (staging_environment | default(false) | bool)
+      always:
+        - name: Clear the release marker even if the torque phase failed
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
 
 - name: Prepare and switch the Pi5 control plane
   hosts: server
@@ -167,11 +223,19 @@
   tags:
     - torque-cutover
   tasks:
-    - name: Cross the stage, agent-health, and browser-resume boundaries together
-      ansible.builtin.include_role:
-        name: release_torque_cutover
-        tasks_from: finalize
-      when: not (staging_environment | default(false) | bool)
+    - name: Exclude weekly OS updates throughout this torque release phase
+      block:
+        - name: Mark the release and wait for an in-flight OS updater
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Cross the stage, agent-health, and browser-resume boundaries together
+          ansible.builtin.include_role:
+            name: release_torque_cutover
+            tasks_from: finalize
+          when: not (staging_environment | default(false) | bool)
+      always:
+        - name: Clear the release marker even if the torque phase failed
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
 
 - name: Switch the prepared Pi3 Signage artifact
   hosts: signage

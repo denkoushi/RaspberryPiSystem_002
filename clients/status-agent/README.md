@@ -36,6 +36,16 @@ Pi4 SDカード予防保全用パラメータ:
 | `STORAGE_HEALTH_WRITE_WARN_GB_PER_DAY` | `10` | 直近24時間（最低12時間）の平均書込量がこの値(GB/日)以上なら `WARN`。2026-09-30の実測はPi4 7台で約0.8〜1.5GB/日 |
 | `STATUS_AGENT_LOG_SUCCESS` | `0` | 成功時のローカルログ追記。SDカード書込削減のため既定は無効 |
 
+OS安全更新監視用パラメータ（Pi5 / Pi4 / Pi3共通）:
+
+| 変数 | 既定値 | 説明 |
+| --- | --- | --- |
+| `OS_SECURITY_UPDATE_STATE_FILE` | `/var/lib/raspi-os-security-update/state.json` | 更新ジョブの状態。ファイルがない・読めない・不正な場合は通知しない |
+| `OS_SECURITY_UPDATE_STALE_DAYS` | `15` | 最終成功（なければ導入日）からこの日数を超えると未更新を通知 |
+| `OS_SECURITY_UPDATE_HEALTH_STATE_FILE` | `/run/raspi-status-agent/os-update-health.json` | episodeと送信済み状態。POST成功後だけ送信済みにし、未送信の異常は24時間ごとに再試行。復旧もPOST成功まで再送する。tmpfsのため再起動で消える |
+
+更新失敗・長期未更新とその復旧は `os_update_health` としてChatのシステム通知に送ります。Slackには配送せず、パッケージ一覧や自由文は送信しません。
+
 ### 手動実行テスト
 
 ```bash

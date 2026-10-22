@@ -32,6 +32,7 @@ class SignageReleaseArtifactTest(unittest.TestCase):
                 "clients/status-agent/storage_health.py",
                 "clients/status-agent/network_health.py",
                 "clients/status-agent/terminal_agent_health.py",
+                "clients/status-agent/os_update_health.py",
                 "scripts/deploy/rolling_release/terminal_device_maintenance.py",
             },
         )
@@ -75,6 +76,7 @@ class SignageReleaseArtifactTest(unittest.TestCase):
                         "storage_health.py",
                         "network_health.py",
                         "terminal_agent_health.py",
+                        "os_update_health.py",
                         "terminal_device_maintenance.py",
                     },
                 )

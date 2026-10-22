@@ -1,101 +1,120 @@
 ---
-- name: Prepare, switch, and finalize one Pi4 kiosk release
+# This outer boundary includes rollback, cleanup and post-health host policy.
+- name: Exclude weekly OS updates throughout the release_kiosk lifecycle
   block:
-    - name: Prepare the Pi4 candidate while the kiosk remains visible
-      ansible.builtin.import_tasks: prepare.yml
-      when: >-
-        not (release_torque_cutover | default(false) | bool)
-        or not (release_kiosk_prepared | default(false) | bool)
+    - name: Mark the release and wait for an in-flight OS updater
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
 
-    - name: Require the pre-quiesce prepared identity for torque cutover
-      ansible.builtin.assert:
-        that:
-          - release_kiosk_prepared | default(false) | bool
-          - release_kiosk_prepared_run_id == release_run_id
-          - release_kiosk_prepared_torque_image == release_kiosk_torque_image
-      when: release_torque_cutover | default(false) | bool
-
-    - name: Notify the Pi4 before switching prepared artifacts
-      ansible.builtin.import_tasks: notice.yml
-      when:
-        - not (release_torque_cutover | default(false) | bool)
-        - release_kiosk_notice_enabled | bool
-        - not (release_kiosk_first_install | bool)
-
-    - name: Switch and verify one Pi4 kiosk
+    - name: Prepare, switch, and finalize one Pi4 kiosk release
       block:
-        - name: Switch the selected Pi4 kiosk to prepared artifacts
-          ansible.builtin.import_tasks: switch.yml
+        - name: Prepare the Pi4 candidate while the kiosk remains visible
+          ansible.builtin.import_tasks: prepare.yml
+          when: >-
+            not (release_torque_cutover | default(false) | bool)
+            or not (release_kiosk_prepared | default(false) | bool)
 
-        - name: Verify the selected Pi4 kiosk
-          ansible.builtin.import_tasks: health.yml
-
-        - name: Record a fully staged torque candidate
-          ansible.builtin.set_fact:
-            release_kiosk_stage_succeeded: true
+        - name: Require the pre-quiesce prepared identity for torque cutover
+          ansible.builtin.assert:
+            that:
+              - release_kiosk_prepared | default(false) | bool
+              - release_kiosk_prepared_run_id == release_run_id
+              - release_kiosk_prepared_torque_image == release_kiosk_torque_image
           when: release_torque_cutover | default(false) | bool
-      rescue:
-        - name: Restore the selected Pi4 kiosk
-          ansible.builtin.import_tasks: rollback.yml
-          when: not (release_kiosk_first_install | bool)
 
-        - name: Propagate a first-install switch failure to empty rollback
-          ansible.builtin.fail:
-            msg: "{{ ansible_failed_result.msg | default('Pi4 first-install switch or health failed') }}"
+        - name: Notify the Pi4 before switching prepared artifacts
+          ansible.builtin.import_tasks: notice.yml
+          when:
+            - not (release_torque_cutover | default(false) | bool)
+            - release_kiosk_notice_enabled | bool
+            - not (release_kiosk_first_install | bool)
+
+        - name: Switch and verify one Pi4 kiosk
+          block:
+            - name: Switch the selected Pi4 kiosk to prepared artifacts
+              ansible.builtin.import_tasks: switch.yml
+
+            - name: Verify the selected Pi4 kiosk
+              ansible.builtin.import_tasks: health.yml
+
+            - name: Record a fully staged torque candidate
+              ansible.builtin.set_fact:
+                release_kiosk_stage_succeeded: true
+              when: release_torque_cutover | default(false) | bool
+          rescue:
+            - name: Restore the selected Pi4 kiosk
+              ansible.builtin.import_tasks: rollback.yml
+              when: not (release_kiosk_first_install | bool)
+
+            - name: Propagate a first-install switch failure to empty rollback
+              ansible.builtin.fail:
+                msg: "{{ ansible_failed_result.msg | default('Pi4 first-install switch or health failed') }}"
+              when: release_kiosk_first_install | bool
+
+        # Host policy is post-health and survives application rollback.
+        - name: Converge the Pi4 kiosk weekly OS security update policy
+          block:
+            - name: Apply the shared weekly OS security update policy
+              ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update.yml"
+          rescue:
+            - name: Report the unapplied OS security update policy without failing the release
+              ansible.builtin.debug:
+                msg: "Weekly OS security update policy was not applied on {{ inventory_hostname }}; the release continues."
+
+        - name: Persist completed first-install identity after verified health
+          ansible.builtin.copy:
+            dest: "{{ release_kiosk_run_root }}/completed-{{ inventory_hostname }}.json"
+            content: "{{ {'host': inventory_hostname, 'sha': release_sha, 'runId': release_run_id} | to_json }}\n"
+            owner: root
+            group: root
+            mode: '0600'
           when: release_kiosk_first_install | bool
+      rescue:
+        - name: Return a failed first-install to empty, including prepare failures
+          ansible.builtin.import_tasks: rollback.yml
+          when:
+            - release_kiosk_first_install | bool
+            - release_kiosk_first_install_started | default(false) | bool
 
-    - name: Persist completed first-install identity after verified health
-      ansible.builtin.copy:
-        dest: "{{ release_kiosk_run_root }}/completed-{{ inventory_hostname }}.json"
-        content: "{{ {'host': inventory_hostname, 'sha': release_sha, 'runId': release_run_id} | to_json }}\n"
-        owner: root
-        group: root
-        mode: '0600'
-      when: release_kiosk_first_install | bool
-  rescue:
-    - name: Return a failed first-install to empty, including prepare failures
-      ansible.builtin.import_tasks: rollback.yml
-      when:
-        - release_kiosk_first_install | bool
-        - release_kiosk_first_install_started | default(false) | bool
+        - name: Preserve the Pi4 release failure
+          ansible.builtin.fail:
+            msg: "{{ ansible_failed_result.msg | default('Pi4 release failed') }}"
+      always:
+        - name: Clear the Pi4 deploy-status display from Pi5
+          ansible.builtin.command:
+            argv:
+              - python3
+              - '{{ release_kiosk_notice_project_dir }}/scripts/deploy/kiosk_release_notice.py'
+              - clear
+              - --project
+              - '{{ release_kiosk_notice_project_dir }}'
+              - --run-id
+              - '{{ release_run_id }}'
+              - --client
+              - '{{ status_agent_client_id }}'
+          delegate_to: localhost
+          become: false
+          register: release_kiosk_notice_clear
+          changed_when: (release_kiosk_notice_clear.rc | default(1)) == 0
+          failed_when: false
+          when:
+            - not (release_torque_cutover | default(false) | bool)
+            - status_agent_client_id | default('') | trim | length > 0
+            - not (release_kiosk_first_install | bool)
 
-    - name: Preserve the Pi4 release failure
-      ansible.builtin.fail:
-        msg: "{{ ansible_failed_result.msg | default('Pi4 release failed') }}"
+        - name: Warn if the Pi4 deploy-status display could not be cleared
+          ansible.builtin.debug:
+            msg: 'WARNING: kiosk notice cleanup failed; remove-run and the API expiry remain available'
+          when: (release_kiosk_notice_clear.rc | default(0)) != 0
+
+        - name: Remove run-scoped Pi4 preparation data
+          ansible.builtin.import_tasks: cleanup.yml
+          when:
+            - not (release_torque_cutover | default(false) | bool)
+            - >-
+              not (release_kiosk_first_install | bool)
+              or not (release_kiosk_first_install_started | default(false) | bool)
+              or release_kiosk_healthy | default(false) | bool
+              or release_kiosk_rolled_back | default(false) | bool
   always:
-    - name: Clear the Pi4 deploy-status display from Pi5
-      ansible.builtin.command:
-        argv:
-          - python3
-          - '{{ release_kiosk_notice_project_dir }}/scripts/deploy/kiosk_release_notice.py'
-          - clear
-          - --project
-          - '{{ release_kiosk_notice_project_dir }}'
-          - --run-id
-          - '{{ release_run_id }}'
-          - --client
-          - '{{ status_agent_client_id }}'
-      delegate_to: localhost
-      become: false
-      register: release_kiosk_notice_clear
-      changed_when: (release_kiosk_notice_clear.rc | default(1)) == 0
-      failed_when: false
-      when:
-        - not (release_torque_cutover | default(false) | bool)
-        - status_agent_client_id | default('') | trim | length > 0
-        - not (release_kiosk_first_install | bool)
-
-    - name: Warn if the Pi4 deploy-status display could not be cleared
-      ansible.builtin.debug:
-        msg: 'WARNING: kiosk notice cleanup failed; remove-run and the API expiry remain available'
-      when: (release_kiosk_notice_clear.rc | default(0)) != 0
-
-    - name: Remove run-scoped Pi4 preparation data
-      ansible.builtin.import_tasks: cleanup.yml
-      when:
-        - not (release_torque_cutover | default(false) | bool)
-        - >-
-          not (release_kiosk_first_install | bool)
-          or not (release_kiosk_first_install_started | default(false) | bool)
-          or release_kiosk_healthy | default(false) | bool
-          or release_kiosk_rolled_back | default(false) | bool
+    - name: Clear the release marker even if rollback or cleanup failed
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"

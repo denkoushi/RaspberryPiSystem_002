@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Raspberry Pi OS security updates weekly at night
+
+[Timer]
+OnCalendar={{ os_security_update_oncalendar }} Asia/Tokyo
+RandomizedDelaySec={{ os_security_update_randomized_delay_sec }}
+FixedRandomDelay=true
+Persistent=true
+
+[Install]
+WantedBy=timers.target

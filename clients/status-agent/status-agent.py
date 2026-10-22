@@ -23,6 +23,7 @@ import shutil
 
 import storage_health
 import terminal_agent_health
+import os_update_health
 
 try:
     import network_health
@@ -87,6 +88,9 @@ def parse_config_file(path: Path) -> Dict[str, str]:
         "TERMINAL_AGENT_HEALTH_STATE_FILE",
         str(terminal_agent_health.DEFAULT_STATE_FILE),
     )
+    config.setdefault("OS_SECURITY_UPDATE_STATE_FILE", str(os_update_health.DEFAULT_STATE_FILE))
+    config.setdefault("OS_SECURITY_UPDATE_STALE_DAYS", str(os_update_health.DEFAULT_STALE_DAYS))
+    config.setdefault("OS_SECURITY_UPDATE_HEALTH_STATE_FILE", str(os_update_health.DEFAULT_HEALTH_STATE_FILE))
     config.setdefault("NETWORK_HEALTH_ENABLED", "1")
     config.setdefault("STATUS_AGENT_LOG_SUCCESS", "0")
     return config
@@ -287,6 +291,7 @@ def build_payload(config: Dict[str, str], *, force_storage_health: bool = False)
         finally:
             mark_storage_health_checked(config)
     logs.extend(terminal_agent_health.collect_logs(config))
+    logs.extend(os_update_health.collect_logs(config))
     if network_health is not None:
         network_health.append_log(config, logs)
     payload["logs"] = logs
@@ -353,6 +358,7 @@ def main() -> int:
 
         post_payload(config, payload)
         terminal_agent_health.mark_logs_delivered(config, list(payload.get("logs", [])))
+        os_update_health.mark_logs_delivered(config, list(payload.get("logs", [])))
         storage_health.mark_wear_logs_delivered(config, list(payload.get("logs", [])))
         if storage_health.is_truthy(config.get("STATUS_AGENT_LOG_SUCCESS")):
             location = config.get("LOCATION")

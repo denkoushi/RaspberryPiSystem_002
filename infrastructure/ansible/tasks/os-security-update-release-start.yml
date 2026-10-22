@@ -1,0 +1,30 @@
+---
+# Write BEFORE waiting: a new updater sees the marker after the current one exits.
+- name: Create the volatile release guard directory
+  ansible.builtin.file:
+    path: "{{ os_security_update_release_marker | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Mark this host as actively releasing before its first mutation
+  ansible.builtin.copy:
+    dest: "{{ os_security_update_release_marker }}"
+    content: "{{ release_run_id }} {{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Wait up to thirty minutes for the OS security updater to finish
+  ansible.builtin.command:
+    argv: [flock, '-w', '1800', "{{ os_security_update_lock_path }}", 'true']
+  register: os_security_update_release_lock
+  changed_when: false
+  failed_when: false
+
+- name: Fail this host before mutation when the updater lock could not be acquired
+  ansible.builtin.assert:
+    that:
+      - os_security_update_release_lock.rc == 0
+    fail_msg: 'OS security updater lock was not acquired within 1800 seconds; release mutations have not started.'

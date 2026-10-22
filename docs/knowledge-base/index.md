@@ -73,6 +73,7 @@ update-frequency: high
 | 手順書の「整える」に組立の現場の知識を持たせる | [KB-420](./KB-420-procedure-tidy-site-context.md) | 1件 | 2026-10-14: 既存の組立作業標準書21枚から現場の理解（製品の成り立ち・部品の役目・作業の意味・決まり）をまとめ、業務LLMの指示文へ要約を差し込み |
 | 手動順番で「編集」後の一覧が重い（機種名の引き方） | [KB-422](./KB-422-kiosk-manual-order-edit-slow-machine-name.md) | 1件 | 2026-10-20: 一覧APIの約2秒は機種名の付与。進捗集計の流用をやめ機種名だけ引く SQL にして約0.05秒、結果は本番で同一 |
 | CSV取込の「届かない」「中身が変わらない」をフローティングChatで知らせる | [KB-423](./KB-423-csv-feed-freshness-notice.md) | 1件 | 2026-10-21: Power BI レポートの自動更新停止で部品納期個数CSVが9/17から同じ中身。全CSV取込を1時間ごとに見張り、届かない・新しい行が増えないとき通知し、直れば復旧しました |
+| 業務ラズパイの OS 安全更新を週1回夜間に入れる | [KB-424](./KB-424-os-security-weekly-update.md) | 1件 | 2026-10-22: RPi の +rpt 版で unattended-upgrades が効かないため自前で選別。Docker・カーネル・ファームウェアは除外、自動再起動なし、本番反映と排他、失敗と溜まりをフローティングChatへ。まず1台だけ実際に入れる |
 | kensakuMain で動画を開くと画面が止まって震えた（OS更新で解消） | [KB-421](./KB-421-kensakumain-video-freeze-os-upgrade.md) | 1件 | 2026-10-16: 画面が古い2枚を交互に表示し閉じるも反映されない。kensakuMainだけlabwc 0.8.4。OS全体を最新にして再起動し、動画の表示と閉じるを確認 |
 | キオスク在庫（毎日のNFC画面と準備画面の分離） | [KB-409](./KB-409-kiosk-inventory-daily-and-setup-screens.md) | 1件 | 2026-09-26: 在庫操作でパスワードなし修正・置き場所選択、在庫の準備はテンキー解除とタブ化。デプロイ中のmainマージ禁止の教訓 |
 | キオスク順位ボード（左ツールスタック背景不透明化リグレッション） | [KB-396](./KB-396-leader-board-left-panel-opacity-regression.md) | 1件 | **`0c57d5a0`**·`kioskPanelClassName` 半透明リグレッション修正·実機未確認 |

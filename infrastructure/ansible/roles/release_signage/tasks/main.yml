@@ -1,17 +1,26 @@
 ---
-- name: Prepare, switch, and finalize one Pi3 Signage release
+# This outer boundary includes rollback, cleanup and post-health host policy.
+- name: Exclude weekly OS updates throughout the release_signage lifecycle
   block:
-    - name: Prepare the controller artifact, stop Pi3 services, and stage the release
-      ansible.builtin.import_tasks: prepare.yml
+    - name: Mark the release and wait for an in-flight OS updater
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
 
-    - name: Switch Pi3 Signage to the prepared release
-      ansible.builtin.import_tasks: switch.yml
+    - name: Prepare, switch, and finalize one Pi3 Signage release
+      block:
+        - name: Prepare the controller artifact, stop Pi3 services, and stage the release
+          ansible.builtin.import_tasks: prepare.yml
 
-    - name: Verify Pi3 Signage health
-      ansible.builtin.import_tasks: health.yml
-  rescue:
-    - name: Restore or restart the previous Pi3 Signage release
-      ansible.builtin.import_tasks: rollback.yml
+        - name: Switch Pi3 Signage to the prepared release
+          ansible.builtin.import_tasks: switch.yml
+
+        - name: Verify Pi3 Signage health
+          ansible.builtin.import_tasks: health.yml
+      rescue:
+        - name: Restore or restart the previous Pi3 Signage release
+          ansible.builtin.import_tasks: rollback.yml
+      always:
+        - name: Remove Pi3 run-scoped staging data
+          ansible.builtin.import_tasks: cleanup.yml
   always:
-    - name: Remove Pi3 run-scoped staging data
-      ansible.builtin.import_tasks: cleanup.yml
+    - name: Clear the release marker even if rollback or cleanup failed
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"

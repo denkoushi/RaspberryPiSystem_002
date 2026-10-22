@@ -12,6 +12,20 @@ beforeEach(() => {
   vi.resetAllMocks(); mocks.device.mockResolvedValue({ name: '端末', location: 'StoneBase01' });
 });
 describe('alert notice bridges', () => {
+  it.each([
+    ['os_security_update_failed', 'OSの安全更新を入れられませんでした。'],
+    ['os_security_updates_stale', 'OSの安全更新が2週間以上入っていません。']
+  ])('opens and recovers OS notice %s under its own stable key', async (signal, body) => {
+    for (const action of ['unhealthy', 'recovery']) {
+      await deliverTelemetryNotice('raspi5-server', {
+        level: action === 'recovery' ? 'INFO' : 'WARN', message: '',
+        context: { category: 'os_update_health', action, signal }
+      });
+    }
+    const key = JSON.stringify(['os_update_health', 'raspi5-server', signal]);
+    expect(mocks.deliver).toHaveBeenNthCalledWith(1, { key, title: 'StoneBase01 OS更新', body, state: 'open' });
+    expect(mocks.deliver).toHaveBeenNthCalledWith(2, { key, title: 'StoneBase01 OS更新', body, state: 'recovered' });
+  });
   it.each(['mac-kiosk-1', 'zero2w-home'])('ignores telemetry from %s', async (clientId) => {
     await deliverTelemetryNotice(clientId, { level: 'ERROR', message: '', context: { category: 'storage_health', signal: 'io' } });
     expect(mocks.deliver).not.toHaveBeenCalled();
