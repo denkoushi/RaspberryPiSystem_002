@@ -2,11 +2,14 @@ import clsx from 'clsx';
 import { memo, useId, useRef, useState } from 'react';
 
 import { MaterialArrivalBadge } from '../../../components/kiosk/MaterialArrivalBadge';
+import { KioskResourceProcessChips } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { LeaderBoardRankPickerDropdown } from '../leaderOrderBoard/LeaderBoardRankPickerDropdown';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
+import { planningBoardPartKey } from './gantt/planningBoardGanttLayout';
 import { PlanningBoardCompletionButton } from './PlanningBoardCompletionButton';
 import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
+import { usePlanningBoardProcessChips } from './planningBoardProcessChips';
 import {
   resolveGrindingPlanningBoardDueDate,
   resolveGrindingPlanningBoardResource
@@ -92,6 +95,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   specialDueEnabled,
   specialDueExpired
 }: PlanningBoardItemTableRowProps) {
+  const processChips = usePlanningBoardProcessChips().get(planningBoardPartKey(item));
   const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
   const currentDue = resolveGrindingPlanningBoardDueDate(item, allocation);
   const rank = allocation === 'alternate' ? item.alternateRank : item.originalRank;
@@ -154,6 +158,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               </span>
               <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} />
             </div>
+            {processChips ? <KioskResourceProcessChips processes={processChips} className="mt-0.5" /> : null}
           </div>
         ) : (
           <>
@@ -169,6 +174,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                 <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} className="mt-0.5" />
               </>
             ) : null}
+            {processChips ? <KioskResourceProcessChips processes={processChips} className="mt-0.5" /> : null}
           </>
         )}
       </td>

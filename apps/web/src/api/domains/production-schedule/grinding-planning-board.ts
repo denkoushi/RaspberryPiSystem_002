@@ -1,6 +1,8 @@
 import { api } from '../../http';
 
 import type {
+  GrindingPlanningBoardProcessChipsRequest,
+  GrindingPlanningBoardProcessChipsResponse,
   GrindingPlanningBoardResourceCapacityRequest,
   GrindingPlanningBoardResourceCapacityResponse,
   GrindingPlanningBoardCategory,
@@ -20,6 +22,19 @@ import type {
   GrindingPlanningBoardDueScopeSnapshot,
   GrindingPlanningBoardSeibanCandidatesResponse
 } from '@raspi-system/shared-types';
+
+export async function getKioskGrindingPlanningBoardProcessChips(body: GrindingPlanningBoardProcessChipsRequest) {
+  const chipsByPartKey: GrindingPlanningBoardProcessChipsResponse['chipsByPartKey'] = {};
+  // Progressive board loading can exceed the endpoint's per-request limit.
+  for (let offset = 0; offset < body.parts.length; offset += 1000) {
+    const { data } = await api.post<GrindingPlanningBoardProcessChipsResponse>(
+      '/kiosk/production-schedule/grinding-planning-board/process-chips',
+      { parts: body.parts.slice(offset, offset + 1000) }
+    );
+    Object.assign(chipsByPartKey, data.chipsByPartKey);
+  }
+  return { chipsByPartKey };
+}
 
 export type KioskGrindingPlanningBoardQuery = {
   category: GrindingPlanningBoardCategory;

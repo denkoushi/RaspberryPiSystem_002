@@ -37,7 +37,7 @@ const COVERAGE_ORDER = {
   relevance: '関連度の高い順',
   source_order: 'ソース順',
 };
-const UNAVAILABLE_ANSWER = '検索に失敗しました。該当なしとは判断していません。';
+export const UNAVAILABLE_ANSWER = '検索に失敗しました。該当なしとは判断していません。';
 const TYPESAFE_FAILURE_CODES = new Set([
   'missing_credentials', 'transport_unavailable', 'upstream_http', 'invalid_json',
   'invalid_answers', 'timeout', 'connection_failed',
@@ -170,7 +170,7 @@ export function noOtherAnswer(shownCount) {
   return `さきほど示した${shownCount}件のほかに、条件に合う記録は見つかりませんでした。`;
 }
 
-function clarificationAnswer(clarification) {
+export function clarificationAnswer(clarification) {
   const lines = ['次の候補から選んでください。'];
   for (const group of clarification?.candidates ?? []) {
     const values = (group?.candidates ?? []).filter((value) => typeof value === 'string' && value);
@@ -197,7 +197,7 @@ function confirmationPending(question, clarification, answer) {
   };
 }
 
-function formatBreakdown(plan, groups, total, catalog) {
+export function formatBreakdown(plan, groups, total, catalog) {
   const fields = catalogEntries(catalog).flatMap(entry => entry.fields);
   const conditions = plan.filters.flatMap(filter => {
     const field = fields.find(field => field.key === filter.field);
@@ -216,7 +216,7 @@ function formatBreakdown(plan, groups, total, catalog) {
   return `${conditions.join('・') || '全期間・全部署'}の不適合 ${total} 件の${label}の内訳: ${buckets || (other ? '' : '該当なし')}${other}`;
 }
 
-function formatRecords(results, catalog) {
+export function formatRecords(results, catalog) {
   const entries = catalogEntries(catalog);
   const records = (results ?? []).flatMap((result) => {
     const entry = entries.find((entry) => entry.id === result.sourceId);
