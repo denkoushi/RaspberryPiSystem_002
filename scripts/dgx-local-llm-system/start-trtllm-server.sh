@@ -19,6 +19,21 @@ SERVER_COMMAND="${BLUE_SERVER_COMMAND:-${TRTLLM_SERVER_COMMAND:-}}"
 HOST_VENV_PATH="${BLUE_HOST_VENV_PATH:-${TRTLLM_HOST_VENV_PATH:-}}"
 EXTRA_DOCKER_ARGS="${BLUE_EXTRA_DOCKER_ARGS:-${TRTLLM_EXTRA_DOCKER_ARGS:-}}"
 
+check_running_profile() {
+  # Calls without a profile retain the legacy already-running behavior.
+  if [[ -n "${BLUE_MODEL_PROFILE_ID:-}" ]]; then
+    local running_profile
+    running_profile="$(docker inspect --format '{{index .Config.Labels "dgx.profile"}}' "${CONTAINER_NAME}")"
+    if [[ -z "${running_profile}" || "${running_profile}" == "<no value>" ]]; then
+      running_profile="business_qwen38_flash_next_nvfp4"
+    fi
+    if [[ "${running_profile}" != "${BLUE_MODEL_PROFILE_ID}" ]]; then
+      echo "running container profile mismatch: running=${running_profile} requested=${BLUE_MODEL_PROFILE_ID}; stop before switching profiles" >&2
+      exit 1
+    fi
+  fi
+}
+
 install -d "$(dirname "${LOG_PATH}")"
 
 if [[ "${MODE}" != "container" && "${MODE}" != "host" ]]; then
@@ -33,13 +48,17 @@ fi
 if [[ -n "${BLUE_SERVER_ADAPTER:-}" ]]; then
   case "${BLUE_SERVER_ADAPTER}" in
     vllm) ;; # Explicitly select the standard builder over inherited adapters.
-    qwen38_flash_next)
+    qwen38_flash_next|glm53_flash_tp2)
       if [[ "${MODE}" == "container" ]]; then
         RUNNING_NAME="$(docker ps --filter "name=^/${CONTAINER_NAME}$" --format '{{.Names}}' | tr -d '\r')"
         if [[ "${RUNNING_NAME}" == "${CONTAINER_NAME}" ]]; then
+          check_running_profile
           echo "trtllm-server already running container=${CONTAINER_NAME}"
           exit 0
         fi
+      fi
+      if [[ "${BLUE_SERVER_ADAPTER}" == "glm53_flash_tp2" ]]; then
+        exec "${SCRIPT_DIR}/glm53-flash-tp2-adapter.sh"
       fi
       exec "${SCRIPT_DIR}/qwen38-flash-next-adapter.sh"
       ;;
@@ -104,6 +123,7 @@ fi
 
 RUNNING_NAME="$(docker ps --filter "name=^/${CONTAINER_NAME}$" --format '{{.Names}}' | tr -d '\r')"
 if [[ "${RUNNING_NAME}" == "${CONTAINER_NAME}" ]]; then
+  check_running_profile
   echo "trtllm-server already running container=${CONTAINER_NAME}"
   exit 0
 fi

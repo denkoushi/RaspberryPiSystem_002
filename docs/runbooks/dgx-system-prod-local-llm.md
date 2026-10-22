@@ -1309,6 +1309,39 @@ NODE
 
 **参照**: [docs/plans/dgx-spark-optimization-execplan-202607.md](../plans/dgx-spark-optimization-execplan-202607.md) · [ADR-20260705](../decisions/ADR-20260705-dgx-spark-gb10-inference-performance-parameters.md)
 
+## GLM-5.3-Flash(2台)への切替とロールバック {#glm53-flash-tp2}
+
+実機操作は保守時間内に利用者が行う。Control Plane の後方互換対応(CP1)を先に反映する。
+GLM 稼働中は Spark 2 の GPU も業務 worker が専有するため、私用モデルと同時には使えない。
+
+1. Spark 1 の `/srv/dgx/system-prod/bin/` に `glm53-flash-tp2-adapter.sh`、
+   `start-trtllm-server.sh`、`stop-trtllm-server.sh`、`profile_launcher.py`、`gateway-server.py` を配置する。
+   shell は実行可能にし、既存の control/gateway 起動手順で Python の変更を再読込する。
+   例の `model-registry.examples/business_glm53_flash_fp4_tp2/manifest.json` は
+   `/srv/dgx/shared-models/registry/business_glm53_flash_fp4_tp2/manifest.json` に配置する。
+2. head の重みは `/srv/dgx/system-prod/data/models/GLM-5.3-Flash-FP4-Local`、
+   worker は `/home/ubudgxkoushi/models/GLM-5.3-Flash-FP4-Local` に用意する。
+   `ubudgxkoushi` から `ssh -o BatchMode=yes -o ConnectTimeout=10 ubudgxkoushi@192.168.100.11` と
+   Docker の利用を確認し、manifest の image を両ノードに事前取得する（`blueServerImage` で digest 固定も可）。
+   `blueCacheDir` は両ノードそれぞれの同じ絶対パスにマウントするローカル cache である。
+   registry の storage 検証は head 側のみで、worker のディレクトリは起動時に SSH で検査する。
+3. keep-warm と Pi5 の on-demand が Qwen を再起動しない保守状態にし、標準制御経路で `/stop-force` を送る。
+   Pi5 の `*_RUNTIME_START_PROFILE_ID`、CP の `dgx_keep_warm_profile_id` と
+   `dgx_private_shared_business_profile_id` を GLM の ID に揃え、
+   `/start {"modelProfileId":"business_glm53_flash_fp4_tp2"}` を送る。
+   起動コマンドはコンテナ起動だけで戻るため、`/v1/models` の `system-prod-primary` と
+   active profile、priority 付き会話・画像・思考制御を別途確認して保守状態を解除する。
+4. ロールバックは同じ保守状態で `/stop-force` を送り、両コンテナの停止を確認する。
+   指す先を `business_qwen38_flash_next_nvfp4` に戻し、同 ID で `/start` して応答を確認する。
+   Qwen の重みは経過観察が終わるまで残す。
+
+両 rank に `dgx.profile` ラベルを付け、要求 ID は launcher が `BLUE_MODEL_PROFILE_ID` で渡す。
+別 profile の head が稼働中なら `/start` は失敗するので、先に `/stop-force` を行う。
+worker の停止情報は `/srv/dgx/system-prod/state/blue-remote-worker.json`
+（起動・停止共通の `BLUE_REMOTE_WORKER_MARKER_PATH` で変更可）に残す。
+SSH 停止失敗時は marker を保持して非0を返すため、接続を復旧して停止を再実行する。
+drop_caches は両ノードで特権一時コンテナから実行し、失敗は stderr に記録して起動を続ける。
+
 ## Nemotron 3.5 Lightning + DSpark の段階導入
 
 対象は `business_nemotron35_lightning_dspark_nvfp4`。初期manifestは **disabled / 非推奨 / textのみ**。
