@@ -15,7 +15,8 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
       shelfCodeRaw: true,
       displayLabel: true,
       tier: true,
-      macroZoneId: true
+      macroZoneId: true,
+      photo: { select: { updatedAt: true } }
     },
     orderBy: { shelfCodeRaw: 'asc' }
   });
@@ -25,6 +26,7 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
     return {
       shelfCodeRaw: r.shelfCodeRaw,
       displayLabel: r.displayLabel,
+      photoUpdatedAt: r.photo?.updatedAt.toISOString() ?? null,
       macroZoneId: r.macroZoneId,
       ...(r.tier != null ? { tier: r.tier } : parsed.tier != null ? { tier: parsed.tier } : {}),
       ...parsed
@@ -35,6 +37,7 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
 export type RegisterMobilePlacementShelfInput = {
   clientDeviceId: string;
   shelfCodeRaw: string;
+  displayLabel?: string | null;
 };
 
 /**
@@ -62,6 +65,7 @@ export async function registerMobilePlacementShelf(
     await prisma.mobilePlacementShelf.create({
       data: {
         shelfCodeRaw: raw,
+        displayLabel: input.displayLabel?.trim() || null,
         createdByClientDeviceId: input.clientDeviceId
       }
     });
@@ -80,6 +84,8 @@ export async function registerMobilePlacementShelf(
   return {
     shelf: {
       shelfCodeRaw: raw,
+      displayLabel: input.displayLabel?.trim() || null,
+      photoUpdatedAt: null,
       ...parsed
     }
   };

@@ -5,8 +5,9 @@ import type { useMobilePlacementPageState } from '../useMobilePlacementPageState
 export type HaizenState = ReturnType<typeof useMobilePlacementPageState>;
 
 /** Serialize automatic verification so an older response cannot overwrite the latest pair. */
-export function useHaizenWorkflow(mp: HaizenState) {
-  const { transferOrder, actualOrder, runSlipVerify, setOrderBarcode, scanField } = mp;
+export function useHaizenWorkflow(mp: HaizenState, enabled = true) {
+  const { transferOrder, actualOrder, actualFseiban, runSlipVerify, setOrderBarcode, scanField } = mp;
+  const [retryCount, setRetryCount] = useState(0);
   const queue = useRef(Promise.resolve());
   const [verified, setVerified] = useState<typeof runSlipVerify | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -16,7 +17,7 @@ export function useHaizenWorkflow(mp: HaizenState) {
   useEffect(() => {
     let current = true;
     setVerified(null);
-    if (transferOrder.trim() && actualOrder.trim() && scanField === null) {
+    if (enabled && transferOrder.trim() && (actualOrder.trim() || actualFseiban.trim()) && scanField === null && !mp.actualSlipImageOcrBusy) {
       queue.current = queue.current.then(async () => {
         if (!current) return;
         await runSlipVerify();
@@ -24,7 +25,7 @@ export function useHaizenWorkflow(mp: HaizenState) {
       });
     }
     return () => { current = false; };
-  }, [transferOrder, actualOrder, runSlipVerify, scanField]);
+  }, [retryCount, enabled, transferOrder, actualOrder, actualFseiban, runSlipVerify, scanField, mp.actualSlipImageOcrBusy]);
 
   const {
     registerMessage, setTransferOrder, setTransferPart, setActualOrder, setActualPart,
@@ -55,11 +56,8 @@ export function useHaizenWorkflow(mp: HaizenState) {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const pending = Boolean(transferOrder.trim() && actualOrder.trim()) &&
+  const pending = Boolean(enabled && transferOrder.trim() && (actualOrder.trim() || actualFseiban.trim())) &&
     (verified !== runSlipVerify || mp.slipVerifying);
-  const result = transferOrder.trim() && actualOrder.trim() && !pending ? mp.slipResult : 'idle';
-  const step: 'transferOrder' | 'actualOrder' | 'shelf' | 'register' = !transferOrder.trim() ? 'transferOrder'
-    : !actualOrder.trim() || result === 'ng' ? 'actualOrder'
-    : !mp.shelfCode.trim() ? 'shelf' : 'register';
-  return { pending, result, step, toast };
+  const result = enabled && transferOrder.trim() && (actualOrder.trim() || actualFseiban.trim()) && !pending ? mp.slipResult : 'idle';
+  return { pending, result, toast, retry: () => setRetryCount((n) => n + 1) };
 }
