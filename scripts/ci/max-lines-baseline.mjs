@@ -27,7 +27,29 @@ const baselinePath = path.join(appDir, 'eslint-max-lines-baseline.json');
 const require = createRequire(path.join(appDir, 'package.json'));
 const { ESLint } = require('eslint');
 
-const eslint = new ESLint({
+const eslintMajor = Number(ESLint.version.split('.')[0]);
+const eslint = new ESLint(eslintMajor >= 9 ? {
+  errorOnUnmatchedPattern: false,
+  cwd: appDir,
+  overrideConfigFile: true,
+  overrideConfig: [{
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
+      '**/__tests__/**',
+      'src/test/**',
+      'src/generated/**'
+    ],
+    languageOptions: {
+      parser: require('@typescript-eslint/parser'),
+      parserOptions: { ecmaVersion: 'latest', sourceType: 'module', ecmaFeatures: { jsx: true } }
+    },
+    rules: { 'max-lines': ['error', { max: LIMIT, skipBlankLines: true, skipComments: true }] }
+  }]
+} : {
   errorOnUnmatchedPattern: false,
   cwd: appDir,
   useEslintrc: false,
@@ -47,7 +69,8 @@ const eslint = new ESLint({
   }
 });
 
-const results = await eslint.lintFiles(['src/**/*.ts', 'src/**/*.tsx']);
+// Flat config selects the extensions; directory traversal also avoids minimatch's glob partial-match differences.
+const results = await eslint.lintFiles(eslintMajor >= 9 ? ['src'] : ['src/**/*.ts', 'src/**/*.tsx']);
 const current = {};
 for (const result of results) {
   for (const message of result.messages) {
