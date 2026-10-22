@@ -1,4 +1,4 @@
-# KB-424: 業務ラズパイの OS 安全更新を週1回夜間に入れる
+# KB-425: 業務ラズパイの OS 安全更新を週1回夜間に入れる
 
 ## 何をしたか（2026-10-22）
 
@@ -12,6 +12,15 @@
 - Raspberry Pi OS は Debian の安全更新を `+rptN` 付きで作り直し、`archive.raspberrypi.com`（a=stable）から配る。例: Debian-Security が `155.0.8059.79-1~deb13u1` を出すと、RPi 版は `1:155.0.8059.79-1~deb13u1+rpt1` になり、こちらが選ばれる。
 - unattended-upgrades は配布元（origin）で絞るため、Debian-Security に絞ると `+rpt` 版の chromium や openssl が永遠に入らない。RPi の stable を許すと安全更新でない更新（デスクトップ部品など）まで入る。
 - 実機で確かめたところ、Pi5 で動いていた旧 unattended-upgrades（KB-416 で有効化）は `+rpt` 版の安全更新を1つも入れていなかった。そのため旧設定は `APT::Periodic::Unattended-Upgrade "0"` で止め、この仕組みに置き換えた。
+
+### Pi5 の旧設定は反映後どうなるか（二重に動かない理由）
+
+- 2026-10-22 の Pi5 の状態: `/etc/apt/apt.conf.d/` で `APT::Periodic` を書いているのは `20auto-upgrades`（Debian パッケージ、"1"）と `52raspi-unattended-upgrades`（旧 Ansible、"1"）の2つだけ。`apt-daily.timer`、`apt-daily-upgrade.timer`、`unattended-upgrades.service` はどれも有効。
+- 反映すると `infrastructure/ansible/tasks/os-security-update.yml` が `52raspi-unattended-upgrades` を `raspi-disable-periodic-upgrades.conf.j2` の中身で上書きする（`Update-Package-Lists`、`Unattended-Upgrade`、`AutocleanInterval` をすべて "0"）。この上書きは、ファイルがあるか、unattended-upgrades パッケージが入っている端末で必ず行い、`os_security_update_enabled: false` でも行う。
+- APT は `apt.conf.d` を名前順に読み、後のファイルが勝つ。`52` は `20auto-upgrades` より後なので "0" が勝つ。Pi5 の実際のファイル一式に新しい `52` を差し替えた一時コピーで `apt-config dump` を実行し、3つとも "0" になることを確かめた（同じ手順で、今の `52` のままだと "1" になることも確かめた）。
+- `apt-daily*.timer` は止めずに残す。毎日起動はするが、`apt.systemd.daily` が `APT::Periodic` の値を見て、"0" なら一覧の更新も自動更新も行わない。`unattended-upgrades.service` は停止時の後始末用で、設定上は更新を行わない（`InstallOnShutdown` は既定の false）。
+- パッケージ `unattended-upgrades` と `20auto-upgrades`、`50unattended-upgrades` は消さない（Debian のファイルを書き換えないため）。
+- 反映後に確かめるには: `apt-config dump | grep APT::Periodic` で3つが "0" になっていること。
 
 ## 対象と除外
 
