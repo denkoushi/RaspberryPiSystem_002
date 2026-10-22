@@ -50,7 +50,8 @@ const IMMERSIVE_PATH_EXACT = new Set<string>([
   ...KIOSK_BORROW_IMMERSIVE_PATH_EXACT,
   '/kiosk/production-schedule',
   '/kiosk/documents',
-  '/kiosk/inventory'
+  '/kiosk/inventory',
+  '/kiosk/inventory/haizen'
 ]);
 
 /**

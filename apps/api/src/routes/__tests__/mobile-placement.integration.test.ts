@@ -83,6 +83,36 @@ describe('mobile-placement API', () => {
     });
   });
 
+  it('GET /api/mobile-placement/haizen-overview requires client authentication', async () => {
+    for (const headers of [{}, { 'x-client-key': 'invalid-overview-client' }]) {
+      const res = await app.inject({ method: 'GET', url: '/api/mobile-placement/haizen-overview', headers });
+      expect(res.statusCode).toBe(401);
+    }
+  });
+
+  it('GET /api/mobile-placement/haizen-overview returns current branches across shelves with machine names', async () => {
+    const { apiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.create({ data: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID, name: 'overview schedule', columnDefinitions: {}, templateConfig: {} } });
+    await prisma.csvDashboardRow.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+      rowData: { ProductNo: '9876543210', FSEIBAN: 'OVERVIEW-TEST', FHINCD: 'MH-OVERVIEW', FHINMEI: 'ＲＶ－１２Ａ', FSIGENCD: 'G1', FKOJUN: '1' }
+    } });
+    const request = (url: string, payload: object) => app.inject({ method: 'POST', url: `/api/mobile-placement/${url}`, headers: { 'x-client-key': apiKey }, payload });
+    for (const shelfCodeRaw of ['西-北-01', '東-南-02']) {
+      const registered = await request('register-order-placement', { shelfCodeRaw, manufacturingOrderBarcodeRaw: '9876543210' });
+      expect(registered.statusCode).toBe(200);
+    }
+    const res = await app.inject({ method: 'GET', url: '/api/mobile-placement/haizen-overview', headers: { 'x-client-key': apiKey } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.truncated).toBe(false);
+    expect(body.rows).toHaveLength(2);
+    expect(body.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ shelfCodeRaw: '西-北-01', manufacturingOrderBarcodeRaw: '9876543210', branchNo: 1, fseiban: 'OVERVIEW-TEST', fhincd: 'MH-OVERVIEW', fhinmei: 'ＲＶ－１２Ａ', machineName: 'ＲＶ－１２Ａ', updatedAt: expect.any(String) }),
+      expect.objectContaining({ shelfCodeRaw: '東-南-02', branchNo: 2, machineName: 'ＲＶ－１２Ａ' })
+    ]));
+  });
+
   it('GET /api/mobile-placement/resolve-item returns item when itemCode matches', async () => {
     const { apiKey: clientApiKey } = await createTestClientDevice();
     const item = await createTestItem({ itemCode: 'MP-TEST-ITEM-001' });

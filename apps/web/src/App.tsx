@@ -50,6 +50,7 @@ import { KioskAssemblyTraceabilityPage } from './pages/kiosk/KioskAssemblyTracea
 import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
+import { KioskHaizenPage } from './pages/kiosk/KioskHaizenPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskItemInventoryDashboardPage } from './pages/kiosk/KioskItemInventoryDashboardPage';
 import { KioskItemInventoryPage } from './pages/kiosk/KioskItemInventoryPage';
@@ -199,6 +200,7 @@ function App() {
           <Route path="/kiosk" element={<KioskRedirect />} />
           <Route path="/kiosk/portal" element={<KioskPortalPage />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
+          <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
           <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
           <Route path="/kiosk/inventory/dashboard" element={<KioskItemInventoryDashboardPage />} />
           <Route path="/kiosk/inventory/settings" element={<KioskItemInventorySettingsPage />} />
