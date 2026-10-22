@@ -98,6 +98,14 @@ describe('Haizen hub', () => {
     expect(screen.getByText('バーコードを読む')).toBeInTheDocument();
     expect(screen.getByText('写真から選ぶ')).toBeInTheDocument();
   });
+  it('notes when the 現品票 material code was matched by part name', async () => {
+    vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: true, reason: 'match', matchedBy: 'part_name',
+      expected: { fseiban: 'FS1', fhincd: 'PART1', partName: 'ブラケット' }, actual: { fseiban: 'FS1', partCode: 'MAT9' } });
+    mount();
+    typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    expect(screen.getByText(/を品名で照合/)).toHaveTextContent('素材 MAT9 を品名で照合');
+  });
   it('keeps supplementary inputs in verification and rechecks changes', async () => {
     mount();
     typeSlips();

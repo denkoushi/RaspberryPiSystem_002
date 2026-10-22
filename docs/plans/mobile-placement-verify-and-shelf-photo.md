@@ -47,6 +47,7 @@ The register API already requires only the manufacturing order and shelf. The ve
 
 - Keep internal mismatch codes and expose them as `legacyReason` while `reason` uses the requested UI vocabulary. Existing `ok` and `actualResolvedBy` remain unchanged. Repository consumers do not branch on the old codes.
 - Compute the first free shelf number in the web form from registered shelves; retain server duplicate detection for concurrent edits.
+- (2026-10-22, field check) Some buyers print the material code on the 現品票 instead of the finished part code (example: 製番 BA1S9306, 移動票 MD004121632 vs 現品票 MD100492280, both named ナットホルダー). No BOM or material-to-part column exists in the purchase or schedule CSVs, and the purchase CSV `FSEZONO` is empty on material rows (KB-297). So when the 製番 matches and the code does not, the purchase row's part name is compared with the schedule `FHINMEI` (NFKC, spaces removed). A name match returns `ok` with `matchedBy: 'part_name'`, and the screen shows which material code was used. Field checks of the first release (6 items) passed; a completed order no longer in the schedule is reported as 見つからない, which is accepted.
 
 ## Outcomes & Retrospective
 
