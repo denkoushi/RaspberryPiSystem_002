@@ -1171,6 +1171,46 @@ describe('BusinessHermesConsultationService', () => {
   );
 
   it.each([
+    { question: 'チップの登録手順', screen: '在庫の準備' },
+    { question: 'ノギスの持出の仕方', screen: '計測機器 持出' }
+  ])('answers a how-to question after a guide miss from the guide: $question', async ({ question, screen }) => {
+    const fixture = troubleFixture();
+    const operationGuide = KioskOperationGuideIndex.fromDirectory(fileURLToPath(new URL('../../../../../docs/kiosk-operation-guide', import.meta.url)));
+    fixture.subjectResolver.resolve.mockResolvedValue(question.startsWith('ノギス') ? ['instrument'] : ['inventory']);
+    const service = new BusinessHermesConsultationService({ ...fixture.deps, operationGuide });
+    const first = await service.chat({ consultationId, message: 'チップの検索手順' });
+    const selection = { prompt: first.confirmation!.prompt, option: '画面の操作方法を見る' };
+    const miss = await service.chat({ consultationId, message: selection.option, selection });
+    expect(miss.guide).toBeUndefined();
+    fixture.sourceResolver.resolveAndSearch.mockClear();
+    const answer = await service.chat({ consultationId, message: question });
+    expect(answer).toMatchObject({ status: 'ready', needsClarification: false, guide: { screen } });
+    expect(answer.consultation.messages.at(-1)?.searchDiagnostics).toEqual([
+      { kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: false, direct: true }
+    ]);
+    expect(fixture.fetchImpl).not.toHaveBeenCalled();
+    expect(fixture.sourceResolver.resolveAndSearch).not.toHaveBeenCalled();
+  });
+
+  it.each(['超硬チップの欠け', '関連の記録について知りたい'])(
+    'keeps a non-how-to question after a guide miss on the LLM path: %s', async (question) => {
+      const fixture = troubleFixture();
+      const operationGuide = KioskOperationGuideIndex.fromDirectory(fileURLToPath(new URL('../../../../../docs/kiosk-operation-guide', import.meta.url)));
+      fixture.subjectResolver.resolve.mockResolvedValue(['inventory']);
+      fixture.fetchImpl.mockImplementation(async () => completedResponse('通常の回答'));
+      const service = new BusinessHermesConsultationService({ ...fixture.deps, operationGuide });
+      const first = await service.chat({ consultationId, message: 'チップの検索手順' });
+      const selection = { prompt: first.confirmation!.prompt, option: '画面の操作方法を見る' };
+      await service.chat({ consultationId, message: selection.option, selection });
+      fixture.subjectResolver.resolve.mockClear();
+      const answer = await service.chat({ consultationId, message: question });
+      expect(answer.guide).toBeUndefined();
+      expect(fixture.fetchImpl).toHaveBeenCalledOnce();
+      expect(fixture.subjectResolver.resolve).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
     { strength: 'screen', question: '自主検査', matches: true },
     { strength: 'keyword', question: 'チップの登録手順', matches: true },
     { strength: 'keyword', question: '社員証の登録', matches: false },
