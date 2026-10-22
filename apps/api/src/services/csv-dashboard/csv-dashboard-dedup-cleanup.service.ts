@@ -16,6 +16,12 @@ type CleanupDuplicateLosersParams = {
   keyColumns: string[];
   keys: Array<Record<string, string>>;
   winnerOrder: WinnerOrderSpec[];
+  /**
+   * 指定時は削除候補を dataHash がこの中にある行へ絞る（[csvDashboardId, dataHash] index を使う）。
+   * 同じキー値の行は同じ dataHash を持つので、キー一致の判定はそのまま残しつつ
+   * ダッシュボード全行の JSON 列走査を避けられる。
+   */
+  dataHashes?: string[];
 } & CleanupBatchOptions;
 
 type CleanupDuplicateLosersGloballyParams = {
@@ -59,6 +65,14 @@ export class CsvDashboardDedupCleanupService {
       return { deletedCount: 0 };
     }
 
+    const dataHashes =
+      params.dataHashes === undefined
+        ? undefined
+        : [...new Set(params.dataHashes.filter((hash) => hash.length > 0))];
+    if (dataHashes !== undefined && dataHashes.length === 0) {
+      return { deletedCount: 0 };
+    }
+
     const winnerOrder = params.winnerOrder.length > 0 ? params.winnerOrder : this.defaultWinnerOrder();
     const deleteBatchSize = Math.max(100, Math.min(params.deleteBatchSize ?? 5000, 50000));
     const keyChunkSize = Math.max(50, Math.min(params.keyChunkSize ?? 300, 2000));
@@ -68,6 +82,8 @@ export class CsvDashboardDedupCleanupService {
     const rankedPartitionSql = this.buildPartitionBySql(keyColumns);
     const keyJoinSql = this.buildJoinSql(keyColumns);
     const winnerOrderSql = this.buildWinnerOrderSql(winnerOrder);
+    const dataHashScopeSql =
+      dataHashes === undefined ? Prisma.empty : Prisma.sql`AND r."dataHash" = ANY(${dataHashes}::text[])`;
 
     for (const keyChunk of keyChunks) {
       for (;;) {
@@ -92,6 +108,7 @@ export class CsvDashboardDedupCleanupService {
             INNER JOIN keys AS k
               ON ${keyJoinSql}
             WHERE r."csvDashboardId" = ${params.csvDashboardId}
+              ${dataHashScopeSql}
           ),
           to_delete AS (
             SELECT "id" FROM ranked WHERE rn > 1 LIMIT ${deleteBatchSize}
