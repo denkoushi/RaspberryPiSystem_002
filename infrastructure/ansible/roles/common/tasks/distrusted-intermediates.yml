@@ -1,0 +1,149 @@
+---
+# Also imported directly by the standard artifact release plays, which do not
+# run common/main.yml or select a terminal_release_mode.
+- name: Distrust the compromised eMudhra G3B intermediates on the host
+  become: true
+  vars:
+    distrusted_intermediates:
+      - filename: emudhra-dv-tls-ca-g3b.pem
+        nickname: EM DV TLS CA - G3B
+        fingerprint: '42:C4:AC:CD:12:C4:F5:95:97:92:5E:1A:08:A7:A9:01:02:60:85:43:80:93:08:D5:0E:C4:27:E1:18:BA:14:93'
+      - filename: emudhra-ov-tls-ca-g3b.pem
+        nickname: EM OV TLS CA - G3B
+        fingerprint: '98:B8:96:62:5C:0C:23:0A:DE:EC:3E:B2:CF:6A:AD:50:01:EC:F9:15:6A:68:64:4E:82:37:4C:E5:83:3B:C2:5B'
+      - filename: emudhra-ev-tls-ca-g3b.pem
+        nickname: EM EV TLS CA - G3B
+        fingerprint: 'E7:56:8F:E6:E1:23:31:F4:FD:7D:E6:1D:A4:C7:55:9D:0F:8E:B1:92:A2:18:D4:74:1A:3B:A7:51:84:33:38:38'
+    distrusted_intermediates_directory: /usr/local/share/raspi-distrusted-intermediates
+    # Kiosk systemd and signage session owners use ansible_user; on Pi5 this
+    # is the operator desktop account. Resolve its home/GID rather than root's.
+    distrusted_nss_home: "{{ getent_passwd[ansible_user][4] }}"
+    distrusted_nss_database: "sql:{{ distrusted_nss_home }}/.pki/nssdb"
+  block:
+    - name: Read the controller intermediate certificate fingerprints
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -in
+          - "{{ role_path }}/../../files/distrusted-intermediates/{{ item.filename }}"
+          - -noout
+          - -sha256
+          - -fingerprint
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      changed_when: false
+      loop: "{{ distrusted_intermediates }}"
+      loop_control:
+        label: "{{ item.nickname }}"
+      register: distrusted_intermediate_fingerprints
+
+    - name: Require all intermediate certificates to match the pinned SHA-256 fingerprints
+      ansible.builtin.assert:
+        that:
+          - item.stdout.split('=')[-1] | trim | upper == item.item.fingerprint
+        fail_msg: "Fingerprint mismatch for {{ item.item.filename }}; refusing certificate distrust changes."
+      loop: "{{ distrusted_intermediate_fingerprints.results }}"
+      loop_control:
+        label: "{{ item.item.nickname }}"
+
+    - name: Inspect the operating-system CA selection file
+      ansible.builtin.stat:
+        path: /etc/ca-certificates.conf
+      register: distrusted_ca_configuration
+
+    - name: Deselect only the emSign ECC G3 root if its selection line exists
+      ansible.builtin.lineinfile:
+        path: /etc/ca-certificates.conf
+        regexp: '^!?mozilla/emSign_ECC_Root_CA_-_G3\.crt$'
+        line: '!mozilla/emSign_ECC_Root_CA_-_G3.crt'
+        # With backrefs, a missing match leaves the file unchanged.
+        backrefs: true
+      when: distrusted_ca_configuration.stat.exists
+      register: distrusted_ca_selection
+
+    - name: Refresh OS trust after changing the emSign root selection
+      ansible.builtin.command:
+        argv: [/usr/sbin/update-ca-certificates]
+      when: distrusted_ca_selection is changed
+      changed_when: true
+
+    - name: Install NSS certificate management tools
+      ansible.builtin.apt:
+        name: libnss3-tools
+        state: present
+
+    - name: Resolve the Chromium session user's home and primary group
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ ansible_user }}"
+
+    - name: Ensure the Chromium user's NSS directories exist with user ownership
+      ansible.builtin.file:
+        path: "{{ distrusted_nss_home }}/{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ getent_passwd[ansible_user][2] }}"
+        mode: '0700'
+      loop:
+        - .pki
+        - .pki/nssdb
+
+    - name: Initialize the user NSS database only when missing
+      ansible.builtin.command:
+        argv: [certutil, -N, -d, "{{ distrusted_nss_database }}", --empty-password]
+        creates: "{{ distrusted_nss_home }}/.pki/nssdb/cert9.db"
+      become_user: "{{ ansible_user }}"
+
+    - name: Ensure the distrust certificate source directory exists outside the OS trust anchors
+      ansible.builtin.file:
+        path: "{{ distrusted_intermediates_directory }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy fingerprint-verified intermediate certificates
+      ansible.builtin.copy:
+        src: "{{ role_path }}/../../files/distrusted-intermediates/{{ item.filename }}"
+        dest: "{{ distrusted_intermediates_directory }}/{{ item.filename }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop: "{{ distrusted_intermediates }}"
+      loop_control:
+        label: "{{ item.nickname }}"
+
+    - name: List existing NSS certificates and trust attributes
+      ansible.builtin.command:
+        argv: [certutil, -L, -d, "{{ distrusted_nss_database }}"]
+      become_user: "{{ ansible_user }}"
+      changed_when: false
+      register: distrusted_nss_listing
+      when: not ansible_check_mode
+
+    - name: Prohibit each compromised intermediate in the Chromium user database
+      ansible.builtin.command:
+        argv:
+          - certutil
+          - -A
+          - -a
+          - -d
+          - "{{ distrusted_nss_database }}"
+          - -n
+          - "{{ item.nickname }}"
+          - -t
+          - p,p,p
+          - -i
+          - "{{ distrusted_intermediates_directory }}/{{ item.filename }}"
+      become_user: "{{ ansible_user }}"
+      loop: "{{ distrusted_intermediates }}"
+      loop_control:
+        label: "{{ item.nickname }}"
+      when:
+        - not ansible_check_mode
+        - >-
+          distrusted_nss_listing.stdout is not search(
+            '(?m)^' ~ (item.nickname | regex_escape) ~ '\\s+p,p,p\\s*$')
+      changed_when: true
