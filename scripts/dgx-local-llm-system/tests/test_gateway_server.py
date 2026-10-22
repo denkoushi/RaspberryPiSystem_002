@@ -29,6 +29,100 @@ def load_module():
     return module
 
 
+class GlmThinkingDefaultsTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.manifest = root / "registry/glm/manifest.json"
+        self.manifest.parent.mkdir(parents=True)
+        self.manifest.write_text(json.dumps({
+            "modelProfileId": "business_glm53_flash_fp4_tp2", "displayNameJa": "GLM",
+            "backend": "blue", "servedAlias": "system-prod-primary",
+            "runtimeProfile": {"chat": {"thinkingControl": "reasoning_effort"}},
+        }))
+        profile = self.module.find_model_profile(str(root / "registry"), "business_glm53_flash_fp4_tp2")
+        from active_model_state import write_active_model_state
+        self.state = root / "active-model-profile.json"
+        write_active_model_state(str(self.state), profile)
+        self.config = replace(self.module.load_config_from_env(),
+                              model_registry_root=str(root / "registry"), active_model_state_path=str(self.state))
+
+    def inject(self, payload, backend="blue", path="/v1/chat/completions"):
+        return json.loads(self.module.inject_blue_chat_completions_defaults(
+            path, json.dumps(payload).encode(), backend, self.config,
+        ))
+
+    def test_glm_defaults_without_kwargs(self):
+        self.assertEqual(self.inject({})["chat_template_kwargs"], {
+            "reasoning_effort": "low", "clear_thinking": True,
+        })
+
+    def test_glm_translates_enable_thinking_and_preserves_explicit_effort(self):
+        for enable in (True, False, None, 1, "true"):
+            for effort in ("absent", "low", "high", "medium", None):
+                with self.subTest(enable=enable, effort=effort):
+                    kwargs = {"enable_thinking": enable, "other": "kept"}
+                    if effort != "absent":
+                        kwargs["reasoning_effort"] = effort
+                    out = self.inject({"chat_template_kwargs": kwargs})["chat_template_kwargs"]
+                    self.assertNotIn("enable_thinking", out)
+                    expected = effort if effort in ("low", "high") else "high" if enable is True else "low"
+                    self.assertEqual(out, {"reasoning_effort": expected, "clear_thinking": True, "other": "kept"})
+
+    def test_glm_normalizes_top_level_effort_and_preserves_clear_thinking(self):
+        for effort in ("high", "low", "medium", "max", "none", None, 0):
+            with self.subTest(effort=effort):
+                out = self.inject({"reasoning_effort": effort, "chat_template_kwargs": {"clear_thinking": False}})
+                self.assertEqual(out["reasoning_effort"], "high" if effort == "high" else "low")
+                self.assertIs(out["chat_template_kwargs"]["clear_thinking"], False)
+
+    def test_missing_unknown_or_unreadable_profiles_keep_qwen_behavior(self):
+        for source in ("missing_state", "invalid_state", "unknown_profile", "missing_key", "invalid_manifest"):
+            with self.subTest(source=source):
+                state = self.state.read_bytes() if self.state.exists() else None
+                manifest = self.manifest.read_bytes()
+                if source == "missing_state":
+                    self.state.unlink()
+                elif source == "invalid_state":
+                    self.state.write_text("{")
+                elif source == "unknown_profile":
+                    self.manifest.unlink()
+                elif source == "missing_key":
+                    body = json.loads(manifest)
+                    body.pop("runtimeProfile")
+                    self.manifest.write_text(json.dumps(body))
+                else:
+                    self.manifest.write_text("{")
+                out = self.inject({})
+                self.assertEqual(out["chat_template_kwargs"], {"enable_thinking": False})
+                if state is not None:
+                    self.state.write_bytes(state)
+                self.manifest.write_bytes(manifest)
+
+    def test_qwen_payload_is_unchanged_relative_to_legacy_defaults(self):
+        self.config = replace(self.config, model_registry_root=str(MODULE_PATH.parent / "model-registry.examples"))
+        from active_model_state import write_active_model_state
+        qwen = self.module.find_model_profile(self.config.model_registry_root, "business_qwen38_flash_next_nvfp4")
+        write_active_model_state(str(self.state), qwen)
+        for payload in ({}, {"chat_template_kwargs": {"enable_thinking": True}},
+                        {"reasoning_effort": "medium", "chat_template_kwargs": {"enable_thinking": False}}):
+            body = json.dumps(payload).encode()
+            self.assertEqual(self.module.inject_blue_chat_completions_defaults(
+                "/v1/chat/completions", body, "blue", self.config,
+            ), self.module.inject_blue_chat_completions_defaults("/v1/chat/completions", body, "blue"))
+
+    def test_green_non_chat_and_invalid_bodies_unchanged(self):
+        for backend, path, body in (("green", "/v1/chat/completions", b"{}"),
+                                    ("blue", "/v1/completions", b"{}"),
+                                    ("blue", "/v1/chat/completions", b"{"),
+                                    ("blue", "/v1/chat/completions", b"[]")):
+            self.assertEqual(self.module.inject_blue_chat_completions_defaults(
+                path, body, backend, self.config,
+            ), body)
+
+
 class GatewayServerTests(unittest.TestCase):
     def test_collect_gpu_metrics_includes_detail_fields(self):
         module = load_module()

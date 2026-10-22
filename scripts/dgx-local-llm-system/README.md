@@ -203,6 +203,7 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
   - blue / vLLM / `sakamakismile/Qwen3.6-27B-NVFP4` / alias `system-prod-primary` / text only
 - `business_qwen38_flash_next_nvfp4`
   - blue / pinned MiaAI-Lab Qwen3.8 Flash Next NVFP4 adapter / alias `system-prod-primary` / text + vision
+- `business_glm53_flash_fp4_tp2`: blue / GLM-5.3-Flash-FP4 / 2台 TP2 / alias `system-prod-primary` / text + vision（[切替・ロールバック](../../docs/runbooks/dgx-system-prod-local-llm.md#glm53-flash-tp2)）
 - `business_ornith_35b_nvfp4`
   - blue / vLLM / `sakamakismile/Ornith-1.0-35B-NVFP4` / alias `system-prod-primary` / text + vision（VLM smoke 後に有効化）
 - `business_qwen35_35b_gguf`
