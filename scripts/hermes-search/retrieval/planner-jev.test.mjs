@@ -881,6 +881,16 @@ for (const intent of ['records', 'breakdown_cause', 'breakdown_organization', 'b
   });
 }
 
+test('a breakdown intent without count words in the question falls back to records', async () => {
+  const planner = createPlanner({ evaluate: async () => ({ answers: {
+    intent: { type: 'choice', choice: 'breakdown_cause' }, content: { type: 'noul', noul: true } } }) });
+  const { plan } = await planner.plan({ question: '主軸が曲がった原因は？', catalog, valueIndex: buildValueIndex([], catalog), now: '2026-10-22' });
+  assert.equal(plan.breakdown ?? null, null);
+  assert.deepEqual(plan.diagnostics.intentDecision, { chosen: 'records', gated: 'no_count_cue', heard: 'breakdown_cause' });
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+  assert.ok(plan.semanticQuery);
+});
+
 test('breakdown is scoped to the classified source and not inherited in previous state', async () => {
   const sources = loadCatalog(['nonconformity', 'knowledge_procedure']);
   const planner = createPlanner({ evaluate: async ({ state }) => {

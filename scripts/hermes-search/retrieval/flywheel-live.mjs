@@ -94,6 +94,8 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         plan: result.receipt?.plan ?? null,
         // Category ids only: which cause the planner applied, or heard and dropped.
         causeDecision: result.receipt?.causeDecision ?? null,
+        // Which answer kind the planner chose, and whether a breakdown was gated back to records.
+        intentDecision: result.receipt?.intentDecision ?? null,
         // The terms the planner could not resolve (field names, or its own questions such as
         // content, limit, period), so an ask-back can be diagnosed from the row the next morning.
         unresolved: Array.isArray(result.receipt?.unresolved) ? result.receipt.unresolved.filter((term) => typeof term === 'string' && term) : [],
