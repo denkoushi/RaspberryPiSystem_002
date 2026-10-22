@@ -95,7 +95,13 @@ const CAUSE_SOURCE = 'nonconformity';
 // A classification bucket, never something a question asks for.
 const UNKNOWN_CAUSE = 'unknown';
 
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-21';
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-22';
+
+// A breakdown (counts per cause, department or month) is accepted only when the question itself
+// talks about counts or distribution. Night 19 (2026-10-21): JEV chose a cause breakdown for 21
+// of 61 content questions that asked why one nonconformity happened, and every one of them lost.
+// A missed breakdown still returns records, so this gate errs towards records.
+const BREAKDOWN_CUE = /件数|何件|[0-9０-９]+件|多い|多かった|多く|内訳|ごと|別に|部署別|月別|要因別|分布|割合|ランキング|傾向|上位|集計|一番|最も|どの(?:要因|部署|月)|どんな要因|何が多|多発|よくある|頻度|頻発|比率|推移/u;
 
 // Choice ids that read on their own in a receipt; other choices map to their option text.
 const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry|intent|contentSpan)$/u;
@@ -237,10 +243,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       questions.intent = choiceQuestion(
         `${said('質問', '`request`')}が求める答えの種類を一つ選ぶ。意図は今回の質問だけで判断する。`,
         [
-          { id: 'records', description: '該当する記録を見たい' },
-          { id: 'breakdown_cause', description: '要因ごとの件数・多い要因を知りたい' },
-          { id: 'breakdown_organization', description: '部署ごとの件数を知りたい' },
-          { id: 'breakdown_month', description: '月ごとの件数を知りたい' },
+          { id: 'records', description: '該当する記録そのものを見たい。ある不適合の原因・理由・経緯・対処を聞く質問もここ' },
+          { id: 'breakdown_cause', description: '記録ではなく、要因の区分ごとの件数や多い順の集計を知りたい' },
+          { id: 'breakdown_organization', description: '記録ではなく、部署ごとの件数の集計を知りたい' },
+          { id: 'breakdown_month', description: '記録ではなく、月ごとの件数の集計を知りたい' },
         ],
       );
       questions.cause = choiceQuestion(
@@ -381,7 +387,9 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       });
       const planMs = Math.round(performance.now() - started);
       const answers = answersOf(evaluated);
-      const intent = chosen(answers.intent, ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']) ?? 'records';
+      const heardIntent = chosen(answers.intent, ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']) ?? 'records';
+      const breakdownGated = heardIntent !== 'records' && !BREAKDOWN_CUE.test(question);
+      const intent = breakdownGated ? 'records' : heardIntent;
       const unresolved = fromIndex ? [] : usable.slice(asked.length).map((group) => ({ term: group.term, candidates: [...group.values] }));
       const scopeIds = entries.map((entry) => entry.id);
       const scopeChoice = fromIndex ? scopeChoiceOf(answers.scope, scopeIds) : scopeIds[0];
@@ -563,7 +571,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
-          intentDecision: { chosen: intent },
+          intentDecision: { chosen: intent, ...(breakdownGated ? { gated: 'no_count_cue', heard: heardIntent } : {}) },
           causeDecision: { chosen: appliedCause ?? null, ...(causeDropped ? { dropped: true } : causeOnContent ? { dropped: 'content_search', heard: causeCategory } : {}) },
           contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
           ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
