@@ -50,7 +50,11 @@
   - ユーザーの了承を得て、`error-handler.ts` の Prisma の 2 つの分岐（型で判定する分岐と、型の判定が外れたときの予備の分岐）に P2025 を足し、404 で返すようにした。
   - 結合テスト `rigging-tags.integration.test.ts` に、存在しない吊具タグの削除が 400 を返すという今の動きを固定したテストがあった。CI で失敗して気づいたので、期待値を 404 に直した。
   - 2026-10-22 にマージし（fb406e5a）、Pi5 へ反映した（run 20261021-232817-34da4c、成功、health 200）。
-- [ ] 段階7（要判断）: ESLint 8 を 9 へ上げ、設定を新しい形式へ移す。行数の歯止めの記録スクリプトも合わせて直す。
+- [x] 段階7（要判断）: ESLint 8 を 9 へ上げ、設定を新しい形式へ移す。行数の歯止めの記録スクリプトも合わせて直す。（2026-10-22 #2220、#2227）
+  - 2026-10-22 にユーザーの「今すぐやる」の回答を受けて始めた。ESLint は 9.39.5 にした（`eslint-plugin-import` 2.32.0 が 10 系に対応していないため 9 系に留める）。typescript-eslint は 8.71.1、`eslint-plugin-react-hooks` は 5.2.0（7 系で増える React Compiler 向けの規則を入れないため）。
+  - #2220 で apps/api を、#2227 で apps/web と packages の 4 つを `eslint.config.mjs` へ移した。依存の向きの規則と日本語の文言、`import/no-cycle`、行数のラチェット（`eslint-max-lines-baseline.json`）と個別の上限は同じ内容で移した。`scripts/ci/max-lines-baseline.mjs` は #2220 で 8 と 9 の両方に対応させ、#2227 で 8 の分岐を外した。
+  - 確かめたこと: `pnpm -r lint --max-warnings=0` が通る。`apps/api/src` と `apps/web/src` に 650 行の仮ファイルを置くと `File has too many lines (650). Maximum allowed is 600` で失敗する（確認後に削除）。`max-lines-baseline.mjs check api` / `check web` の出力が移行前と同じ。lint の対象ファイルの一覧が移行前と同じ（api 2305、web 1955、kiosk-sop-core 14、part-search-core 9、shared-types 46、shelf-layout-core 7）。移行前後の規則一覧の差が、下の Decision Log に書いたものだけである。
+  - 2026-10-22 に #2220（e6483c10）と #2227（cde31f9d）をマージした。#2220 は Pi5 へ反映し（run 20261022-021946-b30856、health 200）、#2227 は後続を含む f8cda1ca として Pi5 へ反映した（run 20261022-075628-bb2afe）。開発時の道具だけの変更なので、本番の動作は変わらない。
 
 ## Surprises & Discoveries
 
@@ -75,6 +79,10 @@
   Evidence: カバレッジの出力と、`apps/api/src/**/work-instruction*.integration.test.ts` の冒頭の条件。
 - Observation: キオスクの「手動順番」画面で機器の「編集」を押すと、再描画が止まらなくなる（"Maximum update depth exceeded"）。`useManualOrderCardState` の返す関数が描画ごとに作り直され、それを依存にした画面の `useEffect` が毎回状態を書き換えていた。2026-03-20 の 76818cce から続いていた。現場で使っている画面のため、ユーザーの指示で急ぎの修正 PR（#2179）にした。
   Evidence: #2179 のテスト。修正を外すと再発防止の 2 件が失敗する。
+- Observation: typescript-eslint 8 は、型を作るためだけに使う定数（`typeof X[number]` でしか参照しない値の一覧）を未使用として警告するようになった。apps/web の `inspectionDrawingSopAnnotations.ts` の 1 件だけが該当し、書き方は意図どおりなので、理由付きの無効化コメントを 1 行足した。段階7でソースに触れたのはこの 1 行だけである。
+  Evidence: #2227 の移行後の `pnpm -r lint --max-warnings=0` の出力。
+- Observation: #2227 の CI で、lint と関係のない API テスト（`part-measurement-drawing-placement-jev-reorder.test.ts` の同時実行数の確認）が一度だけ落ちた。10ms のタイマーで同時に 2 件以上動いたことを見るテストで、混んだ CI では外れ得る。ローカルで 5 回とも通り、失敗したジョブの再実行で通った。
+  Evidence: run 39735559159 の 1 回目と再実行。
 
 ## Decision Log
 
@@ -96,6 +104,12 @@
 - Decision: 段階6で P2025 の応答を 404 に変える。文言は既存の 404 にそろえて「対象のデータが見つかりません」とし、本番以外では Prisma のメッセージを後ろに付ける。
   Rationale: 2026-10-21 にユーザーが了承した。表示が変わるのは、まれな場面の文言だけである。既存の 404 は「アイテムが見つかりません」の形だが、共通のエラーハンドラーではどの種類のデータかを確実には言えないため、「対象のデータ」とした。
   Date/Author: 2026-10-21 / Claude
+- Decision: 段階7は「同じ強さで移す」ため、ESLint 9 と typescript-eslint 8 の推奨設定で増えた規則は設定で止め、旧来の動きに揃える。止めたのは `no-constant-binary-expression`、`no-empty-static-block`、`no-unused-private-class-members`、`no-new-native-nonconstructor`、`@typescript-eslint/no-unused-expressions`、`no-require-imports`（旧来の `no-var-requires` を有効にする）、`prefer-namespace-keyword`。型検査付きの設定では `no-array-delete`、`no-unsafe-unary-minus`、`only-throw-error`、`prefer-promise-reject-errors` も止め、`no-floating-promises` と `restrict-template-expressions` の既定値を旧来に合わせた。`no-unused-vars` は catch の引数を見ず、使われていない無効化コメントも報告しない。廃止された `ban-types` は後継の 3 規則で置き換え、空の interface は許す。上流で推奨から外れた `no-inner-declarations`、`no-class-assign`、`no-with` は外れたままにする。
+  Rationale: 段階7の目的は道具の更新で、指摘の基準を変えることではない。増えた規則を有効にすると多くのファイルの書き換えが要り、並行する PR と衝突する。新しい規則を使うかどうかは、必要になったときに 1 規則ずつ別の PR で決める。
+  Date/Author: 2026-10-22 / Claude
+- Decision: `--ext` が廃止されたので、lint は `eslint .`（api と packages）と `eslint src`（web）にし、設定側で .ts/.tsx だけに絞る。新しい形式は JavaScript とドットファイルも既定で対象にするため、それらは除外して対象を移行前と同じにする。
+  Rationale: 対象ファイルを増やすと、今まで見ていなかった設定ファイル類の指摘が出て、同じ強さの移行にならない。
+  Date/Author: 2026-10-22 / Claude
 
 ## 要判断（その段階に着いたときにユーザーへ一度だけ確認する）
 
@@ -111,7 +125,7 @@
 
 ## Context and Orientation
 
-リポジトリは pnpm のワークスペースで、`apps/api`（Fastify と Prisma のサーバー、TypeScript）、`apps/web`（React と Vite の画面。キオスクと管理画面）、`packages/*`（共有型などの小さな共通パッケージ）からなる。サーバー側は `apps/api/src/routes`（HTTP の入口）、`apps/api/src/services`（業務処理）、`apps/api/src/lib`（共通部品）の三層で、`apps/api/.eslintrc.cjs` が依存の向き（routes → services → lib）を強制している。配備は `scripts/update-all-clients.sh` から Ansible で Pi5 サーバーと Pi4 キオスクへ反映する。
+リポジトリは pnpm のワークスペースで、`apps/api`（Fastify と Prisma のサーバー、TypeScript）、`apps/web`（React と Vite の画面。キオスクと管理画面）、`packages/*`（共有型などの小さな共通パッケージ）からなる。サーバー側は `apps/api/src/routes`（HTTP の入口）、`apps/api/src/services`（業務処理）、`apps/api/src/lib`（共通部品）の三層で、`apps/api/eslint.config.mjs`（段階7の前は `.eslintrc.cjs`）が依存の向き（routes → services → lib）を強制している。配備は `scripts/update-all-clients.sh` から Ansible で Pi5 サーバーと Pi4 キオスクへ反映する。
 
 用語を定める。queryKey は、画面側のデータ取得ライブラリ（TanStack Query）が取得結果を覚えておくときの名札で、`['kiosk-production-schedule', 'leaderboard-shell', params]` のような配列である。保存や更新の後に「この名札で始まる取得結果を捨てて取り直す」（無効化、`invalidateQueries`）ことで画面を最新にする。名札を各ファイルに直書きすると、一文字違いで無効化が効かなくなる。前期では移動棚配置、工具・貸出、生産スケジュールの名札を `apps/web/src/api/queryKeys/` の定義ファイル（`tools.ts`、`productionSchedule.ts`）に集め、値をテストで固定した。
 
