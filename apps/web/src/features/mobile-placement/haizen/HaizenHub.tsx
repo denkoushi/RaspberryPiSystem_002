@@ -5,7 +5,7 @@ import { haizenPhoneColors as colors, haizenPhoneStyle, hp } from '../ui/haizenP
 
 import { HaizenIcon } from './HaizenIcon';
 import { HaizenSheet } from './HaizenSheet';
-import { HaizenShelfPhotoPicker } from './HaizenShelfPhotoPicker';
+import { HaizenShelfPhotoList, HaizenShelfPhotoPicker } from './HaizenShelfPhotoPicker';
 import { HaizenStub } from './HaizenStub';
 import { useHaizenWorkflow } from './useHaizenWorkflow';
 
@@ -13,9 +13,12 @@ import type { HaizenState } from './useHaizenWorkflow';
 import type { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import type { useRegisteredShelves } from '../useRegisteredShelves';
 
+const topLinks = [
+  { short: '購買', label: '購買照会', path: '/kiosk/purchase-order-lookup', icon: 'receipt', color: colors.lime },
+  { short: '部品', label: '部品を探す', path: '/kiosk/mobile-placement/part-search', icon: 'search', color: colors.shelf }
+] as const;
+
 const menuTiles = [
-  { label: '部品を探す', hint: '名前から棚を見つける', path: '/kiosk/mobile-placement/part-search', icon: 'search', color: colors.shelf },
-  { label: '購買照会', hint: '注文番号を読む', path: '/kiosk/purchase-order-lookup', icon: 'receipt', color: colors.lime },
   { label: 'パレット', hint: '加工機ごとの部品', path: '/kiosk/mobile-placement/pallet-viz', icon: 'pallet', color: colors.teal },
   { label: 'Zero2W 配膳', hint: '棚スキャナの記録', path: '/kiosk/mobile-placement/zero2w-status', icon: 'zero', color: colors.slip },
   { label: '棚マスタ', hint: '工場の棚の配置を変える', path: '/kiosk/mobile-placement/shelf-master', icon: 'grid', color: colors.actual }
@@ -37,6 +40,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
     try { localStorage.setItem('haizen-tab', next); } catch { /* Storage may be disabled on the kiosk. */ }
   };
   const flow = useHaizenWorkflow(mp, tab === 'verify');
+  const previousShelfCodes = [...new Set(branches.data?.branches.map((b) => b.shelfCodeRaw) ?? [])];
   const selectedShelf = shelves.data?.shelves.find((s) => s.shelfCodeRaw === mp.shelfCode);
   const clearActual = () => {
     mp.setActualOrder(''); mp.setActualFseiban(''); mp.setActualPart('');
@@ -68,12 +72,16 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
 
   return <div style={haizenPhoneStyle} className={`fixed inset-0 z-40 flex h-dvh flex-col ${hp.surface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]`}>
     <div className="relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col">
-      <header className="flex items-center gap-2 px-3.5 pb-2 pt-3.5">
-        <div role="tablist" aria-label="作業" className="grid flex-1 grid-cols-2 gap-1 rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)] p-1">
+      <header className="flex items-center gap-1.5 px-3.5 pb-2 pt-3.5">
+        <div role="tablist" aria-label="作業" className="grid flex-[2] grid-cols-2 gap-1 rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)] p-1">
           {(['verify', 'place'] as const).map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => switchTab(t)}
             className="h-10 rounded-[10px] text-[17px] font-black tracking-widest text-[var(--hp-ink2)] aria-selected:bg-[var(--hp-ink)] aria-selected:text-[var(--hp-bg)]">{t === 'verify' ? '照合' : '配膳'}</button>)}
         </div>
-        <button type="button" aria-label="ほかの画面" onClick={() => setSheet('menu')} className="grid h-12 w-12 place-items-center rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)]">•••</button>
+        {topLinks.map((link) => <button key={link.path} type="button" aria-label={link.label} onClick={() => onNavigate(link.path)}
+          className="flex h-12 min-w-0 flex-1 items-center justify-center gap-1 rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)] text-[15px] font-black">
+          <span style={{ color: link.color }}><HaizenIcon name={link.icon} className="h-[18px] w-[18px]" /></span>{link.short}
+        </button>)}
+        <button type="button" aria-label="ほかの画面" onClick={() => setSheet('menu')} className="grid h-12 w-11 shrink-0 place-items-center rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)]">•••</button>
       </header>
       <main className="flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-1.5">
         <HaizenStub label="移動票" subtitle="製造order" prompt="バーコードを読む" value={mp.transferOrder} color={colors.slip} active={!mp.transferOrder.trim()}
@@ -122,6 +130,10 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
             </div>
           </div>}
         </>}
+        <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
+          <HaizenShelfPhotoList compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
+            loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={mp.shelfCode} onSelect={mp.selectShelf} />
+        </section>
         </>}
         <button type="button" className={`self-start py-1.5 text-[13px] font-bold underline underline-offset-4 ${hp.muted}`} onClick={() => setSheet('inputs')}>手入力</button>
       </main>
@@ -130,19 +142,19 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
       </div>}
       <footer className={hp.dock}>
         <button type="button" disabled={disabled} style={{ background: cfg.color }} className={hp.primary} onClick={cfg.action}>
-          <HaizenIcon name={tab === 'place' && mp.shelfCode || flow.result === 'ok' ? 'check' : 'scan'} className="h-[26px] w-[26px] shrink-0" />
+          <HaizenIcon name={tab === 'place' && mp.transferOrder.trim() && mp.shelfCode || flow.result === 'ok' ? 'check' : 'scan'} className="h-[26px] w-[26px] shrink-0" />
           <span>{mp.registerSubmitting ? '処理中…' : tab === 'verify' && flow.pending ? '照合中…' : cfg.label}</span>
         </button>
       </footer>
     </div>
-    {sheet === 'shelves' && <HaizenShelfPhotoPicker shelves={shelves.data?.shelves ?? []} previousShelfCodes={[...new Set(branches.data?.branches.map((b) => b.shelfCodeRaw) ?? [])]}
+    {sheet === 'shelves' && <HaizenShelfPhotoPicker shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
       loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={mp.shelfCode}
       onSelect={(code) => { mp.selectShelf(code); setSheet(null); }} onClose={() => setSheet(null)}
       onScan={() => { setSheet(null); mp.setScanField('shelf'); }} onMaster={onShelfMaster} />}
     {sheet && sheet !== 'shelves' && <HaizenSheet title={sheet === 'menu' ? 'ほかの画面' : '部品番号・手入力'} onClose={() => setSheet(null)}>
       {sheet === 'menu' && <div className="grid grid-cols-2 gap-2">
         {menuTiles.map((tile, i) => <button key={tile.path} type="button" aria-label={tile.label} onClick={() => onNavigate(tile.path)}
-          className={`flex rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-bg)] px-3.5 py-3 text-left text-base font-black leading-tight ${i === 4 ? 'col-span-2 h-16 flex-row items-center gap-3.5' : 'h-[88px] flex-col items-start justify-between'}`}>
+          className={`flex rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-bg)] px-3.5 py-3 text-left text-base font-black leading-tight ${i === menuTiles.length - 1 ? 'col-span-2 h-16 flex-row items-center gap-3.5' : 'h-[88px] flex-col items-start justify-between'}`}>
           <span style={{ color: tile.color }}><HaizenIcon name={tile.icon} /></span><span>{tile.label}<small className={`mt-0.5 block text-[11px] font-bold tracking-[.02em] ${hp.faint}`}>{tile.hint}</small></span>
         </button>)}
       </div>}
