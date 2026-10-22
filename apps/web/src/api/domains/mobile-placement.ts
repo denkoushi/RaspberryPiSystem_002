@@ -186,6 +186,7 @@ export type MobilePlacementSlipMatchResponse = {
   actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
   expected?: { fseiban: string; fhincd: string; partName?: string };
   actual?: { fseiban?: string; partCode?: string };
+  matchedBy?: 'part_name';
 };
 
 /** 移動票・現品票の (FSEIBAN, FHINCD) ペア照合 */

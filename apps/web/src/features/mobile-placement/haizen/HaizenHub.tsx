@@ -98,6 +98,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
             {(flow.result === 'ok' || flow.result === 'ng') && mp.slipDetails?.expected && <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[17px] font-bold text-[var(--hp-ink)]">
               <span>{mp.slipDetails.expected.fseiban}</span><span>{mp.slipDetails.expected.fhincd}</span><span className={`font-sans text-[13px] ${hp.muted}`}>{mp.slipDetails.expected.partName}</span>
             </div>}
+            {flow.result === 'ok' && mp.slipDetails?.matchedBy === 'part_name' && <p className={`text-sm ${hp.muted}`}>素材 <span className="font-mono">{mp.slipDetails.actual?.partCode}</span> を品名で照合</p>}
           </section>}
         </> : <>
           <HaizenStub label="棚" subtitle="置く場所" prompt="写真から選ぶ" value={mp.shelfCode} color={colors.shelf} active={Boolean(mp.transferOrder.trim()) && !mp.shelfCode}
