@@ -377,3 +377,21 @@ export async function getMobilePlacementHaizenCurrent(params?: {
   });
   return data;
 }
+
+/** Current Android placement branches, independently of the Zero2W haizen-current projection. */
+export type HaizenOverviewRow = {
+  id: string;
+  shelfCodeRaw: string;
+  manufacturingOrderBarcodeRaw: string;
+  branchNo: number;
+  fseiban: string | null;
+  fhincd: string | null;
+  fhinmei: string | null;
+  machineName: string | null;
+  updatedAt: string;
+};
+
+export async function getHaizenOverview() {
+  const { data } = await api.get<{ rows: HaizenOverviewRow[]; truncated: boolean }>('/mobile-placement/haizen-overview');
+  return data;
+}
