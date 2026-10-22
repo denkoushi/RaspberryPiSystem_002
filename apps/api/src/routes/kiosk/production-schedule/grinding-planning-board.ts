@@ -1,6 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import type { GrindingPlanningBoardProcessChipsRequest, GrindingPlanningBoardProcessChipsResponse } from '@raspi-system/shared-types';
+
+import { buildLeaderboardPartFooterChipLookupKey } from '../../../services/production-schedule/leaderboard/leaderboard-part-footer-chip-key.js';
+import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from '../../../services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.js';
+
 import {
   getGrindingPlanningBoard,
   getGrindingPlanningBoardLoad,
@@ -41,6 +46,14 @@ const querySchema = z.object({
 });
 
 const sourceRevisionSchema = z.string().min(1).max(256);
+
+const processChipsBodySchema: z.ZodType<GrindingPlanningBoardProcessChipsRequest> = z.object({
+  parts: z.array(z.object({
+    fseiban: z.string().trim().min(1).max(100),
+    productNo: z.string().trim().max(100),
+    fhincd: z.string().trim().min(1).max(100)
+  })).max(1000)
+});
 
 const dueSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('date'), date: z.string() }),
@@ -139,6 +152,29 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
+  app.post('/kiosk/production-schedule/grinding-planning-board/process-chips', { config: { rateLimit: false } }, async (request): Promise<GrindingPlanningBoardProcessChipsResponse> => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const { parts } = processChipsBodySchema.parse(request.body);
+    if (parts.length === 0) return { chipsByPartKey: {} };
+    const uniqueParts = new Map(parts.map((part) => [
+      buildLeaderboardPartFooterChipLookupKey({ seibanJoinKey: part.fseiban, productNo: part.productNo, fhincd: part.fhincd }),
+      part
+    ]));
+    const chipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+      rows: [...uniqueParts].map(([id, part]) => ({
+        id,
+        seibanJoinKey: part.fseiban,
+        rowData: { FSEIBAN: part.fseiban, ProductNo: part.productNo, FHINCD: part.fhincd }
+      })),
+      // These are part identities, not displayed CsvDashboardRow IDs.
+      preferredDisplayRowIds: [],
+      locationKey: scope.deviceScopeKey,
+      siteKey: scope.siteKey
+    });
+    return { chipsByPartKey: chipsByPartKey ?? {} };
+  });
+
   app.get('/kiosk/production-schedule/grinding-planning-board', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);

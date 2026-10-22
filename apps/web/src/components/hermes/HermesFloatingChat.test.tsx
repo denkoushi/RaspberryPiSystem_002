@@ -904,6 +904,31 @@ describe('HermesFloatingChat', () => {
     expect(await screen.findByText('工程：フライス加工。現象：側面に打痕を確認。処置：選別して隔離。')).toBeInTheDocument();
   });
 
+  it('starts a new record search session when the chat is reset with consultations available', async () => {
+    mocks.getTrialScope.mockResolvedValue({ enabled: true, snapshotCount: 6, organizedCount: 6 });
+    mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
+    mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: '3件見つかりました', recordIds: ['fixture-nc-001'], elapsedMs: 5 });
+
+    renderChat();
+    fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'JEV記録' }));
+    await waitFor(() => expect(mocks.listConsultations).toHaveBeenCalledOnce());
+    const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(input, { target: { value: '今年多い要因は？' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledOnce());
+    expect(await screen.findByText('3件見つかりました')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'リセット' }));
+    await waitFor(() => expect(screen.queryByText('3件見つかりました')).not.toBeInTheDocument());
+    fireEvent.click(await screen.findByRole('button', { name: 'JEV記録' }));
+    const nextInput = screen.getByRole('textbox', { name: 'Hermesへの質問' });
+    fireEvent.change(nextInput, { target: { value: '今年多い要因は？' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.sendTrialAnswer).toHaveBeenCalledTimes(2));
+    expect(mocks.sendTrialAnswer.mock.calls[1][0].sessionId).not.toBe(mocks.sendTrialAnswer.mock.calls[0][0].sessionId);
+  });
+
   it('switches explicitly to knowledge, preserves draft and attachments, and routes intake only there', async () => {
     mocks.knowledgeGet.mockImplementation(async (url: string) => ({ data: url.endsWith('capabilities') ? { enabled: true } : { intakes: [] } }));
     mocks.knowledgePost.mockResolvedValue({ data: {
