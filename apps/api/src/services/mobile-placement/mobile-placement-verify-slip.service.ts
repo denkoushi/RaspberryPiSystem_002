@@ -1,3 +1,4 @@
+import { normalizePartName } from '../../lib/part-name-normalize.js';
 import { evaluateSlipPairMatch, type SlipPairMatchInput, type SlipPairMatchResult } from './mobile-placement-slip-match.js';
 import {
   resolveScheduleRowByFseiban,
@@ -16,9 +17,6 @@ export type SlipVerificationResult = {
   /** 'part_name': the 現品票 carries a material code, so the pair was matched by 製番 and part name. */
   matchedBy?: 'part_name';
 };
-
-// Buyers sometimes put the material code on the 現品票; the material keeps the finished part's name.
-const normalizePartName = (name: string) => name.normalize('NFKC').replace(/\s+/g, '').toUpperCase();
 
 export async function verifySlipMatch(input: SlipPairMatchInput): Promise<SlipVerificationResult> {
   const order = input.actualOrderBarcodeRaw.trim();
