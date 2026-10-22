@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from model_profiles import ModelProfile
 
 # manifest launcherHints key -> process env var name
@@ -18,6 +20,13 @@ _LAUNCHER_HINT_ENV_MAP: dict[str, str] = {
     "blueUpstreamRecipeDir": "BLUE_QWEN38_RECIPE_DIR",
     "blueUpstreamRecipeRevision": "BLUE_QWEN38_RECIPE_REVISION",
     "blueModelRevision": "BLUE_QWEN38_MODEL_REVISION",
+    "blueWorkerSshTarget": "BLUE_WORKER_SSH_TARGET",
+    "blueWorkerModelDir": "BLUE_WORKER_MODEL_DIR",
+    "blueMasterAddr": "BLUE_MASTER_ADDR",
+    "blueMasterPort": "BLUE_MASTER_PORT",
+    "blueEthInterface": "BLUE_ETH_INTERFACE",
+    "blueIbInterfaces": "BLUE_IB_INTERFACES",
+    "blueCacheDir": "BLUE_CACHE_DIR",
 }
 
 _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {
@@ -44,6 +53,8 @@ _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {
     "attentionBackend": "VLLM_ATTENTION_BACKEND",
     "enableChunkedPrefill": "VLLM_ENABLE_CHUNKED_PREFILL",
     "enablePrefixCaching": "VLLM_ENABLE_PREFIX_CACHING",
+    "limitMmPerPrompt": "VLLM_LIMIT_MM_PER_PROMPT",
+    "speculativeConfig": "VLLM_SPECULATIVE_CONFIG",
 }
 
 _LLAMA_RUNTIME_ENV_MAP: dict[str, str] = {
@@ -76,6 +87,7 @@ def launcher_env_for_profile(profile: ModelProfile) -> dict[str, str]:
     if engine:
         env["DGX_RUNTIME_ENGINE"] = engine
     if profile.backend == "blue":
+        env["BLUE_MODEL_PROFILE_ID"] = profile.id
         env["VLLM_SERVED_MODEL_NAME"] = profile.served_alias
         # Profile-scoped blue launches must ignore legacy raw command overrides.
         # Otherwise BLUE_SERVER_COMMAND from the production env wins over BLUE_MODEL_DIR.
@@ -93,7 +105,10 @@ def launcher_env_for_profile(profile: ModelProfile) -> dict[str, str]:
             # parsers; no environment settings are persisted across starts.
             env["VLLM_HF_OVERRIDES"] = ""
         for key, env_key in _VLLM_RUNTIME_ENV_MAP.items():
-            value = _env_value(vllm.get(key))
+            raw = vllm.get(key)
+            value = json.dumps(raw, separators=(",", ":")) if (
+                key in {"limitMmPerPrompt", "speculativeConfig"} and isinstance(raw, dict)
+            ) else _env_value(raw)
             if value is not None:
                 env[env_key] = value
 

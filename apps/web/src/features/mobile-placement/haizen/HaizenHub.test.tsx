@@ -59,8 +59,9 @@ function typeSlips() {
 async function chooseShelf() {
   fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
   fireEvent.click(await screen.findByRole('button', { name: '棚の写真を選ぶ' }));
-  fireEvent.click(screen.getByRole('button', { name: '西', exact: true }));
-  fireEvent.click(screen.getByRole('button', { name: '棚 西-北-02', exact: true }));
+  const picker = within(screen.getByRole('dialog', { name: '棚を選ぶ' }));
+  fireEvent.click(picker.getByRole('button', { name: '西', exact: true }));
+  fireEvent.click(picker.getByRole('button', { name: '棚 西-北-02', exact: true }));
 }
 
 beforeEach(() => {
@@ -71,18 +72,27 @@ beforeEach(() => {
 });
 
 describe('Haizen hub', () => {
-  it('five menu routes, Escape and scrim dismiss', () => {
+  it('top row links, three menu routes, Escape and scrim dismiss', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
-    expect(within(screen.getByRole('dialog')).getAllByRole('button')).toHaveLength(5);
+    expect(within(screen.getByRole('dialog')).getAllByRole('button')).toHaveLength(3);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
     fireEvent.mouseDown(screen.getByRole('dialog'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
     fireEvent.click(screen.getByRole('button', { name: '購買照会' }));
     expect(screen.getByText('sub-screen')).toBeInTheDocument();
+  });
+  it('lists shelf photos under the shelf stub on the 配膳 tab', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    const list = within(screen.getByRole('region', { name: '棚の写真' }));
+    expect(screen.getByRole('button', { name: '部品を探す' })).toBeInTheDocument();
+    fireEvent.click(list.getByRole('button', { name: '西', exact: true }));
+    fireEvent.click(await list.findByRole('button', { name: '棚 西-北-02', exact: true }));
+    expect(list.getByRole('button', { name: '棚 西-北-02', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
   it('auto verifies, syncs registration order, registers and resets all fields', async () => {
     vi.mocked(registerOrderPlacement).mockResolvedValue({ branchState: { id: 'b1', branchNo: 1, shelfCodeRaw: '西-北-02' }, event: { id: 'event1234' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
@@ -97,6 +107,14 @@ describe('Haizen hub', () => {
     await screen.findByText(/分配1を登録/);
     expect(screen.getByText('バーコードを読む')).toBeInTheDocument();
     expect(screen.getByText('写真から選ぶ')).toBeInTheDocument();
+  });
+  it('notes when the 現品票 material code was matched by part name', async () => {
+    vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: true, reason: 'match', matchedBy: 'part_name',
+      expected: { fseiban: 'FS1', fhincd: 'PART1', partName: 'ブラケット' }, actual: { fseiban: 'FS1', partCode: 'MAT9' } });
+    mount();
+    typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    expect(screen.getByText(/を品名で照合/)).toHaveTextContent('素材 MAT9 を品名で照合');
   });
   it('keeps supplementary inputs in verification and rechecks changes', async () => {
     mount();

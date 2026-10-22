@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- 値の一覧から対象 ID の型を作るためだけに置いている
 const INSPECTION_DRAWING_SOP_TARGET_IDS = [
   'inspection-navigation',
   'drawing-digit-search',

@@ -14,6 +14,46 @@ from profile_launcher import launcher_env_for_profile  # noqa: E402
 
 
 class ProfileLauncherTests(unittest.TestCase):
+    def test_glm53_profile_maps_tp2_hints_and_json_runtime_values(self):
+        manifest = MODULE_DIR / "model-registry.examples/business_glm53_flash_fp4_tp2/manifest.json"
+        profile = load_model_profile_manifest(manifest)
+        env = launcher_env_for_profile(profile)
+        self.assertEqual(profile.declared_capabilities, ("text", "vision"))
+        self.assertEqual(profile.runtime_profile["chat"]["thinkingControl"], "reasoning_effort")
+        expected = {
+            "BLUE_MODEL_PROFILE_ID": "business_glm53_flash_fp4_tp2",
+            "BLUE_SERVER_ADAPTER": "glm53_flash_tp2",
+            "BLUE_MODEL_DIR": "/srv/dgx/system-prod/data/models/GLM-5.3-Flash-FP4-Local",
+            "BLUE_WORKER_MODEL_DIR": "/home/ubudgxkoushi/models/GLM-5.3-Flash-FP4-Local",
+            "BLUE_WORKER_SSH_TARGET": "ubudgxkoushi@192.168.100.11",
+            "BLUE_MASTER_ADDR": "192.168.100.10", "BLUE_MASTER_PORT": "29501",
+            "BLUE_ETH_INTERFACE": "enp1s0f0np0", "BLUE_IB_INTERFACES": "rocep1s0f0,roceP2p1s0f0",
+            "BLUE_SERVER_IMAGE": "eugr/spark-vllm-b12x:latest",
+            "BLUE_CACHE_DIR": "/srv/dgx/system-prod/data/glm53-cache",
+            "VLLM_MAX_MODEL_LEN": "262144", "VLLM_TENSOR_PARALLEL_SIZE": "2",
+            "VLLM_SCHEDULING_POLICY": "priority", "VLLM_SERVED_MODEL_NAME": "system-prod-primary",
+        }
+        for key, value in expected.items():
+            self.assertEqual(env[key], value, key)
+        self.assertEqual(json.loads(env["VLLM_LIMIT_MM_PER_PROMPT"]), {"image": 61})
+        self.assertEqual(json.loads(env["VLLM_SPECULATIVE_CONFIG"]), {
+            "method": "mtp", "num_speculative_tokens": 5, "moe_backend": "humming", "attention_backend": "B12X",
+        })
+
+    def test_unknown_launcher_and_runtime_keys_cannot_set_env_or_profile_id(self):
+        from dataclasses import replace
+
+        profile = load_model_profile_manifest(
+            MODULE_DIR / "model-registry.examples/business_glm53_flash_fp4_tp2/manifest.json"
+        )
+        env = launcher_env_for_profile(replace(
+            profile, launcher_hints={"blueModelProfileId": "spoof", "arbitraryCommand": "bad"},
+            runtime_profile={"vllm": {"arbitraryCommand": "bad"}},
+        ))
+        self.assertEqual(env["BLUE_MODEL_PROFILE_ID"], profile.id)
+        self.assertNotIn("bad", env.values())
+        self.assertNotIn("spoof", env.values())
+
     def test_business_qwen38_profile_selects_pinned_adapter_and_preserves_alias(self):
         manifest = MODULE_DIR / "model-registry.examples" / "business_qwen38_flash_next_nvfp4" / "manifest.json"
         profile = load_model_profile_manifest(manifest)

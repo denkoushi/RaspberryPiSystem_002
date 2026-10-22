@@ -22,6 +22,7 @@ export function PurchaseOrderLookupPage() {
       <BarcodeScanModal
         open={mp.scanOpen}
         formats={BARCODE_FORMAT_PRESET_PURCHASE_ORDER}
+        engine="auto-native"
         {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
         onSuccess={mp.onScanSuccess}
         onAbort={() => mp.setScanOpen(false)}
@@ -85,6 +86,7 @@ export function PurchaseOrderLookupPage() {
       <BarcodeScanModal
         open={mp.scanOpen}
         formats={BARCODE_FORMAT_PRESET_PURCHASE_ORDER}
+        engine="auto-native"
         {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
         onSuccess={mp.onScanSuccess}
         onAbort={() => mp.setScanOpen(false)}

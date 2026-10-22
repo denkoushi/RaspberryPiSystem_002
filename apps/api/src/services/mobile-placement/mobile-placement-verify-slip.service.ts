@@ -13,7 +13,12 @@ export type SlipVerificationResult = {
   actualResolvedBy?: SlipPairMatchResult['actualResolvedBy'];
   expected?: { fseiban: string; fhincd: string; partName?: string };
   actual?: { fseiban?: string; partCode?: string };
+  /** 'part_name': the 現品票 carries a material code, so the pair was matched by 製番 and part name. */
+  matchedBy?: 'part_name';
 };
+
+// Buyers sometimes put the material code on the 現品票; the material keeps the finished part's name.
+const normalizePartName = (name: string) => name.normalize('NFKC').replace(/\s+/g, '').toUpperCase();
 
 export async function verifySlipMatch(input: SlipPairMatchInput): Promise<SlipVerificationResult> {
   const order = input.actualOrderBarcodeRaw.trim();
@@ -28,6 +33,7 @@ export async function verifySlipMatch(input: SlipPairMatchInput): Promise<SlipVe
   } : undefined;
   let actualRow = scheduleRow;
   let actual = scheduleRow ? { fseiban: scheduleRow.fseiban.trim(), partCode: scheduleRow.fhincd.trim() } : undefined;
+  let matchedBy: SlipVerificationResult['matchedBy'];
   let actualResolvedBy: SlipPairMatchResult['actualResolvedBy'] = scheduleRow
     ? order ? 'productNo' : 'fseiban'
     : undefined;
@@ -49,10 +55,15 @@ export async function verifySlipMatch(input: SlipPairMatchInput): Promise<SlipVe
     if (rows.length > 0) {
       actualResolvedBy = 'purchaseOrder';
       const sameSeiban = rows.filter((row) => row.seiban.trim().toUpperCase() === transferRow?.fseiban.trim().toUpperCase());
-      const matched = transferRow && sameSeiban.find((row) =>
+      const codeMatched = transferRow && sameSeiban.find((row) =>
         row.purchasePartCodeMatchKey.trim() === normalizePurchaseFhinCdForMatching(transferRow.fhincd) &&
         row.purchasePartCodeMatchKey.trim().length > 0 && row.seiban.trim().length > 0
       );
+      const transferName = normalizePartName(transferRow?.fhinmei ?? '');
+      const nameMatched = !codeMatched && transferName
+        ? sameSeiban.find((row) => normalizePartName(row.purchasePartName) === transferName)
+        : undefined;
+      const matched = codeMatched || nameMatched;
       const candidate = matched || sameSeiban[0] || rows[0];
       actual = { fseiban: candidate.seiban.trim(), partCode: candidate.purchasePartCodeRaw };
       if (transferRow && !matched) {
@@ -61,6 +72,7 @@ export async function verifySlipMatch(input: SlipPairMatchInput): Promise<SlipVe
       }
       // The purchase row proves the pair; retain the existing checks for supplied part barcodes.
       if (matched) actualRow = transferRow;
+      if (nameMatched) matchedBy = 'part_name';
     }
   }
 
@@ -76,5 +88,6 @@ export async function verifySlipMatch(input: SlipPairMatchInput): Promise<SlipVe
       transferRow?.fseiban.trim().toUpperCase() !== actualRow?.fseiban.trim().toUpperCase() ? 'different_seiban'
     : 'different_part';
   return { ok: result.ok, reason, ...(!result.ok ? { legacyReason: result.reason } : {}),
-    ...(actualResolvedBy ? { actualResolvedBy } : {}), ...(expected ? { expected } : {}), ...(actual ? { actual } : {}) };
+    ...(actualResolvedBy ? { actualResolvedBy } : {}), ...(expected ? { expected } : {}), ...(actual ? { actual } : {}),
+    ...(result.ok && matchedBy ? { matchedBy } : {}) };
 }

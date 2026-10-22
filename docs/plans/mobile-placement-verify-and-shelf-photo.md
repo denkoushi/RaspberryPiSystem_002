@@ -12,8 +12,8 @@ Workers can compare a transfer slip's manufacturing order with a supplier slip's
 - [x] Implement optional scanned parts, verification details, additive photo model and photo/memo API.
 - [x] (2026-10-22) Implement separate phone tabs, authenticated photo picker and photo master forms, including partial-upload retry.
 - [x] (2026-10-22) Add focused service, route and web tests; API unit tests (36) and web tests (53 unique tests across 8 files) pass. Changed-file ESLint passes for both packages.
-- [ ] Run the DB integration test after generating the new Prisma Client and applying the migration in a test database; neither was performed here.
-- [ ] Confirm rendered phone layouts on a device/browser; local Chromium launch was denied by the sandbox.
+- [x] (2026-10-22) DB integration tests and the migration ran green in PR #2221 CI; merged as 23ad614d and deployed to Pi5 (main e5788b91, run 20261022-050407-a81ca4, health 200).
+- [x] (2026-10-22) Device check on the 配膳 phone passed: the 照合 tab with an in-progress 移動票 (6 steps) and the follow-up confirmation. Material part codes on the 現品票 are handled in PR #2228.
 
 ## Context and Orientation
 
@@ -47,10 +47,13 @@ The register API already requires only the manufacturing order and shelf. The ve
 
 - Keep internal mismatch codes and expose them as `legacyReason` while `reason` uses the requested UI vocabulary. Existing `ok` and `actualResolvedBy` remain unchanged. Repository consumers do not branch on the old codes.
 - Compute the first free shelf number in the web form from registered shelves; retain server duplicate detection for concurrent edits.
+- (2026-10-22, field check) Some buyers print the material code on the 現品票 instead of the finished part code (example: 製番 BA1S9306, 移動票 MD004121632 vs 現品票 MD100492280, both named ナットホルダー). No BOM or material-to-part column exists in the purchase or schedule CSVs, and the purchase CSV `FSEZONO` is empty on material rows (KB-297). So when the 製番 matches and the code does not, the purchase row's part name is compared with the schedule `FHINMEI` (NFKC, spaces removed). A name match returns `ok` with `matchedBy: 'part_name'`, and the screen shows which material code was used. Field checks of the first release (6 items) passed; a completed order no longer in the schedule is reported as 見つからない, which is accepted.
 
 ## Outcomes & Retrospective
 
 The local implementation is complete. Two-barcode verification, independent placement, photo picking, and shelf photo/memo editing have focused test coverage. DB integration remains unverified because the available generated Prisma Client lacks MobilePlacementShelfPhoto and this migration has not been applied. Main integration and production deployment were not requested.
+
+(2026-10-22, field request) The 配膳 tab now shows the shelf photo list (area chips, 3 columns, scrolls) under the 棚 stub by default, using the same list as the full-screen picker; the primary button still opens that picker. The header row is 照合 / 配膳 tabs plus 購買 and 部品 buttons moved out of the ••• menu; パレット, Zero2W and 棚マスタ stay in the menu.
 
 ## Artifacts and Notes
 
