@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 731,
-    "totalLines": 180360,
-    "totalBytes": 14563248,
+    "documentCount": 733,
+    "totalLines": 180537,
+    "totalBytes": 14577730,
     "withFrontmatter": 349,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 42,
-    "localLinkCount": 5454,
+    "localLinkCount": 5459,
     "brokenLocalLinkCount": 127,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -27639,6 +27639,57 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-424-emudhra-g3b-distrust.md",
+      "lineCount": 93,
+      "byteSize": 4853,
+      "hasFrontmatter": false,
+      "title": "KB-424: eMudhra G3B intermediate distrust on Raspberry Pi hosts",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../infrastructure/ansible/playbooks/deploy-release-standard.yml",
+          "targetPath": "infrastructure/ansible/playbooks/deploy-release-standard.yml",
+          "exists": true
+        },
+        {
+          "href": "../../infrastructure/ansible/playbooks/prepare-client-local-ca-trust.yml",
+          "targetPath": "infrastructure/ansible/playbooks/prepare-client-local-ca-trust.yml",
+          "exists": true
+        },
+        {
+          "href": "../../infrastructure/ansible/roles/common/tasks/distrusted-intermediates.yml",
+          "targetPath": "infrastructure/ansible/roles/common/tasks/distrusted-intermediates.yml",
+          "exists": true
+        },
+        {
+          "href": "../../scripts/deploy/tests/test_distrusted_intermediates.py",
+          "targetPath": "scripts/deploy/tests/test_distrusted_intermediates.py",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-425-os-security-weekly-update.md",
+      "lineCount": 83,
+      "byteSize": 9432,
+      "hasFrontmatter": false,
+      "title": "KB-425: 業務ラズパイの OS 安全更新を週1回夜間に入れる",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -28406,8 +28457,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 888,
-      "byteSize": 270730,
+      "lineCount": 889,
+      "byteSize": 270927,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -31044,8 +31095,13 @@
           "exists": true
         },
         {
-          "href": "./KB-424-os-security-weekly-update.md",
-          "targetPath": "docs/knowledge-base/KB-424-os-security-weekly-update.md",
+          "href": "./KB-424-emudhra-g3b-distrust.md",
+          "targetPath": "docs/knowledge-base/KB-424-emudhra-g3b-distrust.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-425-os-security-weekly-update.md",
+          "targetPath": "docs/knowledge-base/KB-425-os-security-weekly-update.md",
           "exists": true
         },
         {
