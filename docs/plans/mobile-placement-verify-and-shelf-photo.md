@@ -12,8 +12,8 @@ Workers can compare a transfer slip's manufacturing order with a supplier slip's
 - [x] Implement optional scanned parts, verification details, additive photo model and photo/memo API.
 - [x] (2026-10-22) Implement separate phone tabs, authenticated photo picker and photo master forms, including partial-upload retry.
 - [x] (2026-10-22) Add focused service, route and web tests; API unit tests (36) and web tests (53 unique tests across 8 files) pass. Changed-file ESLint passes for both packages.
-- [ ] Run the DB integration test after generating the new Prisma Client and applying the migration in a test database; neither was performed here.
-- [ ] Confirm rendered phone layouts on a device/browser; local Chromium launch was denied by the sandbox.
+- [x] (2026-10-22) DB integration tests and the migration ran green in PR #2221 CI; merged as 23ad614d and deployed to Pi5 (main e5788b91, run 20261022-050407-a81ca4, health 200).
+- [x] (2026-10-22) Device check on the 配膳 phone passed: the 照合 tab with an in-progress 移動票 (6 steps) and the follow-up confirmation. Material part codes on the 現品票 are handled in PR #2228.
 
 ## Context and Orientation
 
