@@ -28,6 +28,17 @@ beforeEach(() => {
 });
 
 describe('verifySlipMatch purchase order resolution', () => {
+  it('matches a material code on the 現品票 by 製番 and part name', async () => {
+    vi.mocked(findPurchaseOrderLookupRows).mockResolvedValue([{ ...purchase('fs1', 'MD999'), purchasePartCodeRaw: 'MD999', purchasePartName: 'ブラケット ' }]);
+    expect(await verifySlipMatch({ ...input, transferPartBarcodeRaw: '', actualPartBarcodeRaw: '' })).toEqual({
+      ok: true, reason: 'match', actualResolvedBy: 'purchaseOrder', expected, matchedBy: 'part_name',
+      actual: { fseiban: 'fs1', partCode: 'MD999' }
+    });
+  });
+  it('keeps different_part when neither the code nor the part name matches', async () => {
+    vi.mocked(findPurchaseOrderLookupRows).mockResolvedValue([{ ...purchase('fs1', 'MD999'), purchasePartName: 'ナットホルダー' }]);
+    expect(await verifySlipMatch({ ...input, transferPartBarcodeRaw: '', actualPartBarcodeRaw: '' })).toMatchObject({ ok: false, reason: 'different_part' });
+  });
   it.each([undefined, ''])('matches two barcodes without scanned parts (%s)', async (parts) => {
     vi.mocked(findPurchaseOrderLookupRows).mockResolvedValue([purchase('other'), purchase()]);
     expect(await verifySlipMatch({ ...input, transferPartBarcodeRaw: parts, actualPartBarcodeRaw: parts })).toEqual({
