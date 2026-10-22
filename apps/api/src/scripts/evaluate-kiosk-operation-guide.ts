@@ -6,12 +6,12 @@
 // while no answer sends the question to お問い合わせ.
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { KioskOperationGuideIndex, type KioskOperationGuideLookupOptions } from '../services/assembly/kiosk-operation-guide.service.js';
+import { isOperationHowToQuestion, KioskOperationGuideIndex } from '../services/assembly/kiosk-operation-guide.service.js';
 import { masterNamesSubjectResolver, type MasterNames } from '../services/assembly/kiosk-operation-guide-subject.js';
 
-type GoldCase = { id: string; question: string; expect: string | string[] | null; kind: string };
+type GoldCase = { id: string; question: string; expect: string | string[] | null; kind: string; previousScreen?: string };
 type Outcome = 'hit' | 'correct_null' | 'miss' | 'wrong' | 'false_answer';
-type CaseResult = { id: string; question: string; kind: string; expect: string | string[] | null; got: string | null; outcome: Outcome };
+type CaseResult = GoldCase & { got: string | null; outcome: Outcome };
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -33,9 +33,15 @@ const masterPath = arg('master');
 const resolver = masterPath ? masterNamesSubjectResolver(JSON.parse(readFileSync(masterPath, 'utf8')) as MasterNames) : null;
 
 const results: CaseResult[] = gold.cases.map((item) => {
-  const options: KioskOperationGuideLookupOptions = resolver ? { families: resolver(index.unknownTerms(item.question)) } : {};
-  const got = index.bestSection(item.question, options)?.file ?? null;
-  return { id: item.id, question: item.question, kind: item.kind, expect: item.expect, got, outcome: outcome(item.expect, got) };
+  const inherited = item.previousScreen === undefined ? [] : index.familiesForScreen(item.previousScreen);
+  const within = index.familyMatchStrength(item.question, inherited);
+  const eligible = item.previousScreen === undefined || within !== 'none'
+    || (isOperationHowToQuestion(item.question) && index.matchStrength(item.question) === 'screen');
+  const families = eligible
+    ? [...new Set([...inherited, ...(resolver ? resolver(index.unknownTerms(item.question)) : [])])]
+    : [];
+  const got = eligible ? index.bestSection(item.question, { families })?.file ?? null : null;
+  return { ...item, got, outcome: outcome(item.expect, got) };
 });
 const count = (name: Outcome) => results.filter((row) => row.outcome === name).length;
 const summary = {

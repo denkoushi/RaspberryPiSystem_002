@@ -83,13 +83,74 @@ describe('KioskOperationGuideIndex', () => {
     const index = KioskOperationGuideIndex.fromDirectory(dir);
     const question = 'チップの登録手順';
     expect(index.bestSection(question, { families: ['inventory'] })).toMatchObject({ file: 'item-inventory-settings.md' });
-    expect(index.matchStrength(question, { families: ['inventory'] })).toBe('screen');
+    expect(index.matchStrength(question, { families: ['inventory'] })).toBe('keyword');
     expect(index.bestSection(question)).toBeNull();
     expect(index.matchStrength(question)).toBe('keyword');
     expect(index.bestSection(question, { families: ['inventory', 'tool'] })).toBeNull();
     expect(index.bestSection('超硬チップの欠け', { families: ['inventory'] })).toBeNull();
     expect(index.matchStrength('超硬チップの欠け', { families: ['inventory'] })).toBe('none');
     expect(index.search('チップ', 20).results).toEqual([]);
+  });
+
+  it('derives unique families from exact screen titles and slash-delimited routes', () => {
+    writeFileSync(path.join(dir, 'mixed.md'), screenDocument('共用画面', '説明。', [
+      '/kiosk/inventory/settings', '/kiosk/inventory', '/kiosk/tag/borrow', '/kiosk/tag-desk',
+      '/kiosk/instruments', '/kiosk/rigging/borrow'
+    ]));
+    writeFileSync(path.join(dir, 'other.md'), screenDocument('境界外', '説明。', [
+      '/kiosk/inventory-other', '/kiosk/tag-other', '/kiosk/instruments-other', '/kiosk/rigging-other'
+    ]));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.familiesForScreen('共用画面')).toEqual(['inventory', 'tool', 'instrument', 'rigging']);
+    expect(index.familiesForScreen('境界外')).toEqual([]);
+    expect(index.familiesForScreen('共用')).toEqual([]);
+    expect(index.familiesForScreen('共通の対処')).toEqual([]);
+    expect(KioskOperationGuideIndex.empty().familiesForScreen('在庫の準備')).toEqual([]);
+  });
+
+  it('requires screen or keyword hits inside a family and falls back for body-only hits', () => {
+    writeFileSync(path.join(dir, 'inventory.md'), screenDocument('在庫の準備', 'タグの説明。特殊本文。自主検査。ABC。', ['/kiosk/inventory/settings'], ['タグ']));
+    writeFileSync(path.join(dir, 'tag-desk.md'), screenDocument('タグ管理', '説明。', ['/kiosk/tag-desk']));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.matchStrength('在庫', { families: ['inventory'] })).toBe('screen');
+    expect(index.matchStrength('タグ', { families: ['inventory'] })).toBe('keyword');
+    expect(index.matchStrength('タグ')).toBe('screen');
+    expect(index.matchStrength('特殊本文', { families: ['inventory'] })).toBe('none');
+    expect(index.matchStrength('自主検査', { families: ['inventory'] })).toBe('screen');
+    expect(index.matchStrength('ABC', { families: ['inventory'] })).toBe('keyword');
+    expect(index.familyMatchStrength('在庫', ['inventory'])).toBe('screen');
+    expect(index.familyMatchStrength('タグの付け替え', ['inventory'])).toBe('keyword');
+    for (const question of ['特殊本文', '自主検査', 'ABC']) {
+      expect(index.familyMatchStrength(question, ['inventory'])).toBe('none');
+    }
+    expect(index.familyMatchStrength('タグ', [])).toBe('none');
+    expect(index.familyMatchStrength('タグ', ['rigging'])).toBe('none');
+  });
+
+  it('matches whole normalized keywords while retaining partial title and body scores', () => {
+    writeFileSync(path.join(dir, 'inventory.md'), screenDocument('在庫の準備', '補充の説明。', ['/kiosk/inventory/settings'], ['補充タグ', 'ＮＦＣタグ']));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.familyMatchStrength('補充', ['inventory'])).toBe('none');
+    expect(index.unknownTerms('補充')).toEqual(['補充']);
+    expect(index.search('補充', 20).results).toEqual([expect.objectContaining({ file: 'inventory.md', score: 1 })]);
+    expect(index.familyMatchStrength('補充タグ', ['inventory'])).toBe('keyword');
+    expect(index.familyMatchStrength('nfcタグ', ['inventory'])).toBe('keyword');
+    expect(index.unknownTerms('nfcタグ')).toEqual([]);
+    expect(index.familyMatchStrength('在庫', ['inventory'])).toBe('screen');
+    expect(index.unknownTerms('在庫')).toEqual([]);
+  });
+
+  it('answers stock replenishment with inventory operations (g29)', () => {
+    const index = KioskOperationGuideIndex.fromDirectory(fileURLToPath(new URL('../../../../../docs/kiosk-operation-guide', import.meta.url)));
+    expect(index.bestSection('在庫の補充')).toMatchObject({ file: 'item-inventory.md' });
+  });
+
+  it('matches a multi-word keyword the question mentions across term boundaries (g28)', () => {
+    writeFileSync(path.join(dir, 'inventory.md'), screenDocument('在庫操作', '数の説明。', ['/kiosk/inventory'], ['数が違う']));
+    writeFileSync(path.join(dir, 'dashboard.md'), screenDocument('在庫の集計', '数の説明。', ['/kiosk/inventory/dashboard'], []));
+    const index = KioskOperationGuideIndex.fromDirectory(dir);
+    expect(index.bestSection('在庫の数が違う')).toMatchObject({ file: 'inventory.md' });
+    expect(index.familyMatchStrength('在庫の数が違う', ['inventory'])).toBe('screen');
   });
 
   it('reports only the terms no document names in its title or keywords', () => {

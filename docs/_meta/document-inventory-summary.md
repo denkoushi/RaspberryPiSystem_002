@@ -11,17 +11,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 726 |
-| Total lines | 179972 |
-| Total bytes | 14465032 |
-| With frontmatter | 348 |
+| Documents | 732 |
+| Total lines | 180493 |
+| Total bytes | 14574519 |
+| With frontmatter | 349 |
 | With status | 169 |
 | source_of_truth declared | 115 |
 | References to EXEC_PLAN.md | 60 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 40 |
-| Local links | 5448 |
+| Long-line documents | 42 |
+| Local links | 5458 |
 | Broken local links | 127 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
@@ -31,7 +31,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Path | Lines | Bytes |
 |------|------:|------:|
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
-| `docs/knowledge-base/api.md` | 4899 | 356630 |
+| `docs/knowledge-base/api.md` | 4903 | 358135 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281621 |
@@ -40,7 +40,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2208 | 190029 |
-| `docs/INDEX.md` | 2084 | 360087 |
+| `docs/INDEX.md` | 2085 | 360204 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217024 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
@@ -82,15 +82,15 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (218:1414, 220:1048, 229:1224)
 - `docs/knowledge-base/KB-313-kiosk-documents.md` (137:1274, 157:1178)
 - `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1808:1045, 1815:1213)
-- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 79:1101, 304:1220)
+- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 79:1101, 337:1220)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 361:1060)
+- `docs/plans/android-haizen-shell-ocr-execplan.md` (59:1550)
 - `docs/plans/assembly-torque-wrench-traceability-execplan.md` (10:1434, 447:1055)
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
 - `docs/plans/dgx-night-preparation-execplan.md` (91:1086)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (36:1127)
 - `docs/plans/explicit-site-scope-execplan.md` (53:1024, 90:1114, 98:1282)
 - `docs/plans/hermes-background-worker.md` (28:1085)
-- `docs/plans/hermes-cross-source-foundation-execplan.md` (154:1029, 160:1019)
 
 ## Broken Local Links
 
