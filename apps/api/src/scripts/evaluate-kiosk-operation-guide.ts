@@ -9,7 +9,7 @@ import path from 'node:path';
 import { isOperationHowToQuestion, KioskOperationGuideIndex } from '../services/assembly/kiosk-operation-guide.service.js';
 import { masterNamesSubjectResolver, type MasterNames } from '../services/assembly/kiosk-operation-guide-subject.js';
 
-type GoldCase = { id: string; question: string; expect: string | string[] | null; kind: string; previousScreen?: string };
+type GoldCase = { id: string; question: string; expect: string | string[] | null; kind: string; previousScreen?: string; afterGuideMiss?: boolean };
 type Outcome = 'hit' | 'correct_null' | 'miss' | 'wrong' | 'false_answer';
 type CaseResult = GoldCase & { got: string | null; outcome: Outcome };
 
@@ -35,11 +35,13 @@ const resolver = masterPath ? masterNamesSubjectResolver(JSON.parse(readFileSync
 const results: CaseResult[] = gold.cases.map((item) => {
   const inherited = item.previousScreen === undefined ? [] : index.familiesForScreen(item.previousScreen);
   const within = index.familyMatchStrength(item.question, inherited);
-  const eligible = item.previousScreen === undefined || within !== 'none'
-    || (isOperationHowToQuestion(item.question) && index.matchStrength(item.question) === 'screen');
-  const families = eligible
-    ? [...new Set([...inherited, ...(resolver ? resolver(index.unknownTerms(item.question)) : [])])]
-    : [];
+  const resolve = () => (resolver ? resolver(index.unknownTerms(item.question)) : []);
+  // After a guide miss, only a how-to question that the guide matches goes back to the guide.
+  const eligible = item.afterGuideMiss
+    ? isOperationHowToQuestion(item.question) && index.matchStrength(item.question, { families: resolve() }) !== 'none'
+    : item.previousScreen === undefined || within !== 'none'
+      || (isOperationHowToQuestion(item.question) && index.matchStrength(item.question) === 'screen');
+  const families = eligible ? [...new Set([...inherited, ...resolve()])] : [];
   const got = eligible ? index.bestSection(item.question, { families })?.file ?? null : null;
   return { ...item, got, outcome: outcome(item.expect, got) };
 });

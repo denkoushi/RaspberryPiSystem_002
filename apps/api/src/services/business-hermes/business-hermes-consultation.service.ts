@@ -1036,17 +1036,25 @@ export class BusinessHermesConsultationService {
       : (completingIntent || Boolean(selection)) && intentQuestion
       ? [intentQuestion, message].join('\n')
       : message;
-    const previousGuide = consultation.messages.slice().reverse().find((entry) => entry.role === 'assistant')?.guide;
+    const previousAssistant = consultation.messages.slice().reverse().find((entry) => entry.role === 'assistant');
+    const previousGuide = previousAssistant?.guide;
+    const followUp = !firstQuestion && !selection && !scanValue && !pendingIntent && !pendingSignageConfirmation
+      && !pendingSourceCandidate && !isSignageRequest(message);
     let continuedFamilies: GuideFamily[] | undefined;
-    if (!firstQuestion && !selection && !scanValue && !pendingIntent && !pendingSignageConfirmation
-      && !pendingSourceCandidate && !isSignageRequest(message) && previousGuide) {
+    let retriedGuideFamilies: GuideFamily[] | undefined;
+    if (followUp && previousGuide) {
       const inherited = this.operationGuide.familiesForScreen(previousGuide.screen);
       const within = this.operationGuide.familyMatchStrength(message, inherited);
       if (within !== 'none' || (isOperationHowToQuestion(message) && this.operationGuide.matchStrength(message) === 'screen')) {
         continuedFamilies = inherited;
       }
+    } else if (followUp && isOperationHowToQuestion(message) && previousAssistant?.searchDiagnostics.some((item) =>
+      item.kind === 'business-hermes-route-v1' && item.route === 'operation_guide' && item.guideMiss === true)) {
+      // A how-to question typed after "no guide yet" is a new guide question; the LLM would only ask it back.
+      const families = await this.resolveFamilies(message);
+      if (this.operationGuide.matchStrength(message, { families }) !== 'none') retriedGuideFamilies = families;
     }
-    const sourceGrounding = scanValue || directGuide || directTrouble || continuedFamilies ? undefined : this.deps.openJevGrounder
+    const sourceGrounding = scanValue || directGuide || directTrouble || continuedFamilies || retriedGuideFamilies ? undefined : this.deps.openJevGrounder
       ? await this.deps.openJevGrounder({ request: groundingRequest, references: storedEvidenceForCase,
         history: consultation.messages.slice(-8).map(({ role, content, recordIds }) => ({ role, content, recordIds })) })
       : firstQuestion && this.deps.openJevIntentSelector ? undefined
@@ -1078,6 +1086,7 @@ export class BusinessHermesConsultationService {
       const families = [...new Set([...continuedFamilies, ...await this.resolveFamilies(message)])];
       return this.answerOperationGuide(consultationId, message, families, measurement, true);
     }
+    if (retriedGuideFamilies) return this.answerOperationGuide(consultationId, message, retriedGuideFamilies, measurement);
     if (this.deps.openJevGrounder && sourceGrounding && !sourceGrounding.conditions) {
       const candidateConfirmation = sourceCandidateConfirmation(sourceGrounding);
       if (candidateConfirmation) return this.askForSourceCandidate(consultationId, candidateConfirmation);
