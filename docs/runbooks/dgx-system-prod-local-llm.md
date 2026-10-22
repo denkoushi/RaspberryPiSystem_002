@@ -1334,6 +1334,11 @@ GLM 稼働中は Spark 2 の GPU も業務 worker が専有するため、私用
 4. ロールバックは同じ保守状態で `/stop-force` を送り、両コンテナの停止を確認する。
    指す先を `business_qwen38_flash_next_nvfp4` に戻し、同 ID で `/start` して応答を確認する。
    Qwen の重みは経過観察が終わるまで残す。
+5. GPU メモリ割合はマニフェストの `runtimeProfile.vllm.gpuMemoryUtilization` で決まる(既定 0.85、2026-10-23 から)。
+   値を変えたら、標準制御経路の `/stop-force` と `/start` で入れ直す。CP を通さずに手で再起動すると、
+   CP の起動監視が確認に失敗したと判断し、自動で入れ直すことがある(2026-10-23 に1回発生)。
+6. keep-warm の指すプロファイルは、CP の private inventory の `dgx_keep_warm_profile_id` を変え、
+   CP の `dgx_agent` ロールで drop-in を再適用する。`config.conf` を手で書き換えない。
 
 両 rank に `dgx.profile` ラベルを付け、要求 ID は launcher が `BLUE_MODEL_PROFILE_ID` で渡す。
 別 profile の head が稼働中なら `/start` は失敗するので、先に `/stop-force` を行う。
