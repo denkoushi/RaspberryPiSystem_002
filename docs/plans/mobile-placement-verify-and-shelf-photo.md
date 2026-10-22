@@ -52,6 +52,8 @@ The register API already requires only the manufacturing order and shelf. The ve
 
 The local implementation is complete. Two-barcode verification, independent placement, photo picking, and shelf photo/memo editing have focused test coverage. DB integration remains unverified because the available generated Prisma Client lacks MobilePlacementShelfPhoto and this migration has not been applied. Main integration and production deployment were not requested.
 
+(2026-10-22, field request) The 配膳 tab now shows the shelf photo list (area chips, 3 columns, scrolls) under the 棚 stub by default, using the same list as the full-screen picker; the primary button still opens that picker. The header row is 照合 / 配膳 tabs plus 購買 and 部品 buttons moved out of the ••• menu; パレット, Zero2W and 棚マスタ stay in the menu.
+
 ## Artifacts and Notes
 
 Validation used existing local dependencies from the main checkout via temporary symlinks, including Vitest 4.1.8; no package was downloaded. The task worktree initially had no node_modules. Temporary Vitest configs inherited the existing package config and changed only envDir to an empty temporary directory and cacheDir to a writable temporary directory. This prevented dotenv file loading. The integration test also mocks the API dotenv loader.
