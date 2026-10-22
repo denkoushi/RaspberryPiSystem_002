@@ -54,6 +54,8 @@ alwaysApply: false
 
 残存分は`python3 -m scripts.git_lifecycle.cli finish-merged`でもcleanupできる。自動・手動batchとも`audit`の分類と`finish`の個別安全確認・再観測・forceなし削除・compare-and-deleteを使い、wildcardや手動の一括削除ではない。task root外はskipし、main、現在のcwdを含むworktree、他プロセスのcwdを含むworktreeを保護する。プロセス確認失敗時は全候補を保護して警告する。1件の失敗や保護で他候補を止めず、手動batchのmain同期はcleanup後に最大1回だけ行う。
 
+worktreeのHEADがmerged PRのheadの祖先である場合も、他の安全条件を満たせばmerged-cleanとして扱う。
+
 このCLIは開発端末で明示実行し、Deploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightへ組み込まない。PR全件ページングは明示的なlifecycle操作時だけ行う。
 
 ## マージ後

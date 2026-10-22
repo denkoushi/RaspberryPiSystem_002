@@ -260,11 +260,14 @@ def _finish(
         clean=cleanup_safety.safe,
         detached=observed.detached,
     )
+    head_relation = _head_relation(git, observation, pull_request, local_sha)
+    payload["head_relation"] = head_relation
     decision = evaluate_finish(
         pull_request,
         observation,
         local_branch=observed.branch,
         local_sha=local_sha,
+        local_head_contained_in_pr_head=head_relation == "ancestor_of_pr_head",
     )
     if not decision.eligible:
         warnings.extend(decision.reasons)
@@ -295,9 +298,9 @@ def _finish(
         return payload, EXIT_PROTECTED
     observed = latest
 
-    expected_sha = pull_request.head_sha
+    expected_sha = local_sha
     if expected_sha is None:  # evaluate_finish already protects this
-        warnings.append("pr_head_sha_missing")
+        warnings.append("local_head_sha_missing")
         payload["warnings"] = warnings
         return payload, EXIT_PROTECTED
     if check_process_cwds:
@@ -476,11 +479,13 @@ def _audit(git: GitAdapter, github: GitHubAdapter) -> tuple[dict[str, Any], int]
             clean=clean,
             detached=worktree.detached,
         )
+        head_relation = _head_relation(git, observation, pr, local_sha)
         state = classify_observation(
             observation,
             pr,
             local_sha=local_sha,
             local_branch=branch,
+            local_head_contained_in_pr_head=head_relation == "ancestor_of_pr_head",
         )
         records.append(
             _audit_record(
@@ -491,6 +496,7 @@ def _audit(git: GitAdapter, github: GitHubAdapter) -> tuple[dict[str, Any], int]
                 local_sha=local_sha,
                 pull_request=pr,
                 remote_sha=remote_branches.get(branch) if branch else None,
+                head_relation=head_relation,
             )
         )
 
@@ -599,6 +605,28 @@ def _start_main_status(main: MainObservation) -> tuple[str, list[str]]:
     return "not_attempted", []
 
 
+def _head_relation(
+    git: GitAdapter,
+    worktree: WorktreeObservation,
+    pull_request: PullRequestObservation | None,
+    local_sha: str | None,
+) -> str | None:
+    if pull_request is None or not pull_request.head_sha or not worktree.head_sha:
+        return None
+    if worktree.head_sha == pull_request.head_sha:
+        return "exact"
+    if (
+        pull_request.merged
+        and worktree.clean
+        and local_sha == worktree.head_sha
+        and git.is_ancestor(
+            worktree.head_sha, pull_request.head_sha, pr_number=pull_request.number
+        )
+    ):
+        return "ancestor_of_pr_head"
+    return None
+
+
 def _audit_record(
     state: AuditState,
     *,
@@ -609,6 +637,7 @@ def _audit_record(
     local_sha: str | None = None,
     pull_request: PullRequestObservation | None = None,
     remote_sha: str | None = None,
+    head_relation: str | None = None,
 ) -> dict[str, Any]:
     actual_branch = branch if branch is not None else (worktree.branch if worktree else None)
     return {
@@ -616,6 +645,7 @@ def _audit_record(
         "branch": actual_branch,
         "worktree": str(worktree.path) if worktree else None,
         "worktree_head_sha": worktree.head_sha if worktree else None,
+        "head_relation": head_relation,
         "worktree_clean": clean,
         "ignored_material_count": (
             cleanup_safety.ignored_count if cleanup_safety is not None else 0

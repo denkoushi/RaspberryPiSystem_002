@@ -114,6 +114,11 @@ class FakeSweepGitAdapter(GitAdapter):
     def branch_sha(self, branch: str) -> str | None:
         return self.branches.get(branch)
 
+    def is_ancestor(
+        self, ancestor_sha: str, descendant_sha: str, *, pr_number: int | None = None
+    ) -> bool:
+        return False
+
     def remote_branches(self, remote: str = "origin") -> dict[str, str]:
         return {"main": self.sha}
 
@@ -191,6 +196,83 @@ class MergedCleanupTest(unittest.TestCase):
         self.assertEqual(payload["main_sync"], "updated")
         self.assertEqual(self.git.fetch_count, 1)
         self.assertEqual(self.git.sync_count, 1)
+
+    def test_stale_ancestor_is_audited_and_removed_using_observed_local_sha(self) -> None:
+        target = self.task("stale")
+        pr = replace(self.github.pull_requests[0], head_sha="b" * 40)
+        self.github.pull_requests = (pr,)
+        with patch.object(self.git, "is_ancestor", return_value=True) as ancestor:
+            code, audit = self.output("audit", "--json")
+            self.assertEqual(code, EXIT_OK)
+            record = next(item for item in audit["records"] if item["worktree"] == str(target))
+            self.assertEqual(record["state"], "MERGED_CLEAN")
+            self.assertEqual(record["head_relation"], "ancestor_of_pr_head")
+            ancestor.assert_called_once_with(self.git.sha, pr.head_sha, pr_number=pr.number)
+            ancestor.reset_mock()
+            with patch.object(
+                self.git, "delete_local_branch_if_at", wraps=self.git.delete_local_branch_if_at
+            ) as delete:
+                code, payload = self.output("finish-merged")
+            delete.assert_called_once_with("feat/stale", self.git.sha)
+            self.assertEqual(ancestor.call_count, 2)  # audit and finish independently check
+        self.assertEqual(code, EXIT_OK)
+        self.assertEqual(self.git.removed, [target])
+        self.assertNotIn("feat/stale", self.git.branches)
+        self.assertEqual(payload["removed"][0]["head_relation"], "ancestor_of_pr_head")
+
+    def test_stale_protections_and_exact_match_skip_unnecessary_ancestor_checks(self) -> None:
+        cases = (
+            ("not-ancestor", False, False, False, False, "REF_MISMATCH", True),
+            ("dirty", True, True, False, False, "DIRTY_PROTECTED", False),
+            ("local-ref-moved", True, False, True, False, "REF_MISMATCH", False),
+            ("exact", False, False, False, True, "MERGED_CLEAN", False),
+        )
+        for name, contained, dirty, moved, exact, state, checked in cases:
+            with self.subTest(name=name):
+                target = self.task(name)
+                pr = self.github.pull_requests[-1]
+                if not exact:
+                    pr = replace(pr, head_sha="b" * 40)
+                self.github.pull_requests = (pr,)
+                if dirty:
+                    self.git.dirty.add(target)
+                if moved:
+                    self.git.branches[pr.head_branch] = pr.head_sha
+                with patch.object(self.git, "is_ancestor", return_value=contained) as ancestor:
+                    code, audit = self.output("audit", "--json")
+                    self.assertEqual(code, EXIT_OK)
+                    record = next(item for item in audit["records"] if item["worktree"] == str(target))
+                    self.assertEqual(record["state"], state)
+                    self.assertEqual(ancestor.call_count, int(checked))
+                    ancestor.reset_mock()
+                    code, payload = self.output("finish", "--worktree", str(target), "--pr", str(pr.number))
+                    self.assertEqual(ancestor.call_count, int(checked))
+                self.assertEqual(code, EXIT_OK if exact else EXIT_PROTECTED)
+                self.assertEqual(payload["worktree_removed"], exact)
+                if exact:
+                    self.assertEqual(record["head_relation"], "exact")
+                    self.assertEqual(payload["head_relation"], "exact")
+                else:
+                    self.assertIn(pr.head_branch, self.git.branches)
+
+    def test_ancestor_check_failure_protects_stale_item_and_continues_batch(self) -> None:
+        target = self.task("check-fails")
+        self.github.pull_requests = (replace(self.github.pull_requests[0], head_sha="b" * 40),)
+        other = self.task("exact")
+        adapter = GitAdapter(self.repo)
+        with (
+            patch.object(adapter, "runner", side_effect=subprocess.TimeoutExpired("git", 180)),
+            patch.object(self.git, "is_ancestor", side_effect=adapter.is_ancestor),
+        ):
+            code, payload = self.output("finish", "--worktree", str(target), "--pr", "1")
+            self.assertEqual(code, EXIT_PROTECTED)
+            self.assertFalse(payload["worktree_removed"])
+            code, payload = self.output("finish-merged")
+        self.assertEqual(code, EXIT_OK)
+        self.assertEqual(self.git.removed, [other])
+        protected = next(item for item in payload["protected"] if item["worktree"] == str(target))
+        self.assertEqual(protected["reasons"], ["REF_MISMATCH"])
+        self.assertIn("feat/check-fails", self.git.branches)
 
     def test_finish_merged_protects_unsafe_and_in_use_items(self) -> None:
         dirty, opened, mismatch = self.task("dirty"), self.task("open"), self.task("mismatch")
@@ -339,6 +421,16 @@ class MergedCleanupTest(unittest.TestCase):
         self.assertEqual(self.git.fetch_count, 1)
         self.assertEqual(self.git.sync_count, 0)
 
+    def test_start_cleans_stale_ancestor(self) -> None:
+        target = self.task("stale")
+        self.github.pull_requests = (replace(self.github.pull_requests[0], head_sha="b" * 40),)
+        with patch.object(self.git, "is_ancestor", return_value=True):
+            code, payload = self.output("start", "--branch", "feat/new")
+        self.assertEqual(code, EXIT_OK)
+        self.assertEqual(self.git.removed, [target])
+        self.assertEqual(payload["merged_cleanup"]["removed"][0]["head_relation"], "ancestor_of_pr_head")
+        self.assertEqual(self.git.fetch_count, 1)
+
     def test_start_still_creates_when_sweep_raises(self) -> None:
         with patch("scripts.git_lifecycle.cli._finish_merged", side_effect=RuntimeError("sweep failed")):
             code, payload = self.output("start", "--branch", "feat/new")
@@ -479,6 +571,75 @@ class PolicyTest(unittest.TestCase):
         self.assertEqual(main_sync_decision(clean=True, relation="diverged"), "skipped_diverged")
         self.assertEqual(main_sync_decision(clean=True, relation="behind"), "updated")
         self.assertEqual(main_sync_decision(clean=True, relation="equal"), "already_current")
+
+    def test_containment_flag_only_relaxes_pr_head_equality(self) -> None:
+        stale_pr = replace(self.pr, head_sha="b" * 40)
+        cases = (
+            (stale_pr, self.worktree, self.sha, True, AuditState.MERGED_CLEAN),
+            (stale_pr, self.worktree, self.sha, False, AuditState.REF_MISMATCH),
+            (stale_pr, self.worktree, stale_pr.head_sha, True, AuditState.REF_MISMATCH),
+            (stale_pr, replace(self.worktree, clean=False), self.sha, True, AuditState.DIRTY_PROTECTED),
+            (stale_pr, replace(self.worktree, detached=True), self.sha, True, AuditState.DETACHED),
+            (replace(stale_pr, head_sha=None), self.worktree, self.sha, True, AuditState.REF_MISMATCH),
+            (replace(stale_pr, head_branch="other"), self.worktree, self.sha, True, AuditState.REF_MISMATCH),
+            (replace(stale_pr, cross_repository=True), self.worktree, self.sha, True, AuditState.REF_MISMATCH),
+            (replace(stale_pr, state="OPEN", merged_at=None), self.worktree, self.sha, True, AuditState.ACTIVE_OPEN_PR),
+            (replace(stale_pr, state="CLOSED", merged_at=None), self.worktree, self.sha, True, AuditState.CLOSED_UNMERGED),
+        )
+        for pr, worktree, local_sha, contained, state in cases:
+            with self.subTest(pr=pr, worktree=worktree, local_sha=local_sha, contained=contained):
+                self.assertEqual(classify_observation(
+                    worktree, pr, local_sha=local_sha, local_branch=worktree.branch,
+                    local_head_contained_in_pr_head=contained,
+                ), state)
+                decision = evaluate_finish(
+                    pr, worktree, local_sha=local_sha, local_branch=worktree.branch,
+                    local_head_contained_in_pr_head=contained,
+                )
+                self.assertEqual(decision.eligible, state == AuditState.MERGED_CLEAN)
+
+    def test_is_ancestor_fetches_only_missing_pr_head_and_fails_closed(self) -> None:
+        descendant = "b" * 40
+        check = ("git", "cat-file", "-e", f"{descendant}^{{commit}}")
+        fetch = ("git", "fetch", "--no-tags", "--refmap=", "origin", "refs/pull/17/head")
+        compare = ("git", "merge-base", "--is-ancestor", self.sha, descendant)
+        cases = (
+            (17, [(check, 0), (compare, 0)], True),
+            (17, [(check, 0), (compare, 1)], False),
+            (17, [(check, 0), (compare, 128)], False),
+            (17, [(check, 128), (fetch, 0), (compare, 0)], True),
+            (17, [(check, 128), (fetch, 0), (compare, 1)], False),
+            (17, [(check, 128), (fetch, 0), (compare, 128)], False),
+            (17, [(check, 128), (fetch, 128)], False),
+            (None, [(check, 128)], False),
+        )
+        for pr_number, steps, expected in cases:
+            with self.subTest(steps=steps, pr_number=pr_number):
+                remaining = iter(steps)
+
+                def runner(command: tuple[str, ...], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+                    expected_command, returncode = next(remaining)
+                    self.assertEqual(command, expected_command)
+                    self.assertEqual(kwargs["timeout"], 180)
+                    return subprocess.CompletedProcess(command, returncode, b"", b"")
+
+                adapter = GitAdapter(Path("/tmp/repository"), runner=runner)
+                self.assertEqual(adapter.is_ancestor(self.sha, descendant, pr_number=pr_number), expected)
+                self.assertEqual(list(remaining), [])
+
+    def test_is_ancestor_returns_false_on_command_errors_and_timeouts(self) -> None:
+        adapter = GitAdapter(Path("/tmp/repository"))
+        for error in (
+            FileNotFoundError("git"),
+            subprocess.TimeoutExpired("git", 180),
+            subprocess.CalledProcessError(128, "git"),
+            GitAdapterError("observation failed"),
+        ):
+            for prefix in ([], [0], [128], [128, 0]):
+                with self.subTest(error=error, prefix=prefix):
+                    results = [subprocess.CompletedProcess("git", code, b"", b"") for code in prefix]
+                    with patch.object(adapter, "runner", side_effect=[*results, error]):
+                        self.assertFalse(adapter.is_ancestor(self.sha, "b" * 40, pr_number=17))
 
     def test_detached_and_ref_mismatch_are_not_cleanable(self) -> None:
         detached = WorktreeObservation(
