@@ -307,6 +307,58 @@
       "question": "組立作業の始め方",
       "expect": "assembly-work-session.md",
       "kind": "screen"
+    },
+    {
+      "id": "g51",
+      "question": "タグの登録手順",
+      "expect": "item-inventory-settings.md",
+      "kind": "followup",
+      "previousScreen": "在庫の準備"
+    },
+    {
+      "id": "g52",
+      "question": "タグの登録手順",
+      "expect": "tag-desk.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g53",
+      "question": "補充タグを追加したい",
+      "expect": "item-inventory-settings.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g54",
+      "question": "数量タグの登録",
+      "expect": "item-inventory-settings.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g55",
+      "question": "タグの付け替え",
+      "expect": "item-inventory-settings.md",
+      "kind": "followup",
+      "previousScreen": "在庫の準備"
+    },
+    {
+      "id": "g56",
+      "question": "タグの付け替え",
+      "expect": "tag-desk.md",
+      "kind": "screen"
+    },
+    {
+      "id": "g57",
+      "question": "超硬チップの欠け",
+      "expect": null,
+      "kind": "out_of_scope",
+      "previousScreen": "在庫の準備"
+    },
+    {
+      "id": "g58",
+      "question": "関連の記録について知りたい",
+      "expect": null,
+      "kind": "out_of_scope",
+      "previousScreen": "在庫の準備"
     }
   ]
 }

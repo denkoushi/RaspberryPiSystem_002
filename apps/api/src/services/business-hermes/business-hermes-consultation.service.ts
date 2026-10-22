@@ -136,7 +136,7 @@ export type BusinessHermesConsultationChatResponse = {
 type ConsultationDeps = {
   receiptLog?: Pick<ReceiptLog, 'append'>;
   subjectResolver?: AsyncSubjectResolver;
-  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection' | 'unknownTerms'>;
+  operationGuide?: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection' | 'unknownTerms' | 'familiesForScreen' | 'familyMatchStrength'>;
   db?: PrismaClient;
   fetchImpl?: FetchLike;
   runtime?: LocalLlmRuntimeControllerPort | null;
@@ -696,7 +696,7 @@ export function toConsultationView(row: {
 
 export class BusinessHermesConsultationService {
   private readonly subjectResolver?: AsyncSubjectResolver;
-  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection' | 'unknownTerms'>;
+  private readonly operationGuide: Pick<KioskOperationGuideIndex, 'matchStrength' | 'isEnabled' | 'search' | 'detail' | 'bestSection' | 'unknownTerms' | 'familiesForScreen' | 'familyMatchStrength'>;
   private readonly db: PrismaClient;
   private readonly deps: ConsultationDeps;
   private readonly scanResolver?: Pick<BusinessHermesScanResolver, 'resolve'>;
@@ -1036,7 +1036,17 @@ export class BusinessHermesConsultationService {
       : (completingIntent || Boolean(selection)) && intentQuestion
       ? [intentQuestion, message].join('\n')
       : message;
-    const sourceGrounding = scanValue || directGuide || directTrouble ? undefined : this.deps.openJevGrounder
+    const previousGuide = consultation.messages.slice().reverse().find((entry) => entry.role === 'assistant')?.guide;
+    let continuedFamilies: GuideFamily[] | undefined;
+    if (!firstQuestion && !selection && !scanValue && !pendingIntent && !pendingSignageConfirmation
+      && !pendingSourceCandidate && !isSignageRequest(message) && previousGuide) {
+      const inherited = this.operationGuide.familiesForScreen(previousGuide.screen);
+      const within = this.operationGuide.familyMatchStrength(message, inherited);
+      if (within !== 'none' || (isOperationHowToQuestion(message) && this.operationGuide.matchStrength(message) === 'screen')) {
+        continuedFamilies = inherited;
+      }
+    }
+    const sourceGrounding = scanValue || directGuide || directTrouble || continuedFamilies ? undefined : this.deps.openJevGrounder
       ? await this.deps.openJevGrounder({ request: groundingRequest, references: storedEvidenceForCase,
         history: consultation.messages.slice(-8).map(({ role, content, recordIds }) => ({ role, content, recordIds })) })
       : firstQuestion && this.deps.openJevIntentSelector ? undefined
@@ -1062,22 +1072,11 @@ export class BusinessHermesConsultationService {
     }
     if (directGuide && intentQuestion) {
       const families = await this.resolveFamilies(intentQuestion);
-      const guide = this.guideForQuestion(intentQuestion, families);
-      const answer = guide
-        ? `${guide.screen}\n\n${guide.sections.map(({ heading, body }) => `**${heading}**\n${body}`).join('\n\n')}`
-        : 'この操作の説明はまだありません。『お問い合わせ』から聞いてください。';
-      const answerMessage = await this.db.businessHermesConsultationMessage.create({ data: {
-        consultationId, role: 'assistant', content: answer,
-        evidence: asJson({ items: [], visible: false, visibleIds: [], recordIds: [], ...(guide ? { guide } : {}) }),
-        searchDiagnostics: asJson([{ kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: !guide, direct: true }])
-      } });
-      this.appendRouteReceipt('operation_guide', !guide, true, intentQuestion);
-      if (measurement) measurement.answerMessageId = answerMessage.id;
-      await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: { openQuestions: asJson([]) } });
-      const updated = await this.get(consultationId);
-      if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
-      return { status: 'ready', message: answer, evidence: [], evidenceVisible: false, evidenceVisibleIds: [],
-        ...(guide ? { guide } : {}), needsClarification: false, clarificationMessage: null, consultationId, consultation: updated };
+      return this.answerOperationGuide(consultationId, intentQuestion, families, measurement);
+    }
+    if (continuedFamilies) {
+      const families = [...new Set([...continuedFamilies, ...await this.resolveFamilies(message)])];
+      return this.answerOperationGuide(consultationId, message, families, measurement, true);
     }
     if (this.deps.openJevGrounder && sourceGrounding && !sourceGrounding.conditions) {
       const candidateConfirmation = sourceCandidateConfirmation(sourceGrounding);
@@ -1432,8 +1431,28 @@ export class BusinessHermesConsultationService {
     };
   }
 
-  private appendRouteReceipt(route: string, guideMiss: boolean, direct: boolean, question: string): void {
-    void this.deps.receiptLog?.append({ consultationRoute: { route, guideMiss, direct, question: question.slice(0, 200) } });
+  private async answerOperationGuide(consultationId: string, intentQuestion: string, families: GuideFamily[],
+    measurement?: LearningMeasurement, continued = false): Promise<BusinessHermesConsultationChatResponse> {
+    const guide = this.guideForQuestion(intentQuestion, families);
+    const answer = guide
+      ? `${guide.screen}\n\n${guide.sections.map(({ heading, body }) => `**${heading}**\n${body}`).join('\n\n')}`
+      : 'この操作の説明はまだありません。『お問い合わせ』から聞いてください。';
+    const answerMessage = await this.db.businessHermesConsultationMessage.create({ data: {
+      consultationId, role: 'assistant', content: answer,
+      evidence: asJson({ items: [], visible: false, visibleIds: [], recordIds: [], ...(guide ? { guide } : {}) }),
+      searchDiagnostics: asJson([{ kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: !guide, direct: true, ...(continued ? { continued } : {}) }])
+    } });
+    this.appendRouteReceipt('operation_guide', !guide, true, intentQuestion, continued);
+    if (measurement) measurement.answerMessageId = answerMessage.id;
+    await this.db.businessHermesConsultation.update({ where: { id: consultationId }, data: { openQuestions: asJson([]) } });
+    const updated = await this.get(consultationId);
+    if (!updated) return this.failure(consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
+    return { status: 'ready', message: answer, evidence: [], evidenceVisible: false, evidenceVisibleIds: [],
+      ...(guide ? { guide } : {}), needsClarification: false, clarificationMessage: null, consultationId, consultation: updated };
+  }
+
+  private appendRouteReceipt(route: string, guideMiss: boolean, direct: boolean, question: string, continued = false): void {
+    void this.deps.receiptLog?.append({ consultationRoute: { route, guideMiss, direct, question: question.slice(0, 200), ...(continued ? { continued } : {}) } });
   }
 
   private async resolveFamilies(question: string): Promise<GuideFamily[]> {
@@ -1445,7 +1464,7 @@ export class BusinessHermesConsultationService {
   private guideForQuestion(intentQuestion: string, families: GuideFamily[]): BusinessHermesOperationGuideDisplay | undefined {
     const top = this.operationGuide.bestSection(intentQuestion, { families });
     const detail = top ? this.operationGuide.detail(top.id) : null;
-    const basic = detail?.heading === '基本の手順' ? detail
+    const basic = detail && /^1\./m.test(detail.body) ? undefined
       : detail?.siblings.find((section) => section.heading === '基本の手順');
     // Section IDs end in their document position; siblings belong to the same file.
     const sections = detail ? [detail, ...(basic && basic.id !== detail.id ? [this.operationGuide.detail(basic.id)] : [])]

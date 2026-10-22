@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 726,
-    "totalLines": 179972,
-    "totalBytes": 14465032,
-    "withFrontmatter": 348,
+    "documentCount": 732,
+    "totalLines": 180493,
+    "totalBytes": 14574519,
+    "withFrontmatter": 349,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
     "execPlanReferences": 60,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 40,
-    "localLinkCount": 5448,
+    "longLineDocuments": 42,
+    "localLinkCount": 5458,
     "brokenLocalLinkCount": 127,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -771,8 +771,8 @@
     },
     {
       "path": ".cursor/rules/20-git-workflow.mdc",
-      "lineCount": 59,
-      "byteSize": 4819,
+      "lineCount": 62,
+      "byteSize": 5837,
       "hasFrontmatter": true,
       "title": "Gitワークフロー（Agent Requested）",
       "status": null,
@@ -817,7 +817,7 @@
     {
       "path": "AGENTS.md",
       "lineCount": 67,
-      "byteSize": 6531,
+      "byteSize": 6717,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
@@ -6109,8 +6109,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2084,
-      "byteSize": 360087,
+      "lineCount": 2085,
+      "byteSize": 360204,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10862,6 +10862,11 @@
           "exists": true
         },
         {
+          "href": "./plans/mobile-placement-verify-and-shelf-photo.md",
+          "targetPath": "docs/plans/mobile-placement-verify-and-shelf-photo.md",
+          "exists": true
+        },
+        {
           "href": "./plans/nfc-stream-isolation-plan.md",
           "targetPath": "docs/plans/nfc-stream-isolation-plan.md",
           "exists": true
@@ -11596,31 +11601,31 @@
           "length": 1013
         },
         {
-          "line": 789,
+          "line": 790,
           "length": 2038
         },
         {
-          "line": 805,
+          "line": 806,
           "length": 1496
         },
         {
-          "line": 811,
+          "line": 812,
           "length": 1177
         },
         {
-          "line": 1153,
+          "line": 1154,
           "length": 1449
         },
         {
-          "line": 1189,
+          "line": 1190,
           "length": 1136
         },
         {
-          "line": 1191,
+          "line": 1192,
           "length": 1239
         },
         {
-          "line": 1227,
+          "line": 1228,
           "length": 1004
         }
       ],
@@ -16020,7 +16025,7 @@
     {
       "path": "docs/decisions/ADR-20260508-leaderboard-board-aggregate-api.md",
       "lineCount": 102,
-      "byteSize": 11005,
+      "byteSize": 11363,
       "hasFrontmatter": false,
       "title": "ADR-20260508: 順位ボード集約 API（leaderboard-board）",
       "status": null,
@@ -16038,6 +16043,11 @@
         },
         {
           "href": "../knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
+          "targetPath": "docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
+          "exists": true
+        },
+        {
+          "href": "../knowledge-base/KB-369-leader-order-board-api-internal-latency.md#residual-summary-の-values-結合が総当たりになる2026-10-19",
           "targetPath": "docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
           "exists": true
         },
@@ -19127,13 +19137,18 @@
     },
     {
       "path": "docs/guides/client-initial-setup.md",
-      "lineCount": 675,
-      "byteSize": 24518,
+      "lineCount": 417,
+      "byteSize": 15802,
       "hasFrontmatter": true,
       "title": "新規クライアント端末の初期設定手順",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "./deployment.md#空のpi4キオスクへの初回導入",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
         {
           "href": "./operation-manual.md",
           "targetPath": "docs/guides/operation-manual.md",
@@ -19165,28 +19180,13 @@
           "exists": true
         },
         {
-          "href": "../knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md",
-          "targetPath": "docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入",
-          "targetPath": "docs/knowledge-base/infrastructure/security.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出",
-          "targetPath": "docs/knowledge-base/infrastructure/security.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む",
-          "targetPath": "docs/knowledge-base/infrastructure/security.md",
-          "exists": true
-        },
-        {
           "href": "../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md",
           "targetPath": "docs/knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md",
+          "exists": true
+        },
+        {
+          "href": "../runbooks/deploy-status-recovery.md",
+          "targetPath": "docs/runbooks/deploy-status-recovery.md",
           "exists": true
         },
         {
@@ -19481,8 +19481,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 168,
-      "byteSize": 19690,
+      "lineCount": 197,
+      "byteSize": 23079,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -19494,12 +19494,17 @@
           "exists": true
         },
         {
+          "href": "../runbooks/deploy-status-recovery.md#pi4初回導入の失敗後",
+          "targetPath": "docs/runbooks/deploy-status-recovery.md",
+          "exists": true
+        },
+        {
           "href": "../runbooks/deploy-status-recovery.md#キオスクがメンテナンス中のまま",
           "targetPath": "docs/runbooks/deploy-status-recovery.md",
           "exists": true
         }
       ],
-      "inboundCount": 198,
+      "inboundCount": 200,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22841,8 +22846,8 @@
     },
     {
       "path": "docs/kiosk-operation-guide/item-inventory-settings.md",
-      "lineCount": 43,
-      "byteSize": 2746,
+      "lineCount": 51,
+      "byteSize": 4261,
       "hasFrontmatter": true,
       "title": "在庫の準備",
       "status": null,
@@ -25753,8 +25758,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
-      "lineCount": 388,
-      "byteSize": 63996,
+      "lineCount": 441,
+      "byteSize": 71611,
       "hasFrontmatter": true,
       "title": "KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）",
       "status": null,
@@ -25871,7 +25876,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 22,
+      "inboundCount": 23,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
@@ -25884,15 +25889,15 @@
           "length": 1101
         },
         {
-          "line": 304,
+          "line": 337,
           "length": 1220
         },
         {
-          "line": 306,
+          "line": 339,
           "length": 1290
         },
         {
-          "line": 308,
+          "line": 341,
           "length": 1426
         }
       ],
@@ -27563,13 +27568,19 @@
     },
     {
       "path": "docs/knowledge-base/KB-420-procedure-tidy-site-context.md",
-      "lineCount": 96,
-      "byteSize": 7743,
+      "lineCount": 122,
+      "byteSize": 12242,
       "hasFrontmatter": false,
       "title": "KB-420: 手順書の「整える」に組立の現場の知識を持たせた",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
+      "localLinks": [
+        {
+          "href": "../plans/procedure-tidy-learning-loop-execplan.md",
+          "targetPath": "docs/plans/procedure-tidy-learning-loop-execplan.md",
+          "exists": true
+        }
+      ],
       "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -27588,6 +27599,72 @@
         {
           "href": "./KB-413-kiosk-chromium-canary-stonebase01.md",
           "targetPath": "docs/knowledge-base/KB-413-kiosk-chromium-canary-stonebase01.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-422-kiosk-manual-order-edit-slow-machine-name.md",
+      "lineCount": 44,
+      "byteSize": 2870,
+      "hasFrontmatter": true,
+      "title": "KB-422 手動順番で「編集」後の一覧が重い（機種名の引き方）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-423-csv-feed-freshness-notice.md",
+      "lineCount": 31,
+      "byteSize": 3809,
+      "hasFrontmatter": false,
+      "title": "KB-423: CSV取込の「届かない」「中身が変わらない」をフローティングChatで知らせる",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-424-emudhra-g3b-distrust.md",
+      "lineCount": 93,
+      "byteSize": 4853,
+      "hasFrontmatter": false,
+      "title": "KB-424: eMudhra G3B intermediate distrust on Raspberry Pi hosts",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../infrastructure/ansible/playbooks/deploy-release-standard.yml",
+          "targetPath": "infrastructure/ansible/playbooks/deploy-release-standard.yml",
+          "exists": true
+        },
+        {
+          "href": "../../infrastructure/ansible/playbooks/prepare-client-local-ca-trust.yml",
+          "targetPath": "infrastructure/ansible/playbooks/prepare-client-local-ca-trust.yml",
+          "exists": true
+        },
+        {
+          "href": "../../infrastructure/ansible/roles/common/tasks/distrusted-intermediates.yml",
+          "targetPath": "infrastructure/ansible/roles/common/tasks/distrusted-intermediates.yml",
+          "exists": true
+        },
+        {
+          "href": "../../scripts/deploy/tests/test_distrusted_intermediates.py",
+          "targetPath": "scripts/deploy/tests/test_distrusted_intermediates.py",
           "exists": true
         }
       ],
@@ -27701,8 +27778,8 @@
     },
     {
       "path": "docs/knowledge-base/api.md",
-      "lineCount": 4899,
-      "byteSize": 356630,
+      "lineCount": 4903,
+      "byteSize": 358135,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - API関連",
       "status": null,
@@ -28365,8 +28442,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 885,
-      "byteSize": 269601,
+      "lineCount": 888,
+      "byteSize": 270515,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -30993,6 +31070,21 @@
           "exists": true
         },
         {
+          "href": "./KB-422-kiosk-manual-order-edit-slow-machine-name.md",
+          "targetPath": "docs/knowledge-base/KB-422-kiosk-manual-order-edit-slow-machine-name.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-423-csv-feed-freshness-notice.md",
+          "targetPath": "docs/knowledge-base/KB-423-csv-feed-freshness-notice.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-424-emudhra-g3b-distrust.md",
+          "targetPath": "docs/knowledge-base/KB-424-emudhra-g3b-distrust.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -31215,7 +31307,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 7,
+      "inboundCount": 6,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -31752,7 +31844,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 101,
+      "inboundCount": 98,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -32786,6 +32878,26 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/android-haizen-shell-ocr-execplan.md",
+      "lineCount": 96,
+      "byteSize": 11823,
+      "hasFrontmatter": false,
+      "title": "配膳スマホの製番かざし読み取り（Android 薄型アプリ）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 59,
+          "length": 1550
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/ansible-deploy-standardization-execplan.md",
       "lineCount": 340,
       "byteSize": 18079,
@@ -33276,8 +33388,8 @@
     },
     {
       "path": "docs/plans/code-health-phase2-execplan.md",
-      "lineCount": 175,
-      "byteSize": 28214,
+      "lineCount": 203,
+      "byteSize": 35028,
       "hasFrontmatter": false,
       "title": "コード健全化 第2期",
       "status": null,
@@ -33992,8 +34104,8 @@
     },
     {
       "path": "docs/plans/hermes-cross-source-retrieval-execplan.md",
-      "lineCount": 233,
-      "byteSize": 33509,
+      "lineCount": 241,
+      "byteSize": 36153,
       "hasFrontmatter": true,
       "title": "Hermes cross-source record retrieval (source catalog, query plan, offline evaluation)",
       "status": "in-progress",
@@ -34200,8 +34312,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 643,
-      "byteSize": 91557,
+      "lineCount": 680,
+      "byteSize": 100372,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -34218,8 +34330,20 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 637,
+          "line": 639,
           "length": 1105
+        },
+        {
+          "line": 649,
+          "length": 1194
+        },
+        {
+          "line": 655,
+          "length": 1419
+        },
+        {
+          "line": 668,
+          "length": 1224
         }
       ],
       "referencesExecPlan": false
@@ -34341,8 +34465,8 @@
     },
     {
       "path": "docs/plans/inspection-drawing-dgx-dimension-map-execplan.md",
-      "lineCount": 387,
-      "byteSize": 53256,
+      "lineCount": 473,
+      "byteSize": 70202,
       "hasFrontmatter": true,
       "title": "検査図面の夜間寸法解析（DGX）と丸数字の先回り配置",
       "status": "active",
@@ -34727,8 +34851,8 @@
     },
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
-      "lineCount": 139,
-      "byteSize": 35541,
+      "lineCount": 140,
+      "byteSize": 37262,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
@@ -35115,8 +35239,8 @@
     },
     {
       "path": "docs/plans/kiosk-operation-guide-accuracy-log.md",
-      "lineCount": 33,
-      "byteSize": 3069,
+      "lineCount": 65,
+      "byteSize": 6661,
       "hasFrontmatter": true,
       "title": "キオスク操作案内の当たり率ログ",
       "status": "living log",
@@ -35894,6 +36018,21 @@
       "referencesExecPlan": true
     },
     {
+      "path": "docs/plans/mobile-placement-verify-and-shelf-photo.md",
+      "lineCount": 71,
+      "byteSize": 8221,
+      "hasFrontmatter": false,
+      "title": "Mobile placement verification and shelf photos",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/nfc-stream-isolation-plan.md",
       "lineCount": 85,
       "byteSize": 5851,
@@ -36271,6 +36410,30 @@
         {
           "line": 29,
           "length": 1029
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/procedure-tidy-learning-loop-execplan.md",
+      "lineCount": 94,
+      "byteSize": 19079,
+      "hasFrontmatter": false,
+      "title": "手順書「整える」が人の直しから学ぶ仕組み",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 66,
+          "length": 1662
+        },
+        {
+          "line": 70,
+          "length": 1364
         }
       ],
       "referencesExecPlan": false
@@ -37893,14 +38056,20 @@
     },
     {
       "path": "docs/runbooks/deploy-status-recovery.md",
-      "lineCount": 70,
-      "byteSize": 4255,
+      "lineCount": 80,
+      "byteSize": 6330,
       "hasFrontmatter": true,
       "title": "デプロイ停止・復旧Runbook",
       "status": "active",
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 30,
+      "localLinks": [
+        {
+          "href": "../guides/deployment.md#空のpi4キオスクへの初回導入",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 32,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -39025,8 +39194,8 @@
     },
     {
       "path": "docs/runbooks/mobile-placement-smartphone.md",
-      "lineCount": 191,
-      "byteSize": 47283,
+      "lineCount": 212,
+      "byteSize": 50953,
       "hasFrontmatter": false,
       "title": "配膳スマホ（Android）セットアップ・検証 Runbook",
       "status": null,
@@ -39147,39 +39316,39 @@
           "length": 1780
         },
         {
-          "line": 16,
+          "line": 25,
           "length": 1012
         },
         {
-          "line": 26,
+          "line": 35,
           "length": 2108
         },
         {
-          "line": 40,
+          "line": 49,
           "length": 1034
         },
         {
-          "line": 44,
+          "line": 53,
           "length": 1352
         },
         {
-          "line": 46,
+          "line": 55,
           "length": 1676
         },
         {
-          "line": 52,
+          "line": 61,
           "length": 1319
         },
         {
-          "line": 54,
+          "line": 63,
           "length": 1376
         },
         {
-          "line": 56,
+          "line": 65,
           "length": 1231
         },
         {
-          "line": 58,
+          "line": 67,
           "length": 1410
         }
       ],
@@ -40881,7 +41050,7 @@
     {
       "path": "docs/security/tailscale-policy.md",
       "lineCount": 372,
-      "byteSize": 18770,
+      "byteSize": 18925,
       "hasFrontmatter": false,
       "title": "Tailscale Policy（タグ/ACL/SSH）運用台帳",
       "status": null,
