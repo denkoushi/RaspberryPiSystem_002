@@ -8,14 +8,15 @@ import {
 
 import { filterExistingPlacementRows, numberPlacementProposals, proposalToDrawingPoint } from './proposalToDrawingPoint';
 
+import type { PartMeasurementProcessGroup } from '../types';
 import type { InspectionDrawingPoint } from './types';
 import type { DrawingPlacementProposal, DrawingPlacementUnplaced } from '../../../api/domains/part-measurement-placement';
 
 export type DrawingProposalTab = 'proposals' | 'unplaced' | 'confirmed';
 
-function emptySession(visualTemplateId: string | null) {
+function emptySession(visualTemplateId: string | null, processGroup: PartMeasurementProcessGroup) {
   return {
-    visualTemplateId,
+    visualTemplateId, processGroup,
     dismissed: [] as string[],
     pending: {} as Record<string, string>,
     selectedId: null as string | null,
@@ -25,9 +26,10 @@ function emptySession(visualTemplateId: string | null) {
 }
 
 export function useInspectionDrawingPlacementProposals({
-  visualTemplateId, enabled, clientKey, points, onPointsChange, onSelectPoint, onPlaceMode
+  visualTemplateId, processGroup, enabled, clientKey, points, onPointsChange, onSelectPoint, onPlaceMode
 }: {
   visualTemplateId: string | null;
+  processGroup: PartMeasurementProcessGroup;
   enabled: boolean;
   clientKey?: string;
   points: InspectionDrawingPoint[];
@@ -35,15 +37,15 @@ export function useInspectionDrawingPlacementProposals({
   onSelectPoint: (id: string | null) => void;
   onPlaceMode: () => void;
 }) {
-  const [session, setSession] = useState(() => emptySession(visualTemplateId));
-  useEffect(() => setSession(emptySession(visualTemplateId)), [visualTemplateId]);
+  const [session, setSession] = useState(() => emptySession(visualTemplateId, processGroup));
+  useEffect(() => setSession(emptySession(visualTemplateId, processGroup)), [visualTemplateId, processGroup]);
   useEffect(() => {
     if (!enabled) setSession((previous) => ({ ...previous, armedId: null }));
   }, [enabled]);
-  const current = session.visualTemplateId === visualTemplateId ? session : emptySession(visualTemplateId);
+  const current = session.visualTemplateId === visualTemplateId && session.processGroup === processGroup ? session : emptySession(visualTemplateId, processGroup);
   const query = useQuery({
-    queryKey: ['inspection-drawing-placement-proposals', visualTemplateId, clientKey],
-    queryFn: () => getInspectionDrawingPlacementProposals(visualTemplateId!, clientKey),
+    queryKey: ['inspection-drawing-placement-proposals', visualTemplateId, processGroup, clientKey],
+    queryFn: () => getInspectionDrawingPlacementProposals(visualTemplateId!, processGroup, clientKey),
     enabled: enabled && Boolean(visualTemplateId),
     staleTime: Infinity,
     gcTime: 0,
@@ -109,7 +111,7 @@ export function useInspectionDrawingPlacementProposals({
     const approvedIds = Object.entries(current.pending)
       .filter(([, pointId]) => savedPoints.some((point) => point.id === pointId))
       .map(([id]) => id);
-    setSession((previous) => previous.visualTemplateId === visualTemplateId
+    setSession((previous) => previous.visualTemplateId === visualTemplateId && previous.processGroup === processGroup
       ? { ...previous, pending: {} }
       : previous);
     if (!visualTemplateId || !approvedIds.length) return;

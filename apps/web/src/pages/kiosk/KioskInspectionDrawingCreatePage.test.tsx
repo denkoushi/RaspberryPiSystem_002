@@ -27,6 +27,7 @@ const apiMocks = vi.hoisted(() => ({
   reviseTemplate: vi.fn(),
   createGroup: vi.fn(),
   reviseGroup: vi.fn(),
+  placementProposals: vi.fn(),
   confirm: vi.fn()
 }));
 
@@ -60,12 +61,7 @@ vi.mock('../../api/hooks', async () => {
 });
 
 vi.mock('../../api/domains/part-measurement-placement', () => ({
-  getInspectionDrawingPlacementProposals: vi.fn(async () => ({
-    status: 'no-sibling',
-    sourceDrawingName: null,
-    proposals: [],
-    unplaced: []
-  })),
+  getInspectionDrawingPlacementProposals: apiMocks.placementProposals,
   postInspectionDrawingPlacementDecisions: vi.fn(async () => ({ updated: 0 }))
 }));
 
@@ -230,6 +226,7 @@ describe('KioskInspectionDrawingCreatePage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.useFakeTimers();
+    apiMocks.placementProposals.mockResolvedValue({ status: 'no-sibling', sourceDrawingName: null, proposals: [], unplaced: [] });
     apiMocks.getTemplate.mockResolvedValue(template);
     apiMocks.getVisual.mockResolvedValue(visual);
     apiMocks.listVisuals.mockResolvedValue([visual]);
@@ -265,6 +262,15 @@ describe('KioskInspectionDrawingCreatePage', () => {
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'テスト入力' })).toBeDisabled();
     expect(apiMocks.getTemplate).not.toHaveBeenCalled();
+  });
+
+  it('requests proposals for the selected process on a new drawing', async () => {
+    await renderPage(`${createPath}?visualTemplateId=visual-1`);
+    expect(apiMocks.placementProposals).toHaveBeenCalledWith('visual-1', 'cutting', 'test-client-key');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '研削' }));
+    });
+    expect(apiMocks.placementProposals).toHaveBeenLastCalledWith('visual-1', 'grinding', 'test-client-key');
   });
 
   it('loads an edit route into locked metadata, editable fields and the selected marker', async () => {

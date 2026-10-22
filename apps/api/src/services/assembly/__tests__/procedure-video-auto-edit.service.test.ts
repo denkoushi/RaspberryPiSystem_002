@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../../config/env.js';
+import { InferenceDeferredError } from '../../inference/ports/text-completion.port.js';
 import { InferenceUnavailableError } from '../../inference/ports/multi-image-vision-completion.port.js';
 import { enqueueProcedureVideoAutoEdit, recoverProcedureVideoAutoEdit, ProcedureVideoAutoEditService } from '../procedure-video-auto-edit.service.js';
 
@@ -86,8 +87,8 @@ describe('procedure-video auto edit worker', () => {
     }
     for (const [input] of h.transcoder.extractFrames.mock.calls) await expect(access(path.dirname(input))).rejects.toMatchObject({ code: 'ENOENT' });
   });
-  it('does not charge attempts when the business model is unavailable', async () => {
-    const h = harness(); h.row.attempts = 2; h.vision.completeMany.mockRejectedValue(new InferenceUnavailableError());
+  it.each([new InferenceUnavailableError(), new InferenceDeferredError()])('does not charge attempts when the business model is unavailable (%s)', async (error) => {
+    const h = harness(); h.row.attempts = 2; h.vision.completeMany.mockRejectedValue(error);
     await h.service.runOnce();
     expect(h.row).toMatchObject({ status: 'PENDING', attempts: 2, errorCode: 'MODEL_UNAVAILABLE' });
   });

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { InferenceDeferredError } from '../../ports/text-completion.port.js';
 import { InferenceUnavailableError } from '../../ports/multi-image-vision-completion.port.js';
 import { InferenceRouter } from '../../routing/inference-router.js';
 import { RoutedVisionCompletionAdapter } from '../routed-vision-completion.adapter.js';
@@ -23,9 +24,14 @@ describe('procedure-video multi image inference', () => {
     expect(body.messages[0].content.map((item: any) => item.type)).toEqual(['text', 'text', 'image_url', 'text', 'image_url']);
     expect(body.messages[0].content[1].text).toBe('0秒'); expect(body.messages[0].content[3].text).toBe('1秒');
   });
-  it.each([429, 502, 503, 504])('classifies HTTP %s as unavailable without consuming an attempt', async (status) => {
+  it.each([502, 504])('classifies HTTP %s as unavailable without consuming an attempt', async (status) => {
     const h = setup(); h.fetch.mockResolvedValue(new Response('', { status }));
     await expect(h.adapter.completeMany(input)).rejects.toBeInstanceOf(InferenceUnavailableError);
+  });
+  it.each([429, 503])('defers background HTTP %s and preserves foreground unavailability', async (status) => {
+    const h = setup(); h.fetch.mockResolvedValue(new Response('', { status }));
+    await expect(h.adapter.completeMany(input)).rejects.toBeInstanceOf(InferenceDeferredError);
+    await expect(h.adapter.completeMany({ ...input, background: false })).rejects.toBeInstanceOf(InferenceUnavailableError);
   });
   it('classifies connection failures as unavailable', async () => {
     const h = setup(); h.fetch.mockRejectedValue(new TypeError('fetch failed'));

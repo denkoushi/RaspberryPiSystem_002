@@ -30,9 +30,20 @@ describe('placement proposal route contracts', () => {
     const response = await app.inject({ method: 'GET', url });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(body);
-    expect(drawingPlacementService.listForEditor).toHaveBeenCalledWith(id);
+    expect(drawingPlacementService.listForEditor).toHaveBeenCalledWith(id, 'CUTTING');
     expect(allowView).toHaveBeenCalledOnce();
     expect(allowWriteKiosk).not.toHaveBeenCalled();
+  });
+
+  it.each([['cutting', 'CUTTING'], ['grinding', 'GRINDING']])('maps query process %s to %s', async (wire, processGroup) => {
+    drawingPlacementService.listForEditor.mockResolvedValue({ status: 'no-sibling', proposals: [], unplaced: [], sourceDrawingName: null });
+    expect((await app.inject({ method: 'GET', url: `${url}?processGroup=${wire}` })).statusCode).toBe(200);
+    expect(drawingPlacementService.listForEditor).toHaveBeenCalledWith(id, processGroup);
+  });
+
+  it('rejects an invalid process before invoking the service', async () => {
+    expect((await app.inject({ method: 'GET', url: `${url}?processGroup=invalid` })).statusCode).toBe(400);
+    expect(drawingPlacementService.listForEditor).not.toHaveBeenCalled();
   });
 
   it('defaults omitted decision arrays and returns the update count', async () => {
