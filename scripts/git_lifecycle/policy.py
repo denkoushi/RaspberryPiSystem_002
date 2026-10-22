@@ -204,11 +204,12 @@ def evaluate_finish(
     *,
     local_branch: str | None,
     local_sha: str | None,
+    local_head_contained_in_pr_head: bool = False,
 ) -> CleanupDecision:
     """Return whether one exact target is safe to clean up.
 
     All checks are deliberately conjunctive.  In particular, a clean
-    worktree does not compensate for a stale local ref, and a merged PR does
+    worktree does not compensate for a ref/HEAD mismatch, and a merged PR does
     not compensate for an unrelated branch or worktree.
     """
 
@@ -233,9 +234,11 @@ def evaluate_finish(
         reasons.append("worktree_dirty")
     if not pull_request.head_sha:
         reasons.append("pr_head_sha_missing")
-    if worktree.head_sha != pull_request.head_sha:
+    if worktree.head_sha != pull_request.head_sha and not local_head_contained_in_pr_head:
         reasons.append("worktree_head_sha_mismatch")
-    if local_sha != pull_request.head_sha:
+    if local_sha != (
+        worktree.head_sha if local_head_contained_in_pr_head else pull_request.head_sha
+    ):
         reasons.append("head_sha_mismatch")
     return CleanupDecision(not reasons, tuple(reasons))
 
@@ -246,6 +249,7 @@ def classify_observation(
     *,
     local_sha: str | None = None,
     local_branch: str | None = None,
+    local_head_contained_in_pr_head: bool = False,
 ) -> AuditState:
     """Classify one worktree/PR pair without performing any I/O.
 
@@ -275,8 +279,11 @@ def classify_observation(
     if pull_request.merged:
         if (
             not pull_request.head_sha
-            or local_sha != pull_request.head_sha
-            or worktree.head_sha != pull_request.head_sha
+            or local_sha != worktree.head_sha
+            or (
+                worktree.head_sha != pull_request.head_sha
+                and not local_head_contained_in_pr_head
+            )
         ):
             return AuditState.REF_MISMATCH
         return AuditState.MERGED_CLEAN
