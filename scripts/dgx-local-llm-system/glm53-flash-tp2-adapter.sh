@@ -21,6 +21,7 @@ ALIAS="${VLLM_SERVED_MODEL_NAME:-system-prod-primary}"
 MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-262144}"
 LIMIT_MM="${VLLM_LIMIT_MM_PER_PROMPT:-}"
 SPECULATIVE="${VLLM_SPECULATIVE_CONFIG:-}"
+GPU_MEM_UTIL="${VLLM_GPU_MEMORY_UTILIZATION:-0.85}"
 if [[ -z "${LIMIT_MM}" ]]; then LIMIT_MM='{"image":61}'; fi
 if [[ -z "${SPECULATIVE}" ]]; then
   SPECULATIVE='{"method":"mtp","num_speculative_tokens":5,"moe_backend":"humming","attention_backend":"B12X"}'
@@ -35,6 +36,7 @@ fail() { echo "GLM TP2 adapter: $*" >&2; exit 1; }
 [[ "${ETH_IF}" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$ ]] || fail "invalid ethernet interface"
 [[ "${IB_IF}" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_,.-]*$ ]] || fail "invalid IB interfaces"
 [[ -n "${IMAGE}" && "${IMAGE}" != -* && ! "${IMAGE}" =~ [[:space:]] ]] || fail "invalid image"
+[[ "${GPU_MEM_UTIL}" =~ ^0\.[0-9]{1,3}$ ]] || fail "invalid gpu memory utilization"
 [[ -n "${ALIAS}" && "${ALIAS}" != -* && ! "${ALIAS}" =~ [[:space:]] ]] || fail "invalid served alias"
 for port in "${MASTER_PORT}" "${HOST_PORT}"; do
   if [[ ! "${port}" =~ ^[1-9][0-9]{0,4}$ ]] || (( port > 65535 )); then
@@ -103,7 +105,7 @@ VLLM_ARGS=(serve /models/GLM-5.3-Flash-FP4-Local --served-model-name "${ALIAS}"
   --block-size 256 --moe-backend b12x --linear-backend b12x --no-enable-flashinfer-autotune
   --load-format b12x --max-model-len "${MAX_MODEL_LEN}" --max-num-seqs 4 --max-num-batched-tokens 4096
   --speculative-config "${SPECULATIVE}" --reasoning-parser glm45 --tool-call-parser glm47
-  --enable-auto-tool-choice --gpu-memory-utilization 0.87 --nnodes 2
+  --enable-auto-tool-choice --gpu-memory-utilization "${GPU_MEM_UTIL}" --nnodes 2
   --master-addr "${HEAD_IP}" --master-port "${MASTER_PORT}")
 
 # Write recovery information before launch: SSH can fail after starting the worker.
