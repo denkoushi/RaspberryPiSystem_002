@@ -26,6 +26,9 @@
 
 ## Decision Log
 
+- 2026-10-22: worker の model dir 確認後、起動命令の前に marker を書く。起動命令が非0でも保持し、SSH 切断後の worker を stop で回収できるようにする。
+- 2026-10-22: ラベルなしの既存コンテナは GLM TP2 要求だけ不一致にし、その他の既存プロファイルの再要求は従来どおり成功させる。
+- 2026-10-22: GLM の head ラベル一致時も marker の worker が running か確認する。marker 不備・停止・SSH 失敗時は理由を stderr に出し、アダプタで両 rank を作り直す。
 - 2026-10-22: プロファイル ID は `business_glm53_flash_fp4_tp2`、アダプタ名は `glm53_flash_tp2` とする。理由: CP の再試行は `business_` で始まる ID だけに効くから。
 - 2026-10-22: head コンテナは今と同じ名前 `system-prod-trtllm`、ポート `127.0.0.1:38083`、別名 `system-prod-primary` にする。理由: CP の keep_warm、business_startup、probe、recovery playbook、proxy を変えずに済む。worker は Spark 2 の `system-prod-trtllm-rank1` とする。
 - 2026-10-22: worker の起動と停止はこのリポジトリのアダプタが、Spark 1 の `ubudgxkoushi`(control-server の実行ユーザー)から ssh で行う。CP は Spark 2 を管理しないので、`repository-boundary.md` の deploy 対象と `check-deploy-boundary.sh` は変えない。

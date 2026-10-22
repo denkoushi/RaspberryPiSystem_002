@@ -24,6 +24,12 @@ if args[0] == "ps":
     print(os.environ.get("RUNNING_NAME", ""))
 elif args[0] == "inspect":
     if "{{.State.Running}}" in args:
+        if args[-1] == "recorded-worker":
+            state = os.environ.get("EXISTING_WORKER_RUNNING", "true")
+            if state == "missing":
+                sys.exit(1)
+            print(state)
+            sys.exit(0)
         print(os.environ.get("WORKER_RUNNING", "true"))
     else:
         print(os.environ.get("RUNNING_PROFILE", ""))
@@ -47,10 +53,12 @@ import sys
 
 args = sys.argv[1:]
 assert args[:5] == ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--"]
-assert args[5] == "ubudgxkoushi@192.168.100.11"
+assert args[5] == os.environ.get("EXPECTED_WORKER_SSH", "ubudgxkoushi@192.168.100.11")
 with open(os.environ["EVENTS"], "a") as log:
     log.write(json.dumps({"node": "ssh", "args": args}) + "\n")
 if os.environ.get("FAIL_SSH"):
+    sys.exit(255)
+if os.environ.get("FAIL_WORKER_CHECK") and shlex.split(args[6])[-1] == "recorded-worker":
     sys.exit(255)
 sys.exit(subprocess.run(shlex.split(args[6]), env={**os.environ, "FAKE_NODE": "worker"}).returncode)
 '''
@@ -102,11 +110,11 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
     def docker_events(self):
         return [e for e in self.events() if e["node"] != "ssh"]
 
-    def write_marker(self):
+    def write_marker(self, target="ubudgxkoushi@192.168.100.11", name="system-prod-trtllm-rank1"):
         self.marker.parent.mkdir(exist_ok=True)
         self.marker.write_text(json.dumps({
-            "sshTarget": "ubudgxkoushi@192.168.100.11",
-            "containerName": "system-prod-trtllm-rank1",
+            "sshTarget": target,
+            "containerName": name,
         }))
 
     def test_start_orders_both_ranks_cache_drops_and_head_and_writes_marker(self):
@@ -164,11 +172,27 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
         result = self.run_script("glm53-flash-tp2-adapter.sh", BLUE_WORKER_MODEL_DIR=str(self.root / "missing"))
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any(e["args"][0] == "run" for e in self.docker_events()))
+        self.assertFalse(self.marker.exists())
 
     def test_worker_ssh_failure_stops_before_launch(self):
         result = self.run_script("glm53-flash-tp2-adapter.sh", FAIL_SSH="1")
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any(e["args"][0] == "run" for e in self.docker_events()))
+        self.assertFalse(self.marker.exists())
+
+    def test_worker_launch_failure_retains_marker_for_stop(self):
+        result = self.run_script("glm53-flash-tp2-adapter.sh", FAIL_RUN="worker")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(json.loads(self.marker.read_text()), {
+            "sshTarget": "ubudgxkoushi@192.168.100.11", "containerName": "system-prod-trtllm-rank1",
+        })
+        self.assertFalse(any(e["node"] == "head" and e["args"][0] == "run" for e in self.docker_events()))
+        result = self.run_script("stop-trtllm-server.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.docker_events()[-1], {
+            "node": "worker", "args": ["rm", "-f", "system-prod-trtllm-rank1"],
+        })
+        self.assertFalse(self.marker.exists())
 
     def test_worker_not_running_retains_marker_without_head_launch(self):
         result = self.run_script("glm53-flash-tp2-adapter.sh", WORKER_RUNNING="false")
@@ -199,12 +223,17 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
                 self.assertIn("profile mismatch", result.stderr)
                 self.assertIn(PROFILE, result.stderr)
 
-    def test_unlabelled_running_container_is_qwen_and_no_profile_keeps_legacy_behavior(self):
+    def test_unlabelled_container_and_no_profile_keep_legacy_behavior_except_glm(self):
         for adapter, requested, label, succeeds in (
             ("glm53_flash_tp2", PROFILE, "", False),
+            ("glm53_flash_tp2", PROFILE, "<no value>", False),
             ("qwen38_flash_next", QWEN, "", True),
             ("vllm", QWEN, "<no value>", True),
-            ("glm53_flash_tp2", PROFILE, PROFILE, True),
+            ("vllm", "business_qwen36_27b_nvfp4", "", True),
+            ("vllm", "business_qwen36_27b_nvfp4", "<no value>", True),
+            ("", "business_qwen36_27b_nvfp4", "", True),
+            ("", "business_qwen36_27b_nvfp4", "<no value>", True),
+            ("glm53_flash_tp2", "", "", True),
             ("qwen38_flash_next", "", PROFILE, True),
             ("vllm", "", "", True),
             ("", "", "", True),
@@ -215,6 +244,50 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
                                          RUNNING_NAME="system-prod-trtllm", RUNNING_PROFILE=label)
                 self.assertEqual(result.returncode == 0, succeeds, result.stderr)
         self.assertFalse(any(e["args"][0] == "rm" for e in self.docker_events()))
+        self.assertFalse(any(e["node"] == "ssh" for e in self.events()))
+
+    def test_matching_glm_checks_marker_worker_before_already_running(self):
+        target = "worker@192.168.100.12"
+        self.write_marker(target=target, name="recorded-worker")
+        result = self.run_script("start-trtllm-server.sh", RUNNING_NAME="system-prod-trtllm",
+                                 RUNNING_PROFILE=PROFILE, EXPECTED_WORKER_SSH=target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already running", result.stdout)
+        self.assertEqual(self.docker_events()[-1], {
+            "node": "worker", "args": ["inspect", "--format", "{{.State.Running}}", "recorded-worker"],
+        })
+        self.assertFalse(any(e["args"][0] in ("rm", "run") for e in self.docker_events()))
+
+    def test_matching_glm_rebuilds_both_ranks_if_worker_unavailable(self):
+        for overrides in ({"EXISTING_WORKER_RUNNING": "false"},
+                          {"EXISTING_WORKER_RUNNING": "missing"}, {"FAIL_WORKER_CHECK": "1"}):
+            with self.subTest(overrides=overrides):
+                self.events_path.write_text("")
+                self.write_marker(name="recorded-worker")
+                result = self.run_script("start-trtllm-server.sh", RUNNING_NAME="system-prod-trtllm",
+                                         RUNNING_PROFILE=PROFILE, **overrides)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("already running", result.stdout)
+                self.assertIn("worker", result.stderr)
+                self.assertIn("restarting", result.stderr)
+                events = self.docker_events()
+                self.assertEqual([e["node"] for e in events if e["args"][0] == "rm"], ["head", "worker"])
+                self.assertEqual([e["node"] for e in events if e["args"][0] == "run" and "--rm" not in e["args"]],
+                                 ["worker", "head"])
+
+    def test_matching_glm_rebuilds_if_marker_missing_or_invalid(self):
+        for contents in (None, "{}", "not json"):
+            with self.subTest(contents=contents):
+                self.marker.unlink(missing_ok=True)
+                if contents is not None:
+                    self.marker.parent.mkdir(exist_ok=True)
+                    self.marker.write_text(contents)
+                result = self.run_script("start-trtllm-server.sh", RUNNING_NAME="system-prod-trtllm",
+                                         RUNNING_PROFILE=PROFILE)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("already running", result.stdout)
+                self.assertIn("marker", result.stderr)
+                self.assertIn("restarting", result.stderr)
 
     def test_stop_removes_head_then_worker_and_marker(self):
         self.write_marker()

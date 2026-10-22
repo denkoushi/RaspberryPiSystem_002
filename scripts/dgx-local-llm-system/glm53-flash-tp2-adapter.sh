@@ -106,10 +106,7 @@ VLLM_ARGS=(serve /models/GLM-5.3-Flash-FP4-Local --served-model-name "${ALIAS}"
   --enable-auto-tool-choice --gpu-memory-utilization 0.87 --nnodes 2
   --master-addr "${HEAD_IP}" --master-port "${MASTER_PORT}")
 
-worker docker "${DOCKER_ARGS[@]}" --name "${WORKER_NAME}" \
-  -v "${WORKER_MODEL_DIR}:/models/GLM-5.3-Flash-FP4-Local:ro" \
-  --entrypoint vllm "${IMAGE}" "${VLLM_ARGS[@]}" --node-rank 1 --headless
-# Retain recovery information even if the worker exits or head fails to start.
+# Write recovery information before launch: SSH can fail after starting the worker.
 python3 - "${MARKER}" "${WORKER_SSH}" "${WORKER_NAME}" <<'PY'
 import json
 import sys
@@ -120,6 +117,9 @@ tmp = path.with_suffix(path.suffix + ".tmp")
 tmp.write_text(json.dumps({"sshTarget": sys.argv[2], "containerName": sys.argv[3]}) + "\n", encoding="utf-8")
 tmp.replace(path)
 PY
+worker docker "${DOCKER_ARGS[@]}" --name "${WORKER_NAME}" \
+  -v "${WORKER_MODEL_DIR}:/models/GLM-5.3-Flash-FP4-Local:ro" \
+  --entrypoint vllm "${IMAGE}" "${VLLM_ARGS[@]}" --node-rank 1 --headless
 [[ "$(worker docker inspect --format '{{.State.Running}}' "${WORKER_NAME}")" == "true" ]] || fail "worker is not running"
 
 if ! worker docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
