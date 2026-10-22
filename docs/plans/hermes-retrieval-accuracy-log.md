@@ -21,6 +21,8 @@ Run from `scripts/hermes-search`:
 
 Hybrid runs need `HERMES_RETRIEVAL_DENSE_PROVIDER=dgx`, `HERMES_RETRIEVAL_DENSE_BASE_URL=http://127.0.0.1:38110` through the owner's SSH tunnel, and `TYPESAFE_API_KEY` for the JEV planner and judge. Compare a change against a baseline run of the current `main` on the same day and settings; JEV answers drift by about one case between runs.
 
+Since 2026-10-21 each case in an `evaluate.mjs` run also has `volume`: JEV calls (plan and relevance separately), the characters sent to and received from JEV (`JSON.stringify` length of the request and the reply, so prompts plus framing), and `answerChars`/`answerRecords` for the answer text a user would get, built with the worker's own formatting. The summary gives mean, p50 and p95 of each, and `stage-score.mjs` adds the p50 columns `jevIn` and `ans` (`-` for older runs). Read them next to latency: a change that keeps precision but sends more to JEV is slower and costs more.
+
 Real use is recorded on the Pi 5 since 2026-09-29: every answer appends its receipt, the shown record ids, and the session id to `/app/storage/hermes-search/runtime/receipts/receipts-YYYY-MM-DD.jsonl` (Tokyo day, kept 90 days, no record text). Copy a day to the private folder and summarize it:
 
     ssh denkon5sd02@100.106.158.2 'c=$(docker ps --format "{{.Names}}" | grep -E "^bluegreen-api-(blue|green)-1$" | head -1); docker exec "$c" cat /app/storage/hermes-search/runtime/receipts/receipts-2026-09-30.jsonl' > ~/Documents/hermes-retrieval-private/receipts/receipts-2026-09-30.jsonl
@@ -672,3 +674,7 @@ Private files: `work/flywheel/questions-2026-10-19.jsonl`, `questions-2026-10-20
 Planner change on top of #2130. A cause chosen from the current question becomes `causeCategory` only when the plan has no content search (`contentDecision.jev` false: cause-and-period questions, breakdowns). When the content search runs, the heard cause is dropped and the receipt records `causeDecision: { chosen: null, dropped: 'content_search', heard: <id> }`; the cause words stay in the question text that the content search uses. A cause inherited from a chip or a previous plan is kept as before, since the user chose it explicitly, also when the follow-up names a different cause. The nightly question rows now keep `causeDecision` (ids only) so that the dropped rows can be counted. `unknown` is no longer offered as a choice in the planner question (it stays a breakdown bucket). Planner question version `planner-questions-2026-10-21`; the JEV input digest changed, results and catalog digests unchanged.
 
 Reading the nineteenth night: report content rows with `causeDecision.dropped === 'content_search'` and their nothing-shown count separately, the `breakdown_*` templates separately from the other filter templates (first night with #2137), and the headline percentage against 85%.
+
+### 2026-10-21: evaluation also records how much text goes to JEV and back to the user (harness change, not a measurement)
+
+`evaluate.mjs` now records per-case JEV call counts, characters sent and received, and answer characters; `stage-score.mjs` shows `jevIn` and `ans`. Search behaviour and the text sent to JEV are unchanged (the worker only exports its formatting functions). The first baseline with these columns is still to be run on `main` with the usual sets; record it here when it is.

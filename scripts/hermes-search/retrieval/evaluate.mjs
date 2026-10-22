@@ -8,7 +8,7 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { digestRecords } from '../hermes-qmd-snapshot-export.mjs';
-import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
+import { definitionForCatalog, fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { attachEnrichment, readEnrichmentStores, splitEnrichmentArg } from './enrichment-attach.mjs';
 import { execute, openQmdVectorRanker, recordPassage } from './executor.mjs';
 import { createDenseRanker, createScopedDenseRanker } from './dense-index.mjs';
@@ -17,8 +17,10 @@ import { planStage } from './stage-score.mjs';
 import { linkEntities } from './entity-link.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge, candidateBody } from './relevance-jev.mjs';
+import { defaultEvaluate } from './jev-evaluate.mjs';
 import { validateQueryPlan } from './query-plan.mjs';
 import { buildValueIndex, findCandidateValues } from './value-index.mjs';
+import { clarificationAnswer, formatBreakdown, formatCoverageNotice, formatRecords, noResultAnswer, UNAVAILABLE_ANSWER } from './worker.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -158,6 +160,40 @@ export async function loadDgxDenseRows({ records, bodyFields, embed, storePath }
 
 function latencyPair(values) {
   return { p50: percentile(values, 0.5), p95: percentile(values, 0.95) };
+}
+
+function volumeStats(values) {
+  const numbers = values.filter(Number.isFinite);
+  return {
+    mean: numbers.length ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length : null,
+    ...latencyPair(numbers),
+  };
+}
+
+function answerVolume(executed, validation, catalog, snapshotCount) {
+  let answer = null;
+  let answerRecords = 0;
+  if (executed.status === 'out_of_scope') {
+    answer = definitionForCatalog(catalog).outOfScopeAnswer
+      || `${catalog.label}の検索に関する質問として解釈できませんでした。`;
+  } else if (executed.status === 'clarification') {
+    answer = clarificationAnswer(validation.clarification);
+  } else if (executed.status === 'unavailable') {
+    answer = UNAVAILABLE_ANSWER;
+  } else if (executed.status === 'no_result') {
+    answer = validation.plan.breakdown
+      ? formatBreakdown(validation.plan, executed.groups, 0, catalog)
+      : noResultAnswer(snapshotCount);
+  } else if (executed.status === 'answer') {
+    const formatted = formatRecords(executed.results, catalog);
+    answerRecords = formatted.records.length;
+    const body = validation.plan.breakdown
+      ? formatBreakdown(validation.plan, executed.groups, executed.coverage?.total ?? executed.results.length, catalog)
+      : formatted.answer;
+    const notice = formatCoverageNotice(executed.coverage);
+    answer = notice && !validation.plan.breakdown ? (body ? `${body}\n\n${notice}` : notice) : body;
+  }
+  return { answerChars: answer?.length ?? null, answerRecords };
 }
 
 function relevanceEnabled(flag) {
@@ -365,6 +401,21 @@ export async function evaluateGold(options) {
   try {
     for (const item of gold) {
       const wallStarted = performance.now();
+      const volume = { jevCalls: 0, planCalls: 0, relevanceCalls: 0, jevInputChars: 0, jevOutputChars: 0 };
+      // Count serialized evaluate inputs/results (UTF-16 code units), not wire bytes.
+      // Count attempted calls before awaiting, including relevance batches and retries.
+      const measuredEvaluate = (kind) => async (input) => {
+        volume.jevCalls += 1;
+        volume[kind] += 1;
+        volume.jevInputChars += JSON.stringify(input).length;
+        const output = await (options.evaluate ?? defaultEvaluate)(input);
+        volume.jevOutputChars += JSON.stringify(output)?.length ?? 0;
+        return output;
+      };
+      // Preserve the existing custom relevance hook and the disabled default for API callers.
+      const relevance = options.relevance ?? (options.jevRelevance
+        ? createRelevanceJudge({ evaluate: measuredEvaluate('relevanceCalls') }).judge
+        : undefined);
       const candidates = findCandidateValues(item.question, valueIndex, catalog);
       const choiceGroups = options.entityLink
         ? await linkEntities({
@@ -374,7 +425,7 @@ export async function evaluateGold(options) {
           embed: (texts) => cachedEmbed(texts, queryExtra),
         })
         : null;
-      const planned = await createPlanner().plan({
+      const planned = await createPlanner({ evaluate: measuredEvaluate('planCalls') }).plan({
         question: item.question,
         previousPlan: null,
         catalog,
@@ -410,7 +461,7 @@ export async function evaluateGold(options) {
           records: payload.records,
           vector: activeVector,
           catalog,
-          relevance: options.relevance,
+          relevance,
           rerank,
           rerankMode: variant === 'c' ? (options.rerankMode ?? 'replace') : null,
           retriever,
@@ -465,6 +516,7 @@ export async function evaluateGold(options) {
         relevanceMs: executed.timings?.relevanceMs ?? null,
         vectorStatus: executed.timings?.vectorStatus ?? null,
         totalMs: Math.round(performance.now() - wallStarted),
+        volume: { ...volume, ...answerVolume(executed, validation, catalog, payload.records.length) },
         ...(options.stageDump ? {
           stage: planStage(planned.plan, { outOfScope: Boolean(validation.outOfScope), dateField }),
           candidateIds: executed.candidateIds ?? [],
@@ -490,6 +542,8 @@ export async function evaluateGold(options) {
     statusCorrect: details.filter((item) => item.statusCorrect).length,
     targetCases: details.filter((item) => item.targetsShown != null).length,
     casesTargetShown: details.filter((item) => item.targetsShown > 0).length,
+    volume: Object.fromEntries(['jevCalls', 'jevInputChars', 'jevOutputChars', 'answerChars']
+      .map((key) => [key, volumeStats(details.map((item) => item.volume[key]))])),
     latency: {
       plan: latencyPair(details.map((item) => item.planMs)),
       retrieve: latencyPair(details.map((item) => item.retrieveMs)),
@@ -539,7 +593,7 @@ async function main() {
     qmdIndex: args.qmdIndex,
     embedModel: args.embedModel,
     workRoot,
-    relevance: relevanceEnabled(args.jevRelevance) ? (input) => createRelevanceJudge().judge(input) : undefined,
+    jevRelevance: relevanceEnabled(args.jevRelevance),
     variant: args.variant,
     entityLink: args.entityLink,
     rerankMode: args.rerankMode,
