@@ -44,6 +44,8 @@ scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible
 
 デプロイまたは別の整理が実行中なら、Docker変更も完了マーカー更新も行わず、翌日のタイマーで再試行する。保持状態が欠落・不正、plan/applyが失敗、または一部削除が未解決の場合は `storage-maintenance-failed` アラートを生成し、完了マーカーを古いまま残す。
 
+Dockerコマンドは1回300秒で打ち切る。2026-10-22は03:00のClamAV検査の開始と重なり、`docker image ls --all`（約575件）が当時の上限60秒を超えて `"error":"Docker image list failed"` で止まり、誤アラートになった。平常時は約14秒で終わる。この種の失敗は完了マーカーが進まないため翌日自動で再試行される。出力は `journalctl -u storage-maintenance.service` に出る（`/var/log/storage-maintenance.log` は使っていない）。
+
 整理対象のallowlistは固定されている。対象はAPIリポジトリ（`ghcr.io/denkoushi/raspisys-api`、旧ローカル `raspi-system-api` / `docker-api`）、Webリポジトリ（`ghcr.io/denkoushi/raspisys-web`、旧ローカル `raspi-system-web` / `docker-web`）、および `ghcr.io/denkoushi/raspisys-release-set` の未使用イメージだけである。現行・直前版、稼働コンテナが参照するイメージ、24時間未満のイメージは保持する。DB、gateway、Postgres、Pi3、BuildKit内部、volume、業務ファイルは対象外である。
 
 手動確認でも、planとapplyの各操作ごとにfleetデプロイ共通ロックとイメージ整理ロックを非ブロッキング取得する。root shellで次を実行し、どちらかのロックが使用中なら終了コード75で中断する。

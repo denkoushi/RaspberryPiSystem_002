@@ -57,7 +57,10 @@ else:
 
 MAX_JSON_BYTES = 1024 * 1024
 MAX_COMMAND_OUTPUT_BYTES = 4 * 1024 * 1024
-COMMAND_TIMEOUT_SECONDS = 60
+# On 2026-10-22 `docker image ls --all` (about 575 images) took over 60 s while
+# the 03:00 ClamAV scan was starting, and the daily run raised a false alert.
+# It takes about 14 s when the Pi5 is quiet, so 300 s leaves a wide margin.
+COMMAND_TIMEOUT_SECONDS = 300
 SAFE_COMMAND_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 
