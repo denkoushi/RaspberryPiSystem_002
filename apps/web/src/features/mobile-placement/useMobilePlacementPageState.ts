@@ -24,7 +24,7 @@ import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
 
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
-import type { ActualSlipOcrResponse } from '../../api/domains/mobile-placement';
+import type { ActualSlipOcrResponse, MobilePlacementSlipMatchResponse } from '../../api/domains/mobile-placement';
 
 /**
  * 配膳ページの状態と API 呼び出し（UI から分離してテスト・再利用しやすくする）
@@ -37,6 +37,7 @@ export function useMobilePlacementPageState() {
   const [actualFseiban, setActualFseiban] = useState('');
   const [actualPart, setActualPart] = useState('');
   const [slipResult, setSlipResult] = useState<MobilePlacementSlipResult>('idle');
+  const [slipDetails, setSlipDetails] = useState<MobilePlacementSlipMatchResponse | null>(null);
   const [slipVerifying, setSlipVerifying] = useState(false);
   const actualSlipOcrInFlight = useRef(false);
   const [actualSlipImageOcrBusy, setActualSlipImageOcrBusy] = useState(false);
@@ -104,6 +105,8 @@ export function useMobilePlacementPageState() {
     const fs = res.fseiban ?? null;
     if (mo) {
       setActualOrder(mo);
+    } else if (fs) {
+      setActualOrder('');
     }
     if (fs) {
       setActualFseiban(fs);
@@ -188,6 +191,7 @@ export function useMobilePlacementPageState() {
   const runSlipVerify = useCallback(async () => {
     setSlipVerifying(true);
     setSlipResult('idle');
+    setSlipDetails(null);
     try {
       const res = await verifyMobilePlacementSlipMatch({
         transferOrderBarcodeRaw: transferOrder,
@@ -196,9 +200,10 @@ export function useMobilePlacementPageState() {
         actualFseibanRaw: actualFseiban,
         actualPartBarcodeRaw: actualPart
       });
-      setSlipResult(res.ok ? 'ok' : 'ng');
+      setSlipDetails(res);
+      setSlipResult(res.ok ? 'ok' : res.reason === 'order_not_found' || res.reason === 'transfer_not_found' || res.reason === 'part_required' ? 'not-found' : 'ng');
     } catch {
-      setSlipResult('ng');
+      setSlipResult('error');
     } finally {
       setSlipVerifying(false);
     }
@@ -260,7 +265,7 @@ export function useMobilePlacementPageState() {
     setRegisterMessage(null);
   }, []);
 
-  const resetSlipResult = useCallback(() => setSlipResult('idle'), []);
+  const resetSlipResult = useCallback(() => { setSlipResult('idle'); setSlipDetails(null); }, []);
 
   const resetActualSlipOcrFeedback = useCallback(
     () => setActualSlipOcrFeedback(initialActualSlipOcrFeedback),
@@ -322,6 +327,7 @@ export function useMobilePlacementPageState() {
     actualPart,
     setActualPart,
     slipResult,
+    slipDetails,
     resetSlipResult,
     buildShelfRegisterRouteState,
     restoreShelfRegisterRouteState,

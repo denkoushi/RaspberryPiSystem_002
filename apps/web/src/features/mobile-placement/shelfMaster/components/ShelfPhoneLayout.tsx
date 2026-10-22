@@ -18,7 +18,7 @@ import type { MachineMasterDto } from '../../../../api/client';
 
 export function ShelfPhoneLayout({ zoneId, machines, onBack, onOpen, onMode, onMessage }: {
   zoneId: MacroZoneId; machines: MachineMasterDto[]; onBack: () => void;
-  onOpen: (zone: MacroZoneId) => void; onMode: () => void; onMessage: (message: string) => void;
+  onOpen: (zone: MacroZoneId) => void; onMode: (mode: 'photo' | 'relocate' | 'layout') => void; onMessage: (message: string) => void;
 }) {
   const draft = useZoneLayoutDraft(zoneId);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +79,7 @@ export function ShelfPhoneLayout({ zoneId, machines, onBack, onOpen, onMode, onM
 
   return <>
     <HaizenHeader title={getMacroZoneById(zoneId).displayName} onBack={() => leave(onBack)} />
-    <ShelfPhoneMode mode="layout" canEdit onChange={(mode) => { if (mode === 'relocate') leave(onMode); }} />
+    <ShelfPhoneMode mode="layout" canEdit onChange={(mode) => { if (mode !== 'layout') leave(() => onMode(mode)); }} />
     <div className="flex shrink-0 items-center gap-1.5 px-3.5 pb-2">
       {([3, 4] as const).map((size) => <button key={size} type="button" aria-pressed={draft.gridSize === size}
         className={`${hp.mini} aria-pressed:!border-[var(--hp-ink)]`} disabled={busy || !draft.zoneQuery.data}

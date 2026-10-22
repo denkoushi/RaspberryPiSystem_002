@@ -89,11 +89,11 @@ export function ShelfPhoneZoneGrid({ zoneId, gridSize, entities, selectedCells =
 }
 
 export function ShelfPhoneMode({ mode, canEdit, onChange }: {
-  mode: 'relocate' | 'layout'; canEdit: boolean; onChange: (mode: 'relocate' | 'layout') => void;
+  mode: 'photo' | 'relocate' | 'layout'; canEdit: boolean; onChange: (mode: 'photo' | 'relocate' | 'layout') => void;
 }) {
   return <div className="shrink-0 px-3.5 pb-2 pt-2"><div className="inline-flex overflow-hidden rounded-xl border border-[var(--hp-line)]">
-    {(['relocate', 'layout'] as const).filter((m) => m !== 'layout' || canEdit).map((m) => <button key={m} type="button" aria-pressed={mode === m}
-      className="h-10 px-3.5 text-sm font-black text-[var(--hp-ink3)] aria-pressed:bg-[var(--hp-ink)] aria-pressed:text-[var(--hp-bg)]" onClick={() => onChange(m)}>{m === 'relocate' ? '棚を移す' : '配置を変える'}</button>)}
+    {(['photo', 'relocate', 'layout'] as const).filter((m) => m !== 'layout' || canEdit).map((m) => <button key={m} type="button" aria-pressed={mode === m}
+      className="h-10 px-3.5 text-sm font-black text-[var(--hp-ink3)] aria-pressed:bg-[var(--hp-ink)] aria-pressed:text-[var(--hp-bg)]" onClick={() => onChange(m)}>{m === 'photo' ? '写真' : m === 'relocate' ? '棚を移す' : '配置を変える'}</button>)}
   </div></div>;
 }
 

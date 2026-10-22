@@ -29,6 +29,7 @@ import {
   updateHaizenPresetShelf,
   updateHaizenPresetShelfForTarget
 } from '../../services/mobile-placement/haizen-placement.service.js';
+import { getShelfPhoto, putShelfPhoto, updateShelfMemo } from '../../services/mobile-placement/mobile-placement-shelf-photo.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
 import { suggestPartPlacementSearch } from '../../services/mobile-placement/part-search/part-search.service.js';
 import {
@@ -66,31 +67,11 @@ const verifySlipMatchBodySchema = z
     actualFhinmeiBarcodeRaw: z.string().optional()
   })
   .superRefine((data, ctx) => {
-    if (
-      (data.transferPartBarcodeRaw?.trim().length ?? 0) === 0 &&
-      (data.transferFhinmeiBarcodeRaw?.trim().length ?? 0) === 0
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'transferPartBarcodeRaw または transferFhinmeiBarcodeRaw が必要です',
-        path: ['transferPartBarcodeRaw']
-      });
-    }
     if (data.actualOrderBarcodeRaw.trim().length === 0 && data.actualFseibanRaw.trim().length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'actualOrderBarcodeRaw または actualFseibanRaw のいずれかが必要です',
         path: ['actualOrderBarcodeRaw']
-      });
-    }
-    if (
-      (data.actualPartBarcodeRaw?.trim().length ?? 0) === 0 &&
-      (data.actualFhinmeiBarcodeRaw?.trim().length ?? 0) === 0
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'actualPartBarcodeRaw または actualFhinmeiBarcodeRaw が必要です',
-        path: ['actualPartBarcodeRaw']
       });
     }
   });
@@ -135,6 +116,7 @@ const partSearchSuggestQuerySchema = z.object({
 });
 
 const registerMobilePlacementShelfBodySchema = z.object({
+  displayLabel: z.string().trim().max(60).nullable().optional(),
   shelfCodeRaw: z.string().min(1).max(200)
 });
 
@@ -346,9 +328,34 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const identity = resolveCredentialIdentity(clientDevice);
     const result = await registerMobilePlacementShelf({
       clientDeviceId: identity.clientDeviceId,
-      shelfCodeRaw: body.shelfCodeRaw
+      shelfCodeRaw: body.shelfCodeRaw,
+      displayLabel: body.displayLabel
     });
     return { shelf: result.shelf };
+  });
+
+  app.put('/mobile-placement/shelves/:shelfCodeRaw/photo', { bodyLimit: 1_500_000, config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
+    const body = z.object({
+      contentType: z.enum(['image/jpeg', 'image/webp', 'image/png']),
+      dataBase64: z.string().min(1).max(1_398_104)
+    }).parse(request.body);
+    return putShelfPhoto(shelfCodeRaw, body, resolveCredentialIdentity(clientDevice).clientDeviceId);
+  });
+
+  app.get('/mobile-placement/shelves/:shelfCodeRaw/photo', { config: { rateLimit: false } }, async (request, reply) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
+    const photo = await getShelfPhoto(shelfCodeRaw);
+    return reply.type(photo.contentType).header('Cache-Control', 'private, max-age=31536000, immutable').send(Buffer.from(photo.bytes));
+  });
+
+  app.patch('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
+    const { displayLabel } = z.object({ displayLabel: z.string().trim().max(60).nullable() }).parse(request.body);
+    return updateShelfMemo(shelfCodeRaw, displayLabel);
   });
 
   /**
@@ -397,11 +404,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       actualFseibanRaw: body.actualFseibanRaw,
       actualPartBarcodeRaw: body.actualPartBarcodeRaw?.trim() || body.actualFhinmeiBarcodeRaw?.trim() || ''
     });
-    const resolvedBy = result.actualResolvedBy ? { actualResolvedBy: result.actualResolvedBy } : {};
-    if (result.ok) {
-      return { ok: true as const, ...resolvedBy };
-    }
-    return { ok: false as const, reason: result.reason, ...resolvedBy };
+    return result;
   });
 
   /**

@@ -730,6 +730,7 @@
 
 ### 🆕 最新アップデート（2026-04-13）
 
+- **配膳スマホ 照合・棚写真 実装計画**: [Plan](./plans/mobile-placement-verify-and-shelf-photo.md)。
 - **配膳スマホ V22 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)。
 - **配膳スマホ V21 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md)。
 - **配膳スマホ V20 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) · [API](./api/mobile-placement.md)。

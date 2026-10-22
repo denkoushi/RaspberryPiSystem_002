@@ -39,10 +39,10 @@ function setup(enabled = true) {
   const saveApi = vi.fn().mockResolvedValue({});
   const wrapper = ({ children }: { children: ReactNode }) =>
     <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  const hook = renderHook(({ id, editable }) => {
+  const hook = renderHook(({ id, editable, processGroup }) => {
     const [points, setPoints] = useState<InspectionDrawingPoint[]>([]);
     const placement = useInspectionDrawingPlacementProposals({
-      visualTemplateId: id, enabled: editable, clientKey: 'kiosk-key',
+      visualTemplateId: id, processGroup, enabled: editable, clientKey: 'kiosk-key',
       points, onPointsChange: setPoints, onPlaceMode, onSelectPoint
     });
     const save = async () => {
@@ -52,7 +52,7 @@ function setup(enabled = true) {
       placement.flushApprovals(points);
     };
     return { placement, points, setPoints, save };
-  }, { wrapper, initialProps: { id: 'visual-1', editable: enabled } });
+  }, { wrapper, initialProps: { id: 'visual-1', editable: enabled, processGroup: 'cutting' as 'cutting' | 'grinding' } });
   return { ...hook, saveApi, onPlaceMode, onSelectPoint };
 }
 
@@ -147,16 +147,16 @@ describe('useInspectionDrawingPlacementProposals', () => {
   it('does not fetch in disabled modes; fetches once despite edits and mode toggles', async () => {
     const { result, rerender } = setup(false);
     expect(getInspectionDrawingPlacementProposals).not.toHaveBeenCalled();
-    rerender({ id: 'visual-1', editable: true });
+    rerender({ id: 'visual-1', editable: true, processGroup: 'cutting' });
     await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
     act(() => result.current.placement.selectProposal(first.id));
     act(() => result.current.placement.arm(response.unplaced[0]));
-    rerender({ id: 'visual-1', editable: false });
+    rerender({ id: 'visual-1', editable: false, processGroup: 'cutting' });
     expect(result.current.placement.proposals).toEqual([]);
     expect(result.current.placement.armedId).toBeNull();
-    rerender({ id: 'visual-1', editable: true });
+    rerender({ id: 'visual-1', editable: true, processGroup: 'cutting' });
     expect(getInspectionDrawingPlacementProposals).toHaveBeenCalledTimes(1);
-    expect(getInspectionDrawingPlacementProposals).toHaveBeenCalledWith('visual-1', 'kiosk-key');
+    expect(getInspectionDrawingPlacementProposals).toHaveBeenCalledWith('visual-1', 'cutting', 'kiosk-key');
   });
 
   it.each(['map-pending', 'no-sibling'] as const)('hides %s responses', async (status) => {
@@ -167,6 +167,23 @@ describe('useInspectionDrawingPlacementProposals', () => {
     expect(result.current.placement.unplaced).toEqual([]);
   });
 
+  it('refetches and resets pending decisions, selection, tabs and armed items when process changes', async () => {
+    const { result, rerender } = setup();
+    await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
+    act(() => result.current.placement.approve(first));
+    act(() => result.current.placement.selectProposal('proposal-2'));
+    act(() => result.current.placement.arm(response.unplaced[0]));
+    rerender({ id: 'visual-1', editable: true, processGroup: 'grinding' });
+    expect(result.current.placement.selectedProposalId).toBeNull();
+    expect(result.current.placement.armedId).toBeNull();
+    expect(result.current.placement.tab).toBe('proposals');
+    await waitFor(() => expect(getInspectionDrawingPlacementProposals).toHaveBeenCalledWith('visual-1', 'grinding', 'kiosk-key'));
+    await act(() => result.current.save());
+    expect(postInspectionDrawingPlacementDecisions).not.toHaveBeenCalled();
+    act(() => result.current.setPoints([]));
+    await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
+  });
+
   it('does not carry pending decisions or stale data to another drawing', async () => {
     const { result, rerender } = setup();
     await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
@@ -174,7 +191,7 @@ describe('useInspectionDrawingPlacementProposals', () => {
     vi.mocked(getInspectionDrawingPlacementProposals).mockResolvedValue({
       status: 'no-sibling', proposals: [], unplaced: [], sourceDrawingName: null
     });
-    rerender({ id: 'visual-2', editable: true });
+    rerender({ id: 'visual-2', editable: true, processGroup: 'cutting' });
     expect(result.current.placement.proposals).toEqual([]);
     await act(() => result.current.save());
     expect(postInspectionDrawingPlacementDecisions).not.toHaveBeenCalled();

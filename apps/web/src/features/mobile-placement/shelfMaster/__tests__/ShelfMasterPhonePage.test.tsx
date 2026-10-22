@@ -7,6 +7,7 @@ import * as api from '../../../../api/client';
 import { ShelfMasterPageContent } from '../ShelfMasterPageContent';
 
 vi.mock('../../../../api/client', () => ({
+  getMobilePlacementRegisteredShelves: vi.fn(), getMobilePlacementShelfPhoto: vi.fn(),
   getMobilePlacementClientCapabilities: vi.fn(), getMobilePlacementMachineMasters: vi.fn(),
   getMobilePlacementShelfLayoutSummary: vi.fn(), getMobilePlacementShelfLayoutZone: vi.fn(),
   postMobilePlacementShelfRelocate: vi.fn(), putMobilePlacementShelfLayoutZone: vi.fn(),
@@ -34,6 +35,7 @@ function mount() {
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [] });
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.mocked(api.getMobilePlacementClientCapabilities).mockResolvedValue({ shelfLayoutEditEnabled: true, haizenEdgeEnabled: true });
   vi.mocked(api.getMobilePlacementMachineMasters).mockResolvedValue({ machines: [{ resourceCd: 'M1', resourceName: '加工機A' }] });
@@ -45,8 +47,16 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('ShelfMaster phone/desktop and existing mutations', () => {
+  it('opens photo mode first and allows switching to the map', async () => {
+    mount();
+    expect(screen.getByRole('button', { name: '写真', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await screen.findByRole('button', { name: '棚を追加' });
+    click('棚を移す');
+    await screen.findByLabelText('工場マップ');
+  });
+
   it('renders a north-up map and retains the hub hand-off on back', async () => {
-    mount(); const map = await screen.findByLabelText('工場マップ');
+    mount(); click('棚を移す'); const map = await screen.findByLabelText('工場マップ');
     expect(within(map).getAllByRole('button').map((b) => b.textContent?.replace(/棚\d+/, ''))).toEqual(['西·北', '中央·北', '東·北', '西·中央', '中央·中央', '東·中央', '西·南', '中央·南', '東·南']);
     click(/西·北/); await screen.findByRole('button', { name: '西-北-01' });
     expect(screen.getByLabelText('区画の配置')).toHaveStyle({ gridTemplateColumns: '30px repeat(3, minmax(0, 1fr)) 30px' });
@@ -71,12 +81,12 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
 
   it('hides editing without the existing capability', async () => {
     vi.mocked(api.getMobilePlacementClientCapabilities).mockResolvedValue({ shelfLayoutEditEnabled: false, haizenEdgeEnabled: false });
-    mount(); await screen.findByLabelText('工場マップ');
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ');
     expect(screen.queryByRole('button', { name: '配置を変える' })).not.toBeInTheDocument();
   });
 
   it('preserves relocation source across zones and uses registered shelf codes', async () => {
-    mount(); await screen.findByLabelText('工場マップ'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click(/西·北/);
     await screen.findByRole('button', { name: '西-北-01' }); click('西-北-01');
     expect(screen.getByText(/の置き先をタップ/)).toHaveTextContent('西-北-01');
     click('空き 2'); expect(screen.getByRole('alert')).toHaveTextContent('登録済みの棚');
@@ -90,7 +100,7 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
 
   it('shows relocation failure by the status and allows canceling', async () => {
     vi.mocked(api.postMobilePlacementShelfRelocate).mockRejectedValueOnce(new Error('移動先に既に稼働データがあります'));
-    mount(); await screen.findByLabelText('工場マップ'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click(/西·北/);
     await screen.findByRole('button', { name: '西-北-01' }); click('西-北-01'); click(/中央·北/);
     await screen.findByRole('button', { name: '中央-北-01' }); click('中央-北-01');
     expect(await screen.findByRole('alert')).toHaveTextContent('移動先に既に稼働データがあります');
@@ -99,7 +109,7 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
 
   it('multi-selects cells, discards unsaved changes on reset, and saves through the existing layout mutation', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    mount(); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
     await screen.findByRole('button', { name: '空き 2' }); click('空き 2'); click('空き 3');
     expect(screen.getByRole('button', { name: '選択をやめる 2' })).toBeInTheDocument();
     click('通路'); expect(screen.getByRole('button', { name: '通路 2' })).toBeInTheDocument();
@@ -114,7 +124,7 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
 
   it('uses the machine sheet and guards leaving a dirty zone', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    mount(); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
     await screen.findByRole('button', { name: '空き 2' }); click('空き 2'); click('加工機');
     const dialog = screen.getByRole('dialog', { name: '加工機を選ぶ' });
     fireEvent.click(within(dialog).getByRole('button', { name: '加工機A' })); click('確定');
@@ -126,7 +136,7 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
   });
 
   it('requires confirmation before clearing a Zero2W preset', async () => {
-    mount(); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
     await screen.findByRole('button', { name: '西-北-01' }); click('西-北-01'); click('Zero2W 外す');
     expect(api.putMobilePlacementHaizenTargetPresetShelf).not.toHaveBeenCalled();
     const dialog = screen.getByRole('dialog', { name: 'Zero2W 担当棚' });
@@ -137,7 +147,7 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
   it('queues a new shelf preset until layout save and drops queued edits on reset', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     vi.mocked(api.getMobilePlacementHaizenTargetDevices).mockResolvedValue({ devices: [{ id: 'pi2', name: 'Pi 2', location: null, lastSeenAt: null, shelfCodeRaw: null }] });
-    mount(); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
     await screen.findByRole('button', { name: '空き 2' });
     const assign = () => {
       click('空き 2'); click('棚'); click('西-北-02'); click('Zero2W 付ける');
@@ -153,7 +163,7 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
   });
 
   it('keeps unsaved edits when an existing shelf preset would invalidate the layout query', async () => {
-    mount(); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
     await screen.findByRole('button', { name: '空き 2' }); click('空き 2'); click('通路');
     click('西-北-01'); click('Zero2W 外す');
     expect(screen.getByRole('alert')).toHaveTextContent('先に配置を保存');
@@ -163,7 +173,7 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
 
   it('keeps the draft and reports layout save failures', async () => {
     vi.mocked(api.putMobilePlacementShelfLayoutZone).mockRejectedValueOnce(new Error('保存できません'));
-    mount(); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
     await screen.findByRole('button', { name: '空き 2' }); click('空き 2'); click('棚'); click('保存');
     expect(await screen.findByRole('alert')).toHaveTextContent('保存できません');
     expect(screen.getByRole('button', { name: '西-北-02' })).toBeInTheDocument();
@@ -171,7 +181,7 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
 
   it('confirms before saving a removed shelf', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    mount(); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
+    mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
     await screen.findByRole('button', { name: '西-北-01' }); click('西-北-01'); click('空き'); click('保存');
     expect(confirm).toHaveBeenCalledWith('棚を外す変更を保存しますか？');
     expect(api.putMobilePlacementShelfLayoutZone).not.toHaveBeenCalled();

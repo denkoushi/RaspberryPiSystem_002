@@ -72,6 +72,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort, Mult
           }), signal: combined,
         });
       } catch { throw new InferenceUnavailableError(); }
+      if (input.background && [429, 503].includes(response.status)) throw new InferenceDeferredError();
       if ([429, 502, 503, 504].includes(response.status)) throw new InferenceUnavailableError();
       if (!response.ok) throw new Error(`Inference vision upstream error: HTTP ${response.status}`);
       const rawText = extractTextFromOpenAiStylePayload(await response.json() as OpenAiStyleChatResponse);

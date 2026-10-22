@@ -7,10 +7,128 @@ import { evenIndexes, localSettings, structuralSample } from './enrichment-cli.m
 import { attachEnrichment, readEnrichmentStores } from './enrichment-attach.mjs';
 import {
   allRelevant, assertSnapshotIdentity, casePrecision, countKeywordHits, countTargetsShown, goldTargetIds, loadDgxDenseRows,
-  parseArgs, percentile, readGold, statusMatches,
+  evaluateGold, parseArgs, percentile, readGold, statusMatches,
 } from './evaluate.mjs';
 import { fieldsWithRole, loadNonconformityCatalog } from './catalog.mjs';
 import { DGX_EMBED_DIM, DGX_MAX_INPUT_CHARS } from './dense-dgx.mjs';
+import { createRetrievalAnswering, noResultAnswer, UNAVAILABLE_ANSWER } from './worker.mjs';
+
+function evaluationFiles(records, questions) {
+  const directory = mkdtempSync(path.join(tmpdir(), 'eval-volume-'));
+  const goldPath = path.join(directory, 'gold.json');
+  const snapshotPath = path.join(directory, 'snapshot.json');
+  writeFileSync(goldPath, JSON.stringify(questions.map((question, index) => ({
+    id: `q${index}`, question, expect: 'answer', judge: { anyOf: ['__any__'] },
+  }))));
+  writeFileSync(snapshotPath, JSON.stringify({ records }));
+  // Keep all evaluation artifacts inside the synthetic fixture directory.
+  return { goldPath, snapshotPath, workRoot: directory, denseProvider: 'off', now: '2026-10-01' };
+}
+
+function volumeResponse(input) {
+  if (Object.hasOwn(input.questions, 'candidate_0')) {
+    return { answers: Object.fromEntries(Object.keys(input.questions)
+      .map((key) => [key, { type: 'noul', noul: input.questions[key].instructions.split('記録本文:\n')[1].includes(input.state.request) ? 0.95 : 0.05 }])) };
+  }
+  return { answers: {
+    scope: { type: 'choice', choice: input.state.request === '対象外' ? 'out_of_scope' : 'nonconformity' },
+    intent: { type: 'choice', choice: input.state.request === '月別内訳' ? 'breakdown_month' : 'records' },
+    content: { type: 'noul', noul: true },
+    sort: { type: 'choice', choice: 'relevance' },
+    limit: { type: 'choice', choice: '5' },
+  } };
+}
+
+test('evaluation counts each planner/relevance batch per question and matches worker answers', async () => {
+  const records = Array.from({ length: 16 }, (_, index) => ({
+    id: `r${index}`, condition: 'qxvolume 日本語😀', discoveredOn: '2026-09-01',
+  }));
+  records.push({ id: 'other', condition: 'qxother', discoveredOn: '2026-10-01' });
+  const questions = ['qxvolume', 'qxother', '対象外'];
+  const options = evaluationFiles(records, questions);
+  const calls = [];
+  const evaluate = async (input) => {
+    const output = volumeResponse(input);
+    calls.push({ input, output });
+    return output;
+  };
+  const { details, summary } = await evaluateGold({ ...options, evaluate, jevRelevance: true });
+  const answering = createRetrievalAnswering({ records, catalog: loadNonconformityCatalog(), evaluate: volumeResponse });
+  assert.deepEqual(details.map((item) => item.volume.relevanceCalls), [2, 2, 0]);
+  assert.deepEqual(details.map((item) => item.volume.answerRecords), [5, 1, 0]);
+  for (const [index, question] of questions.entries()) {
+    const seen = calls.filter(({ input }) => input.state.request === question);
+    const worker = await answering.answer(question);
+    assert.deepEqual(details[index].volume, {
+      jevCalls: seen.length,
+      planCalls: 1,
+      relevanceCalls: seen.length - 1,
+      jevInputChars: seen.reduce((sum, { input }) => sum + JSON.stringify(input).length, 0),
+      jevOutputChars: seen.reduce((sum, { output }) => sum + JSON.stringify(output).length, 0),
+      answerChars: worker.answer.length,
+      answerRecords: worker.display?.records?.length ?? 0,
+    });
+  }
+  for (const key of ['jevCalls', 'jevInputChars', 'jevOutputChars', 'answerChars']) {
+    const values = details.map((item) => item.volume[key]).sort((a, b) => a - b);
+    assert.deepEqual(summary.volume[key], {
+      mean: values.reduce((sum, value) => sum + value, 0) / values.length,
+      p50: values[1], p95: values[2],
+    });
+  }
+  assert.equal(summary.cases, 3);
+  assert.ok(summary.latency.total.p50 >= 0);
+});
+
+test('evaluation measures breakdown and empty answers with relevance disabled by default', async () => {
+  for (const records of [
+    [{ id: 'a', condition: 'qxvolume', discoveredOn: '2026-09-01' },
+      { id: 'b', condition: 'qxvolume', discoveredOn: '2026-10-01' }],
+    [],
+  ]) {
+    const questions = ['月別内訳', 'qxvolume'];
+    const options = evaluationFiles(records, questions);
+    const { details } = await evaluateGold({ ...options, evaluate: volumeResponse });
+    const answering = createRetrievalAnswering({ records, catalog: loadNonconformityCatalog(), evaluate: volumeResponse });
+    for (const [index, question] of questions.entries()) {
+      const worker = await answering.answer(question);
+      assert.equal(details[index].volume.answerChars, worker.answer.length);
+      assert.equal(details[index].volume.answerRecords, records.length);
+      assert.equal(details[index].volume.jevCalls, 1);
+      assert.equal(details[index].volume.planCalls, 1);
+      assert.equal(details[index].volume.relevanceCalls, 0);
+    }
+    if (!records.length) assert.equal(details[1].volume.answerChars, noResultAnswer(0).length);
+  }
+});
+
+test('evaluation counts a failed relevance attempt and its retry without inventing received output', async () => {
+  const records = [{ id: 'a', condition: 'qxvolume' }];
+  const options = evaluationFiles(records, ['qxvolume']);
+  const inputs = [];
+  const outputs = [];
+  let attempts = 0;
+  const evaluate = async (input) => {
+    inputs.push(input);
+    if (Object.hasOwn(input.questions, 'candidate_0')) {
+      attempts += 1;
+      const error = new Error('synthetic failure');
+      error.hermesDiagnostic = { failureCode: attempts === 1 ? 'timeout' : 'invalid_answers' };
+      throw error;
+    }
+    const output = volumeResponse(input);
+    outputs.push(output);
+    return output;
+  };
+  const { details } = await evaluateGold({ ...options, evaluate, jevRelevance: true });
+  assert.equal(details[0].status, 'unavailable');
+  assert.deepEqual(details[0].volume, {
+    jevCalls: 3, planCalls: 1, relevanceCalls: 2,
+    jevInputChars: inputs.reduce((sum, input) => sum + JSON.stringify(input).length, 0),
+    jevOutputChars: outputs.reduce((sum, output) => sum + JSON.stringify(output).length, 0),
+    answerChars: UNAVAILABLE_ANSWER.length, answerRecords: 0,
+  });
+});
 
 test('gold example file matches the case shape and the judge counts body keywords', () => {
   const gold = JSON.parse(readFileSync(new URL('./fixtures/gold.example.json', import.meta.url), 'utf8'));

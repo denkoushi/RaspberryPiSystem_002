@@ -130,6 +130,8 @@
     - { key: PROCEDURE_SPEECH_TO_TEXT_ENABLED, value: "{{ procedure_speech_to_text_enabled | default(false) | bool | ternary('true', 'false') }}" }
     # 要領書の区切り提案。承認済みメール素材の画像判定だけに使う
     - { key: PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED, value: "{{ procedure_material_split_suggestion_enabled | default(false) | bool | ternary('true', 'false') }}" }
+    # 検査図面の丸数字提案。社内LLMが使えないときの図面判定と、寸法位置の並べ替えに JEV を使う
+    - { key: INSPECTION_DRAWING_TRANSFER_JEV_ENABLED, value: "{{ inspection_drawing_transfer_jev_enabled | default(false) | bool | ternary('true', 'false') }}" }
     - { key: TYPESAFE_API_KEY, value: "{{ hermes_search_typesafe_api_key | default('') }}" }
   no_log: true
 

@@ -9,5 +9,6 @@ export type RegisteredShelfEntryDto = {
   slot?: number;
   tier?: number;
   displayLabel?: string | null;
+  photoUpdatedAt?: string | null;
   macroZoneId?: string | null;
 };

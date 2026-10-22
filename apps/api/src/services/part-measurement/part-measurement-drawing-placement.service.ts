@@ -1,4 +1,4 @@
-import { Prisma, type PartMeasurementTemplateItem } from '@prisma/client';
+import { Prisma, type PartMeasurementProcessGroup, type PartMeasurementTemplateItem } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -8,7 +8,6 @@ import { getPartMeasurementDrawingDimensionMapService } from './part-measurement
 import { getPartMeasurementDrawingOcrService } from './part-measurement-drawing-ocr.service.js';
 import {
   chooseSourceSibling,
-  drawingNameFamily,
   placementItemAlreadyExists,
   transferItems,
   type DimensionMap,
@@ -17,7 +16,13 @@ import {
   type PlacementSourceItem
 } from './part-measurement-drawing-placement-transfer.js';
 
-export const PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION = 'transfer-v1';
+import { siblingMatchesSchema, SIBLING_MATCH_VERSION } from './part-measurement-drawing-sibling-match.js';
+import { PartMeasurementDrawingSiblingMatchService } from './part-measurement-drawing-sibling-match.service.js';
+
+export const PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION = 'transfer-v2';
+// The process is part of the version so the existing unique run key stays unchanged (expand-only migration).
+export const placementVersionFor = (processGroup: PartMeasurementProcessGroup) =>
+  `${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}:${processGroup}`;
 export type PlacementReorderProvider = (
   visualTemplateId: string, source: { sourceVisualTemplateId: string; sourceMap: DimensionMap | null }
 ) =>
@@ -92,38 +97,42 @@ function sourceItems(items: PartMeasurementTemplateItem[]): PlacementSourceItem[
 export class PartMeasurementDrawingPlacementService {
   constructor(
     private readonly drawingOcrService = getPartMeasurementDrawingOcrService(),
-    private readonly dimensionMapService = getPartMeasurementDrawingDimensionMapService()
+    private readonly dimensionMapService = getPartMeasurementDrawingDimensionMapService(),
+    private readonly siblingMatchService = new PartMeasurementDrawingSiblingMatchService()
   ) {}
 
   async ensureRun(visualTemplateId: string, options: {
-    reorder?: PlacementReorder; reorderProvider?: PlacementReorderProvider | null
-  } = {}): Promise<EnsureRunResult> {
+    processGroup: PartMeasurementProcessGroup; reorder?: PlacementReorder; reorderProvider?: PlacementReorderProvider | null
+  }): Promise<EnsureRunResult> {
     const { drawingImageFingerprint } = await this.drawingOcrService.getCurrentStatus(visualTemplateId);
     const targetMap = await this.dimensionMapService.getCompletedPayload(visualTemplateId, drawingImageFingerprint);
     if (!targetMap) return { status: 'map-pending', run: null };
+    const match = await prisma.partMeasurementDrawingSiblingMatch.findUnique({ where: {
+      visualTemplateId_drawingImageFingerprint_matchVersion: {
+        visualTemplateId, drawingImageFingerprint, matchVersion: SIBLING_MATCH_VERSION
+      }
+    } });
+    if (!match || match.status === 'PENDING') return { status: 'map-pending', run: null };
     const key = {
       visualTemplateId,
       drawingImageFingerprint,
       analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
-      placementVersion: PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION
+      placementVersion: placementVersionFor(options.processGroup)
     };
     const where = { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: key };
     const existingRun = await prisma.partMeasurementDrawingPlacementRun.findUnique({ where, include: runInclude });
     if (existingRun) return runResult(existingRun);
     const target = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id: visualTemplateId } });
     if (!target) throw new ApiError(404, '図面テンプレートが見つかりません。');
-    const family = drawingNameFamily(target.name);
-    const visuals = family ? await prisma.partMeasurementVisualTemplate.findMany({
-      where: {
-        id: { not: visualTemplateId }, isActive: true,
-        businessTemplates: { some: { isActive: true, items: { some: { markerXRatio: { not: null }, markerYRatio: { not: null } } } } }
-      },
-      select: { id: true, name: true },
-      orderBy: { id: 'asc' }
+    const siblings = match.status === 'MATCHED' ? siblingMatchesSchema.parse(match.siblings) : [];
+    const visuals = siblings.length ? await prisma.partMeasurementVisualTemplate.findMany({
+      where: { id: { in: siblings.map((sibling) => sibling.visualTemplateId) }, isActive: true },
+      select: { id: true, name: true }
     }) : [];
-    const siblingVisuals = visuals.filter((visual) => drawingNameFamily(visual.name) === family);
+    const siblingVisuals = siblings.flatMap((sibling) => visuals.filter((visual) => visual.id === sibling.visualTemplateId));
     const templates = siblingVisuals.length ? await prisma.partMeasurementTemplate.findMany({
-      where: { visualTemplateId: { in: siblingVisuals.map((visual) => visual.id) }, isActive: true },
+      where: { visualTemplateId: { in: siblingVisuals.map((visual) => visual.id) }, isActive: true,
+        processGroup: options.processGroup, items: { some: { markerXRatio: { not: null }, markerYRatio: { not: null } } } },
       include: { items: { orderBy: { sortOrder: 'asc' } } },
       orderBy: { id: 'asc' }
     }) : [];
@@ -147,7 +156,7 @@ export class PartMeasurementDrawingPlacementService {
       targetMap,
       sourceMap,
       sourceItems: source.template.items,
-      existingItems: await this.existingItems(visualTemplateId),
+      existingItems: await this.existingItems(visualTemplateId, options.processGroup),
       reorder: reorder ?? undefined
     }) : [];
     const originalItems = new Map(templates.flatMap((template) => template.items).map((item) => [item.id, item]));
@@ -195,18 +204,18 @@ export class PartMeasurementDrawingPlacementService {
     }
   }
 
-  private async existingItems(visualTemplateId: string): Promise<PlacementExistingItem[]> {
+  private async existingItems(visualTemplateId: string, processGroup: PartMeasurementProcessGroup): Promise<PlacementExistingItem[]> {
     const items = await prisma.partMeasurementTemplateItem.findMany({
-      where: { template: { visualTemplateId, isActive: true } },
+      where: { template: { visualTemplateId, isActive: true, processGroup } },
       select: { measurementLabel: true, nominalValue: true }
     });
     return items.map((item) => ({ measurementLabel: item.measurementLabel, nominalValue: numeric(item.nominalValue) }));
   }
 
-  async listForEditor(visualTemplateId: string): Promise<PartMeasurementDrawingPlacementEditorResult> {
-    const result = await this.ensureRun(visualTemplateId);
+  async listForEditor(visualTemplateId: string, processGroup: PartMeasurementProcessGroup): Promise<PartMeasurementDrawingPlacementEditorResult> {
+    const result = await this.ensureRun(visualTemplateId, { processGroup });
     if (!result.run) return { status: result.status, sourceDrawingName: null, proposals: [], unplaced: [] };
-    const existingItems = await this.existingItems(visualTemplateId);
+    const existingItems = await this.existingItems(visualTemplateId, processGroup);
     return {
       status: result.status,
       sourceDrawingName: result.run.sourceVisualTemplate?.name ?? null,
@@ -253,41 +262,71 @@ export class PartMeasurementDrawingPlacementService {
   }
 
   async backfill(limit: number, reorderProvider: PlacementReorderProvider | null = null) {
-    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT vt."id"
+    const batchLimit = Math.max(1, Math.min(1000, Math.trunc(limit) || 1));
+    const latestMaps = Prisma.sql`
+      SELECT vt."id", m."drawingImageFingerprint", m."createdAt"
       FROM "PartMeasurementVisualTemplate" vt
-      WHERE vt."isActive" = TRUE AND EXISTS (
-        SELECT 1 FROM "PartMeasurementDrawingDimensionMap" m
-        WHERE m."visualTemplateId" = vt."id"
-          AND m."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
-          AND m."status" = 'COMPLETED'::"PartMeasurementDrawingDimensionMapStatus"
-          AND m."id" = (
-            SELECT latest."id" FROM "PartMeasurementDrawingDimensionMap" latest
-            WHERE latest."visualTemplateId" = vt."id" AND latest."analysisVersion" = m."analysisVersion"
-            ORDER BY latest."createdAt" DESC, latest."id" ASC
-            LIMIT 1
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r
-            WHERE r."visualTemplateId" = vt."id"
-              AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
-              AND r."analysisVersion" = m."analysisVersion"
-              AND r."placementVersion" = ${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}
-          )
-      )
-      ORDER BY vt."updatedAt" DESC, vt."id" ASC
-      LIMIT ${Math.max(1, Math.min(1000, Math.trunc(limit) || 1))}
+      JOIN LATERAL (
+        SELECT * FROM "PartMeasurementDrawingDimensionMap" m
+        WHERE m."visualTemplateId" = vt."id" AND m."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
+        ORDER BY m."createdAt" DESC, m."id" ASC LIMIT 1
+      ) m ON m."status" = 'COMPLETED'::"PartMeasurementDrawingDimensionMapStatus"
+      WHERE vt."isActive" = TRUE
     `;
-    const counts = { scanned: rows.length, ready: 0, noSibling: 0, mapPending: 0, failed: 0 };
+    const targets = await prisma.$queryRaw<Array<{ id: string }>>`
+      WITH maps AS (${latestMaps})
+      SELECT m."id" FROM maps m
+      LEFT JOIN "PartMeasurementDrawingSiblingMatch" s ON s."visualTemplateId" = m."id"
+        AND s."drawingImageFingerprint" = m."drawingImageFingerprint" AND s."matchVersion" = ${SIBLING_MATCH_VERSION}
+      WHERE s."id" IS NULL OR s."status" = 'PENDING'::"PartMeasurementDrawingSiblingMatchStatus"
+      ORDER BY COALESCE(s."updatedAt", m."createdAt") ASC, m."id" ASC LIMIT ${batchLimit}
+    `;
+    const counts = { scanned: targets.length, matched: 0, noMatch: 0, deferred: 0, jev: 0,
+      ready: 0, noSibling: 0, mapPending: 0, failed: 0 };
+    for (const target of targets) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const match = await this.siblingMatchService.match(target.id);
+        if (!match) counts.mapPending++;
+        else if (match.status === 'PENDING') counts.deferred++;
+        else if (match.status === 'MATCHED') counts.matched++;
+        else counts.noMatch++;
+        if (match?.method === 'jev-vision') counts.jev++;
+      } catch (error) {
+        counts.failed++;
+        log.warn({ err: error, visualTemplateId: target.id }, 'drawing sibling match failed');
+      }
+    }
+    const rows = await prisma.$queryRaw<Array<{ id: string; processGroup: PartMeasurementProcessGroup }>>`
+      WITH maps AS (${latestMaps})
+      SELECT m."id", p."processGroup" FROM maps m
+      JOIN "PartMeasurementDrawingSiblingMatch" s ON s."visualTemplateId" = m."id"
+        AND s."drawingImageFingerprint" = m."drawingImageFingerprint" AND s."matchVersion" = ${SIBLING_MATCH_VERSION}
+      CROSS JOIN LATERAL (
+        SELECT 'CUTTING'::"PartMeasurementProcessGroup" AS "processGroup" WHERE s."status" = 'NO_MATCH'
+        UNION
+        SELECT t."processGroup" FROM jsonb_array_elements(s."siblings") sibling
+        JOIN "PartMeasurementVisualTemplate" v ON v."id" = sibling->>'visualTemplateId' AND v."isActive" = TRUE
+        JOIN "PartMeasurementTemplate" t ON t."visualTemplateId" = v."id" AND t."isActive" = TRUE
+        WHERE s."status" = 'MATCHED'
+      ) p
+      WHERE NOT EXISTS (
+        SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r WHERE r."visualTemplateId" = m."id"
+          AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
+          AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
+          AND r."placementVersion" = (${`${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}:`}::text || p."processGroup"::text)
+      )
+      ORDER BY m."createdAt" ASC, m."id" ASC, p."processGroup" ASC LIMIT ${batchLimit}
+    `;
     for (const row of rows) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        const result = await this.ensureRun(row.id, { reorderProvider });
-        if (result.status === 'ready') counts.ready += 1;
-        else if (result.status === 'no-sibling') counts.noSibling += 1;
-        else counts.mapPending += 1;
+        const result = await this.ensureRun(row.id, { processGroup: row.processGroup, reorderProvider });
+        if (result.status === 'ready') counts.ready++;
+        else if (result.status === 'no-sibling') counts.noSibling++;
+        else counts.mapPending++;
       } catch (error) {
-        counts.failed += 1;
+        counts.failed++;
         log.warn({ err: error, visualTemplateId: row.id }, 'drawing placement backfill failed');
       }
     }

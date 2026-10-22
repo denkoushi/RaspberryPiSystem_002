@@ -13,9 +13,25 @@ export async function getMobilePlacementRegisteredShelves() {
 }
 
 /** POST /api/mobile-placement/shelves（棚マスタへ新規登録、`西-北-01` 形式） */
-export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: string }) {
+export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: string; displayLabel?: string | null }) {
   const { data } = await api.post<{ shelf: RegisteredShelfEntryDto }>('/mobile-placement/shelves', payload);
   return data;
+}
+
+export async function getMobilePlacementShelfPhoto(shelfCodeRaw: string, photoUpdatedAt: string) {
+  const { data } = await api.get<Blob>(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}/photo`, {
+    params: { v: photoUpdatedAt }, responseType: 'blob'
+  });
+  return data;
+}
+
+export async function putMobilePlacementShelfPhoto(shelfCodeRaw: string, photo: { contentType: string; dataBase64: string }) {
+  const { data } = await api.put<{ photoUpdatedAt: string }>(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}/photo`, photo);
+  return data;
+}
+
+export async function patchMobilePlacementShelfMemo(shelfCodeRaw: string, displayLabel: string | null) {
+  await api.patch(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}`, { displayLabel });
 }
 
 export type MobilePlacementClientCapabilities = {
@@ -163,6 +179,15 @@ export async function registerMobilePlacement(payload: {
   return data;
 }
 
+export type MobilePlacementSlipMatchResponse = {
+  ok: boolean;
+  reason: 'match' | 'different_seiban' | 'different_part' | 'part_required' | 'order_not_found' | 'transfer_not_found';
+  legacyReason?: string;
+  actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
+  expected?: { fseiban: string; fhincd: string; partName?: string };
+  actual?: { fseiban?: string; partCode?: string };
+};
+
 /** 移動票・現品票の (FSEIBAN, FHINCD) ペア照合 */
 export async function verifyMobilePlacementSlipMatch(payload: {
   transferOrderBarcodeRaw: string;
@@ -173,9 +198,7 @@ export async function verifyMobilePlacementSlipMatch(payload: {
   actualFseibanRaw: string;
   actualPartBarcodeRaw: string;
 }) {
-  const { data } = await api.post<({ ok: true } | { ok: false; reason: string }) & {
-    actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
-  }>(
+  const { data } = await api.post<MobilePlacementSlipMatchResponse>(
     '/mobile-placement/verify-slip-match',
     payload
   );

@@ -92,21 +92,30 @@ export class ProductionScheduleCleanupService {
     const thresholdUtc = computeOneYearAgoThresholdUtc(params.nowUtc ?? new Date());
 
     let deletedCount = 0;
-    let lastId: string | undefined;
+    let cursor: { occurredAt: Date; id: string } | undefined;
 
     for (;;) {
+      // id 順だと主キーindexを全表たどる計画が選ばれ得る（2026-10-21 に 5.5 時間）。
+      // (csvDashboardId, occurredAt) index の範囲を (occurredAt, id) のキーセットで進める。
       const candidates = await prisma.csvDashboardRow.findMany({
         where: {
           csvDashboardId: params.csvDashboardId,
-          occurredAt: { lt: thresholdUtc },
-          ...(lastId ? { id: { gt: lastId } } : {}),
+          occurredAt: cursor ? { lt: thresholdUtc, gte: cursor.occurredAt } : { lt: thresholdUtc },
+          ...(cursor
+            ? {
+                OR: [
+                  { occurredAt: { gt: cursor.occurredAt } },
+                  { occurredAt: cursor.occurredAt, id: { gt: cursor.id } },
+                ],
+              }
+            : {}),
         },
         select: {
           id: true,
           occurredAt: true,
           rowData: true,
         },
-        orderBy: { id: 'asc' },
+        orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
         take: batchSize,
       });
 
@@ -114,7 +123,8 @@ export class ProductionScheduleCleanupService {
         break;
       }
 
-      lastId = candidates[candidates.length - 1]?.id;
+      const last = candidates[candidates.length - 1];
+      cursor = last ? { occurredAt: last.occurredAt, id: last.id } : undefined;
 
       const idsToDelete: string[] = [];
       for (const row of candidates) {

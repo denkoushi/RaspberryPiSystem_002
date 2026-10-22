@@ -720,6 +720,17 @@ model MobilePlacementShelf {
   createdByClientDeviceId String?
   createdBy               ClientDevice?                 @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
   layoutEntities          MobilePlacementLayoutEntity[]
+  photo                   MobilePlacementShelfPhoto?
+}
+
+model MobilePlacementShelfPhoto {
+  shelfId                 String               @id
+  shelf                   MobilePlacementShelf @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+  contentType             String
+  bytes                   Bytes
+  byteSize                Int
+  updatedAt               DateTime             @updatedAt
+  updatedByClientDeviceId String?
 }
 
 enum MobilePlacementLayoutEntityKind {
@@ -2943,6 +2954,7 @@ model PartMeasurementVisualTemplate {
   businessTemplates        PartMeasurementTemplate[]
   ocrCaches                PartMeasurementDrawingOcrCache[]
   dimensionMaps            PartMeasurementDrawingDimensionMap[]
+  siblingMatches           PartMeasurementDrawingSiblingMatch[]
   placementRuns            PartMeasurementDrawingPlacementRun[] @relation("PlacementTarget")
   sourcedPlacementRuns     PartMeasurementDrawingPlacementRun[] @relation("PlacementSource")
   placementProposals       PartMeasurementDrawingPlacementProposal[]
@@ -3013,6 +3025,30 @@ model PartMeasurementDrawingDimensionMap {
   @@unique([visualTemplateId, analysisVersion, drawingImageFingerprint], map: "PMDrawingDimMap_unique_visual_version_hash")
   @@index([visualTemplateId, status], map: "PMDrawingDimMap_idx_visual_status")
   @@index([status, nextAttemptAt, createdAt], map: "PMDrawingDimMap_idx_claim")
+}
+
+enum PartMeasurementDrawingSiblingMatchStatus {
+  PENDING
+  MATCHED
+  NO_MATCH
+}
+
+model PartMeasurementDrawingSiblingMatch {
+  id                      String @id @default(uuid())
+  visualTemplateId        String
+  drawingImageFingerprint String
+  matchVersion            String
+  status                  PartMeasurementDrawingSiblingMatchStatus @default(PENDING)
+  method                  String
+  siblings                Json
+  attempts                Int @default(0)
+  lastError               String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  visualTemplate          PartMeasurementVisualTemplate @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([visualTemplateId, drawingImageFingerprint, matchVersion], map: "PMDrawingSiblingMatch_unique_visual_hash_version")
+  @@index([status, updatedAt], map: "PMDrawingSiblingMatch_idx_pending")
 }
 
 enum PartMeasurementDrawingPlacementProposalStatus {
