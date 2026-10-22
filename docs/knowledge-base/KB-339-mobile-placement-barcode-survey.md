@@ -289,6 +289,7 @@
 
 - 現品票の1次元バーコードは注文番号（FKOBAINO、10桁）。製造orderを優先検索し、未解決なら購買照会の全候補から製番・部品照合キーが移動票と一致する行を検査する。候補が1行でも無条件には採用しない。
 - `/kiosk/mobile-placement` だけネイティブ `BarcodeDetector` を優先し、対応形式がそろう場合は1280×720を希望するストリームで読む。非対応時は従来のZXingを使い、確定ルールは共通。画像OCRは補助として残す。
+- 2026-10-22: `/kiosk/purchase-order-lookup` も同じ `engine="auto-native"` にした。ZXing のままでは、配膳の照合で読める同じ現品票の注文番号に購買照会だけ反応しなかった（実機報告）。
 - 契約は [mobile-placement API](../api/mobile-placement.md)、現場手順は [照合](../kiosk-operation-guide/mobile-placement.md) を参照。実機の速度確認・本番反映は未実施。
 
 ## References

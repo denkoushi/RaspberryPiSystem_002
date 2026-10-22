@@ -50,7 +50,7 @@ describe('PurchaseOrderLookupPage', () => {
     mount();
     expect(screen.getByText('0000000000')).toHaveClass('text-[var(--hp-line)]');
     fireEvent.click(screen.getByRole('button', { name: '注文番号を読む' }));
-    expect(scanProps).toHaveBeenLastCalledWith(expect.objectContaining({ formats: BARCODE_FORMAT_PRESET_PURCHASE_ORDER, ...KIOSK_STANDARD_BARCODE_SCAN_SESSION }));
+    expect(scanProps).toHaveBeenLastCalledWith(expect.objectContaining({ formats: BARCODE_FORMAT_PRESET_PURCHASE_ORDER, engine: 'auto-native', ...KIOSK_STANDARD_BARCODE_SCAN_SESSION }));
     fireEvent.click(screen.getByRole('button', { name: '部分読取' }));
     expect(screen.getByLabelText('注文番号 450')).toHaveTextContent('4500000000');
     expect(getKioskPurchaseOrderLookup).not.toHaveBeenCalled();
