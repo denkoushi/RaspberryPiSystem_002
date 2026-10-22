@@ -16,8 +16,8 @@
   },
   "summary": {
     "documentCount": 732,
-    "totalLines": 180493,
-    "totalBytes": 14574519,
+    "totalLines": 180497,
+    "totalBytes": 14576260,
     "withFrontmatter": 349,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
@@ -34852,7 +34852,7 @@
     {
       "path": "docs/plans/kiosk-chat-system-guide-execplan.md",
       "lineCount": 140,
-      "byteSize": 37262,
+      "byteSize": 37487,
       "hasFrontmatter": false,
       "title": "キオスクの Chat をシステム全体の案内役にする(操作の問い合わせと不具合の受付)",
       "status": null,
@@ -35239,8 +35239,8 @@
     },
     {
       "path": "docs/plans/kiosk-operation-guide-accuracy-log.md",
-      "lineCount": 65,
-      "byteSize": 6661,
+      "lineCount": 67,
+      "byteSize": 7654,
       "hasFrontmatter": true,
       "title": "キオスク操作案内の当たり率ログ",
       "status": "living log",
@@ -39489,8 +39489,8 @@
     },
     {
       "path": "docs/runbooks/pi5-blue-green-deploy.md",
-      "lineCount": 106,
-      "byteSize": 7095,
+      "lineCount": 108,
+      "byteSize": 7618,
       "hasFrontmatter": true,
       "title": "Pi5標準Ansible診断Runbook",
       "status": "active",
