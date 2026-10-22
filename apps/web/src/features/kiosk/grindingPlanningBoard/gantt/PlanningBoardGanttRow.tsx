@@ -1,8 +1,10 @@
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useRef } from 'react';
 
+import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
+import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 
@@ -151,6 +153,14 @@ export type PlanningBoardGanttRowProps = InteractionProps & {
 export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   row, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, ...interaction
 }: PlanningBoardGanttRowProps) {
+  const chipsByPart = usePlanningBoardProcessChips();
+  // One chip strip per part, under that part's last bar on this row.
+  const lastBarByPart = new Map<string, GanttBar>();
+  for (const bar of row.bars) {
+    if (bar.end == null) continue;
+    const last = lastBarByPart.get(bar.partKey);
+    if (!last || bar.end > last.end!) lastBarByPart.set(bar.partKey, bar);
+  }
   return (
     <div data-gantt-flagged={row.flagged || undefined} className="flex border-b border-slate-800/70"
       style={{ height: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${GANTT_ROW_HEIGHT}px` }}>
@@ -167,6 +177,15 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
             selected={selectedItemIds.has(bar.item.itemId)} sibling={resourceView && selectedParts.has(bar.partKey)}
             dimmed={resourceView && selectedParts.size > 0 && !selectedParts.has(bar.partKey)} {...interaction} />
         ))}
+        {[...lastBarByPart.values()].map((bar) => {
+          const chips = chipsByPart.get(bar.partKey);
+          return chips && chips.length > 0 ? (
+            <div key={`chips:${bar.partKey}`} className="pointer-events-none absolute top-9 z-[3] w-max -translate-x-full"
+              style={{ left: (bar.end! - start) * dayWidth }}>
+              <KioskResourceProcessChips processes={chips} />
+            </div>
+          ) : null;
+        })}
         {/* Both bars of a pair carry the same span; draw it once per row. */}
         {[...new Map(row.bars.flatMap((bar) => bar.overlaps).map((span) => [`${span.start}:${span.end}`, span] as const)).entries()].map(([key, span]) => (
           <span key={key} className="pointer-events-none absolute top-4 z-[5] h-7 rounded border border-rose-100 opacity-75"

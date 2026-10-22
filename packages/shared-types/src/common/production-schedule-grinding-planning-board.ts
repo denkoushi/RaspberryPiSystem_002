@@ -2,6 +2,20 @@
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
 export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';
 
+export interface GrindingPlanningBoardProcessChipsRequest {
+  parts: Array<{ fseiban: string; productNo: string; fhincd: string }>;
+}
+
+export interface GrindingPlanningBoardProcessChipsResponse {
+  /** Trimmed fseiban, productNo, fhincd joined with NUL. */
+  chipsByPartKey: Record<string, Array<{
+    rowId: string;
+    resourceCd: string;
+    resourceNames?: string[];
+    isCompleted: boolean;
+  }>>;
+}
+
 export type GrindingPlanningBoardDueScope =
   | { kind: 'seiban' }
   | { kind: 'processing'; processingType: string };

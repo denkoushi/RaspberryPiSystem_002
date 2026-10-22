@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   capacity: vi.fn(),
   snapshot: vi.fn(),
   load: vi.fn(),
+  processChips: vi.fn(),
   refetch: vi.fn(),
   overrides: vi.fn(),
   pins: vi.fn(),
@@ -37,6 +38,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../api/hooks', () => ({
+  useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
   useSetKioskProductionScheduleRowCompletion: () => useMutation({ mutationFn: (args: { rowId: string; intent: 'complete' | 'incomplete' }) => mocks.completion(args) }),
   useKioskGrindingPlanningBoardResourceCapacity: (enabled: boolean) => mocks.capacity(enabled),
   useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
@@ -185,6 +187,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.capacity.mockReset();
     mocks.capacity.mockReturnValue({ data: undefined, isLoading: true });
     mocks.snapshot.mockReset();
+    mocks.processChips.mockReset();
+    mocks.processChips.mockReturnValue({ data: undefined, isError: false });
     mocks.load.mockReset();
     mocks.load.mockReturnValue({ data: { load: fixture().load, unknownRequiredMinutesCount: 0 } });
     mocks.refetch.mockReset();
@@ -229,6 +233,18 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it('provides loaded part chips and hides them after a chip fetch error without breaking the board', () => {
+    const data = { chipsByPartKey: { ['26-1041\0PRODUCT-a\0PART-a']: [{ rowId: 'chip-a', resourceCd: 'CHIP-305', isCompleted: true }] } };
+    mocks.processChips.mockReturnValue({ data, isError: false });
+    const page = renderSeibanBoard();
+    expect(mocks.processChips).toHaveBeenLastCalledWith(fixture().items.map(({ fseiban, productNo, fhincd }) => ({ fseiban, productNo, fhincd })));
+    expect(within(screen.getByTestId('planning-board-item-a')).getByText('CHIP-305')).toBeVisible();
+    mocks.processChips.mockReturnValue({ data, isError: true });
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.queryByText('CHIP-305')).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-board-item-a')).toBeVisible();
   });
 
   it('completes the source row, removes its selection and undoes from the notice', async () => {

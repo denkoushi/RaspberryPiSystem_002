@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
   useEffect,
@@ -11,6 +11,7 @@ import { normalizeLeaderboardContinueFailure } from '../../../features/kiosk/lea
 import { LEADER_BOARD_LEADER_PHASED_STALE_MS, LEADER_BOARD_SCHEDULE_REFETCH_MS } from '../../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import {
   getKioskGrindingPlanningBoardDueDetail,
+  getKioskGrindingPlanningBoardProcessChips,
   getKioskGrindingPlanningBoardResourceCapacity,
   updateKioskGrindingPlanningBoardResourceCapacity,
   getKioskGrindingPlanningBoard,
@@ -29,6 +30,7 @@ import {
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 import type {
+  GrindingPlanningBoardProcessChipsRequest,
   GrindingPlanningBoardResourceCapacityRequest,
   GrindingPlanningBoardResourceCapacityResponse,
   GrindingPlanningBoardOverridesRequest,
@@ -43,6 +45,17 @@ import type {
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueScopeRequest
 } from '@raspi-system/shared-types';
+
+export function useKioskGrindingPlanningBoardProcessChips(parts: GrindingPlanningBoardProcessChipsRequest['parts']) {
+  return useQuery({
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardProcessChips(parts),
+    queryFn: () => getKioskGrindingPlanningBoardProcessChips({ parts }),
+    enabled: parts.length > 0,
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
+    refetchInterval: LEADER_BOARD_SCHEDULE_REFETCH_MS
+  });
+}
 
 export function useKioskGrindingPlanningBoard(
   params: KioskGrindingPlanningBoardQuery | undefined,

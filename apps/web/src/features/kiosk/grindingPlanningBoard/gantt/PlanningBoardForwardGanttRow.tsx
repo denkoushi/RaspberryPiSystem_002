@@ -1,7 +1,9 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
 
+import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { pageZoom } from '../pageZoom';
+import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
@@ -124,7 +126,12 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
       onDragPreview({ bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: findDrop(event.clientX, event.clientY, pending) });
     }
   };
-  return <div className="flex min-h-[76px] border-b border-slate-600" data-testid={`planning-forward-lane-${row.key}`}>
+  const chipsByPart = usePlanningBoardProcessChips();
+  // One chip strip per part, under that part's last bar on this lane.
+  const chipBarIds = new Set([...new Map(row.bars.filter((bar) => bar.end != null).sort((a, b) => a.end! - b.end!)
+    .map((bar) => [bar.partKey, bar.item.itemId] as const)).values()]);
+  const stripBars = row.bars.filter((bar) => chipBarIds.has(bar.item.itemId) && chipsByPart.get(bar.partKey)?.length);
+  return <div className={clsx('flex border-b border-slate-600', stripBars.length > 0 ? 'min-h-[96px]' : 'min-h-[76px]')} data-testid={`planning-forward-lane-${row.key}`}>
     <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900 px-2 py-1 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
     </div>
@@ -138,6 +145,15 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
       </div>)}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
+      {stripBars.map((bar) => {
+        const segments = bar.unknown ? [{ start: bar.start!, end: bar.end! }] : bar.segments ?? [];
+        if (segments.length === 0) return null;
+        const left = (segments[0].start - start) * dayWidth;
+        return <div key={`chips:${bar.item.itemId}`} className="pointer-events-none absolute top-[76px] overflow-hidden"
+          style={{ left, width: Math.max(48, (segments[segments.length - 1].end - start) * dayWidth - left) }}>
+          <KioskResourceProcessChips processes={chipsByPart.get(bar.partKey)!} className="flex-nowrap" />
+        </div>;
+      })}
       {row.bars.map((bar) => {
         const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
         const selected = selectedItemIds.has(bar.item.itemId);
