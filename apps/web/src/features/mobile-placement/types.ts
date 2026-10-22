@@ -10,6 +10,6 @@ export type MobilePlacementScanField =
   | 'actualPart'
   | null;
 
-export type MobilePlacementSlipResult = 'idle' | 'ok' | 'ng';
+export type MobilePlacementSlipResult = 'idle' | 'ok' | 'ng' | 'not-found' | 'error';
 
 export type SlipColumnVariant = 'transfer' | 'actual';

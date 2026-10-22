@@ -13,6 +13,7 @@ import { useClientCapabilities, useHaizenTargetDevicesForShelfMaster, useMachine
 
 import { ShelfPhoneLayout } from './ShelfPhoneLayout';
 import { ShelfPhoneLegend, ShelfPhoneMap, ShelfPhoneMode, ShelfPhoneZoneGrid } from './ShelfPhoneMap';
+import { ShelfPhotoMaster } from './ShelfPhotoMaster';
 
 export function ShelfMasterPhonePage() {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ export function ShelfMasterPhonePage() {
   const summary = useShelfLayoutSummary();
   const machines = useMachineMasters();
   const devices = useHaizenTargetDevicesForShelfMaster();
-  const [mode, setMode] = useState<'relocate' | 'layout'>('relocate');
+  const [mode, setMode] = useState<'photo' | 'relocate' | 'layout'>('photo');
   const [zoneId, setZoneId] = useState<MacroZoneId | null>(null);
   // Keep the source outside the zone component so it survives navigation between zones.
   const [source, setSource] = useState<string | null>(null);
@@ -33,18 +34,18 @@ export function ShelfMasterPhonePage() {
     const timer = window.setTimeout(() => setToast(null), 2500);
     return () => window.clearTimeout(timer);
   }, [toast]);
-  const changeMode = (next: 'relocate' | 'layout') => { setMode(next); setSource(null); };
+  const changeMode = (next: 'photo' | 'relocate' | 'layout') => { setMode(next); setSource(null); if (next === 'photo') setZoneId(null); };
   const backToHub = () => navigate('/kiosk/mobile-placement', {
     state: isMobilePlacementShelfRegisterRouteState(location.state) ? location.state : undefined,
   });
 
   return <div className={hp.screen} style={haizenPhoneStyle}><div className={hp.content}>
     {zoneId && mode === 'layout' && canEdit ? <ShelfPhoneLayout key={zoneId} zoneId={zoneId} machines={machines.data?.machines ?? []}
-      onBack={() => setZoneId(null)} onOpen={setZoneId} onMode={() => changeMode('relocate')} onMessage={setToast} />
+      onBack={() => setZoneId(null)} onOpen={setZoneId} onMode={changeMode} onMessage={setToast} />
       : <>
         <HaizenHeader title={zoneId ? getMacroZoneById(zoneId).displayName : '棚マスタ'} onBack={zoneId ? () => setZoneId(null) : backToHub} />
         <ShelfPhoneMode mode={mode} canEdit={canEdit} onChange={changeMode} />
-        {zoneId ? <ShelfPhoneRelocate zoneId={zoneId} source={source} setSource={setSource} zeroShelves={zeroShelves} onOpen={setZoneId} onMessage={setToast} />
+        {mode === 'photo' ? <ShelfPhotoMaster /> : zoneId ? <ShelfPhoneRelocate zoneId={zoneId} source={source} setSource={setSource} zeroShelves={zeroShelves} onOpen={setZoneId} onMessage={setToast} />
           : <>
             {summary.isLoading ? <p className={hp.empty}>読込中…</p> : summary.isError ? <p role="alert" className={`${hp.empty} !text-[var(--hp-ng)]`}>配置を取得できませんでした</p>
               : <ShelfPhoneMap zones={summary.data?.zones ?? []} zeroShelves={zeroShelves} onOpen={setZoneId} />}

@@ -720,6 +720,17 @@ model MobilePlacementShelf {
   createdByClientDeviceId String?
   createdBy               ClientDevice?                 @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
   layoutEntities          MobilePlacementLayoutEntity[]
+  photo                   MobilePlacementShelfPhoto?
+}
+
+model MobilePlacementShelfPhoto {
+  shelfId                 String               @id
+  shelf                   MobilePlacementShelf @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+  contentType             String
+  bytes                   Bytes
+  byteSize                Int
+  updatedAt               DateTime             @updatedAt
+  updatedByClientDeviceId String?
 }
 
 enum MobilePlacementLayoutEntityKind {

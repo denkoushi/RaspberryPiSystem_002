@@ -21,6 +21,7 @@ export type RegisteredShelfEntry = {
   /** 段（4 セグメント形式 `西-北-02-1` のとき） */
   tier?: number;
   displayLabel?: string | null;
+  photoUpdatedAt?: string | null;
   macroZoneId?: string | null;
 };
 

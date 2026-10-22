@@ -1,3 +1,5 @@
+vi.mock('../../config/env/load-dotenv.js', () => ({}));
+
 import { resetKnownFseibanCache } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../../app.js';
@@ -216,7 +218,7 @@ describe('mobile-placement API', () => {
     expectApiError(missing, 404, '指定のスケジュール行が見つかりません');
   });
 
-  it('POST /api/mobile-placement/verify-slip-match returns ok when slips match', async () => {
+  it.each([undefined, '', 'H-1'])('POST /api/mobile-placement/verify-slip-match accepts optional parts (%s)', async (parts) => {
     const { apiKey: clientApiKey } = await createTestClientDevice();
     await prisma.csvDashboard.upsert({
       where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
@@ -252,14 +254,14 @@ describe('mobile-placement API', () => {
       },
       payload: {
         transferOrderBarcodeRaw: '999777',
-        transferPartBarcodeRaw: 'H-1',
+        transferPartBarcodeRaw: parts,
         actualOrderBarcodeRaw: '999777',
         actualFseibanRaw: '',
-        actualPartBarcodeRaw: 'H-1'
+        actualPartBarcodeRaw: parts
       }
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, actualResolvedBy: 'productNo' });
+    expect(res.json()).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'productNo', expected: { fseiban: 'SEI-001', fhincd: 'H-1', partName: '部品名一致' } });
   });
 
   it('POST /api/mobile-placement/verify-slip-match resolves actual slip by purchase order', async () => {
@@ -313,7 +315,7 @@ describe('mobile-placement API', () => {
         }
       });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ ok: true, actualResolvedBy: 'purchaseOrder' });
+      expect(res.json()).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'purchaseOrder' });
     } finally {
       await prisma.purchaseOrderLookupRow.delete({ where: { id: purchaseRow.id } });
     }
@@ -362,7 +364,7 @@ describe('mobile-placement API', () => {
       }
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: false, reason: 'TRANSFER_PART_MISMATCH', actualResolvedBy: 'productNo' });
+    expect(res.json()).toMatchObject({ ok: false, reason: 'different_part', legacyReason: 'TRANSFER_PART_MISMATCH', actualResolvedBy: 'productNo' });
   });
 
   it('POST /api/mobile-placement/verify-slip-match returns ok when actual slip resolves by FSEIBAN only', async () => {
@@ -408,7 +410,7 @@ describe('mobile-placement API', () => {
       }
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, actualResolvedBy: 'fseiban' });
+    expect(res.json()).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'fseiban' });
   });
 
   it.each([['BE1N9321', 'exact', false], ['8E1N9321', 'corrected', false], ['8E1N9321', 'corrected', true]] as const)('POST /api/mobile-placement/parse-actual-slip-image snaps %s (%s, neighbour row: %s)', async (raw, match, withNeighbour) => {
@@ -1271,4 +1273,69 @@ describe('mobile-placement API', () => {
     expect(body.scheduleCandidates.length).toBeGreaterThan(0);
     expect(body.scheduleCandidates[0].matchSource).toBe('schedule');
   });
+  it('verify requires an actual order or fseiban even when parts are omitted', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const res = await app.inject({ method: 'POST', url: '/api/mobile-placement/verify-slip-match', headers: { 'x-client-key': apiKey }, payload: { transferOrderBarcodeRaw: '1234567890' } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('creates a photo shelf, reads authenticated bytes, updates memo and photo metadata', async () => {
+    const { apiKey, id } = await createTestClientDevice();
+    const headers = { 'x-client-key': apiKey };
+    const path = `/api/mobile-placement/shelves/${encodeURIComponent('西-北-09')}`;
+    const created = await app.inject({ method: 'POST', url: '/api/mobile-placement/shelves', headers, payload: { shelfCodeRaw: '西-北-09', displayLabel: '  南 上段  ' } });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().shelf.displayLabel).toBe('南 上段');
+    expect((await app.inject({ method: 'GET', url: `${path}/photo`, headers })).statusCode).toBe(404);
+    const uploaded = await app.inject({ method: 'PUT', url: `${path}/photo`, headers, payload: { contentType: 'image/png', dataBase64: MIN_PNG.toString('base64') } });
+    expect(uploaded.statusCode).toBe(200);
+    const fetched = await app.inject({ method: 'GET', url: `${path}/photo?v=${uploaded.json().photoUpdatedAt}`, headers });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.rawPayload).toEqual(MIN_PNG);
+    expect(fetched.headers['content-type']).toBe('image/png');
+    expect(fetched.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    const patched = await app.inject({ method: 'PATCH', url: path, headers, payload: { displayLabel: '  ロボドリル01  ' } });
+    expect(patched.statusCode).toBe(200);
+    const listed = await app.inject({ method: 'GET', url: '/api/mobile-placement/registered-shelves', headers });
+    expect(listed.json().shelves).toContainEqual(expect.objectContaining({ shelfCodeRaw: '西-北-09', displayLabel: 'ロボドリル01', photoUpdatedAt: uploaded.json().photoUpdatedAt }));
+    const shelf = await prisma.mobilePlacementShelf.findUniqueOrThrow({ where: { shelfCodeRaw: '西-北-09' }, include: { photo: true } });
+    expect(shelf.photo).toMatchObject({ byteSize: MIN_PNG.length, updatedByClientDeviceId: id });
+    expect((await app.inject({ method: 'PATCH', url: path, headers, payload: { displayLabel: null } })).statusCode).toBe(200);
+    await prisma.mobilePlacementShelf.delete({ where: { id: shelf.id } });
+    expect(await prisma.mobilePlacementShelfPhoto.findUnique({ where: { shelfId: shelf.id } })).toBeNull();
+  });
+
+  it('photo JSON accepts 1 MB decoded bytes but rejects excessive size, malformed data and MIME mismatch', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const headers = { 'x-client-key': apiKey };
+    await prisma.mobilePlacementShelf.create({ data: { shelfCodeRaw: '西-北-08' } });
+    const url = `/api/mobile-placement/shelves/${encodeURIComponent('西-北-08')}/photo`;
+    const bytes = Buffer.alloc(1024 * 1024); MIN_PNG.copy(bytes);
+    expect((await app.inject({ method: 'PUT', url, headers, payload: { contentType: 'image/png', dataBase64: bytes.toString('base64') } })).statusCode).toBe(200);
+    for (const payload of [
+      { contentType: 'image/png', dataBase64: Buffer.alloc(1024 * 1024 + 1).toString('base64') },
+      { contentType: 'image/jpeg', dataBase64: MIN_PNG.toString('base64') },
+      { contentType: 'image/svg+xml', dataBase64: MIN_PNG.toString('base64') },
+      { contentType: 'image/png', dataBase64: '!!!' }
+    ]) expect((await app.inject({ method: 'PUT', url, headers, payload })).statusCode).toBe(400);
+  });
+
+  it('photo and memo routes require a client key and reject unknown shelves / long memo', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const path = '/api/mobile-placement/shelves/MISSING';
+    const photo = { contentType: 'image/png', dataBase64: MIN_PNG.toString('base64') };
+    for (const request of [
+      { method: 'GET' as const, url: `${path}/photo` },
+      { method: 'PUT' as const, url: `${path}/photo`, payload: photo },
+      { method: 'PATCH' as const, url: path, payload: { displayLabel: null } }
+    ]) {
+      expect((await app.inject({ ...request, headers: { 'x-client-key': 'invalid-client-key' } })).statusCode).toBe(401);
+      expect((await app.inject({ ...request, headers: { 'x-client-key': apiKey } })).statusCode).toBe(404);
+    }
+    for (const request of [
+      { method: 'POST' as const, url: '/api/mobile-placement/shelves', payload: { shelfCodeRaw: '西-北-01', displayLabel: 'a'.repeat(61) } },
+      { method: 'PATCH' as const, url: path, payload: { displayLabel: 'a'.repeat(61) } }
+    ]) expect((await app.inject({ ...request, headers: { 'x-client-key': apiKey } })).statusCode).toBe(400);
+  });
+
 });
