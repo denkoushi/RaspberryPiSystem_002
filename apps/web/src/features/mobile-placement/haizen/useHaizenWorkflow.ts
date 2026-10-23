@@ -12,7 +12,7 @@ export function useHaizenWorkflow(mp: HaizenState, enabled = true) {
   const [verified, setVerified] = useState<typeof runSlipVerify | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  useEffect(() => { setOrderBarcode(transferOrder); }, [transferOrder, setOrderBarcode]);
+  useEffect(() => { if (enabled) setOrderBarcode(transferOrder); }, [enabled, transferOrder, setOrderBarcode]);
 
   useEffect(() => {
     let current = true;
@@ -35,6 +35,7 @@ export function useHaizenWorkflow(mp: HaizenState, enabled = true) {
   useEffect(() => {
     if (!registerMessage) return;
     setToast(registerMessage);
+    if (!enabled) return;
     setTransferOrder('');
     setTransferPart('');
     setActualOrder('');
@@ -46,7 +47,7 @@ export function useHaizenWorkflow(mp: HaizenState, enabled = true) {
     resetActualSlipOcrFeedback();
     setOrderPlacementIntent('create_new_branch');
     setSelectedBranchId(null);
-  }, [registerMessage, setTransferOrder, setTransferPart, setActualOrder, setActualPart,
+  }, [enabled, registerMessage, setTransferOrder, setTransferPart, setActualOrder, setActualPart,
     setActualFseiban, setOrderBarcode, selectShelf, resetSlipResult, resetActualSlipOcrFeedback,
     setOrderPlacementIntent, setSelectedBranchId]);
 

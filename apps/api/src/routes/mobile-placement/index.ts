@@ -100,7 +100,10 @@ function inferImageMimeFromMimeAndFilename(mimetype: string, filename: string): 
 
 const registerOrderPlacementBodySchema = z.object({
   shelfCodeRaw: z.string().min(1),
-  manufacturingOrderBarcodeRaw: z.string().min(1)
+  manufacturingOrderBarcodeRaw: z.string().min(1),
+  slipKind: z.enum(['manufacturing_order', 'purchase_order']).default('manufacturing_order'),
+  clientRecordId: z.string().max(64).uuid().optional(),
+  placedAt: z.string().datetime({ offset: true }).optional()
 });
 
 const moveOrderPlacementBranchBodySchema = z.object({
@@ -519,7 +522,10 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const result = await registerOrderPlacement({
       clientDeviceId: identity.clientDeviceId,
       shelfCodeRaw: body.shelfCodeRaw,
-      manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw
+      manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw,
+      slipKind: body.slipKind,
+      clientRecordId: body.clientRecordId,
+      placedAt: body.placedAt
     });
     return {
       event: {

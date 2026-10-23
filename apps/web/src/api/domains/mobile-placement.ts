@@ -240,7 +240,10 @@ export async function snapFseibanTokens(payload: { tokens: string[]; text?: stri
 export async function registerOrderPlacement(payload: {
   shelfCodeRaw: string;
   manufacturingOrderBarcodeRaw: string;
-}) {
+  slipKind?: 'manufacturing_order' | 'purchase_order';
+  clientRecordId?: string;
+  placedAt?: string;
+}, timeout?: number) {
   const { data } = await api.post<{
     event: {
       id: string;
@@ -257,8 +260,8 @@ export async function registerOrderPlacement(payload: {
       branchNo: number;
       shelfCodeRaw: string;
     };
-    resolvedRowId: string;
-  }>('/mobile-placement/register-order-placement', payload);
+    resolvedRowId: string | null;
+  }>('/mobile-placement/register-order-placement', payload, timeout === undefined ? undefined : { timeout });
   return data;
 }
 

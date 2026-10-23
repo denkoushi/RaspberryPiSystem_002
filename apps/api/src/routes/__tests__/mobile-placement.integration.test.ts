@@ -597,6 +597,38 @@ describe('mobile-placement API', () => {
     expect(stateCount).toBe(1);
   });
 
+  it('accepts purchase slip metadata and replays a client record without another branch', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const purchaseOrderNo = '4501238876';
+    const row = await prisma.purchaseOrderLookupRow.create({ data: {
+      sourceCsvDashboardId: 'haizen-offline-test', purchaseOrderNo, seiban: 'S-OFFLINE',
+      purchasePartCodeRaw: 'MAT1', purchasePartCodeNormalized: 'MAT1', purchasePartCodeMatchKey: 'MAT1',
+      purchasePartName: '材料'
+    } });
+    try {
+      const payload = {
+        shelfCodeRaw: 'OUTDOOR-1', manufacturingOrderBarcodeRaw: purchaseOrderNo,
+        slipKind: 'purchase_order', clientRecordId: 'efecf674-c951-4fce-8db2-86dc1f24e718',
+        placedAt: new Date(Date.now() - 60_000).toISOString()
+      };
+      const send = () => app.inject({ method: 'POST', url: '/api/mobile-placement/register-order-placement', headers: { 'x-client-key': apiKey }, payload });
+      const first = await send();
+      expect(first.statusCode).toBe(200);
+      expect(first.json()).toMatchObject({ resolvedRowId: null, event: { placedAt: payload.placedAt }, branchState: { branchNo: 1 } });
+      const replay = await send();
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json()).toEqual(first.json());
+      expect(await prisma.orderPlacementEvent.count()).toBe(1);
+      expect(await prisma.orderPlacementBranchState.count()).toBe(1);
+      expect(await prisma.orderPlacementEvent.findUnique({ where: { clientRecordId: payload.clientRecordId } })).toMatchObject({
+        slipKind: 'purchase_order', csvDashboardRowId: null,
+        scheduleSnapshot: { FSEIBAN: 'S-OFFLINE', FHINCD: 'MAT1', FHINMEI: '材料', PurchaseOrderNo: purchaseOrderNo }
+      });
+    } finally {
+      await prisma.purchaseOrderLookupRow.delete({ where: { id: row.id } });
+    }
+  });
+
   it('GET /api/mobile-placement/order-placement-branches lists current shelves per branch', async () => {
     const { apiKey: clientApiKey } = await createTestClientDevice();
     await prisma.csvDashboard.upsert({

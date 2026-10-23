@@ -5,6 +5,7 @@ export type MobilePlacementScanField =
   | 'shelf'
   | 'order'
   | 'transferOrder'
+  | 'placePurchaseOrder'
   | 'transferPart'
   | 'actualOrder'
   | 'actualPart'
