@@ -85,10 +85,25 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('tab', { name: '購買' }));
     expect(screen.getByText('sub-screen')).toBeInTheDocument();
   });
-  it('lists shelf photos under the shelf stub on the 配膳 tab', async () => {
+  it('shows shelf photos directly under the 移動票 and enables them after it is read', async () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
     const list = within(screen.getByRole('region', { name: '棚の写真' }));
+    expect(screen.queryByRole('button', { name: '棚を読む' })).not.toBeInTheDocument();
+    expect(screen.getByText('先に移動票を読む')).toBeInTheDocument();
+    fireEvent.click(list.getByRole('button', { name: '50013_540AP', exact: true }));
+    expect(await list.findByRole('button', { name: '棚 50013_540AP 北', exact: true })).toBeDisabled();
+    fireEvent.click(list.getByRole('button', { name: '大きい画面で選ぶ' }));
+    expect(screen.getByRole('dialog', { name: '棚を選ぶ' })).toBeInTheDocument();
+  });
+  it('selects a shelf from the photos on the 配膳 tab and enlarges it on a second tap', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '手入力', exact: true }));
+    fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: '0002178005' } });
+    fireEvent.click(screen.getByRole('button', { name: '完了' }));
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    const list = within(screen.getByRole('region', { name: '棚の写真' }));
+    expect(screen.queryByText('先に移動票を読む')).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '部品' })).toBeInTheDocument();
     fireEvent.click(list.getByRole('button', { name: '50013_540AP', exact: true }));
     fireEvent.click(await list.findByRole('button', { name: '棚 50013_540AP 北', exact: true }));
@@ -112,7 +127,7 @@ describe('Haizen hub', () => {
     await waitFor(() => expect(registerOrderPlacement).toHaveBeenCalledWith({ shelfCodeRaw: '50013_540AP 北', manufacturingOrderBarcodeRaw: '0002178005' }));
     await screen.findByText(/分配1を登録/);
     expect(screen.getByText('バーコードを読む')).toBeInTheDocument();
-    expect(screen.getByText('写真から選ぶ')).toBeInTheDocument();
+    expect(screen.getByText('先に移動票を読む')).toBeInTheDocument();
   });
   it('notes when the 現品票 material code was matched by part name', async () => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: true, reason: 'match', matchedBy: 'part_name',
