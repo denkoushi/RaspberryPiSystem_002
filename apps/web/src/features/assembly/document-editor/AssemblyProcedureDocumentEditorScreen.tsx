@@ -20,6 +20,9 @@ import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCan
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
+  const processNames = context?.processName.split(' › ') ?? [];
+  const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
+    : processNames.some(name => name.startsWith('研削')) ? 'procedure-grinding' : undefined;
   const [voiceInputEnabled, setVoiceInputEnabled] = useState(() => {
     try { return localStorage.getItem('assembly-document-editor-voice-input') === 'on'; }
     catch { return false; }
@@ -198,6 +201,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         <AssemblyProcedureDocumentEditorInspector
           key={voiceInputEnabled ? `${controller.document?.id}:${controller.selectedElement.id}` : undefined}
           voiceInputEnabled={voiceInputEnabled}
+          voiceContext={voiceContext}
           element={controller.selectedElement}
           onClose={() => controller.setSelectedOverlayId(null)}
           onDuplicate={controller.duplicateSelectedOverlay}

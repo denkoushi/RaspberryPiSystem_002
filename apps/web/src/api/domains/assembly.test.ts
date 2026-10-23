@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../http';
 
-import { sendBusinessHermesChat } from './assembly';
+import { sendBusinessHermesChat, transcribeAssemblyProcedureDictation } from './assembly';
 
 vi.mock('../http', () => ({
   api: { post: vi.fn() }
@@ -43,5 +43,21 @@ describe('assembly region API overlays', () => {
     expect(apiPost).toHaveBeenLastCalledWith('/assembly/procedure-documents/draft/regions/text', {
       accessPassword: '1234', pageIndex: 0, bbox, overlays
     });
+  });
+});
+
+describe('assembly dictation API client', () => {
+  it.each([undefined, 'procedure-assembly', 'procedure-grinding'])('includes context only when given (%s)', async context => {
+    apiPost.mockReset().mockResolvedValue({ data: { text: '  棚  ' } });
+    const signal = new AbortController().signal;
+    const audio = new Blob(['audio'], { type: 'audio/webm' });
+    await expect(transcribeAssemblyProcedureDictation(audio, signal, context)).resolves.toEqual({ text: '棚' });
+    const [url, form, options] = apiPost.mock.calls[0];
+    expect(url).toBe('/assembly/procedure-documents/dictation/transcribe');
+    expect(options).toEqual({ signal, timeout: 45000 });
+    expect(form).toBeInstanceOf(FormData);
+    expect([...(form as FormData).keys()]).toEqual(context === undefined ? ['file'] : ['file', 'context']);
+    expect((form as FormData).get('context')).toBe(context ?? null);
+    expect(((form as FormData).get('file') as File).name).toBe('dictation.webm');
   });
 });
