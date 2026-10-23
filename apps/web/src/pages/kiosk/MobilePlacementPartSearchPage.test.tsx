@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getMobilePlacementPartSearchSuggest } from '../../api/client';
@@ -18,11 +18,16 @@ const hit: PartPlacementSearchHitDto = {
   fhinmei: '脚（左）', fseiban: 'BA1S2201', productNo: '100'
 };
 
+function Destination() {
+  const location = useLocation();
+  return <div>配膳ハブ<output aria-label="遷移">{useNavigationType()} {location.pathname} {location.state?.openHaizenMenu ? 'メニュー' : ''}</output></div>;
+}
+
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/search']}><Routes>
     <Route path="/search" element={<MobilePlacementPartSearchPage />} />
-    <Route path="/kiosk/mobile-placement" element={<div>配膳ハブ</div>} />
+    <Route path="*" element={<Destination />} />
   </Routes></MemoryRouter></QueryClientProvider>);
 }
 
@@ -32,8 +37,27 @@ beforeEach(() => {
 });
 
 describe('MobilePlacementPartSearchPage phone flow', () => {
+  it.each([
+    ['照合', '/kiosk/mobile-placement', 'verify'],
+    ['配膳', '/kiosk/mobile-placement', 'place'],
+    ['購買', '/kiosk/purchase-order-lookup', null]
+  ])('%s タブは履歴を置換する', (tab, path, stored) => {
+    mount();
+    expect(screen.getByRole('tab', { name: '部品' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: tab }));
+    expect(screen.getByLabelText('遷移')).toHaveTextContent(`REPLACE ${path}`);
+    if (stored) expect(localStorage.getItem('haizen-tab')).toBe(stored);
+  });
+
+  it('メニューを開く state を付けてハブへ置換する', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
+    expect(screen.getByLabelText('遷移')).toHaveTextContent('REPLACE /kiosk/mobile-placement メニュー');
+  });
+
   it('keeps typing, expands/collapses details and clears the query and selection', async () => {
     mount();
+    expect(screen.getByRole('tab', { name: '部品' })).toHaveAttribute('aria-selected', 'true');
     const input = screen.getByRole('textbox', { name: '部品名・品番' });
     fireEvent.change(input, { target: { value: '脚' } });
     const result = await screen.findByRole('button', { name: /西-北-02/ });
@@ -47,8 +71,9 @@ describe('MobilePlacementPartSearchPage phone flow', () => {
     expect(input).toHaveValue('');
     expect(screen.queryByText('0002178005')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '全部消す' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
     expect(screen.getByText('配膳ハブ')).toBeInTheDocument();
+    expect(localStorage.getItem('haizen-tab')).toBe('place');
   });
 
   it('applies the existing machine AND query through chips; all machines clears only that filter', async () => {

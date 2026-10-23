@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { HaizenHeader } from '../../features/mobile-placement/haizen/HaizenHeader';
 import { HaizenIcon } from '../../features/mobile-placement/haizen/HaizenIcon';
 import { HaizenSheet } from '../../features/mobile-placement/haizen/HaizenSheet';
+import { HaizenTopBar } from '../../features/mobile-placement/haizen/HaizenTopBar';
+import { haizenTabNavigationOptions } from '../../features/mobile-placement/haizen/useHubBackGuard';
 import { partSearchHitIdentity } from '../../features/mobile-placement/part-search/partSearchIdentity';
 import { PartSearchPhoneHit } from '../../features/mobile-placement/part-search/PartSearchPhoneHit';
 import { PartSearchPhoneKeyboard } from '../../features/mobile-placement/part-search/PartSearchPhoneKeyboard';
@@ -28,7 +29,12 @@ export function MobilePlacementPartSearchPage() {
   };
   return <div style={haizenPhoneStyle} className={hp.screen}>
     <div className={hp.content}>
-      <HaizenHeader title="部品を探す" onBack={() => navigate('/kiosk/mobile-placement')} />
+      <HaizenTopBar active="parts" onSelect={(tab) => {
+        if (tab === 'verify' || tab === 'place') {
+          try { localStorage.setItem('haizen-tab', tab); } catch { /* Storage may be disabled on the kiosk. */ }
+          navigate('/kiosk/mobile-placement', haizenTabNavigationOptions());
+        } else if (tab === 'purchase') navigate('/kiosk/purchase-order-lookup', haizenTabNavigationOptions());
+      }} onMenu={() => navigate('/kiosk/mobile-placement', haizenTabNavigationOptions({ openHaizenMenu: true }))} />
       <div className="mx-3.5 mt-0.5 flex h-[58px] shrink-0 items-center gap-2.5 rounded-2xl border-[1.5px] border-[var(--hp-shelf)] bg-[var(--hp-panel2)] pl-3.5 pr-2">
         <HaizenIcon name="search" className="h-[22px] w-[22px] shrink-0 text-[var(--hp-shelf)]" />
         <input aria-label="部品名・品番" placeholder="部品名・品番" value={search.partQuery}
