@@ -16,6 +16,7 @@ import {
   enrichmentAttachEnabled,
   failureDiagnostic,
   formatCoverageNotice,
+  formatRecords,
   loadEnrichmentById,
   loadLearnedQueriesById,
   loadRetrievalResources,
@@ -868,7 +869,8 @@ test('record display uses exactly the answer fields and order for multiple and s
       const row = rows.find(record => `${record.sourceId}:${record.id}` === id);
       const entry = selectedCatalog.find(entry => entry.id === row.sourceId);
       return { sourceLabel: entry.label, fields: entry.fields
-        .filter(field => ['identifier', 'date', 'organization', 'body'].includes(field.role))
+        .filter(field => ['identifier', 'date', 'organization', 'body'].includes(field.role)
+          || (sourceDefinitions[entry.id]?.answerFields ?? []).includes(field.key))
         .filter(field => typeof row[field.key] === 'string')
         .map(field => ({ label: field.label, value: row[field.key], role: field.role })) };
     });
@@ -1276,4 +1278,15 @@ test('breakdown conditions include cause labels without exposing other filter va
       filters: [{ source: 'nonconformity', field: 'partNumber', op: 'eq', values: ['PRIVATE-PART'] }] }) }) } });
   const result = await answering.answer('内訳');
   assert.equal(result.answer, '要因が図面・設計の誤りの不適合 1 件の要因の内訳: 図面・設計の誤り 1件');
+});
+
+test('record answers include the part number and part name the source lists as answer fields', () => {
+  const [record] = records;
+  const [entry] = catalog.fields ? [catalog] : catalog;
+  const fields = Object.fromEntries(entry.fields.map((field) => [field.key, record[field.key]]));
+  const { answer, records: shown } = formatRecords([{ sourceId: entry.id, fields }], catalog);
+  const labels = shown[0].fields.map((field) => field.label);
+  assert.deepEqual(labels.slice(0, 3), ['不適合番号', '品番', '品名']);
+  assert.ok(!labels.includes('機械名'));
+  assert.match(answer, /^不適合番号: SYN-001\n品番: PN-ALPHA\n品名: Demo Widget\n/u);
 });
