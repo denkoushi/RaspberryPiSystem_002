@@ -21,9 +21,10 @@ const sizes = {
 } as const;
 const collator = new Intl.Collator('ja');
 
-/** Most recently issued first; never-issued drawers follow in name order. */
-export function sortByRecentIssue(compartments: InventoryCompartment[]): InventoryCompartment[] {
+/** Lowest stock first; ties go most recently issued first, then never-issued drawers in name order. */
+export function sortByLowStock(compartments: InventoryCompartment[]): InventoryCompartment[] {
   return [...compartments].sort((a, b) => {
+    if (a.stockQuantity !== b.stockQuantity) return a.stockQuantity - b.stockQuantity;
     const at = a.lastIssuedAt ? Date.parse(a.lastIssuedAt) : null;
     const bt = b.lastIssuedAt ? Date.parse(b.lastIssuedAt) : null;
     if (at !== null && bt !== null && at !== bt) return bt - at;
@@ -95,7 +96,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
   };
   const hoverClass = (id: string) => `transition-[transform,opacity,box-shadow] duration-150 motion-reduce:transition-none ${tooltip?.compartment.id === id ? '-translate-y-0.5 ring-2 ring-inv-cyan shadow-xl' : tooltip ? 'opacity-[.55]' : ''}`;
   const config = sizes[size];
-  const sorted = useMemo(() => sortByRecentIssue(compartments), [compartments]);
+  const sorted = useMemo(() => sortByLowStock(compartments), [compartments]);
   if (sorted.length === 0 && pending.length === 0) return <p className="text-inv-muted">登録済みのアイテムはまだありません</p>;
   const now = new Date();
   if (view === 'list') return (

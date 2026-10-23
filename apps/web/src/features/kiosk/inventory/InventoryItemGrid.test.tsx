@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { issuedLabel } from './inventoryDailyFlow';
-import { InventoryItemGrid, sortByRecentIssue } from './InventoryItemGrid';
+import { InventoryItemGrid, sortByLowStock } from './InventoryItemGrid';
 
 import type { InventoryCompartment, InventoryImportSummary } from '../../../api/client';
 
@@ -318,8 +318,17 @@ describe('InventoryItemGrid', () => {
     expect(screen.getAllByLabelText('置き場所の番号')).toHaveLength(2);
   });
 
-  it('orders drawers by the latest issue, then never-issued ones by name', () => {
-    const sorted = sortByRecentIssue([
+  it('orders drawers by the lowest stock first', () => {
+    const sorted = sortByLowStock([
+      { ...drawer('a', 'ゲージ', '2026-09-29T03:00:00Z'), stockQuantity: 5 },
+      { ...drawer('b', '治具', null), stockQuantity: 0 },
+      { ...drawer('c', 'ピン', null), stockQuantity: 2 },
+    ]);
+    expect(sorted.map((entry) => entry.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('breaks stock ties by the latest issue, then never-issued ones by name', () => {
+    const sorted = sortByLowStock([
       drawer('a', 'ゲージ', null),
       drawer('b', '治具', '2026-09-29T01:00:00Z'),
       drawer('c', 'ピン', '2026-09-29T03:00:00Z'),
