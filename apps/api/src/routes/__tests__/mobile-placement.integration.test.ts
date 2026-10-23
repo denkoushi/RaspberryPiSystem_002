@@ -1341,6 +1341,27 @@ describe('mobile-placement API', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('DELETE shelf requires authentication, deletes only that shelf and cascades its photo', async () => {
+    const { apiKey, id } = await createTestClientDevice();
+    const headers = { 'x-client-key': apiKey };
+    const shelfCodeRaw = '西-北-01';
+    const path = `/api/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}`;
+    await prisma.mobilePlacementShelf.create({ data: { shelfCodeRaw } });
+    await prisma.mobilePlacementShelf.create({ data: { shelfCodeRaw: 'A-3' } });
+    await prisma.clientDevice.update({ where: { id }, data: { haizenPresetShelfCodeRaw: shelfCodeRaw } });
+    expect((await app.inject({ method: 'PUT', url: `${path}/photo`, headers, payload: { contentType: 'image/png', dataBase64: MIN_PNG.toString('base64') } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'DELETE', url: path })).statusCode).toBe(401);
+    expect(await prisma.mobilePlacementShelf.findUnique({ where: { shelfCodeRaw } })).not.toBeNull();
+    const deleted = await app.inject({ method: 'DELETE', url: path, headers });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toEqual({ shelfCodeRaw });
+    expect(await prisma.mobilePlacementShelf.findUnique({ where: { shelfCodeRaw } })).toBeNull();
+    expect(await prisma.mobilePlacementShelf.findUnique({ where: { shelfCodeRaw: 'A-3' } })).not.toBeNull();
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id } })).haizenPresetShelfCodeRaw).toBeNull();
+    expect((await app.inject({ method: 'GET', url: `${path}/photo`, headers })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'DELETE', url: path, headers })).statusCode).toBe(404);
+  });
+
   it('creates a photo shelf, reads authenticated bytes, updates memo and photo metadata', async () => {
     const { apiKey, id } = await createTestClientDevice();
     const headers = { 'x-client-key': apiKey };

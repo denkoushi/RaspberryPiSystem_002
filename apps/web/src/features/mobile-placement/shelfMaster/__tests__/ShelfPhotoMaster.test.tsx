@@ -8,7 +8,7 @@ import { ShelfPhotoMaster } from '../components/ShelfPhotoMaster';
 
 vi.mock('../../../../api/client', () => ({
   getMobilePlacementShelfMachines: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn(), getMobilePlacementShelfPhoto: vi.fn(),
-  postMobilePlacementShelfRegister: vi.fn(), putMobilePlacementShelfPhoto: vi.fn(), patchMobilePlacementShelfMemo: vi.fn()
+  postMobilePlacementShelfRegister: vi.fn(), putMobilePlacementShelfPhoto: vi.fn(), patchMobilePlacementShelfMemo: vi.fn(), deleteMobilePlacementShelf: vi.fn()
 }));
 vi.mock('../../shelfPhoto/resizeShelfPhoto', () => ({ resizeShelfPhoto: vi.fn() }));
 const shelves = [
@@ -16,10 +16,10 @@ const shelves = [
   { shelfCodeRaw: 'DAD-3220 西', isStructured: true, machineName: 'DAD-3220', direction: '西' as const, displayLabel: null, photoUpdatedAt: null }
 ];
 const photo = { contentType: 'image/jpeg' as const, dataBase64: '/9j/' };
-function mount() {
+function mount(onMessage?: (message: string) => void) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(client, 'invalidateQueries');
-  render(<QueryClientProvider client={client}><ShelfPhotoMaster /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><ShelfPhotoMaster onMessage={onMessage} /></QueryClientProvider>);
   return invalidate;
 }
 async function openAdd() {
@@ -42,6 +42,57 @@ beforeEach(() => {
   vi.mocked(api.putMobilePlacementShelfPhoto).mockResolvedValue({ photoUpdatedAt: '2026-10-22T10:00:00Z' });
 });
 describe('photo shelf master', () => {
+  it('deletes on the second tap, disables controls while busy, refreshes queries and closes', async () => {
+    let resolveDelete!: (value: { shelfCodeRaw: string }) => void;
+    vi.mocked(api.deleteMobilePlacementShelf).mockReturnValue(new Promise((resolve) => { resolveDelete = resolve; }));
+    const onMessage = vi.fn();
+    const invalidate = mount(onMessage);
+    fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-01 を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この棚を消す' }));
+    expect(api.deleteMobilePlacementShelf).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '本当に消す' }));
+    expect(api.deleteMobilePlacementShelf).toHaveBeenCalledExactlyOnceWith('西-北-01');
+    expect(screen.getByRole('button', { name: '本当に消す' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'やめる' })).toBeDisabled();
+    resolveDelete({ shelfCodeRaw: '西-北-01' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['mobile-placement', 'registered-shelves'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['mobile-placement', 'shelf-layout'] });
+    expect(onMessage).toHaveBeenCalledWith('西-北-01 を消しました');
+  });
+
+  it('cancels delete confirmation without calling the API', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-01 を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この棚を消す' }));
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(screen.getByRole('button', { name: 'この棚を消す' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '本当に消す' })).not.toBeInTheDocument();
+    expect(api.deleteMobilePlacementShelf).not.toHaveBeenCalled();
+  });
+
+  it('shows the 409 server message and resets confirmation', async () => {
+    const message = '品物が 3件 置いてあるので消せません。先に「棚を動かす」で移してください';
+    vi.mocked(api.deleteMobilePlacementShelf).mockRejectedValue({ isAxiosError: true, response: { status: 409, data: { message } } });
+    const onMessage = vi.fn();
+    const invalidate = mount(onMessage);
+    fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-01 を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: 'この棚を消す' }));
+    fireEvent.click(screen.getByRole('button', { name: '本当に消す' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(message);
+    expect(screen.getByRole('button', { name: 'この棚を消す' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '本当に消す' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(onMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not offer deletion when adding a shelf', async () => {
+    mount(); await openAdd();
+    expect(screen.queryByRole('button', { name: 'この棚を消す' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '本当に消す' })).not.toBeInTheDocument();
+  });
+
   it('clears direction when changing machine and disables every registered direction', async () => {
     vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [
       ...shelves, ...(['東', '西', '南', '北'] as const).map((direction) => ({

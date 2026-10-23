@@ -20,6 +20,7 @@ import {
   moveOrderPlacementBranch
 } from '../../services/mobile-placement/order-placement-branch.service.js';
 import {
+  deleteMobilePlacementShelf,
   listRegisteredShelvesFromShelfMaster,
   registerMobilePlacementShelf
 } from '../../services/mobile-placement/mobile-placement-shelf-master.service.js';
@@ -365,6 +366,12 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
     const photo = await getShelfPhoto(shelfCodeRaw);
     return reply.type(photo.contentType).header('Cache-Control', 'private, max-age=31536000, immutable').send(Buffer.from(photo.bytes));
+  });
+
+  app.delete('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
+    return deleteMobilePlacementShelf(shelfCodeRaw);
   });
 
   app.patch('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: false } }, async (request) => {
