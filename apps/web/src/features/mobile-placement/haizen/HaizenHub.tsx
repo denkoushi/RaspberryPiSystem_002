@@ -1,6 +1,5 @@
 import { useState } from 'react';
 
-import { ShelfPhoto } from '../shelfPhoto/ShelfPhoto';
 import { haizenPhoneColors as colors, haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
 import { HaizenIcon } from './HaizenIcon';
@@ -37,7 +36,6 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
   };
   const flow = useHaizenWorkflow(mp, tab === 'verify');
   const previousShelfCodes = [...new Set(branches.data?.branches.map((b) => b.shelfCodeRaw) ?? [])];
-  const selectedShelf = shelves.data?.shelves.find((s) => s.shelfCodeRaw === mp.shelfCode);
   const clearActual = () => {
     mp.setActualOrder(''); mp.setActualFseiban(''); mp.setActualPart('');
     mp.resetSlipResult(); mp.resetActualSlipOcrFeedback();
@@ -98,30 +96,28 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
             {flow.result === 'ok' && mp.slipDetails?.matchedBy === 'part_name' && <p className={`text-sm ${hp.muted}`}>素材 <span className="font-mono">{mp.slipDetails.actual?.partCode}</span> を品名で照合</p>}
           </section>}
         </> : <>
-          <HaizenStub label="棚" subtitle="置く場所" prompt="写真から選ぶ" value={mp.shelfCode} color={colors.shelf} active={Boolean(mp.transferOrder.trim()) && !mp.shelfCode}
-            locked={!mp.transferOrder.trim()} onScan={() => setSheet('shelves')} onClear={() => mp.selectShelf('')}
-            thumbnail={selectedShelf && <ShelfPhoto shelf={selectedShelf} className="h-[66px] w-[88px] rounded-[10px]" />}>
-            {selectedShelf?.displayLabel && <p className={`truncate text-sm ${hp.muted}`}>{selectedShelf.displayLabel}</p>}
-          </HaizenStub>
-        {mp.shelfCode && <>
-          {branches.isLoading && <p className={`text-[11px] ${hp.muted}`}>分配一覧を読み込み中…</p>}
-          {branches.isError && <div role="alert" className="text-[13px] text-[var(--hp-ng)]">分配一覧の取得に失敗しました <button type="button" className={hp.mini} onClick={() => void branches.refetch()}>再試行</button></div>}
-          {!!branches.data?.branches.length && <div className="flex min-h-11 items-center gap-2 px-0.5 pt-0.5">
-            <span className={`shrink-0 text-[13px] font-bold ${hp.muted}`}>分配</span>
-            <div role="group" aria-label="分配" className="flex min-w-0 gap-1.5 overflow-x-auto">
-              <button type="button" className={hp.segment} aria-pressed={mp.orderPlacementIntent === 'create_new_branch'} onClick={() => { mp.setOrderPlacementIntent('create_new_branch'); mp.setSelectedBranchId(null); }}>
-                新規 <span className={`text-[11px] font-medium ${hp.muted}`}>分配{suggestedNextBranchNo}</span>
-              </button>
-              {branches.data.branches.map((b) => <button key={b.id} type="button" className={hp.segment} aria-pressed={mp.orderPlacementIntent === 'move_existing' && mp.selectedBranchId === b.id}
-                onClick={() => { mp.setOrderPlacementIntent('move_existing'); mp.setSelectedBranchId(b.id); }}>
-                分配{b.branchNo} <span className={`text-[11px] font-medium ${hp.muted}`}>{b.shelfCodeRaw}</span>
-              </button>)}
-            </div>
-          </div>}
-        </>}
         <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
           <HaizenShelfPhotoList compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
-            loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={mp.shelfCode} onSelect={mp.selectShelf} />
+            loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={mp.shelfCode} onSelect={mp.selectShelf}
+            disabled={!mp.transferOrder.trim()} onExpand={() => setSheet('shelves')}>
+            {!mp.transferOrder.trim() && <p className={`pb-1 text-center text-[13px] font-bold ${hp.muted}`}>先に移動票を読む</p>}
+            {mp.shelfCode && <>
+              {branches.isLoading && <p className={`text-[11px] ${hp.muted}`}>分配一覧を読み込み中…</p>}
+              {branches.isError && <div role="alert" className="text-[13px] text-[var(--hp-ng)]">分配一覧の取得に失敗しました <button type="button" className={hp.mini} onClick={() => void branches.refetch()}>再試行</button></div>}
+              {!!branches.data?.branches.length && <div className="flex min-h-11 items-center gap-2 px-0.5 pt-0.5">
+                <span className={`shrink-0 text-[13px] font-bold ${hp.muted}`}>分配</span>
+                <div role="group" aria-label="分配" className="flex min-w-0 gap-1.5 overflow-x-auto">
+                  <button type="button" className={hp.segment} aria-pressed={mp.orderPlacementIntent === 'create_new_branch'} onClick={() => { mp.setOrderPlacementIntent('create_new_branch'); mp.setSelectedBranchId(null); }}>
+                    新規 <span className={`text-[11px] font-medium ${hp.muted}`}>分配{suggestedNextBranchNo}</span>
+                  </button>
+                  {branches.data.branches.map((b) => <button key={b.id} type="button" className={hp.segment} aria-pressed={mp.orderPlacementIntent === 'move_existing' && mp.selectedBranchId === b.id}
+                    onClick={() => { mp.setOrderPlacementIntent('move_existing'); mp.setSelectedBranchId(b.id); }}>
+                    分配{b.branchNo} <span className={`text-[11px] font-medium ${hp.muted}`}>{b.shelfCodeRaw}</span>
+                  </button>)}
+                </div>
+              </div>}
+            </>}
+          </HaizenShelfPhotoList>
         </section>
         </>}
         <button type="button" className={`self-start py-1.5 text-[13px] font-bold underline underline-offset-4 ${hp.muted}`} onClick={() => setSheet('inputs')}>手入力</button>
