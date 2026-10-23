@@ -81,8 +81,9 @@ export function buildMachineDailyInspectionPreset(): CsvDashboardCreateInput {
     dateColumnName: 'inspectionAt',
     displayPeriodDays: 1,
     emptyMessage: '当日の点検データはありません',
-    ingestMode: 'APPEND',
-    dedupKeyColumns: [],
+    ingestMode: 'DEDUP',
+    // 毎回の添付CSVが全期間分の同じ内容のため、同一の点検は1行だけ保存する。
+    dedupKeyColumns: ['equipmentManagementNumber', 'inspectionItem', 'inspectionAt'],
     gmailSubjectPattern: null,
     templateType: 'TABLE',
     templateConfig: {
