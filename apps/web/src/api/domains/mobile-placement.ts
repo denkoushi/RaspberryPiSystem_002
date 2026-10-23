@@ -34,6 +34,11 @@ export async function patchMobilePlacementShelfMemo(shelfCodeRaw: string, displa
   await api.patch(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}`, { displayLabel });
 }
 
+export async function deleteMobilePlacementShelf(shelfCodeRaw: string) {
+  const { data } = await api.delete<{ shelfCodeRaw: string }>(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}`);
+  return data;
+}
+
 export type MobilePlacementClientCapabilities = {
   shelfLayoutEditEnabled: boolean;
   haizenEdgeEnabled: boolean;

@@ -45,7 +45,7 @@ export function ShelfMasterPhonePage() {
       : <>
         <HaizenHeader title={zoneId ? getMacroZoneById(zoneId).displayName : '棚マスタ'} onBack={zoneId ? () => setZoneId(null) : backToHub} />
         <ShelfPhoneMode mode={mode} canEdit={canEdit} onChange={changeMode} />
-        {mode === 'photo' ? <ShelfPhotoMaster /> : zoneId ? <ShelfPhoneRelocate zoneId={zoneId} source={source} setSource={setSource} zeroShelves={zeroShelves} onOpen={setZoneId} onMessage={setToast} />
+        {mode === 'photo' ? <ShelfPhotoMaster onMessage={setToast} /> : zoneId ? <ShelfPhoneRelocate zoneId={zoneId} source={source} setSource={setSource} zeroShelves={zeroShelves} onOpen={setZoneId} onMessage={setToast} />
           : <>
             {summary.isLoading ? <p className={hp.empty}>読込中…</p> : summary.isError ? <p role="alert" className={`${hp.empty} !text-[var(--hp-ng)]`}>配置を取得できませんでした</p>
               : <ShelfPhoneMap zones={summary.data?.zones ?? []} zeroShelves={zeroShelves} onOpen={setZoneId} />}

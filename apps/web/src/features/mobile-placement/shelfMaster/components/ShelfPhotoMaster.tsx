@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useRef, useState } from 'react';
 
-import { getMobilePlacementShelfMachines, patchMobilePlacementShelfMemo, postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto } from '../../../../api/client';
+import { deleteMobilePlacementShelf, getMobilePlacementShelfMachines, patchMobilePlacementShelfMemo, postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto } from '../../../../api/client';
 import { Dialog } from '../../../../components/ui/Dialog';
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { HaizenIcon } from '../../haizen/HaizenIcon';
@@ -15,7 +15,7 @@ import { useRegisteredShelves } from '../../useRegisteredShelves';
 
 import type { RegisteredShelfEntryDto } from '../../registeredShelves';
 
-export function ShelfPhotoMaster() {
+export function ShelfPhotoMaster({ onMessage }: { onMessage?: (message: string) => void }) {
   const query = useRegisteredShelves();
   const [editing, setEditing] = useState<RegisteredShelfEntryDto | 'new' | null>(null);
   return <>
@@ -29,11 +29,11 @@ export function ShelfPhotoMaster() {
         {!query.data?.shelves.length && <p className={hp.empty}>棚がありません</p>}
       </div>}
     <footer className={hp.dock}><button type="button" disabled={query.isLoading || query.isError} className={`${hp.primary} bg-[var(--hp-shelf)]`} onClick={() => setEditing('new')}><span aria-hidden>＋</span>棚を追加</button></footer>
-    {editing && <ShelfPhotoForm shelf={editing === 'new' ? null : editing} shelves={query.data?.shelves ?? []} onClose={() => setEditing(null)} />}
+    {editing && <ShelfPhotoForm shelf={editing === 'new' ? null : editing} shelves={query.data?.shelves ?? []} onClose={() => setEditing(null)} onMessage={onMessage} />}
   </>;
 }
 
-function ShelfPhotoForm({ shelf, shelves, onClose }: { shelf: RegisteredShelfEntryDto | null; shelves: RegisteredShelfEntryDto[]; onClose: () => void }) {
+function ShelfPhotoForm({ shelf, shelves, onClose, onMessage }: { shelf: RegisteredShelfEntryDto | null; shelves: RegisteredShelfEntryDto[]; onClose: () => void; onMessage?: (message: string) => void }) {
   const client = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [machine, setMachine] = useState('');
@@ -43,6 +43,7 @@ function ShelfPhotoForm({ shelf, shelves, onClose }: { shelf: RegisteredShelfEnt
   const [photo, setPhoto] = useState<Awaited<ReturnType<typeof resizeShelfPhoto>> | null>(null);
   const [createdCode, setCreatedCode] = useState<string | null>(shelf?.shelfCodeRaw ?? null);
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const machinesQuery = useQuery({
     queryKey: mobilePlacementQueryKeys.shelfMachines,
@@ -54,6 +55,22 @@ function ShelfPhotoForm({ shelf, shelves, onClose }: { shelf: RegisteredShelfEnt
   const canSave = !busy && Boolean(code) && (Boolean(createdCode) ||
     (Boolean(photo) && Boolean(direction) && !registeredDirections.has(direction ?? undefined) &&
       !machinesQuery.isError && Boolean(machinesQuery.data?.machines.includes(machine))));
+  const deleteShelf = async () => {
+    if (!shelf || busy) return;
+    setBusy(true); setError(null);
+    try {
+      await deleteMobilePlacementShelf(shelf.shelfCodeRaw);
+      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
+      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfLayout });
+      onClose();
+      onMessage?.(`${shelf.shelfCodeRaw} を消しました`);
+    } catch (e) {
+      setError(isAxiosError(e) && typeof e.response?.data?.message === 'string' ? e.response.data.message : e instanceof Error ? e.message : '削除できませんでした');
+      setConfirmDelete(false);
+    } finally {
+      setBusy(false);
+    }
+  };
   const save = async () => {
     if (!canSave) return;
     setBusy(true); setError(null);
@@ -113,6 +130,13 @@ function ShelfPhotoForm({ shelf, shelves, onClose }: { shelf: RegisteredShelfEnt
           <label className="flex flex-col gap-1 text-sm font-bold">この棚の名前<input className={`${hp.input} !text-xl !text-[var(--hp-shelf)]`} value={code} readOnly /></label>
           <label className="flex flex-col gap-1 text-sm font-bold">メモ<textarea className={`${hp.input} !h-16 py-2 !font-sans`} value={memo} maxLength={60} disabled={busy} placeholder="例: ロボドリル01 南 上段" onChange={(e) => setMemo(e.target.value)} /></label>
           {error && <p role="alert" className="text-sm text-[var(--hp-ng)]">{error}</p>}
+          {shelf && <div className="flex gap-2 pb-2.5">
+            <button type="button" disabled={busy} className={`${hp.mini} ${confirmDelete ? '!bg-[var(--hp-ng)] !text-[var(--hp-bg)] !border-[var(--hp-ng)]' : '!text-[var(--hp-ng)]'}`}
+              onClick={() => { if (confirmDelete) void deleteShelf(); else setConfirmDelete(true); }}>
+              {confirmDelete ? '本当に消す' : 'この棚を消す'}
+            </button>
+            {confirmDelete && <button type="button" disabled={busy} className={hp.mini} onClick={() => setConfirmDelete(false)}>やめる</button>}
+          </div>}
         </div>
         <footer className={hp.dock}><button type="submit" className={`${hp.primary} bg-[var(--hp-shelf)]`} disabled={!canSave}>
           <HaizenIcon name="check" />{busy ? '処理中…' : shelf ? '保存する' : '登録する'}

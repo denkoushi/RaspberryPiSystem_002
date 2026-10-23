@@ -6,6 +6,35 @@ import { prisma } from '../../lib/prisma.js';
 
 import { parseStructuredShelfCode, type RegisteredShelfEntry } from './mobile-placement-registered-shelves.service.js';
 
+export async function deleteMobilePlacementShelf(shelfCodeRaw: string): Promise<{ shelfCodeRaw: string }> {
+  return prisma.$transaction(async (tx) => {
+    shelfCodeRaw = shelfCodeRaw.trim();
+    if (!shelfCodeRaw) {
+      throw new ApiError(400, '棚番が空です', undefined, 'MOBILE_PLACEMENT_SHELF_EMPTY');
+    }
+    const shelf = await tx.mobilePlacementShelf.findUnique({ where: { shelfCodeRaw }, select: { id: true } });
+    if (!shelf) {
+      throw new ApiError(404, '棚が見つかりません', undefined, 'SHELF_DELETE_NOT_FOUND');
+    }
+    const branchCount = await tx.orderPlacementBranchState.count({ where: { shelfCodeRaw } });
+    const haizenCount = await tx.haizenCurrentPlacement.count({ where: { shelfCodeRaw } });
+    const n = branchCount + haizenCount;
+    if (n > 0) {
+      throw new ApiError(409, `品物が ${n}件 置いてあるので消せません。先に「棚を動かす」で移してください`, undefined, 'SHELF_DELETE_HAS_ITEMS');
+    }
+    await tx.clientDevice.updateMany({
+      where: { haizenPresetShelfCodeRaw: shelfCodeRaw },
+      data: { haizenPresetShelfCodeRaw: null }
+    });
+    await tx.mobilePlacementLayoutEntity.updateMany({
+      where: { shelfId: shelf.id },
+      data: { entityKind: 'UNUSED', shelfId: null }
+    });
+    await tx.mobilePlacementShelf.delete({ where: { id: shelf.id } });
+    return { shelfCodeRaw };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 /**
  * 棚マスタ一覧（トップの「登録済み棚番」候補の正本）。
  * 認可はルート側の `requireClientDevice` に委ねる。
