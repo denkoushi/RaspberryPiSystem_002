@@ -7,9 +7,10 @@ export async function getAssemblyProcedureSpeechToTextAvailability(signal: Abort
   return data.available === true;
 }
 
-export async function transcribeAssemblyProcedureDictation(audio: Blob, signal: AbortSignal) {
+export async function transcribeAssemblyProcedureDictation(audio: Blob, signal: AbortSignal, context?: string) {
   const form = new FormData();
   form.append('file', audio, 'dictation.webm');
+  if (context !== undefined) form.append('context', context);
   const { data } = await api.post<{ text: string }>('/assembly/procedure-documents/dictation/transcribe', form, { signal, timeout: 45000 });
   if (typeof data.text !== 'string') throw new Error('Invalid transcription response');
   return { text: data.text.trim() };

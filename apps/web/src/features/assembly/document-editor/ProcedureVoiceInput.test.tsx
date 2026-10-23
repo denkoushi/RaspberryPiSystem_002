@@ -38,9 +38,9 @@ class FakeRecorder {
 }
 const makeElement = (text: string, id = 'one'): OverlayTextElement => ({ id, kind: 'TEXT', text, pageIndex: 0, zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.4, heightRatio: 0.1 } });
 const common = { onDelete: vi.fn(), onBringForward: vi.fn(), onSendBackward: vi.fn(), onBringToFront: vi.fn(), onSendToBack: vi.fn(), onRefetchTextCandidates: vi.fn() };
-function Harness({ text = '', enabled = true, onUpdate = vi.fn() }: { text?: string; enabled?: boolean; onUpdate?: (element: OverlayTextElement) => void }) {
+function Harness({ text = '', enabled = true, onUpdate = vi.fn(), context }: { text?: string; enabled?: boolean; onUpdate?: (element: OverlayTextElement) => void; context?: string }) {
   const [element, setElement] = useState(makeElement(text));
-  return <><button onClick={() => setElement(makeElement('別の文章', 'two'))}>選択を変える</button><button onClick={() => setElement(makeElement('前の文'))}>外から変える</button><AssemblyProcedureDocumentEditorInspector {...common} element={element} voiceInputEnabled={enabled} onUpdate={next => { if (next.kind === 'TEXT') { onUpdate(next); setElement(next); } }} /></>;
+  return <><button onClick={() => setElement(makeElement('別の文章', 'two'))}>選択を変える</button><button onClick={() => setElement(makeElement('前の文'))}>外から変える</button><AssemblyProcedureDocumentEditorInspector {...common} element={element} voiceInputEnabled={enabled} voiceContext={context} onUpdate={next => { if (next.kind === 'TEXT') { onUpdate(next); setElement(next); } }} /></>;
 }
 async function record(label: string) {
   fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
@@ -258,6 +258,17 @@ describe('procedure voice input', () => {
 
 const busy = (retryAfter?: string) => ({ isAxiosError: true, response: { status: 429, headers: { 'retry-after': retryAfter } } });
 describe('procedure voice input API relay', () => {
+  it.each(['procedure-assembly', 'procedure-grinding'])('forwards %s on the initial request and the 429 retry', async context => {
+    vi.useFakeTimers(); availability.mockResolvedValue(true); transcribe.mockRejectedValueOnce(busy('1'));
+    render(<Harness context={context} />);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '話す' })));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '止める' })));
+    expect(transcribe).toHaveBeenNthCalledWith(1, expect.any(Blob), expect.any(AbortSignal), context);
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(transcribe).toHaveBeenCalledTimes(2);
+    expect(transcribe).toHaveBeenNthCalledWith(2, transcribe.mock.calls[0][0], transcribe.mock.calls[0][1], context);
+    expect(screen.getByRole('textbox')).toHaveValue('棚に戻す。');
+  });
   it('uses the API when available and starts recording while availability is pending', async () => {
     let resolve!: (value: boolean) => void;
     availability.mockReturnValue(new Promise(done => { resolve = done; }));
@@ -266,7 +277,7 @@ describe('procedure voice input API relay', () => {
     expect(transcribe).not.toHaveBeenCalled();
     await act(async () => resolve(true));
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('棚に戻す。'));
-    expect(transcribe).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), expect.any(AbortSignal));
+    expect(transcribe).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), expect.any(AbortSignal), undefined);
     expect(stt).not.toHaveBeenCalled();
   });
   it.each(['unavailable', 'failed'])('uses the unchanged device request when availability is %s', async reason => {

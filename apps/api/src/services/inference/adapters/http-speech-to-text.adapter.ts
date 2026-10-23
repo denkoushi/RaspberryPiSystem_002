@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { env } from '../../../config/env.js';
 import { getInferenceRuntime } from '../inference-runtime.js';
 import { SpeechToTextUpstreamError, type SpeechToTextPort } from '../ports/speech-to-text.port.js';
+import { toWhisperPrompt } from '../whisper-prompt.js';
 
 export class HttpSpeechToTextAdapter implements SpeechToTextPort {
   constructor(private readonly opts: { baseUrl: string; sharedToken: string }, private readonly fetchImpl: typeof fetch = fetch) {}
@@ -24,14 +25,16 @@ export class HttpSpeechToTextAdapter implements SpeechToTextPort {
     }
   }
 
-  async transcribe(audio: Buffer, contentType: string, signal: AbortSignal): Promise<string> {
+  async transcribe(audio: Buffer, contentType: string, signal: AbortSignal, prompt?: string): Promise<string> {
     signal.throwIfAborted();
     if (!['audio/webm', 'audio/wav', 'audio/x-wav', 'audio/wave'].includes(contentType)) throw new SpeechToTextUpstreamError(400);
     const boundary = `procedure-${randomUUID()}`;
+    const safePrompt = typeof prompt === 'string' ? toWhisperPrompt(prompt) : undefined;
+    const promptPart = safePrompt ? `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\n${safePrompt}\r\n` : '';
     const body = Buffer.concat([
       Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio"\r\nContent-Type: ${contentType}\r\n\r\n`),
       audio,
-      Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3-turbo\r\n--${boundary}--\r\n`)
+      Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3-turbo\r\n${promptPart}--${boundary}--\r\n`)
     ]);
     if (body.length > 2 * 1024 * 1024) throw new SpeechToTextUpstreamError(413);
     const controller = new AbortController();
