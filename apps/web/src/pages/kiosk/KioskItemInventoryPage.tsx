@@ -21,7 +21,7 @@ import {
   pickedCompartmentTag,
   unitLabel,
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
-import { BackIcon, ChartIcon, EditIcon, GridIcon, ListIcon, LockIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
+import { BackIcon, ChartIcon, EditIcon, GridIcon, ListIcon, LockIcon, PinIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { detailLabels, InventoryItemGrid, type InventoryThumbnailSize, type InventoryViewMode } from '../../features/kiosk/inventory/InventoryItemGrid';
 import {
   defaultAreasKey,
@@ -436,6 +436,7 @@ export function KioskItemInventoryPage() {
         </div>
         {lastTransaction ? <button type="button" className={`${invButtonDanger} h-12 max-w-[340px] border-inv-red text-inv-red`} onClick={() => void cancelLast()} disabled={busy}><UndoIcon /><span className="min-w-0 truncate">取消{lastTransactionItemName ? `：${lastTransactionItemName}` : ''}</span><span className="shrink-0">{formatSignedDelta(lastTransaction.delta)}{lastTransactionUnit}</span></button> : null}
         <span className="mx-1 h-7 w-px bg-inv-line" />
+        <Link to="/kiosk/inventory/haizen" className={`${invButton} h-12 rounded-xl`}><PinIcon size={16} />配膳の場所</Link>
         <Link to="/kiosk/inventory/dashboard" className={`${invButton} h-12 rounded-xl`}><ChartIcon />集計</Link>
         <Link to="/kiosk/inventory/settings" className={`${invButton} h-12 rounded-xl`}><LockIcon />在庫の準備</Link>
       </div>

@@ -1,7 +1,7 @@
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { isMonitoredClient, loadHeartbeatAlertConfig } from '../clients/client-heartbeat-alert-policy.js';
-import type { ClientTelemetryLogEntry } from '../clients/client-telemetry-alert-policy.js';
+import { isKioskNetworkError, type ClientTelemetryLogEntry } from '../clients/client-telemetry-alert-policy.js';
 
 import { deliverSystemNotice, resolveInactiveFileNotices, FILE_NOTICE_EXPIRY_MS, FILE_NOTICE_PREFIX } from './system-notice.service.js';
 
@@ -31,6 +31,7 @@ export async function deliverTelemetryNotice(clientId: string, entry: ClientTele
     const context = entry.context;
     if (!context) return;
     const category = context.category;
+    const network = category === 'kiosk_ui_error' && isKioskNetworkError(context.kind);
     if (!['terminal_agent_health', 'storage_health', 'kiosk_ui_error', 'os_update_health'].includes(String(category))) return;
     // Disk usage already has a periodic notice with recovery handling.
     if (category === 'storage_health' && context.signal === 'root_disk_usage_high') return;
@@ -39,14 +40,15 @@ export async function deliverTelemetryNotice(clientId: string, entry: ClientTele
     const agentNames: Record<string, string> = { barcode: 'バーコードリーダー', nfc: '社員証リーダー', torque: 'トルク測定器' };
     const subject = category === 'terminal_agent_health' ? agentNames[String(context.agent)] ?? '周辺機器'
       : category === 'os_update_health' ? 'OS更新'
-      : category === 'storage_health' ? storageText?.subject ?? '保存装置' : '画面';
+      : category === 'storage_health' ? storageText?.subject ?? '保存装置' : network ? '回線' : '画面';
     const key = JSON.stringify([category, clientId, ...(category === 'terminal_agent_health' ? [context.agent] : []),
-      category === 'kiosk_ui_error' ? context.clientDeviceId ?? clientId : context.signal ?? 'unknown_signal']);
+      category === 'kiosk_ui_error' ? context.clientDeviceId ?? clientId : context.signal ?? 'unknown_signal', ...(network ? ['network'] : [])]);
     await deliverSystemNotice({
       key, title: `${label} ${subject}`,
       body: category === 'terminal_agent_health' ? (context.signal === 'queue' ? `${subject}の送信が滞っています。` : `${subject}が応答しません。`)
         : category === 'os_update_health' ? (context.signal === 'os_security_update_failed' ? 'OSの安全更新を入れられませんでした。' : 'OSの安全更新が2週間以上入っていません。')
-        : category === 'storage_health' ? storageText?.body ?? '保存装置の確認が必要です。' : '画面でエラーが続いています。',
+        : category === 'storage_health' ? storageText?.body ?? '保存装置の確認が必要です。'
+          : network ? '回線が遅い・つながりにくい状態です。画面自体の異常を示す通知ではありません。' : '画面でエラーが続いています。',
       state: (category === 'terminal_agent_health' || category === 'os_update_health') && context.action === 'recovery' ? 'recovered' : 'open'
     });
   } catch (err) {

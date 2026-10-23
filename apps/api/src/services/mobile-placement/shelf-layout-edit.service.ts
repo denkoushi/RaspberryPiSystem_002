@@ -1,10 +1,8 @@
 import {
-  allocateShelfCode,
   buildAutoDisplayLabel,
   getMacroZoneById,
   indexToRc,
   macroZoneIdFromStructured,
-  shelfPrefixForMacroZone,
   type MacroZoneId
 } from '@raspi-system/shelf-layout-core';
 import type { MobilePlacementLayoutEntityKind, Prisma, PrismaClient } from '@prisma/client';
@@ -225,7 +223,6 @@ export async function replaceShelfLayoutZone(input: {
   clientDeviceId: string;
 }): Promise<ZoneLayoutDetail> {
   const macroZoneId = parseMacroZoneId(input.macroZoneIdRaw);
-  const prefix = shelfPrefixForMacroZone(macroZoneId);
   validateLayoutEntities(input.entities, input.gridSize);
 
   return prisma.$transaction(async (tx) => {
@@ -263,17 +260,19 @@ export async function replaceShelfLayoutZone(input: {
     });
 
     const labelsInZone: string[] = [];
-    let nextSlot = layout.nextShelfSlot;
     const shelfCreates: Array<{ shelfId: string; shelfCodeRaw: string; displayLabel: string }> = [];
 
     for (const entity of input.entities) {
       if (entity.entityKind === 'SHELF') {
-        let shelfCodeRaw = entity.shelfCodeRaw?.trim() ?? '';
+        const shelfCodeRaw = entity.shelfCodeRaw?.trim() ?? '';
         const shelfRecord = shelfCodeRaw ? existingShelfByCode.get(shelfCodeRaw) : undefined;
         if (!shelfRecord) {
-          const allocated = allocateShelfCode(prefix, nextSlot);
-          nextSlot = allocated.nextShelfSlot;
-          shelfCodeRaw = allocated.shelfCodeRaw;
+          throw new ApiError(
+            400,
+            '新しい棚は「棚の写真」の「棚を追加」から登録してください',
+            undefined,
+            'SHELF_LAYOUT_NEW_SHELF_NOT_ALLOWED'
+          );
         }
         const displayLabel = buildAutoDisplayLabel({
           cellIndices: entity.cellIndices,
@@ -282,23 +281,11 @@ export async function replaceShelfLayoutZone(input: {
           existingLabelsInZone: labelsInZone
         });
         labelsInZone.push(displayLabel);
-        if (shelfRecord) {
-          await tx.mobilePlacementShelf.update({
-            where: { id: shelfRecord.id },
-            data: { displayLabel, macroZoneId }
-          });
-          shelfCreates.push({ shelfId: shelfRecord.id, shelfCodeRaw, displayLabel });
-        } else {
-          const created = await tx.mobilePlacementShelf.create({
-            data: {
-              shelfCodeRaw,
-              displayLabel,
-              macroZoneId,
-              createdByClientDeviceId: input.clientDeviceId
-            }
-          });
-          shelfCreates.push({ shelfId: created.id, shelfCodeRaw, displayLabel });
-        }
+        await tx.mobilePlacementShelf.update({
+          where: { id: shelfRecord.id },
+          data: { displayLabel, macroZoneId }
+        });
+        shelfCreates.push({ shelfId: shelfRecord.id, shelfCodeRaw, displayLabel });
       }
     }
 
@@ -330,8 +317,7 @@ export async function replaceShelfLayoutZone(input: {
     const updatedLayout = await tx.mobilePlacementZoneLayout.update({
       where: { id: layout.id },
       data: {
-        gridSize: input.gridSize,
-        nextShelfSlot: nextSlot
+        gridSize: input.gridSize
       },
       include: {
         entities: {

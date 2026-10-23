@@ -12,7 +12,7 @@ export async function getMobilePlacementRegisteredShelves() {
   return data;
 }
 
-/** POST /api/mobile-placement/shelves（棚マスタへ新規登録、`西-北-01` 形式） */
+/** POST /api/mobile-placement/shelves（棚マスタへ新規登録、`加工機 方角` 形式） */
 export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: string; displayLabel?: string | null }) {
   const { data } = await api.post<{ shelf: RegisteredShelfEntryDto }>('/mobile-placement/shelves', payload);
   return data;
@@ -41,6 +41,11 @@ export type MobilePlacementClientCapabilities = {
 
 export async function getMobilePlacementClientCapabilities() {
   const { data } = await api.get<MobilePlacementClientCapabilities>('/mobile-placement/client-capabilities');
+  return data;
+}
+
+export async function getMobilePlacementShelfMachines() {
+  const { data } = await api.get<{ machines: string[] }>('/mobile-placement/shelf-machines');
   return data;
 }
 
@@ -275,6 +280,13 @@ export async function getOrderPlacementBranches(manufacturingOrder: string) {
   return data;
 }
 
+export async function deleteOrderPlacementBranch(id: string) {
+  const { data } = await api.delete<{
+    deleted: Pick<OrderPlacementBranchDto, 'id' | 'manufacturingOrderBarcodeRaw' | 'branchNo' | 'shelfCodeRaw'>;
+  }>(`/mobile-placement/order-placement-branches/${encodeURIComponent(id)}`);
+  return data;
+}
+
 /** 既存分配枝の棚を更新（移動） */
 export async function moveOrderPlacementBranch(payload: {
   branchStateId: string;
@@ -375,5 +387,23 @@ export async function getMobilePlacementHaizenCurrent(params?: {
       ...(params?.limit != null ? { limit: params.limit } : {})
     }
   });
+  return data;
+}
+
+/** Current Android placement branches, independently of the Zero2W haizen-current projection. */
+export type HaizenOverviewRow = {
+  id: string;
+  shelfCodeRaw: string;
+  manufacturingOrderBarcodeRaw: string;
+  branchNo: number;
+  fseiban: string | null;
+  fhincd: string | null;
+  fhinmei: string | null;
+  machineName: string | null;
+  updatedAt: string;
+};
+
+export async function getHaizenOverview() {
+  const { data } = await api.get<{ rows: HaizenOverviewRow[]; truncated: boolean }>('/mobile-placement/haizen-overview');
   return data;
 }

@@ -12,7 +12,9 @@ import {
   resolveTelemetryAlertDecision,
   kioskErrorCount,
   kioskErrorCountSince,
+  isKioskNetworkError,
   KIOSK_ALERT_COOLDOWN_MS,
+  KIOSK_NETWORK_ALERT_COOLDOWN_MS,
   sanitizeClientTelemetryLogEntry,
   type ClientTelemetryLogEntry
 } from './client-telemetry-alert-policy.js';
@@ -47,7 +49,10 @@ async function createTelemetrySlackAlerts(params: {
             ]
           }, select: { context: true }
         });
-        recentCount = recentLogs.reduce((sum, row) => sum + kioskErrorCount(row.context as Record<string, unknown> | undefined), 0);
+        recentCount = recentLogs.reduce((sum, row) => {
+          const context = row.context as Record<string, unknown> | undefined;
+          return sum + (isKioskNetworkError(context?.kind) === isKioskNetworkError(entry.context?.kind) ? kioskErrorCount(context) : 0);
+        }, 0);
       }
       const decision = resolveTelemetryAlertDecision(params.clientId, entry, recentCount, now);
       const osUpdate = entry.context?.category === 'os_update_health';
@@ -60,7 +65,7 @@ async function createTelemetrySlackAlerts(params: {
         where: {
           ...(kiosk ? {
             type: decision.type,
-            timestamp: { gt: new Date(now.getTime() - KIOSK_ALERT_COOLDOWN_MS) },
+            timestamp: { gt: new Date(now.getTime() - (decision.type === 'kiosk-network-degraded' ? KIOSK_NETWORK_ALERT_COOLDOWN_MS : KIOSK_ALERT_COOLDOWN_MS)) },
             source: { path: [typeof deviceId === 'string' ? 'clientDeviceId' : 'clientId'], equals: deviceId ?? params.clientId }
           } : { fingerprint: decision.fingerprint }),
           ...(decision.dedupeAcrossAcknowledgedAlerts ? {} : { acknowledged: false })

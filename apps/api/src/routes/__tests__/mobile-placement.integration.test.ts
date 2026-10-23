@@ -83,6 +83,36 @@ describe('mobile-placement API', () => {
     });
   });
 
+  it('GET /api/mobile-placement/haizen-overview requires client authentication', async () => {
+    for (const headers of [{}, { 'x-client-key': 'invalid-overview-client' }]) {
+      const res = await app.inject({ method: 'GET', url: '/api/mobile-placement/haizen-overview', headers });
+      expect(res.statusCode).toBe(401);
+    }
+  });
+
+  it('GET /api/mobile-placement/haizen-overview returns current branches across shelves with machine names', async () => {
+    const { apiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.create({ data: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID, name: 'overview schedule', columnDefinitions: {}, templateConfig: {} } });
+    await prisma.csvDashboardRow.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+      rowData: { ProductNo: '9876543210', FSEIBAN: 'OVERVIEW-TEST', FHINCD: 'MH-OVERVIEW', FHINMEI: 'ＲＶ－１２Ａ', FSIGENCD: 'G1', FKOJUN: '1' }
+    } });
+    const request = (url: string, payload: object) => app.inject({ method: 'POST', url: `/api/mobile-placement/${url}`, headers: { 'x-client-key': apiKey }, payload });
+    for (const shelfCodeRaw of ['西-北-01', '東-南-02']) {
+      const registered = await request('register-order-placement', { shelfCodeRaw, manufacturingOrderBarcodeRaw: '9876543210' });
+      expect(registered.statusCode).toBe(200);
+    }
+    const res = await app.inject({ method: 'GET', url: '/api/mobile-placement/haizen-overview', headers: { 'x-client-key': apiKey } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.truncated).toBe(false);
+    expect(body.rows).toHaveLength(2);
+    expect(body.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ shelfCodeRaw: '西-北-01', manufacturingOrderBarcodeRaw: '9876543210', branchNo: 1, fseiban: 'OVERVIEW-TEST', fhincd: 'MH-OVERVIEW', fhinmei: 'ＲＶ－１２Ａ', machineName: 'ＲＶ－１２Ａ', updatedAt: expect.any(String) }),
+      expect.objectContaining({ shelfCodeRaw: '東-南-02', branchNo: 2, machineName: 'ＲＶ－１２Ａ' })
+    ]));
+  });
+
   it('GET /api/mobile-placement/resolve-item returns item when itemCode matches', async () => {
     const { apiKey: clientApiKey } = await createTestClientDevice();
     const item = await createTestItem({ itemCode: 'MP-TEST-ITEM-001' });
@@ -742,11 +772,11 @@ describe('mobile-placement API', () => {
         'Content-Type': 'application/json',
         'x-client-key': apiKey
       },
-      payload: { shelfCodeRaw: '東-南-05' }
+      payload: { shelfCodeRaw: 'DAD-3220 南' }
     });
     expect(created.statusCode).toBe(200);
     const cj = created.json() as { shelf: { shelfCodeRaw: string; isStructured: boolean } };
-    expect(cj.shelf.shelfCodeRaw).toBe('東-南-05');
+    expect(cj.shelf.shelfCodeRaw).toBe('DAD-3220 南');
     expect(cj.shelf.isStructured).toBe(true);
 
     const dup = await app.inject({
@@ -756,7 +786,7 @@ describe('mobile-placement API', () => {
         'Content-Type': 'application/json',
         'x-client-key': apiKey
       },
-      payload: { shelfCodeRaw: '東-南-05' }
+      payload: { shelfCodeRaw: 'DAD-3220 南' }
     });
     expect(dup.statusCode).toBe(409);
   });
@@ -1282,8 +1312,8 @@ describe('mobile-placement API', () => {
   it('creates a photo shelf, reads authenticated bytes, updates memo and photo metadata', async () => {
     const { apiKey, id } = await createTestClientDevice();
     const headers = { 'x-client-key': apiKey };
-    const path = `/api/mobile-placement/shelves/${encodeURIComponent('西-北-09')}`;
-    const created = await app.inject({ method: 'POST', url: '/api/mobile-placement/shelves', headers, payload: { shelfCodeRaw: '西-北-09', displayLabel: '  南 上段  ' } });
+    const path = `/api/mobile-placement/shelves/${encodeURIComponent('50013_540AP 北')}`;
+    const created = await app.inject({ method: 'POST', url: '/api/mobile-placement/shelves', headers, payload: { shelfCodeRaw: '50013_540AP 北', displayLabel: '  南 上段  ' } });
     expect(created.statusCode).toBe(200);
     expect(created.json().shelf.displayLabel).toBe('南 上段');
     expect((await app.inject({ method: 'GET', url: `${path}/photo`, headers })).statusCode).toBe(404);
@@ -1297,8 +1327,8 @@ describe('mobile-placement API', () => {
     const patched = await app.inject({ method: 'PATCH', url: path, headers, payload: { displayLabel: '  ロボドリル01  ' } });
     expect(patched.statusCode).toBe(200);
     const listed = await app.inject({ method: 'GET', url: '/api/mobile-placement/registered-shelves', headers });
-    expect(listed.json().shelves).toContainEqual(expect.objectContaining({ shelfCodeRaw: '西-北-09', displayLabel: 'ロボドリル01', photoUpdatedAt: uploaded.json().photoUpdatedAt }));
-    const shelf = await prisma.mobilePlacementShelf.findUniqueOrThrow({ where: { shelfCodeRaw: '西-北-09' }, include: { photo: true } });
+    expect(listed.json().shelves).toContainEqual(expect.objectContaining({ shelfCodeRaw: '50013_540AP 北', displayLabel: 'ロボドリル01', photoUpdatedAt: uploaded.json().photoUpdatedAt }));
+    const shelf = await prisma.mobilePlacementShelf.findUniqueOrThrow({ where: { shelfCodeRaw: '50013_540AP 北' }, include: { photo: true } });
     expect(shelf.photo).toMatchObject({ byteSize: MIN_PNG.length, updatedByClientDeviceId: id });
     expect((await app.inject({ method: 'PATCH', url: path, headers, payload: { displayLabel: null } })).statusCode).toBe(200);
     await prisma.mobilePlacementShelf.delete({ where: { id: shelf.id } });

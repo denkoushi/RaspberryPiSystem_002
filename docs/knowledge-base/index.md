@@ -58,6 +58,7 @@ update-frequency: high
 | 私用 Pi5 Hermes（AI執事ビジョン・D4以降） | DGXSparkControlPlane `docs/private-history/plans/private-pi5-hermes-butler-vision-and-roadmap.md` | 1件 | **2026-05-25**: Discord 執事の北極星・D5 橋・memory/X/HA 段階計画・**当面はセキュア構築優先**（非エンジニア向け要約あり） |
 | 私用 Pi5 Hermes（ツール向けセキュリティ・Phase D0–D1） | DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-tools-security-threat-model.md` | 1件 | 脅威モデル・D1/D2 チェックリスト。ADR-20260525（DGXSparkControlPlane `docs/private-history/decisions/ADR-20260525-private-pi5-hermes-tools-security-phase-d0.md`） |
 | セキュリティ堅牢化監査（2026-07・API認可/パストラバーサル/秘密情報/インフラ） | [KB-393](./KB-393-security-hardening-audit-2026-07.md) | 1件 | Batch A/B 本番反映済（PR #948 → main `b1172baf`、実機 verify PASS 45/0/0）。path traversal・loan 認可・Prisma エラー秘匿・弱乱数・PIN rate limit。Batch C 運用対応は [Runbook](../runbooks/security-hardening-remediation.md) |
+| robodrill01 の通信停止と Pi4 の journal 永続化 | [KB-425](./KB-425-pi4-robodrill01-network-stall-persistent-journal.md) | 1件 | 2026-10-22: robodrill01 が45分ほど Pi5 へつながらず、前回起動のログが volatile 設定で消えて原因を確かめられなかった。Pi4 全台で journal を残す。実機未反映。 |
 | eMudhra G3B 中間 CA の不信頼化 | [KB-424](./KB-424-emudhra-g3b-distrust.md) | 1件 | OS/NSS の二層対策、標準ローリング更新経路、ロールバック。実機未反映。 |
 | AIセキュリティスキャン（2026-10・認可まわりの修正5件） | [KB-415](./KB-415-ai-security-scan-2026-10.md) | 1件 | 全体スキャンの指摘7件と対応、本番反映の証跡、未対応項目。 |
 | 外部侵入で運用不能になるリスクの低減（2026-10・復元確認/OS更新/失敗通知） | [KB-416](./KB-416-outside-intrusion-resilience-2026-10.md) | 1件 | 実機確認の結果、Pi5のOS更新と自動セキュリティ更新、バックアップ失敗通知、未対応項目。 |

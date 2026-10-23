@@ -117,9 +117,9 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
     click('リセット'); expect(confirm).toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '空き 2' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '保存', exact: true })).not.toBeInTheDocument();
-    click('空き 2'); click('棚'); click('保存');
+    click('空き 2'); click('通路'); click('保存');
     await waitFor(() => expect(api.putMobilePlacementShelfLayoutZone).toHaveBeenCalledWith('nw', expect.objectContaining({ gridSize: 3, expectedUpdatedAt: west.updatedAt,
-      entities: expect.arrayContaining([expect.objectContaining({ entityKind: 'SHELF', cellIndices: [1], shelfCodeRaw: '西-北-02' })]) })));
+      entities: expect.arrayContaining([expect.objectContaining({ entityKind: 'AISLE', cellIndices: [1] })]) })));
   });
 
   it('uses the machine sheet and guards leaving a dirty zone', async () => {
@@ -144,22 +144,11 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
     await waitFor(() => expect(api.putMobilePlacementHaizenTargetPresetShelf).toHaveBeenCalledWith({ clientDeviceId: 'pi1', shelfCodeRaw: null }, expect.any(Object)));
   });
 
-  it('queues a new shelf preset until layout save and drops queued edits on reset', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    vi.mocked(api.getMobilePlacementHaizenTargetDevices).mockResolvedValue({ devices: [{ id: 'pi2', name: 'Pi 2', location: null, lastSeenAt: null, shelfCodeRaw: null }] });
+  it('does not offer creating shelves in the layout editor', async () => {
     mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
-    await screen.findByRole('button', { name: '空き 2' });
-    const assign = () => {
-      click('空き 2'); click('棚'); click('西-北-02'); click('Zero2W 付ける');
-      fireEvent.click(within(screen.getByRole('dialog', { name: 'Zero2W 担当棚' })).getByRole('button', { name: /Pi 2/ }));
-      click('確定');
-    };
-    assign(); expect(api.putMobilePlacementHaizenTargetPresetShelf).not.toHaveBeenCalled();
-    click('リセット'); expect(screen.getByRole('button', { name: '空き 2' })).toBeInTheDocument();
-    expect(api.putMobilePlacementHaizenTargetPresetShelf).not.toHaveBeenCalled();
-    assign(); click('保存');
-    await waitFor(() => expect(api.putMobilePlacementHaizenTargetPresetShelf).toHaveBeenCalledWith({ clientDeviceId: 'pi2', shelfCodeRaw: '西-北-02' }, expect.any(Object)));
-    expect(vi.mocked(api.putMobilePlacementShelfLayoutZone).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.putMobilePlacementHaizenTargetPresetShelf).mock.invocationCallOrder[0]);
+    await screen.findByRole('button', { name: '空き 2' }); click('空き 2');
+    expect(screen.queryByRole('button', { name: '棚', exact: true })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '加工機', exact: true })).toBeEnabled();
   });
 
   it('keeps unsaved edits when an existing shelf preset would invalidate the layout query', async () => {
@@ -174,9 +163,9 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
   it('keeps the draft and reports layout save failures', async () => {
     vi.mocked(api.putMobilePlacementShelfLayoutZone).mockRejectedValueOnce(new Error('保存できません'));
     mount(); click('棚を移す'); await screen.findByLabelText('工場マップ'); click('配置を変える'); click(/西·北/);
-    await screen.findByRole('button', { name: '空き 2' }); click('空き 2'); click('棚'); click('保存');
+    await screen.findByRole('button', { name: '空き 2' }); click('空き 2'); click('通路'); click('保存');
     expect(await screen.findByRole('alert')).toHaveTextContent('保存できません');
-    expect(screen.getByRole('button', { name: '西-北-02' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通路 2' })).toBeInTheDocument();
   });
 
   it('confirms before saving a removed shelf', async () => {

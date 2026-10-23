@@ -1,7 +1,9 @@
+import { env } from '../../config/env.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { createHttpSpeechToTextAdapter } from '../inference/adapters/http-speech-to-text.adapter.js';
 import { SpeechToTextUpstreamError, type SpeechToTextPort } from '../inference/ports/speech-to-text.port.js';
+import { PROCEDURE_SPEECH_HINTS, toWhisperPrompt } from './procedure-speech-hints.js';
 
 export const PROCEDURE_AUDIO_MAX_BYTES = 2_000_000;
 export function procedureSpeechToTextError(status: number): ApiError {
@@ -18,13 +20,19 @@ export class ProcedureSpeechToTextService {
     catch { return false; }
   }
 
-  async transcribe(audio: Buffer, contentType: string, signal: AbortSignal): Promise<{ text: string }> {
+  async transcribe(audio: Buffer, contentType: string, signal: AbortSignal, hintKey?: string): Promise<{ text: string }> {
     try {
       signal.throwIfAborted();
       if (audio.length > PROCEDURE_AUDIO_MAX_BYTES) throw procedureSpeechToTextError(413);
       const port = this.port === undefined ? createHttpSpeechToTextAdapter() : this.port;
       if (!port) throw procedureSpeechToTextError(503);
-      const text = await port.transcribe(audio, contentType, signal);
+      let prompt: string | undefined;
+      try {
+        if (env.PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED && (hintKey === 'procedure-assembly' || hintKey === 'procedure-grinding')) {
+          prompt = toWhisperPrompt(PROCEDURE_SPEECH_HINTS[hintKey]);
+        }
+      } catch { /* Vocabulary hints must never interrupt dictation. */ }
+      const text = await port.transcribe(audio, contentType, signal, prompt);
       signal.throwIfAborted();
       return { text: text.trim() };
     } catch (error) {

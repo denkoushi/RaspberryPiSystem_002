@@ -4549,6 +4549,14 @@ docker compose -f docker-compose.server.yml restart api
 - **7) 取込が1時間以上終わらず、次の回が `Import already running, skipping` になる（2026-10-21）**:
   - 原因: 取込後の重複 loser 削除（`CsvDashboardDedupCleanupService.deleteDuplicateLosersForKeys`）が、キー列（`equipmentManagementNumber` 等）を `rowData` JSON から取り出して突き合わせていた。生産スケジュール以外のキー列には式indexが無いため、300キーごとに最低2回、ダッシュボード全行の JSON を読む DELETE になり、`CsvDashboardRow`（約656万行・9.4GB）の増加とともに IO 待ちで長時間化した。取込履歴は削除前に `COMPLETED` になるが、スケジューラの実行中フラグは削除が終わるまで残る
   - 対策: 生産スケジュール以外の DEDUP ダッシュボードでは、今回取り込んだ行の `dataHash`（`dedupKeyColumns` から計算）で候補を `[csvDashboardId, dataHash]` index から絞り、その中でキー一致の判定をする。削除範囲は従来以下（狭まるだけ）。古い計算方式の `dataHash` を持つ重複は夜間の `deleteDuplicateLosersGlobally` が引き続き処理する
+- **8) 夜間CSV重複削除が営業時間まで継続（2026-10-23）**:
+  - 原因: `加工機_日常点検結果` は 10/21 まで APPEND 相当で取り込まれ（全行 `dataHash` NULL、同じ点検行が取込ごとに追加。1キーで同一内容 24,932 行の例あり）、10/22 から DEDUP になった。その約410万行（大半が重複）を、5000件削除するたびに全件再ランキングしていた。
+  - 1 statement が13分以上かかり、ソートのディスク退避で Raspberry Pi 5 の IO が飽和、02:40開始の処理が営業時間へ持ち越された。
+  - 対策: 同じキー・勝者順序で1回スキャンして最大20万件の loser ID を取得し、主キー指定で5000件ずつ独立した短い statement で削除する。
+  - 当日05:30 JSTを期限とし、各スキャン・削除chunk前に確認する。期限到達後は残りのダッシュボードをスキップする。
+  - スキャンには残り時間の `SET LOCAL statement_timeout`（期限未指定時30分）を設定し、タイムアウトは正常に中断する。スキャン回数も既定50回に制限する。
+  - ダッシュボード単位の try/catch で障害を分離し、削除件数・停止理由・スキャン回数・経過時間をログに残す。
+  - 当日の対応: 08:44 に走っていた削除文を `pg_cancel_backend` で取り消した（ジョブは failed で終了、autovacuum は継続）。I/O 待ちは約63%から24〜40%へ。重複の山は期限内に数夜かけて減らす想定で、`stoppedReason: deadline` が続く間は未完了。
 
 ---
 

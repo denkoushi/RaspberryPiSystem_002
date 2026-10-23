@@ -6,6 +6,7 @@ import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import { registerRateLimit } from '../../../plugins/rate-limit.js';
+import { PROCEDURE_SPEECH_HINTS } from '../../../services/assembly/procedure-speech-hints.js';
 import * as adapter from '../../../services/inference/adapters/http-speech-to-text.adapter.js';
 import { SpeechToTextUpstreamError } from '../../../services/inference/ports/speech-to-text.port.js';
 import { registerAssemblyProcedureDocumentRevisionRoutes } from '../procedure-document-revisions.js';
@@ -19,6 +20,9 @@ function upload(size = 5, extra = '', field = 'file') {
     Buffer.alloc(size, 65), Buffer.from(`\r\n${extra}--test-boundary--\r\n`)
   ]);
 }
+function contextPart(value: string, name = 'context') {
+  return `--test-boundary\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
+}
 const headers = { 'content-type': 'multipart/form-data; boundary=test-boundary' };
 function register(allowWriteKiosk = async () => {}) {
   registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk });
@@ -31,6 +35,32 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); vi.restoreAllMocks(); });
 
 describe('procedure speech to text routes', () => {
+  it.each(['before', 'after'])('accepts context %s the file', async order => {
+    register();
+    const context = contextPart('procedure-grinding');
+    const payload = order === 'before' ? Buffer.concat([Buffer.from(context), upload()]) : upload(5, context);
+    const result = await app.inject({ method: 'POST', url: `${base}/transcribe`, headers, payload });
+    expect(result.statusCode).toBe(200);
+    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(Buffer.from('AAAAA'), 'audio/webm', expect.any(AbortSignal), PROCEDURE_SPEECH_HINTS['procedure-grinding']);
+  });
+  it.each(['unknown', '', '__proto__'])('accepts unknown context %j without hints', async value => {
+    register();
+    const result = await app.inject({ method: 'POST', url: `${base}/transcribe`, headers, payload: upload(5, contextPart(value)) });
+    expect(result.statusCode).toBe(200);
+    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(Buffer.from('AAAAA'), 'audio/webm', expect.any(AbortSignal), undefined);
+  });
+  it.each([
+    upload(5, contextPart('procedure-assembly') + contextPart('procedure-grinding')),
+    Buffer.concat([Buffer.from(contextPart('')), upload(5, contextPart('procedure-assembly'))]),
+    upload(5, contextPart('a'.repeat(65))),
+    Buffer.concat([Buffer.from(contextPart('ja', 'language')), upload()])
+  ])('rejects duplicate, oversized or unrecognized fields', async payload => {
+    register();
+    const result = await app.inject({ method: 'POST', url: `${base}/transcribe`, headers, payload });
+    expect(result.statusCode).toBe(400);
+    expect(result.json().errorCode).toBe('ASSEMBLY_PROCEDURE_SPEECH_TO_TEXT_INVALID');
+    expect(port.transcribe).not.toHaveBeenCalled();
+  });
   it.each(['speech-to-text', 'transcribe'])('requires kiosk write permission for %s', async route => {
     register(async () => { throw new ApiError(403, '権限がありません'); });
     const result = await app.inject({ method: route === 'transcribe' ? 'POST' : 'GET', url: `${base}/${route}`, ...(route === 'transcribe' ? { headers, payload: upload() } : {}) });
@@ -49,7 +79,7 @@ describe('procedure speech to text routes', () => {
     register();
     const result = await app.inject({ method: 'POST', url: `${base}/transcribe`, headers, payload: upload() });
     expect(result.statusCode).toBe(200); expect(result.json()).toEqual({ text: '棚' });
-    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(Buffer.from('AAAAA'), 'audio/webm', expect.any(AbortSignal));
+    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(Buffer.from('AAAAA'), 'audio/webm', expect.any(AbortSignal), undefined);
   });
   it('returns 503 with flag off without calling upstream', async () => {
     vi.mocked(adapter.createHttpSpeechToTextAdapter).mockRestore(); register();

@@ -678,3 +678,27 @@ Reading the nineteenth night: report content rows with `causeDecision.dropped ==
 ### 2026-10-21: evaluation also records how much text goes to JEV and back to the user (harness change, not a measurement)
 
 `evaluate.mjs` now records per-case JEV call counts, characters sent and received, and answer characters; `stage-score.mjs` shows `jevIn` and `ans`. Search behaviour and the text sent to JEV are unchanged (the worker only exports its formatting functions). The first baseline with these columns is still to be run on `main` with the usual sets; record it here when it is.
+
+### 2026-10-22: nineteenth night, 56%; the new answer-kind question routed one content question in three to a cause breakdown (measurement and finding)
+
+Night of 2026-10-21 (first night with #2137 and #2208 live). Of 61 live content rows, 34 matched a target (56%, against 52/61, 54/64 and 51/61 the three nights before). The 39 further rows in the file are generated candidates dropped before execution (copied run 19, too similar 7, anchor not confirmed 6, copied words 7), not empty answers; `no_result` was 4 and ask-backs 4 (one unresolved term each). Filter questions 10/10.
+
+The loss is one thing: JEV answered the new intent question with `breakdown_cause` on 21 live rows (19 content, 2 filter), although none of them asked for counts: they asked why one nonconformity happened (「〜の原因は？」「〜はなぜ」) or were bare keyword strings with no count word at all. A breakdown plan runs no content search and sorts by date, so all 19 content rows lost (`other_shown` 14, `status` 4, `not_in_pool` 1). Without those 19 the night is 34/42 (81%), with the remaining losses `other_shown` 5, `not_in_pool` 2, `judge_rejected` 1. No real kiosk question of 10/21 or 10/22 was routed to a breakdown (9 receipts).
+
+The #2208 change behaved as intended: a cause heard in a content question was dropped from the plan on 7 rows (5 matched, 2 `other_shown`), and a chosen cause stayed only on breakdown plans.
+
+Private files: `work/flywheel/questions-2026-10-21.jsonl`, `runner-2026-10-21.log`, `receipts-2026-10-21.jsonl`, `receipts-2026-10-22.jsonl`.
+
+### 2026-10-22: a breakdown is accepted only when the question talks about counts (change, not a measurement)
+
+Planner change on top of #2137. The answer-kind options now say that the cause, reason or handling of one nonconformity is `records`, and that the three breakdowns are counts per category rather than records. In addition, a breakdown answer is applied only when the question contains a count or distribution cue (件数, 何件, 多い, 内訳, ごと, 部署別/月別/要因別, 分布, 割合, ランキング, 傾向, 上位, 集計, 一番, 最も, どの要因, 頻度 and the like); otherwise the plan falls back to `records` and the receipt records `intentDecision: { chosen: 'records', gated: 'no_count_cue', heard: <intent> }`. Checked offline against the nightly files: none of the 21 misrouted questions passes the cue, and the real breakdown question of 10/22 (「今年多い要因は?」) and the count questions of earlier nights do. A missed breakdown still returns records, so the gate errs towards records. The nightly rows now also keep `intentDecision`. Planner question version `planner-questions-2026-10-22`; the JEV input digest changed, results and catalog digests unchanged. Night 20 is the check.
+
+### 2026-10-23: twentieth night did not run; the readiness probe mistook the new business model's reasoning text for an outage (finding and harness fix)
+
+Night of 2026-10-22 ran only the 10 filter questions (10/10) and one real question; no content question was generated. The runner's readiness probe asks the business LLM for `OK` with 8 tokens; the model switched to GLM at 21:16 that evening, and GLM writes a short reasoning text even with thinking off, so every probe from 22:00 to 23:58 ended `truncated` (29 probes) and from 00:03 to 05:58 `timeout` (69 probes, overlapping a six-hour backup on the DGX and a business request that never finished; that part is followed on the business-LLM side). Nothing of this measures retrieval, so #2234 is still unchecked.
+
+Harness change: the probe now sends 64 tokens and treats a truncated reply as ready, since an HTTP 200 with a cut-off answer proves the model is up. Generation and labelling keep their 200-token budget; if truncated replies rise there, raise it. Night 21 is the first check of #2234.
+
+### 2026-10-23: record answers now show the part number and part name (change, not a measurement)
+
+Reported from a kiosk check: a records answer listed three nonconformities by number, date, department and body only, so the reader could not see which part each one was about. Record answers were built from the fields with the roles identifier, date, organization and body; part number, part name and machine name are facets and were left out. A source definition may now declare `answerFields` (facet keys shown in record answers after the identifier); the nonconformity source declares part number and part name, so a record reads 不適合番号, 品番, 品名, 発見日, 起因部署, then the body fields. Other sources are unchanged. Planner inputs and catalog digests unchanged; the results digest changed because answers carry two more fields. Not a retrieval change, so no effect on the match rate is expected.

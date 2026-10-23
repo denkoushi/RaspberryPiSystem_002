@@ -1,4 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
+import { listProductionScheduleResources } from '../production-schedule/production-schedule-query/resources.js';
 
 export type MachineMasterEntry = {
   resourceCd: string;
@@ -16,4 +17,14 @@ export async function listMachineMastersForShelfLayout(): Promise<{ machines: Ma
       resourceName: r.resourceName
     }))
   };
+}
+
+/** 三島の生産スケジュールに登場する加工機。切削用の除外フラグは適用しない。 */
+export async function listMachinesForShelfRegistration(): Promise<{ machines: string[] }> {
+  const { resources, resourceNameMap } = await listProductionScheduleResources({});
+  const names = resources.flatMap((code) => {
+    const mapped = (resourceNameMap[code.trim().toUpperCase()] ?? []).map((name) => name.trim()).filter(Boolean);
+    return mapped.length ? mapped : [code];
+  });
+  return { machines: [...new Set(names)].sort((a, b) => a.localeCompare(b, 'ja')) };
 }

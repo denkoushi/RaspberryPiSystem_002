@@ -6,6 +6,7 @@ import { createHttpSpeechToTextAdapter, HttpSpeechToTextAdapter } from '../../in
 import * as inferenceRuntime from '../../inference/inference-runtime.js';
 import { SpeechToTextUpstreamError, type SpeechToTextPort } from '../../inference/ports/speech-to-text.port.js';
 import * as runtimeController from '../../inference/runtime/get-local-llm-runtime-controller.js';
+import * as hints from '../procedure-speech-hints.js';
 import { ProcedureSpeechToTextService } from '../procedure-speech-to-text.service.js';
 
 const audio = Buffer.from('private audio');
@@ -16,13 +17,33 @@ beforeEach(() => {
   port = { isHealthy: vi.fn().mockResolvedValue(true), transcribe: vi.fn().mockResolvedValue('  棚に戻す。  ') };
   service = new ProcedureSpeechToTextService(port);
 });
-afterEach(() => { env.PROCEDURE_SPEECH_TO_TEXT_ENABLED = false; vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => { env.PROCEDURE_SPEECH_TO_TEXT_ENABLED = false; env.PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED = true; vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('procedure speech to text service', () => {
+  it.each(['procedure-assembly', 'procedure-grinding'] as const)('sends the allowlisted %s vocabulary', async key => {
+    await service.transcribe(audio, 'audio/webm', signal, key);
+    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal, hints.PROCEDURE_SPEECH_HINTS[key]);
+  });
+  it.each([undefined, '', 'unknown', 'toString', '__proto__'])('omits hints for %j', async key => {
+    await service.transcribe(audio, 'audio/webm', signal, key);
+    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal, undefined);
+  });
+  it('omits hints when the kill switch is off', async () => {
+    env.PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED = false;
+    await service.transcribe(audio, 'audio/webm', signal, 'procedure-assembly');
+    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal, undefined);
+  });
+  it('continues without hints and does not log hint-building failures', async () => {
+    const log = vi.spyOn(logger, 'warn');
+    vi.spyOn(hints, 'toWhisperPrompt').mockImplementation(() => { throw new Error('private hint'); });
+    await expect(service.transcribe(audio, 'audio/webm', signal, 'procedure-grinding')).resolves.toEqual({ text: '棚に戻す。' });
+    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal, undefined);
+    expect(log).not.toHaveBeenCalled();
+  });
   it('trims text and never acquires a runtime lease', async () => {
     const runtime = vi.spyOn(runtimeController, 'getLocalLlmRuntimeController');
     expect(await service.transcribe(audio, 'audio/webm', signal)).toEqual({ text: '棚に戻す。' });
-    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal);
+    expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal, undefined);
     expect(runtime).not.toHaveBeenCalled();
   });
   it('returns unavailable for no port or failed health', async () => {
@@ -74,6 +95,29 @@ describe('speech to text HTTP adapter', () => {
     expect(resolve).toHaveBeenCalledExactlyOnceWith('business_hermes');
     resolve.mockImplementation(() => { throw new Error('No provider'); });
     expect(createHttpSpeechToTextAdapter()).toBeNull();
+  });
+  it.each([undefined, '', ' \r\n\t\u200b'])('keeps the original multipart bytes when the prompt is empty (%j)', async prompt => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{"text":"棚"}'));
+    const adapter = new HttpSpeechToTextAdapter({ baseUrl: 'http://business:38081', sharedToken: 'token' }, fetchImpl);
+    await adapter.transcribe(audio, 'audio/webm', signal, prompt);
+    const init = fetchImpl.mock.calls[0][1];
+    const boundary = init.headers['Content-Type'].split('boundary=')[1];
+    expect(init.body).toEqual(Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio"\r\nContent-Type: audio/webm\r\n\r\n`),
+      audio,
+      Buffer.from(`\r\n--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3-turbo\r\n--${boundary}--\r\n`)
+    ]));
+  });
+  it.each([['シャコマン、LMガイド', 'シャコマン、LMガイド'], [' \r\nLMガイド\t\u200bサドル ', 'LMガイド サドル'], ['先頭' + '😀'.repeat(200), '😀'.repeat(200)]])('appends one sanitized prompt part (%s)', async (prompt, expected) => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{"text":"棚"}'));
+    const adapter = new HttpSpeechToTextAdapter({ baseUrl: 'http://business:38081', sharedToken: 'token' }, fetchImpl);
+    await adapter.transcribe(audio, 'audio/webm', signal, prompt);
+    const [url, init] = fetchImpl.mock.calls[0];
+    const form = await new Request(url, init).formData();
+    expect([...form.keys()]).toEqual(['file', 'model', 'prompt']);
+    expect(form.getAll('prompt')).toEqual([expected]);
+    expect(init.headers['Content-Length']).toBe(String(init.body.length));
+    expect(Buffer.from(await (form.get('file') as File).arrayBuffer())).toEqual(audio);
   });
   it('forwards exactly one file and the fixed model with token and known length', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ text: '  棚  ' })));

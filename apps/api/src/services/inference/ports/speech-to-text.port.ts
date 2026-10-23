@@ -1,6 +1,6 @@
 export interface SpeechToTextPort {
   isHealthy(): Promise<boolean>;
-  transcribe(audio: Buffer, contentType: string, signal: AbortSignal): Promise<string>;
+  transcribe(audio: Buffer, contentType: string, signal: AbortSignal, prompt?: string): Promise<string>;
 }
 
 /** Only safe response metadata crosses the adapter boundary. */

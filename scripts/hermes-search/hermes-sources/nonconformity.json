@@ -36,6 +36,10 @@
     "partName",
     "machineName"
   ],
+  "answerFields": [
+    "partNumber",
+    "partName"
+  ],
   "lexicalFields": [
     "partNumber",
     "partName",

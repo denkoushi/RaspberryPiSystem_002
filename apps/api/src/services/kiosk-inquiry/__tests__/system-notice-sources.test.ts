@@ -26,6 +26,14 @@ describe('alert notice bridges', () => {
     expect(mocks.deliver).toHaveBeenNthCalledWith(1, { key, title: 'StoneBase01 OS更新', body, state: 'open' });
     expect(mocks.deliver).toHaveBeenNthCalledWith(2, { key, title: 'StoneBase01 OS更新', body, state: 'recovered' });
   });
+  it.each(['api_timeout', 'api_network', 'api_5xx'])('uses the matching kiosk notice text for %s', async (kind) => {
+    await deliverTelemetryNotice('raspi4-stone', { level: 'ERROR', message: '', context: { category: 'kiosk_ui_error', kind, clientDeviceId: 'device-1' } });
+    const screen = kind === 'api_5xx';
+    expect(mocks.deliver).toHaveBeenCalledExactlyOnceWith({
+      key: JSON.stringify(['kiosk_ui_error', 'raspi4-stone', 'device-1', ...(screen ? [] : ['network'])]), title: `StoneBase01 ${screen ? '画面' : '回線'}`,
+      body: screen ? '画面でエラーが続いています。' : '回線が遅い・つながりにくい状態です。画面自体の異常を示す通知ではありません。', state: 'open'
+    });
+  });
   it.each(['mac-kiosk-1', 'zero2w-home'])('ignores telemetry from %s', async (clientId) => {
     await deliverTelemetryNotice(clientId, { level: 'ERROR', message: '', context: { category: 'storage_health', signal: 'io' } });
     expect(mocks.deliver).not.toHaveBeenCalled();

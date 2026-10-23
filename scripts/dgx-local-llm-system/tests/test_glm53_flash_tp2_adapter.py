@@ -134,6 +134,7 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
             for key, value in {
                 "--label": f"dgx.profile={PROFILE}", "--served-model-name": "test-alias",
                 "--tensor-parallel-size": "2", "--max-model-len": "262144",
+                "--gpu-memory-utilization": "0.85",
                 "--nnodes": "2", "--master-addr": "192.168.100.10", "--master-port": "29501",
                 "--attention-backend": "B12X", "--quantization": "modelopt_mixed",
                 "--node-rank": "0" if node == "head" else "1",
@@ -154,6 +155,13 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
         })
         self.assertFalse((self.root / "injected").exists())
 
+    def test_gpu_memory_utilization_follows_profile_env(self):
+        result = self.run_script("glm53-flash-tp2-adapter.sh", VLLM_GPU_MEMORY_UTILIZATION="0.82")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for node in ("head", "worker"):
+            args = next(e["args"] for e in self.docker_events() if e["node"] == node and e["args"][0] == "run" and "--rm" not in e["args"])
+            self.assertEqual(args[args.index("--gpu-memory-utilization") + 1], "0.82")
+
     def test_validation_precedes_removal(self):
         for overrides in (
             {"BLUE_MODEL_DIR": str(self.root / "missing")},
@@ -161,6 +169,8 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
             {"BLUE_MASTER_PORT": "65536"},
             {"VLLM_LIMIT_MM_PER_PROMPT": "[]"},
             {"VLLM_TENSOR_PARALLEL_SIZE": "1"},
+            {"VLLM_GPU_MEMORY_UTILIZATION": "1.2"},
+            {"VLLM_GPU_MEMORY_UTILIZATION": "0.8 --x"},
             {"BLUE_WORKER_MODEL_DIR": "relative"},
         ):
             with self.subTest(overrides=overrides):

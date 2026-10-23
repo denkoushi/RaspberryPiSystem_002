@@ -10,7 +10,7 @@ import type { OverlayTextElement } from '@raspi-system/shared-types';
 export { WHISPER_BASE_URL as PROCEDURE_WHISPER_BASE_URL } from '../../voice/voiceTranscription';
 export const PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS = 20000;
 
-export function useProcedureVoiceInput(element: OverlayTextElement | null, enabled: boolean, onUpdate: (element: OverlayTextElement) => void) {
+export function useProcedureVoiceInput(element: OverlayTextElement | null, enabled: boolean, onUpdate: (element: OverlayTextElement) => void, context?: string) {
   const [status, setStatus] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [error, setError] = useState('');
   const [transcript, setTranscript] = useState('');
@@ -78,7 +78,7 @@ export function useProcedureVoiceInput(element: OverlayTextElement | null, enabl
         session.abort.signal.removeEventListener('abort', onAbort);
         finish();
       }
-    }, (message) => { if (active()) setError(message); finish(); });
+    }, (message) => { if (active()) setError(message); finish(); }, context);
   };
   const stop = () => {
     const session = sessionRef.current;

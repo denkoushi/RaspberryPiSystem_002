@@ -1,5 +1,31 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
+## 棚名を加工機・方角へ切り替える
+
+- 新規棚は `加工機名 方角`（例: `DAD-3220 北`）で登録する。番号は付けず、同じ組合せは409で拒否する。
+- 「棚の写真」の「棚を追加」で加工機、方角、写真を選ぶ。加工機候補は生産スケジュールに登場する資源の名前を重複排除したもの。切削用の除外フラグは適用しない。
+- 旧棚コードの解析と配置履歴は維持する。レイアウト編集は既存棚の保存のみで、新規棚を採番しない。
+- 以下は承認済みの保守時間帯に、API実行環境で行う。配膳の書込みを止め、復元可能なDBバックアップを用意する。
+  まずdry-runの全棚コード、写真数、棚を参照する配置、担当棚を持つ端末を確認する。
+
+```sh
+cd /opt/RaspberryPiSystem_002
+scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/delete-all-mobile-placement-shelves.js
+# 全棚削除を承認した場合のみ実行
+scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/delete-all-mobile-placement-shelves.js --execute --confirm=DELETE-ALL-SHELVES
+```
+
+開発環境では `pnpm --filter @raspi-system/api delete:mobile-placement-shelves`（引数は同じ）。
+
+実行は1トランザクションで端末の担当棚をnullにし、レイアウトの棚セルを「未使用」に変え、棚を全削除する。
+写真はCascadeで削除される（棚セルを残すと、レイアウト保存が「新しい棚は登録できない」で止まるため）。配置イベント／現在配置と `nextShelfSlot` は変更しない。
+出力の `before` / `after` で件数と参照を確認し、写真フォームで棚を再登録して担当棚を設定し直す。
+失敗時はトランザクションがロールバックされる。削除確定後の復旧はバックアップから行う。
+本実装作業では削除CLIの実データ実行・本番切替は行っていない。
+
+以下の版別記録は当時の旧棚名仕様を含む。
+
+
 最終更新: 2026-05-07（**Zero2W メイン軽量化・`/zero2w-status`・`haizenEdgeEnabled`・`HAIZEN_DISTRIBUTION_MODE`**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）／2026-05-04（**Zero2W 配膳追跡 `haizen-*` 初版**）／2026-04-24（**V26 購買照会バーコード即時確定**・[KB-339 §V26](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v26-purchase-order-barcode-instant-2026-04-24)・[deployment.md](../guides/deployment.md)）／2026-04-24（**V25 パレット可視化・カード単体スクロール**・[KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)・[deployment.md §2026-04-24](../guides/deployment.md)）／2026-04-24（**V24 一次元スキャン体感・Android 実機追記**・[KB-339 §V24](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)・[KB-297 §FKOBAINO](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）／2026-04-20（**V23 モバイル注文入力スキャン専用・棚チップ `grid-cols-3 sm:grid-cols-4`**・デプロイ Detach `20260420-211100-899` → `20260420-213004-29970`・fjv60 未・stale lock runId `20260420-212814-6231` は [deploy-status-recovery.md](./deploy-status-recovery.md) §5.2）／2026-04-18（**V22 キオスク高視認テーマ・プレビュー整合・Register/Verify 分割**／**Android ブラウザ殻方針: Chrome 継続 + Web UI/UX 改善（ADR/KB 追記）**）／2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク）**・**V20 部品検索（促音 `っ`/`ッ` の比較用写像・`q` 空でも機種名 `machineName` で suggest）**・**V19 部品検索（機種名 `machineName` AND・かな正規化拡張・数字パレット・プリセット追加）**・**V18 棚マスタ（`MobilePlacementShelf`・`GET/POST …/registered-shelves` / `POST …/shelves`）**・**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
 
 ## Android Chrome アプリインストール（2026-10-20・Web側）

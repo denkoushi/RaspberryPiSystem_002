@@ -92,8 +92,8 @@ export function ShelfPhoneLayout({ zoneId, machines, onBack, onOpen, onMode, onM
     <div className={t.dock}>
       {error && <p role="alert" className="text-xs text-[var(--hp-ng)]">{error}</p>}
       {draft.selectedCells.length ? <>
-        <div className="grid grid-cols-4 gap-1.5">
-          {phoneShelfKinds.map(([kind, label]) => <button key={kind} type="button" disabled={busy}
+        <div className="grid grid-cols-3 gap-1.5">
+          {phoneShelfKinds.filter(([kind]) => kind !== 'SHELF').map(([kind, label]) => <button key={kind} type="button" disabled={busy}
             className="flex h-[54px] flex-col items-center justify-center gap-1 rounded-xl border border-[var(--hp-line)] bg-[var(--hp-panel)] text-sm font-black"
             onClick={() => {
               setError(null);

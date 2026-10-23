@@ -128,6 +128,7 @@
     - { key: PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE, value: "{{ photo_tool_label_assist_max_cosine_distance | default('0.14') }}" }
     # 要領書音声認識の中継フラグ（既定 OFF）。inventory の値はここで渡さないと API に届かない
     - { key: PROCEDURE_SPEECH_TO_TEXT_ENABLED, value: "{{ procedure_speech_to_text_enabled | default(false) | bool | ternary('true', 'false') }}" }
+    - { key: PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED, value: "{{ procedure_speech_to_text_hints_enabled | default(true) | bool | ternary('true', 'false') }}" }
     # 要領書の区切り提案。承認済みメール素材の画像判定だけに使う
     - { key: PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED, value: "{{ procedure_material_split_suggestion_enabled | default(false) | bool | ternary('true', 'false') }}" }
     # 検査図面の丸数字提案。社内LLMが使えないときの図面判定と、寸法位置の並べ替えに JEV を使う

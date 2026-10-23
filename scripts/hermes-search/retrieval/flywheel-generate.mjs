@@ -188,8 +188,12 @@ export function createDgxChat({ origin, token, egress = '', model = 'system-prod
 /** A tiny readiness request; pass the raw chat so it does not consume guard strikes. */
 export async function probeChat(chat, { timeoutMs = 15_000 } = {}) {
   try {
-    const reply = await chat({ messages: [{ role: 'user', content: 'Reply OK.' }], maxTokens: 8, timeoutMs });
-    return reply?.ok ? { ok: true } : { ok: false, reason: reply?.reason ?? 'transport' };
+    const reply = await chat({ messages: [{ role: 'user', content: 'Reply OK.' }], maxTokens: 64, timeoutMs });
+    // A reply cut off by the token limit still proves the model is up and answering: GLM writes a
+    // short reasoning text even with thinking off, and on 2026-10-22 that spent the whole probe
+    // budget and kept the night from running (29 "truncated" probes).
+    if (reply?.ok || reply?.reason === 'truncated') return { ok: true };
+    return { ok: false, reason: reply?.reason ?? 'transport' };
   } catch (error) {
     return { ok: false, reason: error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'timeout' : 'transport' };
   }

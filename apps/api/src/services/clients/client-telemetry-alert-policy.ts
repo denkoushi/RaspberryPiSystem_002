@@ -242,6 +242,7 @@ function osUpdateDecision(
 
 export const KIOSK_ERROR_WINDOW_MS = 10 * 60 * 1000;
 export const KIOSK_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+export const KIOSK_NETWORK_ALERT_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 export const KIOSK_ERROR_THRESHOLD = 3;
 // Every kiosk reports failed requests right after an API restart (deploy); those must not page anyone.
 export const KIOSK_ALERT_STARTUP_GRACE_MS = 3 * 60 * 1000;
@@ -254,19 +255,26 @@ export function kioskErrorCount(context: Record<string, unknown> | undefined): n
   const count = context?.count;
   return typeof count === 'number' && Number.isSafeInteger(count) && count > 0 ? count : 1;
 }
+export function isKioskNetworkError(kind: unknown): boolean {
+  return kind === 'api_timeout' || kind === 'api_network';
+}
 function kioskDecision(clientId: string, entry: ClientTelemetryLogEntry, recentCount: number, now: Date): TelemetryAlertDecision | null {
   const context = entry.context!;
+  const network = isKioskNetworkError(context.kind);
   // A crash that the kiosk reloaded away by itself counts like any other error.
   const blockingCrash = context.kind === 'render_crash' && context.recoveryDecision !== 'reload';
   if (entry.level !== 'ERROR' || (!blockingCrash && recentCount < KIOSK_ERROR_THRESHOLD)) return null;
-  const type = 'kiosk-ui-error';
+  const type = network ? 'kiosk-network-degraded' : 'kiosk-ui-error';
+  const cooldown = network ? KIOSK_NETWORK_ALERT_COOLDOWN_MS : KIOSK_ALERT_COOLDOWN_MS;
   const count = Math.max(recentCount, kioskErrorCount(context));
   return {
-    type, severity: AlertSeverity.ERROR,
-    message: `キオスク画面異常: ${context.clientDeviceName ?? clientId} / 画面 ${context.route ?? '不明'} / 種類 ${context.kind ?? '不明'} / 件数 ${count} / 記録番号 ${context.incidentCode ?? '不明'} / requestId ${context.requestId ?? 'なし'}`,
-    details: { clientId, count, ...context },
+    type, severity: network ? AlertSeverity.WARNING : AlertSeverity.ERROR,
+    message: network
+      ? `キオスクの回線が遅い・つながりにくい: ${context.clientDeviceName ?? clientId} / 件数 ${count} / 例 ${context.urlPath ?? '不明'} / 画面自体の異常を示す通知ではありません`
+      : `キオスク画面異常: ${context.clientDeviceName ?? clientId} / 画面 ${context.route ?? '不明'} / 種類 ${context.kind ?? '不明'} / 件数 ${count} / 記録番号 ${context.incidentCode ?? '不明'} / requestId ${context.requestId ?? 'なし'}`,
+    details: { clientId, ...context, count },
     source: { service: 'kiosk-web', clientId, clientDeviceId: context.clientDeviceId, category: 'kiosk_ui_error' },
-    fingerprint: fingerprint([type, String(context.clientDeviceId ?? clientId), String(Math.floor(now.getTime() / KIOSK_ALERT_COOLDOWN_MS))]),
+    fingerprint: fingerprint([type, String(context.clientDeviceId ?? clientId), String(Math.floor(now.getTime() / cooldown))]),
     timestamp: now,
     dedupeAcrossAcknowledgedAlerts: true
   };

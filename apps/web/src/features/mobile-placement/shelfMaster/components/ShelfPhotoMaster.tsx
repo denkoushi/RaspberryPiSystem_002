@@ -1,8 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { AREA_DIRECTIONS, composeArea, type AreaDirection } from '@raspi-system/shelf-layout-core';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useRef, useState } from 'react';
 
-import { patchMobilePlacementShelfMemo, postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto } from '../../../../api/client';
+import { getMobilePlacementShelfMachines, patchMobilePlacementShelfMemo, postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto } from '../../../../api/client';
 import { Dialog } from '../../../../components/ui/Dialog';
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { HaizenIcon } from '../../haizen/HaizenIcon';
@@ -14,15 +15,6 @@ import { useRegisteredShelves } from '../../useRegisteredShelves';
 
 import type { RegisteredShelfEntryDto } from '../../registeredShelves';
 
-function nextShelfCode(shelves: RegisteredShelfEntryDto[], area: string, line: string) {
-  if (!area || !line) return '';
-  for (let slot = 1; slot <= 99; slot++) {
-    const code = `${area}-${line}-${String(slot).padStart(2, '0')}`;
-    if (!shelves.some((s) => s.shelfCodeRaw === code)) return code;
-  }
-  return '';
-}
-
 export function ShelfPhotoMaster() {
   const query = useRegisteredShelves();
   const [editing, setEditing] = useState<RegisteredShelfEntryDto | 'new' | null>(null);
@@ -32,7 +24,7 @@ export function ShelfPhotoMaster() {
         {query.data?.shelves.map((shelf) => <button key={shelf.shelfCodeRaw} type="button" aria-label={`棚 ${shelf.shelfCodeRaw} を編集`} onClick={() => setEditing(shelf)}
           className="flex items-center gap-2.5 rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)] p-2 text-left">
           <ShelfPhoto shelf={shelf} className="h-[72px] w-24 shrink-0 rounded-[10px]" />
-          <span className="min-w-0"><b className="block font-mono text-xl text-[var(--hp-shelf)]">{shelf.shelfCodeRaw}</b><span className={`block truncate text-[13px] ${hp.muted}`}>{shelf.displayLabel}</span><span className={`block text-[13px] ${hp.faint}`}>{shelf.areaId ? { west: '西', central: '中央', east: '東' }[shelf.areaId] : '—'}</span></span>
+          <span className="min-w-0"><b className="block font-mono text-xl text-[var(--hp-shelf)]">{shelf.shelfCodeRaw}</b><span className={`block truncate text-[13px] ${hp.muted}`}>{shelf.displayLabel}</span></span>
         </button>)}
         {!query.data?.shelves.length && <p className={hp.empty}>棚がありません</p>}
       </div>}
@@ -44,20 +36,26 @@ export function ShelfPhotoMaster() {
 function ShelfPhotoForm({ shelf, shelves, onClose }: { shelf: RegisteredShelfEntryDto | null; shelves: RegisteredShelfEntryDto[]; onClose: () => void }) {
   const client = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
-  const [area, setArea] = useState('');
-  const [line, setLine] = useState('');
-  const [code, setCode] = useState(shelf?.shelfCodeRaw ?? '');
+  const [machine, setMachine] = useState('');
+  const [direction, setDirection] = useState<AreaDirection | null>(null);
   const [memo, setMemo] = useState(shelf?.displayLabel ?? '');
   const [savedMemo, setSavedMemo] = useState(shelf?.displayLabel?.trim() || null);
   const [photo, setPhoto] = useState<Awaited<ReturnType<typeof resizeShelfPhoto>> | null>(null);
   const [createdCode, setCreatedCode] = useState<string | null>(shelf?.shelfCodeRaw ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const setZone = (nextArea: string, nextLine: string) => {
-    setArea(nextArea); setLine(nextLine); setCode(nextShelfCode(shelves, nextArea, nextLine));
-  };
+  const machinesQuery = useQuery({
+    queryKey: mobilePlacementQueryKeys.shelfMachines,
+    queryFn: getMobilePlacementShelfMachines,
+    enabled: !createdCode
+  });
+  const registeredDirections = new Set(shelves.filter((s) => s.machineName === machine).map((s) => s.direction));
+  const code = createdCode ?? (machine && direction ? composeArea(machine, direction) : '');
+  const canSave = !busy && Boolean(code) && (Boolean(createdCode) ||
+    (Boolean(photo) && Boolean(direction) && !registeredDirections.has(direction ?? undefined) &&
+      !machinesQuery.isError && Boolean(machinesQuery.data?.machines.includes(machine))));
   const save = async () => {
-    if (busy) return;
+    if (!canSave) return;
     setBusy(true); setError(null);
     try {
       const savedCode = createdCode ?? code.trim();
@@ -97,14 +95,26 @@ function ShelfPhotoForm({ shelf, shelves, onClose }: { shelf: RegisteredShelfEnt
             {(photo || shelf?.photoUpdatedAt) && <span className="absolute bottom-2 right-2 rounded-[10px] bg-[var(--hp-bg)] px-3 py-2.5 text-sm">撮り直す</span>}
           </button>
           {!createdCode && <>
-            <div role="group" aria-label="エリア" className="flex items-center gap-1.5"><span className={`w-14 text-sm font-bold ${hp.muted}`}>エリア</span>{['西', '中央', '東'].map((a) => <button key={a} type="button" disabled={busy} className={hp.chip} aria-pressed={area === a} onClick={() => setZone(a, line)}>{a}</button>)}</div>
-            <div role="group" aria-label="列" className="flex items-center gap-1.5"><span className={`w-14 text-sm font-bold ${hp.muted}`}>列</span>{['北', '中央', '南'].map((l) => <button key={l} type="button" disabled={busy} className={hp.chip} aria-pressed={line === l} onClick={() => setZone(area, l)}>{l}</button>)}</div>
+            <label className="flex flex-col gap-1 text-sm font-bold">加工機
+              <select className={`${hp.input} !font-sans`} value={machine} disabled={busy || machinesQuery.isLoading || machinesQuery.isError} required
+                onChange={(e) => { setMachine(e.target.value); setDirection(null); }}>
+                <option value="">{machinesQuery.isLoading ? '読込中…' : '加工機を選ぶ'}</option>
+                {machinesQuery.data?.machines.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+            {machinesQuery.isError && <p role="alert" className="text-sm text-[var(--hp-ng)]">加工機を取得できませんでした <button type="button" className={hp.mini} onClick={() => void machinesQuery.refetch()}>再試行</button></p>}
+            <div role="group" aria-label="方角" className="grid grid-cols-4 gap-1.5">
+              {AREA_DIRECTIONS.map((d) => <button key={d} type="button" disabled={busy || !machine || registeredDirections.has(d)}
+                className={`${hp.chip} !h-auto flex min-h-14 flex-col items-center justify-center disabled:opacity-40`} aria-pressed={direction === d} onClick={() => setDirection(d)}>
+                {d}{registeredDirections.has(d) && <small className="text-[10px]">登録済み</small>}
+              </button>)}
+            </div>
           </>}
-          <label className="flex flex-col gap-1 text-sm font-bold">ID<input aria-label="ID" className={`${hp.input} !text-xl !text-[var(--hp-shelf)]`} value={code} readOnly={Boolean(createdCode)} disabled={busy} required onChange={(e) => setCode(e.target.value)} /></label>
+          <label className="flex flex-col gap-1 text-sm font-bold">この棚の名前<input className={`${hp.input} !text-xl !text-[var(--hp-shelf)]`} value={code} readOnly /></label>
           <label className="flex flex-col gap-1 text-sm font-bold">メモ<textarea className={`${hp.input} !h-16 py-2 !font-sans`} value={memo} maxLength={60} disabled={busy} placeholder="例: ロボドリル01 南 上段" onChange={(e) => setMemo(e.target.value)} /></label>
           {error && <p role="alert" className="text-sm text-[var(--hp-ng)]">{error}</p>}
         </div>
-        <footer className={hp.dock}><button type="submit" className={`${hp.primary} bg-[var(--hp-shelf)]`} disabled={busy || !code.trim() || (!createdCode && (!area || !line || !photo))}>
+        <footer className={hp.dock}><button type="submit" className={`${hp.primary} bg-[var(--hp-shelf)]`} disabled={!canSave}>
           <HaizenIcon name="check" />{busy ? '処理中…' : shelf ? '保存する' : '登録する'}
         </button></footer>
       </form>

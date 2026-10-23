@@ -224,6 +224,11 @@
         tasks_from: distrusted-intermediates
   roles:
     - role: release_kiosk
+  post_tasks:
+    - name: Keep the Pi4 system journal across reboots
+      ansible.builtin.import_role:
+        name: release_kiosk
+        tasks_from: host-journald
 
 - name: Aggregate all selected torque candidates before ownership resumes
   hosts: kiosk

@@ -47,7 +47,8 @@ export function AssemblyProcedureDocumentEditorInspector({
   onRefetchTextCandidates,
   readOnly = false,
   busy = false,
-  voiceInputEnabled = false
+  voiceInputEnabled = false,
+  voiceContext
 }: {
   element: AssemblyProcedureOverlayElement | null;
   onDuplicate?: () => void;
@@ -63,9 +64,10 @@ export function AssemblyProcedureDocumentEditorInspector({
   readOnly?: boolean;
   busy?: boolean;
   voiceInputEnabled?: boolean;
+  voiceContext?: string;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const voice = useProcedureVoiceInput(element?.kind === 'TEXT' ? element : null, voiceInputEnabled && !readOnly && !busy, onUpdate);
+  const voice = useProcedureVoiceInput(element?.kind === 'TEXT' ? element : null, voiceInputEnabled && !readOnly && !busy, onUpdate, voiceContext);
   if (!element) return null;
 
   const patch = (next: Partial<AssemblyProcedureOverlayElement>) => onUpdate({ ...element, ...next } as AssemblyProcedureOverlayElement);
