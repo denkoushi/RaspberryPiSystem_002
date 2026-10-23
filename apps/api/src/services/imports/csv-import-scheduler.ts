@@ -711,6 +711,13 @@ export class CsvImportScheduler {
     this.csvDashboardDedupCleanupTask = cron.schedule(
       cleanupSchedule,
       async () => {
+        // 2026-10-24: 05:20 JST に Pi5 全体が止まったため、負荷を下げる修正が入るまで既定で止める
+        if (process.env.CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED !== 'true') {
+          logger?.warn(
+            '[CsvImportScheduler] Nightly csv dashboard dedup cleanup is paused (set CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED=true to run)'
+          );
+          return;
+        }
         const todayJst = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
         }).format(new Date());
