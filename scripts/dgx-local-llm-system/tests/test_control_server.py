@@ -5,6 +5,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 import tempfile
@@ -24,6 +25,101 @@ def load_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+class ProfilelessStartTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.storage = root / "glm"
+        self.storage.mkdir()
+        self.manifest = root / "registry/glm/manifest.json"
+        self.manifest.parent.mkdir(parents=True)
+        self.manifest.write_text(json.dumps({
+            "modelProfileId": "business_glm53_flash_fp4_tp2", "displayNameJa": "GLM",
+            "backend": "blue", "servedAlias": "system-prod-primary",
+            "currentStorageLocation": str(self.storage), "enabled": True,
+            "businessOrchestrationEligible": True,
+            "launcherHints": {"blueModelDir": str(self.storage)},
+            "runtimeProfile": {"engine": "vllm", "vllm": {"tensorParallelSize": 2}},
+        }))
+        self.state = root / "active-model-profile.json"
+        self.config = replace(
+            self.module.load_config_from_env(), token="runtime-token", active_backend="green",
+            green_start_cmd="green-start", green_stop_cmd="green-stop",
+            blue_start_cmd="blue-start", blue_stop_cmd="blue-stop",
+            model_registry_root=str(root / "registry"), active_model_state_path=str(self.state),
+            resource_state_path=str(root / "resource.json"),
+        )
+        self.profile = self.module.validate_startable_profile(
+            self.config.model_registry_root, "business_glm53_flash_fp4_tp2",
+        )
+        self.module.write_active_model_state(str(self.state), self.profile)
+
+    def test_plain_start_uses_active_glm_profile_env(self):
+        calls = []
+        handler = self.module.make_handler(
+            self.config, command_runner=lambda cmd, extra_env=None: calls.append((cmd, extra_env)),
+        )
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{httpd.server_port}/start", data=b"", method="POST",
+                headers={"X-Runtime-Control-Token": "runtime-token"},
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                payload = json.loads(response.read())
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=5)
+        self.assertEqual(payload["modelProfile"]["activeProfileId"], self.profile.id)
+        self.assertEqual([cmd for cmd, env in calls], ["green-stop", "blue-start"])
+        self.assertEqual(calls[-1][1]["BLUE_MODEL_PROFILE_ID"], self.profile.id)
+        self.assertEqual(calls[-1][1]["BLUE_MODEL_DIR"], str(self.storage))
+        self.assertEqual(calls[-1][1]["VLLM_TENSOR_PARALLEL_SIZE"], "2")
+        self.assertEqual(calls[-1][1]["BLUE_SERVER_COMMAND"], "")
+
+    def test_valid_active_profile_for_other_reasons_and_business_restore(self):
+        for reason in (None, "runtime-restart", "business-restore"):
+            with self.subTest(reason=reason):
+                self.assertEqual(self.module.resolve_start_profile(self.config, None, reason), self.profile)
+
+    def test_invalid_active_profile_falls_back_but_business_restore_fails_closed(self):
+        state = self.state.read_bytes()
+        manifest = self.manifest.read_bytes()
+        for case in ("missing-state", "corrupt-state", "incomplete-state", "backend-mismatch",
+                     "missing-profile", "corrupt-profile", "disabled", "private", "missing-storage"):
+            with self.subTest(case=case):
+                self.state.write_bytes(state)
+                self.manifest.write_bytes(manifest)
+                if case == "missing-state":
+                    self.state.unlink()
+                elif case == "corrupt-state":
+                    self.state.write_text("{")
+                elif case == "incomplete-state":
+                    self.state.write_text("{}")
+                elif case == "backend-mismatch":
+                    self.state.write_text(json.dumps({**json.loads(state), "backend": "green"}))
+                elif case == "missing-profile":
+                    self.manifest.unlink()
+                elif case == "corrupt-profile":
+                    self.manifest.write_text("{")
+                else:
+                    changes = {
+                        "disabled": {"enabled": False},
+                        "private": {"businessOrchestrationEligible": False},
+                        "missing-storage": {"currentStorageLocation": str(self.storage / "missing")},
+                    }
+                    self.manifest.write_text(json.dumps({**json.loads(manifest), **changes[case]}))
+                for reason in (None, "runtime-restart"):
+                    self.assertIsNone(self.module.resolve_start_profile(self.config, None, reason))
+                with self.assertRaises(self.module.BusinessRestoreUnavailableError):
+                    self.module.resolve_start_profile(self.config, None, "business-restore")
 
 
 class ControlServerTests(unittest.TestCase):
