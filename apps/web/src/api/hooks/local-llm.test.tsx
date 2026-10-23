@@ -22,7 +22,7 @@ describe('local LLM availability', () => {
     vi.mocked(api.get).mockResolvedValue({ data: { available: false } });
     const signal = new AbortController().signal;
     expect(await getLocalLlmAvailability(signal)).toEqual({ available: false });
-    expect(api.get).toHaveBeenCalledWith('/system/local-llm/availability', { timeout: 5000, signal });
+    expect(api.get).toHaveBeenCalledWith('/system/local-llm/availability', { timeout: 5000, signal, kioskTelemetry: 'background' });
   });
 
   it('shares a query and only marks a confirmed unavailable response', async () => {

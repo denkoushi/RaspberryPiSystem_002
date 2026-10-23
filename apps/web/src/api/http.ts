@@ -12,6 +12,12 @@ import {
 
 export { DEFAULT_CLIENT_KEY };
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    kioskTelemetry?: 'background';
+  }
+}
+
 export const apiBase = readProductionBuildConfig().apiBaseUrl;
 const wsBase = readProductionBuildConfig().wsBaseUrl;
 const KIOSK_KEY_RESET_TS_KEY = 'kiosk-client-key-last-reset-at';
@@ -93,6 +99,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => {
     reportKioskApi({ method: response.config.method, url: response.config.url, status: response.status,
+      kioskTelemetry: response.config.kioskTelemetry,
       streaming: response.config.responseType === 'stream' || String(response.headers['content-type'] ?? '').includes('text/event-stream'),
       durationMs: Date.now() - (requestStartedAt.get(response.config) ?? Date.now()) });
     return response;
@@ -101,6 +108,7 @@ api.interceptors.response.use(
     if (isAxiosError(error)) {
       const ax = error as AxiosError<{ code?: unknown; message?: unknown }>;
       reportKioskApi({ method: ax.config?.method, url: ax.config?.url, status: ax.response?.status,
+        kioskTelemetry: ax.config?.kioskTelemetry,
         streaming: ax.config?.responseType === 'stream',
         code: ax.code, apiCode: (ax.response?.data as { errorCode?: unknown; code?: unknown })?.errorCode ?? ax.response?.data?.code,
         requestId: (ax.response?.data as { requestId?: unknown })?.requestId,

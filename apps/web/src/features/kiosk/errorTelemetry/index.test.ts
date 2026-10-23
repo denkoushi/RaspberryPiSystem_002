@@ -59,4 +59,48 @@ describe('browser kiosk error collection', () => {
     expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
   });
 
+  it.each(['ECONNABORTED', 'ETIMEDOUT', 'ERR_NETWORK'])('keeps background %s in network stats only and records foreground failures', async (code) => {
+    vi.spyOn(window, 'addEventListener').mockImplementation(() => undefined);
+    const send = vi.fn().mockResolvedValue(undefined);
+    const { initializeKioskErrorTelemetry, reportKioskApi } = await import('./index');
+    initializeKioskErrorTelemetry(send);
+    const input = { url: '/arbitrary-path', durationMs: 5000, code };
+    reportKioskApi({ ...input, kioskTelemetry: 'background' });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send).not.toHaveBeenCalled();
+    expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
+    reportKioskApi(input);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send.mock.calls[0][0].logs).toEqual([expect.objectContaining({ level: 'ERROR', context: expect.objectContaining({
+      category: 'kiosk_ui_error', kind: code === 'ERR_NETWORK' ? 'api_network' : 'api_timeout'
+    }) })]);
+    await vi.advanceTimersByTimeAsync(290000);
+    expect(send.mock.calls[1][0].logs[0].context).toMatchObject({ category: 'kiosk_net_stats', requests: 2, failures: 2 });
+  });
+  it('still records background server errors and slow successes', async () => {
+    vi.spyOn(window, 'addEventListener').mockImplementation(() => undefined);
+    const send = vi.fn().mockResolvedValue(undefined);
+    const { initializeKioskErrorTelemetry, reportKioskApi } = await import('./index');
+    initializeKioskErrorTelemetry(send);
+    for (const status of [503, 400, 200]) reportKioskApi({ url: '/arbitrary-path', status, durationMs: 10001, kioskTelemetry: 'background' });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send.mock.calls[0][0].logs.map((log: { context: { kind: string } }) => log.context.kind)).toEqual(['api_5xx', 'api_4xx', 'slow_request']);
+  });
+  it.each(['getLocalLlmAvailability', 'getDeployStatus'] as const)('passes the background marker through HTTP telemetry for %s', async (request) => {
+    const telemetry = await import('./index');
+    const report = vi.spyOn(telemetry, 'reportKioskApi');
+    const { api } = await import('../../../api/http');
+    const system = await import('../../../api/domains/system');
+    const { AxiosError } = await import('axios');
+    const adapter = api.defaults.adapter;
+    try {
+      api.defaults.adapter = async (config) => { throw new AxiosError('timeout', 'ECONNABORTED', config); };
+      await expect(system[request]()).rejects.toHaveProperty('code', 'ECONNABORTED');
+      expect(report).toHaveBeenLastCalledWith(expect.objectContaining({ kioskTelemetry: 'background', code: 'ECONNABORTED' }));
+      expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
+      api.defaults.adapter = async (config) => ({ data: {}, status: 200, statusText: 'OK', headers: {}, config });
+      await system[request]();
+      expect(report).toHaveBeenLastCalledWith(expect.objectContaining({ kioskTelemetry: 'background', status: 200 }));
+    } finally { api.defaults.adapter = adapter; }
+  });
 });
