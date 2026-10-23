@@ -80,7 +80,11 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
       where: { manufacturingOrderBarcodeRaw: manufacturingOrderStored },
       _max: { branchNo: true }
     });
-    const nextBranch = (maxBranch._max.branchNo ?? 0) + 1;
+    const maxEventBranch = await tx.orderPlacementEvent.aggregate({
+      where: { manufacturingOrderBarcodeRaw: manufacturingOrderStored },
+      _max: { branchNo: true }
+    });
+    const nextBranch = Math.max(maxBranch._max.branchNo ?? 0, maxEventBranch._max.branchNo ?? 0) + 1;
 
     const createdEv = await tx.orderPlacementEvent.create({
       data: {

@@ -3,12 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getHaizenOverview, getMobilePlacementRegisteredShelves } from '../../api/domains/mobile-placement';
+import { deleteOrderPlacementBranch, getHaizenOverview, getMobilePlacementRegisteredShelves } from '../../api/domains/mobile-placement';
 import { startVoiceTranscription } from '../../features/voice/voiceTranscription';
 
 import { KioskHaizenPage } from './KioskHaizenPage';
 
-vi.mock('../../api/domains/mobile-placement', () => ({ getHaizenOverview: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn() }));
+vi.mock('../../api/domains/mobile-placement', () => ({ deleteOrderPlacementBranch: vi.fn(), getHaizenOverview: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn() }));
 vi.mock('../../features/mobile-placement/shelfPhoto/useShelfPhoto', () => ({ useShelfPhoto: () => ({ url: undefined, isError: false }) }));
 vi.mock('../../features/voice/voiceTranscription', () => ({ startVoiceTranscription: vi.fn(), disposeVoiceSession: vi.fn() }));
 const base = { manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: 'ブラケット', machineName: 'ＲＶ－１２Ａ' };
@@ -23,10 +23,7 @@ const mount = () => {
   return render(<QueryClientProvider client={client}><MemoryRouter><KioskHaizenPage /></MemoryRouter></QueryClientProvider>);
 };
 const search = async (input: string) => {
-  fireEvent.click(await screen.findByRole('button', { name: '番号で探す' }));
-  const dialog = screen.getByRole('dialog', { name: '番号で探す' });
-  fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: input } });
-  fireEvent.click(within(dialog).getByRole('button', { name: '探す', exact: true }));
+  fireEvent.change(screen.getByRole('textbox', { name: '番号' }), { target: { value: input } });
 };
 beforeEach(() => {
   vi.clearAllMocks();
@@ -40,7 +37,11 @@ describe('KioskHaizenPage', () => {
     mount();
     await screen.findByRole('button', { name: '棚 西-北-01 棚名1' });
     expect(screen.getAllByRole('button', { name: /^棚 西/ }).map(button => button.getAttribute('aria-label'))).toEqual(['棚 西-北-01 棚名1', '棚 西-北-02 棚名2', '棚 西-北-03 棚名3']);
-    expect(screen.getByText('棚名3 ・ 空き')).toBeInTheDocument();
+    expect(screen.getByText('空き')).toBeInTheDocument();
+    expect(screen.queryByText('ブラケット')).not.toBeInTheDocument();
+    expect(screen.queryByText('BA1S2320')).not.toBeInTheDocument();
+    expect(screen.queryByText('西-北-01')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '番号で探す' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /在庫へ/ })).toHaveAttribute('href', '/kiosk/inventory');
     fireEvent.click(screen.getByRole('button', { name: '小', exact: true }));
     expect(screen.queryByText('ブラケット')).not.toBeInTheDocument();
@@ -49,13 +50,14 @@ describe('KioskHaizenPage', () => {
   it('narrows to matching shelves and cancel restores the full grid', async () => {
     mount(); await screen.findByText('棚名1'); await search('ｂａ１ｓ ２３');
     expect(screen.getAllByRole('button', { name: /^棚 西/ })).toHaveLength(2);
-    expect(screen.getByText('2 件 ・ 2 棚')).toBeInTheDocument();
+    expect(screen.getByText('を含む 2 件 ・ 2 棚')).toBeInTheDocument();
     expect(screen.getAllByText('1件 一致')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
     expect(screen.getAllByRole('button', { name: /^棚 西/ })).toHaveLength(3);
   });
-  it('opens a single-shelf result, highlights hits, keeps newest first and links other branches', async () => {
+  it('opens a matching shelf on click, highlights hits, keeps newest first and links other branches', async () => {
     mount(); await screen.findByText('棚名1'); await search('unique');
+    fireEvent.click(screen.getByRole('button', { name: '棚 西-北-02 棚名2' }));
     expect(screen.getByRole('heading', { name: 'この棚の部品' })).toBeInTheDocument();
     const parts = screen.getAllByRole('article');
     expect(parts[0]).toHaveTextContent('新しい部品');
@@ -69,22 +71,84 @@ describe('KioskHaizenPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '棚の一覧へ' }));
     expect(screen.getAllByRole('button', { name: /^棚 西/ })).toHaveLength(3);
   });
-  it('searches by candidate and keypad, and handles zero hits', async () => {
+  it('filters live with keypad, keeps text on kind change, backspaces and clears with C', async () => {
     mount(); await screen.findByText('棚名1');
-    fireEvent.click(screen.getByRole('button', { name: '番号で探す' }));
-    const dialog = screen.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: '機種名', exact: true }));
-    expect(within(dialog).getByRole('button', { name: 'RV-12A' })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'R', exact: true }));
-    fireEvent.click(within(dialog).getByRole('button', { name: '1', exact: true }));
-    fireEvent.click(within(dialog).getByRole('button', { name: '1字消す' }));
-    expect(within(dialog).getByRole('textbox')).toHaveValue('R');
-    fireEvent.click(within(dialog).getByRole('button', { name: '全部消す' }));
-    expect(within(dialog).getByRole('button', { name: '探す', exact: true })).toBeDisabled();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'RV-12A' }));
-    expect(screen.getByText('3 件 ・ 2 棚')).toBeInTheDocument();
-    await search('NOTFOUND');
+    expect(screen.getByRole('button', { name: '製番', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '2', exact: true }));
+    expect(screen.getAllByRole('button', { name: /^棚 西/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '3', exact: true }));
+    expect(screen.getByRole('textbox')).toHaveValue('23');
+    fireEvent.click(screen.getByRole('button', { name: '機種名', exact: true }));
+    expect(screen.getByRole('textbox')).toHaveValue('23');
     expect(screen.getByText('一致する部品はどの棚にもありません')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '1字消す' }));
+    expect(screen.getByRole('textbox')).toHaveValue('2');
+    expect(screen.getByText('を含む 3 件 ・ 2 棚')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '全部消す' }));
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(screen.getAllByRole('button', { name: /^棚 西/ })).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: '品番', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '0', exact: true }));
+    expect(screen.getByText('を含む 2 件 ・ 2 棚')).toBeInTheDocument();
+  });
+  it('shows a delayed text-only hover table with matched rows first and clears on leave', async () => {
+    mount(); await screen.findByText('棚名2'); await search('2320');
+    const card = screen.getByRole('button', { name: '棚 西-北-02 棚名2' });
+    fireEvent.pointerEnter(card, { pointerType: 'mouse' });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    const tooltip = await screen.findByRole('tooltip');
+    expect(card).toHaveAttribute('aria-describedby', tooltip.id);
+    expect(tooltip.querySelector('img')).toBeNull();
+    for (const name of ['製番', '品名', '品番', '機種名']) expect(within(tooltip).getByRole('columnheader', { name })).toBeInTheDocument();
+    expect(within(tooltip).getAllByRole('row')[1]).toHaveTextContent('BA1S2320ブラケットK0381RV-12A');
+    expect(within(tooltip).getAllByRole('row')[1]).toHaveClass('text-inv-cyan');
+    expect(card).toHaveClass('ring-inv-cyan');
+    expect(screen.getByRole('button', { name: '棚 西-北-01 棚名1' })).toHaveClass('opacity-[.55]');
+    fireEvent.pointerLeave(card);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    expect(card).not.toHaveAttribute('aria-describedby');
+  });
+  it('limits hover content to 15 rows and describes empty shelves', async () => {
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: Array.from({ length: 18 }, (_, index) => ({ ...rows[0], id: String(index) })), truncated: false });
+    mount(); await screen.findByText('棚名1');
+    fireEvent.pointerEnter(screen.getByRole('button', { name: '棚 西-北-01 棚名1' }));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(within(tooltip).getAllByRole('row')).toHaveLength(16);
+    expect(tooltip).toHaveTextContent('ほか 3 件（押すと全部見られます）');
+    fireEvent.pointerEnter(screen.getByRole('button', { name: '棚 西-北-03 棚名3' }));
+    expect(await screen.findByText('この棚には何も置かれていません')).toBeInTheDocument();
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+  it('confirms deletion inline, disables pending controls, refreshes and shows a four-second toast', async () => {
+    let resolveDelete!: (value: Awaited<ReturnType<typeof deleteOrderPlacementBranch>>) => void;
+    vi.mocked(deleteOrderPlacementBranch).mockImplementation(() => new Promise(resolve => { resolveDelete = resolve; }));
+    mount(); fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-01 棚名1' }));
+    const card = screen.getByRole('article');
+    fireEvent.click(within(card).getByRole('button', { name: '消す', exact: true }));
+    expect(card).toHaveTextContent('この品物を消しますか？');
+    expect(deleteOrderPlacementBranch).not.toHaveBeenCalled();
+    fireEvent.click(within(card).getByRole('button', { name: 'やめる' }));
+    expect(card).not.toHaveTextContent('この品物を消しますか？');
+    fireEvent.click(within(card).getByRole('button', { name: '消す', exact: true }));
+    fireEvent.click(within(card).getByRole('button', { name: '🗑 消す' }));
+    await waitFor(() => expect(deleteOrderPlacementBranch).toHaveBeenCalledWith('1', expect.anything()));
+    expect(within(card).getByRole('button', { name: '🗑 消す' })).toBeDisabled();
+    expect(within(card).getByRole('button', { name: 'やめる' })).toBeDisabled();
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: rows.slice(1), truncated: false });
+    resolveDelete({ deleted: rows[0] });
+    expect(await screen.findByText('「ブラケット」を消しました')).toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('「ブラケット」を消しました')).not.toBeInTheDocument(), { timeout: 4500 });
+  });
+  it('shows the API deletion error and keeps the item', async () => {
+    vi.mocked(deleteOrderPlacementBranch).mockRejectedValue({ isAxiosError: true, response: { data: { message: 'この品物はもうありません' } } });
+    mount(); fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-01 棚名1' }));
+    fireEvent.click(screen.getByRole('button', { name: '消す', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '🗑 消す' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('この品物はもうありません');
+    expect(screen.getByRole('article')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '🗑 消す' })).toBeEnabled();
   });
   it('applies voice transcription and shows microphone failure gracefully', async () => {
     vi.mocked(startVoiceTranscription).mockImplementation(async (_session, _active, _processing, onTranscript) => { await onTranscript('製番 UNIQUE'); });
@@ -100,6 +164,7 @@ describe('KioskHaizenPage', () => {
     vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [{ ...rows[2], shelfCodeRaw: 'LEGACY-A' }], truncated: false });
     mount(); await screen.findByText('棚マスタ未登録');
     await search('unique');
+    fireEvent.click(screen.getByRole('button', { name: '棚 LEGACY-A 棚マスタ未登録' }));
     expect(screen.getByRole('heading', { name: 'この棚の部品' })).toBeInTheDocument();
     expect(screen.getByText('LEGACY-A')).toBeInTheDocument();
   });

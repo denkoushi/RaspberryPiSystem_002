@@ -15,6 +15,7 @@ import { parseActualSlipImageFromUpload } from '../../services/mobile-placement/
 import { registerPlacement, resolveItemByBarcode } from '../../services/mobile-placement/mobile-placement.service.js';
 import { registerOrderPlacement } from '../../services/mobile-placement/mobile-placement-order-placement.service.js';
 import {
+  deleteOrderPlacementBranch,
   listOrderPlacementBranches,
   moveOrderPlacementBranch
 } from '../../services/mobile-placement/order-placement-branch.service.js';
@@ -535,9 +536,19 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     };
   });
 
-  /**
-   * 既存分配枝の棚更新（移動）
-   */
+  app.delete(
+    '/mobile-placement/order-placement-branches/:id',
+    { config: { rateLimit: false } },
+    async (request) => {
+      await requireClientDevice(request.headers['x-client-key']);
+      const params = request.params as { id?: string };
+      const branchStateId = typeof params.id === 'string' ? params.id.trim() : '';
+      if (branchStateId.length === 0) throw new ApiError(400, '分配枝IDが必要です');
+      return { deleted: await deleteOrderPlacementBranch(branchStateId) };
+    }
+  );
+
+  /** 既存分配枝の棚更新（移動） */
   app.patch(
     '/mobile-placement/order-placement-branches/:id/move',
     { config: { rateLimit: false } },

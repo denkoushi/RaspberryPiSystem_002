@@ -12,7 +12,7 @@ vi.mock('../../production-schedule/production-schedule-lookup.service.js', () =>
 const candidate = { rowId: 'first', productNo: '100', fseiban: 'S', fhincd: 'P', fhinmei: 'Name', fsigencd: 'MC', fkojun: 1 };
 const input = { clientDeviceId: 'device', shelfCodeRaw: ' shelf ', manufacturingOrderBarcodeRaw: ' 100 ' };
 const tx = {
-  orderPlacementEvent: { create: vi.fn() },
+  orderPlacementEvent: { create: vi.fn(), aggregate: vi.fn() },
   orderPlacementBranchState: { aggregate: vi.fn(), create: vi.fn() },
 };
 
@@ -22,6 +22,7 @@ describe('order placement schedule snapshot compatibility', () => {
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: 'device' } as never);
     vi.mocked(listScheduleRowsByProductNo).mockResolvedValue([candidate, { ...candidate, rowId: 'later' }]);
     tx.orderPlacementBranchState.aggregate.mockResolvedValue({ _max: { branchNo: 2 } });
+    tx.orderPlacementEvent.aggregate.mockResolvedValue({ _max: { branchNo: null } });
     tx.orderPlacementEvent.create.mockResolvedValue({ id: 'event' });
     tx.orderPlacementBranchState.create.mockResolvedValue({ id: 'branch' });
     vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(tx as unknown as Prisma.TransactionClient));
@@ -52,6 +53,21 @@ describe('order placement schedule snapshot compatibility', () => {
       manufacturingOrderBarcodeRaw: '100', branchNo: 3, shelfCodeRaw: 'shelf', csvDashboardRowId: 'first',
       scheduleSnapshot: expectedSnapshot, lastEventId: 'event',
     } });
+  });
+
+  it.each([
+    [null, null, 1], [2, 5, 6], [null, 5, 6], [7, 5, 8]
+  ])('allocates after both current (%s) and historical (%s) branch numbers', async (current, historical, next) => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'first', rowData: {} } as never);
+    tx.orderPlacementBranchState.aggregate.mockResolvedValue({ _max: { branchNo: current } });
+    tx.orderPlacementEvent.aggregate.mockResolvedValue({ _max: { branchNo: historical } });
+    await registerOrderPlacement(input);
+    for (const model of [tx.orderPlacementBranchState, tx.orderPlacementEvent]) {
+      expect(model.aggregate).toHaveBeenCalledExactlyOnceWith({
+        where: { manufacturingOrderBarcodeRaw: '100' }, _max: { branchNo: true }
+      });
+      expect(model.create).toHaveBeenCalledWith({ data: expect.objectContaining({ branchNo: next }) });
+    }
   });
 
   it('preserves the error when the selected row disappears, without writing', async () => {

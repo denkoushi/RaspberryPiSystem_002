@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
@@ -97,4 +97,19 @@ export async function moveOrderPlacementBranch(input: MoveOrderPlacementBranchIn
   });
 
   return { event: ev, branchState: updated };
+}
+
+/** Remove only current placement; immutable placement history retains branch numbers. */
+export async function deleteOrderPlacementBranch(branchStateId: string) {
+  try {
+    return await prisma.orderPlacementBranchState.delete({
+      where: { id: branchStateId },
+      select: { id: true, manufacturingOrderBarcodeRaw: true, branchNo: true, shelfCodeRaw: true }
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw new ApiError(404, 'この品物はもうありません');
+    }
+    throw error;
+  }
 }
