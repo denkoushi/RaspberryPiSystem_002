@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 734,
-    "totalLines": 180735,
-    "totalBytes": 14606800,
-    "withFrontmatter": 349,
+    "documentCount": 738,
+    "totalLines": 181147,
+    "totalBytes": 14671854,
+    "withFrontmatter": 351,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
     "execPlanReferences": 60,
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 42,
-    "localLinkCount": 5459,
+    "longLineDocuments": 43,
+    "localLinkCount": 5461,
     "brokenLocalLinkCount": 127,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -771,8 +771,8 @@
     },
     {
       "path": ".cursor/rules/20-git-workflow.mdc",
-      "lineCount": 62,
-      "byteSize": 5837,
+      "lineCount": 64,
+      "byteSize": 5966,
       "hasFrontmatter": true,
       "title": "Gitワークフロー（Agent Requested）",
       "status": null,
@@ -11954,8 +11954,8 @@
     },
     {
       "path": "docs/api/mobile-placement.md",
-      "lineCount": 260,
-      "byteSize": 21747,
+      "lineCount": 270,
+      "byteSize": 24241,
       "hasFrontmatter": false,
       "title": "配膳スマホ API（mobile-placement）",
       "status": null,
@@ -17609,8 +17609,8 @@
     },
     {
       "path": "docs/decisions/ADR-20261011-procedure-voice-input.md",
-      "lineCount": 145,
-      "byteSize": 8216,
+      "lineCount": 146,
+      "byteSize": 8332,
       "hasFrontmatter": true,
       "title": "ADR-20261011 Procedure editor voice input on kiosk devices",
       "status": "accepted",
@@ -22845,6 +22845,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/kiosk-operation-guide/item-inventory-haizen.md",
+      "lineCount": 36,
+      "byteSize": 2192,
+      "hasFrontmatter": true,
+      "title": "配膳の場所",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/kiosk-operation-guide/item-inventory-settings.md",
       "lineCount": 51,
       "byteSize": 4261,
@@ -23343,8 +23358,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
-      "lineCount": 3225,
-      "byteSize": 442254,
+      "lineCount": 3226,
+      "byteSize": 442832,
       "hasFrontmatter": true,
       "title": "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装",
       "status": null,
@@ -23671,19 +23686,19 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 218,
+          "line": 219,
           "length": 1414
         },
         {
-          "line": 220,
+          "line": 221,
           "length": 1048
         },
         {
-          "line": 229,
+          "line": 230,
           "length": 1224
         },
         {
-          "line": 679,
+          "line": 680,
           "length": 1803
         }
       ],
@@ -27676,10 +27691,40 @@
     },
     {
       "path": "docs/knowledge-base/KB-425-os-security-weekly-update.md",
-      "lineCount": 83,
-      "byteSize": 9432,
+      "lineCount": 91,
+      "byteSize": 10888,
       "hasFrontmatter": false,
       "title": "KB-425: 業務ラズパイの OS 安全更新を週1回夜間に入れる",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-425-pi4-robodrill01-network-stall-persistent-journal.md",
+      "lineCount": 43,
+      "byteSize": 2826,
+      "hasFrontmatter": false,
+      "title": "KB-425: robodrill01 の通信停止と Pi4 の journal 永続化",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-426-glm-tp2-crash-and-startup-hang.md",
+      "lineCount": 40,
+      "byteSize": 3532,
+      "hasFrontmatter": false,
+      "title": "KB-426: 業務 GLM（2台構成）の停止と、再起動が止まり続けた件",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -27793,8 +27838,8 @@
     },
     {
       "path": "docs/knowledge-base/api.md",
-      "lineCount": 4903,
-      "byteSize": 358135,
+      "lineCount": 4911,
+      "byteSize": 359758,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - API関連",
       "status": null,
@@ -28457,8 +28502,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 889,
-      "byteSize": 270927,
+      "lineCount": 891,
+      "byteSize": 271586,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -31105,6 +31150,16 @@
           "exists": true
         },
         {
+          "href": "./KB-425-pi4-robodrill01-network-stall-persistent-journal.md",
+          "targetPath": "docs/knowledge-base/KB-425-pi4-robodrill01-network-stall-persistent-journal.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-426-glm-tp2-crash-and-startup-hang.md",
+          "targetPath": "docs/knowledge-base/KB-426-glm-tp2-crash-and-startup-hang.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -33393,8 +33448,8 @@
     },
     {
       "path": "docs/plans/business-llm-glm53-tp2-execplan.md",
-      "lineCount": 92,
-      "byteSize": 11414,
+      "lineCount": 99,
+      "byteSize": 13705,
       "hasFrontmatter": false,
       "title": "業務LLMを GLM-5.3-Flash-FP4(2台テンソル並列)へ切り替える",
       "status": null,
@@ -33423,8 +33478,8 @@
     },
     {
       "path": "docs/plans/code-health-phase2-execplan.md",
-      "lineCount": 203,
-      "byteSize": 35028,
+      "lineCount": 217,
+      "byteSize": 39660,
       "hasFrontmatter": false,
       "title": "コード健全化 第2期",
       "status": null,
@@ -34347,8 +34402,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 680,
-      "byteSize": 100372,
+      "lineCount": 704,
+      "byteSize": 105150,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -34379,6 +34434,10 @@
         {
           "line": 668,
           "length": 1224
+        },
+        {
+          "line": 694,
+          "length": 1019
         }
       ],
       "referencesExecPlan": false
@@ -34500,8 +34559,8 @@
     },
     {
       "path": "docs/plans/inspection-drawing-dgx-dimension-map-execplan.md",
-      "lineCount": 473,
-      "byteSize": 70202,
+      "lineCount": 474,
+      "byteSize": 71122,
       "hasFrontmatter": true,
       "title": "検査図面の夜間寸法解析（DGX）と丸数字の先回り配置",
       "status": "active",
@@ -35274,8 +35333,8 @@
     },
     {
       "path": "docs/plans/kiosk-operation-guide-accuracy-log.md",
-      "lineCount": 91,
-      "byteSize": 12249,
+      "lineCount": 150,
+      "byteSize": 21108,
       "hasFrontmatter": true,
       "title": "キオスク操作案内の当たり率ログ",
       "status": "living log",
@@ -36214,6 +36273,38 @@
         {
           "line": 148,
           "length": 1132
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/pi4-remote-push-backup-execplan.md",
+      "lineCount": 125,
+      "byteSize": 25250,
+      "hasFrontmatter": true,
+      "title": "Pi4 SD-card backup for kiosks on slow remote links ExecPlan",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 77,
+          "length": 1155
+        },
+        {
+          "line": 83,
+          "length": 1772
+        },
+        {
+          "line": 87,
+          "length": 1175
+        },
+        {
+          "line": 89,
+          "length": 1423
         }
       ],
       "referencesExecPlan": false
@@ -38112,8 +38203,8 @@
     },
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
-      "lineCount": 1412,
-      "byteSize": 150616,
+      "lineCount": 1417,
+      "byteSize": 151242,
       "hasFrontmatter": false,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -39229,8 +39320,8 @@
     },
     {
       "path": "docs/runbooks/mobile-placement-smartphone.md",
-      "lineCount": 212,
-      "byteSize": 50953,
+      "lineCount": 238,
+      "byteSize": 53046,
       "hasFrontmatter": false,
       "title": "配膳スマホ（Android）セットアップ・検証 Runbook",
       "status": null,
@@ -39347,43 +39438,43 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 3,
+          "line": 29,
           "length": 1780
         },
         {
-          "line": 25,
+          "line": 51,
           "length": 1012
         },
         {
-          "line": 35,
+          "line": 61,
           "length": 2108
         },
         {
-          "line": 49,
+          "line": 75,
           "length": 1034
         },
         {
-          "line": 53,
+          "line": 79,
           "length": 1352
         },
         {
-          "line": 55,
+          "line": 81,
           "length": 1676
         },
         {
-          "line": 61,
+          "line": 87,
           "length": 1319
         },
         {
-          "line": 63,
+          "line": 89,
           "length": 1376
         },
         {
-          "line": 65,
+          "line": 91,
           "length": 1231
         },
         {
-          "line": 67,
+          "line": 93,
           "length": 1410
         }
       ],

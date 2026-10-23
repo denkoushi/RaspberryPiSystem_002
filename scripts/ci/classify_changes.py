@@ -142,6 +142,7 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         "clients/status-agent/storage_health.py",
         "clients/status-agent/network_health.py",
         "clients/status-agent/terminal_agent_health.py",
+        "clients/status-agent/os_update_health.py",
         "clients/status-agent/status-agent.timer",
         "scripts/client/pi4-storage-maintenance.sh",
     }

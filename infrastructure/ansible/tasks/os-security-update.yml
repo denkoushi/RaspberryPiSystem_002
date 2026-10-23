@@ -8,6 +8,10 @@
 - name: Inspect whether unattended-upgrades is installed
   ansible.builtin.command:
     argv: [dpkg-query, '-W', '-f=${db:Status-Status}', unattended-upgrades]
+  environment: &os_security_update_utf8_env
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
   register: os_security_update_unattended_package
   changed_when: false
   failed_when: false
@@ -37,6 +41,9 @@
         NEEDRESTART_MODE: l
         NEEDRESTART_SUSPEND: '1'
         APT_LISTCHANGES_FRONTEND: none
+        LC_ALL: C.UTF-8
+        LANG: C.UTF-8
+        LANGUAGE: ''
 
     - name: Install the OS security updater outside the application release tree
       ansible.builtin.copy:
@@ -90,6 +97,7 @@
     - name: Read the first installation timestamp from the host
       ansible.builtin.command:
         argv: [date, '-Iseconds']
+      environment: *os_security_update_utf8_env
       changed_when: false
       register: os_security_update_enabled_at
       when: not os_security_update_state.stat.exists
@@ -114,6 +122,7 @@
         enabled: true
         state: "{{ 'restarted' if os_security_update_units is changed else 'started' }}"
         daemon_reload: true
+      environment: *os_security_update_utf8_env
 
 - name: Inspect an existing weekly timer on disabled hosts
   ansible.builtin.stat:
@@ -126,6 +135,7 @@
     name: raspi-os-security-update.timer
     enabled: false
     state: stopped
+  environment: *os_security_update_utf8_env
   when:
     - not (os_security_update_enabled | bool)
     - os_security_update_disabled_timer.stat.exists

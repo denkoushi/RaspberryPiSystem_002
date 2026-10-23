@@ -75,6 +75,14 @@ systemd timer（`raspi-os-security-update.timer`、Persistent=true、FixedRandom
   - 「OSの安全更新が2週間以上入っていません。」: 最後の成功（一度も無ければ導入日）から15日を超えた（`os_security_updates_stale`）。夜間に電源が切れている端末や、毎回見送りになる端末もこれで分かる。
   - 次に成功すれば「復旧しました。」で閉じる。status-agent の `clients/status-agent/os_update_health.py` が送る。
 
+## 2026-10-23: 言語設定が EUC-JP の Pi4 で方針が入らなかった
+
+- 起きたこと: 初回反映（run `20261023-113255-5af475`）で、`raspi4-robodrill01` と `raspi4-kensaku-stonebase01` だけ「方針を適用できなかった」の報告タスクが rescued になった。反映は続いたが、2台には timer、本体、設定ファイルのどれも入らなかった（反映後に読み取りで確認）。
+- 原因: 2台の `/etc/default/locale` が `ja_JP.EUC-JP`。unattended-upgrades が無いため `dpkg-query` が日本語のエラーを EUC-JP で返し、Ansible が「UTF-8 でない出力」（`surrogates not allowed`）として task を失敗にした。
+- 直したこと: 外部コマンドを動かす task（`command`、`apt`、`systemd`）と `raspi-os-security-update.service` に `LC_ALL=C.UTF-8`、`LANG=C.UTF-8`、`LANGUAGE=` を付けた。本体は状態ファイルを明示的に UTF-8 で読み書きする。報告タスクは失敗の理由も出す。
+- `clients/status-agent/os_update_health.py` を Pi4 に届けるファイルの一覧（`scripts/ci/classify_changes.py`）に足した。これが無いと、このファイルだけを変えた PR は Pi4 に届かない。
+- 再発を確かめるには: 端末で `cat /etc/default/locale` を見る。EUC-JP の端末でも、反映後に `systemctl is-enabled raspi-os-security-update.timer` が `enabled` になっていればよい。
+
 ## 戻し方
 
 - 止める: `os_security_update_enabled: false`（全体なら `group_vars/all.yml`、1台ならホスト変数）にして通常の反映を行う。timer が止まる。
