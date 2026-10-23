@@ -69,6 +69,7 @@ open_items:
 
 ## Surprises & Discoveries
 
+- 観察 (2026-10-23): 反映後の初夜、6 回の夜間実行がすべて `scanned 4 / deferred 4 / matched 0` で、兄弟判定が 1 件も決まらず、キオスクの「AI案」が全図面で空になった。原因は 2 つ。兄弟判定が DGX 寸法解析と同じ batch 4 を使っていたことと、並び順が `COALESCE(s.updatedAt, m.createdAt)` のため未着手の図面が PENDING の再試行より先に回り、DGX 停止中は全件を一巡するまで 2 回目(JEV)に進めないこと。対処として、PENDING を先に再試行する並びにし、兄弟判定と配置 run 作成に別の batch(`PART_MEASUREMENT_DRAWING_SIBLING_MATCH_BATCH_SIZE`、既定 30、上限 200)を使うようにした。証拠: 本番 API ログの `placement finished` 6 行、結合テスト「retries a PENDING sibling match before an older never-visited drawing」(修正前の並びでは失敗)。
 - 観察 (2026-10-21): 複数画像推論は背景 HTTP 429/503 を一般の unavailable として返していた。兄弟判定で JEV に進まないよう `InferenceDeferredError` に揃え、既存動画処理も延期時の試行回数を維持するよう追従した。対象アダプタ・利用側 30 テスト成功。
 - 観察: PDF は取込時に 144dpi の JPEG へ変換され、元の PDF は捨てられていた。TIFF は縮小しないが JPEG 化していた。
   証拠: `apps/api/src/lib/part-measurement-drawing-import.ts`、`PART_MEASUREMENT_PDF_RENDER_DPI = 144`。

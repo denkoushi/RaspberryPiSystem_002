@@ -279,7 +279,7 @@ export class PartMeasurementDrawingPlacementService {
       LEFT JOIN "PartMeasurementDrawingSiblingMatch" s ON s."visualTemplateId" = m."id"
         AND s."drawingImageFingerprint" = m."drawingImageFingerprint" AND s."matchVersion" = ${SIBLING_MATCH_VERSION}
       WHERE s."id" IS NULL OR s."status" = 'PENDING'::"PartMeasurementDrawingSiblingMatchStatus"
-      ORDER BY COALESCE(s."updatedAt", m."createdAt") ASC, m."id" ASC LIMIT ${batchLimit}
+      ORDER BY (s."id" IS NULL) ASC, COALESCE(s."updatedAt", m."createdAt") ASC, m."id" ASC LIMIT ${batchLimit}
     `;
     const counts = { scanned: targets.length, matched: 0, noMatch: 0, deferred: 0, jev: 0,
       ready: 0, noSibling: 0, mapPending: 0, failed: 0 };
