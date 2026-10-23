@@ -7,16 +7,12 @@ import { HaizenIcon } from './HaizenIcon';
 import { HaizenSheet } from './HaizenSheet';
 import { HaizenShelfPhotoList, HaizenShelfPhotoPicker } from './HaizenShelfPhotoPicker';
 import { HaizenStub } from './HaizenStub';
+import { HaizenTopBar } from './HaizenTopBar';
 import { useHaizenWorkflow } from './useHaizenWorkflow';
 
 import type { HaizenState } from './useHaizenWorkflow';
 import type { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import type { useRegisteredShelves } from '../useRegisteredShelves';
-
-const topLinks = [
-  { short: '購買', label: '購買照会', path: '/kiosk/purchase-order-lookup', icon: 'receipt', color: colors.lime },
-  { short: '部品', label: '部品を探す', path: '/kiosk/mobile-placement/part-search', icon: 'search', color: colors.shelf }
-] as const;
 
 const menuTiles = [
   { label: 'パレット', hint: '加工機ごとの部品', path: '/kiosk/mobile-placement/pallet-viz', icon: 'pallet', color: colors.teal },
@@ -72,17 +68,10 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
 
   return <div style={haizenPhoneStyle} className={`fixed inset-0 z-40 flex h-dvh flex-col ${hp.surface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]`}>
     <div className="relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col">
-      <header className="flex items-center gap-1.5 px-3.5 pb-2 pt-3.5">
-        <div role="tablist" aria-label="作業" className="grid flex-[2] grid-cols-2 gap-1 rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)] p-1">
-          {(['verify', 'place'] as const).map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => switchTab(t)}
-            className="h-10 rounded-[10px] text-[17px] font-black tracking-widest text-[var(--hp-ink2)] aria-selected:bg-[var(--hp-ink)] aria-selected:text-[var(--hp-bg)]">{t === 'verify' ? '照合' : '配膳'}</button>)}
-        </div>
-        {topLinks.map((link) => <button key={link.path} type="button" aria-label={link.label} onClick={() => onNavigate(link.path)}
-          className="flex h-12 min-w-0 flex-1 items-center justify-center gap-1 rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)] text-[15px] font-black">
-          <span style={{ color: link.color }}><HaizenIcon name={link.icon} className="h-[18px] w-[18px]" /></span>{link.short}
-        </button>)}
-        <button type="button" aria-label="ほかの画面" onClick={() => setSheet('menu')} className="grid h-12 w-11 shrink-0 place-items-center rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)]">•••</button>
-      </header>
+      <HaizenTopBar active={tab} onMenu={() => setSheet('menu')} onSelect={(next) => {
+        if (next === 'verify' || next === 'place') switchTab(next);
+        else onNavigate(next === 'purchase' ? '/kiosk/purchase-order-lookup' : '/kiosk/mobile-placement/part-search');
+      }} />
       <main className="flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-1.5">
         <HaizenStub label="移動票" subtitle="製造order" prompt="バーコードを読む" value={mp.transferOrder} color={colors.slip} active={!mp.transferOrder.trim()}
           onScan={() => mp.setScanField('transferOrder')} onClear={() => change(mp.setTransferOrder, '')} />

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MobilePlacementPage } from './MobilePlacementPage';
 
 const noop = vi.fn();
+const restoreShelfRegisterRouteState = vi.fn();
 
 vi.mock('../../features/mobile-placement/useRegisteredShelves', () => ({
   useRegisteredShelves: () => ({
@@ -40,7 +41,7 @@ vi.mock('../../features/mobile-placement/useMobilePlacementPageState', () => ({
     slipResult: 'idle' as const,
     resetSlipResult: noop,
     buildShelfRegisterRouteState: () => ({}),
-    restoreShelfRegisterRouteState: noop,
+    restoreShelfRegisterRouteState,
     slipVerifying: false,
     runSlipVerify: noop,
     shelfCode: '',
@@ -92,7 +93,7 @@ function renderPage(state?: unknown) {
   );
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
 describe('MobilePlacementPage', () => {
   it('メインでは Zero2W 配膳パネルを出さず、メニューに一覧への導線を出す', () => {
@@ -107,8 +108,6 @@ describe('MobilePlacementPage', () => {
   });
 
   it.each([
-    ['部品を探す', '/kiosk/mobile-placement/part-search'],
-    ['購買照会', '/kiosk/purchase-order-lookup'],
     ['パレット', '/kiosk/mobile-placement/pallet-viz'],
     ['Zero2W 配膳', '/kiosk/mobile-placement/zero2w-status'],
     ['棚マスタ', '/kiosk/mobile-placement/shelf-master']
@@ -119,12 +118,31 @@ describe('MobilePlacementPage', () => {
     expect(screen.getByText(path)).toBeInTheDocument();
   });
 
+  it.each([
+    ['部品', '/kiosk/mobile-placement/part-search'],
+    ['購買', '/kiosk/purchase-order-lookup']
+  ])('%s タブで正しいルートを開く', (label, path) => {
+    renderPage();
+    fireEvent.click(screen.getByRole('tab', { name: label }));
+    expect(screen.getByText(path)).toBeInTheDocument();
+  });
+
+  it('購買・部品からの state でメニューを一度開く', () => {
+    renderPage({ openHaizenMenu: true });
+    expect(screen.getByRole('dialog', { name: 'ほかの画面' })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(restoreShelfRegisterRouteState).not.toHaveBeenCalled();
+  });
+
   it('棚マスタから戻った state を一度復元する', () => {
-    const state = { transferOrder: 'T1', transferPart: 'P1', actualOrder: 'A1', actualFseiban: 'F1', actualPart: 'P1', slipResult: 'ok', shelfCode: '西-北-02', orderBarcode: 'T1' };
+    const state = { transferOrder: 'T1', transferPart: 'P1', actualOrder: 'A1', actualFseiban: 'F1', actualPart: 'P1', slipResult: 'ok', shelfCode: '西-北-02', orderBarcode: 'T1', openHaizenMenu: true };
     renderPage(state);
-    expect(noop.mock.calls.filter(([arg]) => arg === state)).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
-    expect(noop.mock.calls.filter(([arg]) => arg === state)).toHaveLength(1);
+    expect(restoreShelfRegisterRouteState).toHaveBeenCalledExactlyOnceWith(state);
+    expect(screen.getByRole('dialog', { name: 'ほかの画面' })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(restoreShelfRegisterRouteState).toHaveBeenCalledExactlyOnceWith(state);
   });
 
   it('写真入力の既存OCR処理へファイルを渡す', () => {

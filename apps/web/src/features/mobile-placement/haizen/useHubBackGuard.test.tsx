@@ -3,7 +3,7 @@ import { StrictMode, useState } from 'react';
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useHubBackGuard } from './useHubBackGuard';
+import { haizenTabNavigationOptions, useHubBackGuard } from './useHubBackGuard';
 
 const hub = '/kiosk/mobile-placement';
 type Entry = { state: unknown; url: string };
@@ -56,12 +56,16 @@ function Hub({ enabled }: { enabled: boolean }) {
     {overlay && <div role="dialog">{overlay}</div>}
     <button onClick={() => navigate(hub, { replace: true, state: { restored: 'updated' } })}>replace</button>
     <Link to="/kiosk/purchase-order-lookup">sub-screen</Link>
+    <button onClick={() => navigate('/kiosk/purchase-order-lookup', haizenTabNavigationOptions())}>purchase tab</button>
   </>;
 }
 
 function SubScreen() {
   const navigate = useNavigate();
-  return <button onClick={() => navigate(-1)}>return to hub</button>;
+  return <>
+    <button onClick={() => navigate(-1)}>return to hub</button>
+    <button onClick={() => navigate(hub, haizenTabNavigationOptions({ openHaizenMenu: true }))}>hub tab</button>
+  </>;
 }
 
 function mount(enabled = true) {
@@ -118,6 +122,28 @@ describe('useHubBackGuard with BrowserRouter', () => {
     expect(screen.getByLabelText('slip')).toBeInTheDocument();
     act(() => window.history.back());
     expect(window.location.pathname).toBe(hub);
+  });
+
+  it('reuses the guard on repeated tab replacements and closes overlays on Back', () => {
+    mount();
+    for (let i = 0; i < 5; i += 1) {
+      fireEvent.click(screen.getByText('purchase tab'));
+      expect(entries).toHaveLength(3);
+      expect(window.history.state.idx).toBe(1);
+      fireEvent.click(screen.getByText('hub tab'));
+      expect(entries).toHaveLength(3);
+      expect(window.history.state.usr.openHaizenMenu).toBe(true);
+      fireEvent.click(screen.getByText('replace')); // Consuming route state also preserves the guard.
+      fireEvent.click(screen.getByText('sheet'));
+      act(() => window.history.back());
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(entries).toHaveLength(3);
+    }
+    fireEvent.click(screen.getByText('purchase tab'));
+    act(() => window.history.back());
+    expect(screen.getByLabelText('slip')).toBeInTheDocument();
+    expect(cursor).toBe(2);
+    expect(entries).toHaveLength(3);
   });
 
   it('keeps one sentinel when the router replaces shelf return state', () => {
