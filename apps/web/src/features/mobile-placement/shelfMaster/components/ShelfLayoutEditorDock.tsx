@@ -112,7 +112,7 @@ export function ShelfLayoutEditorDock({
         >
           <p className={shelfMasterTheme.dockZoneTitle}>区画用途を割当</p>
           <div className={shelfMasterTheme.kindsGrid}>
-            {(['SHELF', 'MACHINE', 'AISLE', 'UNUSED'] as const).map((k) => (
+            {(['MACHINE', 'AISLE', 'UNUSED'] as const).map((k) => (
               <button
                 key={k}
                 type="button"

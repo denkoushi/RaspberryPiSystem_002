@@ -101,7 +101,7 @@ export async function updateHaizenPresetShelf(input: {
   if (!parsed.isStructured) {
     throw new ApiError(
       400,
-      '棚番は 西-北-01 の形式（エリア・列・2桁番号）で登録してください',
+      '棚の名前は「加工機名 方角」（例: DAD-3220 北）で指定してください',
       undefined,
       'HAIZEN_PRESET_NOT_STRUCTURED'
     );
