@@ -672,6 +672,8 @@ model MobilePlacementEvent {
 
 /// 部品配膳（製造order番号起点・Item は更新しない）
 model OrderPlacementEvent {
+  clientRecordId               String?                  @unique @map("client_record_id")
+  slipKind                     String                   @default("manufacturing_order") @map("slip_kind")
   id                           String                   @id @default(uuid())
   clientDeviceId               String
   shelfCodeRaw                 String
@@ -692,6 +694,7 @@ model OrderPlacementEvent {
 
 /// 製造orderごとの分配枝の現在棚（履歴は OrderPlacementEvent 側）
 model OrderPlacementBranchState {
+  slipKind                     String   @default("manufacturing_order") @map("slip_kind")
   id                           String   @id @default(uuid())
   manufacturingOrderBarcodeRaw String
   branchNo                     Int

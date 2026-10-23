@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../features/barcode-scan';
 import { HaizenHub } from '../../features/mobile-placement/haizen/HaizenHub';
 import { haizenTabNavigationOptions, useHubBackGuard } from '../../features/mobile-placement/haizen/useHubBackGuard';
 import { isHaizenNativeAvailable } from '../../features/mobile-placement/haizenNative';
@@ -57,15 +56,6 @@ export function MobilePlacementPage() {
           e.target.value = '';
         }}
       />
-      <BarcodeScanModal
-        open={mp.scanField !== null}
-        formats={mp.scanFormats}
-        engine="auto-native"
-        {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
-        onSuccess={mp.onScanSuccess}
-        onAbort={() => mp.setScanField(null)}
-      />
-
       <HaizenHub
         mp={mp}
         sheet={sheet}
