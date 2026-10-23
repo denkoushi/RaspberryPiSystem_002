@@ -131,23 +131,30 @@ describe('transfer JEV choice', () => {
   });
 
   it('shares the 40-call budget and three in-flight slots across drawings, including failures', async () => {
-    let active = 0;
+    // Each request is held until released, so the in-flight count does not depend on crop or timer speed.
     let maximum = 0;
-    const fetchMock = vi.fn(async () => {
-      active++;
-      maximum = Math.max(maximum, active);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      active--;
-      return new Response('', { status: 503 });
-    });
+    const held: Array<() => void> = [];
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
+      held.push(() => resolve(new Response('', { status: 503 })));
+      maximum = Math.max(maximum, held.length);
+    }));
     const { provider } = setup({ fetch: fetchMock });
     const a = await provider!('a', context);
     const b = await provider!('b', context);
-    const results = await Promise.all(Array.from({ length: 45 }, (_, i) => (i % 2 ? a! : b!)(item, candidates)));
+    const all = Promise.all(Array.from({ length: 45 }, (_, i) => (i % 2 ? a! : b!)(item, candidates)));
+    await vi.waitFor(() => expect(held).toHaveLength(3), { timeout: 10000, interval: 1 });
+    // With every slot held, no fourth request may start. A slow machine can only miss an extra slot here, never fail.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(held).toHaveLength(3);
+    for (let released = 0; released < 40; released++) {
+      // eslint-disable-next-line no-await-in-loop
+      await vi.waitFor(() => expect(held.length).toBe(Math.min(3, 40 - released)), { timeout: 10000, interval: 1 });
+      held.shift()!();
+    }
+    const results = await all;
     expect(results.every((result) => result === candidates)).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(40);
-    expect(maximum).toBeLessThanOrEqual(3);
-    expect(maximum).toBeGreaterThan(1);
+    expect(maximum).toBe(3);
   });
 });
 
