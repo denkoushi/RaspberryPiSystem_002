@@ -558,6 +558,25 @@ Change in this PR (planner): a residual token that is contained in a selected fi
 
 Private files: `work/flywheel/questions-2026-10-14.jsonl`, `real-2026-10-14.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-14.log`, `receipts-2026-10-14.jsonl`, `receipts-2026-10-15.jsonl`.
 
+### 2026-10-15: JEV image reranking of the material shelf「✦ 意味で探す」, offline (held: promising, sample too small)
+
+Scope: the procedure-material shelf search (`POST /api/assembly/procedure-materials/semantic-search`), not nonconformity Chat. The nonconformity gold sets have no image-centric target (all targets are text records), so the rerank was measured on the material shelf instead. Read-only copy of the 71 photo materials (photo, DGX image description, file name, text) from the Pi 5 into a temporary folder, deleted after the run; 16 calls to the production search for the current order.
+
+Questions: 16 written by the agent from the photos (not by the user): 10 photo questions (grinding step photos, a 3D bolt screenshot), 4 text questions (pages of the sample procedure PDF), 2 with no matching material (「溶接ビードの外観検査」, 「塗装ブースのフィルター交換」). Two photo questions were dropped because their target was outside the queried state list (the service's placed/unplaced state is not `documentId IS NOT NULL`), leaving 8 photo, 4 text, 2 none. Rerank: each of the top 10 candidates sent as one JPEG (long side at most 1568 px, `TypeSafe-Danger-Zone-Images: true`) with the request, `jev-1.13.0`, choice `match`/`not_match`; sorted by P(match), ties by the current order.
+
+| Set | n | current top1 | current top3 | JEV top1 | JEV top3 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| photo | 8 | 4 | 7 | 8 | 8 |
+| text (PDF pages) | 4 | 4 | 4 | 4 | 4 |
+
+- Gains: targets at current rank 7, 3, 2 and 2 moved to rank 1. No question got worse.
+- No matching material: the highest P(match) in the top 10 was 0.02 and 0.00, while every answerable question had a target at 0.66 or higher (median about 0.93). A floor around 0.5 would have shown 「近い素材が無い」 for both and kept every target. Non-targets reached 0.80 (txt06) and 0.64 (img10), so the floor hides the empty case but does not trim every unrelated item.
+- Time: median 0.45 s per pair, about 4.5 s for 10 pairs in sequence; in parallel it is about the slowest pair (0.5 to 1.1 s), on top of the current search (about 1 s).
+- Cost: 136 pairs, 554,472 input tokens (3,600 per photo pair, 5,000 per PDF page pair). At the rate seen in the T51 page-boundary run (about $0.0004 per 9,500 tokens) that is about $0.023 (about ¥3.5) for the run, about ¥0.25 per search of 10 candidates.
+- Failure: one material (176 x 132 px) was refused with HTTP 400 「Invalid image dimensions」 in all 4 questions that had it as a candidate; none was a target. A production version must upscale small images or keep their current position.
+
+Reading: on this small set JEV fixes every photo question that the current order missed at top1 and gives a clean signal for 「近い素材が無い」. The questions were written by the same agent that looked at the photos and the image descriptions, so they may be easier than real kiosk wording, and the none set is 2 questions. Decision: held, not adopted yet. Next: collect real 素材棚 queries (or have a second writer who has not seen the descriptions write 20 more), rerun with the same script, and then decide on a production change (parallel calls, a P floor for 「近い素材が無い」, a cache per query and material). Scripts and results were kept only in the session scratchpad; no private file kept.
+
 ### 2026-10-16: thirteenth night, 88% and no ask-back; the short department name went filter-only, and ambiguous linked terms gave way for the first time (measurement basis)
 
 Night of 2026-10-15 (22:0x), the first with #2023 (a residual token contained in a selected filter value is not content; Pi5 release the morning before).
