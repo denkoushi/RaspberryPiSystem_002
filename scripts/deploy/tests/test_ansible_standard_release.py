@@ -2467,6 +2467,19 @@ class WeeklySecurityUpgradeMigrationTests(unittest.TestCase):
         self.assertEqual(install["ansible.builtin.apt"]["state"], "present")
         self.assertNotIn("upgrade", install["ansible.builtin.apt"])
 
+    def test_tool_running_tasks_use_a_utf8_locale_on_non_utf8_hosts(self) -> None:
+        # Some kiosks run ja_JP.EUC-JP; localized tool output fails Ansible's strict UTF-8 check.
+        tasks = [*self.tasks, *(task for block in self.tasks if "block" in block for task in block["block"])]
+        modules = ("ansible.builtin.command", "ansible.builtin.apt", "ansible.builtin.systemd")
+        running = [task for task in tasks if any(module in task for module in modules)]
+        self.assertEqual(len(running), 5)
+        for task in running:
+            self.assertEqual(task["environment"]["LC_ALL"], "C.UTF-8", task["name"])
+            self.assertEqual(task["environment"]["LANG"], "C.UTF-8", task["name"])
+            self.assertEqual(task["environment"]["LANGUAGE"], "", task["name"])
+        unit = (ANSIBLE / "templates/raspi-os-security-update.service.j2").read_text()
+        self.assertIn("Environment=LC_ALL=C.UTF-8 LANG=C.UTF-8 LANGUAGE=\n", unit)
+
     def test_pi5_policy_is_after_commit_and_outside_api_rollback(self) -> None:
         main = release_main_body((ANSIBLE / "roles/release_pi5/tasks/main.yml").read_text())
         policy = next(task for task in main if task["name"] == "Converge the Pi5 weekly OS security update policy")

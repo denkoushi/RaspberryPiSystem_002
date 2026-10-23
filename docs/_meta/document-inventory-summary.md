@@ -11,17 +11,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 734 |
-| Total lines | 180735 |
-| Total bytes | 14606800 |
-| With frontmatter | 349 |
+| Documents | 738 |
+| Total lines | 181147 |
+| Total bytes | 14671854 |
+| With frontmatter | 351 |
 | With status | 169 |
 | source_of_truth declared | 115 |
 | References to EXEC_PLAN.md | 60 |
 | Question-mark corruption documents | 1 |
 | Replacement-character documents | 1 |
-| Long-line documents | 42 |
-| Local links | 5459 |
+| Long-line documents | 43 |
+| Local links | 5461 |
 | Broken local links | 127 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
@@ -31,11 +31,11 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Path | Lines | Bytes |
 |------|------:|------:|
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
-| `docs/knowledge-base/api.md` | 4903 | 358135 |
+| `docs/knowledge-base/api.md` | 4911 | 359758 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281621 |
-| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3225 | 442254 |
+| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3226 | 442832 |
 | `docs/archive/deployments/2026-05.md` | 2571 | 499357 |
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
@@ -79,7 +79,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/decisions/ADR-20260930-pi4-sd-card-backup.md` (20:1251)
 - `docs/guides/phase3-token-refresh-test-results.md` (94:1437)
 - `docs/guides/verification-checklist.md` (623:1641)
-- `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (218:1414, 220:1048, 229:1224)
+- `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (219:1414, 221:1048, 230:1224)
 - `docs/knowledge-base/KB-313-kiosk-documents.md` (137:1274, 157:1178)
 - `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1808:1045, 1815:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 79:1101, 337:1220)

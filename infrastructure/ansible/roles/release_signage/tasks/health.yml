@@ -19,4 +19,4 @@
   rescue:
     - name: Report the unapplied OS security update policy without failing the release
       ansible.builtin.debug:
-        msg: "Weekly OS security update policy was not applied on {{ inventory_hostname }}; the release continues."
+        msg: "Weekly OS security update policy was not applied on {{ inventory_hostname }}; the release continues. Reason: {{ (ansible_failed_result.msg | default('unknown') | string)[:300] }}"

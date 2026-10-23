@@ -138,7 +138,7 @@ def next_state(previous, mode, result, now, reason=None, selected=None,
 
 def read_state(path):
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
 
@@ -147,7 +147,7 @@ def write_state(path, state):
     path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=".state-", dir=path.parent)
     try:
-        with os.fdopen(descriptor, "w") as stream:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             os.fchmod(stream.fileno(), 0o644)
             json.dump(state, stream, ensure_ascii=False)
             stream.write("\n")
