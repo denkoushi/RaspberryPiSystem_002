@@ -13,8 +13,12 @@
 - [x] 2026-10-22 公式文書、vLLM recipe、NVIDIA フォーラム、Mia-AiLab、両リポジトリを調査した。
 - [x] R1: 2026-10-22 ローカル実装・文書更新済み。`scripts/dgx-local-llm-system/tests` の全135テストが成功(sandbox 外で実行)。変更shellの `bash -n` は成功、shellcheck は未導入。
 - [x] CP1: 2026-10-22 Control Plane に後方互換の変更を入れた(起動失敗の検出文字列、締切の環境変数 `DGX_BUSINESS_STARTUP_TIMEOUT_SECONDS`、Hermes の待ち時間を `business_` 全体へ)。CP の全テスト成功。
-- [ ] T2: 2回目の試験(下の受入条件)を保守時間内に行う。
-- [ ] 反映: CP を先にリリースし、次にこのリポジトリのファイルを Spark 1 へ配置する。そのうえで指す先(Pi5 vault、CP inventory)を切り替える。
+- [x] T2: 2026-10-22 2回目の試験に合格した(下の受入条件)。
+- [x] 反映: 2026-10-22 21:16 に本番を GLM へ切り替えた。CP を先にリリースし、このリポジトリのファイルを Spark 1 へ配置し、Pi5 vault と CP inventory の指す先を GLM にした。keep-warm の drop-in(`/etc/systemd/system/dgx-control-keep-warm.service.d/config.conf`)は、このときは手で書き換えた。
+- [x] 2026-10-23 GPU メモリ割合を 0.87 から 0.85 に下げた(#2239)。0.87 では Spark 1 の空きが約3GBで警告が出ていた。0.85 で入れ直した後、空きは Spark 1 が約7〜8GB、Spark 2 が約10GB、KV cache は 15.66GiB。priority=10 の会話 4.9秒、業務の会話 10.8秒、道具の呼び出し 0.9秒で、すべて正しく答えた。
+- [x] 2026-10-23 本番の会話で切替前後の答え方を比べた(#2242)。GLM 94.8%、Qwen 88.8%。
+- [ ] 追従: モデル指定なしの `/start` が Qwen で起動する問題と、ラベルの無い複数画像で色を取り違える問題を直す(#2244)。
+- [ ] 追従: Control Plane の既定プロファイルを GLM にし、keep-warm の drop-in を `dgx_agent` ロールで再適用できるようにする(Control Plane 側の PR)。
 - [ ] 経過観察の後、Qwen の重みを外付けSSDへ移し、Qwen マニフェストを `enabled:false` にする。
 
 ## Surprises & Discoveries
@@ -23,6 +27,9 @@
 - GB10 は統合メモリなので、ページキャッシュは vLLM から「空き」に見えない(vLLM issue #35313)。そのため `Free memory ... less than desired GPU memory utilization` で起動に失敗する。起動直前に drop_caches すると通った。
 - GLM のチャットテンプレートには `enable_thinking` が無い。`chat_template_kwargs.reasoning_effort` は low/high を受け、それ以外は max になる。今の gateway が付ける `enable_thinking:false` を送ると、英語の思考が `content` に漏れる。Pi5 は content が空のとき reasoning を表示に使うので、漏れは利用者に直接見える。公式にも思考オフは無い。zai-org のカードは `clear_thinking=true` を推奨している。
 - Mia-AiLab の GLM-5.3 は EXL3 形式だけで、今回の vLLM FP4 構成にはそのまま使えない。
+- 2026-10-23 0.85 へ入れ直すとき、CP を通さずに手で再起動した。CP の起動監視(`business_startup.py`)はその起動の確認に20分間通らず、08:07 に「startup readiness timed out」と記録して、自動で1回だけ再起動した(08:13 頃)。その後は active・確認済みで、業務の利用は正常。原因は確定していない(確認用の会話がリースや優先度の高い要求に断られた、または 07:44〜07:57 に business-proxy が止まっていた可能性)。教訓: 再起動は CP の `/stop-force` と `/start` で行う。手で再起動すると、監視が失敗と判断して入れ直すことがある。自動再試行の回数は1回使った。
+- 2026-10-23 GLM はラベルの無い画像3枚以上を1つのメッセージで受けると、画像どうしの色を取り違えた。各画像の前に「画像N:」があれば正しく答えた。Pi5 はすでにラベルを付けているので、本番の利用者には影響が無い。gateway でも付けるよう直す(#2244)。
+- 2026-10-23 keep-warm の drop-in を書く正規の経路は、CP の `dgx_agent` ロール(タスク「Configure central Lease-aware keep-warm」)だった。CP の通常リリース(deploy.sh)はこれを書かない。
 
 ## Decision Log
 
