@@ -221,7 +221,10 @@ export function formatRecords(results, catalog) {
   const records = (results ?? []).flatMap((result) => {
     const entry = entries.find((entry) => entry.id === result.sourceId);
     if (!entry) return [];
-    const fields = entry.fields.filter((field) => ANSWER_ROLES.has(field.role)).flatMap((field) => {
+    // Besides number, date, department and body, a source may name facet fields to show in
+    // answers (answerFields, e.g. part number and part name), so records can be told apart.
+    const answerFields = new Set(definitionForCatalog(entry).answerFields ?? []);
+    const fields = entry.fields.filter((field) => ANSWER_ROLES.has(field.role) || answerFields.has(field.key)).flatMap((field) => {
       const value = result?.fields?.[field.key];
       return typeof value === 'string' ? [{ label: field.label, value, role: field.role }] : [];
     });

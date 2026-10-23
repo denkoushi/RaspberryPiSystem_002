@@ -137,6 +137,16 @@ test('optional numeric and retrieval policy declarations are validated without r
 });
 
 
+test('answer fields are optional and must name declared unique metadata fields',()=>{
+  const base=structuredClone(knowledgeProcedureDefinition);
+  for(const answerFields of ['title',[''],['title','title'],['unknownColumn'],[null]]) {
+    assert.throws(()=>validateSourceDefinition({...base,answerFields},base.id),/answerFields/);
+  }
+  assert.equal(validateSourceDefinition({...base,answerFields:['title']},base.id).answerFields[0],'title');
+  assert.deepEqual(validateSourceDefinition({...base},base.id).answerFields,undefined);
+});
+
+
 test('conversational defaults to true and only accepts booleans',()=>{
   const base=structuredClone(knowledgeProcedureDefinition);
   assert.equal(isConversationalSource(base),true);
