@@ -29,6 +29,61 @@ def load_module():
     return module
 
 
+class MultiImageLabelsTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module()
+        self.images = [
+            {"type": "image_url", "image_url": {"url": f"https://example.com/{index}.png"}}
+            for index in range(3)
+        ]
+
+    def test_three_unlabelled_images_get_ordered_labels_without_mutating_input(self):
+        messages = [{"role": "user", "content": self.images}]
+        original = json.dumps(messages)
+        expected = [{"role": "user", "content": [
+            {"type": "text", "text": "画像1:"}, self.images[0],
+            {"type": "text", "text": "画像2:"}, self.images[1],
+            {"type": "text", "text": "画像3:"}, self.images[2],
+        ]}]
+        self.assertEqual(self.module.label_multi_image_messages(messages), expected)
+        self.assertEqual(json.dumps(messages), original)
+        self.assertEqual(self.module.label_multi_image_messages(expected), expected)
+
+    def test_mixed_labels_preserve_text_and_reset_numbering_per_message(self):
+        label = {"type": "text", "text": "First photo:"}
+        messages = [
+            {"role": "user", "content": [label, *self.images]},
+            {"role": "user", "content": self.images[:2]},
+        ]
+        out = self.module.label_multi_image_messages(messages)
+        self.assertEqual(out[0]["content"], [
+            label, self.images[0], {"type": "text", "text": "画像2:"}, self.images[1],
+            {"type": "text", "text": "画像3:"}, self.images[2],
+        ])
+        self.assertEqual(out[1]["content"], [
+            {"type": "text", "text": "画像1:"}, self.images[0],
+            {"type": "text", "text": "画像2:"}, self.images[1],
+        ])
+
+    def test_single_image_string_and_text_only_content_unchanged(self):
+        for content in (self.images[:1], "hello", [], [{"type": "text", "text": "hello"}]):
+            with self.subTest(content=content):
+                messages = [{"role": "user", "content": content}]
+                self.assertEqual(self.module.label_multi_image_messages(messages), messages)
+
+    def test_labels_apply_only_to_blue_chat_completions(self):
+        messages = [{"role": "user", "content": self.images}]
+        body = json.dumps({"messages": messages}).encode()
+        for backend, path in (("blue", "/v1/chat/completions"),
+                              ("green", "/v1/chat/completions"), ("blue", "/v1/completions")):
+            with self.subTest(backend=backend, path=path):
+                out = self.module.inject_blue_chat_completions_defaults(path, body, backend)
+                if backend == "blue" and path == "/v1/chat/completions":
+                    self.assertEqual(json.loads(out)["messages"], self.module.label_multi_image_messages(messages))
+                else:
+                    self.assertEqual(out, body)
+
+
 class GlmThinkingDefaultsTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()

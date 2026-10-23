@@ -72,8 +72,9 @@ beforeEach(() => {
 });
 
 describe('Haizen hub', () => {
-  it('top row links, three menu routes, Escape and scrim dismiss', () => {
+  it('top row has four tabs, purchase navigates, and menu dismisses', () => {
     mount();
+    expect(within(screen.getByRole('tablist', { name: '作業' })).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['照合', '配膳', '購買', '部品']);
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
     expect(within(screen.getByRole('dialog')).getAllByRole('button')).toHaveLength(3);
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -81,18 +82,23 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
     fireEvent.mouseDown(screen.getByRole('dialog'));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '購買照会' }));
+    fireEvent.click(screen.getByRole('tab', { name: '購買' }));
     expect(screen.getByText('sub-screen')).toBeInTheDocument();
   });
   it('lists shelf photos under the shelf stub on the 配膳 tab', async () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
     const list = within(screen.getByRole('region', { name: '棚の写真' }));
-    expect(screen.getByRole('button', { name: '部品を探す' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '部品' })).toBeInTheDocument();
     fireEvent.click(list.getByRole('button', { name: '西', exact: true }));
     fireEvent.click(await list.findByRole('button', { name: '棚 西-北-02', exact: true }));
     expect(list.getByRole('button', { name: '棚 西-北-02', exact: true })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(list.getByRole('button', { name: '棚 西-北-02', exact: true }));
+    expect(screen.getByRole('dialog', { name: '棚の写真を拡大' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる', exact: true }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(list.getByRole('button', { name: '棚 西-北-02', exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
   it('auto verifies, syncs registration order, registers and resets all fields', async () => {
     vi.mocked(registerOrderPlacement).mockResolvedValue({ branchState: { id: 'b1', branchNo: 1, shelfCodeRaw: '西-北-02' }, event: { id: 'event1234' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);

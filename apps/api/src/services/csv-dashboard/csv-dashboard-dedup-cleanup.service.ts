@@ -29,7 +29,9 @@ type CleanupDuplicateLosersGloballyParams = {
   keyColumns: string[];
   winnerOrder: WinnerOrderSpec[];
   deleteBatchSize?: number;
-  maxBatches?: number;
+  scanLimit?: number;
+  maxScans?: number;
+  deadline?: Date;
 };
 
 const chunk = <T>(items: T[], size: number): T[][] => {
@@ -128,45 +130,78 @@ export class CsvDashboardDedupCleanupService {
     return { deletedCount };
   }
 
-  async deleteDuplicateLosersGlobally(params: CleanupDuplicateLosersGloballyParams): Promise<{ deletedCount: number }> {
+  async deleteDuplicateLosersGlobally(params: CleanupDuplicateLosersGloballyParams): Promise<{
+    deletedCount: number;
+    stoppedReason: 'completed' | 'deadline' | 'statement_timeout' | 'max_scans';
+    scans: number;
+  }> {
+    let deletedCount = 0;
+    let scans = 0;
+    const deadlineMs = params.deadline?.getTime();
+    const deadlineReached = () => deadlineMs !== undefined && Date.now() >= deadlineMs;
     const keyColumns = params.keyColumns.filter((v) => v.trim().length > 0);
     if (keyColumns.length === 0) {
-      return { deletedCount: 0 };
+      return { deletedCount, stoppedReason: 'completed', scans };
     }
     const winnerOrder = params.winnerOrder.length > 0 ? params.winnerOrder : this.defaultWinnerOrder();
     const deleteBatchSize = Math.max(100, Math.min(params.deleteBatchSize ?? 5000, 50000));
-    const maxBatches = Math.max(1, Math.min(params.maxBatches ?? 1000, 100000));
-
+    const scanLimit = Math.max(1000, Math.min(params.scanLimit ?? 200000, 500000));
+    const maxScans = Math.max(1, Math.min(params.maxScans ?? 50, 100000));
     const rankedPartitionSql = this.buildPartitionBySql(keyColumns);
     const winnerOrderSql = this.buildWinnerOrderSql(winnerOrder);
 
-    let deletedCount = 0;
-    for (let i = 0; i < maxBatches; i++) {
-      const affected = await prisma.$executeRaw<number>(Prisma.sql`
-        WITH ranked AS (
-          SELECT
-            r."id" AS "id",
-            ROW_NUMBER() OVER (
-              PARTITION BY r."csvDashboardId", ${rankedPartitionSql}
-              ORDER BY ${winnerOrderSql}
-            ) AS rn
-          FROM "CsvDashboardRow" AS r
-          WHERE r."csvDashboardId" = ${params.csvDashboardId}
-        ),
-        to_delete AS (
-          SELECT "id" FROM ranked WHERE rn > 1 LIMIT ${deleteBatchSize}
-        )
-        DELETE FROM "CsvDashboardRow"
-        WHERE "id" IN (SELECT "id" FROM to_delete);
-      `);
-      const affectedCount = typeof affected === 'number' ? affected : 0;
-      deletedCount += affectedCount;
-      if (affectedCount === 0) {
-        break;
+    while (scans < maxScans) {
+      if (deadlineReached()) {
+        return { deletedCount, stoppedReason: 'deadline', scans };
+      }
+      const statementTimeoutMs = Math.max(1000, deadlineMs === undefined ? 30 * 60 * 1000 : deadlineMs - Date.now());
+      let losers: Array<{ id: string }>;
+      try {
+        losers = await prisma.$transaction(async (tx) => {
+          // Recheck after acquiring a connection; pool waiting also consumes the deadline.
+          if (deadlineReached()) return [];
+          const remainingMs = Math.max(1000, deadlineMs === undefined ? statementTimeoutMs : deadlineMs - Date.now());
+          // SET does not accept bind parameters; this literal is computed only from milliseconds.
+          await tx.$executeRaw(Prisma.sql`SET LOCAL statement_timeout = ${Prisma.raw(String(remainingMs))}`);
+          scans++;
+          return tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            WITH ranked AS (
+              SELECT
+                r."id" AS "id",
+                ROW_NUMBER() OVER (
+                  PARTITION BY r."csvDashboardId", ${rankedPartitionSql}
+                  ORDER BY ${winnerOrderSql}
+                ) AS rn
+              FROM "CsvDashboardRow" AS r
+              WHERE r."csvDashboardId" = ${params.csvDashboardId}
+            )
+            SELECT "id" FROM ranked WHERE rn > 1 LIMIT ${scanLimit}
+          `);
+        }, { timeout: statementTimeoutMs + 5000 });
+      } catch (error) {
+        const details = error as { code?: unknown; message?: unknown; meta?: { code?: unknown; message?: unknown } } | null;
+        if (/57014|statement timeout/i.test(`${details?.code} ${details?.message} ${details?.meta?.code} ${details?.meta?.message}`)) {
+          return { deletedCount, stoppedReason: 'statement_timeout', scans };
+        }
+        throw error;
+      }
+      if (deadlineReached()) {
+        return { deletedCount, stoppedReason: 'deadline', scans };
+      }
+      if (losers.length === 0) {
+        return { deletedCount, stoppedReason: 'completed', scans };
+      }
+      for (const ids of chunk(losers.map((row) => row.id), deleteBatchSize)) {
+        if (deadlineReached()) {
+          return { deletedCount, stoppedReason: 'deadline', scans };
+        }
+        const affected = await prisma.$executeRaw<number>(Prisma.sql`
+          DELETE FROM "CsvDashboardRow" WHERE "id" = ANY(${ids}::text[])
+        `);
+        deletedCount += typeof affected === 'number' ? affected : 0;
       }
     }
-
-    return { deletedCount };
+    return { deletedCount, stoppedReason: 'max_scans', scans };
   }
 
   private normalizeKeys(keys: Array<Record<string, string>>, keyColumns: string[]): Array<Record<string, string>> {

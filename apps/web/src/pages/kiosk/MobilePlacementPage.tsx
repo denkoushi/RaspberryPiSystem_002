@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../features/barcode-scan';
 import { HaizenHub } from '../../features/mobile-placement/haizen/HaizenHub';
-import { useHubBackGuard } from '../../features/mobile-placement/haizen/useHubBackGuard';
+import { haizenTabNavigationOptions, useHubBackGuard } from '../../features/mobile-placement/haizen/useHubBackGuard';
 import { isHaizenNativeAvailable } from '../../features/mobile-placement/haizenNative';
 import { isMobilePlacementShelfRegisterRouteState } from '../../features/mobile-placement/shelfSelection';
 import { useIsPhoneViewport } from '../../features/mobile-placement/ui/useIsPhoneViewport';
@@ -32,8 +32,11 @@ export function MobilePlacementPage() {
   const actualSlipFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!isMobilePlacementShelfRegisterRouteState(location.state)) return;
-    mp.restoreShelfRegisterRouteState(location.state);
+    const restoreShelf = isMobilePlacementShelfRegisterRouteState(location.state);
+    const openMenu = location.state?.openHaizenMenu === true;
+    if (!restoreShelf && !openMenu) return;
+    if (restoreShelf) mp.restoreShelfRegisterRouteState(location.state);
+    if (openMenu) setSheet('menu');
     navigate(location.pathname, { replace: true, state: undefined });
     // mp の restore 関数のみ使用（安定）。location を依存に含め戻り state を一度だけ反映する。
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mp 全体を入れると再実行が増える
@@ -70,7 +73,8 @@ export function MobilePlacementPage() {
         shelves={registeredShelvesQuery}
         branches={orderBranchesQuery}
         suggestedNextBranchNo={suggestedNextBranchNo}
-        onNavigate={(path) => navigate(path)}
+        onNavigate={(path) => navigate(path, path === '/kiosk/purchase-order-lookup' || path === '/kiosk/mobile-placement/part-search'
+          ? haizenTabNavigationOptions() : undefined)}
         onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master', {
           state: mp.buildShelfRegisterRouteState()
         })}
