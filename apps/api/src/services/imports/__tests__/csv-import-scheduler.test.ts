@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // node-cronをモックして、登録されたcallbackを明示的に実行できるようにする
 const callbacksBySchedule = new Map<string, Array<() => unknown>>();
@@ -75,6 +75,71 @@ describe('CsvImportScheduler (DI-friendly)', () => {
     mockCreateAlertDelivery.mockReset();
     mockFindCsvDashboards.mockReset();
     mockFindCsvDashboards.mockResolvedValue([]);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it.each([
+    ['2026-10-22T17:40:00Z', '2026-10-22T20:30:00Z'],
+    ['2026-10-22T20:00:00Z', '2026-10-22T20:30:00Z'],
+  ])('nightly dedup uses today 05:30 JST even when started late (%s) and isolates failures', async (now, cutoff) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(now));
+    const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
+    const { logger } = await import('../../../lib/logger.js');
+    vi.mocked(logger.info).mockClear();
+    vi.mocked(logger.warn).mockClear();
+    loadMock.mockResolvedValue({ storage: { provider: 'dropbox', options: {} }, csvImports: [] });
+    mockFindCsvDashboards.mockResolvedValue([
+      { id: 'first', name: 'First', dedupKeyColumns: ['key'] },
+      { id: 'second', name: 'Second', dedupKeyColumns: ['key'] },
+    ]);
+    const cleanup = vi.fn().mockRejectedValueOnce(new Error('failed dashboard')).mockResolvedValueOnce({
+      deletedCount: 123, stoppedReason: 'completed', scans: 2,
+    });
+    const scheduler = new CsvImportScheduler({
+      createCsvDashboardDedupCleanupService: () => ({ deleteDuplicateLosersGlobally: cleanup } as any),
+    });
+    await scheduler.start();
+    const callback = callbacksBySchedule.get('40 2 * * *')?.[0];
+    expect(callback).toBeDefined();
+    await callback!();
+    expect(cleanup).toHaveBeenCalledTimes(2);
+    expect(cleanup.mock.calls.map(([params]) => params.deadline)).toEqual([new Date(cutoff), new Date(cutoff)]);
+    expect(cleanup.mock.calls[1][0].csvDashboardId).toBe('second');
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
+      dashboardId: 'second', deletedCount: 123, stoppedReason: 'completed', scans: 2, elapsedMs: 0,
+    }), expect.any(String));
+    scheduler.stop();
+  });
+
+  it.each([true, false])('nightly dedup skips remaining dashboards at the deadline (already late: %s)', async (alreadyLate) => {
+    vi.useFakeTimers();
+    const deadline = new Date('2026-10-22T20:30:00Z');
+    vi.setSystemTime(alreadyLate ? deadline : new Date('2026-10-22T20:29:00Z'));
+    const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
+    const { logger } = await import('../../../lib/logger.js');
+    vi.mocked(logger.info).mockClear();
+    vi.mocked(logger.warn).mockClear();
+    loadMock.mockResolvedValue({ storage: { provider: 'dropbox', options: {} }, csvImports: [] });
+    mockFindCsvDashboards.mockResolvedValue([
+      { id: 'first', name: 'First', dedupKeyColumns: ['key'] },
+      { id: 'second', name: 'Second', dedupKeyColumns: ['key'] },
+    ]);
+    const cleanup = vi.fn(async () => {
+      vi.setSystemTime(deadline);
+      return { deletedCount: 1, stoppedReason: 'deadline', scans: 1 };
+    });
+    const scheduler = new CsvImportScheduler({
+      createCsvDashboardDedupCleanupService: () => ({ deleteDuplicateLosersGlobally: cleanup } as any),
+    });
+    await scheduler.start();
+    const callback = callbacksBySchedule.get('40 2 * * *')?.[0];
+    expect(callback).toBeDefined();
+    await callback!();
+    expect(cleanup).toHaveBeenCalledTimes(alreadyLate ? 0 : 1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ deadline }), expect.stringContaining('skipping remaining dashboards'));
+    scheduler.stop();
   });
 
   it('should register cron tasks (import + cleanup + retention)', async () => {
