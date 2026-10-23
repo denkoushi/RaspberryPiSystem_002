@@ -9,7 +9,7 @@ test('the readiness probe sends one tiny fixed request with the requested timeou
     return { ok: true, content: 'OK' };
   };
   assert.deepEqual(await probeChat(chat, { timeoutMs: 123 }), { ok: true });
-  assert.deepEqual(requests, [{ messages: [{ role: 'user', content: 'Reply OK.' }], maxTokens: 8, timeoutMs: 123 }]);
+  assert.deepEqual(requests, [{ messages: [{ role: 'user', content: 'Reply OK.' }], maxTokens: 64, timeoutMs: 123 }]);
 });
 
 test('probe limits override the adapter defaults for that request only', async () => {
@@ -22,7 +22,7 @@ test('probe limits override the adapter defaults for that request only', async (
   });
   assert.deepEqual(await probeChat(chat), { ok: true });
   await chat({ messages: [] });
-  assert.equal(requests[0].max_tokens, 8);
+  assert.equal(requests[0].max_tokens, 64);
   assert.equal(requests[0].temperature, 0);
   assert.equal(requests[0].chat_template_kwargs.enable_thinking, false);
   assert.equal(Object.hasOwn(requests[0], 'response_format'), false);
@@ -30,9 +30,11 @@ test('probe limits override the adapter defaults for that request only', async (
 });
 
 test('probe failures retain the DGX adapter reason vocabulary', async () => {
-  for (const reason of ['http_503', 'http_429', 'timeout', 'transport', 'truncated']) {
+  for (const reason of ['http_503', 'http_429', 'timeout', 'transport']) {
     assert.deepEqual(await probeChat(async () => ({ ok: false, reason })), { ok: false, reason });
   }
+  // A truncated reply means the model answered; the probe only asks whether it is up.
+  assert.deepEqual(await probeChat(async () => ({ ok: false, reason: 'truncated' })), { ok: true });
   for (const [name, reason] of [['TimeoutError', 'timeout'], ['AbortError', 'timeout'], ['TypeError', 'transport']]) {
     assert.deepEqual(await probeChat(async () => { throw Object.assign(new Error('failed'), { name }); }), { ok: false, reason });
   }
