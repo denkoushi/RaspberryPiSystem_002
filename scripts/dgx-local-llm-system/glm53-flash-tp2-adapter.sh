@@ -119,7 +119,9 @@ tmp = path.with_suffix(path.suffix + ".tmp")
 tmp.write_text(json.dumps({"sshTarget": sys.argv[2], "containerName": sys.argv[3]}) + "\n", encoding="utf-8")
 tmp.replace(path)
 PY
-worker docker "${DOCKER_ARGS[@]}" --name "${WORKER_NAME}" \
+# Pin each rank's vLLM address to the cluster link; the default-route IP (e.g. Wi-Fi)
+# may be unreachable from the peer and hangs the startup handshake.
+worker docker "${DOCKER_ARGS[@]}" --name "${WORKER_NAME}" -e "VLLM_HOST_IP=${WORKER_SSH#*@}" \
   -v "${WORKER_MODEL_DIR}:/models/GLM-5.3-Flash-FP4-Local:ro" \
   --entrypoint vllm "${IMAGE}" "${VLLM_ARGS[@]}" --node-rank 1 --headless
 [[ "$(worker docker inspect --format '{{.State.Running}}' "${WORKER_NAME}")" == "true" ]] || fail "worker is not running"
@@ -130,7 +132,7 @@ fi
 if ! docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
   echo "GLM TP2 adapter: head drop_caches failed; continuing launch" >&2
 fi
-docker "${DOCKER_ARGS[@]}" --name "${HEAD_NAME}" \
+docker "${DOCKER_ARGS[@]}" --name "${HEAD_NAME}" -e "VLLM_HOST_IP=${HEAD_IP}" \
   -v "${MODEL_DIR}:/models/GLM-5.3-Flash-FP4-Local:ro" \
   --entrypoint vllm "${IMAGE}" "${VLLM_ARGS[@]}" --node-rank 0 \
   --host 127.0.0.1 --port "${HOST_PORT}" --scheduling-policy priority --limit-mm-per-prompt "${LIMIT_MM}"

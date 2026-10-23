@@ -141,6 +141,8 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
             }.items():
                 self.assertEqual(args[args.index(key) + 1], value)
             self.assertIn(f"{self.model}:/models/GLM-5.3-Flash-FP4-Local:ro", args)
+            host_ip = "192.168.100.10" if node == "head" else "192.168.100.11"
+            self.assertIn(f"VLLM_HOST_IP={host_ip}", args)
             for setting in ("NCCL_IB_DISABLE=0", "CUTE_DSL_ARCH=sm_121a", "VLLM_USE_V2_MODEL_RUNNER=1", "B12X_W4A16_A4_PREFILL=1"):
                 self.assertIn(setting, args)
             self.assertEqual(json.loads(args[args.index("--speculative-config") + 1]), {
