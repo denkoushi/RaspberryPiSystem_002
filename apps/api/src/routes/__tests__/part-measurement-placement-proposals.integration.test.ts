@@ -13,7 +13,7 @@ import {
   PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION
 } from '../../services/part-measurement/part-measurement-drawing-dimension-map-payload.js';
 import { SIBLING_MATCH_VERSION } from '../../services/part-measurement/part-measurement-drawing-sibling-match.js';
-import { getPartMeasurementDrawingPlacementService } from '../../services/part-measurement/part-measurement-drawing-placement.service.js';
+import { PartMeasurementDrawingPlacementService, getPartMeasurementDrawingPlacementService } from '../../services/part-measurement/part-measurement-drawing-placement.service.js';
 
 // Uses the migrated CI Postgres database, like part-measurement.integration.test.ts.
 // Only image storage is stubbed; fingerprinting, map decoding, transactions and auth are real.
@@ -248,6 +248,26 @@ describe('placement proposals API / Postgres', () => {
     });
     expect(empty).toHaveLength(1);
     expect(empty[0]).toMatchObject({ placementVersion: 'transfer-v2:CUTTING', sourceTemplateId: null });
+  });
+
+  it('retries a PENDING sibling match before an older never-visited drawing with batch limit 1', async () => {
+    await completedMap(targetId);
+    const pending = await prisma.partMeasurementDrawingSiblingMatch.updateMany({
+      where: { visualTemplateId: targetId },
+      data: { status: 'PENDING', attempts: 1, siblings: [], updatedAt: new Date(1000) }
+    });
+    expect(pending.count).toBe(1);
+    const olderMap = await completedMap(sourceId);
+    await prisma.partMeasurementDrawingDimensionMap.update({
+      where: { id: olderMap.id }, data: { createdAt: new Date(0) }
+    });
+    await prisma.partMeasurementDrawingSiblingMatch.deleteMany({ where: { visualTemplateId: sourceId } });
+    const matcher = { match: vi.fn().mockResolvedValue({ status: 'PENDING', method: null }) };
+    const service = new PartMeasurementDrawingPlacementService(undefined, undefined, matcher as never);
+
+    await service.backfill(1);
+
+    expect(matcher.match).toHaveBeenCalledExactlyOnceWith(targetId);
   });
 
   it('backfills only the latest map without repeatedly selecting an older unhandled fingerprint', async () => {

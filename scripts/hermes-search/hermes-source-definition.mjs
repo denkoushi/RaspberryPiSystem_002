@@ -33,6 +33,12 @@ export function validateSourceDefinition(value,expectedId) {
       throw new Error(`invalid ${name}`);
     }
   }
+  if(value.answerFields!==undefined) {
+    if(!Array.isArray(value.answerFields) || value.answerFields.some(x=>typeof x!=='string' || !x) || new Set(value.answerFields).size!==value.answerFields.length
+      || value.answerFields.some(key=>!Object.hasOwn(value.metadataFields??{},key))) {
+      throw new Error('invalid answerFields');
+    }
+  }
   if(value.organizedContextClasses.some(name=>!Object.hasOwn(value.organizedLabels,name))) {
     throw new Error('unknown organized context class');
   }

@@ -8,6 +8,7 @@ export const mobilePlacementQueryKeys = {
   clientCapabilities: ['mobile-placement', 'client-capabilities'] as const,
   shelfLayout: ['mobile-placement', 'shelf-layout'] as const,
   shelfLayoutZone: (macroZoneId: string | null) => ['mobile-placement', 'shelf-layout', 'zone', macroZoneId] as const,
+  shelfMachines: ['mobile-placement', 'shelf-machines'] as const,
   machineMasters: ['mobile-placement', 'machine-masters'] as const,
   partSearch: (partQuery: string, machineQuery: string) => ['mobile-placement-part-search', partQuery, machineQuery] as const,
 };

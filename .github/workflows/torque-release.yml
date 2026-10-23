@@ -183,7 +183,7 @@ jobs:
       - name: Run API ownership routes and PostgreSQL fencing contracts
         run: |
           export DATABASE_URL="$TORQUE_COMPAT_DATABASE_URL"
-          pnpm --filter @raspi-system/api test -- \
+          pnpm --filter @raspi-system/api test \
             src/services/torque-wrenches/__tests__/torque-wrench-usage-lease.policy.test.ts \
             src/services/torque-wrenches/__tests__/torque-wrench-confirmation-use.policy.test.ts \
             src/routes/__tests__/torque-wrenches.integration.test.ts \
@@ -201,7 +201,7 @@ jobs:
 
       - name: Run Web ownership transport and controller contracts
         run: |
-          pnpm --filter @raspi-system/web test -- \
+          pnpm --filter @raspi-system/web test \
             src/features/torque-wrench-connection/torqueWrenchConnectionTransport.test.ts \
             src/features/torque-wrench-connection/useTorqueWrenchConnection.test.ts \
             src/features/torque-wrench-connection/torqueWrenchConnectionPresentation.test.ts

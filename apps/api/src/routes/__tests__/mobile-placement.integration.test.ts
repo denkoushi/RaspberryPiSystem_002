@@ -772,11 +772,11 @@ describe('mobile-placement API', () => {
         'Content-Type': 'application/json',
         'x-client-key': apiKey
       },
-      payload: { shelfCodeRaw: '東-南-05' }
+      payload: { shelfCodeRaw: 'DAD-3220 南' }
     });
     expect(created.statusCode).toBe(200);
     const cj = created.json() as { shelf: { shelfCodeRaw: string; isStructured: boolean } };
-    expect(cj.shelf.shelfCodeRaw).toBe('東-南-05');
+    expect(cj.shelf.shelfCodeRaw).toBe('DAD-3220 南');
     expect(cj.shelf.isStructured).toBe(true);
 
     const dup = await app.inject({
@@ -786,7 +786,7 @@ describe('mobile-placement API', () => {
         'Content-Type': 'application/json',
         'x-client-key': apiKey
       },
-      payload: { shelfCodeRaw: '東-南-05' }
+      payload: { shelfCodeRaw: 'DAD-3220 南' }
     });
     expect(dup.statusCode).toBe(409);
   });
@@ -1312,8 +1312,8 @@ describe('mobile-placement API', () => {
   it('creates a photo shelf, reads authenticated bytes, updates memo and photo metadata', async () => {
     const { apiKey, id } = await createTestClientDevice();
     const headers = { 'x-client-key': apiKey };
-    const path = `/api/mobile-placement/shelves/${encodeURIComponent('西-北-09')}`;
-    const created = await app.inject({ method: 'POST', url: '/api/mobile-placement/shelves', headers, payload: { shelfCodeRaw: '西-北-09', displayLabel: '  南 上段  ' } });
+    const path = `/api/mobile-placement/shelves/${encodeURIComponent('50013_540AP 北')}`;
+    const created = await app.inject({ method: 'POST', url: '/api/mobile-placement/shelves', headers, payload: { shelfCodeRaw: '50013_540AP 北', displayLabel: '  南 上段  ' } });
     expect(created.statusCode).toBe(200);
     expect(created.json().shelf.displayLabel).toBe('南 上段');
     expect((await app.inject({ method: 'GET', url: `${path}/photo`, headers })).statusCode).toBe(404);
@@ -1327,8 +1327,8 @@ describe('mobile-placement API', () => {
     const patched = await app.inject({ method: 'PATCH', url: path, headers, payload: { displayLabel: '  ロボドリル01  ' } });
     expect(patched.statusCode).toBe(200);
     const listed = await app.inject({ method: 'GET', url: '/api/mobile-placement/registered-shelves', headers });
-    expect(listed.json().shelves).toContainEqual(expect.objectContaining({ shelfCodeRaw: '西-北-09', displayLabel: 'ロボドリル01', photoUpdatedAt: uploaded.json().photoUpdatedAt }));
-    const shelf = await prisma.mobilePlacementShelf.findUniqueOrThrow({ where: { shelfCodeRaw: '西-北-09' }, include: { photo: true } });
+    expect(listed.json().shelves).toContainEqual(expect.objectContaining({ shelfCodeRaw: '50013_540AP 北', displayLabel: 'ロボドリル01', photoUpdatedAt: uploaded.json().photoUpdatedAt }));
+    const shelf = await prisma.mobilePlacementShelf.findUniqueOrThrow({ where: { shelfCodeRaw: '50013_540AP 北' }, include: { photo: true } });
     expect(shelf.photo).toMatchObject({ byteSize: MIN_PNG.length, updatedByClientDeviceId: id });
     expect((await app.inject({ method: 'PATCH', url: path, headers, payload: { displayLabel: null } })).statusCode).toBe(200);
     await prisma.mobilePlacementShelf.delete({ where: { id: shelf.id } });
