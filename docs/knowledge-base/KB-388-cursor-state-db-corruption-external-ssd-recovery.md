@@ -171,7 +171,7 @@ AGENTS.md と .cursor/rules を読んだうえで、
 
 ## 本リポジトリ固有の WIP（2026-06-06 時点 → 解消）
 
-Cursor 復旧直後に **未コミット** だった Hermes Discord command sync は **2026-06-06 に `main` マージ**（[KB daily pilot](./KB-private-pi5-hermes-daily-pilot.md) · [EXEC_PLAN §Hermes](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)）。
+Cursor 復旧直後に **未コミット** だった Hermes Discord command sync は **2026-06-06 に `main` マージ**（KB daily pilot（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-daily-pilot.md`） · [EXEC_PLAN §Hermes](../EXEC_PLAN.md#private-pi5-hermes-discord-2026-05-24)）。
 
 | パス | 内容 |
 |------|------|

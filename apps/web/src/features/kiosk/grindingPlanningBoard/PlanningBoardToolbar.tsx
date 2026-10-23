@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 import { pageZoom } from './pageZoom';
+import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
@@ -67,6 +68,9 @@ function SegmentGroup({ ariaLabel, children }: { ariaLabel: string; children: Re
 }
 
 export type PlanningBoardToolbarProps = {
+  onOrderScan?: (productNo: string) => string | null;
+  focusedSeiban?: string | null;
+  onClearSeibanFocus?: () => void;
   largeScreen?: boolean;
   onToggleLargeScreen?: () => void;
   ganttEnabled?: boolean;
@@ -116,6 +120,7 @@ export type PlanningBoardToolbarProps = {
 const formatWait = (minutes: number) => `${Math.floor(minutes / 60)}時間${String(minutes % 60).padStart(2, '0')}分`;
 
 export function PlanningBoardToolbar({
+  onOrderScan, focusedSeiban = null, onClearSeibanFocus,
   largeScreen = false, onToggleLargeScreen,
   ganttEnabled = false,
   onToggleGantt,
@@ -184,7 +189,7 @@ export function PlanningBoardToolbar({
     (scalePanel.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? scalePanel.current.querySelector<HTMLButtonElement>('button'))?.focus();
   }, [scaleOpen]);
   return (
-    <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
+    <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
         type="button"
         onClick={onOpenDrawer}
@@ -192,9 +197,6 @@ export function PlanningBoardToolbar({
         className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-slate-500 bg-slate-800 pl-3 pr-2 text-[13px] font-bold text-slate-100 hover:border-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
         aria-label="製番登録ペインを開く"
       >
-        <svg viewBox="0 0 16 16" fill="currentColor" className="h-[15px] w-[15px]" aria-hidden="true">
-          <rect x="1" y="2.5" width="14" height="2" rx="1" /><rect x="1" y="7" width="14" height="2" rx="1" /><rect x="1" y="11.5" width="14" height="2" rx="1" />
-        </svg>
         製番
         <span className="min-w-6 rounded-full bg-slate-950 px-1.5 py-0.5 text-center tabular-nums text-emerald-300">{registeredCount}</span>
       </button>
@@ -216,11 +218,7 @@ export function PlanningBoardToolbar({
       </SegmentGroup>
       {onToggleGantt && <div className={clsx(SEGMENT_TRACK_CLASS, 'border-sky-400/55 bg-sky-400/10')}>
         <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttEnabled} onClick={onToggleGantt}>
-          <span className="inline-flex items-center gap-1.5">
-            <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4" aria-hidden="true">
-              <rect x="1" y="2" width="8" height="3" rx="1" /><rect x="5" y="6.5" width="9" height="3" rx="1" /><rect x="3" y="11" width="6" height="3" rx="1" />
-            </svg>ガント
-          </span>
+          ガント
         </SegmentButton>
         {ganttEnabled && <>
           <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="並べ方">
@@ -248,9 +246,17 @@ export function PlanningBoardToolbar({
               <circle cx="7" cy="10" r="1" /><circle cx="10" cy="6" r="1" /><circle cx="15" cy="6" r="1" /><circle cx="18" cy="10" r="1" />
             </svg>
           </button>
+        </>}
+      </div>}
+      {onOrderScan && <PlanningBoardOrderScan onScan={onOrderScan} />}
+      {!ganttEnabled && focusedSeiban && <div className="flex shrink-0 items-center gap-1 rounded-md border border-slate-600 pl-2 text-sm">
+        <span>製番 {focusedSeiban}</span>
+        <button type="button" aria-label="目立たせるのをやめる" onClick={onClearSeibanFocus} className="grid h-11 w-11 place-items-center">✕</button>
+      </div>}
+      {ganttEnabled && <div className="flex shrink-0 items-center gap-1">
           <button type="button" onClick={ganttMode === 'forward' ? onNextLate : onNextOverlap}
             className={clsx('ml-1 min-h-11 shrink-0 rounded-md px-2 text-[13px] font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', (ganttMode === 'forward' ? lateCount : overlapCount) ? 'bg-rose-800 text-white' : 'text-emerald-300')}>
-            {ganttMode === 'forward' ? (lateCount ? `⚠ 遅れ ${lateCount}` : '✓ 遅れなし') : (overlapCount ? `⚠ 重なり ${overlapCount}` : '✓ 重なりなし')}
+            {ganttMode === 'forward' ? (lateCount ? `遅れ ${lateCount}` : '遅れなし') : (overlapCount ? `重なり ${overlapCount}` : '重なりなし')}
           </button>
           {ganttMode === 'forward' && view === 'resource' && (orderPreview ? <>
             <div className="flex shrink-0 flex-col rounded-md border border-amber-400 px-2 py-1 text-xs tabular-nums" role="status" aria-label="並べ替えの比較">
@@ -271,13 +277,12 @@ export function PlanningBoardToolbar({
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="M7 20V4m-4 4 4-4 4 4M17 4v16m-4-4 4 4 4-4" /></svg>並べ替え
             </button>
           </>)}
-          {!orderPreview && <button type="button" aria-label="⇅ 納期順に並べる" onClick={onSortDue}
+          {!orderPreview && <button type="button" aria-label="納期順に並べる" onClick={onSortDue}
             disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled}
-            className="min-h-11 shrink-0 rounded-md bg-emerald-900 px-2 text-[13px] font-bold text-emerald-100 disabled:opacity-40">⇅ 納期順</button>}
+            className="min-h-11 shrink-0 rounded-md bg-emerald-900 px-2 text-[13px] font-bold text-emerald-100 disabled:opacity-40">納期順</button>}
           <button type="button" onClick={onUndoOrder}
             disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled || !canUndoOrder}
             className="min-h-11 shrink-0 rounded-md border border-slate-600 px-2 text-[13px] font-bold text-slate-200 disabled:opacity-40">↶ 戻す</button>
-        </>}
       </div>}
       <SegmentGroup ariaLabel="進捗">
         <SegmentButton disabled={scopeDisabled} pressed={status === 'incomplete'} onClick={() => onStatusChange('incomplete')}>

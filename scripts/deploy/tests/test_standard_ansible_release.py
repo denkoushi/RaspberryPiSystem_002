@@ -68,6 +68,49 @@ def torque_capable_host(serial: str = "702902S") -> dict[str, object]:
 
 
 class StandardAnsibleReleaseTests(unittest.TestCase):
+    def test_first_install_rejects_unbounded_or_pattern_scope_before_backend(self) -> None:
+        for options in (
+            ["--full-fleet"], [], ["--limit", "pi4-*"], ["--limit", "kiosk:&all"],
+            ["--limit", "@hosts"], ["--limit", "pi4-a,"], ["--limit", "pi4-a:pi4-a"],
+            ["--limit", "pi4-a", "--torque-cutover"],
+        ):
+            with self.subTest(options=options), self.assertRaises(MODULE.UsageError):
+                MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--first-install", *options])
+
+    def test_first_install_requires_exact_kiosk_inventory_hosts(self) -> None:
+        document = {"kiosk": {"hosts": ["pi4-a", "pi4-b"]}, "server": {"hosts": ["pi5"]}}
+        for limit, selection in (
+            ("kiosk", (("pi4", ("pi4-a", "pi4-b")),)),
+            ("pi5", (("pi5", ("pi5",)),)),
+            ("pi3", (("pi3", ("pi3",)),)),
+            ("pi4-a:pi5", (("pi5", ("pi5",)), ("pi4", ("pi4-a",)))),
+            ("pi4-a:missing", (("pi4", ("pi4-a",)),)),
+        ):
+            args = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--first-install", "--limit", limit])
+            with self.subTest(limit=limit), self.assertRaises(MODULE.UsageError):
+                MODULE.validate_first_install_selection(args, document, selection)
+        for limit in ("pi4-a", "pi4-a:pi4-b", "pi4-a,pi4-b"):
+            args = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--first-install", "--limit", limit])
+            hosts = tuple(limit.replace(",", ":").split(":"))
+            MODULE.validate_first_install_selection(args, document, (("pi4", hosts),))
+
+    def test_first_install_plan_and_remote_forwarding_are_opt_in(self) -> None:
+        for enabled in (False, True):
+            args = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--limit", "pi4-a"] + (["--first-install"] if enabled else []))
+            commands = []
+            with mock.patch.object(MODULE, "run", side_effect=lambda command, **kwargs: commands.append(command) or completed(command)):
+                document = MODULE.plan(args, SHA, ROOT / MODULE.DEFAULT_INVENTORY, MODULE.DEFAULT_INVENTORY, (("pi4", ("pi4-a",)),))
+            self.assertEqual("firstInstall" in document, enabled)
+            if enabled:
+                self.assertEqual(document["firstInstall"], {"hosts": ["pi4-a"], "rollbackTarget": "empty"})
+            for command in commands:
+                variables = json.loads(command[command.index("--extra-vars") + 1])
+                self.assertEqual(variables.get("release_kiosk_first_install", False), enabled)
+                self.assertEqual("release_kiosk_first_install" in variables, enabled)
+            script = MODULE.remote_script(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi4",))
+            self.assertEqual("--first-install" in script, enabled)
+
+
     def test_answer_cache_sealed_seed_is_pi5_only_and_checksum_bound(self):
         args = argparse.Namespace(full_fleet=False)
         with tempfile.TemporaryDirectory() as directory:
@@ -191,31 +234,42 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         args = argparse.Namespace(hermes_search_trial_maintenance="on", branch="main",
                                   limit="raspberrypi5", full_fleet=False, detach=True,
                                   torque_cutover=False)
-        env_name = "HERMES_RETRIEVAL_ENRICHMENT_ENABLED"
-        for value in (None, "false", "true"):
-            with self.subTest(value=value), mock.patch.dict(os.environ, {} if value is None else {env_name: value}, clear=True):
-                environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
-                command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
-                                             ("pi5",), "pi", hermes_environment=environment)
-                if value is None:
-                    self.assertNotIn(env_name, environment)
-                    self.assertFalse(any(env_name in item for item in command))
-                else:
-                    self.assertEqual(environment[env_name], value)
-                    self.assertIn(f"--setenv={env_name}={value}", command)
-        with mock.patch.dict(os.environ, {env_name: "yes"}, clear=True):
-            with self.assertRaisesRegex(MODULE.UsageError, "HERMES_RETRIEVAL_ENRICHMENT_ENABLED must be true or false"):
-                MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+        for env_name in ("HERMES_RETRIEVAL_ENRICHMENT_ENABLED", "HERMES_RETRIEVAL_CAUSE_ENABLED"):
+            for value in (None, "false", "true"):
+                with self.subTest(value=value), mock.patch.dict(os.environ, {} if value is None else {env_name: value}, clear=True):
+                    environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
+                    command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                                 ("pi5",), "pi", hermes_environment=environment)
+                    if value is None:
+                        self.assertNotIn(env_name, environment)
+                        self.assertFalse(any(env_name in item for item in command))
+                    else:
+                        self.assertEqual(environment[env_name], value)
+                        self.assertIn(f"--setenv={env_name}={value}", command)
+            with mock.patch.dict(os.environ, {env_name: "maybe"}, clear=True):
+                with self.assertRaisesRegex(MODULE.UsageError, f"{env_name} must be true or false"):
+                    MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
         with mock.patch.dict(os.environ, {
-            env_name: "true",
+            "HERMES_RETRIEVAL_ENRICHMENT_ENABLED": "true",
+            "HERMES_RETRIEVAL_CAUSE_ENABLED": "true",
+            "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS": "100",
             "HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS": "100",
             "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY": "1",
             "HERMES_RETRIEVAL_ENRICHMENT_WINDOW": "22-6",
         }, clear=True):
             environment = MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
             self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS"], "100")
+            self.assertEqual(environment["HERMES_RETRIEVAL_CAUSE_ENABLED"], "true")
+            self.assertEqual(environment["HERMES_RETRIEVAL_CAUSE_MAX_TEXTS"], "100")
+            command = MODULE.systemd_argv(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY,
+                                         ("pi5",), "pi", hermes_environment=environment)
+            self.assertIn("--setenv=HERMES_RETRIEVAL_CAUSE_MAX_TEXTS=100", command)
             self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY"], "1")
             self.assertEqual(environment["HERMES_RETRIEVAL_ENRICHMENT_WINDOW"], "22-6")
+        for cap_name in ("HERMES_RETRIEVAL_ENRICHMENT_MAX_RECORDS", "HERMES_RETRIEVAL_CAUSE_MAX_TEXTS"):
+            with self.subTest(cap_name=cap_name), mock.patch.dict(os.environ, {cap_name: "0"}, clear=True):
+                with self.assertRaisesRegex(MODULE.UsageError, f"{cap_name} must be a positive integer"):
+                    MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
         with mock.patch.dict(os.environ, {"HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY": "3"}, clear=True):
             with self.assertRaisesRegex(MODULE.UsageError, "HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY must be 1 or 2"):
                 MODULE.hermes_trial_maintenance_configuration(args, (("pi5", ("raspberrypi5",)),))
@@ -272,6 +326,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             ("HERMES_RETRIEVAL_ENRICHMENT_CONCURRENCY", "1"),
             ("HERMES_RETRIEVAL_ENRICHMENT_WINDOW", "0-6"),
             ("HERMES_RETRIEVAL_ENRICHMENT_IDS", "/private/ids.txt"),
+            ("HERMES_RETRIEVAL_CAUSE_ENABLED", "true"),
+            ("HERMES_RETRIEVAL_CAUSE_MAX_TEXTS", "10"),
             ("HERMES_RETRIEVAL_DENSE_PROVIDER", "dgx"),
             ("HERMES_RETRIEVAL_DENSE_INDEX_ENABLED", "true"),
             ("HERMES_RETRIEVAL_V2_ENABLED", "true"),

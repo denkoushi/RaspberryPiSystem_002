@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { discardProcedureVideo, getProcedurePageVideos, getProcedureVideoScenes, listProcedureVideos, replaceProcedurePageVideos, restoreProcedureVideo, retryProcedureVideo } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
@@ -9,6 +9,7 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { ProcedureVideoCommentsDialog } from './ProcedureVideoCommentsDialog';
 import { ProcedureVideoConcatDialog } from './ProcedureVideoConcatDialog';
+import { ProcedureVideoDesk } from './ProcedureVideoDesk';
 import { ProcedureVideoPlaybackDialog } from './ProcedureVideoPlaybackDialog';
 import { ProcedureVideoScenesDialog } from './ProcedureVideoScenesDialog';
 import { ProcedureVideoThumbnail } from './ProcedureVideoThumbnail';
@@ -18,6 +19,9 @@ import type { ProcedureVideoDto, ProcedureVideoState, ProcedureVideoSummaryDto, 
 export function procedureVideoLength(duration: number | null) { return duration == null ? '長さ未確認' : `${duration.toFixed(1)}秒`; }
 export function ProcedureVideoShelfDialog({ onClose, link, onError }: { onError?: (error: unknown) => boolean; onClose: () => void; link?: { documentId: string; pageIndex: number; accessPassword: string; holderToken?: string | null } }) {
   const selectionMode = Boolean(link);
+  const [deskVideoId, setDeskVideoId] = useState<string | null>(null);
+  const [autoEditDisabled, setAutoEditDisabled] = useState(false);
+  const disableAutoEdit = useCallback(() => setAutoEditDisabled(true), []);
   const [videos, setVideos] = useState<ProcedureVideoDto[]>([]);
   const [scenes, setScenes] = useState<Record<string, ProcedureVideoSceneDto[]>>({});
   const [q, setQ] = useState('');
@@ -36,7 +40,7 @@ export function ProcedureVideoShelfDialog({ onClose, link, onError }: { onError?
   const [concatenating, setConcatenating] = useState<ProcedureVideoDto[] | null>(null);
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setVideos([]); setScenes({}); setError(null);
+    setLoading(true); if (selectionMode) setVideos([]); setScenes({}); setError(null);
     void listProcedureVideos({ state: selectionMode ? 'active' : state, q, limit: 100 }).then((rows) => { if (!cancelled) setVideos(rows);
       if (selectionMode) return Promise.all(rows.filter((video) => video.status === 'READY' && !video.discardedAt).map(async (video) => {
         const scenes = await getProcedureVideoScenes(video.id);
@@ -46,7 +50,7 @@ export function ProcedureVideoShelfDialog({ onClose, link, onError }: { onError?
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [state, q, version, selectionMode]);
-  const processing = videos.some((video) => video.status === 'PENDING' || video.status === 'PROCESSING');
+  const processing = videos.some((video) => video.status === 'PENDING' || video.status === 'PROCESSING' || (!autoEditDisabled && (video.autoEdit?.status === 'PENDING' || video.autoEdit?.status === 'RUNNING')));
   useEffect(() => {
     if (!processing || playing || editing || concatenating) return;
     const timer = window.setInterval(() => setVersion((v) => v + 1), 5000);
@@ -76,6 +80,24 @@ export function ProcedureVideoShelfDialog({ onClose, link, onError }: { onError?
   if (editing?.mode === 'scenes') return <ProcedureVideoScenesDialog video={editing.video} onClose={edited} />;
   if (editing?.mode === 'comments') return <ProcedureVideoCommentsDialog video={editing.video} onClose={() => setEditing(null)} onSaved={edited} />;
   if (playing) return <ProcedureVideoPlaybackDialog video={playing} range={playing.startSeconds != null && playing.endSeconds != null ? { startSeconds: playing.startSeconds, endSeconds: playing.endSeconds } : undefined} onClose={() => setPlaying(null)} />;
+  if (!link) return <ProcedureVideoDesk videos={videos} selectedId={deskVideoId} onSelect={setDeskVideoId} loading={loading} busy={busy}
+    q={q} onSearch={setQ} state={state} onState={setState} onRefresh={() => setVersion((v) => v + 1)} onClose={onClose}
+    error={error} onError={setError} autoEditDisabled={autoEditDisabled} onAutoEditDisabled={disableAutoEdit} onChanged={() => setVersion((v) => v + 1)}
+    concatVideos={concatVideos} onConcatSelect={(video, checked) => setConcatVideos((items) => checked ? [...items, video] : items.filter((item) => item.id !== video.id))}
+    shelfActions={<><p className="mb-1 text-xs text-slate-400">{concatVideos.length} 本を選択中</p><div className="flex gap-2">
+      <Button variant="ghostOnDark" className="min-h-11 text-sm" disabled={busy || !concatVideos.length} onClick={() => setConcatVideos([])}>選択を解除</Button>
+      <Button variant="ghostOnDark" className="min-h-11 text-sm" disabled={busy || loading || concatVideos.length < 2 || concatVideos.length > 5} onClick={() => setConcatenating(concatVideos)}>接続</Button>
+    </div></>}
+    videoActions={(video) => <>
+      {video.status === 'READY' ? <>
+        <Button variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={busy || Boolean(video.discardedAt)} onClick={() => setEditing({ video, mode: 'scenes' })}>場面 {video.sceneCount}</Button>
+        <Button variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={busy} onClick={() => setEditing({ video, mode: 'comments' })}>コメント</Button>
+      </> : null}
+      {video.status === 'FAILED' ? <Button variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={busy} onClick={() => void act(() => retryProcedureVideo(video.id))}>再試行</Button> : null}
+      <Button variant="ghostOnDark" className="min-h-11 !px-2 text-xs" disabled={busy || (!video.discardedAt && video.linkCount > 0)} onClick={() => video.discardedAt ? void act(() => restoreProcedureVideo(video.id)) : setDiscarding(video)}>{video.discardedAt ? '戻す' : '捨てる'}</Button>
+    </>}
+    confirming={Boolean(discarding)} confirmation={<ConfirmDialog isOpen={Boolean(discarding)} onCancel={() => setDiscarding(null)} onConfirm={() => { const video = discarding; setDiscarding(null); if (video) void act(() => discardProcedureVideo(video.id)); }} title="動画を捨てる" description="捨てた動画から戻せます。" confirmLabel="捨てる" />}
+  />;
   return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} closeOnEsc={!discarding} trapFocus={!discarding} title={link ? `${(link.pageIndex + 1)}ページの動画` : '動画'} size="full" className="flex !max-w-[1500px] flex-col overflow-hidden !bg-slate-900 !text-slate-100">
     <p className="mt-3 shrink-0 text-sm">{concatVideos.length} 本を選択中</p>
     <div className="mt-3 flex shrink-0 flex-wrap gap-2">

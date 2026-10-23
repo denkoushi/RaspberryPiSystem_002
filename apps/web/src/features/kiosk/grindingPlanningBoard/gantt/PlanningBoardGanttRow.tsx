@@ -1,7 +1,10 @@
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useRef } from 'react';
 
+import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { pageZoom } from '../pageZoom';
+import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
+import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 
@@ -13,9 +16,14 @@ export const GANTT_LABEL_WIDTH = 320;
 // 「今日から」 only shows the machine and its daily-hours buttons, so its label column is narrower.
 export const GANTT_FORWARD_LABEL_WIDTH = 168;
 export const GANTT_ROW_HEIGHT = 56;
+export const GANTT_IMPORT_HATCH = 'repeating-linear-gradient(135deg, #475569 0 6px, #334155 6px 12px)';
 export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f1239 4px 8px)';
 
 type InteractionProps = {
+  onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+  completionPendingRowIds?: ReadonlySet<string>;
+  completionTargetId?: string | null;
+  onCompletionTarget?: (itemId: string) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onDueDrop: (item: GrindingPlanningBoardItem, date: string) => void;
   disabled: boolean;
@@ -35,7 +43,7 @@ type BarProps = InteractionProps & {
 type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: number; frame: number | null; element: HTMLButtonElement };
 
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
-  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, seibanColors, focusedSeiban = null
+  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingRowIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -60,7 +68,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     const drag = pending.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (Math.abs(event.clientX - drag.x) > 4 || Math.abs(event.clientY - drag.y) > 4) drag.moved = true;
-    if (!drag.moved || dragDisabled || !bar.due) return;
+    if (!drag.moved || dragDisabled || bar.item.isCompleted || !bar.due) return;
     const date = shiftedDueDate(bar.due, Math.round((event.clientX - drag.x) / pageZoom() / dayWidth), today);
     drag.delta = dateToDay(date) - dateToDay(bar.due);
     if (drag.frame != null) return;
@@ -77,18 +85,19 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
   const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
   const width = bar.unknown ? 72 : Math.max(5, (bar.end! - bar.start!) * dayWidth);
   return (
+    <>
     <button
       type="button"
       data-testid={`planning-gantt-bar-${bar.item.itemId}`}
       data-drag-disabled={dragDisabled || disabled || bar.item.isCompleted}
       aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
       aria-pressed={selected}
-      disabled={disabled || bar.item.isCompleted}
+      disabled={disabled}
       title={`工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
       className="absolute top-1.5 min-h-11 min-w-11 touch-pan-y select-none rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
       style={{ left: (bar.end! - start) * dayWidth - Math.max(44, width), width: Math.max(44, width), zIndex: selected ? 4 : 2 }}
       onPointerDown={(event) => {
-        if (event.button !== 0 || event.isPrimary === false || pending.current) return;
+        if (event.button !== 0 || event.isPrimary === false || pending.current || bar.item.isCompleted) return;
         suppressClick.current = false;
         pending.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false, delta: 0, frame: null, element: event.currentTarget };
         event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -107,7 +116,8 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       onLostPointerCapture={() => { if (pending.current) { suppressClick.current = true; clear(); } }}
       onClick={() => {
         if (suppressClick.current) { suppressClick.current = false; return; }
-        onToggleItem(bar.item, !selected);
+        onCompletionTarget?.(bar.item.itemId);
+        if (!bar.item.isCompleted) onToggleItem(bar.item, !selected);
       }}
     >
       <span className={clsx('absolute right-0 top-3 h-6 overflow-hidden whitespace-nowrap rounded px-1 text-left font-mono text-[10px] font-bold leading-6',
@@ -115,12 +125,17 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
         focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed && 'opacity-30'
-      )} style={{ width }}>
+      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined }}>
         {bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
+    {onCompleteToggle && completionTargetId === bar.item.itemId && bar.item.kind === 'row' && <PlanningBoardCompletionButton
+      item={bar.item} onToggle={onCompleteToggle} className="absolute top-0 z-10"
+      style={{ left: (bar.end! - start) * dayWidth - 28 }}
+      disabled={disabled || completionPendingRowIds?.has(bar.item.sourceRowId)} />}
+    </>
   );
 });
 
@@ -138,6 +153,14 @@ export type PlanningBoardGanttRowProps = InteractionProps & {
 export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   row, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, ...interaction
 }: PlanningBoardGanttRowProps) {
+  const chipsByPart = usePlanningBoardProcessChips();
+  // One chip strip per part, under that part's last bar on this row.
+  const lastBarByPart = new Map<string, GanttBar>();
+  for (const bar of row.bars) {
+    if (bar.end == null) continue;
+    const last = lastBarByPart.get(bar.partKey);
+    if (!last || bar.end > last.end!) lastBarByPart.set(bar.partKey, bar);
+  }
   return (
     <div data-gantt-flagged={row.flagged || undefined} className="flex border-b border-slate-800/70"
       style={{ height: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${GANTT_ROW_HEIGHT}px` }}>
@@ -154,6 +177,15 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
             selected={selectedItemIds.has(bar.item.itemId)} sibling={resourceView && selectedParts.has(bar.partKey)}
             dimmed={resourceView && selectedParts.size > 0 && !selectedParts.has(bar.partKey)} {...interaction} />
         ))}
+        {[...lastBarByPart.values()].map((bar) => {
+          const chips = chipsByPart.get(bar.partKey);
+          return chips && chips.length > 0 ? (
+            <div key={`chips:${bar.partKey}`} className="pointer-events-none absolute top-9 z-[3] w-max -translate-x-full"
+              style={{ left: (bar.end! - start) * dayWidth }}>
+              <KioskResourceProcessChips processes={chips} />
+            </div>
+          ) : null;
+        })}
         {/* Both bars of a pair carry the same span; draw it once per row. */}
         {[...new Map(row.bars.flatMap((bar) => bar.overlaps).map((span) => [`${span.start}:${span.end}`, span] as const)).entries()].map(([key, span]) => (
           <span key={key} className="pointer-events-none absolute top-4 z-[5] h-7 rounded border border-rose-100 opacity-75"

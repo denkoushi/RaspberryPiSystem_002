@@ -5,6 +5,10 @@ import { ZodError } from 'zod';
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   getLoad: vi.fn(),
+  processChips: vi.fn(),
+  rewarm: vi.fn(),
+  getDueScope: vi.fn(),
+  updateDueScope: vi.fn(),
   getCapacity: vi.fn(),
   updateCapacity: vi.fn(),
   updateOverrides: vi.fn(),
@@ -15,15 +19,25 @@ const mocks = vi.hoisted(() => ({
   updateOrder: vi.fn()
 }));
 
+vi.mock('../../../../services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.js', () => ({
+  buildLeaderboardFooterChipsByPartKeyForScheduleRows: mocks.processChips
+}));
+
 vi.mock('../../../../services/production-schedule/grinding-planning-board.service.js', () => ({
   getGrindingPlanningBoard: mocks.get,
   getGrindingPlanningBoardLoad: mocks.getLoad,
+  scheduleGrindingPlanningBoardRewarm: mocks.rewarm,
   updateGrindingPlanningBoardOverrides: mocks.updateOverrides,
   updateGrindingPlanningBoardPins: mocks.updatePins,
   updateGrindingPlanningBoardRank: mocks.updateRank,
   updateGrindingPlanningBoardResourceOrder: mocks.updateResourceOrder,
   updateGrindingPlanningBoardResourceOrderBulk: mocks.updateResourceOrderBulk,
   updateGrindingPlanningBoardSeibanOrder: mocks.updateOrder
+}));
+
+vi.mock('../../../../services/production-schedule/grinding-planning-board-due-scope.service.js', () => ({
+  getGrindingPlanningBoardDueScope: mocks.getDueScope,
+  updateGrindingPlanningBoardDueScope: mocks.updateDueScope
 }));
 
 vi.mock('../../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js', () => ({
@@ -63,9 +77,112 @@ function createApp(requireClientDevice: (rawClientKey: unknown) => Promise<unkno
   }).then(() => app);
 }
 
+describe('grinding planning board process chips', () => {
+  const url = '/kiosk/production-schedule/grinding-planning-board/process-chips';
+  const part = { fseiban: 'ORDER-1', productNo: '001', fhincd: 'PART-1' };
+  afterEach(() => mocks.processChips.mockReset());
+
+  it('deduplicates normalized triples and reuses footer chips with the authenticated scope', async () => {
+    const auth = vi.fn(async () => ({ id: 'device-1' }));
+    const app = await createApp(auth);
+    const key = 'ORDER-1\0' + '001\0PART-1';
+    const chipsByPartKey = { [key]: [{ rowId: 'row-1', resourceCd: '305', resourceNames: ['研削機'], isCompleted: true }] };
+    mocks.processChips.mockResolvedValue(chipsByPartKey);
+    try {
+      const response = await app.inject({ method: 'POST', url, headers: { 'x-client-key': 'key-1' },
+        payload: { parts: [part, { ...part, fseiban: ' ORDER-1 ' }], siteKey: 'foreign', locationKey: 'foreign' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ chipsByPartKey });
+      expect(auth).toHaveBeenCalledWith('key-1');
+      expect(mocks.processChips).toHaveBeenCalledExactlyOnceWith({
+        rows: [{ id: key, seibanJoinKey: part.fseiban, rowData: { FSEIBAN: part.fseiban, ProductNo: part.productNo, FHINCD: part.fhincd } }],
+        preferredDisplayRowIds: [], locationKey: 'site-a - terminal-1', siteKey: 'site-a'
+      });
+    } finally { await app.close(); }
+  });
+
+  it('returns an empty map without querying the footer service for empty parts', async () => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'POST', url, payload: { parts: [] } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ chipsByPartKey: {} });
+      expect(mocks.processChips).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it.each([1000, 1001])('bounds input before deduplication: %i parts', async (count) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'POST', url, payload: { parts: Array.from({ length: count }, () => part) } });
+      expect(response.statusCode).toBe(count === 1000 ? 200 : 400);
+      if (count === 1000) expect(response.json()).toEqual({ chipsByPartKey: {} });
+      else expect(mocks.processChips).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it.each([{}, { parts: [{}] }, { parts: [{ ...part, fseiban: ' ' }] }, { parts: [{ ...part, productNo: 1 }] },
+    { parts: [{ ...part, fhincd: 'x'.repeat(101) }] }])('rejects invalid input %j', async (payload) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'POST', url, payload });
+      expect(response.statusCode).toBe(400);
+      expect(mocks.processChips).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it('requires device authentication even for empty parts', async () => {
+    const app = await createApp(async () => { throw Object.assign(new Error('client key required'), { statusCode: 401 }); });
+    try {
+      const response = await app.inject({ method: 'POST', url, payload: { parts: [] } });
+      expect(response.statusCode).toBe(401);
+      expect(mocks.processChips).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+});
+
 describe('grinding planning board route scope', () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  const item = { itemId: 'item-1', itemRevision: 'revision-1' };
+  const writes = [
+    { path: 'overrides', write: mocks.updateOverrides, payload: { sourceRevision: 'revision', items: [item] } },
+    { path: 'pins', write: mocks.updatePins, payload: { sourceRevision: 'revision', items: [item], pinned: true } },
+    { path: 'rank', write: mocks.updateRank, payload: { sourceRevision: 'revision', ...item, alternateRank: 1 } },
+    { path: 'resource-order', write: mocks.updateResourceOrder, payload: { sourceRevision: 'revision', ...item, targetItemId: 'item-2', targetItemRevision: 'revision-2', placement: 'before' } },
+    { path: 'resource-order/bulk', write: mocks.updateResourceOrderBulk, payload: { sourceRevision: 'revision', resourceCd: '305', items: [item] } },
+    { path: 'seiban-order', write: mocks.updateOrder, payload: { sourceRevision: 'revision', fseibans: ['ORDER-A'] } },
+    { path: 'seiban/ORDER-A/due-scope', write: mocks.updateDueScope, payload: { sourceGenerationToken: 'generation', scopeRevision: 'a'.repeat(64), scope: { kind: 'seiban' }, dueDate: '2026-10-20' } }
+  ];
+
+  it.each(writes)('schedules rewarm after a successful $path write and preserves the response', async ({ path, write, payload }) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    const result = { updated: true };
+    write.mockImplementationOnce(async () => {
+      expect(mocks.rewarm).not.toHaveBeenCalled();
+      return result;
+    });
+    // An unfinished background run must not delay the write response.
+    mocks.rewarm.mockReturnValueOnce(new Promise<void>(() => {}));
+    try {
+      const response = await app.inject({ method: 'PUT', url: `/kiosk/production-schedule/grinding-planning-board/${path}`, payload });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(mocks.rewarm).toHaveBeenCalledTimes(1);
+      expect(mocks.rewarm).toHaveBeenCalledWith({ siteKey: 'site-a', snapshotStore: expect.objectContaining({ create: expect.any(Function) }) });
+    } finally { await app.close(); }
+  });
+
+  it.each(writes)('does not schedule rewarm after a failed $path write', async ({ path, write, payload }) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    write.mockRejectedValueOnce(Object.assign(new Error('stale write'), { statusCode: 409 }));
+    try {
+      const response = await app.inject({ method: 'PUT', url: `/kiosk/production-schedule/grinding-planning-board/${path}`, payload });
+      expect(response.statusCode).toBe(409);
+      expect(mocks.rewarm).not.toHaveBeenCalled();
+    } finally { await app.close(); }
   });
 
   it.each(['', '/load'])('accepts category=all for %s', async (suffix) => {
@@ -76,6 +193,17 @@ describe('grinding planning board route scope', () => {
       const response = await app.inject({ method: 'GET', url: `/kiosk/production-schedule/grinding-planning-board${suffix}?category=all` });
       expect(response.statusCode).toBe(200);
       expect(suffix ? mocks.getLoad : mocks.get).toHaveBeenCalledWith(expect.objectContaining({ category: 'all', siteKey: 'site-a' }));
+    } finally { await app.close(); }
+  });
+
+  it.each([[640, 200], [641, 400]])('validates pageSize=%s at the 640 cap', async (pageSize, status) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.get.mockResolvedValue({ items: [] });
+    try {
+      const response = await app.inject({ method: 'GET', url: `/kiosk/production-schedule/grinding-planning-board?pageSize=${pageSize}` });
+      expect(response.statusCode).toBe(status);
+      if (status === 200) expect(mocks.get).toHaveBeenCalledWith(expect.objectContaining({ pageSize }));
+      else expect(mocks.get).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
 
@@ -237,6 +365,7 @@ describe('grinding planning board route scope', () => {
       expect(response.json()).toEqual(result);
       expect(requireClientDevice).toHaveBeenCalledWith('key-1');
       expect(mocks.updateCapacity).toHaveBeenCalledWith({ siteKey: 'site-a', resourceCd: '305', dailyHours });
+      expect(mocks.rewarm).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
 

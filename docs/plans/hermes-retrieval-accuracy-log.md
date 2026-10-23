@@ -21,6 +21,8 @@ Run from `scripts/hermes-search`:
 
 Hybrid runs need `HERMES_RETRIEVAL_DENSE_PROVIDER=dgx`, `HERMES_RETRIEVAL_DENSE_BASE_URL=http://127.0.0.1:38110` through the owner's SSH tunnel, and `TYPESAFE_API_KEY` for the JEV planner and judge. Compare a change against a baseline run of the current `main` on the same day and settings; JEV answers drift by about one case between runs.
 
+Since 2026-10-21 each case in an `evaluate.mjs` run also has `volume`: JEV calls (plan and relevance separately), the characters sent to and received from JEV (`JSON.stringify` length of the request and the reply, so prompts plus framing), and `answerChars`/`answerRecords` for the answer text a user would get, built with the worker's own formatting. The summary gives mean, p50 and p95 of each, and `stage-score.mjs` adds the p50 columns `jevIn` and `ans` (`-` for older runs). Read them next to latency: a change that keeps precision but sends more to JEV is slower and costs more.
+
 Real use is recorded on the Pi 5 since 2026-09-29: every answer appends its receipt, the shown record ids, and the session id to `/app/storage/hermes-search/runtime/receipts/receipts-YYYY-MM-DD.jsonl` (Tokyo day, kept 90 days, no record text). Copy a day to the private folder and summarize it:
 
     ssh denkon5sd02@100.106.158.2 'c=$(docker ps --format "{{.Names}}" | grep -E "^bluegreen-api-(blue|green)-1$" | head -1); docker exec "$c" cat /app/storage/hermes-search/runtime/receipts/receipts-2026-09-30.jsonl' > ~/Documents/hermes-retrieval-private/receipts/receipts-2026-09-30.jsonl
@@ -574,3 +576,148 @@ Questions: 16 written by the agent from the photos (not by the user): 10 photo q
 - Failure: one material (176 x 132 px) was refused with HTTP 400 「Invalid image dimensions」 in all 4 questions that had it as a candidate; none was a target. A production version must upscale small images or keep their current position.
 
 Reading: on this small set JEV fixes every photo question that the current order missed at top1 and gives a clean signal for 「近い素材が無い」. The questions were written by the same agent that looked at the photos and the image descriptions, so they may be easier than real kiosk wording, and the none set is 2 questions. Decision: held, not adopted yet. Next: collect real 素材棚 queries (or have a second writer who has not seen the descriptions write 20 more), rerun with the same script, and then decide on a production change (parallel calls, a P floor for 「近い素材が無い」, a cache per query and material). Scripts and results were kept only in the session scratchpad; no private file kept.
+
+### 2026-10-16: thirteenth night, 88% and no ask-back; the short department name went filter-only, and ambiguous linked terms gave way for the first time (measurement basis)
+
+Night of 2026-10-15 (22:0x), the first with #2023 (a residual token contained in a selected filter value is not content; Pi5 release the morning before).
+
+- Synthetic content: 100 pairs tried, 74 generated, 69 kept (median 17 chars, anchor overlap 0.38). Dropped: 16 copied runs, 6 copied words, 5 anchors not confirmed, 4 too similar. Production showed a relevant record for 61 of 69 (88%; 10 known only through the second grader), other records for 10 (12 of the night's shown lists still await the second grader's label, so this count may fall), nothing for 8 (all outside the judged candidates, none rejected by the judge), and 0 failed. The "outside the judged candidates" share doubled from 4 to 8; the misses are terse part-and-process queries (「万力サイズ選定 指導」, 「架台 一体加工 不適合」, 「サドル 分解 破損 不適合」) and two colloquial sentences.
+- Ask-backs: 0, the second night in a row. `ambiguousDropped` appeared for the first time, on 6 rows (department name 4, part name 2): 5 of them showed a relevant record and 1 showed other records, so #1996 turned what would have been six ask-backs into five hits. Measured.
+- Synthetic filter: 10 questions, 9 ok, 0 mismatch, 1 unsupported (「営業部 営業2課(販管)」 with `count5`, a department with no record in the period). The one `short` question (「…課 最近 不適合」 form) went filter-only with the recent sort and matched all five expected records (203 matched), so the change in #2023 did what it was meant to on its first live case. More `short` nights are needed before calling it settled.
+- Real: 0 questions; receipts of 2026-10-15 and 2026-10-16 empty, so no operation-inquiry route.
+- Learned queries: 7 activated (held-out 1/0 on the last decision); 33 active, 1 rejected.
+- Runner log: 195 lines, 4 final lines (completed, budget_reached, 2 outside_window); no dgx_busy.
+
+No code change. Next candidate: the misses outside the judged candidates (4 to 8 per night) are now the largest loss; options are a larger candidate pool for terse queries or learned terms for the recurring part names, to be compared through the gate before any change.
+
+Private files: `work/flywheel/questions-2026-10-15.jsonl`, `real-2026-10-15.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-15.log`, `receipts-2026-10-15.jsonl`, `receipts-2026-10-16.jsonl`.
+
+### 2026-10-17: fourteenth night, 90% and no ask-back; three short department names all filter-only, and the first real follow-up asking for "all 43" (measurement basis)
+
+Night of 2026-10-16 (22:0x), the second with #2023.
+
+- Synthetic content: 100 pairs tried, 77 generated, 68 kept (median 20 chars, anchor overlap 0.35). Dropped: 17 copied runs, 9 anchors not confirmed, 5 copied words, 1 too similar. Production showed a relevant record for 61 of 68 (90%; 10 known only through the second grader), other records for 10 (25 shown lists still await the second grader's label, more than usual, so this count may fall), nothing for 7 (all outside the judged candidates, none rejected by the judge), and 0 failed. The misses are again terse part-and-process queries (「看板 取付部 穴数 不足」, 「ワーク 固定 甘く 増圧弁 追加」) and colloquial sentences about a specific incident (sensor dog, panel mounted without a base).
+- Ask-backs: 0, the third night in a row. `ambiguousDropped` on 4 rows (department name 3, part name 1): 3 showed a relevant record, 1 fell outside the candidates (「台なしでパネル直付けしたの、設計側のミス？」), so #1996 again turned ask-backs into hits.
+- Synthetic filter: 10 of 10 ok, the three `short` questions included (first night with more than one short form; all filter-only with the right sort), so #2023 holds.
+- Real: 3 questions. 「今年の機械課での不適合を教えて」 was a filter question, scored correct (5 shown). The follow-up 「４３件すべて」 (the answer had said 43 records) showed 20 other records: the kiosk caps a list at 20, so "show me all" cannot be satisfied today; this is the first real request for the whole set and is recorded as an open item, not a retrieval loss. 「(個人名)の最近の訓練結果」 was out of scope (training results are not nonconformity records), correctly refused. Receipts of 2026-10-16 (3 rows, the same three) carried no operation-inquiry route; 2026-10-17 empty.
+- Learned queries: 1 activated, 4 rejected (held-out 0/1), 34 active, 5 rejected in all. The rejected candidates are the night's not-in-pool queries, as designed.
+- Runner log: 275 lines, 6 final lines (completed, budget_reached, 2 dgx_busy after a DGX HTTP 503 at 22:02, 2 outside_window); the night completed at 22:29.
+
+No code change. Three nights at 88 to 90% with no ask-back; the remaining loss is the 7 or 8 queries a night outside the judged candidates, and the learned-term path rejects them (they do not generalise to the held-out set). The next candidate is therefore the candidate pool for terse queries, measured through the gate. Separate open item: a real "show all N" follow-up meets the 20-record cap.
+
+Private files: `work/flywheel/questions-2026-10-16.jsonl`, `real-2026-10-16.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-16.log`, `receipts-2026-10-16.jsonl`, `receipts-2026-10-17.jsonl`.
+
+### 2026-10-17: the "all 43" follow-up answered by a breakdown instead of a longer list (change, not a measurement)
+
+Decision on the open item of the fourteenth night. The 20-record cap stays. When the total exceeds the records shown, the kiosk answer now leads with the count, offers a breakdown by department and by month (buckets with counts, computed over every matching record, not only the 20 shown), shows each record as one line that expands on tap, and ends with 「他にも N 件あります。○で絞ってください。」 plus the chips of the other axis. A chip sends a structured `refine` (axis, field, value) to the same endpoint; the worker adds that filter to the stored plan and re-executes without calling the planner, so the step costs no JEV call and cannot be misread. An expired session falls back to normal planning on the chip text. Five records or fewer keep the card layout.
+
+Not changed: the plain-text answer and `formatCoverageNotice` wording that the nightly evaluation reads; the receipt records `refine` so chip turns can be told apart. Groups are emitted only when the total is known (filter-only or counted paths); relevance-capped answers keep today's notice.
+
+Second step, not in this PR: a 「要因で分ける」 axis. The cause lives in the existing 不適合内容 column (`condition`), free text with about 5,200 distinct values over 8,209 rows, so it needs JEV to sort each record into a small fixed set of cause categories, computed off the query path and cached by content hash. 処置内容 (`disposition`) has 4,583 distinct values and 2,233 empty rows; it is not near-categorical, so the proposed 処置内容 axis is dropped.
+
+### 2026-10-17: 「要因で分ける」 axis from JEV classification of 不適合内容 (change, not a measurement)
+
+Phase 2 adds a third breakdown axis, 「要因」, from the free-text `condition` field: 8,209 records, 5,839 non-empty, about 5,230 distinct texts, p50 40 characters, p90 95, maximum 395. JEV classifies normalized text off the query path, ten texts per call with one choice question per text. Results are cached by text SHA-256 with a prompt hash, never as searchable record fields. Prompt wording changes trigger reclassification. Empty or not-yet-classified records appear as 「未分類」; the axis is absent when none of the matching records has a classification. Cause chips stack with department/month filters; a natural-language follow-up drops the cause filter.
+
+Fixed taxonomy, in order: 確認・検査の漏れ、思い込み・勘違い、図面・設計の誤り、加工・組立・段取りのミス、測定・検査方法の誤り、手配・発注・出図の漏れ、材料・外注・支給品の不良、取扱い・保管・運搬での破損、手順・教育・情報伝達の不足、不明・記載なし。
+
+The pilot covered 120 sampled texts, ten per call, about 250 ms per call, with 100% answered and sensible assignments. This is a pilot result, not a new retrieval accuracy measurement. While `HERMES_RETRIEVAL_CAUSE_ENABLED=true`, the runner starts on each corpus refresh, at most 600 distinct texts per run by default; the first full pass takes about ten refreshes. Content failures stop retrying after three attempts per text; transport failures stop the run with backoff and do not consume attempts. The saved store remains usable with the runner disabled.
+
+Unchanged: planner prompt and catalog, lexical/dense text, plain answer text and `formatCoverageNotice`, the 20-record cap, and nightly evaluation. Runtime settings are listed in [the enrichment operations reference](hermes-dgx-retrieval-enrichment.md#cause-classification-runtime).
+
+### 2026-10-18: fifteenth night, 93% and no ask-back for the fourth night; the cause axis is live and fully classified (measurement basis)
+
+Night of 2026-10-17 (22:0x), the first with #2076 (count and breakdown chips) and #2078 (cause axis) in production. Neither changes the plain answer text that the night reads, so the numbers are comparable.
+
+- Synthetic content: 100 pairs tried, 71 generated, 61 kept (median 22 chars, anchor overlap 0.33). Dropped: 23 copied runs, 9 anchors not confirmed, 4 too similar, 2 copied words, 1 ungraded. Production showed a relevant record for 57 of 61 (93%), other records for 1 (「凸凹部品 見間違い 不適合」), nothing for 3 (1 outside the judged candidates, 2 rejected by the judge: 「測定治具取付穴 未展開 不適合」 and a colloquial question about an appearance standard), and 0 failed. The two judge rejections are the first in several nights; both had candidates, so the loss moved one stage later than the usual terse-query miss.
+- Ask-backs: 0, the fourth night in a row. `ambiguousDropped` on 2 rows (part name 1, department name 1), both answered.
+- Synthetic filter: 10 of 10 ok.
+- Real: 2 questions, both answered. One filter question (correct), one content question with a relevant record shown. Receipts of 2026-10-17: 2 rows, no review items; 2026-10-18 empty by noon.
+- Learned queries: 3 activated on 2026-10-17, 37 active, 5 rejected in all.
+- Runner log: 190 lines, 5 final lines (dgx_busy at 22:07 after a DGX 503, completed, budget_reached, 2 outside_window); the night completed at 22:24.
+
+Cause classification (#2078), rollout result: the Pi 5 release of 896f9861 needed three runs. The first (20261017-043810-86b783) failed because the new version and `--hermes-search-trial-maintenance on` were sent together; the maintenance path requires the same version to be running already, so the release rolled back by itself and production stayed healthy. The second run (20261017-044447-39a851) was a plain release and the third (20261017-045105-4ed2f4) applied the maintenance path with `HERMES_RETRIEVAL_CAUSE_ENABLED=true`. The first runner pass started 04:53 UTC and classified 600 of 5,299 distinct texts in 26 seconds (60 calls, mean 374 ms, 0 failed). By 2026-10-18 03:49 UTC every text was classified: 5,299 classified, 0 pending, 0 failed, and the runner now reports `nothing_to_do` on each refresh. This is a coverage result, not an accuracy measurement; the kiosk check of the 「要因で分ける」 chips is still open.
+
+Operating note: when a release both ships a new version and changes a Hermes flag, run it as two releases, a plain one first and the maintenance one second. Recorded in [the enrichment operations reference](hermes-dgx-retrieval-enrichment.md#cause-classification-runtime).
+
+No retrieval change. Next candidates stay as before: the planner using cause categories as a filter condition, and answering count questions (「今年多い要因は？」) from the saved classification without a model call.
+
+Private files: `work/flywheel/questions-2026-10-17.jsonl`, `real-2026-10-17.jsonl`, `learned-queries.jsonl`, `labels.json`, `runner-2026-10-17.log`, `runner-2026-10-18.log`, `receipts-2026-10-17.jsonl`.
+
+### 2026-10-19: sixteenth night, 85%; the first user-reported retrieval bug, a chip refining the wrong answer, fixed the same day (measurement and fix)
+
+Night of 2026-10-18 (22:0x–22:14), the first with cause classification fully populated. Neither #2123 nor #2125 (below) changes the plain answer text that the night reads, and both landed after the night ran.
+
+- Synthetic content: 100 pairs tried, 70 generated, 61 kept (median 20 chars, anchor overlap 0.35). Dropped: 22 copied runs, 9 anchors not confirmed, 6 copied words, 2 too similar. Production showed a relevant record for 52 of 61 (85%, down from 93%), other records for 4, nothing for 4 (all 4 outside the judged candidates, 0 rejected by the judge, 0 ask-backs), and 1 failed (TypeSafe HTTP 422 on one question). The four misses and four other-record rows are the usual terse-query shape (「軸数変更に伴う封止材未配」, 「コマの押付け力 ベースの動き 過大 理由」) plus two long colloquial questions about a casting shape and a lifting-hole plug; no single new failure mode. One night at 85 after four at 90–93 is within the range seen before the learned-query change (nights 7–11); it is a watch item, not a regression call.
+- Ask-backs: 0, the fifth night in a row. `ambiguousDropped` on 3 rows (machine 1, part 1, department 1), all answered.
+- Synthetic filter: 10 of 10 ok.
+- Real: 0 questions in the night window (no `real-2026-10-18.jsonl`). Receipts 2026-10-18 and 2026-10-19 (11 rows up to 09:26 JST): 9 answer, 2 no_result, no review items; the no_result rows are the chip bug below.
+- Learned queries: 3 candidates on 2026-10-18, all rejected (the held-out check lost 2 of 55 and gained 0); 37 active, 8 rejected in all.
+- Runner log: 187 lines; completed at 22:14 JST, then budget_reached and outside_window.
+
+Chip scoping bug, found by the user on the kiosk (2026-10-19 08:19 JST): on a 「要因で分ける」 breakdown of an older answer (department, all periods), the chip 「図面・設計の誤り 1」 returned 「見つかりませんでした」 although the count said 1. Receipts show why: the chip refined `session.previousPlan`, which by then was the latest answer (same department, July, 確認・検査の漏れ), so the cause filter was stacked on the July plan and the real count for that plan was 0. Fix (#2123, main 147fb627, Pi 5 release 20261018-235022-4e0ba5, rollback floor 0c7d6eaa): every executed plan gets a `planId`, the session keeps the last 8 plans, each answer carries its `planId` to the kiosk, and a chip sends it back so the refine applies to the plan the chip was counted against. Unknown or expired ids fall back to the latest plan; restricted principals cannot refine a plan they could not see. Receipts now record `refine` (axis, field, value, planId) on all outcomes including no_result. Verified on the kiosk by the user: the same chip now shows the 1 record. The same PR removed the yellow JEV記録 notice at the top of the tab at the user's request.
+
+Answer text: 「見つかった件数は、指定された件数より少ないです。」 (shown when results < plan limit) is removed from answers in #2125 (open at the time of writing; merge and release are recorded in the next entry). The user read it as unintelligible without context; the `insufficient` flag stays in receipts and coverage. `formatCoverageNotice` is unchanged.
+
+No retrieval ranking change. Next candidates: the planner using cause categories as a filter condition (「図面の誤りで先月」 in one turn), and answering count questions (「今年多い要因は？」) from the saved classification without a model call.
+
+Private files: `work/flywheel/questions-2026-10-18.jsonl`, `runner-2026-10-18.log`, `learned-queries.jsonl`, `receipts-2026-10-19.jsonl`.
+
+### 2026-10-19: the planner uses the cause category as a filter condition (change, not a measurement)
+
+First of the two candidates named in the sixteenth-night entry. The planner gets one more choice question, `cause`, with the ten categories and `none`, answered in the same single JEV call; a chosen category becomes `causeCategory` on the plan and counts as a hard filter, so 「図面の誤りで先月の不適合」 is answered in one turn with no relevance stage. The cause label words are stripped from the residual tokens so they do not force a content search, a `drop_cause` choice lets a follow-up remove an inherited cause, and the receipt records `causeDecision`. The executor keeps a record only when the saved classification matches; a source without a cause store is never narrowed by a cause condition, and an empty store keeps the planned condition closed (`causeFilterDropped: 'store_empty'`). A cause heard in a question scoped to another source is dropped (found in review: it had turned into 「見つかりませんでした」 on 要領書 questions). Two nightly filter templates (`cause_recent`, `cause_last_month`) exercise the path; the planner question version moved to `planner-questions-2026-10-19`, which changed the JEV input digest in `source-compatibility.test.mjs` while the results and catalog digests stayed the same.
+
+PR #2130, merged as a1299deb, Pi 5 release 20261019-011707-531d41 (10:17–10:23 JST). The night of 2026-10-19 is the first comparison against the 85% of the sixteenth night.
+
+### 2026-10-19: count questions answered from the saved classification (change, not a measurement)
+
+Second candidate. The planner's single call now also chooses an `intent`: records, or a breakdown by cause, by department, or by month. A breakdown plan skips the relevance stage, forces the content decision to false, keeps the hard filters and cause condition, and is valid only for the nonconformity source; it is not carried into chips or into the previous-plan summary, so a follow-up starts from a plain records plan. The executor builds the groups for a breakdown over the full filtered set even when it is small or empty, with the asked axis first so the kiosk preselects it; records are still returned so the kiosk shows the count, the axis tabs and the chips as today. The plain answer lists the conditions and the per-bucket counts (「全期間・全部署の不適合 N 件の要因の内訳: …」). When the cause store is empty, a cause breakdown falls back to the newest filtered records and the receipt records `breakdownDropped: 'store_empty'`; the receipt also records `intentDecision`. The nightly filter check judges a cause breakdown by bucket values and counts recomputed from the corpus (`bucketsOk`), with two new templates (`breakdown_cause_year`, also per department, and `breakdown_cause_last_month`); only bucket values and counts are kept for checking, never record text. Planner question version `planner-questions-2026-10-19b`; the JEV input digest changed again, results and catalog digests unchanged. 426 retrieval tests pass.
+
+Measurement plan: the seventeenth and eighteenth nights are read as the comparison nights for the cause filter alone, so this change is released to the Pi 5 only after those nights are aggregated, and the `breakdown_*` templates are reported separately from the other filter templates on their first night.
+
+### 2026-10-21: seventeenth and eighteenth nights, 84% and 84%; the cause condition was gating content searches and cost about two questions a night (measurement and finding)
+
+Nights of 2026-10-19 (22:0x–22:1x) and 2026-10-20, the first two with #2130 (cause category as a planner filter) on the Pi 5. The breakdown change (#2137) was held back from the Pi 5 on purpose so that these nights measure #2130 alone against the 85% of the sixteenth night.
+
+- Night 17, synthetic content: 100 pairs, 75 generated, 64 kept (median 16 chars, overlap 0.36). Relevant shown 54 of 64 (84%), other records 7, nothing 3 (all 3 outside the judged candidates). Ask-backs 0 (sixth night). Synthetic filter 10 of 10, among them 6 `cause_recent` rows, all ok.
+- Night 18, synthetic content: 100 pairs, 69 generated, 61 kept (median 16 chars, overlap 0.33). Relevant shown 51 of 61 (84%), other records 5, nothing 5 (all outside the judged candidates). Ask-backs 0 (seventh night). Dense fallbacks 1; `ambiguousDropped` on 3 rows. Synthetic filter 9 of 10: the `count5` row for a department whose name carries a parenthetical suffix was planned as out of scope with no filters (`unsupported`, not a wrong answer; an observation, not fixed here). 2 `cause_recent` rows, both ok.
+- Real: 6 receipts on 2026-10-19 (1 filter, 5 content). The one no-result among them was the chip bug fixed in #2123 that morning, replayed correctly at night. No real questions on 2026-10-20.
+- Learned queries: no activation on either night.
+
+Finding. The planner's new `cause` question also answers on ordinary content questions: a synthetic question that describes a drawing mistake or a missed check in its own words is given `causeCategory`, and because the category is a hard filter, the content search then runs only over records that JEV classified into that category. Over the two nights 30 of 125 content rows carried a cause; checked against the saved classification of the two source records, the chosen category matched neither record for 12 of the 30, and 5 of those 12 were lost (3 nothing shown on night 17, 2 other records on night 18), against 2 lost among the 18 that matched (both nothing shown, night 18). On night 17 every nothing-shown row was such a mismatch. One row had chosen `unknown` (不明・記載なし), which can never be what a question means. The classification is one model pass over free text and the two records of a pair often disagree with each other (check/drawing, machining/measure), so it is too noisy to gate a content search; it is fine as a filter when the question is only a cause and a period, which was the case #2130 was built for. Without those 5 losses the nights would have read at most 89% and 87%; the fix is the next entry.
+
+Private files: `work/flywheel/questions-2026-10-19.jsonl`, `questions-2026-10-20.jsonl`, `runner-2026-10-19.log`, `runner-2026-10-20.log`, `real-2026-10-19.jsonl`, `receipts-2026-10-19.jsonl`, `stores/retrieval-cause-2026-10-21.jsonl` (hashes and categories only).
+
+### 2026-10-21: a cause heard in a content question no longer narrows the content search (change, not a measurement)
+
+Planner change on top of #2130. A cause chosen from the current question becomes `causeCategory` only when the plan has no content search (`contentDecision.jev` false: cause-and-period questions, breakdowns). When the content search runs, the heard cause is dropped and the receipt records `causeDecision: { chosen: null, dropped: 'content_search', heard: <id> }`; the cause words stay in the question text that the content search uses. A cause inherited from a chip or a previous plan is kept as before, since the user chose it explicitly, also when the follow-up names a different cause. The nightly question rows now keep `causeDecision` (ids only) so that the dropped rows can be counted. `unknown` is no longer offered as a choice in the planner question (it stays a breakdown bucket). Planner question version `planner-questions-2026-10-21`; the JEV input digest changed, results and catalog digests unchanged.
+
+Reading the nineteenth night: report content rows with `causeDecision.dropped === 'content_search'` and their nothing-shown count separately, the `breakdown_*` templates separately from the other filter templates (first night with #2137), and the headline percentage against 85%.
+
+### 2026-10-21: evaluation also records how much text goes to JEV and back to the user (harness change, not a measurement)
+
+`evaluate.mjs` now records per-case JEV call counts, characters sent and received, and answer characters; `stage-score.mjs` shows `jevIn` and `ans`. Search behaviour and the text sent to JEV are unchanged (the worker only exports its formatting functions). The first baseline with these columns is still to be run on `main` with the usual sets; record it here when it is.
+
+### 2026-10-22: nineteenth night, 56%; the new answer-kind question routed one content question in three to a cause breakdown (measurement and finding)
+
+Night of 2026-10-21 (first night with #2137 and #2208 live). Of 61 live content rows, 34 matched a target (56%, against 52/61, 54/64 and 51/61 the three nights before). The 39 further rows in the file are generated candidates dropped before execution (copied run 19, too similar 7, anchor not confirmed 6, copied words 7), not empty answers; `no_result` was 4 and ask-backs 4 (one unresolved term each). Filter questions 10/10.
+
+The loss is one thing: JEV answered the new intent question with `breakdown_cause` on 21 live rows (19 content, 2 filter), although none of them asked for counts: they asked why one nonconformity happened (「〜の原因は？」「〜はなぜ」) or were bare keyword strings with no count word at all. A breakdown plan runs no content search and sorts by date, so all 19 content rows lost (`other_shown` 14, `status` 4, `not_in_pool` 1). Without those 19 the night is 34/42 (81%), with the remaining losses `other_shown` 5, `not_in_pool` 2, `judge_rejected` 1. No real kiosk question of 10/21 or 10/22 was routed to a breakdown (9 receipts).
+
+The #2208 change behaved as intended: a cause heard in a content question was dropped from the plan on 7 rows (5 matched, 2 `other_shown`), and a chosen cause stayed only on breakdown plans.
+
+Private files: `work/flywheel/questions-2026-10-21.jsonl`, `runner-2026-10-21.log`, `receipts-2026-10-21.jsonl`, `receipts-2026-10-22.jsonl`.
+
+### 2026-10-22: a breakdown is accepted only when the question talks about counts (change, not a measurement)
+
+Planner change on top of #2137. The answer-kind options now say that the cause, reason or handling of one nonconformity is `records`, and that the three breakdowns are counts per category rather than records. In addition, a breakdown answer is applied only when the question contains a count or distribution cue (件数, 何件, 多い, 内訳, ごと, 部署別/月別/要因別, 分布, 割合, ランキング, 傾向, 上位, 集計, 一番, 最も, どの要因, 頻度 and the like); otherwise the plan falls back to `records` and the receipt records `intentDecision: { chosen: 'records', gated: 'no_count_cue', heard: <intent> }`. Checked offline against the nightly files: none of the 21 misrouted questions passes the cue, and the real breakdown question of 10/22 (「今年多い要因は?」) and the count questions of earlier nights do. A missed breakdown still returns records, so the gate errs towards records. The nightly rows now also keep `intentDecision`. Planner question version `planner-questions-2026-10-22`; the JEV input digest changed, results and catalog digests unchanged. Night 20 is the check.
+
+### 2026-10-23: twentieth night did not run; the readiness probe mistook the new business model's reasoning text for an outage (finding and harness fix)
+
+Night of 2026-10-22 ran only the 10 filter questions (10/10) and one real question; no content question was generated. The runner's readiness probe asks the business LLM for `OK` with 8 tokens; the model switched to GLM at 21:16 that evening, and GLM writes a short reasoning text even with thinking off, so every probe from 22:00 to 23:58 ended `truncated` (29 probes) and from 00:03 to 05:58 `timeout` (69 probes, overlapping a six-hour backup on the DGX and a business request that never finished; that part is followed on the business-LLM side). Nothing of this measures retrieval, so #2234 is still unchecked.
+
+Harness change: the probe now sends 64 tokens and treats a truncated reply as ready, since an HTTP 200 with a cut-off answer proves the model is up. Generation and labelling keep their 200-token budget; if truncated replies rise there, raise it. Night 21 is the first check of #2234.
+
+### 2026-10-23: record answers now show the part number and part name (change, not a measurement)
+
+Reported from a kiosk check: a records answer listed three nonconformities by number, date, department and body only, so the reader could not see which part each one was about. Record answers were built from the fields with the roles identifier, date, organization and body; part number, part name and machine name are facets and were left out. A source definition may now declare `answerFields` (facet keys shown in record answers after the identifier); the nonconformity source declares part number and part name, so a record reads 不適合番号, 品番, 品名, 発見日, 起因部署, then the body fields. Other sources are unchanged. Planner inputs and catalog digests unchanged; the results digest changed because answers carry two more fields. Not a retrieval change, so no effect on the match rate is expected.

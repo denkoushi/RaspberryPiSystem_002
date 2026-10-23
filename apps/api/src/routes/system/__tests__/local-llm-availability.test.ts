@@ -46,7 +46,6 @@ describe('local LLM availability (isolated, real JWT/client-key authorization)',
       routes: {
         business_hermes: { providerId: provider.id }, photo_label: { providerId: provider.id },
         document_summary: { providerId: provider.id }, admin_console_chat: { providerId: 'admin' },
-        stackchan_chat: { providerId: 'admin' },
       },
     });
     vi.mocked(getInferenceRuntime).mockReturnValue({

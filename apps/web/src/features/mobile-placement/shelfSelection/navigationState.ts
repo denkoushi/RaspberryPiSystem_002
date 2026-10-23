@@ -33,6 +33,6 @@ export function isMobilePlacementShelfRegisterRouteState(
     typeof v.actualPart === 'string' &&
     typeof v.shelfCode === 'string' &&
     typeof v.orderBarcode === 'string' &&
-    (v.slipResult === 'idle' || v.slipResult === 'ok' || v.slipResult === 'ng')
+    (v.slipResult === 'idle' || v.slipResult === 'ok' || v.slipResult === 'ng' || v.slipResult === 'not-found' || v.slipResult === 'error')
   );
 }

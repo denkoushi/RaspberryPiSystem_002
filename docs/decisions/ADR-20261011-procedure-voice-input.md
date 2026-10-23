@@ -76,6 +76,7 @@ the Pi5 afterwards.
 
 ## Direction for kiosks (2026-10-12, implemented behind a flag)
 
+- `PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED` defaults to true; false disables factory vocabulary hints for dictation.
 - `PROCEDURE_SPEECH_TO_TEXT_ENABLED` defaults to off. With it on and the host
   healthy, every terminal including the Mac sends audio through the Pi5 API
   to the plant GPU host: audio stays on the plant network. The API uses the

@@ -1,9 +1,39 @@
 import { Prisma } from '@prisma/client';
+import { composeArea } from '@raspi-system/shelf-layout-core';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 
 import { parseStructuredShelfCode, type RegisteredShelfEntry } from './mobile-placement-registered-shelves.service.js';
+
+export async function deleteMobilePlacementShelf(shelfCodeRaw: string): Promise<{ shelfCodeRaw: string }> {
+  return prisma.$transaction(async (tx) => {
+    shelfCodeRaw = shelfCodeRaw.trim();
+    if (!shelfCodeRaw) {
+      throw new ApiError(400, '棚番が空です', undefined, 'MOBILE_PLACEMENT_SHELF_EMPTY');
+    }
+    const shelf = await tx.mobilePlacementShelf.findUnique({ where: { shelfCodeRaw }, select: { id: true } });
+    if (!shelf) {
+      throw new ApiError(404, '棚が見つかりません', undefined, 'SHELF_DELETE_NOT_FOUND');
+    }
+    const branchCount = await tx.orderPlacementBranchState.count({ where: { shelfCodeRaw } });
+    const haizenCount = await tx.haizenCurrentPlacement.count({ where: { shelfCodeRaw } });
+    const n = branchCount + haizenCount;
+    if (n > 0) {
+      throw new ApiError(409, `品物が ${n}件 置いてあるので消せません。先に「棚を動かす」で移してください`, undefined, 'SHELF_DELETE_HAS_ITEMS');
+    }
+    await tx.clientDevice.updateMany({
+      where: { haizenPresetShelfCodeRaw: shelfCodeRaw },
+      data: { haizenPresetShelfCodeRaw: null }
+    });
+    await tx.mobilePlacementLayoutEntity.updateMany({
+      where: { shelfId: shelf.id },
+      data: { entityKind: 'UNUSED', shelfId: null }
+    });
+    await tx.mobilePlacementShelf.delete({ where: { id: shelf.id } });
+    return { shelfCodeRaw };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
 
 /**
  * 棚マスタ一覧（トップの「登録済み棚番」候補の正本）。
@@ -15,7 +45,8 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
       shelfCodeRaw: true,
       displayLabel: true,
       tier: true,
-      macroZoneId: true
+      macroZoneId: true,
+      photo: { select: { updatedAt: true } }
     },
     orderBy: { shelfCodeRaw: 'asc' }
   });
@@ -25,6 +56,7 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
     return {
       shelfCodeRaw: r.shelfCodeRaw,
       displayLabel: r.displayLabel,
+      photoUpdatedAt: r.photo?.updatedAt.toISOString() ?? null,
       macroZoneId: r.macroZoneId,
       ...(r.tier != null ? { tier: r.tier } : parsed.tier != null ? { tier: parsed.tier } : {}),
       ...parsed
@@ -35,33 +67,37 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
 export type RegisterMobilePlacementShelfInput = {
   clientDeviceId: string;
   shelfCodeRaw: string;
+  displayLabel?: string | null;
 };
 
 /**
- * 棚マスタへ新規登録（`+` 画面）。`西-北-01` 形式のみ。
+ * 棚マスタへ新規登録（`+` 画面）。`加工機 方角` 形式のみ。
  */
 export async function registerMobilePlacementShelf(
   input: RegisterMobilePlacementShelfInput
 ): Promise<{ shelf: RegisteredShelfEntry }> {
-  const raw = input.shelfCodeRaw.trim();
+  let raw = input.shelfCodeRaw.trim();
   if (raw.length === 0) {
     throw new ApiError(400, '棚番が空です', undefined, 'MOBILE_PLACEMENT_SHELF_EMPTY');
   }
 
   const parsed = parseStructuredShelfCode(raw);
-  if (!parsed.isStructured) {
+  if (!parsed.machineName || !parsed.direction) {
     throw new ApiError(
       400,
-      '棚番は 西-北-01 の形式（エリア・列・2桁番号）で登録してください',
+      '棚の名前は「加工機名 方角」（例: DAD-3220 北）で登録してください',
       undefined,
       'MOBILE_PLACEMENT_SHELF_NOT_STRUCTURED'
     );
   }
 
+  raw = composeArea(parsed.machineName, parsed.direction);
+
   try {
     await prisma.mobilePlacementShelf.create({
       data: {
         shelfCodeRaw: raw,
+        displayLabel: input.displayLabel?.trim() || null,
         createdByClientDeviceId: input.clientDeviceId
       }
     });
@@ -69,7 +105,7 @@ export async function registerMobilePlacementShelf(
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
       throw new ApiError(
         409,
-        'この棚番は既に登録されています',
+        'この加工機・方角の棚はもうあります',
         undefined,
         'MOBILE_PLACEMENT_SHELF_DUPLICATE'
       );
@@ -80,6 +116,8 @@ export async function registerMobilePlacementShelf(
   return {
     shelf: {
       shelfCodeRaw: raw,
+      displayLabel: input.displayLabel?.trim() || null,
+      photoUpdatedAt: null,
       ...parsed
     }
   };

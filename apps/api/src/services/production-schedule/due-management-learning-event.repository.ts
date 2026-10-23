@@ -9,23 +9,12 @@ import type {
   OutcomeMetricsRepository,
   RankingProposalRepository
 } from './due-management/domain/contracts.js';
+import { normalizeFseibanList } from './fseiban-list.js';
 
 type RankMetrics = {
   topKPrecision: number;
   spearmanRho: number;
   kendallTau: number;
-};
-
-const normalizeFseibans = (items: string[]): string[] => {
-  const seen = new Set<string>();
-  const next: string[] = [];
-  for (const raw of items) {
-    const value = raw.trim();
-    if (!value || seen.has(value)) continue;
-    seen.add(value);
-    next.push(value);
-  }
-  return next.slice(0, 2000);
 };
 
 const roundMetric = (value: number): number => Number(value.toFixed(6));
@@ -35,8 +24,8 @@ const computeRankMetrics = (params: {
   finalOrderedFseibans: string[];
   topK?: number;
 }): RankMetrics => {
-  const proposal = normalizeFseibans(params.proposalOrderedFseibans);
-  const finalOrder = normalizeFseibans(params.finalOrderedFseibans);
+  const proposal = normalizeFseibanList(params.proposalOrderedFseibans);
+  const finalOrder = normalizeFseibanList(params.finalOrderedFseibans);
   const shared = proposal.filter((fseiban) => finalOrder.includes(fseiban));
   if (shared.length === 0) {
     return {
@@ -109,9 +98,9 @@ implements RankingProposalRepository, DecisionEventRepository, OutcomeMetricsRep
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         location: params.locationKey,
         generatedAt: new Date(params.proposal.generatedAt),
-        orderedFseibans: normalizeFseibans(params.proposal.orderedFseibans),
+        orderedFseibans: normalizeFseibanList(params.proposal.orderedFseibans),
         candidateCount: params.proposal.candidateCount,
-        selectedFseibans: normalizeFseibans(params.selectedFseibans),
+        selectedFseibans: normalizeFseibanList(params.selectedFseibans),
         writePolicy:
           params.writePolicy === null
             ? Prisma.JsonNull
@@ -123,9 +112,9 @@ implements RankingProposalRepository, DecisionEventRepository, OutcomeMetricsRep
   }
 
   async saveDecisionEvent(input: OperatorDecisionInput): Promise<void> {
-    const orderedFseibans = normalizeFseibans(input.orderedFseibans);
-    const previousOrderedFseibans = normalizeFseibans(input.previousOrderedFseibans);
-    const proposalOrderedFseibans = normalizeFseibans(input.proposalOrderedFseibans);
+    const orderedFseibans = normalizeFseibanList(input.orderedFseibans);
+    const previousOrderedFseibans = normalizeFseibanList(input.previousOrderedFseibans);
+    const proposalOrderedFseibans = normalizeFseibanList(input.proposalOrderedFseibans);
     const rankMetrics = computeRankMetrics({
       proposalOrderedFseibans,
       finalOrderedFseibans: orderedFseibans

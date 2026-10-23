@@ -166,3 +166,11 @@ describe('kiosk start page control', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });
+
+it('saves the portal as the startup page and refreshes config', async () => {
+  mount('/kiosk/portal');
+  fireEvent.click(screen.getByRole('button', { name: 'この画面を開始ページにする' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('portal', 'self-device-key'));
+  expect(await screen.findByText('起動時に「ポータル」を開きます')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'この画面が開始ページです' })).toHaveAttribute('aria-pressed', 'true');
+});

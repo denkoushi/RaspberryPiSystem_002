@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 
 import { InventoryImportOutcome, Prisma } from '@prisma/client';
+import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';
@@ -71,6 +72,12 @@ function shouldSkipRecord(
   return !isRetryable(record, now);
 }
 
+export const ITEM_INVENTORY_INGEST_RUNNING = 'ITEM_INVENTORY_INGEST_RUNNING';
+
+function ingestRunningError(): ApiError {
+  return new ApiError(409, 'いま取込中です。少し待ってからもう一度押してください', undefined, ITEM_INVENTORY_INGEST_RUNNING);
+}
+
 export class ItemInventoryGmailIngestionService {
   private running = false;
 
@@ -80,7 +87,7 @@ export class ItemInventoryGmailIngestionService {
   ) {}
 
   async runOnce(options: { config: BackupConfig; allowWait: boolean; manual?: boolean; messageId?: string; forceRetry?: boolean }): Promise<ItemInventoryCycleSummary> {
-    if (this.running) throw new Error('item inventory ingest is already running');
+    if (this.running) throw ingestRunningError();
     if (!options.manual && !options.config.itemInventoryGmailIngest?.enabled) return emptySummary();
     this.running = true;
     const summary = emptySummary();
@@ -142,7 +149,8 @@ export class ItemInventoryGmailIngestionService {
 
   async retryRecord(recordId: string, options: { config: BackupConfig; allowWait: boolean }): Promise<ItemInventoryCycleSummary> {
     const record = await this.db.inventoryImportMessage.findUnique({ where: { id: recordId } });
-    if (!record) throw new Error('item inventory import message not found');
+    if (!record) throw new ApiError(404, '取込記録が見つかりません', undefined, 'ITEM_INVENTORY_IMPORT_MESSAGE_NOT_FOUND');
+    if (this.running) throw ingestRunningError();
     await this.db.inventoryImportMessage.update({ where: { id: recordId }, data: { nextRetryAt: null } });
     return this.runOnce({ ...options, manual: true, messageId: record.gmailMessageId, forceRetry: true });
   }

@@ -11,6 +11,7 @@ import {
   postKioskPalletVisualizationItemReplace,
   type PalletVisualizationItemDto,
 } from '../../../api/client';
+import { palletVisualizationQueryKeys } from '../../../api/queryKeys/palletVisualization';
 import { useKeyboardWedgeScan } from '../../barcode-scan/useKeyboardWedgeScan';
 import { useSerialBarcodeStream } from '../../barcode-scan/useSerialBarcodeStream';
 
@@ -18,8 +19,6 @@ import { PALLET_VIZ_SELECTED_MACHINE_LS_KEY } from './palletVisualizationStorage
 import { mapPalletVisualizationDtoToListItem } from './palletVizListItemMapping';
 
 import type { PalletVizListItem } from './palletVizListItem';
-
-const BOARD_QUERY_KEY = 'kiosk-pallet-viz-board';
 
 function mapItemsToListItems(items: PalletVisualizationItemDto[]): PalletVizListItem[] {
   return items.map(mapPalletVisualizationDtoToListItem);
@@ -67,7 +66,7 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
   const queryClient = useQueryClient();
 
   const boardQuery = useQuery({
-    queryKey: [BOARD_QUERY_KEY, clientKey],
+    queryKey: palletVisualizationQueryKeys.kioskBoard(clientKey),
     queryFn: () => getKioskPalletVisualizationBoard(clientKey),
     refetchInterval: 15_000,
   });
@@ -128,7 +127,7 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
   );
 
   const invalidateBoard = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: [BOARD_QUERY_KEY, clientKey] });
+    void queryClient.invalidateQueries({ queryKey: palletVisualizationQueryKeys.kioskBoard(clientKey) });
   }, [queryClient, clientKey]);
 
   const addMutation = useMutation({
@@ -259,5 +258,6 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
     deleteSelectedItem,
     clearCurrentPallet,
     mutationError,
+    phoneMutationError: mutationError ?? resolveMutationError(deleteMutation.error) ?? resolveMutationError(clearMutation.error),
   };
 }

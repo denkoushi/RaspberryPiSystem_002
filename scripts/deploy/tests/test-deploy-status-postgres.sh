@@ -154,5 +154,5 @@ WHERE "apiKey" = 'client-key-raspberrypi4-kiosk1';
 SQL
 
 stage "run deploy-status API tests"
-"$PNPM" --dir "$ROOT/apps/api" test -- src/routes/system/__tests__/deploy-status-normalize.test.ts src/routes/system/__tests__/deploy-status.test.ts
+"$PNPM" --dir "$ROOT/apps/api" test src/routes/system/__tests__/deploy-status-normalize.test.ts src/routes/system/__tests__/deploy-status.test.ts
 echo 'PASS: isolated deploy-status PostgreSQL integration'

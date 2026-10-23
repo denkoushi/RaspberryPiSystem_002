@@ -1,0 +1,53 @@
+{
+  "modelProfileId": "business_glm53_flash_fp4_tp2",
+  "displayNameJa": "業務 GLM-5.3 Flash FP4 (2台 TP2)",
+  "descriptionJa": "Spark 1 の head と Spark 2 の worker を tensor parallel 2 で起動する業務モデル。",
+  "backend": "blue",
+  "servedAlias": "system-prod-primary",
+  "enabled": true,
+  "recommended": false,
+  "declaredCapabilities": ["text", "vision"],
+  "visionRequiresMmproj": false,
+  "launcherHints": {
+    "blueServerAdapter": "glm53_flash_tp2",
+    "blueModelDir": "/srv/dgx/system-prod/data/models/GLM-5.3-Flash-FP4-Local",
+    "blueWorkerSshTarget": "ubudgxkoushi@192.168.100.11",
+    "blueWorkerModelDir": "/home/ubudgxkoushi/models/GLM-5.3-Flash-FP4-Local",
+    "blueMasterAddr": "192.168.100.10",
+    "blueMasterPort": "29501",
+    "blueEthInterface": "enp1s0f0np0",
+    "blueIbInterfaces": "rocep1s0f0,roceP2p1s0f0",
+    "blueServerImage": "eugr/spark-vllm-b12x:latest",
+    "blueCacheDir": "/srv/dgx/system-prod/data/glm53-cache"
+  },
+  "runtimeProfile": {
+    "engine": "vllm",
+    "coexistencePolicy": "single_active_not_comfy",
+    "chat": {"thinkingControl": "reasoning_effort"},
+    "vllm": {
+      "tensorParallelSize": 2,
+      "maxModelLen": 262144,
+      "maxNumSeqs": 4,
+      "maxNumBatchedTokens": 4096,
+      "schedulingPolicy": "priority",
+      "gpuMemoryUtilization": 0.85,
+      "kvCacheDtype": "fp8",
+      "enablePrefixCaching": true,
+      "enableChunkedPrefill": true,
+      "limitMmPerPrompt": {"image": 61},
+      "speculativeConfig": {
+        "method": "mtp", "num_speculative_tokens": 5,
+        "moe_backend": "humming", "attention_backend": "B12X"
+      }
+    }
+  },
+  "sourceKind": "huggingface",
+  "sourceModelRef": "nvidia/GLM-5.3-Flash-FP4-Local",
+  "modelFamily": "GLM-5.3-Flash",
+  "format": "safetensors",
+  "quantization": "modelopt_mixed",
+  "storageLocation": "/srv/dgx/system-prod/data/models/GLM-5.3-Flash-FP4-Local",
+  "currentStorageLocation": "/srv/dgx/system-prod/data/models/GLM-5.3-Flash-FP4-Local",
+  "canonicalNames": ["GLM-5.3-Flash-FP4-Local"],
+  "legacyNames": []
+}

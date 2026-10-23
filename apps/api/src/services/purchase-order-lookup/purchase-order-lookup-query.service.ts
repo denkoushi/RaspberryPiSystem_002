@@ -4,12 +4,7 @@ import {
   findMasterFhinmeisByNormalizedFhinCd,
 } from './purchase-order-lookup-master-part.service.js';
 import { resolveMachineNamesForPurchaseLookup } from './purchase-order-lookup-machine-name.service.js';
-import {
-  findEarliestPlannedStartDatesBySeibanAndMatchKey,
-  findEarliestPlannedStartDatesBySeibanAndNormalizedFhinCd,
-  purchaseOrderLookupSeibanMatchKey,
-  purchaseOrderLookupSeibanNormKey,
-} from './purchase-order-lookup-planned-start.service.js';
+import { findEarliestPlannedStartDatesForPurchaseRows } from './purchase-order-lookup-planned-start.service.js';
 
 export type PurchaseOrderLookupRowDto = {
   seiban: string;
@@ -28,44 +23,34 @@ export type PurchaseOrderLookupResponse = {
   rows: PurchaseOrderLookupRowDto[];
 };
 
-export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise<PurchaseOrderLookupResponse> {
-  const rows = await prisma.purchaseOrderLookupRow.findMany({
+export function findPurchaseOrderLookupRows(purchaseOrderNo: string) {
+  return prisma.purchaseOrderLookupRow.findMany({
     where: { purchaseOrderNo },
     orderBy: [{ lineIndex: 'asc' }, { id: 'asc' }],
   });
+}
+
+export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise<PurchaseOrderLookupResponse> {
+  const rows = await findPurchaseOrderLookupRows(purchaseOrderNo);
 
   const [
     masterPartNamesByMatchKey,
     masterPartNamesByNormalized,
     machineNames,
-    plannedStartByMatchKey,
-    plannedStartByNormalized,
+    plannedStartDates,
   ] = await Promise.all([
     findMasterFhinmeisByMatchKey(rows.map((row) => row.purchasePartCodeMatchKey)),
     findMasterFhinmeisByNormalizedFhinCd(rows.map((row) => row.purchasePartCodeNormalized)),
     resolveMachineNamesForPurchaseLookup(rows.map((row) => row.seiban)),
-    findEarliestPlannedStartDatesBySeibanAndMatchKey(
-      rows.map((row) => ({
-        seiban: row.seiban,
-        purchasePartCodeMatchKey: row.purchasePartCodeMatchKey,
-      }))
-    ),
-    findEarliestPlannedStartDatesBySeibanAndNormalizedFhinCd(
-      rows.map((row) => ({
-        seiban: row.seiban,
-        purchasePartCodeNormalized: row.purchasePartCodeNormalized,
-      }))
-    ),
+    findEarliestPlannedStartDatesForPurchaseRows(rows),
   ]);
 
-  const out: PurchaseOrderLookupRowDto[] = rows.map((r) => {
+  const out: PurchaseOrderLookupRowDto[] = rows.map((r, index) => {
     const mk = r.purchasePartCodeMatchKey.trim();
     const normalized = r.purchasePartCodeNormalized.trim();
     const masterPartName = masterPartNamesByMatchKey[mk] ?? masterPartNamesByNormalized[normalized] ?? '';
     const machineName = machineNames[r.seiban.trim()] ?? '';
-    const startKey = purchaseOrderLookupSeibanMatchKey(r.seiban, r.purchasePartCodeMatchKey);
-    const fallbackStartKey = purchaseOrderLookupSeibanNormKey(r.seiban, r.purchasePartCodeNormalized);
-    const startDate = plannedStartByMatchKey[startKey] ?? plannedStartByNormalized[fallbackStartKey] ?? null;
+    const startDate = plannedStartDates[index];
     return {
       seiban: r.seiban,
       purchasePartName: r.purchasePartName,

@@ -1,8 +1,13 @@
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
 
+import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
+import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
+import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
 import { pageZoom } from '../pageZoom';
+import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
+import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel } from './planningBoardChipStrips';
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
@@ -124,7 +129,22 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
       onDragPreview({ bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: findDrop(event.clientX, event.clientY, pending) });
     }
   };
-  return <div className="flex min-h-[76px] border-b border-slate-600" data-testid={`planning-forward-lane-${row.key}`}>
+  const chipsByPart = usePlanningBoardProcessChips();
+  // One chip strip per part under its first bar: completed chips fold into 「済N」, at most two lines, and what still does not fit becomes 「+N」.
+  const chipLayout = useMemo(() => {
+    const barStart = (bar: GanttBar) => bar.unknown ? bar.start : bar.segments?.[0]?.start;
+    const firstBars = new Map<string, GanttBar & { start: number }>();
+    for (const bar of row.bars) {
+      const left = barStart(bar);
+      const current = firstBars.get(bar.partKey);
+      if (left != null && chipsByPart.get(bar.partKey)?.length && (!current || left < current.start)) firstBars.set(bar.partKey, { ...bar, start: left });
+    }
+    return layoutChipStrips([...firstBars.values()].map((bar) => {
+      const chips = chipsByPart.get(bar.partKey)!;
+      return { bar, chips, left: (bar.start - start) * dayWidth };
+    }), CHIP_STRIP_FIT);
+  }, [row.bars, chipsByPart, start, dayWidth]);
+  return <div className="flex border-b border-slate-600" style={{ minHeight: 76 + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
     <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900 px-2 py-1 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
     </div>
@@ -138,6 +158,16 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
       </div>)}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
+      {chipLayout.strips.map(({ bar, left, line, done, shown, hidden }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
+        className="pointer-events-none absolute flex flex-nowrap gap-0.5" style={{ left, top: 76 + line * CHIP_LINE_HEIGHT }}>
+        {done.length > 0 && <IconActionTooltip label={`完了: ${chipCodes(done)}`}>
+          <span className={`pointer-events-auto ${progressOverviewProcessChipClassName(true)}`}>{doneChipLabel(done.length)}</span>
+        </IconActionTooltip>}
+        {shown.length > 0 && <KioskResourceProcessChips processes={shown} className="flex-nowrap" />}
+        {hidden.length > 0 && <IconActionTooltip label={`ほか: ${chipCodes(hidden)}`}>
+          <span className="pointer-events-auto rounded border border-slate-500 px-1 py-0.5 text-[10px] leading-none text-slate-200">{moreChipLabel(hidden.length)}</span>
+        </IconActionTooltip>}
+      </div>)}
       {row.bars.map((bar) => {
         const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
         const selected = selectedItemIds.has(bar.item.itemId);

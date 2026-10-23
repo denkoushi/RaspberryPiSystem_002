@@ -14,10 +14,12 @@ import {
 } from './env/core.js';
 import { dgxResourceEnvShape } from './env/dgx-resource.js';
 import { inferenceEnvShape } from './env/inference.js';
+import { inspectionDrawingEnvShape } from './env/inspection-drawing.js';
 import { ingestTuningEnvShape } from './env/ingest-tuning.js';
 import { kioskFlagsEnvShape } from './env/kiosk-flags.js';
 import { localLlmEnvShape } from './env/local-llm.js';
 import { networkEnvShape } from './env/network.js';
+import { procedureVideoEnvShape } from './env/procedure-video.js';
 import { procedureMaterialEnvShape } from './env/procedure-material.js';
 import { photoToolEnvShape } from './env/photo-tool.js';
 import { signageEnvShape } from './env/signage.js';
@@ -34,8 +36,10 @@ const envSchema = z
     ...localLlmEnvShape,
     ...dgxResourceEnvShape,
     ...inferenceEnvShape,
+    ...inspectionDrawingEnvShape,
     ...photoToolEnvShape,
     ...procedureMaterialEnvShape,
+    ...procedureVideoEnvShape,
   })
   .superRefine((value, ctx) => {
     const businessHermesFields = [

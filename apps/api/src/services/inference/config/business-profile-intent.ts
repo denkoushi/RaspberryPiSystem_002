@@ -20,7 +20,6 @@ const BUSINESS_RUNTIME_USE_CASES: ReadonlySet<LocalLlmRuntimeUseCase> = new Set(
   'business_hermes',
   'document_summary',
   'admin_console_chat',
-  'stackchan_chat',
 ]);
 
 export function isBusinessRuntimeUseCase(useCase: LocalLlmRuntimeUseCase): boolean {
@@ -37,7 +36,7 @@ function legacyProfileForUseCase(
   if (useCase === 'document_summary') {
     return env.documentSummaryRuntimeStartProfileId?.trim() || undefined;
   }
-  if (useCase === 'admin_console_chat' || useCase === 'stackchan_chat') {
+  if (useCase === 'admin_console_chat') {
     return env.adminRuntimeStartProfileId?.trim() || undefined;
   }
   return undefined;

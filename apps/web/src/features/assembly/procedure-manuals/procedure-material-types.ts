@@ -1,6 +1,8 @@
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
 export type ProcedureMaterialDto = {
-  origin: 'GMAIL' | 'KNOWLEDGE' | 'WORK_INSTRUCTION';
+  origin: 'GMAIL' | 'KNOWLEDGE' | 'WORK_INSTRUCTION' | 'APP';
+  appRef?: { photoIndex: number } | null;
+  category?: string | null; note?: string | null; location?: string | null; nameId?: string | null; employeeName?: string | null;
   workInstructionRef: ProcedureWorkInstructionRef | null;
   partName?: string | null;
   knowledgeRef: { kind: 'source' | 'procedure_step'; sourceId?: string; imageId?: string; procedureId?: string; revisionNumber?: number; stepId?: string } | null;
@@ -37,3 +39,8 @@ export type ProcedureWorkInstructionCandidate = {
 };
 export type ProcedureWorkInstructionCandidatesResult = { items: ProcedureWorkInstructionCandidate[] };
 export type ProcedureWorkInstructionImportResult = { imported: number; duplicate: number; failed: Array<{ candidateKey: string; reason: string }> };
+
+export type ProcedureMaterialSplitSuggestions = {
+  status: 'ok' | 'disabled' | 'unavailable';
+  boundaries: Array<{ beforeId: string; afterId: string; probability: number }>;
+};

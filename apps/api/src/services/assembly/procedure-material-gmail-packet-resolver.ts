@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 
+import { resolveProcedureMaterialAppReferences, type ProcedureMaterialAppRef } from './procedure-material-app-manifest.js';
+
 import type { GmailMessage, GmailMessagePart } from '../backup/gmail-api-client.js';
 
 export const PROCEDURE_MATERIAL_MAX_PHOTO_BYTES = 25 * 1024 * 1024;
@@ -19,6 +21,7 @@ const INLINE_PHOTO_MIN_BYTES = 16 * 1024;
 const PHOTO_STORAGE_SIZE_ERROR = '縮小しても 1 MB に収まりません';
 export type ProcedureMaterialAttachmentClient = { getAttachment: (messageId: string, attachmentId: string) => Promise<Buffer> };
 export type ProcedureMaterialPhoto = {
+  appRef?: ProcedureMaterialAppRef;
   gmailDedupeKey: string; filename: string; buffer: Buffer; sha256: string; contentType: string; width: number; height: number;
 };
 export type ProcedureMaterialVideo = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256' | 'contentType'>;
@@ -137,7 +140,7 @@ export function stripCidPlaceholders(text: string): string {
 
 /** Inline photos use the attachment path; small inline images are treated as signature logos. */
 export async function resolveProcedureMaterialGmailPacket(params: {
-  message: GmailMessage; client: ProcedureMaterialAttachmentClient; savedKeys?: ReadonlySet<string>;
+  message: GmailMessage; client: ProcedureMaterialAttachmentClient; savedKeys?: ReadonlySet<string>; app?: boolean;
 }): Promise<ProcedureMaterialPacket> {
   const packet: ProcedureMaterialPacket = { text: null, photos: [], videos: [], pdfs: [], duplicate: 0, skippedAttachments: 0, warnings: [] };
   const plain: GmailMessagePart[] = [];
@@ -169,15 +172,20 @@ export async function resolveProcedureMaterialGmailPacket(params: {
   const bytes = async (part: GmailMessagePart): Promise<Buffer> => part.body?.attachmentId
     ? params.client.getAttachment(params.message.id, part.body.attachmentId)
     : Buffer.from(part.body?.data ?? '', 'base64url');
+  const appReferences = params.app ? await resolveProcedureMaterialAppReferences(attachments.map(({ part }) => part), bytes) : null;
+  const resolvedAppPhotos = new Set<string>();
   const bodyKey = `${params.message.id}:body`;
-  if (params.savedKeys?.has(bodyKey)) packet.duplicate++;
-  else {
+  if (!params.app && params.savedKeys?.has(bodyKey)) packet.duplicate++;
+  else if (!params.app) {
     const bodies = await Promise.all((plain.length ? plain : html).map(async (part) => (await bytes(part)).toString('utf8')));
     packet.text = stripCidPlaceholders(plain.length ? bodies.join('\n') : bodies.map(htmlToText).join('\n')) || null;
   }
   for (const { part, path, inline } of attachments) {
     const filename = part.filename?.normalize('NFC').trim() || 'photo';
     const contentType = resolveAttachmentContentType(part.mimeType, filename);
+    const appRef = appReferences?.get(filename);
+    if (appReferences && !appRef && !VIDEO_FORMATS.has(contentType)) continue;
+    if (appRef && !PHOTO_FORMATS[contentType]) throw new Error(`Referenced image is unsupported: ${filename}`);
     const key = `${params.message.id}:${createHash('sha256').update(`${filename}\n${part.partId ?? path}`).digest('hex')}`;
     if (contentType === 'application/pdf') {
       if ((part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PDF_BYTES) {
@@ -205,7 +213,7 @@ export async function resolveProcedureMaterialGmailPacket(params: {
       packet.videos.push({ gmailDedupeKey: key, filename, buffer, contentType, sha256: createHash('sha256').update(buffer).digest('hex') });
       continue;
     }
-    if (inline && part.body?.size !== undefined && part.body.size < INLINE_PHOTO_MIN_BYTES) {
+    if (!appRef && inline && part.body?.size !== undefined && part.body.size < INLINE_PHOTO_MIN_BYTES) {
       packet.skippedAttachments++;
       continue;
     }
@@ -217,10 +225,10 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     if ((part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PHOTO_BYTES) {
       packet.skippedAttachments++; packet.warnings.push(`${filename}: 25 MB超過`); continue;
     }
-    if (params.savedKeys?.has(key)) { packet.duplicate++; continue; }
+    if (params.savedKeys?.has(key)) { packet.duplicate++; if (appRef) resolvedAppPhotos.add(filename); continue; }
     // eslint-disable-next-line no-await-in-loop
     const buffer = await bytes(part);
-    if (inline && part.body?.size === undefined && buffer.length < INLINE_PHOTO_MIN_BYTES) {
+    if (!appRef && inline && part.body?.size === undefined && buffer.length < INLINE_PHOTO_MIN_BYTES) {
       packet.skippedAttachments++;
       continue;
     }
@@ -230,18 +238,22 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     try {
       // eslint-disable-next-line no-await-in-loop
       const metadata = await openPhoto(buffer).metadata();
-      if (metadata.format !== PHOTO_FORMATS[contentType] || !metadata.width || !metadata.height) throw new Error('画像形式が一致しません');
+      // Senders mislabel files (e.g. PNG bytes named .jpeg); trust the decoded format when it is a supported photo.
+      const detectedType = Object.entries(PHOTO_FORMATS).find(([, format]) => format === metadata.format)?.[0];
+      if (!detectedType || !metadata.width || !metadata.height) throw new Error('画像形式が一致しません');
       // Validate the decoded pixels as well as the header before normalization.
       // eslint-disable-next-line no-await-in-loop
       await openPhoto(buffer).stats();
       // eslint-disable-next-line no-await-in-loop
-      const normalized = await normalizePhotoForStorage(buffer, contentType);
-      packet.photos.push({ gmailDedupeKey: key, filename, ...normalized, contentType, sha256: createHash('sha256').update(normalized.buffer).digest('hex') });
+      const normalized = await normalizePhotoForStorage(buffer, detectedType);
+      if (appRef) resolvedAppPhotos.add(filename);
+      packet.photos.push({ ...(appRef ? { appRef } : {}), gmailDedupeKey: key, filename, ...normalized, contentType: detectedType, sha256: createHash('sha256').update(normalized.buffer).digest('hex') });
     } catch (error) {
       const message = describePhotoError(error);
       const warning = message === PHOTO_STORAGE_SIZE_ERROR || message === PHOTO_PIXEL_LIMIT_ERROR ? message : '画像を読み取れません';
       packet.skippedAttachments++; packet.warnings.push(`${filename}: ${warning}`);
     }
   }
+  if (appReferences && resolvedAppPhotos.size !== appReferences.size) throw new Error(`Referenced photos could not be imported: ${packet.warnings.join('; ')}`);
   return packet;
 }

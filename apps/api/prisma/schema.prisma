@@ -179,6 +179,7 @@ model Employee {
   status                                        EmployeeStatus                                 @default(ACTIVE)
   createdAt                                     DateTime                                       @default(now())
   updatedAt                                     DateTime                                       @updatedAt
+  screenWatchSessions                           KioskScreenWatchSession[]
   kioskInquiryReceiver                          KioskInquiryReceiverEmployee?
   kioskInquiryMessages                          KioskInquiryMessage[]
   loans                                         Loan[]
@@ -491,6 +492,7 @@ model ClientDevice {
   statusClientId                                String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
   defaultMode                                   String?                                        @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
   kioskInitialRoute                             String? // 端末ごとのキオスク開始ページ（shared-types の KIOSK_INITIAL_ROUTE_IDS。未設定は defaultMode、PIN画面は対象外）
+  kioskPortalHiddenTabIds                        String[] @default([])
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
   signagePreviewTargetApiKey                    String?
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
@@ -506,6 +508,8 @@ model ClientDevice {
   canProxyOtherDevices                          Boolean                                        @default(false)
   inquiryReceiverEnabled                        Boolean                                        @default(false)
   systemNoticeReceiverEnabled                   Boolean                                        @default(false)
+  screenWatchViewerSessions                     KioskScreenWatchSession[] @relation("ScreenWatchViewer")
+  screenWatchTargetSessions                     KioskScreenWatchSession[] @relation("ScreenWatchTarget")
   kioskInquiryThreads                           KioskInquiryThread[]
   kioskInquiryMessages                          KioskInquiryMessage[]
   lastSeenAt                                    DateTime?
@@ -668,6 +672,8 @@ model MobilePlacementEvent {
 
 /// 部品配膳（製造order番号起点・Item は更新しない）
 model OrderPlacementEvent {
+  clientRecordId               String?                  @unique @map("client_record_id")
+  slipKind                     String                   @default("manufacturing_order") @map("slip_kind")
   id                           String                   @id @default(uuid())
   clientDeviceId               String
   shelfCodeRaw                 String
@@ -688,6 +694,7 @@ model OrderPlacementEvent {
 
 /// 製造orderごとの分配枝の現在棚（履歴は OrderPlacementEvent 側）
 model OrderPlacementBranchState {
+  slipKind                     String   @default("manufacturing_order") @map("slip_kind")
   id                           String   @id @default(uuid())
   manufacturingOrderBarcodeRaw String
   branchNo                     Int
@@ -716,6 +723,17 @@ model MobilePlacementShelf {
   createdByClientDeviceId String?
   createdBy               ClientDevice?                 @relation(fields: [createdByClientDeviceId], references: [id], onDelete: SetNull)
   layoutEntities          MobilePlacementLayoutEntity[]
+  photo                   MobilePlacementShelfPhoto?
+}
+
+model MobilePlacementShelfPhoto {
+  shelfId                 String               @id
+  shelf                   MobilePlacementShelf @relation(fields: [shelfId], references: [id], onDelete: Cascade)
+  contentType             String
+  bytes                   Bytes
+  byteSize                Int
+  updatedAt               DateTime             @updatedAt
+  updatedByClientDeviceId String?
 }
 
 enum MobilePlacementLayoutEntityKind {
@@ -979,6 +997,7 @@ model InventoryItem {
   note           String?
   /// Unit name the item is counted in; null means 個.
   unit           String?
+  unitPrice      Int?
   maker          String?
   toolName       String?
   workMaterial   String?
@@ -1004,6 +1023,16 @@ model InventoryToolFieldPreset {
   createdAt DateTime @default(now())
 
   @@unique([field, value])
+}
+
+model InventoryToolValueDistinct {
+  id        String   @id @default(uuid())
+  field     String
+  valueA    String
+  valueB    String
+  createdAt DateTime @default(now())
+
+  @@unique([field, valueA, valueB])
 }
 
 /// Units offered when setting an item's unit (個, ケース, ...). Items store the name.
@@ -1436,6 +1465,7 @@ model CsvDashboard {
   createdAt                      DateTime                                          @default(now())
   updatedAt                      DateTime                                          @updatedAt
   ingestRuns                     CsvDashboardIngestRun[]
+  feedFreshnessState             CsvFeedFreshnessState?
   rows                           CsvDashboardRow[]
   grindingPlanningBoardResourceCapacities ProductionScheduleGrindingPlanningBoardResourceCapacity[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
@@ -1446,6 +1476,15 @@ model CsvDashboard {
   @@index([gmailScheduleId])
   @@index([gmailSubjectPattern])
   @@index([configType, importType])
+}
+
+model CsvFeedFreshnessState {
+  csvDashboardId       String       @id
+  csvDashboard         CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade)
+  lastComparedRunId    String?
+  lastComparedRunAt    DateTime?
+  lastContentChangedAt DateTime?
+  updatedAt            DateTime     @updatedAt
 }
 
 model CsvDashboardIngestRun {
@@ -2918,6 +2957,10 @@ model PartMeasurementVisualTemplate {
   businessTemplates        PartMeasurementTemplate[]
   ocrCaches                PartMeasurementDrawingOcrCache[]
   dimensionMaps            PartMeasurementDrawingDimensionMap[]
+  siblingMatches           PartMeasurementDrawingSiblingMatch[]
+  placementRuns            PartMeasurementDrawingPlacementRun[] @relation("PlacementTarget")
+  sourcedPlacementRuns     PartMeasurementDrawingPlacementRun[] @relation("PlacementSource")
+  placementProposals       PartMeasurementDrawingPlacementProposal[]
 
   @@index([isActive, name])
   @@index([searchDigits(ops: raw("gin_trgm_ops"))], type: Gin, map: "PartMeasurementVisualTemplate_searchDigits_trgm_idx")
@@ -2985,6 +3028,87 @@ model PartMeasurementDrawingDimensionMap {
   @@unique([visualTemplateId, analysisVersion, drawingImageFingerprint], map: "PMDrawingDimMap_unique_visual_version_hash")
   @@index([visualTemplateId, status], map: "PMDrawingDimMap_idx_visual_status")
   @@index([status, nextAttemptAt, createdAt], map: "PMDrawingDimMap_idx_claim")
+}
+
+enum PartMeasurementDrawingSiblingMatchStatus {
+  PENDING
+  MATCHED
+  NO_MATCH
+}
+
+model PartMeasurementDrawingSiblingMatch {
+  id                      String @id @default(uuid())
+  visualTemplateId        String
+  drawingImageFingerprint String
+  matchVersion            String
+  status                  PartMeasurementDrawingSiblingMatchStatus @default(PENDING)
+  method                  String
+  siblings                Json
+  attempts                Int @default(0)
+  lastError               String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  visualTemplate          PartMeasurementVisualTemplate @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([visualTemplateId, drawingImageFingerprint, matchVersion], map: "PMDrawingSiblingMatch_unique_visual_hash_version")
+  @@index([status, updatedAt], map: "PMDrawingSiblingMatch_idx_pending")
+}
+
+enum PartMeasurementDrawingPlacementProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  UNPLACED
+}
+
+model PartMeasurementDrawingPlacementRun {
+  id                      String @id @default(uuid())
+  visualTemplateId        String
+  drawingImageFingerprint String
+  analysisVersion         String
+  placementVersion        String
+  sourceVisualTemplateId  String?
+  sourceTemplateId        String?
+  rankingMethod           String
+  proposalCount           Int @default(0)
+  unplacedCount           Int @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  visualTemplate          PartMeasurementVisualTemplate @relation("PlacementTarget", fields: [visualTemplateId], references: [id], onDelete: Cascade)
+  sourceVisualTemplate    PartMeasurementVisualTemplate? @relation("PlacementSource", fields: [sourceVisualTemplateId], references: [id], onDelete: SetNull)
+  proposals               PartMeasurementDrawingPlacementProposal[]
+
+  @@unique([visualTemplateId, drawingImageFingerprint, analysisVersion, placementVersion], map: "PMDrawingPlacementRun_unique_visual_hash_versions")
+  @@index([sourceVisualTemplateId])
+}
+
+model PartMeasurementDrawingPlacementProposal {
+  id                String @id @default(uuid())
+  runId             String
+  visualTemplateId  String
+  sourceItemId      String
+  status            PartMeasurementDrawingPlacementProposalStatus @default(PROPOSED)
+  sortOrder         Int
+  measurementLabel  String
+  measurementPoint  String?
+  decimalPlaces     Int @default(6)
+  nominalValue      Decimal @db.Decimal(18, 6)
+  lowerLimit        Decimal? @db.Decimal(18, 6)
+  upperLimit        Decimal? @db.Decimal(18, 6)
+  depthMode         PartMeasurementDepthMode @default(MEASURED)
+  valueKind         PartMeasurementValueKind @default(NUMERIC)
+  markerXRatio      Decimal? @db.Decimal(10, 8)
+  markerYRatio      Decimal? @db.Decimal(10, 8)
+  dimension         Json?
+  candidates        Json
+  decidedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  run               PartMeasurementDrawingPlacementRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  visualTemplate    PartMeasurementVisualTemplate @relation(fields: [visualTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, sourceItemId], map: "PMDrawingPlacementProposal_unique_run_item")
+  @@index([visualTemplateId])
 }
 
 /// 検査図面の同時作成・まとめて改版単位。
@@ -3280,6 +3404,43 @@ model AssemblyProcedureAsset {
 
   @@index([sha256], map: "AssemblyProcedureAsset_idx_sha256")
   @@index([ownerDocumentId, createdAt], map: "AssemblyProcedureAsset_idx_owner_created")
+}
+
+enum AssemblyProcedureTextFeedbackOutcome {
+  PROPOSED
+  KEPT
+  EDITED
+  REVERTED
+}
+
+model AssemblyProcedureTextFeedback {
+  id           String                               @id @default(uuid())
+  documentId   String
+  pageIndex    Int
+  elementId    String
+  site         String?
+  documentName String
+  originalText String
+  aiText       String
+  finalText    String?
+  outcome      AssemblyProcedureTextFeedbackOutcome @default(PROPOSED)
+  createdAt    DateTime                             @default(now())
+  resolvedAt   DateTime?
+
+  @@index([documentId, elementId])
+  @@index([site, outcome, resolvedAt])
+}
+
+model AssemblyProcedureLearnedTerm {
+  id            String   @id @default(uuid())
+  site          String
+  wrongText     String
+  rightText     String
+  occurrences   Int
+  documentCount Int
+  updatedAt     DateTime @updatedAt
+
+  @@unique([site, wrongText])
 }
 
 model AssemblyProcedureCaptionFeedback {
@@ -5394,6 +5555,7 @@ enum ProcedureMaterialKind {
 }
 
 enum ProcedureMaterialOrigin {
+  APP
   GMAIL
   KNOWLEDGE
   WORK_INSTRUCTION
@@ -5404,6 +5566,7 @@ model ProcedureMaterial {
   origin           ProcedureMaterialOrigin @default(GMAIL)
   knowledgeRef     Json?
   workInstructionRef Json?
+  appRef           Json?
   kind             ProcedureMaterialKind
   text             String?
   imageDescription String?
@@ -5494,9 +5657,47 @@ model ProcedureVideo {
   links             ProcedureVideoLink[]
   comments          ProcedureVideoComment[]
   scenes            ProcedureVideoScene[]
+  autoEditSuggestions ProcedureVideoAutoEditSuggestion[]
 
   @@index([status, updatedAt])
   @@index([discardedAt, receivedAt])
+}
+
+enum ProcedureVideoAutoEditStatus {
+  PENDING
+  RUNNING
+  READY
+  FAILED
+  SKIPPED
+}
+
+enum ProcedureVideoAutoEditDecision {
+  APPLIED
+  DISMISSED
+}
+
+model ProcedureVideoAutoEditSuggestion {
+  id              String @id @default(uuid())
+  videoId         String
+  status          ProcedureVideoAutoEditStatus @default(PENDING)
+  decision        ProcedureVideoAutoEditDecision?
+  attempts        Int @default(0)
+  processingToken String?
+  modelRoute      String?
+  modelName       String?
+  promptVersion   String
+  suggestion      Json @default("{}")
+  verification    Json?
+  confirmed       Json?
+  decidedAt       DateTime?
+  errorCode       String?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  video           ProcedureVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([videoId, createdAt])
+  @@index([status, createdAt])
 }
 
 model ProcedureVideoScene {
@@ -5544,10 +5745,11 @@ model ProcedureVideoComment {
 }
 
 model KioskInquiryReceiverEmployee {
-  id         String   @id @default(uuid())
-  employeeId String   @unique
-  createdAt  DateTime @default(now())
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  employeeId    String   @unique
+  canViewScreen Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model KioskInquiryThread {
@@ -5565,6 +5767,7 @@ model KioskInquiryThread {
   updatedAt            DateTime              @updatedAt
   senderClientDevice   ClientDevice?         @relation(fields: [senderClientDeviceId], references: [id], onDelete: Cascade)
   messages             KioskInquiryMessage[]
+  screenWatchSessions  KioskScreenWatchSession[]
 
   @@index([kind, noticeKey])
   @@index([receiverUnread])
@@ -5599,4 +5802,33 @@ model ProcedureManualCommonSubject {
   key     String @id
   name    String
   kanaRow String?
+}
+
+enum KioskScreenWatchStatus {
+  REQUESTED
+  ACTIVE
+  DENIED
+  ENDED
+  EXPIRED
+  FAILED
+}
+
+model KioskScreenWatchSession {
+  id                   String                 @id @default(uuid())
+  threadId             String
+  viewerEmployeeId     String?
+  viewerClientDeviceId String
+  targetClientDeviceId String
+  status               KioskScreenWatchStatus @default(REQUESTED)
+  requestedAt          DateTime               @default(now())
+  acceptedAt           DateTime?
+  endedAt              DateTime?
+  endReason            String?
+  thread               KioskInquiryThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  viewerEmployee       Employee?              @relation(fields: [viewerEmployeeId], references: [id], onDelete: SetNull)
+  viewerClientDevice   ClientDevice           @relation("ScreenWatchViewer", fields: [viewerClientDeviceId], references: [id])
+  targetClientDevice   ClientDevice           @relation("ScreenWatchTarget", fields: [targetClientDeviceId], references: [id])
+
+  @@index([threadId])
+  @@index([targetClientDeviceId, status])
 }

@@ -28,7 +28,8 @@ vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
     onReplaceImage,
     onBringToFront,
     onSendToBack,
-    onClose
+    onClose,
+    voiceContext
   }: {
     element: AssemblyProcedureOverlayElement | null;
     onRefetchTextCandidates: () => void;
@@ -36,8 +37,9 @@ vi.mock('./AssemblyProcedureDocumentEditorInspector', () => ({
     onBringToFront: (id: string) => void;
     onSendToBack: (id: string) => void;
     onClose: () => void;
+    voiceContext?: string;
   }) => (
-    <aside aria-label="オーバーレイ編集" data-testid="editor-inspector">
+    <aside aria-label="オーバーレイ編集" data-testid="editor-inspector" data-voice-context={voiceContext}>
       <button onClick={onClose} aria-label="属性を閉じる">✕</button>
       <button onClick={() => element && onBringToFront(element.id)}>最前面へ</button>
       <button onClick={() => element && onSendToBack(element.id)}>最背面へ</button>
@@ -71,7 +73,7 @@ function makeController(
     layoutSuggestions: {
       state: { status: 'idle' }, locked: false, canSuggest: false,
       start: vi.fn(async () => undefined), cancel: vi.fn(), apply: vi.fn(),
-      previewElements: null, showBefore: vi.fn()
+      previewElements: null, showBefore: vi.fn(), selectOption: vi.fn(), appliedCaptionElementIds: []
     },
     onEditLeaseError: vi.fn(() => false),
     beginOverlayDrag: vi.fn(),
@@ -289,6 +291,19 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(actions[0]).toHaveAttribute('aria-label', '工房へ戻る');
     expect(actions[1]).toHaveAttribute('aria-label', '保存する');
     expect(actions.at(-1)).toHaveAttribute('aria-label', supersedesDocumentId ? '改版を破棄する' : '削除する');
+  });
+
+  it.each([
+    ['組立 › 組立', 'procedure-assembly'], ['研削 › 平面研削', 'procedure-grinding'],
+    [' › 組立', 'procedure-assembly'], ['工程 › 研削', 'procedure-grinding'],
+    ['切削', undefined], [undefined, undefined]
+  ])('passes only known department context to voice input (%s)', (processName, expected) => {
+    const element = { id: 'text', kind: 'TEXT', text: '手順', pageIndex: 0, zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } as const;
+    const controller = makeController({ selectedElement: element });
+    const context = processName === undefined ? undefined : { modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'process', processName, mode: 'fix' as const };
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={context} /></AssemblyProcedureDocumentEditorProvider>);
+    if (expected) expect(screen.getByTestId('editor-inspector')).toHaveAttribute('data-voice-context', expected);
+    else expect(screen.getByTestId('editor-inspector')).not.toHaveAttribute('data-voice-context');
   });
 
   it.each([401, 403])('connects video link save failure %s to controller revocation', async status => {

@@ -29,7 +29,7 @@ jobs:
       publishable: ${{ steps.classify.outputs.release_pair }}
     steps:
       - name: Checkout code with history
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -64,7 +64,7 @@ jobs:
       protocol_version: ${{ steps.evidence.outputs.protocol_version }}
     steps:
       - name: Checkout exact component sources with history
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -80,7 +80,7 @@ jobs:
         run: |
           set +e
           git diff --exit-code \
-            50682226c1be734a141ba7bb3e599db07411f571 \
+            a926af9a92ba82de56f4ae152391a061d8c4449a \
             "$TARGET_SHA" -- \
             clients/torque-agent \
             infrastructure/docker/Dockerfile.torque-agent \
@@ -183,7 +183,7 @@ jobs:
       - name: Run API ownership routes and PostgreSQL fencing contracts
         run: |
           export DATABASE_URL="$TORQUE_COMPAT_DATABASE_URL"
-          pnpm --filter @raspi-system/api test -- \
+          pnpm --filter @raspi-system/api test \
             src/services/torque-wrenches/__tests__/torque-wrench-usage-lease.policy.test.ts \
             src/services/torque-wrenches/__tests__/torque-wrench-confirmation-use.policy.test.ts \
             src/routes/__tests__/torque-wrenches.integration.test.ts \
@@ -201,7 +201,7 @@ jobs:
 
       - name: Run Web ownership transport and controller contracts
         run: |
-          pnpm --filter @raspi-system/web test -- \
+          pnpm --filter @raspi-system/web test \
             src/features/torque-wrench-connection/torqueWrenchConnectionTransport.test.ts \
             src/features/torque-wrench-connection/useTorqueWrenchConnection.test.ts \
             src/features/torque-wrench-connection/torqueWrenchConnectionPresentation.test.ts
@@ -220,7 +220,7 @@ jobs:
       - name: Seal the passed combination rehearsal evidence
         id: evidence
         env:
-          BASELINE_SHA: 50682226c1be734a141ba7bb3e599db07411f571
+          BASELINE_SHA: a926af9a92ba82de56f4ae152391a061d8c4449a
           SOURCE_CLOSURE_UNCHANGED: ${{ steps.source_closure.outputs.source_closure_unchanged }}
         run: |
           python3 - <<'PY'
@@ -310,7 +310,7 @@ jobs:
       origin_job_id: ${{ steps.identity.outputs.origin_job_id }}
     steps:
       - name: Checkout exact adopting main source with history
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_SHA }}
@@ -345,16 +345,16 @@ jobs:
 
       - name: Resolve the immutable existing torque-agent index
         env:
-          TORQUE_REFERENCE: ghcr.io/denkoushi/raspisys-torque-agent@sha256:1b0c907945bf4bd1bfabe95f73491ac4186234b04650f86befb0e5937d8c4dbc
+          TORQUE_REFERENCE: ghcr.io/denkoushi/raspisys-torque-agent@sha256:d84e19c7f28b45303ac94d5e941eeb2007f18c92c715a088bb31a372d5b8017e
         run: docker buildx imagetools inspect --raw "$TORQUE_REFERENCE" > torque-agent-index.json
 
       - name: Re-scan adopted torque-agent ARM64 digest under the required policy
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
           TRIVY_PLATFORM: linux/arm64
         with:
           scan-type: image
-          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:1b0c907945bf4bd1bfabe95f73491ac4186234b04650f86befb0e5937d8c4dbc
+          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:d84e19c7f28b45303ac94d5e941eeb2007f18c92c715a088bb31a372d5b8017e
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -362,12 +362,12 @@ jobs:
           trivyignores: .trivyignore
 
       - name: Re-scan adopted torque-agent ARMv7 digest under the required policy
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         env:
           TRIVY_PLATFORM: linux/arm/v7
         with:
           scan-type: image
-          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:1b0c907945bf4bd1bfabe95f73491ac4186234b04650f86befb0e5937d8c4dbc
+          image-ref: ghcr.io/denkoushi/raspisys-torque-agent@sha256:d84e19c7f28b45303ac94d5e941eeb2007f18c92c715a088bb31a372d5b8017e
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -387,14 +387,14 @@ jobs:
             > torque-agent-adoption.json
           {
             echo 'repository=ghcr.io/denkoushi/raspisys-torque-agent'
-            echo 'index_digest=sha256:1b0c907945bf4bd1bfabe95f73491ac4186234b04650f86befb0e5937d8c4dbc'
-            echo 'source_sha=50682226c1be734a141ba7bb3e599db07411f571'
-            echo 'arm64_digest=sha256:60520126e09f3928a97272789ccd2215e078ee8f2d2752465f76ae503951d204'
-            echo 'armv7_digest=sha256:d0607792910d978b1020fdad29a197c4d3f7d8c8af0a62b540aeb49bfa71509f'
+            echo 'index_digest=sha256:d84e19c7f28b45303ac94d5e941eeb2007f18c92c715a088bb31a372d5b8017e'
+            echo 'source_sha=a926af9a92ba82de56f4ae152391a061d8c4449a'
+            echo 'arm64_digest=sha256:84e3ee17a2da2a3c64c6daf921f6abdcafcbf33d8250a8200659e43fee967432'
+            echo 'armv7_digest=sha256:2a6697bf84a54b2d2223d0f3b5725f555e77e3560407ccf92cc98cb51221fb90'
             echo 'predicate_type=https://github.com/denkoushi/RaspberryPiSystem_002/attestations/torque-agent-component-adoption/v1'
             echo 'origin_workflow=.github/workflows/ci.yml'
-            echo 'origin_run_id=38206959264'
-            echo 'origin_job_id=114673616812'
+            echo 'origin_run_id=39545694734'
+            echo 'origin_job_id=119045547502'
           } >> "$GITHUB_OUTPUT"
 
       - name: Sign adoption of the existing immutable torque-agent digest
@@ -440,7 +440,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.TARGET_SHA }}
 

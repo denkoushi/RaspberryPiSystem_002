@@ -20,7 +20,7 @@ import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { env } from '../config/env.js';
-import { ApiError } from '../lib/errors.js';
+import { ApiError, DomainHttpError } from '../lib/errors.js';
 import { resolveErrorLogDevice } from '../services/clients/error-log-device.service.js';
 
 type ErrorResponse = {
@@ -61,6 +61,9 @@ const buildErrorResponse = (
 };
 
 const isProduction = env.NODE_ENV === 'production';
+
+// P2025: 更新・削除の対象が存在しない場合は、入力の誤り（400）ではなく 404 で返す
+const PRISMA_NOT_FOUND_MESSAGE = '対象のデータが見つかりません';
 
 const buildPrismaClientResponse = (
   requestId: string | number,
@@ -227,7 +230,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
       return;
     }
 
-    if (error instanceof ApiError) {
+    if (error instanceof ApiError || error instanceof DomainHttpError) {
       emit('warn',
         buildStructuredErrorLog(
           requestId,
@@ -296,6 +299,23 @@ export function registerErrorHandler(app: FastifyInstance): void {
         ),
         'Database error',
       );
+
+      if (error.code === 'P2025') {
+        reply
+          .status(404)
+          .send(
+            buildPrismaClientResponse(
+              requestId,
+              `${PRISMA_NOT_FOUND_MESSAGE}: ${error.message}`,
+              PRISMA_NOT_FOUND_MESSAGE,
+              {
+                errorCode: error.code,
+                details: error.meta,
+              },
+            ),
+          );
+        return;
+      }
 
       // P2003: 外部キー制約違反の場合、より詳細なメッセージを返す
       if (error.code === 'P2003') {
@@ -392,6 +412,38 @@ export function registerErrorHandler(app: FastifyInstance): void {
     if (isPrismaLikeError(error)) {
       const prismaError: PrismaLikeError = error;
       const errorCode = prismaError.code;
+
+      if (errorCode === 'P2025') {
+        emit('error',
+          buildStructuredErrorLog(
+            requestId,
+            method,
+            url,
+            errorCode,
+            normalizedError,
+            {
+              userId,
+              errorCode,
+              errorMeta: prismaError.meta,
+            },
+          ),
+          'P2025エラー（フォールバック）',
+        );
+        reply
+          .status(404)
+          .send(
+            buildPrismaClientResponse(
+              requestId,
+              `${PRISMA_NOT_FOUND_MESSAGE}: ${getMessage(error) ?? errorCode}`,
+              PRISMA_NOT_FOUND_MESSAGE,
+              {
+                errorCode,
+                details: prismaError.meta,
+              },
+            ),
+          );
+        return;
+      }
 
       if (errorCode === 'P2003') {
         const fieldName = getMetaString(prismaError.meta, 'field_name', '不明なフィールド');

@@ -127,9 +127,42 @@ category: knowledge-base
 **Prevention**:
 
 - 表示リクエストで 10万行級以上の raw dashboard を読まない。raw source scan は sync/backfill 境界に寄せる。
-- 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。
+- 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。（2026-10-19 追記: 多資源では VALUES 結合が総当たりになったため、`= ANY(text[])` 照合に置き換えた。下の節を参照）
 - `LEADERBOARD_BOARD_PERF_LOG` は一時測定のみ。測定後は `.env` から削除し API を再起動する。
 - 詳細な時系列・デプロイ・計測ログは [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を参照。
+
+## Residual summary の VALUES 結合が総当たりになる（2026-10-19）
+
+**症状**: kensakuMain（8 資源）の順位ボードの初回表示が 11〜18 秒かかる。1 資源だけなら速い。
+
+**調べ方**: 本番 Pi5 の DB に読み取り専用（`PGOPTIONS='-c default_transaction_read_only=on'`）で接続し、board shell が出す SQL をそのまま 1 本ずつ実行して計測した。あわせて `EXPLAIN (ANALYZE, BUFFERS)` も取った。
+
+**根因**:
+
+- `fetchLeaderboardProcessChangeResidualSummary()` の件数 SQL と代表行 SQL は、証拠キー 647 件を `WITH residual_keys AS (VALUES ...)` に入れて `INNER JOIN` していた。
+- planner が `fkmail` の件数を誤って見積もった（推定 724 行、実際は 20,371 行）。そのため、相関 winner の副問い合わせを通った約 1 万行と 647 件の VALUES を Nested Loop と Join Filter で総当たりした（`Rows Removed by Join Filter: 6,892,482`）。
+- 結合条件の式は JSON の `BTRIM` / `UPPER` なので、比較 1 回ごとのコストも高い。資源数が増えるほど候補行が増え、遅さが目立つ。
+
+**Fix（結果不変）**: 両 SQL の CTE と JOIN をやめた。代わりに、既存の `buildLeaderboardProcessChangeResidualFilterWhereSql('only', keys)` を使う。これは長さを前置したテキストキーを `= ANY(text[])` で照合する方式で、キーは bind 1 個で渡す。あわせて、キーの長さを UTF-16 の `.length` ではなくコードポイント数で数えるように揃えた（PostgreSQL の `length()` と一致させるため）。
+
+**Pi5 実測（読み取り専用、kensakuMain の 8 資源）**:
+
+| SQL | 修正前 | 修正後 |
+| --- | --- | --- |
+| residual 件数 | 5,232 ms | 388〜413 ms |
+| residual 代表行 | 6,728 ms | 385〜387 ms |
+| board shell の全 SQL を直列に実行した合計 | 16.8 s | 5.1 s |
+
+- 出力は修正前と完全に一致した（psql の結果を diff で確認）。
+- 本番では資源ごとの shell が並列に動くので、画面の応答時間は反映後に改めて確認する。
+- 補足: `csv_dashboard_row_prod_schedule_residual_key_idx` は、この 2 本の SQL からは使われなくなった。削除するかどうかは `pg_stat_user_indexes.idx_scan` を見てから別に判断する。
+
+**同じ型の遅さ（未修正）**: 研削計画ボードの `GET .../grinding-planning-board/load` にも同じ型の遅さがある。
+
+- `grinding-planning-board-load-summary.ts` の集計 SQL が 9.4 s かかる。
+- 上書き 354 行を渡す `jsonb_to_recordset` と 60,517 行を Nested Loop Left Join しており（推定 1 行）、`Rows Removed by Join Filter: 21,422,927` になっている。
+
+**Prevention**: 少数キーの照合は、`VALUES` や JSON の行集合との JOIN にしない。`= ANY(text[])` か、ハッシュ結合が効く形にする。候補行の見積もりが外れると、Nested Loop の総当たりになる。
 
 ## Production deploy & verification（2026-05-06 · leaderboard-shell winner materialization）
 
@@ -306,6 +339,26 @@ category: knowledge-base
 **Web display stability follow-up**: After `bf9dea17`, the remaining user-visible issues were Web-side: pressing `+人` intentionally refetched labor metadata, but the screen could temporarily fall back from a long appended board to a shorter shell/partial append, and the global 「一覧を更新中です。」 banner appeared too often. The deployed fix chain is `64ece479` → `2bc28966` → `1e24fd38` → `2c33c6c4` → `e98de7ce`: keep shell/display freshness independent from `includeLabor`, preserve the longer previous append during labor refresh, slow regular refresh to 5 minutes, and hide the global sync banner for display-only labor refresh. Pi5 deploy run `20260623-200308-94` verified runtime HEAD `e98de7ce`; the real 6-slot page reported `schedule-usable=8.344s`, and `+人` no longer collapsed the board height in headless Chrome sampling. 2026-06-24 follow-up found that row height could remain stable while labor values stayed stale; the Web now overlays fresh labor metadata from the current network board onto the selected display board by `row.id`. Detailed code map and non-regression rules are in [leaderboard-defer-totals-performance-recovery · Cursor handoff](../plans/leaderboard-defer-totals-performance-recovery.md#cursor-handoff-web-display-stability-and-refresh-cadence2026-06-23-current).
 
 **Resource-first winner shell follow-up（PR #464 deployed）**: Pi5 pre-investigation for the real 6-slot board (`581,305,589,584,588,586`) showed the next bottleneck is per-resource shell row selection. The target resource candidate sets are small (`584` max ~3,495 raw rows) compared with the materialized winner id array (~54k ids). A sampled `584` EXPLAIN favored filtering the resource first and then applying the correlated winner predicate (~0.66s) over applying full winner membership first (~1.23s). The PR #464 follow-up makes `leaderboard-board` shell `resourceShell` calls opt into `leaderboardWinnerBaseStrategy: 'correlated'` and lazily resolves the global materialized winner base: the first-usable request shape (`deferTotals=true`, `includeLabor=false`) uses correlated winner for `processChangeResidualSummary` and skips residual summary entirely when evidence keys are empty, so `phase=materializedBaseWhere` should not appear unless exact totals or labor lookup require it. For future measurement, validate with `[leaderboard-board-performance] phase=resourceShell winnerBaseStrategy=correlated`, `phase=processChangeResidualSummary winnerBaseStrategy=correlated`, absence of `phase=materializedBaseWhere` on the machine-only deferred shell, and exact 6-slot client perf. If logs still show `pageSize=80` or missing `includeLabor`, force-reload the kiosk tab because that indicates an old bundle/request path.
+
+## 手動行 SQL の先絞り（2026-10-19 · continue の resourceContinue 3〜4 秒）
+
+- **症状**: 本番（main `a0184b81`・6 資源）で shell 2.1 s のあと continue が 4.2 / 3.8 / 2.6 s。`[leaderboard-board-performance]` の `resourceContinue` が資源ごとに 2.4〜4.1 s（並列でも 1 資源単独でも同程度なので、競合ではなく 1 文ごとの重さ）。
+- **計測（Pi5・読み取り専用 psql・資源 587・約 5,800 行）**: continue の 1 回で重い SQL は「手動行」「フィラー（LIMIT 320）」「hydrate」。手動行とフィラーはそれぞれ約 0.5 s。
+  - **手動行 SQL**: 結果 0 件なのに約 0.5 s。資源索引の見積りが `rows=1` のため、約 5,800 行へ表示用 JOIN（p / ext / n / pp / supplement / fkmail / 順位 LATERAL）を全部済ませてから、最後に `EXISTS (ord_m)` の半結合で絞っていた。
+  - **winner 集合**: 78,360 件 = ダッシュボード全行（絞り込み効果なし）。continue は materialized winner を `text[]`（約 2.9 MB）で毎文送る。psql では送信・解析・計画で 1 文あたり約 0.1 s。correlated に切り替えても実行は速くならない（0.47→0.53 s 程度）ので採用しない。
+  - **pp（加工種別）JOIN**: 見積り `rows=1` のため 140 行の表を行ごとに seq scan し、`rowData->>'FHINCD'` を約 51 万回評価（約 0.2 s / 文）。LATERAL 化で約 0.07 s 改善するのみ。今回は未対応。
+- **修正**: 手動行 WHERE を `leaderboard-shell-manual-where.sql.ts` に分け、`EXISTS` の前に `"CsvDashboardRow"."id" = ANY(ARRAY(SELECT 割当表の行 id [UNION ALL 分割割当の親行 id]))` を追加。InitPlan 1 回 + 主キー索引で引く。`EXISTS` は意味の正本として残すので結果は同じ。
+- **効果（Pi5・同じ SQL を前後で 3 回ずつ）**: continue の形（materialized）**約 0.48 s → 約 0.12 s**、shell の形（correlated）**約 0.50 s → 約 0.004 s**。件数は前後とも同じ（0 件）。資源ごとの continue で約 0.36 s、shell で約 0.5 s の削減見込み。本番の API 計測（デプロイ後）は未実施。
+- **残り**: フィラー SQL（約 0.5 s・並べ替えに必要な JOIN を全候補行に実施）、winner 配列 2.9 MB の毎文送信、pp JOIN の見積り違い。
+
+## 加工種別 JOIN を返す行だけに（2026-10-20 · 初回 continue 4.5 s）
+
+- **症状**: 本番（main `5421e8b2`・6 資源）で初回 continue が **4.5 s**。`resourceTotals`（COUNT）2.1 s と、資源ごとの `resourceContinue` 3.7〜4.4 s（10 行しかない資源でも 3.7 s）が並列で走る。2 回目の continue は 2.2 s（件数はキャッシュに当たる）。
+- **見立て**: 1 文を単独で流すとフィラー約 0.5 s・COUNT 約 0.1 s（送信込み約 0.24 s）。本番の 3〜4 s は 6 資源の SQL が Pi5 上で同時に CPU を取り合った合計なので、1 文ごとの CPU を減らすのが効く。
+- **計測（Pi5・読み取り専用 psql・資源 587）**: フィラー（LIMIT 320）で、資源索引の見積り `rows=1`（実際 5,872 行）のため `pp`（加工種別・167 行）JOIN が候補 5,712 行ごとの seq scan になり、JOIN 条件で約 50 万行を捨てて約 0.23 s。
+- **修正**: `leaderboard-shell-row-projection.sql.ts` の共通 JOIN から `pp` を外し、SELECT 列の `processingType` をスカラー副問い合わせ（`LEADERBOARD_SHELL_PART_PROCESSING_TYPE_SUBQUERY`）にした。PostgreSQL は並べ替え・LIMIT の後（返す 320 行だけ）で評価する。`("csvDashboardId", "fhincd")` は一意索引なので、LEFT JOIN と結果は同じ（無ければ NULL）。手動行・フィラー・工程変更残りの 3 経路に効く。
+- **効果（Pi5・コードから生成した SQL を前後 3 回ずつ）**: 資源 587 の実行 **0.56〜0.65 s → 0.24〜0.25 s**、資源 586 **0.29〜0.33 s → 0.15 s**。返る 320 行の md5 は前後で一致。本番 API 計測（デプロイ後）は未実施。
+- **残り**: 順位 LATERAL（ord_pick / gr_pick）も並べ替え前に 3,079 回走る（約 30 ms）。winner 配列 2.9 MB の毎文送信（約 0.1 s / 文）。初回 continue の COUNT は、shell が `hasMore=true` のとき件数キャッシュを作らないため毎回走る（作る時期を変えるのは挙動の判断が要る）。
 
 ## Troubleshooting
 

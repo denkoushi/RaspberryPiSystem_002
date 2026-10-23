@@ -12,9 +12,30 @@ export async function getMobilePlacementRegisteredShelves() {
   return data;
 }
 
-/** POST /api/mobile-placement/shelves（棚マスタへ新規登録、`西-北-01` 形式） */
-export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: string }) {
+/** POST /api/mobile-placement/shelves（棚マスタへ新規登録、`加工機 方角` 形式） */
+export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: string; displayLabel?: string | null }) {
   const { data } = await api.post<{ shelf: RegisteredShelfEntryDto }>('/mobile-placement/shelves', payload);
+  return data;
+}
+
+export async function getMobilePlacementShelfPhoto(shelfCodeRaw: string, photoUpdatedAt: string) {
+  const { data } = await api.get<Blob>(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}/photo`, {
+    params: { v: photoUpdatedAt }, responseType: 'blob'
+  });
+  return data;
+}
+
+export async function putMobilePlacementShelfPhoto(shelfCodeRaw: string, photo: { contentType: string; dataBase64: string }) {
+  const { data } = await api.put<{ photoUpdatedAt: string }>(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}/photo`, photo);
+  return data;
+}
+
+export async function patchMobilePlacementShelfMemo(shelfCodeRaw: string, displayLabel: string | null) {
+  await api.patch(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}`, { displayLabel });
+}
+
+export async function deleteMobilePlacementShelf(shelfCodeRaw: string) {
+  const { data } = await api.delete<{ shelfCodeRaw: string }>(`/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}`);
   return data;
 }
 
@@ -25,6 +46,11 @@ export type MobilePlacementClientCapabilities = {
 
 export async function getMobilePlacementClientCapabilities() {
   const { data } = await api.get<MobilePlacementClientCapabilities>('/mobile-placement/client-capabilities');
+  return data;
+}
+
+export async function getMobilePlacementShelfMachines() {
+  const { data } = await api.get<{ machines: string[] }>('/mobile-placement/shelf-machines');
   return data;
 }
 
@@ -163,6 +189,16 @@ export async function registerMobilePlacement(payload: {
   return data;
 }
 
+export type MobilePlacementSlipMatchResponse = {
+  ok: boolean;
+  reason: 'match' | 'different_seiban' | 'different_part' | 'part_required' | 'order_not_found' | 'transfer_not_found';
+  legacyReason?: string;
+  actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
+  expected?: { fseiban: string; fhincd: string; partName?: string };
+  actual?: { fseiban?: string; partCode?: string };
+  matchedBy?: 'part_name';
+};
+
 /** 移動票・現品票の (FSEIBAN, FHINCD) ペア照合 */
 export async function verifyMobilePlacementSlipMatch(payload: {
   transferOrderBarcodeRaw: string;
@@ -173,28 +209,35 @@ export async function verifyMobilePlacementSlipMatch(payload: {
   actualFseibanRaw: string;
   actualPartBarcodeRaw: string;
 }) {
-  const { data } = await api.post<{ ok: true } | { ok: false; reason: string }>(
+  const { data } = await api.post<MobilePlacementSlipMatchResponse>(
     '/mobile-placement/verify-slip-match',
     payload
   );
   return data;
 }
 
+export type ActualSlipOcrResponse = {
+  engine: string;
+  ocrText: string;
+  /** プレビュー用。無い場合は `ocrText` を表示に使う */
+  ocrPreviewSafe: string | null;
+  manufacturingOrder10: string | null;
+  fseiban: string | null;
+  fseibanRaw: string | null;
+  fseibanMatch: 'exact' | 'corrected' | 'ambiguous' | 'none';
+  fseibanCandidates: string[];
+};
+
 /** 現品票画像を OCR し、製造order（10桁）と製番候補を返す */
 export async function parseActualSlipImage(imageFile: File) {
   const form = new FormData();
   form.append('image', imageFile);
-  const { data } = await api.post<{
-    engine: string;
-    ocrText: string;
-    /** 数字・英数字 OCR のみ（プレビュー用。無い場合は `ocrText` を表示に使う） */
-    ocrPreviewSafe: string | null;
-    manufacturingOrder10: string | null;
-    fseiban: string | null;
-    fseibanRaw: string | null;
-    fseibanMatch: 'exact' | 'corrected' | 'ambiguous' | 'none';
-    fseibanCandidates: string[];
-  }>('/mobile-placement/parse-actual-slip-image', form);
+  const { data } = await api.post<ActualSlipOcrResponse>('/mobile-placement/parse-actual-slip-image', form);
+  return data;
+}
+
+export async function snapFseibanTokens(payload: { tokens: string[]; text?: string }) {
+  const { data } = await api.post<ActualSlipOcrResponse>('/mobile-placement/snap-fseiban-tokens', payload);
   return data;
 }
 
@@ -202,7 +245,10 @@ export async function parseActualSlipImage(imageFile: File) {
 export async function registerOrderPlacement(payload: {
   shelfCodeRaw: string;
   manufacturingOrderBarcodeRaw: string;
-}) {
+  slipKind?: 'manufacturing_order' | 'purchase_order';
+  clientRecordId?: string;
+  placedAt?: string;
+}, timeout?: number) {
   const { data } = await api.post<{
     event: {
       id: string;
@@ -219,8 +265,8 @@ export async function registerOrderPlacement(payload: {
       branchNo: number;
       shelfCodeRaw: string;
     };
-    resolvedRowId: string;
-  }>('/mobile-placement/register-order-placement', payload);
+    resolvedRowId: string | null;
+  }>('/mobile-placement/register-order-placement', payload, timeout === undefined ? undefined : { timeout });
   return data;
 }
 
@@ -239,6 +285,13 @@ export async function getOrderPlacementBranches(manufacturingOrder: string) {
     '/mobile-placement/order-placement-branches',
     { params: { manufacturingOrder } }
   );
+  return data;
+}
+
+export async function deleteOrderPlacementBranch(id: string) {
+  const { data } = await api.delete<{
+    deleted: Pick<OrderPlacementBranchDto, 'id' | 'manufacturingOrderBarcodeRaw' | 'branchNo' | 'shelfCodeRaw'>;
+  }>(`/mobile-placement/order-placement-branches/${encodeURIComponent(id)}`);
   return data;
 }
 
@@ -342,5 +395,23 @@ export async function getMobilePlacementHaizenCurrent(params?: {
       ...(params?.limit != null ? { limit: params.limit } : {})
     }
   });
+  return data;
+}
+
+/** Current Android placement branches, independently of the Zero2W haizen-current projection. */
+export type HaizenOverviewRow = {
+  id: string;
+  shelfCodeRaw: string;
+  manufacturingOrderBarcodeRaw: string;
+  branchNo: number;
+  fseiban: string | null;
+  fhincd: string | null;
+  fhinmei: string | null;
+  machineName: string | null;
+  updatedAt: string;
+};
+
+export async function getHaizenOverview() {
+  const { data } = await api.get<{ rows: HaizenOverviewRow[]; truncated: boolean }>('/mobile-placement/haizen-overview');
   return data;
 }

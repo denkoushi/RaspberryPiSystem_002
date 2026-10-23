@@ -1,5 +1,8 @@
+import { causeLabel, CAUSE_CATEGORY_IDS, conditionSha256, normalizeConditionText } from './cause-categories.mjs';
+import { readCauseStore, causeStorePathFromEnv } from './cause-store.mjs';
 // JSON-lines worker for the lexical + one planner call + one relevance call path.
 // Vector ranking stays off unless HERMES_RETRIEVAL_VECTOR_ENABLED=true.
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -11,7 +14,8 @@ import { createDenseRuntime, denseSettings } from './dense-dgx.mjs';
 import { execute, rankCandidates, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge } from './relevance-jev.mjs';
-import { validateQueryPlan } from './query-plan.mjs';
+import { QUERY_PLAN_SCHEMA, validateQueryPlan } from './query-plan.mjs';
+import { previousIsoDay } from './period-parse.mjs';
 import { buildValueIndex, findCandidateValues } from './value-index.mjs';
 import { authorizedRecords, buildCorpusView, replaceCorpus, stampAnswer } from './corpus.mjs';
 import { attachEnrichment } from './enrichment-attach.mjs';
@@ -27,14 +31,13 @@ export function noteDenseFallback(status) {
   console.info(`hermes retrieval dense fallback count=${denseFallbackCount} status=${status}`);
 }
 const ANSWER_ROLES = new Set(['identifier', 'date', 'organization', 'body']);
-const INSUFFICIENT_NOTICE = '見つかった件数は、指定された件数より少ないです。';
 const COVERAGE_ORDER = {
   date_desc: '新しい順',
   date_asc: '古い順',
   relevance: '関連度の高い順',
   source_order: 'ソース順',
 };
-const UNAVAILABLE_ANSWER = '検索に失敗しました。該当なしとは判断していません。';
+export const UNAVAILABLE_ANSWER = '検索に失敗しました。該当なしとは判断していません。';
 const TYPESAFE_FAILURE_CODES = new Set([
   'missing_credentials', 'transport_unavailable', 'upstream_http', 'invalid_json',
   'invalid_answers', 'timeout', 'connection_failed',
@@ -121,6 +124,8 @@ export function compactPlan(plan) {
       op: filter.op,
       values: Array.isArray(filter.values) ? [...filter.values] : [],
     })) : [],
+    ...(plan.causeCategory !== undefined ? { causeCategory: plan.causeCategory } : {}),
+    ...(plan.breakdown ? { breakdown: plan.breakdown } : {}),
     semanticQuery: typeof plan.semanticQuery === 'string' ? plan.semanticQuery : '',
     // The content part the judge read, so a follow-up that reuses the content judges the same text.
     ...(typeof plan.diagnostics?.contentSpan === 'string' && plan.diagnostics.contentSpan
@@ -140,13 +145,14 @@ export function compactPlan(plan) {
 // request for other records can hide them.
 export const SHOWN_IDS_CAP = 200;
 
-function sessionOf(previousPlan, shownIds = []) {
+function sessionOf(previousPlan, shownIds = [], plans = []) {
   return {
     pending: null,
     searchRequest: null,
     searchState: null,
     jevDialogue: [],
     previousPlan,
+    plans: plans.slice(-8),
     shownIds,
   };
 }
@@ -164,7 +170,7 @@ export function noOtherAnswer(shownCount) {
   return `さきほど示した${shownCount}件のほかに、条件に合う記録は見つかりませんでした。`;
 }
 
-function clarificationAnswer(clarification) {
+export function clarificationAnswer(clarification) {
   const lines = ['次の候補から選んでください。'];
   for (const group of clarification?.candidates ?? []) {
     const values = (group?.candidates ?? []).filter((value) => typeof value === 'string' && value);
@@ -191,12 +197,34 @@ function confirmationPending(question, clarification, answer) {
   };
 }
 
-function formatRecords(results, catalog) {
+export function formatBreakdown(plan, groups, total, catalog) {
+  const fields = catalogEntries(catalog).flatMap(entry => entry.fields);
+  const conditions = plan.filters.flatMap(filter => {
+    const field = fields.find(field => field.key === filter.field);
+    if (!['date', 'organization'].includes(field?.role)) return [];
+    const values = filter.values;
+    if (filter.op === 'between') return [`${values[0]}〜${values[1]}`];
+    if (filter.op === 'after') return [`${values[0]}より後`];
+    if (filter.op === 'before') return [`${values[0]}より前`];
+    return [`${values.join('・')}${filter.op === 'not_in' ? '以外' : ''}`];
+  });
+  if (plan.causeCategory) conditions.push(`要因が${causeLabel(plan.causeCategory)}`);
+  const group = groups?.find(group => group.axis === plan.breakdown);
+  const label = { cause: '要因', organization: '部署', month: '月' }[plan.breakdown];
+  const buckets = (group?.buckets ?? []).map(bucket => `${bucket.label} ${bucket.count}件`).join('、');
+  const other = group?.otherCount ? `（${group.otherLabel ?? 'その他'} ${group.otherCount}件）` : '';
+  return `${conditions.join('・') || '全期間・全部署'}の不適合 ${total} 件の${label}の内訳: ${buckets || (other ? '' : '該当なし')}${other}`;
+}
+
+export function formatRecords(results, catalog) {
   const entries = catalogEntries(catalog);
   const records = (results ?? []).flatMap((result) => {
     const entry = entries.find((entry) => entry.id === result.sourceId);
     if (!entry) return [];
-    const fields = entry.fields.filter((field) => ANSWER_ROLES.has(field.role)).flatMap((field) => {
+    // Besides number, date, department and body, a source may name facet fields to show in
+    // answers (answerFields, e.g. part number and part name), so records can be told apart.
+    const answerFields = new Set(definitionForCatalog(entry).answerFields ?? []);
+    const fields = entry.fields.filter((field) => ANSWER_ROLES.has(field.role) || answerFields.has(field.key)).flatMap((field) => {
       const value = result?.fields?.[field.key];
       return typeof value === 'string' ? [{ label: field.label, value, role: field.role }] : [];
     });
@@ -288,6 +316,52 @@ function selectedSourcePlan(plan, entries) {
   };
 }
 
+function validRefine(refine) {
+  return refine && typeof refine === 'object' && !Array.isArray(refine)
+    && (refine.planId === undefined || (typeof refine.planId === 'string' && refine.planId.length <= 64))
+    && ['organization', 'month', 'cause'].includes(refine.axis)
+    && (refine.axis !== 'cause' || (refine.field === 'causeCategory' && CAUSE_CATEGORY_IDS.includes(refine.value)))
+    && typeof refine.field === 'string' && refine.field.trim().length > 0 && refine.field.length <= 80
+    && typeof refine.value === 'string' && refine.value.trim().length > 0 && refine.value.length <= 80;
+}
+
+function refinedPlan(previousPlan, refine, catalog, valueIndex) {
+  if (!previousPlan || !validRefine(refine) || previousPlan.sources?.length !== 1) return null;
+  const entry = catalogEntries(catalog).find((item) => item.id === previousPlan.sources[0]);
+  const role = refine.axis === 'month' ? 'date' : 'organization';
+  if (!entry || (refine.axis !== 'cause' && !fieldsWithRole(entry, role).includes(refine.field))) return null;
+  let values = [refine.value];
+  if (refine.axis === 'month') {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/u.test(refine.value)) return null;
+    const year = Number(refine.value.slice(0, 4));
+    const month = Number(refine.value.slice(5));
+    const nextMonth = month === 12 ? `${String(year + 1).padStart(4, '0')}-01-01`
+      : `${refine.value.slice(0, 4)}-${String(month + 1).padStart(2, '0')}-01`;
+    values = [`${refine.value}-01`, previousIsoDay(nextMonth)];
+  }
+  const plan = {
+    ...previousPlan,
+    schema: QUERY_PLAN_SCHEMA,
+    ...(refine.axis === 'cause' ? { causeCategory: refine.value } : {}),
+    filters: refine.axis === 'cause' ? [...(previousPlan.filters ?? [])] : [...(previousPlan.filters ?? []).filter((filter) => filter.field !== refine.field), {
+      source: entry.id, field: refine.field, op: refine.axis === 'month' ? 'between' : 'eq', values,
+    }],
+    // Stored plans are compact: restore the display and diagnostics needed by execution.
+    display: previousPlan.display ?? entry.fields.map((field) => field.key),
+    unresolved: [],
+    diagnostics: {
+      ...previousPlan.diagnostics,
+      excludeShown: false,
+      contentDecision: previousPlan.diagnostics?.contentDecision ?? {
+        jev: Boolean(previousPlan.semanticQuery?.trim()), final: Boolean(previousPlan.semanticQuery?.trim()), residualTokens: [],
+      },
+      ...(previousPlan.contentSpan ? { contentSpan: previousPlan.contentSpan } : {}),
+    },
+  };
+  delete plan.breakdown;
+  return validateQueryPlan(plan, catalog, valueIndex).ok ? plan : null;
+}
+
 // The stored enrichment is attached only while HERMES_RETRIEVAL_ENRICHMENT_ENABLED is true, the
 // same flag that runs the overnight enrichment. Full-corpus enrichment showed only a small gain
 // (2026-10-02), so turning the flag off stops both; the store stays on disk.
@@ -307,6 +381,23 @@ export async function loadEnrichmentById(env = process.env) {
   return enrichmentById;
 }
 
+// Executor records retain their original (bare or already-prefixed) ids. Public ids are only
+// for the answer/session; never key this map through publicRecordId or attach a record field.
+export async function loadCauseById(env = process.env, records = []) {
+  const byId = new Map();
+  try {
+    const store = await readCauseStore(causeStorePathFromEnv(env));
+    for (const record of records) {
+      if (recordSourceId(record) !== 'nonconformity' || !normalizeConditionText(record.condition)) continue;
+      const row = store.get(conditionSha256(record.condition));
+      if (row) byId.set(record.id, row.categoryId);
+    }
+  } catch {
+    console.warn('hermes retrieval cause store unreadable');
+  }
+  return byId;
+}
+
 export async function loadLearnedQueriesById(env = process.env) {
   if (env.HERMES_FLYWHEEL_LEARNED_ENABLED === 'false') return new Map();
   return learnedQueriesById(await readLearned(learnedPathFromEnv(env)));
@@ -319,7 +410,7 @@ function publicRecordId(sourceId, recordId) {
   return sourceId ? `${sourceId}:${id}` : id;
 }
 
-function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, dataAsOf, display, coverage = null, receipt = null, shownIds = [], candidateIds = null }) {
+function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previousPlan, plans = [], planId, dataAsOf, display, coverage = null, receipt = null, shownIds = [], candidateIds = null }) {
   const stamped = stampAnswer(answer, dataAsOf);
   return {
     status,
@@ -329,7 +420,8 @@ function trialResult({ status, answer, recordIds, elapsedMs, confirmation, previ
     dataAsOf: stamped.dataAsOf,
     ...(display ? { display: { ...display, dataAsOf: stamped.dataAsOf } } : {}),
     confirmationPending: confirmation ?? null,
-    session: sessionOf(previousPlan, shownIds),
+    session: sessionOf(previousPlan, shownIds, plans),
+    ...(planId ? { planId } : {}),
     ...(coverage ? { coverage } : {}),
     ...(Array.isArray(candidateIds) ? { candidateIds } : {}),
     ...(receipt ? { receipt: { ...receipt, elapsedMs } } : {}),
@@ -358,6 +450,7 @@ export function createRetrievalAnswering({
   denseBySource = null,
   vectorBySource = null,
   enrichmentById = null,
+  causeById = null,
   learnedById = null,
   snapshotCount = Array.isArray(records) ? records.length : 0,
 } = {}) {
@@ -374,7 +467,7 @@ export function createRetrievalAnswering({
     current = { ...current, valueIndex, lexicalCorpus, snapshotCount };
     if (entries.length === 1 && lexicalCorpus) current.bySource[entries[0].id].lexicalCorpus = lexicalCorpus;
   }
-  current = applyEnrichment(current, enrichmentById, catalog, learnedById);
+  current = { ...applyEnrichment(current, enrichmentById, catalog, learnedById), causeById };
   return {
     async rank(query, options = {}) {
       const entry = entries.find(entry => entry.id === options.sourceId);
@@ -396,7 +489,8 @@ export function createRetrievalAnswering({
     async replaceCorpus(message) {
       const count = current.snapshotCount;
       try {
-        current = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById(), catalog, await loadLearnedQueriesById());
+        const next = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById(), catalog, await loadLearnedQueriesById());
+        current = { ...next, causeById: await loadCauseById(process.env, next.records) };
         for (const entry of semanticEntries) denseFor(entry.id)?.schedule?.(current.bySource[entry.id].records, fieldsWithRole(entry, 'body'));
         return { ok: true, sourceIds: entries.map(entry => entry.id), count: current.snapshotCount, memory: memoryReport(current.records, catalog) };
       } catch {
@@ -424,23 +518,30 @@ export function createRetrievalAnswering({
       const vectorBudgetMs = Number.isFinite(options.vectorBudgetMs) && options.vectorBudgetMs > 0 ? options.vectorBudgetMs : undefined;
       const started = performance.now();
       const elapsed = () => Math.round((performance.now() - started) * 10) / 10;
-      const storedPlan = session?.previousPlan && typeof session.previousPlan === 'object' ? session.previousPlan : null;
       // A session carried from a wider role must not expose its source values to the planner.
-      const previousPlan = restricted && storedPlan
-        && (storedPlan.sources?.some((source) => !visibleSources.has(source))
-          || storedPlan.filters?.some((filter) => !visibleSources.has(filter.source))) ? null : storedPlan;
-      const previouslyShown = restricted
+      const visiblePlan = (plan) => !plan || typeof plan !== 'object' || (restricted
+        && (plan.sources?.some((source) => !visibleSources.has(source))
+          || plan.filters?.some((filter) => !visibleSources.has(filter.source)))) ? null : plan;
+      const previousPlan = visiblePlan(session?.previousPlan);
+      const storedPlans = Array.isArray(session?.plans) ? session.plans.slice(-8) : [];
+      const plans = storedPlans.filter((entry) => typeof entry?.id === 'string' && visiblePlan(entry.plan));
+      const selectedPlan = validRefine(options.refine) && options.refine.planId !== undefined
+        ? storedPlans.find((entry) => entry?.id === options.refine.planId) : undefined;
+      const refineBase = selectedPlan ? visiblePlan(selectedPlan.plan) : previousPlan;
+      let previouslyShown = restricted
         ? shownIdsOf(session).filter((id) => visibleEntries.some((entry) => id.startsWith(`${entry.id}:`))) : shownIdsOf(session);
       if (!visibleEntries.length) {
         return trialResult({ status: 'completed', answer: outOfScopeAnswer, recordIds: [], elapsedMs: elapsed(),
-          previousPlan: null, shownIds: [], dataAsOf: view.dataAsOf });
+          previousPlan: null, plans, shownIds: [], dataAsOf: view.dataAsOf });
       }
-      const candidates = findCandidateValues(question, visibleValueIndex, visibleCatalog);
-      const planned = await planner.plan({
+      const refinePlan = refinedPlan(refineBase, options.refine, visibleCatalog, visibleValueIndex);
+      if (refinePlan) previouslyShown = [];
+      // Natural-language turns decide whether to keep, replace, or drop the previous cause.
+      const planned = refinePlan ? { plan: refinePlan, timings: { planMs: 0 } } : await planner.plan({
         question,
         previousPlan,
         catalog: visibleCatalog,
-        candidates,
+        candidates: findCandidateValues(question, visibleValueIndex, visibleCatalog),
         valueIndex: visibleValueIndex,
         shownCount: previouslyShown.length,
         ...(options.pageContext ? { pageContext: options.pageContext } : {}),
@@ -449,9 +550,19 @@ export function createRetrievalAnswering({
       if (restricted && (planned.plan?.sources?.some((source) => !visibleSources.has(source))
         || planned.plan?.filters?.some((filter) => !visibleSources.has(filter.source)))) {
         return trialResult({ status: 'completed', answer: outOfScopeAnswer, recordIds: [], elapsedMs: elapsed(),
-          previousPlan: null, shownIds: previouslyShown, dataAsOf: view.dataAsOf });
+          previousPlan: null, plans, shownIds: previouslyShown, dataAsOf: view.dataAsOf });
       }
-      const searchPlan = selectedSourcePlan(planned.plan, visibleEntries);
+      let searchPlan = selectedSourcePlan(planned.plan, visibleEntries);
+      const causeFilterDropped = !refinePlan && searchPlan?.causeCategory !== undefined && !view.causeById?.size;
+      if (causeFilterDropped) {
+        searchPlan = { ...searchPlan };
+        delete searchPlan.causeCategory;
+      }
+      const breakdownDropped = searchPlan?.breakdown === 'cause' && !view.causeById?.size;
+      if (breakdownDropped) {
+        searchPlan = { ...searchPlan };
+        delete searchPlan.breakdown;
+      }
       const compact = compactPlan(searchPlan);
       // A screen-derived condition belongs to this turn only. Do not carry its
       // value into the next question through previous_plan when no pointer is used.
@@ -469,9 +580,16 @@ export function createRetrievalAnswering({
         schema: 'hermes-search-receipt/v1',
         outcome,
         plan: compact,
+        ...(planned.plan?.diagnostics?.causeDecision ? { causeDecision: planned.plan.diagnostics.causeDecision } : {}),
+        ...(causeFilterDropped ? { causeFilterDropped: 'store_empty' } : {}),
+        intentDecision: planned.plan?.diagnostics?.intentDecision ?? { chosen: 'records' },
+        ...(breakdownDropped ? { breakdownDropped: 'store_empty' } : {}),
         unresolved: Array.isArray(planned.plan?.unresolved) ? planned.plan.unresolved.map((item) => item?.term ?? null) : [],
         jev: planned.receipt ?? null,
         planMs: planned.timings?.planMs ?? null,
+        ...(refinePlan ? { refine: { axis: options.refine.axis, field: options.refine.field, value: options.refine.value,
+          ...(options.refine.planId !== undefined ? { planId: options.refine.planId } : {}),
+        } } : {}),
         ...(options.pageContext ? { pageContext: planned.receipt?.pageContext ?? { used: false, ...options.pageContext.entity } } : {}),
         ...extra,
       });
@@ -482,6 +600,7 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: sessionPlan,
+          plans,
           shownIds: previouslyShown,
           receipt: receiptOf('out_of_scope'),
           dataAsOf: view.dataAsOf,
@@ -497,11 +616,14 @@ export function createRetrievalAnswering({
           elapsedMs: elapsed(),
           confirmation: confirmationPending(question, validation.clarification, answer),
           previousPlan: sessionPlan,
+          plans,
           shownIds: previouslyShown,
           receipt: receiptOf('clarification'),
           dataAsOf: view.dataAsOf,
         });
       }
+      const planId = randomUUID();
+      plans.push({ id: planId, plan: compact });
       const executions = [];
       const usesDense = semanticEntries.some((entry) => validation.plan.sources.includes(entry.id) && denseFor(entry.id)?.queryEnabled);
       for (const sourceId of validation.plan.sources) {
@@ -516,6 +638,9 @@ export function createRetrievalAnswering({
           ? (dateField ? { ...plan.sort, field: dateField.key } : 'relevance') : plan.sort;
         executions.push(await execute({ ...plan, sources: [sourceId], filters: plan.filters.filter((filter) => filter.source === sourceId), sort }, {
           records: sourceView.records,
+          causeById: sourceId === 'nonconformity' ? view.causeById : null,
+          // An unavailable classification still permits listing the full filtered set.
+          filterOnly: breakdownDropped,
           catalog: entry,
           lexicalCorpus: sourceView.lexicalCorpus,
           retriever: sourceDense?.queryEnabled ? 'hybrid' : 'lexical',
@@ -537,6 +662,8 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: sessionPlan,
+          plans,
+          planId,
           shownIds: previouslyShown,
           receipt: receiptOf('unavailable', { reason: executed.reason, attempts: executed.attempts, timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
@@ -549,6 +676,8 @@ export function createRetrievalAnswering({
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: sessionPlan,
+          plans,
+          planId,
           shownIds: previouslyShown,
           receipt: receiptOf('no_other', { excludedMatches: executed.excludedMatches, timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
@@ -558,10 +687,13 @@ export function createRetrievalAnswering({
       if (executed.status === 'no_result') {
         return trialResult({
           status: 'completed',
-          answer: noResultAnswer(visibleCount),
+          answer: validation.plan.breakdown ? formatBreakdown(validation.plan, executed.groups, 0, visibleCatalog) : noResultAnswer(visibleCount),
+          ...(validation.plan.breakdown ? { display: { records: [], groups: executed.groups ?? [] } } : {}),
           recordIds: [],
           elapsedMs: elapsed(),
           previousPlan: sessionPlan,
+          plans,
+          planId,
           shownIds: previouslyShown,
           receipt: receiptOf('no_result', { retriever: usesDense ? 'hybrid' : 'lexical', timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
@@ -573,20 +705,28 @@ export function createRetrievalAnswering({
         noteDenseFallback(vectorStatus);
       }
       const formatted = formatRecords(executed.results, visibleCatalog);
-      const body = formatted.answer;
+      const body = validation.plan.breakdown
+        ? formatBreakdown(validation.plan, executed.groups, executed.coverage?.total ?? executed.results.length, visibleCatalog)
+        : formatted.answer;
       const notice = formatCoverageNotice(executed.coverage);
-      let answer = executed.insufficient && body ? `${body}\n\n${INSUFFICIENT_NOTICE}` : body;
-      if (notice) answer = answer ? `${answer}\n\n${notice}` : notice;
+      // The requested-count shortfall stays in the receipt (`insufficient`) but is not shown: readers found the sentence confusing.
+      const answer = notice && !validation.plan.breakdown ? (body ? `${body}\n\n${notice}` : notice) : body;
       return trialResult({
         status: 'completed',
         answer,
         ...(formatted.records.length ? { display: {
           records: formatted.records,
-          notices: [...(executed.insufficient && body ? [INSUFFICIENT_NOTICE] : []), ...(notice ? [notice] : [])],
+          notices: notice ? [notice] : [],
+          ...(executed.groups?.length ? { groups: executed.groups } : {}),
+          ...(executed.coverage?.known !== false ? { coverage: {
+            total: executed.coverage?.total ?? executed.results.length, shown: executed.results.length,
+          } } : {}),
         } } : {}),
         recordIds: executed.results.map((result) => publicRecordId(result.sourceId, result.recordId)),
         elapsedMs: elapsed(),
         previousPlan: sessionPlan,
+        plans,
+        planId,
         shownIds: withShown(previouslyShown, executed.results.map((result) => publicRecordId(result.sourceId, result.recordId))),
         dataAsOf: view.dataAsOf,
         coverage: executed.coverage ?? null,
@@ -671,6 +811,7 @@ export async function completeRequest(answering, request) {
       throw new Error('request type, requestId, and question are required');
     }
     const options = {
+      ...(validRefine(request.refine) ? { refine: request.refine } : {}),
       ...(request.pageContext ? { pageContext: request.pageContext } : {}),
       ...(request.principal ? { principal: request.principal } : {}),
     };
@@ -740,6 +881,7 @@ export async function main() {
     answering = createRetrievalAnswering({
       ...resources,
       enrichmentById: await loadEnrichmentById(),
+      causeById: await loadCauseById(process.env, resources.records),
       learnedById: await loadLearnedQueriesById(),
       denseBySource,
       vectorBySource,

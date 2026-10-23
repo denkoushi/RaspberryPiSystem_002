@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import { Prisma } from '@prisma/client';
+import { writeFile } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -26,14 +28,24 @@ function harness(deny: 'view' | 'write' | null = null) {
   db.$transaction.mockImplementation((work) => work(db));
   vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue(null);
   vi.spyOn(prisma, '$transaction').mockImplementation((async (work: any) => work(db)) as never);
-  const store = { delete: vi.fn(), read: vi.fn().mockResolvedValue(Buffer.from('0123456789')) };
+  const store = {
+    delete: vi.fn(), read: vi.fn().mockResolvedValue(Buffer.from('0123456789')),
+    copyToFile: vi.fn(async (_key: string, destination: string) => { await writeFile(destination, '0123456789'); }),
+    stat: vi.fn().mockResolvedValue({ size: 10 }),
+    openReadStream: vi.fn(async (_key: string, options?: { start?: number; end?: number }) => ({
+      size: 10,
+      stream: Readable.from([Buffer.from('0123456789').subarray(options?.start ?? 0, options?.end === undefined ? undefined : options.end + 1)]),
+    })),
+  };
   const access = { requireAccessPassword: vi.fn().mockResolvedValue(undefined) };
   const app = Fastify(); registerErrorHandler(app);
-  registerProcedureVideoRoutes(app, { service: new ProcedureVideoService(db as never, store as never, access as never, { posterAt: vi.fn().mockRejectedValue(new Error('poster extraction failed')) } as never),
+  const service = new ProcedureVideoService(db as never, store as never, access as never, { posterAt: vi.fn().mockRejectedValue(new Error('poster extraction failed')) } as never);
+  vi.spyOn(service, 'readFile');
+  registerProcedureVideoRoutes(app, { service,
     allowView: async () => { if (deny === 'view') throw new ApiError(403, '権限がありません'); },
     allowWriteKiosk: async () => { if (deny === 'write') throw new ApiError(403, '権限がありません'); },
   });
-  return { app, db, store, access, video, scene };
+  return { app, db, store, access, video, scene, service };
 }
 const apps: ReturnType<typeof Fastify>[] = [];
 function setup(deny: 'view' | 'write' | null = null) { const h = harness(deny); apps.push(h.app); return h; }
@@ -86,18 +98,30 @@ describe('procedure-video routes', () => {
     await h.app.inject('/assembly/procedure-videos?state=discarded&q=手順&limit=8');
     expect(h.db.procedureVideo.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ take: 8, where: { discardedAt: { not: null }, OR: expect.any(Array) } }));
   });
-  it.each([['bytes=2-5', '2345', 'bytes 2-5/10'], ['bytes=6-', '6789', 'bytes 6-9/10'], ['bytes=-3', '789', 'bytes 7-9/10'], ['bytes=7-999', '789', 'bytes 7-9/10']])('responds to %s with authenticated 206', async (range, body, contentRange) => {
+  it.each([['bytes=2-5', '2345', 'bytes 2-5/10'], ['bytes=3-', '3456789', 'bytes 3-9/10'], ['bytes=-4', '6789', 'bytes 6-9/10'], ['bytes=7-999', '789', 'bytes 7-9/10']])('responds to %s with authenticated 206', async (range, body, contentRange) => {
     const h = setup(); const response = await h.app.inject({ url: `${base}/file`, headers: { range } });
     expect(response.statusCode).toBe(206); expect(response.body).toBe(body);
-    expect(response.headers).toMatchObject({ 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'cache-control': 'private, no-store', 'content-range': contentRange, 'content-length': String(body.length) });
+    expect(response.headers).toMatchObject({ 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'content-range': contentRange, 'content-length': String(body.length) });
+    const [start, end] = contentRange.match(/\d+/g)!.map(Number);
+    expect(h.store.openReadStream).toHaveBeenCalledExactlyOnceWith('video.mp4', { start, end });
+    expect(h.store.read).not.toHaveBeenCalled();
+    expect(h.service.readFile).not.toHaveBeenCalled();
   });
   it.each(['bytes=10-', 'bytes=6-2', 'bytes=-0', 'bytes=0-1,3-4', 'bytes=-', 'unknown'])('rejects invalid ranges %s with 416', async (range) => {
     const h = setup(); const response = await h.app.inject({ url: `${base}/file`, headers: { range } });
     expect(response.statusCode).toBe(416); expect(response.headers['content-range']).toBe('bytes */10');
+    expect(h.store.openReadStream).not.toHaveBeenCalled();
+    expect(h.store.read).not.toHaveBeenCalled();
+    expect(h.service.readFile).not.toHaveBeenCalled();
   });
   it('serves a complete file and poster and refuses non-READY video', async () => {
-    const h = setup(); expect((await h.app.inject(`${base}/file`)).body).toBe('0123456789');
+    const h = setup(); const response = await h.app.inject(`${base}/file`);
+    expect(response.statusCode).toBe(200); expect(response.body).toBe('0123456789');
+    expect(response.headers).toMatchObject({ 'content-type': 'video/mp4', 'accept-ranges': 'bytes', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'content-length': '10' });
+    expect(h.store.openReadStream).toHaveBeenCalledExactlyOnceWith('video.mp4', undefined);
+    expect(h.store.read).not.toHaveBeenCalled(); expect(h.service.readFile).not.toHaveBeenCalled();
     expect((await h.app.inject(`${base}/poster`)).headers['content-type']).toBe('image/jpeg');
+    expect(h.store.read).toHaveBeenCalledExactlyOnceWith('poster.jpg', { verifyIntegrity: true });
     h.video.status = 'PROCESSING'; expect((await h.app.inject(`${base}/file`)).statusCode).toBe(404);
   });
   it('retries FAILED originals and rejects others; guards discard references and restores', async () => {
@@ -267,7 +291,7 @@ describe('procedure-video routes', () => {
     expect((await h.app.inject({ method: 'POST', url: `${base}/scenes`, payload: { startSeconds: 0, endSeconds: 0.5, title: '  確認  ' } })).json().title).toBe('確認');
     h.db.procedureVideoScene.count.mockResolvedValue(20);
     expect((await h.app.inject({ method: 'POST', url: `${base}/scenes`, payload: { startSeconds: 0, endSeconds: 1 } })).statusCode).toBe(400);
-    expect(h.store.read).toHaveBeenCalled(); expect(h.db.procedureVideo.update).not.toHaveBeenCalled();
+    expect(h.store.copyToFile).toHaveBeenCalledWith('video.mp4', expect.any(String), { verifyIntegrity: true }); expect(h.db.procedureVideo.update).not.toHaveBeenCalled();
   });
   it.each([{ startSeconds: -0.1, endSeconds: 1 }, { startSeconds: 1, endSeconds: 1.4 }, { startSeconds: 2, endSeconds: 1 }, { startSeconds: 0, endSeconds: 11 }, { startSeconds: '0', endSeconds: 1 }, { startSeconds: 0, endSeconds: 1, title: 'あ'.repeat(81) }])('rejects invalid scene %j before creation', async (payload) => {
     const h = setup();

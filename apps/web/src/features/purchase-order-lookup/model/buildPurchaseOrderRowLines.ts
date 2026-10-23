@@ -1,10 +1,11 @@
+import { normalizeMachineName } from '../../kiosk/productionSchedule/machineName';
 import { formatPlannedDateLabel } from '../../kiosk/productionSchedule/plannedDueDisplay';
 
 import type { PurchaseOrderLookupRowDto } from '../../../api/client';
 
 /**
  * キオスク購買照会: 1行分の表示モデル（ラベルなし・順序固定）。
- * 表示順は 機種名 → 製番 → 着手日 → 品名 → 品番 → 個数。
+ * スマホの表示順は 機種名 → 品名 → 製番 → 着手 → 品番 → 個数。
  */
 export type PurchaseOrderLookupRowViewModel = {
   machineName: string;
@@ -24,7 +25,7 @@ export function buildPurchaseOrderRowLines(row: PurchaseOrderLookupRowDto): Purc
     master.length > 0 && master !== purchase ? `既存DB: ${master}` : undefined;
 
   return {
-    machineName: row.machineName.trim(),
+    machineName: normalizeMachineName(row.machineName, { maxChars: Infinity }),
     seiban: row.seiban.trim(),
     plannedStartDisplay: formatPlannedDateLabel(row.plannedStartDate ?? null),
     purchasePartName: purchase,

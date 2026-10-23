@@ -18,7 +18,7 @@ function row(partial: Partial<PurchaseOrderLookupRowDto> & Pick<PurchaseOrderLoo
 }
 
 describe('buildPurchaseOrderRowLines', () => {
-  it('returns six logical fields in display order (機種→製番→着手日→品名→品番→個数)', () => {
+  it('returns six logical fields for display (機種→品名→製番→着手→品番→個数)', () => {
     const vm = buildPurchaseOrderRowLines(
       row({
         seiban: 'BE1',
@@ -36,6 +36,12 @@ describe('buildPurchaseOrderRowLines', () => {
     expect(vm.purchasePartName).toBe('ナット');
     expect(vm.partCode).toBe('FH-01');
     expect(vm.quantityDisplay).toBe('3');
+  });
+
+  it('normalizes full-width machine names without truncating long names', () => {
+    expect(buildPurchaseOrderRowLines(row({ seiban: 'S', machineName: ' ＤＡＤ－３２２０ ' })).machineName).toBe('DAD-3220');
+    const longName = 'ＤＡＤ－３２２０'.repeat(10);
+    expect(buildPurchaseOrderRowLines(row({ seiban: 'S', machineName: longName })).machineName).toBe('DAD-3220'.repeat(10));
   });
 
   it('shows dash for missing plannedStartDate', () => {

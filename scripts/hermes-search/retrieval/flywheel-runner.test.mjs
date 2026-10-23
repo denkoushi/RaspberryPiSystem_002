@@ -52,7 +52,7 @@ const jevEvaluate = async (input) => ({
 const liveShown = async (row) => ({ outcome: 'answer', reason: null, shown: [row.a], candidates: [row.a, row.b], judged: 30, loss: null, vectorStatus: 'ok', ms: 1 });
 
 function filterLive(row, corpus = records) {
-  const filters = [{ field: row.seed.field, op: 'eq', values: [row.seed.value] }];
+  const filters = row.seed.field ? [{ field: row.seed.field, op: 'eq', values: [row.seed.value] }] : [];
   if (row.seed.period) filters.push({ field: 'discoveredOn', op: 'between', values: [row.seed.period.from, row.seed.period.to] });
   const plan = { filters, semanticQuery: '', sort: 'recent', limit: row.seed.template === 'count3' ? 3 : 5 };
   const shown = expectedFilterResults({ plan, records: corpus, catalog: loadNonconformityCatalog() }).expectedIds;
@@ -1016,4 +1016,55 @@ test('nightly generation and live learning inputs exclude rank-only rows', async
   assert.equal(status.kept, 1);
   assert.equal(scored, true);
   assert.doesNotMatch(readFileSync(questionsPath(dir, '2026-10-03'), 'utf8'), /private|procedure_material/u);
+});
+
+test('nightly cause templates load the store and check both generated and real filters', async t => {
+  const { buildCauseQuestions, conditionSha256 } = await import('./cause-categories.mjs');
+  const { CAUSE_STORE_SCHEMA, writeCauseStore } = await import('./cause-store.mjs');
+  const { dir, receiptsDir, receipt } = realFixture();
+  const causeReceipt = receipt('図面・設計の誤り', '');
+  causeReceipt.hermesReceipt.plan = { semanticQuery: '', causeCategory: 'drawing', filters: [], sort: 'recent' };
+  writeFileSync(path.join(receiptsDir, 'receipts-2026-10-03.jsonl'), JSON.stringify(causeReceipt) + '\n');
+  const file = path.join(dir, 'cause.jsonl');
+  const previous = process.env.HERMES_RETRIEVAL_CAUSE_STORE;
+  process.env.HERMES_RETRIEVAL_CAUSE_STORE = file;
+  t.after(() => { if (previous === undefined) delete process.env.HERMES_RETRIEVAL_CAUSE_STORE; else process.env.HERMES_RETRIEVAL_CAUSE_STORE = previous; });
+  const textSha256 = conditionSha256(records[0].condition);
+  await writeCauseStore(file, new Map([[textSha256, {
+    schema: CAUSE_STORE_SCHEMA, textSha256, categoryId: 'drawing',
+    promptSha256: buildCauseQuestions([]).promptSha256, classifiedAt: '2026-10-19T00:00:00Z',
+  }]]));
+  const corpus = records.map(record => ({ ...record, discoveredOn: '2026-09-15' }));
+  const causeById = new Map([[records[0].id, 'drawing']]);
+  const live = async row => {
+    if (row.seed?.breakdown) {
+      const result = filterLive(row, corpus);
+      return { ...result, plan: { ...result.plan, breakdown: 'cause' },
+        groups: [{ axis: 'cause', buckets: [{ value: 'drawing', count: 1 }] }] };
+    }
+    if (row.seed && !row.seed.cause) return filterLive(row, corpus);
+    const filters = [];
+    if (row.seed?.value) filters.push({ field: row.seed.field, op: 'eq', values: [row.seed.value] });
+    if (row.seed?.period) filters.push({ field: 'discoveredOn', op: 'between', values: [row.seed.period.from, row.seed.period.to] });
+    const plan = { causeCategory: 'drawing', filters, semanticQuery: '', sort: 'recent', limit: 5 };
+    return { outcome: 'answer', plan, shown: expectedFilterResults({ plan, records: corpus, catalog: loadNonconformityCatalog(), causeById }).expectedIds, ms: 1 };
+  };
+  const status = await runFlywheelNight({ records: corpus, settings: settings(dir, { maxQuestions: 0, filterBudget: 30 }), now: night,
+    readDense: async () => [], chat: async () => assert.fail('no grading'), jevEvaluate: async () => assert.fail('no grading'),
+    live, seed: 7, log: () => {},
+  });
+  const rows = readFileSync(questionsPath(dir, '2026-10-03'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  const causes = rows.filter(row => row.seed?.cause);
+  assert.equal(causes.length, 2);
+  const breakdowns = rows.filter(row => row.seed?.breakdown);
+  assert.equal(breakdowns.length, 3);
+  assert.ok(breakdowns.every(row => row.filterCheck.bucketsOk === true && row.filterCheck.ok === true));
+  for (const row of causes) {
+    assert.equal(row.filterCheck.ok, true);
+    assert.deepEqual(row.filterCheck.expectedIds, ['a1']);
+  }
+  assert.equal(status.filter.mismatch, 0);
+  const real = readRealRows(readFileSync(realPath(dir, '2026-10-03'), 'utf8'));
+  assert.equal(real[0].filterCheck.ok, true);
+  assert.deepEqual(real[0].filterCheck.expectedIds, ['a1']);
 });

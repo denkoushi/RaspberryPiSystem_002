@@ -285,6 +285,13 @@
 - **知見**: **同一 Pi5 へ `update-all-clients.sh` を並列起動しない**（[deployment.md](../guides/deployment.md)）。複数台は **1 本のシェルで前段成功後に次段**。
 - **トラブルシュート**: Vitest で **`No QueryClient set`** → キオスクページのスモークは **`QueryClientProvider` + `QueryClient({ defaultOptions: { queries: { retry: false } } })`** で包む。**UI が古い** → Pi5 の `web` イメージ更新確認のうえ **キオスクでハードリロード**（Tailscale URLの SPA は Pi5 配信）。
 
+### 2026-10-16: 現品票の注文番号とスマホ読取
+
+- 現品票の1次元バーコードは注文番号（FKOBAINO、10桁）。製造orderを優先検索し、未解決なら購買照会の全候補から製番・部品照合キーが移動票と一致する行を検査する。候補が1行でも無条件には採用しない。
+- `/kiosk/mobile-placement` だけネイティブ `BarcodeDetector` を優先し、対応形式がそろう場合は1280×720を希望するストリームで読む。非対応時は従来のZXingを使い、確定ルールは共通。画像OCRは補助として残す。
+- 2026-10-22: `/kiosk/purchase-order-lookup` も同じ `engine="auto-native"` にした。ZXing のままでは、配膳の照合で読める同じ現品票の注文番号に購買照会だけ反応しなかった（実機報告）。
+- 契約は [mobile-placement API](../api/mobile-placement.md)、現場手順は [照合](../kiosk-operation-guide/mobile-placement.md) を参照。実機の速度確認・本番反映は未実施。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`

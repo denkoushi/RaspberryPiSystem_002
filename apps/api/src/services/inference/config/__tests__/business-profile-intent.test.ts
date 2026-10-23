@@ -52,7 +52,7 @@ describe('business-profile-intent', () => {
   it('propagates same profile to all business use cases', () => {
     const { runtimeStartProfileId: _removed, ...noProfile } = provider;
     const env = { businessRuntimeStartProfileId: 'business_qwen35_35b_gguf' };
-    for (const useCase of ['photo_label', 'document_summary', 'admin_console_chat', 'stackchan_chat'] as const) {
+    for (const useCase of ['photo_label', 'document_summary', 'admin_console_chat'] as const) {
       expect(resolveRuntimeStartProfileIdForBusinessUseCase(useCase, env, noProfile)).toBe(
         'business_qwen35_35b_gguf'
       );

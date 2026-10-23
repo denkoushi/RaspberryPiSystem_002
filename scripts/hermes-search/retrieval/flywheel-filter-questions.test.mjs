@@ -64,3 +64,46 @@ test('placeholder values are skipped and one-character short forms are not used'
   assert.equal(short.seed.short, null);
   assert.equal(short.question, '第三部門 最近 不適合');
 });
+
+test('cause templates sample only populated categories and departments, excluding unknown', () => {
+  const corpus = [{ id: 'a', department: '第一部品質課' }, { id: 'b', department: '第二部機械課' }, { id: 'c' }];
+  const causeById = new Map([['a', 'drawing'], ['b', 'unknown'], ['c', 'assume'], ['absent', 'check']]);
+  const options = { records: corpus, causeById };
+  const rows = sample(options).filter(row => row.seed.cause);
+  assert.deepEqual(rows, sample(options).filter(row => row.seed.cause));
+  assert.equal(rows.length, 3);
+  assert.equal(new Set(rows.map(row => row.id)).size, 3);
+  assert.deepEqual([...new Set(rows.map(row => row.seed.cause))].sort(), ['assume', 'drawing']);
+  const recent = rows.find(row => row.seed.template === 'cause_recent');
+  assert.equal(recent.question, '第一部品質課で図面・設計の誤りが原因の最近の不適合');
+  assert.equal(recent.seed.value, '第一部品質課');
+  for (const row of rows.filter(row => row.seed.template === 'cause_last_month')) {
+    assert.equal(row.seed.field, null);
+    assert.equal(row.seed.value, null);
+    assert.equal(row.seed.period.from, '2026-09-01');
+    assert.equal(row.seed.period.to, '2026-09-30');
+    assert.match(row.question, /の不適合 先月$/u);
+  }
+  assert.equal(sample({ ...options, causeById: new Map() }).some(row => row.seed.cause), false);
+  assert.equal(sample({ ...options, catalog: { ...catalog, fields: catalog.fields.slice(0, 1) } }).filter(row => row.seed.cause).length, 1);
+});
+
+test('breakdown templates require populated classifications and include scoped and unscoped periods', () => {
+  const corpus = [{ id: 'a', department: '第一部品質課' }, { id: 'b', department: '第二部機械課' }];
+  const options = { records: corpus, causeById: new Map([['a', 'drawing'], ['outside', 'check']]) };
+  const rows = sample(options).filter(row => row.seed.breakdown);
+  assert.equal(rows.length, 3);
+  assert.equal(new Set(rows.map(row => row.id)).size, 3);
+  assert.deepEqual(new Set(rows.map(row => row.question)), new Set(['今年多い要因は?', '第一部品質課で今年多い要因は?', '先月の不適合の要因の内訳']));
+  for (const row of rows) {
+    assert.equal(row.seed.breakdown, 'cause');
+    assert.equal(row.seed.cause, undefined);
+    assert.equal(row.seed.period.from, row.seed.template === 'breakdown_cause_year' ? '2026-01-01' : '2026-09-01');
+    assert.equal(row.seed.period.to, row.seed.template === 'breakdown_cause_year' ? '2026-12-31' : '2026-09-30');
+    assert.equal(row.seed.field, row.seed.value === null ? null : 'department');
+  }
+  for (const causeById of [null, new Map(), new Map([['outside', 'drawing']]), new Map([['a', 'invalid']])]) {
+    assert.equal(sample({ ...options, causeById }).some(row => row.seed.breakdown), false);
+  }
+  assert.equal(sample({ ...options, catalog: { ...catalog, fields: catalog.fields.slice(0, 1) } }).some(row => row.seed.breakdown), false);
+});

@@ -1,0 +1,152 @@
+---
+# Only filesystem scaffolding is needed: Compose uses SHA images, not a checkout.
+- name: Define the first-install files whose previous contents must survive rollback
+  ansible.builtin.set_fact:
+    release_kiosk_first_install_files:
+      - /etc/NetworkManager/NetworkManager.conf
+      - /usr/local/bin/ibus-process-owner.sh
+      - /usr/local/bin/ibus-kiosk-init.sh
+      - /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+      - '/home/{{ ansible_user }}/.config/autostart/ibus.desktop'
+      - '/home/{{ ansible_user }}/.config/autostart/ibus-owner.desktop'
+      - '/home/{{ ansible_user }}/.config/autostart/ibus-engine.desktop'
+      - '/home/{{ ansible_user }}/.config/autostart/im-launch.desktop'
+      - '/home/{{ ansible_user }}/.config/labwc/rc.xml'
+
+- name: Capture preexisting desktop directory metadata
+  ansible.builtin.stat:
+    path: '{{ item }}'
+    follow: false
+  loop:
+    - '/home/{{ ansible_user }}/.config/autostart'
+    - '/home/{{ ansible_user }}/.config/labwc'
+  register: release_kiosk_first_install_directories
+
+- name: Require real desktop directories for reversible first-install
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or item.stat.isdir | default(false)
+      - not (item.stat.islnk | default(false))
+  loop: '{{ release_kiosk_first_install_directories.results }}'
+
+- name: Capture first-install file metadata before provisioning
+  ansible.builtin.stat:
+    path: '{{ item }}'
+    follow: false
+  loop: '{{ release_kiosk_first_install_files }}'
+  register: release_kiosk_first_install_originals
+
+- name: Require regular files for reversible first-install configuration
+  ansible.builtin.assert:
+    that: not item.stat.exists or item.stat.isreg | default(false)
+    fail_msg: 'First-install cannot safely replace a non-regular file: {{ item.item }}'
+  loop: '{{ release_kiosk_first_install_originals.results }}'
+
+- name: Back up preexisting desktop and PC/SC configuration
+  ansible.builtin.copy:
+    src: '{{ item.item }}'
+    dest: '{{ release_kiosk_stage_dir }}/bootstrap-{{ file_index }}'
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  loop: '{{ release_kiosk_first_install_originals.results }}'
+  loop_control:
+    index_var: file_index
+  when: item.stat.exists
+
+- name: Capture user IBus settings before provisioning
+  ansible.builtin.shell: |
+    export DISPLAY=:0
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+    dconf dump /desktop/ibus/
+  become_user: '{{ ansible_user }}'
+  register: release_kiosk_first_install_dconf
+  changed_when: false
+
+- name: Detect an existing user IBus daemon
+  ansible.builtin.command:
+    argv: [pgrep, -u, '{{ ansible_user }}', -x, ibus-daemon]
+  register: release_kiosk_first_install_ibus
+  changed_when: false
+  failed_when: release_kiosk_first_install_ibus.rc not in [0, 1]
+
+- name: Mark the reversible first-install provisioning boundary
+  ansible.builtin.set_fact:
+    release_kiosk_first_install_started: true
+
+- name: Install first-install runtime packages
+  ansible.builtin.apt:
+    name: "{{ ['jq', 'ibus', 'dbus-x11'] + (['pcscd', 'pcsc-tools'] if 'nfc-agent' in release_kiosk_services else []) }}"
+    state: present
+    update_cache: true
+
+- name: Create only the project directories needed by enabled agents
+  ansible.builtin.file:
+    path: '{{ release_kiosk_project_dir }}/clients/{{ item }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop: '{{ release_kiosk_services }}'
+
+- name: Create the kiosk user labwc directory
+  ansible.builtin.file:
+    path: '/home/{{ ansible_user }}/.config/labwc'
+    state: directory
+    owner: '{{ ansible_user }}'
+    group: '{{ ansible_user }}'
+    mode: '0755'
+
+- name: Seed labwc from the OS configuration only when absent
+  ansible.builtin.copy:
+    src: /etc/xdg/labwc/rc.xml
+    dest: '/home/{{ ansible_user }}/.config/labwc/rc.xml'
+    remote_src: true
+    force: false
+    owner: '{{ ansible_user }}'
+    group: '{{ ansible_user }}'
+    mode: '0644'
+
+- name: Reuse the kiosk IBus installation and login configuration
+  ansible.builtin.include_role:
+    name: kiosk
+    tasks_from: ibus
+  vars:
+    terminal_release_mode: full
+    ibus_process_owner_script_path: /usr/local/bin/ibus-process-owner.sh
+    ibus_competing_autostart_entries: [im-launch.desktop]
+    ibus_owner_mode: single-owner
+    # Preserve an existing desktop daemon; start a new one explicitly below.
+    ibus_reconcile_on_deploy: false
+
+- name: Start IBus in the already active desktop when it was absent
+  ansible.builtin.command: /usr/local/bin/ibus-process-owner.sh
+  environment:
+    DISPLAY: ':0'
+  become_user: '{{ ansible_user }}'
+  when: release_kiosk_first_install_ibus.rc == 1
+
+- name: Initialize the Japanese input engine in the active desktop
+  ansible.builtin.command: /usr/local/bin/ibus-kiosk-init.sh
+  environment:
+    DISPLAY: ':0'
+  become_user: '{{ ansible_user }}'
+  changed_when: true
+
+- name: Allow NFC access through the existing client PC/SC policy
+  ansible.builtin.template:
+    src: '{{ playbook_dir }}/../templates/polkit-50-pcscd-allow-all.rules.j2'
+    dest: /etc/polkit-1/rules.d/50-pcscd-allow-all.rules
+    owner: root
+    group: root
+    mode: '0644'
+  when: "'nfc-agent' in release_kiosk_services"
+
+- name: Enable PC/SC socket activation for the NFC container
+  ansible.builtin.systemd:
+    name: pcscd.socket
+    state: started
+    enabled: true
+  when: "'nfc-agent' in release_kiosk_services"

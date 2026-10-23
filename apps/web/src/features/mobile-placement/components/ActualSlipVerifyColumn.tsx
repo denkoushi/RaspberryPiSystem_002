@@ -1,5 +1,5 @@
 import { Button } from '../../../components/ui/Button';
-import { MP_PLACEHOLDER_ORDER, MP_PLACEHOLDER_PART } from '../constants';
+import { MP_PLACEHOLDER_PART } from '../constants';
 
 import { SlipFieldRow } from './SlipFieldRow';
 
@@ -8,7 +8,7 @@ import type { ActualSlipOcrFeedback } from '../actual-slip-ocr-feedback';
 const blockClass = 'border-l-purple-400 bg-purple-500/[0.06]';
 
 /**
- * 現品票列: 製造order（任意・OCR可）+ 製番（任意）+ 部品（FHINBAN バーコード）
+ * 現品票列: 注文番号（製造orderも可）+ 製番（任意）+ 部品（FHINBAN バーコード）
  */
 export type ActualSlipVerifyColumnProps = {
   manufacturingOrderField: {
@@ -99,8 +99,8 @@ export function ActualSlipVerifyColumn(props: ActualSlipVerifyColumnProps) {
               value={props.manufacturingOrderField.value}
               onChange={props.manufacturingOrderField.onChange}
               onScan={props.manufacturingOrderField.onScan}
-              placeholder={MP_PLACEHOLDER_ORDER}
-              ariaLabel={`現品票 ${MP_PLACEHOLDER_ORDER}`}
+              placeholder="注文番号（バーコード）"
+              ariaLabel="現品票 注文番号（バーコード）"
             />
           </div>
           <Button

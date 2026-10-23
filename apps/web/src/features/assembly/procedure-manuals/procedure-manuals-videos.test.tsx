@@ -13,8 +13,9 @@ import { ProcedureVideoThumbnail } from './ProcedureVideoThumbnail';
 import type { ProcedureVideoDto, ProcedureVideoSummaryDto } from './procedure-video-types';
 import type { AssemblyProcedureSequenceDto, AssemblyProcedureSequencePageDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), file: vi.fn(), poster: vi.fn(), retry: vi.fn(), discard: vi.fn(), restore: vi.fn(), page: vi.fn(), save: vi.fn(), detail: vi.fn(), scenes: vi.fn(), createScene: vi.fn(), updateScene: vi.fn(), deleteScene: vi.fn(), comments: vi.fn(), saveComments: vi.fn(), concat: vi.fn() }));
+const mocks = vi.hoisted(() => ({ autoEdit: vi.fn(), list: vi.fn(), file: vi.fn(), poster: vi.fn(), retry: vi.fn(), discard: vi.fn(), restore: vi.fn(), page: vi.fn(), save: vi.fn(), detail: vi.fn(), scenes: vi.fn(), createScene: vi.fn(), updateScene: vi.fn(), deleteScene: vi.fn(), comments: vi.fn(), saveComments: vi.fn(), concat: vi.fn() }));
 vi.mock('../../../api/client', () => ({
+  getProcedureVideoAutoEdit: mocks.autoEdit,
   listProcedureVideos: mocks.list, getProcedureVideoFile: mocks.file, getProcedureVideoPoster: mocks.poster,
   retryProcedureVideo: mocks.retry, discardProcedureVideo: mocks.discard, restoreProcedureVideo: mocks.restore,
   getProcedureVideoScenes: mocks.scenes, createProcedureVideoScene: mocks.createScene, updateProcedureVideoScene: mocks.updateScene, deleteProcedureVideoScene: mocks.deleteScene, getProcedureVideoComments: mocks.comments, replaceProcedureVideoComments: mocks.saveComments,
@@ -40,6 +41,7 @@ const pending: ProcedureVideoDto = { ...failed, id: 'pending', title: '受付動
 const scene = { id: 'scene', title: '仮締め', startSeconds: 2, endSeconds: 8, linkCount: 0, hasScenePoster: false };
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.autoEdit.mockResolvedValue(null);
   mocks.list.mockResolvedValue([ready, failed, pending]); mocks.page.mockResolvedValue([]); mocks.save.mockResolvedValue([]);
   mocks.comments.mockResolvedValue([]); mocks.scenes.mockResolvedValue([]); mocks.createScene.mockImplementation(async (_id, data) => { const row = { id: 'scene', title: '場面 1', linkCount: 0, hasScenePoster: true, ...data }; mocks.scenes.mockResolvedValue([row]); return row; }); mocks.updateScene.mockImplementation(async (_id, id, data) => { const row = { ...scene, id, ...data }; mocks.scenes.mockResolvedValue([row]); return row; }); mocks.deleteScene.mockResolvedValue(undefined); mocks.saveComments.mockResolvedValue([]);
   mocks.file.mockResolvedValue(new Blob(['mp4'], { type: 'video/mp4' })); mocks.poster.mockResolvedValue(new Blob(['jpeg'], { type: 'image/jpeg' }));
@@ -59,7 +61,7 @@ describe('procedure-manuals videos', () => {
     render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
     const button = await screen.findByRole('button', { name: '接続', exact: true });
     expect(button).toBeDisabled();
-    await screen.findByText('締付動画');
+    await screen.findByRole('button', { name: '締付動画', exact: true });
     expect(screen.queryByRole('checkbox', { name: '失敗動画を接続用に選択' })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: '受付動画を接続用に選択' })).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: '破棄動画を接続用に選択' })).not.toBeInTheDocument();
@@ -82,7 +84,7 @@ describe('procedure-manuals videos', () => {
     mocks.concat.mockResolvedValue({ id: 'concat', status: 'PENDING', origin: 'CONCAT' });
     fireEvent.click(screen.getByRole('button', { name: '接続する' }));
     await waitFor(() => expect(mocks.concat).toHaveBeenCalledExactlyOnceWith(['second', 'ready'], '接続結果'));
-    const result = (await screen.findByText('接続結果')).closest('article')!;
+    const result = (await screen.findByRole('button', { name: '接続結果', exact: true })).closest('article')!;
     expect(within(result).getByText('接続')).toBeInTheDocument();
     expect(within(result).getByText('長さ未確認 · 処理中')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '接続', exact: true })).toBeDisabled();
@@ -117,10 +119,13 @@ describe('procedure-manuals videos', () => {
   });
   it('shows video title/length/status, retries failure, confirms discard, and restores discarded videos', async () => {
     render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
-    expect(await screen.findByText('締付動画')).toBeInTheDocument(); expect(screen.getByText('12.0秒 · 完了')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '締付動画', exact: true })).toBeInTheDocument(); expect(within(screen.getByRole('button', { name: '締付動画', exact: true })).getByText('12.0秒')).toBeInTheDocument();
     expect(screen.getByText('長さ未確認 · 失敗: 動画は60秒までです')).toBeInTheDocument();
     expect(screen.getByText('長さ未確認 · 処理中')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '再試行' })); await waitFor(() => expect(mocks.retry).toHaveBeenCalledWith('failed'));
+    fireEvent.click(screen.getByRole('button', { name: '失敗動画', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: '再試行' })); await waitFor(() => expect(mocks.retry).toHaveBeenCalledWith('failed'));
+    fireEvent.click(screen.getByRole('button', { name: '締付動画', exact: true }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: '締付動画' })).toBeInTheDocument());
     await waitFor(() => expect(screen.getAllByRole('button', { name: '捨てる' })[0]).toBeEnabled());
     fireEvent.click(screen.getAllByRole('button', { name: '捨てる' })[0]); expect(mocks.discard).not.toHaveBeenCalled();
     fireEvent.click(within(screen.getByRole('dialog', { name: '動画を捨てる' })).getByRole('button', { name: '捨てる' }));
@@ -129,8 +134,8 @@ describe('procedure-manuals videos', () => {
     fireEvent.click(screen.getByRole('button', { name: '捨てた動画' }));
     fireEvent.click(await screen.findByRole('button', { name: '戻す' })); await waitFor(() => expect(mocks.restore).toHaveBeenCalledWith('ready'));
   });
-  it('opens playback from the shelf with controls/inline/muted and releases the Object URL on close', async () => {
-    const rendered = render(<ProcedureVideoShelfDialog onClose={vi.fn()} />);
+  it('opens playback from the linking shelf with controls/inline/muted and releases the Object URL on close', async () => {
+    const rendered = render(<ProcedureVideoShelfDialog onClose={vi.fn()} link={{ documentId: 'doc', pageIndex: 0, accessPassword: 'pw' }} />);
     fireEvent.click(await screen.findByRole('button', { name: '再生' }));
     const video = await waitFor(() => { const element = screen.getByLabelText('締付動画', { selector: 'video' }) as HTMLVideoElement; expect(element).toHaveAttribute('src', 'blob:video'); return element; });
     expect(video).toHaveAttribute('controls'); expect(video).toHaveAttribute('playsinline'); expect(video.muted).toBe(true); expect(video).toHaveAttribute('preload', 'metadata');

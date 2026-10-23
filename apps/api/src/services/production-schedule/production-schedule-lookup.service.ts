@@ -101,7 +101,7 @@ export async function listScheduleRowsByFseiban(fseiban: string): Promise<Produc
 }
 
 /**
- * 製番単位の機種名（MH/SH 行の FHINMEI 等、seiban-progress と同系の集約）。
+ * 製番単位の機種名（MH/SH 行の FHINMEI → 補完テーブル。seiban-progress と同じ解決）。
  */
 export async function resolveMachineNameForSeiban(fseiban: string): Promise<string | null> {
   const trimmed = fseiban.trim();

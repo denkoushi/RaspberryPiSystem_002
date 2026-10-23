@@ -1,16 +1,25 @@
 import cron from 'node-cron';
 
 import { logger } from '../../lib/logger.js';
+import { createPlacementJevReorderProvider } from './part-measurement-drawing-placement-jev-reorder.js';
 import {
   getPartMeasurementDrawingDimensionMapService,
   type PartMeasurementDrawingDimensionMapService
 } from './part-measurement-drawing-dimension-map.service.js';
+import {
+  getPartMeasurementDrawingPlacementService,
+  type PlacementReorderProvider
+} from './part-measurement-drawing-placement.service.js';
 
 /** 夜間だけ DGX を使う（既定は 0〜5 時台の毎時 20 分）。 */
 const DEFAULT_SCHEDULE = process.env.PART_MEASUREMENT_DRAWING_DIMENSION_MAP_CRON || '20 0-5 * * *';
 const DEFAULT_BATCH_SIZE = Math.min(
   20,
   Math.max(1, Number.parseInt(process.env.PART_MEASUREMENT_DRAWING_DIMENSION_MAP_BATCH_SIZE || '4', 10) || 4)
+);
+const DEFAULT_SIBLING_MATCH_BATCH_SIZE = Math.min(
+  200,
+  Math.max(1, Number.parseInt(process.env.PART_MEASUREMENT_DRAWING_SIBLING_MATCH_BATCH_SIZE || '30', 10) || 30)
 );
 const DEFAULT_DISCOVER_LIMIT = Math.min(
   1000,
@@ -28,7 +37,10 @@ export class PartMeasurementDrawingDimensionMapScheduler {
     private readonly service: PartMeasurementDrawingDimensionMapService = getPartMeasurementDrawingDimensionMapService(),
     private readonly schedule = DEFAULT_SCHEDULE,
     private readonly batchSize = DEFAULT_BATCH_SIZE,
-    private readonly discoverLimit = DEFAULT_DISCOVER_LIMIT
+    private readonly discoverLimit = DEFAULT_DISCOVER_LIMIT,
+    private readonly reorderProvider?: PlacementReorderProvider | null,
+    private readonly placementService = getPartMeasurementDrawingPlacementService(),
+    private readonly siblingMatchBatchSize = DEFAULT_SIBLING_MATCH_BATCH_SIZE
   ) {}
 
   start(): void {
@@ -47,7 +59,7 @@ export class PartMeasurementDrawingDimensionMapScheduler {
       { timezone: 'Asia/Tokyo', scheduled: true }
     );
     log.info(
-      { schedule: this.schedule, batchSize: this.batchSize, discoverLimit: this.discoverLimit },
+      { schedule: this.schedule, batchSize: this.batchSize, discoverLimit: this.discoverLimit, siblingMatchBatchSize: this.siblingMatchBatchSize },
       '[PartMeasurementDrawingDimensionMapScheduler] started'
     );
   }
@@ -65,6 +77,13 @@ export class PartMeasurementDrawingDimensionMapScheduler {
     try {
       const discovery = await this.service.discoverTargets({ limit: this.discoverLimit });
       const batch = await this.service.runBatch({ batchSize: this.batchSize, signal: this.abort.signal });
+      try {
+        const provider = this.reorderProvider === undefined ? createPlacementJevReorderProvider() : this.reorderProvider;
+        const placement = await this.placementService.backfill(this.siblingMatchBatchSize, provider);
+        log.info({ placement }, '[PartMeasurementDrawingDimensionMapScheduler] placement finished');
+      } catch (error) {
+        log.warn({ err: error }, '[PartMeasurementDrawingDimensionMapScheduler] placement failed');
+      }
       log.info({ discovery, batch }, '[PartMeasurementDrawingDimensionMapScheduler] run finished');
     } finally {
       this.running = false;

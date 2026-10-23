@@ -2,6 +2,20 @@
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
 export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';
 
+export interface GrindingPlanningBoardProcessChipsRequest {
+  parts: Array<{ fseiban: string; productNo: string; fhincd: string }>;
+}
+
+export interface GrindingPlanningBoardProcessChipsResponse {
+  /** Trimmed fseiban, productNo, fhincd joined with NUL. */
+  chipsByPartKey: Record<string, Array<{
+    rowId: string;
+    resourceCd: string;
+    resourceNames?: string[];
+    isCompleted: boolean;
+  }>>;
+}
+
 export type GrindingPlanningBoardDueScope =
   | { kind: 'seiban' }
   | { kind: 'processing'; processingType: string };
@@ -105,6 +119,7 @@ export interface GrindingPlanningBoardItem {
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
   isCompleted: boolean;
+  completionSource?: 'manual' | 'import' | null;
   progress: { completed: number; total: number; quantityKnown: boolean };
   /** 材料の購買行が無い部品は null / 省略 */
   materialArrivalStatus?: MaterialArrivalStatus | null;
@@ -144,6 +159,8 @@ export interface GrindingPlanningBoardResponse {
   unknownRequiredMinutesCount: number;
   loadDeferred?: boolean;
   seibanProgress: Record<string, { completed: number; total: number }>;
+  /** 登録済み製番すべての機種表示名（その区分に工程が無い製番も含む） */
+  machineNames?: Record<string, string | null>;
   snapshotId: string;
   nextCursor: string | null;
 }

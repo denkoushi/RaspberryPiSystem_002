@@ -116,7 +116,7 @@ describe('buildInferenceRuntime', () => {
     const runtime = buildInferenceRuntime();
     const adminConfig = runtime.getAdminLocalLlmRuntimeConfig();
 
-    for (const useCase of ['admin_console_chat', 'stackchan_chat'] as const) {
+    for (const useCase of ['admin_console_chat'] as const) {
       expect(runtime.router.isResolvable(useCase)).toBe(true);
       const resolved = runtime.router.resolve(useCase);
       expect(resolved.provider.id).toBe(runtime.getAdminProvider()?.id);
@@ -148,7 +148,7 @@ describe('buildInferenceRuntime', () => {
       model: 'admin-override-model',
     });
 
-    for (const useCase of ['admin_console_chat', 'stackchan_chat'] as const) {
+    for (const useCase of ['admin_console_chat'] as const) {
       expect(runtime.router.isResolvable(useCase)).toBe(true);
       const resolved = runtime.router.resolve(useCase);
       expect(resolved.provider.id).toBe('dgx_primary');

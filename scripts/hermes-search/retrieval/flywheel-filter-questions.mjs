@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { fieldsWithRole } from './catalog.mjs';
+import { CAUSE_CATEGORIES } from './cause-categories.mjs';
 import { parsePeriods } from './period-parse.mjs';
 import { createRandom } from './flywheel-seeds.mjs';
 
@@ -11,6 +12,10 @@ const TEMPLATES = [
   { id: 'short', text: '${value} 最近 不適合', short: true },
   { id: 'last_month', text: '${value}の先月の不適合', period: '先月' },
   { id: 'this_year', text: '${value} 今年 不適合', period: '今年' },
+  { id: 'breakdown_cause_year', text: '今年多い要因は?', period: '今年', breakdown: 'cause' },
+  { id: 'breakdown_cause_last_month', text: '先月の不適合の要因の内訳', period: '先月', breakdown: 'cause' },
+  { id: 'cause_recent', text: '${dept}で${causeLabel}が原因の最近の不適合', cause: true },
+  { id: 'cause_last_month', text: '${causeLabel}の不適合 先月', period: '先月', cause: true, department: false },
 ];
 
 const normalize = (value) => String(value ?? '').normalize('NFKC').trim();
@@ -24,7 +29,7 @@ const tokyoDay = (date) => new Intl.DateTimeFormat('en-CA', {
 }).format(date);
 
 /** Sample without replacement, including when random always returns the same number. */
-export function sampleFilterQuestions({ records, catalog, count, random = createRandom(), now = new Date() }) {
+export function sampleFilterQuestions({ records, catalog, count, causeById = null, random = createRandom(), now = new Date() }) {
   const field = fieldsWithRole(catalog, 'organization')[0] ?? 'originDepartmentName';
   const values = [...new Set(records.map((record) => normalize(record[field])).filter((value) => value && !isPlaceholder(value)))].sort();
   const shortCounts = new Map();
@@ -42,7 +47,7 @@ export function sampleFilterQuestions({ records, catalog, count, random = create
   const candidates = [];
   const seen = new Set();
   for (const value of values) {
-    for (const template of templates) {
+    for (const template of templates.filter((item) => !item.cause && !item.breakdown)) {
       const short = template.short && shortName(value).length >= MIN_SHORT_LENGTH && shortCounts.get(shortName(value)) === 1 ? shortName(value) : null;
       const question = template.text.replace('${value}', short ?? value);
       if (seen.has(question)) continue;
@@ -50,6 +55,33 @@ export function sampleFilterQuestions({ records, catalog, count, random = create
       const period = template.period ? parsePeriods(template.period, reference)[0].interpretations[0] : null;
       const id = `f-${createHash('sha256').update(JSON.stringify([night, template.id, field, value])).digest('hex').slice(0, 16)}`;
       candidates.push({ id, question, seed: { template: template.id, field, value, short, period } });
+    }
+  }
+  for (const cause of CAUSE_CATEGORIES.filter(({ id }) => id !== 'unknown')) {
+    const matching = records.filter((record) => causeById?.get(record.id) === cause.id);
+    if (!matching.length) continue;
+    for (const template of templates.filter((item) => item.cause)) {
+      const departments = template.department === false ? [null] : values.filter((value) => matching.some((record) => normalize(record[field]) === value));
+      for (const value of departments) {
+        const question = template.text.replace('${dept}', value ?? '').replace('${causeLabel}', cause.label);
+        const period = template.period ? parsePeriods(template.period, reference)[0].interpretations[0] : null;
+        const id = `f-${createHash('sha256').update(JSON.stringify([night, template.id, field, value, cause.id])).digest('hex').slice(0, 16)}`;
+        candidates.push({ id, question, seed: { template: template.id, field: value === null ? null : field, value, short: null, period, cause: cause.id } });
+      }
+    }
+  }
+  const classified = records.filter(record => CAUSE_CATEGORIES.some(cause => cause.id === causeById?.get(record.id)));
+  if (classified.length) {
+    for (const template of templates.filter(item => item.breakdown)) {
+      const departments = template.id === 'breakdown_cause_year'
+        ? [null, ...values.filter(value => classified.some(record => normalize(record[field]) === value))] : [null];
+      for (const value of departments) {
+        const question = value === null ? template.text : `${value}で${template.text}`;
+        const period = parsePeriods(template.period, reference)[0].interpretations[0];
+        const id = `f-${createHash('sha256').update(JSON.stringify([night, template.id, field, value])).digest('hex').slice(0, 16)}`;
+        candidates.push({ id, question, seed: { template: template.id, field: value === null ? null : field,
+          value, short: null, period, breakdown: template.breakdown } });
+      }
     }
   }
   const sampled = [];

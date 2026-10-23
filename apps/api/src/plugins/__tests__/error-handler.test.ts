@@ -1,8 +1,9 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { registerErrorHandler } from '../error-handler.js';
 import { prisma } from '../../lib/prisma.js';
-import { ApiError } from '../../lib/errors.js';
+import { ApiError, DomainHttpError } from '../../lib/errors.js';
 vi.mock('../../lib/prisma.js', () => ({ prisma: { clientDevice: { findUnique: vi.fn() } } }));
 
 afterEach(() => vi.restoreAllMocks());
@@ -53,5 +54,88 @@ describe('error handler device enrichment', () => {
     const calls = vi.mocked(prisma.clientDevice.findUnique).mock.calls.length;
     expect(await resolveErrorLogDevice({ clientDevice: { id: 'resolved', name: '端末', statusClientId: 'pi4' }, headers: { 'x-client-key': 'unused' } } as never)).toEqual({ clientDeviceId: 'resolved', clientDeviceName: '端末', statusClientId: 'pi4' });
     expect(prisma.clientDevice.findUnique).toHaveBeenCalledTimes(calls);
+  });
+});
+
+describe('domain HTTP errors', () => {
+  it.each([
+    { code: 'DOMAIN_CONFLICT', details: { expectedVersion: 1 } },
+    { code: undefined, details: undefined }
+  ])('matches the equivalent ApiError response: $code', async ({ code, details }) => {
+    const instance = Fastify({ genReqId: () => 'same-request' });
+    registerErrorHandler(instance);
+    const domainError = new DomainHttpError(409, 'same conflict', code, details);
+    expect(domainError).not.toBeInstanceOf(ApiError);
+    instance.get('/domain', async () => { throw domainError; });
+    instance.get('/api', async () => { throw new ApiError(409, 'same conflict', details, code); });
+    await instance.ready();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const domain = await instance.inject('/domain');
+      const api = await instance.inject('/api');
+      expect(domain.statusCode).toBe(409);
+      expect(domain.statusCode).toBe(api.statusCode);
+      expect(domain.json()).toEqual(api.json());
+      expect(domain.json()).toEqual({
+        message: 'same conflict',
+        requestId: 'same-request',
+        timestamp: new Date().toISOString(),
+        ...(code ? { errorCode: code } : {}),
+        ...(details !== undefined ? { details } : {})
+      });
+    } finally {
+      vi.useRealTimers();
+      await instance.close();
+    }
+  });
+});
+
+describe('Prisma record not found (P2025)', () => {
+  async function app(error: unknown) {
+    const instance = Fastify({ genReqId: () => 'not-found-request' });
+    registerErrorHandler(instance);
+    instance.put('/items/:id', async () => { throw error; });
+    await instance.ready();
+    return instance;
+  }
+
+  it.each([
+    {
+      name: 'PrismaClientKnownRequestError',
+      error: new PrismaClientKnownRequestError('Record to update not found.', {
+        code: 'P2025',
+        clientVersion: 'test',
+        meta: { modelName: 'Item', cause: 'Record to update not found.' }
+      })
+    },
+    {
+      name: 'Prisma-like error from another runtime',
+      error: Object.assign(new Error('Record to delete does not exist.'), { code: 'P2025', meta: { modelName: 'Item' } })
+    }
+  ])('answers 404 instead of 400: $name', async ({ error }) => {
+    const instance = await app(error);
+    try {
+      const res = await instance.inject({ method: 'PUT', url: '/items/missing' });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toMatchObject({
+        message: expect.stringContaining('対象のデータが見つかりません'),
+        requestId: 'not-found-request',
+        errorCode: 'P2025',
+        details: { modelName: 'Item' }
+      });
+    } finally {
+      await instance.close();
+    }
+  });
+
+  it('keeps other Prisma errors at 400', async () => {
+    const instance = await app(new PrismaClientKnownRequestError('Value too long.', { code: 'P2000', clientVersion: 'test' }));
+    try {
+      const res = await instance.inject({ method: 'PUT', url: '/items/x' });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ errorCode: 'P2000' });
+    } finally {
+      await instance.close();
+    }
   });
 });

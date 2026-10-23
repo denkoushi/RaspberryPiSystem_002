@@ -5,11 +5,12 @@ export type MobilePlacementScanField =
   | 'shelf'
   | 'order'
   | 'transferOrder'
+  | 'placePurchaseOrder'
   | 'transferPart'
   | 'actualOrder'
   | 'actualPart'
   | null;
 
-export type MobilePlacementSlipResult = 'idle' | 'ok' | 'ng';
+export type MobilePlacementSlipResult = 'idle' | 'ok' | 'ng' | 'not-found' | 'error';
 
 export type SlipColumnVariant = 'transfer' | 'actual';

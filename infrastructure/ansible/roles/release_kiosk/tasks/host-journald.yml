@@ -1,0 +1,60 @@
+---
+# raspi4-robodrill01 stopped reaching the Pi5 from about 14:37 to 15:22 on 2026-10-22 and was
+# powered off by hand. Raspberry Pi OS ships /usr/lib/systemd/journald.conf.d/40-rpi-volatile-storage.conf
+# (Storage=volatile), so that boot's kernel log was lost and a Wi-Fi driver hang could not be
+# confirmed. Keep the system journal across reboots, as roles/release_pi5/tasks/host-journald.yml
+# does on the Pi5. The 50- drop-in in /etc sorts after the 40- vendor file and overrides it.
+# Imported as a post_task of the Pi4 play in playbooks/deploy-release-standard.yml, after the release
+# lifecycle, so a failure here never rolls back the kiosk; it only reports.
+- name: Keep the Pi4 system journal across reboots
+  block:
+    - name: Ensure the journald drop-in directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # SD card wear: the cap bounds the space, and journald already batches writes. SyncIntervalSec
+    # stays at the 5m default on purpose: a longer interval would lose the last minutes before a
+    # forced power-off, which is exactly the part these logs are kept for.
+    - name: Install the persistent journald drop-in
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/50-raspi-persistent.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible (roles/release_kiosk/tasks/host-journald.yml).
+          [Journal]
+          Storage=persistent
+          SystemMaxUse=200M
+          SystemKeepFree=1G
+          SyncIntervalSec=5m
+      register: release_kiosk_journald_dropin
+
+    - name: Restart journald only when its drop-in changed
+      ansible.builtin.systemd:
+        name: systemd-journald
+        state: restarted
+      when: release_kiosk_journald_dropin.changed
+
+    # A restart alone keeps writing to /run until the next boot. Create the persistent directory
+    # with the systemd-tmpfiles owner and ACLs, then move the runtime journal onto disk now, so the
+    # boot that is running is kept too.
+    - name: Create the persistent journal directory
+      ansible.builtin.command:
+        argv: [systemd-tmpfiles, --create, --prefix, /var/log/journal]
+      when: release_kiosk_journald_dropin.changed
+      changed_when: true
+
+    - name: Move the runtime journal onto disk
+      ansible.builtin.command:
+        argv: [journalctl, --flush]
+      when: release_kiosk_journald_dropin.changed
+      changed_when: true
+  rescue:
+    - name: Report that journal persistence was not applied
+      ansible.builtin.debug:
+        msg: "Persistent journald was not applied on {{ inventory_hostname }}; the Pi4 release itself is unaffected."

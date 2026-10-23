@@ -22,6 +22,7 @@ import { resolveMeasurementPointInputStatus } from './measurementPointInputStatu
 import { formatInspectionDrawingPointDisplayName } from './measurementPointSupplement';
 import { useZoomedCanvasLayout } from './useZoomedCanvasLayout';
 
+import type { DrawingProposalMarker } from './proposalToDrawingPoint';
 import type { InspectionDrawingPoint } from './types';
 
 type Mode = 'place' | 'callout' | 'test';
@@ -32,6 +33,9 @@ type Props = {
   mode: Mode;
   selectedPointId: string | null;
   onSelectPoint: (id: string) => void;
+  proposalMarkers?: DrawingProposalMarker[];
+  selectedProposalId?: string | null;
+  onSelectProposal?: (id: string) => void;
   /** 未指定時は図面上への新規配置を無効化（閲覧専用） */
   onAddPoint?: (xRatio: number, yRatio: number) => void;
   /** 丸数字をドラッグして位置を変更する（未指定時は閲覧専用） */
@@ -75,6 +79,9 @@ export function InspectionDrawingCanvas({
   mode,
   selectedPointId,
   onSelectPoint,
+  proposalMarkers,
+  selectedProposalId,
+  onSelectProposal,
   onAddPoint,
   onPointChange,
   onSetCalloutTip,
@@ -479,6 +486,30 @@ export function InspectionDrawingCanvas({
               layout={zoomedLayout}
             />
           ) : null}
+          {image ? proposalMarkers?.map((proposal) => (
+            <button
+              key={proposal.id}
+              type="button"
+              aria-label={`AI案 ${proposal.markerNo} ${proposal.measurementLabel}`}
+              aria-pressed={selectedProposalId === proposal.id}
+              className={clsx(
+                'absolute z-20 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-dashed border-[#d97706] bg-amber-100 font-bold text-amber-900',
+                selectedProposalId === proposal.id && 'ring-4 ring-blue-500'
+              )}
+              style={{
+                left: image.offsetX + proposal.markerXRatio * image.width,
+                top: image.offsetY + proposal.markerYRatio * image.height
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onPointerUp={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelectProposal?.(proposal.id);
+              }}
+            >
+              {proposal.markerNo}
+            </button>
+          )) : null}
           {image
             ? points.map((pt) => {
                 const status = resolveMeasurementPointInputStatus(pt);

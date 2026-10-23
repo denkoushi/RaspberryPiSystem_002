@@ -1,0 +1,99 @@
+---
+- name: Read the kiosk user's runtime UID
+  ansible.builtin.command:
+    argv: [id, -u, '{{ ansible_user }}']
+  register: release_kiosk_user_uid
+  changed_when: false
+
+- name: Read the kiosk user's primary group
+  ansible.builtin.command:
+    argv: [id, -g, '{{ ansible_user }}']
+  register: release_kiosk_user_gid
+  changed_when: false
+
+- name: Capture the previous hotcorner service state
+  ansible.builtin.service_facts:
+
+- name: Remember the previous hotcorner service state
+  ansible.builtin.set_fact:
+    release_kiosk_hotcorner_previous: "{{ ansible_facts.services.get('kiosk-hotcorner.service', {}) }}"
+    release_kiosk_hotcorner_start_attempted: false
+    release_kiosk_labwc_edit_attempted: false
+    release_kiosk_labwc_dir: "/home/{{ ansible_user }}/.config/labwc"
+
+- name: Capture the original labwc directory metadata
+  ansible.builtin.stat:
+    path: "{{ release_kiosk_labwc_dir }}"
+  register: release_kiosk_labwc_directory_original
+
+- name: Capture the original labwc configuration metadata
+  ansible.builtin.stat:
+    path: "{{ release_kiosk_labwc_dir }}/rc.xml"
+  register: release_kiosk_labwc_original
+
+- name: Require an existing labwc configuration before staging
+  ansible.builtin.assert:
+    that:
+      - release_kiosk_labwc_original.stat.isreg | default(false)
+    fail_msg: An existing labwc rc.xml is required for the kiosk panel release.
+
+- name: Back up the original labwc configuration before editing
+  ansible.builtin.copy:
+    src: "{{ release_kiosk_labwc_dir }}/rc.xml"
+    dest: "{{ release_kiosk_stage_dir }}/rc.xml.original"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+
+# The first hotcorner release installed this exact user autostart. labwc-pi
+# starts labwc -m, which runs /etc/xdg/labwc/autostart as well, so the override
+# only launched kanshi, pcmanfm-pi and the XDG autostart programs a second time.
+- name: Capture the labwc autostart override from the first hotcorner release
+  ansible.builtin.stat:
+    path: "{{ release_kiosk_labwc_dir }}/autostart"
+    checksum_algorithm: sha1
+  register: release_kiosk_legacy_autostart
+
+- name: Decide whether the obsolete autostart override is present
+  ansible.builtin.set_fact:
+    release_kiosk_legacy_autostart_obsolete: >-
+      {{ release_kiosk_legacy_autostart.stat.isreg | default(false)
+         and release_kiosk_legacy_autostart.stat.checksum == 'a52bbc8b4fe81bc8ff78294124d7a5f88934403b' }}
+
+- name: Back up the obsolete labwc autostart override before removing it
+  ansible.builtin.copy:
+    src: "{{ release_kiosk_labwc_dir }}/autostart"
+    dest: "{{ release_kiosk_stage_dir }}/labwc-autostart.original"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: release_kiosk_legacy_autostart_obsolete | bool
+
+- name: Stage the hotcorner programs
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ release_kiosk_stage_dir }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - {src: kiosk-hotcorner.py, dest: kiosk-hotcorner.py}
+    - {src: kiosk-labwc-config.py, dest: kiosk-labwc-config.py}
+
+- name: Stage the hotcorner service
+  ansible.builtin.template:
+    src: kiosk-hotcorner.service.j2
+    dest: "{{ release_kiosk_stage_dir }}/kiosk-hotcorner.service"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Stage the shared panel shortcut
+  ansible.builtin.template:
+    src: "{{ role_path }}/../kiosk/templates/show-kiosk-panel.sh.j2"
+    dest: "{{ release_kiosk_stage_dir }}/show-kiosk-panel.sh"
+    owner: root
+    group: root
+    mode: '0755'

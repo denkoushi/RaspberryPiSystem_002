@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { summarizeAnswers, createPlanner } from './planner-jev.mjs';
+import { CAUSE_CATEGORIES } from './cause-categories.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
@@ -125,6 +126,14 @@ function assertChoicesFromCandidates(questions, candidateValues) {
     if (question.type === 'noul') continue;
     // Content span choices are parts of the request itself, cut by code.
     if (key === 'contentSpan') continue;
+    if (key === 'intent') {
+      assert.deepEqual(Object.keys(question.criteria), ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']);
+      continue;
+    }
+    if (key === 'cause') {
+      assert.deepEqual(question.criteria, { ...Object.fromEntries(CAUSE_CATEGORIES.filter(({ id }) => id !== 'unknown').map(({ id, label, description }) => [id, `${label}: ${description}`])), none: '要因では絞らない' });
+      continue;
+    }
     // Carry questions have fixed keep/replace/add and same/new/none options, not values.
     if (key.startsWith('carry_') || key === 'contentCarry') continue;
     assert.equal(question.type, 'choice');
@@ -744,4 +753,175 @@ test('page context maps record numbers and drawing numbers, and procedure ids on
   }
   const unavailable = await planner.plan({ question: 'この手順書', catalog, valueIndex: buildValueIndex([], catalog), pageContext: { path: '/page', entity: { kind: 'procedureId', value: 'id' } } });
   assert.equal(unavailable.receipt.pageContext.used, false);
+});
+
+for (const [id, question, content] of [
+  ['drawing', '図面の誤りで先月の不適合', false],
+  ['assume', '思い込みが原因のやつ、今年', false],
+  ...CAUSE_CATEGORIES.filter(({ id }) => id !== 'unknown').map(({ id, label }) => [id, `${label}が原因の最近の不適合`, false]),
+]) {
+  test(`cause ${id} retains content=${content} with only one evaluation`, async () => {
+    let calls = 0;
+    const { plan } = await createPlanner({ evaluate: async input => {
+      calls += 1;
+      assert.equal(input.questions.cause.type, 'choice');
+      assert.equal(Object.keys(input.questions.cause.criteria).length, 10);
+      assert.match(input.questions.cause.instructions, /質問/u);
+      assert.equal(input.questions.drop_cause, undefined);
+      return { answers: {
+        cause: { type: 'choice', choice: id }, content: { type: 'noul', noul: true },
+        limit: { type: 'choice', choice: '5' },
+      } };
+    } }).plan({ question, catalog, now: '2026-10-19' });
+    assert.equal(calls, 1);
+    assert.equal(plan.causeCategory, id);
+    assert.equal(plan.semanticQuery, content ? question : '');
+    assert.equal(plan.diagnostics.contentDecision.jev, content);
+    assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, content ? ['寸法抜け'] : []);
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: id });
+    if (question.includes('先月')) assert.deepEqual(plan.filters[0].values, ['2026-09-01', '2026-09-30']);
+  });
+}
+
+for (const choice of ['none', undefined]) {
+  test(`cause ${choice ?? 'missing'} leaves the first plan unfiltered`, async () => {
+    const { plan } = await createPlanner({ evaluate: async () => ({ answers: {
+      ...(choice ? { cause: { type: 'choice', choice } } : {}),
+      content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: '5' },
+    } }) }).plan({ question: '図面の不適合', catalog });
+    assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+    assert.equal(plan.semanticQuery, '図面の不適合');
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: null });
+  });
+}
+
+for (const [choice, drop, expected] of [['none', false, 'drawing'], [undefined, false, 'drawing'], ['none', true, null], ['assume', false, 'assume'], ['assume', true, 'assume']]) {
+  test(`previous cause with choice=${choice ?? 'missing'} drop=${drop}`, async () => {
+    const { plan } = await createPlanner({ evaluate: async input => {
+      assert.equal(input.state.previous_plan.causeCategory, 'drawing');
+      assert.match(input.questions.cause.instructions, /`request`/u);
+      assert.match(input.questions.drop_cause.instructions, /要因が図面・設計の誤り/u);
+      return { answers: {
+        ...(choice ? { cause: { type: 'choice', choice } } : {}),
+        drop_cause: { type: 'noul', noul: drop ? 0.9 : 0.1 },
+        content: { type: 'noul', noul: false }, limit: { type: 'choice', choice: '5' },
+      } };
+    } }).plan({ question: '今年', catalog, now: '2026-10-19', previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: '', causeCategory: 'drawing' } });
+    assert.equal(plan.causeCategory ?? null, expected);
+    assert.equal(plan.semanticQuery, '');
+    assert.deepEqual(plan.diagnostics.causeDecision, { chosen: expected, ...(drop ? { dropped: true } : {}) });
+  });
+}
+
+test('a cause heard in a content question is dropped and the content search keeps the whole question', async () => {
+  const question = '図面の誤りで寸法抜け';
+  const { plan } = await createPlanner({ evaluate: async input => {
+    assert.equal(Object.hasOwn(input.questions.cause.criteria, 'unknown'), false);
+    return { answers: {
+      cause: { type: 'choice', choice: 'drawing' }, content: { type: 'noul', noul: true },
+      limit: { type: 'choice', choice: '5' },
+    } };
+  } }).plan({ question, catalog, now: '2026-10-21' });
+  assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+  assert.equal(plan.semanticQuery, question);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+  assert.deepEqual(plan.diagnostics.contentDecision.residualTokens, ['寸法抜け']);
+  assert.deepEqual(plan.diagnostics.causeDecision, { chosen: null, dropped: 'content_search', heard: 'drawing' });
+  assert.equal(plan.sort, 'relevance');
+});
+
+test('a cause inherited from the previous plan stays on a content follow-up', async () => {
+  const { plan } = await createPlanner({ evaluate: async () => ({ answers: {
+    cause: { type: 'choice', choice: 'none' }, drop_cause: { type: 'noul', noul: 0.1 },
+    content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: '5' },
+  } }) }).plan({ question: '寸法抜けのもの', catalog, now: '2026-10-21', previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: '', causeCategory: 'drawing' } });
+  assert.equal(plan.causeCategory, 'drawing');
+  assert.equal(plan.semanticQuery, '寸法抜けのもの');
+  assert.deepEqual(plan.diagnostics.causeDecision, { chosen: 'drawing' });
+});
+
+test('an unknown cause answer is ignored', async () => {
+  const { plan } = await createPlanner({ evaluate: async () => ({ answers: {
+    cause: { type: 'choice', choice: 'unknown' }, content: { type: 'noul', noul: false }, limit: { type: 'choice', choice: '5' },
+  } }) }).plan({ question: '今年の不適合', catalog, now: '2026-10-21' });
+  assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+  assert.deepEqual(plan.diagnostics.causeDecision, { chosen: null });
+});
+
+test('a cause heard in a question scoped to another source does not become a filter', async () => {
+  const allCatalog = loadCatalog(['nonconformity', 'knowledge_procedure']);
+  const planner = createPlanner({ evaluate: async () => ({ answers: {
+    scope: { type: 'choice', choice: 'knowledge_procedure' }, cause: { type: 'choice', choice: 'drawing' },
+    content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: 'unspecified' }, sort: { type: 'choice', choice: 'relevance' },
+  } }) });
+  const { plan } = await planner.plan({ question: '図面の誤りがあったときの手順', catalog: allCatalog, valueIndex: buildValueIndex([], allCatalog) });
+  assert.deepEqual(plan.sources, ['knowledge_procedure']);
+  assert.equal(Object.hasOwn(plan, 'causeCategory'), false);
+  assert.equal(plan.diagnostics.causeDecision.chosen, null);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+});
+
+for (const intent of ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']) {
+  test(`intent choice ${intent} uses one call and controls content`, async () => {
+    let calls = 0;
+    const planner = createPlanner({ evaluate: async ({ questions }) => {
+      calls += 1;
+      assert.deepEqual(Object.keys(questions.intent.criteria), ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']);
+      return { answers: { intent: { type: 'choice', choice: intent }, content: { type: 'noul', noul: true } } };
+    } });
+    const { plan } = await planner.plan({ question: '今年多い要因は?', catalog, valueIndex: buildValueIndex([], catalog), now: '2026-10-19' });
+    assert.equal(calls, 1);
+    assert.equal(plan.breakdown ?? null, intent === 'records' ? null : intent.slice(10));
+    assert.deepEqual(plan.diagnostics.intentDecision, { chosen: intent });
+    assert.equal(plan.diagnostics.contentDecision.jev, intent === 'records');
+    assert.equal(plan.diagnostics.contentDecision.final, intent === 'records');
+    assert.equal(Boolean(plan.semanticQuery), intent === 'records');
+    assert.ok(plan.diagnostics.contentDecision.residualTokens.length > 0);
+    if (intent !== 'records') assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
+  });
+}
+
+test('a breakdown intent without count words in the question falls back to records', async () => {
+  const planner = createPlanner({ evaluate: async () => ({ answers: {
+    intent: { type: 'choice', choice: 'breakdown_cause' }, content: { type: 'noul', noul: true } } }) });
+  const { plan } = await planner.plan({ question: '主軸が曲がった原因は？', catalog, valueIndex: buildValueIndex([], catalog), now: '2026-10-22' });
+  assert.equal(plan.breakdown ?? null, null);
+  assert.deepEqual(plan.diagnostics.intentDecision, { chosen: 'records', gated: 'no_count_cue', heard: 'breakdown_cause' });
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+  assert.ok(plan.semanticQuery);
+});
+
+test('breakdown is scoped to the classified source and not inherited in previous state', async () => {
+  const sources = loadCatalog(['nonconformity', 'knowledge_procedure']);
+  const planner = createPlanner({ evaluate: async ({ state }) => {
+    assert.equal(Object.hasOwn(state.previous_plan, 'breakdown'), false);
+    return { answers: { scope: { type: 'choice', choice: 'knowledge_procedure' },
+      intent: { type: 'choice', choice: 'breakdown_month' }, content: { type: 'noul', noul: true } } };
+  } });
+  const { plan } = await planner.plan({ question: '月別', catalog: sources, valueIndex: buildValueIndex([], sources),
+    previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: '', breakdown: 'cause' } });
+  assert.equal(plan.breakdown ?? null, null);
+  assert.equal(plan.diagnostics.contentDecision.jev, true);
+});
+
+test('breakdown overrides missing content decisions and carried content', async () => {
+  for (const previousPlan of [null, { sources: ['nonconformity'], filters: [], semanticQuery: 'synthetic-content' }]) {
+    const planner = createPlanner({ evaluate: async () => ({ answers: {
+      intent: { type: 'choice', choice: 'breakdown_cause' }, contentCarry: { type: 'choice', choice: 'same' },
+    } }) });
+    const { plan } = await planner.plan({ question: '多い要因は?', catalog, valueIndex: buildValueIndex([], catalog), previousPlan });
+    assert.equal(plan.semanticQuery, '');
+    assert.equal(plan.diagnostics.contentDecision.jev, false);
+    assert.equal(plan.diagnostics.contentDecision.final, false);
+    assert.deepEqual(plan.unresolved, []);
+  }
+});
+
+test('a content follow-up that names a different cause keeps the inherited one', async () => {
+  const { plan } = await createPlanner({ evaluate: async () => ({ answers: {
+    cause: { type: 'choice', choice: 'check' }, drop_cause: { type: 'noul', noul: 0.1 },
+    content: { type: 'noul', noul: true }, limit: { type: 'choice', choice: '5' },
+  } }) }).plan({ question: '検査漏れで寸法抜け', catalog, now: '2026-10-21', previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: '', causeCategory: 'drawing' } });
+  assert.equal(plan.causeCategory, 'drawing');
+  assert.deepEqual(plan.diagnostics.causeDecision, { chosen: 'drawing', dropped: 'content_search', heard: 'check' });
 });

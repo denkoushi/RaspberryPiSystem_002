@@ -22,7 +22,7 @@
 - `tag:signage`: Pi3/Zero2W（サイネージ、今後増台の可能性）
   - **補足（2026-05-04）**: **ヘッドレス棚番エッジ**（Zero 2 W・キオスク UI なし・`status-agent` のみ）も、更新経路を **Pi 5 → SSH** に揃えるなら **同一タグ族として扱える**（実運用では端末台帳で **用途（サイネージ／棚番エッジ）** を区別する）。**Mac（admin）→ Zero 直 SSH**は本ポリシーでは原則想定外のため、不通時は **Pi 5 踏み台**を正とする（詳細は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）。
 - `tag:llm`: Ubuntu LocalLLM 専用ノード（Tailscale sidecar で分離）
-- `tag:private-server`: 自宅私用 Pi5（Hermes / StackChan bridge・[Hermes grants 草案](./tailscale-policy-hermes-private-pi5-grants.json)）
+- `tag:private-server`: 自宅私用 Pi5（Hermes / StackChan bridge・Hermes grants 草案（DGXSparkControlPlane `docs/private-history/security/tailscale-policy-hermes-private-pi5-grants.json`））
 
 補足:
 - 台数が増える前提のため、「端末名での許可」は原則禁止。
@@ -34,7 +34,7 @@
 
 - `tag:admin` → `tag:server`: SSH（運用入口）
 - `tag:server` → `tag:kiosk` / `tag:signage`: SSH（更新・保守）
-- `tag:kiosk` / `tag:signage` → `tag:server`: HTTPS 443（UI/API）
+- `tag:kiosk` / `tag:signage` → `tag:server`: HTTPS 443（UI/API）。配膳スマホ（`tag:kiosk`）のアプリ入口として TCP 8443（Tailscale serve の正式証明書、2026-10-21 追加）
 - `tag:server` → `tag:llm`: TCP 38081（LocalLLM 入口、`X-LLM-Token` 必須）
 
 NFC（Pi4）について:
@@ -133,12 +133,12 @@ Tailscale SSHを使う場合は（有料プランでの利用を検討する場�
     {
       "src": ["tag:admin"],
       "dst": ["tag:server"],
-      "ip": ["tcp:22", "tcp:443", "tcp:5900"]
+      "ip": ["tcp:22", "tcp:443", "tcp:5900", "tcp:8443"]
     },
     {
       "src": ["tag:kiosk", "tag:signage"],
       "dst": ["tag:server"],
-      "ip": ["tcp:443"]
+      "ip": ["tcp:443", "tcp:8443"]
     },
     {
       "src": ["tag:server"],

@@ -262,7 +262,32 @@ def model_profiles_to_api_with_delete_protection(
     return payloads
 
 
-def inject_blue_chat_completions_defaults(path: str, body: bytes, active_backend: str) -> bytes:
+def label_multi_image_messages(messages: list) -> list:
+    """Add positional labels to multi-image messages without modifying the input."""
+    result = []
+    for message in messages:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list) or sum(
+            isinstance(part, dict) and part.get("type") == "image_url" for part in content
+        ) < 2:
+            result.append(message)
+            continue
+        labelled = []
+        image_index = 0
+        for index, part in enumerate(content):
+            if isinstance(part, dict) and part.get("type") == "image_url":
+                image_index += 1
+                previous = content[index - 1] if index else None
+                if not isinstance(previous, dict) or previous.get("type") != "text":
+                    labelled.append({"type": "text", "text": f"画像{image_index}:"})
+            labelled.append(part)
+        result.append({**message, "content": labelled})
+    return result
+
+
+def inject_blue_chat_completions_defaults(
+    path: str, body: bytes, active_backend: str, config: GatewayConfig | None = None
+) -> bytes:
     """blue/vLLM (Qwen3.6): clients that omit enable_thinking get long reasoning runs.
 
     Hermes gateway may reset request_overrides each turn; inject here so Pi5/Hermes
@@ -280,10 +305,31 @@ def inject_blue_chat_completions_defaults(path: str, body: bytes, active_backend
         return body
     if not isinstance(payload, dict):
         return body
+    if isinstance(payload.get("messages"), list):
+        payload["messages"] = label_multi_image_messages(payload["messages"])
     kwargs = payload.get("chat_template_kwargs")
     if not isinstance(kwargs, dict):
         kwargs = {}
-    if kwargs.get("enable_thinking") is not True:
+    thinking_control = None
+    if config is not None:
+        try:
+            state = read_active_model_state(config.active_model_state_path)
+            if state is not None:
+                profile = find_model_profile(config.model_registry_root, state.model_profile_id)
+                chat = profile.runtime_profile.get("chat")
+                if isinstance(chat, dict):
+                    thinking_control = chat.get("thinkingControl")
+        except (OSError, ValueError, UnknownModelProfileError):
+            pass  # Missing/unreadable profiles keep the legacy Qwen defaults.
+    if thinking_control == "reasoning_effort":
+        enable_thinking = kwargs.pop("enable_thinking", None)
+        if kwargs.get("reasoning_effort") not in ("low", "high"):
+            kwargs["reasoning_effort"] = "high" if enable_thinking is True else "low"
+        kwargs.setdefault("clear_thinking", True)
+        payload["chat_template_kwargs"] = kwargs
+        if "reasoning_effort" in payload and payload["reasoning_effort"] != "high":
+            payload["reasoning_effort"] = "low"
+    elif kwargs.get("enable_thinking") is not True:
         kwargs["enable_thinking"] = False
         payload["chat_template_kwargs"] = kwargs
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -1283,7 +1329,7 @@ def make_handler(
                 headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
                 active_backend = resolve_active_backend(config)
                 upstream_body = inject_blue_chat_completions_defaults(
-                    self.path, body, active_backend
+                    self.path, body, active_backend, config
                 )
                 if (
                     self.path.rstrip("/").endswith("/completions")

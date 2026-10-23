@@ -1,11 +1,13 @@
 import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
 import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
+import { getCsvFeedFreshnessEvaluator } from '../services/kiosk-inquiry/csv-feed-freshness-evaluator.js';
 import { getProcedureVideoScheduler } from '../services/assembly/procedure-video.scheduler.js';
 import type { FastifyInstance } from 'fastify';
 import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
-import { getBusinessHermesNightlyScheduler } from '../services/assembly/business-hermes-nightly.scheduler.js';
+import { getProcedureTermLearningScheduler } from '../services/assembly/procedure-term-learning.scheduler.js';
+import { getBusinessHermesNightlyScheduler } from '../services/business-hermes/business-hermes-nightly.scheduler.js';
 import { getBackupScheduler } from '../services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from '../services/imports/csv-import-scheduler.js';
 import { getKioskDocumentGmailScheduler } from '../services/kiosk-documents/kiosk-document-gmail.scheduler.js';
@@ -144,6 +146,8 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
 
   return [
     ...definitions,
+    { name: 'procedure-term-learning', start: () => getProcedureTermLearningScheduler().start(),
+      stop: () => getProcedureTermLearningScheduler().stop() },
     { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
       stop: () => getBusinessHermesNightlyScheduler().stop() },
     { name: 'fkojunst-mail-superseded-prune', start: () => getFkojunstMailSupersededPruneScheduler().start(),
@@ -273,6 +277,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: () => getSystemNoticeEvaluator().stop(),
     },
     {
+      name: 'csv-feed-freshness-evaluator',
+      start: () => getCsvFeedFreshnessEvaluator().start(),
+      stop: () => getCsvFeedFreshnessEvaluator().stop(),
+    },
+    {
       name: 'alerts-ingestor',
       start: async () => {
         await getAlertsIngestor().start();
@@ -315,6 +324,7 @@ export function listPostListenSchedulerNames(): string[] {
     'hermes-knowledge',
     'signage-render',
     'part-measurement-drawing-dimension-map',
+    'procedure-term-learning',
     'business-hermes-nightly',
     'fkojunst-mail-superseded-prune',
     'file-storage-integrity-backfill',
@@ -330,6 +340,7 @@ export function listPostListenSchedulerNames(): string[] {
     'client-network-log-retention',
     'client-heartbeat-monitor',
     'system-notice-evaluator',
+    'csv-feed-freshness-evaluator',
     'alerts-ingestor',
     'photo-tool-label',
     'procedure-material-image-description',

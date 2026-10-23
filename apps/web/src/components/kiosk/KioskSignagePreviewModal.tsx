@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { api, getKioskSignagePreviewOptions, putKioskSignagePreviewSelection } from '../../api/client';
+import { signageQueryKeys } from '../../api/queryKeys/signage';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 
@@ -27,7 +28,7 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
   const latestFetchIdRef = useRef(0);
 
   const optionsQuery = useQuery({
-    queryKey: ['kiosk-signage-preview-options'],
+    queryKey: signageQueryKeys.kioskPreviewOptionsAll,
     queryFn: getKioskSignagePreviewOptions,
     enabled: isOpen,
     staleTime: 0,
@@ -36,7 +37,7 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
   const selectionMutation = useMutation({
     mutationFn: putKioskSignagePreviewSelection,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-signage-preview-options'] });
+      void queryClient.invalidateQueries({ queryKey: signageQueryKeys.kioskPreviewOptionsAll });
     },
   });
 

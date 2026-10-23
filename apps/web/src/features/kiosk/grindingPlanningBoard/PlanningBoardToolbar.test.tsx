@@ -12,6 +12,16 @@ const props = (): PlanningBoardToolbarProps => ({
   onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
+  it.each([false, true])('keeps the icon-only scan control outside the Gantt group with gantt=%s', (ganttEnabled) => {
+    render(<PlanningBoardToolbar {...props()} ganttEnabled={ganttEnabled} onOrderScan={() => null} />);
+    const scan = screen.getByRole('button', { name: '移動票で製番を探す' });
+    expect(scan).toHaveClass('h-[46px]', 'w-[46px]');
+    expect(scan).toHaveTextContent('');
+    expect(scan.querySelector('svg')).toBeInTheDocument();
+    const gantt = screen.getByRole('button', { name: 'ガント', exact: true });
+    expect(gantt.parentElement).not.toContainElement(scan);
+    if (ganttEnabled) expect(scan.previousElementSibling?.lastElementChild).toBe(screen.getByRole('button', { name: '製番ごとに色分け' }));
+  });
   it.each([false, true])('shows the large-screen toggle at the far right with gantt=%s', (ganttEnabled) => {
     const onToggleLargeScreen = vi.fn();
     const values = { ...props(), ganttEnabled, onToggleLargeScreen };
@@ -100,25 +110,25 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(screen.getByRole('button', { name: '今日から' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '納期から' }));
     expect(values.onGanttModeChange).toHaveBeenCalledWith('backward');
-    fireEvent.click(screen.getByRole('button', { name: '⚠ 遅れ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: '遅れ 2' }));
     expect(values.onNextLate).toHaveBeenCalledOnce();
     expect(screen.getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent)
-      .filter((label) => ['固定', '並べ替え', '⇅ 納期順に並べる', '↶ 戻す'].includes(label!)))
-      .toEqual(['固定', '並べ替え', '⇅ 納期順に並べる', '↶ 戻す']);
+      .filter((label) => ['固定', '並べ替え', '納期順に並べる', '↶ 戻す'].includes(label!)))
+      .toEqual(['固定', '並べ替え', '納期順に並べる', '↶ 戻す']);
     fireEvent.click(screen.getByRole('button', { name: '並べ替え' }));
     expect(values.onProposeOrder).toHaveBeenCalledOnce();
     expect(values.onSortDue).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '⇅ 納期順に並べる' }));
+    fireEvent.click(screen.getByRole('button', { name: '納期順に並べる' }));
     fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
     expect(values.onSortDue).toHaveBeenCalledOnce();
     expect(values.onUndoOrder).toHaveBeenCalledOnce();
     rerender(<PlanningBoardToolbar {...values} lateCount={0} />);
-    expect(screen.getByRole('button', { name: '✓ 遅れなし' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '遅れなし' })).toBeInTheDocument();
   });
   it.each([{ allocation: 'original' as const }, { orderDisabled: true }])('disables writes: %j', (changes) => {
     render(<PlanningBoardToolbar {...props()} {...changes} />);
     expect(screen.getByRole('button', { name: '並べ替え' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '⇅ 納期順に並べる' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '納期順に並べる' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
   });
   it.each([{ ganttEnabled: false }, { ganttMode: 'backward' as const }, { view: 'seiban' as const }])('hides pin and proposal outside forward resource view: %j', (changes) => {
@@ -129,9 +139,9 @@ describe('PlanningBoardToolbar forward controls', () => {
   it('keeps the original due-sort availability outside resource view', () => {
     const values = props();
     const { rerender } = render(<PlanningBoardToolbar {...values} view="seiban" />);
-    expect(screen.getByRole('button', { name: '⇅ 納期順に並べる' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '納期順に並べる' })).toBeEnabled();
     rerender(<PlanningBoardToolbar {...values} ganttMode="backward" />);
-    expect(screen.getByRole('button', { name: '⇅ 納期順に並べる' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '納期順に並べる' })).toBeDisabled();
   });
   it('shows comparison and blocks pending preview actions', () => {
     const values = props();
@@ -141,7 +151,7 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(screen.getByRole('status')).toHaveTextContent('遅れ 3 → 1 件');
     expect(screen.getByRole('status')).toHaveTextContent('待ち 2時間05分 → 0時間30分');
     expect(screen.queryByRole('button', { name: '並べ替え' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '⇅ 納期順に並べる' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '納期順に並べる' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '固定' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '適用' }));
     fireEvent.click(screen.getByRole('button', { name: 'やめる' }));

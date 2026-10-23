@@ -50,7 +50,8 @@ const IMMERSIVE_PATH_EXACT = new Set<string>([
   ...KIOSK_BORROW_IMMERSIVE_PATH_EXACT,
   '/kiosk/production-schedule',
   '/kiosk/documents',
-  '/kiosk/inventory'
+  '/kiosk/inventory',
+  '/kiosk/inventory/haizen'
 ]);
 
 /**
@@ -64,6 +65,8 @@ const IMMERSIVE_PATH_EXACT = new Set<string>([
 export function usesKioskImmersiveLayout(pathname: string): boolean {
   const p = normalizeKioskPathname(pathname);
   if (p === '/kiosk/inventory/settings' || p.startsWith('/kiosk/inventory/settings/')) return true;
+  // 集計は在庫の準備と同じく、1画面に収めてパネルの中だけをスクロールさせる。
+  if (p === '/kiosk/inventory/dashboard') return true;
   // The tag desk keeps its reader dock still and scrolls only the list, so it needs a fixed-height page.
   if (p === '/kiosk/tag-desk') return true;
   // 設備稼働は一覧と詳細を画面の高さに収め、それぞれの中だけをスクロールさせる。

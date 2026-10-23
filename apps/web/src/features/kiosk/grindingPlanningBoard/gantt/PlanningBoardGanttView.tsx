@@ -13,7 +13,7 @@ import { chainBarElement, PlanningBoardChainLinks } from './PlanningBoardChainLi
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
-import { dayLabel, dayToDate, jstDay } from './planningBoardGanttLayout';
+import { dayLabel, dayToDate, jstDay, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 
@@ -23,7 +23,7 @@ import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
+type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingRowIds' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   onResourceReorder?: ForwardReorder;
   onResourceMove?: ForwardMove;
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
@@ -32,6 +32,8 @@ type Props = Pick<PlanningBoardGanttRowProps, 'disabled' | 'dragDisabled' | 'onT
   runsThroughBreaks?: ReadonlySet<string>;
   onBreaksChange?: (resourceCd: string, runsThroughBreaks: boolean) => void;
   colorBySeiban?: boolean;
+  focusedSeiban: string | null;
+  onFocusedSeibanChange: (seiban: string | null) => void;
   seibanOrder?: readonly string[];
   layout: GanttLayout;
   scale: number;
@@ -50,8 +52,8 @@ const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const GANTT_BOTTOM_GAP = 10;
 // With a 2- or 4-day span a day is wide enough to show where the hours fall.
 const HOUR_TICKS = [8, 17, 20];
-// The one-day scale fits ten hours on screen so short jobs stay readable, with a tick every hour.
-const ONE_DAY_VISIBLE_DAYS = 8 / 24;
+// The one-day scale fits six hours on screen so short jobs stay readable, with a tick every hour.
+const ONE_DAY_VISIBLE_DAYS = 6 / 24;
 const EVERY_HOUR = Array.from({ length: 24 }, (_, hour) => hour);
 const SHIFT_START_HOUR = 8;
 const HOUR_TICK_MIN_DAY_WIDTH = 160;
@@ -70,6 +72,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
   layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
+  focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingRowIds,
   colorBySeiban = false, seibanOrder = [], preferenceScope = 'default', ...interaction
 }, ref) {
   // Dragging a machine name up or down reorders the lanes; the order is kept on this kiosk only.
@@ -89,21 +92,31 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     onPointerDown={(event) => laneOrder.onPointerDown(event, resource)} onPointerMove={laneOrder.onPointerMove}
     onPointerUp={laneOrder.onPointerUp} onPointerCancel={laneOrder.onPointerCancel} onLostPointerCapture={laneOrder.onPointerCancel}
     onKeyDown={(event) => laneOrder.onKeyDown(event, resource)}>{text}</button>;
+  const [completionTargetId, setCompletionTargetId] = useState<string | null>(null);
+  useEffect(() => {
+    if (completionTargetId && !planningBoardVisibleBars(layout).some((bar) => bar.item.itemId === completionTargetId)) setCompletionTargetId(null);
+  }, [completionTargetId, layout]);
+  const toggleCompletionTarget = useCallback((itemId: string) => {
+    setCompletionTargetId((current) => current === itemId ? null : itemId);
+  }, []);
   const forward = layout.mode === 'forward';
-  const seibanColors = useMemo(() => colorBySeiban ? new Map(layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars
-    .filter((bar) => forward ? bar.unknown || Boolean(bar.segments?.length) : bar.end != null)
-    .map((bar) => [bar.item.fseiban, planningBoardSeibanColor(bar.item.fseiban, seibanOrder)] as const)))) : undefined,
-  [colorBySeiban, layout, forward, seibanOrder]);
-  const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
+  const seibanColors = useMemo(() => {
+    if (!colorBySeiban) return undefined;
+    const seibans = [...new Set(planningBoardVisibleBars(layout).map((bar) => bar.item.fseiban))];
+    // The legend follows the left pane's seiban priority; seibans outside it keep their first-seen order at the end.
+    const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
+    seibans.sort((a, b) => rank(a) - rank(b));
+    return new Map(seibans.map((seiban) => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
+  }, [colorBySeiban, layout, seibanOrder]);
   useEffect(() => {
     if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
-  }, [focusedSeiban, seibanColors]);
+  }, [focusedSeiban, seibanColors, setFocusedSeiban]);
   useEffect(() => {
     if (focusedSeiban === null) return;
     const clear = (event: KeyboardEvent) => { if (event.key === 'Escape') setFocusedSeiban(null); };
     document.addEventListener('keydown', clear);
     return () => document.removeEventListener('keydown', clear);
-  }, [focusedSeiban]);
+  }, [focusedSeiban, setFocusedSeiban]);
   const legend = useRef<HTMLDivElement>(null);
   const [dragPreview, setDragPreview] = useState<ForwardDragPreview | null>(null);
   const dragLanes = useMemo(() => layout.groups.flatMap((group) => group.resource
@@ -157,7 +170,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const flaggedIndex = useRef(-1);
-  const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number; hour: number; today: number } | null>(null);
+  const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number; step: number; today: number } | null>(null);
   const labelWidth = forward ? GANTT_FORWARD_LABEL_WIDTH : GANTT_LABEL_WIDTH;
   const dayWidth = Math.max(1, viewportWidth - labelWidth) / (scale === 1 ? ONE_DAY_VISIBLE_DAYS : scale);
   const width = (layout.end - layout.start) * dayWidth;
@@ -183,17 +196,20 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     if (!viewport.current) return;
     const previous = previousAxis.current;
     // A scale press starts near today so a 2- or 4-day span does not open on past days; data changes keep the position.
-    // The ten-hour day starts an hour before now on the hour, never before the shift starts.
-    // Each new hour also returns to that position, so an unattended board keeps following the clock.
-    const nowHour = ((layout.now ?? jstDay(new Date())) - layout.today) * 24;
-    // Day fractions lose a little precision, so 14:00 can come out as 13.999…; the epsilon keeps it in the new hour.
-    const hour = Math.floor(nowHour + 1e-6);
-    const home = layout.today + (scale === 1 ? Math.max(SHIFT_START_HOUR, hour - 1) / 24 : forward || scale < 7 ? 0 : -3);
-    const firstDay = previous && previous.scale === scale && previous.forward === forward && previous.homeKey === homeKey && previous.hour === hour && previous.today === layout.today
+    // The one-day scale never opens before the shift starts. Backward charts open an hour before now on the hour.
+    // 「今日から」 has nothing before now, so it opens ten minutes before the current ten-minute step and keeps the bars at the left edge.
+    // Each new step also returns to that position, so an unattended board keeps following the clock.
+    const nowMinute = ((layout.now ?? jstDay(new Date())) - layout.today) * 24 * 60;
+    const stepMinutes = forward && scale === 1 ? 10 : 60;
+    // Day fractions lose a little precision, so 14:00 can come out as 13:59.99…; the epsilon keeps it in the new step.
+    const step = Math.floor(nowMinute / stepMinutes + 1e-6);
+    const homeMinute = forward ? step * stepMinutes - 10 : (step - 1) * stepMinutes;
+    const home = layout.today + (scale === 1 ? Math.max(SHIFT_START_HOUR * 60, homeMinute) / (24 * 60) : forward || scale < 7 ? 0 : -3);
+    const firstDay = previous && previous.scale === scale && previous.forward === forward && previous.homeKey === homeKey && previous.step === step && previous.today === layout.today
       ? previous.start + viewport.current.scrollLeft / previous.dayWidth
       : home;
     viewport.current.scrollLeft = Math.max(0, (firstDay - layout.start) * dayWidth);
-    previousAxis.current = { start: layout.start, dayWidth, scale, forward, homeKey, hour, today: layout.today };
+    previousAxis.current = { start: layout.start, dayWidth, scale, forward, homeKey, step, today: layout.today };
   }, [dayWidth, layout.start, layout.today, layout.now, scale, forward, homeKey]);
   const nudge = (direction: 1 | -1) => {
     if (viewport.current) viewport.current.scrollLeft = Math.max(0, viewport.current.scrollLeft + direction * NUDGE_DAYS * dayWidth);
@@ -224,17 +240,30 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const selectedParts = useMemo(() => new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) =>
     row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.partKey)
   ))), [interaction.selectedItemIds, layout]);
-  const scrollToStep = (bar: GanttBar) => {
+  const scrollToBar = (bar: GanttBar) => {
     const element = viewport.current;
     const target = content.current && chainBarElement(content.current, bar);
     if (!element || !target) return;
     const bounds = element.getBoundingClientRect();
     const rect = target.getBoundingClientRect();
-    const left = Math.max(0, element.scrollLeft + (rect.left + rect.width / 2 - bounds.left) / pageZoom() - (viewportWidth + labelWidth) / 2);
+    // Centre the bar, but keep its start in view when it is wider than the chart.
+    const barLeft = element.scrollLeft + (rect.left - bounds.left) / pageZoom();
+    const left = Math.max(0, Math.min(barLeft + rect.width / pageZoom() / 2 - (viewportWidth + labelWidth) / 2, barLeft - labelWidth - 16));
     const top = Math.max(0, element.scrollTop + (rect.top - bounds.top) / pageZoom() - 36);
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
     else { element.scrollLeft = left; element.scrollTop = top; }
+  };
+  const scrollToStep = (bar: GanttBar) => {
+    scrollToBar(bar);
     setCurrentItemId(bar.item.itemId);
+  };
+  // A legend chip jumps to the seiban's earliest bar, which may sit outside the visible hours.
+  const focusSeiban = (seiban: string) => {
+    setFocusedSeiban(seiban);
+    const barStart = (bar: GanttBar) => bar.segments?.[0]?.start ?? bar.start ?? bar.end ?? Infinity;
+    const first = planningBoardVisibleBars(layout).filter((bar) => bar.item.fseiban === seiban)
+      .reduce<GanttBar | undefined>((earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
+    if (first) scrollToBar(first);
   };
   const breaksButton = (resource: string) => <button type="button"
     className={clsx('h-7 w-9 shrink-0 whitespace-nowrap rounded border px-0 text-[13px] font-bold leading-none disabled:opacity-40',
@@ -258,6 +287,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       {showChain && <PlanningBoardChainStrip bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+        onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds} disabled={interaction.disabled}
         onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto"
         style={{ height: viewportHeight ?? undefined }} tabIndex={0} aria-label="ガントの日付と工程"
@@ -313,7 +343,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             </div>}
             {forward ? group.rows.map((row) => {
               return <PlanningBoardForwardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
-                onShowQueue={(bar, anchor) => queuePopover.current?.show(bar, anchor)}
+                onShowQueue={(bar, anchor) => { if (!showChain) queuePopover.current?.show(bar, anchor); }}
                 onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
@@ -322,6 +352,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabel(group.resource, group.label) : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
+              completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
           </div>)}
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
@@ -329,7 +360,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       </div>
       {seibanColors && <div ref={legend} role="group" aria-label="製番の色分け凡例" className="flex flex-wrap gap-2 border-t border-slate-700 px-2 py-1 text-xs text-slate-200">
         {[...seibanColors].map(([seiban, color]) => <button key={seiban} type="button" aria-pressed={focusedSeiban === seiban}
-          onClick={() => setFocusedSeiban(focusedSeiban === seiban ? null : seiban)}
+          onClick={() => focusedSeiban === seiban ? setFocusedSeiban(null) : focusSeiban(seiban)}
           className={clsx('inline-flex min-h-[44px] items-center gap-1 rounded bg-slate-800 px-1.5 py-1 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', focusedSeiban === seiban && 'ring-2 ring-white')}>
           <span className={clsx('h-3 w-3 rounded-sm', color)} />{seiban}
         </button>)}

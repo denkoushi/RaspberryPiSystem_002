@@ -29,7 +29,10 @@ export function KioskItemInventorySettingsPage() {
     touchSetupPin();
   }, [accessPassword]);
   const [registration, setRegistration] = useState<RegistrationState>({ selectedId: initialImportId, draft: null });
-  const [tab, setTab] = useState<SetupTab>('review');
+  const [tab, setTab] = useState<SetupTab>(() => {
+    const requested = (location.state as { tab?: unknown } | null)?.tab;
+    return TABS.find((entry) => entry.id === requested)?.id ?? 'review';
+  });
 
   if (!accessPassword) return <InventoryPinPad onUnlocked={(pin) => { rememberSetupPin(pin); setAccessPassword(pin); }} />;
 

@@ -55,7 +55,7 @@ describe('InventoryItemEditTab', () => {
     vi.mocked(readInventoryPhotoRegion).mockReset().mockResolvedValue({ candidates: ['OCR-MODEL'], status: 'ok' });
     vi.mocked(resolveInventoryTag).mockReset().mockResolvedValue(null);
     mutations = {
-      replaceTag: mutation(), move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), reorderItemPhotos: mutation(), deleteItem: mutation(),
+      replaceTag: mutation(), move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), rotateItemPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false }, reorderItemPhotos: mutation(), deleteItem: mutation(),
       setItemUnit: mutation(), createUnit: mutation(), updateItemDetails: mutation(),
       renameToolFieldValue: mutation(), addToolFieldValue: mutation(), deleteToolFieldValue: mutation(),
     };
@@ -63,6 +63,27 @@ describe('InventoryItemEditTab', () => {
   });
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('rotates the selected photo with its parent and photo IDs', async () => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '写真1を右に回す' })); });
+    expect(vi.mocked(useInventoryMutations)().rotateItemPhoto.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', photoId: 'photo-1' });
+  });
+
+  it.each([['250', 250], ['0', 0], ['', null]])('saves the unit price %s using item details', async (value, expected) => {
+    const current = vi.mocked(useInventoryItems)();
+    vi.mocked(useInventoryItems).mockReturnValue({ ...current, data: current.data?.map(item => ({ ...item, unitPrice: 100 })) } as never);
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    const input = screen.getByRole('spinbutton', { name: '単価' });
+    expect(input).toHaveAttribute('max', '10000000');
+    expect(screen.getByText('円 / 個')).toBeInTheDocument();
+    fireEvent.change(input, { target: { value } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存', exact: true })); });
+    expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', details: { unitPrice: expected } });
+    vi.mocked(useInventoryItems).mockReturnValue(current);
+  });
 
   it.each([false, true])('keeps region text in the form without saving automatically (edited: %s)', async edited => {
     render(<InventoryItemEditTab accessPassword="2520" />);

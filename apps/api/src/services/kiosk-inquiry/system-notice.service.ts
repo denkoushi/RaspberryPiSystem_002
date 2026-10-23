@@ -2,9 +2,11 @@ import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { isMonitoredClient, loadHeartbeatAlertConfig } from '../clients/client-heartbeat-alert-policy.js';
+import { KIOSK_ALERT_COOLDOWN_MS } from '../clients/client-telemetry-alert-policy.js';
 
 export const SYSTEM_NOTICE_REPEAT_MS = 24 * 60 * 60 * 1000;
 export const FILE_NOTICE_EXPIRY_MS = 48 * 60 * 60 * 1000;
+export const KIOSK_NOTICE_QUIET_MS = KIOSK_ALERT_COOLDOWN_MS;
 export const FILE_NOTICE_PREFIX = 'file:';
 export type SystemNotice = { key: string; title: string; body: string; state: 'open' | 'recovered' };
 
@@ -60,6 +62,45 @@ export async function resolveInactiveFileNotices(now = new Date(), type?: string
       });
       if (!recent) {
         // Silence is not an observed recovery: no message and no change to unread or list ordering.
+        await tx.kioskInquiryThread.updateMany({
+          where: { id: thread.id, noticeResolvedAt: null }, data: { noticeResolvedAt: now }
+        });
+      }
+    });
+  }
+}
+
+export async function resolveQuietKioskUiErrorNotices(now = new Date()): Promise<void> {
+  const cutoff = new Date(now.getTime() - KIOSK_NOTICE_QUIET_MS);
+  const threads = await prisma.kioskInquiryThread.findMany({
+    where: { kind: 'SYSTEM_NOTICE', noticeResolvedAt: null },
+    select: { id: true, noticeKey: true }
+  });
+  for (const thread of threads) {
+    const key = thread.noticeKey;
+    if (!key) continue;
+    let parts: unknown;
+    try {
+      parts = JSON.parse(key);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(parts) || parts.length !== 3 || parts[0] !== 'kiosk_ui_error'
+      || typeof parts[1] !== 'string' || !parts[1] || typeof parts[2] !== 'string' || !parts[2]) continue;
+    const [, clientId, deviceId] = parts;
+    await prisma.$transaction(async (tx) => {
+      await lockNotice(tx, key);
+      const recent = await tx.clientLog.findFirst({
+        where: {
+          ...(deviceId === clientId ? { clientId } : {}),
+          level: 'ERROR', createdAt: { gte: cutoff },
+          AND: [
+            { context: { path: ['category'], equals: 'kiosk_ui_error' } },
+            ...(deviceId === clientId ? [] : [{ context: { path: ['clientDeviceId'], equals: deviceId } }])
+          ]
+        }, select: { id: true }
+      });
+      if (!recent) {
         await tx.kioskInquiryThread.updateMany({
           where: { id: thread.id, noticeResolvedAt: null }, data: { noticeResolvedAt: now }
         });

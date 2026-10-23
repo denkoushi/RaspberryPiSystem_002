@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
-import { HermesSearchTrialService } from '../../services/assembly/hermes-search-trial.service.js';
+import { HermesSearchTrialService } from '../../services/business-hermes/hermes-search-trial.service.js';
 import { ProcedureMaterialService } from '../../services/assembly/procedure-material.service.js';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialGmailIngestionService } from '../../services/assembly/procedure-material-gmail-ingestion.service.js';
 
@@ -14,8 +14,11 @@ import { ProcedureMaterialGcService } from '../../services/assembly/procedure-ma
 import { ProcedureMaterialThumbnailService } from '../../services/assembly/procedure-material-thumbnail.service.js';
 import { ProcedureMaterialPdfTextService } from '../../services/assembly/procedure-material-pdf-text.service.js';
 
+import { getProcedureMaterialSplitSuggestionService, type ProcedureMaterialSplitSuggestionService } from '../../services/assembly/procedure-material-split-suggestion.service.js';
+
 const querySchema = z.object({
   state: z.enum(['unplaced', 'placed', 'discarded', 'all']).default('unplaced'),
+  origin: z.enum(['GMAIL', 'KNOWLEDGE', 'WORK_INSTRUCTION', 'APP']).optional(),
   q: z.string().trim().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
@@ -26,6 +29,7 @@ const pdfTextBackfillSchema = z.object({ dryRun: z.boolean().default(true), limi
 export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   allowView: preHandlerHookHandler; allowWriteKiosk: preHandlerHookHandler;
   service?: ProcedureMaterialService;
+  splitSuggestions?: Pick<ProcedureMaterialSplitSuggestionService, 'suggest'>;
   semanticSearch?: Pick<HermesSearchTrialService, 'rank'>;
   gc?: ProcedureMaterialGcService;
   pdfText?: Pick<ProcedureMaterialPdfTextService, 'backfill'>;
@@ -38,6 +42,10 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   const semanticSearch = options.semanticSearch ?? new HermesSearchTrialService();
   if (semanticSearch instanceof HermesSearchTrialService && !options.semanticSearch) app.addHook('onClose', async () => { semanticSearch.close(); });
   const path = '/assembly/procedure-materials';
+  app.post(`${path}/split-suggestions`, { preHandler: options.allowView, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request) => {
+    const { ids } = z.object({ ids: z.array(z.string().uuid()).min(2).max(60) }).strict().parse(request.body);
+    return (options.splitSuggestions ?? getProcedureMaterialSplitSuggestionService()).suggest(ids);
+  });
   app.post(`${path}/semantic-search`, { preHandler: options.allowView, config: { rateLimit: { max: 12, timeWindow: '1 minute' } } }, async (request) => {
     const { q, state, limit } = z.object({
       q: z.string().trim().min(1).max(200), state: z.enum(['unplaced', 'placed']),

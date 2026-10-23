@@ -51,30 +51,10 @@
         - kiosk_browser_result.changed
       changed_when: false
 
-    # signage-lite.serviceの管理
-    - name: Deploy signage-lite.service
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../templates/signage-lite.service.j2"
-        dest: /etc/systemd/system/signage-lite.service
-        owner: root
-        group: root
-        mode: '0644'
-      when: manage_signage_lite | default(false)
-      register: signage_lite_result
-      notify: restart signage-lite
-
-    - name: Validate signage-lite.service unit
-      ansible.builtin.command: systemd-analyze verify /etc/systemd/system/signage-lite.service
-      when:
-        - manage_signage_lite | default(false)
-        - signage_lite_result is defined
-        - signage_lite_result.changed
-      changed_when: false
-
     - name: Reload systemd daemon if services changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: kiosk_browser_result.changed | default(false) or signage_lite_result.changed | default(false)
+      when: kiosk_browser_result.changed | default(false)
 
   handlers:
     - name: restart pcscd
@@ -92,12 +72,4 @@
       when:
         - ansible_facts.services is defined
         - "'kiosk-browser.service' in ansible_facts.services"
-
-    - name: restart signage-lite
-      ansible.builtin.systemd:
-        name: signage-lite
-        state: restarted
-      when:
-        - ansible_facts.services is defined
-        - "'signage-lite.service' in ansible_facts.services"
 

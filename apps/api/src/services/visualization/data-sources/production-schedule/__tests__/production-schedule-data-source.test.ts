@@ -9,6 +9,9 @@ vi.mock('../../../../../lib/prisma.js', () => ({
     kioskProductionScheduleSearchState: {
       findUnique: vi.fn(),
     },
+    productionScheduleSeibanMachineNameSupplement: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     $queryRaw: vi.fn(),
   },
 }));

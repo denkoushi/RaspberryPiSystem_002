@@ -35,6 +35,13 @@ updates:
     groups:
       production-images:
         patterns: ["*"]
+    ignore:
+      # Images stay on the Node major that CI and package.json engines use.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      # Browser binaries must match the playwright npm package; bump both together.
+      - dependency-name: "mcr.microsoft.com/playwright"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: pip
     directory: /clients/torque-agent

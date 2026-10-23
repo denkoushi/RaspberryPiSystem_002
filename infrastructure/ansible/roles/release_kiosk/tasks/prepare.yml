@@ -51,6 +51,10 @@
         else release_kiosk_enabled_services | intersect(release_kiosk_requested_services) | intersect(release_kiosk_service_allowlist)
       }}
 
+- name: Prove this Pi4 is empty before first-install mutation
+  ansible.builtin.import_tasks: first_install_preflight.yml
+  when: release_kiosk_first_install | bool
+
 - name: Reuse kiosk role browser executable resolution for release staging
   ansible.builtin.include_role:
     name: kiosk
@@ -157,6 +161,10 @@
     - "{{ release_kiosk_run_dir }}"
     - "{{ release_kiosk_stage_dir }}"
 
+- name: Provision the empty Pi4 runtime
+  ansible.builtin.import_tasks: first_install.yml
+  when: release_kiosk_first_install | bool
+
 - name: Build the enabled Pi4 image map
   ansible.builtin.set_fact:
     release_kiosk_candidate_images:
@@ -188,6 +196,7 @@
   register: release_kiosk_rollback_capture
   failed_when: false
   changed_when: true
+  when: not (release_kiosk_first_install | bool)
 
 - name: Record Pi4 rollback tags created by this run
   ansible.builtin.set_fact:
@@ -199,6 +208,7 @@
         | map(attribute='item')
         | list
       }}
+  when: not (release_kiosk_first_install | bool)
 
 - name: Require every enabled Pi4 agent image capture to succeed
   ansible.builtin.assert:
@@ -209,6 +219,7 @@
     fail_msg: >-
       Pi4 rollback image capture did not produce exactly one valid image for
       every enabled service; refusing to continue before the switch boundary.
+  when: not (release_kiosk_first_install | bool)
 
 - name: Verify captured rollback image identities are locally recoverable
   ansible.builtin.command:
@@ -216,12 +227,14 @@
   loop: "{{ release_kiosk_services }}"
   register: release_kiosk_rollback_identity
   changed_when: false
+  when: not (release_kiosk_first_install | bool)
 
 - name: Require immutable Linux rollback image IDs
   ansible.builtin.assert:
     that:
       - item.stdout is match('^sha256:[0-9a-f]{64}\\|linux\\|(arm64|arm)$')
   loop: "{{ release_kiosk_rollback_identity.results }}"
+  when: not (release_kiosk_first_install | bool)
 
 - name: Read Pi4 disk headroom before pulling candidates
   ansible.builtin.shell: |
@@ -300,7 +313,9 @@
     mode: '0600'
   vars:
     release_kiosk_compose_images: "{{ release_kiosk_rollback_images }}"
-  when: release_kiosk_services | length > 0
+  when:
+    - release_kiosk_services | length > 0
+    - not (release_kiosk_first_install | bool)
 
 - name: Render staged status-agent configuration
   ansible.builtin.template:
@@ -343,6 +358,15 @@
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../../clients/status-agent/terminal_agent_health.py"
     dest: "{{ release_kiosk_stage_dir }}/terminal_agent_health.py"
+    owner: root
+    group: root
+    mode: '0644'
+  when: release_kiosk_services | length > 0
+
+- name: Stage the status-agent OS update health module
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../clients/status-agent/os_update_health.py"
+    dest: "{{ release_kiosk_stage_dir }}/os_update_health.py"
     owner: root
     group: root
     mode: '0644'
@@ -446,6 +470,10 @@
   no_log: true
   when: "'torque-agent' in release_kiosk_services"
 
+- name: Prepare the kiosk hotcorner transaction
+  ansible.builtin.import_tasks: prepare_hotcorner.yml
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Define the Pi4 staged file transaction
   ansible.builtin.set_fact:
     release_kiosk_files: >-
@@ -457,6 +485,7 @@
             {'src': release_kiosk_stage_dir ~ '/storage_health.py', 'dest': '/usr/local/lib/raspi-status-agent/storage_health.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/network_health.py', 'dest': '/usr/local/lib/raspi-status-agent/network_health.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/terminal_agent_health.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_agent_health.py', 'mode': '0644'},
+            {'src': release_kiosk_stage_dir ~ '/os_update_health.py', 'dest': '/usr/local/lib/raspi-status-agent/os_update_health.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/terminal_device_maintenance.py', 'dest': '/usr/local/lib/raspi-status-agent/terminal_device_maintenance.py', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.service', 'dest': '/etc/systemd/system/status-agent.service', 'mode': '0644'},
             {'src': release_kiosk_stage_dir ~ '/status-agent.timer', 'dest': '/etc/systemd/system/status-agent.timer', 'mode': '0644'},
@@ -469,6 +498,12 @@
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
         ] if release_kiosk_services | length > 0 else [])
+        + ([
+          {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.py', 'dest': '/usr/local/bin/kiosk-hotcorner.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-labwc-config.py', 'dest': '/usr/local/bin/kiosk-labwc-config.py', 'mode': '0755'},
+          {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.service', 'dest': '/etc/systemd/system/kiosk-hotcorner.service', 'mode': '0644'},
+          {'src': release_kiosk_stage_dir ~ '/show-kiosk-panel.sh', 'dest': '/usr/local/bin/show-kiosk-panel.sh', 'mode': '0755'},
+        ] if manage_kiosk_browser | default(false) | bool else [])
         + ([{'src': release_kiosk_candidate_compose, 'dest': '/etc/raspi-release/client-compose.yml', 'mode': '0600'}] if release_kiosk_services | length > 0 and not (release_torque_cutover | default(false) | bool) else [])
         + ([{'src': release_kiosk_stage_dir ~ '/nfc-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/nfc-agent/.env', 'mode': '0600'}] if 'nfc-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])

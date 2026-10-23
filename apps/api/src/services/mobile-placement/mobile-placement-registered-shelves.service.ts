@@ -1,3 +1,5 @@
+import { splitArea } from '@raspi-system/shelf-layout-core';
+
 /** 棚番登録UIのエリア・列ラベル（`formatShelfCodeRaw` と同一） */
 const AREA_LABEL_TO_ID: Record<string, 'west' | 'central' | 'east'> = {
   西: 'west',
@@ -14,6 +16,8 @@ const LINE_LABEL_TO_ID: Record<string, 'north' | 'central' | 'south'> = {
 export type RegisteredShelfEntry = {
   shelfCodeRaw: string;
   isStructured: boolean;
+  machineName?: string;
+  direction?: '東' | '西' | '南' | '北';
   areaId?: 'west' | 'central' | 'east';
   lineId?: 'north' | 'central' | 'south';
   /** 1..99（2桁表示はゼロ埋めと一致） */
@@ -21,14 +25,19 @@ export type RegisteredShelfEntry = {
   /** 段（4 セグメント形式 `西-北-02-1` のとき） */
   tier?: number;
   displayLabel?: string | null;
+  photoUpdatedAt?: string | null;
   macroZoneId?: string | null;
 };
 
 /**
- * `西-北-02` または `西-北-02-1`（段付き）形式を構造化として解釈。
+ * `加工機 方角` を優先し、旧 `西-北-02` または `西-北-02-1`（段付き）形式を構造化として解釈。
  */
 export function parseStructuredShelfCode(shelfCodeRaw: string): Omit<RegisteredShelfEntry, 'shelfCodeRaw'> {
   const raw = shelfCodeRaw.trim();
+  const area = splitArea(raw);
+  if (area.direction) {
+    return { isStructured: true, machineName: area.machine, direction: area.direction };
+  }
   const parts = raw.split('-');
   if (parts.length !== 3 && parts.length !== 4) {
     return { isStructured: false };

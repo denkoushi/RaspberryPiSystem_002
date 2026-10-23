@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -76,7 +77,283 @@ def role_text(role: str) -> str:
     )
 
 
+def release_main_body(source):
+    # The OS update guard encloses the existing lifecycle unchanged. Inspect
+    # that lifecycle here; dedicated guard tests cover the new outer boundary.
+    outer = yaml.safe_load(source)
+    assert len(outer) == 1
+    assert outer[0]["block"][0]["ansible.builtin.import_tasks"].endswith("/os-security-update-release-start.yml")
+    assert outer[0]["always"][0]["ansible.builtin.import_tasks"].endswith("/os-security-update-release-end.yml")
+    return outer[0]["block"][1:]
+
+
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_kiosk_network_configuration_runs_after_normal_switch_boundary(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk/tasks"
+        main = release_main_body((root / "main.yml").read_text())[0]["block"]
+        switch_block = next(task for task in main if task["name"] == "Switch and verify one Pi4 kiosk")
+        self.assertEqual(switch_block["block"][0]["ansible.builtin.import_tasks"], "switch.yml")
+        self.assertNotIn("when", switch_block["block"][0])
+        switch = yaml.safe_load((root / "switch.yml").read_text())
+        boundary = next(i for i, task in enumerate(switch)
+                        if task.get("ansible.builtin.set_fact", {}).get("release_kiosk_switch_attempted"))
+        network = next(i for i, task in enumerate(switch)
+                       if task.get("ansible.builtin.import_tasks") == "network.yml")
+        self.assertGreater(network, boundary)
+        self.assertNotIn("when", switch[network])  # Normal and first-install both converge.
+        tasks = yaml.safe_load((root / "network.yml").read_text())
+        self.assertEqual(tasks[0]["ansible.builtin.command"], "which nmcli")
+        self.assertIs(tasks[0]["changed_when"], False)
+        self.assertIs(tasks[0]["failed_when"], False)
+        guard = Environment().compile_expression(tasks[1]["when"])
+        self.assertTrue(guard(release_kiosk_nmcli={"rc": 0}))
+        self.assertFalse(guard(release_kiosk_nmcli={"rc": 1}))
+        block = tasks[1]["block"]
+        self.assertEqual(block[0]["ansible.builtin.stat"]["path"], "/etc/NetworkManager/NetworkManager.conf")
+        self.assertEqual(block[1]["ansible.builtin.copy"]["src"], block[0]["ansible.builtin.stat"]["path"])
+        edits = [task["ansible.builtin.lineinfile"] for task in block if "ansible.builtin.lineinfile" in task]
+        self.assertEqual([edit["path"] for edit in edits], ["/etc/NetworkManager/NetworkManager.conf"] * 2)
+        self.assertEqual(edits[0]["line"], "[main]")
+        self.assertTrue(edits[0]["create"])
+        self.assertEqual(edits[1]["regexp"], "^auth-polkit=")
+        self.assertEqual(edits[1]["line"], "auth-polkit=false")
+        self.assertEqual(edits[1]["insertafter"], r"^\[main\]")
+        restart = block[-1]
+        self.assertEqual(restart["ansible.builtin.systemd"], {"name": "NetworkManager", "state": "restarted"})
+        changed = Environment().compile_expression(restart["when"])
+        for section, auth in ((False, False), (True, False), (False, True), (True, True)):
+            self.assertEqual(changed(release_kiosk_network_main={"changed": section},
+                                     release_kiosk_network_auth={"changed": auth}), section or auth)
+
+    def test_kiosk_network_normal_rollback_restores_or_removes_before_health(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk/tasks"
+        rollback = yaml.safe_load((root / "rollback.yml").read_text())
+        restore = next(task for task in rollback if task["name"] == "Restore normal-release NetworkManager configuration")
+        self.assertLess(rollback.index(restore), next(i for i, task in enumerate(rollback)
+                        if task.get("ansible.builtin.import_tasks") == "health_checks.yml"))
+        self.assertIn("not (release_kiosk_first_install | bool)", restore["when"])
+        copy, remove, restart = restore["block"]
+        self.assertEqual(copy["ansible.builtin.copy"]["dest"], "/etc/NetworkManager/NetworkManager.conf")
+        self.assertTrue(copy["ansible.builtin.copy"]["remote_src"])
+        self.assertEqual(copy["ansible.builtin.copy"]["src"], "{{ release_kiosk_stage_dir }}/NetworkManager.conf.original")
+        for field, stat in (("owner", "uid"), ("group", "gid"), ("mode", "mode")):
+            self.assertIn("release_kiosk_network_original.stat." + stat, copy["ansible.builtin.copy"][field])
+        self.assertEqual(copy["when"], "release_kiosk_network_original.stat.exists")
+        self.assertEqual(remove["when"], "not release_kiosk_network_original.stat.exists")
+        self.assertEqual(remove["ansible.builtin.file"], {"path": "/etc/NetworkManager/NetworkManager.conf", "state": "absent"})
+        self.assertEqual(restart["ansible.builtin.systemd"], {"name": "NetworkManager", "state": "restarted"})
+        changed = Environment().compile_expression(restart["when"])
+        for copied, removed in (({}, {}), ({"changed": False}, {"changed": False}),
+                                ({"changed": True}, {}), ({}, {"changed": True})):
+            self.assertEqual(changed(release_kiosk_network_restore=copied, release_kiosk_network_remove=removed),
+                             bool(copied.get("changed") or removed.get("changed")))
+
+    def test_kiosk_network_first_install_backup_and_conditional_rollback_restart(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk/tasks"
+        bootstrap = yaml.safe_load((root / "first_install.yml").read_text())
+        files = bootstrap[0]["ansible.builtin.set_fact"]["release_kiosk_first_install_files"]
+        path = "/etc/NetworkManager/NetworkManager.conf"
+        self.assertIn(path, files)
+        capture = next(task for task in bootstrap if task.get("register") == "release_kiosk_first_install_originals")
+        self.assertEqual(capture["loop"], "{{ release_kiosk_first_install_files }}")
+        rollback = yaml.safe_load((root / "rollback_first_install.yml").read_text())
+        for register in ("release_kiosk_first_install_restored", "release_kiosk_first_install_removed"):
+            task = next(task for task in rollback if task.get("register") == register)
+            self.assertEqual(task["loop"], "{{ release_kiosk_first_install_originals.results }}")
+        restart = next(task for task in rollback if task.get("ansible.builtin.systemd", {}).get("name") == "NetworkManager")
+        installed = Environment().compile_expression(restart["when"][0])
+        self.assertFalse(installed(release_kiosk_nmcli={}))
+        self.assertFalse(installed(release_kiosk_nmcli={"rc": 1}))
+        self.assertTrue(installed(release_kiosk_nmcli={"rc": 0}))
+        changed = Environment().compile_expression(restart["when"][1])
+        for restored, removed, target, expected in ((False, False, path, False),
+                (True, False, path, True), (False, True, path, True),
+                (True, True, "/unrelated-desktop-file", False)):
+            result = lambda value: {"results": [{"item": {"item": target}, "changed": value}]}
+            self.assertEqual(changed(release_kiosk_first_install_restored=result(restored),
+                                     release_kiosk_first_install_removed=result(removed)), expected)
+
+    def test_first_install_capture_guard_preserves_normal_fail_closed_assertion(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk"
+        defaults = yaml.safe_load((root / "defaults/main.yml").read_text())
+        self.assertIs(defaults["release_kiosk_first_install"], False)
+        tasks = {task["name"]: task for task in yaml.safe_load((root / "tasks/prepare.yml").read_text())}
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        for name in (
+            "Capture current Pi4 agent images as temporary rollback tags",
+            "Record Pi4 rollback tags created by this run",
+            "Require every enabled Pi4 agent image capture to succeed",
+            "Verify captured rollback image identities are locally recoverable",
+            "Require immutable Linux rollback image IDs",
+        ):
+            guard = environment.compile_expression(tasks[name]["when"])
+            self.assertTrue(guard(release_kiosk_first_install=False))
+            self.assertFalse(guard(release_kiosk_first_install=True))
+        assertions = tasks["Require every enabled Pi4 agent image capture to succeed"]["ansible.builtin.assert"]["that"]
+        complete = environment.compile_expression(assertions[0])
+        self.assertFalse(complete(release_kiosk_captured_services=[], release_kiosk_services=["nfc-agent"]))
+        self.assertTrue(complete(release_kiosk_captured_services=["nfc-agent"], release_kiosk_services=["nfc-agent"]))
+
+    def test_first_install_requires_kiosk_client_key_prefix(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/first_install_preflight.yml").read_text())
+        task = next(t for t in tasks if t["name"] == "Validate first-install agent credentials without exposing them")
+        self.assertTrue(task["no_log"])
+        condition = next(c for c in task["ansible.builtin.assert"]["that"] if "client-key-" in c)
+        environment = Environment(undefined=StrictUndefined)
+        environment.tests["match"] = lambda value, pattern: re.match(pattern, value) is not None
+        check = environment.compile_expression(condition)
+        self.assertTrue(check(status_agent_client_key="client-key-raspi4-new-0123abcd"))
+        self.assertFalse(check(status_agent_client_key="x" * 64))
+
+    def test_first_install_registration_is_read_only_redacted_and_before_boundary(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk/tasks"
+        prepare = yaml.safe_load((root / "prepare.yml").read_text())
+        preflight = yaml.safe_load((root / "first_install_preflight.yml").read_text())
+        bootstrap = yaml.safe_load((root / "first_install.yml").read_text())
+        imports = [task.get("ansible.builtin.import_tasks") for task in prepare]
+        self.assertLess(imports.index("first_install_preflight.yml"), imports.index("first_install.yml"))
+        preflight_import = prepare[imports.index("first_install_preflight.yml")]
+        self.assertEqual(preflight_import["when"], "release_kiosk_first_install | bool")
+
+        registration = next(task for task in preflight if task["name"] ==
+                            "Require server-side client registration before first-install provisioning")
+        check = registration["block"][0]
+        uri = check["ansible.builtin.uri"]
+        self.assertIs(check["no_log"], True)
+        self.assertIs(check["changed_when"], False)
+        self.assertEqual(uri["method"], "GET")
+        self.assertEqual(uri["status_code"], 200)  # 401, errors and redirects fail closed.
+        self.assertEqual(uri["follow_redirects"], "none")
+        self.assertIs(uri["use_netrc"], False)
+        self.assertEqual(uri["headers"], {"x-client-key": "{{ status_agent_client_key }}"})
+        self.assertIn("status_agent_api_base_url", uri["url"])
+        self.assertTrue(uri["url"].endswith("/kiosk/sites"))
+        self.assertIn("status_agent_tls_skip_verify", uri["validate_certs"])
+        message = registration["rescue"][0]["ansible.builtin.fail"]["msg"]
+        self.assertIn("register the client on Pi5 first:", message)
+        self.assertIn("REGISTER_CLIENT_HOST={{ inventory_hostname }} ../../scripts/register-clients.sh", message)
+        self.assertNotIn("status_agent_client_key", message)
+        self.assertNotIn("ansible_failed_result", message)
+
+        expanded = []
+        for task in prepare:
+            imported = task.get("ansible.builtin.import_tasks")
+            expanded.extend(preflight if imported == "first_install_preflight.yml" else
+                            bootstrap if imported == "first_install.yml" else [task])
+        boundary = next(i for i, task in enumerate(expanded)
+                        if task.get("ansible.builtin.set_fact", {}).get("release_kiosk_first_install_started"))
+        self.assertLess(expanded.index(registration), boundary)
+        self.assertNotIn("release_kiosk_first_install_started", json.dumps(preflight))
+
+    def test_first_install_emptiness_rejects_each_prior_state_independently(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/first_install_preflight.yml").read_text())
+        by_name = {task["name"]: task for task in tasks}
+        containers = by_name["Inspect all containers in the standard Compose project, including stopped agents"]["ansible.builtin.command"]["argv"]
+        self.assertIn("--all", containers)
+        self.assertIn("label=com.docker.compose.project=docker", containers)
+        paths = by_name["Inspect existing kiosk state without reading configuration or secrets"]["loop"]
+        self.assertIn("/etc/raspi-status-agent.conf", paths)
+        self.assertIn("/etc/raspi-release", paths)
+        self.assertTrue(any("completed-{{ inventory_hostname }}" in path for path in paths))
+        assertions = by_name["Prove this host has no prior kiosk or completed standard release"]["ansible.builtin.assert"]["that"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["intersect"] = lambda left, right: list(set(left) & set(right))
+        clean = {
+            "release_kiosk_first_install_containers": {"stdout": ""},
+            "release_kiosk_first_install_volumes": {"stdout": ""},
+            "release_kiosk_first_install_state": {"results": [{"stat": {"exists": False}} for _ in paths]},
+            "ansible_facts": {"services": {}},
+        }
+        def empty(values):
+            return all(environment.compile_expression(condition)(**values) for condition in assertions)
+        self.assertTrue(empty(clean))
+        for name in ("release_kiosk_first_install_containers", "release_kiosk_first_install_volumes"):
+            self.assertFalse(empty({**clean, name: {"stdout": "old-runtime"}}))
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertFalse(empty({**clean, "release_kiosk_first_install_state": {"results": [{"item": path, "stat": {"exists": True}}]}}))
+        self.assertFalse(empty({**clean, "ansible_facts": {"services": {"kiosk-browser.service": {}}}}))
+
+    def test_first_install_autologin_check_reads_lightdm_stderr(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/first_install_preflight.yml").read_text())
+        script = next(task for task in tasks if task["name"] == "Verify the preinstalled OS desktop and Docker prerequisites")["ansible.builtin.shell"]
+        lines = [line for line in script.splitlines() if "lightdm_config" in line]
+        self.assertEqual(len(lines), 2)
+        check = "set -euo pipefail\n" + "\n".join(lines).replace("{{ ansible_user }}", "kiosk-user") + "\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "lightdm"
+            def run(config_line: str) -> int:
+                # Real lightdm writes --show-config output to stderr only.
+                stub.write_text(f"#!/bin/sh\necho '[Seat:*]' >&2\necho '{config_line}' >&2\n")
+                stub.chmod(0o755)
+                env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}"}
+                return subprocess.run(["bash", "-c", check], env=env, capture_output=True).returncode
+            self.assertEqual(run("B  autologin-user=kiosk-user"), 0)
+            self.assertNotEqual(run("B  autologin-user=other-user"), 0)
+
+    def test_first_install_empty_rollback_covers_prepare_and_switch_without_restore_images(self) -> None:
+        root = ANSIBLE / "roles/release_kiosk/tasks"
+        main = release_main_body((root / "main.yml").read_text())[0]
+        outer_rollback = main["rescue"][0]
+        self.assertEqual(outer_rollback["ansible.builtin.import_tasks"], "rollback.yml")
+        self.assertIn("release_kiosk_first_install_started | default(false) | bool", outer_rollback["when"])
+        self.assertIn("release_kiosk_first_install | bool", outer_rollback["when"])
+        rollback = yaml.safe_load((root / "rollback.yml").read_text())
+        self.assertEqual(rollback[0]["ansible.builtin.import_tasks"], "rollback_empty.yml")
+        for task in rollback:
+            if "captured image tags" in task["name"] or "restored Pi4" in task["name"] and "systemd" not in task["name"]:
+                self.assertIn("not (release_kiosk_first_install | bool)", str(task.get("when")), task["name"])
+        empty = (root / "rollback_empty.yml").read_text()
+        self.assertIn('docker container rm --force "${container}"', empty)
+        self.assertNotIn("docker compose", empty)
+        self.assertIn("state: stopped", empty)
+        self.assertIn("enabled: false", empty)
+        self.assertNotIn("docker image tag", empty)
+        self.assertNotIn("rollback_images", empty)
+        restore = (root / "rollback_first_install.yml").read_text()
+        self.assertIn("dconf load /desktop/ibus/", restore)
+        self.assertIn("when: not item.stat.exists", restore)
+        self.assertIn("Require empty runtime after first-install rollback", restore)
+        bootstrap = (root / "first_install.yml").read_text()
+        self.assertIn("tasks_from: ibus", bootstrap)
+        self.assertNotIn("ansible.builtin.git", bootstrap)
+        self.assertIn("pcscd.socket", bootstrap)
+        # Failed first-install rollback preserves its staging/backups for diagnosis.
+        cleanup = main["always"][-1]
+        self.assertIn("release_kiosk_rolled_back", str(cleanup["when"]))
+
+
+    def test_first_install_partial_switch_cleanup_needs_no_compose_env_files(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/rollback_empty.yml").read_text())
+        shell = next(task["ansible.builtin.shell"] for task in tasks if task["name"] == "Remove the first-install candidate containers and their new volumes")
+        verify = tasks[-1]["ansible.builtin.shell"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            docker = root / "docker"
+            docker.write_text("#!/bin/sh\n"
+                'echo "$*" >> "$CALLS"\n'
+                'case "$*" in\n'
+                '"ps --all "*) [ "$FAIL_QUERY" = 0 ] || exit 17; [ -f "$STATE/container" ] && echo candidate; exit 0;;\n'
+                '"volume ls "*) [ -f "$STATE/volume" ] && echo docker_nfc-agent-data; exit 0;;\n'
+                '"container rm --force candidate") rm "$STATE/container";;\n'
+                '"volume rm docker_nfc-agent-data") rm "$STATE/volume";;\n'
+                '*) exit 99;;\nesac\n')
+            docker.chmod(0o755)
+            env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ["PATH"], CALLS=str(root / "calls"), STATE=str(root), FAIL_QUERY="0")
+            for started in (False, True):
+                if started:
+                    (root / "container").touch()
+                    (root / "volume").touch()
+                result = subprocess.run(["bash", "-c", shell + "\n" + verify], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse((root / "container").exists())
+                self.assertFalse((root / "volume").exists())
+            # Docker query failure must not be mistaken for empty output.
+            result = subprocess.run(["bash", "-c", verify], env={**env, "FAIL_QUERY": "1"}, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(any(line.startswith("compose ") for line in (root / "calls").read_text().splitlines()))
+
     def test_consultation_candidate_rotates_all_shared_inference_consumers(self) -> None:
         tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/business-hermes-chat-prepare.yml").read_text())
         task = next(item for item in tasks if item["name"] == "Bind consultation credentials only to the candidate API environment")
@@ -91,6 +368,12 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("photo_tool_label_assist_max_cosine_distance", bindings["PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE"])
         # The procedure speech-to-text flag reaches the API the same way, off unless the inventory sets it
         self.assertIn("procedure_speech_to_text_enabled | default(false)", bindings["PROCEDURE_SPEECH_TO_TEXT_ENABLED"])
+        self.assertIn("procedure_speech_to_text_hints_enabled | default(true)", bindings["PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED"])
+        self.assertIn("procedure_material_split_suggestion_enabled | default(false)", bindings["PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED"])
+        self.assertIn("inspection_drawing_transfer_jev_enabled | default(false)", bindings["INSPECTION_DRAWING_TRANSFER_JEV_ENABLED"])
+        self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
+        self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
+        self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")
         self.assertTrue(task["no_log"])
         self.assertEqual(task["ansible.builtin.lineinfile"]["mode"], "0600")
 
@@ -130,6 +413,75 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
                 argv = task.get("ansible.builtin.command", {}).get("argv", "")
                 if "'up'" in str(argv):
                     self.assertIn("['--env-file', release_pi5_chat_env_file, 'up'", argv)
+
+    def test_pi5_rollback_executes_after_failures_before_and_after_compose_capture(self) -> None:
+        rollback = ANSIBLE / "roles/release_pi5/tasks/rollback.yml"
+        cases = {
+            # Mirrors run 20260929-021529-37439f: the post-pull load wait failed before any Compose state existed.
+            "before_capture": """
+    - name: Require no Compose state after an early rollback
+      ansible.builtin.assert:
+        that:
+          - release_pi5_compose_environment is not defined
+          - release_pi5_rollback_compose_environment is not defined
+""",
+            "after_capture": """
+    - name: Record captured and candidate Compose state
+      ansible.builtin.set_fact:
+        release_pi5_rollback_compose_environment: {PI5_ENV_FILE: /original.env}
+        release_pi5_compose_environment: {PI5_ENV_FILE: /candidate.env}
+""",
+        }
+        for case, setup in cases.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                before_failure = setup if case == "after_capture" else ""
+                after_rollback = (
+                    setup
+                    if case == "before_capture"
+                    else """
+    - name: Require the captured Compose environment after rollback
+      ansible.builtin.assert:
+        that:
+          - release_pi5_compose_environment.PI5_ENV_FILE == '/original.env'
+          - release_pi5_compose_environment | length == 1
+"""
+                )
+                playbook = Path(directory) / "rollback.yml"
+                playbook.write_text(
+                    f"""---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - block:
+{textwrap.indent(before_failure, "    ")}
+        - name: Fail before the Pi5 traffic switch
+          ansible.builtin.fail:
+            msg: post-pull Pi5 load did not settle
+      rescue:
+        - block:
+            - ansible.builtin.import_tasks: {rollback}
+          rescue:
+            - name: Require rollback to end at the preserved candidate failure
+              ansible.builtin.assert:
+                that:
+                  - ansible_failed_task.name == 'Preserve the original Pi5 candidate failure after rollback'
+                  - not (release_pi5_rolled_back | default(false) | bool)
+{textwrap.indent(after_rollback, "        ")}
+""",
+                    encoding="utf-8",
+                )
+                result = subprocess.run(
+                    ["ansible-playbook", str(playbook)],
+                    cwd=ROOT,
+                    env={key: value for key, value in os.environ.items() if key != "ANSIBLE_CONFIG"},
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotIn("is undefined", result.stdout + result.stderr)
 
     def test_shared_torque_inventory_contract_executes_with_complete_settings(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -615,7 +967,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         ))
         removal = tasks[removal_index]
         self.assertIn(
-            "item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))",
+            "release_kiosk_first_install | bool or item.item.dest not in (release_kiosk_rollback_prerequisites | default([]))",
             removal["when"],
         )
 
@@ -756,6 +1108,100 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             "release_kiosk_services",
             str(cleanup_names["Remove Pi4 rollback image tags after a verified outcome"]["when"]),
         )
+
+    def test_hotcorner_files_are_released_without_agents_only_when_browser_managed(self) -> None:
+        import ast
+
+        role = ANSIBLE / "roles/release_kiosk"
+        prepare = {task["name"]: task for task in yaml.safe_load((role / "tasks/prepare.yml").read_text())}
+        expression = prepare["Define the Pi4 staged file transaction"]["ansible.builtin.set_fact"]["release_kiosk_files"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        context = dict(
+            release_kiosk_services=[], release_kiosk_stage_dir="/stage",
+            release_kiosk_project_dir="/project", release_kiosk_candidate_compose="/candidate",
+            release_kiosk_labwc_dir="/home/kiosk/.config/labwc", ansible_user="kiosk",
+            release_kiosk_user_gid={"stdout": "1000"},
+        )
+        for torque in (False, True):
+            context["release_torque_cutover"] = torque
+            self.assertEqual(ast.literal_eval(environment.from_string(expression).render(**context, manage_kiosk_browser=False)), [])
+            entries = ast.literal_eval(environment.from_string(expression).render(**context, manage_kiosk_browser=True))
+            self.assertEqual({item["dest"] for item in entries}, {
+                "/usr/local/bin/kiosk-hotcorner.py", "/usr/local/bin/kiosk-labwc-config.py",
+                "/usr/local/bin/show-kiosk-panel.sh", "/etc/systemd/system/kiosk-hotcorner.service",
+            })
+        self.assertIn("manage_kiosk_browser", prepare["Prepare the kiosk hotcorner transaction"]["when"])
+        stage = yaml.safe_load((role / "tasks/prepare_hotcorner.yml").read_text())
+        for task in stage:
+            if "ansible.builtin.copy" in task and "loop" in task:
+                for item in task["loop"]:
+                    self.assertTrue((role / "files" / item["src"]).is_file())
+        # labwc -m also runs /etc/xdg/labwc/autostart, so the first release's user
+        # override is removed only when it is byte-for-byte that override.
+        legacy = b"/usr/bin/lwrespawn /usr/bin/pcmanfm-pi &\n/usr/bin/kanshi &\n/usr/bin/lxsession-xdg-autostart\n"
+        self.assertIn(hashlib.sha1(legacy).hexdigest(), (role / "tasks/prepare_hotcorner.yml").read_text())
+        self.assertFalse((role / "files/labwc-autostart").exists())
+        switch_tasks = {task["name"]: task for task in yaml.safe_load((role / "tasks/switch.yml").read_text())}
+        removal = switch_tasks["Remove the obsolete labwc autostart override"]
+        self.assertEqual(removal["ansible.builtin.file"]["state"], "absent")
+        rollback_tasks = {task["name"]: task for task in yaml.safe_load((role / "tasks/rollback.yml").read_text())}
+        self.assertIn("labwc-autostart.original", rollback_tasks["Restore the labwc autostart override"]["ansible.builtin.copy"]["src"])
+        self.assertFalse(rollback_tasks["Reconfigure the restored labwc session"]["failed_when"])
+        unit = environment.from_string((role / "templates/kiosk-hotcorner.service.j2").read_text()).render(
+            ansible_user="kiosk", release_kiosk_user_uid={"stdout": "1001"},
+        )
+        for expected in ("User=kiosk", "After=graphical.target kiosk-browser.service", "Wants=graphical.target", "Restart=always", "RestartSec=3",
+                         "XAUTHORITY=/home/kiosk/.Xauthority", "XDG_RUNTIME_DIR=/run/user/1001",
+                         "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus"):
+            self.assertIn(expected, unit)
+        shortcut = (ANSIBLE / "roles/kiosk/templates/show-kiosk-panel.sh.j2").read_text()
+        self.assertIn('pkill -USR1 -u "$(id -u)" -f kiosk-hotcorner.py', shortcut)
+        self.assertNotIn("wayland-1", shortcut)
+
+    def test_hotcorner_switch_and_rollback_preserve_files_and_service_state(self) -> None:
+        role = ANSIBLE / "roles/release_kiosk/tasks"
+        switch_list = yaml.safe_load((role / "switch.yml").read_text())
+        rollback_list = yaml.safe_load((role / "rollback.yml").read_text())
+        switch = {task["name"]: task for task in switch_list}
+        rollback = {task["name"]: task for task in rollback_list}
+        install = switch["Install the staged Pi4 release files with standard backups"]["ansible.builtin.copy"]
+        self.assertTrue(install["backup"])
+        self.assertIn("item.owner", install["owner"])
+        names = [task["name"] for task in switch_list]
+        self.assertLess(names.index("Apply the validated kiosk labwc configuration"), names.index("Reconfigure labwc for the kiosk user"))
+        self.assertLess(names.index("Reconfigure labwc for the kiosk user"), names.index("Restart the kiosk browser to apply the exact release SHA"))
+        self.assertEqual(sum(task.get("ansible.builtin.systemd", {}).get("name") == "kiosk-browser.service" for task in switch_list), 1)
+        self.assertEqual(switch["Reconfigure labwc for the kiosk user"]["become_user"], "{{ ansible_user }}")
+        stop = rollback["Stop the candidate hotcorner before restoring files"]["ansible.builtin.systemd"]
+        self.assertEqual((stop["state"], stop["enabled"]), ("stopped", False))
+        restore = rollback["Restore backed-up Pi4 release files"]["ansible.builtin.copy"]
+        for field, original in (("owner", "uid"), ("group", "gid"), ("mode", "mode")):
+            self.assertIn("release_kiosk_original_files.results[file_index].stat." + original, restore[field])
+        remove = rollback["Remove newly introduced Pi4 files without a backup"]
+        self.assertIn("not release_kiosk_original_files.results[file_index].stat.exists", remove["when"])
+        self.assertIn("Restore metadata when only Pi4 file ownership or mode changed", rollback)
+        self.assertIn("release_kiosk_hotcorner_previous | length > 0", rollback["Restore the previous hotcorner service state"]["when"])
+        restore_xml = rollback["Restore the original labwc configuration"]["ansible.builtin.copy"]
+        self.assertTrue(restore_xml["remote_src"])
+        self.assertTrue(restore_xml["src"].endswith("/rc.xml.original"))
+        self.assertIn("Restore the original labwc directory ownership and mode", rollback)
+        health = yaml.safe_load((role / "health_checks.yml").read_text())
+        display = next(task for task in health if task["name"] == "Verify Pi4 display services")
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        for managed, previous_running in ((True, False), (True, True), (False, False)):
+            context = dict(manage_kiosk_browser=managed, release_kiosk_services=[], release_torque_cutover=False)
+            candidate = environment.from_string(display["loop"]).render(**context)
+            self.assertEqual("kiosk-hotcorner.service" in candidate, managed)
+            restored = environment.from_string(display["loop"]).render(**context, release_kiosk_check_hotcorner=previous_running)
+            self.assertEqual("kiosk-hotcorner.service" in restored, previous_running)
+        self.assertIn("release_kiosk_hotcorner_previous.state", rollback["Verify the complete restored Pi4 runtime"]["vars"]["release_kiosk_check_hotcorner"])
+        # The installed helper may have been removed already; rollback uses the
+        # release source on stdin under the kiosk user's Wayland environment.
+        reconfigure = rollback["Reconfigure the restored labwc session"]
+        self.assertEqual(reconfigure["ansible.builtin.command"]["argv"], ["/usr/bin/python3", "-", "--reconfigure"])
+        self.assertEqual(reconfigure["become_user"], "{{ ansible_user }}")
 
     def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
         prepare_tasks = yaml.safe_load(
@@ -1203,7 +1649,7 @@ esac
 
     def test_pi4_notice_contract_and_policy_constants(self) -> None:
         role = ANSIBLE / 'roles/release_kiosk'
-        main = yaml.safe_load((role / 'tasks/main.yml').read_text())[0]
+        main = release_main_body((role / 'tasks/main.yml').read_text())[0]
         imports = [task.get('ansible.builtin.import_tasks') for task in main['block']]
         notice_index = imports.index('notice.yml')
         self.assertGreater(notice_index, imports.index('prepare.yml'))
@@ -1233,7 +1679,7 @@ esac
 
     def test_pi4_and_pi3_use_prepare_block_rescue_always(self) -> None:
         for role in ("release_kiosk", "release_signage"):
-            main = yaml.safe_load(
+            main = release_main_body(
                 (ANSIBLE / f"roles/{role}/tasks/main.yml").read_text(
                     encoding="utf-8"
                 )
@@ -1268,7 +1714,7 @@ esac
                     )
                     rescue = outer["rescue"]
                 self.assertEqual(
-                    [task["ansible.builtin.import_tasks"] for task in rescue],
+                    [task["ansible.builtin.import_tasks"] for task in rescue if "ansible.builtin.import_tasks" in task],
                     ["rollback.yml"],
                 )
                 self.assertEqual(
@@ -1985,136 +2431,83 @@ esac
         self.assertIn("source: ${BUSINESS_HERMES_CONFIG_FILE:-/etc/raspi-business-hermes/config.yaml}", compose_text)
 
 
-class Pi5UnattendedSecurityUpgradeTests(unittest.TestCase):
+class WeeklySecurityUpgradeMigrationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.group = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())
-        self.inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text())
-        self.tasks = yaml.safe_load(
-            (ANSIBLE / "roles/release_pi5/tasks/host-unattended-upgrades.yml").read_text()
-        )
-        self.environment = Environment(undefined=StrictUndefined)
-        self.environment.filters["bool"] = lambda value: str(value).lower() in {
-            "1", "true", "yes", "on"
-        }
-        self.template = self.environment.from_string(
-            (ANSIBLE / "roles/release_pi5/templates/unattended-upgrades.conf.j2").read_text()
-        )
+        self.tasks = yaml.safe_load((ANSIBLE / "tasks/os-security-update.yml").read_text())
 
-    def render(self, **overrides: object) -> str:
-        return self.template.render(**{**self.group, **overrides})
-
-    def test_policy_runs_on_standard_pi5_releases_outside_api_rollback(self) -> None:
-        main = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/main.yml").read_text())
-        policy = next(task for task in main if task.get("name") == "Converge the Pi5 unattended security update policy")
-        self.assertEqual(policy["block"][0]["ansible.builtin.import_tasks"], "host-unattended-upgrades.yml")
-        self.assertEqual(policy["when"], "'server' in group_names")
-        condition = self.environment.compile_expression(policy["when"])
-        self.assertTrue(condition(group_names=["server"]))
-        for group in ("kiosk", "signage"):
-            self.assertFalse(condition(group_names=[group]))
-        self.assertGreater(main.index(policy), 0)
-        # An unreachable mirror must not fail the application release.
-        self.assertEqual(list(policy["rescue"][0]), ["name", "ansible.builtin.debug"])
-        play = next(play for play in yaml.safe_load(PLAYBOOK)
-                    if {"role": "release_pi5"} in play.get("roles", []))
-        self.assertEqual(play["hosts"], "server")
-
-    def test_only_pi5_opts_in_by_default(self) -> None:
-        self.assertIs(self.group["unattended_upgrades_enabled"], False)
-        enabled_hosts = []
-
-        def visit(group: dict[str, object]) -> None:
-            for name, variables in group.get("hosts", {}).items():
-                if (variables or {}).get("unattended_upgrades_enabled", self.group["unattended_upgrades_enabled"]):
-                    enabled_hosts.append(name)
-            for child in group.get("children", {}).values():
-                visit(child)
-
-        visit(self.inventory["all"])
-        self.assertEqual(enabled_hosts, ["raspberrypi5"])
-
-    def test_rendered_policy_clears_vendor_origins_and_allows_only_security(self) -> None:
-        rendered = self.render(unattended_upgrades_enabled=True)
-        origin_block = re.search(r"Unattended-Upgrade::Origins-Pattern\s*\{(.*?)\};", rendered, re.S)
-        self.assertIsNotNone(origin_block)
-        self.assertEqual(re.findall(r'"([^"\n]+)";', origin_block.group(1)), [
-            "origin=Debian,codename=${distro_codename}-security,label=Debian-Security"
-        ])
-        for mechanism in ("Allowed-Origins", "Origins-Pattern"):
-            self.assertLess(rendered.index(f"#clear Unattended-Upgrade::{mechanism};"), origin_block.start())
-        for directive, value in (
-            ("Unattended-Upgrade::Automatic-Reboot", "false"),
-            ("Unattended-Upgrade::Remove-Unused-Kernel-Packages", "false"),
-            ("APT::Periodic::Update-Package-Lists", "1"),
-            ("APT::Periodic::Unattended-Upgrade", "1"),
-            ("APT::Periodic::AutocleanInterval", "7"),
-        ):
-            self.assertIn(f'{directive} "{value}";', rendered)
-        self.assertIn('"--force-confdef";', rendered)
-        self.assertIn('"--force-confold";', rendered)
-
-    def test_rendered_blacklist_matches_protected_packages_and_is_overridable(self) -> None:
-        rendered = self.render(unattended_upgrades_enabled=True)
-        block = re.search(r"Unattended-Upgrade::Package-Blacklist\s*\{(.*?)\};", rendered, re.S)
-        patterns = re.findall(r'"([^"\n]+)";', block.group(1))
-        self.assertEqual(patterns, self.group["unattended_upgrades_package_blacklist"])
-        for package in (
-            "docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin",
-            "docker-compose-plugin", "tailscale", "linux-image-rpi-2712",
-            "linux-image-6.12.0-rpi", "linux-headers-rpi-2712", "raspi-firmware",
-            "raspberrypi-kernel", "raspberrypi-bootloader", "rpi-eeprom",
-            "rpi-eeprom-images", "firmware-brcm80211", "chromium", "chromium-common",
-        ):
-            with self.subTest(package=package):
-                self.assertTrue(any(re.match(pattern, package) for pattern in patterns))
-        for package in ("openssl", "libssl3t64", "libc6", "ca-certificates", "containerdXio"):
-            with self.subTest(package=package):
-                self.assertFalse(any(re.match(pattern, package) for pattern in patterns))
-        custom = self.render(unattended_upgrades_package_blacklist=["^fixture-package$"])
-        self.assertIn('"^fixture-package$";', custom)
-        self.assertNotIn('"^docker-ce$";', custom)
-        self.assertNotIn("#clear Unattended-Upgrade::Package-Blacklist", custom)
-
-    def test_disabled_hosts_are_untouched_and_previous_installs_are_disabled(self) -> None:
-        template_task = next(task for task in self.tasks if "ansible.builtin.template" in task)
-        condition = self.environment.compile_expression(template_task["when"])
-        for enabled, exists, expected in ((False, False, False), (False, True, True), (True, False, True)):
-            with self.subTest(enabled=enabled, exists=exists):
-                self.assertEqual(condition(unattended_upgrades_enabled=enabled,
-                                           release_pi5_unattended_policy={"stat": {"exists": exists}}), expected)
-        disabled = self.render(unattended_upgrades_enabled=False)
-        for directive in ("Update-Package-Lists", "Unattended-Upgrade", "AutocleanInterval"):
-            self.assertIn(f'APT::Periodic::{directive} "0";', disabled)
-        for task in self.tasks:
-            if "ansible.builtin.apt" in task or "ansible.builtin.systemd" in task:
-                self.assertFalse(self.environment.compile_expression(task["when"])(unattended_upgrades_enabled=False))
-
-    def test_convergence_preserves_vendor_files_and_does_not_run_an_upgrade(self) -> None:
-        template_task = next(task for task in self.tasks if "ansible.builtin.template" in task)
-        destination = "/etc/apt/apt.conf.d/52raspi-unattended-upgrades"
-        self.assertEqual(template_task["ansible.builtin.template"], {
-            "src": "unattended-upgrades.conf.j2", "dest": destination,
+    def test_periodic_upgrades_are_neutralized_before_installation(self) -> None:
+        template = next(task for task in self.tasks if "ansible.builtin.template" in task)
+        self.assertEqual(template["ansible.builtin.template"], {
+            "src": "{{ playbook_dir }}/../templates/raspi-disable-periodic-upgrades.conf.j2",
+            "dest": "/etc/apt/apt.conf.d/52raspi-unattended-upgrades",
             "owner": "root", "group": "root", "mode": "0644",
         })
-        inspect = self.tasks[0]
-        self.assertEqual(inspect["ansible.builtin.stat"]["path"], destination)
-        install = next(task for task in self.tasks if "ansible.builtin.apt" in task)
-        self.assertLess(self.tasks.index(template_task), self.tasks.index(install))
-        self.assertEqual(install["ansible.builtin.apt"]["name"], "unattended-upgrades")
+        self.assertLess(self.tasks.index(template), next(i for i, task in enumerate(self.tasks) if "block" in task))
+        rendered = Environment(undefined=StrictUndefined).from_string(
+            (ANSIBLE / "templates/raspi-disable-periodic-upgrades.conf.j2").read_text()).render()
+        for directive in ("Update-Package-Lists", "Unattended-Upgrade", "AutocleanInterval"):
+            self.assertIn(f'APT::Periodic::{directive} "0";', rendered)
+        self.assertIn('Unattended-Upgrade::Automatic-Reboot "false";', rendered)
+
+    def test_neutralization_only_touches_managed_or_package_installed_hosts(self) -> None:
+        task = next(task for task in self.tasks if "ansible.builtin.template" in task)
+        condition = Environment(undefined=StrictUndefined).compile_expression(task["when"])
+        for exists, status, expected in ((False, "", False), (False, "config-files", False),
+                                         (True, "", True), (False, "installed", True)):
+            self.assertEqual(condition(os_security_update_periodic_policy={"stat": {"exists": exists}},
+                                       os_security_update_unattended_package={"stdout": status}), expected)
+
+    def test_policy_never_enables_vendor_timers_or_uninstalls_unattended_upgrades(self) -> None:
+        text = (ANSIBLE / "tasks/os-security-update.yml").read_text()
+        self.assertNotIn("apt-daily.timer", text)
+        self.assertNotIn("apt-daily-upgrade.timer", text)
+        self.assertNotIn("state: absent", text)
+        install = next(task for task in self.tasks if "block" in task)["block"][0]
+        self.assertEqual(install["ansible.builtin.apt"]["name"], "python3-apt")
         self.assertEqual(install["ansible.builtin.apt"]["state"], "present")
         self.assertNotIn("upgrade", install["ansible.builtin.apt"])
-        timers = next(task for task in self.tasks if "ansible.builtin.systemd" in task)
-        self.assertEqual(timers["loop"], ["apt-daily.timer", "apt-daily-upgrade.timer"])
-        self.assertEqual(timers["ansible.builtin.systemd"], {
-            "name": "{{ item }}", "enabled": True, "state": "started",
-        })
-        for task in self.tasks:
-            self.assertFalse({"ansible.builtin.command", "ansible.builtin.shell", "rescue", "ignore_errors"} & task.keys())
+
+    def test_tool_running_tasks_use_a_utf8_locale_on_non_utf8_hosts(self) -> None:
+        # Some kiosks run ja_JP.EUC-JP; localized tool output fails Ansible's strict UTF-8 check.
+        tasks = [*self.tasks, *(task for block in self.tasks if "block" in block for task in block["block"])]
+        modules = ("ansible.builtin.command", "ansible.builtin.apt", "ansible.builtin.systemd")
+        running = [task for task in tasks if any(module in task for module in modules)]
+        self.assertEqual(len(running), 5)
+        for task in running:
+            self.assertEqual(task["environment"]["LC_ALL"], "C.UTF-8", task["name"])
+            self.assertEqual(task["environment"]["LANG"], "C.UTF-8", task["name"])
+            self.assertEqual(task["environment"]["LANGUAGE"], "", task["name"])
+        unit = (ANSIBLE / "templates/raspi-os-security-update.service.j2").read_text()
+        self.assertIn("Environment=LC_ALL=C.UTF-8 LANG=C.UTF-8 LANGUAGE=\n", unit)
+
+    def test_pi5_policy_is_after_commit_and_outside_api_rollback(self) -> None:
+        main = release_main_body((ANSIBLE / "roles/release_pi5/tasks/main.yml").read_text())
+        policy = next(task for task in main if task["name"] == "Converge the Pi5 weekly OS security update policy")
+        self.assertGreater(main.index(policy), 0)
+        self.assertEqual(policy["block"][0]["ansible.builtin.import_tasks"],
+                         "{{ playbook_dir }}/../tasks/os-security-update.yml")
+        self.assertEqual(list(policy["rescue"][0]), ["name", "ansible.builtin.debug"])
 
 
 class Pi5CanonicalStandardRouteTests(unittest.TestCase):
+    def test_every_pi5_command_argv_item_is_a_string(self) -> None:
+        # YAML 1.1 turns bare on/off/yes/no into booleans, so `ufw allow in on`
+        # once ran as `ufw allow in True` and silently failed.
+        task_root = ANSIBLE / f"roles/{self.ROLE}/tasks"
+        for path in sorted(task_root.glob("*.yml")):
+            pending = list(yaml.safe_load(path.read_text(encoding="utf-8")) or [])
+            while pending:
+                task = pending.pop(0)
+                for section in ("block", "rescue", "always"):
+                    pending.extend(task.get(section, []))
+                command = task.get("ansible.builtin.command")
+                argv = command.get("argv") if isinstance(command, dict) else None
+                if isinstance(argv, list):
+                    for item in argv:
+                        self.assertIsInstance(item, str, f"{path.name}: {task.get('name')}: {argv}")
+
     def test_pi5_renders_and_runs_status_agent_outside_api_rollback(self) -> None:
-        tasks = yaml.safe_load(self.task_text("main"))
+        tasks = release_main_body(self.task_text("main"))
         names = [task["name"] for task in tasks]
         conf_index = names.index(
             "Render the Pi5 status-agent configuration outside the immutable release tree"
@@ -2214,6 +2607,9 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                 "TERMINAL_AGENT_HEALTH_TORQUE_ENABLED": "0",
                 "TERMINAL_AGENT_MAINTENANCE_LEASES_JSON": "{}",
                 "TERMINAL_AGENT_HEALTH_STATE_FILE": "/run/raspi-status-agent/terminal-agent-health.json",
+                "OS_SECURITY_UPDATE_STATE_FILE": "/var/lib/raspi-os-security-update/state.json",
+                "OS_SECURITY_UPDATE_STALE_DAYS": "15",
+                "OS_SECURITY_UPDATE_HEALTH_STATE_FILE": "/run/raspi-status-agent/os-update-health.json",
             },
         )
         self.assertNotIn("TEMPERATURE_FILE", config)
@@ -2359,7 +2755,7 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         )
 
     def test_pi5_call_graph_is_direct_ansible_lifecycle(self) -> None:
-        main = yaml.safe_load(self.task_text("main"))[0]
+        main = release_main_body(self.task_text("main"))[0]
         self.assertEqual(
             [task["ansible.builtin.import_tasks"] for task in main["block"]],
             ["prepare.yml", "hermes-search-trial-maintenance-run.yml", "switch.yml", "business-hermes-chat-start.yml", "business-hermes-egress-health.yml", "health.yml", "commit.yml"],

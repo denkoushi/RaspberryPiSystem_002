@@ -151,6 +151,30 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertTrue(result["runtimeRehearsal"])
                 self.assertEqual(result["pi4AgentMatrix"], [])
 
+    def test_weekly_os_update_paths_select_deploy_contract_without_app_images(self) -> None:
+        for path in (
+            "scripts/os-security-update/raspi-os-security-update.py",
+            "scripts/deploy/tests/test_os_security_update.py",
+            "scripts/deploy/tests/test_os_security_update_units.py",
+            "infrastructure/ansible/tasks/os-security-update.yml",
+            "infrastructure/ansible/tasks/os-security-update-release-start.yml",
+            "infrastructure/ansible/tasks/os-security-update-release-end.yml",
+            "infrastructure/ansible/templates/raspi-os-security-update.conf.j2",
+            "infrastructure/ansible/templates/raspi-os-security-update.service.j2",
+            "infrastructure/ansible/templates/raspi-os-security-update.timer.j2",
+            "infrastructure/ansible/templates/raspi-os-security-update.logrotate.j2",
+            "infrastructure/ansible/templates/raspi-disable-periodic-upgrades.conf.j2",
+            "infrastructure/ansible/group_vars/kiosk.yml",
+            "infrastructure/ansible/group_vars/signage.yml",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("A", path))
+                self.assertEqual(self.selected(result), {"repo_policy", "deploy_contract"})
+                self.assertEqual(result["failClosedReasons"], [])
+                self.assertFalse(result["fullSuite"])
+                self.assertFalse(result["releasePair"])
+                self.assertFalse(result["runtimeRehearsal"])
+
     def test_deploy_client_docker_and_e2e_paths(self) -> None:
         deploy = self.classify(
             Change("M", "scripts/deploy/standard-ansible-release.py")
@@ -299,6 +323,7 @@ class ClassifyChangesTests(unittest.TestCase):
             "infrastructure/ansible/templates/kiosk-launch.sh.j2",
             "infrastructure/ansible/templates/kiosk-browser.service.j2",
             "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+            "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
             "infrastructure/ansible/roles/kiosk/defaults/main.yml",
             "infrastructure/ansible/inventory.yml",
             "infrastructure/ansible/templates/status-agent.conf.j2",
@@ -309,6 +334,7 @@ class ClassifyChangesTests(unittest.TestCase):
             "clients/status-agent/status-agent.py",
             "clients/status-agent/storage_health.py",
             "clients/status-agent/terminal_agent_health.py",
+            "clients/status-agent/os_update_health.py",
             "clients/status-agent/status-agent.timer",
             "scripts/client/pi4-storage-maintenance.sh",
         ):

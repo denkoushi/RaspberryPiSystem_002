@@ -136,3 +136,49 @@ test('date ranges on non-date fields and malformed bounds are explicitly unsuppo
       { supported: false, reason: 'date_bounds:discoveredOn' });
   }
 });
+
+test('cause filtering composes with catalog filters and keeps original record id keys', () => {
+  const causeById = new Map([['nonconformity:b', 'drawing'], ['a', 'check'], ['d', 'drawing']]);
+  const causePlan = { ...plan, causeCategory: 'drawing' };
+  const expected = expectedFilterResults({ plan: causePlan, records, catalog, causeById });
+  assert.deepEqual(expected.expectedIds, ['b']);
+  assert.equal(expected.matchedCount, 1);
+  assert.equal(checkFilterAnswer({ plan: causePlan, records, catalog, causeById, shown: ['nonconformity:b'] }).ok, true);
+  for (const id of ['a', 'c', 'd']) {
+    assert.equal(checkFilterAnswer({ plan: causePlan, records, catalog, causeById, shown: [id] }).filtersOk, false);
+  }
+  assert.equal(expectedFilterResults({ plan: causePlan, records, catalog }).matchedCount, 0);
+  const causeOnly = { causeCategory: 'drawing', semanticQuery: '', filters: [] };
+  assert.equal(isFilterOnlyPlan(causeOnly), true);
+  assert.equal(isFilterOnlyPlan({ ...causeOnly, causeCategory: 'invalid' }), false);
+  assert.deepEqual(expectedFilterResults({ plan: causeOnly, records, catalog, causeById }).expectedIds, ['d', 'b']);
+});
+
+test('cause breakdown compares bucket values and counts independently of shown records', () => {
+  const causeById = new Map([['nonconformity:b', 'drawing'], ['a', 'check'], ['d', 'drawing']]);
+  const breakdownPlan = { ...plan, breakdown: 'cause', filters: [...plan.filters,
+    { field: 'discoveredOn', op: 'between', values: ['2026-10-06', '2026-10-06'] }] };
+  const args = { plan: breakdownPlan, records, catalog, causeById, shown: ['d'] };
+  const buckets = [{ value: 'drawing', count: 1 }, { value: 'check', count: 1 }];
+  const checked = checkFilterAnswer({ ...args, groups: [{ axis: 'cause', buckets }] });
+  assert.equal(checked.ok, true);
+  assert.equal(checked.bucketsOk, true);
+  assert.equal(checked.filtersOk, false);
+  assert.equal(checked.orderOk, false);
+  assert.equal(checked.countOk, false);
+  for (const wrong of [[], buckets.slice(0, 1), [...buckets, buckets[0]], [{ value: 'drawing', count: 2 }, buckets[1]], [{ value: 'assume', count: 1 }, buckets[1]]]) {
+    assert.equal(checkFilterAnswer({ ...args, groups: [{ axis: 'cause', buckets: wrong }] }).ok, false);
+  }
+  assert.equal(checkFilterAnswer(args).ok, false);
+  assert.equal(checkFilterAnswer({ ...args, plan: { ...breakdownPlan, breakdown: undefined }, breakdown: 'cause', shown: ['a', 'b'] }).ok, false);
+  assert.equal(checkFilterAnswer({ ...args, plan: { ...breakdownPlan, causeCategory: 'drawing' },
+    groups: [{ axis: 'cause', buckets: buckets.slice(0, 1) }] }).ok, true);
+  assert.equal(isFilterOnlyPlan({ breakdown: 'cause' }), true);
+  assert.equal(isFilterOnlyPlan({ breakdown: 'invalid' }), false);
+});
+
+test('empty classified bucket sets require an explicit cause group', () => {
+  const args = { plan: { ...plan, breakdown: 'cause' }, records, catalog, causeById: new Map([['outside', 'drawing']]) };
+  assert.equal(checkFilterAnswer({ ...args, groups: [{ axis: 'cause', buckets: [] }] }).ok, true);
+  assert.equal(checkFilterAnswer(args).ok, false);
+});

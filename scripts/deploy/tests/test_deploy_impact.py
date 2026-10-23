@@ -18,6 +18,15 @@ class DeployImpactHelperTests(unittest.TestCase):
         self.assertFalse(result["kiosk"])
         self.assertFalse(result["signage"])
 
+    def test_kiosk_sop_generator_scripts_have_no_runtime_target(self) -> None:
+        # Only the CI/dev manual generator image copies scripts/kiosk-sop.
+        result = classify_change_records(
+            [{"status": "M", "path": "scripts/kiosk-sop/inspection-drawing-capture-adapter.mjs"}]
+        )
+        self.assertEqual(result["components"], ["neutral"])
+        self.assertEqual(result["affectedProfiles"], [])
+        self.assertFalse(result["server"])
+
     def test_server_path_maps_to_pi5(self) -> None:
         result = classify_change_records(
             [{"status": "M", "path": "apps/api/src/routes/example.ts"}]

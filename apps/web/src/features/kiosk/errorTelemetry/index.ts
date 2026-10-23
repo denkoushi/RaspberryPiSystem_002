@@ -33,7 +33,7 @@ export function reportKioskException(kind: 'render_crash' | 'window_error' | 'un
     return getReporter()?.record(kind, { ...data, recoveryDecision });
   } catch { return; }
 }
-export function reportKioskApi(input: { method?: string; url?: string; status?: number; code?: string; apiCode?: unknown; requestId?: unknown; durationMs: number; streaming?: boolean }) {
+export function reportKioskApi(input: { method?: string; url?: string; status?: number; code?: string; apiCode?: unknown; requestId?: unknown; durationMs: number; streaming?: boolean; kioskTelemetry?: 'background' }) {
   try {
     getNetworkReporter()?.record(input);
     if (!input.url || input.status === 401 || input.code === 'ERR_CANCELED') return;
@@ -44,6 +44,7 @@ export function reportKioskApi(input: { method?: string; url?: string; status?: 
     else if (input.status >= 400) kind = 'api_4xx';
     else if (input.durationMs >= 10000) kind = 'slow_request';
     else return;
+    if (input.kioskTelemetry === 'background' && (kind === 'api_timeout' || kind === 'api_network')) return;
     getReporter()?.record(kind, { ...input, urlPath: urlPath(input.url) });
   } catch { /* Best effort. */ }
 }

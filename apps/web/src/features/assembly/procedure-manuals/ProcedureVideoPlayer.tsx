@@ -6,8 +6,8 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { procedureVideoTime, type ProcedureVideoCommentDto, type ProcedureVideoSummaryDto, type ProcedureVideoRange } from './procedure-video-types';
 
-export function ProcedureVideoPlayer({ video, videoRef, comments: suppliedComments, range, controls = true, onTimeUpdate }: {
-  video: Pick<ProcedureVideoSummaryDto, 'id' | 'title' | 'durationSeconds' | 'status'>; range?: ProcedureVideoRange; controls?: boolean; onTimeUpdate?: (player: HTMLVideoElement) => void; videoRef?: RefObject<HTMLVideoElement>; comments?: ProcedureVideoCommentDto[];
+export function ProcedureVideoPlayer({ video, videoRef, comments: suppliedComments, range, controls = true, fitFrame = false, onPlaybackChange, onTimeUpdate }: {
+  video: Pick<ProcedureVideoSummaryDto, 'id' | 'title' | 'durationSeconds' | 'status'>; range?: ProcedureVideoRange; controls?: boolean; fitFrame?: boolean; onPlaybackChange?: (playing: boolean) => void; onTimeUpdate?: (player: HTMLVideoElement) => void; videoRef?: RefObject<HTMLVideoElement>; comments?: ProcedureVideoCommentDto[];
 }) {
   const ownRef = useRef<HTMLVideoElement>(null);
   const ref = videoRef ?? ownRef;
@@ -49,12 +49,12 @@ export function ProcedureVideoPlayer({ video, videoRef, comments: suppliedCommen
   const comments = [...(suppliedComments ?? loadedComments)].filter((comment) => !range || (comment.atSeconds >= range.startSeconds && comment.atSeconds < range.endSeconds)).sort((a, b) => a.atSeconds - b.atSeconds);
   const caption = comments.find((comment, index) => position >= comment.atSeconds && position < (comments[index + 1]?.atSeconds ?? comment.atSeconds + 4));
   return <>
-    {error ? <p role="alert" className="mt-3 text-red-700">{error}</p> : url ? <div className="relative mt-3 bg-black">
+    {error ? <p role="alert" className="mt-3 text-red-700">{error}</p> : url ? <div className={fitFrame ? "relative h-full w-full bg-black" : "relative mt-3 bg-black"}>
       <video ref={ref} aria-label={video.title} controls={controls && !range} playsInline muted preload="metadata" src={url}
         onLoadedMetadata={(event) => { if (range) event.currentTarget.currentTime = range.startSeconds; }}
         onTimeUpdate={(event) => track(event.currentTarget)} onSeeking={(event) => track(event.currentTarget)} onSeeked={(event) => track(event.currentTarget)}
-        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={(event) => { onTimeUpdate?.(event.currentTarget); if (range) { event.currentTarget.currentTime = range.startSeconds; void event.currentTarget.play().catch(() => undefined); } }}
-        className="max-h-[55dvh] w-full" />
+        onPlay={() => { setPlaying(true); onPlaybackChange?.(true); }} onPause={() => { setPlaying(false); onPlaybackChange?.(false); }} onEnded={(event) => { setPlaying(false); onPlaybackChange?.(false); onTimeUpdate?.(event.currentTarget); if (range) { event.currentTarget.currentTime = range.startSeconds; void event.currentTarget.play().catch(() => undefined); } }}
+        className={fitFrame ? "h-full w-full object-contain" : "max-h-[55dvh] w-full"} />
       {caption ? <div data-testid="video-caption" className="pointer-events-none absolute bottom-12 left-0 right-0 bg-black/70 px-3 py-2 text-center text-white"><p className="line-clamp-2 whitespace-pre-wrap break-words">{caption.text}</p></div> : null}
     </div> : <p role="status" className="mt-3">動画を読込中…</p>}
     {range && url ? <div className="mt-2 flex items-center gap-3">

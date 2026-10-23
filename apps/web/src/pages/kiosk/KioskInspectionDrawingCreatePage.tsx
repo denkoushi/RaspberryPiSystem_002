@@ -1,7 +1,5 @@
 import {
   buildDefaultInspectionDrawingMeasurementLabelSettings,
-  isInspectionDrawingDepthLabel,
-  resolveInspectionDrawingGeneralToleranceForNominal,
   type InspectionDrawingMeasurementLabelSetting
 } from '@raspi-system/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -34,7 +32,6 @@ import {
 } from '../../features/kiosk-sop';
 import {
   INSPECTION_DRAWING_SOP_BY_SCREEN,
-  buildGeometricTolerancePointPatch,
   buildInspectionDrawingCreateDirtySnapshot,
   drawingPointToTemplateItemInput,
   mergeInspectionDrawingPointPatch,
@@ -44,7 +41,6 @@ import {
   InspectionDrawingCreateToolbar,
   InspectionDrawingVisualSourceControl,
   useInspectionDrawingZoom,
-  InspectionDrawingPointSidebar,
   useInspectionDrawingGuidedTrial,
   inspectionDrawingCreateCanvasColumnClassName,
   inspectionDrawingCreatePageRootClassName,
@@ -63,7 +59,6 @@ import {
   parseInspectionDrawingSourceTemplateIdFromSearch,
   parseInspectionDrawingVisualTemplateIdFromSearch,
   normalizeUniqueInspectionDrawingResourceCds,
-  pointUsesGeometricTolerance,
   resolveInspectionDrawingCreateKeyCollisionForResources,
   resolveInspectionDrawingCreateSaveBlockLabel,
   resolveInspectionDrawingCreateSaveBlockReason,
@@ -72,6 +67,8 @@ import {
   templateToCreateDraft,
   useInspectionDrawingUnsavedChangesGuard
 } from '../../features/part-measurement/inspection-drawing';
+import { InspectionDrawingCreateSidebar } from '../../features/part-measurement/inspection-drawing/InspectionDrawingCreateSidebar';
+import { InspectionDrawingProposalLegend } from '../../features/part-measurement/inspection-drawing/InspectionDrawingProposalPanel';
 import { InspectionDrawingResourceCdMultiSelect } from '../../features/part-measurement/inspection-drawing/InspectionDrawingResourceCdMultiSelect';
 import { INSPECTION_DRAWING_VISUAL_PICKER_LIMIT } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryConstants';
 import { resolveVisualTemplateById } from '../../features/part-measurement/inspection-drawing/inspectionDrawingVisualLibraryHelpers';
@@ -82,6 +79,7 @@ import {
   sortInspectionDrawingPointsByMarkerNo,
   swapInspectionDrawingMarkerNo
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
+import { useInspectionDrawingPlacementProposals } from '../../features/part-measurement/inspection-drawing/useInspectionDrawingPlacementProposals';
 import { partMeasurementDrawingPreviewConvertingLabel } from '../../features/part-measurement/partMeasurementDrawingLocalPreview';
 import {
   mapTemplateFixedCountToFormString,
@@ -274,6 +272,11 @@ export function KioskInspectionDrawingCreatePage() {
     visualSource === 'pickExisting' && selectedVisualTemplateId?.trim()
       ? selectedVisualTemplateId
       : null;
+  const placement = useInspectionDrawingPlacementProposals({
+    visualTemplateId: visualTemplateIdForOcr, processGroup, clientKey, points, onPointsChange: setPoints,
+    enabled: Boolean(canvasImageUrl) && !contentReadOnly && mode !== 'guidedTrial',
+    onSelectPoint: setSelectedPointId, onPlaceMode: () => setMode('place')
+  });
   const visualOcrPending =
     visualOcrLoading || visualOcrStatus?.status === 'pending' || visualOcrStatus?.status === 'processing';
   // 寸法マップがあれば候補はそこから出るので、OCR の準備状況は案内しない。
@@ -1251,6 +1254,7 @@ export function KioskInspectionDrawingCreatePage() {
             clientKey
           );
         }
+        placement.flushApprovals(points);
         applyLoadedTemplate(saved);
         setMessage(
           template?.siblingGroupId && groupSaveMode === 'single'
@@ -1282,6 +1286,7 @@ export function KioskInspectionDrawingCreatePage() {
           setMessage('保存結果の取得に失敗しました。一覧を確認してください。');
           return;
         }
+        placement.flushApprovals(points);
         applyLoadedTemplate(created);
         setMessage(`${targetResourceCds.length}件の資源へ保存しました。一覧では1グループとして表示されます。`);
         void navigate(kioskInspectionDrawingTemplateEditPath(created.id), {
@@ -1305,6 +1310,7 @@ export function KioskInspectionDrawingCreatePage() {
           },
           clientKey
         );
+        placement.flushApprovals(points);
         applyLoadedTemplate(created);
         setMessage('保存しました。一覧から続けて編集できます。');
         void navigate(kioskInspectionDrawingTemplateEditPath(created.id), {
@@ -1358,6 +1364,7 @@ export function KioskInspectionDrawingCreatePage() {
   };
 
   const handleSelectPointFromList = (id: string) => {
+    placement.setTab('confirmed');
     if (mode === 'guidedTrial') {
       guidedTrial.handleManualSelect(id);
       return;
@@ -1561,10 +1568,14 @@ export function KioskInspectionDrawingCreatePage() {
 
       <div className={inspectionDrawingCreateWorkspaceClassName}>
         <div className={inspectionDrawingCreateCanvasColumnClassName}>
+          {placement.proposals.length > 0 ? <InspectionDrawingProposalLegend /> : null}
           {canvasImageUrl ? (
             <InspectionDrawingCanvas
               imageUrl={canvasImageUrl}
               points={points}
+              proposalMarkers={placement.proposals}
+              selectedProposalId={placement.selectedProposalId}
+              onSelectProposal={placement.selectProposal}
               mode={mode === 'guidedTrial' ? 'test' : mode}
               zoom={zoom}
               fitGeneration={fitGeneration}
@@ -1575,6 +1586,7 @@ export function KioskInspectionDrawingCreatePage() {
                 contentReadOnly || mode !== 'place'
                   ? undefined
                   : (x, y) => {
+                      if (placement.placeArmed(x, y)) return;
                       const markerNo = nextAvailableMarkerNo(points);
                       const pt = createInspectionDrawingPoint(x, y, markerNo);
                       setPoints((prev) => [...prev, pt]);
@@ -1608,7 +1620,10 @@ export function KioskInspectionDrawingCreatePage() {
         </div>
 
         <aside className={inspectionDrawingCreateSideAsideClassName}>
-          <InspectionDrawingPointSidebar
+          <InspectionDrawingCreateSidebar
+            placement={placement}
+            busy={busy}
+            onApplyOcrPointPatch={updatePoint}
             mode={mode}
             onModeChange={setMode}
             hasDrawingImage={hasDrawingImage}
@@ -1640,35 +1655,6 @@ export function KioskInspectionDrawingCreatePage() {
             ocrCandidateLoading={selectedPointOcrState?.loading ?? false}
             ocrCandidateError={selectedPointOcrState?.error ?? null}
             measurementLabelSettings={measurementLabelSettings}
-            onApplyOcrCandidate={(valueText, candidate) => {
-              if (!selectedPoint) return;
-              if (pointUsesGeometricTolerance(selectedPoint, { measurementLabelSettings })) {
-                updatePoint(selectedPoint.id, buildGeometricTolerancePointPatch(valueText));
-                return;
-              }
-              const patch: Partial<InspectionDrawingPoint> = { nominalRaw: valueText };
-              // 公差欄が両方空のときだけ案を入れる。図面の明記公差 → 普通公差表 の順（深さは下限 0 だけ）。
-              const toleranceEmpty =
-                selectedPoint.upperToleranceRaw.trim() === '' && selectedPoint.lowerToleranceRaw.trim() === '';
-              if (toleranceEmpty) {
-                const upper = candidate?.suggestedUpperTolerance ?? null;
-                const lower = candidate?.suggestedLowerTolerance ?? null;
-                if (candidate?.source === 'dimensionMap' && (upper !== null || lower !== null)) {
-                  if (upper !== null) patch.upperToleranceRaw = upper;
-                  if (lower !== null) patch.lowerToleranceRaw = lower;
-                } else if (isInspectionDrawingDepthLabel(selectedPoint.name)) {
-                  // 深さは下限 0 だけ。上限（+0・+3・+5）はねじの太さで決まるので空けておく
-                  patch.lowerToleranceRaw = '0';
-                } else {
-                  const general = resolveInspectionDrawingGeneralToleranceForNominal(Number(valueText));
-                  if (general !== null) {
-                    patch.upperToleranceRaw = `+${general}`;
-                    patch.lowerToleranceRaw = `-${general}`;
-                  }
-                }
-              }
-              updatePoint(selectedPoint.id, patch);
-            }}
           />
         </aside>
       </div>

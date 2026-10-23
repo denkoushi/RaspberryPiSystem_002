@@ -34,6 +34,8 @@ import {
   listSelfInspectionInvalidations,
   getSelfInspectionInvalidation
 } from '../client';
+import { productionScheduleQueryKeys } from '../queryKeys/productionSchedule';
+import { selfInspectionQueryKeys } from '../queryKeys/selfInspection';
 
 import type { SelfInspectionSessionDetailDto, SelfInspectionStatus } from '../../features/part-measurement/types';
 
@@ -49,7 +51,7 @@ export function useSelfInspectionSessions(
   const interval =
     options?.pauseRefetch ? false : (options?.refetchIntervalMs !== undefined ? options.refetchIntervalMs : 30000);
   return useQuery({
-    queryKey: ['self-inspection-sessions', params],
+    queryKey: selfInspectionQueryKeys.sessions(params),
     queryFn: () => listSelfInspectionSessions(params),
     placeholderData: (previousData) => previousData,
     refetchInterval: interval,
@@ -62,7 +64,7 @@ export function useSelfInspectionInvalidations(
   options?: { enabled?: boolean; refetchIntervalMs?: number | false }
 ) {
   return useQuery({
-    queryKey: ['self-inspection-invalidations', params],
+    queryKey: selfInspectionQueryKeys.invalidations(params),
     queryFn: () => listSelfInspectionInvalidations(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     enabled: options?.enabled ?? true
@@ -74,7 +76,7 @@ export function useSelfInspectionInvalidation(
   options?: { enabled?: boolean }
 ) {
   return useQuery({
-    queryKey: ['self-inspection-invalidation', id],
+    queryKey: selfInspectionQueryKeys.invalidation(id),
     queryFn: () => getSelfInspectionInvalidation(id!),
     enabled: Boolean(id) && (options?.enabled ?? true)
   });
@@ -86,24 +88,24 @@ export function useInvalidateSelfInspectionItem() {
     mutationFn: (payload: Parameters<typeof invalidateSelfInspectionItem>[0]) =>
       invalidateSelfInspectionItem(payload),
     onSuccess: async (invalidation) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-invalidations'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-invalidation'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-out-of-tolerance-reviews'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.inspectorSessionAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalSessionAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.invalidationsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.invalidationAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.outOfToleranceReviewsAll });
       // 永続snapshotを先に破棄し、直後の再取得が削除前キャッシュをhydrateしないようにする。
       await purgeLeaderboardBoardCacheForScheduleRow(invalidation.scheduleRowId);
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
 
 export function useSelfInspectionOutOfToleranceReviews(options?: { enabled?: boolean; refetchIntervalMs?: number | false }) {
   return useQuery({
-    queryKey: ['self-inspection-out-of-tolerance-reviews'],
+    queryKey: selfInspectionQueryKeys.outOfToleranceReviewsAll,
     queryFn: () => listSelfInspectionOutOfToleranceReviews(),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     enabled: options?.enabled ?? true
@@ -115,7 +117,7 @@ export function useSelfInspectionRegistrationPolicy(options?: {
   refetchIntervalMs?: number | false;
 }) {
   return useQuery({
-    queryKey: ['self-inspection-registration-policy'],
+    queryKey: selfInspectionQueryKeys.registrationPolicyAll,
     queryFn: () => getSelfInspectionRegistrationPolicy(),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     enabled: options?.enabled ?? true
@@ -128,14 +130,14 @@ export function useUpdateSelfInspectionRegistrationPolicy() {
     mutationFn: (payload: Parameters<typeof updateSelfInspectionRegistrationPolicy>[0]) =>
       updateSelfInspectionRegistrationPolicy(payload),
     onSuccess: (policy) => {
-      queryClient.setQueryData(['self-inspection-registration-policy'], policy);
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-registration-policy'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      queryClient.setQueryData(selfInspectionQueryKeys.registrationPolicyAll, policy);
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.registrationPolicyAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalSessionAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -145,7 +147,7 @@ export function useSelfInspectionRecordApprovals(
   options?: { enabled?: boolean; refetchIntervalMs?: number | false }
 ) {
   return useQuery({
-    queryKey: ['self-inspection-record-approvals', params],
+    queryKey: selfInspectionQueryKeys.recordApprovals(params),
     queryFn: () => listSelfInspectionRecordApprovals(params),
     refetchInterval: options?.refetchIntervalMs ?? 30000,
     enabled: options?.enabled ?? true
@@ -157,19 +159,11 @@ export function useSelfInspectionRecordApprovalSession(
   options?: { enabled?: boolean; refetchIntervalMs?: number | false }
 ) {
   return useQuery({
-    queryKey: ['self-inspection-record-approval-session', sessionId],
+    queryKey: selfInspectionQueryKeys.recordApprovalSession(sessionId),
     queryFn: () => getSelfInspectionRecordApprovalSession(sessionId!),
     refetchInterval: options?.refetchIntervalMs ?? false,
     enabled: Boolean(sessionId) && (options?.enabled ?? true)
   });
-}
-
-function selfInspectionSessionQueryKey(sessionId: string, entryIndex?: number) {
-  return ['self-inspection-session', sessionId, entryIndex ?? null] as const;
-}
-
-function selfInspectionInspectorSessionQueryKey(sessionId: string, entryIndex?: number) {
-  return ['self-inspection-inspector-session', sessionId, entryIndex ?? null] as const;
 }
 
 export function useSelfInspectionSession(
@@ -182,7 +176,7 @@ export function useSelfInspectionSession(
     resolveSelfInspectionUnsavedEntryInitialData(
       queryClient
         .getQueryCache()
-        .findAll({ queryKey: ['self-inspection-session', sessionId] })
+        .findAll({ queryKey: selfInspectionQueryKeys.sessionEntriesAll(sessionId) })
         .map((query) => ({
           data: query.state.data as SelfInspectionSessionDetailDto | undefined,
           updatedAt: query.state.dataUpdatedAt
@@ -190,7 +184,7 @@ export function useSelfInspectionSession(
       sessionId,
       entryIndex
     );
-  const queryKey = selfInspectionSessionQueryKey(sessionId!, entryIndex);
+  const queryKey = selfInspectionQueryKeys.session(sessionId!, entryIndex);
   const query = useQuery({
     queryKey,
     queryFn: () => getSelfInspectionSession(sessionId!, { entryIndex }),
@@ -211,7 +205,7 @@ export function useSelfInspectionInspectorMeasurementSession(
 ) {
   const entryIndex = options?.entryIndex;
   return useQuery({
-    queryKey: selfInspectionInspectorSessionQueryKey(sessionId!, entryIndex),
+    queryKey: selfInspectionQueryKeys.inspectorSession(sessionId!, entryIndex),
     queryFn: () => getSelfInspectionInspectorMeasurementSession(sessionId!, { entryIndex }),
     placeholderData: (previousData) => resolveSelfInspectionSessionPlaceholderData(previousData, sessionId),
     enabled: (options?.enabled ?? true) && Boolean(sessionId)
@@ -223,8 +217,8 @@ export function useResolveSelfInspectionSession() {
   return useMutation({
     mutationFn: (body: Parameters<typeof resolveOrCreateSelfInspectionSession>[0]) => resolveOrCreateSelfInspectionSession(body),
     onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionEntriesAll(session.id) });
     }
   });
 }
@@ -248,8 +242,8 @@ export function useCreateSelfInspectionEntry() {
       createSelfInspectionEntry(sessionId, body),
     onSuccess: (entry, variables) => {
       patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.inspectorSessionEntriesAll(variables.sessionId) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
     }
   });
 }
@@ -266,7 +260,7 @@ export function useUpsertSelfInspectionDraftEntry() {
     }) => upsertSelfInspectionDraftEntry(sessionId, body),
     onSuccess: (entry, variables) => {
       patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.inspectorSessionEntriesAll(variables.sessionId) });
     }
   });
 }
@@ -285,8 +279,8 @@ export function useUpdateSelfInspectionEntry() {
     }) => updateSelfInspectionEntry(sessionId, entryId, body),
     onSuccess: (entry, variables) => {
       patchSelfInspectionSessionCachesAfterEntrySave(queryClient, variables.sessionId, entry);
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.inspectorSessionEntriesAll(variables.sessionId) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
     }
   });
 }
@@ -302,10 +296,10 @@ export function useCreateSelfInspectionInspectorEntry() {
       body: Parameters<typeof createSelfInspectionInspectorEntry>[1];
     }) => createSelfInspectionInspectorEntry(sessionId, body),
     onSuccess: (_entry, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session', variables.sessionId] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.inspectorSessionEntriesAll(variables.sessionId) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalSession(variables.sessionId) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
     }
   });
 }
@@ -323,10 +317,10 @@ export function useUpdateSelfInspectionInspectorEntry() {
       body: Parameters<typeof updateSelfInspectionInspectorEntry>[2];
     }) => updateSelfInspectionInspectorEntry(sessionId, entryId, body),
     onSuccess: (_entry, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session', variables.sessionId] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.inspectorSessionEntriesAll(variables.sessionId) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalSession(variables.sessionId) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
     }
   });
 }
@@ -344,8 +338,8 @@ export function useSaveSelfInspectionInspectorJudgements() {
       body: Parameters<typeof saveSelfInspectionInspectorJudgements>[2];
     }) => saveSelfInspectionInspectorJudgements(sessionId, entryId, body),
     onSuccess: (_entry, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-inspector-session', variables.sessionId] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.inspectorSessionEntriesAll(variables.sessionId) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
     }
   });
 }
@@ -355,8 +349,8 @@ export function useCompleteSelfInspectionSession() {
   return useMutation({
     mutationFn: (sessionId: string) => completeSelfInspectionSession(sessionId),
     onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionEntriesAll(session.id) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
     }
   });
 }
@@ -367,11 +361,11 @@ export function useApproveSelfInspectionOutOfToleranceReview() {
     mutationFn: ({ sessionId, comment }: { sessionId: string; comment?: string | null }) =>
       approveSelfInspectionOutOfToleranceReview(sessionId, { comment }),
     onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-out-of-tolerance-reviews'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.outOfToleranceReviewsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionEntriesAll(session.id) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -395,12 +389,12 @@ export function useApproveSelfInspectionRecordApproval() {
       comment?: string | null;
     }) => approveSelfInspectionRecordApproval(sessionId, { approverEmployeeTagUid, comment }),
     onSuccess: (session) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approvals'] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-record-approval-session', session.id] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', session.id] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalsAll });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalSession(session.id) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionEntriesAll(session.id) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });
 }
@@ -423,11 +417,11 @@ export function useResetSelfInspectionSession() {
       body: Parameters<typeof resetSelfInspectionSession>[1];
     }) => resetSelfInspectionSession(sessionId, body),
     onSuccess: async (result, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', variables.sessionId] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-session', result.newSession.id] });
-      void queryClient.invalidateQueries({ queryKey: ['self-inspection-sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule', 'leaderboard-decorations'] });
-      void queryClient.invalidateQueries({ queryKey: ['kiosk-production-schedule'] });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionEntriesAll(variables.sessionId) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionEntriesAll(result.newSession.id) });
+      void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.sessionsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardDecorationsAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
       const scheduleRowId = result.newSession.scheduleRowId;
       if (scheduleRowId) {
         await purgeLeaderboardBoardCacheForScheduleRow(scheduleRowId);

@@ -55,3 +55,20 @@ describe('evaluateSlipPairMatch', () => {
     ).toEqual({ ok: false, reason: 'TRANSFER_PART_MISMATCH' });
   });
 });
+
+describe('optional part scans', () => {
+  it.each([undefined, '', '  '])('accepts matching DB rows without scanned parts (%s)', (parts) => {
+    expect(evaluateSlipPairMatch({ transferRow: row({}), actualRow: row({}), transferPartBarcodeRaw: parts, actualPartBarcodeRaw: parts })).toEqual({ ok: true });
+  });
+  it('does not accept different DB parts when scans are omitted', () => {
+    expect(evaluateSlipPairMatch({ transferRow: row({}), actualRow: row({ fhincd: 'OTHER' }) })).toEqual({ ok: false, reason: 'FSEIBAN_OR_PART_PAIR_MISMATCH' });
+  });
+  it('still checks a single supplied part', () => {
+    expect(evaluateSlipPairMatch({ transferRow: row({}), actualRow: row({}), actualPartBarcodeRaw: 'WRONG' })).toEqual({ ok: false, reason: 'ACTUAL_PART_MISMATCH' });
+  });
+  it('retains missing order and seiban checks without parts', () => {
+    expect(evaluateSlipPairMatch({ transferRow: null, actualRow: row({}) })).toEqual({ ok: false, reason: 'TRANSFER_ORDER_UNRESOLVED' });
+    expect(evaluateSlipPairMatch({ transferRow: row({}), actualRow: null })).toEqual({ ok: false, reason: 'ACTUAL_ORDER_UNRESOLVED' });
+    expect(evaluateSlipPairMatch({ transferRow: row({}), actualRow: row({ fseiban: 'OTHER' }) }).ok).toBe(false);
+  });
+});

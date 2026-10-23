@@ -41,3 +41,8 @@ TERMINAL_AGENT_HEALTH_BARCODE_ENABLED=0
 TERMINAL_AGENT_HEALTH_TORQUE_ENABLED=0
 TERMINAL_AGENT_MAINTENANCE_LEASES_JSON='{}'
 TERMINAL_AGENT_HEALTH_STATE_FILE=/run/raspi-status-agent/terminal-agent-health.json
+
+# OS安全更新監視（全ホスト共通、更新状態ファイルがなければ通知しない）
+OS_SECURITY_UPDATE_STATE_FILE=/var/lib/raspi-os-security-update/state.json
+OS_SECURITY_UPDATE_STALE_DAYS=15
+OS_SECURITY_UPDATE_HEALTH_STATE_FILE=/run/raspi-status-agent/os-update-health.json

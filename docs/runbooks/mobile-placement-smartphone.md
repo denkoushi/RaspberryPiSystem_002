@@ -1,6 +1,41 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
+## 棚名を加工機・方角へ切り替える
+
+- 新規棚は `加工機名 方角`（例: `DAD-3220 北`）で登録する。番号は付けず、同じ組合せは409で拒否する。
+- 「棚の写真」の「棚を追加」で加工機、方角、写真を選ぶ。加工機候補は生産スケジュールに登場する資源の名前を重複排除したもの。切削用の除外フラグは適用しない。
+- 旧棚コードの解析と配置履歴は維持する。レイアウト編集は既存棚の保存のみで、新規棚を採番しない。
+- 以下は承認済みの保守時間帯に、API実行環境で行う。配膳の書込みを止め、復元可能なDBバックアップを用意する。
+  まずdry-runの全棚コード、写真数、棚を参照する配置、担当棚を持つ端末を確認する。
+
+```sh
+cd /opt/RaspberryPiSystem_002
+scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/delete-all-mobile-placement-shelves.js
+# 全棚削除を承認した場合のみ実行
+scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/delete-all-mobile-placement-shelves.js --execute --confirm=DELETE-ALL-SHELVES
+```
+
+開発環境では `pnpm --filter @raspi-system/api delete:mobile-placement-shelves`（引数は同じ）。
+
+実行は1トランザクションで端末の担当棚をnullにし、レイアウトの棚セルを「未使用」に変え、棚を全削除する。
+写真はCascadeで削除される（棚セルを残すと、レイアウト保存が「新しい棚は登録できない」で止まるため）。配置イベント／現在配置と `nextShelfSlot` は変更しない。
+出力の `before` / `after` で件数と参照を確認し、写真フォームで棚を再登録して担当棚を設定し直す。
+失敗時はトランザクションがロールバックされる。削除確定後の復旧はバックアップから行う。
+本実装作業では削除CLIの実データ実行・本番切替は行っていない。
+
+以下の版別記録は当時の旧棚名仕様を含む。
+
+
 最終更新: 2026-05-07（**Zero2W メイン軽量化・`/zero2w-status`・`haizenEdgeEnabled`・`HAIZEN_DISTRIBUTION_MODE`**・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)）／2026-05-04（**Zero2W 配膳追跡 `haizen-*` 初版**）／2026-04-24（**V26 購買照会バーコード即時確定**・[KB-339 §V26](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v26-purchase-order-barcode-instant-2026-04-24)・[deployment.md](../guides/deployment.md)）／2026-04-24（**V25 パレット可視化・カード単体スクロール**・[KB-339 §V25](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v25-mobile-pallet-viz-card-only-scroll-2026-04-24)・[deployment.md §2026-04-24](../guides/deployment.md)）／2026-04-24（**V24 一次元スキャン体感・Android 実機追記**・[KB-339 §V24](../knowledge-base/KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23)・[KB-297 §FKOBAINO](../knowledge-base/KB-297-kiosk-due-management-workflow.md#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20)）／2026-04-20（**V23 モバイル注文入力スキャン専用・棚チップ `grid-cols-3 sm:grid-cols-4`**・デプロイ Detach `20260420-211100-899` → `20260420-213004-29970`・fjv60 未・stale lock runId `20260420-212814-6231` は [deploy-status-recovery.md](./deploy-status-recovery.md) §5.2）／2026-04-18（**V22 キオスク高視認テーマ・プレビュー整合・Register/Verify 分割**／**Android ブラウザ殻方針: Chrome 継続 + Web UI/UX 改善（ADR/KB 追記）**）／2026-04-13（**V21 部品検索 UI（SOLID 寄りモジュール化・`QueryClientProvider` スモーク）**・**V20 部品検索（促音 `っ`/`ッ` の比較用写像・`q` 空でも機種名 `machineName` で suggest）**・**V19 部品検索（機種名 `machineName` AND・かな正規化拡張・数字パレット・プリセット追加）**・**V18 棚マスタ（`MobilePlacementShelf`・`GET/POST …/registered-shelves` / `POST …/shelves`）**・**V17 部品検索最終（AND・登録済みのみ・剪定・`part-search-core` + CI/Docker）**・**V16 部品名検索**・**V15 照合折りたたみ・登録レイアウト**・V14 分配枝・V13 棚番登録 UI・V12 現品票 ROI・Schema 集約・V11 製造orderパーサ・global-filter／注文行除外・V10 本番反映・Pi5 worktree/root ownership・stale lock）
+
+## Android Chrome アプリインストール（2026-10-20・Web側）
+
+- 公開信頼されたHTTPS証明書の導入後、Chromeで `/kiosk/mobile-placement?clientKey=...` を一度開き、メニューから「アプリをインストール」を選ぶ。以降はホーム画面の「配膳」から起動する。証明書変更・本番反映・Android実機検証はこのWeb変更とは別作業。
+- 起動先は `/kiosk/mobile-placement`（クエリなし）。既存のlocalStorageのclientKeyを使い、マニフェストやアイコンに認証情報は含めない。`display: standalone` でChromeのアドレスバーを表示せず、縦画面を指定する（OSのステータスバー等は残り得る）。
+- スコープは `/kiosk/`。メニューの購買照会 `/kiosk/purchase-order-lookup` もアプリ内で開く。Service Workerは導入せず、ローリング更新後もUIの取得は既存のサーバ配信に従う。
+- スマホ幅（既存判定の767px以下）のハブにだけ戻るガードを置く。Androidの戻るで入力を失わず、スキャンモーダルやボトムシートが開いていれば先に閉じる。サブ画面からブラウザの戻るでハブへ戻ったときは既存のsentinel履歴を再利用する。デスクトップ/Pi4向け幅ではガードを有効にしない。
+- `apps/web/public/manifest.json` とPNGアイコン3枚はViteのpublicコピーで配信する。拡張子を `.json` にして、既存のファイル配信のまま `application/json` で返す。gatewayはWebレスポンスをそのまま中継する。
+- 実機確認: ホームから起動してアドレスバーが出ないこと、購買照会への移動、ハブ入力中の戻る、スキャン/各シート中の戻る、サブ画面→ハブの反復を確認する。通常のChromeタブを開くだけではstandalone表示にならない。
 
 ## Android ブラウザ殻（キオスク）方針メモ（2026-04-18）
 
@@ -125,6 +160,18 @@ curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-
 
 1. `https://<Pi5-Tailscale-IP>/api/system/health` が JSON `status: ok` を返すこと
 2. ブラウザで `https://<Pi5-Tailscale-IP>/kiosk/mobile-placement?clientKey=<apiKey>` を開くこと
+
+### 正式な証明書の入口（アプリとして入れる場合・2026-10-20）
+
+Android Chrome でアプリとして入れるには、警告の出ない証明書が要る。Pi5 の標準デプロイが `tailscale serve --bg --https=8443 https+insecure://127.0.0.1:443` を設定し、Tailscale が `raspberrypi.tail7312a3.ts.net` の Let's Encrypt 証明書を発行・更新して既存の 443 へ中継する。
+
+- 入口: `https://raspberrypi.tail7312a3.ts.net:8443/kiosk/mobile-placement?clientKey=<apiKey>`（初回だけ `clientKey` 付き。保存先は入口ごとに別なので、IP の入口で保存した値は引き継がれない）
+- 既存の 443、gateway の証明書、Blue/Green のテンプレートは変えない。443 を Tailscale に渡すと IP で接続する端末が証明書不一致になるため、別ポートにしている
+- 設定は `infrastructure/ansible/roles/release_pi5/tasks/host-tailscale-serve.yml`（失敗してもリリースは止めない）。値は `inventory.yml` の `pi5_tailscale_*`
+- Pi5 の UFW は既定で受信拒否のため、同じ task で `ufw allow in on tailscale0 to any port 8443 proto tcp` を入れる（Tailscale 経由だけ）。これが無いと 8443 は接続待ちのまま時間切れになる（2026-10-20 初回反映で発生）
+- 確認: `curl -sI https://raspberrypi.tail7312a3.ts.net:8443/api/system/health` が 200、`openssl s_client` の発行者が Let's Encrypt
+- 取り消し: Pi5 で `sudo tailscale serve reset`（inventory から `pi5_tailscale_https_hostname` を外さないと次のデプロイで戻る）
+- Caddy 側で SNI ごとに証明書を切り替える案は、古い版へ戻すデプロイが通らなくなるため採らなかった
 
 ## 3. 業務フロー（V2・既定）
 

@@ -1,3 +1,6 @@
+import { listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
+import { extractManufacturingOrder10 } from '../../services/mobile-placement/genpyo-slip/genpyo-mo-extract.js';
+import { buildActualSlipOcrPreviewSafe } from '../../services/mobile-placement/actual-slip-ocr-preview.js';
 import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
 import type { MultipartFile } from '@fastify/multipart';
@@ -12,10 +15,12 @@ import { parseActualSlipImageFromUpload } from '../../services/mobile-placement/
 import { registerPlacement, resolveItemByBarcode } from '../../services/mobile-placement/mobile-placement.service.js';
 import { registerOrderPlacement } from '../../services/mobile-placement/mobile-placement-order-placement.service.js';
 import {
+  deleteOrderPlacementBranch,
   listOrderPlacementBranches,
   moveOrderPlacementBranch
 } from '../../services/mobile-placement/order-placement-branch.service.js';
 import {
+  deleteMobilePlacementShelf,
   listRegisteredShelvesFromShelfMaster,
   registerMobilePlacementShelf
 } from '../../services/mobile-placement/mobile-placement-shelf-master.service.js';
@@ -27,13 +32,14 @@ import {
   updateHaizenPresetShelf,
   updateHaizenPresetShelfForTarget
 } from '../../services/mobile-placement/haizen-placement.service.js';
+import { getShelfPhoto, putShelfPhoto, updateShelfMemo } from '../../services/mobile-placement/mobile-placement-shelf-photo.service.js';
 import { verifySlipMatch } from '../../services/mobile-placement/mobile-placement-verify-slip.service.js';
 import { suggestPartPlacementSearch } from '../../services/mobile-placement/part-search/part-search.service.js';
 import {
   getClientCapabilities,
   requireShelfLayoutEditEnabled
 } from '../../services/mobile-placement/client-capabilities.service.js';
-import { listMachineMastersForShelfLayout } from '../../services/mobile-placement/machine-master-query.service.js';
+import { listMachineMastersForShelfLayout, listMachinesForShelfRegistration } from '../../services/mobile-placement/machine-master-query.service.js';
 import {
   getShelfLayoutZone,
   listShelfLayoutSummary,
@@ -41,6 +47,11 @@ import {
 } from '../../services/mobile-placement/shelf-layout-edit.service.js';
 import { relocateMobilePlacementShelf } from '../../services/mobile-placement/shelf-relocate.service.js';
 import type { ImageOcrMimeType } from '../../services/ocr/ports/image-ocr.port.js';
+
+const snapFseibanTokensBodySchema = z.object({
+  tokens: z.array(z.string().min(1).max(32)).min(1).max(50),
+  text: z.string().max(4000).optional()
+});
 
 const registerBodySchema = z.object({
   shelfCodeRaw: z.string().min(1),
@@ -59,31 +70,11 @@ const verifySlipMatchBodySchema = z
     actualFhinmeiBarcodeRaw: z.string().optional()
   })
   .superRefine((data, ctx) => {
-    if (
-      (data.transferPartBarcodeRaw?.trim().length ?? 0) === 0 &&
-      (data.transferFhinmeiBarcodeRaw?.trim().length ?? 0) === 0
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'transferPartBarcodeRaw または transferFhinmeiBarcodeRaw が必要です',
-        path: ['transferPartBarcodeRaw']
-      });
-    }
     if (data.actualOrderBarcodeRaw.trim().length === 0 && data.actualFseibanRaw.trim().length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'actualOrderBarcodeRaw または actualFseibanRaw のいずれかが必要です',
         path: ['actualOrderBarcodeRaw']
-      });
-    }
-    if (
-      (data.actualPartBarcodeRaw?.trim().length ?? 0) === 0 &&
-      (data.actualFhinmeiBarcodeRaw?.trim().length ?? 0) === 0
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'actualPartBarcodeRaw または actualFhinmeiBarcodeRaw が必要です',
-        path: ['actualPartBarcodeRaw']
       });
     }
   });
@@ -110,7 +101,10 @@ function inferImageMimeFromMimeAndFilename(mimetype: string, filename: string): 
 
 const registerOrderPlacementBodySchema = z.object({
   shelfCodeRaw: z.string().min(1),
-  manufacturingOrderBarcodeRaw: z.string().min(1)
+  manufacturingOrderBarcodeRaw: z.string().min(1),
+  slipKind: z.enum(['manufacturing_order', 'purchase_order']).default('manufacturing_order'),
+  clientRecordId: z.string().max(64).uuid().optional(),
+  placedAt: z.string().datetime({ offset: true }).optional()
 });
 
 const moveOrderPlacementBranchBodySchema = z.object({
@@ -128,6 +122,7 @@ const partSearchSuggestQuerySchema = z.object({
 });
 
 const registerMobilePlacementShelfBodySchema = z.object({
+  displayLabel: z.string().trim().max(60).nullable().optional(),
   shelfCodeRaw: z.string().min(1).max(200)
 });
 
@@ -208,6 +203,11 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const identity = resolveCredentialIdentity(clientDevice);
     return getClientCapabilities(identity.clientDeviceId);
+  });
+
+  app.get('/mobile-placement/shelf-machines', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    return listMachinesForShelfRegistration();
   });
 
   app.get('/mobile-placement/machine-masters', { config: { rateLimit: false } }, async (request) => {
@@ -293,6 +293,12 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     };
   });
 
+  /** キオスク: Android配膳の枝ごとの現在棚と機種名。 */
+  app.get('/mobile-placement/haizen-overview', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    return listHaizenOverview();
+  });
+
   /**
    * 配膳スマホ等: 棚番配膳の現在値一覧（棚でフィルタ可）
    */
@@ -339,9 +345,40 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const identity = resolveCredentialIdentity(clientDevice);
     const result = await registerMobilePlacementShelf({
       clientDeviceId: identity.clientDeviceId,
-      shelfCodeRaw: body.shelfCodeRaw
+      shelfCodeRaw: body.shelfCodeRaw,
+      displayLabel: body.displayLabel
     });
     return { shelf: result.shelf };
+  });
+
+  app.put('/mobile-placement/shelves/:shelfCodeRaw/photo', { bodyLimit: 1_500_000, config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
+    const body = z.object({
+      contentType: z.enum(['image/jpeg', 'image/webp', 'image/png']),
+      dataBase64: z.string().min(1).max(1_398_104)
+    }).parse(request.body);
+    return putShelfPhoto(shelfCodeRaw, body, resolveCredentialIdentity(clientDevice).clientDeviceId);
+  });
+
+  app.get('/mobile-placement/shelves/:shelfCodeRaw/photo', { config: { rateLimit: false } }, async (request, reply) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
+    const photo = await getShelfPhoto(shelfCodeRaw);
+    return reply.type(photo.contentType).header('Cache-Control', 'private, max-age=31536000, immutable').send(Buffer.from(photo.bytes));
+  });
+
+  app.delete('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
+    return deleteMobilePlacementShelf(shelfCodeRaw);
+  });
+
+  app.patch('/mobile-placement/shelves/:shelfCodeRaw', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { shelfCodeRaw } = z.object({ shelfCodeRaw: z.string().min(1) }).parse(request.params);
+    const { displayLabel } = z.object({ displayLabel: z.string().trim().max(60).nullable() }).parse(request.body);
+    return updateShelfMemo(shelfCodeRaw, displayLabel);
   });
 
   /**
@@ -390,10 +427,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       actualFseibanRaw: body.actualFseibanRaw,
       actualPartBarcodeRaw: body.actualPartBarcodeRaw?.trim() || body.actualFhinmeiBarcodeRaw?.trim() || ''
     });
-    if (result.ok) {
-      return { ok: true as const };
-    }
-    return { ok: false as const, reason: result.reason };
+    return result;
   });
 
   /**
@@ -464,6 +498,30 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     }
   );
 
+  app.post('/mobile-placement/snap-fseiban-tokens', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const body = snapFseibanTokensBodySchema.parse(request.body);
+    const ocrText = body.text ?? '';
+    const manufacturingOrder10 = extractManufacturingOrder10(ocrText);
+    const fseibanRaw = body.tokens[0];
+    let snap: FseibanSnapResult = { match: 'none', fseiban: null, candidates: [] };
+    try {
+      snap = snapFseiban(body.tokens, await getKnownFseibans());
+    } catch {
+      request.log.warn({ route: 'snap-fseiban-tokens' }, 'FSEIBAN lookup unavailable; using OCR result');
+    }
+    return {
+      engine: 'device',
+      ocrText,
+      ocrPreviewSafe: buildActualSlipOcrPreviewSafe(manufacturingOrder10 ?? '', fseibanRaw),
+      manufacturingOrder10,
+      fseibanRaw,
+      fseibanMatch: snap.match,
+      fseibanCandidates: snap.candidates,
+      fseiban: snap.fseiban ?? fseibanRaw
+    };
+  });
+
   app.post('/mobile-placement/register-order-placement', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = registerOrderPlacementBodySchema.parse(request.body);
@@ -471,7 +529,10 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const result = await registerOrderPlacement({
       clientDeviceId: identity.clientDeviceId,
       shelfCodeRaw: body.shelfCodeRaw,
-      manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw
+      manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw,
+      slipKind: body.slipKind,
+      clientRecordId: body.clientRecordId,
+      placedAt: body.placedAt
     });
     return {
       event: {
@@ -493,9 +554,19 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     };
   });
 
-  /**
-   * 既存分配枝の棚更新（移動）
-   */
+  app.delete(
+    '/mobile-placement/order-placement-branches/:id',
+    { config: { rateLimit: false } },
+    async (request) => {
+      await requireClientDevice(request.headers['x-client-key']);
+      const params = request.params as { id?: string };
+      const branchStateId = typeof params.id === 'string' ? params.id.trim() : '';
+      if (branchStateId.length === 0) throw new ApiError(400, '分配枝IDが必要です');
+      return { deleted: await deleteOrderPlacementBranch(branchStateId) };
+    }
+  );
+
+  /** 既存分配枝の棚更新（移動） */
   app.patch(
     '/mobile-placement/order-placement-branches/:id/move',
     { config: { rateLimit: false } },

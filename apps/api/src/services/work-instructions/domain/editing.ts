@@ -1,17 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto';
 
+import { DomainHttpError } from '../../../lib/errors.js';
+
 import type { WorkInstructionJsonValue, WorkInstructionSource } from './types.js';
 
 export const WORK_INSTRUCTION_EDIT_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
 
-export class WorkInstructionEditingError extends Error {
+export class WorkInstructionEditingError extends DomainHttpError {
   constructor(
-    public readonly statusCode: number,
+    statusCode: number,
     message: string,
-    public readonly code?: string,
-    public readonly details?: unknown
+    code?: string,
+    details?: unknown
   ) {
-    super(message);
+    super(statusCode, message, code, details);
     this.name = 'WorkInstructionEditingError';
   }
 }

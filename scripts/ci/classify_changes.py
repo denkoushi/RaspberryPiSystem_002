@@ -127,6 +127,7 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         # Inputs the launcher is rendered from: release_kiosk includes the
         # resolver, and the role defaults carry the browser flags.
         "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+        "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
         "infrastructure/ansible/roles/kiosk/defaults/main.yml",
         # Host and group variables decide the browser engine, its flags and
         # the agent env files. An inventory-only commit named no agent, so
@@ -141,6 +142,7 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         "clients/status-agent/storage_health.py",
         "clients/status-agent/network_health.py",
         "clients/status-agent/terminal_agent_health.py",
+        "clients/status-agent/os_update_health.py",
         "clients/status-agent/status-agent.timer",
         "scripts/client/pi4-storage-maintenance.sh",
     }
@@ -207,7 +209,22 @@ SIGNAGE_RELEASE_ONLY_PATHS = frozenset(
     }
 )
 DEPLOY_CONTRACT_ONLY_PATHS = frozenset(
-    {"scripts/deploy/tests/test_ansible_standard_release.py"}
+    {
+        "scripts/deploy/tests/test_ansible_standard_release.py",
+        "scripts/deploy/tests/test_os_security_update.py",
+        "scripts/deploy/tests/test_os_security_update_units.py",
+        "scripts/os-security-update/raspi-os-security-update.py",
+        "infrastructure/ansible/tasks/os-security-update.yml",
+        "infrastructure/ansible/tasks/os-security-update-release-start.yml",
+        "infrastructure/ansible/tasks/os-security-update-release-end.yml",
+        "infrastructure/ansible/templates/raspi-os-security-update.conf.j2",
+        "infrastructure/ansible/templates/raspi-os-security-update.service.j2",
+        "infrastructure/ansible/templates/raspi-os-security-update.timer.j2",
+        "infrastructure/ansible/templates/raspi-os-security-update.logrotate.j2",
+        "infrastructure/ansible/templates/raspi-disable-periodic-upgrades.conf.j2",
+        "infrastructure/ansible/group_vars/kiosk.yml",
+        "infrastructure/ansible/group_vars/signage.yml",
+    }
 )
 TORQUE_COMPOSITION_PATHS = frozenset(
     {
@@ -294,6 +311,8 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
     """Return categories for a known path, or ``None`` for an unknown path."""
     normalized = _normalize_path(path)
 
+    if normalized in DEPLOY_CONTRACT_ONLY_PATHS:
+        return frozenset({"repo_policy", "deploy_contract"})
     if normalized == ".github/workflows/torque-release.yml":
         return frozenset({"repo_policy", "deploy_contract"})
     if normalized == ".husky/pre-commit":

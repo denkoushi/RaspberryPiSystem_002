@@ -12,7 +12,7 @@ import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { getItemInventoryServices } from '../../services/item-inventory/item-inventory-service.factory.js';
-import { INVENTORY_OPTION_FIELDS, InventoryConflictError, InventoryInsufficientStockError } from '../../services/item-inventory/item-inventory.service.js';
+import { INVENTORY_OPTION_FIELDS } from '../../services/item-inventory/item-inventory.service.js';
 import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
   verifyDueManagementAccessPassword
@@ -140,12 +140,6 @@ async function actor(request: FastifyRequest) {
   return { clientId: device?.clientDevice.id ?? null, performedByUserId: request.user?.id ?? null };
 }
 
-function mapMutationError(error: unknown): never {
-  if (error instanceof InventoryInsufficientStockError) throw new ApiError(409, error.message, undefined, 'INVENTORY_INSUFFICIENT_STOCK');
-  if (error instanceof InventoryConflictError) throw new ApiError(409, error.message, undefined, 'INVENTORY_CONFLICT');
-  throw error;
-}
-
 const registerBody = z.object({
   mode: z.enum(['NEW_ITEM', 'EXISTING_ITEM']),
   itemId: z.string().uuid().optional(),
@@ -205,6 +199,22 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { tag: await services.inventory.resolveCompartmentByLabelNumber(labelNumber) };
   });
 
+  app.get('/item-inventory/dashboard', { preHandler: [read] }, async (request) => {
+    const query = z.object({ weeks: z.enum(['4', '12', '26', '52']).default('12'), machine: z.string().trim().min(1).max(400).optional() }).parse(request.query ?? {});
+    return services.inventory.dashboard(Number(query.weeks), query.machine);
+  });
+  const variantField = z.enum(['maker', 'toolName', 'model', 'toolSize', 'workMaterial', 'usage']);
+  const variantValue = z.string().min(1).max(400).refine(value => value.trim().length > 0);
+  app.get('/item-inventory/tool-value-variants', { preHandler: [read] }, async () => services.inventory.toolValueVariants());
+  app.post('/item-inventory/tool-value-variants/merge', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ field: variantField, to: variantValue, from: z.array(variantValue).min(1).max(100) }).parse(request.body ?? {});
+    return services.inventory.mergeToolValueVariants(body.field, body.to, body.from);
+  });
+  app.post('/item-inventory/tool-value-variants/dismiss', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ field: variantField, values: z.array(variantValue).min(2).max(100) }).parse(request.body ?? {});
+    return services.inventory.dismissToolValueVariants(body.field, body.values);
+  });
+
   app.get('/item-inventory/tool-field-options', { preHandler: [read] }, async () => ({ options: await services.inventory.listToolFieldOptions() }));
   const toolFieldValueBody = z.object({ field: z.enum(INVENTORY_OPTION_FIELDS), value: z.string().max(400) });
   app.get('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async () => ({ values: await services.inventory.listToolFieldValues() }));
@@ -218,11 +228,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   });
   app.delete('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const query = toolFieldValueBody.parse(request.query ?? {});
-    try {
-      return await services.inventory.deleteToolFieldValue(query.field, query.value);
-    } catch (error) {
-      mapMutationError(error);
-    }
+    return await services.inventory.deleteToolFieldValue(query.field, query.value);
   });
   app.get('/item-inventory/units', { preHandler: [read] }, async () => ({ units: await services.inventory.listUnits() }));
   app.post('/item-inventory/units', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
@@ -235,6 +241,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { item: await services.inventory.setItemUnit(id, body.unit) };
   });
   const itemDetailsBody = z.object({
+    unitPrice: z.number().int().min(0).max(10_000_000).nullable().optional(),
     name: z.string().max(400).optional(),
     maker: z.string().max(400).optional(),
     toolName: z.string().max(400).optional(),
@@ -265,32 +272,20 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
 
   app.post('/item-inventory/transactions', { preHandler: [writeOrKiosk] }, async (request) => {
     const body = transactionBody.parse(request.body ?? {});
-    try {
-      const result = await services.inventory.processTransaction({ ...body, actor: await actor(request) });
-      return { ...result, transaction: { ...result.transaction, createdAt: result.transaction.createdAt.toISOString() } };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    const result = await services.inventory.processTransaction({ ...body, actor: await actor(request) });
+    return { ...result, transaction: { ...result.transaction, createdAt: result.transaction.createdAt.toISOString() } };
   });
 
   app.post('/item-inventory/touch-transactions', { preHandler: [writeOrKiosk] }, async (request) => {
     const body = touchTransactionBody.parse(request.body ?? {});
-    try {
-      const result = await services.inventory.processTouchTransaction({ ...body, actor: await actor(request) });
-      return { ...result, transaction: { ...result.transaction, createdAt: result.transaction.createdAt.toISOString() } };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    const result = await services.inventory.processTouchTransaction({ ...body, actor: await actor(request) });
+    return { ...result, transaction: { ...result.transaction, createdAt: result.transaction.createdAt.toISOString() } };
   });
 
   app.post('/item-inventory/transactions/:id/cancel', { preHandler: [cancelWrite] }, async (request) => {
     const { id } = idParams.parse(request.params);
-    try {
-      const transaction = await services.inventory.cancelTransaction(id, await actor(request), { allowAnyClient: adminAuthorizedRequests.has(request) });
-      return { transaction: { ...transaction, createdAt: transaction.createdAt.toISOString() } };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    const transaction = await services.inventory.cancelTransaction(id, await actor(request), { allowAnyClient: adminAuthorizedRequests.has(request) });
+    return { transaction: { ...transaction, createdAt: transaction.createdAt.toISOString() } };
   });
 
   app.post('/item-inventory/corrections', { preHandler: [correctionWrite] }, async (request) => {
@@ -300,18 +295,14 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
       expectedBeforeQuantity: z.number().int().min(0).optional(),
       note: z.string().max(1000).optional(),
     }).parse(request.body ?? {});
-    try {
-      const transaction = await services.inventory.correctStock(
-        body.compartmentId,
-        body.desiredQuantity,
-        await actor(request),
-        body.note,
-        { expectedBeforeQuantity: body.expectedBeforeQuantity },
-      );
-      return { transaction: { ...transaction, createdAt: transaction.createdAt.toISOString() } };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    const transaction = await services.inventory.correctStock(
+      body.compartmentId,
+      body.desiredQuantity,
+      await actor(request),
+      body.note,
+      { expectedBeforeQuantity: body.expectedBeforeQuantity },
+    );
+    return { transaction: { ...transaction, createdAt: transaction.createdAt.toISOString() } };
   });
 
   app.post('/item-inventory/locations/shelves', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
@@ -320,11 +311,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   });
   app.put('/item-inventory/locations/areas', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ from: z.string().trim().min(1).max(200), to: z.string().trim().min(1).max(200) }).parse(request.body ?? {});
-    try {
-      return await services.inventory.renameArea(body.from, body.to);
-    } catch (error) {
-      mapMutationError(error);
-    }
+    return await services.inventory.renameArea(body.from, body.to);
   });
   app.post('/item-inventory/locations/drawers', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ shelfId: z.string().uuid(), drawerNumber: z.number().int().min(1) }).parse(request.body ?? {});
@@ -341,43 +328,23 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
 
   app.delete('/item-inventory/drawers/:id', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
-    try {
-      return { result: await services.inventory.deleteDrawer(id) };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    return { result: await services.inventory.deleteDrawer(id) };
   });
   app.delete('/item-inventory/shelves/:id', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
-    try {
-      return { result: await services.inventory.deleteShelf(id) };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    return { result: await services.inventory.deleteShelf(id) };
   });
   app.delete('/item-inventory/tags/:id', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
-    try {
-      return { result: await services.inventory.deleteTag(id) };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    return { result: await services.inventory.deleteTag(id) };
   });
   app.post('/item-inventory/imports/:id/dismiss', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
-    try {
-      return { result: await services.inventory.dismissImport(id) };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    return { result: await services.inventory.dismissImport(id) };
   });
   app.post('/item-inventory/imports/:id/restore', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
-    try {
-      return { result: await services.inventory.restoreImport(id) };
-    } catch (error) {
-      mapMutationError(error);
-    }
+    return { result: await services.inventory.restoreImport(id) };
   });
 
   app.post('/item-inventory/import-photos/suggest-tool-fields', { preHandler: [authorizeManageOrKiosk] }, async (request, reply) => {
@@ -420,6 +387,11 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { result: await services.inventory.registerImport({ ...body, payloadId: id, actor: await actor(request) }) };
   });
 
+  app.post('/item-inventory/imports/:payloadId/photos/:photoId/rotate', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { payloadId, photoId } = importPhotoParams.parse(request.params);
+    return { result: await services.inventory.rotateImportPhoto(payloadId, photoId) };
+  });
+
   app.delete('/item-inventory/imports/:payloadId/photos/:photoId', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { payloadId, photoId } = importPhotoParams.parse(request.params);
     return { result: await services.inventory.deleteImportPhoto(payloadId, photoId) };
@@ -429,6 +401,11 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     const { id } = idParams.parse(request.params);
     const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});
     return { result: await services.inventory.reorderImportPhotos(id, body.photoIds) };
+  });
+
+  app.post('/item-inventory/items/:itemId/photos/:photoId/rotate', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { itemId, photoId } = itemPhotoParams.parse(request.params);
+    return { result: await services.inventory.rotateInventoryItemPhoto(itemId, photoId) };
   });
 
   app.delete('/item-inventory/items/:itemId/photos/:photoId', { preHandler: [authorizeManageOrKiosk] }, async (request) => {

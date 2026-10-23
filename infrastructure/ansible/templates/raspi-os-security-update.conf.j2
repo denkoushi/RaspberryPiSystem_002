@@ -1,0 +1,12 @@
+{{ {
+  'mode': os_security_update_mode,
+  'blacklist': os_security_update_package_blacklist,
+  'allowlist': os_security_update_package_allowlist,
+  'browserUnit': os_security_update_browser_unit,
+  'stateDir': os_security_update_state_dir,
+  'windowStartHour': os_security_update_window_start_hour,
+  'windowEndHour': os_security_update_window_end_hour,
+  'releaseMarker': os_security_update_release_marker,
+  'releaseMarkerMaxAgeSeconds': os_security_update_release_marker_max_age_seconds,
+  'lockPath': os_security_update_lock_path
+} | to_json }}

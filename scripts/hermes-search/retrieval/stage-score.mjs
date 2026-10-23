@@ -124,6 +124,8 @@ export function scoreCases(gold, cases) {
       finalHit: targets.length ? finals.some((id) => targetSet.has(id)) : null,
       returned: Number.isFinite(run.returned) ? run.returned : finals.length,
       totalMs: Number.isFinite(run.totalMs) ? run.totalMs : null,
+      jevInputChars: run.volume?.jevInputChars ?? null,
+      answerChars: run.volume?.answerChars ?? null,
     });
   }
   return rows;
@@ -151,6 +153,8 @@ function summarize(rows) {
     returned: mean(rows.map((row) => row.returned)),
     p50: percentile(rows.map((row) => row.totalMs), 0.5),
     p95: percentile(rows.map((row) => row.totalMs), 0.95),
+    jevIn: percentile(rows.map((row) => row.jevInputChars), 0.5),
+    ans: percentile(rows.map((row) => row.answerChars), 0.5),
   };
 }
 
@@ -176,7 +180,7 @@ function fmt(value) {
 
 export function formatScoreTable(label, scored) {
   const lines = [`run=${label}`];
-  const header = 'category n oos filters date sort limit content allSlots status r15 r50 prec hit ret p50 p95';
+  const header = 'category n oos filters date sort limit content allSlots status r15 r50 prec hit ret p50 p95 jevIn ans';
   lines.push(header);
   const emit = (name, row) => lines.push([
     name, row.n,
@@ -184,6 +188,7 @@ export function formatScoreTable(label, scored) {
     fmt(row.slots.limit), fmt(row.slots.hasContent), fmt(row.allSlots), fmt(row.status),
     fmt(row.recall15), fmt(row.recall50), fmt(row.precision), fmt(row.finalHit), fmt(row.returned),
     fmt(row.p50), fmt(row.p95),
+    fmt(row.jevIn), fmt(row.ans),
   ].join(' '));
   emit('all', scored.all);
   for (const [name, row] of Object.entries(scored.categories)) emit(name, row);

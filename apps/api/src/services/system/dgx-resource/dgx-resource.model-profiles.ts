@@ -1,5 +1,3 @@
-import { ApiError } from '../../../lib/errors.js';
-
 import { createTimeoutSignal } from './dgx-resource.probes.js';
 
 export type DgxBusinessModelProfile = {
@@ -108,8 +106,6 @@ export type DgxModelProfilesOverview = {
   resourceState: DgxResourceSharedState | null;
   errorMessageJa?: string;
 };
-
-export const BUSINESS_RETURN_SCENARIO_IDS = new Set(['private_to_business', 'experiment_to_business']);
 
 type GatewayModelProfilesResponse = {
   ok?: boolean;
@@ -271,21 +267,6 @@ export function normalizeDgxModelProfile(value: unknown): DgxBusinessModelProfil
   };
 }
 
-export function modelProfileSelectionAllowed(scenarioId: string): boolean {
-  return BUSINESS_RETURN_SCENARIO_IDS.has(scenarioId);
-}
-
-export function assertModelProfileSelectionAllowed(scenarioId: string, modelProfileId?: string): void {
-  if (modelProfileId && !modelProfileSelectionAllowed(scenarioId)) {
-    throw new ApiError(
-      400,
-      'modelProfileId は私用/実験から業務へ戻すシナリオでのみ指定できます',
-      { scenarioId, modelProfileId },
-      'DGX_MODEL_PROFILE_NOT_ALLOWED_FOR_SCENARIO'
-    );
-  }
-}
-
 export function isProfileEligibleForBusinessOrchestration(profile: DgxBusinessModelProfile): boolean {
   return profile.businessOrchestrationEligible;
 }
@@ -309,54 +290,6 @@ export function enrichModelProfilesOverview(modelProfiles: DgxModelProfilesOverv
     ...modelProfiles,
     businessReturnSelectable: filterBusinessReturnSelectableProfiles(modelProfiles),
   };
-}
-
-export function assertModelProfileEligibleForBusinessReturn(
-  modelProfiles: DgxModelProfilesOverview,
-  modelProfileId: string
-): DgxBusinessModelProfile {
-  const profile = assertModelProfileKnownAndStartable(modelProfiles, modelProfileId);
-  if (!isProfileEligibleForBusinessOrchestration(profile)) {
-    throw new ApiError(
-      400,
-      '指定された modelProfileId は業務復帰シナリオでは選択できません（私用クイック起動専用の profile です）',
-      { modelProfileId },
-      'DGX_MODEL_PROFILE_NOT_ELIGIBLE_FOR_BUSINESS_RETURN'
-    );
-  }
-  return profile;
-}
-
-export function assertModelProfileKnownAndStartable(
-  modelProfiles: DgxModelProfilesOverview,
-  modelProfileId: string
-): DgxBusinessModelProfile {
-  if (modelProfiles.status !== 'ok') {
-    throw new ApiError(
-      503,
-      modelProfiles.errorMessageJa ?? 'DGX model profiles API が利用できないためモデルを選択できません',
-      { modelProfileId, modelProfilesStatus: modelProfiles.status },
-      'DGX_MODEL_PROFILES_UNAVAILABLE'
-    );
-  }
-  const profile = modelProfiles.available.find((p) => p.id === modelProfileId);
-  if (!profile) {
-    throw new ApiError(
-      400,
-      '未知の modelProfileId です。DGX の model profiles allowlist を確認してください',
-      { modelProfileId },
-      'DGX_MODEL_PROFILE_UNKNOWN'
-    );
-  }
-  if (!profile.enabled || profile.status === 'unavailable') {
-    throw new ApiError(
-      409,
-      profile.unavailableReasonJa ?? '指定された modelProfileId は現在利用できません',
-      { modelProfileId, enabled: profile.enabled, status: profile.status },
-      'DGX_MODEL_PROFILE_UNAVAILABLE'
-    );
-  }
-  return profile;
 }
 
 export async function fetchDgxModelProfilesOverview(input: {

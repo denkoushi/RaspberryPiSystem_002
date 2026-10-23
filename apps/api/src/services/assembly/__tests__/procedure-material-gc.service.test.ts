@@ -1,9 +1,11 @@
-import { mkdtemp, mkdir, rm, writeFile, stat, utimes } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, stat, utimes, readdir, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProcedureMaterialGcService } from '../procedure-material-gc.service.js';
+import { FileStorageIntegrityCatalog } from '../../file-storage/file-storage-integrity-catalog.js';
+import { LocalDurableFileStore } from '../../file-storage/local-durable-file-store.js';
 
 let root: string;
 afterEach(async () => { if (root) await rm(root, { recursive: true, force: true }); });
@@ -19,7 +21,7 @@ describe('procedure-material GC', () => {
       await utimes(path.join(root, key), time, time);
     }
     const db = { procedureMaterial: { count: vi.fn(async ({ where }: { where: { storageKey: string } }) => where.storageKey === keys[1] ? 2 : 0) } };
-    const store = { absolutePath: (key: string) => path.join(root, key), stat: (key: string) => stat(path.join(root, key)), delete: vi.fn(async () => undefined) };
+    const store = { list: (namespace: string) => readdir(path.join(root, namespace)), stat: (key: string) => stat(path.join(root, key)), delete: vi.fn(async () => undefined) };
     expect(await new ProcedureMaterialGcService(db as never, store as never).collect(now)).toEqual({ scanned: 4, deleted: 1 });
     expect(store.delete).toHaveBeenCalledExactlyOnceWith(keys[0], { integrity: true });
     expect(db.procedureMaterial.count).toHaveBeenCalledTimes(3);
@@ -37,7 +39,7 @@ describe('procedure-material GC', () => {
       return count;
     });
     const store = {
-      absolutePath: (namespace: string) => path.join(root, namespace),
+      list: (namespace: string) => readdir(path.join(root, namespace)),
       stat: vi.fn().mockResolvedValue({ isFile: () => true, mtimeMs: 0 }),
       delete: vi.fn()
     };
@@ -48,7 +50,17 @@ describe('procedure-material GC', () => {
   });
   it('treats a missing namespace as empty', async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'procedure-material-gc-'));
-    const store = { absolutePath: () => path.join(root, 'missing') };
+    const store = { list: vi.fn().mockResolvedValue([]) };
     expect(await new ProcedureMaterialGcService({} as never, store as never).collect()).toEqual({ scanned: 0, deleted: 0 });
+  });
+  it('ignores non-directory hash entries, symlinks and directories without an original', async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'procedure-material-gc-'));
+    const store = new LocalDurableFileStore(root, new FileStorageIntegrityCatalog(root), { minimumFreeBytes: 1 });
+    await store.initialize(['procedure-materials']);
+    await writeFile(path.join(root, 'procedure-materials', 'a'.repeat(64)), 'file');
+    await mkdir(path.join(root, 'procedure-materials', 'b'.repeat(64)));
+    await symlink(os.tmpdir(), path.join(root, 'procedure-materials', 'c'.repeat(64)));
+    await mkdir(path.join(root, 'procedure-materials', 'not-a-hash'));
+    expect(await new ProcedureMaterialGcService({} as never, store).collect()).toEqual({ scanned: 0, deleted: 0 });
   });
 });

@@ -17,9 +17,9 @@ export function pickPrimaryScheduleRowForOrder(
 
 export type SlipPairMatchInput = {
   transferOrderBarcodeRaw: string;
-  transferPartBarcodeRaw: string;
+  transferPartBarcodeRaw?: string;
   /**
-   * 現品票の製造order（ProductNo）。印字のみの場合は空でよい。
+   * 現品票の注文番号（FKOBAINO）または製造order（ProductNo）。印字のみの場合は空でよい。
    * `actualFseibanRaw` と併せて少なくとも一方が必要（ルートで検証）。
    */
   actualOrderBarcodeRaw: string;
@@ -27,10 +27,12 @@ export type SlipPairMatchInput = {
    * 現品票の製番。製造orderが空のときに日程行解決に使う。
    */
   actualFseibanRaw: string;
-  actualPartBarcodeRaw: string;
+  actualPartBarcodeRaw?: string;
 };
 
-export type SlipPairMatchResult =
+export type SlipPairMatchResult = {
+  actualResolvedBy?: 'productNo' | 'purchaseOrder' | 'fseiban';
+} & (
   | { ok: true }
   | {
       ok: false;
@@ -40,7 +42,7 @@ export type SlipPairMatchResult =
         | 'TRANSFER_PART_MISMATCH'
         | 'ACTUAL_PART_MISMATCH'
         | 'FSEIBAN_OR_PART_PAIR_MISMATCH';
-    };
+    });
 
 /**
  * 移動票・現品票の (FSEIBAN, FHINCD) ペア一致を判定する（純関数）。
@@ -49,8 +51,8 @@ export type SlipPairMatchResult =
 export function evaluateSlipPairMatch(params: {
   transferRow: ProductionScheduleLookupRow | null;
   actualRow: ProductionScheduleLookupRow | null;
-  transferPartBarcodeRaw: string;
-  actualPartBarcodeRaw: string;
+  transferPartBarcodeRaw?: string;
+  actualPartBarcodeRaw?: string;
 }): SlipPairMatchResult {
   const { transferRow, actualRow, transferPartBarcodeRaw, actualPartBarcodeRaw } = params;
 
@@ -61,16 +63,13 @@ export function evaluateSlipPairMatch(params: {
     return { ok: false, reason: 'ACTUAL_ORDER_UNRESOLVED' };
   }
 
-  const tPartScan = normalizeSlipToken(transferPartBarcodeRaw);
-  const aPartScan = normalizeSlipToken(actualPartBarcodeRaw);
-  if (tPartScan.length === 0 || aPartScan.length === 0) {
-    return { ok: false, reason: 'FSEIBAN_OR_PART_PAIR_MISMATCH' };
-  }
+  const tPartScan = normalizeSlipToken(transferPartBarcodeRaw ?? '');
+  const aPartScan = normalizeSlipToken(actualPartBarcodeRaw ?? '');
 
-  if (transferRow.fhincd.trim().toUpperCase() !== tPartScan.toUpperCase()) {
+  if (tPartScan && transferRow.fhincd.trim().toUpperCase() !== tPartScan.toUpperCase()) {
     return { ok: false, reason: 'TRANSFER_PART_MISMATCH' };
   }
-  if (actualRow.fhincd.trim().toUpperCase() !== aPartScan.toUpperCase()) {
+  if (aPartScan && actualRow.fhincd.trim().toUpperCase() !== aPartScan.toUpperCase()) {
     return { ok: false, reason: 'ACTUAL_PART_MISMATCH' };
   }
 
@@ -80,7 +79,7 @@ export function evaluateSlipPairMatch(params: {
     return { ok: false, reason: 'FSEIBAN_OR_PART_PAIR_MISMATCH' };
   }
 
-  if (tPartScan.toUpperCase() !== aPartScan.toUpperCase()) {
+  if (transferRow.fhincd.trim().toUpperCase() !== actualRow.fhincd.trim().toUpperCase()) {
     return { ok: false, reason: 'FSEIBAN_OR_PART_PAIR_MISMATCH' };
   }
 

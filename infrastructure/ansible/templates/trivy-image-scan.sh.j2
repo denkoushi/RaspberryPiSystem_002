@@ -5,6 +5,16 @@ LOG_DIR="{{ trivy_log_dir }}"
 LOG_FILE="${LOG_DIR}/trivy-image-scan.log"
 mkdir -p "${LOG_DIR}"
 
+# Run scans at the lowest CPU priority and cap their disk bandwidth so they do not starve the API/DB disk.
+# ionice is ignored by mq-deadline, so the IO cap uses a cgroup v2 scope (io.max works with any scheduler).
+LOW_PRIORITY=(nice -n 19)
+if command -v systemd-run >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
+  LOW_PRIORITY=(systemd-run --scope --quiet --collect
+    -p "IOReadBandwidthMax={{ security_scan_io_device | default('/') }} {{ security_scan_io_bandwidth_max | default('30M') }}"
+    -p "IOWriteBandwidthMax={{ security_scan_io_device | default('/') }} {{ security_scan_io_bandwidth_max | default('30M') }}"
+    nice -n 19)
+fi
+
 WEBHOOK_URL="${WEBHOOK_URL:-{{ alert_webhook_url | default('') }}}"
 WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT_SECONDS:-{{ alert_webhook_timeout_seconds | default(5) }}}"
 
@@ -41,7 +51,7 @@ scan_image() {
   )
   
   set +e
-  "${TRIVY_CMD[@]}" >> "${LOG_FILE}" 2>&1
+  "${LOW_PRIORITY[@]}" "${TRIVY_CMD[@]}" >> "${LOG_FILE}" 2>&1
   TRIVY_EXIT=$?
   set -e
   

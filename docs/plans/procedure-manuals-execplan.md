@@ -12,6 +12,9 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Progress
 
+- [x] (2026-10-15) 素材棚の「ここで分けますか」をローカル実装。API は同一メールの未破棄 GMAIL/PHOTO の隣接組のみを `jev-1.13.0` に送り、画像を長辺1568px/JPEG85へ整形し、同時3組・全体20秒（設定範囲1〜60秒）で制限する。成功判定のみSHA256の組で7日間・最大2000件キャッシュする。素材棚は開いた束を順序付きIDで一度だけ問い合わせ（60件超は1件を重ねた分割リクエストで隣接境界を維持）、利用者が「分ける」を選んだ境界だけに書類見出し・写真選択を表示する。選択と分割は画面内だけで、既存の束ね順・PDF全体からの要領書作成は維持する。Pi5の有効化フラグと既存TypeSafe鍵の注入を追加した。
+  Validation: API 54件（サービス34・route10・設定10）、素材棚86件と束ね処理16件、Ansible対象2件を確認。失敗したUIの要素指定は修正して対象だけ再検証済み。変更TS/TSXのeslint、APIの `tsc --noEmit -p tsconfig.build.json`、Webの `tsc --noEmit -p .` が成功。APIの通常tsconfigは既存のrootDir/include不整合があるためビルド用設定を使用した。Prisma Clientと共有パッケージはローカル生成し、テストではdotenv無効化と空envDirを使った。実TypeSafe API・実機・deployは未実施。Git lifecycle auditはGitHub接続制限で未完了、ローカル差分でWIPを保全した。
+
 - [x] (2026-10-15) 評価のみ(本番コードは変えていない): TypeSafe JEV の画像入力(2026-10-14 公開、ヘッダー `TypeSafe-Danger-Zone-Images: true`)で、隣り合う 2 ページが「同じ書類の続き」か「別の書類の始まり」かを判定できるかを測った。素材棚の「PDF のページが束にならない」は 2026-10-07 の束ねルール(#1815/#1816)で解決済みで、同じ PDF のページはファイル名と重複キーで必ず 1 束になる。画像判定が役に立つのは、紙を 1 枚ずつ撮った写真やヒント・共通ファイル名の無い素材、または複数の書類を 1 つの PDF にまとめて送った場合だけなので、そこを対象にした。データは承認済みの要領書・スキャン・図面 19 冊(産1-G 系の同じ様式 13 冊を各 5 ページ、うち 4 冊は文書番号だけの白紙ページ 6〜7 も含む、TEST-002、産2-U004BBC、SD000032603、測定チャートのスキャン、7161 の図面 2 枚)を固定シード順につないだ 81 ページ・80 組(境目 18)。正解は「元ファイルの最初のページなら新しい書類」。ページは PyMuPDF で長辺 1568px の JPEG にし、2 枚を `assets` に入れて 1 組 1 リクエストで送った(`choice`: continuation / new_document、確率は `answers.*.probabilities`)。表紙だけで当てていないかを見るため、表紙を含まない中ページ同士の 25 組(別書類 12、同じ書類の飛びページ 13)も別に測った。
 
   | 方式 | 正解率(80 組) | 誤結合(別の書類を同じ束に) | 取りこぼし(同じ書類が別の束に) | 1 冊がちょうど 1 束 | 中ページだけの 25 組 |
@@ -43,6 +46,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 - [x] (2026-10-14) 素材棚の「✦ 意味で探す」ボタンと実機確認: ボタンを追加(#1868、merge 0c21555d、Pi5 run 20261008-102027-673f06 成功、戻す先の main は 4693d2c7)。検索欄の横に置き、未配置・配置済みのタブで検索語が 2 文字以上のときに押せる。押すと `POST /assembly/procedure-materials/semantic-search` の結果で一覧を近い順に置き換え、件数行に「✦ 近い順」、カードに「✦ 意味」を出す。言葉の一致が 0 件のときは一覧の中にも同じボタンを出す。使えないときは一覧を残したまま「意味で探すは今使えません」、回数制限(429)のときは「少し待ってからもう一度押してください」と出す。検索語かタブを変えると元の一覧に戻る。実機で「2 文字以上入れても押せない」と分かり修正(#1997、merge 01efa7be、Pi5 run 20261013-233733-45020a 成功、戻す先の main は 1dfd5c00)。押せる条件が IME の変換中フラグと言葉の一致の一覧の読み込み中フラグに依存していたため、確定した検索語(入力が落ち着いた後の値)が 2 文字以上かどうかだけで決めるように変え、送る言葉も確定した検索語にした。どちらのフラグが実機で残っていたかは特定していない(稼働中のキオスクでは試験用ブラウザを動かさない)。2026-10-14 に実機で、ボタンが出る、2 文字以上で押せる、押すと「意味で探すは今使えません」と出て一覧が残る、を確認した(有効化前の想定どおり)。DB の変更は無い。どちらも Pi5 だけの反映。有効化までの残り(当時): 意味検索そのものの有効化(Pi5 の `HERMES_RETRIEVAL_SOURCES` に `procedure_material` を足す。足すと Chat の検索対象にも素材が入る作りなので、入れるかどうかを決めてから進める)。
 - [x] (2026-10-14) 「✦ 意味で探す」の有効化: 利用者が「素材棚だけで使い、Chat の答えには素材を出さない」を選んだ。検索対象の定義に `retrieval.conversational`(省略時 true)を足し、`procedure_material` を false にして Chat の回答経路、追加学習、夜間測定から外した(#2001、merge b8ff3f21)。Pi5 の `HERMES_RETRIEVAL_SOURCES` に `procedure_material` を足して有効化したところ、検索用データの更新が毎回失敗し、手順書とトルクの検索も 0 件になった。原因は素材の本文を DB 側で切る `LEFT("text", $n)` に Prisma が bigint を渡し、`function left(text, bigint) does not exist`(42883)になったこと。設定を 5 つに戻し、`::int` を付けて直した(#2005、merge 6fe37a54、実 DB の結合テストを追加)。Pi5 イメージ 7e0d52a9 で再有効化し(run 20261014-033732-468096、更新の失敗 0、4 URL 200、戻す先の main は 275dd960)、素材 35 件が検索に入った。実機で手順 1〜5 どおり動くことを確認した。ただし「テーブル」で探すと、近い順に並ぶ素材の多くが無関係だった。今の作りは、言葉の一致が無い素材も含めて全件を近い順に並べ、「近いものが無い」と判断する下限を持たない。また意味検索が見る文字は件名のヒント、文字だけのメールの本文、ファイル名だけで、写真の中身、品名、メモ、PDF の文字は入っていない。残り: (1) 実機で、件名にあると分かっている言葉が先頭に来るかを確かめる。(2) 近さの下限を決めて、近いものが無いときは「近い素材は見つかりませんでした」と出し、元の一覧を残す(下限は測ってから決める)。(3) PDF の文字(`text` 列に保存済み)を意味検索の文字に足す。(4) 品名とメモを足すのは別の課題。
 - [x] (2026-10-08) 素材棚の誤破棄と再発防止: 10/08 14:25 JST の 12 秒間に、未配置の素材 30 件が画面の「捨てる」1 回で捨てられた(削除は 0 件、総数 73 のまま)。利用者の指示で、その時刻に捨てられ文書にも置かれていない 30 件だけを `discardedAt = NULL` に戻した(件数が 30 でなければ中止する条件付き。結果は未配置 30 / 配置済み 42 / 捨てた 1、利用者が画面で確認)。原因は特定できていない。#1837 で選択が検索や絞り込みをまたいで残るようになり、見えていない選択まで捨てる対象だったことが有力。再発防止(#1856、merge 49127dc1、Pi5 run 20261008-071756-6afbb6 成功): 「捨てる」の対象を一覧に出ている選択だけにし、確認の件数もその数にした。表示外の選択は帯に「(表示外 N)」と出す。「捨てる」を主操作の隣から「選択を外す」の横へ移し標準の大きさにした。捨てた直後に「N 件を捨てました」と「元に戻す」を出す(次の選択、タブ切替、検索や絞り込みの変更、閉じるで消える)。検索語の反映待ちと読込中は捨てられない。閉じた束の中の選択は「束を全部選ぶ」の通常操作なので対象のまま。戻す先の main は 26e890c7。実機確認は未実施。
+- [x] (2026-10-19) 素材棚の一括破棄の再発と復元: 10/19 14:23:59〜14:24:03 JST の 4 秒間に、未配置に残っていた素材 26 件(GMAIL のみ。「DFL7161XY高精度2」の 5 ページと「Sample要領書PDF」の 21 ページ)が「捨てる」1 回で捨てられ、未配置が 0 になった(削除は 0 件)。#1856 の守り(一覧に出ている選択だけを捨てる、確認に件数を出す)は効いており、2 つの束を「束を全部選ぶ」で選んで確認した操作と見られる。操作した人は、API コンテナが 14:38 の反映で作り直されてログが残っておらず特定できない。利用者の指示で、その 4 秒間に捨てられ文書にも置かれていない行だけを `discardedAt = NULL` に戻した(件数が 26 でなければ中止する条件付き)。結果は未配置 26 / 配置済み 65 / 捨てた 6。
 - [x] (2026-10-08) 左ペインのテンキーを縦 1 列に、「見る」ダイアログの枠をページの形に: #1844 の実機確認の指摘 2 点を直した。(1) 左ペインのテンキーを 3 列(幅 200px)から縦 1 列(1〜9、0、⌫、幅 64px、キー高さ 48px)にし、機種候補の幅を約 215px から約 350px に広げた(`KioskDigitTenkey` に並び順を渡す `digits` を追加。「白紙から作る」ダイアログは 3 列のまま)。(2) `AssemblyProcedurePreviewDialog` の画像の枠が「列の幅いっぱい・高さ 62vh まで」の箱で、重ねた要素が箱全体を基準に置かれてページとずれていたため、枠を画像の大きさに合わせた(組立の手順書一覧から開く同じダイアログにも効く)。検証: web vitest 244 files / 1796 件、tsc、lint、kiosk-sop source-check 成功(取説は digest の更新のみ)。PR #1850(merge `06acd313`)。Pi5 配布 run `20261008-060423-19b573`(15:04→15:08 成功、api / web とも `06acd313`、health 200)。戻し先はイメージ `4bfe6945`。ブラウザでの見た目は配布前に確認していない。**実機確認済み**(2026-10-08、所有者が 1920×1080 のキオスクで OK: 機種名が 1 行に収まる、「見る」の表示がつぶれず欠けない)。
 - [x] (2026-10-08) 工程だけでの絞り込みと行の「見る」: 共通の左ペイン `ProcedureManualFilterPane` を「作る・直す」「見る」の両方で使い、機種未選択でも一覧を出す(工程ボタンは「全て・組立・検査・切削・研削」)。「作る・直す」の行の先頭に、編集操作のないダイアログで開く「見る」を足した(PIN の再確認なし)。「見る」画面は片方だけ選んだとき公開済みの一覧を出し(`GET /assembly/procedure-manuals/overview?published=true`。下書きの情報は返さない)、行を押すとその文書から開く(`AssemblyProcedureSequenceViewer` の `initialDocumentId`)。検証: web vitest 940 件、api 対象 39 件、両方の tsc と lint、kiosk-sop source-check 成功。Codex の読み取り専用レビューの指摘 3 件のうち 2 件(PIN なしの画面へ下書き情報が返る、押した文書と違う文書が開く)を修正し、1 件(機種をまたぐ一覧が全件取得で、件数が大きく増えると重くなる)は見送った。PR #1844(merge `95f884ff`)。Pi5 配布 run `20261008-052753-e352cd`(14:27→14:32 成功、api / web とも `95f884ff`、health 200)。戻し先はイメージ `d163baf6`。配布後の検証は新しい画面と overview の経路そのものを叩いていない。**実機確認**(2026-10-08、所有者が 1920×1080 のキオスクで確認): 工程での絞り込みと行の「見る」は動いたが、指摘 2 点(テンキーが幅を取り機種名が折り返す、「見る」の表示がつぶれて一部欠ける)があり、#1850 で修正した。「見る」画面で押した文書から開く点も、#1850 の配布後に所有者が OK と確認した。
 
@@ -193,7 +197,7 @@ This ExecPlan is a living document and must be maintained according to `.agent/P
 
 ## Decision Log
 
-- Decision (2026-10-15, 案・オーナー未承認): JEV の画像判定は、今は素材棚に入れない(見送り)。理由: (1) 指摘された「PDF のページが束にならない」は 2026-10-07 の束ねルールで解決済みで、同じ PDF のページはファイル名と重複キーで確実に 1 束になり、外部送信も費用も要らない。(2) 画像判定が効くのは紙を 1 枚ずつ撮った写真や、複数の書類をまとめた 1 つの PDF だが、その困りごとはまだ実機で報告されていない。(3) TypeSafe が画像機能を本番品質ではないと明記している。ただし精度は高く(80 組で 99%、表紙を含まない中ページでも 100%)、安く(1 ページ約 0.06 円)、速い(約 0.5 秒)ので、困りごとが出たら採用候補にする。そのときは先に、実際に紙をスマホで撮った写真 20〜30 枚で同じ評価をし、束を自動で決めず「ここで分けますか」の提案として出し、モデルは版を固定(`jev-1.13.0`)する。
+- Decision (2026-10-15, ユーザー決定): JEV の画像判定を素材棚に入れる(採用)。同日の評価記録では見送り案を出したが、説明を聞いたユーザーが「入れて」と決めた。形は操作モック(https://claude.ai/artifact/Us1rHQFE2njwE1eUdiZNe5)でユーザーが承認したもの: 束を開くと同じメールの隣り合う写真ページの組だけを判定し、新しい書類が始まりそうな所(p(new_document) ≥ 0.5)に「ここで分けますか」を出す。束は自動で確定せず、「分ける」「分けない」は画面の見え方だけを変えて保存しない。「要領書を作る」は今までどおり PDF 全体から 1 冊を作る(PDF をページ範囲で分けて取り込むのは別作業)。モデルは `jev-1.13.0` に固定する。機能の ON/OFF は `PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED`。JEV の失敗や時間切れ、鍵が無い場合は何も出さず、今の束ねルールのままにする。見送り案で挙げた心配(画像機能が本番品質ではない、スマホ写真での精度が未確認)は残るので、実機の誤った提案はこの記録に追記して判断を見直す。
   Rationale: 評価は Progress の 2026-10-15 の行。現行ルールで足りる場面に、外部送信と本番品質でない機能を足さない。
 - Decision (2026-10-11): 承認モック`docs/design-previews/procedure-common-manuals-mock.html`を共通UIの正本とする。同じ2画面に機種｜部品｜共通を置き、共通では分類2列・名前検索・10かな行だけを表示。一覧は名前・分類・ページ・状態・見る・直す。作成は分類chips、対象入力/既知対象chips、作業chips、似た手順/「これを直す」、名前preview、重複block。分類/作業の編集は同じdialog内、使用中削除はdisabledでAPIも409。既存の素材/動画入口と削除/外す操作は維持するため、モックにない操作を共通一覧/ヘッダーにも残す。
 - Decision (2026-10-11): 分類はCOMMONの`procedure-manual-common`配下、初期6分類と6作業はCOMMONの読取/書込時に共通lock内のtransactionでruntime seedする。親行の存在をseed済みmarkerとし、削除/renameした既定項目は復元しない。分類名はDB UNIQUE indexを設けずcreate/renameとも共通lock内で重複検査する。対象は共有NFKC・trim・空白collapse・Latin uppercaseでキー化し、先頭かな（濁音・半濁音・小書き含む）から行を推定。推定できない新対象だけ「よみ」を1回選択し、既知対象の行を再利用する。assignmentは対象名/キー・分類id・作業label、文書名は`対象_作業`。
@@ -461,7 +465,7 @@ NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' DATABASE_URL
 # The schema at prisma/schema.prisma is valid 🚀
 NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' DATABASE_URL='postgresql://test:test@localhost:5432/test' pnpm --filter api exec prisma generate
 # ✔ Generated Prisma Client (v5.22.0) ... in 979ms
-NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' pnpm --filter api exec vitest run src/services/assembly/__tests__/procedure-material-image-description.service.test.ts src/services/assembly/__tests__/procedure-material-hermes-source.service.test.ts src/services/assembly/__tests__/hermes-search-trial.service.test.ts src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts src/config/__tests__/procedure-material.env.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
+NODE_OPTIONS='--require=/private/tmp/procedure-material-no-env.cjs' pnpm --filter api exec vitest run src/services/assembly/__tests__/procedure-material-image-description.service.test.ts src/services/business-hermes/__tests__/procedure-material-hermes-source.service.test.ts src/services/business-hermes/__tests__/hermes-search-trial.service.test.ts src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts src/config/__tests__/procedure-material.env.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
 # Test Files  7 passed (7)
 # Tests  124 passed (124)
 # Duration  15.37s
@@ -486,11 +490,11 @@ src/config/env.ts
 src/routes/assembly/__tests__/procedure-material-knowledge.routes.test.ts
 src/routes/assembly/__tests__/procedure-material-semantic-search.routes.test.ts
 src/routes/assembly/procedure-materials.ts
-src/services/assembly/__tests__/hermes-search-trial.service.test.ts
-src/services/assembly/__tests__/procedure-material-hermes-source.service.test.ts
+src/services/business-hermes/__tests__/hermes-search-trial.service.test.ts
+src/services/business-hermes/__tests__/procedure-material-hermes-source.service.test.ts
 src/services/assembly/__tests__/procedure-material-search.integration.test.ts
-src/services/assembly/hermes-search-trial.service.ts
-src/services/assembly/procedure-material-hermes-source.service.ts
+src/services/business-hermes/hermes-search-trial.service.ts
+src/services/business-hermes/procedure-material-hermes-source.service.ts
 src/services/assembly/procedure-material-knowledge.service.ts
 src/services/assembly/procedure-material.service.ts
 src/config/__tests__/procedure-material.env.test.ts
@@ -516,6 +520,8 @@ The API files above (except the untouched existing integration-test WIP), `apps/
 機種×工程の閲覧・編集画面から、同じ型番・工程名に関連するナレッジ素材(`KnowledgeProcedureMaterial`)と承認済み手順(`KnowledgeProcedure` の `publishedRevision`)を一覧し、利用者が明示的に選んだものだけを素材棚へコピーして配置できるようにする。出典(ナレッジ側の ID と版)を素材に保持する。ナレッジ側のデータは変更しない。
 
 ### 動画: V1 / V2 / V3
+
+映像から場面の区切りと字幕の案を自動で作る機能は、別の計画 [作業動画の自動編集](./procedure-video-auto-edit-execplan.md) で扱う。
 
 V1は専用素材メールからMP4/MOV/3GP/M4V(非inline、25 MB以下)を取り込み、独立したProcedureVideoとしてPENDINGへ保存する。既存素材と同じ添付名・part IDのハッシュによる重複キー、送信元ドメイン、未読再試行を維持する。動画だけ保存できたメールもゴミ箱へ移す。原本はprocedure-videos/incoming/<sha256>/originalを共有する。
 
@@ -794,3 +800,10 @@ UX 改善(2 回目)の変更・追加ファイル一覧(34ファイル。各migr
 場面サムネイル追記の検証(2026-10-08): Prisma generate、API/Web lint、Web `pnpm exec tsc --noEmit`が成功。APIの`pnpm exec vitest run procedure-video ffmpeg-procedure-video backup-recommended`は7ファイル189件成功。Webの`pnpm exec vitest run procedure-manuals document-editor`は23ファイル469件成功、追加のposter URLテスト2件も成功。作成/範囲変更後の生成、失敗時の成功応答、競合時の公開抑止と掃除、配信200/404、DTOの存在フラグ、動画ポスターへのフォールバック、範囲更新後の画像再取得を確認した。実Postgresへのmigration適用・実機目視は未実施。既存WIPを保持し、gitの変更操作・生成ソース変更・本番反映は行っていない。
 
 追加のブラウザ目視確認は未完了: ローカルChromiumはsandboxのMachPort権限で起動できず、Browser Useのローカルfile URLもURLポリシーで拒否された。回避操作は行わず、1920×1080の目視/タッチ確認は上のオーナー実機確認に残す。
+
+### アプリからの素材 (2026-10-19)
+
+- 件名 `ProcedureMaterial`（完全一致または直後が空白・タブ）を予約し、受信箱の未読を既存の5分スケジュール／「今すぐ取り込む」で取得する。旧トークンのみの設定でも検索対象に含む。
+- JSON manifestは1つ必須。`schema_version: 1`、`source.system: sharepoint`、`source.list: ProcedureMaterialList` と写真の添付名を検証し、欠落・不正時は保存せず未読で残す。写真は既存の縮小・サイズ制限とmessage単位dedupeでPHOTO／origin APP／appRefへ保存し、本文は素材化しない。動画は既存ProcedureVideoへ渡す。
+- 許可ドメインは両件名に適用し、`fromEmail` 一致は旧 `[Procedure-material]` のみ。成功時は既存のラベル付きごみ箱処理を使う。
+- 「未配置」の右隣に「アプリから」を置き、APPの未配置をメール単位で表示する。見出しはcategory・note、補足はlocationと社員名（未登録ならname_id）。配置・破棄は既存操作と共通。「未配置」のAPP除外は通常一覧のstate=unplacedかつorigin未指定だけで、配置済み・捨てた素材・semantic-searchは従来の状態条件を保つ。

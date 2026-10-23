@@ -3,6 +3,7 @@ import { api } from '../http';
 export async function getLocalLlmAvailability(signal?: AbortSignal) {
   const { data } = await api.get<{ available: boolean }>('/system/local-llm/availability', {
     timeout: 5000,
+    kioskTelemetry: 'background',
     signal
   });
   return data;
@@ -58,7 +59,7 @@ export interface DeployAcknowledgement {
 }
 
 export async function getDeployStatus(): Promise<DeployStatus> {
-  const { data } = await api.get<DeployStatus>('/system/deploy-status');
+  const { data } = await api.get<DeployStatus>('/system/deploy-status', { kioskTelemetry: 'background' });
   return data;
 }
 

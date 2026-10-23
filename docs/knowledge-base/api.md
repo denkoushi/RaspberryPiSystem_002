@@ -103,7 +103,7 @@
 - **`ssh -N` が無音で進まないのは仕様**。**`<>` 字面による zsh の `parse error`**、**LAN 実 IP の `Connection refused`** と tailnet の **`timeout`** は別評価。管理コンソール **`private_ok`** と **Mac アクセス経路要件は無関係**。
 - **確認**: **`Ctrl+C` でトンネル切断後、ブラウザが開かなくなること**が決定証拠になる。
 
-**参照**: [KB-378](./KB-378-dgx-private-comfyui-mac-ssh-access.md)·[dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md)
+**参照**: KB-378（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md`）·DGXSparkControlPlane `docs/private-history/runbooks/dgx-private-comfyui.md`
 
 ---
 
@@ -118,7 +118,7 @@
 - **速度**: 1248×1824 で NVFP4 **2回目約3分台**（FP8 は約5分台）。`system-prod-trtllm` **約57GB** 占有時は Comfy 優先で一時 `docker stop`。
 - Compose 実用フラグ: `--disable-dynamic-vram`・`--reserve-vram 8`・`--disable-pinned-memory`・`--disable-mmap`（`force-recreate` で反映）。
 
-**参照**: [KB-379](./KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md)·[dgx-private-comfyui.md](../runbooks/dgx-private-comfyui.md)
+**参照**: KB-379（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md`）·DGXSparkControlPlane `docs/private-history/runbooks/dgx-private-comfyui.md`
 
 ---
 
@@ -276,6 +276,7 @@
   - 取り込み後、今回のCSVに出現した論理キー範囲に限定して重複loserを削除
 - 日次クリーンアップ:
   - `CsvImportScheduler`で毎日`02:10`（JST）に「1年超過削除」「重複loser削除」を実行し、取り込み漏れや過去データ残存を収束
+  - 1年超過削除の候補取得は `(occurredAt, id)` 順のキーセットで `(csvDashboardId, occurredAt)` index の範囲を進める。以前の `id` 順 + `id > lastId` は主キーindexで全表をたどる計画が選ばれ得て、2026-10-21 夜に最初の findMany が 5.5 時間かかり手動で止めた
 
 **トラブルシューティング**:
 - 「古い行が取り込まれない」:
@@ -4545,6 +4546,17 @@ docker compose -f docker-compose.server.yml restart api
   - 可視化ダッシュボードの `dataSourceType=uninspected_machines` に、対象の `csvDashboardId` が設定されていること
   - サイネージスケジュールのスロットに、その可視化ダッシュボードが割り当てられていること
   - 設定が欠けている場合、画像上に `csvDashboardId is required` などのエラー文言が表示される
+- **7) 取込が1時間以上終わらず、次の回が `Import already running, skipping` になる（2026-10-21）**:
+  - 原因: 取込後の重複 loser 削除（`CsvDashboardDedupCleanupService.deleteDuplicateLosersForKeys`）が、キー列（`equipmentManagementNumber` 等）を `rowData` JSON から取り出して突き合わせていた。生産スケジュール以外のキー列には式indexが無いため、300キーごとに最低2回、ダッシュボード全行の JSON を読む DELETE になり、`CsvDashboardRow`（約656万行・9.4GB）の増加とともに IO 待ちで長時間化した。取込履歴は削除前に `COMPLETED` になるが、スケジューラの実行中フラグは削除が終わるまで残る
+  - 対策: 生産スケジュール以外の DEDUP ダッシュボードでは、今回取り込んだ行の `dataHash`（`dedupKeyColumns` から計算）で候補を `[csvDashboardId, dataHash]` index から絞り、その中でキー一致の判定をする。削除範囲は従来以下（狭まるだけ）。古い計算方式の `dataHash` を持つ重複は夜間の `deleteDuplicateLosersGlobally` が引き続き処理する
+- **8) 夜間CSV重複削除が営業時間まで継続（2026-10-23）**:
+  - 原因: `加工機_日常点検結果` は 10/21 まで APPEND 相当で取り込まれ（全行 `dataHash` NULL、同じ点検行が取込ごとに追加。1キーで同一内容 24,932 行の例あり）、10/22 から DEDUP になった。その約410万行（大半が重複）を、5000件削除するたびに全件再ランキングしていた。
+  - 1 statement が13分以上かかり、ソートのディスク退避で Raspberry Pi 5 の IO が飽和、02:40開始の処理が営業時間へ持ち越された。
+  - 対策: 同じキー・勝者順序で1回スキャンして最大20万件の loser ID を取得し、主キー指定で5000件ずつ独立した短い statement で削除する。
+  - 当日05:30 JSTを期限とし、各スキャン・削除chunk前に確認する。期限到達後は残りのダッシュボードをスキップする。
+  - スキャンには残り時間の `SET LOCAL statement_timeout`（期限未指定時30分）を設定し、タイムアウトは正常に中断する。スキャン回数も既定50回に制限する。
+  - ダッシュボード単位の try/catch で障害を分離し、削除件数・停止理由・スキャン回数・経過時間をログに残す。
+  - 当日の対応: 08:44 に走っていた削除文を `pg_cancel_backend` で取り消した（ジョブは failed で終了、autovacuum は継続）。I/O 待ちは約63%から24〜40%へ。重複の山は期限内に数夜かけて減らす想定で、`stoppedReason: deadline` が続く間は未完了。
 
 ---
 

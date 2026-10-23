@@ -32,7 +32,7 @@ vi.mock('../../features/kiosk/inventory/setup/InventoryItemEditTab', () => ({
   InventoryItemEditTab: ({ accessPassword }: { accessPassword: string }) => <div>item-edit-open:{accessPassword}</div>
 }));
 
-function renderPage(state?: { importId: string }) {
+function renderPage(state?: { importId?: string; tab?: unknown }) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const view = render(
     <QueryClientProvider client={queryClient}>
@@ -86,6 +86,7 @@ describe('KioskItemInventorySettingsPage', () => {
       registerImport: { mutateAsync: vi.fn(), isPending: false },
       retryImport: { mutateAsync: vi.fn(), isPending: false },
       deleteImportPhoto: { mutateAsync: vi.fn(), isPending: false },
+      rotateImportPhoto: { mutateAsync: vi.fn(), isPending: false },
       reorderImportPhotos: { mutateAsync: vi.fn(), isPending: false },
     } as never);
   });
@@ -102,9 +103,19 @@ describe('KioskItemInventorySettingsPage', () => {
     expect(await screen.findByRole('tab', { name: '登録待ち' })).toHaveAttribute('aria-selected', 'true');
     expect(useInventoryImports).toHaveBeenCalledWith('2520', true);
     expect(screen.getByRole('button', { name: '登録する' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: '集計' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
     fireEvent.click(screen.getByRole('tab', { name: 'アイテム編集' }));
     expect(screen.getByText('item-edit-open:2520')).toBeInTheDocument();
     prompt.mockRestore();
+  });
+
+  it.each(['items', 'dashboard', 'unknown', 42])('accepts only existing initial tab ids (%s)', async (tab) => {
+    verify.mockResolvedValue({ success: true });
+    renderPage({ tab });
+    press('パスワードのテンキー', '2520');
+    expect(await screen.findByRole('tab', { name: tab === 'items' ? 'アイテム編集' : '登録待ち' })).toHaveAttribute('aria-selected', 'true');
+    if (tab === 'items') expect(screen.getByText('item-edit-open:2520')).toBeInTheDocument();
   });
 
   it('shows a wrong password next to the keypad and starts over', async () => {

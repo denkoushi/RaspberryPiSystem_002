@@ -55,7 +55,7 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         self.assertRegex(runtime, r"apt-get install -y --only-upgrade[^\n]* libexpat1")
         self.assertIn("dpkg-query -W -f='${Version}' libexpat1", runtime)
         self.assertIn(
-            'dpkg --compare-versions "${expat_version}" ge \'2.5.0-1+deb12u4\'',
+            'dpkg --compare-versions "${expat_version}" ge \'2.5.0-1+deb12u5\'',
             runtime,
         )
         self.assertIn(
@@ -89,6 +89,14 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         web = service(SERVER, "web")
         for path in ("/tmp:rw,nosuid,nodev", "/config:rw,nosuid,nodev", "/data:rw,nosuid,nodev", "/var/log/caddy"):
             self.assertIn(path, web)
+
+    def test_business_profile_intent_survives_restart_in_host_config(self):
+        expected = "INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: /app/config/business-profile-intent.json"
+        for compose, name in ((SERVER, "api"), (PHASE3, "api-blue")):
+            api = service(compose, name)
+            self.assertIn(expected, api)
+            self.assertIn("/config:/app/config", api)
+        self.assertIn("<<: *api-environment", service(PHASE3, "api-green"))
 
     def test_images_have_non_root_defaults_and_no_file_capability(self):
         self.assertRegex(API_DOCKERFILE, r"(?m)^USER node$")

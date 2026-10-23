@@ -35,3 +35,14 @@ export const ChevronUpIcon = ({ size = 14 }: { size?: number }) => <Icon size={s
 export const ArrowRightIcon = ({ size = 44 }: { size?: number }) => <Icon size={size} width={2}><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></Icon>;
 export const ArrowLeftIcon = ({ size = 16 }: { size?: number }) => <Icon size={size}><path d="M19 12H5" /><path d="M11 6l-6 6 6 6" /></Icon>;
 export const PlusIcon = ({ size = 14 }: { size?: number }) => <Icon size={size} width={2.6}><path d="M12 5v14M5 12h14" /></Icon>;
+
+export const ChartIcon = ({ size }: { size?: number }) => (
+  <Icon size={size}><path d="M4 3v18h17M8 17v-5M13 17V8M18 17V4" /></Icon>
+);
+
+// A photo with an arrow turning around its corner, so it does not read as reload.
+export const RotateRightIcon = ({ size = 20 }: { size?: number }) => (
+  <Icon size={size} width={2}><rect x="3" y="8" width="13" height="13" rx="1.5" /><path d="M3 18l4-4 3 3 2-2 4 4" /><path d="M12 3h4a5 5 0 0 1 5 5v2" /><path d="M18.5 8l2.5 2.5L23.5 8" /></Icon>
+);
+export const SearchIcon = () => <Icon><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></Icon>;
+export const MicIcon = () => <Icon><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>;

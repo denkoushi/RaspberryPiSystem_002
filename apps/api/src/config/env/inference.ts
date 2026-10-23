@@ -4,6 +4,9 @@ export const inferenceEnvShape = {
   PROCEDURE_SPEECH_TO_TEXT_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
     .transform((v) => v === 'true'),
+  PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('true'))
+    .transform((v) => v === 'true'),
   /**
    * 推論プロバイダ配列（JSON）。未設定時は LOCAL_LLM_* から id=default を1件合成。
    * 例:
@@ -52,7 +55,7 @@ export const inferenceEnvShape = {
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
     .transform((v) => v === 'true'),
   /**
-   * 業務機能全体で共有する DGX modelProfileId（photo_label / document_summary / admin / stackchan）。
+   * 業務機能全体で共有する DGX modelProfileId（photo_label / document_summary / admin）。
    * 設定時は用途別 *_RUNTIME_START_PROFILE_ID と一致させること。
    */
   INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID: z.preprocess(
@@ -74,11 +77,6 @@ export const inferenceEnvShape = {
   ),
   /** 要領書要約の system プロンプト上書き（未設定時はコード内デフォルト） */
   INFERENCE_DOCUMENT_SUMMARY_SYSTEM_PROMPT: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().min(1).optional()
-  ),
-  /** StackChan チャットの system プロンプト上書き（未設定時はコード内デフォルト） */
-  INFERENCE_STACKCHAN_SYSTEM_PROMPT: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
     z.string().min(1).optional()
   ),

@@ -12,6 +12,7 @@
     {"match": "prefix", "path": "e2e/", "component": "neutral"},
     {"match": "prefix", "path": "test-data/", "component": "neutral"},
     {"match": "prefix", "path": "scripts/ci/", "component": "neutral"},
+    {"match": "prefix", "path": "scripts/kiosk-sop/", "component": "neutral"},
     {"match": "prefix", "path": "scripts/deploy/tests/", "component": "neutral"},
     {"match": "exact", "path": "AGENTS.md", "component": "neutral"},
     {"match": "prefix", "path": "README", "component": "neutral"},

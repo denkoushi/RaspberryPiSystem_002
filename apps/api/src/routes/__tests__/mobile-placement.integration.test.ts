@@ -1,3 +1,5 @@
+vi.mock('../../config/env/load-dotenv.js', () => ({}));
+
 import { resetKnownFseibanCache } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../../app.js';
@@ -79,6 +81,36 @@ describe('mobile-placement API', () => {
     await prisma.clientDevice.deleteMany({
       where: { name: { startsWith: 'Test Client ' } }
     });
+  });
+
+  it('GET /api/mobile-placement/haizen-overview requires client authentication', async () => {
+    for (const headers of [{}, { 'x-client-key': 'invalid-overview-client' }]) {
+      const res = await app.inject({ method: 'GET', url: '/api/mobile-placement/haizen-overview', headers });
+      expect(res.statusCode).toBe(401);
+    }
+  });
+
+  it('GET /api/mobile-placement/haizen-overview returns current branches across shelves with machine names', async () => {
+    const { apiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.create({ data: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID, name: 'overview schedule', columnDefinitions: {}, templateConfig: {} } });
+    await prisma.csvDashboardRow.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+      rowData: { ProductNo: '9876543210', FSEIBAN: 'OVERVIEW-TEST', FHINCD: 'MH-OVERVIEW', FHINMEI: 'ＲＶ－１２Ａ', FSIGENCD: 'G1', FKOJUN: '1' }
+    } });
+    const request = (url: string, payload: object) => app.inject({ method: 'POST', url: `/api/mobile-placement/${url}`, headers: { 'x-client-key': apiKey }, payload });
+    for (const shelfCodeRaw of ['西-北-01', '東-南-02']) {
+      const registered = await request('register-order-placement', { shelfCodeRaw, manufacturingOrderBarcodeRaw: '9876543210' });
+      expect(registered.statusCode).toBe(200);
+    }
+    const res = await app.inject({ method: 'GET', url: '/api/mobile-placement/haizen-overview', headers: { 'x-client-key': apiKey } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.truncated).toBe(false);
+    expect(body.rows).toHaveLength(2);
+    expect(body.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ shelfCodeRaw: '西-北-01', manufacturingOrderBarcodeRaw: '9876543210', branchNo: 1, fseiban: 'OVERVIEW-TEST', fhincd: 'MH-OVERVIEW', fhinmei: 'ＲＶ－１２Ａ', machineName: 'ＲＶ－１２Ａ', updatedAt: expect.any(String) }),
+      expect.objectContaining({ shelfCodeRaw: '東-南-02', branchNo: 2, machineName: 'ＲＶ－１２Ａ' })
+    ]));
   });
 
   it('GET /api/mobile-placement/resolve-item returns item when itemCode matches', async () => {
@@ -216,7 +248,7 @@ describe('mobile-placement API', () => {
     expectApiError(missing, 404, '指定のスケジュール行が見つかりません');
   });
 
-  it('POST /api/mobile-placement/verify-slip-match returns ok when slips match', async () => {
+  it.each([undefined, '', 'H-1'])('POST /api/mobile-placement/verify-slip-match accepts optional parts (%s)', async (parts) => {
     const { apiKey: clientApiKey } = await createTestClientDevice();
     await prisma.csvDashboard.upsert({
       where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
@@ -252,14 +284,71 @@ describe('mobile-placement API', () => {
       },
       payload: {
         transferOrderBarcodeRaw: '999777',
-        transferPartBarcodeRaw: 'H-1',
+        transferPartBarcodeRaw: parts,
         actualOrderBarcodeRaw: '999777',
         actualFseibanRaw: '',
-        actualPartBarcodeRaw: 'H-1'
+        actualPartBarcodeRaw: parts
       }
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true });
+    expect(res.json()).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'productNo', expected: { fseiban: 'SEI-001', fhincd: 'H-1', partName: '部品名一致' } });
+  });
+
+  it('POST /api/mobile-placement/verify-slip-match resolves actual slip by purchase order', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    await prisma.csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      update: {},
+      create: {
+        id: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        name: 'test production schedule',
+        columnDefinitions: {},
+        templateConfig: {}
+      }
+    });
+    await prisma.csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        occurredAt: new Date(),
+        rowData: {
+          ProductNo: '999777',
+          FSEIBAN: 'SEI-001',
+          FHINCD: 'H-1',
+          FHINMEI: '部品名一致',
+          FSIGENCD: 'G1',
+          FKOJUN: '1'
+        }
+      }
+    });
+
+    const purchaseRow = await prisma.purchaseOrderLookupRow.create({
+      data: {
+        sourceCsvDashboardId: 'mobile-placement-test-purchase', purchaseOrderNo: '1234567890',
+        seiban: 'sei-001', purchasePartCodeRaw: 'H-002', purchasePartCodeNormalized: 'H-002',
+        purchasePartCodeMatchKey: 'H', purchasePartName: 'test'
+      }
+    });
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/mobile-placement/verify-slip-match',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-key': clientApiKey
+        },
+        payload: {
+          transferOrderBarcodeRaw: '999777',
+          transferPartBarcodeRaw: 'H-1',
+          actualOrderBarcodeRaw: '1234567890',
+          actualFseibanRaw: '',
+          actualPartBarcodeRaw: 'H-1'
+        }
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'purchaseOrder' });
+    } finally {
+      await prisma.purchaseOrderLookupRow.delete({ where: { id: purchaseRow.id } });
+    }
   });
 
   it('POST /api/mobile-placement/verify-slip-match returns part mismatch when order exists', async () => {
@@ -305,7 +394,7 @@ describe('mobile-placement API', () => {
       }
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: false, reason: 'TRANSFER_PART_MISMATCH' });
+    expect(res.json()).toMatchObject({ ok: false, reason: 'different_part', legacyReason: 'TRANSFER_PART_MISMATCH', actualResolvedBy: 'productNo' });
   });
 
   it('POST /api/mobile-placement/verify-slip-match returns ok when actual slip resolves by FSEIBAN only', async () => {
@@ -351,7 +440,7 @@ describe('mobile-placement API', () => {
       }
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true });
+    expect(res.json()).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'fseiban' });
   });
 
   it.each([['BE1N9321', 'exact', false], ['8E1N9321', 'corrected', false], ['8E1N9321', 'corrected', true]] as const)('POST /api/mobile-placement/parse-actual-slip-image snaps %s (%s, neighbour row: %s)', async (raw, match, withNeighbour) => {
@@ -397,6 +486,62 @@ describe('mobile-placement API', () => {
       }
       resetImageOcrPortForTests();
     }
+  });
+
+  it.each([
+    ['BE1N9321', 'exact', 'BE1N9321'],
+    ['8E1N9321', 'corrected', 'BE1N9321'],
+    ['ZZ999999', 'none', 'ZZ999999']
+  ] as const)('POST /api/mobile-placement/snap-fseiban-tokens snaps %s (%s)', async (raw, match, expected) => {
+    await prisma.csvDashboard.create({ data: {
+      id: PRODUCTION_SCHEDULE_DASHBOARD_ID, name: 'test schedule', columnDefinitions: {}, templateConfig: {}
+    } });
+    await prisma.csvDashboardRow.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+      rowData: { ProductNo: '0002178005', FSEIBAN: ' BE1N9321 ', FHINCD: 'H-1', FSIGENCD: 'G1', FKOJUN: '1' }
+    } });
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    const text = `製造オーダNo 0002178005\n製番 ${raw}`;
+    const res = await app.inject({
+      method: 'POST', url: '/api/mobile-placement/snap-fseiban-tokens',
+      headers: { 'x-client-key': clientApiKey }, payload: { tokens: [raw], text }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      engine: 'device', ocrText: text, ocrPreviewSafe: expect.any(String),
+      manufacturingOrder10: '0002178005', fseibanRaw: raw, fseibanMatch: match,
+      fseibanCandidates: match === 'none' ? [] : ['BE1N9321'], fseiban: expected
+    });
+  });
+
+  it('POST /api/mobile-placement/snap-fseiban-tokens accepts omitted text', async () => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    const res = await app.inject({
+      method: 'POST', url: '/api/mobile-placement/snap-fseiban-tokens',
+      headers: { 'x-client-key': clientApiKey }, payload: { tokens: ['BA1S3332'] }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ engine: 'device', ocrText: '', manufacturingOrder10: null });
+  });
+
+  it('POST /api/mobile-placement/snap-fseiban-tokens requires a client key', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/mobile-placement/snap-fseiban-tokens', payload: { tokens: ['BE1N9321'] }
+    });
+    expect([401, 403]).toContain(res.statusCode);
+  });
+
+  it.each([
+    {}, { tokens: [] }, { tokens: [''] }, { tokens: ['A'.repeat(33)] },
+    { tokens: Array.from({ length: 51 }, () => 'BE1N9321') }, { tokens: [123] },
+    { tokens: ['BE1N9321'], text: 'a'.repeat(4001) }, { tokens: ['BE1N9321'], text: 123 }
+  ])('POST /api/mobile-placement/snap-fseiban-tokens rejects invalid body %#', async (payload) => {
+    const { apiKey: clientApiKey } = await createTestClientDevice();
+    const res = await app.inject({
+      method: 'POST', url: '/api/mobile-placement/snap-fseiban-tokens',
+      headers: { 'x-client-key': clientApiKey }, payload
+    });
+    expect(res.statusCode).toBe(400);
   });
 
   it('POST /api/mobile-placement/register-order-placement creates event without updating Item', async () => {
@@ -450,6 +595,38 @@ describe('mobile-placement API', () => {
     expect(count).toBe(1);
     const stateCount = await prisma.orderPlacementBranchState.count();
     expect(stateCount).toBe(1);
+  });
+
+  it('accepts purchase slip metadata and replays a client record without another branch', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const purchaseOrderNo = '4501238876';
+    const row = await prisma.purchaseOrderLookupRow.create({ data: {
+      sourceCsvDashboardId: 'haizen-offline-test', purchaseOrderNo, seiban: 'S-OFFLINE',
+      purchasePartCodeRaw: 'MAT1', purchasePartCodeNormalized: 'MAT1', purchasePartCodeMatchKey: 'MAT1',
+      purchasePartName: '材料'
+    } });
+    try {
+      const payload = {
+        shelfCodeRaw: 'OUTDOOR-1', manufacturingOrderBarcodeRaw: purchaseOrderNo,
+        slipKind: 'purchase_order', clientRecordId: 'efecf674-c951-4fce-8db2-86dc1f24e718',
+        placedAt: new Date(Date.now() - 60_000).toISOString()
+      };
+      const send = () => app.inject({ method: 'POST', url: '/api/mobile-placement/register-order-placement', headers: { 'x-client-key': apiKey }, payload });
+      const first = await send();
+      expect(first.statusCode).toBe(200);
+      expect(first.json()).toMatchObject({ resolvedRowId: null, event: { placedAt: payload.placedAt }, branchState: { branchNo: 1 } });
+      const replay = await send();
+      expect(replay.statusCode).toBe(200);
+      expect(replay.json()).toEqual(first.json());
+      expect(await prisma.orderPlacementEvent.count()).toBe(1);
+      expect(await prisma.orderPlacementBranchState.count()).toBe(1);
+      expect(await prisma.orderPlacementEvent.findUnique({ where: { clientRecordId: payload.clientRecordId } })).toMatchObject({
+        slipKind: 'purchase_order', csvDashboardRowId: null,
+        scheduleSnapshot: { FSEIBAN: 'S-OFFLINE', FHINCD: 'MAT1', FHINMEI: '材料', PurchaseOrderNo: purchaseOrderNo }
+      });
+    } finally {
+      await prisma.purchaseOrderLookupRow.delete({ where: { id: row.id } });
+    }
   });
 
   it('GET /api/mobile-placement/order-placement-branches lists current shelves per branch', async () => {
@@ -627,11 +804,11 @@ describe('mobile-placement API', () => {
         'Content-Type': 'application/json',
         'x-client-key': apiKey
       },
-      payload: { shelfCodeRaw: '東-南-05' }
+      payload: { shelfCodeRaw: 'DAD-3220 南' }
     });
     expect(created.statusCode).toBe(200);
     const cj = created.json() as { shelf: { shelfCodeRaw: string; isStructured: boolean } };
-    expect(cj.shelf.shelfCodeRaw).toBe('東-南-05');
+    expect(cj.shelf.shelfCodeRaw).toBe('DAD-3220 南');
     expect(cj.shelf.isStructured).toBe(true);
 
     const dup = await app.inject({
@@ -641,7 +818,7 @@ describe('mobile-placement API', () => {
         'Content-Type': 'application/json',
         'x-client-key': apiKey
       },
-      payload: { shelfCodeRaw: '東-南-05' }
+      payload: { shelfCodeRaw: 'DAD-3220 南' }
     });
     expect(dup.statusCode).toBe(409);
   });
@@ -1158,4 +1335,90 @@ describe('mobile-placement API', () => {
     expect(body.scheduleCandidates.length).toBeGreaterThan(0);
     expect(body.scheduleCandidates[0].matchSource).toBe('schedule');
   });
+  it('verify requires an actual order or fseiban even when parts are omitted', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const res = await app.inject({ method: 'POST', url: '/api/mobile-placement/verify-slip-match', headers: { 'x-client-key': apiKey }, payload: { transferOrderBarcodeRaw: '1234567890' } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('DELETE shelf requires authentication, deletes only that shelf and cascades its photo', async () => {
+    const { apiKey, id } = await createTestClientDevice();
+    const headers = { 'x-client-key': apiKey };
+    const shelfCodeRaw = '西-北-01';
+    const path = `/api/mobile-placement/shelves/${encodeURIComponent(shelfCodeRaw)}`;
+    await prisma.mobilePlacementShelf.create({ data: { shelfCodeRaw } });
+    await prisma.mobilePlacementShelf.create({ data: { shelfCodeRaw: 'A-3' } });
+    await prisma.clientDevice.update({ where: { id }, data: { haizenPresetShelfCodeRaw: shelfCodeRaw } });
+    expect((await app.inject({ method: 'PUT', url: `${path}/photo`, headers, payload: { contentType: 'image/png', dataBase64: MIN_PNG.toString('base64') } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'DELETE', url: path })).statusCode).toBe(401);
+    expect(await prisma.mobilePlacementShelf.findUnique({ where: { shelfCodeRaw } })).not.toBeNull();
+    const deleted = await app.inject({ method: 'DELETE', url: path, headers });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json()).toEqual({ shelfCodeRaw });
+    expect(await prisma.mobilePlacementShelf.findUnique({ where: { shelfCodeRaw } })).toBeNull();
+    expect(await prisma.mobilePlacementShelf.findUnique({ where: { shelfCodeRaw: 'A-3' } })).not.toBeNull();
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id } })).haizenPresetShelfCodeRaw).toBeNull();
+    expect((await app.inject({ method: 'GET', url: `${path}/photo`, headers })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'DELETE', url: path, headers })).statusCode).toBe(404);
+  });
+
+  it('creates a photo shelf, reads authenticated bytes, updates memo and photo metadata', async () => {
+    const { apiKey, id } = await createTestClientDevice();
+    const headers = { 'x-client-key': apiKey };
+    const path = `/api/mobile-placement/shelves/${encodeURIComponent('50013_540AP 北')}`;
+    const created = await app.inject({ method: 'POST', url: '/api/mobile-placement/shelves', headers, payload: { shelfCodeRaw: '50013_540AP 北', displayLabel: '  南 上段  ' } });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().shelf.displayLabel).toBe('南 上段');
+    expect((await app.inject({ method: 'GET', url: `${path}/photo`, headers })).statusCode).toBe(404);
+    const uploaded = await app.inject({ method: 'PUT', url: `${path}/photo`, headers, payload: { contentType: 'image/png', dataBase64: MIN_PNG.toString('base64') } });
+    expect(uploaded.statusCode).toBe(200);
+    const fetched = await app.inject({ method: 'GET', url: `${path}/photo?v=${uploaded.json().photoUpdatedAt}`, headers });
+    expect(fetched.statusCode).toBe(200);
+    expect(fetched.rawPayload).toEqual(MIN_PNG);
+    expect(fetched.headers['content-type']).toBe('image/png');
+    expect(fetched.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+    const patched = await app.inject({ method: 'PATCH', url: path, headers, payload: { displayLabel: '  ロボドリル01  ' } });
+    expect(patched.statusCode).toBe(200);
+    const listed = await app.inject({ method: 'GET', url: '/api/mobile-placement/registered-shelves', headers });
+    expect(listed.json().shelves).toContainEqual(expect.objectContaining({ shelfCodeRaw: '50013_540AP 北', displayLabel: 'ロボドリル01', photoUpdatedAt: uploaded.json().photoUpdatedAt }));
+    const shelf = await prisma.mobilePlacementShelf.findUniqueOrThrow({ where: { shelfCodeRaw: '50013_540AP 北' }, include: { photo: true } });
+    expect(shelf.photo).toMatchObject({ byteSize: MIN_PNG.length, updatedByClientDeviceId: id });
+    expect((await app.inject({ method: 'PATCH', url: path, headers, payload: { displayLabel: null } })).statusCode).toBe(200);
+    await prisma.mobilePlacementShelf.delete({ where: { id: shelf.id } });
+    expect(await prisma.mobilePlacementShelfPhoto.findUnique({ where: { shelfId: shelf.id } })).toBeNull();
+  });
+
+  it('photo JSON accepts 1 MB decoded bytes but rejects excessive size, malformed data and MIME mismatch', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const headers = { 'x-client-key': apiKey };
+    await prisma.mobilePlacementShelf.create({ data: { shelfCodeRaw: '西-北-08' } });
+    const url = `/api/mobile-placement/shelves/${encodeURIComponent('西-北-08')}/photo`;
+    const bytes = Buffer.alloc(1024 * 1024); MIN_PNG.copy(bytes);
+    expect((await app.inject({ method: 'PUT', url, headers, payload: { contentType: 'image/png', dataBase64: bytes.toString('base64') } })).statusCode).toBe(200);
+    for (const payload of [
+      { contentType: 'image/png', dataBase64: Buffer.alloc(1024 * 1024 + 1).toString('base64') },
+      { contentType: 'image/jpeg', dataBase64: MIN_PNG.toString('base64') },
+      { contentType: 'image/svg+xml', dataBase64: MIN_PNG.toString('base64') },
+      { contentType: 'image/png', dataBase64: '!!!' }
+    ]) expect((await app.inject({ method: 'PUT', url, headers, payload })).statusCode).toBe(400);
+  });
+
+  it('photo and memo routes require a client key and reject unknown shelves / long memo', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const path = '/api/mobile-placement/shelves/MISSING';
+    const photo = { contentType: 'image/png', dataBase64: MIN_PNG.toString('base64') };
+    for (const request of [
+      { method: 'GET' as const, url: `${path}/photo` },
+      { method: 'PUT' as const, url: `${path}/photo`, payload: photo },
+      { method: 'PATCH' as const, url: path, payload: { displayLabel: null } }
+    ]) {
+      expect((await app.inject({ ...request, headers: { 'x-client-key': 'invalid-client-key' } })).statusCode).toBe(401);
+      expect((await app.inject({ ...request, headers: { 'x-client-key': apiKey } })).statusCode).toBe(404);
+    }
+    for (const request of [
+      { method: 'POST' as const, url: '/api/mobile-placement/shelves', payload: { shelfCodeRaw: '西-北-01', displayLabel: 'a'.repeat(61) } },
+      { method: 'PATCH' as const, url: path, payload: { displayLabel: 'a'.repeat(61) } }
+    ]) expect((await app.inject({ ...request, headers: { 'x-client-key': apiKey } })).statusCode).toBe(400);
+  });
+
 });

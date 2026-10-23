@@ -113,11 +113,13 @@ Android スマホ等から、**移動票・現品票の照合**および **製�
 
 ### `POST /api/mobile-placement/verify-slip-match`
 
-移動票・現品票それぞれについて、日程行を解決し、**同一の `FSEIBAN` + `FHINCD` ペア**か判定する（副作用なし）。
+移動票・現品票それぞれについて、日程行または購買照会の行を解決し、**同一の `FSEIBAN` + `FHINCD` ペア**か判定する（副作用なし）。
 
 - **移動票**: `transferOrderBarcodeRaw` を **ProductNo** として `listScheduleRowsByProductNo` と同系で解決。
 - **現品票**:  
-  - `actualOrderBarcodeRaw` が **空でない**ときは **ProductNo**（製造order番号）で解決。  
+  - `actualOrderBarcodeRaw` が **空でない**ときは **ProductNo**（製造order番号）で先に解決。未解決で前後空白を除いた値が10桁数字なら、購買照会と共通の読取で `PurchaseOrderLookupRow.purchaseOrderNo` を検索する。
+  - 注文番号の候補のうち、製番が移動票の `FSEIBAN` と一致（前後空白・大文字小文字を無視）し、`purchasePartCodeMatchKey` が移動票の `FHINCD` の照合キーと一致する行が必要。キーは購買照会と同じ括弧内表記・末尾数値枝番の除去を使う。単一候補でも一致検査を省略しない。
+  - 注文番号に行があってもペアが一致しなければ `FSEIBAN_OR_PART_PAIR_MISMATCH`、どちらの検索でも見つからなければ `ACTUAL_ORDER_UNRESOLVED`。
   - **空**のときは `actualFseibanRaw` を **FSEIBAN** として `listScheduleRowsByFseiban` と同系で解決。  
   - **`actualOrderBarcodeRaw` と `actualFseibanRaw` の少なくとも一方が必須**（両方空は 400）。
 - 部品側のスキャンは **`actualPartBarcodeRaw`**（FHINBAN バーコード等。日程行の `FHINCD` と照合）。
@@ -128,13 +130,13 @@ JSON:
 {
   "transferOrderBarcodeRaw": "移動票の製造order番号（1次元）",
   "transferPartBarcodeRaw": "移動票のFHINBAN/FHINCD（1次元）",
-  "actualOrderBarcodeRaw": "現品票の製造order番号（1次元または空）",
+  "actualOrderBarcodeRaw": "現品票の注文番号または製造order番号（1次元または空）",
   "actualFseibanRaw": "現品票の製番 FSEIBAN（任意。製造orderが空のときに使用）",
   "actualPartBarcodeRaw": "現品票のFHINBAN/FHINCD（1次元）"
 }
 ```
 
-応答: `{ "ok": true }` または `{ "ok": false, "reason": "..." }`（`reason` はサーバ内部コード文字列）。
+応答: `{ "ok": true }` または `{ "ok": false, "reason": "..." }`（`reason` はサーバ内部コード文字列）。解決経路が判明した場合は成功・失敗とも任意フィールド `actualResolvedBy: "productNo" | "purchaseOrder" | "fseiban"` を返す。注文番号経由でも、両票の部品バーコード検査は従来どおり行う。
 
 ### `POST /api/mobile-placement/parse-actual-slip-image`
 
@@ -235,6 +237,16 @@ JSON:
 ```
 
 `csvDashboardRowId` 指定時は、(1) スキャン値が当該行の `ProductNo` / `FSEIBAN` / `FHINCD` のいずれかと一致する、または (2) マスタへ解決した **`Item.itemCode` が、上記3フィールドのいずれかと一致**すること（**行と無関係な `itemCode` のみの一致では `MOBILE_PLACEMENT_SCHEDULE_MISMATCH`**）。
+
+### キオスク「配膳の場所」と `GET /api/mobile-placement/haizen-overview`
+
+在庫画面の「配膳の場所」から `/kiosk/inventory/haizen` を開く。登録済み棚を棚コード順に外観写真・件数・製番・品名で表示し、空の棚は「空き」として薄く表示する。写真サイズは小／中／大。棚を押すと左に写真、右に新しく置いた順の部品詳細と、同じ製造オーダーの別枝がある棚へのリンクを表示する。在庫タブ配下で動作する。過去の枝が現在の棚マスタにない棚を参照する場合も、「棚マスタ未登録」の写真なしカードとして場所を確認できる。
+
+番号検索は機種名／品番／製番のキー入力・候補選択に対応し、全角英数字、大小文字、ハイフン、空白の違いを吸収する。1棚だけに一致した場合はその棚を直接開く。音声検索は既存のキオスク音声経路を利用し、「製番 BA1S2320」「品番 K0381」「機種 RV-12A」の先頭語で種類を選ぶ。先頭語がなければ製番→品番→機種名の順で照合する。機種名は半角表示、マイクや音声認識が使えないときは番号検索を案内する。棚・配膳情報は60秒ごとに再取得し、更新時刻を表示する。経過日数による強調や区画フィルタは設けない。
+
+**新規API** は `x-client-key` 必須の読み取り専用で、クエリ不要。応答は `{ rows, truncated }`。`rows[]` は `id`、`shelfCodeRaw`、`manufacturingOrderBarcodeRaw`、`branchNo`、`fseiban`（FSEIBAN）、`fhincd`（FHINCD）、`fhinmei`（FHINMEI）、`machineName`、ISO形式の `updatedAt` を返す。品目文字列が欠けていれば `null`。機種名は既存の製番バッチ解決（MH/SH→補完→未登録表示）を使用する。更新日時降順・同時刻はID順で最大3,000枝を返し、超過時は `truncated: true`。画面も取得範囲が限定された旨を表示するため、この場合の検索結果・空き表示は全件を保証しない。
+
+**現在棚の正本**はAndroidの `register-order-placement` / `move-order-placement-branch` が更新する `OrderPlacementBranchState`。`HaizenCurrentPlacement` は下記Zero2W専用の製造オーダー単位の別系統であり、枝番を失う・二重計上することを避けるため混ぜない。既存 `haizen-current` の契約は変更しない。
 
 ### Zero 2 W 配膳追跡（専用。`OrderPlacementBranchState` とは別テーブル）
 

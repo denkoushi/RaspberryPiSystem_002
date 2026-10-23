@@ -12,6 +12,8 @@ import type { PdfPagesPort } from '../../knowledge/pdf-pages.port.js';
 import { buildProcedureMaterialGmailSearchQuery, ProcedureMaterialGmailIngestionService } from '../procedure-material-gmail-ingestion.service.js';
 import { normalizePhotoForStorage, PHOTO_RESIZE_STEPS, PROCEDURE_MATERIAL_MAX_PHOTO_BYTES, PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES, resolveAttachmentContentType, resolveProcedureMaterialGmailPacket, stripCidPlaceholders } from '../procedure-material-gmail-packet-resolver.js';
 
+vi.mock('../procedure-video.scheduler.js', () => ({ getProcedureVideoScheduler: () => ({ kick: vi.fn() }) }));
+
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn() } }));
 
 let image: Buffer;
@@ -281,9 +283,18 @@ describe('procedure-material Gmail packet', () => {
     expect(packet.videos).toHaveLength(1);
     expect(packet.videos[0]).toMatchObject({ filename: 'clip.mp4', buffer, contentType: 'video/mp4' });
   });
-  it.each(['invalid', 'jpeg', 'truncated'] as const)('rejects inferred PNG attachments containing %s bytes', async (contents) => {
+  it.each([
+    ['photo.png', 'image/png', 'jpeg', 'image/jpeg'],
+    ['2_photo_1.jpeg', 'image/jpeg', 'png', 'image/png'],
+  ] as const)('imports mislabeled %s (%s) by its decoded %s format', async (filename, mimeType, format, contentType) => {
+    const buffer = await sharp(image).toFormat(format).toBuffer();
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart(filename, { mimeType })]), client: { getAttachment: vi.fn().mockResolvedValue(buffer) } });
+    expect(packet).toMatchObject({ skippedAttachments: 0, warnings: [] });
+    expect(packet.photos[0]).toMatchObject({ filename, buffer, contentType, width: 4, height: 3 });
+  });
+  it.each(['invalid', 'gif', 'truncated'] as const)('rejects inferred PNG attachments containing %s bytes', async (contents) => {
     const buffer = contents === 'invalid' ? Buffer.from('not an image')
-      : contents === 'jpeg' ? inlineImage : image.subarray(0, image.length - 20);
+      : contents === 'gif' ? await sharp(image).gif().toBuffer() : image.subarray(0, image.length - 20);
     const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(buffer) };
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart('  ハンドル2.png  ', { mimeType: 'application/octet-stream' })]), client: attachmentClient });
     expect(packet).toMatchObject({ photos: [], videos: [], skippedAttachments: 1, warnings: ['ハンドル2.png: 画像を読み取れません'] });
@@ -776,7 +787,7 @@ describe('procedure-material Gmail ingestion', () => {
     expect(await h.service.runOnce({ config, allowWait: false })).toMatchObject({ processed: 0 }); expect(h.factory).not.toHaveBeenCalled();
     expect(logger.info).not.toHaveBeenCalled();
     await h.service.runOnce({ config, allowWait: false, manual: true }); expect(h.factory).toHaveBeenCalledWith(config, { allowWait: false });
-    expect(buildProcedureMaterialGmailSearchQuery({ ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true, subjectTokens: ['invalid'], fromEmail: 'someone@thkintechs.co.jp' })).toBe('(subject:"[Procedure-material]") in:inbox is:unread');
+    expect(buildProcedureMaterialGmailSearchQuery({ ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true, subjectTokens: ['invalid'], fromEmail: 'someone@thkintechs.co.jp' })).toBe('(subject:"[Procedure-material]" OR subject:"ProcedureMaterial") in:inbox is:unread');
     expect(BackupConfigSchema.parse({ storage: { provider: 'local' }, targets: [] }).procedureMaterialGmailIngest).toEqual({ enabled: false, subjectTokens: ['[Procedure-material]'], allowedSenderDomains: ['thkintechs.co.jp'] });
   });
   it.each([true, false])('restores an original removed by GC before row registration (reused: %s)', async (reused) => {
@@ -813,5 +824,99 @@ describe('procedure-material Gmail ingestion', () => {
     expect(h.store.stat).toHaveBeenCalledExactlyOnceWith(key);
     expect(h.store.write).toHaveBeenLastCalledWith({ key, data: image, mode: 'create', integrity: true });
     expect(exists).toBe(true);
+  });
+});
+
+const appManifest = {
+  schema_version: 1, source: { system: 'sharepoint', list: 'ProcedureMaterialList', item_id: 1, modified: '2026-10-19T03:36:27Z' },
+  id: 1, category: '保守', location: null, note: '7125 test', name_id: '007125',
+  photos: [{ index: 1, image: '1_photo_1.jpeg' }, { index: 2, image: '1_photo_2.jpeg' }],
+};
+const manifestPart = (value: unknown = appManifest): GmailMessagePart => ({
+  filename: '1_manifest.json', mimeType: 'application/json', body: { data: Buffer.from(JSON.stringify(value)).toString('base64url') },
+});
+function appParts(): GmailMessagePart[] {
+  return [manifestPart(), ...appManifest.photos.map(({ image: filename }) => photoPart(filename, {
+    mimeType: 'image/jpeg', body: { data: pageImage.toString('base64url') },
+  })), textPart('アプリから送信'), photoPart('unreferenced.png')];
+}
+function appHarness(parts = appParts(), subject = 'ProcedureMaterial item-1') {
+  const h = harness(parts);
+  h.gmail.getMessage.mockResolvedValue(message(parts, subject));
+  h.config.procedureMaterialGmailIngest.fromEmail = 'legacy@thkintechs.co.jp';
+  return h;
+}
+describe('procedure-material app Gmail ingestion', () => {
+  it.each(['ProcedureMaterial', 'ProcedureMaterial item-1', 'ProcedureMaterial\titem-1'])('saves exactly the two referenced APP photos despite legacy fromEmail for %s', async (subject) => {
+    const h = appHarness(appParts(), subject);
+    const options = { config: h.config, allowWait: false };
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 2, retryable: 0, messages: [{ trashed: true }] });
+    expect(h.gmail.searchMessagesAll).toHaveBeenCalledWith('(subject:"[Procedure-material]" OR subject:"ProcedureMaterial") in:inbox is:unread');
+    expect(h.rows).toEqual([1, 2].map((photoIndex) => expect.objectContaining({
+      origin: 'APP', kind: 'PHOTO', text: null, subjectHint: '保守・7125 test', contentType: 'image/jpeg',
+      appRef: { sourceSystem: 'sharepoint', sourceList: 'ProcedureMaterialList', itemId: 1, modified: appManifest.source.modified,
+        manifestId: 1, category: '保守', location: null, note: '7125 test', nameId: '007125', photoIndex },
+    })));
+    expect(h.store.write).toHaveBeenCalledTimes(2);
+    expect(h.gmail.getAttachment).not.toHaveBeenCalled();
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, duplicate: 2, messages: [{ trashed: true }] });
+    expect(h.rows).toHaveLength(2);
+    expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
+  });
+  it('saves an APP photo whose .jpeg attachment actually contains PNG bytes', async () => {
+    const png = await sharp(pageImage).png().toBuffer();
+    const parts = appParts().map((part) => part.filename === '1_photo_2.jpeg' ? { ...part, body: { data: png.toString('base64url') } } : part);
+    const h = appHarness(parts);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 2, retryable: 0, messages: [{ trashed: true }] });
+    expect(h.rows.map((row) => row.contentType)).toEqual(['image/jpeg', 'image/png']);
+  });
+  it.each(['missing', 'invalid-json', 'invalid-schema', 'wrong-source', 'wrong-list', 'duplicate-manifest', 'missing-photo', 'broken-photo', 'duplicate-photo', 'duplicate-index'])('leaves %s packets unread with no row or file saved', async (failure) => {
+    let parts = appParts();
+    if (failure === 'missing') parts = parts.slice(1);
+    if (failure === 'invalid-json') parts[0] = { ...manifestPart(), body: { data: Buffer.from('{').toString('base64url') } };
+    if (failure === 'invalid-schema') parts[0] = manifestPart({ ...appManifest, schema_version: 2 });
+    if (failure === 'wrong-source') parts[0] = manifestPart({ ...appManifest, source: { ...appManifest.source, system: 'other' } });
+    if (failure === 'wrong-list') parts[0] = manifestPart({ ...appManifest, source: { ...appManifest.source, list: 'ItemlistRaspi' } });
+    if (failure === 'duplicate-manifest') parts.push(manifestPart());
+    if (failure === 'missing-photo') parts.splice(2, 1);
+    if (failure === 'broken-photo') parts[2] = photoPart('1_photo_2.jpeg', { mimeType: 'image/jpeg', body: { data: Buffer.from('broken').toString('base64url') } });
+    if (failure === 'duplicate-photo') parts.push(parts[1]!);
+    if (failure === 'duplicate-index') parts[0] = manifestPart({ ...appManifest, photos: appManifest.photos.map((photo) => ({ ...photo, index: 1 })) });
+    const h = appHarness(parts);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 0, retryable: 1, messages: [{ trashed: false }] });
+    expect(h.rows).toEqual([]);
+    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.gmail.trashMessage).not.toHaveBeenCalled();
+    expect((await h.gmail.getMessage()).labelIds).toEqual(['INBOX', 'UNREAD']);
+  });
+  it('rejects an app sender outside the allowed domain before downloading attachments', async () => {
+    const h = appHarness();
+    const mail = message(appParts(), 'ProcedureMaterial');
+    mail.payload!.headers![1]!.value = 'sender@outside.example';
+    h.gmail.getMessage.mockResolvedValue(mail);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ skipped: 1, saved: 0 });
+    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.gmail.getAttachment).not.toHaveBeenCalled();
+    expect(h.gmail.trashMessage).not.toHaveBeenCalled();
+  });
+  it.each([null, '007125', 7125])('accepts optional employee number %s and nullable metadata', async (nameId) => {
+    const parts = appParts();
+    parts[0] = manifestPart({ ...appManifest, category: null, note: null, name_id: nameId });
+    const h = appHarness(parts);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 2 });
+    expect(h.rows[0]).toMatchObject({ appRef: { category: null, note: null, location: null, nameId: nameId == null ? null : String(nameId) } });
+  });
+  it('saves app video attachments through ProcedureVideo and deduplicates the entire mail on retry', async () => {
+    const parts = [...appParts(), { filename: 'clip.mp4', mimeType: 'video/mp4', body: { data: Buffer.from('video').toString('base64url') } }];
+    const h = appHarness(parts);
+    const videos: Array<Record<string, unknown>> = [];
+    Object.assign(h.db.procedureVideo, { findMany: vi.fn(async () => videos), findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { videos.push(data); return data; }) });
+    Object.assign(h.db, { $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(h.db)), $executeRaw: vi.fn() });
+    const options = { config: h.config, allowWait: false };
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 3, retryable: 0, messages: [{ trashed: true }] });
+    expect(videos).toEqual([expect.objectContaining({ status: 'PENDING', gmailMessageId: 'mail-1', sourceContentType: 'video/mp4' })]);
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, duplicate: 3, messages: [{ trashed: true }] });
+    expect(videos).toHaveLength(1);
   });
 });

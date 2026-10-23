@@ -4,12 +4,7 @@ export {
   type ParsedPurchaseOrderLookupCsvRow,
 } from './purchase-order-lookup-sync.pipeline.js';
 export { PurchaseOrderLookupSyncService, type PurchaseOrderLookupSyncResult } from './purchase-order-lookup-sync.service.js';
-export {
-  findEarliestPlannedStartDatesBySeibanAndMatchKey,
-  findEarliestPlannedStartDatesBySeibanAndNormalizedFhinCd,
-  purchaseOrderLookupSeibanMatchKey,
-  purchaseOrderLookupSeibanNormKey,
-} from './purchase-order-lookup-planned-start.service.js';
+export { findEarliestPlannedStartDatesForPurchaseRows } from './purchase-order-lookup-planned-start.service.js';
 export {
   findMasterFhinmeiByMatchKey,
   findMasterFhinmeiByNormalizedFhinCd,

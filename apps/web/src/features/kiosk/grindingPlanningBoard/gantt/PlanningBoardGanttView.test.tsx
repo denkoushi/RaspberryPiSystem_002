@@ -1,10 +1,21 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
-import { PlanningBoardGanttView } from './PlanningBoardGanttView';
+import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
+import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+
+// Exercise the controlled view with the same state ownership as the page.
+const PlanningBoardGanttView = forwardRef<import('./PlanningBoardGanttView').PlanningBoardGanttHandle,
+  Omit<React.ComponentPropsWithoutRef<typeof ControlledPlanningBoardGanttView>, 'focusedSeiban' | 'onFocusedSeibanChange'>>(
+  function TestGanttView(props, ref) {
+    const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
+    return <ControlledPlanningBoardGanttView {...props} ref={ref} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} />;
+  }
+);
 
 class TestPointerEvent extends MouseEvent {
   readonly pointerId: number;
@@ -40,6 +51,92 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it('completes a forward chain step with a sibling button and hides split completion', () => {
+    const items = [item(), item({ itemId: 'split', kind: 'split', processOrder: '20' })];
+    const values = props(items);
+    const onCompleteToggle = vi.fn();
+    const layout = buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    render(<PlanningBoardGanttView {...values} layout={layout} onCompleteToggle={onCompleteToggle} />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    const strip = screen.getByTestId('planning-gantt-chain-strip');
+    const button = within(strip).getByRole('button', { name: '完了にする' });
+    expect(button.parentElement?.closest('button')).toBeNull();
+    fireEvent.click(button);
+    expect(onCompleteToggle).toHaveBeenCalledWith(items[0], 'complete');
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('toggles backward completion without selecting or dragging completed bars (completed=%s)', (completed) => {
+    const target = item({ isCompleted: completed });
+    const values = props([target]);
+    const onCompleteToggle = vi.fn();
+    render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    const label = completed ? '未完了に戻す' : '完了にする';
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    expect(bar).toBeEnabled();
+    fireEvent.click(bar);
+    const button = screen.getByRole('button', { name: label });
+    expect(button.parentElement).toBe(bar.parentElement);
+    fireEvent.click(button);
+    expect(onCompleteToggle).toHaveBeenCalledWith(target, completed ? 'incomplete' : 'complete');
+    expect(values.onToggleItem).toHaveBeenCalledTimes(completed ? 0 : 1);
+    fireEvent.click(bar);
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+    if (completed) {
+      expect(bar).toHaveAttribute('data-drag-disabled', 'true');
+      fireEvent.pointerDown(bar, { pointerId: 1, clientX: 100, button: 0 });
+      fireEvent.pointerMove(bar, { pointerId: 1, clientX: 500 });
+      fireEvent.pointerUp(bar, { pointerId: 1, clientX: 500 });
+      expect(values.onDueDrop).not.toHaveBeenCalled();
+    }
+  });
+
+  it('stripes imported backward bars and shows a disabled import badge after tap', () => {
+    const values = props([item({ isCompleted: true, completionSource: 'import' }),
+      item({ itemId: 'manual', isCompleted: true, completionSource: 'manual' })]);
+    const onCompleteToggle = vi.fn();
+    render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    expect(bar.firstElementChild).toHaveStyle({ background: GANTT_IMPORT_HATCH });
+    expect(screen.getByTestId('planning-gantt-bar-manual').firstElementChild).toHaveClass('bg-slate-600');
+    expect(screen.getByTestId('planning-gantt-bar-manual').firstElementChild).not.toHaveStyle({ background: GANTT_IMPORT_HATCH });
+    expect(screen.queryByRole('button', { name: '取込で完了' })).not.toBeInTheDocument();
+    fireEvent.click(bar);
+    const badge = screen.getByRole('button', { name: '取込で完了' });
+    expect(badge).toHaveTextContent('取込');
+    expect(badge).toBeDisabled();
+    expect(badge.parentElement).toBe(bar.parentElement);
+    fireEvent.click(badge);
+    expect(onCompleteToggle).not.toHaveBeenCalled();
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+  });
+
+  it('hides backward split completion and disables the target while pending or locked', () => {
+    const values = props([item(), item({ itemId: 'split', kind: 'split' })]);
+    const onCompleteToggle = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-split'));
+    expect(screen.queryByRole('button', { name: '完了にする' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} completionPendingRowIds={new Set(['a'])} />);
+    expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();
+    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} disabled />);
+    expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();
+  });
+
+  it('clears the backward completion target when its item disappears', () => {
+    const values = props();
+    const onCompleteToggle = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    expect(screen.getByRole('button', { name: '完了にする' })).toBeVisible();
+    rerender(<PlanningBoardGanttView {...props([])} onCompleteToggle={onCompleteToggle} />);
+    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
+    expect(screen.queryByRole('button', { name: '完了にする' })).not.toBeInTheDocument();
+  });
+
   it.each(['backward', 'forward'] as const)('colors visible bars and split segments with a legend in %s mode without late badges or outlines', (mode) => {
     const items = [item({ originalDueDate: '2026-10-13' }),
       item({ itemId: 'b', fseiban: '********', fhincd: 'P2' }),
@@ -82,6 +179,44 @@ describe('PlanningBoardGanttView', () => {
     expect(late()).toHaveClass('bg-rose-400');
     expect(late()).not.toHaveClass('bg-amber-400');
     expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
+  });
+  it.each(['backward', 'forward'] as const)('orders legend chips by the left pane seiban priority in %s mode', (mode) => {
+    const items = [item({ itemId: 'x', fseiban: '26-9000', fhincd: 'P9' }), item({ itemId: 'b', fseiban: '26-2000', fhincd: 'P2' }),
+      item({ itemId: 'a', fseiban: '26-1000', fhincd: 'P1' })];
+    const layout = buildPlanningBoardGanttLayout({ items, mode, allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    render(<PlanningBoardGanttView {...props(items)} layout={layout} scale={2} colorBySeiban seibanOrder={['26-1000', '26-2000']} />);
+    const chips = within(screen.getByRole('group', { name: '製番の色分け凡例' })).getAllByRole('button').map((chip) => chip.textContent);
+    expect(chips).toEqual(['26-1000', '26-2000', '26-9000']);
+  });
+
+  it.each(['backward', 'forward'] as const)('scrolls to the earliest bar of a seiban when its legend chip is pressed in %s mode', (mode) => {
+    const items = [item(), item({ itemId: 'b', fhincd: 'P2' }), item({ itemId: 'c', fseiban: '26-1002', fhincd: 'P3' })];
+    const layout = buildPlanningBoardGanttLayout({ items, mode, allocation: 'alternate', view: 'resource', seibanOrder: [],
+      resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    render(<PlanningBoardGanttView {...props(items)} layout={layout} scale={2} colorBySeiban />);
+    const startOf = (id: string) => {
+      const bar = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).find((entry) => entry.item.itemId === id)!;
+      return bar.segments?.[0]?.start ?? bar.start ?? bar.end!;
+    };
+    const [earliest, later] = startOf('a') <= startOf('b') ? ['a', 'b'] : ['b', 'a'];
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const rect = (left: number, top: number, width: number) => ({ left, top, right: left + width, bottom: top + 40, width, height: 40 } as DOMRect);
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(rect(0, 100, 1000));
+    vi.spyOn(screen.getByTestId(`planning-gantt-bar-${earliest}`), 'getBoundingClientRect').mockReturnValue(rect(3000, 400, 80));
+    vi.spyOn(screen.getByTestId(`planning-gantt-bar-${later}`), 'getBoundingClientRect').mockReturnValue(rect(5000, 200, 80));
+    const scrollTo = vi.fn();
+    Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
+    const chip = within(screen.getByRole('group', { name: '製番の色分け凡例' })).getByRole('button', { name: '26-1001' });
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo.mock.calls[0]![0]).toMatchObject({ top: 264, behavior: 'smooth' });
+    expect(scrollTo.mock.calls[0]![0].left).toBeGreaterThan(2000);
+    // Pressing the same chip again only clears the spotlight.
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+    expect(scrollTo).toHaveBeenCalledTimes(1);
   });
   it.each(['backward', 'forward'] as const)('spotlights a seiban from the legend and clears it in %s mode', (mode) => {
     const items = [item(), item({ itemId: 'b', fseiban: '26-1002', fhincd: 'P2' }),
@@ -236,7 +371,7 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.pointerUp(bar, { clientX: 500 });
     expect(values.onDueDrop).not.toHaveBeenCalled();
     const completed = screen.getByTestId('planning-gantt-bar-b');
-    expect(completed).toBeDisabled();
+    expect(completed).toBeEnabled();
     fireEvent.click(completed);
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
@@ -593,29 +728,46 @@ describe('forward PlanningBoardGanttView', () => {
     dragBar();
     expect(special.onResourceReorder).not.toHaveBeenCalled();
   });
-  it('fits eight hours at the one-day scale, ticks every hour, and opens an hour before now but not before 8:00', () => {
-    const eightHourDay = (1120 - 168) / (8 / 24);
+  it('fits six hours at the one-day scale, ticks every hour, and opens just before now but not before 8:00', () => {
+    const sixHourDay = (1120 - 168) / (6 / 24);
     const at = (time: string) => ({ ...forwardProps(), scale: 1, layout: buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', now: new Date(`2026-10-14T${time}:00+09:00`), scale: 1 }) });
     const { unmount } = render(<PlanningBoardGanttView {...at('13:20')} />);
-    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(eightHourDay * 12 / 24);
+    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(sixHourDay * (13 + 10 / 60) / 24);
     expect(screen.getAllByText('13時').length).toBeGreaterThan(0);
     unmount();
     render(<PlanningBoardGanttView {...at('07:30')} />);
-    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(eightHourDay * 8 / 24);
+    expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBeCloseTo(sixHourDay * 8 / 24);
   });
-  it('returns to the home position when the clock reaches a new hour', () => {
-    const eightHourDay = (1120 - 168) / (8 / 24);
+  it('keeps the backward chart opening an hour before now on the hour', () => {
+    // The backward layout carries no clock of its own, so the chart reads the system time.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-14T13:20:00+09:00'));
+    try {
+      const layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'backward', allocation: 'alternate', view: 'resource',
+        seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 1 });
+      render(<PlanningBoardGanttView {...forwardProps()} scale={1} layout={layout} />);
+      const viewport = screen.getByLabelText('ガントの日付と工程');
+      const dayWidth = Number.parseFloat(screen.getAllByText('13時')[0]!.parentElement!.style.width);
+      expect(viewport.scrollLeft).toBeCloseTo((layout.today + 12 / 24 - layout.start) * dayWidth);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('returns to the home position every ten minutes', () => {
+    const sixHourDay = (1120 - 168) / (6 / 24);
     const at = (time: string) => ({ ...forwardProps(), scale: 1, layout: buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', now: new Date(`2026-10-14T${time}:00+09:00`), scale: 1 }) });
     const { rerender } = render(<PlanningBoardGanttView {...at('13:20')} />);
     const viewport = screen.getByLabelText('ガントの日付と工程');
     fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * 14 / 24);
-    rerender(<PlanningBoardGanttView {...at('13:50')} />);
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * 14 / 24);
+    expect(viewport.scrollLeft).toBeCloseTo(sixHourDay * (15 + 10 / 60) / 24);
+    rerender(<PlanningBoardGanttView {...at('13:29')} />);
+    expect(viewport.scrollLeft).toBeCloseTo(sixHourDay * (15 + 10 / 60) / 24);
+    rerender(<PlanningBoardGanttView {...at('13:30')} />);
+    expect(viewport.scrollLeft).toBeCloseTo(sixHourDay * (13 + 20 / 60) / 24);
     rerender(<PlanningBoardGanttView {...at('14:00')} />);
-    expect(viewport.scrollLeft).toBeCloseTo(eightHourDay * 13 / 24);
+    expect(viewport.scrollLeft).toBeCloseTo(sixHourDay * (13 + 50 / 60) / 24);
   });
   it('moves two hours with the arrow buttons and returns to today on each scale press', () => {
     const values = forwardProps([item()]);
@@ -851,6 +1003,20 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerDown(document.body, { pointerType });
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
   });
+  it('does not open the hover popover while a clicked bar shows its chain', () => {
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.pointerDown(bar, { pointerType: 'mouse', button: 0 });
+    fireEvent.pointerUp(bar, { pointerType: 'mouse' });
+    fireEvent.click(bar);
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    fireEvent.click(bar);
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+  });
   it('closes on Escape, viewport scroll, bar drag, scale, data and mode changes', () => {
     const values = forwardProps();
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
@@ -925,7 +1091,7 @@ describe('forward PlanningBoardGanttView', () => {
       Object.defineProperty(screen.getByRole('group', { name: '製番の色分け凡例' }), 'offsetHeight', { configurable: true, value: 40 });
       fireEvent(window, new Event('resize'));
       expect(viewport.style.height).toBe(`${Math.floor((window.innerHeight - 140) / 0.7 - 10 - 40)}px`);
-      expect(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.width)).toBeCloseTo((1600 - 168) / 8 - 2);
+      expect(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.width)).toBeCloseTo((1600 - 168) / 6 - 2);
       viewport.scrollLeft = 200;
       viewport.scrollTop = 100;
       fireEvent.pointerDown(viewport, { button: 1, clientX: 70, clientY: 70 });

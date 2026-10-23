@@ -7,6 +7,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+
 import { Button } from '../../components/ui/Button';
 
 import { AssemblyProcedureImageWithMarkers } from './AssemblyProcedureCanvas';
@@ -28,6 +29,7 @@ import type {
   AssemblyProcedureSequencePageDto,
   AssemblyProcedureSequenceStepDto
 } from './types';
+import type { ReactNode } from 'react';
 
 type Props = {
   sequence: AssemblyProcedureSequenceDto;
@@ -40,6 +42,8 @@ type Props = {
   onClose?: () => void;
   twoPages?: boolean;
   onToggleTwoPages?: () => void;
+  railExtra?: ReactNode;
+  railNav?: ReactNode;
   onCurrentStepChange?: (step: AssemblyProcedureSequenceStepDto | null, index: number, total: number) => void;
   boltMarkers?: AssemblyCanvasBolt[];
   checkMarkers?: AssemblyCanvasCheckItem[];
@@ -237,6 +241,8 @@ export function AssemblyProcedureSequenceViewer({
   onToggleList,
   twoPages = false,
   onToggleTwoPages,
+  railExtra,
+  railNav,
   onClose
 }: Props) {
   const steps = useMemo(
@@ -361,7 +367,7 @@ export function AssemblyProcedureSequenceViewer({
         <div className="flex h-full min-h-[18rem] items-center justify-center bg-slate-950 text-sm font-semibold text-white/60">
           表示できる要領書ページがありません
         </div>
-        {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} /> : null}
+        {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} extra={railExtra} nav={railNav} /> : null}
       </div>
     );
   }
@@ -373,12 +379,14 @@ export function AssemblyProcedureSequenceViewer({
         ? 'border-rose-300/45 bg-rose-950/45 text-rose-50'
         : 'border-cyan-300/25 bg-cyan-950/35 text-cyan-50';
 
-  const renderManualPage = (step: AssemblyProcedureSequenceStepDto, current: boolean) => {
+  const renderManualPage = (step: AssemblyProcedureSequenceStepDto, current: boolean, align?: 'start' | 'end') => {
+    // 2 ページ表示ではページ同士を中央で突き合わせ、あいだに余白を作らない
+    const alignClass = align === 'end' ? '!justify-end' : align === 'start' ? '!justify-start' : undefined;
     const pageCrop = current && showFullPage ? null : stepCrop(step);
     const elements = getStepOverlays(step);
     const assets = getStepAssets(step);
     if (pageCrop) return (
-      <AssemblyProcedureCropView pageUrl={step.pageUrl} crop={pageCrop} className="h-full w-full" overlay={
+      <AssemblyProcedureCropView pageUrl={step.pageUrl} crop={pageCrop} className={clsx('h-full w-full', alignClass)} overlay={
         <>
           <AssemblyProcedureOverlayLayer elements={elements} crop={pageCrop} assets={assets} />
           {current ? <AssemblyProcedureMarkerLayer bolts={visibleBolts} checkItems={visibleChecks} selectedBoltId={selectedBoltId} inputTargetBoltId={inputTargetBoltId} onToggleCheckItem={onToggleCheckItem} /> : null}
@@ -389,7 +397,7 @@ export function AssemblyProcedureSequenceViewer({
       <div key={step.pageUrl} className={clsx('h-full w-full', fitWidth ? 'overflow-y-auto' : 'overflow-hidden')} data-testid={current ? 'procedure-page-viewport' : undefined} data-fit-mode={fitMode}>
         <AssemblyProcedureImageWithMarkers
           fitToParent={!fitWidth}
-          className={fitWidth ? '!block w-full' : 'h-full w-full'}
+          className={fitWidth ? '!block w-full' : clsx('h-full w-full', alignClass)}
           imageContent={<KioskDocumentPageImage
             pageUrl={step.pageUrl}
             alt={current ? '' : '次ページ'}
@@ -516,13 +524,13 @@ export function AssemblyProcedureSequenceViewer({
           </aside>
         ) : null}
         <div
-          className={clsx("relative min-h-0 min-w-0 flex-1 overflow-hidden", manuals ? "p-5" : "p-2")}
+          className={clsx("relative min-h-0 min-w-0 flex-1 overflow-hidden", "p-2")}
           data-testid="assembly-work-step-canvas"
         >
           {manuals ? (
-            <div className="flex h-full min-w-0 gap-4" data-testid="procedure-page-spread" data-pages={spread ? 2 : 1}>
-              <div className="relative h-full min-w-0 flex-1">{renderManualPage(currentStep, true)}</div>
-              {spread ? <div className="h-full min-w-0 flex-1" data-testid="procedure-second-page">{nextStep ? renderManualPage(nextStep, false) : null}</div> : null}
+            <div className="flex h-full min-w-0 gap-1.5" data-testid="procedure-page-spread" data-pages={spread ? 2 : 1}>
+              <div className="relative h-full min-w-0 flex-1">{renderManualPage(currentStep, true, spread ? 'end' : undefined)}</div>
+              {spread ? <div className="h-full min-w-0 flex-1" data-testid="procedure-second-page">{nextStep ? renderManualPage(nextStep, false, 'start') : null}</div> : null}
             </div>
           ) : crop && !showFullPage ? (
             <AssemblyProcedureCropView
@@ -597,7 +605,7 @@ export function AssemblyProcedureSequenceViewer({
           ) : null}
         </div>
       </div>
-      {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} twoPages={spread} onToggleTwoPages={onToggleTwoPages} storyboardOpen={storyboardOpen} onToggleStoryboard={() => setStoryboardOpen(open => !open)} fitMode={fitMode} fitDisabled={Boolean(crop && !showFullPage)} onFit={mode => setFitChoice({ url: currentStep.pageUrl, mode })} index={stepIndex} total={steps.length} onPrevious={() => setStepIndex(index => Math.max(0, index - (spread ? 2 : 1)))} onNext={() => setStepIndex(index => Math.min(steps.length - 1, index + (spread ? 2 : 1)))} /> : null}
+      {manuals ? <ProcedureManualPageRail onClose={onClose} listOpen={listOpen} onToggleList={onToggleList} extra={railExtra} nav={railNav} twoPages={spread} onToggleTwoPages={onToggleTwoPages} storyboardOpen={storyboardOpen} onToggleStoryboard={() => setStoryboardOpen(open => !open)} fitMode={fitMode} fitDisabled={Boolean(crop && !showFullPage)} onFit={mode => setFitChoice({ url: currentStep.pageUrl, mode })} index={stepIndex} total={steps.length} onPrevious={() => setStepIndex(index => Math.max(0, index - (spread ? 2 : 1)))} onNext={() => setStepIndex(index => Math.min(steps.length - 1, index + (spread ? 2 : 1)))} /> : null}
     </div>
   );
 }

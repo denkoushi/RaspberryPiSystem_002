@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import { z } from 'zod';
-import { ApiError } from '../../lib/errors.js';
+import { ApiError, DomainHttpError } from '../../lib/errors.js';
 import {
   deleteImportedDrawing,
   importDrawingAndSave,
@@ -24,6 +24,7 @@ import {
 
 
 import {
+  processGroupSchema,
   optionalQueryTrueOnlyBooleanSchema,
   inspectionDrawingDigitQuerySchema,
   drawingOcrCandidateBodySchema,
@@ -42,6 +43,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
     visualTemplateService,
     drawingOcrService,
     drawingDimensionMapService,
+    drawingPlacementService,
     enqueueDrawingOcrAndWake
   } = deps;
 
@@ -72,7 +74,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
     app.get(
       '/part-measurement/visual-templates/:id',
       { preHandler: allowView, config: { rateLimit: false } },
-      async (request, reply) => {
+      async (request) => {
         const params = z.object({ id: z.string().uuid() }).parse(request.params);
         const q = z
           .object({
@@ -83,7 +85,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           includeInactive: q.includeInactive === true
         });
         if (!visual) {
-          return reply.status(404).send({ message: '図面テンプレートが見つかりません。' });
+          throw new DomainHttpError(404, '図面テンプレートが見つかりません。');
         }
         return { visualTemplate: serializeVisualTemplate(visual) };
       }
@@ -150,6 +152,29 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           candidates: result.candidates.map(serializeDrawingOcrCandidate),
           cache: serializeDrawingOcrStatus(result.cache)
         };
+      }
+    );
+
+    app.get(
+      '/part-measurement/visual-templates/:id/placement-proposals',
+      { preHandler: allowView, config: { rateLimit: false } },
+      async (request) => {
+        const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+        const { processGroup } = z.object({ processGroup: processGroupSchema.default('cutting') }).parse(request.query);
+        return drawingPlacementService.listForEditor(id, processGroup === 'grinding' ? 'GRINDING' : 'CUTTING');
+      }
+    );
+
+    app.post(
+      '/part-measurement/visual-templates/:id/placement-proposals/decisions',
+      { preHandler: allowWriteKiosk, config: { rateLimit: false } },
+      async (request) => {
+        const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+        const body = z.object({
+          approvedIds: z.array(z.string().uuid()).max(200).optional().default([]),
+          rejectedIds: z.array(z.string().uuid()).max(200).optional().default([])
+        }).parse(request.body);
+        return drawingPlacementService.recordDecisions(id, body);
       }
     );
 
@@ -231,7 +256,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
     app.patch(
       '/part-measurement/visual-templates/:id',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
-      async (request, reply) => {
+      async (request) => {
         const params = z.object({ id: z.string().uuid() }).parse(request.params);
         const body = z
           .object({
@@ -243,7 +268,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
           return { visualTemplate: serializeVisualTemplate(updated) };
         } catch (error) {
           if (error instanceof ApiError && error.statusCode === 404) {
-            return reply.status(404).send({ message: error.message });
+            throw new DomainHttpError(404, error.message);
           }
           throw error;
         }
@@ -262,12 +287,10 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         assertVisualCleanupToken(cleanupToken.trim(), params.id);
         const outcome = await visualTemplateService.deleteIfUnused(params.id);
         if (outcome === 'not_found') {
-          return reply.status(404).send({ message: '図面テンプレートが見つかりません。' });
+          throw new DomainHttpError(404, '図面テンプレートが見つかりません。');
         }
         if (outcome === 'in_use') {
-          return reply.status(409).send({
-            message: '図面テンプレートは使用中のため削除できません。'
-          });
+          throw new DomainHttpError(409, '図面テンプレートは使用中のため削除できません。');
         }
         return reply.status(204).send();
       }

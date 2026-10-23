@@ -1,1587 +1,295 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../../../config/env/load-dotenv.js', () => ({}));
+vi.mock('../../../tools/photo-tool-label/photo-tool-embedding-health.js', () => ({ readPhotoToolEmbeddingHealth: vi.fn() }));
 
 import { env } from '../../../../config/env.js';
-import { ApiError } from '../../../../lib/errors.js';
-import { DgxResourcePolicyStore } from '../dgx-resource.policy-store.js';
+import { getBusinessProfileIntentStore } from '../../../inference/config/business-profile-intent-store.js';
+import { readPhotoToolEmbeddingHealth } from '../../../tools/photo-tool-label/photo-tool-embedding-health.js';
+import { DgxResourceStateStore } from '../dgx-resource.state-store.js';
 import { createDgxResourceService } from '../dgx-resource.service.js';
+import type { MetricsPayload } from '../dgx-resource.probes.js';
 
-import type { LocalLlmGateway } from '../../local-llm-proxy.service.js';
-
-const defaultTestFetch = (async (): Promise<Response> =>
-  ({
-    ok: false,
-    status: 599,
-    text: async () => '',
-    json: async () => ({}),
-    headers: new Headers(),
-    url: '',
-  }) as Response) as typeof fetch;
-
-function makeSvc(
-  store: DgxResourcePolicyStore,
-  gateway: LocalLlmGateway,
-  opts?: {
-    fetchImpl?: typeof fetch;
-    sparkHostStatusUrl?: string;
-    comfyHealthUrl?: string;
-    metricsUrl?: string;
-  }
-) {
-  return createDgxResourceService({
-    fetchImpl: opts?.fetchImpl ?? defaultTestFetch,
-    localLlmGateway: gateway,
-    getAdminLocalLlmRuntimeConfig: () => ({
-      configured: true,
-      baseUrl: 'http://127.0.0.1:38081',
-      sharedToken: 'x'.repeat(32),
-      model: 'm1',
-      timeoutMs: 60_000,
-    }),
-    policyStore: store,
-    probeTimeoutMs: 3000,
-    ...(opts?.sparkHostStatusUrl ? { sparkHostStatusUrl: opts.sparkHostStatusUrl } : {}),
-    ...(opts?.comfyHealthUrl ? { comfyHealthUrl: opts.comfyHealthUrl } : {}),
-    ...(opts?.metricsUrl ? { metricsUrl: opts.metricsUrl } : {}),
+function setup() {
+  const stateStore = new DgxResourceStateStore(50);
+  const profile = {
+    id: 'model-a', displayNameJa: '業務モデル A', backend: 'blue', servedAlias: 'business',
+    enabled: true, status: 'available', businessOrchestrationEligible: true, recommended: true,
+    runtimeProfile: { engine: 'vllm', vllm: { gpuMemoryUtilization: 0.5 } },
+    deleteProtection: { canDelete: true, protected: false, reasons: [] },
+  };
+  const upstream = {
+    profiles: [profile], activeProfileId: 'model-a' as string | null, state: { backend: 'blue' },
+  };
+  const status = { configured: true, timeoutMs: 1000, health: { ok: true } };
+  let modelsOk = true;
+  let startOk = true;
+  let metrics: MetricsPayload = { unifiedMemoryUsedGiB: 32, unifiedMemoryTotalGiB: 128, startupFreeMemoryGiB: 80, gpuUtilPct: 23, gpuTemperatureC: 45, gpuPowerDrawW: 60 };
+  const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/start')) return new Response('', { status: startOk ? 200 : 500 });
+    if (url.endsWith('/stop-force')) return new Response('');
+    if (url.endsWith('/system/model-profiles')) return Response.json(upstream);
+    if (url.endsWith('/v1/models')) return Response.json({ data: [] }, { status: modelsOk ? 200 : 503 });
+    if (url.endsWith('/system/metrics')) return Response.json(metrics);
+    if (url.endsWith('/model-storage-delete/preview')) return Response.json({
+      ok: true, modelProfileId: 'model-a', displayNameJa: '業務モデル A', canDelete: true,
+      blockedReasons: [], storagePath: '/models/a', resolvedStoragePath: '/models/a',
+      requiredConfirmation: 'DELETE model-a', planFingerprint: 'f'.repeat(64),
+    });
+    if (url.endsWith('/model-storage-delete/execute')) return Response.json({ ok: true, ...JSON.parse(String(init?.body)) });
+    return new Response('', { status: 404 });
   });
+  const deps = {
+    fetchImpl, stateStore, probeTimeoutMs: 1000,
+    localLlmGateway: { getStatus: vi.fn(async () => status), createChatCompletion: vi.fn() },
+    getAdminLocalLlmRuntimeConfig: () => ({ configured: true, baseUrl: 'http://dgx.test', sharedToken: 'test-token', timeoutMs: 1000 }),
+  };
+  return {
+    svc: createDgxResourceService(deps), deps, stateStore, profile, upstream, status, fetchImpl,
+    setModelsOk: (value: boolean) => { modelsOk = value; }, setStartOk: (value: boolean) => { startOk = value; },
+    setMetrics: (value: MetricsPayload) => { metrics = value; },
+    setFreeMemory: (value: number) => { metrics = { ...metrics, startupFreeMemoryGiB: value }; },
+  };
 }
 
-describe('createDgxResourceService', () => {
-  it('SET_POLICY persists in store and logs event', async () => {
-    const store = new DgxResourcePolicyStore(20);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
+const original = {
+  LOCAL_LLM_RUNTIME_MODE: env.LOCAL_LLM_RUNTIME_MODE,
+  LOCAL_LLM_RUNTIME_CONTROL_START_URL: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
+  LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
+  LOCAL_LLM_RUNTIME_CONTROL_TOKEN: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
+  LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
+  LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
+  INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID: env.INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID,
+  INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: env.INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH,
+};
+beforeEach(() => {
+  vi.useFakeTimers();
+  Object.assign(env, {
+    LOCAL_LLM_RUNTIME_MODE: 'on_demand',
+    LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://dgx.test/start',
+    LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://dgx.test/stop',
+    LOCAL_LLM_RUNTIME_CONTROL_TOKEN: 'test-token',
+    LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS: 100,
+    LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS: 10,
+    INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID: undefined,
+    INFERENCE_BUSINESS_PROFILE_INTENT_FILE_PATH: undefined,
+  });
+  getBusinessProfileIntentStore().clearForTests();
+  vi.mocked(readPhotoToolEmbeddingHealth).mockReturnValue({ state: 'not_observed', lastSuccessAt: null, lastFailureAt: null, lastErrorBrief: null });
+});
+afterEach(() => {
+  Object.assign(env, original);
+  getBusinessProfileIntentStore().clearForTests();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
-    await svc.executeAction({ type: 'SET_POLICY', policyMode: 'private_ok' });
+describe('business overview', () => {
+  it.each(['not_observed', 'disabled', 'ok'] as const)('is ready with embedding %s', async (state) => {
+    vi.mocked(readPhotoToolEmbeddingHealth).mockReturnValue({ state, lastSuccessAt: null, lastFailureAt: null, lastErrorBrief: null });
+    const { svc } = setup();
     const overview = await svc.getOverview();
-
-    expect(overview.policy.mode).toBe('private_ok');
-    expect(svc.getEvents(5)[0]?.message).toContain('変更');
+    expect(overview.business.state).toBe('ready');
+    expect(overview.business.matchesIntent).toBeNull();
+    expect(overview.metrics).toEqual({ gpuName: null, modelMemBytes: null, otherMemBytes: null, unifiedMemUsedBytes: 32 * 1024 ** 3, unifiedMemTotalBytes: 128 * 1024 ** 3, gpuUtilPct: 23, temperatureC: 45, powerW: 60 });
   });
-
-  it('overview exposes DGX model profiles from gateway', async () => {
-    const store = new DgxResourcePolicyStore(20);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            ok: true,
-            activeProfileId: 'business_qwen36_27b_nvfp4',
-            state: { backend: 'blue' },
-            profiles: [
-              {
-                id: 'business_qwen36_27b_nvfp4',
-                displayNameJa: 'Qwen3.6 27B NVFP4',
-                backend: 'blue',
-                servedAlias: 'system-prod-primary',
-                recommended: true,
-                enabled: true,
-                status: 'available',
-              },
-            ],
-          }),
-        } as Response;
-      }
-      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-    const overview = await svc.getOverview();
-
-    expect(overview.modelProfiles.activeProfileId).toBe('business_qwen36_27b_nvfp4');
-    expect(overview.modelProfiles.activeStateBackend).toBe('blue');
-    expect(overview.modelProfiles.available[0]?.backend).toBe('blue');
-    expect(overview.runtimeSummary.activeProfileId).toBe('business_qwen36_27b_nvfp4');
-    expect(overview.runtimeSummary.activeBackend).toBe('blue');
-    expect(overview.runtimeSummary.runtimeSource).toBe('model_profile_state');
+  it('reports mismatch without replacing the intended model', async () => {
+    getBusinessProfileIntentStore().setFromOrchestration('model-b');
+    const overview = await setup().svc.getOverview();
+    expect(overview.business).toMatchObject({ state: 'ready_mismatch', matchesIntent: false, intendedProfile: { id: 'model-b' }, activeProfile: { id: 'model-a' } });
+    expect(getBusinessProfileIntentStore().getModelProfileId()).toBe('model-b');
+    expect(overview.alerts[0]?.messageJa).toContain('いまは別のモデルで動いています');
+    expect(JSON.stringify(overview.alerts)).not.toContain('model-b');
   });
-
-  it('overview treats null activeProfileId as ok when allowlist is fetched', async () => {
-    const store = new DgxResourcePolicyStore(20);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            ok: true,
-            activeProfileId: null,
-            profiles: [
-              {
-                id: 'business_qwen35_35b_gguf',
-                displayNameJa: 'Qwen3.5 35B GGUF',
-                backend: 'green',
-                servedAlias: 'system-prod-primary',
-                recommended: false,
-                enabled: true,
-                status: 'available',
-              },
-              {
-                id: 'business_qwen36_27b_nvfp4',
-                displayNameJa: 'Qwen3.6 27B NVFP4',
-                backend: 'blue',
-                servedAlias: 'system-prod-primary',
-                recommended: true,
-                enabled: true,
-                status: 'available',
-              },
-            ],
-          }),
-        } as Response;
-      }
-      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-    const overview = await svc.getOverview();
-
-    expect(overview.modelProfiles.status).toBe('ok');
-    expect(overview.modelProfiles.activeProfileId).toBeNull();
-    expect(overview.modelProfiles.errorMessageJa).toBeUndefined();
-    expect(overview.notes.some((note) => note.includes('degraded'))).toBe(false);
+  it('matches the configured business intent without changing resolver precedence', async () => {
+    getBusinessProfileIntentStore().setFromOrchestration('model-b');
+    env.INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID = 'model-a';
+    expect((await setup().svc.getOverview()).business).toMatchObject({ state: 'ready', matchesIntent: true });
   });
-
-  it('overview adds startupFit from startup free memory instead of current used memory only', async () => {
-    const store = new DgxResourcePolicyStore(20);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            ok: true,
-            activeProfileId: null,
-            profiles: [
-              {
-                id: 'business_ornith_35b_nvfp4',
-                displayNameJa: 'Ornith 1.0 35B NVFP4',
-                backend: 'blue',
-                servedAlias: 'system-prod-primary',
-                recommended: false,
-                enabled: true,
-                status: 'available',
-                runtimeProfile: {
-                  engine: 'vllm',
-                  vllm: { gpuMemoryUtilization: 0.65 },
-                },
-              },
-            ],
-          }),
-        } as Response;
-      }
-      if (u === 'http://127.0.0.1:38081/system/metrics') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            gpuUtilPct: 0,
-            unifiedMemoryUsedGiB: 0.6,
-            unifiedMemoryTotalGiB: 121.6,
-            freeMemoryGiB: 121,
-            startupFreeMemoryGiB: 48.6,
-            memoryMetricSource: 'compute_apps_memtotal',
-          }),
-        } as Response;
-      }
-      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-    const overview = await svc.getOverview();
-
-    expect(overview.kpis.startupFreeMemoryGiB).toBe(48.6);
-    expect(overview.modelProfiles.available[0]?.startupFit?.status).toBe('insufficient');
-    expect(overview.modelProfiles.available[0]?.startupFit?.requiredGiB).toBe(79);
+  it('degrades on embedding failure ahead of model mismatch', async () => {
+    getBusinessProfileIntentStore().setFromOrchestration('model-b');
+    vi.mocked(readPhotoToolEmbeddingHealth).mockReturnValue({ state: 'failed', lastSuccessAt: null, lastFailureAt: new Date().toISOString(), lastErrorBrief: '処理に失敗しました' });
+    expect((await setup().svc.getOverview()).business.state).toBe('degraded');
   });
-
-  it('PREVIEW_ORCHESTRATION_SCENARIO succeeds with modelProfileId when activeProfileId is null', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    store.setPolicyMode('private_ok');
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            ok: true,
-            activeProfileId: null,
-            profiles: [
-              {
-                id: 'business_qwen35_35b_gguf',
-                displayNameJa: 'Qwen3.5 35B GGUF',
-                backend: 'green',
-                servedAlias: 'system-prod-primary',
-                recommended: false,
-                enabled: true,
-                status: 'available',
-              },
-            ],
-          }),
-        } as Response;
-      }
-      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-    const preview = await svc.executeAction({
-      type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-      scenarioId: 'private_to_business',
-      modelProfileId: 'business_qwen35_35b_gguf',
-    });
-
-    expect(preview.scenarioPreview?.scenarioId).toBe('private_to_business');
-    expect(preview.scenarioPreview?.planFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  it.each(['gateway', 'models'] as const)('is down if %s does not respond', async (probe) => {
+    const test = setup();
+    if (probe === 'gateway') test.status.health.ok = false;
+    else test.setModelsOk(false);
+    expect((await test.svc.getOverview()).business.state).toBe('down');
   });
-
-  it('SET_POLICY experiment_first updates KPI label and exposes previous mode', async () => {
-    const store = new DgxResourcePolicyStore(20);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
-
-    await svc.executeAction({ type: 'SET_POLICY', policyMode: 'private_ok' });
-    let ov = await svc.getOverview();
-    expect(ov.policy.previousMode).toBe('business_first');
-    expect(ov.kpis.policyMode).toBe('private_ok');
-
-    await svc.executeAction({ type: 'SET_POLICY', policyMode: 'experiment_first' });
-    ov = await svc.getOverview();
-    expect(ov.policy.mode).toBe('experiment_first');
-    expect(ov.policy.previousMode).toBe('private_ok');
-    expect(ov.kpis.policyLabel).toBe('実験優先');
+  it('is unconfigured when no gateway is configured', async () => {
+    const test = setup(); test.status.configured = false;
+    expect((await test.svc.getOverview()).business.state).toBe('unconfigured');
   });
-
-  it('SET_POLICY same mode does not append duplicate event or rewrite previous mode', async () => {
-    const store = new DgxResourcePolicyStore(20);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
-
-    await svc.executeAction({ type: 'SET_POLICY', policyMode: 'private_ok' });
-    const firstEvents = svc.getEvents(10);
-    expect(firstEvents).toHaveLength(1);
-
-    const res = await svc.executeAction({ type: 'SET_POLICY', policyMode: 'private_ok' });
-    const ov = await svc.getOverview();
-
-    expect(res.message).toBe('私用OKモードのままです');
-    expect(ov.policy.previousMode).toBe('business_first');
-    expect(svc.getEvents(10)).toHaveLength(1);
+  it('prioritizes returning even when the LLM is unconfigured', async () => {
+    const test = setup(); test.status.configured = false; test.stateStore.startReturn('model-a');
+    expect((await test.svc.getOverview()).business.state).toBe('returning');
   });
-
-  it('sparkHost reflects GET probe when URL configured', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u.endsWith('/spark-health')) {
-        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      }
-      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-
-    const svc = makeSvc(store, gateway, {
-      sparkHostStatusUrl: 'http://127.0.0.1:9999/spark-health',
-      fetchImpl: fetchImpl as typeof fetch,
-    });
-
-    const ov = await svc.getOverview();
-    expect(ov.optionalProbes.sparkHostConfigured).toBe(true);
-    expect(ov.sparkHost.configured).toBe(true);
-    expect(ov.sparkHost.status).toBe('running');
-    expect(ov.sparkHost.httpStatus).toBe(200);
+  it('hides non-business profiles and never probes auxiliary workloads', async () => {
+    const test = setup();
+    test.upstream.profiles.push({ ...test.profile, id: 'personal-model', businessOrchestrationEligible: false });
+    const overview = await test.svc.getOverview();
+    expect(overview.modelProfiles.map((p) => p.id)).toEqual(['model-a']);
+    expect(test.fetchImpl.mock.calls.map(([url]) => String(url))).toEqual(expect.arrayContaining([
+      'http://dgx.test/system/model-profiles', 'http://dgx.test/v1/models', 'http://dgx.test/system/metrics',
+    ]));
+    expect(test.fetchImpl).toHaveBeenCalledTimes(3);
   });
-
-  it('sparkHost falls back to admin /healthz when explicit URL is absent', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/v1/models' || u === 'http://127.0.0.1:38081/healthz') {
-        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      }
-      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-
-    const svc = makeSvc(store, gateway, {
-      fetchImpl: fetchImpl as typeof fetch,
-    });
-
-    const ov = await svc.getOverview();
-    expect(ov.optionalProbes.sparkHostConfigured).toBe(true);
-    expect(ov.sparkHost.status).toBe('running');
-    expect(ov.sparkHost.probeUrl).toBe('http://127.0.0.1:38081/healthz');
-    expect(ov.notes.some((n) => n.includes('DGX_RESOURCE_SPARK_HOST_STATUS_URL'))).toBe(false);
+  it('returns null metrics and unavailable model list on failed optional reads', async () => {
+    const test = setup(); test.fetchImpl.mockResolvedValue(new Response('', { status: 503 }));
+    const overview = await test.svc.getOverview();
+    expect(overview.modelProfilesAvailable).toBe(false);
+    expect(Object.values(overview.metrics).every((value) => value === null)).toBe(true);
   });
+});
 
-  it('sparkHost fallback reports stopped when admin /healthz is unreachable', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: false, statusCode: 503 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/healthz') {
-        return { ok: false, status: 503, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      }
-      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-
-    const svc = makeSvc(store, gateway, {
-      fetchImpl: fetchImpl as typeof fetch,
-    });
-
-    const ov = await svc.getOverview();
-    expect(ov.optionalProbes.sparkHostConfigured).toBe(true);
-    expect(ov.sparkHost.status).toBe('stopped');
-    expect(ov.sparkHost.httpStatus).toBe(503);
-    expect(ov.sparkHost.probeUrl).toBe('http://127.0.0.1:38081/healthz');
+describe('business actions', () => {
+  it('returns in progress immediately, then records intent only after stable readiness', async () => {
+    const test = setup();
+    const result = await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-a' });
+    expect(result.businessReturn?.state).toBe('in_progress');
+    expect(getBusinessProfileIntentStore().get()).toBeNull();
+    await vi.advanceTimersByTimeAsync(20);
+    expect(test.stateStore.getBusinessReturn()).toMatchObject({ state: 'succeeded', profileId: 'model-a', failureReasonJa: null });
+    expect(getBusinessProfileIntentStore().get()).toMatchObject({ modelProfileId: 'model-a', source: 'orchestration' });
+    const posts = test.fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(String(posts[0]?.[0])).toBe('http://dgx.test/start');
+    expect(JSON.parse(String(posts[0]?.[1]?.body))).toMatchObject({ modelProfileId: 'model-a' });
+    expect(test.svc.getEvents(8)[0]?.message).toBe('「モデル A」に切り替えました。');
   });
-
-  it('uses admin /v1/system/metrics fallback when DGX_RESOURCE_METRICS_URL is unset', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/v1/models') {
-        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      }
-      if (u === 'http://127.0.0.1:38081/v1/system/metrics') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            gpuUtilPct: 63,
-            gpuTemperatureC: 46,
-            gpuPowerDrawW: 11,
-            gpuPowerLimitW: 120,
-            gpuClockSmMhz: 1280,
-            gpuClockGraphicsMhz: 1280,
-            gpuClockMemoryMhz: 850,
-            gpuPstate: 'P2',
-            gpuClocksThrottleReason: 'none',
-            gpuName: 'NVIDIA GB10',
-            driverVersion: '580.159.03',
-            unifiedMemoryUsedGiB: 82,
-            unifiedMemoryTotalGiB: 128,
-            freeMemoryGiB: 46,
-          }),
-        } as Response;
-      }
-      if (u === 'http://127.0.0.1:38081/healthz') {
-        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      }
-      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-    const ov = await svc.getOverview();
-
-    expect(ov.kpis.gpuUtilPct).toBe(63);
-    expect(ov.kpis.gpuTemperatureC).toBe(46);
-    expect(ov.kpis.gpuPowerDrawW).toBe(11);
-    expect(ov.kpis.gpuPowerLimitW).toBe(120);
-    expect(ov.kpis.gpuClockSmMhz).toBe(1280);
-    expect(ov.kpis.gpuClockGraphicsMhz).toBe(1280);
-    expect(ov.kpis.gpuClockMemoryMhz).toBe(850);
-    expect(ov.kpis.gpuPstate).toBe('P2');
-    expect(ov.kpis.gpuClocksThrottleReason).toBe('none');
-    expect(ov.kpis.gpuName).toBe('NVIDIA GB10');
-    expect(ov.kpis.driverVersion).toBe('580.159.03');
-    expect(ov.kpis.unifiedMemoryUsedGiB).toBe(82);
-    expect(ov.kpis.unifiedMemoryTotalGiB).toBe(128);
-    expect(ov.kpis.freeMemoryGiB).toBe(46);
-    expect(ov.notes.some((n) => n.includes('DGX_RESOURCE_METRICS_URL 未設定'))).toBe(false);
+  it('shares running state between service instances and rejects duplicate requests before validation', async () => {
+    const test = setup();
+    const first = test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-a' });
+    const second = createDgxResourceService(test.deps);
+    await expect(second.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-a' })).rejects.toMatchObject({ statusCode: 409 });
+    await first;
+    expect((await second.getOverview()).businessReturn.state).toBe('in_progress');
+    await expect(second.executeAction({ type: 'STOP_BUSINESS_LLM' })).rejects.toMatchObject({ statusCode: 409 });
+    await vi.advanceTimersByTimeAsync(20);
   });
-
-  it('prefers admin /system/metrics fallback when available', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/v1/models') {
-        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      }
-      if (u === 'http://127.0.0.1:38081/system/metrics') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            gpuUtilPct: 71,
-            unifiedMemoryUsedGiB: 88,
-            unifiedMemoryTotalGiB: 128,
-            freeMemoryGiB: 40,
-          }),
-        } as Response;
-      }
-      return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-    const ov = await svc.getOverview();
-
-    const systemMetricsAttempt = fetchImpl.mock.calls.find(([input, init]) => {
-      const u = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
-      return u === 'http://127.0.0.1:38081/system/metrics';
-    });
-    expect(systemMetricsAttempt).toBeDefined();
-    expect(systemMetricsAttempt![1]?.headers).toMatchObject({ 'X-LLM-Token': 'x'.repeat(32) });
-
-    expect(ov.kpis.gpuUtilPct).toBe(71);
-    expect(ov.kpis.unifiedMemoryUsedGiB).toBe(88);
-    expect(ov.kpis.unifiedMemoryTotalGiB).toBe(128);
-    expect(ov.kpis.freeMemoryGiB).toBe(40);
+  it('records a safe failure and preserves prior intent when start fails', async () => {
+    const test = setup(); test.setStartOk(false);
+    getBusinessProfileIntentStore().setFromOrchestration('model-b');
+    await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-a' });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(test.stateStore.getBusinessReturn().state).toBe('failed');
+    expect(getBusinessProfileIntentStore().getModelProfileId()).toBe('model-b');
+    expect((await test.svc.getOverview()).alerts.some((alert) => alert.id === 'return_failed')).toBe(true);
+    expect(test.stateStore.getBusinessReturn().failureReasonJa).not.toMatch(/http|token|500|start/);
   });
-
-  it('comfy comfyPolicy badge only under business_first', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    store.setPolicyMode('private_ok');
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (): Promise<Response> => ({
-      ok: false,
-      status: 503,
-      headers: new Headers(),
-      url: '',
-      text: async () => '',
-      json: async () => ({}),
-    })) as typeof fetch;
-
-    const svc = makeSvc(store, gateway, {
-      fetchImpl,
-      comfyHealthUrl: 'http://127.0.0.1:8188/health',
-    });
-
-    let ov = await svc.getOverview();
-    const comfy = ov.services.find((s) => s.id === 'private-comfyui');
-    expect(comfy?.badges).not.toContain('policy');
-
-    store.setPolicyMode('business_first');
-    ov = await svc.getOverview();
-    const comfy2 = ov.services.find((s) => s.id === 'private-comfyui');
-    expect(comfy2?.badges).toContain('policy');
+  it('retries start exactly once and times out if the active model never matches', async () => {
+    const test = setup(); test.upstream.activeProfileId = 'different';
+    await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-a' });
+    await vi.advanceTimersByTimeAsync(120);
+    expect(test.stateStore.getBusinessReturn().state).toBe('failed');
+    expect(test.stateStore.getBusinessReturn().failureReasonJa).toContain('時間内');
+    expect(getBusinessProfileIntentStore().get()).toBeNull();
+    expect(test.fetchImpl.mock.calls.filter(([url]) => String(url).endsWith('/start'))).toHaveLength(2);
+    await expect(test.svc.executeAction({ type: 'STOP_BUSINESS_LLM' })).resolves.toMatchObject({ ok: true });
   });
+  it.each(['missing', 'disabled', 'unavailable', 'personal', 'memory'] as const)('rejects a non-startable profile: %s', async (reason) => {
+    const test = setup();
+    if (reason === 'disabled') test.profile.enabled = false;
+    if (reason === 'unavailable') test.profile.status = 'unavailable';
+    if (reason === 'personal') test.profile.businessOrchestrationEligible = false;
+    if (reason === 'memory') { test.setFreeMemory(1); test.upstream.activeProfileId = null; }
+    await expect(test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: reason === 'missing' ? 'unknown' : 'model-a' })).rejects.toMatchObject({ statusCode: reason === 'missing' ? 400 : 409 });
+    expect(test.fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+    expect(test.stateStore.getBusinessReturn().state).toBe('idle');
+  });
+  it('stops only the business gateway with stop-force', async () => {
+    const test = setup();
+    await test.svc.executeAction({ type: 'STOP_BUSINESS_LLM' });
+    expect(test.fetchImpl).toHaveBeenCalledTimes(1);
+    expect(String(test.fetchImpl.mock.calls[0]?.[0])).toBe('http://dgx.test/stop-force');
+    expect(test.svc.getEvents(8)[0]?.message).toBe('業務 LLM を止めました。');
+  });
+  it('logs stop failures without raw upstream errors', async () => {
+    const test = setup(); test.fetchImpl.mockRejectedValue(new Error('https://secret.test?token=secret'));
+    await expect(test.svc.executeAction({ type: 'STOP_BUSINESS_LLM' })).rejects.toThrow();
+    expect(test.svc.getEvents(8)[0]?.message).toBe('業務 LLM を止められませんでした。');
+  });
+  it('preserves the storage deletion preview and execute contract', async () => {
+    const test = setup();
+    const preview = await test.svc.executeAction({ type: 'PREVIEW_MODEL_STORAGE_DELETE', modelProfileId: 'model-a' });
+    expect(preview.modelStorageDeletePreview?.requiredConfirmation).toBe('DELETE model-a');
+    await test.svc.executeAction({ type: 'EXECUTE_MODEL_STORAGE_DELETE', modelProfileId: 'model-a', planFingerprint: 'f'.repeat(64), confirmation: 'DELETE model-a' });
+    const call = test.fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/execute'));
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ modelProfileId: 'model-a', planFingerprint: 'f'.repeat(64), confirmation: 'DELETE model-a' });
+    expect(test.svc.getEvents(8)[0]?.message).toBe('「モデル A」の保存先を削除しました。');
+  });
+});
 
-  it('rejects LOCAL_LLM_START when not on_demand or control URLs missing', async () => {
-    const store = new DgxResourcePolicyStore(20);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
 
-    await expect(svc.executeAction({ type: 'LOCAL_LLM_START' })).rejects.toThrow(ApiError);
-
-    await expect(svc.executeAction({ type: 'LOCAL_LLM_START' })).rejects.toMatchObject({
-      code: 'DGX_RUNTIME_CONTROL_NOT_CONFIGURED',
+describe('switch console overview', () => {
+  it.each(['業務 モデル A', '業務　モデル A', '業務モデル A', 'モデル A'])('strips the business prefix: %s', async (name) => {
+    const test = setup(); test.profile.displayNameJa = name;
+    const data = await test.svc.getOverview();
+    expect(data.modelProfiles[0]?.displayName).toBe('モデル A');
+    expect(data.business.activeProfile?.displayName).toBe('モデル A');
+    expect(data.business.intendedProfile).toBeNull();
+  });
+  it.each([
+    [{ unifiedMemoryUsedGiB: 90, gpuProcessMemoryUsedGiB: 80 }, 80, 10],
+    [{ unifiedMemoryUsedGiB: 70, gpuProcessMemoryUsedGiB: 80 }, 80, 0],
+    [{ unifiedMemoryUsedGiB: 90 }, null, null],
+    [{ gpuProcessMemoryUsedGiB: 80 }, 80, null],
+  ])('reports memory breakdown %j', async (metrics, model, other) => {
+    const test = setup(); test.setMetrics(metrics);
+    expect((await test.svc.getOverview()).metrics).toMatchObject({
+      modelMemBytes: model == null ? null : model * 1024 ** 3,
+      otherMemBytes: other == null ? null : other * 1024 ** 3,
     });
   });
-
-  it('START_MODEL_PROFILE validates allowlist and POSTs gateway start with modelProfileId', async () => {
-    const prev = {
-      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
-      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
-      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
-      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
-    };
-    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
-    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
-    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
-    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token-xxxxxxxxxxxxxxxxxxxxxxxx';
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: true,
-          baseUrl: 'http://127.0.0.1:38081',
-          model: 'm1',
-          timeoutMs: 60_000,
-          health: { ok: true, statusCode: 200 },
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
-        const u = typeof input === 'string' ? input : (input as URL).href;
-        if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers(),
-            url: u,
-            text: async () => '',
-            json: async () => ({
-              ok: true,
-              activeProfileId: null,
-              profiles: [
-                {
-                  id: 'qwen36_35b_uncensored',
-                  displayNameJa: 'qwen36_35b_uncensored',
-                  backend: 'green',
-                  servedAlias: 'system-prod-primary',
-                  enabled: true,
-                  status: 'available',
-                },
-              ],
-            }),
-          } as Response;
-        }
-        if (u === 'http://127.0.0.1:38081/runtime/start') {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers(),
-            url: u,
-            text: async () => '',
-            json: async () => ({}),
-          } as Response;
-        }
-        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      });
-      const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-      const result = await svc.executeAction({
-        type: 'START_MODEL_PROFILE',
-        modelProfileId: 'qwen36_35b_uncensored',
-        reason: 'unit_test',
-      });
-
-      expect(result.ok).toBe(true);
-      expect(result.message).toContain('qwen36_35b_uncensored');
-      const startCall = fetchImpl.mock.calls.find((c) => String(c[0]) === 'http://127.0.0.1:38081/runtime/start');
-      expect(startCall).toBeDefined();
-      expect(JSON.parse(String(startCall![1]?.body))).toEqual({
-        reason: 'unit_test',
-        modelProfileId: 'qwen36_35b_uncensored',
-      });
-    } finally {
-      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
-      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
-      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
-      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
-    }
-  });
-
-  it('START_MODEL_PROFILE rejects unknown modelProfileId', async () => {
-    const store = new DgxResourcePolicyStore(20);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({ ok: true, activeProfileId: null, profiles: [] }),
-        } as Response;
-      }
-      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-    await expect(
-      svc.executeAction({ type: 'START_MODEL_PROFILE', modelProfileId: 'qwen36_35b_uncensored' })
-    ).rejects.toMatchObject({ code: 'DGX_MODEL_PROFILE_UNKNOWN' });
-  });
-
-  it('RELEASE_DGX_RESOURCES stops only configured runtime targets and reports skipped ones', async () => {
-    const prev = {
-      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
-      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
-      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
-      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
-      expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
-      agentStart: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL,
-      agentStop: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL,
-    };
-    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
-    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://dgx/start';
-    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://dgx/stop';
-    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token-xxxxxxxxxxxxxxxxxxxxxxxx';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://dgx/private/start';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://dgx/private/stop';
-    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = '';
-    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = '';
-    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = '';
-    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL = '';
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-        const u = typeof input === 'string' ? input : (input as URL).href;
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({}),
-        } as Response;
-      });
-      const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-      const result = await svc.executeAction({ type: 'RELEASE_DGX_RESOURCES', reason: 'unit_test_release' });
-
-      expect(result.releaseResult?.success).toBe(true);
-      expect(result.releaseResult?.steps.map((step) => [step.targetId, step.status])).toEqual([
-        ['system-prod-gateway', 'success'],
-        ['private-comfyui', 'success'],
-        ['experiment-lab', 'skipped'],
-        ['agent-container', 'skipped'],
-      ]);
-      expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toContain('http://dgx/stop-force');
-      expect(fetchImpl.mock.calls.map((call) => String(call[0]))).toContain('http://dgx/private/stop');
-    } finally {
-      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
-      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
-      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
-      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
-      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = prev.expStop;
-      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = prev.agentStart;
-      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL = prev.agentStop;
-    }
-  });
-
-  it('model storage delete preview and execute relay to DGX gateway with runtime token', async () => {
-    const prevToken = env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN;
-    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token-xxxxxxxxxxxxxxxxxxxxxxxx';
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: true,
-          baseUrl: 'http://127.0.0.1:38081',
-          model: 'm1',
-          timeoutMs: 60_000,
-          health: { ok: true, statusCode: 200 },
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
-        const u = typeof input === 'string' ? input : (input as URL).href;
-        if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers(),
-            url: u,
-            text: async () => '',
-            json: async () => ({ ok: true, activeProfileId: null, profiles: [] }),
-          } as Response;
-        }
-        if (u === 'http://127.0.0.1:38081/system/model-storage-delete/preview') {
-          expect(init?.headers).toMatchObject({ 'X-Runtime-Control-Token': env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN });
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers(),
-            url: u,
-            text: async () => '',
-            json: async () => ({
-              ok: true,
-              modelProfileId: 'business_ornith_35b_nvfp4',
-              displayNameJa: 'Ornith',
-              canDelete: true,
-              blockedReasons: [],
-              storagePath: '/srv/dgx/hf-cache/hub/models--ornith',
-              resolvedStoragePath: '/srv/dgx/hf-cache/hub/models--ornith',
-              requiredConfirmation: 'DELETE business_ornith_35b_nvfp4',
-              planFingerprint: 'f'.repeat(64),
-              sizeGiB: 22.5,
-            }),
-          } as Response;
-        }
-        if (u === 'http://127.0.0.1:38081/system/model-storage-delete/execute') {
-          expect(JSON.parse(String(init?.body))).toEqual({
-            modelProfileId: 'business_ornith_35b_nvfp4',
-            planFingerprint: 'f'.repeat(64),
-            confirmation: 'DELETE business_ornith_35b_nvfp4',
-          });
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers(),
-            url: u,
-            text: async () => '',
-            json: async () => ({
-              ok: true,
-              modelProfileId: 'business_ornith_35b_nvfp4',
-              displayNameJa: 'Ornith',
-              deletedStoragePath: '/srv/dgx/hf-cache/hub/models--ornith',
-              sizeGiB: 22.5,
-            }),
-          } as Response;
-        }
-        return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      });
-      const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-      const preview = await svc.executeAction({
-        type: 'PREVIEW_MODEL_STORAGE_DELETE',
-        modelProfileId: 'business_ornith_35b_nvfp4',
-      });
-      const execute = await svc.executeAction({
-        type: 'EXECUTE_MODEL_STORAGE_DELETE',
-        modelProfileId: 'business_ornith_35b_nvfp4',
-        planFingerprint: 'f'.repeat(64),
-        confirmation: 'DELETE business_ornith_35b_nvfp4',
-      });
-
-      expect(preview.modelStorageDeletePreview?.canDelete).toBe(true);
-      expect(execute.modelStorageDeleteExecute?.deletedStoragePath).toContain('models--ornith');
-    } finally {
-      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prevToken;
-    }
-  });
-
-  it('getOverview includes targets registry aligned with legacy services', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
-    const ov = await svc.getOverview();
-
-    expect(ov.targets).toHaveLength(8);
-    expect(ov.targets.map((t) => t.id)).toEqual([
-      'system-prod-gateway',
-      'system-prod-inference',
-      'system-prod-embedding',
-      'private-comfyui',
-      'experiment-lab',
-      'agent-container',
-      'spark-host',
-      'metrics-kpi',
-    ]);
-    expect(ov.services).toHaveLength(6);
-    const comfySvc = ov.services.find((s) => s.id === 'private-comfyui');
-    const comfyTgt = ov.targets.find((t) => t.id === 'private-comfyui');
-    expect(comfySvc?.status).toBe(comfyTgt?.status);
-  });
-
-  it('rejects EXECUTE_TARGET_ACTION start on read-only spark-host', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
-
-    await expect(
-      svc.executeAction({
-        type: 'EXECUTE_TARGET_ACTION',
-        targetId: 'spark-host',
-        action: 'start',
-      })
-    ).rejects.toMatchObject({ code: 'DGX_TARGET_ACTION_NOT_SUPPORTED' });
-  });
-
-  it('EXECUTE_TARGET_ACTION gateway start delegates same as LOCAL_LLM_START when misconfigured', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
-
-    await expect(
-      svc.executeAction({
-        type: 'EXECUTE_TARGET_ACTION',
-        targetId: 'system-prod-gateway',
-        action: 'start',
-      })
-    ).rejects.toMatchObject({ code: 'DGX_RUNTIME_CONTROL_NOT_CONFIGURED' });
-  });
-
-  it('does not change policy when workload adjustment fails before SET_POLICY', async () => {
-    const prev = {
-      expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
-      expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
-      expToken: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN,
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
-    };
-    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = 'http://127.0.0.1:9191/experiment/start';
-    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = 'http://127.0.0.1:9191/experiment/stop';
-    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = 'tok-xxx';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = undefined;
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = undefined;
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = undefined;
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      store.setPolicyMode('private_ok');
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: false,
-          health: { ok: false },
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (): Promise<Response> => ({
-        ok: false,
-        status: 503,
-        headers: new Headers(),
-        url: '',
-        text: async () => 'experiment stop failed',
-        json: async () => ({}),
-      })) as typeof fetch;
-
-      const svc = makeSvc(store, gateway, { fetchImpl });
-
-      await expect(
-        svc.executeAction({
-          type: 'SET_POLICY',
-          policyMode: 'business_first',
-          applyWorkloadChanges: true,
-        })
-      ).rejects.toThrow(ApiError);
-
-      const ov = await svc.getOverview();
-      expect(ov.policy.mode).toBe('private_ok');
-      expect(fetchImpl).toHaveBeenCalled();
-      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://127.0.0.1:9191/experiment/stop');
-      expect(svc.getEvents(10).some((e) => e.message.includes('業務優先'))).toBe(false);
-    } finally {
-      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
-      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = prev.expStop;
-      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = prev.expToken;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
-    }
-  });
-
-  it('SET_POLICY experiment_first with workload changes stops comfy only and does not stop gateway', async () => {
-    const prev = {
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
-      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
-      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
-      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
-      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
-    };
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/comfy/start';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/comfy/stop';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'comfy-token';
-    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
-    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
-    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
-    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token';
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: true,
-          health: { ok: true, statusCode: 200 },
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (): Promise<Response> => ({
-        ok: true,
-        status: 200,
-        headers: new Headers(),
-        url: '',
-        text: async () => '',
-        json: async () => ({}),
-      })) as typeof fetch;
-
-      const svc = makeSvc(store, gateway, { fetchImpl });
-
-      const result = await svc.executeAction({
-        type: 'SET_POLICY',
-        policyMode: 'experiment_first',
-        applyWorkloadChanges: true,
-      });
-
-      expect(result.ok).toBe(true);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://127.0.0.1:8188/comfy/stop');
-    } finally {
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
-      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
-      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
-      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
-      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
-    }
-  });
-
-  it('SET_POLICY private_ok with workload changes force-stops gateway after auxiliary workloads', async () => {
-    const prev = {
-      expStart: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL,
-      expStop: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL,
-      expToken: env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN,
-      agentStart: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL,
-      agentStop: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL,
-      agentToken: env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN,
-      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
-      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
-      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
-      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
-    };
-    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = 'http://127.0.0.1:9191/experiment/start';
-    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = 'http://127.0.0.1:9191/experiment/stop';
-    env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = 'exp-token';
-    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = 'http://127.0.0.1:9393/agent/start';
-    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL = 'http://127.0.0.1:9393/agent/stop';
-    env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN = 'agent-token';
-    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
-    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
-    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
-    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token';
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: true,
-          health: { ok: true, statusCode: 200 },
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (): Promise<Response> => ({
-        ok: true,
-        status: 200,
-        headers: new Headers(),
-        url: '',
-        text: async () => '',
-        json: async () => ({}),
-      })) as typeof fetch;
-
-      const svc = makeSvc(store, gateway, { fetchImpl });
-
-      const result = await svc.executeAction({
-        type: 'SET_POLICY',
-        policyMode: 'private_ok',
-        applyWorkloadChanges: true,
-      });
-
-      expect(result.ok).toBe(true);
-      expect(fetchImpl).toHaveBeenCalledTimes(3);
-      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://127.0.0.1:9191/experiment/stop');
-      expect(String(fetchImpl.mock.calls[1]?.[0])).toBe('http://127.0.0.1:9393/agent/stop');
-      expect(String(fetchImpl.mock.calls[2]?.[0])).toBe('http://127.0.0.1:38081/runtime/stop-force');
-      expect(store.getPolicyMode()).toBe('private_ok');
-    } finally {
-      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_START_URL = prev.expStart;
-      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_STOP_URL = prev.expStop;
-      env.DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_CONTROL_TOKEN = prev.expToken;
-      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_START_URL = prev.agentStart;
-      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_STOP_URL = prev.agentStop;
-      env.DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_CONTROL_TOKEN = prev.agentToken;
-      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
-      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
-      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
-      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
-    }
-  });
-
-  it('getOverview exposes monitoring.summary with stable shape', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
-    const ov = await svc.getOverview();
-
-    expect(ov.monitoring.sparkSummaryJa.length > 0).toBe(true);
-    expect(Array.isArray(ov.monitoring.alerts)).toBe(true);
-    expect(Array.isArray(ov.monitoring.targetHighlights)).toBe(true);
-    expect(ov.monitoring.lastScenarioFailure).toBeNull();
-  });
-
-  it('getOverview includes operator-facing console (workloads + actions)', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
-    const ov = await svc.getOverview();
-
-    expect(ov.operator).toBeDefined();
-    expect(ov.operator.workloads.map((w) => w.id)).toEqual([
-      'business_vlm',
-      'private_comfy',
-      'experiment_lab',
-      'agent_container',
-    ]);
-    expect(ov.operator.operatorActions).toHaveLength(4);
-    expect(ov.operator.operatorSummary.policyMode).toBe(ov.policy.mode);
-  });
-
-  it('PREVIEW_ORCHESTRATION_SCENARIO returns planFingerprint; EXECUTE rejects stale fingerprint', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: false,
-        health: { ok: false },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const svc = makeSvc(store, gateway);
-
-    const preview = await svc.executeAction({
-      type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-      scenarioId: 'business_to_private',
-    });
-
-    expect(preview.scenarioPreview).toBeTruthy();
-    expect(preview.scenarioPreview?.planFingerprint).toMatch(/^[a-f0-9]{64}$/);
-
-    await expect(
-      svc.executeAction({
-        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-        planFingerprint: '0'.repeat(64),
-        confirmed: true,
-      })
-    ).rejects.toMatchObject({
-      statusCode: 409,
-      code: 'DGX_SCENARIO_PLAN_STALE',
+  it.each([
+    [{ storageStatus: 'missing', status: 'unavailable' }, 'no_storage', '保存先なし'],
+    [{ enabled: false }, 'disabled', '停止中'],
+    [{ status: 'unavailable' }, 'disabled', '停止中'],
+    [{ status: 'unknown' }, 'disabled', '停止中'],
+    [{}, 'insufficient_memory', 'メモリ不足'],
+  ])('classifies unavailable models %j', async (fields, kind, reason) => {
+    const test = setup(); Object.assign(test.profile, fields); test.upstream.activeProfileId = null; test.setFreeMemory(1);
+    expect((await test.svc.getOverview()).modelProfiles[0]).toMatchObject({
+      censored: true, unavailableKind: kind, unavailableReasonJa: reason, startable: false,
+      requiredBytes: 64 * 1024 ** 3, fitAvailableBytes: 1024 ** 3,
     });
   });
-
-  it('PREVIEW_ORCHESTRATION_SCENARIO rejects unknown or unavailable business model profiles', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            ok: true,
-            activeProfileId: 'business_qwen36_27b_nvfp4',
-            profiles: [
-              {
-                id: 'business_qwen36_27b_nvfp4',
-                displayNameJa: 'Qwen3.6 27B NVFP4',
-                backend: 'blue',
-                servedAlias: 'system-prod-primary',
-                enabled: true,
-                status: 'available',
-              },
-              {
-                id: 'business_disabled',
-                displayNameJa: 'disabled',
-                backend: 'green',
-                servedAlias: 'system-prod-primary',
-                enabled: false,
-                status: 'unavailable',
-              },
-            ],
-          }),
-        } as Response;
-      }
-      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
+  it('reclaims the active model memory for a switch through the existing start contract', async () => {
+    const test = setup(); test.setFreeMemory(1);
+    test.upstream.profiles.push({ ...test.profile, id: 'model-b' });
+    const data = await test.svc.getOverview();
+    expect(data.modelProfiles.map((profile) => profile.startupFit)).toEqual(['fits', 'fits']);
+    expect(data.modelProfiles[1]).toMatchObject({ fitAvailableBytes: 65 * 1024 ** 3, requiredBytes: 64 * 1024 ** 3, unavailableKind: null });
+    await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-b' });
+    test.upstream.activeProfileId = 'model-b';
+    await vi.advanceTimersByTimeAsync(20);
+    expect(test.fetchImpl.mock.calls.filter(([url]) => String(url).endsWith('/stop-force'))).toHaveLength(0);
+    expect(test.stateStore.getBusinessReturn()).toMatchObject({ state: 'succeeded', phase: null });
+  });
+  it('limits events to the latest twenty', () => {
+    const test = setup();
+    for (let i = 0; i < 25; i++) test.stateStore.appendEvent(`操作 ${i}`);
+    expect(test.svc.getEvents(100)).toHaveLength(20);
+    expect(test.svc.getEvents(100)[0]?.message).toBe('操作 24');
+  });
+  it('exposes starting until start is accepted, checking while waiting, then null', async () => {
+    const test = setup();
+    const fetch = test.fetchImpl.getMockImplementation()!;
+    let accept!: () => void;
+    const accepted = new Promise<void>((resolve) => { accept = resolve; });
+    test.fetchImpl.mockImplementation(async (url, init) => {
+      if (String(url).endsWith('/start')) await accepted;
+      return fetch(url, init);
     });
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-    await expect(
-      svc.executeAction({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'private_to_business',
-        modelProfileId: 'missing',
-      })
-    ).rejects.toMatchObject({ statusCode: 400, code: 'DGX_MODEL_PROFILE_UNKNOWN' });
-
-    await expect(
-      svc.executeAction({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'private_to_business',
-        modelProfileId: 'business_disabled',
-      })
-    ).rejects.toMatchObject({ statusCode: 409, code: 'DGX_MODEL_PROFILE_UNAVAILABLE' });
-  });
-
-  it('PREVIEW_ORCHESTRATION_SCENARIO rejects businessOrchestrationEligible=false profile', async () => {
-    const store = new DgxResourcePolicyStore(10);
-    const gateway: LocalLlmGateway = {
-      getStatus: vi.fn(async () => ({
-        configured: true,
-        baseUrl: 'http://127.0.0.1:38081',
-        model: 'm1',
-        timeoutMs: 60_000,
-        health: { ok: true, statusCode: 200 },
-      })),
-      createChatCompletion: vi.fn(),
-    };
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
-      const u = typeof input === 'string' ? input : (input as URL).href;
-      if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-        return {
-          ok: true,
-          status: 200,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({
-            ok: true,
-            activeProfileId: null,
-            profiles: [
-              {
-                id: 'qwen36_35b_uncensored',
-                displayNameJa: 'qwen36_35b_uncensored',
-                backend: 'green',
-                servedAlias: 'system-prod-primary',
-                recommended: false,
-                businessOrchestrationEligible: false,
-                enabled: true,
-                status: 'available',
-              },
-            ],
-          }),
-        } as Response;
-      }
-      return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-    });
-    const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-    await expect(
-      svc.executeAction({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'private_to_business',
-        modelProfileId: 'qwen36_35b_uncensored',
-      })
-    ).rejects.toMatchObject({
-      statusCode: 400,
-      code: 'DGX_MODEL_PROFILE_NOT_ELIGIBLE_FOR_BUSINESS_RETURN',
-    });
-  });
-
-  it('private_to_business execute returns in_progress while selected model is still loading', async () => {
-    const prev = {
-      runtimeMode: env.LOCAL_LLM_RUNTIME_MODE,
-      runtimeStart: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
-      runtimeStop: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
-      runtimeToken: env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN,
-      readyTimeout: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
-      readyPoll: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-    };
-    env.LOCAL_LLM_RUNTIME_MODE = 'on_demand';
-    env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = 'http://127.0.0.1:38081/runtime/start';
-    env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = 'http://127.0.0.1:38081/runtime/stop';
-    env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = 'runtime-token';
-    env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = 90;
-    env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = 30;
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      store.setPolicyMode('private_ok');
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: true,
-          baseUrl: 'http://127.0.0.1:38081',
-          model: 'm1',
-          timeoutMs: 60_000,
-          health: { ok: true, statusCode: 200 },
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
-        const u = typeof input === 'string' ? input : (input as URL).href;
-        if (u === 'http://127.0.0.1:38081/system/model-profiles') {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers(),
-            url: u,
-            text: async () => '',
-            json: async () => ({
-              ok: true,
-              activeProfileId: 'business_qwen35_35b_gguf',
-              state: { backend: 'green' },
-              profiles: [
-                {
-                  id: 'business_qwen36_27b_nvfp4',
-                  displayNameJa: 'Qwen3.6 27B NVFP4',
-                  backend: 'blue',
-                  servedAlias: 'system-prod-primary',
-                  recommended: true,
-                  enabled: true,
-                  status: 'available',
-                },
-                {
-                  id: 'business_qwen35_35b_gguf',
-                  displayNameJa: 'Qwen3.5 35B GGUF',
-                  backend: 'green',
-                  servedAlias: 'system-prod-primary',
-                  recommended: false,
-                  enabled: true,
-                  status: 'available',
-                },
-              ],
-            }),
-          } as Response;
-        }
-        if (u === 'http://127.0.0.1:38081/v1/models') {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers(),
-            url: u,
-            text: async () => '',
-            json: async () => ({ data: [{ id: 'system-prod-primary' }] }),
-          } as Response;
-        }
-        if (u === 'http://127.0.0.1:38081/runtime/start' && init?.method === 'POST') {
-          return {
-            ok: true,
-            status: 200,
-            headers: new Headers(),
-            url: u,
-            text: async () => '',
-            json: async () => ({}),
-          } as Response;
-        }
-        return {
-          ok: false,
-          status: 404,
-          headers: new Headers(),
-          url: u,
-          text: async () => '',
-          json: async () => ({}),
-        } as Response;
-      });
-
-      const svc = makeSvc(store, gateway, { fetchImpl: fetchImpl as typeof fetch });
-
-      const preview = await svc.executeAction({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'private_to_business',
-        modelProfileId: 'business_qwen36_27b_nvfp4',
-      });
-      const execute = await svc.executeAction({
-        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
-        scenarioId: 'private_to_business',
-        modelProfileId: 'business_qwen36_27b_nvfp4',
-        planFingerprint: preview.scenarioPreview!.planFingerprint,
-        confirmed: true,
-      });
-
-      expect(execute.scenarioExecute?.success).toBe(true);
-      expect(execute.scenarioExecute?.outcomeKind).toBe('in_progress');
-      expect(execute.scenarioExecute?.readinessSummaryJa).toContain('DGX 側でモデルをロード中');
-      expect(execute.scenarioExecute?.readinessChecksJa).toBeUndefined();
-      expect(execute.scenarioExecute?.rollback).toBeUndefined();
-      expect(store.getPolicyMode()).toBe('business_first');
-    } finally {
-      env.LOCAL_LLM_RUNTIME_MODE = prev.runtimeMode;
-      env.LOCAL_LLM_RUNTIME_CONTROL_START_URL = prev.runtimeStart;
-      env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL = prev.runtimeStop;
-      env.LOCAL_LLM_RUNTIME_CONTROL_TOKEN = prev.runtimeToken;
-      env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = prev.readyTimeout;
-      env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = prev.readyPoll;
-    }
-  });
-
-  it('business_to_private succeeds only after strict readiness is confirmed', async () => {
-    const prev = {
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
-      readyTimeout: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
-      readyPoll: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-    };
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/start';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/stop';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'tok-private';
-    env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = 200;
-    env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = 10;
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: false,
-          health: { ok: false },
-          timeoutMs: 60_000,
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
-        const u = typeof input === 'string' ? input : (input as URL).href;
-        if (u === 'http://127.0.0.1:8188/start' && init?.method === 'POST') {
-          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-        }
-        if (u === 'http://127.0.0.1:8188/health' && init?.method === 'GET') {
-          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-        }
-        return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      });
-
-      const svc = makeSvc(store, gateway, {
-        fetchImpl: fetchImpl as typeof fetch,
-        comfyHealthUrl: 'http://127.0.0.1:8188/health',
-      });
-
-      const preview = await svc.executeAction({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-      });
-      const execute = await svc.executeAction({
-        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-        planFingerprint: preview.scenarioPreview!.planFingerprint,
-        confirmed: true,
-      });
-
-      expect(execute.scenarioExecute?.success).toBe(true);
-      expect(execute.scenarioExecute?.readinessSummaryJa).toContain('Strict Ready');
-      expect(execute.scenarioExecute?.readinessChecksJa?.every((c) => c.satisfied)).toBe(true);
-      expect(store.getPolicyMode()).toBe('private_ok');
-    } finally {
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
-      env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = prev.readyTimeout;
-      env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = prev.readyPoll;
-    }
-  });
-
-  it('business_to_private timeout returns rollback details and restores prior policy', async () => {
-    const prev = {
-      comfyStart: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL,
-      comfyStop: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL,
-      comfyToken: env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN,
-      readyTimeout: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
-      readyPoll: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-    };
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = 'http://127.0.0.1:8188/start';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = 'http://127.0.0.1:8188/stop';
-    env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = 'tok-private';
-    env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = 60;
-    env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = 10;
-
-    try {
-      const store = new DgxResourcePolicyStore(20);
-      const gateway: LocalLlmGateway = {
-        getStatus: vi.fn(async () => ({
-          configured: false,
-          health: { ok: false },
-          timeoutMs: 60_000,
-        })),
-        createChatCompletion: vi.fn(),
-      };
-      const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
-        const u = typeof input === 'string' ? input : (input as URL).href;
-        if ((u === 'http://127.0.0.1:8188/start' || u === 'http://127.0.0.1:8188/stop') && init?.method === 'POST') {
-          return { ok: true, status: 200, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-        }
-        if (u === 'http://127.0.0.1:8188/health' && init?.method === 'GET') {
-          return { ok: false, status: 503, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-        }
-        return { ok: false, status: 404, headers: new Headers(), url: u, text: async () => '', json: async () => ({}) } as Response;
-      });
-
-      const svc = makeSvc(store, gateway, {
-        fetchImpl: fetchImpl as typeof fetch,
-        comfyHealthUrl: 'http://127.0.0.1:8188/health',
-      });
-
-      const preview = await svc.executeAction({
-        type: 'PREVIEW_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-      });
-      const execute = await svc.executeAction({
-        type: 'EXECUTE_ORCHESTRATION_SCENARIO',
-        scenarioId: 'business_to_private',
-        planFingerprint: preview.scenarioPreview!.planFingerprint,
-        confirmed: true,
-      });
-
-      expect(execute.scenarioExecute?.success).toBe(false);
-      expect(execute.scenarioExecute?.rollback?.attempted).toBe(true);
-      expect(execute.scenarioExecute?.rollback?.policyRestoredJa).toContain('業務優先');
-      expect(store.getPolicyMode()).toBe('business_first');
-      expect(execute.scenarioExecute?.readinessChecksJa?.some((c) => c.code === 'private_comfy' && !c.satisfied)).toBe(true);
-    } finally {
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL = prev.comfyStart;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_STOP_URL = prev.comfyStop;
-      env.DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_CONTROL_TOKEN = prev.comfyToken;
-      env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS = prev.readyTimeout;
-      env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS = prev.readyPoll;
-    }
+    const result = await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-a' });
+    expect(result.businessReturn).toMatchObject({ state: 'in_progress', phase: 'starting' });
+    expect((await test.svc.getOverview()).businessReturn.phase).toBe('starting');
+    accept();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(test.stateStore.getBusinessReturn().phase).toBe('checking');
+    await vi.advanceTimersByTimeAsync(20);
+    expect(test.stateStore.getBusinessReturn()).toMatchObject({ state: 'succeeded', phase: null });
   });
 });

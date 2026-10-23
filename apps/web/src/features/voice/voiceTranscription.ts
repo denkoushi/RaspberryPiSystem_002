@@ -35,7 +35,8 @@ export async function startVoiceTranscription(
   active: () => boolean,
   onProcessing: () => void,
   onTranscript: (text: string) => Promise<void> | void,
-  onError: (error: VoiceInputError) => void
+  onError: (error: VoiceInputError) => void,
+  context?: string
 ) {
   const availability = getAssemblyProcedureSpeechToTextAvailability(session.abort.signal).catch(() => false);
   try {
@@ -66,13 +67,13 @@ export async function startVoiceTranscription(
           if (audio.size > 2_000_000) { onError('長すぎます'); return; }
           let result: { text: string };
           try {
-            result = await transcribeAssemblyProcedureDictation(audio, session.abort.signal);
+            result = await transcribeAssemblyProcedureDictation(audio, session.abort.signal, context);
           } catch (error) {
             if (!isAxiosError(error) || error.response?.status !== 429) throw error;
             const header = String(error.response.headers['retry-after'] ?? '');
             const seconds = /^[1-9]\d*$/.test(header) ? Math.min(Number(header), 5) : 2;
             await waitForRetry(seconds, session.abort.signal);
-            result = await transcribeAssemblyProcedureDictation(audio, session.abort.signal);
+            result = await transcribeAssemblyProcedureDictation(audio, session.abort.signal, context);
           }
           spokenText = result.text.trim();
         } else {

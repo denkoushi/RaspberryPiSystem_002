@@ -213,7 +213,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "signage-artifact-contract",
         ):
             self.assertIn(f"      - {dependency}\n", aggregate)
-        self.assertIn("uses: actions/checkout@v6", aggregate)
+        self.assertIn("uses: actions/checkout@v7", aggregate)
         self.assertIn("scripts/ci/validate_required_results.py", aggregate)
         self.assertIn('"api=$API_SELECTED:$API_RESULT"', aggregate)
         self.assertIn('"api-coverage=$API_SELECTED:$API_COVERAGE_RESULT"', aggregate)
@@ -284,7 +284,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("Require deterministic Signage artifact bytes", contract)
         self.assertIn("if: ${{ github.event_name != 'push' }}", contract)
         self.assertIn("Security scan exact Signage artifact image", contract)
-        self.assertIn("actions/upload-artifact@v6", contract)
+        self.assertIn("actions/upload-artifact@v7", contract)
         self.assertIn("gh version 2.96.0", contract)
         self.assertIn("ProductionAttestationBoundary", contract)
         for forbidden in ("packages: write", "attestations: write", "id-token: write"):
@@ -302,7 +302,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("packages: write", publish)
         self.assertIn("attestations: write", publish)
         self.assertIn("id-token: write", publish)
-        self.assertIn("actions/download-artifact@v7", publish)
+        self.assertIn("actions/download-artifact@v8", publish)
         self.assertIn("ghcr.io/denkoushi/raspisys-pi3-signage:${{ github.sha }}", publish)
         self.assertIn("predicate-path: signage-release-attestation.json", publish)
         self.assertIn("push-to-registry: true", publish)
@@ -395,7 +395,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("docker image tag", adoption)
 
         self.assertIn("git diff --exit-code", compatibility)
-        self.assertIn("50682226c1be734a141ba7bb3e599db07411f571", compatibility)
+        self.assertIn("a926af9a92ba82de56f4ae152391a061d8c4449a", compatibility)
         source_proof = compatibility.split(
             "Prove the adopted torque-agent source closure is unchanged", 1
         )[1].split("Setup pnpm workspace", 1)[0]

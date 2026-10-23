@@ -9,7 +9,7 @@ alwaysApply: false
 
 - 変更は目的ごとに分割し、混在を避ける（1コミット=1意図）
 - push/merge/release/deploy は明示依頼がある時のみ行う
-- 既定フローは `start` → feature branch/worktree作業 → PR → mainマージ → `finish` → `audit` とする
+- 既定フローは `start`（過去のmerged-clean taskを自動cleanup）→ feature branch/worktree作業 → PR → mainマージ → `finish`（残存分は次回`start`または`finish-merged`）→ `audit` とする
 - `main` への直接コミットは行わず、feature ブランチで作業する
 - task worktreeの起点はfetch済みの正確な`origin/main`とする。main worktreeのdirtyまたはdivergedは対象taskを止める理由にしない。
 
@@ -46,10 +46,15 @@ alwaysApply: false
 
 1. 作業前に`python3 -m scripts.git_lifecycle.cli audit --json`を実行し、既存のworktree、local branch、PR、remote-tracking refを読む。auditは削除や更新を行わない。
 2. `python3 -m scripts.git_lifecycle.cli start --branch feat/<scope>`を実行する。`start`は`git fetch --prune origin`と正確な`origin/main`の確認に成功した場合だけ起点を確定し、専用worktreeを作る。mainがdirtyまたはdivergedならmainを変更せず、`main_sync=skipped_dirty|skipped_diverged`を警告として返す。fetch失敗時やbranch/path衝突時は作成せず、既存内容を保持する。
+   作成前にtask root（`<repo>-worktrees/`）直下の`MERGED_CLEAN`かつPR番号のある対象を自動cleanupする。`--no-merged-cleanup`で省略でき、cleanupの失敗は警告と`merged_cleanup`に記録して作成を続ける。この自動cleanupではmain同期を行わず、開始時のfetch結果を維持する。
 3. 変更を実装し、通常のlint/test/buildとPRレビューを行う。
 4. PR merge後に`python3 -m scripts.git_lifecycle.cli finish --worktree <exact-path> --pr <number>`を実行する。同一repositoryのmerged PR、head branch/SHA一致、通常status clean、特殊index flagなしを確認し、合格した対象1件だけをforceなしで削除する。ignored materialは件数を警告するがcleanupを止めず、秘密資格情報はworktree外へ置く。local branchは期待SHAとのcompare-and-deleteで削除する。
 5. `finish`は対象cleanup後にmain同期を独立して試みる。cleanかつfast-forward可能なら`main_sync=updated`、既に同期済みなら`already_current`、dirtyなら`skipped_dirty`、divergedなら`skipped_diverged`とする。main同期をskipしても対象cleanup成功を取り消さない。
 6. 終了後に`python3 -m scripts.git_lifecycle.cli audit --json`を再実行し、PR・merge SHA・対象cleanup・main同期結果・保護した項目を完了報告へ記録する。
+
+残存分は`python3 -m scripts.git_lifecycle.cli finish-merged`でもcleanupできる。自動・手動batchとも`audit`の分類と`finish`の個別安全確認・再観測・forceなし削除・compare-and-deleteを使い、wildcardや手動の一括削除ではない。task root外はskipし、main、現在のcwdを含むworktree、他プロセスのcwdを含むworktreeを保護する。プロセス確認失敗時は全候補を保護して警告する。1件の失敗や保護で他候補を止めず、手動batchのmain同期はcleanup後に最大1回だけ行う。
+
+worktreeのHEADがmerged PRのheadの祖先である場合も、他の安全条件を満たせばmerged-cleanとして扱う。
 
 このCLIは開発端末で明示実行し、Deploy、Ansible、Docker build、fleet deploy、Git hook、CI共通preflightへ組み込まない。PR全件ページングは明示的なlifecycle操作時だけ行う。
 

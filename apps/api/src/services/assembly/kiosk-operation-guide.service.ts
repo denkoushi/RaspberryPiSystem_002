@@ -4,7 +4,7 @@ import path from 'node:path';
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
 import { GUIDE_FAMILY_ROUTES, type GuideFamily } from './kiosk-operation-guide-subject.js';
-import { BUSINESS_HERMES_SOURCE_DEFINITION_VERSION, type BusinessHermesSourceDefinition } from './business-hermes-source-adapters.js';
+import { BUSINESS_HERMES_SOURCE_DEFINITION_VERSION, type BusinessHermesSourceDefinition } from '../business-hermes/business-hermes-source-adapters.js';
 
 export type KioskOperationGuideMatch = 'screen' | 'keyword' | 'none';
 export type KioskOperationGuideLookupOptions = { families?: GuideFamily[] };
@@ -67,27 +67,32 @@ export function questionTerms(question: string): string[] {
   return [...new Set(terms.length ? terms : whole ? [whole] : [])];
 }
 
-function scoreSection(section: KioskOperationGuideSection, terms: string[]) {
+/**
+ * A keyword counts only when the question mentions it whole (在庫の数が違う mentions
+ * 数が違う; 在庫の補充 does not mention 補充タグ), so a keyword never fires on a
+ * fragment of itself and a multi-word keyword still fires across term boundaries.
+ */
+function keywordMentioned(question: string, keyword: string): boolean {
+  return keyword.length > 0 && normalize(question).includes(normalize(keyword));
+}
+
+function scoreSection(section: KioskOperationGuideSection, question: string, terms: string[]) {
   const title = normalize(section.screen);
-  const keywords = section.keywords.map(normalize);
   const heading = normalize(section.heading);
   const body = normalize(section.body);
   let score = 0;
   let screenHit = false;
-  let keywordHit = false;
   for (const term of terms) {
     if (title.includes(term)) {
       score += title === term ? 6 : 3;
       screenHit = true;
     }
-    if (keywords.some((keyword) => keyword.includes(term))) {
-      score += 3;
-      keywordHit = true;
-    }
     if (heading.includes(term)) score += 2;
     if (body.includes(term)) score += 1;
   }
-  return { score, screenHit, keywordHit };
+  const keywordHits = section.keywords.filter((keyword) => keywordMentioned(question, keyword)).length;
+  score += keywordHits * 3;
+  return { score, screenHit, keywordHit: keywordHits > 0 };
 }
 
 export class KioskOperationGuideIndex {
@@ -132,6 +137,12 @@ export class KioskOperationGuideIndex {
     return this.sections.length > 0;
   }
 
+  familiesForScreen(screen: string): GuideFamily[] {
+    const routes = this.sections.filter((section) => section.screen === screen).flatMap((section) => section.routes);
+    return (Object.keys(GUIDE_FAMILY_ROUTES) as GuideFamily[]).filter((family) =>
+      routes.some((route) => GUIDE_FAMILY_ROUTES[family].some((prefix) => route === prefix || route.startsWith(prefix + '/'))));
+  }
+
   search(query: string, limit: number): {
     results: Array<KioskOperationGuideSection & { truncated: boolean; score: number }>;
     total: number;
@@ -150,7 +161,7 @@ export class KioskOperationGuideIndex {
     const files = families.length ? new Set(this.sections.filter((section) => section.routes.some((route) =>
       prefixes.some((prefix) => route === prefix || route.startsWith(prefix + '/')))).map((section) => section.file)) : undefined;
     return this.sections.filter((section) => !files || files.has(section.file))
-      .map((section, index) => ({ section, index, ...scoreSection(section, terms) }))
+      .map((section, index) => ({ section, index, ...scoreSection(section, query, terms) }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score || a.index - b.index);
   }
@@ -193,15 +204,26 @@ export class KioskOperationGuideIndex {
    */
   unknownTerms(question: string): string[] {
     return questionTerms(question).filter((term) => !this.sections.some((section) =>
-      normalize(section.screen).includes(term) || section.keywords.some((keyword) => normalize(keyword).includes(term))));
+      normalize(section.screen).includes(term) || section.keywords.some((keyword) => keywordMentioned(term, keyword))));
+  }
+
+  familyMatchStrength(question: string, families: GuideFamily[]): KioskOperationGuideMatch {
+    if (!families.length) return 'none';
+    const ranked = this.rank(question, families);
+    if (ranked.some(({ screenHit }) => screenHit)) return 'screen';
+    if (ranked.some(({ keywordHit }) => keywordHit)) return 'keyword';
+    return 'none';
   }
 
   matchStrength(question: string, options: KioskOperationGuideLookupOptions = {}): KioskOperationGuideMatch {
-    if (options.families?.length && this.rank(question, options.families).length) return 'screen';
+    if (options.families?.length) {
+      const within = this.familyMatchStrength(question, options.families);
+      if (within !== 'none') return within;
+    }
     const terms = questionTerms(question);
     let strength: KioskOperationGuideMatch = 'none';
     for (const section of this.sections) {
-      const { screenHit, keywordHit } = scoreSection(section, terms);
+      const { screenHit, keywordHit } = scoreSection(section, question, terms);
       if (screenHit) return 'screen';
       if (keywordHit) strength = 'keyword';
     }

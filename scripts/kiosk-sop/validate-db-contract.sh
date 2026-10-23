@@ -88,9 +88,9 @@ pnpm --filter @raspi-system/api exec prisma migrate status
 unfinished_migrations="$(docker exec "$container_name" psql -U postgres -d borrow_return -Atc 'SELECT count(*) FROM "_prisma_migrations" WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL;')"
 test "$unfinished_migrations" = "0"
 
-pnpm --filter @raspi-system/api test -- src/routes/__tests__/part-measurement.integration.test.ts -t "creates visual template with PNG"
-pnpm --filter @raspi-system/api test -- src/routes/__tests__/part-measurement.integration.test.ts -t "creates, revises, detaches, and extends inspection drawing sibling groups"
-pnpm --filter @raspi-system/api test -- src/routes/__tests__/part-measurement.integration.test.ts -t "treats includeInactive=false as false and only returns inactive visual when true"
+pnpm --filter @raspi-system/api test src/routes/__tests__/part-measurement.integration.test.ts -t "creates visual template with PNG"
+pnpm --filter @raspi-system/api test src/routes/__tests__/part-measurement.integration.test.ts -t "creates, revises, detaches, and extends inspection drawing sibling groups"
+pnpm --filter @raspi-system/api test src/routes/__tests__/part-measurement.integration.test.ts -t "treats includeInactive=false as false and only returns inactive visual when true"
 
 docker exec -i "$container_name" psql -v ON_ERROR_STOP=1 -U postgres -d borrow_return <<'SQL'
 INSERT INTO "PartMeasurementVisualTemplate"

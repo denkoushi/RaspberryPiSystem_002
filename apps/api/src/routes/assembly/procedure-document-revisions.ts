@@ -67,9 +67,15 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
       if (!request.isMultipart()) throw procedureSpeechToTextError(400);
       let audio: Buffer | null = null;
       let contentType = '';
+      let hintKey: string | undefined;
       try {
-        for await (const part of request.parts({ limits: { fileSize: PROCEDURE_AUDIO_MAX_BYTES, files: 1, fields: 0, parts: 1 } })) {
-          if (part.type !== 'file' || part.fieldname !== 'file' || audio) throw procedureSpeechToTextError(400);
+        for await (const part of request.parts({ limits: { fileSize: PROCEDURE_AUDIO_MAX_BYTES, files: 1, fields: 1, parts: 2, fieldSize: 64 } })) {
+          if (part.type === 'field') {
+            if (part.fieldname !== 'context' || hintKey !== undefined || part.valueTruncated || typeof part.value !== 'string') throw procedureSpeechToTextError(400);
+            hintKey = part.value;
+            continue;
+          }
+          if (part.fieldname !== 'file' || audio) throw procedureSpeechToTextError(400);
           const chunks: Buffer[] = [];
           let size = 0;
           for await (const chunk of part.file) {
@@ -88,7 +94,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
         throw procedureSpeechToTextError(code === 'FST_REQ_FILE_TOO_LARGE' ? 413 : 400);
       }
       if (!audio?.length) throw procedureSpeechToTextError(400);
-      return await new ProcedureSpeechToTextService().transcribe(audio, contentType, abortController.signal);
+      return await new ProcedureSpeechToTextService().transcribe(audio, contentType, abortController.signal, hintKey);
     } catch (error) {
       if (error instanceof ApiError && error.statusCode === 429) {
         reply.header('Retry-After', String((error.details as { retryAfter?: number } | undefined)?.retryAfter ?? 2));
@@ -128,7 +134,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
   });
   app.post('/assembly/procedure-documents/:id/pages/blank', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id } = idParamsSchema.parse(request.params);
-    const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0) }).parse(request.body);
+    const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0), afterPageIndex: z.number().int().min(0).optional() }).parse(request.body);
     return { document: serializeAssemblyProcedureDocumentRevision(await service.addBlankPage({ documentId: id, ...body, ...await resolveAssemblyProcedureEditWriter(request) })) };
   });
   app.post('/assembly/procedure-documents/:id/materials/:materialId/place', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {

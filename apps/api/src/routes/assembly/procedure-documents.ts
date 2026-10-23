@@ -6,7 +6,7 @@ import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 
-import { ApiError } from '../../lib/errors.js';
+import { ApiError, DomainHttpError } from '../../lib/errors.js';
 import {
   resolveAssemblyProcedureMultipartReadLimit
 } from '../../lib/assembly-procedure-document-import.js';
@@ -203,10 +203,10 @@ export function registerAssemblyProcedureDocumentRoutes(
     return { documents: documents.map(serializeProcedureDocumentSummary) };
   });
 
-  app.get('/assembly/procedure-documents/:id', { preHandler: allowView }, async (request, reply) => {
+  app.get('/assembly/procedure-documents/:id', { preHandler: allowView }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const doc = await procedureService.getById(params.id, { includeInactive: true });
-    if (!doc) return reply.status(404).send({ message: '手順書が見つかりません' });
+    if (!doc) throw new DomainHttpError(404, '手順書が見つかりません');
     return { document: serializeProcedureDocument(doc) };
   });
 
@@ -302,14 +302,14 @@ export function registerAssemblyProcedureDocumentRoutes(
     const params = idParamSchema.parse(request.params);
     const usage = await procedureService.getReferenceUsage(params.id);
     if (usage.inProcedureManualAssignment) {
-      return reply.status(409).send({ message: procedureService.buildInUseMessage(usage) });
+      throw new DomainHttpError(409, procedureService.buildInUseMessage(usage));
     }
     if (usage.inBoltPageRef || usage.inCheckPageRef) {
-      return reply.status(409).send({ message: 'マーカー参照で使用中の手順書は削除できません' });
+      throw new DomainHttpError(409, 'マーカー参照で使用中の手順書は削除できません');
     }
     const result = await procedureService.deleteIfUnused(params.id, await resolveAssemblyProcedureEditWriter(request));
-    if (result === 'not_found') return reply.status(404).send({ message: '手順書が見つかりません' });
-    if (result === 'in_use') return reply.status(409).send({ message: 'テンプレートで使用中の手順書は削除できません' });
+    if (result === 'not_found') throw new DomainHttpError(404, '手順書が見つかりません');
+    if (result === 'in_use') throw new DomainHttpError(409, 'テンプレートで使用中の手順書は削除できません');
     return reply.status(204).send();
   });
 }

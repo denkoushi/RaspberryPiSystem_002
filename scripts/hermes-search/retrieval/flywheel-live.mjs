@@ -10,7 +10,7 @@ import { RELEVANT } from './flywheel-filter.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 import { learnedQueriesById } from './flywheel-learn.mjs';
 import { relevanceFailureReason } from './relevance-jev.mjs';
-import { createRetrievalAnswering, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
+import { createRetrievalAnswering, loadCauseById, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
 
 export const LOSS_STAGES = ['status', 'not_in_pool', 'judge_rejected', 'other_shown', 'failed'];
 // The day budget (1.5 s) is a kiosk latency limit, not a retrieval-quality one. At night the Pi 5
@@ -61,8 +61,11 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
   }
   const enrichmentById = await loadEnrichmentById(env);
   const learnedById = learned ? learnedQueriesById(learned, { states: null }) : await loadLearnedQueriesById(env);
+  const visibleRecords = authorizedRecords(records).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record)));
+  const causeById = await loadCauseById(env, visibleRecords);
   const answering = createRetrievalAnswering({
-    records: authorizedRecords(records).filter((record) => isConversationalSource(record.kind ?? recordSourceId(record))),
+    records: visibleRecords,
+    causeById,
     catalog,
     evaluate,
     dense,
@@ -82,11 +85,17 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         outcome,
         reason: outcome === 'unavailable' || outcome === 'failed' ? result.receipt?.reason ?? result.reason ?? null : null,
         shown,
+        groups: (result.display?.groups ?? []).filter(group => group.axis === 'cause')
+          .map(group => ({ axis: 'cause', buckets: group.buckets.map(({ value, count }) => ({ value, count })) })),
         candidates,
         judged,
         loss: lossStage({ relevant: relevantIds(row), outcome, shown, candidates, judged }),
         vectorStatus: result.receipt?.timings?.vectorStatus ?? null,
         plan: result.receipt?.plan ?? null,
+        // Category ids only: which cause the planner applied, or heard and dropped.
+        causeDecision: result.receipt?.causeDecision ?? null,
+        // Which answer kind the planner chose, and whether a breakdown was gated back to records.
+        intentDecision: result.receipt?.intentDecision ?? null,
         // The terms the planner could not resolve (field names, or its own questions such as
         // content, limit, period), so an ask-back can be diagnosed from the row the next morning.
         unresolved: Array.isArray(result.receipt?.unresolved) ? result.receipt.unresolved.filter((term) => typeof term === 'string' && term) : [],

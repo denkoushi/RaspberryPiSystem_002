@@ -25,6 +25,8 @@ scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible
 
 torque cutoverではjournalの最終到達境界を確認する。`PREPARED`失敗は全serviceが変更前のままなので、候補清掃結果を確認してから新しいcanonical runで再試行できる。`QUIESCED`以降の失敗は、選択Pi4すべてでbrowser、agent、BluetoothがOFFであり、切替を試みたimageが捕捉済みprevious imageへ戻ったことを確認する。片側だけを手動再開しない。Pi5がhealthyなら対称性だけを理由に戻さず、exact main release-setを用いる次のcanonical runで復旧する。
 
+Pi5の`release_pi5`がCompose環境の捕捉前（例: `prepare.yml`のpost-pull load待ち）に失敗した場合、rollbackはCompose環境の復元と切替系stepをskipし、`Preserve the original Pi5 candidate failure after rollback`で元の失敗を報告する。traffic切替は未実施で本番は変更前のままなので、原因（負荷など）を解消してから新しいcanonical runで再試行する（run `20260929-021529-37439f` で観測した`release_pi5_compose_environment is undefined`は修正済み）。
+
 実行中のrunへ別のmutationを重ねない。既存runの終了結果を確認してから次を判断する。
 
 ## 2. 失敗後の再実行
@@ -36,6 +38,14 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-
 ```
 
 planの対象hostとroleを確認し、明示承認後にcanonical entrypointから新しいrunを開始する。途中taskだけの再開、個別hostへの直接Ansible、SSH先のcheckoutは行わない。
+
+### Pi4初回導入の失敗後
+
+登録確認のpreflightが失敗した場合は、まだ初期導入を開始していないためempty rollbackは実行しない。API接続とinventoryの資格情報を確認し、[Pi5での端末登録手順](../guides/deployment.md#空のpi4キオスクへの初回導入) をDRY_RUNから実施する。登録確認は `GET /api/kiosk/sites`（登録済み200、未登録401）で、`lastSeenAt` やstatusを更新しない。
+
+`--first-install` の復旧先は空のキオスクであり、以前のimageを復元しない。prepare段階の失敗も含め、候補unitを停止・無効化してcontainerと新規volumeを除去し、配置ファイルとIBus/labwc設定を復元する。aptで導入したOSパッケージはアンインストールしない。既存desktopの無関係なデータは保持する。
+
+journalで `Fail the release after verified empty rollback` と、元の失敗理由、recapを確認する。復旧検証に失敗した場合はstagingを保持するため、途中のtaskだけを再実行せず原因を調査する。接続断・電源断ではrescueが完走できない場合もある。既存状態を削除してpreflightを迂回しない。初回成功は `/var/lib/raspi-release/standard/completed-<inventory_hostname>.json` に残り、次回は通常更新を使う。旧来の標準releaseには完了markerがないため、既存 `/etc/raspi-release`・project・status設定・unitも初回導入を拒否する証拠として扱う。
 
 ## 3. 復旧できたことを確認する
 

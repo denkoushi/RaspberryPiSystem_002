@@ -10,9 +10,10 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { groupMaterials, groupWorkInstructionCandidates, materialSource } from './procedure-material-grouping';
 import { ProcedureMaterialPhotoCache } from './procedure-material-photo-cache';
 import { emptyShelfFilters, filterShelfKnowledge, filterShelfMaterials, filterShelfWorkInstructions, ShelfFilterChips, ShelfHighlight, normalizeShelfQuery, shelfMatchExcerpt, shelfTabs, useShelfLists, workHasDates } from './procedure-material-shelf-search';
+import { MaterialSplitContents, MaterialSplitLoadingChip, useMaterialSplitSuggestions } from './procedure-material-split-suggestions';
 
-import type { ShelfFilters } from './procedure-material-shelf-search';
-import type { ProcedureWorkInstructionCandidate, ProcedureKnowledgeCandidate, ProcedureKnowledgeImportResult, ProcedureMaterialDto, ProcedureMaterialIngestResult, ProcedureMaterialState } from './procedure-material-types';
+import type { ShelfFilters, ShelfTab } from './procedure-material-shelf-search';
+import type { ProcedureWorkInstructionCandidate, ProcedureKnowledgeCandidate, ProcedureKnowledgeImportResult, ProcedureMaterialDto, ProcedureMaterialIngestResult } from './procedure-material-types';
 import type { ReactNode } from 'react';
 
 function MaterialPhoto({ id, alt, cache, knowledge = false, workInstruction = false, compact = false, onZoom }: { id: string; alt: string; cache: ProcedureMaterialPhotoCache; knowledge?: boolean; workInstruction?: boolean; compact?: boolean; onZoom: (load: () => Promise<Blob>, title: string) => void }) {
@@ -77,15 +78,45 @@ function MaterialCard({ title, query = '', source, date, checked, disabled, onCh
   </li>;
 }
 
-function MaterialBundle({ title, query = '', subtitle, count, photoCount, open, onToggle, onSelectAll, disabled, children }: {
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // The kiosk may be served without a secure context, where the async clipboard API is unavailable.
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    try { return document.execCommand('copy'); } catch { return false; } finally { area.remove(); }
+  }
+}
+
+function CopyNoteButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (copied === null) return undefined;
+    const timer = window.setTimeout(() => setCopied(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  return <button type="button" title={text} className="relative h-9 rounded-lg border border-[#344252] px-3 text-[15px] font-normal text-[#9fadb9] before:absolute before:-inset-y-1 before:inset-x-0" onClick={(event) => { event.stopPropagation(); void copyText(text).then(setCopied); }}>
+    {copied === null ? 'メモをコピー' : copied ? 'コピーしました' : 'コピーできません'}
+  </button>;
+}
+
+function MaterialBundle({ title, query = '', subtitle, count, photoCount, open, onToggle, onSelectAll, disabled, children, judging = false, note }: {
   title: string; query?: string; subtitle: string; count: number; photoCount?: boolean; open: boolean;
-  onToggle: () => void; onSelectAll?: () => void; disabled: boolean; children: ReactNode;
+  onToggle: () => void; onSelectAll?: () => void; disabled: boolean; children: ReactNode; judging?: boolean; note?: string | null;
 }) {
   return <details open={open} className="rounded-xl border border-[#344252] bg-[#1b222a]">
-    <summary role="button" tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onToggle(); } }} aria-expanded={open} className="grid min-h-[52px] cursor-pointer list-none grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-3 px-3.5 text-[19px] font-bold [&::-webkit-details-marker]:hidden" onClick={(event) => { event.preventDefault(); onToggle(); }}>
+    <summary role="button" tabIndex={0} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onToggle(); } }} aria-expanded={open} className="grid min-h-[52px] cursor-pointer list-none grid-cols-[28px_minmax(0,1fr)_auto_auto_auto] items-center gap-3 px-3.5 text-[19px] font-bold [&::-webkit-details-marker]:hidden" onClick={(event) => { event.preventDefault(); onToggle(); }}>
       <span aria-hidden="true" className="text-sm text-[#9fadb9]">{open ? '▼' : '▶'}</span>
-      <span className="min-w-0"><ShelfHighlight text={title} query={query} /> <span className="text-base font-medium text-[#9fadb9]">{subtitle}</span></span>
+      <span className="min-w-0"><ShelfHighlight text={title} query={query} /> <span className="text-base font-medium text-[#9fadb9]">{subtitle}</span>{judging ? <MaterialSplitLoadingChip /> : null}</span>
       <span className="rounded-full bg-[#27313b] px-3 py-0.5 text-base font-semibold tabular-nums">{count} {photoCount ? '枚' : '件'}</span>
+      {note ? <CopyNoteButton text={note} /> : <span />}
       {onSelectAll ? <button type="button" disabled={disabled} className="relative h-9 rounded-lg border border-[#344252] px-3 text-[15px] font-normal text-[#9fadb9] before:absolute before:-inset-y-1 before:inset-x-0 disabled:opacity-40" onClick={(event) => { event.stopPropagation(); onSelectAll(); }}>束を全部選ぶ</button> : null}
     </summary>
     {open ? children : null}
@@ -123,7 +154,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   };
   const toggleSelected = (id: string, checked: boolean) => { setDiscarded([]); setSelected((ids) => checked ? mode === 'replace' ? [id] : [...ids, id] : ids.filter((item) => item !== id)); };
   const [q, setQ] = useState('');
-  const [state, setState] = useState<ProcedureMaterialState | 'knowledge' | 'workInstruction'>('unplaced');
+  const [state, setState] = useState<ShelfTab>('unplaced');
   const [composing, setComposing] = useState(false);
   const query = useShelfSearch(q, composing).trim();
   const [filters, setFilters] = useState<ShelfFilters>(emptyShelfFilters);
@@ -153,6 +184,9 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const semanticActive = Boolean(semanticResult && semanticResult.mode !== 'lexical');
   const materialQuery = semanticResult ? q.trim() : query;
   const materials = semanticResult?.items ?? lists.data?.materials ?? emptyMaterials;
+  const materialGroups = groupMaterials(state === 'app' ? filterShelfMaterials(materials, filters) : materials);
+  const splitSuggestions = useMaterialSplitSuggestions(materialGroups, openGroups,
+    !filtered && !semanticResult && !semanticLoading && !lists.loading && (state === 'unplaced' || state === 'placed'));
   const knowledge = lists.data?.knowledge;
   const workInstructions = lists.data?.workInstructions;
   const loading = lists.loading;
@@ -241,14 +275,14 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         if (!material || material.kind === 'PDF') continue;
         await onSelect(material);
         setSelected((ids) => ids.filter((item) => item !== id));
-        if (state === 'unplaced') lists.removeUnplaced(id);
+        if (state === 'unplaced' || state === 'app') lists.removeUnplaced(id);
       }
       closeShelf();
     } catch (e) { setError(isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, '素材を配置できません')); }
     finally { setBusy(false); }
   };
   const discardSelected = async () => {
-    if (busy || state !== 'unplaced' || !discardReady) { setDiscardConfirm(false); return; }
+    if (busy || (state !== 'unplaced' && state !== 'app') || !discardReady) { setDiscardConfirm(false); return; }
     setDiscardConfirm(false); setBusy(true); setError(null); setDiscarded([]);
     const completed: string[] = [];
     try {
@@ -280,7 +314,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
       setBusy(false);
     }
   };
-  const materialDisabled = (material: ProcedureMaterialDto) => busy || (selectionMode && material.kind === 'PDF') || (state !== 'unplaced' && !(selectionMode && state === 'placed')) || (mode === 'replace' && material.kind !== 'PHOTO');
+  const materialDisabled = (material: ProcedureMaterialDto) => busy || (selectionMode && material.kind === 'PDF') || (state !== 'unplaced' && state !== 'app' && !(selectionMode && state === 'placed')) || (mode === 'replace' && material.kind !== 'PHOTO');
   const workInstructionDisabled = (candidate: ProcedureWorkInstructionCandidate) => busy || candidate.alreadyImported || (!selected.includes(candidate.candidateKey) && selected.length >= 50);
   const toggleGroup = (ids: string[], limit = Infinity) => { setDiscarded([]); setSelected((current) => ids.every((id) => current.includes(id))
     ? current.filter((id) => !ids.includes(id))
@@ -330,7 +364,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         {shelfTabs.map(([value, label]) => {
           const data = lists.getData(value);
           const count = !data ? undefined : value === 'knowledge' ? filterShelfKnowledge(data.knowledge?.items ?? [], filters).length : value === 'workInstruction' ? filterShelfWorkInstructions(data.workInstructions?.items ?? [], filters).length : filterShelfMaterials(data.materials ?? [], filters).length;
-          return <button key={value} role="tab" aria-selected={state === value} disabled={busy} className={`h-11 whitespace-nowrap rounded-lg px-4 text-[19px] font-bold ${state === value ? 'bg-[#27313b] text-[#eef3f6]' : filtered && count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`} onClick={() => changeTab(value)}>{label}{filtered && count !== undefined ? <span className={`ml-2 rounded-full bg-[#27313b] px-2 text-sm tabular-nums ${count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`}>{count}</span> : !filtered && value === 'unplaced' && state === value && !loading ? ` (${materials.length}${materials.length === 500 ? '+' : ''})` : ''}</button>;
+          return <button key={value} role="tab" aria-selected={state === value} disabled={busy} className={`h-11 whitespace-nowrap rounded-lg px-4 text-[19px] font-bold ${state === value ? 'bg-[#27313b] text-[#eef3f6]' : filtered && count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`} onClick={() => changeTab(value)}>{label}{filtered && count !== undefined ? <span className={`ml-2 rounded-full bg-[#27313b] px-2 text-sm tabular-nums ${count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`}>{count}</span> : !filtered && (value === 'unplaced' || value === 'app') && state === value && !loading ? ` (${materials.length}${materials.length === 500 ? '+' : ''})` : ''}</button>;
         })}
         <div className="ml-auto">{!selectionMode ? <button className={`${toolClass} border-transparent text-[#9fadb9]`} aria-pressed={state === 'discarded'} disabled={busy} onClick={() => changeTab('discarded')}>捨てた素材</button> : null}</div>
       </div>
@@ -353,7 +387,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
       <div className="min-h-0 flex-1 overflow-auto" aria-label="素材一覧">
         {semanticLoading ? <p role="status">✦ 探しています…</p> : loading ? <p role="status">読込中…</p> : state === 'knowledge' && knowledge?.enabled === false ? <p>ナレッジ機能は無効です</p> : null}
         {semanticEmpty ? <div className="flex items-center gap-3"><span>見つかりません</span>{semanticButton}</div> : null}
-        {semanticLoading ? null : filtered || semanticResult ? <ul className="grid content-start gap-3.5 pr-1" style={gridStyle}>{state === 'workInstruction' ? renderWorkInstructions([...visibleWork].sort((a, b) => (Date.parse(b.sourceModified ?? '') || 0) - (Date.parse(a.sourceModified ?? '') || 0))) : state === 'knowledge' ? renderKnowledge(visibleKnowledge) : renderMaterials(semanticResult ? visibleMaterials : [...visibleMaterials].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)))}</ul> : state === 'workInstruction' ? <div className="grid content-start gap-2.5 pr-1">
+        {semanticLoading ? null : (filtered && state !== 'app') || semanticResult ? <ul className="grid content-start gap-3.5 pr-1" style={gridStyle}>{state === 'workInstruction' ? renderWorkInstructions([...visibleWork].sort((a, b) => (Date.parse(b.sourceModified ?? '') || 0) - (Date.parse(a.sourceModified ?? '') || 0))) : state === 'knowledge' ? renderKnowledge(visibleKnowledge) : renderMaterials(semanticResult ? visibleMaterials : [...visibleMaterials].sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)))}</ul> : state === 'workInstruction' ? <div className="grid content-start gap-2.5 pr-1">
           {groupWorkInstructionCandidates(workInstructions?.items ?? []).map(({ key, title, subtitle, items }, index) => {
             const open = openGroups.get(key) ?? index === 0;
             const selectable = items.filter((item) => !workInstructionDisabled(item)).map((item) => item.candidateKey);
@@ -361,12 +395,13 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
               <ul className="grid content-start gap-3.5 px-3.5 pb-3.5" style={gridStyle}>{renderWorkInstructions(items)}</ul>
             </MaterialBundle>;
           })}
-        </div> : state === 'unplaced' || state === 'placed' ? <div className="grid content-start gap-2.5 pr-1">
-          {groupMaterials(materials).map(({ key, title, subtitle, items }, index) => {
+        </div> : state === 'unplaced' || state === 'app' || state === 'placed' ? <div className="grid content-start gap-2.5 pr-1">
+          {materialGroups.map(({ key, title, subtitle, items }, index) => {
             const open = openGroups.get(key) ?? index === 0;
             const selectable = items.filter((item) => !materialDisabled(item)).map((item) => item.id);
-            return <MaterialBundle query={query} key={key} title={title} subtitle={subtitle} count={items.length} open={open} onToggle={() => { setOpenGroups((groups) => new Map(groups).set(key, !open)); }} onSelectAll={mode === 'replace' ? undefined : () => toggleGroup(selectable)} disabled={!selectable.length}>
-              <ul className="grid content-start gap-3.5 px-3.5 pb-3.5" style={gridStyle}>{renderMaterials(items)}</ul>
+            const suggestions = splitSuggestions.get(key, items);
+            return <MaterialBundle query={query} key={key} title={title} subtitle={subtitle} count={items.length} open={open} judging={suggestions?.loading} note={items[0]?.origin === 'APP' ? items[0].note?.trim() : null} onToggle={() => { setOpenGroups((groups) => new Map(groups).set(key, !open)); }} onSelectAll={mode === 'replace' ? undefined : () => toggleGroup(selectable)} disabled={!selectable.length}>
+              <ul className="grid content-start gap-3.5 px-3.5 pb-3.5" style={gridStyle}><MaterialSplitContents items={items} entry={suggestions} choose={(beforeId, choice) => splitSuggestions.choose(key, items, beforeId, choice)} renderMaterials={renderMaterials} disabled={materialDisabled} onSelect={mode === 'replace' ? undefined : (pages) => toggleGroup(pages.map(page => page.id))} /></ul>
             </MaterialBundle>;
           })}
         </div> : <ul className="grid content-start gap-3.5 pr-1" style={gridStyle}>
@@ -377,7 +412,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         <span role="status" aria-label="選択中の素材" className={selected.length ? 'shrink-0' : 'sr-only'}><b className="font-mono font-medium text-[#eef3f6]">{selected.length}</b> 件を選択中{hiddenSelectedCount ? `(表示外 ${hiddenSelectedCount})` : ''}</span>
         {selected.length ? <>
         <button className={`${toolClass} border-transparent text-[#9fadb9]`} disabled={busy} onClick={() => { setDiscarded([]); setSelected([]); }}>選択を外す</button>
-        {state === 'unplaced' ? <button className={toolClass} disabled={busy || !discardReady} onClick={() => setDiscardConfirm(true)}>捨てる</button> : null}
+        {state === 'unplaced' || state === 'app' ? <button className={toolClass} disabled={busy || !discardReady} onClick={() => setDiscardConfirm(true)}>捨てる</button> : null}
         </> : null}
         {discarded.length ? <><span role="status" className="flex min-h-12 shrink-0 items-center">{discarded.length} 件を捨てました</span><button className={toolClass} disabled={busy} onClick={() => void undoDiscard()}>元に戻す</button></> : null}
         {selected.length ? <>
@@ -387,7 +422,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
           const title = item?.work ? `${item.work.partNumber} ${item.work.shootingTarget} 手順 ${item.work.step}` : item?.knowledge?.title ?? item?.material?.subjectHint ?? item?.material?.originalFileName ?? '素材';
           return <div key={id} title={title} className="h-12 w-16 shrink-0 overflow-hidden rounded-md border border-[#344252] bg-[#27313b]">{photoId ? <MaterialPhoto compact cache={photoCache} id={photoId} alt={title} knowledge={Boolean(item?.knowledge)} workInstruction={Boolean(item?.work)} onZoom={zoom} /> : <span className="grid h-full place-items-center text-sm">{item?.material?.kind === 'PDF' ? 'PDF' : '文章'}</span>}</div>;
         })}</div>
-        {state === 'knowledge' || state === 'workInstruction' ? <button className={`${toolClass} bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !selected.length} onClick={() => void importSelected()}>棚に取り込む</button> : state === 'unplaced' || state === 'placed' ? <>
+        {state === 'knowledge' || state === 'workInstruction' ? <button className={`${toolClass} bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !selected.length} onClick={() => void importSelected()}>棚に取り込む</button> : state === 'unplaced' || state === 'app' || state === 'placed' ? <>
           {onSelect ? <button className={`${toolClass} !h-[52px] !rounded-[10px] bg-[#3ba776] !px-[22px] !text-[21px] text-[#0b1a12]`} disabled={busy || !selected.length} onClick={() => void placeSelected()}>{mode === 'replace' ? 'この素材に差し替え' : '現在ページに配置'}</button> : null}
         </> : null}
         </> : null}

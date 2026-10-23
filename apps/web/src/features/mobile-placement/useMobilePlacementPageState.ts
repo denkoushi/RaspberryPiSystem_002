@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   moveOrderPlacementBranch,
   parseActualSlipImage,
   registerOrderPlacement,
+  snapFseibanTokens,
   verifyMobilePlacementSlipMatch
 } from '../../api/client';
 import {
@@ -18,9 +19,12 @@ import {
   initialActualSlipOcrFeedback,
   type ActualSlipOcrFeedback
 } from './actual-slip-ocr-feedback';
+import { scanFseibanNative } from './haizenNative';
+import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
 
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
+import type { ActualSlipOcrResponse, MobilePlacementSlipMatchResponse } from '../../api/domains/mobile-placement';
 
 /**
  * 配膳ページの状態と API 呼び出し（UI から分離してテスト・再利用しやすくする）
@@ -33,7 +37,9 @@ export function useMobilePlacementPageState() {
   const [actualFseiban, setActualFseiban] = useState('');
   const [actualPart, setActualPart] = useState('');
   const [slipResult, setSlipResult] = useState<MobilePlacementSlipResult>('idle');
+  const [slipDetails, setSlipDetails] = useState<MobilePlacementSlipMatchResponse | null>(null);
   const [slipVerifying, setSlipVerifying] = useState(false);
+  const actualSlipOcrInFlight = useRef(false);
   const [actualSlipImageOcrBusy, setActualSlipImageOcrBusy] = useState(false);
   const [actualSlipOcrFeedback, setActualSlipOcrFeedback] = useState<ActualSlipOcrFeedback>(initialActualSlipOcrFeedback);
 
@@ -92,47 +98,61 @@ export function useMobilePlacementPageState() {
     [scanField]
   );
 
-  const parseActualSlipImageFile = useCallback(async (file: File) => {
-    setActualSlipImageOcrBusy(true);
+  const applyActualSlipOcrResponse = useCallback((res: ActualSlipOcrResponse) => {
     setSlipResult('idle');
-    setActualSlipOcrFeedback(initialActualSlipOcrFeedback);
+    const preview = buildOcrPreview(res.ocrPreviewSafe ?? res.ocrText);
+    const mo = res.manufacturingOrder10 ?? null;
+    const fs = res.fseiban ?? null;
+    if (mo) {
+      setActualOrder(mo);
+    } else if (fs) {
+      setActualOrder('');
+    }
+    if (fs) {
+      setActualFseiban(fs);
+    }
+    const snapFeedback = {
+      fseibanRaw: res.fseibanRaw,
+      fseibanMatch: res.fseibanMatch,
+      fseibanCandidates: res.fseibanCandidates
+    };
+    if (mo || fs || res.fseibanCandidates.length > 0) {
+      setActualSlipOcrFeedback({
+        ...snapFeedback,
+        status: 'success',
+        manufacturingOrder10: mo,
+        fseiban: fs,
+        ocrPreview: preview,
+        message: '読取結果を欄に反映しました。必要に応じて修正してください。',
+        errorDetail: null
+      });
+    } else {
+      setActualSlipOcrFeedback({
+        ...snapFeedback,
+        status: 'no_candidate',
+        manufacturingOrder10: null,
+        fseiban: null,
+        ocrPreview: preview,
+        message: '読取候補がありません。再撮影するか、手入力してください。',
+        errorDetail: null
+      });
+    }
+  }, []);
+
+  const runActualSlipOcr = useCallback(async (
+    read: () => Promise<ActualSlipOcrResponse | null>,
+    resetBeforeReading: boolean
+  ) => {
+    if (actualSlipOcrInFlight.current) return;
+    actualSlipOcrInFlight.current = true;
+    setActualSlipImageOcrBusy(true);
+    if (resetBeforeReading) {
+      setSlipResult('idle');
+      setActualSlipOcrFeedback(initialActualSlipOcrFeedback);
+    }
     try {
-      const res = await parseActualSlipImage(file);
-      const preview = buildOcrPreview(res.ocrPreviewSafe ?? res.ocrText);
-      const mo = res.manufacturingOrder10 ?? null;
-      const fs = res.fseiban ?? null;
-      if (mo) {
-        setActualOrder(mo);
-      }
-      if (fs) {
-        setActualFseiban(fs);
-      }
-      const snapFeedback = {
-        fseibanRaw: res.fseibanRaw,
-        fseibanMatch: res.fseibanMatch,
-        fseibanCandidates: res.fseibanCandidates
-      };
-      if (mo || fs || res.fseibanCandidates.length > 0) {
-        setActualSlipOcrFeedback({
-          ...snapFeedback,
-          status: 'success',
-          manufacturingOrder10: mo,
-          fseiban: fs,
-          ocrPreview: preview,
-          message: '読取結果を欄に反映しました。必要に応じて修正してください。',
-          errorDetail: null
-        });
-      } else {
-        setActualSlipOcrFeedback({
-          ...snapFeedback,
-          status: 'no_candidate',
-          manufacturingOrder10: null,
-          fseiban: null,
-          ocrPreview: preview,
-          message: '読取候補がありません。再撮影するか、手入力してください。',
-          errorDetail: null
-        });
-      }
+      const res = await read();
+      if (res) applyActualSlipOcrResponse(res);
     } catch (e: unknown) {
       const msg = isAxiosError(e)
         ? typeof e.response?.data?.message === 'string'
@@ -152,13 +172,26 @@ export function useMobilePlacementPageState() {
       });
       setSlipResult('idle');
     } finally {
+      actualSlipOcrInFlight.current = false;
       setActualSlipImageOcrBusy(false);
     }
-  }, []);
+  }, [applyActualSlipOcrResponse]);
+
+  const parseActualSlipImageFile = useCallback(
+    (file: File) => runActualSlipOcr(() => parseActualSlipImage(file), true),
+    [runActualSlipOcr]
+  );
+
+  const scanActualSlipNative = useCallback(() => runActualSlipOcr(async () => {
+    const result = await scanFseibanNative();
+    if (result.status === 'cancelled') return null;
+    return snapFseibanTokens({ tokens: result.tokens, text: result.text });
+  }, false), [runActualSlipOcr]);
 
   const runSlipVerify = useCallback(async () => {
     setSlipVerifying(true);
     setSlipResult('idle');
+    setSlipDetails(null);
     try {
       const res = await verifyMobilePlacementSlipMatch({
         transferOrderBarcodeRaw: transferOrder,
@@ -167,9 +200,10 @@ export function useMobilePlacementPageState() {
         actualFseibanRaw: actualFseiban,
         actualPartBarcodeRaw: actualPart
       });
-      setSlipResult(res.ok ? 'ok' : 'ng');
+      setSlipDetails(res);
+      setSlipResult(res.ok ? 'ok' : res.reason === 'order_not_found' || res.reason === 'transfer_not_found' || res.reason === 'part_required' ? 'not-found' : 'ng');
     } catch {
-      setSlipResult('ng');
+      setSlipResult('error');
     } finally {
       setSlipVerifying(false);
     }
@@ -203,8 +237,8 @@ export function useMobilePlacementPageState() {
         );
         setOrderBarcode('');
       }
-      void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'registered-shelves'] });
-      void queryClient.invalidateQueries({ queryKey: ['mobile-placement', 'order-placement-branches'] });
+      void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
+      void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.orderPlacementBranchesAll });
     } catch (e: unknown) {
       const msg = isAxiosError(e)
         ? typeof e.response?.data?.message === 'string'
@@ -231,7 +265,7 @@ export function useMobilePlacementPageState() {
     setRegisterMessage(null);
   }, []);
 
-  const resetSlipResult = useCallback(() => setSlipResult('idle'), []);
+  const resetSlipResult = useCallback(() => { setSlipResult('idle'); setSlipDetails(null); }, []);
 
   const resetActualSlipOcrFeedback = useCallback(
     () => setActualSlipOcrFeedback(initialActualSlipOcrFeedback),
@@ -293,6 +327,7 @@ export function useMobilePlacementPageState() {
     actualPart,
     setActualPart,
     slipResult,
+    slipDetails,
     resetSlipResult,
     buildShelfRegisterRouteState,
     restoreShelfRegisterRouteState,
@@ -316,6 +351,7 @@ export function useMobilePlacementPageState() {
     scanFormats,
     onScanSuccess,
     parseActualSlipImageFile,
+    scanActualSlipNative,
     actualSlipImageOcrBusy,
     actualSlipOcrFeedback,
     resetActualSlipOcrFeedback

@@ -103,6 +103,7 @@ class GitAdapter:
         *,
         cwd: Path | None = None,
         check: bool = True,
+        timeout: int | None = None,
     ) -> subprocess.CompletedProcess[bytes]:
         command = ("git", *tuple(str(arg) for arg in args))
         try:
@@ -111,6 +112,7 @@ class GitAdapter:
                 cwd=str(cwd or self.repo_root),
                 capture_output=True,
                 check=False,
+                timeout=timeout,
             )
         except OSError as error:
             raise GitAdapterError(f"git command could not start: {error}") from error
@@ -153,6 +155,34 @@ class GitAdapter:
 
     def has_local_branch(self, branch: str) -> bool:
         return self.branch_sha(branch) is not None
+
+    def is_ancestor(
+        self, ancestor_sha: str, descendant_sha: str, *, pr_number: int | None = None
+    ) -> bool:
+        """Prove containment, fetching a missing PR head without updating refs."""
+
+        if not all(re.fullmatch(r"[0-9a-fA-F]{40}", sha) for sha in (ancestor_sha, descendant_sha)):
+            return False
+        try:
+            present = self._run(
+                ["cat-file", "-e", f"{descendant_sha}^{{commit}}"], check=False, timeout=180
+            )
+            if present.returncode:
+                if pr_number is None or pr_number <= 0:
+                    return False
+                # Ignore configured fetch mappings; only FETCH_HEAD may move.
+                self._run(
+                    ["fetch", "--no-tags", "--refmap=", "origin", f"refs/pull/{pr_number}/head"],
+                    timeout=180,
+                )
+            result = self._run(
+                ["merge-base", "--is-ancestor", ancestor_sha, descendant_sha],
+                check=False,
+                timeout=180,
+            )
+            return result.returncode == 0
+        except (GitAdapterError, OSError, subprocess.SubprocessError):
+            return False
 
     def local_branches(self) -> dict[str, str]:
         """Return local branch names and SHAs using NUL-delimited ref output."""
@@ -336,6 +366,36 @@ class GitAdapter:
         """Remove a clean, exact registered worktree without overriding safety checks."""
 
         self._run(["worktree", "remove", str(worktree.path)])
+
+    def running_process_cwds(self) -> tuple[Path, ...]:
+        """Observe process cwd paths; incomplete observations must fail closed."""
+
+        try:
+            result = self.runner(
+                ("lsof", "-d", "cwd", "-F0n"),
+                cwd=str(self.repo_root),
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise GitAdapterError(f"process cwd check could not complete: {error}") from error
+        if result.returncode or result.stderr:
+            raise GitAdapterError("process cwd check failed or returned warnings")
+        paths: list[Path] = []
+        cwd_count = 0
+        for field in _decode(result.stdout).split("\x00"):
+            field = field.lstrip("\n")
+            if field == "fcwd":
+                cwd_count += 1
+            if field.startswith("n"):
+                path = Path(field[1:])
+                if not path.is_absolute():
+                    raise GitAdapterError("process cwd check returned an unreadable path")
+                paths.append(path.resolve())
+        if not paths or cwd_count != len(paths):
+            raise GitAdapterError("process cwd check returned missing paths")
+        return tuple(paths)
 
     def delete_local_branch_if_at(self, branch: str, expected_sha: str) -> None:
         """Compare-and-delete one local ref, preserving races and unrelated refs."""

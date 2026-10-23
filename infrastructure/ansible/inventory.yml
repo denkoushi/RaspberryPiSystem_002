@@ -8,8 +8,11 @@ all:
           ansible_user: denkon5sd02
           ansible_python_interpreter: /usr/bin/python3
           ansible_command_timeout: 900
-          unattended_upgrades_enabled: true
           tailscale_enabled: true
+          # 配膳スマホ用。Tailscale が正式な証明書を出し、既存の 443 へ中継する
+          pi5_tailscale_https_hostname: raspberrypi.tail7312a3.ts.net
+          pi5_tailscale_serve_https_port: 8443
+          pi5_tailscale_serve_target: https+insecure://127.0.0.1:443
           # 毎晩の DR。false にすると次の playbook 実行でタイマーが止まる
           google_drive_dr_timer_enabled: true
           # キオスクお問い合わせ（Slack通知）
@@ -42,6 +45,8 @@ all:
           # Server-side JEV credential for incremental classification of the
           # authorized nonconformity snapshot. It is never sent to browser assets.
           hermes_search_typesafe_api_key: "{{ vault_hermes_search_record_pilot_typesafe_api_key | default('') }}"
+          procedure_material_split_suggestion_enabled: true
+          inspection_drawing_transfer_jev_enabled: true
           # Business Hermes runs as an independent container on this Pi5. Keep
           # both credentials in Vault; they are never shared with Private Pi5
           # Hermes or the ordinary API .env beyond the API-side bearer key.
@@ -121,13 +126,9 @@ all:
           api_local_llm_runtime_warm_window_end_hour: "23"
           # DGXリソース管理（未設定時は監視/起停を自動有効化しない）
           api_dgx_resource_metrics_url: "{{ vault_api_dgx_resource_metrics_url | default('') }}"
-          api_dgx_resource_comfyui_health_url: "{{ vault_api_dgx_resource_comfyui_health_url | default('http://100.118.82.72:38081/private-comfyui/health') }}"
           api_dgx_resource_embedding_health_url: "{{ vault_api_dgx_resource_embedding_health_url | default('') }}"
           api_dgx_resource_spark_host_status_url: "{{ vault_api_dgx_resource_spark_host_status_url | default('') }}"
           api_dgx_resource_probe_timeout_ms: "{{ vault_api_dgx_resource_probe_timeout_ms | default('10000') }}"
-          api_dgx_resource_private_comfyui_runtime_start_url: "{{ vault_api_dgx_resource_private_comfyui_runtime_start_url | default('http://100.118.82.72:38081/private-comfyui/start') }}"
-          api_dgx_resource_private_comfyui_runtime_stop_url: "{{ vault_api_dgx_resource_private_comfyui_runtime_stop_url | default('http://100.118.82.72:38081/private-comfyui/stop') }}"
-          api_dgx_resource_private_comfyui_runtime_control_token: "{{ vault_api_dgx_resource_private_comfyui_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
           api_dgx_resource_experiment_lab_runtime_start_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_start_url | default('http://100.118.82.72:38081/experiment-lab/start') }}"
           api_dgx_resource_experiment_lab_runtime_stop_url: "{{ vault_api_dgx_resource_experiment_lab_runtime_stop_url | default('http://100.118.82.72:38081/experiment-lab/stop') }}"
           api_dgx_resource_experiment_lab_runtime_control_token: "{{ vault_api_dgx_resource_experiment_lab_runtime_control_token | default(vault_api_local_llm_runtime_control_token | default('')) }}"
@@ -510,6 +511,42 @@ all:
               nfc_agent_api_base_url: "{{ api_base_url }}"
               nfc_agent_client_id: "raspi4-kensaku-02-kiosk1"
               nfc_agent_client_secret: "{{ vault_raspi4_kensaku_02_nfc_agent_client_secret }}"
+            raspi4-assembly-02:
+              os_security_update_mode: apply
+              # Assembly-02 キオスク（Pi4 8台目）
+              ansible_host: "{{ current_network.raspi4_assembly_02_ip | default(local_network.raspi4_assembly_02_ip) }}"
+              ansible_user: raspi4-assembly-02
+              kiosk_browser_engine: "chromium"
+              kiosk_browser_mode: "app-like"
+              ibus_owner_mode: "single-owner"
+              ibus_disable_competing_autostart: true
+              tailscale_enabled: true
+              ansible_command_timeout: 600
+              status_agent_client_id: raspi4-assembly-02-kiosk1
+              status_agent_client_key: "{{ vault_raspi4_assembly_02_status_agent_client_key }}"
+              status_agent_location: "第2工場 - Assembly-02"
+              kiosk_initial_route: "assembly"
+              kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"
+              manage_kiosk_browser: true
+              services_to_restart:
+                - kiosk-browser.service
+                - status-agent.service
+                - status-agent.timer
+              sudo_nopasswd_commands:
+                - /usr/bin/systemctl start kiosk-browser.service
+                - /usr/bin/systemctl stop kiosk-browser.service
+                - /usr/bin/systemctl restart kiosk-browser.service
+                - /usr/bin/systemctl reboot
+                - /usr/bin/systemctl poweroff
+                - /usr/bin/systemctl start status-agent.service
+                - /usr/bin/systemctl stop status-agent.service
+                - /usr/bin/systemctl restart status-agent.service
+                - /usr/bin/systemctl start status-agent.timer
+                - /usr/bin/systemctl stop status-agent.timer
+                - /usr/bin/systemctl restart status-agent.timer
+              nfc_agent_api_base_url: "{{ api_base_url }}"
+              nfc_agent_client_id: "raspi4-assembly-02-kiosk1"
+              nfc_agent_client_secret: "{{ vault_raspi4_assembly_02_nfc_agent_client_secret }}"
         signage:
           hosts:
             raspberrypi3:

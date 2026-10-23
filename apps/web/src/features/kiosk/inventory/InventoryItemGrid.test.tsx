@@ -2,9 +2,10 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { issuedLabel } from './inventoryDailyFlow';
-import { InventoryItemGrid, sortByRecentIssue } from './InventoryItemGrid';
+import { InventoryItemGrid, sortByLowStock } from './InventoryItemGrid';
 
 import type { InventoryCompartment, InventoryImportSummary } from '../../../api/client';
+
 
 vi.mock('../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value }));
 
@@ -26,7 +27,7 @@ describe('issuedLabel', () => {
 describe('InventoryItemGrid', () => {
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-  it.each(['small', 'medium'] as const)('shows complete details after hovering a %s card, outside the grid', (size) => {
+  it.each(['small', 'medium', 'large'] as const)('shows complete details after hovering a %s card, outside the grid', (size) => {
     vi.useFakeTimers();
     vi.stubGlobal('matchMedia', undefined);
     const entry = drawer('a', '治具', new Date().toISOString());
@@ -41,19 +42,111 @@ describe('InventoryItemGrid', () => {
     expect(tooltip.parentElement).toBe(document.body);
     expect(tooltip).toHaveClass('fixed', 'pointer-events-none');
     expect(card).toHaveAttribute('aria-describedby', tooltip.id);
-    expect(Array.from(tooltip.querySelectorAll('dt'), cell => cell.textContent)).toEqual(['番号', '名前', '型式', 'メーカー', '工具名', '寸法', '被削材', '用途', '場所', '在庫', '持出']);
-    for (const value of ['0001', '治具', 'M1', 'OSG', 'ドリル', 'φ10', '鋼', '穴あけ', '50013_540AP 北・棚2-1', '3 ケース']) expect(within(tooltip).getByText(value)).toBeInTheDocument();
+    expect(Array.from(tooltip.querySelectorAll('dt'), cell => cell.textContent)).toEqual(['型式', 'メーカー', '工具名', '寸法', '被削材', '用途', '場所']);
+    for (const value of ['0001', '治具', 'M1', 'OSG', 'ドリル', 'φ10', '鋼', '穴あけ', '50013_540AP 北・棚2-1']) expect(within(tooltip).getByText(value)).toBeInTheDocument();
+    expect(within(tooltip).getByText('在庫').parentElement).toHaveTextContent('3 ケース');
+    expect(within(tooltip).getByText('最後の持出').parentElement).toHaveTextContent(issuedLabel(entry.lastIssuedAt, new Date())!);
+    expect(within(tooltip).getByText('写真なし')).toBeInTheDocument();
     fireEvent.pointerLeave(card.parentElement!);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
-  it.each(['large', 'list', 'pending'] as const)('does not show a tooltip for %s', (kind) => {
+  it.each(['card', 'list'] as const)('wheel switches hover photos in %s view, throttles, wraps and resets', (view) => {
     vi.useFakeTimers();
-    render(<InventoryItemGrid size={kind === 'large' ? 'large' : 'small'} view={kind === 'list' ? 'list' : 'card'} compartments={kind === 'pending' ? [] : [drawer('a', '治具', null)]} pending={kind === 'pending' ? [{ id: 'p', sourceItemId: 1, area: '工具室', category: null, createdAt: '', photoUrl: null, photoCount: 0 }] : []} onPick={vi.fn()} />);
-    fireEvent.pointerEnter(screen.getByRole('button').parentElement!);
-    fireEvent.focus(screen.getByRole('button'));
+    vi.stubGlobal('matchMedia', undefined);
+    const entries = [drawer('a', '治具A', null), drawer('b', '治具B', null)];
+    for (const entry of entries) entry.item.photos = Array.from({ length: 3 }, (_, i) => ({ id: `${entry.id}${i}`, photoIndex: i, photoUrl: `/${entry.id}${i}.jpg`, originalFilename: `${entry.id}${i}` }));
+    const onPick = vi.fn();
+    render(<InventoryItemGrid view={view} compartments={entries} onPick={onPick} />);
+    const card = screen.getByRole('button', { name: /治具A/ });
+    fireEvent.pointerEnter(card);
+    act(() => vi.advanceTimersByTime(150));
+    const image = () => within(screen.getByRole('tooltip')).getByRole('img');
+    const wheel = (deltaY: number) => {
+      const event = new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true });
+      const preventDefault = vi.spyOn(event, 'preventDefault');
+      fireEvent(card, event);
+      expect(preventDefault).toHaveBeenCalled();
+      expect(event.defaultPrevented).toBe(true);
+    };
+    expect(image()).toHaveAttribute('src', '/a0.jpg');
+    wheel(20);
+    expect(image()).toHaveAttribute('src', '/a0.jpg');
+    wheel(20);
+    expect(image()).toHaveAttribute('src', '/a1.jpg');
+    const dots = within(screen.getByRole('tooltip')).getByLabelText('写真の枚数').children;
+    expect(dots[0]).toHaveClass('bg-white/[.35]');
+    expect(dots[1]).toHaveClass('bg-white');
+    expect(screen.getByText('ホイールで切替')).toBeInTheDocument();
+    wheel(200);
+    expect(image()).toHaveAttribute('src', '/a1.jpg');
+    for (const [delta, expected] of [[40, 2], [40, 0], [-40, 2]]) {
+      act(() => vi.advanceTimersByTime(120));
+      wheel(delta);
+      expect(image()).toHaveAttribute('src', `/a${expected}.jpg`);
+    }
+    fireEvent.wheel(screen.getByLabelText('登録済みアイテム'), { deltaY: 100 });
+    expect(image()).toHaveAttribute('src', '/a2.jpg');
+    fireEvent.pointerEnter(screen.getByRole('button', { name: /治具B/ }));
+    act(() => vi.advanceTimersByTime(150));
+    expect(image()).toHaveAttribute('src', '/b0.jpg');
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 1])('allows normal wheel scrolling with %s photos', (count) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', undefined);
+    const entry = drawer('a', 'A', null);
+    entry.item.photos = Array.from({ length: count }, (_, i) => ({ id: `p${i}`, photoIndex: i, photoUrl: '/a.jpg', originalFilename: 'a' }));
+    render(<InventoryItemGrid compartments={[entry]} onPick={vi.fn()} />);
+    const card = screen.getByRole('button');
+    fireEvent.pointerEnter(card);
+    act(() => vi.advanceTimersByTime(150));
+    const event = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+    const preventDefault = vi.spyOn(event, 'preventDefault');
+    fireEvent(card, event);
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.queryByText('ホイールで切替')).not.toBeInTheDocument();
+    fireEvent.scroll(screen.getByLabelText('登録済みアイテム'));
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('does not show a tooltip for pending candidates', () => {
+    vi.useFakeTimers();
+    render(<InventoryItemGrid compartments={[]} pending={[{ id: 'p', sourceItemId: 1, area: '工具室', category: null, createdAt: '', photoUrl: null, photoCount: 0 }]} onPick={vi.fn()} />);
+    fireEvent.pointerEnter(screen.getByRole('button'));
     act(() => { vi.advanceTimersByTime(200); });
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it.each(['card', 'list'] as const)('highlights the active %s and dims other entries until closed', (view) => {
+    vi.useFakeTimers();
+    render(<InventoryItemGrid view={view} compartments={[drawer('a', 'A', null), drawer('b', 'B', null)]} onPick={vi.fn()} />);
+    const cards = screen.getAllByRole('button').map(button => view === 'card' ? button.parentElement! : button);
+    fireEvent.pointerEnter(cards[0]);
+    act(() => { vi.advanceTimersByTime(150); });
+    expect(screen.getByRole('tooltip')).toHaveTextContent('A');
+    expect(cards[0]).toHaveClass('ring-2', 'ring-inv-cyan', '-translate-y-0.5');
+    expect(cards[1]).toHaveClass('opacity-[.55]');
+    fireEvent.pointerLeave(cards[0]);
+    expect(cards[1]).not.toHaveClass('opacity-[.55]');
+  });
+
+  it.each([0, 1, 2])('shows photo dots only for multiple photos (%s photos)', (count) => {
+    vi.useFakeTimers();
+    const entry = drawer('a', '治具', null);
+    entry.item.photos = Array.from({ length: count }, (_, i) => ({ id: `p${i}`, photoIndex: i, photoUrl: `/photo${i}.jpg`, originalFilename: `photo${i}` }));
+    render(<InventoryItemGrid compartments={[entry]} onPick={vi.fn()} />);
+    fireEvent.pointerEnter(screen.getByRole('button', { name: /治具/ }).parentElement!);
+    act(() => { vi.advanceTimersByTime(150); });
+    const tooltip = within(screen.getByRole('tooltip'));
+    if (count > 1) expect(tooltip.getByLabelText('写真の枚数').children).toHaveLength(count);
+    else expect(tooltip.queryByLabelText('写真の枚数')).not.toBeInTheDocument();
+    if (count) {
+      expect(tooltip.getByRole('img')).toHaveAttribute('src', '/photo0.jpg');
+      expect(tooltip.getByRole('img')).toHaveClass('object-contain');
+    } else expect(tooltip.getByText('写真なし')).toBeInTheDocument();
   });
 
   it('omits empty rows and supports keyboard focus even without hover support', () => {
@@ -69,29 +162,28 @@ describe('InventoryItemGrid', () => {
     act(() => { vi.advanceTimersByTime(150); });
     const tooltip = screen.getByRole('tooltip');
     expect(within(tooltip).queryByText('型式')).not.toBeInTheDocument();
-    expect(within(tooltip).queryByText('持出')).not.toBeInTheDocument();
+    expect(Array.from(tooltip.querySelectorAll('dt'), cell => cell.textContent)).toEqual(['場所']);
+    expect(within(tooltip).getByText('まだ')).toBeInTheDocument();
     fireEvent.blur(card);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
-  it('flips the tooltip at the bottom right and clamps it inside the viewport', () => {
+  it.each([
+    { left: 100, right: 300, top: 100, expectedLeft: 312, expectedTop: 100 },
+    { left: 1600, right: 1900, top: 900, expectedLeft: 1028, expectedTop: 272 },
+    { left: 0, right: 1900, top: 0, expectedLeft: 8, expectedTop: 8 },
+  ])('positions the measured tooltip within the viewport: %j', ({ left, right, top, expectedLeft, expectedTop }) => {
     vi.useFakeTimers();
-    vi.stubGlobal('innerWidth', 400);
-    vi.stubGlobal('innerHeight', 300);
-    const rect = { left: 370, right: 390, top: 260, bottom: 280, width: 20, height: 20 } as DOMRect;
+    vi.stubGlobal('innerWidth', 1920);
+    vi.stubGlobal('innerHeight', 1080);
+    const rect = { left, right, top, bottom: top + 200 } as DOMRect;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      return this.getAttribute('role') === 'tooltip' ? { width: 344, height: 200 } as DOMRect : rect;
+      return this.getAttribute('role') === 'tooltip' ? { width: 560, height: 800 } as DOMRect : rect;
     });
     render(<InventoryItemGrid size="small" compartments={[drawer('a', '治具', null)]} onPick={vi.fn()} />);
-    const wrapper = screen.getByRole('button').parentElement!;
-    fireEvent.pointerEnter(wrapper);
+    fireEvent.pointerEnter(screen.getByRole('button').parentElement!);
     act(() => { vi.advanceTimersByTime(150); });
-    expect(screen.getByRole('tooltip')).toHaveStyle({ left: '18px', top: '80px' });
-    fireEvent.pointerLeave(wrapper);
-    Object.assign(rect, { left: 0, right: 300, top: 0, bottom: 20 });
-    fireEvent.pointerEnter(wrapper);
-    act(() => { vi.advanceTimersByTime(150); });
-    expect(screen.getByRole('tooltip')).toHaveStyle({ left: '8px', top: '8px' });
+    expect(screen.getByRole('tooltip')).toHaveStyle({ left: `${expectedLeft}px`, top: `${expectedTop}px` });
   });
 
   it.each(['scroll', 'resize', 'click', 'pointerDown'] as const)('hides the tooltip and cancels pending display on %s', (event) => {
@@ -226,8 +318,17 @@ describe('InventoryItemGrid', () => {
     expect(screen.getAllByLabelText('置き場所の番号')).toHaveLength(2);
   });
 
-  it('orders drawers by the latest issue, then never-issued ones by name', () => {
-    const sorted = sortByRecentIssue([
+  it('orders drawers by the lowest stock first', () => {
+    const sorted = sortByLowStock([
+      { ...drawer('a', 'ゲージ', '2026-09-29T03:00:00Z'), stockQuantity: 5 },
+      { ...drawer('b', '治具', null), stockQuantity: 0 },
+      { ...drawer('c', 'ピン', null), stockQuantity: 2 },
+    ]);
+    expect(sorted.map((entry) => entry.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('breaks stock ties by the latest issue, then never-issued ones by name', () => {
+    const sorted = sortByLowStock([
       drawer('a', 'ゲージ', null),
       drawer('b', '治具', '2026-09-29T01:00:00Z'),
       drawer('c', 'ピン', '2026-09-29T03:00:00Z'),
