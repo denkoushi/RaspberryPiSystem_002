@@ -573,7 +573,7 @@ export class CsvImportScheduler {
     }
 
     // 1月中の2:30に実行（年次削除）
-    const retentionSchedule = '0 30 2 1 *';
+    const retentionSchedule = '30 2 1 1 *';
 
     try {
       if (!validate(retentionSchedule)) {

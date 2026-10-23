@@ -11,6 +11,7 @@ import type {
   DashboardPageData,
 } from './csv-dashboard.types.js';
 import type { Prisma, CsvDashboard } from '@prisma/client';
+import { runCsvDashboardRetentionSweep } from './csv-dashboard-retention-sweep.js';
 import { assertCsvGmailSubjectPatternAllowed } from '../gmail/gmail-subject-reservation.policy.js';
 
 export class CsvDashboardService {
@@ -405,52 +406,18 @@ export class CsvDashboardService {
 
   /**
    * 古いCSVダッシュボードデータを削除（レテンション管理）
-   * - 前々年は削除
+   * - 全ダッシュボード: 前々年の1年分を削除（従来どおり）
+   * - 加工機_日常点検結果: 前年1月1日より古い行をすべて削除（2年分だけ残す）
+   * - 5000件ずつ小分けで削除する。dryRun は件数を数えるだけで何も消さない
    * - 当年の前月分削除は行わない（レビュー用途の保持要件と衝突するため）
    */
-  async cleanupOldData(): Promise<{ deletedRows: number; deletedIngestRuns: number }> {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const twoYearsAgo = currentYear - 2; // 前々年
-
-    let deletedRows = 0;
-    let deletedIngestRuns = 0;
-
+  async cleanupOldData(
+    options: { dryRun?: boolean } = {}
+  ): Promise<{ deletedRows: number; deletedIngestRuns: number; dryRun: boolean; truncated: boolean }> {
     try {
-      // 前々年のデータを削除
-      const twoYearsAgoStart = new Date(twoYearsAgo, 0, 1, 0, 0, 0, 0);
-      const twoYearsAgoEnd = new Date(twoYearsAgo, 11, 31, 23, 59, 59, 999);
-      
-      // UTCに変換（Asia/Tokyo = UTC+9）
-      const twoYearsAgoStartUtc = new Date(twoYearsAgoStart.getTime() - 9 * 60 * 60 * 1000);
-      const twoYearsAgoEndUtc = new Date(twoYearsAgoEnd.getTime() - 9 * 60 * 60 * 1000);
-
-      const deletedRowsTwoYearsAgo = await prisma.csvDashboardRow.deleteMany({
-        where: {
-          occurredAt: {
-            gte: twoYearsAgoStartUtc,
-            lte: twoYearsAgoEndUtc,
-          },
-        },
-      });
-      deletedRows += deletedRowsTwoYearsAgo.count;
-
-      const deletedIngestRunsTwoYearsAgo = await prisma.csvDashboardIngestRun.deleteMany({
-        where: {
-          startedAt: {
-            gte: twoYearsAgoStartUtc,
-            lte: twoYearsAgoEndUtc,
-          },
-        },
-      });
-      deletedIngestRuns += deletedIngestRunsTwoYearsAgo.count;
-
-      logger?.info(
-        { deletedRows, deletedIngestRuns, currentYear },
-        '[CsvDashboardService] Cleanup completed'
-      );
-
-      return { deletedRows, deletedIngestRuns };
+      const result = await runCsvDashboardRetentionSweep(new Date(), options);
+      logger?.info({ ...result }, '[CsvDashboardService] Cleanup completed');
+      return result;
     } catch (error) {
       logger?.error({ err: error }, '[CsvDashboardService] Cleanup failed');
       throw error;
