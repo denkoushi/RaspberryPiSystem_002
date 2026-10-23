@@ -25,7 +25,7 @@ vi.mock('../../barcode-scan', () => ({
     ? <div role="dialog" aria-label="scanner"><span>{engine}</span><button onClick={() => onSuccess('SCANNED')}>scan</button><button onClick={onAbort}>abort</button></div> : null
 }));
 vi.mock('../useRegisteredShelves', () => ({ useRegisteredShelves: () => ({
-  data: { shelves: [{ shelfCodeRaw: '西-北-02', isStructured: true, areaId: 'west', lineId: 'north', slot: 2 }] },
+  data: { shelves: [{ shelfCodeRaw: '50013_540AP 北', isStructured: true, machineName: '50013_540AP', direction: '北' }] },
   isLoading: false, isError: false, refetch: vi.fn()
 }) }));
 vi.mock('../useOrderPlacementBranches', () => ({ useOrderPlacementBranches: () => ({
@@ -60,8 +60,8 @@ async function chooseShelf() {
   fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
   fireEvent.click(await screen.findByRole('button', { name: '棚の写真を選ぶ' }));
   const picker = within(screen.getByRole('dialog', { name: '棚を選ぶ' }));
-  fireEvent.click(picker.getByRole('button', { name: '西', exact: true }));
-  fireEvent.click(picker.getByRole('button', { name: '棚 西-北-02', exact: true }));
+  fireEvent.click(picker.getByRole('button', { name: '50013_540AP', exact: true }));
+  fireEvent.click(picker.getByRole('button', { name: '棚 50013_540AP 北', exact: true }));
 }
 
 beforeEach(() => {
@@ -90,26 +90,26 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
     const list = within(screen.getByRole('region', { name: '棚の写真' }));
     expect(screen.getByRole('tab', { name: '部品' })).toBeInTheDocument();
-    fireEvent.click(list.getByRole('button', { name: '西', exact: true }));
-    fireEvent.click(await list.findByRole('button', { name: '棚 西-北-02', exact: true }));
-    expect(list.getByRole('button', { name: '棚 西-北-02', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(list.getByRole('button', { name: '50013_540AP', exact: true }));
+    fireEvent.click(await list.findByRole('button', { name: '棚 50013_540AP 北', exact: true }));
+    expect(list.getByRole('button', { name: '棚 50013_540AP 北', exact: true })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    fireEvent.click(list.getByRole('button', { name: '棚 西-北-02', exact: true }));
+    fireEvent.click(list.getByRole('button', { name: '棚 50013_540AP 北', exact: true }));
     expect(screen.getByRole('dialog', { name: '棚の写真を拡大' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '閉じる', exact: true }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(list.getByRole('button', { name: '棚 西-北-02', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(list.getByRole('button', { name: '棚 50013_540AP 北', exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
   it('auto verifies, syncs registration order, registers and resets all fields', async () => {
-    vi.mocked(registerOrderPlacement).mockResolvedValue({ branchState: { id: 'b1', branchNo: 1, shelfCodeRaw: '西-北-02' }, event: { id: 'event1234' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
+    vi.mocked(registerOrderPlacement).mockResolvedValue({ branchState: { id: 'b1', branchNo: 1, shelfCodeRaw: '50013_540AP 北' }, event: { id: 'event1234' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
     mount();
     typeSlips();
     await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenCalledTimes(1));
     expect(verifyMobilePlacementSlipMatch).toHaveBeenCalledWith({ transferOrderBarcodeRaw: '0002178005', actualOrderBarcodeRaw: '4501238876', transferPartBarcodeRaw: '', actualPartBarcodeRaw: '', actualFseibanRaw: '' });
     expect(screen.queryByRole('button', { name: '写真から読む' })).not.toBeInTheDocument();
     await chooseShelf();
-    fireEvent.click(screen.getByRole('button', { name: '西-北-02 に置く' }));
-    await waitFor(() => expect(registerOrderPlacement).toHaveBeenCalledWith({ shelfCodeRaw: '西-北-02', manufacturingOrderBarcodeRaw: '0002178005' }));
+    fireEvent.click(screen.getByRole('button', { name: '50013_540AP 北 に置く' }));
+    await waitFor(() => expect(registerOrderPlacement).toHaveBeenCalledWith({ shelfCodeRaw: '50013_540AP 北', manufacturingOrderBarcodeRaw: '0002178005' }));
     await screen.findByText(/分配1を登録/);
     expect(screen.getByText('バーコードを読む')).toBeInTheDocument();
     expect(screen.getByText('写真から選ぶ')).toBeInTheDocument();
@@ -154,9 +154,9 @@ describe('Haizen hub', () => {
     await chooseShelf();
     expect(screen.getByRole('button', { name: '新規 分配3' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '分配2 東-南-05' }));
-    fireEvent.click(screen.getByRole('button', { name: '西-北-02 に置く' }));
+    fireEvent.click(screen.getByRole('button', { name: '50013_540AP 北 に置く' }));
     await screen.findByText('移動できません');
-    expect(moveOrderPlacementBranch).toHaveBeenCalledWith({ branchStateId: 'branch-2', shelfCodeRaw: '西-北-02' });
+    expect(moveOrderPlacementBranch).toHaveBeenCalledWith({ branchStateId: 'branch-2', shelfCodeRaw: '50013_540AP 北' });
     expect(screen.getByText('0002178005')).toBeInTheDocument();
     expect(registerOrderPlacement).not.toHaveBeenCalled();
   });
@@ -227,12 +227,12 @@ describe('Haizen hub', () => {
     fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: '0002178005' } });
     fireEvent.click(screen.getByRole('button', { name: '完了' }));
     await chooseShelf();
-    expect(screen.getByRole('button', { name: '西-北-02 に置く' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '50013_540AP 北 に置く' })).toBeEnabled();
     expect(screen.queryByText('現品票')).not.toBeInTheDocument();
     expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
     expect(localStorage.getItem('haizen-tab')).toBe('place');
-    fireEvent.click(screen.getByRole('button', { name: '西-北-02 に置く' }));
-    await waitFor(() => expect(registerOrderPlacement).toHaveBeenCalledWith({ shelfCodeRaw: '西-北-02', manufacturingOrderBarcodeRaw: '0002178005' }));
+    fireEvent.click(screen.getByRole('button', { name: '50013_540AP 北 に置く' }));
+    await waitFor(() => expect(registerOrderPlacement).toHaveBeenCalledWith({ shelfCodeRaw: '50013_540AP 北', manufacturingOrderBarcodeRaw: '0002178005' }));
   });
   it('restores the last tab', () => {
     localStorage.setItem('haizen-tab', 'place');

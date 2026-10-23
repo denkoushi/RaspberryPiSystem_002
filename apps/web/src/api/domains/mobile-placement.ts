@@ -12,7 +12,7 @@ export async function getMobilePlacementRegisteredShelves() {
   return data;
 }
 
-/** POST /api/mobile-placement/shelves（棚マスタへ新規登録、`西-北-01` 形式） */
+/** POST /api/mobile-placement/shelves（棚マスタへ新規登録、`加工機 方角` 形式） */
 export async function postMobilePlacementShelfRegister(payload: { shelfCodeRaw: string; displayLabel?: string | null }) {
   const { data } = await api.post<{ shelf: RegisteredShelfEntryDto }>('/mobile-placement/shelves', payload);
   return data;
@@ -41,6 +41,11 @@ export type MobilePlacementClientCapabilities = {
 
 export async function getMobilePlacementClientCapabilities() {
   const { data } = await api.get<MobilePlacementClientCapabilities>('/mobile-placement/client-capabilities');
+  return data;
+}
+
+export async function getMobilePlacementShelfMachines() {
+  const { data } = await api.get<{ machines: string[] }>('/mobile-placement/shelf-machines');
   return data;
 }
 

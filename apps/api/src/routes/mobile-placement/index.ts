@@ -37,7 +37,7 @@ import {
   getClientCapabilities,
   requireShelfLayoutEditEnabled
 } from '../../services/mobile-placement/client-capabilities.service.js';
-import { listMachineMastersForShelfLayout } from '../../services/mobile-placement/machine-master-query.service.js';
+import { listMachineMastersForShelfLayout, listMachinesForShelfRegistration } from '../../services/mobile-placement/machine-master-query.service.js';
 import {
   getShelfLayoutZone,
   listShelfLayoutSummary,
@@ -198,6 +198,11 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const identity = resolveCredentialIdentity(clientDevice);
     return getClientCapabilities(identity.clientDeviceId);
+  });
+
+  app.get('/mobile-placement/shelf-machines', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    return listMachinesForShelfRegistration();
   });
 
   app.get('/mobile-placement/machine-masters', { config: { rateLimit: false } }, async (request) => {

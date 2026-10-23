@@ -71,7 +71,7 @@ describe('shelf photo service', () => {
     ]);
   });
   it('creates shelves with optional memo', async () => {
-    await registerMobilePlacementShelf({ clientDeviceId: 'device', shelfCodeRaw: '西-北-01', displayLabel: '  memo  ' });
-    expect(prisma.mobilePlacementShelf.create).toHaveBeenCalledWith({ data: { shelfCodeRaw: '西-北-01', displayLabel: 'memo', createdByClientDeviceId: 'device' } });
+    await registerMobilePlacementShelf({ clientDeviceId: 'device', shelfCodeRaw: 'DAD-3220 北', displayLabel: '  memo  ' });
+    expect(prisma.mobilePlacementShelf.create).toHaveBeenCalledWith({ data: { shelfCodeRaw: 'DAD-3220 北', displayLabel: 'memo', createdByClientDeviceId: 'device' } });
   });
 });

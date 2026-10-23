@@ -21,5 +21,6 @@ export function filterStructuredShelvesByAreaLine(
 }
 
 export function listUnstructuredShelves(shelves: readonly RegisteredShelfEntryDto[]): RegisteredShelfEntryDto[] {
-  return shelves.filter((s) => !s.isStructured);
+  // 「加工機 方角」の棚はエリア・列を持たないので、こちらに含める。
+  return shelves.filter((s) => !s.isStructured || !s.areaId);
 }

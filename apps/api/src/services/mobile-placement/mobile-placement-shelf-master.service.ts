@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { composeArea } from '@raspi-system/shelf-layout-core';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
@@ -41,25 +42,27 @@ export type RegisterMobilePlacementShelfInput = {
 };
 
 /**
- * 棚マスタへ新規登録（`+` 画面）。`西-北-01` 形式のみ。
+ * 棚マスタへ新規登録（`+` 画面）。`加工機 方角` 形式のみ。
  */
 export async function registerMobilePlacementShelf(
   input: RegisterMobilePlacementShelfInput
 ): Promise<{ shelf: RegisteredShelfEntry }> {
-  const raw = input.shelfCodeRaw.trim();
+  let raw = input.shelfCodeRaw.trim();
   if (raw.length === 0) {
     throw new ApiError(400, '棚番が空です', undefined, 'MOBILE_PLACEMENT_SHELF_EMPTY');
   }
 
   const parsed = parseStructuredShelfCode(raw);
-  if (!parsed.isStructured) {
+  if (!parsed.machineName || !parsed.direction) {
     throw new ApiError(
       400,
-      '棚番は 西-北-01 の形式（エリア・列・2桁番号）で登録してください',
+      '棚の名前は「加工機名 方角」（例: DAD-3220 北）で登録してください',
       undefined,
       'MOBILE_PLACEMENT_SHELF_NOT_STRUCTURED'
     );
   }
+
+  raw = composeArea(parsed.machineName, parsed.direction);
 
   try {
     await prisma.mobilePlacementShelf.create({
@@ -73,7 +76,7 @@ export async function registerMobilePlacementShelf(
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
       throw new ApiError(
         409,
-        'この棚番は既に登録されています',
+        'この加工機・方角の棚はもうあります',
         undefined,
         'MOBILE_PLACEMENT_SHELF_DUPLICATE'
       );
