@@ -280,6 +280,13 @@ export async function getOrderPlacementBranches(manufacturingOrder: string) {
   return data;
 }
 
+export async function deleteOrderPlacementBranch(id: string) {
+  const { data } = await api.delete<{
+    deleted: Pick<OrderPlacementBranchDto, 'id' | 'manufacturingOrderBarcodeRaw' | 'branchNo' | 'shelfCodeRaw'>;
+  }>(`/mobile-placement/order-placement-branches/${encodeURIComponent(id)}`);
+  return data;
+}
+
 /** 既存分配枝の棚を更新（移動） */
 export async function moveOrderPlacementBranch(payload: {
   branchStateId: string;
