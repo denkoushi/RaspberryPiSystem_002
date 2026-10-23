@@ -8,6 +8,7 @@ import {
   upsertClientStatus,
 } from '../client-telemetry.service.js';
 import { prisma } from '../../../lib/prisma.js';
+import { deliverTelemetryNotice } from '../../kiosk-inquiry/system-notice-sources.js';
 import { KIOSK_ALERT_COOLDOWN_MS, KIOSK_NETWORK_ALERT_COOLDOWN_MS } from '../client-telemetry-alert-policy.js';
 import { resolveRouteKey } from '../../alerts/alerts-config.js';
 
@@ -116,6 +117,62 @@ describe('client-telemetry.service', () => {
   });
 });
 
+
+describe('OS update health delivery', () => {
+  const context = {
+    category: 'os_update_health', action: 'unhealthy', signal: 'os_security_update_failed', mode: 'apply',
+    episodeId: '3d594650-3436-4a9f-bf51-2524200ea34e', observedAt: '2026-10-25T00:00:00Z', lastSuccessAt: null
+  };
+  const alertCreate = vi.fn();
+  const deliveryCreate = vi.fn();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1' } as never);
+    vi.mocked(prisma.clientStatus.upsert).mockResolvedValue({ id: 'status-1' } as never);
+    vi.mocked(prisma.alert.findFirst).mockResolvedValue(null);
+    alertCreate.mockResolvedValue({ id: 'alert-1' });
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback) => {
+      return (callback as (tx: unknown) => Promise<unknown>)({ alert: { create: alertCreate }, alertDelivery: { create: deliveryCreate } });
+    });
+  });
+  async function report(level: 'WARN' | 'INFO', extra: Record<string, unknown> = {}) {
+    return upsertClientStatus({ clientKey: 'key', requestId: 'req', metrics: {
+      clientId: 'raspi5-server', hostname: 'pi5', ipAddress: '192.0.2.1', cpuUsage: 0, memoryUsage: 0, diskUsage: 0,
+      logs: [{ level, message: 'do-not-store', context: { ...context, installed: ['do-not-store'], ...extra } }]
+    } });
+  }
+  it('stores a sanitized alert and delivers Chat without queuing Slack', async () => {
+    await report('WARN');
+    expect(alertCreate).toHaveBeenCalledOnce();
+    expect(alertCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ type: 'os-update-health-os_security_update_failed' }) });
+    expect(deliveryCreate).not.toHaveBeenCalled();
+    expect(deliverTelemetryNotice).toHaveBeenCalledWith('raspi5-server', expect.objectContaining({ level: 'WARN' }));
+    expect(JSON.stringify(vi.mocked(prisma.clientLog.createMany).mock.calls)).not.toContain('do-not-store');
+    expect(JSON.stringify(alertCreate.mock.calls)).not.toContain('do-not-store');
+  });
+  it('routes sanitized INFO recovery to Chat without creating an alert', async () => {
+    await report('INFO', { action: 'recovery' });
+    expect(deliverTelemetryNotice).toHaveBeenCalledWith('raspi5-server', expect.objectContaining({
+      level: 'INFO', context: expect.objectContaining({ action: 'recovery', category: 'os_update_health' })
+    }));
+    expect(prisma.alert.findFirst).not.toHaveBeenCalled();
+    expect(alertCreate).not.toHaveBeenCalled();
+    expect(deliveryCreate).not.toHaveBeenCalled();
+  });
+  it('retries Chat for an already stored alert without duplicating it', async () => {
+    vi.mocked(prisma.alert.findFirst).mockResolvedValue({ id: 'existing' } as never);
+    await report('WARN');
+    expect(deliverTelemetryNotice).toHaveBeenCalledOnce();
+    expect(alertCreate).not.toHaveBeenCalled();
+    expect(deliveryCreate).not.toHaveBeenCalled();
+  });
+  it('does not route malformed recovery', async () => {
+    const result = await report('INFO', { action: 'recovery', signal: 'unknown' });
+    expect(result.logsStored).toBe(0);
+    expect(deliverTelemetryNotice).not.toHaveBeenCalled();
+    expect(deliveryCreate).not.toHaveBeenCalled();
+  });
+});
 
 describe('kiosk UI logs', () => {
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });

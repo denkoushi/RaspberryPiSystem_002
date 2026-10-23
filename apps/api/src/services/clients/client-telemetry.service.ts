@@ -55,7 +55,8 @@ async function createTelemetrySlackAlerts(params: {
         }, 0);
       }
       const decision = resolveTelemetryAlertDecision(params.clientId, entry, recentCount, now);
-      if (entry.context?.category === 'terminal_agent_health' && entry.context.action === 'recovery') {
+      const osUpdate = entry.context?.category === 'os_update_health';
+      if ((entry.context?.category === 'terminal_agent_health' || osUpdate) && entry.context?.action === 'recovery') {
         await deliverTelemetryNotice(params.clientId, entry);
       }
       if (!decision) continue;
@@ -95,7 +96,7 @@ async function createTelemetrySlackAlerts(params: {
           }
         });
 
-        await tx.alertDelivery.create({
+        if (!osUpdate) await tx.alertDelivery.create({
           data: {
             alertId: alert.id,
             channel: AlertChannel.SLACK,

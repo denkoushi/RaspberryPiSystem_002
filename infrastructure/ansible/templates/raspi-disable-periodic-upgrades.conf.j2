@@ -1,0 +1,6 @@
+// Managed by Ansible. The weekly raspi-os-security-update timer owns updates.
+// Preserve the package and vendor files, but disable both daily APT actions.
+APT::Periodic::Update-Package-Lists "0";
+APT::Periodic::Unattended-Upgrade "0";
+APT::Periodic::AutocleanInterval "0";
+Unattended-Upgrade::Automatic-Reboot "false";

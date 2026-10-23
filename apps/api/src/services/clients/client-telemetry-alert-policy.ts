@@ -21,6 +21,8 @@ export interface TelemetryAlertDecision {
 
 const STORAGE_CATEGORY = 'storage_health';
 const TERMINAL_CATEGORY = 'terminal_agent_health';
+const OS_UPDATE_CATEGORY = 'os_update_health';
+const OS_UPDATE_SIGNALS = new Set(['os_security_update_failed', 'os_security_updates_stale']);
 const SIMPLE_SIGNAL = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 const EPISODE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TERMINAL_AGENTS = new Set(['nfc', 'barcode', 'torque']);
@@ -87,9 +89,46 @@ function terminalContext(
   return safe;
 }
 
+function osUpdateContext(
+  entry: ClientTelemetryLogEntry,
+  context: Record<string, unknown>
+): Record<string, unknown> | null {
+  const { action, signal, episodeId, observedAt, mode } = context;
+  const validLevel =
+    (action === 'unhealthy' && (entry.level === 'WARN' || entry.level === 'ERROR')) ||
+    (action === 'recovery' && entry.level === 'INFO');
+  if (
+    !validLevel ||
+    typeof signal !== 'string' || !OS_UPDATE_SIGNALS.has(signal) ||
+    typeof episodeId !== 'string' || EPISODE_ID.exec(episodeId)?.[0] !== episodeId ||
+    typeof observedAt !== 'string' || Number.isNaN(new Date(observedAt).getTime()) ||
+    (mode !== 'apply' && mode !== 'dry-run')
+  ) return null;
+  const safe: Record<string, unknown> = {
+    category: OS_UPDATE_CATEGORY, action, signal, episodeId,
+    observedAt: new Date(observedAt).toISOString(), mode,
+    lastSuccessAt: typeof context.lastSuccessAt === 'string' && !Number.isNaN(new Date(context.lastSuccessAt).getTime())
+      ? new Date(context.lastSuccessAt).toISOString() : null
+  };
+  if (signal === 'os_security_update_failed' && action === 'unhealthy' &&
+      typeof context.reason === 'string' && SIMPLE_SIGNAL.exec(context.reason)?.[0] === context.reason) {
+    safe.reason = context.reason;
+  }
+  return safe;
+}
+
 export function sanitizeClientTelemetryLogEntry(
   entry: ClientTelemetryLogEntry
 ): ClientTelemetryLogEntry | null {
+  if (isRecord(entry.context) && entry.context.category === OS_UPDATE_CATEGORY) {
+    const context = osUpdateContext(entry, entry.context);
+    if (!context) return null;
+    return {
+      level: entry.level,
+      message: `OS security update ${context.action === 'recovery' ? 'recovered' : 'unhealthy'}: ${context.signal}`,
+      context
+    };
+  }
   if (!isRecord(entry.context) || entry.context.category !== TERMINAL_CATEGORY) {
     return entry;
   }
@@ -180,6 +219,27 @@ function terminalDecision(
   };
 }
 
+function osUpdateDecision(
+  clientId: string,
+  entry: ClientTelemetryLogEntry,
+  context: Record<string, unknown>
+): TelemetryAlertDecision | null {
+  const safeContext = osUpdateContext(entry, context);
+  if (!safeContext || safeContext.action !== 'unhealthy') return null;
+  const signal = String(safeContext.signal);
+  const type = `os-update-health-${signal}`;
+  return {
+    type,
+    severity: AlertSeverity.WARNING,
+    message: `OS更新の異常: ${clientId}: ${signal}`,
+    details: { clientId, level: entry.level, ...safeContext },
+    source: { service: 'status-agent', clientId, category: OS_UPDATE_CATEGORY },
+    fingerprint: fingerprint([type, clientId, signal, String(safeContext.episodeId)]),
+    timestamp: timestamp(safeContext.observedAt),
+    dedupeAcrossAcknowledgedAlerts: true
+  };
+}
+
 export const KIOSK_ERROR_WINDOW_MS = 10 * 60 * 1000;
 export const KIOSK_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
 export const KIOSK_NETWORK_ALERT_COOLDOWN_MS = 12 * 60 * 60 * 1000;
@@ -227,6 +287,9 @@ export function resolveTelemetryAlertDecision(
   now = new Date()
 ): TelemetryAlertDecision | null {
   if (!isRecord(entry.context)) return null;
+  if (entry.context.category === OS_UPDATE_CATEGORY) {
+    return osUpdateDecision(clientId, entry, entry.context);
+  }
   if (entry.context.category === 'kiosk_ui_error') return kioskDecision(clientId, entry, recentCount, now);
   if (entry.context.category === STORAGE_CATEGORY) {
     return storageDecision(clientId, entry, entry.context);

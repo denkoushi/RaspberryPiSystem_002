@@ -15,9 +15,9 @@
     ]
   },
   "summary": {
-    "documentCount": 732,
-    "totalLines": 180497,
-    "totalBytes": 14576260,
+    "documentCount": 734,
+    "totalLines": 180735,
+    "totalBytes": 14606800,
     "withFrontmatter": 349,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
@@ -25,7 +25,7 @@
     "questionMarkCorruptionDocuments": 1,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 42,
-    "localLinkCount": 5458,
+    "localLinkCount": 5459,
     "brokenLocalLinkCount": 127,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -24732,8 +24732,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md",
-      "lineCount": 306,
-      "byteSize": 58008,
+      "lineCount": 307,
+      "byteSize": 58243,
       "hasFrontmatter": false,
       "title": "KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）",
       "status": null,
@@ -27675,6 +27675,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/knowledge-base/KB-425-os-security-weekly-update.md",
+      "lineCount": 83,
+      "byteSize": 9432,
+      "hasFrontmatter": false,
+      "title": "KB-425: 業務ラズパイの OS 安全更新を週1回夜間に入れる",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
       "byteSize": 12918,
@@ -28442,8 +28457,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 888,
-      "byteSize": 270515,
+      "lineCount": 889,
+      "byteSize": 270927,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -31085,6 +31100,11 @@
           "exists": true
         },
         {
+          "href": "./KB-425-os-security-weekly-update.md",
+          "targetPath": "docs/knowledge-base/KB-425-os-security-weekly-update.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -33372,6 +33392,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/business-llm-glm53-tp2-execplan.md",
+      "lineCount": 92,
+      "byteSize": 11414,
+      "hasFrontmatter": false,
+      "title": "業務LLMを GLM-5.3-Flash-FP4(2台テンソル並列)へ切り替える",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/ci-security-baseline-execplan.md",
       "lineCount": 162,
       "byteSize": 16935,
@@ -35239,8 +35274,8 @@
     },
     {
       "path": "docs/plans/kiosk-operation-guide-accuracy-log.md",
-      "lineCount": 67,
-      "byteSize": 7654,
+      "lineCount": 91,
+      "byteSize": 12249,
       "hasFrontmatter": true,
       "title": "キオスク操作案内の当たり率ログ",
       "status": "living log",
@@ -36019,8 +36054,8 @@
     },
     {
       "path": "docs/plans/mobile-placement-verify-and-shelf-photo.md",
-      "lineCount": 71,
-      "byteSize": 8221,
+      "lineCount": 74,
+      "byteSize": 9512,
       "hasFrontmatter": false,
       "title": "Mobile placement verification and shelf photos",
       "status": null,
@@ -38077,8 +38112,8 @@
     },
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
-      "lineCount": 1379,
-      "byteSize": 147650,
+      "lineCount": 1412,
+      "byteSize": 150616,
       "hasFrontmatter": false,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -38635,8 +38670,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-inquiry-inbox.md",
-      "lineCount": 127,
-      "byteSize": 19732,
+      "lineCount": 128,
+      "byteSize": 19927,
       "hasFrontmatter": true,
       "title": "キオスクお問い合わせ受信箱 Runbook",
       "status": null,

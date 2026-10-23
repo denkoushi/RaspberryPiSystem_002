@@ -208,7 +208,22 @@ SIGNAGE_RELEASE_ONLY_PATHS = frozenset(
     }
 )
 DEPLOY_CONTRACT_ONLY_PATHS = frozenset(
-    {"scripts/deploy/tests/test_ansible_standard_release.py"}
+    {
+        "scripts/deploy/tests/test_ansible_standard_release.py",
+        "scripts/deploy/tests/test_os_security_update.py",
+        "scripts/deploy/tests/test_os_security_update_units.py",
+        "scripts/os-security-update/raspi-os-security-update.py",
+        "infrastructure/ansible/tasks/os-security-update.yml",
+        "infrastructure/ansible/tasks/os-security-update-release-start.yml",
+        "infrastructure/ansible/tasks/os-security-update-release-end.yml",
+        "infrastructure/ansible/templates/raspi-os-security-update.conf.j2",
+        "infrastructure/ansible/templates/raspi-os-security-update.service.j2",
+        "infrastructure/ansible/templates/raspi-os-security-update.timer.j2",
+        "infrastructure/ansible/templates/raspi-os-security-update.logrotate.j2",
+        "infrastructure/ansible/templates/raspi-disable-periodic-upgrades.conf.j2",
+        "infrastructure/ansible/group_vars/kiosk.yml",
+        "infrastructure/ansible/group_vars/signage.yml",
+    }
 )
 TORQUE_COMPOSITION_PATHS = frozenset(
     {
@@ -295,6 +310,8 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
     """Return categories for a known path, or ``None`` for an unknown path."""
     normalized = _normalize_path(path)
 
+    if normalized in DEPLOY_CONTRACT_ONLY_PATHS:
+        return frozenset({"repo_policy", "deploy_contract"})
     if normalized == ".github/workflows/torque-release.yml":
         return frozenset({"repo_policy", "deploy_contract"})
     if normalized == ".husky/pre-commit":

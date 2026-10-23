@@ -1,0 +1,131 @@
+---
+# Shared, post-health host policy. Callers report failures without rollback.
+- name: Inspect the previously managed periodic upgrade policy
+  ansible.builtin.stat:
+    path: /etc/apt/apt.conf.d/52raspi-unattended-upgrades
+  register: os_security_update_periodic_policy
+
+- name: Inspect whether unattended-upgrades is installed
+  ansible.builtin.command:
+    argv: [dpkg-query, '-W', '-f=${db:Status-Status}', unattended-upgrades]
+  register: os_security_update_unattended_package
+  changed_when: false
+  failed_when: false
+
+- name: Neutralize periodic unattended upgrades on previously configured hosts
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/raspi-disable-periodic-upgrades.conf.j2"
+    dest: /etc/apt/apt.conf.d/52raspi-unattended-upgrades
+    owner: root
+    group: root
+    mode: '0644'
+  when: >-
+    os_security_update_periodic_policy.stat.exists or
+    os_security_update_unattended_package.stdout | default('') == 'installed'
+
+- name: Install the weekly OS security update policy on enabled hosts
+  when: os_security_update_enabled | bool
+  block:
+    - name: Ensure python3-apt is available for the package selector
+      ansible.builtin.apt:
+        name: python3-apt
+        state: present
+        install_recommends: false
+        lock_timeout: 600
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_MODE: l
+        NEEDRESTART_SUSPEND: '1'
+        APT_LISTCHANGES_FRONTEND: none
+
+    - name: Install the OS security updater outside the application release tree
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../scripts/os-security-update/raspi-os-security-update.py"
+        dest: /usr/local/sbin/raspi-os-security-update
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Configure the OS security updater
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/raspi-os-security-update.conf.j2"
+        dest: /etc/raspi-os-security-update.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install the weekly OS security update units
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - raspi-os-security-update.service
+        - raspi-os-security-update.timer
+      register: os_security_update_units
+
+    - name: Rotate the OS security update summary log
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/raspi-os-security-update.logrotate.j2"
+        dest: /etc/logrotate.d/raspi-os-security-update
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Create the OS security update state directory
+      ansible.builtin.file:
+        path: "{{ os_security_update_state_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Inspect the OS security update state
+      ansible.builtin.stat:
+        path: "{{ os_security_update_state_dir }}/state.json"
+      register: os_security_update_state
+
+    - name: Read the first installation timestamp from the host
+      ansible.builtin.command:
+        argv: [date, '-Iseconds']
+      changed_when: false
+      register: os_security_update_enabled_at
+      when: not os_security_update_state.stat.exists
+
+    - name: Seed pending state without overwriting previous observations
+      ansible.builtin.copy:
+        dest: "{{ os_security_update_state_dir }}/state.json"
+        content: >-
+          {{ {'schemaVersion': 1, 'mode': os_security_update_mode, 'result': 'pending',
+              'reason': none, 'lastRunAt': none, 'lastSuccessAt': none, 'lastFailureAt': none,
+              'enabledAt': os_security_update_enabled_at.stdout, 'installed': [],
+              'selected': [], 'heldBack': [], 'browserRestarted': false} | to_nice_json }}
+        owner: root
+        group: root
+        mode: '0644'
+        force: false
+      when: not os_security_update_state.stat.exists
+
+    - name: Enable and start the weekly OS security update timer
+      ansible.builtin.systemd:
+        name: raspi-os-security-update.timer
+        enabled: true
+        state: "{{ 'restarted' if os_security_update_units is changed else 'started' }}"
+        daemon_reload: true
+
+- name: Inspect an existing weekly timer on disabled hosts
+  ansible.builtin.stat:
+    path: /etc/systemd/system/raspi-os-security-update.timer
+  register: os_security_update_disabled_timer
+  when: not (os_security_update_enabled | bool)
+
+- name: Disable and stop the weekly timer while preserving policy and state
+  ansible.builtin.systemd:
+    name: raspi-os-security-update.timer
+    enabled: false
+    state: stopped
+  when:
+    - not (os_security_update_enabled | bool)
+    - os_security_update_disabled_timer.stat.exists

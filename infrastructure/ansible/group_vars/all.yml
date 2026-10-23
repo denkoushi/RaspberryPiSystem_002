@@ -241,24 +241,37 @@ rkhunter:
     hour: "4"
     weekday: "0"
 
-# OS security updates: opt in only on Pi5; host variables may override the
-# Python-regex blacklist. Docker, remote access, kernel/firmware and Chromium
-# remain manually maintained. Only Debian's security origin is allowed.
-unattended_upgrades_enabled: false
-unattended_upgrades_package_blacklist:
+# Weekly OS security updates; stage 1 reports fleet-wide, with one apply canary.
+os_security_update_enabled: true
+os_security_update_mode: dry-run
+os_security_update_package_blacklist:
   - '^docker-ce$'
   - '^docker-ce-cli$'
+  - '^docker-ce-rootless-extras$'
   - '^containerd[.]io$'
   - '^docker-buildx-plugin$'
   - '^docker-compose-plugin$'
   - '^tailscale$'
   - '^linux-image'
   - '^linux-headers'
+  - '^linux-kbuild'
   - '^raspi-firmware$'
   - '^raspberrypi-(kernel|bootloader)'
   - '^rpi-eeprom'
   - '^firmware-'
+  - '^initramfs-tools'
+os_security_update_package_allowlist:
   - '^chromium'
+  - '^rpi-chromium-mods$'
+os_security_update_oncalendar: "Sun *-*-* 02:00:00"
+os_security_update_randomized_delay_sec: '0'
+os_security_update_browser_unit: ''
+os_security_update_state_dir: /var/lib/raspi-os-security-update
+os_security_update_window_start_hour: 0
+os_security_update_window_end_hour: 5
+os_security_update_release_marker: /run/raspi-release/active
+os_security_update_release_marker_max_age_seconds: 14400
+os_security_update_lock_path: /run/lock/raspi-os-security-update.lock
 
 # 監視・アラート設定（Phase6）
 security_monitor_enabled: true

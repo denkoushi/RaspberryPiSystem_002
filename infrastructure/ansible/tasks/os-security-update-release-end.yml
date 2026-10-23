@@ -1,0 +1,5 @@
+---
+- name: Remove the volatile release guard after success or failure including cleanup
+  ansible.builtin.file:
+    path: "{{ os_security_update_release_marker }}"
+    state: absent

@@ -10,3 +10,13 @@
 # it can never send a healthy Signage release into rollback.
 - name: Watch the Pi3 SD card
   ansible.builtin.import_tasks: host-status-agent-storage.yml
+
+# Host policy is post-health and survives application rollback.
+- name: Converge the Pi3 Signage weekly OS security update policy
+  block:
+    - name: Apply the shared weekly OS security update policy
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update.yml"
+  rescue:
+    - name: Report the unapplied OS security update policy without failing the release
+      ansible.builtin.debug:
+        msg: "Weekly OS security update policy was not applied on {{ inventory_hostname }}; the release continues."

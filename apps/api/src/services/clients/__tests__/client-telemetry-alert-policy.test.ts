@@ -1,4 +1,5 @@
 import { AlertSeverity } from '@prisma/client';
+import crypto from 'crypto';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -217,6 +218,65 @@ describe('kiosk UI alert policy', () => {
   });
 });
 
+
+describe('OS update health policy', () => {
+  const context = {
+    category: 'os_update_health', action: 'unhealthy', signal: 'os_security_update_failed',
+    episodeId: '3d594650-3436-4a9f-bf51-2524200ea34e', observedAt: '2026-10-25T00:00:00Z',
+    mode: 'apply', reason: 'apt_update_failed', lastSuccessAt: null
+  };
+  it.each(['os_security_update_failed', 'os_security_updates_stale'])('makes WARNING decisions for %s with episode fingerprints', (signal) => {
+    const entry = { level: 'ERROR' as const, message: 'unsafe raw text', context: { ...context, signal } };
+    const type = `os-update-health-${signal}`;
+    const decision = resolveTelemetryAlertDecision('pi5-server', entry)!;
+    expect(decision).toMatchObject({
+      type, severity: AlertSeverity.WARNING, message: `OS更新の異常: pi5-server: ${signal}`,
+      source: { service: 'status-agent', clientId: 'pi5-server', category: 'os_update_health' },
+      fingerprint: crypto.createHash('sha256').update([type, 'pi5-server', signal, context.episodeId].join(':')).digest('hex'),
+      dedupeAcrossAcknowledgedAlerts: true
+    });
+    expect(resolveTelemetryAlertDecision('pi5-server', { ...entry, context: {
+      ...entry.context, episodeId: '217b7ada-788b-47e1-ab92-426c46ee6d18'
+    } })?.fingerprint).not.toBe(decision.fingerprint);
+    expect(JSON.stringify(decision)).not.toContain('unsafe raw text');
+  });
+  it('whitelists context and replaces raw messages before persistence', () => {
+    const entry = { level: 'WARN' as const, message: 'do-not-store', context: {
+      ...context, installed: ['do-not-store'], selected: ['do-not-store'], heldBack: ['do-not-store'], raw: 'do-not-store'
+    } };
+    expect(sanitizeClientTelemetryLogEntry(entry)).toEqual({
+      level: 'WARN', message: 'OS security update unhealthy: os_security_update_failed',
+      context: { ...context, observedAt: '2026-10-25T00:00:00.000Z' }
+    });
+    expect(JSON.stringify(resolveTelemetryAlertDecision('pi4', entry))).not.toContain('do-not-store');
+  });
+  it.each(['free text', 'bad\n', 'x'.repeat(81), { raw: 'text' }])('drops invalid reason %j', (reason) => {
+    expect(sanitizeClientTelemetryLogEntry({ level: 'WARN', message: '', context: { ...context, reason } })?.context).not.toHaveProperty('reason');
+  });
+  it('keeps timestamps safe and only includes a reason on an active failure', () => {
+    const entry = { level: 'WARN' as const, message: '', context: { ...context, signal: 'os_security_updates_stale', lastSuccessAt: 'raw text' } };
+    const safe = sanitizeClientTelemetryLogEntry(entry)!;
+    expect(safe.context).not.toHaveProperty('reason');
+    expect(safe.context?.lastSuccessAt).toBeNull();
+    expect(sanitizeClientTelemetryLogEntry({ ...entry, context: { ...entry.context, lastSuccessAt: '2026-10-01T09:00:00+09:00' } })?.context?.lastSuccessAt).toBe('2026-10-01T00:00:00.000Z');
+  });
+  it.each([
+    { signal: 'unknown' }, { episodeId: 'bad' }, { observedAt: 'bad' }, { mode: 'other' }, { action: 'recovery' }
+  ])('drops invalid OS context %j', (invalid) => {
+    const entry = { level: 'WARN' as const, message: 'raw', context: { ...context, ...invalid } };
+    expect(sanitizeClientTelemetryLogEntry(entry)).toBeNull();
+    expect(resolveTelemetryAlertDecision('pi4', entry)).toBeNull();
+  });
+  it('accepts INFO recovery without creating an alert and rejects mismatched levels', () => {
+    const recovery = { level: 'INFO' as const, message: 'raw', context: { ...context, action: 'recovery' } };
+    expect(sanitizeClientTelemetryLogEntry(recovery)?.context).toMatchObject({ action: 'recovery' });
+    expect(sanitizeClientTelemetryLogEntry(recovery)?.context).not.toHaveProperty('reason');
+    expect(resolveTelemetryAlertDecision('pi4', recovery)).toBeNull();
+    expect(sanitizeClientTelemetryLogEntry({ ...recovery, context })).toBeNull();
+    expect(sanitizeClientTelemetryLogEntry({ ...recovery, level: 'ERROR' })).toBeNull();
+    expect(sanitizeClientTelemetryLogEntry({ ...recovery, level: 'DEBUG' })).toBeNull();
+  });
+});
 
 describe('network telemetry is recording only', () => {
   it.each(['network_health', 'kiosk_net_stats'])('never alerts for %s even at ERROR severity', (category) => {
