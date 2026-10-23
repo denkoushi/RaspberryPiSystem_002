@@ -232,6 +232,8 @@ describe('csvDashboardPresets', () => {
     expect(preset.templateConfig?.rowsPerPage).toBe(50);
     expect(preset.columnDefinitions).toHaveLength(9);
     expect(preset.dateColumnName).toBe('inspectionAt');
+    expect(preset.ingestMode).toBe('DEDUP');
+    expect(preset.dedupKeyColumns).toEqual(['equipmentManagementNumber', 'inspectionItem', 'inspectionAt']);
   });
 });
 

@@ -210,15 +210,23 @@ def resolve_start_profile(
     model_profile_id: object,
     reason: str | None,
 ) -> ModelProfile | None:
-    """Resolve an explicit profile or a validated business restore profile.
+    """Resolve an explicit profile or a validated last active business profile.
 
-    Legacy profile-less starts keep their environment fallback.  The restore
-    marker is the only path allowed to consult the last profile state, and it
+    Profile-less starts prefer the last profile state, keeping the legacy
+    environment fallback if it is unavailable or invalid.  Business restore
     fails closed unless that state still names an available business profile.
     """
     if isinstance(model_profile_id, str) and model_profile_id.strip():
         return validate_startable_profile(config.model_registry_root, model_profile_id.strip())
     if reason != "business-restore":
+        try:
+            state = read_active_model_state(config.active_model_state_path)
+            if state is not None:
+                profile = validate_startable_profile(config.model_registry_root, state.model_profile_id)
+                if profile.business_orchestration_eligible and profile.backend == state.backend:
+                    return profile
+        except (ModelProfileError, OSError, ValueError):
+            pass
         return None
 
     try:

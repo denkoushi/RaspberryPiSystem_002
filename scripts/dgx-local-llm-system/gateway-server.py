@@ -262,6 +262,29 @@ def model_profiles_to_api_with_delete_protection(
     return payloads
 
 
+def label_multi_image_messages(messages: list) -> list:
+    """Add positional labels to multi-image messages without modifying the input."""
+    result = []
+    for message in messages:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list) or sum(
+            isinstance(part, dict) and part.get("type") == "image_url" for part in content
+        ) < 2:
+            result.append(message)
+            continue
+        labelled = []
+        image_index = 0
+        for index, part in enumerate(content):
+            if isinstance(part, dict) and part.get("type") == "image_url":
+                image_index += 1
+                previous = content[index - 1] if index else None
+                if not isinstance(previous, dict) or previous.get("type") != "text":
+                    labelled.append({"type": "text", "text": f"画像{image_index}:"})
+            labelled.append(part)
+        result.append({**message, "content": labelled})
+    return result
+
+
 def inject_blue_chat_completions_defaults(
     path: str, body: bytes, active_backend: str, config: GatewayConfig | None = None
 ) -> bytes:
@@ -282,6 +305,8 @@ def inject_blue_chat_completions_defaults(
         return body
     if not isinstance(payload, dict):
         return body
+    if isinstance(payload.get("messages"), list):
+        payload["messages"] = label_multi_image_messages(payload["messages"])
     kwargs = payload.get("chat_template_kwargs")
     if not isinstance(kwargs, dict):
         kwargs = {}
