@@ -4,6 +4,12 @@ import { useLocation } from 'react-router-dom';
 const hubPath = '/kiosk/mobile-placement';
 const sentinelKey = '__haizenHubSentinel';
 
+/** Carry the existing guard through router REPLACE and across phone tab remounts. */
+export function haizenTabNavigationOptions(state?: { openHaizenMenu: true }) {
+  const guarded = window.history.state?.[sentinelKey] || window.history.state?.usr?.[sentinelKey];
+  return { replace: true, state: { ...state, ...(guarded ? { [sentinelKey]: true } : {}) } };
+}
+
 /** One invisible duplicate of the hub, reused on browser Back and remounts. */
 export function useHubBackGuard(enabled: boolean, closeOverlay: (() => void) | null) {
   const location = useLocation();
@@ -16,7 +22,7 @@ export function useHubBackGuard(enabled: boolean, closeOverlay: (() => void) | n
     if (!enabled || location.pathname !== hubPath || window.location.pathname !== hubPath) return;
 
     const state = { ...window.history.state, [sentinelKey]: true };
-    if (!armed.current && !window.history.state?.[sentinelKey]) {
+    if (!armed.current && !window.history.state?.[sentinelKey] && !location.state?.[sentinelKey]) {
       // Keep BrowserRouter's usr/key/idx intact. This duplicate is invisible to
       // the router; the capture listener consumes only the corresponding POP.
       window.history.pushState(state, '', window.location.href);
