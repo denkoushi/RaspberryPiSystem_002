@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { HaizenIcon } from '../../features/mobile-placement/haizen/HaizenIcon';
@@ -13,6 +13,12 @@ import { haizenPhoneStyle, hp } from '../../features/mobile-placement/ui/haizenP
 
 export function MobilePlacementPartSearchPage() {
   const navigate = useNavigate();
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
   const search = useMobilePlacementPartSearch();
   const [machineInputOpen, setMachineInputOpen] = useState(false);
   const [machineDraft, setMachineDraft] = useState('');
@@ -59,12 +65,18 @@ export function MobilePlacementPartSearchPage() {
         <ul className="flex flex-col gap-2">
           {search.visibleHits.map((hit) => {
             const selected = search.selected != null && partSearchHitIdentity(search.selected) === partSearchHitIdentity(hit);
-            return <li key={partSearchHitIdentity(hit)}><PartSearchPhoneHit hit={hit} selected={selected} onSelect={() => search.setSelected(selected ? null : hit)} /></li>;
+            return <li key={partSearchHitIdentity(hit)}><PartSearchPhoneHit hit={hit} selected={selected} onSelect={() => search.setSelected(selected ? null : hit)} onDeleted={() => {
+              search.clearSelection();
+              setToast(`✓ ${hit.shelfCodeRaw} の ${hit.displayName} を消しました`);
+            }} /></li>;
           })}
         </ul>
       </section>
       <PartSearchPhoneKeyboard hiddenKeys={search.hiddenPaletteKeys} onAppend={search.appendFromPalette} onPreset={changePart} onDelete={search.backspaceFromPalette} />
     </div>
+    {toast && <div role="status" className="absolute bottom-24 left-3.5 right-3.5 z-20 flex items-center gap-2.5 rounded-[14px] bg-[var(--hp-ink)] px-4 py-[13px] text-[15px] font-black text-[var(--hp-bg)]">
+      <span className="break-words">{toast}</span>
+    </div>}
     {machineInputOpen && <HaizenSheet title="機種指定" onClose={() => setMachineInputOpen(false)}>
       <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => {
         event.preventDefault();
