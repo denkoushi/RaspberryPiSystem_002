@@ -17,6 +17,10 @@ const DEFAULT_BATCH_SIZE = Math.min(
   20,
   Math.max(1, Number.parseInt(process.env.PART_MEASUREMENT_DRAWING_DIMENSION_MAP_BATCH_SIZE || '4', 10) || 4)
 );
+const DEFAULT_SIBLING_MATCH_BATCH_SIZE = Math.min(
+  200,
+  Math.max(1, Number.parseInt(process.env.PART_MEASUREMENT_DRAWING_SIBLING_MATCH_BATCH_SIZE || '30', 10) || 30)
+);
 const DEFAULT_DISCOVER_LIMIT = Math.min(
   1000,
   Math.max(1, Number.parseInt(process.env.PART_MEASUREMENT_DRAWING_DIMENSION_MAP_DISCOVER_LIMIT || '100', 10) || 100)
@@ -35,7 +39,8 @@ export class PartMeasurementDrawingDimensionMapScheduler {
     private readonly batchSize = DEFAULT_BATCH_SIZE,
     private readonly discoverLimit = DEFAULT_DISCOVER_LIMIT,
     private readonly reorderProvider?: PlacementReorderProvider | null,
-    private readonly placementService = getPartMeasurementDrawingPlacementService()
+    private readonly placementService = getPartMeasurementDrawingPlacementService(),
+    private readonly siblingMatchBatchSize = DEFAULT_SIBLING_MATCH_BATCH_SIZE
   ) {}
 
   start(): void {
@@ -54,7 +59,7 @@ export class PartMeasurementDrawingDimensionMapScheduler {
       { timezone: 'Asia/Tokyo', scheduled: true }
     );
     log.info(
-      { schedule: this.schedule, batchSize: this.batchSize, discoverLimit: this.discoverLimit },
+      { schedule: this.schedule, batchSize: this.batchSize, discoverLimit: this.discoverLimit, siblingMatchBatchSize: this.siblingMatchBatchSize },
       '[PartMeasurementDrawingDimensionMapScheduler] started'
     );
   }
@@ -74,7 +79,7 @@ export class PartMeasurementDrawingDimensionMapScheduler {
       const batch = await this.service.runBatch({ batchSize: this.batchSize, signal: this.abort.signal });
       try {
         const provider = this.reorderProvider === undefined ? createPlacementJevReorderProvider() : this.reorderProvider;
-        const placement = await this.placementService.backfill(this.batchSize, provider);
+        const placement = await this.placementService.backfill(this.siblingMatchBatchSize, provider);
         log.info({ placement }, '[PartMeasurementDrawingDimensionMapScheduler] placement finished');
       } catch (error) {
         log.warn({ err: error }, '[PartMeasurementDrawingDimensionMapScheduler] placement failed');
