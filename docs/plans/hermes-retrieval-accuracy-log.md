@@ -721,3 +721,13 @@ Harness change: the probe now sends 64 tokens and treats a truncated reply as re
 ### 2026-10-23: record answers now show the part number and part name (change, not a measurement)
 
 Reported from a kiosk check: a records answer listed three nonconformities by number, date, department and body only, so the reader could not see which part each one was about. Record answers were built from the fields with the roles identifier, date, organization and body; part number, part name and machine name are facets and were left out. A source definition may now declare `answerFields` (facet keys shown in record answers after the identifier); the nonconformity source declares part number and part name, so a record reads 不適合番号, 品番, 品名, 発見日, 起因部署, then the body fields. Other sources are unchanged. Planner inputs and catalog digests unchanged; the results digest changed because answers carry two more fields. Not a retrieval change, so no effect on the match rate is expected.
+
+### 2026-10-24: twenty-first night, 76% floor; no content question was routed to a breakdown any more (measurement)
+
+Night of 2026-10-23 (first night with #2234 and #2249 live, business LLM on GLM). The whole night ran between 22:00 and 22:28 JST: the readiness probe passed on the second attempt (one `dgx not ready reason=timeout` at 22:02), then 79 questions were generated and the budget was reached. Of 87 live content rows, 66 matched a target (76%, against 34/61 on night 19 and 52/61, 54/64, 51/61 before). The 22 further rows are generated candidates dropped before execution (copied run 10, anchor not confirmed 7, truncated 2, too similar 2, copied words 1). `no_result` 4, ask-backs 0, filter questions 10/10. Median answer time 1.2 s.
+
+The #2234 finding is settled: `intentDecision.chosen` was `records` on all 87 rows and the count-cue gate did not have to fire once (`gated` 0), so the reworded option texts alone stopped JEV from choosing a breakdown for questions about one nonconformity. No real kiosk question of 10/23 was routed to a breakdown (3 receipts).
+
+The 76% is a floor, not the final figure: 17 rows are `other_shown`, and all 78 records shown on them are still unlabelled (`labelPending=78`) because the night's 60-pair labelling budget was spent on the backlog from 10/21 (37 pairs) before this night's pairs. On nights 15 to 18, labelling turned most `other_shown` rows into matches or confirmed misses within the same night; here that step is pending, so the true match rate is between 66 and 83 of 87. The remaining losses are `not_in_pool` 2 and `judge_rejected` 2.
+
+Private files: `work/flywheel/questions-2026-10-23.jsonl`, `runner-2026-10-23.log`, `labels.json`, `receipts-2026-10-23.jsonl`.
