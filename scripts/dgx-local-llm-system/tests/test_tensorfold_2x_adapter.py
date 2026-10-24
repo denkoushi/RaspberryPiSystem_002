@@ -118,7 +118,7 @@ class DeepSeekAdapterTests(unittest.TestCase):
             "BLUE_SERVER_LOG_PATH": str(self.root / "server.log"),
         })
 
-    def run_script(self, name="dsv41-tensorfold-2x-adapter.sh", **env):
+    def run_script(self, name="tensorfold-2x-adapter.sh", **env):
         return subprocess.run(["bash", str(MODULE_DIR / name)], env={**self.env, **env},
                               cwd=self.root, capture_output=True, text=True, timeout=5)
 
@@ -294,3 +294,109 @@ class DeepSeekAdapterTests(unittest.TestCase):
         self.assertEqual(self.events()[-1], {
             "kind": "docker", "remote": True, "args": ["rm", "-f", "system-prod-trtllm-rank1"],
         })
+
+    def test_glm_dispatch_stops_blue_then_verifies_and_marks_before_detached_launch(self):
+        self.write_marker({"sshTarget": "user@spark2.example", "containerName": "system-prod-trtllm-rank1"})
+        revision = "3fd60dfc836fab0f1ed0fd4f0afaf2a1d62b2aab"
+        # Measure detachment from the remote launch, excluding stop/git/Python startup time.
+        (self.bin / "setsid").write_text(FAKE_SETSID.replace(
+            '"path": os.environ["PATH"]',
+            '"path": os.environ["PATH"], "started": time.monotonic()',
+        ))
+        result = self.run_script(
+            "start-trtllm-server.sh", BLUE_SERVER_ADAPTER="glm53_tensorfold_2x",
+            BLUE_MODEL_PROFILE_ID="private_glm53_flash_ablit_tp2",
+            BLUE_QWEN38_RECIPE_REVISION=revision, START_DELAY="3",
+        )
+        returned_at = time.monotonic()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("launched GLM 5.3 Flash", result.stdout)
+        launch = self.wait_for_launch()
+        self.assertLess(returned_at, launch["started"] + 3)
+        self.assertEqual(launch["ablit"], "1")
+        self.assertEqual(Path(launch["cwd"]), self.clone.resolve())
+        self.assertTrue(launch["path"].startswith(str(self.venv) + os.pathsep))
+        operations = [e for e in self.events() if e["kind"] in ("docker", "git")]
+        self.assertEqual([(e["kind"], e["args"]) for e in operations], [
+            ("docker", ["ps", "-a", "--filter", "name=^/system-prod-trtllm$", "--format", "{{.Names}}"]),
+            ("docker", ["rm", "-f", "system-prod-trtllm"]),
+            ("docker", ["rm", "-f", "system-prod-trtllm-rank1"]),
+            ("git", ["-C", str(self.clone), "rev-parse", "HEAD"]),
+            ("git", ["-C", str(self.clone), "status", "--porcelain"]),
+        ])
+        self.assertTrue(operations[2]["remote"])
+        expected = {**self.expected_marker(), "adapter": "glm53_tensorfold_2x"}
+        ssh_launch = [e for e in self.events() if e["kind"] == "ssh"][-1]
+        self.assertEqual(ssh_launch["marker"], expected)
+        script = shlex.split(ssh_launch["command"])[3]
+        for fragment in ("setsid nohup ./start.sh restart", "ABLIT=1", "< /dev/null", "&",
+                         "$HOME/.cache/tensorfold-glm53/start.log"):
+            self.assertIn(fragment, script)
+        self.assertEqual(json.loads(self.marker.read_text()), expected)
+        self.assertFalse(self.marker.with_suffix(".json.tmp").exists())
+        self.assertTrue((self.root / ".cache/tensorfold-glm53/start.log").exists())
+        self.assertFalse((self.root / ".cache/dsv41-tensorfold").exists())
+        self.assertFalse((self.clone / "injected").exists())
+        self.assertFalse((self.root / "injected").exists())
+
+    def test_switching_tensorfold_variants_stops_recorded_clone_before_launch(self):
+        previous_clone = self.root / "previous clone ' $(touch injected)"
+        previous_clone.mkdir()
+        stop_script = previous_clone / "stop.sh"
+        stop_script.write_text(FAKE_STOP)
+        stop_script.chmod(0o755)
+        for previous, requested in (("dsv41_tensorfold_2x", "glm53_tensorfold_2x"),
+                                    ("glm53_tensorfold_2x", "dsv41_tensorfold_2x")):
+            with self.subTest(previous=previous, requested=requested):
+                self.events_path.write_text("")
+                marker = {**self.expected_marker(), "adapter": previous, "cloneDir": str(previous_clone)}
+                self.write_marker(marker)
+                result = self.run_script("start-trtllm-server.sh", BLUE_SERVER_ADAPTER=requested)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.wait_for_launch()
+                operations = [e for e in self.events() if e["kind"] in ("docker", "stop", "git", "launch")]
+                self.assertEqual([e["kind"] for e in operations],
+                                 ["docker", "docker", "stop", "git", "git", "launch"])
+                self.assertEqual(Path(operations[2]["cwd"]), previous_clone.resolve())
+                self.assertEqual(Path(operations[-1]["cwd"]), self.clone.resolve())
+                ssh_events = [e for e in self.events() if e["kind"] == "ssh"]
+                self.assertEqual(ssh_events[0]["marker"], marker)
+                self.assertIn("exec ./stop.sh", ssh_events[0]["command"])
+                expected = {**self.expected_marker(), "adapter": requested}
+                self.assertEqual(ssh_events[-1]["marker"], expected)
+                self.assertEqual(json.loads(self.marker.read_text()), expected)
+                self.assertFalse((previous_clone / "injected").exists())
+
+    def test_unknown_tensorfold_variant_fails_before_any_command(self):
+        self.write_marker(self.expected_marker())
+        for adapter in ("", "unknown", "glm53_flash_tp2", "glm53_tensorfold_2x;touch injected"):
+            with self.subTest(adapter=adapter):
+                result = self.run_script(BLUE_SERVER_ADAPTER=adapter)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("unsupported BLUE_SERVER_ADAPTER", result.stderr)
+                self.assertEqual(self.events(), [])
+                self.assertEqual(json.loads(self.marker.read_text()), self.expected_marker())
+                self.assertFalse((self.root / "injected").exists())
+
+    def test_glm_revision_and_dirty_checkout_fail_before_launch(self):
+        for overrides in ({"ACTUAL_REVISION": "a" * 40}, {"DIRTY": "?? untracked\n"}):
+            with self.subTest(overrides=overrides):
+                result = self.run_script(BLUE_SERVER_ADAPTER="glm53_tensorfold_2x", **overrides)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("GLM 5.3 Flash adapter:", result.stderr)
+                self.assertFalse(self.marker.exists())
+                self.assertFalse(any("setsid" in e.get("command", "") for e in self.events()))
+
+    def test_stop_glm_marker_dispatch_preserves_quoted_paths(self):
+        for with_venv in (True, False):
+            with self.subTest(with_venv=with_venv):
+                self.write_marker({**self.expected_marker(with_venv), "adapter": "glm53_tensorfold_2x"})
+                result = self.run_script("stop-trtllm-server.sh")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(self.marker.exists())
+                stop = [e for e in self.events() if e["kind"] == "stop"][-1]
+                self.assertEqual(Path(stop["cwd"]), self.clone.resolve())
+                expected_path = (str(self.venv) + os.pathsep if with_venv else "") + self.env["PATH"]
+                self.assertEqual(stop["path"], expected_path)
+                self.assertFalse((self.root / "injected").exists())
+                self.assertFalse((self.clone / "injected").exists())

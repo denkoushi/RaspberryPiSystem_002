@@ -14,6 +14,29 @@ from profile_launcher import launcher_env_for_profile  # noqa: E402
 
 
 class ProfileLauncherTests(unittest.TestCase):
+    def test_private_glm53_fixture_parses_and_maps_launcher_hints(self):
+        profile = load_model_profile_manifest(
+            MODULE_DIR / "tests/fixtures/private_glm53_flash_ablit_tp2/manifest.json"
+        )
+        self.assertEqual(profile.id, "private_glm53_flash_ablit_tp2")
+        self.assertEqual(profile.backend, "blue")
+        self.assertFalse(profile.enabled)
+        self.assertFalse(profile.business_orchestration_eligible)
+        self.assertEqual(profile.served_alias, "GLM-5.3-Flash-EXL3")
+        self.assertEqual(profile.declared_capabilities, ("text",))
+        self.assertEqual(profile.source_model_ref,
+                         "MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold@"
+                         "3fd60dfc836fab0f1ed0fd4f0afaf2a1d62b2aab")
+        self.assertEqual(launcher_env_for_profile(profile), {
+            "BLUE_MODEL_PROFILE_ID": profile.id,
+            "VLLM_SERVED_MODEL_NAME": profile.served_alias,
+            "BLUE_SERVER_COMMAND": "", "TRTLLM_SERVER_COMMAND": "",
+            "BLUE_SERVER_ADAPTER": "glm53_tensorfold_2x",
+            "BLUE_SERVER_MODE": "container",
+            "BLUE_ABLITERATED": "1",
+            "DGX_RUNTIME_ENGINE": "control-server",
+        })
+
     def test_private_deepseek_fixture_parses_and_maps_launcher_hints(self):
         profile = load_model_profile_manifest(
             MODULE_DIR / "tests/fixtures/private_deepseek_v41_flash_tp2/manifest.json"
