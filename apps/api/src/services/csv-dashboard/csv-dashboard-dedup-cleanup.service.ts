@@ -32,6 +32,9 @@ type CleanupDuplicateLosersGloballyParams = {
   scanLimit?: number;
   maxScans?: number;
   deadline?: Date;
+  maxDeletedCount?: number;
+  pauseRatio?: number;
+  minPauseMs?: number;
 };
 
 const chunk = <T>(items: T[], size: number): T[][] => {
@@ -60,6 +63,8 @@ const toSqlDirection = (direction: WinnerOrderSpec['direction']): Prisma.Sql => 
  * - winner順序は呼び出し側から注入（既存ProductionSchedule互換を維持）
  */
 export class CsvDashboardDedupCleanupService {
+  constructor(private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))) {}
+
   async deleteDuplicateLosersForKeys(params: CleanupDuplicateLosersParams): Promise<{ deletedCount: number }> {
     const keyColumns = params.keyColumns.filter((v) => v.trim().length > 0);
     const normalizedKeys = this.normalizeKeys(params.keys, keyColumns);
@@ -132,13 +137,20 @@ export class CsvDashboardDedupCleanupService {
 
   async deleteDuplicateLosersGlobally(params: CleanupDuplicateLosersGloballyParams): Promise<{
     deletedCount: number;
-    stoppedReason: 'completed' | 'deadline' | 'statement_timeout' | 'max_scans';
+    stoppedReason: 'completed' | 'deadline' | 'statement_timeout' | 'max_scans' | 'max_deleted';
     scans: number;
   }> {
     let deletedCount = 0;
     let scans = 0;
     const deadlineMs = params.deadline?.getTime();
     const deadlineReached = () => deadlineMs !== undefined && Date.now() >= deadlineMs;
+    const maxDeletedCount = Math.max(0, Math.floor(params.maxDeletedCount ?? Infinity));
+    const pause = async (elapsedMs: number) => {
+      const pauseMs = Math.min(30000, Math.max(params.minPauseMs ?? 0, elapsedMs * (params.pauseRatio ?? 0)));
+      const remainingMs = deadlineMs === undefined ? Infinity : Math.max(0, deadlineMs - Date.now());
+      if (pauseMs > 0 && remainingMs > 0) await this.sleep(Math.min(pauseMs, remainingMs));
+      return deadlineReached();
+    };
     const keyColumns = params.keyColumns.filter((v) => v.trim().length > 0);
     if (keyColumns.length === 0) {
       return { deletedCount, stoppedReason: 'completed', scans };
@@ -154,7 +166,11 @@ export class CsvDashboardDedupCleanupService {
       if (deadlineReached()) {
         return { deletedCount, stoppedReason: 'deadline', scans };
       }
+      if (deletedCount >= maxDeletedCount) {
+        return { deletedCount, stoppedReason: 'max_deleted', scans };
+      }
       const statementTimeoutMs = Math.max(1000, deadlineMs === undefined ? 30 * 60 * 1000 : deadlineMs - Date.now());
+      const scanStartedAt = Date.now();
       let losers: Array<{ id: string }>;
       try {
         losers = await prisma.$transaction(async (tx) => {
@@ -191,14 +207,26 @@ export class CsvDashboardDedupCleanupService {
       if (losers.length === 0) {
         return { deletedCount, stoppedReason: 'completed', scans };
       }
-      for (const ids of chunk(losers.map((row) => row.id), deleteBatchSize)) {
+      if (await pause(Date.now() - scanStartedAt)) {
+        return { deletedCount, stoppedReason: 'deadline', scans };
+      }
+      const chunks = chunk(losers.map((row) => row.id), deleteBatchSize);
+      for (const [index, candidates] of chunks.entries()) {
         if (deadlineReached()) {
           return { deletedCount, stoppedReason: 'deadline', scans };
         }
+        const ids = candidates.slice(0, maxDeletedCount - deletedCount);
+        const chunkStartedAt = Date.now();
         const affected = await prisma.$executeRaw<number>(Prisma.sql`
           DELETE FROM "CsvDashboardRow" WHERE "id" = ANY(${ids}::text[])
         `);
         deletedCount += typeof affected === 'number' ? affected : 0;
+        if (deletedCount >= maxDeletedCount) {
+          return { deletedCount, stoppedReason: 'max_deleted', scans };
+        }
+        if ((index < chunks.length - 1 || scans < maxScans) && await pause(Date.now() - chunkStartedAt)) {
+          return { deletedCount, stoppedReason: 'deadline', scans };
+        }
       }
     }
     return { deletedCount, stoppedReason: 'max_scans', scans };

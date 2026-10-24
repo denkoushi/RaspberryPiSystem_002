@@ -4559,6 +4559,9 @@ docker compose -f docker-compose.server.yml restart api
   - 当日の対応: 08:44 に走っていた削除文を `pg_cancel_backend` で取り消した（ジョブは failed で終了、autovacuum は継続）。I/O 待ちは約63%から24〜40%へ。重複の山は期限内に数夜かけて減らす想定で、`stoppedReason: deadline` が続く間は未完了。
   - 10/24 初回の結果: 02:40 開始、`加工機_日常点検結果` は約410万→226万行（約185万削除）。ただし夜通し checkpoint の sync が70〜90秒かかる I/O 飽和が続き、スワップも満杯。05:19 からホスト全体が停止（containerd の deadline 超過、全コンテナのヘルスチェック時間切れ）、05:20 に Postgres の backend が exit code 2 で終わり全接続を切って復旧、05:20〜05:27 に全キオスクで 502/500。
   - 暫定対応: 夜間ジョブを既定で停止し、`CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED=true` のときだけ動かす。負荷を下げる修正（1回の量を減らし削除の間を空け、早めに打ち切る）が入るまで再開しない。
+  - 負荷抑制後はジョブを既定で再開し、当日04:30 JSTを期限、全ダッシュボード合計で1晩30万行を削除上限とする。
+  - 1回のスキャンは10万件まで、2000件ずつ削除し、各スキャン後と次の処理がある削除後は処理時間と同じだけ休む（最低500ms、最大30秒、期限まで）。
+  - `CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED=false` で停止できる。
 
 ---
 

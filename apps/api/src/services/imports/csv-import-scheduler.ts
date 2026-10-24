@@ -692,6 +692,11 @@ export class CsvImportScheduler {
 
     // デフォルト: 毎日 02:40（Asia/Tokyo）
     const cleanupSchedule = '40 2 * * *';
+    const scanLimit = 100000;
+    const deleteBatchSize = 2000;
+    const pauseRatio = 1;
+    const minPauseMs = 500;
+    const nightlyDeleteBudget = 300000;
     try {
       if (!validate(cleanupSchedule)) {
         logger?.warn(
@@ -711,29 +716,20 @@ export class CsvImportScheduler {
     this.csvDashboardDedupCleanupTask = cron.schedule(
       cleanupSchedule,
       async () => {
-        // 2026-10-24: 05:20 JST に Pi5 全体が止まったため、負荷を下げる修正が入るまで既定で止める
-        if (process.env.CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED !== 'true') {
-          logger?.warn(
-            '[CsvImportScheduler] Nightly csv dashboard dedup cleanup is paused (set CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED=true to run)'
-          );
+        // 負荷を抑えて既定で実行し、false 指定時だけ停止する
+        if (process.env.CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED === 'false') {
+          logger?.warn('[CsvImportScheduler] Nightly csv dashboard dedup cleanup is paused (CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED=false)');
           return;
         }
         const todayJst = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
         }).format(new Date());
-        const deadline = new Date(`${todayJst}T05:30:00+09:00`);
+        const deadline = new Date(`${todayJst}T04:30:00+09:00`);
+        let remainingBudget = nightlyDeleteBudget;
         try {
           const dashboards = await prisma.csvDashboard.findMany({
-            where: {
-              enabled: true,
-              ingestMode: 'DEDUP',
-              NOT: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-            },
-            select: {
-              id: true,
-              name: true,
-              dedupKeyColumns: true,
-            },
+            where: { enabled: true, ingestMode: 'DEDUP', NOT: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID } },
+            select: { id: true, name: true, dedupKeyColumns: true },
           });
           if (dashboards.length === 0) {
             logger?.info('[CsvImportScheduler] No DEDUP csv dashboards for nightly cleanup');
@@ -746,32 +742,36 @@ export class CsvImportScheduler {
           );
           const cleanupService = this.createCsvDashboardDedupCleanupService();
           for (const dashboard of dashboards) {
+            if (remainingBudget <= 0) {
+              logger?.info({ remainingBudget, dashboardId: dashboard.id },
+                '[CsvImportScheduler] Nightly dedup cleanup budget exhausted; skipping remaining dashboards');
+              break;
+            }
             if (Date.now() >= deadline.getTime()) {
-              logger?.warn(
-                { deadline, dashboardId: dashboard.id },
-                '[CsvImportScheduler] Nightly dedup cleanup deadline reached; skipping remaining dashboards'
-              );
+              logger?.warn({ deadline, dashboardId: dashboard.id },
+                '[CsvImportScheduler] Nightly dedup cleanup deadline reached; skipping remaining dashboards');
               break;
             }
             const startedAt = Date.now();
             try {
               const keyColumns = dashboard.dedupKeyColumns.filter((v) => v.trim().length > 0);
               if (keyColumns.length === 0) {
-                logger?.warn(
-                  { dashboardId: dashboard.id, dashboardName: dashboard.name },
-                  '[CsvImportScheduler] Skip nightly dedup cleanup: dedupKeyColumns is empty'
-                );
+                logger?.warn({ dashboardId: dashboard.id, dashboardName: dashboard.name },
+                  '[CsvImportScheduler] Skip nightly dedup cleanup: dedupKeyColumns is empty');
                 continue;
               }
               const result = await cleanupService.deleteDuplicateLosersGlobally({
                 csvDashboardId: dashboard.id,
                 deadline,
+                scanLimit, deleteBatchSize, pauseRatio, minPauseMs,
+                maxDeletedCount: remainingBudget,
                 keyColumns,
                 winnerOrder: CsvDashboardIngestor.buildDedupWinnerOrder({
                   isProductionScheduleDashboard: false,
                   dashboardId: dashboard.id
                 }),
               });
+              remainingBudget -= result.deletedCount;
               logger?.info(
                 {
                   dashboardId: dashboard.id,
@@ -780,6 +780,7 @@ export class CsvImportScheduler {
                   deletedCount: result.deletedCount,
                   stoppedReason: result.stoppedReason,
                   scans: result.scans,
+                  remainingBudget,
                   elapsedMs: Date.now() - startedAt,
                 },
                 '[CsvImportScheduler] Nightly csv dashboard dedup cleanup completed'
