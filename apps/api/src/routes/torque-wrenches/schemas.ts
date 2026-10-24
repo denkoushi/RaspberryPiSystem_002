@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { TORQUE_WRENCH_STORAGE_LOCATIONS } from '@raspi-system/shared-types';
 
 const id = z.string().uuid();

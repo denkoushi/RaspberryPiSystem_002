@@ -14,6 +14,28 @@ from profile_launcher import launcher_env_for_profile  # noqa: E402
 
 
 class ProfileLauncherTests(unittest.TestCase):
+    def test_private_deepseek_fixture_parses_and_maps_launcher_hints(self):
+        profile = load_model_profile_manifest(
+            MODULE_DIR / "tests/fixtures/private_deepseek_v41_flash_tp2/manifest.json"
+        )
+        self.assertEqual(profile.id, "private_deepseek_v41_flash_tp2")
+        self.assertEqual(profile.backend, "blue")
+        self.assertFalse(profile.business_orchestration_eligible)
+        self.assertEqual(profile.served_alias, "DeepSeek-V4.1-Flash-1017")
+        self.assertEqual(profile.declared_capabilities, ("text",))
+        self.assertEqual(launcher_env_for_profile(profile), {
+            "BLUE_MODEL_PROFILE_ID": profile.id,
+            "VLLM_SERVED_MODEL_NAME": profile.served_alias,
+            "BLUE_SERVER_COMMAND": "", "TRTLLM_SERVER_COMMAND": "",
+            "BLUE_SERVER_ADAPTER": "dsv41_tensorfold_2x",
+            "BLUE_SERVER_MODE": "container",
+            "BLUE_WORKER_SSH_TARGET": "user@spark2.example",
+            "BLUE_QWEN38_RECIPE_DIR": "/home/user/models/DeepSeek-v4.1-Flash-1017-2x-DGX-Sparks",
+            "BLUE_QWEN38_RECIPE_REVISION": "370daf0cc38f348516a98ebab38f6053858eab1f",
+            "BLUE_ABLITERATED": "1",
+            "BLUE_REMOTE_VENV_BIN": "/home/user/models/.venv/bin",
+        })
+
     def test_glm53_profile_maps_tp2_hints_and_json_runtime_values(self):
         manifest = MODULE_DIR / "model-registry.examples/business_glm53_flash_fp4_tp2/manifest.json"
         profile = load_model_profile_manifest(manifest)

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const ingestTuningEnvShape = {
   // Gmail trash cleanup (processed label in trash -> hard delete)

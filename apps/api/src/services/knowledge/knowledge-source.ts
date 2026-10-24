@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 // The legacy id remains the durable publication/lease key for existing knowledge data.
 export const KNOWLEDGE_TOPIC = { id: 'metal-painting-practice', title: 'ナレッジ' } as const;

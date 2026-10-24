@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const localLlmEnvShape = {
   LOCAL_LLM_BASE_URL: z.preprocess(

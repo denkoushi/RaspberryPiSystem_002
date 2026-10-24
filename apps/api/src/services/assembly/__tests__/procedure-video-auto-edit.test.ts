@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { procedureVideoEnvShape } from '../../../config/env/procedure-video.js';
 import { aggregateAutoEditStats, matchAutoEditScenes, autoEditPrompt, parseAutoEditSuggestion } from '../procedure-video-auto-edit.js';

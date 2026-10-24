@@ -1,5 +1,5 @@
 import { A2uiMessageSchema, TextApi, RowApi, ColumnApi, CardApi, ImageApi } from '@a2ui/web_core/v0_9';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /**
  * The catalog is intentionally application-owned.  The browser bootstraps this

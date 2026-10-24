@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { KioskDocumentOcrStatus, KioskDocumentSource } from '@prisma/client';
 
 import { authorizeRoles } from '../lib/auth.js';

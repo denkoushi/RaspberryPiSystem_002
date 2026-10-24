@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { Prisma } from '@prisma/client';
 
 import { enforceReviewTier, normalizeIdentifiers } from './procedure-builder.js';

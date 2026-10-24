@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { createSite, listSites } from '../../services/sites/site.service.js';
 import { canManage } from './shared.js';

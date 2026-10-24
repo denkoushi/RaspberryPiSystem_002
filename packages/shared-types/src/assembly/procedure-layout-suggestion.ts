@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { overlayElementSchema, type OverlayElement } from '../overlay/normalized-overlay.js';
 

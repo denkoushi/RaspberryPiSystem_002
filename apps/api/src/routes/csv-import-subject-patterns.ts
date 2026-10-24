@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { authorizeRoles } from '../lib/auth.js';
 import { CsvImportSubjectPatternService } from '../services/imports/csv-import-subject-pattern.service.js';
 

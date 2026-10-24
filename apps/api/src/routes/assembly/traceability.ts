@@ -1,5 +1,5 @@
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { AssemblyTraceabilityService } from '../../services/assembly/index.js';
 import { idParamSchema } from './schemas.js';
 import { dateToIso } from './serializers.js';

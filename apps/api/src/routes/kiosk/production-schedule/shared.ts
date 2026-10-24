@@ -1,5 +1,5 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
 import { LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX } from '../../../services/production-schedule/leaderboard/leaderboard-display-row-scope.js';
 import { displayItemIdSchema } from '../../../services/production-schedule/order-split/leaderboard-display-item-id.js';

@@ -1,6 +1,6 @@
 import { overlayRegionBBoxSchema } from '@raspi-system/shared-types';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { normalizeClientKey } from '../../lib/client-key.js';

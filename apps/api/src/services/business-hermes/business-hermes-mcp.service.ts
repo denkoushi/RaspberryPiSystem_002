@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { SignageContentType } from '@prisma/client';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';

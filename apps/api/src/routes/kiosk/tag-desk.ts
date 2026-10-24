@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import pkg from '@prisma/client';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { prisma } from '../../lib/prisma.js';
 import { PrismaKnowledgeReviewerRepository } from '../../services/knowledge/prisma-knowledge-reviewer.repository.js';

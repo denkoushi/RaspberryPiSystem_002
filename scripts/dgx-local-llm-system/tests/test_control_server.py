@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import json
 import sys
 import threading
@@ -88,6 +89,56 @@ class ProfilelessStartTests(unittest.TestCase):
         for reason in (None, "runtime-restart", "business-restore"):
             with self.subTest(reason=reason):
                 self.assertEqual(self.module.resolve_start_profile(self.config, None, reason), self.profile)
+
+    def test_explicit_private_deepseek_start_is_not_restored_by_profileless_start(self):
+        fixture = MODULE_PATH.parent / "tests/fixtures/private_deepseek_v41_flash_tp2/manifest.json"
+        private = json.loads(fixture.read_text())
+        private["currentStorageLocation"] = str(self.storage)
+        self.manifest.write_text(json.dumps(private))
+        config = replace(self.config, active_backend="blue")
+        calls = []
+        handler = self.module.make_handler(
+            config, command_runner=lambda cmd, extra_env=None: calls.append((cmd, extra_env)),
+        )
+        def post(body):
+            data = json.dumps(body).encode()
+            request = (
+                b"POST /start HTTP/1.0\r\nX-Runtime-Control-Token: runtime-token\r\n"
+                b"Content-Type: application/json\r\nContent-Length: "
+                + str(len(data)).encode() + b"\r\n\r\n" + data
+            )
+            response = io.BytesIO()
+
+            # Exercise the real HTTP parser and handler without opening a port.
+            class Connection:
+                def makefile(self, *args):
+                    return io.BytesIO(request)
+
+                def sendall(self, data):
+                    response.write(data)
+
+            handler(Connection(), ("127.0.0.1", 0), object())
+            headers, payload = response.getvalue().split(b"\r\n\r\n", 1)
+            return int(headers.split()[1]), json.loads(payload)
+
+        status, payload = post({"modelProfileId": private["modelProfileId"]})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["modelProfile"]["activeProfileId"], private["modelProfileId"])
+        self.assertEqual(calls[-1][0], "blue-start")
+        self.assertEqual(calls[-1][1]["BLUE_SERVER_ADAPTER"], "dsv41_tensorfold_2x")
+        self.assertEqual(calls[-1][1]["BLUE_MODEL_PROFILE_ID"], private["modelProfileId"])
+        self.assertEqual(self.module.read_active_model_state(str(self.state)).model_profile_id,
+                         private["modelProfileId"])
+        calls.clear()
+        status, payload = post({})
+        self.assertEqual(status, 200)
+        self.assertNotIn("modelProfile", payload)
+        self.assertEqual(calls[-1], ("blue-start", None))
+        calls.clear()
+        status, payload = post({"reason": "business-restore"})
+        self.assertEqual(status, 503)
+        self.assertEqual(payload["code"], "BUSINESS_RESTORE_UNAVAILABLE")
+        self.assertEqual(calls, [])
 
     def test_invalid_active_profile_falls_back_but_business_restore_fails_closed(self):
         state = self.state.read_bytes()

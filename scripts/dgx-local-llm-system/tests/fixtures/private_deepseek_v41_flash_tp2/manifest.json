@@ -1,0 +1,18 @@
+{
+  "modelProfileId": "private_deepseek_v41_flash_tp2",
+  "displayNameJa": "DeepSeek V4.1 Flash (2 Sparks)",
+  "backend": "blue",
+  "enabled": true,
+  "businessOrchestrationEligible": false,
+  "servedAlias": "DeepSeek-V4.1-Flash-1017",
+  "declaredCapabilities": ["text"],
+  "launcherHints": {
+    "blueServerAdapter": "dsv41_tensorfold_2x",
+    "blueServerMode": "container",
+    "blueWorkerSshTarget": "user@spark2.example",
+    "blueUpstreamRecipeDir": "/home/user/models/DeepSeek-v4.1-Flash-1017-2x-DGX-Sparks",
+    "blueUpstreamRecipeRevision": "370daf0cc38f348516a98ebab38f6053858eab1f",
+    "blueAbliterated": "1",
+    "blueRemoteVenvBin": "/home/user/models/.venv/bin"
+  }
+}

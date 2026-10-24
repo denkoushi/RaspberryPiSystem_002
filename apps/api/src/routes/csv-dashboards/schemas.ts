@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 // 列定義のスキーマ
 const columnDefinitionSchema = z.object({

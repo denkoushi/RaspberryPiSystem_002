@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const PROCEDURE_VIDEO_AUTO_EDIT_PROMPT_VERSION = 'procedure-video-auto-edit-v1';
 export const autoEditLatestOrder = [{ createdAt: 'desc' as const }, { id: 'desc' as const }];

@@ -53,13 +53,29 @@ from pathlib import Path
 
 marker = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 target = marker["sshTarget"]
-name = marker["containerName"]
 if not isinstance(target, str) or not re.fullmatch(r"[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9_][a-zA-Z0-9_.-]*", target):
     raise SystemExit("invalid worker sshTarget in marker")
-if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", name):
-    raise SystemExit("invalid worker containerName in marker")
+if "adapter" not in marker:
+    name = marker["containerName"]
+    if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", name):
+        raise SystemExit("invalid worker containerName in marker")
+    command = ["docker", "rm", "-f", name]
+elif marker["adapter"] == "dsv41_tensorfold_2x":
+    for key in ("cloneDir", "venvBin"):
+        if key == "venvBin" and key not in marker:
+            continue
+        path = marker.get(key)
+        if not isinstance(path, str) or not path.startswith("/") or ":" in path or "\n" in path:
+            raise SystemExit(f"invalid {key} in marker")
+    command = [
+        "sh", "-eu", "-c",
+        'cd "$1"; if [ -n "$2" ]; then export PATH="$2:$PATH"; fi; exec ./stop.sh',
+        "sh", marker["cloneDir"], marker.get("venvBin", ""),
+    ]
+else:
+    raise SystemExit("unsupported adapter in worker marker")
 print(target)
-print(shlex.join(["docker", "rm", "-f", name]))
+print(shlex.join(command))
 PY
   )"
   WORKER_TARGET="${WORKER_DATA%%$'\n'*}"

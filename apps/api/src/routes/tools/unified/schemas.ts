@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const unifiedQuerySchema = z.object({
   search: z.string().optional(),

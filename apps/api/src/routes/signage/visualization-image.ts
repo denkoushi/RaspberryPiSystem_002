@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { SignageRenderer } from '../../services/signage/signage.renderer.js';
 import { SignageService } from '../../services/signage/index.js';
 
