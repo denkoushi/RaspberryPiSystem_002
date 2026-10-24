@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const photoToolEnvShape = {
   /** 写真持出 VLM 工具名ラベル: cron（node-cron 5 フィールド: 分 時 日 月 曜） */

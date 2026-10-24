@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   assemblyProcedureOverlayRegionInputSchema,
   assemblyProcedureOverlaySaveInputSchema,

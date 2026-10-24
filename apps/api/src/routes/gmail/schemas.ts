@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const gmailOauthCallbackQuerySchema = z.object({
   code: z.string().trim().min(1).max(4096).optional(),

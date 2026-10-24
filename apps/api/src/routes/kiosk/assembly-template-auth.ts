@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { AssemblyTemplateAccessService } from '../../services/assembly/assembly-template-access.service.js';
 import type { KioskRouteDeps } from './production-schedule/shared.js';

@@ -14,6 +14,8 @@
   },
   "overrides": {
     "simple-git": "4.0.2",
-    "@modelcontextprotocol/server": "2.3.0"
+    "@modelcontextprotocol/server": "2.3.0",
+    "zod": "4.6.6",
+    "undici": "7.30.1"
   }
 }

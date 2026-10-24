@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import type { KnowledgeAssetStore } from './knowledge-asset-store.js';
 import type { Intake, KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';

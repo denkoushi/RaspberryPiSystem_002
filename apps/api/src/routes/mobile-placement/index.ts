@@ -5,7 +5,7 @@ import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-
 import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
 import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';

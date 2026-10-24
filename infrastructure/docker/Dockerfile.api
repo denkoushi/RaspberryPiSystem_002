@@ -23,6 +23,7 @@ RUN apt-get update \
 
 # Workspace manifests only: source copies after install so ordinary app changes reuse install cache.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY patches ./patches
 COPY apps/api/package.json ./apps/api/package.json
 COPY packages/shared-types/package.json ./packages/shared-types/package.json
 COPY packages/part-search-core/package.json ./packages/part-search-core/package.json
@@ -112,6 +113,7 @@ RUN test -s /opt/hermes-node/bin/node \
 COPY --from=workspace /app/package.json ./package.json
 COPY --from=workspace /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=workspace /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=workspace /app/patches ./patches
 COPY --from=workspace /app/apps/api/package.json ./apps/api/package.json
 COPY --from=workspace /app/packages/shared-types/package.json ./packages/shared-types/package.json
 COPY --from=workspace /app/packages/part-search-core/package.json ./packages/part-search-core/package.json

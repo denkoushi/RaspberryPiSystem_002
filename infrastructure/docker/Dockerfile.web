@@ -2,6 +2,7 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY patches ./patches
 COPY apps/web/package.json apps/web/
 COPY packages ./packages
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \

@@ -1,6 +1,6 @@
 import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { ProcedureVideoService } from '../../services/assembly/procedure-video.service.js';
 

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { authorizeRoles, authenticate } from '../lib/auth.js';
 import { UserRole } from '@prisma/client';
 import { AuthRoleAdminService } from '../services/auth/auth-role-admin.service.js';

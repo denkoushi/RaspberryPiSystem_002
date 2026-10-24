@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const id = z.string().uuid();
 const decimal = z.union([z.string().trim().min(1), z.number().finite()]);

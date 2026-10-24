@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { borrowSchema, returnSchema } from '../loans/schemas';
 import type { BorrowPayload, ReturnPayload } from '@raspi-system/shared-types';

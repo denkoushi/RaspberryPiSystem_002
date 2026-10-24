@@ -1,6 +1,6 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
-import { ZodError } from 'zod';
+import { ZodError } from 'zod/v3';
 
 import { registerSelfInspectionNonconformityRoutes } from '../self-inspection-nonconformities.js';
 

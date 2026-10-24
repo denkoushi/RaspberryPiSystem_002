@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { validate as validateCron } from 'node-cron';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { ImportScheduleAdminService } from '../../services/imports/import-schedule-admin.service.js';

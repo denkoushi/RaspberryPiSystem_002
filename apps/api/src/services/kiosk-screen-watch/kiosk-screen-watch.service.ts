@@ -1,5 +1,5 @@
 import type { KioskScreenWatchSession, KioskScreenWatchStatus, PrismaClient } from '@prisma/client';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';

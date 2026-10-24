@@ -1,7 +1,7 @@
 import { A2uiSurface, basicCatalog, createComponentImplementation } from '@a2ui/react/v0_9';
 import { Catalog, CommonSchemas, MessageProcessor, type A2uiMessage, type SurfaceModel } from '@a2ui/web_core/v0_9';
 import { useEffect, useRef, useState } from 'react';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import type { BusinessHermesSignageProposal } from '../../api/domains/assembly';
 

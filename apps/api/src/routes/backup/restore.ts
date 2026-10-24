@@ -1,6 +1,6 @@
 import { BackupOperationType } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { BackupService } from '../../services/backup/backup.service.js';

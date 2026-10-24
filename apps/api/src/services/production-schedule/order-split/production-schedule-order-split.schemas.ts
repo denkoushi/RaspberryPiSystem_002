@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { ORDER_NUMBER_MAX, ORDER_NUMBER_MIN } from '../../../routes/kiosk/production-schedule/shared.js';
 import { displayItemIdSchema } from './leaderboard-display-item-id.js';
