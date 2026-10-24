@@ -5,7 +5,7 @@ import {
   isSelfInspectionReductionCpkThreshold,
   type SelfInspectionReductionCpkThreshold
 } from '@raspi-system/shared-types';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { SelfInspectionRegistrationPolicyAccessService } from '../../services/part-measurement/self-inspection-registration-policy-access.service.js';
 import {

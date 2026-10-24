@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const borrowSchema = z.object({
   itemTagUid: z.string().min(4),

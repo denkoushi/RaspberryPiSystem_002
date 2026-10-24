@@ -3,7 +3,7 @@ import { serializeLastProcedureManualApproval, type ProcedureManualApprovalSnaps
 import type { MultipartFile } from '@fastify/multipart';
 import type { AssemblyProcedureAsset } from '@prisma/client';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 
 import { ApiError, DomainHttpError } from '../../lib/errors.js';

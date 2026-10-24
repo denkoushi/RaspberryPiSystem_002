@@ -1,6 +1,6 @@
 import { ProcedureManualCommonService } from '../../services/assembly/procedure-manual-common.service.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { ApiError } from '../../lib/errors.js';
 import { ProcedureManualPartCandidatesService } from '../../services/assembly/procedure-manual-part-candidates.service.js';

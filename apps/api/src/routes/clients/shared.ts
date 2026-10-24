@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { KIOSK_INITIAL_ROUTE_IDS } from '@raspi-system/shared-types';
 import { authorizeRoles } from '../../lib/auth.js';
 import { normalizeClientKey } from '../../lib/client-key.js';

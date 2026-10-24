@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { TORQUE_INPUT_PORT_SOURCES } from '../../services/assembly/index.js';
 
 export const optionalTrueOnlyBooleanSchema = z

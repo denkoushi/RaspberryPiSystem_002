@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ZodError } from 'zod';
+import { ZodError } from 'zod/v3';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 

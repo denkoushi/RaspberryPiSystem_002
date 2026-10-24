@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
 import { HermesSearchTrialService, type HermesPrincipal } from '../../services/business-hermes/hermes-search-trial.service.js';
 import { createReceiptLog, type ReceiptLog } from '../../services/business-hermes/hermes-search-receipt-log.js';

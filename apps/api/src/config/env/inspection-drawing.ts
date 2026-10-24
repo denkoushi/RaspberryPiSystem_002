@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const inspectionDrawingEnvShape = {
   INSPECTION_DRAWING_SIBLING_VISION_ENABLED: z

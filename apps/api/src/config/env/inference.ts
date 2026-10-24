@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const inferenceEnvShape = {
   PROCEDURE_SPEECH_TO_TEXT_ENABLED: z

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { drawingNameFamily, type DimensionMap } from './part-measurement-drawing-placement-transfer.js';
 

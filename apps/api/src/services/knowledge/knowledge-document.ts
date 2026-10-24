@@ -1,5 +1,5 @@
 import type { KnowledgeReport } from '@raspi-system/shared-types';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export type KnowledgeDocument = { markdown: string; report: KnowledgeReport };
 export type KnowledgeRevision = { revision: string; document: KnowledgeDocument };

@@ -1,6 +1,6 @@
 import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { LoanService } from '../../../services/tools/loan.service.js';
 
 const photoBorrowSchema = z.object({

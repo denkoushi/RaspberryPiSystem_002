@@ -14,6 +14,7 @@ RUN rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg \
     && node --version | grep -Eq '^v24\.' \
     && corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY patches ./patches
 COPY infrastructure/docker/Dockerfile.kiosk-sop-generator infrastructure/docker/Dockerfile.kiosk-sop-generator
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared-types/package.json packages/shared-types/package.json

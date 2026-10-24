@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { projectBusinessSource } from './business-hermes-source-adapters.js';
 import { sourceFingerprint } from './business-hermes-answer-cache.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';

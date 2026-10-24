@@ -2,7 +2,7 @@ import { spawn, type ChildProcessByStdio, type ChildProcessWithoutNullStreams } 
 import type { Writable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import {setPriority} from 'node:os';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { loadProcedureMaterialRecords } from './procedure-material-hermes-source.service.js';
 import { BusinessHermesMcpService } from './business-hermes-mcp.service.js';
 import { createTorqueTrainingSourceReaders } from '../torque-training/torque-training-hermes-source.service.js';

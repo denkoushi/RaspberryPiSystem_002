@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import type { ImageOcrPort } from '../ocr/ports/image-ocr.port.js';
 

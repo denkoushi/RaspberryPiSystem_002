@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { ApiError } from '../../lib/errors.js';
 import {
   deleteImportedDrawing,

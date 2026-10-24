@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** 順位ボード表示・操作の正本 ID（未分割行は親 UUID、分割片は `split:{splitId}`）。 */
 export type DisplayItemId = string;

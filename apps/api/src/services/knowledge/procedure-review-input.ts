@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { KNOWLEDGE_POSITION_RANKS } from './knowledge-position-rank.js';
 

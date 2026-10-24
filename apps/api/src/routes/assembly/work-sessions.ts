@@ -1,6 +1,6 @@
 import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { BusinessHermesService } from '../../services/business-hermes/business-hermes.service.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import { AssemblyTorqueTraceabilityService } from '../../services/torque-wrenches/index.js';

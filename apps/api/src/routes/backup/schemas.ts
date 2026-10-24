@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { BackupConfigSchema } from '../../services/backup/backup-config.js';
 
 const backupTargetKindSchema = z.enum([

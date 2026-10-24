@@ -23,6 +23,12 @@ overrides:
   dompurify@3.4.11: 3.4.17
   follow-redirects: 1.16.1
   markdown-it@14.3.2: 14.3.3
+  zod: 4.6.6
+
+patchedDependencies:
+  '@a2ui/web_core@0.11.0':
+    hash: cf6dee989f902d69003e97845a022bf5d82abf907abe7bdc011ad232aef294fe
+    path: patches/@a2ui__web_core@0.11.0.patch
 
 importers:
 
@@ -52,7 +58,7 @@ importers:
     dependencies:
       '@a2ui/web_core':
         specifier: 0.11.0
-        version: 0.11.0
+        version: 0.11.0(patch_hash=cf6dee989f902d69003e97845a022bf5d82abf907abe7bdc011ad232aef294fe)
       '@fastify/compress':
         specifier: ^8.0.0
         version: 8.3.1
@@ -153,8 +159,8 @@ importers:
         specifier: 5.1.1
         version: 5.1.1
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       '@eslint/js':
         specifier: 9.39.5
@@ -236,10 +242,10 @@ importers:
     dependencies:
       '@a2ui/react':
         specifier: 0.11.1
-        version: 0.11.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod@3.25.76)
+        version: 0.11.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod@4.6.6)
       '@a2ui/web_core':
         specifier: 0.11.0
-        version: 0.11.0
+        version: 0.11.0(patch_hash=cf6dee989f902d69003e97845a022bf5d82abf907abe7bdc011ad232aef294fe)
       '@chatscope/chat-ui-kit-react':
         specifier: ^2.0.3
         version: 2.1.1(prop-types@15.8.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -304,8 +310,8 @@ importers:
         specifier: ^5.8.0
         version: 5.24.0
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       '@eslint/js':
         specifier: 9.39.5
@@ -455,8 +461,8 @@ importers:
   packages/shared-types:
     dependencies:
       zod:
-        specifier: ^3.23.8
-        version: 3.25.76
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       '@eslint/js':
         specifier: 9.39.5
@@ -538,7 +544,7 @@ packages:
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
-      zod: ^3.25.76
+      zod: 4.6.6
 
   '@a2ui/web_core@0.11.0':
     resolution: {integrity: sha512-HIrisBO5yAsNb1NFQRRSVLLNWaPlDu7LShwZ/j1qRUWT/W/J7g8dJFEKbq0/nUofI7ZiieDlDXQtrJmwo24Nzw==}
@@ -4615,37 +4621,37 @@ packages:
   zod-to-json-schema@3.25.2:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
     peerDependencies:
-      zod: ^3.25.28 || ^4
+      zod: 4.6.6
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
 snapshots:
 
-  '@a2ui/markdown-it@0.1.2(@a2ui/web_core@0.11.0)':
+  '@a2ui/markdown-it@0.1.2(@a2ui/web_core@0.11.0(patch_hash=cf6dee989f902d69003e97845a022bf5d82abf907abe7bdc011ad232aef294fe))':
     dependencies:
-      '@a2ui/web_core': 0.11.0
+      '@a2ui/web_core': 0.11.0(patch_hash=cf6dee989f902d69003e97845a022bf5d82abf907abe7bdc011ad232aef294fe)
       dompurify: 3.4.17
       markdown-it: 14.3.3
 
-  '@a2ui/react@0.11.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod@3.25.76)':
+  '@a2ui/react@0.11.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(zod@4.6.6)':
     dependencies:
-      '@a2ui/markdown-it': 0.1.2(@a2ui/web_core@0.11.0)
-      '@a2ui/web_core': 0.11.0
+      '@a2ui/markdown-it': 0.1.2(@a2ui/web_core@0.11.0(patch_hash=cf6dee989f902d69003e97845a022bf5d82abf907abe7bdc011ad232aef294fe))
+      '@a2ui/web_core': 0.11.0(patch_hash=cf6dee989f902d69003e97845a022bf5d82abf907abe7bdc011ad232aef294fe)
       clsx: 2.1.1
       markdown-it: 14.3.3
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-      zod: 3.25.76
+      zod: 4.6.6
 
-  '@a2ui/web_core@0.11.0':
+  '@a2ui/web_core@0.11.0(patch_hash=cf6dee989f902d69003e97845a022bf5d82abf907abe7bdc011ad232aef294fe)':
     dependencies:
       '@lit/context': 1.1.6
       '@preact/signals-core': 1.14.4
       date-fns: 4.4.0
       lit: 3.3.3
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.2(zod@3.25.76)
+      zod: 4.6.6
+      zod-to-json-schema: 3.25.2(zod@4.6.6)
 
   '@acemir/cssom@0.9.32':
     optional: true
@@ -9119,8 +9125,8 @@ snapshots:
 
   zlibjs@0.3.1: {}
 
-  zod-to-json-schema@3.25.2(zod@3.25.76):
+  zod-to-json-schema@3.25.2(zod@4.6.6):
     dependencies:
-      zod: 3.25.76
+      zod: 4.6.6
 
-  zod@3.25.76: {}
+  zod@4.6.6: {}

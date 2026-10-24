@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import type { SelfInspectionMode } from '@prisma/client';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { ApiError } from '../../lib/errors.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { requireClientDevice } from '../kiosk/shared.js';

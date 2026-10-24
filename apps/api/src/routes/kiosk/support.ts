@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { ApiError } from '../../lib/errors.js';
 import { sendSlackNotification } from '../../services/notifications/slack-webhook.js';

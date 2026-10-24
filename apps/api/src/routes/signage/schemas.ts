@@ -1,5 +1,5 @@
 import { parseSignageA2uiProposal, signageA2uiProposalSchema } from '../../services/signage/signage-a2ui.js';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { signageCanvasLayoutSchema } from '../../services/signage/signage-canvas.js';
 
 // layoutConfigのスキーマ定義
