@@ -77,13 +77,33 @@ describe('CsvImportScheduler (DI-friendly)', () => {
     mockFindCsvDashboards.mockResolvedValue([]);
   });
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it('nightly dedup is paused unless CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED=true', async () => {
+    const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
+    loadMock.mockResolvedValue({ storage: { provider: 'dropbox', options: {} }, csvImports: [] });
+    mockFindCsvDashboards.mockResolvedValue([{ id: 'first', name: 'First', dedupKeyColumns: ['key'] }]);
+    const cleanup = vi.fn();
+    const scheduler = new CsvImportScheduler({
+      createCsvDashboardDedupCleanupService: () => ({ deleteDuplicateLosersGlobally: cleanup } as any),
+    });
+    await scheduler.start();
+    const callback = callbacksBySchedule.get('40 2 * * *')?.[0];
+    expect(callback).toBeDefined();
+    await callback!();
+    expect(cleanup).not.toHaveBeenCalled();
+    scheduler.stop();
+  });
 
   it.each([
     ['2026-10-22T17:40:00Z', '2026-10-22T20:30:00Z'],
     ['2026-10-22T20:00:00Z', '2026-10-22T20:30:00Z'],
   ])('nightly dedup uses today 05:30 JST even when started late (%s) and isolates failures', async (now, cutoff) => {
     vi.useFakeTimers();
+    vi.stubEnv('CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED', 'true');
     vi.setSystemTime(new Date(now));
     const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
     const { logger } = await import('../../../lib/logger.js');
@@ -115,6 +135,7 @@ describe('CsvImportScheduler (DI-friendly)', () => {
 
   it.each([true, false])('nightly dedup skips remaining dashboards at the deadline (already late: %s)', async (alreadyLate) => {
     vi.useFakeTimers();
+    vi.stubEnv('CSV_DASHBOARD_NIGHTLY_DEDUP_ENABLED', 'true');
     const deadline = new Date('2026-10-22T20:30:00Z');
     vi.setSystemTime(alreadyLate ? deadline : new Date('2026-10-22T20:29:00Z'));
     const { CsvImportScheduler } = await import('../csv-import-scheduler.js');
