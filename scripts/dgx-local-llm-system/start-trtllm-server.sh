@@ -90,7 +90,8 @@ fi
 # A remote launch recorded by a non-GLM adapter (e.g. DeepSeek on both Sparks)
 # holds GPUs this start needs; stop it first so business restore cannot collide.
 WORKER_MARKER="${BLUE_REMOTE_WORKER_MARKER_PATH:-/srv/dgx/system-prod/state/blue-remote-worker.json}"
-if [[ "${BLUE_SERVER_ADAPTER:-}" != "dsv41_tensorfold_2x" && -f "${WORKER_MARKER}" ]] &&
+if [[ "${BLUE_SERVER_ADAPTER:-}" != "dsv41_tensorfold_2x" &&
+      "${BLUE_SERVER_ADAPTER:-}" != "glm53_tensorfold_2x" && -f "${WORKER_MARKER}" ]] &&
   python3 -c 'import json,sys; sys.exit(0 if "adapter" in json.load(open(sys.argv[1])) else 1)' "${WORKER_MARKER}"; then
   # Container mode reaches the marker branch even when the next profile is host mode.
   BLUE_SERVER_MODE=container TRTLLM_SERVER_MODE=container bash "${SCRIPT_DIR}/stop-trtllm-server.sh"
@@ -99,9 +100,9 @@ fi
 if [[ -n "${BLUE_SERVER_ADAPTER:-}" ]]; then
   case "${BLUE_SERVER_ADAPTER}" in
     vllm) ;; # Explicitly select the standard builder over inherited adapters.
-    dsv41_tensorfold_2x)
+    dsv41_tensorfold_2x|glm53_tensorfold_2x)
       # This adapter stops the existing blue workload before switching ranks.
-      exec "${SCRIPT_DIR}/dsv41-tensorfold-2x-adapter.sh"
+      exec "${SCRIPT_DIR}/tensorfold-2x-adapter.sh"
       ;;
     qwen38_flash_next|glm53_flash_tp2)
       if [[ "${MODE}" == "container" ]]; then

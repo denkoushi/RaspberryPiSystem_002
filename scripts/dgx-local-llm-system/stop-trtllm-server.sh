@@ -60,7 +60,7 @@ if "adapter" not in marker:
     if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", name):
         raise SystemExit("invalid worker containerName in marker")
     command = ["docker", "rm", "-f", name]
-elif marker["adapter"] == "dsv41_tensorfold_2x":
+elif marker["adapter"] in ("dsv41_tensorfold_2x", "glm53_tensorfold_2x"):
     for key in ("cloneDir", "venvBin"):
         if key == "venvBin" and key not in marker:
             continue

@@ -91,8 +91,16 @@ class ProfilelessStartTests(unittest.TestCase):
                 self.assertEqual(self.module.resolve_start_profile(self.config, None, reason), self.profile)
 
     def test_explicit_private_deepseek_start_is_not_restored_by_profileless_start(self):
-        fixture = MODULE_PATH.parent / "tests/fixtures/private_deepseek_v41_flash_tp2/manifest.json"
+        self.check_private_start_is_not_restored("private_deepseek_v41_flash_tp2", "dsv41_tensorfold_2x")
+
+    def test_explicit_private_glm53_start_is_not_restored_by_profileless_start(self):
+        self.check_private_start_is_not_restored("private_glm53_flash_ablit_tp2", "glm53_tensorfold_2x")
+
+    def check_private_start_is_not_restored(self, profile_id, adapter):
+        fixture = MODULE_PATH.parent / "tests/fixtures" / profile_id / "manifest.json"
         private = json.loads(fixture.read_text())
+        # Registry fixtures may be disabled until provisioned; enable only this temporary copy.
+        private["enabled"] = True
         private["currentStorageLocation"] = str(self.storage)
         self.manifest.write_text(json.dumps(private))
         config = replace(self.config, active_backend="blue")
@@ -125,7 +133,7 @@ class ProfilelessStartTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["modelProfile"]["activeProfileId"], private["modelProfileId"])
         self.assertEqual(calls[-1][0], "blue-start")
-        self.assertEqual(calls[-1][1]["BLUE_SERVER_ADAPTER"], "dsv41_tensorfold_2x")
+        self.assertEqual(calls[-1][1]["BLUE_SERVER_ADAPTER"], adapter)
         self.assertEqual(calls[-1][1]["BLUE_MODEL_PROFILE_ID"], private["modelProfileId"])
         self.assertEqual(self.module.read_active_model_state(str(self.state)).model_profile_id,
                          private["modelProfileId"])

@@ -1,0 +1,28 @@
+{
+  "modelProfileId": "private_glm53_flash_ablit_tp2",
+  "displayNameJa": "GLM 5.3 Flash EXL3",
+  "descriptionJa": "2台のSparkで動作する個人用テキストモデル。",
+  "backend": "blue",
+  "servedAlias": "GLM-5.3-Flash-EXL3",
+  "enabled": false,
+  "businessOrchestrationEligible": false,
+  "declaredCapabilities": ["text"],
+  "visionRequiresMmproj": false,
+  "expectedColdStartSec": 900,
+  "sparkCount": 2,
+  "launcherHints": {
+    "blueServerAdapter": "glm53_tensorfold_2x",
+    "blueServerMode": "container",
+    "blueAbliterated": "1"
+  },
+  "runtimeProfile": {
+    "engine": "control-server",
+    "guaranteeLevel": "lease_gated_private",
+    "coexistencePolicy": "exclusive_both_sparks",
+    "openaiModelId": "GLM-5.3-Flash-EXL3"
+  },
+  "sourceKind": "github_revision",
+  "sourceModelRef": "MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks-TensorFold@3fd60dfc836fab0f1ed0fd4f0afaf2a1d62b2aab",
+  "modelFamily": "GLM 5.3",
+  "format": "EXL3"
+}
