@@ -21,6 +21,8 @@ _LAUNCHER_HINT_ENV_MAP: dict[str, str] = {
     "blueUpstreamRecipeRevision": "BLUE_QWEN38_RECIPE_REVISION",
     "blueModelRevision": "BLUE_QWEN38_MODEL_REVISION",
     "blueWorkerSshTarget": "BLUE_WORKER_SSH_TARGET",
+    "blueAbliterated": "BLUE_ABLITERATED",
+    "blueRemoteVenvBin": "BLUE_REMOTE_VENV_BIN",
     "blueWorkerModelDir": "BLUE_WORKER_MODEL_DIR",
     "blueMasterAddr": "BLUE_MASTER_ADDR",
     "blueMasterPort": "BLUE_MASTER_PORT",
