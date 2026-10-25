@@ -50,8 +50,8 @@ export function PurchaseOrderLookupPhoneView({ lookup }: { lookup: ReturnType<ty
           navigate('/kiosk/mobile-placement', haizenTabNavigationOptions());
         } else if (tab === 'parts') navigate('/kiosk/mobile-placement/part-search', haizenTabNavigationOptions());
       }} onMenu={() => navigate('/kiosk/mobile-placement', haizenTabNavigationOptions({ openHaizenMenu: true }))}>
-        <button type="button" aria-label={result ? '次の注文番号を読む' : '注文番号を読む'} className={`${hp.bottomPrimary} bg-[var(--hp-lime)]`} onClick={() => lookup.setScanOpen(true)}>
-          <span>{result ? '次の注文番号' : '注文番号'}</span><span className="text-xs font-black leading-[1.15]">読む</span>
+        <button type="button" className={`${hp.bottomPrimary} bg-[var(--hp-lime)]`} onClick={() => lookup.setScanOpen(true)}>
+          {result ? '次の注文番号を読む' : '注文番号を読む'}
         </button>
       </HaizenBottomNav>
     </div>

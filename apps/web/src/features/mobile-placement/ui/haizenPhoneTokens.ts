@@ -25,7 +25,7 @@ export const hp = {
   hermesBottomPadding: '!pb-[calc(var(--hp-hermes-gutter)+env(safe-area-inset-bottom,0px))]',
   dock: 'flex shrink-0 gap-2 pl-3.5 pr-[var(--hp-hermes-gutter)] pt-2.5 pb-[calc(16px+env(safe-area-inset-bottom,0px))]',
   primary: 'flex h-16 min-w-0 flex-1 items-center justify-center gap-3 rounded-[18px] px-3 text-[19px] font-black tracking-[.04em] text-[var(--hp-bg)] active:scale-[.98] disabled:opacity-40',
-  bottomPrimary: 'flex h-[58px] min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 text-[18px] font-black leading-[1.15] text-[var(--hp-bg)] active:scale-[.98] disabled:opacity-40',
+  bottomPrimary: 'flex h-[58px] min-w-0 flex-1 items-center justify-center rounded-2xl px-3 text-[18px] font-black leading-[1.15] text-[var(--hp-bg)] active:scale-[.98] disabled:opacity-40',
   surface: 'bg-[var(--hp-bg)] text-[var(--hp-ink)]',
   muted: 'text-[var(--hp-ink2)]',
   faint: 'text-[var(--hp-ink3)]',

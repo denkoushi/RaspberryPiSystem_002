@@ -88,10 +88,10 @@ describe('Haizen hub', () => {
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     const bottom = screen.getByRole('contentinfo');
     expect(bottom).toContainElement(screen.getByRole('tablist', { name: '作業' }));
-    expect(within(bottom).getByRole('button', { name: '移動票を読む' })).toBeInTheDocument();
+    expect(within(bottom).queryByRole('button', { name: '移動票を読む' })).not.toBeInTheDocument();
     expect(screen.getByRole('main').compareDocumentPosition(bottom) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const stubs = bottom.previousElementSibling;
-    expect(stubs).toContainElement(screen.getAllByRole('button', { name: '移動票を読む' })[0]);
+    expect(stubs).toContainElement(screen.getByRole('button', { name: '移動票を読む' }));
     expect(stubs).toContainElement(screen.getByRole('button', { name: '現品票を読む' }));
     expect(stubs?.closest('main')).toBeNull();
     expect(within(screen.getByRole('tablist', { name: '作業' })).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['照合', '配膳', '購買', '部品']);
@@ -177,13 +177,15 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('button', { name: '完了' }));
     fireEvent.click(screen.getByRole('button', { name: '現品票をクリア' }));
     expect(screen.queryByRole('status', { name: '一致' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: '現品票を読む' })).toHaveLength(2);
+    expect(screen.getByRole('button', { name: '現品票を読む' })).toBeInTheDocument();
   });
   it('mismatch retries the actual slip, scanner stays auto-native', async () => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: false, reason: 'different_seiban', actual: { fseiban: 'FS2' } });
     mount();
     typeSlips();
-    fireEvent.click(await screen.findByRole('button', { name: '現品票を読み直す' }));
+    await screen.findByRole('status', { name: '不一致' });
+    expect(screen.queryByRole('button', { name: '現品票を読み直す' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '現品票を読む' }));
     expect(screen.getByText('auto-native')).toBeInTheDocument();
     fireEvent.click(screen.getByText('scan'));
     await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ actualOrderBarcodeRaw: 'SCANNED' })));
