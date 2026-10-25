@@ -6,7 +6,7 @@ import { KioskResourceProcessChips } from '../../../../components/kiosk/resource
 import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
 import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
 import { pageZoom } from '../pageZoom';
-import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
+import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
@@ -131,20 +131,23 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
     }
   };
   const chipsByPart = usePlanningBoardProcessChips();
+  const placementByPart = usePlanningBoardPlacementByPart();
   // One chip strip per part under its first bar: completed chips fold into 「済N」, at most two lines, and what still does not fit becomes 「+N」.
   const chipLayout = useMemo(() => {
     const barStart = (bar: GanttBar) => bar.unknown ? bar.start : bar.segments?.[0]?.start;
+    const placementOf = (bar: GanttBar) => placementByPart.get(bar.partKey) ?? bar.item.placement ?? null;
     const firstBars = new Map<string, GanttBar & { start: number }>();
     for (const bar of row.bars) {
       const left = barStart(bar);
       const current = firstBars.get(bar.partKey);
-      if (left != null && (chipsByPart.get(bar.partKey)?.length || planningBoardBadgeWidth(bar.item)) && (!current || left < current.start)) firstBars.set(bar.partKey, { ...bar, start: left });
+      if (left != null && (chipsByPart.get(bar.partKey)?.length || planningBoardBadgeWidth(placementOf(bar))) && (!current || left < current.start)) firstBars.set(bar.partKey, { ...bar, start: left });
     }
     return layoutChipStrips([...firstBars.values()].map((bar) => {
       const chips = chipsByPart.get(bar.partKey) ?? [];
-      return { bar, chips, badgeWidth: planningBoardBadgeWidth(bar.item), left: (bar.start - start) * dayWidth };
+      const placement = placementOf(bar);
+      return { bar, chips, placement, badgeWidth: planningBoardBadgeWidth(placement), left: (bar.start - start) * dayWidth };
     }), CHIP_STRIP_FIT);
-  }, [row.bars, chipsByPart, start, dayWidth]);
+  }, [row.bars, chipsByPart, placementByPart, start, dayWidth]);
   return <div className="flex border-b border-slate-600" style={{ minHeight: 76 + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
     <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900 px-2 py-1 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
@@ -159,10 +162,10 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
       </div>)}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
-      {chipLayout.strips.map(({ bar, left, line, done, shown, hidden, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
+      {chipLayout.strips.map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
         className="pointer-events-none absolute flex flex-nowrap gap-0.5" style={{ left, top: 76 + line * CHIP_LINE_HEIGHT }}>
-        {bar.item.placement && <span className="inline-flex shrink-0" style={{ width: badgeWidth }}>
-          <PlacementLocationBadge placement={bar.item.placement} />
+        {placement && <span className="inline-flex shrink-0" style={{ width: badgeWidth }}>
+          <PlacementLocationBadge placement={placement} />
         </span>}
         {done.length > 0 && <IconActionTooltip label={`完了: ${chipCodes(done)}`}>
           <span className={`pointer-events-auto ${progressOverviewProcessChipClassName(true)}`}>{doneChipLabel(done.length)}</span>

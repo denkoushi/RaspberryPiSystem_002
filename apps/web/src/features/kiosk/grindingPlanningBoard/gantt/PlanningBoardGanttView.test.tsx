@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
+import { buildPlanningBoardPlacementByPart } from '../planningBoardProcessChipData';
+import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
 import { buildPlanningBoardGanttLayout, planningBoardPartKey } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
@@ -89,6 +90,21 @@ describe('PlanningBoardGanttView', () => {
     expect(screen.queryByTestId('planning-gantt-chips-a')).toBeNull();
     expect(screen.queryByText('棚A')).toBeNull();
     expect(screen.queryByText('材料入荷済')).toBeNull();
+  });
+
+  it.each(['later', 'completed'] as const)('shows placement recorded on another process row of the same part (%s)', (variant) => {
+    const first = item({ itemId: 'a', productNo: '1', processOrder: '10',
+      placement: { shelves: [{ shelfCodeRaw: 'B', label: '棚B', placedAt: '2026-10-23T06:20:00Z' }] } });
+    const placed = item({ itemId: 'b', sourceRowId: 'b', productNo: '2', processOrder: '20', isCompleted: variant === 'completed',
+      placement: { shelves: [{ shelfCodeRaw: 'A', label: '棚A', placedAt: '2026-10-24T06:20:00Z' }, { shelfCodeRaw: 'B', label: '棚B', placedAt: '2026-10-22T06:20:00Z' }] } });
+    const items = [first, placed];
+    const layout = buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    render(<PlanningBoardPlacementContext.Provider value={buildPlanningBoardPlacementByPart(items)}>
+      <PlanningBoardGanttView {...props(items)} layout={layout} />
+    </PlanningBoardPlacementContext.Provider>);
+    expect(screen.getByTestId('planning-gantt-chips-a').firstElementChild).toHaveTextContent('棚A+1');
+    expect(screen.queryByTestId('planning-gantt-chips-b')).toBeNull();
   });
 
   it('completes a forward chain step with a sibling button and hides split completion', () => {

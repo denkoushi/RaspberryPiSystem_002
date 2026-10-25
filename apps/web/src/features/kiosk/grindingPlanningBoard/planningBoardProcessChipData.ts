@@ -2,7 +2,7 @@ import { buildLeaderBoardPartResourceProcessKey } from '../leaderOrderBoard/buil
 
 import { planningBoardPartKey } from './gantt/planningBoardGanttLayout';
 
-import type { PlanningBoardProcessChipsByPart } from './planningBoardProcessChips';
+import type { PlanningBoardPlacementByPart, PlanningBoardProcessChipsByPart } from './planningBoardProcessChips';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardProcessChipsRequest, GrindingPlanningBoardProcessChipsResponse } from '@raspi-system/shared-types';
 
 const serverPartKey = (part: GrindingPlanningBoardProcessChipsRequest['parts'][number]) =>
@@ -30,4 +30,21 @@ export function buildPlanningBoardProcessChipsByPart(
     if (!result.has(key) && chips?.length) result.set(key, chips);
   }
   return result;
+}
+
+/** Merges every row's shelves per part, because the gantt shows one strip per part and placements are recorded per order number. */
+export function buildPlanningBoardPlacementByPart(items: readonly GrindingPlanningBoardItem[]): PlanningBoardPlacementByPart {
+  const shelvesByPart = new Map<string, Map<string, NonNullable<GrindingPlanningBoardItem['placement']>['shelves'][number]>>();
+  for (const item of items) {
+    if (!item.placement?.shelves.length) continue;
+    const key = planningBoardPartKey(item);
+    const shelves = shelvesByPart.get(key) ?? new Map();
+    for (const shelf of item.placement.shelves) {
+      const current = shelves.get(shelf.shelfCodeRaw);
+      if (!current || current.placedAt < shelf.placedAt) shelves.set(shelf.shelfCodeRaw, shelf);
+    }
+    shelvesByPart.set(key, shelves);
+  }
+  return new Map([...shelvesByPart].map(([key, shelves]) => [key,
+    { shelves: [...shelves.values()].sort((a, b) => b.placedAt.localeCompare(a.placedAt)) }]));
 }
