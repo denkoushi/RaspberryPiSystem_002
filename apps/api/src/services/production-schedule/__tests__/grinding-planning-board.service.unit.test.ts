@@ -19,6 +19,8 @@ const mocks = vi.hoisted(() => {
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
     csvDashboardRow: { findMany: vi.fn() },
+    orderPlacementBranchState: { findMany: vi.fn() },
+    mobilePlacementShelf: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardState: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -126,6 +128,7 @@ function configurePersistence(): void {
   mocks.buildGrindingPlanningBoardRowItemId.mockImplementation((data: Record<string, unknown>) => `row:${Buffer.from(JSON.stringify([data.FSEIBAN, data.FHINCD, data.FSIGENCD, data.FKOJUN])).toString('base64url')}`);
   mocks.projectGrindingPlanningBoard.mockReturnValue({
     allItems: [{
+      productNo: '1',
       itemId: 'row:item-a',
       itemRevision: 'item-revision-a',
       version: 0,
@@ -138,6 +141,7 @@ function configurePersistence(): void {
       isCompleted: false
     }],
     items: [{
+      productNo: '1',
       itemId: 'row:item-a',
       itemRevision: 'item-revision-a',
       version: 0,
@@ -186,6 +190,8 @@ describe('grinding planning board service orchestration', () => {
     clearLeaderboardMaterializedWinnerCacheForTests();
     configurePersistence();
     mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map());
+    mocks.prisma.orderPlacementBranchState.findMany.mockResolvedValue([]);
+    mocks.prisma.mobilePlacementShelf.findMany.mockResolvedValue([]);
   });
 
 
@@ -237,6 +243,71 @@ describe('grinding planning board service orchestration', () => {
     expect(response.items[0]?.materialArrivalStatus).toBe('ordered');
     expect(response.items[0]?.materialArrivalBasis).toBe(basis === 'part' ? 'part' : undefined);
     expect(response.items[0]?.itemRevision).toBe('item-revision-a');
+  });
+
+  it.each([null, '棚A'])('attaches one shelf with its label or raw code (%s)', async (displayLabel) => {
+    mocks.prisma.orderPlacementBranchState.findMany.mockResolvedValue([
+      { manufacturingOrderBarcodeRaw: '1', shelfCodeRaw: 'A', updatedAt: new Date('2026-10-24T06:20:00Z') }
+    ]);
+    mocks.prisma.mobilePlacementShelf.findMany.mockResolvedValue([{ shelfCodeRaw: 'A', displayLabel }]);
+    const response = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'all', view: 'seiban',
+      snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) });
+    expect(response.items[0]?.placement).toEqual({ shelves: [
+      { shelfCodeRaw: 'A', label: displayLabel ?? 'A', placedAt: '2026-10-24T06:20:00.000Z' }
+    ] });
+  });
+
+  it('batches only page product numbers and manufacturing orders, sorting and deduplicating shelves', async () => {
+    const projection = mocks.projectGrindingPlanningBoard.getMockImplementation()!();
+    const items = [' 1 ', '2', '1', '3'].map((productNo, index) => ({ ...projection.items[0], productNo, itemId: `item-${index}` }));
+    mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection, items, allItems: items });
+    const states = [
+      { manufacturingOrderBarcodeRaw: '1', branchNo: 1, slipKind: 'manufacturing_order', shelfCodeRaw: 'A', updatedAt: new Date('2026-10-23T06:20:00Z') },
+      { manufacturingOrderBarcodeRaw: '1', branchNo: 2, slipKind: 'manufacturing_order', shelfCodeRaw: 'B', updatedAt: new Date('2026-10-24T06:20:00Z') },
+      { manufacturingOrderBarcodeRaw: '1', branchNo: 3, slipKind: 'manufacturing_order', shelfCodeRaw: 'A', updatedAt: new Date('2026-10-25T06:20:00Z') },
+      { manufacturingOrderBarcodeRaw: '2', branchNo: 1, slipKind: 'purchase_order', shelfCodeRaw: 'C', updatedAt: new Date('2026-10-25T06:20:00Z') }
+    ];
+    mocks.prisma.orderPlacementBranchState.findMany.mockImplementation(async ({ where, orderBy }) => {
+      expect(where).toEqual({ slipKind: 'manufacturing_order', manufacturingOrderBarcodeRaw: { in: ['1', '2'] } });
+      expect(orderBy).toEqual({ updatedAt: 'desc' });
+      return states.filter((state) => state.slipKind === where.slipKind && where.manufacturingOrderBarcodeRaw.in.includes(state.manufacturingOrderBarcodeRaw))
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    });
+    mocks.prisma.mobilePlacementShelf.findMany.mockResolvedValue([{ shelfCodeRaw: 'A', displayLabel: '棚A' }]);
+    const response = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'all', view: 'seiban', pageSize: 3,
+      snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) });
+    expect(response.items[0]?.placement).toEqual({ shelves: [
+      { shelfCodeRaw: 'A', label: '棚A', placedAt: '2026-10-25T06:20:00.000Z' },
+      { shelfCodeRaw: 'B', label: 'B', placedAt: '2026-10-24T06:20:00.000Z' }
+    ] });
+    expect(response.items[1]).not.toHaveProperty('placement');
+    expect(response.items[2]?.placement).toEqual(response.items[0]?.placement);
+    expect(mocks.prisma.orderPlacementBranchState.findMany).toHaveBeenCalledTimes(1);
+    expect(mocks.prisma.mobilePlacementShelf.findMany).toHaveBeenCalledTimes(1);
+    expect(mocks.prisma.mobilePlacementShelf.findMany).toHaveBeenCalledWith({
+      where: { shelfCodeRaw: { in: ['A', 'B'] } }, select: { shelfCodeRaw: true, displayLabel: true }
+    });
+  });
+
+  it('refreshes placement on snapshot and warm reads without changing revisions or cached items', async () => {
+    const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const params = { siteKey: 'site-a', category: 'all' as const, view: 'seiban' as const, snapshotStore };
+    const first = await getGrindingPlanningBoard(params);
+    expect(first.items[0]).not.toHaveProperty('placement');
+    expect(mocks.prisma.mobilePlacementShelf.findMany).not.toHaveBeenCalled();
+    mocks.prisma.orderPlacementBranchState.findMany.mockResolvedValue([
+      { manufacturingOrderBarcodeRaw: '1', shelfCodeRaw: 'B', updatedAt: new Date('2026-10-24T06:20:00Z') }
+    ]);
+    const next = await getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId });
+    expect(next.items[0]?.placement?.shelves[0]?.label).toBe('B');
+    expect(next.items[0]?.itemRevision).toBe(first.items[0]?.itemRevision);
+    expect(next.sourceRevision).toBe(first.sourceRevision);
+    expect((snapshotStore.get(first.snapshotId)?.payload as { items: object[] }).items[0]).not.toHaveProperty('placement');
+    mocks.prisma.orderPlacementBranchState.findMany.mockResolvedValue([]);
+    const warm = await getGrindingPlanningBoard(params);
+    expect(warm.items[0]).not.toHaveProperty('placement');
+    expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
+    expect(mocks.prisma.orderPlacementBranchState.findMany).toHaveBeenCalledTimes(3);
   });
 
   it('omits load SQL and keeps deferred and legacy snapshots separate', async () => {

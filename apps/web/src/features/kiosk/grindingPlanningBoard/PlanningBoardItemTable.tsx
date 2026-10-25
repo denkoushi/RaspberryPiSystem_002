@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { memo, useId, useRef, useState } from 'react';
 
 import { MaterialArrivalBadge } from '../../../components/kiosk/MaterialArrivalBadge';
+import { PlacementLocationBadge } from '../../../components/kiosk/PlacementLocationBadge';
 import { KioskResourceProcessChips } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { LeaderBoardRankPickerDropdown } from '../leaderOrderBoard/LeaderBoardRankPickerDropdown';
 import { normalizeMachineName } from '../productionSchedule/machineName';
@@ -156,7 +157,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               <span className="min-w-0 break-words font-mono text-[10px] text-white [overflow-wrap:anywhere]">
                 {item.fseiban} · {machineName || '機種名未登録'}
               </span>
-              <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} />
+              {item.placement ? <PlacementLocationBadge placement={item.placement} /> : <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} />}
             </div>
             {processChips ? <KioskResourceProcessChips processes={processChips} className="mt-0.5" /> : null}
           </div>
@@ -171,7 +172,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                 <span className="mt-0.5 block break-words text-[10px] leading-tight text-slate-400 [overflow-wrap:anywhere]">
                   {plannedQuantity} · {requiredTime}
                 </span>
-                <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} className="mt-0.5" />
+                {item.placement ? <PlacementLocationBadge placement={item.placement} className="mt-0.5" /> : <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} className="mt-0.5" />}
               </>
             ) : null}
             {processChips ? <KioskResourceProcessChips processes={processChips} className="mt-0.5" /> : null}
@@ -245,9 +246,9 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               <span className="whitespace-nowrap text-[10px] text-slate-400">
                 {requiredTime}
               </span>
-              {item.materialArrivalStatus ? (
+              {item.materialArrivalStatus || item.placement ? (
                 <span className="basis-full">
-                  <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} />
+                  {item.placement ? <PlacementLocationBadge placement={item.placement} /> : <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} />}
                 </span>
               ) : null}
             </>

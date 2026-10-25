@@ -49,7 +49,15 @@ Successful kiosk PUTs for overrides, pins, rank, resource-order (including bulk)
 
 The generation token remains unchanged. Rewarm stores the original deduplicated `requestedFseibans`, so a seiban-order write recomputes the selected list against the latest registered order. Builds share a per-store promise keyed by filter fingerprint and generation; a real first-page read can join it and still creates its own cursor snapshot. Successful background builds populate the existing 12-hour/16-entry cache without cursor creation, material-arrival lookup or the normal request performance flush. Reuse updates recency without extending expiry. Background errors are logged at debug and never affect the write response.
 
+### Live placement badges (2026-10-25)
+
+Placement is response-only enrichment, like material arrival: it does not enter cached projections, cursor snapshots, generation tokens or `itemRevision`. Each page batches its trimmed `productNo` values into one `OrderPlacementBranchState` query restricted to `slipKind = manufacturing_order`, then resolves `MobilePlacementShelf` labels in one batch. Branches on the same shelf collapse to the newest `updatedAt`; shelves appear newest first, with raw shelf codes as the label fallback. No matching state means no `placement` field.
+
+The three table badge positions show the sky placement badge instead of material arrival; the forward Gantt process-chip strip shows only the placement badge (it never had a material badge). Multiple shelves open a list through the existing anchored portal, avoiding clipping by table/track overflow; clicking the badge does not select or drag the row. Dates use the kiosk Tokyo formatter, and old records retain the same tone. Gantt strip fitting reserves badge width and shifts a following strip when even the badge and folded chips cannot fit on the two available lines. Other Gantt modes and screens are unchanged.
+
 ## Validation
+
+Local placement validation (2026-10-25): API service orchestration tests passed (65), along with the web badge, table, chip-strip and Gantt view tests (103). Shared-types build, web `tsc --noEmit`, API `tsc --noEmit -p tsconfig.build.json`, targeted ESLint and `git diff --check` passed. The worktree first needed Prisma Client generation and builds of the existing `shelf-layout-core` / `part-search-core` packages. No database, commit, push or deploy was used.
 
 Local rewarm validation (2026-10-19): the grinding-planning-board service test group and route tests passed (178 tests; 37 database integration tests skipped without `TEST_DATABASE_URL`). Coverage includes cold-build equality, recomputed seiban selection, concurrent reads, joining rewarm, failed-build retry, debounce/follow-up, site/store isolation and the three-entry limit. Changed TypeScript files passed ESLint, and `tsc --noEmit -p tsconfig.build.json` passed. The requested `tsc --noEmit -p .` remains blocked by the existing `rootDir: src` configuration including files outside `src` (TS6059); no config changes were made for this task.
 

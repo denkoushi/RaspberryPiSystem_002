@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardItemTable } from '../PlanningBoardItemTable';
@@ -35,7 +35,9 @@ const items = [
   item('a', { materialArrivalStatus: 'received' }),
   item('b', { materialArrivalStatus: 'ordered' }),
   item('c'),
-  item('d', { materialArrivalStatus: 'ordered', materialArrivalBasis: 'part' })
+  item('d', { materialArrivalStatus: 'ordered', materialArrivalBasis: 'part' }),
+  item('e', { materialArrivalStatus: 'received', placement: { shelves: [{ shelfCodeRaw: 'A', label: '棚A', placedAt: '2026-10-24T06:20:00Z' }] } }),
+  item('f', { placement: { shelves: [{ shelfCodeRaw: 'B', label: '棚B', placedAt: '2026-10-24T06:20:00Z' }] } })
 ];
 
 const renderTable = (props: { showRank?: boolean; showSeiban?: boolean }) =>
@@ -63,6 +65,12 @@ describe('PlanningBoardItemTable material arrival badge', () => {
     expect(within(screen.getByTestId('planning-board-item-b')).getByText('材料未入荷')).toBeInTheDocument();
     expect(within(screen.getByTestId('planning-board-item-c')).queryByText(/^材料/)).toBeNull();
     expect(within(screen.getByTestId('planning-board-item-d')).getByText('部品未入荷')).toBeInTheDocument();
+    const placed = within(screen.getByTestId('planning-board-item-e'));
+    expect(placed.getByText('棚A')).toBeInTheDocument();
+    expect(placed.queryByText(/^材料/)).toBeNull();
+    expect(within(screen.getByTestId('planning-board-item-f')).getByText('棚B')).toBeInTheDocument();
+    fireEvent.click(placed.getByText('棚A'));
+    expect(screen.getByTestId('planning-board-item-e').querySelector('input')).not.toBeChecked();
   });
 
   it('puts the badge under date, quantity and time in the seiban pane', () => {

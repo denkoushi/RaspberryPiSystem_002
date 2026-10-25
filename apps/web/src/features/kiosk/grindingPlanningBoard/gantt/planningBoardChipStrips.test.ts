@@ -43,6 +43,28 @@ describe('layoutChipStrips', () => {
     expect(first!.left + first!.width).toBeLessThanOrEqual(result.strips[2]!.left);
   });
 
+  it('reserves badge widths while folding chips, and shifts strips when badges cannot fit', () => {
+    const result = layoutChipStrips([0, 20, 40, 60].map((left, index) => ({
+      id: String(index), left, chips: route, badgeWidth: index === 0 ? 300 : 100
+    })), CHIP_STRIP_FIT);
+    expect(result.lines).toBe(2);
+    for (let line = 0; line < result.lines; line += 1) {
+      const strips = result.strips.filter((strip) => strip.line === line);
+      strips.forEach((strip, index) => {
+        expect(strip.width).toBeGreaterThanOrEqual(strip.badgeWidth);
+        expect(strip.done.length + strip.shown.length + strip.hidden.length).toBe(route.length);
+        if (index > 0) expect(strips[index - 1]!.left + strips[index - 1]!.width).toBeLessThan(strip.left);
+      });
+    }
+  });
+
+  it('keeps badge-only strips apart', () => {
+    const result = layoutChipStrips([{ left: 0, chips: [], badgeWidth: 90 }, { left: 10, chips: [], badgeWidth: 70 }],
+      { maxLines: 1, collapseDone: true });
+    expect(result.strips[0]!.width).toBe(90);
+    expect(result.strips[1]!.left).toBe(98);
+  });
+
   it('returns no lines when there are no strips', () => {
     expect(layoutChipStrips([], { maxLines: 1, collapseDone: false })).toEqual({ strips: [], lines: 0 });
   });

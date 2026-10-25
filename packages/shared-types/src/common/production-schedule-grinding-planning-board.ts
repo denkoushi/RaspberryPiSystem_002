@@ -124,6 +124,7 @@ export interface GrindingPlanningBoardItem {
   /** 材料の購買行が無い部品は null / 省略 */
   materialArrivalStatus?: MaterialArrivalStatus | null;
   materialArrivalBasis?: MaterialArrivalBasis;
+  placement?: { shelves: { shelfCodeRaw: string; label: string; placedAt: string }[] } | null;
 }
 
 export interface GrindingPlanningBoardLoad {
