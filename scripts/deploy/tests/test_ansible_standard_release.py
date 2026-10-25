@@ -2254,6 +2254,7 @@ esac
         self.assertIn("business-hermes-egress", str(prepare_tasks[egress_existing_index]))
         self.assertIn("release_pi5_business_hermes_egress_existing_running", str(prepare_tasks[egress_state_index]))
         self.assertIn("release_pi5_business_hermes_egress_image", str(prepare_tasks[egress_image_guard_index]))
+        self.assertIn("release_pi5_business_hermes_egress_replaceable_images", str(prepare_tasks[egress_image_guard_index]))
 
         proxy_stat_index = next(
             index
@@ -3302,6 +3303,45 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("'web-' + release_pi5_slot", argv)
         self.assertEqual(start["when"], "release_pi5_route == 'fresh'")
 
+    def test_pi5_egress_image_guard_allows_only_approved_predecessor_transitions(self) -> None:
+        defaults = yaml.safe_load((ANSIBLE / "roles/release_pi5/defaults/main.yml").read_text())
+        approved = defaults["release_pi5_business_hermes_egress_replaceable_images"]
+        self.assertEqual(len(approved), 1)
+        self.assertRegex(approved[0], r"^node:20-alpine@sha256:[0-9a-f]{64}$")
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        current = environment.from_string(defaults["release_pi5_business_hermes_egress_image"]).render()
+        self.assertRegex(current, r"^node:24-alpine@sha256:[0-9a-f]{64}$")
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        guard = next(task for task in prepare if task["name"] ==
+                     "Refuse to replace an independent business Hermes egress image during API/Web rollback window")
+        decision = next(task for task in prepare if task["name"] ==
+                        "Decide whether the Business Hermes egress requires a controlled timeout transition")
+        allowed = environment.compile_expression(guard["ansible.builtin.assert"]["that"][0])
+        transition = environment.from_string(decision["ansible.builtin.set_fact"][
+            "release_pi5_business_hermes_egress_transition_required"])
+        for container_id, image, expected_allowed, expected_transition in (
+            ("", "", True, True),
+            ("existing", current, True, False),
+            ("existing", approved[0], True, True),
+            ("existing", "node:unapproved@sha256:" + "a" * 64, False, False),
+        ):
+            with self.subTest(container_id=container_id, image=image):
+                variables = {
+                    "release_pi5_business_hermes_egress_existing_id": container_id,
+                    "release_pi5_business_hermes_egress_existing_image": image,
+                    "release_pi5_business_hermes_egress_image": current,
+                    "release_pi5_business_hermes_egress_replaceable_images": approved,
+                    "release_pi5_business_hermes_egress_existing_running": True,
+                    "release_pi5_business_hermes_egress_existing_health": "healthy",
+                    "release_pi5_business_hermes_egress_existing_timeout_key_present": True,
+                    "release_pi5_business_hermes_egress_existing_timeout_ms": 60000,
+                }
+                self.assertEqual(allowed(**variables), expected_allowed)
+                self.assertEqual(transition.render(**variables), str(expected_transition))
+        names = [task["name"] for task in prepare]
+        self.assertLess(names.index(guard["name"]), names.index("Mark the Business Hermes egress transition boundary"))
+
     def test_pi5_egress_timeout_transition_is_scoped_and_rollback_safe(self) -> None:
         prepare = yaml.safe_load(self.task_text("prepare"))
         prepare_names = [task["name"] for task in prepare]
@@ -3381,6 +3421,16 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
             if task["name"] == "Restore the previous Business Hermes egress runtime after a timeout transition"
         )
         egress_block_names = [task["name"] for task in egress_block["block"]]
+        self.assertEqual(egress_block["when"], [
+            "release_pi5_business_hermes_egress_transition_attempted | default(false) | bool"
+        ])
+        binding = egress_block["block"][0]
+        self.assertIn("'BUSINESS_HERMES_EGRESS_IMAGE': release_pi5_business_hermes_egress_existing_image", str(binding))
+        recreate = egress_block["block"][egress_block_names.index("Recreate the previous Business Hermes egress runtime")]
+        self.assertEqual(recreate["environment"], "{{ release_pi5_compose_environment }}")
+        self.assertIn("'up', '-d'", recreate["ansible.builtin.command"]["argv"])
+        self.assertNotIn("--no-recreate", recreate["ansible.builtin.command"]["argv"])
+        self.assertEqual(recreate["when"], "release_pi5_business_hermes_egress_existing_id | default('') | trim | length > 0")
         resolve_absent_index = egress_block_names.index("Resolve Business Hermes egress after restoring its absent state")
         remove_index = egress_block_names.index("Remove a Business Hermes egress created by a failed timeout transition")
         self.assertLess(resolve_absent_index, remove_index)
@@ -3453,6 +3503,8 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                         "business_hermes_provider": "dgx",
                         "business_hermes_egress_timeout_ms": 60000,
                         "business_hermes_remote_preparation_enabled": remote_preparation,
+                        "release_pi5_business_hermes_egress_image": "old-image",
+                        "release_pi5_business_hermes_egress_replaceable_images": [],
                     },
                     "tasks": transition_tasks
                     + [
@@ -3871,6 +3923,38 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
 class ConsultationRuntimeReleaseTests(unittest.TestCase):
     """Execute the real Ansible start/rescue tasks against a stateful Docker double."""
 
+    def test_consultation_image_guard_limits_predecessors_to_egress(self) -> None:
+        role = ANSIBLE / "roles/release_pi5"
+        defaults = yaml.safe_load((role / "defaults/main.yml").read_text())
+        approved = defaults["release_pi5_business_hermes_egress_replaceable_images"]
+        prepare = yaml.safe_load((role / "tasks/business-hermes-chat-prepare.yml").read_text())
+        guard = next(task for task in prepare if task["name"] ==
+                     "Preserve the fixed image boundary for existing consultation containers")
+        allowed = Environment(undefined=StrictUndefined).compile_expression(
+            guard["ansible.builtin.assert"]["that"][0])
+        for service, current in (("business-hermes-chat", "hermes-current"),
+                                 ("business-hermes-chat-egress", "egress-current")):
+            for container_id, image, expected in (
+                ("", "", True),
+                ("existing", current, True),
+                ("existing", approved[0], service == "business-hermes-chat-egress"),
+                ("existing", "unapproved-image", False),
+            ):
+                with self.subTest(service=service, image=image):
+                    self.assertEqual(allowed(
+                        item={"service": service, "id": container_id, "image": image},
+                        business_hermes_chat_image="hermes-current",
+                        business_hermes_chat_egress_image="egress-current",
+                        release_pi5_business_hermes_egress_replaceable_images=approved,
+                    ), expected)
+        binding = next(task for task in prepare if task["name"] ==
+                       "Bind consultation Compose paths and persistent candidate environment")
+        self.assertIn("'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': business_hermes_chat_egress_image", str(binding))
+        rollback = yaml.safe_load((role / "tasks/business-hermes-chat-rollback.yml").read_text())
+        names = [task["name"] for task in rollback]
+        self.assertLess(names.index("Bind the captured consultation egress image for rollback"),
+                        names.index("Restore existing consultation containers after profile restoration"))
+
     def test_consultation_start_and_rollback_preserve_container_and_network_state(self) -> None:
         docker_script = r'''#!/usr/bin/env python3
 import json, os, sys
@@ -3890,6 +3974,8 @@ elif a[0] == 'compose':
     service = a[-1]
     if 'up' in a:
         s['services'][service] = True
+        if service == 'business-hermes-chat-egress':
+            s['egress_images'].append(os.environ['BUSINESS_HERMES_CHAT_EGRESS_IMAGE'])
         if service == 'business-hermes-chat' and s.get('fail_start'):
             s['fail_start'] = False
             code = 1
@@ -3908,15 +3994,17 @@ sys.exit(code)
                 executable.chmod(0o755)
                 initial = {'business-hermes-chat-egress': True, 'business-hermes-chat': False} if existing else {}
                 state = root / 'state.json'
-                state.write_text(json.dumps({'services': initial, 'network': existing, 'events': [], 'fail_start': fail_start}))
-                before = [{'service': service, 'id': 'existing' if existing else '', 'running': running}
+                state.write_text(json.dumps({'services': initial, 'network': existing, 'events': [], 'egress_images': [], 'fail_start': fail_start}))
+                before = [{'service': service, 'id': 'existing' if existing else '', 'running': running,
+                           'image': 'previous-egress' if service == 'business-hermes-chat-egress' else 'hermes-current'}
                           for service, running in [('business-hermes-chat-egress', existing), ('business-hermes-chat', False)]]
                 task_root = ANSIBLE / 'roles/release_pi5/tasks'
                 playbook = root / 'check.yml'
                 playbook.write_text(yaml.safe_dump([{
                     'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
                     'vars': {'release_pi5_compose_argv': [str(executable), 'compose'],
-                             'release_pi5_compose_environment': {'CHAT_DOCKER_STATE': str(state)},
+                             'release_pi5_compose_environment': {'CHAT_DOCKER_STATE': str(state),
+                                                                 'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': 'new-egress'},
                              'release_pi5_compose_project': 'bluegreen', 'release_pi5_compose_wait_seconds': 10,
                              'release_pi5_gateway_id': 'gateway-fixture', 'release_pi5_chat_before': before,
                              'release_pi5_chat_gateway_connected': False,
@@ -3942,6 +4030,7 @@ sys.exit(code)
                 actual = json.loads(state.read_text())
                 self.assertEqual(actual['services'], initial)
                 self.assertEqual(actual['network'], existing)
+                self.assertEqual(actual['egress_images'], ['new-egress', 'previous-egress'] if existing else ['new-egress'])
                 if not existing:
                     connect = next(event for event in actual['events'] if event[:2] == ['network', 'connect'])
                     self.assertEqual(connect[2:4], ['--alias', 'gateway'])
@@ -3950,6 +4039,8 @@ sys.exit(code)
                 self.assertEqual(up[0][-1], 'business-hermes-chat-egress')
                 self.assertEqual('--force-recreate' in up[0], trial_enabled)
                 self.assertIn('--no-deps', up[0])
+                self.assertNotIn('--no-recreate', up[0])
+                self.assertIn('--wait', up[0])
                 self.assertEqual(up[1][-1], 'business-hermes-chat')
 
 

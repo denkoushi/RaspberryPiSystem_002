@@ -655,6 +655,10 @@
       {{
         release_pi5_business_hermes_egress_existing_id | length == 0
         or not (release_pi5_business_hermes_egress_existing_running | bool)
+        or (
+          release_pi5_business_hermes_egress_existing_image != release_pi5_business_hermes_egress_image
+          and release_pi5_business_hermes_egress_existing_image in release_pi5_business_hermes_egress_replaceable_images
+        )
         or release_pi5_business_hermes_egress_existing_health != 'healthy'
         or not (release_pi5_business_hermes_egress_existing_timeout_key_present | bool)
         or release_pi5_business_hermes_egress_existing_timeout_ms | int != (business_hermes_egress_timeout_ms | default(60000) | int)
@@ -669,7 +673,8 @@
       - >-
         (release_pi5_business_hermes_egress_existing_id | default('') | length == 0)
         or release_pi5_business_hermes_egress_existing_image == release_pi5_business_hermes_egress_image
-    fail_msg: Existing business Hermes egress image differs from this release; preserve it and roll the Hermes runtime separately.
+        or release_pi5_business_hermes_egress_existing_image in release_pi5_business_hermes_egress_replaceable_images
+    fail_msg: Existing business Hermes egress image differs from this release and is not an approved predecessor; preserve it and roll the Hermes runtime separately.
   when:
     - release_pi5_route == 'fresh'
     - release_pi5_business_hermes_enabled | bool

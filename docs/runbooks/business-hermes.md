@@ -57,7 +57,9 @@ docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/do
 
 このprofileを指定しない通常のCompose起動では相談チャットは起動しません。MCP接続は業務Hermes内部ネットワーク上のAPIだけに向け、DGX推論は専用egress sidecarの許可済み `/v1/chat/completions` 経路を通します。既存ガイド用サービスのprofile、設定、volumeはそのままです。
 
-イメージは `nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a`、egress proxyは `node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293` を使用します。更新時は公式multi-arch indexとPi5上のARM64 manifestを確認し、digestを差し替えてCIを通します。
+イメージは `nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a`、egress proxyは `node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53` を使用します。更新時は公式multi-arch indexとPi5上のARM64 manifestを確認し、digestを差し替えてCIを通します。
+
+今回のNode 24 pinは上記multi-arch OCI indexを使用し、linux/arm64/v8 manifestは `sha256:398bcf38afb035ae76feb9ad3c7493a93feff4751351c65310811761e37bbfc7` です。次回のegress更新では、旧pinを `roles/release_pi5/defaults/main.yml` の `release_pi5_business_hermes_egress_replaceable_images` に登録してから、guide/chatの現行pinを変更し、indexとARM64 manifestのdigestを記録します。標準リリースはこのリストの旧イメージだけを置換し、その他の異なるイメージは拒否します。revertする場合も、その時点の現行pinを同リストに登録する必要があります。
 
 ## ローカル検証
 
