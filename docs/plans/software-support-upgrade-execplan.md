@@ -77,6 +77,8 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - [ ] 1件目の PR を作成し CI を通す。
 - [ ] 進行管理役へ PR 番号と head SHA を渡す。
 
+- [x] (2026-10-25) Brotli の脆弱性(CVE-2026-111497)対応として、API と kiosk-sop 生成の node:24-bookworm-slim を Node 24.21.0 の digest(sha256:2fe369e9…)から Node 24.22.1 の digest(index sha256:55fb5f5a…)へ差し替える別 PR を作成。土台は bookworm のままで、3件目の trixie 化とは分ける。
+
 ## Surprises & Discoveries
 
 
