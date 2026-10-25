@@ -72,6 +72,11 @@ describe('PurchaseOrderLookupPage', () => {
 
   it('uses the phone scan flow, ghost digits, ordered result fields and hub tabs', async () => {
     mount();
+    const bottom = screen.getByRole('contentinfo');
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    expect(bottom).toContainElement(screen.getByRole('tablist', { name: '作業' }));
+    expect(bottom).toContainElement(screen.getByRole('button', { name: '注文番号を読む' }));
+    expect(bottom.parentElement?.lastElementChild).toBe(bottom);
     expect(screen.getByText('0000000000')).toHaveClass('text-[var(--hp-line)]');
     fireEvent.click(screen.getByRole('button', { name: '注文番号を読む' }));
     expect(scanProps).toHaveBeenLastCalledWith(expect.objectContaining({ formats: BARCODE_FORMAT_PRESET_PURCHASE_ORDER, engine: 'auto-native', ...KIOSK_STANDARD_BARCODE_SCAN_SESSION }));

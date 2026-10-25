@@ -7,7 +7,12 @@ describe('PartSearchPhoneKeyboard', () => {
   it('prunes presets, kana, alphanumeric keys and space using the existing hidden-key set', () => {
     const append = vi.fn();
     const preset = vi.fn();
-    render(<PartSearchPhoneKeyboard hiddenKeys={new Set(['脚', 'あ', 'A', '0', ' '])} onAppend={append} onPreset={preset} onDelete={vi.fn()} />);
+    render(<PartSearchPhoneKeyboard hiddenKeys={new Set(['脚', 'あ', 'A', '0', ' '])} onAppend={append} onPreset={preset} />);
+    const modes = screen.getByRole('group', { name: '文字種' });
+    expect(modes.parentElement).toBe(screen.getByLabelText('定型語'));
+    expect(modes.nextElementSibling).toContainElement(screen.getByRole('button', { name: '足', exact: true }));
+    expect(modes).toHaveClass('shrink-0');
+    expect(screen.queryByRole('button', { name: '1文字消す' })).not.toBeInTheDocument();
     for (const name of ['脚', 'あ', '空白']) expect(screen.queryByRole('button', { name, exact: true })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '足', exact: true }));
     expect(preset).toHaveBeenCalledWith('足');

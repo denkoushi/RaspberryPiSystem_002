@@ -42,7 +42,7 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
       <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
         {filters.map((f) => <button key={f.key} type="button" className={hp.chip} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</button>)}
       </div>
-      {onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} shrink-0 !px-3`} onClick={onExpand}>⤢</button>}
+      {onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} !h-[52px] w-[52px] shrink-0 !px-0 !text-2xl`} onClick={onExpand}>⤢</button>}
     </div>
     {children}
     {loading ? <p className={hp.empty}>読込中…</p> : error ? <div role="alert" className={hp.empty}>棚を取得できませんでした <button className={hp.mini} onClick={onRetry}>再試行</button></div>

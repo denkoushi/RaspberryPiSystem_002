@@ -63,7 +63,7 @@ function typePlaceSlip(kind: 'mo' | 'po' = 'mo', number = '0002178005') {
 }
 async function chooseShelf() {
   fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
-  if (screen.queryByRole('button', { name: '票を読む' })) typePlaceSlip();
+  if (screen.queryByRole('button', { name: '移動票 製造オーダー番号' })) typePlaceSlip();
   fireEvent.click(await screen.findByRole('button', { name: '棚の写真を選ぶ' }));
   const picker = within(screen.getByRole('dialog', { name: '棚を選ぶ' }));
   fireEvent.click(picker.getByRole('button', { name: '50013_540AP', exact: true }));
@@ -83,8 +83,17 @@ beforeEach(async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Haizen hub', () => {
-  it('top row has four tabs, purchase navigates, and menu dismisses', () => {
+  it('bottom row has four tabs, purchase navigates, and menu dismisses', () => {
     mount();
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    const bottom = screen.getByRole('contentinfo');
+    expect(bottom).toContainElement(screen.getByRole('tablist', { name: '作業' }));
+    expect(within(bottom).getByRole('button', { name: '移動票を読む' })).toBeInTheDocument();
+    expect(screen.getByRole('main').compareDocumentPosition(bottom) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const stubs = bottom.previousElementSibling;
+    expect(stubs).toContainElement(screen.getAllByRole('button', { name: '移動票を読む' })[0]);
+    expect(stubs).toContainElement(screen.getByRole('button', { name: '現品票を読む' }));
+    expect(stubs?.closest('main')).toBeNull();
     expect(within(screen.getByRole('tablist', { name: '作業' })).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['照合', '配膳', '購買', '部品']);
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
     expect(within(screen.getByRole('dialog')).getAllByRole('button')).toHaveLength(3);
@@ -96,12 +105,17 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('tab', { name: '購買' }));
     expect(screen.getByText('sub-screen')).toBeInTheDocument();
   });
-  it('shows shelf photos directly under the 移動票 and enables them after it is read', async () => {
+  it('shows shelf photos and a solo bottom nav before a place slip is read', async () => {
     mount();
     fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    expect(screen.queryByRole('button', { name: '票を読む' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('contentinfo')).getAllByRole('button')).toHaveLength(1);
+    const slipButton = screen.getByRole('button', { name: '移動票 製造オーダー番号' });
+    expect(slipButton.closest('main')).toBeNull();
+    expect(slipButton.parentElement?.nextElementSibling).toBe(screen.getByRole('contentinfo'));
     const list = within(screen.getByRole('region', { name: '棚の写真' }));
     expect(screen.queryByRole('button', { name: '棚を読む' })).not.toBeInTheDocument();
-    expect(screen.getByText('先に票を読む')).toBeInTheDocument();
+    expect(screen.queryByText('先に票を読む')).not.toBeInTheDocument();
     fireEvent.click(list.getByRole('button', { name: '50013_540AP', exact: true }));
     expect(await list.findByRole('button', { name: '棚 50013_540AP 北', exact: true })).toBeDisabled();
     fireEvent.click(list.getByRole('button', { name: '大きい画面で選ぶ' }));
@@ -138,7 +152,7 @@ describe('Haizen hub', () => {
     await waitFor(() => expect(registerOrderPlacement).toHaveBeenCalledWith({ shelfCodeRaw: '50013_540AP 北', manufacturingOrderBarcodeRaw: '0002178005', slipKind: 'manufacturing_order', clientRecordId: expect.any(String), placedAt: expect.any(String) }, 8000));
     await screen.findByText(/分配1を登録/);
     expect(screen.getByRole('button', { name: '移動票 製造オーダー番号' })).toBeInTheDocument();
-    expect(screen.getByText('先に票を読む')).toBeInTheDocument();
+    expect(screen.queryByText('先に票を読む')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '照合' }));
     expect(screen.getByText('0002178005')).toBeInTheDocument();
     expect(screen.getByText('4501238876')).toBeInTheDocument();
