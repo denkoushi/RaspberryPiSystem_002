@@ -26,6 +26,7 @@ import {
 } from '../../services/mobile-placement/mobile-placement-shelf-master.service.js';
 import {
   applyHaizenScan,
+  deleteHaizenCurrentPlacement,
   getHaizenPresetShelf,
   listHaizenAssignableDevices,
   listHaizenCurrentPlacements,
@@ -563,6 +564,18 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       const branchStateId = typeof params.id === 'string' ? params.id.trim() : '';
       if (branchStateId.length === 0) throw new ApiError(400, '分配枝IDが必要です');
       return { deleted: await deleteOrderPlacementBranch(branchStateId) };
+    }
+  );
+
+  app.delete(
+    '/mobile-placement/haizen-current/:id',
+    { config: { rateLimit: false } },
+    async (request) => {
+      await requireClientDevice(request.headers['x-client-key']);
+      const params = request.params as { id?: string };
+      const id = typeof params.id === 'string' ? params.id.trim() : '';
+      if (id.length === 0) throw new ApiError(400, '配膳記録IDが必要です');
+      return { deleted: await deleteHaizenCurrentPlacement(id) };
     }
   );
 

@@ -2,7 +2,7 @@ import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { useDeleteOrderPlacementBranch, useHaizenOverview, useHaizenShelves } from '../../api/hooks/haizen-overview';
+import { useDeleteHaizenPlacement, useHaizenOverview, useHaizenShelves } from '../../api/hooks/haizen-overview';
 import { matchesHaizenSearch, normalizeHaizenSearch, parseHaizenSpeech, searchKinds, timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
 import { HaizenShelfHoverCard } from '../../features/kiosk/haizen/HaizenShelfHoverCard';
 import { HaizenShelfPhoto } from '../../features/kiosk/haizen/HaizenShelfPhoto';
@@ -31,7 +31,7 @@ export function KioskHaizenPage() {
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [search, setSearch] = useState<HaizenSearch>({ kind: 'fseiban', text: '' });
   const query = normalizeHaizenSearch(search.text) ? search : null;
-  const deletion = useDeleteOrderPlacementBranch();
+  const deletion = useDeleteHaizenPlacement();
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ shelf: MobilePlacementRegisteredShelfEntry; rect: DOMRect } | null>(null);
   const tooltipId = useId();
@@ -77,7 +77,7 @@ export function KioskHaizenPage() {
     return { byShelf, byOrder };
   }, [rows]);
   const hits = query ? rows.filter(row => matchesHaizenSearch(row, query)) : [];
-  const hitIds = new Set(hits.map(row => row.id));
+  const hitIds = new Set(hits.map(row => `${row.source}:${row.id}`));
   const hitShelves = new Set(hits.map(row => row.shelfCodeRaw));
   const visibleShelves = shelves.filter(shelf => !query || hitShelves.has(shelf.shelfCodeRaw));
   const selected = shelves.find(shelf => shelf.shelfCodeRaw === selectedCode);
@@ -87,7 +87,7 @@ export function KioskHaizenPage() {
   const clearSearch = () => setSearch(current => ({ ...current, text: '' }));
   const deleteItem = async (row: HaizenOverviewRow) => {
     try {
-      await deletion.mutateAsync(row.id);
+      await deletion.mutateAsync(row);
       setConfirmId(null);
       setToast(`「${row.fhinmei || '品名未登録'}」を消しました`);
     } catch (error) {
@@ -155,15 +155,15 @@ export function KioskHaizenPage() {
           {items.length === 0 && <p className="py-12 text-center text-inv-muted">空き — この棚には何も置かれていません</p>}
           {items.map(row => {
             const siblings = [...new Set((grouped.byOrder.get(row.manufacturingOrderBarcodeRaw) ?? []).filter(other => other.branchNo !== row.branchNo && other.shelfCodeRaw !== row.shelfCodeRaw).map(other => other.shelfCodeRaw))];
-            return <article key={row.id} aria-label={`${row.fhinmei || '品名未登録'} 枝${row.branchNo}`} className={`${invCard} grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-4 gap-y-2 bg-inv-s2 px-4 py-3 ${hitIds.has(row.id) ? 'border-2 border-inv-cyan' : ''}`}>
+            return <article key={`${row.source}:${row.id}`} aria-label={`${row.fhinmei || '品名未登録'} 枝${row.branchNo ?? '—'}`} className={`${invCard} grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-4 gap-y-2 bg-inv-s2 px-4 py-3 ${hitIds.has(`${row.source}:${row.id}`) ? 'border-2 border-inv-cyan' : ''}`}>
               <h3 className="break-words text-[22px] font-black">{row.fhinmei || '品名未登録'}</h3>
               <div className="text-right text-sm tabular-nums text-inv-muted"><strong className="text-2xl text-inv-text">{timeSincePlaced(row.updatedAt, now)}</strong><br /><time dateTime={row.updatedAt}>{placedTime(row.updatedAt)}</time></div>
-              <button type="button" aria-label="消す" disabled={deletion.isPending} className="flex h-12 w-12 items-center justify-center rounded-xl border border-inv-line2 bg-inv-s1 text-xl text-inv-muted hover:border-inv-red hover:text-inv-red disabled:opacity-40" onClick={() => setConfirmId(row.id)}>🗑</button>
+              <button type="button" aria-label="消す" disabled={deletion.isPending} className="flex h-12 w-12 items-center justify-center rounded-xl border border-inv-line2 bg-inv-s1 text-xl text-inv-muted hover:border-inv-red hover:text-inv-red disabled:opacity-40" onClick={() => setConfirmId(`${row.source}:${row.id}`)}>🗑</button>
               <dl className="col-span-full flex flex-wrap gap-x-5 gap-y-2">
-                {([['fseiban', '製番', row.fseiban], ['fhincd', '品番', row.fhincd], ['machineName', '機種名', normalizeMachineName(row.machineName)], ['order', '製造オーダー', row.manufacturingOrderBarcodeRaw], ['branch', '枝', String(row.branchNo)]] as const).map(([kind, label, value]) => <div key={kind} className="flex items-baseline gap-2"><dt className="text-sm text-inv-muted">{label}</dt><dd className="break-all font-mono text-lg font-bold">{hitIds.has(row.id) && query?.kind === kind ? <mark className="rounded bg-inv-cyan px-1 text-inv-cyan-ink">{value || '—'}</mark> : value || '—'}</dd></div>)}
+                {([['fseiban', '製番', row.fseiban], ['fhincd', '品番', row.fhincd], ['machineName', '機種名', normalizeMachineName(row.machineName)], ['order', '製造オーダー', row.manufacturingOrderBarcodeRaw], ['branch', '枝', row.branchNo === null ? '—' : String(row.branchNo)]] as const).map(([kind, label, value]) => <div key={kind} className="flex items-baseline gap-2"><dt className="text-sm text-inv-muted">{label}</dt><dd className="break-all font-mono text-lg font-bold">{hitIds.has(`${row.source}:${row.id}`) && query?.kind === kind ? <mark className="rounded bg-inv-cyan px-1 text-inv-cyan-ink">{value || '—'}</mark> : value || '—'}</dd></div>)}
               </dl>
               {siblings.length > 0 && <div className="col-span-full flex flex-wrap items-center gap-2 text-sm text-inv-muted">分けて置いた残りは{siblings.map(code => <button type="button" key={code} className={invButtonGhost} onClick={() => openShelf(code)}>{code} {shelves.find(shelf => shelf.shelfCodeRaw === code)?.displayLabel}</button>)}</div>}
-              {confirmId === row.id && <div className="col-span-full flex flex-wrap items-center gap-3 border-t border-inv-line pt-2">
+              {confirmId === `${row.source}:${row.id}` && <div className="col-span-full flex flex-wrap items-center gap-3 border-t border-inv-line pt-2">
                 <strong className="mr-auto text-inv-red">この品物を消しますか？</strong>
                 <button type="button" className={invButtonDanger} disabled={deletion.isPending} onClick={() => void deleteItem(row)}>🗑 消す</button>
                 <button type="button" className={invButton} disabled={deletion.isPending} onClick={() => setConfirmId(null)}>やめる</button>
@@ -174,7 +174,7 @@ export function KioskHaizenPage() {
       </div> : visibleShelves.length === 0 ? <p className="py-12 text-center text-inv-muted">{query ? '一致する部品はどの棚にもありません' : '登録済みの棚はありません'}</p> : <div aria-label="棚の一覧" className={`grid auto-rows-max content-start gap-3 ${gridSizes[size]}`}>
         {visibleShelves.map(shelf => {
           const parts = grouped.byShelf.get(shelf.shelfCodeRaw) ?? [];
-          const matching = parts.filter(row => hitIds.has(row.id));
+          const matching = parts.filter(row => hitIds.has(`${row.source}:${row.id}`));
           return <button type="button" key={shelf.shelfCodeRaw} aria-label={`棚 ${shelf.shelfCodeRaw} ${shelf.displayLabel || ''}`}
             aria-describedby={tooltip?.shelf.shelfCodeRaw === shelf.shelfCodeRaw ? tooltipId : undefined}
             onPointerEnter={event => { if (event.pointerType !== 'touch' && (window.matchMedia?.('(hover: hover)').matches ?? true)) showTooltip(shelf, event.currentTarget); }}

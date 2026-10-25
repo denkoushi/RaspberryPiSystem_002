@@ -331,3 +331,18 @@ export async function listHaizenCurrentPlacements(input: {
     rows: rows.map((r) => toHaizenCurrentDto(r))
   };
 }
+
+/** Remove only the current placement, preserving HaizenScanEvent history. */
+export async function deleteHaizenCurrentPlacement(id: string) {
+  try {
+    return await prisma.haizenCurrentPlacement.delete({
+      where: { id },
+      select: { id: true, manufacturingOrderBarcodeRaw: true, shelfCodeRaw: true }
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      throw new ApiError(404, 'この品物はもうありません');
+    }
+    throw error;
+  }
+}

@@ -11,16 +11,27 @@ function snapshotText(snapshot: Prisma.JsonValue | null, field: string): string 
   return typeof value === 'string' ? value.trim() || null : null;
 }
 
-/** Android registration/moves own branch state; Zero2W's order-only projection is separate. */
+/** Current placements from Android branches and Zero2W order-only scans. */
 export async function listHaizenOverview() {
-  const placements = await prisma.orderPlacementBranchState.findMany({
+  const [branches, zero2w] = await Promise.all([prisma.orderPlacementBranchState.findMany({
     orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
     take: HAIZEN_OVERVIEW_LIMIT + 1,
     select: {
       id: true, manufacturingOrderBarcodeRaw: true, branchNo: true,
       shelfCodeRaw: true, scheduleSnapshot: true, updatedAt: true
     }
-  });
+  }), prisma.haizenCurrentPlacement.findMany({
+    orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+    take: HAIZEN_OVERVIEW_LIMIT + 1,
+    select: {
+      id: true, manufacturingOrderBarcodeRaw: true,
+      shelfCodeRaw: true, scheduleSnapshot: true, updatedAt: true
+    }
+  })]);
+  const placements = [
+    ...branches.map(row => ({ ...row, source: 'branch' as const })),
+    ...zero2w.map(row => ({ ...row, source: 'zero2w' as const, branchNo: null }))
+  ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || a.id.localeCompare(b.id) || a.source.localeCompare(b.source));
   const rows = placements.slice(0, HAIZEN_OVERVIEW_LIMIT).map(({ scheduleSnapshot, updatedAt, ...placement }) => ({
     ...placement,
     fseiban: snapshotText(scheduleSnapshot, 'FSEIBAN'),

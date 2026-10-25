@@ -6,6 +6,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { listScheduleRowsByProductNo } from '../../production-schedule/production-schedule-lookup.service.js';
 import {
   applyHaizenScan,
+  deleteHaizenCurrentPlacement,
   getHaizenPresetShelf,
   listHaizenCurrentPlacements,
   listHaizenAssignableDevices,
@@ -26,7 +27,9 @@ vi.mock('../../../lib/prisma.js', () => ({
     csvDashboardRow: {
       findFirst: vi.fn()
     },
+    haizenScanEvent: { delete: vi.fn(), deleteMany: vi.fn(), update: vi.fn(), create: vi.fn() },
     haizenCurrentPlacement: {
+      delete: vi.fn(),
       findMany: vi.fn()
     },
     $transaction: vi.fn()
@@ -385,5 +388,28 @@ describe('haizen snapshot read compatibility', () => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockRejectedValue(failure);
     await expect(applyHaizenScan({ clientDeviceId: 'device', manufacturingOrderBarcodeRaw: '100' })).rejects.toBe(failure);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteHaizenCurrentPlacement', () => {
+  beforeEach(() => vi.resetAllMocks());
+  it('deletes only the identified current branch and returns its location, preserving history', async () => {
+    const deleted = { id: 'branch', manufacturingOrderBarcodeRaw: '100', shelfCodeRaw: 'A' };
+    vi.mocked(prisma.haizenCurrentPlacement.delete).mockResolvedValue(deleted as never);
+    await expect(deleteHaizenCurrentPlacement('branch')).resolves.toEqual(deleted);
+    expect(prisma.haizenCurrentPlacement.delete).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'branch' },
+      select: { id: true, manufacturingOrderBarcodeRaw: true, shelfCodeRaw: true }
+    });
+    for (const method of Object.values(prisma.haizenScanEvent)) expect(method).not.toHaveBeenCalled();
+  });
+  it('returns 404 for a missing or concurrently deleted branch', async () => {
+    vi.mocked(prisma.haizenCurrentPlacement.delete).mockRejectedValue(new Prisma.PrismaClientKnownRequestError('missing', { code: 'P2025', clientVersion: '5' }));
+    await expect(deleteHaizenCurrentPlacement('missing')).rejects.toMatchObject({ statusCode: 404, message: 'この品物はもうありません' });
+  });
+  it('propagates database failures', async () => {
+    const error = new Error('database unavailable');
+    vi.mocked(prisma.haizenCurrentPlacement.delete).mockRejectedValue(error);
+    await expect(deleteHaizenCurrentPlacement('branch')).rejects.toBe(error);
   });
 });

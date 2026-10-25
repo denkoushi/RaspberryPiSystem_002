@@ -3,15 +3,15 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { deleteOrderPlacementBranch, getHaizenOverview, getMobilePlacementRegisteredShelves } from '../../api/domains/mobile-placement';
+import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenOverview, getMobilePlacementRegisteredShelves } from '../../api/domains/mobile-placement';
 import { startVoiceTranscription } from '../../features/voice/voiceTranscription';
 
 import { KioskHaizenPage } from './KioskHaizenPage';
 
-vi.mock('../../api/domains/mobile-placement', () => ({ deleteOrderPlacementBranch: vi.fn(), getHaizenOverview: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn() }));
+vi.mock('../../api/domains/mobile-placement', () => ({ deleteHaizenCurrentPlacement: vi.fn(), deleteOrderPlacementBranch: vi.fn(), getHaizenOverview: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn() }));
 vi.mock('../../features/mobile-placement/shelfPhoto/useShelfPhoto', () => ({ useShelfPhoto: () => ({ url: undefined, isError: false }) }));
 vi.mock('../../features/voice/voiceTranscription', () => ({ startVoiceTranscription: vi.fn(), disposeVoiceSession: vi.fn() }));
-const base = { manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: 'ブラケット', machineName: 'ＲＶ－１２Ａ' };
+const base = { source: 'branch' as const, manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: 'ブラケット', machineName: 'ＲＶ－１２Ａ' };
 const rows = [
   { ...base, id: '1', shelfCodeRaw: '西-北-01', branchNo: 1, updatedAt: '2026-10-21T01:00:00Z' },
   { ...base, id: '2', shelfCodeRaw: '西-北-02', branchNo: 2, updatedAt: '2026-10-22T01:00:00Z' },
@@ -132,7 +132,7 @@ describe('KioskHaizenPage', () => {
     expect(card).not.toHaveTextContent('この品物を消しますか？');
     fireEvent.click(within(card).getByRole('button', { name: '消す', exact: true }));
     fireEvent.click(within(card).getByRole('button', { name: '🗑 消す' }));
-    await waitFor(() => expect(deleteOrderPlacementBranch).toHaveBeenCalledWith('1', expect.anything()));
+    await waitFor(() => expect(deleteOrderPlacementBranch).toHaveBeenCalledExactlyOnceWith('1'));
     expect(within(card).getByRole('button', { name: '🗑 消す' })).toBeDisabled();
     expect(within(card).getByRole('button', { name: 'やめる' })).toBeDisabled();
     vi.mocked(getHaizenOverview).mockResolvedValue({ rows: rows.slice(1), truncated: false });
@@ -140,6 +140,36 @@ describe('KioskHaizenPage', () => {
     expect(await screen.findByText('「ブラケット」を消しました')).toBeInTheDocument();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText('「ブラケット」を消しました')).not.toBeInTheDocument(), { timeout: 4500 });
+  });
+  it('shows, searches and deletes a Zero2W row independently of a branch with the same id', async () => {
+    const zero2w = { ...rows[0], source: 'zero2w' as const, branchNo: null, fseiban: 'ZERO', fhinmei: '棚番端末の部品', updatedAt: '2026-10-24T00:00:00Z' };
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [...rows, zero2w], truncated: false });
+    vi.mocked(deleteHaizenCurrentPlacement).mockResolvedValue({ deleted: zero2w });
+    mount(); await screen.findByText('棚名1'); await search('zero');
+    const shelf = screen.getByRole('button', { name: '棚 西-北-01 棚名1' });
+    expect(shelf).toHaveTextContent('1件 一致');
+    fireEvent.pointerEnter(shelf);
+    const tooltip = await screen.findByRole('tooltip');
+    const hoverRows = within(tooltip).getAllByRole('row');
+    expect(hoverRows[1]).toHaveTextContent('棚番端末の部品');
+    expect(hoverRows[1]).toHaveClass('text-inv-cyan');
+    expect(hoverRows[2]).not.toHaveClass('text-inv-cyan');
+    fireEvent.click(shelf);
+    const card = screen.getByRole('article', { name: '棚番端末の部品 枝—' });
+    const branch = screen.getByRole('article', { name: 'ブラケット 枝1' });
+    expect(within(card).getByText('—')).toBeInTheDocument();
+    expect(card).not.toHaveTextContent('null');
+    expect(card.querySelector('mark')).toHaveTextContent('ZERO');
+    expect(branch.querySelector('mark')).toBeNull();
+    fireEvent.click(within(card).getByRole('button', { name: '消す', exact: true }));
+    expect(branch).not.toHaveTextContent('この品物を消しますか？');
+    expect(deleteHaizenCurrentPlacement).not.toHaveBeenCalled();
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows, truncated: false });
+    fireEvent.click(within(card).getByRole('button', { name: '🗑 消す' }));
+    await waitFor(() => expect(deleteHaizenCurrentPlacement).toHaveBeenCalledExactlyOnceWith('1'));
+    expect(deleteOrderPlacementBranch).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('article', { name: '棚番端末の部品 枝—' })).not.toBeInTheDocument());
+    expect(screen.getByRole('article', { name: 'ブラケット 枝1' })).toBeInTheDocument();
   });
   it('shows the API deletion error and keeps the item', async () => {
     vi.mocked(deleteOrderPlacementBranch).mockRejectedValue({ isAxiosError: true, response: { data: { message: 'この品物はもうありません' } } });

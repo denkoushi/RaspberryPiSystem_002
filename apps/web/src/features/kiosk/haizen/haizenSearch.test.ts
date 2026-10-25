@@ -4,7 +4,7 @@ import { matchesHaizenSearch, normalizeHaizenSearch, parseHaizenSpeech, timeSinc
 
 import type { HaizenOverviewRow } from '../../../api/domains/mobile-placement';
 
-const rows: HaizenOverviewRow[] = [{ id: '1', branchNo: 1, shelfCodeRaw: '西-北-01', manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: '部品', machineName: 'ＲＶ－１２Ａ', updatedAt: '2026-10-22T00:00:00Z' }];
+const rows: HaizenOverviewRow[] = [{ source: 'branch', id: '1', branchNo: 1, shelfCodeRaw: '西-北-01', manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: '部品', machineName: 'ＲＶ－１２Ａ', updatedAt: '2026-10-22T00:00:00Z' }];
 
 describe('haizen search', () => {
   it('normalizes case, full-width, hyphens and whitespace', () => {
@@ -13,6 +13,12 @@ describe('haizen search', () => {
     expect(matchesHaizenSearch(rows[0], { kind: 'fseiban', text: 'ｂａ１ｓ ２３' })).toBe(true);
     expect(matchesHaizenSearch(rows[0], { kind: 'fhincd', text: '- ' })).toBe(false);
     expect(matchesHaizenSearch({ ...rows[0], fhincd: null }, { kind: 'fhincd', text: '1' })).toBe(false);
+  });
+  it('searches snapshot fields for Zero2W rows with no branch number', () => {
+    const row: HaizenOverviewRow = { ...rows[0], source: 'zero2w', branchNo: null };
+    expect(matchesHaizenSearch(row, { kind: 'fseiban', text: 'BA1S2320' })).toBe(true);
+    expect(matchesHaizenSearch(row, { kind: 'fhincd', text: 'K0381' })).toBe(true);
+    expect(parseHaizenSpeech('RV12A', [row])).toEqual({ kind: 'machineName', text: 'RV12A' });
   });
   it.each([
     ['製番 BA1S2320', 'fseiban', 'BA1S2320'], ['品番 K0381。', 'fhincd', 'K0381'],
