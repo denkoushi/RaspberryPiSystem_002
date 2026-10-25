@@ -110,8 +110,6 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
     : flow.result === 'error' ? { label: '再試行', color: colors.actual, action: flow.retry }
     : { label: flow.result === 'ng' || flow.result === 'not-found' ? '現品票を読み直す' : '現品票を読む', color: flow.result === 'ng' ? colors.ng : colors.actual, action: () => { clearActual(); mp.setScanField('actualOrder'); } };
   const primaryLabel = putting || mp.registerSubmitting ? '処理中…' : tab === 'verify' && flow.pending ? '照合中…' : cfg.label;
-  const primaryLines = primaryLabel === '次を照合' ? [primaryLabel]
-    : primaryLabel.endsWith(' に置く') ? [mp.shelfCode, '置く'] : primaryLabel.split('を');
   const disabled = putting || mp.registerSubmitting || mp.actualSlipImageOcrBusy || (tab === 'verify' && flow.pending) ||
     (tab === 'place' && hasPlaceSlip && Boolean(mp.shelfCode.trim()) && mp.orderPlacementIntent === 'move_existing' && !mp.selectedBranchId);
   const resultTitle = flow.result === 'ok' ? '一致' : flow.result === 'ng' ? '不一致' : flow.result === 'not-found' ? (mp.slipDetails?.reason === 'part_required' ? 'あと1つ' : '未登録') : '照合できませんでした';
@@ -197,9 +195,8 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
         if (next === 'verify' || next === 'place') switchTab(next);
         else onNavigate(next === 'purchase' ? '/kiosk/purchase-order-lookup' : '/kiosk/mobile-placement/part-search');
       }}>
-        {(tab === 'verify' || hasPlaceSlip) && <button type="button" aria-label={primaryLabel} disabled={disabled} style={{ background: cfg.color }} className={hp.bottomPrimary} onClick={cfg.action}>
-          <span>{primaryLines[0]}</span>
-          {primaryLines[1] && <span className="text-xs font-black leading-[1.15]">{primaryLines[1]}</span>}
+        {(tab === 'place' ? hasPlaceSlip : flow.pending || flow.result === 'ok' || flow.result === 'error') && <button type="button" disabled={disabled} style={{ background: cfg.color }} className={hp.bottomPrimary} onClick={cfg.action}>
+          {primaryLabel}
         </button>}
       </HaizenBottomNav>
     </div>

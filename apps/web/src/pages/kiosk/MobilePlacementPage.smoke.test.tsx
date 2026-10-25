@@ -100,7 +100,7 @@ describe('MobilePlacementPage', () => {
     renderPage();
     expect(screen.queryByRole('region', { name: 'Zero2W 棚番配膳の状態' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Zero2W 配膳' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: '移動票を読む' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: '移動票を読む' })).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
     expect(screen.getByRole('dialog', { name: 'ほかの画面' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Zero2W 配膳' })).toBeInTheDocument();
