@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { HaizenBottomNav } from '../../features/mobile-placement/haizen/HaizenBottomNav';
 import { HaizenIcon } from '../../features/mobile-placement/haizen/HaizenIcon';
 import { HaizenSheet } from '../../features/mobile-placement/haizen/HaizenSheet';
-import { HaizenTopBar } from '../../features/mobile-placement/haizen/HaizenTopBar';
 import { haizenTabNavigationOptions } from '../../features/mobile-placement/haizen/useHubBackGuard';
 import { partSearchHitIdentity } from '../../features/mobile-placement/part-search/partSearchIdentity';
 import { PartSearchPhoneHit } from '../../features/mobile-placement/part-search/PartSearchPhoneHit';
@@ -35,13 +35,7 @@ export function MobilePlacementPartSearchPage() {
   };
   return <div style={haizenPhoneStyle} className={hp.screen}>
     <div className={hp.content}>
-      <HaizenTopBar active="parts" onSelect={(tab) => {
-        if (tab === 'verify' || tab === 'place') {
-          try { localStorage.setItem('haizen-tab', tab); } catch { /* Storage may be disabled on the kiosk. */ }
-          navigate('/kiosk/mobile-placement', haizenTabNavigationOptions());
-        } else if (tab === 'purchase') navigate('/kiosk/purchase-order-lookup', haizenTabNavigationOptions());
-      }} onMenu={() => navigate('/kiosk/mobile-placement', haizenTabNavigationOptions({ openHaizenMenu: true }))} />
-      <div className="mx-3.5 mt-0.5 flex h-[58px] shrink-0 items-center gap-2.5 rounded-2xl border-[1.5px] border-[var(--hp-shelf)] bg-[var(--hp-panel2)] pl-3.5 pr-2">
+      <div className="mx-3.5 mt-3.5 flex h-[58px] shrink-0 items-center gap-2.5 rounded-2xl border-[1.5px] border-[var(--hp-shelf)] bg-[var(--hp-panel2)] pl-3.5 pr-2">
         <HaizenIcon name="search" className="h-[22px] w-[22px] shrink-0 text-[var(--hp-shelf)]" />
         <input aria-label="部品名・品番" placeholder="部品名・品番" value={search.partQuery}
           onChange={(event) => changePart(event.target.value)} onFocus={() => search.setPaletteTarget('part')}
@@ -72,7 +66,16 @@ export function MobilePlacementPartSearchPage() {
           })}
         </ul>
       </section>
-      <PartSearchPhoneKeyboard hiddenKeys={search.hiddenPaletteKeys} onAppend={search.appendFromPalette} onPreset={changePart} onDelete={search.backspaceFromPalette} />
+      <PartSearchPhoneKeyboard hiddenKeys={search.hiddenPaletteKeys} onAppend={search.appendFromPalette} onPreset={changePart} />
+      <HaizenBottomNav active="parts" onSelect={(tab) => {
+        if (tab === 'verify' || tab === 'place') {
+          try { localStorage.setItem('haizen-tab', tab); } catch { /* Storage may be disabled on the kiosk. */ }
+          navigate('/kiosk/mobile-placement', haizenTabNavigationOptions());
+        } else if (tab === 'purchase') navigate('/kiosk/purchase-order-lookup', haizenTabNavigationOptions());
+      }} onMenu={() => navigate('/kiosk/mobile-placement', haizenTabNavigationOptions({ openHaizenMenu: true }))}>
+        <button type="button" onClick={search.backspaceFromPalette} aria-label="1文字消す"
+          className="h-[58px] min-w-0 flex-1 rounded-2xl border border-[color-mix(in_srgb,var(--hp-ng)_45%,var(--hp-line))] bg-[var(--hp-bg)] text-base font-black text-[var(--hp-ng)]">1字消す</button>
+      </HaizenBottomNav>
     </div>
     {toast && <div role="status" className="absolute bottom-24 left-3.5 right-3.5 z-20 flex items-center gap-2.5 rounded-[14px] bg-[var(--hp-ink)] px-4 py-[13px] text-[15px] font-black text-[var(--hp-bg)]">
       <span className="break-words">{toast}</span>

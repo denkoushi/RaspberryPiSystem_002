@@ -3,11 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../barcode-scan';
 import { haizenPhoneColors as colors, haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
+import { HaizenBottomNav } from './HaizenBottomNav';
 import { HaizenIcon } from './HaizenIcon';
 import { HaizenSheet } from './HaizenSheet';
 import { HaizenShelfPhotoList, HaizenShelfPhotoPicker } from './HaizenShelfPhotoPicker';
 import { HaizenStub } from './HaizenStub';
-import { HaizenTopBar } from './HaizenTopBar';
 import { createHaizenClientRecordId } from './offline/haizenOfflineQueueStore';
 import { useHaizenOfflineQueue } from './offline/useHaizenOfflineQueue';
 import { useHaizenWorkflow } from './useHaizenWorkflow';
@@ -109,6 +109,9 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
     : flow.result === 'ok' ? { label: '次を照合', color: colors.ink, action: () => { clearActual(); mp.setTransferOrder(''); mp.setTransferPart(''); } }
     : flow.result === 'error' ? { label: '再試行', color: colors.actual, action: flow.retry }
     : { label: flow.result === 'ng' || flow.result === 'not-found' ? '現品票を読み直す' : '現品票を読む', color: flow.result === 'ng' ? colors.ng : colors.actual, action: () => { clearActual(); mp.setScanField('actualOrder'); } };
+  const primaryLabel = putting || mp.registerSubmitting ? '処理中…' : tab === 'verify' && flow.pending ? '照合中…' : cfg.label;
+  const primaryLines = primaryLabel === '次を照合' ? [primaryLabel]
+    : primaryLabel.endsWith(' に置く') ? [mp.shelfCode, '置く'] : primaryLabel.split('を');
   const disabled = putting || mp.registerSubmitting || mp.actualSlipImageOcrBusy || (tab === 'verify' && flow.pending) ||
     (tab === 'place' && hasPlaceSlip && Boolean(mp.shelfCode.trim()) && mp.orderPlacementIntent === 'move_existing' && !mp.selectedBranchId);
   const resultTitle = flow.result === 'ok' ? '一致' : flow.result === 'ng' ? '不一致' : flow.result === 'not-found' ? (mp.slipDetails?.reason === 'part_required' ? 'あと1つ' : '未登録') : '照合できませんでした';
@@ -116,17 +119,8 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
 
   return <div style={haizenPhoneStyle} className={`fixed inset-0 z-40 flex h-dvh flex-col ${hp.surface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]`}>
     <div className="relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col">
-      <HaizenTopBar active={tab} onMenu={() => setSheet('menu')} onSelect={(next) => {
-        if (next === 'verify' || next === 'place') switchTab(next);
-        else onNavigate(next === 'purchase' ? '/kiosk/purchase-order-lookup' : '/kiosk/mobile-placement/part-search');
-      }} />
-      <main className="flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-1.5">
+      <main className="flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-3.5">
         {tab === 'verify' ? <>
-        <HaizenStub label="移動票" subtitle="製造order" prompt="バーコードを読む" value={mp.transferOrder} color={colors.slip} active={!mp.transferOrder.trim()}
-          onScan={() => mp.setScanField('transferOrder')} onClear={() => change(mp.setTransferOrder, '')} />
-          <HaizenStub label="現品票" subtitle={mp.actualOrder || !mp.actualFseiban ? '注文番号' : '製番'} prompt="バーコードを読む" value={mp.actualOrder || mp.actualFseiban} color={colors.actual}
-            active={Boolean(mp.transferOrder.trim()) && flow.result !== 'ok'} locked={!mp.transferOrder.trim()}
-            onScan={() => mp.setScanField('actualOrder')} onClear={clearActual} />
           {mp.actualSlipImageOcrBusy && <p role="status" className={hp.muted}>写真を読取中…</p>}
           {mp.actualSlipOcrFeedback.message && <p role="status" className={`text-sm ${hp.muted}`}>{mp.actualSlipOcrFeedback.message}</p>}
           {flow.pending ? <p role="status" aria-label="照合中" className={hp.muted}>照合中…</p> : flow.result !== 'idle' && <section role="status" aria-label={resultTitle}
@@ -151,23 +145,15 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
           {queue.pending.length > 0 && <button type="button" className={`${hp.chip} !text-orange-400`} onClick={() => setSheet('pending')}>未送信 {queue.pending.length}</button>}
           {queue.needsCheck.length > 0 && <button type="button" className={`${hp.chip} !text-[var(--hp-ng)]`} onClick={() => { setConfirmDeleteId(null); setSheet('needs_check'); }}>要確認 {queue.needsCheck.length}</button>}
         </div>}
-        {hasPlaceSlip ? <div className="flex items-center gap-2 rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-panel)] p-3.5">
+        {hasPlaceSlip && <div className="flex items-center gap-2 rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-panel)] p-3.5">
           <div className="min-w-0 flex-1"><p className={`text-[13px] font-bold ${hp.muted}`}>{placeSlip?.kind === 'po' ? '現品票 注文番号' : '移動票 製造オーダー番号'}</p>
             <p className="break-all font-mono text-2xl font-bold">{placeSlip?.number}</p></div>
           <button type="button" aria-label="読み直す" className={hp.iconButton} onClick={() => setPlaceSlip(null)}>×</button>
-        </div> : <div className="grid grid-cols-2 gap-2">
-          <button type="button" className="rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-panel)] p-3.5 text-[var(--hp-slip)]" onClick={() => mp.setScanField('transferOrder')}>
-            <span className="block text-2xl font-black">移動票</span><span className="text-[13px] font-bold">製造オーダー番号</span>
-          </button>
-          <button type="button" className="rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-panel)] p-3.5 text-[var(--hp-actual)]" onClick={() => mp.setScanField('placePurchaseOrder')}>
-            <span className="block text-2xl font-black">現品票</span><span className="text-[13px] font-bold">注文番号</span>
-          </button>
         </div>}
         <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
           <HaizenShelfPhotoList compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
             loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={mp.shelfCode} onSelect={mp.selectShelf}
             disabled={!hasPlaceSlip} onExpand={() => setSheet('shelves')}>
-            {!hasPlaceSlip && <p className={`pb-1 text-center text-[13px] font-bold ${hp.muted}`}>先に票を読む</p>}
             {mp.shelfCode && <>
               {branches.isLoading && <p className={`text-[11px] ${hp.muted}`}>分配一覧を読み込み中…</p>}
               {branches.isError && <div role="alert" className="text-[13px] text-[var(--hp-ng)]">分配一覧の取得に失敗しました <button type="button" className={hp.mini} onClick={() => void branches.refetch()}>再試行</button></div>}
@@ -192,12 +178,30 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, suggestedNex
       {(toast || registerError) && <div role={registerError ? 'alert' : 'status'} className={`absolute bottom-24 left-3.5 right-3.5 z-20 flex items-center gap-2.5 rounded-[14px] bg-[var(--hp-ink)] px-4 py-[13px] text-[15px] font-black ${registerError ? 'text-red-700' : 'text-[var(--hp-bg)]'}`}>
         {!registerError && <HaizenIcon name="check" />}<span className="break-words">{registerError || toast}</span>
       </div>}
-      <footer className={hp.dock}>
-        <button type="button" disabled={disabled} style={{ background: cfg.color }} className={hp.primary} onClick={cfg.action}>
-          <HaizenIcon name={tab === 'place' && hasPlaceSlip && mp.shelfCode || flow.result === 'ok' ? 'check' : 'scan'} className="h-[26px] w-[26px] shrink-0" />
-          <span>{putting || mp.registerSubmitting ? '処理中…' : tab === 'verify' && flow.pending ? '照合中…' : cfg.label}</span>
+      {tab === 'verify' && <div className="flex shrink-0 flex-col gap-2.5 px-3.5 pt-2">
+        <HaizenStub label="移動票" subtitle="製造order" prompt="バーコードを読む" value={mp.transferOrder} color={colors.slip} active={!mp.transferOrder.trim()}
+          onScan={() => mp.setScanField('transferOrder')} onClear={() => change(mp.setTransferOrder, '')} />
+        <HaizenStub label="現品票" subtitle={mp.actualOrder || !mp.actualFseiban ? '注文番号' : '製番'} prompt="バーコードを読む" value={mp.actualOrder || mp.actualFseiban} color={colors.actual}
+          active={Boolean(mp.transferOrder.trim()) && flow.result !== 'ok'} locked={!mp.transferOrder.trim()}
+          onScan={() => mp.setScanField('actualOrder')} onClear={clearActual} />
+      </div>}
+      {tab === 'place' && !hasPlaceSlip && <div className="grid shrink-0 grid-cols-2 gap-2 px-3.5 pt-2">
+        <button type="button" className="rounded-2xl border-2 border-[var(--hp-line)] bg-[var(--hp-panel)] p-1 leading-[1.15] text-[var(--hp-slip)]" onClick={() => mp.setScanField('transferOrder')}>
+          <span className="block text-2xl font-black leading-[1.15]">移動票</span><span className="text-[13px] font-bold">製造オーダー番号</span>
         </button>
-      </footer>
+        <button type="button" className="rounded-2xl border-2 border-[var(--hp-line)] bg-[var(--hp-panel)] p-1 leading-[1.15] text-[var(--hp-actual)]" onClick={() => mp.setScanField('placePurchaseOrder')}>
+          <span className="block text-2xl font-black leading-[1.15]">現品票</span><span className="text-[13px] font-bold">注文番号</span>
+        </button>
+      </div>}
+      <HaizenBottomNav active={tab} onMenu={() => setSheet('menu')} onSelect={(next) => {
+        if (next === 'verify' || next === 'place') switchTab(next);
+        else onNavigate(next === 'purchase' ? '/kiosk/purchase-order-lookup' : '/kiosk/mobile-placement/part-search');
+      }}>
+        {(tab === 'verify' || hasPlaceSlip) && <button type="button" aria-label={primaryLabel} disabled={disabled} style={{ background: cfg.color }} className={hp.bottomPrimary} onClick={cfg.action}>
+          <span>{primaryLines[0]}</span>
+          {primaryLines[1] && <span className="text-xs font-black leading-[1.15]">{primaryLines[1]}</span>}
+        </button>}
+      </HaizenBottomNav>
     </div>
     {sheet === 'shelves' && <HaizenShelfPhotoPicker shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
       loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={mp.shelfCode}
