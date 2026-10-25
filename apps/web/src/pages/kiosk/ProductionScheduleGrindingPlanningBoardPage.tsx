@@ -25,8 +25,8 @@ import { PlanningBoardBulkEditDialog } from '../../features/kiosk/grindingPlanni
 import { PlanningBoardDuePanels } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardDuePanels';
 import { EMPTY_ITEMS, EMPTY_ORDER, todayJst, addUtcDays, displayedDue, defaultDueDateFor, applyOptimisticOverride } from '../../features/kiosk/grindingPlanningBoard/planningBoardPageModel';
 import { PlanningBoardPageView } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardPageView';
-import { buildPlanningBoardProcessChipsByPart, collectPlanningBoardProcessChipParts } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChipData';
-import { PlanningBoardProcessChipsContext } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChips';
+import { buildPlanningBoardPlacementByPart, buildPlanningBoardProcessChipsByPart, collectPlanningBoardProcessChipParts } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChipData';
+import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChips';
 import { PlanningBoardSeibanDrawer } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardSeibanDrawer';
 import { PlanningBoardToolbar } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardToolbar';
 import {
@@ -243,6 +243,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(
     displayItems, chipsQuery.isError ? undefined : chipsQuery.data?.chipsByPartKey
   ), [displayItems, chipsQuery.isError, chipsQuery.data]);
+  const placementByPart = useMemo(() => buildPlanningBoardPlacementByPart(displayItems), [displayItems]);
 
   useEffect(() => {
     if (!data || boardQuery.isPlaceholderData) return;
@@ -661,6 +662,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     : selectedVisibleItems;
   return (
     <PlanningBoardProcessChipsContext.Provider value={chipsByPart}>
+    <PlanningBoardPlacementContext.Provider value={placementByPart}>
     <main className="min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
       <PlanningBoardToolbar
         largeScreen={largeScreen} onToggleLargeScreen={() => changeLargeScreen(!largeScreen)}
@@ -800,6 +802,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         offsetDays={offsetDays} setOffsetDays={setOffsetDays} applyEditor={applyEditor}
       />
     </main>
+    </PlanningBoardPlacementContext.Provider>
     </PlanningBoardProcessChipsContext.Provider>
   );
 }

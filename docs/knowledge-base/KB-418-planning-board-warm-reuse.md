@@ -55,6 +55,8 @@ Placement is response-only enrichment, like material arrival: it does not enter 
 
 The three table badge positions show the sky placement badge instead of material arrival; the forward Gantt process-chip strip shows only the placement badge (it never had a material badge). Multiple shelves open a list through the existing anchored portal, avoiding clipping by table/track overflow; clicking the badge does not select or drag the row. Dates use the kiosk Tokyo formatter, and old records retain the same tone. Gantt strip fitting reserves badge width and shifts a following strip when even the badge and folded chips cannot fit on the two available lines. Other Gantt modes and screens are unchanged.
 
+Device follow-up (2026-10-25): the forward Gantt showed no badge on the device, because a strip is drawn once per part (seiban + part code) under the part's first bar, while placements match per process row's `productNo`; the matched row could be a later process or a completed one (completed rows are not forward bars). The page now merges every visible row's shelves per part key (`PlanningBoardPlacementContext`, newest first, deduplicated by shelf code) and the forward strip reads that map, falling back to the bar's own item. Tables still show each row's own placement.
+
 ## Validation
 
 Local placement validation (2026-10-25): API service orchestration tests passed (65), along with the web badge, table, chip-strip and Gantt view tests (103). Shared-types build, web `tsc --noEmit`, API `tsc --noEmit -p tsconfig.build.json`, targeted ESLint and `git diff --check` passed. The worktree first needed Prisma Client generation and builds of the existing `shelf-layout-core` / `part-search-core` packages. No database, commit, push or deploy was used.

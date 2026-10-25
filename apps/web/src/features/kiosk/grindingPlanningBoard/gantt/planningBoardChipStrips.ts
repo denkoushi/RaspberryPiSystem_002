@@ -12,8 +12,8 @@ export const CHIP_STRIP_FIT: ChipStripFit = { maxLines: 2, collapseDone: true };
 
 const chipWidth = (text: string) => [...text].reduce((sum, char) => sum + (char.charCodeAt(0) > 0xff ? 11 : 7), 0) + 12;
 /** Reserve the placement badge's text, pin and gaps using the same conservative glyph widths as process chips. */
-export function planningBoardBadgeWidth(item: GrindingPlanningBoardItem): number {
-  const shelves = item.placement?.shelves;
+export function planningBoardBadgeWidth(placement: GrindingPlanningBoardItem['placement']): number {
+  const shelves = placement?.shelves;
   return shelves?.length ? chipWidth(shelves[0]!.label + (shelves.length > 1 ? `+${shelves.length - 1}` : '')) + 16 : 0;
 }
 
