@@ -217,6 +217,32 @@ export function scheduleGrindingPlanningBoardRewarm(params: { siteKey: string; s
   return pending.promise;
 }
 
+async function findPlacementByProductNo(items: readonly GrindingPlanningBoardItem[]) {
+  const productNos = [...new Set(items.map((item) => item.productNo.trim()).filter(Boolean))];
+  const placements = new Map<string, NonNullable<GrindingPlanningBoardItem['placement']>>();
+  if (!productNos.length) return placements;
+  const states = await prisma.orderPlacementBranchState.findMany({
+    where: { slipKind: 'manufacturing_order', manufacturingOrderBarcodeRaw: { in: productNos } },
+    select: { manufacturingOrderBarcodeRaw: true, shelfCodeRaw: true, updatedAt: true },
+    orderBy: { updatedAt: 'desc' }
+  });
+  if (!states.length) return placements;
+  const shelves = await prisma.mobilePlacementShelf.findMany({
+    where: { shelfCodeRaw: { in: [...new Set(states.map((state) => state.shelfCodeRaw))] } },
+    select: { shelfCodeRaw: true, displayLabel: true }
+  });
+  const labels = new Map(shelves.map((shelf) => [shelf.shelfCodeRaw, shelf.displayLabel]));
+  for (const state of states) {
+    const placement = placements.get(state.manufacturingOrderBarcodeRaw) ?? { shelves: [] };
+    if (!placement.shelves.some((shelf) => shelf.shelfCodeRaw === state.shelfCodeRaw)) {
+      placement.shelves.push({ shelfCodeRaw: state.shelfCodeRaw, label: labels.get(state.shelfCodeRaw) || state.shelfCodeRaw,
+        placedAt: state.updatedAt.toISOString() });
+    }
+    placements.set(state.manufacturingOrderBarcodeRaw, placement);
+  }
+  return placements;
+}
+
 export async function getGrindingPlanningBoard(params: { siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
   if ((params.cursor ?? 0) > 0 && !params.snapshotId) throw new ApiError(400, '続きの cursor には snapshotId が必要です', undefined, 'INVALID_PLANNING_BOARD_CURSOR');
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board');
@@ -273,15 +299,17 @@ export async function getGrindingPlanningBoard(params: { siteKey: string; catego
   const page = orderedItems.slice(cursor, cursor + pageSize);
   // 材料の入荷状況は購買CSVの取込で変わるため、スナップショットや itemRevision に含めず応答のたびに付ける。
   const materialArrivalByPart = await perf.measure('materialArrival', () => findMaterialArrivalStatusByPart(page));
+  // 配膳先も随時変わるため、保存済みの projection を変更せず応答にだけ付ける。
+  const placementByProductNo = await perf.measure('placement', () => findPlacementByProductNo(page));
   const pageWithMaterialArrival = page.map((item) => {
     const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
-    return arrival
-      ? {
-          ...item,
-          materialArrivalStatus: arrival.status,
-          ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {})
-        }
-      : item;
+    const placement = placementByProductNo.get(item.productNo.trim());
+    return {
+      ...item,
+      ...(arrival ? { materialArrivalStatus: arrival.status,
+        ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {}) } : {}),
+      ...(placement ? { placement } : {})
+    };
   });
   perf.flush({ snapshotReused: Boolean(params.snapshotId), itemCount: orderedItems.length, fseibanCount: selected.length });
   return {

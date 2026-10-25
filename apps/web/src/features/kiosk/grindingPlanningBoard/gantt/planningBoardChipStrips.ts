@@ -1,4 +1,5 @@
 import type { KioskResourceProgressProcessChip } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
+import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export const CHIP_LINE_HEIGHT = 20;
 const STRIP_GAP = 8;
@@ -10,6 +11,12 @@ export type ChipStripFit = { maxLines: number; collapseDone: boolean };
 export const CHIP_STRIP_FIT: ChipStripFit = { maxLines: 2, collapseDone: true };
 
 const chipWidth = (text: string) => [...text].reduce((sum, char) => sum + (char.charCodeAt(0) > 0xff ? 11 : 7), 0) + 12;
+/** Reserve the placement badge's text, pin and gaps using the same conservative glyph widths as process chips. */
+export function planningBoardBadgeWidth(item: GrindingPlanningBoardItem): number {
+  const shelves = item.placement?.shelves;
+  return shelves?.length ? chipWidth(shelves[0]!.label + (shelves.length > 1 ? `+${shelves.length - 1}` : '')) + 16 : 0;
+}
+
 export const doneChipLabel = (count: number) => `済${count}`;
 export const moreChipLabel = (count: number) => `+${count}`;
 /** Resource CDs of folded chips, for the hover tip. */
@@ -26,7 +33,9 @@ export type FittedChipStrip<T> = T & {
 };
 
 /** Fits as many chips as the room allows; anything left over becomes a 「+N」 chip. */
-function fitChips(chips: readonly KioskResourceProgressProcessChip[], room: number, collapseDone: boolean) {
+function fitChips(chips: readonly KioskResourceProgressProcessChip[], room: number, collapseDone: boolean, badgeWidth = 0) {
+  const prefixWidth = badgeWidth ? badgeWidth + (chips.length ? CHIP_GAP : 0) : 0;
+  room -= prefixWidth;
   const doneChips = collapseDone ? chips.filter((chip) => chip.isCompleted) : [];
   const doneCount = doneChips.length;
   const rest = collapseDone ? chips.filter((chip) => !chip.isCompleted) : [...chips];
@@ -47,14 +56,14 @@ function fitChips(chips: readonly KioskResourceProgressProcessChip[], room: numb
   const kept = tokens.slice(0, take);
   const hidden = tokens.slice(take).flatMap((token) => token.chip ? [token.chip] : doneChips);
   const width = kept.reduce((sum, token) => sum + token.width + CHIP_GAP, 0) + (hidden.length ? chipWidth(moreChipLabel(hidden.length)) : 0);
-  return { done: kept.some((token) => !token.chip) ? doneChips : [], shown: kept.flatMap((token) => token.chip ? [token.chip] : []), hidden, width };
+  return { done: kept.some((token) => !token.chip) ? doneChips : [], shown: kept.flatMap((token) => token.chip ? [token.chip] : []), hidden, width: width + prefixWidth };
 }
 
 /**
  * Lays chip strips out left to right without overlaps: a strip takes the first free line; when every allowed line is busy it goes
  * on the line whose last strip started earliest, and that strip is cut back with 「+N」 to make room.
  */
-export function layoutChipStrips<T extends { left: number; chips: readonly KioskResourceProgressProcessChip[] }>(
+export function layoutChipStrips<T extends { left: number; chips: readonly KioskResourceProgressProcessChip[]; badgeWidth?: number }>(
   strips: readonly T[], fit: ChipStripFit
 ): { strips: FittedChipStrip<T>[]; lines: number } {
   const placed: FittedChipStrip<T>[] = [];
@@ -65,9 +74,12 @@ export function layoutChipStrips<T extends { left: number; chips: readonly Kiosk
     if (line < 0) {
       line = lastOnLine.reduce((best, last, index) => last.left < lastOnLine[best]!.left ? index : best, 0);
       const previous = lastOnLine[line]!;
-      Object.assign(previous, fitChips(previous.chips, strip.left - STRIP_GAP - previous.left, fit.collapseDone));
+      Object.assign(previous, fitChips(previous.chips, strip.left - STRIP_GAP - previous.left, fit.collapseDone, previous.badgeWidth));
     }
-    const next = { ...strip, line, ...fitChips(strip.chips, Number.POSITIVE_INFINITY, fit.collapseDone) };
+    // If even the badge and +N cannot fit, move the next strip right instead of overlapping.
+    const previous = lastOnLine[line];
+    const left = previous ? Math.max(strip.left, previous.left + previous.width + STRIP_GAP) : strip.left;
+    const next = { ...strip, left, line, ...fitChips(strip.chips, Number.POSITIVE_INFINITY, fit.collapseDone, strip.badgeWidth) };
     placed.push(next);
     lastOnLine[line] = next;
   }

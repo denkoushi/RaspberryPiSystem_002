@@ -2,7 +2,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
+import { PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
+
+import { buildPlanningBoardGanttLayout, planningBoardPartKey } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 
@@ -51,6 +53,44 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it.each([false, true])('shows placement before forward process chips and falls back to material (chips=%s)', async (withChips) => {
+    const placement = { shelves: [
+      { shelfCodeRaw: 'A', label: '棚A', placedAt: '2026-10-24T06:20:00Z' },
+      { shelfCodeRaw: 'B', label: '棚B', placedAt: '2026-10-23T06:20:00Z' }
+    ] };
+    const target = item({ placement, materialArrivalStatus: 'received' });
+    const values = props([target]);
+    const layoutFor = (targetItem: GrindingPlanningBoardItem, mode: 'forward' | 'backward' = 'forward') =>
+      buildPlanningBoardGanttLayout({ items: [targetItem], mode, allocation: 'alternate', view: 'resource',
+        seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    const layout = layoutFor(target);
+    const partKey = planningBoardPartKey(target);
+    const chips = new Map(withChips ? [[partKey, [
+      { rowId: 'done', resourceCd: '100', isCompleted: true },
+      { rowId: 'active', resourceCd: '305', isCompleted: false }
+    ]]] : []);
+    const draw = (nextLayout: typeof layout) => <PlanningBoardProcessChipsContext.Provider value={chips}>
+      <PlanningBoardGanttView {...values} layout={nextLayout} />
+    </PlanningBoardProcessChipsContext.Provider>;
+    const { rerender } = render(draw(layout));
+    const strip = screen.getByTestId('planning-gantt-chips-a');
+    expect(strip.firstElementChild).toHaveTextContent('棚A+1');
+    expect(within(strip).queryByText('材料入荷済')).toBeNull();
+    if (withChips) expect(strip).toHaveTextContent('棚A+1済1305');
+    fireEvent.pointerDown(within(strip).getByText('+1'));
+    fireEvent.click(within(strip).getByText('+1'));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('棚B');
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).toBeNull();
+    rerender(draw(layoutFor({ ...target, placement: undefined })));
+    expect(screen.queryByText('材料入荷済')).toBeNull();
+    expect(screen.queryByText('棚A')).toBeNull();
+    rerender(draw(layoutFor(target, 'backward')));
+    expect(screen.queryByTestId('planning-gantt-chips-a')).toBeNull();
+    expect(screen.queryByText('棚A')).toBeNull();
+    expect(screen.queryByText('材料入荷済')).toBeNull();
+  });
+
   it('completes a forward chain step with a sibling button and hides split completion', () => {
     const items = [item(), item({ itemId: 'split', kind: 'split', processOrder: '20' })];
     const values = props(items);
