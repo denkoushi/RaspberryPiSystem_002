@@ -219,7 +219,7 @@ services:
 
   business-hermes-egress:
     profiles: [business-hermes]
-    image: ${BUSINESS_HERMES_EGRESS_IMAGE:-node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293}
+    image: ${BUSINESS_HERMES_EGRESS_IMAGE:-node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53}
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -302,7 +302,7 @@ services:
   # assembly-guide instance/configuration untouched.
   business-hermes-chat-egress:
     profiles: [business-hermes-chat]
-    image: ${BUSINESS_HERMES_CHAT_EGRESS_IMAGE:-node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293}
+    image: ${BUSINESS_HERMES_CHAT_EGRESS_IMAGE:-node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53}
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]

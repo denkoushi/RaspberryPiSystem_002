@@ -6,7 +6,7 @@ set -euo pipefail
 # a different-owner source file, then its daemon mountpoint is bind-mounted so
 # the fixture retains Linux ownership semantics on Docker Desktop too.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-IMAGE="${BUSINESS_HERMES_EGRESS_IMAGE:-node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293}"
+IMAGE="${BUSINESS_HERMES_EGRESS_IMAGE:-node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53}"
 VOLUME="business-hermes-egress-permission-${PPID}-${RANDOM}"
 
 if ! command -v docker >/dev/null 2>&1 || ! docker image inspect "$IMAGE" >/dev/null 2>&1; then

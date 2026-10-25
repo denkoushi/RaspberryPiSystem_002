@@ -22,8 +22,11 @@
 - name: Preserve the fixed image boundary for existing consultation containers
   ansible.builtin.assert:
     that:
-      - item.id | length == 0 or item.image == (business_hermes_chat_image if item.service == 'business-hermes-chat' else business_hermes_chat_egress_image)
-    fail_msg: Existing consultation image differs; this rollout must not replace it.
+      - >-
+        item.id | length == 0
+        or item.image == (business_hermes_chat_image if item.service == 'business-hermes-chat' else business_hermes_chat_egress_image)
+        or (item.service == 'business-hermes-chat-egress' and item.image in release_pi5_business_hermes_egress_replaceable_images)
+    fail_msg: Existing consultation image differs and is not an approved egress predecessor; this rollout must not replace it.
   loop: "{{ release_pi5_chat_before }}"
 
 - name: Pull the fixed consultation runtime images
