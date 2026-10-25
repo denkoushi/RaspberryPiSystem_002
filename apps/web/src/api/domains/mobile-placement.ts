@@ -398,12 +398,20 @@ export async function getMobilePlacementHaizenCurrent(params?: {
   return data;
 }
 
-/** Current Android placement branches, independently of the Zero2W haizen-current projection. */
+export async function deleteHaizenCurrentPlacement(id: string) {
+  const { data } = await api.delete<{
+    deleted: Pick<HaizenCurrentRowDto, 'id' | 'manufacturingOrderBarcodeRaw' | 'shelfCodeRaw'>;
+  }>(`/mobile-placement/haizen-current/${encodeURIComponent(id)}`);
+  return data;
+}
+
+/** Current Android and Zero2W placements; identify rows by source and id together. */
 export type HaizenOverviewRow = {
   id: string;
+  source: 'branch' | 'zero2w';
   shelfCodeRaw: string;
   manufacturingOrderBarcodeRaw: string;
-  branchNo: number;
+  branchNo: number | null;
   fseiban: string | null;
   fhincd: string | null;
   fhinmei: string | null;
