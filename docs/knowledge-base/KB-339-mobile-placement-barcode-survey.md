@@ -292,6 +292,16 @@
 - 2026-10-22: `/kiosk/purchase-order-lookup` も同じ `engine="auto-native"` にした。ZXing のままでは、配膳の照合で読める同じ現品票の注文番号に購買照会だけ反応しなかった（実機報告）。
 - 契約は [mobile-placement API](../api/mobile-placement.md)、現場手順は [照合](../kiosk-operation-guide/mobile-placement.md) を参照。実機の速度確認・本番反映は未実施。
 
+### 2026-10-26: 配膳タブのスタンプ分配選択
+
+- 配膳タブは票読取後に「分配なし」「分配1〜5」を選び、その後に棚写真を選ぶ。`branchNo=0` は「分配なし」。既存データの番号は変更しない。
+- 登録APIの任意 `branchNo`（整数0〜5）は、同じ番号・分配の現在棚があれば移動、なければ作成。同じ棚なら書き込まず返す。レスポンスの `action` は `created` / `moved` / `unchanged`。省略時は従来の自動採番を維持する。
+- 指定時の0と番号付きの混在は409 `ORDER_PLACEMENT_BRANCH_CONFLICT`。番号ごとのトランザクションロック内でチェックし、移動でも `clientRecordId` のイベント再送判定を使う。移動時は既存スナップショットを引き継ぐ。
+- 作成と移動の両方をIndexedDBキューへ保存する。旧レコードの `branchNo` 省略も送信可能。同じ番号・分配の未送信記録は後続の移動より先に送る。一覧取得失敗時は再試行を出し、圏外でも分配を選べる。排他の最終判定はAPIで行う。
+- 分配変更で棚選択を解除し、選択した分配の現在棚だけに「前回」を表示する。配膳の分配ボタン・棚写真・完了通知には内部棚番号を表示しない。照合タブ、DBスキーマ、Service Workerは変更しない。
+- 検証: Webの `src/features/mobile-placement src/pages/kiosk` は745件成功、APIの `src/services/mobile-placement` と `mobile-placement-branch-delete.test.ts` は199件成功。両パッケージのlint・型チェック、分配ボタンのTailwind CSS生成を確認。
+- ローカル実装のみ。本番反映・実機検証・DB統合テストは未実施。プレビューサーバーは実行環境の `listen EPERM` により起動できず、ブラウザ目視確認は未実施。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`

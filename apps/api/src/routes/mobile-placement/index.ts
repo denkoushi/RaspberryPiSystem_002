@@ -101,6 +101,7 @@ function inferImageMimeFromMimeAndFilename(mimetype: string, filename: string): 
 }
 
 const registerOrderPlacementBodySchema = z.object({
+  branchNo: z.number().int().min(0).max(5).optional(),
   shelfCodeRaw: z.string().min(1),
   manufacturingOrderBarcodeRaw: z.string().min(1),
   slipKind: z.enum(['manufacturing_order', 'purchase_order']).default('manufacturing_order'),
@@ -533,7 +534,8 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw,
       slipKind: body.slipKind,
       clientRecordId: body.clientRecordId,
-      placedAt: body.placedAt
+      placedAt: body.placedAt,
+      branchNo: body.branchNo
     });
     return {
       event: {
@@ -551,7 +553,8 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
         branchNo: result.branchState.branchNo,
         shelfCodeRaw: result.branchState.shelfCodeRaw
       },
-      resolvedRowId: result.resolvedRowId
+      resolvedRowId: result.resolvedRowId,
+      action: result.action
     };
   });
 

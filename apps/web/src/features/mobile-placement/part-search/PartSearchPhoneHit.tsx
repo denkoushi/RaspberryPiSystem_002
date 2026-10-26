@@ -13,7 +13,7 @@ export function PartSearchPhoneHit({ hit, selected, onSelect, onDeleted }: {
 }) {
   const details = [
     ['製造order', hit.manufacturingOrderBarcodeRaw], ['品番', hit.fhincd], ['製番', hit.fseiban],
-    ['枝番', hit.branchNo], ['FHINMEI', hit.fhinmei], ['ProductNo', hit.productNo], ['同義語', hit.aliasMatchedBy]
+    ['分配', hit.branchNo === 0 ? 'なし' : hit.branchNo], ['FHINMEI', hit.fhinmei], ['ProductNo', hit.productNo], ['同義語', hit.aliasMatchedBy]
   ];
   return <div className={`rounded-[14px] border ${selected ? 'border-[var(--hp-shelf)] bg-[var(--hp-panel2)]' : 'border-[var(--hp-line)] bg-[var(--hp-panel)]'}`}><button type="button" aria-pressed={selected} aria-expanded={selected} onClick={onSelect}
     className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3.5 gap-y-px rounded-[14px] bg-[var(--hp-panel)] px-3 py-2.5 text-left aria-pressed:border-[var(--hp-shelf)] aria-pressed:bg-[var(--hp-panel2)]">

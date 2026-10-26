@@ -9,11 +9,11 @@ export function HaizenShelfPhotoViewer({ shelf, onClose }: { shelf: RegisteredSh
     className="!fixed !inset-0 !m-auto !flex !h-dvh !max-h-none !w-full !max-w-[480px] !flex-col !rounded-none !border-0 !bg-[#0d0f0e] !p-0 !text-[#f2f4f1]">
     <div style={haizenPhoneStyle} className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 px-3.5 py-3">
-        <h2 className="break-all font-mono text-2xl font-bold text-[var(--hp-shelf)]">{shelf.shelfCodeRaw}</h2>
+        <h2 className="break-all font-mono text-2xl font-bold text-[var(--hp-shelf)]">{[shelf.machineName, shelf.direction].filter(Boolean).join(' ')}</h2>
         {shelf.displayLabel && <p className={`break-words text-[15px] ${hp.muted}`}>{shelf.displayLabel}</p>}
       </header>
       <button type="button" aria-label="写真を閉じる" onClick={onClose} className="min-h-0 w-full flex-1">
-        <ShelfPhoto shelf={shelf} fit="contain" className="h-full w-full" />
+        <ShelfPhoto shelf={shelf} label={shelf.direction || shelf.displayLabel || '棚'} fit="contain" className="h-full w-full" />
       </button>
       <footer className={hp.dock}><button type="button" className={`${hp.primary} bg-[var(--hp-ink)]`} onClick={onClose}>閉じる</button></footer>
     </div>

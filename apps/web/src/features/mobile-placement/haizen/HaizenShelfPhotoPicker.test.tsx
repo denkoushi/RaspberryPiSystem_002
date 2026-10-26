@@ -23,17 +23,17 @@ describe('photo shelf picker', () => {
   it('groups and filters previous shelves and machines, selects a shelf and shows no-photo placeholders', () => {
     const props = mount(['東-南-02']);
     expect(screen.getByRole('button', { name: '前回', exact: true })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '棚 DAD-3220 北' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '全部', exact: true }));
-    expect(screen.getByLabelText('DAD-3220 北 写真なし')).toBeInTheDocument();
+    expect(screen.getByLabelText('北 写真なし')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'DAD-3220 2棚' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'その他 1棚' })).toBeInTheDocument();
-    expect(within(screen.getByRole('button', { name: '棚 DAD-3220 北' })).getByText('北')).toBeInTheDocument();
-    expect(within(screen.getByRole('button', { name: '棚 東-南-02' })).getByText('東-南-02', { selector: 'b' })).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' })).getByText('北', { selector: 'b' })).toBeInTheDocument();
+    expect(screen.queryByText('東-南-02')).not.toBeInTheDocument();
     expect(screen.getByText('ロボドリル01 南 上段')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'DAD-3220', exact: true }));
-    expect(screen.queryByRole('button', { name: '棚 東-南-02' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '棚 DAD-3220 北' }));
+    expect(screen.queryByRole('button', { name: '棚 写真' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' }));
     expect(props.onSelect).toHaveBeenCalledWith('DAD-3220 北');
     fireEvent.click(screen.getByRole('button', { name: '50013_540AP', exact: true }));
     expect(screen.getByRole('button', { name: '棚 50013_540AP 西' })).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe('photo shelf picker', () => {
         : <HaizenShelfPhotoPicker {...props} onClose={onClose} onScan={vi.fn()} onMaster={vi.fn()} />;
     }
     render(<QueryClientProvider client={new QueryClient()}><Harness /></QueryClientProvider>);
-    const tile = screen.getByRole('button', { name: '棚 DAD-3220 北' });
+    const tile = screen.getByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' });
     expect(screen.queryByText('もう一度で拡大')).not.toBeInTheDocument();
     fireEvent.click(tile);
     expect(onSelect).toHaveBeenCalledExactlyOnceWith('DAD-3220 北');
@@ -59,7 +59,7 @@ describe('photo shelf picker', () => {
     fireEvent.click(tile);
     const viewer = screen.getByRole('dialog', { name: '棚の写真を拡大' });
     expect(viewer).toHaveStyle({ zIndex: 70 });
-    expect(within(viewer).getByLabelText('DAD-3220 北 写真なし')).toBeInTheDocument();
+    expect(within(viewer).getByLabelText('北 写真なし')).toBeInTheDocument();
     expect(within(viewer).getByText('ロボドリル01 南 上段')).toBeInTheDocument();
     expect(onSelect).toHaveBeenCalledTimes(1);
     fireEvent.click(within(viewer).getByRole('button', { name: '閉じる', exact: true }));
@@ -81,7 +81,7 @@ describe('photo shelf picker', () => {
       onClose={vi.fn()} onScan={vi.fn()} onMaster={vi.fn()} />);
     const picker = screen.getByRole('dialog', { name: '棚を選ぶ' });
     expect(within(picker).getByRole('img')).toHaveClass('object-cover');
-    fireEvent.click(within(picker).getByRole('button', { name: '棚 DAD-3220 北' }));
+    fireEvent.click(within(picker).getByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' }));
     const viewer = screen.getByRole('dialog', { name: '棚の写真を拡大' });
     expect(within(viewer).getByRole('img')).toHaveClass('object-contain');
     fireEvent.click(within(viewer).getByRole('img'));

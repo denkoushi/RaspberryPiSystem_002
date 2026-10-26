@@ -22,6 +22,18 @@ import { useMobilePlacementPageState } from './useMobilePlacementPageState';
 import type { ReactNode } from 'react';
 
 describe('useMobilePlacementPageState', () => {
+  it.each(['create_new_branch', 'move_existing'] as const)('uses 分配なし in %s feedback', async (intent) => {
+    vi.mocked(registerOrderPlacement).mockResolvedValue({ event: { id: 'event' }, branchState: { branchNo: 0 } } as never);
+    vi.mocked(moveOrderPlacementBranch).mockResolvedValue({ event: { id: 'event' }, branchState: { branchNo: 0, shelfCodeRaw: 'B' } } as never);
+    const qc = new QueryClient();
+    const { result } = renderHook(() => useMobilePlacementPageState(), { wrapper: ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client: qc }, children) });
+    act(() => {
+      result.current.setOrderBarcode('100'); result.current.selectShelf('B');
+    });
+    act(() => { result.current.setOrderPlacementIntent(intent); result.current.setSelectedBranchId('branch'); });
+    await act(async () => { await result.current.runRegister(); });
+    expect(result.current.registerMessage).toContain('分配なし');
+  });
   it('parseActualSlipImage の製造orderと製番を状態に反映する', async () => {
     vi.mocked(parseActualSlipImage).mockResolvedValue({
       engine: 'stub',

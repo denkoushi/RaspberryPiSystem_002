@@ -36,7 +36,7 @@ export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOff
     try {
       response = await registerOrderPlacement({
         shelfCodeRaw: record.shelfCode, manufacturingOrderBarcodeRaw: record.number,
-        clientRecordId: record.clientRecordId, slipKind: record.slipKind, placedAt: record.scannedAt
+        clientRecordId: record.clientRecordId, slipKind: record.slipKind, placedAt: record.scannedAt, branchNo: record.branchNo
       }, 8000);
     } catch (error) {
       const httpResponse = isAxiosError(error) ? error.response : undefined;
@@ -71,9 +71,13 @@ export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOff
     const pendingRecord: HaizenQueueRecord = { ...record, status: 'pending' };
     // Persist before sending so closing the page during a request still leaves a replayable record.
     await store.put(pendingRecord);
-    const result = await send(pendingRecord);
+    // A later move of the same stamp must not overtake a saved placement.
+    const waitingForEarlier = record.branchNo !== undefined && (await store.list()).some((item) =>
+      item.clientRecordId !== record.clientRecordId && item.status === 'pending' &&
+      item.number.trim() === record.number.trim() && item.branchNo === record.branchNo);
+    const result = waitingForEarlier ? { status: 'pending' as const } : await send(pendingRecord);
     const next = await refresh();
-    if (result.status === 'sent') void flush();
+    if (result.status === 'sent' || waitingForEarlier) void flush();
     return { ...result, pendingCount: next.filter((item) => item.status === 'pending').length };
   }), [enqueue, flush, refresh, send, store]);
 

@@ -33,6 +33,13 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); });
 
 describe('KioskHaizenPage', () => {
+  it('renders branch zero as なし', async () => {
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [{ ...rows[0], branchNo: 0 }], truncated: false });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-01 棚名1' }));
+    const part = screen.getByRole('article', { name: 'ブラケット 分配なし' });
+    expect(within(part).getByText('なし', { exact: true })).toBeInTheDocument();
+  });
   it('renders registered shelves in code order, empty shelf, size and inventory back link', async () => {
     mount();
     await screen.findByRole('button', { name: '棚 西-北-01 棚名1' });
@@ -63,7 +70,7 @@ describe('KioskHaizenPage', () => {
     expect(parts[0]).toHaveTextContent('新しい部品');
     expect(parts[0].querySelector('mark')).toHaveTextContent('UNIQUE');
     expect(within(parts[1]).getByText('RV-12A')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '西-北-01 棚名1' }));
+    fireEvent.click(screen.getByRole('button', { name: '棚名1' }));
     expect(screen.getByRole('heading', { name: '棚名1' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
     fireEvent.click(screen.getByRole('button', { name: '次の棚 ›' }));
@@ -155,8 +162,8 @@ describe('KioskHaizenPage', () => {
     expect(hoverRows[1]).toHaveClass('text-inv-cyan');
     expect(hoverRows[2]).not.toHaveClass('text-inv-cyan');
     fireEvent.click(shelf);
-    const card = screen.getByRole('article', { name: '棚番端末の部品 枝—' });
-    const branch = screen.getByRole('article', { name: 'ブラケット 枝1' });
+    const card = screen.getByRole('article', { name: '棚番端末の部品 分配—' });
+    const branch = screen.getByRole('article', { name: 'ブラケット 分配1' });
     expect(within(card).getByText('—')).toBeInTheDocument();
     expect(card).not.toHaveTextContent('null');
     expect(card.querySelector('mark')).toHaveTextContent('ZERO');
@@ -168,8 +175,8 @@ describe('KioskHaizenPage', () => {
     fireEvent.click(within(card).getByRole('button', { name: '🗑 消す' }));
     await waitFor(() => expect(deleteHaizenCurrentPlacement).toHaveBeenCalledExactlyOnceWith('1'));
     expect(deleteOrderPlacementBranch).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByRole('article', { name: '棚番端末の部品 枝—' })).not.toBeInTheDocument());
-    expect(screen.getByRole('article', { name: 'ブラケット 枝1' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('article', { name: '棚番端末の部品 分配—' })).not.toBeInTheDocument());
+    expect(screen.getByRole('article', { name: 'ブラケット 分配1' })).toBeInTheDocument();
   });
   it('shows the API deletion error and keeps the item', async () => {
     vi.mocked(deleteOrderPlacementBranch).mockRejectedValue({ isAxiosError: true, response: { data: { message: 'この品物はもうありません' } } });

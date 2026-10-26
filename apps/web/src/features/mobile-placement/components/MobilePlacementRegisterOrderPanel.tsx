@@ -125,7 +125,7 @@ export function MobilePlacementRegisterOrderPanel(props: MobilePlacementRegister
                         props.selectedBranchId === b.id ? mpKioskTheme.branchChipSubOn : ''
                       )}
                     >
-                      分配{b.branchNo}
+                      分配{b.branchNo === 0 ? 'なし' : b.branchNo}
                     </span>
                     <span className={mpKioskTheme.branchChipMain}>{b.shelfCodeRaw}</span>
                   </button>
