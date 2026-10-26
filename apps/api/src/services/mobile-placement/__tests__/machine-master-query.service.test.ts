@@ -15,9 +15,23 @@ describe('shelf registration machines', () => {
       resourceItems: [{ resourceCd: '002', excluded: true }],
       resourceNameMap: { '001': ['DAD-3220', '50013_540AP'], '002': ['DAD-3220'], '004': [' '], '999': ['Outside'] }
     });
+    vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([] as never);
     expect(await listMachinesForShelfRegistration()).toEqual({ machines: ['003', '004', '50013_540AP', 'DAD-3220'] });
     expect(listProductionScheduleResources).toHaveBeenCalledExactlyOnceWith({});
-    expect(prisma.productionScheduleResourceMaster.findMany).not.toHaveBeenCalled();
+  });
+
+  it('excludes Sendai resources whose group code starts with S-', async () => {
+    vi.mocked(listProductionScheduleResources).mockResolvedValue({
+      resources: ['021', 'a5m', 'CSG'],
+      resourceItems: [],
+      resourceNameMap: { '021': ['三島機'], A5M: ['仙台機A'], CSG: ['仙台機C'] }
+    });
+    vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([{ resourceCd: 'A5M' }, { resourceCd: 'CSG ' }] as never);
+    expect(await listMachinesForShelfRegistration()).toEqual({ machines: ['三島機'] });
+    expect(prisma.productionScheduleResourceMaster.findMany).toHaveBeenCalledExactlyOnceWith({
+      where: { resourceGroupCd: { startsWith: 'S-' } },
+      select: { resourceCd: true }
+    });
   });
 
   it('keeps the existing layout master list unchanged', async () => {
