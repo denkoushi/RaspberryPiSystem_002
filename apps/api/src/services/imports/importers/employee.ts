@@ -1,7 +1,7 @@
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod/v3';
 import pkg from '@prisma/client';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';

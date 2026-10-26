@@ -38,14 +38,14 @@ describe('placement proposals API / Postgres', () => {
       data: {
         visualTemplateId, drawingImageFingerprint: hash, analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
         status: 'COMPLETED', payloadEncoding: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
-        payloadCompressed: await encodePartMeasurementDrawingDimensionMapPayload({
+        payloadCompressed: new Uint8Array(await encodePartMeasurementDrawingDimensionMapPayload({
           schemaVersion: 1, analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
           createdAt: new Date().toISOString(), image: { width: 2000, height: 1000 }, tiles: [],
           dimensions: [{
             text: '10±0.5', nominal: 10, upperTolerance: 0.5, lowerTolerance: -0.5, kind: 'len',
             depth: null, xRatio: 0.5, yRatio: 0.5, tileId: 'tile'
           }]
-        })
+        }))
       }
     });
   }

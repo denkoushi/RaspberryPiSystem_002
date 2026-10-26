@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../../../lib/prisma-client.js';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { resolveKnowledgeEmployee, PrismaKnowledgeReviewerRepository } from '../prisma-knowledge-reviewer.repository.js';
@@ -6,7 +6,7 @@ import { PrismaKnowledgeProcedureRepository } from '../prisma-knowledge-procedur
 
 const enabled = process.env.KNOWLEDGE_DATABASE_TEST === '1';
 // Fixed disposable loopback DB; never inherit the application's DATABASE_URL.
-const db = new PrismaClient({ datasourceUrl: 'postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test' });
+const db = createPrismaClient('postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test');
 const repository = new PrismaKnowledgeProcedureRepository(db);
 
 const content = (body: string) => ({ formatVersion: 1 as const, steps: [{

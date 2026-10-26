@@ -1,14 +1,8 @@
-import { PrismaClient } from '@prisma/client';
-
 import { env } from '../config/env.js';
-import { mergePostgresUrlQueryParams } from './postgres-url-params.js';
+import { createPrismaClient } from './prisma-client.js';
 
-const datasourceUrl = mergePostgresUrlQueryParams(env.DATABASE_URL, {
-  connection_limit: String(env.DATABASE_PRISMA_CONNECTION_LIMIT),
-  pool_timeout: String(env.DATABASE_PRISMA_POOL_TIMEOUT_SECONDS),
-  connect_timeout: String(env.DATABASE_PRISMA_CONNECT_TIMEOUT_SECONDS)
-});
-
-export const prisma = new PrismaClient({
-  datasourceUrl
+export const prisma = createPrismaClient(env.DATABASE_URL, {
+  connectionLimit: env.DATABASE_PRISMA_CONNECTION_LIMIT,
+  poolTimeoutSeconds: env.DATABASE_PRISMA_POOL_TIMEOUT_SECONDS,
+  connectTimeoutSeconds: env.DATABASE_PRISMA_CONNECT_TIMEOUT_SECONDS
 });

@@ -1,4 +1,5 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../../lib/prisma-client.js';
+import { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { ensureScawStfutekigoDashboard } from './dashboard.definition.js';
@@ -7,7 +8,7 @@ import { SCAW_STFUTEKIGO_DASHBOARD_ID } from './constants.js';
 import { ScawStfutekigoSyncService } from './sync.service.js';
 
 const runDbTests = process.env.RUN_SCAW_DB_INTEGRATION === '1';
-const client = new PrismaClient();
+const client = createPrismaClient();
 
 function sourceRow(nonconformityNo: string, manufacturingOrderNo: string, remarks: string) {
   return {

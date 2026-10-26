@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { ApiError } from '../../../lib/errors.js';
 import { throwIfPrismaNotFound } from '../../../lib/prisma-errors.js';
