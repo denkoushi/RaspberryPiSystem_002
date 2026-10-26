@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
-import { buildValueIndex, choiceValuesForField, findCandidateValues, normalizeForMatch } from './value-index.mjs';
+import { buildValueIndex, choiceValuesForField, enumeratedChoiceGroups, findCandidateValues, hierarchyGroups, normalizeForMatch } from './value-index.mjs';
 
 const catalog = loadNonconformityCatalog();
 
@@ -55,4 +55,26 @@ test('choice values keep a short list and prefilter a long list by bigrams plus 
   assert.equal(picked.includes('Alpha Plant Manufacturing Machining'), true);
   assert.equal(picked.includes('sharedtoken only'), true);
   assert.equal(picked.length < long.length, true);
+});
+
+test('organization values yield hierarchy prefixes that cover two or more units', () => {
+  const values = ['東工場製造部機械課', '東工場製造部組立課', '東工場品質保証部', '西工場製造部', '西工場製造部（加工）', '本社営業部', '部品管理課'];
+  const groups = hierarchyGroups(values);
+  assert.deepEqual(groups.map((group) => [group.prefix, group.values.length]).sort(), [
+    ['東工場', 3],
+    ['東工場製造部', 2],
+    ['西工場', 2],
+    ['西工場製造部', 2],
+  ].sort());
+  // A prefix that is itself a value keeps that value beneath it.
+  assert.deepEqual(groups.find((group) => group.prefix === '西工場製造部').values, ['西工場製造部', '西工場製造部（加工）']);
+  // A single-unit prefix and a bare suffix never form a group.
+  assert.equal(groups.some((group) => group.prefix === '本社営業部' || group.prefix === '部'), false);
+
+  const indexed = buildValueIndex(values.map((name, index) => ({ id: `h-${index}`, originDepartmentName: name, machineName: '東工場製造部機械課' })), catalog);
+  const choice = enumeratedChoiceGroups('東工場の類例', indexed, catalog);
+  const department = choice.find((group) => group.field === 'originDepartmentName');
+  assert.equal(department.hierarchy.length, 4);
+  // Only organization fields get hierarchy choices.
+  assert.equal(choice.find((group) => group.field === 'machineName').hierarchy, undefined);
 });
