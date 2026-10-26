@@ -2,6 +2,9 @@ import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  env: { INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED: false },
+  warn: vi.fn(),
+  text: { complete: vi.fn() },
   prisma: {
     partMeasurementDrawingSiblingMatch: { findUnique: vi.fn() },
     partMeasurementDrawingPlacementRun: { findUnique: vi.fn(), create: vi.fn() },
@@ -12,15 +15,20 @@ const mocks = vi.hoisted(() => ({
     $transaction: vi.fn(),
     $queryRaw: vi.fn()
   },
-  ocr: { getCurrentStatus: vi.fn() },
+  ocr: { getCurrentStatus: vi.fn(), getCurrentFingerprint: vi.fn() },
   maps: { getCompletedPayload: vi.fn() }
 }));
+vi.mock('../../lib/logger.js', () => ({ logger: { child: () => ({ warn: mocks.warn }) } }));
+vi.mock('../../config/env.js', () => ({ env: mocks.env }));
+vi.mock('../inference/inference-runtime.js', () => ({ getInferenceRuntime: () => ({ createTextCompletionPort: () => mocks.text }) }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: mocks.prisma }));
 vi.mock('./part-measurement-drawing-ocr.service.js', () => ({ getPartMeasurementDrawingOcrService: () => mocks.ocr }));
 vi.mock('./part-measurement-drawing-dimension-map.service.js', () => ({ getPartMeasurementDrawingDimensionMapService: () => mocks.maps }));
 
 vi.mock('./part-measurement-drawing-sibling-match.service.js', () => ({ PartMeasurementDrawingSiblingMatchService: class {} }));
 
+import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
+import { PartMeasurementDrawingReferencePlacementService } from './part-measurement-drawing-reference-placement.service.js';
 import { PartMeasurementDrawingPlacementService } from './part-measurement-drawing-placement.service.js';
 import { PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION } from './part-measurement-drawing-dimension-map-payload.js';
 
@@ -48,6 +56,8 @@ const service = new PartMeasurementDrawingPlacementService();
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED = false;
+  mocks.ocr.getCurrentFingerprint.mockImplementation(async (id) => `${id}-hash`);
   mocks.ocr.getCurrentStatus.mockImplementation(async (id) => ({ drawingImageFingerprint: `${id}-hash` }));
   mocks.maps.getCompletedPayload.mockImplementation(async (id) => id === 'target' ? payload : null);
   db.partMeasurementDrawingSiblingMatch.findUnique.mockResolvedValue({ status: 'MATCHED', siblings: [{ visualTemplateId: 'source', confidence: 0.9 }] });
@@ -294,11 +304,80 @@ describe('backfill', () => {
     });
     const provider = vi.fn();
     expect(await worker.backfill(4, provider)).toEqual({ scanned: 4, matched: 1, noMatch: 1, deferred: 1, jev: 1,
-      ready: 2, noSibling: 1, mapPending: 0, failed: 1 });
+      ready: 2, noSibling: 1, mapPending: 0, failed: 1, referenceReady: 0, referenceDeferred: 0, referenceFailed: 0 });
     expect(events).toEqual(['a-start', 'a-end', 'b-start', 'b-end', 'c-start', 'c-end', 'd-start', 'd-end', 'a-run', 'a-run', 'd-run']);
     expect(ensure).toHaveBeenCalledWith('a', { processGroup: 'GRINDING', reorderProvider: provider });
     const sql = db.$queryRaw.mock.calls[1][0].join('');
     expect(sql).toContain('r."drawingImageFingerprint" = m."drawingImageFingerprint"');
     expect(sql).toContain('|| p."processGroup"::text');
+  });
+});
+
+
+describe('reference integration', () => {
+  it('creates a reference run with a fake text port and serves it ready without sibling lookup or another completion', async () => {
+    mocks.env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED = true;
+    mocks.maps.getCompletedPayload.mockResolvedValue({ ...payload, dimensions: [{ ...payload.dimensions[0], lowerTolerance: null, upperTolerance: null }] });
+    db.partMeasurementVisualTemplate.findMany.mockResolvedValue([]);
+    mocks.text.complete.mockResolvedValue({ rawText: '{"items":[{"i":0,"use":"nominal","label":"長さ"}]}', model: 'fake' });
+    const reference = new PartMeasurementDrawingReferencePlacementService(mocks.text, undefined, undefined, {
+      listSettings: async () => [{ label: '長さ', toleranceKind: 'dimension' }]
+    });
+    const saved = run({ sourceTemplateId: null, sourceVisualTemplate: null });
+    db.partMeasurementDrawingPlacementRun.create.mockResolvedValue(saved);
+    await reference.ensureRun('target', 'CUTTING');
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(saved);
+    const worker = new PartMeasurementDrawingPlacementService(undefined, undefined, undefined, reference);
+    expect(await worker.listForEditor('target', 'CUTTING')).toMatchObject({ status: 'ready', sourceDrawingName: null, proposals: [{ id: 'proposal' }] });
+    db.partMeasurementTemplateItem.findMany.mockResolvedValue([{ measurementLabel: '長さ', nominalValue: decimal(10) }]);
+    expect((await worker.listForEditor('target', 'CUTTING')).proposals).toEqual([]);
+    expect(mocks.text.complete).toHaveBeenCalledOnce();
+    expect(db.partMeasurementDrawingSiblingMatch.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('falls back to transfer when the reference run has no proposals', async () => {
+    mocks.env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED = true;
+    const reference = { findRun: vi.fn().mockResolvedValue(run({ sourceTemplateId: null, sourceVisualTemplate: null, proposals: [] })), ensureRun: vi.fn() };
+    const worker = new PartMeasurementDrawingPlacementService(undefined, undefined, undefined, reference);
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(run());
+    expect((await worker.listForEditor('target', 'CUTTING')).sourceDrawingName).toBe(source.name);
+  });
+
+  it('falls back to transfer when no reference exists, without creating one', async () => {
+    mocks.env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED = true;
+    const reference = { findRun: vi.fn().mockResolvedValue(null), ensureRun: vi.fn() };
+    const worker = new PartMeasurementDrawingPlacementService(undefined, undefined, undefined, reference);
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(run());
+    expect((await worker.listForEditor('target', 'CUTTING')).sourceDrawingName).toBe(source.name);
+    expect(reference.ensureRun).not.toHaveBeenCalled();
+  });
+
+  it('does not even look up reference runs when the flag is off', async () => {
+    const reference = { findRun: vi.fn(), ensureRun: vi.fn() };
+    const worker = new PartMeasurementDrawingPlacementService(undefined, undefined, undefined, reference);
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(run());
+    expect((await worker.listForEditor('target', 'CUTTING')).sourceDrawingName).toBe(source.name);
+    expect(reference.findRun).not.toHaveBeenCalled();
+  });
+
+  it('backfills sequentially, continues on errors, and stops on deferral', async () => {
+    mocks.env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED = true;
+    const targets = ['a', 'b', 'c'].map((id) => ({ id, processGroup: 'CUTTING' }));
+    db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce(targets);
+    const reference = { findRun: vi.fn(), ensureRun: vi.fn().mockRejectedValueOnce(new Error('private model text'))
+      .mockResolvedValueOnce(run()).mockRejectedValueOnce(new InferenceDeferredError()) };
+    const worker = new PartMeasurementDrawingPlacementService(undefined, undefined, undefined, reference);
+    expect(await worker.backfill(30)).toMatchObject({ referenceReady: 1, referenceFailed: 1, referenceDeferred: 1 });
+    expect(reference.ensureRun.mock.calls).toEqual([['a', 'CUTTING'], ['b', 'CUTTING'], ['c', 'CUTTING']]);
+    expect(mocks.warn).toHaveBeenCalledWith({ visualTemplateId: 'a', processGroup: 'CUTTING' }, 'drawing reference placement failed');
+    const sql = db.$queryRaw.mock.calls[2][0].join('');
+    expect(sql).toContain('LIMIT 3');
+    expect(sql).toContain('r."drawingImageFingerprint" = m."drawingImageFingerprint"');
+    expect(sql).toContain('i."markerXRatio" IS NOT NULL AND i."markerYRatio" IS NOT NULL');
+    expect(sql).toContain('t."processGroup" = p."processGroup"');
+    db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce(targets);
+    reference.ensureRun.mockClear().mockRejectedValueOnce(new InferenceDeferredError());
+    expect(await worker.backfill(30)).toMatchObject({ referenceReady: 0, referenceDeferred: 1 });
+    expect(reference.ensureRun).toHaveBeenCalledOnce();
   });
 });

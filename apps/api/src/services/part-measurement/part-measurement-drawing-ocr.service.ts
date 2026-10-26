@@ -256,6 +256,13 @@ export class PartMeasurementDrawingOcrService {
     return cache;
   }
 
+  async getCurrentFingerprint(visualTemplateId: string): Promise<string> {
+    const visual = await prisma.partMeasurementVisualTemplate.findFirst({ where: { id: visualTemplateId, isActive: true } });
+    if (!visual) throw new ApiError(404, '図面テンプレートが見つかりません。');
+    const drawing = await PartMeasurementDrawingStorage.readDrawing(visual.drawingImageRelativePath);
+    return fingerprintDrawing(drawing.buffer);
+  }
+
   async getCurrentStatus(visualTemplateId: string): Promise<PartMeasurementDrawingOcrStatusSummary> {
     return this.enqueueVisualTemplate(visualTemplateId, {
       priority: PART_MEASUREMENT_DRAWING_OCR_QUEUE_PRIORITY.REFERENCED_ACTIVE
