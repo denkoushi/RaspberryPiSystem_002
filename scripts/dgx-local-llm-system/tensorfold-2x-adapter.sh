@@ -70,6 +70,8 @@ tmp.write_text(json.dumps(marker) + "\n", encoding="utf-8")
 tmp.replace(path)
 PY
 
+# Business has priority over a leftover private lease.
+worker docker stop dgx-private-comfyui >/dev/null 2>&1 || true
 # All three streams are detached so SSH returns without waiting for cold start.
 # shellcheck disable=SC2016 # Variables are expanded only by the remote sh.
 worker sh -eu -c '

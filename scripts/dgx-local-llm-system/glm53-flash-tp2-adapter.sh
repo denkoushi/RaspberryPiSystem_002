@@ -75,6 +75,8 @@ PY
 }
 
 docker rm -f "${HEAD_NAME}" >/dev/null 2>&1 || true
+# Business has priority over a leftover private lease.
+worker docker stop dgx-private-comfyui >/dev/null 2>&1 || true
 # A missing container is harmless; SSH/daemon errors still stop the launch.
 # shellcheck disable=SC2016 # $1 is expanded by the remote sh, not this shell.
 worker sh -c 'docker rm -f "$1" || { docker info >/dev/null && ! docker inspect "$1" >/dev/null 2>&1; }' sh "${WORKER_NAME}"

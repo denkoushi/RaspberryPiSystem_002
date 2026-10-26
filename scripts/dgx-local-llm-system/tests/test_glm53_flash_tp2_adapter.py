@@ -20,6 +20,8 @@ args = sys.argv[1:]
 node = os.environ.get("FAKE_NODE", "head")
 with open(os.environ["EVENTS"], "a") as log:
     log.write(json.dumps({"node": node, "args": args}) + "\n")
+if args == ["stop", "dgx-private-comfyui"] and os.environ.get("FAIL_PRIVATE_STOP"):
+    sys.exit(1)
 if args[0] == "ps":
     print(os.environ.get("RUNNING_NAME", ""))
 elif args[0] == "inspect":
@@ -123,7 +125,7 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
         events = self.docker_events()
         self.assertEqual(events[0]["args"][0], "ps")
         self.assertEqual([(e["node"], e["args"][0]) for e in events[1:]], [
-            ("head", "rm"), ("worker", "rm"), ("worker", "run"),
+            ("head", "rm"), ("worker", "stop"), ("worker", "rm"), ("worker", "run"),
             ("worker", "inspect"), ("worker", "run"), ("head", "run"), ("head", "run"),
         ])
         worker_check = next(i for i, e in enumerate(self.events()) if e["node"] == "ssh" and shlex.split(e["args"][-1])[:2] == ["test", "-d"])
@@ -156,6 +158,18 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
             "sshTarget": "ubudgxkoushi@192.168.100.11", "containerName": "system-prod-trtllm-rank1",
         })
         self.assertFalse((self.root / "injected").exists())
+
+    def test_private_comfy_stop_precedes_worker_launch_even_if_stop_fails(self):
+        for failure in ("", "1"):
+            with self.subTest(failure=failure):
+                self.events_path.write_text("")
+                result = self.run_script("glm53-flash-tp2-adapter.sh", FAIL_PRIVATE_STOP=failure)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                events = self.docker_events()
+                stop = events.index({"node": "worker", "args": ["stop", "dgx-private-comfyui"]})
+                launch = next(i for i, e in enumerate(events) if e["node"] == "worker" and e["args"][0] == "run")
+                self.assertLess(stop, launch)
+                self.assertTrue(any(e["node"] == "head" and e["args"][0] == "run" for e in events))
 
     def test_gpu_memory_utilization_follows_profile_env(self):
         result = self.run_script("glm53-flash-tp2-adapter.sh", VLLM_GPU_MEMORY_UTILIZATION="0.82")
