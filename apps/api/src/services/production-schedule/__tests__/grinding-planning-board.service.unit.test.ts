@@ -96,6 +96,7 @@ import {
 } from '../grinding-planning-board.service.js';
 
 import * as planningSource from '../grinding-planning-board/source.js';
+import { createGrindingPlanningBoardStartupWarmup } from '../grinding-planning-board/startup-warmup.js';
 import { clearLeaderboardCanonicalRowCacheForTests } from '../leaderboard/leaderboard-canonical-row-cache.js';
 import { readPlanningSnapshotGenerationToken, reusablePlanningPayloads } from '../grinding-planning-board/state.js';
 
@@ -424,6 +425,50 @@ describe('grinding planning board service orchestration', () => {
       });
       return { entered, release };
     };
+
+    it('hits startup payload and load caches through the real readers with the UI request keys', async () => {
+      vi.useFakeTimers();
+      const snapshotStore = createStore();
+      const query = mocks.prisma.$queryRaw.getMockImplementation()!;
+      mocks.prisma.$queryRaw.mockImplementation(async (sql: unknown) => {
+        if (JSON.stringify(sql).includes('UNION') && JSON.stringify(sql).includes('ProductionScheduleGrindingPlanningBoardState')) {
+          return [{ siteKey: 'site-a' }];
+        }
+        return query(sql);
+      });
+      const warmup = createGrindingPlanningBoardStartupWarmup({ enabled: true, delayMs: 45_000, snapshotStore });
+      const create = vi.spyOn(snapshotStore, 'create');
+      try {
+        warmup.start();
+        await vi.advanceTimersByTimeAsync(45_000);
+        await warmup.stop();
+        expect(planningSource.readPlanningSource).toHaveBeenCalledTimes(3);
+        expect(mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('effectiveItems'))).toHaveLength(1);
+        expect(create).not.toHaveBeenCalled();
+        expect(mocks.findMaterialArrivalStatusByPart).not.toHaveBeenCalled();
+        for (const category of ['grinding', 'cutting', 'all'] as const) {
+          vi.mocked(planningSource.readPlanningSource).mockClear();
+          mocks.projectGrindingPlanningBoard.mockClear();
+          mocks.prisma.$queryRaw.mockClear();
+          const response = await getGrindingPlanningBoard({
+            siteKey: 'site-a', category, view: 'resource', completionFilter: 'incomplete',
+            includeLoad: false, snapshotStore
+          });
+          await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category });
+          expect(response.items).toHaveLength(1);
+          expect(response.load).toEqual([]);
+          expect(planningSource.readPlanningSource).not.toHaveBeenCalled();
+          expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
+          expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+        }
+        changeGeneration();
+        await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'grinding' });
+        expect(mocks.prisma.$queryRaw.mock.calls.some(([sql]) => JSON.stringify(sql).includes('effectiveItems'))).toBe(true);
+      } finally {
+        await warmup.stop();
+        vi.useRealTimers();
+      }
+    });
 
     it('stores a rebuilt payload without cursor or arrival work and reuses it on the next read', async () => {
       const snapshotStore = createStore();

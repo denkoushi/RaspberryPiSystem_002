@@ -1,10 +1,19 @@
 vi.mock('../../config/env/load-dotenv.js', () => ({}));
 import { describe, expect, it, vi } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+import { env } from '../../config/env.js';
+import { leaderboardShellSnapshotStore } from '../../services/production-schedule/leaderboard/kiosk-leaderboard-snapshot-store.js';
+import { createGrindingPlanningBoardStartupWarmup } from '../../services/production-schedule/grinding-planning-board/startup-warmup.js';
+
+vi.mock('../../services/production-schedule/grinding-planning-board/startup-warmup.js', () => ({
+  createGrindingPlanningBoardStartupWarmup: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() }))
+}));
 import {
   SchedulerStartupCleanupError,
   SchedulerStepStateAmbiguousError,
 } from '../scheduler-errors.js';
 import {
+  buildPostListenSchedulerDefinitions,
   listPostListenSchedulerNames,
   startSchedulerStepGroup,
   stopSchedulerStepGroup,
@@ -46,6 +55,21 @@ function trackedSteps(
 }
 
 describe('start-post-listen-schedulers fail-closed group', () => {
+  it('wires warmup to the kiosk route snapshot store and registers its shutdown', async () => {
+    const definition = buildPostListenSchedulerDefinitions({} as FastifyInstance)
+      .find((step) => step.name === 'grinding-planning-board-startup-warmup')!;
+    expect(createGrindingPlanningBoardStartupWarmup).toHaveBeenCalledWith({
+      enabled: env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED,
+      delayMs: env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS,
+      snapshotStore: leaderboardShellSnapshotStore
+    });
+    const warmup = vi.mocked(createGrindingPlanningBoardStartupWarmup).mock.results.at(-1)!.value;
+    await definition.start();
+    await definition.stop();
+    expect(warmup.start).toHaveBeenCalledOnce();
+    expect(warmup.stop).toHaveBeenCalledOnce();
+  });
+
   it('includes backup and csv-import in the registered scheduler group', () => {
     const names = listPostListenSchedulerNames();
     expect(names).toContain('backup');
@@ -133,6 +157,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'hermes-knowledge',
       'signage-render',
       'part-measurement-drawing-dimension-map',
+      'grinding-planning-board-startup-warmup',
       'procedure-term-learning',
       'business-hermes-nightly',
       'fkojunst-mail-superseded-prune',

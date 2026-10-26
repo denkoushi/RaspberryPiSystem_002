@@ -28,22 +28,9 @@ import {
   resolveLocationScopeContext,
   resolveTargetLocation
 } from './kiosk/shared.js';
-import { createInMemoryLeaderboardShellSnapshotStore } from '../services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.js';
+import { leaderboardShellSnapshotStore } from '../services/production-schedule/leaderboard/kiosk-leaderboard-snapshot-store.js';
 
 const POWER_ACTIONS_DIR = process.env.POWER_ACTIONS_DIR ?? '/app/power-actions';
-
-function resolveLeaderboardShellSnapshotTtlMs(): number {
-  const raw = process.env.LEADERBOARD_SHELL_SNAPSHOT_TTL_MS;
-  if (raw == null || raw.trim() === '') {
-    return 5 * 60 * 1000;
-  }
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= 30_000 ? n : 5 * 60 * 1000;
-}
-
-const leaderboardShellSnapshotStore = createInMemoryLeaderboardShellSnapshotStore({
-  defaultTtlMs: resolveLeaderboardShellSnapshotTtlMs()
-});
 
 export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
   await registerKioskEmployeesRoute(app, {

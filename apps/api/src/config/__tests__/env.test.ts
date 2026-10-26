@@ -15,6 +15,32 @@ afterEach(() => {
 });
 
 describe('env secret policy', () => {
+  it('defaults grinding planning startup warmup to enabled after 45 seconds', async () => {
+    delete process.env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED;
+    delete process.env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS;
+    const { env } = await loadEnvModule();
+    expect(env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED).toBe(true);
+    expect(env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS).toBe(45_000);
+  });
+
+  it.each([['true', true], ['false', false], [' TRUE ', true]])('parses grinding startup warmup flag %s', async (raw, enabled) => {
+    process.env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED = raw;
+    process.env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS = '60000';
+    const { env } = await loadEnvModule();
+    expect(env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED).toBe(enabled);
+    expect(env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS).toBe(60_000);
+  });
+
+  it.each(['0', '-1', '1.5', '3600001', 'NaN'])('rejects unsafe grinding startup delay %s', async (raw) => {
+    process.env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS = raw;
+    await expect(loadEnvModule()).rejects.toThrow(/GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS/);
+  });
+
+  it('rejects an ambiguous grinding startup flag', async () => {
+    process.env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED = 'yes';
+    await expect(loadEnvModule()).rejects.toThrow(/GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED/);
+  });
+
   it.each([['true', true], ['false', false], [' TRUE ', true]])(
     'parses ADMIN_MFA_REQUIRED=%s', async (raw, expected) => {
       process.env.ADMIN_MFA_REQUIRED = raw;

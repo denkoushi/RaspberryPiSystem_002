@@ -163,6 +163,11 @@ const MAX_PLANNING_REWARM_ENTRIES = 3;
 type PlanningRewarm = { promise: Promise<void>; timer?: ReturnType<typeof setTimeout>; running: boolean; rerun: boolean; finish: () => void };
 const planningRewarms = new WeakMap<LeaderboardShellSnapshotStore, Map<string, PlanningRewarm>>();
 
+export async function warmGrindingPlanningBoardPayload(params: PlanningPayloadRequest): Promise<void> {
+  const context = await preparePlanningPayload(params, createGrindingPlanningBoardPerformance('grinding-planning-board/startup-warmup'));
+  if (!await findReusablePlanningPayload(context)) await getOrBuildPlanningPayload(context);
+}
+
 async function rewarmPlanningPayloads(siteKey: string, store: LeaderboardShellSnapshotStore): Promise<void> {
   const entries = [...(reusablePlanningPayloads.get(store)?.entries() ?? [])]
     .filter(([, entry]) => entry.siteKey === siteKey && entry.expiresAtMs > Date.now())
