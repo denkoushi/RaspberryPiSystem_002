@@ -887,12 +887,18 @@ export async function execute(plan, options = {}) {
     recordId: item.record.id,
     fields: originalFields(item.record, display),
   }));
-  const coverage = buildCoverage({
+  let coverage = buildCoverage({
     known: !candidatePoolTruncated && !relevanceCut,
     matchCount: ranked.length,
     shown: results.length,
     order: coverageOrder(plan, filteredOnly),
   });
+  // Counts need coverage even for zero matches or totals below the display limit.
+  if (options.countOnly) {
+    const known = !candidatePoolTruncated && !relevanceCut;
+    coverage = { known, ...(known ? { total: ranked.length } : { total: null, floor: ranked.length }),
+      shown: results.length, order: coverageOrder(plan, filteredOnly) };
+  }
   return {
     status: results.length ? 'answer' : 'no_result',
     excludedMatches,

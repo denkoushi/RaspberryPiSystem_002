@@ -1290,3 +1290,53 @@ test('record answers include the part number and part name the source lists as a
   assert.ok(!labels.includes('機械名'));
   assert.match(answer, /^不適合番号: SYN-001\n品番: PN-ALPHA\n品名: Demo Widget\n/u);
 });
+
+for (const [name, size, excludeShown, shownIds, semanticQuery, reject, expected] of [
+  ['total beyond display limit', 4, false, ['nonconformity:c0'], '', false, 4],
+  ['only matched shown ids are subtracted', 4, true, ['nonconformity:c0', 'nonconformity:missing'], '', false, 3],
+  ['zero after exclusion', 1, true, ['nonconformity:c0'], '', false, 0],
+  ['empty set', 0, false, [], '', false, 0],
+  ['relevance rejection', 4, false, [], '合成の傷', true, 3],
+  ['bounded relevance pool', 80, false, [], '合成の傷', false, null],
+]) {
+  test(`count answer: ${name}`, async () => {
+    const synthetic = Array.from({ length: size }, (_, index) => ({ kind: 'nonconformity', id: `c${index}`,
+      condition: '合成の傷', originDepartmentName: '合成課', discoveredOn: '2026-10-01' }));
+    const diagnostics = { followUpAction: { chosen: 'count', confidence: 0.9 }, rewrite: '「合成条件」に該当する件数',
+      excludeShown, contentDecision: { jev: Boolean(semanticQuery), final: Boolean(semanticQuery) } };
+    const planner = fixedPlanner(['nonconformity'], { semanticQuery, limit: 1, display: [], diagnostics,
+      filters: size ? [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['合成課'] }] : [] });
+    let judgeCalls = 0;
+    const answering = createRetrievalAnswering({ records: synthetic, catalog, planner, evaluate: async ({ questions }) => {
+      judgeCalls += 1;
+      return { answers: Object.fromEntries(Object.keys(questions).map((key, index) => [key, { type: 'noul', noul: reject && index === 0 ? 0.05 : 0.95 }])) };
+    } });
+    const session = { previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery }, shownIds, plans: [] };
+    const before = structuredClone(session);
+    const result = await answering.answer('他に何件ある？', session);
+    assert.equal(result.status, 'completed');
+    assert.equal(result.receipt.outcome, 'count');
+    assert.deepEqual(result.recordIds, []);
+    assert.deepEqual(result.session.shownIds, shownIds);
+    assert.deepEqual(session, before);
+    assert.equal(result.session.previousPlan.semanticQuery, semanticQuery);
+    assert.equal(result.session.previousPlan.diagnostics, undefined);
+    assert.equal(result.session.previousPlan.rewrite, undefined);
+    assert.equal(result.session.previousPlan.followUpAction, undefined);
+    assert.deepEqual(result.receipt.followUpAction, diagnostics.followUpAction);
+    assert.equal(result.receipt.rewrite, diagnostics.rewrite);
+    assert.equal(result.coverage.shown, 0);
+    assert.equal(result.display, undefined);
+    if (expected === null) {
+      assert.equal(result.coverage.known, false);
+      assert.ok(result.coverage.floor > 1 && result.coverage.floor < size);
+      assert.match(result.answer, new RegExp(`${result.coverage.floor}件以上です。$`));
+    } else {
+      assert.equal(result.coverage.known, true);
+      assert.equal(result.coverage.total, expected);
+      assert.equal(result.answer, expected === 0 ? '「合成条件」に該当する記録は見つかりませんでした。'
+        : `「合成条件」に該当する記録は${expected}件です。`);
+    }
+    if (semanticQuery) assert.ok(judgeCalls > 0);
+  });
+}

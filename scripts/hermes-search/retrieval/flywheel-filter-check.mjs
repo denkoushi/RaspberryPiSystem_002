@@ -56,7 +56,7 @@ export function filterOutcome({ live, filterCheck }) {
   if (live?.outcome === 'clarification') return 'clarified';
   if (!live || live.outcome === 'failed' || live.outcome === 'unavailable') return 'failed';
   if (filterCheck?.supported !== true) return 'unsupported';
-  return ['answer', 'no_result', 'no_other'].includes(live.outcome) && filterCheck.ok === true ? 'ok' : 'mismatch';
+  return ['answer', 'no_result', 'no_other', 'count'].includes(live.outcome) && filterCheck.ok === true ? 'ok' : 'mismatch';
 }
 
 export function checkFilterAnswer({ plan, shown = [], groups = [], breakdown = plan?.breakdown, records, catalog, causeById = null }) {

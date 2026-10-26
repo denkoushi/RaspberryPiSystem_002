@@ -162,7 +162,7 @@ function countReal(bucket, row) {
 }
 
 export function summarizeReal(rows) {
-  const summary = { ...realBucket(), dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 }, followUp: { ...realBucket(), filterMismatch: 0 } };
+  const summary = { ...realBucket(), dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 }, followUp: { ...realBucket(), filterMismatch: 0, byAction: {}, countAnswers: 0 } };
   for (const row of rows) {
     if (row?.source !== 'real') continue;
     const followUp = Boolean(row.previousPlan);
@@ -180,7 +180,13 @@ export function summarizeReal(rows) {
       }
     }
     countReal(summary, row);
-    if (followUp) countReal(summary.followUp, row);
+    if (followUp) {
+      countReal(summary.followUp, row);
+      const action = row.live?.followUpAction ?? 'unclassified';
+      summary.followUp.byAction[action] ??= realBucket();
+      countReal(summary.followUp.byAction[action], row);
+      if (row.live?.outcome === 'count') summary.followUp.countAnswers += 1;
+    }
   }
   return summary;
 }
@@ -196,7 +202,8 @@ export function formatRealReport(night, summary) {
     + `, day outcomes ${Object.keys(summary.dayOutcomes).length ? counts(summary.dayOutcomes) : 'none'}`
     + `\n  filter questions ${summary.filter.questions}, correct ${summary.filter.ok}, mismatch ${summary.filter.mismatch}, unsupported ${summary.filter.questions - summary.filter.supported}`
     + (followUp.questions ? `\n  follow-up turns ${followUp.questions}, with relevant ${followUp.withRelevant}, relevant shown ${followUp.shown}`
-      + `, lost ${Object.keys(followUp.lossStages).length ? counts(followUp.lossStages) : 'none'}, filter mismatch ${followUp.filterMismatch}` : '');
+      + `, lost ${Object.keys(followUp.lossStages).length ? counts(followUp.lossStages) : 'none'}, filter mismatch ${followUp.filterMismatch}, count answers ${followUp.countAnswers ?? 0}`
+      + Object.entries(followUp.byAction ?? {}).map(([action, bucket]) => `\n    ${action}: turns ${bucket.questions}, with relevant ${bucket.withRelevant}, relevant shown ${bucket.shown}, lost ${Object.keys(bucket.lossStages).length ? counts(bucket.lossStages) : 'none'}`).join('') : '');
 }
 
 export function formatReport(night, summary) {

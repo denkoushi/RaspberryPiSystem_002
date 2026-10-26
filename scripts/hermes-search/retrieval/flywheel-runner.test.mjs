@@ -1100,3 +1100,22 @@ test('a real follow-up replays with the previous plan and shown records, and gra
   assert.deepEqual(rows[1].context, ['傷はある？']);
   assert.ok(graded.some((request) => request.includes('傷はある？\\n他に何件ある？')));
 });
+
+
+test('real filter-only count answers retain their action and rewrite without a record-display mismatch', async () => {
+  const { dir, input, receiptsDir } = realFixture();
+  const plan = { sources: ['nonconformity'], filters: [], semanticQuery: '', sort: { field: 'discoveredOn', direction: 'desc' }, limit: 1 };
+  writeFileSync(path.join(receiptsDir, 'receipts-2026-10-03.jsonl'), [
+    { at: '2026-10-03T03:00:00Z', sessionId: 'count', recordIds: ['nonconformity:a1'], hermesReceipt: { question: '最近の記録', outcome: 'answer', plan } },
+    { at: '2026-10-03T03:01:00Z', sessionId: 'count', recordIds: [], hermesReceipt: { question: '何件ある？', outcome: 'count', plan } },
+  ].map(JSON.stringify).join('\n') + '\n');
+  await runFlywheelNight({ ...input, live: async row => ({ outcome: row.previousPlan ? 'count' : 'answer',
+    plan, shown: row.previousPlan ? [] : ['a1'], candidates: ['a1'], judged: 30,
+    followUpAction: row.previousPlan ? 'count' : null, rewrite: '該当する件数', loss: 'count_answer', ms: 1 }) });
+  const rows = readRealRows(readFileSync(realPath(dir, '2026-10-03'), 'utf8'));
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].live.loss, 'count_answer');
+  assert.equal(rows[1].live.followUpAction, 'count');
+  assert.equal(rows[1].live.rewrite, '該当する件数');
+  assert.notEqual(rows[1].filterCheck.ok, false);
+});

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCatalog, loadNonconformityCatalog } from './catalog.mjs';
-import { summarizeAnswers, createPlanner } from './planner-jev.mjs';
+import { summarizeAnswers, createPlanner, rewriteQuestion, PLANNER_QUESTION_VERSION } from './planner-jev.mjs';
 import { CAUSE_CATEGORIES } from './cause-categories.mjs';
 import { buildValueIndex } from './value-index.mjs';
 
@@ -126,6 +126,10 @@ function assertChoicesFromCandidates(questions, candidateValues) {
     if (question.type === 'noul') continue;
     // Content span choices are parts of the request itself, cut by code.
     if (key === 'contentSpan') continue;
+    if (key === 'followUpAction') {
+      assert.deepEqual(Object.keys(question.criteria), ['add', 'drop', 'replace', 'count', 'more', 'clarify', 'new']);
+      continue;
+    }
     if (key === 'intent') {
       assert.deepEqual(Object.keys(question.criteria), ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']);
       continue;
@@ -988,4 +992,55 @@ test('a section chosen next to its own factory keeps only the section', async ()
     op: 'eq',
     values: ['西工場製造部（製造）'],
   }]);
+});
+
+
+test('follow-up action is asked once with context, preserves confidence and overrides breakdown for count', async () => {
+  const inputs = [];
+  let action = { type: 'choice', choice: 'count', confidence: 0.87 };
+  const planner = createPlanner({ evaluate: async input => {
+    inputs.push(input);
+    return { answers: { followUpAction: action, intent: { type: 'choice', choice: 'breakdown_month' },
+      content: { type: 'noul', noul: false }, limit: { type: 'choice', choice: '2' } } };
+  } });
+  const first = await planner.plan({ question: '月ごとの件数', catalog });
+  assert.equal(inputs.length, 1);
+  assert.equal(inputs[0].questions.followUpAction, undefined);
+  assert.equal(first.plan.diagnostics.followUpAction, undefined);
+  assert.equal(typeof first.plan.diagnostics.rewrite, 'string');
+  const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: '', limit: 2 };
+  for (const [answer, expected] of [[action, { chosen: 'count', confidence: 0.87 }],
+    [undefined, { chosen: null, confidence: null }], [{ type: 'choice', choice: 'invalid' }, { chosen: null, confidence: null }]]) {
+    action = answer;
+    const { plan } = await planner.plan({ question: '月ごとの件数', previousPlan, catalog });
+    assert.deepEqual(plan.diagnostics.followUpAction, expected);
+    if (expected.chosen === 'count') {
+      assert.equal(plan.diagnostics.intentDecision.chosen, 'records');
+      assert.equal(plan.breakdown, undefined);
+      assert.match(plan.diagnostics.rewrite, /該当する件数$/u);
+    }
+  }
+  assert.equal(inputs.length, 4);
+  assert.deepEqual(Object.keys(inputs[1].questions.followUpAction.criteria), ['add', 'drop', 'replace', 'count', 'more', 'clarify', 'new']);
+  assert.equal(PLANNER_QUESTION_VERSION, 'planner-questions-2026-10-26b');
+});
+
+test('rewrite uses resolved labels, values and content with action tails and a 160 character cap', () => {
+  const field = catalog.fields.find(field => field.key === 'originDepartmentName');
+  const plan = { filters: [{ source: 'nonconformity', field: field.key, op: 'eq', values: ['合成課'] }],
+    causeCategory: 'drawing', semanticQuery: '使わない質問', diagnostics: { contentSpan: '合成の傷' } };
+  const base = `「${field.label}が合成課」・「図面・設計の誤り」・「合成の傷」`;
+  for (const [action, tail] of [['count', 'に該当する件数'], ['more', 'のうち、まだ示していない記録'], ['replace', 'の記録']]) {
+    plan.diagnostics.followUpAction = { chosen: action };
+    assert.equal(rewriteQuestion({ plan, catalog }), base + tail);
+  }
+  for (const [breakdown, axis] of [['cause', '要因'], ['organization', '部署'], ['month', '月']]) {
+    assert.equal(rewriteQuestion({ plan: { ...plan, breakdown }, catalog }), `${base}の${axis}ごとの件数`);
+  }
+  assert.equal(rewriteQuestion({ plan: { filters: [], semanticQuery: '合成内容' }, catalog }), '「合成内容」の記録');
+  assert.equal(rewriteQuestion({ plan: { filters: [] }, catalog }), '記録');
+  assert.equal(rewriteQuestion({ plan: { filters: [{ source: 'nonconformity', field: 'unknown_key', values: ['合成値'] }] }, catalog }), '「合成値」の記録');
+  const long = rewriteQuestion({ plan: { filters: [], semanticQuery: '傷'.repeat(200) }, catalog });
+  assert.equal(long.length, 160);
+  assert.ok(long.endsWith('…'));
 });

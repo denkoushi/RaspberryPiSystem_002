@@ -135,7 +135,7 @@ const CAUSE_SOURCE = 'nonconformity';
 // A classification bucket, never something a question asks for.
 const UNKNOWN_CAUSE = 'unknown';
 
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-26';
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-26b';
 
 // A breakdown (counts per cause, department or month) is accepted only when the question itself
 // talks about counts or distribution. Night 19 (2026-10-21): JEV chose a cause breakdown for 21
@@ -144,7 +144,7 @@ export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-26';
 const BREAKDOWN_CUE = /件数|何件|[0-9０-９]+件|多い|多かった|多く|内訳|ごと|別に|部署別|月別|要因別|分布|割合|ランキング|傾向|上位|集計|一番|最も|どの(?:要因|部署|月)|どんな要因|何が多|多発|よくある|頻度|頻発|比率|推移/u;
 
 // Choice ids that read on their own in a receipt; other choices map to their option text.
-const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry|intent|contentSpan)$/u;
+const PLAIN_CHOICE = /^(?:sort|scope|limit|period|contentCarry|intent|contentSpan|followUpAction)$/u;
 
 export function summarizeAnswers(questions, answers) {
   const summary = {};
@@ -240,6 +240,38 @@ const CONTENT_CARRY_OPTIONS = [
   { id: 'new', description: '`request` が `previous_plan` とは別の、何が起きたか（現象・不具合・原因・処置）を述べている' },
 ];
 
+const FOLLOW_UP_ACTIONS = [
+  { id: 'add', description: '前の条件を残したまま、組織・期間・内容などの条件を足して絞り込む' },
+  { id: 'drop', description: '前の条件のどれかを外す、または広げる' },
+  { id: 'replace', description: '前の条件のどれかを別の値に置き換える(「組立課は？」のように同じ項目の別の値だけを言う)' },
+  { id: 'count', description: '記録そのものではなく、該当する件数(何件あるか、残り何件か)を知りたい' },
+  { id: 'more', description: '同じ条件で、すでに示した記録のほかの記録をさらに見たい' },
+  { id: 'clarify', description: '前の答えに示した記録の内容(原因・処置・経緯など)について聞き返している' },
+  { id: 'new', description: '前の条件と無関係な新しい検索' },
+];
+
+// Only resolved conditions and request spans enter the rewrite, never record text.
+export function rewriteQuestion({ plan, catalog }) {
+  const entries = catalogEntries(catalog);
+  const parts = (plan.filters ?? []).map(filter => {
+    const label = entries.find(entry => entry.id === filter.source)?.fields.find(field => field.key === filter.field)?.label;
+    return label ? conditionText(entries, filter) : filter.values.join('、');
+  });
+  const cause = CAUSE_CATEGORIES.find(({ id }) => id === plan.causeCategory);
+  if (cause) parts.push(cause.label);
+  const content = plan.diagnostics?.contentSpan || plan.semanticQuery;
+  if (content) parts.push(content);
+  const conditions = parts.map(part => `「${String(part).replace(/\s+/gu, ' ').trim()}」`).join('・');
+  const action = plan.diagnostics?.followUpAction?.chosen;
+  const axis = { cause: '要因', organization: '部署', month: '月' }[plan.breakdown];
+  const tail = axis ? `の${axis}ごとの件数`
+    : action === 'count' ? 'に該当する件数'
+      : action === 'more' ? 'のうち、まだ示していない記録' : 'の記録';
+  const sentence = conditions ? conditions + tail : axis ? `${axis}ごとの件数`
+    : action === 'count' ? '該当する件数' : action === 'more' ? 'まだ示していない記録' : '記録';
+  return sentence.length > 160 ? `${sentence.slice(0, 159)}…` : sentence;
+}
+
 function validFilter(filter) {
   return filter && typeof filter.source === 'string' && typeof filter.field === 'string'
     && typeof filter.op === 'string' && Array.isArray(filter.values);
@@ -280,6 +312,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           && group.values.every((value) => typeof value === 'string'));
       const asked = fromIndex ? usable : usable.slice(0, Math.max(enumeratedFields, 1));
       const questions = {};
+      if (hasPrevious) questions.followUpAction = choiceQuestion(
+        '`request` が `previous_plan` の答えに続く発話として、何を求めているかを一つ選ぶ。',
+        FOLLOW_UP_ACTIONS,
+      );
       questions.intent = choiceQuestion(
         `${said('質問', '`request`')}が求める答えの種類を一つ選ぶ。意図は今回の質問だけで判断する。`,
         [
@@ -434,9 +470,10 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       });
       const planMs = Math.round(performance.now() - started);
       const answers = answersOf(evaluated);
+      const followUpAction = hasPrevious ? chosen(answers.followUpAction, FOLLOW_UP_ACTIONS.map(({ id }) => id)) : null;
       const heardIntent = chosen(answers.intent, ['records', 'breakdown_cause', 'breakdown_organization', 'breakdown_month']) ?? 'records';
       const breakdownGated = heardIntent !== 'records' && !BREAKDOWN_CUE.test(question);
-      const intent = breakdownGated ? 'records' : heardIntent;
+      const intent = followUpAction === 'count' || breakdownGated ? 'records' : heardIntent;
       const unresolved = fromIndex ? [] : usable.slice(asked.length).map((group) => ({ term: group.term, candidates: [...group.values] }));
       const scopeIds = entries.map((entry) => entry.id);
       const scopeChoice = fromIndex ? scopeChoiceOf(answers.scope, scopeIds) : scopeIds[0];
@@ -618,6 +655,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         display: entries.flatMap((entry) => entry.fields.map((field) => field.key)),
         unresolved: outOfScope ? [] : unresolved,
         diagnostics: {
+          ...(hasPrevious ? { followUpAction: { chosen: followUpAction, confidence: answers.followUpAction?.confidence ?? null } } : {}),
           intentDecision: { chosen: intent, ...(breakdownGated ? { gated: 'no_count_cue', heard: heardIntent } : {}) },
           causeDecision: { chosen: appliedCause ?? null, ...(causeDropped ? { dropped: true } : causeOnContent ? { dropped: 'content_search', heard: causeCategory } : {}) },
           contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
@@ -628,6 +666,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           ...(!breakdown && excludeShown ? { excludeShown: true } : {}),
         },
       };
+      plan.diagnostics.rewrite = rewriteQuestion({ plan, catalog });
       return {
         plan,
         timings: { planMs },

@@ -12,7 +12,7 @@ import { learnedQueriesById } from './flywheel-learn.mjs';
 import { relevanceFailureReason } from './relevance-jev.mjs';
 import { createRetrievalAnswering, loadCauseById, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
 
-export const LOSS_STAGES = ['status', 'not_in_pool', 'judge_rejected', 'other_shown', 'failed'];
+export const LOSS_STAGES = ['status', 'not_in_pool', 'judge_rejected', 'other_shown', 'failed', 'count_answer'];
 // The day budget (1.5 s) is a kiosk latency limit, not a retrieval-quality one. At night the Pi 5
 // to DGX path is slow while the DGX backup uploads (2026-10-05: connect alone 0.5 to 1.7 s, the
 // embedding itself 0.03 s), and 47 of 60 live runs fell back to lexical. The night scorer waits
@@ -36,6 +36,8 @@ export function relevantIds(row) {
  */
 export function lossStage({ relevant, outcome, shown, candidates, judged }) {
   const wanted = new Set((relevant ?? []).map(bareId));
+  // A count intentionally shows no records; keep it visible apart from record losses.
+  if (outcome === 'count') return 'count_answer';
   if (outcome === 'answer') return (shown ?? []).map(bareId).some((id) => wanted.has(id)) ? null : 'other_shown';
   if (outcome === 'no_result' || outcome === 'no_other') {
     return (candidates ?? []).slice(0, judged).map(bareId).some((id) => wanted.has(id)) ? 'judge_rejected' : 'not_in_pool';
@@ -85,6 +87,8 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
       const candidates = (result.candidateIds ?? []).slice(0, judged).map(bareId);
       return {
         outcome,
+        followUpAction: result.receipt?.followUpAction?.chosen ?? null,
+        rewrite: result.receipt?.rewrite ?? null,
         reason: outcome === 'unavailable' || outcome === 'failed' ? result.receipt?.reason ?? result.reason ?? null : null,
         shown,
         groups: (result.display?.groups ?? []).filter(group => group.axis === 'cause')
@@ -109,7 +113,7 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
         .replace(/[\u0000-\u001f\u007f]/gu, ' ').slice(0, 200);
       const diagnostic = relevanceFailureReason(error).replace(/^relevance judgment failed:?\s*/u, '');
       const reason = diagnostic ? `${message} (${diagnostic})` : message;
-      return { outcome: 'failed', reason, shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, plan: null, unresolved: [], ms: ms() };
+      return { outcome: 'failed', reason, shown: [], candidates: [], judged, loss: 'failed', vectorStatus: null, plan: null, followUpAction: null, rewrite: null, unresolved: [], ms: ms() };
     }
   };
 }

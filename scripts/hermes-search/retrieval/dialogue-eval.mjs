@@ -36,6 +36,7 @@ function sortName(sort) {
  * - content: true when semanticQuery must be non-empty, false when it must be empty
  * - sort: 'recent' | 'relevance'
  * - limit: number
+ * - action: the follow-up action chosen by the planner
  * - excludeShown: true when the turn asks for records other than the ones already shown
  * - contentFrom: 'previous' when the turn must reuse the previous turn's content condition,
  *   'own' when it must state a content condition different from the previous one
@@ -59,6 +60,7 @@ export function checkTurn(plan, expect = {}, previousPlan = null) {
   if (typeof expect.content === 'boolean' && Boolean(plan?.semanticQuery) !== expect.content) failures.push('content');
   if (expect.sort && sortName(plan?.sort) !== expect.sort) failures.push('sort');
   if (Number.isFinite(expect.limit) && plan?.limit !== expect.limit) failures.push('limit');
+  if (expect.action !== undefined && plan?.diagnostics?.followUpAction?.chosen !== expect.action) failures.push('action');
   if (typeof expect.excludeShown === 'boolean' && (plan?.diagnostics?.excludeShown === true) !== expect.excludeShown) failures.push('excludeShown');
   if (expect.contentFrom === 'previous' || expect.contentFrom === 'own') {
     const current = plan?.semanticQuery ?? '';
@@ -88,8 +90,11 @@ export async function evaluateDialogues({ dialogues, plan }) {
       const planned = await plan(turn.question, previousPlan);
       const compact = compactPlan(planned);
       // compactPlan keeps what the next turn sees; the exclusion intent is scored from the full plan.
-      const scoredPlan = planned?.diagnostics?.excludeShown === true
-        ? { ...compact, diagnostics: { excludeShown: true } }
+      const scoredPlan = planned?.diagnostics?.excludeShown === true || planned?.diagnostics?.followUpAction
+        ? { ...compact, diagnostics: {
+          ...(planned.diagnostics.excludeShown === true ? { excludeShown: true } : {}),
+          ...(planned.diagnostics.followUpAction ? { followUpAction: planned.diagnostics.followUpAction } : {}),
+        } }
         : compact;
       const scored = index === 0 && turn.setup ? { passed: true, failures: [] } : scoreTurn(scoredPlan, turn, previousPlan);
       turns.push({

@@ -55,7 +55,7 @@ function qualifies(receipt, followUp) {
   // A follow-up takes its conditions from the turn before it, so it joins without any of its own.
   return typeof question === 'string' && question.trim()
     && (followUp || hasContent || hasFilters || recent)
-    && ['answer', 'no_result', 'no_other'].includes(receipt.outcome);
+    && ['answer', 'no_result', 'no_other', 'count'].includes(receipt.outcome);
 }
 
 function shownOf(row) {
