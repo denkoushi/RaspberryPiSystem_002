@@ -6,7 +6,7 @@ import { catalogEntries, definitionForCatalog } from './catalog.mjs';
 import { CAUSE_CATEGORIES, CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { QUERY_PLAN_SCHEMA, hasAppliedHardFilter, shouldSkipRelevance } from './query-plan.mjs';
 import { contentSpans, contentTokens, relevanceQuery, stripListedTerms } from './structural-text.mjs';
-import { enumeratedChoiceGroups } from './value-index.mjs';
+import { enumeratedChoiceGroups, normalizeForMatch } from './value-index.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay, referenceDate } from './period-parse.mjs';
 
 const LIMIT_OPTIONS = ['1', '2', '3', '5', '10', '20'];
@@ -50,7 +50,47 @@ function previousPlanSummary(previousPlan) {
   return summary;
 }
 
-function valuesFromAnswer(answer, options, indexedValues) {
+// Option ids: `v<i>` is one indexed value, `h<i>` is a hierarchy prefix that stands for every
+// value beneath it. A prefix chosen next to one of its own strict descendants is dropped, so
+// naming a section never widens to its factory.
+function resolveOption(group, id) {
+  if (typeof id !== 'string') return null;
+  const index = Number(id.slice(1));
+  if (id.startsWith('v')) {
+    const value = group.values[index];
+    return typeof value === 'string' ? { values: [value], terms: [] } : null;
+  }
+  if (id.startsWith('h')) {
+    const item = group.hierarchy?.[index];
+    return item && Array.isArray(item.values) && item.values.length ? { values: [...item.values], terms: [item.prefix] } : null;
+  }
+  return null;
+}
+
+function withoutCoveringPrefixes(group, ranked) {
+  const chosenValues = ranked
+    .filter((option) => option.id.startsWith('v'))
+    .map((option) => normalizeForMatch(group.values[Number(option.id.slice(1))]));
+  return ranked.filter((option) => {
+    if (!option.id.startsWith('h')) return true;
+    const prefix = normalizeForMatch(group.hierarchy?.[Number(option.id.slice(1))]?.prefix);
+    return !chosenValues.some((value) => value.length > prefix.length && value.startsWith(prefix));
+  });
+}
+
+function collectOptions(group, rows) {
+  const values = [];
+  const terms = [];
+  for (const row of rows) {
+    const resolved = resolveOption(group, row.id);
+    if (!resolved) continue;
+    for (const value of resolved.values) if (!values.includes(value)) values.push(value);
+    for (const term of resolved.terms) if (!terms.includes(term)) terms.push(term);
+  }
+  return { values, terms };
+}
+
+function valuesFromAnswer(answer, options, group) {
   const probabilities = answer?.probabilities;
   if (probabilities && typeof probabilities === 'object') {
     const noneScore = Number(probabilities[NONE]);
@@ -60,27 +100,27 @@ function valuesFromAnswer(answer, options, indexedValues) {
       .filter((option) => Number.isFinite(option.score))
       .sort((left, right) => right.score - left.score);
     const best = ranked[0];
-    const valuesOf = (rows) => rows
-      .map((option) => indexedValues[Number(option.id.slice(1))])
-      .filter((value) => typeof value === 'string');
     if (!best || best.score < VALUE_LOW_AT || (Number.isFinite(noneScore) && noneScore >= NONE_CLARIFY_BELOW && noneScore >= best.score)) {
       return { kind: 'none' };
     }
     const rival = Math.max(ranked[1]?.score ?? 0, Number.isFinite(noneScore) ? noneScore : 0);
     const accepted = best.score >= VALUE_ACCEPT_AT && !(Number.isFinite(noneScore) && noneScore >= best.score);
     if (!accepted && best.score - rival < VALUE_RIVAL_GAP) {
-      return { kind: 'low', values: valuesOf(ranked.filter((option) => option.score >= VALUE_LOW_AT)).slice(0, 5) };
+      return { kind: 'low', values: collectOptions(group, ranked.filter((option) => option.score >= VALUE_LOW_AT)).values.slice(0, 5) };
     }
     if (!accepted) return { kind: 'none' };
-    const close = ranked.filter((option) => option.score >= best.score - VALUE_CLOSE_GAP && option.score >= VALUE_ACCEPT_AT);
-    const values = close.map((option) => indexedValues[Number(option.id.slice(1))]).filter((value) => typeof value === 'string');
-    if (values.length > MAX_MULTI_VALUES) return { kind: 'clarify', values: values.slice(0, MAX_MULTI_VALUES) };
-    return { kind: 'values', values };
+    const close = withoutCoveringPrefixes(
+      group,
+      ranked.filter((option) => option.score >= best.score - VALUE_CLOSE_GAP && option.score >= VALUE_ACCEPT_AT),
+    );
+    const { values, terms } = collectOptions(group, close);
+    if (close.length > MAX_MULTI_VALUES) return { kind: 'clarify', values: values.slice(0, MAX_MULTI_VALUES) };
+    return { kind: 'values', values, terms };
   }
   const pick = chosen(answer, options.map((option) => option.id));
   if (!pick || pick === NONE) return { kind: pick ? 'none' : 'missing' };
-  const value = indexedValues[Number(pick.slice(1))];
-  return typeof value === 'string' ? { kind: 'values', values: [value] } : { kind: 'missing' };
+  const resolved = resolveOption(group, pick);
+  return resolved ? { kind: 'values', ...resolved } : { kind: 'missing' };
 }
 
 function answersOf(result) {
@@ -95,7 +135,7 @@ const CAUSE_SOURCE = 'nonconformity';
 // A classification bucket, never something a question asks for.
 const UNKNOWN_CAUSE = 'unknown';
 
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-22';
+export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-26';
 
 // A breakdown (counts per cause, department or month) is accepted only when the question itself
 // talks about counts or distribution. Night 19 (2026-10-21): JEV chose a cause breakdown for 21
@@ -283,10 +323,17 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
           return;
         }
         const options = group.values.map((value, valueIndex) => ({ id: `v${valueIndex}`, description: value }));
+        const hierarchy = Array.isArray(group.hierarchy) ? group.hierarchy : [];
+        hierarchy.forEach((item, itemIndex) => {
+          options.push({ id: `h${itemIndex}`, description: `${item.prefix}（配下の${item.values.length}部署すべて）` });
+        });
         options.push({ id: NONE, description: 'この語は絞り込み条件にしない' });
+        const hierarchyNote = hierarchy.length
+          ? '「配下の部署すべて」の選択肢は、発話がその階層だけを言い、より細かい部署を言っていないときに選ぶ。'
+          : '';
         questions[key] = choiceQuestion(
           fromIndex
-            ? `${said('この発話', '`request`')}が指定している${labelOf(entries, group.source, group.field)}の値を、意味が合うものだけ選ぶ。省略、通称、一字の揺れも同じ値として扱う。指定がなければ none。`
+            ? `${said('この発話', '`request`')}が指定している${labelOf(entries, group.source, group.field)}の値を、意味が合うものだけ選ぶ。省略、通称、一字の揺れも同じ値として扱う。${hierarchyNote}指定がなければ none。`
             : `${said('質問', '`request`')}中の「${group.term}」に対応する${labelOf(entries, group.source, group.field)}の値を一つ選ぶ。候補にない値は作らない。該当しなければ none。`,
           options,
         );
@@ -407,7 +454,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
             continue;
           }
           const picked = fromIndex || linked
-            ? valuesFromAnswer(answers[key], mapped.options, mapped.group.values)
+            ? valuesFromAnswer(answers[key], mapped.options, mapped.group)
             : null;
           if (fromIndex || linked) {
             if (picked.kind === 'clarify') {
@@ -421,7 +468,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
                 op: picked.values.length > 1 ? 'in' : 'eq',
                 values: picked.values,
               });
-              resolvedTerms.push(...picked.values);
+              resolvedTerms.push(...picked.values, ...(picked.terms ?? []));
               if (mapped.group.term !== mapped.group.field) resolvedTerms.push(mapped.group.term);
             }
             continue;

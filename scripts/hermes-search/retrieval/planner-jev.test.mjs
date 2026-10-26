@@ -925,3 +925,67 @@ test('a content follow-up that names a different cause keeps the inherited one',
   assert.equal(plan.causeCategory, 'drawing');
   assert.deepEqual(plan.diagnostics.causeDecision, { chosen: 'drawing', dropped: 'content_search', heard: 'check' });
 });
+
+const hierarchyRecords = [
+  { id: 'h1', originDepartmentName: '東工場製造部機械課' },
+  { id: 'h2', originDepartmentName: '東工場製造部組立課' },
+  { id: 'h3', originDepartmentName: '西工場製造部（製造）' },
+  { id: 'h4', originDepartmentName: '西工場製造部（加工）' },
+];
+
+function hierarchyAnswers(score, { descendant = null, drop = true } = {}) {
+  return async (input) => {
+    const field = Object.entries(input.questions).find(([key]) => key.startsWith('field_'));
+    assert.match(field[1].instructions, /配下の部署すべて/);
+    const entries = Object.entries(field[1].criteria);
+    const prefixId = entries.find(([, description]) => description === '西工場（配下の2部署すべて）')[0];
+    const probabilities = { [prefixId]: score.prefix, none: score.none };
+    if (descendant) probabilities[entries.find(([, description]) => description === descendant)[0]] = score.descendant;
+    return {
+      answers: {
+        scope: { type: 'choice', choice: 'nonconformity' },
+        [field[0]]: { type: 'choice', probabilities },
+        ...(input.questions.drop_0 ? { drop_0: { type: 'noul', noul: drop ? 0.8 : 0.1 } } : {}),
+        ...(input.questions.add_0 ? { add_0: { type: 'noul', noul: 0.1 } } : {}),
+        ...(input.questions.contentCarry ? { contentCarry: { type: 'choice', choice: 'same' } } : {}),
+        sort: { type: 'choice', choice: 'recent' },
+        limit: { type: 'choice', choice: 'unspecified' },
+        content: { type: 'noul', noul: 0.1 },
+      },
+    };
+  };
+}
+
+test('a factory named in a follow-up replaces the section filter with every unit beneath it', async () => {
+  const valueIndex = buildValueIndex(hierarchyRecords, catalog);
+  const previousPlan = {
+    sources: ['nonconformity'],
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['東工場製造部機械課'] }],
+    semanticQuery: '寸法不良',
+    sort: 'recent',
+    limit: null,
+  };
+  const { plan } = await createPlanner({ evaluate: hierarchyAnswers({ prefix: 0.78, none: 0.1 }) }).plan({
+    question: '西工場では類例ない？',
+    previousPlan,
+    catalog,
+    valueIndex,
+  });
+  assert.equal(plan.filters.length, 1);
+  assert.equal(plan.filters[0].op, 'in');
+  assert.deepEqual([...plan.filters[0].values].sort(), ['西工場製造部（加工）', '西工場製造部（製造）']);
+  assert.equal(plan.semanticQuery.includes('西工場'), false);
+});
+
+test('a section chosen next to its own factory keeps only the section', async () => {
+  const valueIndex = buildValueIndex(hierarchyRecords, catalog);
+  const { plan } = await createPlanner({
+    evaluate: hierarchyAnswers({ prefix: 0.72, none: 0.05, descendant: 0.8 }, { descendant: '西工場製造部（製造）' }),
+  }).plan({ question: '西工場製造部（製造）の不適合', catalog, valueIndex });
+  assert.deepEqual(plan.filters, [{
+    source: 'nonconformity',
+    field: 'originDepartmentName',
+    op: 'eq',
+    values: ['西工場製造部（製造）'],
+  }]);
+});

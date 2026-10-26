@@ -86,15 +86,54 @@ export function choiceValuesForField(question, values, { cap = VALUE_CHOICE_CAP,
   return [...picked];
 }
 
+// Organization names are written as one string with the levels run together
+// (factory, division, section). A prefix that ends at one of these suffixes and
+// covers two or more values is offered as a choice that means every unit beneath it.
+export const ORGANIZATION_SUFFIX = /事業所|事業部|本部|工場|センター|グループ|チーム|部|課|室|係/gu;
+const MIN_PREFIX_LENGTH = 3;
+
+export function hierarchyGroups(values) {
+  const list = (values ?? []).filter((value) => typeof value === 'string' && value.trim());
+  const byPrefix = new Map();
+  for (const value of list) {
+    const folded = value.normalize('NFKC');
+    const norm = normalizeForMatch(folded);
+    for (const match of folded.matchAll(ORGANIZATION_SUFFIX)) {
+      const prefix = folded.slice(0, match.index + match[0].length);
+      const prefixNorm = normalizeForMatch(prefix);
+      if (prefixNorm.length < MIN_PREFIX_LENGTH || prefixNorm.length >= norm.length) continue;
+      if (!byPrefix.has(prefixNorm)) byPrefix.set(prefixNorm, { prefix, values: new Set() });
+    }
+  }
+  for (const value of list) {
+    const norm = normalizeForMatch(value);
+    for (const [prefixNorm, group] of byPrefix) {
+      if (norm.startsWith(prefixNorm)) group.values.add(value);
+    }
+  }
+  return [...byPrefix.values()]
+    .filter((group) => group.values.size >= 2)
+    .map((group) => ({ prefix: group.prefix, values: [...group.values] }))
+    .sort((left, right) => left.prefix.localeCompare(right.prefix, 'ja'));
+}
+
 export function enumeratedChoiceGroups(question, valueIndex, catalog) {
   const groups = [];
   for (const entry of catalogEntries(catalog)) {
     const fields = valueIndex?.values?.[entry.id] ?? {};
     for (const field of entry.fields) {
       if (!field.filterable || !field.enumerated) continue;
-      const values = choiceValuesForField(question, fields[field.key] ?? [], { cap: valueChoiceCap(entry) });
+      const indexed = fields[field.key] ?? [];
+      const cap = valueChoiceCap(entry);
+      const values = choiceValuesForField(question, indexed, { cap });
       if (!values.length) continue;
-      groups.push({ source: entry.id, field: field.key, values });
+      const group = { source: entry.id, field: field.key, values };
+      if (field.role === 'organization') {
+        const hierarchy = hierarchyGroups(indexed);
+        const offered = new Set(choiceValuesForField(question, hierarchy.map((item) => item.prefix), { cap }));
+        group.hierarchy = hierarchy.filter((item) => offered.has(item.prefix));
+      }
+      groups.push(group);
     }
   }
   return groups;
