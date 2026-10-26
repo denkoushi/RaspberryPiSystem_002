@@ -2078,6 +2078,7 @@ APIの概要と詳細。
 - [Hermes spare-capacity preparation](plans/hermes-background-admission.md)
 
 - [Hermes background worker implementation](plans/hermes-background-worker.md)
+- [Nightly security review runbook](runbooks/nightly-security-review.md) — enable, read private reports, manage known findings, and disable.
 - [Nightly security and error review](plans/nightly-security-review-execplan.md) — business LLM reads deployed changes and log digests at night; Claude verifies in the morning.
 - [Hermes knowledge intake and reports](plans/hermes-knowledge.md) — Markdown/Git, photographs, PDFs and remaining integration work.
 - [Kiosk inventory daily/setup screens](plans/kiosk-inventory-ux-execplan.md) — NFC-first 在庫操作 with password-free correction and a separate touch setup screen.

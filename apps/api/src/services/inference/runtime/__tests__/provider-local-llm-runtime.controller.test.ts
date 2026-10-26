@@ -45,6 +45,7 @@ function inferenceRoutes(
   return {
     photo_label: { providerId: 'dgx_text' },
     business_hermes: { providerId: 'dgx_text' },
+    security_review: { providerId: 'dgx_text' },
     document_summary: { providerId: 'dgx_text' },
     admin_console_chat: { providerId: 'dgx_text' },
     ...overrides,

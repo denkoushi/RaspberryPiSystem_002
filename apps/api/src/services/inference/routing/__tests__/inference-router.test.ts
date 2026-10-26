@@ -27,6 +27,7 @@ describe('InferenceRouter', () => {
       routes: {
         photo_label: { providerId: 'sub' },
         business_hermes: { providerId: 'sub' },
+        security_review: { providerId: 'sub' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
       },
@@ -42,6 +43,7 @@ describe('InferenceRouter', () => {
       routes: {
         photo_label: { providerId: 'default', modelOverride: 'override-x' },
         business_hermes: { providerId: 'default' },
+        security_review: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
       },
@@ -55,6 +57,7 @@ describe('InferenceRouter', () => {
       routes: {
         photo_label: { providerId: 'nope' },
         business_hermes: { providerId: 'default' },
+        security_review: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
       },
@@ -69,6 +72,7 @@ describe('InferenceRouter', () => {
       routes: {
         photo_label: { providerId: 'default' },
         business_hermes: { providerId: 'default' },
+        security_review: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'sub', modelOverride: 'chat-model' },
       },

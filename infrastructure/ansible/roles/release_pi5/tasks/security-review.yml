@@ -1,0 +1,23 @@
+---
+- name: Prepare private review storage on the existing project SSD
+  ansible.builtin.file:
+    path: "{{ release_pi5_project_dir }}/storage/security-review/{{ item }}"
+    state: directory
+    owner: "{{ api_runtime_uid | default(1000) }}"
+    group: "{{ api_runtime_gid | default(1000) }}"
+    mode: '0700'
+  loop: ['', bundles, reports]
+
+- name: Deliver the lease-controlled security review settings
+  ansible.builtin.lineinfile:
+    path: "{{ release_pi5_compose_environment.PI5_ENV_FILE }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+    mode: '0600'
+  loop:
+    - {key: SECURITY_REVIEW_NIGHTLY_ENABLED, value: "{{ security_review_nightly_enabled | default(false) | bool | ternary('true', 'false') }}"}
+    - {key: SECURITY_REVIEW_DATA_DIR, value: /app/storage/security-review}
+    - {key: SECURITY_REVIEW_NIGHTLY_CRON, value: "{{ security_review_nightly_cron }}"}
+    - {key: SECURITY_REVIEW_RETRY_UNTIL, value: "{{ security_review_retry_until }}"}
+  no_log: true

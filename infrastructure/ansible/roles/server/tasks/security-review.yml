@@ -1,0 +1,70 @@
+---
+- name: Create private review directories for the API runtime user
+  ansible.builtin.file:
+    path: "{{ security_review_data_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ api_runtime_uid | default(1000) }}"
+    group: "{{ api_runtime_gid | default(1000) }}"
+    mode: '0700'
+  loop: ['', bundles, reports]
+
+- name: Create root-only collector configuration and state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  loop:
+    - "{{ security_review_state_dir }}"
+    - /etc/security-review
+
+- name: Install the local collector and known findings tool
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/server/security-review/{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - {src: collect.py, dest: /usr/local/bin/security-review-collect.py}
+    - {src: known.py, dest: /usr/local/bin/security-review-known.py}
+
+- name: Deliver collector paths and detection rules
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-collect.json.j2"
+    dest: /etc/security-review/collect.json
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Deliver security review collector units
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-collect.{{ item }}.j2"
+    dest: "/etc/systemd/system/security-review-collect.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  register: security_review_units
+
+- name: Reload collector units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: security_review_units is changed
+
+- name: Apply the collector enable flag
+  ansible.builtin.systemd:
+    name: security-review-collect.timer
+    enabled: "{{ security_review_collect_enabled | bool }}"
+    state: "{{ security_review_collect_enabled | bool | ternary('started', 'stopped') }}"
+  when: not (ansible_check_mode and security_review_units is changed)
+
+- name: Refresh the existing Trivy script with private review exclusions
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/trivy-scan.sh.j2"
+    dest: /usr/local/bin/trivy-scan.sh
+    owner: root
+    group: root
+    mode: '0755'
+  when: trivy_enabled | default(false) | bool

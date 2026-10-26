@@ -6,6 +6,7 @@ export type LocalLlmRuntimeUseCase =
   | 'photo_label'
   /** 業務Hermesの推論。photo_label と同じ DGX provider/lease を共有する。 */
   | 'business_hermes'
+  | 'security_review'
   | 'document_summary'
   | 'admin_console_chat'
   /** Cursor/Agent 等が利用する補助コンテナ（DGX gateway の agent-container 経路） */

@@ -1,0 +1,9 @@
+[Unit]
+Description=Prepare private security review material before the API review
+
+[Timer]
+OnCalendar={{ security_review_collect_on_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

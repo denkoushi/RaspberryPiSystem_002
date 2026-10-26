@@ -90,6 +90,7 @@ describe('inference-use-case-runtime-intent', () => {
       routes: {
         photo_label: { providerId: 'dgx_primary' },
         business_hermes: { providerId: 'dgx_primary' },
+        security_review: { providerId: 'dgx_primary' },
         document_summary: { providerId: 'dgx_primary' },
         admin_console_chat: { providerId: 'dgx_primary' },
       },
@@ -127,6 +128,7 @@ describe('inference-use-case-runtime-intent', () => {
       routes: {
         photo_label: { providerId: 'ubuntu_vlm' },
         business_hermes: { providerId: 'dgx_primary' },
+        security_review: { providerId: 'dgx_primary' },
         document_summary: { providerId: 'ubuntu_vlm' },
         admin_console_chat: { providerId: 'dgx_primary' },
       },

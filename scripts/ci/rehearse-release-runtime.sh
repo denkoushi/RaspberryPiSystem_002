@@ -216,6 +216,7 @@ required = {
     '/app/storage/pallet-machine-illustrations',
     '/app/storage/csv-dashboards',
     '/app/storage/hermes-search',
+    '/app/storage/security-review',
     '/app/storage/.integrity',
 }
 if set(targets) != required:

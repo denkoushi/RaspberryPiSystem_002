@@ -181,10 +181,90 @@ trivy_version: "0.54.1"
 trivy_package_file: "trivy_{{ trivy_version }}_Linux-ARM64.deb"
 trivy_download_url: "https://github.com/aquasecurity/trivy/releases/download/v{{ trivy_version }}/{{ trivy_package_file }}"
 trivy_skip_dirs:
+  - "{{ security_review_data_dir }}"
   - "/opt/RaspberryPiSystem_002/certs"
 trivy_alert_ignore_patterns:
+  - "{{ security_review_data_dir }}"
   - "/certs/"
   - "/backups/"
+
+# Private nightly review: defaults stay off until the host preparation is applied.
+security_review_collect_enabled: false
+security_review_nightly_enabled: false
+security_review_collect_on_calendar: "*-*-* 05:30:00 Asia/Tokyo"
+security_review_nightly_cron: "0 6 * * *"
+security_review_retry_until: "06:55"
+security_review_data_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}/storage/security-review"
+security_review_state_dir: /var/lib/security-review
+security_review_material_byte_cap: 192000
+security_review_caddy_unusual_hours: [0, 1, 2, 3, 4, 5]
+security_review_caddy_denied_statuses: [401, 403]
+security_review_caddy_unknown_path_statuses: [404]
+security_review_caddy_known_path_patterns: ['^/api/', '^/assets/', '^/(kiosk|admin|signage)(/|$)', '^/$']
+security_review_caddy_oversized_bytes: 10485760
+security_review_caddy_examples_per_rule: 10
+security_review_changes_exclude:
+  - 'pnpm-lock.yaml'
+  - '*package-lock.json'
+  - '*.lock'
+  - 'docs/*'
+  - '*.md'
+  - '*/generated/*'
+  - 'generated/*'
+  - '*.generated.*'
+  - '*.svg'
+  - '*.png'
+  - '*.jpg'
+  - '*.jpeg'
+  - '*.gif'
+  - '*.webp'
+  - '*.ico'
+  - '*.pdf'
+  - '*.env*'
+  - '.env*'
+  - '*/.env*'
+  - '*.pem'
+  - '*.key'
+  - 'certs/*'
+  - '*secret*'
+  - '*credentials*'
+security_review_collector_config:
+  project_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"
+  data_dir: "{{ security_review_data_dir }}"
+  state_file: "{{ security_review_state_dir }}/last_reviewed_sha"
+  api_uid: "{{ api_runtime_uid | default(1000) | int }}"
+  api_gid: "{{ api_runtime_gid | default(1000) | int }}"
+  timezone: Asia/Tokyo
+  material_byte_cap: "{{ security_review_material_byte_cap }}"
+  changes_exclude: "{{ security_review_changes_exclude }}"
+  fail2ban_logs: ["{{ security_monitor_fail2ban_log }}*"]
+  caddy_logs: ["{{ caddy_log_dir }}/access*.log", "{{ caddy_log_dir }}/access*.log.gz"]
+  monitor_unit: security-monitor.service
+  containers: [api-blue, api-green, web-blue, web-green]
+  caddy_rules:
+    unusual_hours: "{{ security_review_caddy_unusual_hours }}"
+    denied_statuses: "{{ security_review_caddy_denied_statuses }}"
+    unknown_path_statuses: "{{ security_review_caddy_unknown_path_statuses }}"
+    known_path_patterns: "{{ security_review_caddy_known_path_patterns }}"
+    oversized_bytes: "{{ security_review_caddy_oversized_bytes }}"
+    examples_per_rule: "{{ security_review_caddy_examples_per_rule }}"
+  scans:
+    - name: clamav
+      paths: ["{{ clamav_server_log_dir }}/{{ clamav_server_log_file }}*"]
+      start: 'Starting ClamAV scan'
+      end: 'Scan completed.'
+    - name: trivy
+      paths: ["{{ trivy_log_dir }}/{{ trivy_log_file }}*"]
+      start: 'Starting Trivy filesystem scan'
+      end: 'Trivy scan completed.'
+    - name: trivy-images
+      paths: ["{{ trivy_log_dir }}/trivy-image-scan.log*"]
+      start: 'Starting Trivy image scan'
+      end: 'Trivy image scan completed.'
+    - name: rkhunter
+      paths: ["{{ rkhunter_log_dir }}/{{ rkhunter_log_file }}*"]
+      start: 'Starting rkhunter check'
+      end: 'rkhunter check completed.'
 
 # Nightly scans run in a systemd scope with this disk bandwidth cap (path resolves to its backing disk)
 security_scan_io_device: "/"

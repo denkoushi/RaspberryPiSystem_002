@@ -75,6 +75,7 @@ services:
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
       - csv-dashboard-storage:/app/storage/csv-dashboards
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/hermes-search:/app/storage/hermes-search
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/security-review:/app/storage/security-review
       - file-integrity-storage:/app/storage/.integrity
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions

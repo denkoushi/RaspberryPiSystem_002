@@ -1075,6 +1075,10 @@
     - release_pi5_route == 'fresh'
     - business_hermes_answer_cache_enabled | default(false) | bool
 
+- name: Prepare the private security review scheduler settings
+  ansible.builtin.include_tasks: security-review.yml
+  when: release_pi5_route == 'fresh'
+
 - name: Mark the inactive Pi5 candidate startup boundary
   ansible.builtin.set_fact:
     release_pi5_start_attempted: true

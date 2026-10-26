@@ -79,6 +79,10 @@ function buildRouterConfig(providers: InferenceProviderDefinition[]): InferenceR
         providerId: env.INFERENCE_PHOTO_LABEL_PROVIDER_ID,
         modelOverride: env.INFERENCE_PHOTO_LABEL_MODEL,
       },
+      security_review: {
+        providerId: env.INFERENCE_PHOTO_LABEL_PROVIDER_ID,
+        modelOverride: 'system-prod-primary',
+      },
       document_summary: {
         providerId: env.INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID,
         modelOverride: env.INFERENCE_DOCUMENT_SUMMARY_MODEL,

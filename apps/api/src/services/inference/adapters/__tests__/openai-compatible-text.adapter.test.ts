@@ -13,12 +13,13 @@ const provider: InferenceProviderDefinition = {
 };
 
 describe('OpenAiCompatibleTextAdapter', () => {
-  it('sends the fixed background alias and returns deferred on busy without blind replay', async () => {
+  it.each(['business_hermes', 'security_review'] as const)('sends the background alias and defers without replay for %s', async useCase => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 429 });
     const router = new InferenceRouter({ providers: [{ ...provider, defaultModel: 'system-prod-primary' }],
-      routes: { business_hermes: { providerId: 'default' } } });
+      routes: { photo_label: { providerId: 'default' }, business_hermes: { providerId: 'default' },
+        security_review: { providerId: 'default' }, document_summary: { providerId: 'default' }, admin_console_chat: { providerId: 'default' } } });
     const adapter = new OpenAiCompatibleTextAdapter({ router, fetchImpl });
-    await expect(adapter.complete({ useCase: 'business_hermes', messages: [], maxTokens: 10,
+    await expect(adapter.complete({ useCase, messages: [], maxTokens: 10,
       temperature: 0, enableThinking: false, background: true })).rejects.toMatchObject({ name: 'InferenceDeferredError' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fetchImpl.mock.calls[0]![1].body)).toMatchObject({ model: 'dgx-background-preparation' });
@@ -37,6 +38,7 @@ describe('OpenAiCompatibleTextAdapter', () => {
       routes: {
         photo_label: { providerId: 'default' },
         business_hermes: { providerId: 'default' },
+        security_review: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
       },
@@ -75,6 +77,7 @@ describe('OpenAiCompatibleTextAdapter', () => {
       routes: {
         photo_label: { providerId: 'default' },
         business_hermes: { providerId: 'default' },
+        security_review: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
       },
@@ -104,6 +107,7 @@ describe('OpenAiCompatibleTextAdapter', () => {
       routes: {
         photo_label: { providerId: 'default' },
         business_hermes: { providerId: 'default' },
+        security_review: { providerId: 'default' },
         document_summary: { providerId: 'default' },
         admin_console_chat: { providerId: 'default' },
       },
