@@ -67,6 +67,9 @@ describe('buildInferenceRuntime', () => {
 
     const runtime = buildInferenceRuntime();
 
+    expect(runtime.router.resolve('security_review')).toMatchObject({
+      provider: { id: 'legacy_green' }, model: 'system-prod-primary',
+    });
     expect(runtime.getAdminProvider()?.id).toBe('trtllm_blue');
     expect(runtime.getAdminLocalLlmRuntimeConfig()).toMatchObject({
       configured: true,

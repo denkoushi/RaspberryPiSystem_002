@@ -44,7 +44,7 @@ describe('local LLM availability (isolated, real JWT/client-key authorization)',
     const router = new InferenceRouter({
       providers: [provider],
       routes: {
-        business_hermes: { providerId: provider.id }, photo_label: { providerId: provider.id },
+        business_hermes: { providerId: provider.id }, security_review: { providerId: provider.id }, photo_label: { providerId: provider.id },
         document_summary: { providerId: provider.id }, admin_console_chat: { providerId: 'admin' },
       },
     });

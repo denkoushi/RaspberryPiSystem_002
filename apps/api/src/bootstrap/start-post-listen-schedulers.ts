@@ -7,6 +7,7 @@ import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js'
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
 import { getProcedureTermLearningScheduler } from '../services/assembly/procedure-term-learning.scheduler.js';
+import { getSecurityReviewScheduler } from '../services/security-review/security-review.scheduler.js';
 import { getBusinessHermesNightlyScheduler } from '../services/business-hermes/business-hermes-nightly.scheduler.js';
 import { getBackupScheduler } from '../services/backup/backup-scheduler.js';
 import { getCsvImportScheduler } from '../services/imports/csv-import-scheduler.js';
@@ -157,6 +158,8 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: () => grindingPlanningBoardWarmup.stop() },
     { name: 'procedure-term-learning', start: () => getProcedureTermLearningScheduler().start(),
       stop: () => getProcedureTermLearningScheduler().stop() },
+    { name: 'security-review-nightly', start: () => getSecurityReviewScheduler().start(),
+      stop: () => getSecurityReviewScheduler().stop() },
     { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
       stop: () => getBusinessHermesNightlyScheduler().stop() },
     { name: 'fkojunst-mail-superseded-prune', start: () => getFkojunstMailSupersededPruneScheduler().start(),
@@ -336,6 +339,7 @@ export function listPostListenSchedulerNames(): string[] {
     'grinding-planning-board-startup-warmup',
     'procedure-term-learning',
     'business-hermes-nightly',
+    'security-review-nightly',
     'fkojunst-mail-superseded-prune',
     'file-storage-integrity-backfill',
     'backup',

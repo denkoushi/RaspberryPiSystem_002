@@ -1,0 +1,13 @@
+---
+# Prepare private storage and scan exclusions before the API bind mount is released.
+# Run with --check --diff first. This playbook does not enable the API job.
+- name: Prepare the Pi5 private security review collector
+  hosts: raspberrypi5
+  gather_facts: false
+  become: true
+  serial: 1
+  tasks:
+    - name: Apply the server security review tasks
+      ansible.builtin.import_role:
+        name: server
+        tasks_from: security-review.yml

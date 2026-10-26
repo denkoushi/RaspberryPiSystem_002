@@ -160,6 +160,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'grinding-planning-board-startup-warmup',
       'procedure-term-learning',
       'business-hermes-nightly',
+      'security-review-nightly',
       'fkojunst-mail-superseded-prune',
       'file-storage-integrity-backfill',
       'backup',

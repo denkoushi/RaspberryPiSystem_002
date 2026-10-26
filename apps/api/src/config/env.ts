@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
 import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';
 import { alertsEnvShape } from './env/alerts.js';
+import { securityReviewEnvShape } from './env/security-review.js';
 import { businessHermesEnvShape } from './env/business-hermes.js';
 import {
   coreEnvShape,
@@ -28,6 +29,7 @@ const envSchema = z
   .object({
     ...coreEnvShape,
     ...businessHermesEnvShape,
+    ...securityReviewEnvShape,
     ...signageEnvShape,
     ...networkEnvShape,
     ...alertsEnvShape,

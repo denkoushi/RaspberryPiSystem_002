@@ -32,6 +32,12 @@ class ClassifyChangesTests(unittest.TestCase):
         assert isinstance(matrix, list)
         return {item["service"] for item in matrix}
 
+    def test_security_review_collector_selects_its_fixture_test_job(self) -> None:
+        for path in ("scripts/server/security-review/collect.py", "scripts/server/security-review/known.py", "scripts/server/tests/test_security_review_collect.py"):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(self.selected(result), {"repo_policy", "db_infra", "deploy_contract", "client"})
+
     def test_docs_and_root_markdown_select_repo_policy_only(self) -> None:
         result = self.classify(
             Change("M", "docs/guides/deployment.md"),

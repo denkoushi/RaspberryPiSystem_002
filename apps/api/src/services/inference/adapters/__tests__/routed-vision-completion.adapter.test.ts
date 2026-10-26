@@ -18,6 +18,7 @@ const baseRouter = () =>
     routes: {
       photo_label: { providerId: 'default' },
       business_hermes: { providerId: 'default' },
+      security_review: { providerId: 'default' },
       document_summary: { providerId: 'default' },
       admin_console_chat: { providerId: 'default' },
     },
@@ -27,7 +28,7 @@ describe('RoutedVisionCompletionAdapter', () => {
   it('uses existing background admission for vision and preserves caller cancellation', async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 429 }));
     const router = new InferenceRouter({ providers: [{ ...provider, defaultModel: 'system-prod-primary' }], routes: {
-      photo_label: { providerId: 'default' }, business_hermes: { providerId: 'default' }, document_summary: { providerId: 'default' },
+      photo_label: { providerId: 'default' }, business_hermes: { providerId: 'default' }, security_review: { providerId: 'default' }, document_summary: { providerId: 'default' },
       admin_console_chat: { providerId: 'default' },
     } });
     const adapter = new RoutedVisionCompletionAdapter({ router, fetchImpl, useCase: 'photo_label', getMaxTokens: () => 100, getTemperature: () => 0 });
