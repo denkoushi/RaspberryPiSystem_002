@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { existingRealIds, readRealRows, readReceiptQuestions, realId, realPath } from './flywheel-real.mjs';
+import { existingRealIds, planSummary, readRealRows, readReceiptQuestions, realId, realPath } from './flywheel-real.mjs';
 
 test('consultation route rows are not read as receipt questions', async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-real-routes-'));
@@ -39,9 +39,9 @@ test('receipts select content outcomes, deduplicate across days, and strip recor
   writeFileSync(path.join(dir, 'receipts-2026-10-03.jsonl'), `${rows.map(JSON.stringify).join('\n')}\nbroken\n`);
   writeFileSync(path.join(dir, 'receipts-2026-10-02.jsonl'), `${JSON.stringify(receipt('ABC 傷', 'no_result'))}\n`);
   assert.deepEqual(await readReceiptQuestions({ receiptsDir: dir, days: ['2026-10-03', '2026-10-02', '2026-10-01'] }), [
-    { id: realId('ABC 傷'), question: 'ＡＢＣ 傷', receiptAt: rows[0].at, dayOutcome: 'answer', dayShown: ['a1', 'b1'] },
-    { id: realId('空結果'), question: '空結果', receiptAt: rows[0].at, dayOutcome: 'no_result', dayShown: ['a1', 'b1'] },
-    { id: realId('他なし'), question: '他なし', receiptAt: rows[0].at, dayOutcome: 'no_other', dayShown: ['a1', 'b1'] },
+    { id: realId('ABC 傷'), question: 'ＡＢＣ 傷', receiptAt: rows[0].at, dayOutcome: 'answer', dayShown: ['a1', 'b1'], turn: 0 },
+    { id: realId('空結果'), question: '空結果', receiptAt: rows[0].at, dayOutcome: 'no_result', dayShown: ['a1', 'b1'], turn: 0 },
+    { id: realId('他なし'), question: '他なし', receiptAt: rows[0].at, dayOutcome: 'no_other', dayShown: ['a1', 'b1'], turn: 0 },
   ]);
 });
 
@@ -67,4 +67,43 @@ test('filter-only receipts join the set while questions with neither content nor
   writeFileSync(path.join(dir, 'receipts-2026-10-06.jsonl'), rows.map((row) => JSON.stringify(row)).join('\n') + '\n');
   const questions = await readReceiptQuestions({ receiptsDir: dir, days: ['2026-10-06'] });
   assert.deepEqual(questions.map((item) => item.question), ['仙台工場FA組立課の不適合２件', '最近の不適合を２件']);
+});
+
+test('receipts sharing a session replay as follow-ups with the previous plan, shown records, and earlier questions', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-real-session-'));
+  const plan = (semanticQuery, filters = []) => ({ sources: ['nonconformity'], filters, semanticQuery, sort: null, limit: 5, display: ['a'] });
+  const first = plan('ネジ 傷');
+  const second = plan('', [{ source: 'nonconformity', field: 'originDepartmentName', op: 'in', values: ['北工場A課', '北工場B課'] }]);
+  const rows = [
+    // Written out of order on purpose; the night sorts a session by time.
+    { at: '2026-10-26T14:55:00Z', sessionId: 's1', recordIds: ['nonconformity:c1'], hermesReceipt: { question: '北工場では類例ない？', outcome: 'answer', plan: second } },
+    { at: '2026-10-26T14:53:00Z', sessionId: 's1', recordIds: ['nonconformity:a1', 'nonconformity:b1'], hermesReceipt: { question: 'ネジの傷', outcome: 'answer', plan: first } },
+    // A turn that asked back is not replayed, but its plan is what the kiosk carried forward.
+    { at: '2026-10-26T14:54:00Z', sessionId: 's1', recordIds: [], hermesReceipt: { question: 'えっと', outcome: 'clarification', plan: plan('ネジ 傷 えっと') } },
+    { at: '2026-10-26T14:56:00Z', sessionId: 's1', recordIds: ['nonconformity:a1'], hermesReceipt: { question: '他に何件ある？', outcome: 'answer', plan: plan('', []) } },
+    // The same words in another session after a different search are another question.
+    { at: '2026-10-26T15:00:00Z', sessionId: 's2', recordIds: [], hermesReceipt: { question: 'へこみ', outcome: 'answer', plan: plan('へこみ') } },
+    { at: '2026-10-26T15:01:00Z', sessionId: 's2', recordIds: [], hermesReceipt: { question: '他に何件ある？', outcome: 'no_result', plan: plan('へこみ') } },
+    // Without a session id a receipt is a first turn of its own.
+    { at: '2026-10-26T15:02:00Z', recordIds: [], hermesReceipt: { question: '他に何件ある？', outcome: 'answer', plan: plan('他') } },
+  ];
+  writeFileSync(path.join(dir, 'receipts-2026-10-26.jsonl'), rows.map(JSON.stringify).join('\n') + '\n');
+  const questions = await readReceiptQuestions({ receiptsDir: dir, days: ['2026-10-26'] });
+  assert.deepEqual(questions.map((item) => [item.question, item.turn]), [
+    ['ネジの傷', 0], ['北工場では類例ない？', 2], ['他に何件ある？', 3], ['へこみ', 0], ['他に何件ある？', 1], ['他に何件ある？', 0],
+  ]);
+  const [, factory, count, , countAfterDent, alone] = questions;
+  assert.equal(factory.previousPlan.semanticQuery, 'ネジ 傷 えっと');
+  assert.deepEqual(Object.keys(factory.previousPlan), ['sources', 'filters', 'semanticQuery', 'sort', 'limit']);
+  assert.deepEqual(factory.previousShown, ['nonconformity:a1', 'nonconformity:b1']);
+  assert.deepEqual(factory.context, ['ネジの傷', 'えっと']);
+  assert.deepEqual(count.previousPlan, planSummary(second));
+  assert.deepEqual(count.previousShown, ['nonconformity:a1', 'nonconformity:b1', 'nonconformity:c1']);
+  assert.deepEqual(count.context, ['ネジの傷', 'えっと', '北工場では類例ない？']);
+  assert.deepEqual(count.dayShown, ['a1']);
+  assert.equal(count.id, realId('他に何件ある？', planSummary(second)));
+  assert.notEqual(count.id, countAfterDent.id);
+  assert.equal(alone.id, realId('他に何件ある？'));
+  assert.equal('previousPlan' in alone, false);
+  assert.equal(new Set(questions.map((item) => item.id)).size, questions.length);
 });

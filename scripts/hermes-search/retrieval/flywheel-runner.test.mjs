@@ -1068,3 +1068,35 @@ test('nightly cause templates load the store and check both generated and real f
   assert.equal(real[0].filterCheck.ok, true);
   assert.deepEqual(real[0].filterCheck.expectedIds, ['a1']);
 });
+
+test('a real follow-up replays with the previous plan and shown records, and graders read the earlier question too', async () => {
+  const { dir, input, receiptsDir } = realFixture();
+  const plan = { sources: ['nonconformity'], filters: [], semanticQuery: '傷', sort: null, limit: 5, display: ['condition'] };
+  writeFileSync(path.join(receiptsDir, 'receipts-2026-10-03.jsonl'), [
+    { at: '2026-10-03T03:00:00Z', sessionId: 'k1', recordIds: ['nonconformity:a1'], hermesReceipt: { question: '傷はある？', outcome: 'answer', plan } },
+    { at: '2026-10-03T03:01:00Z', sessionId: 'k1', recordIds: ['nonconformity:b1'], hermesReceipt: { question: '他に何件ある？', outcome: 'answer', plan } },
+  ].map(JSON.stringify).join('\n') + '\n');
+  const seen = [];
+  const graded = [];
+  const status = await runFlywheelNight({ ...input,
+    live: async (row) => {
+      seen.push(row);
+      return { outcome: 'answer', shown: ['nonconformity:b1'], candidates: ['b1'], judged: 30, loss: null, vectorStatus: 'ok', ms: 1 };
+    },
+    chat: async (request) => {
+      graded.push(JSON.stringify(request));
+      return { ok: true, content: '{"grade":3}' };
+    },
+  });
+  assert.equal(status.real, 2);
+  assert.deepEqual(seen[0], { a: null, b: null, question: '傷はある？', grades: null });
+  assert.deepEqual(seen[1], {
+    a: null, b: null, question: '他に何件ある？', grades: null,
+    previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: '傷', sort: null, limit: 5 },
+    previousShown: ['nonconformity:a1'],
+  });
+  const rows = readRealRows(readFileSync(realPath(dir, '2026-10-03'), 'utf8'));
+  assert.deepEqual(rows.map((row) => [row.turn, row.id]), [[0, realId('傷はある？')], [1, realId('他に何件ある？', seen[1].previousPlan)]]);
+  assert.deepEqual(rows[1].context, ['傷はある？']);
+  assert.ok(graded.some((request) => request.includes('傷はある？\\n他に何件ある？')));
+});

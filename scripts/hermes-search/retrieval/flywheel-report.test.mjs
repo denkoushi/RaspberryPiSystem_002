@@ -177,6 +177,7 @@ test('real summaries count only known relevance in shown and loss totals', () =>
     questions: 6, withRelevant: 4, shown: 1, lossStages: { not_in_pool: 1, judge_rejected: 1, other_shown: 1 },
     dayOutcomes: { answer: 3, no_result: 2, no_other: 1 },
     filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 },
+    followUp: { questions: 0, withRelevant: 0, shown: 0, lossStages: {}, filterMismatch: 0 },
   });
   const formatted = formatRealReport('2026-10-03', summarizeReal(realRows));
   assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1\n  filter questions 0, correct 0, mismatch 0, unsupported 0$/u);
@@ -222,4 +223,23 @@ test('report CLI accepts learned alongside nights and alone and prints check gai
   const empty = spawnSync(process.execPath, [cli, '--learned', file], { encoding: 'utf8' });
   assert.equal(empty.status, 0, empty.stderr);
   assert.equal(empty.stdout, 'learned: candidates 0, active 0, rejected 0, last decision none (heldout 0/0, real 0/0)\n');
+});
+
+test('real follow-up turns are counted apart with their own losses', () => {
+  const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: '傷', sort: null, limit: 5 };
+  const realRows = [
+    { source: 'real', relevant: ['a1'], dayOutcome: 'answer', live: live(null) },
+    { source: 'real', relevant: ['b1'], dayOutcome: 'answer', previousPlan, live: live('other_shown') },
+    { source: 'real', relevant: ['c1'], dayOutcome: 'no_result', previousPlan, live: live('not_in_pool') },
+    { source: 'real', relevant: ['d1'], dayOutcome: 'answer', previousPlan, live: live(null) },
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', previousPlan, filterCheck: { supported: true, ok: false }, live: live('filter_mismatch') },
+    { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: true, ok: false }, live: live('filter_mismatch') },
+  ];
+  const summary = summarizeReal(realRows);
+  assert.deepEqual(summary.followUp, { questions: 4, withRelevant: 3, shown: 1, lossStages: { other_shown: 1, not_in_pool: 1 }, filterMismatch: 1 });
+  assert.equal(summary.questions, 6);
+  assert.equal(summary.filter.mismatch, 2);
+  const formatted = formatRealReport('2026-10-03', summary);
+  assert.match(formatted, /\n  follow-up turns 4, with relevant 3, relevant shown 1, lost other_shown 1, not_in_pool 1, filter mismatch 1$/u);
+  assert.equal(formatRealReport('2026-10-03', summarizeReal(realRows.slice(0, 1))).includes('follow-up'), false);
 });
