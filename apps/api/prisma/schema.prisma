@@ -5831,3 +5831,11 @@ model KioskScreenWatchSession {
   @@index([threadId])
   @@index([targetClientDeviceId, status])
 }
+
+/// 加工機以外の棚位置の目安。既存棚テーブルへの変更は不要。
+model MobilePlacementShelfLandmark {
+  id                      String   @id @default(uuid())
+  name                    String   @unique
+  createdAt               DateTime @default(now())
+  createdByClientDeviceId String?
+}

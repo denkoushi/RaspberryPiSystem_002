@@ -1,17 +1,25 @@
+import type { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { listMachinesForShelfRegistration } from '../machine-master-query.service.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getShelfPhoto, putShelfPhoto, updateShelfMemo } from '../mobile-placement-shelf-photo.service.js';
 import { listRegisteredShelvesFromShelfMaster, registerMobilePlacementShelf } from '../mobile-placement-shelf-master.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   mobilePlacementShelf: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), create: vi.fn() },
-  mobilePlacementShelfPhoto: { upsert: vi.fn(), findUnique: vi.fn() }
+  mobilePlacementShelfPhoto: { upsert: vi.fn(), findUnique: vi.fn() },
+  mobilePlacementShelfLandmark: { findMany: vi.fn() },
+  $transaction: vi.fn()
 } }));
+vi.mock('../machine-master-query.service.js', () => ({ listMachinesForShelfRegistration: vi.fn() }));
 const stamp = new Date('2026-10-22T10:00:00Z');
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(listMachinesForShelfRegistration).mockResolvedValue({ machines: ['DAD-3220'] });
+  vi.mocked(prisma.mobilePlacementShelfLandmark.findMany).mockResolvedValue([]);
+  vi.mocked(prisma.$transaction).mockImplementation(async (callback) => callback(prisma as unknown as Prisma.TransactionClient));
   vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue({ id: 'shelf' } as never);
   vi.mocked(prisma.mobilePlacementShelfPhoto.upsert).mockResolvedValue({ updatedAt: stamp } as never);
 });

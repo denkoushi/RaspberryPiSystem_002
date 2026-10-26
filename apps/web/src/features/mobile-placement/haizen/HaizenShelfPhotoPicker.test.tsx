@@ -88,6 +88,20 @@ describe('photo shelf picker', () => {
     expect(screen.queryByRole('dialog', { name: '棚の写真を拡大' })).not.toBeInTheDocument();
   });
 
+  it.each(['北西', '北東', '南西', '南東', undefined] as const)('groups landmark shelves with direction %s and opens their photo', (direction) => {
+    const shelf: RegisteredShelfEntryDto = { shelfCodeRaw: direction ? `電気室 ${direction}` : '電気室', machineName: '電気室', direction, isStructured: true };
+    render(<HaizenShelfPhotoPicker shelves={[shelf, ...shelves]} previousShelfCodes={[]} selected={shelf.shelfCodeRaw}
+      loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} onClose={vi.fn()} onScan={vi.fn()} onMaster={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '電気室', exact: true }));
+    expect(screen.getByRole('heading', { name: '電気室 1棚' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'DAD-3220 2棚' })).not.toBeInTheDocument();
+    const tile = screen.getByRole('button', { name: `棚 電気室${direction ? ` ${direction}` : ''}`, exact: true });
+    expect(tile.querySelector('b')?.textContent).toBe(direction ?? '　');
+    fireEvent.click(tile);
+    const viewer = screen.getByRole('dialog', { name: '棚の写真を拡大' });
+    expect(within(viewer).getByText(shelf.shelfCodeRaw)).toBeInTheDocument();
+  });
+
   it('offers all shelves by default and retains QR and back controls', () => {
     const props = mount();
     expect(screen.getByRole('button', { name: '全部', exact: true })).toHaveAttribute('aria-pressed', 'true');

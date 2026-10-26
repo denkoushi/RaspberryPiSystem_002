@@ -36,6 +36,11 @@ vi.mock('../../../lib/prisma.js', () => ({
   }
 }));
 
+vi.mock('../shelf-landmark.service.js', () => ({
+  listShelfLandmarks: vi.fn(async () => ['電気室']),
+  requireShelfMachines: vi.fn(async () => ['DAD-3220'])
+}));
+
 vi.mock('../../production-schedule/production-schedule-lookup.service.js', () => ({
   listScheduleRowsByProductNo: vi.fn()
 }));
@@ -74,6 +79,15 @@ describe('haizen-placement.service', () => {
       where: { id: 'dev-1' },
       data: { haizenPresetShelfCodeRaw: '西-北-02' }
     });
+  });
+
+  it('updateHaizenPresetShelf は方角なしの目安だけの棚を保存する', async () => {
+    vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue({ shelfCodeRaw: '電気室' } as never);
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({} as never);
+
+    await expect(
+      updateHaizenPresetShelf({ clientDeviceId: 'dev-1', shelfCodeRaw: '電気室' })
+    ).resolves.toEqual({ shelfCodeRaw: '電気室' });
   });
 
   it('updateHaizenPresetShelf は棚マスタ未登録の棚を拒否する', async () => {

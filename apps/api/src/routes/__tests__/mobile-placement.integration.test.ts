@@ -1,4 +1,8 @@
 vi.mock('../../config/env/load-dotenv.js', () => ({}));
+vi.mock('../../services/mobile-placement/machine-master-query.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../services/mobile-placement/machine-master-query.service.js')>(),
+  listMachinesForShelfRegistration: vi.fn(async () => ({ machines: ['DAD-3220', '50013_540AP'] }))
+}));
 
 import { resetKnownFseibanCache } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';

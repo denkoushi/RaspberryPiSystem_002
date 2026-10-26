@@ -9,8 +9,19 @@ describe('parseStructuredShelfCode', () => {
     });
   });
 
-  it.each(['', ' 北 ', 'DAD-3220北', 'DAD-3220 北東', 'garbage'])('rejects malformed code %s', (raw) => {
+  it.each(['', ' 北 ', 'DAD-3220北', 'garbage'])('rejects malformed code %s', (raw) => {
     expect(parseStructuredShelfCode(raw)).toEqual({ isStructured: false });
+  });
+
+  it.each(['北西', '北東', '南西', '南東'])('parses %s without consuming its first character as a name', (direction) => {
+    expect(parseStructuredShelfCode(`電気室 ${direction}`)).toEqual({ isStructured: true, machineName: '電気室', direction });
+  });
+
+  it('recognizes directionless names only with a known-name match, including names ending in a direction', () => {
+    for (const name of ['電気室', '加工機 A', '電気室 南東']) {
+      expect(parseStructuredShelfCode(name, new Set([name]))).toEqual({ isStructured: true, machineName: name });
+    }
+    expect(parseStructuredShelfCode('電気室')).toEqual({ isStructured: false });
   });
 
   it('parses west-north slot', () => {

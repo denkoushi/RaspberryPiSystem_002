@@ -1,14 +1,22 @@
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { listMachinesForShelfRegistration } from '../machine-master-query.service.js';
 import { prisma } from '../../../lib/prisma.js';
 import { deleteMobilePlacementShelf, listRegisteredShelvesFromShelfMaster, registerMobilePlacementShelf } from '../mobile-placement-shelf-master.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   mobilePlacementShelf: { create: vi.fn(), findMany: vi.fn() },
+  mobilePlacementShelfLandmark: { findMany: vi.fn() },
   $transaction: vi.fn()
 } }));
-beforeEach(() => vi.resetAllMocks());
+vi.mock('../machine-master-query.service.js', () => ({ listMachinesForShelfRegistration: vi.fn() }));
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(listMachinesForShelfRegistration).mockResolvedValue({ machines: ['DAD-3220'] });
+  vi.mocked(prisma.mobilePlacementShelfLandmark.findMany).mockResolvedValue([{ name: '電気室' }] as never);
+  vi.mocked(prisma.$transaction).mockImplementation(async (callback) => callback(prisma as unknown as Prisma.TransactionClient));
+});
 
 describe('registerMobilePlacementShelf', () => {
   it.each(['西-北-01', '西-北-02-1', 'TEMP-A', '北', '機械 北東', ''])('rejects %s without writing', async (shelfCodeRaw) => {
@@ -16,7 +24,7 @@ describe('registerMobilePlacementShelf', () => {
     expect(prisma.mobilePlacementShelf.create).not.toHaveBeenCalled();
   });
 
-  it('accepts arbitrary machine names and canonicalizes whitespace', async () => {
+  it('accepts known machine names and canonicalizes whitespace', async () => {
     const result = await registerMobilePlacementShelf({ clientDeviceId: 'client', shelfCodeRaw: '  DAD-3220   北  ', displayLabel: ' メモ ' });
     expect(prisma.mobilePlacementShelf.create).toHaveBeenCalledWith({ data: {
       shelfCodeRaw: 'DAD-3220 北', displayLabel: 'メモ', createdByClientDeviceId: 'client'
@@ -26,9 +34,38 @@ describe('registerMobilePlacementShelf', () => {
 
   it('reports a unique constraint conflict as 409', async () => {
     vi.mocked(prisma.mobilePlacementShelf.create).mockRejectedValue(new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '5' }));
-    await expect(registerMobilePlacementShelf({ clientDeviceId: 'client', shelfCodeRaw: '任意の加工機 西' })).rejects.toMatchObject({
-      statusCode: 409, message: 'この加工機・方角の棚はもうあります'
+    await expect(registerMobilePlacementShelf({ clientDeviceId: 'client', shelfCodeRaw: 'DAD-3220 西' })).rejects.toMatchObject({
+      statusCode: 409, message: 'この目安・方角の棚はもうあります'
     });
+  });
+
+  it.each(['北西', '北', '北東', '西', '東', '南西', '南', '南東'])('registers landmark with %s', async (direction) => {
+    const result = await registerMobilePlacementShelf({ clientDeviceId: 'client', shelfCodeRaw: `電気室 ${direction}` });
+    expect(result.shelf).toMatchObject({ machineName: '電気室', direction, isStructured: true });
+  });
+
+  it.each(['電気室', 'DAD-3220'])('registers %s without a direction', async (name) => {
+    const result = await registerMobilePlacementShelf({ clientDeviceId: 'client', shelfCodeRaw: name });
+    expect(result.shelf).toMatchObject({ shelfCodeRaw: name, machineName: name, isStructured: true });
+    expect(result.shelf).not.toHaveProperty('direction');
+  });
+
+  it('stops registration when machine lookup fails, even for a landmark', async () => {
+    vi.mocked(listMachinesForShelfRegistration).mockRejectedValue(new Error('offline'));
+    await expect(registerMobilePlacementShelf({ clientDeviceId: 'client', shelfCodeRaw: '電気室' })).rejects.toMatchObject({ statusCode: 503, message: '加工機一覧を取得できませんでした。再試行してください' });
+    expect(prisma.mobilePlacementShelf.create).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('lists directionless names and tolerates machine failure=%s', async (failed) => {
+    vi.mocked(prisma.mobilePlacementShelf.findMany).mockResolvedValue(['電気室', 'DAD-3220', 'UNKNOWN', '電気室 南東'].map((shelfCodeRaw) => ({ shelfCodeRaw })) as never);
+    if (failed) vi.mocked(listMachinesForShelfRegistration).mockRejectedValue(new Error('offline'));
+    const result = await listRegisteredShelvesFromShelfMaster();
+    expect(result[0]).toMatchObject({ isStructured: true, machineName: '電気室' });
+    expect(result[0]).not.toHaveProperty('direction');
+    expect(result[1].isStructured).toBe(!failed);
+    expect(result[2].isStructured).toBe(false);
+    expect(result[3]).toMatchObject({ machineName: '電気室', direction: '南東' });
+    expect(listMachinesForShelfRegistration).toHaveBeenCalledTimes(1);
   });
 
   it('lists machine metadata while preserving legacy metadata', async () => {

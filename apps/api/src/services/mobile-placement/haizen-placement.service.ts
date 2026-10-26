@@ -6,6 +6,7 @@ import { listScheduleRowsByProductNo } from '../production-schedule/production-s
 import { findProductionSchedulePlacementSnapshot } from '../production-schedule/production-schedule-snapshot.service.js';
 import { pickPrimaryScheduleRowForOrder, normalizeSlipToken } from './mobile-placement-slip-match.js';
 import { parseStructuredShelfCode } from './mobile-placement-registered-shelves.service.js';
+import { listShelfLandmarks, requireShelfMachines } from './shelf-landmark.service.js';
 import { isHaizenEdgeDevice } from './haizen-edge-device.policy.js';
 
 export type HaizenManufacturingOrderBarcodeRaw = string;
@@ -97,11 +98,12 @@ export async function updateHaizenPresetShelf(input: {
   if (raw.length === 0) {
     throw new ApiError(400, '棚番が空です', undefined, 'HAIZEN_PRESET_EMPTY');
   }
-  const parsed = parseStructuredShelfCode(raw);
+  const knownNames = new Set([...(await listShelfLandmarks()), ...(await requireShelfMachines().catch(() => []))]);
+  const parsed = parseStructuredShelfCode(raw, knownNames);
   if (!parsed.isStructured) {
     throw new ApiError(
       400,
-      '棚の名前は「加工機名 方角」（例: DAD-3220 北）で指定してください',
+      '棚の名前は「目安 方角」か「目安」（例: DAD-3220 北）で指定してください',
       undefined,
       'HAIZEN_PRESET_NOT_STRUCTURED'
     );

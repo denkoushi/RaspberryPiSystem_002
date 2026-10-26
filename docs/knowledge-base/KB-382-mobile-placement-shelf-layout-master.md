@@ -8,6 +8,8 @@
 
 **版数表記の注意**: [api/mobile-placement.md](../api/mobile-placement.md) では本機能を **「V22 棚レイアウトマスタ」** と呼ぶ。[KB-339](./KB-339-mobile-placement-barcode-survey.md) の **V22（2026-04-18）** は **キオスク高視認テーマ**（`feature/mobile-placement-contrast-refactor`）であり **別系統**。本 KB では **「棚レイアウトマスタ（2026-05-23）」** と表記する。
 
+スマホ棚マスタの個別目安・8方角対応は [実装・検証記録](../plans/mobile-placement-shelf-landmarks.md) を参照。
+
 ## 仕様（正本）
 
 | 項目 | 内容 |
