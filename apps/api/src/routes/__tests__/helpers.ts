@@ -3,7 +3,7 @@ import { signAccessToken } from '../../lib/auth.js';
 import type { ClientDevice, Employee, Item, Loan, MeasuringInstrument, User } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';

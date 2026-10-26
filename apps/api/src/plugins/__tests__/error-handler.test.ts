@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { registerErrorHandler } from '../error-handler.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError, DomainHttpError } from '../../lib/errors.js';

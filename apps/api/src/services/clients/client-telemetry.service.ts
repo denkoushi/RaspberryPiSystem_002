@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 import { deliverTelemetryNotice } from '../kiosk-inquiry/system-notice-sources.js';
 import { prisma } from '../../lib/prisma.js';

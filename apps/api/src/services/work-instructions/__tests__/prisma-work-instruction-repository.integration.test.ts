@@ -1,4 +1,3 @@
-import { createPrismaClient } from '../../../lib/prisma-client.js';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
@@ -761,8 +760,8 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
 
   it('serializes two concurrent applications of the same source tuple', async () => {
     const databaseUrl = process.env.DATABASE_URL!;
-    concurrentClientA = createPrismaClient(databaseUrl);
-    concurrentClientB = createPrismaClient(databaseUrl);
+    concurrentClientA = new PrismaClient({ datasourceUrl: databaseUrl });
+    concurrentClientB = new PrismaClient({ datasourceUrl: databaseUrl });
     const firstRepository = new PrismaWorkInstructionRepository({ db: concurrentClientA });
     const secondRepository = new PrismaWorkInstructionRepository({ db: concurrentClientB });
     const concurrentPacket = packet({
@@ -810,8 +809,8 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
       steps: [{ step: 1, text: 'older', imageName: null }],
     });
     const databaseUrl = process.env.DATABASE_URL!;
-    concurrentClientA = createPrismaClient(databaseUrl);
-    concurrentClientB = createPrismaClient(databaseUrl);
+    concurrentClientA = new PrismaClient({ datasourceUrl: databaseUrl });
+    concurrentClientB = new PrismaClient({ datasourceUrl: databaseUrl });
     const newerRepository = new PrismaWorkInstructionRepository({ db: concurrentClientA });
     const olderRepository = new PrismaWorkInstructionRepository({ db: concurrentClientB });
 
@@ -848,8 +847,8 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
       steps: [imageStep(1, raceAsset.imageName, raceAsset.sha256)],
     });
     const databaseUrl = process.env.DATABASE_URL!;
-    concurrentClientA = createPrismaClient(databaseUrl);
-    concurrentClientB = createPrismaClient(databaseUrl);
+    concurrentClientA = new PrismaClient({ datasourceUrl: databaseUrl });
+    concurrentClientB = new PrismaClient({ datasourceUrl: databaseUrl });
     const cleanupRepository = new PrismaWorkInstructionRepository({ db: concurrentClientA });
     const applyRepository = new PrismaWorkInstructionRepository({ db: concurrentClientB });
     let waiting = 0;

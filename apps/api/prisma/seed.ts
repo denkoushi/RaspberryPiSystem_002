@@ -1,5 +1,5 @@
-import { createPrismaClient } from '../src/lib/prisma-client.js';
 import {
+  PrismaClient,
   EmployeeStatus,
   ItemStatus,
   UserRole,
@@ -24,7 +24,7 @@ import { buildProductionScheduleOrderSupplementDashboardDefinition } from '../sr
 import { ensureRiggingSlingsInspectionPowerappsDashboard } from '../src/services/rigging/slings-inspection-powerapps-dashboard.definition.js';
 import { resolveSeedCredentialPolicy } from '../src/config/seed-credentials.js';
 
-const prisma = createPrismaClient();
+const prisma = new PrismaClient();
 const seedDir = dirname(fileURLToPath(import.meta.url));
 const productionScheduleResourceMasterCsvPath = resolve(seedDir, 'seeds', 'dataSIGEN.csv');
 

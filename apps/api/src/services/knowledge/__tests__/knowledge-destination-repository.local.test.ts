@@ -1,6 +1,6 @@
-import { createPrismaClient } from '../../../lib/prisma-client.js';
 import { randomUUID } from 'node:crypto';
 
+import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KnowledgeAssetStore } from '../knowledge-asset-store.js';
@@ -17,7 +17,7 @@ import type { DurableFileStorePort } from '../../file-storage/durable-file-store
 import type { PdfKnowledgeImporter } from '../pdf-knowledge-importer.js';
 
 const enabled = process.env.KNOWLEDGE_DATABASE_TEST === '1';
-const db = createPrismaClient('postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test');
+const db = new PrismaClient({ datasourceUrl: 'postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test' });
 const repository = new PrismaKnowledgeIntakeRepository(db); const triage = new PrismaTriageRepository(db);
 const materials = new PrismaProcedureMaterialRepository(db); const procedures = new PrismaKnowledgeProcedureRepository(db);
 const subjects = new PrismaKnowledgeSubjectRepository(db);

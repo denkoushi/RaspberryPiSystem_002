@@ -1,4 +1,3 @@
-import { createPrismaClient } from '../../../lib/prisma-client.js';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
@@ -9,8 +8,8 @@ import { env } from '../../../config/env.js';
 import { enqueueProcedureVideoAutoEdit, recoverProcedureVideoAutoEdit, ProcedureVideoAutoEditService } from '../procedure-video-auto-edit.service.js';
 import { ProcedureVideoService } from '../procedure-video.service.js';
 
-const db = createPrismaClient();
-const other = createPrismaClient();
+const db = new PrismaClient();
+const other = new PrismaClient();
 // Local PostgreSQL is optional; CI must connect and exercise the actual migrated schema.
 let available = true;
 try { await db.$connect(); }

@@ -166,26 +166,18 @@ async function shiftHigherOrderSlotsAfterRelease(
 export async function releaseOrderAssignmentAtLocation(
   executor: PrismaOrderAssignmentExecutor,
   target: OrderAssignmentReleaseTarget
-) {
-  // Prisma 7 transaction clients also expose $transaction (nested savepoints).
-  // Call the operation directly inside the transaction instead of recursing.
-  if (executor.$transaction) {
-    return executor.$transaction((tx) =>
-      releaseOrderAssignmentInTransaction(tx as PrismaOrderAssignmentExecutor, target)
-    );
-  }
-  return releaseOrderAssignmentInTransaction(executor, target);
-}
-
-async function releaseOrderAssignmentInTransaction(
-  executor: PrismaOrderAssignmentExecutor,
-  target: OrderAssignmentReleaseTarget
 ): Promise<{
   released: boolean;
   resourceCd: string | null;
   orderNumber: number | null;
   shiftCount: number;
 }> {
+  if (executor.$transaction) {
+    return executor.$transaction((tx) =>
+      releaseOrderAssignmentAtLocation(tx as PrismaOrderAssignmentExecutor, target)
+    );
+  }
+
   const currentAssignment = await executor.productionScheduleOrderAssignment.findUnique({
     where: {
       csvDashboardRowId_location: {
@@ -234,20 +226,6 @@ async function releaseOrderAssignmentInTransaction(
 export async function releaseSplitOrderAssignmentAtLocation(
   executor: PrismaOrderAssignmentExecutor,
   target: { splitId: string; location: string }
-) {
-  // Prisma 7 transaction clients also expose $transaction (nested savepoints).
-  // Call the operation directly inside the transaction instead of recursing.
-  if (executor.$transaction && executor.productionScheduleOrderSplitAssignment) {
-    return executor.$transaction((tx) =>
-      releaseSplitOrderAssignmentInTransaction(tx as PrismaOrderAssignmentExecutor, target)
-    );
-  }
-  return releaseSplitOrderAssignmentInTransaction(executor, target);
-}
-
-async function releaseSplitOrderAssignmentInTransaction(
-  executor: PrismaOrderAssignmentExecutor,
-  target: { splitId: string; location: string }
 ): Promise<{
   released: boolean;
   resourceCd: string | null;
@@ -256,6 +234,12 @@ async function releaseSplitOrderAssignmentInTransaction(
 }> {
   if (!executor.productionScheduleOrderSplitAssignment) {
     return { released: false, resourceCd: null, orderNumber: null, shiftCount: 0 };
+  }
+
+  if (executor.$transaction) {
+    return executor.$transaction((tx) =>
+      releaseSplitOrderAssignmentAtLocation(tx as PrismaOrderAssignmentExecutor, target)
+    );
   }
 
   const currentAssignment = await executor.productionScheduleOrderSplitAssignment.findUnique({

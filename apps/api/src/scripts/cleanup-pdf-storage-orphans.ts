@@ -12,7 +12,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
-import { createPrismaClient } from '../lib/prisma-client.js';
+import { PrismaClient } from '@prisma/client';
+
 import { PDF_PAGES_DIR } from '../lib/pdf-storage.js';
 import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
 import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
@@ -30,7 +31,7 @@ function parseArgs(argv: string[]): { execute: boolean } {
 
 async function main() {
   const { execute } = parseArgs(process.argv.slice(2));
-  const prisma = createPrismaClient();
+  const prisma = new PrismaClient();
   const pdfsDir = getPdfsDir();
   const pagesDir = PDF_PAGES_DIR;
 

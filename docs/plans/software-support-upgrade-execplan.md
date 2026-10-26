@@ -50,7 +50,8 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 ### 2. Prisma 5 → 7
 
-別 PR で行う。prisma と @prisma/client を 7 系に固定し、7 で必要になる接続アダプタ(PostgreSQL 用ドライバアダプタ)と生成先の設定を加える。DB スキーマと migration は変えない。CI の API テスト一式と migration 検証が通ることを受け入れ条件とする。8 系の CLI は schema.prisma を読まないため、`npx prisma` で最新を引かないよう版を固定する。
+別 PR で行う。prisma と @prisma/client を 7 系に固定し、7 で必要になる接続アダプタ(PostgreSQL 用ドライバアダプタ)と生成先の設定を加える。DB スキーマと migration は変えない。
+- [ ] (2026-10-26) #2300 は main e111ad83 にマージ後、release-api-image で API イメージの圧縮サイズ予算を約 7MB 超えた(1107188550 > 1100000000、run 40257094214)。Pi5 反映前に revert した。イメージを削ってから入れ直す。CI の API テスト一式と migration 検証が通ることを受け入れ条件とする。8 系の CLI は schema.prisma を読まないため、`npx prisma` で最新を引かないよう版を固定する。
 
 ### 3. Debian bookworm → trixie
 
