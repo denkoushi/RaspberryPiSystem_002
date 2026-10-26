@@ -1,6 +1,6 @@
 import { BackupOperationType } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { BackupService } from '../../services/backup/backup.service.js';
@@ -18,7 +18,7 @@ const restoreRequestSchema = z.object({
   destination: z.string().optional(),
   storage: z.object({
     provider: z.enum(['local', 'dropbox']),
-    options: z.record(z.unknown()).optional(),
+    options: z.record(z.string(), z.unknown()).optional(),
   }).optional(),
   preBackup: z.boolean().optional(),
 });

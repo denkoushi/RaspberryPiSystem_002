@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { ApiError, DomainHttpError } from '../../lib/errors.js';
 import {
   deleteImportedDrawing,
@@ -75,7 +75,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates/:id',
       { preHandler: allowView, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const q = z
           .object({
             includeInactive: optionalQueryTrueOnlyBooleanSchema
@@ -95,7 +95,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates/:id/ocr',
       { preHandler: allowView, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const status = await drawingOcrService.getCurrentStatus(params.id);
         if (status.status === 'PENDING') {
           getPartMeasurementDrawingOcrScheduler().wake();
@@ -112,7 +112,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates/:id/ocr/candidates',
       { preHandler: allowView, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = drawingOcrCandidateBodySchema.parse(request.body);
         const limit = body.limit ?? 5;
         // 夜間に作った寸法マップがあればそれを使う（画像 AI も OCR も呼ばない）。無い図面は従来の OCR 候補。
@@ -159,7 +159,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates/:id/placement-proposals',
       { preHandler: allowView, config: { rateLimit: false } },
       async (request) => {
-        const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+        const { id } = z.object({ id: z.string().guid() }).parse(request.params);
         const { processGroup } = z.object({ processGroup: processGroupSchema.default('cutting') }).parse(request.query);
         return drawingPlacementService.listForEditor(id, processGroup === 'grinding' ? 'GRINDING' : 'CUTTING');
       }
@@ -169,10 +169,10 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates/:id/placement-proposals/decisions',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+        const { id } = z.object({ id: z.string().guid() }).parse(request.params);
         const body = z.object({
-          approvedIds: z.array(z.string().uuid()).max(200).optional().default([]),
-          rejectedIds: z.array(z.string().uuid()).max(200).optional().default([])
+          approvedIds: z.array(z.string().guid()).max(200).optional().default([]),
+          rejectedIds: z.array(z.string().guid()).max(200).optional().default([])
         }).parse(request.body);
         return drawingPlacementService.recordDecisions(id, body);
       }
@@ -182,7 +182,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates/:id/ocr/retry',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const status = await drawingOcrService.retryVisualTemplate(params.id);
         getPartMeasurementDrawingOcrScheduler().wake();
         return { ocr: serializeDrawingOcrStatus(status) };
@@ -257,7 +257,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates/:id',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = z
           .object({
             name: z.string().trim().min(1).max(200)
@@ -279,7 +279,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates/:id',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request, reply) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const cleanupToken = request.headers['x-visual-cleanup-token'];
         if (typeof cleanupToken !== 'string' || cleanupToken.trim().length === 0) {
           throw new ApiError(400, '図面回収トークンが必要です。', undefined, 'VISUAL_CLEANUP_TOKEN_REQUIRED');

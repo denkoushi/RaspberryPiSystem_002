@@ -1,5 +1,5 @@
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
@@ -22,7 +22,7 @@ const querySchema = z.object({
   q: z.string().trim().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
-const paramsSchema = z.object({ id: z.string().uuid() });
+const paramsSchema = z.object({ id: z.string().guid() });
 const ingestSchema = z.object({ messageId: z.string().min(1).max(200).optional(), forceRetry: z.boolean().optional() });
 const pdfTextBackfillSchema = z.object({ dryRun: z.boolean().default(true), limit: z.number().int().min(1).max(200).default(50) }).strict();
 
@@ -43,7 +43,7 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   if (semanticSearch instanceof HermesSearchTrialService && !options.semanticSearch) app.addHook('onClose', async () => { semanticSearch.close(); });
   const path = '/assembly/procedure-materials';
   app.post(`${path}/split-suggestions`, { preHandler: options.allowView, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request) => {
-    const { ids } = z.object({ ids: z.array(z.string().uuid()).min(2).max(60) }).strict().parse(request.body);
+    const { ids } = z.object({ ids: z.array(z.string().guid()).min(2).max(60) }).strict().parse(request.body);
     return (options.splitSuggestions ?? getProcedureMaterialSplitSuggestionService()).suggest(ids);
   });
   app.post(`${path}/semantic-search`, { preHandler: options.allowView, config: { rateLimit: { max: 12, timeWindow: '1 minute' } } }, async (request) => {
@@ -71,7 +71,7 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
     return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(await knowledge.readImage(imageId)));
   });
   app.get(`${path}/work-instruction-candidates/images/:assetId/thumbnail`, thumbnailOptions, async (request, reply) => {
-    const { assetId } = z.object({ assetId: z.string().uuid() }).parse(request.params);
+    const { assetId } = z.object({ assetId: z.string().guid() }).parse(request.params);
     return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(await workInstructions.readImage(assetId)));
   });
   app.get(`${path}/work-instruction-candidates`, { preHandler: options.allowView }, async (request) =>

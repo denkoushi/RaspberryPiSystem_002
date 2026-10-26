@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
 import { HermesSearchTrialService, type HermesPrincipal } from '../../services/business-hermes/hermes-search-trial.service.js';
 import { createReceiptLog, type ReceiptLog } from '../../services/business-hermes/hermes-search-receipt-log.js';
@@ -51,7 +51,7 @@ export async function registerHermesSearchTrialRoutes(
   app.post('/assembly/hermes-search-trial/answer', {preHandler,config:{rateLimit:{max:12,timeWindow:'1 minute'}}}, async (request,reply) => {
     const {question, sessionId, pageContext, refine} = z.object({
       question: z.string().trim().min(1).max(4000),
-      sessionId: z.string().uuid().optional(),
+      sessionId: z.string().guid().optional(),
       refine: z.object({
         axis: z.enum(['organization', 'month', 'cause']),
         field: z.string().trim().min(1).max(80),

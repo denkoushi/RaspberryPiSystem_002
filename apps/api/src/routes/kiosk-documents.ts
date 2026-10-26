@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import type { KioskDocumentOcrStatus, KioskDocumentSource } from '@prisma/client';
 
 import { authorizeRoles } from '../lib/auth.js';
@@ -228,7 +228,7 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
     '/kiosk-documents/:id',
     { config: { rateLimit: false }, preHandler: preView },
     async (request) => {
-      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const { id } = z.object({ id: z.string().guid() }).parse(request.params);
       const hasClientKey = Boolean(request.headers['x-client-key']);
       const detail = hasClientKey
         ? await service.getDetail(id)
@@ -277,14 +277,14 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/kiosk-documents/:id', { preHandler: [canManage] }, async (request) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const body = patchBodySchema.parse(request.body ?? {});
     const updated = await service.setEnabled(id, body.enabled);
     return { document: toDocumentDto(updated) };
   });
 
   app.patch('/kiosk-documents/:id/metadata', { preHandler: [canManage] }, async (request) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const body = metadataPatchBodySchema.parse(request.body ?? {});
     if (body.confirmedDocumentNumber && !isValidKioskDocumentNumber(body.confirmedDocumentNumber)) {
       throw new ApiError(400, '文書番号の形式が不正です', undefined, 'KIOSK_DOC_INVALID_DOCUMENT_NUMBER');
@@ -297,7 +297,7 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
   });
 
   app.post('/kiosk-documents/:id/reprocess', { preHandler: [canManage] }, async (request) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     await withDocumentSummaryOnDemandRuntime(() => processingService.processDocumentById(id, { maxRetry: 1 }));
     const detail = await service.getDetailForAdmin(id);
     if (!detail) {
@@ -312,7 +312,7 @@ export function registerKioskDocumentRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/kiosk-documents/:id', { preHandler: [canManage] }, async (request) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const assemblyReferenceCount =
       await assemblyProcedureReferenceService.countKioskDocumentReferences(id);
     if (assemblyReferenceCount > 0) {

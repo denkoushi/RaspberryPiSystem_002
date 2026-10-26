@@ -1,11 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { AssemblyProcedureDocumentEditLeaseService, ASSEMBLY_PROCEDURE_EDIT_LOCKED } from '../../services/assembly/assembly-procedure-document-edit-lease.service.js';
 import { findClientDeviceByApiKey, parseKioskApiClientKeyHeader } from '../../services/clients/client-device-auth.service.js';
 
-const idParamsSchema = z.object({ id: z.string().uuid() });
+const idParamsSchema = z.object({ id: z.string().guid() });
 export function readAssemblyProcedureEditToken(request: FastifyRequest) {
   const token = request.headers['x-procedure-edit-token'];
   return typeof token === 'string' ? token : null;

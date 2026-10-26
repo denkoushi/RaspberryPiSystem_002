@@ -1,6 +1,6 @@
 import './load-dotenv.js';
 
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 const strictBooleanFromEnvironment = z.preprocess((value) => {
   if (typeof value !== 'string') return value;

@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { logger } from '../../lib/logger.js';
 import { PhotoStorage } from '../../lib/photo-storage.js';

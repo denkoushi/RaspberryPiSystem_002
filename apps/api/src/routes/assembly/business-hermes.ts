@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { authorizeKioskClientKeyOrJwtRoles } from '../../lib/kiosk-document-auth.js';
@@ -15,7 +15,7 @@ import {
 import type { requireClientDevice } from '../kiosk/shared.js';
 import { createReceiptLog, type ReceiptLog } from '../../services/business-hermes/hermes-search-receipt-log.js';
 
-const paramsSchema = z.object({ id: z.string().uuid() });
+const paramsSchema = z.object({ id: z.string().guid() });
 const guideBodySchema = z.object({
   uiRevision: z.string().trim().min(1).max(512),
   eventCode: z.enum(BUSINESS_HERMES_EVENT_CODES)
@@ -29,7 +29,7 @@ const chatBodySchema = z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string().trim().min(1).max(4_000)
   })).min(1).max(12).optional(),
-  consultationId: z.string().uuid().optional(),
+  consultationId: z.string().guid().optional(),
   message: z.string().trim().min(1).max(4_000).optional(),
   selection: z.object({
     prompt: z.string().trim().min(1).max(500),
@@ -93,7 +93,7 @@ export async function registerBusinessHermesRoutes(
     }
   }, async (request, reply) => {
     const params = paramsSchema.parse(request.params);
-    const query = z.object({ messageCursor: z.string().uuid().optional() }).parse(request.query ?? {});
+    const query = z.object({ messageCursor: z.string().guid().optional() }).parse(request.query ?? {});
     const consultation = typeof consultationService.getPage === 'function'
       ? await consultationService.getPage(params.id, query.messageCursor)
       : await consultationService.get(params.id);
@@ -128,7 +128,7 @@ export async function registerBusinessHermesRoutes(
     }, config: { rateLimit: { max: 30, timeWindow: '1 minute' } }
   }, async (request, reply) => {
     const { id } = paramsSchema.parse(request.params);
-    const body = z.object({ messageId: z.string().uuid(), verdict: z.enum(['helpful', 'unhelpful']) }).strict().parse(request.body);
+    const body = z.object({ messageId: z.string().guid(), verdict: z.enum(['helpful', 'unhelpful']) }).strict().parse(request.body);
     const recorded = await consultationService.feedback?.(id, body.messageId, body.verdict);
     if (!recorded) return reply.code(409).send({ code: 'HERMES_FEEDBACK_NOT_RECORDED' });
     return { recorded: true };

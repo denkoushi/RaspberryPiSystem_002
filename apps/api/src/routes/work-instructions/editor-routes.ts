@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
@@ -18,10 +18,10 @@ import {
   toSourceVersionDto
 } from './dto.js';
 
-const revisionIdParamsSchema = z.object({ revisionId: z.string().uuid() });
-const rowIdParamsSchema = z.object({ rowId: z.string().uuid() });
-const sourceVersionParamsSchema = z.object({ versionId: z.string().uuid() });
-const sourceAssetParamsSchema = z.object({ versionId: z.string().uuid(), assetId: z.string().uuid() });
+const revisionIdParamsSchema = z.object({ revisionId: z.string().guid() });
+const rowIdParamsSchema = z.object({ rowId: z.string().guid() });
+const sourceVersionParamsSchema = z.object({ versionId: z.string().guid() });
+const sourceAssetParamsSchema = z.object({ versionId: z.string().guid(), assetId: z.string().guid() });
 const bboxSchema = z.object({
   xRatio: z.number().finite().min(0).max(1),
   yRatio: z.number().finite().min(0).max(1),
@@ -44,7 +44,7 @@ const overlayBaseSchema = z.object({
   mask: z.object({ enabled: z.boolean(), color: z.string().max(40) }).optional()
 });
 const overlayElementSchema = z.discriminatedUnion('kind', [
-  overlayBaseSchema.extend({ kind: z.literal('TEXT'), text: z.string().max(10_000), style: z.record(z.unknown()).optional() }),
+  overlayBaseSchema.extend({ kind: z.literal('TEXT'), text: z.string().max(10_000), style: z.record(z.string(), z.unknown()).optional() }),
   overlayBaseSchema.extend({ kind: z.literal('IMAGE'), assetId: z.string().min(1).max(120), objectFit: z.enum(['contain', 'cover', 'fill']).optional() }),
   overlayBaseSchema.extend({
     kind: z.literal('SHAPE'),
@@ -58,7 +58,7 @@ const overlayElementSchema = z.discriminatedUnion('kind', [
 ]);
 const saveOverlaysBodySchema = z.object({
   expectedEditVersion: z.coerce.number().int().min(0),
-  expectedSourceVersionId: z.string().uuid(),
+  expectedSourceVersionId: z.string().guid(),
   expectedContentHash: z.string().min(1).max(128),
   elements: z.array(overlayElementSchema).max(10_000)
 }).strict();
@@ -77,27 +77,27 @@ const memoOverrideSchema = z.object({
 });
 const saveDraftBodySchema = z.object({
   expectedEditVersion: z.coerce.number().int().min(0),
-  expectedSourceVersionId: z.string().uuid(),
+  expectedSourceVersionId: z.string().guid(),
   expectedContentHash: z.string().min(1).max(128),
   elements: z.array(overlayElementSchema).max(10_000),
   memoOverrides: z.array(memoOverrideSchema).max(10_000)
 }).strict();
 const createDraftBodySchema = z.object({
-  sourceVersionId: z.string().uuid().optional(),
-  copyFromRevisionId: z.string().uuid().optional()
+  sourceVersionId: z.string().guid().optional(),
+  copyFromRevisionId: z.string().guid().optional()
 }).strict();
 const discardBodySchema = z.object({ expectedEditVersion: z.coerce.number().int().min(0).optional() }).strict();
 const publishBodySchema = z.object({
   expectedEditVersion: z.coerce.number().int().min(0),
-  expectedSourceVersionId: z.string().uuid(),
+  expectedSourceVersionId: z.string().guid(),
   expectedContentHash: z.string().min(1).max(128),
   confirmUnassigned: z.boolean().optional()
 }).strict();
 const groupPublishBodySchema = z.object({
   partNumber: z.string().trim().min(1),
   shootingTarget: z.string().trim().min(1),
-  revisionIds: z.array(z.string().uuid()).min(1).max(500),
-  expectedEditVersions: z.record(z.coerce.number().int().min(0)),
+  revisionIds: z.array(z.string().guid()).min(1).max(500),
+  expectedEditVersions: z.record(z.string(), z.coerce.number().int().min(0)),
   confirmUnassigned: z.boolean().optional()
 }).strict();
 const regionBodySchema = z.object({ stepKey: z.string().trim().min(1).max(500), bbox: bboxSchema }).strict();
@@ -360,7 +360,7 @@ export function registerWorkInstructionEditorRoutes(
     const body = z.object({
       partNumber: z.string().trim().min(1),
       shootingTarget: z.string().trim().min(1),
-      rows: z.array(z.object({ rowId: z.string().uuid(), publishedSourceVersionId: z.string().uuid(), latestSourceVersionId: z.string().uuid() })).min(1).max(500),
+      rows: z.array(z.object({ rowId: z.string().guid(), publishedSourceVersionId: z.string().guid(), latestSourceVersionId: z.string().guid() })).min(1).max(500),
     }).strict().parse(request.body ?? {});
     const authorization = await editorMutationAuthorization(request);
     const copied = await editing.createDraftRevisionGroup({
@@ -515,7 +515,7 @@ export function registerWorkInstructionEditorRoutes(
   }
 
   app.get('/work-instructions/edit-assets/:id', { preHandler: [allowView] }, async (request, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const result = await editing.readEditAsset(id);
     if (!result) throw new ApiError(404, '編集画像が見つかりません', undefined, 'WORK_INSTRUCTION_EDIT_ASSET_NOT_FOUND');
     reply.header('Content-Type', result.asset.mimeType);

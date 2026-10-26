@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { TORQUE_INPUT_PORT_SOURCES } from '../../services/assembly/index.js';
 
 export const optionalTrueOnlyBooleanSchema = z
@@ -6,7 +6,7 @@ export const optionalTrueOnlyBooleanSchema = z
   .optional()
   .transform((value) => value === true || value === 'true');
 
-export const idParamSchema = z.object({ id: z.string().uuid() });
+export const idParamSchema = z.object({ id: z.string().guid() });
 export const machineNameCandidatesQuerySchema = z.object({
   digitQuery: z.string().regex(/^[0-9]*$/, 'digitQueryは半角数字のみ指定できます').max(120).optional(),
   q: z.string().max(120).optional(),
@@ -43,13 +43,13 @@ const boltInputSchema = z.object({
   boltLengthMm: z.coerce.number().positive().optional().nullable(),
   material: z.string().trim().min(1).max(80).optional().nullable(),
   strengthClass: z.string().trim().min(1).max(80).optional().nullable(),
-  capabilityGroupId: z.string().uuid().optional().nullable(),
+  capabilityGroupId: z.string().guid().optional().nullable(),
   nominalTorque: z.coerce.number(),
   lowerLimit: z.coerce.number(),
   upperLimit: z.coerce.number(),
   unit: z.string().trim().min(1).max(40),
-  kioskDocumentId: z.string().uuid().optional().nullable(),
-  assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+  kioskDocumentId: z.string().guid().optional().nullable(),
+  assemblyProcedureDocumentId: z.string().guid().optional().nullable(),
   pageIndex: z.coerce.number().int().min(0).optional().nullable()
 }).superRefine(validateCalloutTipPair);
 
@@ -62,8 +62,8 @@ const checkItemInputSchema = z.object({
   calloutTipXRatio: z.coerce.number().min(0).max(1).optional().nullable(),
   calloutTipYRatio: z.coerce.number().min(0).max(1).optional().nullable(),
   sortOrder: z.coerce.number().int().min(0),
-  kioskDocumentId: z.string().uuid().optional().nullable(),
-  assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+  kioskDocumentId: z.string().guid().optional().nullable(),
+  assemblyProcedureDocumentId: z.string().guid().optional().nullable(),
   pageIndex: z.coerce.number().int().min(0).optional()
 }).superRefine(validateCalloutTipPair);
 
@@ -79,8 +79,8 @@ const areaInputSchema = z.object({
 
 const documentSequenceItemBodySchema = z
   .object({
-    kioskDocumentId: z.string().uuid().optional().nullable(),
-    assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+    kioskDocumentId: z.string().guid().optional().nullable(),
+    assemblyProcedureDocumentId: z.string().guid().optional().nullable(),
     label: z.string().trim().max(120).optional().nullable()
   })
   .superRefine((item, ctx) => {
@@ -95,8 +95,8 @@ const documentSequenceItemBodySchema = z
   });
 
 const procedureStepBodySchema = z.object({
-  kioskDocumentId: z.string().uuid().optional().nullable(),
-  assemblyProcedureDocumentId: z.string().uuid().optional().nullable(),
+  kioskDocumentId: z.string().guid().optional().nullable(),
+  assemblyProcedureDocumentId: z.string().guid().optional().nullable(),
   pageIndex: z.coerce.number().int().min(0),
   viewMode: z
     .enum(['full_page', 'crop'])
@@ -117,7 +117,7 @@ export const templateBodySchema = z.object({
   modelCode: z.string().trim().min(1).max(120),
   procedurePattern: z.string().trim().min(1).max(120),
   name: z.string().trim().min(1).max(200),
-  procedureDocumentId: z.string().uuid(),
+  procedureDocumentId: z.string().guid(),
   areas: z.array(areaInputSchema).min(1),
   checkItems: z.array(checkItemInputSchema).optional(),
   traceabilityMode: z.enum(['LEGACY', 'REQUIRED']).optional().default('LEGACY'),
@@ -134,20 +134,20 @@ export const templateReviseBodySchema = templateBodySchema.partial().extend({
 });
 
 export const recordCheckBodySchema = z.object({
-  checkItemId: z.string().uuid(),
+  checkItemId: z.string().guid(),
   checked: z.boolean()
 });
 
 export const startSessionBodySchema = z
   .object({
-  templateId: z.string().uuid(),
+  templateId: z.string().guid(),
   productNo: z.string().trim().min(1).max(120),
   workId: z.string().trim().min(1).max(120).optional(),
   /** 旧クライアント互換。新規クライアントは workId を送信する。 */
   serialNo: z.string().trim().min(1).max(120).optional(),
   nameplateNo: z.string().trim().min(1).max(120).optional().nullable(),
   operatorNfcTagUid: z.string().trim().min(1).max(200),
-  requestId: z.string().uuid(),
+  requestId: z.string().guid(),
   targetUnit: z.string().trim().min(1).max(120),
   torqueWrenchId: z.string().trim().min(1).max(120).optional().nullable()
   })
@@ -162,7 +162,7 @@ export const startSessionBodySchema = z
 
 export const createAssemblyLotBodySchema = z
   .object({
-  templateId: z.string().uuid(),
+  templateId: z.string().guid(),
   productNo: z.string().trim().min(1).max(120),
   expectedQuantity: z.coerce.number().int().min(1).max(500),
   workIdMode: z.enum(['auto', 'manual']).optional(),
@@ -198,17 +198,17 @@ export const approveAssemblyRecordApprovalBodySchema = z.object({
 });
 
 export const lotSerialParamsSchema = z.object({
-  lotId: z.string().uuid(),
-  lotSerialId: z.string().uuid()
+  lotId: z.string().guid(),
+  lotSerialId: z.string().guid()
 });
 
 export const operatorAccessBodySchema = z.object({
   operatorNfcTagUid: z.string().trim().min(1).max(200),
-  requestId: z.string().uuid()
+  requestId: z.string().guid()
 });
 
 export const invalidateAssemblyWorkUnitBodySchema = z.object({
   accessPassword: z.string().max(128),
   reason: z.string().trim().min(1).max(500),
-  requestId: z.string().uuid()
+  requestId: z.string().guid()
 });

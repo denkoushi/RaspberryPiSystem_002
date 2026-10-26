@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { queryPurchaseOrderLookup } from '../../services/purchase-order-lookup/purchase-order-lookup-query.service.js';
 import type { KioskRouteDeps } from './production-schedule/shared.js';

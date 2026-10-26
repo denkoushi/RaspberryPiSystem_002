@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ORDER_NUMBER_MAX, ORDER_NUMBER_MIN } from '../../../routes/kiosk/production-schedule/shared.js';
 import { displayItemIdSchema } from './leaderboard-display-item-id.js';
@@ -8,7 +8,7 @@ export const productionScheduleOrderSplitListQuerySchema = z.object({
 });
 
 export const productionScheduleOrderSplitListParamsSchema = z.object({
-  sourceRowId: z.string().uuid()
+  sourceRowId: z.string().guid()
 });
 
 export const productionScheduleOrderSplitReplaceBodySchema = z.object({
@@ -16,7 +16,7 @@ export const productionScheduleOrderSplitReplaceBodySchema = z.object({
   items: z
     .array(
       z.object({
-        id: z.string().uuid().optional().nullable(),
+        id: z.string().guid().optional().nullable(),
         splitNo: z.number().int().min(1).max(100),
         splitQuantity: z.number().int().min(1).max(1_000_000),
         dueDate: z.string().max(20).optional().nullable(),
@@ -38,7 +38,7 @@ export const productionScheduleOrderSplitReplaceBodySchema = z.object({
 });
 
 export const productionScheduleSplitOrderParamsSchema = z.object({
-  splitId: z.string().uuid()
+  splitId: z.string().guid()
 });
 
 export const productionScheduleSplitOrderBodySchema = z.object({
@@ -49,7 +49,7 @@ export const productionScheduleSplitOrderBodySchema = z.object({
 });
 
 export const productionScheduleSplitDueDateParamsSchema = z.object({
-  splitId: z.string().uuid()
+  splitId: z.string().guid()
 });
 
 export const productionScheduleSplitDueDateBodySchema = z.object({

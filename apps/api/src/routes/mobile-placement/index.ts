@@ -5,7 +5,7 @@ import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-
 import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
 import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
@@ -104,7 +104,7 @@ const registerOrderPlacementBodySchema = z.object({
   shelfCodeRaw: z.string().min(1),
   manufacturingOrderBarcodeRaw: z.string().min(1),
   slipKind: z.enum(['manufacturing_order', 'purchase_order']).default('manufacturing_order'),
-  clientRecordId: z.string().max(64).uuid().optional(),
+  clientRecordId: z.string().max(64).guid().optional(),
   placedAt: z.string().datetime({ offset: true }).optional()
 });
 

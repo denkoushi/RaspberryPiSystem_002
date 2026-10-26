@@ -6,6 +6,6 @@
     { "id": "minimatch", "owner": "platform-maintainers", "reason": "Without this pin eslint, @typescript-eslint and readdir-glob pull minimatch 3.1.5/5.1.9/9.0.9 with older brace-expansion; keep until they require minimatch 10.", "expiresOn": "2027-01-31" },
     { "id": "fast-uri", "owner": "platform-maintainers", "reason": "Without this pin @fastify/ajv-compiler, ajv and fast-json-stringify resolve fast-uri 4.x; keep the vetted 3.1.8 until the Fastify upgrade tests 4.x.", "expiresOn": "2027-01-31" },
     { "id": "dompurify@3.4.11", "owner": "platform-maintainers", "reason": "@a2ui/markdown-it 0.1.2 still pins dompurify 3.4.11; keep the 3.4.17 fix until @a2ui/markdown-it requires it.", "expiresOn": "2027-01-31" },
-    { "id": "zod", "owner": "platform-maintainers", "reason": "Security-pinned (CVE-2023-54404) because @a2ui/web_core still requires zod ^3.25.76; patches/@a2ui__web_core@0.11.0.patch points it at zod/v3.", "expiresOn": "2027-01-31" }
+    { "id": "zod", "owner": "platform-maintainers", "reason": "Security-pinned (CVE-2023-54404) because @a2ui/web_core still requires zod ^3.25.76; patches/@a2ui__web_core@0.11.0.patch points it at zod/v3. Our api/shared-types use the zod 4 API.", "expiresOn": "2027-01-31" }
   ]
 }

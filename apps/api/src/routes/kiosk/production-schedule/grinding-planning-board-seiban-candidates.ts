@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { getGrindingPlanningBoardSeibanCandidates } from '../../../services/production-schedule/grinding-planning-board-seiban-candidates.service.js';
 import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shared.js';

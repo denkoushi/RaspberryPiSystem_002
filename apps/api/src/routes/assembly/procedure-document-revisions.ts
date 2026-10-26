@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import {
   assemblyProcedureOverlayRegionInputSchema,
   assemblyProcedureOverlaySaveInputSchema,
@@ -19,7 +19,7 @@ import { ProcedureDictationRewriteService } from '../../services/assembly/proced
 import { ProcedureSpeechToTextService, PROCEDURE_AUDIO_MAX_BYTES, procedureSpeechToTextError } from '../../services/assembly/procedure-speech-to-text.service.js';
 import { ProcedureLayoutSuggestionService } from '../../services/assembly/procedure-layout-suggestion.service.js';
 
-const idParamsSchema = z.object({ id: z.string().uuid() });
+const idParamsSchema = z.object({ id: z.string().guid() });
 const accessPasswordSchema = z.string().max(128).default('');
 const createRevisionBodySchema = z.object({
   accessPassword: accessPasswordSchema
@@ -138,7 +138,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     return { document: serializeAssemblyProcedureDocumentRevision(await service.addBlankPage({ documentId: id, ...body, ...await resolveAssemblyProcedureEditWriter(request) })) };
   });
   app.post('/assembly/procedure-documents/:id/materials/:materialId/place', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
-    const { id, materialId } = z.object({ id: z.string().uuid(), materialId: z.string().uuid() }).parse(request.params);
+    const { id, materialId } = z.object({ id: z.string().guid(), materialId: z.string().guid() }).parse(request.params);
     const body = z.object({ accessPassword: accessPasswordSchema, pageIndex: z.coerce.number().int().min(0) }).parse(request.body);
     return new ProcedureMaterialPlacementService().place({ documentId: id, materialId, ...body, ...await resolveAssemblyProcedureEditWriter(request) });
   });

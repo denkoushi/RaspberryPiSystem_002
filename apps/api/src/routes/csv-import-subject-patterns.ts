@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { authorizeRoles } from '../lib/auth.js';
 import { CsvImportSubjectPatternService } from '../services/imports/csv-import-subject-pattern.service.js';
 
@@ -14,7 +14,7 @@ const importTypeSchema = z.enum([
 
 const createSchema = z.object({
   importType: importTypeSchema,
-  dashboardId: z.string().uuid().optional().nullable(),
+  dashboardId: z.string().guid().optional().nullable(),
   pattern: z.string().trim().min(1),
   priority: z.number().int().min(0).optional(),
   enabled: z.boolean().optional(),
@@ -36,7 +36,7 @@ const updateSchema = z.object({
 
 const reorderSchema = z.object({
   importType: importTypeSchema,
-  dashboardId: z.string().uuid().optional().nullable(),
+  dashboardId: z.string().guid().optional().nullable(),
   orderedIds: z.array(z.string().min(1)).min(1),
 }).superRefine((data, ctx) => {
   if (data.importType === 'csvDashboards' && !data.dashboardId) {
@@ -55,7 +55,7 @@ export function registerCsvImportSubjectPatternRoutes(app: FastifyInstance): voi
   // GET /api/csv-import-subject-patterns
   app.get('/csv-import-subject-patterns', { preHandler: mustBeAdmin }, async (request) => {
     const query = request.query as { importType?: string; dashboardId?: string };
-    const dashboardId = query.dashboardId ? z.string().uuid().parse(query.dashboardId) : undefined;
+    const dashboardId = query.dashboardId ? z.string().guid().parse(query.dashboardId) : undefined;
     const importType = query.importType
       ? importTypeSchema.parse(query.importType)
       : dashboardId

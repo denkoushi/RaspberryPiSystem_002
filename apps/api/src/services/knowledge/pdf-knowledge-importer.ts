@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import type { ImageOcrPort } from '../ocr/ports/image-ocr.port.js';
 
@@ -22,7 +22,7 @@ export class PdfKnowledgeImporter {
   constructor(private readonly assets: KnowledgeAssetStore, private readonly pdf: PdfPagesPort, private readonly ocr: ImageOcrPort) {}
 
   async import(input: { importId: string; filename: string; capturedAt: string; bytes: Buffer }, signal?: AbortSignal): Promise<KnowledgeSource[]> {
-    z.string().uuid().parse(input.importId);
+    z.string().guid().parse(input.importId);
     z.string().datetime().parse(input.capturedAt);
     z.string().min(1).max(200).parse(input.filename);
     if (input.bytes.length > 20_000_000 || !input.bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) throw new Error('A PDF up to 20 MB is required');
