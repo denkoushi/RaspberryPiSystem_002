@@ -2,6 +2,7 @@ import importlib.util
 import http.client
 import io
 import json
+import os
 import sys
 import threading
 import unittest
@@ -961,6 +962,160 @@ class GatewayStreamingTests(unittest.TestCase):
                     self.proxy_impl.assert_called_with("POST", f"{url}{path}", body, {"Content-Type": "application/json"})
             upstream_open.assert_not_called()
         self.assertEqual(self.proxy_impl.call_count, len(cases))
+
+
+class PrivateComfyWorkerTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module()
+        with patch.dict(os.environ, {}, clear=True):
+            self.config = replace(self.module.load_config_from_env(), runtime_control_token="runtime-token")
+        self.local = Mock(return_value=(0, "local ok"))
+        self.worker = Mock(return_value={"ok": True, "exitCode": 0, "outputSample": "worker ok"})
+        self.module.run_local_command = self.local
+        self.module.run_worker_command = self.worker
+        self.module.write_gateway_resource_state_best_effort = Mock(return_value=None)
+        self.module.emit_agent_debug_log = Mock()
+
+    def request(self, action, config=None):
+        config = config or replace(self.config, private_comfy_worker_ssh_target="user@spark2.example")
+        # Exercise the route directly; no listening socket is needed for command orchestration.
+        handler = object.__new__(self.module.make_handler(config))
+        handler.path = f"/private-comfyui/{action}"
+        handler.headers = {"X-Runtime-Control-Token": "runtime-token", "Content-Length": "2"}
+        handler.rfile = io.BytesIO(b"{}")
+        handler._send = Mock()
+        handler.do_POST()
+        handler._send.assert_called_once()
+        status, body, content_type = handler._send.call_args.args
+        self.assertEqual(content_type, "application/json; charset=utf-8")
+        return status, body
+
+    def test_unset_target_preserves_all_response_bodies_without_threads_or_ssh(self):
+        for action in ("start", "stop"):
+            for result, status, fields in (
+                ((0, "local ok"), 200, {"ok": True}),
+                ((1, "failed"), 502, {"ok": False, "exitCode": 1, "output": "failed"}),
+                (self.module.subprocess.TimeoutExpired("local", 240), 504, {"ok": False, "message": "timeout"}),
+                (OSError("failed"), 500, {"ok": False, "message": "failed"}),
+            ):
+                with self.subTest(action=action, status=status):
+                    self.local.side_effect = result if isinstance(result, Exception) else None
+                    self.local.return_value = result
+                    with patch.object(self.module, "ThreadPoolExecutor") as executor:
+                        actual_status, body = self.request(action, self.config)
+                    expected = {"ok": fields.pop("ok"), "path": f"/private-comfyui/{action}", **fields}
+                    self.assertEqual((actual_status, body), (status, json.dumps(expected).encode()))
+                    executor.assert_not_called()
+        self.worker.assert_not_called()
+        self.assertEqual(self.local.call_args.args[-1], 240)
+
+    def test_start_and_stop_worker_failures_do_not_change_local_success(self):
+        self.worker.return_value = {"ok": False, "exitCode": 255, "outputSample": "ssh failed"}
+        for action in ("start", "stop"):
+            with self.subTest(action=action):
+                status, body = self.request(action)
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body), {"ok": True, "path": f"/private-comfyui/{action}",
+                                                    "worker": self.worker.return_value})
+                self.worker.assert_called_with("user@spark2.example",
+                                               getattr(self.config, f"private_comfy_worker_{action}_cmd"), 20)
+
+    def test_local_start_failures_attempt_worker_stop_after_both_commands(self):
+        for result, status in (((1, "failed"), 502),
+                               (self.module.subprocess.TimeoutExpired("local", 20), 504),
+                               (OSError("failed"), 500)):
+            with self.subTest(status=status):
+                self.worker.reset_mock()
+                self.local.side_effect = result if isinstance(result, Exception) else None
+                self.local.return_value = result
+                actual_status, body = self.request("start")
+                self.assertEqual(actual_status, status)
+                self.assertFalse(json.loads(body)["ok"])
+                self.assertEqual(json.loads(body)["worker"], self.worker.return_value)
+                self.assertEqual([call.args for call in self.worker.call_args_list], [
+                    ("user@spark2.example", self.config.private_comfy_worker_start_cmd, 20),
+                    ("user@spark2.example", self.config.private_comfy_worker_stop_cmd, 5),
+                ])
+
+    def test_failed_cleanup_does_not_change_local_failure_status(self):
+        self.local.return_value = (1, "failed")
+        self.worker.return_value = {"ok": False, "message": "timeout", "outputSample": ""}
+        self.assertEqual(self.request("start")[0], 502)
+        self.assertEqual(self.worker.call_count, 2)
+
+    def test_local_stop_failure_still_stops_worker(self):
+        self.local.return_value = (1, "failed")
+        status, body = self.request("stop")
+        self.assertEqual(status, 502)
+        self.assertFalse(json.loads(body)["ok"])
+        self.worker.assert_called_once_with("user@spark2.example", self.config.private_comfy_worker_stop_cmd, 20)
+
+    def test_start_and_stop_commands_overlap_and_are_bounded(self):
+        for action in ("start", "stop"):
+            with self.subTest(action=action):
+                barrier = threading.Barrier(2, timeout=1)
+                def local(*args):
+                    barrier.wait()
+                    return 0, "ok"
+                def worker(*args):
+                    barrier.wait()
+                    return {"ok": True, "exitCode": 0, "outputSample": "ok"}
+                self.local.side_effect = local
+                self.worker.side_effect = worker
+                config = replace(self.config, private_comfy_worker_ssh_target="user@spark2.example",
+                                 private_comfy_worker_cmd_timeout_sec=60)
+                status, body = self.request(action, config)
+                self.assertEqual(status, 200, body)
+                self.assertTrue(json.loads(body)["worker"]["ok"])
+                self.assertEqual(self.local.call_args.args[-1], self.config.private_comfy_cmd_timeout_sec)
+                self.assertEqual(self.worker.call_args.args[-1], 20)
+
+    def test_invalid_target_is_disabled_with_one_log_line_and_routes_work(self):
+        for target in ("host", "-oProxyCommand=bad", "user@host;echo bad", "user@host\n", " user@host"):
+            with self.subTest(target=target):
+                with patch.dict(os.environ, {"PRIVATE_COMFY_WORKER_SSH_TARGET": target}, clear=True), \
+                     patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                    config = replace(self.module.load_config_from_env(), runtime_control_token="runtime-token")
+                self.assertEqual(config.private_comfy_worker_ssh_target, "")
+                self.assertEqual(len(stderr.getvalue().splitlines()), 1)
+                for action in ("start", "stop"):
+                    status, body = self.request(action, config)
+                    self.assertEqual(status, 200)
+                    self.assertNotIn("worker", json.loads(body))
+        self.worker.assert_not_called()
+
+    def test_worker_environment_settings(self):
+        env = {"PRIVATE_COMFY_WORKER_SSH_TARGET": "user@spark2.example",
+               "PRIVATE_COMFY_WORKER_START_CMD": "custom start",
+               "PRIVATE_COMFY_WORKER_STOP_CMD": "custom stop",
+               "PRIVATE_COMFY_WORKER_CMD_TIMEOUT_SEC": "7"}
+        with patch.dict(os.environ, env, clear=True):
+            config = replace(self.module.load_config_from_env(), runtime_control_token="runtime-token")
+        for action in ("start", "stop"):
+            self.assertEqual(self.request(action, config)[0], 200)
+            self.worker.assert_called_with("user@spark2.example", f"custom {action}", 7)
+
+    def test_worker_command_exact_ssh_argv_output_and_failure_mapping(self):
+        module = load_module()
+        for returncode in (0, 255):
+            with self.subTest(returncode=returncode):
+                proc = Mock(returncode=returncode, stdout="x" * 500, stderr="error")
+                with patch.object(module.subprocess, "run", return_value=proc) as run, \
+                     patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                    result = module.run_worker_command("user@spark2.example", "docker compose up -d", 7)
+                run.assert_called_once_with(
+                    ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--",
+                     "user@spark2.example", "docker compose up -d"],
+                    timeout=7, capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result, {"ok": returncode == 0, "exitCode": returncode, "outputSample": "x" * 400})
+                self.assertEqual(len(stderr.getvalue().splitlines()), int(returncode != 0))
+        for exc, message in ((module.subprocess.TimeoutExpired("ssh", 7), "timeout"), (OSError("failed"), "failed")):
+            with patch.object(module.subprocess, "run", side_effect=exc), \
+                 patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                result = module.run_worker_command("user@spark2.example", "stop", 7)
+            self.assertEqual(result, {"ok": False, "message": message, "outputSample": ""})
+            self.assertEqual(len(stderr.getvalue().splitlines()), 1)
 
 
 if __name__ == "__main__":
