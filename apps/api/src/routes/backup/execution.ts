@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
@@ -24,7 +24,7 @@ type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
 const backupRequestSchema = z.object({
   kind: z.enum(['database', 'file', 'directory', 'csv', 'image', 'client-file', 'client-directory']),
   source: z.string(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function registerBackupExecutionRoutes(app: FastifyInstance): Promise<void> {

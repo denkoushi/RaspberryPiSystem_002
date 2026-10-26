@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../../lib/errors.js';
 import { listRegisteredDeviceScopeKeysForSite } from '../../../lib/manual-order-device-scope.js';

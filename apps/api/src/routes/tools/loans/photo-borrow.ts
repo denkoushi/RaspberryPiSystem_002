@@ -1,6 +1,6 @@
 import { toLoanResponse } from '../../../lib/loan-response.js';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { LoanService } from '../../../services/tools/loan.service.js';
 
 const photoBorrowSchema = z.object({
@@ -9,7 +9,7 @@ const photoBorrowSchema = z.object({
   clientId: z.string().optional(),
   note: z.string().nullable().optional(),
 });
-const idempotencyKeySchema = z.string().uuid('Idempotency-KeyはUUID形式で指定してください');
+const idempotencyKeySchema = z.string().guid('Idempotency-KeyはUUID形式で指定してください');
 
 export function registerPhotoBorrowRoute(app: FastifyInstance, loanService: LoanService): void {
   app.post('/photo-borrow', { config: { rateLimit: false } }, async (request) => {

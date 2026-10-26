@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { MachineService } from '../../../services/tools/machine.service.js';
 
@@ -9,7 +9,7 @@ const machineListQuerySchema = z.object({
 });
 
 const uninspectedQuerySchema = z.object({
-  csvDashboardId: z.string().uuid('csvDashboardIdはUUID形式で指定してください'),
+  csvDashboardId: z.string().guid('csvDashboardIdはUUID形式で指定してください'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dateはYYYY-MM-DD形式で指定してください').optional(),
 });
 

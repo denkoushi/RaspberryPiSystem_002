@@ -1,40 +1,40 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 export const borrowSchema = z.object({
   itemTagUid: z.string().min(4),
   employeeTagUid: z.string().min(4),
-  clientId: z.string().uuid().optional(),
+  clientId: z.string().guid().optional(),
   dueAt: z.coerce.date().optional(),
   note: z.string().optional().nullable()
 });
 
 export const returnSchema = z.object({
-  loanId: z.string().uuid(),
-  clientId: z.string().uuid().optional(),
-  performedByUserId: z.string().uuid().optional(),
+  loanId: z.string().guid(),
+  clientId: z.string().guid().optional(),
+  performedByUserId: z.string().guid().optional(),
   note: z.string().optional().nullable()
 });
 
 export const activeLoanQuerySchema = z.object({
-  clientId: z.string().uuid().optional()
+  clientId: z.string().guid().optional()
 });
 
 export const loanParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 export const assignLoanClientParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 export const assignLoanClientBodySchema = z.object({
-  clientId: z.string().uuid()
+  clientId: z.string().guid()
 });
 
 export const cancelSchema = z.object({
-  loanId: z.string().uuid(),
-  clientId: z.string().uuid().optional(),
-  performedByUserId: z.string().uuid().optional()
+  loanId: z.string().guid(),
+  clientId: z.string().guid().optional(),
+  performedByUserId: z.string().guid().optional()
 });
 
 export const photoLabelReviewListQuerySchema = z.object({

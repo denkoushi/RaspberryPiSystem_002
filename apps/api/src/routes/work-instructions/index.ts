@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { authorizeRoles } from '../../lib/auth.js';
@@ -127,7 +127,7 @@ export function registerWorkInstructionRoutes(
   });
 
   app.get('/work-instructions/ingest/jobs/:id', { preHandler: [canManage] }, async (request) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const job = await services.ingestion.getJob(id);
     if (!job) throw new ApiError(404, '作業要領インポートジョブが見つかりません', undefined, 'WORK_INSTRUCTION_JOB_NOT_FOUND');
     return {
@@ -244,7 +244,7 @@ export function registerWorkInstructionRoutes(
   });
 
   app.get('/work-instructions/assets/:id', { preHandler: [canRead] }, async (request, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const result = await services.read.readAsset(id);
     if (!result) throw new ApiError(404, '作業要領画像が見つかりません', undefined, 'WORK_INSTRUCTION_ASSET_NOT_FOUND');
     reply.header('Content-Type', result.asset.mimeType);

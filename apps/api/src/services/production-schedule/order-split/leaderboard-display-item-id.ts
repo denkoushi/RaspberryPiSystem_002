@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 /** 順位ボード表示・操作の正本 ID（未分割行は親 UUID、分割片は `split:{splitId}`）。 */
 export type DisplayItemId = string;
@@ -105,9 +105,9 @@ export const displayItemIdParamsSchema = z.object({
 });
 
 export const sourceRowIdParamsSchema = z.object({
-  sourceRowId: z.string().uuid()
+  sourceRowId: z.string().guid()
 });
 
 export const splitIdParamsSchema = z.object({
-  splitId: z.string().uuid()
+  splitId: z.string().guid()
 });

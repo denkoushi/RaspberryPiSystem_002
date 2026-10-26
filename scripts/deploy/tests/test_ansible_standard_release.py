@@ -371,6 +371,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("procedure_speech_to_text_hints_enabled | default(true)", bindings["PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED"])
         self.assertIn("procedure_material_split_suggestion_enabled | default(false)", bindings["PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED"])
         self.assertIn("inspection_drawing_transfer_jev_enabled | default(false)", bindings["INSPECTION_DRAWING_TRANSFER_JEV_ENABLED"])
+        self.assertIn("inspection_drawing_reference_placement_enabled | default(false)", bindings["INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED"])
         self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
         self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
         self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")

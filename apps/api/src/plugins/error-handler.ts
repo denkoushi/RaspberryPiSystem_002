@@ -17,7 +17,7 @@
  * 詳細: docs/guides/error-handling.md
  */
 import type { FastifyInstance } from 'fastify';
-import { ZodError } from 'zod/v3';
+import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { env } from '../config/env.js';
 import { ApiError, DomainHttpError } from '../lib/errors.js';

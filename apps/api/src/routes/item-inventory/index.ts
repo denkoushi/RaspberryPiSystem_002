@@ -1,6 +1,6 @@
 import { overlayRegionBBoxSchema } from '@raspi-system/shared-types';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
@@ -19,10 +19,10 @@ import {
 } from '../../services/production-schedule/production-schedule-settings.service.js';
 
 const uidQuery = z.object({ uid: z.string().trim().min(1).max(256) });
-const idParams = z.object({ id: z.string().uuid() });
-const importPhotoParams = z.object({ payloadId: z.string().uuid(), photoId: z.string().uuid() });
-const itemPhotoParams = z.object({ itemId: z.string().uuid(), photoId: z.string().uuid() });
-const compartmentParams = z.object({ id: z.string().uuid() });
+const idParams = z.object({ id: z.string().guid() });
+const importPhotoParams = z.object({ payloadId: z.string().guid(), photoId: z.string().guid() });
+const itemPhotoParams = z.object({ itemId: z.string().guid(), photoId: z.string().guid() });
+const compartmentParams = z.object({ id: z.string().guid() });
 const labelNumberParams = z.object({
   labelNumber: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().positive().max(2147483647)),
 });
@@ -142,12 +142,12 @@ async function actor(request: FastifyRequest) {
 
 const registerBody = z.object({
   mode: z.enum(['NEW_ITEM', 'EXISTING_ITEM']),
-  itemId: z.string().uuid().optional(),
+  itemId: z.string().guid().optional(),
   name: z.string().max(200).optional(),
   model: z.string().max(200).optional(),
   usage: z.string().max(500).optional(),
-  shelfId: z.string().uuid().optional(),
-  drawerId: z.string().uuid().optional(),
+  shelfId: z.string().guid().optional(),
+  drawerId: z.string().guid().optional(),
   itemTagUid: z.string().max(256).optional(),
   initialQuantity: z.number().int().min(0).optional(),
   reviewNote: z.string().max(1000).optional(),
@@ -160,14 +160,14 @@ const registerBody = z.object({
 
 const transactionBody = z.object({
   itemTagUid: z.string().trim().min(1).max(256),
-  expectedCompartmentId: z.string().uuid().optional(),
+  expectedCompartmentId: z.string().guid().optional(),
   quantityTagUid: z.string().trim().min(1).max(256),
   restockTagUid: z.string().trim().min(1).max(256).optional(),
   restock: z.boolean().default(false),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
 const touchTransactionBody = z.object({
-  compartmentId: z.string().uuid(),
+  compartmentId: z.string().guid(),
   quantity: z.number().int().min(1).max(999999),
   restock: z.boolean().default(false),
   expectedBeforeQuantity: z.number().int().min(0).optional(),
@@ -261,7 +261,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   app.get('/item-inventory/history', { preHandler: [read] }, async (request) => {
     const query = z.object({
       limit: z.coerce.number().int().min(1).max(500).default(100),
-      compartmentId: z.string().uuid().optional(),
+      compartmentId: z.string().guid().optional(),
     }).parse(request.query ?? {});
     return { history: await services.inventory.listHistory(query.limit, { compartmentId: query.compartmentId }) };
   });
@@ -290,7 +290,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
 
   app.post('/item-inventory/corrections', { preHandler: [correctionWrite] }, async (request) => {
     const body = z.object({
-      compartmentId: z.string().uuid(),
+      compartmentId: z.string().guid(),
       desiredQuantity: z.number().int().min(0),
       expectedBeforeQuantity: z.number().int().min(0).optional(),
       note: z.string().max(1000).optional(),
@@ -314,7 +314,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return await services.inventory.renameArea(body.from, body.to);
   });
   app.post('/item-inventory/locations/drawers', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
-    const body = z.object({ shelfId: z.string().uuid(), drawerNumber: z.number().int().min(1) }).parse(request.body ?? {});
+    const body = z.object({ shelfId: z.string().guid(), drawerNumber: z.number().int().min(1) }).parse(request.body ?? {});
     return { drawer: await services.inventory.createDrawer(body.shelfId, body.drawerNumber) };
   });
   app.post('/item-inventory/tags/quantity', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
@@ -349,8 +349,8 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
 
   app.post('/item-inventory/import-photos/suggest-tool-fields', { preHandler: [authorizeManageOrKiosk] }, async (request, reply) => {
     const body = z.discriminatedUnion('source', [
-      z.object({ source: z.literal('import'), payloadId: z.string().uuid(), photoId: z.string().uuid() }).strict(),
-      z.object({ source: z.literal('item'), itemId: z.string().uuid(), photoId: z.string().uuid() }).strict(),
+      z.object({ source: z.literal('import'), payloadId: z.string().guid(), photoId: z.string().guid() }).strict(),
+      z.object({ source: z.literal('item'), itemId: z.string().guid(), photoId: z.string().guid() }).strict(),
     ]).parse(request.body ?? {});
     const photo = body.source === 'import'
       ? await prisma.inventoryImportPhoto.findFirst({ where: { id: body.photoId, payloadId: body.payloadId }, select: { photoUrl: true } })
@@ -366,8 +366,8 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
 
   app.post('/item-inventory/photos/read-region', { preHandler: [authorizeManageOrKiosk] }, async (request, reply) => {
     const body = z.discriminatedUnion('source', [
-      z.object({ source: z.literal('import'), payloadId: z.string().uuid(), photoId: z.string().uuid(), bbox: overlayRegionBBoxSchema }).strict(),
-      z.object({ source: z.literal('item'), itemId: z.string().uuid(), photoId: z.string().uuid(), bbox: overlayRegionBBoxSchema }).strict(),
+      z.object({ source: z.literal('import'), payloadId: z.string().guid(), photoId: z.string().guid(), bbox: overlayRegionBBoxSchema }).strict(),
+      z.object({ source: z.literal('item'), itemId: z.string().guid(), photoId: z.string().guid(), bbox: overlayRegionBBoxSchema }).strict(),
     ]).parse(request.body ?? {});
     const photo = body.source === 'import'
       ? await prisma.inventoryImportPhoto.findFirst({ where: { id: body.photoId, payloadId: body.payloadId }, select: { photoUrl: true } })
@@ -399,7 +399,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
 
   app.put('/item-inventory/imports/:id/photos/order', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = idParams.parse(request.params);
-    const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});
+    const body = z.object({ photoIds: z.array(z.string().guid()) }).parse(request.body ?? {});
     return { result: await services.inventory.reorderImportPhotos(id, body.photoIds) };
   });
 
@@ -419,16 +419,16 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   });
 
   app.put('/item-inventory/items/:itemId/photos/order', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
-    const { itemId } = z.object({ itemId: z.string().uuid() }).parse(request.params);
-    const body = z.object({ photoIds: z.array(z.string().uuid()) }).parse(request.body ?? {});
+    const { itemId } = z.object({ itemId: z.string().guid() }).parse(request.params);
+    const body = z.object({ photoIds: z.array(z.string().guid()) }).parse(request.body ?? {});
     return { result: await services.inventory.reorderInventoryItemPhotos(itemId, body.photoIds) };
   });
 
   app.post('/item-inventory/compartments', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({
-      itemId: z.string().uuid(),
-      shelfId: z.string().uuid(),
-      drawerId: z.string().uuid(),
+      itemId: z.string().guid(),
+      shelfId: z.string().guid(),
+      drawerId: z.string().guid(),
       itemTagUid: z.string().trim().min(1).max(256),
       initialQuantity: z.number().int().min(0),
     }).parse(request.body ?? {});
@@ -444,7 +444,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
 
   app.put('/item-inventory/compartments/:id/location', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = compartmentParams.parse(request.params);
-    const body = z.object({ drawerId: z.string().uuid() }).parse(request.body ?? {});
+    const body = z.object({ drawerId: z.string().guid() }).parse(request.body ?? {});
     return { transaction: await services.inventory.moveLocation(id, body.drawerId, await actor(request)) };
   });
   app.put('/item-inventory/compartments/:id/tag', { preHandler: [authorizeManageOrKiosk] }, async (request) => {

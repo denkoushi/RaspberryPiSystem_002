@@ -39,6 +39,8 @@ import sys
 args = sys.argv[1:]
 with open(os.environ["EVENTS"], "a") as log:
     log.write(json.dumps({"kind": "docker", "remote": os.environ.get("FAKE_REMOTE") == "1", "args": args}) + "\n")
+if args == ["stop", "dgx-private-comfyui"] and os.environ.get("FAIL_PRIVATE_STOP"):
+    sys.exit(1)
 if args[0] == "ps":
     print("system-prod-trtllm")
 if args[0] == "rm" and os.environ.get("FAIL_DOCKER"):
@@ -159,7 +161,7 @@ class DeepSeekAdapterTests(unittest.TestCase):
         self.assertTrue(launch["path"].startswith(str(self.venv) + os.pathsep))
         operations = [e for e in self.events() if e["kind"] in ("docker", "git")]
         self.assertEqual([(e["kind"], e["args"][0]) for e in operations],
-                         [("docker", "ps"), ("docker", "rm"), ("docker", "rm"), ("git", "-C"), ("git", "-C")])
+                         [("docker", "ps"), ("docker", "rm"), ("docker", "rm"), ("git", "-C"), ("git", "-C"), ("docker", "stop")])
         self.assertEqual(operations[1]["args"], ["rm", "-f", "system-prod-trtllm"])
         self.assertEqual(operations[2]["args"], ["rm", "-f", "system-prod-trtllm-rank1"])
         self.assertTrue(operations[2]["remote"])
@@ -173,6 +175,20 @@ class DeepSeekAdapterTests(unittest.TestCase):
         self.assertTrue((self.root / ".cache/dsv41-tensorfold/start.log").exists())
         self.assertFalse((self.clone / "injected").exists())
         self.assertFalse((self.root / "injected").exists())
+
+    def test_private_comfy_stop_precedes_remote_launch_even_if_stop_fails(self):
+        for adapter in ("dsv41_tensorfold_2x", "glm53_tensorfold_2x"):
+            for failure in ("", "1"):
+                with self.subTest(adapter=adapter, failure=failure):
+                    self.events_path.write_text("")
+                    result = self.run_script(BLUE_SERVER_ADAPTER=adapter, FAIL_PRIVATE_STOP=failure)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.wait_for_launch()
+                    events = self.events()
+                    stop = events.index({"kind": "docker", "remote": True,
+                                         "args": ["stop", "dgx-private-comfyui"]})
+                    launch = next(i for i, e in enumerate(events) if e["kind"] == "launch")
+                    self.assertLess(stop, launch)
 
     def test_other_blue_start_stops_recorded_deepseek_first(self):
         self.write_marker(self.expected_marker())
@@ -323,6 +339,7 @@ class DeepSeekAdapterTests(unittest.TestCase):
             ("docker", ["rm", "-f", "system-prod-trtllm-rank1"]),
             ("git", ["-C", str(self.clone), "rev-parse", "HEAD"]),
             ("git", ["-C", str(self.clone), "status", "--porcelain"]),
+            ("docker", ["stop", "dgx-private-comfyui"]),
         ])
         self.assertTrue(operations[2]["remote"])
         expected = {**self.expected_marker(), "adapter": "glm53_tensorfold_2x"}
@@ -356,7 +373,7 @@ class DeepSeekAdapterTests(unittest.TestCase):
                 self.wait_for_launch()
                 operations = [e for e in self.events() if e["kind"] in ("docker", "stop", "git", "launch")]
                 self.assertEqual([e["kind"] for e in operations],
-                                 ["docker", "docker", "stop", "git", "git", "launch"])
+                                 ["docker", "docker", "stop", "git", "git", "docker", "launch"])
                 self.assertEqual(Path(operations[2]["cwd"]), previous_clone.resolve())
                 self.assertEqual(Path(operations[-1]["cwd"]), self.clone.resolve())
                 ssh_events = [e for e in self.events() if e["kind"] == "ssh"]

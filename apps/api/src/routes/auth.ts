@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { authorizeRoles, authenticate } from '../lib/auth.js';
 import { UserRole } from '@prisma/client';
 import { AuthRoleAdminService } from '../services/auth/auth-role-admin.service.js';
@@ -73,7 +73,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/auth/users/:id/role', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
-    const params = z.object({ id: z.string().uuid() }).parse(request.params);
+    const params = z.object({ id: z.string().guid() }).parse(request.params);
     const body = updateRoleSchema.parse(request.body);
     return authRoleAdminService.updateUserRole({
       actorUser: {

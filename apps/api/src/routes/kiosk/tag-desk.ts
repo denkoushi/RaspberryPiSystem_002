@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import pkg from '@prisma/client';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { prisma } from '../../lib/prisma.js';
 import { PrismaKnowledgeReviewerRepository } from '../../services/knowledge/prisma-knowledge-reviewer.repository.js';
@@ -31,19 +31,19 @@ const { EmployeeStatus } = pkg;
 const pinRateLimit = { max: 10, timeWindow: '1 minute' };
 // Binding changes are one person at one reader; this only stops runaway loops.
 const bindingRateLimit = { max: 60, timeWindow: '1 minute' };
-const idParams = z.object({ id: z.string().uuid() });
+const idParams = z.object({ id: z.string().guid() });
 const kindQuery = z.object({ kind: z.enum(TAG_DESK_KINDS) });
 const uidParams = z.object({ uid: z.string().trim().min(1).max(256) });
 const eventsQuery = z.object({ limit: z.coerce.number().int().min(1).max(50).default(8) });
 const linkBody = z.object({
   kind: z.enum(TAG_DESK_KINDS),
-  targetId: z.string().uuid(),
+  targetId: z.string().guid(),
   uid: z.string().trim().min(4).max(256),
   replace: z.boolean().optional()
 });
 const unlinkBody = z.object({
   kind: z.enum([...TAG_DESK_KINDS, 'inventory']),
-  bindingId: z.string().uuid()
+  bindingId: z.string().guid()
 });
 
 const optionalText = z.string().trim().max(200).optional().nullable().transform((v) => (v ? v : null));

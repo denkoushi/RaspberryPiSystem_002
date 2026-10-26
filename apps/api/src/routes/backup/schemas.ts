@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { BackupConfigSchema } from '../../services/backup/backup-config.js';
 
 const backupTargetKindSchema = z.enum([
@@ -23,7 +23,7 @@ const storageSchema = z.object({
   providers: z.array(backupProviderSchema).optional(),
 }).optional();
 
-const metadataSchema = z.record(z.unknown()).optional();
+const metadataSchema = z.record(z.string(), z.unknown()).optional();
 
 const cronScheduleSchema = z.string().trim().min(1).max(100);
 

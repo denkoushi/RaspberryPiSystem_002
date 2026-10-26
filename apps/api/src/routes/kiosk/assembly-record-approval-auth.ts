@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,

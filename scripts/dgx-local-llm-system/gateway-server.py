@@ -38,12 +38,14 @@ DGX system-prod 用のローカル gateway。
 from __future__ import annotations
 
 import os
+import re
 import json
 import sys
 import subprocess
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
@@ -97,9 +99,21 @@ class GatewayConfig:
     active_model_state_path: str = "/srv/dgx/system-prod/state/active-model-profile.json"
     resource_state_path: str = "/srv/dgx/system-prod/state/dgx-resource-state.json"
     model_storage_delete_allowed_roots: tuple[str, ...] = DEFAULT_MODEL_STORAGE_DELETE_ALLOWED_ROOTS
+    private_comfy_worker_ssh_target: str = ""
+    private_comfy_worker_start_cmd: str = (
+        "docker compose -f /srv/dgx/private-personal/compose/dgx-private-comfyui/compose.yaml up -d --no-build"
+    )
+    private_comfy_worker_stop_cmd: str = (
+        "docker compose -f /srv/dgx/private-personal/compose/dgx-private-comfyui/compose.yaml stop"
+    )
+    private_comfy_worker_cmd_timeout_sec: int = 20
 
 
 def load_config_from_env() -> GatewayConfig:
+    worker_target = os.environ.get("PRIVATE_COMFY_WORKER_SSH_TARGET", "")
+    if worker_target and not re.fullmatch(r"[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9_][a-zA-Z0-9_.-]*", worker_target):
+        print("invalid PRIVATE_COMFY_WORKER_SSH_TARGET; private ComfyUI worker disabled", file=sys.stderr)
+        worker_target = ""
     return GatewayConfig(
         llm_shared_tokens=load_llm_shared_tokens_from_env(),
         runtime_control_token=(os.environ.get("LLM_RUNTIME_CONTROL_TOKEN") or "").strip(),
@@ -158,6 +172,14 @@ def load_config_from_env() -> GatewayConfig:
             or "/srv/dgx/system-prod/state/dgx-resource-state.json"
         ).strip(),
         model_storage_delete_allowed_roots=parse_allowed_roots(os.environ.get("DGX_MODEL_STORAGE_DELETE_ALLOWED_ROOTS")),
+        private_comfy_worker_ssh_target=worker_target,
+        private_comfy_worker_start_cmd=(
+            os.environ.get("PRIVATE_COMFY_WORKER_START_CMD") or GatewayConfig.private_comfy_worker_start_cmd
+        ).strip(),
+        private_comfy_worker_stop_cmd=(
+            os.environ.get("PRIVATE_COMFY_WORKER_STOP_CMD") or GatewayConfig.private_comfy_worker_stop_cmd
+        ).strip(),
+        private_comfy_worker_cmd_timeout_sec=int((os.environ.get("PRIVATE_COMFY_WORKER_CMD_TIMEOUT_SEC") or "20").strip()),
     )
 
 
@@ -346,6 +368,26 @@ def run_local_command(command: str, cwd: str, timeout_sec: int) -> tuple[int, st
     )
     out = (proc.stdout or "") + ("\n" if proc.stdout and proc.stderr else "") + (proc.stderr or "")
     return proc.returncode, out.strip()
+
+
+def run_worker_command(target: str, command: str, timeout: int) -> dict:
+    try:
+        proc = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", target, command],
+            timeout=timeout,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = (proc.stdout or "") + ("\n" if proc.stdout and proc.stderr else "") + (proc.stderr or "")
+        result = {"ok": proc.returncode == 0, "exitCode": proc.returncode, "outputSample": output.strip()[:400]}
+    except subprocess.TimeoutExpired:
+        result = {"ok": False, "message": "timeout", "outputSample": ""}
+    except Exception as exc:
+        result = {"ok": False, "message": str(exc), "outputSample": ""}
+    if not result["ok"]:
+        print(f"private ComfyUI worker command failed: {json.dumps(result)}", file=sys.stderr)
+    return result
 
 
 def emit_agent_debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
@@ -1038,12 +1080,37 @@ def make_handler(
                     if self.path.endswith("/start")
                     else config.private_comfy_stop_cmd
                 )
+                worker_payload = {}
                 try:
-                    rc, output = run_local_command(
-                        command,
-                        config.private_comfy_root,
-                        config.private_comfy_cmd_timeout_sec,
-                    )
+                    if config.private_comfy_worker_ssh_target:
+                        is_start = self.path.endswith("/start")
+                        # Spark 1 keeps its own timeout; the worker is bounded so it never delays the reply past Spark 1 plus margin.
+                        with ThreadPoolExecutor(max_workers=2) as executor:
+                            local_future = executor.submit(
+                                run_local_command, command, config.private_comfy_root,
+                                config.private_comfy_cmd_timeout_sec,
+                            )
+                            worker_future = executor.submit(
+                                run_worker_command, config.private_comfy_worker_ssh_target,
+                                config.private_comfy_worker_start_cmd if is_start else config.private_comfy_worker_stop_cmd,
+                                min(config.private_comfy_worker_cmd_timeout_sec, 20),
+                            )
+                            worker_payload["worker"] = worker_future.result()
+                        rc = None
+                        try:
+                            rc, output = local_future.result()
+                        finally:
+                            if is_start and rc != 0:
+                                run_worker_command(
+                                    config.private_comfy_worker_ssh_target, config.private_comfy_worker_stop_cmd,
+                                    min(config.private_comfy_worker_cmd_timeout_sec, 5),
+                                )
+                    else:
+                        rc, output = run_local_command(
+                            command,
+                            config.private_comfy_root,
+                            config.private_comfy_cmd_timeout_sec,
+                        )
                     if rc == 0:
                         # region agent log
                         emit_agent_debug_log(
@@ -1065,7 +1132,7 @@ def make_handler(
                             action="private-comfyui-start" if is_start else "private-comfyui-stop",
                             reason=reason_from_json_body(body),
                         )
-                        payload_body = {"ok": True, "path": self.path}
+                        payload_body = {"ok": True, "path": self.path, **worker_payload}
                         if resource_state is not None:
                             payload_body["resourceState"] = resource_state
                         payload = json.dumps(payload_body).encode("utf-8")
@@ -1089,6 +1156,7 @@ def make_handler(
                             "path": self.path,
                             "exitCode": rc,
                             "output": output[:400],
+                            **worker_payload,
                         }
                     ).encode("utf-8")
                     self._send(502, payload, "application/json; charset=utf-8")
@@ -1105,7 +1173,7 @@ def make_handler(
                         },
                     )
                     # endregion
-                    payload = json.dumps({"ok": False, "path": self.path, "message": "timeout"}).encode("utf-8")
+                    payload = json.dumps({"ok": False, "path": self.path, "message": "timeout", **worker_payload}).encode("utf-8")
                     self._send(504, payload, "application/json; charset=utf-8")
                     return
                 except Exception as exc:
@@ -1121,7 +1189,7 @@ def make_handler(
                     )
                     # endregion
                     payload = json.dumps(
-                        {"ok": False, "path": self.path, "message": str(exc)}
+                        {"ok": False, "path": self.path, "message": str(exc), **worker_payload}
                     ).encode("utf-8")
                     self._send(500, payload, "application/json; charset=utf-8")
                     return

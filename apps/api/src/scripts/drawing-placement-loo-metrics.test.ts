@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { comparePlacementMarkers, placementRates, type EvaluationMarker } from './drawing-placement-loo-metrics.js';
+import { comparePlacementMarkers, nominalMatched, placementRates, type EvaluationMarker } from './drawing-placement-loo-metrics.js';
 
 const marker = (overrides: Partial<EvaluationMarker> = {}): EvaluationMarker => ({
   nominalValue: 10, measurementLabel: '径', markerXRatio: 0.5, markerYRatio: 0.5, ...overrides
@@ -56,4 +56,10 @@ describe('leave-one-out placement metrics', () => {
       positionOk: rows.reduce((sum, row) => sum + row.positionOk, 0)
     })).toMatchObject({ precision: 1, recall: 1 / 3, positionOkRate: 1 / 3 });
   });
+});
+
+it('counts nominal-only matches one-to-one, ignoring labels and preserving null exclusion', () => {
+  const marker = (nominalValue: number | null, measurementLabel: string) => ({ nominalValue, measurementLabel, markerXRatio: 0, markerYRatio: 0 });
+  expect(nominalMatched([marker(10, '幅'), marker(10, '全幅'), marker(null, '幅')], [marker(10, '長さ'), marker(null, '幅')])).toBe(1);
+  expect(nominalMatched([marker(10, '幅')], [marker(11, '幅')])).toBe(0);
 });

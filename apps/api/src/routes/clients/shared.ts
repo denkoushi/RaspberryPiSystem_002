@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { KIOSK_INITIAL_ROUTE_IDS } from '@raspi-system/shared-types';
 import { authorizeRoles } from '../../lib/auth.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
@@ -31,7 +31,7 @@ export const metricSchema = z.object({
       z.object({
         level: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
         message: z.string().min(1).max(1000),
-        context: z.record(z.unknown()).optional()
+        context: z.record(z.string(), z.unknown()).optional()
       })
     )
     .max(20)
@@ -45,7 +45,7 @@ export const logsPayloadSchema = z.object({
       z.object({
         level: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
         message: z.string().min(1).max(1000),
-        context: z.record(z.unknown()).optional()
+        context: z.record(z.string(), z.unknown()).optional()
       })
     )
     .min(1)

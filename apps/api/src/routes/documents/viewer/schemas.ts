@@ -1,11 +1,11 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 /**
  * ドキュメントビューワー用スキーマ
  * 将来のPDF/Excelビューワーモジュールで使用
  */
 export const documentViewSchema = z.object({
-  documentId: z.string().uuid(),
+  documentId: z.string().guid(),
   page: z.coerce.number().int().min(1).optional()
 });
 

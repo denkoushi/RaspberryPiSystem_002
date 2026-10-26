@@ -1,5 +1,9 @@
 import { Prisma, type PartMeasurementProcessGroup, type PartMeasurementTemplateItem } from '@prisma/client';
 
+import { env } from '../../config/env.js';
+import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
+import { PartMeasurementDrawingReferencePlacementService, referencePlacementVersionFor } from './part-measurement-drawing-reference-placement.service.js';
+
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
@@ -98,8 +102,13 @@ export class PartMeasurementDrawingPlacementService {
   constructor(
     private readonly drawingOcrService = getPartMeasurementDrawingOcrService(),
     private readonly dimensionMapService = getPartMeasurementDrawingDimensionMapService(),
-    private readonly siblingMatchService = new PartMeasurementDrawingSiblingMatchService()
+    private readonly siblingMatchService = new PartMeasurementDrawingSiblingMatchService(),
+    private readonly referenceService?: Pick<PartMeasurementDrawingReferencePlacementService, 'findRun' | 'ensureRun'>
   ) {}
+
+  private referencePlacement() {
+    return this.referenceService ?? new PartMeasurementDrawingReferencePlacementService();
+  }
 
   async ensureRun(visualTemplateId: string, options: {
     processGroup: PartMeasurementProcessGroup; reorder?: PlacementReorder; reorderProvider?: PlacementReorderProvider | null
@@ -213,12 +222,17 @@ export class PartMeasurementDrawingPlacementService {
   }
 
   async listForEditor(visualTemplateId: string, processGroup: PartMeasurementProcessGroup): Promise<PartMeasurementDrawingPlacementEditorResult> {
-    const result = await this.ensureRun(visualTemplateId, { processGroup });
+    const saved = env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED
+      ? await this.referencePlacement().findRun(visualTemplateId, processGroup) : null;
+    // An empty reference run falls back to the transfer proposals.
+    const reference = saved?.proposals.some((row) => row.status === 'PROPOSED') ? saved : null;
+    const result: EnsureRunResult = reference ? { status: 'ready', run: reference }
+      : await this.ensureRun(visualTemplateId, { processGroup });
     if (!result.run) return { status: result.status, sourceDrawingName: null, proposals: [], unplaced: [] };
     const existingItems = await this.existingItems(visualTemplateId, processGroup);
     return {
       status: result.status,
-      sourceDrawingName: result.run.sourceVisualTemplate?.name ?? null,
+      sourceDrawingName: reference ? null : result.run.sourceVisualTemplate?.name ?? null,
       proposals: result.run.proposals
         .filter((row) => row.status === 'PROPOSED' && !placementItemAlreadyExists({
           measurementLabel: row.measurementLabel, nominalValue: row.nominalValue.toNumber()
@@ -282,7 +296,7 @@ export class PartMeasurementDrawingPlacementService {
       ORDER BY (s."id" IS NULL) ASC, COALESCE(s."updatedAt", m."createdAt") ASC, m."id" ASC LIMIT ${batchLimit}
     `;
     const counts = { scanned: targets.length, matched: 0, noMatch: 0, deferred: 0, jev: 0,
-      ready: 0, noSibling: 0, mapPending: 0, failed: 0 };
+      ready: 0, noSibling: 0, mapPending: 0, failed: 0, referenceReady: 0, referenceDeferred: 0, referenceFailed: 0 };
     for (const target of targets) {
       try {
         // eslint-disable-next-line no-await-in-loop
@@ -328,6 +342,45 @@ export class PartMeasurementDrawingPlacementService {
       } catch (error) {
         counts.failed++;
         log.warn({ err: error, visualTemplateId: row.id }, 'drawing placement backfill failed');
+      }
+    }
+    if (env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED) {
+      const referenceTargets = await prisma.$queryRaw<Array<{ id: string; processGroup: PartMeasurementProcessGroup }>>`
+        WITH maps AS (${latestMaps})
+        SELECT m."id", p."processGroup" FROM maps m
+        CROSS JOIN (VALUES ('CUTTING'::"PartMeasurementProcessGroup"), ('GRINDING'::"PartMeasurementProcessGroup")) p("processGroup")
+        WHERE EXISTS (
+          SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r WHERE r."visualTemplateId" = m."id"
+            AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
+            AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
+            AND r."placementVersion" = (${`${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}:`}::text || p."processGroup"::text)
+        ) AND NOT EXISTS (
+          SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r WHERE r."visualTemplateId" = m."id"
+            AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
+            AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
+            AND r."placementVersion" = CASE p."processGroup"
+              WHEN 'CUTTING' THEN ${referencePlacementVersionFor('CUTTING')} ELSE ${referencePlacementVersionFor('GRINDING')} END
+        ) AND NOT EXISTS (
+          SELECT 1 FROM "PartMeasurementTemplate" t JOIN "PartMeasurementTemplateItem" i ON i."templateId" = t."id"
+          WHERE t."visualTemplateId" = m."id" AND t."isActive" = TRUE AND t."processGroup" = p."processGroup"
+            AND i."markerXRatio" IS NOT NULL AND i."markerYRatio" IS NOT NULL
+        )
+        ORDER BY m."createdAt" ASC, m."id" ASC, p."processGroup" ASC LIMIT 3
+      `;
+      const reference = this.referencePlacement();
+      for (const row of referenceTargets) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const run = await reference.ensureRun(row.id, row.processGroup);
+          if (run) counts.referenceReady++;
+        } catch (error) {
+          if (error instanceof InferenceDeferredError) {
+            counts.referenceDeferred++;
+            break;
+          }
+          counts.referenceFailed++;
+          log.warn({ visualTemplateId: row.id, processGroup: row.processGroup }, 'drawing reference placement failed');
+        }
       }
     }
     return counts;

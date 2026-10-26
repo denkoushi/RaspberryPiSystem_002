@@ -1,6 +1,6 @@
 import { ProcedureManualCommonService } from '../../services/assembly/procedure-manual-common.service.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { ProcedureManualPartCandidatesService } from '../../services/assembly/procedure-manual-part-candidates.service.js';
@@ -11,8 +11,8 @@ const paramsSchema = z.object({ modelCodeKey: z.string().min(1).max(200), proces
 const bodySchema = z.object({
   modelCode: z.string().min(1).max(200),
   assignments: z.array(z.object({
-    kioskDocumentId: z.string().uuid().nullish(),
-    assemblyProcedureDocumentId: z.string().uuid().nullish(),
+    kioskDocumentId: z.string().guid().nullish(),
+    assemblyProcedureDocumentId: z.string().guid().nullish(),
     sortOrder: z.number().int().min(0),
     label: z.string().trim().max(200).nullish()
   }).refine((item) => Boolean(item.kioskDocumentId) !== Boolean(item.assemblyProcedureDocumentId), '文書はどちらか一方を指定してください')).max(200)

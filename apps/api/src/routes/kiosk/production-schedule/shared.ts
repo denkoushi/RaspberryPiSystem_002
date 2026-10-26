@@ -1,5 +1,5 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
 import { LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX } from '../../../services/production-schedule/leaderboard/leaderboard-display-row-scope.js';
 import { displayItemIdSchema } from '../../../services/production-schedule/order-split/leaderboard-display-item-id.js';
@@ -61,7 +61,7 @@ export const productionScheduleLeaderboardPhasedQuerySchema = productionSchedule
 /** 順位ボード shell 続き取得の共通フィールド（単一資源 continue / 集約 continue で再利用） */
 export const productionScheduleLeaderboardShellContinuationFieldsSchema = z.object({
   /** shell 応答で返却された snapshot。付与時は continue が軽量経路になる。 */
-  snapshotId: z.string().uuid().optional(),
+  snapshotId: z.string().guid().optional(),
   /**
    * snapshot 並びでの次読み取り位置（0-based・既に返した行数）。
    * shell の `nextCursor` をそのまま送る。`snapshotId` がある場合はこれを優先する。
@@ -180,7 +180,7 @@ export const productionScheduleLeaderboardBoardContinueBodySchema = productionSc
       .array(
         z.object({
           resourceCd: z.string().min(1).max(100),
-          snapshotId: z.string().uuid().optional(),
+          snapshotId: z.string().guid().optional(),
           cursor: z.number().int().min(0).max(5_000_000).optional(),
           excludeRowIds: z.array(displayItemIdSchema).max(900).optional(),
           hasMore: z.boolean()
@@ -259,7 +259,7 @@ export const productionScheduleLeaderboardClientPerfBodySchema = z.object({
   markMs: z.number().finite().nonnegative().max(86_400_000).optional(),
   elapsedMs: z.number().finite().nonnegative().max(86_400_000).optional(),
   detail: z
-    .record(z.union([z.string().max(400), z.number().finite(), z.boolean(), z.null()]))
+    .record(z.string(), z.union([z.string().max(400), z.number().finite(), z.boolean(), z.null()]))
     .optional()
 });
 
@@ -293,7 +293,7 @@ export const toLegacyLocationKeyFromDeviceScope = (
   deviceScopeKey;
 
 export const productionScheduleCompleteParamsSchema = z.object({
-  rowId: z.string().uuid()
+  rowId: z.string().guid()
 });
 
 /** キオスク完了の明示指定（トグルではない） */
@@ -302,7 +302,7 @@ export const productionScheduleCompletionIntentBodySchema = z.object({
 });
 
 export const productionScheduleOrderParamsSchema = z.object({
-  rowId: z.string().uuid()
+  rowId: z.string().guid()
 });
 
 export const productionScheduleOrderBodySchema = z.object({
@@ -314,7 +314,7 @@ export const productionScheduleOrderBodySchema = z.object({
 });
 
 export const productionScheduleNoteParamsSchema = z.object({
-  rowId: z.string().uuid()
+  rowId: z.string().guid()
 });
 
 export const productionScheduleNoteBodySchema = z.object({
@@ -325,7 +325,7 @@ export const productionScheduleNoteBodySchema = z.object({
 });
 
 export const productionScheduleDueDateParamsSchema = z.object({
-  rowId: z.string().uuid()
+  rowId: z.string().guid()
 });
 
 export const productionScheduleDueDateBodySchema = z.object({
@@ -333,7 +333,7 @@ export const productionScheduleDueDateBodySchema = z.object({
 });
 
 export const productionScheduleProcessingParamsSchema = z.object({
-  rowId: z.string().uuid()
+  rowId: z.string().guid()
 });
 
 export const productionScheduleProcessingBodySchema = z.object({

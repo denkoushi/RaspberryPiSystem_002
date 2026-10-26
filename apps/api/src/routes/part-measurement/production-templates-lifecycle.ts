@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 
 import {
@@ -58,7 +58,7 @@ export function registerProductionTemplateLifecycleRoutes(app: FastifyInstance, 
     );
 
     app.post('/part-measurement/templates/:id/revise', { preHandler: allowWriteKiosk }, async (request) => {
-      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const params = z.object({ id: z.string().guid() }).parse(request.params);
       const body = reviseTemplateBodySchema.parse(request.body);
       const selfInspectionPatch = selfInspectionPatchFromReviseBody(body);
       const template = await templateService.reviseActiveTemplate(params.id, {
@@ -81,7 +81,7 @@ export function registerProductionTemplateLifecycleRoutes(app: FastifyInstance, 
     });
 
     app.post('/part-measurement/templates/:id/retire', { preHandler: allowWriteKiosk }, async (request) => {
-      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const params = z.object({ id: z.string().guid() }).parse(request.params);
       const template = await templateService.retireActiveTemplate(params.id);
       return {
         template: serializeTemplate({
@@ -94,7 +94,7 @@ export function registerProductionTemplateLifecycleRoutes(app: FastifyInstance, 
     });
 
     app.post('/part-measurement/templates/:id/activate', { preHandler: allowWriteKiosk }, async (request) => {
-      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const params = z.object({ id: z.string().guid() }).parse(request.params);
       const template = await templateService.setActiveVersion(params.id);
       await enqueueDrawingOcrAndWake(
         template.visualTemplateId,

@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import pkg from '@prisma/client';
 
 const { RiggingStatus, InspectionResult } = pkg;
@@ -36,7 +36,7 @@ export const riggingGearQuerySchema = z.object({
 });
 
 export const riggingGearParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 export const riggingTagCreateSchema = z.object({
@@ -44,13 +44,13 @@ export const riggingTagCreateSchema = z.object({
 });
 
 export const riggingTagParamsSchema = z.object({
-  tagId: z.string().uuid()
+  tagId: z.string().guid()
 });
 
 export const riggingInspectionRecordCreateSchema = z.object({
-  riggingGearId: z.string().uuid(),
-  loanId: z.string().uuid().optional().nullable(),
-  employeeId: z.string().uuid(),
+  riggingGearId: z.string().guid(),
+  loanId: z.string().guid().optional().nullable(),
+  employeeId: z.string().guid(),
   result: z.nativeEnum(InspectionResult),
   inspectedAt: z.coerce.date(),
   notes: z.string().optional().nullable()
@@ -59,23 +59,23 @@ export const riggingInspectionRecordCreateSchema = z.object({
 export const riggingInspectionRecordQuerySchema = z.object({
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
-  employeeId: z.string().uuid().optional(),
+  employeeId: z.string().guid().optional(),
   result: z.nativeEnum(InspectionResult).optional()
 });
 
 export const riggingBorrowSchema = z.object({
   riggingTagUid: z.string().min(1).optional(),
-  riggingGearId: z.string().uuid().optional(),
+  riggingGearId: z.string().guid().optional(),
   employeeTagUid: z.string().min(1),
-  clientId: z.string().uuid().optional(),
+  clientId: z.string().guid().optional(),
   dueAt: z.coerce.date().optional(),
   note: z.string().optional().nullable()
 });
 
 export const riggingReturnSchema = z.object({
-  loanId: z.string().uuid(),
-  clientId: z.string().uuid().optional(),
-  performedByUserId: z.string().uuid().optional(),
+  loanId: z.string().guid(),
+  clientId: z.string().guid().optional(),
+  performedByUserId: z.string().guid().optional(),
   note: z.string().optional().nullable()
 });
 
@@ -85,5 +85,5 @@ export const riggingLoanAnalyticsQuerySchema = z.object({
   periodTo: z.coerce.date().optional(),
   monthlyMonths: z.coerce.number().int().min(1).max(24).optional(),
   timeZone: z.enum(['Asia/Tokyo', 'UTC']).optional(),
-  riggingGearId: z.string().uuid().optional(),
+  riggingGearId: z.string().guid().optional(),
 });

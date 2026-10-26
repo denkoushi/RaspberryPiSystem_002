@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 const powerActionSchema = z.object({

@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { sourceFingerprint } from './business-hermes-source-identity.js';
 export { sourceFingerprint } from './business-hermes-source-identity.js';
 

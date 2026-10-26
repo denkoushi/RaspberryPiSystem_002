@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import pkg from '@prisma/client';
 
 const { MeasuringInstrumentStatus, InspectionResult } = pkg;
@@ -6,7 +6,7 @@ const { MeasuringInstrumentStatus, InspectionResult } = pkg;
 export const instrumentBaseSchema = z.object({
   name: z.string().min(1, '名称は必須です'),
   managementNumber: z.string().min(1, '管理番号は必須です'),
-  genreId: z.string().uuid().optional().nullable(),
+  genreId: z.string().guid().optional().nullable(),
   storageLocation: z.string().optional().nullable(),
   department: z.string().optional().nullable(),
   measurementRange: z.string().optional().nullable(),
@@ -27,11 +27,11 @@ export const instrumentQuerySchema = z.object({
 });
 
 export const instrumentParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 export const genreParamsSchema = z.object({
-  genreId: z.string().uuid()
+  genreId: z.string().guid()
 });
 
 export const genreCreateSchema = z.object({
@@ -47,7 +47,7 @@ export const genreUpdateSchema = z.object({
 });
 
 export const genreImageSlotParamsSchema = z.object({
-  genreId: z.string().uuid(),
+  genreId: z.string().guid(),
   slot: z.enum(['1', '2'])
 });
 
@@ -68,7 +68,7 @@ export const inspectionItemUpdateSchema = z.object({
 }).refine((data) => Object.keys(data).length > 0, { message: '更新項目がありません' });
 
 export const inspectionItemParamsSchema = z.object({
-  itemId: z.string().uuid()
+  itemId: z.string().guid()
 });
 
 export const tagCreateSchema = z.object({
@@ -76,14 +76,14 @@ export const tagCreateSchema = z.object({
 });
 
 export const tagParamsSchema = z.object({
-  tagId: z.string().uuid()
+  tagId: z.string().guid()
 });
 
 export const inspectionRecordCreateSchema = z.object({
-  measuringInstrumentId: z.string().uuid(),
-  loanId: z.string().uuid().optional().nullable(),
-  employeeId: z.string().uuid(),
-  inspectionItemId: z.string().uuid(),
+  measuringInstrumentId: z.string().guid(),
+  loanId: z.string().guid().optional().nullable(),
+  employeeId: z.string().guid(),
+  inspectionItemId: z.string().guid(),
   result: z.nativeEnum(InspectionResult),
   inspectedAt: z.coerce.date()
 });
@@ -91,23 +91,23 @@ export const inspectionRecordCreateSchema = z.object({
 export const inspectionRecordQuerySchema = z.object({
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
-  employeeId: z.string().uuid().optional(),
+  employeeId: z.string().guid().optional(),
   result: z.nativeEnum(InspectionResult).optional()
 });
 
 export const instrumentBorrowSchema = z.object({
   instrumentTagUid: z.string().min(1).optional(),
-  instrumentId: z.string().uuid().optional(),
+  instrumentId: z.string().guid().optional(),
   employeeTagUid: z.string().min(1),
-  clientId: z.string().uuid().optional(),
+  clientId: z.string().guid().optional(),
   dueAt: z.coerce.date().optional(),
   note: z.string().optional().nullable()
 });
 
 export const instrumentReturnSchema = z.object({
-  loanId: z.string().uuid(),
-  clientId: z.string().uuid().optional(),
-  performedByUserId: z.string().uuid().optional(),
+  loanId: z.string().guid(),
+  clientId: z.string().guid().optional(),
+  performedByUserId: z.string().guid().optional(),
   note: z.string().optional().nullable()
 });
 
@@ -117,5 +117,5 @@ export const instrumentLoanAnalyticsQuerySchema = z.object({
   periodTo: z.coerce.date().optional(),
   monthlyMonths: z.coerce.number().int().min(1).max(24).optional(),
   timeZone: z.enum(['Asia/Tokyo', 'UTC']).optional(),
-  measuringInstrumentId: z.string().uuid().optional(),
+  measuringInstrumentId: z.string().guid().optional(),
 });

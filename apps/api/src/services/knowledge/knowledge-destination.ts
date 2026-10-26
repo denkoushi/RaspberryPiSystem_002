@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 
 import { enforceReviewTier, normalizeIdentifiers } from './procedure-builder.js';
@@ -9,7 +9,7 @@ import { activeKnowledgeField, topicIdentity } from './knowledge-fields.js';
 import type { TriageDestination } from './triage.port.js';
 
 export const knowledgeDestinationSchema = z.union([
-  z.object({ procedureId: z.string().uuid() }).strict(),
+  z.object({ procedureId: z.string().guid() }).strict(),
   z.object({ newTopic: z.object({ target: z.string(), workType: z.string(), detail: z.string().optional(),
     partNumber: z.string().optional(), drawingNumber: z.string().optional() }).strict() }).strict(),
 ]);

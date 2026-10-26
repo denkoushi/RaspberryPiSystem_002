@@ -1,7 +1,7 @@
 import { toLoanResponse } from '../../lib/loan-response.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import {

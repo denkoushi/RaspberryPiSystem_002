@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import pkg from '@prisma/client';
 
 const { ItemStatus } = pkg;
@@ -25,7 +25,7 @@ export const itemQuerySchema = z.object({
 });
 
 export const itemParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 /** GET /tools/items/loan-analytics */

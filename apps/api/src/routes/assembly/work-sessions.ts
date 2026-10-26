@@ -1,6 +1,6 @@
 import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { BusinessHermesService } from '../../services/business-hermes/business-hermes.service.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
 import { AssemblyTorqueTraceabilityService } from '../../services/torque-wrenches/index.js';
@@ -198,7 +198,7 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
 
   app.post('/assembly/work-sessions/:id/restart-area', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
-    const body = z.object({ areaId: z.string().uuid().optional().nullable(), reason: z.string().max(500).optional().nullable() }).parse(request.body ?? {});
+    const body = z.object({ areaId: z.string().guid().optional().nullable(), reason: z.string().max(500).optional().nullable() }).parse(request.body ?? {});
     const session = await sessionService.restartArea(params.id, body);
     return { session: serializeSession(session, sessionService) };
   });

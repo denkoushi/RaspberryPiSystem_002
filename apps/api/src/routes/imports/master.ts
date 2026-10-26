@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
-import { z, ZodError } from 'zod/v3';
+import { z, ZodError } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';

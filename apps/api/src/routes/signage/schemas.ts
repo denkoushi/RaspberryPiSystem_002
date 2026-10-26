@@ -1,11 +1,11 @@
 import { parseSignageA2uiProposal, signageA2uiProposalSchema } from '../../services/signage/signage-a2ui.js';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { signageCanvasLayoutSchema } from '../../services/signage/signage-canvas.js';
 
 // layoutConfigのスキーマ定義
 const pdfSlotConfigSchema = z
   .object({
-    pdfId: z.string().uuid(),
+    pdfId: z.string().guid(),
     displayMode: z.enum(['SLIDESHOW', 'SINGLE']),
     slideInterval: z.number().int().positive().optional().nullable(),
   })
@@ -16,13 +16,13 @@ const loansSlotConfigSchema = z.object({}).strict();
 
 const csvDashboardSlotConfigSchema = z
   .object({
-    csvDashboardId: z.string().uuid(),
+    csvDashboardId: z.string().guid(),
   })
   .strict();
 
 const visualizationSlotConfigSchema = z
   .object({
-    visualizationDashboardId: z.string().uuid(),
+    visualizationDashboardId: z.string().guid(),
   })
   .strict();
 
@@ -172,7 +172,7 @@ const slotSchema = z.discriminatedUnion('kind', [
   z.object({
     position: z.literal('FULL'),
     kind: z.literal('web_page'),
-    config: z.object({ webCaptureId: z.string().uuid() }).strict(),
+    config: z.object({ webCaptureId: z.string().guid() }).strict(),
   }),
 ]);
 
@@ -216,7 +216,7 @@ const layoutConfigSchema = z.union([legacyLayoutConfigSchema, signageCanvasLayou
 export const scheduleSchema = z.object({
   name: z.string().min(1),
   contentType: z.enum(['TOOLS', 'PDF', 'SPLIT']),
-  pdfId: z.string().uuid().optional().nullable(),
+  pdfId: z.string().guid().optional().nullable(),
   layoutConfig: layoutConfigSchema,
   /** 空または未指定=全端末向け。値ありのときは ClientDevice.apiKey と一致する端末のみ */
   targetClientKeys: z.array(z.string().min(1).max(512)).max(500).optional(),
@@ -230,7 +230,7 @@ export const scheduleSchema = z.object({
 export const scheduleUpdateSchema = scheduleSchema.partial();
 
 export const scheduleParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
 });
 
 export const pdfSchema = z.object({
@@ -245,13 +245,13 @@ export const pdfSchema = z.object({
 export const pdfUpdateSchema = pdfSchema.partial();
 
 export const pdfParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
 });
 
 export const emergencySchema = z.object({
   message: z.string().optional().nullable(),
   contentType: z.enum(['TOOLS', 'PDF', 'SPLIT']).optional().nullable(),
-  pdfId: z.string().uuid().optional().nullable(),
+  pdfId: z.string().guid().optional().nullable(),
   layoutConfig: layoutConfigSchema,
   enabled: z.boolean().optional(),
   expiresAt: z.coerce.date().optional().nullable(),
@@ -301,4 +301,4 @@ export const webCaptureUpdateSchema = z
   .partial()
   .strict();
 
-export const webCaptureParamsSchema = z.object({ id: z.string().uuid() });
+export const webCaptureParamsSchema = z.object({ id: z.string().guid() });
