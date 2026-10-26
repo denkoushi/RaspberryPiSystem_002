@@ -18,7 +18,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { env } from '../config/env.js';
 import { ApiError, DomainHttpError } from '../lib/errors.js';
 import { resolveErrorLogDevice } from '../services/clients/error-log-device.service.js';
