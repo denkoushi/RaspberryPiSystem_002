@@ -31,6 +31,8 @@ import {
   getFileStorageIntegrityBackfillScheduler,
 } from '../services/file-storage/file-storage-integrity-backfill.service.js';
 import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
+import { createGrindingPlanningBoardStartupWarmup } from '../services/production-schedule/grinding-planning-board/startup-warmup.js';
+import { leaderboardShellSnapshotStore } from '../services/production-schedule/leaderboard/kiosk-leaderboard-snapshot-store.js';
 import {
   errorForLog,
   isSchedulerStepStateAmbiguousError,
@@ -108,6 +110,11 @@ export async function startSchedulerStepGroup(
 
 export function buildPostListenSchedulerDefinitions(app: FastifyInstance): SchedulerStepDefinition[] {
   const definitions: SchedulerStepDefinition[] = [];
+  const grindingPlanningBoardWarmup = createGrindingPlanningBoardStartupWarmup({
+    enabled: env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED,
+    delayMs: env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS,
+    snapshotStore: leaderboardShellSnapshotStore
+  });
   if (process.env.HERMES_KNOWLEDGE_ENABLED === 'true') {
     definitions.push({ name: 'hermes-knowledge',
       start: async () => { const runtime = getKnowledgeRuntime(); await runtime.documents.initialize(); runtime.worker.start(); await runtime.ensureReferenceData(); runtime.procedureWorker.start(); },
@@ -146,6 +153,8 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
 
   return [
     ...definitions,
+    { name: 'grinding-planning-board-startup-warmup', start: () => grindingPlanningBoardWarmup.start(),
+      stop: () => grindingPlanningBoardWarmup.stop() },
     { name: 'procedure-term-learning', start: () => getProcedureTermLearningScheduler().start(),
       stop: () => getProcedureTermLearningScheduler().stop() },
     { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
@@ -324,6 +333,7 @@ export function listPostListenSchedulerNames(): string[] {
     'hermes-knowledge',
     'signage-render',
     'part-measurement-drawing-dimension-map',
+    'grinding-planning-board-startup-warmup',
     'procedure-term-learning',
     'business-hermes-nightly',
     'fkojunst-mail-superseded-prune',

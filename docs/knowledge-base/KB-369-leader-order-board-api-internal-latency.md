@@ -429,6 +429,46 @@ category: knowledge-base
   - `gh run watch` のローカル timeout は CI 実行失敗を意味しない。`gh run view` で run 終了状態を別途確認する。
   - 連続デプロイ中の `deploy-status` は `isMaintenance` 残留で一時 FAIL し得るため、全台完了後に `verify-phase12-real.sh` を再実行して最終判定する。
 
+## 製番ボード起動時ウォームアップ（2026-10-26・ローカル実装）
+
+- `GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED=true`（既定）、`GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS=45000`（1秒〜1時間）。post-listen scheduler group で一度だけ予約する。Blue/Green の leader 有効時は scheduler 所有権取得後から遅延を数える。
+- 対象は production-schedule dashboard の board state / override に存在する `siteKey` の和集合。サイト名の推測や全サイト走査はしない。カテゴリはUIの選択肢 `grinding` → `cutting` → `all`、条件は初期UIと同じ `view=resource`、`completionFilter=incomplete`、`includeLoad=false`、製番絞り込みなし。
+- payload → load をサイト・カテゴリごとに直列実行。通常リクエストと同じ snapshot store、payload構築、世代照合、load集計キャッシュを使う。load集計はカテゴリ間で共有される。失敗はログのみ。停止時はタイマーを解除し、実行中の読み取りを待って後続処理を止める。
+- 遅延・計算完了前のアクセス、別view/filter、未知のサイト、世代更新後の初回負荷までは保証しない。既存の12時間TTL・件数上限も維持する。起動後のload再ウォームは追加していない。
+- SQL・索引は変更なし。全winnerのJSON抽出・数値変換、window重複排除、順序付きSUM、`jsonb_to_recordset`へのOR結合が候補。既存のprogress/completion/supplement/split結合索引は存在し、物理override表の索引追加では派生recordsetの結合は改善しない。`readPlanningSource` は既に登録製番で絞り、カテゴリ用と進捗用のID選択・hydrateを行う。実行計画なしの書換えは避ける。
+- 検証: API build用 `tsc -p tsconfig.build.json --noEmit` 成功。関連Vitest 264件成功、専用DB未設定の統合37件skip（17 files成功 / 3 skip、約12秒）。素の `tsc --noEmit` は既存rootDir/include不整合、`--rootDir .` は範囲外の既存テスト型エラーで失敗。テスト時はdotenv loaderを無効化し、秘密ファイルを読んでいない。本番実行・性能再測定は未実施。
+
+本番で次に測るのは、実リクエストのsite・winner集合・override・split設定を使った以下のEXPLAIN。`apps/api` 基準の診断コードで、`SITE_KEY` は実リクエスト値に置換する（本番実行は別途承認対象）。初回と再実行のbuffer read/hit、sortのtemp spill、override結合のloops/rows removedを比較する。
+
+```ts
+import { Prisma } from '@prisma/client';
+import { prisma } from './src/lib/prisma.js';
+import { readGrindingPlanningBoardLoadSummary } from './src/services/production-schedule/grinding-planning-board-load-summary.js';
+import { resolveLeaderboardMaterializedBaseWhere } from './src/services/production-schedule/row-resolver/index.js';
+import { isProductionScheduleOrderSplitEnabled } from './src/services/production-schedule/order-split/production-schedule-order-split-feature.js';
+
+try {
+  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(prisma);
+  const client = {
+    $queryRaw: async (query: Prisma.Sql) => {
+      if (!query.sql.includes('"effectiveItems"')) return prisma.$queryRaw(query);
+      const plan = await prisma.$queryRaw(Prisma.sql`
+        EXPLAIN (ANALYZE, BUFFERS, VERBOSE, SETTINGS, FORMAT JSON) ${query}
+      `);
+      console.log(JSON.stringify(plan, null, 2));
+      return [];
+    }
+  } as Pick<typeof prisma, '$queryRaw'>;
+  await readGrindingPlanningBoardLoadSummary({
+    client, leaderboardMaterializedBaseWhere: baseWhere, siteKey: 'SITE_KEY',
+    category: 'all', splitEnabled: isProductionScheduleOrderSplitEnabled(),
+    isResourceInCategory: () => true
+  });
+} finally {
+  await prisma.$disconnect();
+}
+```
+
 ## References
 
 - [ADR-20260508 · board 集約 API（意思決定・代替案・ロールアウト）](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)

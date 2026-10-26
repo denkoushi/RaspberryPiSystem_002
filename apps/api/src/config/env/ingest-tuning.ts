@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
 export const ingestTuningEnvShape = {
+  GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('true')
+  ).transform((v) => v === 'true'),
+  GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(45_000),
   // Gmail trash cleanup (processed label in trash -> hard delete)
   GMAIL_TRASH_CLEANUP_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
