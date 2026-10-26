@@ -752,6 +752,8 @@ Change (`flywheel-real.mjs`, `flywheel-live.mjs`, `flywheel-runner.mjs`, `flywhe
 
 Checked against the Pi5 receipts of 10/23 to 10/26 (counts only): 7 questions, 3 first turns, 4 follow-ups; the 10/26 session is one conversation of 4 turns with 3 follow-ups, ids unique. Tests: `node --test scripts/hermes-search/retrieval/*.test.mjs` 438 pass (new: session grouping incl. out-of-order receipts and a clarification turn, planner receives `previous_plan`, runner row and grader text for a follow-up, follow-up line in the report).
 
+Chip clicks (receipts with `refine`) are not replayed: the kiosk echoes the earlier question text into them, so replaying one would ask the planner a question nobody typed; their narrowed plan is followed by the next turn and the shown list restarts with them (11 such rows with text and outcome `answer` among the last 7 Pi5 receipt files).
+
 Left out: receipts whose day outcome was `clarification` or `out_of_scope` are still not replayed (same rule as before); a count follow-up is scored on relevance labels like any content question, so a wrong count with the right records shown reads as `relevant shown`. Both are separate changes.
 
 Private files: `work/flywheel/real-<night>.jsonl` (now with `turn`, and `previousPlan`, `previousShown`, `context` on follow-ups).

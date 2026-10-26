@@ -81,6 +81,9 @@ test('receipts sharing a session replay as follow-ups with the previous plan, sh
     // A turn that asked back is not replayed, but its plan is what the kiosk carried forward.
     { at: '2026-10-26T14:54:00Z', sessionId: 's1', recordIds: [], hermesReceipt: { question: 'えっと', outcome: 'clarification', plan: plan('ネジ 傷 えっと') } },
     { at: '2026-10-26T14:56:00Z', sessionId: 's1', recordIds: ['nonconformity:a1'], hermesReceipt: { question: '他に何件ある？', outcome: 'answer', plan: plan('', []) } },
+    // A chip click echoes the question text; it is not replayed, its plan is followed, and the shown list restarts with it.
+    { at: '2026-10-26T14:57:00Z', sessionId: 's1', recordIds: ['nonconformity:d1'], hermesReceipt: { question: '他に何件ある？', outcome: 'answer', plan: plan('', [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['北工場A課'] }]), refine: { axis: 'organization', field: 'originDepartmentName', value: '北工場A課' } } },
+    { at: '2026-10-26T14:58:00Z', sessionId: 's1', recordIds: [], hermesReceipt: { question: '原因は？', outcome: 'no_result', plan: plan('原因', []) } },
     // The same words in another session after a different search are another question.
     { at: '2026-10-26T15:00:00Z', sessionId: 's2', recordIds: [], hermesReceipt: { question: 'へこみ', outcome: 'answer', plan: plan('へこみ') } },
     { at: '2026-10-26T15:01:00Z', sessionId: 's2', recordIds: [], hermesReceipt: { question: '他に何件ある？', outcome: 'no_result', plan: plan('へこみ') } },
@@ -90,9 +93,12 @@ test('receipts sharing a session replay as follow-ups with the previous plan, sh
   writeFileSync(path.join(dir, 'receipts-2026-10-26.jsonl'), rows.map(JSON.stringify).join('\n') + '\n');
   const questions = await readReceiptQuestions({ receiptsDir: dir, days: ['2026-10-26'] });
   assert.deepEqual(questions.map((item) => [item.question, item.turn]), [
-    ['ネジの傷', 0], ['北工場では類例ない？', 2], ['他に何件ある？', 3], ['へこみ', 0], ['他に何件ある？', 1], ['他に何件ある？', 0],
+    ['ネジの傷', 0], ['北工場では類例ない？', 2], ['他に何件ある？', 3], ['原因は？', 5], ['へこみ', 0], ['他に何件ある？', 1], ['他に何件ある？', 0],
   ]);
-  const [, factory, count, , countAfterDent, alone] = questions;
+  const [, factory, count, afterChip, , countAfterDent, alone] = questions;
+  assert.deepEqual(afterChip.previousPlan.filters.map((filter) => filter.values), [['北工場A課']]);
+  assert.deepEqual(afterChip.previousShown, ['nonconformity:d1']);
+  assert.deepEqual(afterChip.context, ['ネジの傷', 'えっと', '北工場では類例ない？', '他に何件ある？']);
   assert.equal(factory.previousPlan.semanticQuery, 'ネジ 傷 えっと');
   assert.deepEqual(Object.keys(factory.previousPlan), ['sources', 'filters', 'semanticQuery', 'sort', 'limit']);
   assert.deepEqual(factory.previousShown, ['nonconformity:a1', 'nonconformity:b1']);

@@ -93,6 +93,15 @@ export async function readReceiptQuestions({ receiptsDir, days }) {
     const context = [];
     turns.forEach((row, turn) => {
       const receipt = row.hermesReceipt;
+      // A chip click (refine) skipped the planner on the kiosk: its question text is the earlier
+      // question echoed, so it is not replayed; its narrowed plan is what the next turn follows,
+      // and the kiosk forgets the records shown before it.
+      const chip = Boolean(receipt.refine);
+      if (chip) {
+        previousPlan = planSummary(receipt.plan) ?? previousPlan;
+        previousShown = shownOf(row);
+        return;
+      }
       if (qualifies(receipt, Boolean(previousPlan))) {
         const id = realId(receipt.question, previousPlan);
         if (!questions.has(id)) {
