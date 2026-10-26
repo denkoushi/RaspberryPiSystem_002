@@ -1,7 +1,10 @@
 // Read-only leave-one-out evaluation of inspection drawing marker proposals. Run from apps/api:
 //   node dist/scripts/evaluate-drawing-placement-loo.js --process all --vision auto --out /tmp/placement-loo.json
 //   pnpm exec tsx src/scripts/evaluate-drawing-placement-loo.ts --vision none --limit 10
-// Options: --process cutting|grinding|all, --limit N (drawings, before expanding process groups),
+// Reference: --method reference [--exclude-same-machine] [--interactive] uses the business text model (background
+// admission unless --interactive) and retries deferred
+// targets up to 3 times, waiting 20 seconds each time. Both methods report nominal-only matches.
+// Options: --method transfer|reference (default transfer), --exclude-same-machine, --process cutting|grinding|all, --limit N (drawings, before expanding process groups),
 //   --visual-template-id <id[,id...]> (repeatable), --vision auto|none, --pos-tol 0.03, --out <file.json>.
 // Uses the server's existing API configuration and drawing storage. No database writes, OCR,
 // dimension-map generation, saved matches or placement runs. Auto performs up to three production
@@ -11,6 +14,11 @@
 // zero denominators yield zero. Transfer uses the pure position ranking, without an optional JEV reorder.
 import { writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
+
+import { InferenceDeferredError } from '../services/inference/ports/text-completion.port.js';
+import { buildReferenceExamples, drawingMachinePrefix, selectReferenceExamples } from '../services/part-measurement/part-measurement-drawing-reference-proposer.js';
+import { DRAWING_REFERENCE_LABEL_VOCABULARY } from '../services/part-measurement/part-measurement-drawing-reference-guide.js';
 
 import type { PartMeasurementProcessGroup, PartMeasurementTemplateItem } from '@prisma/client';
 
@@ -24,9 +32,9 @@ import {
 } from '../services/part-measurement/part-measurement-drawing-placement-transfer.js';
 import { prefilterDrawingSiblings } from '../services/part-measurement/part-measurement-drawing-sibling-match.js';
 import type { DrawingSiblingSelection } from '../services/part-measurement/part-measurement-drawing-sibling-selection.js';
-import { comparePlacementMarkers, placementRates, type EvaluationMarker } from './drawing-placement-loo-metrics.js';
+import { comparePlacementMarkers, nominalMatched, placementRates, type EvaluationMarker } from './drawing-placement-loo-metrics.js';
 
-type Method = DrawingSiblingSelection['method'] | 'none';
+type Method = DrawingSiblingSelection['method'] | 'none' | 'reference';
 type Row = {
   visualTemplateId: string;
   drawingName: string;
@@ -43,6 +51,7 @@ type Row = {
   humanCount: number;
   proposalCount: number | null;
   matched: number | null;
+  nominalMatched: number | null;
   positionOk: number | null;
   precision: number | null;
   recall: number | null;
@@ -53,6 +62,9 @@ type Row = {
 function options() {
   const { values } = parseArgs({ options: {
     process: { type: 'string', default: 'all' },
+    method: { type: 'string', default: 'transfer' },
+    'exclude-same-machine': { type: 'boolean', default: false },
+    interactive: { type: 'boolean', default: false },
     limit: { type: 'string' },
     'visual-template-id': { type: 'string', multiple: true },
     vision: { type: 'string', default: 'auto' },
@@ -62,6 +74,7 @@ function options() {
   if (!['cutting', 'grinding', 'all'].includes(values.process!) || !['auto', 'none'].includes(values.vision!)) {
     throw new Error('Invalid process or vision option');
   }
+  if (!['transfer', 'reference'].includes(values.method!)) throw new Error('Invalid method');
   const limit = values.limit === undefined ? undefined : Number(values.limit);
   const positionTolerance = Number(values['pos-tol']);
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) throw new Error('Invalid limit');
@@ -72,7 +85,7 @@ function options() {
   if (visualTemplateIds.some((id) => !id) || values.out === '') throw new Error('Empty ID or output path');
   const processGroups: PartMeasurementProcessGroup[] = values.process === 'all'
     ? ['CUTTING', 'GRINDING'] : [values.process === 'cutting' ? 'CUTTING' : 'GRINDING'];
-  return { processGroups, limit, visualTemplateIds, vision: values.vision!, positionTolerance, out: values.out };
+  return { method: values.method!, excludeSameMachine: values['exclude-same-machine'], interactive: values.interactive, processGroups, limit, visualTemplateIds, vision: values.vision!, positionTolerance, out: values.out };
 }
 
 // Identical numeric eligibility/conversion to placement.service sourceItems; human truth keeps null nominal values.
@@ -93,7 +106,7 @@ async function main() {
   let config: ReturnType<typeof options>;
   try { config = options(); }
   catch {
-    console.error('Invalid options. Use --process cutting|grinding|all --vision auto|none --limit <positive integer> --pos-tol <nonnegative number> --visual-template-id <id[,id...]> --out <file.json>.');
+    console.error('Invalid options. Use --method transfer|reference [--exclude-same-machine] [--interactive] --process cutting|grinding|all --vision auto|none --limit <positive integer> --pos-tol <nonnegative number> --visual-template-id <id[,id...]> --out <file.json>.');
     process.exitCode = 1;
     return;
   }
@@ -102,6 +115,14 @@ async function main() {
     const { drawingSiblingSelectionDeps, selectDrawingSiblings } = await import(
       '../services/part-measurement/part-measurement-drawing-sibling-selection.js'
     );
+    const reference = config.method === 'reference' ? await (async () => {
+      const { getInferenceRuntime } = await import('../services/inference/inference-runtime.js');
+      const { proposeFromReference } = await import('../services/part-measurement/part-measurement-drawing-reference-placement.service.js');
+      const { InspectionDrawingMeasurementLabelSettingsService } = await import('../services/part-measurement/inspection-drawing-measurement-label-settings.service.js');
+      const settings = await new InspectionDrawingMeasurementLabelSettingsService().listSettings();
+      return { text: getInferenceRuntime().createTextCompletionPort(), proposeFromReference,
+        labels: [...new Set([...settings, ...DRAWING_REFERENCE_LABEL_VOCABULARY].map(({ label }) => label.normalize('NFKC').trim()))] };
+    })() : null;
     const visuals = await prisma.partMeasurementVisualTemplate.findMany({
       where: { isActive: true, businessTemplates: { some: { isActive: true,
         items: { some: { markerXRatio: { not: null }, markerYRatio: { not: null } } }
@@ -149,7 +170,7 @@ async function main() {
       let selectionError: string | null = target.map ? null : 'Dimension map payload could not be decoded';
       let attempts = 0;
       try {
-        if (target.map) {
+        if (target.map && !reference) {
           const candidates = prefilterDrawingSiblings({ ...target, map: target.map }, pool.filter((candidate) =>
             candidate.id !== target.id && candidate.fingerprint !== target.fingerprint));
           const deps = config.vision === 'none'
@@ -176,10 +197,39 @@ async function main() {
           siblingId: null, siblingName: null, sourceTemplateId: null, sameFamily: null,
           method: 'none', selectionMethod: selection?.method ?? 'none', attempts,
           warning: selection?.status !== 'PENDING' && selection?.lastError ? 'Vision failed after 3 attempts; used name fallback' : null,
-          humanCount: humans.length, proposalCount: null, matched: null, positionOk: null,
+          humanCount: humans.length, proposalCount: null, matched: null, nominalMatched: null, positionOk: null,
           precision: null, recall: null, positionOkRate: null, error: selectionError
         };
-        if (!row.error && target.map && selection) {
+        if (!row.error && target.map && reference) {
+          const examples = selectReferenceExamples({ ...target, map: target.map }, pool.filter((candidate) =>
+            candidate.businessTemplates.some((template) => template.processGroup === processGroup)), {
+            excludeMachinePrefix: config.excludeSameMachine ? drawingMachinePrefix(target.name) : null
+          }).map((candidate) => ({ map: candidate.map, ...buildReferenceExamples(candidate.map,
+            candidate.businessTemplates.filter((template) => template.processGroup === processGroup)
+              .flatMap((template) => sourceItems(template.items).map((item) => ({ ...item, label: item.measurementLabel })))) }));
+          row.method = 'reference';
+          row.selectionMethod = 'reference';
+          for (let attempt = 0; attempt <= 3; attempt++) {
+            row.attempts = attempt + 1;
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              const proposals = await reference.proposeFromReference({ ...reference, target: target.map, examples, processGroup,
+                background: !config.interactive });
+              Object.assign(row, comparePlacementMarkers(proposals, humans, config.positionTolerance), {
+                nominalMatched: nominalMatched(proposals, humans)
+              });
+              break;
+            } catch (error) {
+              if (error instanceof InferenceDeferredError && attempt < 3) {
+                // eslint-disable-next-line no-await-in-loop
+                await delay(20000);
+                continue;
+              }
+              row.error = error instanceof InferenceDeferredError ? 'Reference inference deferred after 3 retries' : 'Reference proposal or comparison failed';
+              break;
+            }
+          }
+        } else if (!row.error && target.map && selection) {
           try {
             const source = chooseSourceSibling({
               target, targetMap: target.map,
@@ -208,18 +258,21 @@ async function main() {
               nominalValue: entry.item.nominalValue, measurementLabel: entry.item.measurementLabel,
               markerXRatio: entry.markerXRatio!, markerYRatio: entry.markerYRatio!
             }] : []);
-            Object.assign(row, comparePlacementMarkers(proposals, humans, config.positionTolerance));
+            Object.assign(row, comparePlacementMarkers(proposals, humans, config.positionTolerance), {
+              nominalMatched: nominalMatched(proposals, humans)
+            });
           } catch { row.error = 'Placement transfer or comparison failed'; }
         }
         rows.push(row);
       }
     }
     const successful = rows.filter((row) => row.error === null);
-    const countsByMethod: Record<Method, number> = { 'dgx-vision': 0, 'jev-vision': 0, name: 0, none: 0 };
+    const countsByMethod: Record<Method, number> = { 'dgx-vision': 0, 'jev-vision': 0, name: 0, none: 0, reference: 0 };
     for (const row of successful) countsByMethod[row.method]++;
     const summary = {
       drawings: targets.length, rows: rows.length, evaluatedRows: successful.length, errorRows: rows.length - successful.length,
       invalidCandidateMaps: completed.length - pool.length, countsByMethod,
+      nominalMatched: successful.reduce((sum, row) => sum + row.nominalMatched!, 0),
       sameFamily: successful.filter((row) => row.sameFamily === true).length,
       differentFamily: successful.filter((row) => row.sameFamily === false).length,
       ...placementRates(successful.reduce((sum, row) => ({
@@ -231,7 +284,7 @@ async function main() {
     console.table(rows.map((row) => ({
       drawing: row.drawingName, process: row.processGroup, sibling: row.siblingName, method: row.method,
       sameFamily: row.sameFamily, human: row.humanCount, proposals: row.proposalCount,
-      matched: row.matched, positionOk: row.positionOk,
+      matched: row.matched, nominalMatched: row.nominalMatched, positionOk: row.positionOk,
       precision: row.precision?.toFixed(3) ?? '-', recall: row.recall?.toFixed(3) ?? '-',
       positionOkRate: row.positionOkRate?.toFixed(3) ?? '-', error: row.error
     })));

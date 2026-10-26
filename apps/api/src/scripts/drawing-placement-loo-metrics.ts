@@ -56,3 +56,10 @@ export function comparePlacementMarkers(
     humanCount: humans.length, proposalCount: proposals.length, matched: usedProposals.size, positionOk
   });
 }
+
+export function nominalMatched(proposals: EvaluationMarker[], humans: EvaluationMarker[]): number {
+  return comparePlacementMarkers(
+    proposals.map((marker) => ({ ...marker, measurementLabel: null })),
+    humans.map((marker) => ({ ...marker, measurementLabel: null }))
+  ).matched;
+}
