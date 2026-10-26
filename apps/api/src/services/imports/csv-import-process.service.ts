@@ -1,4 +1,4 @@
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 import { ApiError } from '../../lib/errors.js';
 import { getString, isRecord, toErrorInfo } from '../../lib/type-guards.js';

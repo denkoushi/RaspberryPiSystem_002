@@ -320,7 +320,7 @@ export class PartMeasurementDrawingDimensionMapService {
       where: { id: map.id },
       data: {
         status: 'COMPLETED',
-        payloadCompressed: new Uint8Array(await encodePartMeasurementDrawingDimensionMapPayload(payload)),
+        payloadCompressed: await encodePartMeasurementDrawingDimensionMapPayload(payload),
         payloadEncoding: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
         imageWidth: image.width,
         imageHeight: image.height,

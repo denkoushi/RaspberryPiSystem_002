@@ -44,6 +44,9 @@
     "prisma:generate": "prisma generate",
     "prisma:seed": "tsx prisma/seed.ts"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
     "@a2ui/web_core": "0.11.0",
     "@fastify/compress": "^8.0.0",
@@ -53,8 +56,7 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.6.1",
     "@fastify/websocket": "^11.2.0",
-    "@prisma/adapter-pg": "7.10.1",
-    "@prisma/client": "7.10.1",
+    "@prisma/client": "^5.14.0",
     "@raspi-system/part-search-core": "workspace:*",
     "@raspi-system/shared-types": "workspace:*",
     "@raspi-system/shelf-layout-core": "workspace:*",
@@ -77,7 +79,7 @@
     "pg": "^8.22.0",
     "pino": "^9.0.0",
     "playwright": "^1.51.1",
-    "prisma": "7.10.1",
+    "prisma": "^5.14.0",
     "sharp": "^0.35.5",
     "tesseract.js": "5.1.1",
     "zod": "^4.6.6"

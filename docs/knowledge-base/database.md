@@ -98,14 +98,3 @@ update-frequency: medium
 **関連ファイル**: 
 - `apps/api/prisma/seed.ts`
 
-
----
-
-### Prisma ORM 7.10.1 への更新(2026-10-26)
-
-- `apps/api` は `prisma`、`@prisma/client`、`@prisma/adapter-pg` を `7.10.1` に固定する(実行時に `migrate deploy` で使うため dependencies に置く)。generator は `prisma-client-js` のままで、`@prisma/client` からの import は変えていない。エラー型の import 元は `runtime/library` から `runtime/client` に変わった。
-- 接続先は `apps/api/prisma.config.ts` が `process.env.DATABASE_URL` から読む(dotenv は読まない)。`schema.prisma` の `url` は削除した。イメージのビルド中の `prisma generate` は URL なしで動く。
-- クライアントは `createPrismaClient`(`apps/api/src/lib/prisma-client.ts`)で pg のドライバアダプタ付きで作る。`DATABASE_PRISMA_*` の環境変数名はそのまま使える。`connection_limit` は `pg.Pool` の `max` になる。pg は接続確立と空き接続待ちを1つの `connectionTimeoutMillis` で扱うため、`connect_timeout` と `pool_timeout` のうち 0(無制限)を除いた長いほうを使う(既定値では 20 秒)。これら3つの Prisma 専用パラメータは pg に渡す接続文字列から除く。
-- Prisma 7 では対話型トランザクションの中のクライアントにも `$transaction` がある。製造日程の割当解除(`order-assignment-release.repository.ts`)は自分自身を呼び直していたため、トランザクション内では本体を直接呼ぶ形に直した。
-- DB スキーマと migration は変えていない。migration 履歴と schema の差(既存の 61 文)は Prisma 5.22 でも同じ内容で、今回の更新とは別の既存の差である。
-- テスト中に pg 8.22 から「1つの接続で同時に query を呼んでいる」という非推奨警告が出る。pg 9 で動かなくなる予定で、別件として扱う。

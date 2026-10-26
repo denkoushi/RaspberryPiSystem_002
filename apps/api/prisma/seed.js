@@ -1,18 +1,6 @@
-import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, EmployeeStatus, ItemStatus, UserRole, UserStatus, MeasuringInstrumentStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-const databaseUrl = new URL(process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/borrow_return');
-const max = Number(databaseUrl.searchParams.get('connection_limit') ?? process.env.DATABASE_PRISMA_CONNECTION_LIMIT ?? 10);
-const timeouts = [
-  Number(databaseUrl.searchParams.get('pool_timeout') ?? process.env.DATABASE_PRISMA_POOL_TIMEOUT_SECONDS ?? 20),
-  Number(databaseUrl.searchParams.get('connect_timeout') ?? process.env.DATABASE_PRISMA_CONNECT_TIMEOUT_SECONDS ?? 10)
-].filter((value) => value > 0);
-for (const key of ['connection_limit', 'pool_timeout', 'connect_timeout']) databaseUrl.searchParams.delete(key);
-// Standalone JavaScript entry point: same bounded pg pool policy as src/lib/prisma-client.ts.
-const prisma = new PrismaClient({ adapter: new PrismaPg({
-  connectionString: databaseUrl.toString(), max,
-  connectionTimeoutMillis: timeouts.length ? Math.min(...timeouts) * 1000 : 0
-}) });
+const prisma = new PrismaClient();
 async function main() {
     // 生産日程（研削工程）: ダッシュボードIDを固定（CI/E2Eで安定させる）
     const productionScheduleDashboardId = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
