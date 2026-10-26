@@ -1,19 +1,28 @@
-/**
- * PostgreSQL / Prisma の接続 URL にクエリパラメータをマージする。
- * DATABASE_URL に既に含まれるキーは上書きしない（明示設定を尊重）。
- */
-export function mergePostgresUrlQueryParams(databaseUrl: string, params: Record<string, string>): string {
-  const qIndex = databaseUrl.indexOf('?');
-  const base = qIndex >= 0 ? databaseUrl.slice(0, qIndex) : databaseUrl;
-  const existing = qIndex >= 0 ? new URLSearchParams(databaseUrl.slice(qIndex + 1)) : new URLSearchParams();
+import type { PoolConfig } from 'pg';
 
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === '') continue;
-    if (!existing.has(key)) {
-      existing.set(key, value);
+export function postgresPoolConfig(databaseUrl: string, defaults = {
+  connectionLimit: Number(process.env.DATABASE_PRISMA_CONNECTION_LIMIT ?? 10),
+  poolTimeoutSeconds: Number(process.env.DATABASE_PRISMA_POOL_TIMEOUT_SECONDS ?? 20),
+  connectTimeoutSeconds: Number(process.env.DATABASE_PRISMA_CONNECT_TIMEOUT_SECONDS ?? 10)
+}): PoolConfig {
+  const url = new URL(databaseUrl);
+  const read = (key: string, fallback: number, minimum: number) => {
+    const value = url.searchParams.has(key) ? Number(url.searchParams.get(key)) : fallback;
+    if (!Number.isInteger(value) || value < minimum) {
+      throw new Error(`Invalid PostgreSQL pool setting: ${key}`);
     }
-  }
-
-  const qs = existing.toString();
-  return qs.length > 0 ? `${base}?${qs}` : base;
+    url.searchParams.delete(key);
+    return value;
+  };
+  const max = read('connection_limit', defaults.connectionLimit, 1);
+  const poolTimeout = read('pool_timeout', defaults.poolTimeoutSeconds, 0);
+  const connectTimeout = read('connect_timeout', defaults.connectTimeoutSeconds, 0);
+  // pg は接続確立と空き接続待ちを1つの上限で扱う。Prisma 5 より早く失敗させないよう、
+  // 0(無制限)を除いた長いほうの値を使う。
+  const timeouts = [poolTimeout, connectTimeout].filter((value) => value > 0);
+  return {
+    connectionString: url.toString(),
+    max,
+    connectionTimeoutMillis: timeouts.length ? Math.max(...timeouts) * 1000 : 0
+  };
 }

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../../../lib/prisma-client.js';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -13,7 +13,7 @@ import { PILOT_TOPIC } from '../knowledge-source.js';
 
 const enabled = process.env.KNOWLEDGE_DATABASE_TEST === '1';
 // Fixed disposable loopback DB; never inherit the application's DATABASE_URL.
-const db = new PrismaClient({ datasourceUrl: 'postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test' });
+const db = createPrismaClient('postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test');
 const repository = new PrismaKnowledgeIntakeRepository(db);
 const materials = new PrismaProcedureMaterialRepository(db);
 const triage = new PrismaTriageRepository(db);

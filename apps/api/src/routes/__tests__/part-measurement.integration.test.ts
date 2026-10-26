@@ -553,7 +553,7 @@ describe('part-measurement templates API', () => {
       where: { id: cacheId },
       data: {
         status: 'COMPLETED',
-        payloadCompressed: compressed,
+        payloadCompressed: new Uint8Array(compressed),
         payloadEncoding: PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_ENCODING,
         engine: 'test-layout',
         imageWidth: 1000,
@@ -629,7 +629,7 @@ describe('part-measurement templates API', () => {
         analysisVersion: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION,
         drawingImageFingerprint: fingerprint,
         status: 'COMPLETED',
-        payloadCompressed: compressed,
+        payloadCompressed: new Uint8Array(compressed),
         payloadEncoding: PART_MEASUREMENT_DRAWING_DIMENSION_MAP_PAYLOAD_ENCODING,
         imageWidth: 1000,
         imageHeight: 1000,
