@@ -24,7 +24,8 @@ Opus による同じ方式の試行（6図面、人の丸数字87個）では、
 - [x] (2026-10-26) Milestone 3 の実測: 本番データ（読み取り専用）で reference を同機種除外あり・なしで測った（結果は Artifacts and Notes）。
 - [x] (2026-10-26) 検証: `vitest run src/services/part-measurement src/scripts src/config` 81ファイル508件成功、`tsc --noEmit -p tsconfig.build.json` 成功、変更ファイルの ESLint 成功、deploy テスト92件成功。
 - [x] (2026-10-26) 第三者レビューの指摘2件を修正（下記 Decision Log）。
-- [ ] PR 作成、CI、tracker への引き渡し。
+- [x] (2026-10-26) PR #2309 をマージし Pi5 へ反映した（main 1386db85、run 20261026-035224-6ee96c、フラグ false を確認）。
+- [ ] 本番 inventory でフラグを有効にし、夜間処理で reference run ができることを確かめる。
 
 
 ## Surprises & Discoveries
@@ -66,6 +67,9 @@ Opus による同じ方式の試行（6図面、人の丸数字87個）では、
 - Decision: 評価スクリプトに `--interactive` を足し、昼間でも通常枠で採点できるようにする。
   Rationale: 昼間は DGX の背景枠（dgx-background-preparation）が延期を返す。夜間処理は背景枠のまま。
   Date/Author: 2026-10-26 / Claude
+- Decision: 本番 inventory で `inspection_drawing_reference_placement_enabled: true` にする（利用者承認済み）。
+  Rationale: 30図面の採点で一致32%（同機種除外28%）と、今の方式の約13%を上回った。夜間に背景枠で1回最大3組だけ作り、作成画面は業務モデルを呼ばない。
+  Date/Author: 2026-10-26 / 利用者・Claude
 
 
 ## Outcomes & Retrospective

@@ -47,6 +47,7 @@ all:
           hermes_search_typesafe_api_key: "{{ vault_hermes_search_record_pilot_typesafe_api_key | default('') }}"
           procedure_material_split_suggestion_enabled: true
           inspection_drawing_transfer_jev_enabled: true
+          inspection_drawing_reference_placement_enabled: true
           # Business Hermes runs as an independent container on this Pi5. Keep
           # both credentials in Vault; they are never shared with Private Pi5
           # Hermes or the ordinary API .env beyond the API-side bearer key.
