@@ -1,4 +1,5 @@
 import { logger } from '../../../lib/logger.js';
+import { toUpperTrimmedCode as normalizeResourceCd } from '../../../lib/string-normalize.js';
 import { prisma } from '../../../lib/prisma.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -6,6 +7,7 @@ import {
 import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 import {
   getResourceNameMapByResourceCds,
+  getSendaiResourceCds,
   type ProductionScheduleResourceNameMap
 } from '../resource-master.service.js';
 import {
@@ -87,7 +89,9 @@ export async function listProductionScheduleResources(scope: {
   siteKey?: string;
   deviceScopeKey?: string;
 }): Promise<ProductionScheduleResourceListResult> {
-  const resourceCds = [...await getResourceCdsWithCache()];
+  const [allResourceCds, sendaiResourceCds] = await Promise.all([getResourceCdsWithCache(), getSendaiResourceCds()]);
+  // 生産スケジュールには仙台工場の資源も混ざるため、選択肢からは外す。
+  const resourceCds = allResourceCds.filter((resourceCd) => !sendaiResourceCds.has(normalizeResourceCd(resourceCd)));
   const policy = await getResourceCategoryPolicy(scope);
   const resourceNameMap = await getResourceNameMapByResourceCds(resourceCds);
   const resourceItems = resourceCds.map((resourceCd) => ({

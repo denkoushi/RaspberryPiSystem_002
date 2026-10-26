@@ -10,6 +10,7 @@ import { prepareProductionScheduleDashboardFilters } from '../production-schedul
 import { fetchLeaderboardPlanningScopedParentRowIds } from '../leaderboard/leaderboard-row-selection.service.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { isSendaiResourceGroupCd } from '../resource-master.service.js';
 import { type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
 import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
@@ -310,6 +311,6 @@ export async function readMasterResourceCds(client: DbClient): Promise<Set<strin
 }
 
 export async function readPlanningResourceCandidates(client: DbClient, category: GrindingPlanningBoardCategory, policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>): Promise<string[]> {
-  const master = await client.productionScheduleResourceMaster.findMany({ select: { resourceCd: true } });
-  return Array.from(new Set(master.map((row) => normalizeProductionScheduleResourceCd(row.resourceCd)).filter(Boolean))).filter((value) => isCategoryResource(value, category, policy)).sort((a, b) => a.localeCompare(b));
+  const master = await client.productionScheduleResourceMaster.findMany({ select: { resourceCd: true, resourceGroupCd: true } });
+  return Array.from(new Set(master.filter((row) => !isSendaiResourceGroupCd(row.resourceGroupCd)).map((row) => normalizeProductionScheduleResourceCd(row.resourceCd)).filter(Boolean))).filter((value) => isCategoryResource(value, category, policy)).sort((a, b) => a.localeCompare(b));
 }

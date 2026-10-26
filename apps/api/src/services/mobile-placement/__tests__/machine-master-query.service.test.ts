@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
 import { listProductionScheduleResources } from '../../production-schedule/production-schedule-query/resources.js';
+import { getSendaiResourceCds } from '../../production-schedule/resource-master.service.js';
 import { listMachineMastersForShelfLayout, listMachinesForShelfRegistration } from '../machine-master-query.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { productionScheduleResourceMaster: { findMany: vi.fn() } } }));
 vi.mock('../../production-schedule/production-schedule-query/resources.js', () => ({ listProductionScheduleResources: vi.fn() }));
+vi.mock('../../production-schedule/resource-master.service.js', () => ({ getSendaiResourceCds: vi.fn() }));
 beforeEach(() => vi.resetAllMocks());
 
 describe('shelf registration machines', () => {
@@ -20,10 +22,11 @@ describe('shelf registration machines', () => {
     expect(prisma.productionScheduleResourceMaster.findMany).not.toHaveBeenCalled();
   });
 
-  it('keeps the existing layout master list unchanged', async () => {
+  it('lists layout masters without Sendai resources', async () => {
     const machines = [{ resourceCd: '999', resourceName: 'Outside' }, { resourceCd: '998', resourceName: 'Outside' }];
     vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue(machines as never);
-    expect(await listMachineMastersForShelfLayout()).toEqual({ machines });
+    vi.mocked(getSendaiResourceCds).mockResolvedValue(new Set(['998']));
+    expect(await listMachineMastersForShelfLayout()).toEqual({ machines: [machines[0]] });
     expect(listProductionScheduleResources).not.toHaveBeenCalled();
   });
 });

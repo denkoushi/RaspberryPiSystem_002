@@ -122,7 +122,7 @@ function ShelfPhotoForm({ shelf, shelves, onClose, onMessage }: { shelf: Registe
             {machinesQuery.isError && <p role="alert" className="text-sm text-[var(--hp-ng)]">加工機を取得できませんでした <button type="button" className={hp.mini} onClick={() => void machinesQuery.refetch()}>再試行</button></p>}
             <div role="group" aria-label="方角" className="grid grid-cols-4 gap-1.5">
               {AREA_DIRECTIONS.map((d) => <button key={d} type="button" disabled={busy || !machine || registeredDirections.has(d)}
-                className={`${hp.chip} !h-auto flex min-h-14 flex-col items-center justify-center disabled:opacity-40`} aria-pressed={direction === d} onClick={() => setDirection(d)}>
+                className={`${hp.chip} !h-auto flex min-h-14 flex-col items-center justify-center !text-2xl !font-black disabled:opacity-40`} aria-pressed={direction === d} onClick={() => setDirection(d)}>
                 {d}{registeredDirections.has(d) && <small className="text-[10px]">登録済み</small>}
               </button>)}
             </div>

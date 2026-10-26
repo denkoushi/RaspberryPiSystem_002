@@ -1,5 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
+import { toUpperTrimmedCode as normalizeResourceCd } from '../../lib/string-normalize.js';
 import { listProductionScheduleResources } from '../production-schedule/production-schedule-query/resources.js';
+import { getSendaiResourceCds } from '../production-schedule/resource-master.service.js';
 
 export type MachineMasterEntry = {
   resourceCd: string;
@@ -7,12 +9,15 @@ export type MachineMasterEntry = {
 };
 
 export async function listMachineMastersForShelfLayout(): Promise<{ machines: MachineMasterEntry[] }> {
-  const rows = await prisma.productionScheduleResourceMaster.findMany({
-    select: { resourceCd: true, resourceName: true },
-    orderBy: [{ resourceName: 'asc' }, { resourceCd: 'asc' }]
-  });
+  const [rows, sendaiResourceCds] = await Promise.all([
+    prisma.productionScheduleResourceMaster.findMany({
+      select: { resourceCd: true, resourceName: true },
+      orderBy: [{ resourceName: 'asc' }, { resourceCd: 'asc' }]
+    }),
+    getSendaiResourceCds()
+  ]);
   return {
-    machines: rows.map((r) => ({
+    machines: rows.filter((r) => !sendaiResourceCds.has(normalizeResourceCd(r.resourceCd))).map((r) => ({
       resourceCd: r.resourceCd,
       resourceName: r.resourceName
     }))

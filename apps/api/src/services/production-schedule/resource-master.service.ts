@@ -6,6 +6,24 @@ export type ProductionScheduleResourceGroupCandidatesMap = Record<string, string
 
 const normalizeGroupCd = (value: string | null | undefined): string => (value ?? '').trim().toUpperCase();
 
+/** 資源マスタのグループCDが S- で始まる資源は仙台工場のもの。 */
+const SENDAI_RESOURCE_GROUP_PREFIX = 'S-';
+
+export function isSendaiResourceGroupCd(groupCd: string | null | undefined): boolean {
+  return normalizeGroupCd(groupCd).startsWith(SENDAI_RESOURCE_GROUP_PREFIX);
+}
+
+export async function getSendaiResourceCds(): Promise<Set<string>> {
+  const rows = await prisma.productionScheduleResourceMaster.findMany({
+    select: { resourceCd: true, resourceGroupCd: true }
+  });
+  return new Set(
+    rows
+      .filter((row) => isSendaiResourceGroupCd(row.resourceGroupCd))
+      .map((row) => normalizeResourceCd(row.resourceCd))
+  );
+}
+
 export async function getResourceNameMapByResourceCds(resourceCds: string[]): Promise<ProductionScheduleResourceNameMap> {
   const normalizedResourceCds = Array.from(
     new Set(resourceCds.map((resourceCd) => normalizeResourceCd(resourceCd)).filter((resourceCd) => resourceCd.length > 0))

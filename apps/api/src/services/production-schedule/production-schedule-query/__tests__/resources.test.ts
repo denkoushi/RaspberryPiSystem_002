@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { logger } from '../../../../lib/logger.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { getResourceCategoryPolicy } from '../../policies/resource-category-policy.service.js';
-import { getResourceNameMapByResourceCds } from '../../resource-master.service.js';
+import { getResourceNameMapByResourceCds, getSendaiResourceCds } from '../../resource-master.service.js';
 import {
   listProductionScheduleResources,
   markProductionScheduleResourceCdsCacheStale,
@@ -15,7 +15,7 @@ vi.mock('../../policies/resource-category-policy.service.js', async (importOrigi
   ...await importOriginal<typeof import('../../policies/resource-category-policy.service.js')>(),
   getResourceCategoryPolicy: vi.fn(),
 }));
-vi.mock('../../resource-master.service.js', () => ({ getResourceNameMapByResourceCds: vi.fn() }));
+vi.mock('../../resource-master.service.js', () => ({ getResourceNameMapByResourceCds: vi.fn(), getSendaiResourceCds: vi.fn() }));
 
 const rows = [{ resourceCd: 'R01' }, { resourceCd: 'R02' }];
 const ttl = 5 * 60 * 1000;
@@ -36,6 +36,7 @@ describe('production schedule resource codes cache', () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue(rows);
     vi.mocked(getResourceCategoryPolicy).mockResolvedValue({ grindingResourceCds: [], cuttingExcludedResourceCds: [] });
     vi.mocked(getResourceNameMapByResourceCds).mockResolvedValue({ R01: ['設備A'] });
+    vi.mocked(getSendaiResourceCds).mockResolvedValue(new Set());
   });
   afterEach(() => {
     resetProductionScheduleResourceCdsCache();
@@ -58,6 +59,15 @@ describe('production schedule resource codes cache', () => {
       resourceItems: [{ resourceCd: 'R01', excluded: true }, { resourceCd: 'R02', excluded: false }],
       resourceNameMap: { R01: ['設備B'] },
     });
+  });
+
+  it('drops Sendai resources but keeps codes missing from the master', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ resourceCd: 'R01' }, { resourceCd: 'a5m ' }, { resourceCd: 'NOMASTER' }]);
+    vi.mocked(getSendaiResourceCds).mockResolvedValue(new Set(['A5M']));
+    const result = await listProductionScheduleResources({});
+    expect(result.resources).toEqual(['R01', 'NOMASTER']);
+    expect(result.resourceItems.map((item) => item.resourceCd)).toEqual(['R01', 'NOMASTER']);
+    expect(getResourceNameMapByResourceCds).toHaveBeenCalledWith(['R01', 'NOMASTER']);
   });
 
   it('returns fresh codes without a query within the TTL', async () => {
