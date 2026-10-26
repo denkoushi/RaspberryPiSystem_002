@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 /** 検査図面実験用 PATCH: 数量1・個体0のみ（通常 patch スキーマより厳格） */
 export const patchInspectionDrawingEvaluationSheetBodySchema = z.object({
@@ -9,7 +9,7 @@ export const patchInspectionDrawingEvaluationSheetBodySchema = z.object({
     .array(
       z.object({
         pieceIndex: z.literal(0),
-        templateItemId: z.string().uuid(),
+        templateItemId: z.string().guid(),
         value: z.union([z.string(), z.number(), z.null()]).optional()
       })
     )

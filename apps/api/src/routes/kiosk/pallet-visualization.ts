@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import {
   commandAddPalletItem,
   commandClearPallet,
@@ -40,7 +40,7 @@ const clearParamsSchema = z.object({
 
 const historyQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
-  cursor: z.string().uuid().optional(),
+  cursor: z.string().guid().optional(),
 });
 
 const machineCdParamsSchema = z.object({
@@ -90,7 +90,7 @@ export async function registerKioskPalletVisualizationRoutes(
 
   app.post('/kiosk/pallet-visualization/items/:id/replace', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const body = replaceBodySchema.parse(request.body);
     return commandReplacePalletItem({
       clientDeviceId: requireDeviceId(clientDevice),
@@ -101,7 +101,7 @@ export async function registerKioskPalletVisualizationRoutes(
 
   app.delete('/kiosk/pallet-visualization/items/:id', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     await commandDeletePalletItem({ clientDeviceId: requireDeviceId(clientDevice), itemId: id });
     return reply.status(204).send();
   });

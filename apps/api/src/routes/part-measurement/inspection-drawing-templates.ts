@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { ApiError } from '../../lib/errors.js';
 import {
   deleteImportedDrawing,
@@ -90,7 +90,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
       '/part-measurement/inspection-drawing/template-groups/:id/revise',
       { preHandler: allowWriteKiosk },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = reviseTemplateBodySchema.parse(request.body);
         const selfInspectionPatch = selfInspectionPatchFromReviseBody(body);
         const result = await templateService.reviseInspectionDrawingTemplateSiblingGroup(params.id, {
@@ -118,7 +118,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
       '/part-measurement/inspection-drawing/template-groups/:id/resources',
       { preHandler: allowWriteKiosk },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = addInspectionDrawingTemplateGroupResourcesBodySchema.parse(request.body);
         const result = await templateService.addResourcesToInspectionDrawingTemplateSiblingGroup(params.id, {
           resourceCds: body.resourceCds,
@@ -187,7 +187,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
     });
 
     app.get('/part-measurement/inspection-drawing/templates/:id', { preHandler: allowView }, async (request) => {
-      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const params = z.object({ id: z.string().guid() }).parse(request.params);
       const template = await templateService.getKioskInspectionDrawingTemplateById(params.id);
       return {
         template: serializeTemplate({
@@ -203,7 +203,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
       '/part-measurement/inspection-drawing/templates/:id/revise',
       { preHandler: allowWriteKiosk },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = reviseTemplateBodySchema.parse(request.body);
         const selfInspectionPatch = selfInspectionPatchFromReviseBody(body);
         const template = await templateService.reviseKioskInspectionDrawingTemplate(params.id, {
@@ -229,7 +229,7 @@ export function registerInspectionDrawingTemplateRoutes(app: FastifyInstance, de
       '/part-measurement/inspection-drawing/templates/:id/change-process-group',
       { preHandler: allowWriteKiosk },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = changeInspectionDrawingTemplateProcessGroupBodySchema.parse(request.body);
         const processGroup = body.processGroup === 'grinding' ? 'GRINDING' : 'CUTTING';
         const template = await templateService.changeInspectionDrawingTemplateProcessGroup(

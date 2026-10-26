@@ -1,12 +1,12 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { overlayElementSchema, type OverlayElement } from '../overlay/normalized-overlay.js';
 
 // Suggestions refer to existing draft elements, so every element needs an identity.
-const identifiedElementSchema: z.ZodType<OverlayElement, z.ZodTypeDef, unknown> = z.unknown().transform((value, ctx) => {
+const identifiedElementSchema: z.ZodType<OverlayElement, unknown> = z.unknown().transform((value, ctx) => {
   const result = overlayElementSchema.and(z.object({ id: z.string().min(1).max(120) })).safeParse(value);
   if (!result.success) {
-    result.error.issues.forEach((issue) => ctx.addIssue(issue));
+    result.error.issues.forEach((issue) => ctx.addIssue({ ...issue }));
     return z.NEVER;
   }
   // The persisted schema trims text. Suggestions must retain the draft's exact

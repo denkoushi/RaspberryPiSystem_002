@@ -1,6 +1,6 @@
 import './env/load-dotenv.js';
 
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
 import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';

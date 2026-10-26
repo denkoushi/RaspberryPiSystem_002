@@ -1,8 +1,8 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { sourceFingerprint } from './business-hermes-answer-cache.js';
 import type { SourceDocument } from './business-hermes-source-adapters.js';
 
-export const documentAttemptsSchema = z.record(z.object({ sha256: z.string(), attemptedAt: z.number() }));
+export const documentAttemptsSchema = z.record(z.string(), z.object({ sha256: z.string(), attemptedAt: z.number() }));
 export type DocumentAttempts = z.infer<typeof documentAttemptsSchema>;
 type SourceRef = { kind: string; id: string };
 

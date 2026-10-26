@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import type { KnowledgeAssetStore } from './knowledge-asset-store.js';
 import type { Intake, KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';
@@ -12,7 +12,7 @@ export type Poster = { id: string; displayName: string };
 export type PosterResolver = (tagUid: string) => Promise<Poster | null>;
 
 export const intakeRequestSchema = z.object({
-  id: z.string().uuid(), conversationId: z.string().uuid(), text: z.string().max(12_000),
+  id: z.string().guid(), conversationId: z.string().guid(), text: z.string().max(12_000),
   files: z.array(z.object({ kind: z.enum(['image', 'pdf']), filename: z.string().min(1).max(200), base64: z.string().max(27_000_000) }).strict()).max(4),
   // Every post is made by an employee who scanned their NFC tag just before sending.
   posterTagUid: z.string().trim().min(1).max(64),

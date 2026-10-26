@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 
 import { verifyProductionScheduleRowOrThrow } from '../../services/production-schedule/verify-production-schedule-row.js';
@@ -178,7 +178,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
         const q = z
           .object({
             limit: z.coerce.number().int().min(1).max(100).optional().default(30),
-            cursor: z.string().uuid().optional()
+            cursor: z.string().guid().optional()
           })
           .parse(request.query);
         const { sheets, nextCursor } = await sheetService.listDrafts({ limit: q.limit, cursor: q.cursor });
@@ -193,7 +193,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
         const q = z
           .object({
             limit: z.coerce.number().int().min(1).max(100).optional().default(30),
-            cursor: z.string().uuid().optional(),
+            cursor: z.string().guid().optional(),
             productNo: z.string().max(120).optional(),
             fseiban: z.string().max(120).optional(),
             fhincd: z.string().max(120).optional(),
@@ -228,7 +228,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/sheets/:id',
       { preHandler: allowView, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const sheet = await sheetService.getById(params.id);
         return sheetResponsePair(sheet);
       }
@@ -238,7 +238,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/sheets/:id',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = patchSheetBodySchema.parse(request.body);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         const existing = await sheetService.getById(params.id);
@@ -252,7 +252,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/inspection-drawing/evaluation-sheets',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const body = z.object({ templateId: z.string().uuid() }).parse(request.body);
+        const body = z.object({ templateId: z.string().guid() }).parse(request.body);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         const sheet = await sheetService.createInspectionDrawingEvaluationDraft(
           body.templateId,
@@ -266,7 +266,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/inspection-drawing/evaluation-sheets/:id',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const parsed = patchInspectionDrawingEvaluationSheetBodySchema.parse(request.body);
         const body = toInspectionDrawingEvaluationPatchInput(parsed);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
@@ -281,7 +281,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/sheets/:id/transfer-edit-lock',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = z.object({ confirm: z.boolean().optional().default(false) }).parse(request.body ?? {});
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         const existing = await sheetService.getById(params.id);
@@ -295,7 +295,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/sheets/:id/finalize',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         const existing = await sheetService.getById(params.id);
         assertProductionPartMeasurementSheet(existing);
@@ -308,7 +308,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/inspection-drawing/evaluation-sheets/:id/finalize',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         const existing = await sheetService.getById(params.id);
         assertInspectionDrawingEvaluationSheet(existing);
@@ -321,7 +321,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/sheets/:id/cancel',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         const existing = await sheetService.getById(params.id);
@@ -335,7 +335,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/sheets/:id/invalidate',
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const body = z.object({ reason: z.string().min(1).max(2000) }).parse(request.body);
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
         const existing = await sheetService.getById(params.id);
@@ -349,7 +349,7 @@ export function registerSheetRoutes(app: FastifyInstance, deps: PartMeasurementR
       '/part-measurement/sheets/:id/export.csv',
       { preHandler: allowView, config: { rateLimit: false } },
       async (request, reply) => {
-        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const params = z.object({ id: z.string().guid() }).parse(request.params);
         const sheet = await sheetService.getById(params.id);
         const csv = sheetService.buildSheetCsv(sheet);
         reply.header('Content-Type', 'text/csv; charset=utf-8');

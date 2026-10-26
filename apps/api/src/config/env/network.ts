@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 export const networkEnvShape = {
   NETWORK_MODE: z.enum(['local', 'maintenance']).default('local'),

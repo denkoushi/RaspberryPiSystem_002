@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 export const alertsEnvShape = {
   // Alerts Dispatcher (Phase1: file alerts -> Slack)

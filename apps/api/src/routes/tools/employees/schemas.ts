@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import pkg from '@prisma/client';
 
 const { EmployeeStatus } = pkg;
@@ -44,6 +44,6 @@ export const employeeQuerySchema = z.object({
 });
 
 export const employeeParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 

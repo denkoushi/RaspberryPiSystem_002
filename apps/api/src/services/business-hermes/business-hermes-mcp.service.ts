@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { SignageContentType } from '@prisma/client';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
@@ -145,7 +145,7 @@ const JAPANESE_PARTICLES = new Set(['の', 'を', 'に', 'へ', 'が', 'は', '�
 
 const signageFields = {
   scheduleName: z.string().trim().min(1).max(200).optional(),
-  scheduleId: z.string().uuid().optional(),
+  scheduleId: z.string().guid().optional(),
   deviceScopeKey: z.string().trim().min(1).max(200).optional(),
   dayOfWeek: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
   startTime: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/).optional(),
@@ -153,7 +153,7 @@ const signageFields = {
   priority: z.number().int().min(0).max(1_000_000).optional(),
   slideIntervalSeconds: z.number().int().positive().max(3600).optional(),
   seibanPerPage: z.number().int().min(1).max(8).optional(),
-  targetClientDeviceIds: z.array(z.string().uuid()).min(1).max(500).optional(),
+  targetClientDeviceIds: z.array(z.string().guid()).min(1).max(500).optional(),
   enabled: z.boolean().optional()
 } as const;
 

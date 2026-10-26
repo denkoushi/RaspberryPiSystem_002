@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import type { CsvImporter, ImportSummary } from '../csv-importer.types.js';

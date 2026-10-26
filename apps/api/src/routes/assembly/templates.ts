@@ -1,6 +1,6 @@
 import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import {
   AssemblyLibraryFilterOptionsService,
   AssemblyMachineNameCandidatesService,
@@ -114,7 +114,7 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
         includeInactive: optionalTrueOnlyBooleanSchema,
         modelCode: z.string().optional(),
         procedurePattern: z.string().optional(),
-        procedureDocumentId: z.string().uuid().optional(),
+        procedureDocumentId: z.string().guid().optional(),
         procedureDocumentName: z.string().optional(),
         q: z.string().optional(),
         limit: z.coerce.number().int().min(1).max(200).optional()

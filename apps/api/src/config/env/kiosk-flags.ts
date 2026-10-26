@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 export const kioskFlagsEnvShape = {
   RATE_LIMIT_REDIS_URL: z.preprocess(

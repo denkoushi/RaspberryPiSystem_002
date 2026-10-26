@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 export const procedureVideoEnvShape = {
   PROCEDURE_VIDEO_AUTO_EDIT_ENABLED: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),

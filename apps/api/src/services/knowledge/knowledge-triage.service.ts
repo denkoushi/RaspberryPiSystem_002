@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { knowledgeDestinationSchema } from './knowledge-destination.js';
 import type { KnowledgeIntakeRepositoryPort } from './knowledge-intake.port.js';

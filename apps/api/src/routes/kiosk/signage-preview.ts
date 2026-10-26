@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { SignageRenderStorage } from '../../lib/signage-render-storage.js';
@@ -14,11 +14,11 @@ import {
 } from '../../services/kiosk/kiosk-signage-preview.service.js';
 
 const selectionBodySchema = z.union([
-  z.object({ signagePreviewTargetClientDeviceId: z.string().uuid().nullable() }).strict(),
+  z.object({ signagePreviewTargetClientDeviceId: z.string().guid().nullable() }).strict(),
   // Accept a cached old client's input, but never return the supplied credential.
   z.object({ signagePreviewTargetApiKey: z.string().min(1).nullable() }).strict(),
 ]);
-const imageQuerySchema = z.object({ clientDeviceId: z.string().uuid().optional() });
+const imageQuerySchema = z.object({ clientDeviceId: z.string().guid().optional() });
 
 type SignagePreviewRouteDeps = {
   requireClientDevice: (rawClientKey: unknown) => Promise<{

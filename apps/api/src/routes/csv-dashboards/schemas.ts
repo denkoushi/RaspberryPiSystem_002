@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 // 列定義のスキーマ
 const columnDefinitionSchema = z.object({
@@ -42,7 +42,7 @@ export const csvDashboardCreateSchema = z.object({
   emptyMessage: z.string().optional().nullable(),
   ingestMode: z.enum(['APPEND', 'DEDUP']).default('APPEND'),
   dedupKeyColumns: z.array(z.string().min(1)).default([]),
-  gmailScheduleId: z.string().uuid().optional().nullable(),
+  gmailScheduleId: z.string().guid().optional().nullable(),
   gmailSubjectPattern: z.string().optional().nullable(), // Gmail件名パターン（CSV取得用）
   templateType: z.enum(['TABLE', 'CARD_GRID']).default('TABLE'),
   templateConfig: templateConfigSchema,
@@ -53,7 +53,7 @@ export const csvDashboardUpdateSchema = csvDashboardCreateSchema.partial();
 
 // パラメータスキーマ
 export const csvDashboardParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
 });
 
 // CSVアップロードスキーマ（multipart form data用）

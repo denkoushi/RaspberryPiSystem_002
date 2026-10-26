@@ -1,7 +1,7 @@
 import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ZodError } from 'zod/v3';
+import { ZodError } from 'zod';
 
 const mocks = vi.hoisted(() => ({
   getDay: vi.fn(),

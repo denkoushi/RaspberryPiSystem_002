@@ -1,5 +1,5 @@
 import { A2uiMessageSchema, TextApi, RowApi, ColumnApi, CardApi, ImageApi } from '@a2ui/web_core/v0_9';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 /**
  * The catalog is intentionally application-owned.  The browser bootstraps this
@@ -19,8 +19,8 @@ export const signageDataPointerSchema = z.string().min(2).max(200)
   .refine((value) => !value.split('/').some((part) => ['__proto__', 'prototype', 'constructor'].includes(part)));
 
 export const signageA2uiSourceSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('visualization'), id: z.string().uuid() }).strict(),
-  z.object({ kind: z.literal('part_measurement'), id: z.string().uuid() }).strict(),
+  z.object({ kind: z.literal('visualization'), id: z.string().guid() }).strict(),
+  z.object({ kind: z.literal('part_measurement'), id: z.string().guid() }).strict(),
   z.object({ kind: z.literal('self_inspection'), id: z.string().min(1).max(200) }).strict(),
   z.object({ kind: z.literal('work_instruction'), partNumber: z.string().min(1).max(200), shootingTarget: z.string().min(1).max(200) }).strict(),
 ]);
@@ -67,7 +67,7 @@ const a2uiDataMessageSchema = z.object({
   updateDataModel: z.object({
     surfaceId: z.literal('signage'),
     path: z.literal('/'),
-    value: z.record(z.unknown()),
+    value: z.record(z.string(), z.unknown()),
   }).strict(),
 }).strict();
 

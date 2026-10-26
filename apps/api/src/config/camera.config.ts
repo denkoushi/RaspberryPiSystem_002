@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 const cameraConfigSchema = z.object({
   CAMERA_TYPE: z.enum(['raspberry-pi-camera', 'usb-camera', 'mock']).default('mock'),

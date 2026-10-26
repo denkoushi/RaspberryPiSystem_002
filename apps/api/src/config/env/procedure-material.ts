@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 export const procedureMaterialEnvShape = {
   ASSEMBLY_PROCEDURE_TERM_LEARNING_ENABLED: z.enum(['true', 'false']).default('true'),

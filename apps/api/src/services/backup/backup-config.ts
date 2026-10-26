@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 /**
  * CSVインポートタイプ
@@ -86,7 +86,7 @@ export const BackupConfigSchema = z.object({
       days: z.number().optional(), // 保持日数（例: 30日）
       maxBackups: z.number().optional() // 最大保持数（例: 10件）
     }).optional(), // 対象ごとの保持期間設定（Phase 3）
-    metadata: z.record(z.unknown()).optional()
+    metadata: z.record(z.string(), z.unknown()).optional()
   })),
   retention: z.object({
     days: z.number().default(30),
@@ -112,14 +112,14 @@ export const BackupConfigSchema = z.object({
     autoBackupAfterImport: z.object({
       enabled: z.boolean().default(false), // 自動バックアップを有効にするか
       targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv']) // バックアップ対象（csv: CSVのみ、database: データベースのみ、all: すべて）
-    }).optional().default({ enabled: false, targets: ['csv'] }),
-    metadata: z.record(z.unknown()).optional()
-  })).optional().default([]),
+    }).prefault({ enabled: false, targets: ['csv'] }),
+    metadata: z.record(z.string(), z.unknown()).optional()
+  })).prefault([]),
   // Gmail件名パターン管理（タイプ別の候補配列）
-  csvImportSubjectPatterns: z.record(
+  csvImportSubjectPatterns: z.partialRecord(
     CsvImportTypeSchema,
     z.array(z.string())
-  ).optional().default({
+  ).prefault({
     employees: [
       '[Pi5 CSV Import] employees',
       '[CSV Import] employees',
@@ -165,7 +165,7 @@ export const BackupConfigSchema = z.object({
     enabled: z.boolean().default(false), // Dropboxからのリストア機能を有効にするか
     verifyIntegrity: z.boolean().default(true), // リストア時に整合性検証を実行するか
     defaultTargetKind: z.enum(['database', 'csv']).optional() // デフォルトのリストア対象の種類
-  }).optional().default({ enabled: false, verifyIntegrity: true }),
+  }).prefault({ enabled: false, verifyIntegrity: true }),
   /// キオスク要領書: GmailからPDF添付を取り込むスケジュール（storage.provider=gmail かつトークン有効時のみ動作）
   kioskDocumentGmailIngest: z
     .array(
@@ -178,8 +178,7 @@ export const BackupConfigSchema = z.object({
         enabled: z.boolean().default(true),
       })
     )
-    .optional()
-    .default([]),
+    .prefault([]),
   /** SharePoint作業要領のGmail受信（専用件名トークン、5分固定ポーリング） */
   workInstructionGmailIngest: z
     .object({
@@ -189,8 +188,7 @@ export const BackupConfigSchema = z.object({
         .default(['[Kakou-Dandori-photo]']),
       fromEmail: z.string().optional(),
     })
-    .optional()
-    .default({
+    .prefault({
       enabled: false,
       subjectTokens: ['[Kakou-Dandori-photo]'],
     }),
@@ -203,8 +201,7 @@ export const BackupConfigSchema = z.object({
         .default(['[ItemlistRaspi-photo]']),
       fromEmail: z.string().optional(),
     })
-    .optional()
-    .default({
+    .prefault({
       enabled: false,
       subjectTokens: ['[ItemlistRaspi-photo]'],
     }),
@@ -221,10 +218,9 @@ export const BackupConfigSchema = z.object({
           z.string().regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/, 'ドメインの形式が不正です'),
         ))
         .transform((domains) => [...new Set(domains)])
-        .default(['thkintechs.co.jp']),
+        .prefault(['thkintechs.co.jp']),
     })
-    .optional()
-    .default({
+    .prefault({
       enabled: false,
       subjectTokens: ['[Procedure-material]'],
       allowedSenderDomains: ['thkintechs.co.jp'],

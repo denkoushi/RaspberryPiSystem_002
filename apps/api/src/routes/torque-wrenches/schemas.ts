@@ -1,7 +1,7 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { TORQUE_WRENCH_STORAGE_LOCATIONS } from '@raspi-system/shared-types';
 
-const id = z.string().uuid();
+const id = z.string().guid();
 const decimal = z.union([z.string().trim().min(1), z.number().finite()]);
 const status = z.enum(['AVAILABLE', 'IN_USE', 'MAINTENANCE', 'RETIRED']);
 

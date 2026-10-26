@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 const optionalTrimmed = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),

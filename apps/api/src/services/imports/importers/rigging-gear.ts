@@ -1,5 +1,5 @@
 import { parse } from 'csv-parse/sync';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import pkg from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';

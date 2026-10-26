@@ -1,5 +1,5 @@
 import { overlayElementSchema, type OverlayBBox, type OverlayElement, type OverlayImageElement, type OverlayTextElement, type ProcedureLayoutSuggestionResponse } from '@raspi-system/shared-types';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 export class ProcedureLayoutError extends Error {}
 export type ProcedureLayoutRow = { imageId: string; textIds: string[] };
