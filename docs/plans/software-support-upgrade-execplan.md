@@ -50,8 +50,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 ### 2. Prisma 5 → 7
 
-別 PR で行う。prisma と @prisma/client を 7 系に固定し、7 で必要になる接続アダプタ(PostgreSQL 用ドライバアダプタ)と生成先の設定を加える。DB スキーマと migration は変えない。
-- [ ] (2026-10-26) #2300 は main e111ad83 にマージ後、release-api-image で API イメージの圧縮サイズ予算を約 7MB 超えた(1107188550 > 1100000000、run 40257094214)。Pi5 反映前に revert した。イメージを削ってから入れ直す。CI の API テスト一式と migration 検証が通ることを受け入れ条件とする。8 系の CLI は schema.prisma を読まないため、`npx prisma` で最新を引かないよう版を固定する。
+別 PR で行う。prisma と @prisma/client を 7 系に固定し、7 で必要になる接続アダプタ(PostgreSQL 用ドライバアダプタ)と生成先の設定を加える。DB スキーマと migration は変えない。CI の API テスト一式と migration 検証が通ることを受け入れ条件とする。8 系の CLI は schema.prisma を読まないため、`npx prisma` で最新を引かないよう版を固定する。
 
 ### 3. Debian bookworm → trixie
 
@@ -77,6 +76,8 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - [x] (2026-10-25) node:24-alpine(index sha256:06d7adf3…、arm64 manifest sha256:398bcf38…、Node v24.22.1)へ差し替え、旧 Node 20 の pin を `release_pi5_business_hermes_egress_replaceable_images` に登録。ガイド用は既存の作り直し経路、相談用は戻し時に旧イメージを指定するよう変更。proxy テスト 7/7、Docker 上の権限テスト成功、deploy テスト 151 件成功。
 - [x] (2026-10-25) 1件目 PR #2287 をマージ(e98e40bc)。Brotli 対応の #2289 と同時に Pi5 へ反映(main fa13444e、run 20261025-014627-11001b、成功)。
 - [x] (2026-10-26) ユーザーが2件目の Prisma 5→7 に進むことを選んだ。prisma・@prisma/client・@prisma/adapter-pg を 7.10.1 に固定し、pg のドライバアダプタへ切り替える PR を作成。スキーマと migration は変えない。
+- [x] (2026-10-26) #2300 は main e111ad83 にマージ後、release-api-image で API イメージの圧縮サイズ予算を約 7MB 超えた(1107188550 > 1100000000、run 40257094214)。Pi5 反映前に #2304 で取り消した(main 65b101a7)。
+- [x] (2026-10-26) 入れ直しの PR を作成。API イメージから PostgreSQL 以外のクエリコンパイラ(wasm)と source map を消し、圧縮後で約 29MB 減らす見込み。
 
 - [x] (2026-10-25) Brotli の脆弱性(CVE-2026-111497)対応として、API と kiosk-sop 生成の node:24-bookworm-slim を Node 24.21.0 の digest(sha256:2fe369e9…)から Node 24.22.1 の digest(index sha256:55fb5f5a…)へ差し替える別 PR を作成。土台は bookworm のままで、3件目の trixie 化とは分ける。
 
@@ -94,6 +95,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - 2026-10-25: Prisma の上げる先は 7 系とした。8 系は GA 直後で、CLI が schema.prisma を読まない大きな変更を含むため。
 - 2026-10-25: 中継部品の入れ替えは、新しい実行時指定を足さず、「入れ替えてよい旧イメージ」の一覧を role の既定値に置く方式にした。標準反映をそのまま使え、一覧にない違うイメージは従来どおり拒否されるため。戻すときは、その時点の現行 pin を一覧に足してから pin を戻す。
 - 2026-10-26: Prisma 7 の generator は `prisma-client-js` のままにした。`prisma-client` へ移ると全ファイルの import が変わり、1PR の差分が大きくなりすぎるため。移行は別 PR で行う。
+- 2026-10-26: Prisma 7 の `@prisma/client` と `prisma` CLI は全データベース用の wasm を同梱するため、Dockerfile.api の本番 install と同じ層で PostgreSQL 以外の分と source map を消す。予算(1.1GB)は上げない。
 - 2026-10-26: pg は接続確立と空き接続待ちを1つの上限で扱う。そのため、Prisma 5 の `connect_timeout`(10秒)と `pool_timeout`(20秒)の長いほうを使い、本番で新たにタイムアウトが起きないようにした。
 - 2026-10-25: 計画文書は1件目の PR に同梱する。文書は更新そのものではないため「1PR1ソフト」の決まりに反しない。
 

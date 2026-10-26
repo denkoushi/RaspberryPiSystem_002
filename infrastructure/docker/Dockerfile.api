@@ -119,6 +119,8 @@ COPY --from=workspace /app/packages/shared-types/package.json ./packages/shared-
 COPY --from=workspace /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
 COPY --from=workspace /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 WORKDIR /app
+# Prisma 7 は全データベース用のクエリコンパイラ(wasm)を同梱する。PostgreSQL 以外と
+# source map は使わないため、install と同じ層で消して API イメージの圧縮サイズ予算に収める。
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
   corepack enable \
   && npm_config_fetch_retries=5 \
@@ -127,7 +129,11 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
     npm_config_fetch_retry_maxtimeout=5000 \
     npm_config_fetch_timeout=30000 \
     pnpm install --prod --filter @raspi-system/api... --frozen-lockfile \
-      --store-dir=/pnpm/store --network-concurrency=4
+      --store-dir=/pnpm/store --network-concurrency=4 \
+  && find /app/node_modules/.pnpm \
+    \( -path '*/node_modules/@prisma/client/runtime/*' -o -path '*/node_modules/prisma/build/*' \) \
+    \( -name '*mysql*' -o -name '*cockroachdb*' -o -name '*sqlserver*' -o -name '*sqlite*' -o -name '*.map' \) \
+    -type f -delete
 
 # Chromium for Playwright (signage playwright_html, kiosk document HTML→PDF; bundled browser).
 # prod install 後に実行（playwright パッケージが node_modules に入った後）。

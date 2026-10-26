@@ -670,7 +670,7 @@ export class PartMeasurementDrawingOcrService {
         where: { id: cache.id },
         data: {
           status: 'COMPLETED',
-          payloadCompressed: compressed,
+          payloadCompressed: new Uint8Array(compressed),
           payloadEncoding: PART_MEASUREMENT_DRAWING_OCR_PAYLOAD_ENCODING,
           engine: payload.engine,
           imageWidth: payload.image.width,
