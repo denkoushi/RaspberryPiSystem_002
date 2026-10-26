@@ -1,4 +1,4 @@
-import { Suspense, lazy, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { useDeployStatus } from './api/hooks';
@@ -13,6 +13,7 @@ import { KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } fro
 import { kioskLazy } from './features/kiosk/kioskLazyPreload';
 import { KioskScreenWatchHost } from './features/kiosk/screen-watch/KioskScreenWatchHost';
 import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
+import { registerMobileAppShell } from './features/mobile-app-shell/registerMobileAppShell';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -186,6 +187,8 @@ function lazyRouteElement(element: ReactNode) {
 }
 
 function App() {
+  const { pathname } = useLocation();
+  useEffect(() => registerMobileAppShell(pathname), [pathname]);
   const { isDevelopment } = readProductionBuildConfig();
   return (
     <HermesPageContextProvider>

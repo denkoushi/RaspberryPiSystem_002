@@ -33,6 +33,7 @@ import {
 import { KioskPortalControls } from '../features/kiosk/portal/KioskPortalControls';
 import { useKioskPortalLargeScreen } from '../features/kiosk/portal/useKioskPortalLargeScreen';
 import { useKioskSeamlessWebUpdate } from '../features/kiosk/useKioskSeamlessWebUpdate';
+import { isMobileAppShellPath, isOfflineMobileAppShell } from '../features/mobile-app-shell/registerMobileAppShell';
 import {
   proveNfcRuntimeReady,
   resolveNfcRuntimeContract
@@ -46,7 +47,7 @@ export function KioskLayout() {
   const callTargetsQuery = useKioskCallTargets();
   const selfClientId = callTargetsQuery.data?.selfClientId ?? '';
   const { data: kioskConfig } = useKioskConfig();
-  const { data: deployStatus } = useDeployStatus();
+  const { data: deployStatus, isError: deployStatusError } = useDeployStatus();
   const deployRunId = deployStatus?.runId;
   const deployIsMaintenance = deployStatus?.isMaintenance === true;
   const deployPhase = deployStatus?.phase;
@@ -237,7 +238,10 @@ export function KioskLayout() {
   // that page (for example window.prompt) block the event loop before this
   // layout can observe a verifying release and acknowledge it. Keep the
   // application route fail-closed until the deployment authority is known.
-  if (deployStatus === undefined || deployStatus.isMaintenance) {
+  // The mobile shell must mount offline or after an API failure; Pi kiosks stay fail-closed.
+  const mobileShellWithoutStatus = isOfflineMobileAppShell(location.pathname) ||
+    (isMobileAppShellPath(location.pathname) && deployStatusError);
+  if ((deployStatus === undefined && !mobileShellWithoutStatus) || deployStatus?.isMaintenance) {
     return <KioskMaintenanceScreen />;
   }
 

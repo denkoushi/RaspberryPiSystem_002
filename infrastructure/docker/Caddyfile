@@ -53,6 +53,9 @@
     @static path *.js *.css
     header @static Cache-Control "no-cache, no-store, must-revalidate"
 
+    @service_worker path /sw.js
+    header @service_worker Cache-Control "no-cache"
+
     file_server
   }
 

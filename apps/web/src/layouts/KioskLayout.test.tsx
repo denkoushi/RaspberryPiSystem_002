@@ -9,6 +9,7 @@ import { KioskLayout } from './KioskLayout';
 const revealMode = vi.hoisted(() => ({ real: false }));
 const acknowledgeDeployStatus = vi.fn();
 const proveNfcRuntimeReady = vi.fn();
+let deployStatusError = false;
 let deployStatus: Record<string, unknown> | undefined;
 const BUNDLE_RELEASE_SHA = 'a'.repeat(40);
 const OTHER_RELEASE_SHA = 'b'.repeat(40);
@@ -25,7 +26,7 @@ vi.mock('../api/domains/system', () => ({
 }));
 
 vi.mock('../api/hooks', () => ({
-  useDeployStatus: () => ({ data: deployStatus }),
+  useDeployStatus: () => ({ data: deployStatus, isError: deployStatusError }),
   useKioskCallTargets: () => ({ data: { selfClientId: 'kiosk-1' } }),
   useKioskConfig: () => ({ data: {} })
 }));
@@ -70,6 +71,7 @@ describe('KioskLayout deploy status handling', () => {
   beforeEach(() => {
     revealMode.real = false;
     deployStatus = undefined;
+    deployStatusError = false;
     acknowledgeDeployStatus.mockReset();
     acknowledgeDeployStatus.mockResolvedValue({ acknowledged: true });
     proveNfcRuntimeReady.mockReset();
@@ -97,6 +99,35 @@ describe('KioskLayout deploy status handling', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+  });
+
+  it.each(['/kiosk/mobile-placement', '/kiosk/purchase-order-lookup'])('mounts the offline mobile shell at %s without deploy status', (path) => {
+    const meta = document.createElement('meta');
+    meta.name = 'mobile-app-shell-offline';
+    document.head.append(meta);
+    try {
+      const { rerender } = render(<MemoryRouter initialEntries={[path]}><KioskLayout /></MemoryRouter>);
+      expect(screen.getByText('normal-kiosk-content')).toBeInTheDocument();
+      expect(screen.queryByText('maintenance-screen')).not.toBeInTheDocument();
+      deployStatus = { isMaintenance: true };
+      rerender(<MemoryRouter initialEntries={[path]}><KioskLayout /></MemoryRouter>);
+      expect(screen.getByText('maintenance-screen')).toBeInTheDocument();
+    } finally { meta.remove(); }
+  });
+
+  it.each([
+    ['/kiosk/mobile-placement', true], ['/kiosk/purchase-order-lookup', true], ['/kiosk/tag', false]
+  ])('handles a failed initial deploy-status API only for mobile (%s)', (path, mobile) => {
+    deployStatusError = true;
+    render(<MemoryRouter initialEntries={[path]}><KioskLayout /></MemoryRouter>);
+    expect(screen.queryByText('normal-kiosk-content') !== null).toBe(mobile);
+    expect(screen.queryByText('maintenance-screen') !== null).toBe(!mobile);
+  });
+
+  it('keeps other kiosks fail-closed even when offline', () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    render(<MemoryRouter initialEntries={['/kiosk/tag']}><KioskLayout /></MemoryRouter>);
+    expect(screen.getByText('maintenance-screen')).toBeInTheDocument();
   });
 
   it('keeps the normal kiosk usable while acknowledging a pre-notice once', async () => {
