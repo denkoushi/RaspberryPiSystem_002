@@ -8,6 +8,7 @@ import gzip
 import json
 import os
 from pathlib import Path
+import queue
 import re
 import shutil
 import subprocess
@@ -72,18 +73,41 @@ def git(repo, *args, check=True):
 
 def docker_log_lines(container, timeout=120):
     args = ['docker', 'logs', '--since', '24h', container]
-    with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           text=True, errors='replace') as process:
         timed_out = threading.Event()
+        lines = queue.Queue()
+
+        def read_lines(stream):
+            try:
+                for line in stream:
+                    lines.put(line)
+            except Exception as error:
+                lines.put(error)
+            finally:
+                lines.put(None)
 
         def expire():
             timed_out.set()
             process.kill()
 
         timer = threading.Timer(timeout, expire)
-        timer.start()
+        readers = []
         try:
-            yield from process.stdout
+            timer.start()
+            for stream in (process.stdout, process.stderr):
+                reader = threading.Thread(target=read_lines, args=(stream,))
+                reader.start()
+                readers.append(reader)
+            finished = 0
+            while finished < len(readers):
+                line = lines.get()
+                if line is None:
+                    finished += 1
+                elif isinstance(line, Exception):
+                    raise line
+                else:
+                    yield line
             process.wait()
             if timed_out.is_set():
                 raise subprocess.TimeoutExpired(args, timeout)
@@ -93,6 +117,10 @@ def docker_log_lines(container, timeout=120):
             timer.cancel()
             if process.poll() is None:
                 process.kill()
+            process.wait()
+            for reader in readers:
+                reader.join()
+            timer.join()
 
 
 def change_range(repo, previous, since, git_call=git):

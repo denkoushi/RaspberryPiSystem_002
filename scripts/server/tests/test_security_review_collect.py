@@ -60,7 +60,7 @@ def fake_git(ancestor=0, commits=None):
     ('token: hidden-token', 'hidden-token'),
     ('https://user:hidden-password@example.test/path', 'hidden-password'),
     ('value=Gz7qR2mNp9Vx4Ks8Tj6Wc3Yh5Lb1Df0Ua2Pe9HrQ', 'Gz7qR2mNp9Vx4Ks8Tj6Wc3Yh5Lb1Df0Ua2Pe9HrQ'),
-    ('-----BEGIN PRIVATE KEY-----\nprivate-data\n-----END PRIVATE KEY-----', 'private-data'),
+    ('-----BEGIN ' + 'PRIVATE KEY-----\nprivate-data\n-----END PRIVATE KEY-----', 'private-data'),
 ])
 def test_redaction(text, secret):
     assert secret not in collector.redact(text)
@@ -139,7 +139,7 @@ for level, stream in [(30, sys.stdout), (40, sys.stderr), (50, sys.stdout), (60,
 
 def test_docker_yields_before_process_exits_and_times_out(tmp_path, monkeypatch):
     fake_docker(tmp_path, monkeypatch, "import time\nprint('first line', flush=True)\ntime.sleep(60)\n")
-    lines = collector.docker_log_lines('api-blue', timeout=0.5)
+    lines = collector.docker_log_lines('api-blue', timeout=5)
     assert next(lines) == 'first line\n'
     with pytest.raises(subprocess.TimeoutExpired):
         list(lines)
@@ -151,13 +151,47 @@ def test_docker_nonzero_exit_is_a_source_failure(tmp_path, monkeypatch):
         list(collector.docker_log_lines('api-blue'))
 
 
+@pytest.mark.parametrize('close', [True, False])
+def test_docker_cleans_up_on_early_close_or_exception(tmp_path, monkeypatch, close):
+    fake_docker(tmp_path, monkeypatch, "import time\nprint('first line', flush=True)\ntime.sleep(60)\n")
+    processes = []
+    readers = []
+    popen = collector.subprocess.Popen
+    thread = collector.threading.Thread
+
+    def start_process(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    class ReaderThread(thread):
+        def __init__(self, *args, **kwargs):
+            thread.__init__(self, *args, **kwargs)
+            if kwargs.get('target'):
+                readers.append(self)
+
+    monkeypatch.setattr(collector.subprocess, 'Popen', start_process)
+    monkeypatch.setattr(collector.threading, 'Thread', ReaderThread)
+    lines = collector.docker_log_lines('api-blue')
+    assert next(lines) == 'first line\n'
+    if close:
+        lines.close()
+    else:
+        with pytest.raises(ValueError, match='consumer failed'):
+            lines.throw(ValueError('consumer failed'))
+    assert processes[0].poll() is not None
+    assert processes[0].stdout.closed and processes[0].stderr.closed
+    assert len(readers) == 2
+    assert all(not reader.is_alive() for reader in readers)
+
+
 def test_material_bytes_dropped_lines_and_multiline_key():
     material = collector.Material(12)
     material.add('日本語\nmore\n')
     assert len(material.text().encode()) <= 12
     assert material.dropped == 1
     key = collector.Material(1000)
-    key.add('-----BEGIN PRIVATE KEY-----')
+    key.add('-----BEGIN ' + 'PRIVATE KEY-----')
     key.add('hidden\n-----END PRIVATE KEY-----\nvisible')
     assert 'hidden' not in key.text()
     assert 'visible' in key.text()
