@@ -7,12 +7,17 @@ describe('PartSearchPhoneKeyboard', () => {
   it('prunes presets, kana, alphanumeric keys and space using the existing hidden-key set', () => {
     const append = vi.fn();
     const preset = vi.fn();
-    render(<PartSearchPhoneKeyboard hiddenKeys={new Set(['脚', 'あ', 'A', '0', ' '])} onAppend={append} onPreset={preset} />);
+    const backspace = vi.fn();
+    render(<PartSearchPhoneKeyboard hiddenKeys={new Set(['脚', 'あ', 'A', '0', ' '])} onAppend={append} onPreset={preset} onBackspace={backspace} />);
     const modes = screen.getByRole('group', { name: '文字種' });
     expect(modes.parentElement).toBe(screen.getByLabelText('定型語'));
     expect(modes.nextElementSibling).toContainElement(screen.getByRole('button', { name: '足', exact: true }));
     expect(modes).toHaveClass('shrink-0');
-    expect(screen.queryByRole('button', { name: '1文字消す' })).not.toBeInTheDocument();
+    const backspaceKey = screen.getByRole('button', { name: '1文字消す' });
+    expect(screen.getByLabelText('文字キー').lastElementChild).toBe(backspaceKey);
+    expect(backspaceKey).toHaveClass('h-11', 'col-start-7', 'row-start-3');
+    fireEvent.click(backspaceKey);
+    expect(backspace).toHaveBeenCalledOnce();
     for (const name of ['脚', 'あ', '空白']) expect(screen.queryByRole('button', { name, exact: true })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '足', exact: true }));
     expect(preset).toHaveBeenCalledWith('足');
