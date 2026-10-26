@@ -390,6 +390,7 @@ docker compose -f infrastructure/docker/docker-compose.mac-local.override.yml do
 ## 秘密情報の扱い
 
 - `TS_AUTHKEY` は **新規参加時のみ**使用する
+- Tailnet Lock 有効後は、Mac で `tailscale lock sign <auth-key>` した署名済み key を使う（[Tailnet Lock](../security/tailscale-policy.md#tailnet-lock)）
 - 参加後は auth key を **Tailscale 管理画面で revoke** し、ローカルの auth key ファイルも削除する
 - 平常時に残す秘密は `api-token` と `config/runtime.env` のみ
 - **`docker compose config` は live secret 入りで実行しない**
