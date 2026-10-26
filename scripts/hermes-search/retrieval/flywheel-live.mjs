@@ -77,7 +77,9 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
     const started = performance.now();
     const ms = () => Math.round(performance.now() - started);
     try {
-      const result = await answering.answer(row.question, null, { stageDump: true, vectorBudgetMs });
+      // A real follow-up replays with the plan and shown records the kiosk had at that turn.
+      const session = row.previousPlan ? { previousPlan: row.previousPlan, shownIds: row.previousShown ?? [], plans: [] } : null;
+      const result = await answering.answer(row.question, session, { stageDump: true, vectorBudgetMs });
       const outcome = result.receipt?.outcome ?? result.status;
       const shown = (result.recordIds ?? []).map(bareId);
       const candidates = (result.candidateIds ?? []).slice(0, judged).map(bareId);

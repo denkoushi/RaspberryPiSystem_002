@@ -444,7 +444,8 @@ export async function runFlywheelNight({
     }
     if (!withinWindow(settings.window, now())) break;
     score ??= await makeLive({ records, catalog, evaluate });
-    const live = await score({ a: null, b: null, question: question.question, grades: null });
+    const live = await score({ a: null, b: null, question: question.question, grades: null,
+      ...(question.previousPlan ? { previousPlan: question.previousPlan, previousShown: question.previousShown ?? [] } : {}) });
     await logLive(question.id, live);
     if (isFilterOnlyPlan(live.plan)) {
       const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, groups: live.groups, breakdown: question.seed?.breakdown ?? live.plan?.breakdown, records: corpus, catalog, causeById });
@@ -461,8 +462,9 @@ export async function runFlywheelNight({
       ...(live.candidates ?? []).slice(0, REAL_LABEL_DEPTH), ...(live.shown ?? []), ...question.dayShown,
     ].map(bareId))].filter((id) => recordsById.has(id));
     labels[question.id] ??= {};
+    // Graders read a follow-up together with the questions before it; 「他に何件ある？」 alone says nothing.
     await gradeIdsForQuestion({
-      question: question.question, ids: ids.filter((id) => labels[question.id][id] == null),
+      question: [...(question.context ?? []), question.question].join('\n'), ids: ids.filter((id) => labels[question.id][id] == null),
       onBatch: async (batch) => {
         Object.assign(labels[question.id], batch);
         await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });

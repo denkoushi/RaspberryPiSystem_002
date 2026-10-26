@@ -181,3 +181,21 @@ test('live breakdown carries only cause bucket values and counts for checking', 
   assert.equal(checkFilterAnswer({ ...result, records: corpus, catalog, causeById: new Map([[corpus[0].id, 'drawing']]) }).ok, true);
   assert.equal(JSON.stringify(result).includes(corpus[0].condition), false);
 });
+
+test('a row with a previous plan reaches the planner as the session it follows', async () => {
+  const catalog = loadNonconformityCatalog();
+  const states = [];
+  const evaluate = async ({ state, questions }) => {
+    states.push(state);
+    return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+      key === 'content' ? { type: 'noul', noul: 0.05 }
+        : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'recent' : key === 'limit' ? '2' : 'none' },
+    ])) };
+  };
+  const score = await createLiveScorer({ records, catalog, evaluate, env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' } });
+  const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: '傷', sort: null, limit: 5 };
+  await score({ question: '他に何件ある？', previousPlan, previousShown: ['nonconformity:a1'] });
+  await score({ question: '最近の不適合を２件' });
+  assert.deepEqual(states[0].previous_plan, previousPlan);
+  assert.equal('previous_plan' in states[1], false);
+});
