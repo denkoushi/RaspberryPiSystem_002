@@ -1,10 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { SignageRenderer } from '../../services/signage/signage.renderer.js';
 import { SignageService } from '../../services/signage/index.js';
 
 const paramsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
 });
 
 /**

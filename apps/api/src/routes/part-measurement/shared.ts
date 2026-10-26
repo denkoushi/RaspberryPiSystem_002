@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { MultipartFile } from '@fastify/multipart';
 import type { SelfInspectionMode } from '@prisma/client';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { ApiError } from '../../lib/errors.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { requireClientDevice } from '../kiosk/shared.js';
@@ -52,12 +52,12 @@ export const createSheetBodySchema = z.object({
   machineName: z.string().max(500).optional().nullable(),
   resourceCdSnapshot: z.string().max(120).optional().nullable(),
   processGroup: processGroupSchema,
-  templateId: z.string().uuid(),
+  templateId: z.string().guid(),
   scannedBarcodeRaw: z.string().max(500).optional().nullable(),
-  scheduleRowId: z.string().uuid().optional(),
+  scheduleRowId: z.string().guid().optional(),
   allowAlternateResourceTemplate: z.boolean().optional(),
   /** 同一測定対象への追加作成時の整合チェック用 */
-  sessionId: z.string().uuid().optional()
+  sessionId: z.string().guid().optional()
 });
 
 export const findOrOpenSheetBodySchema = z.object({
@@ -65,7 +65,7 @@ export const findOrOpenSheetBodySchema = z.object({
   processGroup: processGroupSchema,
   resourceCd: z.string().min(1).max(120),
   fkojun: z.string().max(120).optional(),
-  scheduleRowId: z.string().uuid().optional().nullable(),
+  scheduleRowId: z.string().guid().optional().nullable(),
   fseiban: z.string().max(120).optional().nullable(),
   fhincd: z.string().max(120).optional().nullable(),
   fhinmei: z.string().max(500).optional().nullable(),
@@ -81,7 +81,7 @@ export const patchSheetBodySchema = z.object({
     .array(
       z.object({
         pieceIndex: z.number().int().min(0).max(1999),
-        templateItemId: z.string().uuid(),
+        templateItemId: z.string().guid(),
         value: z.union([z.string(), z.number(), z.null()]).optional()
       })
     )
@@ -166,7 +166,7 @@ export const createTemplateBodySchema = z
     fkojun: z.string().max(120).optional().default(''),
     name: z.string().min(1).max(200),
     items: z.array(templateItemSchema).min(1).max(200),
-    visualTemplateId: z.string().uuid().optional().nullable(),
+    visualTemplateId: z.string().guid().optional().nullable(),
     candidateFhinmei: z.string().max(500).optional().nullable(),
     selfInspectionMode: selfInspectionModeSchema.optional().default('full'),
     selfInspectionFixedCount: z.number().int().min(1).max(2000).optional().nullable(),
@@ -212,7 +212,7 @@ export const createInspectionDrawingTemplateGroupBodySchema = z
     name: z.string().min(1).max(200),
     displayName: z.string().max(200).optional().nullable(),
     items: z.array(templateItemSchema).min(1).max(200),
-    visualTemplateId: z.string().uuid(),
+    visualTemplateId: z.string().guid(),
     selfInspectionMode: selfInspectionModeSchema.optional().default('full'),
     selfInspectionFixedCount: z.number().int().min(1).max(2000).optional().nullable(),
     selfInspectionSampleSize: z.number().int().min(1).max(2000).optional().nullable()
@@ -223,7 +223,7 @@ export const createInspectionDrawingTemplateGroupBodySchema = z
 
 export const addInspectionDrawingTemplateGroupResourcesBodySchema = z.object({
   resourceCds: inspectionDrawingTemplateResourceCdsSchema,
-  sourceTemplateId: z.string().uuid().optional().nullable()
+  sourceTemplateId: z.string().guid().optional().nullable()
 });
 
 /** 検査図面 MVP: 評価用テンプレ（本番 THREE_KEY 系譜とは別バケット） */
@@ -233,7 +233,7 @@ export const createInspectionDrawingEvaluationTemplateBodySchema = z.object({
   referenceProcessGroup: processGroupSchema,
   name: z.string().min(1).max(200),
   items: z.array(templateItemSchema).min(1).max(200),
-  visualTemplateId: z.string().uuid().optional()
+  visualTemplateId: z.string().guid().optional()
 });
 
 /** 有効テンプレの系譜固定での改版。FHINMEI_ONLY のときのみ candidateFhinmei を変更可 */
@@ -241,7 +241,7 @@ export const reviseTemplateBodySchema = z
   .object({
     name: z.string().min(1).max(200),
     items: z.array(templateItemSchema).min(1).max(200),
-    visualTemplateId: z.string().uuid().optional().nullable(),
+    visualTemplateId: z.string().guid().optional().nullable(),
     candidateFhinmei: z.string().max(500).optional().nullable(),
     selfInspectionMode: selfInspectionModeSchema.optional(),
     selfInspectionFixedCount: z.number().int().min(1).max(2000).optional().nullable(),
@@ -266,7 +266,7 @@ export const reviseTemplateBodySchema = z
 
 /** 候補テンプレを日程の FIHNCD+工程+資源CD 用テンプレへ複製（既存 active があれば再利用） */
 export const cloneTemplateForScheduleBodySchema = z.object({
-  sourceTemplateId: z.string().uuid(),
+  sourceTemplateId: z.string().guid(),
   fhincd: z.string().min(1).max(120),
   processGroup: processGroupSchema,
   resourceCd: z.string().min(1).max(120),
@@ -354,13 +354,13 @@ export const listTemplateCandidatesQuerySchema = z.object({
 });
 
 export const selfInspectionSessionResolveBodySchema = z.object({
-  templateId: z.string().uuid(),
+  templateId: z.string().guid(),
   productNo: z.string().min(1).max(120),
   processGroup: processGroupSchema,
   resourceCd: z.string().min(1).max(120),
   /** 互換用（無視）。実際の指示数は日程行の補助データから取得する */
   plannedQuantity: z.number().int().min(1).optional(),
-  scheduleRowId: z.string().uuid(),
+  scheduleRowId: z.string().guid(),
   fseiban: z.string().min(1).max(120),
   fhincd: z.string().min(1).max(120),
   fhinmei: z.string().min(1).max(500),
@@ -379,21 +379,21 @@ export const getSelfInspectionSessionQuerySchema = z.object({
 });
 
 export const selfInspectionSessionIdParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 export const selfInspectionEntryIdParamsSchema = z.object({
-  id: z.string().uuid(),
-  entryId: z.string().uuid()
+  id: z.string().guid(),
+  entryId: z.string().guid()
 });
 
 export const selfInspectionEntryIndexParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
   entryIndex: z.coerce.number().int().min(0).max(1999)
 });
 
 export const selfInspectionEntryValueSchema = z.object({
-  templateItemId: z.string().uuid(),
+  templateItemId: z.string().guid(),
   value: z.union([z.string(), z.number(), z.null()]).optional(),
   judgementResult: z.enum(['PASS', 'FAIL']).nullable().optional(),
   outOfToleranceAcknowledged: z.boolean().optional()
@@ -401,21 +401,21 @@ export const selfInspectionEntryValueSchema = z.object({
 
 export const selfInspectionCreateEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  measurementActorAuthenticationId: z.string().uuid(),
+  measurementActorAuthenticationId: z.string().guid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 export const selfInspectionUpdateEntryBodySchema = z.object({
   ifUnmodifiedSince: z.string().min(1).max(100),
-  measurementActorAuthenticationId: z.string().uuid(),
+  measurementActorAuthenticationId: z.string().guid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
 
 export const selfInspectionUpsertDraftEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  measurementActorAuthenticationId: z.string().uuid(),
+  measurementActorAuthenticationId: z.string().guid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   ifUnmodifiedSince: z.string().min(1).max(100).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).max(200).optional()
@@ -423,7 +423,7 @@ export const selfInspectionUpsertDraftEntryBodySchema = z.object({
 
 export const selfInspectionCreateInspectorEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
-  measurementActorAuthenticationId: z.string().uuid(),
+  measurementActorAuthenticationId: z.string().guid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
@@ -431,7 +431,7 @@ export const selfInspectionCreateInspectorEntryBodySchema = z.object({
 export const selfInspectionUpdateInspectorEntryBodySchema = z.object({
   entryIndex: z.number().int().min(0),
   ifUnmodifiedSince: z.string().min(1).max(100),
-  measurementActorAuthenticationId: z.string().uuid(),
+  measurementActorAuthenticationId: z.string().guid(),
   measuringInstrumentTagUid: z.string().min(1).max(200).optional().nullable(),
   values: z.array(selfInspectionEntryValueSchema).min(1).max(200)
 });
@@ -439,7 +439,7 @@ export const selfInspectionUpdateInspectorEntryBodySchema = z.object({
 export const selfInspectionInspectorJudgementsBodySchema = z.object({
   judgements: z.array(
     z.object({
-      templateItemId: z.string().uuid(),
+      templateItemId: z.string().guid(),
       judgementStatus: z.enum(['FINAL_OK', 'FINAL_NG'])
     })
   ).min(1).max(200)
@@ -447,7 +447,7 @@ export const selfInspectionInspectorJudgementsBodySchema = z.object({
 
 export const selfInspectionInstrumentPreUseInspectionBodySchema = z.object({
   instrumentTagUid: z.string().min(1).max(200),
-  measurementActorAuthenticationId: z.string().uuid()
+  measurementActorAuthenticationId: z.string().guid()
 });
 
 export const selfInspectionMeasurementActorAuthenticationBodySchema = z.object({
@@ -496,8 +496,8 @@ export const listSelfInspectionRecordApprovalsQuerySchema = z.object({
 
 const selfInspectionInvalidationScheduleRowTargetSchema = z.object({
   kind: z.literal('schedule_row'),
-  scheduleRowId: z.string().uuid(),
-  templateId: z.string().uuid(),
+  scheduleRowId: z.string().guid(),
+  templateId: z.string().guid(),
   productNo: z.string().trim().min(1).max(120),
   processGroup: processGroupSchema,
   resourceCd: z.string().trim().min(1).max(120),
@@ -510,13 +510,13 @@ export const invalidateSelfInspectionItemBodySchema = z.object({
   target: z.discriminatedUnion('kind', [
     z.object({
       kind: z.literal('session'),
-      sessionId: z.string().uuid()
+      sessionId: z.string().guid()
     }),
     selfInspectionInvalidationScheduleRowTargetSchema
   ]),
   accessPassword: z.string().min(1).max(128),
   reason: z.string().trim().min(1).max(500),
-  requestId: z.string().uuid()
+  requestId: z.string().guid()
 });
 
 export const listSelfInspectionInvalidationsQuerySchema = z.object({
@@ -525,7 +525,7 @@ export const listSelfInspectionInvalidationsQuerySchema = z.object({
 });
 
 export const selfInspectionInvalidationIdParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 export const resolveSelfInspectionRecordApprovalApproverBodySchema = z.object({
@@ -543,9 +543,9 @@ export const selfInspectionRegistrationPolicyBodySchema = z.object({
 });
 
 export const issueSelfInspectionPaperReportBodySchema = z.object({
-  templateId: z.string().uuid(),
+  templateId: z.string().guid(),
   productNo: z.string().min(1).max(120),
-  scheduleRowId: z.string().uuid(),
+  scheduleRowId: z.string().guid(),
   fseiban: z.string().min(1).max(120),
   fhincd: z.string().min(1).max(120),
   fhinmei: z.string().min(1).max(500),
@@ -554,11 +554,11 @@ export const issueSelfInspectionPaperReportBodySchema = z.object({
 });
 
 export const selfInspectionPaperReportIdParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 export const selfInspectionPaperOcrReviewIdParamsSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().guid()
 });
 
 export const selfInspectionPaperQrPayloadBodySchema = z.object({
@@ -567,7 +567,7 @@ export const selfInspectionPaperQrPayloadBodySchema = z.object({
 
 export const selfInspectionPaperOcrValueSchema = z.object({
   entryIndex: z.number().int().min(0).max(1999),
-  templateItemId: z.string().uuid(),
+  templateItemId: z.string().guid(),
   value: z.union([z.string(), z.number(), z.null()]),
   confidence: z.number().min(0).max(1).optional().nullable()
 });

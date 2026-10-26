@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { validate as validateCron } from 'node-cron';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { authorizeRoles } from '../../lib/auth.js';
 import { ImportScheduleAdminService } from '../../services/imports/import-schedule-admin.service.js';
@@ -52,13 +52,13 @@ const csvImportScheduleSchema = z.object({
   autoBackupAfterImport: z.object({
     enabled: z.boolean().default(false),
     targets: z.array(z.enum(['csv', 'database', 'all'])).default(['csv']),
-  }).optional().default({ enabled: false, targets: ['csv'] }),
+  }).prefault({ enabled: false, targets: ['csv'] }),
   retryConfig: z.object({
     maxRetries: z.number().min(0).default(3),
     retryInterval: z.number().min(1).default(60), // 秒
     exponentialBackoff: z.boolean().default(true),
   }).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 }).refine((data) => {
   // 新形式または旧形式のいずれかが必須
   if (data.targets && data.targets.length > 0) {
@@ -130,7 +130,7 @@ const csvImportScheduleUpdateSchema = z.object({
     retryInterval: z.number().min(1).default(60),
     exponentialBackoff: z.boolean().default(true),
   }).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 }).refine((data) => {
   // 更新時は既存の値が保持されるため、新形式または旧形式のいずれかが存在すればOK
   if (data.targets && data.targets.length > 0) {

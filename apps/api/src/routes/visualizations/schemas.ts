@@ -1,13 +1,13 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 const uninspectedConfigSchema = z.object({
-  csvDashboardId: z.string().uuid(),
+  csvDashboardId: z.string().guid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   maxRows: z.number().int().positive().optional(),
 });
 
 export const visualizationDashboardParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
 });
 
 export const visualizationDashboardCreateSchema = z
@@ -16,8 +16,8 @@ export const visualizationDashboardCreateSchema = z
     description: z.string().optional().nullable(),
     dataSourceType: z.string().min(1),
     rendererType: z.string().min(1),
-    dataSourceConfig: z.record(z.unknown()),
-    rendererConfig: z.record(z.unknown()),
+    dataSourceConfig: z.record(z.string(), z.unknown()),
+    rendererConfig: z.record(z.string(), z.unknown()),
     enabled: z.boolean().optional(),
   })
   .superRefine((input, ctx) => {
@@ -42,8 +42,8 @@ export const visualizationDashboardUpdateSchema = z
     description: z.string().optional().nullable(),
     dataSourceType: z.string().min(1).optional(),
     rendererType: z.string().min(1).optional(),
-    dataSourceConfig: z.record(z.unknown()).optional(),
-    rendererConfig: z.record(z.unknown()).optional(),
+    dataSourceConfig: z.record(z.string(), z.unknown()).optional(),
+    rendererConfig: z.record(z.string(), z.unknown()).optional(),
     enabled: z.boolean().optional(),
   })
   .superRefine((input, ctx) => {

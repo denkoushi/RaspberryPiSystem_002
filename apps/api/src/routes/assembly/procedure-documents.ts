@@ -3,7 +3,7 @@ import { serializeLastProcedureManualApproval, type ProcedureManualApprovalSnaps
 import type { MultipartFile } from '@fastify/multipart';
 import type { AssemblyProcedureAsset } from '@prisma/client';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 import { enforceAssemblyProcedureEditLease, resolveAssemblyProcedureEditWriter } from './procedure-document-edit-leases.js';
 
 import { ApiError, DomainHttpError } from '../../lib/errors.js';
@@ -20,7 +20,7 @@ import {
   type AssemblyProcedureGmailImportService
 } from '../../services/assembly/index.js';
 
-const idParamSchema = z.object({ id: z.string().uuid() });
+const idParamSchema = z.object({ id: z.string().guid() });
 const optionalTrueOnlyBooleanSchema = z
   .union([z.literal('true'), z.literal(true)])
   .optional()

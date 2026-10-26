@@ -1,6 +1,6 @@
 import { KIOSK_INITIAL_ROUTE_IDS, resolveKioskInitialPath } from '@raspi-system/shared-types';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { prisma } from '../../lib/prisma.js';
 

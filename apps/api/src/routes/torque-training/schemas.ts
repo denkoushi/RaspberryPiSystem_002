@@ -1,6 +1,6 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
-const id = z.string().uuid();
+const id = z.string().guid();
 const decimal = z.union([z.string().trim().min(1), z.number().finite()]);
 
 export const operatorContextSchema = z.object({ uid: z.string().trim().min(1).max(200) });

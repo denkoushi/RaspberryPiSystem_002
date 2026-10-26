@@ -1,6 +1,6 @@
 import './load-dotenv.js';
 
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 export const SECRET_MIN_LENGTH = 32;
 export const WEAK_SECRET_PATTERNS = [

@@ -1,4 +1,4 @@
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import type { SignageCanvasLayoutConfig } from './signage-layout.types.js';
 
@@ -54,7 +54,7 @@ const visualizationElementSchema = geometrySchema.extend({
   kind: z.literal('visualization'),
   title: z.string().trim().min(1).max(120).optional(),
   dataSourceType: z.enum(['production_schedule', 'measuring_instruments', 'pallet_visualization_board']),
-  dataSourceConfig: z.record(z.unknown()),
+  dataSourceConfig: z.record(z.string(), z.unknown()),
   rendererType: z.enum(['kpi_cards', 'table', 'bar_chart', 'progress_list', 'pallet_visualization_board']),
   rendererConfig: rendererConfigSchema,
 }).strict().superRefine((value, ctx) => {

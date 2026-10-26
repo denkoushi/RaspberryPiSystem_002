@@ -5,7 +5,7 @@ import {
   isSelfInspectionReductionCpkThreshold,
   type SelfInspectionReductionCpkThreshold
 } from '@raspi-system/shared-types';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { SelfInspectionRegistrationPolicyAccessService } from '../../services/part-measurement/self-inspection-registration-policy-access.service.js';
 import {
@@ -73,7 +73,7 @@ const policyBodySchema = z.object({
 
 const addApproverBodySchema = z.object({ employeeTagUid: tagUidSchema, accessPassword: accessPasswordSchema });
 const removeApproverBodySchema = z.object({ accessPassword: accessPasswordSchema });
-const approverIdParamsSchema = z.object({ id: z.string().uuid() });
+const approverIdParamsSchema = z.object({ id: z.string().guid() });
 
 const changePointBodySchema = partKeySchema.extend({
   kind: z.enum(['TOOL_CHANGE', 'SETUP_CHANGE', 'MATERIAL_LOT', 'MACHINE_REPAIR', 'PROGRAM_CHANGE', 'OTHER']),

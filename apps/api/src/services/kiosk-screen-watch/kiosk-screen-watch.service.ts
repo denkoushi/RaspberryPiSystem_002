@@ -1,5 +1,5 @@
 import type { KioskScreenWatchSession, KioskScreenWatchStatus, PrismaClient } from '@prisma/client';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
@@ -7,7 +7,7 @@ import { authorizeReceiver } from '../kiosk-inquiry/kiosk-inquiry.service.js';
 import { signalingRegistry, type SignalingRegistry, type SignalingEnvelope } from './signaling-registry.js';
 
 const liveStatuses: KioskScreenWatchStatus[] = ['REQUESTED', 'ACTIVE'];
-const payloadSchema = z.object({ watchId: z.string().uuid(), reason: z.string().max(200).optional() }).passthrough();
+const payloadSchema = z.object({ watchId: z.string().guid(), reason: z.string().max(200).optional() }).passthrough();
 const clock = {
   now: () => new Date(),
   setTimeout: (callback: () => void, ms: number) => setTimeout(callback, ms),

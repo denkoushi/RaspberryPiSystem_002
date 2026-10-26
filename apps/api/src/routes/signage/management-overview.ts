@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod/v3';
+import { z } from 'zod';
 
 import { env } from '../../config/env.js';
 import { authorizeRoles } from '../../lib/auth.js';
@@ -7,7 +7,7 @@ import { SignageService } from '../../services/signage/index.js';
 import { getSignageImageLastFetchedAt } from '../../services/signage/signage-delivery-tracker.js';
 import { SignageRenderer } from '../../services/signage/signage.renderer.js';
 
-const csvPreviewParamsSchema = z.object({ id: z.string().uuid() });
+const csvPreviewParamsSchema = z.object({ id: z.string().guid() });
 
 /**
  * 管理画面（サイネージハブ・データボード）用の読み取り専用 API。

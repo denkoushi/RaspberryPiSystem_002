@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
-import { ZodError } from 'zod/v3';
+import { ZodError } from 'zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../../config/env.js';
