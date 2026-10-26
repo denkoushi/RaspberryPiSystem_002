@@ -5,6 +5,7 @@ export type HaizenQueueRecord = {
   slipKind: 'manufacturing_order' | 'purchase_order';
   number: string;
   shelfCode: string;
+  branchNo?: number;
   scannedAt: string;
   status: 'pending' | 'needs_check';
   message?: string;

@@ -30,7 +30,7 @@ export function PartSearchResultCard(props: Props) {
         {hit.manufacturingOrderBarcodeRaw ? (
           <span>製造order: {hit.manufacturingOrderBarcodeRaw}</span>
         ) : null}
-        {hit.branchNo != null ? <span>枝番: {hit.branchNo}</span> : null}
+        {hit.branchNo != null ? <span>分配: {hit.branchNo === 0 ? 'なし' : hit.branchNo}</span> : null}
         {hit.fhinmei ? <span className="truncate">FHINMEI: {hit.fhinmei}</span> : null}
         {hit.fhincd ? <span>FHINCD: {hit.fhincd}</span> : null}
         {hit.fseiban ? <span>製番: {hit.fseiban}</span> : null}

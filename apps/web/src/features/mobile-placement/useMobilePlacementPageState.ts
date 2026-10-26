@@ -224,7 +224,7 @@ export function useMobilePlacementPageState() {
           shelfCodeRaw: shelfCode
         });
         setRegisterMessage(
-          `分配${res.branchState.branchNo}を ${res.branchState.shelfCodeRaw} へ移動しました`
+          `分配${res.branchState.branchNo === 0 ? 'なし' : res.branchState.branchNo}を ${res.branchState.shelfCodeRaw} へ移動しました`
         );
         setSelectedBranchId(null);
       } else {
@@ -233,7 +233,7 @@ export function useMobilePlacementPageState() {
           manufacturingOrderBarcodeRaw: orderBarcode
         });
         setRegisterMessage(
-          `分配${res.branchState.branchNo}を登録 ${res.event.id.slice(0, 8)}…`
+          `分配${res.branchState.branchNo === 0 ? 'なし' : res.branchState.branchNo}を登録 ${res.event.id.slice(0, 8)}…`
         );
         setOrderBarcode('');
       }

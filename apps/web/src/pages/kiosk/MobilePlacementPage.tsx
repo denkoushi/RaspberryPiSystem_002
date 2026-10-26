@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { HaizenHub } from '../../features/mobile-placement/haizen/HaizenHub';
@@ -21,11 +21,6 @@ export function MobilePlacementPage() {
     : sheet !== null ? () => setSheet(null) : null);
   const registeredShelvesQuery = useRegisteredShelves();
   const orderBranchesQuery = useOrderPlacementBranches(mp.orderBarcode);
-  const suggestedNextBranchNo = useMemo(() => {
-    const list = orderBranchesQuery.data?.branches ?? [];
-    if (list.length === 0) return 1;
-    return Math.max(...list.map((b) => b.branchNo)) + 1;
-  }, [orderBranchesQuery.data?.branches]);
   const location = useLocation();
   const navigate = useNavigate();
   const actualSlipFileInputRef = useRef<HTMLInputElement>(null);
@@ -62,7 +57,6 @@ export function MobilePlacementPage() {
         setSheet={setSheet}
         shelves={registeredShelvesQuery}
         branches={orderBranchesQuery}
-        suggestedNextBranchNo={suggestedNextBranchNo}
         onNavigate={(path) => navigate(path, path === '/kiosk/purchase-order-lookup' || path === '/kiosk/mobile-placement/part-search'
           ? haizenTabNavigationOptions() : undefined)}
         onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master', {

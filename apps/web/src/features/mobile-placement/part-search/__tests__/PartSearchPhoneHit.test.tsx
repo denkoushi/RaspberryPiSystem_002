@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { deleteOrderPlacementBranch } from '../../../../api/domains/mobile-placement';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
 import { PartSearchPhoneHit } from '../PartSearchPhoneHit';
+import { PartSearchResultCard } from '../PartSearchResultCard';
 
 import type { PartPlacementSearchHitDto } from '../types';
 
@@ -27,6 +28,12 @@ function mount(selected = true, item = hit) {
 beforeEach(() => vi.resetAllMocks());
 
 describe('PartSearchPhoneHit deletion', () => {
+  it('renders branch zero as なし in both result layouts', () => {
+    mount(true, { ...hit, branchNo: 0 });
+    expect(screen.getByText('なし', { exact: true })).toBeInTheDocument();
+    render(<PartSearchResultCard hit={{ ...hit, branchNo: 0 }} />);
+    expect(screen.getByText('分配: なし')).toBeInTheDocument();
+  });
   it('hides deletion when collapsed or for a schedule candidate', () => {
     const current = mount(false);
     expect(screen.queryByRole('button', { name: 'この品物を消す' })).not.toBeInTheDocument();

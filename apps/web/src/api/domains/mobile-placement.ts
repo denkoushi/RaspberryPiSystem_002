@@ -243,6 +243,7 @@ export async function snapFseibanTokens(payload: { tokens: string[]; text?: stri
 
 /** 部品配膳（製造order番号・棚のみ。Item は更新しない） */
 export async function registerOrderPlacement(payload: {
+  branchNo?: number;
   shelfCodeRaw: string;
   manufacturingOrderBarcodeRaw: string;
   slipKind?: 'manufacturing_order' | 'purchase_order';
@@ -250,6 +251,7 @@ export async function registerOrderPlacement(payload: {
   placedAt?: string;
 }, timeout?: number) {
   const { data } = await api.post<{
+    action?: 'created' | 'moved' | 'unchanged';
     event: {
       id: string;
       clientDeviceId: string;

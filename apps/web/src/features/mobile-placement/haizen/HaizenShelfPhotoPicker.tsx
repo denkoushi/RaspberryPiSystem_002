@@ -19,12 +19,12 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
   compact?: boolean; onView?: (shelf: RegisteredShelfEntryDto) => void;
   /** Dims the grid until the 移動票 is read. */ disabled?: boolean;
   /** Shows a button that opens the full-screen picker. */ onExpand?: () => void;
-  /** Rendered between the chips and the grid (the 配膳 tab puts 分配 here). */ children?: ReactNode;
+  /** Loading or retry state between the chips and the grid. */ children?: ReactNode;
 }) {
   const [viewer, setViewer] = useState<RegisteredShelfEntryDto | null>(null);
   const [filter, setFilter] = useState(previousShelfCodes.length ? 'previous' : 'all');
   const machines = [...new Set(shelves.flatMap((s) => s.machineName ? [s.machineName] : []))].sort((a, b) => a.localeCompare(b, 'ja'));
-  const filters = [{ key: 'previous', label: '前回' }, { key: 'all', label: '全部' },
+  const filters = [...(previousShelfCodes.length ? [{ key: 'previous', label: '前回' }] : []), { key: 'all', label: '全部' },
     ...machines.map((name) => ({ key: `machine:${name}`, label: name }))];
   const filtered = filter === 'previous'
     ? previousShelfCodes.flatMap((code) => shelves.filter((s) => s.shelfCodeRaw === code))
@@ -38,11 +38,11 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
   }
   const pad = compact ? '' : 'px-3.5';
   return <>
-    <div className={`flex shrink-0 items-center gap-1.5 pb-2 ${pad}`}>
+    <div className={`flex shrink-0 items-center gap-1.5 pb-2 ${pad} ${disabled ? 'opacity-35' : ''}`}>
       <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
-        {filters.map((f) => <button key={f.key} type="button" className={hp.chip} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</button>)}
+        {filters.map((f) => <button key={f.key} type="button" className={hp.chip} aria-pressed={filter === f.key} disabled={disabled} onClick={() => setFilter(f.key)}>{f.label}</button>)}
       </div>
-      {onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} !h-[52px] w-[52px] shrink-0 !px-0 !text-2xl`} onClick={onExpand}>⤢</button>}
+      {onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} !h-[52px] w-[52px] shrink-0 !px-0 !text-2xl`} disabled={disabled} onClick={onExpand}>⤢</button>}
     </div>
     {children}
     {loading ? <p className={hp.empty}>読込中…</p> : error ? <div role="alert" className={hp.empty}>棚を取得できませんでした <button className={hp.mini} onClick={onRetry}>再試行</button></div>
@@ -51,12 +51,12 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
           <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? 'col-span-3' : 'col-span-2'}`}>
             {machineName ?? 'その他'}<small className={`text-xs ${hp.muted}`}>{group.length}棚</small>
           </h3>
-          {group.map((s) => <button key={s.shelfCodeRaw} type="button" aria-label={`棚 ${s.shelfCodeRaw}`} aria-pressed={selected === s.shelfCodeRaw} disabled={disabled}
+          {group.map((s) => <button key={s.shelfCodeRaw} type="button" aria-label={`棚 ${[s.machineName, s.direction, s.displayLabel].filter(Boolean).join(' ') || '写真'}`} aria-pressed={selected === s.shelfCodeRaw} disabled={disabled}
           className="relative overflow-hidden rounded-[14px] border-2 border-[var(--hp-line)] bg-[var(--hp-panel)] text-left aria-pressed:border-[var(--hp-shelf)]"
           onClick={() => selected === s.shelfCodeRaw ? (onView ?? setViewer)(s) : onSelect(s.shelfCodeRaw)}>
-          <ShelfPhoto shelf={s} className="aspect-[4/3] w-full" />
+          <ShelfPhoto shelf={s} label={s.direction || s.displayLabel || '棚'} className="aspect-[4/3] w-full" />
           {s.shelfCodeRaw === previousShelfCodes[0] && <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-[11px] font-black text-[var(--hp-bg)]">前回</span>}
-          <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><b className={`block truncate font-mono text-[var(--hp-shelf)] ${compact ? 'text-sm' : 'text-lg'}`}>{s.machineName ? s.direction ?? s.shelfCodeRaw : s.shelfCodeRaw}</b><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>
+          <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><b className={`block truncate font-mono text-[var(--hp-shelf)] ${compact ? 'text-sm' : 'text-lg'}`}>{s.direction || '　'}</b><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>
           {selected === s.shelfCodeRaw && <span className="block px-1.5 pb-1 text-[11px] text-[var(--hp-shelf)]">もう一度で拡大</span>}
         </button>)}
         </Fragment>)}

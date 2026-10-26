@@ -1,4 +1,6 @@
 import Fastify from 'fastify';
+import { ZodError } from 'zod';
+import { registerOrderPlacement } from '../../services/mobile-placement/mobile-placement-order-placement.service.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../lib/errors.js';
@@ -6,6 +8,8 @@ import { deleteHaizenCurrentPlacement } from '../../services/mobile-placement/ha
 import { deleteOrderPlacementBranch } from '../../services/mobile-placement/order-placement-branch.service.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { registerMobilePlacementRoutes } from '../mobile-placement/index.js';
+
+vi.mock('../../services/mobile-placement/mobile-placement-order-placement.service.js', () => ({ registerOrderPlacement: vi.fn() }));
 
 vi.mock('../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../kiosk/shared.js', () => ({ requireClientDevice: vi.fn() }));
@@ -20,6 +24,9 @@ beforeEach(async () => {
   vi.resetAllMocks();
   vi.mocked(requireClientDevice).mockResolvedValue({ clientDevice: { id: 'device' } } as never);
   app = Fastify();
+  app.setErrorHandler((error, _request, reply) => {
+    reply.code(error instanceof ZodError ? 400 : error.statusCode ?? 500).send({ message: error.message });
+  });
   await registerMobilePlacementRoutes(app);
 });
 afterEach(async () => { await app.close(); });
@@ -82,5 +89,28 @@ describe('DELETE /mobile-placement/haizen-current/:id', () => {
     const response = await app.inject({ method: 'DELETE', url: '/mobile-placement/haizen-current/current' });
     expect(response.statusCode).toBe(401);
     expect(deleteHaizenCurrentPlacement).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('POST /mobile-placement/register-order-placement stamp schema', () => {
+  const payload = { manufacturingOrderBarcodeRaw: '100', shelfCodeRaw: 'shelf' };
+  it.each([undefined, 0, 1, 5])('accepts branchNo %s and passes it to the service', async (branchNo) => {
+    vi.mocked(registerOrderPlacement).mockResolvedValue({ event: { id: 'event' }, branchState: { id: 'branch', branchNo: branchNo ?? 1 }, action: 'moved', resolvedRowId: null } as never);
+    const response = await app.inject({ method: 'POST', url: '/mobile-placement/register-order-placement', payload: { ...payload, branchNo } });
+    expect(response.statusCode).toBe(200);
+    expect(registerOrderPlacement).toHaveBeenCalledWith(expect.objectContaining({ ...payload, branchNo }));
+    expect(response.json()).toMatchObject({ action: 'moved', branchState: { branchNo: branchNo ?? 1 } });
+  });
+  it.each([-1, 6, 0.5, '1', null])('rejects invalid branchNo %s', async (branchNo) => {
+    const response = await app.inject({ method: 'POST', url: '/mobile-placement/register-order-placement', payload: { ...payload, branchNo } });
+    expect(response.statusCode).toBe(400);
+    expect(registerOrderPlacement).not.toHaveBeenCalled();
+  });
+  it('returns the stamp conflict as 409', async () => {
+    vi.mocked(registerOrderPlacement).mockRejectedValue(new ApiError(409, '分配なしと番号付きの分配は併用できません', undefined, 'ORDER_PLACEMENT_BRANCH_CONFLICT'));
+    const response = await app.inject({ method: 'POST', url: '/mobile-placement/register-order-placement', payload: { ...payload, branchNo: 0 } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toBe('分配なしと番号付きの分配は併用できません');
   });
 });

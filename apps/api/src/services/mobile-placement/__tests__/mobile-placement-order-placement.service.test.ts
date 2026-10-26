@@ -6,7 +6,7 @@ import { findPurchaseOrderLookupRows } from '../../purchase-order-lookup/purchas
 import { registerOrderPlacement } from '../mobile-placement-order-placement.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
-  orderPlacementEvent: { findUnique: vi.fn() }, orderPlacementBranchState: { findUnique: vi.fn() },
+  orderPlacementEvent: { findUnique: vi.fn() }, orderPlacementBranchState: { findUnique: vi.fn(), findFirst: vi.fn() },
   clientDevice: { findUnique: vi.fn() }, csvDashboardRow: { findFirst: vi.fn() }, $transaction: vi.fn(),
 } }));
 vi.mock('../../production-schedule/production-schedule-lookup.service.js', () => ({ listScheduleRowsByProductNo: vi.fn() }));
@@ -16,14 +16,19 @@ vi.mock('../../purchase-order-lookup/purchase-order-lookup-query.service.js', ()
 const candidate = { rowId: 'first', productNo: '100', fseiban: 'S', fhincd: 'P', fhinmei: 'Name', fsigencd: 'MC', fkojun: 1 };
 const input = { clientDeviceId: 'device', shelfCodeRaw: ' shelf ', manufacturingOrderBarcodeRaw: ' 100 ' };
 const tx = {
-  orderPlacementEvent: { create: vi.fn(), aggregate: vi.fn() },
-  orderPlacementBranchState: { aggregate: vi.fn(), create: vi.fn() },
+  $executeRaw: vi.fn(),
+  orderPlacementEvent: { create: vi.fn(), aggregate: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
+  orderPlacementBranchState: { aggregate: vi.fn(), create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
 };
 
 describe('order placement schedule snapshot compatibility', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(prisma.orderPlacementEvent.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.orderPlacementBranchState.findFirst).mockResolvedValue(null);
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'first', rowData: {} } as never);
+    tx.orderPlacementEvent.findUnique.mockResolvedValue(null);
+    tx.orderPlacementBranchState.findMany.mockResolvedValue([]);
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: 'device' } as never);
     vi.mocked(listScheduleRowsByProductNo).mockResolvedValue([candidate, { ...candidate, rowId: 'later' }]);
     tx.orderPlacementBranchState.aggregate.mockResolvedValue({ _max: { branchNo: 2 } });
@@ -46,7 +51,7 @@ describe('order placement schedule snapshot compatibility', () => {
   ])('preserves stored JSON and the selected row (%j)', async (rowData, expectedSnapshot) => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'first', rowData } as never);
     await expect(registerOrderPlacement(input)).resolves.toEqual({
-      event: { id: 'event' }, resolvedRowId: 'first', branchState: { id: 'branch' },
+      action: 'created', event: { id: 'event' }, resolvedRowId: 'first', branchState: { id: 'branch' },
     });
     expect(listScheduleRowsByProductNo).toHaveBeenCalledExactlyOnceWith('100');
     expect(prisma.csvDashboardRow.findFirst).toHaveBeenCalledExactlyOnceWith({
@@ -139,7 +144,7 @@ describe('order placement schedule snapshot compatibility', () => {
     const branchState = { id: 'branch', shelfCodeRaw: 'moved shelf' };
     vi.mocked(prisma.orderPlacementEvent.findUnique).mockResolvedValue(event as never);
     vi.mocked(prisma.orderPlacementBranchState.findUnique).mockResolvedValue(branchState as never);
-    await expect(registerOrderPlacement({ ...poInput, clientRecordId: 'record' })).resolves.toEqual({ event, branchState, resolvedRowId: null });
+    await expect(registerOrderPlacement({ ...poInput, clientRecordId: 'record' })).resolves.toEqual({ event, branchState, resolvedRowId: null, action: 'created' });
     expect(prisma.orderPlacementBranchState.findUnique).toHaveBeenCalledWith({ where: {
       manufacturingOrderBarcodeRaw_branchNo: { manufacturingOrderBarcodeRaw: '4501238876', branchNo: 2 }
     } });
@@ -152,7 +157,7 @@ describe('order placement schedule snapshot compatibility', () => {
     vi.mocked(prisma.orderPlacementEvent.findUnique).mockResolvedValue(event as never);
     vi.mocked(prisma.orderPlacementBranchState.findUnique).mockResolvedValue(null);
     await expect(registerOrderPlacement({ ...poInput, clientRecordId: 'record' })).resolves.toEqual({
-      event, branchState: { id: '', branchNo: 2, shelfCodeRaw: 'A-1' }, resolvedRowId: null
+      action: 'created', event, branchState: { id: '', branchNo: 2, shelfCodeRaw: 'A-1' }, resolvedRowId: null
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -177,6 +182,150 @@ describe('order placement schedule snapshot compatibility', () => {
     expect(tx.orderPlacementEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       placedAt: age < -300000 || age > 604800000 ? now : placedAt
     }) });
+  });
+
+  it.each([0, 1, 5])('creates the requested stamp %i without automatic numbering', async (branchNo) => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'first', rowData: {} } as never);
+    await expect(registerOrderPlacement({ ...input, branchNo })).resolves.toMatchObject({ action: 'created' });
+    expect(tx.$executeRaw).toHaveBeenCalledOnce();
+    expect(tx.orderPlacementBranchState.findMany).toHaveBeenCalledWith({ where: { manufacturingOrderBarcodeRaw: '100' } });
+    for (const model of [tx.orderPlacementEvent, tx.orderPlacementBranchState]) {
+      expect(model.aggregate).not.toHaveBeenCalled();
+      expect(model.create).toHaveBeenCalledWith({ data: expect.objectContaining({ branchNo }) });
+    }
+    expect(tx.orderPlacementEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ actionType: 'CREATE_BRANCH' }) });
+  });
+
+  const existing = { id: 'branch', branchNo: 2, shelfCodeRaw: 'old shelf', lastEventId: 'old-event',
+    csvDashboardRowId: 'original-row', scheduleSnapshot: { FSEIBAN: 'original' }, slipKind: 'purchase_order' };
+  it.each([0, 2])('moves existing stamp %i with its snapshot and replay identity', async (branchNo) => {
+    const state = { ...existing, branchNo };
+    vi.mocked(prisma.orderPlacementBranchState.findFirst).mockResolvedValue(state as never);
+    vi.mocked(listScheduleRowsByProductNo).mockResolvedValue([]);
+    vi.mocked(findPurchaseOrderLookupRows).mockResolvedValue([]);
+    tx.orderPlacementBranchState.findMany.mockResolvedValue([state]);
+    tx.orderPlacementBranchState.update.mockResolvedValue({ ...state, shelfCodeRaw: 'shelf' });
+    await expect(registerOrderPlacement({ ...poInput, branchNo, clientRecordId: 'record' })).resolves.toMatchObject({
+      action: 'moved', resolvedRowId: 'original-row', branchState: { branchNo, shelfCodeRaw: 'shelf' }
+    });
+    expect(tx.orderPlacementEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      branchNo, actionType: 'MOVE_BRANCH', clientRecordId: 'record', slipKind: 'purchase_order',
+      scheduleSnapshot: existing.scheduleSnapshot, csvDashboardRowId: 'original-row'
+    }) });
+    expect(tx.orderPlacementBranchState.update).toHaveBeenCalledWith({ where: { id: 'branch' }, data: { shelfCodeRaw: 'shelf', lastEventId: 'event' } });
+    expect(findPurchaseOrderLookupRows).not.toHaveBeenCalled();
+    expect(listScheduleRowsByProductNo).not.toHaveBeenCalled();
+    expect(tx.orderPlacementBranchState.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the current state without writing when the shelf is unchanged', async () => {
+    vi.mocked(prisma.orderPlacementBranchState.findFirst).mockResolvedValue(existing as never);
+    tx.orderPlacementBranchState.findMany.mockResolvedValue([{ ...existing, shelfCodeRaw: 'shelf' }]);
+    tx.orderPlacementEvent.findUniqueOrThrow.mockResolvedValue({ id: 'old-event' });
+    await expect(registerOrderPlacement({ ...input, branchNo: 2 })).resolves.toMatchObject({
+      action: 'unchanged', event: { id: 'old-event' }, branchState: { shelfCodeRaw: 'shelf' }
+    });
+    expect(tx.orderPlacementEvent.create).not.toHaveBeenCalled();
+    expect(tx.orderPlacementBranchState.update).not.toHaveBeenCalled();
+    expect(tx.orderPlacementBranchState.create).not.toHaveBeenCalled();
+    expect(listScheduleRowsByProductNo).not.toHaveBeenCalled();
+  });
+
+  it.each([[0, 1], [0, 6], [1, 0], [5, 0]])('rejects stamp %i with existing stamp %i', async (branchNo, current) => {
+    tx.orderPlacementBranchState.findMany.mockResolvedValue([{ ...existing, branchNo: current }]);
+    await expect(registerOrderPlacement({ ...input, branchNo })).rejects.toMatchObject({
+      statusCode: 409, code: 'ORDER_PLACEMENT_BRANCH_CONFLICT', message: '分配なしと番号付きの分配は併用できません'
+    });
+    expect(tx.orderPlacementEvent.create).not.toHaveBeenCalled();
+    expect(tx.orderPlacementBranchState.create).not.toHaveBeenCalled();
+    expect(tx.orderPlacementBranchState.update).not.toHaveBeenCalled();
+  });
+
+  it('replays MOVE_BRANCH without moving a branch back after a later move', async () => {
+    const event = { id: 'move', actionType: 'MOVE_BRANCH', branchNo: 2, manufacturingOrderBarcodeRaw: '100', csvDashboardRowId: 'original-row' };
+    vi.mocked(prisma.orderPlacementEvent.findUnique).mockResolvedValue(event as never);
+    vi.mocked(prisma.orderPlacementBranchState.findUnique).mockResolvedValue({ ...existing, shelfCodeRaw: 'later shelf' } as never);
+    await expect(registerOrderPlacement({ ...input, branchNo: 2, clientRecordId: 'record' })).resolves.toMatchObject({
+      action: 'moved', event, branchState: { shelfCodeRaw: 'later shelf' }
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('checks replay again after acquiring the order lock', async () => {
+    tx.orderPlacementEvent.findUnique.mockResolvedValue({ id: 'move', actionType: 'MOVE_BRANCH', branchNo: 2 });
+    tx.orderPlacementBranchState.findUnique.mockResolvedValue(existing);
+    await expect(registerOrderPlacement({ ...input, branchNo: 2, clientRecordId: 'record' })).resolves.toMatchObject({ action: 'moved' });
+    expect(tx.orderPlacementBranchState.findMany).not.toHaveBeenCalled();
+    expect(tx.orderPlacementEvent.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['manufacturing_order', 'purchase_order'] as const)('resolves a new %s stamp before starting the transaction', async (slipKind) => {
+    vi.mocked(findPurchaseOrderLookupRows).mockResolvedValue([poRow] as never);
+    await registerOrderPlacement({ ...(slipKind === 'purchase_order' ? poInput : input), slipKind, branchNo: 3 });
+    expect(prisma.orderPlacementBranchState.findFirst).toHaveBeenCalledWith({ where: {
+      manufacturingOrderBarcodeRaw: slipKind === 'purchase_order' ? '4501238876' : '100', branchNo: 3
+    } });
+    const lookup = slipKind === 'purchase_order' ? findPurchaseOrderLookupRows : listScheduleRowsByProductNo;
+    const calls = [
+      vi.mocked(prisma.orderPlacementBranchState.findFirst).mock.invocationCallOrder[0],
+      vi.mocked(lookup).mock.invocationCallOrder[0],
+      ...(slipKind === 'manufacturing_order' ? [vi.mocked(prisma.csvDashboardRow.findFirst).mock.invocationCallOrder[0]] : []),
+      vi.mocked(prisma.$transaction).mock.invocationCallOrder[0],
+      tx.$executeRaw.mock.invocationCallOrder[0],
+      tx.orderPlacementEvent.create.mock.invocationCallOrder[0]
+    ];
+    expect(calls.every((call) => typeof call === 'number')).toBe(true);
+    expect(calls).toEqual([...calls].sort((a, b) => a - b));
+    expect(lookup).toHaveBeenCalledOnce();
+  });
+
+  it('resolves inside the lock only when a previously existing stamp disappeared', async () => {
+    vi.mocked(prisma.orderPlacementBranchState.findFirst).mockResolvedValue(existing as never);
+    await expect(registerOrderPlacement({ ...input, branchNo: 2 })).resolves.toMatchObject({ action: 'created' });
+    expect(vi.mocked(listScheduleRowsByProductNo).mock.invocationCallOrder[0]).toBeGreaterThan(tx.$executeRaw.mock.invocationCallOrder[0]);
+  });
+
+  it('records an unchanged request and replays it without undoing a later move', async () => {
+    let current = { ...existing, shelfCodeRaw: 'shelf' };
+    const events = new Map<string, { id: string; clientRecordId?: string }>();
+    vi.mocked(prisma.orderPlacementBranchState.findFirst).mockImplementation(async () => current as never);
+    vi.mocked(prisma.orderPlacementBranchState.findUnique).mockImplementation(async () => current as never);
+    vi.mocked(prisma.orderPlacementEvent.findUnique).mockImplementation(async (args) => (events.get(args.where.clientRecordId!) ?? null) as never);
+    tx.orderPlacementBranchState.findMany.mockImplementation(async () => [current]);
+    tx.orderPlacementEvent.create.mockImplementation(async ({ data }) => {
+      const event = { ...data, id: `event-${events.size}` };
+      events.set(data.clientRecordId, event);
+      return event;
+    });
+    tx.orderPlacementBranchState.update.mockImplementation(async ({ data }) => { current = { ...current, ...data }; return current; });
+    const unchanged = { ...input, branchNo: 2, clientRecordId: 'unchanged-record' };
+    await expect(registerOrderPlacement(unchanged)).resolves.toMatchObject({ action: 'unchanged' });
+    expect(tx.orderPlacementEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      clientRecordId: 'unchanged-record', actionType: 'MOVE_BRANCH', branchNo: 2, shelfCodeRaw: 'shelf'
+    }) });
+    expect(current.lastEventId).toBe('event-0');
+    await registerOrderPlacement({ ...input, branchNo: 2, shelfCodeRaw: 'later shelf', clientRecordId: 'move-record' });
+    await expect(registerOrderPlacement(unchanged)).resolves.toMatchObject({
+      action: 'moved', event: { id: 'event-0' }, branchState: { shelfCodeRaw: 'later shelf', lastEventId: 'event-1' }
+    });
+    expect(tx.orderPlacementEvent.create).toHaveBeenCalledTimes(2);
+    expect(tx.orderPlacementBranchState.update).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(listScheduleRowsByProductNo).not.toHaveBeenCalled();
+  });
+
+  it('rejects automatic numbering when no-distribution already exists', async () => {
+    tx.orderPlacementBranchState.findMany.mockResolvedValue([{ ...existing, branchNo: 0 }]);
+    await expect(registerOrderPlacement(input)).rejects.toMatchObject({ statusCode: 409, code: 'ORDER_PLACEMENT_BRANCH_CONFLICT' });
+    expect(tx.orderPlacementEvent.create).not.toHaveBeenCalled();
+    expect(tx.orderPlacementBranchState.create).not.toHaveBeenCalled();
+  });
+
+  it('creates another numbered stamp alongside an existing numbered stamp', async () => {
+    tx.orderPlacementBranchState.findMany.mockResolvedValue([existing]);
+    await expect(registerOrderPlacement({ ...input, branchNo: 3 })).resolves.toMatchObject({ action: 'created' });
+    expect(tx.orderPlacementBranchState.create).toHaveBeenCalledWith({ data: expect.objectContaining({ branchNo: 3 }) });
+    expect(tx.orderPlacementBranchState.update).not.toHaveBeenCalled();
   });
 
 });

@@ -38,6 +38,16 @@ describe('haizen offline queue', () => {
     expect(registerOrderPlacement).toHaveBeenCalledWith({ clientRecordId: record.clientRecordId, slipKind: record.slipKind,
       manufacturingOrderBarcodeRaw: record.number, shelfCodeRaw: record.shelfCode, placedAt: record.scannedAt }, 8000);
   });
+  it.each([undefined, 0, 5])('persists and resends branchNo %s, including legacy records', async (branchNo) => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const { result, store } = mount();
+    await act(async () => { await result.current.submit({ ...record, branchNo }); });
+    expect(await store.list()).toEqual([{ ...record, branchNo, status: 'pending' }]);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    act(() => { window.dispatchEvent(new Event('online')); });
+    await waitFor(() => expect(result.current.pending).toHaveLength(0));
+    expect(registerOrderPlacement).toHaveBeenCalledWith(expect.objectContaining({ branchNo, clientRecordId: record.clientRecordId }), 8000);
+  });
   it('puts 404 responses in needs_check with the server message', async () => {
     vi.mocked(registerOrderPlacement).mockRejectedValue(responseError(404));
     const { result } = mount();
@@ -102,6 +112,22 @@ describe('haizen offline queue', () => {
     expect(vi.mocked(registerOrderPlacement).mock.calls[1][0].clientRecordId).toBe('older');
     await act(async () => { finishOlder(success); });
     await waitFor(() => expect(result.current.pending).toEqual([]));
+  });
+  it('sends older pending placements of the same stamp before a later move', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const store = createHaizenOfflineQueueStore();
+    const older = { ...record, clientRecordId: 'older', branchNo: 2, status: 'pending' as const };
+    await store.put(older);
+    const { result } = mount(store);
+    await waitFor(() => expect(result.current.pending).toHaveLength(1));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    await act(async () => {
+      await result.current.submit({ ...record, branchNo: 2, shelfCode: 'new shelf', scannedAt: '2026-10-23T01:00:00.000Z' });
+    });
+    await waitFor(() => expect(result.current.pending).toHaveLength(0));
+    expect(vi.mocked(registerOrderPlacement).mock.calls.map(([payload]) => [payload.clientRecordId, payload.shelfCodeRaw])).toEqual([
+      ['older', record.shelfCode], [record.clientRecordId, 'new shelf']
+    ]);
   });
   it('persists before sending and serializes submit with online flush', async () => {
     let finish!: (value: typeof success) => void;
