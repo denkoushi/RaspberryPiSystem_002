@@ -776,6 +776,6 @@ Change (one JEV call per turn is kept, `planner-questions-2026-10-26b`):
 - `count`: the plan runs through the usual filters, ranking and relevance judge (with the shown records removed when the turn asks for others), and the answer is the count (`N件`, or `N件以上` when the candidate pool was cut) with no records shown; receipt outcome `count`. The session keeps the plan so 「見せて」 can follow.
 - Nightly: `flywheel-live` rows carry `followUpAction` and `rewrite`; `summarizeReal` buckets follow-ups per action and prints one line per action plus `count answers`; a count outcome is its own stage `count_answer` instead of being read as a loss; real receipts with outcome `count` are replayed.
 
-Tests: `node --test scripts/hermes-search/retrieval/*.test.mjs` 453 pass (441 before).
+Tests: `node --test scripts/hermes-search/retrieval/*.test.mjs` 453 pass.
 
 Not measured yet: the per-action lines appear for the first time in the morning report of 2026-10-27 (night 24, the first night that replays real follow-ups). Rewrite failures and search failures can then be separated by reading `rewrite` next to the loss stage. Next steps, in order: use the action classification instead of the separate drop/add/exclude questions once the night counts show it agrees with them, and feed the rewrite (not the raw utterance) to the content span and limit judgments.
