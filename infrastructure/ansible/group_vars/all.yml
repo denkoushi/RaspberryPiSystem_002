@@ -188,9 +188,9 @@ trivy_alert_ignore_patterns:
   - "/certs/"
   - "/backups/"
 
-# Private nightly review: defaults stay off until the host preparation is applied.
-security_review_collect_enabled: false
-security_review_nightly_enabled: false
+# Private nightly review: enabled after the host preparation and a verified manual collector run.
+security_review_collect_enabled: true
+security_review_nightly_enabled: true
 security_review_collect_on_calendar: "*-*-* 05:30:00 Asia/Tokyo"
 security_review_nightly_cron: "0 6 * * *"
 security_review_retry_until: "06:55"

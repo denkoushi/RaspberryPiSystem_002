@@ -21,9 +21,14 @@ SENSITIVE = re.compile(
     r'''((?:authorization|proxy-authorization|cookie|set-cookie|[\w-]*(?:token|password|passwd|secret|api[_-]?key|client[_-]?key)[\w-]*)["']?\s*[:=]\s*)[^\r\n]*''', re.I)
 
 
-def redact(text):
+def redact_code(text):
     text = re.sub(r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----", "[REDACTED]", text, flags=re.S)
     text = re.sub(r'(https?://)[^/@\s]+:[^/@\s]+@', r'\1[REDACTED]@', text, flags=re.I)
+    return text
+
+
+def redact(text):
+    text = redact_code(text)
     text = re.sub(r'''(^|[\s"'<>(=])((?:https?://|/)[^\s"'<>?]*)\?[^\s"'<>]*''', r'\1\2?[REDACTED]', text, flags=re.I | re.M)
     text = SENSITIVE.sub(r"\1[REDACTED]", text)
     text = re.sub(r"\b(?:Bearer|Basic)\s+\S+", "[REDACTED]", text, flags=re.I)
@@ -39,7 +44,7 @@ class Material:
         self.dropped = 0
         self.private_key = False
 
-    def add(self, text):
+    def add(self, text, redactor=redact):
         for line in text.splitlines():
             if '-----BEGIN ' in line and 'PRIVATE KEY-----' in line:
                 self.private_key = True
@@ -47,7 +52,7 @@ class Material:
                 if '-----END ' in line and 'PRIVATE KEY-----' in line:
                     self.private_key = False
                 line = '[REDACTED]'
-            line = redact(line) + '\n'
+            line = redactor(line) + '\n'
             size = len(line.encode('utf-8'))
             if self.bytes + size > self.cap:
                 self.dropped += 1
@@ -150,16 +155,16 @@ def collect_changes(config, material, now, git_call=git):
     reviewed, revisions, fallback = change_range(repo, previous, now - timedelta(hours=24), git_call)
     for revision in revisions:
         if fallback:
-            material.add(git_call(repo, 'show', '-s', '--format=commit %H %cI %s', revision).stdout)
+            material.add(git_call(repo, 'show', '-s', '--format=commit %H %cI %s', revision).stdout, redactor=redact_code)
             names = git_call(repo, 'diff-tree', '--root', '-m', '--first-parent', '--no-commit-id', '--name-only', '-r', '-z', revision).stdout
         else:
-            material.add(git_call(repo, 'log', '--format=commit %H %cI %s', revision).stdout)
+            material.add(git_call(repo, 'log', '--format=commit %H %cI %s', revision).stdout, redactor=redact_code)
             names = git_call(repo, 'diff', '--name-only', '-z', revision).stdout
         for name in names.split('\0'):
             if not name or not allowed_file(name, config['changes_exclude']):
                 continue
             args = ['show', '--format=', '--first-parent', '--diff-merges=first-parent', '--no-ext-diff', '--no-textconv', revision] if fallback else ['diff', '--no-ext-diff', '--no-textconv', revision]
-            material.add(git_call(repo, *args, '--', name).stdout)
+            material.add(git_call(repo, *args, '--', name).stdout, redactor=redact_code)
     return reviewed
 
 

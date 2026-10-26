@@ -202,6 +202,26 @@ describe('Private security review', () => {
     expect(await readFile(path.join(root, 'known-findings.json'), 'utf8')).toBe('[]');
   });
 
+  it('preserves changes code while fully redacting security and errors', async () => {
+    const name = 'apps/web/src/features/some-long-folder/SomeComponentName.test.tsx';
+    const diff = `diff --git a/${name} b/${name}\n--- a/${name}\n+++ b/${name}\n+  const accessToken = req.headers.authorization;\n`;
+    const key = '+-----BEGIN ' + 'PRIVATE KEY-----\n+private-data\n+-----END PRIVATE KEY-----\n';
+    const credentials = 'Authorization: Bearer hidden-auth\nCookie: session=hidden-cookie\nvalue=Gz7qR2mNp9Vx4Ks8Tj6Wc3Yh5Lb1Df0Ua2Pe9HrQ\n';
+    await bundle(undefined, { security: credentials, errors: credentials,
+      changes: diff + key + '+https://user:hidden-password@example.test/path\n' });
+    const report = await run();
+    expect(report?.status).toBe('ok');
+    const materials = complete.mock.calls.map(([request]) => {
+      const content = request.messages[1]!.content;
+      return JSON.parse(content.slice('BEGIN_REVIEW_DATA\n'.length, -'\nEND_REVIEW_DATA'.length)).material;
+    });
+    expect(materials).toEqual([
+      'Authorization: [REDACTED]\nCookie: [REDACTED]\n[REDACTED]\n',
+      'Authorization: [REDACTED]\nCookie: [REDACTED]\n[REDACTED]\n',
+      diff + '+[REDACTED]\n+https://[REDACTED]@example.test/path\n'
+    ]);
+  });
+
   it('redacts terminal messages before they reach the model', async () => {
     expect(redact('Authorization: Bearer hidden\n/path?secret=hidden')).not.toContain('hidden');
     clientErrors.mockResolvedValueOnce([{ clientId: 'terminal-a', message: 'password=hidden', count: 2, first: 'a', last: 'b' }]);

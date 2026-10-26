@@ -80,6 +80,45 @@ def test_redaction_removes_request_queries(text):
     assert '?[REDACTED]' in collector.redact(text)
 
 
+@pytest.mark.parametrize('fallback', [False, True])
+def test_changes_preserve_diff_and_redact_only_keys_and_url_credentials(tmp_path, fallback):
+    name = 'apps/web/src/features/some-long-folder/SomeComponentName.test.tsx'
+    diff = f'diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n+  const accessToken = req.headers.authorization;\n'
+    key = '+-----BEGIN ' + 'PRIVATE KEY-----\n+private-data\n+-----END PRIVATE KEY-----\n'
+    url = '+https://user:hidden-password@example.test/path\n'
+    assert collector.redact_code(diff) == diff
+    assert 'private-data' not in collector.redact_code(key)
+    assert collector.redact_code(url) == '+https://[REDACTED]@example.test/path\n'
+
+    def run(repo, *args, check=True):
+        if args[0] == 'rev-parse':
+            return SimpleNamespace(stdout=HEAD if args[-1] == 'HEAD' else PARENT, returncode=0)
+        if args[0] == 'merge-base':
+            return SimpleNamespace(stdout='', returncode=0)
+        if '--name-only' in args:
+            return SimpleNamespace(stdout=name + '\0', returncode=0)
+        if '--' in args:
+            return SimpleNamespace(stdout=diff + key + url, returncode=0)
+        return SimpleNamespace(stdout=HEAD, returncode=0)
+    state = tmp_path / 'state'
+    if not fallback:
+        state.write_text(PREVIOUS)
+    material = collector.Material(4000)
+    collector.collect_changes({'project_dir': '/fixture', 'state_file': str(state), 'changes_exclude': []}, material, NOW, run)
+    assert diff in material.text()
+    assert 'private-data' not in material.text()
+    assert 'hidden-password' not in material.text()
+    assert '+https://[REDACTED]@example.test/path' in material.text()
+
+
+@pytest.mark.parametrize('kind', ['security', 'errors'])
+def test_log_material_keeps_full_redaction(kind):
+    materials = {kind: collector.Material(4000)}
+    materials[kind].add('Authorization: Bearer hidden-auth\nCookie: session=hidden-cookie\n'
+                        'value=Gz7qR2mNp9Vx4Ks8Tj6Wc3Yh5Lb1Df0Ua2Pe9HrQ')
+    assert materials[kind].text() == 'Authorization: [REDACTED]\nCookie: [REDACTED]\n[REDACTED]\n'
+
+
 def test_caddy_uri_redaction_preserves_the_log_record():
     assert collector.redact('{"uri":"/api/x?token=abc","status":403}') == '{"uri":"/api/x?[REDACTED]","status":403}'
 

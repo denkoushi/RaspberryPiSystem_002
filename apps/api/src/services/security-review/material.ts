@@ -11,10 +11,14 @@ export function fingerprint(finding: Pick<SecurityReviewFinding, 'kind' | 'locat
   return createHash('sha256').update([finding.kind, finding.location, finding.what].map(normalize).join('|')).digest('hex');
 }
 
-export function redact(text: string): string {
+export function redactCode(text: string): string {
   return text
     .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, '[REDACTED]')
-    .replace(/(https?:\/\/)[^/@\s]+:[^/@\s]+@/gi, '$1[REDACTED]@')
+    .replace(/(https?:\/\/)[^/@\s]+:[^/@\s]+@/gi, '$1[REDACTED]@');
+}
+
+export function redact(text: string): string {
+  return redactCode(text)
     .replace(/(^|[\s"'<>(=])((?:https?:\/\/|\/)[^\s"'<>?]*)\?[^\s"'<>]*/gim, '$1$2?[REDACTED]')
     .replace(/((?:authorization|proxy-authorization|cookie|set-cookie|[\w-]*(?:token|password|passwd|secret|api[_-]?key|client[_-]?key)[\w-]*)["']?\s*[:=]\s*)[^\r\n]*/gi, '$1[REDACTED]')
     .replace(/\b(?:Bearer|Basic)\s+\S+/gi, '[REDACTED]')

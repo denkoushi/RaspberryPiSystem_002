@@ -19,7 +19,8 @@ You can see it working when, the morning after a deploy, a dated report exists i
 - [x] (2026-10-26) Milestone 1: host collector, atomic private bundles, configured paths/rules, known-findings tool and fixture tests; CI command and path classification wired.
 - [x] (2026-10-26) Milestone 2: routed background review, lease-owned scheduler, bounded retries/chunks, strict reports, known-finding filtering and retention; fake-model tests pass. The repository-wide type-check limitation is recorded below.
 - [x] (2026-10-26) Milestone 3 repository work: host preparation playbook, Trivy exclusions, private Compose bind and independent API environment delivery, disabled by default.
-- [ ] Milestone 3 production work: prepare folders and scan exclusions, release with the flag off, then enable and observe the first real report.
+- [x] (2026-10-27) Implementation merged in #2318 and deployed to Pi5; storage, units and environment verified. The first manual collector run succeeded with API-owned private files. Code diffs were over-redacted; fixed here with code-specific redaction, and collector and nightly rollout flags enabled here.
+- [ ] Milestone 3 remaining production work: deploy the code-redaction fix and enabled flags, then observe the first real report.
 - [x] (2026-10-26) Milestone 4 repository work: morning runbook and atomic known-findings add/list/remove tool.
 - [ ] Milestone 4 production work: two-week trial counting confirmed findings, refusals and false alarms.
 - [ ] Milestone 5 (decision point): compare GLM with DeepSeek V4.1 Flash on seeded vulnerable changes and decide whether a nightly model swap is worth it.
