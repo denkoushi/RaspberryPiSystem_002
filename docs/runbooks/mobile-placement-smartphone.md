@@ -32,7 +32,10 @@ scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/delete-all-m
 
 - 公開信頼されたHTTPS証明書の導入後、Chromeで `/kiosk/mobile-placement?clientKey=...` を一度開き、メニューから「アプリをインストール」を選ぶ。以降はホーム画面の「配膳」から起動する。証明書変更・本番反映・Android実機検証はこのWeb変更とは別作業。
 - 起動先は `/kiosk/mobile-placement`（クエリなし）。既存のlocalStorageのclientKeyを使い、マニフェストやアイコンに認証情報は含めない。`display: standalone` でChromeのアドレスバーを表示せず、縦画面を指定する（OSのステータスバー等は残り得る）。
-- スコープは `/kiosk/`。メニューの購買照会 `/kiosk/purchase-order-lookup` もアプリ内で開く。Service Workerは導入せず、ローリング更新後もUIの取得は既存のサーバ配信に従う。
+- スコープは `/kiosk/`。メニューの購買照会 `/kiosk/purchase-order-lookup` もアプリ内で開く。対象2画面（配膳の配下を含む）を開いたときだけ `/sw.js` を登録する。初回オンラインでHTMLとVite build manifestの参照assets（遅延読込・CSS・フォントを含む）の保存完了後、圏外でも画面を開き直せる。
+- HTMLはnetwork-first（4秒で圏外フォールバック）、assetsはcache-first。オンラインの次回読込は最新HTMLを使い、全assetsの保存成功後だけ圏外用HTMLを更新する。API・WS・storageや対象外ページの要求は横取りせず、照合・購買データは保存しない。配膳の既存送信待ちキューはそのまま使う。
+- キャッシュは `mobile-app-shell-v1-shell` / `mobile-app-shell-v1-assets`。オンライン保存成功時、他のウィンドウが無い場合だけ最新HTMLの参照グラフ外のassetsを削除する。圏外・他タブ使用中は掃除しない。SW更新は `skipWaiting` / `clients.claim`、旧assetsは引き継いで旧キャッシュ名を削除する。`sw.js` は `no-cache`。永続ストレージを一度要求するが、許可・容量保持はブラウザ次第。
+- 圏外キャッシュ起動時・デプロイ状態APIの取得失敗時は対象画面だけ初回待機を解除する（明示的なメンテナンス応答は維持）。Pi4の他画面は変更しない。実機確認は初回保存完了後に全タブを閉じ、機内モードで配膳・購買を再起動し、復帰後の新しい版への更新も確認する。
 - スマホ幅（既存判定の767px以下）のハブにだけ戻るガードを置く。Androidの戻るで入力を失わず、スキャンモーダルやボトムシートが開いていれば先に閉じる。サブ画面からブラウザの戻るでハブへ戻ったときは既存のsentinel履歴を再利用する。デスクトップ/Pi4向け幅ではガードを有効にしない。
 - `apps/web/public/manifest.json` とPNGアイコン3枚はViteのpublicコピーで配信する。拡張子を `.json` にして、既存のファイル配信のまま `application/json` で返す。gatewayはWebレスポンスをそのまま中継する。
 - 実機確認: ホームから起動してアドレスバーが出ないこと、購買照会への移動、ハブ入力中の戻る、スキャン/各シート中の戻る、サブ画面→ハブの反復を確認する。通常のChromeタブを開くだけではstandalone表示にならない。

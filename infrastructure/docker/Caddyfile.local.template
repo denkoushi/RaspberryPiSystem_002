@@ -54,6 +54,9 @@
     @document path / /index.html
     header @document Cache-Control "no-store, no-cache, must-revalidate"
 
+    @service_worker path /sw.js
+    header @service_worker Cache-Control "no-cache"
+
     file_server
   }
 

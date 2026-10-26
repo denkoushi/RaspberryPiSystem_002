@@ -37,6 +37,7 @@ export default defineConfig({
     }
   },
   build: {
+    manifest: 'app-shell-manifest.json',
     rollupOptions: {
       input: {
         app: 'index.html',

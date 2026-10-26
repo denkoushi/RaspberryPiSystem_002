@@ -46,6 +46,9 @@
     not file
   }
   rewrite @spa /index.html
+  @service_worker path /sw.js
+  header @service_worker Cache-Control "no-cache"
+
   file_server
 
   # セキュリティヘッダー
