@@ -157,7 +157,11 @@ class RestoreTest(unittest.TestCase):
     def test_device_safety(self) -> None:
         good = plan.DeviceFacts("/dev/sdb", 32_000_000_000, True, "usb", [], False)
         plan.check_restore_device(good, required_bytes=10_000_000_000)
+        sd_slot = plan.DeviceFacts("/dev/mmcblk0", 31_900_000_000, False, "mmc", [], False)
+        plan.check_restore_device(sd_slot, required_bytes=10_000_000_000)
         refusals = [
+            plan.DeviceFacts("/dev/mmcblk0", 31_900_000_000, False, "mmc", [], True),
+            plan.DeviceFacts("/dev/sdb", 32_000_000_000, False, "mmc", [], False),
             plan.DeviceFacts("/dev/sdb1", 32_000_000_000, True, "usb", [], False),
             plan.DeviceFacts("/dev/sda", 1_000_000_000_000, False, "usb", [], True),
             plan.DeviceFacts("/dev/sdb", 32_000_000_000, False, "sata", [], False),

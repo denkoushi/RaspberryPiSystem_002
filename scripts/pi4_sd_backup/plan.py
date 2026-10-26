@@ -280,8 +280,11 @@ def check_restore_device(facts: DeviceFacts, *, required_bytes: int) -> None:
         raise PlanError(f"{facts.device} is not a whole-disk /dev/sdX or /dev/mmcblkN device")
     if facts.holds_system_root:
         raise PlanError(f"{facts.device} holds the running system; refusing")
-    if not (facts.removable or facts.transport == "usb"):
-        raise PlanError(f"{facts.device} is neither removable nor on USB; refusing")
+    # The Pi5's built-in SD slot reports RM=0 and transport mmc; the root check above keeps
+    # a Pi that boots from its SD card from writing over itself.
+    sd_slot = facts.device.startswith("/dev/mmcblk") and facts.transport == "mmc"
+    if not (facts.removable or facts.transport == "usb" or sd_slot):
+        raise PlanError(f"{facts.device} is neither removable, on USB, nor an SD slot; refusing")
     if facts.mounted_paths:
         raise PlanError(f"{facts.device} has mounted partitions: {', '.join(facts.mounted_paths)}")
     if facts.size_bytes < required_bytes:
