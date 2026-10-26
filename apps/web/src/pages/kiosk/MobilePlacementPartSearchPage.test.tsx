@@ -99,7 +99,8 @@ describe('MobilePlacementPartSearchPage phone flow', () => {
     const bottom = screen.getByRole('contentinfo');
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(bottom.previousElementSibling).toContainElement(screen.getByLabelText('文字キー'));
-    expect(bottom).toContainElement(screen.getByRole('button', { name: '1文字消す' }));
+    expect(screen.getByLabelText('文字キー')).toContainElement(screen.getByRole('button', { name: '1文字消す' }));
+    expect(bottom).not.toContainElement(screen.getByRole('button', { name: '1文字消す' }));
     const input = screen.getByRole('textbox', { name: '部品名・品番' });
     fireEvent.click(screen.getByRole('button', { name: '脚', exact: true }));
     expect(input).toHaveValue('脚');
