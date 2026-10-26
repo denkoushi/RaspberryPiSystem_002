@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { toUpperTrimmedCode as normalizeCd } from '../../lib/string-normalize.js';
-import { getResourceNameMapByResourceCds } from '../production-schedule/resource-master.service.js';
+import { getResourceNameMapByResourceCds, getSendaiResourceCds } from '../production-schedule/resource-master.service.js';
 import { DEFAULT_MACHINE_PALLET_COUNT } from './pallet-count-bounds.js';
 
 export async function assertMachineCdRegistered(machineCdRaw: string): Promise<string> {
@@ -20,12 +20,15 @@ export async function assertMachineCdRegistered(machineCdRaw: string): Promise<s
 }
 
 export async function listRegisteredMachineCds(): Promise<string[]> {
-  const rows = await prisma.productionScheduleResourceMaster.findMany({
-    select: { resourceCd: true },
-    distinct: ['resourceCd'],
-    orderBy: { resourceCd: 'asc' },
-  });
-  return rows.map((r) => normalizeCd(r.resourceCd)).filter((c) => c.length > 0);
+  const [rows, sendaiResourceCds] = await Promise.all([
+    prisma.productionScheduleResourceMaster.findMany({
+      select: { resourceCd: true },
+      distinct: ['resourceCd'],
+      orderBy: { resourceCd: 'asc' },
+    }),
+    getSendaiResourceCds(),
+  ]);
+  return rows.map((r) => normalizeCd(r.resourceCd)).filter((c) => c.length > 0 && !sendaiResourceCds.has(c));
 }
 
 export async function resolvePrimaryMachineName(machineCd: string): Promise<string> {
