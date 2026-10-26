@@ -354,6 +354,43 @@ Tailscale の **Key expiry** はセキュリティ機能であり、端末ごと
 - **`tag:llm` の永続化**: `tailscale up --advertise-tags=tag:llm` を適用したら、`TS_EXTRA_ARGS` にも同じ `--advertise-tags=tag:llm` を残さないと、再起動時に `requires mentioning all non-default flags` でループする。
 - **DGX（`tag:llm`）への SSH は既定で閉じている**: allowlist の原型は **`tag:server → tag:llm: tcp:38081`**（LocalLLM 入口）まで。Pi5 から DGX ホストへ **ファイル投入・`control-server.py` 更新**を **tailnet SSH** だけで行うには **`tcp:22` の grant が別途必要**。**一時的に** `{"src":["tag:server"],"dst":["tag:llm"],"ip":["tcp:22"]}` を足し、作業完了後 **必ず削除**する（台帳の本節を更新し、横移動面を元に戻す）。運用の切り分けと手順の正本: [KB-357](../knowledge-base/infrastructure/security.md)（「DGX（`tag:llm`）への制御層ファイル反映…」）。
 
+## Tailnet Lock
+
+<a id="tailnet-lock"></a>
+
+Tailscale の制御サーバーや管理アカウントが乗っ取られても、未署名の端末を tailnet に入れさせないための設定。公式: [Tailnet Lock](https://tailscale.com/kb/1226/tailnet-lock)。
+
+**状態**: 有効（2026-10-26 有効化。解除用の文字列 1 つを Tailscale サポートへ送付済み。有効化直後に Pi5 から全端末の接続と `/api/system/health` 200 を確認）
+
+**決定事項（2026-10-26）**:
+
+| 項目 | 内容 |
+|------|------|
+| 署名役（trusted key） | `macbook-air` と iPhone の 2 台。無人の Pi / DGX は署名役にしない（乗っ取られても端末を増やせないようにするため） |
+| 解除用の文字列（disablement secret） | `tailscale lock init` で 10 個出る。パスワードマネージャーに保管し、リポジトリ・Vault・チャットには置かない |
+| 既存端末 | 有効化時に自動で署名される。止まる端末はない |
+
+**前提確認（有効化の前）**:
+
+- 全端末の Tailscale が v1.46.1 以上
+- 管理画面の Device approval が無効（Tailnet Lock とは併用できない）
+
+**有効化手順**:
+
+1. 管理画面 Settings → **Device management** → **Enable Tailnet Lock** で、署名役に `macbook-air` と iPhone を選ぶ
+2. 表示された `tailscale lock init ...` を Mac で実行する
+3. 出力された解除用の文字列 10 個をパスワードマネージャーへ保存する
+4. Mac で `tailscale lock status` が `Tailnet Lock is ENABLED` になり、各端末が通常どおりつながることを確認する
+
+**有効化後の端末追加**:
+
+- 新しい auth key は Mac で署名してから使う: `tailscale lock sign <auth-key>` の出力（署名済み key）を Vault の `vault_tailscale_auth_key` や DGX の `TS_AUTHKEY` に入れる。未署名の key で参加した端末は通信できない
+- auth key を使わずログインで参加させた端末は、管理画面の Locked out 表示に出る署名コマンドを Mac で実行する
+- Key expiry 後の再認証は、端末自身の鍵で署名が引き継がれるため再署名は不要
+- Docker の Tailscale は `TS_STATE_DIR` を必ず永続化する（DGX の `compose.yaml.example` は設定済み）
+
+**解除（緊急時）**: 管理画面 **Disable Tailnet Lock** に解除用の文字列を 1 つ入れる、または `tailscale lock disable <secret>`。使った文字列は以後公開扱い。
+
 ## ロールバック
 
 - ACL: 変更前のtailnet policyへ即差し戻し
