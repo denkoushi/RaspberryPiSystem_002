@@ -313,7 +313,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     listing.add_argument("--offsite", action="store_true", help="read the Google Drive copy")
     restore = sub.add_parser("restore", help="write a host's newest backup onto a new card")
     restore.add_argument("--host", required=True)
-    restore.add_argument("--device", required=True, help="whole card device in the USB reader, e.g. /dev/sdb")
+    restore.add_argument("--device", required=True, help="whole card device in a USB reader or the Pi5 SD slot, e.g. /dev/sdb or /dev/mmcblk0")
     restore.add_argument("--confirm-host", required=True, help="repeat --host to confirm")
     restore.add_argument(
         "--offsite", action="store_true", help="restore from the Google Drive copy (slow; when the Pi5 copy is lost)"

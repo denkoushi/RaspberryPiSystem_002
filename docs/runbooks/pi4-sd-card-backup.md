@@ -40,10 +40,10 @@ When every kiosk shows a backup, enable the Sunday 12:00 JST timer:
 
 ## Replacing a dead card
 
-You need a new card at least as large as the kiosk's used space (`list` shows the size). A card of the same size as the old one is safest. You also need a USB card reader plugged into the Pi5.
+You need a new card at least as large as the kiosk's used space (`list` shows the size). A card of the same size as the old one is safest. You also need a USB card reader plugged into the Pi5, or the Pi5's own SD slot (it boots from its SSD, so the slot is free).
 
 1. Take the dead card out of the kiosk. From now on it must never go back into any device, because the restored card carries the same terminal identity. Destroy it or label it clearly.
-2. Put the new card in the USB reader on the Pi5 and find its device name. Pick the disk whose size matches the card and whose transport is `usb`, for example `/dev/sdb`. The Pi5's own SSD holds `/` and is refused anyway.
+2. Put the new card in the USB reader on the Pi5 and find its device name. Pick the disk whose size matches the card and whose transport is `usb`, for example `/dev/sdb`. A card in the Pi5's built-in slot shows as `/dev/mmcblk0` with transport `mmc`. The Pi5's own SSD holds `/` and is refused anyway. If the desktop mounted the card under `/media`, unmount it first with `udisksctl unmount -b <partition>`.
 
         lsblk -d -o NAME,SIZE,TRAN,RM,MODEL
 
