@@ -4,7 +4,7 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
-import { fingerprint, prepareChunks, quoteData, redact, type ReviewChunk } from './material.js';
+import { fingerprint, prepareChunks, quoteData, redact, redactCode, type ReviewChunk } from './material.js';
 import { changesPrompt } from './prompts/changes.js';
 import { errorsPrompt } from './prompts/errors.js';
 import { securityPrompt } from './prompts/security.js';
@@ -137,7 +137,8 @@ export class SecurityReviewService {
         }
         const material = { security: '', errors: '', changes: '' };
         for (const kind of ['security', 'errors', 'changes'] as const) {
-          material[kind] = redact(await readFile(path.join(folder, `${kind}.txt`), 'utf8'));
+          const text = await readFile(path.join(folder, `${kind}.txt`), 'utf8');
+          material[kind] = kind === 'changes' ? redactCode(text) : redact(text);
         }
         try {
           const rows = await this.deps.clientErrors(new Date(started.getTime() - DAY_MS));

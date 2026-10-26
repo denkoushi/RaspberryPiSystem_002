@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { redact } from './material.js';
+import { redact, redactCode } from './material.js';
 
 describe('Review material redaction', () => {
   it('preserves the Caddy log record while stripping its query', () => {
@@ -21,5 +21,19 @@ describe('Review material redaction', () => {
     expect(redact(text)).toContain('[REDACTED]');
     expect(redact(text)).not.toContain('hidden');
     expect(redact(text)).not.toContain('Gz7qR2mNp9Vx4Ks8Tj6Wc3Yh5Lb1Df0Ua2Pe9HrQ');
+  });
+});
+
+describe('Code material redaction', () => {
+  it('preserves diff locations and auth code', () => {
+    const name = 'apps/web/src/features/some-long-folder/SomeComponentName.test.tsx';
+    const diff = `diff --git a/${name} b/${name}\n--- a/${name}\n+++ b/${name}\n+  const accessToken = req.headers.authorization;\n`;
+    expect(redactCode(diff)).toBe(diff);
+  });
+
+  it('redacts private keys inside diffs and URL credentials', () => {
+    const key = '+-----BEGIN ' + 'PRIVATE KEY-----\n+private-data\n+-----END PRIVATE KEY-----';
+    expect(redactCode(key)).toBe('+[REDACTED]');
+    expect(redactCode('+https://user:hidden-password@example.test/path')).toBe('+https://[REDACTED]@example.test/path');
   });
 });
