@@ -199,3 +199,30 @@ test('a row with a previous plan reaches the planner as the session it follows',
   assert.deepEqual(states[0].previous_plan, previousPlan);
   assert.equal('previous_plan' in states[1], false);
 });
+
+test('count results keep their rewrite and action on nightly rows', async () => {
+  assert.equal(lossStage({ relevant: ['c0'], outcome: 'count', shown: [], candidates: ['c0'], judged: 30 }), 'count_answer');
+  assert.ok(LOSS_STAGES.includes('count_answer'));
+  const inputs = [];
+  const score = await createLiveScorer({
+    records: [{ kind: 'nonconformity', id: 'c0', condition: '合成の傷', discoveredOn: '2026-10-01' }],
+    catalog: loadNonconformityCatalog(), env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' },
+    evaluate: async input => {
+      inputs.push(input);
+      return { answers: { scope: { type: 'choice', choice: 'nonconformity' },
+        contentCarry: { type: 'choice', choice: 'same' }, followUpAction: { type: 'choice', choice: 'count', confidence: 0.9 },
+        limit: { type: 'choice', choice: 'unspecified' },
+        ...Object.fromEntries(Object.keys(input.questions).filter(key => key.startsWith('candidate_')).map(key => [key, { type: 'noul', noul: 0.95 }])),
+      } };
+    },
+  });
+  const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: '合成の傷', limit: 1, sort: 'relevance' };
+  const row = await score({ a: 'c0', question: '何件ある？', previousPlan });
+  assert.equal(row.outcome, 'count');
+  assert.equal(row.followUpAction, 'count');
+  assert.equal(row.rewrite, '「合成の傷」に該当する件数');
+  assert.equal(row.loss, 'count_answer');
+  assert.deepEqual(row.shown, []);
+  assert.equal(inputs.filter(input => input.questions.followUpAction).length, 1);
+  assert.equal(row.plan.diagnostics, undefined);
+});

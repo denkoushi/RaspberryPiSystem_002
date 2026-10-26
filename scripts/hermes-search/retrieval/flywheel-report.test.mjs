@@ -177,7 +177,7 @@ test('real summaries count only known relevance in shown and loss totals', () =>
     questions: 6, withRelevant: 4, shown: 1, lossStages: { not_in_pool: 1, judge_rejected: 1, other_shown: 1 },
     dayOutcomes: { answer: 3, no_result: 2, no_other: 1 },
     filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 },
-    followUp: { questions: 0, withRelevant: 0, shown: 0, lossStages: {}, filterMismatch: 0 },
+    followUp: { questions: 0, withRelevant: 0, shown: 0, lossStages: {}, filterMismatch: 0, byAction: {}, countAnswers: 0 },
   });
   const formatted = formatRealReport('2026-10-03', summarizeReal(realRows));
   assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1\n  filter questions 0, correct 0, mismatch 0, unsupported 0$/u);
@@ -236,10 +236,25 @@ test('real follow-up turns are counted apart with their own losses', () => {
     { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: true, ok: false }, live: live('filter_mismatch') },
   ];
   const summary = summarizeReal(realRows);
-  assert.deepEqual(summary.followUp, { questions: 4, withRelevant: 3, shown: 1, lossStages: { other_shown: 1, not_in_pool: 1 }, filterMismatch: 1 });
+  assert.deepEqual(summary.followUp, { questions: 4, withRelevant: 3, shown: 1, lossStages: { other_shown: 1, not_in_pool: 1 }, filterMismatch: 1, countAnswers: 0, byAction: { unclassified: { questions: 4, withRelevant: 3, shown: 1, lossStages: { other_shown: 1, not_in_pool: 1 } } } });
   assert.equal(summary.questions, 6);
   assert.equal(summary.filter.mismatch, 2);
   const formatted = formatRealReport('2026-10-03', summary);
-  assert.match(formatted, /\n  follow-up turns 4, with relevant 3, relevant shown 1, lost other_shown 1, not_in_pool 1, filter mismatch 1$/u);
+  assert.match(formatted, /\n  follow-up turns 4, with relevant 3, relevant shown 1, lost other_shown 1, not_in_pool 1, filter mismatch 1, count answers 0\n    unclassified: turns 4, with relevant 3, relevant shown 1, lost other_shown 1, not_in_pool 1$/u);
   assert.equal(formatRealReport('2026-10-03', summarizeReal(realRows.slice(0, 1))).includes('follow-up'), false);
+});
+
+
+test('follow-up report groups actions and counts count answers without recording a record loss', () => {
+  const rows = ['count', 'more', 'add', null].map(action => ({ source: 'real', previousPlan: {}, relevant: ['a'], dayOutcome: 'answer',
+    live: live(action === 'count' ? 'count_answer' : null, { followUpAction: action, outcome: action === 'count' ? 'count' : 'answer' }) }));
+  const summary = summarizeReal(rows);
+  assert.equal(summary.followUp.countAnswers, 1);
+  assert.equal(summary.followUp.byAction.count.withRelevant, 1);
+  assert.equal(summary.followUp.byAction.count.shown, 0);
+  const report = formatRealReport('2026-10-26', summary);
+  assert.match(report, /count answers 1/u);
+  assert.match(report, /    count: turns 1, with relevant 1, relevant shown 0, lost count_answer 1/u);
+  for (const action of ['more', 'add', 'unclassified']) assert.ok(report.includes(`    ${action}: turns 1, with relevant 1, relevant shown 1, lost none`));
+  assert.match(report, /nothing shown 0/u);
 });

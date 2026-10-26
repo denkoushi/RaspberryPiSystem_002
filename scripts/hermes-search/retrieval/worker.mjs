@@ -580,6 +580,8 @@ export function createRetrievalAnswering({
         schema: 'hermes-search-receipt/v1',
         outcome,
         plan: compact,
+        followUpAction: planned.plan?.diagnostics?.followUpAction ?? null,
+        rewrite: planned.plan?.diagnostics?.rewrite ?? null,
         ...(planned.plan?.diagnostics?.causeDecision ? { causeDecision: planned.plan.diagnostics.causeDecision } : {}),
         ...(causeFilterDropped ? { causeFilterDropped: 'store_empty' } : {}),
         intentDecision: planned.plan?.diagnostics?.intentDecision ?? { chosen: 'records' },
@@ -648,6 +650,7 @@ export function createRetrievalAnswering({
           relevance: (input) => relevance.judge(input),
           requestStartedAt: started,
           stageDump,
+          countOnly: planned.plan.diagnostics?.followUpAction?.chosen === 'count' && !plan.breakdown,
           ...(vectorBudgetMs ? { vectorBudgetMs } : {}),
           excludeIds: validation.plan.diagnostics?.excludeShown
             ? new Set(previouslyShown.filter((id) => id.startsWith(`${sourceId}:`)).map((id) => id.slice(sourceId.length + 1)))
@@ -667,6 +670,21 @@ export function createRetrievalAnswering({
           shownIds: previouslyShown,
           receipt: receiptOf('unavailable', { reason: executed.reason, attempts: executed.attempts, timings: numericTimings(executed.timings) }),
           dataAsOf: view.dataAsOf,
+        });
+      }
+      if (planned.plan.diagnostics?.followUpAction?.chosen === 'count' && !validation.plan.breakdown) {
+        // Executor coverage already excludes shown ids after relevance judging.
+        const coverage = { ...executed.coverage, shown: 0 };
+        const n = coverage.known === true ? coverage.total : (coverage.floor ?? executed.results.length);
+        const rewrite = (planned.plan.diagnostics.rewrite ?? '該当する件数').replace(/に該当する件数$/u, '').replace(/[「」]/gu, '');
+        const answer = n === 0 ? `「${rewrite}」に該当する記録は見つかりませんでした。`
+          : `「${rewrite}」に該当する記録は${n}件${coverage.known === true ? '' : '以上'}です。`;
+        return trialResult({
+          status: 'completed', answer, recordIds: [], elapsedMs: elapsed(),
+          previousPlan: sessionPlan, plans, planId, shownIds: previouslyShown,
+          dataAsOf: view.dataAsOf, coverage,
+          candidateIds: stageDump ? executed.candidateIds ?? [] : null,
+          receipt: receiptOf('count', { resultCount: n, retriever: usesDense ? 'hybrid' : 'lexical', timings: numericTimings(executed.timings) }),
         });
       }
       if (executed.status === 'no_result' && executed.excludedMatches > 0) {

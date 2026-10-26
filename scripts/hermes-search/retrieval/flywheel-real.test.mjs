@@ -31,7 +31,7 @@ test('receipts select content outcomes, deduplicate across days, and strip recor
     hermesReceipt: { question, outcome, plan: { semanticQuery } }, ...extra,
   });
   const rows = [
-    receipt('ＡＢＣ 傷'), receipt('ABC 傷'), receipt('空結果', 'no_result'), receipt('他なし', 'no_other'),
+    receipt('ＡＢＣ 傷'), receipt('ABC 傷'), receipt('空結果', 'no_result'), receipt('他なし', 'no_other'), receipt('件数', 'count'),
     receipt('絞り込み', 'answer', ''), receipt('空白検索', 'answer', '  '), receipt('空白検索2', 'answer', null),
     receipt('  '), receipt(null), ...['clarification', 'out_of_scope', 'unavailable'].map((outcome) => receipt(outcome, outcome)),
     {}, null,
@@ -42,6 +42,7 @@ test('receipts select content outcomes, deduplicate across days, and strip recor
     { id: realId('ABC 傷'), question: 'ＡＢＣ 傷', receiptAt: rows[0].at, dayOutcome: 'answer', dayShown: ['a1', 'b1'], turn: 0 },
     { id: realId('空結果'), question: '空結果', receiptAt: rows[0].at, dayOutcome: 'no_result', dayShown: ['a1', 'b1'], turn: 0 },
     { id: realId('他なし'), question: '他なし', receiptAt: rows[0].at, dayOutcome: 'no_other', dayShown: ['a1', 'b1'], turn: 0 },
+    { id: realId('件数'), question: '件数', receiptAt: rows[0].at, dayOutcome: 'count', dayShown: ['a1', 'b1'], turn: 0 },
   ]);
 });
 

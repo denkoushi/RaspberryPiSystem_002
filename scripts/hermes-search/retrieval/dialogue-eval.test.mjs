@@ -66,3 +66,19 @@ test('contentFrom checks whether a follow-up reuses the previous content conditi
   assert.deepEqual(checkTurn(reused, { contentFrom: 'own' }, previous), ['contentFrom']);
   assert.equal(scoreTurn(reused, { expect: { contentFrom: 'previous' } }, previous).passed, true);
 });
+
+
+test('optional action expectations are scored from diagnostics and are not carried to the next turn', async () => {
+  const withAction = plan({ diagnostics: { followUpAction: { chosen: 'count', confidence: 0.9 }, rewrite: '合成内容' } });
+  assert.deepEqual(checkTurn(withAction, { action: 'count' }), []);
+  assert.deepEqual(checkTurn(withAction, { action: 'more' }), ['action']);
+  assert.deepEqual(checkTurn(plan(), { action: 'count' }), ['action']);
+  assert.deepEqual(checkTurn(plan(), {}), []);
+  const report = await evaluateDialogues({ dialogues: [{ id: 'action', turns: [
+    { question: '件数', expect: { action: 'count' } }, { question: '続き', expect: {} },
+  ] }], plan: async (question, previous) => {
+    if (previous) assert.equal(previous.diagnostics, undefined);
+    return withAction;
+  } });
+  assert.equal(report.summary.turnsPassed, 2);
+});

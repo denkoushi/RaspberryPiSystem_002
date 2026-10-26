@@ -448,8 +448,11 @@ export async function runFlywheelNight({
       ...(question.previousPlan ? { previousPlan: question.previousPlan, previousShown: question.previousShown ?? [] } : {}) });
     await logLive(question.id, live);
     if (isFilterOnlyPlan(live.plan)) {
-      const filterCheck = checkFilterAnswer({ plan: live.plan, shown: live.shown, groups: live.groups, breakdown: question.seed?.breakdown ?? live.plan?.breakdown, records: corpus, catalog, causeById });
-      live.loss = filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
+      // Record-display checks do not score count answers.
+      const filterCheck = live.outcome === 'count' ? { supported: false, reason: 'count_answer', ok: null }
+        : checkFilterAnswer({ plan: live.plan, shown: live.shown, groups: live.groups, breakdown: question.seed?.breakdown ?? live.plan?.breakdown, records: corpus, catalog, causeById });
+      live.loss = live.outcome === 'count' ? 'count_answer'
+        : filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
       await appendFile(realFile, `${JSON.stringify({
         at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id),
         kind: 'filter', relevant: [], labels: {}, live, filterCheck,
