@@ -1,39 +1,4 @@
-# Trivy Ignore File - Caddy依存関係の脆弱性
-# CaddyのアップストリームGoバイナリの脆弱性のため除外
-# Caddyチームの次回リリースで解決予定
-
-CVE-2025-59530
-CVE-2025-44005
-CVE-2025-58183
-CVE-2025-58186
-CVE-2025-58187
-CVE-2025-58188
-CVE-2025-61726
-CVE-2025-61728
-CVE-2025-61729
-CVE-2025-61730
-CVE-2025-68121
-CVE-2026-25793
-CVE-2026-25679
-CVE-2026-27137
-CVE-2026-30836
-CVE-2026-39883
-# Caddy bundled Go stdlib vulnerabilities detected in CI web image scan (2026-05-16)
-# Fixed versions are in newer Go toolchain/Caddy releases; tracked as temporary suppressions.
-CVE-2026-33811
-CVE-2026-33814
-CVE-2026-39820
-CVE-2026-39836
-CVE-2026-42499
-# Caddy bundled Go stdlib vulnerabilities detected in CI web image scan (2026-05-28)
-# Fixed version is Go 1.26.3+; tracked as temporary suppressions until the web image rebases.
-CVE-2026-39823
-CVE-2026-39825
-CVE-2026-39826
-# Alpine openssl (libcrypto3/libssl3) in web image; fixed upstream 3.5.6-r0 — refresh base when CI image rebases
-CVE-2026-28390
-# Debian libcap2 in api image (bookworm base); fixed version availability depends on base image refresh timing
-CVE-2026-4878
-
-# Debian pcre2 (libpcre2-8-0) in the API image; fixed in 10.42-1+deb12u2, picked up by the next uncached build (2026-10-05)
-CVE-2026-103111
+# Trivy Ignore File
+# 修正版のない脆弱性を一時的に除外するときだけ ID を追記し、
+# security/dependency-exceptions.json に理由と期限を書く。
+# 2026-10-26: 公開済みの全イメージで既存の除外が不要になったため空にした。
