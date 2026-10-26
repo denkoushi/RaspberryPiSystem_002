@@ -158,6 +158,7 @@ trivy_image_scan_cron: '0 4 * * *'
 trivy_log_dir: /var/log/trivy-raspisys-staging
 trivy_log_file: trivy-scan.log
 trivy_skip_dirs:
+  - /opt/RaspberryPiSystem_002-staging/storage
   - /opt/RaspberryPiSystem_002-staging/certs
 trivy_alert_ignore_patterns:
   - /certs/
