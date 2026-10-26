@@ -40,7 +40,8 @@ import {
   getClientCapabilities,
   requireShelfLayoutEditEnabled
 } from '../../services/mobile-placement/client-capabilities.service.js';
-import { listMachineMastersForShelfLayout, listMachinesForShelfRegistration } from '../../services/mobile-placement/machine-master-query.service.js';
+import { addShelfLandmark, deleteShelfLandmark, listShelfLandmarks, requireShelfMachines } from '../../services/mobile-placement/shelf-landmark.service.js';
+import { listMachineMastersForShelfLayout } from '../../services/mobile-placement/machine-master-query.service.js';
 import {
   getShelfLayoutZone,
   listShelfLayoutSummary,
@@ -209,7 +210,20 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
 
   app.get('/mobile-placement/shelf-machines', { config: { rateLimit: false } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
-    return listMachinesForShelfRegistration();
+    const [machines, landmarks] = await Promise.all([requireShelfMachines(), listShelfLandmarks()]);
+    return { machines, landmarks };
+  });
+
+  app.post('/mobile-placement/shelf-landmarks', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { name } = z.object({ name: z.string() }).parse(request.body);
+    return addShelfLandmark(name, resolveCredentialIdentity(clientDevice).clientDeviceId);
+  });
+
+  app.delete('/mobile-placement/shelf-landmarks/:name', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    const { name } = z.object({ name: z.string().min(1) }).parse(request.params);
+    return deleteShelfLandmark(name);
   });
 
   app.get('/mobile-placement/machine-masters', { config: { rateLimit: false } }, async (request) => {

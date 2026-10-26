@@ -1,3 +1,5 @@
+import type { ShelfDirection } from '@raspi-system/shelf-layout-core';
+
 /**
  * GET /api/mobile-placement/registered-shelves の `shelves[]` 要素（サーバ契約と一致）
  */
@@ -5,7 +7,7 @@ export type RegisteredShelfEntryDto = {
   shelfCodeRaw: string;
   isStructured: boolean;
   machineName?: string;
-  direction?: '東' | '西' | '南' | '北';
+  direction?: ShelfDirection;
   areaId?: 'west' | 'central' | 'east';
   lineId?: 'north' | 'central' | 'south';
   slot?: number;

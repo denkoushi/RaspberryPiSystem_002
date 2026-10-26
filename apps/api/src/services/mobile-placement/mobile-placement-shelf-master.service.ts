@@ -4,6 +4,7 @@ import { composeArea } from '@raspi-system/shelf-layout-core';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 
+import { isSerializationFailure, listShelfLandmarks, requireShelfMachines } from './shelf-landmark.service.js';
 import { parseStructuredShelfCode, type RegisteredShelfEntry } from './mobile-placement-registered-shelves.service.js';
 
 export async function deleteMobilePlacementShelf(shelfCodeRaw: string): Promise<{ shelfCodeRaw: string }> {
@@ -51,8 +52,12 @@ export async function listRegisteredShelvesFromShelfMaster(): Promise<Registered
     orderBy: { shelfCodeRaw: 'asc' }
   });
 
+  const landmarks = await listShelfLandmarks();
+  // The underlying machine query is cached. A failure must not hide existing shelves.
+  const machines = rows.length ? await requireShelfMachines().catch(() => []) : [];
+  const knownNames = new Set([...landmarks, ...machines]);
   return rows.map((r) => {
-    const parsed = parseStructuredShelfCode(r.shelfCodeRaw);
+    const parsed = parseStructuredShelfCode(r.shelfCodeRaw, knownNames);
     return {
       shelfCodeRaw: r.shelfCodeRaw,
       displayLabel: r.displayLabel,
@@ -71,7 +76,7 @@ export type RegisterMobilePlacementShelfInput = {
 };
 
 /**
- * 棚マスタへ新規登録（`+` 画面）。`加工機 方角` 形式のみ。
+ * 棚マスタへ新規登録（`+` 画面）。`目安 方角` または `目安`。
  */
 export async function registerMobilePlacementShelf(
   input: RegisterMobilePlacementShelfInput
@@ -81,34 +86,32 @@ export async function registerMobilePlacementShelf(
     throw new ApiError(400, '棚番が空です', undefined, 'MOBILE_PLACEMENT_SHELF_EMPTY');
   }
 
-  const parsed = parseStructuredShelfCode(raw);
-  if (!parsed.machineName || !parsed.direction) {
-    throw new ApiError(
-      400,
-      '棚の名前は「加工機名 方角」（例: DAD-3220 北）で登録してください',
-      undefined,
-      'MOBILE_PLACEMENT_SHELF_NOT_STRUCTURED'
-    );
-  }
-
-  raw = composeArea(parsed.machineName, parsed.direction);
-
+  const machines = await requireShelfMachines();
+  let parsed: Omit<RegisteredShelfEntry, 'shelfCodeRaw'>;
   try {
-    await prisma.mobilePlacementShelf.create({
-      data: {
-        shelfCodeRaw: raw,
-        displayLabel: input.displayLabel?.trim() || null,
-        createdByClientDeviceId: input.clientDeviceId
+    parsed = await prisma.$transaction(async (tx) => {
+      const landmarks = await tx.mobilePlacementShelfLandmark.findMany({ select: { name: true } });
+      const knownNames = new Set([...machines, ...landmarks.map((landmark) => landmark.name)]);
+      const result = parseStructuredShelfCode(raw, knownNames);
+      if (!result.machineName || !knownNames.has(result.machineName)) {
+        throw new ApiError(400, '登録済みの目安と方角を選んでください', undefined, 'MOBILE_PLACEMENT_SHELF_NOT_STRUCTURED');
       }
-    });
+      raw = result.direction ? composeArea(result.machineName, result.direction) : result.machineName;
+      await tx.mobilePlacementShelf.create({
+        data: {
+          shelfCodeRaw: raw,
+          displayLabel: input.displayLabel?.trim() || null,
+          createdByClientDeviceId: input.clientDeviceId
+        }
+      });
+      return result;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      throw new ApiError(
-        409,
-        'この加工機・方角の棚はもうあります',
-        undefined,
-        'MOBILE_PLACEMENT_SHELF_DUPLICATE'
-      );
+      throw new ApiError(409, 'この目安・方角の棚はもうあります', undefined, 'MOBILE_PLACEMENT_SHELF_DUPLICATE');
+    }
+    if (isSerializationFailure(e)) {
+      throw new ApiError(409, '同時に操作されました。もう一度お試しください');
     }
     throw e;
   }

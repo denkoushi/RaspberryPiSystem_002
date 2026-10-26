@@ -26,4 +26,4 @@ export {
   type AdjacencyValidationResult
 } from './adjacency.js';
 export { allocateShelfCode, formatShelfCodeRaw } from './shelf-code.js';
-export { AREA_DIRECTIONS, DEFAULT_AREA_DIRECTION, composeArea, splitArea, type AreaDirection } from './area-naming.js';
+export { AREA_DIRECTIONS, SHELF_DIRECTIONS, DEFAULT_AREA_DIRECTION, composeArea, splitArea, type AreaDirection, type ShelfDirection } from './area-naming.js';
