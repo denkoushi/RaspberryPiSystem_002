@@ -58,6 +58,7 @@ scan_image() {
     --exit-code 5
     --timeout "{{ trivy_scan_timeout }}"
     --quiet
+    --table-mode detailed
     "${image_name}"
   )
   
