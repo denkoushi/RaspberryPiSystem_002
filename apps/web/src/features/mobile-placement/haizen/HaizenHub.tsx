@@ -95,7 +95,9 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
         clientRecordId: createHaizenClientRecordId(), slipKind: placeSlip.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
         number: placeSlip.number, shelfCode: mp.shelfCode, scannedAt, branchNo: selectedBranchNo
       });
-      setPlaceToast(result.status === 'sent'
+      setPlaceToast(result.status === 'sent' && result.response.action === 'stale'
+        ? `${result.response.branchState.shelfCodeRaw}に新しい記録があります`
+        : result.status === 'sent'
         ? `分配${result.response.branchState.branchNo === 0 ? 'なし' : result.response.branchState.branchNo}を${result.response.action === 'unchanged' ? '確認しました' : result.response.action === 'moved' || (!result.response.action && selectedBranch) ? '移しました' : '置きました'}`
         : result.status === 'pending' ? `スマホに保存しました（未送信 ${result.pendingCount}件）` : '要確認に保存しました');
       setPlaceSlip(null); setSelectedBranchNo(null);
