@@ -94,17 +94,33 @@ export function ShelfPhotoCamera({ onCapture, onClose, onSelectFile }: {
   }, [stop]);
 
   const close = () => { cancelRef.current(); onClose(); };
-  const capture = () => {
+  const capture = async () => {
     const video = videoRef.current;
     if (!ready || !video || !streamRef.current) return;
+    const stream = streamRef.current;
+    const orientation = {
+      portrait: window.matchMedia?.('(orientation: portrait)').matches ?? window.innerHeight > window.innerWidth,
+      angle: window.screen.orientation?.angle
+    };
+    setReady(false);
+    let bitmap: ImageBitmap | null = null;
     try {
-      const photo = encodeShelfPhoto(video, video.videoWidth, video.videoHeight);
+      if (typeof createImageBitmap === 'function') {
+        try { bitmap = await createImageBitmap(video); }
+        catch { /* Unsupported video bitmaps fall back to the video frame. */ }
+      }
+      if (streamRef.current !== stream) return;
+      const photo = encodeShelfPhoto(
+        bitmap ?? video, bitmap?.width ?? video.videoWidth, bitmap?.height ?? video.videoHeight, orientation
+      );
       cancelRef.current();
       onCapture(photo);
     } catch {
       cancelRef.current();
       setReady(false);
       setError('写真を撮れませんでした');
+    } finally {
+      bitmap?.close();
     }
   };
 
