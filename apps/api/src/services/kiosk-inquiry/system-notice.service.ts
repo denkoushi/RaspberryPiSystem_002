@@ -8,7 +8,7 @@ export const SYSTEM_NOTICE_REPEAT_MS = 24 * 60 * 60 * 1000;
 export const FILE_NOTICE_EXPIRY_MS = 48 * 60 * 60 * 1000;
 export const KIOSK_NOTICE_QUIET_MS = KIOSK_ALERT_COOLDOWN_MS;
 export const FILE_NOTICE_PREFIX = 'file:';
-export type SystemNotice = { key: string; title: string; body: string; state: 'open' | 'recovered' };
+export type SystemNotice = { key: string; title: string; body: string; state: 'open' | 'recovered'; repeatMs?: number };
 
 async function lockNotice(tx: Prisma.TransactionClient, key: string) {
   // Transaction-scoped, shared by all API processes; the partial unique index is a second guard.
@@ -32,7 +32,7 @@ export async function deliverSystemNotice(notice: SystemNotice, now = new Date()
       return;
     }
     if (notice.state === 'open' && thread.messages[0]
-      && now.getTime() - thread.messages[0].createdAt.getTime() < SYSTEM_NOTICE_REPEAT_MS) {
+      && now.getTime() - thread.messages[0].createdAt.getTime() < (notice.repeatMs ?? SYSTEM_NOTICE_REPEAT_MS)) {
       // Keep the terminal label current (renamed device, changed wording) without marking unread.
       if (thread.noticeTitle !== notice.title) {
         await tx.kioskInquiryThread.update({ where: { id: thread.id }, data: { noticeTitle: notice.title } });

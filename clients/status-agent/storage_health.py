@@ -247,6 +247,8 @@ KERNEL_STORAGE_PATTERNS = (
 # Pi3 reboots daily, so it raised a false ERROR alert each morning.
 KERNEL_BENIGN_PATTERNS = (
     re.compile(r"host does not support reading read-only switch", re.IGNORECASE),
+    # brcmfmac uses the SDIO bus for Wi-Fi, not SD-card storage.
+    re.compile(r"\bbrcmfmac\b", re.IGNORECASE),
 )
 
 
