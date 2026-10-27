@@ -26,7 +26,7 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
   const machines = [...new Set(shelves.flatMap((s) => s.machineName ? [s.machineName] : []))].sort((a, b) => a.localeCompare(b, 'ja'));
   const filters = [...(previousShelfCodes.length ? [{ key: 'previous', label: '前回' }] : []), { key: 'all', label: '全部' },
     ...machines.map((name) => ({ key: `machine:${name}`, label: name }))];
-  const filtered = filter === 'previous'
+  const filtered = compact ? shelves : filter === 'previous'
     ? previousShelfCodes.flatMap((code) => shelves.filter((s) => s.shelfCodeRaw === code))
     : shelves.filter((s) => filter === 'all' || `machine:${s.machineName}` === filter);
   const groups = new Map<string | null, RegisteredShelfEntryDto[]>();
@@ -38,17 +38,19 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
   }
   const pad = compact ? '' : 'px-3.5';
   return <>
-    <div className={`flex shrink-0 items-center gap-1.5 pb-2 ${pad} ${disabled ? 'opacity-35' : ''}`}>
+    {!compact && <div className={`flex shrink-0 items-center gap-1.5 pb-2 ${pad} ${disabled ? 'opacity-35' : ''}`}>
       <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
         {filters.map((f) => <button key={f.key} type="button" className={hp.chip} aria-pressed={filter === f.key} disabled={disabled} onClick={() => setFilter(f.key)}>{f.label}</button>)}
       </div>
       {onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} !h-[52px] w-[52px] shrink-0 !px-0 !text-2xl`} disabled={disabled} onClick={onExpand}>⤢</button>}
-    </div>
+    </div>}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+    {compact && onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} absolute right-0 top-0 z-10 !h-9 w-9 !px-0 !text-2xl`} disabled={disabled} onClick={onExpand}>⤢</button>}
     {children}
     {loading ? <p className={hp.empty}>読込中…</p> : error ? <div role="alert" className={hp.empty}>棚を取得できませんでした <button className={hp.mini} onClick={onRetry}>再試行</button></div>
       : <div aria-disabled={disabled || undefined} className={`grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto ${disabled ? 'pointer-events-none opacity-35' : ''} ${compact ? 'grid-cols-3 pb-2' : `grid-cols-2 ${pad} ${hp.hermesBottomPadding}`}`}>
         {[...groups].map(([machineName, group]) => <Fragment key={machineName === null ? 'other' : `machine:${machineName}`}>
-          <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? 'col-span-3' : 'col-span-2'}`}>
+          <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? 'col-span-3 pr-10' : 'col-span-2'}`}>
             {machineName ?? 'その他'}<small className={`text-xs ${hp.muted}`}>{group.length}棚</small>
           </h3>
           {group.map((s) => <button key={s.shelfCodeRaw} type="button" aria-label={`棚 ${[s.machineName, s.direction, s.displayLabel].filter(Boolean).join(' ') || '写真'}`} aria-pressed={selected === s.shelfCodeRaw} disabled={disabled}
@@ -62,11 +64,11 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
           </span>
           {s.shelfCodeRaw === previousShelfCodes[0] && <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-[11px] font-black text-[var(--hp-bg)]">前回</span>}
           <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>
-          {selected === s.shelfCodeRaw && <span className="block px-1.5 pb-1 text-[11px] text-[var(--hp-shelf)]">もう一度で拡大</span>}
         </button>)}
         </Fragment>)}
         {!filtered.length && <p className={`${hp.empty} ${compact ? 'col-span-3' : 'col-span-2'}`}>棚がありません</p>}
       </div>}
+    </div>
     {viewer && <HaizenShelfPhotoViewer shelf={viewer} onClose={() => setViewer(null)} />}
   </>;
 }
