@@ -1,7 +1,7 @@
 import { SHELF_DIRECTIONS, composeArea, type ShelfDirection } from '@raspi-system/shelf-layout-core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { deleteMobilePlacementShelf, deleteMobilePlacementShelfLandmark, getMobilePlacementShelfMachines, postMobilePlacementShelfLandmark, patchMobilePlacementShelfMemo, postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto } from '../../../../api/client';
 import { Dialog } from '../../../../components/ui/Dialog';
@@ -10,14 +10,16 @@ import { HaizenIcon } from '../../haizen/HaizenIcon';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
 import { resizeShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
+import { ShelfPhotoCamera } from '../../shelfPhoto/ShelfPhotoCamera';
 import { haizenPhoneStyle, hp } from '../../ui/haizenPhoneTokens';
 import { useRegisteredShelves } from '../../useRegisteredShelves';
+import { clearShelfPhotoDraft, readShelfPhotoDraft, saveShelfPhotoDraft } from '../shelfPhotoDraft';
 
 import type { RegisteredShelfEntryDto } from '../../registeredShelves';
 
 export function ShelfPhotoMaster({ onMessage }: { onMessage?: (message: string) => void }) {
   const query = useRegisteredShelves();
-  const [editing, setEditing] = useState<RegisteredShelfEntryDto | 'new' | null>(null);
+  const [editing, setEditing] = useState<RegisteredShelfEntryDto | 'new' | null>(() => readShelfPhotoDraft() ? 'new' : null);
   return <>
     {query.isLoading ? <p className={hp.empty}>読込中…</p> : query.isError ? <div role="alert" className={hp.empty}>棚を取得できませんでした <button className={hp.mini} onClick={() => void query.refetch()}>再試行</button></div>
       : <div className={hp.list}>
@@ -29,23 +31,30 @@ export function ShelfPhotoMaster({ onMessage }: { onMessage?: (message: string) 
         {!query.data?.shelves.length && <p className={hp.empty}>棚がありません</p>}
       </div>}
     <footer className={hp.dock}><button type="button" disabled={query.isLoading || query.isError} className={`${hp.primary} bg-[var(--hp-shelf)]`} onClick={() => setEditing('new')}><span aria-hidden>＋</span>棚を追加</button></footer>
-    {editing && <ShelfPhotoForm shelf={editing === 'new' ? null : editing} shelves={query.data?.shelves ?? []} onClose={() => setEditing(null)} onMessage={onMessage} />}
+    {editing && <ShelfPhotoForm shelf={editing === 'new' ? null : editing} shelves={query.data?.shelves ?? []} onClose={() => { if (editing === 'new') clearShelfPhotoDraft(); setEditing(null); }} onMessage={onMessage} />}
   </>;
 }
 
 function ShelfPhotoForm({ shelf, shelves, onClose, onMessage }: { shelf: RegisteredShelfEntryDto | null; shelves: RegisteredShelfEntryDto[]; onClose: () => void; onMessage?: (message: string) => void }) {
   const client = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
-  const [machine, setMachine] = useState('');
+  const [draft] = useState(() => shelf ? null : readShelfPhotoDraft());
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [machine, setMachine] = useState(draft?.machine ?? '');
   const [landmarkSheet, setLandmarkSheet] = useState(false);
-  const [direction, setDirection] = useState<ShelfDirection | '' | null>(null);
-  const [memo, setMemo] = useState(shelf?.displayLabel ?? '');
+  const [direction, setDirection] = useState<ShelfDirection | '' | null>(draft?.direction ?? null);
+  const [memo, setMemo] = useState(shelf?.displayLabel ?? draft?.memo ?? '');
   const [savedMemo, setSavedMemo] = useState(shelf?.displayLabel?.trim() || null);
   const [photo, setPhoto] = useState<Awaited<ReturnType<typeof resizeShelfPhoto>> | null>(null);
   const [createdCode, setCreatedCode] = useState<string | null>(shelf?.shelfCodeRaw ?? null);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (shelf) return;
+    if (createdCode) clearShelfPhotoDraft();
+    else saveShelfPhotoDraft({ machine, direction, memo });
+  }, [shelf, createdCode, machine, direction, memo]);
   const machinesQuery = useQuery({
     queryKey: mobilePlacementQueryKeys.shelfMachines,
     queryFn: getMobilePlacementShelfMachines,
@@ -80,6 +89,7 @@ function ShelfPhotoForm({ shelf, shelves, onClose, onMessage }: { shelf: Registe
       const savedCode = createdCode ?? code.trim();
       if (!createdCode) {
         await postMobilePlacementShelfRegister({ shelfCodeRaw: savedCode, displayLabel: memo.trim() || null });
+        clearShelfPhotoDraft();
         setCreatedCode(savedCode);
         setSavedMemo(memo.trim() || null);
       } else if ((memo.trim() || null) !== savedMemo) {
@@ -95,7 +105,7 @@ function ShelfPhotoForm({ shelf, shelves, onClose, onMessage }: { shelf: Registe
       setBusy(false);
     }
   };
-  return <div style={haizenPhoneStyle}><Dialog isOpen closeOnEsc={!landmarkSheet} trapFocus={!landmarkSheet} onClose={() => { if (!busy && !landmarkSheet) onClose(); }} ariaLabel={shelf ? '棚を直す' : '棚を追加'} overlayZIndex={60}
+  return <div style={haizenPhoneStyle}><Dialog isOpen closeOnEsc={!landmarkSheet && !cameraOpen} trapFocus={!landmarkSheet && !cameraOpen} onClose={() => { if (!busy && !landmarkSheet && !cameraOpen) onClose(); }} ariaLabel={shelf ? '棚を直す' : '棚を追加'} overlayZIndex={60}
     className="!fixed !inset-0 !m-auto !flex !h-dvh !max-h-none !w-full !max-w-[480px] !flex-col !rounded-none !border-0 !bg-[#0d0f0e] !p-0 !text-[#f2f4f1]">
     <div style={haizenPhoneStyle} className="flex min-h-0 flex-1 flex-col">
       <HaizenHeader title={shelf ? '棚を直す' : '棚を追加'} onBack={() => { if (!busy) onClose(); }} />
@@ -108,7 +118,7 @@ function ShelfPhotoForm({ shelf, shelves, onClose, onMessage }: { shelf: Registe
             try { setPhoto(await resizeShelfPhoto(file)); } catch (err) { setError(err instanceof Error ? err.message : '写真を処理できませんでした'); }
             finally { setBusy(false); }
           }} />
-          <button type="button" disabled={busy} className="relative grid aspect-[4/3] max-h-[27dvh] w-full max-w-[280px] shrink-0 place-items-center self-center overflow-hidden rounded-2xl border-2 border-dashed border-[var(--hp-line)] bg-[var(--hp-panel)] text-[17px] font-bold" onClick={() => input.current?.click()}>
+          <button type="button" disabled={busy} className="relative grid aspect-[4/3] max-h-[27dvh] w-full max-w-[280px] shrink-0 place-items-center self-center overflow-hidden rounded-2xl border-2 border-dashed border-[var(--hp-line)] bg-[var(--hp-panel)] text-[17px] font-bold" onClick={() => setCameraOpen(true)}>
             {photo ? <img alt="登録する棚の写真" src={`data:${photo.contentType};base64,${photo.dataBase64}`} className="absolute inset-0 h-full w-full object-cover" />
               : shelf?.photoUpdatedAt ? <ShelfPhoto shelf={shelf} className="absolute inset-0 h-full w-full" /> : <span><HaizenIcon name="photo" className="mx-auto mb-1.5 h-10 w-10" />棚の写真を撮る</span>}
             {(photo || shelf?.photoUpdatedAt) && <span className="absolute bottom-2 right-2 rounded-[10px] bg-[var(--hp-bg)] px-3 py-2.5 text-sm">撮り直す</span>}
@@ -142,6 +152,8 @@ function ShelfPhotoForm({ shelf, shelves, onClose, onMessage }: { shelf: Registe
       </form>
     </div>
   </Dialog>
+    {cameraOpen && <ShelfPhotoCamera onCapture={(captured) => { setPhoto(captured); setCameraOpen(false); }}
+      onClose={() => setCameraOpen(false)} onSelectFile={() => input.current?.click()} />}
     {landmarkSheet && <ShelfLandmarkSheet machine={machine} shelves={shelves} machines={machinesQuery.data?.machines ?? []} landmarks={machinesQuery.data?.landmarks ?? []}
       onClose={() => setLandmarkSheet(false)} onSelect={(name) => { setMachine(name); setDirection(null); setLandmarkSheet(false); }}
       onDelete={(name) => { if (machine === name) { setMachine(''); setDirection(null); } }} />}
