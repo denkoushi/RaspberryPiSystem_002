@@ -72,3 +72,14 @@ Reference layouts are `haizen-2barcode-mock.html` and `haizen-shelf-photo-mock.h
 Add PUT/GET `/mobile-placement/shelves/:shelfCodeRaw/photo` and PATCH `/mobile-placement/shelves/:shelfCodeRaw`. POST shelves accepts optional `displayLabel`; registered shelves returns nullable `photoUpdatedAt`. Use existing Prisma, Fastify, Zod, React Query and canvas APIs; no dependencies are added.
 
 Revision note (2026-10-22): recorded implementation, focused validation, local dependency reuse and the explicit DB/browser verification gaps.
+
+
+## Offline shelf registration (2026-10-27)
+
+New phone shelf registrations now persist the shelf name, memo, 800px JPEG, creation time, registration stage and delivery status in `shelf-offline-queue` (IndexedDB, with the same memory fallback pattern as the haizen queue). The master and hub serialize replay within the page on mount, reconnect and every 30 seconds while pending records exist. Registration success is saved before photo upload; a registration 409 is accepted only for a record already saved as registered. Other 4xx responses except 408/429 require checking; no-response errors, 408/429 and 5xx remain pending. The local photo and 未送信 / 要確認 chip appear in the master list, and 要確認 deletion requires two taps. Queued names occupy compass directions and are not duplicated in that list.
+
+Successful registered-shelf and machine/landmark lists are saved in localStorage and reused when retrieval fails. Both queries execute offline so React Query does not pause cache reads. The haizen picker uses the same registered-shelf hook and can select cached server shelves; queued-only shelves are deliberately excluded. Existing memo/photo/delete operations, landmark mutation, haizen placement queue, API, Prisma and service worker behavior are unchanged.
+
+Limits: a first offline visit needs lists saved by an earlier successful fetch. Memory fallback does not survive reload. If the server registered a shelf but its response was lost before the registered stage was saved, a later 409 stays 要確認 rather than risking another shelf's photo. Serialization is within one page; simultaneous browser tabs are not coordinated. No real phone or production deployment was exercised in this local task.
+
+Local validation: `pnpm --filter @raspi-system/web test src/features/mobile-placement` passed (44 files, 264 tests); the final list-layout adjustment was checked with `ShelfPhotoMaster.test.tsx` (28 tests). `pnpm --filter @raspi-system/web lint` and `pnpm --filter @raspi-system/web exec tsc --noEmit -p .` passed. The initial lint overlapped a source edit and reported stale source-position errors; one rerun against unchanged files passed. Total local validation and investigation stayed under 10 minutes. Changes remain uncommitted; no push, PR, merge or deploy was performed.

@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as api from '../../../../api/client';
 import { encodeShelfPhoto, resizeShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
 import { ShelfPhotoMaster } from '../components/ShelfPhotoMaster';
+import { shelfOfflineQueueStore } from '../offline/shelfOfflineQueueStore';
 import { readShelfPhotoDraft } from '../shelfPhotoDraft';
 
 vi.mock('../../../../api/client', () => ({
@@ -39,8 +40,10 @@ async function takePhoto() {
   fireEvent.change(screen.getByLabelText('棚の写真'), { target: { files: [new File(['image'], 'shelf.jpg', { type: 'image/jpeg' })] } });
   await screen.findByAltText('登録する棚の写真');
 }
-beforeEach(() => {
+beforeEach(async () => {
   sessionStorage.clear();
+  localStorage.clear();
+  for (const record of await shelfOfflineQueueStore.list()) await shelfOfflineQueueStore.remove(record.id);
   vi.resetAllMocks();
   vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves });
   vi.mocked(api.getMobilePlacementShelfMachines).mockResolvedValue({ machines: ['50013_540AP', 'DAD-3220'], landmarks: ['電気室', 'テント倉庫'] });
@@ -155,23 +158,33 @@ describe('photo shelf master', () => {
     expect(api.postMobilePlacementShelfRegister).not.toHaveBeenCalled();
     expect(api.patchMobilePlacementShelfMemo).not.toHaveBeenCalled();
   });
-  it('shows duplicate/server errors inline', async () => {
-    vi.mocked(api.postMobilePlacementShelfRegister).mockRejectedValueOnce(new Error('この加工機・方角の棚はもうあります'));
+  it('shows duplicate errors as needs-check and deletes the local record only on the second tap', async () => {
+    vi.mocked(api.postMobilePlacementShelfRegister).mockRejectedValueOnce({ isAxiosError: true, response: { status: 409, data: { message: 'この加工機・方角の棚はもうあります' } } });
     mount(); await openAdd(); await takePhoto();
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('この加工機・方角の棚はもうあります');
+    fireEvent.click(await screen.findByRole('button', { name: '棚 DAD-3220 北 要確認' }));
+    expect(screen.getByRole('dialog', { name: '要確認' })).toHaveTextContent('この加工機・方角の棚はもうあります');
     expect(api.putMobilePlacementShelfPhoto).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: '目安', exact: true })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '消す', exact: true }));
+    expect(await shelfOfflineQueueStore.list()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '本当に消す' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await shelfOfflineQueueStore.list()).toEqual([]);
+    expect(api.deleteMobilePlacementShelf).not.toHaveBeenCalled();
   });
-  it('retries a failed photo upload without creating the shelf twice', async () => {
+  it('queues a failed photo upload and accepts the registered shelf conflict on replay', async () => {
     vi.mocked(api.putMobilePlacementShelfPhoto).mockRejectedValueOnce(new Error('写真を保存できません'));
-    mount(); await openAdd(); await takePhoto();
+    const onMessage = vi.fn();
+    mount(onMessage); await openAdd(); await takePhoto();
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
-    await screen.findByRole('alert');
-    expect(screen.getByLabelText('この棚の名前')).toHaveAttribute('readonly');
-    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+    await screen.findByRole('button', { name: '棚 DAD-3220 北 未送信' });
+    expect(onMessage).toHaveBeenCalledWith('未送信に保存しました');
+    expect((await shelfOfflineQueueStore.list())[0].stage).toBe('registered');
+    vi.mocked(api.postMobilePlacementShelfRegister).mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
+    act(() => window.dispatchEvent(new Event('online')));
     await waitFor(() => expect(api.putMobilePlacementShelfPhoto).toHaveBeenCalledTimes(2));
-    expect(api.postMobilePlacementShelfRegister).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText('未送信')).not.toBeInTheDocument());
+    expect(await shelfOfflineQueueStore.list()).toEqual([]);
   });
 });
 
@@ -286,16 +299,14 @@ describe('shelf photo draft and camera entry', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('keeps a draft on registration failure and clears it once the shelf is registered even if upload fails', async () => {
+  it('saves the photo and clears the draft on a no-response registration failure', async () => {
     vi.mocked(api.postMobilePlacementShelfRegister).mockRejectedValueOnce(new Error('offline'));
-    vi.mocked(api.putMobilePlacementShelfPhoto).mockRejectedValueOnce(new Error('upload failed'));
     mount(); await openAdd(); await takePhoto();
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
-    await screen.findByText('offline');
-    expect(readShelfPhotoDraft()?.machine).toBe('DAD-3220');
-    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
-    await screen.findByText('upload failed');
+    await screen.findByRole('button', { name: '棚 DAD-3220 北 未送信' });
     expect(readShelfPhotoDraft()).toBeNull();
+    expect(await shelfOfflineQueueStore.list()).toEqual([expect.objectContaining({ stage: 'unregistered', photo })]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('puts a camera capture into the form and can capture the next shelf', async () => {
@@ -352,5 +363,50 @@ describe('shelf photo draft and camera entry', () => {
     fireEvent.change(screen.getByLabelText('メモ'), { target: { value: '上段' } });
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+
+describe('offline shelf registration', () => {
+  it('opens cached lists offline, queues a shelf with its local photo, blocks duplicate directions and sends on reconnect', async () => {
+    mount(); await openAdd();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    cleanup();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    vi.mocked(api.getMobilePlacementRegisteredShelves).mockRejectedValue(new Error('offline'));
+    vi.mocked(api.getMobilePlacementShelfMachines).mockRejectedValue(new Error('offline'));
+    const onMessage = vi.fn();
+    mount(onMessage);
+    expect(await screen.findByRole('button', { name: '棚 西-北-01 を編集' })).toBeInTheDocument();
+    await openAdd(); await takePhoto();
+    fireEvent.change(screen.getByLabelText('メモ'), { target: { value: '上段' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+    const pending = await screen.findByRole('button', { name: '棚 DAD-3220 北 未送信' });
+    expect(within(pending).getByRole('img')).toHaveAttribute('src', 'data:image/jpeg;base64,/9j/');
+    expect(pending).toHaveTextContent('上段');
+    expect(onMessage).toHaveBeenCalledWith('未送信に保存しました');
+    expect(api.postMobilePlacementShelfRegister).not.toHaveBeenCalled();
+    expect((await shelfOfflineQueueStore.list())[0]).toMatchObject({ stage: 'unregistered', status: 'pending' });
+    fireEvent.click(screen.getByRole('button', { name: '棚を追加' }));
+    await selectLandmark('DAD-3220');
+    expect(screen.getByRole('button', { name: '北 登録済み' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [...shelves, { shelfCodeRaw: 'DAD-3220 北', isStructured: true }] });
+    act(() => window.dispatchEvent(new Event('online')));
+    await waitFor(() => expect(screen.queryByText('未送信')).not.toBeInTheDocument());
+    expect(api.putMobilePlacementShelfPhoto).toHaveBeenCalledWith('DAD-3220 北', photo);
+    expect(await shelfOfflineQueueStore.list()).toEqual([]);
+    expect(await screen.findByRole('button', { name: '棚 DAD-3220 北 を編集' })).toBeInTheDocument();
+  });
+
+  it('shows a queued registered shelf only once when it is also in the server list', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await shelfOfflineQueueStore.put({ id: 'queued', shelfCodeRaw: '西-北-01', displayLabel: null, photo,
+      stage: 'registered', status: 'needs_check', message: '写真を確認してください', createdAt: '2026-10-27T00:00:00Z' });
+    mount();
+    await screen.findByRole('button', { name: '棚 西-北-01 要確認' });
+    expect(screen.queryByRole('button', { name: '棚 西-北-01 を編集' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('西-北-01')).toHaveLength(1);
   });
 });
