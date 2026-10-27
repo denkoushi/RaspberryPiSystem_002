@@ -1,0 +1,14 @@
+all:
+  children:
+    # 独立配備。clients 配下に入れず、zero-edge.yml --limit で更新する。
+    zero_edge:
+      # 端末は Pi5 の git 管理外 inventory-zero-edge-hosts.yml に書く（docs/runbooks/zero-edge-agent.md）。
+      hosts: {}
+      vars:
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        ansible_python_interpreter: /usr/bin/python3
+        zero_edge_api_base_url: "{{ api_base_url | regex_replace('/api/?$', '') }}"
+        zero_edge_tls_skip_verify: "1"
+        status_agent_api_base_url: "{{ api_base_url }}"
+        status_agent_tls_skip_verify: "{{ zero_edge_tls_skip_verify }}"
+

@@ -10,8 +10,8 @@ export const HEARTBEAT_RECOVERED_ALERT_TYPE = 'client-heartbeat-recovered';
 
 const DEFAULT_STALE_MINUTES = 10;
 const DEFAULT_FORGET_DAYS = 7;
-// 工場の Pi 端末だけを見る。開発用 Mac（mac-kiosk-*）や自宅の Zero 2 W（zero2w-*）は対象外。
-const DEFAULT_CLIENT_ID_PATTERN = '^(raspi|raspberrypi)';
+// 工場の Pi と棚スキャナー（zero-edge-*）を見る。開発用 Mac や自宅の zero2w-* は対象外。
+const DEFAULT_CLIENT_ID_PATTERN = '^(raspi|raspberrypi|zero-edge-)';
 
 export interface HeartbeatAlertConfig {
   enabled: boolean;

@@ -3,9 +3,13 @@ export type ShelfPhotoData = { contentType: 'image/jpeg'; dataBase64: string };
 export type ShelfPhotoOrientation = { portrait: boolean; angle?: number };
 
 // Keep orientation decisions and drawing geometry independent of browser state.
-export function shelfPhotoDrawPlan(width: number, height: number, orientation?: ShelfPhotoOrientation) {
+export function shelfPhotoRotation(width: number, height: number, orientation?: ShelfPhotoOrientation): 0 | 90 | -90 {
   const mismatch = orientation && width !== height && (height > width) !== orientation.portrait;
-  const rotation = mismatch ? (orientation.angle === 270 ? Math.PI / 2 : -Math.PI / 2) : 0;
+  return mismatch ? (orientation.angle === 270 ? -90 : 90) : 0;
+}
+
+export function shelfPhotoDrawPlan(width: number, height: number, orientation?: ShelfPhotoOrientation) {
+  const rotation = shelfPhotoRotation(width, height, orientation) * Math.PI / 180;
   const scale = Math.min(1, 800 / Math.max(width, height));
   const drawWidth = Math.max(1, Math.round(width * scale));
   const drawHeight = Math.max(1, Math.round(height * scale));

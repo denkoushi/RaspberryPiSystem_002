@@ -1,5 +1,6 @@
 # ドキュメント索引
 
+- Pi Zero棚スキャナーの独立配備・運用: [Runbook](./runbooks/zero-edge-agent.md)
 - キオスクのポータル画面・端末別カード選択: [Plan](./plans/kiosk-portal.md)
 - フローティングChatの操作ガイド（組立の登録・編集、固定案内の最初のスライス）: [ExecPlan](./plans/hermes-operation-guide-execplan.md)
 - フローティングChatをシステム全体の案内役にする（操作の問い合わせ、不具合の受付、入口の一本化、計測）: [ExecPlan](./plans/kiosk-chat-system-guide-execplan.md)
