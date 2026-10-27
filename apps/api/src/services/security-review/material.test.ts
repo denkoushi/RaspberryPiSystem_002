@@ -1,5 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { redact, redactCode } from './material.js';
+import { MATERIAL_BYTES, prepareChunks, redact, redactCode } from './material.js';
+
+describe('Review material chunk allocation', () => {
+  it.each([
+    { errors: 3, security: 19, truncated: 11 },
+    { errors: 0, security: 22, truncated: 8 },
+  ])('shares the budget with $errors error chunks', ({ errors, security, truncated }) => {
+    const prepared = prepareChunks({ security: 's'.repeat(MATERIAL_BYTES * 30),
+      errors: 'e'.repeat(MATERIAL_BYTES * errors), changes: 'c'.repeat(MATERIAL_BYTES * 2) });
+    expect(prepared.chunks).toHaveLength(24);
+    expect(prepared.truncated).toEqual({ security: truncated, errors: 0, changes: 0 });
+    expect(prepared.chunks.map(chunk => chunk.id)).toEqual([
+      ...Array.from({ length: security }, (_, index) => `security-${index + 1}`),
+      ...Array.from({ length: errors }, (_, index) => `errors-${index + 1}`),
+      'changes-1', 'changes-2',
+    ]);
+    for (const chunk of prepared.chunks) {
+      expect(chunk.text).toBe(chunk.kind[0]!.repeat(MATERIAL_BYTES));
+      expect(chunk.id).toMatch(new RegExp(`^${chunk.kind}-`));
+    }
+  });
+
+  it('allocates one chunk per kind each round in priority order', () => {
+    const prepared = prepareChunks({ security: 's'.repeat(MATERIAL_BYTES * 30),
+      errors: 'e'.repeat(MATERIAL_BYTES * 30), changes: 'c'.repeat(MATERIAL_BYTES) });
+    expect(prepared.chunks.filter(chunk => chunk.kind === 'security')).toHaveLength(12);
+    expect(prepared.chunks.filter(chunk => chunk.kind === 'errors')).toHaveLength(11);
+    expect(prepared.chunks.filter(chunk => chunk.kind === 'changes')).toHaveLength(1);
+    expect(prepared.truncated).toEqual({ security: 18, errors: 19, changes: 0 });
+  });
+
+  it('returns no chunks or truncation for empty material', () => {
+    expect(prepareChunks({ security: '', errors: '', changes: '' })).toEqual({
+      chunks: [], truncated: { security: 0, errors: 0, changes: 0 },
+    });
+  });
+});
 
 describe('Review material redaction', () => {
   it('preserves the Caddy log record while stripping its query', () => {

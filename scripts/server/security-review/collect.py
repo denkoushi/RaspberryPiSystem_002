@@ -168,12 +168,15 @@ def collect_changes(config, material, now, git_call=git):
     return reviewed
 
 
-def log_lines(patterns):
+def log_lines(patterns, since=None):
     import glob
     found = False
     for pattern in patterns:
         for filename in sorted(glob.glob(pattern)):
             found = True
+            # A rotated file last written before the window holds nothing in it.
+            if since is not None and os.path.getmtime(filename) < since.timestamp():
+                continue
             opener = gzip.open if filename.endswith('.gz') else open
             with opener(filename, 'rt', encoding='utf-8', errors='replace') as stream:
                 yield from stream
@@ -197,39 +200,80 @@ def fail2ban_summary(lines, since, now):
     return {'source': 'fail2ban', 'bans': sum(sources.values()), 'sources': dict(sources)}
 
 
-def caddy_summary(lines, since, now, rules):
+def caddy_summary(line_source, since, now, rules):
     sources = Counter()
     statuses = Counter()
     counts = Counter()
+    daytime_sources = set()
+    first = last = None
     examples = {key: [] for key in ['unusual_hours', 'denied', 'unknown_path', 'oversized']}
-    for line in lines:
-        try:
-            row = json.loads(line)
-            when = timestamp(row['ts'], now.tzinfo)
-            if not since <= when <= now:
-                continue
-            request = row.get('request', {})
-            address = request.get('remote_ip', 'unknown')
-            status = int(row['status'])
-            uri = str(request.get('uri', '')).split('?', 1)[0]
-            sources[address] += 1
-            statuses[f'{status // 100}xx'] += 1
-            hour = when.astimezone(now.tzinfo).hour
-            matched = {
-                'unusual_hours': hour in rules['unusual_hours'],
-                'denied': status in rules['denied_statuses'],
-                'unknown_path': status in rules['unknown_path_statuses'] or not any(re.search(p, uri) for p in rules['known_path_patterns']),
-                'oversized': max(int(row.get('size', 0)), int(row.get('bytes_read', 0))) > rules['oversized_bytes'],
-            }
-            for rule, yes in matched.items():
-                if yes:
-                    counts[rule] += 1
-                    if len(examples[rule]) < rules['examples_per_rule']:
-                        examples[rule].append({'at': when.isoformat(), 'source': address, 'status': status, 'path': redact(uri)})
-        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
-            counts['malformed'] += 1
+    # Read rotations twice so daytime activity can exclude earlier night examples.
+    for pass_index in range(2):
+        for line in line_source():
+            try:
+                row = json.loads(line)
+                when = timestamp(row['ts'], now.tzinfo).astimezone(now.tzinfo)
+                if not since <= when <= now:
+                    continue
+                request = row.get('request', {})
+                address = request.get('remote_ip', 'unknown')
+                status = int(row['status'])
+                uri = str(request.get('uri', '')).split('?', 1)[0]
+                size = max(int(row.get('size', 0)), int(row.get('bytes_read', 0)))
+                unusual = when.hour in rules['unusual_hours']
+                if pass_index == 0:
+                    sources[address] += 1
+                    statuses[f'{status // 100}xx'] += 1
+                    first = when if first is None else min(first, when)
+                    last = when if last is None else max(last, when)
+                    if not unusual:
+                        daytime_sources.add(address)
+                    continue
+                matched = {
+                    'unusual_hours': unusual and address not in daytime_sources,
+                    'denied': status in rules['denied_statuses'],
+                    'unknown_path': status in rules['unknown_path_statuses'] or not any(re.search(p, uri) for p in rules['known_path_patterns']),
+                    'oversized': size > rules['oversized_bytes'],
+                }
+                for rule, yes in matched.items():
+                    if yes:
+                        counts[rule] += 1
+                        if len(examples[rule]) < rules['examples_per_rule']:
+                            examples[rule].append({'at': when.isoformat(), 'source': address, 'status': status, 'path': redact(uri)})
+            except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+                if pass_index == 0:
+                    counts['malformed'] += 1
     return {'source': 'caddy', 'sources': dict(sources), 'statusClasses': dict(statuses), 'rules': dict(counts),
+            'covered': {'from': first.isoformat() if first else None, 'to': last.isoformat() if last else None},
             'examples': examples, 'droppedExamples': {key: max(0, counts[key] - len(value)) for key, value in examples.items()}}
+
+
+def monitor_summary(lines, unit, timezone):
+    groups = {}
+    lifecycle = re.compile(r'(?:Starting|Started|Finished) ' + re.escape(unit) + r'(?: - .*|\.*)$|'
+                           + re.escape(unit) + r': (?:Deactivated successfully\.|Succeeded\.|Consumed .+ CPU time.*)$')
+    for line in lines:
+        if not line.strip():
+            continue
+        match = re.match(r'^(\S+)\s+\S+\s+([^:]+):\s?(.*)$', line)
+        message = line
+        at = None
+        if match:
+            try:
+                at = timestamp(match[1], timezone).astimezone(timezone).isoformat()
+                message = match[3]
+                if re.fullmatch(r'systemd(?:\[\d+\])?', match[2]) and lifecycle.fullmatch(message):
+                    continue
+            except ValueError:
+                pass
+        message = redact(message)
+        group = groups.setdefault(message, {'source': 'monitor', 'message': message, 'count': 0,
+                                            'first': at, 'last': at})
+        group['count'] += 1
+        if at is not None:
+            group['first'] = min(group['first'], at) if group['first'] else at
+            group['last'] = max(group['last'], at) if group['last'] else at
+    return sorted(groups.values(), key=lambda group: group['count'], reverse=True)
 
 
 def latest_completed_scan(lines, start_marker, end_marker, timezone):
@@ -330,15 +374,16 @@ def collect(config):
     security = materials['security']
     for source, patterns in [('fail2ban', config['fail2ban_logs']), ('caddy', config['caddy_logs'])]:
         try:
-            lines = log_lines(patterns)
-            summary = fail2ban_summary(lines, since, now) if source == 'fail2ban' else caddy_summary(lines, since, now, config['caddy_rules'])
+            summary = fail2ban_summary(log_lines(patterns), since, now) if source == 'fail2ban' else caddy_summary(lambda: log_lines(patterns, since), since, now, config['caddy_rules'])
             # Keep each aggregate on its own line so a single large source does not discard all summaries.
             for key, value in summary.items():
                 security.add(json.dumps({'source': source, key: value}, ensure_ascii=False))
         except (OSError, ValueError):
             errors.append(source + '_unavailable')
     try:
-        security.add(command(['journalctl', '-u', config['monitor_unit'], '--since', since.isoformat(), '--until', now.isoformat(), '--no-pager', '-o', 'short-iso']).stdout)
+        journal = command(['journalctl', '-u', config['monitor_unit'], '--since', since.isoformat(), '--until', now.isoformat(), '--no-pager', '-o', 'short-iso']).stdout
+        for group in monitor_summary(journal.splitlines(), config['monitor_unit'], now.tzinfo):
+            security.add(json.dumps(group, ensure_ascii=False))
     except (OSError, RuntimeError, subprocess.TimeoutExpired):
         errors.append('monitor_unavailable')
     for scan in config['scans']:

@@ -40,14 +40,29 @@ export function splitBytes(text: string, cap = MATERIAL_BYTES): string[] {
 export function prepareChunks(material: Record<ReviewKind, string>) {
   const chunks: ReviewChunk[] = [];
   const truncated = { security: 0, errors: 0, changes: 0 };
-  for (const kind of ['security', 'errors', 'changes'] as const) {
+  const kinds = ['security', 'errors', 'changes'] as const;
+  const pending: Record<ReviewKind, ReviewChunk[]> = { security: [], errors: [], changes: [] };
+  const allocated = { security: 0, errors: 0, changes: 0 };
+  for (const kind of kinds) {
     const sections = kind === 'changes' ? material[kind].split(/(?=^diff --git )/m) : [material[kind]];
     let index = 0;
     for (const section of sections) for (const text of splitBytes(section)) {
       index++;
-      if (chunks.length < MAX_CHUNKS) chunks.push({ id: `${kind}-${index}`, kind, text });
-      else truncated[kind]++;
+      pending[kind].push({ id: `${kind}-${index}`, kind, text });
     }
+  }
+  let remaining = MAX_CHUNKS;
+  while (remaining && kinds.some(kind => allocated[kind] < pending[kind].length)) {
+    for (const kind of kinds) {
+      if (remaining && allocated[kind] < pending[kind].length) {
+        allocated[kind]++;
+        remaining--;
+      }
+    }
+  }
+  for (const kind of kinds) {
+    chunks.push(...pending[kind].slice(0, allocated[kind]));
+    truncated[kind] = pending[kind].length - allocated[kind];
   }
   return { chunks, truncated };
 }

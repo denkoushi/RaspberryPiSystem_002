@@ -102,12 +102,12 @@ describe('Private security review', () => {
     expect(complete).toHaveBeenCalledTimes(1);
   });
 
-  it('caps UTF-8 bytes and total chunks, dropping changes first with counts in the report', async () => {
+  it('caps UTF-8 bytes and fairly shares total chunks with truncation counts in the report', async () => {
     const material = { security: '界'.repeat(6000), errors: 'e '.repeat(MATERIAL_BYTES * 10), changes: 'diff --git a/x b/x\n' + 'c '.repeat(MATERIAL_BYTES * 2) };
     const prepared = prepareChunks(material);
     expect(prepared.chunks).toHaveLength(24);
     expect(prepared.chunks[0]?.kind).toBe('security');
-    expect(prepared.truncated).toEqual({ security: 0, errors: 0, changes: 4 });
+    expect(prepared.truncated).toEqual({ security: 0, errors: 4, changes: 0 });
     for (const chunk of prepared.chunks) {
       expect(Buffer.byteLength(chunk.text, 'utf8')).toBeLessThanOrEqual(MATERIAL_BYTES);
       expect(chunk.text).not.toContain('\uFFFD');
@@ -116,7 +116,7 @@ describe('Private security review', () => {
     const report = await run();
     expect(complete).toHaveBeenCalledTimes(24);
     expect(report?.status).toBe('partial');
-    expect(JSON.parse(report!.reason!).truncated.changes).toBeGreaterThan(0);
+    expect(JSON.parse(report!.reason!).truncated).toEqual(prepared.truncated);
   });
 
   it('filters normalized known fingerprints and includes bounded known data in the prompt', async () => {

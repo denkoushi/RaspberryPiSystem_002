@@ -295,12 +295,104 @@ def test_caddy_counts_rules_caps_and_last_day():
              'known_path_patterns': ['^/api/'], 'oversized_bytes': 10, 'examples_per_rule': 1}
     row = {'ts': (NOW - timedelta(minutes=20)).timestamp(), 'request': {'remote_ip': '192.0.2.1', 'uri': '/odd?secret=hidden'}, 'status': 403, 'size': 20}
     old = {**row, 'ts': (NOW - timedelta(days=2)).timestamp()}
-    summary = collector.caddy_summary([json.dumps(x) for x in [row, row, old]], NOW - timedelta(days=1), NOW, rules)
+    summary = collector.caddy_summary(lambda: (json.dumps(x) for x in [row, row, old]), NOW - timedelta(days=1), NOW, rules)
     assert summary['sources'] == {'192.0.2.1': 2}
     assert summary['statusClasses'] == {'4xx': 2}
     assert summary['rules'] == dict.fromkeys(['unusual_hours', 'denied', 'unknown_path', 'oversized'], 2)
     assert summary['droppedExamples']['denied'] == 1
     assert 'hidden' not in json.dumps(summary)
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_caddy_unusual_hours_only_counts_night_only_sources_and_covers_window(reverse):
+    rules = {'unusual_hours': [5], 'denied_statuses': [403], 'unknown_path_statuses': [404],
+             'known_path_patterns': ['^/api/'], 'oversized_bytes': 10, 'examples_per_rule': 1}
+    night = NOW - timedelta(minutes=20)
+    day = NOW - timedelta(hours=12)
+
+    def row(at, source):
+        return json.dumps({'ts': at.isoformat(), 'request': {'remote_ip': source, 'uri': '/api/poll'}, 'status': 200})
+
+    rows = [row(night, 'kiosk'), row(night, 'night-only'), row(night + timedelta(minutes=1), 'night-only'),
+            row(day, 'kiosk'), row(day, 'day-only'), row(NOW - timedelta(days=2), 'night-only'),
+            row(NOW + timedelta(hours=1), 'night-only'), 'not json']
+    summary = collector.caddy_summary(lambda: iter(rows[::-1] if reverse else rows), NOW - timedelta(days=1), NOW, rules)
+    assert summary['sources'] == {'kiosk': 2, 'night-only': 2, 'day-only': 1}
+    assert summary['statusClasses'] == {'2xx': 5}
+    assert summary['rules'] == {'unusual_hours': 2, 'malformed': 1}
+    assert summary['covered'] == {'from': day.isoformat(), 'to': (night + timedelta(minutes=1)).isoformat()}
+    assert len(summary['examples']['unusual_hours']) == 1
+    assert summary['examples']['unusual_hours'][0]['source'] == 'night-only'
+    assert summary['droppedExamples']['unusual_hours'] == 1
+
+
+def test_caddy_empty_window_has_no_covered_span():
+    summary = collector.caddy_summary(lambda: iter([]), NOW - timedelta(days=1), NOW, {})
+    assert summary['covered'] == {'from': None, 'to': None}
+    assert summary['sources'] == summary['rules'] == {}
+
+
+def test_monitor_summary_drops_only_unit_lifecycle_and_counts_failures():
+    unit = 'security-monitor.service'
+    first = NOW - timedelta(minutes=30)
+    rows = [f'{NOW.isoformat()} host systemd[1]: {message}' for message in [
+        f'Starting {unit} - Security Monitor...', f'Started {unit} - Security Monitor.',
+        f'Finished {unit} - Security Monitor.', f'{unit}: Deactivated successfully.',
+        f'{unit}: Consumed 1.234s CPU time.', f'{unit}: Succeeded.',
+    ]]
+    failed = f'{unit}: Failed with result \'exit-code\'.'
+    exited = f'{unit}: Main process exited, code=exited, status=1/FAILURE'
+    rows += [f'{NOW.isoformat()} host systemd[1]: {failed}',
+             f'{NOW.isoformat()} host systemd[1]: {exited}',
+             f'{first.isoformat()} other-host systemd[1]: {failed}',
+             f'{NOW.isoformat()} host monitor[42]: WARNING: unexpected listener',
+             f'{first.isoformat()} other-host monitor[99]: WARNING: unexpected listener',
+             f'{NOW.isoformat()} host monitor[43]: WARNING: unexpected listener',
+             f'{NOW.isoformat()} host monitor[43]: ALERT: check failed',
+             f'{NOW.isoformat()} host systemd[1]: Started other.service - Other.',
+             f'{NOW.isoformat()} host monitor[43]: {unit}: Succeeded.',
+             'unparsed warning']
+    groups = collector.monitor_summary(rows, unit, NOW.tzinfo)
+    assert [group['count'] for group in groups] == [3, 2, 1, 1, 1, 1, 1]
+    assert groups[0] == {'source': 'monitor', 'message': 'WARNING: unexpected listener', 'count': 3,
+                         'first': first.isoformat(), 'last': NOW.isoformat()}
+    assert groups[1] == {'source': 'monitor', 'message': failed, 'count': 2,
+                         'first': first.isoformat(), 'last': NOW.isoformat()}
+    assert {group['message'] for group in groups[2:]} == {
+        exited, 'ALERT: check failed', 'Started other.service - Other.', f'{unit}: Succeeded.', 'unparsed warning'}
+
+
+def test_collect_writes_monitor_groups_and_caddy_coverage_as_json_lines(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(collector, 'collect_changes', lambda *args: {'from': PREVIOUS, 'to': HEAD})
+    monkeypatch.setattr(collector, 'log_lines', lambda patterns, since=None: iter([]))
+    monkeypatch.setattr(collector, 'command', lambda args: SimpleNamespace(stdout=(
+        f'{NOW.isoformat()} host systemd[1]: security-monitor.service: Deactivated successfully.\n'
+        f'{NOW.isoformat()} host systemd[1]: security-monitor.service: Failed with result \'exit-code\'.\n')))
+    monkeypatch.setattr(collector, 'publish_bundle', lambda config, date, materials, manifest: captured.update(
+        security=materials['security'].text(), manifest=manifest))
+    collector.collect({'timezone': 'Asia/Tokyo', 'material_byte_cap': 8000, 'fail2ban_logs': [],
+                       'caddy_logs': [], 'caddy_rules': {}, 'monitor_unit': 'security-monitor.service',
+                       'scans': [], 'containers': []})
+    rows = [json.loads(line) for line in captured['security'].splitlines()]
+    assert {'source': 'caddy', 'covered': {'from': None, 'to': None}} in rows
+    assert [row for row in rows if row['source'] == 'monitor'] == [{
+        'source': 'monitor', 'message': "security-monitor.service: Failed with result 'exit-code'.",
+        'count': 1, 'first': NOW.isoformat(), 'last': NOW.isoformat()}]
+    assert captured['manifest']['sourceErrors'] == []
+
+
+def test_caddy_access_log_retention_variants():
+    docker = ROOT.parents[2] / 'infrastructure/docker'
+    variants = []
+    for path in docker.glob('Caddyfile*'):
+        blocks = re.findall(r'output file /var/log/caddy/access\.log\s*\{([^}]+)\}', path.read_text())
+        for block in blocks:
+            variants.append(path.name)
+            assert re.search(r'\broll_keep 300\s', block), path.name
+            assert re.search(r'\broll_keep_for 168h\s', block), path.name
+            assert re.search(r'\broll_size 5MiB\s', block), path.name
+    assert len(variants) == 5
 
 
 def test_fail2ban_last_day_and_latest_completed_scan():
@@ -386,3 +478,14 @@ def test_fallback_includes_merge_changes_against_first_parent(tmp_path):
     material = collector.Material(1000)
     collector.collect_changes({'project_dir': '/fixture', 'state_file': str(tmp_path / 'missing-state'), 'changes_exclude': []}, material, NOW, run)
     assert '+merged change' in material.text()
+
+
+def test_log_lines_skips_rotations_last_written_before_window(tmp_path):
+    old = tmp_path / 'access-old.log'
+    new = tmp_path / 'access-new.log'
+    old.write_text('old\n')
+    new.write_text('new\n')
+    os.utime(old, (NOW.timestamp() - 3 * 86400,) * 2)
+    os.utime(new, (NOW.timestamp(),) * 2)
+    lines = list(collector.log_lines([str(tmp_path / 'access-*.log')], NOW - timedelta(days=1)))
+    assert lines == ['new\n']

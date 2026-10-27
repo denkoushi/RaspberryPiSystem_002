@@ -28,6 +28,8 @@ You can see it working when, the morning after a deploy, a dated report exists i
 
 ## Surprises & Discoveries
 
+- Observation (2026-10-27, first-night review quality): repeated security-monitor lifecycle messages filled much of the security material and caused useful lines to be dropped. Security consumed the entire chunk budget, leaving ClientLog and container errors unreviewed; boilerplate-only chunks produced mostly vague answers. Caddy rotations covered only a small part of the review window, and continuous kiosk polling made every retained request match the unusual-hours rule.
+  Evidence: the first production bundle, its report, and the retained access-log files on the host.
 - Observation (2026-10-26, Milestone 0): production provider timeout is 60 seconds, and the text adapter uses `provider.timeoutMs`. The production gateway accepts background traffic and maps GLM thinking-off correctly. No Control Plane change is needed.
   Evidence: user-confirmed Milestone 0 results; `api_local_llm_timeout_ms` in the inventory and `openai-compatible-text.adapter.ts`.
 - Observation (2026-10-26, Milestone 0): the available review window is a morning slot before business hours, set in group vars. The collector precedes it. API slots are `api-blue`/`api-green`, web slots are `web-blue`/`web-green`, and the default API UID is 1000.
@@ -53,6 +55,8 @@ You can see it working when, the morning after a deploy, a dated report exists i
 
 ## Decision Log
 
+- Decision (2026-10-27): aggregate monitor messages with counts and first/last timestamps, excluding only successful unit lifecycle boilerplate and preserving failures. Classify unusual-hours requests only for sources with no activity outside those hours in the same window, using streaming passes and capped examples; expose the actual Caddy coverage span and extend access-log retention. Allocate chunks round-robin across security, errors and changes, redistributing unused capacity while preserving per-kind identifiers, grouped output and truncation counts.
+  Rationale: retain useful evidence, distinguish night-only sources from continuous polling, make incomplete log coverage visible and prevent a large material kind from excluding the others. This supersedes the earlier security-first budget allocation while retaining the existing send order.
 - Decision (2026-10-26): use 1200 output tokens, temperature zero, JSON output and thinking disabled; combine the run signal with a 55-second per-call timeout below the confirmed provider timeout. Cap material at 8000 UTF-8 bytes per chunk and 24 chunks per run, prioritizing security and errors over changes. Bound the whole run to 50 minutes and retry deferred/unavailable inference within the configured window; the retry cadence and cutoff follow the confirmed workload settings.
   Rationale: these are the user-confirmed Milestone 0 limits. A morning slot before business hours, set in group vars, avoids exposing the operational slot in this plan. No DGX lease, forced startup or Control Plane change is needed.
 - Decision (2026-10-26): preserve the published report interface exactly. Put machine-readable `truncated`, collector `droppedLines`, and `knownFindingsDropped` counts in `reason`; mark incomplete coverage partial. Use an atomic directory publication with a completion manifest before advancing the collector cursor.
