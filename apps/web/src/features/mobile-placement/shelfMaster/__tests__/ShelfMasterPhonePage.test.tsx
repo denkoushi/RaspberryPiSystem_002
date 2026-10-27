@@ -7,6 +7,7 @@ import * as api from '../../../../api/client';
 import { ShelfMasterPageContent } from '../ShelfMasterPageContent';
 
 vi.mock('../../../../api/client', () => ({
+  getMobilePlacementShelfMachines: vi.fn(),
   getMobilePlacementRegisteredShelves: vi.fn(), getMobilePlacementShelfPhoto: vi.fn(),
   getMobilePlacementClientCapabilities: vi.fn(), getMobilePlacementMachineMasters: vi.fn(),
   getMobilePlacementShelfLayoutSummary: vi.fn(), getMobilePlacementShelfLayoutZone: vi.fn(),
@@ -35,6 +36,8 @@ function mount() {
 const click = (name: string | RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  vi.mocked(api.getMobilePlacementShelfMachines).mockResolvedValue({ machines: ['M1'], landmarks: ['電気室'] });
   vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [] });
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   vi.mocked(api.getMobilePlacementClientCapabilities).mockResolvedValue({ shelfLayoutEditEnabled: true, haizenEdgeEnabled: true });
@@ -51,6 +54,8 @@ describe('ShelfMaster phone/desktop and existing mutations', () => {
     mount();
     expect(screen.getByRole('button', { name: '写真', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await screen.findByRole('button', { name: '棚を追加' });
+    await waitFor(() => expect(localStorage.getItem('mobile-placement-shelf-machines-v1')).toBe(JSON.stringify({ machines: ['M1'], landmarks: ['電気室'] })));
+    expect(localStorage.getItem('mobile-placement-registered-shelves-v1')).toBe(JSON.stringify({ shelves: [] }));
     click('棚を移す');
     await screen.findByLabelText('工場マップ');
   });

@@ -302,6 +302,14 @@
 - 配膳の場所(`/kiosk/inventory/haizen`)と部品検索は「枝」「枝番」を「分配」と表示し、棚番号を出さない(棚マスタに無い棚だけ番号を出す)。配膳タブの手入力から「棚番」欄を削除した。
 - 検証: Webの `src/features/mobile-placement src/pages/kiosk` は751件成功、APIの `src/services/mobile-placement` と `mobile-placement-branch-delete.test.ts` は205件成功。両パッケージのlint・型チェック。モックAPIでスマホ幅の画面を操作し、移動・分配なしの自動選択を確認。本番反映・実機検証は未実施。
 
+### 2026-10-27: 圏外の棚追加と読取後の表示待ち
+
+- 棚追加の目安はフォームを開くまで保存されず、従来の `shelfListCache.ts` は `navigator.onLine=true` だと保存があっても通信完了を待っていた。目安・棚一覧を保存から即時表示し、バックグラウンド取得成功時に保存とReact Queryの画面を更新する。スマホの配膳ハブと棚マスタを開くと事前取得する。
+- 両一覧のqueryは `networkMode: 'always'`・`retry: false`。保存なしの圏外は通信せず既存エラー・再試行へ進み、オンライン判定のまま応答しない場合の待ちは5秒に制限する。保存があれば更新失敗後も選択可能。
+- 「読取後にここに置くが遅れる」は原因未特定。`useBarcodeScanSession.ts` の `finishSuccess` は同期のカメラ停止後に成功通知し、`HaizenHub.tsx` の `readPlaceSlip` は通信なしでstateを更新する。表示条件は `hasPlaceSlip` で、分配queryの完了を待たない。読取実装に動的import・wasm・workerの読込はなく、SWもmanifestのdynamicImportsを既に巡回するため変更しない。
+- 圏外・分配取得中の製造order/注文番号スキャンについて、成功通知と同じ操作内でモーダルが閉じ「ここに置く」が出る回帰テストを追加。実機の遅延解消は未確認で、次の切り分けにはAndroid上でデコード完了・カメラ停止・成功通知・描画の時刻計測が必要。
+- ローカル検証: 未ビルドだったWeb依存5パッケージをbuild後、`pnpm --filter @raspi-system/web test src/features/mobile-placement` は46ファイル310件成功（9.60秒）。同パッケージの `lint`・`exec tsc --noEmit -p .` も成功。テスト中にjsdomのXHR接続エラーログは出るが失敗はなし。Git操作・デプロイ・実機確認は未実施。
+
 ### 2026-10-27: 横向き撮影の写真の向き
 
 - 原因: Android Chromeの棚写真で、画面とカメラ実フレームの縦横が一致しない場合に、補正せずcanvasへ描画していた。

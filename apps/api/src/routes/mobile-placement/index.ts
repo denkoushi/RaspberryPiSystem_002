@@ -14,6 +14,7 @@ import { registerMobilePlacementScheduleRoute } from './schedule-list.js';
 import { parseActualSlipImageFromUpload } from '../../services/mobile-placement/actual-slip-image-ocr.service.js';
 import { registerPlacement, resolveItemByBarcode } from '../../services/mobile-placement/mobile-placement.service.js';
 import { registerOrderPlacement } from '../../services/mobile-placement/mobile-placement-order-placement.service.js';
+import { registerEdgeScan } from '../../services/mobile-placement/edge-scan.service.js';
 import {
   deleteOrderPlacementBranch,
   listOrderPlacementBranches,
@@ -59,6 +60,13 @@ const registerBodySchema = z.object({
   shelfCodeRaw: z.string().min(1),
   itemBarcodeRaw: z.string().min(1),
   csvDashboardRowId: z.string().min(1).optional().nullable()
+});
+
+const edgeScanBodySchema = z.object({
+  clientRecordId: z.string().uuid(),
+  scannedAt: z.string().datetime({ offset: true }),
+  orderNumber: z.string(),
+  branchNo: z.number().int().min(0).max(5)
 });
 
 const verifySlipMatchBodySchema = z
@@ -536,6 +544,13 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       fseibanCandidates: snap.candidates,
       fseiban: snap.fseiban ?? fseibanRaw
     };
+  });
+
+  app.post('/mobile-placement/edge-scans', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const body = edgeScanBodySchema.parse(request.body);
+    const identity = resolveCredentialIdentity(clientDevice);
+    return registerEdgeScan({ ...body, clientDeviceId: identity.clientDeviceId });
   });
 
   app.post('/mobile-placement/register-order-placement', { config: { rateLimit: false } }, async (request) => {

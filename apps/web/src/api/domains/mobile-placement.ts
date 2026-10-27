@@ -261,7 +261,7 @@ export async function registerOrderPlacement(payload: {
   placedAt?: string;
 }, timeout?: number) {
   const { data } = await api.post<{
-    action?: 'created' | 'moved' | 'unchanged';
+    action?: 'created' | 'moved' | 'unchanged' | 'stale';
     event: {
       id: string;
       clientDeviceId: string;

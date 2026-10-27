@@ -5,6 +5,7 @@ import { MobileOfflineChip } from '../local-data/MobileOfflineChip';
 import { useMobileLocalData } from '../local-data/useMobileLocalData';
 import { useShelfOfflineQueue } from '../shelfMaster/offline/useShelfOfflineQueue';
 import { haizenPhoneColors as colors, haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
+import { useShelfMachines } from '../useShelfMachines';
 
 import { HaizenBottomNav } from './HaizenBottomNav';
 import { HaizenIcon } from './HaizenIcon';
@@ -44,6 +45,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const queue = useHaizenOfflineQueue();
   const localData = useMobileLocalData('verify');
   useShelfOfflineQueue();
+  useShelfMachines();
   const [placeSlip, setPlaceSlip] = useState<{ kind: 'mo' | 'po'; number: string } | null>(null);
   const [selectedBranchNo, setSelectedBranchNo] = useState<number | null>(null);
   const [branchSelectionVersion, setBranchSelectionVersion] = useState(0);
@@ -95,7 +97,9 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
         clientRecordId: createHaizenClientRecordId(), slipKind: placeSlip.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
         number: placeSlip.number, shelfCode: mp.shelfCode, scannedAt, branchNo: selectedBranchNo
       });
-      setPlaceToast(result.status === 'sent'
+      setPlaceToast(result.status === 'sent' && result.response.action === 'stale'
+        ? `${result.response.branchState.shelfCodeRaw}に新しい記録があります`
+        : result.status === 'sent'
         ? `分配${result.response.branchState.branchNo === 0 ? 'なし' : result.response.branchState.branchNo}を${result.response.action === 'unchanged' ? '確認しました' : result.response.action === 'moved' || (!result.response.action && selectedBranch) ? '移しました' : '置きました'}`
         : result.status === 'pending' ? `スマホに保存しました（未送信 ${result.pendingCount}件）` : '要確認に保存しました');
       setPlaceSlip(null); setSelectedBranchNo(null);

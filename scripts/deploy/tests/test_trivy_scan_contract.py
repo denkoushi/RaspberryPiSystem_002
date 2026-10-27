@@ -42,6 +42,8 @@ class TrivyScanContractTests(unittest.TestCase):
             with self.subTest(template=name):
                 script = render_script(name)
                 self.assertIn('--timeout "30m"', script)
+                # The summary table repeats every target even when clean and floods review material.
+                self.assertIn('--table-mode detailed', script)
                 findings_code = int(re.search(r"--exit-code (\d+)", script)[1])
                 self.assertNotIn(findings_code, (0, 1))
                 conditions = re.findall(r"(?:if|elif) (\[\[ \$\{TRIVY_EXIT\} .*?\]\]); then", script)

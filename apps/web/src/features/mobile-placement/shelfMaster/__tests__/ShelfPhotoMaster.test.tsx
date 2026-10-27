@@ -54,6 +54,47 @@ beforeEach(async () => {
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('photo shelf master', () => {
+  it('saves both lists before opening the add form', async () => {
+    mount();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('mobile-placement-shelf-machines-v1')!)).toEqual({
+      machines: ['50013_540AP', 'DAD-3220'], landmarks: ['電気室', 'テント倉庫']
+    }));
+    expect(JSON.parse(localStorage.getItem('mobile-placement-registered-shelves-v1')!)).toEqual({ shelves });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('selects a stored landmark while online requests are pending and after they fail', async () => {
+    localStorage.setItem('mobile-placement-registered-shelves-v1', JSON.stringify({ shelves }));
+    localStorage.setItem('mobile-placement-shelf-machines-v1', JSON.stringify({ machines: ['DAD-3220'], landmarks: [] }));
+    let failMachines!: (error: Error) => void;
+    let failShelves!: (error: Error) => void;
+    vi.mocked(api.getMobilePlacementShelfMachines).mockReturnValue(new Promise((_, reject) => { failMachines = reject; }));
+    vi.mocked(api.getMobilePlacementRegisteredShelves).mockReturnValue(new Promise((_, reject) => { failShelves = reject; }));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '棚を追加' }));
+    expect(screen.getByRole('button', { name: '目安', exact: true })).toBeEnabled();
+    await selectLandmark('DAD-3220');
+    await act(async () => { failMachines(new Error('offline')); failShelves(new Error('offline')); });
+    expect(screen.getByRole('button', { name: '目安', exact: true })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '目安', exact: true })).toHaveTextContent('DAD-3220');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows the existing error and retry immediately when no landmark is stored offline', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    mount();
+    await waitFor(() => expect(screen.getByRole('button', { name: '棚を追加' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '棚を追加' }));
+    const form = within(screen.getByRole('dialog', { name: '棚を追加' }));
+    expect(form.getByRole('alert')).toHaveTextContent('目安を取得できませんでした');
+    expect(form.getByRole('button', { name: '再試行' })).toBeEnabled();
+    expect(api.getMobilePlacementShelfMachines).not.toHaveBeenCalled();
+    expect(api.getMobilePlacementRegisteredShelves).not.toHaveBeenCalled();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    fireEvent.click(form.getByRole('button', { name: '再試行' }));
+    await selectLandmark('電気室');
+  });
+
   it('deletes on the second tap, disables controls while busy, refreshes queries and closes', async () => {
     let resolveDelete!: (value: { shelfCodeRaw: string }) => void;
     vi.mocked(api.deleteMobilePlacementShelf).mockReturnValue(new Promise((resolve) => { resolveDelete = resolve; }));
