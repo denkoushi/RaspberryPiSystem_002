@@ -68,9 +68,17 @@ describe('alert notice bridges', () => {
   ])('uses specific storage text for %s without changing the key', async (signal, subject, body) => {
     await deliverTelemetryNotice('raspi4-stone', { level: 'ERROR', message: '', context: { category: 'storage_health', signal } });
     expect(mocks.deliver).toHaveBeenCalledExactlyOnceWith({
-      key: JSON.stringify(['storage_health', 'raspi4-stone', signal]), title: `StoneBase01 ${subject}`, body, state: 'open'
+      key: JSON.stringify(['storage_health', 'raspi4-stone', signal]), title: `StoneBase01 ${subject}`, body, state: 'open',
+      ...(['root_filesystem_read_only', 'kernel_storage_error', 'ext4_errors_recorded'].includes(signal)
+        ? { repeatMs: 60 * 60 * 1000 } : {})
     });
   });
+  it.each(['root_filesystem_read_only', 'kernel_storage_error', 'ext4_errors_recorded'])(
+    'keeps the default repeat interval for WARN %s', async (signal) => {
+      await deliverTelemetryNotice('raspi4-stone', { level: 'WARN', message: '', context: { category: 'storage_health', signal } });
+      expect(mocks.deliver).toHaveBeenCalledOnce();
+      expect(mocks.deliver.mock.calls[0][0]).not.toHaveProperty('repeatMs');
+    });
   it('leaves disk usage notices to the periodic evaluator', async () => {
     await deliverTelemetryNotice('raspi4-stone', { level: 'ERROR', message: '',
       context: { category: 'storage_health', signal: 'root_disk_usage_high' } });
