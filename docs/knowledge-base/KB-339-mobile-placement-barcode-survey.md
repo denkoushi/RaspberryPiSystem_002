@@ -310,6 +310,13 @@
 - 圏外・分配取得中の製造order/注文番号スキャンについて、成功通知と同じ操作内でモーダルが閉じ「ここに置く」が出る回帰テストを追加。実機の遅延解消は未確認で、次の切り分けにはAndroid上でデコード完了・カメラ停止・成功通知・描画の時刻計測が必要。
 - ローカル検証: 未ビルドだったWeb依存5パッケージをbuild後、`pnpm --filter @raspi-system/web test src/features/mobile-placement` は46ファイル310件成功（9.60秒）。同パッケージの `lint`・`exec tsc --noEmit -p .` も成功。テスト中にjsdomのXHR接続エラーログは出るが失敗はなし。Git操作・デプロイ・実機確認は未実施。
 
+### 2026-10-27: 横向き撮影の写真の向き
+
+- 原因: Android Chromeの棚写真で、画面とカメラ実フレームの縦横が一致しない場合に、補正せずcanvasへ描画していた。
+- 対処: 撮影時の画面方向とBitmap（非対応時はvideo）の寸法を比較し、不一致ならangle 270は時計回り、それ以外は反時計回りに90度回転。長辺上限800px・JPEG品質0.8とcanvas解放を維持。
+- 検証: 回転方向・描画座標・出力寸法、Bitmap優先とフォールバック・解放を単体テストで確認。共有パッケージのビルド後、mobile-placement全314件・Web lint・型チェックが成功。
+- 実機未確認: 修正後のAndroid Chromeでの縦持ち・左右横持ち撮影と保存画像の確認、本番反映は未実施。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
