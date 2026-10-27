@@ -62,7 +62,60 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 ### 5. PostgreSQL 15 → 18
 
-本番データに触るため、本番で実行する前にユーザーの明示承認を得る。手順は次の順に進める。まず本番から `pg_dump` を取り、別の場所に保管して復元できることを確かめる。次に、そのダンプを使って手元または検証機で pg18 へ試し移行し、件数、拡張(pgvector)、API テストを確認して所要時間を測る。本番では業務の止まる時間帯を決め、旧データ領域を消さずに残したまま新しいデータ領域へ移す(`pg_upgrade` か、ダンプからの復元)。戻すときは旧 pg15 コンテナと旧データ領域へ切り替える。CI の Postgres も同じ版へそろえる。
+本番データに触るため、本番 DB の移行(手順 5)は実行の直前にユーザーの明示承認を得る。計画と準備(手順 1〜4)の承認は、本番移行の承認を含まない。
+
+**上げる先は PostgreSQL 18(`pgvector/pgvector:pg18`)とする。** 18 は 2025-09 公開で、コミュニティのサポートは 2030-11 まで。19 は 2026-10-15 に RC1 が出たばかりで、正式版は 2026-11-19 の予定のため選ばない。
+
+**今の構成(2026-10-27 時点の main)**
+
+- 本番 DB は業務 Pi5 の `db` コンテナ(`pgvector/pgvector:pg15`)で、データは Docker ボリューム `db-data`(`/var/lib/postgresql/data` に mount)。DB は `borrow_return` の1つ。
+- 拡張は `vector`(pgvector)と `pg_trgm`。
+- DB ユーザーは superuser の `postgres` のほかに、migration 用とアプリ用のロールがある(`scripts/deploy/postgres-role-bootstrap.sql`)。`pg_dump` は DB 単位でロールを含まないため、ロールは `pg_dumpall --globals-only` で別に取る。
+- 日常のバックアップは `scripts/server/backup.sh`(`/opt/backups` に `pg_dump` を gzip)。全損対策は Google Drive の restic スナップショット(`pg_dump -Fc`)。
+- pg15 を指定している箇所: `docker-compose.server.yml`、`docker-compose.mac-local.override.yml`、`.github/workflows/ci.yml`、`torque-release.yml`、`scripts/ci/rehearse-release-runtime.sh`、`scripts/test/*`、`scripts/deploy/tests/*`(DR の復元検証を含む)、`scripts/kiosk-sop/validate-db-contract.sh`。
+- 検証用の staging Pi5 は inventory に枠があるだけで実機はない。トークプラザ工場の Pi5(`inventory-talkplaza.yml`)にも DB があるので、稼働していれば別日に同じ手順で移す。
+
+**移し方は「ダンプして新しい空の pg18 に復元する」方式にする。** 次の理由で、ボリュームをそのまま変換する `pg_upgrade` は使わない。
+
+- `pg_upgrade` は 15 と 18 の両方のプログラムが1つのコンテナに必要で、公式イメージだけではできない。
+- 18 は新しく作る DB でデータのチェックサムが既定で有効になり、チェックサムなしの 15 からは `pg_upgrade` が拒否する。
+- 土台の OS が変わると文字の並び順(collation)の定義が変わることがある。復元なら索引が作り直されるので影響しない。
+- DB は1つで、Pi5 の規模なら復元の時間は短い見込み(手順 3 で測る)。
+
+**注意: 公式イメージの 18 はデータの置き場所が変わる。** PGDATA が `/var/lib/postgresql/18/docker` になり、mount 先は `/var/lib/postgresql` が推奨になった。古い mount 先のまま 18 を起動すると、起動に失敗するか、空の DB を新しく作ってしまう。そこで、新しいボリューム `db-data-pg18` を `/var/lib/postgresql` に mount する。旧 `db-data` は compose に宣言したまま残し、消さない。
+
+**最大の危険は、compose の版だけ変えて標準反映すること。** 空の pg18 が起動し、API の `migrate deploy` が空の DB に表を作るので、画面上はデータが消えたように見える。これを防ぐため、手順 2 の起動前チェックを先に入れ、本番の compose を切り替える PR は移行の当日にだけマージする。
+
+**手順**(PR は 1〜2 と 4 が別。どれも1つのソフト更新の準備として扱う)
+
+1. **CI とテストを pg18 にそろえる PR。** 本番以外の pg15 の指定(CI、torque-release、リハーサル、テスト用スクリプト、DR の復元検証、mac-local)を `pgvector/pgvector:pg18` に替える。新しい `pg_restore` は古い形式のダンプも読めるので、DR の検証は本番が 15 のままでも通る。全 migration が 18 で通り、API テスト、ロール境界テスト、DR の統合テストが成功することを受け入れ条件とする。本番の compose はまだ変えない。
+2. **移行用の手順書とスクリプトの PR。** 次の3つを入れる。
+   - `scripts/server/postgres-major-upgrade.sh`。止める、取る、復元する、比べる、切り替える、を1本で行い、どこかで失敗したら止まる。
+   - DB の起動前チェック。新しいボリュームが空で、旧 `db-data` にデータがあるときは起動を止める。誤って空の DB で動き出すのを防ぐ。
+   - Runbook `docs/runbooks/postgres-15-to-18-upgrade.md`。
+3. **試し移行(手元の Mac、arm64)。** Mac は Pi5 と同じ arm64 なので、ここで試す。
+   1. 本番から読み取りだけでダンプを取る。`pg_dumpall --globals-only` と `pg_dump -Fc` の2つ。
+   2. 本番 DB の大きさと Pi5 の空き容量を測る(読み取りのみ)。空き容量は、DB の大きさの2倍にダンプの分を足した量を目安とする。
+   3. Mac で pg15 を作って復元し、移行前の状態を再現する。そこからスクリプトで pg18 へ移す。
+   4. 次を確かめる。全テーブルの件数の一致、拡張の版(`vector`、`pg_trgm`)、ロールと権限、sequence の現在値、`prisma migrate status` が最新であること、API の主要画面と検索(pgvector)。あわせて所要時間を測る。
+   5. 戻す手順(旧ボリュームへ切り替える)も1回試す。
+   6. 本番データの写しは使い終わったら Mac から消す。
+4. **本番の compose を切り替える PR。** `db` の image を pg18 にし、mount を `db-data-pg18:/var/lib/postgresql` にする。旧 `db-data` の宣言は残す。手順 3 の結果を PR に書き、マージは手順 5 の当日に進行管理役が行う。
+5. **本番移行(ユーザーの明示承認のあとにだけ行う)。**
+   1. 業務が止まってよい時間帯をユーザーと決める。目安は手順 3 で測った時間の3倍。
+   2. 開始前に、`backup.sh` の手動実行と、globals と `-Fc` のダンプを Pi5 の外(Mac)へ1部ずつ保管する。
+   3. API と Web を止めて書き込みを止める。
+   4. スクリプトで新しいボリュームへ復元し、件数を比べる。
+   5. 手順 4 の PR をマージして標準反映する。
+   6. health、主要画面、`migrate status` を確かめる。
+   7. 業務を再開する前に、進めるか戻すかを決める。
+6. **後片付け。** 旧 `db-data` は少なくとも2週間残す。その間に DR スナップショットを1回取り、Google Drive からの復元検証を pg18 で通す。消すのは、ユーザーの承認を得て別の作業で行う。
+
+**戻し方**
+
+- 業務を再開する前なら、`db` を pg15 と旧 `db-data` に戻して(手順 4 の PR を revert して)標準反映する。旧ボリュームには一切書き込んでいないので、データは移行の直前のまま。
+- 業務を再開した後に戻すと、再開後に書き込まれたデータが旧ボリュームに無い。そのため、戻すかどうかは再開前に決める。再開後に重い問題が出たときは、pg18 から取ったダンプを pg15 へ入れられるか試してから判断する(版を下げる復元は、うまくいく保証がない)。
+- 最後の手段は、移行直前のダンプ(Pi5 の外にある写し)から pg15 に復元すること。
 
 ### 6. React 18 → 19
 
@@ -78,6 +131,8 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - [x] (2026-10-26) ユーザーが2件目の Prisma 5→7 に進むことを選んだ。prisma・@prisma/client・@prisma/adapter-pg を 7.10.1 に固定し、pg のドライバアダプタへ切り替える PR を作成。スキーマと migration は変えない。
 - [x] (2026-10-26) #2300 は main e111ad83 にマージ後、release-api-image で API イメージの圧縮サイズ予算を約 7MB 超えた(1107188550 > 1100000000、run 40257094214)。Pi5 反映前に #2304 で取り消した(main 65b101a7)。
 - [x] (2026-10-26) 入れ直しの PR を作成。API イメージから PostgreSQL 以外のクエリコンパイラ(wasm)と source map を消し、圧縮後で約 29MB 減らす見込み。
+- [x] (2026-10-26) 入れ直しの #2306 をマージ(main 4f9d5030)。main で API イメージの圧縮サイズは 1078539311 バイトで予算内。Pi5 へ反映(run 20261026-044219-700883、失敗 0)し、API で prisma 7.10.1 と migrate status が最新(240 件)であることを確認した。
+- [x] (2026-10-27) ユーザーが次に PostgreSQL 15 の更新へ進むことを選んだ(計画と準備までの承認。本番移行は別に承認を得る)。5 の手順を詳しく書いた。
 
 - [x] (2026-10-25) Brotli の脆弱性(CVE-2026-111497)対応として、API と kiosk-sop 生成の node:24-bookworm-slim を Node 24.21.0 の digest(sha256:2fe369e9…)から Node 24.22.1 の digest(index sha256:55fb5f5a…)へ差し替える別 PR を作成。土台は bookworm のままで、3件目の trixie 化とは分ける。
 
@@ -97,6 +152,8 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - 2026-10-26: Prisma 7 の generator は `prisma-client-js` のままにした。`prisma-client` へ移ると全ファイルの import が変わり、1PR の差分が大きくなりすぎるため。移行は別 PR で行う。
 - 2026-10-26: Prisma 7 の `@prisma/client` と `prisma` CLI は全データベース用の wasm を同梱するため、Dockerfile.api の本番 install と同じ層で PostgreSQL 以外の分と source map を消す。予算(1.1GB)は上げない。
 - 2026-10-26: pg は接続確立と空き接続待ちを1つの上限で扱う。そのため、Prisma 5 の `connect_timeout`(10秒)と `pool_timeout`(20秒)の長いほうを使い、本番で新たにタイムアウトが起きないようにした。
+- 2026-10-27: PostgreSQL の上げる先は 18 とした。19 は正式版がまだ出ていない(2026-11-19 予定)ため。
+- 2026-10-27: PostgreSQL はダンプと復元で移す。`pg_upgrade` は公式イメージだけでは使えず、18 のチェックサム既定の変更と、OS が変わることによる並び順の変化にも引っかかるため。旧ボリュームは消さずに残して戻し先にする。
 - 2026-10-25: 計画文書は1件目の PR に同梱する。文書は更新そのものではないため「1PR1ソフト」の決まりに反しない。
 
 ## Outcomes & Retrospective
@@ -106,3 +163,4 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 - 1. Node.js 20 の中継部品: main e98e40bc(#2287)、本番反映 run 20261025-014627-11001b(main fa13444e)。両中継部品が node:24-alpine で healthy。戻しは不要だった。
 - (計画外)Brotli 脆弱性 CVE-2026-111497: API と kiosk-sop の node:24-bookworm-slim を Node 24.22.1 の digest へ(#2289)。同じ run で反映し、API の node -v が v24.22.1。
+- 2. Prisma 5 → 7: main 4f9d5030(#2306)、本番反映 run 20261026-044219-700883。#2300 は API イメージの容量予算を超えたため #2304 で取り消し、wasm を削って入れ直した。入れ直し後の戻しは不要だった。
