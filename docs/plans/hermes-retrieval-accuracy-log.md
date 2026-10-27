@@ -779,3 +779,24 @@ Change (one JEV call per turn is kept, `planner-questions-2026-10-26b`):
 Tests: `node --test scripts/hermes-search/retrieval/*.test.mjs` 453 pass.
 
 Not measured yet: the per-action lines appear for the first time in the morning report of 2026-10-27 (night 24, the first night that replays real follow-ups). Rewrite failures and search failures can then be separated by reading `rewrite` next to the loss stage. Next steps, in order: use the action classification instead of the separate drop/add/exclude questions once the night counts show it agrees with them, and feed the rewrite (not the raw utterance) to the content span and limit judgments.
+
+---
+
+### 2026-10-27: night 24, 81%; first replay of real follow-up turns (measurement)
+
+Night of 2026-10-26: 66 of 81 live content rows matched a target (81%), other records shown 8, nothing shown 7 (all 7 outside the judged candidates, none rejected by the judge, no ask-back), synthetic filter questions 10 of 10 correct. Generated 90, kept 81 (dropped: copied run 10, anchor not confirmed 9, copied words 5, too similar 1, truncated 1). Measured with #2303 live on the Pi 5 since 2026-10-26 11:39 JST (main 5ae8ff78). In line with the 85% baseline and the 76% floor of night 21.
+
+Real conversations were replayed as conversations for the first time: 6 rows from one kiosk conversation of 2026-10-26 08:53 JST (a department question, then 「…は他に何件ある？」, then 「仙台工場では類例ない？」, then 「仙台工場の類例だよ。」). That conversation ran on the old code: it is the one that reported the factory follow-up returning the same records (#2295) and the count question returning one record (#2303), and both fixes were deployed later that day. The replay with the new code gives, per action:
+
+- count (2 turns): `followUpAction=count`, `outcome=count`, rewrite 「『チャック入れ忘れの不適合』に該当する件数」. The report counts these as `lost count_answer` because a count turn shows no records; that is the stage name, not a failure.
+- add (1 turn, 仙台工場): the in-filter over the 15 仙台工場 departments was applied and the turn ended `no_result`; replace (1 turn, the correction) the same. Both are scored `lost not_in_pool` because the day's labels are the records the old code showed, which were 三島 records; a no-result for 仙台工場 may well be right. The labels of a conversation whose live answer was wrong cannot judge the replay; the kiosk check decides.
+- clarify (1 turn): the duplicate first question was classified clarify and answered the same two records.
+
+Two things to carry into the next step (rewrite into the content and count judgment, decided 2026-10-26):
+
+1. The count turn dropped the previous department filter (`plan.filters` empty) and counted over all departments, while 「他に」 after a department answer most likely means within that department.
+2. The add and replace turns kept the previous `semanticQuery` verbatim (「…は他に何件ある？」) instead of the content span; the rewrite sentence lists the departments only.
+
+Runner: night 25 (2026-10-27) logged `dgx_not_ready` at 22:00 and 22:05 JST; check the morning report of 2026-10-28.
+
+Private files: `work/flywheel/questions-2026-10-26.jsonl`, `real-2026-10-26.jsonl`, `receipts-2026-10-26.jsonl`, `runner-2026-10-26.log`, `runner-2026-10-27.log`.
