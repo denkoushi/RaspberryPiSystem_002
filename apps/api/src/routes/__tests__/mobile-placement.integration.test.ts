@@ -1425,4 +1425,36 @@ describe('mobile-placement API', () => {
     ]) expect((await app.inject({ ...request, headers: { 'x-client-key': apiKey } })).statusCode).toBe(400);
   });
 
+  it('edge-scans rejects oversized order numbers and scan times outside the queue window', async () => {
+    const { apiKey } = await createTestClientDevice();
+    const scan = (patch: object) => app.inject({
+      method: 'POST', url: '/api/mobile-placement/edge-scans', headers: { 'x-client-key': apiKey },
+      payload: { clientRecordId: crypto.randomUUID(), scannedAt: new Date().toISOString(), orderNumber: '1234567890', branchNo: 0, ...patch }
+    });
+    const minute = 60_000;
+    expect((await scan({ orderNumber: '1'.repeat(33) })).statusCode).toBe(400);
+    expect((await scan({ scannedAt: new Date(Date.now() + 10 * minute).toISOString() })).statusCode).toBe(400);
+    expect((await scan({ scannedAt: new Date(Date.now() - 9 * 24 * 60 * minute).toISOString() })).statusCode).toBe(400);
+    // In range: validation passes and the device check (not edge-enabled) answers.
+    expect((await scan({ scannedAt: new Date(Date.now() - 7 * 24 * 60 * minute).toISOString() })).statusCode).toBe(422);
+  });
+
+  it('edge-scans counts the rate limit per device key behind the shared gateway address', async () => {
+    const [{ apiKey: first }, { apiKey: second }] = [await createTestClientDevice(), await createTestClientDevice()];
+    const scan = (apiKey: string) => app.inject({
+      method: 'POST', url: '/api/mobile-placement/edge-scans', headers: { 'x-client-key': apiKey }, payload: {}
+    });
+    for (let n = 0; n < 120; n++) expect((await scan(first)).statusCode).toBe(400);
+    expect((await scan(first)).statusCode).toBe(429);
+    expect((await scan(second)).statusCode).toBe(400);
+  });
+
+  it('mobile local data versions are rate limited per device key', async () => {
+    const [{ apiKey: first }, { apiKey: second }] = [await createTestClientDevice(), await createTestClientDevice()];
+    const versions = (apiKey: string) => app.inject({ url: '/api/kiosk/mobile-local-data/versions', headers: { 'x-client-key': apiKey } });
+    for (let n = 0; n < 60; n++) expect((await versions(first)).statusCode).toBe(200);
+    expect((await versions(first)).statusCode).toBe(429);
+    expect((await versions(second)).statusCode).toBe(200);
+  });
+
 });

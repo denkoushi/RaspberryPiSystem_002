@@ -11,12 +11,12 @@ import type { FastifyInstance } from 'fastify';
 const unzip = promisify(gunzip);
 
 export async function registerMobileLocalDataRoutes(app: FastifyInstance, deps: Pick<KioskRouteDeps, 'requireClientDevice'>) {
-  app.get('/kiosk/mobile-local-data/versions', { config: { rateLimit: false } }, async (request, reply) => {
+  app.get('/kiosk/mobile-local-data/versions', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
     reply.header('Cache-Control', 'private, no-store');
     return getMobileDataVersions();
   });
-  app.get('/kiosk/mobile-local-data/:dataset', { config: { rateLimit: false, compress: false } }, async (request, reply) => {
+  app.get('/kiosk/mobile-local-data/:dataset', { config: { rateLimit: { max: 30, timeWindow: '1 minute' }, compress: false } }, async (request, reply) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
     const { dataset } = z.object({ dataset: z.enum(['purchase', 'schedule']) }).parse(request.params);
     const { version } = z.object({ version: z.string().optional() }).parse(request.query);

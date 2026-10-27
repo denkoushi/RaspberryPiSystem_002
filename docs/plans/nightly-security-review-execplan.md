@@ -93,6 +93,9 @@ You can see it working when, the morning after a deploy, a dated report exists i
 - Decision: the morning check reads only the schema-validated JSON report, never free text written by the model.
   Rationale: Claude has tools, so Claude is the component that injected instructions could actually misuse; schema validation limits each field to a bounded string, and Claude treats every field as data.
   Date/Author: 2026-10-26 / Claude.
+- Decision: act on the three medium code findings from the 2026-10-28 report in one small fix. The mobile local data reads and the edge scan route get explicit per-device rate limits. Edge scans are counted per device key, because every device reaches the API through the shared gateway address. Edge scans also bound the order number length and accept a scan time only within the edge agent's queue window.
+  Rationale: the reviewer found these routes with no rate limit and with unbounded inputs. The edge agent keeps a scan and retries it after HTTP 429, so the limit cannot drop scans.
+  Date/Author: 2026-10-28 / Claude.
 
 ## Outcomes & Retrospective
 
