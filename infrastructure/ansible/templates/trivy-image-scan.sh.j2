@@ -40,7 +40,7 @@ for image_type in api web; do
   done
 done
 
-{% raw %}if [[ ${#IMAGES[@]} -eq 0 ]]; then{% endraw %}
+if [[ {{ '${#' }}IMAGES[@]} -eq 0 ]]; then
   echo "[$TIMESTAMP] No Docker images found. Skipping image scan." >> "${LOG_FILE}"
   exit 0
 fi
