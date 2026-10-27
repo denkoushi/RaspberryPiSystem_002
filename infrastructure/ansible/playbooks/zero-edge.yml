@@ -21,6 +21,17 @@
       no_log: true
 
   tasks:
+    # 旧 haizen-agent が残っているとスキャナを奪い合うため、先に止める。
+    - name: Discover services before retiring the old scanner agent
+      ansible.builtin.service_facts:
+
+    - name: Stop and disable the old haizen-agent
+      ansible.builtin.systemd:
+        name: haizen-agent.service
+        enabled: false
+        state: stopped
+      when: "'haizen-agent.service' in ansible_facts.services"
+
     - name: Install evdev from Debian packages
       ansible.builtin.apt:
         name: python3-evdev

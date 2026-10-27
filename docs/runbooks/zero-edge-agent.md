@@ -6,31 +6,34 @@ Pi Zero W / Zero 2 WにPython 3.9以上のRaspberry Pi OS、SSH、ネットワ�
 サーバー側のedge-scans APIが利用できることを確認し、端末キーに棚を割り当て、edge利用を有効化します。
 heartbeatのclientIdも同じ端末の`ClientStatus`として登録されるようサーバー側の端末設定を揃えます。
 
-`infrastructure/ansible/inventory-zero-edge.yml`の`all.children.zero_edge.hosts: {}`を次の形に置き換え、端末を追加します。
-標準fleet用inventoryとは分離し、`clients`配下には入れません。
+端末の一覧は、Pi5 の `/opt/RaspberryPiSystem_002/infrastructure/ansible/inventory-zero-edge-hosts.yml`
+（git 管理外、権限 0600）に書きます。共通の `inventory-zero-edge.yml` はグループと変数だけを持ち、端末を書きません。
+標準 fleet 用の `inventory.yml` には入れません（`scripts/deploy/standard-ansible-release.py` が server/kiosk/signage 以外の端末を拒否するため）。
 
 ```yaml
-hosts:
-  zero-edge-1:
-    ansible_host: 192.0.2.10
-    ansible_user: pi
-    status_agent_client_id: zero-edge-1
-    zero_edge_client_key: "{{ vault_zero_edge_client_key }}"
+all:
+  children:
+    zero_edge:
+      hosts:
+        zero-edge-1:
+          ansible_host: 100.x.y.z        # Tailscale のアドレス
+          ansible_user: pi
+          status_agent_client_id: zero-edge-1
+          status_agent_location: "棚スキャナ 1"
+          zero_edge_client_key: "<端末キー>"
 ```
 
-端末専用Vault（`host_vars/zero-edge-1/vault.yml`）に`vault_zero_edge_client_key`を暗号化保存します。
-このキーはスキャンとstatus-agentの両方で使用します。平文キーをinventoryやgitへ置かないでください。
-URLは共通の`api_base_url`から取得し、スキャン側だけ末尾`/api`を除去します。
-inventoryのTLS省略は既存clientsに合わせて`1`です。CAを信頼させた環境では`zero_edge_tls_skip_verify: "0"`にします。
+`zero_edge_client_key` は管理画面の端末キーです。スキャンと status-agent の両方で使います。git には置きません。
+`status_agent_client_id` は `zero-edge-` で始めます。サーバーの死活監視はこの名前の端末だけを見ます。
+URL は共通の `api_base_url` から取り、スキャン側だけ末尾 `/api` を外します。TLS 検証の省略は既存 clients に合わせて `1` です。
 
-`<n>`は追加した端末番号に置き換えます。両inventoryを読み込み、共通の`group_vars/all.yml`にある
-`server_ip` → `server_base_url` → `api_base_url`を解決します。
-
-対象SHAのCI成功と本番実行の承認を確認してから、コントローラーの`infrastructure/ansible`で実行します。
+対象 SHA が main にあり CI が成功していることを確かめてから、Pi5 の `infrastructure/ansible` で実行します。
 
 ```sh
-ansible-playbook -i inventory.yml -i inventory-zero-edge.yml playbooks/zero-edge.yml --limit "zero-edge-<n>"
+ansible-playbook -i inventory.yml -i inventory-zero-edge.yml -i inventory-zero-edge-hosts.yml playbooks/zero-edge.yml --limit "zero-edge-<n>"
 ```
+
+旧 `haizen-agent.service` が残っていれば止めて無効にします。
 
 このplaybookはPythonファイル・設定・unitのみをコピーし、リポジトリをcloneしません。
 evdevとNTPを準備し、スキャナーserviceと毎分のheartbeat timerを有効化します。

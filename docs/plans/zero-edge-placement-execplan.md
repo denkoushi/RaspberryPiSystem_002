@@ -49,7 +49,9 @@ The tests must show the following. An older `placedAt` arriving after a newer on
 - [x] (2026-10-27) Survey, production DB read, and owner decisions.
 - [x] (2026-10-27) Milestone 1: API (PR A) implemented locally: newest-wins placement, conflicting branch replacement, authenticated edge scans, permanent failure notices, and regression tests. Not committed, pushed, or merged; integrationPending.
 - [x] (2026-10-27) Milestone 1 validation from `apps/api`: `npx vitest run src/services/mobile-placement src/routes/__tests__/mobile-placement-branch-delete.test.ts` passed (21 files, 299 tests); `npx eslint src/services/mobile-placement src/routes/mobile-placement` passed; `npx --offline --prefix "$PWD" tsc -p tsconfig.build.json --noEmit` passed. Missing workspace dependency build outputs were generated locally; explicit npm prefix was needed to resolve the installed TypeScript compiler without a registry request.
-- [ ] Milestone 2: agent + Ansible + inventory (PR B).
+- [x] (2026-10-27) Milestone 1 merged as #2334 (1997395c) and deployed to Pi5 (run 20261027-062818-6c0a3d).
+- [x] (2026-10-27) Milestone 2 implemented: `clients/zero-edge-agent`, `infrastructure/ansible/playbooks/zero-edge.yml`, `infrastructure/ansible/inventory-zero-edge.yml`, heartbeat pattern `zero-edge-`. Agent tests 67 passed. Not yet verified on a device.
+- [ ] Milestone 2: run the playbook on zero2w-tanaban01 (Zero 2 W) and confirm a scan reaches the server.
 - [ ] Milestone 3: removal + UI + docs (PR C).
 
 ## Surprises & Discoveries
@@ -58,6 +60,8 @@ The tests must show the following. An older `placedAt` arriving after a newer on
 - Review of milestone 1 (2026-10-27): the server replaces any placedAt older than 7 days or more than 5 minutes ahead with the arrival time, so a device with an unsynchronised clock would win over newer records. The milestone 2 agent must not record scans until the clock is synchronised (Pi Zero has no RTC), and must drop queued scans older than 7 days. The edge route returns 400 for a malformed body; the agent must treat 400 and 422 as permanent and only resend on network errors and 5xx.
 - A resend of a record that was first answered `stale` now answers `stale` again with the current branch, so the phone toast does not flip to 「置きました」. When two records have the same placedAt, the one that arrives later wins, both for the same branch and for 分配なし/番号付き replacement.
 - The old Ansible path git-clones the whole repository onto the device, which is too heavy for a Pi Zero W.
+- Review of milestone 2: python-evdev has no `set_clockid`, so the first draft would have crash-looped on the device; tests used loose mocks and passed. Fake devices are now strict.
+- Review of milestone 2: `scripts/deploy/standard-ansible-release.py` rejects any inventory host outside server/kiosk/signage when no `--limit` is given, so a `zero_edge` group in `inventory.yml` with a host would break `--print-plan` and `--full-fleet`. The group lives in the separate `inventory-zero-edge.yml`; device hosts go in a git-ignored fragment on Pi5.
 
 ## Decision Log
 

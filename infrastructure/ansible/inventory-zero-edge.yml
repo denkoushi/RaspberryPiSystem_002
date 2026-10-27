@@ -2,13 +2,8 @@ all:
   children:
     # 独立配備。clients 配下に入れず、zero-edge.yml --limit で更新する。
     zero_edge:
+      # 端末は Pi5 の git 管理外 inventory-zero-edge-hosts.yml に書く（docs/runbooks/zero-edge-agent.md）。
       hosts: {}
-      # hosts に追加する例:
-      #   zero-edge-1:
-      #     ansible_host: 192.0.2.10
-      #     ansible_user: pi
-      #     status_agent_client_id: zero-edge-1
-      #     zero_edge_client_key: "{{ vault_zero_edge_client_key }}"
       vars:
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3
