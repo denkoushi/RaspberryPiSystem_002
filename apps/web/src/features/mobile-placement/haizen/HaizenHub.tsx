@@ -52,7 +52,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const putInFlight = useRef(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const hasPlaceSlip = Boolean(placeSlip?.number.trim());
-  const { setOrderBarcode, selectShelf } = mp;
+  const { setOrderBarcode } = mp;
   const knownBranches = hasPlaceSlip && mp.orderBarcode === placeSlip?.number && !branches.isError && !branches.isLoading && !branches.isFetching
     ? branches.data?.branches : undefined;
   const selectedBranch = knownBranches?.find((branch) => branch.branchNo === selectedBranchNo);
@@ -66,12 +66,11 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     const onlyNone = knownBranches.length === 1 && knownBranches[0].branchNo === 0;
     if (selectedBranchNo !== null && (selectedBranchNo === 0 ? hasNumbered : hasNone)) {
       setSelectedBranchNo(onlyNone ? 0 : null);
-      selectShelf('');
     } else if (!initializedBranch.current && selectedBranchNo === null && onlyNone) {
       setSelectedBranchNo(0);
     }
     initializedBranch.current = true;
-  }, [knownBranches, placeSlip, selectedBranchNo, hasNumbered, hasNone, selectShelf]);
+  }, [knownBranches, placeSlip, selectedBranchNo, hasNumbered, hasNone]);
   useEffect(() => {
     if (!placeToast) return;
     const timer = window.setTimeout(() => setPlaceToast(null), 3000);
@@ -81,7 +80,8 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     setPlaceSlip({ kind, number: number.trim() });
     setScannedAt(new Date().toISOString());
     setSelectedBranchNo(selection?.branchNo ?? null); initializedBranch.current = false;
-    mp.selectShelf(selection?.shelfCode ?? ''); retakeSelection.current = null;
+    if (selection) mp.selectShelf(selection.shelfCode);
+    retakeSelection.current = null;
   };
   const put = async () => {
     if (putInFlight.current || !placeSlip?.number.trim() || selectedBranchNo === null || !mp.shelfCode.trim() || selectedBranch?.shelfCodeRaw === mp.shelfCode) return;
@@ -95,7 +95,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
       setPlaceToast(result.status === 'sent'
         ? `分配${result.response.branchState.branchNo === 0 ? 'なし' : result.response.branchState.branchNo}を${result.response.action === 'unchanged' ? '確認しました' : result.response.action === 'moved' || (!result.response.action && selectedBranch) ? '移しました' : '置きました'}`
         : result.status === 'pending' ? `スマホに保存しました（未送信 ${result.pendingCount}件）` : '要確認に保存しました');
-      setPlaceSlip(null); mp.selectShelf(''); setSelectedBranchNo(null);
+      setPlaceSlip(null); setSelectedBranchNo(null);
     } finally { putInFlight.current = false; setPutting(false); }
   };
   const toast = tab === 'place' ? placeToast : flow.toast;
@@ -120,9 +120,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   ] as const;
   const cfg = tab === 'place' ? !hasPlaceSlip
       ? { label: '票を読む', color: colors.shelf, action: () => mp.setScanField(placeSlip?.kind === 'po' ? 'placePurchaseOrder' : 'transferOrder') }
-      : selectedBranchNo === null ? { label: 'スタンプの分配を選ぶ', color: colors.shelf, action: () => undefined }
       : selectedBranch?.shelfCodeRaw === mp.shelfCode ? { label: '今と同じ棚です', color: colors.shelf, action: () => undefined }
-      : !mp.shelfCode.trim() ? { label: '棚の写真を選ぶ', color: colors.shelf, action: () => setSheet('shelves') }
       : { label: selectedBranch ? 'ここへ移す' : 'ここに置く', color: colors.shelf, action: () => void put() }
     : !mp.transferOrder.trim() ? { label: '移動票を読む', color: colors.slip, action: () => mp.setScanField('transferOrder') }
     : flow.result === 'ok' ? { label: '次を照合', color: colors.ink, action: () => { clearActual(); mp.setTransferOrder(''); mp.setTransferPart(''); } }
@@ -165,7 +163,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
         {hasPlaceSlip && <div className="flex items-center gap-2 rounded-xl border border-[var(--hp-line)] bg-[var(--hp-panel)] py-0.5 pl-2.5 pr-1">
           <div className="flex min-w-0 flex-1 items-baseline gap-2"><p className={`shrink-0 whitespace-nowrap text-[13px] font-bold ${hp.muted}`}>{placeSlip?.kind === 'po' ? '現品票' : '移動票'}</p>
             <p className="break-all font-mono text-2xl font-bold">{placeSlip?.number}</p></div>
-          <button type="button" aria-label="読み直す" className="h-8 w-8 shrink-0 rounded-lg border-0 bg-transparent text-lg text-[var(--hp-ink2)]" onClick={() => { setPlaceSlip(null); setSelectedBranchNo(null); mp.selectShelf(''); }}>×</button>
+          <button type="button" aria-label="読み直す" className="h-8 w-8 shrink-0 rounded-lg border-0 bg-transparent text-lg text-[var(--hp-ink2)]" onClick={() => { setPlaceSlip(null); setSelectedBranchNo(null); }}>×</button>
         </div>}
         <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
           <HaizenShelfPhotoList key={`${placeSlip?.number}:${selectedBranchNo}:${branchSelectionVersion}:${previousShelfCodes.join()}`} compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
@@ -201,7 +199,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
           {[0, 1, 2, 3, 4, 5].map((branchNo) => <button key={branchNo} type="button" aria-pressed={selectedBranchNo === branchNo}
             disabled={branchNo === 0 ? hasNumbered : hasNone}
             className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-lg border border-[var(--hp-line)] bg-[var(--hp-panel)] px-1.5 text-[15px] font-extrabold leading-none aria-pressed:border-[var(--hp-shelf)] aria-pressed:bg-[color-mix(in_srgb,var(--hp-panel)_70%,var(--hp-shelf))] disabled:opacity-30"
-            onClick={() => { setSelectedBranchNo(branchNo); setBranchSelectionVersion((value) => value + 1); mp.selectShelf(''); }}>
+            onClick={() => { setSelectedBranchNo(branchNo); setBranchSelectionVersion((value) => value + 1); }}>
             分配{branchNo === 0 ? 'なし' : branchNo}
           </button>)}
         </div>
