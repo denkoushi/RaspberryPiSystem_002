@@ -302,6 +302,13 @@
 - 配膳の場所(`/kiosk/inventory/haizen`)と部品検索は「枝」「枝番」を「分配」と表示し、棚番号を出さない(棚マスタに無い棚だけ番号を出す)。配膳タブの手入力から「棚番」欄を削除した。
 - 検証: Webの `src/features/mobile-placement src/pages/kiosk` は751件成功、APIの `src/services/mobile-placement` と `mobile-placement-branch-delete.test.ts` は205件成功。両パッケージのlint・型チェック。モックAPIでスマホ幅の画面を操作し、移動・分配なしの自動選択を確認。本番反映・実機検証は未実施。
 
+### 2026-10-27: 横向き撮影の写真の向き
+
+- 原因: Android Chromeの棚写真で、画面とカメラ実フレームの縦横が一致しない場合に、補正せずcanvasへ描画していた。
+- 対処: 撮影時の画面方向とBitmap（非対応時はvideo）の寸法を比較し、不一致ならangle 270は時計回り、それ以外は反時計回りに90度回転。長辺上限800px・JPEG品質0.8とcanvas解放を維持。
+- 検証: 回転方向・描画座標・出力寸法、Bitmap優先とフォールバック・解放を単体テストで確認。共有パッケージのビルド後、mobile-placement全314件・Web lint・型チェックが成功。
+- 実機未確認: 修正後のAndroid Chromeでの縦持ち・左右横持ち撮影と保存画像の確認、本番反映は未実施。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`

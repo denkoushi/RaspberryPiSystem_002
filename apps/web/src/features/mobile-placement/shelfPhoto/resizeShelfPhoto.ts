@@ -1,15 +1,37 @@
 export type ShelfPhotoData = { contentType: 'image/jpeg'; dataBase64: string };
 
-export function encodeShelfPhoto(source: CanvasImageSource, width: number, height: number): ShelfPhotoData {
-  if (!width || !height) throw new Error('写真を処理できませんでした');
+export type ShelfPhotoOrientation = { portrait: boolean; angle?: number };
+
+// Keep orientation decisions and drawing geometry independent of browser state.
+export function shelfPhotoDrawPlan(width: number, height: number, orientation?: ShelfPhotoOrientation) {
+  const mismatch = orientation && width !== height && (height > width) !== orientation.portrait;
+  const rotation = mismatch ? (orientation.angle === 270 ? Math.PI / 2 : -Math.PI / 2) : 0;
   const scale = Math.min(1, 800 / Math.max(width, height));
+  const drawWidth = Math.max(1, Math.round(width * scale));
+  const drawHeight = Math.max(1, Math.round(height * scale));
+  return {
+    width: rotation ? drawHeight : drawWidth,
+    height: rotation ? drawWidth : drawHeight,
+    drawWidth, drawHeight, rotation,
+    translateX: rotation > 0 ? drawHeight : 0,
+    translateY: rotation < 0 ? drawWidth : 0
+  };
+}
+
+export function encodeShelfPhoto(source: CanvasImageSource, width: number, height: number, orientation?: ShelfPhotoOrientation): ShelfPhotoData {
+  if (!width || !height) throw new Error('写真を処理できませんでした');
+  const plan = shelfPhotoDrawPlan(width, height, orientation);
   const canvas = document.createElement('canvas');
   try {
-    canvas.width = Math.max(1, Math.round(width * scale));
-    canvas.height = Math.max(1, Math.round(height * scale));
+    canvas.width = plan.width;
+    canvas.height = plan.height;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('写真を処理できませんでした');
-    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    if (plan.rotation) {
+      ctx.translate(plan.translateX, plan.translateY);
+      ctx.rotate(plan.rotation);
+    }
+    ctx.drawImage(source, 0, 0, plan.drawWidth, plan.drawHeight);
     return { contentType: 'image/jpeg', dataBase64: canvas.toDataURL('image/jpeg', 0.8).split(',')[1] };
   } finally {
     canvas.width = 0;
