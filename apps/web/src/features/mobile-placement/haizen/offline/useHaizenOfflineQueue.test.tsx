@@ -3,6 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { registerOrderPlacement } from '../../../../api/client';
+import { api } from '../../../../api/http';
+import { resetMobileConnectivityForTests } from '../../connectivity';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
 
 import { createHaizenOfflineQueueStore } from './haizenOfflineQueueStore';
@@ -11,6 +13,7 @@ import { useHaizenOfflineQueue } from './useHaizenOfflineQueue';
 import type { ReactNode } from 'react';
 
 vi.mock('../../../../api/client', () => ({ registerOrderPlacement: vi.fn() }));
+vi.mock('../../../../api/http', () => ({ api: { get: vi.fn() } }));
 const record = { clientRecordId: 'efecf674-c951-4fce-8db2-86dc1f24e718', slipKind: 'purchase_order' as const,
   number: '4501238876', shelfCode: '外-1', scannedAt: '2026-10-23T00:00:00.000Z' };
 const success = { event: { id: 'event' }, branchState: { branchNo: 1 } } as Awaited<ReturnType<typeof registerOrderPlacement>>;
@@ -24,11 +27,27 @@ function mount(store = createHaizenOfflineQueueStore()) {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+  window.dispatchEvent(new Event('online'));
   vi.mocked(registerOrderPlacement).mockResolvedValue(success);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('haizen offline queue', () => {
+  it('flushes pending placements after the background probe recovers without an online event', async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.get).mockResolvedValue({ status: 200 });
+    vi.mocked(registerOrderPlacement).mockRejectedValueOnce(new Error('network'));
+    const { result, store } = mount();
+    await act(async () => { await result.current.submit(record); });
+    expect(result.current.offline).toBe(true);
+    expect(result.current.pending).toHaveLength(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(result.current.offline).toBe(false);
+    expect(result.current.pending).toEqual([]);
+    expect(await store.list()).toEqual([]);
+    expect(registerOrderPlacement).toHaveBeenCalledTimes(2);
+  });
+
   it.each([new Error('Network Error'), { isAxiosError: true, code: 'ECONNABORTED' }])('enqueues no-response failures with the same replay identity', async (error) => {
     vi.mocked(registerOrderPlacement).mockRejectedValue(error);
     const { result, store } = mount();
@@ -36,7 +55,7 @@ describe('haizen offline queue', () => {
     expect(result.current.offline).toBe(true);
     expect(await store.list()).toEqual([{ ...record, status: 'pending' }]);
     expect(registerOrderPlacement).toHaveBeenCalledWith({ clientRecordId: record.clientRecordId, slipKind: record.slipKind,
-      manufacturingOrderBarcodeRaw: record.number, shelfCodeRaw: record.shelfCode, placedAt: record.scannedAt }, 8000);
+      manufacturingOrderBarcodeRaw: record.number, shelfCodeRaw: record.shelfCode, placedAt: record.scannedAt }, 3000);
   });
   it.each([undefined, 0, 5])('persists and resends branchNo %s, including legacy records', async (branchNo) => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
@@ -46,7 +65,7 @@ describe('haizen offline queue', () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     act(() => { window.dispatchEvent(new Event('online')); });
     await waitFor(() => expect(result.current.pending).toHaveLength(0));
-    expect(registerOrderPlacement).toHaveBeenCalledWith(expect.objectContaining({ branchNo, clientRecordId: record.clientRecordId }), 8000);
+    expect(registerOrderPlacement).toHaveBeenCalledWith(expect.objectContaining({ branchNo, clientRecordId: record.clientRecordId }), 3000);
   });
   it('puts 404 responses in needs_check with the server message', async () => {
     vi.mocked(registerOrderPlacement).mockRejectedValue(responseError(404));
@@ -89,9 +108,9 @@ describe('haizen offline queue', () => {
     expect(registerOrderPlacement).toHaveBeenCalledTimes(2);
     expect(result.current.pending.map((r) => r.clientRecordId)).toEqual(['b', 'c']);
   });
-  it('retries pending records every 30 seconds', async () => {
+  it('retries server errors every 30 seconds', async () => {
     vi.useFakeTimers();
-    vi.mocked(registerOrderPlacement).mockRejectedValueOnce(new Error('offline')).mockResolvedValue(success);
+    vi.mocked(registerOrderPlacement).mockRejectedValueOnce(responseError(503)).mockResolvedValue(success);
     const { result } = mount();
     await act(async () => { await result.current.submit(record); });
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });

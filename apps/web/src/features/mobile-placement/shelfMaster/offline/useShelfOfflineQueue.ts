@@ -2,14 +2,15 @@ import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 
-import { postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto } from '../../../../api/client';
+import { api } from '../../../../api/http';
+import { canUseMobileNetwork, mobileRequest, useMobileConnectivity } from '../../connectivity';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
 
 import { createShelfClientRecordId, shelfOfflineQueueStore } from './shelfOfflineQueueStore';
 
 import type { ShelfOfflineQueueStore, ShelfQueueRecord } from './shelfOfflineQueueStore';
 
-const connected = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+const shelfRequestTimeoutMs = 60_000;
 // Share serialization across the master and hub, including requests surviving a screen change.
 const queues = new WeakMap<ShelfOfflineQueueStore, {
   serial: Promise<void>;
@@ -26,6 +27,7 @@ function queueFor(store: ShelfOfflineQueueStore) {
 
 export function useShelfOfflineQueue(store: ShelfOfflineQueueStore = shelfOfflineQueueStore) {
   const client = useQueryClient();
+  const online = useMobileConnectivity();
   const [records, setRecords] = useState<ShelfQueueRecord[]>([]);
   const enqueue = useCallback(<T,>(operation: () => Promise<T>): Promise<T> => {
     const queue = queueFor(store);
@@ -40,18 +42,21 @@ export function useShelfOfflineQueue(store: ShelfOfflineQueueStore = shelfOfflin
   }, [store]);
 
   const send = useCallback(async (record: ShelfQueueRecord): Promise<'sent' | 'pending' | 'needs_check'> => {
-    if (!connected()) return 'pending';
+    if (!canUseMobileNetwork()) return 'pending';
     let current = record;
     try {
       try {
-        await postMobilePlacementShelfRegister({ shelfCodeRaw: current.shelfCodeRaw, displayLabel: current.displayLabel });
+        await mobileRequest(() => api.post('/mobile-placement/shelves', {
+          shelfCodeRaw: current.shelfCodeRaw, displayLabel: current.displayLabel
+        }, { timeout: shelfRequestTimeoutMs }), { timeoutMs: shelfRequestTimeoutMs });
       } catch (error) {
         // Only a saved registration success permits treating a duplicate as our own shelf.
         if (!(current.stage === 'registered' && isAxiosError(error) && error.response?.status === 409)) throw error;
       }
       current = { ...current, stage: 'registered' };
       await store.put(current);
-      await putMobilePlacementShelfPhoto(current.shelfCodeRaw, current.photo);
+      await mobileRequest(() => api.put(`/mobile-placement/shelves/${encodeURIComponent(current.shelfCodeRaw)}/photo`,
+        current.photo, { timeout: shelfRequestTimeoutMs }), { timeoutMs: shelfRequestTimeoutMs });
     } catch (error) {
       const response = isAxiosError(error) ? error.response : undefined;
       if (response && response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
@@ -91,7 +96,7 @@ export function useShelfOfflineQueue(store: ShelfOfflineQueueStore = shelfOfflin
     const onOnline = () => { void flush(); };
     window.addEventListener('online', onOnline);
     return () => { listeners.delete(setRecords); window.removeEventListener('online', onOnline); };
-  }, [flush, store]);
+  }, [flush, store, online]);
   useEffect(() => {
     if (!records.some((record) => record.status === 'pending')) return;
     const timer = window.setInterval(() => { void flush(); }, 30_000);

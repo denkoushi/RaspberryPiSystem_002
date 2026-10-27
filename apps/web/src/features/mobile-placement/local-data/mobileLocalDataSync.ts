@@ -1,27 +1,30 @@
+import { MOBILE_REQUEST_TIMEOUT_MS, mobileRequest } from '../connectivity';
+
 import { mobileLocalDataStore } from './mobileLocalDataStore';
 
 import type { MobileLocalDataStore } from './mobileLocalDataStore';
 import type { MobileDataVersions, PurchaseSnapshot, ScheduleSnapshot } from '@raspi-system/slip-match-core';
 
 const base = '/kiosk/mobile-local-data';
-const requestOptions = { kioskTelemetry: 'background', timeout: 180_000 } as const;
+const requestOptions = { kioskTelemetry: 'background', timeout: MOBILE_REQUEST_TIMEOUT_MS } as const;
+const snapshotTimeoutMs = 180_000;
 export const mobileDataApi = {
   async versions() {
     const { api } = await import('../../../api/http');
-    return (await api.get<MobileDataVersions>(`${base}/versions`, requestOptions)).data;
+    return (await mobileRequest(() => api.get<MobileDataVersions>(`${base}/versions`, requestOptions))).data;
   },
   async purchase(version?: string) {
     const { api } = await import('../../../api/http');
-    const response = await api.get<PurchaseSnapshot>(`${base}/purchase`, {
-      ...requestOptions, params: { version }, validateStatus: (status) => status === 200 || status === 304
-    });
+    const response = await mobileRequest(() => api.get<PurchaseSnapshot>(`${base}/purchase`, {
+      ...requestOptions, timeout: snapshotTimeoutMs, params: { version }, validateStatus: (status) => status === 200 || status === 304
+    }), { timeoutMs: snapshotTimeoutMs });
     return response.status === 304 ? null : response.data;
   },
   async schedule(version?: string) {
     const { api } = await import('../../../api/http');
-    const response = await api.get<ScheduleSnapshot>(`${base}/schedule`, {
-      ...requestOptions, params: { version }, validateStatus: (status) => status === 200 || status === 304
-    });
+    const response = await mobileRequest(() => api.get<ScheduleSnapshot>(`${base}/schedule`, {
+      ...requestOptions, timeout: snapshotTimeoutMs, params: { version }, validateStatus: (status) => status === 200 || status === 304
+    }), { timeoutMs: snapshotTimeoutMs });
     return response.status === 304 ? null : response.data;
   }
 };

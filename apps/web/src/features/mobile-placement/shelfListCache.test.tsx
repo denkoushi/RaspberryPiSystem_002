@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getMobilePlacementRegisteredShelves, getMobilePlacementShelfMachines } from '../../api/client';
 
+import { resetMobileConnectivityForTests } from './connectivity';
 import { HaizenShelfPhotoList } from './haizen/HaizenShelfPhotoPicker';
 import { getCachedRegisteredShelves, getCachedShelfMachines } from './shelfListCache';
 import { useRegisteredShelves } from './useRegisteredShelves';
@@ -15,10 +16,11 @@ const machines = { machines: ['DAD-3220'], landmarks: ['電気室'] };
 beforeEach(() => {
   vi.resetAllMocks(); localStorage.clear();
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+  window.dispatchEvent(new Event('online'));
   vi.mocked(getMobilePlacementRegisteredShelves).mockResolvedValue(shelves);
   vi.mocked(getMobilePlacementShelfMachines).mockResolvedValue(machines);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); onlineManager.setOnline(true); });
+afterEach(() => { resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); onlineManager.setOnline(true); });
 
 describe('shelf list cache', () => {
   it('stores the last successful lists and uses them on no-response failures', async () => {

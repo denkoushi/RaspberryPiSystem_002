@@ -1,11 +1,12 @@
 import { getMobilePlacementRegisteredShelves, getMobilePlacementShelfMachines } from '../../api/client';
 
+import { canUseMobileNetwork, mobileRequest } from './connectivity';
+
 type Shelves = Awaited<ReturnType<typeof getMobilePlacementRegisteredShelves>>;
 type Machines = Awaited<ReturnType<typeof getMobilePlacementShelfMachines>>;
 
 const SHELVES_KEY = 'mobile-placement-registered-shelves-v1';
 const MACHINES_KEY = 'mobile-placement-shelf-machines-v1';
-const REQUEST_TIMEOUT_MS = 5000;
 
 function readCache<T>(key: string, valid: (value: unknown) => value is T): T | undefined {
   try {
@@ -26,24 +27,14 @@ export const readCachedRegisteredShelves = () => readCache(SHELVES_KEY, validShe
 export const readCachedShelfMachines = () => readCache(MACHINES_KEY, validMachines);
 
 async function withShelfCache<T>(key: string, fetch: () => Promise<T>, cached: T | undefined, refresh: boolean): Promise<T> {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (!canUseMobileNetwork()) {
     if (cached !== undefined) return cached;
     throw new Error('Shelf list unavailable offline');
   }
   const update = async () => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const value = await Promise.race([
-        fetch(),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('Shelf list request timed out')), REQUEST_TIMEOUT_MS);
-        })
-      ]);
-      try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Keep the live result if storage is full. */ }
-      return value;
-    } finally {
-      clearTimeout(timer);
-    }
+    const value = await mobileRequest(fetch);
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Keep the live result if storage is full. */ }
+    return value;
   };
   if (cached !== undefined && !refresh) {
     void update().catch(() => {});
