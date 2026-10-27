@@ -40,6 +40,7 @@ test('IndexedDB snapshot replacement is atomic, preserves ordering, and recovers
       await store.replace({ purchase: { ...purchase!, version: 'p2' }, schedule: { ...schedule, version: 's2' } });
     } catch { rejected = true; } finally { IDBObjectStore.prototype.put = originalPut; }
     const afterFailure = await store.versions();
+    // A cleanly aborted replace keeps reads on the previous version.
     const fallback = await store.lookupPurchase('1234567890');
     // A fresh page/store still sees the full previous committed version after rollback.
     const reopened = createMobileLocalDataStore(name);
@@ -52,7 +53,7 @@ test('IndexedDB snapshot replacement is atomic, preserves ordering, and recovers
   expect(result.initial).toMatchObject({ ok: true, reason: 'match' });
   expect(result.rejected).toBe(true);
   expect(result.afterFailure).toMatchObject({ purchase: { version: 'p1' }, schedule: { version: 's1' } });
-  expect(result.fallback).toBeNull();
+  expect(result.fallback?.rows).toHaveLength(1);
   expect(result.retained?.rows).toHaveLength(1);
   expect(result.replaced?.rows).toEqual([]);
   expect(result.native).toMatchObject({ fseiban: 'FSNOPART', fseibanMatch: 'exact' });
