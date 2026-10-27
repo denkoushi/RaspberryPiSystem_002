@@ -24,6 +24,19 @@ async function findReplay(clientRecordId: string, db: Prisma.TransactionClient =
       manufacturingOrderBarcodeRaw: event.manufacturingOrderBarcodeRaw, branchNo: event.branchNo
     } }
   });
+  // 初回に古い記録と判定された再送は、同じく stale と今の枝を返す（初回の応答を再現する）。
+  const branchFilter = event.branchNo === 0 ? { gt: 0 } : 0;
+  const newerAtFirst = await db.orderPlacementEvent.findFirst({ where: {
+    manufacturingOrderBarcodeRaw: event.manufacturingOrderBarcodeRaw, id: { not: event.id },
+    createdAt: { lt: event.createdAt }, placedAt: { gt: event.placedAt },
+    OR: [{ branchNo: event.branchNo }, { branchNo: branchFilter }]
+  }, orderBy: { placedAt: 'desc' } });
+  const current = newerAtFirst && (state ?? await db.orderPlacementBranchState.findFirst({
+    where: { manufacturingOrderBarcodeRaw: event.manufacturingOrderBarcodeRaw, branchNo: newerAtFirst.branchNo }
+  }));
+  if (current) {
+    return { event, branchState: current, resolvedRowId: current.csvDashboardRowId, action: 'stale' as const };
+  }
   // 再送までの間に枝が削除されていても、登録済みとして応答しスマホ側の再送を止める。
   const branchState = state ?? { id: '', branchNo: event.branchNo, shelfCodeRaw: event.shelfCodeRaw };
   return { event, branchState, resolvedRowId: event.csvDashboardRowId, action: event.actionType === 'MOVE_BRANCH' ? 'moved' as const : 'created' as const };
@@ -140,16 +153,25 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
       const states = await tx.orderPlacementBranchState.findMany({
         where: { manufacturingOrderBarcodeRaw: manufacturingOrderStored }
       });
-      if (states.some((state) => input.branchNo === 0 ? state.branchNo > 0 : state.branchNo === 0)) {
-        throw new ApiError(409, '分配なしと番号付きの分配は併用できません', undefined, 'ORDER_PLACEMENT_BRANCH_CONFLICT');
-      }
+      const conflicts = states.filter((state) => input.branchNo === 0 ? state.branchNo > 0 : state.branchNo === 0);
+      const conflictEvents = await Promise.all(conflicts.map(async (state) => ({
+        state,
+        placedAt: state.lastEventId
+          ? (await tx.orderPlacementEvent.findUniqueOrThrow({ where: { id: state.lastEventId } })).placedAt
+          : state.updatedAt
+      })));
+      const newestConflict = conflictEvents.sort((a, b) => b.placedAt.getTime() - a.placedAt.getTime())[0];
+      const staleConflict = newestConflict && placedAt < newestConflict.placedAt;
       if (input.branchNo !== undefined) {
         const state = states.find((item) => item.branchNo === input.branchNo);
         if (state) {
-          if (state.shelfCodeRaw === shelfStored && !input.clientRecordId) {
-            const event = state.lastEventId
-              ? await tx.orderPlacementEvent.findUniqueOrThrow({ where: { id: state.lastEventId } })
-              : { id: '', clientDeviceId: input.clientDeviceId, shelfCodeRaw: state.shelfCodeRaw,
+          const lastEvent = state.lastEventId
+            ? await tx.orderPlacementEvent.findUniqueOrThrow({ where: { id: state.lastEventId } })
+            : null;
+          const stale = placedAt < (lastEvent?.placedAt ?? state.updatedAt);
+          if (!stale && state.shelfCodeRaw === shelfStored && !input.clientRecordId) {
+            const event = lastEvent
+              ?? { id: '', clientDeviceId: input.clientDeviceId, shelfCodeRaw: state.shelfCodeRaw,
                 manufacturingOrderBarcodeRaw: state.manufacturingOrderBarcodeRaw,
                 csvDashboardRowId: state.csvDashboardRowId, branchNo: state.branchNo,
                 actionType: 'MOVE_BRANCH', placedAt: state.updatedAt };
@@ -162,6 +184,9 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
             csvDashboardRowId: state.csvDashboardRowId,
             scheduleSnapshot: (state.scheduleSnapshot ?? {}) as Prisma.InputJsonValue, actionType: 'MOVE_BRANCH'
           } });
+          if (stale) {
+            return { event, branchState: state, resolvedRowId: state.csvDashboardRowId, action: 'stale' as const };
+          }
           const branchState = await tx.orderPlacementBranchState.update({
             where: { id: state.id }, data: { shelfCodeRaw: shelfStored, lastEventId: event.id }
           });
@@ -198,6 +223,14 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
           actionType: 'CREATE_BRANCH'
         }
       });
+
+      if (staleConflict) {
+        return { event: createdEv, branchState: newestConflict.state,
+          resolvedRowId: newestConflict.state.csvDashboardRowId, action: 'stale' as const };
+      }
+      if (conflicts.length > 0) {
+        await tx.orderPlacementBranchState.deleteMany({ where: { id: { in: conflicts.map((state) => state.id) } } });
+      }
 
       const createdState = await tx.orderPlacementBranchState.create({
         data: {
