@@ -1,21 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { encodeShelfPhoto, shelfPhotoDrawPlan } from './resizeShelfPhoto';
+import { encodeShelfPhoto, shelfPhotoDrawPlan, shelfPhotoRotation } from './resizeShelfPhoto';
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('shelf photo orientation', () => {
   it.each([
-    [1280, 960, true, 90, -1, 600, 800],
-    [960, 1280, false, 90, -1, 800, 600],
-    [960, 1280, false, 270, 1, 800, 600],
-    [1280, 960, true, 270, 1, 600, 800],
-    [960, 1280, false, undefined, -1, 800, 600],
+    [1280, 960, true, 90, 1, 600, 800],
+    [960, 1280, false, 90, 1, 800, 600],
+    [960, 1280, false, 270, -1, 800, 600],
+    [1280, 960, true, 270, -1, 600, 800],
+    [960, 1280, false, undefined, 1, 800, 600],
     [1280, 960, false, 90, 0, 800, 600],
+    [1280, 960, false, 270, 0, 800, 600],
+    [960, 1280, true, 90, 0, 600, 800],
+    [960, 1280, true, undefined, 0, 600, 800],
     [960, 1280, true, 270, 0, 600, 800],
     [400, 400, true, 90, 0, 400, 400],
-    [300, 400, false, 90, -1, 400, 300]
+    [300, 400, false, 90, 1, 400, 300]
   ])('plans %sx%s, portrait=%s, angle=%s', (width, height, portrait, angle, direction, outputWidth, outputHeight) => {
+    expect(shelfPhotoRotation(width, height, { portrait, angle })).toBe(direction * 90);
     const plan = shelfPhotoDrawPlan(width, height, { portrait, angle });
     expect(plan.width).toBe(outputWidth);
     expect(plan.height).toBe(outputHeight);
@@ -30,6 +34,11 @@ describe('shelf photo orientation', () => {
     expect(Math.max(...ys)).toBeCloseTo(outputHeight);
   });
 
+  it('does not rotate file images without a screen orientation', () => {
+    expect(shelfPhotoRotation(960, 1280)).toBe(0);
+    expect(shelfPhotoDrawPlan(960, 1280).rotation).toBe(0);
+  });
+
   it.each([90, 270])('draws the rotated frame and releases the canvas (angle=%s)', (angle) => {
     const ctx = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() };
     const canvas = {
@@ -42,8 +51,8 @@ describe('shelf photo orientation', () => {
     vi.spyOn(document, 'createElement').mockReturnValue(canvas as unknown as HTMLCanvasElement);
     const source = {} as CanvasImageSource;
     expect(encodeShelfPhoto(source, 960, 1280, { portrait: false, angle }).dataBase64).toBe('PHOTO');
-    expect(ctx.translate).toHaveBeenCalledWith(angle === 270 ? 800 : 0, angle === 270 ? 0 : 600);
-    expect(ctx.rotate).toHaveBeenCalledWith(angle === 270 ? Math.PI / 2 : -Math.PI / 2);
+    expect(ctx.translate).toHaveBeenCalledWith(angle === 270 ? 0 : 800, angle === 270 ? 600 : 0);
+    expect(ctx.rotate).toHaveBeenCalledWith(angle === 270 ? -Math.PI / 2 : Math.PI / 2);
     expect(ctx.drawImage).toHaveBeenCalledWith(source, 0, 0, 600, 800);
     expect(canvas.toDataURL).toHaveBeenCalledWith('image/jpeg', 0.8);
     expect([canvas.width, canvas.height]).toEqual([0, 0]);
