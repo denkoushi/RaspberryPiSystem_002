@@ -1,5 +1,5 @@
 import { SHELF_DIRECTIONS, composeArea, type ShelfDirection } from '@raspi-system/shelf-layout-core';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useEffect, useRef, useState } from 'react';
 
@@ -8,12 +8,12 @@ import { Dialog } from '../../../../components/ui/Dialog';
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { HaizenIcon } from '../../haizen/HaizenIcon';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
-import { getCachedShelfMachines } from '../../shelfListCache';
 import { resizeShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
 import { ShelfPhotoCamera } from '../../shelfPhoto/ShelfPhotoCamera';
 import { haizenPhoneStyle, hp } from '../../ui/haizenPhoneTokens';
 import { useRegisteredShelves } from '../../useRegisteredShelves';
+import { useShelfMachines } from '../../useShelfMachines';
 import { useShelfOfflineQueue } from '../offline/useShelfOfflineQueue';
 import { clearShelfPhotoDraft, readShelfPhotoDraft, saveShelfPhotoDraft } from '../shelfPhotoDraft';
 
@@ -21,6 +21,7 @@ import type { RegisteredShelfEntryDto } from '../../registeredShelves';
 
 export function ShelfPhotoMaster({ onMessage }: { onMessage?: (message: string) => void }) {
   const query = useRegisteredShelves();
+  const machinesQuery = useShelfMachines();
   const queue = useShelfOfflineQueue();
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -62,11 +63,11 @@ export function ShelfPhotoMaster({ onMessage }: { onMessage?: (message: string) 
       </div>
     </Dialog>}
     <footer className={hp.dock}><button type="button" disabled={query.isLoading} className={`${hp.primary} bg-[var(--hp-shelf)]`} onClick={() => setEditing('new')}><span aria-hidden>＋</span>棚を追加</button></footer>
-    {editing && <ShelfPhotoForm shelf={editing === 'new' ? null : editing} shelves={occupiedShelves} submit={queue.submit} onClose={() => { if (editing === 'new') clearShelfPhotoDraft(); setEditing(null); }} onMessage={onMessage} />}
+    {editing && <ShelfPhotoForm shelf={editing === 'new' ? null : editing} shelves={occupiedShelves} machinesQuery={machinesQuery} submit={queue.submit} onClose={() => { if (editing === 'new') clearShelfPhotoDraft(); setEditing(null); }} onMessage={onMessage} />}
   </>;
 }
 
-function ShelfPhotoForm({ shelf, shelves, submit, onClose, onMessage }: { shelf: RegisteredShelfEntryDto | null; shelves: RegisteredShelfEntryDto[]; submit: ReturnType<typeof useShelfOfflineQueue>['submit']; onClose: () => void; onMessage?: (message: string) => void }) {
+function ShelfPhotoForm({ shelf, shelves, machinesQuery, submit, onClose, onMessage }: { shelf: RegisteredShelfEntryDto | null; shelves: RegisteredShelfEntryDto[]; machinesQuery: ReturnType<typeof useShelfMachines>; submit: ReturnType<typeof useShelfOfflineQueue>['submit']; onClose: () => void; onMessage?: (message: string) => void }) {
   const client = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const [draft] = useState(() => shelf ? null : readShelfPhotoDraft());
@@ -85,12 +86,6 @@ function ShelfPhotoForm({ shelf, shelves, submit, onClose, onMessage }: { shelf:
     if (shelf) return;
     saveShelfPhotoDraft({ machine, direction, memo });
   }, [shelf, machine, direction, memo]);
-  const machinesQuery = useQuery({
-    queryKey: mobilePlacementQueryKeys.shelfMachines,
-    queryFn: getCachedShelfMachines,
-    networkMode: 'always',
-    enabled: !createdCode
-  });
   const directions = ['北西', '北', '北東', '西', '', '東', '南西', '南', '南東'] as const;
   const registeredDirections = new Set(directions.filter((d) => shelves.some((s) => s.shelfCodeRaw === (d ? composeArea(machine, d) : machine))));
   const code = createdCode ?? (machine && direction !== null ? (direction ? composeArea(machine, direction) : machine) : '');
