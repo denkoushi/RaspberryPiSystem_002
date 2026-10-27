@@ -22,7 +22,7 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
   /** Loading or retry state between the chips and the grid. */ children?: ReactNode;
 }) {
   const [viewer, setViewer] = useState<RegisteredShelfEntryDto | null>(null);
-  const [filter, setFilter] = useState(previousShelfCodes.length ? 'previous' : 'all');
+  const [filter, setFilter] = useState(previousShelfCodes.length && (!selected || previousShelfCodes.includes(selected)) ? 'previous' : 'all');
   const machines = [...new Set(shelves.flatMap((s) => s.machineName ? [s.machineName] : []))].sort((a, b) => a.localeCompare(b, 'ja'));
   const filters = [...(previousShelfCodes.length ? [{ key: 'previous', label: '前回' }] : []), { key: 'all', label: '全部' },
     ...machines.map((name) => ({ key: `machine:${name}`, label: name }))];
@@ -54,9 +54,14 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
           {group.map((s) => <button key={s.shelfCodeRaw} type="button" aria-label={`棚 ${[s.machineName, s.direction, s.displayLabel].filter(Boolean).join(' ') || '写真'}`} aria-pressed={selected === s.shelfCodeRaw} disabled={disabled}
           className="relative overflow-hidden rounded-[14px] border-2 border-[var(--hp-line)] bg-[var(--hp-panel)] text-left aria-pressed:border-[var(--hp-shelf)]"
           onClick={() => selected === s.shelfCodeRaw ? (onView ?? setViewer)(s) : onSelect(s.shelfCodeRaw)}>
-          <ShelfPhoto shelf={s} label={s.direction || s.displayLabel || '棚'} className="aspect-[4/3] w-full" />
+          <span className="relative block">
+            <ShelfPhoto shelf={s} label={s.direction || s.displayLabel || '棚'} className="aspect-[4/3] w-full" />
+            {s.direction && <span className={`absolute inset-x-0 block bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.78))] pt-4 ${compact ? 'px-1.5 pb-1' : 'px-2 pb-1.5'}`}>
+              <b className={`block truncate font-mono text-[var(--hp-shelf)] ${compact ? 'text-sm' : 'text-lg'}`}>{s.direction}</b>
+            </span>}
+          </span>
           {s.shelfCodeRaw === previousShelfCodes[0] && <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-[11px] font-black text-[var(--hp-bg)]">前回</span>}
-          <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><b className={`block truncate font-mono text-[var(--hp-shelf)] ${compact ? 'text-sm' : 'text-lg'}`}>{s.direction || '　'}</b><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>
+          <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>
           {selected === s.shelfCodeRaw && <span className="block px-1.5 pb-1 text-[11px] text-[var(--hp-shelf)]">もう一度で拡大</span>}
         </button>)}
         </Fragment>)}

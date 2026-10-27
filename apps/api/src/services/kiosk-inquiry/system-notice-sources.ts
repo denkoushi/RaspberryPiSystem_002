@@ -24,7 +24,7 @@ export async function terminalNoticeLabel(clientId: string): Promise<string> {
   return device?.location?.trim() || (device?.name ? `${device.name}（${clientId}）` : clientId);
 }
 
-// Called only for stored alerts (or sanitized terminal/OS update recovery events), not a second alert policy.
+// Called for stored or deduped alerts (or sanitized terminal/OS update recovery events), not a second alert policy.
 export async function deliverTelemetryNotice(clientId: string, entry: ClientTelemetryLogEntry): Promise<void> {
   try {
     if (!isMonitoredClient(clientId, loadHeartbeatAlertConfig())) return;
@@ -45,6 +45,9 @@ export async function deliverTelemetryNotice(clientId: string, entry: ClientTele
       category === 'kiosk_ui_error' ? context.clientDeviceId ?? clientId : context.signal ?? 'unknown_signal', ...(network ? ['network'] : [])]);
     await deliverSystemNotice({
       key, title: `${label} ${subject}`,
+      ...(category === 'storage_health' && entry.level === 'ERROR'
+        && ['ext4_errors_recorded', 'kernel_storage_error', 'root_filesystem_read_only'].includes(String(context.signal))
+        ? { repeatMs: 60 * 60 * 1000 } : {}),
       body: category === 'terminal_agent_health' ? (context.signal === 'queue' ? `${subject}の送信が滞っています。` : `${subject}が応答しません。`)
         : category === 'os_update_health' ? (context.signal === 'os_security_update_failed' ? 'OSの安全更新を入れられませんでした。' : 'OSの安全更新が2週間以上入っていません。')
         : category === 'storage_health' ? storageText?.body ?? '保存装置の確認が必要です。'

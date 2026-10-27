@@ -14,8 +14,8 @@ const shelves: RegisteredShelfEntryDto[] = [
   { shelfCodeRaw: 'DAD-3220 南', isStructured: true, machineName: 'DAD-3220', direction: '南' },
   { shelfCodeRaw: '東-南-02', isStructured: true, areaId: 'east' }
 ];
-function mount(previousShelfCodes: string[] = []) {
-  const props = { shelves, previousShelfCodes, selected: '', loading: false, error: false, onRetry: vi.fn(), onSelect: vi.fn(), onClose: vi.fn(), onScan: vi.fn(), onMaster: vi.fn() };
+function mount(previousShelfCodes: string[] = [], selected = '') {
+  const props = { shelves, previousShelfCodes, selected, loading: false, error: false, onRetry: vi.fn(), onSelect: vi.fn(), onClose: vi.fn(), onScan: vi.fn(), onMaster: vi.fn() };
   render(<QueryClientProvider client={new QueryClient()}><HaizenShelfPhotoPicker {...props} /></QueryClientProvider>);
   return props;
 }
@@ -96,10 +96,34 @@ describe('photo shelf picker', () => {
     expect(screen.getByRole('heading', { name: '電気室 1棚' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'DAD-3220 2棚' })).not.toBeInTheDocument();
     const tile = screen.getByRole('button', { name: `棚 電気室${direction ? ` ${direction}` : ''}`, exact: true });
-    expect(tile.querySelector('b')?.textContent).toBe(direction ?? '　');
+    expect(tile.querySelector('b')?.textContent).toBe(direction);
     fireEvent.click(tile);
     const viewer = screen.getByRole('dialog', { name: '棚の写真を拡大' });
     expect(within(viewer).getByText(shelf.shelfCodeRaw)).toBeInTheDocument();
+  });
+
+  it.each(['', '東-南-02', 'DAD-3220 北'])('keeps the selected shelf visible on opening: %s', (selected) => {
+    mount(['東-南-02'], selected);
+    expect(screen.getByRole('button', { name: selected === 'DAD-3220 北' ? '全部' : '前回', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    if (selected) expect(screen.getByRole('button', { name: /^棚 /, pressed: true })).toBeInTheDocument();
+  });
+
+  it.each([false, true])('overlays direction on the photo and retains the separate display label (compact: %s)', (compact) => {
+    render(<HaizenShelfPhotoList shelves={[{ ...shelves[0], photoUpdatedAt: 'now' }, shelves[3]]} previousShelfCodes={[]} selected=""
+      loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} compact={compact} />);
+    const tile = screen.getByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' });
+    const direction = within(tile).getByText('北', { selector: 'b' });
+    const overlay = direction.parentElement;
+    const photo = within(tile).getByRole('img');
+    expect(photo.parentElement).toHaveClass('relative');
+    expect(overlay?.parentElement).toBe(photo.parentElement);
+    expect(overlay).toHaveClass('absolute', 'inset-x-0', 'bottom-0', 'bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.78))]');
+    expect(direction).toHaveClass('font-mono', 'truncate', 'text-[var(--hp-shelf)]', compact ? 'text-sm' : 'text-lg');
+    expect(tile.querySelectorAll('b')).toHaveLength(1);
+    const label = within(tile).getByText('ロボドリル01 南 上段');
+    expect(photo.parentElement).not.toContainElement(label);
+    expect(label.parentElement?.querySelector('b')).toBeNull();
+    expect(screen.getByRole('button', { name: '棚 写真' }).querySelector('.absolute')).toBeNull();
   });
 
   it('offers all shelves by default and retains QR and back controls', () => {

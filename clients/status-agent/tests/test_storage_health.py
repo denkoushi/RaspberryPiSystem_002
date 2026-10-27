@@ -87,6 +87,33 @@ class StorageHealthTest(unittest.TestCase):
         self.assertIn("Remounting filesystem read-only", logs[0]["context"]["raw"])
         self.assertNotIn("read-only switch", logs[0]["context"]["raw"])
 
+    def test_wifi_kernel_errors_are_not_storage_errors(self) -> None:
+        for line in (
+            "brcmfmac: mmc_submit_one: CMD53 sg block read failed -5",
+            "brcmfmac: mmc1: timeout waiting for hardware interrupt",
+            "brcmfmac: I/O error",
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(storage_health.evaluate_kernel_log(line, "journalctl -k", OBSERVED_AT), [])
+
+    def test_real_storage_errors_survive_benign_filter(self) -> None:
+        benign = (
+            "mmc0: host does not support reading read-only switch, assuming write-enable\n"
+            "brcmfmac: mmc_submit_one: CMD53 sg block read failed -5\n"
+        )
+        for line in (
+            "EXT4-fs error (device mmcblk0p2): ext4_validate_block_bitmap: Corrupt inode bitmap",
+            "EXT4-fs (mmcblk0p2): Filesystem failed CRC",
+            "mmc0: timeout waiting for hardware interrupt",
+            "I/O error, dev mmcblk0, sector 1234",
+        ):
+            with self.subTest(line=line):
+                logs = storage_health.evaluate_kernel_log(benign + line, "journalctl -k", OBSERVED_AT)
+                self.assertEqual(len(logs), 1)
+                self.assertEqual(logs[0]["level"], "ERROR")
+                self.assertEqual(logs[0]["context"]["signal"], "kernel_storage_error")
+                self.assertEqual(logs[0]["context"]["raw"], line)
+
     def test_kernel_log_since_follows_storage_health_interval(self) -> None:
         calls = []
 
