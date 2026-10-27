@@ -1,16 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { getMobilePlacementRegisteredShelves } from '../../api/client';
-
 import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
+import { getCachedRegisteredShelves } from './shelfListCache';
 
 /**
- * 部品配膳に登場した棚番の distinct 一覧（サーバ）。UI は失敗時リトライ可能。
+ * 登録済み棚一覧。取得できないときは端末の最後の成功結果を使う。
  */
 export function useRegisteredShelves() {
   return useQuery({
     queryKey: mobilePlacementQueryKeys.registeredShelves,
-    queryFn: getMobilePlacementRegisteredShelves,
+    queryFn: getCachedRegisteredShelves,
+    networkMode: 'always',
     staleTime: 60_000
   });
 }

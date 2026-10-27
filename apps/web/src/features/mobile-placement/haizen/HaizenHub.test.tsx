@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
+import { postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto, moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
+import { shelfOfflineQueueStore } from '../shelfMaster/offline/shelfOfflineQueueStore';
 import { useMobilePlacementPageState } from '../useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import { useRegisteredShelves } from '../useRegisteredShelves';
@@ -16,6 +17,7 @@ import type { HaizenHubSheet } from './HaizenHub';
 
 const mocks = vi.hoisted(() => ({ branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
 vi.mock('../../../api/client', () => ({
+  postMobilePlacementShelfRegister: vi.fn(), putMobilePlacementShelfPhoto: vi.fn(),
   moveOrderPlacementBranch: vi.fn(), registerOrderPlacement: vi.fn(),
   verifyMobilePlacementSlipMatch: vi.fn(), parseActualSlipImage: vi.fn(), getMobilePlacementShelfPhoto: vi.fn()
 }));
@@ -74,6 +76,7 @@ beforeEach(async () => {
   localStorage.clear();
   mocks.branches = []; mocks.branchError = false; mocks.branchLoading = false; mocks.branchFetching = false;
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+  for (const record of await shelfOfflineQueueStore.list()) await shelfOfflineQueueStore.remove(record.id);
   for (const record of await haizenOfflineQueueStore.list()) await haizenOfflineQueueStore.remove(record.clientRecordId);
   vi.mocked(registerOrderPlacement).mockResolvedValue({ branchState: { id: 'b1', branchNo: 1, shelfCodeRaw: 'A-03' }, event: { id: 'event1234' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
   vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: true, reason: 'match', expected: { fseiban: 'FS1', fhincd: 'PART1', partName: 'ブラケット' } });
@@ -82,6 +85,19 @@ beforeEach(async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Haizen hub', () => {
+  it('sends saved shelf registrations when opening the hub', async () => {
+    const photo = { contentType: 'image/jpeg' as const, dataBase64: '/9j/' };
+    await shelfOfflineQueueStore.put({ id: 'shelf', shelfCodeRaw: '電気室', displayLabel: null, photo,
+      createdAt: '2026-10-27T00:00:00Z', stage: 'unregistered', status: 'pending' });
+    vi.mocked(postMobilePlacementShelfRegister).mockResolvedValue({ shelf: { shelfCodeRaw: '電気室', isStructured: true } });
+    vi.mocked(putMobilePlacementShelfPhoto).mockResolvedValue({ photoUpdatedAt: 'now' });
+    mount();
+    await waitFor(() => expect(putMobilePlacementShelfPhoto).toHaveBeenCalledWith('電気室', photo));
+    expect(postMobilePlacementShelfRegister).toHaveBeenCalledWith({ shelfCodeRaw: '電気室', displayLabel: null });
+    await waitFor(async () => expect(await shelfOfflineQueueStore.list()).toEqual([]));
+    expect(registerOrderPlacement).not.toHaveBeenCalled();
+  });
+
   it('bottom row has four tabs, purchase navigates, and menu dismisses', () => {
     mount();
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
