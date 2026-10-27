@@ -2,10 +2,13 @@ import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { logger } from '../../lib/logger.js';
 import { InferenceDeferredError, type TextCompletionRequest } from '../inference/ports/text-completion.port.js';
 import { fingerprint, MATERIAL_BYTES, prepareChunks, redact } from './material.js';
-import { securityReviewChunkAnswerSchema, securityReviewReportSchema } from './report-schema.js';
+import { securityReviewChunkAnswerSchema, securityReviewReportSchema, type DeviceHealth } from './report-schema.js';
 import { retryDeadline, SecurityReviewService } from './security-review.service.js';
+
+vi.mock('../../lib/logger.js', () => ({ logger: { error: vi.fn() } }));
 
 let root: string;
 let current: Date;
@@ -14,8 +17,11 @@ const finding = { kind: 'security' as const, location: 'caddy:1', what: 'Repeate
   whyItMatters: 'Possible attack', severity: 'medium' as const, evidenceRef: 'security.txt:1' };
 const complete = vi.fn<(request: TextCompletionRequest) => Promise<typeof emptyAnswer>>();
 const clientErrors = vi.fn(async (_since: Date) => [] as { clientId: string; message: string; count: number; first: string; last: string }[]);
+const health: DeviceHealth = { attention: 'storage', storage: { open: [], last24h: [] },
+  ext4Errors: [{ clientId: 'terminal-a', device: 'health-only-device', count: 4, observedAt: '2026-10-25T20:00:00.000Z' }], power: [], offline: [] };
+const deviceHealth = vi.fn<(since: Date) => Promise<DeviceHealth>>();
 const wait = vi.fn(async (ms: number, _signal: AbortSignal) => { current = new Date(current.getTime() + ms); });
-function service() { return new SecurityReviewService({ dataDir: root, retryUntil: '06:55', completion: { complete }, clientErrors, now: () => current, wait }); }
+function service() { return new SecurityReviewService({ dataDir: root, retryUntil: '06:55', completion: { complete }, clientErrors, deviceHealth, now: () => current, wait }); }
 async function bundle(date = '2026-10-26', material = { security: 'security fixture\n', errors: 'error fixture\n', changes: 'diff --git a/app.ts b/app.ts\n+fixture\n' }) {
   const dir = path.join(root, 'bundles', date);
   await mkdir(dir, { recursive: true });
@@ -28,6 +34,8 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'security-review-test-'));
   current = new Date('2026-10-26T06:00:00+09:00');
   complete.mockReset().mockResolvedValue(emptyAnswer);
+  deviceHealth.mockReset().mockResolvedValue(health);
+  vi.mocked(logger.error).mockClear();
   clientErrors.mockClear(); wait.mockClear();
 });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
@@ -36,15 +44,18 @@ describe('Private security review', () => {
   it('reviews newest unreported material in priority order and writes only validated private JSON', async () => {
     await bundle('2026-10-25'); await bundle();
     const report = await run();
-    expect(report).toMatchObject({ date: '2026-10-26', status: 'ok', findings: [] });
+    expect(report).toMatchObject({ date: '2026-10-26', status: 'ok', deviceHealth: health, findings: [] });
     expect(report?.chunks.map(chunk => chunk.kind)).toEqual(['security', 'errors', 'changes']);
     expect(clientErrors).toHaveBeenCalledWith(new Date('2026-10-25T06:00:00+09:00'));
+    expect(deviceHealth).toHaveBeenCalledWith(new Date('2026-10-25T06:00:00+09:00'));
+    expect(JSON.stringify(complete.mock.calls)).not.toContain('health-only-device');
     for (const [request] of complete.mock.calls) {
       expect(request).toMatchObject({ useCase: 'security_review', background: true, maxTokens: 1200, temperature: 0, enableThinking: false, jsonOutput: true });
       expect(request.signal).toBeInstanceOf(AbortSignal);
     }
     const file = path.join(root, 'reports/2026-10-26.json');
     expect(securityReviewReportSchema.parse(JSON.parse(await readFile(file, 'utf8')))).toEqual(report);
+    expect(Object.keys(JSON.parse(await readFile(file, 'utf8'))).slice(0, 3)).toEqual(['date', 'status', 'deviceHealth']);
     expect((await stat(file)).mode & 0o777).toBe(0o600);
     expect((await stat(path.join(root, 'reports'))).mode & 0o777).toBe(0o700);
     expect(await run()).toMatchObject({ date: '2026-10-25' });
@@ -136,6 +147,8 @@ describe('Private security review', () => {
     await bundle(); complete.mockRejectedValue(error);
     const report = await run();
     expect(report?.status).toBe('skipped');
+    expect(report?.deviceHealth).toEqual(health);
+    expect(JSON.parse(await readFile(path.join(root, 'reports/2026-10-26.json'), 'utf8')).deviceHealth).toEqual(health);
     expect(report?.reason).toMatch(/admission_deferred|model_unavailable/);
     expect(complete).toHaveBeenCalledTimes(5);
     expect(wait).toHaveBeenCalledTimes(5);
@@ -150,6 +163,7 @@ describe('Private security review', () => {
     const report = await service().run(abort.signal);
     expect(report?.status).toBe('partial');
     expect(report?.reason).toContain('window_ended');
+    expect(report?.deviceHealth).toEqual(health);
     expect(complete).toHaveBeenCalledTimes(1);
   });
 
@@ -168,6 +182,7 @@ describe('Private security review', () => {
     const file = path.join(root, 'reports/2026-10-26.json');
     const skipped = await run();
     expect(skipped?.status).toBe('skipped');
+    expect(skipped?.deviceHealth).toEqual(health);
     expect(JSON.parse(skipped!.reason!).outcome).toBe('no_bundle');
     expect(current.toISOString()).toBe('2026-10-25T21:50:00.000Z');
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(skipped);
@@ -176,6 +191,26 @@ describe('Private security review', () => {
     const reviewed = await run();
     expect(reviewed?.status).toBe('ok');
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(reviewed);
+  });
+
+  it.each([true, false])('writes partial unavailable health after a query failure with bundle=%s', async hasBundle => {
+    if (hasBundle) await bundle();
+    deviceHealth.mockRejectedValueOnce(new TypeError('fixture health query failed'));
+    const report = await run();
+    expect(report).toMatchObject({ status: 'partial', deviceHealth: { attention: 'none', storage: { open: [], last24h: [] },
+      ext4Errors: [], power: [], offline: [], unavailable: true } });
+    expect(complete).toHaveBeenCalledTimes(hasBundle ? 3 : 0);
+    expect(logger.error).toHaveBeenCalledWith({ error: 'TypeError', message: 'fixture health query failed' }, 'Security review device health unavailable');
+    expect(JSON.parse(await readFile(path.join(root, 'reports/2026-10-26.json'), 'utf8'))).toEqual(report);
+    if (!hasBundle) {
+      await bundle();
+      expect(await run()).toMatchObject({ status: 'ok', deviceHealth: health });
+    }
+  });
+
+  it('accepts old reports without device health', () => {
+    const old = { date: '2026-10-26', status: 'ok', reviewedCommits: { from: '', to: '' }, chunks: [], findings: [] };
+    expect(securityReviewReportSchema.parse(old)).toEqual(old);
   });
 
   it.each([undefined, '{broken', '{}'])('reviews with empty known findings when the file is missing or invalid: %s', async contents => {

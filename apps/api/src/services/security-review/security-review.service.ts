@@ -3,12 +3,14 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promise
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
+import { logger } from '../../lib/logger.js';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
+import { queryDeviceHealth } from './device-health.js';
 import { fingerprint, prepareChunks, quoteData, redact, redactCode, type ReviewChunk } from './material.js';
 import { changesPrompt } from './prompts/changes.js';
 import { errorsPrompt } from './prompts/errors.js';
 import { securityPrompt } from './prompts/security.js';
-import { securityReviewChunkAnswerSchema, securityReviewReportSchema, type SecurityReviewReport } from './report-schema.js';
+import { securityReviewChunkAnswerSchema, securityReviewReportSchema, type DeviceHealth, type SecurityReviewReport } from './report-schema.js';
 
 const DAY_MS = 24 * 60 * 60_000;
 export const RUN_TIMEOUT_MS = 50 * 60_000;
@@ -30,6 +32,7 @@ type Dependencies = {
   retryUntil: string;
   completion: TextCompletionPort;
   clientErrors: (since: Date) => Promise<ClientErrorGroup[]>;
+  deviceHealth: (since: Date) => Promise<DeviceHealth>;
   now?: () => Date;
   wait?: (ms: number, signal: AbortSignal) => Promise<void>;
 };
@@ -91,7 +94,7 @@ export class SecurityReviewService {
       if (!/^\d{4}-\d{2}-\d{2}\.json$/.test(name)) continue;
       try {
         const previous = securityReviewReportSchema.parse(JSON.parse(await readFile(path.join(root, 'reports', name), 'utf8')));
-        if (previous.status === 'skipped' && previous.reason && JSON.parse(previous.reason).outcome === 'no_bundle') reports.delete(name);
+        if (previous.status !== 'ok' && previous.reason && JSON.parse(previous.reason).outcome === 'no_bundle') reports.delete(name);
       } catch { /* Preserve existing reports unless they explicitly record no bundle. */ }
     }
     const wait = this.deps.wait ?? (async (ms: number, abort: AbortSignal) => { await delay(ms, undefined, { signal: abort }); });
@@ -204,6 +207,14 @@ export class SecurityReviewService {
       reason = 'invalid_or_unavailable_bundle';
       report.status = completed > 0 ? 'partial' : 'skipped';
     }
+    try {
+      report.deviceHealth = await this.deps.deviceHealth(new Date(started.getTime() - DAY_MS));
+    } catch (error) {
+      report.deviceHealth = { attention: 'none', storage: { open: [], last24h: [] }, ext4Errors: [], power: [], offline: [], unavailable: true };
+      report.status = 'partial';
+      logger.error({ error: error instanceof Error ? error.name : 'unknown',
+        message: error instanceof Error ? error.message : String(error) }, 'Security review device health unavailable');
+    }
     report.reason = JSON.stringify({ outcome: reason, ...counts });
     const validated = securityReviewReportSchema.parse(report);
     await atomicJson(path.join(root, 'reports', `${date}.json`), validated);
@@ -216,6 +227,7 @@ export async function createSecurityReviewService(dataDir: string, retryUntil: s
   const { prisma } = await import('../../lib/prisma.js');
   return new SecurityReviewService({ dataDir, retryUntil,
     completion: getInferenceRuntime().createTextCompletionPort(),
+    deviceHealth: since => queryDeviceHealth(prisma, since),
     clientErrors: async since => {
       const rows = await prisma.clientLog.groupBy({ by: ['clientId', 'message'],
         where: { level: 'ERROR', createdAt: { gte: since } },
