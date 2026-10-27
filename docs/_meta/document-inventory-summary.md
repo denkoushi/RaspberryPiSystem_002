@@ -11,18 +11,18 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 738 |
-| Total lines | 181147 |
-| Total bytes | 14671854 |
+| Documents | 744 |
+| Total lines | 182202 |
+| Total bytes | 14818837 |
 | With frontmatter | 351 |
 | With status | 169 |
 | source_of_truth declared | 115 |
 | References to EXEC_PLAN.md | 60 |
-| Question-mark corruption documents | 1 |
+| Question-mark corruption documents | 2 |
 | Replacement-character documents | 1 |
-| Long-line documents | 43 |
-| Local links | 5461 |
-| Broken local links | 127 |
+| Long-line documents | 44 |
+| Local links | 5471 |
+| Broken local links | 128 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
 
@@ -31,7 +31,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Path | Lines | Bytes |
 |------|------:|------:|
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
-| `docs/knowledge-base/api.md` | 4911 | 359758 |
+| `docs/knowledge-base/api.md` | 4916 | 361662 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
 | `docs/knowledge-base/frontend.md` | 4643 | 277726 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281621 |
@@ -40,7 +40,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128149 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2208 | 137917 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2208 | 190029 |
-| `docs/INDEX.md` | 2085 | 360204 |
+| `docs/INDEX.md` | 2088 | 360620 |
 | `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217024 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153539 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 108031 |
@@ -72,7 +72,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (343:1132, 359:1242, 363:1022)
+- `docs/INDEX.md` (344:1132, 360:1242, 364:1022)
 - `docs/archive/deployments/2026-04.md` (83:1066)
 - `docs/archive/deployments/2026-05.md` (815:25090, 1642:1257, 2471:1119)
 - `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (47:1010, 48:1002, 53:1214)

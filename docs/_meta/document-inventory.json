@@ -15,18 +15,18 @@
     ]
   },
   "summary": {
-    "documentCount": 738,
-    "totalLines": 181147,
-    "totalBytes": 14671854,
+    "documentCount": 744,
+    "totalLines": 182202,
+    "totalBytes": 14818837,
     "withFrontmatter": 351,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
     "execPlanReferences": 60,
-    "questionMarkCorruptionDocuments": 1,
+    "questionMarkCorruptionDocuments": 2,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 43,
-    "localLinkCount": 5461,
-    "brokenLocalLinkCount": 127,
+    "longLineDocuments": 44,
+    "localLinkCount": 5471,
+    "brokenLocalLinkCount": 128,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -379,6 +379,11 @@
         "sourcePath": "docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
         "href": "../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照",
         "targetPath": "docs/EXEC_PLAN.md"
+      },
+      {
+        "sourcePath": "docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
+        "href": "../plans/mobile-placement-shelf-landmarks.md",
+        "targetPath": "docs/plans/mobile-placement-shelf-landmarks.md"
       },
       {
         "sourcePath": "docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
@@ -816,8 +821,8 @@
     },
     {
       "path": "AGENTS.md",
-      "lineCount": 67,
-      "byteSize": 6717,
+      "lineCount": 71,
+      "byteSize": 6813,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
@@ -6109,8 +6114,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2085,
-      "byteSize": 360204,
+      "lineCount": 2088,
+      "byteSize": 360620,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -10872,6 +10877,11 @@
           "exists": true
         },
         {
+          "href": "plans/nightly-security-review-execplan.md",
+          "targetPath": "docs/plans/nightly-security-review-execplan.md",
+          "exists": true
+        },
+        {
           "href": "./plans/order-supplement-incremental-sync-execplan.md",
           "targetPath": "docs/plans/order-supplement-incremental-sync-execplan.md",
           "exists": true
@@ -11347,6 +11357,11 @@
           "exists": true
         },
         {
+          "href": "runbooks/nightly-security-review.md",
+          "targetPath": "docs/runbooks/nightly-security-review.md",
+          "exists": true
+        },
+        {
           "href": "./runbooks/photo-tool-similarity-gallery.md",
           "targetPath": "docs/runbooks/photo-tool-similarity-gallery.md",
           "exists": true
@@ -11384,6 +11399,11 @@
         {
           "href": "./runbooks/vnc-tailscale-recovery.md",
           "targetPath": "docs/runbooks/vnc-tailscale-recovery.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/zero-edge-agent.md",
+          "targetPath": "docs/runbooks/zero-edge-agent.md",
           "exists": true
         },
         {
@@ -11537,95 +11557,95 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 343,
+          "line": 344,
           "length": 1132
         },
         {
-          "line": 359,
+          "line": 360,
           "length": 1242
         },
         {
-          "line": 363,
+          "line": 364,
           "length": 1022
         },
         {
-          "line": 374,
+          "line": 375,
           "length": 1147
         },
         {
-          "line": 378,
+          "line": 379,
           "length": 1065
         },
         {
-          "line": 426,
+          "line": 427,
           "length": 1165
         },
         {
-          "line": 432,
+          "line": 433,
           "length": 1458
         },
         {
-          "line": 444,
+          "line": 445,
           "length": 1025
         },
         {
-          "line": 458,
+          "line": 459,
           "length": 1398
         },
         {
-          "line": 460,
+          "line": 461,
           "length": 1133
         },
         {
-          "line": 464,
+          "line": 465,
           "length": 1170
         },
         {
-          "line": 472,
+          "line": 473,
           "length": 1059
         },
         {
-          "line": 480,
+          "line": 481,
           "length": 1129
         },
         {
-          "line": 484,
+          "line": 485,
           "length": 1135
         },
         {
-          "line": 488,
+          "line": 489,
           "length": 1117
         },
         {
-          "line": 603,
+          "line": 604,
           "length": 1013
         },
         {
-          "line": 790,
+          "line": 791,
           "length": 2038
         },
         {
-          "line": 806,
+          "line": 807,
           "length": 1496
         },
         {
-          "line": 812,
+          "line": 813,
           "length": 1177
         },
         {
-          "line": 1154,
+          "line": 1155,
           "length": 1449
         },
         {
-          "line": 1190,
+          "line": 1191,
           "length": 1136
         },
         {
-          "line": 1192,
+          "line": 1193,
           "length": 1239
         },
         {
-          "line": 1228,
+          "line": 1229,
           "length": 1004
         }
       ],
@@ -19056,8 +19076,8 @@
     },
     {
       "path": "docs/guides/ci-troubleshooting.md",
-      "lineCount": 436,
-      "byteSize": 23108,
+      "lineCount": 437,
+      "byteSize": 23604,
       "hasFrontmatter": true,
       "title": "CIテスト失敗のトラブルシューティングガイド",
       "status": null,
@@ -19504,7 +19524,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 200,
+      "inboundCount": 201,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -24747,8 +24767,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md",
-      "lineCount": 307,
-      "byteSize": 58243,
+      "lineCount": 343,
+      "byteSize": 65070,
       "hasFrontmatter": false,
       "title": "KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）",
       "status": null,
@@ -25773,8 +25793,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
-      "lineCount": 441,
-      "byteSize": 71611,
+      "lineCount": 481,
+      "byteSize": 75515,
       "hasFrontmatter": true,
       "title": "KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）",
       "status": null,
@@ -26565,8 +26585,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
-      "lineCount": 592,
-      "byteSize": 54126,
+      "lineCount": 594,
+      "byteSize": 54266,
       "hasFrontmatter": false,
       "title": "KB-382: 配膳棚レイアウトマスタ（キオスク shelf-master）",
       "status": null,
@@ -26631,6 +26651,11 @@
           "href": "./KB-368-zero2w-haizen-placement-tracking.md",
           "targetPath": "docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md",
           "exists": true
+        },
+        {
+          "href": "../plans/mobile-placement-shelf-landmarks.md",
+          "targetPath": "docs/plans/mobile-placement-shelf-landmarks.md",
+          "exists": false
         },
         {
           "href": "../plans/mobile-placement-shelf-layout-master.md",
@@ -27542,8 +27567,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-418-planning-board-warm-reuse.md",
-      "lineCount": 83,
-      "byteSize": 6405,
+      "lineCount": 93,
+      "byteSize": 8642,
       "hasFrontmatter": false,
       "title": "KB-418: 製番ボード (grinding planning board) reopens were rebuilt every time",
       "status": null,
@@ -27838,8 +27863,8 @@
     },
     {
       "path": "docs/knowledge-base/api.md",
-      "lineCount": 4911,
-      "byteSize": 359758,
+      "lineCount": 4916,
+      "byteSize": 361662,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - API関連",
       "status": null,
@@ -28250,8 +28275,8 @@
     },
     {
       "path": "docs/knowledge-base/database.md",
-      "lineCount": 100,
-      "byteSize": 4126,
+      "lineCount": 112,
+      "byteSize": 6496,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - データベース関連",
       "status": null,
@@ -28502,8 +28527,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 891,
-      "byteSize": 271586,
+      "lineCount": 892,
+      "byteSize": 271944,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -31157,6 +31182,11 @@
         {
           "href": "./KB-426-glm-tp2-crash-and-startup-hang.md",
           "targetPath": "docs/knowledge-base/KB-426-glm-tp2-crash-and-startup-hang.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-427-deepseek-v41-flash-local-eval.md",
+          "targetPath": "docs/knowledge-base/KB-427-deepseek-v41-flash-local-eval.md",
           "exists": true
         },
         {
@@ -34402,8 +34432,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 704,
-      "byteSize": 105150,
+      "lineCount": 781,
+      "byteSize": 119589,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -34420,24 +34450,28 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 639,
+          "line": 658,
           "length": 1105
         },
         {
-          "line": 649,
+          "line": 668,
           "length": 1194
         },
         {
-          "line": 655,
+          "line": 674,
           "length": 1419
         },
         {
-          "line": 668,
+          "line": 687,
           "length": 1224
         },
         {
-          "line": 694,
+          "line": 713,
           "length": 1019
+        },
+        {
+          "line": 745,
+          "length": 1359
         }
       ],
       "referencesExecPlan": false
@@ -34665,6 +34699,21 @@
         }
       ],
       "inboundCount": 5,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/inspection-drawing-reference-placement-execplan.md",
+      "lineCount": 141,
+      "byteSize": 17098,
+      "hasFrontmatter": false,
+      "title": "業務モデルが見本データを使って丸数字案を出す（reference placement）",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35333,13 +35382,18 @@
     },
     {
       "path": "docs/plans/kiosk-operation-guide-accuracy-log.md",
-      "lineCount": 150,
-      "byteSize": 21108,
+      "lineCount": 196,
+      "byteSize": 26950,
       "hasFrontmatter": true,
       "title": "キオスク操作案内の当たり率ログ",
       "status": "living log",
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../knowledge-base/KB-427-deepseek-v41-flash-local-eval.md",
+          "targetPath": "docs/knowledge-base/KB-427-deepseek-v41-flash-local-eval.md",
+          "exists": true
+        },
         {
           "href": "./hermes-retrieval-accuracy-log.md",
           "targetPath": "docs/plans/hermes-retrieval-accuracy-log.md",
@@ -36113,8 +36167,8 @@
     },
     {
       "path": "docs/plans/mobile-placement-verify-and-shelf-photo.md",
-      "lineCount": 74,
-      "byteSize": 9512,
+      "lineCount": 85,
+      "byteSize": 11822,
       "hasFrontmatter": false,
       "title": "Mobile placement verification and shelf photos",
       "status": null,
@@ -36139,6 +36193,36 @@
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/nightly-security-review-execplan.md",
+      "lineCount": 221,
+      "byteSize": 39603,
+      "hasFrontmatter": false,
+      "title": "Nightly security and error review by the business LLM",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../runbooks/nightly-security-review.md",
+          "targetPath": "docs/runbooks/nightly-security-review.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 117,
+          "length": 1016
+        },
+        {
+          "line": 129,
+          "length": 1003
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -37271,6 +37355,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/software-support-upgrade-execplan.md",
+      "lineCount": 166,
+      "byteSize": 21470,
+      "hasFrontmatter": false,
+      "title": "古いソフトのサポート期限対応(期限の近い順)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/solid-refactor-execplan-202607.md",
       "lineCount": 204,
       "byteSize": 23218,
@@ -37621,6 +37720,21 @@
       "byteSize": 9387,
       "hasFrontmatter": false,
       "title": "Work Instruction Overlay Editing and Versioned Publication",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/zero-edge-placement-execplan.md",
+      "lineCount": 73,
+      "byteSize": 10638,
+      "hasFrontmatter": false,
+      "title": "Zero 棚スキャナで配膳を記録する(作り直し)",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -38141,8 +38255,8 @@
     },
     {
       "path": "docs/runbooks/business-hermes.md",
-      "lineCount": 134,
-      "byteSize": 13977,
+      "lineCount": 136,
+      "byteSize": 14635,
       "hasFrontmatter": false,
       "title": "業務Hermesの独立運用",
       "status": null,
@@ -38761,8 +38875,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-inquiry-inbox.md",
-      "lineCount": 128,
-      "byteSize": 19927,
+      "lineCount": 130,
+      "byteSize": 20431,
       "hasFrontmatter": true,
       "title": "キオスクお問い合わせ受信箱 Runbook",
       "status": null,
@@ -39229,8 +39343,8 @@
     },
     {
       "path": "docs/runbooks/local-llm-tailscale-sidecar.md",
-      "lineCount": 531,
-      "byteSize": 31782,
+      "lineCount": 532,
+      "byteSize": 31952,
       "hasFrontmatter": true,
       "title": "Runbook: Ubuntu LocalLLM を Tailscale sidecar で分離運用する",
       "status": null,
@@ -39292,6 +39406,11 @@
           "exists": true
         },
         {
+          "href": "../security/tailscale-policy.md#tailnet-lock",
+          "targetPath": "docs/security/tailscale-policy.md",
+          "exists": true
+        },
+        {
           "href": "../../scripts/ubuntu-local-llm-runtime/control-server.mjs",
           "targetPath": "scripts/ubuntu-local-llm-runtime/control-server.mjs",
           "exists": true
@@ -39320,8 +39439,8 @@
     },
     {
       "path": "docs/runbooks/mobile-placement-smartphone.md",
-      "lineCount": 238,
-      "byteSize": 53046,
+      "lineCount": 249,
+      "byteSize": 56035,
       "hasFrontmatter": false,
       "title": "配膳スマホ（Android）セットアップ・検証 Runbook",
       "status": null,
@@ -39442,42 +39561,68 @@
           "length": 1780
         },
         {
-          "line": 51,
+          "line": 62,
           "length": 1012
         },
         {
-          "line": 61,
+          "line": 72,
           "length": 2108
         },
         {
-          "line": 75,
+          "line": 86,
           "length": 1034
         },
         {
-          "line": 79,
+          "line": 90,
           "length": 1352
         },
         {
-          "line": 81,
+          "line": 92,
           "length": 1676
         },
         {
-          "line": 87,
+          "line": 98,
           "length": 1319
         },
         {
-          "line": 89,
+          "line": 100,
           "length": 1376
         },
         {
-          "line": 91,
+          "line": 102,
           "length": 1231
         },
         {
-          "line": 93,
+          "line": 104,
           "length": 1410
         }
       ],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/runbooks/nightly-security-review.md",
+      "lineCount": 84,
+      "byteSize": 4594,
+      "hasFrontmatter": false,
+      "title": "Nightly security review",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/nightly-security-review-execplan.md",
+          "targetPath": "docs/plans/nightly-security-review-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": true,
+      "replacementCharacterCount": 0,
+      "longLines": [],
       "referencesExecPlan": false
     },
     {
@@ -39585,7 +39730,7 @@
     {
       "path": "docs/runbooks/pi4-sd-card-backup.md",
       "lineCount": 60,
-      "byteSize": 5229,
+      "byteSize": 5486,
       "hasFrontmatter": true,
       "title": "Pi4 SD-card backup and card replacement Runbook",
       "status": null,
@@ -39838,6 +39983,21 @@
         }
       ],
       "inboundCount": 4,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/runbooks/zero-edge-agent.md",
+      "lineCount": 69,
+      "byteSize": 5144,
+      "hasFrontmatter": false,
+      "title": "Pi Zero 棚スキャナー運用",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -41175,8 +41335,8 @@
     },
     {
       "path": "docs/security/tailscale-policy.md",
-      "lineCount": 372,
-      "byteSize": 18925,
+      "lineCount": 409,
+      "byteSize": 21444,
       "hasFrontmatter": false,
       "title": "Tailscale Policy（タグ/ACL/SSH）運用台帳",
       "status": null,
@@ -41218,7 +41378,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 15,
+      "inboundCount": 16,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
