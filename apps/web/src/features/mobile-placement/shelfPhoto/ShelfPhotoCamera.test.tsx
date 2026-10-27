@@ -32,6 +32,7 @@ async function rotate(value: boolean) {
 }
 beforeEach(() => {
   portrait = false;
+  vi.stubGlobal('createImageBitmap', undefined);
   orientation = new EventTarget();
   vi.stubGlobal('matchMedia', vi.fn(() => ({
     get matches() { return portrait; },
@@ -81,6 +82,45 @@ describe('ShelfPhotoCamera', () => {
     const video = document.querySelector('video')!;
     fireEvent.click(screen.getByRole('button', { name: '撮る' }));
     expect(drawImage).toHaveBeenCalledWith(video, 0, 0, 600, 800);
+  });
+
+  it.each(['bitmap', 'rejected'])('corrects landscape capture using %s dimensions', async (mode) => {
+    const bitmap = { width: 960, height: 1280, close: vi.fn() };
+    const create = vi.fn();
+    if (mode === 'bitmap') create.mockResolvedValue(bitmap);
+    else {
+      create.mockRejectedValue(new Error('unsupported'));
+      vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(960);
+      vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(1280);
+    }
+    vi.stubGlobal('createImageBitmap', create);
+    vi.stubGlobal('screen', { orientation: { angle: 270 } });
+    const ctx = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,PHOTO');
+    render(<Camera />);
+    await waitFor(() => expect(screen.getByRole('button', { name: '撮る' })).toBeEnabled());
+    const video = document.querySelector('video')!;
+    fireEvent.click(screen.getByRole('button', { name: '撮る' }));
+    expect(await screen.findByAltText('撮影した写真')).toBeInTheDocument();
+    expect(create).toHaveBeenCalledWith(video);
+    expect(ctx.drawImage).toHaveBeenCalledWith(mode === 'bitmap' ? bitmap : video, 0, 0, 600, 800);
+    expect(ctx.rotate).toHaveBeenCalledWith(Math.PI / 2);
+    expect(bitmap.close).toHaveBeenCalledTimes(mode === 'bitmap' ? 1 : 0);
+  });
+
+  it('discards and releases a bitmap arriving after close', async () => {
+    let resolve!: (bitmap: ImageBitmap) => void;
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise<ImageBitmap>((done) => { resolve = done; })));
+    const onCapture = vi.fn();
+    render(<ShelfPhotoCamera onCapture={onCapture} onClose={vi.fn()} onSelectFile={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: '撮る' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '撮る' }));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    const bitmap = { width: 960, height: 1280, close: vi.fn() };
+    await act(async () => resolve(bitmap as unknown as ImageBitmap));
+    expect(onCapture).not.toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledTimes(1);
   });
 
   it('applies constraints only when orientation changes', async () => {

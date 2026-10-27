@@ -107,10 +107,14 @@ describe('POST /mobile-placement/register-order-placement stamp schema', () => {
     expect(response.statusCode).toBe(400);
     expect(registerOrderPlacement).not.toHaveBeenCalled();
   });
-  it('returns the stamp conflict as 409', async () => {
-    vi.mocked(registerOrderPlacement).mockRejectedValue(new ApiError(409, '分配なしと番号付きの分配は併用できません', undefined, 'ORDER_PLACEMENT_BRANCH_CONFLICT'));
+  it('returns stale with the unchanged current branch state', async () => {
+    const branchState = { id: 'current', branchNo: 2, shelfCodeRaw: 'current shelf' };
+    vi.mocked(registerOrderPlacement).mockResolvedValue({
+      event: { id: 'history', branchNo: 0, shelfCodeRaw: 'shelf', actionType: 'CREATE_BRANCH' },
+      branchState, action: 'stale', resolvedRowId: null
+    } as never);
     const response = await app.inject({ method: 'POST', url: '/mobile-placement/register-order-placement', payload: { ...payload, branchNo: 0 } });
-    expect(response.statusCode).toBe(409);
-    expect(response.json().message).toBe('分配なしと番号付きの分配は併用できません');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ action: 'stale', branchState, event: { id: 'history', branchNo: 0 } });
   });
 });
