@@ -21,7 +21,7 @@ WEBHOOK_TIMEOUT_SECONDS="${WEBHOOK_TIMEOUT_SECONDS:-{{ alert_webhook_timeout_sec
 TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
 echo "[$TIMESTAMP] Starting Trivy image scan..." >> "${LOG_FILE}"
 
-# 稼働中のblue/greenおよび旧サービスからDockerイメージを取得する。
+# 稼働中のblue/greenおよび旧サービスからDockerイメージIDを取得する（リリースはタグを残さないため）。
 IMAGES=()
 IMAGE_TYPES=()
 declare -A SEEN_IMAGES=()
@@ -36,7 +36,8 @@ for image_type in api web; do
         IMAGE_TYPES+=("${image_type}")
         SEEN_IMAGES["${image}"]=1
       fi
-    done < <(docker ps --filter "label=com.docker.compose.service=${service}" --format '{% raw %}{{.Image}}{% endraw %}' 2>/dev/null || true)
+    done < <(docker ps --quiet --filter "label=com.docker.compose.service=${service}" 2>/dev/null \
+      | xargs --no-run-if-empty docker inspect --format '{% raw %}{{.Image}}{% endraw %}' 2>/dev/null || true)
   done
 done
 

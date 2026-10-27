@@ -160,6 +160,7 @@ trivy_log_file: trivy-scan.log
 trivy_skip_dirs:
   - /opt/RaspberryPiSystem_002-staging/storage
   - /opt/RaspberryPiSystem_002-staging/certs
+  - /opt/RaspberryPiSystem_002-staging/secrets
 trivy_alert_ignore_patterns:
   - /certs/
   - /raspisys-staging-backups/

@@ -34,6 +34,7 @@ class TrivyScanContractTests(unittest.TestCase):
                 script = render_script(TEMPLATES[0], staging)
                 target = "/opt/RaspberryPiSystem_002" + ("-staging" if staging else "")
                 self.assertIn(f'--skip-dirs "{target}/storage"', script)
+                self.assertIn(f'--skip-dirs "{target}/secrets"', script)
                 self.assertNotIn(f'--skip-dirs "{target}/storage/security-review"', script)
 
     def test_timeout_and_exit_code_branches(self) -> None:
@@ -59,7 +60,8 @@ class TrivyScanContractTests(unittest.TestCase):
         script = render_script(TEMPLATES[1])
         self.assertIn('for image_type in api web; do', script)
         self.assertIn('for service in "${image_type}-blue" "${image_type}-green" "${image_type}"; do', script)
-        self.assertIn('docker ps --filter "label=com.docker.compose.service=${service}" --format \'{{.Image}}\'', script)
+        self.assertIn('docker ps --quiet --filter "label=com.docker.compose.service=${service}"', script)
+        self.assertIn("docker inspect --format '{{.Image}}'", script)
         self.assertNotIn('docker compose', script)
         self.assertNotIn('jq ', script)
         self.assertIn('[[ -z "${image}" || "${image}" == ":" ]]', script)

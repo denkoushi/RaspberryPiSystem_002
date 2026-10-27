@@ -184,6 +184,7 @@ trivy_download_url: "https://github.com/aquasecurity/trivy/releases/download/v{{
 trivy_skip_dirs:
   - "/opt/RaspberryPiSystem_002/storage"
   - "/opt/RaspberryPiSystem_002/certs"
+  - "/opt/RaspberryPiSystem_002/secrets"
 trivy_alert_ignore_patterns:
   - "{{ security_review_data_dir }}"
   - "/certs/"
