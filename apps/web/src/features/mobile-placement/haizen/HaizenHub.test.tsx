@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto, moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
+import { getMobilePlacementShelfMachines, postMobilePlacementShelfRegister, putMobilePlacementShelfPhoto, moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
 import { shelfOfflineQueueStore } from '../shelfMaster/offline/shelfOfflineQueueStore';
 import { useMobilePlacementPageState } from '../useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../useOrderPlacementBranches';
@@ -17,6 +17,7 @@ import type { HaizenHubSheet } from './HaizenHub';
 
 const mocks = vi.hoisted(() => ({ branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
 vi.mock('../../../api/client', () => ({
+  getMobilePlacementShelfMachines: vi.fn(),
   postMobilePlacementShelfRegister: vi.fn(), putMobilePlacementShelfPhoto: vi.fn(),
   moveOrderPlacementBranch: vi.fn(), registerOrderPlacement: vi.fn(),
   verifyMobilePlacementSlipMatch: vi.fn(), parseActualSlipImage: vi.fn(), getMobilePlacementShelfPhoto: vi.fn()
@@ -76,6 +77,7 @@ beforeEach(async () => {
   localStorage.clear();
   mocks.branches = []; mocks.branchError = false; mocks.branchLoading = false; mocks.branchFetching = false;
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+  vi.mocked(getMobilePlacementShelfMachines).mockResolvedValue({ machines: ['50013_540AP'], landmarks: ['電気室'] });
   for (const record of await shelfOfflineQueueStore.list()) await shelfOfflineQueueStore.remove(record.id);
   for (const record of await haizenOfflineQueueStore.list()) await haizenOfflineQueueStore.remove(record.clientRecordId);
   vi.mocked(registerOrderPlacement).mockResolvedValue({ branchState: { id: 'b1', branchNo: 1, shelfCodeRaw: 'A-03' }, event: { id: 'event1234' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
@@ -85,6 +87,28 @@ beforeEach(async () => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('Haizen hub', () => {
+  it('saves landmarks when opening the hub without visiting shelf master', async () => {
+    mount();
+    await waitFor(() => expect(JSON.parse(localStorage.getItem('mobile-placement-shelf-machines-v1')!)).toEqual({
+      machines: ['50013_540AP'], landmarks: ['電気室']
+    }));
+  });
+
+  it.each(['移動票 製造オーダー番号', '現品票 注文番号'])('shows the put button immediately after scanning %s offline while branches are pending', (label) => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    mocks.branchLoading = true;
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    fireEvent.click(screen.getByText('scan'));
+    // Synchronous assertions: no waitFor, network completion or retry timer.
+    expect(screen.queryByRole('dialog', { name: 'scanner' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ここに置く' })).toBeInTheDocument();
+    expect(screen.getByText('分配一覧を読み込み中…')).toBeInTheDocument();
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+    expect(registerOrderPlacement).not.toHaveBeenCalled();
+  });
+
   it('sends saved shelf registrations when opening the hub', async () => {
     const photo = { contentType: 'image/jpeg' as const, dataBase64: '/9j/' };
     await shelfOfflineQueueStore.put({ id: 'shelf', shelfCodeRaw: '電気室', displayLabel: null, photo,
