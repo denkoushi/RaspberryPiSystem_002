@@ -38,6 +38,7 @@ if [[ "${WEB_STATIC_ROUTING_SKIP_BUILD:-0}" != 1 ]]; then
     cd "$ROOT"
     "$PNPM" --filter @raspi-system/shared-types build
     "$PNPM" --filter @raspi-system/part-search-core build
+    "$PNPM" --filter @raspi-system/slip-match-core build
     "$PNPM" --filter @raspi-system/shelf-layout-core build
     "$PNPM" --filter @raspi-system/web build
   )

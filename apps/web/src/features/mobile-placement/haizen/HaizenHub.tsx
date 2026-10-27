@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../barcode-scan';
+import { MobileOfflineChip } from '../local-data/MobileOfflineChip';
+import { useMobileLocalData } from '../local-data/useMobileLocalData';
 import { haizenPhoneColors as colors, haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
 import { HaizenBottomNav } from './HaizenBottomNav';
@@ -39,6 +41,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   };
   const flow = useHaizenWorkflow(mp, tab === 'verify');
   const queue = useHaizenOfflineQueue();
+  const localData = useMobileLocalData('verify');
   const [placeSlip, setPlaceSlip] = useState<{ kind: 'mo' | 'po'; number: string } | null>(null);
   const [selectedBranchNo, setSelectedBranchNo] = useState<number | null>(null);
   const [branchSelectionVersion, setBranchSelectionVersion] = useState(0);
@@ -136,6 +139,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     <div className="relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col">
       <main className="flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-3.5">
         {tab === 'verify' ? <>
+          {localData.offline && <div className="flex shrink-0"><MobileOfflineChip {...localData} /></div>}
           {mp.actualSlipImageOcrBusy && <p role="status" className={hp.muted}>写真を読取中…</p>}
           {mp.actualSlipOcrFeedback.message && <p role="status" className={`text-sm ${hp.muted}`}>{mp.actualSlipOcrFeedback.message}</p>}
           {flow.pending ? <p role="status" aria-label="照合中" className={hp.muted}>照合中…</p> : flow.result !== 'idle' && <section role="status" aria-label={resultTitle}

@@ -56,6 +56,7 @@
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
     "@raspi-system/part-search-core": "workspace:*",
+    "@raspi-system/slip-match-core": "workspace:*",
     "@raspi-system/shared-types": "workspace:*",
     "@raspi-system/shelf-layout-core": "workspace:*",
     "bcryptjs": "^2.4.3",

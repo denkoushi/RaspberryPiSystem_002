@@ -143,6 +143,7 @@ jobs:
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
           pnpm --filter @raspi-system/api exec prisma generate
         env:

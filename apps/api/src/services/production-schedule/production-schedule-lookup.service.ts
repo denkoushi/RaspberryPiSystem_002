@@ -58,7 +58,8 @@ export async function listScheduleRowsByProductNo(productNo: string): Promise<Pr
       AND TRIM("CsvDashboardRow"."rowData"->>'ProductNo') = ${normalized}
     ORDER BY
       "fkojun" ASC NULLS LAST,
-      "fhincd" ASC
+      "fhincd" ASC,
+      "rowId" ASC
   `;
 
   return rows.filter((r) => r.fseiban.length > 0 && r.fhincd.length > 0 && r.fsigencd.length > 0);
@@ -94,7 +95,8 @@ export async function listScheduleRowsByFseiban(fseiban: string): Promise<Produc
       AND TRIM("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${normalized}
     ORDER BY
       "fkojun" ASC NULLS LAST,
-      "fhincd" ASC
+      "fhincd" ASC,
+      "rowId" ASC
   `;
 
   return rows.filter((r) => r.fseiban.length > 0 && r.fhincd.length > 0 && r.fsigencd.length > 0);
@@ -123,4 +125,33 @@ export async function listKnownScheduleFseibans(): Promise<string[]> {
     ORDER BY "fseiban"
   `;
   return rows.map((row) => row.fseiban);
+}
+
+/** Same winner, ordering and eligibility contract as the individual lookups. */
+export async function listAllScheduleLookupRows(): Promise<ProductionScheduleLookupRow[]> {
+  const rows = await prisma.$queryRaw<RawRow[]>`
+    SELECT
+      "CsvDashboardRow"."id" AS "rowId",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) AS "fseiban",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'ProductNo', '')) AS "productNo",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) AS "fhincd",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FHINMEI', '')) AS "fhinmei",
+      TRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSIGENCD', '')) AS "fsigencd",
+      (
+        CASE
+          WHEN ("CsvDashboardRow"."rowData"->>'FKOJUN') ~ '^[0-9]+$'
+          THEN (("CsvDashboardRow"."rowData"->>'FKOJUN'))::int
+          ELSE NULL
+        END
+      ) AS "fkojun"
+    FROM "CsvDashboardRow"
+    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+    ORDER BY
+      "fkojun" ASC NULLS LAST,
+      "fhincd" ASC,
+      "rowId" ASC
+  `;
+
+  return rows.filter((r) => r.fseiban.length > 0 && r.fhincd.length > 0 && r.fsigencd.length > 0);
 }

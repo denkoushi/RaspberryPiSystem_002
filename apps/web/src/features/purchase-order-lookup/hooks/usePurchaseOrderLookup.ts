@@ -5,6 +5,7 @@ import {
   type PurchaseOrderLookupResponse
 } from '../../../api/client';
 import { resolveClientKey } from '../../../lib/client-key';
+import { lookupPurchaseLocalFirst } from '../../mobile-placement/local-data/localFirstLookup';
 
 export type UsePurchaseOrderLookupOptions = {
   lookup?: typeof getKioskPurchaseOrderLookup;
@@ -34,7 +35,7 @@ export function usePurchaseOrderLookup(options?: UsePurchaseOrderLookupOptions) 
       setError(null);
       try {
         const { key } = resolveClientKey({ allowDefaultFallback: true });
-        const data = await lookupFn(digits, key);
+        const data = await lookupPurchaseLocalFirst(digits, () => lookupFn(digits, key));
         if (requestIdRef.current !== myId) {
           return;
         }

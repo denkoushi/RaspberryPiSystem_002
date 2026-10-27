@@ -5,6 +5,8 @@ import { HaizenBottomNav } from '../../mobile-placement/haizen/HaizenBottomNav';
 import { HaizenIcon } from '../../mobile-placement/haizen/HaizenIcon';
 import { HaizenSheet } from '../../mobile-placement/haizen/HaizenSheet';
 import { haizenTabNavigationOptions } from '../../mobile-placement/haizen/useHubBackGuard';
+import { MobileOfflineChip } from '../../mobile-placement/local-data/MobileOfflineChip';
+import { useMobileLocalData } from '../../mobile-placement/local-data/useMobileLocalData';
 import { haizenPhoneStyle, hp } from '../../mobile-placement/ui/haizenPhoneTokens';
 import { buildPurchaseOrderRowLines } from '../model/buildPurchaseOrderRowLines';
 
@@ -12,6 +14,7 @@ import type { usePurchaseOrderLookup } from '../hooks/usePurchaseOrderLookup';
 
 export function PurchaseOrderLookupPhoneView({ lookup }: { lookup: ReturnType<typeof usePurchaseOrderLookup> }) {
   const navigate = useNavigate();
+  const localData = useMobileLocalData('purchase');
   const [manualOpen, setManualOpen] = useState(false);
   const [manualNo, setManualNo] = useState('');
   const { orderNo, result, loading, error } = lookup;
@@ -20,7 +23,7 @@ export function PurchaseOrderLookupPhoneView({ lookup }: { lookup: ReturnType<ty
   return <div style={haizenPhoneStyle} className={hp.screen}>
     <div className={hp.content}>
       <section aria-label="注文番号" className="relative mx-3.5 mb-2.5 mt-3.5 shrink-0 rounded-[18px] border border-[var(--hp-line)] bg-[var(--hp-panel)] py-3.5 pl-5 pr-4 before:absolute before:bottom-4 before:left-0 before:top-4 before:w-1 before:rounded-r before:bg-[var(--hp-lime)]">
-        <div className="flex justify-between text-[13px] font-bold tracking-[.06em] text-[var(--hp-lime)]">注文番号<span className={hp.muted}>{currentResult ? `${currentResult.rows.length}件` : ''}</span></div>
+        <div className="flex justify-between text-[13px] font-bold tracking-[.06em] text-[var(--hp-lime)]">注文番号<MobileOfflineChip {...localData} /><span className={hp.muted}>{currentResult ? `${currentResult.rows.length}件` : ''}</span></div>
         <div aria-label={`注文番号 ${orderNo || '未入力'}`} className="mt-0.5 whitespace-nowrap font-mono text-[36px] font-bold leading-[1.2] tracking-[.04em] tabular-nums">
           {orderNo}<span aria-hidden className="text-[var(--hp-line)]">{'0'.repeat(Math.max(0, 10 - orderNo.length))}</span>
         </div>

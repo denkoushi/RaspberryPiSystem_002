@@ -128,6 +128,7 @@ export JWT_REFRESH_SECRET='test-refresh-secret-1234567890'
 stage "build shared packages"
 "$PNPM" --dir "$ROOT" --filter @raspi-system/shared-types build
 "$PNPM" --dir "$ROOT" --filter @raspi-system/part-search-core build
+"$PNPM" --dir "$ROOT" --filter @raspi-system/slip-match-core build
 "$PNPM" --dir "$ROOT" --filter @raspi-system/shelf-layout-core build
 
 stage "generate Prisma client"
