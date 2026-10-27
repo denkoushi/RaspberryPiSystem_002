@@ -1,0 +1,173 @@
+---
+- name: Deploy standalone Pi Zero shelf scanner and heartbeat
+  hosts: zero_edge
+  become: true
+  gather_facts: false
+  serial: 1
+  vars:
+    status_agent_client_key: "{{ zero_edge_client_key }}"
+    status_agent_storage_health_enabled: "0"
+    nfc_agent_client_id: ""
+    barcode_agent_enabled: false
+    torque_agent_enabled: false
+    terminal_agent_maintenance_leases: {}
+  pre_tasks:
+    - name: Require a device identity and key
+      ansible.builtin.assert:
+        that:
+          - status_agent_client_id | default('') | length > 0
+          - zero_edge_client_key | default('') | length > 0
+          - api_base_url | default('') | length > 0
+      no_log: true
+
+  tasks:
+    - name: Install evdev from Debian packages
+      ansible.builtin.apt:
+        name: python3-evdev
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Discover the existing NTP client
+      ansible.builtin.service_facts:
+
+    - name: Select the existing NTP client or timesyncd
+      ansible.builtin.set_fact:
+        zero_edge_ntp_service: >-
+          {{ 'chrony.service' if 'chrony.service' in ansible_facts.services else
+             'ntp.service' if 'ntp.service' in ansible_facts.services else
+             'ntpsec.service' if 'ntpsec.service' in ansible_facts.services else
+             'systemd-timesyncd.service' }}
+
+    - name: Install timesyncd when no other NTP client exists
+      ansible.builtin.apt:
+        name: systemd-timesyncd
+        state: present
+      when: zero_edge_ntp_service == 'systemd-timesyncd.service'
+
+    - name: Enable NTP synchronization
+      ansible.builtin.systemd:
+        name: "{{ zero_edge_ntp_service }}"
+        enabled: true
+        state: started
+
+    - name: Create application directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /opt/zero-edge
+        - /opt/zero-edge/zero-edge-agent
+        - /opt/zero-edge/zero-edge-agent/zero_edge_agent
+        - /opt/zero-edge/status-agent
+
+    - name: Copy scanner Python modules only
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: /opt/zero-edge/zero-edge-agent/zero_edge_agent/
+        owner: root
+        group: root
+        mode: '0644'
+      with_fileglob:
+        - "{{ playbook_dir }}/../../../clients/zero-edge-agent/zero_edge_agent/*.py"
+      notify: Restart zero-edge-agent
+
+    - name: Copy heartbeat Python modules
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: /opt/zero-edge/status-agent/
+        owner: root
+        group: root
+        mode: '0644'
+      with_fileglob:
+        - "{{ playbook_dir }}/../../../clients/status-agent/*.py"
+      notify: Restart status-agent
+
+    # terminal_agent_health imports this even when peripheral monitoring is off.
+    - name: Copy the heartbeat maintenance contract dependency
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../scripts/deploy/rolling_release/terminal_device_maintenance.py"
+        dest: /opt/zero-edge/status-agent/terminal_device_maintenance.py
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart status-agent
+
+    - name: Configure scanner
+      ansible.builtin.template:
+        src: ../templates/zero-edge-agent.conf.j2
+        dest: /etc/zero-edge-agent.conf
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      notify: Restart zero-edge-agent
+
+    - name: Configure heartbeat
+      ansible.builtin.template:
+        src: ../templates/status-agent.conf.j2
+        dest: /etc/raspi-status-agent.conf
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      notify: Restart status-agent
+
+    - name: Install scanner service
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../clients/zero-edge-agent/zero-edge-agent.service"
+        dest: /etc/systemd/system/zero-edge-agent.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart zero-edge-agent
+
+    - name: Install standalone heartbeat service
+      ansible.builtin.template:
+        src: ../templates/zero-edge-status-agent.service.j2
+        dest: /etc/systemd/system/status-agent.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart status-agent
+
+    - name: Install heartbeat timer
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../../clients/status-agent/status-agent.timer"
+        dest: /etc/systemd/system/status-agent.timer
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart status-agent timer
+
+    - name: Enable scanner and heartbeat timer
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        daemon_reload: true
+        enabled: true
+        state: started
+      loop:
+        - zero-edge-agent.service
+        - status-agent.timer
+
+  handlers:
+    - name: Restart zero-edge-agent
+      ansible.builtin.systemd:
+        name: zero-edge-agent.service
+        daemon_reload: true
+        state: restarted
+
+    - name: Restart status-agent
+      ansible.builtin.systemd:
+        name: status-agent.service
+        daemon_reload: true
+        state: restarted
+
+    - name: Restart status-agent timer
+      ansible.builtin.systemd:
+        name: status-agent.timer
+        daemon_reload: true
+        state: restarted

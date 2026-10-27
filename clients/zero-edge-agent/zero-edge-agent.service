@@ -1,0 +1,22 @@
+[Unit]
+Description=Pi Zero Shelf Scanner
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/zero-edge/zero-edge-agent
+Environment=ZERO_EDGE_AGENT_CONFIG=/etc/zero-edge-agent.conf
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m zero_edge_agent
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+StateDirectory=zero-edge-agent
+StateDirectoryMode=0700
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
