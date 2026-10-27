@@ -52,8 +52,21 @@ describe('client-heartbeat-alert-policy', () => {
     expect(isMonitoredClient('raspi4-kensaku-02-kiosk1', config)).toBe(true);
     expect(isMonitoredClient('raspberrypi4-kiosk1', config)).toBe(true);
     expect(isMonitoredClient('raspberrypi3-signage1', config)).toBe(true);
+    expect(isMonitoredClient('zero-edge-1', config)).toBe(true);
+    expect(isMonitoredClient('zero-edge-123', config)).toBe(true);
+    expect(isMonitoredClient('zero-edge', config)).toBe(false);
+    expect(isMonitoredClient('other-zero-edge-1', config)).toBe(false);
     expect(isMonitoredClient('mac-kiosk-1', config)).toBe(false);
     expect(isMonitoredClient('zero2w-tanaban01-edge1', config)).toBe(false);
+  });
+
+  it('falls back to the factory pattern but preserves an explicit override', () => {
+    expect(isMonitoredClient('zero-edge-1', loadHeartbeatAlertConfig({
+      CLIENT_HEARTBEAT_CLIENT_ID_PATTERN: '['
+    }))).toBe(true);
+    expect(isMonitoredClient('zero-edge-1', loadHeartbeatAlertConfig({
+      CLIENT_HEARTBEAT_CLIENT_ID_PATTERN: '^raspi'
+    }))).toBe(false);
   });
 
   it('treats 10 minutes to 7 days of silence as stale', () => {
