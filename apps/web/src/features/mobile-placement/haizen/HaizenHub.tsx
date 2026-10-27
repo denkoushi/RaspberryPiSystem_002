@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../barcode-scan';
 import { MobileOfflineChip } from '../local-data/MobileOfflineChip';
 import { useMobileLocalData } from '../local-data/useMobileLocalData';
+import { useShelfOfflineQueue } from '../shelfMaster/offline/useShelfOfflineQueue';
 import { haizenPhoneColors as colors, haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
 import { HaizenBottomNav } from './HaizenBottomNav';
@@ -42,6 +43,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const flow = useHaizenWorkflow(mp, tab === 'verify');
   const queue = useHaizenOfflineQueue();
   const localData = useMobileLocalData('verify');
+  useShelfOfflineQueue();
   const [placeSlip, setPlaceSlip] = useState<{ kind: 'mo' | 'po'; number: string } | null>(null);
   const [selectedBranchNo, setSelectedBranchNo] = useState<number | null>(null);
   const [branchSelectionVersion, setBranchSelectionVersion] = useState(0);

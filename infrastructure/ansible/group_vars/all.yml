@@ -173,6 +173,7 @@ trivy_package_name: "trivy"
 trivy_package_state: "latest"
 trivy_enabled: true
 trivy_scan_target: "/opt/RaspberryPiSystem_002"
+trivy_scan_timeout: "30m"
 trivy_scan_cron: "30 3 * * *"
 trivy_image_scan_cron: "0 4 * * *"
 trivy_log_dir: "/var/log/trivy"
@@ -181,8 +182,9 @@ trivy_version: "0.54.1"
 trivy_package_file: "trivy_{{ trivy_version }}_Linux-ARM64.deb"
 trivy_download_url: "https://github.com/aquasecurity/trivy/releases/download/v{{ trivy_version }}/{{ trivy_package_file }}"
 trivy_skip_dirs:
-  - "{{ security_review_data_dir }}"
+  - "/opt/RaspberryPiSystem_002/storage"
   - "/opt/RaspberryPiSystem_002/certs"
+  - "/opt/RaspberryPiSystem_002/secrets"
 trivy_alert_ignore_patterns:
   - "{{ security_review_data_dir }}"
   - "/certs/"
