@@ -293,6 +293,7 @@ function combineExecutions(executions) {
       floor: known ? null : coverages.reduce((sum, coverage) => sum + (coverage?.total ?? coverage?.floor ?? 0), 0),
       shown: results.length,
       order: 'source_order',
+      judged: coverages.reduce((sum, coverage) => sum + (Number.isInteger(coverage?.judged) ? coverage.judged : 0), 0),
     },
     timings,
   };
@@ -678,7 +679,8 @@ export function createRetrievalAnswering({
         const n = coverage.known === true ? coverage.total : (coverage.floor ?? executed.results.length);
         const rewrite = (planned.plan.diagnostics.rewrite ?? '該当する件数').replace(/に該当する件数$/u, '').replace(/[「」]/gu, '');
         const answer = n === 0 ? `「${rewrite}」に該当する記録は見つかりませんでした。`
-          : `「${rewrite}」に該当する記録は${n}件${coverage.known === true ? '' : '以上'}です。`;
+          : coverage.known === true ? `「${rewrite}」に該当する記録は${n}件です。`
+            : `「${rewrite}」に該当する記録は少なくとも${n}件です（上位${coverage.judged}件まで確認）。`;
         return trialResult({
           status: 'completed', answer, recordIds: [], elapsedMs: elapsed(),
           previousPlan: sessionPlan, plans, planId, shownIds: previouslyShown,

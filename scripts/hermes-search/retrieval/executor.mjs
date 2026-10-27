@@ -280,6 +280,7 @@ function scoreDocument(recordId, index) {
 // options.relevancePool overrides it.
 export const RELEVANCE_POOL_DEFAULT = 30;
 export const RELEVANCE_POOL_MAX = 60;
+export const COUNT_POOL_LIMIT = 90;
 
 export function relevancePoolLimit(options = {}, env = process.env) {
   const requested = Number.isInteger(options.relevancePool) ? options.relevancePool : Number(env.HERMES_RETRIEVAL_RELEVANCE_POOL);
@@ -287,7 +288,7 @@ export function relevancePoolLimit(options = {}, env = process.env) {
   return Math.min(RELEVANCE_POOL_MAX, Math.max(RELEVANCE_CANDIDATE_LIMIT, requested));
 }
 
-export function fuseRankings(lexicalOrdered, vectorOrdered) {
+export function fuseRankings(lexicalOrdered, vectorOrdered, limit = RELEVANCE_CANDIDATE_LIMIT) {
   const lexicalRank = new Map();
   const contentScore = new Map();
   lexicalOrdered.forEach((item, index) => {
@@ -312,8 +313,8 @@ export function fuseRankings(lexicalOrdered, vectorOrdered) {
     fused.push({ id, score, contentTokenScore: contentScore.get(id) ?? 0, vectorRank: vectorPosition });
   }
   fused.sort((left, right) => right.score - left.score || String(left.id).localeCompare(String(right.id)));
-  const capped = fused.slice(0, RELEVANCE_CANDIDATE_LIMIT);
-  Object.defineProperty(capped, 'truncated', { value: fused.length > RELEVANCE_CANDIDATE_LIMIT });
+  const capped = fused.slice(0, limit);
+  Object.defineProperty(capped, 'truncated', { value: fused.length > limit });
   return capped;
 }
 
@@ -659,9 +660,9 @@ async function prepareCandidateRanking(plan, options, records) {
   const rowsOf = (ordered) => ordered
     .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
     .filter((item) => item.record);
-  const recentContent = isRecentContentPlan(plan, options.catalog);
+  const recentContent = options.countOnly === true ? false : isRecentContentPlan(plan, options.catalog);
   let candidatePoolTruncated = false;
-  const poolLimit = options.candidateLimit ?? relevancePoolLimit(options);
+  const poolLimit = options.countOnly === true ? COUNT_POOL_LIMIT : (options.candidateLimit ?? relevancePoolLimit(options));
   if (recentContent) {
     const dateField = dateRoleField(plan, options.catalog);
     ranked = orderRecentContentPool(buildRecentContentPool({
@@ -686,7 +687,8 @@ async function prepareCandidateRanking(plan, options, records) {
     candidatePoolTruncated = fused.length > poolLimit;
     ranked = rowsOf(fused.slice(0, poolLimit));
   } else if (vectorOrdered.length) {
-    const fused = fuseRankings(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered);
+    const fused = fuseRankings(lexicalRows.filter((item) => item.contentTokenScore > 0), vectorOrdered,
+      options.countOnly === true ? COUNT_POOL_LIMIT : undefined);
     candidatePoolTruncated = fused.truncated === true;
     ranked = fused
       .map((item) => ({ record: byId.get(item.id), score: item.score, lexicalValue: lexicalScores.get(item.id) ?? 0 }))
@@ -741,6 +743,7 @@ export async function execute(plan, options = {}) {
   let ranked = candidates;
   let candidatePoolTruncated = poolTruncated;
   let relevanceCut = false;
+  let judgedCount = 0;
   let relevanceMs = semanticQuery ? 0 : null;
   let retried = false;
   // The planner's content span, when present, keeps request wording such as 「…はほかにある」 away from the judge.
@@ -824,6 +827,7 @@ export async function execute(plan, options = {}) {
   if (!recentContent && judgeQuery && typeof options.relevance === 'function' && options.rerankMode !== 'replace') {
     const relevanceStarted = performance.now();
     try {
+      judgedCount = ranked.length;
       const judged = await options.relevance({
         semanticQuery: judgeQuery,
         candidates: ranked.map((item) => ({ id: item.record.id, record: item.record })),
@@ -897,7 +901,7 @@ export async function execute(plan, options = {}) {
   if (options.countOnly) {
     const known = !candidatePoolTruncated && !relevanceCut;
     coverage = { known, ...(known ? { total: ranked.length } : { total: null, floor: ranked.length }),
-      shown: results.length, order: coverageOrder(plan, filteredOnly) };
+      shown: results.length, order: coverageOrder(plan, filteredOnly), judged: judgedCount };
   }
   return {
     status: results.length ? 'answer' : 'no_result',
