@@ -21,7 +21,7 @@ This is not part of the standard fleet deploy. Run it on the Pi5 from a clean ch
     cd /opt/RaspberryPiSystem_002/infrastructure/ansible
     ansible-playbook playbooks/deploy-pi4-sd-backup.yml --limit raspberrypi5
 
-This installs `/opt/raspi-pi4-sd-backup`, creates the local repository directory `/var/lib/raspi-pi4-sd-backup`, writes `/etc/raspi-pi4-sd-backup/targets.json` from the `kiosk` inventory group, and installs a service and timer. The timer stays disabled. Run the playbook again after adding or removing a kiosk in the inventory.
+This installs `/opt/raspi-pi4-sd-backup`, creates the local repository directory `/var/lib/raspi-pi4-sd-backup`, writes `/etc/raspi-pi4-sd-backup/targets.json` from the `kiosk` inventory group minus `pi4_sd_backup_excluded_hosts` (raspi4-assembly-02 is on a mobile router at about 15 KB/s and timed out on 2026-10-27), and installs a service and timer. The timer stays disabled. Run the playbook again after adding or removing a kiosk in the inventory.
 
 ## First backup and enabling the weekly timer
 
