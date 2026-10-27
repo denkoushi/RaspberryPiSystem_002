@@ -21,7 +21,8 @@ echo "[$TIMESTAMP] Starting Trivy filesystem scan..." >> "${LOG_FILE}"
 TRIVY_CMD=(/usr/bin/trivy fs
   --severity HIGH,CRITICAL
   --ignore-unfixed
-  --exit-code 1
+  --exit-code 5
+  --timeout "{{ trivy_scan_timeout }}"
   --quiet
   "{{ trivy_scan_target }}"
 )
@@ -40,7 +41,7 @@ set -e
 
 echo "[$(date +%Y-%m-%dT%H:%M:%S)] Trivy scan completed." >> "${LOG_FILE}"
 
-if [[ ${TRIVY_EXIT} -eq 1 && -x "{{ alert_script_path }}" ]]; then
+if [[ ${TRIVY_EXIT} -eq 5 && -x "{{ alert_script_path }}" ]]; then
   RAW_DETAILS="$(grep -E '^(CRITICAL|HIGH):' -A5 "${LOG_FILE}" | tail -n 50)"
 {% if trivy_alert_ignore_patterns %}
   FILTERED_DETAILS="${RAW_DETAILS}"
@@ -56,7 +57,7 @@ if [[ ${TRIVY_EXIT} -eq 1 && -x "{{ alert_script_path }}" ]]; then
       "Trivyスキャンで脆弱性または秘密情報を検知しました" \
       "${FILTERED_DETAILS}"
   fi
-elif [[ ${TRIVY_EXIT} -gt 1 && -x "{{ alert_script_path }}" ]]; then
+elif [[ ${TRIVY_EXIT} -ne 0 && ${TRIVY_EXIT} -ne 5 && -x "{{ alert_script_path }}" ]]; then
   "{{ alert_script_path }}" \
     "trivy-scan-error" \
     "Trivyスキャンでエラーが発生しました" \
