@@ -24,6 +24,7 @@ TRIVY_CMD=(/usr/bin/trivy fs
   --exit-code 5
   --timeout "{{ trivy_scan_timeout }}"
   --quiet
+  --table-mode detailed
   "{{ trivy_scan_target }}"
 )
 {% if trivy_skip_dirs %}

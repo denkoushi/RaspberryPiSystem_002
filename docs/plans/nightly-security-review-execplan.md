@@ -55,6 +55,8 @@ You can see it working when, the morning after a deploy, a dated report exists i
 
 ## Decision Log
 
+- Decision (2026-10-27): print only the detailed Trivy tables. A manual collection after the retention change showed the per-target summary table, printed even for clean targets, filling most of the security material while the monitor journal was already compact.
+  Rationale: the alert rules read only the detailed finding lines, so dropping the summary loses no evidence and leaves room for the other sources.
 - Decision (2026-10-27): lead every report with optional `deviceHealth`, built deterministically by the API from database alerts and telemetry, never by the LLM. Include it in skipped and partial reports, and mark query failures unavailable and partial. The morning review presents storage attention first, then power, offline devices and security findings.
   Rationale: storage alerts were delivered but not acted on before a kiosk stopped; the morning report must make device storage health visible even when only one item needs attention. Older reports remain valid without this section.
 - Decision (2026-10-27): aggregate monitor messages with counts and first/last timestamps, excluding only successful unit lifecycle boilerplate and preserving failures. Classify unusual-hours requests only for sources with no activity outside those hours in the same window, using streaming passes and capped examples; expose the actual Caddy coverage span and extend access-log retention. Allocate chunks round-robin across security, errors and changes, redistributing unused capacity while preserving per-kind identifiers, grouped output and truncation counts.
