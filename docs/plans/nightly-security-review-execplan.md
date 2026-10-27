@@ -20,7 +20,7 @@ You can see it working when, the morning after a deploy, a dated report exists i
 - [x] (2026-10-26) Milestone 2: routed background review, lease-owned scheduler, bounded retries/chunks, strict reports, known-finding filtering and retention; fake-model tests pass. The repository-wide type-check limitation is recorded below.
 - [x] (2026-10-26) Milestone 3 repository work: host preparation playbook, Trivy exclusions, private Compose bind and independent API environment delivery, disabled by default.
 - [x] (2026-10-27) Implementation merged in #2318 and deployed to Pi5; storage, units and environment verified. The first manual collector run succeeded with API-owned private files. Code diffs were over-redacted; fixed here with code-specific redaction, and collector and nightly rollout flags enabled here.
-- [ ] Milestone 3 remaining production work: deploy the code-redaction fix and enabled flags, then observe the first real report.
+- [x] (2026-10-27) Milestone 3 production work: code-redaction fix and enabled flags deployed (#2319); the first real report was written in the morning slot. Its one confirmed finding (Trivy scans silently failing) is fixed in a follow-up change.
 - [x] (2026-10-26) Milestone 4 repository work: morning runbook and atomic known-findings add/list/remove tool.
 - [ ] Milestone 4 production work: two-week trial counting confirmed findings, refusals and false alarms.
 - [ ] Milestone 5 (decision point): compare GLM with DeepSeek V4.1 Flash on seeded vulnerable changes and decide whether a nightly model swap is worth it.
@@ -47,6 +47,9 @@ You can see it working when, the morning after a deploy, a dated report exists i
   Evidence: `apps/api/src/config/env/local-llm.ts`, `docs/runbooks/business-hermes.md`, `docs/plans/dgx-night-preparation-execplan.md`, `apps/api/src/services/business-hermes/business-hermes-nightly.scheduler.ts`, scan cron values in `group_vars/all.yml`.
 - Observation: the GLM profile is controlled through `reasoning_effort`, while the adapter sends `chat_template_kwargs.enable_thinking`. Earlier trials showed that GLM leaks reasoning text when only `enable_thinking: false` reaches it.
   Evidence: `scripts/dgx-local-llm-system/model-registry.examples/business_glm53_flash_fp4_tp2/manifest.json` (`thinkingControl`), `openai-compatible-text.adapter.ts`, `docs/plans/business-llm-glm53-tp2-execplan.md`. Milestone 0 confirmed the gateway mapping for this path (see the dated observation above).
+
+- Observation (2026-10-27, first report): the Trivy file-system scan had failed since 2026-09-20. It hit the default 5-minute timeout while walking the large runtime `storage/` folder. The image scan had failed daily because the API and web containers moved to the blue/green Compose project, so the image lookup produced an empty reference. Both failures were silent, because Trivy exits 1 on errors and the scripts treated 1 as "findings". Fixed by skipping `storage/`, adding a configurable timeout, finding images by running-container labels, and using a separate findings exit code so errors raise the scan-error alert.
+  Evidence: `/var/log/trivy/trivy-scan.log` and `trivy-image-scan.log` FATAL lines on the Pi5; `infrastructure/ansible/templates/trivy-scan.sh.j2` and `trivy-image-scan.sh.j2`.
 
 ## Decision Log
 
