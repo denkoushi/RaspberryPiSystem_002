@@ -54,7 +54,7 @@ describe('photo shelf picker', () => {
     fireEvent.click(tile);
     expect(onSelect).toHaveBeenCalledExactlyOnceWith('DAD-3220 北');
     expect(tile).toHaveAttribute('aria-pressed', 'true');
-    expect(within(tile).getByText('もう一度で拡大')).toBeInTheDocument();
+    expect(within(tile).queryByText('もう一度で拡大')).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: '棚の写真を拡大' })).not.toBeInTheDocument();
     fireEvent.click(tile);
     const viewer = screen.getByRole('dialog', { name: '棚の写真を拡大' });
@@ -73,6 +73,24 @@ describe('photo shelf picker', () => {
     expect(screen.queryByRole('dialog', { name: '棚の写真を拡大' })).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     if (!compact) expect(screen.getByRole('dialog', { name: '棚を選ぶ' })).toBeInTheDocument();
+  });
+
+  it.each([false, true])('compact shows every machine without filter chips and overlays expand (disabled: %s)', (disabled) => {
+    const onExpand = vi.fn();
+    render(<HaizenShelfPhotoList shelves={shelves} previousShelfCodes={['DAD-3220 北']} selected="DAD-3220 北"
+      loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} compact disabled={disabled} onExpand={onExpand} />);
+    for (const name of ['全部', '前回', 'DAD-3220', '50013_540AP']) {
+      expect(screen.queryByRole('button', { name, exact: true })).not.toBeInTheDocument();
+    }
+    expect(screen.getAllByRole('button', { name: /^棚 / })).toHaveLength(shelves.length);
+    expect(screen.getByRole('heading', { name: 'DAD-3220 2棚' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '50013_540AP 1棚' })).toBeInTheDocument();
+    expect(within(screen.getByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' })).getByText('前回')).toBeInTheDocument();
+    const expand = screen.getByRole('button', { name: '大きい画面で選ぶ' });
+    expect(expand).toHaveClass('absolute', 'right-0', 'top-0', '!h-9', 'w-9');
+    expect(expand.parentElement).toHaveClass('relative');
+    fireEvent.click(expand);
+    expect(onExpand).toHaveBeenCalledTimes(disabled ? 0 : 1);
   });
 
   it('keeps thumbnails cropped and contains the full photo in the viewer', () => {
