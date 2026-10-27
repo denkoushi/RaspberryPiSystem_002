@@ -20,6 +20,8 @@ import {
   type ActualSlipOcrFeedback
 } from './actual-slip-ocr-feedback';
 import { scanFseibanNative } from './haizenNative';
+import { verifyLocalFirst } from './local-data/localFirstLookup';
+import { mobileLocalDataStore } from './local-data/mobileLocalDataStore';
 import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
 
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
@@ -185,7 +187,7 @@ export function useMobilePlacementPageState() {
   const scanActualSlipNative = useCallback(() => runActualSlipOcr(async () => {
     const result = await scanFseibanNative();
     if (result.status === 'cancelled') return null;
-    return snapFseibanTokens({ tokens: result.tokens, text: result.text });
+    return await mobileLocalDataStore.snapNative(result.tokens, result.text) ?? snapFseibanTokens({ tokens: result.tokens, text: result.text });
   }, false), [runActualSlipOcr]);
 
   const runSlipVerify = useCallback(async () => {
@@ -193,13 +195,14 @@ export function useMobilePlacementPageState() {
     setSlipResult('idle');
     setSlipDetails(null);
     try {
-      const res = await verifyMobilePlacementSlipMatch({
+      const input = {
         transferOrderBarcodeRaw: transferOrder,
         transferPartBarcodeRaw: transferPart,
         actualOrderBarcodeRaw: actualOrder,
         actualFseibanRaw: actualFseiban,
         actualPartBarcodeRaw: actualPart
-      });
+      };
+      const res = await verifyLocalFirst(input, () => verifyMobilePlacementSlipMatch(input));
       setSlipDetails(res);
       setSlipResult(res.ok ? 'ok' : res.reason === 'order_not_found' || res.reason === 'transfer_not_found' || res.reason === 'part_required' ? 'not-found' : 'ng');
     } catch {

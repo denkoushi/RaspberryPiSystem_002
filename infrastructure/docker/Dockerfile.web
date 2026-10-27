@@ -19,6 +19,9 @@ WORKDIR /app/packages/kiosk-sop-core
 RUN nice -n 10 pnpm build
 WORKDIR /app/packages/part-search-core
 RUN nice -n 10 pnpm build
+
+WORKDIR /app/packages/slip-match-core
+RUN nice -n 10 pnpm build
 WORKDIR /app/packages/shelf-layout-core
 RUN nice -n 10 pnpm build
 WORKDIR /app

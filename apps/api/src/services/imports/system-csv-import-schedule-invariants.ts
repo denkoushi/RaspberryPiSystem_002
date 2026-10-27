@@ -6,7 +6,7 @@ import {
   MIN_CSV_IMPORT_INTERVAL_MINUTES,
 } from './import-schedule-policy.js';
 import type { CsvImportScheduleRow } from './system-csv-import-schedule-builtin-rows.js';
-import { resolveSystemCsvImportDefaultBuilder } from './system-csv-import-schedule-builtin-rows.js';
+import { FKOBAINO_CSV_IMPORT_SCHEDULE_ID, resolveSystemCsvImportDefaultBuilder } from './system-csv-import-schedule-builtin-rows.js';
 
 function coerceSystemCsvImportScheduleCronValue(schedule: string | undefined, defaultCron: string): string {
   if (!schedule || !schedule.trim()) {
@@ -45,7 +45,9 @@ export function normalizeSystemCsvImportRowForPersistence(row: CsvImportSchedule
     return row;
   }
   const base = build();
-  const schedule = coerceSystemCsvImportScheduleCronValue(row.schedule, base.schedule);
+  const schedule = row.id === FKOBAINO_CSV_IMPORT_SCHEDULE_ID && row.schedule?.trim() === '25 6 * * 0'
+    ? base.schedule
+    : coerceSystemCsvImportScheduleCronValue(row.schedule, base.schedule);
   return {
     ...row,
     provider: base.provider,

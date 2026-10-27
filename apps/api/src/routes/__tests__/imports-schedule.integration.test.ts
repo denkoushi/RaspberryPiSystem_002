@@ -114,7 +114,7 @@ describe('CSV Import Schedule API', () => {
       expect(customerScaw?.schedule).toBe('31 5 * * 0');
       expect(customerScaw?.provider).toBe('gmail');
       expect(fkobaino).toBeDefined();
-      expect(fkobaino?.schedule).toBe('25 6 * * 0');
+      expect(fkobaino?.schedule).toBe('25 6 * * *');
       expect(fkobaino?.provider).toBe('gmail');
     });
 

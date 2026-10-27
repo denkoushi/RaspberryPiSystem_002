@@ -120,10 +120,13 @@ jobs:
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Run part-search-core tests
         run: pnpm --filter @raspi-system/part-search-core test
+      - name: Run slip-match-core tests
+        run: pnpm --filter @raspi-system/slip-match-core test
 
       - name: Run shelf-layout-core tests
         run: pnpm --filter @raspi-system/shelf-layout-core test
@@ -164,6 +167,7 @@ jobs:
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Generate Prisma Client
@@ -287,6 +291,7 @@ jobs:
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Run Web tests with coverage floor
@@ -312,6 +317,7 @@ jobs:
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Generate Prisma Client
@@ -1168,6 +1174,7 @@ jobs:
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Run E2E smoke tests
@@ -1247,6 +1254,7 @@ jobs:
           pnpm --filter @raspi-system/shared-types build
           pnpm --filter @raspi-system/kiosk-sop-core build
           pnpm --filter @raspi-system/part-search-core build
+          pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
       - name: Run kiosk runtime recovery browser contract

@@ -42,8 +42,8 @@ export const FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_CRON = '5 1 * * *';
 /** Gmail 経由で FKOBAINO CsvDashboard を定期取り込みする固定スケジュールID */
 export const FKOBAINO_CSV_IMPORT_SCHEDULE_ID = 'csv-import-purchase-order-fkobaino';
 
-/** 日曜 6:25 JST 相当の cron（他 Gmail 取込と分が被らないよう空きを取る想定） */
-export const FKOBAINO_CSV_IMPORT_SCHEDULE_CRON = '25 6 * * 0';
+/** 毎日 6:25 JST 相当の cron（他 Gmail 取込と分が被らないよう空きを取る想定） */
+export const FKOBAINO_CSV_IMPORT_SCHEDULE_CRON = '25 6 * * *';
 
 /** Gmail 経由で FHINMEI_MH_SH CsvDashboard を定期取り込みする固定スケジュールID */
 export const SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID =

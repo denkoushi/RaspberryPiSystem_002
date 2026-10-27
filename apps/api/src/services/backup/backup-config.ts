@@ -351,7 +351,7 @@ export const defaultBackupConfig: BackupConfig = {
       name: 'PurchaseOrder_FKOBAINO (Gmail)',
       provider: 'gmail',
       targets: [{ type: 'csvDashboards', source: 'c3d4e5f6-a7b8-49c0-d1e2-f3a4b5c6d7e8' }],
-      schedule: '25 6 * * 0',
+      schedule: '25 6 * * *',
       enabled: false,
       replaceExisting: false,
       autoBackupAfterImport: { enabled: false, targets: ['csv'] }

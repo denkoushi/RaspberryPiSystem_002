@@ -32,7 +32,12 @@ export function findPurchaseOrderLookupRows(purchaseOrderNo: string) {
 
 export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise<PurchaseOrderLookupResponse> {
   const rows = await findPurchaseOrderLookupRows(purchaseOrderNo);
+  return { purchaseOrderNo, rows: await enrichPurchaseOrderLookupRows(rows) };
+}
 
+export async function enrichPurchaseOrderLookupRows(
+  rows: Awaited<ReturnType<typeof findPurchaseOrderLookupRows>>
+): Promise<PurchaseOrderLookupRowDto[]> {
   const [
     masterPartNamesByMatchKey,
     masterPartNamesByNormalized,
@@ -63,5 +68,5 @@ export async function queryPurchaseOrderLookup(purchaseOrderNo: string): Promise
     };
   });
 
-  return { purchaseOrderNo, rows: out };
+  return out;
 }

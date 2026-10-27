@@ -27,6 +27,7 @@ COPY patches ./patches
 COPY apps/api/package.json ./apps/api/package.json
 COPY packages/shared-types/package.json ./packages/shared-types/package.json
 COPY packages/part-search-core/package.json ./packages/part-search-core/package.json
+COPY packages/slip-match-core/package.json ./packages/slip-match-core/package.json
 COPY packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
@@ -56,6 +57,9 @@ WORKDIR /app/packages/shared-types
 RUN nice -n 10 pnpm build
 
 WORKDIR /app/packages/part-search-core
+RUN nice -n 10 pnpm build
+
+WORKDIR /app/packages/slip-match-core
 RUN nice -n 10 pnpm build
 
 WORKDIR /app/packages/shelf-layout-core
@@ -117,6 +121,7 @@ COPY --from=workspace /app/patches ./patches
 COPY --from=workspace /app/apps/api/package.json ./apps/api/package.json
 COPY --from=workspace /app/packages/shared-types/package.json ./packages/shared-types/package.json
 COPY --from=workspace /app/packages/part-search-core/package.json ./packages/part-search-core/package.json
+COPY --from=workspace /app/packages/slip-match-core/package.json ./packages/slip-match-core/package.json
 COPY --from=workspace /app/packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 WORKDIR /app
 # Prisma 7 は全データベース用のクエリコンパイラ(wasm)を同梱する。PostgreSQL 以外と
@@ -173,6 +178,7 @@ FROM api-runtime AS api
 COPY --from=build --exclude=node_modules /app/apps/api ./apps/api
 COPY --from=build --exclude=node_modules /app/packages/shared-types ./packages/shared-types
 COPY --from=build --exclude=node_modules /app/packages/part-search-core ./packages/part-search-core
+COPY --from=build --exclude=node_modules /app/packages/slip-match-core ./packages/slip-match-core
 COPY --from=build --exclude=node_modules /app/packages/shelf-layout-core ./packages/shelf-layout-core
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/docs/kiosk-operation-guide ./docs/kiosk-operation-guide

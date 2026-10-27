@@ -10,6 +10,7 @@ import { registerKioskSupportRoute } from './kiosk/support.js';
 import { registerKioskInquiryRoutes } from './kiosk/inquiries.js';
 import { registerKioskPowerRoute } from './kiosk/power.js';
 import { registerKioskSignagePreviewRoutes } from './kiosk/signage-preview.js';
+import { registerMobileLocalDataRoutes } from './kiosk/mobile-local-data.js';
 import { registerPurchaseOrderLookupRoute } from './kiosk/purchase-order-lookup.js';
 import { registerKioskPalletVisualizationRoutes } from './kiosk/pallet-visualization.js';
 import {
@@ -80,6 +81,7 @@ export async function registerKioskRoutes(app: FastifyInstance): Promise<void> {
     requireClientDevice
   });
 
+  await registerMobileLocalDataRoutes(app, { requireClientDevice });
   await registerPurchaseOrderLookupRoute(app, {
     requireClientDevice
   });
