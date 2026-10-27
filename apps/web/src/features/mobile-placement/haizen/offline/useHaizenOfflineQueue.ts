@@ -3,6 +3,7 @@ import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { registerOrderPlacement } from '../../../../api/client';
+import { canUseMobileNetwork, MOBILE_REQUEST_TIMEOUT_MS, mobileRequest, useMobileConnectivity } from '../../connectivity';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
 
 import { haizenOfflineQueueStore } from './haizenOfflineQueueStore';
@@ -11,13 +12,11 @@ import type { HaizenOfflineQueueStore, HaizenQueueRecord } from './haizenOffline
 
 type SendResult = { status: 'sent'; response: Awaited<ReturnType<typeof registerOrderPlacement>> }
   | { status: 'pending' | 'needs_check' };
-const connected = () => typeof navigator === 'undefined' || navigator.onLine;
 
 export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOfflineQueueStore) {
   const queryClient = useQueryClient();
   const [records, setRecords] = useState<HaizenQueueRecord[]>([]);
-  const [online, setOnline] = useState(connected);
-  const [networkFailed, setNetworkFailed] = useState(false);
+  const online = useMobileConnectivity();
   const serial = useRef(Promise.resolve());
   const enqueue = useCallback(<T,>(operation: () => Promise<T>): Promise<T> => {
     const result = serial.current.then(operation);
@@ -31,16 +30,15 @@ export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOff
   }, [store]);
 
   const send = useCallback(async (record: HaizenQueueRecord): Promise<SendResult> => {
-    if (!connected()) { setOnline(false); return { status: 'pending' }; }
+    if (!canUseMobileNetwork()) return { status: 'pending' };
     let response: Awaited<ReturnType<typeof registerOrderPlacement>>;
     try {
-      response = await registerOrderPlacement({
+      response = await mobileRequest(() => registerOrderPlacement({
         shelfCodeRaw: record.shelfCode, manufacturingOrderBarcodeRaw: record.number,
         clientRecordId: record.clientRecordId, slipKind: record.slipKind, placedAt: record.scannedAt, branchNo: record.branchNo
-      }, 8000);
+      }, MOBILE_REQUEST_TIMEOUT_MS));
     } catch (error) {
       const httpResponse = isAxiosError(error) ? error.response : undefined;
-      setNetworkFailed(!httpResponse);
       if (httpResponse && httpResponse.status >= 400 && httpResponse.status < 500 && httpResponse.status !== 408 && httpResponse.status !== 429) {
         await store.put({ ...record, status: 'needs_check', message: typeof httpResponse.data?.message === 'string'
           ? httpResponse.data.message : '登録内容を確認してください' });
@@ -48,8 +46,6 @@ export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOff
       }
       return { status: 'pending' };
     }
-    setOnline(connected());
-    setNetworkFailed(false);
     await store.remove(record.clientRecordId);
     void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
     void queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.orderPlacementBranchesAll });
@@ -96,17 +92,15 @@ export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOff
   const needsCheck = records.filter((record) => record.status === 'needs_check');
   useEffect(() => {
     void flush();
-    const onOnline = () => { setOnline(true); void flush(); };
-    const onOffline = () => setOnline(false);
+    const onOnline = () => { void flush(); };
     window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
-  }, [flush]);
+    return () => { window.removeEventListener('online', onOnline); };
+  }, [flush, online]);
   useEffect(() => {
     if (!pending.length) return;
     const timer = window.setInterval(() => { void flush(); }, 30_000);
     return () => window.clearInterval(timer);
   }, [flush, pending.length]);
 
-  return { pending, needsCheck, offline: !online || networkFailed, submit, remove, retake };
+  return { pending, needsCheck, offline: !online, submit, remove, retake };
 }

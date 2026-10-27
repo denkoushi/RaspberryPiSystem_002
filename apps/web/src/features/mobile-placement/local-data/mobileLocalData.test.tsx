@@ -1,11 +1,15 @@
 import { packPurchase, packSchedule } from '@raspi-system/slip-match-core';
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../api/http', () => ({ api: { get: vi.fn().mockRejectedValue(new Error('offline')) } }));
 
+import { api } from '../../../api/http';
+import { canUseMobileNetwork, mobileRequest, resetMobileConnectivityForTests } from '../connectivity';
+
 import { lookupPurchaseLocalFirst, verifyLocalFirst } from './localFirstLookup';
 import { createMobileLocalDataStore, mobileLocalDataStore } from './mobileLocalDataStore';
+import * as mobileLocalDataSync from './mobileLocalDataSync';
 import { createMobileDataSync, mobileDataApi } from './mobileLocalDataSync';
 import { MobileOfflineChip } from './MobileOfflineChip';
 import { useMobileLocalData } from './useMobileLocalData';
@@ -19,9 +23,49 @@ const purchase: PurchaseSnapshot = { version: 'p1', dataUpdatedAt: date, rows: [
 const schedule: ScheduleSnapshot = { version: 's1', dataUpdatedAt: date, rows: [packSchedule({ rowId: 'r', fseiban: 'FS1', productNo: 'T1', fhincd: 'MD1', fhinmei: '品名', fsigencd: 'M', fkojun: 1 })], knownFseibans: ['FS1', 'FSNOPART'] };
 const input = { transferOrderBarcodeRaw: 'T1', actualOrderBarcodeRaw: row.purchaseOrderNo, actualFseibanRaw: '' };
 const versions = { purchase: { version: 'p1', dataUpdatedAt: date }, schedule: { version: 's1', dataUpdatedAt: date } };
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+beforeEach(() => {
+  vi.mocked(api.get).mockReset().mockRejectedValue(new Error('offline'));
+  window.dispatchEvent(new Event('online'));
+});
+afterEach(() => { resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('mobile local-first data', () => {
+  it.each(['purchase', 'schedule'] as const)('downloads slow %s snapshots with matching 180-second deadlines', async (kind) => {
+    vi.useFakeTimers();
+    const snapshot = kind === 'purchase' ? purchase : schedule;
+    vi.mocked(api.get).mockImplementationOnce(() => new Promise((resolve) => {
+      setTimeout(() => resolve({ status: 200, data: snapshot }), 179_000);
+    }));
+    const download = mobileDataApi[kind]('old');
+    await vi.dynamicImportSettled();
+    await vi.advanceTimersByTimeAsync(3001);
+    expect(canUseMobileNetwork()).toBe(true);
+    expect(api.get).toHaveBeenCalledWith(`/kiosk/mobile-local-data/${kind}`, expect.objectContaining({
+      timeout: 180_000, kioskTelemetry: 'background', params: { version: 'old' }
+    }));
+    await vi.advanceTimersByTimeAsync(175_999);
+    await expect(download).resolves.toEqual(snapshot);
+    expect(canUseMobileNetwork()).toBe(true);
+  });
+
+  it('syncs again after reachability recovers without an online event', async () => {
+    vi.useFakeTimers();
+    const sync = vi.spyOn(mobileLocalDataSync, 'syncMobileLocalData').mockResolvedValue(undefined);
+    vi.mocked(api.get).mockResolvedValue({ status: 200 });
+    const { result, unmount } = renderHook(() => useMobileLocalData('purchase'));
+    await act(async () => {});
+    expect(sync).toHaveBeenCalledTimes(1);
+    await act(async () => { await mobileRequest(() => Promise.reject(new Error('network'))).catch(() => {}); });
+    expect(result.current.offline).toBe(true);
+    expect(sync).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(result.current.offline).toBe(false);
+    expect(sync).toHaveBeenCalledTimes(2);
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30 * 60_000); });
+    expect(sync).toHaveBeenCalledTimes(2);
+  });
+
   it('replaces all old rows, keeps wire ordering, and distinguishes missing data from missing order', async () => {
     const store = createMobileLocalDataStore();
     expect(await store.lookupPurchase(row.purchaseOrderNo)).toBeNull();

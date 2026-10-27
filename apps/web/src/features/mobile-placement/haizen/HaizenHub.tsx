@@ -49,7 +49,6 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const [placeSlip, setPlaceSlip] = useState<{ kind: 'mo' | 'po'; number: string } | null>(null);
   const [selectedBranchNo, setSelectedBranchNo] = useState<number | null>(null);
   const [branchSelectionVersion, setBranchSelectionVersion] = useState(0);
-  const initializedBranch = useRef(false);
   const retakeSelection = useRef<{ branchNo?: number; shelfCode: string } | null>(null);
   const [scannedAt, setScannedAt] = useState('');
   const [placeToast, setPlaceToast] = useState<string | null>(null);
@@ -58,7 +57,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const hasPlaceSlip = Boolean(placeSlip?.number.trim());
   const { setOrderBarcode } = mp;
-  const knownBranches = hasPlaceSlip && mp.orderBarcode === placeSlip?.number && !branches.isError && !branches.isLoading && !branches.isFetching
+  const knownBranches = hasPlaceSlip && mp.orderBarcode === placeSlip?.number && branches.branchStatus === 'known'
     ? branches.data?.branches : undefined;
   const selectedBranch = knownBranches?.find((branch) => branch.branchNo === selectedBranchNo);
   const hasNone = knownBranches?.some((branch) => branch.branchNo === 0) ?? false;
@@ -71,10 +70,9 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     const onlyNone = knownBranches.length === 1 && knownBranches[0].branchNo === 0;
     if (selectedBranchNo !== null && (selectedBranchNo === 0 ? hasNumbered : hasNone)) {
       setSelectedBranchNo(onlyNone ? 0 : null);
-    } else if (!initializedBranch.current && selectedBranchNo === null && onlyNone) {
+    } else if (selectedBranchNo === null && onlyNone) {
       setSelectedBranchNo(0);
     }
-    initializedBranch.current = true;
   }, [knownBranches, placeSlip, selectedBranchNo, hasNumbered, hasNone]);
   useEffect(() => {
     if (!placeToast) return;
@@ -84,7 +82,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const readPlaceSlip = (kind: 'mo' | 'po', number: string, selection: { branchNo?: number; shelfCode: string } | null = null) => {
     setPlaceSlip({ kind, number: number.trim() });
     setScannedAt(new Date().toISOString());
-    setSelectedBranchNo(selection?.branchNo ?? null); initializedBranch.current = false;
+    setSelectedBranchNo(selection?.branchNo ?? null);
     if (selection) mp.selectShelf(selection.shelfCode);
     retakeSelection.current = null;
   };
@@ -177,8 +175,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
           <HaizenShelfPhotoList key={`${placeSlip?.number}:${selectedBranchNo}:${branchSelectionVersion}:${previousShelfCodes.join()}`} compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
             loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={mp.shelfCode} onSelect={mp.selectShelf}
             disabled={!hasPlaceSlip || selectedBranchNo === null} onExpand={() => setSheet('shelves')}>
-            {hasPlaceSlip && branches.isLoading && <p className={`text-[11px] ${hp.muted}`}>分配一覧を読み込み中…</p>}
-            {hasPlaceSlip && branches.isError && <div role="alert" className="text-[13px] text-[var(--hp-ng)]">分配一覧の取得に失敗しました <button type="button" className={hp.mini} onClick={() => void branches.refetch()}>再試行</button></div>}
+            {hasPlaceSlip && branches.branchStatus === 'loading' && <p className={`text-[11px] ${hp.muted}`}>分配一覧を読み込み中…</p>}
           </HaizenShelfPhotoList>
         </section>
         </>}

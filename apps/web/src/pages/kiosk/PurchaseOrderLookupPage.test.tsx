@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getKioskPurchaseOrderLookup } from '../../api/client';
 import { BARCODE_FORMAT_PRESET_PURCHASE_ORDER, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../features/barcode-scan';
+import { resetMobileConnectivityForTests } from '../../features/mobile-placement/connectivity';
 
 import { PurchaseOrderLookupPage } from './PurchaseOrderLookupPage';
 
@@ -12,7 +13,10 @@ import type { BarcodeScanModalProps } from '../../features/barcode-scan/BarcodeS
 
 const scanProps = vi.hoisted(() => vi.fn());
 vi.mock('../../api/client', () => ({ getKioskPurchaseOrderLookup: vi.fn() }));
-vi.mock('../../lib/client-key', () => ({ resolveClientKey: () => ({ key: 'test-key' }) }));
+vi.mock('../../lib/client-key', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/client-key')>(),
+  resolveClientKey: () => ({ key: 'test-key' }),
+}));
 vi.mock('../../features/barcode-scan', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../features/barcode-scan')>(),
   BarcodeScanModal: (props: BarcodeScanModalProps) => {
@@ -46,6 +50,7 @@ function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  resetMobileConnectivityForTests();
   vi.mocked(getKioskPurchaseOrderLookup).mockResolvedValue(data);
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
 });
