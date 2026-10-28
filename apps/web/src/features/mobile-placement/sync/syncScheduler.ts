@@ -23,6 +23,10 @@ export function subscribeSync(listener: () => void) {
   return () => { listeners.delete(listener); };
 }
 
+export function notifySyncListeners() {
+  listeners.forEach((listener) => listener());
+}
+
 async function scheduleNext() {
   const version = ++timerVersion;
   clearTimeout(timer);
@@ -55,7 +59,7 @@ export function requestSync(_reason: string) {
         try {
           await runSyncOperation(() => started && canSyncNow() && jobs.get(job.name) === job ? job.run() : Promise.resolve());
         } catch { /* A job owns its retry/backoff policy. */ }
-        listeners.forEach((listener) => listener());
+        notifySyncListeners();
       }
     }
   }).finally(() => {

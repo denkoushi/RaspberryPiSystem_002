@@ -4,7 +4,7 @@ export type HaizenNativeScanResult =
 
 declare global {
   interface Window {
-    HaizenNative?: { isAvailable(): boolean; scanFseiban(): void };
+    HaizenNative?: { isAvailable(): boolean; scanFseiban(): void; setClientKey?(key: string): void };
     __haizenNativeScanResult?: (result: HaizenNativeScanResult) => void;
   }
 }

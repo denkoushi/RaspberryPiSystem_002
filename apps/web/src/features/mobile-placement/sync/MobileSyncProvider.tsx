@@ -6,6 +6,7 @@ import { syncMobileLocalData } from '../local-data/mobileLocalDataSync';
 import { mobilePlacementQueryKeys } from '../mobilePlacementQueryKeys';
 import { shelfOutboxRunner } from '../shelfMaster/offline/shelfOutboxRunner';
 
+import { importNativeLocalData, pushClientKeyToNative } from './nativeLocalDataImport';
 import { registerSyncJob, start, stop } from './syncScheduler';
 
 import type { ReactNode } from 'react';
@@ -14,6 +15,13 @@ let persistRequested = false;
 export function MobileSyncProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
   useEffect(() => {
+    const importNative = () => {
+      pushClientKeyToNative();
+      void importNativeLocalData();
+    };
+    const onVisibility = () => { if (document.visibilityState === 'visible') importNative(); };
+    importNative();
+    document.addEventListener('visibilitychange', onVisibility);
     if (!persistRequested) {
       persistRequested = true;
       try { void navigator.storage?.persist?.().catch(() => {}); } catch { /* Best effort. */ }
@@ -32,7 +40,10 @@ export function MobileSyncProvider({ children }: { children: ReactNode }) {
       registerSyncJob({ name: 'local-data', run: syncMobileLocalData })
     ];
     start();
-    return () => { stop(); cleanup.forEach((dispose) => dispose()); };
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      stop(); cleanup.forEach((dispose) => dispose());
+    };
   }, [client]);
   return <>{children}</>;
 }
