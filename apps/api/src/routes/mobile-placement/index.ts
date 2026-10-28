@@ -7,6 +7,7 @@ import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
+import { normalizeClientKey } from '../../lib/client-key.js';
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { resolveCredentialIdentity } from '../../lib/location-scope-resolver.js';
@@ -62,10 +63,17 @@ const registerBodySchema = z.object({
   csvDashboardRowId: z.string().min(1).optional().nullable()
 });
 
+const EDGE_SCAN_MAX_FUTURE_MS = 5 * 60_000;
+const EDGE_SCAN_MAX_AGE_MS = 8 * 24 * 60 * 60_000;
+
 const edgeScanBodySchema = z.object({
   clientRecordId: z.string().uuid(),
-  scannedAt: z.string().datetime({ offset: true }),
-  orderNumber: z.string(),
+  // The edge agent queues only NTP-synced scans and purges them after seven days.
+  scannedAt: z.string().datetime({ offset: true }).refine((value) => {
+    const age = Date.now() - Date.parse(value);
+    return age >= -EDGE_SCAN_MAX_FUTURE_MS && age <= EDGE_SCAN_MAX_AGE_MS;
+  }, 'scannedAt is outside the accepted range'),
+  orderNumber: z.string().max(32),
   branchNo: z.number().int().min(0).max(5)
 });
 
@@ -546,7 +554,11 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     };
   });
 
-  app.post('/mobile-placement/edge-scans', { config: { rateLimit: false } }, async (request) => {
+  // All devices arrive through the Caddy gateway, so count per device key rather than per IP.
+  app.post('/mobile-placement/edge-scans', {
+    config: { rateLimit: { max: 120, timeWindow: '1 minute',
+      keyGenerator: (request: FastifyRequest) => `edge-scan:${normalizeClientKey(request.headers['x-client-key']) ?? request.ip}` } }
+  }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = edgeScanBodySchema.parse(request.body);
     const identity = resolveCredentialIdentity(clientDevice);
