@@ -860,8 +860,16 @@ describe('mobile-placement API', () => {
     });
   });
 
-  it('PUT /api/mobile-placement/haizen-target-devices/:id/preset-shelf updates selected zero2w shelf', async () => {
+  it('PUT /api/mobile-placement/haizen-target-devices/:id/preset-shelf moves a shelf from device A to device B', async () => {
     const actor = await createTestClientDevice();
+    const previous = await prisma.clientDevice.create({
+      data: {
+        name: 'Test Client zero2w-previous',
+        apiKey: 'client-key-zero2w-previous',
+        haizenEdgeEnabled: true,
+        haizenPresetShelfCodeRaw: ' \t西-北-02\n'
+      }
+    });
     const target = await prisma.clientDevice.create({
       data: {
         name: 'Test Client zero2w-tanaban01',
@@ -887,6 +895,8 @@ describe('mobile-placement API', () => {
 
     const fromDb = await prisma.clientDevice.findUnique({ where: { id: target.id } });
     expect(fromDb?.haizenPresetShelfCodeRaw).toBe('西-北-02');
+    const previousFromDb = await prisma.clientDevice.findUniqueOrThrow({ where: { id: previous.id } });
+    expect(previousFromDb.haizenPresetShelfCodeRaw).toBeNull();
   });
 
   it('PUT /api/mobile-placement/haizen-target-devices/:id/preset-shelf clears preset with null', async () => {

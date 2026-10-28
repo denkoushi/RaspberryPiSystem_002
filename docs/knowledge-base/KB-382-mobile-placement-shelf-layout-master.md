@@ -442,6 +442,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **ナレッジ**: [deployment.md §未使用解放](../archive/deployments/2026-05.md#kiosk-shelf-master-unused-release-merged-cells-2026-05-24)·[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress 先頭
 
+### 写真モードからの Zero2W 割当（2026-10-28 · Web + API）
+
+- グリッド未配置でも、登録済み構造化棚の「棚を直す」で Zero2W を選択できる。写真一覧には現在の担当端末名をチップ表示する。新規棚・非構造化棚・オフラインキューには割当欄を出さない。
+- 「確定」は下書きだけを更新し、「保存する」で写真・メモの保存成功後に担当端末を PUT する。他棚担当端末は選択不可。「Zero2W 外す」は旧担当端末へ null を送る。変更なしなら PUT せず、失敗時はダイアログ内にエラーを残して再試行できる。
+- API は既存の検証を維持し、棚行をロックした単一トランザクションで、trim 後に同じ棚を指す他端末を解除して新担当を設定する。同じ棚への同時割当も直列化する。
+- 回帰テスト: `ShelfPhotoMaster.test.tsx`、`haizen-placement.service.test.ts`、`mobile-placement.integration.test.ts`。DB 統合テストは CI で実行する。
+
 ### Zero2W インライン割当（2026-05-24 · Web + API） {#zero2w-inline-preset-2026-05-24}
 
 **ブランチ**: `feat/kiosk-shelf-master-zero2w-inline-preset`  

@@ -76,6 +76,8 @@ export function useAssignZero2wPreset() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: putMobilePlacementHaizenTargetPresetShelf,
+    // Fail fast offline so the caller's busy state settles instead of pausing.
+    networkMode: 'always',
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.haizenTargetDevices });
       await queryClient.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfLayout });

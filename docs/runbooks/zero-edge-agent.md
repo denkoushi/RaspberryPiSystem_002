@@ -4,6 +4,7 @@
 
 Pi Zero W / Zero 2 WにPython 3.9以上のRaspberry Pi OS、SSH、ネットワークを準備します。
 サーバー側のedge-scans APIが利用できることを確認し、端末キーに棚を割り当て、edge利用を有効化します。
+棚の割り当ては、キオスクの「棚マスタ」→「写真」→ 棚を開く →「Zero2W」で端末を選び「確定」→「保存する」で行います（1 つの棚に付く端末は 1 台で、別の端末に割り当てると前の端末は外れます）。
 heartbeatのclientIdも同じ端末の`ClientStatus`として登録されるようサーバー側の端末設定を揃えます。
 
 端末の一覧は、Pi5 の `/opt/RaspberryPiSystem_002/infrastructure/ansible/inventory-zero-edge-hosts.yml`
