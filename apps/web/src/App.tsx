@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, type ReactNode } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 
 import { useDeployStatus } from './api/hooks';
 import { HermesFloatingChat } from './components/hermes/HermesFloatingChat';
@@ -14,6 +14,7 @@ import { kioskLazy } from './features/kiosk/kioskLazyPreload';
 import { KioskScreenWatchHost } from './features/kiosk/screen-watch/KioskScreenWatchHost';
 import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
 import { registerMobileAppShell } from './features/mobile-app-shell/registerMobileAppShell';
+import { MobileSyncProvider } from './features/mobile-placement/sync/MobileSyncProvider';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
@@ -193,7 +194,6 @@ function App() {
   return (
     <HermesPageContextProvider>
       <Routes>
-      <Route path="/kiosk/mobile-placement/scan-bench" element={lazyRouteElement(<MobileScanBenchPage />)} />
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<CallAutoSwitchLayout />}>
@@ -203,7 +203,6 @@ function App() {
           <Route path="/kiosk" element={<KioskRedirect />} />
           <Route path="/kiosk/portal" element={<KioskPortalPage />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
-          <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
           <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
           <Route path="/kiosk/inventory/dashboard" element={<KioskItemInventoryDashboardPage />} />
           <Route path="/kiosk/inventory/settings" element={<KioskItemInventorySettingsPage />} />
@@ -228,15 +227,19 @@ function App() {
             path="/kiosk/production-schedule/planning-board"
             element={<ProductionScheduleGrindingPlanningBoardPage />}
           />
-          <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
-          <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
-          <Route path="/kiosk/mobile-placement/shelf-master" element={<KioskMobileShelfMasterPage />} />
-          <Route path="/kiosk/mobile-placement/shelf-register" element={<Navigate to="/kiosk/mobile-placement/shelf-master" replace />} />
-          <Route path="/kiosk/mobile-placement/zero2w-assignment" element={<Navigate to="/kiosk/mobile-placement/shelf-master" replace />} />
-          <Route path="/kiosk/mobile-placement/zero2w-status" element={<KioskMobileZero2wStatusPage />} />
-          <Route path="/kiosk/mobile-placement/pallet-viz" element={<KioskMobilePalletVisualizationPage />} />
-          <Route path="/kiosk/mobile-placement/register" element={<Navigate to="/kiosk/mobile-placement" replace />} />
-          <Route path="/kiosk/purchase-order-lookup" element={<PurchaseOrderLookupPage />} />
+          <Route element={<MobileSyncProvider><Outlet /></MobileSyncProvider>}>
+            <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
+            <Route path="/kiosk/mobile-placement/scan-bench" element={lazyRouteElement(<MobileScanBenchPage />)} />
+            <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
+            <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
+            <Route path="/kiosk/mobile-placement/shelf-master" element={<KioskMobileShelfMasterPage />} />
+            <Route path="/kiosk/mobile-placement/shelf-register" element={<Navigate to="/kiosk/mobile-placement/shelf-master" replace />} />
+            <Route path="/kiosk/mobile-placement/zero2w-assignment" element={<Navigate to="/kiosk/mobile-placement/shelf-master" replace />} />
+            <Route path="/kiosk/mobile-placement/zero2w-status" element={<KioskMobileZero2wStatusPage />} />
+            <Route path="/kiosk/mobile-placement/pallet-viz" element={<KioskMobilePalletVisualizationPage />} />
+            <Route path="/kiosk/mobile-placement/register" element={<Navigate to="/kiosk/mobile-placement" replace />} />
+            <Route path="/kiosk/purchase-order-lookup" element={<PurchaseOrderLookupPage />} />
+          </Route>
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
           <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />

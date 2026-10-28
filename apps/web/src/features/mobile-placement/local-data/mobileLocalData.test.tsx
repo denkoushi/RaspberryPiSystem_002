@@ -6,6 +6,7 @@ vi.mock('../../../api/http', () => ({ api: { get: vi.fn().mockRejectedValue(new 
 
 import { api } from '../../../api/http';
 import { canUseMobileNetwork, mobileRequest, resetMobileConnectivityForTests } from '../connectivity';
+import { registerSyncJob, resetSyncSchedulerForTests, start, stop } from '../sync/syncScheduler';
 
 import { lookupPurchaseLocalFirst, verifyLocalFirst } from './localFirstLookup';
 import { createMobileLocalDataStore, mobileLocalDataStore } from './mobileLocalDataStore';
@@ -27,7 +28,7 @@ beforeEach(() => {
   vi.mocked(api.get).mockReset().mockRejectedValue(new Error('offline'));
   window.dispatchEvent(new Event('online'));
 });
-afterEach(() => { resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => { resetSyncSchedulerForTests(); resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('mobile local-first data', () => {
   it.each(['purchase', 'schedule'] as const)('downloads slow %s snapshots with matching 180-second deadlines', async (kind) => {
@@ -52,6 +53,8 @@ describe('mobile local-first data', () => {
     vi.useFakeTimers();
     const sync = vi.spyOn(mobileLocalDataSync, 'syncMobileLocalData').mockResolvedValue(undefined);
     vi.mocked(api.get).mockResolvedValue({ status: 200 });
+    registerSyncJob({ name: 'local-data', run: () => mobileLocalDataSync.syncMobileLocalData() });
+    start();
     const { result, unmount } = renderHook(() => useMobileLocalData('purchase'));
     await act(async () => {});
     expect(sync).toHaveBeenCalledTimes(1);
@@ -61,7 +64,7 @@ describe('mobile local-first data', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
     expect(result.current.offline).toBe(false);
     expect(sync).toHaveBeenCalledTimes(2);
-    unmount();
+    unmount(); stop();
     await act(async () => { await vi.advanceTimersByTimeAsync(30 * 60_000); });
     expect(sync).toHaveBeenCalledTimes(2);
   });
@@ -95,7 +98,7 @@ describe('mobile local-first data', () => {
     expect((await store.lookupPurchase(row.purchaseOrderNo))?.rows[0]).toMatchObject(row);
     expect(await store.verify(input)).toMatchObject({ ok: true });
   });
-  it('uses local purchases first, uses server on first launch, and only supplements missing orders online', async () => {
+  it('uses local purchases first, uses server on first launch, and retains missing orders locally online', async () => {
     const store = createMobileLocalDataStore(); const server = vi.fn().mockResolvedValue({ purchaseOrderNo: row.purchaseOrderNo, rows: [row] });
     await lookupPurchaseLocalFirst(row.purchaseOrderNo, server, store, true); expect(server).toHaveBeenCalledTimes(1);
     await store.replace({ purchase }); server.mockClear();
@@ -103,9 +106,17 @@ describe('mobile local-first data', () => {
     expect(server).not.toHaveBeenCalled();
     expect((await lookupPurchaseLocalFirst('missing', server, store, false)).rows).toEqual([]);
     expect(server).not.toHaveBeenCalled();
-    await lookupPurchaseLocalFirst('missing', server, store, true); expect(server).toHaveBeenCalledTimes(1);
+    await lookupPurchaseLocalFirst('missing', server, store, true); expect(server).not.toHaveBeenCalled();
     server.mockRejectedValue(new Error('connection lost'));
     expect((await lookupPurchaseLocalFirst('missing', server, store, true)).rows).toEqual([]);
+  });
+  it('fails immediately on first launch when synchronization is forbidden', async () => {
+    vi.stubGlobal('navigator', { onLine: true, connection: { type: 'cellular' } });
+    const store = createMobileLocalDataStore();
+    const server = vi.fn();
+    await expect(lookupPurchaseLocalFirst('missing', server, store)).rejects.toThrow('Mobile local data unavailable offline');
+    await expect(verifyLocalFirst(input, server, store)).rejects.toThrow('Mobile local data unavailable offline');
+    expect(server).not.toHaveBeenCalled();
   });
   it('verifies on the device, including mismatch, and only falls back if a dataset is absent', async () => {
     const store = createMobileLocalDataStore(); const server = vi.fn().mockResolvedValue({ ok: false, reason: 'order_not_found' });
@@ -132,16 +143,17 @@ describe('mobile local-first data', () => {
     ['order_not_found', { ...input, actualOrderBarcodeRaw: '', actualFseibanRaw: 'missing' }],
     ['order_not_found', { ...input, actualOrderBarcodeRaw: '0000000000' }],
     ['transfer_not_found', { ...input, transferOrderBarcodeRaw: 'missing' }]
-  ] as const)('supplements %s online and retains the local result on network failure', async (reason, missingInput) => {
+  ] as const)('retains local %s without requesting the server online', async (reason, missingInput) => {
     const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule });
     const local = await store.verify(missingInput);
     expect(local).toMatchObject({ ok: false, reason });
     const server = vi.fn().mockResolvedValue({ ok: true, reason: 'match' });
     expect(await verifyLocalFirst(missingInput, server, store, false)).toEqual(local);
     expect(server).not.toHaveBeenCalled();
-    expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual({ ok: true, reason: 'match' });
+    expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual(local);
     server.mockResolvedValue({ ok: false, reason: 'different_part' });
-    expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual({ ok: false, reason: 'different_part' });
+    expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual(local);
+    expect(server).not.toHaveBeenCalled();
     server.mockRejectedValue(new Error('offline'));
     expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual(local);
   });
@@ -207,27 +219,22 @@ describe('mobile local-first data', () => {
     rerender(<MobileOfflineChip offline={false} updatedAt={date} />); expect(screen.queryByText(/圏外/)).not.toBeInTheDocument();
     rerender(<MobileOfflineChip offline />); expect(screen.getByText('圏外')).toBeInTheDocument();
   });
-  it('checks versions on mount, reconnect and 30-minute timer, and removes listeners', async () => {
-    const remote = vi.spyOn(mobileDataApi, 'versions').mockResolvedValue(versions);
-    const download = vi.spyOn(mobileDataApi, 'purchase').mockResolvedValue(purchase);
-    vi.spyOn(mobileDataApi, 'schedule').mockResolvedValue(schedule);
-    vi.spyOn(mobileLocalDataStore, 'replace').mockRejectedValue(new Error('quota'));
-    vi.stubGlobal('navigator', { onLine: true });
+  it('only reads versions and refreshes when a scheduler job finishes', async () => {
+    const sync = vi.spyOn(mobileLocalDataSync, 'syncMobileLocalData').mockResolvedValue(undefined);
+    const read = vi.spyOn(mobileLocalDataStore, 'versions').mockResolvedValue({});
     vi.useFakeTimers();
-    const { unmount } = renderHook(() => useMobileLocalData('purchase'));
-    await act(async () => { await Promise.resolve(); });
-    expect(remote).toHaveBeenCalledTimes(1);
-    expect(download).toHaveBeenCalledTimes(1);
-    await act(async () => { window.dispatchEvent(new Event('online')); });
-    expect(remote).toHaveBeenCalledTimes(2);
-    expect(download).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(30 * 60 * 1000); });
-    expect(remote).toHaveBeenCalledTimes(3);
-    expect(download).toHaveBeenCalledTimes(2);
-    await act(async () => { window.dispatchEvent(new Event('online')); await vi.advanceTimersByTimeAsync(30 * 60 * 1000); });
-    expect(remote).toHaveBeenCalledTimes(5);
-    expect(download).toHaveBeenCalledTimes(2);
-    unmount(); await act(async () => { window.dispatchEvent(new Event('online')); await vi.advanceTimersByTimeAsync(30 * 60 * 1000); });
-    expect(remote).toHaveBeenCalledTimes(5);
+    const { result, unmount } = renderHook(() => useMobileLocalData('purchase'));
+    await act(async () => {});
+    expect(sync).not.toHaveBeenCalled();
+    expect(read).toHaveBeenCalledTimes(1);
+    read.mockResolvedValue(versions);
+    registerSyncJob({ name: 'local-data', run: sync });
+    await act(async () => { start(); });
+    expect(result.current.updatedAt).toBe(date);
+    unmount();
+    const reads = read.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30 * 60_000); });
+    expect(sync).toHaveBeenCalledTimes(2);
+    expect(read).toHaveBeenCalledTimes(reads);
   });
 });

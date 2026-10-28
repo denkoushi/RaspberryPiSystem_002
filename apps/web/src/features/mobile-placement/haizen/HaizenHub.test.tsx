@@ -9,6 +9,8 @@ import { api } from '../../../api/http';
 import { resetMobileConnectivityForTests, mobileRequest, MOBILE_REQUEST_TIMEOUT_MS, canUseMobileNetwork } from '../connectivity';
 import { saveOrderBranches } from '../orderPlacementBranchesCache';
 import { shelfOfflineQueueStore } from '../shelfMaster/offline/shelfOfflineQueueStore';
+import { MobileSyncProvider } from '../sync/MobileSyncProvider';
+import { resetSyncSchedulerForTests } from '../sync/syncScheduler';
 import { useMobilePlacementPageState } from '../useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import { useRegisteredShelves } from '../useRegisteredShelves';
@@ -58,10 +60,10 @@ function Harness() {
 }
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/kiosk/mobile-placement']}><Routes>
+  return render(<QueryClientProvider client={client}><MobileSyncProvider><MemoryRouter initialEntries={['/kiosk/mobile-placement']}><Routes>
     <Route path="/kiosk/mobile-placement" element={<Harness />} />
     <Route path="*" element={<div>sub-screen</div>} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  </Routes></MemoryRouter></MobileSyncProvider></QueryClientProvider>);
 }
 function typeSlips() {
   fireEvent.click(screen.getByRole('button', { name: 'open inputs', exact: true }));
@@ -95,7 +97,7 @@ beforeEach(async () => {
   vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: true, reason: 'match', expected: { fseiban: 'FS1', fhincd: 'PART1', partName: 'ブラケット' } });
 });
 
-afterEach(() => { resetMobileConnectivityForTests(); vi.restoreAllMocks(); });
+afterEach(() => { resetSyncSchedulerForTests(); resetMobileConnectivityForTests(); vi.restoreAllMocks(); });
 
 describe('Haizen hub', () => {
   it('saves landmarks when opening the hub without visiting shelf master', async () => {

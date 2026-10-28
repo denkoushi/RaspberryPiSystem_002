@@ -16,8 +16,9 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 - [x] (2026-10-28 09:00Z) スマホ機能と mobile API の棚卸し(下の Context and Orientation に記載)。
 - [x] (2026-10-28 09:30Z) この ExecPlan の初版。
-- [ ] ユーザー判断 2 件の回答待ち(Decision Log の「未決」を参照)。
+- [x] ユーザー判断の回答を Decision Log に記録した(2026-10-28)。
 - [ ] Milestone 1: 共通の同期層(アプリ全体で 1 つの同期係、Wi-Fi 判定、送信待ち箱の共通化、棚番登録の待ちを外す)。
+- [x] (2026-10-28) Milestone 1 の部分実装: 共通同期係、Provider、共有送信 runner、棚の保存直後の pending 応答、ローカル結果優先。DB/記録形式と outbox.ts の共通化は変更していない。回線判定は Decision Log のとおり Wi-Fi(または有線)と判定できたときだけ同期する。ローカルデータが一度も無いときだけ、同期できる状態ならサーバーに 3 秒問い合わせる。
 - [ ] Milestone 2: 配膳の読み取りをローカル化(現在の置き場データの版付き取得、棚写真の端末保存)。
 - [ ] Milestone 3: 部品検索をローカル化。
 - [ ] Milestone 4: サーバーの汎用二重実行防止と、棚マスタ編集の送信待ち箱。
@@ -27,7 +28,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Surprises & Discoveries
 
-- Observation: すべてのスマホは Tailscale の名前 `raspberrypi.tail7312a3.ts.net:8443` で Pi5 に入る。サーバーから見た送信元はどの端末も Tailscale のアドレスになり、Wi-Fi かモバイル回線かをサーバー側では見分けられない。
+- Observation: スマホ(1台)は Tailscale の名前 `raspberrypi.tail7312a3.ts.net:8443` で Pi5 に入る。サーバーから見た送信元はどの端末も Tailscale のアドレスになり、Wi-Fi かモバイル回線かをサーバー側では見分けられない。
   Evidence: `apps/android-haizen-shell/app/build.gradle.kts:13` の `HAIZEN_ORIGIN`、`docs/runbooks/mobile-placement-smartphone.md`。
 - Observation: 既存の同期と送信は、その画面が開いている間しか動かない。照合と購買の取得は `useMobileLocalData` を使う画面(配膳ハブ、購買照会)の中、配膳の送信待ち箱は `HaizenHub` の中、棚の送信待ち箱は棚マスタの中で動く。部品検索の画面にいる間は、未送信の「ここに置く」は送られない。
   Evidence: `apps/web/src/features/mobile-placement/local-data/useMobileLocalData.ts`、`haizen/offline/useHaizenOfflineQueue.ts` の `useEffect`。
@@ -42,8 +43,8 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - Decision: 同期係は画面ではなく、スマホ用の画面群全体で 1 つだけ動かす。
   Rationale: 上の発見のとおり、画面ごとの同期では「裏で送る」が成り立たない。
   Date/Author: 2026-10-28 / Claude
-- Decision: Wi-Fi の判定は端末側で行う。第一に `navigator.connection.type`(Android の Chrome と WebView で使える。値は `wifi`、`cellular`、`ethernet`、`none`、`unknown` など)を見る。値が `wifi` か `ethernet` なら同期してよい。`cellular` なら同期しない。値が取れないか `unknown`/`other` のときは、端末ごとの設定「回線種別」に従う。設定は既存の `GET /mobile-placement/client-capabilities` の応答に `networkPolicy: 'wifi_only_unknown_allows' | 'wifi_only_strict'` として追加し、端末に保存する。既定は `wifi_only_unknown_allows`(Wi-Fi 専用端末は判定できなくても同期する)。モバイル回線を持つ端末(組立02)は `wifi_only_strict` にし、`wifi` と判定できたときだけ同期する。
-  Rationale: サーバー側では見分けられない(発見 1)。ブラウザの判定は Android では実用になり、判定できない場合だけ端末ごとの設定で安全側に倒せる。WebView アプリにネイティブの判定(`ConnectivityManager`)を足す案は APK の再配布が要るため、後で必要になったときの選択肢として残す。
+- Decision: Wi-Fi の判定はスマホ側で行う。`navigator.connection.type`(Android の Chrome と WebView で使える)が `wifi` か `ethernet` のときだけ同期する。`cellular`、`none`、値が取れない、`unknown`/`other` のときは同期しない。
+  Rationale: サーバー側では見分けられない(発見 1)。ブラウザの判定は Android では実用になり、判定できない場合は同期しない側に倒す。WebView アプリにネイティブの判定(`ConnectivityManager`)を足す案は APK の再配布が要るため、後で必要になったときの選択肢として残す。
   Date/Author: 2026-10-28 / Claude
 - Decision: 操作中にサーバーへ聞く補助(照合と購買の「見つからない時だけサーバー」)はやめ、ローカルの結果をそのまま出す。見つからなかった番号は、次の同期で版が上がっていれば自動で取り直す。
   Rationale: 「通信は同期だけ」というユーザーの指示に合わせる。サーバーへの問い合わせはどの画面でも待ちになる。
@@ -57,8 +58,11 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - Decision: 現品票の写真をサーバーで読む OCR(ブラウザの撮影経由)は、計算を Pi5 でしか行えないため、ローカル化しない。圏外のときは、その撮影ボタンを押せない状態にする。WebView アプリのネイティブ読取は既にローカルで動く。
   Rationale: 端末で同じ精度の OCR を動かすのは別の大きな作業で、この計画の目的(待たない)はボタンを押せなくすることで満たせる。
   Date/Author: 2026-10-28 / Claude
-- 未決(ユーザー判断): 組立02 がモバイル回線のときも同期するか。上の判定では `wifi_only_strict` で同期しない。ユーザーが「モバイル回線でも同期してよい」と決めたら、その端末だけ `cellular_allowed` を設定値に足す。
-- 未決(ユーザー判断): 棚マスタの配置編集のうち、区画のレイアウト編集、棚の移動、Zero2W の割り当ては、管理者がまれに行う操作で、現状は再送に安全でない。これらも圏外で予約して後で送る形にするか、Wi-Fi のときだけ押せる形にとどめるか。回答で Milestone 4 の範囲が変わる。
+- Decision: 回線方針の切り替え設定(以前の案の `wifi_only_strict` など)は作らない。スマホは1台で、上の規則だけで判定する。
+  Rationale: ユーザー指摘(2026-10-28)。対象のスマホは配膳と照合で使っている1台だけで、端末の区別は要らない。
+  Date/Author: 2026-10-28 / ユーザー、記録 Claude
+- Decision: 棚マスタの配置編集(区画のレイアウト編集、棚の移動、Zero2W の割り当て)もスマホの機能なので例外にしない。圏外でも操作を受け付けて端末にすぐ反映し、Wi-Fi に戻ったら裏で送る。再送に安全でない点は Milestone 4 の操作 ID(`MobileClientOperation`)で解消する。
+  Rationale: ユーザー指摘(2026-10-28)「スマートフォンの話だぞ」。スマホの全機能をローカル優先にする。
 
 
 ## Outcomes & Retrospective
@@ -89,7 +93,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 この Milestone の終わりには、スマホのどの画面にいても、未送信の書き込みが Wi-Fi のときだけ裏で送られ、照合・購買のデータも裏で更新される。棚番登録の保存ボタンは待たなくなる。
 
-新しいフォルダ `apps/web/src/features/mobile-placement/sync/` を作る。`networkGate.ts` は「いま同期してよいか」を返す。`connectivity.ts` の到達判定(圏外でないこと)に、Decision Log の Wi-Fi 判定を重ねる。`navigator.connection` の `change` イベントで状態を更新し、購読できる形(`useSyncExternalStore` 用の `subscribe` と `getSnapshot`)にする。端末の回線方針は `client-capabilities` の応答から取り、localStorage `mobile-sync-network-policy-v1` に保存して、圏外でも使えるようにする。
+新しいフォルダ `apps/web/src/features/mobile-placement/sync/` を作る。`networkGate.ts` は「いま同期してよいか」を返す。`connectivity.ts` の到達判定(圏外でないこと)に、Decision Log の Wi-Fi 判定を重ねる。`navigator.connection` の `change` イベントで状態を更新し、購読できる形(`useSyncExternalStore` 用の `subscribe` と `getSnapshot`)にする。
 
 `syncScheduler.ts` はアプリ全体で 1 つだけ動く同期係。登録された「同期の仕事」(アウトボックスの送信、版付きデータの取得)を順に実行する。実行のきっかけは、起動時、`networkGate` が許可に変わったとき、画面が前面に戻ったとき(`visibilitychange`)、未送信があるときは 30 秒ごと、無いときは 30 分ごと。失敗したら仕事ごとに待ち時間を倍にして(上限 6 時間、データ取得は既存の値)再試行する。同時に二つの仕事は走らせない。
 
@@ -101,7 +105,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 同期の状態の見せ方は、`MobileOfflineChip` を共通のチップにまとめる。圏外(または Wi-Fi でない)ときは「圏外 M/D」、未送信があるときは「未送信 N」、要確認があるときは「要確認 N」を、スマホの各画面の見出しの同じ位置に出す。既存の配膳タブのチップの見た目と文言は変えない。新しい説明文は足さない。
 
-受け入れ: Wi-Fi を切った状態(テストでは `navigator.connection.type = 'cellular'` を模擬)で「ここに置く」を押すとすぐ次へ進み、部品検索の画面へ移ってから Wi-Fi に戻すと、その画面のまま未送信が 0 になる。`wifi_only_strict` の端末で `type` が取れないときは送らない。
+受け入れ: Wi-Fi を切った状態(テストでは `navigator.connection.type = 'cellular'` を模擬)で「ここに置く」を押すとすぐ次へ進み、部品検索の画面へ移ってから Wi-Fi に戻すと、その画面のまま未送信が 0 になる。`type` が取れないときも送らない。
 
 ### Milestone 2: 配膳の読み取りをローカル化
 
@@ -123,7 +127,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 まずサーバーに `MobileClientOperation` 表(Prisma の移行を追加)と、Fastify のルートで使う小さな包み `withClientOperation(request, kind, handler)` を作る。`Idempotency-Key` ヘッダーがあれば表を見て、記録済みなら前回の結果を返す。無ければ処理して結果を同じ取引の中で記録する。ヘッダーが無い要求は今までどおり動く(キオスクや管理画面を壊さない)。記録は 30 日で消す(既存の定期処理に追加)。
 
-次に棚マスタの編集(メモ、写真の差し替え、削除、目印の追加と削除、Zero2W の割り当て)をアウトボックスに通す。端末は操作をすぐ控え(localStorage の棚一覧)に反映し、裏で送る。区画のレイアウト編集と棚の移動を含めるかは、未決の回答に従う。含めない場合は、Wi-Fi で同期できないときにそのボタンを押せない状態にする(待たせない)。
+次に棚マスタの編集(メモ、写真の差し替え、削除、目印の追加と削除、Zero2W の割り当て、区画のレイアウト編集、棚の移動)をアウトボックスに通す。端末は操作をすぐ控え(localStorage の棚一覧)に反映し、裏で送る。
 
 受け入れ: 同じ `Idempotency-Key` で 2 回送ったとき、2 回目は 1 回目と同じ応答を返し、DB の行は 1 回分だけ変わる(API の結合テスト)。圏外でメモを保存すると、すぐ一覧に反映され、Wi-Fi に戻ると送られる。
 
@@ -156,7 +160,7 @@ API の対象テストは次で動かす(DB が要るものは CI と同じ手�
 
 ## Validation and Acceptance
 
-各 Milestone の受け入れは上に書いた。自動テストとして必ず足すものは三つ。一つ目は回線の切り替え。`navigator.connection` と `navigator.onLine` を模擬し、`cellular` から `wifi` への変化で同期係が動き、逆の変化で止まり、`wifi_only_strict` で `type` が無いときは動かないこと。二つ目は再送。同じ操作 ID を 2 回送ってもサーバーの状態が 1 回分しか変わらないこと(API の結合テスト)と、端末で送信の途中に失敗した記録が、次の同期で一度だけ送られること。三つ目は待たないこと。送信関数が永遠に終わらない模擬で、保存ボタンが押せる状態に戻り、画面が次へ進むこと。
+各 Milestone の受け入れは上に書いた。自動テストとして必ず足すものは三つ。一つ目は回線の切り替え。`navigator.connection` と `navigator.onLine` を模擬し、`cellular` から `wifi` への変化で同期係が動き、逆の変化で止まり、`type` が無いときは動かないこと。二つ目は再送。同じ操作 ID を 2 回送ってもサーバーの状態が 1 回分しか変わらないこと(API の結合テスト)と、端末で送信の途中に失敗した記録が、次の同期で一度だけ送られること。三つ目は待たないこと。送信関数が永遠に終わらない模擬で、保存ボタンが押せる状態に戻り、画面が次へ進むこと。
 
 本番での確認は、反映後に実機で行う。Wi-Fi を切ってその画面の操作がすぐ反映されること、Wi-Fi に戻して未送信の件数が 0 になり、別の端末に結果が出ることを見る。
 
@@ -176,7 +180,6 @@ API の対象テストは次で動かす(DB が要るものは CI と同じ手�
 端末側の主な形は次のとおり(名前は実装で多少変えてよいが、変えたら Decision Log に書く)。
 
     // apps/web/src/features/mobile-placement/sync/networkGate.ts
-    export type NetworkPolicy = 'wifi_only_unknown_allows' | 'wifi_only_strict';
     export function canSyncNow(): boolean;
     export function useCanSync(): boolean;
 

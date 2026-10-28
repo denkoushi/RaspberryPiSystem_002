@@ -6,8 +6,10 @@ import { registerOrderPlacement } from '../../../../api/client';
 import { api } from '../../../../api/http';
 import { resetMobileConnectivityForTests } from '../../connectivity';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
+import { registerSyncJob, resetSyncSchedulerForTests, start } from '../../sync/syncScheduler';
 
 import { createHaizenOfflineQueueStore } from './haizenOfflineQueueStore';
+import { haizenOutboxRunner } from './haizenOutboxRunner';
 import { useHaizenOfflineQueue } from './useHaizenOfflineQueue';
 
 import type { ReactNode } from 'react';
@@ -21,6 +23,13 @@ const responseError = (status: number) => ({ isAxiosError: true, response: { sta
 function mount(store = createHaizenOfflineQueueStore()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(client, 'invalidateQueries');
+  const runner = haizenOutboxRunner(store);
+  registerSyncJob({ name: 'haizen', run: runner.flush, hasPendingWork: runner.hasPendingWork });
+  start();
+  runner.onSent(() => {
+    void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
+    void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.orderPlacementBranchesAll });
+  });
   const hook = renderHook(() => useHaizenOfflineQueue(store), { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
   return { ...hook, store, invalidate };
 }
@@ -30,7 +39,7 @@ beforeEach(() => {
   window.dispatchEvent(new Event('online'));
   vi.mocked(registerOrderPlacement).mockResolvedValue(success);
 });
-afterEach(() => { resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { resetSyncSchedulerForTests(); resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('haizen offline queue', () => {
   it('flushes pending placements after the background probe recovers without an online event', async () => {

@@ -106,14 +106,15 @@ describe('MobileScanBenchPage', () => {
     expect(screen.getAllByText('fresh')).toHaveLength(2);
   });
 
-  it('declares the lazy route as a direct Routes child, outside layouts and development guards', () => {
+  it('declares the lazy mobile route inside the sync provider and KioskLayout', () => {
     const source = ts.createSourceFile('App.tsx', appSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     let found = false;
     const visit = (node: ts.Node) => {
       if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(source) === 'Route' && node.attributes.properties.some((attr) =>
         ts.isJsxAttribute(attr) && attr.name.getText(source) === 'path' && attr.initializer && ts.isStringLiteral(attr.initializer) && attr.initializer.text === '/kiosk/mobile-placement/scan-bench')) {
         found = true;
-        expect(ts.isJsxElement(node.parent) && node.parent.openingElement.tagName.getText(source)).toBe('Routes');
+        expect(ts.isJsxElement(node.parent) && node.parent.openingElement.getText(source)).toContain('MobileSyncProvider');
+        expect(ts.isJsxElement(node.parent.parent) && node.parent.parent.openingElement.getText(source)).toContain('KioskLayout');
         expect(node.getText(source)).toContain('lazyRouteElement(<MobileScanBenchPage />)');
       }
       ts.forEachChild(node, visit);
