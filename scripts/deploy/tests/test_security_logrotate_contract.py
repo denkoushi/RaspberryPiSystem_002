@@ -24,7 +24,7 @@ class SecurityLogrotateContractTests(unittest.TestCase):
         self.assertNotIn("/var/log/fail2ban", config)
         self.assertNotIn("/var/log/clamav", config)
         # Debian trixie's rkhunter package rotates /var/log/rkhunter.log,
-        # while our scan wrapper writes /var/log/rkhunter/rkhunter-scan.log.
+        # while our scan wrapper writes /var/log/rkhunter/rkhunter-kiosk.log.
         self.assertNotIn("/var/log/rkhunter.log", config)
 
     def test_only_custom_logs_remain_with_existing_retention(self) -> None:
@@ -34,12 +34,18 @@ class SecurityLogrotateContractTests(unittest.TestCase):
                 blocks = dict(re.findall(r"([^\s#]+)\s*\{([^}]+)\}", config))
                 root = repo_path or "/opt/RaspberryPiSystem_002"
                 expected = {"/var/log/trivy/*.log": 52, "/var/log/rkhunter/*.log": 52,
-                            f"{root}/alerts/*.json": 26}
+                            "/var/log/package-integrity/*.log": 52, f"{root}/alerts/*.json": 26}
                 self.assertEqual(set(blocks), set(expected))
                 for path, retention in expected.items():
                     self.assertRegex(blocks[path], rf"\brotate\s+{retention}\b")
                     self.assertIn("weekly", blocks[path])
                     self.assertIn("missingok", blocks[path])
+
+    def test_package_integrity_rotation_uses_staging_directory(self) -> None:
+        config = render_config(package_integrity_log_dir="/var/log/package-integrity-raspisys-staging")
+        self.assertIn("/var/log/package-integrity-raspisys-staging/*.log {", config)
+        self.assertNotIn("/var/log/package-integrity/*.log", config)
+        self.assertIn("/var/log/rkhunter/*.log {", config)
 
     @unittest.skipUnless(shutil.which("logrotate"), "logrotate is not installed locally")
     def test_rendered_config_passes_logrotate_debug(self) -> None:
