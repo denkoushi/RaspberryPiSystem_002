@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../../../api/http';
 import { canUseMobileNetwork, resetMobileConnectivityForTests } from '../../connectivity';
+import { registerSyncJob, resetSyncSchedulerForTests, start } from '../../sync/syncScheduler';
 
 import { createShelfOfflineQueueStore } from './shelfOfflineQueueStore';
+import { shelfOutboxRunner } from './shelfOutboxRunner';
 import { useShelfOfflineQueue } from './useShelfOfflineQueue';
 
 import type { ShelfQueueRecord } from './shelfOfflineQueueStore';
@@ -17,6 +19,9 @@ const record: ShelfQueueRecord = { ...input, id: 'saved', createdAt: '2026-10-27
 const responseError = (status: number) => ({ isAxiosError: true, response: { status, data: { message: 'サーバーのメッセージ' } } });
 function mount(store = createShelfOfflineQueueStore()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const runner = shelfOutboxRunner(store);
+  registerSyncJob({ name: 'shelf', run: runner.flush, hasPendingWork: runner.hasPendingWork });
+  start();
   const hook = renderHook(() => useShelfOfflineQueue(store), { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
   return { ...hook, store };
 }
@@ -27,9 +32,21 @@ beforeEach(() => {
   vi.mocked(api.post).mockResolvedValue({ shelf: { shelfCodeRaw: input.shelfCodeRaw, isStructured: true } });
   vi.mocked(api.put).mockResolvedValue({ photoUpdatedAt: '2026-10-27T00:00:00Z' });
 });
-afterEach(() => { resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { resetSyncSchedulerForTests(); resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('shelf offline queue', () => {
+  it('returns pending immediately even while an earlier send never resolves', async () => {
+    vi.useFakeTimers();
+    vi.mocked(api.post).mockImplementation(() => new Promise(() => {}));
+    const { result, store } = mount();
+    await act(async () => { expect(await result.current.submit(input)).toBe('pending'); });
+    expect(api.post).toHaveBeenCalledTimes(1);
+    await act(async () => { expect(await result.current.submit({ ...input, shelfCodeRaw: '別の棚' })).toBe('pending'); });
+    expect(await store.list()).toHaveLength(2);
+    // Release the mobileRequest timeout so this test leaves no in-flight scheduler work.
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  });
+
   it('flushes pending shelves after the background probe recovers without an online event', async () => {
     vi.useFakeTimers();
     vi.mocked(api.get).mockResolvedValue({ status: 200 });
@@ -57,7 +74,7 @@ describe('shelf offline queue', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(3001); });
     expect(canUseMobileNetwork()).toBe(true);
     expect(api[method]).toHaveBeenCalledWith(expect.any(String), expect.any(Object), { timeout: 60_000 });
-    await act(async () => { await vi.advanceTimersByTimeAsync(55_999); expect(await submission).toBe('sent'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(55_999); expect(await submission).toBe('pending'); });
     expect(result.current.records).toEqual([]);
     expect(api[method]).toHaveBeenCalledOnce();
   });
@@ -75,7 +92,7 @@ describe('shelf offline queue', () => {
     act(() => { submission = result.current.submit(input); });
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
     expect(await store.list()).toEqual([expect.objectContaining({ ...input, stage: 'registered' })]);
-    await act(async () => { finish({ photoUpdatedAt: 'now' }); expect(await submission).toBe('sent'); });
+    await act(async () => { finish({ photoUpdatedAt: 'now' }); expect(await submission).toBe('pending'); });
     expect(await store.list()).toEqual([]);
   });
 
@@ -90,7 +107,7 @@ describe('shelf offline queue', () => {
   it.each([400, 401, 404, 409, 422])('marks an unregistered %s as needs-check with the server message', async (status) => {
     vi.mocked(api.post).mockRejectedValue(responseError(status));
     const { result, store } = mount();
-    await act(async () => { expect(await result.current.submit(input)).toBe('needs_check'); });
+    await act(async () => { expect(await result.current.submit(input)).toBe('pending'); });
     expect(await store.list()).toEqual([expect.objectContaining({ stage: 'unregistered', status: 'needs_check', message: 'サーバーのメッセージ' })]);
     act(() => window.dispatchEvent(new Event('online')));
     await act(async () => {});
@@ -102,7 +119,7 @@ describe('shelf offline queue', () => {
     vi.mocked(api.put).mockRejectedValue(status ? responseError(status) : new Error('Network Error'));
     const { result, store } = mount();
     const expected = status === 400 || status === 409 ? 'needs_check' : 'pending';
-    await act(async () => { expect(await result.current.submit(input)).toBe(expected); });
+    await act(async () => { expect(await result.current.submit(input)).toBe('pending'); });
     expect(await store.list()).toEqual([expect.objectContaining({ stage: 'registered', status: expected })]);
   });
 

@@ -6,10 +6,13 @@ import * as api from '../../../../api/client';
 import { api as http } from '../../../../api/http';
 import { resetMobileConnectivityForTests } from '../../connectivity';
 import { encodeShelfPhoto, resizeShelfPhoto, rotateShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
+import { MobileSyncProvider } from '../../sync/MobileSyncProvider';
+import { resetSyncSchedulerForTests } from '../../sync/syncScheduler';
 import { ShelfPhotoMaster } from '../components/ShelfPhotoMaster';
 import { shelfOfflineQueueStore } from '../offline/shelfOfflineQueueStore';
 import { readShelfPhotoDraft } from '../shelfPhotoDraft';
 
+vi.mock('../../local-data/mobileLocalDataSync', () => ({ syncMobileLocalData: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../../../../api/http', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 vi.mock('../../../../api/client', () => ({
   getMobilePlacementShelfMachines: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn(), getMobilePlacementShelfPhoto: vi.fn(),
@@ -26,7 +29,7 @@ const photo = { contentType: 'image/jpeg' as const, dataBase64: '/9j/' };
 function mount(onMessage?: (message: string) => void) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const invalidate = vi.spyOn(client, 'invalidateQueries');
-  render(<QueryClientProvider client={client}><ShelfPhotoMaster onMessage={onMessage} /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><MobileSyncProvider><ShelfPhotoMaster onMessage={onMessage} /></MobileSyncProvider></QueryClientProvider>);
   return invalidate;
 }
 async function openAdd() {
@@ -59,7 +62,7 @@ beforeEach(async () => {
   vi.mocked(api.putMobilePlacementShelfPhoto).mockResolvedValue({ photoUpdatedAt: '2026-10-22T10:00:00Z' });
   vi.mocked(http.put).mockResolvedValue({ photoUpdatedAt: '2026-10-22T10:00:00Z' });
 });
-afterEach(() => { resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { resetSyncSchedulerForTests(); resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe('photo shelf master', () => {
   it('saves both lists before opening the add form', async () => {
     mount();
@@ -242,7 +245,8 @@ describe('photo shelf master', () => {
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
     await screen.findByRole('button', { name: '棚 DAD-3220 北 未送信' });
     expect(onMessage).toHaveBeenCalledWith('未送信に保存しました');
-    expect((await shelfOfflineQueueStore.list())[0].stage).toBe('registered');
+    await waitFor(async () => expect((await shelfOfflineQueueStore.list())[0].stage).toBe('registered'));
+    await waitFor(() => expect(http.put).toHaveBeenCalledTimes(1));
     vi.mocked(http.post).mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
     act(() => window.dispatchEvent(new Event('online')));
     await waitFor(() => expect(http.put).toHaveBeenCalledTimes(2));
@@ -374,7 +378,7 @@ describe('shelf photo draft and camera entry', () => {
 
   it('puts a camera capture into the form and can capture the next shelf', async () => {
     const stop = vi.fn();
-    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop }] }) } });
+    vi.stubGlobal('navigator', { onLine: true, connection: navigator.connection, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop }] }) } });
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
     mount();
     for (let i = 1; i <= 2; i++) {
@@ -388,6 +392,7 @@ describe('shelf photo draft and camera entry', () => {
       expect(screen.queryByRole('dialog', { name: '写真を撮る' })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '登録する' }));
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await waitFor(async () => expect(await shelfOfflineQueueStore.list()).toEqual([]));
     }
     expect(resizeShelfPhoto).not.toHaveBeenCalled();
     expect(http.put).toHaveBeenCalledTimes(2);

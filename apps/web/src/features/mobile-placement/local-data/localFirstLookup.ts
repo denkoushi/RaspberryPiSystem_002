@@ -1,4 +1,5 @@
-import { canUseMobileNetwork, mobileRequest } from '../connectivity';
+import { mobileRequest } from '../connectivity';
+import { canSyncNow } from '../sync/networkGate';
 
 import { mobileLocalDataStore } from './mobileLocalDataStore';
 
@@ -8,23 +9,20 @@ import type { MobilePlacementSlipMatchResponse } from '../../../api/domains/mobi
 import type { SlipPairMatchInput } from '@raspi-system/slip-match-core';
 
 export async function lookupPurchaseLocalFirst(order: string, server: () => Promise<PurchaseOrderLookupResponse>,
-  store: MobileLocalDataStore = mobileLocalDataStore, online = canUseMobileNetwork()): Promise<PurchaseOrderLookupResponse> {
+  store: MobileLocalDataStore = mobileLocalDataStore, online = canSyncNow()): Promise<PurchaseOrderLookupResponse> {
   const local = await store.lookupPurchase(order);
   if (!local) {
-    if (!online) throw new Error('Mobile local data unavailable offline');
+    if (!online || !canSyncNow()) throw new Error('Mobile local data unavailable offline');
     return mobileRequest(server);
   }
-  if (local.rows.length || !online) return local;
-  // A missed row can be newer than this device's snapshot. A failed supplement must not hide the local result.
-  try { return await mobileRequest(server); } catch { return local; }
+  return local;
 }
 export async function verifyLocalFirst(input: SlipPairMatchInput, server: () => Promise<MobilePlacementSlipMatchResponse>,
-  store: MobileLocalDataStore = mobileLocalDataStore, online = canUseMobileNetwork()) {
+  store: MobileLocalDataStore = mobileLocalDataStore, online = canSyncNow()) {
   const local = await store.verify(input);
   if (!local) {
-    if (!online) throw new Error('Mobile local data unavailable offline');
+    if (!online || !canSyncNow()) throw new Error('Mobile local data unavailable offline');
     return mobileRequest(server);
   }
-  if (!online || (local.reason !== 'order_not_found' && local.reason !== 'transfer_not_found')) return local;
-  try { return await mobileRequest(server); } catch { return local; }
+  return local;
 }
