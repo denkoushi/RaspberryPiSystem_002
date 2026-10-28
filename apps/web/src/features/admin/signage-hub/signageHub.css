@@ -591,6 +591,9 @@
   font-weight: 600;
   color: var(--sh-muted);
 }
+.signage-hub .sh-hydraulic-date::-webkit-calendar-picker-indicator {
+  display: none;
+}
 .signage-hub .sh-input,
 .signage-hub .sh-textarea {
   width: 100%;

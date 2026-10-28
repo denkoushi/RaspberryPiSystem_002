@@ -24,6 +24,38 @@ function Harness() {
 }
 
 describe('hydraulic oil machine picker', () => {
+  it('opens the same native picker from the field and calendar button and keeps manual editing', () => {
+    render(<Harness />);
+    const input = screen.getByLabelText('MISSING (missing)');
+    const showPicker = vi.fn(function (this: HTMLInputElement) { expect(this).toBe(input); });
+    Object.defineProperty(input, 'showPicker', { configurable: true, value: showPicker });
+    fireEvent.click(input);
+    expect(showPicker).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'missingの前回交換日をカレンダーで選ぶ' }));
+    expect(showPicker).toHaveBeenCalledTimes(2);
+    fireEvent.change(input, { target: { value: '2026-04-01' } });
+    expect(input).toHaveValue('2026-04-01');
+    expect(JSON.parse(screen.getByTestId('config').textContent!).manualLastExchangeDates).toEqual({ missing: '2026-04-01' });
+  });
+  it('handles unavailable or throwing showPicker and does not open a disabled input', () => {
+    render(<Harness />);
+    const input = screen.getByLabelText('MISSING (missing)') as HTMLInputElement;
+    const calendar = screen.getByRole('button', { name: 'missingの前回交換日をカレンダーで選ぶ' });
+    Object.defineProperty(input, 'showPicker', { configurable: true, value: undefined });
+    fireEvent.click(input);
+    fireEvent.click(calendar);
+    const showPicker = vi.fn(() => { throw new DOMException('No user activation', 'NotAllowedError'); });
+    Object.defineProperty(input, 'showPicker', { configurable: true, value: showPicker });
+    fireEvent.click(input);
+    fireEvent.click(calendar);
+    expect(showPicker).toHaveBeenCalledTimes(2);
+    input.disabled = true;
+    fireEvent.click(calendar);
+    expect(showPicker).toHaveBeenCalledTimes(2);
+    input.disabled = false;
+    fireEvent.change(input, { target: { value: '2026-04-01' } });
+    expect(input).toHaveValue('2026-04-01');
+  });
   it('toggles targets, preserves unknown keys and missing numbers, and sorts running machines first', () => {
     render(<Harness />);
     const group = screen.getByRole('group', { name: '対象の加工機' });
