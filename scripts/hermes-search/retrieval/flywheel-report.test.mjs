@@ -174,6 +174,7 @@ test('real summaries count only known relevance in shown and loss totals', () =>
     ...rows,
   ];
   assert.deepEqual(summarizeReal(realRows), {
+    plannerVersions: {},
     questions: 6, withRelevant: 4, shown: 1, lossStages: { not_in_pool: 1, judge_rejected: 1, other_shown: 1 },
     dayOutcomes: { answer: 3, no_result: 2, no_other: 1 },
     filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 },
@@ -257,4 +258,12 @@ test('follow-up report groups actions and counts count answers without recording
   assert.match(report, /    count: turns 1, with relevant 1, relevant shown 0, lost count_answer 1/u);
   for (const action of ['more', 'add', 'unclassified']) assert.ok(report.includes(`    ${action}: turns 1, with relevant 1, relevant shown 1, lost none`));
   assert.match(report, /nothing shown 0/u);
+});
+
+
+test('night and real reports show recorded planner version counts', () => {
+  const questionVersion = 'planner-questions-2026-10-26b';
+  const versionRows = [{ ...rows[0], live: { ...live(null), questionVersion } }, { ...rows[0], live: { ...live(null), questionVersion } }];
+  assert.match(formatReport('2026-10-28', summarizeNight(versionRows)), /planner versions: planner-questions-2026-10-26b 2/u);
+  assert.match(formatRealReport('2026-10-28', summarizeReal(versionRows.map((row) => ({ ...row, source: 'real' })))), /planner versions: planner-questions-2026-10-26b 2/u);
 });

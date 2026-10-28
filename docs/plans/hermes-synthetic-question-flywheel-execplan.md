@@ -12,6 +12,8 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 
 ## Progress
 
+- [x] (2026-10-28) Milestone 8, code: the planner's JEV question wording is versioned (`planner-jev.mjs`), the night compares the active version with one code-defined candidate on up to 30 of the night's questions, real follow-ups first, and writes the comparison to `planner-version.json` and the status without adopting (`flywheel-planner-version.mjs`, runner phase 6); the kiosk worker reads the file's active version at startup and corpus replace, with `HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED=false` as the kill switch (this change). Adoption waits for conversation-shaped synthetic questions (Milestone 9).
+
 - [x] (2026-10-03) Research of established practice and owner decision to build the flywheel (see Context and Decision Log).
 - [x] (2026-10-03) Milestone 1: seeds and contrastive question generator, offline, with unit tests (#1662, merged as f4854ed7 and released to the Pi 5 with no behaviour change).
 - [x] (2026-10-03) Milestone 2 trial: 69 pairs generated and graded on the Pi 5 through the existing routes, run by the owner (see Surprises).
@@ -65,6 +67,10 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 - Observation: questions that name only a department or a period ("三島工場機械課の最近の不適合を教えて") have no content condition, so relevance grading does not apply to them. They caused many grader disagreements and must be scored on filters instead.
 
 ## Decision Log
+
+- Decision: the first planner-wording comparison runs in report mode only. The synthetic set is single-turn and names sections, not factories, so a follow-up wording change produces identical plans on it and the gate's development rule would reject it every night; the only affected rows are the few real follow-ups, whose labels are the previous answer's records. Adoption switches on once synthetic follow-up conversations with computable targets exist, with a rule stated then (affected questions only, zero held-out and real loss, minimum affected count).
+  Rationale: see the accuracy log entries of 2026-10-28.
+  Date/Author: 2026-10-28, Claude.
 
 - Decision: the gate accepts only a development net gain of at least 3 questions with no held-out net loss; the sign test is reported, not required.
   Rationale: on 2026-10-05 the old rule (any development gain, held-out not significantly worse) accepted dense off over dense on with 3 gained and 2 lost on development and 1 gained and 2 lost on held-out. Significance is out of reach at 50 to 80 questions, so a margin replaces it.

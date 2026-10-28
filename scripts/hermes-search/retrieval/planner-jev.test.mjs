@@ -1044,3 +1044,39 @@ test('rewrite uses resolved labels, values and content with action tails and a 1
   assert.equal(long.length, 160);
   assert.ok(long.endsWith('…'));
 });
+
+test('question versions change exactly hierarchy and content carry instructions, retaining all choices and logic', async () => {
+  const { DEFAULT_PLANNER_QUESTION_VERSION: baseline, CANDIDATE_PLANNER_QUESTION_VERSION: candidate, PLANNER_QUESTION_VERSIONS } = await import('./planner-jev.mjs');
+  assert.equal(PLANNER_QUESTION_VERSION, baseline);
+  assert.deepEqual(PLANNER_QUESTION_VERSIONS, [baseline, candidate]);
+  for (const questionVersion of ['unknown', 'constructor', null]) {
+    assert.throws(() => createPlanner({ questionVersion }), (error) => error instanceof TypeError
+      && error.message.includes(baseline) && error.message.includes(candidate));
+  }
+  const received = [];
+  const plans = [];
+  for (const questionVersion of [undefined, baseline, candidate]) {
+    const planner = createPlanner({ questionVersion, evaluate: async (input) => {
+      received.push(structuredClone(input));
+      return hierarchyAnswers({ prefix: 0.8, none: 0.1 })(input);
+    } });
+    const result = await planner.plan({ question: '西工場では類例ない？', catalog,
+      valueIndex: buildValueIndex(hierarchyRecords, catalog), now: '2026-10-28',
+      previousPlan: { sources: ['nonconformity'], filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['東工場製造部機械課'] }], semanticQuery: '配管不良', sort: 'relevance', limit: 5 },
+    });
+    assert.equal(result.receipt.questionVersion, questionVersion ?? baseline);
+    plans.push(result.plan);
+  }
+  assert.deepEqual(received[0], received[1]);
+  assert.deepEqual(plans[0], plans[2]);
+  const before = received[0].questions;
+  const after = received[2].questions;
+  assert.deepEqual(Object.keys(before).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])), ['field_0', 'contentCarry']);
+  assert.ok(before.field_0.instructions.includes('「配下の部署すべて」の選択肢は、発話がその階層だけを言い、より細かい部署を言っていないときに選ぶ。指定がなければ none。'));
+  assert.equal(before.contentCarry.instructions, '`request` の内容条件（何が起きたか）を、`previous_plan` の内容条件と比べて一つ選ぶ。');
+  assert.match(after.field_0.instructions, /仙台工場.*前の部署を置き換える続きの発話でも/u);
+  assert.match(after.contentCarry.instructions, /類例.*同じような.*他に.*同じ不具合.*新しい現象.*same/u);
+  after.field_0.instructions = before.field_0.instructions;
+  after.contentCarry.instructions = before.contentCarry.instructions;
+  assert.deepEqual(received[0], received[2]);
+});
