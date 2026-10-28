@@ -14,6 +14,7 @@ import { kioskLazy } from './features/kiosk/kioskLazyPreload';
 import { KioskScreenWatchHost } from './features/kiosk/screen-watch/KioskScreenWatchHost';
 import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
 import { registerMobileAppShell } from './features/mobile-app-shell/registerMobileAppShell';
+import { PlacementDeleteSyncJob } from './features/mobile-placement/part-search/offline/PlacementDeleteSyncJob';
 import { MobileSyncProvider } from './features/mobile-placement/sync/MobileSyncProvider';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
@@ -228,7 +229,7 @@ function App() {
             path="/kiosk/production-schedule/planning-board"
             element={<ProductionScheduleGrindingPlanningBoardPage />}
           />
-          <Route element={<MobileSyncProvider><Outlet /></MobileSyncProvider>}>
+          <Route element={<MobileSyncProvider><PlacementDeleteSyncJob /><Outlet /></MobileSyncProvider>}>
             <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
             <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
             <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />

@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 
+import { invalidateMobileDataVersions } from './mobile-local-data.service.js';
+
 export type OrderPlacementBranchListItem = {
   id: string;
   manufacturingOrderBarcodeRaw: string;
@@ -96,18 +98,23 @@ export async function moveOrderPlacementBranch(input: MoveOrderPlacementBranchIn
     return { event: createdEv, branchState: next };
   });
 
+  invalidateMobileDataVersions();
   return { event: ev, branchState: updated };
 }
 
 /** Remove only current placement; immutable placement history retains branch numbers. */
 export async function deleteOrderPlacementBranch(branchStateId: string) {
   try {
-    return await prisma.orderPlacementBranchState.delete({
+    const deleted = await prisma.orderPlacementBranchState.delete({
       where: { id: branchStateId },
       select: { id: true, manufacturingOrderBarcodeRaw: true, branchNo: true, shelfCodeRaw: true }
     });
+    // The outbox immediately requests a snapshot: do not let a cached pre-delete version resurrect the row.
+    invalidateMobileDataVersions();
+    return deleted;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      invalidateMobileDataVersions();
       throw new ApiError(404, 'この品物はもうありません');
     }
     throw error;

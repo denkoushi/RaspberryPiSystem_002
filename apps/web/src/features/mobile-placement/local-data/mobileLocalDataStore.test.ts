@@ -72,3 +72,32 @@ describe('IndexedDB replacement failure', () => {
     }
   );
 });
+
+describe('database v2 upgrade', () => {
+  it('adds only placements to a seeded v1 database and retains purchase/schedule data', async () => {
+    vi.stubGlobal('indexedDB', {});
+    const stores = new Map<string, unknown[]>([['metadata', []], ['known', []], ['purchase', [purchaseRow]], ['schedule', [scheduleRow]]]);
+    const createIndex = vi.fn();
+    const createObjectStore = vi.fn((name: string) => {
+      if (stores.has(name)) throw new Error(`Existing store recreated: ${name}`);
+      stores.set(name, []); return { createIndex };
+    });
+    const database = {
+      createObjectStore,
+      transaction: () => ({ objectStore: (kind: string) => kind === 'metadata'
+        ? { get: async (key: keyof typeof versions) => versions[key] }
+        : { index: () => ({ getAll: async () => stores.get(kind) }) } }),
+      getAllFromIndex: async (kind: string) => stores.get(kind)
+    };
+    mocks.openDB.mockImplementation(async (_name, _version, options) => {
+      options.upgrade(database, 1, 2); return database;
+    });
+    const store = createMobileLocalDataStore('existing-v1');
+    expect((await store.lookupPurchase(purchaseRow.purchaseOrderNo))?.rows).toEqual([purchaseRow]);
+    expect(await store.listScheduleByProductNo(scheduleRow.productNo)).toEqual([scheduleRow]);
+    expect(mocks.openDB).toHaveBeenCalledWith('existing-v1', 2, expect.anything());
+    expect(createObjectStore).toHaveBeenCalledExactlyOnceWith('placements', { keyPath: 'id' });
+    expect(createIndex).toHaveBeenCalledExactlyOnceWith('manufacturingOrderBarcodeRaw', 'manufacturingOrderBarcodeRaw');
+    expect([...stores.keys()]).toEqual(['metadata', 'known', 'purchase', 'schedule', 'placements']);
+  });
+});

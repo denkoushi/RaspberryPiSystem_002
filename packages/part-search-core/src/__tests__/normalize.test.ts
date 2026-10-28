@@ -13,8 +13,8 @@ describe('normalizePartSearchQuery', () => {
   });
 
   it('maps sokuon to ツ for comparable match (does not delete)', () => {
-    expect(normalizePartSearchQuery('がっこう')).toBe('ガツコウ');
-    expect(normalizePartSearchQuery('がこう')).toBe('ガコウ');
+    expect(normalizePartSearchQuery('がっこう')).toBe('カツコウ');
+    expect(normalizePartSearchQuery('がこう')).toBe('カコウ');
     expect(normalizePartSearchQuery('がっこう')).not.toBe(normalizePartSearchQuery('がこう'));
   });
 
@@ -28,10 +28,10 @@ describe('normalizePartSearchQuery', () => {
     expect(normalizePartSearchQuery('きゃく')).toBe('キャク');
   });
 
-  it('does not absorb long vowel differences', () => {
-    expect(normalizePartSearchQuery('モーター')).toBe('モーター');
-    expect(normalizePartSearchQuery('モータ')).toBe('モータ');
-    expect(normalizePartSearchQuery('モーター')).not.toBe(normalizePartSearchQuery('モータ'));
+  it('absorbs long vowel differences', () => {
+    expect(normalizePartSearchQuery('モーター')).toBe('モタ');
+    expect(normalizePartSearchQuery('モータ')).toBe('モタ');
+    expect(normalizePartSearchQuery('モーター')).toBe(normalizePartSearchQuery('モータ'));
   });
 });
 

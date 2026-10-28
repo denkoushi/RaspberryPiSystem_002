@@ -18,15 +18,17 @@ export function expandSearchTerms(normalizedToken: string): {
   let terms = new Set<string>([normalizedToken]);
   const matchedGroups: string[] = [];
   for (const group of PART_SEARCH_ALIAS_GROUPS) {
-    const matchedTokens = group.filter((g) => normalizedToken.includes(g));
+    // Group words go through the same fold as the token (e.g. dakuten-less).
+    const matchedTokens = group.filter((g) => normalizedToken.includes(normalizePartSearchQuery(g)));
     if (matchedTokens.length > 0) {
       matchedGroups.push([...group].join('/'));
       const nextTerms = new Set(terms);
       for (const term of terms) {
         for (const matchedToken of matchedTokens) {
-          if (!term.includes(matchedToken)) continue;
+          const folded = normalizePartSearchQuery(matchedToken);
+          if (!term.includes(folded)) continue;
           for (const replacement of group) {
-            nextTerms.add(term.split(matchedToken).join(replacement));
+            nextTerms.add(term.split(folded).join(replacement));
           }
         }
       }
