@@ -4,6 +4,7 @@ import { ApiError } from '../../lib/errors.js';
 import { listScheduleRowsByProductNo } from '../production-schedule/production-schedule-lookup.service.js';
 import { findProductionSchedulePlacementSnapshot } from '../production-schedule/production-schedule-snapshot.service.js';
 import { findPurchaseOrderLookupRows } from '../purchase-order-lookup/purchase-order-lookup-query.service.js';
+import { invalidateMobileDataVersions } from './mobile-local-data.service.js';
 import { normalizeSlipToken } from './mobile-placement-slip-match.js';
 
 export type RegisterOrderPlacementInput = {
@@ -143,7 +144,7 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
   const shelfStored = input.shelfCodeRaw.trim();
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Serialize stamp exclusivity and numbering for this order, including legacy callers.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`order-placement:${manufacturingOrderStored}`}, 0))`;
       if (input.clientRecordId) {
@@ -246,6 +247,9 @@ export async function registerOrderPlacement(input: RegisterOrderPlacementInput)
 
       return { event: createdEv, branchState: createdState, resolvedRowId: csvDashboardRowId, action: 'created' as const };
     });
+    // Phones refresh placements right after a send: a cached pre-write version would hide the new row.
+    invalidateMobileDataVersions();
+    return result;
 
   } catch (error) {
     if (input.clientRecordId && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

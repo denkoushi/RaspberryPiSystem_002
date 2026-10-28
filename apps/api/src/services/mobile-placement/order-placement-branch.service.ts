@@ -98,6 +98,7 @@ export async function moveOrderPlacementBranch(input: MoveOrderPlacementBranchIn
     return { event: createdEv, branchState: next };
   });
 
+  invalidateMobileDataVersions();
   return { event: ev, branchState: updated };
 }
 

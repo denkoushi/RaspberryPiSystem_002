@@ -8,6 +8,7 @@ import type { PrismaClient } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 
+import { invalidateMobileDataVersions } from './mobile-local-data.service.js';
 import { macroZoneIdForShelfCode } from './shelf-layout-edit.service.js';
 
 type PrismaTx = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
@@ -125,6 +126,7 @@ export async function relocateMobilePlacementShelf(input: {
       data: { displayLabel: newSourceLabel }
     });
   });
+  invalidateMobileDataVersions();
 
   return { sourceShelfCodeRaw: source, targetShelfCodeRaw: target, movedDisplayLabel };
 }

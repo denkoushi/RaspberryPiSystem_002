@@ -43,7 +43,9 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
           database.createObjectStore('placements', { keyPath: 'id' })
             .createIndex('manufacturingOrderBarcodeRaw', 'manufacturingOrderBarcodeRaw');
         }
-      }
+      },
+      // A newer build upgrading the schema must not wait on this tab; reopen on the next read.
+      blocking() { const current = dbPromise; dbPromise = undefined; void current?.then((database) => database?.close()); }
     }).catch(() => null);
     return dbPromise;
   }
