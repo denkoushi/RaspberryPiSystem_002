@@ -23,6 +23,14 @@ export function createHaizenOfflineQueueStore(): HaizenOfflineQueueStore {
   const memory = new Map<string, HaizenQueueRecord>();
   let dbPromise: Promise<QueueDb> | null = null;
   let memoryOnly = false;
+  // Writes not yet committed to IndexedDB; a list() that read before them must not drop them (null = removed).
+  const writing = new Map<string, HaizenQueueRecord | null>();
+  async function write(id: string, record: HaizenQueueRecord | null, commit: (db: QueueDb) => Promise<unknown>) {
+    writing.set(id, record);
+    try { await commit(await getDb()); } catch { memoryOnly = true; } finally {
+      if (writing.get(id) === record) writing.delete(id);
+    }
+  }
   function getDb(): Promise<QueueDb> {
     if (memoryOnly || typeof indexedDB === 'undefined') return Promise.reject(new Error('indexedDB unavailable'));
     dbPromise ??= openDB('haizen-offline-queue', 1, {
@@ -37,16 +45,17 @@ export function createHaizenOfflineQueueStore(): HaizenOfflineQueueStore {
         const records = await db.getAll('records');
         memory.clear();
         records.forEach((record) => memory.set(record.clientRecordId, record));
+        writing.forEach((record, id) => { if (record) memory.set(id, { ...record }); else memory.delete(id); });
       } catch { memoryOnly = true; }
       return [...memory.values()].map((record) => ({ ...record })).sort((a, b) => a.scannedAt.localeCompare(b.scannedAt));
     },
     async put(record) {
       memory.set(record.clientRecordId, { ...record });
-      try { const db = await getDb(); await db.put('records', record); } catch { memoryOnly = true; }
+      await write(record.clientRecordId, record, (db) => db.put('records', record));
     },
     async remove(id) {
       memory.delete(id);
-      try { const db = await getDb(); await db.delete('records', id); } catch { memoryOnly = true; }
+      await write(id, null, (db) => db.delete('records', id));
     }
   };
 }

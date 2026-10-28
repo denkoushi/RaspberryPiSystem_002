@@ -282,8 +282,9 @@ describe('Haizen hub', () => {
     const primary = screen.getByRole('button', { name: 'ここに置く' });
     expect(primary.parentElement).toBe(screen.getByRole('button', { name: '移動票を読む' }).parentElement);
     fireEvent.click(primary);
-    expect(screen.getByRole('button', { name: '処理中…' })).toBeDisabled();
-    fireEvent.click(primary);
+    // The slips clear while the send is still waiting on the network.
+    expect(screen.getByRole('button', { name: '移動票を読む' })).not.toHaveTextContent('0002178005');
+    expect(screen.queryByRole('button', { name: 'ここに置く' })).not.toBeInTheDocument();
     await waitFor(() => expect(registerOrderPlacement).toHaveBeenCalledExactlyOnceWith({
       shelfCodeRaw: 'A-03', manufacturingOrderBarcodeRaw: '0002178005', slipKind: 'manufacturing_order',
       clientRecordId: expect.any(String), placedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), branchNo: 2
