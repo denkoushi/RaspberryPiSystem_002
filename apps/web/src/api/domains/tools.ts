@@ -30,6 +30,7 @@ export interface Machine {
   maker?: string | null;
   processClassification?: string | null;
   coolant?: string | null;
+  resourceCd?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +49,16 @@ export async function getMachines(params?: { search?: string; operatingStatus?: 
   return data.machines;
 }
 
+export interface MachineResourceChoice {
+  resourceCd: string;
+  resourceName: string;
+}
+
+export async function getMachineResourceChoices() {
+  const { data } = await api.get<{ resources: MachineResourceChoice[] }>('/tools/machines/resource-choices');
+  return data.resources;
+}
+
 export async function getUninspectedMachines(params: { csvDashboardId: string; date?: string }) {
   const { data } = await api.get<UninspectedMachinesResponse>('/tools/machines/uninspected', { params });
   return data;
@@ -63,6 +74,7 @@ export interface CreateMachineInput {
   maker?: string;
   processClassification?: string;
   coolant?: string;
+  resourceCd?: string | null;
 }
 
 export interface UpdateMachineInput {
@@ -74,6 +86,7 @@ export interface UpdateMachineInput {
   maker?: string;
   processClassification?: string;
   coolant?: string;
+  resourceCd?: string | null;
 }
 
 export async function createMachine(input: CreateMachineInput) {

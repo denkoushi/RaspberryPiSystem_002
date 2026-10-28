@@ -1,9 +1,10 @@
 import { Dialog } from '../../../components/ui/Dialog';
 
-export type BoardTemplate = 'uninspected' | 'measuring' | 'rigging' | 'pallet' | 'blank' | 'inspection_csv';
+export type BoardTemplate = 'uninspected' | 'hydraulic_oil_exchange' | 'measuring' | 'rigging' | 'pallet' | 'blank' | 'inspection_csv';
 
 const GRAPH_TEMPLATES: Array<{ value: BoardTemplate; name: string; description: string }> = [
   { value: 'uninspected', name: '未点検加工機', description: '点検していない機械を目立たせる' },
+  { value: 'hydraulic_oil_exchange', name: '作動油交換', description: '' },
   { value: 'measuring', name: '計測機器 点検状況', description: '計測機器の点検と持出' },
   { value: 'rigging', name: '吊具 点検状況', description: '吊具の点検と持出' },
   { value: 'pallet', name: 'パレット現在状態', description: '加工機ごとのパレット' },
@@ -29,7 +30,7 @@ export function NewBoardDialog({
           {GRAPH_TEMPLATES.map((template) => (
             <button key={template.value} type="button" className="sh-template" onClick={() => onPick(template.value)}>
               <span className="sh-template-name">{template.name}</span>
-              <span className="sh-item-meta">{template.description}</span>
+              {template.description && <span className="sh-item-meta">{template.description}</span>}
             </button>
           ))}
         </div>

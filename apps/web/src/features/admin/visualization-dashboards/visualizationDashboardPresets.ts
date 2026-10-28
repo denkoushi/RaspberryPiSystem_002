@@ -1,5 +1,11 @@
 export const DEFAULT_JSON = '{}';
 
+export const HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TYPE = 'hydraulic_oil_exchange';
+export const HYDRAULIC_OIL_EXCHANGE_RENDERER_TYPE = 'hydraulic_oil_exchange';
+export const HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TEMPLATE = JSON.stringify(
+  { csvDashboardId: '', inspectionItem: '作動油の交換', targetEquipmentNumbers: [] }, null, 2,
+);
+
 export const UNINSPECTED_DATA_SOURCE_TYPE = 'uninspected_machines';
 export const UNINSPECTED_RENDERER_TYPE = 'uninspected_machines';
 export const MI_LOAN_INSPECTION_DATA_SOURCE_TYPE = 'measuring_instrument_loan_inspection';
@@ -140,5 +146,16 @@ export function buildPalletVisualizationPresetFields(name: string, description: 
     description: description.trim()
       ? description
       : 'パレット現在状態をJPEGで表示。対象加工機未指定時は資源マスタ登録の全機。1台のみのときは大画面レイアウト（ページは rendererConfig.pageIndex）',
+  };
+}
+
+export function buildHydraulicOilExchangePresetFields(name: string, description: string): PresetFormFields {
+  return {
+    dataSourceType: HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TYPE,
+    rendererType: HYDRAULIC_OIL_EXCHANGE_RENDERER_TYPE,
+    dataSourceConfig: HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TEMPLATE,
+    rendererConfig: DEFAULT_JSON,
+    name: name.trim() ? name : '作動油交換',
+    description,
   };
 }

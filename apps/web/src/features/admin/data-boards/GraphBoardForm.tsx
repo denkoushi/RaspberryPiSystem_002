@@ -10,6 +10,7 @@ import {
   writeJsonField,
   type GraphField,
 } from './graphFieldModel';
+import { HydraulicOilExchangeMachinePicker } from './HydraulicOilExchangeMachinePicker';
 
 import type { VisualizationDashboardEditor } from '../visualization-dashboards/useVisualizationDashboardEditor';
 
@@ -29,7 +30,8 @@ export function GraphBoardForm({ editor, onSaved }: { editor: VisualizationDashb
     : editor.update.isError
       ? getApiErrorMessage(editor.update.error, '保存できませんでした')
       : null;
-  const missingSourceTable = template === 'uninspected' && !editor.currentCsvDashboardId;
+  const requiresSourceTable = template === 'uninspected' || template === 'hydraulic_oil_exchange';
+  const missingSourceTable = requiresSourceTable && !editor.currentCsvDashboardId;
 
   const valueOf = (field: GraphField) =>
     readJsonField(field.target === 'dataSource' ? editor.dataSourceConfig : editor.rendererConfig, field.key);
@@ -85,7 +87,7 @@ export function GraphBoardForm({ editor, onSaved }: { editor: VisualizationDashb
         <input id="sh-gb-name" className="sh-input" value={editor.name} onChange={(e) => editor.setName(e.target.value)} maxLength={120} />
       </div>
 
-      {template === 'uninspected' && (
+      {requiresSourceTable && (
         <div className="sh-fld">
           <label className="sh-flbl" htmlFor="sh-gb-source">
             元データ（点検結果の表）
@@ -101,6 +103,10 @@ export function GraphBoardForm({ editor, onSaved }: { editor: VisualizationDashb
           </select>
           {missingSourceTable && <span className="sh-error">元データの表を選んでください。</span>}
         </div>
+      )}
+
+      {template === 'hydraulic_oil_exchange' && (
+        <HydraulicOilExchangeMachinePicker config={editor.dataSourceConfig} onChange={editor.setDataSourceConfig} />
       )}
 
       {template === 'pallet' && (

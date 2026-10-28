@@ -1,3 +1,5 @@
+import { HydraulicOilExchangeDataSource } from './data-sources/hydraulic-oil-exchange/index.js';
+import { HydraulicOilExchangeRenderer } from './renderers/hydraulic-oil-exchange/index.js';
 import { getDataSourceRegistry } from './data-sources/data-source-registry.js';
 import { getRendererRegistry } from './renderers/renderer-registry.js';
 import { MeasuringInstrumentsDataSource } from './data-sources/measuring-instruments/index.js';
@@ -32,6 +34,10 @@ export function initializeVisualizationModules(): void {
     dataSourceRegistry.register(new ProductionScheduleDataSource());
   }
 
+  if (!dataSourceRegistry.has('hydraulic_oil_exchange')) {
+    dataSourceRegistry.register(new HydraulicOilExchangeDataSource());
+  }
+
   if (!dataSourceRegistry.has('uninspected_machines')) {
     dataSourceRegistry.register(new UninspectedMachinesDataSource());
   }
@@ -62,6 +68,10 @@ export function initializeVisualizationModules(): void {
 
   if (!rendererRegistry.has('progress_list')) {
     rendererRegistry.register(new ProgressListRenderer());
+  }
+
+  if (!rendererRegistry.has('hydraulic_oil_exchange')) {
+    rendererRegistry.register(new HydraulicOilExchangeRenderer());
   }
 
   if (!rendererRegistry.has('uninspected_machines')) {

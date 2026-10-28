@@ -20,11 +20,13 @@ import {
   togglePalletVizMachine,
 } from './visualizationDashboardFormModel';
 import {
+  buildHydraulicOilExchangePresetFields,
   buildMeasuringInspectionPresetFields,
   buildPalletVisualizationPresetFields,
   buildRiggingInspectionPresetFields,
   buildUninspectedPresetFields,
   DEFAULT_JSON,
+  HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TYPE,
   MI_LOAN_INSPECTION_DATA_SOURCE_TYPE,
   PALLET_VIZ_DATA_SOURCE_TYPE,
   RIGGING_LOAN_INSPECTION_DATA_SOURCE_TYPE,
@@ -54,6 +56,7 @@ export function useVisualizationDashboardEditor() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const isEditing = Boolean(selectedId) && !isCreating;
+  const isHydraulicOilExchangePreset = dataSourceType.trim() === HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TYPE;
   const isUninspectedPreset = dataSourceType.trim() === UNINSPECTED_DATA_SOURCE_TYPE;
   const isMeasuringInspectionPreset = dataSourceType.trim() === MI_LOAN_INSPECTION_DATA_SOURCE_TYPE;
   const isRiggingInspectionPreset = dataSourceType.trim() === RIGGING_LOAN_INSPECTION_DATA_SOURCE_TYPE;
@@ -66,9 +69,9 @@ export function useVisualizationDashboardEditor() {
   });
 
   const currentCsvDashboardId = useMemo(() => {
-    if (!isUninspectedPreset) return '';
+    if (!isUninspectedPreset && !isHydraulicOilExchangePreset) return '';
     return extractCsvDashboardId(dataSourceConfig);
-  }, [dataSourceConfig, isUninspectedPreset]);
+  }, [dataSourceConfig, isUninspectedPreset, isHydraulicOilExchangePreset]);
 
   const handleCsvDashboardIdChange = (csvDashboardId: string) => {
     setDataSourceConfig(setCsvDashboardId(dataSourceConfig, csvDashboardId));
@@ -193,6 +196,10 @@ export function useVisualizationDashboardEditor() {
     setFormError(null);
   };
 
+  const applyHydraulicOilExchangePreset = () => {
+    applyPresetFields(buildHydraulicOilExchangePresetFields(name, description));
+  };
+
   const applyUninspectedPreset = () => {
     applyPresetFields(buildUninspectedPresetFields(name, description));
   };
@@ -258,6 +265,7 @@ export function useVisualizationDashboardEditor() {
     handleSave,
     handleDelete,
     applyUninspectedPreset,
+    applyHydraulicOilExchangePreset,
     applyMeasuringInspectionPreset,
     applyRiggingInspectionPreset,
     applyPalletVisualizationPreset,

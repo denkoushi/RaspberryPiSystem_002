@@ -237,6 +237,7 @@ export interface CreateMachinePayload {
   maker?: string;
   processClassification?: string;
   coolant?: string;
+  resourceCd?: string | null;
 }
 
 export interface UpdateMachinePayload {
@@ -248,6 +249,7 @@ export interface UpdateMachinePayload {
   maker?: string;
   processClassification?: string;
   coolant?: string;
+  resourceCd?: string | null;
 }
 
 export class MachineService {
@@ -273,6 +275,18 @@ export class MachineService {
     });
   }
 
+  async findResourceChoices() {
+    const rows = await prisma.productionScheduleResourceMaster.findMany({
+      select: { resourceCd: true, resourceName: true },
+      orderBy: [{ resourceCd: 'asc' }, { resourceName: 'asc' }],
+    });
+    const choices = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) {
+      if (!choices.has(row.resourceCd)) choices.set(row.resourceCd, row);
+    }
+    return [...choices.values()];
+  }
+
   async create(payload: CreateMachinePayload) {
     const existing = await prisma.machine.findUnique({
       where: { equipmentManagementNumber: payload.equipmentManagementNumber },
@@ -292,6 +306,7 @@ export class MachineService {
         maker: payload.maker || null,
         processClassification: payload.processClassification || null,
         coolant: payload.coolant || null,
+        resourceCd: payload.resourceCd ?? null,
       },
     });
   }
@@ -306,6 +321,7 @@ export class MachineService {
       where: { id },
       data: {
         name: payload.name ?? existing.name,
+        resourceCd: payload.resourceCd,
         shortName: payload.shortName !== undefined ? payload.shortName || null : existing.shortName,
         classification: payload.classification !== undefined ? payload.classification || null : existing.classification,
         operatingStatus: payload.operatingStatus !== undefined ? payload.operatingStatus || null : existing.operatingStatus,

@@ -41,6 +41,9 @@ export function formatVisualizationOptionLabel(dashboard: VisualizationDashboard
   if (dashboard.dataSourceType === 'uninspected_machines') {
     tags.push('未点検加工機');
   }
+  if (dashboard.dataSourceType === 'hydraulic_oil_exchange') {
+    tags.push('作動油交換');
+  }
   if (dashboard.dataSourceType === PALLET_VIZ_DATA_SOURCE) {
     tags.push('パレット可視化');
   }

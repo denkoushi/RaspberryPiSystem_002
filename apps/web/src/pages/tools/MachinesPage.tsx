@@ -2,7 +2,7 @@ import axios from 'axios';
 import { FormEvent, useState } from 'react';
 
 import { getApiErrorMessage } from '../../api/errors';
-import { useMachineMutations, useMachines } from '../../api/hooks';
+import { useMachineMutations, useMachines, useMachineResourceChoices } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -19,6 +19,7 @@ const initialForm = {
   ncManual: '',
   maker: '',
   processClassification: '',
+  resourceCd: '',
   coolant: ''
 };
 
@@ -26,6 +27,7 @@ export function MachinesPage() {
   const [search, setSearch] = useState('');
   const [operatingStatusFilter, setOperatingStatusFilter] = useState<string>('');
   const { data, isLoading } = useMachines({ search: search || undefined, operatingStatus: operatingStatusFilter || undefined });
+  const resourceChoices = useMachineResourceChoices();
   const { create, update, remove } = useMachineMutations();
   const confirm = useConfirm();
   const [form, setForm] = useState(initialForm);
@@ -39,6 +41,7 @@ export function MachinesPage() {
           id: editingId,
           payload: {
             name: form.name,
+            resourceCd: form.resourceCd || null,
             shortName: form.shortName || undefined,
             classification: form.classification || undefined,
             operatingStatus: form.operatingStatus || undefined,
@@ -52,6 +55,7 @@ export function MachinesPage() {
         await create.mutateAsync({
           equipmentManagementNumber: form.equipmentManagementNumber,
           name: form.name,
+          resourceCd: form.resourceCd || null,
           shortName: form.shortName || undefined,
           classification: form.classification || undefined,
           operatingStatus: form.operatingStatus || undefined,
@@ -74,6 +78,7 @@ export function MachinesPage() {
     setForm({
       equipmentManagementNumber: machine.equipmentManagementNumber,
       name: machine.name,
+      resourceCd: machine.resourceCd ?? '',
       shortName: machine.shortName ?? '',
       classification: machine.classification ?? '',
       operatingStatus: machine.operatingStatus ?? '',
@@ -175,6 +180,24 @@ export function MachinesPage() {
             工程分類
             <Input value={form.processClassification} onChange={(e) => setForm({ ...form, processClassification: e.target.value })} />
           </label>
+          <label className="text-sm font-semibold text-slate-700">
+            資源CD
+            <select
+              className="block max-w-xs rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900"
+              value={form.resourceCd}
+              onChange={(e) => setForm({ ...form, resourceCd: e.target.value })}
+              disabled={resourceChoices.isLoading || resourceChoices.isError}
+            >
+              <option value=""></option>
+              {form.resourceCd && !resourceChoices.data?.some((resource) => resource.resourceCd === form.resourceCd) ? (
+                <option value={form.resourceCd}>{form.resourceCd}</option>
+              ) : null}
+              {resourceChoices.data?.map((resource) => (
+                <option key={resource.resourceCd} value={resource.resourceCd}>{resource.resourceCd} {resource.resourceName}</option>
+              ))}
+            </select>
+            {resourceChoices.isError ? <span role="alert" className="text-red-700">資源CDの取得に失敗しました</span> : null}
+          </label>
           <label className="text-sm font-semibold text-slate-700 md:col-span-2">
             クーラント
             <Input value={form.coolant} onChange={(e) => setForm({ ...form, coolant: e.target.value })} />
@@ -230,6 +253,7 @@ export function MachinesPage() {
                 <tr className="border-b-2 border-slate-500">
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">設備管理番号</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">加工機名称</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">資源CD</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">略称</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">分類</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">稼働状態</th>
@@ -242,6 +266,7 @@ export function MachinesPage() {
                   <tr key={machine.id} className="border-t border-slate-500">
                     <td className="px-2 py-1 font-mono text-sm text-slate-700">{machine.equipmentManagementNumber}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.name}</td>
+                    <td className="px-2 py-1 font-mono text-sm text-slate-700">{machine.resourceCd ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.shortName ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.classification ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.operatingStatus ?? '-'}</td>

@@ -85,11 +85,13 @@ export class MachineCsvImporter implements CsvImporter {
       updated: 0,
     };
 
-    if (replaceExisting) {
-      await prisma.machine.deleteMany();
-    }
-
     await prisma.$transaction(async (tx) => {
+      if (replaceExisting) {
+        // CSVに残る加工機は更新し、CSVにない資源CDの設定を保持する。
+        await tx.machine.deleteMany({
+          where: { equipmentManagementNumber: { notIn: machineRows.map((row) => row.equipmentManagementNumber.trim()) } },
+        });
+      }
       for (const row of machineRows) {
         const updateData = {
           name: row.name.trim(),

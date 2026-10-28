@@ -3742,6 +3742,13 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 
 ### [KB-252] 未点検加工機サイネージ設定導線（可視化ダッシュボード経由）の実装
 
+**作動油交換の独立プリセット（2026-10-28）**:
+- `hydraulic_oil_exchange`（data source / renderer）を追加。管理画面で「作動油交換」を選び、元データのCSV表と点検項目（既定: `作動油の交換`）、対象の加工機（設備管理番号の `targetEquipmentNumbers`、既定: 空配列）を設定する。
+- 過去25か月の点検項目一致行から設備管理番号ごとの最新日時を1回のSQLで抽出し、Machineマスターの名称・分類/メーカーを参照する。対象は選択した加工機 ∪ 交換記録のある加工機。選択済みで記録がない機械は `none`（「次回から」）、マスターにない選択番号は番号を名称として表示する。ROBODRILL（全角英字・半角カナ表記を含む）は両方から除外する。
+- CSVの周期は `毎日`、`週１回`、`２週に１回`、`月１回`、`３ヶ月１回`、`半年１回`、`年１回` などの日本語（空欄の場合もある）。既存の英字形式とともに日/週/月/年を解釈し、JST暦日で次回日を計算（月末は切り詰め）。カードの周期は `6M`、`Y` などに短縮。期限順、周期不明・記録なしは末尾。件数は全対象を集計し、データ行は最大200件、1920×1080では先頭12件を表示する。
+- 計算結果は対象番号をソートしたリストを含む設定ごとに10分（最大20キー）キャッシュし、JST日付変更でも更新する。取得エラーはmetadata経由で画像に表示する。
+- 正本コード: `apps/api/src/services/visualization/data-sources/hydraulic-oil-exchange/` と `apps/api/src/services/visualization/renderers/hydraulic-oil-exchange/`。ローカル検証対象は同ディレクトリの日付/データソーステスト、描画/スキーマテスト、および管理画面プリセットテスト。
+
 **EXEC_PLAN.md参照**: feat/signage-visualization-layout-improvement ブランチ（2026-02-11）
 
 **事象**:
@@ -3823,6 +3830,9 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
      - 編集・削除機能
   4. **ナビゲーション追加**: `AdminLayout.tsx`に「加工機」タブを追加
   5. **React Queryフック追加**: `useMachineMutations`フックを追加（create, update, delete）
+- **2026-10-28 資源CD**: 加工機マスターに生産日程の `resourceCd`（任意・20文字以内、索引あり、非一意・外部キーなし）を追加。一覧表示と選択編集に対応し、空欄は `null` にする。
+- 選択肢は `GET /api/tools/machines/resource-choices`（ADMIN / MANAGER）で資源マスターからCD昇順・CDごとに名称昇順の先頭1件を返す。
+- マスターCSVには資源CD列を追加せず、通常取込・全置換とも同じ設備管理番号の既存資源CDを保持する。
 
 **実装の詳細**:
 - **フォーム**: 設備管理番号、加工機名称、略称、分類、稼働状態、NC/Manual、メーカー、工程分類、クーラントの入力フィールド

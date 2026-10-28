@@ -68,6 +68,7 @@ export function DataBoardsPage() {
   const {
     isCreating: isCreatingGraph,
     applyUninspectedPreset,
+    applyHydraulicOilExchangePreset,
     applyMeasuringInspectionPreset,
     applyRiggingInspectionPreset,
     applyPalletVisualizationPreset,
@@ -75,6 +76,7 @@ export function DataBoardsPage() {
   useEffect(() => {
     if (!isCreatingGraph || !pendingTemplate) return;
     if (pendingTemplate === 'uninspected') applyUninspectedPreset();
+    else if (pendingTemplate === 'hydraulic_oil_exchange') applyHydraulicOilExchangePreset();
     else if (pendingTemplate === 'measuring') applyMeasuringInspectionPreset();
     else if (pendingTemplate === 'rigging') applyRiggingInspectionPreset();
     else if (pendingTemplate === 'pallet') applyPalletVisualizationPreset();

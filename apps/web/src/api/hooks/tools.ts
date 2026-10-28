@@ -17,6 +17,7 @@ import {
   getEmployees,
   getItems,
   getMachines,
+  getMachineResourceChoices,
   getUninspectedMachines,
   createMachine,
   updateMachine,
@@ -61,6 +62,13 @@ export function useMachines(params?: { search?: string; operatingStatus?: string
   return useQuery({
     queryKey: toolsQueryKeys.machines(params),
     queryFn: () => getMachines(params),
+  });
+}
+
+export function useMachineResourceChoices() {
+  return useQuery({
+    queryKey: toolsQueryKeys.machineResourceChoices,
+    queryFn: getMachineResourceChoices,
   });
 }
 

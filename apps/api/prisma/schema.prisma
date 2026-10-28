@@ -476,11 +476,14 @@ model Machine {
   maker                     String?
   processClassification     String?
   coolant                   String?
+  /// 生産日程の資源CD（ProductionScheduleResourceMaster.resourceCd）
+  resourceCd                String?  @db.VarChar(20)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
   @@index([operatingStatus])
   @@index([classification])
+  @@index([resourceCd])
 }
 
 model ClientDevice {

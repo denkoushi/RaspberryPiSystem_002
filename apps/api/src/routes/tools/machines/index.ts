@@ -13,6 +13,8 @@ const uninspectedQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'dateはYYYY-MM-DD形式で指定してください').optional(),
 });
 
+const resourceCdSchema = z.string().trim().max(20).nullable().optional().transform((value) => value === '' ? null : value);
+
 const createMachineSchema = z.object({
   equipmentManagementNumber: z.string().min(1, '設備管理番号は必須です'),
   name: z.string().min(1, '加工機名称は必須です'),
@@ -23,6 +25,7 @@ const createMachineSchema = z.object({
   maker: z.string().optional(),
   processClassification: z.string().optional(),
   coolant: z.string().optional(),
+  resourceCd: resourceCdSchema,
 });
 
 const updateMachineSchema = z.object({
@@ -34,6 +37,7 @@ const updateMachineSchema = z.object({
   maker: z.string().optional(),
   processClassification: z.string().optional(),
   coolant: z.string().optional(),
+  resourceCd: resourceCdSchema,
 });
 
 export async function registerMachineRoutes(app: FastifyInstance): Promise<void> {
@@ -45,6 +49,11 @@ export async function registerMachineRoutes(app: FastifyInstance): Promise<void>
     const query = machineListQuerySchema.parse(request.query);
     const machines = await service.findAll(query);
     return { machines };
+  });
+
+  app.get('/machines/resource-choices', { preHandler: canEdit, config: { rateLimit: false } }, async () => {
+    const resources = await service.findResourceChoices();
+    return { resources };
   });
 
   app.get('/machines/uninspected', { preHandler: canView, config: { rateLimit: false } }, async (request) => {

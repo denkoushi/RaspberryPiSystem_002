@@ -6,6 +6,13 @@ const uninspectedConfigSchema = z.object({
   maxRows: z.number().int().positive().optional(),
 });
 
+const hydraulicOilExchangeConfigSchema = z.object({
+  targetEquipmentNumbers: z.array(z.string().trim().min(1).max(30)).max(200).optional().default([]),
+  csvDashboardId: z.string().guid(),
+  inspectionItem: z.string().trim().min(1).max(50).optional(),
+  maxRows: z.number().int().positive().optional(),
+});
+
 export const visualizationDashboardParamsSchema = z.object({
   id: z.string().guid(),
 });
@@ -21,10 +28,11 @@ export const visualizationDashboardCreateSchema = z
     enabled: z.boolean().optional(),
   })
   .superRefine((input, ctx) => {
-    if (input.dataSourceType !== 'uninspected_machines') {
+    if (input.dataSourceType !== 'uninspected_machines' && input.dataSourceType !== 'hydraulic_oil_exchange') {
       return;
     }
-    const parsed = uninspectedConfigSchema.safeParse(input.dataSourceConfig);
+    const schema = input.dataSourceType === 'hydraulic_oil_exchange' ? hydraulicOilExchangeConfigSchema : uninspectedConfigSchema;
+    const parsed = schema.safeParse(input.dataSourceConfig);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         ctx.addIssue({
@@ -33,6 +41,8 @@ export const visualizationDashboardCreateSchema = z
           message: issue.message,
         });
       }
+    } else if (input.dataSourceType === 'hydraulic_oil_exchange') {
+      input.dataSourceConfig = { ...input.dataSourceConfig, ...parsed.data };
     }
   });
 
@@ -47,11 +57,12 @@ export const visualizationDashboardUpdateSchema = z
     enabled: z.boolean().optional(),
   })
   .superRefine((input, ctx) => {
-    const isUninspected = input.dataSourceType === 'uninspected_machines';
-    if (!isUninspected || input.dataSourceConfig === undefined) {
+    const requiresConfig = input.dataSourceType === 'uninspected_machines' || input.dataSourceType === 'hydraulic_oil_exchange';
+    if (!requiresConfig || input.dataSourceConfig === undefined) {
       return;
     }
-    const parsed = uninspectedConfigSchema.safeParse(input.dataSourceConfig);
+    const schema = input.dataSourceType === 'hydraulic_oil_exchange' ? hydraulicOilExchangeConfigSchema : uninspectedConfigSchema;
+    const parsed = schema.safeParse(input.dataSourceConfig);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         ctx.addIssue({
@@ -60,5 +71,7 @@ export const visualizationDashboardUpdateSchema = z
           message: issue.message,
         });
       }
+    } else if (input.dataSourceType === 'hydraulic_oil_exchange') {
+      input.dataSourceConfig = { ...input.dataSourceConfig, ...parsed.data };
     }
   });
