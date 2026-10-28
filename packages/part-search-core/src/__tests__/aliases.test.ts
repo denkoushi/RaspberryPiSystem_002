@@ -16,14 +16,14 @@ describe('expandSearchTerms', () => {
   it('matches 脚 substring and expands group', () => {
     const r = expandSearchTerms('テーブル脚');
     expect(r.aliasMatchedBy).toBe('アシ/脚/足');
-    expect(r.terms).toContain('テーブル脚');
-    expect(r.terms).toContain('テーブルアシ');
-    expect(r.terms).toContain('テーブル足');
+    expect(r.terms).toContain('テフル脚');
+    expect(r.terms).toContain('テフルアシ');
+    expect(r.terms).toContain('テフル足');
   });
 
   it('unrelated query stays single term', () => {
     const r = expandSearchTerms('ボルト');
     expect(r.aliasMatchedBy).toBeNull();
-    expect(r.terms).toEqual(['ボルト']);
+    expect(r.terms).toEqual(['ホルト']);
   });
 });

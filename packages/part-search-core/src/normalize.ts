@@ -1,5 +1,5 @@
 /**
- * 小書きかなを通常サイズへ（濁点・半濁点・長音は変更しない）。
+ * 小書きかなを通常サイズへ（濁点・半濁点・長音は後段の fold で吸収する）。
  * 促音は {@link mapSokuonToTsuForComparable} で「ツ」へ写像する（削除しない）。
  * ひらがな/カタカナは {@link hiraganaToKatakana} でカタカナへ統一する。
  */
@@ -91,6 +91,22 @@ export const PART_SEARCH_SOKUON_COMPARABLE_REPLACEMENTS: readonly Readonly<{ fro
   { from: 'っ', to: 'つ' }
 ] as const;
 
+/** PostgreSQL translate() と共有する、同じ位置同士のかな写像。 */
+export const PART_SEARCH_KANA_FOLD_TRANSLATION = {
+  from: 'がぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽゔゞガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポヴヷヸヹヺヾ',
+  to: 'かきくけこさしすせそたちつてとはひふへほはひふへほうゝカキクケコサシスセソタチツテトハヒフヘホハヒフヘホウワヰヱヲヽ'
+} as const;
+
+/** 長音と、分離した濁点・半濁点（結合文字、全角、半角）。 */
+export const PART_SEARCH_KANA_FOLD_DELETE = 'ーｰ\u3099\u309a゛゜ﾞﾟ';
+
+const KANA_FOLD_MAP = new Map([...PART_SEARCH_KANA_FOLD_TRANSLATION.from]
+  .map((ch, i) => [ch, [...PART_SEARCH_KANA_FOLD_TRANSLATION.to][i]]));
+
+export function foldPartSearchKana(value: string): string {
+  return [...value].map((ch) => PART_SEARCH_KANA_FOLD_DELETE.includes(ch) ? '' : (KANA_FOLD_MAP.get(ch) ?? ch)).join('');
+}
+
 /**
  * ひらがな（U+3041–U+3096）を対応するカタカナへ。
  */
@@ -128,8 +144,9 @@ export function katakanaToHiragana(s: string): string {
  * - Unicode NFKC
  * - trim
  * - 小書きかなを通常文字へ
- * - ひらがなをカタカナへ統一（濁点・半濁点・長音は NFKC のまま区別）
+ * - ひらがなをカタカナへ統一
  * - 促音を `ツ` へ写像（DB `REPLACE` と対）
+ * - 濁点・半濁点・長音を吸収（DB `translate` と対）
  */
 export function normalizePartSearchQuery(input: string): string {
   let s = input.normalize('NFKC').trim();
@@ -137,7 +154,7 @@ export function normalizePartSearchQuery(input: string): string {
   s = mapSmallKanaToOrdinary(s);
   s = hiraganaToKatakana(s);
   s = mapSokuonToTsuForComparable(s);
-  return s;
+  return foldPartSearchKana(s);
 }
 
 /**
