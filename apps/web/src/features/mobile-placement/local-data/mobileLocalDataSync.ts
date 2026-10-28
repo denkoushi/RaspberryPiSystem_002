@@ -3,7 +3,7 @@ import { MOBILE_REQUEST_TIMEOUT_MS, mobileRequest } from '../connectivity';
 import { mobileLocalDataStore } from './mobileLocalDataStore';
 
 import type { MobileLocalDataStore } from './mobileLocalDataStore';
-import type { MobileDataVersions, PurchaseSnapshot, ScheduleSnapshot } from '@raspi-system/slip-match-core';
+import type { MobileDataVersions, PlacementsSnapshot, PurchaseSnapshot, ScheduleSnapshot } from '@raspi-system/slip-match-core';
 
 const base = '/kiosk/mobile-local-data';
 const requestOptions = { kioskTelemetry: 'background', timeout: MOBILE_REQUEST_TIMEOUT_MS } as const;
@@ -16,6 +16,13 @@ export const mobileDataApi = {
   async purchase(version?: string) {
     const { api } = await import('../../../api/http');
     const response = await mobileRequest(() => api.get<PurchaseSnapshot>(`${base}/purchase`, {
+      ...requestOptions, timeout: snapshotTimeoutMs, params: { version }, validateStatus: (status) => status === 200 || status === 304
+    }), { timeoutMs: snapshotTimeoutMs });
+    return response.status === 304 ? null : response.data;
+  },
+  async placements(version?: string) {
+    const { api } = await import('../../../api/http');
+    const response = await mobileRequest(() => api.get<PlacementsSnapshot>(`${base}/placements`, {
       ...requestOptions, timeout: snapshotTimeoutMs, params: { version }, validateStatus: (status) => status === 200 || status === 304
     }), { timeoutMs: snapshotTimeoutMs });
     return response.status === 304 ? null : response.data;
@@ -41,15 +48,18 @@ export function createMobileDataSync(store: MobileLocalDataStore, remote = mobil
       try {
         // Even during backoff a lightweight check can discover a repaired/new dataset.
         const latest = await remote.versions();
-        versionKey = JSON.stringify([latest.purchase.version, latest.schedule.version]);
+        versionKey = JSON.stringify([latest.purchase.version, latest.schedule.version, latest.placements?.version]);
         if (Date.now() < retryAt && (failedVersions === undefined || failedVersions === versionKey)) return;
         const local = await store.versions();
         const purchase = local.purchase?.version !== latest.purchase.version ? await remote.purchase(local.purchase?.version) : null;
         const schedule = local.schedule?.version !== latest.schedule.version ? await remote.schedule(local.schedule?.version) : null;
-        if (purchase && purchase.version !== latest.purchase.version || schedule && schedule.version !== latest.schedule.version) {
+        // An API that predates placements omits its version; keep purchase/schedule syncing.
+        const placements = latest.placements && local.placements?.version !== latest.placements.version
+          ? await remote.placements(local.placements?.version) : null;
+        if (placements && placements.version !== latest.placements?.version || purchase && purchase.version !== latest.purchase.version || schedule && schedule.version !== latest.schedule.version) {
           throw new Error('Mobile data changed during download');
         }
-        if (purchase || schedule) await store.replace({ ...(purchase ? { purchase } : {}), ...(schedule ? { schedule } : {}) });
+        if (purchase || schedule || placements) await store.replace({ ...(placements ? { placements } : {}), ...(purchase ? { purchase } : {}), ...(schedule ? { schedule } : {}) });
         retryDelay = baseDelay;
         retryAt = 0;
         failedVersions = undefined;

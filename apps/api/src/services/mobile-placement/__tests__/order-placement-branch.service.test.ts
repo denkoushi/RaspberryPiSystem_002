@@ -2,7 +2,10 @@ import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
+import { invalidateMobileDataVersions } from '../mobile-local-data.service.js';
 import { deleteOrderPlacementBranch } from '../order-placement-branch.service.js';
+
+vi.mock('../mobile-local-data.service.js', () => ({ invalidateMobileDataVersions: vi.fn() }));
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   orderPlacementBranchState: { delete: vi.fn() },
@@ -19,11 +22,13 @@ describe('deleteOrderPlacementBranch', () => {
       where: { id: 'branch' },
       select: { id: true, manufacturingOrderBarcodeRaw: true, branchNo: true, shelfCodeRaw: true }
     });
+    expect(invalidateMobileDataVersions).toHaveBeenCalledTimes(1);
     for (const method of Object.values(prisma.orderPlacementEvent)) expect(method).not.toHaveBeenCalled();
   });
   it('returns 404 for a missing or concurrently deleted branch', async () => {
     vi.mocked(prisma.orderPlacementBranchState.delete).mockRejectedValue(new Prisma.PrismaClientKnownRequestError('missing', { code: 'P2025', clientVersion: '5' }));
     await expect(deleteOrderPlacementBranch('missing')).rejects.toMatchObject({ statusCode: 404, message: 'この品物はもうありません' });
+    expect(invalidateMobileDataVersions).toHaveBeenCalledTimes(1);
   });
   it('propagates database failures', async () => {
     const error = new Error('database unavailable');

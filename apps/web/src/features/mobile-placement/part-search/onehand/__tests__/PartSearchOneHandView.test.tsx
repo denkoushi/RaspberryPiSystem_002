@@ -102,7 +102,7 @@ describe('PartSearchOneHandView', () => {
   it('confirms deletion, prevents double submission, and removes a successful row', async () => {
     let resolve!: () => void;
     const onDelete = vi.fn<(row: PartSearchRow) => Promise<void>>(() => new Promise((done) => { resolve = done; }));
-    const { container } = mount(onDelete);
+    const { container, rerender } = mount(onDelete);
     expect(container.querySelector('button button')).toBeNull();
     fireEvent.click(key('A01-1 テーブル'));
     fireEvent.click(key('この品物を消す'));
@@ -115,8 +115,11 @@ describe('PartSearchOneHandView', () => {
     fireEvent.click(key('本当に消す'));
     expect(onDelete).toHaveBeenCalledExactlyOnceWith(rows[0]);
     await act(async () => resolve());
+    rerender(<PartSearchOneHandView rows={rows.slice(1)} offline={false} onDelete={onDelete} />);
     expect(within(results()).queryByText('テーブル')).not.toBeInTheDocument();
     expect(screen.getByText('1件', { exact: true })).toBeInTheDocument();
+    rerender(<PartSearchOneHandView rows={rows} offline={false} onDelete={onDelete} />);
+    expect(within(results()).getByText('テーブル')).toBeInTheDocument();
   });
 
   it('resets confirmation on collapse and shows delete failures beside the action', async () => {

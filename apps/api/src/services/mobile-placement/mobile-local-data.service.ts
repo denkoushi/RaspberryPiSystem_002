@@ -2,16 +2,18 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { gzip } from 'node:zlib';
 
-import { packPurchase, packSchedule } from '@raspi-system/slip-match-core';
+import { packPlacement, packPurchase, packSchedule } from '@raspi-system/slip-match-core';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { listAllScheduleLookupRows, listKnownScheduleFseibans } from '../production-schedule/production-schedule-lookup.service.js';
 import { enrichPurchaseOrderLookupRows } from '../purchase-order-lookup/purchase-order-lookup-query.service.js';
 
+import { resolvePartSearchMachineNames } from './part-search/part-search-machine-name-fseibans.service.js';
+
 import type { DatasetVersion, MobileDataVersions, PurchaseTuple } from '@raspi-system/slip-match-core';
 
-type Stamp = { _count: number; _max: { updatedAt: Date | null; createdAt: Date | null } };
+type Stamp = { _count: number; _max: { updatedAt: Date | null; createdAt: Date | null }; checksum?: string };
 function version(stamps: Stamp[]): DatasetVersion {
   const dates = stamps.flatMap((s) => [s._max.updatedAt, s._max.createdAt]).filter((d): d is Date => d !== null);
   return {
@@ -22,22 +24,36 @@ function version(stamps: Stamp[]): DatasetVersion {
 
 async function readMobileDataVersions(): Promise<MobileDataVersions> {
   const aggregate = { _count: true, _max: { updatedAt: true, createdAt: true } } as const;
-  const [purchase, schedule, dates, machines] = await Promise.all([
+  const [purchase, schedule, dates, machines, placements] = await Promise.all([
     prisma.purchaseOrderLookupRow.aggregate(aggregate),
     prisma.csvDashboardRow.aggregate({ ...aggregate, where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } }),
     prisma.productionScheduleOrderSupplement.aggregate({ ...aggregate, where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } }),
-    prisma.productionScheduleSeibanMachineNameSupplement.aggregate(aggregate)
+    prisma.productionScheduleSeibanMachineNameSupplement.aggregate(aggregate),
+    prisma.$queryRaw<{ count: number; updatedAt: Date | null; createdAt: Date | null; checksum: string }[]>`
+      SELECT COUNT(*)::int AS "count", MAX("updatedAt") AS "updatedAt", MAX("createdAt") AS "createdAt",
+        MD5(COALESCE(STRING_AGG("id" || ':' || "updatedAt"::text, ',' ORDER BY "id"), '')) AS "checksum"
+      FROM "OrderPlacementBranchState"
+    `
   ]);
-  return { purchase: version([purchase, schedule, dates, machines]), schedule: version([schedule]) };
+  return { purchase: version([purchase, schedule, dates, machines]), schedule: version([schedule]),
+    placements: version([{ _count: placements[0].count,
+      _max: { updatedAt: placements[0].updatedAt, createdAt: placements[0].createdAt }, checksum: placements[0].checksum }, schedule, machines]) };
 }
 
 let cachedVersions: { value: MobileDataVersions; expiresAt: number } | undefined;
 let pendingVersions: Promise<MobileDataVersions> | undefined;
+let versionsGeneration = 0;
+export function invalidateMobileDataVersions() {
+  ++versionsGeneration;
+  cachedVersions = undefined;
+  pendingVersions = undefined;
+}
 export async function getMobileDataVersions(forceRefresh = false): Promise<MobileDataVersions> {
   if (!forceRefresh && cachedVersions && Date.now() < cachedVersions.expiresAt) return cachedVersions.value;
   if (!forceRefresh && pendingVersions) return pendingVersions;
+  const generation = versionsGeneration;
   const work = readMobileDataVersions().then((value) => {
-    cachedVersions = { value, expiresAt: Date.now() + 30_000 };
+    if (generation === versionsGeneration) cachedVersions = { value, expiresAt: Date.now() + 30_000 };
     return value;
   });
   pendingVersions = work;
@@ -76,6 +92,28 @@ export function createMobileDataCache(
 }
 
 async function buildMobileData(kind: MobileDataset) {
+  if (kind === 'placements') {
+    // Full snapshots by version: branch deletes have no tombstones, so a since-diff would retain deleted rows.
+    const rows = await prisma.orderPlacementBranchState.findMany({ orderBy: { id: 'asc' }, select: {
+      id: true, manufacturingOrderBarcodeRaw: true, branchNo: true, shelfCodeRaw: true, updatedAt: true, scheduleSnapshot: true
+    } });
+    const field = (snapshot: unknown, key: string): string => {
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
+      const value = (snapshot as Record<string, unknown>)[key];
+      return typeof value === 'string' ? value.trim() : '';
+    };
+    const names = await resolvePartSearchMachineNames(rows.map((row) => field(row.scheduleSnapshot, 'FSEIBAN')));
+    // Same display normalization as web normalizeMachineName, retaining the full name (no search kana folding).
+    const displayName = (name: string) => name.trim().replace(/[！-～]/g,
+      (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0)).replace(/\u3000/g, ' ').toUpperCase();
+    return { rows: rows.map((row) => {
+      const fseiban = field(row.scheduleSnapshot, 'FSEIBAN');
+      return packPlacement({ id: row.id, manufacturingOrderBarcodeRaw: row.manufacturingOrderBarcodeRaw,
+        branchNo: row.branchNo, shelfCodeRaw: row.shelfCodeRaw, updatedAt: row.updatedAt.toISOString(), fseiban,
+        fhincd: field(row.scheduleSnapshot, 'FHINCD'), fhinmei: field(row.scheduleSnapshot, 'FHINMEI'),
+        productNo: field(row.scheduleSnapshot, 'ProductNo'), machineName: displayName(names.get(fseiban) ?? '') });
+    }) };
+  }
   if (kind === 'schedule') {
     const [rows, knownFseibans] = await Promise.all([listAllScheduleLookupRows(), listKnownScheduleFseibans()]);
     return { rows: rows.map(packSchedule), knownFseibans };

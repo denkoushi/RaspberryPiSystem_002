@@ -1,115 +1,114 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { packPlacement, packSchedule } from '@raspi-system/slip-match-core';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getMobilePlacementPartSearchSuggest } from '../../api/client';
+vi.mock('../../api/domains/mobile-placement', () => ({ deleteOrderPlacementBranch: vi.fn() }));
+vi.mock('../../features/mobile-placement/connectivity', () => ({ mobileRequest: (request: () => Promise<unknown>) => request() }));
+vi.mock('../../features/mobile-placement/sync/networkGate', () => ({ canSyncNow: vi.fn(() => false), useCanSync: () => false }));
+vi.mock('../../features/mobile-placement/local-data/mobileLocalDataStore', async (original) => {
+  const module = await original<typeof import('../../features/mobile-placement/local-data/mobileLocalDataStore')>();
+  return { ...module, mobileLocalDataStore: module.createMobileLocalDataStore('parts-page-test') };
+});
+
+import { deleteOrderPlacementBranch } from '../../api/domains/mobile-placement';
+import { haizenOfflineQueueStore } from '../../features/mobile-placement/haizen/offline/haizenOfflineQueueStore';
+import { haizenOutboxRunner } from '../../features/mobile-placement/haizen/offline/haizenOutboxRunner';
+import { mobileLocalDataStore } from '../../features/mobile-placement/local-data/mobileLocalDataStore';
+import { placementDeleteOutboxRunner } from '../../features/mobile-placement/part-search/offline/placementDeleteOutboxRunner';
+import { placementDeleteQueueStore } from '../../features/mobile-placement/part-search/offline/placementDeleteQueueStore';
+import { canSyncNow } from '../../features/mobile-placement/sync/networkGate';
 
 import { MobilePlacementPartSearchPage } from './MobilePlacementPartSearchPage';
 
-import type { PartPlacementSearchHitDto } from '../../features/mobile-placement/part-search/types';
-
-vi.mock('../../api/client', () => ({ getMobilePlacementPartSearchSuggest: vi.fn() }));
-
-const hit: PartPlacementSearchHitDto = {
-  matchSource: 'current', displayName: '脚（左）', matchedQuery: '脚', aliasMatchedBy: null,
-  shelfCodeRaw: '西-北-02', manufacturingOrderBarcodeRaw: '0002178005', branchNo: 2,
-  branchStateId: 'branch-1', csvDashboardRowId: 'row-1', fhincd: 'MD00412163',
-  fhinmei: '脚（左）', fseiban: 'BA1S2201', productNo: '100'
-};
-
+const row = { id: 'branch-1', manufacturingOrderBarcodeRaw: '0002178005', branchNo: 2, shelfCodeRaw: '西-北-02',
+  updatedAt: '2026-10-28T00:00:00Z', fseiban: 'BA1S2201', fhincd: 'MD00412163', fhinmei: 'テーブル', productNo: '100', machineName: 'DAD3350' };
+const placements = { version: 'b1', dataUpdatedAt: row.updatedAt, rows: [packPlacement(row)] };
 function Destination() {
   const location = useLocation();
-  return <div>配膳ハブ<output aria-label="遷移">{useNavigationType()} {location.pathname} {location.state?.openHaizenMenu ? 'メニュー' : ''}</output></div>;
+  return <output aria-label="遷移">{useNavigationType()} {location.pathname} {location.state?.openHaizenMenu ? 'メニュー' : ''}</output>;
 }
-
 function mount() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/search']}><Routes>
+  return render(<MemoryRouter initialEntries={['/search']}><Routes>
     <Route path="/search" element={<MobilePlacementPartSearchPage />} />
     <Route path="*" element={<Destination />} />
-  </Routes></MemoryRouter></QueryClientProvider>);
+  </Routes></MemoryRouter>);
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.mocked(getMobilePlacementPartSearchSuggest).mockResolvedValue({ currentPlacements: [hit], scheduleCandidates: [] });
+const results = () => within(screen.getByRole('region', { name: '検索結果' }));
+const deleteRow = async () => {
+  fireEvent.click(await screen.findByRole('button', { name: '西-北-02 テーブル' }));
+  fireEvent.click(screen.getByRole('button', { name: 'この品物を消す' }));
+  fireEvent.click(screen.getByRole('button', { name: '本当に消す' }));
+  await waitFor(() => expect(results().queryByText('テーブル')).not.toBeInTheDocument());
+};
+beforeEach(async () => {
+  vi.clearAllMocks(); vi.mocked(canSyncNow).mockReturnValue(false);
+  for (const record of await placementDeleteQueueStore.list()) await placementDeleteQueueStore.remove(record.id);
+  for (const record of await haizenOfflineQueueStore.list()) await haizenOfflineQueueStore.remove(record.clientRecordId);
+  await mobileLocalDataStore.replace({ placements, schedule: { version: 's1', dataUpdatedAt: row.updatedAt, knownFseibans: ['FS2'],
+    rows: [packSchedule({ rowId: 's', productNo: '002', fseiban: 'FS2', fhincd: 'MD2', fhinmei: 'パルプ', fsigencd: '', fkojun: 1 })] } });
 });
+afterEach(() => vi.unstubAllGlobals());
 
-describe('MobilePlacementPartSearchPage phone flow', () => {
-  it.each([
-    ['照合', '/kiosk/mobile-placement', 'verify'],
-    ['配膳', '/kiosk/mobile-placement', 'place'],
-    ['購買', '/kiosk/purchase-order-lookup', null]
-  ])('%s タブは履歴を置換する', (tab, path, stored) => {
+describe('MobilePlacementPartSearchPage local phone flow', () => {
+  it.each([['照合', '/kiosk/mobile-placement', 'verify'], ['配膳', '/kiosk/mobile-placement', 'place'],
+    ['購買', '/kiosk/purchase-order-lookup', null]])('%s uses replacement navigation', async (tab, path, stored) => {
     mount();
+    await screen.findByText('テーブル');
     expect(screen.getByRole('tab', { name: '部品' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('tab', { name: tab }));
     expect(screen.getByLabelText('遷移')).toHaveTextContent(`REPLACE ${path}`);
     if (stored) expect(localStorage.getItem('haizen-tab')).toBe(stored);
   });
-
-  it('メニューを開く state を付けてハブへ置換する', () => {
-    mount();
+  it('opens the hub menu', async () => {
+    mount(); await screen.findByText('テーブル');
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
     expect(screen.getByLabelText('遷移')).toHaveTextContent('REPLACE /kiosk/mobile-placement メニュー');
   });
-
-  it('keeps typing, expands/collapses details and clears the query and selection', async () => {
-    mount();
-    expect(screen.getByRole('tab', { name: '部品' })).toHaveAttribute('aria-selected', 'true');
-    const input = screen.getByRole('textbox', { name: '部品名・品番' });
-    fireEvent.change(input, { target: { value: '脚' } });
-    const result = await screen.findByRole('button', { name: /西-北-02/ });
-    expect(screen.queryByText('0002178005')).not.toBeInTheDocument();
-    fireEvent.click(result);
-    expect(screen.getByText('0002178005')).toBeInTheDocument();
-    fireEvent.click(result);
-    expect(result).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(result);
-    fireEvent.click(screen.getByRole('button', { name: '全部消す' }));
-    expect(input).toHaveValue('');
-    expect(screen.queryByText('0002178005')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '全部消す' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
-    expect(screen.getByText('配膳ハブ')).toBeInTheDocument();
-    expect(localStorage.getItem('haizen-tab')).toBe('place');
+  it('searches fake device rows with kana folding and shows the placements offline date', async () => {
+    mount(); await screen.findByText('テーブル');
+    expect(screen.getByText('圏外 10/28')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: '検索文字' }), { target: { value: 'てふる' } });
+    expect(results().getByText('テーブル')).toBeInTheDocument();
   });
-
-  it('applies the existing machine AND query through chips; all machines clears only that filter', async () => {
-    mount();
-    fireEvent.change(screen.getByRole('textbox', { name: '部品名・品番' }), { target: { value: 'MD' } });
-    fireEvent.click(screen.getByRole('button', { name: '機種指定' }));
-    fireEvent.change(screen.getByRole('textbox', { name: '機種名' }), { target: { value: 'DAD3350' } });
-    fireEvent.click(screen.getByRole('button', { name: '適用' }));
-    await waitFor(() => expect(getMobilePlacementPartSearchSuggest).toHaveBeenLastCalledWith('MD', 'DAD3350'));
-    expect(screen.getByRole('button', { name: 'DAD3350' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: '全機種' }));
-    expect(screen.getByRole('textbox', { name: '部品名・品番' })).toHaveValue('MD');
-    expect(screen.getByRole('button', { name: '全機種' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'DAD3350' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'DAD3350' })).toHaveAttribute('aria-pressed', 'true'));
-    fireEvent.click(screen.getByRole('button', { name: '全部消す' }));
-    await waitFor(() => expect(getMobilePlacementPartSearchSuggest).toHaveBeenLastCalledWith('', 'DAD3350'));
-    expect(screen.getByRole('button', { name: 'DAD3350' })).toHaveAttribute('aria-pressed', 'true');
+  it('hides and queues offline deletes, including after snapshot replacement and remount', async () => {
+    const view = mount(); await deleteRow();
+    expect(await mobileLocalDataStore.listPlacements()).toEqual([]);
+    expect(await placementDeleteQueueStore.list()).toEqual([expect.objectContaining({ id: row.id, row, status: 'pending' })]);
+    expect(deleteOrderPlacementBranch).not.toHaveBeenCalled();
+    await act(() => mobileLocalDataStore.replace({ placements }));
+    expect(results().queryByText('テーブル')).not.toBeInTheDocument();
+    view.unmount(); mount();
+    await act(async () => {});
+    expect(results().queryByText('テーブル')).not.toBeInTheDocument();
   });
-
-  it('uses presets, keyboard modes and backspace without a native keyboard', async () => {
+  it('shows a rejected delete again without remounting', async () => {
+    mount(); await deleteRow();
+    vi.mocked(canSyncNow).mockReturnValue(true);
+    vi.mocked(deleteOrderPlacementBranch).mockRejectedValue({ isAxiosError: true, response: { status: 403 } });
+    await act(() => placementDeleteOutboxRunner.flush());
+    expect(await screen.findByText('テーブル')).toBeInTheDocument();
+    expect((await placementDeleteQueueStore.list())[0].status).toBe('needs_check');
+  });
+  it('joins pending manufacturing registrations to schedule and cancels them locally', async () => {
+    const pending = { clientRecordId: 'queued', slipKind: 'manufacturing_order' as const, number: '002', shelfCode: 'B', scannedAt: row.updatedAt, status: 'pending' as const };
+    await haizenOfflineQueueStore.put(pending);
+    await haizenOfflineQueueStore.put({ ...pending, clientRecordId: 'purchase', slipKind: 'purchase_order', shelfCode: 'C' });
+    await haizenOfflineQueueStore.put({ ...pending, clientRecordId: 'rejected', status: 'needs_check', shelfCode: 'D' });
     mount();
-    const bottom = screen.getByRole('contentinfo');
-    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
-    expect(bottom.previousElementSibling).toContainElement(screen.getByLabelText('文字キー'));
-    expect(screen.getByLabelText('文字キー')).toContainElement(screen.getByRole('button', { name: '1文字消す' }));
-    expect(bottom).not.toContainElement(screen.getByRole('button', { name: '1文字消す' }));
-    const input = screen.getByRole('textbox', { name: '部品名・品番' });
-    fireEvent.click(screen.getByRole('button', { name: '脚', exact: true }));
-    expect(input).toHaveValue('脚');
-    await screen.findByRole('button', { name: /西-北-02/ });
-    fireEvent.click(screen.getByRole('button', { name: '1文字消す' }));
-    expect(input).toHaveValue('');
-    fireEvent.click(screen.getByRole('button', { name: '英数' }));
-    fireEvent.click(screen.getByRole('button', { name: 'A', exact: true }));
-    expect(input).toHaveValue('A');
-    expect(within(screen.getByRole('group', { name: '文字種' })).getByRole('button', { name: '英数' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(await screen.findByRole('button', { name: 'B パルプ' }));
+    expect(results().getByText('002')).toBeInTheDocument();
+    expect(results().queryByText('C')).not.toBeInTheDocument();
+    expect(results().queryByText('D')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'この品物を消す' }));
+    fireEvent.click(screen.getByRole('button', { name: '本当に消す' }));
+    await waitFor(() => expect(results().queryByText('パルプ')).not.toBeInTheDocument());
+    expect((await haizenOfflineQueueStore.list()).some((record) => record.clientRecordId === 'queued')).toBe(false);
+    expect(await placementDeleteQueueStore.list()).toEqual([]);
+    await act(async () => {
+      await haizenOfflineQueueStore.put({ ...pending, clientRecordId: 'new' });
+      await haizenOutboxRunner().refresh();
+    });
+    expect(await screen.findByRole('button', { name: 'B パルプ' })).toBeInTheDocument();
   });
 });

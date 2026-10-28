@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../../lib/prisma.js';
 import { findSupplementMachineNamesForMissing } from '../../../production-schedule/seiban-machine-name-supplement-backfill.js';
-import { resolveFseibansMatchingMachineNameQuery } from '../part-search-machine-name-fseibans.service.js';
+import { resolveFseibansMatchingMachineNameQuery, resolvePartSearchMachineNames } from '../part-search-machine-name-fseibans.service.js';
 
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
 vi.mock('../../../production-schedule/seiban-machine-name-supplement-backfill.js', () => ({ findSupplementMachineNamesForMissing: vi.fn() }));
@@ -19,6 +19,12 @@ describe('part-search machine names', () => {
     ]);
     vi.mocked(findSupplementMachineNamesForMissing).mockResolvedValue(new Map([['BE02', 'dadてーぶる']]));
     await expect(resolveFseibansMatchingMachineNameQuery('dadてふる')).resolves.toEqual(new Set(['BE01', 'BE02']));
+  });
+  it('resolves display names without folding and supplements placements absent from schedule', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ fseiban: 'BE01', machineName: 'ＤＡＤテーブル' }]);
+    vi.mocked(findSupplementMachineNamesForMissing).mockResolvedValue(new Map([['OLD', 'カバー']]));
+    await expect(resolvePartSearchMachineNames(['BE01', 'OLD'])).resolves.toEqual(new Map([['BE01', 'ＤＡＤテーブル'], ['OLD', 'カバー']]));
+    expect(findSupplementMachineNamesForMissing).toHaveBeenCalledWith([['BE01', 'ＤＡＤテーブル'], ['OLD', null]]);
   });
   it('does not fetch for an empty folded query', async () => {
     await expect(resolveFseibansMatchingMachineNameQuery('ーｰ')).resolves.toEqual(new Set());

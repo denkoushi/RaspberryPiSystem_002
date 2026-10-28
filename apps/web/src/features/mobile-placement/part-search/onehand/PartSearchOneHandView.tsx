@@ -18,8 +18,7 @@ export function PartSearchOneHandView({ rows, offline, topLeftChip, onDelete }: 
   const [mode, setMode] = useState<'kana' | 'abc'>('kana');
   const [keysVisible, setKeysVisible] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
-  const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
-  const index = useMemo(() => buildPartSearchIndex(rows.filter((row) => !deleted.has(row.id))), [rows, deleted]);
+  const index = useMemo(() => buildPartSearchIndex(rows), [rows]);
   const result = useMemo(() => searchPartIndex(index, query), [index, query]);
   const availableKeys = useMemo(() => keysVisible
     ? nextKeyAvailability(index, query, mode === 'kana' ? ONEHAND_KANA_KEYS : ONEHAND_ABC_KEYS)
@@ -45,7 +44,6 @@ export function PartSearchOneHandView({ rows, offline, topLeftChip, onDelete }: 
   const setTyped = (typed: string) => { setQuery({ ...query, typed }); setSelected(null); };
   const deleteRow = async (row: PartSearchRow) => {
     await onDelete(row);
-    setDeleted((previous) => new Set([...previous, row.id]));
     setSelected((current) => current === row.id ? null : current);
   };
 

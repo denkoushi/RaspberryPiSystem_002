@@ -23,7 +23,8 @@ const row = { purchaseOrderNo: '1234567890', seiban: 'FS1', purchasePartName: '�
 const purchase: PurchaseSnapshot = { version: 'p1', dataUpdatedAt: date, rows: [packPurchase(row)] };
 const schedule: ScheduleSnapshot = { version: 's1', dataUpdatedAt: date, rows: [packSchedule({ rowId: 'r', fseiban: 'FS1', productNo: 'T1', fhincd: 'MD1', fhinmei: '品名', fsigencd: 'M', fkojun: 1 })], knownFseibans: ['FS1', 'FSNOPART'] };
 const input = { transferOrderBarcodeRaw: 'T1', actualOrderBarcodeRaw: row.purchaseOrderNo, actualFseibanRaw: '' };
-const versions = { purchase: { version: 'p1', dataUpdatedAt: date }, schedule: { version: 's1', dataUpdatedAt: date } };
+const placements = { version: 'b1', dataUpdatedAt: date, rows: [] };
+const versions = { placements: { version: 'b1', dataUpdatedAt: date }, purchase: { version: 'p1', dataUpdatedAt: date }, schedule: { version: 's1', dataUpdatedAt: date } };
 beforeEach(() => {
   vi.mocked(api.get).mockReset().mockRejectedValue(new Error('offline'));
   window.dispatchEvent(new Event('online'));
@@ -31,9 +32,9 @@ beforeEach(() => {
 afterEach(() => { resetSyncSchedulerForTests(); resetMobileConnectivityForTests(); vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('mobile local-first data', () => {
-  it.each(['purchase', 'schedule'] as const)('downloads slow %s snapshots with matching 180-second deadlines', async (kind) => {
+  it.each(['purchase', 'schedule', 'placements'] as const)('downloads slow %s snapshots with matching 180-second deadlines', async (kind) => {
     vi.useFakeTimers();
-    const snapshot = kind === 'purchase' ? purchase : schedule;
+    const snapshot = kind === 'purchase' ? purchase : kind === 'schedule' ? schedule : placements;
     vi.mocked(api.get).mockImplementationOnce(() => new Promise((resolve) => {
       setTimeout(() => resolve({ status: 200, data: snapshot }), 179_000);
     }));
@@ -82,7 +83,7 @@ describe('mobile local-first data', () => {
   it('replaces all old rows, keeps wire ordering, and distinguishes missing data from missing order', async () => {
     const store = createMobileLocalDataStore();
     expect(await store.lookupPurchase(row.purchaseOrderNo)).toBeNull();
-    await store.replace({ purchase, schedule });
+    await store.replace({ purchase, schedule, placements });
     expect((await store.lookupPurchase(row.purchaseOrderNo))?.rows[0]).toMatchObject(row);
     expect((await store.lookupPurchase('missing'))?.rows).toEqual([]);
     await store.replace({ purchase: { ...purchase, version: 'p2', rows: [packPurchase({ ...row, purchaseOrderNo: '0000000001' })] } });
@@ -90,7 +91,7 @@ describe('mobile local-first data', () => {
     expect((await store.versions()).schedule?.version).toBe('s1');
   });
   it('does not publish any new version if building a memory replacement fails', async () => {
-    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule });
+    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule, placements });
     const invalid = { ...schedule, version: 's2', get rows(): ScheduleSnapshot['rows'] { throw new Error('allocation failed'); } };
     await expect(store.replace({ purchase: { ...purchase, version: 'p2' }, schedule: invalid })).rejects.toThrow('allocation');
     expect(await store.versions()).toEqual(versions);
@@ -101,7 +102,7 @@ describe('mobile local-first data', () => {
     expect((await store.lookupPurchase(row.purchaseOrderNo))?.rows[0]).toMatchObject(row);
   });
   it('keeps memory rows and metadata together if preparing version metadata fails', async () => {
-    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule });
+    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule, placements });
     const invalid = { ...schedule, get version(): string { throw new Error('metadata failed'); } };
     await expect(store.replace({ purchase: { ...purchase, version: 'p2', rows: [] }, schedule: invalid })).rejects.toThrow('metadata');
     expect(await store.versions()).toEqual(versions);
@@ -131,7 +132,7 @@ describe('mobile local-first data', () => {
   it('verifies on the device, including mismatch, and only falls back if a dataset is absent', async () => {
     const store = createMobileLocalDataStore(); const server = vi.fn().mockResolvedValue({ ok: false, reason: 'order_not_found' });
     await verifyLocalFirst(input, server, store); expect(server).toHaveBeenCalledTimes(1);
-    await store.replace({ purchase, schedule }); server.mockClear();
+    await store.replace({ purchase, schedule, placements }); server.mockClear();
     expect(await verifyLocalFirst(input, server, store)).toMatchObject({ ok: true, actualResolvedBy: 'purchaseOrder' });
     expect(await verifyLocalFirst({ ...input, actualPartBarcodeRaw: 'WRONG' }, server, store)).toMatchObject({ ok: false, reason: 'different_part' });
     expect(server).not.toHaveBeenCalled();
@@ -139,7 +140,7 @@ describe('mobile local-first data', () => {
   });
   it('only downloads changed versions and shares in-flight synchronization', async () => {
     const store = createMobileLocalDataStore();
-    const remote = { versions: vi.fn().mockResolvedValue(versions), purchase: vi.fn().mockResolvedValue(purchase), schedule: vi.fn().mockResolvedValue(schedule) };
+    const remote = { placements: vi.fn().mockResolvedValue(placements), versions: vi.fn().mockResolvedValue(versions), purchase: vi.fn().mockResolvedValue(purchase), schedule: vi.fn().mockResolvedValue(schedule) };
     const sync = createMobileDataSync(store, remote);
     await Promise.all([sync(), sync()]);
     expect(remote.versions).toHaveBeenCalledTimes(1); expect(remote.purchase).toHaveBeenCalledTimes(1);
@@ -147,6 +148,11 @@ describe('mobile local-first data', () => {
     remote.versions.mockResolvedValue({ ...versions, purchase: { ...versions.purchase, version: 'p2' } });
     remote.purchase.mockResolvedValue({ ...purchase, version: 'p2' });
     await sync(); expect(remote.purchase).toHaveBeenLastCalledWith('p1'); expect(remote.schedule).toHaveBeenCalledTimes(1);
+    remote.versions.mockResolvedValue({ ...versions, purchase: { ...versions.purchase, version: 'p2' }, placements: { ...versions.placements, version: 'b2' } });
+    remote.placements.mockResolvedValue({ ...placements, version: 'b2' });
+    await sync();
+    expect(remote.placements).toHaveBeenLastCalledWith('b1');
+    expect(remote.purchase).toHaveBeenCalledTimes(2); expect(remote.schedule).toHaveBeenCalledTimes(1);
   });
   it.each([
     ['order_not_found', { ...input, actualOrderBarcodeRaw: 'missing' }],
@@ -154,7 +160,7 @@ describe('mobile local-first data', () => {
     ['order_not_found', { ...input, actualOrderBarcodeRaw: '0000000000' }],
     ['transfer_not_found', { ...input, transferOrderBarcodeRaw: 'missing' }]
   ] as const)('retains local %s without requesting the server online', async (reason, missingInput) => {
-    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule });
+    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule, placements });
     const local = await store.verify(missingInput);
     expect(local).toMatchObject({ ok: false, reason });
     const server = vi.fn().mockResolvedValue({ ok: true, reason: 'match' });
@@ -168,9 +174,9 @@ describe('mobile local-first data', () => {
     expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual(local);
   });
   it('keeps old data during download and after download failure or a version race', async () => {
-    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule });
+    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule, placements });
     let reject!: (reason: Error) => void;
-    const remote = { versions: vi.fn().mockResolvedValue({ ...versions, purchase: { ...versions.purchase, version: 'p2' } }),
+    const remote = { placements: vi.fn().mockResolvedValue(placements), versions: vi.fn().mockResolvedValue({ ...versions, purchase: { ...versions.purchase, version: 'p2' } }),
       purchase: vi.fn(() => new Promise<PurchaseSnapshot>((_, r) => { reject = r; })), schedule: vi.fn().mockResolvedValue(schedule) };
     const sync = createMobileDataSync(store, remote); const running = sync();
     await waitFor(() => expect(remote.purchase).toHaveBeenCalled());
@@ -182,8 +188,8 @@ describe('mobile local-first data', () => {
   });
   it('backs off failed downloads from 30 minutes to 6 hours, including reconnect attempts, and resets on success', async () => {
     vi.useFakeTimers();
-    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule });
-    const remote = { versions: vi.fn().mockResolvedValue({ ...versions, purchase: { ...versions.purchase, version: 'p2' } }),
+    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule, placements });
+    const remote = { placements: vi.fn().mockResolvedValue(placements), versions: vi.fn().mockResolvedValue({ ...versions, purchase: { ...versions.purchase, version: 'p2' } }),
       purchase: vi.fn().mockRejectedValue(new Error('network')), schedule: vi.fn() };
     const sync = createMobileDataSync(store, remote);
     await expect(sync()).rejects.toThrow('network');
@@ -212,7 +218,7 @@ describe('mobile local-first data', () => {
   it('backs off after version-check failure without extending the wait on reconnect', async () => {
     vi.useFakeTimers();
     const store = createMobileLocalDataStore();
-    const remote = { versions: vi.fn().mockRejectedValue(new Error('network')),
+    const remote = { placements: vi.fn().mockResolvedValue(placements), versions: vi.fn().mockRejectedValue(new Error('network')),
       purchase: vi.fn().mockResolvedValue(purchase), schedule: vi.fn().mockResolvedValue(schedule) };
     const sync = createMobileDataSync(store, remote);
     await expect(sync()).rejects.toThrow('network');
