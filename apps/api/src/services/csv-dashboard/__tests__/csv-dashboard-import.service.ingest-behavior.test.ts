@@ -143,13 +143,49 @@ describe('CsvDashboardImportService ingest behavior', () => {
     const { service, storageProvider, ingest } = setupMessages(['\uFEFF']);
     storageProvider.trashMessage.mockRejectedValue(new Error('insufficient Gmail scope'));
     await expect(ingest()).rejects.toThrow('insufficient Gmail scope');
-    expect(storageProvider.markAsRead).toHaveBeenCalledTimes(1);
+    expect(storageProvider.markAsRead).not.toHaveBeenCalled();
     expect(storageProvider.trashMessage).toHaveBeenCalledTimes(1);
     expect(service.ingestor.ingestFromGmail).not.toHaveBeenCalled();
     expect(updateMock).toHaveBeenCalledWith({
       where: { id: 'ingest-run-1' },
       data: { errorMessage: '[ingest-audit] postProcessState=failed reason=insufficient Gmail scope' },
     });
+  });
+
+  it.each([
+    ['', 'skipped_empty'],
+    ['h1,h2\nv1,v2\n', 'completed'],
+  ])('keeps %j successful when markAsRead fails after trashMessage', async (content, state) => {
+    const { storageProvider, ingest } = setupMessages([content]);
+    const error = new Error('mark read failed');
+    storageProvider.markAsRead.mockRejectedValue(error);
+
+    const result = await ingest();
+
+    expect(storageProvider.trashMessage).toHaveBeenCalledExactlyOnceWith('message-000001');
+    expect(storageProvider.markAsRead).toHaveBeenCalledExactlyOnceWith('message-000001');
+    expect(storageProvider.trashMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      storageProvider.markAsRead.mock.invocationCallOrder[0]
+    );
+    expect(result['dashboard-1'].debug).toMatchObject({
+      postProcessedMessageIdSuffixes: ['000001'],
+      postProcessStateByMessageIdSuffix: { '000001': state },
+      failedMessageIdSuffixes: [],
+      postProcessErrorByMessageIdSuffix: { '000001': { step: 'markAsRead', error: 'mark read failed' } },
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      { err: error, dashboardId: 'dashboard-1', messageId: 'message-000001' },
+      '[CsvDashboardImportService] Failed to mark trashed message as read'
+    );
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('trashes a successfully imported message before marking it read', async () => {
+    const { storageProvider, ingest } = setupMessages(['h1,h2\nv1,v2\n']);
+    await ingest();
+    expect(storageProvider.trashMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      storageProvider.markAsRead.mock.invocationCallOrder[0]
+    );
   });
 
   it('returns empty result when no matching Gmail message exists', async () => {
@@ -225,8 +261,12 @@ describe('CsvDashboardImportService ingest behavior', () => {
       })
     ).rejects.toThrow('insufficient Gmail scope');
 
-    expect(markAsRead).toHaveBeenCalledTimes(1);
+    expect(markAsRead).not.toHaveBeenCalled();
     expect(trashMessage).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ postProcessError: { step: 'trashMessage', error: 'insufficient Gmail scope' } }),
+      '[CsvDashboardImportService] CSV dashboard ingestion failed for message'
+    );
   });
 
   it('resolves when a non-retriable message is trashed and another message succeeds', async () => {
