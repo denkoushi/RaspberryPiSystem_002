@@ -1,10 +1,22 @@
+import { useRef } from 'react';
+
 import { useMachines } from '../../../api/hooks/tools';
 import { extractHydraulicOilTargetSet, parseJson, toggleHydraulicOilTarget } from '../visualization-dashboards/visualizationDashboardFormModel';
 
 import { isEditableJson, readJsonField, writeJsonField } from './graphFieldModel';
 
+function openDatePicker(input: HTMLInputElement | null | undefined) {
+  if (!input || input.disabled || typeof input.showPicker !== 'function') return;
+  try {
+    input.showPicker();
+  } catch {
+    // Native pickers can reject requests without user activation; keyboard editing remains available.
+  }
+}
+
 export function HydraulicOilExchangeMachinePicker({ config, onChange }: { config: string; onChange: (config: string) => void }) {
   const query = useMachines();
+  const dateInputs = useRef(new Map<string, HTMLInputElement>());
   const selected = extractHydraulicOilTargetSet(config);
   const editable = isEditableJson(config);
   const parsed = parseJson(config, '').value;
@@ -84,14 +96,32 @@ export function HydraulicOilExchangeMachinePicker({ config, onChange }: { config
               </label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input
+                  ref={(input) => {
+                    if (input) dateInputs.current.set(number, input);
+                    else dateInputs.current.delete(number);
+                  }}
                   id={`sh-gb-hydraulic-date-${number}`}
                   type="date"
-                  className="sh-input"
-                  style={{ width: 156 }}
+                  className="sh-input sh-hydraulic-date"
+                  style={{ width: 156, flexShrink: 0 }}
                   value={date}
                   disabled={!editable}
+                  onClick={(event) => openDatePicker(event.currentTarget)}
                   onChange={(event) => setDate(number, event.target.value)}
                 />
+                <button
+                  type="button"
+                  className="sh-icon-btn"
+                  style={{ width: 28, height: 28, flexShrink: 0 }}
+                  aria-label={`${number}の前回交換日をカレンダーで選ぶ`}
+                  disabled={!editable}
+                  onClick={() => openDatePicker(dateInputs.current.get(number))}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="3" y="5" width="18" height="16" rx="2" />
+                    <path d="M16 3v4M8 3v4M3 11h18" />
+                  </svg>
+                </button>
                 <button type="button" className="sh-pill" aria-label={`${number}の前回交換日をクリア`} disabled={!editable || !date} onClick={() => setDate(number, '')}>×</button>
               </div>
             </div>

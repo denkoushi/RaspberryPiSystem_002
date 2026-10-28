@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { getToolsPalletVisualizationBoard } from '../../../api/client';
 import {
@@ -54,6 +54,7 @@ export function useVisualizationDashboardEditor() {
   const [rendererConfig, setRendererConfig] = useState(DEFAULT_JSON);
   const [enabled, setEnabled] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
+  const loadedVersion = useRef<{ id: string; updatedAt: string } | null>(null);
 
   const isEditing = Boolean(selectedId) && !isCreating;
   const isHydraulicOilExchangePreset = dataSourceType.trim() === HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TYPE;
@@ -106,7 +107,11 @@ export function useVisualizationDashboardEditor() {
   };
 
   useEffect(() => {
-    if (!isEditing || !selected) return;
+    if (!isEditing || loadedVersion.current?.id !== selectedId) loadedVersion.current = null;
+    if (!isEditing || !selected || selected.id !== selectedId) return;
+    // Refetches of the same server version must not discard unsaved form edits.
+    if (loadedVersion.current?.id === selected.id && loadedVersion.current.updatedAt === selected.updatedAt) return;
+    loadedVersion.current = { id: selected.id, updatedAt: selected.updatedAt };
     setName(selected.name ?? '');
     setDescription(selected.description ?? '');
     setDataSourceType(selected.dataSourceType ?? '');
@@ -115,7 +120,7 @@ export function useVisualizationDashboardEditor() {
     setRendererConfig(JSON.stringify(selected.rendererConfig ?? {}, null, 2));
     setEnabled(Boolean(selected.enabled));
     setFormError(null);
-  }, [isEditing, selected]);
+  }, [isEditing, selected, selectedId]);
 
   useEffect(() => {
     if (!isCreating) return;
