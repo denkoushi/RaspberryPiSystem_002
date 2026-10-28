@@ -106,6 +106,8 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
       (tab === 'verify' && flow.result !== 'ok')) return;
     putInFlight.current = true;
     setPutting(true);
+    const shelf = shelves.data?.shelves.find((s) => s.shelfCodeRaw === activeShelfCode);
+    const place = (shelf && [shelf.machineName, shelf.direction, shelf.displayLabel].filter(Boolean).join(' ')) || activeShelfCode;
     try {
       const result = await queue.submit({
         clientRecordId: createHaizenClientRecordId(), slipKind: tab === 'verify' || placeSlip?.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
@@ -114,7 +116,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
       setPlaceToast(result.status === 'sent' && result.response.action === 'stale'
         ? `${result.response.branchState.shelfCodeRaw}に新しい記録があります`
         : result.status === 'sent'
-        ? `分配${result.response.branchState.branchNo === 0 ? 'なし' : result.response.branchState.branchNo}を${result.response.action === 'unchanged' ? '確認しました' : result.response.action === 'moved' || (!result.response.action && selectedBranch) ? '移しました' : '置きました'}`
+        ? `${place}に 分配${result.response.branchState.branchNo === 0 ? 'なし' : result.response.branchState.branchNo}を${result.response.action === 'unchanged' ? '確認しました' : result.response.action === 'moved' || (!result.response.action && selectedBranch) ? '移しました' : '置きました'}`
         : result.status === 'pending' ? `スマホに保存しました（未送信 ${result.pendingCount}件）` : '要確認に保存しました');
       if (tab === 'verify') nextVerify();
       else { setPlaceSlip(null); setSelectedBranchNo(null); }
@@ -213,8 +215,8 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
           </HaizenShelfPhotoList>
         </section>
         </>}
-        {(toast || registerError) && <div role={registerError ? 'alert' : 'status'} className={`absolute bottom-2 left-1/2 z-20 flex max-w-[calc(100%-28px)] -translate-x-1/2 items-center gap-1.5 rounded-full bg-[var(--hp-ink)] px-3.5 py-2 text-[14px] font-black ${registerError ? 'text-red-700' : 'text-[var(--hp-bg)]'}`}>
-          {!registerError && <HaizenIcon name="check" className="h-[18px] w-[18px] shrink-0" />}<span className={registerError ? 'break-words' : 'truncate whitespace-nowrap'}>{registerError || toast}</span>
+        {(toast || registerError) && <div role={registerError ? 'alert' : 'status'} className={`absolute bottom-2 left-1/2 z-20 flex max-w-[calc(100%-28px)] -translate-x-1/2 items-center gap-1.5 rounded-2xl bg-[var(--hp-ink)] px-3.5 py-2 text-[14px] font-black ${registerError ? 'text-red-700' : 'text-[var(--hp-bg)]'}`}>
+          {!registerError && <HaizenIcon name="check" className="h-[18px] w-[18px] shrink-0" />}<span className="break-words">{registerError || toast}</span>
         </div>}
       </main>
       {(tab === 'place' ? hasPlaceSlip : flow.result === 'ok') && <div className="shrink-0 px-3.5 pt-2">
