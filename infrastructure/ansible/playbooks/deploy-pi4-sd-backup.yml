@@ -21,6 +21,9 @@
     pi4_sd_backup_offsite_repository: rclone:google-drive:RaspberryPiSystem_002/pi4-sd
     pi4_sd_backup_pi5_ssh_user: "{{ ansible_user }}"
     pi4_sd_backup_timer_enabled: false
+    # Kiosks on a mobile router cannot stream an SD image to the Pi5 in time.
+    pi4_sd_backup_excluded_hosts:
+      - raspi4-assembly-02
     pi4_sd_backup_service_name: raspi-pi4-sd-backup.service
     pi4_sd_backup_timer_name: raspi-pi4-sd-backup.timer
 
@@ -97,7 +100,7 @@
         mode: '0600'
         content: |
           [
-          {% for kiosk in groups['kiosk'] %}
+          {% for kiosk in groups['kiosk'] | difference(pi4_sd_backup_excluded_hosts) %}
             {"host": {{ kiosk | to_json }}, "address": {{ hostvars[kiosk].ansible_host | to_json }}, "user": {{ hostvars[kiosk].ansible_user | to_json }}}{{ "," if not loop.last else "" }}
           {% endfor %}
           ]
