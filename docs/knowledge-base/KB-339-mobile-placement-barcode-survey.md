@@ -343,6 +343,11 @@
 - 圏外でも削除するとすぐ非表示になり、専用アウトボックスへ保存する。送信待ちは配置を再取得しても非表示を保ち、404 は完了、その他の確定的な4xxは行を戻す。実機確認・本番反映は未実施。
 - データ契約・版判定・削除の判断は [local-first ExecPlan](../plans/mobile-local-first-sync-execplan.md#decision-log) を正本とする。
 
+### 2026-10-28: スマホ部品検索の音声入力
+
+- 検索欄のマイクはAndroidネイティブ認識（オフライン優先）の候補を端末内検索へ渡す。既存フィルタを保持し、ヒットする最初の候補を全部の項目で検索する。新APKが必要で、旧APK・通常ブラウザではボタンを隠す。
+- 権限・認識方式の判断と検証状況は [Android ExecPlan](../plans/android-haizen-shell-ocr-execplan.md#decision-log) を参照。実機確認・本番反映は未実施。
+
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`

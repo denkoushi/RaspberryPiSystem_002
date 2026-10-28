@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PartSearchOneHandView } from '../PartSearchOneHandView';
 
@@ -15,6 +15,118 @@ function mount(onDelete = vi.fn<(row: PartSearchRow) => Promise<void>>().mockRes
 const key = (name: string) => screen.getByRole('button', { name });
 const field = (name: string) => within(screen.getByRole('group', { name: 'さがす項目' })).getByRole('button', { name });
 const results = () => screen.getByRole('region', { name: '検索結果' });
+
+afterEach(async () => {
+  await act(async () => window.__haizenNativeSpeechResult?.({ status: 'cancelled' }));
+  delete window.HaizenNative;
+});
+
+function speechBridge() {
+  const bridge = {
+    isAvailable: () => true, scanFseiban: vi.fn(),
+    isSpeechAvailable: () => true, startSpeech: vi.fn(), stopSpeech: vi.fn()
+  };
+  window.HaizenNative = bridge;
+  return bridge;
+}
+
+describe('native speech search', () => {
+  it('hides the microphone without a bridge, with an old APK, or without a speech service', () => {
+    const first = mount();
+    expect(screen.queryByRole('button', { name: '音声で探す' })).not.toBeInTheDocument();
+    first.unmount();
+    window.HaizenNative = { isAvailable: () => true, scanFseiban: vi.fn() };
+    const oldApk = mount();
+    expect(screen.queryByRole('button', { name: '音声で探す' })).not.toBeInTheDocument();
+    oldApk.unmount();
+    speechBridge().isSpeechAvailable = () => false;
+    mount();
+    expect(screen.queryByRole('button', { name: '音声で探す' })).not.toBeInTheDocument();
+  });
+
+  it('shows a pressed microphone while listening and stops on a second tap', async () => {
+    const bridge = speechBridge();
+    mount();
+    expect(key('音声で探す')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(key('音声で探す'));
+    expect(bridge.startSpeech).toHaveBeenCalledOnce();
+    expect(key('音声で探す')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(key('音声で探す'));
+    expect(bridge.stopSpeech).toHaveBeenCalledOnce();
+    expect(bridge.startSpeech).toHaveBeenCalledOnce();
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'ok', texts: ['テーブル'] }));
+    expect(key('音声で探す')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('textbox')).toHaveValue('テーブル');
+    expect(within(results()).getByText('テーブル')).toBeInTheDocument();
+    expect(within(results()).queryByText('パルプ')).not.toBeInTheDocument();
+  });
+
+  it('keeps filters, switches to all fields, chooses the first matching candidate and closes an expanded card', async () => {
+    speechBridge();
+    mount();
+    fireEvent.click(key('機種 DAD3350 でしぼる'));
+    fireEvent.click(key('A01-1 テーブル'));
+    expect(screen.getByText('012345')).toBeInTheDocument();
+    fireEvent.click(key('音声で探す'));
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'ok', texts: ['パルプ', 'てぶる'] }));
+    expect(key('機種 DAD3350 を外す')).toBeInTheDocument();
+    expect(field('全部')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('textbox')).toHaveValue('てぶる');
+    expect(within(results()).getByText('テーブル')).toBeInTheDocument();
+    expect(within(results()).queryByText('パルプ')).not.toBeInTheDocument();
+    expect(screen.queryByText('012345')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [' ｄａｄ　３３５０ ', 'DAD3350', 'テーブル', 'パルプ'],
+    [' ＢＥ０２ ', 'BE02', 'パルプ', 'テーブル'],
+    [' Ｐ－０２ ', 'P-02', 'パルプ', 'テーブル'],
+    ['ばるぶ', 'ばるぶ', 'パルプ', 'テーブル']
+  ])('normalizes %s and searches through the existing core', async (spoken, typed, hit, absent) => {
+    speechBridge();
+    mount();
+    fireEvent.click(key('音声で探す'));
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'ok', texts: [spoken] }));
+    expect(screen.getByRole('textbox')).toHaveValue(typed);
+    expect(within(results()).getByText(hit)).toBeInTheDocument();
+    expect(within(results()).queryByText(absent)).not.toBeInTheDocument();
+  });
+
+  it('leaves the query, filters and selected field unchanged on cancellation or start failure', async () => {
+    const bridge = speechBridge();
+    mount();
+    fireEvent.click(key('機種 DAD3350 でしぼる'));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'BE01' } });
+    fireEvent.click(key('音声で探す'));
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'cancelled' }));
+    expect(screen.getByRole('textbox')).toHaveValue('BE01');
+    expect(field('製番')).toHaveAttribute('aria-pressed', 'true');
+    expect(key('機種 DAD3350 を外す')).toBeInTheDocument();
+    bridge.startSpeech.mockImplementation(() => { throw new Error('mic failed'); });
+    await act(async () => fireEvent.click(key('音声で探す')));
+    expect(screen.getByRole('textbox')).toHaveValue('BE01');
+    expect(field('製番')).toHaveAttribute('aria-pressed', 'true');
+    expect(key('機種 DAD3350 を外す')).toBeInTheDocument();
+    expect(key('音声で探す')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('uses filters changed during recognition and stops on unmount', async () => {
+    const bridge = speechBridge();
+    const { unmount } = mount();
+    fireEvent.click(key('音声で探す'));
+    fireEvent.click(key('機種 DAD3350 でしぼる'));
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'ok', texts: ['パルプ', 'テーブル'] }));
+    expect(screen.getByRole('textbox')).toHaveValue('テーブル');
+    expect(key('機種 DAD3350 を外す')).toBeInTheDocument();
+    fireEvent.click(key('音声で探す'));
+    unmount();
+    expect(bridge.stopSpeech).toHaveBeenCalledOnce();
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'ok', texts: ['パルプ'] }));
+    mount();
+    expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+});
 
 describe('PartSearchOneHandView', () => {
   it('types kana keys to filter the list with folded matches; clear restores all rows', () => {

@@ -1,10 +1,12 @@
 import { buildPartSearchIndex, nextKeyAvailability, searchPartIndex } from '@raspi-system/part-search-core';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { isHaizenSpeechAvailable, recognizeSpeechNative, stopSpeechNative } from '../../haizenNative';
 import { haizenPhoneStyle, hp } from '../../ui/haizenPhoneTokens';
 
 import { ONEHAND_ABC_KEYS, ONEHAND_KANA_KEYS, PartSearchOneHandDock } from './PartSearchOneHandDock';
 import { PartSearchOneHandHit } from './PartSearchOneHandHit';
+import { pickSpeechSearchText } from './pickSpeechSearchText';
 
 import type { PartSearchField, PartSearchFilter, PartSearchQuery, PartSearchRow } from '@raspi-system/part-search-core';
 import type { ReactNode } from 'react';
@@ -18,7 +20,20 @@ export function PartSearchOneHandView({ rows, offline, topLeftChip, onDelete }: 
   const [mode, setMode] = useState<'kana' | 'abc'>('kana');
   const [keysVisible, setKeysVisible] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  const [speechAvailable] = useState(isHaizenSpeechAvailable);
+  const [listening, setListening] = useState(false);
+  const listeningRef = useRef(false);
+  const mounted = useRef(true);
   const index = useMemo(() => buildPartSearchIndex(rows), [rows]);
+  const latestIndex = useRef(index);
+  useEffect(() => { latestIndex.current = index; }, [index]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (listeningRef.current) stopSpeechNative();
+    };
+  }, []);
   const result = useMemo(() => searchPartIndex(index, query), [index, query]);
   const availableKeys = useMemo(() => keysVisible
     ? nextKeyAvailability(index, query, mode === 'kana' ? ONEHAND_KANA_KEYS : ONEHAND_ABC_KEYS)
@@ -46,6 +61,26 @@ export function PartSearchOneHandView({ rows, offline, topLeftChip, onDelete }: 
     await onDelete(row);
     setSelected((current) => current === row.id ? null : current);
   };
+  const speech = async () => {
+    if (listeningRef.current) { stopSpeechNative(); return; }
+    listeningRef.current = true;
+    setListening(true);
+    try {
+      const spoken = await recognizeSpeechNative();
+      if (mounted.current && spoken.status === 'ok') {
+        setQuery((current) => ({
+          field: 'all', filters: current.filters,
+          typed: pickSpeechSearchText(spoken.texts, latestIndex.current, current.filters)
+        }));
+        setSelected(null);
+      }
+    } catch {
+      // Cancellation and unavailable native services leave the query unchanged.
+    } finally {
+      listeningRef.current = false;
+      if (mounted.current) setListening(false);
+    }
+  };
 
   return <div style={haizenPhoneStyle} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--hp-bg)] text-[var(--hp-ink)] [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]">
     <div className="flex min-h-7 items-center gap-2 px-3.5 pb-1.5 pt-3">
@@ -59,6 +94,7 @@ export function PartSearchOneHandView({ rows, offline, topLeftChip, onDelete }: 
         onFilter={addFilter} onDelete={deleteRow} />)}
     </section>
     <PartSearchOneHandDock query={query} facets={result.facets} keysVisible={keysVisible} mode={mode} availableKeys={availableKeys}
+      speechAvailable={speechAvailable} listening={listening} onSpeech={speech}
       onFilter={addFilter} onRemoveFilter={removeFilter} onTyped={setTyped} onKeysVisible={setKeysVisible} onMode={setMode}
       onField={(field) => { setQuery({ ...query, field, typed: '' }); fieldMode(field); setKeysVisible(true); }}
       onClear={() => { setQuery({ field: 'all', typed: '', filters: [] }); setSelected(null); }}
