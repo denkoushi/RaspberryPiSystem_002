@@ -5,7 +5,7 @@ import { records } from './fixtures/synthetic-records.mjs';
 import { deriveCatalog, loadCatalog, loadNonconformityCatalog, fieldsWithRole } from './catalog.mjs';
 import { validateSourceDefinition, sourceDefinitions } from '../hermes-source-definition.mjs';
 import { authorizedRecords } from './corpus.mjs';
-import { prepareLexicalCorpus } from './executor.mjs';
+import { COUNT_POOL_LIMIT, prepareLexicalCorpus } from './executor.mjs';
 import { buildValueIndex } from './value-index.mjs';
 import {
   WORKER_PREFIX,
@@ -1297,7 +1297,8 @@ for (const [name, size, excludeShown, shownIds, semanticQuery, reject, expected]
   ['zero after exclusion', 1, true, ['nonconformity:c0'], '', false, 0],
   ['empty set', 0, false, [], '', false, 0],
   ['relevance rejection', 4, false, [], '合成の傷', true, 3],
-  ['bounded relevance pool', 80, false, [], '合成の傷', false, null],
+  ['full relevance pool', 80, false, [], '合成の傷', false, 80],
+  ['bounded relevance pool', 120, false, [], '合成の傷', false, null],
 ]) {
   test(`count answer: ${name}`, async () => {
     const synthetic = Array.from({ length: size }, (_, index) => ({ kind: 'nonconformity', id: `c${index}`,
@@ -1329,14 +1330,16 @@ for (const [name, size, excludeShown, shownIds, semanticQuery, reject, expected]
     assert.equal(result.display, undefined);
     if (expected === null) {
       assert.equal(result.coverage.known, false);
-      assert.ok(result.coverage.floor > 1 && result.coverage.floor < size);
-      assert.match(result.answer, new RegExp(`${result.coverage.floor}件以上です。$`));
+      assert.equal(result.coverage.floor, COUNT_POOL_LIMIT);
+      assert.equal(result.coverage.judged, 90);
+      assert.match(result.answer, /少なくとも\d+件です（上位90件まで確認）。$/u);
     } else {
       assert.equal(result.coverage.known, true);
       assert.equal(result.coverage.total, expected);
       assert.equal(result.answer, expected === 0 ? '「合成条件」に該当する記録は見つかりませんでした。'
         : `「合成条件」に該当する記録は${expected}件です。`);
     }
+    assert.equal(result.coverage.judged, semanticQuery ? Math.min(size, COUNT_POOL_LIMIT) : 0);
     if (semanticQuery) assert.ok(judgeCalls > 0);
   });
 }

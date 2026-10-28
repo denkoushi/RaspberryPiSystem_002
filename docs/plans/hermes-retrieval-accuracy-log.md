@@ -801,6 +801,20 @@ Runner: night 25 (2026-10-27) logged `dgx_not_ready` at 22:00 and 22:05 JST; che
 
 Private files: `work/flywheel/questions-2026-10-26.jsonl`, `real-2026-10-26.jsonl`, `receipts-2026-10-26.jsonl`, `runner-2026-10-26.log`, `runner-2026-10-27.log`.
 
+### 2026-10-28: kiosk check of the count follow-up; the count now judges the whole candidate pool (change, not a measurement)
+
+Kiosk check of 2026-10-28 08:05 (the two items asked for after #2303 and #2295): after a department question, 「配管不良の不適合は他に何件ある？」 was classified `count`, kept the department condition in the rewrite, and answered 「…に該当する記録は1件以上です」. The follow-up 「1件以上ということは、100件の可能性もある？」 repeated the same sentence. 「仙台工場に類例ある？」 ended `no_result` over the whole corpus; its plan is not readable from the kiosk text and is checked from the Pi 5 receipt separately.
+
+Cause of 「1件以上」: `execute()` with `countOnly` still used the display pool. `prepareCandidateRanking()` slices the fused candidates to `relevancePoolLimit()` (30 by default) and marks the pool truncated, so the judge saw 30 of the department's 123 records, accepted one, and the coverage became `known=false, floor=1`. The floor was honest but useless. With a date sort the count also entered the recent-content loop, which stops at the display limit.
+
+Change (`executor.mjs`, `worker.mjs`):
+- `COUNT_POOL_LIMIT = 90`: a count judges the fused candidates (lexical content hits and the vector top 50) up to 90 records in one judge call (six parallel batches of 15); `known` is true when the fused list fit. The recent-content loop is bypassed for a count. The `filteredOnly` count (no content word) is unchanged and already exact.
+- `coverage.judged` records how many candidates the judge read (summed over sources). When the pool did not fit, the answer reads 「…に該当する記録は少なくともN件です（上位90件まで確認）。」 instead of 「N件以上です」.
+
+Tests: `node --test scripts/hermes-search/retrieval/*.test.mjs` 471 pass (Codex gpt-6-astra/high implemented the executor and worker change; the multi-source `judged` sum was added by hand).
+
+Not measured yet: the nightly report of 2026-10-29 will show the first count rows under the new pool. The 「100件の可能性もある？」 turn is a question about the answer, not a search; it is left as is.
+
 ### 2026-10-28: night 25, 76%; the factory follow-up kept the old department and lost its content (measurement)
 
 Night of 2026-10-27: 51 of 67 live content rows matched a target (76%), other records shown 11, nothing shown 5 (3 outside the judged candidates, 2 rejected by the judge, no ask-back), synthetic filter questions 10 of 10 correct. Generated 78, kept 67 (dropped: copied run 20, anchor not confirmed 11, too similar 1, copied words 1). Same ratio as night 24 (66 of 81, 81%); the copied-run drops doubled from 10 to 20, so the kept set is smaller and each miss weighs more (one row is 1.5 points). Measured with main 69c295a2 on the Pi 5 (#2348 not yet deployed). The runner saw the DGX answer 503 at 22:00 and 22:05 JST and completed the night at 22:36 JST; a late start, not a partial run. No real conversation was replayed (`real=0`): the kiosk receipts of 2026-10-27 were not present on the Pi 5, so the real-replay file for that night does not exist.

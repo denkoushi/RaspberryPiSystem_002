@@ -5,6 +5,7 @@ import {
   execute,
   fuseRankings,
   RRF_K,
+  COUNT_POOL_LIMIT,
   RECENT_CONTENT_LEXICAL_FRACTION,
   RECENT_CONTENT_DENSE_FRACTION,
   RECENT_CONTENT_MAX_BATCHES,
@@ -581,6 +582,53 @@ test('coverage stays inexact when relevance only judged the top candidate pool',
   assert.equal(executed.returned, 5);
   assert.deepEqual(executed.coverage, { known: false, total: null, floor: 30, shown: 5, order: 'relevance' });
   assert.equal(executed.groups, undefined);
+});
+
+for (const retriever of ['lexical', 'hybrid', 'dense', 'lexical-with-vector']) {
+  for (const [size, recent] of [[80, false], [100, false], [80, true], [100, true]]) {
+    test(`countOnly judges the full bounded pool: ${retriever}, ${size} records, recent=${recent}`, async () => {
+      const synthetic = Array.from({ length: size }, (_, index) => bodyRecord(
+        `count-${String(index).padStart(3, '0')}`,
+        `2026-03-${String((index % 28) + 1).padStart(2, '0')}`,
+        'qxrare once',
+      ));
+      const calls = [];
+      const expectedJudged = Math.min(size, COUNT_POOL_LIMIT);
+      const executed = await execute((recent ? recentContentPlan : plan)({
+        semanticQuery: 'qxrare', limit: 2,
+        filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+      }), {
+        records: synthetic, catalog, retriever: retriever === 'lexical-with-vector' ? 'lexical' : retriever,
+        countOnly: true, relevancePool: 15,
+        ...(retriever === 'lexical' ? {} : {
+          vector: async () => ({ ok: true, orderedIds: synthetic.map((record) => record.id) }),
+        }),
+        relevance: async ({ candidates, poolLimit }) => {
+          calls.push({ count: candidates.length, poolLimit });
+          return { ok: true, ranked: candidates.filter((_, index) => index % 2 === 0)
+            .map((item) => ({ id: item.id, probability: 0.9 })) };
+        },
+      });
+      assert.equal(COUNT_POOL_LIMIT, 90);
+      assert.equal(executed.timings.vectorStatus, retriever === 'lexical' ? 'skipped' : 'ok');
+      assert.deepEqual(calls, [{ count: expectedJudged, poolLimit: COUNT_POOL_LIMIT }]);
+      assert.deepEqual(executed.coverage, {
+        known: size <= COUNT_POOL_LIMIT,
+        ...(size <= COUNT_POOL_LIMIT ? { total: expectedJudged / 2 } : { total: null, floor: expectedJudged / 2 }),
+        shown: 2, order: recent ? 'date_desc' : 'relevance', judged: expectedJudged,
+      });
+    });
+  }
+}
+
+test('countOnly without content counts every filtered record without a judge', async () => {
+  const executed = await execute(plan({
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }],
+  }), {
+    records: syntheticDated(100), catalog, countOnly: true,
+    relevance: () => assert.fail('unexpected relevance call'),
+  });
+  assert.deepEqual(executed.coverage, { known: true, total: 100, shown: 5, order: 'date_desc', judged: 0 });
 });
 
 test('groups use all filtered records, role-derived keys, and caps of 8 organizations / 12 months', async () => {
