@@ -111,9 +111,30 @@ export async function updateHaizenPresetShelf(input: {
 
   await assertHaizenPresetShelfRegistered(raw);
 
-  await prisma.clientDevice.update({
-    where: { id: input.clientDeviceId },
-    data: { haizenPresetShelfCodeRaw: raw }
+  await prisma.$transaction(async (tx) => {
+    // Serialize assignments to this shelf, including concurrent first assignments.
+    await tx.$queryRaw`SELECT "shelfCodeRaw" FROM "MobilePlacementShelf" WHERE "shelfCodeRaw" = ${raw} FOR UPDATE`;
+    const others = await tx.clientDevice.findMany({
+      where: { id: { not: input.clientDeviceId }, haizenPresetShelfCodeRaw: { not: null } },
+      select: { id: true, haizenPresetShelfCodeRaw: true }
+    });
+    const previous = others.filter((device) => normalizePresetShelf(device.haizenPresetShelfCodeRaw) === raw);
+    // Lock touched devices in id order so concurrent swaps cannot deadlock.
+    const lockIds = [...previous.map((device) => device.id), input.clientDeviceId].sort();
+    await tx.$queryRaw`SELECT "id" FROM "ClientDevice" WHERE "id" IN (${Prisma.join(lockIds)}) ORDER BY "id" FOR UPDATE`;
+    if (previous.length > 0) {
+      await tx.clientDevice.updateMany({
+        where: {
+          id: { in: previous.map((device) => device.id) },
+          haizenPresetShelfCodeRaw: { in: previous.map((device) => device.haizenPresetShelfCodeRaw!) }
+        },
+        data: { haizenPresetShelfCodeRaw: null }
+      });
+    }
+    await tx.clientDevice.update({
+      where: { id: input.clientDeviceId },
+      data: { haizenPresetShelfCodeRaw: raw }
+    });
   });
   return { shelfCodeRaw: raw };
 }

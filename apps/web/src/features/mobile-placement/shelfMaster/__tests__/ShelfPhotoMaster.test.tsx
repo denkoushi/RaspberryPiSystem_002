@@ -14,6 +14,7 @@ vi.mock('../../../../api/http', () => ({ api: { get: vi.fn(), post: vi.fn(), put
 vi.mock('../../../../api/client', () => ({
   getMobilePlacementShelfMachines: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn(), getMobilePlacementShelfPhoto: vi.fn(),
   postMobilePlacementShelfLandmark: vi.fn(), deleteMobilePlacementShelfLandmark: vi.fn(),
+  getMobilePlacementHaizenTargetDevices: vi.fn(), putMobilePlacementHaizenTargetPresetShelf: vi.fn(),
   putMobilePlacementShelfPhoto: vi.fn(), patchMobilePlacementShelfMemo: vi.fn(), deleteMobilePlacementShelf: vi.fn()
 }));
 vi.mock('../../shelfPhoto/resizeShelfPhoto', () => ({ resizeShelfPhoto: vi.fn(), encodeShelfPhoto: vi.fn() }));
@@ -50,6 +51,7 @@ beforeEach(async () => {
   vi.resetAllMocks();
   window.dispatchEvent(new Event('online'));
   vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves });
+  vi.mocked(api.getMobilePlacementHaizenTargetDevices).mockResolvedValue({ devices: [] });
   vi.mocked(api.getMobilePlacementShelfMachines).mockResolvedValue({ machines: ['50013_540AP', 'DAD-3220'], landmarks: ['電気室', 'テント倉庫'] });
   vi.mocked(resizeShelfPhoto).mockResolvedValue(photo);
   vi.mocked(encodeShelfPhoto).mockReturnValue(photo);
@@ -456,5 +458,131 @@ describe('offline shelf registration', () => {
     await screen.findByRole('button', { name: '棚 西-北-01 要確認' });
     expect(screen.queryByRole('button', { name: '棚 西-北-01 を編集' })).not.toBeInTheDocument();
     expect(screen.getAllByText('西-北-01')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '棚 西-北-01 要確認' }));
+    expect(screen.queryByLabelText(/^Zero2W/)).not.toBeInTheDocument();
+    expect(api.putMobilePlacementHaizenTargetPresetShelf).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('photo shelf Zero2W assignment', () => {
+  const devices = [
+    { id: 'pi-a', name: 'Zero A', shelfCodeRaw: '西-北-01', location: null, lastSeenAt: null },
+    { id: 'pi-b', name: 'Zero B', shelfCodeRaw: null, location: null, lastSeenAt: null },
+    { id: 'pi-c', name: 'Zero C', shelfCodeRaw: 'DAD-3220 北', location: null, lastSeenAt: null }
+  ];
+  beforeEach(() => {
+    vi.mocked(api.getMobilePlacementHaizenTargetDevices).mockResolvedValue({ devices });
+    vi.mocked(api.putMobilePlacementHaizenTargetPresetShelf).mockResolvedValue({ shelfCodeRaw: '西-北-01' });
+  });
+  const openEdit = async (code = '西-北-01') => {
+    fireEvent.click(await screen.findByRole('button', { name: `棚 ${code} を編集` }));
+    await waitFor(() => expect(screen.getByLabelText(/^Zero2W/)).toBeEnabled());
+  };
+  const openZero = () => {
+    fireEvent.click(screen.getByLabelText(/^Zero2W/));
+    return within(screen.getByRole('dialog', { name: /^Zero2W ·/ }));
+  };
+  const choose = (name: string) => {
+    const sheet = openZero();
+    fireEvent.click(sheet.getByRole('button', { name: new RegExp(name) }));
+    fireEvent.click(sheet.getByRole('button', { name: '確定' }));
+  };
+
+  it('shows the assigned device chip only on its shelf and shows the current device in the form', async () => {
+    mount();
+    const assigned = await screen.findByRole('button', { name: '棚 西-北-01 を編集' });
+    expect(await within(assigned).findByText('Zero A')).toHaveClass('rounded-full', 'h-6', 'text-[var(--hp-slip)]');
+    expect(screen.getByRole('button', { name: '棚 DAD-3220 西 を編集' })).not.toHaveTextContent('Zero');
+    await openEdit();
+    expect(screen.getByLabelText(/^Zero2W/)).toHaveTextContent('Zero A');
+    const sheet = openZero();
+    expect(sheet.getByRole('button', { name: 'Zero A 西-北-01' })).toBeEnabled();
+    expect(sheet.getByRole('button', { name: 'Zero C DAD-3220 北' })).toBeDisabled();
+    expect(sheet.getByRole('button', { name: 'Zero B 未設定' })).toBeEnabled();
+  });
+
+  it('shows 未設定 for an unassigned registered shelf and offers removal after selecting a device', async () => {
+    mount(); await openEdit('DAD-3220 西');
+    expect(screen.getByLabelText(/^Zero2W/)).toHaveTextContent('未設定');
+    const sheet = openZero();
+    expect(sheet.queryByRole('button', { name: 'Zero2W 外す' })).not.toBeInTheDocument();
+    fireEvent.click(sheet.getByRole('button', { name: 'Zero B 未設定' }));
+    expect(sheet.getByRole('button', { name: 'Zero2W 外す' })).toBeEnabled();
+    fireEvent.click(sheet.getByRole('button', { name: '確定' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    await waitFor(() => expect(api.putMobilePlacementHaizenTargetPresetShelf).toHaveBeenCalledExactlyOnceWith({ clientDeviceId: 'pi-b', shelfCodeRaw: 'DAD-3220 西' }, expect.objectContaining({ client: expect.any(QueryClient) })));
+  });
+
+  it('keeps the selection as a draft and assigns only after memo and photo save succeed', async () => {
+    const invalidate = mount(); await openEdit();
+    choose('Zero B 未設定');
+    expect(api.putMobilePlacementHaizenTargetPresetShelf).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/^Zero2W/)).toHaveTextContent('Zero B');
+    fireEvent.change(screen.getByLabelText('メモ'), { target: { value: '更新' } });
+    await takePhoto();
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(api.putMobilePlacementHaizenTargetPresetShelf).toHaveBeenCalledExactlyOnceWith({ clientDeviceId: 'pi-b', shelfCodeRaw: '西-北-01' }, expect.objectContaining({ client: expect.any(QueryClient) }));
+    expect(vi.mocked(api.patchMobilePlacementShelfMemo).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.putMobilePlacementShelfPhoto).mock.invocationCallOrder[0]);
+    expect(vi.mocked(api.putMobilePlacementShelfPhoto).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.putMobilePlacementHaizenTargetPresetShelf).mock.invocationCallOrder[0]);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['mobile-placement', 'haizen-target-devices'] });
+  });
+
+  it('clears the old device only when the removal draft is saved', async () => {
+    mount(); await openEdit(); choose('Zero2W 外す');
+    expect(screen.getByLabelText(/^Zero2W/)).toHaveTextContent('未設定');
+    expect(api.putMobilePlacementHaizenTargetPresetShelf).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    await waitFor(() => expect(api.putMobilePlacementHaizenTargetPresetShelf).toHaveBeenCalledExactlyOnceWith({ clientDeviceId: 'pi-a', shelfCodeRaw: null }, expect.objectContaining({ client: expect.any(QueryClient) })));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it.each(['untouched', 'same', 'cancel', 'escape', 'backdrop'])('does not PUT for an unchanged draft (%s)', async (action) => {
+    mount(); await openEdit();
+    if (action === 'same') choose('Zero A 西-北-01');
+    else if (action !== 'untouched') {
+      const sheet = openZero();
+      fireEvent.click(sheet.getByRole('button', { name: 'Zero B 未設定' }));
+      if (action === 'cancel') fireEvent.click(sheet.getByRole('button', { name: 'やめる' }));
+      if (action === 'escape') fireEvent.keyDown(window, { key: 'Escape' });
+      if (action === 'backdrop') fireEvent.mouseDown(screen.getByRole('dialog', { name: /^Zero2W ·/ }));
+    }
+    expect(screen.getByRole('dialog', { name: '棚を直す' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(api.putMobilePlacementHaizenTargetPresetShelf).not.toHaveBeenCalled();
+  });
+
+  it('keeps the dialog and draft open on PUT failure, then retries without resaving the memo', async () => {
+    vi.mocked(api.putMobilePlacementHaizenTargetPresetShelf).mockRejectedValueOnce({ isAxiosError: true, response: { data: { message: '担当を保存できません' } } });
+    mount(); await openEdit(); choose('Zero B 未設定');
+    fireEvent.change(screen.getByLabelText('メモ'), { target: { value: '更新' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('担当を保存できません');
+    expect(screen.getByLabelText(/^Zero2W/)).toHaveTextContent('Zero B');
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(api.patchMobilePlacementShelfMemo).toHaveBeenCalledTimes(1);
+    expect(api.putMobilePlacementHaizenTargetPresetShelf).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not PUT when the existing save fails', async () => {
+    vi.mocked(api.patchMobilePlacementShelfMemo).mockRejectedValueOnce(new Error('メモを保存できません'));
+    mount(); await openEdit(); choose('Zero B 未設定');
+    fireEvent.change(screen.getByLabelText('メモ'), { target: { value: '更新' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('メモを保存できません');
+    expect(api.putMobilePlacementHaizenTargetPresetShelf).not.toHaveBeenCalled();
+  });
+
+  it('omits the field for new and unstructured shelves', async () => {
+    vi.mocked(api.getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [{ shelfCodeRaw: 'legacy', isStructured: false }] });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '棚 legacy を編集' }));
+    expect(screen.queryByLabelText(/^Zero2W/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+    await openAdd();
+    expect(screen.queryByLabelText(/^Zero2W/)).not.toBeInTheDocument();
   });
 });

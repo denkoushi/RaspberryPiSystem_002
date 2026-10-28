@@ -19,6 +19,7 @@ vi.mock('../../../lib/prisma.js', () => ({
     clientDevice: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
+      updateMany: vi.fn(),
       update: vi.fn()
     },
     mobilePlacementShelf: {
@@ -32,7 +33,8 @@ vi.mock('../../../lib/prisma.js', () => ({
       delete: vi.fn(),
       findMany: vi.fn()
     },
-    $transaction: vi.fn()
+    $transaction: vi.fn(),
+    $queryRaw: vi.fn()
   }
 }));
 
@@ -48,6 +50,8 @@ vi.mock('../../production-schedule/production-schedule-lookup.service.js', () =>
 describe('haizen-placement.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(prisma));
   });
 
   it('getHaizenPresetShelf は端末のプリセットを返す', async () => {
@@ -88,6 +92,45 @@ describe('haizen-placement.service', () => {
     await expect(
       updateHaizenPresetShelf({ clientDeviceId: 'dev-1', shelfCodeRaw: '電気室' })
     ).resolves.toEqual({ shelfCodeRaw: '電気室' });
+  });
+
+  it.each([updateHaizenPresetShelf, updateHaizenPresetShelfForTarget])('%s moves a trimmed shelf from every previous device to the target in one transaction', async (updatePreset) => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: 'device-b', haizenEdgeEnabled: true } as never);
+    vi.mocked(prisma.mobilePlacementShelf.findUnique).mockResolvedValue({ shelfCodeRaw: '西-北-02' } as never);
+    const rows = [
+      { id: 'device-a', haizenPresetShelfCodeRaw: ' \t西-北-02\n' },
+      { id: 'duplicate', haizenPresetShelfCodeRaw: '西-北-02' },
+      { id: 'unrelated', haizenPresetShelfCodeRaw: '西-北-03' }
+    ];
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ shelfCodeRaw: '西-北-02' }]),
+      clientDevice: {
+        findMany: vi.fn().mockResolvedValue(rows),
+        updateMany: vi.fn().mockResolvedValue({ count: 2 }),
+        update: vi.fn().mockResolvedValue({})
+      }
+    };
+    vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(tx as unknown as Prisma.TransactionClient));
+
+    await expect(updatePreset({ clientDeviceId: 'device-b', shelfCodeRaw: ' 西-北-02 ' })).resolves.toEqual({ shelfCodeRaw: '西-北-02' });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.clientDevice.findMany).toHaveBeenCalledWith({
+      where: { id: { not: 'device-b' }, haizenPresetShelfCodeRaw: { not: null } },
+      select: { id: true, haizenPresetShelfCodeRaw: true }
+    });
+    expect(tx.clientDevice.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['device-a', 'duplicate'] },
+        haizenPresetShelfCodeRaw: { in: [' \t西-北-02\n', '西-北-02'] }
+      },
+      data: { haizenPresetShelfCodeRaw: null }
+    });
+    expect(tx.clientDevice.update).toHaveBeenCalledWith({
+      where: { id: 'device-b' }, data: { haizenPresetShelfCodeRaw: '西-北-02' }
+    });
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.clientDevice.findMany.mock.invocationCallOrder[0]);
+    expect(tx.clientDevice.updateMany.mock.invocationCallOrder[0]).toBeLessThan(tx.clientDevice.update.mock.invocationCallOrder[0]);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
   });
 
   it('updateHaizenPresetShelf は棚マスタ未登録の棚を拒否する', async () => {
