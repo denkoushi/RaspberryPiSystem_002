@@ -289,10 +289,10 @@ describe('Haizen hub', () => {
       clientRecordId: expect.any(String), placedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), branchNo: 2
     }, 3000));
     await act(async () => resolve({ action: 'created', branchState: { branchNo: 2 }, event: { id: 'verify-put' } } as Awaited<ReturnType<typeof registerOrderPlacement>>));
-    const toast = await screen.findByText('分配2を置きました');
+    const toast = await screen.findByText('50013_540AP 北に 分配2を置きました');
     expect(toast.closest('main')).toBe(screen.getByRole('main'));
-    expect(toast.parentElement).toHaveClass('absolute', 'bottom-2', 'rounded-full');
-    expect(toast).toHaveClass('truncate', 'whitespace-nowrap');
+    expect(toast.parentElement).toHaveClass('absolute', 'bottom-2', 'rounded-2xl');
+    expect(toast).toHaveClass('break-words');
     expect(screen.getByRole('button', { name: '移動票を読む' })).not.toHaveTextContent('0002178005');
     expect(screen.getByRole('button', { name: '現品票を読む' })).not.toHaveTextContent('4501238876');
     expect(screen.queryByRole('group', { name: '分配' })).not.toBeInTheDocument();
@@ -329,7 +329,7 @@ describe('Haizen hub', () => {
     expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toHaveAttribute('aria-pressed', 'true');
     expect(registerOrderPlacement).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'ここへ移す' }));
-    await screen.findByText(status === 'sent' ? '分配なしを移しました' : status === 'pending' ? 'スマホに保存しました（未送信 1件）' : '要確認に保存しました');
+    await screen.findByText(status === 'sent' ? '50013_540AP 北に 分配なしを移しました' : status === 'pending' ? 'スマホに保存しました（未送信 1件）' : '要確認に保存しました');
     expect(registerOrderPlacement).toHaveBeenCalledWith(expect.objectContaining({ branchNo: 0, shelfCodeRaw: 'A-03', slipKind: 'manufacturing_order' }), 3000);
     expect(screen.getByRole('button', { name: '移動票を読む' })).not.toHaveTextContent('0002178005');
   });
@@ -391,7 +391,7 @@ describe('Haizen hub', () => {
     vi.mocked(registerOrderPlacement).mockResolvedValue({ action: 'moved', branchState: { branchNo: 2 }, event: { id: 'move' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
     mount(); typeSlips(); await chooseShelf(2);
     fireEvent.click(screen.getByRole('button', { name: 'ここへ移す' }));
-    await screen.findByText('分配2を移しました');
+    await screen.findByText(/に 分配2を移しました$/);
     expect(registerOrderPlacement).toHaveBeenCalledWith(expect.objectContaining({ branchNo: 2, shelfCodeRaw: 'A-03', clientRecordId: expect.any(String) }), 3000);
     expect(moveOrderPlacementBranch).not.toHaveBeenCalled();
     expect(await haizenOfflineQueueStore.list()).toEqual([]);
@@ -607,7 +607,7 @@ describe('Haizen hub', () => {
     vi.mocked(registerOrderPlacement).mockResolvedValue({ action: 'moved', branchState: { branchNo: 0 }, event: { id: 'move' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
     await chooseShelf(0);
     fireEvent.click(screen.getByRole('button', { name: 'ここへ移す' }));
-    await screen.findByText('分配なしを移しました');
+    await screen.findByText(/に 分配なしを移しました$/);
     expect(registerOrderPlacement).toHaveBeenCalledWith(expect.objectContaining({ branchNo: 0 }), 3000);
   });
   it('leaves numbered placements unselected, excludes none and badges only the selected previous shelf', () => {
@@ -653,7 +653,7 @@ describe('Haizen hub', () => {
     vi.mocked(registerOrderPlacement).mockResolvedValue({ action: 'created', branchState: { branchNo: 0 }, event: { id: 'created' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
     mount(); typePlaceSlip(); await chooseShelf(0);
     fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
-    await screen.findByText('分配なしを置きました');
+    await screen.findByText(/に 分配なしを置きました$/);
     mocks.branchFetching = true; // Cached empty list remains available with isLoading=false.
     typePlaceSlip();
     expect(screen.getByRole('button', { name: '分配なし' })).toHaveAttribute('aria-pressed', 'false');

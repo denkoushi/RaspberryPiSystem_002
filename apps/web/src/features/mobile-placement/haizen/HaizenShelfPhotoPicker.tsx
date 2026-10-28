@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { Dialog } from '../../../components/ui/Dialog';
 import { ShelfPhoto } from '../shelfPhoto/ShelfPhoto';
@@ -37,6 +37,14 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
     groups.set(name, group);
   }
   const pad = compact ? '' : 'px-3.5';
+  const grid = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const tile = grid.current?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!grid.current || !tile) return;
+    const box = grid.current.getBoundingClientRect();
+    const rect = tile.getBoundingClientRect();
+    if (rect.top < box.top || rect.bottom > box.bottom) grid.current.scrollTop += rect.top - box.top - 8;
+  }, [selected, loading, error, shelves]);
   return <>
     {!compact && <div className={`flex shrink-0 items-center gap-1.5 pb-2 ${pad} ${disabled ? 'opacity-35' : ''}`}>
       <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
@@ -48,7 +56,7 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
     {compact && onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} absolute right-0 top-0 z-10 !h-9 w-9 !px-0 !text-2xl`} disabled={disabled} onClick={onExpand}>⤢</button>}
     {children}
     {loading ? <p className={hp.empty}>読込中…</p> : error ? <div role="alert" className={hp.empty}>棚を取得できませんでした <button className={hp.mini} onClick={onRetry}>再試行</button></div>
-      : <div aria-disabled={disabled || undefined} className={`grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto ${disabled ? 'pointer-events-none opacity-35' : ''} ${compact ? 'grid-cols-3 pb-2' : `grid-cols-2 ${pad} ${hp.hermesBottomPadding}`}`}>
+      : <div ref={grid} aria-disabled={disabled || undefined} className={`grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto ${disabled ? 'pointer-events-none opacity-35' : ''} ${compact ? 'grid-cols-3 pb-2' : `grid-cols-2 ${pad} ${hp.hermesBottomPadding}`}`}>
         {[...groups].map(([machineName, group]) => <Fragment key={machineName === null ? 'other' : `machine:${machineName}`}>
           <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? 'col-span-3 pr-10' : 'col-span-2'}`}>
             {machineName ?? 'その他'}<small className={`text-xs ${hp.muted}`}>{group.length}棚</small>

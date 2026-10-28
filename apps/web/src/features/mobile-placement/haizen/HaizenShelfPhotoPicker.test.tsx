@@ -126,6 +126,16 @@ describe('photo shelf picker', () => {
     if (selected) expect(screen.getByRole('button', { name: /^棚 /, pressed: true })).toBeInTheDocument();
   });
 
+  it('scrolls the grid so a selected shelf below the fold is visible', () => {
+    const rect = (top: number, height: number) => ({ top, bottom: top + height, left: 0, right: 0, width: 0, height, x: 0, y: top, toJSON: () => ({}) });
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute('aria-pressed') === 'true' ? rect(500, 100) : rect(100, 300);
+    });
+    render(<HaizenShelfPhotoList shelves={shelves} previousShelfCodes={[]} selected="50013_540AP 西"
+      loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} compact />);
+    expect(screen.getByRole('button', { name: /^棚 50013_540AP 西/, pressed: true }).closest('[class*="overflow-y-auto"]')!.scrollTop).toBe(392);
+    spy.mockRestore();
+  });
   it.each([false, true])('overlays direction on the photo and retains the separate display label (compact: %s)', (compact) => {
     render(<HaizenShelfPhotoList shelves={[{ ...shelves[0], photoUpdatedAt: 'now' }, shelves[3]]} previousShelfCodes={[]} selected=""
       loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} compact={compact} />);
