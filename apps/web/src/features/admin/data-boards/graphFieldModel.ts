@@ -4,7 +4,7 @@
  * ここでは「決まったキーだけを読み書きし、ほかのキーには触れない」。
  */
 
-export type GraphTemplate = 'uninspected' | 'measuring' | 'rigging' | 'pallet' | 'custom';
+export type GraphTemplate = 'uninspected' | 'hydraulic_oil_exchange' | 'measuring' | 'rigging' | 'pallet' | 'custom';
 
 export interface GraphField {
   key: string;
@@ -18,6 +18,7 @@ export interface GraphField {
 
 const TEMPLATE_BY_DATA_SOURCE: Record<string, Exclude<GraphTemplate, 'custom'>> = {
   uninspected_machines: 'uninspected',
+  hydraulic_oil_exchange: 'hydraulic_oil_exchange',
   measuring_instrument_loan_inspection: 'measuring',
   rigging_loan_inspection: 'rigging',
   pallet_visualization_board: 'pallet',
@@ -25,6 +26,7 @@ const TEMPLATE_BY_DATA_SOURCE: Record<string, Exclude<GraphTemplate, 'custom'>> 
 
 export const GRAPH_TEMPLATE_LABEL: Record<GraphTemplate, string> = {
   uninspected: '未点検加工機',
+  hydraulic_oil_exchange: '作動油交換',
   measuring: '計測機器 点検状況',
   rigging: '吊具 点検状況',
   pallet: 'パレット現在状態',
@@ -45,6 +47,10 @@ const FIELDS: Record<GraphTemplate, GraphField[]> = {
     { key: 'maxRows', target: 'renderer', label: '1画面の表示台数', kind: 'number', placeholder: '18', min: 1, max: 200 },
     { key: 'maxRows', target: 'dataSource', label: '読み込む行数の上限', kind: 'number', placeholder: '30', min: 1, max: 1000 },
     { key: 'date', target: 'dataSource', label: '日付（空欄＝当日）', kind: 'date', placeholder: '当日' },
+  ],
+  hydraulic_oil_exchange: [
+    { key: 'inspectionItem', target: 'dataSource', label: '点検項目', kind: 'text', placeholder: '作動油の交換' },
+    { key: 'maxRows', target: 'dataSource', label: '読み込む行数の上限', kind: 'number', placeholder: '200', min: 1, max: 200 },
   ],
   measuring: LOAN_INSPECTION_FIELDS,
   rigging: LOAN_INSPECTION_FIELDS,

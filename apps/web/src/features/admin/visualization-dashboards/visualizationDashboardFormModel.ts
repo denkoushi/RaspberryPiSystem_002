@@ -1,5 +1,6 @@
 import {
   DEFAULT_JSON,
+  HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TYPE,
   MI_LOAN_INSPECTION_DATA_SOURCE_TYPE,
   RIGGING_LOAN_INSPECTION_DATA_SOURCE_TYPE,
   UNINSPECTED_DATA_SOURCE_TYPE,
@@ -52,6 +53,31 @@ export function setCsvDashboardId(dataSourceConfig: string, csvDashboardId: stri
       2,
     );
   }
+}
+
+export function extractHydraulicOilTargetSet(dataSourceConfig: string): Set<string> {
+  const targets = parseJson(dataSourceConfig, '').value?.targetEquipmentNumbers;
+  return new Set(Array.isArray(targets)
+    ? targets.filter((value): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
+    : []);
+}
+
+export function toggleHydraulicOilTarget(dataSourceConfig: string, equipmentNumber: string): string {
+  const parsed = parseJson(dataSourceConfig, '');
+  const number = equipmentNumber.trim();
+  if (!parsed.value || !number) return dataSourceConfig;
+  const targets = extractHydraulicOilTargetSet(dataSourceConfig);
+  if (targets.has(number)) {
+    targets.delete(number);
+    const dates = parsed.value.manualLastExchangeDates;
+    if (dates && typeof dates === 'object' && !Array.isArray(dates)) {
+      const remainingDates = { ...dates } as Record<string, unknown>;
+      delete remainingDates[number];
+      parsed.value.manualLastExchangeDates = remainingDates;
+    }
+  }
+  else if (targets.size < 200) targets.add(number);
+  return JSON.stringify({ ...parsed.value, targetEquipmentNumbers: [...targets] }, null, 2);
 }
 
 export function extractPalletVizSelectedMachineSet(
@@ -234,6 +260,10 @@ export function buildSavePayload(input: BuildSavePayloadInput): BuildSavePayload
           '未点検加工機データソースでは csvDashboardId が必須です。CSVダッシュボードIDを設定してください。',
       };
     }
+  }
+  if (dataSourceType.trim() === HYDRAULIC_OIL_EXCHANGE_DATA_SOURCE_TYPE &&
+      !extractCsvDashboardId(dataSourceConfig).trim()) {
+    return { ok: false, error: '元データの表を選んでください。' };
   }
   if (dataSourceType.trim() === MI_LOAN_INSPECTION_DATA_SOURCE_TYPE) {
     const cfg = dataSourceParsed.value ?? {};

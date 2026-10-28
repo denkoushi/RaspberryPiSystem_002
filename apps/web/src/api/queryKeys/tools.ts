@@ -2,6 +2,7 @@ import type { getTransactions, getUnifiedItems } from '../client';
 
 export const toolsQueryKeys = {
   machinesAll: ['machines'] as const,
+  machineResourceChoices: ['machine-resource-choices'] as const,
   machines: (params?: { search?: string; operatingStatus?: string }) => ['machines', params] as const,
   uninspectedMachinesAll: ['machines-uninspected'] as const,
   uninspectedMachines: (params?: { csvDashboardId?: string; date?: string }) => ['machines-uninspected', params] as const,

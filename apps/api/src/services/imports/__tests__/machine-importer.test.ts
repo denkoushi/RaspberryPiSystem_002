@@ -1,7 +1,40 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MachineCsvImporter } from '../importers/machine.js';
 
+const mocks = vi.hoisted(() => ({
+  findUnique: vi.fn(), update: vi.fn(), create: vi.fn(), deleteMany: vi.fn(),
+}));
+vi.mock('../../../lib/prisma.js', () => ({
+  prisma: {
+    $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ machine: mocks }),
+  },
+}));
+
 describe('MachineCsvImporter', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it.each([false, true])('既存の資源CDをCSV取込で保持する（全置換: %s）', async (replaceExisting) => {
+    const existing = {
+      equipmentManagementNumber: '10018', name: '旧名称', resourceCd: '021',
+      shortName: null, classification: null, operatingStatus: null, ncManual: null,
+      maker: null, processClassification: null, coolant: null,
+    };
+    mocks.findUnique.mockResolvedValue(existing);
+    mocks.update.mockImplementation(async ({ data }) => Object.assign(existing, data));
+    const importer = new MachineCsvImporter({ getEffectiveConfig: vi.fn().mockResolvedValue(null) } as any);
+    const rows = await importer.parse(Buffer.from('設備管理番号,加工機_名称\n10018,新名称'));
+    const result = await importer.import(rows, replaceExisting);
+    expect(result).toEqual({ processed: 1, created: 0, updated: 1 });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { equipmentManagementNumber: '10018' }, data: { name: '新名称' } });
+    expect(existing).toMatchObject({ name: '新名称', resourceCd: '021' });
+    expect(mocks.create).not.toHaveBeenCalled();
+    if (replaceExisting) {
+      expect(mocks.deleteMany).toHaveBeenCalledExactlyOnceWith({ where: { equipmentManagementNumber: { notIn: ['10018'] } } });
+    } else {
+      expect(mocks.deleteMany).not.toHaveBeenCalled();
+    }
+  });
+
   it('列定義を使って日本語ヘッダーCSVをパースできる', async () => {
     const configService = {
       getEffectiveConfig: vi.fn().mockResolvedValue({
