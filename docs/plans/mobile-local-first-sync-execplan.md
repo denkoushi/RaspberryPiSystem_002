@@ -159,7 +159,7 @@ Zero2W 配膳状況は Milestone 2 の `placements` 表から作り、15 秒ご�
 
 画面側。新しいファイル `apps/web/src/features/mobile-placement/sync/nativeLocalDataImport.ts` に二つの処理を置く。一つ目は、アプリの中で動いているときに、クライアントキーを `HaizenNative.setClientKey` で渡す。古いアプリにこのブリッジが無いときは何もしない。二つ目は、アプリが落としたデータを端末の DB に取り込む。`/__haizen-native/local-data/versions` を読み、端末の DB が知っている種類のうち、版が違い、かつ `dataUpdatedAt` が手元より古くないものだけを取り込む(`store.replace`)。これは同期係(`syncScheduler`)の Wi-Fi 判定の外で動かす。同期係は Wi-Fi でないときに全部の仕事を止めるので、その中に入れると圏外で取り込めないからである。起動時と、画面が前面に戻ったときに動かす。ウェブ自身の取得と同時に DB を書かないよう、`runSyncOperation` で順番に並べる。`mobileLocalDataStore.ts` と `mobileLocalDataSync.ts` は変えない(部品検索の作業が触るため)。
 
-受け入れ: 画面側の自動テストで、(1) 同期係が止まっている(Wi-Fi でない)ときも取り込みが動く、(2) 版が同じなら何もしない、(3) アプリの控えが手元より古ければ上書きしない、(4) ブリッジが無ければ何もしない、が通る。アプリ側は単体テストと `./gradlew testDebugUnitTest assembleDebug` が通る。実機では、アプリを閉じて Wi-Fi のまま 30 分以上置いたあと、機内モードにしてアプリを開き、「圏外 M/D」の日付が新しくなっていることを確かめる。Tailscale がバックグラウンドで止められていると落とせないので、実機確認のときに合わせて見る。
+受け入れ: 画面側の自動テストで、(1) 同期係が止まっている(Wi-Fi でない)ときも取り込みが動く、(2) 版が同じなら何もしない、(3) アプリの控えが手元より新しくなければ(同じ時刻も含む)上書きしない、(4) ブリッジが無ければ何もしない、が通る。アプリ側は単体テストと `./gradlew testDebugUnitTest assembleDebug` が通る。実機では、アプリを閉じて Wi-Fi のまま 30 分以上置いたあと、機内モードにしてアプリを開き、「圏外 M/D」の日付が新しくなっていることを確かめる。Tailscale がバックグラウンドで止められていると落とせないので、実機確認のときに合わせて見る。また「Wi-Fi のときだけ」の条件は Tailscale の VPN が従量制扱いだと満たされず一度も動かないので、落ちてこなければ `adb shell dumpsys connectivity` で VPN の回線に NOT_METERED が付いているかを見る。
 
 
 ## Concrete Steps

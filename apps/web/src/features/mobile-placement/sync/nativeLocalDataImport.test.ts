@@ -57,11 +57,35 @@ it('does not overwrite newer local data', async () => {
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
-it.each([null, snapshot.dataUpdatedAt])('imports a different version when local timestamp is %s', async (dataUpdatedAt) => {
+it.each([null, '2026-10-27T00:00:00.000Z'])('imports a different version when local timestamp is %s', async (dataUpdatedAt) => {
   await store.replace({ purchase: { ...snapshot, version: 'old', dataUpdatedAt } });
   vi.mocked(store.replace).mockClear();
   nativeResponses();
   await importNativeLocalData(store);
+  expect(store.replace).toHaveBeenCalledWith({ purchase: snapshot });
+});
+
+it('does not replace a different version with the same timestamp', async () => {
+  await store.replace({ purchase: { ...snapshot, version: 'web-v3' } });
+  vi.mocked(store.replace).mockClear();
+  nativeResponses();
+  await importNativeLocalData(store);
+  expect(store.replace).not.toHaveBeenCalled();
+});
+
+it('gives a slow snapshot body more than three seconds', async () => {
+  vi.useFakeTimers();
+  fetchMock.mockResolvedValueOnce(response({ purchase: snapshot }));
+  fetchMock.mockImplementationOnce((_path, { signal }: { signal: AbortSignal }) => Promise.resolve({
+    ok: true,
+    json: () => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('aborted')));
+      setTimeout(() => resolve(snapshot), 10_000);
+    }),
+  }));
+  const importing = importNativeLocalData(store);
+  await vi.advanceTimersByTimeAsync(10_000);
+  await importing;
   expect(store.replace).toHaveBeenCalledWith({ purchase: snapshot });
 });
 
