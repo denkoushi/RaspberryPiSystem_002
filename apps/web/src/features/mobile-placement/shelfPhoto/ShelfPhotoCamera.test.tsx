@@ -32,7 +32,6 @@ async function rotate(value: boolean) {
 }
 beforeEach(() => {
   portrait = false;
-  vi.stubGlobal('createImageBitmap', undefined);
   orientation = new EventTarget();
   vi.stubGlobal('matchMedia', vi.fn(() => ({
     get matches() { return portrait; },
@@ -80,124 +79,25 @@ describe('ShelfPhotoCamera', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '撮る' })).toBeEnabled());
     expect(getUserMedia).toHaveBeenCalledExactlyOnceWith({ audio: false, video: { facingMode: 'environment', ...portraitConstraints } });
     const video = document.querySelector('video')!;
-    expect(video.style.transform).toBe('translate(-50%, -50%) rotate(0deg)');
     fireEvent.click(screen.getByRole('button', { name: '撮る' }));
     expect(drawImage).toHaveBeenCalledWith(video, 0, 0, 600, 800);
   });
 
-  it.each(['bitmap', 'rejected'])('corrects landscape capture using %s dimensions', async (mode) => {
-    const bitmap = { width: 960, height: 1280, close: vi.fn() };
-    const create = vi.fn();
-    if (mode === 'bitmap') create.mockResolvedValue(bitmap);
-    else {
-      create.mockRejectedValue(new Error('unsupported'));
-      vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(960);
-      vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(1280);
-    }
-    vi.stubGlobal('createImageBitmap', create);
-    vi.stubGlobal('screen', { orientation: { angle: 270 } });
-    const ctx = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() };
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
-    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,PHOTO');
-    render(<Camera />);
-    await waitFor(() => expect(screen.getByRole('button', { name: '撮る' })).toBeEnabled());
-    const video = document.querySelector('video')!;
-    fireEvent.click(screen.getByRole('button', { name: '撮る' }));
-    expect(await screen.findByAltText('撮影した写真')).toBeInTheDocument();
-    expect(create).toHaveBeenCalledWith(video);
-    expect(ctx.drawImage).toHaveBeenCalledWith(mode === 'bitmap' ? bitmap : video, 0, 0, 600, 800);
-    expect(ctx.rotate).toHaveBeenCalledWith(-Math.PI / 2);
-    expect(bitmap.close).toHaveBeenCalledTimes(mode === 'bitmap' ? 1 : 0);
-  });
-
-  it.each([90, 270, undefined])('fits the rotated preview and saves the same rotation (angle=%s)', async (angle) => {
-    vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(960);
-    vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(1280);
-    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
-    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(450);
+  it.each([0, 90, 270])('shows and saves the frame as the browser presents it (angle=%s)', async (angle) => {
+    // A frame whose shape disagrees with the screen must not be rotated: the browser already presents it upright.
     vi.stubGlobal('screen', { orientation: { angle } });
     const ctx = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() };
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
     vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,PHOTO');
+    portrait = angle === 0;
     render(<Camera />);
     await waitFor(() => expect(screen.getByRole('button', { name: '撮る' })).toBeEnabled());
     const video = document.querySelector('video')!;
-    const rotation = angle === 270 ? -90 : 90;
-    expect(video.style.transform).toBe(`translate(-50%, -50%) rotate(${rotation}deg)`);
-    // After rotation, the displayed frame is 600 x 450 inside the 800 x 450 area.
-    expect(video.style.width).toBe('450px');
-    expect(video.style.height).toBe('600px');
+    expect(video.style.transform).toBe('');
     fireEvent.click(screen.getByRole('button', { name: '撮る' }));
-    expect(ctx.rotate).toHaveBeenCalledWith(rotation * Math.PI / 180);
-  });
-
-  it('recalculates on frame, screen angle and container changes and removes listeners', async () => {
-    const frameWidth = vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(0);
-    const frameHeight = vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(0);
-    const areaWidth = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
-    const areaHeight = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(450);
-    const screenOrientation = Object.assign(new EventTarget(), { angle: 90 });
-    vi.stubGlobal('screen', { orientation: screenOrientation });
-    const removeScreenListener = vi.spyOn(screenOrientation, 'removeEventListener');
-    let resizePreview!: () => void;
-    const observe = vi.fn();
-    const disconnect = vi.fn();
-    vi.stubGlobal('ResizeObserver', class {
-      constructor(callback: () => void) { resizePreview = callback; }
-      observe = observe;
-      disconnect = disconnect;
-    });
-    const view = render(<Camera />);
-    await waitFor(() => expect(screen.getByRole('button', { name: '撮る' })).toBeEnabled());
-    const video = document.querySelector('video')!;
-    expect(observe).toHaveBeenCalledWith(video.parentElement);
-    frameWidth.mockReturnValue(960);
-    frameHeight.mockReturnValue(1280);
-    fireEvent.loadedMetadata(video);
-    expect(video.style.transform).toContain('rotate(90deg)');
-    expect(video.style.width).toBe('450px');
-    await act(async () => {
-      screenOrientation.angle = 270;
-      screenOrientation.dispatchEvent(new Event('change'));
-    });
-    expect(video.style.transform).toContain('rotate(-90deg)');
-    expect(applyConstraints).not.toHaveBeenCalled();
-    areaWidth.mockReturnValue(400);
-    areaHeight.mockReturnValue(600);
-    act(() => resizePreview());
-    expect(video.style.width).toBe('300px');
-    expect(video.style.height).toBe('400px');
-    await rotate(true);
-    expect(video.style.transform).toContain('rotate(0deg)');
-    expect(video.style.width).toBe('400px');
-    expect(parseFloat(video.style.height)).toBeCloseTo(1600 / 3);
-    await rotate(false);
-    frameWidth.mockReturnValue(1280);
-    frameHeight.mockReturnValue(960);
-    fireEvent(video, new Event('resize'));
-    expect(video.style.transform).toContain('rotate(0deg)');
-    expect(video.style.width).toBe('400px');
-    expect(video.style.height).toBe('300px');
-    const removeVideoListener = vi.spyOn(video, 'removeEventListener');
-    view.unmount();
-    expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(removeScreenListener).toHaveBeenCalledWith('change', expect.any(Function));
-    expect(removeVideoListener).toHaveBeenCalledWith('loadedmetadata', expect.any(Function));
-    expect(removeVideoListener).toHaveBeenCalledWith('resize', expect.any(Function));
-  });
-
-  it('discards and releases a bitmap arriving after close', async () => {
-    let resolve!: (bitmap: ImageBitmap) => void;
-    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise<ImageBitmap>((done) => { resolve = done; })));
-    const onCapture = vi.fn();
-    render(<ShelfPhotoCamera onCapture={onCapture} onClose={vi.fn()} onSelectFile={vi.fn()} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: '撮る' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '撮る' }));
-    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
-    const bitmap = { width: 960, height: 1280, close: vi.fn() };
-    await act(async () => resolve(bitmap as unknown as ImageBitmap));
-    expect(onCapture).not.toHaveBeenCalled();
-    expect(bitmap.close).toHaveBeenCalledTimes(1);
+    expect(ctx.drawImage).toHaveBeenCalledWith(video, 0, 0, 800, 600);
+    expect(ctx.rotate).not.toHaveBeenCalled();
+    expect(ctx.translate).not.toHaveBeenCalled();
   });
 
   it('applies constraints only when orientation changes', async () => {
