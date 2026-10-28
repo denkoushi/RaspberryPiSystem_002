@@ -148,6 +148,21 @@ describe('haizen offline queue', () => {
       ['older', record.shelfCode], [record.clientRecordId, 'new shelf']
     ]);
   });
+  it('saves a submission at once behind a slow flush and sends it only once', async () => {
+    const store = createHaizenOfflineQueueStore();
+    await store.put({ ...record, clientRecordId: 'older', status: 'pending' });
+    let finishOlder!: (value: typeof success) => void;
+    vi.mocked(registerOrderPlacement).mockImplementationOnce(() => new Promise((resolve) => { finishOlder = resolve; }));
+    const { result } = mount(store);
+    await waitFor(() => expect(registerOrderPlacement).toHaveBeenCalledTimes(1));
+    act(() => { window.dispatchEvent(new Event('online')); });
+    let submission!: ReturnType<typeof result.current.submit>;
+    act(() => { submission = result.current.submit(record); });
+    await waitFor(async () => expect((await store.list()).map((r) => r.clientRecordId)).toEqual(['older', record.clientRecordId]));
+    await act(async () => { finishOlder(success); });
+    await expect(submission).resolves.toMatchObject({ status: 'sent', pendingCount: 0 });
+    expect(vi.mocked(registerOrderPlacement).mock.calls.map(([body]) => body.clientRecordId)).toEqual(['older', record.clientRecordId]);
+  });
   it('persists before sending and serializes submit with online flush', async () => {
     let finish!: (value: typeof success) => void;
     vi.mocked(registerOrderPlacement).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));

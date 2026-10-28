@@ -18,6 +18,8 @@ export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOff
   const [records, setRecords] = useState<HaizenQueueRecord[]>([]);
   const online = useMobileConnectivity();
   const serial = useRef(Promise.resolve());
+  // Saved by submit but not yet sent by it; a flush must not send these a second time.
+  const claimed = useRef(new Set<string>());
   const enqueue = useCallback(<T,>(operation: () => Promise<T>): Promise<T> => {
     const result = serial.current.then(operation);
     serial.current = result.then(() => undefined, () => undefined);
@@ -55,7 +57,7 @@ export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOff
   const drain = useCallback(async () => {
     const queued = await refresh();
     for (const record of queued) {
-      if (record.status !== 'pending') continue;
+      if (record.status !== 'pending' || claimed.current.has(record.clientRecordId)) continue;
       const result = await send(record);
       await refresh();
       if (result.status === 'pending') break;
@@ -63,19 +65,25 @@ export function useHaizenOfflineQueue(store: HaizenOfflineQueueStore = haizenOff
   }, [refresh, send]);
   const flush = useCallback(() => enqueue(drain), [drain, enqueue]);
 
-  const submit = useCallback((record: Omit<HaizenQueueRecord, 'status' | 'message'>) => enqueue(async () => {
-    const pendingRecord: HaizenQueueRecord = { ...record, status: 'pending' };
-    // Persist before sending so closing the page during a request still leaves a replayable record.
-    await store.put(pendingRecord);
-    // A later move of the same stamp must not overtake a saved placement.
+  const sendSubmitted = useCallback(async (record: HaizenQueueRecord) => {
+    // A later move of the same stamp must not overtake a saved placement; still-claimed records were submitted later.
     const waitingForEarlier = record.branchNo !== undefined && (await store.list()).some((item) =>
-      item.clientRecordId !== record.clientRecordId && item.status === 'pending' &&
+      item.clientRecordId !== record.clientRecordId && item.status === 'pending' && !claimed.current.has(item.clientRecordId) &&
       item.number.trim() === record.number.trim() && item.branchNo === record.branchNo);
-    const result = waitingForEarlier ? { status: 'pending' as const } : await send(pendingRecord);
+    const result = waitingForEarlier ? { status: 'pending' as const } : await send(record);
     const next = await refresh();
     if (result.status === 'sent' || waitingForEarlier) void flush();
     return { ...result, pendingCount: next.filter((item) => item.status === 'pending').length };
-  }), [enqueue, flush, refresh, send, store]);
+  }, [flush, refresh, send, store]);
+  const submit = useCallback(async (record: Omit<HaizenQueueRecord, 'status' | 'message'>) => {
+    const pendingRecord: HaizenQueueRecord = { ...record, status: 'pending' };
+    // Persist before waiting for earlier sends so closing the page still leaves a replayable record.
+    claimed.current.add(record.clientRecordId);
+    try { await store.put(pendingRecord); } catch (error) { claimed.current.delete(record.clientRecordId); throw error; }
+    return enqueue(async () => {
+      try { return await sendSubmitted(pendingRecord); } finally { claimed.current.delete(record.clientRecordId); }
+    });
+  }, [enqueue, sendSubmitted, store]);
 
   const remove = useCallback((id: string) => enqueue(async () => {
     await store.remove(id);

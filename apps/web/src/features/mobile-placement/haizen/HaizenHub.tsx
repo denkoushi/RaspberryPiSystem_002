@@ -55,8 +55,6 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const [verifyShelfCode, setVerifyShelfCode] = useState('');
   const [verifyScannedAt, setVerifyScannedAt] = useState('');
   const [placeToast, setPlaceToast] = useState<string | null>(null);
-  const [putting, setPutting] = useState(false);
-  const putInFlight = useRef(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const hasPlaceSlip = Boolean(placeSlip?.number.trim());
   const { setOrderBarcode } = mp;
@@ -100,27 +98,25 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     if (selection) mp.selectShelf(selection.shelfCode);
     retakeSelection.current = null;
   };
-  const put = async () => {
-    if (putInFlight.current || !activeNumber?.trim() || activeBranchNo === null || !activeShelfCode.trim() ||
+  const put = () => {
+    if (!activeNumber?.trim() || activeBranchNo === null || !activeShelfCode.trim() ||
       selectedBranch?.shelfCodeRaw === activeShelfCode || (activeBranchNo === 0 ? hasNumbered : hasNone) ||
       (tab === 'verify' && flow.result !== 'ok')) return;
-    putInFlight.current = true;
-    setPutting(true);
     const shelf = shelves.data?.shelves.find((s) => s.shelfCodeRaw === activeShelfCode);
     const place = (shelf && [shelf.machineName, shelf.direction, shelf.displayLabel].filter(Boolean).join(' ')) || activeShelfCode;
-    try {
-      const result = await queue.submit({
-        clientRecordId: createHaizenClientRecordId(), slipKind: tab === 'verify' || placeSlip?.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
-        number: activeNumber, shelfCode: activeShelfCode, scannedAt: tab === 'verify' ? verifyScannedAt : scannedAt, branchNo: activeBranchNo
-      });
-      setPlaceToast(result.status === 'sent' && result.response.action === 'stale'
-        ? `${result.response.branchState.shelfCodeRaw}に新しい記録があります`
-        : result.status === 'sent'
-        ? `${place}に 分配${result.response.branchState.branchNo === 0 ? 'なし' : result.response.branchState.branchNo}を${result.response.action === 'unchanged' ? '確認しました' : result.response.action === 'moved' || (!result.response.action && selectedBranch) ? '移しました' : '置きました'}`
-        : result.status === 'pending' ? `スマホに保存しました（未送信 ${result.pendingCount}件）` : '要確認に保存しました');
-      if (tab === 'verify') nextVerify();
-      else { setPlaceSlip(null); setSelectedBranchNo(null); }
-    } finally { putInFlight.current = false; setPutting(false); }
+    const moving = Boolean(selectedBranch);
+    // Saved on the phone first; the send continues in the background so a weak link never holds the button.
+    const sending = queue.submit({
+      clientRecordId: createHaizenClientRecordId(), slipKind: tab === 'verify' || placeSlip?.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
+      number: activeNumber, shelfCode: activeShelfCode, scannedAt: tab === 'verify' ? verifyScannedAt : scannedAt, branchNo: activeBranchNo
+    });
+    if (tab === 'verify') nextVerify();
+    else { setPlaceSlip(null); setSelectedBranchNo(null); }
+    void sending.then((result) => setPlaceToast(result.status === 'sent' && result.response.action === 'stale'
+      ? `${result.response.branchState.shelfCodeRaw}に新しい記録があります`
+      : result.status === 'sent'
+      ? `${place}に 分配${result.response.branchState.branchNo === 0 ? 'なし' : result.response.branchState.branchNo}を${result.response.action === 'unchanged' ? '確認しました' : result.response.action === 'moved' || (!result.response.action && moving) ? '移しました' : '置きました'}`
+      : result.status === 'pending' ? `スマホに保存しました（未送信 ${result.pendingCount}件）` : '要確認に保存しました'), () => setPlaceToast('保存できませんでした'));
   };
   const toast = placeToast || (tab === 'verify' ? flow.toast : null);
   const registerError = tab === 'place' ? null : mp.registerError;
@@ -151,8 +147,8 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     ? { label: sameShelf ? '今と同じ棚です' : selectedBranch ? 'ここへ移す' : 'ここに置く', color: colors.shelf, action: () => void put() }
     : flow.result === 'error' ? { label: '再試行', color: colors.actual, action: flow.retry }
     : { label: '次を照合', color: colors.ink, action: nextVerify };
-  const primaryLabel = putting || mp.registerSubmitting ? '処理中…' : tab === 'verify' && flow.pending ? '照合中…' : cfg.label;
-  const disabled = putting || mp.registerSubmitting || mp.actualSlipImageOcrBusy || (tab === 'verify' && flow.pending) ||
+  const primaryLabel = mp.registerSubmitting ? '処理中…' : tab === 'verify' && flow.pending ? '照合中…' : cfg.label;
+  const disabled = mp.registerSubmitting || mp.actualSlipImageOcrBusy || (tab === 'verify' && flow.pending) ||
     (tab === 'place' || verifyShelfCode.trim()
       ? !activeNumber?.trim() || activeBranchNo === null || !activeShelfCode.trim() || sameShelf || (activeBranchNo === 0 ? hasNumbered : hasNone)
       : flow.result !== 'ok' && flow.result !== 'error');
