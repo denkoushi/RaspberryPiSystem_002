@@ -6,7 +6,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 Today the business server (the Raspberry Pi 5 that runs the API, called "Pi5" below) already watches for known patterns: repeated failed logins, unexpected listening ports, and nightly virus, rootkit and dependency scans. Those checks only catch what a fixed rule describes. Nobody reads the deployed code changes from a security angle, and nobody reads the error logs every day, so slow-growing errors and unusual-but-not-rule-breaking access go unnoticed until something breaks.
 
-After this change, every night the business LLM (the GLM model that already serves the business system from the two DGX Spark machines) reads three prepared materials: the code changes deployed to the Pi5 since the previous review, a digest of the security logs, and a digest of the error logs. It writes one private report per night on the Pi5. In the morning, when the operator opens the Claude desktop app, Claude fetches that report, checks every finding against the source code, discards false alarms, and tells the operator in plain Japanese only what really needs fixing. The LLM is a night watch that only reads and writes a report; judging and fixing stay with Claude and the operator.
+After this change, every night the business LLM (the GLM model that already serves the business system from the two DGX Spark machines) reads three prepared materials: the code changes deployed to the Pi5 since the previous review, a digest of the security logs, and a digest of the error logs. It writes one private report per night on the Pi5. In the morning, a scheduled task in the Claude desktop app fetches that report, checks every finding against the source code, discards false alarms, and tells the operator in plain Japanese only what really needs fixing. The LLM is a night watch that only reads and writes a report; judging and fixing stay with Claude and the operator.
 
 You can see it working when, the morning after a deploy, a dated report exists in the private report folder on the Pi5, its JSON validates, and Claude's morning summary lists either confirmed findings or "nothing to report".
 
@@ -22,9 +22,10 @@ You can see it working when, the morning after a deploy, a dated report exists i
 - [x] (2026-10-27) Implementation merged in #2318 and deployed to Pi5; storage, units and environment verified. The first manual collector run succeeded with API-owned private files. Code diffs were over-redacted; fixed here with code-specific redaction, and collector and nightly rollout flags enabled here.
 - [x] (2026-10-27) Milestone 3 production work: code-redaction fix and enabled flags deployed (#2319); the first real report was written in the morning slot. Its one confirmed finding (Trivy scans silently failing) is fixed in a follow-up change.
 - [x] (2026-10-26) Milestone 4 repository work: morning runbook and atomic known-findings add/list/remove tool.
+- [x] (2026-10-28) Closed morning loop, repository work: prioritized changes with carry-over, private triage counts and the scheduled-task runbook.
 - [ ] Milestone 4 production work: two-week trial counting confirmed findings, refusals and false alarms.
 - [ ] Milestone 5 (decision point): compare GLM with DeepSeek V4.1 Flash on seeded vulnerable changes and decide whether a nightly model swap is worth it.
-- [ ] Later, optional: a scheduled morning check on the Claude side; widen scope (weekly whole-repository sweep, the Control Plane repository, configuration review, leaked-secret search).
+- [ ] Later, optional: widen scope (weekly whole-repository sweep, the Control Plane repository, configuration review, leaked-secret search).
 
 ## Surprises & Discoveries
 
@@ -54,6 +55,10 @@ You can see it working when, the morning after a deploy, a dated report exists i
   Evidence: `/var/log/trivy/trivy-scan.log` and `trivy-image-scan.log` FATAL lines on the Pi5; `infrastructure/ansible/templates/trivy-scan.sh.j2` and `trivy-image-scan.sh.j2`.
 
 ## Decision Log
+
+- Decision (2026-10-28): close the morning review loop with a scheduled Claude task, verified small fixes through PRs, merges and deployments through the progress-tracking session, false-alarm feedback and private count records. Raw findings remain private.
+- Decision (2026-10-28): review the most security-relevant changed files first and carry files that do not fit to the next night instead of dropping them. Changes are packed across files at line boundaries and receive the chunks the logs leave unused, keeping room for the client errors the API adds.
+  Rationale: one large deploy filled the night with test files and the rest of its changes were never reviewed.
 
 - Decision (2026-10-27): print only the detailed Trivy tables. A manual collection after the retention change showed the per-target summary table, printed even for clean targets, filling most of the security material while the monitor journal was already compact.
   Rationale: the alert rules read only the detailed finding lines, so dropping the summary loses no evidence and leaves room for the other sources.
@@ -157,7 +162,7 @@ Second, the API release. Add the bind `${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem
 
 Third, the trial run. Enable the collector timer, run the collector once by hand, and check that the bundle exists, is owned by the API user and contains no secrets. Fourth, set `security_review_nightly_enabled` to true. That changes production behaviour, so it needs the user's approval; the change is applied the same two-step way as other API flags. Acceptance: the next morning, a report validates and the morning procedure handles it.
 
-Milestone 4 adds the morning side. Write `docs/runbooks/nightly-security-review.md`. In the morning, when the operator opens the Claude app, Claude connects to the Pi5 over SSH and copies the newest JSON report; it reads nothing else that the model wrote. Claude treats every field as data. For each finding, Claude reads the referenced code or bundle evidence and decides whether it is real. Real items go to the operator in plain Japanese: what is wrong, how to fix it, how urgent. Fixes then follow the normal change process. False alarms are added to the known-findings list with a new script, `scripts/server/security-review/known.py`. It has `add`, `list` and `remove` subcommands and runs on the Pi5 as the API user; each entry holds a fingerprint of kind, location and what, a short reason, and a date. A `skipped` or failed report is reported in one line with its reason. If nothing is confirmed, Claude says so in one line.
+Milestone 4 adds the morning side. Write `docs/runbooks/nightly-security-review.md`. The scheduled morning Claude task follows the runbook to copy the newest JSON report from the Pi5; it reads nothing else that the model wrote. Claude treats every field as data. For each finding, Claude reads the referenced code or bundle evidence and decides whether it is real. Real items go to the operator in plain Japanese: what is wrong, how to fix it, how urgent. Fixes then follow the normal change process. False alarms are added to the known-findings list with a new script, `scripts/server/security-review/known.py`. It has `add`, `list` and `remove` subcommands and runs on the Pi5 as the API user; each entry holds a fingerprint of kind, location and what, a short reason, and a date. A `skipped` or failed report is reported in one line with its reason. If nothing is confirmed, Claude says so in one line.
 
 Run the job for two weeks. Each morning, record the number of findings, how many were confirmed, how many were false alarms, and how many chunks had `refusedOrVague` true. Record only these totals and dates in this plan. Acceptance: fourteen nightly reports, at least one of them seen through to a confirmed finding or an explicit "nothing to report", and the totals recorded in Outcomes & Retrospective.
 

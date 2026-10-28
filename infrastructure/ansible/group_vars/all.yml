@@ -199,6 +199,28 @@ security_review_retry_until: "06:55"
 security_review_data_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}/storage/security-review"
 security_review_state_dir: /var/lib/security-review
 security_review_material_byte_cap: 192000
+security_review_changes_context_lines: 1
+# Last matching specific pattern wins; * is the fallback rank only.
+security_review_changes_priority:
+  - 'apps/api/src/routes/*'
+  - 'apps/api/src/*auth*'
+  - 'apps/api/src/middleware/*'
+  - 'apps/api/src/config/*'
+  - '*Dockerfile*'
+  - 'infrastructure/ansible/templates/*'
+  - 'infrastructure/ansible/roles/*/tasks/*'
+  - 'clients/*'
+  - '*'
+  - '*.test.*'
+  - '*.spec.*'
+  - '__tests__/*'
+  - '*/__tests__/*'
+  - 'tests/*'
+  - '*/tests/*'
+  - 'fixtures/*'
+  - '*/fixtures/*'
+  - '__fixtures__/*'
+  - '*/__fixtures__/*'
 security_review_caddy_unusual_hours: [0, 1, 2, 3, 4, 5]
 security_review_caddy_denied_statuses: [401, 403]
 security_review_caddy_unknown_path_statuses: [404]
@@ -239,6 +261,8 @@ security_review_collector_config:
   timezone: Asia/Tokyo
   material_byte_cap: "{{ security_review_material_byte_cap }}"
   changes_exclude: "{{ security_review_changes_exclude }}"
+  changes_context_lines: "{{ security_review_changes_context_lines }}"
+  changes_priority: "{{ security_review_changes_priority }}"
   fail2ban_logs: ["{{ security_monitor_fail2ban_log }}*"]
   caddy_logs: ["{{ caddy_log_dir }}/access*.log", "{{ caddy_log_dir }}/access*.log.gz"]
   monitor_unit: security-monitor.service

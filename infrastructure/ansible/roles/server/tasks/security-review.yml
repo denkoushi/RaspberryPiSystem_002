@@ -6,7 +6,7 @@
     owner: "{{ api_runtime_uid | default(1000) }}"
     group: "{{ api_runtime_gid | default(1000) }}"
     mode: '0700'
-  loop: ['', bundles, reports]
+  loop: ['', bundles, reports, triage]
 
 - name: Create root-only collector configuration and state directories
   ansible.builtin.file:
@@ -19,7 +19,7 @@
     - "{{ security_review_state_dir }}"
     - /etc/security-review
 
-- name: Install the local collector and known findings tool
+- name: Install the local collector, known findings and triage tools
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../../scripts/server/security-review/{{ item.src }}"
     dest: "{{ item.dest }}"
@@ -29,6 +29,7 @@
   loop:
     - {src: collect.py, dest: /usr/local/bin/security-review-collect.py}
     - {src: known.py, dest: /usr/local/bin/security-review-known.py}
+    - {src: triage.py, dest: /usr/local/bin/security-review-triage.py}
 
 - name: Deliver collector paths and detection rules
   ansible.builtin.template:

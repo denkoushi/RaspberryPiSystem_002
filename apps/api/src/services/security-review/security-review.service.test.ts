@@ -46,6 +46,7 @@ describe('Private security review', () => {
     const report = await run();
     expect(report).toMatchObject({ date: '2026-10-26', status: 'ok', deviceHealth: health, findings: [] });
     expect(report?.chunks.map(chunk => chunk.kind)).toEqual(['security', 'errors', 'changes']);
+    expect(JSON.parse(report!.reason!)).toMatchObject({ carriedOver: 0, carryOverExpired: 0 });
     expect(clientErrors).toHaveBeenCalledWith(new Date('2026-10-25T06:00:00+09:00'));
     expect(deviceHealth).toHaveBeenCalledWith(new Date('2026-10-25T06:00:00+09:00'));
     expect(JSON.stringify(complete.mock.calls)).not.toContain('health-only-device');
@@ -62,6 +63,19 @@ describe('Private security review', () => {
     expect(await run()).toBeNull();
     expect((await service().run(new AbortController().signal, { rerun: true }))?.date).toBe('2026-10-26');
   });
+
+  it.each([{ carriedOver: 2, carryOverExpired: 0 }, { carriedOver: 0, carryOverExpired: 1 }])(
+    'accepts collector carry-over counts and reports incomplete coverage: %j', async counts => {
+      await bundle();
+      const manifestFile = path.join(root, 'bundles/2026-10-26/manifest.json');
+      const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
+      await writeFile(manifestFile, JSON.stringify({ ...manifest, ...counts }));
+      const report = await run();
+      expect(report?.status).toBe('partial');
+      expect(JSON.parse(report!.reason!)).toMatchObject(counts);
+      expect(report?.chunks).toHaveLength(3);
+      expect(securityReviewReportSchema.parse(report)).toEqual(report);
+    });
 
   it('retries a deferred chunk after ten minutes without repeating completed chunks', async () => {
     await bundle();
