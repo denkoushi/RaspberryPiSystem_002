@@ -21,6 +21,24 @@ SENSITIVE = re.compile(
     r'''((?:authorization|proxy-authorization|cookie|set-cookie|[\w-]*(?:token|password|passwd|secret|api[_-]?key|client[_-]?key)[\w-]*)["']?\s*[:=]\s*)[^\r\n]*''', re.I)
 
 
+REVIEW_CHUNK_BYTES = 8000
+# Match material.ts MAX_CHUNKS and its round-robin minimum for changes.
+MAX_REVIEW_CHUNKS = 24
+CHANGES_CHUNKS = 8
+# Leave room for API-added ClientLog errors; larger additions can trim trailing changes,
+# which the API counts as truncated.
+API_ERRORS_RESERVE_CHUNKS = 2
+# Line packing shares chunks across files; the actual chunk count enforces unused line/UTF-8 space.
+DEFAULT_CHANGES_BYTE_CAP = REVIEW_CHUNK_BYTES * CHANGES_CHUNKS
+DEFAULT_CHANGE_PRIORITY = [
+    'apps/api/src/routes/*', 'apps/api/src/*auth*', 'apps/api/src/middleware/*',
+    'apps/api/src/config/*', '*Dockerfile*', 'infrastructure/ansible/templates/*',
+    'infrastructure/ansible/roles/*/tasks/*', 'clients/*', '*',
+    '*.test.*', '*.spec.*', '__tests__/*', '*/__tests__/*', 'tests/*', '*/tests/*',
+    'fixtures/*', '*/fixtures/*', '__fixtures__/*', '*/__fixtures__/*',
+]
+
+
 def redact_code(text):
     text = re.sub(r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----", "[REDACTED]", text, flags=re.S)
     text = re.sub(r'(https?://)[^/@\s]+:[^/@\s]+@', r'\1[REDACTED]@', text, flags=re.I)
@@ -43,6 +61,8 @@ class Material:
         self.lines = []
         self.dropped = 0
         self.private_key = False
+        self.carry_over = []
+        self.carry_over_expired = 0
 
     def add(self, text, redactor=redact):
         for line in text.splitlines():
@@ -148,23 +168,165 @@ def allowed_file(name, excludes):
     return not any(fnmatch.fnmatch(name, pattern) for pattern in excludes)
 
 
-def collect_changes(config, material, now, git_call=git):
+def change_priority(name, patterns):
+    # Last matching specific pattern wins, so tests inside routes still come last.
+    # A bare * supplies the rank for otherwise unmatched files only.
+    fallback = patterns.index('*') if '*' in patterns else len(patterns)
+    return next((index for index in range(len(patterns) - 1, -1, -1)
+                 if patterns[index] != '*' and fnmatch.fnmatchcase(name, patterns[index])), fallback)
+
+
+def carry_over_file(config):
+    return Path(config['state_file']).with_name('changes-carry-over.json')
+
+
+def split_bytes_chunk_count(text):
+    # Match material.ts splitBytes: split on UTF-8 character boundaries, not lines.
+    count = size = 0
+    for character in text:
+        width = len(character.encode('utf-8'))
+        if size + width > REVIEW_CHUNK_BYTES:
+            count += 1
+            size = 0
+        size += width
+    return count + bool(size)
+
+
+def pack_change_line(count, size, line):
+    # State is completed chunks plus bytes used in the last, open chunk.
+    # Match prepareChunks line packing and splitBytes for oversized lines.
+    width = len(line.encode('utf-8'))
+    if size and size + width > REVIEW_CHUNK_BYTES:
+        count += 1
+        size = 0
+    if width > REVIEW_CHUNK_BYTES:
+        for character in line:
+            width = len(character.encode('utf-8'))
+            if size + width > REVIEW_CHUNK_BYTES:
+                count += 1
+                size = 0
+            size += width
+    else:
+        size += width
+    return count, size
+
+
+def changes_chunk_count(text):
+    count = size = 0
+    for line in re.findall(r'[^\n]*\n|[^\n]+', text):
+        count, size = pack_change_line(count, size, line)
+    return count + bool(size)
+
+
+def collect_changes(config, material, now, git_call=git, chunk_budget=CHANGES_CHUNKS):
     repo = config['project_dir']
     state = Path(config['state_file'])
     previous = state.read_text().strip() if state.exists() else None
     reviewed, revisions, fallback = change_range(repo, previous, now - timedelta(hours=24), git_call)
+    pending_file = carry_over_file(config)
+    try:
+        pending = json.loads(pending_file.read_text()) if pending_file.exists() else []
+        if not isinstance(pending, list):
+            raise ValueError('Invalid carry-over list')
+    except (OSError, ValueError, KeyError, TypeError):
+        material.carry_over_expired += 1
+        pending = []
+    candidates = []
+    ancestors = {}
+    for entry in pending:
+        try:
+            revision, name, since = entry['revision'], entry['file'], entry['since']
+            if not all(isinstance(value, str) for value in (revision, name, since)):
+                raise TypeError('Invalid carry-over fields')
+            if not re.fullmatch(r'(?:[a-f0-9]{40}|[a-f0-9]{64})(?:\.\.(?:[a-f0-9]{40}|[a-f0-9]{64}))?', revision):
+                raise ValueError('Invalid carry-over revision')
+            if now - timestamp(since, now.tzinfo) > timedelta(days=7) or not allowed_file(name, config['changes_exclude']):
+                raise ValueError('Expired or excluded carry-over entry')
+        except (OSError, ValueError, KeyError, TypeError):
+            material.carry_over_expired += 1
+            continue
+        tip = revision.split('..')[-1]
+        if tip not in ancestors:
+            ancestors[tip] = git_call(repo, 'merge-base', '--is-ancestor', tip, reviewed['to'], check=False).returncode == 0
+        if not ancestors[tip]:
+            material.carry_over_expired += 1
+        else:
+            candidates.append(entry)
+    fresh = []
     for revision in revisions:
         if fallback:
-            material.add(git_call(repo, 'show', '-s', '--format=commit %H %cI %s', revision).stdout, redactor=redact_code)
-            names = git_call(repo, 'diff-tree', '--root', '-m', '--first-parent', '--no-commit-id', '--name-only', '-r', '-z', revision).stdout
+            names = git_call(repo, 'diff-tree', '--root', '-m', '--first-parent', '--no-commit-id', '--no-renames', '--name-only', '-r', '-z', revision).stdout
         else:
-            material.add(git_call(repo, 'log', '--format=commit %H %cI %s', revision).stdout, redactor=redact_code)
-            names = git_call(repo, 'diff', '--name-only', '-z', revision).stdout
-        for name in names.split('\0'):
-            if not name or not allowed_file(name, config['changes_exclude']):
+            names = git_call(repo, 'diff', '--no-renames', '--name-only', '-z', revision).stdout
+        fresh.extend({'revision': revision, 'file': name, 'since': now.isoformat()}
+                     for name in names.split('\0') if name and allowed_file(name, config['changes_exclude']))
+    patterns = config.get('changes_priority', DEFAULT_CHANGE_PRIORITY)
+    candidates.extend(fresh)
+    candidates.sort(key=lambda entry: (change_priority(entry['file'], patterns),
+                                      timestamp(entry['since'], now.tzinfo), entry['file']))
+    seen = set()
+    context = int(config.get('changes_context_lines', 1))
+    if context < 0 or not 0 < material.cap <= REVIEW_CHUNK_BYTES * chunk_budget:
+        raise ValueError('Invalid changes limits')
+    count = used = 0
+    for line in re.findall(r'[^\n]*\n|[^\n]+', material.text()):
+        count, used = pack_change_line(count, used, line)
+    for entry in candidates:
+        revision, name = entry['revision'], entry['file']
+        key = (revision, name)
+        if key in seen:
+            continue
+        seen.add(key)
+        if material.bytes >= material.cap and count + bool(used) >= chunk_budget:
+            material.carry_over.append(entry)
+            continue
+        args = (['diff'] if '..' in revision else ['show', '--format=', '--first-parent', '--diff-merges=first-parent'])
+        diff = git_call(repo, *args, '--no-ext-diff', '--no-textconv', '--no-renames',
+                        f'--unified={context}', revision, '--', ':(literal)' + name).stdout
+        # Keep provenance in the file section, not in a separate API chunk.
+        if not diff:
+            continue
+        cleaned = Material(float('inf'))
+        cleaned.add(diff, redactor=redact_code)
+        cleaned.add('review revision ' + revision, redactor=redact_code)
+        text = cleaned.text()
+        if cleaned.bytes <= material.cap and changes_chunk_count(text) <= chunk_budget:
+            next_count, next_used = count, used
+            for line in cleaned.lines:
+                next_count, next_used = pack_change_line(next_count, next_used, line)
+            if material.bytes + cleaned.bytes > material.cap or next_count + bool(next_used) > chunk_budget:
+                material.carry_over.append(entry)
                 continue
-            args = ['show', '--format=', '--first-parent', '--diff-merges=first-parent', '--no-ext-diff', '--no-textconv', revision] if fallback else ['diff', '--no-ext-diff', '--no-textconv', revision]
-            material.add(git_call(repo, *args, '--', name).stdout, redactor=redact_code)
+        else:
+            # A too-large file is the only lossy case. Keep a contiguous prefix;
+            # if this night is already full, give it a fresh budget next night.
+            if material.bytes >= material.cap:
+                material.carry_over.append(entry)
+                continue
+            prefix = []
+            size = 0
+            next_count, next_used = count, used
+            for line in cleaned.lines:
+                width = len(line.encode('utf-8'))
+                if material.bytes + size + width > material.cap:
+                    break
+                trial_count, trial_used = pack_change_line(next_count, next_used, line)
+                if trial_count + bool(trial_used) > chunk_budget:
+                    break
+                next_count, next_used = trial_count, trial_used
+                prefix.append(line)
+                size += width
+            if not prefix and material.bytes:
+                material.carry_over.append(entry)
+                continue
+            # The trailing provenance line is not a discarded diff line.
+            material.dropped += max(0, len(cleaned.lines) - len(prefix) - 1)
+            text = ''.join(prefix)
+        if not text:
+            continue
+        material.lines.append(text)
+        material.bytes += len(text.encode('utf-8'))
+        count, used = next_count, next_used
     return reviewed
 
 
@@ -357,6 +519,7 @@ def publish_bundle(config, date, materials, manifest):
                 os.rename(previous, target)
             raise
         # Advance only after every material and the completion manifest are published.
+        atomic_write(carry_over_file(config), json.dumps(materials['changes'].carry_over, ensure_ascii=False) + '\n', 0, 0)
         atomic_write(Path(config['state_file']), manifest['reviewedCommits']['to'] + '\n', 0, 0)
     finally:
         if stage.exists():
@@ -368,8 +531,7 @@ def publish_bundle(config, date, materials, manifest):
 def collect(config):
     now = datetime.now(ZoneInfo(config['timezone']))
     since = now - timedelta(hours=24)
-    materials = {kind: Material(int(config['material_byte_cap'])) for kind in ['changes', 'security', 'errors']}
-    reviewed = collect_changes(config, materials['changes'], now)
+    materials = {kind: Material(int(config['material_byte_cap'])) for kind in ['security', 'errors']}
     errors = []
     security = materials['security']
     for source, patterns in [('fail2ban', config['fail2ban_logs']), ('caddy', config['caddy_logs'])]:
@@ -403,7 +565,14 @@ def collect(config):
                 materials['errors'].add(json.dumps(group, ensure_ascii=False))
         except (OSError, RuntimeError, subprocess.TimeoutExpired):
             errors.append(container + '_unavailable')
-    manifest = {'reviewedCommits': reviewed, 'droppedLines': {kind: value.dropped for kind, value in materials.items()}, 'sourceErrors': errors}
+    chunk_budget = max(CHANGES_CHUNKS, MAX_REVIEW_CHUNKS - API_ERRORS_RESERVE_CHUNKS
+                       - split_bytes_chunk_count(materials['security'].text())
+                       - split_bytes_chunk_count(materials['errors'].text()))
+    materials['changes'] = Material(chunk_budget * REVIEW_CHUNK_BYTES)
+    reviewed = collect_changes(config, materials['changes'], now, chunk_budget=chunk_budget)
+    manifest = {'reviewedCommits': reviewed, 'droppedLines': {kind: value.dropped for kind, value in materials.items()}, 'sourceErrors': errors,
+                'carriedOver': len(materials['changes'].carry_over),
+                'carryOverExpired': materials['changes'].carry_over_expired}
     publish_bundle(config, now.date().isoformat(), materials, manifest)
 
 
