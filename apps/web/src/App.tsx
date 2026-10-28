@@ -194,6 +194,7 @@ function App() {
   return (
     <HermesPageContextProvider>
       <Routes>
+      <Route path="/kiosk/mobile-placement/scan-bench" element={lazyRouteElement(<MobileScanBenchPage />)} />
       <Route path="/" element={<KioskRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route element={<CallAutoSwitchLayout />}>
@@ -229,7 +230,6 @@ function App() {
           />
           <Route element={<MobileSyncProvider><Outlet /></MobileSyncProvider>}>
             <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
-            <Route path="/kiosk/mobile-placement/scan-bench" element={lazyRouteElement(<MobileScanBenchPage />)} />
             <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
             <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
             <Route path="/kiosk/mobile-placement/shelf-master" element={<KioskMobileShelfMasterPage />} />

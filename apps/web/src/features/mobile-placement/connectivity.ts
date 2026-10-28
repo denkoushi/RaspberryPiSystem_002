@@ -18,6 +18,9 @@ function startRecovery() {
   if (recoveryTimer !== undefined) return;
   const timer = setInterval(async () => {
     if (!unreachable || (typeof navigator !== 'undefined' && navigator.onLine === false)) return;
+    // The phone syncs only on Wi-Fi; never probe over mobile data.
+    const type = typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { connection?: { type?: string } }).connection?.type;
+    if (type !== 'wifi' && type !== 'ethernet') return;
     try {
       await api.get('/kiosk/mobile-local-data/versions', {
         kioskTelemetry: 'background', timeout: MOBILE_REQUEST_TIMEOUT_MS, validateStatus: () => true

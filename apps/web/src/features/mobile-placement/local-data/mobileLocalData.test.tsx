@@ -69,6 +69,16 @@ describe('mobile local-first data', () => {
     expect(sync).toHaveBeenCalledTimes(2);
   });
 
+  it('does not probe the server over mobile data while unreachable', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('navigator', { onLine: true, connection: Object.assign(new EventTarget(), { type: 'cellular' }) });
+    vi.mocked(api.get).mockResolvedValue({ status: 200 });
+    await mobileRequest(() => Promise.reject(new Error('network'))).catch(() => {});
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(api.get).not.toHaveBeenCalled();
+    expect(canUseMobileNetwork()).toBe(false);
+  });
+
   it('replaces all old rows, keeps wire ordering, and distinguishes missing data from missing order', async () => {
     const store = createMobileLocalDataStore();
     expect(await store.lookupPurchase(row.purchaseOrderNo)).toBeNull();

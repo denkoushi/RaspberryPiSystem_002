@@ -11,7 +11,7 @@ let unsubscribe: (() => void) | undefined;
 let timerVersion = 0;
 let serial = Promise.resolve();
 
-// A submit that returns its send result must share the scheduler's execution lane.
+// Jobs run one at a time in this lane.
 export function runSyncOperation<T>(operation: () => Promise<T>): Promise<T> {
   const result = serial.then(operation);
   serial = result.then(() => undefined, () => undefined);
@@ -60,7 +60,9 @@ export function requestSync(_reason: string) {
     }
   }).finally(() => {
     running = undefined;
-    void scheduleNext();
+    // A request that arrived after the loop's last check must run now, not wait for the timer.
+    if (started && requested && canSyncNow()) requestSync('again');
+    else void scheduleNext();
   });
 }
 

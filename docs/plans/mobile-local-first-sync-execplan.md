@@ -38,6 +38,9 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Evidence: `local-data/localFirstLookup.ts`。
 
 
+- Observation (Milestone 1 のレビュー、2026-10-28): 棚の送信待ちに残る課題が三つある。一つ目は、送れない記録が1件あると後ろの記録も止まること(棚には順序の要件が無い)。二つ目は、送信中の棚と同じ棚番をもう一度登録すると、2回目が捨てられること。三つ目は、送信のたびに全部の仕事が動き、版の確認が毎回出ること。いずれも Milestone 4 で棚の送信待ちを作り直すときに直す。
+  Evidence: 第三者レビューの指摘。`shelfOutboxRunner.ts` の flush と submit。
+
 ## Decision Log
 
 - Decision: 同期係は画面ではなく、スマホ用の画面群全体で 1 つだけ動かす。
