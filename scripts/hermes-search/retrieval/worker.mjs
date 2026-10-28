@@ -12,6 +12,7 @@ import { catalogEntries, conversationalEntries, definitionForCatalog, fieldsWith
 import { recordSourceId, sourceIdsFromEnv } from '../hermes-source-definition.mjs';
 import { createDenseRuntime, denseSettings } from './dense-dgx.mjs';
 import { execute, rankCandidates, openQmdVectorRanker, prepareLexicalCorpus } from './executor.mjs';
+import { activePlannerQuestionVersion } from './flywheel-planner-version.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { createRelevanceJudge } from './relevance-jev.mjs';
 import { QUERY_PLAN_SCHEMA, validateQueryPlan } from './query-plan.mjs';
@@ -456,7 +457,8 @@ export function createRetrievalAnswering({
   snapshotCount = Array.isArray(records) ? records.length : 0,
 } = {}) {
   if (!Array.isArray(records)) throw new TypeError('records must be an array');
-  const planner = suppliedPlanner ?? createPlanner(typeof evaluate === 'function' ? { evaluate } : {});
+  const makePlanner = () => createPlanner({ ...(typeof evaluate === 'function' ? { evaluate } : {}), questionVersion: activePlannerQuestionVersion(process.env) });
+  let planner = suppliedPlanner ?? makePlanner();
   const relevance = createRelevanceJudge(typeof evaluate === 'function' ? { evaluate } : {});
   const entries = catalogEntries(catalog);
   const answerEntries = conversationalEntries(catalog);
@@ -491,6 +493,7 @@ export function createRetrievalAnswering({
       const count = current.snapshotCount;
       try {
         const next = applyEnrichment(replaceCorpus(current, catalog, message), await loadEnrichmentById(), catalog, await loadLearnedQueriesById());
+        if (!suppliedPlanner) planner = makePlanner();
         current = { ...next, causeById: await loadCauseById(process.env, next.records) };
         for (const entry of semanticEntries) denseFor(entry.id)?.schedule?.(current.bySource[entry.id].records, fieldsWithRole(entry, 'body'));
         return { ok: true, sourceIds: entries.map(entry => entry.id), count: current.snapshotCount, memory: memoryReport(current.records, catalog) };

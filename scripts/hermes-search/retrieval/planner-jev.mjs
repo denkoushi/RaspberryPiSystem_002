@@ -135,7 +135,21 @@ const CAUSE_SOURCE = 'nonconformity';
 // A classification bucket, never something a question asks for.
 const UNKNOWN_CAUSE = 'unknown';
 
-export const PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-26b';
+export const DEFAULT_PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-26b';
+export const CANDIDATE_PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-28a';
+export const PLANNER_QUESTION_VERSION = DEFAULT_PLANNER_QUESTION_VERSION;
+
+const QUESTION_TEXTS = {
+  [DEFAULT_PLANNER_QUESTION_VERSION]: {
+    hierarchyNote: '「配下の部署すべて」の選択肢は、発話がその階層だけを言い、より細かい部署を言っていないときに選ぶ。',
+    contentCarry: '`request` の内容条件（何が起きたか）を、`previous_plan` の内容条件と比べて一つ選ぶ。',
+  },
+  [CANDIDATE_PLANNER_QUESTION_VERSION]: {
+    hierarchyNote: '「配下の部署すべて」の選択肢は、発話がその階層だけを言い、より細かい部署を言っていないときに選ぶ。「仙台工場」のように工場名や部名など上位の階層そのものだけを言っているときは、前の部署を置き換える続きの発話でも「配下の部署すべて」を選ぶ。',
+    contentCarry: '`request` の内容条件（何が起きたか）を、`previous_plan` の内容条件と比べて一つ選ぶ。「類例」「同じような」「他に（も）」「同じ不具合」など、前の内容を指す語があり、新しい現象を言っていなければ same。',
+  },
+};
+export const PLANNER_QUESTION_VERSIONS = Object.keys(QUESTION_TEXTS);
 
 // A breakdown (counts per cause, department or month) is accepted only when the question itself
 // talks about counts or distribution. Night 19 (2026-10-21): JEV chose a cause breakdown for 21
@@ -286,7 +300,11 @@ function conditionText(entries, filter) {
   return `${label}が${values.join('、')}`;
 }
 
-export function createPlanner({ evaluate = defaultEvaluate } = {}) {
+export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DEFAULT_PLANNER_QUESTION_VERSION } = {}) {
+  if (!PLANNER_QUESTION_VERSIONS.includes(questionVersion)) {
+    throw new TypeError(`unknown planner question version: ${questionVersion}; known ids: ${PLANNER_QUESTION_VERSIONS.join(', ')}`);
+  }
+  const questionTexts = QUESTION_TEXTS[questionVersion];
   if (typeof evaluate !== 'function') throw new TypeError('evaluate must be a function');
   return {
     async plan({ question, previousPlan = null, catalog, candidates = [], valueIndex = null, choiceGroups = null, now = null, shownCount = 0, pageContext = null }) {
@@ -365,7 +383,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         });
         options.push({ id: NONE, description: 'この語は絞り込み条件にしない' });
         const hierarchyNote = hierarchy.length
-          ? '「配下の部署すべて」の選択肢は、発話がその階層だけを言い、より細かい部署を言っていないときに選ぶ。'
+          ? questionTexts.hierarchyNote
           : '';
         questions[key] = choiceQuestion(
           fromIndex
@@ -400,7 +418,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
       const previousQuery = hasPrevious && typeof previousPlan.semanticQuery === 'string' ? previousPlan.semanticQuery.trim() : '';
       if (previousQuery) {
         questions.contentCarry = choiceQuestion(
-          '`request` の内容条件（何が起きたか）を、`previous_plan` の内容条件と比べて一つ選ぶ。',
+          questionTexts.contentCarry,
           CONTENT_CARRY_OPTIONS,
         );
       }
@@ -673,7 +691,7 @@ export function createPlanner({ evaluate = defaultEvaluate } = {}) {
         receipt: {
           ...(pageContext ? { pageContext: { used: pageContextUsed, kind: pageContext.entity.kind, value: pageContext.entity.value } } : {}),
           model: typeof evaluated?.model === 'string' ? evaluated.model : null,
-          questionVersion: PLANNER_QUESTION_VERSION,
+          questionVersion,
           turn: hasPrevious ? 'followup' : 'first',
           answers: summarizeAnswers(questions, answers),
           fields: Object.fromEntries([...optionMap].map(([key, mapped]) => [key, mapped.group.field ?? mapped.group.term ?? null])),
