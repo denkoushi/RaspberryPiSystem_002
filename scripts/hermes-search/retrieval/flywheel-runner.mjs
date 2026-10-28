@@ -27,7 +27,13 @@ import { answerableIntents, bareId, bodyText, samplePairs } from './flywheel-pai
 import { createRandom, sampleSeed } from './flywheel-seeds.mjs';
 import { GRADE_BATCH, gradeBatch, recordText } from './graded-labels.mjs';
 
-export const DEFAULT_FLYWHEEL_DIR = '/app/storage/hermes-search/runtime/flywheel';
+import { DEFAULT_FLYWHEEL_DIR } from './flywheel-paths.mjs';
+import { CANDIDATE_PLANNER_QUESTION_VERSION } from './planner-jev.mjs';
+import { activePlannerQuestionVersion, comparePlannerVersions, plannerVersionPath, readPlannerVersion, writePlannerVersion } from './flywheel-planner-version.mjs';
+
+export { DEFAULT_FLYWHEEL_DIR };
+export const DEFAULT_PLANNER_BUDGET = 30;
+export const PLANNER_BUDGET_CAP = 100;
 export const DEFAULT_MAX_QUESTIONS = 100;
 export const MAX_QUESTIONS_CAP = 500;
 export const DEFAULT_LABEL_BUDGET = 60;
@@ -44,6 +50,7 @@ export function flywheelSettings(env = process.env) {
   const realBudget = Number(env.HERMES_FLYWHEEL_REAL_BUDGET ?? NaN);
   const filterBudget = Number(env.HERMES_FLYWHEEL_FILTER_BUDGET ?? NaN);
   const learnBudget = Number(env.HERMES_FLYWHEEL_LEARN_BUDGET ?? NaN);
+  const plannerBudget = Number(env.HERMES_FLYWHEEL_PLANNER_BUDGET ?? NaN);
   const inference = enrichmentSettings(env);
   return {
     enabled: env.HERMES_FLYWHEEL_ENABLED === 'true',
@@ -52,6 +59,7 @@ export function flywheelSettings(env = process.env) {
     realBudget: Number.isInteger(realBudget) && realBudget >= 0 && env.HERMES_FLYWHEEL_REAL_BUDGET?.trim() !== '' ? Math.min(realBudget, REAL_BUDGET_CAP) : DEFAULT_REAL_BUDGET,
     filterBudget: Number.isInteger(filterBudget) && filterBudget >= 0 && env.HERMES_FLYWHEEL_FILTER_BUDGET?.trim() !== '' ? Math.min(filterBudget, FILTER_BUDGET_CAP) : DEFAULT_FILTER_BUDGET,
     learnBudget: Number.isInteger(learnBudget) && learnBudget >= 0 && env.HERMES_FLYWHEEL_LEARN_BUDGET?.trim() !== '' ? Math.min(learnBudget, LEARN_BUDGET_CAP) : DEFAULT_LEARN_BUDGET,
+    plannerBudget: Number.isInteger(plannerBudget) && plannerBudget >= 0 && env.HERMES_FLYWHEEL_PLANNER_BUDGET?.trim() !== '' ? Math.min(plannerBudget, PLANNER_BUDGET_CAP) : DEFAULT_PLANNER_BUDGET,
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
     dir: env.HERMES_FLYWHEEL_DIR || DEFAULT_FLYWHEEL_DIR,
     denseStore: denseSettings(env).storePath,
@@ -528,6 +536,73 @@ export async function runFlywheelNight({
       }
     } catch (error) {
       if (!expired) throw error;
+    }
+  }
+  // Phase 6 reports wording changes only; adoption is deliberately a separate milestone.
+  if (withinWindow(settings.window, now()) && !guarded.tripped()) {
+    const candidate = CANDIDATE_PLANNER_QUESTION_VERSION;
+    const active = activePlannerQuestionVersion(process.env);
+    const versionFile = process.env.HERMES_FLYWHEEL_PLANNER_VERSION_PATH || plannerVersionPath(settings.dir);
+    const state = readPlannerVersion(versionFile);
+    const previous = state.checks.find((check) => check.night === status.night);
+    const report = (check) => ({ active: check.active, candidate: check.candidate,
+      compared: check.compared, affected: check.affected,
+      ...Object.fromEntries(['dev', 'heldout', 'real'].map((split) => {
+        const { n, gained, lost } = check[split];
+        return [split, { n, gained, lost }];
+      })),
+    });
+    if (previous) status.plannerVersion = report(previous);
+    else if (active !== candidate && (settings.plannerBudget ?? DEFAULT_PLANNER_BUDGET) > 0) {
+      const followUp = (row) => row.live.followUpAction != null || Boolean(row.previousPlan);
+      const selected = [...await readLines(filePath), ...await readLines(realFile)]
+        .filter((row) => row.question && Array.isArray(row.live?.shown))
+        .sort((left, right) => Number(followUp(right)) - Number(followUp(left)))
+        .slice(0, settings.plannerBudget ?? DEFAULT_PLANNER_BUDGET);
+      if (selected.length) {
+        const candidateScore = await makeLive({ records, catalog, evaluate, plannerOptions: { questionVersion: candidate } });
+        let baselineScore;
+        const baselineRows = [];
+        const candidateRows = [];
+        const inWindow = async (scorer, row, id) => {
+          if (!withinWindow(settings.window, now()) || guarded.tripped()) throw new Error('planner_window_expired');
+          const result = await scorer(row);
+          await logLive('planner:' + id, result);
+          return result;
+        };
+        const scoredRow = (row, result) => ({ ...row, live: result,
+          ...(row.kind === 'filter' ? { filterCheck: result.outcome === 'count'
+            ? { supported: false, reason: 'count_answer', ok: null }
+            : checkFilterAnswer({ plan: result.plan, shown: result.shown, groups: result.groups,
+              breakdown: row.seed?.breakdown ?? row.live.plan?.breakdown, records: corpus, catalog, causeById }) } : {}),
+        });
+        try {
+          for (const row of selected) {
+            if (!withinWindow(settings.window, now()) || guarded.tripped()) break;
+            const id = row.id ?? bareId(row.a);
+            let baseline = row;
+            if (row.live.questionVersion != null && row.live.questionVersion !== active) {
+              baselineScore ??= await makeLive({ records, catalog, evaluate, plannerOptions: { questionVersion: active } });
+              baseline = scoredRow(row, await inWindow(baselineScore, row, id));
+            }
+            const result = await inWindow(candidateScore, row, id);
+            baselineRows.push(baseline);
+            candidateRows.push(scoredRow(row, result));
+          }
+        } catch (error) {
+          if (error.message !== 'planner_window_expired') throw error;
+        }
+        // Persist completed pairs even if the window ended, so a restart cannot repeat them.
+        if (baselineRows.length) {
+          const { comparison, affected } = comparePlannerVersions({
+            questions: questionSet(baselineRows), baselineRows, candidateRows, labels,
+          });
+          const check = { night: status.night, decidedAt: now().toISOString(), active, candidate,
+            compared: baselineRows.length, affected, ...comparison, decision: 'report' };
+          await writePlannerVersion(versionFile, { ...state, candidate, checks: [...state.checks, check] });
+          status.plannerVersion = report(check);
+        }
+      }
     }
   }
   if (guarded.tripped()) reason = 'dgx_busy';

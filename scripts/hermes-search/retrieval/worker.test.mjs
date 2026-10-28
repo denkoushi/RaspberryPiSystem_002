@@ -1343,3 +1343,32 @@ for (const [name, size, excludeShown, shownIds, semanticQuery, reject, expected]
     if (semanticQuery) assert.ok(judgeCalls > 0);
   });
 }
+
+test('worker defaults to baseline and reloads active planner wording on corpus replacement', async (t) => {
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { plannerVersionPath, writePlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const { DEFAULT_PLANNER_QUESTION_VERSION: baseline, CANDIDATE_PLANNER_QUESTION_VERSION: candidate } = await import('./planner-jev.mjs');
+  const file = plannerVersionPath(await mkdtemp(path.join(tmpdir(), 'worker-planner-')));
+  const keys = ['HERMES_FLYWHEEL_PLANNER_VERSION_PATH', 'HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED'];
+  const original = keys.map((key) => process.env[key]);
+  t.after(() => keys.forEach((key, i) => { if (original[i] === undefined) delete process.env[key]; else process.env[key] = original[i]; }));
+  process.env.HERMES_FLYWHEEL_PLANNER_VERSION_PATH = file;
+  delete process.env.HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED;
+  const evaluate = async ({ questions }) => ({ answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+    key.startsWith('candidate_') || key === 'content' ? { type: 'noul', noul: 0.95 }
+      : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'relevance' : key === 'limit' ? 'unspecified' : 'none' },
+  ])) });
+  const answering = createRetrievalAnswering({ records, catalog, evaluate });
+  assert.equal((await answering.answer('surface scratch')).receipt.jev.questionVersion, baseline);
+  await writePlannerVersion(file, { active: candidate, candidate: null, checks: [] });
+  assert.equal((await answering.answer('surface scratch')).receipt.jev.questionVersion, baseline);
+  assert.equal((await answering.replaceCorpus({ mode: 'full', records })).ok, true);
+  assert.equal((await answering.answer('surface scratch')).receipt.jev.questionVersion, candidate);
+  const restarted = createRetrievalAnswering({ records, catalog, evaluate });
+  assert.equal((await restarted.answer('surface scratch')).receipt.jev.questionVersion, candidate);
+  process.env.HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED = 'false';
+  await answering.replaceCorpus({ mode: 'full', records });
+  assert.equal((await answering.answer('surface scratch')).receipt.jev.questionVersion, baseline);
+});

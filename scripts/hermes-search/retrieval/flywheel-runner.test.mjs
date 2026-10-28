@@ -29,7 +29,7 @@ const dense = [
 const night = () => new Date('2026-10-03T14:30:00Z');
 
 function settings(dir, extra = {}) {
-  return { enabled: true, maxQuestions: 10, filterBudget: 0, learnBudget: 0, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
+  return { enabled: true, maxQuestions: 10, filterBudget: 0, learnBudget: 0, plannerBudget: 0, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
 }
 
 function fakeChat({ slowAfter = Infinity } = {}) {
@@ -312,6 +312,12 @@ test('settings default to off, cap the nightly budget, and follow the enrichment
   assert.equal(flywheelSettings({ HERMES_FLYWHEEL_FILTER_BUDGET: '0' }).filterBudget, 0);
   for (const value of ['x', '', ' ', '-1', '1.5', '10junk']) {
     assert.equal(flywheelSettings({ HERMES_FLYWHEEL_FILTER_BUDGET: value }).filterBudget, 10);
+  }
+  assert.equal(off.plannerBudget, 30);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_PLANNER_BUDGET: '9999' }).plannerBudget, 100);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_PLANNER_BUDGET: '0' }).plannerBudget, 0);
+  for (const value of ['x', '', ' ', '-1', '1.5', '30junk']) {
+    assert.equal(flywheelSettings({ HERMES_FLYWHEEL_PLANNER_BUDGET: value }).plannerBudget, 30);
   }
   assert.equal(off.learnBudget, 30);
   assert.equal(flywheelSettings({ HERMES_FLYWHEEL_LEARN_BUDGET: '9999' }).learnBudget, 100);
@@ -1118,4 +1124,130 @@ test('real filter-only count answers retain their action and rewrite without a r
   assert.equal(rows[1].live.followUpAction, 'count');
   assert.equal(rows[1].live.rewrite, '該当する件数');
   assert.notEqual(rows[1].filterCheck.ok, false);
+});
+
+async function plannerFixture(t, { active = null, budget = 2 } = {}) {
+  const { plannerVersionPath, writePlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const { DEFAULT_PLANNER_QUESTION_VERSION: baseline, CANDIDATE_PLANNER_QUESTION_VERSION: candidate } = await import('./planner-jev.mjs');
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-planner-runner-'));
+  const file = plannerVersionPath(dir);
+  const keys = ['HERMES_FLYWHEEL_PLANNER_VERSION_PATH', 'HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED'];
+  const previous = keys.map((key) => process.env[key]);
+  t.after(() => keys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i]; }));
+  process.env.HERMES_FLYWHEEL_PLANNER_VERSION_PATH = file;
+  delete process.env.HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED;
+  await writePlannerVersion(file, { active, candidate: null, checks: [] });
+  const plan = { filters: [], semanticQuery: '配管不良', sort: 'relevance', limit: 5 };
+  const rows = [
+    { a: 'a1', question: 'first', kept: true, live: { shown: ['a1'], loss: null, plan, questionVersion: baseline } },
+    { a: 'b1', question: 'second', kept: true, live: { shown: ['b1'], loss: null, plan } },
+  ];
+  const realRows = [
+    { source: 'real', id: 'real-context', split: 'heldout', kind: 'content', question: '仙台工場に類例ある？', relevant: ['a1'], previousPlan: plan, previousShown: ['b1'], live: { shown: [], loss: null, plan } },
+    { source: 'real', id: 'real-action', split: 'dev', kind: 'content', question: '他にもある？', relevant: ['b1'], live: { shown: ['b1'], loss: null, plan, followUpAction: 'replace', questionVersion: candidate } },
+  ];
+  writeFileSync(questionsPath(dir, '2026-10-03'), rows.map(JSON.stringify).join('\n') + '\n');
+  writeFileSync(realPath(dir, '2026-10-03'), realRows.map(JSON.stringify).join('\n') + '\n');
+  const factories = [];
+  const calls = [];
+  const input = { records, settings: settings(dir, { maxQuestions: 2, realBudget: 0, plannerBudget: budget }), now: night,
+    readDense: async () => dense, chat: async () => assert.fail('comparison must not generate questions'),
+    jevEvaluate: async () => assert.fail('stub scorer does not call JEV'), log: () => {},
+    liveFactory: async ({ plannerOptions }) => {
+      factories.push(plannerOptions);
+      return async (row) => {
+        calls.push({ version: plannerOptions?.questionVersion, row });
+        return { shown: [row.relevant?.[0] ?? row.a], plan: { ...plan, semanticQuery: plannerOptions.questionVersion === candidate ? 'candidate' : plan.semanticQuery } };
+      };
+    },
+  };
+  return { dir, file, input, factories, calls, baseline, candidate, rows, realRows };
+}
+
+test('phase six prefers follow-ups, caps comparisons, preserves active and resumes without scoring again', async (t) => {
+  const { readPlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const f = await plannerFixture(t);
+  const status = await runFlywheelNight(f.input);
+  assert.deepEqual(f.factories, [{ questionVersion: f.candidate }, { questionVersion: f.baseline }]);
+  const candidateCalls = f.calls.filter((call) => call.version === f.candidate);
+  assert.deepEqual(candidateCalls.map(({ row }) => row.id), ['real-context', 'real-action']);
+  assert.deepEqual(candidateCalls[0].row.previousPlan, f.realRows[0].previousPlan);
+  assert.deepEqual(candidateCalls[0].row.previousShown, ['b1']);
+  assert.deepEqual(f.calls.filter((call) => call.version === f.baseline).map(({ row }) => row.id), ['real-action']);
+  const state = readPlannerVersion(f.file);
+  assert.equal(state.active, null);
+  assert.equal(state.candidate, f.candidate);
+  assert.equal(state.checks.length, 1);
+  assert.equal(state.checks[0].decision, 'report');
+  assert.equal(state.checks[0].compared, 2);
+  assert.equal(state.checks[0].affected, 2);
+  assert.deepEqual(status.plannerVersion, { active: f.baseline, candidate: f.candidate, compared: 2, affected: 2,
+    dev: { n: 1, gained: 0, lost: 0 }, heldout: { n: 1, gained: 1, lost: 0 }, real: { n: 2, gained: 1, lost: 0 } });
+  assert.deepEqual(JSON.parse(readFileSync(path.join(f.dir, 'flywheel-status.json'), 'utf8')).plannerVersion, status.plannerVersion);
+  assert.match(readFileSync(path.join(f.dir, 'runner-2026-10-03.log'), 'utf8'), /id=planner:real-context/u);
+  const resumed = await runFlywheelNight(f.input);
+  assert.deepEqual(resumed.plannerVersion, status.plannerVersion);
+  assert.equal(f.calls.length, 3);
+  assert.equal(readPlannerVersion(f.file).checks.length, 1);
+});
+
+test('phase six skips outside the window and when active equals candidate', async (t) => {
+  const { readPlannerVersion, writePlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const f = await plannerFixture(t);
+  const outside = await runFlywheelNight({ ...f.input, now: () => new Date('2026-10-03T03:00:00Z') });
+  assert.equal(outside.plannerVersion, undefined);
+  assert.deepEqual(f.factories, []);
+  assert.equal(readPlannerVersion(f.file).checks.length, 0);
+  await writePlannerVersion(f.file, { active: f.candidate, candidate: null, checks: [] });
+  const equal = await runFlywheelNight(f.input);
+  assert.equal(equal.plannerVersion, undefined);
+  assert.deepEqual(f.factories, []);
+});
+
+test('phase six persists completed pairs when the window closes and does not repeat them', async (t) => {
+  const { readPlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const f = await plannerFixture(t, { budget: 4 });
+  let time = night();
+  const factory = f.input.liveFactory;
+  f.input.now = () => time;
+  f.input.liveFactory = async (options) => {
+    const score = await factory(options);
+    return async (row) => {
+      const result = await score(row);
+      time = new Date('2026-10-03T21:00:00Z');
+      return result;
+    };
+  };
+  const first = await runFlywheelNight(f.input);
+  assert.equal(first.plannerVersion.compared, 1);
+  assert.equal(f.calls.length, 1);
+  time = night();
+  await runFlywheelNight(f.input);
+  assert.equal(f.calls.length, 1);
+  assert.equal(readPlannerVersion(f.file).checks.length, 1);
+});
+
+test('phase six does not run after the DGX busy guard trips', async (t) => {
+  const { readPlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const f = await plannerFixture(t);
+  const status = await runFlywheelNight({ ...f.input, records: [...records, { ...records[2], id: 'd1' }, { ...records[2], id: 'e1' }],
+    settings: { ...f.input.settings, maxQuestions: 5 },
+    readDense: async () => [...dense, { id: 'd1', vector: unit([1, 0, 0]) }, { id: 'e1', vector: unit([1, 0, 0]) }],
+    probe: async () => ({ ok: true }), chat: fakeChat({ slowAfter: 0 }), jevEvaluate,
+  });
+  assert.equal(status.reason, 'dgx_busy');
+  assert.deepEqual(f.factories, []);
+  assert.equal(readPlannerVersion(f.file).checks.length, 0);
+});
+
+test('phase six preserves a stored active version with the kill switch off and uses spare budget for first turns', async (t) => {
+  const { readPlannerVersion, writePlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const f = await plannerFixture(t, { budget: 3 });
+  await writePlannerVersion(f.file, { active: f.candidate, candidate: null, checks: [] });
+  process.env.HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED = 'false';
+  const status = await runFlywheelNight(f.input);
+  assert.equal(status.plannerVersion.active, f.baseline);
+  assert.equal(status.plannerVersion.compared, 3);
+  assert.deepEqual(f.calls.filter((call) => call.version === f.candidate).map(({ row }) => row.id ?? row.a), ['real-context', 'real-action', 'a1']);
+  assert.equal(readPlannerVersion(f.file).active, f.candidate);
 });
