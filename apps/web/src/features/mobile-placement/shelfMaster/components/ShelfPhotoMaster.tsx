@@ -8,7 +8,7 @@ import { Dialog } from '../../../../components/ui/Dialog';
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { HaizenIcon } from '../../haizen/HaizenIcon';
 import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
-import { resizeShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
+import { resizeShelfPhoto, rotateShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
 import { ShelfPhotoCamera } from '../../shelfPhoto/ShelfPhotoCamera';
 import { haizenPhoneStyle, hp } from '../../ui/haizenPhoneTokens';
@@ -145,11 +145,19 @@ function ShelfPhotoForm({ shelf, shelves, machinesQuery, submit, onClose, onMess
             try { setPhoto(await resizeShelfPhoto(file)); } catch (err) { setError(err instanceof Error ? err.message : '写真を処理できませんでした'); }
             finally { setBusy(false); }
           }} />
-          <button type="button" disabled={busy} className="relative grid aspect-[4/3] max-h-[27dvh] w-full max-w-[280px] shrink-0 place-items-center self-center overflow-hidden rounded-2xl border-2 border-dashed border-[var(--hp-line)] bg-[var(--hp-panel)] text-[17px] font-bold" onClick={() => setCameraOpen(true)}>
-            {photo ? <img alt="登録する棚の写真" src={`data:${photo.contentType};base64,${photo.dataBase64}`} className="absolute inset-0 h-full w-full object-cover" />
-              : shelf?.photoUpdatedAt ? <ShelfPhoto shelf={shelf} className="absolute inset-0 h-full w-full" /> : <span><HaizenIcon name="photo" className="mx-auto mb-1.5 h-10 w-10" />棚の写真を撮る</span>}
-            {(photo || shelf?.photoUpdatedAt) && <span className="absolute bottom-2 right-2 rounded-[10px] bg-[var(--hp-bg)] px-3 py-2.5 text-sm">撮り直す</span>}
-          </button>
+          <div className="relative aspect-[4/3] max-h-[27dvh] w-full max-w-[280px] shrink-0 self-center">
+            <button type="button" disabled={busy} className="relative grid h-full w-full place-items-center overflow-hidden rounded-2xl border-2 border-dashed border-[var(--hp-line)] bg-[var(--hp-panel)] text-[17px] font-bold" onClick={() => setCameraOpen(true)}>
+              {photo ? <img alt="登録する棚の写真" src={`data:${photo.contentType};base64,${photo.dataBase64}`} className="absolute inset-0 h-full w-full object-cover" />
+                : shelf?.photoUpdatedAt ? <ShelfPhoto shelf={shelf} className="absolute inset-0 h-full w-full" /> : <span><HaizenIcon name="photo" className="mx-auto mb-1.5 h-10 w-10" />棚の写真を撮る</span>}
+              {(photo || shelf?.photoUpdatedAt) && <span className="absolute bottom-2 right-2 rounded-[10px] bg-[var(--hp-bg)] px-3 py-2.5 text-sm">撮り直す</span>}
+            </button>
+            {photo && <button type="button" aria-label="写真を回す" disabled={busy} className="absolute bottom-2 left-2 grid h-11 w-11 place-items-center rounded-[10px] bg-[var(--hp-bg)]"
+              onClick={async () => {
+                setBusy(true); setError(null);
+                try { setPhoto(await rotateShelfPhoto(photo)); } catch (err) { setError(err instanceof Error ? err.message : '写真を回せませんでした'); }
+                finally { setBusy(false); }
+              }}><HaizenIcon name="rotate" className="h-6 w-6" /></button>}
+          </div>
           {!createdCode && <>
             <button type="button" aria-label="目安" disabled={busy || machinesQuery.isLoading || machinesQuery.isError}
               className={`${hp.input} flex shrink-0 items-center justify-between text-left !font-sans ${machine ? '' : '!text-[var(--hp-ink2)]'}`}

@@ -1,41 +1,15 @@
 export type ShelfPhotoData = { contentType: 'image/jpeg'; dataBase64: string };
 
-export type ShelfPhotoOrientation = { portrait: boolean; angle?: number };
-
-// Keep orientation decisions and drawing geometry independent of browser state.
-export function shelfPhotoRotation(width: number, height: number, orientation?: ShelfPhotoOrientation): 0 | 90 | -90 {
-  const mismatch = orientation && width !== height && (height > width) !== orientation.portrait;
-  return mismatch ? (orientation.angle === 270 ? -90 : 90) : 0;
-}
-
-export function shelfPhotoDrawPlan(width: number, height: number, orientation?: ShelfPhotoOrientation) {
-  const rotation = shelfPhotoRotation(width, height, orientation) * Math.PI / 180;
-  const scale = Math.min(1, 800 / Math.max(width, height));
-  const drawWidth = Math.max(1, Math.round(width * scale));
-  const drawHeight = Math.max(1, Math.round(height * scale));
-  return {
-    width: rotation ? drawHeight : drawWidth,
-    height: rotation ? drawWidth : drawHeight,
-    drawWidth, drawHeight, rotation,
-    translateX: rotation > 0 ? drawHeight : 0,
-    translateY: rotation < 0 ? drawWidth : 0
-  };
-}
-
-export function encodeShelfPhoto(source: CanvasImageSource, width: number, height: number, orientation?: ShelfPhotoOrientation): ShelfPhotoData {
+export function encodeShelfPhoto(source: CanvasImageSource, width: number, height: number): ShelfPhotoData {
   if (!width || !height) throw new Error('写真を処理できませんでした');
-  const plan = shelfPhotoDrawPlan(width, height, orientation);
+  const scale = Math.min(1, 800 / Math.max(width, height));
   const canvas = document.createElement('canvas');
   try {
-    canvas.width = plan.width;
-    canvas.height = plan.height;
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('写真を処理できませんでした');
-    if (plan.rotation) {
-      ctx.translate(plan.translateX, plan.translateY);
-      ctx.rotate(plan.rotation);
-    }
-    ctx.drawImage(source, 0, 0, plan.drawWidth, plan.drawHeight);
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
     return { contentType: 'image/jpeg', dataBase64: canvas.toDataURL('image/jpeg', 0.8).split(',')[1] };
   } finally {
     canvas.width = 0;
@@ -71,5 +45,35 @@ export async function resizeShelfPhoto(file: File): Promise<ShelfPhotoData> {
     image.onerror = null;
     image.src = '';
     URL.revokeObjectURL(url);
+  }
+}
+
+// Lets the person fix a photo the browser delivered sideways: turns it 90 degrees clockwise.
+export async function rotateShelfPhoto(photo: ShelfPhotoData): Promise<ShelfPhotoData> {
+  const image = new Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('写真を回せませんでした'));
+      image.src = `data:${photo.contentType};base64,${photo.dataBase64}`;
+    });
+    const canvas = document.createElement('canvas');
+    try {
+      canvas.width = image.naturalHeight;
+      canvas.height = image.naturalWidth;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('写真を回せませんでした');
+      ctx.translate(canvas.width, 0);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(image, 0, 0);
+      return { contentType: 'image/jpeg', dataBase64: canvas.toDataURL('image/jpeg', 0.8).split(',')[1] };
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  } finally {
+    image.onload = null;
+    image.onerror = null;
+    image.src = '';
   }
 }

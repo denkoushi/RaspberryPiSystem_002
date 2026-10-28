@@ -6,7 +6,8 @@ const paths = {
   receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
   pallet: 'M3 15h18M5 15v4M12 15v4M19 15v4M5 6h6v9H5zM13 9h6v6h-6z',
   zero: 'M4 9h16v11H4zM8 6a6 6 0 0 1 8 0M10 3.5a9 9 0 0 1 4 0M8 14h4',
-  photo: 'M4 8h3l2-3h6l2 3h3v11H4zM15.5 13a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0'
+  photo: 'M4 8h3l2-3h6l2 3h3v11H4zM15.5 13a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0',
+  rotate: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7'
 };
 
 export function HaizenIcon({ name, className = 'h-[26px] w-[26px]' }: {

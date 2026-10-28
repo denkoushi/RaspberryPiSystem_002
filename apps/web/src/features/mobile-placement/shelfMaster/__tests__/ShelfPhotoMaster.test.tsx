@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../../../../api/client';
 import { api as http } from '../../../../api/http';
 import { resetMobileConnectivityForTests } from '../../connectivity';
-import { encodeShelfPhoto, resizeShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
+import { encodeShelfPhoto, resizeShelfPhoto, rotateShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
 import { ShelfPhotoMaster } from '../components/ShelfPhotoMaster';
 import { shelfOfflineQueueStore } from '../offline/shelfOfflineQueueStore';
 import { readShelfPhotoDraft } from '../shelfPhotoDraft';
@@ -16,7 +16,7 @@ vi.mock('../../../../api/client', () => ({
   postMobilePlacementShelfLandmark: vi.fn(), deleteMobilePlacementShelfLandmark: vi.fn(),
   putMobilePlacementShelfPhoto: vi.fn(), patchMobilePlacementShelfMemo: vi.fn(), deleteMobilePlacementShelf: vi.fn()
 }));
-vi.mock('../../shelfPhoto/resizeShelfPhoto', () => ({ resizeShelfPhoto: vi.fn(), encodeShelfPhoto: vi.fn() }));
+vi.mock('../../shelfPhoto/resizeShelfPhoto', () => ({ resizeShelfPhoto: vi.fn(), encodeShelfPhoto: vi.fn(), rotateShelfPhoto: vi.fn() }));
 const shelves = [
   { shelfCodeRaw: '西-北-01', isStructured: true, displayLabel: '南 上段', photoUpdatedAt: null },
   { shelfCodeRaw: 'DAD-3220 西', isStructured: true, machineName: 'DAD-3220', direction: '西' as const, displayLabel: null, photoUpdatedAt: null }
@@ -196,6 +196,20 @@ describe('photo shelf master', () => {
     expect(http.put).not.toHaveBeenCalled();
     expect(http.post).not.toHaveBeenCalled();
   });
+  it('turns the new photo a quarter turn on each tap and saves the turned photo', async () => {
+    const turned = { contentType: 'image/jpeg' as const, dataBase64: 'TURNED' };
+    vi.mocked(rotateShelfPhoto).mockResolvedValue(turned);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-01 を編集' }));
+    expect(screen.queryByRole('button', { name: '写真を回す' })).not.toBeInTheDocument();
+    await takePhoto();
+    fireEvent.click(screen.getByRole('button', { name: '写真を回す' }));
+    await waitFor(() => expect(screen.getByAltText('登録する棚の写真')).toHaveAttribute('src', 'data:image/jpeg;base64,TURNED'));
+    expect(rotateShelfPhoto).toHaveBeenCalledWith(photo);
+    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    await waitFor(() => expect(api.putMobilePlacementShelfPhoto).toHaveBeenCalledWith('西-北-01', turned));
+  });
+
   it('updates an existing photo without requiring machine or direction', async () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '棚 西-北-01 を編集' }));
