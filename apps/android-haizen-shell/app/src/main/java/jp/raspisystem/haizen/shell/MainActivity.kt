@@ -8,6 +8,9 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
@@ -28,6 +31,10 @@ class MainActivity : ComponentActivity() {
     private var scanning = false
     private var pageGeneration = 0
     private var scanGeneration = 0
+    private var speechRequest: Any? = null
+    private var speechPermissionRequest: Any? = null
+    private var speechGeneration = 0
+    private var speechRecognizer: SpeechRecognizer? = null
     private var cameraRequest: PermissionRequest? = null
     private var fileCallback: ValueCallback<Array<Uri>>? = null
 
@@ -41,7 +48,7 @@ class MainActivity : ComponentActivity() {
                 .put("tokens", JSONArray(data.getStringArrayListExtra("tokens") ?: emptyList<String>()))
                 .put("text", data.getStringExtra("text") ?: "")
         } else JSONObject().put("status", "cancelled")
-        deliverResult(payload)
+        deliverResult("__haizenNativeScanResult", payload)
     }
     private val fileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         fileCallback?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
@@ -54,6 +61,14 @@ class MainActivity : ComponentActivity() {
             if (granted && trustedPage() && trusted(request.origin.toString())) {
                 request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
             } else request.deny()
+        }
+    }
+    private val speechPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val request = speechPermissionRequest
+        speechPermissionRequest = null
+        if (request != null && speechRequest === request) {
+            if (granted && speechGeneration == pageGeneration && trustedPage()) beginSpeech(request)
+            else finishSpeech(request)
         }
     }
 
@@ -77,6 +92,9 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 pageGeneration++
+                cancelSpeech()
+                // The launcher result for a dialog left open across navigation is ignored.
+                speechPermissionRequest = null
                 cameraRequest?.deny()
                 cameraRequest = null
                 // Also guard navigations that do not invoke shouldOverrideUrlLoading (e.g. POST).
@@ -146,13 +164,66 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun deliverResult(payload: JSONObject) {
+    private fun deliverResult(callback: String, payload: JSONObject) {
         // Activity results and bridge dispatch run on the UI thread. JSON is a quoted
         // string parsed by JS, so OCR quotes/newlines can never become executable code.
         if (trustedPage()) webView.evaluateJavascript(
-            "window.__haizenNativeScanResult && window.__haizenNativeScanResult(JSON.parse(${JSONObject.quote(payload.toString())}));",
+            "window.$callback && window.$callback(JSON.parse(${JSONObject.quote(payload.toString())}));",
             null
         )
+    }
+
+    private fun beginSpeech(request: Any) {
+        try {
+            val recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+            speechRecognizer = recognizer
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onResults(results: Bundle?) {
+                    val texts = SpeechResultRule.clean(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION))
+                    val payload = if (texts.isEmpty()) JSONObject().put("status", "cancelled")
+                        else JSONObject().put("status", "ok").put("texts", JSONArray(texts))
+                    finishSpeech(request, payload)
+                }
+                override fun onError(error: Int) { finishSpeech(request) }
+                override fun onReadyForSpeech(params: Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+            recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ja-JP")
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            })
+        } catch (_: RuntimeException) {
+            finishSpeech(request)
+        }
+    }
+
+    private fun finishSpeech(
+        request: Any, payload: JSONObject = JSONObject().put("status", "cancelled"), cancel: Boolean = false
+    ) {
+        // Clear the request first: late callbacks from a destroyed recognizer cannot
+        // finish a newer request, including after a permission dialog/navigation.
+        if (speechRequest !== request) return
+        speechRequest = null
+        val recognizer = speechRecognizer
+        speechRecognizer = null
+        try {
+            if (cancel) recognizer?.cancel()
+        } finally {
+            recognizer?.destroy()
+        }
+        if (speechGeneration == pageGeneration) deliverResult("__haizenNativeSpeechResult", payload)
+    }
+
+    private fun cancelSpeech() {
+        speechRequest?.let { finishSpeech(it, cancel = true) }
     }
 
     private inner class NativeBridge {
@@ -168,20 +239,80 @@ class MainActivity : ComponentActivity() {
         @JavascriptInterface
         fun scanFseiban() {
             runOnUiThread {
-                if (!trustedPage() || scanning) return@runOnUiThread
+                if (!trustedPage()) return@runOnUiThread
+                // JS has already registered its callback; answer a busy shell so it never waits forever.
+                if (scanning || speechRequest != null || speechPermissionRequest != null) {
+                    deliverResult("__haizenNativeScanResult", JSONObject().put("status", "cancelled"))
+                    return@runOnUiThread
+                }
                 scanning = true
                 scanGeneration = pageGeneration
                 try {
                     scanLauncher.launch(Intent(this@MainActivity, ScanActivity::class.java))
                 } catch (_: ActivityNotFoundException) {
                     scanning = false
-                    deliverResult(JSONObject().put("status", "cancelled"))
+                    deliverResult("__haizenNativeScanResult", JSONObject().put("status", "cancelled"))
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun isSpeechAvailable(): Boolean {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                return trustedPage() && SpeechRecognizer.isRecognitionAvailable(this@MainActivity)
+            }
+            val task = FutureTask { trustedPage() && SpeechRecognizer.isRecognitionAvailable(this@MainActivity) }
+            runOnUiThread(task)
+            return task.get()
+        }
+
+        @JavascriptInterface
+        fun startSpeech() {
+            runOnUiThread {
+                if (!trustedPage()) return@runOnUiThread
+                if (scanning || speechRequest != null || speechPermissionRequest != null) {
+                    deliverResult("__haizenNativeSpeechResult", JSONObject().put("status", "cancelled"))
+                    return@runOnUiThread
+                }
+                val request = Any()
+                speechRequest = request
+                speechGeneration = pageGeneration
+                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    beginSpeech(request)
+                } else {
+                    speechPermissionRequest = request
+                    try {
+                        speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    } catch (_: RuntimeException) {
+                        speechPermissionRequest = null
+                        finishSpeech(request)
+                    }
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun stopSpeech() {
+            runOnUiThread {
+                if (!trustedPage()) return@runOnUiThread
+                try {
+                    speechRecognizer?.stopListening()
+                } catch (_: RuntimeException) {
+                    cancelSpeech()
                 }
             }
         }
     }
 
+    override fun onPause() {
+        // A permission dialog may pause us before a recognizer exists. Its launcher
+        // owns that request; cancel only a running recognizer here.
+        if (speechRecognizer != null) cancelSpeech()
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        cancelSpeech()
         cameraRequest?.deny()
         cameraRequest = null
         fileCallback?.onReceiveValue(null)

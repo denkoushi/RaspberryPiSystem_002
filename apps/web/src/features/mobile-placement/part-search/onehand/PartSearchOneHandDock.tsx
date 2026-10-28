@@ -9,8 +9,9 @@ import type { PartSearchFacet, PartSearchFilter, PartSearchQuery } from '@raspi-
 export const ONEHAND_KANA_KEYS = [...'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'];
 export const ONEHAND_ABC_KEYS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'];
 
-export function PartSearchOneHandDock({ query, facets, keysVisible, mode, availableKeys, onFilter, onRemoveFilter, onField, onTyped, onClear, onKeysVisible, onMode, onBackspace }: {
+export function PartSearchOneHandDock({ query, facets, keysVisible, mode, availableKeys, speechAvailable, listening, onSpeech, onFilter, onRemoveFilter, onField, onTyped, onClear, onKeysVisible, onMode, onBackspace }: {
   query: PartSearchQuery; facets: PartSearchFacet[]; keysVisible: boolean; mode: 'kana' | 'abc'; availableKeys: ReadonlySet<string>;
+  speechAvailable: boolean; listening: boolean; onSpeech: () => void;
   onFilter: (filter: PartSearchFilter) => void; onRemoveFilter: (index: number) => void;
   onField: (field: PartSearchQuery['field']) => void; onTyped: (typed: string) => void; onClear: () => void;
   onKeysVisible: (visible: boolean) => void; onMode: (mode: 'kana' | 'abc') => void; onBackspace: () => void;
@@ -41,6 +42,12 @@ export function PartSearchOneHandDock({ query, facets, keysVisible, mode, availa
           className="min-w-[4ch] flex-1 bg-transparent text-[22px] font-black caret-[var(--hp-shelf)] outline-none placeholder:text-base placeholder:text-[var(--hp-ink3)]" />
       </div>
       {(query.typed || query.filters.length > 0) && <button type="button" aria-label="全部消す" className={hp.iconButton} onClick={onClear}>×</button>}
+      {speechAvailable && <button type="button" aria-label="音声で探す" aria-pressed={listening} onClick={onSpeech}
+        className={`${hp.iconButton} aria-pressed:bg-[var(--hp-shelf)] aria-pressed:text-[var(--hp-bg)]`}>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+          <rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
+        </svg>
+      </button>}
       <button type="button" aria-label={keysVisible ? 'キーをしまう' : 'キーを出す'} aria-expanded={keysVisible} className={hp.iconButton} onClick={() => onKeysVisible(!keysVisible)}>
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
           {keysVisible ? <path d="M6 9l6 6 6-6" /> : <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h1M11 10h2M16 10h1M8 14h8" /></>}

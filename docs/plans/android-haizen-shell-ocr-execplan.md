@@ -12,6 +12,9 @@ After this work, a worker holds the phone over the slip and the 製番 is read o
 
 ## Progress
 
+- [x] (2026-10-28) 部品検索のネイティブ音声入力、任意JSブリッジ、候補選択とマイクUI、JVM/Webテストを追加。旧APKではマイクを非表示。共有packages build、Web focused 32件、mobile-placement/kiosk 90ファイル979件、Web `tsc -b`、全体 `lint --max-warnings=0` 成功。
+- [x] (2026-10-28) 音声入力の `testDebugUnitTest assembleDebug` が JDK 17 / SDK 34 で成功(JVMテスト合格、debug APK 生成)。
+- [ ] (2026-10-28) 音声入力の新APKインストールと実機確認（権限許可・拒否、停止、画面遷移、バックグラウンド化、日本語オフライン音声パック）。
 - [x] (2026-10-21) Branch `feat/android-haizen-shell-ocr-spike` and worktree created.
 - [x] (2026-10-21) Milestone 1 source, standalone Gradle configuration, and JUnit4 tests added in `apps/android-haizen-shell/`. Static checks only; wrapper JAR generation, Gradle build/tests, installation, and real-slip measurements remain pending.
 - [x] (2026-10-21) Milestone 1: measurement spike app builds (12 unit tests pass) and installs on the phone.
@@ -32,6 +35,7 @@ After this work, a worker holds the phone over the slip and the 製番 is read o
 
 ## Decision Log
 
+- Decision: 部品の音声入力は Web Speech API を使わず、Android `SpeechRecognizer` と `EXTRA_PREFER_OFFLINE=true`、`ja-JP` を使用する。`RECORD_AUDIO` を実行時要求し、既存のorigin・ページ世代ガードとJSON文字列引用でWebへ返す。オフライン可否は端末の認識サービスと日本語音声パックに依存する。Date: 2026-10-28.
 - Decision: native on-device OCR (ML Kit + CameraX) inside a thin WebView app, rather than improving server OCR. Rationale: the slip has no machine-readable code, server round trips with photos are slow, and on-device recognition can run on every camera frame. Date: 2026-10-21.
 - Decision: the pass line for the spike, fixed before testing, is "90% or more of real slips are confirmed within 1.5 seconds". Date: 2026-10-21.
 - Decision: Milestone 1 is accepted. 6 of 7 timed slips confirmed within 1.5 s; the one miss (2456 ms) took 1.6 s to bring the slip into the frame and then confirmed 850 ms after the 製番 appeared. The user judged it a pass on 2026-10-21 and asked to proceed to Milestone 2.
