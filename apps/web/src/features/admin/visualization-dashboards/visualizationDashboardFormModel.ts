@@ -67,7 +67,15 @@ export function toggleHydraulicOilTarget(dataSourceConfig: string, equipmentNumb
   const number = equipmentNumber.trim();
   if (!parsed.value || !number) return dataSourceConfig;
   const targets = extractHydraulicOilTargetSet(dataSourceConfig);
-  if (targets.has(number)) targets.delete(number);
+  if (targets.has(number)) {
+    targets.delete(number);
+    const dates = parsed.value.manualLastExchangeDates;
+    if (dates && typeof dates === 'object' && !Array.isArray(dates)) {
+      const remainingDates = { ...dates } as Record<string, unknown>;
+      delete remainingDates[number];
+      parsed.value.manualLastExchangeDates = remainingDates;
+    }
+  }
   else if (targets.size < 200) targets.add(number);
   return JSON.stringify({ ...parsed.value, targetEquipmentNumbers: [...targets] }, null, 2);
 }

@@ -60,6 +60,46 @@ describe('HydraulicOilExchangeDataSource', () => {
     expect((await source.fetchData({ csvDashboardId })).rows).toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
   });
+  it.each([
+    { date: '2026-04-01', defaultCycle: undefined, nextDate: '2026-10-01', remainingDays: -27, state: 'overdue' },
+    { date: '2026-04-28', defaultCycle: undefined, nextDate: '2026-10-28', remainingDays: 0, state: 'soon' },
+    { date: '2026-08-31', defaultCycle: '３ヶ月１回', nextDate: '2026-11-30', remainingDays: 33, state: 'ok' },
+    { date: '2025-11-15', defaultCycle: '年１回', nextDate: '2026-11-15', remainingDays: 18, state: 'soon' },
+  ])('uses the manual date and default cycle: %j', async ({ date, defaultCycle, ...expected }) => {
+    queryRaw.mockResolvedValue([]);
+    const result = await source.fetchData({
+      csvDashboardId, targetEquipmentNumbers: ['M1', 'M2'], defaultCycle,
+      manualLastExchangeDates: { M1: date, unselected: date },
+    });
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]).toMatchObject({ ...expected, equipmentManagementNumber: 'M1', lastDate: date, source: 'manual' });
+    expect(result.rows[1]).toMatchObject({ equipmentManagementNumber: 'M2', state: 'none', lastDate: null, remainingDays: null });
+    expect(result.metadata?.counts).toMatchObject({ [expected.state]: 1, none: 1 });
+  });
+  it.each(['2025-01-01', '2026-10-01'])('always prefers CSV dates and cycles over manual date %s', async (date) => {
+    queryRaw.mockResolvedValue([record('M1', '2026-04-01'), record('M2', '2026-04-01', '')]);
+    const result = await source.fetchData({
+      csvDashboardId, targetEquipmentNumbers: ['M1', 'M2'], defaultCycle: '年１回',
+      manualLastExchangeDates: { M1: date, M2: date },
+    });
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]).toMatchObject({ equipmentManagementNumber: 'M1', source: 'csv', lastDate: '2026-04-01', nextDate: '2026-10-01', state: 'overdue', cycle: '6M' });
+    expect(result.rows[1]).toMatchObject({ equipmentManagementNumber: 'M2', source: 'csv', lastDate: '2026-04-01', nextDate: null, state: 'unknown' });
+  });
+  it('keys the cache by manual dates and default cycle, ignoring date key order', async () => {
+    queryRaw.mockResolvedValue([]);
+    const config = { csvDashboardId, targetEquipmentNumbers: ['M1', 'M2'] };
+    await source.fetchData({ ...config, manualLastExchangeDates: { M1: '2026-04-01', M2: '2026-04-28' } });
+    await source.fetchData({ ...config, defaultCycle: '半年１回', manualLastExchangeDates: { M2: '2026-04-28', M1: '2026-04-01' } });
+    expect(queryRaw).toHaveBeenCalledTimes(1);
+    const changedDate = { ...config, manualLastExchangeDates: { M1: '2026-04-02', M2: '2026-04-28' } };
+    expect((await source.fetchData(changedDate)).rows[0].lastDate).toBe('2026-04-02');
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect((await source.fetchData({ ...changedDate, defaultCycle: '年１回' })).rows[0].nextDate).toBe('2027-04-02');
+    expect(queryRaw).toHaveBeenCalledTimes(3);
+    expect((await source.fetchData(config)).rows.every((row) => row.state === 'none')).toBe(true);
+    expect(queryRaw).toHaveBeenCalledTimes(4);
+  });
   it('excludes ROBODRILL from selected machines and records including alternate spellings', async () => {
     queryRaw.mockResolvedValue([
       { ...record('R1', '2026-04-01'), masterName: 'ＲＯＢＯＤＲＩＬＬ' },

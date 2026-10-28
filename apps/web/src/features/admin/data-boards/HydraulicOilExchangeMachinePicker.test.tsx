@@ -27,7 +27,7 @@ describe('hydraulic oil machine picker', () => {
   it('toggles targets, preserves unknown keys and missing numbers, and sorts running machines first', () => {
     render(<Harness />);
     const group = screen.getByRole('group', { name: '対象の加工機' });
-    const buttons = within(group).getAllByRole('button');
+    const buttons = within(group).getAllByRole('button').filter((button) => button.hasAttribute('aria-pressed'));
     expect(buttons).toHaveLength(3);
     expect(buttons[0]).toHaveTextContent('MC-2');
     expect(buttons[1]).toHaveTextContent('LATHE-1');
@@ -41,6 +41,31 @@ describe('hydraulic oil machine picker', () => {
     expect(buttons[0]).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByText('0 台選択')).toBeInTheDocument();
     expect(JSON.parse(screen.getByTestId('config').textContent!).targetEquipmentNumbers).toEqual([]);
+  });
+  it('sets and clears dates, changes the cycle, and removes only the deselected machine date', () => {
+    render(<Harness />);
+    const readConfig = () => JSON.parse(screen.getByTestId('config').textContent!);
+    const missingDate = screen.getByLabelText('MISSING (missing)');
+    expect(missingDate).toHaveAttribute('type', 'date');
+    expect(missingDate).not.toHaveAttribute('max');
+    expect(screen.getByRole('combobox', { name: '交換周期' })).toHaveValue('半年１回');
+    fireEvent.change(missingDate, { target: { value: '2099-12-31' } });
+    expect(readConfig().manualLastExchangeDates).toEqual({ missing: '2099-12-31' });
+    fireEvent.click(screen.getByRole('button', { name: 'missingの前回交換日をクリア' }));
+    expect(readConfig().manualLastExchangeDates).toEqual({});
+    expect(missingDate).toHaveValue('');
+    fireEvent.change(missingDate, { target: { value: '2026-04-01' } });
+    fireEvent.click(screen.getByRole('button', { name: 'MC-2 M2' }));
+    fireEvent.change(screen.getByLabelText('MC-2 (M2)'), { target: { value: '2026-05-01' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '交換周期' }), { target: { value: '３ヶ月１回' } });
+    fireEvent.click(screen.getByRole('button', { name: 'MC-2 M2' }));
+    expect(screen.queryByLabelText('MC-2 (M2)')).not.toBeInTheDocument();
+    expect(readConfig()).toEqual({
+      csvDashboardId: 'csv', extra: { keep: true }, targetEquipmentNumbers: ['missing'],
+      manualLastExchangeDates: { missing: '2026-04-01' }, defaultCycle: '３ヶ月１回',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'MC-2 M2' }));
+    expect(screen.getByLabelText('MC-2 (M2)')).toHaveValue('');
   });
   it('disables the picker for invalid JSON', () => {
     render(<HydraulicOilExchangeMachinePicker config="{" onChange={vi.fn()} />);

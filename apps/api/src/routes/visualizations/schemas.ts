@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseCycle } from '../../services/visualization/data-sources/hydraulic-oil-exchange/cycle-date.js';
 
 const uninspectedConfigSchema = z.object({
   csvDashboardId: z.string().guid(),
@@ -8,6 +9,9 @@ const uninspectedConfigSchema = z.object({
 
 const hydraulicOilExchangeConfigSchema = z.object({
   targetEquipmentNumbers: z.array(z.string().trim().min(1).max(30)).max(200).optional().default([]),
+  manualLastExchangeDates: z.record(z.string(), z.iso.date())
+    .refine((dates) => Object.keys(dates).length <= 200, 'At most 200 manual dates are allowed').optional(),
+  defaultCycle: z.string().refine((cycle) => parseCycle(cycle) !== null, 'Invalid exchange cycle').optional().default('半年１回'),
   csvDashboardId: z.string().guid(),
   inspectionItem: z.string().trim().min(1).max(50).optional(),
   maxRows: z.number().int().positive().optional(),

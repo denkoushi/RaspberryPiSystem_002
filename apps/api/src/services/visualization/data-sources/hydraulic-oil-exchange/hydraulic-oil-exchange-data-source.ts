@@ -6,7 +6,7 @@ import { clampPositiveInt } from '../_shared/data-source-utils.js';
 import { exchangeDates, jstDate, normalizeCycle, type ExchangeState } from './cycle-date.js';
 import { isRobodrill } from './is-robodrill.js';
 
-const COLUMNS = ['equipmentManagementNumber', 'machineName', 'subText', 'cycle', 'lastDate', 'nextDate', 'remainingDays', 'state'];
+const COLUMNS = ['equipmentManagementNumber', 'machineName', 'subText', 'cycle', 'lastDate', 'nextDate', 'remainingDays', 'state', 'source'];
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX_KEYS = 20;
 type SourceRow = {
@@ -40,6 +40,13 @@ export class HydraulicOilExchangeDataSource implements DataSource {
         .filter((value): value is string => typeof value === 'string')
         .map((value) => value.trim()).filter(Boolean),
     )].sort();
+    const manualDates = new Map(
+      Object.entries(config.manualLastExchangeDates && typeof config.manualLastExchangeDates === 'object'
+        ? config.manualLastExchangeDates : {})
+        .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+        .sort(([a], [b]) => a.localeCompare(b)),
+    );
+    const defaultCycle = typeof config.defaultCycle === 'string' ? config.defaultCycle : '半年１回';
     const maxRows = clampPositiveInt(config.maxRows, 200, { max: 200 });
     const empty = (error: string): TableVisualizationData => ({
       kind: 'table', columns: COLUMNS, rows: [],
@@ -48,7 +55,7 @@ export class HydraulicOilExchangeDataSource implements DataSource {
     if (!csvDashboardId) return empty('csvDashboardId is required');
 
     try {
-      const key = JSON.stringify([csvDashboardId, inspectionItem, targetEquipmentNumbers]);
+      const key = JSON.stringify([csvDashboardId, inspectionItem, targetEquipmentNumbers, [...manualDates], defaultCycle]);
       let result = this.cache.get(key);
       if (!result || result.expiresAt <= this.now().getTime() || result.today !== today) {
         const records = await prisma.$queryRaw<SourceRow[]>`
@@ -83,6 +90,7 @@ export class HydraulicOilExchangeDataSource implements DataSource {
             machineName: normalizeMachineNameForSignage(row.masterName?.trim() || row.machineName),
             subText: row.classification?.trim() || row.maker?.trim() || '',
             cycle: normalizeCycle(row.cycle),
+            source: 'csv',
             ...dates,
           };
         });
@@ -91,11 +99,16 @@ export class HydraulicOilExchangeDataSource implements DataSource {
           .filter((number) => !excludedNumbers.has(number) && !recordNumbers.has(number))
           .map((number) => {
             const machine = selectedByNumber.get(number);
+            const manualDate = manualDates.get(number);
             return {
               equipmentManagementNumber: number,
               machineName: normalizeMachineNameForSignage(machine?.name.trim() || number),
               subText: machine?.classification?.trim() || machine?.maker?.trim() || '',
-              cycle: null, lastDate: null, nextDate: null, remainingDays: null, state: 'none' as const,
+              source: 'manual',
+              cycle: manualDate ? normalizeCycle(defaultCycle) : null,
+              ...(manualDate
+                ? exchangeDates(new Date(`${manualDate}T00:00:00+09:00`), defaultCycle, new Date(`${today}T00:00:00+09:00`))
+                : { lastDate: null, nextDate: null, remainingDays: null, state: 'none' as const }),
             };
           });
         const rows = [...recordedRows, ...unrecordedRows].sort((a, b) => {
