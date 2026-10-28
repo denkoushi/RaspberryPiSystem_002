@@ -346,7 +346,7 @@
 ### 2026-10-28: スマホ部品検索の音声入力
 
 - 検索欄のマイクはAndroidネイティブ認識（オフライン優先）の候補を端末内検索へ渡す。既存フィルタを保持し、ヒットする最初の候補を全部の項目で検索する。新APKが必要で、旧APK・通常ブラウザではボタンを隠す。
-- 権限・認識方式の判断と検証状況は [Android ExecPlan](../plans/android-haizen-shell-ocr-execplan.md#decision-log) を参照。実機確認・本番反映は未実施。
+- 権限・認識方式の判断と検証状況は [Android ExecPlan](../plans/android-haizen-shell-ocr-execplan.md#decision-log) を参照。2026-10-28 に本番反映（#2364）。2026-10-29 に新APKを SH-RM15 へ入れ、権限許可・品名/機種名の音声検索・Wi-Fi なしの認識を実機で確認。
 
 ## References
 

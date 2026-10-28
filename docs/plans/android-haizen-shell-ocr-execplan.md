@@ -14,7 +14,8 @@ After this work, a worker holds the phone over the slip and the 製番 is read o
 
 - [x] (2026-10-28) 部品検索のネイティブ音声入力、任意JSブリッジ、候補選択とマイクUI、JVM/Webテストを追加。旧APKではマイクを非表示。共有packages build、Web focused 32件、mobile-placement/kiosk 90ファイル979件、Web `tsc -b`、全体 `lint --max-warnings=0` 成功。
 - [x] (2026-10-28) 音声入力の `testDebugUnitTest assembleDebug` が JDK 17 / SDK 34 で成功(JVMテスト合格、debug APK 生成)。
-- [ ] (2026-10-28) 音声入力の新APKインストールと実機確認（権限許可・拒否、停止、画面遷移、バックグラウンド化、日本語オフライン音声パック）。
+- [x] (2026-10-29) 音声入力の新APKを SH-RM15 に `adb install -r` で更新。権限許可、品名・機種名の音声検索、Wi-Fi なしでの認識を実機で確認。
+- [ ] 音声入力の権限拒否、認識中の停止・画面遷移・バックグラウンド化の実機確認。
 - [x] (2026-10-21) Branch `feat/android-haizen-shell-ocr-spike` and worktree created.
 - [x] (2026-10-21) Milestone 1 source, standalone Gradle configuration, and JUnit4 tests added in `apps/android-haizen-shell/`. Static checks only; wrapper JAR generation, Gradle build/tests, installation, and real-slip measurements remain pending.
 - [x] (2026-10-21) Milestone 1: measurement spike app builds (12 unit tests pass) and installs on the phone.
