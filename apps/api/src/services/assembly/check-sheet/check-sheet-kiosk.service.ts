@@ -66,7 +66,8 @@ function assertValues(item: Item, input: AssemblyCheckSheetStampInput) {
     (item.inputKind === 'NUMBER' ? typeof value !== 'number' || !Number.isFinite(value) : typeof value !== 'string' || !value.trim()));
   // NG can record an inspection that could not be measured; supplied values must still be valid.
   if (invalid || (input.result === 'OK' && [...keys].some((key) => !Object.hasOwn(input.values, key))) ||
-    (item.inputKind === 'CHOICE' && Object.hasOwn(input.values, 'result') && !spec.options?.includes(String(input.values.result)))) {
+    (item.inputKind === 'CHOICE' && Object.hasOwn(input.values, 'result') && !spec.options?.includes(String(input.values.result))) ||
+    (item.inputKind === 'CHOICE' && input.values.result === 'NG' && input.result !== 'NG')) {
     throw new ApiError(400, '記入値を確認してください', undefined, 'CHECK_SHEET_VALUES_INVALID');
   }
   if (input.flagged && (input.result !== 'NG' || !input.ngReason?.trim())) throw new ApiError(400, '問題点を書いてください');
@@ -110,7 +111,7 @@ export class AssemblyCheckSheetKioskService {
         where: { isRevisionHead: true, ...(input.revisionRootId ? { revisionRootId: input.revisionRootId } : {}) }
       });
       const matching = heads.filter((head) => head.modelCode === source?.template.modelCode);
-      const revision = input.revisionRootId ? heads[0] : matching.length === 1 ? matching[0] : heads.length === 1 ? heads[0] : null;
+      const revision = input.revisionRootId ? heads[0] : matching.length === 1 ? matching[0] : null;
       if (!revision) throw new ApiError(409, 'チェックシートの機種を選んでください', undefined, 'CHECK_SHEET_REVISION_REQUIRED');
       const sheet = await tx.assemblyCheckSheet.create({
         data: { workUnitId: unit.id, revisionId: revision.id, clientDeviceId: input.clientDeviceId, headerValues: {
@@ -167,6 +168,13 @@ export class AssemblyCheckSheetKioskService {
       const actor = await resolveActor(tx, input);
       assertRole(item, sheet, actor);
       assertValues(item, input);
+      // Inspecting one item of a condition means it applies; the siblings' NA no longer holds.
+      for (const stale of sheet.stamps.filter((stamp) => stamp.result === 'NA' && stamp.itemId !== item.id &&
+        sheet.revision.items.some((candidate) => candidate.id === stamp.itemId && item.conditionKey && candidate.conditionKey === item.conditionKey))) {
+        const { id: staleId, ...data } = stale;
+        await tx.assemblyCheckSheetStampHistory.create({ data: { ...data, values: data.values as Prisma.InputJsonValue, stampId: staleId } });
+        await tx.assemblyCheckSheetStamp.delete({ where: { id: staleId } });
+      }
       await putStamp(tx, sheet, item, input, actor);
       if (input.result === 'NG' && !input.flagged) await tx.assemblyCheckSheet.update({
         where: { id }, data: { status: 'PAUSED', pausedReason: `${item.itemKey}\u3000${input.ngReason || 'NG'}`,

@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
     assemblyCheckSheetRevision: { update: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findFirstOrThrow: vi.fn(), findUniqueOrThrow: vi.fn() },
     assemblyCheckSheetGroup: { createMany: vi.fn() }, assemblyCheckSheetItem: { createMany: vi.fn() },
     assemblyCheckSheetAsset: { findUnique: vi.fn() },
-    assemblyCheckSheetStamp: { upsert: vi.fn() }, assemblyCheckSheetStampHistory: { create: vi.fn() },
+    assemblyCheckSheetStamp: { upsert: vi.fn(), delete: vi.fn() }, assemblyCheckSheetStampHistory: { create: vi.fn() },
     employee: { findFirst: vi.fn(), findUniqueOrThrow: vi.fn() }, knowledgePositionRank: { findUnique: vi.fn() }
   }, store: { read: vi.fn() }, device: vi.fn()
 }));
@@ -78,6 +78,9 @@ beforeEach(async () => {
   db.assemblyCheckSheetStamp.upsert.mockImplementation(async ({ create, update }: { create: Sheet['stamps'][number]; update: Partial<Sheet['stamps'][number]> }) => {
     const old = sheet!.stamps.find((entry) => entry.itemId === create.itemId);
     if (old) Object.assign(old, update); else sheet!.stamps.push({ ...create, id: randomUUID() });
+  });
+  db.assemblyCheckSheetStamp.delete.mockImplementation(async ({ where }: { where: { id: string } }) => {
+    sheet!.stamps = sheet!.stamps.filter((entry) => entry.id !== where.id);
   });
   db.employee.findFirst.mockImplementation(async ({ where }: { where: { nfcTagUid: string } }) => where.nfcTagUid === 'unknown' ? null : {
     id: employeeId, employeeCode: 'E001', displayName: '山田 一郎', nfcTagUid: where.nfcTagUid, status: where.nfcTagUid === 'inactive' ? 'INACTIVE' : 'ACTIVE'
@@ -212,6 +215,24 @@ describe('check-sheet kiosk route contracts with real service', () => {
     const response = await request(`/${sheet!.id}/conditions`, { conditionKey: 'motor', applies: false, nfcTagUid: 'worker' });
     expect(response.statusCode).toBe(200);
     expect(response.json().stamps.map((entry: { result: string }) => entry.result)).toEqual(['NA', 'NA']);
+  });
+  it('clears sibling NA when one item of the condition is inspected after all', async () => {
+    sheet!.revision.items.slice(0, 2).forEach((item) => { item.conditionKey = 'motor'; item.conditionLabel = 'モータブラケットが一体でない場合'; });
+    await request(`/${sheet!.id}/conditions`, { conditionKey: 'motor', applies: false, nfcTagUid: 'worker' });
+    const response = await stamp(0);
+    expect(response.json().stamps.map((entry: { itemId: string; result: string }) => [entry.itemId, entry.result]))
+      .toEqual([[sheet!.revision.items[0].id, 'OK']]);
+    expect(mocks.db.assemblyCheckSheetStampHistory.create).toHaveBeenCalledTimes(2);
+  });
+  it('does not fall back to the only head of another model', async () => {
+    sheet = null;
+    revisions[0].modelCode = 'OTHER';
+    expect((await request('', { workUnitId: unitId })).json().errorCode).toBe('CHECK_SHEET_REVISION_REQUIRED');
+  });
+  it('rejects an NG choice sent as OK', async () => {
+    Object.assign(sheet!.revision.items[0], { inputKind: 'CHOICE', inputSpec: { options: ['OK', 'NG'] } });
+    expect((await stamp(0, { values: { result: 'NG' } })).statusCode).toBe(400);
+    expect((await stamp(0, { result: 'NG', values: { result: 'NG' }, flagged: true, ngReason: '傷' })).statusCode).toBe(200);
   });
   it('blocks incomplete/flagged completion, then completes and rejects all mutations', async () => {
     expect((await request(`/${sheet!.id}/complete`, { nfcTagUid: 'worker' })).statusCode).toBe(409);
