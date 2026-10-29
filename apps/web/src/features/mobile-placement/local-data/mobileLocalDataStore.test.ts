@@ -73,12 +73,13 @@ describe('IndexedDB replacement failure', () => {
   );
 });
 
-describe('database v3 upgrade', () => {
-  it.each([1, 2])('keeps legacy joined purchase readable after upgrading from v%s', async (oldVersion) => {
+describe('database v4 upgrade', () => {
+  it.each([1, 2, 3])('keeps legacy joined purchase readable after upgrading from v%s', async (oldVersion) => {
     vi.stubGlobal('indexedDB', {});
     const metadata = new Map(Object.entries(versions));
     const stores = new Map<string, unknown[]>([['known', ['FS1']], ['purchase', [purchaseRow]], ['schedule', [scheduleRow]],
-      ...(oldVersion === 2 ? [['placements', [{ id: 'b1' }]] as [string, unknown[]]] : [])]);
+      ...(oldVersion >= 2 ? [['placements', [{ id: 'b1' }]] as [string, unknown[]]] : [])]);
+    if (oldVersion === 3) stores.set('purchaseEnrichment', [{ version: 'e1' }]);
     const createIndex = vi.fn();
     const createObjectStore = vi.fn((name: string) => {
       if (stores.has(name)) throw new Error(`Existing store recreated: ${name}`);
@@ -91,7 +92,7 @@ describe('database v3 upgrade', () => {
     const database = { createObjectStore, transaction: () => ({ objectStore }),
       getAllFromIndex: async (kind: string) => stores.get(kind) };
     mocks.openDB.mockImplementation(async (_name, _version, options) => {
-      options.upgrade(database, oldVersion, 3, { objectStore }); return database;
+      options.upgrade(database, oldVersion, 4, { objectStore }); return database;
     });
     const store = createMobileLocalDataStore('existing');
     expect((await store.lookupPurchase(purchaseRow.purchaseOrderNo))?.rows).toHaveLength(1);
@@ -99,9 +100,13 @@ describe('database v3 upgrade', () => {
     expect(await store.listScheduleByProductNo(scheduleRow.productNo)).toEqual([scheduleRow]);
     expect(metadata.get('schedule')).toEqual(versions.schedule);
     expect(stores.get('known')).toEqual(['FS1']);
-    if (oldVersion === 2) expect(stores.get('placements')).toEqual([{ id: 'b1' }]);
-    expect(mocks.openDB).toHaveBeenCalledWith('existing', 3, expect.anything());
-    expect(createObjectStore).toHaveBeenCalledWith('purchaseEnrichment');
+    if (oldVersion >= 2) expect(stores.get('placements')).toEqual([{ id: 'b1' }]);
+    expect(mocks.openDB).toHaveBeenCalledWith('existing', 4, expect.anything());
+    if (oldVersion < 3) expect(createObjectStore).toHaveBeenCalledWith('purchaseEnrichment');
+    else expect(stores.get('purchaseEnrichment')).toEqual([{ version: 'e1' }]);
+    expect(createObjectStore).toHaveBeenCalledWith('stagingPurchase', { keyPath: 'ordinal' });
+    expect(createObjectStore).toHaveBeenCalledWith('stagingSchedule', { keyPath: 'ordinal' });
+    expect(createObjectStore).toHaveBeenCalledWith('stagingPlacements', { keyPath: 'id' });
   });
 });
 
@@ -136,5 +141,57 @@ describe('IndexedDB independent purchase reads', () => {
     expect((await reloaded.lookupPurchase('1234567890'))?.rows[0].masterPartName).toBe('legacy');
     expect((await reloaded.versions()).purchaseEnrichment).toBeUndefined();
     expect(table('purchaseEnrichment').size).toBe(0);
+  });
+});
+
+describe('IndexedDB staged snapshots', () => {
+  it('persists page progress across store reloads and promotes rows, known seibans and metadata in one transaction', async () => {
+    vi.stubGlobal('indexedDB', {});
+    const tables = new Map<string, Map<unknown, unknown>>();
+    const table = (name: string) => {
+      if (!tables.has(name)) tables.set(name, new Map());
+      return tables.get(name)!;
+    };
+    const objectStore = (name: string) => ({
+      get: async (key: unknown) => table(name).get(key),
+      put: async (value: { ordinal?: number; id?: string }, key?: unknown) => { table(name).set(key ?? value.id ?? value.ordinal, value); },
+      delete: async (key: unknown) => { table(name).delete(key); },
+      clear: async () => { table(name).clear(); },
+      index: () => ({ getAll: async () => [...table(name).values()] }),
+      openCursor: async () => {
+        const values = [...table(name).values()];
+        const cursor = (i: number): unknown => i < values.length ? { value: values[i], continue: async () => cursor(i + 1) } : null;
+        return cursor(0);
+      }
+    });
+    const transaction = vi.fn((names: string | string[]) => ({ objectStore, store: objectStore(String(names)),
+      addEventListener: vi.fn(), done: Promise.resolve() }));
+    mocks.openDB.mockResolvedValue({ transaction, get: async (name: string, key: unknown) => table(name).get(key),
+      getAll: async (name: string) => [...table(name).values()] });
+    const store = createMobileLocalDataStore();
+    await store.replace({ purchase: { ...versions.purchase, rows: [packPurchase(purchaseRow)] },
+      schedule: { ...versions.schedule, rows: [packSchedule(scheduleRow)], knownFseibans: ['FS1'] } });
+    const pageVersion = { version: 'p2', dataUpdatedAt: null, format: 2 as const };
+    await store.writeStagingPage('purchase', pageVersion, 1, 3, [packBasePurchase({ ...purchaseRow, purchasePartName: 'new' })], 1);
+    await store.writeStagingPage('purchase', pageVersion, 2, 3, [packBasePurchase(purchaseRow)], 1);
+    const reloaded = createMobileLocalDataStore();
+    expect(await reloaded.stagingState('purchase')).toEqual({ ...pageVersion, nextPage: 3, pageCount: 3, pageSize: 1 });
+    expect((await reloaded.lookupPurchase('1234567890'))?.rows[0].purchasePartName).toBe('Part');
+    await reloaded.writeStagingPage('purchase', pageVersion, 3, 3, [packBasePurchase(purchaseRow)], 1);
+    await reloaded.promoteStaging('purchase');
+    expect(transaction).toHaveBeenLastCalledWith(['metadata', 'purchase', 'stagingPurchase', 'known'], 'readwrite');
+    expect([...table('purchase').keys()]).toEqual([0, 1, 2]);
+    expect((await reloaded.versions()).purchase).toEqual(pageVersion);
+    expect(table('stagingPurchase').size).toBe(0);
+    expect(await reloaded.stagingState('purchase')).toBeUndefined();
+    const nextSchedule = { version: 's2', dataUpdatedAt: null };
+    await reloaded.writeStagingPage('schedule', nextSchedule, 1, 2, [packSchedule(scheduleRow)], 1, ['NEW']);
+    expect(table('known').get('fseibans')).toEqual(['FS1']);
+    await reloaded.writeStagingPage('schedule', nextSchedule, 2, 2, [packSchedule(scheduleRow)], 1);
+    await reloaded.promoteStaging('schedule');
+    expect(transaction).toHaveBeenLastCalledWith(['metadata', 'schedule', 'stagingSchedule', 'known'], 'readwrite');
+    expect(table('known').get('fseibans')).toEqual(['NEW']);
+    expect((await reloaded.versions()).schedule).toEqual(nextSchedule);
+    expect(table('metadata').has('staging:schedule')).toBe(false);
   });
 });
