@@ -62,6 +62,7 @@ update-frequency: high
 | 業務 GLM（2台構成）の停止と再起動が止まり続けた件 | [KB-426](./KB-426-glm-tp2-crash-and-startup-hang.md) | 1件 | 2026-10-23: 停止は原因未確定（再現せず）。再起動の停止は Spark 2 の Wi-Fi の住所で待ち受けたため。VLLM_HOST_IP を固定して解消 |
 | DeepSeek V4.1-Flash-1017（DGX 2台）の業務チャットとコーディングの評価、測り直しの手順 | [KB-427](./KB-427-deepseek-v41-flash-local-eval.md) | 1件 | 2026-10-27: チャットは正答 110/116 だが誤り 5〜6（GLM 2）。コーディングは確認指示で Codex 並みだが 2〜3 倍遅い。業務 GLM・Codex のまま |
 | 切削01 の SD カード破損と、回収したカードの検査 | [KB-428](./KB-428-sessaku01-sd-card-failure.md) | 1件 | 2026-10-29: 全 31.3GB 読めて傷み 0、カード自身が書き込み禁止。寿命切れでなく個体不良の見込み。RoboDrill01/StoneBase01 は SSD 試験に合わせて計画交換 |
+| CVE-2026-98432(TCP の use-after-free)の暫定対策 | [KB-429](./KB-429-cve-2026-98432-mptcp-mitigation.md) | 1件 | 2026-10-30: 全台が修正前のカーネル。修正版が出るまで MPTCP を止め、tailscaled の待ち受けを TCP に戻す。stonebase で試験済み |
 | eMudhra G3B 中間 CA の不信頼化 | [KB-424](./KB-424-emudhra-g3b-distrust.md) | 1件 | OS/NSS の二層対策、標準ローリング更新経路、ロールバック。実機未反映。 |
 | AIセキュリティスキャン（2026-10・認可まわりの修正5件） | [KB-415](./KB-415-ai-security-scan-2026-10.md) | 1件 | 全体スキャンの指摘7件と対応、本番反映の証跡、未対応項目。 |
 | 外部侵入で運用不能になるリスクの低減（2026-10・復元確認/OS更新/失敗通知） | [KB-416](./KB-416-outside-intrusion-resilience-2026-10.md) | 1件 | 実機確認の結果、Pi5のOS更新と自動セキュリティ更新、バックアップ失敗通知、未対応項目。 |
