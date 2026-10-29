@@ -2,6 +2,9 @@ import { BREAKDOWN_AXES } from './query-plan.mjs';
 import { catalogEntries } from './catalog.mjs';
 import { CAUSE_CATEGORY_IDS } from './cause-categories.mjs';
 import { bareId } from './flywheel-pairs.mjs';
+import { hierarchyGroups } from './value-index.mjs';
+import { contentTokens } from './structural-text.mjs';
+import { buildLexicalIndex, matchesSpecificToken } from './executor.mjs';
 
 const normalize = (value) => String(value).normalize('NFKC').trim();
 const recentSort = (sort) => sort === 'recent' || sort?.direction === 'desc';
@@ -27,6 +30,50 @@ function matchesFilters(record, filters) {
 
 function matchesCause(record, plan, causeById) {
   return !plan.causeCategory || causeById?.get(record.id) === plan.causeCategory;
+}
+
+/** Question-derived scope is independent of the replayed plan, including stale carried filters. */
+export function checkFollowUpAnswer({ question, previousPlan, plan, shown = [], outcome, records, catalog, bodyFields }) {
+  const ids = shown.map(bareId);
+  const unsupported = (reason) => ({ supported: false, scopeOk: null, filtersOk: null, contentOk: null,
+    ok: null, matchedCount: null, expectedIds: [], shown: ids, reason });
+  if (!previousPlan) return unsupported('not_follow_up');
+  if (outcome === 'count') return unsupported('count_answer');
+  const content = plan?.diagnostics?.contentSpan ?? plan?.contentSpan ?? plan?.semanticQuery;
+  if (!contentTokens(content).length) return unsupported('no_content');
+  const fields = catalogEntries(catalog).flatMap((entry) => entry.fields)
+    .filter((field) => field.role === 'organization').map((field) => field.key);
+  if (!fields.length) fields.push('originDepartmentName');
+  const organization = (filters) => (filters ?? []).filter((filter) => fields.includes(filter.field));
+  const planned = organization(plan?.filters);
+  if (planned.some((filter) => !['eq', 'in'].includes(filter.op))) return unsupported('unsupported_op');
+  const surface = normalize(question);
+  const candidates = fields.flatMap((field) => {
+    const values = [...new Set(records.map((record) => record[field]).filter((value) => typeof value === 'string' && value.trim()))];
+    return [...values.map((value) => ({ prefix: value, values: [value] })), ...hierarchyGroups(values)]
+      .map((item) => ({ ...item, field, prefix: normalize(item.prefix) }));
+  }).filter((item) => surface.includes(item.prefix)).sort((left, right) => right.prefix.length - left.prefix.length);
+  const expected = candidates.length ? [candidates[0]] : organization(previousPlan.filters);
+  const inScope = (record) => expected.every((filter) => (filter.values ?? []).some((value) => normalize(record[filter.field]) === normalize(value)));
+  const scopeOk = expected.length === 0 || (planned.length > 0
+    && planned.every((filter) => filter.values?.length > 0 && filter.values.every((value) =>
+      expected.some((scope) => scope.field === filter.field && scope.values.some((item) => normalize(item) === normalize(value)))))
+    && expected.every((scope) => planned.some((filter) => filter.field === scope.field)));
+  // Use the executor's whole-corpus IDF and passage matching, including its one-specific-token rule.
+  const index = buildLexicalIndex(records, bodyFields, content);
+  const matches = (record) => inScope(record) && matchesSpecificToken(record, bodyFields, index);
+  const matched = records.filter(matches);
+  const byId = new Map(records.map((record) => [bareId(record.id), record]));
+  const filtersOk = ids.every((id) => byId.has(id) && matchesFilters(byId.get(id), plan?.filters ?? []));
+  const contentOk = ids.length ? ids.every((id) => byId.has(id) && matches(byId.get(id))) : matched.length === 0;
+  return { supported: true, scopeOk, filtersOk, contentOk, ok: scopeOk && filtersOk && contentOk,
+    matchedCount: matched.length, expectedIds: matched.slice(0, 20).map((record) => bareId(record.id)), shown: ids };
+}
+
+export function followUpLoss(check, fallback) {
+  if (check?.supported !== true || check.ok !== false) return fallback;
+  if (!check.scopeOk) return 'follow_up_scope';
+  return !check.shown.length && check.matchedCount > 0 ? 'follow_up_missed' : 'follow_up_wrong';
 }
 
 export function expectedFilterResults({ plan, records, catalog, causeById = null }) {

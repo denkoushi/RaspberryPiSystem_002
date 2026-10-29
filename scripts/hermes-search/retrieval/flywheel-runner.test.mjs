@@ -1181,8 +1181,9 @@ test('phase six prefers follow-ups, caps comparisons, preserves active and resum
   assert.equal(state.checks[0].decision, 'report');
   assert.equal(state.checks[0].compared, 2);
   assert.equal(state.checks[0].affected, 2);
+  // The follow-up now scores the candidate's unrelated displayed content as a deterministic loss.
   assert.deepEqual(status.plannerVersion, { active: f.baseline, candidate: f.candidate, compared: 2, affected: 2,
-    dev: { n: 1, gained: 0, lost: 0 }, heldout: { n: 1, gained: 1, lost: 0 }, real: { n: 2, gained: 1, lost: 0 } });
+    dev: { n: 1, gained: 0, lost: 0 }, heldout: { n: 1, gained: 0, lost: 1 }, real: { n: 2, gained: 0, lost: 1 } });
   assert.deepEqual(JSON.parse(readFileSync(path.join(f.dir, 'flywheel-status.json'), 'utf8')).plannerVersion, status.plannerVersion);
   assert.match(readFileSync(path.join(f.dir, 'runner-2026-10-03.log'), 'utf8'), /id=planner:real-context/u);
   const resumed = await runFlywheelNight(f.input);
@@ -1250,4 +1251,132 @@ test('phase six preserves a stored active version with the kill switch off and u
   assert.equal(status.plannerVersion.compared, 3);
   assert.deepEqual(f.calls.filter((call) => call.version === f.candidate).map(({ row }) => row.id ?? row.a), ['real-context', 'real-action', 'a1']);
   assert.equal(readPlannerVersion(f.file).active, f.candidate);
+});
+
+function followUpFixture() {
+  const f = realFixture();
+  const departments = ['架空Ａ工場試作部一課', '架空Ａ工場試作部二課', '架空Ｂ工場検証部一課', '架空Ｂ工場検証部二課'];
+  const filter = (values) => ({ field: 'originDepartmentName', op: 'in', values });
+  const previousPlan = { sources: ['nonconformity'], filters: [filter([departments[0]])], semanticQuery: '異物 付着', contentSpan: '異物の付着', sort: null, limit: 5 };
+  const plan = { ...previousPlan, filters: [filter(departments.slice(2))], diagnostics: { contentSpan: previousPlan.contentSpan } };
+  const question = '架空Ｂ工場にも同事例ありますか？';
+  const corpus = Array.from({ length: 10 }, (_, i) => ({ id: `nonconformity:fiction-${i}`, originDepartmentName: departments[i % 4],
+    condition: i === 2 ? '異物の嚙み込みという架空の記録' : '通常という架空の記録' }));
+  const receipts = [
+    { at: '2026-10-03T03:00:00Z', requestId: 'fiction-first', sessionId: 'fiction', recordIds: [], hermesReceipt: { question: '異物の付着を探す架空の質問', outcome: 'clarification', plan: previousPlan } },
+    { at: '2026-10-03T03:01:00Z', requestId: 'fiction-follow', sessionId: 'fiction', recordIds: [], hermesReceipt: { question, outcome: 'no_result', plan } },
+  ];
+  writeFileSync(path.join(f.receiptsDir, 'receipts-2026-10-03.jsonl'), receipts.map(JSON.stringify).join('\n'));
+  const result = (extra = {}) => ({ outcome: 'no_result', shown: [], candidates: ['fiction-2'], judged: 1, plan, loss: null, ...extra });
+  return { ...f, previousPlan, plan, question, result, queue: () => readRealRows(readFileSync(path.join(f.dir, 'regressions.jsonl'), 'utf8')),
+    input: { ...f.input, records: corpus, chat: async () => ({ ok: true, content: '{"grade":2}' }), live: async () => result() } };
+}
+
+test('real follow-up content preserves LLM labels and adds deterministic scope, missed, wrong and unsupported losses', async () => {
+  for (const mode of ['missed', 'scope', 'wrong', 'ok', 'count']) {
+    const f = followUpFixture();
+    const result = f.result(mode === 'scope' ? { plan: { ...f.plan, filters: f.previousPlan.filters } }
+      : mode === 'wrong' ? { outcome: 'answer', shown: ['fiction-6'] }
+      : mode === 'ok' ? { outcome: 'answer', shown: ['fiction-2'] }
+      : mode === 'count' ? { outcome: 'count' } : {});
+    const status = await runFlywheelNight({ ...f.input, live: async (row) => {
+      assert.equal(row.previousPlan.contentSpan, '異物の付着');
+      return structuredClone(result);
+    } });
+    const [row] = readRealRows(readFileSync(realPath(f.dir, '2026-10-03'), 'utf8'));
+    assert.equal(row.kind, 'content');
+    assert.equal(row.followUpCheck.supported, mode !== 'count');
+    assert.deepEqual(row.relevant, []);
+    assert.deepEqual(row.labels['fiction-2'], { g: 2, dgx: 2, jev: 3 });
+    assert.equal(row.live.loss, ['missed', 'scope', 'wrong'].includes(mode) ? `follow_up_${mode}` : mode === 'ok' ? 'other_shown' : 'count_answer');
+    assert.equal(status.regression.pending, ['missed', 'scope', 'wrong'].includes(mode) ? 1 : 0);
+  }
+});
+
+test('regressions replay despite existingRealIds and zero real budget, then retire after three successful nights', async () => {
+  const f = followUpFixture();
+  const first = await runFlywheelNight(f.input);
+  assert.deepEqual(first.regression, { replayed: 0, ok: 0, failed: 0, pending: 1 });
+  const [queued] = f.queue();
+  assert.deepEqual(Object.keys(queued), ['id', 'question', 'previousPlan', 'previousShown', 'context', 'receiptAt', 'firstFailedNight', 'lastNight', 'lastOk']);
+  assert.equal(queued.firstFailedNight, '2026-10-03');
+  assert.equal(queued.lastOk, 0);
+  assert.deepEqual(queued.context, ['異物の付着を探す架空の質問']);
+  const sameNight = await runFlywheelNight({ ...f.input, live: async () => assert.fail('already scored this night') });
+  assert.equal(sameNight.regression.replayed, 0);
+  for (const day of [4, 5, 6, 7]) {
+    const ok = day > 4;
+    const input = { ...f.input, settings: { ...f.input.settings, realBudget: 0 }, now: () => new Date(`2026-10-0${day}T14:30:00Z`),
+      live: async (question) => {
+        assert.deepEqual(question.previousPlan, f.previousPlan);
+        return f.result(ok ? { outcome: 'answer', shown: ['fiction-2'] } : {});
+      } };
+    const status = await runFlywheelNight(input);
+    assert.equal(status.real, 0);
+    assert.deepEqual(status.regression, { replayed: 1, ok: Number(ok), failed: Number(!ok), pending: Number(day < 7) });
+    assert.deepEqual(JSON.parse(readFileSync(path.join(f.dir, 'flywheel-status.json'), 'utf8')).regression, status.regression);
+    const [row] = readRealRows(readFileSync(realPath(f.dir, `2026-10-0${day}`), 'utf8'));
+    assert.equal(row.source, 'regression');
+    assert.equal(row.id, queued.id);
+    assert.equal(row.followUpCheck.ok, ok);
+    assert.equal(row.split, splitOf(queued.id));
+    const again = await runFlywheelNight({ ...input, live: async () => assert.fail('restart must not replay or increment success') });
+    assert.equal(again.regression.replayed, 0);
+    if (day < 7) assert.equal(f.queue()[0].lastOk, day - 4);
+  }
+  assert.deepEqual(f.queue(), []);
+});
+
+test('real filter mismatches enter the same regression queue and unsupported replay does not retire them', async () => {
+  const f = realFixture();
+  const plan = { semanticQuery: '', sort: 'recent', limit: 1, filters: [{ field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }] };
+  await runFlywheelNight({ ...f.input, live: async () => ({ plan, shown: [], outcome: 'no_result' }) });
+  const queue = () => readRealRows(readFileSync(path.join(f.dir, 'regressions.jsonl'), 'utf8'));
+  assert.equal(queue().length, 1);
+  const status = await runFlywheelNight({ ...f.input, now: () => new Date('2026-10-04T14:30:00Z'),
+    settings: { ...f.input.settings, realBudget: 0 }, live: async () => ({ plan, shown: [], outcome: 'count' }) });
+  assert.deepEqual(status.regression, { replayed: 1, ok: 0, failed: 1, pending: 1 });
+  assert.equal(queue()[0].lastOk, 0);
+});
+
+test('regression budget defaults to ten, caps at thirty and stays separate across same-night starts', async () => {
+  assert.equal(flywheelSettings({}).regressionBudget, 10);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_REGRESSION_BUDGET: '999' }).regressionBudget, 30);
+  assert.equal(flywheelSettings({ HERMES_FLYWHEEL_REGRESSION_BUDGET: '0' }).regressionBudget, 0);
+  for (const value of ['', ' ', '-1', '1.5', 'bad']) assert.equal(flywheelSettings({ HERMES_FLYWHEEL_REGRESSION_BUDGET: value }).regressionBudget, 10);
+  const f = followUpFixture();
+  const entries = Array.from({ length: 12 }, (_, i) => ({ id: `r-queue-${i}`, question: f.question, previousPlan: f.previousPlan, previousShown: [], context: [],
+    receiptAt: '2026-10-02T03:00:00Z', firstFailedNight: '2026-10-02', lastNight: '2026-10-02', lastOk: 0 }));
+  writeFileSync(path.join(f.dir, 'regressions.jsonl'), entries.map(JSON.stringify).join('\n'));
+  const input = { ...f.input, settings: { ...f.input.settings, realBudget: 1 } };
+  const first = await runFlywheelNight(input);
+  assert.equal(first.real, 1);
+  assert.deepEqual(first.regression, { replayed: 10, ok: 0, failed: 10, pending: 13 });
+  const again = await runFlywheelNight({ ...input, live: async () => assert.fail('both nightly budgets exhausted') });
+  assert.equal(again.regression.replayed, 0);
+  const next = await runFlywheelNight({ ...input, now: () => new Date('2026-10-04T14:30:00Z') });
+  assert.equal(next.regression.replayed, 10);
+  const rows = readRealRows(readFileSync(realPath(f.dir, '2026-10-04'), 'utf8'));
+  assert.deepEqual(rows.slice(0, 2).map((row) => row.id), ['r-queue-10', 'r-queue-11']);
+});
+
+test('planner version comparison recomputes follow-up checks for real content and regression rows', async () => {
+  const { plannerVersionPath, writePlannerVersion, readPlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const { DEFAULT_PLANNER_QUESTION_VERSION: active, CANDIDATE_PLANNER_QUESTION_VERSION: candidate } = await import('./planner-jev.mjs');
+  const f = followUpFixture();
+  await runFlywheelNight(f.input);
+  const stored = readRealRows(readFileSync(realPath(f.dir, '2026-10-03'), 'utf8'))[0];
+  // Force both versions through scoredRow, with a stale stored check that must not be reused.
+  stored.live.questionVersion = 'fiction-old';
+  stored.followUpCheck.ok = true;
+  stored.source = 'regression';
+  writeFileSync(realPath(f.dir, '2026-10-03'), JSON.stringify(stored) + '\n');
+  const file = plannerVersionPath(f.dir);
+  await writePlannerVersion(file, { active, candidate, checks: [] });
+  const status = await runFlywheelNight({ ...f.input, live: null, settings: { ...f.input.settings, realBudget: 0, plannerBudget: 1 },
+    liveFactory: async ({ plannerOptions }) => async () => f.result(plannerOptions.questionVersion === candidate ? { outcome: 'answer', shown: ['fiction-2'] } : {}),
+  });
+  assert.deepEqual(status.plannerVersion.real, { n: 1, gained: 1, lost: 0 });
+  assert.equal(readPlannerVersion(file).checks[0].decision, 'report');
+  assert.equal(readPlannerVersion(file).active, active);
 });

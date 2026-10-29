@@ -52,7 +52,7 @@ export function activePlannerQuestionVersion(env = process.env) {
 }
 
 function rowId(row) {
-  return row.source === 'real' || row.kind === 'filter' ? row.id : bareId(row.a);
+  return ['real', 'regression'].includes(row.source) || row.kind === 'filter' ? row.id : bareId(row.a);
 }
 
 function normalized(value) {
@@ -72,7 +72,7 @@ function planKey(plan) {
 }
 
 export function comparePlannerVersions({ questions, baselineRows, candidateRows, labels }) {
-  const cases = (rows) => rows.map((row) => ({ id: rowId(row), shown: row.live.shown, filterCheck: row.filterCheck }));
+  const cases = (rows) => rows.map((row) => ({ id: rowId(row), shown: row.live.shown, filterCheck: row.filterCheck, followUpCheck: row.followUpCheck }));
   const baseline = new Map(baselineRows.map((row) => [rowId(row), row]));
   const candidate = new Map(candidateRows.map((row) => [rowId(row), row]));
   let affected = 0;
