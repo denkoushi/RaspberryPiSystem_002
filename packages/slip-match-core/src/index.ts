@@ -9,3 +9,4 @@ export * from './genpyo-mo-extract.js';
 export * from './genpyo-field-normalize.js';
 export * from './actual-slip-ocr-preview.js';
 export * from './native-slip.js';
+export * from './purchase-enrichment.js';

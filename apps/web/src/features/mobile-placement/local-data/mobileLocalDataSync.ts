@@ -3,7 +3,7 @@ import { MOBILE_REQUEST_TIMEOUT_MS, mobileRequest } from '../connectivity';
 import { mobileLocalDataStore } from './mobileLocalDataStore';
 
 import type { MobileLocalDataStore } from './mobileLocalDataStore';
-import type { MobileDataVersions, PlacementsSnapshot, PurchaseSnapshot, ScheduleSnapshot } from '@raspi-system/slip-match-core';
+import type { MobileDataVersions, PlacementsSnapshot, MobilePurchaseSnapshot, PurchaseEnrichmentSnapshot, ScheduleSnapshot } from '@raspi-system/slip-match-core';
 
 const base = '/kiosk/mobile-local-data';
 const requestOptions = { kioskTelemetry: 'background', timeout: MOBILE_REQUEST_TIMEOUT_MS } as const;
@@ -11,11 +11,18 @@ const snapshotTimeoutMs = 180_000;
 export const mobileDataApi = {
   async versions() {
     const { api } = await import('../../../api/http');
-    return (await mobileRequest(() => api.get<MobileDataVersions>(`${base}/versions`, requestOptions))).data;
+    return (await mobileRequest(() => api.get<MobileDataVersions>(`${base}/versions`, { ...requestOptions, params: { format: '2' } }))).data;
   },
-  async purchase(version?: string) {
+  async purchase(version?: string, independent = false) {
     const { api } = await import('../../../api/http');
-    const response = await mobileRequest(() => api.get<PurchaseSnapshot>(`${base}/purchase`, {
+    const response = await mobileRequest(() => api.get<MobilePurchaseSnapshot>(`${base}/purchase`, {
+      ...requestOptions, timeout: snapshotTimeoutMs, params: { version, ...(independent ? { format: '2' } : {}) }, validateStatus: (status) => status === 200 || status === 304
+    }), { timeoutMs: snapshotTimeoutMs });
+    return response.status === 304 ? null : response.data;
+  },
+  async purchaseEnrichment(version?: string) {
+    const { api } = await import('../../../api/http');
+    const response = await mobileRequest(() => api.get<PurchaseEnrichmentSnapshot>(`${base}/purchaseEnrichment`, {
       ...requestOptions, timeout: snapshotTimeoutMs, params: { version }, validateStatus: (status) => status === 200 || status === 304
     }), { timeoutMs: snapshotTimeoutMs });
     return response.status === 304 ? null : response.data;
@@ -35,7 +42,7 @@ export const mobileDataApi = {
     return response.status === 304 ? null : response.data;
   }
 };
-export function createMobileDataSync(store: MobileLocalDataStore, remote = mobileDataApi) {
+export function createMobileDataSync(store: MobileLocalDataStore, remote: Omit<typeof mobileDataApi, 'purchaseEnrichment'> & Partial<Pick<typeof mobileDataApi, 'purchaseEnrichment'>> = mobileDataApi) {
   let pending: Promise<void> | undefined;
   const baseDelay = 30 * 60 * 1000;
   let retryDelay = baseDelay;
@@ -48,18 +55,27 @@ export function createMobileDataSync(store: MobileLocalDataStore, remote = mobil
       try {
         // Even during backoff a lightweight check can discover a repaired/new dataset.
         const latest = await remote.versions();
-        versionKey = JSON.stringify([latest.purchase.version, latest.schedule.version, latest.placements?.version]);
+        versionKey = JSON.stringify([latest.purchase.version, latest.schedule.version, latest.placements?.version, latest.purchaseEnrichment?.version]);
         if (Date.now() < retryAt && (failedVersions === undefined || failedVersions === versionKey)) return;
         const local = await store.versions();
-        const purchase = local.purchase?.version !== latest.purchase.version ? await remote.purchase(local.purchase?.version) : null;
+        const independent = !!latest.purchaseEnrichment;
+        const purchaseVersion = (local.purchase?.format === 2) === independent ? local.purchase?.version : undefined;
+        const purchase = purchaseVersion !== latest.purchase.version
+          ? independent ? await remote.purchase(purchaseVersion, true) : await remote.purchase(purchaseVersion) : null;
+        const needsEnrichment = latest.purchaseEnrichment && local.purchaseEnrichment?.version !== latest.purchaseEnrichment.version;
+        const purchaseEnrichment = needsEnrichment ? await remote.purchaseEnrichment?.(local.purchaseEnrichment?.version) : null;
+        if (needsEnrichment && !purchaseEnrichment ||
+            purchase && ('format' in purchase && purchase.format === 2) !== independent) {
+          throw new Error('Mobile purchase format or enrichment unavailable');
+        }
         const schedule = local.schedule?.version !== latest.schedule.version ? await remote.schedule(local.schedule?.version) : null;
         // An API that predates placements omits its version; keep purchase/schedule syncing.
         const placements = latest.placements && local.placements?.version !== latest.placements.version
           ? await remote.placements(local.placements?.version) : null;
-        if (placements && placements.version !== latest.placements?.version || purchase && purchase.version !== latest.purchase.version || schedule && schedule.version !== latest.schedule.version) {
+        if (purchaseEnrichment && purchaseEnrichment.version !== latest.purchaseEnrichment?.version || placements && placements.version !== latest.placements?.version || purchase && purchase.version !== latest.purchase.version || schedule && schedule.version !== latest.schedule.version) {
           throw new Error('Mobile data changed during download');
         }
-        if (purchase || schedule || placements) await store.replace({ ...(placements ? { placements } : {}), ...(purchase ? { purchase } : {}), ...(schedule ? { schedule } : {}) });
+        if (purchase || schedule || placements || purchaseEnrichment) await store.replace({ ...(purchaseEnrichment ? { purchaseEnrichment } : {}), ...(placements ? { placements } : {}), ...(purchase ? { purchase } : {}), ...(schedule ? { schedule } : {}) });
         retryDelay = baseDelay;
         retryAt = 0;
         failedVersions = undefined;

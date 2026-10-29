@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '../../lib/prisma.js';
 import { normalizePartName } from '../../lib/part-name-normalize.js';
 import {
@@ -15,7 +17,7 @@ type PurchasePart = {
   purchasePartName: string;
 };
 
-type ScheduleCandidate = {
+export type ScheduleCandidate = {
   seiban: string;
   fhincd: string;
   fhinmei: string;
@@ -42,26 +44,7 @@ export async function findEarliestPlannedStartDatesForPurchaseRows(
   ))];
   if (seibans.length === 0) return purchaseRows.map(() => null);
 
-  const rows = await prisma.$queryRaw<ScheduleCandidate[]>`
-    SELECT
-      COALESCE(r."rowData"->>'FSEIBAN', '') AS seiban,
-      COALESCE(r."rowData"->>'FHINCD', '') AS fhincd,
-      COALESCE(r."rowData"->>'FHINMEI', '') AS fhinmei,
-      s."plannedStartDate",
-      (CASE WHEN (r."rowData"->>'ProductNo') ~ '^[0-9]+$'
-        THEN (r."rowData"->>'ProductNo')::bigint ELSE -1 END)::text AS "productNo",
-      ${buildProductionScheduleEffectiveCompletedSql()} AS completed
-    FROM "CsvDashboardRow" r
-    INNER JOIN "ProductionScheduleOrderSupplement" s ON s."csvDashboardRowId" = r.id
-    LEFT JOIN "ProductionScheduleProgress" AS "p"
-      ON "p"."csvDashboardRowId" = r.id AND "p"."csvDashboardId" = r."csvDashboardId"
-    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
-      ON "ext"."csvDashboardRowId" = r.id AND "ext"."csvDashboardId" = r."csvDashboardId"
-    WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND COALESCE(r."rowData"->>'FSEIBAN', '') = ANY(${seibans}::text[])
-      AND ${buildMaxProductNoWinnerCondition('r')}
-  `;
+  const rows = await listPurchasePlannedStartCandidates(seibans);
 
   type SelectedDate = { productNo: bigint; completed: boolean; date: Date };
   const byMatchKey = new Map<string, SelectedDate>();
@@ -92,4 +75,28 @@ export async function findEarliestPlannedStartDatesForPurchaseRows(
     byPartName.get(lookupKey(row.seiban, normalizePartName(row.purchasePartName)))?.date ??
     null
   );
+}
+
+/** Full schedule-derived candidates for independent mobile display data. */
+export async function listPurchasePlannedStartCandidates(seibans?: string[]): Promise<ScheduleCandidate[]> {
+  return await prisma.$queryRaw<ScheduleCandidate[]>`
+    SELECT
+      COALESCE(r."rowData"->>'FSEIBAN', '') AS seiban,
+      COALESCE(r."rowData"->>'FHINCD', '') AS fhincd,
+      COALESCE(r."rowData"->>'FHINMEI', '') AS fhinmei,
+      s."plannedStartDate",
+      (CASE WHEN (r."rowData"->>'ProductNo') ~ '^[0-9]+$'
+        THEN (r."rowData"->>'ProductNo')::bigint ELSE -1 END)::text AS "productNo",
+      ${buildProductionScheduleEffectiveCompletedSql()} AS completed
+    FROM "CsvDashboardRow" r
+    INNER JOIN "ProductionScheduleOrderSupplement" s ON s."csvDashboardRowId" = r.id
+    LEFT JOIN "ProductionScheduleProgress" AS "p"
+      ON "p"."csvDashboardRowId" = r.id AND "p"."csvDashboardId" = r."csvDashboardId"
+    LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"
+      ON "ext"."csvDashboardRowId" = r.id AND "ext"."csvDashboardId" = r."csvDashboardId"
+    WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      ${seibans ? Prisma.sql`AND COALESCE(r."rowData"->>'FSEIBAN', '') = ANY(${seibans}::text[])` : Prisma.empty}
+      AND ${buildMaxProductNoWinnerCondition('r')}
+  `;
 }

@@ -14,16 +14,19 @@ export async function registerMobileLocalDataRoutes(app: FastifyInstance, deps: 
   app.get('/kiosk/mobile-local-data/versions', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
     reply.header('Cache-Control', 'private, no-store');
-    return getMobileDataVersions();
+    const { format } = z.object({ format: z.enum(['2']).optional() }).parse(request.query);
+    const { legacyPurchase, purchaseEnrichment, ...versions } = await getMobileDataVersions();
+    return format === '2' ? { ...versions, purchaseEnrichment } : { ...versions, purchase: legacyPurchase };
   });
   app.get('/kiosk/mobile-local-data/:dataset', { config: { rateLimit: { max: 30, timeWindow: '1 minute' }, compress: false } }, async (request, reply) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
-    const { dataset } = z.object({ dataset: z.enum(['purchase', 'schedule', 'placements']) }).parse(request.params);
-    const { version } = z.object({ version: z.string().optional() }).parse(request.query);
-    const current = (await getMobileDataVersions())[dataset];
+    const { dataset } = z.object({ dataset: z.enum(['purchase', 'schedule', 'placements', 'purchaseEnrichment']) }).parse(request.params);
+    const { version, format } = z.object({ version: z.string().optional(), format: z.enum(['2']).optional() }).parse(request.query);
+    const kind = dataset === 'purchase' && format !== '2' ? 'legacyPurchase' : dataset;
+    const current = (await getMobileDataVersions())[kind];
     reply.header('Cache-Control', 'private, no-store').header('Vary', 'Accept-Encoding');
     if (version === current.version) return reply.code(304).send();
-    const snapshot = await getMobileDataSnapshot(dataset, current);
+    const snapshot = await getMobileDataSnapshot(kind, current);
     request.log.info({ dataset, version: snapshot.version, rows: snapshot.rowCount,
       jsonBytes: snapshot.jsonBytes, gzipBytes: snapshot.gzip.length, buildMs: snapshot.buildMs }, 'Mobile local data snapshot');
     reply.type('application/json');

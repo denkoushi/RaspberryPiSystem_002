@@ -20,8 +20,7 @@ import {
   type ActualSlipOcrFeedback
 } from './actual-slip-ocr-feedback';
 import { scanFseibanNative } from './haizenNative';
-import { verifyLocalFirst } from './local-data/localFirstLookup';
-import { mobileLocalDataStore } from './local-data/mobileLocalDataStore';
+import { snapNativeLocalFirst, verifyLocalFirst } from './local-data/localFirstLookup';
 import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
 import { createSlipVerifyRecorder } from './verify-records/recordSlipVerify';
 
@@ -189,7 +188,7 @@ export function useMobilePlacementPageState() {
   const scanActualSlipNative = useCallback(() => runActualSlipOcr(async () => {
     const result = await scanFseibanNative();
     if (result.status === 'cancelled') return null;
-    return await mobileLocalDataStore.snapNative(result.tokens, result.text) ?? snapFseibanTokens({ tokens: result.tokens, text: result.text });
+    return snapNativeLocalFirst(result.tokens, result.text, () => snapFseibanTokens({ tokens: result.tokens, text: result.text }));
   }, false), [runActualSlipOcr]);
 
   const linkLastVerifyRecord = useCallback((clientRecordId: string) => verifyRecorder.link({
