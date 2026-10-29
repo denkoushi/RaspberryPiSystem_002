@@ -21,7 +21,7 @@ docker run -d \
   --health-interval=10s \
   --health-timeout=5s \
   --health-retries=5 \
-  pgvector/pgvector:pg15
+  pgvector/pgvector:pg18
 
 echo "PostgreSQLの起動を待機中..."
 timeout=60

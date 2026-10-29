@@ -176,6 +176,8 @@ describe('mobile data versions and snapshots', () => {
       const old = (await app.inject('/kiosk/mobile-local-data/versions')).json();
       const modern = (await app.inject('/kiosk/mobile-local-data/versions?format=2')).json();
       expect(old).not.toHaveProperty('purchaseEnrichment');
+      expect(old).not.toHaveProperty('paged');
+      expect(modern.paged).toBe(true);
       expect(modern).toHaveProperty('purchaseEnrichment'); expect(modern).not.toHaveProperty('legacyPurchase');
       expect(old.purchase.version).not.toBe(modern.purchase.version);
       const legacy = (await app.inject('/kiosk/mobile-local-data/purchase')).json();
@@ -183,6 +185,8 @@ describe('mobile data versions and snapshots', () => {
       expect(unpackPurchase(legacy.rows[0])).toMatchObject({ masterPartName: 'マスタ', machineName: '機種', plannedStartDate: '2026-11-01' });
       const raw = (await app.inject('/kiosk/mobile-local-data/purchase?format=2')).json();
       expect(raw).toMatchObject({ format: 2, version: modern.purchase.version });
+      expect(raw).not.toHaveProperty('page');
+      expect(legacy).not.toHaveProperty('page');
       expect(unpackBasePurchase(raw.rows[0])).toMatchObject(row);
       expect((await app.inject(`/kiosk/mobile-local-data/purchase?format=2&version=${modern.purchase.version}`)).statusCode).toBe(304);
       const enrichment = (await app.inject('/kiosk/mobile-local-data/purchaseEnrichment')).json();
@@ -251,7 +255,52 @@ describe('mobile data versions and snapshots', () => {
       masterPartName: 'マスタ部品名称', machineName: '工作機械', plannedStartDate: '2026-10-27' }));
     const data = await createMobileDataCache(getMobileDataVersions, () => Promise.resolve({ rows }))('purchase');
     expect(data.rowCount).toBe(225_000); expect(data.gzip.length).toBeLessThan(data.jsonBytes);
+    expect(data.pages).toHaveLength(20);
+    expect(data.pageSize).toBe(11_250);
     console.info(JSON.stringify({ syntheticRows: data.rowCount, jsonBytes: data.jsonBytes, gzipBytes: data.gzip.length, buildMs: data.buildMs }));
+  });
+  it('caches stable gzip pages, keeps known seibans on page one and retains the full response', async () => {
+    const rows = Array.from({ length: 10_001 }, (_, i) => ['r' + i, 'FS1', String(i), 'MD1', 'Part', 'M', 1]);
+    const build = vi.fn().mockResolvedValue({ rows, knownFseibans: ['FS1', 'FS_NO_PART'] });
+    const cache = createMobileDataCache(getMobileDataVersions, build);
+    const snapshot = await cache('schedule');
+    const pages = snapshot.pages.map((page) => JSON.parse(gunzipSync(page.gzip).toString()));
+    expect(pages).toHaveLength(3);
+    expect(pages.map((page) => page.page)).toEqual([1, 2, 3]);
+    expect(pages.every((page) => page.pageSize === 5000 && page.pageCount === 3)).toBe(true);
+    expect(pages[0].knownFseibans).toEqual(['FS1', 'FS_NO_PART']);
+    expect(pages[1]).not.toHaveProperty('knownFseibans');
+    expect(pages[2]).not.toHaveProperty('knownFseibans');
+    expect(pages.flatMap((page) => page.rows)).toEqual(rows);
+    expect(JSON.parse(gunzipSync(snapshot.gzip).toString())).toMatchObject({ rows, knownFseibans: ['FS1', 'FS_NO_PART'] });
+    expect(await cache('schedule')).toBe(snapshot);
+    expect(build).toHaveBeenCalledTimes(1);
+  });
+  it('serves negotiated pages, ignores size hints, and returns 409 for a changed pageVersion before 304', async () => {
+    const app = Fastify();
+    await registerMobileLocalDataRoutes(app, { requireClientDevice: async () => ({} as never) });
+    mocks.schedule.mockResolvedValue(stamp('2026-10-30T00:00:00Z'));
+    const current = (await getMobileDataVersions(true)).schedule;
+    try {
+      const url = `/kiosk/mobile-local-data/schedule?format=2&page=1&pageVersion=${current.version}`;
+      const first = await app.inject(url + '&pageSize=1');
+      expect(first.statusCode).toBe(200);
+      expect(first.json()).toMatchObject({ ...current, page: 1, pageCount: 1, pageSize: 5000,
+        knownFseibans: ['FS1', 'FS_WITH_NO_PART'] });
+      const zipped = await app.inject({ url: url + '&pageSize=99999', headers: { 'accept-encoding': 'gzip' } });
+      expect(gunzipSync(zipped.rawPayload).toString()).toBe(first.body);
+      const full = (await app.inject('/kiosk/mobile-local-data/schedule?format=2')).json();
+      expect(full).toEqual({ ...current, rows: first.json().rows, knownFseibans: ['FS1', 'FS_WITH_NO_PART'] });
+      expect((await app.inject('/kiosk/mobile-local-data/schedule?page=1')).statusCode).toBe(400);
+      expect((await app.inject('/kiosk/mobile-local-data/schedule?format=2&page=2')).statusCode).toBe(400);
+      expect((await app.inject('/kiosk/mobile-local-data/purchaseEnrichment?format=2&page=1')).statusCode).toBe(400);
+      mocks.schedule.mockResolvedValue(stamp('2026-10-31T00:00:00Z'));
+      const next = (await getMobileDataVersions(true)).schedule;
+      expect((await app.inject(url + `&version=${next.version}`)).statusCode).toBe(409);
+      const restarted = await app.inject(`/kiosk/mobile-local-data/schedule?format=2&page=1&pageVersion=${next.version}`);
+      expect(restarted.statusCode).toBe(200);
+      expect(restarted.json().version).toBe(next.version);
+    } finally { await app.close(); }
   });
   it('authenticates version/data routes, returns 304 without build, and sends gzip', async () => {
     const app = Fastify();

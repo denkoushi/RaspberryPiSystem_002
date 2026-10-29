@@ -35,12 +35,12 @@ case "$TEST_MODE" in
 name: $RUN_ID
 services:
   db:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_PASSWORD: dummy-test-password
       POSTGRES_DB: borrow_return
     tmpfs:
-      - /var/lib/postgresql/data
+      - /var/lib/postgresql
     command: [postgres, -c, log_statement=all, -c, log_duration=on, -c, log_min_duration_statement=0]
 YAML
     docker compose -f "$TEMP_DIR/compose.yml" up -d >/dev/null
