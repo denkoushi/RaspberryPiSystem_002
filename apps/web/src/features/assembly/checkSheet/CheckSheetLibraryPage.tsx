@@ -91,24 +91,24 @@ export function CheckSheetLibraryPage({ backLink }: { backLink?: ReactNode }) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-900 text-[22px] text-slate-100 [font-variant-numeric:tabular-nums] [&_input]:h-14 [&_input]:w-full [&_input]:min-w-0 [&_input]:rounded-lg [&_input]:border-2 [&_input]:border-slate-600 [&_input]:bg-slate-900 [&_input]:px-3 [&_input]:text-[22px] [&_input]:text-white [&_select]:h-14 [&_select]:min-w-0 [&_select]:rounded-lg [&_select]:border-2 [&_select]:border-slate-600 [&_select]:bg-slate-900 [&_select]:px-3 [&_select]:text-xl [&_select]:text-white [&_textarea]:min-w-0 [&_textarea]:resize-none [&_textarea]:rounded-lg [&_textarea]:border-2 [&_textarea]:border-slate-600 [&_textarea]:bg-slate-900 [&_textarea]:px-3 [&_textarea]:py-2 [&_textarea]:text-[22px] [&_textarea]:text-white [&_button]:min-h-[52px] [&_:focus-visible]:outline [&_:focus-visible]:outline-2 [&_:focus-visible]:outline-emerald-500">
-      <header className="flex h-[88px] shrink-0 items-center gap-5 border-b-2 border-slate-700 bg-slate-800 px-8">
-        {draft ? <Button type="button" variant="ghostOnDark" disabled={save.isPending} className="h-[60px] px-6 text-[22px]" onClick={() => { setDraft(null); upload.reset(); openGmailImport.reset(); }}>やめる</Button> : backLink}
-        <h1 className="min-w-0 truncate text-3xl font-extrabold">{draft ? fileName || '取り込み内容' : '組立チェックシート'}</h1>
+      <header className="flex h-11 shrink-0 items-center gap-3 border-b border-slate-700 bg-slate-800 px-4">
+        {draft ? <Button type="button" variant="ghostOnDark" disabled={save.isPending} className="h-9 px-3 text-base" onClick={() => { setDraft(null); upload.reset(); openGmailImport.reset(); }}>やめる</Button> : backLink}
+        <h1 className="min-w-0 truncate text-lg font-bold">{draft ? fileName || '取り込み内容' : '組立チェックシート'}</h1>
         {!draft && <div className="ml-auto shrink-0">
           <input ref={fileInput} type="file" accept=".xlsx" aria-label="チェックシートファイル" className="hidden" onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = '';
             if (file) upload.mutate(file);
           }} />
-          <Button variant="ghostOnDark" disabled={busy} onClick={() => fileInput.current?.click()} className="text-xl">ファイルから取り込み</Button>
+          <Button variant="ghostOnDark" disabled={busy} onClick={() => fileInput.current?.click()} className="h-9 px-3 text-base">ファイルから取り込み</Button>
         </div>}
       </header>
       {!draft ? <>
         {upload.isError && <p role="alert" className="whitespace-pre-wrap px-8 text-red-300">{errorMessage(upload.error)}</p>}
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,820fr)_minmax(0,1100fr)]">
-          <section className="grid min-h-0 min-w-0 grid-rows-[80px_minmax(0,1fr)]">
-            <div className="flex items-center gap-4 px-8"><h2 className="text-[26px] font-extrabold">届いたシート</h2><span className={`rounded-full px-3 py-1 font-bold ${inbox.length ? 'bg-emerald-500 text-white' : 'bg-slate-800'}`}>{inbox.length}</span></div>
-            <div className="min-h-0 space-y-3.5 overflow-y-auto px-8 pb-8">
+          <section className="grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)]">
+            <div className="flex items-center gap-2 px-4"><h2 className="text-lg font-bold">届いたシート</h2><span className={`rounded-full px-2 text-base font-bold ${inbox.length ? 'bg-emerald-500 text-white' : 'bg-slate-800'}`}>{inbox.length}</span></div>
+            <div className="min-h-0 space-y-3 overflow-y-auto px-4 pb-4">
               {(gmailImports.isError || openGmailImport.isError || dismissGmailImport.isError) && <p role="alert" className="whitespace-pre-wrap text-red-300">{errorMessage(gmailImports.error ?? openGmailImport.error ?? dismissGmailImport.error)}</p>}
               {gmailImports.isLoading ? <p role="status">読み込み中</p> : !gmailImports.isError && !inbox.length && <div className="grid h-[220px] place-items-center rounded-2xl border-2 border-dashed border-slate-700 text-2xl text-slate-400">届いたシートはありません</div>}
               {inbox.map((item) => <div key={item.importId} className="grid grid-cols-[minmax(0,1fr)_150px] overflow-hidden rounded-2xl border-2 border-slate-700 bg-slate-800">
@@ -119,9 +119,9 @@ export function CheckSheetLibraryPage({ backLink }: { backLink?: ReactNode }) {
               </div>)}
             </div>
           </section>
-          <section className="grid min-h-0 min-w-0 grid-rows-[80px_minmax(0,1fr)] border-l-2 border-slate-700">
-            <div className="flex items-center gap-4 px-8"><h2 className="text-[26px] font-extrabold">保存済み</h2><span className="rounded-full bg-slate-800 px-3 py-1 font-bold">{revisions.data?.length ?? 0}</span></div>
-            <div className="min-h-0 overflow-auto px-8 pb-8">
+          <section className="grid min-h-0 min-w-0 grid-rows-[40px_minmax(0,1fr)] border-l-2 border-slate-700">
+            <div className="flex items-center gap-2 px-4"><h2 className="text-lg font-bold">保存済み</h2><span className="rounded-full bg-slate-800 px-2 text-base font-bold">{revisions.data?.length ?? 0}</span></div>
+            <div className="min-h-0 overflow-auto px-4 pb-4">
               {revisions.isError && <p role="alert" className="text-red-300">{errorMessage(revisions.error)}</p>}
               {revisions.isLoading && <p role="status">読み込み中</p>}
               <table className="w-full table-fixed text-left [&_td]:break-words [&_td]:border-b [&_td]:border-slate-700 [&_td]:px-4 [&_td]:py-[18px] [&_th]:sticky [&_th]:top-0 [&_th]:border-b-2 [&_th]:border-slate-700 [&_th]:bg-slate-900 [&_th]:px-4 [&_th]:pb-3 [&_th]:text-[19px] [&_th]:font-semibold [&_th]:text-slate-400">
@@ -173,8 +173,8 @@ export function CheckSheetLibraryPage({ backLink }: { backLink?: ReactNode }) {
                 </div>)}
               </div>
             </section>
-            <aside className="grid min-h-0 min-w-0 grid-rows-[80px_minmax(0,1fr)] border-l-2 border-slate-700 bg-slate-800">
-              <div className="flex items-center gap-1.5 border-b-2 border-slate-700 px-6 pt-3.5">
+            <aside className="grid min-h-0 min-w-0 grid-rows-[56px_minmax(0,1fr)] border-l-2 border-slate-700 bg-slate-800">
+              <div className="flex items-center gap-1.5 border-b-2 border-slate-700 px-6">
                 <div role="tablist" aria-label="見直し" className="flex h-full min-w-0">
                   {([['item', `項目 ${selectedItem?.itemKey ?? ''}`], ['cells', '記入セル'], ['members', '担当者']] as const).map(([key, label]) => <button key={key} type="button" role="tab" id={`check-sheet-tab-${key}`} aria-selected={tab === key} aria-controls="check-sheet-pane" className={`h-16 border-b-4 px-4 font-bold ${tab === key ? 'border-emerald-500 text-white' : 'border-transparent text-slate-400'}`} onClick={() => setTab(key)}>{label}</button>)}
                 </div>
