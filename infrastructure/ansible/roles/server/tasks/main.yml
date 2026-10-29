@@ -100,6 +100,7 @@
     mode: '0750'
   loop:
     - "{{ repo_path }}/storage"
+    - "{{ repo_path }}/storage/haizen-app"
     - "{{ repo_path }}/storage/part-measurement-drawings-derivatives"
     - "{{ repo_path }}/storage/assembly-procedure-assets"
     - "{{ repo_path }}/storage/work-instruction-assets"

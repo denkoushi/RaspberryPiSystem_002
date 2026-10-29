@@ -139,6 +139,8 @@ services:
       - file-integrity-storage:/app/storage/.integrity
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions
+      # 配膳アプリの更新APK（APIは読み取り専用）
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/haizen-app:/app/storage/haizen-app:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/config:/app/config
       # バックアップ保存先（ローカルストレージプロバイダー用）
       - ${PI5_BACKUP_DIR:-/opt/backups}:/opt/backups
