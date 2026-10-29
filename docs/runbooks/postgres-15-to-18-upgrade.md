@@ -17,7 +17,10 @@ last_verified: 2026-10-29
 ## 前提条件
 
 - **本番移行の実行直前にユーザーの明示承認を得る。** 準備PRの承認とは別に扱う。
-- 試し移行・切戻しの実測時間を記録し、保守時間はその3倍を確保する。
+- 試し移行・切戻しの実測時間を記録し、保守時間はその3倍以上を確保する。
+  2026-10-29のMac試行はダンプ150秒、コピー復元82秒、preflight 3秒、migrate 100秒、
+  停止＋activate 18は5秒、切戻しの停止＋activate 15は4秒。
+  Pi5は遅くなる見込みのため、保守時間は1時間を確保する（[試行結果](../plans/software-support-upgrade-execplan.md#progress)）。
 - 対象branch/不変SHAとCI成功を確認してから実機へ接続する。
 - Docker、Compose v2（JSON configと `--wait` 対応）、bash、Python 3を用意する。
   実行ユーザーはDockerとバックアップ用ディレクトリへの権限を持つこと。
@@ -68,6 +71,10 @@ WORK="/opt/backups/postgres-major-upgrade/$(date -u +%Y%m%dT%H%M%SZ)"
    明示承認済みのexact `--limit` で標準ローリング更新する。
    標準デプロイはbase projectの `db` を再作成しないため、この時点のDBはpg15のまま。
    別の操作がdbを再作成しようとした場合は、空のpg18をガードが停止する。
+   **ここから手順6のactivateまで、base projectで `up` を実行しない。** `api`/`web` やサービス名なしの `up` は
+   依存する `db` もpg18設定で再作成し、pg15が止まったままになる（ガードがデータは守る）。誤って実行した場合は
+   切替前のcomposeを一時的に戻して `"${BASE[@]}" up -d --no-deps db` でpg15を起動し、手順3からやり直す。
+   stagingも同じcomposeを使うため、stagingのbase projectも同様に移行するまで `up` しない。
 
 3. **DBクライアントを止める。** 実行中のbluegreenサービスを記録して停止する。
    base projectに残ったAPI、バックアップ処理、監視、手動psql等、他のDBクライアントも止める。
@@ -176,4 +183,5 @@ pg15でglobalsから `CREATE ROLE postgres;` だけを除外して `psql -X -v O
 旧 `db-data` は**少なくとも2週間**保持する。その間にpg18のDRスナップショットとGoogle Driveからの
 復元検証を行う。旧ボリュームの削除はユーザーの明示承認を得た別作業とする。
 Macに置いた本番データの試し移行用コピーは、必要な保全期間を確認してから削除する。
-このPRは手順2の準備のみで、本番composeやDockerfile.apiの更新、本番移行を含まない。
+切替PRは本番composeのpg18・新旧mount・起動ガードと、Dockerfile.apiのPGDGクライアント18への更新を含む。
+マージは移行当日のみ（上記「当日の手順」2）。本番移行は別途明示承認後に行う。
