@@ -135,7 +135,8 @@ describe('mobile local-first data', () => {
     await verifyLocalFirst(input, server, store); expect(server).toHaveBeenCalledTimes(1);
     await store.replace({ purchase, schedule, placements }); server.mockClear();
     expect(await verifyLocalFirst(input, server, store)).toMatchObject({ ok: true, actualResolvedBy: 'purchaseOrder' });
-    expect(await verifyLocalFirst({ ...input, actualPartBarcodeRaw: 'WRONG' }, server, store)).toMatchObject({ ok: false, reason: 'different_part' });
+    expect(await verifyLocalFirst({ ...input, actualPartBarcodeRaw: 'WRONG' }, server, store)).toMatchObject({ ok: false, reason: 'different_part', legacyReason: 'ACTUAL_PART_MISMATCH' });
+    expect(await verifyLocalFirst({ ...input, transferPartBarcodeRaw: 'WRONG' }, server, store)).toMatchObject({ ok: false, reason: 'different_part', legacyReason: 'TRANSFER_PART_MISMATCH' });
     expect(server).not.toHaveBeenCalled();
     expect(await store.snapNative(['FSNOPART'], '')).toMatchObject({ fseiban: 'FSNOPART', fseibanMatch: 'exact' });
   });

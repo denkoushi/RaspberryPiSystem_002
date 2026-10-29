@@ -48,7 +48,7 @@ export async function verifySlipMatch(input: SlipPairMatchInput, source: SlipMat
     if (scheduleRow.fseiban.trim().toUpperCase() !== transferRow.fseiban.trim().toUpperCase()) {
       return { ok: false, reason: 'different_seiban', legacyReason: 'FSEIBAN_OR_PART_PAIR_MISMATCH', actualResolvedBy, expected, actual: { fseiban: scheduleRow.fseiban.trim() } };
     }
-    if (!input.actualPartBarcodeRaw?.trim()) {
+    if (!input.actualPartBarcodeRaw?.trim() || /^\d{10}$/.test(input.actualPartBarcodeRaw.trim())) {
       return { ok: false, reason: 'part_required', actualResolvedBy, expected, actual: { fseiban: scheduleRow.fseiban.trim() } };
     }
     actualRow = transferRow;
