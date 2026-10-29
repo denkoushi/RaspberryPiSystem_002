@@ -43,8 +43,8 @@ describe('queryPurchaseOrderLookup', () => {
     mocks.findMasterFhinmeisByNormalizedFhinCd.mockResolvedValue({ NORM: '旧マスタ品名' });
     mocks.resolveMachineNamesForPurchaseLookup.mockResolvedValue({ BA1: '機種A' });
     mocks.queryRaw.mockResolvedValue([
-      { seiban: 'BA1', fhincd: 'MATCH-001', fhinmei: '品', plannedStartDate: new Date('2026-05-03') },
-      { seiban: 'BA1', fhincd: 'NORM(A)', fhinmei: '品', plannedStartDate: new Date('2026-05-02') },
+      { seiban: 'BA1', fhincd: 'MATCH-001', fhinmei: '品', productNo: '1', completed: false, plannedStartDate: new Date('2026-05-03') },
+      { seiban: 'BA1', fhincd: 'NORM(A)', fhinmei: '品', productNo: '1', completed: false, plannedStartDate: new Date('2026-05-02') },
     ]);
   });
 
@@ -59,7 +59,7 @@ describe('queryPurchaseOrderLookup', () => {
   it('falls back to normalized lookup when match-key lookup misses', async () => {
     mocks.findMasterFhinmeisByMatchKey.mockResolvedValue({ MATCH: null });
     mocks.queryRaw.mockResolvedValue([
-      { seiban: 'BA1', fhincd: 'NORM(A)', fhinmei: '品', plannedStartDate: new Date('2026-05-02') },
+      { seiban: 'BA1', fhincd: 'NORM(A)', fhinmei: '品', productNo: '1', completed: false, plannedStartDate: new Date('2026-05-02') },
     ]);
 
     const res = await queryPurchaseOrderLookup('0000000001');
@@ -77,7 +77,7 @@ describe('queryPurchaseOrderLookup', () => {
       purchasePartCodeNormalized: 'MD100492280', purchasePartCodeMatchKey: 'MD100492280', acceptedQuantity: 1,
     }]);
     mocks.queryRaw.mockResolvedValue([
-      { seiban: 'BA1', fhincd: 'FINISHED', fhinmei: 'ｼｬﾌﾄ ', plannedStartDate: new Date('2026-05-02') },
+      { seiban: 'BA1', fhincd: 'FINISHED', fhinmei: 'ｼｬﾌﾄ ', productNo: '1', completed: false, plannedStartDate: new Date('2026-05-02') },
     ]);
     const res = await queryPurchaseOrderLookup('0005526578');
     expect(mocks.findMany).toHaveBeenCalledWith({
