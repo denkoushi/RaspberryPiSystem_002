@@ -47,8 +47,8 @@ if ! docker info >/dev/null 2>&1; then
   echo "Docker is not available" >&2
   exit 1
 fi
-if ! docker image inspect pgvector/pgvector:pg15 >/dev/null 2>&1; then
-  docker pull pgvector/pgvector:pg15
+if ! docker image inspect pgvector/pgvector:pg18 >/dev/null 2>&1; then
+  docker pull pgvector/pgvector:pg18
 fi
 
 docker network create --label "$task_label" "$network_name" >/dev/null
@@ -61,8 +61,8 @@ docker run -d \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=assembly_fresh \
   -p 127.0.0.1::5432 \
-  -v "$volume_name:/var/lib/postgresql/data" \
-  pgvector/pgvector:pg15 >/dev/null
+  -v "$volume_name:/var/lib/postgresql" \
+  pgvector/pgvector:pg18 >/dev/null
 
 for _ in $(seq 1 60); do
   if docker exec "$container_name" pg_isready -U postgres -d assembly_fresh >/dev/null 2>&1; then

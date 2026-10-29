@@ -296,7 +296,7 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
             "assert_run_resources_removed",
             "trap on_exit EXIT",
             "com.raspi-system.temporary=true",
-            "pgvector/pgvector:pg15",
+            "pgvector/pgvector:pg18",
             "docker network create --label",
             "docker volume create --label",
             "--label \"$RUN_LABEL\"",
