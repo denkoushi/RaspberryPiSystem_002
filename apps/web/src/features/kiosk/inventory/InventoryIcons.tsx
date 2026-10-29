@@ -46,3 +46,6 @@ export const RotateRightIcon = ({ size = 20 }: { size?: number }) => (
 );
 export const SearchIcon = () => <Icon><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></Icon>;
 export const MicIcon = () => <Icon><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></Icon>;
+
+export const VerifyLogIcon = ({ size }: { size?: number }) => <Icon size={size}><path d="M9 11l3 3 8-8" /><path d="M20 12v7H4V5h11" /></Icon>;
+export const TrailIcon = ({ size }: { size?: number }) => <Icon size={size}><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M8.5 6H15a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6.5" /></Icon>;

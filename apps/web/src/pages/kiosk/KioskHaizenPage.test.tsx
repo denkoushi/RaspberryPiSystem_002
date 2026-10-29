@@ -43,7 +43,7 @@ describe('KioskHaizenPage', () => {
     expect(screen.getByRole('group', { name: '写真の大きさ' })).toBeInTheDocument();
     fireEvent.click(listButton);
     const table = screen.getByRole('table', { name: '配膳の一覧' });
-    expect(within(table).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '置いた日時']);
+    expect(within(table).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '置いた日時', '足取り']);
     expect(within(table).getAllByRole('row')).toHaveLength(4);
     expect(within(table).queryByRole('button', { name: '消す' })).not.toBeInTheDocument();
     expect(listButton).toHaveAttribute('aria-pressed', 'true');
