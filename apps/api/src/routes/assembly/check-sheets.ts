@@ -35,6 +35,11 @@ export function registerAssemblyCheckSheetRoutes(
       .header('Content-Disposition', `attachment; filename="check-sheet.xlsx"; filename*=UTF-8''${encoded}`)
       .send(buffer);
   });
+  app.put('/assembly/check-sheets/:id/revision', { preHandler: options.allowWriteKiosk }, async (request) => {
+    const input = z.object({ revisionRootId: z.string().guid() }).parse(request.body);
+    const device = await tryGetClientDevice(request.headers);
+    return kioskService.changeRevision(idParams.parse(request.params).id, { ...input, clientDeviceId: device?.id ?? null });
+  });
   app.post('/assembly/check-sheets/:id/stamps', { preHandler: options.allowWriteKiosk }, async (request) => {
     const input = assemblyCheckSheetStampSchema.parse(request.body);
     const device = await tryGetClientDevice(request.headers);

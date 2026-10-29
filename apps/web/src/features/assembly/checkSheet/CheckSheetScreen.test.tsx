@@ -8,10 +8,11 @@ import { CheckSheetScreen } from './CheckSheetScreen';
 import type { AssemblyCheckSheetPayload, AssemblyCheckSheetStampInput } from '@raspi-system/shared-types';
 const mocks = vi.hoisted(() => ({
   nfc: null as { uid: string; timestamp: number } | null,
-  paper: vi.fn(), get: vi.fn(), stamp: vi.fn(), skip: vi.fn(), transition: vi.fn()
+  revisions: vi.fn(), changeRevision: vi.fn(), paper: vi.fn(), get: vi.fn(), stamp: vi.fn(), skip: vi.fn(), transition: vi.fn()
 }));
 vi.mock('../../../hooks/useNfcStream', () => ({ useNfcStream: (enabled: boolean) => enabled ? mocks.nfc : null }));
 vi.mock('../../../api/domains/assembly/check-sheets', () => ({
+  listAssemblyCheckSheetRevisions: mocks.revisions, changeAssemblyCheckSheetRevision: mocks.changeRevision,
   getAssemblyCheckSheetPaperLayout: mocks.paper, getAssemblyCheckSheet: mocks.get, stampAssemblyCheckSheet: mocks.stamp,
   skipAssemblyCheckSheetCondition: mocks.skip, transitionAssemblyCheckSheet: mocks.transition
 }));
@@ -19,6 +20,7 @@ let fixture: AssemblyCheckSheetPayload;
 beforeEach(() => {
   vi.clearAllMocks(); mocks.nfc = null;
   fixture = makeCheckSheetFixture();
+  mocks.revisions.mockResolvedValue([fixture.revision]);
   mocks.paper.mockResolvedValue({
     layoutSnapshot: { range: { top: 1, left: 1, bottom: 2, right: 3 }, columnWidths: [120, 120, 80], rowHeights: [24, 70],
       merges: [{ top: 1, left: 1, bottom: 1, right: 3 }], cells: { A1: { text: '組立検査' }, A2: { text: '電圧' } } },
@@ -36,6 +38,46 @@ function scan(view: ReturnType<typeof mount>, timestamp = 1) {
   view.rerender(<MemoryRouter><CheckSheetScreen sheetId="sheet" /></MemoryRouter>);
 }
 describe('check-sheet screen', () => {
+  it('selects another model before stamping and resets the active item and draft', async () => {
+    fixture.stamps = [];
+    const revision = { ...structuredClone(fixture.revision), id: 'other-revision', revisionRootId: 'other-root',
+      modelCode: 'OTHER', documentNo: 'DOC-OTHER', title: '別機種のシート',
+      items: [{ ...fixture.revision.items[0], id: 'other-item', label: '別機種の確認' }] };
+    mocks.revisions.mockResolvedValue([fixture.revision, revision]);
+    let resolve!: (value: AssemblyCheckSheetPayload) => void;
+    mocks.changeRevision.mockReturnValue(new Promise<AssemblyCheckSheetPayload>((done) => { resolve = done; }));
+    mount();
+    const select = await screen.findByRole('combobox', { name: 'チェックシートの機種' });
+    await screen.findByRole('option', { name: 'OTHER　DOC-OTHER' });
+    expect(select).toHaveValue(fixture.revision.revisionRootId);
+    fireEvent.change(select, { target: { value: 'other-root' } });
+    expect(mocks.changeRevision).toHaveBeenCalledExactlyOnceWith('sheet', 'other-root');
+    expect(select).toBeDisabled();
+    await act(async () => resolve({ ...fixture, revisionId: revision.id, revision,
+      headerValues: { ...fixture.headerValues, modelCode: 'OTHER', productName: 'OTHER' } }));
+    expect(await screen.findByRole('heading', { name: '別機種のシート' })).toBeInTheDocument();
+    expect(select).toHaveValue('other-root');
+    expect(select).toBeEnabled();
+    expect(screen.getByRole('heading', { name: '別機種の確認' })).toBeInTheDocument();
+  });
+  it('shows revision change errors and keeps the current model selected', async () => {
+    fixture.stamps = [];
+    mocks.revisions.mockResolvedValue([fixture.revision, { ...fixture.revision, id: 'other', revisionRootId: 'other-root' }]);
+    mocks.changeRevision.mockRejectedValue({ response: { data: { message: '押印済みのため機種を変えられません' } } });
+    mount();
+    const select = await screen.findByRole('combobox', { name: 'チェックシートの機種' });
+    await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(2));
+    fireEvent.change(select, { target: { value: 'other-root' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent('押印済みのため機種を変えられません');
+    expect(select).toHaveValue(fixture.revision.revisionRootId);
+    expect(select).toBeEnabled();
+  });
+  it('hides the model selector after stamping', async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'ドライバー入力電圧確認' });
+    expect(screen.queryByRole('combobox', { name: 'チェックシートの機種' })).not.toBeInTheDocument();
+    expect(mocks.revisions).not.toHaveBeenCalled();
+  });
   it('renders the approved mock map, active card, flag, paper button and fixed scale', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1920 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });

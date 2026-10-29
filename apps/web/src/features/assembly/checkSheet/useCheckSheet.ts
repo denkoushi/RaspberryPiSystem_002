@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { getAssemblyCheckSheet, skipAssemblyCheckSheetCondition, stampAssemblyCheckSheet, transitionAssemblyCheckSheet } from '../../../api/domains/assembly/check-sheets';
+import { changeAssemblyCheckSheetRevision, listAssemblyCheckSheetRevisions, getAssemblyCheckSheet, skipAssemblyCheckSheetCondition, stampAssemblyCheckSheet, transitionAssemblyCheckSheet } from '../../../api/domains/assembly/check-sheets';
 import { useNfcStream } from '../../../hooks/useNfcStream';
 
 import { emptyDraft, nextOpenItem, stampInput } from './checkSheetState';
 
 import type { CheckDraft } from './checkSheetState';
-import type { AssemblyCheckSheetPayload } from '@raspi-system/shared-types';
+import type { AssemblyCheckSheetPayload, AssemblyCheckSheetRevisionPayload } from '@raspi-system/shared-types';
 
 function message(error: unknown) {
   const response = (error as { response?: { data?: { message?: string } } })?.response?.data;
@@ -14,6 +14,7 @@ function message(error: unknown) {
 }
 export function useCheckSheet(sheetId: string, suspended = false) {
   const [sheet, setSheet] = useState<AssemblyCheckSheetPayload | null>(null);
+  const [revisions, setRevisions] = useState<AssemblyCheckSheetRevisionPayload[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [previousId, setPreviousId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CheckDraft>(emptyDraft);
@@ -34,6 +35,25 @@ export function useCheckSheet(sheetId: string, suspended = false) {
     }).catch((error: unknown) => { if (active) setLoadError(message(error)); });
     return () => { active = false; clearTimeout(advanceTimer.current); };
   }, [sheetId]);
+  const canChangeRevision = sheet?.status === 'IN_PROGRESS' && sheet.stamps.length === 0;
+  useEffect(() => {
+    if (!canChangeRevision) return;
+    let active = true;
+    void listAssemblyCheckSheetRevisions().then((values) => {
+      if (active) setRevisions(values);
+    }).catch((error: unknown) => { if (active) setToast(message(error)); });
+    return () => { active = false; };
+  }, [sheetId, canChangeRevision]);
+  const changeRevision = async (revisionRootId: string) => {
+    if (!sheet || inFlight.current) return;
+    inFlight.current = true; setBusy(true);
+    try {
+      const next = await changeAssemblyCheckSheetRevision(sheet.id, revisionRootId);
+      setSheet(next); setCurrentId(nextOpenItem(next, null)); setPreviousId(null);
+      setDraft(emptyDraft()); setConditions({});
+    } catch (error) { setToast(message(error)); }
+    finally { inFlight.current = false; setBusy(false); }
+  };
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 2200);
@@ -89,5 +109,5 @@ export function useCheckSheet(sheetId: string, suspended = false) {
     setPendingAction(action);
   };
   const cancelTransition = () => { if (!inFlight.current) setPendingAction(null); };
-  return { sheet, item, currentId, previousId, draft, setDraft, conditions, setConditions, busy, toast, loadError, select, transition, pendingAction, cancelTransition };
+  return { sheet, revisions, changeRevision, item, currentId, previousId, draft, setDraft, conditions, setConditions, busy, toast, loadError, select, transition, pendingAction, cancelTransition };
 }

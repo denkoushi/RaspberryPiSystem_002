@@ -2,14 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../http';
 
-import { getAssemblyCheckSheetPaperLayout, importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision, transitionAssemblyCheckSheet } from './check-sheets';
+import { changeAssemblyCheckSheetRevision, getAssemblyCheckSheetPaperLayout, importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision, transitionAssemblyCheckSheet } from './check-sheets';
 
 import type { AssemblyCheckSheetSavePayload } from '@raspi-system/shared-types';
 
-vi.mock('../../http', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('../../http', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 
 describe('check sheet API client', () => {
   beforeEach(() => vi.resetAllMocks());
+
+  it('changes the revision through the authenticated client and returns the sheet', async () => {
+    const data = { id: 'sheet', revisionId: 'new-revision' };
+    vi.mocked(api.put).mockResolvedValue({ data });
+    expect(await changeAssemblyCheckSheetRevision('sheet', 'root')).toEqual(data);
+    expect(api.put).toHaveBeenCalledWith('/assembly/check-sheets/sheet/revision', { revisionRootId: 'root' });
+  });
 
   it('fetches the paper layout through the authenticated client', async () => {
     const data = { layoutSnapshot: {}, writes: [], stampCells: [] };

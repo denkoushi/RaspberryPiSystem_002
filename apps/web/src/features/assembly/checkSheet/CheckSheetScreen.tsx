@@ -37,6 +37,10 @@ export function CheckSheetScreen({ sheetId }: { sheetId: string }) {
       <header className="bar">
         <Link className="btn" style={{ display: 'inline-flex', alignItems: 'center' }} to={KIOSK_ASSEMBLY_HOME_PATH}>組立</Link>
         <h1>{sheet.revision.title}</h1><span className="doc num">{sheet.revision.documentNo}{'\u3000'}{sheet.revision.revisionLabel}</span>
+        {sheet.status === 'IN_PROGRESS' && sheet.stamps.length === 0 && <select className="btn" aria-label="チェックシートの機種" disabled={busy}
+          value={sheet.revision.revisionRootId} onChange={(event) => void state.changeRevision(event.target.value)}>
+          {state.revisions.map((revision) => <option key={revision.id} value={revision.revisionRootId}>{revision.modelCode}{'\u3000'}{revision.documentNo}</option>)}
+        </select>}
         <div className="kv">{([['seiban', '製番'], ['productName', '製品名'], ['shipDate', '出荷予定日']] as const).map(([key, label]) => <span key={key}><b>{label}</b>{sheet.headerValues[key]}</span>)}</div>
         <div className="prog"><span className="prog-num num">{sheet.stamps.length}<small> / {items.length}</small></span><span className="meter"><i className="m-ok" style={{ width: `${(sheet.stamps.length - ngCount) / items.length * 100}%` }} /><i className="m-ng" style={{ width: `${ngCount / items.length * 100}%` }} /></span></div>
         <button type="button" className="btn btn-stop" disabled={busy || sheet.status !== 'IN_PROGRESS'} onClick={() => void state.transition('pause')}>中断</button>

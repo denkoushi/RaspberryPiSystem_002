@@ -160,6 +160,23 @@ export class AssemblyCheckSheetKioskService {
       return serialize(await readSheet(tx, id));
     });
   }
+  async changeRevision(id: string, input: { revisionRootId: string } & Device) {
+    return this.mutate(id, async (tx, sheet) => {
+      if (sheet.stamps.length || await tx.assemblyCheckSheetStampHistory.findFirst({ where: { sheetId: id } })) {
+        throw new ApiError(409, '押印済みのため機種を変えられません', undefined, 'CHECK_SHEET_ALREADY_STAMPED');
+      }
+      const revision = await tx.assemblyCheckSheetRevision.findFirst({
+        where: { revisionRootId: input.revisionRootId, isRevisionHead: true }
+      });
+      if (!revision) throw new ApiError(404, 'チェックシートが見つかりません');
+      if (revision.id === sheet.revisionId) return;
+      const headerValues = sheet.headerValues as Record<string, string>;
+      await tx.assemblyCheckSheet.update({ where: { id }, data: {
+        revisionId: revision.id, headerValues: { ...headerValues, modelCode: revision.modelCode,
+          ...(headerValues.productName === sheet.revision.modelCode ? { productName: revision.modelCode } : {}) }
+      } });
+    });
+  }
   async stamp(id: string, input: StampInput) {
     if (input.result !== 'OK' && input.result !== 'NG') throw new ApiError(400, 'NAは条件の該当なしから指定してください');
     return this.mutate(id, async (tx, sheet) => {

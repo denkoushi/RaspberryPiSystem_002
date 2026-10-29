@@ -34,6 +34,10 @@ export async function getAssemblyCheckSheet(id: string) {
   const { data } = await api.get<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}`);
   return data;
 }
+export async function changeAssemblyCheckSheetRevision(id: string, revisionRootId: string) {
+  const { data } = await api.put<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/revision`, { revisionRootId });
+  return data;
+}
 export async function stampAssemblyCheckSheet(id: string, input: AssemblyCheckSheetStampInput) {
   const { data } = await api.post<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/stamps`, input);
   return data;

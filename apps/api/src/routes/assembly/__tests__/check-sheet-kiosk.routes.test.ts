@@ -17,10 +17,10 @@ const mocks = vi.hoisted(() => ({
     $transaction: vi.fn(), $queryRaw: vi.fn(),
     assemblyWorkUnit: { findUnique: vi.fn() },
     assemblyCheckSheet: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    assemblyCheckSheetRevision: { update: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findFirstOrThrow: vi.fn(), findUniqueOrThrow: vi.fn() },
+    assemblyCheckSheetRevision: { update: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findFirstOrThrow: vi.fn(), findUniqueOrThrow: vi.fn() },
     assemblyCheckSheetGroup: { createMany: vi.fn() }, assemblyCheckSheetItem: { createMany: vi.fn() },
     assemblyCheckSheetAsset: { findUnique: vi.fn() },
-    assemblyCheckSheetStamp: { upsert: vi.fn(), delete: vi.fn() }, assemblyCheckSheetStampHistory: { create: vi.fn() },
+    assemblyCheckSheetStamp: { upsert: vi.fn(), delete: vi.fn() }, assemblyCheckSheetStampHistory: { create: vi.fn(), findFirst: vi.fn() },
     employee: { findFirst: vi.fn(), findUniqueOrThrow: vi.fn() }, knowledgePositionRank: { findUnique: vi.fn() }
   }, store: { read: vi.fn() }, device: vi.fn()
 }));
@@ -66,6 +66,9 @@ beforeEach(async () => {
   db.assemblyWorkUnit.findUnique.mockResolvedValue({ id: unitId, workId: '0418-01', invalidatedAt: null,
     lotSerial: { lot: { productNo: 'BA2610-0418', targetUnit: 'XYZ 3軸ユニット', template: { modelCode: proposal.modelCode } } } });
   db.assemblyCheckSheetRevision.update.mockImplementation(async ({ data }) => { Object.assign(sheet!.revision, data); return sheet!.revision; });
+  db.assemblyCheckSheetStampHistory.findFirst.mockResolvedValue(null);
+  db.assemblyCheckSheetRevision.findFirst.mockImplementation(async ({ where }) =>
+    revisions.find((revision) => revision.revisionRootId === where.revisionRootId && revision.isRevisionHead) ?? null);
   db.assemblyCheckSheetRevision.findMany.mockImplementation(async () => revisions.filter((revision) => revision.isRevisionHead));
   db.assemblyCheckSheet.findUnique.mockImplementation(async () => sheet);
   db.assemblyCheckSheet.create.mockImplementation(async ({ data }: { data: Partial<Sheet> }) => {
@@ -74,7 +77,7 @@ beforeEach(async () => {
       revision: revisions.find((revision) => revision.id === data.revisionId) } as Sheet;
     return sheet;
   });
-  db.assemblyCheckSheet.update.mockImplementation(async ({ data }: { data: Partial<Sheet> }) => { Object.assign(sheet!, data); return sheet; });
+  db.assemblyCheckSheet.update.mockImplementation(async ({ data }: { data: Partial<Sheet> }) => { Object.assign(sheet!, data); if (data.revisionId) sheet!.revision = revisions.find((revision) => revision.id === data.revisionId)!; return sheet; });
   db.assemblyCheckSheetStamp.upsert.mockImplementation(async ({ create, update }: { create: Sheet['stamps'][number]; update: Partial<Sheet['stamps'][number]> }) => {
     const old = sheet!.stamps.find((entry) => entry.itemId === create.itemId);
     if (old) Object.assign(old, update); else sheet!.stamps.push({ ...create, id: randomUUID() });
@@ -104,6 +107,60 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); });
 
 describe('check-sheet kiosk route contracts with real service', () => {
+  const changeRevision = (revisionRootId: string) => app.inject({ method: 'PUT',
+    url: `/api/assembly/check-sheets/${sheet!.id}/revision`, headers: keyHeaders, payload: { revisionRootId } });
+  it.each([true, false])('changes an unstamped model and preserves headers (fallback product name: %s)', async (fallback) => {
+    const next = { ...revisions[0], id: randomUUID(), revisionRootId: randomUUID(), modelCode: 'OTHER' };
+    revisions.push(next);
+    const headers = { ...(sheet!.headerValues as Record<string, string>), productName: fallback ? revisions[0].modelCode : '台の製品名', customer: '顧客' };
+    sheet!.headerValues = headers;
+    mocks.db.$queryRaw.mockClear();
+    const response = await changeRevision(next.revisionRootId);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ revisionId: next.id, revision: { id: next.id },
+      headerValues: { ...headers, modelCode: 'OTHER', productName: fallback ? 'OTHER' : '台の製品名' } });
+    expect(mocks.db.$queryRaw.mock.calls[0][0].join('')).toContain('FOR UPDATE');
+    expect(mocks.db.assemblyCheckSheetStampHistory.findFirst).toHaveBeenCalledWith({ where: { sheetId: sheet!.id } });
+  });
+  it('keeps the same revision without writing', async () => {
+    const response = await changeRevision(revisions[0].revisionRootId);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().revisionId).toBe(revisions[0].id);
+    expect(mocks.db.assemblyCheckSheet.update).not.toHaveBeenCalled();
+  });
+  it.each(['stamp', 'history'])('rejects revision changes with a %s', async (kind) => {
+    if (kind === 'stamp') await stamp(0);
+    else mocks.db.assemblyCheckSheetStampHistory.findFirst.mockResolvedValue({ id: randomUUID() });
+    const response = await changeRevision(revisions[0].revisionRootId);
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ message: '押印済みのため機種を変えられません', errorCode: 'CHECK_SHEET_ALREADY_STAMPED' });
+    expect(mocks.db.assemblyCheckSheet.update).not.toHaveBeenCalled();
+  });
+  it.each(['PAUSED', 'COMPLETED'] as const)('rejects revision changes for %s', async (status) => {
+    sheet!.status = status;
+    const response = await changeRevision(revisions[0].revisionRootId);
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toBe(status === 'PAUSED' ? '再開してください' : '完了済みです');
+    expect(mocks.db.assemblyCheckSheet.update).not.toHaveBeenCalled();
+  });
+  it('rejects revision changes for an invalidated work unit', async () => {
+    sheet!.workUnit.invalidatedAt = new Date();
+    const response = await changeRevision(revisions[0].revisionRootId);
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toBe('削除済みの作業用IDは変更できません');
+  });
+  it('returns 404 for a missing root or a root without a head', async () => {
+    expect((await changeRevision(randomUUID())).statusCode).toBe(404);
+    revisions[0].isRevisionHead = false;
+    const response = await changeRevision(revisions[0].revisionRootId);
+    expect(response.statusCode).toBe(404);
+    expect(response.json().message).toBe('チェックシートが見つかりません');
+  });
+  it('requires kiosk authentication and validates revision change input', async () => {
+    const url = `/api/assembly/check-sheets/${sheet!.id}/revision`;
+    expect((await app.inject({ method: 'PUT', url, payload: { revisionRootId: revisions[0].revisionRootId } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'PUT', url, headers: keyHeaders, payload: {} })).statusCode).toBe(400);
+  });
   it('rejects NA from stamps even on a conditional item', async () => {
     sheet!.revision.items[0].conditionKey = 'motor';
     expect((await stamp(0, { result: 'NA' })).statusCode).toBe(400);
