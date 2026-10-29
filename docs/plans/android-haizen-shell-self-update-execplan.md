@@ -26,6 +26,9 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Evidence: `infrastructure/docker/docker-compose.server.yml` の derivatives 用マウントのコメント。
 - Observation: Pi5 のホスト側ディレクトリは `roles/server/tasks/main.yml` が運用ユーザー所有で作る。無いままバインドすると Docker が root 所有で作ってしまう。
 
+- Observation: CI の container-runtime-rehearsal は API の `/app/storage/` 配下のマウント先を決まった一覧と照らす。`/app/storage/haizen-app` を足すと「production storage targets differ」で落ちた。
+  Evidence: `scripts/ci/rehearse-release-runtime.sh` の required 一覧。対処としてコンテナ側のマウント先を `/app/haizen-app` に移した(ホスト側は `storage/haizen-app` のまま)。
+
 ## Decision Log
 
 - Decision: 署名は今と同じ Mac の `~/.android/debug.keystore`(debug ビルド)のまま。CI では作らない。
@@ -33,7 +36,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Date/Author: 2026-10-29 / Claude
 - Decision: この鍵は今後の更新に欠かせない。失うと上書き更新ができなくなるので、手順書に「鍵をバックアップしておく」と書く。この PR では鍵を変えない。
   Date/Author: 2026-10-29 / Claude
-- Decision: Pi5 の置き場はホストの `${PI5_PROJECT_DIR}/storage/haizen-app`。API には `/app/storage/haizen-app` に `:ro` でつなぐ。ディレクトリは `roles/server/tasks/main.yml` の既存の一覧に足して運用ユーザー所有で作る。
+- Decision: Pi5 の置き場はホストの `${PI5_PROJECT_DIR}/storage/haizen-app`。API には `/app/haizen-app` に `:ro` でつなぐ。ディレクトリは `roles/server/tasks/main.yml` の既存の一覧に足して運用ユーザー所有で作る。
   Rationale: 既存の `storage/` 配下と同じ扱いで、Blue/Green のどちらの API からも同じファイルが見える。API は読むだけ。
   Date/Author: 2026-10-29 / Claude
 - Decision: 版情報は APK の横の `version.json` (`{versionCode, versionName, fileName, sha256, size}`)。Node で APK を解析しない。`version.json` は手で書かず、Mac のスクリプトが `aapt2 dump badging` から作る。スクリプトは APK を先に、`version.json` を後に置く(途中で API が無いファイルを案内しないように)。どちらも一時名で送ってから mv で置き換える。
@@ -72,8 +75,8 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Plan of Work
 
-1. API に `apps/api/src/routes/kiosk/mobile-app.ts` を足し、`apps/api/src/routes/kiosk.ts` で登録する。置き場のパスは環境変数 `HAIZEN_APP_DIR`(既定 `/app/storage/haizen-app`)。`version` は JSON をそのまま検証して返し、`apk` はファイルをストリームで返す(`compress: false`、`Content-Type: application/vnd.android.package-archive`、`Content-Length`)。どちらも `Cache-Control: private, no-store`、件数制限は version 60/分、apk 5/分。
-2. Compose に `${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/haizen-app:/app/storage/haizen-app:ro` を足し、Ansible の一覧に `{{ repo_path }}/storage/haizen-app` を足す。
+1. API に `apps/api/src/routes/kiosk/mobile-app.ts` を足し、`apps/api/src/routes/kiosk.ts` で登録する。置き場のパスは環境変数 `HAIZEN_APP_DIR`(既定 `/app/haizen-app`)。`version` は JSON をそのまま検証して返し、`apk` はファイルをストリームで返す(`compress: false`、`Content-Type: application/vnd.android.package-archive`、`Content-Length`)。どちらも `Cache-Control: private, no-store`、件数制限は version 60/分、apk 5/分。
+2. Compose に `${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/haizen-app:/app/haizen-app:ro` を足し、Ansible の一覧に `{{ repo_path }}/storage/haizen-app` を足す。
 3. Android に更新の部品を足す(版情報の解析と比較は Android に依存しない小さな関数にして JUnit で試す)。`MainActivity` に帯を重ね、押したら取り込み→sha256 照合→インストーラ。マニフェストに `REQUEST_INSTALL_PACKAGES` と `FileProvider`。versionCode 3 / versionName "0.3"。
 4. `apps/android-haizen-shell/scripts/publish-to-pi5.sh`: `./gradlew assembleDebug` → `aapt2 dump badging` で版を読む → 署名証明書が今の鍵と同じかを `apksigner verify --print-certs` で確かめる → sha256 → `raspi5-tailscale`(既定、引数で変えられる)へ APK、次に `version.json` を送る。
 5. 手順書: `apps/android-haizen-shell/README.md` に「新しい版を出す」と「鍵のバックアップ」を書く。

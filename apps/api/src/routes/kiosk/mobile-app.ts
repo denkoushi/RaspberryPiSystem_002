@@ -20,7 +20,7 @@ export async function registerMobileAppRoutes(
   deps: Pick<KioskRouteDeps, 'requireClientDevice'>,
   options: { directory?: string } = {}
 ) {
-  const directory = options.directory ?? process.env.HAIZEN_APP_DIR ?? '/app/storage/haizen-app';
+  const directory = options.directory ?? process.env.HAIZEN_APP_DIR ?? '/app/haizen-app';
   const readVersion = async () => {
     try {
       return versionSchema.parse(JSON.parse(await readFile(join(directory, 'version.json'), 'utf8')));
