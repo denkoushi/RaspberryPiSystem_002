@@ -6,6 +6,7 @@ import { syncMobileLocalData } from '../local-data/mobileLocalDataSync';
 import { mobilePlacementQueryKeys } from '../mobilePlacementQueryKeys';
 import { scanFrameUploadRunner } from '../scan-frames/scanFrameUploadRunner';
 import { shelfOutboxRunner } from '../shelfMaster/offline/shelfOutboxRunner';
+import { verifyRecordUploadRunner } from '../verify-records/verifyRecordUploadRunner';
 
 import { registerSyncJob, start, stop } from './syncScheduler';
 
@@ -31,7 +32,8 @@ export function MobileSyncProvider({ children }: { children: ReactNode }) {
       registerSyncJob({ name: 'haizen-outbox', run: haizen.flush, hasPendingWork: haizen.hasPendingWork }),
       registerSyncJob({ name: 'shelf-outbox', run: shelf.flush, hasPendingWork: shelf.hasPendingWork }),
       registerSyncJob({ name: 'local-data', run: syncMobileLocalData }),
-      registerSyncJob({ name: 'scan-frames', ...scanFrameUploadRunner })
+      registerSyncJob({ name: 'scan-frames', ...scanFrameUploadRunner }),
+      registerSyncJob({ name: 'verify-records', ...verifyRecordUploadRunner })
     ];
     start();
     return () => { stop(); cleanup.forEach((dispose) => dispose()); };

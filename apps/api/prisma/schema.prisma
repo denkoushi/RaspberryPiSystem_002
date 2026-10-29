@@ -487,6 +487,7 @@ model Machine {
 }
 
 model ClientDevice {
+  mobileSlipVerifyRecords MobileSlipVerifyRecord[]
   mobileScanFrames MobileScanFrame[]
   id                                            String                                         @id @default(uuid())
   name                                          String
@@ -5884,4 +5885,39 @@ model MobileScanFrame {
   @@index([shelfCodeRaw])
   @@index([clientRecordId])
   @@map("mobile_scan_frames")
+}
+
+enum MobileSlipVerifyOutcome {
+  match
+  mismatch
+  not_found
+  error
+}
+
+model MobileSlipVerifyRecord {
+  id                      String @id @default(uuid())
+  clientVerifyId          String @unique
+  clientDeviceId          String
+  verifiedAt              DateTime
+  transferOrderBarcodeRaw String
+  transferPartRaw         String?
+  actualOrderBarcodeRaw   String
+  actualFseibanRaw        String
+  actualPartRaw           String?
+  outcome                 MobileSlipVerifyOutcome
+  reason                  String?
+  expectedFseiban         String?
+  expectedFhincd          String?
+  expectedPartName        String?
+  actualResolvedFseiban   String?
+  actualPartCode          String?
+  matchedBy               String?
+  clientRecordId          String?
+  createdAt               DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([verifiedAt])
+  @@index([transferOrderBarcodeRaw])
+  @@map("mobile_slip_verify_records")
 }

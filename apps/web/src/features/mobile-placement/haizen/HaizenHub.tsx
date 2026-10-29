@@ -133,6 +133,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     const moving = Boolean(selectedBranch);
     // Saved on the phone first; the send continues in the background so a weak link never holds the button.
     const clientRecordId = createHaizenClientRecordId();
+    if (tab === 'verify') void mp.linkLastVerifyRecord(clientRecordId).catch(() => console.warn('Verify record could not be linked'));
     const sending = queue.submit({
       clientRecordId, slipKind: tab === 'verify' || placeSlip?.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
       number: activeNumber, shelfCode: activeShelfCode, scannedAt: tab === 'verify' ? verifyScannedAt : scannedAt, branchNo: activeBranchNo
