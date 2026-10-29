@@ -1,4 +1,5 @@
 import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
+import { splitArea } from '@raspi-system/shelf-layout-core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryCompartment, type InventoryOptionField, type InventoryShelf } from '../../../../api/client';
@@ -27,7 +28,7 @@ import {
 
 import { InventoryUnitPicker } from './InventoryUnitPicker';
 import { NfcScanPanel } from './NfcScanPanel';
-import { setupErrorText as errorText } from './setupError';
+import { setupTagErrorText, setupErrorText as errorText } from './setupError';
 import { touchSetupPin } from './setupPinSession';
 import { isProvisionalInventoryName, TOOL_BOARD_COLUMNS, ToolValueBoard } from './ToolValueBoard';
 import { useArmedNfcRead } from './useArmedNfcRead';
@@ -46,6 +47,27 @@ type Panel =
 const DETAIL_LABEL = Object.fromEntries(TOOL_BOARD_COLUMNS.map((column) => [column.key, column.label])) as Record<InventoryOptionField, string>;
 const provisionalTag = 'shrink-0 rounded-[5px] bg-inv-amber/[0.12] px-1.5 text-[10.5px] font-bold tracking-[0.08em] text-inv-amber';
 const iconSm = `${invButtonSm} w-11 px-0`;
+
+const tagTail = (uid: string | null) => uid ? `…${uid.slice(-5)}` : 'タグなし';
+const placeText = (place: InventoryCompartment) => `${place.area}・棚${place.shelfNumber}・引き出し${place.drawerNumber}`;
+function highlight(text: string, needle: string) {
+  if (!needle) return text;
+  const start = text.normalize('NFKC').toLowerCase().indexOf(needle);
+  if (start < 0) return text;
+  // Map normalized search positions back to the original spelling (e.g. half-width kana).
+  let from = 0;
+  let to = text.length;
+  for (let index = 0; index <= text.length; index += 1) {
+    const length = text.slice(0, index).normalize('NFKC').toLowerCase().length;
+    if (length <= start) from = index;
+    if (length >= start + needle.length) {
+      to = index;
+      while (to < text.length && text.slice(0, to + 1).normalize('NFKC').toLowerCase().length === length) to += 1;
+      break;
+    }
+  }
+  return <>{text.slice(0, from)}<mark className="rounded bg-inv-cyan/25 text-inherit">{text.slice(from, to)}</mark>{text.slice(to)}</>;
+}
 
 // 1つの引き出しに複数のアイテムを置けるので、移す先から外すのはいま入っている引き出しだけ。
 function otherDrawers(shelf: InventoryShelf, compartmentId: string) {
@@ -70,6 +92,9 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const scanBusy = useRef(false);
   const [done, setDone] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [department, setDepartment] = useState<string | null>(null);
+  const groupRefs = useRef(new Map<string, HTMLDivElement>());
+  const [swapped, setSwapped] = useState<{ id: string; oldUid: string | null; uid: string } | null>(null);
   const [filter, setFilter] = useState('');
   const [provisionalOnly, setProvisionalOnly] = useState(false);
   // The last name or tool-information change, shown on the board with a way back.
@@ -116,9 +141,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         if (scanMode === 'replace' && panel.kind === 'replace-tag') {
           setError(null);
           setErrorAt('tag');
-          await mutations.replaceTag.mutateAsync({ id: panel.compartment.id, uid: read.uid });
-          setDone('タグを交換しました');
-          setPanel({ kind: 'none' });
+          await replaceTag(panel.compartment, read.uid);
         } else if (scanMode === 'open') {
           const openCount = openCountRef.current;
           const tag = await resolveInventoryTag(read.uid);
@@ -129,11 +152,12 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
             open(tag.compartment.item.id);
             setFilter('');
             setProvisionalOnly(false);
+            setDepartment(null);
             setScanMessage('品物を開きました');
           } else setScanMessage(!tag ? '未登録のタグです' : tag.kind === 'QUANTITY' ? '数量タグです' : tag.kind === 'RESTOCK' ? '補充タグです' : '品物が見つかりません');
         }
       } catch (caught) {
-        if (panel.kind === 'replace-tag') setError(errorText(caught));
+        if (panel.kind === 'replace-tag') setError(setupTagErrorText(caught));
         else setScanMessage(errorText(caught));
       } finally {
         scanBusy.current = false;
@@ -144,6 +168,13 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
     // A read is the trigger; mode changes must not replay it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [read]);
+
+  const replaceTag = async (compartment: InventoryCompartment, uid: string) => {
+    await mutations.replaceTag.mutateAsync({ id: compartment.id, uid });
+    setSwapped({ id: compartment.id, oldUid: compartment.itemTagUid, uid });
+    setDone(`${placeText(compartment)} のタグを交換しました`);
+    setPanel({ kind: 'none' });
+  };
 
   const run = async (work: () => Promise<unknown>, message: string, next: Panel = { kind: 'none' }, target = 'place') => {
     setError(null);
@@ -162,6 +193,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
     openCountRef.current += 1;
     setItemId(id);
     setPhotoIndex(0);
+    setSwapped(null);
     setPanel({ kind: 'none' });
     setConfirmPhotoId(null);
     setError(null);
@@ -175,11 +207,19 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
 
   const needle = filter.normalize('NFKC').trim().toLowerCase();
   const provisionalCount = items.filter((entry) => isProvisionalInventoryName(entry.name)).length;
-  const shown = items.filter((entry) => {
+  const departments = [...new Set([...shelves.map(shelf => splitArea(shelf.area).machine), ...items.flatMap(entry => entry.compartments.map(place => splitArea(place.area).machine))])].sort((a, b) => a.localeCompare(b, 'ja'));
+  const base = items.filter((entry) => {
     // The open item stays listed after it gets a real name.
     if (provisionalOnly && !isProvisionalInventoryName(entry.name) && entry.id !== itemId) return false;
-    return !needle || [entry.name, entry.itemCode, entry.model ?? ''].some((text) => text.normalize('NFKC').toLowerCase().includes(needle));
-  });
+    return !needle || [entry.name, entry.itemCode, entry.model ?? '', ...entry.compartments.map(place => formatInventoryLabelNumber(place.labelNumber))].some(text => text.normalize('NFKC').toLowerCase().includes(needle));
+  }).map(entry => ({ entry, place: entry.compartments.find(place => needle && formatInventoryLabelNumber(place.labelNumber).includes(needle)) ?? entry.compartments[0] }));
+  const shown = base.filter(({ place }) => department === null || splitArea(place?.area ?? '').machine === department);
+  const groups = new Map<string, typeof shown>();
+  for (const row of shown) {
+    const key = row.place ? `${row.place.area}・棚${row.place.shelfNumber}` : '置き場所なし';
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  const sortedGroups = [...groups].sort(([a], [b]) => a.localeCompare(b, 'ja', { numeric: true }));
   const banner = (
     <div className="flex h-12 shrink-0 items-center gap-3 overflow-hidden">
         {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
@@ -190,30 +230,41 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const list = (
     <nav className="flex min-h-0 flex-col gap-1.5" aria-label="アイテム一覧">
       <div className="mb-1 flex shrink-0 gap-1.5">
-        <input aria-label="品名・型式で絞り込む" placeholder="品名・型式で絞り込む" className={`${invField} h-11 min-w-0 flex-1`} value={filter} onChange={(event) => setFilter(event.target.value)} />
-        {provisionalCount > 0 || provisionalOnly ? (
-          <button type="button" aria-pressed={provisionalOnly} aria-label={`仮名だけ ${provisionalCount}件`} className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[13px] font-bold ${provisionalOnly ? 'border-inv-amber bg-inv-amber/[0.12] text-[#ffe8bf]' : 'border-inv-line2 bg-inv-s2 text-inv-muted hover:bg-inv-s3'}`} onClick={() => setProvisionalOnly((on) => !on)}>
+        <input aria-label="品名・型式・番号で探す" placeholder="品名・型式・番号で探す" className={`${invField} h-11 min-w-0 flex-1`} value={filter} onChange={(event) => setFilter(event.target.value)} />
+        <button type="button" aria-pressed={provisionalOnly} aria-label={`仮名だけ ${provisionalCount}件`} className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[13px] font-bold ${provisionalOnly ? 'border-inv-amber bg-inv-amber/[0.12] text-[#ffe8bf]' : 'border-inv-line2 bg-inv-s2 text-inv-muted hover:bg-inv-s3'}`} onClick={() => setProvisionalOnly((on) => !on)}>
             仮名 <b className="tabular-nums text-inv-amber">{provisionalCount}</b>
-          </button>
-        ) : null}
+        </button>
+      </div>
+      <div className="grid shrink-0 gap-1 overflow-x-auto rounded-xl bg-inv-s2 p-[3px]" style={{ gridTemplateColumns: `repeat(${departments.length + 1}, minmax(76px, 1fr))` }} role="group" aria-label="課">
+        {[null, ...departments].map(machine => <button key={machine ?? 'all'} type="button" aria-pressed={department === machine} className={`flex h-11 min-w-0 flex-col items-center justify-center rounded-[9px] text-[13px] font-bold leading-tight ${department === machine ? `bg-inv-s3 text-inv-text ring-1 ring-inset ${machine === '生産技術課' ? 'ring-[#a99bff]' : 'ring-inv-cyan'}` : 'text-inv-muted'}`} onClick={() => setDepartment(machine)}>
+          {machine ?? 'すべて'}<small className="text-[11px] font-normal tabular-nums text-inv-faint">{base.filter(({ place }) => machine === null || splitArea(place?.area ?? '').machine === machine).length}件</small>
+        </button>)}
+      </div>
+      <div className="flex shrink-0 gap-1 overflow-x-auto pb-0.5" aria-label="棚へ移動">
+        {sortedGroups.map(([key]) => <button key={key} type="button" className="h-9 shrink-0 whitespace-nowrap rounded-lg border border-inv-line bg-inv-s1 px-2.5 text-[12.5px] font-bold text-inv-muted hover:bg-inv-s2" onClick={() => groupRefs.current.get(key)?.scrollIntoView({ block: 'start' })}>{key}</button>)}
       </div>
       <div className="h-8 shrink-0 overflow-hidden text-sm leading-4"><p role={scanMessage || scanPending ? 'status' : undefined} className="line-clamp-2 text-inv-muted">{scanPending ? 'タグを確認中…' : scanMessage ?? '品物タグでも開けます'}</p></div>
       {itemsQuery.isLoading ? <p className="text-inv-faint">読み込み中…</p> : null}
       {!itemsQuery.isLoading && items.length === 0 ? <p className="text-inv-faint">登録済みのアイテムはありません</p> : null}
       <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
-        {shown.map((entry) => {
-          const stock = entry.compartments.reduce((sum, compartment) => sum + compartment.stockQuantity, 0);
-          const on = entry.id === item?.id;
-          return (
-            <button key={entry.id} type="button" aria-pressed={on} className={`flex h-[60px] shrink-0 items-center gap-2.5 rounded-xl px-2.5 text-left text-sm font-bold ${on ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-s1 hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
+        {sortedGroups.map(([key, rows]) => <div key={key} className="contents">
+          <div ref={node => { if (node) groupRefs.current.set(key, node); else groupRefs.current.delete(key); }} className="sticky top-0 z-10 flex h-[30px] shrink-0 items-center gap-2 border-b border-inv-line bg-inv-bg px-2 text-[12.5px] font-black text-inv-muted">
+            <span className={`h-2 w-2 rounded-sm ${splitArea(rows[0].place?.area ?? '').machine === '生産技術課' ? 'bg-[#a99bff]' : 'bg-inv-cyan'}`} aria-hidden="true" />
+            <span>{key}</span><span className="ml-auto font-normal tabular-nums text-inv-faint">{rows.length}件</span>
+          </div>
+          {rows.map(({ entry, place }) => {
+            const on = entry.id === item?.id;
+            return <button key={entry.id} type="button" aria-pressed={on} className={`flex h-14 shrink-0 items-center gap-2.5 rounded-xl px-2.5 text-left text-sm font-bold ${on ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-s1 hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
               {entry.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" /> : <span className="h-10 w-10 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
-              <span className="min-w-0 flex-1 line-clamp-2 break-all">{entry.name}</span>
-              {isProvisionalInventoryName(entry.name)
-                ? <span className={provisionalTag}>仮名</span>
-                : <span className="shrink-0 text-xs font-normal tabular-nums text-inv-faint">{entry.compartments.length === 0 ? '置き場所なし' : `${stock}${unitLabel(entry)}`}</span>}
-            </button>
-          );
-        })}
+              <span className="min-w-0 flex-1 line-clamp-2 break-all">{highlight(entry.name, needle)}</span>
+              <span className="flex shrink-0 flex-col items-end gap-0.5">
+                {place ? <span className={invLabelNumber}>{highlight(formatInventoryLabelNumber(place.labelNumber), needle)}</span> : null}
+                {isProvisionalInventoryName(entry.name) ? <span className={provisionalTag}>仮名</span> : <span className="text-xs font-normal tabular-nums text-inv-faint">{place ? `引${place.drawerNumber} ・ ${place.stockQuantity}${unitLabel(entry)}` : '置き場所なし'}</span>}
+              </span>
+            </button>;
+          })}
+        </div>)}
+        {shown.length === 0 && items.length > 0 ? <p className="py-4 text-inv-faint">見つかりません</p> : null}
       </div>
     </nav>
   );
@@ -225,7 +276,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         onBlurCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(false); }}
       >
         {done ? banner : null}
-        <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)] gap-5">
+        <div className="grid min-h-0 flex-1 grid-cols-[340px_minmax(0,1fr)] gap-5">
           {list}
           <p className="self-center justify-self-center text-inv-faint">左の一覧からアイテムを選んでください</p>
         </div>
@@ -293,7 +344,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         onBlurCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(false); }}
       >
       {done ? banner : null}
-      <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)] gap-5">
+      <div className="grid min-h-0 flex-1 grid-cols-[340px_minmax(0,1fr)] gap-5">
         {list}
 
         <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
@@ -370,20 +421,26 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
               </div>
               {item.compartments.length === 0 ? <p className="text-inv-faint">置き場所がありません</p> : null}
               <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-                {item.compartments.map((compartment) => <div key={compartment.id} className="flex shrink-0 items-center gap-2 rounded-lg bg-inv-s2 px-2">
+                {item.compartments.map((compartment) => <div key={compartment.id} className={`flex shrink-0 items-center gap-2 rounded-lg border px-2 ${swapped?.id === compartment.id ? 'flex-wrap border-inv-green/[0.55] bg-inv-green/10' : 'border-transparent bg-inv-s2'}`}>
                   <PinIcon /><span className="min-w-0 flex-1 truncate font-bold"><span className={invLabelNumber}>{formatInventoryLabelNumber(compartment.labelNumber)}</span> {compartment.area}・棚{compartment.shelfNumber}・引き出し{compartment.drawerNumber}</span>
-                  <span className="text-[13px] tabular-nums text-inv-faint">{compartment.stockQuantity}{unitLabel(item)}{compartment.itemTagUid ? '' : '・タグなし'}</span>
+                  <span className="text-[13px] tabular-nums text-inv-faint">{compartment.stockQuantity}{unitLabel(item)}</span>
+                  <span className={`shrink-0 whitespace-nowrap rounded-md border px-1.5 text-[12.5px] ${compartment.itemTagUid ? 'border-inv-line2 font-mono text-inv-muted' : 'border-inv-amber/45 text-inv-amber'}`} title={compartment.itemTagUid ?? undefined}>{tagTail(compartment.itemTagUid)}</span>
                   <button type="button" className={invButtonSmGhost} disabled={pending} onClick={() => { setError(null); setPanel({ kind: 'replace-tag', compartment }); }}>タグを交換</button>
                   <button type="button" className={invButtonSm} aria-label="別の引き出しへ移す" disabled={pending} onClick={() => setPanel({ kind: 'move', compartment })}>移す</button>
+                  {swapped?.id === compartment.id ? <p role="status" className="flex basis-full flex-wrap items-center gap-2 py-1 pl-6 text-[13.5px] font-bold text-[#d7fbe9]">
+                    <CheckIcon />タグを交換しました <span className="font-mono text-inv-faint line-through">{tagTail(swapped.oldUid)}</span><span className="text-inv-green">→</span><span className="font-mono">{tagTail(swapped.uid)}</span><span className="font-normal text-inv-muted">{swapped.oldUid && swapped.oldUid !== swapped.uid ? '古いタグは使えなくなりました' : null}</span>
+                  </p> : null}
                 </div>)}
               </div>
-              {panel.kind !== 'none' && panel.kind !== 'delete-item' ? <div className="absolute left-0 right-0 top-0 z-20 flex min-h-full items-center justify-center rounded-xl bg-inv-bg p-4">
+              {panel.kind !== 'none' && panel.kind !== 'delete-item' ? <div className={panel.kind === 'replace-tag' ? 'absolute inset-0 z-20 flex items-center justify-center rounded-xl border border-inv-amber/50 bg-inv-bg p-4' : 'absolute left-0 right-0 top-0 z-20 flex min-h-full items-center justify-center rounded-xl bg-inv-bg p-4'}>
                 <div className="max-h-[500px] w-full overflow-y-auto">
-            {panel.kind === 'replace-tag' ? <NfcScanPanel label="新しい品物タグ" sub={compartmentLocationText(panel.compartment).replace('引出し', '引き出し')} pending={scanPending} error={errorAt === 'tag' ? error : null} onManualUid={(uid) => {
+            {panel.kind === 'replace-tag' ? <NfcScanPanel large currentTag={tagTail(panel.compartment.itemTagUid)} label="新しい品物タグをかざす" sub={`${placeText(panel.compartment)} ／ ${item.name}`} pending={scanPending} error={errorAt === 'tag' ? error : null} onManualUid={(uid) => {
               if (scanBusy.current) return;
               scanBusy.current = true;
               setScanPending(true);
-              void run(() => mutations.replaceTag.mutateAsync({ id: panel.compartment.id, uid }), 'タグを交換しました', { kind: 'none' }, 'tag').finally(() => { scanBusy.current = false; setScanPending(false); });
+              setError(null);
+              setErrorAt('tag');
+              void replaceTag(panel.compartment, uid).catch(caught => setError(setupTagErrorText(caught))).finally(() => { scanBusy.current = false; setScanPending(false); });
             }} onCancel={() => { setError(null); setPanel({ kind: 'none' }); }} /> : null}
 
             {panel.kind === 'move' ? (
@@ -461,7 +518,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
           </div>
         </div>
         {/* Keyed by item so typed text and the mode never carry over to another item. */}
-        <ToolValueBoard key={item.id} accessPassword={accessPassword} current={details} draftValues={readDrafts} onChange={(field, value) => void changeDetail(field, value)} status={detailStatus} statusField={detail?.field} className="flex-1" />
+        <ToolValueBoard key={`${item.id}:${splitArea(item.compartments[0]?.area ?? '').machine}`} scope={splitArea(item.compartments[0]?.area ?? '').machine === '生産技術課' ? 'seigi' : 'default'} accessPassword={accessPassword} current={details} draftValues={readDrafts} onChange={(field, value) => void changeDetail(field, value)} status={detailStatus} statusField={detail?.field} className="flex-1" />
         </div>
       </div>
       {selectedPhoto ? <InventoryPhotoReadDialog key={item.id} photos={item.photos.map(photo => ({ ...photo, alt: photo.originalFilename }))} initialPhotoId={selectedPhoto} source={{ source: 'item', itemId: item.id }} accessPassword={accessPassword} values={{ ...details, ...readDrafts }} onApply={(field, value) => setReadDrafts(current => ({ ...current, [field]: value }))} onClose={() => setSelectedPhoto(null)} /> : null}

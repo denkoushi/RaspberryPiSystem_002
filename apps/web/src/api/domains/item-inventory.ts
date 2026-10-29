@@ -1,6 +1,6 @@
 import { api } from '../http';
 
-import type { InventoryDashboard, InventoryValueVariants, InventoryVariantField, OverlayBBox } from '@raspi-system/shared-types';
+import type { InventoryToolScope, InventoryDashboard, InventoryValueVariants, InventoryVariantField, OverlayBBox } from '@raspi-system/shared-types';
 
 function inventorySettingsHeaders(accessPassword?: string) {
   return accessPassword ? { 'x-kiosk-access-password': accessPassword } : undefined;
@@ -145,8 +145,8 @@ export type InventoryToolField = (typeof INVENTORY_TOOL_FIELDS)[number];
 /** Fields with a pick list on the kiosk: 名前 (name), the tool fields, 型式 (model) and 用途 (usage). */
 export type InventoryToolFieldOptions = Record<'name' | InventoryToolField | 'model' | 'usage', string[]>;
 
-export async function getInventoryToolFieldOptions() {
-  const { data } = await api.get<{ options: InventoryToolFieldOptions }>('/item-inventory/tool-field-options');
+export async function getInventoryToolFieldOptions(scope: InventoryToolScope = 'default') {
+  const { data } = await api.get<{ options: InventoryToolFieldOptions }>('/item-inventory/tool-field-options', { params: { scope } });
   return data.options;
 }
 
@@ -155,31 +155,31 @@ export type InventoryToolFieldValue = { value: string; count: number };
 export type InventoryToolFieldValues = Record<InventoryOptionField, InventoryToolFieldValue[]>;
 
 /** Choices with how many items use each, for the pop-up edit mode (setup PIN required). */
-export async function getInventoryToolFieldValues(accessPassword?: string) {
+export async function getInventoryToolFieldValues(accessPassword?: string, scope: InventoryToolScope = 'default') {
   const { data } = await api.get<{ values: InventoryToolFieldValues }>('/item-inventory/tool-field-values', {
-    headers: inventorySettingsHeaders(accessPassword)
+    params: { scope }, headers: inventorySettingsHeaders(accessPassword)
   });
   return data.values;
 }
 
-export async function addInventoryToolFieldValue(field: InventoryOptionField, value: string, accessPassword?: string) {
-  const { data } = await api.post<{ field: InventoryOptionField; value: string }>('/item-inventory/tool-field-values', { field, value }, {
+export async function addInventoryToolFieldValue(field: InventoryOptionField, value: string, accessPassword?: string, scope: InventoryToolScope = 'default') {
+  const { data } = await api.post<{ field: InventoryOptionField; value: string }>('/item-inventory/tool-field-values', { field, value, scope }, {
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data;
 }
 
 /** Renames the choice and every item that uses it. */
-export async function renameInventoryToolFieldValue(field: InventoryOptionField, from: string, to: string, accessPassword?: string) {
-  const { data } = await api.put<{ field: InventoryOptionField; value: string; updatedItems: number }>('/item-inventory/tool-field-values', { field, from, to }, {
+export async function renameInventoryToolFieldValue(field: InventoryOptionField, from: string, to: string, accessPassword?: string, scope: InventoryToolScope = 'default') {
+  const { data } = await api.put<{ field: InventoryOptionField; value: string; updatedItems: number }>('/item-inventory/tool-field-values', { field, from, to, scope }, {
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data;
 }
 
-export async function deleteInventoryToolFieldValue(field: InventoryOptionField, value: string, accessPassword?: string) {
+export async function deleteInventoryToolFieldValue(field: InventoryOptionField, value: string, accessPassword?: string, scope: InventoryToolScope = 'default') {
   const { data } = await api.delete<{ field: InventoryOptionField; value: string }>('/item-inventory/tool-field-values', {
-    params: { field, value },
+    params: { field, value, scope },
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data;
@@ -281,6 +281,13 @@ export async function getInventoryImportMessages(accessPassword?: string) {
 export async function ingestInventoryMail(messageId?: string) {
   const { data } = await api.post<{ result: unknown }>('/item-inventory/ingest', messageId ? { messageId } : {});
   return data.result;
+}
+
+export async function setInventoryImportMessageDismissed(id: string, dismissed: boolean, accessPassword?: string) {
+  const { data } = await api.put(`/item-inventory/import-messages/${id}/dismissed`, { dismissed }, {
+    headers: inventorySettingsHeaders(accessPassword)
+  });
+  return data;
 }
 
 export async function retryInventoryImportMessage(id: string, accessPassword?: string) {
@@ -459,11 +466,11 @@ export async function getInventoryDashboard(weeks: number, machine: string | und
   const { data } = await api.get<InventoryDashboard>('/item-inventory/dashboard', { params: { weeks, machine }, headers: inventorySettingsHeaders(accessPassword) });
   return data;
 }
-export async function getInventoryValueVariants(accessPassword?: string) {
-  const { data } = await api.get<InventoryValueVariants>('/item-inventory/tool-value-variants', { headers: inventorySettingsHeaders(accessPassword) });
+export async function getInventoryValueVariants(accessPassword?: string, scope: InventoryToolScope = 'default') {
+  const { data } = await api.get<InventoryValueVariants>('/item-inventory/tool-value-variants', { params: { scope }, headers: inventorySettingsHeaders(accessPassword) });
   return data;
 }
-export async function mergeInventoryValueVariants(input: { field: InventoryVariantField; to: string; from: string[] }, accessPassword: string) {
+export async function mergeInventoryValueVariants(input: { scope?: InventoryToolScope; field: InventoryVariantField; to: string; from: string[] }, accessPassword: string) {
   const { data } = await api.post('/item-inventory/tool-value-variants/merge', input, { headers: inventorySettingsHeaders(accessPassword) });
   return data;
 }

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { readInventoryPhotoRegion, resolveInventoryTag } from '../../../../api/client';
-import { useInventoryItems, useInventoryMutations } from '../../../../api/hooks';
+import { useInventoryItems, useInventoryMutations, useInventoryToolFieldOptions, useInventoryToolFieldValues } from '../../../../api/hooks';
 
 import { InventoryItemEditTab } from './InventoryItemEditTab';
 
@@ -18,7 +18,7 @@ vi.mock('../../../../api/hooks', () => ({
     data: [{
       id: 'item-1', itemCode: 'RI-1', name: '治具A', model: null, usage: null, maker: 'OSG', category: null, area, note: null,
       photos: [{ id: 'photo-1', photoIndex: 1, photoUrl: '/p/1.jpg', originalFilename: 'a.jpg' }],
-      compartments: [{ id: 'comp-1', stockQuantity: 5, area, shelfNumber: 1, drawerNumber: 1, itemTagUid: 'tag-1', item: {} }],
+      compartments: [{ id: 'comp-1', labelNumber: 42, stockQuantity: 5, area, shelfNumber: 1, drawerNumber: 1, itemTagUid: 'tag-1', item: {} }],
     }, {
       id: 'item-2', itemCode: 'RI-2', name: 'ItemlistRaspi 7', model: null, usage: null, category: null, area, note: null, photos: [], compartments: [],
     }],
@@ -63,6 +63,78 @@ describe('InventoryItemEditTab', () => {
   });
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('searches padded labels, highlights matching text and jumps to shelf groups', () => {
+    const scroll = vi.fn();
+    vi.stubGlobal('HTMLElement', window.HTMLElement);
+    window.HTMLElement.prototype.scrollIntoView = scroll;
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
+    fireEvent.change(list.getByLabelText('品名・型式・番号で探す'), { target: { value: '００４２' } });
+    expect(list.getByRole('button', { name: /治具A/ })).toHaveTextContent('0042');
+    expect(list.queryByRole('button', { name: /ItemlistRaspi/ })).not.toBeInTheDocument();
+    expect(list.getByText('0042').tagName).toBe('MARK');
+    fireEvent.click(list.getByRole('button', { name: `${area}・棚1` }));
+    expect(scroll).toHaveBeenCalledWith({ block: 'start' });
+    fireEvent.change(list.getByLabelText('品名・型式・番号で探す'), { target: { value: '治具' } });
+    expect(list.getByText('治具').tagName).toBe('MARK');
+    delete (window.HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+  });
+
+  it('filters departments and scopes the board by the first placement, not imported area', () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [
+      { ...data[0], area: '機械課', compartments: [{ ...data[0].compartments[0], area: '生産技術課 北' }, { ...data[0].compartments[0], id: 'c2', area: '機械課 南' }] }, data[1],
+    ] } as never);
+    try {
+      render(<InventoryItemEditTab accessPassword="2520" />);
+      const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
+      fireEvent.click(list.getByRole('button', { name: '生産技術課 1件' }));
+      expect(list.queryByRole('button', { name: /ItemlistRaspi/ })).not.toBeInTheDocument();
+      fireEvent.click(list.getByRole('button', { name: /治具A/ }));
+      expect(screen.getByText('生産技術課の選択肢')).toBeInTheDocument();
+      expect(useInventoryToolFieldOptions).toHaveBeenLastCalledWith(true, 'seigi');
+      fireEvent.click(screen.getByRole('button', { name: 'まとめて直す' }));
+      expect(useInventoryToolFieldValues).toHaveBeenLastCalledWith('2520', true, true, 'seigi');
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
+
+  it('keeps replacement open with the usage location and accepts a different manual UID', async () => {
+    mutations.replaceTag.mutateAsync.mockRejectedValueOnce({ response: { data: { message: 'このUIDは既に使用されています', details: { usedBy: { itemName: 'ドリル', area: '生産技術課 北', shelfNumber: 2, drawerNumber: 3 } } } } });
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+    expect(screen.getByText('…tag-1')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'タグを交換' }));
+    expect(screen.getByText('新しい品物タグをかざす')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'IDを手で入れる' }));
+    fireEvent.change(screen.getByLabelText('タグのID'), { target: { value: 'used' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '使う' })); });
+    expect(screen.getByRole('alert')).toHaveTextContent('このタグは「ドリル」（生産技術課 北・棚2・引き出し3）で使っています。別のタグをかざしてください');
+    expect(screen.getByText('新しい品物タグをかざす')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('タグのID'), { target: { value: 'new-12345' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '使う' })); });
+    expect(screen.queryByText('新しい品物タグをかざす')).not.toBeInTheDocument();
+    expect(screen.getByText(`${area}・棚1・引き出し1 のタグを交換しました`)).toBeInTheDocument();
+    expect(screen.getByText('古いタグは使えなくなりました')).toBeInTheDocument();
+    expect(screen.getByText('…12345')).toBeInTheDocument();
+  });
+
+  it('shows タグなし as the old UID when binding a replacement to an untagged place', async () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...data[0], compartments: [{ ...data[0].compartments[0], itemTagUid: null }] }] } as never);
+    try {
+      render(<InventoryItemEditTab accessPassword="2520" />);
+      fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'タグを交換' }));
+      fireEvent.click(screen.getByRole('button', { name: 'IDを手で入れる' }));
+      fireEvent.change(screen.getByLabelText('タグのID'), { target: { value: 'new-12345' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '使う' })); });
+      expect(screen.getByText('タグを交換しました')).toHaveTextContent('タグなし→…12345');
+      expect(screen.queryByText('古いタグは使えなくなりました')).not.toBeInTheDocument();
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
 
   it('rotates the selected photo with its parent and photo IDs', async () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
@@ -370,7 +442,7 @@ describe('InventoryItemEditTab', () => {
   it('opens a registered item by NFC even when it is filtered out', async () => {
     vi.mocked(resolveInventoryTag).mockResolvedValue({ kind: 'ITEM', compartment: { item: { id: 'item-1' } } } as never);
     const view = render(<InventoryItemEditTab accessPassword="2520" />);
-    fireEvent.change(screen.getByLabelText('品名・型式で絞り込む'), { target: { value: '見つからない名前' } });
+    fireEvent.change(screen.getByLabelText('品名・型式・番号で探す'), { target: { value: '見つからない名前' } });
     nfc.event = { uid: 'tag-1', eventId: 1, timestamp: '2026-10-08' } as NfcEvent;
     await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
     expect(resolveInventoryTag).toHaveBeenCalledWith('tag-1');
@@ -419,7 +491,7 @@ describe('InventoryItemEditTab', () => {
     await act(async () => { view.rerender(<InventoryItemEditTab accessPassword="2520" />); });
     expect(screen.getByRole('region', { name: '置き場所' })).toContainElement(screen.getByRole('alert'));
     expect(screen.getByRole('alert')).toHaveTextContent('このタグは使用中です');
-    expect(screen.getByText('新しい品物タグ')).toBeInTheDocument();
+    expect(screen.getByText('新しい品物タグをかざす')).toBeInTheDocument();
   });
 
   it('refreshes a stale item list when a registered tag belongs to an item missing from the cache', async () => {

@@ -1021,12 +1021,13 @@ model InventoryItem {
 
 /// Pre-registered choices for tool fields (loaded from a supplier list), offered with the values already in use.
 model InventoryToolFieldPreset {
+  scope     String   @default("default")
   id        String   @id @default(uuid())
   field     String
   value     String
   createdAt DateTime @default(now())
 
-  @@unique([field, value])
+  @@unique([scope, field, value])
 }
 
 model InventoryToolValueDistinct {
@@ -1103,6 +1104,7 @@ model InventoryImportPhoto {
 }
 
 model InventoryImportMessage {
+  dismissedAt          DateTime?
   id                   String                  @id @default(uuid())
   gmailMessageId       String                  @unique
   payloadId            String?

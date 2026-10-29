@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { inventory, requireClientDeviceMock, verifyPasswordMock } = vi.hoisted(() => ({
   inventory: {
+    setImportMessageDismissed: vi.fn(), replaceItemTag: vi.fn(), listToolFieldOptions: vi.fn(), listToolFieldValues: vi.fn(), addToolFieldValue: vi.fn(), renameToolFieldValue: vi.fn(), deleteToolFieldValue: vi.fn(), toolValueVariants: vi.fn(), mergeToolValueVariants: vi.fn(),
     processTransaction: vi.fn(), cancelTransaction: vi.fn(),
     processTouchTransaction: vi.fn(), deleteDrawer: vi.fn(), deleteShelf: vi.fn(), deleteTag: vi.fn(), dismissImport: vi.fn(), restoreImport: vi.fn(),
   },
@@ -36,7 +37,7 @@ const setupRoutes = [
   { method: 'POST', url: `/item-inventory/imports/${id}/restore`, handler: inventory.restoreImport },
 ] as const;
 
-async function request(method: 'POST' | 'DELETE', url: string, headers: Record<string, string>, payload?: object) {
+async function request(method: 'POST' | 'DELETE' | 'PUT' | 'GET', url: string, headers: Record<string, string>, payload?: object) {
   const app = Fastify();
   registerErrorHandler(app);
   registerItemInventoryRoutes(app);
@@ -50,6 +51,7 @@ async function request(method: 'POST' | 'DELETE', url: string, headers: Record<s
 describe('inventory phase 2 API contracts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    for (const fn of [inventory.listToolFieldOptions, inventory.listToolFieldValues, inventory.addToolFieldValue, inventory.renameToolFieldValue, inventory.deleteToolFieldValue, inventory.toolValueVariants, inventory.mergeToolValueVariants]) fn.mockReset().mockResolvedValue({});
     requireClientDeviceMock.mockImplementation(async (key: string) => {
       if (key !== 'kiosk-key') throw new ApiError(401, '無効な端末', undefined, 'CLIENT_KEY_INVALID');
       return { clientDevice: { id: 'terminal-1' } };
@@ -61,6 +63,49 @@ describe('inventory phase 2 API contracts', () => {
     for (const route of setupRoutes) route.handler.mockReset().mockResolvedValue({ id });
     inventory.dismissImport.mockResolvedValue({ id, status: 'DISMISSED' });
     inventory.restoreImport.mockResolvedValue({ id, status: 'PENDING' });
+  });
+
+  it('requires setup authorization and a boolean for message dismissal and undo', async () => {
+    const url = `/item-inventory/import-messages/${id}/dismissed`;
+    const headers = { ...clientHeaders, 'x-kiosk-access-password': '1234' };
+    expect((await request('PUT', url, clientHeaders, { dismissed: true })).statusCode).toBe(401);
+    verifyPasswordMock.mockResolvedValueOnce({ success: false });
+    expect((await request('PUT', url, headers, { dismissed: true })).statusCode).toBe(403);
+    expect((await request('PUT', url, headers, { dismissed: 'true' })).statusCode).toBe(400);
+    expect(inventory.setImportMessageDismissed).not.toHaveBeenCalled();
+    for (const dismissed of [true, false]) {
+      inventory.setImportMessageDismissed.mockResolvedValueOnce({ id, dismissedAt: dismissed ? new Date('2026-10-29') : null });
+      const response = await request('PUT', url, headers, { dismissed });
+      expect(response.statusCode).toBe(200);
+      expect(inventory.setImportMessageDismissed).toHaveBeenLastCalledWith(id, dismissed);
+    }
+  });
+
+  it.each([undefined, 'default', 'seigi'])('passes scope %s through every choice endpoint', async scope => {
+    const headers = { ...clientHeaders, 'x-kiosk-access-password': '1234' };
+    const query = scope ? `?scope=${scope}` : '';
+    const expected = scope ?? 'default';
+    for (const [path, fn] of [['tool-field-options', inventory.listToolFieldOptions], ['tool-field-values', inventory.listToolFieldValues], ['tool-value-variants', inventory.toolValueVariants]] as const) {
+      expect((await request('GET', `/item-inventory/${path}${query}`, headers)).statusCode).toBe(200);
+      expect(fn).toHaveBeenCalledWith(expected);
+    }
+    expect((await request('POST', '/item-inventory/tool-field-values', headers, { field: 'maker', value: 'A', scope })).statusCode).toBe(200);
+    expect(inventory.addToolFieldValue).toHaveBeenCalledWith('maker', 'A', expected);
+    expect((await request('PUT', '/item-inventory/tool-field-values', headers, { field: 'maker', from: 'A', to: 'B', scope })).statusCode).toBe(200);
+    expect(inventory.renameToolFieldValue).toHaveBeenCalledWith('maker', 'A', 'B', expected);
+    expect((await request('DELETE', `/item-inventory/tool-field-values?field=maker&value=A${scope ? `&scope=${scope}` : ''}`, headers)).statusCode).toBe(200);
+    expect(inventory.deleteToolFieldValue).toHaveBeenCalledWith('maker', 'A', expected);
+    expect((await request('POST', '/item-inventory/tool-value-variants/merge', headers, { field: 'maker', from: ['A'], to: 'B', scope })).statusCode).toBe(200);
+    expect(inventory.mergeToolValueVariants).toHaveBeenCalledWith('maker', 'B', ['A'], expected);
+    expect((await request('GET', '/item-inventory/tool-field-options?scope=other', headers)).statusCode).toBe(400);
+  });
+
+  it('preserves the 409 shape and serializes the added tag usage details', async () => {
+    const usedBy = { itemName: 'ドリル', area: '生産技術課 北', shelfNumber: 2, drawerNumber: 3 };
+    inventory.replaceItemTag.mockRejectedValueOnce(new ApiError(409, 'このUIDは既に使用されています', { usedBy }));
+    const response = await request('PUT', `/item-inventory/compartments/${id}/tag`, { ...clientHeaders, 'x-kiosk-access-password': '1234' }, { uid: 'used' });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ message: 'このUIDは既に使用されています', details: { usedBy }, requestId: expect.any(String) });
   });
 
   it.each([id, undefined])('passes the optional expected compartment to tag transactions: %s', async (expectedCompartmentId) => {

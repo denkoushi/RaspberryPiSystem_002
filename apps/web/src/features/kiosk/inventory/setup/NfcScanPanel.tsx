@@ -13,12 +13,13 @@ type Props = {
   onCancel: () => void;
   /** Big target with rings, for a screen whose only job is reading one tag. */
   large?: boolean;
+  currentTag?: string;
   cancelLabel?: string;
   cancelWhilePending?: boolean;
 };
 
 /** One-row "hold the tag" prompt. Reading starts as soon as it is shown; the ID can be typed as a fallback. */
-export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel, large = false, cancelLabel = 'やめる', cancelWhilePending = false }: Props) {
+export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel, large = false, currentTag, cancelLabel = 'やめる', cancelWhilePending = false }: Props) {
   const [manualOpen, setManualOpen] = useState(false);
   const [manualUid, setManualUid] = useState('');
   const manual = manualOpen ? (
@@ -31,15 +32,16 @@ export function NfcScanPanel({ label, sub, pending, error, onManualUid, onCancel
   );
   if (large) {
     return (
-      <section className={`${invPanel} flex flex-col items-center gap-5 border-inv-amber/50 px-7 py-9`} aria-label="タグを読む">
-        <div className="relative flex h-[200px] w-[200px] items-center justify-center" aria-hidden="true">
+      <section className={currentTag !== undefined ? 'grid grid-cols-[150px_minmax(0,1fr)] items-center gap-x-[22px] px-2.5 py-0.5' : `${invPanel} flex flex-col items-center gap-5 border-inv-amber/50 px-7 py-9`} aria-label="タグを読む">
+        <div className={`relative flex items-center justify-center ${currentTag !== undefined ? 'row-span-5 h-[150px] w-[150px]' : 'h-[200px] w-[200px]'}`} aria-hidden="true">
           <span className="absolute inset-0 rounded-full border-2 border-inv-amber/20" />
           <span className="absolute inset-6 rounded-full border-2 border-inv-amber/40" />
-          <span className="flex h-28 w-28 items-center justify-center rounded-full bg-inv-amber text-inv-amber-ink"><NfcIcon size={60} /></span>
+          <span className={`flex items-center justify-center rounded-full bg-inv-amber text-inv-amber-ink ${currentTag !== undefined ? 'h-[84px] w-[84px]' : 'h-28 w-28'}`}><NfcIcon size={currentTag !== undefined ? 44 : 60} /></span>
         </div>
-        <p role="status" className="text-center text-[28px] font-black">{pending ? '登録中…' : label}</p>
-        {sub ? <p className="-mt-3 text-center text-sm text-inv-muted">{sub}</p> : null}
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        <p role="status" className={`${currentTag !== undefined ? 'text-[26px]' : 'text-center text-[28px]'} font-black`}>{pending ? '登録中…' : label}</p>
+        {sub ? <p className={`${currentTag !== undefined ? 'mb-2 text-[15px]' : '-mt-3 text-center text-sm'} text-inv-muted`}>{sub}</p> : null}
+        {currentTag !== undefined ? <p className="mb-2 text-sm text-inv-muted">いまのタグ <span className="rounded-md border border-inv-line2 px-1.5 font-mono">{currentTag}</span></p> : null}
+        <div className={`flex flex-wrap items-center gap-3 ${currentTag === undefined ? 'justify-center' : ''}`}>
           <button type="button" className={invButtonSmGhost} disabled={pending && !cancelWhilePending} onClick={onCancel}>{cancelLabel}</button>
           {manual}
         </div>
