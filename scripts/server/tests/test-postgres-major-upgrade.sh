@@ -13,7 +13,7 @@ cleanup() {
   local status=$?
   trap - EXIT
   docker rm -f "$GUARD_CONTAINER" >/dev/null 2>&1 || true
-  docker compose --project-directory "$TEST_DIR" --env-file "$TEST_DIR/test.env" -f "$TEST_DIR/compose.yml" down --volumes >/dev/null 2>&1 || status=1
+  docker compose --env-file "$TEST_DIR/test.env" -f "$TEST_DIR/compose/compose.yml" down --volumes >/dev/null 2>&1 || status=1
   for volume in "$OLD_VOLUME" "$NEW_VOLUME" "$EMPTY_VOLUME"; do
     if docker volume inspect "$volume" >/dev/null 2>&1; then
       docker volume rm "$volume" >/dev/null || status=1
@@ -29,13 +29,32 @@ trap 'exit 143' TERM
 printf 'isolated-postgres-test-password\n' > "$TEST_DIR/password"
 # .envや本番設定を一切読まない。
 : > "$TEST_DIR/test.env"
+mkdir -p "$TEST_DIR/compose"
+printf 'RELATIVE_ENV_FILE_LOADED=yes\n' > "$TEST_DIR/relative.env"
+# 本番Composeを同じ相対配置で検証する。.envはダミーで、秘密ファイルは読まない。
+CONFIG_ROOT="$TEST_DIR/config-repo"
+mkdir -p "$CONFIG_ROOT/infrastructure/docker" "$CONFIG_ROOT/apps/api"
+cp "$ROOT/infrastructure/docker/docker-compose.server.yml" "$CONFIG_ROOT/infrastructure/docker/"
+cp "$ROOT/apps/api/.env.example" "$CONFIG_ROOT/apps/api/"
+cat > "$CONFIG_ROOT/infrastructure/docker/.env" <<ENV
+POSTGRES_SUPERUSER_PASSWORD_FILE=$TEST_DIR/password
+APP_DATABASE_URL=postgresql://dummy:dummy@db/borrow_return
+ADMIN_ALLOW_NETS=127.0.0.1/32
+ENV
+(
+  cd "$CONFIG_ROOT"
+  docker compose --env-file "$CONFIG_ROOT/infrastructure/docker/.env" \
+    -f infrastructure/docker/docker-compose.server.yml config --format json > "$TEST_DIR/server-config.json"
+)
+python3 -c 'import json,sys; from pathlib import Path; c=json.load(open(sys.argv[1])); assert Path(c["services"]["api"]["build"]["context"])==Path(sys.argv[2])' "$TEST_DIR/server-config.json" "$CONFIG_ROOT"
 write_compose() {
   local version=$1
-  cat > "$TEST_DIR/compose.yml" <<YAML
+  cat > "$TEST_DIR/compose/compose.yml" <<YAML
 name: $RUN_ID
 services:
   db:
     image: pgvector/pgvector:pg$version
+    env_file: ../relative.env
     environment:
       POSTGRES_DB: borrow_return
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser-password
@@ -51,11 +70,11 @@ services:
         read_only: true
 YAML
   if [[ "$version" == 15 ]]; then
-    cat >> "$TEST_DIR/compose.yml" <<'YAML'
+    cat >> "$TEST_DIR/compose/compose.yml" <<'YAML'
       - db-data:/var/lib/postgresql/data
 YAML
   else
-    cat >> "$TEST_DIR/compose.yml" <<YAML
+    cat >> "$TEST_DIR/compose/compose.yml" <<YAML
       - db-data-pg18:/var/lib/postgresql
       - db-data:/mnt/legacy-pgdata:ro
       - $ROOT/infrastructure/docker/postgres/db-start-guard.sh:/usr/local/bin/db-start-guard.sh:ro
@@ -63,7 +82,7 @@ YAML
     command: [postgres]
 YAML
   fi
-  cat >> "$TEST_DIR/compose.yml" <<YAML
+  cat >> "$TEST_DIR/compose/compose.yml" <<YAML
 volumes:
   db-data:
     name: $OLD_VOLUME
@@ -72,9 +91,9 @@ volumes:
 YAML
 }
 write_compose 15
-compose=(docker compose --project-directory "$TEST_DIR" --env-file "$TEST_DIR/test.env" -f "$TEST_DIR/compose.yml")
+compose=(docker compose --env-file "$TEST_DIR/test.env" -f "$TEST_DIR/compose/compose.yml")
 upgrade=("$ROOT/scripts/server/postgres-major-upgrade.sh")
-options=(--project-dir "$TEST_DIR" --compose-file "$TEST_DIR/compose.yml" --env-file "$TEST_DIR/test.env" --work-dir "$TEST_DIR/work")
+options=(--project-dir "$TEST_DIR" --compose-file "$TEST_DIR/compose/compose.yml" --env-file "$TEST_DIR/test.env" --work-dir "$TEST_DIR/work")
 "${compose[@]}" up -d --wait db
 container=$("${compose[@]}" ps -q db)
 # 初期化用の一時サーバーがhealthyになる場合もあるため完了ログを待つ。
@@ -92,6 +111,12 @@ CREATE INDEX samples_trgm ON samples USING gin (label gin_trgm_ops);
 INSERT INTO samples(label,embedding) VALUES ('日本語検索','[1,2,3]'),('second','[3,2,1]');
 SELECT setval('samples_id_seq',42,true);
 CREATE ROLE sample_group;
+-- 明示ACLが既定値と同じ場合、restore後のNULL ACLと一致すること。
+CREATE TABLE default_acl_equivalent(id int);
+GRANT ALL ON default_acl_equivalent TO postgres;
+CREATE SCHEMA default_acl_schema;
+GRANT ALL ON SCHEMA default_acl_schema TO postgres;
+GRANT ALL ON DATABASE borrow_return TO postgres;
 SQL
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d borrow_return \
   -v migration_password=migration-test -v app_password=app-test \
@@ -125,6 +150,20 @@ stage=$SECONDS
 "${upgrade[@]}" activate --expect-major 18 "${options[@]}"
 echo "[postgres-major-upgrade] activate18=$((SECONDS-stage))s"
 container=$("${compose[@]}" ps -q db)
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d borrow_return <<'SQL'
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_class c, LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+                 WHERE c.relname='samples' AND a.grantee=c.relowner AND a.privilege_type='MAINTAIN') THEN
+    RAISE EXCEPTION 'owner MAINTAIN missing';
+  END IF;
+  IF EXISTS (SELECT FROM pg_class c, LATERAL aclexplode(c.relacl) a
+             WHERE c.relname='samples' AND a.grantee<>c.relowner AND a.privilege_type='MAINTAIN') OR
+     EXISTS (SELECT FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) a
+             WHERE a.grantee<>d.defaclrole AND a.privilege_type='MAINTAIN') THEN
+    RAISE EXCEPTION 'non-owner MAINTAIN restored';
+  END IF;
+END $$;
+SQL
 # TCP認証・権限を確認し、report比較後も書込みを残さない。
 docker exec -i -e PGPASSWORD=app-test "$container" psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 -U raspi_app -d borrow_return <<'SQL'
 BEGIN;

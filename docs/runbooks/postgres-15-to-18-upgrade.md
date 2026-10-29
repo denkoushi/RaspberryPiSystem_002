@@ -82,7 +82,9 @@ WORK="/opt/backups/postgres-major-upgrade/$(date -u +%Y%m%dT%H%M%SZ)"
 
 4. **移行・比較する。** スクリプトはglobalsと `-Fc --create` を保存し、network noneの一時pg18へ
    所有者・ACL付きで復元し、全DBをanalyzeする。pg15の `GRANT ALL` の復元で追加される
-   `MAINTAIN` は復元先の明示ACLから除き、旧権限と一致させる。旧ボリュームは復元先にしない。
+   `MAINTAIN` は所有者には残し、他のgranteeから除いて旧権限と一致させる。
+   ACL比較はNULLを既定ACLへ展開し、MAINTAINを除いたロール名・権限・grant optionで正規化する。
+   新旧比較後に旧DBを再比較し、ダンプ後の更新を検知した場合も失敗する。旧ボリュームは復元先にしない。
 
    ```bash
    scripts/server/postgres-major-upgrade.sh migrate --work-dir "$WORK"
@@ -96,7 +98,35 @@ WORK="/opt/backups/postgres-major-upgrade/$(date -u +%Y%m%dT%H%M%SZ)"
    失敗時はそこで停止する。一時コンテナはtrapで除去され、新旧ボリュームと作業ファイルは残る。
    成功markerなしでactivateしない。移行用 `globals.sql` と `database.dump` もMacへコピーして照合する。
 
-5. **旧DBを停止する。**
+   **migrate が失敗したら:** そこで停止し、`$WORK/migrate.diff`、`$WORK/*.log` と実行ログを確認する。
+   再試行には新しい作業ディレクトリを使う。削除するのは新ボリューム `<prefix>_db-data-pg18` だけで、
+   **旧 `db-data` は絶対に削除しない。** 次のコマンドでComposeから名前を解決し、旧名と異なり、
+   旧名に `-pg18` を付けた新名であることを確認してから削除する（失敗時のWORKは調査用に保持する）。
+
+   ```bash
+   readarray -t DB_VOLUMES < <("${BASE[@]}" config --format json | python3 -c '
+   import json,sys
+   c=json.load(sys.stdin); old=c["volumes"]["db-data"]["name"]
+   new=c.get("volumes",{}).get("db-data-pg18",{}).get("name",old+"-pg18")
+   print(old); print(new)
+   ')
+   OLD_VOLUME="${DB_VOLUMES[0]}"
+   NEW_VOLUME="${DB_VOLUMES[1]}"
+   printf '保持する旧ボリューム: %s\n削除する新ボリューム: %s\n' "$OLD_VOLUME" "$NEW_VOLUME"
+   if [[ -n "$OLD_VOLUME" && "$OLD_VOLUME" == *_db-data && "$NEW_VOLUME" != "$OLD_VOLUME" && "$NEW_VOLUME" == "$OLD_VOLUME-pg18" ]]; then
+     docker volume rm "$NEW_VOLUME"
+   else
+     echo '名前が想定と違うため削除しない' >&2
+   fi
+   WORK="/opt/backups/postgres-major-upgrade/$(date -u +%Y%m%dT%H%M%SZ)"
+   ```
+
+5. **旧DBを停止する。** 直前に接続を再確認し、1件でも表示されたら停止して接続元を調査する。
+   接続元を止め、ダンプ後の書込みが疑われる場合は新しいWORKで移行をやり直す。
+
+   ```bash
+   "${BASE[@]}" exec -T db psql -X -qAt -v ON_ERROR_STOP=1 -U postgres -d borrow_return -c "SELECT pid,usename,application_name,client_addr,state FROM pg_stat_activity WHERE datname=current_database() AND backend_type='client backend' AND pid<>pg_backend_pid() ORDER BY pid"
+   ```
 
    ```bash
    "${BASE[@]}" stop db

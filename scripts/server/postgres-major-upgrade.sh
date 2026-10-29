@@ -56,7 +56,7 @@ fi
 compose_file=${compose_file:-$project_dir/infrastructure/docker/docker-compose.server.yml}
 env_file=${env_file:-$project_dir/infrastructure/docker/.env}
 work_dir=${work_dir:-/opt/backups/postgres-major-upgrade/$(date -u +%Y%m%dT%H%M%SZ)}
-compose=(docker compose --project-directory "$project_dir" --env-file "$env_file" -f "$compose_file")
+compose=(docker compose --env-file "$env_file" -f "$compose_file")
 # JSONの内容をログに出さない。解決済み設定には秘密値が含まれる場合がある。
 config=$("${compose[@]}" config --format json)
 config_value() { python3 -c "$1" <<<"$config"; }
@@ -78,12 +78,20 @@ report() {
   psql_db "$container" <<'SQL' | LC_ALL=C sort > "$output"
 SET timezone = 'UTC';
 SET datestyle = 'ISO, YMD';
-SELECT json_build_array('database', datname, pg_get_userbyid(datdba), pg_encoding_to_char(encoding), datcollate, datctype, (SELECT array_agg(x::text ORDER BY x::text COLLATE "C") FROM unnest(datacl) x)) FROM pg_database WHERE datname=current_database();
+SELECT json_build_array('database', datname, pg_get_userbyid(datdba), pg_encoding_to_char(encoding), datcollate, datctype, (SELECT json_agg(json_build_array(grantor, grantee, privilege_type, is_grantable) ORDER BY grantor COLLATE "C", grantee COLLATE "C", privilege_type COLLATE "C", is_grantable)
+  FROM (SELECT pg_get_userbyid(a.grantor) AS grantor, CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee, a.privilege_type, a.is_grantable
+    FROM aclexplode(coalesce(datacl, acldefault('d', datdba))) a WHERE a.privilege_type<>'MAINTAIN') acl)) FROM pg_database WHERE datname=current_database();
 SELECT json_build_array('role', rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolconnlimit, rolvaliduntil, (SELECT rolconfig FROM pg_roles WHERE oid=pg_authid.oid), md5(rolpassword)) FROM pg_authid WHERE left(rolname,3)<>'pg_';
 SELECT json_build_array('membership', r.rolname, m.rolname, a.admin_option) FROM pg_auth_members a JOIN pg_roles r ON r.oid=a.roleid JOIN pg_roles m ON m.oid=a.member;
-SELECT json_build_array('schema', nspname, pg_get_userbyid(nspowner), (SELECT array_agg(x::text ORDER BY x::text COLLATE "C") FROM unnest(nspacl) x)) FROM pg_namespace WHERE left(nspname,3)<>'pg_' AND nspname<>'information_schema';
-SELECT json_build_array('default_acl', pg_get_userbyid(d.defaclrole), coalesce(n.nspname,''), d.defaclobjtype, (SELECT array_agg(x::text ORDER BY x::text COLLATE "C") FROM unnest(d.defaclacl) x)) FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace;
-SELECT json_build_array('table', n.nspname, c.relname, pg_get_userbyid(c.relowner), (SELECT array_agg(x::text ORDER BY x::text COLLATE "C") FROM unnest(c.relacl) x), (xpath('/row/count/text()', query_to_xml(format('SELECT count(*) FROM %I.%I', n.nspname,c.relname), false,true,'')))[1]::text) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema';
+SELECT json_build_array('schema', nspname, pg_get_userbyid(nspowner), (SELECT json_agg(json_build_array(grantor, grantee, privilege_type, is_grantable) ORDER BY grantor COLLATE "C", grantee COLLATE "C", privilege_type COLLATE "C", is_grantable)
+  FROM (SELECT pg_get_userbyid(a.grantor) AS grantor, CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee, a.privilege_type, a.is_grantable
+    FROM aclexplode(coalesce(nspacl, acldefault('n', nspowner))) a WHERE a.privilege_type<>'MAINTAIN') acl)) FROM pg_namespace WHERE left(nspname,3)<>'pg_' AND nspname<>'information_schema';
+SELECT json_build_array('default_acl', pg_get_userbyid(d.defaclrole), coalesce(n.nspname,''), d.defaclobjtype, (SELECT json_agg(json_build_array(grantor, grantee, privilege_type, is_grantable) ORDER BY grantor COLLATE "C", grantee COLLATE "C", privilege_type COLLATE "C", is_grantable)
+  FROM (SELECT pg_get_userbyid(a.grantor) AS grantor, CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee, a.privilege_type, a.is_grantable
+    FROM aclexplode(coalesce(d.defaclacl, acldefault(d.defaclobjtype, d.defaclrole))) a WHERE a.privilege_type<>'MAINTAIN') acl)) FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace;
+SELECT json_build_array('table', n.nspname, c.relname, pg_get_userbyid(c.relowner), (SELECT json_agg(json_build_array(grantor, grantee, privilege_type, is_grantable) ORDER BY grantor COLLATE "C", grantee COLLATE "C", privilege_type COLLATE "C", is_grantable)
+  FROM (SELECT pg_get_userbyid(a.grantor) AS grantor, CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee, a.privilege_type, a.is_grantable
+    FROM aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a WHERE a.privilege_type<>'MAINTAIN') acl), (xpath('/row/count/text()', query_to_xml(format('SELECT count(*) FROM %I.%I', n.nspname,c.relname), false,true,'')))[1]::text) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema';
 SELECT json_build_array('sequence', n.nspname, c.relname, (xpath('/row/last_value/text()',x.data))[1]::text, (xpath('/row/is_called/text()',x.data))[1]::text) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL (SELECT query_to_xml(format('SELECT last_value,is_called FROM %I.%I',n.nspname,c.relname),false,true,'') AS data) x WHERE c.relkind='S' AND left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema';
 SELECT json_build_array('extension', extname) FROM pg_extension;
 SQL
@@ -141,14 +149,14 @@ case "$command_name" in
     sed '/^CREATE ROLE postgres;$/d' "$work_dir/globals.sql" | docker exec -i "$temporary_container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres > "$work_dir/globals-restore.log"
     docker exec -i "$temporary_container" pg_restore -U postgres --exit-on-error --create -d postgres < "$work_dir/database.dump"
     # pg15のGRANT ALLはpg18では新しいMAINTAIN権限も付ける。
-    # 比較から除外せず、復元先の明示ACLをpg15と同じ権限へ戻す。
+    # 所有者のMAINTAINは保持し、他のgranteeだけpg15と同じ権限へ戻す。
     psql_db "$temporary_container" <<'SQL' > "$work_dir/acl-restore.log"
 SELECT format('REVOKE MAINTAIN ON TABLE %I.%I FROM %s;', n.nspname,c.relname,
   CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(a.grantee)) END)
 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
 CROSS JOIN LATERAL aclexplode(c.relacl) a
 WHERE left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema'
-  AND c.relkind IN ('r','p','v','m','f') AND a.privilege_type='MAINTAIN'
+  AND c.relkind IN ('r','p','v','m','f') AND a.privilege_type='MAINTAIN' AND a.grantee<>c.relowner
 ORDER BY n.nspname,c.relname,a.grantee
 \gexec
 SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I %s REVOKE MAINTAIN ON TABLES FROM %s;',
@@ -157,13 +165,15 @@ SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I %s REVOKE MAINTAIN ON TABLES
   CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(a.grantee)) END)
 FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
 CROSS JOIN LATERAL aclexplode(d.defaclacl) a
-WHERE d.defaclobjtype='r' AND a.privilege_type='MAINTAIN'
+WHERE d.defaclobjtype='r' AND a.privilege_type='MAINTAIN' AND a.grantee<>d.defaclrole
 ORDER BY d.defaclrole,d.defaclnamespace,a.grantee
 \gexec
 SQL
     docker exec "$temporary_container" vacuumdb -U postgres --all --analyze-in-stages > "$work_dir/analyze.log"
     report "$temporary_container" "$work_dir/new.report"
     diff -u "$work_dir/old.report" "$work_dir/new.report" > "$work_dir/migrate.diff" || fail "Report mismatch: $work_dir/migrate.diff"
+    report "$db_container" "$work_dir/old-after.report"
+    diff -u "$work_dir/old.report" "$work_dir/old-after.report" > "$work_dir/migrate.diff" || fail "writes happened after dump: $work_dir/migrate.diff"
     # 別project/DBの作業結果をactivateで誤使用しない。
     python3 -c 'import json,sys; json.dump(sys.argv[1:],sys.stdout)' "$project" "$database" "$old_volume" "$new_volume" > "$work_dir/identity.json"
     docker stop "$temporary_container" >/dev/null
