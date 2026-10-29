@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
   return {
     tx,
     db: {
-      assemblyCheckSheetAsset: { findUnique: vi.fn(), upsert: vi.fn() },
+      assemblyCheckSheetAsset: { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
       assemblyCheckSheetRevision: { findUnique: vi.fn(), findMany: vi.fn() },
       $transaction: vi.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx))
     },
@@ -61,6 +61,52 @@ describe('check-sheet import and revision persistence', () => {
     const second = await service.importWorkbook(buffer, 'again.xlsx');
     expect(second.importId).toBe(first.importId);
     expect(mocks.db.assemblyCheckSheetAsset.upsert).toHaveBeenLastCalledWith(expect.objectContaining({ where: { sha256 }, update: {} }));
+  });
+
+  it('records Gmail provenance on the same SHA asset and shows a re-sent dismissed file again', async () => {
+    const buffer = await makeCheckSheetWorkbook();
+    const gmail = { gmailMessageId: 'mail-1', receivedAt: new Date('2026-10-29T01:00:00Z') };
+    await service.importWorkbook(buffer, 'mail.xlsx', undefined, gmail);
+    expect(mocks.db.assemblyCheckSheetAsset.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { sha256: createHash('sha256').update(buffer).digest('hex') },
+      update: { ...gmail, originalFileName: 'mail.xlsx', dismissedAt: null },
+      create: expect.objectContaining({ ...gmail, originalFileName: 'mail.xlsx' })
+    }));
+  });
+
+  it('lists only pending Gmail sources newest first and serializes received dates', async () => {
+    mocks.db.assemblyCheckSheetAsset.findMany.mockResolvedValue([{ id: assetId, originalFileName: 'mail.xlsx', receivedAt: new Date('2026-10-29T01:00:00Z') }]);
+    expect(await service.listGmailImports()).toEqual({ items: [{ importId: assetId, originalFileName: 'mail.xlsx', receivedAt: '2026-10-29T01:00:00.000Z' }] });
+    expect(mocks.db.assemblyCheckSheetAsset.findMany).toHaveBeenCalledWith({
+      where: { gmailMessageId: { not: null }, revisions: { none: {} }, dismissedAt: null },
+      orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }], select: { id: true, originalFileName: true, receivedAt: true }
+    });
+  });
+
+  it('reparses stored Gmail bytes with the shared proposal parser and sheet selection', async () => {
+    const buffer = await makeCheckSheetWorkbook();
+    mocks.db.assemblyCheckSheetAsset.findFirst.mockResolvedValue({ id: assetId, storageKey: 'original.xlsx' });
+    mocks.store.read.mockResolvedValue(buffer);
+    const original = await service.importWorkbook(buffer, 'mail.xlsx');
+    mocks.store.write.mockClear();
+    expect(await service.getGmailImport(assetId, original.proposal.sourceSheetName)).toEqual(original);
+    expect(mocks.store.read).toHaveBeenCalledWith('original.xlsx', { verifyIntegrity: true });
+    expect(mocks.store.write).not.toHaveBeenCalled();
+    await expect(service.getGmailImport(assetId, '不存在')).rejects.toMatchObject({ statusCode: 400 });
+    expect(mocks.db.assemblyCheckSheetAsset.findFirst).toHaveBeenCalledWith({
+      where: { id: assetId, gmailMessageId: { not: null }, revisions: { none: {} }, dismissedAt: null }
+    });
+  });
+
+  it('dismisses only pending Gmail imports and rejects unavailable imports', async () => {
+    mocks.db.assemblyCheckSheetAsset.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    expect(await service.dismissGmailImport(assetId)).toEqual({ importId: assetId });
+    expect(mocks.db.assemblyCheckSheetAsset.updateMany).toHaveBeenCalledWith({
+      where: { id: assetId, gmailMessageId: { not: null }, revisions: { none: {} }, dismissedAt: null }, data: { dismissedAt: expect.any(Date) }
+    });
+    await expect(service.dismissGmailImport(assetId)).rejects.toMatchObject({ statusCode: 404 });
+    mocks.db.assemblyCheckSheetAsset.findFirst.mockResolvedValueOnce(null);
+    await expect(service.getGmailImport(assetId)).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it('rejects invalid sources before storage and database writes', async () => {

@@ -8,6 +8,8 @@ import { ProcedureMaterialGmailIngestionService } from '../procedure-material-gm
 import { PROCEDURE_VIDEO_MAX_BYTES, resolveProcedureMaterialGmailPacket } from '../procedure-material-gmail-packet-resolver.js';
 import { ProcedureVideoService } from '../procedure-video.service.js';
 
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
+
 const kick = vi.hoisted(() => vi.fn());
 vi.mock('../procedure-video.scheduler.js', () => ({ getProcedureVideoScheduler: () => ({ kick }) }));
 const bytes = Buffer.from('video bytes');

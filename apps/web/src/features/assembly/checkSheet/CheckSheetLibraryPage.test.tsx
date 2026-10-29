@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision } from '../../../api/domains/assembly/check-sheets';
+import { dismissAssemblyCheckSheetGmailImport, getAssemblyCheckSheetGmailImport, listAssemblyCheckSheetGmailImports, importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision } from '../../../api/domains/assembly/check-sheets';
 import { getKioskEmployees } from '../../../api/domains/kiosk';
 
 
@@ -11,6 +11,7 @@ import { CheckSheetLibraryPage } from './CheckSheetLibraryPage';
 import { importedSheet, savedSheet } from './testFixtures';
 
 vi.mock('../../../api/domains/assembly/check-sheets', () => ({
+  dismissAssemblyCheckSheetGmailImport: vi.fn(), getAssemblyCheckSheetGmailImport: vi.fn(), listAssemblyCheckSheetGmailImports: vi.fn(),
   importAssemblyCheckSheet: vi.fn(), listAssemblyCheckSheetRevisions: vi.fn(), saveAssemblyCheckSheetRevision: vi.fn()
 }));
 vi.mock('../../../api/domains/kiosk', () => ({ getKioskEmployees: vi.fn() }));
@@ -27,10 +28,55 @@ async function openProposal() {
 describe('CheckSheetLibraryPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(listAssemblyCheckSheetGmailImports).mockResolvedValue({ items: [] });
+    vi.mocked(getAssemblyCheckSheetGmailImport).mockResolvedValue(importedSheet());
+    vi.mocked(dismissAssemblyCheckSheetGmailImport).mockResolvedValue({ importId: importedSheet().importId });
     vi.mocked(getKioskEmployees).mockResolvedValue([{ id: '33333333-3333-4333-8333-333333333333', displayName: '試験 太郎', department: '制御設計' }]);
     vi.mocked(listAssemblyCheckSheetRevisions).mockResolvedValue([savedSheet()]);
     vi.mocked(importAssemblyCheckSheet).mockResolvedValue(importedSheet());
     vi.mocked(saveAssemblyCheckSheetRevision).mockResolvedValue(savedSheet(2));
+  });
+
+  it('opens a Gmail import in the existing review form and refreshes the list after saving', async () => {
+    vi.mocked(listAssemblyCheckSheetGmailImports).mockResolvedValue({ items: [{ importId: importedSheet().importId, originalFileName: 'mail.xlsx', receivedAt: '2026-10-29T01:00:00.000Z' }] });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CheckSheetLibraryPage /></QueryClientProvider>);
+    const row = await screen.findByRole('button', { name: /mail.xlsx/ });
+    expect(row).toHaveTextContent(new Date('2026-10-29T01:00:00.000Z').toLocaleString('ja-JP'));
+    fireEvent.click(row);
+    expect(await screen.findByRole('heading', { name: '取り込み内容' })).toBeInTheDocument();
+    expect(getAssemblyCheckSheetGmailImport).toHaveBeenCalledExactlyOnceWith(importedSheet().importId);
+    expect(importAssemblyCheckSheet).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('1-1 文言')).toHaveValue('締結トルク');
+    vi.mocked(listAssemblyCheckSheetGmailImports).mockResolvedValue({ items: [] });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    await screen.findByRole('heading', { name: '版一覧' });
+    await waitFor(() => expect(listAssemblyCheckSheetGmailImports).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('button', { name: /mail.xlsx/ })).not.toBeInTheDocument();
+    expect(vi.mocked(saveAssemblyCheckSheetRevision).mock.calls[0][0].importId).toBe(importedSheet().importId);
+  });
+
+  it('dismisses a Gmail import and removes it after refetching', async () => {
+    vi.mocked(listAssemblyCheckSheetGmailImports).mockResolvedValue({ items: [{ importId: importedSheet().importId, originalFileName: 'mail.xlsx', receivedAt: '2026-10-29T01:00:00.000Z' }] });
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CheckSheetLibraryPage /></QueryClientProvider>);
+    await screen.findByRole('button', { name: /mail.xlsx/ });
+    vi.mocked(listAssemblyCheckSheetGmailImports).mockResolvedValue({ items: [] });
+    fireEvent.click(screen.getByRole('button', { name: '対象外にする' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /mail.xlsx/ })).not.toBeInTheDocument());
+    expect(dismissAssemblyCheckSheetGmailImport).toHaveBeenCalledWith(importedSheet().importId, expect.anything());
+    expect(listAssemblyCheckSheetGmailImports).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the Gmail import visible when opening or dismissal fails', async () => {
+    vi.mocked(listAssemblyCheckSheetGmailImports).mockResolvedValue({ items: [{ importId: importedSheet().importId, originalFileName: 'mail.xlsx', receivedAt: null }] });
+    vi.mocked(getAssemblyCheckSheetGmailImport).mockRejectedValue(new Error('読み取り失敗'));
+    vi.mocked(dismissAssemblyCheckSheetGmailImport).mockRejectedValue(new Error('対象外処理失敗'));
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CheckSheetLibraryPage /></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'mail.xlsx' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('読み取り失敗');
+    expect(screen.getByRole('heading', { name: '版一覧' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '対象外にする' }));
+    await waitFor(() => expect(dismissAssemblyCheckSheetGmailImport).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'mail.xlsx' })).toBeInTheDocument();
   });
 
   it('renders all proposal mappings and highlights only warning items', async () => {

@@ -337,3 +337,5 @@ Shared types for proposal, revision, sheet and stamp payloads go in `packages/sh
 Plan update (2026-10-29 / Codex): recorded Milestone 1 implementation, acceptance counts, SQL-owned constraints, parser review warnings and local validation limits; later milestones remain unchanged.
 
 Plan update (2026-10-29 / Codex, Milestone 3): implemented only the kiosk/API milestone and recorded the entry, pause, role, value and NG-history decisions. No commit, push, merge, deployment, Milestone 4 output or customer workbook was included.
+
+Gmail（素材の件名）で届いた .xlsx は、チェックシート画面の一覧から開き、ファイル選択時と同じ画面で見直して保存できる。対象外にしたファイルと保存済みのファイルは一覧から除く。

@@ -5,9 +5,11 @@ import {
   assemblyCheckSheetLayoutSchema,
   assemblyCheckSheetSaveSchema,
   type AssemblyCheckSheetImportPayload,
+  type AssemblyCheckSheetGmailImportsPayload,
   type AssemblyCheckSheetRevisionPayload,
   type AssemblyCheckSheetSavePayload
 } from '@raspi-system/shared-types';
+import { XLSX_CONTENT_TYPE } from './check-sheet-import.constants.js';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getFileStorageRuntime } from '../../file-storage/file-storage-runtime.js';
@@ -48,10 +50,20 @@ async function parseSource(buffer: Buffer, sheetName?: string) {
   }
 }
 
-export class AssemblyCheckSheetService {
-  async importWorkbook(buffer: Buffer, originalFileName: string, sheetName?: string): Promise<AssemblyCheckSheetImportPayload> {
+async function proposeWorkbook(buffer: Buffer, sheetName?: string) {
+  try {
     const parsed = await parseSource(buffer, sheetName);
-    const proposal = assemblyCheckSheetProposalSchema.parse(normalizeCheckSheet(parsed));
+    return { sheetNames: parsed.sheetNames, proposal: assemblyCheckSheetProposalSchema.parse(normalizeCheckSheet(parsed)) };
+  } catch {
+    throw new ApiError(400, 'チェックシートの形式またはシート名を確認してください');
+  }
+}
+
+const pendingGmailImport = { gmailMessageId: { not: null }, revisions: { none: {} }, dismissedAt: null };
+
+export class AssemblyCheckSheetService {
+  async importWorkbook(buffer: Buffer, originalFileName: string, sheetName?: string, gmail?: { gmailMessageId: string; receivedAt: Date }): Promise<AssemblyCheckSheetImportPayload> {
+    const proposed = await proposeWorkbook(buffer, sheetName);
     const sha256 = createHash('sha256').update(buffer).digest('hex');
     const storageKey = `assembly-check-sheet-sources/${sha256}.xlsx`;
     const store = getFileStorageRuntime().store;
@@ -65,13 +77,38 @@ export class AssemblyCheckSheetService {
       if (createHash('sha256').update(existing).digest('hex') !== sha256) throw error;
     }
     const asset = await prisma.assemblyCheckSheetAsset.upsert({
-      where: { sha256 }, update: {},
+      where: { sha256 }, update: gmail ? { ...gmail, originalFileName, dismissedAt: null } : {},
       create: {
-        sha256, storageKey, byteSize: buffer.length, originalFileName,
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        sha256, storageKey, byteSize: buffer.length, originalFileName, ...gmail,
+        contentType: XLSX_CONTENT_TYPE
       }
     });
-    return { importId: asset.id, sheetNames: parsed.sheetNames, proposal };
+    return { importId: asset.id, ...proposed };
+  }
+
+  async listGmailImports(): Promise<AssemblyCheckSheetGmailImportsPayload> {
+    const assets = await prisma.assemblyCheckSheetAsset.findMany({
+      where: pendingGmailImport, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true, originalFileName: true, receivedAt: true }
+    });
+    return { items: assets.map((asset) => ({
+      importId: asset.id, originalFileName: asset.originalFileName, receivedAt: asset.receivedAt?.toISOString() ?? null
+    })) };
+  }
+
+  async getGmailImport(importId: string, sheetName?: string): Promise<AssemblyCheckSheetImportPayload> {
+    const asset = await prisma.assemblyCheckSheetAsset.findFirst({ where: { id: importId, ...pendingGmailImport } });
+    if (!asset) throw new ApiError(404, '取込元が見つかりません');
+    const buffer = await getFileStorageRuntime().store.read(asset.storageKey, { verifyIntegrity: true });
+    return { importId: asset.id, ...await proposeWorkbook(buffer, sheetName) };
+  }
+
+  async dismissGmailImport(importId: string): Promise<{ importId: string }> {
+    const result = await prisma.assemblyCheckSheetAsset.updateMany({
+      where: { id: importId, ...pendingGmailImport }, data: { dismissedAt: new Date() }
+    });
+    if (!result.count) throw new ApiError(404, '取込元が見つかりません');
+    return { importId };
   }
 
   async saveRevision(payload: AssemblyCheckSheetSavePayload, createdByUserId: string): Promise<AssemblyCheckSheetRevisionPayload> {

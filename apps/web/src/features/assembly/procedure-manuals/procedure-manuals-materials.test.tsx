@@ -29,7 +29,7 @@ const photo = { ...text, id: 'photo', kind: 'PHOTO', text: null, originalFileNam
 describe('procedure-manuals material shelf', () => {
   beforeEach(() => {
     vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
-    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 2, duplicate: 0, skipped: 1, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません', warnings: [] }] });
+    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 2, checkSheets: 1, duplicate: 0, skipped: 1, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません', warnings: [] }] });
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
     mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge'])); mocks.knowledgeThumbnail.mockResolvedValue(new Blob(['knowledge-thumbnail']));
     mocks.importKnowledge.mockResolvedValue({ imported: 2, duplicate: 0, failed: [] });
@@ -629,7 +629,7 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.change(screen.getByLabelText('素材を探す'), { target: { value: 'DFD1' } });
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: 'DFD1', limit: 500 }));
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
-    expect(await screen.findByText('見つけた 2 通・取込 2件・保存済み 0件・スキップ 1通・再試行 0通・再試行待ち 0通・除外添付 1件')).toBeInTheDocument(); expect(screen.getByText('本文が空で、対応する写真がありません')).toBeInTheDocument();
+    expect(await screen.findByText('見つけた 2 通・取込 2件・チェックシート 1件・保存済み 0件・スキップ 1通・再試行 0通・再試行待ち 0通・除外添付 1件')).toBeInTheDocument(); expect(screen.getByText('本文が空で、対応する写真がありません')).toBeInTheDocument();
     expect(screen.queryByText('受信トレイに未読の対象メールがありません')).not.toBeInTheDocument();
     expect(mocks.ingest).toHaveBeenCalledOnce(); await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(7));
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
@@ -763,7 +763,7 @@ describe('procedure-manuals material shelf', () => {
     const unsupported = 'ハンドル2.png (image/x-png): 対応外の添付';
     const oversized = '写真.jpg: 10 MB超過';
     const otherReason = '送信元のドメインが許可されていません';
-    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 0, duplicate: 0, skipped: 2, retryable: 0, deferred: 0, skippedAttachments: 2, errors: [], messages: [
+    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 0, checkSheets: 0, duplicate: 0, skipped: 2, retryable: 0, deferred: 0, skippedAttachments: 2, errors: [], messages: [
       { messageId: 'unsupported', reason, warnings: [unsupported, oversized] },
       { messageId: 'sender', reason: otherReason, warnings: [] },
     ] });
@@ -780,7 +780,7 @@ describe('procedure-manuals material shelf', () => {
   });
   it('shows warnings for saved messages without a reason', async () => {
     const warning = '手順.heic (image/heic): 対応外の添付';
-    mocks.ingest.mockResolvedValue({ scanned: 1, processed: 1, saved: 1, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [
+    mocks.ingest.mockResolvedValue({ scanned: 1, processed: 1, saved: 1, checkSheets: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [
       { messageId: 'saved', status: 'saved', warnings: [warning] },
     ] });
     render(<ProcedureMaterialShelfDialog onClose={vi.fn()} />);
@@ -788,17 +788,17 @@ describe('procedure-manuals material shelf', () => {
     expect(await screen.findByText(warning)).toBeInTheDocument();
   });
   it('shows a no-unread-mail message when ingestion finds no messages', async () => {
-    mocks.ingest.mockResolvedValue({ scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] });
+    mocks.ingest.mockResolvedValue({ scanned: 0, processed: 0, saved: 0, checkSheets: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] });
     render(<ProcedureMaterialShelfDialog isOpen onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
     expect(await screen.findByText('受信トレイに未読の対象メールがありません')).toBeInTheDocument();
-    expect(screen.getByText('見つけた 0 通・取込 0件・保存済み 0件・スキップ 0通・再試行 0通・再試行待ち 0通・除外添付 0件')).toBeInTheDocument();
+    expect(screen.getByText('見つけた 0 通・取込 0件・チェックシート 0件・保存済み 0件・スキップ 0通・再試行 0通・再試行待ち 0通・除外添付 0件')).toBeInTheDocument();
   });
   it('shows deferred counts without a no-unread-mail message when messages were found', async () => {
-    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, errors: [], messages: [] });
+    mocks.ingest.mockResolvedValue({ scanned: 2, processed: 0, saved: 0, checkSheets: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, errors: [], messages: [] });
     render(<ProcedureMaterialShelfDialog isOpen onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: '今すぐ取り込む' }));
-    expect(await screen.findByText('見つけた 2 通・取込 0件・保存済み 0件・スキップ 0通・再試行 0通・再試行待ち 2通・除外添付 0件')).toBeInTheDocument();
+    expect(await screen.findByText('見つけた 2 通・取込 0件・チェックシート 0件・保存済み 0件・スキップ 0通・再試行 0通・再試行待ち 2通・除外添付 0件')).toBeInTheDocument();
     expect(screen.queryByText('受信トレイに未読の対象メールがありません')).not.toBeInTheDocument();
   });
   it('fetches only visible photos once and disconnects observers/revokes URLs on close', async () => {
