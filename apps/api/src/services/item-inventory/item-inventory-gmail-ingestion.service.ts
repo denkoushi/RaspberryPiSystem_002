@@ -38,12 +38,12 @@ function emptySummary(): ItemInventoryCycleSummary {
   return { scanned: 0, processed: 0, pending: 0, duplicate: 0, retryable: 0, skipped: 0, errors: [] };
 }
 
-function isRetryable(record: { outcome: string; nextRetryAt: Date | null }, now: Date): boolean {
-  return record.outcome === 'RETRYABLE' && (!record.nextRetryAt || record.nextRetryAt <= now);
+function isRetryable(record: { dismissedAt?: Date | null; outcome: string; nextRetryAt: Date | null }, now: Date): boolean {
+  return !record.dismissedAt && record.outcome === 'RETRYABLE' && (!record.nextRetryAt || record.nextRetryAt <= now);
 }
 
-function isProcessingStale(record: { outcome: string; updatedAt: Date }, now: Date): boolean {
-  return record.outcome === 'PROCESSING' && record.updatedAt.getTime() <= now.getTime() - ITEM_INVENTORY_RETRY_DELAY_MS;
+function isProcessingStale(record: { dismissedAt?: Date | null; outcome: string; updatedAt: Date }, now: Date): boolean {
+  return !record.dismissedAt && record.outcome === 'PROCESSING' && record.updatedAt.getTime() <= now.getTime() - ITEM_INVENTORY_RETRY_DELAY_MS;
 }
 
 function isGmailMessageGone(error: unknown): boolean {
@@ -59,10 +59,11 @@ function isGmailMessageGone(error: unknown): boolean {
 }
 
 function shouldSkipRecord(
-  record: { outcome: string; nextRetryAt: Date | null; updatedAt: Date; mailCleanupPending?: boolean; mailCleanupCompleted?: boolean } | null,
+  record: { dismissedAt?: Date | null; outcome: string; nextRetryAt: Date | null; updatedAt: Date; mailCleanupPending?: boolean; mailCleanupCompleted?: boolean } | null,
   now: Date,
   forceRetry = false,
 ): boolean {
+  if (record?.dismissedAt) return true;
   if (!record || forceRetry) return false;
   if (record.mailCleanupCompleted) return true;
   if (record.mailCleanupPending) return Boolean(record.nextRetryAt && record.nextRetryAt > now);
@@ -102,6 +103,7 @@ export class ItemInventoryGmailIngestionService {
         }));
       const cleanupRecords = options.messageId ? [] : await this.db.inventoryImportMessage.findMany({
         where: {
+          dismissedAt: null,
           OR: [
             { mailCleanupPending: true, OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }] },
             { outcome: { in: ['PENDING', 'DUPLICATE'] }, mailCleanupPending: false, mailCleanupCompleted: false },
@@ -150,6 +152,7 @@ export class ItemInventoryGmailIngestionService {
   async retryRecord(recordId: string, options: { config: BackupConfig; allowWait: boolean }): Promise<ItemInventoryCycleSummary> {
     const record = await this.db.inventoryImportMessage.findUnique({ where: { id: recordId } });
     if (!record) throw new ApiError(404, '取込記録が見つかりません', undefined, 'ITEM_INVENTORY_IMPORT_MESSAGE_NOT_FOUND');
+    if (record.dismissedAt) throw new ApiError(409, '消した取込記録です。元に戻してから再試行してください');
     if (this.running) throw ingestRunningError();
     await this.db.inventoryImportMessage.update({ where: { id: recordId }, data: { nextRetryAt: null } });
     return this.runOnce({ ...options, manual: true, messageId: record.gmailMessageId, forceRetry: true });

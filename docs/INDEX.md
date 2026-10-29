@@ -1,5 +1,7 @@
 # ドキュメント索引
 
+- 在庫の準備（取込エラー取消・検索・タグ交換・課別選択肢）: [Plan](./plans/kiosk-inventory-setup-seigi.md)
+
 - Pi Zero棚スキャナーの独立配備・運用: [Runbook](./runbooks/zero-edge-agent.md)
 - キオスクのポータル画面・端末別カード選択: [Plan](./plans/kiosk-portal.md)
 - フローティングChatの操作ガイド（組立の登録・編集、固定案内の最初のスライス）: [ExecPlan](./plans/hermes-operation-guide-execplan.md)

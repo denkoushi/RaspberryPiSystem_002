@@ -95,6 +95,7 @@ describe('InventoryRegistrationTab', () => {
       registerImport: { mutateAsync: registerImport, isPending: false },
       rotateImportPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false }, reorderImportPhotos: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
       deleteImportPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
+      dismissImportMessage: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false },
       retryImport: { mutateAsync: vi.fn(), isPending: false },
       createShelf: { mutateAsync: createShelf, isPending: false },
       createDrawer: { mutateAsync: createDrawer, isPending: false },
@@ -107,6 +108,34 @@ describe('InventoryRegistrationTab', () => {
   });
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('dismisses an import error and restores it without losing the registration draft', async () => {
+    vi.mocked(useInventoryImportMessages).mockReturnValue({ data: [{ id: 'message-1', outcome: 'RETRYABLE', errorMessage: '取込失敗' }] } as never);
+    render(<InventoryRegistrationTab accessPassword="2520" />);
+    fireEvent.change(screen.getByLabelText('アイテム名'), { target: { value: '下書き' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '消す', exact: true })); });
+    expect(screen.queryByText('取込失敗')).not.toBeInTheDocument();
+    expect(screen.getByText('取込エラーを消しました')).toBeInTheDocument();
+    expect(screen.getByLabelText('アイテム名')).toHaveValue('下書き');
+    expect(vi.mocked(useInventoryMutations)().dismissImportMessage.mutateAsync).toHaveBeenCalledWith({ id: 'message-1', dismissed: true });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '元に戻す' })); });
+    expect(screen.getByText('取込失敗')).toBeInTheDocument();
+    expect(vi.mocked(useInventoryMutations)().dismissImportMessage.mutateAsync).toHaveBeenLastCalledWith({ id: 'message-1', dismissed: false });
+  });
+
+  it('changes choice scope with the selected area while preserving entered fields', () => {
+    const original = vi.mocked(useInventoryLocations).getMockImplementation()!;
+    vi.mocked(useInventoryLocations).mockReturnValue({ data: [...original().data!, { id: 'seigi-shelf', area: '生産技術課 北', shelfNumber: 1, drawers: [] }] } as never);
+    try {
+      render(<InventoryRegistrationTab accessPassword="2520" />);
+      fireEvent.change(screen.getByLabelText('アイテム名'), { target: { value: '下書き' } });
+      fireEvent.click(screen.getByRole('button', { name: '生産技術課 北' }));
+      fireEvent.click(screen.getByRole('button', { name: '登録済みから選ぶ' }));
+      expect(screen.getByText('生産技術課の選択肢')).toBeInTheDocument();
+      expect(useInventoryToolFieldOptions).toHaveBeenLastCalledWith(true, 'seigi');
+      expect(screen.getByLabelText('名前の値')).toHaveValue('下書き');
+    } finally { vi.mocked(useInventoryLocations).mockImplementation(original); }
+  });
 
   it('rotates the selected photo with its parent and photo IDs', async () => {
     render(<InventoryRegistrationTab accessPassword="2520" initialImportId="import-1" />);
@@ -614,7 +643,7 @@ describe('InventoryRegistrationTab', () => {
     expect(names.getByRole('button', { name: '名前を確定' })).toBeInTheDocument();
     await act(async () => { fireEvent.blur(names.getByRole('textbox', { name: '名前の値' })); });
     expect(screen.getByRole('textbox', { name: 'アイテム名' })).toHaveValue('リーマ');
-    expect(addToolFieldValue).toHaveBeenCalledWith({ field: 'name', value: 'リーマ' });
+    expect(addToolFieldValue).toHaveBeenCalledWith({ scope: 'default', field: 'name', value: 'リーマ' });
   });
 
   it('keeps a name and tool information entered before 新規登録 is pressed', async () => {
@@ -648,7 +677,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.change(within(popup).getByRole('textbox', { name: 'ミツビシの新しい名前' }), { target: { value: 'ミツビシマテリアル' } });
     await act(async () => { fireEvent.click(within(popup).getByRole('button', { name: '変える' })); });
 
-    expect(renameToolFieldValue).toHaveBeenCalledWith({ field: 'maker', from: 'ミツビシ', to: 'ミツビシマテリアル' });
+    expect(renameToolFieldValue).toHaveBeenCalledWith({ scope: 'default', field: 'maker', from: 'ミツビシ', to: 'ミツビシマテリアル' });
     expect(screen.getByRole('textbox', { name: 'メーカー' })).toHaveValue('ミツビシマテリアル');
   });
 
@@ -662,7 +691,7 @@ describe('InventoryRegistrationTab', () => {
     fireEvent.click(within(popup).getByRole('button', { name: 'OSGを削除' }));
     expect(deleteToolFieldValue).not.toHaveBeenCalled();
     await act(async () => { fireEvent.click(within(popup).getByRole('button', { name: '削除' })); });
-    expect(deleteToolFieldValue).toHaveBeenCalledWith({ field: 'maker', value: 'OSG' });
+    expect(deleteToolFieldValue).toHaveBeenCalledWith({ scope: 'default', field: 'maker', value: 'OSG' });
   });
 
   it('pages two uncropped photos at a time, keeps photo actions, clamps after removal, and resets for another candidate', async () => {

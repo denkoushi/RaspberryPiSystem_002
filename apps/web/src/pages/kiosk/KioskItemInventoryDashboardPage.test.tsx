@@ -47,7 +47,7 @@ describe('KioskItemInventoryDashboardPage', () => {
     expect(screen.queryByText('4桁のパスワード')).not.toBeInTheDocument();
     expect(screen.queryByText('解除中')).not.toBeInTheDocument();
     expect(getInventoryDashboard).toHaveBeenCalledWith(12, undefined, undefined);
-    expect(getInventoryValueVariants).toHaveBeenCalledWith(undefined);
+    expect(getInventoryValueVariants).toHaveBeenCalledWith(undefined, 'default');
   });
 
   it.each([true, false])('unlocks and performs the pending action once (merge=%s)', async merge => {

@@ -93,7 +93,7 @@ export async function listItems(db: PrismaClient) {
       },
       compartments: {
         include: { drawer: { include: { shelf: true } }, itemTag: true },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       },
     },
   });
@@ -216,8 +216,14 @@ export async function listPendingImportSummaries(db: PrismaClient) {
   }));
 }
 
+export async function setImportMessageDismissed(db: PrismaClient, id: string, dismissed: boolean) {
+  const record = await db.inventoryImportMessage.findUnique({ where: { id } });
+  if (!record) throw new ApiError(404, '取込記録が見つかりません');
+  return db.inventoryImportMessage.update({ where: { id }, data: { dismissedAt: dismissed ? new Date() : null } });
+}
+
 export async function listImportMessages(db: PrismaClient) {
-  return db.inventoryImportMessage.findMany({ orderBy: { updatedAt: 'desc' }, take: 100 });
+  return db.inventoryImportMessage.findMany({ where: { dismissedAt: null }, orderBy: { updatedAt: 'desc' }, take: 100 });
 }
 
 export async function listHistory(db: PrismaClient, limit = 100, filter: { compartmentId?: string } = {}) {

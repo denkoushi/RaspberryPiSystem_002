@@ -44,6 +44,7 @@ import {
   reorderInventoryImportPhotos,
   reorderInventoryItemPhotos,
   retryInventoryImportMessage,
+  setInventoryImportMessageDismissed,
   replaceInventoryItemTag,
   resolveInventoryTag,
   resolveInventoryLabelNumber,
@@ -57,12 +58,14 @@ import {
 } from '../client';
 import { inventoryKeys, itemInventoryQueryKeys } from '../queryKeys/itemInventory';
 
+import type { InventoryToolScope } from '@raspi-system/shared-types';
+
 export function useInventoryItems(enabled = true) { return useQuery({ queryKey: inventoryKeys.itemsAll, queryFn: getInventoryItems, enabled }); }
 export function useInventoryLocations() { return useQuery({ queryKey: inventoryKeys.locationsAll, queryFn: getInventoryLocations }); }
-export function useInventoryToolFieldOptions(enabled = true) { return useQuery({ queryKey: inventoryKeys.toolFieldOptionsAll, queryFn: getInventoryToolFieldOptions, enabled }); }
-export function useInventoryToolFieldValues(accessPassword: string, enabled = true, setup = false) {
+export function useInventoryToolFieldOptions(enabled = true, scope: InventoryToolScope = 'default') { return useQuery({ queryKey: [...inventoryKeys.toolFieldOptionsAll, scope], queryFn: () => getInventoryToolFieldOptions(scope), enabled }); }
+export function useInventoryToolFieldValues(accessPassword: string, enabled = true, setup = false, scope: InventoryToolScope = 'default') {
   const session = useMemo(() => setup ? captureSetupPinSession(accessPassword) : null, [accessPassword, setup]);
-  return useQuery({ queryKey: session ? itemInventoryQueryKeys.toolFieldValuesSetup(session.generation) : inventoryKeys.toolFieldValuesAll, queryFn: () => session ? sendSetupRequest(session, () => getInventoryToolFieldValues(accessPassword)) : getInventoryToolFieldValues(accessPassword), enabled });
+  return useQuery({ queryKey: [...(session ? itemInventoryQueryKeys.toolFieldValuesSetup(session.generation) : inventoryKeys.toolFieldValuesAll), scope], queryFn: () => session ? sendSetupRequest(session, () => getInventoryToolFieldValues(accessPassword, scope)) : getInventoryToolFieldValues(accessPassword, scope), enabled });
 }
 export function useInventoryUnits() { return useQuery({ queryKey: inventoryKeys.unitsAll, queryFn: getInventoryUnits }); }
 export function useInventoryTags(refetchInterval?: number, enabled = true) { return useQuery({ queryKey: inventoryKeys.tagsAll, queryFn: getInventoryTags, refetchInterval, enabled }); }
@@ -128,6 +131,7 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
     mergeValueVariants: useMutation({ mutationFn: (input: Parameters<typeof mergeInventoryValueVariants>[0]) => send(() => mergeInventoryValueVariants(input, accessPassword ?? '')), onSuccess: invalidate }),
     dismissValueVariants: useMutation({ mutationFn: (input: Parameters<typeof dismissInventoryValueVariants>[0]) => send(() => dismissInventoryValueVariants(input, accessPassword ?? '')), onSuccess: invalidate }),
     ingest: useMutation({ mutationFn: ingestInventoryMail, onSuccess: invalidate }),
+    dismissImportMessage: useMutation({ mutationFn: ({ id, dismissed }: { id: string; dismissed: boolean }) => send(() => setInventoryImportMessageDismissed(id, dismissed, accessPassword)), onSuccess: invalidate }),
     retryImport: useMutation({ mutationFn: (id: string) => send(() => retryInventoryImportMessage(id, accessPassword)), onSuccess: invalidate }),
     deleteImportPhoto: useMutation({
       mutationFn: ({ payloadId, photoId }: { payloadId: string; photoId: string }) => send(() => deleteInventoryImportPhoto(payloadId, photoId, accessPassword)),
@@ -226,15 +230,15 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
     correction: useMutation({ mutationFn: (input: Parameters<typeof correctInventoryStock>[0]) => send(() => correctInventoryStock(input, accessPassword)), onSuccess: updateStock }),
     move: useMutation({ mutationFn: ({ id, drawerId }: { id: string; drawerId: string }) => send(() => moveInventoryCompartment(id, drawerId, accessPassword)), onSuccess: invalidate }),
     addToolFieldValue: useMutation({
-      mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => send(() => addInventoryToolFieldValue(field, value, accessPassword)),
+      mutationFn: ({ field, value, scope = 'default' }: { scope?: InventoryToolScope; field: InventoryOptionField; value: string }) => send(() => addInventoryToolFieldValue(field, value, accessPassword, scope)),
       onSuccess: invalidate,
     }),
     renameToolFieldValue: useMutation({
-      mutationFn: ({ field, from, to }: { field: InventoryOptionField; from: string; to: string }) => send(() => renameInventoryToolFieldValue(field, from, to, accessPassword)),
+      mutationFn: ({ field, from, to, scope = 'default' }: { scope?: InventoryToolScope; field: InventoryOptionField; from: string; to: string }) => send(() => renameInventoryToolFieldValue(field, from, to, accessPassword, scope)),
       onSuccess: invalidate,
     }),
     deleteToolFieldValue: useMutation({
-      mutationFn: ({ field, value }: { field: InventoryOptionField; value: string }) => send(() => deleteInventoryToolFieldValue(field, value, accessPassword)),
+      mutationFn: ({ field, value, scope = 'default' }: { scope?: InventoryToolScope; field: InventoryOptionField; value: string }) => send(() => deleteInventoryToolFieldValue(field, value, accessPassword, scope)),
       onSuccess: invalidate,
     }),
     createUnit: useMutation({ mutationFn: (name: string) => send(() => createInventoryUnit(name, accessPassword)), onSuccess: invalidate }),
@@ -251,7 +255,7 @@ export function useInventoryDashboard(weeks: number, machine: string | undefined
   return useQuery({ queryKey: itemInventoryQueryKeys.dashboard(weeks, machine), placeholderData: previous => previous,
     queryFn: () => getInventoryDashboard(weeks, machine, accessPassword) });
 }
-export function useInventoryValueVariants(accessPassword?: string) {
-  return useQuery({ queryKey: inventoryKeys.variantsAll,
-    queryFn: () => getInventoryValueVariants(accessPassword) });
+export function useInventoryValueVariants(accessPassword?: string, scope: InventoryToolScope = 'default') {
+  return useQuery({ queryKey: [...inventoryKeys.variantsAll, scope],
+    queryFn: () => getInventoryValueVariants(accessPassword, scope) });
 }
