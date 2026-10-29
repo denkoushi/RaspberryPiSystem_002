@@ -20,9 +20,9 @@ const mocks = vi.hoisted(() => ({
     assemblyCheckSheetAsset: { findUnique: vi.fn() },
     assemblyCheckSheetStamp: { upsert: vi.fn() }, assemblyCheckSheetStampHistory: { create: vi.fn() },
     employee: { findFirst: vi.fn(), findUniqueOrThrow: vi.fn() }, knowledgePositionRank: { findUnique: vi.fn() }
-  }, store: { read: vi.fn() }
+  }, store: { read: vi.fn() }, device: vi.fn()
 }));
-vi.mock('../shared.js', () => ({ tryGetClientDevice: async () => ({ id: 'synthetic-device', name: '組立1-01' }) }));
+vi.mock('../shared.js', () => ({ tryGetClientDevice: mocks.device }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.db }));
 vi.mock('../../../config/env.js', () => ({ env: { NODE_ENV: 'test', LOG_LEVEL: 'silent' } }));
 vi.mock('../../../services/file-storage/file-storage-runtime.js', () => ({ getFileStorageRuntime: () => ({ store: mocks.store }) }));
@@ -44,8 +44,10 @@ const stamp = (index: number, extra: Record<string, unknown> = {}) => request(`/
 
 beforeEach(async () => {
   vi.resetAllMocks(); sheet = null;
+  mocks.device.mockResolvedValue({ id: 'synthetic-device', name: '組立1-01' });
   source = await makeCheckSheetWorkbook();
   const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(source));
+  proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
   const revisionId = randomUUID();
   revisions = [{ ...proposal, id: revisionId, revisionRootId: revisionId, revisionNumber: 1, isRevisionHead: true,
     sourceAssetId: randomUUID(), createdByUserId: randomUUID(), createdAt: new Date(), layoutSnapshot: null,
@@ -96,6 +98,61 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); });
 
 describe('check-sheet kiosk route contracts with real service', () => {
+  it('rejects NA from stamps even on a conditional item', async () => {
+    sheet!.revision.items[0].conditionKey = 'motor';
+    expect((await stamp(0, { result: 'NA' })).statusCode).toBe(400);
+    expect(mocks.db.assemblyCheckSheetStamp.upsert).not.toHaveBeenCalled();
+  });
+  it('does not treat an inherited constructor field as an OK value', async () => {
+    Object.assign(sheet!.revision.items[0], { inputKind: 'TEXT', inputSpec: { fields: [{ key: 'constructor', label: '型式' }] } });
+    expect((await stamp(0)).statusCode).toBe(400);
+    expect(mocks.db.assemblyCheckSheetStamp.upsert).not.toHaveBeenCalled();
+    expect((await stamp(0, { values: { constructor: 'M5' } })).statusCode).toBe(200);
+  });
+  it.each(['pause', 'resume', 'complete'])('requires a valid employee tag for %s', async (action) => {
+    for (let index = 0; index < 4; index++) await stamp(index);
+    if (action === 'resume') sheet!.status = 'PAUSED';
+    expect((await request(`/${sheet!.id}/${action}`, {})).statusCode).toBe(400);
+    expect((await request(`/${sheet!.id}/${action}`, { nfcTagUid: 'unknown' })).statusCode).toBe(404);
+    expect((await request(`/${sheet!.id}/${action}`, { nfcTagUid: 'inactive' })).statusCode).toBe(403);
+    expect(mocks.db.assemblyCheckSheet.update).not.toHaveBeenCalled();
+  });
+  it('records every pause/resume actor and NG pause in order', async () => {
+    await request(`/${sheet!.id}/pause`, { nfcTagUid: 'worker' });
+    await request(`/${sheet!.id}/resume`, { nfcTagUid: 'worker' });
+    await stamp(0, { result: 'NG', ngReason: '異音' });
+    expect(sheet!.transitionHistory).toEqual(['pause', 'resume', 'pause'].map((action) => ({
+      action, employeeId, employeeCodeSnapshot: 'E001', employeeNameSnapshot: '山田 一郎',
+      nfcTagUidSnapshot: 'worker', positionNameSnapshot: '係長職', clientDeviceId: 'synthetic-device', occurredAt: expect.any(String)
+    })));
+  });
+  it.each(['synthetic-device', null])('ignores body device IDs and records completion identity (resolved device: %s)', async (deviceId) => {
+    mocks.device.mockResolvedValue(deviceId ? { id: deviceId } : null);
+    sheet = null;
+    expect((await request('', { workUnitId: unitId, clientDeviceId: 'forged' })).statusCode).toBe(200);
+    expect(sheet!.clientDeviceId).toBe(deviceId);
+    expect((await stamp(0, { clientDeviceId: 'forged' })).statusCode).toBe(200);
+    expect(sheet!.stamps[0].clientDeviceId).toBe(deviceId);
+    sheet!.revision.items[1].conditionKey = 'motor';
+    sheet!.revision.items[1].conditionLabel = 'モータ付きの場合';
+    expect((await request(`/${sheet!.id}/conditions`, { conditionKey: 'motor', applies: false, nfcTagUid: 'worker', clientDeviceId: 'forged' })).statusCode).toBe(200);
+    expect(sheet!.stamps[1].clientDeviceId).toBe(deviceId);
+    for (const action of ['pause', 'resume']) {
+      expect((await request(`/${sheet!.id}/${action}`, { nfcTagUid: 'worker', clientDeviceId: 'forged' })).statusCode).toBe(200);
+    }
+    expect(sheet!.transitionHistory).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'pause', clientDeviceId: deviceId }), expect.objectContaining({ action: 'resume', clientDeviceId: deviceId })
+    ]));
+    await stamp(2); await stamp(3);
+    // Completion must replace the creation-time device with the current authenticated one (including null).
+    sheet!.clientDeviceId = 'creation-device';
+    expect((await request(`/${sheet!.id}/complete`, { nfcTagUid: 'worker', clientDeviceId: 'forged' })).statusCode).toBe(200);
+    expect(sheet).toMatchObject({
+      completedByEmployeeId: employeeId, completedByEmployeeCodeSnapshot: 'E001',
+      completedByEmployeeNameSnapshot: '山田 一郎', completedByNfcTagUidSnapshot: 'worker',
+      completedByPositionNameSnapshot: '係長職', completedAt: expect.any(Date), clientDeviceId: deviceId
+    });
+  });
   it('selects the matching model head and requires a choice when ambiguous', async () => {
     sheet = null;
     revisions.push({ ...revisions[0], id: randomUUID(), revisionRootId: randomUUID(), modelCode: 'OTHER' });
@@ -109,7 +166,7 @@ describe('check-sheet kiosk route contracts with real service', () => {
   it('does not mutate an invalidated work unit', async () => {
     sheet!.workUnit.invalidatedAt = new Date();
     expect((await stamp(0)).statusCode).toBe(409);
-    expect((await request(`/${sheet!.id}/pause`)).statusCode).toBe(409);
+    expect((await request(`/${sheet!.id}/pause`, { nfcTagUid: 'worker' })).statusCode).toBe(409);
   });
   it('requires kiosk authentication for reads and writes', async () => {
     expect((await app.inject({ method: 'GET', url: `/api/assembly/check-sheets/${sheet!.id}` })).statusCode).toBe(401);
@@ -154,20 +211,20 @@ describe('check-sheet kiosk route contracts with real service', () => {
     expect(response.json().stamps.map((entry: { result: string }) => entry.result)).toEqual(['NA', 'NA']);
   });
   it('blocks incomplete/flagged completion, then completes and rejects all mutations', async () => {
-    expect((await request(`/${sheet!.id}/complete`)).statusCode).toBe(409);
+    expect((await request(`/${sheet!.id}/complete`, { nfcTagUid: 'worker' })).statusCode).toBe(409);
     for (let index = 0; index < 4; index++) await stamp(index);
     await stamp(0, { result: 'NG', flagged: true, ngReason: '再確認' });
-    expect((await request(`/${sheet!.id}/complete`)).statusCode).toBe(409);
+    expect((await request(`/${sheet!.id}/complete`, { nfcTagUid: 'worker' })).statusCode).toBe(409);
     await stamp(0);
-    expect((await request(`/${sheet!.id}/complete`)).json().status).toBe('COMPLETED');
+    expect((await request(`/${sheet!.id}/complete`, { nfcTagUid: 'worker' })).json().status).toBe('COMPLETED');
     expect((await stamp(0)).statusCode).toBe(409);
-    expect((await request(`/${sheet!.id}/resume`)).statusCode).toBe(409);
+    expect((await request(`/${sheet!.id}/resume`, { nfcTagUid: 'worker' })).statusCode).toBe(409);
   });
   it('pauses on unflagged NG and requires explicit resume', async () => {
     expect((await stamp(0, { result: 'NG', ngReason: '異音' })).json().status).toBe('PAUSED');
     expect((await stamp(1)).json().errorCode).toBe('CHECK_SHEET_PAUSED');
-    expect((await request(`/${sheet!.id}/complete`)).statusCode).toBe(409);
-    expect((await request(`/${sheet!.id}/resume`)).json().status).toBe('IN_PROGRESS');
+    expect((await request(`/${sheet!.id}/complete`, { nfcTagUid: 'worker' })).statusCode).toBe(409);
+    expect((await request(`/${sheet!.id}/resume`, { nfcTagUid: 'worker' })).json().status).toBe('IN_PROGRESS');
     expect((await stamp(0)).statusCode).toBe(200);
   });
   it.each([
@@ -190,6 +247,7 @@ describe('check-sheet kiosk route contracts with real service', () => {
     const oldId = sheet!.revisionId;
     const oldItems = sheet!.revision.items.map((item) => item.id);
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(source));
+    proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
     proposal.items[0].label = '新しい版だけの項目';
     const saved = await revisionService.saveRevision({ importId: revisions[0].sourceAssetId, revisionRootId: oldId, proposal }, randomUUID());
     expect(saved.revisionNumber).toBe(2);

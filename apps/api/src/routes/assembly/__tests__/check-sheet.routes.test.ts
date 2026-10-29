@@ -47,6 +47,7 @@ describe('check-sheet routes', () => {
   it('imports an XLSX with a sheet override and returns a proposal', async () => {
     const buffer = await makeCheckSheetWorkbook();
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(buffer));
+    proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
     const importer = vi.spyOn(service, 'importWorkbook').mockResolvedValue({ importId: id, sheetNames: ['合成チェックシート'], proposal });
     const response = await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/imports?sheetName=' + encodeURIComponent('合成チェックシート'), ...upload(buffer) });
     expect(response.statusCode).toBe(200);
@@ -74,12 +75,27 @@ describe('check-sheet routes', () => {
 
   it('saves edited metadata with the authenticated user and requested root', async () => {
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(await makeCheckSheetWorkbook()));
+    proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
     proposal.modelCode = 'EDITED';
     const saver = vi.spyOn(service, 'saveRevision').mockResolvedValue({ id, ...proposal } as Awaited<ReturnType<AssemblyCheckSheetService['saveRevision']>>);
     const payload = { importId: id, revisionRootId: id, proposal };
     const response = await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/revisions', headers: headers('ADMIN'), payload });
     expect(response.statusCode).toBe(200);
     expect(saver).toHaveBeenCalledWith(payload, id);
+  });
+
+  it.each([{}, { 制御設計担当: [] }, { constructor: [] }])('rejects empty or missing department members: %j', async (members) => {
+    const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(await makeCheckSheetWorkbook()));
+    proposal.departmentRoleMembers = members;
+    proposal.items[0].roleKeys = ['constructor'];
+    const saver = vi.spyOn(service, 'saveRevision');
+    const response = await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/revisions', headers: headers('ADMIN'), payload: { importId: id, proposal } });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ['proposal', 'departmentRoleMembers', '制御設計担当'], message: expect.stringContaining('制御設計担当') }),
+      expect.objectContaining({ path: ['proposal', 'departmentRoleMembers', 'constructor'] })
+    ]));
+    expect(saver).not.toHaveBeenCalled();
   });
 
   it('rejects malformed payloads before saving', async () => {
@@ -119,6 +135,7 @@ describe('check-sheet routes', () => {
     expect(response.statusCode).toBe(400);
     vi.spyOn(service, 'saveRevision').mockRejectedValue(new ApiError(404, '取込元が見つかりません'));
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(await makeCheckSheetWorkbook()));
+    proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
     expect((await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/revisions', headers: headers('ADMIN'), payload: { importId: id, proposal } })).statusCode).toBe(404);
   });
 });

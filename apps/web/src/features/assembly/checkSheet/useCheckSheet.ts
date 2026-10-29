@@ -18,13 +18,14 @@ export function useCheckSheet(sheetId: string) {
   const [previousId, setPreviousId] = useState<string | null>(null);
   const [draft, setDraft] = useState<CheckDraft>(emptyDraft);
   const [conditions, setConditions] = useState<Record<string, 'applies' | 'na'>>({});
+  const [pendingAction, setPendingAction] = useState<'pause' | 'resume' | 'complete' | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const inFlight = useRef(false);
   const advanceTimer = useRef<ReturnType<typeof setTimeout>>();
   const lastEvent = useRef('');
-  const nfc = useNfcStream(!!sheet && sheet.status === 'IN_PROGRESS' && !busy);
+  const nfc = useNfcStream(!!sheet && (sheet.status === 'IN_PROGRESS' || pendingAction === 'resume') && !busy);
   useEffect(() => {
     let active = true;
     void getAssemblyCheckSheet(sheetId).then((value) => {
@@ -44,7 +45,21 @@ export function useCheckSheet(sheetId: string) {
   }, []);
   const item = sheet?.revision.items.find((entry) => entry.id === currentId);
   const scan = useCallback(async (uid: string) => {
-    if (!sheet || !item || inFlight.current || sheet.status !== 'IN_PROGRESS') return;
+    if (!sheet || inFlight.current || sheet.status === 'COMPLETED') return;
+    if (pendingAction) {
+      inFlight.current = true; setBusy(true);
+      try {
+        const next = await transitionAssemblyCheckSheet(sheet.id, pendingAction, uid);
+        setSheet(next); setPendingAction(null);
+        if (pendingAction === 'resume') {
+          setCurrentId(next.stamps.find((stamp) => stamp.result === 'NG' && !stamp.flagged)?.itemId ?? nextOpenItem(next, null));
+          setDraft(emptyDraft());
+        }
+      } catch (error) { setToast(message(error)); }
+      finally { inFlight.current = false; setBusy(false); }
+      return;
+    }
+    if (!item || sheet.status !== 'IN_PROGRESS') return;
     const skip = item.conditionKey && conditions[item.conditionKey] === 'na';
     const input = stampInput(item, draft, item.conditionKey ? conditions[item.conditionKey] : undefined, uid);
     if (!skip && !input) { setToast('記入と OK を先に'); return; }
@@ -61,7 +76,7 @@ export function useCheckSheet(sheetId: string) {
     } catch (error) {
       setToast(message(error)); inFlight.current = false; setBusy(false);
     }
-  }, [conditions, draft, item, sheet]);
+  }, [conditions, draft, item, sheet, pendingAction]);
   useEffect(() => {
     if (!nfc) return;
     const key = `${nfc.uid}:${nfc.timestamp}`;
@@ -69,19 +84,10 @@ export function useCheckSheet(sheetId: string) {
     lastEvent.current = key;
     void scan(nfc.uid);
   }, [nfc, scan]);
-  const transition = async (action: 'pause' | 'resume' | 'complete') => {
+  const transition = (action: 'pause' | 'resume' | 'complete') => {
     if (!sheet || inFlight.current) return;
-    inFlight.current = true; setBusy(true);
-    try {
-      const next = await transitionAssemblyCheckSheet(sheet.id, action);
-      setSheet(next);
-      if (action === 'resume') {
-        setCurrentId(next.stamps.find((stamp) => stamp.result === 'NG' && !stamp.flagged)?.itemId ?? nextOpenItem(next, null));
-        setDraft(emptyDraft());
-      }
-    }
-    catch (error) { setToast(message(error)); }
-    finally { inFlight.current = false; setBusy(false); }
+    setPendingAction(action);
   };
-  return { sheet, item, currentId, previousId, draft, setDraft, conditions, setConditions, busy, toast, loadError, select, transition };
+  const cancelTransition = () => { if (!inFlight.current) setPendingAction(null); };
+  return { sheet, item, currentId, previousId, draft, setDraft, conditions, setConditions, busy, toast, loadError, select, transition, pendingAction, cancelTransition };
 }

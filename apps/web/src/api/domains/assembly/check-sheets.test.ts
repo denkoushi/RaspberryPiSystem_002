@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../http';
 
-import { importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision } from './check-sheets';
+import { importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision, transitionAssemblyCheckSheet } from './check-sheets';
 
 import type { AssemblyCheckSheetSavePayload } from '@raspi-system/shared-types';
 
@@ -25,6 +25,12 @@ describe('check sheet API client', () => {
     const form = vi.mocked(api.post).mock.calls[0][1] as FormData;
     expect(form.get('file')).toBe(file);
     expect(Array.from(form.keys())).toEqual(['file']);
+  });
+
+  it.each(['pause', 'resume', 'complete'] as const)('sends the scanned tag for %s', async (action) => {
+    vi.mocked(api.post).mockResolvedValue({ data: { id: 'sheet' } });
+    await transitionAssemblyCheckSheet('sheet', action, 'worker-tag');
+    expect(api.post).toHaveBeenCalledWith(`/assembly/check-sheets/sheet/${action}`, { nfcTagUid: 'worker-tag' });
   });
 
   it('passes the edited payload through and returns the saved revision', async () => {

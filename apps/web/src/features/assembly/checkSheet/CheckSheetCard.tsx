@@ -43,7 +43,7 @@ export function CheckSheetCard({ item, groupLabel, draft, stamp, busy, completed
         </label>)}
         {item.inputKind === 'CHOICE' && <div className="seg" role="group" aria-label="選択肢">{item.inputSpec.options?.map((option) =>
           <button type="button" disabled={busy} key={option} aria-pressed={draft.values.result === option} onClick={() => set({
-            values: { ...draft.values, result: option }, result: option === 'NG' ? 'NG' : ['該当無し', '該当なし', 'NA'].includes(option) ? 'NA' : 'OK', ngAction: null
+            values: { ...draft.values, result: option }, result: option === 'NG' ? 'NG' : 'OK', ngAction: null
           })}>{option}</button>)}</div>}
         {item.inputKind !== 'CHOICE' && <div className="seg okng" role="group" aria-label="判定">{(['OK', 'NG'] as const).map((result) =>
           <button type="button" key={result} data-v={result} disabled={busy} aria-pressed={draft.result === result} onClick={() => set({ result, ngAction: null })}>{result}</button>)}</div>}
@@ -56,6 +56,10 @@ export function CheckSheetCard({ item, groupLabel, draft, stamp, busy, completed
       {completed && stamp && <div className="ctrl">{Object.entries(stamp.values).map(([key, value]) => <span className="f" key={key}>{item.inputSpec.fields?.find((field) => field.key === key)?.label} {value}</span>)}</div>}
     </div>
     <div className="stampcol">{showStamp ? <CheckSheetSeal stamp={stamp} /> : <div className={`slot ${ready ? 'ready' : ''}`}><span className="need">{role && <>{role}<br /></>}印</span></div>}</div>
-    {ready ? <div className={`nfc ${draft.result === 'NG' ? 'ng' : role ? 'role' : ''}`} role="status"><span className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 8.5a8 8 0 0 1 0 7M9.5 6.5a12 12 0 0 1 0 11M13 4.5a16 16 0 0 1 0 15" /></svg></span>{role ? `${role}のタグ` : '社員タグ'}をかざす</div> : <div />}
+    {ready ? <CheckSheetNfcPrompt role={role} ng={draft.result === 'NG'} /> : <div />}
   </div>;
+}
+
+export function CheckSheetNfcPrompt({ role = '', ng = false }: { role?: string; ng?: boolean }) {
+  return <div className={`nfc ${ng ? 'ng' : role ? 'role' : ''}`} role="status"><span className="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 8.5a8 8 0 0 1 0 7M9.5 6.5a12 12 0 0 1 0 11M13 4.5a16 16 0 0 1 0 15" /></svg></span>{role ? `${role}のタグ` : '社員タグ'}をかざす</div>;
 }

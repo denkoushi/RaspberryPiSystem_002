@@ -79,6 +79,7 @@ describe('check-sheet import and revision persistence', () => {
   it('creates a root revision with edited items, groups and exact original asset', async () => {
     const buffer = await makeCheckSheetWorkbook();
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(buffer));
+    proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
     proposal.items[0].inputSpec.fields![0].unit = 'N·m (edited)';
     mocks.store.read.mockResolvedValue(buffer);
     const saved = await service.saveRevision({ importId: assetId, proposal }, 'admin-id');
@@ -93,6 +94,7 @@ describe('check-sheet import and revision persistence', () => {
   it('locks the stable root, advances the number and demotes the old head in one transaction', async () => {
     const buffer = await makeCheckSheetWorkbook();
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(buffer));
+    proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
     mocks.store.read.mockResolvedValue(buffer);
     const saved = await service.saveRevision({ importId: assetId, proposal, revisionRootId: rootId }, 'admin-id');
     expect(saved).toMatchObject({ revisionRootId: rootId, revisionNumber: 4 });
@@ -105,6 +107,7 @@ describe('check-sheet import and revision persistence', () => {
   it('rejects missing imports, unknown roots and sheet names before revision writes', async () => {
     const buffer = await makeCheckSheetWorkbook();
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(buffer));
+    proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
     mocks.db.assemblyCheckSheetAsset.findUnique.mockResolvedValueOnce(null);
     await expect(service.saveRevision({ importId: assetId, proposal }, 'admin')).rejects.toMatchObject({ statusCode: 404 });
     mocks.store.read.mockResolvedValue(buffer);
@@ -114,6 +117,15 @@ describe('check-sheet import and revision persistence', () => {
     await expect(service.saveRevision({ importId: assetId, proposal }, 'admin')).rejects.toMatchObject({ statusCode: 400 });
     expect(mocks.tx.assemblyCheckSheetRevision.create).not.toHaveBeenCalled();
     expect(mocks.tx.assemblyCheckSheetRevision.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty department roles even when saveRevision is called directly', async () => {
+    const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(await makeCheckSheetWorkbook()));
+    await expect(service.saveRevision({ importId: assetId, proposal }, 'admin')).rejects.toMatchObject({
+      issues: [expect.objectContaining({ path: ['proposal', 'departmentRoleMembers', '制御設計担当'], message: expect.stringContaining('制御設計担当') })]
+    });
+    expect(mocks.db.assemblyCheckSheetAsset.findUnique).not.toHaveBeenCalled();
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
   });
 
   it('selects heads by default and lineage history only when requested', async () => {

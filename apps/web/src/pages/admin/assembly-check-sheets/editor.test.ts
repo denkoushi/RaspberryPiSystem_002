@@ -16,6 +16,7 @@ describe('check sheet editor', () => {
 
   it('adds unique fields even after deleting a field in the middle', () => {
     let proposal = importedSheet().proposal;
+    proposal.departmentRoleMembers = { 制御設計担当: ['33333333-3333-4333-8333-333333333333'] };
     proposal = addField(addField(proposal, 0), 0);
     proposal = addField(removeField(proposal, 0, 'field1'), 0);
     expect(proposal.items[0].inputSpec.fields?.map((field) => field.key)).toEqual(['torque', 'field2', 'field1']);

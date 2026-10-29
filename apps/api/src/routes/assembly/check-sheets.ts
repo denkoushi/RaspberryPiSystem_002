@@ -1,6 +1,6 @@
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
-import { assemblyCheckSheetSaveSchema, assemblyCheckSheetCreateSchema, assemblyCheckSheetStampSchema, assemblyCheckSheetConditionSchema } from '@raspi-system/shared-types';
+import { assemblyCheckSheetSaveSchema, assemblyCheckSheetCreateSchema, assemblyCheckSheetStampSchema, assemblyCheckSheetConditionSchema, assemblyCheckSheetActorSchema } from '@raspi-system/shared-types';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { AssemblyCheckSheetService } from '../../services/assembly/check-sheet/check-sheet.service.js';
@@ -19,23 +19,29 @@ export function registerAssemblyCheckSheetRoutes(
   service = new AssemblyCheckSheetService(),
   kioskService = new AssemblyCheckSheetKioskService()
 ): void {
-  app.post('/assembly/check-sheets', { preHandler: options.allowWriteKiosk }, async (request) =>
-    kioskService.create(assemblyCheckSheetCreateSchema.parse(request.body)));
+  app.post('/assembly/check-sheets', { preHandler: options.allowWriteKiosk }, async (request) => {
+    const input = assemblyCheckSheetCreateSchema.parse(request.body);
+    const device = await tryGetClientDevice(request.headers);
+    return kioskService.create({ ...input, clientDeviceId: device?.id ?? null });
+  });
   app.get('/assembly/check-sheets/:id', { preHandler: options.allowView }, async (request) =>
     kioskService.get(idParams.parse(request.params).id));
   app.post('/assembly/check-sheets/:id/stamps', { preHandler: options.allowWriteKiosk }, async (request) => {
     const input = assemblyCheckSheetStampSchema.parse(request.body);
     const device = await tryGetClientDevice(request.headers);
-    return kioskService.stamp(idParams.parse(request.params).id, { ...input, clientDeviceId: device?.id ?? input.clientDeviceId });
+    return kioskService.stamp(idParams.parse(request.params).id, { ...input, clientDeviceId: device?.id ?? null });
   });
   app.post('/assembly/check-sheets/:id/conditions', { preHandler: options.allowWriteKiosk }, async (request) => {
     const input = assemblyCheckSheetConditionSchema.parse(request.body);
     const device = await tryGetClientDevice(request.headers);
-    return kioskService.condition(idParams.parse(request.params).id, { ...input, clientDeviceId: device?.id ?? input.clientDeviceId });
+    return kioskService.condition(idParams.parse(request.params).id, { ...input, clientDeviceId: device?.id ?? null });
   });
   for (const action of ['pause', 'resume', 'complete'] as const) {
-    app.post(`/assembly/check-sheets/:id/${action}`, { preHandler: options.allowWriteKiosk }, async (request) =>
-      kioskService.transition(idParams.parse(request.params).id, action));
+    app.post(`/assembly/check-sheets/:id/${action}`, { preHandler: options.allowWriteKiosk }, async (request) => {
+      const input = assemblyCheckSheetActorSchema.parse(request.body);
+      const device = await tryGetClientDevice(request.headers);
+      return kioskService.transition(idParams.parse(request.params).id, action, { ...input, clientDeviceId: device?.id ?? null });
+    });
   }
   const adminOnly = authorizeRoles('ADMIN');
   app.post('/assembly/check-sheets/imports', { preHandler: adminOnly }, async (request) => {

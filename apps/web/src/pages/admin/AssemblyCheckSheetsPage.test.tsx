@@ -1,3 +1,4 @@
+import { assemblyCheckSheetSaveSchema } from '@raspi-system/shared-types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -96,6 +97,20 @@ describe('AssemblyCheckSheetsPage', () => {
     expect(alert.closest('section')).toHaveTextContent('保存');
     expect(screen.getByLabelText('1-1 押印セル')).toHaveValue('INVALID');
     expect(screen.getByRole('button', { name: '保存' })).toBeEnabled();
+  });
+
+  it('displays the empty department role returned by the save schema', async () => {
+    const payload = { importId: importedSheet().importId, proposal: importedSheet().proposal };
+    payload.proposal.departmentRoleMembers = {};
+    const parsed = assemblyCheckSheetSaveSchema.safeParse(payload);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) throw new Error('Expected missing members');
+    vi.mocked(saveAssemblyCheckSheetRevision).mockRejectedValue({ isAxiosError: true, response: { data: {
+      message: 'リクエスト形式が不正です', issues: parsed.error.issues
+    } } });
+    await openProposal();
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('部署役割「制御設計担当」の社員を1人以上選択してください');
   });
 
   it('shows upload failures near the import control', async () => {

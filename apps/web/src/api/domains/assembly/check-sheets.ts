@@ -41,7 +41,7 @@ export async function skipAssemblyCheckSheetCondition(id: string, conditionKey: 
   const { data } = await api.post<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/conditions`, { conditionKey, applies: false, nfcTagUid });
   return data;
 }
-export async function transitionAssemblyCheckSheet(id: string, action: 'pause' | 'resume' | 'complete') {
-  const { data } = await api.post<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/${action}`);
+export async function transitionAssemblyCheckSheet(id: string, action: 'pause' | 'resume' | 'complete', nfcTagUid: string) {
+  const { data } = await api.post<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/${action}`, { nfcTagUid });
   return data;
 }

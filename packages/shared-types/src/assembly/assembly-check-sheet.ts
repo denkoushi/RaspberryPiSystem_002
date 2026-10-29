@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { KNOWLEDGE_POSITION_RANKS } from '../knowledge/index.js';
+
 const cellAddress = z.string().regex(/^[A-Z]{1,3}[1-9]\d{0,6}$/);
 const fieldSchema = z.object({
   key: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]*$/).max(80),
@@ -72,6 +74,14 @@ export const assemblyCheckSheetSaveSchema = z.object({
   importId: z.string().guid(),
   proposal: assemblyCheckSheetProposalSchema,
   revisionRootId: z.string().guid().optional()
+}).superRefine(({ proposal }, ctx) => {
+  const roles = new Set(proposal.items.flatMap((item) => item.roleKeys));
+  for (const role of roles) {
+    if (KNOWLEDGE_POSITION_RANKS.some((rank) => rank === role)) continue;
+    if (!Object.hasOwn(proposal.departmentRoleMembers, role) || !proposal.departmentRoleMembers[role].length) {
+      ctx.addIssue({ code: 'custom', path: ['proposal', 'departmentRoleMembers', role], message: `部署役割「${role}」の社員を1人以上選択してください` });
+    }
+  }
 });
 
 export type AssemblyCheckSheetProposal = z.infer<typeof assemblyCheckSheetProposalSchema>;
@@ -99,10 +109,10 @@ export const assemblyCheckSheetCreateSchema = z.object({
   workUnitId: z.string().guid(), revisionRootId: z.string().guid().optional()
 });
 export const assemblyCheckSheetActorSchema = z.object({
-  nfcTagUid: z.string().trim().min(1).max(200), clientDeviceId: z.string().max(200).optional()
+  nfcTagUid: z.string().trim().min(1).max(200)
 });
 export const assemblyCheckSheetStampSchema = assemblyCheckSheetActorSchema.extend({
-  itemId: z.string().guid(), result: z.enum(['OK', 'NG', 'NA']),
+  itemId: z.string().guid(), result: z.enum(['OK', 'NG']),
   values: z.record(z.string(), z.union([z.string().max(5000), z.number().finite()])).default({}),
   flagged: z.boolean().default(false), ngReason: z.string().trim().max(2000).optional()
 });

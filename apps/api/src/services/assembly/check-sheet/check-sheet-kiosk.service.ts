@@ -10,6 +10,9 @@ import { revisionInclude, serializeRevision } from './check-sheet.service.js';
 const sheetInclude = { revision: { include: revisionInclude }, stamps: true, workUnit: true };
 type Sheet = Prisma.AssemblyCheckSheetGetPayload<{ include: typeof sheetInclude }>;
 type Item = Sheet['revision']['items'][number];
+type Device = { clientDeviceId: string | null };
+type StampInput = AssemblyCheckSheetStampInput & Device;
+type StoredStampInput = Omit<StampInput, 'result'> & { result: 'OK' | 'NG' | 'NA' };
 const roleLabels: Record<string, string> = {
   general: '一般', leader: '班長', section_chief: '係長', manager: '課長', general_manager: '部長', executive: '役員'
 };
@@ -58,14 +61,13 @@ function assertValues(item: Item, input: AssemblyCheckSheetStampInput) {
   const invalid = entries.some(([key, value]) => !keys.has(key) ||
     (item.inputKind === 'NUMBER' ? typeof value !== 'number' || !Number.isFinite(value) : typeof value !== 'string' || !value.trim()));
   // NG can record an inspection that could not be measured; supplied values must still be valid.
-  if (invalid || (input.result === 'OK' && [...keys].some((key) => !(key in input.values))) ||
-    (item.inputKind === 'CHOICE' && 'result' in input.values && !spec.options?.includes(String(input.values.result))) ||
-    (input.result === 'NA' && entries.length)) {
+  if (invalid || (input.result === 'OK' && [...keys].some((key) => !Object.hasOwn(input.values, key))) ||
+    (item.inputKind === 'CHOICE' && Object.hasOwn(input.values, 'result') && !spec.options?.includes(String(input.values.result)))) {
     throw new ApiError(400, '記入値を確認してください', undefined, 'CHECK_SHEET_VALUES_INVALID');
   }
   if (input.flagged && (input.result !== 'NG' || !input.ngReason?.trim())) throw new ApiError(400, '問題点を書いてください');
 }
-async function putStamp(tx: Prisma.TransactionClient, sheet: Sheet, item: Item, input: AssemblyCheckSheetStampInput, actor: Actor) {
+async function putStamp(tx: Prisma.TransactionClient, sheet: Sheet, item: Item, input: StoredStampInput, actor: Actor) {
   const previous = sheet.stamps.find((stamp) => stamp.itemId === item.id);
   if (previous) {
     const { id, ...data } = previous;
@@ -83,8 +85,15 @@ async function putStamp(tx: Prisma.TransactionClient, sheet: Sheet, item: Item, 
     create: { ...data, sheetId: sheet.id, itemId: item.id }
   });
 }
+function transitionHistory(sheet: Sheet, action: 'pause' | 'resume', actor: Actor, clientDeviceId: string | null): Prisma.InputJsonValue {
+  return [...(Array.isArray(sheet.transitionHistory) ? sheet.transitionHistory : []), {
+    action, employeeId: actor.employeeId, employeeCodeSnapshot: actor.employeeCode,
+    employeeNameSnapshot: actor.displayName, nfcTagUidSnapshot: actor.nfcTagUid,
+    positionNameSnapshot: actor.positionName, clientDeviceId, occurredAt: new Date().toISOString()
+  }];
+}
 export class AssemblyCheckSheetKioskService {
-  async create(input: { workUnitId: string; revisionRootId?: string }) {
+  async create(input: { workUnitId: string; revisionRootId?: string } & Device) {
     return runAssemblyTransaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "AssemblySerialRegistry" WHERE "id" = ${input.workUnitId} FOR UPDATE`;
       const unit = await tx.assemblyWorkUnit.findUnique({ where: { id: input.workUnitId }, include: { lotSerial: { include: { lot: { include: { template: true } } } }, workSession: { include: { template: true } } } });
@@ -100,7 +109,7 @@ export class AssemblyCheckSheetKioskService {
       const revision = input.revisionRootId ? heads[0] : matching.length === 1 ? matching[0] : heads.length === 1 ? heads[0] : null;
       if (!revision) throw new ApiError(409, 'チェックシートの機種を選んでください', undefined, 'CHECK_SHEET_REVISION_REQUIRED');
       const sheet = await tx.assemblyCheckSheet.create({
-        data: { workUnitId: unit.id, revisionId: revision.id, headerValues: {
+        data: { workUnitId: unit.id, revisionId: revision.id, clientDeviceId: input.clientDeviceId, headerValues: {
           productNo: unit.workId, seiban: source?.productNo ?? '', productName: source?.targetUnit ?? revision.modelCode,
           modelCode: revision.modelCode, shipDate: '', customer: ''
         } }, include: sheetInclude
@@ -120,7 +129,8 @@ export class AssemblyCheckSheetKioskService {
       return serialize(await readSheet(tx, id));
     });
   }
-  async stamp(id: string, input: AssemblyCheckSheetStampInput) {
+  async stamp(id: string, input: StampInput) {
+    if (input.result !== 'OK' && input.result !== 'NG') throw new ApiError(400, 'NAは条件の該当なしから指定してください');
     return this.mutate(id, async (tx, sheet) => {
       const item = sheet.revision.items.find((candidate) => candidate.id === input.itemId);
       if (!item) throw new ApiError(400, 'この版の項目ではありません');
@@ -129,11 +139,12 @@ export class AssemblyCheckSheetKioskService {
       assertValues(item, input);
       await putStamp(tx, sheet, item, input, actor);
       if (input.result === 'NG' && !input.flagged) await tx.assemblyCheckSheet.update({
-        where: { id }, data: { status: 'PAUSED', pausedReason: `${item.itemKey}\u3000${input.ngReason || 'NG'}` }
+        where: { id }, data: { status: 'PAUSED', pausedReason: `${item.itemKey}\u3000${input.ngReason || 'NG'}`,
+          transitionHistory: transitionHistory(sheet, 'pause', actor, input.clientDeviceId) }
       });
     });
   }
-  async condition(id: string, input: AssemblyCheckSheetActor & { conditionKey: string; applies: false }) {
+  async condition(id: string, input: AssemblyCheckSheetActor & Device & { conditionKey: string; applies: false }) {
     return this.mutate(id, async (tx, sheet) => {
       const items = sheet.revision.items.filter((item) => item.conditionKey === input.conditionKey);
       if (!items.length) throw new ApiError(400, '条件が見つかりません');
@@ -143,15 +154,21 @@ export class AssemblyCheckSheetKioskService {
       for (const item of items) await putStamp(tx, sheet, item, { ...input, itemId: item.id, values: {}, result: 'NA', flagged: false }, actor);
     });
   }
-  async transition(id: string, action: 'pause' | 'resume' | 'complete') {
+  async transition(id: string, action: 'pause' | 'resume' | 'complete', input: AssemblyCheckSheetActor & Device) {
     return this.mutate(id, async (tx, sheet) => {
       if (action === 'complete' && (!sheet.revision.items.length || sheet.revision.items.some((item) =>
         !sheet.stamps.some((stamp) => stamp.itemId === item.id && ['OK', 'NA'].includes(stamp.result) && !stamp.flagged)))) {
         throw new ApiError(409, '未確認または目印が残っています', undefined, 'CHECK_SHEET_INCOMPLETE');
       }
+      const actor = await resolveActor(tx, input);
       await tx.assemblyCheckSheet.update({ where: { id }, data: {
         status: action === 'pause' ? 'PAUSED' : action === 'resume' ? 'IN_PROGRESS' : 'COMPLETED',
-        pausedReason: action === 'pause' ? sheet.pausedReason : null, ...(action === 'complete' ? { completedAt: new Date() } : {})
+        pausedReason: action === 'pause' ? sheet.pausedReason : null, ...(action === 'complete' ? {
+          completedAt: new Date(), completedByEmployeeId: actor.employeeId,
+          completedByEmployeeCodeSnapshot: actor.employeeCode, completedByEmployeeNameSnapshot: actor.displayName,
+          completedByNfcTagUidSnapshot: actor.nfcTagUid, completedByPositionNameSnapshot: actor.positionName,
+          clientDeviceId: input.clientDeviceId
+        } : { transitionHistory: transitionHistory(sheet, action, actor, input.clientDeviceId) })
       } });
     }, action !== 'complete');
   }

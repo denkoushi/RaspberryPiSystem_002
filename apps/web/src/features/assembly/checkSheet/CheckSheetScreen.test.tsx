@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   nfc: null as { uid: string; timestamp: number } | null,
   get: vi.fn(), stamp: vi.fn(), skip: vi.fn(), transition: vi.fn()
 }));
-vi.mock('../../../hooks/useNfcStream', () => ({ useNfcStream: () => mocks.nfc }));
+vi.mock('../../../hooks/useNfcStream', () => ({ useNfcStream: (enabled: boolean) => enabled ? mocks.nfc : null }));
 vi.mock('../../../api/domains/assembly/check-sheets', () => ({
   getAssemblyCheckSheet: mocks.get, stampAssemblyCheckSheet: mocks.stamp,
   skipAssemblyCheckSheetCondition: mocks.skip, transitionAssemblyCheckSheet: mocks.transition
@@ -84,12 +84,44 @@ describe('check-sheet screen', () => {
     mocks.transition.mockResolvedValue({ ...fixture, status: 'IN_PROGRESS' });
     const view = mount();
     fireEvent.click(await screen.findByRole('button', { name: '再開' }));
+    expect(mocks.transition).not.toHaveBeenCalled();
+    scan(view);
+    await waitFor(() => expect(mocks.transition).toHaveBeenCalledWith('sheet', 'resume', 'tag'));
     await waitFor(() => expect(screen.queryByText('中断中')).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: '7-2', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '該当なし', exact: true }));
     mocks.skip.mockResolvedValue({ ...fixture, status: 'IN_PROGRESS' });
-    scan(view);
+    scan(view, 2);
     await waitFor(() => expect(mocks.skip).toHaveBeenCalledWith('sheet', 'motor', 'tag'));
+  });
+  it.each(['pause', 'complete'] as const)('waits for a fresh tag before %s and never sends a stamp', async (action) => {
+    fixture.stamps = fixture.revision.items.map((item) => makeStamp(item.id));
+    mocks.transition.mockResolvedValue({ ...fixture, status: action === 'pause' ? 'PAUSED' : 'COMPLETED' });
+    const view = mount();
+    await screen.findByText('全項目に印が揃いました');
+    scan(view);
+    fireEvent.click(screen.getByRole('button', { name: action === 'pause' ? '中断' : '完了', exact: true }));
+    expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent('社員タグをかざす');
+    expect(mocks.transition).not.toHaveBeenCalled();
+    scan(view, 2);
+    await waitFor(() => expect(mocks.transition).toHaveBeenCalledExactlyOnceWith('sheet', action, 'tag'));
+    expect(mocks.stamp).not.toHaveBeenCalled();
+  });
+  it('can cancel completion or retry with another tag after an error', async () => {
+    fixture.stamps = fixture.revision.items.map((item) => makeStamp(item.id));
+    mocks.transition.mockRejectedValueOnce({ response: { data: { message: '社員タグが見つかりません' } } })
+      .mockResolvedValueOnce({ ...fixture, status: 'COMPLETED' });
+    const view = mount();
+    fireEvent.click(await screen.findByRole('button', { name: '完了', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    scan(view);
+    expect(mocks.transition).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '完了', exact: true }));
+    scan(view, 2);
+    expect(await screen.findByRole('alert')).toHaveTextContent('社員タグが見つかりません');
+    scan(view, 3);
+    await screen.findByRole('button', { name: '完了済み' });
+    expect(mocks.transition).toHaveBeenCalledTimes(2);
   });
   it('does not retroactively use a scan that arrived before input was ready', async () => {
     const view = mount();

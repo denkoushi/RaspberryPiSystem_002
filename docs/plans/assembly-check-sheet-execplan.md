@@ -39,6 +39,16 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 
 ## Decision Log
 
+- Decision (Milestone 3 review fixes): require an NFC actor for explicit pause/resume/complete and resolve the employee on the server. Complete fills the existing completedBy employee id/code/name/tag/position snapshots. Creation and completion store only `tryGetClientDevice`'s id (or null); all kiosk mutations discard body device IDs.
+  Rationale: a button press is not an employee identity, and request bodies cannot establish device identity. The kiosk arms an action on button press and submits only on a subsequent scan, using the same NFC prompt as stamping; cancel/error retry remains available without helper text.
+  Date/Author: 2026-10-29 / Codex
+- Decision (Milestone 3 review fixes): add one nullable JSONB `AssemblyCheckSheet.transitionHistory` column in a new additive migration. Append each pause/resume action with employee id/code/name/tag/position snapshots, authenticated device id and timestamp under the existing sheet row lock. NG-triggered pauses append the stamping actor in the same transaction. Existing rows start with no history; no previous migration is edited.
+  Rationale: existing sheet columns retain neither pause/resume actors nor repeated transitions. A single history column preserves every actor snapshot without adding parallel FK relations or tables; completion uses its existing columns.
+  Date/Author: 2026-10-29 / Codex
+- Decision (Milestone 3 review fixes): validate department membership in the save schema and `saveRevision`, while allowing unresolved import proposals to be reviewed. Reuse the same shared `KNOWLEDGE_POSITION_RANKS` constant for save validation and kiosk authorization. Return named role issues through the existing admin error display. `/stamps` accepts only OK/NG; NA is created only by `/conditions`. A CHOICE option remains a stored textual value and cannot set a stamp's result to NA. Required field checks use `Object.hasOwn`.
+  Rationale: rejects unstaffed role requirements before persistence and prevents inherited object properties or direct NA requests from bypassing item checks.
+  Date/Author: 2026-10-29 / Codex
+
 - Decision (Milestone 3): PAUSED sheets require `/resume`; neither a stamp nor complete implicitly resumes them. Unflagged NG stamps pause atomically and become the current retry item on resume. Flagged NG waits in the right-hand list until re-stamped. All mutations lock the sheet row; creation locks the work-unit row. Completed/invalidated units reject mutations.
   Rationale: avoids an accidental tag read resuming stopped work and serializes stamp/history/complete decisions.
   Date/Author: 2026-10-29 / Codex
@@ -48,7 +58,7 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 - Decision (Milestone 3): CHOICE stores its option in `values.result` (matching the import template), with additional fields using their exact inputSpec keys. OK requires every field; NG may omit unavailable measurements but validates all supplied values. NA has empty values. A flagged NG requires `ngReason`; this is a separate nullable column, including in history. Rank and department requirements are all checked, including every item of a condition before any NA write.
   Rationale: permits pausing an inspection that cannot be measured without inventing numeric values, and keeps problem text out of typed measurement fields.
   Date/Author: 2026-10-29 / Codex
-- Decision (Milestone 3): resolve employee identity and position on the server using the existing NFC resolver plus a wrapper. Prefer the authenticated kiosk's device ID over a supplied one; follow the existing API error envelope (`errorCode: CHECK_SHEET_ROLE_REQUIRED`, `details.requiredRoles`). Complete requires all OK/NA and no flags; it records completion time without inventing an approver identity.
+- Decision (Milestone 3): resolve employee identity and position on the server using the existing NFC resolver plus a wrapper. Superseded by the Milestone 3 review fixes above: originally preferred the authenticated kiosk's device ID over a supplied one; follow the existing API error envelope (`errorCode: CHECK_SHEET_ROLE_REQUIRED`, `details.requiredRoles`). Complete requires all OK/NA and no flags; originally only completion time was recorded. The review fixes now require and snapshot the completing employee.
   Rationale: retains existing authentication/audit conventions. Paper copy stays a disabled button; mock-only tags and Milestone 4 output/preview are absent. Native inputs/buttons handle keys; pure functions and a hook handle input readiness, NFC deduplication and transitions. The existing Dialog supplies pause focus containment.
   Date/Author: 2026-10-29 / Codex
 
@@ -86,6 +96,51 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 - Decision: Units (V, mm, N·m …) and conditional ranges (e.g. "モータブラケットが一体でない場合" covering 7-2..7-5) are guessed by the normalizer and confirmed/fixed by a human in the review screen (user decision 2026-10-29).
 
 ## Outcomes & Retrospective
+
+### Milestone 3 review fixes (2026-10-29)
+
+Completed only the five requested review fixes; Milestone 4 remains untouched. Entry worktree was clean on `feat/assembly-check-sheet`; all 21 changed files below belong to this review fix. No commit/push/stash/reset/checkout/rebase, dependency addition, existing migration edit, secret-file read, or live migration was performed.
+
+Validation (approximately 3 minutes):
+
+| Working directory | Command | Result |
+| --- | --- | --- |
+| `apps/api` | `pnpm exec tsc --noEmit -p tsconfig.build.json` | Passed, 0 diagnostics |
+| `apps/api` | `pnpm exec vitest run --config <temporary-api-config> check-sheet` | 4 files / 50 tests passed, 4.18 s |
+| `apps/api` | `pnpm exec prisma validate` | Passed; `prisma generate` also passed |
+| `apps/web` | `pnpm exec tsc --noEmit` | Passed, 0 diagnostics |
+| `apps/web` | `pnpm exec vitest run --config <temporary-web-config> src/features/assembly/checkSheet src/pages/admin src/api/domains/assembly/check-sheets.test.ts` | 14 files / 81 tests passed, 3.43 s |
+| API / Web / shared-types | `pnpm exec eslint --fix <changed TS/TSX paths>` | 18 files passed (7 API, 9 Web, 2 shared-types); import ordering fixed |
+| `packages/shared-types` | `pnpm exec tsc` | Passed |
+| Repository | `git diff --check` | Passed |
+
+Both temporary test configs import the repository config and override only `envDir` with an empty temporary directory to avoid `.env` reads. The first API run exposed two incomplete condition fixtures; the first Web run exposed one save fixture missing department members. After updating those fixtures to meet the new contract, each suite was rerun once and passed. Existing browser-data age warnings were left unchanged. Regression coverage includes direct NA rejection, empty/missing department roles, server-resolved completion snapshots, pause/resume history (including NG pauses), forged body device IDs with/without an authenticated device, inherited `constructor` fields, and tag-driven kiosk transitions/cancellation/retry.
+
+Live DB migration/concurrency and hardware NFC/visual verification remain unperformed. Initial and final read-only git lifecycle audits could not connect to GitHub (exit 4); local branch/status/diff were checked. No user WIP was present or modified.
+
+Changed files:
+
+- `apps/api/prisma/migrations/20261029150000_check_sheet_transition_history/migration.sql`
+- `apps/api/prisma/schema.prisma`
+- `apps/api/src/routes/assembly/__tests__/check-sheet-kiosk.routes.test.ts`
+- `apps/api/src/routes/assembly/__tests__/check-sheet.routes.test.ts`
+- `apps/api/src/routes/assembly/check-sheets.ts`
+- `apps/api/src/services/assembly/check-sheet/__tests__/check-sheet-service.test.ts`
+- `apps/api/src/services/assembly/check-sheet/check-sheet-kiosk.service.ts`
+- `apps/api/src/services/assembly/check-sheet/check-sheet.service.ts`
+- `apps/api/src/services/knowledge/knowledge-position-rank.ts`
+- `apps/web/src/api/domains/assembly/check-sheets.test.ts`
+- `apps/web/src/api/domains/assembly/check-sheets.ts`
+- `apps/web/src/features/assembly/checkSheet/CheckSheetCard.tsx`
+- `apps/web/src/features/assembly/checkSheet/CheckSheetScreen.test.tsx`
+- `apps/web/src/features/assembly/checkSheet/CheckSheetScreen.tsx`
+- `apps/web/src/features/assembly/checkSheet/checkSheetState.ts`
+- `apps/web/src/features/assembly/checkSheet/useCheckSheet.ts`
+- `apps/web/src/pages/admin/AssemblyCheckSheetsPage.test.tsx`
+- `apps/web/src/pages/admin/assembly-check-sheets/editor.test.ts`
+- `docs/plans/assembly-check-sheet-execplan.md`
+- `packages/shared-types/src/assembly/assembly-check-sheet.ts`
+- `packages/shared-types/src/knowledge/index.ts`
 
 Milestone 3 (2026-10-29): local implementation complete. No commit/push/merge/deploy or live migration was performed. The worktree was clean at entry; all files below belong to this milestone.
 

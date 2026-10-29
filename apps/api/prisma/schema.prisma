@@ -6005,6 +6005,7 @@ model AssemblyCheckSheet {
   completedByNfcTagUidSnapshot     String?
   completedByPositionNameSnapshot String?
   pausedReason                    String?
+  transitionHistory               Json?
   clientDeviceId                  String?
   workUnit                        AssemblyWorkUnit @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
   revision                        AssemblyCheckSheetRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)

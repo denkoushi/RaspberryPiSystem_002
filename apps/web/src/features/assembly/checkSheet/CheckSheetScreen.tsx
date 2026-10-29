@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Dialog } from '../../../components/ui/Dialog';
 import { KIOSK_ASSEMBLY_HOME_PATH } from '../assemblyRoutes';
 
-import { CheckSheetCard, CheckSheetStrip } from './CheckSheetCard';
+import { CheckSheetCard, CheckSheetNfcPrompt, CheckSheetStrip } from './CheckSheetCard';
 import { canComplete, familyName, stageScale } from './checkSheetState';
 import { useCheckSheet } from './useCheckSheet';
 import './checkSheet.css';
@@ -83,8 +83,17 @@ export function CheckSheetScreen({ sheetId }: { sheetId: string }) {
           </div>
         </aside>
       </div>
-      {state.toast && <div className="toast" role="alert">{state.toast}</div>}
-      <Dialog isOpen={sheet.status === 'PAUSED'} onClose={() => {}} ariaLabel="中断中" closeOnEsc={false} closeOnBackdrop={false} lockScroll={false}
+      {state.toast && !state.pendingAction && <div className="toast" role="alert">{state.toast}</div>}
+      <Dialog isOpen={!!state.pendingAction} onClose={state.cancelTransition} ariaLabel={state.pendingAction === 'pause' ? '中断' : state.pendingAction === 'resume' ? '再開' : '完了'}
+        lockScroll={false} overlayZIndex={1102} overlayClassName="assembly-check-sheet !items-center !bg-black/80" className="!border-0 !bg-transparent !shadow-none !text-white">
+        <div className="flex flex-col items-center gap-[18px]">
+          <h2 className="text-[28px] font-black">{state.pendingAction === 'pause' ? '中断' : state.pendingAction === 'resume' ? '再開' : '完了'}</h2>
+          <CheckSheetNfcPrompt />
+          {state.toast && <p role="alert">{state.toast}</p>}
+          <button type="button" className="btn" disabled={busy} onClick={state.cancelTransition}>キャンセル</button>
+        </div>
+      </Dialog>
+      <Dialog isOpen={sheet.status === 'PAUSED' && !state.pendingAction} onClose={() => {}} ariaLabel="中断中" closeOnEsc={false} closeOnBackdrop={false} lockScroll={false}
         overlayZIndex={1101} overlayClassName="!items-center !bg-black/80" className="!border-0 !bg-transparent !shadow-none !text-white">
         <div className="flex flex-col items-center gap-[18px]"><h2 className="text-[28px] font-black">中断中</h2><p className="text-[18px] text-amber-400">{sheet.pausedReason}</p>
           <button type="button" className="min-h-11 rounded-md border border-cyan-200 bg-cyan-200 px-[18px] font-bold text-cyan-950 disabled:opacity-35" disabled={busy} onClick={() => void state.transition('resume')}>再開</button>

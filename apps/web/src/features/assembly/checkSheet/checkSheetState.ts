@@ -2,7 +2,7 @@ import type { AssemblyCheckSheetPayload, AssemblyCheckSheetStampInput } from '@r
 export type CheckItem = AssemblyCheckSheetPayload['revision']['items'][number];
 export type CheckStamp = AssemblyCheckSheetPayload['stamps'][number];
 export type CheckDraft = {
-  values: Record<string, string>; result: 'OK' | 'NG' | 'NA' | null;
+  values: Record<string, string>; result: 'OK' | 'NG' | null;
   ngReason: string; ngAction: 'flag' | 'pause' | null;
 };
 export const emptyDraft = (): CheckDraft => ({ values: {}, result: null, ngReason: '', ngAction: null });
@@ -38,6 +38,6 @@ export function stampInput(item: CheckItem, draft: CheckDraft, condition: 'appli
     if (!item.inputSpec.options?.includes(choice)) return null;
     values.result = choice;
   }
-  return { itemId: item.id, result: draft.result, values: draft.result === 'NA' ? {} : values,
+  return { itemId: item.id, result: draft.result, values,
     flagged: draft.result === 'NG' && draft.ngAction === 'flag', ngReason: draft.ngReason, nfcTagUid: uid };
 }

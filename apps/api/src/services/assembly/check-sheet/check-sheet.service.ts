@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import {
   assemblyCheckSheetProposalSchema,
+  assemblyCheckSheetSaveSchema,
   type AssemblyCheckSheetImportPayload,
   type AssemblyCheckSheetRevisionPayload,
   type AssemblyCheckSheetSavePayload
@@ -72,7 +73,7 @@ export class AssemblyCheckSheetService {
   }
 
   async saveRevision(payload: AssemblyCheckSheetSavePayload, createdByUserId: string): Promise<AssemblyCheckSheetRevisionPayload> {
-    const proposal = assemblyCheckSheetProposalSchema.parse(payload.proposal);
+    const { proposal } = assemblyCheckSheetSaveSchema.parse(payload);
     const asset = await prisma.assemblyCheckSheetAsset.findUnique({ where: { id: payload.importId } });
     if (!asset) throw new ApiError(404, '取込元が見つかりません');
     await parseSource(await getFileStorageRuntime().store.read(asset.storageKey, { verifyIntegrity: true }), proposal.sourceSheetName);
