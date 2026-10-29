@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { HaizenShelfPhotoList, HaizenShelfPhotoPicker } from './HaizenShelfPhotoPicker';
 
@@ -161,5 +161,176 @@ describe('photo shelf picker', () => {
     expect(props.onScan).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
     expect(props.onClose).toHaveBeenCalled();
+  });
+});
+
+describe.each([false, true])('shelf speech selection (compact: %s)', (compact) => {
+  function mountSpeech(previousShelfCodes: string[] = [], disabled = false) {
+    const native = {
+      isAvailable: () => true, scanFseiban: vi.fn(), isSpeechAvailable: () => true,
+      startSpeech: vi.fn(), stopSpeech: vi.fn(() => window.__haizenNativeSpeechResult?.({ status: 'cancelled' }))
+    };
+    window.HaizenNative = native;
+    const onSelect = vi.fn();
+    function Harness({ entries }: { entries: RegisteredShelfEntryDto[] }) {
+      const [selected, setSelected] = useState('');
+      const props = { shelves: entries, previousShelfCodes, selected, loading: false, error: false, onRetry: vi.fn(),
+        onSelect: (code: string) => { onSelect(code); setSelected(code); } };
+      return compact ? <HaizenShelfPhotoList {...props} compact disabled={disabled} onExpand={vi.fn()} />
+        : <HaizenShelfPhotoPicker {...props} onClose={vi.fn()} onScan={vi.fn()} onMaster={vi.fn()} />;
+    }
+    const view = render(<Harness entries={shelves} />);
+    return { ...view, native, onSelect, replaceShelves: (entries: RegisteredShelfEntryDto[]) => view.rerender(<Harness entries={entries} />) };
+  }
+  const mic = () => screen.getByRole('button', { name: '声で棚を選ぶ' });
+  const tiles = () => screen.getAllByRole('button', { name: /^棚 / });
+  async function speak(texts: string[]) {
+    fireEvent.click(mic());
+    expect(mic()).toHaveAttribute('aria-pressed', 'true');
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'ok', texts }));
+    expect(mic()).toHaveAttribute('aria-pressed', 'false');
+  }
+  afterEach(async () => {
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'cancelled' }));
+    delete window.HaizenNative;
+  });
+
+  it('selects a single match from recognition alternatives and scrolls it into view', async () => {
+    const rect = (top: number, height: number) => ({ top, bottom: top + height, left: 0, right: 0, width: 0, height, x: 0, y: top, toJSON: () => ({}) });
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute('aria-pressed') === 'true' ? rect(500, 100) : rect(100, 300);
+    });
+    try {
+      const { onSelect } = mountSpeech(['東-南-02']);
+      await speak(['さくら', '3220 北']);
+      expect(onSelect).toHaveBeenCalledExactlyOnceWith('DAD-3220 北');
+      const selected = screen.getByRole('button', { name: /^棚 DAD-3220 北/, pressed: true });
+      expect(selected.closest('[class*="overflow-y-auto"]')!.scrollTop).toBe(392);
+      expect(screen.queryByRole('dialog', { name: '棚の写真を拡大' })).not.toBeInTheDocument();
+    } finally { spy.mockRestore(); }
+  });
+  it('filters multiple matches, shows the spoken chip and restores tiles with ×', async () => {
+    const { onSelect } = mountSpeech();
+    await speak(['3220', '50013']);
+    expect(tiles()).toHaveLength(2);
+    expect(onSelect).not.toHaveBeenCalled();
+    const chip = screen.getByRole('button', { name: '3220 の絞り込みを解除' });
+    expect(chip).toHaveTextContent('3220 ×');
+    fireEvent.click(chip);
+    expect(tiles()).toHaveLength(shelves.length);
+  });
+  it('clears the speech filter when a shelf is tapped', async () => {
+    const { onSelect } = mountSpeech();
+    await speak(['3220']);
+    fireEvent.click(screen.getByRole('button', { name: /^棚 DAD-3220 北/ }));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('DAD-3220 北');
+    expect(tiles()).toHaveLength(shelves.length);
+    expect(screen.queryByRole('button', { name: /絞り込みを解除/ })).not.toBeInTheDocument();
+  });
+  it('clears the speech filter on the next mic tap and stops on another tap', async () => {
+    const { native } = mountSpeech();
+    await speak(['3220']);
+    fireEvent.click(mic());
+    expect(tiles()).toHaveLength(shelves.length);
+    expect(screen.queryByRole('button', { name: /絞り込みを解除/ })).not.toBeInTheDocument();
+    fireEvent.click(mic());
+    await waitFor(() => expect(mic()).toHaveAttribute('aria-pressed', 'false'));
+    expect(native.startSpeech).toHaveBeenCalledTimes(2);
+    expect(native.stopSpeech).toHaveBeenCalledTimes(1);
+  });
+  it('clears the speech filter when shelves change', async () => {
+    const { replaceShelves } = mountSpeech();
+    await speak(['3220']);
+    replaceShelves([shelves[1], shelves[3]]);
+    expect(tiles()).toHaveLength(2);
+    expect(screen.getByRole('button', { name: '棚 50013_540AP 西' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /絞り込みを解除/ })).not.toBeInTheDocument();
+  });
+  if (!compact) it('shows all voice matches across filters and keeps machine chips usable', async () => {
+    mountSpeech(['東-南-02']);
+    await speak(['3220']);
+    expect(tiles()).toHaveLength(2);
+    expect(screen.getByRole('button', { name: '全部', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '50013_540AP', exact: true }));
+    expect(tiles()).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '棚 50013_540AP 西' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /絞り込みを解除/ })).not.toBeInTheDocument();
+  });
+  it('matches the latest shelves when they change during recognition', async () => {
+    const { onSelect, replaceShelves } = mountSpeech();
+    fireEvent.click(mic());
+    replaceShelves([shelves[1]]);
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'ok', texts: ['3220 北', '50013'] }));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('50013_540AP 西');
+  });
+  it.each(['前回', 'ぜんかい', 'ゼンカイ'])('selects the first previous shelf for %s', async (text) => {
+    const { onSelect } = mountSpeech(['50013_540AP 西', 'DAD-3220 北']);
+    await speak([text]);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('50013_540AP 西');
+  });
+  it.each(['さくら', '前回'])('leaves shelves and selection unchanged for %s without a match', async (text) => {
+    const { onSelect } = mountSpeech();
+    await speak([text]);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(tiles()).toHaveLength(shelves.length);
+    expect(screen.queryByRole('button', { name: /絞り込みを解除/ })).not.toBeInTheDocument();
+  });
+  it('silently handles cancellation and recognition failure', async () => {
+    const { native, onSelect } = mountSpeech();
+    fireEvent.click(mic());
+    await act(async () => window.__haizenNativeSpeechResult?.({ status: 'cancelled' }));
+    native.startSpeech.mockImplementationOnce(() => { throw new Error('unavailable'); });
+    fireEvent.click(mic());
+    await waitFor(() => expect(mic()).toHaveAttribute('aria-pressed', 'false'));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(tiles()).toHaveLength(shelves.length);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it('stops recognition on unmount and ignores late results', async () => {
+    const { native, unmount, onSelect } = mountSpeech();
+    fireEvent.click(mic());
+    const result = window.__haizenNativeSpeechResult;
+    unmount();
+    expect(native.stopSpeech).toHaveBeenCalledTimes(1);
+    await act(async () => result?.({ status: 'ok', texts: ['3220 北'] }));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+  it('positions and sizes the microphone beside the existing control', () => {
+    mountSpeech();
+    expect(mic()).toHaveClass('h-10', 'w-10', 'aria-pressed:bg-[var(--hp-shelf)]', 'aria-pressed:text-[var(--hp-bg)]');
+    if (compact) {
+      expect(mic()).toHaveClass('absolute', 'right-11', '!h-9', '!w-9');
+      expect(mic().nextElementSibling).toBe(screen.getByRole('button', { name: '大きい画面で選ぶ' }));
+    } else expect(mic().nextElementSibling).toBe(screen.getByRole('button', { name: 'QR' }));
+  });
+  it('hides the microphone when isSpeechAvailable is missing', () => {
+    window.HaizenNative = { isAvailable: () => true, scanFseiban: vi.fn(), startSpeech: vi.fn(), stopSpeech: vi.fn() };
+    const props = { shelves, previousShelfCodes: [], selected: '', loading: false, error: false, onRetry: vi.fn(), onSelect: vi.fn() };
+    render(compact ? <HaizenShelfPhotoList {...props} compact onExpand={vi.fn()} />
+      : <HaizenShelfPhotoPicker {...props} onClose={vi.fn()} onScan={vi.fn()} onMaster={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '声で棚を選ぶ' })).not.toBeInTheDocument();
+  });
+  if (compact) it('stops listening when the list becomes disabled', async () => {
+    const { native } = mountSpeech();
+    const props = { shelves, previousShelfCodes: [], selected: '', loading: false, error: false, onRetry: vi.fn(), onSelect: vi.fn() };
+    const { rerender } = render(<HaizenShelfPhotoList {...props} compact onExpand={vi.fn()} />);
+    const ownMic = screen.getAllByRole('button', { name: '声で棚を選ぶ' })[1];
+    fireEvent.click(ownMic);
+    await act(async () => { rerender(<HaizenShelfPhotoList {...props} compact disabled onExpand={vi.fn()} />); });
+    expect(native.stopSpeech).toHaveBeenCalledTimes(1);
+    expect(ownMic).toHaveAttribute('aria-pressed', 'false');
+  });
+  if (compact) it('stops the compact list session when the full-screen picker opens', async () => {
+    const { native } = mountSpeech();
+    fireEvent.click(mic());
+    await act(async () => { render(<HaizenShelfPhotoPicker shelves={shelves} previousShelfCodes={[]} selected="" loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} onClose={vi.fn()} onScan={vi.fn()} onMaster={vi.fn()} />); });
+    expect(native.stopSpeech).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('button', { name: '声で棚を選ぶ' })[0]).toHaveAttribute('aria-pressed', 'false');
+  });
+  if (compact) it('disables the microphone with the list', () => {
+    const { native } = mountSpeech([], true);
+    expect(mic()).toBeDisabled();
+    fireEvent.click(mic());
+    expect(native.startSpeech).not.toHaveBeenCalled();
   });
 });
