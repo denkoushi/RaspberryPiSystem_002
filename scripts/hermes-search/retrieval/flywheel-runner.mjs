@@ -15,14 +15,14 @@ import { catalogEntries, fieldsWithRole, loadNonconformityCatalog } from './cata
 import { denseSettings, readDenseStore } from './dense-dgx.mjs';
 import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
-import { checkFilterAnswer, filterOutcome, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
+import { checkFilterAnswer, checkFollowUpAnswer, filterOutcome, followUpLoss, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
 import { loadCauseById } from './worker.mjs';
 import { sampleFilterQuestions } from './flywheel-filter-questions.mjs';
 import { createDgxChat, generateForPairs, guardChat, probeChat } from './flywheel-generate.mjs';
 import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
 import { questionSet, splitOf } from './flywheel-gate.mjs';
 import { DEFAULT_LEARN_BUDGET, LEARN_BUDGET_CAP, LEARN_EVAL_NIGHTS, activationDecision, evaluateCandidates, learnedPath, proposeLearnedQueries, readLearned, writeLearned } from './flywheel-learn.mjs';
-import { existingRealIds, readReceiptQuestions, realPath } from './flywheel-real.mjs';
+import { existingRealIds, readReceiptQuestions, readRegressions, realPath, regressionOk, updateRegression, writeRegressions } from './flywheel-real.mjs';
 import { answerableIntents, bareId, bodyText, samplePairs } from './flywheel-pairs.mjs';
 import { createRandom, sampleSeed } from './flywheel-seeds.mjs';
 import { GRADE_BATCH, gradeBatch, recordText } from './graded-labels.mjs';
@@ -40,6 +40,8 @@ export const DEFAULT_LABEL_BUDGET = 60;
 export const LABEL_BUDGET_CAP = 300;
 export const DEFAULT_REAL_BUDGET = 20;
 export const REAL_BUDGET_CAP = 100;
+export const DEFAULT_REGRESSION_BUDGET = 10;
+export const REGRESSION_BUDGET_CAP = 30;
 export const DEFAULT_FILTER_BUDGET = 10;
 export const FILTER_BUDGET_CAP = 30;
 export const REAL_LABEL_DEPTH = 5;
@@ -48,6 +50,7 @@ export function flywheelSettings(env = process.env) {
   const requested = Number.parseInt(env.HERMES_FLYWHEEL_MAX_QUESTIONS ?? '', 10);
   const labelBudget = Number(env.HERMES_FLYWHEEL_LABEL_BUDGET ?? NaN);
   const realBudget = Number(env.HERMES_FLYWHEEL_REAL_BUDGET ?? NaN);
+  const regressionBudget = Number(env.HERMES_FLYWHEEL_REGRESSION_BUDGET ?? NaN);
   const filterBudget = Number(env.HERMES_FLYWHEEL_FILTER_BUDGET ?? NaN);
   const learnBudget = Number(env.HERMES_FLYWHEEL_LEARN_BUDGET ?? NaN);
   const plannerBudget = Number(env.HERMES_FLYWHEEL_PLANNER_BUDGET ?? NaN);
@@ -57,6 +60,7 @@ export function flywheelSettings(env = process.env) {
     maxQuestions: Number.isInteger(requested) && requested > 0 ? Math.min(requested, MAX_QUESTIONS_CAP) : DEFAULT_MAX_QUESTIONS,
     labelBudget: Number.isInteger(labelBudget) && labelBudget >= 0 && env.HERMES_FLYWHEEL_LABEL_BUDGET?.trim() !== '' ? Math.min(labelBudget, LABEL_BUDGET_CAP) : DEFAULT_LABEL_BUDGET,
     realBudget: Number.isInteger(realBudget) && realBudget >= 0 && env.HERMES_FLYWHEEL_REAL_BUDGET?.trim() !== '' ? Math.min(realBudget, REAL_BUDGET_CAP) : DEFAULT_REAL_BUDGET,
+    regressionBudget: Number.isInteger(regressionBudget) && regressionBudget >= 0 && env.HERMES_FLYWHEEL_REGRESSION_BUDGET?.trim() !== '' ? Math.min(regressionBudget, REGRESSION_BUDGET_CAP) : DEFAULT_REGRESSION_BUDGET,
     filterBudget: Number.isInteger(filterBudget) && filterBudget >= 0 && env.HERMES_FLYWHEEL_FILTER_BUDGET?.trim() !== '' ? Math.min(filterBudget, FILTER_BUDGET_CAP) : DEFAULT_FILTER_BUDGET,
     learnBudget: Number.isInteger(learnBudget) && learnBudget >= 0 && env.HERMES_FLYWHEEL_LEARN_BUDGET?.trim() !== '' ? Math.min(learnBudget, LEARN_BUDGET_CAP) : DEFAULT_LEARN_BUDGET,
     plannerBudget: Number.isInteger(plannerBudget) && plannerBudget >= 0 && env.HERMES_FLYWHEEL_PLANNER_BUDGET?.trim() !== '' ? Math.min(plannerBudget, PLANNER_BUDGET_CAP) : DEFAULT_PLANNER_BUDGET,
@@ -179,7 +183,7 @@ export async function runFlywheelNight({
   seed = null,
   log = (line) => console.info(line),
 }) {
-  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, filter: { generated: 0, ok: 0, mismatch: 0, unsupported: 0, clarified: 0, failed: 0 }, updatedAt: null };
+  const status = { schema: 'hermes-flywheel-status/v1', reason: 'started', night: null, generated: 0, kept: 0, shown: 0, dropped: 0, dropReasons: {}, lossStages: {}, pendingLive: 0, labelled: 0, labelPending: 0, real: 0, realPending: 0, regression: { replayed: 0, ok: 0, failed: 0, pending: 0 }, filter: { generated: 0, ok: 0, mismatch: 0, unsupported: 0, clarified: 0, failed: 0 }, updatedAt: null };
   let previousLine = null;
   let previousNight = null;
   if (settings.dir) {
@@ -437,15 +441,43 @@ export async function runFlywheelNight({
     status.filter[filterOutcome(row)] += 1;
   }
   const realFile = realPath(settings.dir, status.night);
-  const realDone = (await readLines(realFile)).length;
+  const nightRealRows = await readLines(realFile);
+  const realDone = nightRealRows.filter((row) => row.source !== 'regression').length;
+  const regressions = await readRegressions(settings.dir);
+  // Reconcile completed rows after an interrupted append/queue update, without counting a night twice.
+  for (const row of nightRealRows) updateRegression(regressions, row, status.night);
+  const regressionDone = new Set(nightRealRows.filter((row) => row.source === 'regression').map((row) => row.id));
+  const regressionRemaining = Math.max(0, (settings.regressionBudget ?? DEFAULT_REGRESSION_BUDGET) - regressionDone.size);
+  const regressionQuestions = [...regressions.values()]
+    .filter((row) => row.lastNight !== status.night && !regressionDone.has(row.id))
+    .sort((left, right) => left.lastNight.localeCompare(right.lastNight)).slice(0, regressionRemaining);
+  await writeRegressions(settings.dir, regressions);
+  status.regression.pending = regressions.size;
   const realRemaining = Math.max(0, (settings.realBudget ?? DEFAULT_REAL_BUDGET) - realDone);
   const usedReal = await existingRealIds(settings.dir);
   const receiptQuestions = (await readReceiptQuestions({
     receiptsDir: path.join(path.dirname(settings.dir), 'receipts'),
-    days: [status.night, tokyoDay(new Date(now().getTime() - 24 * 3600 * 1000))],
+    days: [...new Set([status.night, tokyoDay(new Date(now().getTime() - 24 * 3600 * 1000))])],
   })).filter((question) => !usedReal.has(question.id));
   status.realPending = receiptQuestions.length;
-  for (const question of receiptQuestions.slice(0, realRemaining)) {
+  const persistReal = async (row) => {
+    await appendFile(realFile, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+    updateRegression(regressions, row, status.night);
+    await writeRegressions(settings.dir, regressions);
+    if (row.source === 'regression') {
+      status.regression.replayed += 1;
+      status.regression[regressionOk(row) === true ? 'ok' : 'failed'] += 1;
+    } else {
+      status.real += 1;
+      status.realPending -= 1;
+    }
+    status.regression.pending = regressions.size;
+  };
+  const replayQuestions = [
+    ...regressionQuestions.map((question) => ({ ...question, source: 'regression' })),
+    ...receiptQuestions.slice(0, realRemaining).map((question) => ({ ...question, source: 'real' })),
+  ];
+  for (const question of replayQuestions) {
     if (guarded.tripped()) {
       reason = 'dgx_busy';
       break;
@@ -454,23 +486,21 @@ export async function runFlywheelNight({
     score ??= await makeLive({ records, catalog, evaluate });
     const live = await score({ a: null, b: null, question: question.question, grades: null,
       ...(question.previousPlan ? { previousPlan: question.previousPlan, previousShown: question.previousShown ?? [] } : {}) });
-    await logLive(question.id, live);
     if (isFilterOnlyPlan(live.plan)) {
       // Record-display checks do not score count answers.
       const filterCheck = live.outcome === 'count' ? { supported: false, reason: 'count_answer', ok: null }
         : checkFilterAnswer({ plan: live.plan, shown: live.shown, groups: live.groups, breakdown: question.seed?.breakdown ?? live.plan?.breakdown, records: corpus, catalog, causeById });
       live.loss = live.outcome === 'count' ? 'count_answer'
         : filterCheck.ok === true ? null : filterCheck.ok === false ? 'filter_mismatch' : 'filter_unsupported';
-      await appendFile(realFile, `${JSON.stringify({
-        at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id),
+      await logLive(question.id, live);
+      await persistReal({
+        at: now().toISOString(), ...question, split: splitOf(question.id),
         kind: 'filter', relevant: [], labels: {}, live, filterCheck,
-      })}\n`, { mode: 0o600 });
-      status.real += 1;
-      status.realPending -= 1;
+      });
       continue;
     }
     const ids = [...new Set([
-      ...(live.candidates ?? []).slice(0, REAL_LABEL_DEPTH), ...(live.shown ?? []), ...question.dayShown,
+      ...(live.candidates ?? []).slice(0, REAL_LABEL_DEPTH), ...(live.shown ?? []), ...(question.dayShown ?? []),
     ].map(bareId))].filter((id) => recordsById.has(id));
     labels[question.id] ??= {};
     // Graders read a follow-up together with the questions before it; 「他に何件ある？」 alone says nothing.
@@ -491,11 +521,15 @@ export async function runFlywheelNight({
     const relevant = ids.filter((id) => questionLabels[id].g === 3);
     live.loss = lossStage({ relevant, outcome: live.outcome, shown: live.shown, candidates: live.candidates, judged: live.judged });
     await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });
-    await appendFile(realFile, `${JSON.stringify({
-      at: now().toISOString(), source: 'real', ...question, split: splitOf(question.id), kind: 'content', relevant, labels: questionLabels, live,
-    })}\n`, { mode: 0o600 });
-    status.real += 1;
-    status.realPending -= 1;
+    const followUpCheck = question.previousPlan && live.plan?.semanticQuery
+      ? checkFollowUpAnswer({ question: question.question, previousPlan: question.previousPlan, previousShown: question.previousShown ?? [],
+        plan: live.plan, shown: live.shown, outcome: live.outcome, records: corpus, catalog, bodyFields }) : null;
+    live.loss = followUpLoss(followUpCheck, live.loss);
+    await logLive(question.id, live);
+    await persistReal({
+      at: now().toISOString(), ...question, split: splitOf(question.id), kind: 'content', relevant, labels: questionLabels, live,
+      ...(followUpCheck ? { followUpCheck } : {}),
+    });
   }
   // Learn only from development failures; all comparisons use held-out questions.
   const recentRows = [];
@@ -570,17 +604,24 @@ export async function runFlywheelNight({
           await logLive('planner:' + id, result);
           return result;
         };
-        const scoredRow = (row, result) => ({ ...row, live: result,
-          ...(row.kind === 'filter' ? { filterCheck: result.outcome === 'count'
-            ? { supported: false, reason: 'count_answer', ok: null }
-            : checkFilterAnswer({ plan: result.plan, shown: result.shown, groups: result.groups,
-              breakdown: row.seed?.breakdown ?? row.live.plan?.breakdown, records: corpus, catalog, causeById }) } : {}),
-        });
+        const scoredRow = (row, result) => {
+          const followUpCheck = ['real', 'regression'].includes(row.source) && row.previousPlan
+            ? checkFollowUpAnswer({ question: row.question, previousPlan: row.previousPlan, previousShown: row.previousShown ?? [], plan: result.plan,
+              shown: result.shown, outcome: result.outcome, records: corpus, catalog, bodyFields }) : null;
+          return { ...row, live: { ...result, loss: followUpLoss(followUpCheck, result.loss) },
+            ...(followUpCheck ? { followUpCheck } : {}),
+            ...(row.kind === 'filter' ? { filterCheck: result.outcome === 'count'
+              ? { supported: false, reason: 'count_answer', ok: null }
+              : checkFilterAnswer({ plan: result.plan, shown: result.shown, groups: result.groups,
+                breakdown: row.seed?.breakdown ?? row.live.plan?.breakdown, records: corpus, catalog, causeById }) } : {}),
+          };
+        };
         try {
           for (const row of selected) {
             if (!withinWindow(settings.window, now()) || guarded.tripped()) break;
             const id = row.id ?? bareId(row.a);
-            let baseline = row;
+            let baseline = ['real', 'regression'].includes(row.source) && row.previousPlan
+              ? scoredRow(row, row.live) : row;
             if (row.live.questionVersion != null && row.live.questionVersion !== active) {
               baselineScore ??= await makeLive({ records, catalog, evaluate, plannerOptions: { questionVersion: active } });
               baseline = scoredRow(row, await inWindow(baselineScore, row, id));
