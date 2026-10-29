@@ -17,10 +17,13 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 - [x] (2026-10-29) Milestone 1 implementation: additive schema/migration, pure xlsx parser/normalizer, admin import/save + revision read API, shared payloads, and 23 focused tests. Sample: 22 groups / 57 items / 17 warnings. Repository-wide typecheck is blocked by errors outside this change; live DB migration/concurrency verification remains unperformed (DB unavailable).
 - [x] (2026-10-29) Milestone 2 implementation: admin head list, xlsx import/review table, header/department-member editors, new/revision saves, and pure editing/payload functions. Added 13 focused web tests; web typecheck and scoped lint pass. Manual sample upload/save against a live API remains unperformed.
 - [x] (2026-10-29) Milestone 3 implementation: fixed-stage kiosk page, home-board entry, NFC stamping/history, rank/department checks, conditional NA, explicit pause/resume and completion rules. Focused API/web validation recorded below; live DB and browser/device verification remain unperformed.
-- [ ] Milestone 4: filled original .xlsx (raw XML patch) download and kiosk layout preview.
+- [x] (2026-10-29) Milestone 4: original-package XML fill/download, bounded saved/legacy layout snapshots, shared paper writes, and kiosk preview/print. API 60 tests and Web 107 tests pass; typechecks, Prisma validation and scoped lint pass. Admin download link omitted because its list contains revisions only; desktop Excel and browser print verification remain unperformed.
 - [ ] Milestone 5 (prototype, optional): LibreOffice headless PDF conversion feasibility on the API image.
 
 ## Surprises & Discoveries
+
+- Observation (Milestone 4): the admin page lists revision heads, not per-unit sheet instances. Omitted the per-sheet download link as explicitly allowed by the task; did not add another list/API. The authenticated download endpoint accepts every sheet status.
+- Observation (Milestone 4 environment): the requested pnpm add failed on the existing store location; an offline lockfile-only attempt lacked registry metadata. Added the direct `^3.10.1` dependency and importer entry using the already locked/installed version, with a local node_modules link for validation. No new package version was fetched. Git lifecycle audit could not reach GitHub; local branch/status/diff were verified.
 
 - Observation (Milestone 3): `Employee.positionName` is a display position, not a rank key. Reused `KnowledgePositionRank` lookup before comparing `KNOWLEDGE_POSITION_RANKS`. The existing revision payload intersected two array types, causing `.find`/`.map` to lose item/group IDs; replaced that intersection with `Omit` plus the existing ID-bearing arrays (no wire-format change).
 - Observation (Milestone 3): the approved mock records NG problem text, but Stamp/History had no dedicated field. Added nullable `ngReason` to both in migration `20261029140000_check_sheet_ng_reason`; the original migration is unchanged. No layout snapshot or paper export was added.
@@ -36,8 +39,13 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
   Evidence: unzip of the original lists `xl/embeddings/oleObject1..7.bin`, `xl/drawings/vmlDrawing1..4.vml`, `xl/printerSettings/*`; after `wb.xlsx.readFile` → `writeFile` with exceljs 4.4 none of these remain and sheets are renumbered. Merged ranges (165), print area `A1:S83`, A4 portrait fit-to-1-page survive.
 - Observation: shared strings in the sample contain furigana runs (`<rPh>`), so naive text extraction yields "…締結トルク（　　  N･m）カクジツシツテイケツ". exceljs `cell.text` already ignores them; any raw-XML reader must skip `<rPh>` elements.
 - Observation: the sample's item text lives in merged range F:R per row, the 主項目 in merged C:E spanning several rows, the No in A:B, and the stamp column is S (header "ﾁｪｯｸ"). Value blanks are written inside the item text as full-width-space parentheses, e.g. `締結トルク（　　  N･m）`, `（　　　）Ｎ`, `（　OK　・　NG　・　該当無し　）`. Some items span two physical rows (rows 39–40, 45–46, 47–48). Role words appear in the text: `（班長）`, `（係長）`, and in the 主項目 `IOチェック（制御設計担当）`. Header cells (date, 出荷予定日, 製品No, 製番, 製品名, 客先名) are formulas pointing to an input block outside the print area (columns U..AC).
+- Observation (Milestone 4 review): the element regex let a self-closing `<c .../>` or `<row .../>` swallow the next element, which deleted or duplicated cells. Fixed with a lazy attribute match and a regression test. Also: dates in the layout rendered as `Date.toString()` (now `yyyy/m/d`, Excel day 0 blank); hidden columns shifted preview cells (now rendered as empty zero-width cells); XML-illegal control characters are stripped; NG without flag prints `NG <name>` too; an invalid stored snapshot no longer breaks `GET /:id`. Overwriting a shared-formula master is refused with an error instead of producing a file Excel must repair.
+- Observation (Milestone 4 manual check): filling the real sample workbook changed only `[Content_Types].xml`, `xl/workbook.xml`, its rels and the target sheet, and removed `calcChain.xml`; all other 61 entries stayed byte-identical. The preview rendered the original layout at 1920x1080 (portrait page fits by height). Opening the file in desktop Excel and printing from the Pi4 are still unverified.
 
 ## Decision Log
+
+- Decision (Milestone 4): capture layout at revision save, and lazily persist null legacy snapshots from the immutable source on either paper endpoint. Reuse the existing JSONB column; no migration. Store sparse per-cell formatting with documented Excel defaults, reject snapshots above 500,000 UTF-8 bytes (and areas above 30,000 cells), and use the bounding rectangle for multiple print ranges.
+- Decision (Milestone 4): preserve all unrelated XLSX entry contents; resolve sheet relationships instead of assuming sheet1. Build both outputs from the same Tokyo-time writes. Unstamped items and NA measurements retain original text; partial NG inline fields leave unavailable placeholders blank. Preview uses the existing Dialog and seal style, fits the viewport, prints only its portal onto A4, and consumes NFC events without stamping while open.
 
 - Decision (Milestone 3 review fixes): require an NFC actor for explicit pause/resume/complete and resolve the employee on the server. Complete fills the existing completedBy employee id/code/name/tag/position snapshots. Creation and completion store only `tryGetClientDevice`'s id (or null); all kiosk mutations discard body device IDs.
   Rationale: a button press is not an employee identity, and request bodies cannot establish device identity. The kiosk arms an action on button press and submits only on a subsequent scan, using the same NFC prompt as stamping; cancel/error retry remains available without helper text.
@@ -96,6 +104,22 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 - Decision: Units (V, mm, N·m …) and conditional ranges (e.g. "モータブラケットが一体でない場合" covering 7-2..7-5) are guessed by the normalizer and confirmed/fixed by a human in the review screen (user decision 2026-10-29).
 
 ## Outcomes & Retrospective
+
+### Milestone 4 (2026-10-29)
+
+Implemented paper XLSX and HTML preview for IN_PROGRESS, PAUSED and COMPLETED sheets. Synthetic tests verify unchanged non-target ZIP entries (including OLE), styles/merges, selective formula removal, calcChain cleanup, ordered new rows/cells, ExcelJS readability, print-area geometry, save/lazy persistence, Tokyo stamps/headers/templates, view authorization, download headers, seals, printing/closing, and NFC suppression.
+
+Validation tails (about 3 minutes; shared-types rebuilt first):
+
+- API `pnpm exec tsc --noEmit -p tsconfig.build.json`: exit 0, no diagnostics (after narrowing ExcelJS vertical alignment types).
+- API `pnpm exec vitest run check-sheet`: `Test Files 5 passed (5)` / `Tests 60 passed (60)`.
+- API `pnpm exec prisma validate`: `The schema at prisma/schema.prisma is valid`.
+- API `pnpm exec eslint <changed src .ts files> --max-warnings=0`: exit 0, no diagnostics.
+- Web `pnpm exec tsc --noEmit`: exit 0, no diagnostics.
+- Web `pnpm exec vitest run src/features/assembly/checkSheet src/pages/admin src/api/domains/assembly`: `Test Files 17 passed (17)` / `Tests 107 passed (107)`.
+- Web `pnpm exec eslint <changed .ts/.tsx files> --fix --max-warnings=0`: exit 0, no diagnostics; only import ordering fixed.
+
+Both Vitest commands used temporary `--config /tmp/assembly-m4-{api,web}.config.mts` wrappers importing the repository configs and overriding only envDir to an empty temporary directory, so no local secret files were loaded. Existing Browserslist/baseline-browser-mapping age warnings remain unchanged. Tests mock persistence and use code-built workbooks only. Desktop Excel/LibreOffice OLE behavior, actual browser layout/print output, hardware NFC and live DB persistence remain unverified. No schema, deploy, home-board, customer workbook, commit, push or history change was made. Entry worktree was clean; all Milestone 4 changes are this task's uncommitted work.
 
 ### Milestone 3 review fixes (2026-10-29)
 

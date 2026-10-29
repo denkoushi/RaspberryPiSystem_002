@@ -5,6 +5,10 @@ import { prisma } from '../../../lib/prisma.js';
 import { KNOWLEDGE_POSITION_RANKS, positionRank } from '../../knowledge/knowledge-position-rank.js';
 import { resolveActiveAssemblyOperatorNfcUid } from '../assembly-operator-nfc-resolve.service.js';
 import { runAssemblyTransaction } from '../assembly-transaction.js';
+import { getFileStorageRuntime } from '../../file-storage/file-storage-runtime.js';
+import { buildCheckSheetLayout } from './check-sheet-layout.js';
+import { buildCheckSheetWrites } from './check-sheet-paper-writes.js';
+import { fillCheckSheetXlsx } from './check-sheet-xlsx-filler.js';
 import { revisionInclude, serializeRevision } from './check-sheet.service.js';
 
 const sheetInclude = { revision: { include: revisionInclude }, stamps: true, workUnit: true };
@@ -118,6 +122,32 @@ export class AssemblyCheckSheetKioskService {
     });
   }
   async get(id: string) { return serialize(await readSheet(prisma, id)); }
+  private async paper(id: string, needsSource: boolean) {
+    const sheet = await this.get(id);
+    let source: Buffer | undefined;
+    if (needsSource || !sheet.revision.layoutSnapshot) {
+      const asset = await prisma.assemblyCheckSheetAsset.findUnique({ where: { id: sheet.revision.sourceAssetId } });
+      if (!asset) throw new ApiError(404, '取込元が見つかりません');
+      source = await getFileStorageRuntime().store.read(asset.storageKey, { verifyIntegrity: true });
+    }
+    if (!sheet.revision.layoutSnapshot) {
+      const layoutSnapshot = await buildCheckSheetLayout(source!, sheet.revision.sourceSheetName);
+      await prisma.assemblyCheckSheetRevision.update({ where: { id: sheet.revisionId }, data: { layoutSnapshot } });
+      sheet.revision.layoutSnapshot = layoutSnapshot;
+    }
+    return { sheet, source, layoutSnapshot: sheet.revision.layoutSnapshot, writes: buildCheckSheetWrites(sheet) };
+  }
+  async paperLayout(id: string) {
+    const { sheet, layoutSnapshot, writes } = await this.paper(id, false);
+    return { layoutSnapshot, writes, stampCells: sheet.revision.items.map((item) => item.stampCell) };
+  }
+  async paperXlsx(id: string) {
+    const { sheet, source, writes } = await this.paper(id, true);
+    return {
+      buffer: await fillCheckSheetXlsx(source!, sheet.revision.sourceSheetName, writes),
+      filename: `${sheet.revision.documentNo}_${sheet.headerValues.seiban ?? ''}.xlsx`
+    };
+  }
   private async mutate(id: string, work: (tx: Prisma.TransactionClient, sheet: Sheet) => Promise<void>, allowPaused = false) {
     return runAssemblyTransaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "AssemblyCheckSheet" WHERE "id" = ${id} FOR UPDATE`;

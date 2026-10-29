@@ -12,7 +12,7 @@ function message(error: unknown) {
   const response = (error as { response?: { data?: { message?: string } } })?.response?.data;
   return response?.message ?? '操作できませんでした';
 }
-export function useCheckSheet(sheetId: string) {
+export function useCheckSheet(sheetId: string, suspended = false) {
   const [sheet, setSheet] = useState<AssemblyCheckSheetPayload | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [previousId, setPreviousId] = useState<string | null>(null);
@@ -82,8 +82,8 @@ export function useCheckSheet(sheetId: string) {
     const key = `${nfc.uid}:${nfc.timestamp}`;
     if (lastEvent.current === key) return;
     lastEvent.current = key;
-    void scan(nfc.uid);
-  }, [nfc, scan]);
+    if (!suspended) void scan(nfc.uid);
+  }, [nfc, scan, suspended]);
   const transition = (action: 'pause' | 'resume' | 'complete') => {
     if (!sheet || inFlight.current) return;
     setPendingAction(action);

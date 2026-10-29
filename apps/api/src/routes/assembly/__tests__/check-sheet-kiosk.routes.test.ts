@@ -1,3 +1,5 @@
+import { assemblyCheckSheetPaperLayoutSchema } from '@raspi-system/shared-types';
+import ExcelJS from 'exceljs';
 import { randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,7 +17,7 @@ const mocks = vi.hoisted(() => ({
     $transaction: vi.fn(), $queryRaw: vi.fn(),
     assemblyWorkUnit: { findUnique: vi.fn() },
     assemblyCheckSheet: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-    assemblyCheckSheetRevision: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findFirstOrThrow: vi.fn(), findUniqueOrThrow: vi.fn() },
+    assemblyCheckSheetRevision: { update: vi.fn(), findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findFirstOrThrow: vi.fn(), findUniqueOrThrow: vi.fn() },
     assemblyCheckSheetGroup: { createMany: vi.fn() }, assemblyCheckSheetItem: { createMany: vi.fn() },
     assemblyCheckSheetAsset: { findUnique: vi.fn() },
     assemblyCheckSheetStamp: { upsert: vi.fn() }, assemblyCheckSheetStampHistory: { create: vi.fn() },
@@ -63,6 +65,7 @@ beforeEach(async () => {
   db.$queryRaw.mockResolvedValue([{ id: unitId }]);
   db.assemblyWorkUnit.findUnique.mockResolvedValue({ id: unitId, workId: '0418-01', invalidatedAt: null,
     lotSerial: { lot: { productNo: 'BA2610-0418', targetUnit: 'XYZ 3軸ユニット', template: { modelCode: proposal.modelCode } } } });
+  db.assemblyCheckSheetRevision.update.mockImplementation(async ({ data }) => { Object.assign(sheet!.revision, data); return sheet!.revision; });
   db.assemblyCheckSheetRevision.findMany.mockImplementation(async () => revisions.filter((revision) => revision.isRevisionHead));
   db.assemblyCheckSheet.findUnique.mockImplementation(async () => sheet);
   db.assemblyCheckSheet.create.mockImplementation(async ({ data }: { data: Partial<Sheet> }) => {
@@ -255,5 +258,35 @@ describe('check-sheet kiosk route contracts with real service', () => {
     expect(opened.json().revisionId).toBe(oldId);
     const fetched = await app.inject({ method: 'GET', url: `/api/assembly/check-sheets/${sheet!.id}`, headers: keyHeaders });
     expect(fetched.json().revision.items.map((item: { id: string }) => item.id)).toEqual(oldItems);
+  });
+});
+
+describe('check-sheet paper route contracts', () => {
+  it.each(['IN_PROGRESS', 'PAUSED', 'COMPLETED'] as const)('returns paper in %s and persists a legacy snapshot once', async (status) => {
+    await stamp(0);
+    sheet!.status = status;
+    const url = `/api/assembly/check-sheets/${sheet!.id}`;
+    const layout = await app.inject({ method: 'GET', url: `${url}/paper-layout`, headers: keyHeaders });
+    expect(layout.statusCode).toBe(200);
+    const data = assemblyCheckSheetPaperLayoutSchema.parse(layout.json());
+    expect(data.stampCells).toContain(sheet!.revision.items[0].stampCell);
+    expect(data.writes).toContainEqual({ cell: sheet!.revision.items[0].stampCell, text: expect.stringMatching(/^山田 /) });
+    expect(mocks.db.assemblyCheckSheetRevision.update).toHaveBeenCalledOnce();
+    mocks.store.read.mockClear();
+    await app.inject({ method: 'GET', url: `${url}/paper-layout`, headers: keyHeaders });
+    expect(mocks.store.read).not.toHaveBeenCalled();
+    const download = await app.inject({ method: 'GET', url: `${url}/paper.xlsx`, headers: keyHeaders });
+    expect(download.statusCode).toBe(200);
+    expect(download.headers['content-type']).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(download.headers['content-disposition']).toBe(`attachment; filename="check-sheet.xlsx"; filename*=UTF-8''${encodeURIComponent(`${sheet!.revision.documentNo}_BA2610-0418.xlsx`)}`);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(download.rawPayload as unknown as ExcelJS.Buffer);
+    expect(workbook.getWorksheet(sheet!.revision.sourceSheetName)!.getCell(sheet!.revision.items[0].stampCell).text).toMatch(/^山田 /);
+    expect(mocks.db.assemblyCheckSheetRevision.update).toHaveBeenCalledOnce();
+  });
+  it.each(['paper.xlsx', 'paper-layout'])('requires allowView and returns 404 for unknown sheets: %s', async (suffix) => {
+    expect((await app.inject({ method: 'GET', url: `/api/assembly/check-sheets/${sheet!.id}/${suffix}` })).statusCode).toBe(401);
+    sheet = null;
+    expect((await app.inject({ method: 'GET', url: `/api/assembly/check-sheets/${randomUUID()}/${suffix}`, headers: keyHeaders })).statusCode).toBe(404);
   });
 });

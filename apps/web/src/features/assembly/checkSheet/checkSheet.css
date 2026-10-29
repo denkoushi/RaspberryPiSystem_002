@@ -167,3 +167,26 @@
 
 .assembly-check-sheet .status-card{grid-template-columns:1fr;place-items:center;min-height:420px}
 
+
+.assembly-check-sheet.check-sheet-paper-overlay{padding:0;background:#1e293b;overflow:hidden}
+.assembly-check-sheet .check-sheet-paper-panel{margin:0;padding:0;border:0;border-radius:0;width:100%;max-width:none;max-height:none;height:100dvh;background:#1e293b;color:#f8fafc;display:flex;flex-direction:column}
+.check-sheet-paper-actions{display:flex;justify-content:flex-end;gap:12px;padding:12px 16px}
+.check-sheet-paper-viewport{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 16px 16px}
+.check-sheet-paper-page{position:relative;background:white;color:#1c1917;color-scheme:light}
+.check-sheet-paper-content{transform-origin:top left}
+.check-sheet-paper-table{border-collapse:collapse;table-layout:fixed;background:white;color:#1c1917;font-family:"Yu Gothic","Noto Sans JP",sans-serif}
+.check-sheet-paper-table td{position:relative;padding:0}
+.check-sheet-paper-cell{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden;line-height:1.15;padding:1px 2px}
+.assembly-check-sheet .seal.paper-seal{flex:none;align-self:center;border-width:1.5px;background:transparent;transform:none;margin:auto;overflow:hidden}
+.paper-seal-status,.paper-seal-time{display:block;font-size:.5em;font-family:var(--sans);line-height:1.1}
+@media print{
+  @page{size:A4 portrait;margin:10mm}
+  body:has(.check-sheet-paper-overlay)>:not(.check-sheet-paper-overlay){display:none!important}
+  body:has(.check-sheet-paper-overlay){overflow:visible!important;background:white!important}
+  .assembly-check-sheet.check-sheet-paper-overlay{position:static!important;display:block!important;overflow:visible!important;background:white!important}
+  .assembly-check-sheet .check-sheet-paper-panel{display:block!important;height:auto!important;max-height:none!important;overflow:visible!important;background:white!important;box-shadow:none!important}
+  .check-sheet-paper-actions{display:none!important}
+  .check-sheet-paper-viewport{display:block;padding:0}
+  .check-sheet-paper-page{width:auto!important;height:auto!important}
+  .check-sheet-paper-content{transform:none!important;zoom:var(--paper-print-scale);print-color-adjust:exact;-webkit-print-color-adjust:exact}
+}

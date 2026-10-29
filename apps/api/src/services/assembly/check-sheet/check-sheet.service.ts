@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import {
   assemblyCheckSheetProposalSchema,
+  assemblyCheckSheetLayoutSchema,
   assemblyCheckSheetSaveSchema,
   type AssemblyCheckSheetImportPayload,
   type AssemblyCheckSheetRevisionPayload,
@@ -13,6 +14,7 @@ import { getFileStorageRuntime } from '../../file-storage/file-storage-runtime.j
 import { FileStorageAlreadyExistsError } from '../../file-storage/file-storage-errors.js';
 import { runAssemblyTransaction } from '../assembly-transaction.js';
 import { normalizeCheckSheet } from './check-sheet-normalizer.js';
+import { buildCheckSheetLayout } from './check-sheet-layout.js';
 import { parseCheckSheetXlsx } from './check-sheet-xlsx-parser.js';
 
 export const revisionInclude = {
@@ -31,7 +33,7 @@ export function serializeRevision(revision: StoredRevision): AssemblyCheckSheetR
   return {
     ...proposal, id: revision.id, revisionRootId: revision.revisionRootId,
     revisionNumber: revision.revisionNumber, isRevisionHead: revision.isRevisionHead,
-    sourceAssetId: revision.sourceAssetId, layoutSnapshot: revision.layoutSnapshot,
+    sourceAssetId: revision.sourceAssetId, layoutSnapshot: assemblyCheckSheetLayoutSchema.safeParse(revision.layoutSnapshot).data ?? null,
     createdByUserId: revision.createdByUserId, createdAt: revision.createdAt.toISOString(),
     groups: proposal.groups.map((group, index) => ({ ...group, id: revision.groups[index].id })),
     items: proposal.items.map((item, index) => ({ ...item, id: revision.items[index].id, groupId: revision.items[index].groupId }))
@@ -76,7 +78,9 @@ export class AssemblyCheckSheetService {
     const { proposal } = assemblyCheckSheetSaveSchema.parse(payload);
     const asset = await prisma.assemblyCheckSheetAsset.findUnique({ where: { id: payload.importId } });
     if (!asset) throw new ApiError(404, '取込元が見つかりません');
-    await parseSource(await getFileStorageRuntime().store.read(asset.storageKey, { verifyIntegrity: true }), proposal.sourceSheetName);
+    const source = await getFileStorageRuntime().store.read(asset.storageKey, { verifyIntegrity: true });
+    await parseSource(source, proposal.sourceSheetName);
+    const layoutSnapshot = await buildCheckSheetLayout(source, proposal.sourceSheetName);
     return runAssemblyTransaction(async (tx) => {
       const id = randomUUID();
       const revisionRootId = payload.revisionRootId ?? id;
@@ -100,7 +104,7 @@ export class AssemblyCheckSheetService {
       const { groups, items, ...metadata } = proposal;
       const savedGroups = groups.map((group) => ({ ...group, id: randomUUID() }));
       await tx.assemblyCheckSheetRevision.create({
-        data: { ...metadata, id, revisionRootId, revisionNumber, sourceAssetId: asset.id, createdByUserId }
+        data: { ...metadata, id, revisionRootId, revisionNumber, sourceAssetId: asset.id, createdByUserId, layoutSnapshot }
       });
       await tx.assemblyCheckSheetGroup.createMany({
         data: savedGroups.map((group) => ({ ...group, revisionId: id }))

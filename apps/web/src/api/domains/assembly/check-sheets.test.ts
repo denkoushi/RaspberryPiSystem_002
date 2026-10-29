@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../http';
 
-import { importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision, transitionAssemblyCheckSheet } from './check-sheets';
+import { getAssemblyCheckSheetPaperLayout, importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision, transitionAssemblyCheckSheet } from './check-sheets';
 
 import type { AssemblyCheckSheetSavePayload } from '@raspi-system/shared-types';
 
@@ -10,6 +10,13 @@ vi.mock('../../http', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
 
 describe('check sheet API client', () => {
   beforeEach(() => vi.resetAllMocks());
+
+  it('fetches the paper layout through the authenticated client', async () => {
+    const data = { layoutSnapshot: {}, writes: [], stampCells: [] };
+    vi.mocked(api.get).mockResolvedValue({ data });
+    expect(await getAssemblyCheckSheetPaperLayout('sheet')).toEqual(data);
+    expect(api.get).toHaveBeenCalledWith('/assembly/check-sheets/sheet/paper-layout');
+  });
 
   it('requests the revision heads without a history root filter', async () => {
     vi.mocked(api.get).mockResolvedValue({ data: [] });

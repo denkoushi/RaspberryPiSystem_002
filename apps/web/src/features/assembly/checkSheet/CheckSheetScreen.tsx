@@ -5,12 +5,14 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { KIOSK_ASSEMBLY_HOME_PATH } from '../assemblyRoutes';
 
 import { CheckSheetCard, CheckSheetNfcPrompt, CheckSheetStrip } from './CheckSheetCard';
+import { CheckSheetPaper } from './CheckSheetPaper';
 import { canComplete, familyName, stageScale } from './checkSheetState';
 import { useCheckSheet } from './useCheckSheet';
 import './checkSheet.css';
 
 export function CheckSheetScreen({ sheetId }: { sheetId: string }) {
-  const state = useCheckSheet(sheetId);
+  const [paperOpen, setPaperOpen] = useState(false);
+  const state = useCheckSheet(sheetId, paperOpen);
   const { sheet, item, draft, busy } = state;
   const [scale, setScale] = useState(() => stageScale(window.innerWidth, window.innerHeight));
   useEffect(() => {
@@ -77,7 +79,7 @@ export function CheckSheetScreen({ sheetId }: { sheetId: string }) {
               return <button type="button" className="mk" key={stamp.id} onClick={() => state.select(entry.id)}><span className="no num">{entry.itemKey}</span><span className="t">{entry.label}</span><span className="p">{stamp.ngReason}</span></button>;
             }) : <div className="empty">なし</div>}
           </div>
-          <div className="box done-box"><button type="button" className="btn" disabled>紙の控え</button>
+          <div className="box done-box"><button type="button" className="btn" disabled={busy} onClick={() => setPaperOpen(true)}>紙の控え</button>
             <button type="button" className="btn btn-main" disabled={busy || !canComplete(sheet)} onClick={() => void state.transition('complete')}>{sheet.status === 'COMPLETED' ? '完了済み' : '完了'}</button>
             <div className="why num">{left > 0 ? `残り ${left} 項目` : marks.length ? `目印 ${marks.length} 件が残っています` : ''}</div>
           </div>
@@ -93,12 +95,13 @@ export function CheckSheetScreen({ sheetId }: { sheetId: string }) {
           <button type="button" className="btn" disabled={busy} onClick={state.cancelTransition}>キャンセル</button>
         </div>
       </Dialog>
-      <Dialog isOpen={sheet.status === 'PAUSED' && !state.pendingAction} onClose={() => {}} ariaLabel="中断中" closeOnEsc={false} closeOnBackdrop={false} lockScroll={false}
+      <Dialog isOpen={sheet.status === 'PAUSED' && !state.pendingAction && !paperOpen} onClose={() => {}} ariaLabel="中断中" closeOnEsc={false} closeOnBackdrop={false} lockScroll={false}
         overlayZIndex={1101} overlayClassName="!items-center !bg-black/80" className="!border-0 !bg-transparent !shadow-none !text-white">
-        <div className="flex flex-col items-center gap-[18px]"><h2 className="text-[28px] font-black">中断中</h2><p className="text-[18px] text-amber-400">{sheet.pausedReason}</p>
+        <div className="flex flex-col items-center gap-[18px]"><button type="button" className="min-h-11 rounded-md border px-[18px]" onClick={() => setPaperOpen(true)}>紙の控え</button><h2 className="text-[28px] font-black">中断中</h2><p className="text-[18px] text-amber-400">{sheet.pausedReason}</p>
           <button type="button" className="min-h-11 rounded-md border border-cyan-200 bg-cyan-200 px-[18px] font-bold text-cyan-950 disabled:opacity-35" disabled={busy} onClick={() => void state.transition('resume')}>再開</button>
         </div>
       </Dialog>
     </div>
+    {paperOpen && <CheckSheetPaper sheetId={sheet.id} onClose={() => setPaperOpen(false)} />}
   </div>;
 }

@@ -8,17 +8,22 @@ import { CheckSheetScreen } from './CheckSheetScreen';
 import type { AssemblyCheckSheetPayload, AssemblyCheckSheetStampInput } from '@raspi-system/shared-types';
 const mocks = vi.hoisted(() => ({
   nfc: null as { uid: string; timestamp: number } | null,
-  get: vi.fn(), stamp: vi.fn(), skip: vi.fn(), transition: vi.fn()
+  paper: vi.fn(), get: vi.fn(), stamp: vi.fn(), skip: vi.fn(), transition: vi.fn()
 }));
 vi.mock('../../../hooks/useNfcStream', () => ({ useNfcStream: (enabled: boolean) => enabled ? mocks.nfc : null }));
 vi.mock('../../../api/domains/assembly/check-sheets', () => ({
-  getAssemblyCheckSheet: mocks.get, stampAssemblyCheckSheet: mocks.stamp,
+  getAssemblyCheckSheetPaperLayout: mocks.paper, getAssemblyCheckSheet: mocks.get, stampAssemblyCheckSheet: mocks.stamp,
   skipAssemblyCheckSheetCondition: mocks.skip, transitionAssemblyCheckSheet: mocks.transition
 }));
 let fixture: AssemblyCheckSheetPayload;
 beforeEach(() => {
   vi.clearAllMocks(); mocks.nfc = null;
   fixture = makeCheckSheetFixture();
+  mocks.paper.mockResolvedValue({
+    layoutSnapshot: { range: { top: 1, left: 1, bottom: 2, right: 3 }, columnWidths: [120, 120, 80], rowHeights: [24, 70],
+      merges: [{ top: 1, left: 1, bottom: 1, right: 3 }], cells: { A1: { text: '組立検査' }, A2: { text: '電圧' } } },
+    writes: [{ cell: 'B2', text: '24 V' }, { cell: 'C2', text: '山田 10/29 09:12' }], stampCells: ['C2']
+  });
   mocks.get.mockImplementation(async () => structuredClone(fixture));
   mocks.stamp.mockImplementation(async (_id: string, input: AssemblyCheckSheetStampInput) => ({ ...structuredClone(fixture),
     stamps: [...fixture.stamps.filter((stamp) => stamp.itemId !== input.itemId), { ...makeStamp(input.itemId), ...input }] }));
@@ -31,14 +36,14 @@ function scan(view: ReturnType<typeof mount>, timestamp = 1) {
   view.rerender(<MemoryRouter><CheckSheetScreen sheetId="sheet" /></MemoryRouter>);
 }
 describe('check-sheet screen', () => {
-  it('renders the approved mock map, active card, flag, disabled paper button and fixed scale', async () => {
+  it('renders the approved mock map, active card, flag, paper button and fixed scale', async () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1920 });
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1080 });
     const view = mount();
     await screen.findByRole('heading', { name: 'ドライバー入力電圧確認' });
     expect(within(screen.getByRole('navigation', { name: 'シート全体' })).getAllByRole('button')).toHaveLength(fixture.revision.items.length);
     expect(view.container.querySelectorAll('.mrow')).toHaveLength(22);
-    expect(screen.getByRole('button', { name: '紙の控え' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '紙の控え' })).toBeEnabled();
     expect(screen.queryByText('試し：タグ')).not.toBeInTheDocument();
     expect(view.container.querySelector('.app')).toHaveStyle({ transform: 'translate(-50%, -50%) scale(1)' });
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1280 });
@@ -132,5 +137,47 @@ describe('check-sheet screen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'OK', exact: true }));
     await act(async () => {});
     expect(mocks.stamp).not.toHaveBeenCalled();
+  });
+});
+
+describe('paper copy overlay', () => {
+  it('opens, renders merged layout and seals, prints, suppresses NFC and closes', async () => {
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+    const view = mount();
+    await screen.findByRole('heading', { name: 'ドライバー入力電圧確認' });
+    fireEvent.change(screen.getByRole('textbox', { name: '電圧 V' }), { target: { value: '24' } });
+    fireEvent.click(screen.getByRole('button', { name: 'OK', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '紙の控え' }));
+    const dialog = await screen.findByRole('dialog', { name: '紙の控え' });
+    expect(await within(dialog).findByText('24 V')).toBeInTheDocument();
+    expect(within(dialog).getByText('組立検査').closest('td')).toHaveAttribute('colspan', '3');
+    expect(dialog.querySelector('.seal')).toHaveAttribute('aria-label', '山田 10/29 09:12');
+    expect(within(dialog).getAllByRole('button')).toHaveLength(2);
+    scan(view);
+    expect(mocks.stamp).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: '印刷' }));
+    expect(print).toHaveBeenCalledOnce(); print.mockRestore();
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }));
+    expect(screen.queryByRole('dialog', { name: '紙の控え' })).not.toBeInTheDocument();
+    expect(mocks.stamp).not.toHaveBeenCalled();
+  });
+  it.each(['PAUSED', 'COMPLETED'] as const)('opens for a %s sheet', async (status) => {
+    fixture.status = status;
+    mount();
+    await screen.findByRole('heading', { name: 'ドライバー入力電圧確認' });
+    const trigger = status === 'PAUSED' ? within(screen.getByRole('dialog', { name: '中断中' })) : screen;
+    fireEvent.click(trigger.getByRole('button', { name: '紙の控え' }));
+    expect(await screen.findByRole('dialog', { name: '紙の控え' })).toBeInTheDocument();
+    expect(await screen.findByText('24 V')).toBeInTheDocument();
+  });
+  it('shows a fetch failure with print disabled and can close', async () => {
+    mocks.paper.mockRejectedValue(new Error('offline'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: '紙の控え' }));
+    const dialog = await screen.findByRole('dialog', { name: '紙の控え' });
+    expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '印刷' })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('button', { name: '閉じる' }));
+    expect(screen.queryByRole('dialog', { name: '紙の控え' })).not.toBeInTheDocument();
   });
 });

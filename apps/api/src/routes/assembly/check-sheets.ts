@@ -26,6 +26,15 @@ export function registerAssemblyCheckSheetRoutes(
   });
   app.get('/assembly/check-sheets/:id', { preHandler: options.allowView }, async (request) =>
     kioskService.get(idParams.parse(request.params).id));
+  app.get('/assembly/check-sheets/:id/paper-layout', { preHandler: options.allowView }, async (request) =>
+    kioskService.paperLayout(idParams.parse(request.params).id));
+  app.get('/assembly/check-sheets/:id/paper.xlsx', { preHandler: options.allowView }, async (request, reply) => {
+    const { buffer, filename } = await kioskService.paperXlsx(idParams.parse(request.params).id);
+    const encoded = encodeURIComponent(filename).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+    return reply.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('Content-Disposition', `attachment; filename="check-sheet.xlsx"; filename*=UTF-8''${encoded}`)
+      .send(buffer);
+  });
   app.post('/assembly/check-sheets/:id/stamps', { preHandler: options.allowWriteKiosk }, async (request) => {
     const input = assemblyCheckSheetStampSchema.parse(request.body);
     const device = await tryGetClientDevice(request.headers);

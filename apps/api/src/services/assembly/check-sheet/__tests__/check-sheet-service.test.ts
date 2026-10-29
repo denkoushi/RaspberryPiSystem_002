@@ -42,7 +42,7 @@ describe('check-sheet import and revision persistence', () => {
     mocks.tx.assemblyCheckSheetRevision.findFirstOrThrow.mockResolvedValue({ revisionNumber: 3 });
     mocks.tx.assemblyCheckSheetRevision.findUniqueOrThrow.mockImplementation(async () => ({
       ...mocks.tx.assemblyCheckSheetRevision.create.mock.calls[0][0].data,
-      isRevisionHead: true, layoutSnapshot: null, createdAt: new Date('2026-10-29T00:00:00Z'),
+      isRevisionHead: true, createdAt: new Date('2026-10-29T00:00:00Z'),
       groups: mocks.tx.assemblyCheckSheetGroup.createMany.mock.calls[0][0].data,
       items: mocks.tx.assemblyCheckSheetItem.createMany.mock.calls[0][0].data.map((item: object, index: number) => ({ ...item, id: `item-${index}` }))
     }));
@@ -84,7 +84,7 @@ describe('check-sheet import and revision persistence', () => {
     mocks.store.read.mockResolvedValue(buffer);
     const saved = await service.saveRevision({ importId: assetId, proposal }, 'admin-id');
     expect(saved.id).toBe(saved.revisionRootId);
-    expect(saved).toMatchObject({ revisionNumber: 1, sourceAssetId: assetId, createdByUserId: 'admin-id', layoutSnapshot: null });
+    expect(saved).toMatchObject({ revisionNumber: 1, sourceAssetId: assetId, createdByUserId: 'admin-id', layoutSnapshot: expect.objectContaining({ cells: expect.any(Object) }) });
     expect(saved.items[0].inputSpec.fields![0].unit).toBe('N·m (edited)');
     expect(saved.groups).toHaveLength(3);
     expect(mocks.db.$transaction).toHaveBeenCalledOnce();

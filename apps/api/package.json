@@ -71,6 +71,7 @@
     "googleapis": "^169.0.0",
     "iconv-lite": "^0.7.2",
     "ioredis": "^5.9.3",
+    "jszip": "^3.10.1",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^3.0.3",
     "node-fetch": "2",

@@ -3,6 +3,7 @@ import { api } from '../../http';
 import type {
   AssemblyCheckSheetImportPayload,
   AssemblyCheckSheetPayload,
+  AssemblyCheckSheetPaperLayout,
   AssemblyCheckSheetStampInput,
   AssemblyCheckSheetRevisionPayload,
   AssemblyCheckSheetSavePayload
@@ -43,5 +44,10 @@ export async function skipAssemblyCheckSheetCondition(id: string, conditionKey: 
 }
 export async function transitionAssemblyCheckSheet(id: string, action: 'pause' | 'resume' | 'complete', nfcTagUid: string) {
   const { data } = await api.post<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/${action}`, { nfcTagUid });
+  return data;
+}
+
+export async function getAssemblyCheckSheetPaperLayout(id: string) {
+  const { data } = await api.get<AssemblyCheckSheetPaperLayout>(`/assembly/check-sheets/${id}/paper-layout`);
   return data;
 }

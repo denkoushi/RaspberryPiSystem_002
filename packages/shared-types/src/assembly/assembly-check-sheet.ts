@@ -98,7 +98,7 @@ export type AssemblyCheckSheetRevisionPayload = Omit<AssemblyCheckSheetProposal,
   revisionNumber: number;
   isRevisionHead: boolean;
   sourceAssetId: string;
-  layoutSnapshot: unknown;
+  layoutSnapshot: AssemblyCheckSheetLayout | null;
   createdByUserId: string;
   createdAt: string;
   groups: (AssemblyCheckSheetProposal['groups'][number] & { id: string })[];
@@ -132,3 +132,31 @@ export type AssemblyCheckSheetPayload = {
   headerValues: Record<string, string>; pausedReason: string | null; startedAt: string; completedAt: string | null;
   revision: AssemblyCheckSheetRevisionPayload; stamps: AssemblyCheckSheetStampPayload[];
 };
+
+const paperRangeSchema = z.object({
+  top: z.number().int().positive(), left: z.number().int().positive(),
+  bottom: z.number().int().positive(), right: z.number().int().positive()
+});
+const paperBorderSchema = z.enum(['thin', 'medium', 'none']);
+export const assemblyCheckSheetLayoutSchema = z.object({
+  range: paperRangeSchema,
+  columnWidths: z.array(z.number().nonnegative()),
+  rowHeights: z.array(z.number().nonnegative()),
+  merges: z.array(paperRangeSchema),
+  // Omitted properties use Excel defaults: 11pt, regular, left/bottom, no border/wrap.
+  cells: z.record(cellAddress, z.object({
+    text: z.string().optional(), fontSize: z.number().positive().optional(), bold: z.boolean().optional(),
+    horizontal: z.enum(['left', 'center', 'right', 'justify']).optional(),
+    vertical: z.enum(['top', 'middle', 'bottom']).optional(), wrap: z.boolean().optional(),
+    borders: z.object({ left: paperBorderSchema.optional(), right: paperBorderSchema.optional(),
+      top: paperBorderSchema.optional(), bottom: paperBorderSchema.optional() }).optional()
+  }))
+});
+export const assemblyCheckSheetPaperLayoutSchema = z.object({
+  layoutSnapshot: assemblyCheckSheetLayoutSchema,
+  writes: z.array(z.object({ cell: cellAddress, text: z.string() })),
+  stampCells: z.array(cellAddress)
+});
+export type AssemblyCheckSheetLayout = z.infer<typeof assemblyCheckSheetLayoutSchema>;
+export type AssemblyCheckSheetPaperLayout = z.infer<typeof assemblyCheckSheetPaperLayoutSchema>;
+export type AssemblyCheckSheetCellWrite = AssemblyCheckSheetPaperLayout['writes'][number];
