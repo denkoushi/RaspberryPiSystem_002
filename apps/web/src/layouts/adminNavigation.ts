@@ -40,6 +40,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: '組立・測定',
     items: [
       { label: '組立例外入力', to: '/admin/tools/assembly-torque-override' },
+      { label: '組立チェックシート', to: '/admin/assembly-check-sheets' },
       { label: '部品測定テンプレ', to: '/admin/tools/part-measurement-templates' },
       { label: '自主検査レビュー', to: '/admin/part-measurement/self-inspection-reviews' }
     ]

@@ -64,7 +64,8 @@ export interface KnowledgeProcedureSummary {
   publishedAt: string;
 }
 
-export type KnowledgePositionRank = 'general' | 'leader' | 'section_chief' | 'manager' | 'general_manager' | 'executive';
+export const KNOWLEDGE_POSITION_RANKS = ['general', 'leader', 'section_chief', 'manager', 'general_manager', 'executive'] as const;
+export type KnowledgePositionRank = typeof KNOWLEDGE_POSITION_RANKS[number];
 export interface KnowledgePositionRankEntry { positionName: string; rank: KnowledgePositionRank }
 export interface KnowledgePositionRanksResponse {
   ranks: KnowledgePositionRankEntry[];

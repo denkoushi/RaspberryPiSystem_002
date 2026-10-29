@@ -38,8 +38,9 @@ function renderAt(path: string) {
 describe('adminNavigation', () => {
   it('keeps every admin screen reachable from one group', () => {
     const targets = ADMIN_NAV_GROUPS.flatMap((group) => group.items.map((item) => item.to));
-    expect(targets).toHaveLength(29);
-    expect(new Set(targets).size).toBe(29);
+    expect(targets).toHaveLength(30);
+    expect(new Set(targets).size).toBe(30);
+    expect(findActiveAdminNav('/admin/assembly-check-sheets')?.group.id).toBe('assembly-measurement');
     expect(targets).not.toContain('/admin/knowledge-position-ranks');
   });
 
