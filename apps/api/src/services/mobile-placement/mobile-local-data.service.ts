@@ -24,18 +24,20 @@ function version(stamps: Stamp[]): DatasetVersion {
 
 async function readMobileDataVersions(): Promise<MobileDataVersions> {
   const aggregate = { _count: true, _max: { updatedAt: true, createdAt: true } } as const;
-  const [purchase, schedule, dates, machines, placements] = await Promise.all([
+  const [purchase, schedule, dates, machines, progress, externalCompletion, placements] = await Promise.all([
     prisma.purchaseOrderLookupRow.aggregate(aggregate),
     prisma.csvDashboardRow.aggregate({ ...aggregate, where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } }),
     prisma.productionScheduleOrderSupplement.aggregate({ ...aggregate, where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } }),
     prisma.productionScheduleSeibanMachineNameSupplement.aggregate(aggregate),
+    prisma.productionScheduleProgress.aggregate({ ...aggregate, where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } }),
+    prisma.productionScheduleExternalCompletion.aggregate({ ...aggregate, where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } }),
     prisma.$queryRaw<{ count: number; updatedAt: Date | null; createdAt: Date | null; checksum: string }[]>`
       SELECT COUNT(*)::int AS "count", MAX("updatedAt") AS "updatedAt", MAX("createdAt") AS "createdAt",
         MD5(COALESCE(STRING_AGG("id" || ':' || "updatedAt"::text, ',' ORDER BY "id"), '')) AS "checksum"
       FROM "OrderPlacementBranchState"
     `
   ]);
-  return { purchase: version([purchase, schedule, dates, machines]), schedule: version([schedule]),
+  return { purchase: version([purchase, schedule, dates, machines, progress, externalCompletion]), schedule: version([schedule]),
     placements: version([{ _count: placements[0].count,
       _max: { updatedAt: placements[0].updatedAt, createdAt: placements[0].createdAt }, checksum: placements[0].checksum }, schedule, machines]) };
 }

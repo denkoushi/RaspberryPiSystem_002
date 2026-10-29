@@ -4,11 +4,12 @@ import { packPurchase, unpackPlacement, unpackPurchase } from '@raspi-system/sli
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ placementStamp: vi.fn(), placements: vi.fn(), placementNames: vi.fn(), purchase: vi.fn(), schedule: vi.fn(), dates: vi.fn(), machines: vi.fn(), findMany: vi.fn(),
+const mocks = vi.hoisted(() => ({ placementStamp: vi.fn(), placements: vi.fn(), placementNames: vi.fn(), purchase: vi.fn(), schedule: vi.fn(), dates: vi.fn(), progress: vi.fn(), externalCompletion: vi.fn(), machines: vi.fn(), findMany: vi.fn(),
   queryRaw: vi.fn(), names: vi.fn(), normalized: vi.fn(), machineNames: vi.fn(), allSchedule: vi.fn(), known: vi.fn() }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   orderPlacementBranchState: { findMany: mocks.placements },
   purchaseOrderLookupRow: { aggregate: mocks.purchase, findMany: mocks.findMany },
+  productionScheduleProgress: { aggregate: mocks.progress }, productionScheduleExternalCompletion: { aggregate: mocks.externalCompletion },
   csvDashboardRow: { aggregate: mocks.schedule }, productionScheduleOrderSupplement: { aggregate: mocks.dates },
   productionScheduleSeibanMachineNameSupplement: { aggregate: mocks.machines }, $queryRaw: (query: TemplateStringsArray, ...args: unknown[]) => query[0].includes('STRING_AGG') ? mocks.placementStamp() : mocks.queryRaw(query, ...args)
 } }));
@@ -19,6 +20,7 @@ vi.mock('../../purchase-order-lookup/purchase-order-lookup-machine-name.service.
 vi.mock('../part-search/part-search-machine-name-fseibans.service.js', () => ({ resolvePartSearchMachineNames: mocks.placementNames }));
 
 import { registerMobileLocalDataRoutes } from '../../../routes/kiosk/mobile-local-data.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { queryPurchaseOrderLookup } from '../../purchase-order-lookup/purchase-order-lookup-query.service.js';
 import { createMobileDataCache, getMobileDataVersions, invalidateMobileDataVersions } from '../mobile-local-data.service.js';
 
@@ -30,10 +32,10 @@ beforeEach(async () => {
   mocks.placements.mockResolvedValue([{ id: 'branch', manufacturingOrderBarcodeRaw: '001', branchNo: 0, shelfCodeRaw: 'A', updatedAt: new Date('2026-10-27'),
     scheduleSnapshot: { FSEIBAN: 'FS1', FHINCD: 'MD1', FHINMEI: 'テーブル', ProductNo: '001' } }]);
   mocks.placementNames.mockResolvedValue(new Map([['FS1', ' ｄａｄ３３５０　テーブル ']]));
-  [mocks.purchase, mocks.schedule, mocks.dates, mocks.machines].forEach((fn) => fn.mockResolvedValue(stamp()));
+  [mocks.purchase, mocks.schedule, mocks.dates, mocks.machines, mocks.progress, mocks.externalCompletion].forEach((fn) => fn.mockResolvedValue(stamp()));
   mocks.findMany.mockResolvedValue([row]); mocks.names.mockResolvedValue({ MD1: 'マスタ' }); mocks.normalized.mockResolvedValue({});
   mocks.machineNames.mockResolvedValue({ FS1: '機種' });
-  mocks.queryRaw.mockResolvedValue([{ seiban: 'FS1', fhincd: 'MD1', fhinmei: '品名', plannedStartDate: new Date('2026-11-01') }]);
+  mocks.queryRaw.mockResolvedValue([{ seiban: 'FS1', fhincd: 'MD1', fhinmei: '品名', productNo: '1', completed: false, plannedStartDate: new Date('2026-11-01') }]);
   mocks.allSchedule.mockResolvedValue([{ rowId: 'r', fseiban: 'FS1', productNo: 'T1', fhincd: 'MD1', fhinmei: '品名', fsigencd: 'M', fkojun: 1 }]);
   mocks.known.mockResolvedValue(['FS1', 'FS_WITH_NO_PART']);
   await getMobileDataVersions(true);
@@ -56,6 +58,19 @@ describe('mobile data versions and snapshots', () => {
     expect((await getMobileDataVersions(true)).schedule.version).not.toBe(first.schedule.version);
     mocks.schedule.mockResolvedValue(stamp(undefined, 0));
     expect((await getMobileDataVersions(true)).schedule.version).not.toBe(first.schedule.version);
+  });
+  it.each(['progress', 'externalCompletion'] as const)('invalidates only purchase data for %s changes', async (source) => {
+    const first = await getMobileDataVersions();
+    for (const changed of [stamp('2026-10-28T00:00:00Z'), stamp(undefined, 2),
+      { ...stamp(), _max: { ...stamp()._max, createdAt: new Date('2026-10-29') } }]) {
+      mocks[source].mockResolvedValue(changed);
+      const next = await getMobileDataVersions(true);
+      expect(next.purchase.version).not.toBe(first.purchase.version);
+      expect(next.schedule).toEqual(first.schedule);
+      expect(next.placements).toEqual(first.placements);
+    }
+    expect(mocks[source]).toHaveBeenCalledWith({ _count: true, _max: { updatedAt: true, createdAt: true },
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } });
   });
   it('invalidates placements on insert, update, delete and same-count replacement without changing other datasets', async () => {
     const first = await getMobileDataVersions();
