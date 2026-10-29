@@ -44,13 +44,29 @@ describe('ImportScheduleAdminService', () => {
     const scheduler = { reload: vi.fn(async () => {}), runImport: vi.fn(async () => ({})) };
     const service = new ImportScheduleAdminService(store, () => scheduler);
 
-    const { schedules, warnings } = await service.listSchedules();
+    const { schedules, warnings, runningScheduleIds } = await service.listSchedules();
 
     expect(schedules.some((row) => row.id === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID)).toBe(true);
     expect(schedules.some((row) => row.id === CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID)).toBe(true);
     expect(Array.isArray(warnings)).toBe(true);
+    expect(runningScheduleIds).toEqual([]);
     expect(store.save).toHaveBeenCalledOnce();
     expect(scheduler.reload).toHaveBeenCalledOnce();
+  });
+
+  it('listSchedules: cron実行中のIDを返し、完了後は除外する', async () => {
+    const config = createBaseConfig();
+    const store = { load: vi.fn(async () => config), save: vi.fn(async () => {}) };
+    const scheduler = {
+      reload: vi.fn(async () => {}),
+      runImport: vi.fn(async () => ({})),
+      isImportRunning: vi.fn((id: string) => id === CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID),
+    };
+    const service = new ImportScheduleAdminService(store, () => scheduler);
+
+    expect((await service.listSchedules()).runningScheduleIds).toEqual([CUSTOMER_SCAW_CSV_IMPORT_SCHEDULE_ID]);
+    scheduler.isImportRunning.mockReturnValue(false);
+    expect((await service.listSchedules()).runningScheduleIds).toEqual([]);
   });
 
   it('createSchedule: 重複IDは409を返す', async () => {
@@ -350,13 +366,16 @@ describe('ImportScheduleAdminService', () => {
     };
     const service = new ImportScheduleAdminService(store, () => scheduler);
 
+    expect((await service.listSchedules()).runningScheduleIds).toEqual([]);
     const firstRun = await service.runScheduleInBackground('run-id', { requestId: 'req-bg-2' });
+    expect((await service.listSchedules()).runningScheduleIds).toEqual(['run-id']);
     await expect(
       service.runScheduleInBackground('run-id', { requestId: 'req-bg-3' })
     ).rejects.toMatchObject({ statusCode: 409 });
 
     resolveRun();
     await firstRun.completion;
+    expect((await service.listSchedules()).runningScheduleIds).toEqual([]);
   });
 
   it('deleteSchedule: 固定の製番→機種名補完スケジュールは400を返す', async () => {
