@@ -39,6 +39,7 @@ import { registerAssemblyCandidateRoutes, registerAssemblyTemplateRoutes } from 
 import { registerAssemblyLotRoutes } from './lots.js';
 import { registerAssemblyWorkSessionStartRoutes, registerAssemblyWorkSessionRoutes } from './work-sessions.js';
 import { registerAssemblyTraceabilityRoutes } from './traceability.js';
+import { registerAssemblyCheckSheetRoutes } from './check-sheets.js';
 
 export { serializeProcedureSequence } from './serializers.js';
 
@@ -81,6 +82,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   };
 
   const procedureService = new AssemblyProcedureDocumentService();
+  registerAssemblyCheckSheetRoutes(app, { allowView, allowWriteKiosk });
   const procedureDraftImportService = new AssemblyProcedureDraftImportService(procedureService);
   const procedureGmailImportService = createAssemblyProcedureGmailImportService();
   const libraryFilterOptionsService = new AssemblyLibraryFilterOptionsService();

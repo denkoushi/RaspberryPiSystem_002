@@ -30,7 +30,7 @@ const validPacket = {
   warnings: [],
 };
 
-function createFakeDb(records: Map<string, { outcome: string; nextRetryAt: Date | null; updatedAt: Date; gmailMessageId?: string; payloadId?: string | null; errorMessage?: string | null; mailCleanupPending?: boolean; mailCleanupCompleted?: boolean }>) {
+function createFakeDb(records: Map<string, { dismissedAt?: Date | null; outcome: string; nextRetryAt: Date | null; updatedAt: Date; gmailMessageId?: string; payloadId?: string | null; errorMessage?: string | null; mailCleanupPending?: boolean; mailCleanupCompleted?: boolean }>) {
   const messageStore = new Map(records);
   const payloadCreate = vi.fn().mockResolvedValue({ id: 'payload-1' });
   const db = {
@@ -65,6 +65,25 @@ function config() {
 }
 
 describe('ItemInventoryGmailIngestionService', () => {
+  it.each(['RETRYABLE', 'PROCESSING', 'PENDING'])('excludes dismissed %s records even when force retry is requested', async outcome => {
+    const { db, messageStore } = createFakeDb(new Map([['dismissed', {
+      gmailMessageId: 'dismissed', outcome, dismissedAt: new Date(), nextRetryAt: null, updatedAt: new Date(0),
+    }]]));
+    const gmail = { searchMessagesAll: vi.fn().mockResolvedValue(['dismissed']), getMessage: vi.fn(), trashMessage: vi.fn() };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+    await service.runOnce({ config: config(), allowWait: true });
+    expect(gmail.getMessage).not.toHaveBeenCalled();
+    expect(db.inventoryImportMessage.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ dismissedAt: null }) }));
+    await service.runOnce({ config: config(), allowWait: true, manual: true, messageId: 'dismissed', forceRetry: true });
+    await expect(service.retryRecord('dismissed', { config: config(), allowWait: true })).rejects.toMatchObject({ statusCode: 409 });
+    expect(db.inventoryImportMessage.upsert).not.toHaveBeenCalled();
+    expect(messageStore.get('dismissed')?.dismissedAt).toBeInstanceOf(Date);
+    messageStore.get('dismissed')!.dismissedAt = null;
+    gmail.getMessage.mockRejectedValue(new Error('restored retry reached Gmail'));
+    await service.runOnce({ config: config(), allowWait: true });
+    if (outcome !== 'PENDING') expect(gmail.getMessage).toHaveBeenCalledWith('dismissed');
+  });
+
   it('selects older new messages after settled entries instead of starving the batch', async () => {
     const ids = Array.from({ length: 20 }, (_, index) => `settled-${index}`).concat('valid-message');
     const records = new Map(ids.slice(0, 20).map((id) => [id, { outcome: 'DUPLICATE', nextRetryAt: null, updatedAt: new Date() }]));

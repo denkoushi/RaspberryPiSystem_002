@@ -15,18 +15,18 @@
     ]
   },
   "summary": {
-    "documentCount": 744,
-    "totalLines": 182202,
-    "totalBytes": 14818837,
-    "withFrontmatter": 351,
+    "documentCount": 750,
+    "totalLines": 183214,
+    "totalBytes": 14944112,
+    "withFrontmatter": 353,
     "withStatus": 169,
     "sourceOfTruthDeclared": 115,
     "execPlanReferences": 60,
     "questionMarkCorruptionDocuments": 2,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 44,
-    "localLinkCount": 5471,
-    "brokenLocalLinkCount": 128,
+    "longLineDocuments": 45,
+    "localLinkCount": 5477,
+    "brokenLocalLinkCount": 129,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
@@ -654,6 +654,11 @@
         "sourcePath": "docs/security/evaluation-plan.md",
         "href": "../../apps/api/src/plugins/authorization.ts",
         "targetPath": "apps/api/src/plugins/authorization.ts"
+      },
+      {
+        "sourcePath": "docs/security/evaluation-plan.md",
+        "href": "../../infrastructure/ansible/templates/rkhunter-scan.sh.j2",
+        "targetPath": "infrastructure/ansible/templates/rkhunter-scan.sh.j2"
       },
       {
         "sourcePath": "docs/security/sharepoint-dropbox-integration-assessment.md",
@@ -19269,8 +19274,8 @@
     },
     {
       "path": "docs/guides/csv-import-export.md",
-      "lineCount": 1082,
-      "byteSize": 75399,
+      "lineCount": 1084,
+      "byteSize": 75716,
       "hasFrontmatter": false,
       "title": "CSVインポート・エクスポート仕様",
       "status": null,
@@ -22865,6 +22870,36 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/kiosk-operation-guide/item-inventory-haizen-trail.md",
+      "lineCount": 34,
+      "byteSize": 1763,
+      "hasFrontmatter": true,
+      "title": "足取り",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/kiosk-operation-guide/item-inventory-haizen-verify-history.md",
+      "lineCount": 34,
+      "byteSize": 1819,
+      "hasFrontmatter": true,
+      "title": "照合の履歴",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/kiosk-operation-guide/item-inventory-haizen.md",
       "lineCount": 36,
       "byteSize": 2192,
@@ -24767,8 +24802,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md",
-      "lineCount": 343,
-      "byteSize": 65070,
+      "lineCount": 363,
+      "byteSize": 68032,
       "hasFrontmatter": false,
       "title": "KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）",
       "status": null,
@@ -24837,6 +24872,16 @@
         {
           "href": "./KB-313-kiosk-documents.md",
           "targetPath": "docs/knowledge-base/KB-313-kiosk-documents.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/android-haizen-shell-ocr-execplan.md#decision-log",
+          "targetPath": "docs/plans/android-haizen-shell-ocr-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/mobile-local-first-sync-execplan.md#decision-log",
+          "targetPath": "docs/plans/mobile-local-first-sync-execplan.md",
           "exists": true
         },
         {
@@ -26585,8 +26630,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
-      "lineCount": 594,
-      "byteSize": 54266,
+      "lineCount": 601,
+      "byteSize": 55340,
       "hasFrontmatter": false,
       "title": "KB-382: 配膳棚レイアウトマスタ（キオスク shelf-master）",
       "status": null,
@@ -27753,7 +27798,28 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-427-deepseek-v41-flash-local-eval.md",
+      "lineCount": 252,
+      "byteSize": 22694,
+      "hasFrontmatter": false,
+      "title": "KB-427: DeepSeek V4.1-Flash-1017（DGX 2台）を業務チャットとコーディングで評価した記録と、測り直しの手順",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./KB-426-glm-tp2-crash-and-startup-hang.md",
+          "targetPath": "docs/knowledge-base/KB-426-glm-tp2-crash-and-startup-hang.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -28296,8 +28362,8 @@
     },
     {
       "path": "docs/knowledge-base/frontend.md",
-      "lineCount": 4643,
-      "byteSize": 277726,
+      "lineCount": 4655,
+      "byteSize": 280776,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - フロントエンド関連",
       "status": null,
@@ -28527,8 +28593,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 892,
-      "byteSize": 271944,
+      "lineCount": 893,
+      "byteSize": 272271,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -31190,6 +31256,11 @@
           "exists": true
         },
         {
+          "href": "./KB-428-sessaku01-sd-card-failure.md",
+          "targetPath": "docs/knowledge-base/KB-428-sessaku01-sd-card-failure.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -31866,8 +31937,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/security.md",
-      "lineCount": 1313,
-      "byteSize": 82657,
+      "lineCount": 1320,
+      "byteSize": 84388,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - セキュリティ関連",
       "status": null,
@@ -32984,19 +33055,19 @@
     },
     {
       "path": "docs/plans/android-haizen-shell-ocr-execplan.md",
-      "lineCount": 96,
-      "byteSize": 11823,
+      "lineCount": 101,
+      "byteSize": 12978,
       "hasFrontmatter": false,
       "title": "配膳スマホの製番かざし読み取り（Android 薄型アプリ）",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 0,
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 59,
+          "line": 64,
           "length": 1550
         }
       ],
@@ -34143,6 +34214,34 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/haizen-verify-records-and-order-trail-execplan.md",
+      "lineCount": 84,
+      "byteSize": 15809,
+      "hasFrontmatter": false,
+      "title": "配膳の「照合の記録」と製造オーダーの「足取り」",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 53,
+          "length": 1660
+        },
+        {
+          "line": 57,
+          "length": 1211
+        },
+        {
+          "line": 59,
+          "length": 1642
+        }
+      ],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/hermes-answer-cache.md",
       "lineCount": 153,
       "byteSize": 28265,
@@ -34432,8 +34531,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 781,
-      "byteSize": 119589,
+      "lineCount": 868,
+      "byteSize": 137553,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -34493,8 +34592,8 @@
     },
     {
       "path": "docs/plans/hermes-synthetic-question-flywheel-execplan.md",
-      "lineCount": 161,
-      "byteSize": 32650,
+      "lineCount": 167,
+      "byteSize": 33917,
       "hasFrontmatter": false,
       "title": "Hermes synthetic question flywheel for nonconformity retrieval",
       "status": null,
@@ -34505,15 +34604,15 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 125,
+          "line": 131,
           "length": 1248
         },
         {
-          "line": 135,
+          "line": 141,
           "length": 1162
         },
         {
-          "line": 137,
+          "line": 143,
           "length": 1021
         }
       ],
@@ -36099,6 +36198,27 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/mobile-local-first-sync-execplan.md",
+      "lineCount": 215,
+      "byteSize": 28926,
+      "hasFrontmatter": false,
+      "title": "スマホ全機能のローカル優先化と Wi-Fi 時だけの裏同期",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "mobile-scan-frame-capture-execplan.md",
+          "targetPath": "docs/plans/mobile-scan-frame-capture-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/mobile-placement-main-page-preview-parity.md",
       "lineCount": 43,
       "byteSize": 3847,
@@ -36181,6 +36301,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/mobile-scan-frame-capture-execplan.md",
+      "lineCount": 161,
+      "byteSize": 16754,
+      "hasFrontmatter": false,
+      "title": "Mobile scan frame capture and placement photos (PR A)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/nfc-stream-isolation-plan.md",
       "lineCount": 85,
       "byteSize": 5851,
@@ -36197,8 +36332,8 @@
     },
     {
       "path": "docs/plans/nightly-security-review-execplan.md",
-      "lineCount": 221,
-      "byteSize": 39603,
+      "lineCount": 229,
+      "byteSize": 40963,
       "hasFrontmatter": false,
       "title": "Nightly security and error review by the business LLM",
       "status": null,
@@ -36210,16 +36345,16 @@
           "exists": true
         }
       ],
-      "inboundCount": 2,
+      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 117,
+          "line": 125,
           "length": 1016
         },
         {
-          "line": 129,
+          "line": 137,
           "length": 1003
         }
       ],
@@ -39601,8 +39736,8 @@
     },
     {
       "path": "docs/runbooks/nightly-security-review.md",
-      "lineCount": 84,
-      "byteSize": 4594,
+      "lineCount": 160,
+      "byteSize": 10491,
       "hasFrontmatter": false,
       "title": "Nightly security review",
       "status": null,
@@ -39615,6 +39750,11 @@
         },
         {
           "href": "../plans/nightly-security-review-execplan.md",
+          "targetPath": "docs/plans/nightly-security-review-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/nightly-security-review-execplan.md#outcomes--retrospective",
           "targetPath": "docs/plans/nightly-security-review-execplan.md",
           "exists": true
         }
@@ -39730,7 +39870,7 @@
     {
       "path": "docs/runbooks/pi4-sd-card-backup.md",
       "lineCount": 60,
-      "byteSize": 5486,
+      "byteSize": 5611,
       "hasFrontmatter": true,
       "title": "Pi4 SD-card backup and card replacement Runbook",
       "status": null,
@@ -39990,8 +40130,8 @@
     },
     {
       "path": "docs/runbooks/zero-edge-agent.md",
-      "lineCount": 69,
-      "byteSize": 5144,
+      "lineCount": 70,
+      "byteSize": 5425,
       "hasFrontmatter": false,
       "title": "Pi Zero 棚スキャナー運用",
       "status": null,
@@ -40236,7 +40376,7 @@
         {
           "href": "../../infrastructure/ansible/templates/rkhunter-scan.sh.j2",
           "targetPath": "infrastructure/ansible/templates/rkhunter-scan.sh.j2",
-          "exists": true
+          "exists": false
         },
         {
           "href": "../../infrastructure/ansible/templates/security-monitor.sh.j2",

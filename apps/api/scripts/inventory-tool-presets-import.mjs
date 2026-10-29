@@ -28,7 +28,7 @@ async function main() {
   if (apply && remove) throw new Error('Use either --apply or --remove');
 
   const { presets, warnings } = parseToolPresetCsv(await readStdin());
-  const existing = await prisma.inventoryToolFieldPreset.findMany({ select: { field: true, value: true } });
+  const existing = await prisma.inventoryToolFieldPreset.findMany({ where: { scope: 'default' }, select: { field: true, value: true } });
   const known = new Set(existing.map((entry) => `${entry.field}\u0000${entry.value}`));
   const toAdd = presets.filter((entry) => !known.has(`${entry.field}\u0000${entry.value}`));
   const toRemove = presets.filter((entry) => known.has(`${entry.field}\u0000${entry.value}`));
@@ -45,7 +45,7 @@ async function main() {
     await prisma.$transaction(toAdd.map((entry) => prisma.inventoryToolFieldPreset.create({ data: entry })));
     summary.result = `added ${toAdd.length}`;
   } else if (remove && toRemove.length > 0) {
-    await prisma.$transaction(toRemove.map((entry) => prisma.inventoryToolFieldPreset.delete({ where: { field_value: entry } })));
+    await prisma.$transaction(toRemove.map((entry) => prisma.inventoryToolFieldPreset.delete({ where: { scope_field_value: { ...entry, scope: 'default' } } })));
     summary.result = `removed ${toRemove.length}`;
   } else {
     summary.result = apply || remove ? 'nothing to change' : 'dry run only';

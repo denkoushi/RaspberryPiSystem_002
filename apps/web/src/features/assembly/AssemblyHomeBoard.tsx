@@ -8,6 +8,7 @@ import {
   kioskAssemblyTraceabilityPath,
   kioskAssemblyWorkSessionPath
 } from './assemblyRoutes';
+import { OpenCheckSheetButton } from './checkSheet/OpenCheckSheetButton';
 
 import type { AssemblyHomeLotRowView, AssemblyHomeUnitState, AssemblyHomeUnitView } from './assemblyHomeBoardPresentation';
 import type { AssemblyWorkUnitInvalidationTarget } from './AssemblyWorkUnitInvalidationDialog';
@@ -225,6 +226,7 @@ export function AssemblyHomeBoard({ rows, loading, busySerialId, onReload, onSta
                       ))}
                     </dl>
                     <div className="flex flex-wrap gap-2">
+                      <OpenCheckSheetButton key={selected.workUnitId} workUnitId={selected.workUnitId} className={ACTION} />
                       {selected.sessionId && (selected.state === 'pending' || selected.state === 'done') ? (
                         <>
                           <Link to={kioskAssemblyRecordApprovalPath({ sessionId: selected.sessionId })} className={ACTION}>
