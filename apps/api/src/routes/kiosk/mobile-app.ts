@@ -33,7 +33,7 @@ export async function registerMobileAppRoutes(
     await deps.requireClientDevice(request.headers['x-client-key']);
     reply.header('Cache-Control', 'private, no-store');
     const version = await readVersion();
-    if (!version) return reply.code(404).send();
+    if (!version || !(await stat(join(directory, version.fileName)).catch(() => null))?.isFile()) return reply.code(404).send();
     const { versionCode, versionName, sha256, size } = version;
     return { versionCode, versionName, sha256, size };
   });

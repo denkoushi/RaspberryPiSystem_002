@@ -44,6 +44,7 @@ describe('mobile app routes', () => {
     }
   });
   it('returns only public version fields without caching', async () => {
+    await writeFile(join(directory, version.fileName), bytes);
     await publish();
     const response = await app.inject({ url: url('version'), headers });
     expect(response.statusCode).toBe(200);
@@ -76,6 +77,6 @@ describe('mobile app routes', () => {
   });
   it('returns 404 when metadata exists but APK is missing', async () => {
     await publish();
-    expect((await app.inject({ url: url('apk'), headers })).statusCode).toBe(404);
+    for (const route of ['version', 'apk']) expect((await app.inject({ url: url(route), headers })).statusCode).toBe(404);
   });
 });

@@ -44,7 +44,6 @@ class AppUpdater(private val activity: MainActivity, private val banner: TextVie
         val key = LocalDataPrefetchWorker.clientKey(activity)?.takeIf { it.isNotBlank() } ?: return
         val now = SystemClock.elapsedRealtime()
         if (lastCheck?.let { now - it < 10 * 60 * 1000 } == true) return
-        lastCheck = now
         checking = true
         executor.execute {
             val version = try {
@@ -55,6 +54,7 @@ class AppUpdater(private val activity: MainActivity, private val banner: TextVie
             } catch (_: Exception) { null }
             onUi {
                 checking = false
+                if (version != null) lastCheck = now
                 available = version?.takeIf { AppUpdate.isNewer(it.versionCode, BuildConfig.VERSION_CODE) }
                 banner.visibility = if (available != null) View.VISIBLE else View.GONE
             }
@@ -63,8 +63,8 @@ class AppUpdater(private val activity: MainActivity, private val banner: TextVie
 
     private fun download() {
         if (closed || downloading) return
-        pendingInstall?.let { install(it); return }
         val version = available ?: return
+        pendingInstall?.takeIf { it.name == "haizen-${version.versionCode}.apk" }?.let { install(it); return }
         val key = LocalDataPrefetchWorker.clientKey(activity)?.takeIf { it.isNotBlank() } ?: return
         downloading = true
         banner.isEnabled = false

@@ -50,6 +50,10 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - Decision: 更新の仕組みは、それを含む版(0.3)から先でしか動かない。0.3 は adb(ワイヤレス デバッグ)で1回だけ入れる。
   Date/Author: 2026-10-29 / Claude
 
+- Decision: 配る APK は今と同じ debug ビルドのまま(第三者レビューで「debuggable なので adb で端末の鍵を読める」と指摘)。release ビルドを同じ鍵で署名する案は別の作業にする。
+  Rationale: この PR は今の配り方を自動にするだけで、debug ビルドであることは以前から同じ。
+  Date/Author: 2026-10-29 / Claude
+
 ## Outcomes & Retrospective
 
 2026-10-29: ローカル実装を完了。API は端末認証後に版情報を検証し、APK を読み取り専用の置き場からストリームで返す。Android は保存済みの端末キーで起動・復帰時に確認し、取得した APK のサイズと SHA-256 が一致したときだけインストーラへ渡す。JSON の抽出は Android 側、フィールド検証・版比較・ハッシュ照合は Android/JSON に依存しない関数として JUnit テストを追加した。
