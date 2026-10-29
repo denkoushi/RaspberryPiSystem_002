@@ -77,19 +77,26 @@ ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
-ARG APT_CACHE_BUST=2026-10-27
+ARG APT_CACHE_BUST=2026-10-29
 
 RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && apt-get update \
-  && apt-get install -y --no-install-recommends openssl ffmpeg poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible-core python3 python3-pip git \
+  && apt-get install -y --no-install-recommends ca-certificates curl gpg \
+  && curl --fail --silent --show-error -o /usr/share/keyrings/postgresql.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  && test "$(gpg --batch --show-keys --with-colons /usr/share/keyrings/postgresql.asc | awk -F: '$1 == "fpr" {print $10; exit}')" = 'B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8' \
+  && echo 'deb [signed-by=/usr/share/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends openssl ffmpeg poppler-utils fontconfig fonts-noto-cjk postgresql-client-18 ansible-core python3 python3-pip git \
     libgomp1 libgl1 libglib2.0-0 libsm6 libxext6 \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
-  && apt-get install -y --only-upgrade --no-install-recommends libssl3 openssl libgnutls30 libpq5 postgresql-client-15 python3-httplib2 libexpat1 libpcre2-8-0 \
-  && for package in libpq5 postgresql-client-15; do \
+  && apt-get install -y --only-upgrade --no-install-recommends libssl3 openssl libgnutls30 libpq5 postgresql-client-18 python3-httplib2 libexpat1 libpcre2-8-0 \
+  && for package in libpq5 postgresql-client-18; do \
     installed_version="$(dpkg-query -W -f='${Version}' "${package}")"; \
-    dpkg --compare-versions "${installed_version}" ge '15.19-0+deb12u1' \
+    dpkg --compare-versions "${installed_version}" ge '18.6' \
       || { echo "${package} is below the required fixed version: ${installed_version}" >&2; exit 1; }; \
   done \
+  && pg_dump --version | grep -Eq '^pg_dump \(PostgreSQL\) 18\.' \
+  && psql --version | grep -Eq '^psql \(PostgreSQL\) 18\.' \
   && gnutls_version="$(dpkg-query -W -f='${Version}' libgnutls30)" \
   && dpkg --compare-versions "${gnutls_version}" ge '3.7.9-2+deb12u7' \
     || { echo "libgnutls30 is below the required fixed version: ${gnutls_version}" >&2; exit 1; } \
@@ -109,7 +116,7 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && ndlocr-lite --help >/dev/null \
   && python3 -c "from rapidocr import RapidOCR; print('rapidocr-ok')" \
   && python3 -c "import oauthlib; assert int(oauthlib.__version__.split('.')[0]) >= 4, oauthlib.__version__" \
-  && apt-get purge -y python3-pip \
+  && apt-get purge -y python3-pip curl gpg \
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
 

@@ -2,7 +2,7 @@ name: ${PI5_BASE_COMPOSE_PROJECT:-docker}
 
 services:
   db:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg18
     # Candidate builds run on this host. Keep the live database ahead of
     # best-effort build work whenever CPU is contended.
     cpu_shares: 4096
@@ -19,13 +19,22 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser-password
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data-pg18:/var/lib/postgresql
+      - db-data:/mnt/legacy-pgdata:ro
+      - type: bind
+        source: ./postgres/db-start-guard.sh
+        target: /usr/local/bin/db-start-guard.sh
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ${POSTGRES_SUPERUSER_PASSWORD_FILE:?POSTGRES_SUPERUSER_PASSWORD_FILE is required}
         target: /run/secrets/postgres-superuser-password
         read_only: true
         bind:
           create_host_path: false
+    entrypoint: [/usr/local/bin/db-start-guard.sh]
+    command: [postgres]
     # セキュリティ強化: ポートマッピングを削除（Docker内部ネットワークでのみアクセス可能）
     # APIコンテナからは `db:5432` でアクセス可能
     # ローカル開発時のみポートを公開
@@ -253,6 +262,8 @@ services:
 volumes:
   db-data:
     name: ${PI5_VOLUME_PREFIX:-docker}_db-data
+  db-data-pg18:
+    name: ${PI5_VOLUME_PREFIX:-docker}_db-data-pg18
   photo-storage:
     name: ${PI5_VOLUME_PREFIX:-docker}_photo-storage
     driver: local

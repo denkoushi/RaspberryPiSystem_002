@@ -138,6 +138,9 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - [x] (2026-10-25) Brotli の脆弱性(CVE-2026-111497)対応として、API と kiosk-sop 生成の node:24-bookworm-slim を Node 24.21.0 の digest(sha256:2fe369e9…)から Node 24.22.1 の digest(index sha256:55fb5f5a…)へ差し替える別 PR を作成。土台は bookworm のままで、3件目の trixie 化とは分ける。
 - [x] (2026-10-29) PostgreSQL更新の手順2として、移行・比較・activateスクリプト、空DB初期化ガード、契約/ガード/E2Eテスト、[Runbook](../runbooks/postgres-15-to-18-upgrade.md)を追加。本番composeとDockerfile.apiは変更せず、切替は手順4で行う。
 
+- [x] (2026-10-29) PostgreSQL更新の手順3として、Macで読み取り専用の本番ダンプを使い試し移行・切戻しを実施。本番はPostgreSQL 15.17、DB 5.7GB、custom dump 242MB（SSH経由150秒）、コピーの復元82秒。preflight 3秒、migrate 100秒、停止＋activate 18は5秒、切戻しの停止＋activate 15は4秒。284行の比較レポートと拡張版（vector 0.8.7 / pg_trgm 1.6）は一致。Pi5は遅くなる見込みのため、保守時間は1時間を確保する。
+- [x] (2026-10-29) 手順4の切替PR用に、本番composeをpg18・新ボリューム・旧ボリュームread-only・起動ガードへ変更し、APIのPGDGクライアントを18へ更新。マージは移行当日のみ（Runbookの当日手順2）。標準デプロイはdbを再作成せず、migrate後に運用者が `activate --expect-major 18` で切り替える。本番移行は未実施。
+
 ## Surprises & Discoveries
 
 
