@@ -5,8 +5,7 @@ import { KIOSK_ASSEMBLY_HOME_PATH } from '../../features/assembly/assemblyRoutes
 import { CheckSheetLibraryPage } from '../../features/assembly/checkSheet/CheckSheetLibraryPage';
 
 export function KioskAssemblyCheckSheetsPage() {
-  return <div className="min-w-0 space-y-4 p-4">
-    <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex min-h-12 items-center')}>組立へ戻る</Link>
-    <CheckSheetLibraryPage />
-  </div>;
+  return <CheckSheetLibraryPage backLink={
+    <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex h-[60px] shrink-0 items-center px-6 text-[22px]')}>組立へ戻る</Link>
+  } />;
 }
