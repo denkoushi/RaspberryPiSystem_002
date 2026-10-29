@@ -64,7 +64,7 @@ describe('inventory dashboard', () => {
     const rename = vi.spyOn(service, 'renameToolFieldValue').mockResolvedValue({ field: 'maker', value: 'OSG', updatedItems: 1 });
     await service.mergeToolValueVariants('maker', 'OSG', ['ＯＳＧ ', 'osg', 'osg']);
     expect(rename).toHaveBeenCalledTimes(2);
-    expect(rename).toHaveBeenCalledWith('maker', 'ＯＳＧ ', 'OSG');
+    expect(rename).toHaveBeenCalledWith('maker', 'ＯＳＧ ', 'OSG', 'default');
   });
   it.each([null, 0, 10000000])('saves valid price %s and rejects out of range prices', async unitPrice => {
     const update = vi.fn().mockResolvedValue({});

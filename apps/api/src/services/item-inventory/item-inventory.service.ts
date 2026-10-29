@@ -1,10 +1,10 @@
-import type { InventoryVariantField } from '@raspi-system/shared-types';
+import type { InventoryToolScope, InventoryVariantField } from '@raspi-system/shared-types';
 import { Prisma, PrismaClient, InventoryImportPayloadStatus } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import type { InventoryOptionField } from './item-inventory.fields.js';
 import type { InventoryActor } from './item-inventory.errors.js';
 import { assertNfcUidAvailable, runSerializable, resolveUnit } from './item-inventory.helpers.js';
-import { resolveTag, resolveCompartmentByLabelNumber, listTags, listLocations, listItems, deleteItem, deleteDrawer, deleteShelf, deleteTag, dismissImport, restoreImport, changeImportStatus, listPendingImports, listPendingImportSummaries, listImportMessages, listHistory, dashboard, listUnits, createUnit, setItemUnit, updateItemDetails, createShelf, renameArea, createDrawer, upsertQuantityTag, upsertRestockTag } from './item-inventory-operations.js';
+import { resolveTag, resolveCompartmentByLabelNumber, listTags, listLocations, listItems, deleteItem, deleteDrawer, deleteShelf, deleteTag, dismissImport, restoreImport, changeImportStatus, listPendingImports, listPendingImportSummaries, listImportMessages, setImportMessageDismissed, listHistory, dashboard, listUnits, createUnit, setItemUnit, updateItemDetails, createShelf, renameArea, createDrawer, upsertQuantityTag, upsertRestockTag } from './item-inventory-operations.js';
 import { rotateImportPhoto, rotateInventoryItemPhoto, deleteImportPhoto, reorderImportPhotos, deleteInventoryItemPhoto, reorderInventoryItemPhotos } from './item-inventory-photos.js';
 import { listToolFieldOptions, listToolFieldValues, addToolFieldValue, renameToolFieldValue, deleteToolFieldValue, toolValueVariants, mergeToolValueVariants, dismissToolValueVariants } from './item-inventory-tool-fields.js';
 import { registerImport } from './item-inventory-import-registration.js';
@@ -63,29 +63,31 @@ export class ItemInventoryService {
 
   async reorderInventoryItemPhotos(itemId: string, photoIds: string[]) { return reorderInventoryItemPhotos(this.db, itemId, photoIds); }
 
+  async setImportMessageDismissed(id: string, dismissed: boolean) { return setImportMessageDismissed(this.db, id, dismissed); }
+
   async listImportMessages() { return listImportMessages(this.db); }
 
   async listHistory(limit = 100, filter: { compartmentId?: string } = {}) { return listHistory(this.db, limit, filter); }
 
   /** Pre-registered choices plus values already used, for each field offered in the kiosk pop-up. */
-  async listToolFieldOptions(): Promise<Record<InventoryOptionField, string[]>> { return listToolFieldOptions(this.db); }
+  async listToolFieldOptions(scope: InventoryToolScope = 'default'): Promise<Record<InventoryOptionField, string[]>> { return listToolFieldOptions(this.db, scope); }
 
   /** Each field's choices with how many items use them, for the kiosk edit mode. */
-  async listToolFieldValues(): Promise<Record<InventoryOptionField, Array<{ value: string; count: number }>>> { return listToolFieldValues(this.db); }
+  async listToolFieldValues(scope: InventoryToolScope = 'default'): Promise<Record<InventoryOptionField, Array<{ value: string; count: number }>>> { return listToolFieldValues(this.db, scope); }
 
-  async addToolFieldValue(field: InventoryOptionField, value: string) { return addToolFieldValue(this.db, field, value); }
+  async addToolFieldValue(field: InventoryOptionField, value: string, scope: InventoryToolScope = 'default') { return addToolFieldValue(this.db, field, value, scope); }
 
   /** Rename a choice and every item that uses it, in one transaction. */
-  async renameToolFieldValue(field: InventoryOptionField, from: string, to: string) { return renameToolFieldValue(this.db, field, from, to); }
+  async renameToolFieldValue(field: InventoryOptionField, from: string, to: string, scope: InventoryToolScope = 'default') { return renameToolFieldValue(this.db, field, from, to, scope); }
 
   /** Only a choice no item uses can be removed; otherwise it would come back from the items. */
-  async deleteToolFieldValue(field: InventoryOptionField, value: string) { return deleteToolFieldValue(this.db, field, value); }
+  async deleteToolFieldValue(field: InventoryOptionField, value: string, scope: InventoryToolScope = 'default') { return deleteToolFieldValue(this.db, field, value, scope); }
 
   async dashboard(weeks: number, machine?: string, now = new Date()) { return dashboard(this.db, weeks, machine, now); }
 
-  async toolValueVariants() { return toolValueVariants(this.db); }
+  async toolValueVariants(scope: InventoryToolScope = 'default') { return toolValueVariants(this.db, scope); }
 
-  async mergeToolValueVariants(field: InventoryVariantField, to: string, from: string[]) { return mergeToolValueVariants(this.db, field, to, from, (field, from, to) => this.renameToolFieldValue(field, from, to)); }
+  async mergeToolValueVariants(field: InventoryVariantField, to: string, from: string[], scope: InventoryToolScope = 'default') { return mergeToolValueVariants(this.db, field, to, from, scope, (field, from, to) => this.renameToolFieldValue(field, from, to, scope)); }
 
   async dismissToolValueVariants(field: InventoryVariantField, values: string[]) { return dismissToolValueVariants(this.db, field, values); }
 

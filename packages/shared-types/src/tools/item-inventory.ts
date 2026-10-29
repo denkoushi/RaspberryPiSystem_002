@@ -1,3 +1,5 @@
+export type InventoryToolScope = 'default' | 'seigi';
+
 export type InventoryCompartment = {
   id: string;
   labelNumber: number;

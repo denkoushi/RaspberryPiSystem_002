@@ -58,7 +58,7 @@ describe('inventory dashboard and variant routes', () => {
   it('returns variants and dispatches merge and dismissal', async () => {
     expect((await request('tool-value-variants')).json()).toEqual({ groups: [], autoMergedValueCount: 2 });
     expect((await request('tool-value-variants/merge', { field: 'maker', to: 'OSG', from: ['オーエスジー'] })).statusCode).toBe(200);
-    expect(inventory.mergeToolValueVariants).toHaveBeenCalledWith('maker', 'OSG', ['オーエスジー']);
+    expect(inventory.mergeToolValueVariants).toHaveBeenCalledWith('maker', 'OSG', ['オーエスジー'], 'default');
     expect((await request('tool-value-variants/dismiss', { field: 'toolName', values: ['リーマ', 'リーマー'] })).statusCode).toBe(200);
     expect(inventory.dismissToolValueVariants).toHaveBeenCalledWith('toolName', ['リーマ', 'リーマー']);
   });

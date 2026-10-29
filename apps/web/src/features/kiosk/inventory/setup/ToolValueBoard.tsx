@@ -8,6 +8,7 @@ import { setupErrorText as errorText } from './setupError';
 import { splitToolValues, toggleToolValue, toolValueOptions } from './toolValueSelection';
 
 import type { InventoryOptionField } from '../../../../api/client';
+import type { InventoryToolScope } from '@raspi-system/shared-types';
 
 export const TOOL_BOARD_COLUMNS: Array<{ key: InventoryOptionField; label: string }> = [
   { key: 'name', label: '名前' },
@@ -25,6 +26,7 @@ export function isProvisionalInventoryName(name: string): boolean {
 }
 
 type Props = {
+  scope?: InventoryToolScope;
   accessPassword: string;
   /** Current value of each field of the item being edited. */
   current: Record<InventoryOptionField, string>;
@@ -105,10 +107,10 @@ function Slot({ label, value, draftValue, required, disabled, onCommit, onClear 
  * A tap or typed text changes this one item. まとめて直す switches to the registered values themselves:
  * renaming one changes every item that uses it, and values no item uses can be added or removed.
  */
-export function ToolValueBoard({ accessPassword, current, draftValues, onChange, onRenamed, provisionalName, status, statusField, onClose, className = '' }: Props) {
+export function ToolValueBoard({ scope = 'default', accessPassword, current, draftValues, onChange, onRenamed, provisionalName, status, statusField, onClose, className = '' }: Props) {
   const [organizing, setOrganizing] = useState(false);
-  const options = useInventoryToolFieldOptions(!organizing);
-  const values = useInventoryToolFieldValues(accessPassword, organizing, true);
+  const options = useInventoryToolFieldOptions(!organizing, scope);
+  const values = useInventoryToolFieldValues(accessPassword, organizing, true, scope);
   const mutations = useInventoryMutations(accessPassword, true);
   const [renaming, setRenaming] = useState<{ field: InventoryOptionField; from: string; to: string; count: number } | null>(null);
   const [deleting, setDeleting] = useState<{ field: InventoryOptionField; value: string } | null>(null);
@@ -129,7 +131,7 @@ export function ToolValueBoard({ accessPassword, current, draftValues, onChange,
     setError(null);
     setErrorField(field);
     try {
-      await mutations.addToolFieldValue.mutateAsync({ field, value });
+      await mutations.addToolFieldValue.mutateAsync({ field, value, scope });
     } catch (caught) {
       setError(errorText(caught));
     }
@@ -139,7 +141,7 @@ export function ToolValueBoard({ accessPassword, current, draftValues, onChange,
     setError(null);
     setErrorField(renaming.field);
     try {
-      const result = await mutations.renameToolFieldValue.mutateAsync({ field: renaming.field, from: renaming.from, to: renaming.to });
+      const result = await mutations.renameToolFieldValue.mutateAsync({ scope, field: renaming.field, from: renaming.from, to: renaming.to });
       onRenamed?.(renaming.field, renaming.from, result.value);
       setRenaming(null);
     } catch (caught) {
@@ -150,7 +152,7 @@ export function ToolValueBoard({ accessPassword, current, draftValues, onChange,
     setError(null);
     setErrorField(field);
     try {
-      await mutations.deleteToolFieldValue.mutateAsync({ field, value });
+      await mutations.deleteToolFieldValue.mutateAsync({ field, value, scope });
       if (current[field] === value) clear(field);
       setDeleting(null);
     } catch (caught) {
@@ -163,7 +165,7 @@ export function ToolValueBoard({ accessPassword, current, draftValues, onChange,
     setError(null);
     setErrorField(field);
     try {
-      await mutations.addToolFieldValue.mutateAsync({ field, value });
+      await mutations.addToolFieldValue.mutateAsync({ field, value, scope });
       setAdding((entries) => ({ ...entries, [field]: '' }));
     } catch (caught) {
       setError(errorText(caught));
@@ -193,6 +195,10 @@ export function ToolValueBoard({ accessPassword, current, draftValues, onChange,
           {organizing ? <><GridIcon />使っている全アイテム</> : <><span className="h-1.5 w-1.5 rounded-sm bg-current" aria-hidden="true" />この1件</>}
         </span>
 
+        <span className={`inline-flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-xs font-bold ${scope === 'seigi' ? 'border-[#a99bff]/60 bg-[#a99bff]/[0.16] text-[#e4deff]' : 'border-inv-line2 bg-inv-s3 text-inv-text'}`}>
+          <span className={`h-2 w-2 rounded-sm ${scope === 'seigi' ? 'bg-[#a99bff]' : 'bg-inv-cyan'}`} aria-hidden="true" />
+          {scope === 'seigi' ? '生産技術課の選択肢' : '機械課・組立課の選択肢'}
+        </span>
         <span className="flex-1" />
         <button type="button" aria-pressed={organizing} className={organizing ? amberButton : quietButton} onClick={toggleOrganizing}>
           <EditIcon size={14} />まとめて直す
