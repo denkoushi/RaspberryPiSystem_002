@@ -347,6 +347,7 @@ update-frequency: medium
 - Pi5はrkhunterから`dpkg --verify`へ移行。検査直前の`--propupd`で基準を作り直すとプログラムの改ざんを検知できず、rkhunterの開発も2018年で停止しているため。Pi4キオスクも週次（日曜02:30）のパッケージ整合性確認へ移行し、rkhunterを削除する。
 - 正常な管理者編集やOSイメージ調整は、内容と由来を確認してから`group_vars/all.yml`と`group_vars/staging.yml`の`package_integrity_allowed_paths`へ絶対パスを追加する。完全一致のみ除外し、ワイルドカードは使わない。
 - 検査は`package-integrity-scan.sh`で実行し、差分・実行エラーは既存のアラートファイルへ、ログは夜間セキュリティレビューへ渡す。
+- 標準ローリング更新は`kiosk/tasks/security.yml`を実行しないため、PR #2378だけでは既存キオスクの置換が配布されなかった。共通タスク`kiosk/tasks/package-integrity.yml`をフル構築と`release_kiosk`から呼び、標準更新ではヘルス確認後に`terminal_release_mode: full`で適用する。適用失敗は警告として報告し、アプリのロールバック対象にしない。タスクとスキャン・logrotateテンプレートはCIのPi4配布対象に登録する。
 - キオスクのみNetworkManager設定を追加除外し、`/etc/sudoers.d/010_pi-nopasswd`はログインユーザーの初期設定と末尾改行まで完全一致する場合だけ除外する。
 - `generate-alert.sh`は複数行の詳細をJSONエスケープし、同秒の通知には連番を付ける。従来は複数行の通知が不正JSONとなり、取り込み時に捨てられていた。
 

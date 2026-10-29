@@ -127,6 +127,9 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         # Inputs the launcher is rendered from: release_kiosk includes the
         # resolver, and the role defaults carry the browser flags.
         "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+        "infrastructure/ansible/roles/kiosk/tasks/package-integrity.yml",
+        "infrastructure/ansible/templates/package-integrity-scan.sh.j2",
+        "infrastructure/ansible/templates/logrotate-security.conf.j2",
         "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
         "infrastructure/ansible/roles/kiosk/defaults/main.yml",
         # Host and group variables decide the browser engine, its flags and
