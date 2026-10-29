@@ -10,7 +10,7 @@
     notifempty
 }
 
-/var/log/rkhunter/*.log {
+{{ package_integrity_log_dir | default('/var/log/package-integrity') }}/*.log {
     weekly
     rotate 52
     missingok

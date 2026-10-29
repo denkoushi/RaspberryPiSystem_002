@@ -1,21 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { useCsvImportScheduleMutations } from '../../../api/hooks';
+import { useCsvImportScheduleMutations, useCsvImportSchedules } from '../../../api/hooks';
 
 import type { CsvImportSchedule } from '../../../api/backup';
 
 type UseCsvImportScheduleRunOptions = {
   schedules: CsvImportSchedule[];
-  refetch: () => void;
 };
 
-export function useCsvImportScheduleRun({ schedules, refetch }: UseCsvImportScheduleRunOptions) {
+export function useCsvImportScheduleRun({ schedules }: UseCsvImportScheduleRunOptions) {
   const { run } = useCsvImportScheduleMutations();
+  const { data, refetch } = useCsvImportSchedules();
+  const [backgroundScheduleIds, setBackgroundScheduleIds] = useState<string[]>([]);
+  const serverRunningIds = data?.runningScheduleIds ?? [];
+
   const [runningScheduleId, setRunningScheduleId] = useState<string | null>(null);
   const runningScheduleIdRef = useRef<string | null>(null);
   const [runError, setRunError] = useState<Record<string, Error | null>>({});
   const [runMessage, setRunMessage] = useState<Record<string, string>>({});
   const messageTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
+
+  const runningScheduleIds = [...new Set([
+    ...serverRunningIds,
+    ...backgroundScheduleIds,
+    ...(runningScheduleId ? [runningScheduleId] : [])
+  ])];
+  const hasBackgroundRuns = serverRunningIds.length > 0 || backgroundScheduleIds.length > 0;
+
+  useEffect(() => {
+    if (!hasBackgroundRuns) return;
+    const timer = setInterval(async () => {
+      const result = await refetch();
+      if (result.isSuccess) {
+        setBackgroundScheduleIds(current => current.filter(id =>
+          !backgroundScheduleIds.includes(id) || result.data.runningScheduleIds?.includes(id)
+        ));
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [hasBackgroundRuns, backgroundScheduleIds, refetch]);
 
   // 画面を離れた後に、完了メッセージを消すタイマーが残らないようにする
   useEffect(() => {
@@ -27,7 +50,7 @@ export function useCsvImportScheduleRun({ schedules, refetch }: UseCsvImportSche
   }, []);
 
   const handleRun = async (id: string) => {
-    if (runningScheduleIdRef.current !== null) {
+    if (runningScheduleIdRef.current !== null || runningScheduleIds.includes(id)) {
       return;
     }
 
@@ -63,6 +86,9 @@ export function useCsvImportScheduleRun({ schedules, refetch }: UseCsvImportSche
     try {
       const response = await run.mutateAsync(id);
       const acceptedInBackground = response.accepted === true && response.mode === 'background';
+      if (acceptedInBackground) {
+        setBackgroundScheduleIds(prev => [...prev, id]);
+      }
 
       const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object';
       const summary = acceptedInBackground ? undefined : response.summary;
@@ -119,13 +145,28 @@ export function useCsvImportScheduleRun({ schedules, refetch }: UseCsvImportSche
       }, acceptedInBackground ? 8000 : 3000);
       messageTimersRef.current.add(timer);
 
-      refetch();
+      const refreshed = await refetch();
+      if (refreshed.isSuccess) {
+        setBackgroundScheduleIds(prev => prev.filter(runningId =>
+          runningId !== id || refreshed.data.runningScheduleIds?.includes(id)
+        ));
+      }
     } catch (error) {
       const err = error as {
         message?: string;
         response?: { status?: number; data?: { message?: unknown; errorCode?: unknown } | unknown };
       };
-      setRunError(prev => ({ ...prev, [id]: err as Error }));
+      if (err.response?.status === 409) {
+        setBackgroundScheduleIds(prev => [...prev, id]);
+        const refreshed = await refetch();
+        if (refreshed.isSuccess) {
+          setBackgroundScheduleIds(prev => prev.filter(runningId =>
+            runningId !== id || refreshed.data.runningScheduleIds?.includes(id)
+          ));
+        }
+      } else {
+        setRunError(prev => ({ ...prev, [id]: err as Error }));
+      }
     } finally {
       runningScheduleIdRef.current = null;
       setRunningScheduleId(null);
@@ -133,6 +174,7 @@ export function useCsvImportScheduleRun({ schedules, refetch }: UseCsvImportSche
   };
 
   return {
+    runningScheduleIds,
     runningScheduleId,
     runningScheduleIdRef,
     runError,

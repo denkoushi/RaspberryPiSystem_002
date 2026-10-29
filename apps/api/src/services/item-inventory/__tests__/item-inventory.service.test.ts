@@ -806,8 +806,8 @@ describe('inventory tool field options', () => {
       name: ['チップ'], maker: ['OSG', 'イスカル', '京セラ'], toolName: [], workMaterial: [], toolSize: [], model: [], usage: ['上面'],
     });
     // 名前 is required, so only the optional fields ask for "not null".
-    expect(findMany.mock.calls[0][0]).toMatchObject({ where: { deletedAt: null }, distinct: ['name'] });
-    expect(findMany.mock.calls[1][0]).toMatchObject({ where: { deletedAt: null, maker: { not: null } }, distinct: ['maker'] });
+    expect(findMany.mock.calls[1][0]).toMatchObject({ where: { AND: [{ deletedAt: null, id: { in: [] } }, { deletedAt: null }] }, distinct: ['name'] });
+    expect(findMany.mock.calls[2][0]).toMatchObject({ where: { AND: [{ deletedAt: null }, { deletedAt: null, maker: { not: null } }] }, distinct: ['maker'] });
   });
 });
 
@@ -840,7 +840,7 @@ describe('inventory tool field values', () => {
       ? [{ toolSize: 'φ100', _count: { _all: 2 } }, { toolSize: 'φ20', _count: { _all: 1 } }]
       : []));
     const presets = vi.fn().mockResolvedValue([{ field: 'toolSize', value: 'φ63' }, { field: 'toolSize', value: 'φ20' }]);
-    const service = new ItemInventoryService({ inventoryItem: { groupBy }, inventoryToolFieldPreset: { findMany: presets } } as never);
+    const service = new ItemInventoryService({ inventoryItem: { findMany: vi.fn().mockResolvedValue([]), groupBy }, inventoryToolFieldPreset: { findMany: presets } } as never);
 
     const values = await service.listToolFieldValues();
 
@@ -852,13 +852,13 @@ describe('inventory tool field values', () => {
     const groupBy = vi.fn(async ({ by }: { by: string[] }) => (by[0] === 'name'
       ? [{ name: 'チップ', _count: { _all: 3 } }, { name: 'ItemlistRaspi 12', _count: { _all: 1 } }]
       : []));
-    const service = new ItemInventoryService({ inventoryItem: { groupBy }, inventoryToolFieldPreset: { findMany: vi.fn().mockResolvedValue([]) } } as never);
+    const service = new ItemInventoryService({ inventoryItem: { findMany: vi.fn().mockResolvedValue([]), groupBy }, inventoryToolFieldPreset: { findMany: vi.fn().mockResolvedValue([]) } } as never);
 
     const values = await service.listToolFieldValues();
 
     expect(values.name).toEqual([{ value: 'チップ', count: 3 }]);
     // 名前 is required, so the query must not ask for "not null".
-    expect(groupBy.mock.calls.find(([args]) => args.by[0] === 'name')![0]).toMatchObject({ where: { deletedAt: null } });
+    expect(groupBy.mock.calls.find(([args]) => args.by[0] === 'name')![0]).toMatchObject({ where: { AND: [{ deletedAt: null }, { deletedAt: null }] } });
     expect(groupBy.mock.calls.find(([args]) => args.by[0] === 'name')![0].where).not.toHaveProperty('name');
   });
 
@@ -877,20 +877,20 @@ describe('inventory tool field values', () => {
 
   it('renames the items and the preset together', async () => {
     const tx = {
-      inventoryItem: { updateMany: vi.fn().mockResolvedValue({ count: 3 }) },
+      inventoryItem: { findMany: vi.fn().mockResolvedValue([{ id: 'i1', compartments: [] }]), updateMany: vi.fn().mockResolvedValue({ count: 3 }) },
       inventoryToolFieldPreset: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }), upsert: vi.fn() },
     };
     const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
     const service = new ItemInventoryService(db as never);
 
     await expect(service.renameToolFieldValue('maker', 'ミツビシ', ' ミツビシマテリアル ')).resolves.toEqual({ field: 'maker', value: 'ミツビシマテリアル', updatedItems: 3 });
-    expect(tx.inventoryItem.updateMany).toHaveBeenCalledWith({ where: { deletedAt: null, maker: 'ミツビシ' }, data: { maker: 'ミツビシマテリアル' } });
-    expect(tx.inventoryToolFieldPreset.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { field: 'maker', value: 'ミツビシマテリアル' } }));
+    expect(tx.inventoryItem.updateMany).toHaveBeenCalledWith({ where: { deletedAt: null, id: { in: ['i1'] }, maker: 'ミツビシ' }, data: { maker: 'ミツビシマテリアル' } });
+    expect(tx.inventoryToolFieldPreset.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: { scope: 'default', field: 'maker', value: 'ミツビシマテリアル' } }));
   });
 
   it('refuses to delete a choice that items still use', async () => {
     const deleteMany = vi.fn();
-    const service = new ItemInventoryService({ inventoryItem: { count: vi.fn().mockResolvedValue(2) }, inventoryToolFieldPreset: { deleteMany } } as never);
+    const service = new ItemInventoryService({ inventoryItem: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(2) }, inventoryToolFieldPreset: { deleteMany } } as never);
 
     await expect(service.deleteToolFieldValue('usage', '上面')).rejects.toThrow('2件');
     expect(deleteMany).not.toHaveBeenCalled();

@@ -1,16 +1,17 @@
 import { gunzipSync } from 'node:zlib';
 
-import { packPurchase, unpackPlacement, unpackPurchase } from '@raspi-system/slip-match-core';
+import { enrichLocalPurchaseRows, packPurchase, unpackBasePurchase, unpackPlacement, unpackPurchase } from '@raspi-system/slip-match-core';
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ placementStamp: vi.fn(), placements: vi.fn(), placementNames: vi.fn(), purchase: vi.fn(), schedule: vi.fn(), dates: vi.fn(), machines: vi.fn(), findMany: vi.fn(),
+const mocks = vi.hoisted(() => ({ supplements: vi.fn(), placementStamp: vi.fn(), placements: vi.fn(), placementNames: vi.fn(), purchase: vi.fn(), schedule: vi.fn(), dates: vi.fn(), progress: vi.fn(), externalCompletion: vi.fn(), machines: vi.fn(), findMany: vi.fn(),
   queryRaw: vi.fn(), names: vi.fn(), normalized: vi.fn(), machineNames: vi.fn(), allSchedule: vi.fn(), known: vi.fn() }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   orderPlacementBranchState: { findMany: mocks.placements },
   purchaseOrderLookupRow: { aggregate: mocks.purchase, findMany: mocks.findMany },
+  productionScheduleProgress: { aggregate: mocks.progress }, productionScheduleExternalCompletion: { aggregate: mocks.externalCompletion },
   csvDashboardRow: { aggregate: mocks.schedule }, productionScheduleOrderSupplement: { aggregate: mocks.dates },
-  productionScheduleSeibanMachineNameSupplement: { aggregate: mocks.machines }, $queryRaw: (query: TemplateStringsArray, ...args: unknown[]) => query[0].includes('STRING_AGG') ? mocks.placementStamp() : mocks.queryRaw(query, ...args)
+  productionScheduleSeibanMachineNameSupplement: { aggregate: mocks.machines, findMany: mocks.supplements }, $queryRaw: (query: TemplateStringsArray, ...args: unknown[]) => query[0].includes('STRING_AGG') ? mocks.placementStamp() : mocks.queryRaw(query, ...args)
 } }));
 vi.mock('../../production-schedule/production-schedule-lookup.service.js', () => ({ listAllScheduleLookupRows: mocks.allSchedule, listKnownScheduleFseibans: mocks.known }));
 vi.mock('../../purchase-order-lookup/purchase-order-lookup-master-part.service.js', () => ({ findMasterFhinmeisByMatchKey: mocks.names, findMasterFhinmeisByNormalizedFhinCd: mocks.normalized }));
@@ -19,6 +20,7 @@ vi.mock('../../purchase-order-lookup/purchase-order-lookup-machine-name.service.
 vi.mock('../part-search/part-search-machine-name-fseibans.service.js', () => ({ resolvePartSearchMachineNames: mocks.placementNames }));
 
 import { registerMobileLocalDataRoutes } from '../../../routes/kiosk/mobile-local-data.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { queryPurchaseOrderLookup } from '../../purchase-order-lookup/purchase-order-lookup-query.service.js';
 import { createMobileDataCache, getMobileDataVersions, invalidateMobileDataVersions } from '../mobile-local-data.service.js';
 
@@ -30,32 +32,52 @@ beforeEach(async () => {
   mocks.placements.mockResolvedValue([{ id: 'branch', manufacturingOrderBarcodeRaw: '001', branchNo: 0, shelfCodeRaw: 'A', updatedAt: new Date('2026-10-27'),
     scheduleSnapshot: { FSEIBAN: 'FS1', FHINCD: 'MD1', FHINMEI: 'テーブル', ProductNo: '001' } }]);
   mocks.placementNames.mockResolvedValue(new Map([['FS1', ' ｄａｄ３３５０　テーブル ']]));
-  [mocks.purchase, mocks.schedule, mocks.dates, mocks.machines].forEach((fn) => fn.mockResolvedValue(stamp()));
+  [mocks.purchase, mocks.schedule, mocks.dates, mocks.machines, mocks.progress, mocks.externalCompletion].forEach((fn) => fn.mockResolvedValue(stamp()));
   mocks.findMany.mockResolvedValue([row]); mocks.names.mockResolvedValue({ MD1: 'マスタ' }); mocks.normalized.mockResolvedValue({});
   mocks.machineNames.mockResolvedValue({ FS1: '機種' });
-  mocks.queryRaw.mockResolvedValue([{ seiban: 'FS1', fhincd: 'MD1', fhinmei: '品名', plannedStartDate: new Date('2026-11-01') }]);
+  mocks.queryRaw.mockResolvedValue([{ seiban: 'FS1', fhincd: 'MD1', fhinmei: '品名', productNo: '1', completed: false, plannedStartDate: new Date('2026-11-01') }]);
   mocks.allSchedule.mockResolvedValue([{ rowId: 'r', fseiban: 'FS1', productNo: 'T1', fhincd: 'MD1', fhinmei: '品名', fsigencd: 'M', fkojun: 1 }]);
   mocks.known.mockResolvedValue(['FS1', 'FS_WITH_NO_PART']);
+  mocks.supplements.mockResolvedValue([{ fseiban: 'SUPPLEMENT_ONLY' }]);
   await getMobileDataVersions(true);
   vi.clearAllMocks();
 });
 afterEach(() => { vi.useRealTimers(); });
 
 describe('mobile data versions and snapshots', () => {
-  it('changes purchase version for each join dependency and schedule only for schedule rows', async () => {
+  it('versions each dataset only from its source tables', async () => {
     const first = await getMobileDataVersions();
     expect(await getMobileDataVersions()).toEqual(first);
-    for (const fn of [mocks.purchase, mocks.dates, mocks.machines]) {
-      fn.mockResolvedValue(stamp('2026-10-28T00:00:00Z'));
-      const next = await getMobileDataVersions(true);
-      expect(next.purchase.version).not.toBe(first.purchase.version);
-      expect(next.schedule).toEqual(first.schedule);
-      fn.mockResolvedValue(stamp());
+    for (const [source, changed] of [
+      [mocks.purchase, ['purchase', 'legacyPurchase']],
+      [mocks.schedule, ['schedule', 'purchaseEnrichment', 'placements', 'legacyPurchase']],
+      [mocks.dates, ['purchaseEnrichment', 'legacyPurchase']],
+      [mocks.machines, ['purchaseEnrichment', 'placements', 'legacyPurchase']]
+    ] as const) {
+      for (const value of [stamp('2026-10-28T00:00:00Z'), stamp(undefined, 0)]) {
+        source.mockResolvedValue(value);
+        const next = await getMobileDataVersions(true);
+        for (const kind of Object.keys(first) as (keyof typeof first)[]) {
+          expect(next[kind].version === first[kind].version, kind).toBe(!changed.includes(kind as never));
+        }
+      }
+      source.mockResolvedValue(stamp());
     }
-    mocks.schedule.mockResolvedValue(stamp('2026-10-28T00:00:00Z'));
-    expect((await getMobileDataVersions(true)).schedule.version).not.toBe(first.schedule.version);
-    mocks.schedule.mockResolvedValue(stamp(undefined, 0));
-    expect((await getMobileDataVersions(true)).schedule.version).not.toBe(first.schedule.version);
+  });
+  it.each(['progress', 'externalCompletion'] as const)('invalidates only purchase display data for %s changes', async (source) => {
+    const first = await getMobileDataVersions();
+    for (const changed of [stamp('2026-10-28T00:00:00Z'), stamp(undefined, 2),
+      { ...stamp(), _max: { ...stamp()._max, createdAt: new Date('2026-10-29') } }]) {
+      mocks[source].mockResolvedValue(changed);
+      const next = await getMobileDataVersions(true);
+      expect(next.purchaseEnrichment.version).not.toBe(first.purchaseEnrichment.version);
+      expect(next.legacyPurchase.version).not.toBe(first.legacyPurchase.version);
+      expect(next.purchase).toEqual(first.purchase);
+      expect(next.schedule).toEqual(first.schedule);
+      expect(next.placements).toEqual(first.placements);
+    }
+    expect(mocks[source]).toHaveBeenCalledWith({ _count: true, _max: { updatedAt: true, createdAt: true },
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } });
   });
   it('invalidates placements on insert, update, delete and same-count replacement without changing other datasets', async () => {
     const first = await getMobileDataVersions();
@@ -128,11 +150,45 @@ describe('mobile data versions and snapshots', () => {
   });
   it('serves exactly the joined lookup fields, preserving the matching key', async () => {
     const lookup = await queryPurchaseOrderLookup(row.purchaseOrderNo);
-    const cached = await createMobileDataCache()('purchase');
+    const cached = await createMobileDataCache()('legacyPurchase');
     const data = JSON.parse(gunzipSync(cached.gzip).toString()) as { rows: Parameters<typeof unpackPurchase>[0][] };
     expect(unpackPurchase(data.rows[0])).toEqual({ ...lookup.rows[0], purchaseOrderNo: row.purchaseOrderNo, purchasePartCodeMatchKey: 'MD1' });
     expect(cached.jsonBytes).toBe(gunzipSync(cached.gzip).length);
     expect(cached).not.toHaveProperty('json');
+  });
+  it('builds independent purchase without joins and joins enrichment to the same server display fields', async () => {
+    const cache = createMobileDataCache();
+    const raw = JSON.parse(gunzipSync((await cache('purchase')).gzip).toString());
+    expect(raw.format).toBe(2);
+    expect(mocks.names).not.toHaveBeenCalled(); expect(mocks.queryRaw).not.toHaveBeenCalled();
+    const enrichment = JSON.parse(gunzipSync((await cache('purchaseEnrichment')).gzip).toString());
+    expect(mocks.findMany).toHaveBeenCalledTimes(1);
+    expect(mocks.machineNames).toHaveBeenCalledWith(['FS1', 'FS_WITH_NO_PART', 'SUPPLEMENT_ONLY']);
+    const lookup = await queryPurchaseOrderLookup(row.purchaseOrderNo);
+    expect(enrichLocalPurchaseRows(raw.rows.map(unpackBasePurchase), enrichment.rows)[0]).toEqual({
+      ...lookup.rows[0], purchaseOrderNo: row.purchaseOrderNo, purchasePartCodeMatchKey: row.purchasePartCodeMatchKey
+    });
+  });
+  it('negotiates independent data while preserving the old purchase wire format and version', async () => {
+    const app = Fastify();
+    await registerMobileLocalDataRoutes(app, { requireClientDevice: async () => ({} as never) });
+    try {
+      const old = (await app.inject('/kiosk/mobile-local-data/versions')).json();
+      const modern = (await app.inject('/kiosk/mobile-local-data/versions?format=2')).json();
+      expect(old).not.toHaveProperty('purchaseEnrichment');
+      expect(modern).toHaveProperty('purchaseEnrichment'); expect(modern).not.toHaveProperty('legacyPurchase');
+      expect(old.purchase.version).not.toBe(modern.purchase.version);
+      const legacy = (await app.inject('/kiosk/mobile-local-data/purchase')).json();
+      expect(legacy.version).toBe(old.purchase.version);
+      expect(unpackPurchase(legacy.rows[0])).toMatchObject({ masterPartName: 'マスタ', machineName: '機種', plannedStartDate: '2026-11-01' });
+      const raw = (await app.inject('/kiosk/mobile-local-data/purchase?format=2')).json();
+      expect(raw).toMatchObject({ format: 2, version: modern.purchase.version });
+      expect(unpackBasePurchase(raw.rows[0])).toMatchObject(row);
+      expect((await app.inject(`/kiosk/mobile-local-data/purchase?format=2&version=${modern.purchase.version}`)).statusCode).toBe(304);
+      const enrichment = (await app.inject('/kiosk/mobile-local-data/purchaseEnrichment')).json();
+      expect(enrichment.version).toBe(modern.purchaseEnrichment.version);
+      expect((await app.inject(`/kiosk/mobile-local-data/purchaseEnrichment?version=${enrichment.version}`)).statusCode).toBe(304);
+    } finally { await app.close(); }
   });
   it('shares concurrent builds and does not rebuild an unchanged version', async () => {
     const cache = createMobileDataCache();
@@ -140,6 +196,10 @@ describe('mobile data versions and snapshots', () => {
     expect(a).toBe(b); expect(await cache('purchase')).toBe(a);
     expect(mocks.findMany).toHaveBeenCalledTimes(1);
     mocks.dates.mockResolvedValue(stamp('2026-10-29T00:00:00Z'));
+    await getMobileDataVersions(true);
+    expect(await cache('purchase')).toBe(a);
+    expect(mocks.findMany).toHaveBeenCalledTimes(1);
+    mocks.purchase.mockResolvedValue(stamp('2026-10-29T00:00:00Z'));
     await getMobileDataVersions(true);
     expect((await cache('purchase')).version).not.toBe(a.version);
     expect(mocks.findMany).toHaveBeenCalledTimes(2);
@@ -168,7 +228,7 @@ describe('mobile data versions and snapshots', () => {
       expect(mocks.machineNames).toHaveBeenCalledTimes(1);
       return [last];
     });
-    const cached = await createMobileDataCache()('purchase');
+    const cached = await createMobileDataCache()('legacyPurchase');
     expect(mocks.findMany).toHaveBeenNthCalledWith(1, { take: 5000, orderBy: [{ lineIndex: 'asc' }, { id: 'asc' }] });
     expect(mocks.findMany).toHaveBeenNthCalledWith(2, { take: 5000, orderBy: [{ lineIndex: 'asc' }, { id: 'asc' }], cursor: { id: 'id-4999' }, skip: 1 });
     expect(mocks.findMany).toHaveBeenCalledTimes(2);

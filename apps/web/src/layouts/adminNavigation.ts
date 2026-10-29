@@ -40,6 +40,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: '組立・測定',
     items: [
       { label: '組立例外入力', to: '/admin/tools/assembly-torque-override' },
+      { label: '組立チェックシート', to: '/admin/assembly-check-sheets' },
       { label: '部品測定テンプレ', to: '/admin/tools/part-measurement-templates' },
       { label: '自主検査レビュー', to: '/admin/part-measurement/self-inspection-reviews' }
     ]
@@ -63,7 +64,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { label: 'DGXリソース', to: '/admin/tools/dgx-resource' },
       { label: 'LocalLLM', to: '/admin/local-llm' },
       { label: '写真持出VLM', to: '/admin/photo-loan-label-reviews' },
-      { label: 'ギャラリー教師登録', to: '/admin/photo-gallery-seed' }
+      { label: 'ギャラリー教師登録', to: '/admin/photo-gallery-seed' },
+      { label: '配膳写真', to: '/admin/placement-photos' }
     ]
   },
   {

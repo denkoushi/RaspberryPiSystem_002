@@ -11,18 +11,18 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 744 |
-| Total lines | 182202 |
-| Total bytes | 14818837 |
-| With frontmatter | 351 |
+| Documents | 750 |
+| Total lines | 183214 |
+| Total bytes | 14944112 |
+| With frontmatter | 353 |
 | With status | 169 |
 | source_of_truth declared | 115 |
 | References to EXEC_PLAN.md | 60 |
 | Question-mark corruption documents | 2 |
 | Replacement-character documents | 1 |
-| Long-line documents | 44 |
-| Local links | 5471 |
-| Broken local links | 128 |
+| Long-line documents | 45 |
+| Local links | 5477 |
+| Broken local links | 129 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
 
@@ -33,7 +33,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
 | `docs/knowledge-base/api.md` | 4916 | 361662 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
-| `docs/knowledge-base/frontend.md` | 4643 | 277726 |
+| `docs/knowledge-base/frontend.md` | 4655 | 280776 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4368 | 281621 |
 | `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3226 | 442832 |
 | `docs/archive/deployments/2026-05.md` | 2571 | 499357 |
@@ -84,13 +84,13 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1808:1045, 1815:1213)
 - `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (13:1164, 79:1101, 337:1220)
 - `docs/knowledge-base/infrastructure/signage.md` (23:1023, 29:1221, 361:1060)
-- `docs/plans/android-haizen-shell-ocr-execplan.md` (59:1550)
+- `docs/plans/android-haizen-shell-ocr-execplan.md` (64:1550)
 - `docs/plans/assembly-torque-wrench-traceability-execplan.md` (10:1434, 447:1055)
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
 - `docs/plans/dgx-night-preparation-execplan.md` (91:1086)
 - `docs/plans/dgx-spark-local-llm-migration-execplan.md` (36:1127)
 - `docs/plans/explicit-site-scope-execplan.md` (53:1024, 90:1114, 98:1282)
-- `docs/plans/hermes-background-worker.md` (28:1085)
+- `docs/plans/haizen-verify-records-and-order-trail-execplan.md` (53:1660, 57:1211, 59:1642)
 
 ## Broken Local Links
 

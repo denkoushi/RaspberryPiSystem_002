@@ -8,7 +8,7 @@ import { api } from '../../../api/http';
 import { canUseMobileNetwork, mobileRequest, resetMobileConnectivityForTests } from '../connectivity';
 import { registerSyncJob, resetSyncSchedulerForTests, start, stop } from '../sync/syncScheduler';
 
-import { lookupPurchaseLocalFirst, verifyLocalFirst } from './localFirstLookup';
+import { lookupPurchaseLocalFirst, snapNativeLocalFirst, verifyLocalFirst } from './localFirstLookup';
 import { createMobileLocalDataStore, mobileLocalDataStore } from './mobileLocalDataStore';
 import * as mobileLocalDataSync from './mobileLocalDataSync';
 import { createMobileDataSync, mobileDataApi } from './mobileLocalDataSync';
@@ -109,7 +109,7 @@ describe('mobile local-first data', () => {
     expect((await store.lookupPurchase(row.purchaseOrderNo))?.rows[0]).toMatchObject(row);
     expect(await store.verify(input)).toMatchObject({ ok: true });
   });
-  it('uses local purchases first, uses server on first launch, and retains missing orders locally online', async () => {
+  it('uses local purchases first, uses server on first launch, and confirms missing orders online', async () => {
     const store = createMobileLocalDataStore(); const server = vi.fn().mockResolvedValue({ purchaseOrderNo: row.purchaseOrderNo, rows: [row] });
     await lookupPurchaseLocalFirst(row.purchaseOrderNo, server, store, true); expect(server).toHaveBeenCalledTimes(1);
     await store.replace({ purchase }); server.mockClear();
@@ -117,7 +117,8 @@ describe('mobile local-first data', () => {
     expect(server).not.toHaveBeenCalled();
     expect((await lookupPurchaseLocalFirst('missing', server, store, false)).rows).toEqual([]);
     expect(server).not.toHaveBeenCalled();
-    await lookupPurchaseLocalFirst('missing', server, store, true); expect(server).not.toHaveBeenCalled();
+    expect((await lookupPurchaseLocalFirst('missing', server, store, true)).rows).toEqual([row]);
+    expect(server).toHaveBeenCalledOnce();
     server.mockRejectedValue(new Error('connection lost'));
     expect((await lookupPurchaseLocalFirst('missing', server, store, true)).rows).toEqual([]);
   });
@@ -129,7 +130,7 @@ describe('mobile local-first data', () => {
     await expect(verifyLocalFirst(input, server, store)).rejects.toThrow('Mobile local data unavailable offline');
     expect(server).not.toHaveBeenCalled();
   });
-  it('verifies on the device, including mismatch, and only falls back if a dataset is absent', async () => {
+  it('verifies on the device, including mismatch, and falls back if a dataset is absent', async () => {
     const store = createMobileLocalDataStore(); const server = vi.fn().mockResolvedValue({ ok: false, reason: 'order_not_found' });
     await verifyLocalFirst(input, server, store); expect(server).toHaveBeenCalledTimes(1);
     await store.replace({ purchase, schedule, placements }); server.mockClear();
@@ -159,17 +160,17 @@ describe('mobile local-first data', () => {
     ['order_not_found', { ...input, actualOrderBarcodeRaw: '', actualFseibanRaw: 'missing' }],
     ['order_not_found', { ...input, actualOrderBarcodeRaw: '0000000000' }],
     ['transfer_not_found', { ...input, transferOrderBarcodeRaw: 'missing' }]
-  ] as const)('retains local %s without requesting the server online', async (reason, missingInput) => {
+  ] as const)('confirms local %s online and retains it on failure', async (reason, missingInput) => {
     const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule, placements });
     const local = await store.verify(missingInput);
     expect(local).toMatchObject({ ok: false, reason });
     const server = vi.fn().mockResolvedValue({ ok: true, reason: 'match' });
     expect(await verifyLocalFirst(missingInput, server, store, false)).toEqual(local);
     expect(server).not.toHaveBeenCalled();
-    expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual(local);
+    expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual({ ok: true, reason: 'match' });
     server.mockResolvedValue({ ok: false, reason: 'different_part' });
-    expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual(local);
-    expect(server).not.toHaveBeenCalled();
+    expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual({ ok: false, reason: 'different_part' });
+    expect(server).toHaveBeenCalledTimes(2);
     server.mockRejectedValue(new Error('offline'));
     expect(await verifyLocalFirst(missingInput, server, store, true)).toEqual(local);
   });
@@ -228,6 +229,33 @@ describe('mobile local-first data', () => {
     await sync(); expect(remote.purchase).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(15 * 60_000);
     await sync(); expect(remote.purchase).toHaveBeenCalledTimes(1);
+  });
+  it.each(['different_seiban', 'different_part', 'part_required', 'match'])('never waits for the server for %s', async (reason) => {
+    const store = createMobileLocalDataStore();
+    const local = { ok: reason === 'match', reason } as Awaited<ReturnType<typeof store.verify>>;
+    vi.spyOn(store, 'verify').mockResolvedValue(local);
+    const server = vi.fn(() => new Promise<never>(() => {}));
+    expect(await verifyLocalFirst(input, server, store, true)).toBe(local);
+    expect(server).not.toHaveBeenCalled();
+  });
+  it('keeps misses local when the network gate forbids synchronization', async () => {
+    const store = createMobileLocalDataStore(); await store.replace({ purchase, schedule });
+    vi.stubGlobal('navigator', { onLine: true, connection: { type: 'cellular' } });
+    const server = vi.fn();
+    expect((await lookupPurchaseLocalFirst('missing', server, store, true)).rows).toEqual([]);
+    expect(await verifyLocalFirst({ ...input, transferOrderBarcodeRaw: 'missing' }, server, store, true)).toMatchObject({ reason: 'transfer_not_found' });
+    expect(server).not.toHaveBeenCalled();
+  });
+  it('confirms a missing native seiban online, keeps known seibans fast and retains OCR on failure', async () => {
+    const store = createMobileLocalDataStore(); await store.replace({ schedule });
+    const server = vi.fn().mockResolvedValue({ fseiban: 'NEW', fseibanMatch: 'exact' });
+    expect(await snapNativeLocalFirst(['FS1'], '', server, store, true)).toMatchObject({ fseibanMatch: 'exact' });
+    expect(server).not.toHaveBeenCalled();
+    expect(await snapNativeLocalFirst(['NEW'], '', server, store, false)).toMatchObject({ fseibanMatch: 'none' });
+    expect(server).not.toHaveBeenCalled();
+    expect(await snapNativeLocalFirst(['NEW'], '', server, store, true)).toMatchObject({ fseibanMatch: 'exact' });
+    server.mockRejectedValue(new Error('offline'));
+    expect(await snapNativeLocalFirst(['NEW'], '', server, store, true)).toMatchObject({ fseibanMatch: 'none', fseiban: 'NEW' });
   });
   it('shows the date only while offline', () => {
     const { rerender } = render(<MobileOfflineChip offline updatedAt={date} />);

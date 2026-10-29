@@ -37,12 +37,16 @@ export function splitOf(anchorId) {
 export function questionSet(rows) {
   const byAnchor = new Map();
   for (const row of rows) {
-    if (row?.kind === 'filter' && row.source !== 'real') continue;
-    if (row?.source === 'real') {
+    const real = ['real', 'regression'].includes(row?.source);
+    if (row?.kind === 'filter' || real) {
       if (typeof row.question !== 'string' || !row.question || !row.id || byAnchor.has(row.id)) continue;
       if (row.kind === 'filter') {
         if (row.filterCheck?.supported !== true) continue;
-        byAnchor.set(row.id, { id: row.id, question: row.question, split: row.split, relevant: [], seed: null, source: 'real', kind: 'filter', plan: row.live?.plan });
+        byAnchor.set(row.id, { id: row.id, question: row.question, split: row.split ?? splitOf(row.id), relevant: [], seed: row.seed ?? null, source: real ? 'real' : 'synthetic', kind: 'filter', plan: row.live?.plan });
+      } else if (row.followUpCheck?.supported === true) {
+        byAnchor.set(row.id, { id: row.id, question: row.question, split: row.split ?? splitOf(row.id),
+          relevant: row.relevant ?? [], seed: null, source: 'real', kind: 'content', followUpCheck: row.followUpCheck,
+          previousPlan: row.previousPlan, previousShown: row.previousShown, context: row.context });
       } else if (row.relevant?.length) {
         byAnchor.set(row.id, { id: row.id, question: row.question, split: row.split, relevant: row.relevant, seed: null, source: 'real', kind: 'content' });
       }
@@ -81,9 +85,9 @@ function relevantShown(entry, relevant) {
   return (entry.shown ?? []).map(bareId).some((id) => wanted.has(id));
 }
 
-function filterCorrect(entry) {
-  if (entry?.filterCheck?.ok == null) return null;
-  return entry.filterCheck.ok === true;
+function checkCorrect(entry, key) {
+  if (entry?.[key]?.ok == null || (key === 'followUpCheck' && entry[key].supported !== true)) return null;
+  return entry[key].ok === true;
 }
 
 /** Per split: how many questions each run answered with a relevant record, and the paired changes. */
@@ -96,12 +100,15 @@ export function compareRuns({ questions, baseline, candidate, labels = null }) {
   }
   splits.real = { n: 0, skipped: 0, baselineShown: 0, candidateShown: 0, gained: 0, lost: 0, p: 1 };
   for (const question of questions) {
-    if (question.kind === 'filter' && question.source !== 'real') continue;
     const result = splits[question.split];
-    const results = question.source === 'real' ? [result, splits.real] : [result];
+    const real = ['real', 'regression'].includes(question.source);
+    const results = real ? [result, splits.real] : [result];
+    const followUp = real && [question, base.get(question.id), cand.get(question.id)]
+      .some((row) => row?.followUpCheck?.supported === true);
+    const checkKey = followUp ? 'followUpCheck' : question.kind === 'filter' ? 'filterCheck' : null;
     const relevant = labels == null || question.kind === 'filter' ? question.relevant : relevantWithLabels(question, labels);
-    const before = question.kind === 'filter' ? filterCorrect(base.get(question.id)) : relevantShown(base.get(question.id), relevant);
-    const after = question.kind === 'filter' ? filterCorrect(cand.get(question.id)) : relevantShown(cand.get(question.id), relevant);
+    const before = checkKey ? checkCorrect(base.get(question.id), checkKey) : relevantShown(base.get(question.id), relevant);
+    const after = checkKey ? checkCorrect(cand.get(question.id), checkKey) : relevantShown(cand.get(question.id), relevant);
     if (before == null || after == null) {
       for (const entry of results) entry.skipped += 1;
       continue;

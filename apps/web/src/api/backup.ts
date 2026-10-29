@@ -129,6 +129,7 @@ export interface CsvImportSchedule {
 }
 
 export interface CsvImportScheduleListResponse {
+  runningScheduleIds?: string[];
   schedules: CsvImportSchedule[];
   warnings?: string[];
 }

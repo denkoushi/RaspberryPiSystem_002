@@ -33,6 +33,107 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); });
 
 describe('KioskHaizenPage', () => {
+  it('switches between card size controls and the list with sorting controls', async () => {
+    mount(); await screen.findByText('棚名1');
+    const cardButton = screen.getByRole('button', { name: 'カード表示' });
+    const listButton = screen.getByRole('button', { name: 'リスト表示' });
+    expect(cardButton).toHaveAttribute('aria-pressed', 'true');
+    expect(listButton).toHaveAttribute('title', 'リスト表示');
+    expect(listButton).toHaveClass('h-11', 'min-w-14', 'px-4');
+    expect(screen.getByRole('group', { name: '写真の大きさ' })).toBeInTheDocument();
+    fireEvent.click(listButton);
+    const table = screen.getByRole('table', { name: '配膳の一覧' });
+    expect(within(table).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '置いた日時', '足取り']);
+    expect(within(table).getAllByRole('row')).toHaveLength(4);
+    expect(within(table).queryByRole('button', { name: '消す' })).not.toBeInTheDocument();
+    expect(listButton).toHaveAttribute('aria-pressed', 'true');
+    expect(listButton).toHaveClass('bg-inv-cyan', 'text-inv-cyan-ink');
+    expect(screen.queryByRole('group', { name: '写真の大きさ' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: '並べ方' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '棚順' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(cardButton);
+    expect(screen.queryByRole('table', { name: '配膳の一覧' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '並べ方' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: '写真の大きさ' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^棚 西/ })).toHaveLength(3);
+  });
+  it('orders by natural shelf code then newest, or newest then id across shelves', async () => {
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [{ ...rows[2], id: '4', shelfCodeRaw: '西-北-10', manufacturingOrderBarcodeRaw: '789' }, ...rows], truncated: false });
+    mount(); await screen.findByText('棚名1');
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
+    const table = screen.getByRole('table', { name: '配膳の一覧' });
+    const listRows = () => within(table).getAllByRole('row').slice(1);
+    expect(listRows().map(row => within(row).getAllByRole('cell')[0].textContent)).toEqual(['棚名1', '棚名2', '棚名2', '棚マスタ未登録']);
+    expect(listRows().map(row => within(row).getAllByRole('cell')[5].textContent)).toEqual(['123', '456', '123', '789']);
+    expect(listRows()[1]).toHaveClass('border-t-2');
+    expect(within(listRows()[2]).getByRole('button')).toHaveClass('text-transparent');
+    expect(listRows()[2]).not.toHaveClass('border-t-2');
+    fireEvent.click(screen.getByRole('button', { name: '新しい順' }));
+    expect(listRows().map(row => within(row).getAllByRole('cell')[5].textContent)).toEqual(['456', '789', '123', '123']);
+    expect(listRows().map(row => within(row).getAllByRole('cell')[0].textContent)).toEqual(['棚名2', '棚マスタ未登録', '棚名2', '棚名1']);
+    for (const row of listRows()) expect(within(row).getByRole('button')).not.toHaveClass('text-transparent');
+    fireEvent.click(screen.getByRole('button', { name: '棚順' }));
+    expect(listRows().map(row => within(row).getAllByRole('cell')[5].textContent)).toEqual(['123', '456', '123', '789']);
+  });
+  it.each([
+    ['製番', 'unique', 'UNIQUE', 1],
+    ['品番', 'only', 'ONLY', 1],
+    ['機種名', 'rv-12a', 'RV-12A', 3]
+  ])('filters list rows and highlights the %s cell', async (kind, input, expected, count) => {
+    mount(); await screen.findByText('棚名1');
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
+    fireEvent.click(screen.getByRole('button', { name: kind, exact: true }));
+    await search(input);
+    const table = screen.getByRole('table', { name: '配膳の一覧' });
+    const matchedRows = within(table).getAllByRole('row').slice(1);
+    expect(matchedRows).toHaveLength(count);
+    for (const row of matchedRows) {
+      expect(row).toHaveClass('bg-inv-cyan/10');
+      expect(within(row).getAllByRole('cell')[1]).toHaveClass('text-inv-cyan');
+      expect(row.querySelectorAll('mark')).toHaveLength(1);
+      expect(row.querySelector('mark')).toHaveTextContent(expected);
+      expect(row.querySelector('mark')).toHaveClass('rounded', 'bg-inv-cyan', 'px-1', 'text-inv-cyan-ink');
+    }
+    await search('no-match');
+    expect(screen.getByText('一致する部品はどの棚にもありません')).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: '配膳の一覧' })).not.toBeInTheDocument();
+  });
+  it('opens a shelf from a list row or its native button and returns to the same list order', async () => {
+    mount(); await screen.findByText('棚名1');
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
+    fireEvent.click(screen.getByRole('button', { name: '新しい順' }));
+    const table = screen.getByRole('table', { name: '配膳の一覧' });
+    fireEvent.click(within(table).getAllByRole('row')[1]);
+    expect(screen.getByRole('heading', { name: '棚名2' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'この棚の部品' })).toBeInTheDocument();
+    for (const name of ['表示', '並べ方', '写真の大きさ']) expect(screen.queryByRole('group', { name })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '‹ 前の棚' }));
+    expect(screen.getByRole('heading', { name: '棚名1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ' }));
+    expect(screen.getByRole('button', { name: '新しい順' })).toHaveAttribute('aria-pressed', 'true');
+    const shelfButton = within(screen.getByRole('table', { name: '配膳の一覧' })).getByRole('button', { name: '棚 西-北-01 棚名1' });
+    expect(shelfButton.tagName).toBe('BUTTON');
+    shelfButton.focus();
+    expect(shelfButton).toHaveFocus();
+    fireEvent.click(shelfButton);
+    expect(screen.getByRole('heading', { name: '棚名1' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ' }));
+    expect(screen.getByRole('table', { name: '配膳の一覧' })).toBeInTheDocument();
+  });
+  it('normalizes list machine names and renders empty values and distribution labels', async () => {
+    vi.mocked(getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [{ shelfCodeRaw: '西-北-01', displayLabel: '', isStructured: true }] });
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [
+      { ...rows[0], branchNo: 0 },
+      { ...rows[1], source: 'zero2w', branchNo: null, fhinmei: '', fseiban: '', fhincd: '', machineName: '', manufacturingOrderBarcodeRaw: '' }
+    ], truncated: false });
+    mount(); await screen.findByRole('button', { name: '棚 西-北-01' });
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
+    const listRows = within(screen.getByRole('table', { name: '配膳の一覧' })).getAllByRole('row').slice(1);
+    expect(within(listRows[0]).getAllByRole('cell').slice(0, 7).map(cell => cell.textContent)).toEqual(['西-北-01', 'ブラケット', 'BA1S2320', 'K0381', 'RV-12A', '123', 'なし']);
+    expect(within(listRows[1]).getAllByRole('cell').slice(0, 7).map(cell => cell.textContent)).toEqual(['棚マスタ未登録', '品名未登録', '—', '—', '—', '—', '—']);
+    expect(listRows[0].querySelector('time')).toHaveAttribute('dateTime', rows[0].updatedAt);
+    expect(within(listRows[0]).getAllByRole('cell')[7]).toHaveClass('text-right');
+  });
   it('renders branch zero as なし', async () => {
     vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [{ ...rows[0], branchNo: 0 }], truncated: false });
     mount();
