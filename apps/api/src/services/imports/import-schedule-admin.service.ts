@@ -112,7 +112,7 @@ export class ImportScheduleAdminService {
     return ensured;
   }
 
-  async listSchedules(): Promise<{ schedules: CsvImportSchedule[]; warnings: string[] }> {
+  async listSchedules(): Promise<{ schedules: CsvImportSchedule[]; warnings: string[]; runningScheduleIds: string[] }> {
     const { config, repaired } = await this.loadConfigEnsured();
     if (repaired) {
       await this.getScheduler().reload();
@@ -120,6 +120,9 @@ export class ImportScheduleAdminService {
     return {
       schedules: config.csvImports ?? [],
       warnings: detectGmailScheduleMinuteCollisions(config),
+      runningScheduleIds: (config.csvImports ?? [])
+        .filter(({ id }) => this.backgroundRuns.has(id) || this.getScheduler().isImportRunning?.(id))
+        .map(({ id }) => id),
     };
   }
 

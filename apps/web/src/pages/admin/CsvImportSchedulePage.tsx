@@ -23,7 +23,7 @@ export function CsvImportSchedulePage() {
   );
 
   const form = useCsvImportScheduleForm({ subjectPatterns });
-  const run = useCsvImportScheduleRun({ schedules: form.schedules, refetch: form.refetch });
+  const run = useCsvImportScheduleRun({ schedules: form.schedules });
   const board = useCsvImportScheduleBoard(form.schedules);
 
   if (form.isLoading) {
@@ -60,8 +60,8 @@ export function CsvImportSchedulePage() {
               board={board}
               scheduleId={selectedSchedule.id}
               cron={selectedSchedule.schedule}
-              isRunning={run.runningScheduleId === selectedSchedule.id}
-              runDisabled={run.runningScheduleId !== null || !selectedSchedule.enabled}
+              isRunning={run.runningScheduleIds.includes(selectedSchedule.id)}
+              runDisabled={run.runningScheduleId !== null || run.runningScheduleIds.includes(selectedSchedule.id) || !selectedSchedule.enabled}
               runMessage={run.runMessage[selectedSchedule.id]}
               runError={run.runError[selectedSchedule.id]}
               onRun={() => run.handleRun(selectedSchedule.id)}
