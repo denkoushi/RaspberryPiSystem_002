@@ -11,6 +11,7 @@ import { normalizeClientKey } from '../../lib/client-key.js';
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { resolveCredentialIdentity } from '../../lib/location-scope-resolver.js';
+import { registerMobileScanFrameRoutes } from './scan-frames.js';
 import { registerMobilePlacementScheduleRoute } from './schedule-list.js';
 import { parseActualSlipImageFromUpload } from '../../services/mobile-placement/actual-slip-image-ocr.service.js';
 import { registerPlacement, resolveItemByBarcode } from '../../services/mobile-placement/mobile-placement.service.js';
@@ -208,6 +209,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   };
 
   await registerMobilePlacementScheduleRoute(app, kioskDeps);
+  await registerMobileScanFrameRoutes(app);
 
   /**
    * 登録済み棚番候補（`MobilePlacementShelf` + 構造化メタ）

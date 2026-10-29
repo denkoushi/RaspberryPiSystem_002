@@ -39,6 +39,7 @@ import { PalletMachineIllustrationsPage } from './pages/admin/PalletMachineIllus
 import { PartMeasurementTemplatesPage } from './pages/admin/PartMeasurementTemplatesPage';
 import { PhotoGallerySeedPage } from './pages/admin/PhotoGallerySeedPage';
 import { PhotoLoanLabelReviewsPage } from './pages/admin/PhotoLoanLabelReviewsPage';
+import { PlacementPhotosPage } from './pages/admin/PlacementPhotosPage';
 import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
 import { RaspiInventoryPage } from './pages/admin/RaspiInventoryPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
@@ -431,6 +432,7 @@ function App() {
         <Route path="knowledge-position-ranks" element={<MovedToKioskTagDeskPage positionRanks />} />
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
         <Route path="dgx-resource" element={<Navigate to="/admin/tools/dgx-resource" replace />} />
+        <Route path="placement-photos" element={<PlacementPhotosPage />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
         <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />
