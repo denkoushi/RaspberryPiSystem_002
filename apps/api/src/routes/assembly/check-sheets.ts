@@ -1,7 +1,6 @@
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import { assemblyCheckSheetSaveSchema, assemblyCheckSheetCreateSchema, assemblyCheckSheetStampSchema, assemblyCheckSheetConditionSchema, assemblyCheckSheetActorSchema } from '@raspi-system/shared-types';
-import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { AssemblyCheckSheetService } from '../../services/assembly/check-sheet/check-sheet.service.js';
 
@@ -57,8 +56,7 @@ export function registerAssemblyCheckSheetRoutes(
       return kioskService.transition(idParams.parse(request.params).id, action, { ...input, clientDeviceId: device?.id ?? null });
     });
   }
-  const adminOnly = authorizeRoles('ADMIN');
-  app.post('/assembly/check-sheets/imports', { preHandler: adminOnly }, async (request) => {
+  app.post('/assembly/check-sheets/imports', { preHandler: options.allowWriteKiosk }, async (request) => {
     const { sheetName } = importQuery.parse(request.query);
     const file = await request.file({ limits: { fileSize: MAX_XLSX_BYTES, files: 1, fields: 0 } });
     if (!file || !/\.xlsx$/i.test(file.filename)) throw new ApiError(400, '.xlsxファイルを指定してください');
@@ -67,8 +65,11 @@ export function registerAssemblyCheckSheetRoutes(
     if (file.file.truncated) throw new ApiError(413, 'ファイルサイズが上限を超えています');
     return service.importWorkbook(buffer, file.filename, sheetName);
   });
-  app.post('/assembly/check-sheets/revisions', { preHandler: adminOnly }, async (request) => {
-    return service.saveRevision(assemblyCheckSheetSaveSchema.parse(request.body), request.user!.id);
+  app.post('/assembly/check-sheets/revisions', { preHandler: options.allowWriteKiosk }, async (request) => {
+    const device = request.user ? null : await tryGetClientDevice(request.headers);
+    const createdBy = request.user?.id ?? (device ? `client:${device.id}` : null);
+    if (!createdBy) throw new ApiError(401, '作成者を特定できません');
+    return service.saveRevision(assemblyCheckSheetSaveSchema.parse(request.body), createdBy);
   });
   app.get('/assembly/check-sheets/revisions', { preHandler: options.allowView }, async (request) => {
     return service.listRevisions(listQuery.parse(request.query).rootId);

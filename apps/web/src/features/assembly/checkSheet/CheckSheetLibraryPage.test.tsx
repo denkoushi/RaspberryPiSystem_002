@@ -3,20 +3,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision } from '../../api/domains/assembly/check-sheets';
+import { importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision } from '../../../api/domains/assembly/check-sheets';
+import { getKioskEmployees } from '../../../api/domains/kiosk';
 
-import { importedSheet, savedSheet } from './assembly-check-sheets/testFixtures';
-import { AssemblyCheckSheetsPage } from './AssemblyCheckSheetsPage';
 
-vi.mock('../../api/domains/assembly/check-sheets', () => ({
+import { CheckSheetLibraryPage } from './CheckSheetLibraryPage';
+import { importedSheet, savedSheet } from './testFixtures';
+
+vi.mock('../../../api/domains/assembly/check-sheets', () => ({
   importAssemblyCheckSheet: vi.fn(), listAssemblyCheckSheetRevisions: vi.fn(), saveAssemblyCheckSheetRevision: vi.fn()
 }));
-vi.mock('../../api/hooks/tools', () => ({
-  useEmployees: () => ({ data: [{ id: '33333333-3333-4333-8333-333333333333', employeeCode: 'E01', displayName: '試験 太郎' }] })
-}));
+vi.mock('../../../api/domains/kiosk', () => ({ getKioskEmployees: vi.fn() }));
 
 async function openProposal() {
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><AssemblyCheckSheetsPage /></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><CheckSheetLibraryPage /></QueryClientProvider>);
   await screen.findByText('TEST-01');
   const file = new File(['synthetic workbook'], 'test.xlsx');
   fireEvent.change(screen.getByLabelText('チェックシートファイル'), { target: { files: [file] } });
@@ -24,15 +24,16 @@ async function openProposal() {
   expect(vi.mocked(importAssemblyCheckSheet).mock.calls[0][0]).toBe(file);
 }
 
-describe('AssemblyCheckSheetsPage', () => {
+describe('CheckSheetLibraryPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(getKioskEmployees).mockResolvedValue([{ id: '33333333-3333-4333-8333-333333333333', displayName: '試験 太郎', department: '制御設計' }]);
     vi.mocked(listAssemblyCheckSheetRevisions).mockResolvedValue([savedSheet()]);
     vi.mocked(importAssemblyCheckSheet).mockResolvedValue(importedSheet());
     vi.mocked(saveAssemblyCheckSheetRevision).mockResolvedValue(savedSheet(2));
   });
 
-  it('renders all proposal mappings and highlights only warning rows', async () => {
+  it('renders all proposal mappings and highlights only warning items', async () => {
     await openProposal();
     expect(screen.getByLabelText('1-1 文言')).toHaveValue('締結トルク');
     expect(screen.getByLabelText('日付')).toHaveValue('D3');
@@ -40,8 +41,8 @@ describe('AssemblyCheckSheetsPage', () => {
     expect(screen.getByLabelText('1-1 押印セル')).toHaveValue('S10');
     expect(screen.getByLabelText('1-1 値セル')).toHaveValue('F10');
     expect(screen.getByLabelText('1-2 選択肢')).toHaveValue('有\n無');
-    expect(screen.getByText('単位を確認').closest('tr')).toHaveClass('bg-amber-100');
-    expect(screen.getByLabelText('1-2 文言').closest('tr')).not.toHaveClass('bg-amber-100');
+    expect(screen.getByText('単位を確認').closest('[data-testid="check-sheet-item"]')).toHaveClass('bg-amber-950');
+    expect(screen.getByLabelText('1-2 文言').closest('[data-testid="check-sheet-item"]')).not.toHaveClass('bg-amber-950');
     expect(screen.queryByLabelText('leader')).not.toBeInTheDocument();
   });
 
@@ -49,6 +50,8 @@ describe('AssemblyCheckSheetsPage', () => {
     await openProposal();
     fireEvent.change(screen.getByLabelText('1-1 torque 単位'), { target: { value: 'N·m' } });
     fireEvent.change(screen.getByLabelText('客先名'), { target: { value: 'K6' } });
+    expect(getKioskEmployees).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('option', { name: '試験 太郎' })).toBeInTheDocument();
     const picker = screen.getByLabelText('制御設計担当');
     const option = within(picker).getByRole('option') as HTMLOptionElement;
     option.selected = true;
@@ -115,7 +118,7 @@ describe('AssemblyCheckSheetsPage', () => {
 
   it('shows upload failures near the import control', async () => {
     vi.mocked(importAssemblyCheckSheet).mockRejectedValue(new Error('.xlsxファイルを指定してください'));
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><AssemblyCheckSheetsPage /></QueryClientProvider>);
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CheckSheetLibraryPage /></QueryClientProvider>);
     fireEvent.change(screen.getByLabelText('チェックシートファイル'), { target: { files: [new File(['bad'], 'bad.txt')] } });
     expect(await screen.findByRole('alert')).toHaveTextContent('.xlsxファイルを指定してください');
     expect(screen.getByRole('heading', { name: '版一覧' })).toBeInTheDocument();
