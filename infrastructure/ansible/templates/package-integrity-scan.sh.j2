@@ -1,0 +1,66 @@
+#!/bin/bash
+set -euo pipefail
+
+LOG_DIR="{{ package_integrity_log_dir }}"
+LOG_FILE="${LOG_DIR}/{{ package_integrity_log_file }}"
+mkdir -p "${LOG_DIR}"
+
+# Run scans at the lowest CPU priority and cap their disk bandwidth so they do not starve the API/DB disk.
+# ionice is ignored by mq-deadline, so the IO cap uses a cgroup v2 scope (io.max works with any scheduler).
+LOW_PRIORITY=(nice -n 19)
+if command -v systemd-run >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
+  LOW_PRIORITY=(systemd-run --scope --quiet --collect
+    -p "IOReadBandwidthMax={{ security_scan_io_device | default('/') }} {{ security_scan_io_bandwidth_max | default('30M') }}"
+    -p "IOWriteBandwidthMax={{ security_scan_io_device | default('/') }} {{ security_scan_io_bandwidth_max | default('30M') }}"
+    nice -n 19)
+fi
+
+# The log is cumulative; only this run's lines may raise an alert.
+RUN_START_LINE=$(( $(wc -l 2>/dev/null < "${LOG_FILE}" || echo 0) + 1 ))
+TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
+echo "[$TIMESTAMP] Starting package integrity check..." >> "${LOG_FILE}"
+
+set +e
+"${LOW_PRIORITY[@]}" /usr/bin/dpkg --verify >> "${LOG_FILE}" 2>&1
+DPKG_EXIT=$?
+set -e
+
+echo "[$(date +%Y-%m-%dT%H:%M:%S)] Package integrity check completed." >> "${LOG_FILE}"
+
+ALLOWED_PATHS=(
+{% for path in package_integrity_allowed_paths %}
+  {{ path | quote }}
+{% endfor %}
+)
+
+filter_differences() {
+  local line path allowed count=0
+  local difference_pattern='^([?.0-9a-z]{9}|missing)[[:blank:]]+(c[[:blank:]]+)?(/.*)$'
+  while IFS= read -r line; do
+    [[ "${line}" =~ ${difference_pattern} ]] || continue
+    path="${BASH_REMATCH[3]}"
+    for allowed in "${ALLOWED_PATHS[@]:-}"; do
+      if [[ "${path}" == "${allowed}" ]]; then
+        continue 2
+      fi
+    done
+    printf '%s\n' "${line}"
+    count=$((count + 1))
+    if [[ ${count} -ge 50 ]]; then
+      break
+    fi
+  done < <(tail -n +"${RUN_START_LINE}" "${LOG_FILE}")
+}
+
+DIFFERENCES="$(filter_differences)"
+if [[ -n "${DIFFERENCES}" && -x "{{ alert_script_path }}" ]]; then
+  "{{ alert_script_path }}" \
+    "package-integrity-warning" \
+    "パッケージの改ざん確認で差分が見つかりました" \
+    "${DIFFERENCES}"
+elif [[ ${DPKG_EXIT} -ne 0 && -x "{{ alert_script_path }}" ]]; then
+  "{{ alert_script_path }}" \
+    "package-integrity-scan-error" \
+    "パッケージの改ざん確認でエラーが発生しました" \
+    "詳細ログ: ${LOG_FILE}"
+fi

@@ -1,7 +1,0 @@
-# Managed by Ansible (roles/server/tasks/malware.yml)
-{% for path in rkhunter_server_allow_dev_files %}
-ALLOWDEVFILE={{ path }}
-{% endfor %}
-{% for path in rkhunter_server_allow_hidden_files %}
-ALLOWHIDDENFILE={{ path }}
-{% endfor %}

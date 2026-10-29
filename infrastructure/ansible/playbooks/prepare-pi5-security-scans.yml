@@ -1,8 +1,8 @@
 ---
 # The standard release runs the server role in host-config-only mode, which
 # skips malware.yml. Apply this playbook when the nightly scan scripts
-# (templates/{clamav,trivy,trivy-image,rkhunter}-scan.sh.j2), their cron
-# schedules, rkhunter.conf.local or the security_scan_* variables change.
+# (templates/{clamav,trivy,trivy-image,package-integrity}-scan.sh.j2), their cron
+# schedules, package_integrity_* or the security_scan_* variables change.
 # Run it with --check --diff first.
 - name: Deliver the Pi5 nightly security scan scripts and schedules
   hosts: raspberrypi5
