@@ -259,10 +259,27 @@ export class PartMeasurementDrawingPlacementService {
 
   async recordDecisions(visualTemplateId: string, input: {
     approvedIds: string[]; rejectedIds: string[];
+    approvedPositions?: Array<{ id: string; xRatio: number; yRatio: number }>;
   }): Promise<{ updated: number }> {
     const decidedAt = new Date();
     // Approval wins if a caller supplies an ID in both lists. Only PROPOSED rows can transition.
     return prisma.$transaction(async (tx) => {
+      const positions = new Map((input.approvedPositions ?? [])
+        .filter((position) => input.approvedIds.includes(position.id))
+        .map((position) => [position.id, position]));
+      let positionedCount = 0;
+      for (const [id, position] of positions) {
+        // eslint-disable-next-line no-await-in-loop
+        const result = await tx.partMeasurementDrawingPlacementProposal.updateMany({
+          where: { visualTemplateId, id: { in: [id] }, status: 'PROPOSED' },
+          data: {
+            status: 'APPROVED', decidedAt,
+            decidedMarkerXRatio: position.xRatio,
+            decidedMarkerYRatio: position.yRatio
+          }
+        });
+        positionedCount += result.count;
+      }
       const approved = await tx.partMeasurementDrawingPlacementProposal.updateMany({
         where: { visualTemplateId, id: { in: input.approvedIds }, status: 'PROPOSED' },
         data: { status: 'APPROVED', decidedAt }
@@ -271,7 +288,7 @@ export class PartMeasurementDrawingPlacementService {
         where: { visualTemplateId, id: { in: input.rejectedIds }, status: 'PROPOSED' },
         data: { status: 'REJECTED', decidedAt }
       });
-      return { updated: approved.count + rejected.count };
+      return { updated: positionedCount + approved.count + rejected.count };
     });
   }
 
