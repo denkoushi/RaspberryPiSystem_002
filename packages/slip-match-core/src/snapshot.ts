@@ -2,7 +2,8 @@ import type { ProductionScheduleLookupRow } from './types.js';
 import type { PurchaseMatchRow } from './verify.js';
 
 export type DatasetVersion = { version: string; dataUpdatedAt: string | null };
-export type MobileDataVersions = { purchase: DatasetVersion; schedule: DatasetVersion; placements: DatasetVersion; purchaseEnrichment?: DatasetVersion };
+export type MobileDataVersions = { purchase: DatasetVersion; schedule: DatasetVersion; placements: DatasetVersion; purchaseEnrichment?: DatasetVersion; paged?: true };
+export type SnapshotPage<T> = DatasetVersion & { page: number; pageCount: number; pageSize: number; rows: T[]; knownFseibans?: string[] };
 export type LocalPurchaseRow = PurchaseMatchRow & {
   purchaseOrderNo: string;
   masterPartName: string;

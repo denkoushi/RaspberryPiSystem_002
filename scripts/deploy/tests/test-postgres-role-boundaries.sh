@@ -40,9 +40,9 @@ docker volume create --label com.raspi-system.temporary=true "$VOLUME" >/dev/nul
 docker run -d --name "$CONTAINER" --network "$NETWORK" \
   --label com.raspi-system.temporary=true \
   -p '127.0.0.1::5432' \
-  -v "$VOLUME:/var/lib/postgresql/data" \
+  -v "$VOLUME:/var/lib/postgresql" \
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=borrow_return \
-  pgvector/pgvector:pg15 >/dev/null
+  pgvector/pgvector:pg18 >/dev/null
 
 published_port="$(docker port "$CONTAINER" 5432/tcp)"
 [[ "$published_port" =~ ^127\.0\.0\.1:([0-9]+)$ ]] || {

@@ -15,7 +15,7 @@ import { resolvePartSearchMachineNames } from './part-search/part-search-machine
 
 import type { BasePurchaseTuple, DatasetVersion, MobileDataVersions, PurchaseTuple } from '@raspi-system/slip-match-core';
 
-type ServerMobileDataVersions = MobileDataVersions & { purchaseEnrichment: DatasetVersion; legacyPurchase: DatasetVersion };
+type ServerMobileDataVersions = Omit<MobileDataVersions, 'paged'> & { purchaseEnrichment: DatasetVersion; legacyPurchase: DatasetVersion };
 
 type Stamp = { _count: number; _max: { updatedAt: Date | null; createdAt: Date | null }; checksum?: string };
 function version(stamps: Stamp[]): DatasetVersion {
@@ -68,7 +68,11 @@ export async function getMobileDataVersions(forceRefresh = false): Promise<Serve
 }
 
 export type MobileDataset = keyof ServerMobileDataVersions;
-export type CachedMobileData = DatasetVersion & { jsonBytes: number; gzip: Buffer; rowCount: number; buildMs: number };
+export type CachedMobileData = DatasetVersion & { jsonBytes: number; gzip: Buffer; rowCount: number; buildMs: number;
+  pages: { gzip: Buffer; jsonBytes: number }[]; pageSize: number };
+export class MobileDataVersionChangedError extends Error {
+  constructor() { super('Mobile data changed during snapshot build'); }
+}
 const zip = promisify(gzip);
 
 // One completed snapshot and one in-flight build per dataset, shared across clients.
@@ -78,18 +82,35 @@ export function createMobileDataCache(
 ) {
   const cache: Partial<Record<MobileDataset, CachedMobileData>> = {};
   const pending: Partial<Record<MobileDataset, Promise<CachedMobileData>>> = {};
-  return async (kind: MobileDataset, current?: DatasetVersion): Promise<CachedMobileData> => {
+  return async function snapshot(kind: MobileDataset, current?: DatasetVersion): Promise<CachedMobileData> {
     current ??= (await versions())[kind];
     if (cache[kind]?.version === current.version) return cache[kind]!;
-    if (pending[kind]) return pending[kind]!;
+    if (pending[kind]) {
+      const result = await pending[kind]!;
+      return result.version === current.version ? result : snapshot(kind, current);
+    }
     const work = (async () => {
       const started = Date.now();
       const data = await build(kind);
       // Never publish rows read across an import/update as a completed version.
-      if ((await versions(true))[kind].version !== current.version) throw new Error('Mobile data changed during snapshot build');
+      if ((await versions(true))[kind].version !== current.version) throw new MobileDataVersionChangedError();
       const json = Buffer.from(JSON.stringify({ ...current, ...data }));
       const compressed = await zip(json);
-      const result = { ...current, jsonBytes: json.length, gzip: compressed, rowCount: data.rows.length, buildMs: Date.now() - started };
+      // Fixed boundaries for this version, regardless of the client's pageSize hint.
+      const pageSize = Math.max(5000, Math.ceil(data.rows.length / 20));
+      const pages: CachedMobileData['pages'] = [];
+      if (kind !== 'purchaseEnrichment' && kind !== 'legacyPurchase') {
+        const pageCount = Math.max(1, Math.ceil(data.rows.length / pageSize));
+        for (let page = 1; page <= pageCount; page++) {
+          const pageJson = Buffer.from(JSON.stringify({ ...current,
+            ...('format' in data ? { format: data.format } : {}), page, pageCount, pageSize,
+            rows: data.rows.slice((page - 1) * pageSize, page * pageSize),
+            ...(page === 1 && 'knownFseibans' in data ? { knownFseibans: data.knownFseibans } : {}) }));
+          pages.push({ gzip: await zip(pageJson), jsonBytes: pageJson.length });
+        }
+      }
+      const result = { ...current, jsonBytes: json.length, gzip: compressed, rowCount: data.rows.length,
+        pages, pageSize, buildMs: Date.now() - started };
       cache[kind] = result;
       return result;
     })();

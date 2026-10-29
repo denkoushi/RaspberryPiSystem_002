@@ -134,8 +134,8 @@ docker info >/dev/null
 capture_starting_docker_ids
 
 stage 'prepare isolated Docker images and resources'
-if ! docker image inspect pgvector/pgvector:pg15 >/dev/null 2>&1; then
-  docker pull pgvector/pgvector:pg15 >/dev/null
+if ! docker image inspect pgvector/pgvector:pg18 >/dev/null 2>&1; then
+  docker pull pgvector/pgvector:pg18 >/dev/null
 fi
 if command -v restic >/dev/null 2>&1; then
   RESTIC_MODE='host'
@@ -154,11 +154,11 @@ docker run -d \
   --label "$RUN_LABEL" \
   --network "$NETWORK" \
   --publish 127.0.0.1::5432 \
-  --volume "$DB_VOLUME:/var/lib/postgresql/data" \
+  --volume "$DB_VOLUME:/var/lib/postgresql" \
   --env POSTGRES_USER=postgres \
   --env POSTGRES_PASSWORD=postgres \
   --env POSTGRES_DB=borrow_return \
-  pgvector/pgvector:pg15 >/dev/null
+  pgvector/pgvector:pg18 >/dev/null
 
 for _ in $(seq 1 60); do
   if docker exec "$DB_CONTAINER" pg_isready -U postgres -d borrow_return >/dev/null 2>&1; then

@@ -1,6 +1,6 @@
 services:
   db:
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg18
     shm_size: "512mb"
     restart: unless-stopped
     env_file:
@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
-      - mac-local-db-data:/var/lib/postgresql/data
+      - mac-local-db-data-pg18:/var/lib/postgresql
     ports:
       - "5432:5432"
 
@@ -95,4 +95,4 @@ services:
       - "8080:8080"
 
 volumes:
-  mac-local-db-data:
+  mac-local-db-data-pg18:
