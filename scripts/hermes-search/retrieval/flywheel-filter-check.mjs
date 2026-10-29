@@ -24,6 +24,9 @@ function matchesFilters(record, filters) {
       if (filter.op === 'before') return text < bounds[0];
       return text >= bounds[0] && text <= bounds[bounds.length - 1];
     }
+    if (filter.op === 'not_in') {
+      return !(filter.values ?? []).some((value) => normalize(record[filter.field] ?? '') === normalize(value));
+    }
     return (filter.values ?? []).some((value) => normalize(record[filter.field]) === normalize(value));
   });
 }
@@ -33,7 +36,7 @@ function matchesCause(record, plan, causeById) {
 }
 
 /** Question-derived scope is independent of the replayed plan, including stale carried filters. */
-export function checkFollowUpAnswer({ question, previousPlan, plan, shown = [], outcome, records, catalog, bodyFields }) {
+export function checkFollowUpAnswer({ question, previousPlan, plan, shown = [], previousShown = [], outcome, records, catalog, bodyFields }) {
   const ids = shown.map(bareId);
   const unsupported = (reason) => ({ supported: false, scopeOk: null, filtersOk: null, contentOk: null,
     ok: null, matchedCount: null, expectedIds: [], shown: ids, reason });
@@ -45,6 +48,9 @@ export function checkFollowUpAnswer({ question, previousPlan, plan, shown = [], 
     .filter((field) => field.role === 'organization').map((field) => field.key);
   if (!fields.length) fields.push('originDepartmentName');
   const organization = (filters) => (filters ?? []).filter((filter) => fields.includes(filter.field));
+  if ((plan?.filters ?? []).some((filter) => !['eq', 'in', 'not_in', 'between', 'after', 'before'].includes(filter.op))) {
+    return unsupported('unsupported_op');
+  }
   const planned = organization(plan?.filters);
   if (planned.some((filter) => !['eq', 'in'].includes(filter.op))) return unsupported('unsupported_op');
   const surface = normalize(question);
@@ -54,6 +60,7 @@ export function checkFollowUpAnswer({ question, previousPlan, plan, shown = [], 
       .map((item) => ({ ...item, field, prefix: normalize(item.prefix) }));
   }).filter((item) => surface.includes(item.prefix)).sort((left, right) => right.prefix.length - left.prefix.length);
   const expected = candidates.length ? [candidates[0]] : organization(previousPlan.filters);
+  if (!candidates.length && expected.some((filter) => !['eq', 'in'].includes(filter.op))) return unsupported('unsupported_op');
   const inScope = (record) => expected.every((filter) => (filter.values ?? []).some((value) => normalize(record[filter.field]) === normalize(value)));
   const scopeOk = expected.length === 0 || (planned.length > 0
     && planned.every((filter) => filter.values?.length > 0 && filter.values.every((value) =>
@@ -62,7 +69,9 @@ export function checkFollowUpAnswer({ question, previousPlan, plan, shown = [], 
   // Use the executor's whole-corpus IDF and passage matching, including its one-specific-token rule.
   const index = buildLexicalIndex(records, bodyFields, content);
   const matches = (record) => inScope(record) && matchesSpecificToken(record, bodyFields, index);
-  const matched = records.filter(matches);
+  const otherFilters = (plan?.filters ?? []).filter((filter) => !fields.includes(filter.field));
+  const excluded = new Set(plan?.excludeShown === true || plan?.diagnostics?.excludeShown === true ? previousShown.map(bareId) : []);
+  const matched = records.filter((record) => matches(record) && matchesFilters(record, otherFilters) && !excluded.has(bareId(record.id)));
   const byId = new Map(records.map((record) => [bareId(record.id), record]));
   const filtersOk = ids.every((id) => byId.has(id) && matchesFilters(byId.get(id), plan?.filters ?? []));
   const contentOk = ids.length ? ids.every((id) => byId.has(id) && matches(byId.get(id))) : matched.length === 0;

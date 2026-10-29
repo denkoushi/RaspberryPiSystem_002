@@ -263,6 +263,84 @@ test('follow-up reports unsupported reasons and null checks for count, no conten
   }
 });
 
+test('follow-up rejects unsupported previous organization operators only when falling back', () => {
+  for (const op of ['not_in', 'between', 'contains']) {
+    const previousPlan = { ...priorFollowPlan, filters: [org(departments.slice(2), 'originDepartmentName', op)] };
+    assert.deepEqual(followCheck({ question: '同じ範囲で他にも？', previousPlan, shown: ['nonconformity:fiction-2'] }), {
+      supported: false, scopeOk: null, filtersOk: null, contentOk: null, ok: null,
+      matchedCount: null, expectedIds: [], shown: ['fiction-2'], reason: 'unsupported_op',
+    });
+    assert.equal(followCheck({ previousPlan, shown: ['fiction-2'] }).ok, true);
+  }
+});
+
+test('follow-up not_in excludes matching values and accepts different or missing values', () => {
+  const records = followRecords.map((record, i) => ({ ...record, ...(i === 2 ? { part: ' 架空部品Ａ ' } : {}) }));
+  const plan = { ...followPlan, filters: [...followPlan.filters, org(['架空部品A'], 'part', 'not_in')] };
+  assert.equal(followCheck({ records, plan, shown: ['fiction-2'] }).filtersOk, false);
+  for (const part of [undefined, null, '', '架空部品B']) {
+    const corpus = records.map((record, i) => i === 3 ? { ...record, part } : record);
+    const check = followCheck({ records: corpus, plan, shown: ['fiction-3'] });
+    assert.equal(check.ok, true);
+    assert.equal(check.matchedCount, 1);
+    assert.deepEqual(check.expectedIds, ['fiction-3']);
+  }
+});
+
+test('follow-up rejects unknown operators on any plan filter', () => {
+  for (const field of ['originDepartmentName', 'part', 'discoveredOn']) {
+    for (const op of ['contains', 'gte', 'not']) {
+      const check = followCheck({ plan: { ...followPlan, filters: [...followPlan.filters, org(['架空値'], field, op)] } });
+      assert.equal(check.supported, false);
+      assert.equal(check.reason, 'unsupported_op');
+      assert.equal(check.ok, null);
+    }
+  }
+});
+
+test('follow-up empty answers respect non-organization filters while scope remains question-derived', () => {
+  const records = followRecords.map((record) => ({ ...record, discoveredOn: '2025-06-01', part: '架空部品A' }));
+  for (const filter of [
+    org(['2026-01-01', '2026-12-31'], 'discoveredOn', 'between'),
+    org(['2026-01-01'], 'discoveredOn', 'after'),
+    org(['2025-01-01'], 'discoveredOn', 'before'),
+    org(['架空部品B'], 'part', 'eq'),
+    org(['架空部品B', '架空部品C'], 'part', 'in'),
+  ]) {
+    const check = followCheck({ question: '架空Ｂ工場で2026年のものは？', records,
+      plan: { ...followPlan, filters: [...followPlan.filters, filter] } });
+    assert.equal(check.ok, true);
+    assert.equal(check.matchedCount, 0);
+    assert.deepEqual(check.expectedIds, []);
+  }
+  const stale = followCheck({ records, plan: { ...followPlan, filters: [...priorFollowPlan.filters,
+    org(['2025-01-01', '2025-12-31'], 'discoveredOn', 'between')] } });
+  assert.equal(stale.scopeOk, false);
+  assert.equal(stale.matchedCount, 2);
+  assert.deepEqual(stale.expectedIds, ['fiction-2', 'fiction-3']);
+});
+
+test('follow-up excludeShown removes previous bare ids only when explicitly enabled', () => {
+  const plan = { ...followPlan, filters: [org([departments[2]])] };
+  const args = { question: '同じ範囲で他にも？', previousPlan: plan };
+  for (const extra of [{ excludeShown: true }, { diagnostics: { ...plan.diagnostics, excludeShown: true } },
+    { excludeShown: false, diagnostics: { ...plan.diagnostics, excludeShown: true } }]) {
+    for (const previousShown of [['fiction-2'], ['nonconformity:fiction-2']]) {
+      const check = followCheck({ ...args, plan: { ...plan, ...extra }, previousShown });
+      assert.equal(check.ok, true);
+      assert.equal(check.matchedCount, 0);
+      assert.deepEqual(check.expectedIds, []);
+    }
+    assert.equal(followCheck({ ...args, plan: { ...plan, ...extra } }).matchedCount, 1);
+    assert.equal(followCheck({ ...args, plan: { ...plan, ...extra }, previousShown: ['fiction-3'] }).matchedCount, 1);
+  }
+  for (const excludeShown of [undefined, false, 'true']) {
+    const check = followCheck({ ...args, plan: { ...plan, excludeShown }, previousShown: ['fiction-2'] });
+    assert.equal(check.contentOk, false);
+    assert.equal(check.matchedCount, 1);
+  }
+});
+
 test('follow-up supports custom and default organization fields and caps expected bare ids at twenty', () => {
   const records = Array.from({ length: 25 }, (_, i) => ({ id: `nonconformity:${i}`, unit: '架空課', condition: '希少語' }));
   records.push(...Array.from({ length: 300 }, (_, i) => ({ id: `other-${i}`, unit: '別の架空課', condition: '通常語' })));

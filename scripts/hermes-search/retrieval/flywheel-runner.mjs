@@ -522,7 +522,7 @@ export async function runFlywheelNight({
     live.loss = lossStage({ relevant, outcome: live.outcome, shown: live.shown, candidates: live.candidates, judged: live.judged });
     await writeJson(labelsPath, { schema: 'hermes-flywheel-labels/v1', labels });
     const followUpCheck = question.previousPlan && live.plan?.semanticQuery
-      ? checkFollowUpAnswer({ question: question.question, previousPlan: question.previousPlan,
+      ? checkFollowUpAnswer({ question: question.question, previousPlan: question.previousPlan, previousShown: question.previousShown ?? [],
         plan: live.plan, shown: live.shown, outcome: live.outcome, records: corpus, catalog, bodyFields }) : null;
     live.loss = followUpLoss(followUpCheck, live.loss);
     await logLive(question.id, live);
@@ -606,7 +606,7 @@ export async function runFlywheelNight({
         };
         const scoredRow = (row, result) => {
           const followUpCheck = ['real', 'regression'].includes(row.source) && row.previousPlan
-            ? checkFollowUpAnswer({ question: row.question, previousPlan: row.previousPlan, plan: result.plan,
+            ? checkFollowUpAnswer({ question: row.question, previousPlan: row.previousPlan, previousShown: row.previousShown ?? [], plan: result.plan,
               shown: result.shown, outcome: result.outcome, records: corpus, catalog, bodyFields }) : null;
           return { ...row, live: { ...result, loss: followUpLoss(followUpCheck, result.loss) },
             ...(followUpCheck ? { followUpCheck } : {}),
