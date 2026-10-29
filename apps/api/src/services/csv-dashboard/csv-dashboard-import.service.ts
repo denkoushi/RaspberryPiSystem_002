@@ -429,20 +429,6 @@ export class CsvDashboardImportService {
           const shouldPostProcess = provider === 'gmail' && !!messageId && CsvDashboardImportService.canPostProcessGmail(storageProvider);
           if (shouldPostProcess && messageId) {
             try {
-              await storageProvider.markAsRead(messageId);
-            } catch (postProcessError) {
-              if (safeMessageId) {
-                postProcessErrorByMessageIdSuffix[safeMessageId] = {
-                  step: 'markAsRead',
-                  error:
-                    postProcessError instanceof Error ? postProcessError.message : String(postProcessError),
-                };
-              }
-              // 後処理に失敗した場合は、メールを残して次回再試行できるようにする
-              throw postProcessError;
-            }
-
-            try {
               await storageProvider.trashMessage(messageId);
             } catch (postProcessError) {
               if (safeMessageId) {
@@ -452,8 +438,24 @@ export class CsvDashboardImportService {
                     postProcessError instanceof Error ? postProcessError.message : String(postProcessError),
                 };
               }
-              // 後処理に失敗した場合は、メールを残して次回再試行できるようにする
+              // 未読のまま残し、次回の未読検索で再試行する
               throw postProcessError;
+            }
+
+            try {
+              await storageProvider.markAsRead(messageId);
+            } catch (postProcessError) {
+              if (safeMessageId) {
+                postProcessErrorByMessageIdSuffix[safeMessageId] = {
+                  step: 'markAsRead',
+                  error:
+                    postProcessError instanceof Error ? postProcessError.message : String(postProcessError),
+                };
+              }
+              logger?.warn(
+                { err: postProcessError, dashboardId, messageId },
+                '[CsvDashboardImportService] Failed to mark trashed message as read'
+              );
             }
 
             if (safeMessageId) postProcessedMessageIdSuffixes.push(safeMessageId);
@@ -471,7 +473,7 @@ export class CsvDashboardImportService {
           if (safeMessageId) failedMessageIdSuffixes.push(safeMessageId);
           if (safeMessageId) postProcessStateByMessageIdSuffix[safeMessageId] = 'failed';
           logger?.error(
-            { err: error, dashboardId, messageId },
+            { err: error, dashboardId, messageId, postProcessError: safeMessageId ? postProcessErrorByMessageIdSuffix[safeMessageId] : undefined },
             '[CsvDashboardImportService] CSV dashboard ingestion failed for message'
           );
           if (provider === 'gmail' && messageId) {
