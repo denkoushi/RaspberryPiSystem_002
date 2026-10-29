@@ -38,6 +38,9 @@ ZXing の一次元バーコードでは result points の高さが 0 の場合�
 - Decision: サーバーの写真は自動削除しない。
   Rationale: ADR-20260731 と依頼に従う。依頼時の容量見積りは約 685GB 空き、1 日数 MB。閲覧は ADMIN に限り、既存 durable store の空き容量下限で受け取りを 507 として停止する。端末側の 300 件 / 60MB 制限は別である。
   Date/Author: 2026-10-29 / Codex
+- Decision: サーバーの写真は新しい名前空間を作らず、既存の `photos` ボリュームの `photos/mobile-scan-frames/YYYY/MM/` に置く。
+  Rationale: 名前空間ごとに Pi5 の専用ボリューム(compose、Dockerfile、Ansible の storage contract、DR 方針)が要り、名前空間だけ足すと起動時の初期化で API が止まった(CI の container-runtime-rehearsal)。`photos` は既にバックアップと DR の対象で、貸出写真の年次削除は `photos/YYYY/01` だけを見るためこの配下に触れない。
+  Date/Author: 2026-10-29 / Claude
 - Decision: 切り抜きだけでなく全体フレームを残す。
   Rationale: 暗さ・ぶれ・反射・距離と背景の後続分析に必要。元映像は長辺 1280px に縮小し JPEG 品質 0.7、crop は長辺 640px 以下。
   Date/Author: 2026-10-29 / Codex

@@ -51,7 +51,7 @@ describe('mobile scan frame POST', () => {
     expect(prisma.orderPlacementEvent.findUnique).toHaveBeenCalledWith({ where: { clientRecordId: placementId } });
     expect(prisma.mobileScanFrame.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ orderPlacementEventId: 'event', clientDeviceId: 'device', fullBytes: 5, cropBytes: 5 }) }));
     expect(files.writeBatch.mock.calls[0][0]).toEqual([
-      expect.objectContaining({ key: expect.stringMatching(/^mobile-scan-frames\/2026\/10\/[\da-f-]+-full.jpg$/), integrity: true, mode: 'create' }),
+      expect.objectContaining({ key: expect.stringMatching(/^photos\/mobile-scan-frames\/2026\/10\/[\da-f-]+-full.jpg$/), integrity: true, mode: 'create' }),
       expect.objectContaining({ key: expect.stringMatching(/-crop.jpg$/), integrity: true })
     ]);
   });

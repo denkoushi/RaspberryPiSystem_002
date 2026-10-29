@@ -56,7 +56,8 @@ export async function saveMobileScanFrame(input: z.infer<typeof scanFrameBodySch
   if (event && event.clientDeviceId !== clientDeviceId) throw new ApiError(400, '配置記録の端末が一致しません');
   const id = randomUUID();
   const capturedAt = new Date(input.capturedAt);
-  const prefix = `mobile-scan-frames/${capturedAt.toISOString().slice(0, 7).replace('-', '/')}/${id}`;
+  // Stored in the existing photos volume; the photo-loan yearly cleanup only lists photos/YYYY/01.
+  const prefix = `photos/mobile-scan-frames/${capturedAt.toISOString().slice(0, 7).replace('-', '/')}/${id}`;
   const fullKey = `${prefix}-full.jpg`;
   const cropKey = crop ? `${prefix}-crop.jpg` : undefined;
   const store = getFileStorageRuntime().store;
