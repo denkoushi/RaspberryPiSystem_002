@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { haizenOutboxRunner } from '../haizen/offline/haizenOutboxRunner';
 import { syncMobileLocalData } from '../local-data/mobileLocalDataSync';
 import { mobilePlacementQueryKeys } from '../mobilePlacementQueryKeys';
+import { scanFrameUploadRunner } from '../scan-frames/scanFrameUploadRunner';
 import { shelfOutboxRunner } from '../shelfMaster/offline/shelfOutboxRunner';
 
 import { registerSyncJob, start, stop } from './syncScheduler';
@@ -29,7 +30,8 @@ export function MobileSyncProvider({ children }: { children: ReactNode }) {
       shelf.onSent(invalidateShelves),
       registerSyncJob({ name: 'haizen-outbox', run: haizen.flush, hasPendingWork: haizen.hasPendingWork }),
       registerSyncJob({ name: 'shelf-outbox', run: shelf.flush, hasPendingWork: shelf.hasPendingWork }),
-      registerSyncJob({ name: 'local-data', run: syncMobileLocalData })
+      registerSyncJob({ name: 'local-data', run: syncMobileLocalData }),
+      registerSyncJob({ name: 'scan-frames', ...scanFrameUploadRunner })
     ];
     start();
     return () => { stop(); cleanup.forEach((dispose) => dispose()); };

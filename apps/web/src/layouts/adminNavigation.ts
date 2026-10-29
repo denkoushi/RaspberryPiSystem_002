@@ -63,7 +63,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { label: 'DGXリソース', to: '/admin/tools/dgx-resource' },
       { label: 'LocalLLM', to: '/admin/local-llm' },
       { label: '写真持出VLM', to: '/admin/photo-loan-label-reviews' },
-      { label: 'ギャラリー教師登録', to: '/admin/photo-gallery-seed' }
+      { label: 'ギャラリー教師登録', to: '/admin/photo-gallery-seed' },
+      { label: '配膳写真', to: '/admin/placement-photos' }
     ]
   },
   {

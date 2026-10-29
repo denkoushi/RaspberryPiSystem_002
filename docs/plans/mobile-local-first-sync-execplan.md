@@ -75,6 +75,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Date/Author: 2026-10-28 / ユーザー、記録 Claude
 - Decision: 棚マスタの配置編集(区画のレイアウト編集、棚の移動、Zero2W の割り当て)もスマホの機能なので例外にしない。圏外でも操作を受け付けて端末にすぐ反映し、Wi-Fi に戻ったら裏で送る。再送に安全でない点は Milestone 4 の操作 ID(`MobileClientOperation`)で解消する。
   Rationale: ユーザー指摘(2026-10-28)「スマートフォンの話だぞ」。スマホの全機能をローカル優先にする。
+- Decision: [読取フレーム保存と配膳写真](mobile-scan-frame-capture-execplan.md)に従い、scan-frames ジョブを最後に登録した（2026-10-29）。
 
 
 ## Outcomes & Retrospective

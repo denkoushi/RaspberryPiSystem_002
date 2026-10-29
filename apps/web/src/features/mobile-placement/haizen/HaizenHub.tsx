@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../barcode-scan';
 import { MobileOfflineChip } from '../local-data/MobileOfflineChip';
 import { useMobileLocalData } from '../local-data/useMobileLocalData';
+import { saveScanFrame, onScanIdle, type FrameDetails } from '../scan-frames/saveScanFrame';
+import { scanFrameStore, shouldSampleFrame } from '../scan-frames/scanFrameStore';
 import { useShelfOfflineQueue } from '../shelfMaster/offline/useShelfOfflineQueue';
 import { haizenPhoneColors as colors, haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 import { useShelfMachines } from '../useShelfMachines';
@@ -17,6 +19,7 @@ import { useHaizenOfflineQueue } from './offline/useHaizenOfflineQueue';
 import { useHaizenWorkflow } from './useHaizenWorkflow';
 
 import type { HaizenState } from './useHaizenWorkflow';
+import type { ScanFrameCapture } from '../../barcode-scan/scanFrameCapture';
 import type { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import type { useRegisteredShelves } from '../useRegisteredShelves';
 
@@ -46,6 +49,29 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   const localData = useMobileLocalData('verify');
   useShelfOfflineQueue();
   useShelfMachines();
+  const decodedCaptures = useRef<Partial<Record<'transferOrder' | 'placePurchaseOrder', ScanFrameCapture>>>({});
+  const timeoutCapture = useRef<{ id: string; field: string | null; details: FrameDetails } | null>(null);
+  useEffect(() => {
+    if (mp.scanField === 'transferOrder' || mp.scanField === 'placePurchaseOrder') delete decodedCaptures.current[mp.scanField];
+    if (mp.scanField !== null) timeoutCapture.current = null;
+  }, [mp.scanField]);
+  const captureFrame = (capture: ScanFrameCapture) => {
+    if (capture.outcome === 'decoded' && (mp.scanField === 'transferOrder' || mp.scanField === 'placePurchaseOrder')) {
+      decodedCaptures.current[mp.scanField] = capture;
+    }
+    if (shouldSampleFrame(capture)) {
+      const details: FrameDetails = { kind: 'scan-frame' };
+      const id = saveScanFrame(capture, details);
+      if (capture.outcome === 'timeout') timeoutCapture.current = { id, field: mp.scanField, details };
+    }
+  };
+  const recordManualValue = (field: string | null, value: string) => {
+    if (field === 'transferOrder' || field === 'placePurchaseOrder') delete decodedCaptures.current[field];
+    const pending = timeoutCapture.current;
+    if (!pending || pending.field !== field) return;
+    pending.details.manualValue = value;
+    onScanIdle(() => scanFrameStore.updateManualValue(pending.id, value));
+  };
   const [placeSlip, setPlaceSlip] = useState<{ kind: 'mo' | 'po'; number: string } | null>(null);
   const [selectedBranchNo, setSelectedBranchNo] = useState<number | null>(null);
   const [branchSelectionVersion, setBranchSelectionVersion] = useState(0);
@@ -106,9 +132,15 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     const place = (shelf && [shelf.machineName, shelf.direction, shelf.displayLabel].filter(Boolean).join(' ')) || activeShelfCode;
     const moving = Boolean(selectedBranch);
     // Saved on the phone first; the send continues in the background so a weak link never holds the button.
+    const clientRecordId = createHaizenClientRecordId();
     const sending = queue.submit({
-      clientRecordId: createHaizenClientRecordId(), slipKind: tab === 'verify' || placeSlip?.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
+      clientRecordId, slipKind: tab === 'verify' || placeSlip?.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
       number: activeNumber, shelfCode: activeShelfCode, scannedAt: tab === 'verify' ? verifyScannedAt : scannedAt, branchNo: activeBranchNo
+    });
+    const capture = decodedCaptures.current[tab === 'verify' || placeSlip?.kind === 'mo' ? 'transferOrder' : 'placePurchaseOrder'];
+    if (capture?.decodedValue?.trim() === activeNumber.trim()) saveScanFrame(capture, {
+      kind: 'placement-photo', clientRecordId, shelfCodeRaw: activeShelfCode,
+      slipKind: tab === 'verify' || placeSlip?.kind === 'mo' ? 'manufacturing_order' : 'purchase_order'
     });
     if (tab === 'verify') nextVerify();
     else { setPlaceSlip(null); setSelectedBranchNo(null); }
@@ -259,7 +291,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
           { label: '移動票 製造order', value: placeSlip?.kind === 'mo' ? placeSlip.number : '', set: (value: string) => readPlaceSlip('mo', value), scan: 'transferOrder' as const, actual: false },
           { label: '現品票 注文番号', value: placeSlip?.kind === 'po' ? placeSlip.number : '', set: (value: string) => readPlaceSlip('po', value), scan: 'placePurchaseOrder' as const, actual: false }
         ] : fields).map((field) => <label key={field.label} className={`flex flex-col gap-1 text-[13px] ${hp.muted}`}>
-          {field.label}<span className="flex gap-2"><input className={`${hp.input} flex-1`} value={field.value} onChange={(e) => tab === 'place' ? field.set(e.target.value) : change(field.set, e.target.value, field.actual)} />
+          {field.label}<span className="flex gap-2"><input className={`${hp.input} flex-1`} value={field.value} onChange={(e) => { recordManualValue(field.scan, e.target.value); if (tab === 'place') field.set(e.target.value); else change(field.set, e.target.value, field.actual); }} />
             {field.scan && <button type="button" aria-label={`${field.label}をスキャン`} className={`${hp.mini} !h-11`} onClick={() => { setSheet(null); mp.setScanField(field.scan); }}><HaizenIcon name="scan" className="h-5 w-5" /></button>}
           </span>
         </label>)}
@@ -286,7 +318,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
       </section>)}
       {(sheet === 'pending' ? queue.pending : queue.needsCheck).length === 0 && <p className={hp.empty}>記録はありません</p>}
     </HaizenSheet>}
-    <BarcodeScanModal open={mp.scanField !== null} formats={mp.scanFormats} engine="auto-native" {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
+    <BarcodeScanModal onFrameCaptured={captureFrame} open={mp.scanField !== null} formats={mp.scanFormats} engine="auto-native" {...KIOSK_STANDARD_BARCODE_SCAN_SESSION}
       onSuccess={(text) => {
         if (tab === 'place' && (mp.scanField === 'transferOrder' || mp.scanField === 'placePurchaseOrder')) {
           readPlaceSlip(mp.scanField === 'placePurchaseOrder' ? 'po' : 'mo', text, retakeSelection.current); mp.setScanField(null);

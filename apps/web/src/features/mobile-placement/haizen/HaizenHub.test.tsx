@@ -8,6 +8,7 @@ import { getOrderPlacementBranches, getMobilePlacementShelfMachines, moveOrderPl
 import { api } from '../../../api/http';
 import { resetMobileConnectivityForTests, mobileRequest, MOBILE_REQUEST_TIMEOUT_MS, canUseMobileNetwork } from '../connectivity';
 import { saveOrderBranches } from '../orderPlacementBranchesCache';
+import { saveScanFrame } from '../scan-frames/saveScanFrame';
 import { shelfOfflineQueueStore } from '../shelfMaster/offline/shelfOfflineQueueStore';
 import { MobileSyncProvider } from '../sync/MobileSyncProvider';
 import { resetSyncSchedulerForTests } from '../sync/syncScheduler';
@@ -19,20 +20,22 @@ import { HaizenHub } from './HaizenHub';
 import { haizenOfflineQueueStore } from './offline/haizenOfflineQueueStore';
 
 import type { HaizenHubSheet } from './HaizenHub';
+import type { ScanFrameCapture } from '../../barcode-scan/scanFrameCapture';
 
 vi.mock('../../../api/http', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 
-const mocks = vi.hoisted(() => ({ realBranches: false, branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
+const mocks = vi.hoisted(() => ({ scanValue: 'SCANNED', realBranches: false, branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
 vi.mock('../local-data/mobileLocalDataSync', () => ({ syncMobileLocalData: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   getOrderPlacementBranches: vi.fn(), getMobilePlacementShelfMachines: vi.fn(),
   moveOrderPlacementBranch: vi.fn(), registerOrderPlacement: vi.fn(),
   verifyMobilePlacementSlipMatch: vi.fn(), parseActualSlipImage: vi.fn(), getMobilePlacementShelfPhoto: vi.fn()
 }));
+vi.mock('../scan-frames/saveScanFrame', () => ({ saveScanFrame: vi.fn(() => 'frame-id'), onScanIdle: vi.fn() }));
 vi.mock('../../barcode-scan', () => ({
   KIOSK_STANDARD_BARCODE_SCAN_SESSION: {},
-  BarcodeScanModal: ({ open, onSuccess, onAbort, engine }: { open: boolean; onSuccess: (v: string) => void; onAbort: () => void; engine: string }) => open
-    ? <div role="dialog" aria-label="scanner"><span>{engine}</span><button onClick={() => onSuccess('SCANNED')}>scan</button><button onClick={onAbort}>abort</button></div> : null
+  BarcodeScanModal: ({ open, onSuccess, onAbort, engine, onFrameCaptured }: { onFrameCaptured?: (capture: ScanFrameCapture) => void; open: boolean; onSuccess: (v: string) => void; onAbort: () => void; engine: string }) => open
+    ? <div role="dialog" aria-label="scanner"><span>{engine}</span><button onClick={() => { onFrameCaptured?.({ outcome: 'decoded', decodedValue: mocks.scanValue, decodeMs: 1500, retryCount: 0, engine: 'native', camera: {}, cropBox: null, capturedAt: new Date().toISOString(), fullCanvas: document.createElement('canvas') }); onSuccess(mocks.scanValue); }}>scan</button><button onClick={onAbort}>abort</button><button onClick={() => { onFrameCaptured?.({ outcome: 'timeout', decodedValue: null, decodeMs: 30000, retryCount: 0, engine: 'native', camera: {}, cropBox: null, capturedAt: new Date().toISOString(), fullCanvas: document.createElement('canvas') }); onAbort(); }}>timeout</button></div> : null
 }));
 vi.mock('../useRegisteredShelves', () => ({ useRegisteredShelves: () => ({
   data: { shelves: [{ shelfCodeRaw: 'A-03', isStructured: true, machineName: '50013_540AP', direction: '北' }, { shelfCodeRaw: 'A-04', isStructured: true, machineName: '研削', direction: '南' }] },
@@ -87,6 +90,7 @@ async function chooseShelf(branchNo = 1) {
 beforeEach(async () => {
   vi.resetAllMocks();
   localStorage.clear();
+  mocks.scanValue = 'SCANNED';
   mocks.realBranches = false; mocks.branches = []; mocks.branchError = false; mocks.branchLoading = false; mocks.branchFetching = false;
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
   window.dispatchEvent(new Event('online'));
@@ -720,4 +724,93 @@ describe('Haizen hub', () => {
     expect(screen.getByRole('button', { name: 'ここへ移す' })).toBeEnabled();
   });
 
+});
+
+
+describe('Haizen scan frame wiring', () => {
+  it('attaches the same scan and clientRecordId immediately when placing', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    await chooseShelf();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    const photo = vi.mocked(saveScanFrame).mock.calls.find(([, details]) => details.kind === 'placement-photo');
+    expect(photo?.[0].decodedValue).toBe('SCANNED');
+    expect(photo?.[1]).toMatchObject({ shelfCodeRaw: 'A-03', slipKind: 'manufacturing_order' });
+    await waitFor(async () => expect((await haizenOfflineQueueStore.list())[0]?.clientRecordId).toBe(photo?.[1].clientRecordId));
+  });
+  it.each(['移動票', '現品票'])('keeps the %s photo after scanning a shelf on the place tab', async (slip) => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: `${slip}を読む` }));
+    fireEvent.click(screen.getByText('scan'));
+    const capture = vi.mocked(saveScanFrame).mock.calls[0][0];
+    fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '大きい画面で選ぶ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR', exact: true }));
+    mocks.scanValue = 'A-03';
+    fireEvent.click(screen.getByText('scan'));
+    expect(screen.getByRole('button', { name: 'ここに置く' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    const photo = vi.mocked(saveScanFrame).mock.calls.find(([, details]) => details.kind === 'placement-photo');
+    expect(photo?.[0]).toBe(capture);
+    expect(photo?.[1]).toMatchObject({ shelfCodeRaw: 'A-03', slipKind: slip === '移動票' ? 'manufacturing_order' : 'purchase_order' });
+    await waitFor(async () => expect((await haizenOfflineQueueStore.list())[0]?.clientRecordId).toBe(photo?.[1].clientRecordId));
+  });
+  it.each(['scan', 'manual'])('keeps the transfer photo through actual slip %s and shelf choice on verify', async (mode) => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    const capture = vi.mocked(saveScanFrame).mock.calls[0][0];
+    if (mode === 'scan') {
+      fireEvent.click(screen.getByRole('button', { name: '現品票を読む' }));
+      mocks.scanValue = 'ACTUAL';
+      fireEvent.click(screen.getByText('scan'));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+      fireEvent.change(screen.getByLabelText('現品票 注文番号 / 製造order'), { target: { value: 'ACTUAL' } });
+      fireEvent.change(screen.getByLabelText('現品票 部品番号'), { target: { value: 'PART1' } });
+      fireEvent.click(screen.getByRole('button', { name: '完了' }));
+    }
+    await screen.findByRole('status', { name: '一致' });
+    fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: '棚 50013_540AP 北', exact: true }));
+    expect(screen.getByRole('button', { name: 'ここに置く' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    const photo = vi.mocked(saveScanFrame).mock.calls.find(([, details]) => details.kind === 'placement-photo');
+    expect(photo?.[0]).toBe(capture);
+    expect(photo?.[1]).toMatchObject({ shelfCodeRaw: 'A-03', slipKind: 'manufacturing_order' });
+    await waitFor(async () => expect((await haizenOfflineQueueStore.list())[0]?.clientRecordId).toBe(photo?.[1].clientRecordId));
+  });
+  it('clears only the reread field when a new scan is aborted', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('abort'));
+    await chooseShelf();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    expect(vi.mocked(saveScanFrame).mock.calls.some(([, details]) => details.kind === 'placement-photo')).toBe(false);
+  });
+  it('does not attach a frame after replacing the number manually', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    typePlaceSlip('mo', 'OTHER');
+    await chooseShelf();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    expect(vi.mocked(saveScanFrame).mock.calls.some(([, details]) => details.kind === 'placement-photo')).toBe(false);
+  });
+  it('enriches timeout metadata from the following manual input', () => {
+    vi.mocked(saveScanFrame).mockReturnValue('timeout-frame');
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('timeout'));
+    typePlaceSlip('mo', 'MANUAL');
+    expect(vi.mocked(saveScanFrame).mock.calls[0][1]).toMatchObject({ kind: 'scan-frame', manualValue: 'MANUAL' });
+  });
 });
