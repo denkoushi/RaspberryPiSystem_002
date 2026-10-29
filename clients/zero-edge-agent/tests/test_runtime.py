@@ -24,6 +24,25 @@ def test_copied_status_agent_imports_without_repository(tmp_path):
     assert "Raspberry Pi status agent" in result.stdout
 
 
+def test_sigterm_while_stop_lock_is_held_does_not_deadlock():
+    # Deterministically hit the window inside Event.wait() where the main thread holds the lock.
+    script = """
+import os, signal, threading
+from zero_edge_agent.main import install_stop_handlers
+stop = threading.Event()
+install_stop_handlers(stop)
+with stop._cond:
+    os.kill(os.getpid(), signal.SIGTERM)
+assert stop.wait(5)
+print('STOPPED', flush=True)
+"""
+    env = dict(os.environ, PYTHONPATH=str(ROOT / "clients/zero-edge-agent"))
+    result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True,
+                            text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "STOPPED"
+
+
 def test_sigterm_stops_reader_and_sender_and_closes_queue(tmp_path):
     queue_path = tmp_path / "queue.db"
     config = tmp_path / "agent.conf"

@@ -37,11 +37,17 @@ class ScanProcessor:
         LOG.info("Queued scan %s branch=%d", record_id, branch)
 
 
+def install_stop_handlers(stop):
+    # Event.set() takes a non-reentrant lock; calling it from the handler deadlocks when the
+    # signal lands while the main thread holds that lock inside stop.wait().
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(signum, lambda *_: threading.Thread(target=stop.set, daemon=True).start())
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     stop = threading.Event()
-    for signum in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(signum, lambda *_: stop.set())
+    install_stop_handlers(stop)
     queue = None
     worker = None
     failed = False
