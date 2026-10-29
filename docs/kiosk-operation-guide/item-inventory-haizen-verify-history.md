@@ -1,13 +1,13 @@
 ---
-title: 照合の記録
+title: 照合の履歴
 routes: [/kiosk/inventory/haizen/verify-history]
-keywords: [配膳, 照合, 移動票, 現品票, 一致, 不一致, 履歴, 記録]
+keywords: [配膳, 照合, 移動票, 現品票, 一致, 不一致, 履歴]
 audience: [operators]
 category: kiosk-operation-guide
 last-verified: 2026-10-29
 ---
 
-# 照合の記録
+# 照合の履歴
 
 ## この画面でできること
 
