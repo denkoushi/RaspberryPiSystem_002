@@ -66,10 +66,11 @@ export function evaluateSlipPairMatch(params: {
   const tPartScan = normalizeSlipToken(transferPartBarcodeRaw ?? '');
   const aPartScan = normalizeSlipToken(actualPartBarcodeRaw ?? '');
 
-  if (tPartScan && transferRow.fhincd.trim().toUpperCase() !== tPartScan.toUpperCase()) {
+  // A scanned order number is not evidence of a part number.
+  if (tPartScan && !/^\d{10}$/.test(tPartScan) && transferRow.fhincd.trim().toUpperCase() !== tPartScan.toUpperCase()) {
     return { ok: false, reason: 'TRANSFER_PART_MISMATCH' };
   }
-  if (aPartScan && actualRow.fhincd.trim().toUpperCase() !== aPartScan.toUpperCase()) {
+  if (aPartScan && !/^\d{10}$/.test(aPartScan) && actualRow.fhincd.trim().toUpperCase() !== aPartScan.toUpperCase()) {
     return { ok: false, reason: 'ACTUAL_PART_MISMATCH' };
   }
 

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getOrderPlacementBranches, getMobilePlacementShelfMachines, moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
 import { api } from '../../../api/http';
 import { resetMobileConnectivityForTests, mobileRequest, MOBILE_REQUEST_TIMEOUT_MS, canUseMobileNetwork } from '../connectivity';
+import { mobileLocalDataStore } from '../local-data/mobileLocalDataStore';
 import { saveOrderBranches } from '../orderPlacementBranchesCache';
 import { saveScanFrame } from '../scan-frames/saveScanFrame';
 import { shelfOfflineQueueStore } from '../shelfMaster/offline/shelfOfflineQueueStore';
@@ -387,6 +388,69 @@ describe('Haizen hub', () => {
     expect(screen.queryByRole('status', { name: '一致' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現品票を読む' })).toBeInTheDocument();
   });
+  it.each(['manual', 'scan'] as const)('clears a stale transfer part after a new order via %s', async (method) => {
+    mount(); typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    fireEvent.change(screen.getByLabelText('移動票 部品番号'), { target: { value: 'STALE' } });
+    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferPartBarcodeRaw: 'STALE' })));
+    if (method === 'manual') {
+      fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: '0004099556' } });
+    } else {
+      mocks.scanValue = '0004099556';
+      fireEvent.click(screen.getByRole('button', { name: '移動票 製造orderをスキャン' }));
+      fireEvent.click(screen.getByText('scan'));
+      fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    }
+    expect(screen.getByLabelText('移動票 部品番号')).toHaveValue('');
+    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferOrderBarcodeRaw: '0004099556', transferPartBarcodeRaw: '' })));
+  });
+
+  it.each([
+    ['', 'MD004883240'],
+    ['0002178005', ' MD000006755-002 ']
+  ])('routes a part scan without replacing transfer order %j', (order, part) => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: order } });
+    fireEvent.change(screen.getByLabelText('移動票 部品番号'), { target: { value: 'STALE' } });
+    mocks.scanValue = part;
+    fireEvent.click(screen.getByRole('button', { name: '移動票 製造orderをスキャン' }));
+    fireEvent.click(screen.getByText('scan'));
+    expect(screen.queryByRole('dialog', { name: 'scanner' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    expect(screen.getByLabelText('移動票 製造order')).toHaveValue(order);
+    expect(screen.getByLabelText('移動票 部品番号')).toHaveValue(part.trim());
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps alphabetic transfer scans as order values in the place tab', () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    mocks.scanValue = 'MD004883240';
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    expect(screen.getByLabelText('移動票 製造order')).toHaveValue('MD004883240');
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+  });
+
+  describe.each(['api', 'device'] as const)('part mismatch messages via %s', (source) => {
+    it.each([
+      ['TRANSFER_PART_MISMATCH', '移動票の部品番号が違います'],
+      ['ACTUAL_PART_MISMATCH', '現品票の部品番号が違います'],
+      ['FSEIBAN_OR_PART_PAIR_MISMATCH', '部品が違います'],
+      [undefined, '部品が違います']
+    ] as const)('renders %s', async (legacyReason, message) => {
+      const response = { ok: false, reason: 'different_part' as const, legacyReason };
+      if (source === 'device') vi.spyOn(mobileLocalDataStore, 'verify').mockResolvedValue(response);
+      else vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue(response);
+      mount(); typeSlips();
+      expect(await screen.findByRole('status', { name: '不一致' })).toHaveTextContent(message);
+      if (source === 'device') expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+      else expect(verifyMobilePlacementSlipMatch).toHaveBeenCalled();
+    });
+  });
   it('mismatch retries the actual slip, scanner stays auto-native', async () => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: false, reason: 'different_seiban', actual: { fseiban: 'FS2' } });
     mount();
@@ -766,6 +830,7 @@ describe('Haizen scan frame wiring', () => {
   });
   it.each(['scan', 'manual'])('keeps the transfer photo through actual slip %s and shelf choice on verify', async (mode) => {
     mount();
+    mocks.scanValue = '0002178005';
     fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
     fireEvent.click(screen.getByText('scan'));
     const capture = vi.mocked(saveScanFrame).mock.calls[0][0];

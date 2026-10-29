@@ -80,7 +80,12 @@ export function useMobilePlacementPageState() {
           setOrderBarcode(v);
           break;
         case 'transferOrder':
-          setTransferOrder(v);
+          if (/^[a-z]/i.test(v)) {
+            setTransferPart(v);
+          } else {
+            if (transferOrder && transferOrder !== v) setTransferPart('');
+            setTransferOrder(v);
+          }
           break;
         case 'transferPart':
           setTransferPart(v);
@@ -99,7 +104,7 @@ export function useMobilePlacementPageState() {
       setSlipResult('idle');
       setScanField(null);
     },
-    [scanField]
+    [scanField, transferOrder]
   );
 
   const applyActualSlipOcrResponse = useCallback((res: ActualSlipOcrResponse) => {
