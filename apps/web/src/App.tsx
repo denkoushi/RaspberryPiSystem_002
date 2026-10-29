@@ -57,6 +57,8 @@ import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskHaizenPage } from './pages/kiosk/KioskHaizenPage';
+import { KioskHaizenTrailPage } from './pages/kiosk/KioskHaizenTrailPage';
+import { KioskHaizenVerifyHistoryPage } from './pages/kiosk/KioskHaizenVerifyHistoryPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskItemInventoryDashboardPage } from './pages/kiosk/KioskItemInventoryDashboardPage';
 import { KioskItemInventoryPage } from './pages/kiosk/KioskItemInventoryPage';
@@ -234,6 +236,8 @@ function App() {
           />
           <Route element={<MobileSyncProvider><PlacementDeleteSyncJob /><Outlet /></MobileSyncProvider>}>
             <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
+            <Route path="/kiosk/inventory/haizen/verify-history" element={<KioskHaizenVerifyHistoryPage />} />
+            <Route path="/kiosk/inventory/haizen/trail" element={<KioskHaizenTrailPage />} />
             <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
             <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
             <Route path="/kiosk/mobile-placement/shelf-master" element={<KioskMobileShelfMasterPage />} />

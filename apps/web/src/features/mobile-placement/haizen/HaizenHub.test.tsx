@@ -15,6 +15,7 @@ import { resetSyncSchedulerForTests } from '../sync/syncScheduler';
 import { useMobilePlacementPageState } from '../useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import { useRegisteredShelves } from '../useRegisteredShelves';
+import { verifyRecordStore } from '../verify-records/verifyRecordStore';
 
 import { HaizenHub } from './HaizenHub';
 import { haizenOfflineQueueStore } from './offline/haizenOfflineQueueStore';
@@ -95,6 +96,7 @@ beforeEach(async () => {
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
   window.dispatchEvent(new Event('online'));
   vi.mocked(getMobilePlacementShelfMachines).mockResolvedValue({ machines: ['50013_540AP'], landmarks: ['電気室'] });
+  for (const record of await verifyRecordStore.list()) await verifyRecordStore.remove(record);
   for (const record of await shelfOfflineQueueStore.list()) await shelfOfflineQueueStore.remove(record.id);
   for (const record of await haizenOfflineQueueStore.list()) await haizenOfflineQueueStore.remove(record.clientRecordId);
   vi.mocked(registerOrderPlacement).mockResolvedValue({ branchState: { id: 'b1', branchNo: 1, shelfCodeRaw: 'A-03' }, event: { id: 'event1234' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
@@ -295,6 +297,10 @@ describe('Haizen hub', () => {
       shelfCodeRaw: 'A-03', manufacturingOrderBarcodeRaw: '0002178005', slipKind: 'manufacturing_order',
       clientRecordId: expect.any(String), placedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), branchNo: 2
     }, 3000));
+    const placementId = vi.mocked(registerOrderPlacement).mock.calls[0][0].clientRecordId;
+    expect(await verifyRecordStore.list()).toEqual([expect.objectContaining({
+      transferOrderBarcodeRaw: '0002178005', actualOrderBarcodeRaw: '4501238876', clientRecordId: placementId
+    })]);
     await act(async () => resolve({ action: 'created', branchState: { branchNo: 2 }, event: { id: 'verify-put' } } as Awaited<ReturnType<typeof registerOrderPlacement>>));
     const toast = await screen.findByText('50013_540AP 北に 分配2を置きました');
     expect(toast.closest('main')).toBe(screen.getByRole('main'));
