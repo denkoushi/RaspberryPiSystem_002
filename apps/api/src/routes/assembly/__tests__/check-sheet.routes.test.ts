@@ -51,6 +51,55 @@ describe('check-sheet routes', () => {
   });
   afterEach(async () => { await app.close(); vi.restoreAllMocks(); });
 
+  it('lists Gmail imports with view permission, previews with kiosk permission, and dismisses', async () => {
+    const items = [{ importId: id, originalFileName: 'mail.xlsx', receivedAt: '2026-10-29T01:00:00.000Z' }];
+    const list = vi.spyOn(service, 'listGmailImports').mockResolvedValue({ items });
+    const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(await makeCheckSheetWorkbook()));
+    const detail = { importId: id, sheetNames: [proposal.sourceSheetName], proposal };
+    const get = vi.spyOn(service, 'getGmailImport').mockResolvedValue(detail);
+    const dismiss = vi.spyOn(service, 'dismissGmailImport').mockResolvedValue({ importId: id });
+    const response = await app.inject({ method: 'GET', url: '/api/assembly/check-sheets/gmail-imports', headers: headers('VIEWER') });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ items });
+    expect(list).toHaveBeenCalledOnce();
+    const preview = await app.inject({ method: 'GET', url: `/api/assembly/check-sheets/gmail-imports/${id}?sheetName=${encodeURIComponent(proposal.sourceSheetName)}`, headers: { 'x-client-key': 'kiosk' } });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toEqual(detail);
+    expect(get).toHaveBeenCalledWith(id, proposal.sourceSheetName);
+    const dismissed = await app.inject({ method: 'POST', url: `/api/assembly/check-sheets/gmail-imports/${id}/dismiss`, headers: { 'x-client-key': 'kiosk' } });
+    expect(dismissed.statusCode).toBe(200);
+    expect(dismissed.json()).toEqual({ importId: id });
+    expect(dismiss).toHaveBeenCalledWith(id);
+  });
+
+  it('rejects unauthenticated access to every Gmail import endpoint and viewer writes', async () => {
+    const list = vi.spyOn(service, 'listGmailImports');
+    const get = vi.spyOn(service, 'getGmailImport');
+    const dismiss = vi.spyOn(service, 'dismissGmailImport');
+    for (const [method, path] of [['GET', ''], ['GET', `/${id}`], ['POST', `/${id}/dismiss`]] as const) {
+      expect((await app.inject({ method, url: `/api/assembly/check-sheets/gmail-imports${path}` })).statusCode).toBe(401);
+    }
+    for (const [method, path] of [['GET', `/${id}`], ['POST', `/${id}/dismiss`]] as const) {
+      expect((await app.inject({ method, url: `/api/assembly/check-sheets/gmail-imports${path}`, headers: headers('VIEWER') })).statusCode).toBe(403);
+    }
+    expect(list).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it('validates Gmail import IDs and sheet names and propagates missing imports', async () => {
+    const get = vi.spyOn(service, 'getGmailImport').mockRejectedValue(new ApiError(404, '取込元が見つかりません'));
+    const dismiss = vi.spyOn(service, 'dismissGmailImport').mockRejectedValue(new ApiError(404, '取込元が見つかりません'));
+    for (const [method, path, status] of [
+      ['GET', '/invalid', 400], ['GET', `/${id}?sheetName=`, 400],
+      ['GET', `/${id}`, 404], ['POST', `/${id}/dismiss`, 404]
+    ] as const) {
+      expect((await app.inject({ method, url: `/api/assembly/check-sheets/gmail-imports${path}`, headers: headers('ADMIN') })).statusCode).toBe(status);
+    }
+    expect(get).toHaveBeenCalledExactlyOnceWith(id, undefined);
+    expect(dismiss).toHaveBeenCalledExactlyOnceWith(id);
+  });
+
   it('imports an XLSX with a sheet override and returns a proposal', async () => {
     const buffer = await makeCheckSheetWorkbook();
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(buffer));

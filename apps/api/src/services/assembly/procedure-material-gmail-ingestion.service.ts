@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import { ApiError } from '../../lib/errors.js';
+import { AssemblyCheckSheetService } from './check-sheet/check-sheet.service.js';
 
 import { ProcedureVideoService } from './procedure-video.service.js';
 import { getProcedureVideoScheduler } from './procedure-video.scheduler.js';
@@ -27,10 +29,10 @@ export type ProcedureMaterialGmailPort = ProcedureMaterialAttachmentClient & {
 };
 export type ProcedureMaterialMessageResult = {
   messageId: string; status: 'saved' | 'duplicate' | 'skipped' | 'retryable'; reason?: string;
-  saved: number; duplicate: number; skippedAttachments: number; trashed: boolean; warnings: string[];
+  saved: number; checkSheets: number; duplicate: number; skippedAttachments: number; trashed: boolean; warnings: string[];
 };
 export type ProcedureMaterialCycleSummary = {
-  scanned: number; processed: number; saved: number; duplicate: number; skipped: number; retryable: number; deferred: number;
+  scanned: number; processed: number; saved: number; checkSheets: number; duplicate: number; skipped: number; retryable: number; deferred: number;
   skippedAttachments: number; errors: string[]; messages: ProcedureMaterialMessageResult[];
 };
 const RETRY_DELAY_MS = 5 * 60 * 1000;
@@ -51,11 +53,12 @@ export class ProcedureMaterialGmailIngestionService {
     private readonly db = defaultPrisma,
     private readonly store: DurableFileStorePort = getFileStorageRuntime().store,
     private readonly pdfPages: PdfPagesPort = new PopplerPdfPagesAdapter({ maxPages: PROCEDURE_MATERIAL_MAX_PDF_PAGES }),
+    private readonly checkSheetService: Pick<AssemblyCheckSheetService, 'importWorkbook'> = new AssemblyCheckSheetService(),
   ) {}
 
   async runOnce(options: { config: BackupConfig; allowWait: boolean; manual?: boolean; messageId?: string; forceRetry?: boolean }): Promise<ProcedureMaterialCycleSummary> {
     if (this.running) throw new Error('procedure material ingest is already running');
-    const summary: ProcedureMaterialCycleSummary = { scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] };
+    const summary: ProcedureMaterialCycleSummary = { scanned: 0, processed: 0, saved: 0, checkSheets: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] };
     if (!options.manual && !options.config.procedureMaterialGmailIngest?.enabled) return summary;
     const loggedMessages: Array<Pick<ProcedureMaterialMessageResult, 'messageId' | 'status' | 'reason'> & { errorName?: string }> = [];
     this.running = true;
@@ -77,6 +80,7 @@ export class ProcedureMaterialGmailIngestionService {
         });
         summary.processed++;
         summary.saved += result.saved;
+        summary.checkSheets += result.checkSheets;
         summary.duplicate += result.duplicate;
         summary.skippedAttachments += result.skippedAttachments;
         if (result.status === 'skipped') {
@@ -93,6 +97,7 @@ export class ProcedureMaterialGmailIngestionService {
         scanned: summary.scanned,
         processed: summary.processed,
         saved: summary.saved,
+        checkSheets: summary.checkSheets,
         duplicate: summary.duplicate,
         skipped: summary.skipped,
         retryable: summary.retryable,
@@ -104,7 +109,7 @@ export class ProcedureMaterialGmailIngestionService {
   }
 
   private async processMessage(gmail: ProcedureMaterialGmailPort, messageId: string, config: BackupConfig): Promise<ProcedureMaterialMessageResult & { errorName?: string }> {
-    const result: ProcedureMaterialMessageResult = { messageId, status: 'skipped', saved: 0, duplicate: 0, skippedAttachments: 0, trashed: false, warnings: [] };
+    const result: ProcedureMaterialMessageResult = { messageId, status: 'skipped', saved: 0, checkSheets: 0, duplicate: 0, skippedAttachments: 0, trashed: false, warnings: [] };
     try {
       const message = await gmail.getMessage(messageId);
       const subject = materialMessageHeader(message, 'subject');
@@ -214,17 +219,30 @@ export class ProcedureMaterialGmailIngestionService {
           await savePhoto(photo, common.subjectHint ? `${common.subjectHint} (p${index + 1}/${photos.length})` : null, photo.text);
         }
       }
+      for (const spreadsheet of packet.spreadsheets) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await this.checkSheetService.importWorkbook(spreadsheet.buffer, spreadsheet.filename, undefined, {
+            gmailMessageId: messageId, receivedAt: common.receivedAt
+          });
+          result.checkSheets++;
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.statusCode !== 400) throw error;
+          result.skippedAttachments++;
+          result.warnings.push(`${spreadsheet.filename}: ${error.message}`);
+        }
+      }
       for (const video of packet.videos) {
         // eslint-disable-next-line no-await-in-loop
         const created = await new ProcedureVideoService(this.db, this.store).ingest(video, common);
         if (created) result.saved++; else result.duplicate++;
       }
       if (packet.videos.length || existingVideos.length) getProcedureVideoScheduler().kick();
-      if (result.saved + result.duplicate === 0) return { ...result, reason: '本文が空で、対応する写真・動画がありません' };
+      if (result.saved + result.checkSheets + result.duplicate === 0) return { ...result, reason: '本文が空で、対応する写真・動画がありません' };
       // Never mark as read: cleanup failures must remain searchable after a restart.
       await gmail.trashMessage(messageId);
       result.trashed = true;
-      result.status = result.saved ? 'saved' : 'duplicate';
+      result.status = result.saved + result.checkSheets ? 'saved' : 'duplicate';
       this.retryAt.delete(messageId);
       return result;
     } catch (error) {

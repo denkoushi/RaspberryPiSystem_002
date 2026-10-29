@@ -2,6 +2,7 @@ import { api } from '../../http';
 
 import type {
   AssemblyCheckSheetImportPayload,
+  AssemblyCheckSheetGmailImportsPayload,
   AssemblyCheckSheetPayload,
   AssemblyCheckSheetPaperLayout,
   AssemblyCheckSheetStampInput,
@@ -18,6 +19,21 @@ export async function importAssemblyCheckSheet(file: File) {
   const form = new FormData();
   form.append('file', file);
   const { data } = await api.post<AssemblyCheckSheetImportPayload>('/assembly/check-sheets/imports', form);
+  return data;
+}
+
+export async function listAssemblyCheckSheetGmailImports() {
+  const { data } = await api.get<AssemblyCheckSheetGmailImportsPayload>('/assembly/check-sheets/gmail-imports');
+  return data;
+}
+
+export async function getAssemblyCheckSheetGmailImport(importId: string, sheetName?: string) {
+  const { data } = await api.get<AssemblyCheckSheetImportPayload>(`/assembly/check-sheets/gmail-imports/${importId}`, { params: { sheetName } });
+  return data;
+}
+
+export async function dismissAssemblyCheckSheetGmailImport(importId: string) {
+  const { data } = await api.post<{ importId: string }>(`/assembly/check-sheets/gmail-imports/${importId}/dismiss`);
   return data;
 }
 

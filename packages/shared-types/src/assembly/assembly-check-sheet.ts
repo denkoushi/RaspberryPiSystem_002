@@ -87,6 +87,9 @@ export const assemblyCheckSheetSaveSchema = z.object({
 export type AssemblyCheckSheetProposal = z.infer<typeof assemblyCheckSheetProposalSchema>;
 export type AssemblyCheckSheetItemProposal = z.infer<typeof assemblyCheckSheetItemSchema>;
 export type AssemblyCheckSheetSavePayload = z.infer<typeof assemblyCheckSheetSaveSchema>;
+export type AssemblyCheckSheetGmailImportsPayload = {
+  items: Array<{ importId: string; originalFileName: string | null; receivedAt: string | null }>;
+};
 export type AssemblyCheckSheetImportPayload = {
   importId: string;
   sheetNames: string[];

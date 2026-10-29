@@ -5921,6 +5921,9 @@ model AssemblyCheckSheetAsset {
   byteSize         Int
   contentType      String
   originalFileName String?
+  gmailMessageId   String?
+  receivedAt       DateTime?
+  dismissedAt      DateTime?
   createdAt        DateTime @default(now())
   revisions        AssemblyCheckSheetRevision[]
 }
