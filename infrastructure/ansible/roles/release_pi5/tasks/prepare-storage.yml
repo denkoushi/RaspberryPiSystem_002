@@ -6,6 +6,16 @@
     pi5_storage_root: "{{ release_pi5_project_dir }}/storage"
     pi5_storage_manage_existing: false
 
+# The haizen app directory holds only APKs published from the Mac, so a
+# root-owned copy left by an earlier Docker bind mount is safe to correct.
+- name: Prepare the haizen app publish directory before any Compose command
+  ansible.builtin.file:
+    path: "{{ release_pi5_project_dir }}/storage/haizen-app"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
 - name: Materialize and validate all phase3 external durable volumes
   ansible.builtin.command:
     argv:
