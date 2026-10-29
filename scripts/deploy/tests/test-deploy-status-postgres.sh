@@ -91,11 +91,11 @@ docker network create --label com.raspi-system.temporary=true "$NETWORK" >/dev/n
 docker volume create --label com.raspi-system.temporary=true "$VOLUME" >/dev/null
 
 stage "start PostgreSQL container"
-docker run -d --name "$CONTAINER" --network "$NETWORK" -v "$VOLUME:/var/lib/postgresql/data" \
+docker run -d --name "$CONTAINER" --network "$NETWORK" -v "$VOLUME:/var/lib/postgresql" \
   --label com.raspi-system.temporary=true \
   -p "127.0.0.1:${PORT}:5432" -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=borrow_return \
   --health-cmd='pg_isready -U postgres' --health-interval=2s --health-timeout=2s --health-retries=30 \
-  pgvector/pgvector:pg15 >/dev/null
+  pgvector/pgvector:pg18 >/dev/null
 
 if [[ -z "$PORT" ]]; then
   published_port="$(docker port "$CONTAINER" 5432/tcp)"
