@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { parseActualSlipImage, snapFseibanTokens } from '../../api/client';
 
+import { resetMobileConnectivityForTests } from './connectivity';
 import { useMobilePlacementPageState } from './useMobilePlacementPageState';
 
 import type { ActualSlipOcrResponse } from '../../api/domains/mobile-placement';
@@ -34,6 +35,7 @@ function mount() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  resetMobileConnectivityForTests();
   window.HaizenNative = { isAvailable: () => true, scanFseiban: vi.fn() };
   vi.mocked(snapFseibanTokens).mockResolvedValue(response);
   vi.mocked(parseActualSlipImage).mockResolvedValue(response);
@@ -41,6 +43,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetMobileConnectivityForTests();
   window.__haizenNativeScanResult?.({ status: 'cancelled' });
   delete window.HaizenNative;
 });
@@ -103,7 +106,7 @@ describe('mobile placement native OCR', () => {
     expect(result.current.actualSlipImageOcrBusy).toBe(false);
   });
 
-  it('shows API failure and clears busy so the user can retry', async () => {
+  it('shows API failure and permits retry after connectivity recovers', async () => {
     vi.mocked(snapFseibanTokens).mockRejectedValueOnce(new Error('offline'));
     const { result } = mount();
     await act(async () => {
@@ -114,6 +117,7 @@ describe('mobile placement native OCR', () => {
     expect(result.current.actualSlipOcrFeedback).toMatchObject({ status: 'error', errorDetail: 'offline' });
     expect(result.current.actualSlipImageOcrBusy).toBe(false);
     await act(async () => {
+      window.dispatchEvent(new Event('online'));
       const reading = result.current.scanActualSlipNative();
       window.__haizenNativeScanResult?.(nativeResult);
       await reading;

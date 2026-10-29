@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ queryRaw: vi.fn() }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.queryRaw } }));
 
-import { findEarliestPlannedStartDatesForPurchaseRows } from '../purchase-order-lookup-planned-start.service.js';
+import { findEarliestPlannedStartDatesForPurchaseRows, listPurchasePlannedStartCandidates } from '../purchase-order-lookup-planned-start.service.js';
 
 const purchase = {
   seiban: 'BA1',
@@ -98,10 +98,10 @@ describe('findEarliestPlannedStartDatesForPurchaseRows', () => {
       { ...purchase, seiban: ' BA1 ' }, purchase, { ...purchase, seiban: 'BA2' },
     ])).toEqual([new Date('2026-05-02'), new Date('2026-05-02'), new Date('2026-05-03')]);
     expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
-    const [strings, completion, , , seibans, winner] = mocks.queryRaw.mock.calls[0];
-    expect(strings.join('?')).toContain(`COALESCE(r."rowData"->>'FSEIBAN', '') = ANY(?::text[])`);
+    const [strings, completion, , , predicate, winner] = mocks.queryRaw.mock.calls[0];
+    expect(predicate.sql).toContain(`COALESCE(r."rowData"->>'FSEIBAN', '') = ANY(?::text[])`);
     expect(strings.join('?')).not.toMatch(/trim|regexp_replace/i);
-    expect(seibans).toEqual(['BA1', ' BA1 ', 'BA2']);
+    expect(predicate.values[0]).toEqual(['BA1', ' BA1 ', 'BA2']);
     expect(strings.join('?')).toContain('LEFT JOIN "ProductionScheduleProgress" AS "p"');
     expect(strings.join('?')).toContain('LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext"');
     for (const alias of ['p', 'ext']) {
@@ -160,6 +160,16 @@ describe('findEarliestPlannedStartDatesForPurchaseRows', () => {
     ])).toEqual(['2026-05-03', '2026-05-04', '2026-05-06'].map((date) => new Date(date)));
   });
 
+
+  it('exports full date candidates from the same winner and dashboard without a purchase dependency', async () => {
+    const rows = [candidate('MD1', 'Part', '2026-11-01')];
+    mocks.queryRaw.mockResolvedValue(rows);
+    expect(await listPurchasePlannedStartCandidates()).toEqual(rows);
+    const [strings, , dashboard, supplementDashboard, predicate, winner] = mocks.queryRaw.mock.calls[0];
+    expect(dashboard).toBe(supplementDashboard);
+    expect(strings.join('?')).toContain('INNER JOIN "ProductionScheduleOrderSupplement"');
+    expect(predicate.sql).toBe(''); expect(winner.sql).toContain('LIMIT 1');
+  });
   it('avoids querying for empty orders or blank seibans', async () => {
     expect(await findEarliestPlannedStartDatesForPurchaseRows([])).toEqual([]);
     expect(await findEarliestPlannedStartDatesForPurchaseRows([{ ...purchase, seiban: ' ' }])).toEqual([null]);
