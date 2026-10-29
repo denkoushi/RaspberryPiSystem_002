@@ -350,6 +350,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Test PostgreSQL major upgrade and rollback
+        run: |
+          python3 -m unittest scripts/server/tests/test_db_start_guard.py
+          bash scripts/server/tests/test-postgres-major-upgrade.sh
+
       - name: Test client key rotation with isolated PostgreSQL
         run: |
           python3 scripts/deploy/tests/test_rotate_client_key_transport.py
