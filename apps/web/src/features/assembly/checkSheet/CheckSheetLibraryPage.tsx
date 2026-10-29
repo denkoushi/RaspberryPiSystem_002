@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useRef, useState } from 'react';
 
-import { importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision } from '../../../api/domains/assembly/check-sheets';
+import { dismissAssemblyCheckSheetGmailImport, getAssemblyCheckSheetGmailImport, listAssemblyCheckSheetGmailImports, importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision } from '../../../api/domains/assembly/check-sheets';
 import { getKioskEmployees } from '../../../api/domains/kiosk';
 import { getApiErrorMessage } from '../../../api/errors';
 import { kioskQueryKeys } from '../../../api/queryKeys/kiosk';
@@ -14,6 +14,7 @@ import { addField, buildSavePayload, departmentRoleKeys, removeField, removeItem
 
 import type { AssemblyCheckSheetImportPayload, AssemblyCheckSheetItemProposal, AssemblyCheckSheetProposal } from '@raspi-system/shared-types';
 
+const gmailImportsQueryKey = ['assembly-check-sheet-gmail-imports'];
 const revisionQueryKey = ['assembly-check-sheet-revisions'];
 const selectClass = 'w-full rounded-md border-2 border-slate-500 bg-slate-900 px-3 py-3 text-white';
 const headerCells = [
@@ -35,19 +36,25 @@ function errorMessage(error: unknown) {
 export function CheckSheetLibraryPage() {
   const queryClient = useQueryClient();
   const revisions = useQuery({ queryKey: revisionQueryKey, queryFn: listAssemblyCheckSheetRevisions });
+  const gmailImports = useQuery({ queryKey: gmailImportsQueryKey, queryFn: listAssemblyCheckSheetGmailImports });
   const employees = useQuery({ queryKey: kioskQueryKeys.employees(), queryFn: () => getKioskEmployees() });
   const fileInput = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<AssemblyCheckSheetImportPayload | null>(null);
   const [saveMode, setSaveMode] = useState<'new' | 'revision'>('new');
   const [rootId, setRootId] = useState('');
-  const upload = useMutation({
-    mutationFn: importAssemblyCheckSheet,
-    onSuccess: (result) => {
-      setDraft(result);
-      setSaveMode('new');
-      setRootId('');
-      save.reset();
-    }
+  const openDraft = (result: AssemblyCheckSheetImportPayload) => {
+    setDraft(result);
+    setSaveMode('new');
+    setRootId('');
+    save.reset();
+  };
+  const upload = useMutation({ mutationFn: importAssemblyCheckSheet, onSuccess: openDraft });
+  const openGmailImport = useMutation({
+    mutationFn: (importId: string) => getAssemblyCheckSheetGmailImport(importId), onSuccess: openDraft
+  });
+  const dismissGmailImport = useMutation({
+    mutationFn: dismissAssemblyCheckSheetGmailImport,
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: gmailImportsQueryKey }); }
   });
   const save = useMutation({
     mutationFn: saveAssemblyCheckSheetRevision,
@@ -55,6 +62,7 @@ export function CheckSheetLibraryPage() {
       queryClient.setQueryData<Awaited<ReturnType<typeof listAssemblyCheckSheetRevisions>>>(revisionQueryKey, (current = []) =>
         [saved, ...current.filter((revision) => revision.revisionRootId !== saved.revisionRootId)]);
       setDraft(null);
+      void queryClient.invalidateQueries({ queryKey: gmailImportsQueryKey });
       void queryClient.invalidateQueries({ queryKey: revisionQueryKey });
     }
   });
@@ -76,10 +84,19 @@ export function CheckSheetLibraryPage() {
               event.target.value = '';
               if (file) upload.mutate(file);
             }} />
-            <Button disabled={upload.isPending} onClick={() => fileInput.current?.click()}>取り込み</Button>
+            <Button disabled={upload.isPending || openGmailImport.isPending} onClick={() => fileInput.current?.click()}>取り込み</Button>
           </>
         }>
           {upload.isError && <p role="alert" className="mb-3 whitespace-pre-wrap text-red-300">{errorMessage(upload.error)}</p>}
+          {(gmailImports.isError || openGmailImport.isError || dismissGmailImport.isError) && <p role="alert" className="mb-3 whitespace-pre-wrap text-red-300">{errorMessage(gmailImports.error ?? openGmailImport.error ?? dismissGmailImport.error)}</p>}
+          {(gmailImports.data?.items ?? []).map((item) => (
+            <div key={item.importId} className="mb-3 flex min-w-0 gap-3">
+              <Button className="min-w-0 flex-1 whitespace-normal break-words" disabled={upload.isPending || openGmailImport.isPending || dismissGmailImport.isPending} onClick={() => openGmailImport.mutate(item.importId)}>
+                {item.originalFileName}{item.receivedAt && ` ${new Date(item.receivedAt).toLocaleString('ja-JP')}`}
+              </Button>
+              <Button variant="ghostOnDark" disabled={dismissGmailImport.isPending || openGmailImport.isPending} onClick={() => dismissGmailImport.mutate(item.importId)}>対象外にする</Button>
+            </div>
+          ))}
           {revisions.isError && <p role="alert" className="mb-3 text-red-300">{errorMessage(revisions.error)}</p>}
           {revisions.isLoading && <p role="status">読み込み中</p>}
           <div className="min-w-0">

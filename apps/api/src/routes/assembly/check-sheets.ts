@@ -1,6 +1,7 @@
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import { assemblyCheckSheetSaveSchema, assemblyCheckSheetCreateSchema, assemblyCheckSheetStampSchema, assemblyCheckSheetConditionSchema, assemblyCheckSheetActorSchema } from '@raspi-system/shared-types';
+import { MAX_XLSX_BYTES } from '../../services/assembly/check-sheet/check-sheet-import.constants.js';
 import { ApiError } from '../../lib/errors.js';
 import { AssemblyCheckSheetService } from '../../services/assembly/check-sheet/check-sheet.service.js';
 
@@ -10,7 +11,7 @@ import { AssemblyCheckSheetKioskService } from '../../services/assembly/check-sh
 const importQuery = z.object({ sheetName: z.string().min(1).max(31).optional() });
 const listQuery = z.object({ rootId: z.string().guid().optional() });
 const idParams = z.object({ id: z.string().guid() });
-const MAX_XLSX_BYTES = 12 * 1024 * 1024;
+const gmailImportParams = z.object({ importId: z.string().guid() });
 
 export function registerAssemblyCheckSheetRoutes(
   app: FastifyInstance,
@@ -56,6 +57,14 @@ export function registerAssemblyCheckSheetRoutes(
       return kioskService.transition(idParams.parse(request.params).id, action, { ...input, clientDeviceId: device?.id ?? null });
     });
   }
+  app.get('/assembly/check-sheets/gmail-imports', { preHandler: options.allowView }, async () =>
+    service.listGmailImports());
+  app.get('/assembly/check-sheets/gmail-imports/:importId', { preHandler: options.allowWriteKiosk }, async (request) => {
+    const { importId } = gmailImportParams.parse(request.params);
+    return service.getGmailImport(importId, importQuery.parse(request.query).sheetName);
+  });
+  app.post('/assembly/check-sheets/gmail-imports/:importId/dismiss', { preHandler: options.allowWriteKiosk }, async (request) =>
+    service.dismissGmailImport(gmailImportParams.parse(request.params).importId));
   app.post('/assembly/check-sheets/imports', { preHandler: options.allowWriteKiosk }, async (request) => {
     const { sheetName } = importQuery.parse(request.query);
     const file = await request.file({ limits: { fileSize: MAX_XLSX_BYTES, files: 1, fields: 0 } });

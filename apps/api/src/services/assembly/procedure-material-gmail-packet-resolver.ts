@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
+import { MAX_XLSX_BYTES, XLSX_CONTENT_TYPE } from './check-sheet/check-sheet-import.constants.js';
 
 import { resolveProcedureMaterialAppReferences, type ProcedureMaterialAppRef } from './procedure-material-app-manifest.js';
 
@@ -26,7 +27,7 @@ export type ProcedureMaterialPhoto = {
 };
 export type ProcedureMaterialVideo = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256' | 'contentType'>;
 export type ProcedureMaterialPdf = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256'>;
-export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMaterialPhoto[]; videos: ProcedureMaterialVideo[]; pdfs: ProcedureMaterialPdf[]; duplicate: number; skippedAttachments: number; warnings: string[] };
+export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMaterialPhoto[]; videos: ProcedureMaterialVideo[]; pdfs: ProcedureMaterialPdf[]; spreadsheets: ProcedureMaterialPdf[]; duplicate: number; skippedAttachments: number; warnings: string[] };
 
 /** Bounds decode memory on the Pi5: 40 MP ≈ 160 MiB RGBA. Larger inputs fail fast instead of risking OOM. */
 export const PHOTO_MAX_INPUT_PIXELS = 40_000_000;
@@ -88,6 +89,7 @@ function describeMimeType(mime: string | undefined): string {
 export function resolveAttachmentContentType(mime: string | undefined, filename: string): string {
   // Some clients append parameters ("application/pdf; name=..."); only the media type matters here.
   const contentType = (mime ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
+  if (/\.xlsx$/i.test(filename.trim()) || contentType === XLSX_CONTENT_TYPE) return XLSX_CONTENT_TYPE;
   if (PHOTO_FORMATS[contentType] || VIDEO_FORMATS.has(contentType) || contentType === 'application/pdf') return contentType;
   if (contentType && !/^(application|image|video|binary)\//.test(contentType)) return contentType;
   const extension = /\.(png|jpe?g|webp|mp4|mov|3gp|m4v|pdf)$/.exec(filename.trim().toLowerCase())?.[1] ?? '';
@@ -142,7 +144,7 @@ export function stripCidPlaceholders(text: string): string {
 export async function resolveProcedureMaterialGmailPacket(params: {
   message: GmailMessage; client: ProcedureMaterialAttachmentClient; savedKeys?: ReadonlySet<string>; app?: boolean;
 }): Promise<ProcedureMaterialPacket> {
-  const packet: ProcedureMaterialPacket = { text: null, photos: [], videos: [], pdfs: [], duplicate: 0, skippedAttachments: 0, warnings: [] };
+  const packet: ProcedureMaterialPacket = { text: null, photos: [], videos: [], pdfs: [], spreadsheets: [], duplicate: 0, skippedAttachments: 0, warnings: [] };
   const plain: GmailMessagePart[] = [];
   const html: GmailMessagePart[] = [];
   const attachments: Array<{ part: GmailMessagePart; path: string; inline: boolean }> = [];
@@ -152,7 +154,7 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     const attached = disposition.startsWith('attachment');
     const inline = disposition.startsWith('inline') || (!attached && !!contentId);
     const mime = resolveAttachmentContentType(part.mimeType, part.filename ?? '');
-    if (inline && mime && (PHOTO_FORMATS[mime] || mime === 'application/pdf')) {
+    if (inline && mime && (PHOTO_FORMATS[mime] || mime === 'application/pdf' || mime === XLSX_CONTENT_TYPE)) {
       attachments.push({ part, path, inline });
       return;
     }
@@ -184,9 +186,21 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     const filename = part.filename?.normalize('NFC').trim() || 'photo';
     const contentType = resolveAttachmentContentType(part.mimeType, filename);
     const appRef = appReferences?.get(filename);
-    if (appReferences && !appRef && !VIDEO_FORMATS.has(contentType)) continue;
+    if (appReferences && !appRef && !VIDEO_FORMATS.has(contentType) && contentType !== XLSX_CONTENT_TYPE) continue;
     if (appRef && !PHOTO_FORMATS[contentType]) throw new Error(`Referenced image is unsupported: ${filename}`);
     const key = `${params.message.id}:${createHash('sha256').update(`${filename}\n${part.partId ?? path}`).digest('hex')}`;
+    if (contentType === XLSX_CONTENT_TYPE) {
+      if ((part.body?.size ?? 0) > MAX_XLSX_BYTES) {
+        packet.skippedAttachments++; packet.warnings.push(`${filename}: 12 MB超過`); continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      const buffer = await bytes(part);
+      if (buffer.length > MAX_XLSX_BYTES) {
+        packet.skippedAttachments++; packet.warnings.push(`${filename}: 12 MB超過`); continue;
+      }
+      packet.spreadsheets.push({ gmailDedupeKey: key, filename, buffer, sha256: createHash('sha256').update(buffer).digest('hex') });
+      continue;
+    }
     if (contentType === 'application/pdf') {
       if ((part.body?.size ?? 0) > PROCEDURE_MATERIAL_MAX_PDF_BYTES) {
         packet.skippedAttachments++; packet.warnings.push(`${filename}: 10 MB超過`); continue;
