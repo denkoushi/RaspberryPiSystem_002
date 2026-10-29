@@ -39,7 +39,9 @@ CREATE TABLE "AssemblyCheckSheetRevision" (
     "createdByUserId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "AssemblyCheckSheetRevision_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AssemblyCheckSheetRevision_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyCheckSheetRevision_sourceAssetId_fkey" FOREIGN KEY ("sourceAssetId") REFERENCES "AssemblyCheckSheetAsset"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyCheckSheetRevision_revisionRootId_fkey" FOREIGN KEY ("revisionRootId") REFERENCES "AssemblyCheckSheetRevision"("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -50,8 +52,15 @@ CREATE TABLE "AssemblyCheckSheetGroup" (
     "label" TEXT NOT NULL,
     "sortOrder" INTEGER NOT NULL,
 
-    CONSTRAINT "AssemblyCheckSheetGroup_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AssemblyCheckSheetGroup_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyCheckSheetGroup_revisionId_fkey" FOREIGN KEY ("revisionId") REFERENCES "AssemblyCheckSheetRevision"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AssemblyCheckSheetGroup_unique_number" ON "AssemblyCheckSheetGroup"("revisionId", "groupNo");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "AssemblyCheckSheetGroup_unique_revision" ON "AssemblyCheckSheetGroup"("id", "revisionId");
 
 -- CreateTable
 CREATE TABLE "AssemblyCheckSheetItem" (
@@ -72,7 +81,9 @@ CREATE TABLE "AssemblyCheckSheetItem" (
     "valueTarget" JSONB NOT NULL,
     "warnings" JSONB NOT NULL,
 
-    CONSTRAINT "AssemblyCheckSheetItem_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AssemblyCheckSheetItem_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyCheckSheetItem_revisionId_fkey" FOREIGN KEY ("revisionId") REFERENCES "AssemblyCheckSheetRevision"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyCheckSheetItem_groupId_revisionId_fkey" FOREIGN KEY ("groupId", "revisionId") REFERENCES "AssemblyCheckSheetGroup"("id", "revisionId") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -92,7 +103,10 @@ CREATE TABLE "AssemblyCheckSheet" (
     "pausedReason" TEXT,
     "clientDeviceId" TEXT,
 
-    CONSTRAINT "AssemblyCheckSheet_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AssemblyCheckSheet_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyCheckSheet_workUnitId_fkey" FOREIGN KEY ("workUnitId") REFERENCES "AssemblySerialRegistry"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyCheckSheet_revisionId_fkey" FOREIGN KEY ("revisionId") REFERENCES "AssemblyCheckSheetRevision"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyCheckSheet_completed_employee_fkey" FOREIGN KEY ("completedByEmployeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -111,7 +125,10 @@ CREATE TABLE "AssemblyCheckSheetStamp" (
     "clientDeviceId" TEXT,
     "stampedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "AssemblyCheckSheetStamp_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AssemblyCheckSheetStamp_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyCheckSheetStamp_sheetId_fkey" FOREIGN KEY ("sheetId") REFERENCES "AssemblyCheckSheet"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyCheckSheetStamp_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "AssemblyCheckSheetItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyCheckSheetStamp_employee_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -132,7 +149,10 @@ CREATE TABLE "AssemblyCheckSheetStampHistory" (
     "stampedAt" TIMESTAMP(3) NOT NULL,
     "supersededAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "AssemblyCheckSheetStampHistory_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AssemblyCheckSheetStampHistory_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AssemblyCheckSheetStampHistory_sheetId_fkey" FOREIGN KEY ("sheetId") REFERENCES "AssemblyCheckSheet"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyCheckSheetStampHistory_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "AssemblyCheckSheetItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "AssemblyCheckSheetStampHistory_employee_fkey" FOREIGN KEY ("employeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateIndex
@@ -149,12 +169,6 @@ CREATE INDEX "AssemblyCheckSheetRevision_idx_asset" ON "AssemblyCheckSheetRevisi
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AssemblyCheckSheetRevision_unique_root_number" ON "AssemblyCheckSheetRevision"("revisionRootId", "revisionNumber");
-
--- CreateIndex
-CREATE UNIQUE INDEX "AssemblyCheckSheetGroup_unique_number" ON "AssemblyCheckSheetGroup"("revisionId", "groupNo");
-
--- CreateIndex
-CREATE UNIQUE INDEX "AssemblyCheckSheetGroup_unique_revision" ON "AssemblyCheckSheetGroup"("id", "revisionId");
 
 -- CreateIndex
 CREATE INDEX "AssemblyCheckSheetItem_idx_group" ON "AssemblyCheckSheetItem"("groupId", "revisionId");
@@ -182,47 +196,6 @@ CREATE INDEX "AssemblyCheckSheetStampHistory_idx_item" ON "AssemblyCheckSheetSta
 
 -- CreateIndex
 CREATE INDEX "AssemblyCheckSheetStampHistory_idx_item_id" ON "AssemblyCheckSheetStampHistory"("itemId");
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetRevision" ADD CONSTRAINT "AssemblyCheckSheetRevision_sourceAssetId_fkey" FOREIGN KEY ("sourceAssetId") REFERENCES "AssemblyCheckSheetAsset"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetRevision" ADD CONSTRAINT "AssemblyCheckSheetRevision_revisionRootId_fkey" FOREIGN KEY ("revisionRootId") REFERENCES "AssemblyCheckSheetRevision"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetGroup" ADD CONSTRAINT "AssemblyCheckSheetGroup_revisionId_fkey" FOREIGN KEY ("revisionId") REFERENCES "AssemblyCheckSheetRevision"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetItem" ADD CONSTRAINT "AssemblyCheckSheetItem_revisionId_fkey" FOREIGN KEY ("revisionId") REFERENCES "AssemblyCheckSheetRevision"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetItem" ADD CONSTRAINT "AssemblyCheckSheetItem_groupId_revisionId_fkey" FOREIGN KEY ("groupId", "revisionId") REFERENCES "AssemblyCheckSheetGroup"("id", "revisionId") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheet" ADD CONSTRAINT "AssemblyCheckSheet_workUnitId_fkey" FOREIGN KEY ("workUnitId") REFERENCES "AssemblySerialRegistry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheet" ADD CONSTRAINT "AssemblyCheckSheet_revisionId_fkey" FOREIGN KEY ("revisionId") REFERENCES "AssemblyCheckSheetRevision"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetStamp" ADD CONSTRAINT "AssemblyCheckSheetStamp_sheetId_fkey" FOREIGN KEY ("sheetId") REFERENCES "AssemblyCheckSheet"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetStamp" ADD CONSTRAINT "AssemblyCheckSheetStamp_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "AssemblyCheckSheetItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetStampHistory" ADD CONSTRAINT "AssemblyCheckSheetStampHistory_sheetId_fkey" FOREIGN KEY ("sheetId") REFERENCES "AssemblyCheckSheet"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheetStampHistory" ADD CONSTRAINT "AssemblyCheckSheetStampHistory_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "AssemblyCheckSheetItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AssemblyCheckSheet" ADD CONSTRAINT "AssemblyCheckSheet_completed_employee_fkey"
-  FOREIGN KEY ("completedByEmployeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE "AssemblyCheckSheetStamp" ADD CONSTRAINT "AssemblyCheckSheetStamp_employee_fkey"
-  FOREIGN KEY ("employeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE "AssemblyCheckSheetStampHistory" ADD CONSTRAINT "AssemblyCheckSheetStampHistory_employee_fkey"
-  FOREIGN KEY ("employeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- A lineage has at most one head, including writes outside the save service.
 CREATE UNIQUE INDEX "AssemblyCheckSheetRevision_unique_head"
