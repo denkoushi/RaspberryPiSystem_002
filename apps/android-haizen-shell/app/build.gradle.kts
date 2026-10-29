@@ -12,8 +12,8 @@ android {
         targetSdk = 34
         buildConfigField("String", "HAIZEN_ORIGIN", "\"https://raspberrypi.tail7312a3.ts.net:8443\"")
         buildConfigField("String", "HAIZEN_START_PATH", "\"/kiosk/mobile-placement\"")
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.2"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -22,6 +22,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.activity:activity-ktx:1.9.0")
     implementation("androidx.camera:camera-core:1.3.4")
     implementation("androidx.camera:camera-camera2:1.3.4")

@@ -12,10 +12,12 @@ import { useMobileLocalData } from '../local-data/useMobileLocalData';
 import { mobilePlacementQueryKeys } from '../mobilePlacementQueryKeys';
 
 import { MobileSyncProvider } from './MobileSyncProvider';
+import { importNativeLocalData, pushClientKeyToNative } from './nativeLocalDataImport';
 import { resetSyncSchedulerForTests } from './syncScheduler';
 
 vi.mock('../../../api/client', () => ({ registerOrderPlacement: vi.fn() }));
 vi.mock('../local-data/mobileLocalDataSync', () => ({ syncMobileLocalData: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('./nativeLocalDataImport', () => ({ importNativeLocalData: vi.fn().mockResolvedValue(undefined), pushClientKeyToNative: vi.fn() }));
 const record = { clientRecordId: 'provider-record', slipKind: 'purchase_order' as const, number: '4501238876',
   shelfCode: '外-1', scannedAt: '2026-10-23T00:00:00.000Z', status: 'pending' as const };
 let connection: EventTarget & { type: string };
@@ -83,6 +85,24 @@ it('shares claimed submissions and preserves move order after the submitting hoo
   ]);
   expect(await haizenOfflineQueueStore.list()).toEqual([]);
   second.unmount(); provider.unmount();
+});
+
+it('hands off the key and imports on mount and foreground, then removes the listener', async () => {
+  const provider = render(<QueryClientProvider client={new QueryClient()}><MobileSyncProvider><div /></MobileSyncProvider></QueryClientProvider>);
+  await act(async () => {});
+  expect(pushClientKeyToNative).toHaveBeenCalledTimes(1);
+  expect(importNativeLocalData).toHaveBeenCalledTimes(1);
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+  expect(importNativeLocalData).toHaveBeenCalledTimes(1);
+  visibility.mockReturnValue('visible');
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+  expect(pushClientKeyToNative).toHaveBeenCalledTimes(2);
+  expect(importNativeLocalData).toHaveBeenCalledTimes(2);
+  provider.unmount();
+  document.dispatchEvent(new Event('visibilitychange'));
+  expect(importNativeLocalData).toHaveBeenCalledTimes(2);
+  visibility.mockRestore();
 });
 
 it('sends a placement while a long local-data download is still running', async () => {

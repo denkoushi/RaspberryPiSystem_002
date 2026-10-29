@@ -9,7 +9,7 @@
         </intent>
     </queries>
     <uses-feature android:name="android.hardware.camera" android:required="true" />
-    <application android:allowBackup="false" android:label="配膳"
+    <application android:allowBackup="false" android:label="配膳" android:icon="@mipmap/ic_launcher"
         android:supportsRtl="true" android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".ScanActivity" android:exported="false"
             android:screenOrientation="portrait" />

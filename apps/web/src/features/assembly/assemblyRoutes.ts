@@ -116,6 +116,7 @@ export function kioskAssemblyManualsWorkshopPath(params?: { model?: string | nul
   return manualsPath(KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH, params);
 }
 
+export const KIOSK_ASSEMBLY_CHECK_SHEETS_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/check-sheets`;
 export const KIOSK_ASSEMBLY_CHECK_SHEET_PATH = `${KIOSK_ASSEMBLY_PATH_PREFIX}/check-sheets/:sheetId`;
 export function kioskAssemblyCheckSheetPath(sheetId: string): string {
   return `${KIOSK_ASSEMBLY_PATH_PREFIX}/check-sheets/${encodeURIComponent(sheetId)}`;

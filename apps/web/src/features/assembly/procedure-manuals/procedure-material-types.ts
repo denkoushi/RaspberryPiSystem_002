@@ -14,11 +14,11 @@ export type ProcedureMaterialDto = {
   createdAt: string; updatedAt: string;
 };
 export type ProcedureMaterialIngestResult = {
-  scanned: number; processed: number; saved: number; duplicate: number; skipped: number; retryable: number; deferred: number;
+  scanned: number; processed: number; saved: number; checkSheets: number; duplicate: number; skipped: number; retryable: number; deferred: number;
   skippedAttachments: number; errors: string[];
   messages: Array<{
     messageId: string; status: 'saved' | 'duplicate' | 'skipped' | 'retryable'; reason?: string;
-    saved: number; duplicate: number; skippedAttachments: number; trashed: boolean; warnings: string[];
+    saved: number; checkSheets: number; duplicate: number; skippedAttachments: number; trashed: boolean; warnings: string[];
   }>;
 };
 

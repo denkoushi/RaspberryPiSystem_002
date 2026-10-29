@@ -39,4 +39,19 @@ describe('shared slip verification', () => {
       engine: 'device', manufacturingOrder10: '1234567890', fseiban: 'BE1N9327', fseibanMatch: 'exact'
     });
   });
+  it.each(['0004099556', ' 4501238876\t', '\u30000004099556\u3000'])('ignores order-shaped part scans when the order resolves: %j', async (part) => {
+    expect(await verifySlipMatch({ ...input, transferPartBarcodeRaw: part, actualPartBarcodeRaw: part }, source()))
+      .toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'purchaseOrder' });
+  });
+  it.each(['', '   ', '0004099556', ' 4501238876\t', '\u30000004099556\u3000'])('requires a real part number for the printed 製番 fallback: %j', async (part) => {
+    expect(await verifySlipMatch({ ...input, actualOrderBarcodeRaw: '', actualFseibanRaw: 'FS1', actualPartBarcodeRaw: part }, source()))
+      .toMatchObject({ ok: false, reason: 'part_required', actualResolvedBy: 'fseiban', actual: { fseiban: 'FS1' } });
+  });
+  it.each([
+    [schedule.fhincd, true, 'match'],
+    ['WRONG', false, 'different_part']
+  ] as const)('checks a real part number in the printed 製番 fallback: %s', async (part, ok, reason) => {
+    expect(await verifySlipMatch({ ...input, actualOrderBarcodeRaw: '', actualFseibanRaw: 'FS1', actualPartBarcodeRaw: part }, source()))
+      .toMatchObject({ ok, reason, actualResolvedBy: 'fseiban' });
+  });
 });

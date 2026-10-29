@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../http';
 
-import { changeAssemblyCheckSheetRevision, getAssemblyCheckSheetPaperLayout, importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision, transitionAssemblyCheckSheet } from './check-sheets';
+import { dismissAssemblyCheckSheetGmailImport, getAssemblyCheckSheetGmailImport, listAssemblyCheckSheetGmailImports, changeAssemblyCheckSheetRevision, getAssemblyCheckSheetPaperLayout, importAssemblyCheckSheet, listAssemblyCheckSheetRevisions, saveAssemblyCheckSheetRevision, transitionAssemblyCheckSheet } from './check-sheets';
 
 import type { AssemblyCheckSheetSavePayload } from '@raspi-system/shared-types';
 
@@ -10,6 +10,17 @@ vi.mock('../../http', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() 
 
 describe('check sheet API client', () => {
   beforeEach(() => vi.resetAllMocks());
+
+  it('lists, previews with sheet selection, and dismisses Gmail imports', async () => {
+    vi.mocked(api.get).mockResolvedValueOnce({ data: { items: [] } }).mockResolvedValueOnce({ data: { importId: 'asset' } });
+    expect(await listAssemblyCheckSheetGmailImports()).toEqual({ items: [] });
+    expect(api.get).toHaveBeenLastCalledWith('/assembly/check-sheets/gmail-imports');
+    expect(await getAssemblyCheckSheetGmailImport('asset', '検査')).toEqual({ importId: 'asset' });
+    expect(api.get).toHaveBeenLastCalledWith('/assembly/check-sheets/gmail-imports/asset', { params: { sheetName: '検査' } });
+    vi.mocked(api.post).mockResolvedValue({ data: { importId: 'asset' } });
+    expect(await dismissAssemblyCheckSheetGmailImport('asset')).toEqual({ importId: 'asset' });
+    expect(api.post).toHaveBeenLastCalledWith('/assembly/check-sheets/gmail-imports/asset/dismiss');
+  });
 
   it('changes the revision through the authenticated client and returns the sheet', async () => {
     const data = { id: 'sheet', revisionId: 'new-revision' };

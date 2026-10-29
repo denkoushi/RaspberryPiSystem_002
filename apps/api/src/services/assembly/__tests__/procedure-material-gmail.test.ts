@@ -1,3 +1,5 @@
+import { ApiError } from '../../../lib/errors.js';
+import { MAX_XLSX_BYTES, XLSX_CONTENT_TYPE } from '../check-sheet/check-sheet-import.constants.js';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +13,8 @@ import { PdfPageCountError, PopplerPdfPagesAdapter } from '../../knowledge/poppl
 import type { PdfPagesPort } from '../../knowledge/pdf-pages.port.js';
 import { buildProcedureMaterialGmailSearchQuery, ProcedureMaterialGmailIngestionService } from '../procedure-material-gmail-ingestion.service.js';
 import { normalizePhotoForStorage, PHOTO_RESIZE_STEPS, PROCEDURE_MATERIAL_MAX_PHOTO_BYTES, PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES, resolveAttachmentContentType, resolveProcedureMaterialGmailPacket, stripCidPlaceholders } from '../procedure-material-gmail-packet-resolver.js';
+
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 
 vi.mock('../procedure-video.scheduler.js', () => ({ getProcedureVideoScheduler: () => ({ kick: vi.fn() }) }));
 
@@ -53,6 +57,72 @@ function outlookMessage(text: string): GmailMessage {
   mail.payload!.mimeType = 'multipart/related';
   return mail;
 }
+
+const spreadsheetBytes = Buffer.from('synthetic workbook');
+const spreadsheetPart = (overrides: Partial<GmailMessagePart> = {}): GmailMessagePart => ({
+  filename: '検査.xlsx', mimeType: XLSX_CONTENT_TYPE, body: { data: spreadsheetBytes.toString('base64url') }, ...overrides
+});
+
+describe('check sheet Gmail attachments', () => {
+  it.each([
+    ['検査.XLSX', 'application/octet-stream'], ['検査.xlsx', 'text/plain'], ['検査', XLSX_CONTENT_TYPE]
+  ])('collects spreadsheet %s with MIME %s', async (filename, mimeType) => {
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([spreadsheetPart({ filename, mimeType })]), client: client() });
+    expect(packet).toMatchObject({ photos: [], pdfs: [], videos: [], skippedAttachments: 0, warnings: [] });
+    expect(packet.spreadsheets).toEqual([expect.objectContaining({ filename, buffer: spreadsheetBytes })]);
+  });
+  it.each([true, false])('checks spreadsheet size before and after download (reported: %s)', async (reported) => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(Buffer.alloc(MAX_XLSX_BYTES + 1)) };
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([spreadsheetPart({
+      body: { attachmentId: 'xlsx', ...(reported ? { size: MAX_XLSX_BYTES + 1 } : {}) }
+    })]), client: attachmentClient });
+    expect(packet).toMatchObject({ spreadsheets: [], skippedAttachments: 1, warnings: ['検査.xlsx: 12 MB超過'] });
+    expect(attachmentClient.getAttachment).toHaveBeenCalledTimes(reported ? 0 : 1);
+  });
+  it('accepts exactly the upload size limit and preserves other attachment types', async () => {
+    const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(Buffer.alloc(MAX_XLSX_BYTES)) };
+    expect((await resolveProcedureMaterialGmailPacket({ message: message([spreadsheetPart({ body: { attachmentId: 'xlsx', size: MAX_XLSX_BYTES } })]), client: attachmentClient })).spreadsheets).toHaveLength(1);
+    const packet = await resolveProcedureMaterialGmailPacket({ message: message([
+      spreadsheetPart(), textPart('手順'), photoPart(), pdfPart({ body: { data: pdf.toString('base64url') } }),
+      photoPart('clip.mp4', { mimeType: 'video/mp4', body: { data: Buffer.from('video').toString('base64url') } })
+    ]), client: client() });
+    expect(packet.text).toBe('手順');
+    for (const files of [packet.photos, packet.pdfs, packet.videos, packet.spreadsheets]) expect(files).toHaveLength(1);
+    expect(packet.skippedAttachments).toBe(0);
+  });
+  it('imports a spreadsheet-only mail with Gmail provenance before trashing', async () => {
+    const h = harness([spreadsheetPart()]);
+    const result = await h.service.runOnce({ config: h.config, allowWait: false });
+    expect(h.checkSheets.importWorkbook).toHaveBeenCalledExactlyOnceWith(spreadsheetBytes, '検査.xlsx', undefined, {
+      gmailMessageId: 'mail-1', receivedAt: new Date('2026-10-05T03:00:00Z')
+    });
+    expect(result).toMatchObject({ checkSheets: 1, saved: 0, messages: [{ checkSheets: 1, status: 'saved', trashed: true }] });
+    expect(h.gmail.trashMessage).toHaveBeenCalledExactlyOnceWith('mail-1');
+    expect(h.checkSheets.importWorkbook.mock.invocationCallOrder[0]).toBeLessThan(h.gmail.trashMessage.mock.invocationCallOrder[0]);
+  });
+  it.each([true, false])('warns on parse failures and uses the existing trash rule (other material: %s)', async (other) => {
+    const h = harness([spreadsheetPart(), ...(other ? [textPart('手順')] : [])]);
+    h.checkSheets.importWorkbook.mockRejectedValue(new ApiError(400, 'チェックシートとして読めません'));
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({
+      checkSheets: 0, saved: other ? 1 : 0, skippedAttachments: 1,
+      messages: [{ status: other ? 'saved' : 'skipped', trashed: other, warnings: ['検査.xlsx: チェックシートとして読めません'] }]
+    });
+    expect(h.gmail.trashMessage).toHaveBeenCalledTimes(other ? 1 : 0);
+  });
+  it('keeps storage failures retryable without trashing', async () => {
+    const h = harness([spreadsheetPart()]);
+    h.checkSheets.importWorkbook.mockRejectedValue(new Error('storage unavailable'));
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ retryable: 1, checkSheets: 0, skippedAttachments: 0 });
+    expect(h.gmail.trashMessage).not.toHaveBeenCalled();
+  });
+  it('retries a trash failure using the same importer and asset identity', async () => {
+    const h = harness([spreadsheetPart()]);
+    h.gmail.trashMessage.mockRejectedValueOnce(new Error('Gmail unavailable'));
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ checkSheets: 1, retryable: 1 });
+    expect(await h.service.runOnce({ config: h.config, allowWait: false, manual: true })).toMatchObject({ checkSheets: 1, retryable: 0, messages: [{ trashed: true }] });
+    expect(h.checkSheets.importWorkbook).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('stripCidPlaceholders', () => {
   it.each([
@@ -458,9 +528,10 @@ function harness(parts: GmailMessagePart[] = [textPart('手順'), photoPart()], 
   const gmail = { ...client(), getMessage: vi.fn().mockResolvedValue(message(parts)), searchMessagesAll: vi.fn().mockResolvedValue(['mail-1']), trashMessage: vi.fn().mockResolvedValue(undefined) };
   const store = { write: vi.fn().mockResolvedValue(undefined), read: vi.fn().mockResolvedValue(image), stat: vi.fn().mockResolvedValue({ isFile: () => true }) };
   const factory = vi.fn().mockResolvedValue(gmail);
-  const service = new ProcedureMaterialGmailIngestionService(factory, db as never, store as never, pdfPages);
+  const checkSheets = { importWorkbook: vi.fn().mockResolvedValue({ importId: 'asset-1' }) };
+  const service = new ProcedureMaterialGmailIngestionService(factory, db as never, store as never, pdfPages, checkSheets);
   const config = { ...defaultBackupConfig, procedureMaterialGmailIngest: { ...defaultBackupConfig.procedureMaterialGmailIngest, enabled: true } };
-  return { rows, db, gmail, store, factory, service, config };
+  return { rows, db, gmail, store, factory, service, config, checkSheets };
 }
 
 describe('procedure-material Gmail ingestion', () => {
@@ -541,7 +612,7 @@ describe('procedure-material Gmail ingestion', () => {
     expect(h.store.write).toHaveBeenCalledTimes(4);
     expect(h.store.write).toHaveBeenCalledWith({ key: `procedure-materials/${sha256}/original`, data: pageImage, mode: 'create', integrity: true });
     expect(h.store.stat).toHaveBeenCalledTimes(4);
-    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 0, duplicate: 4, messages: [{ status: 'duplicate', trashed: true }] });
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 4, messages: [{ status: 'duplicate', trashed: true }] });
     expect(h.rows).toHaveLength(4);
     expect(h.store.write).toHaveBeenCalledTimes(4);
     expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
@@ -608,8 +679,8 @@ describe('procedure-material Gmail ingestion', () => {
     const first = await h.service.runOnce({ config: h.config, allowWait: false, manual: false });
     expect(first).toMatchObject({ scanned: 2, processed: 2, deferred: 0, [status]: 2 });
     const deferred = await h.service.runOnce({ config: h.config, allowWait: false, manual: false });
-    expect(deferred).toEqual({ scanned: 2, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, errors: [], messages: [] });
-    expect(logger.info).toHaveBeenLastCalledWith({ manual: false, scanned: 2, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, messages: [] }, '[ProcedureMaterialGmail] cycle completed');
+    expect(deferred).toEqual({ scanned: 2, processed: 0, saved: 0, checkSheets: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, errors: [], messages: [] });
+    expect(logger.info).toHaveBeenLastCalledWith({ manual: false, scanned: 2, processed: 0, saved: 0, checkSheets: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 2, skippedAttachments: 0, messages: [] }, '[ProcedureMaterialGmail] cycle completed');
     const manual = await h.service.runOnce({ config: h.config, allowWait: true, manual: true });
     expect(manual).toMatchObject({ scanned: 2, processed: 2, deferred: 0, [status]: 2 });
     expect(manual.messages.map(({ messageId, status: messageStatus, reason }) => ({ messageId, status: messageStatus, reason }))).toEqual(['mail-1', 'mail-2'].map((messageId) => ({ messageId, status, reason: first.messages[0]!.reason })));
@@ -626,7 +697,7 @@ describe('procedure-material Gmail ingestion', () => {
     expect(summary.messages[2]).not.toHaveProperty('errorName');
     expect(summary.errors).toEqual(['mail-3: temporary Gmail failure']);
     expect(logger.info).toHaveBeenCalledExactlyOnceWith({
-      manual, scanned: 3, processed: 3, saved: 2, duplicate: 0, skipped: 1, retryable: 1, deferred: 0, skippedAttachments: 0,
+      manual, scanned: 3, processed: 3, saved: 2, checkSheets: 0, duplicate: 0, skipped: 1, retryable: 1, deferred: 0, skippedAttachments: 0,
       messages: [
         { messageId: 'mail-1', status: 'saved', reason: undefined },
         { messageId: 'mail-2', status: 'skipped', reason: '件名トークンが一致しません' },
@@ -662,8 +733,8 @@ describe('procedure-material Gmail ingestion', () => {
   it('returns and logs zero counts when no messages are found', async () => {
     const h = harness();
     h.gmail.searchMessagesAll.mockResolvedValue([]);
-    expect(await h.service.runOnce({ config: h.config, allowWait: false, manual: true })).toEqual({ scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] });
-    expect(logger.info).toHaveBeenCalledExactlyOnceWith({ manual: true, scanned: 0, processed: 0, saved: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, messages: [] }, '[ProcedureMaterialGmail] cycle completed');
+    expect(await h.service.runOnce({ config: h.config, allowWait: false, manual: true })).toEqual({ scanned: 0, processed: 0, saved: 0, checkSheets: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, errors: [], messages: [] });
+    expect(logger.info).toHaveBeenCalledExactlyOnceWith({ manual: true, scanned: 0, processed: 0, saved: 0, checkSheets: 0, duplicate: 0, skipped: 0, retryable: 0, deferred: 0, skippedAttachments: 0, messages: [] }, '[ProcedureMaterialGmail] cycle completed');
     expect(h.gmail.getMessage).not.toHaveBeenCalled();
   });
   it.each([
@@ -683,7 +754,7 @@ describe('procedure-material Gmail ingestion', () => {
     const first = await h.service.runOnce({ config: h.config, allowWait: false });
     const second = await h.service.runOnce({ config: h.config, allowWait: false });
     expect(first).toMatchObject({ saved: 2, processed: 1 });
-    expect(second).toMatchObject({ saved: 0, duplicate: 2, messages: [{ status: 'duplicate', trashed: true }] });
+    expect(second).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 2, messages: [{ status: 'duplicate', trashed: true }] });
     expect(h.rows).toHaveLength(2); expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
     expect(h.gmail.getAttachment).toHaveBeenCalledTimes(1); expect(h.store.write).toHaveBeenCalledTimes(1);
     expect(h.store.write).toHaveBeenCalledWith(expect.objectContaining({ key: `procedure-materials/${createHash('sha256').update(image).digest('hex')}/original`, mode: 'create', integrity: true }));
@@ -767,7 +838,7 @@ describe('procedure-material Gmail ingestion', () => {
     expect(await h.service.runOnce({ config: h.config, allowWait: true })).toMatchObject({ saved: 2, retryable: 1, messages: [{ trashed: false }] });
     expect(await h.service.runOnce({ config: h.config, allowWait: true })).toMatchObject({ processed: 0 });
     const result = await h.service.runOnce({ config: h.config, allowWait: true, manual: true, messageId: 'mail-1', forceRetry: true });
-    expect(result).toMatchObject({ saved: 0, duplicate: 2, messages: [{ trashed: true }] }); expect(h.rows).toHaveLength(2);
+    expect(result).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 2, messages: [{ trashed: true }] }); expect(h.rows).toHaveLength(2);
   });
   it('retries a partial save without trashing prematurely or duplicating the body', async () => {
     const h = harness(); h.store.write.mockRejectedValueOnce(new Error('storage unavailable'));
@@ -847,6 +918,12 @@ function appHarness(parts = appParts(), subject = 'ProcedureMaterial item-1') {
   return h;
 }
 describe('procedure-material app Gmail ingestion', () => {
+  it('imports spreadsheets alongside a valid app manifest without changing app photo handling', async () => {
+    const h = appHarness([...appParts(), spreadsheetPart()]);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 2, checkSheets: 1, messages: [{ trashed: true }] });
+    expect(h.rows.every((row) => row.kind === 'PHOTO' && row.origin === 'APP')).toBe(true);
+  });
+
   it.each(['ProcedureMaterial', 'ProcedureMaterial item-1', 'ProcedureMaterial\titem-1'])('saves exactly the two referenced APP photos despite legacy fromEmail for %s', async (subject) => {
     const h = appHarness(appParts(), subject);
     const options = { config: h.config, allowWait: false };
@@ -859,7 +936,7 @@ describe('procedure-material app Gmail ingestion', () => {
     })));
     expect(h.store.write).toHaveBeenCalledTimes(2);
     expect(h.gmail.getAttachment).not.toHaveBeenCalled();
-    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, duplicate: 2, messages: [{ trashed: true }] });
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 2, messages: [{ trashed: true }] });
     expect(h.rows).toHaveLength(2);
     expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
   });
@@ -916,7 +993,7 @@ describe('procedure-material app Gmail ingestion', () => {
     const options = { config: h.config, allowWait: false };
     expect(await h.service.runOnce(options)).toMatchObject({ saved: 3, retryable: 0, messages: [{ trashed: true }] });
     expect(videos).toEqual([expect.objectContaining({ status: 'PENDING', gmailMessageId: 'mail-1', sourceContentType: 'video/mp4' })]);
-    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, duplicate: 3, messages: [{ trashed: true }] });
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 3, messages: [{ trashed: true }] });
     expect(videos).toHaveLength(1);
   });
 });

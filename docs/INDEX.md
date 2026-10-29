@@ -1902,6 +1902,7 @@ APIの概要と詳細。
 | [deployment.md](./guides/deployment.md) | デプロイ手順 |
 | [production-setup.md](./guides/production-setup.md) | 本番環境セットアップ |
 | [backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
+| [PostgreSQL 15→18移行Runbook](./runbooks/postgres-15-to-18-upgrade.md) | 移行・比較・切戻し |
 | [monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [csv-import-export.md](./guides/csv-import-export.md) | CSVインポート・エクスポート |
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |

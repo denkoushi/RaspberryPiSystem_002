@@ -376,7 +376,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
         {knowledgeResult.failed.map((failure) => <p key={failure.candidateKey}>{failure.reason}</p>)}
       </div> : null}
       {result ? <div role="status" className="max-h-24 shrink-0 overflow-auto text-sm text-[#9fadb9]">
-        <p>見つけた {result.scanned} 通・取込 {result.saved}件・保存済み {result.duplicate}件・スキップ {result.skipped}通・再試行 {result.retryable}通・再試行待ち {result.deferred}通・除外添付 {result.skippedAttachments}件</p>
+        <p>見つけた {result.scanned} 通・取込 {result.saved}件・チェックシート {result.checkSheets}件・保存済み {result.duplicate}件・スキップ {result.skipped}通・再試行 {result.retryable}通・再試行待ち {result.deferred}通・除外添付 {result.skippedAttachments}件</p>
         {result.scanned === 0 ? <p>受信トレイに未読の対象メールがありません</p> : null}
         {result.messages.filter((m) => m.reason || m.warnings.length).map((m) => <div key={m.messageId}>
           {m.reason ? <p>{m.reason}</p> : null}

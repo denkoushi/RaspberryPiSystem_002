@@ -12,6 +12,7 @@ type HaizenNative = {
   isSpeechAvailable?(): boolean;
   startSpeech?(): void;
   stopSpeech?(): void;
+  setClientKey?(key: string): void;
 };
 
 declare global {

@@ -169,7 +169,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     if (actual) mp.resetActualSlipOcrFeedback();
   };
   const fields = [
-    { label: '移動票 製造order', value: mp.transferOrder, set: mp.setTransferOrder, scan: 'transferOrder', actual: false },
+    { label: '移動票 製造order', value: mp.transferOrder, set: (value: string) => { if (mp.transferOrder && mp.transferOrder !== value) mp.setTransferPart(''); mp.setTransferOrder(value); }, scan: 'transferOrder', actual: false },
     { label: '現品票 注文番号 / 製造order', value: mp.actualOrder, set: mp.setActualOrder, scan: 'actualOrder', actual: true },
     { label: '移動票 部品番号', value: mp.transferPart, set: mp.setTransferPart, scan: 'transferPart', actual: false },
     { label: '現品票 部品番号', value: mp.actualPart, set: mp.setActualPart, scan: 'actualPart', actual: true },
@@ -211,7 +211,10 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
               <span aria-hidden>{flow.result === 'ng' ? '×' : '?'}</span>{resultTitle}
             </div>
             {flow.result === 'ng' && <p className="text-base font-bold text-[var(--hp-ink)]">{mp.slipDetails?.reason === 'different_seiban'
-              ? `この注文は別の製番(${mp.slipDetails.actual?.fseiban ?? '不明'})の材料です` : '部品が違います'}</p>}
+              ? `この注文は別の製番(${mp.slipDetails.actual?.fseiban ?? '不明'})の材料です`
+              : mp.slipDetails?.reason === 'different_part' && mp.slipDetails.legacyReason === 'TRANSFER_PART_MISMATCH' ? '移動票の部品番号が違います'
+              : mp.slipDetails?.reason === 'different_part' && mp.slipDetails.legacyReason === 'ACTUAL_PART_MISMATCH' ? '現品票の部品番号が違います'
+              : '部品が違います'}</p>}
             {flow.result === 'not-found' && <>
               <p className="text-base font-bold text-[var(--hp-ink)]">{mp.slipDetails?.reason === 'transfer_not_found' ? 'この製造orderが見つかりません' : mp.slipDetails?.reason === 'part_required' ? '部品番号も読んでください' : 'この注文番号はまだ届いていません'}</p>
               <div className="flex gap-2"><button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={onPhoto}>写真で製番</button><button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={() => setSheet('inputs')}>部品番号</button></div>
