@@ -84,7 +84,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 **注意: 公式イメージの 18 はデータの置き場所が変わる。** PGDATA が `/var/lib/postgresql/18/docker` になり、mount 先は `/var/lib/postgresql` が推奨になった。古い mount 先のまま 18 を起動すると、起動に失敗するか、空の DB を新しく作ってしまう。そこで、新しいボリューム `db-data-pg18` を `/var/lib/postgresql` に mount する。旧 `db-data` は compose に宣言したまま残し、消さない。
 
-**最大の危険は、compose の版だけ変えて標準反映すること。** 空の pg18 が起動し、API の `migrate deploy` が空の DB に表を作るので、画面上はデータが消えたように見える。これを防ぐため、手順 2 の起動前チェックを先に入れ、本番の compose を切り替える PR は移行の当日にだけマージする。
+**最大の危険は、compose の版だけ変えて標準反映すること。** 標準デプロイ自体は `db` を再作成しないが、明示的な `up -d db` で空の pg18 が起動すると、API の `migrate deploy` が空の DB に表を作り、画面上はデータが消えたように見える。これを防ぐため、手順 2 の起動前チェックを先に入れ、本番の compose を切り替える PR は移行の当日にだけマージする。
 
 **手順**(PR は 1〜2 と 4 が別。どれも1つのソフト更新の準備として扱う)
 
@@ -92,7 +92,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 2. **移行用の手順書とスクリプトの PR。** 次の3つを入れる。
    - `scripts/server/postgres-major-upgrade.sh`。止める、取る、復元する、比べる、切り替える、を1本で行い、どこかで失敗したら止まる。
    - DB の起動前チェック。新しいボリュームが空で、旧 `db-data` にデータがあるときは起動を止める。誤って空の DB で動き出すのを防ぐ。
-   - Runbook `docs/runbooks/postgres-15-to-18-upgrade.md`。
+   - [Runbook](../runbooks/postgres-15-to-18-upgrade.md)。
 3. **試し移行(手元の Mac、arm64)。** Mac は Pi5 と同じ arm64 なので、ここで試す。
    1. 本番から読み取りだけでダンプを取る。`pg_dumpall --globals-only` と `pg_dump -Fc` の2つ。
    2. 本番 DB の大きさと Pi5 の空き容量を測る(読み取りのみ)。空き容量は、DB の大きさの2倍にダンプの分を足した量を目安とする。
@@ -101,19 +101,20 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
    5. 戻す手順(旧ボリュームへ切り替える)も1回試す。
    6. 本番データの写しは使い終わったら Mac から消す。
 4. **本番の compose を切り替える PR。** `db` の image を pg18 にし、mount を `db-data-pg18:/var/lib/postgresql` にする。旧 `db-data` の宣言は残す。手順 3 の結果を PR に書き、マージは手順 5 の当日に進行管理役が行う。
+   - Dockerfile.api の `postgresql-client-15`(API バックアップの pg_dump)を切替 PR までに18へ更新する。pg_dump 18 は15のサーバーも扱えるので先行更新できる。
 5. **本番移行(ユーザーの明示承認のあとにだけ行う)。**
    1. 業務が止まってよい時間帯をユーザーと決める。目安は手順 3 で測った時間の3倍。
    2. 開始前に、`backup.sh` の手動実行と、globals と `-Fc` のダンプを Pi5 の外(Mac)へ1部ずつ保管する。
    3. API と Web を止めて書き込みを止める。
    4. スクリプトで新しいボリュームへ復元し、件数を比べる。
-   5. 手順 4 の PR をマージして標準反映する。
+   5. 手順 4 の PR をマージして標準反映する(運用順序はRunbookに従い、クライアント停止前に行う)。標準デプロイは `db` を再作成しないため、旧 `db` を停止し、スクリプトの `activate --expect-major 18 --work-dir <dir>` で切り替える。
    6. health、主要画面、`migrate status` を確かめる。
    7. 業務を再開する前に、進めるか戻すかを決める。
 6. **後片付け。** 旧 `db-data` は少なくとも2週間残す。その間に DR スナップショットを1回取り、Google Drive からの復元検証を pg18 で通す。消すのは、ユーザーの承認を得て別の作業で行う。
 
 **戻し方**
 
-- 業務を再開する前なら、`db` を pg15 と旧 `db-data` に戻して(手順 4 の PR を revert して)標準反映する。旧ボリュームには一切書き込んでいないので、データは移行の直前のまま。
+- 業務を再開する前なら、`db` を pg15 と旧 `db-data` に戻して(手順 4 の PR を revert して)、スクリプトの `activate --expect-major 15 --work-dir <dir>` で起動・比較する。旧ボリュームには一切書き込んでいないので、データは移行の直前のまま。
 - 業務を再開した後に戻すと、再開後に書き込まれたデータが旧ボリュームに無い。そのため、戻すかどうかは再開前に決める。再開後に重い問題が出たときは、pg18 から取ったダンプを pg15 へ入れられるか試してから判断する(版を下げる復元は、うまくいく保証がない)。
 - 最後の手段は、移行直前のダンプ(Pi5 の外にある写し)から pg15 に復元すること。
 
@@ -135,6 +136,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - [x] (2026-10-27) ユーザーが次に PostgreSQL 15 の更新へ進むことを選んだ(計画と準備までの承認。本番移行は別に承認を得る)。5 の手順を詳しく書いた。
 
 - [x] (2026-10-25) Brotli の脆弱性(CVE-2026-111497)対応として、API と kiosk-sop 生成の node:24-bookworm-slim を Node 24.21.0 の digest(sha256:2fe369e9…)から Node 24.22.1 の digest(index sha256:55fb5f5a…)へ差し替える別 PR を作成。土台は bookworm のままで、3件目の trixie 化とは分ける。
+- [x] (2026-10-29) PostgreSQL更新の手順2として、移行・比較・activateスクリプト、空DB初期化ガード、契約/ガード/E2Eテスト、[Runbook](../runbooks/postgres-15-to-18-upgrade.md)を追加。本番composeとDockerfile.apiは変更せず、切替は手順4で行う。
 
 ## Surprises & Discoveries
 
