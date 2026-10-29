@@ -70,5 +70,5 @@ export function unpackBasePurchase(r: BasePurchaseTuple): LocalPurchaseRow {
 }
 export type PurchaseEnrichmentTuple =
   | ['match' | 'normalized' | 'machine', string, string]
-  | ['date', string, string, string, string]; // raw seiban, raw code, raw name, ISO date
+  | ['date', string, string, string, string, string, 0 | 1]; // raw seiban, raw code, raw name, ISO date, ProductNo (-1 if not numeric), completed
 export type PurchaseEnrichmentSnapshot = DatasetVersion & { rows: PurchaseEnrichmentTuple[] };

@@ -183,10 +183,11 @@ package_integrity_allowed_paths:
   - "/etc/initramfs-tools/initramfs.conf"
   - "/etc/lightdm/lightdm.conf"
 
-rkhunter_kiosk_enabled: true
-rkhunter_kiosk_cron: '30 2 * * 0'
-rkhunter_kiosk_log_dir: /var/log/rkhunter-raspisys-staging
-rkhunter_kiosk_log_file: rkhunter-kiosk.log
+package_integrity_expected_contents: []
+package_integrity_kiosk_cron: "30 2 * * 0"
+package_integrity_kiosk_extra_allowed_paths:
+  - "/etc/NetworkManager/NetworkManager.conf"
+
 clamav:
   enabled: true
   log_dir: /var/log/clamav-raspisys-staging
@@ -207,13 +208,6 @@ trivy:
     minute: '0'
     hour: '4'
     weekday: '0'
-rkhunter:
-  enabled: true
-  log_dir: /var/log/rkhunter-raspisys-staging
-  cron:
-    minute: '30'
-    hour: '4'
-
 security_monitor_enabled: true
 security_monitor_state_dir: /var/lib/security-monitor-raspisys-staging
 security_monitor_fail2ban_log: /var/log/fail2ban-raspisys-staging.log

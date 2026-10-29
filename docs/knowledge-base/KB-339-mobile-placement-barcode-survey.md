@@ -354,10 +354,10 @@
 - 照合の `transfer_not_found` / `order_not_found`、購買0件、ネイティブ読取の製番補正 `none` は `canSyncNow()` 時だけサーバーで再確認する。失敗時は元の端末結果を返す。他の判定は端末結果を即返す。場所・分配枝検索は既存のサーバー再確認と控え保持を継続する。
 - 新端末は versions に `format=2` を指定する。`purchaseEnrichment` の版があれば purchase にも `format=2` を指定し、購買の生データ（7列タプル）と派生データを別々に受け取る。旧APIが追加クエリを無視して派生データの版を返さない場合は、従来の購買10列タプルを受け取る。
 - `purchase` の版とスナップショットは `PurchaseOrderLookupRow` だけに依存する。購買CSVだけの取込では他のデータセットを更新しない。
-- `purchaseEnrichment` は予定表 `CsvDashboardRow`、日付補足 `ProductionScheduleOrderSupplement`、機種名補足 `ProductionScheduleSeibanMachineNameSupplement` に依存する。購買行は読まない。予定表winner行の品名辞書、機種名辞書、着手日候補を配り、検索した購買行に端末で結合する。品名の照合キー→正規化コード、機種名のMH/SH→補足、日付の照合キー→コード→正規化品名と最早日の優先順位を維持する。
+- `purchaseEnrichment` は予定表 `CsvDashboardRow`、日付補足 `ProductionScheduleOrderSupplement`、機種名補足 `ProductionScheduleSeibanMachineNameSupplement`、工程の完了 `ProductionScheduleProgress` / `ProductionScheduleExternalCompletion` に依存する。購買行は読まない。予定表winner行の品名辞書、機種名辞書、着手日候補を配り、検索した購買行に端末で結合する。品名の照合キー→正規化コード、機種名のMH/SH→補足、日付の照合キー→コード→正規化品名の順と、各キーで最新の製造オーダ→その未完了工程の最早日→全完了なら最早日という選び方（#2374）をサーバーと同じに保つ。着手日候補には ProductNo と完了フラグを含める。
 - `schedule` は予定表だけに依存する。`placements` は配置枝（削除・同件数置換を検出するchecksumを含む）、予定表、機種名補足に依存する。機種名を表示しているため後二者も必要で、日付補足・購買には依存しない。
 - format未指定の旧端末には、従来の派生項目入り購買と従来どおり4表に依存する版を返す（内部キャッシュ名 `legacyPurchase`）。旧端末が残る間、この経路の全件再構築は残る。新端末の同期はこのキャッシュを利用しない。
-- IndexedDB `mobile-local-data-v1` を schema 3 に上げ、旧購買行と購買の版を同じupgrade transactionで無効化する。予定表・配置枝は保持する。以後、取得した各データセットと版は同一transactionで保存し、取得失敗や版不一致では既存データを維持する。旧APIに戻った場合は派生データを除去し、旧形式の購買表示と混ぜない。
+- IndexedDB `mobile-local-data-v1` を schema 3 に上げ、旧形式の購買行と版は残し、新形式が届いて同じtransactionで差し替わるまで照合に使う。派生データは版ごとにメモリへ保持し、照会のたびに読み直さない。予定表・配置枝は保持する。以後、取得した各データセットと版は同一transactionで保存し、取得失敗や版不一致では既存データを維持する。旧APIに戻った場合は派生データを除去し、旧形式の購買表示と混ぜない。
 - ローカル検証: 共有コア11件、Web関連59ファイル489件、API関連4ファイル35件が成功。共有パッケージbuild、Web/API型チェック、変更箇所lintも成功。既存依存環境を参照し、Prisma Clientは現schemaからworktree内に生成して確認した。本番反映は未実施。
 
 ## References

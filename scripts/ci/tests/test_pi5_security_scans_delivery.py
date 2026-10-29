@@ -72,7 +72,8 @@ class Pi5SecurityScansDeliveryTest(unittest.TestCase):
                             'rkhunter_server_allow_dev_files', 'rkhunter_server_allow_hidden_files',
                             'rkhunter_log_dir', 'rkhunter_log_file'):
                     self.assertNotIn(key, variables)
-                self.assertTrue(variables['rkhunter_kiosk_enabled'])
+                self.assertEqual(variables['package_integrity_expected_contents'], [])
+                self.assertFalse(any(key.startswith('rkhunter') for key in variables))
         # Staging inherits the review sources from all.yml and supplies its own log directory.
         scans = next(value['scans'] for value in production.values()
                      if isinstance(value, dict) and 'scans' in value)
@@ -83,7 +84,7 @@ class Pi5SecurityScansDeliveryTest(unittest.TestCase):
             'start': 'Starting package integrity check...', 'end': 'Package integrity check completed.'})
         self.assertNotIn('rkhunter', [scan['name'] for scan in scans])
 
-    def run_package_scan(self, output='', error='', exit_code=0, previous='', allowed=None):
+    def run_package_scan(self, output='', error='', exit_code=0, previous='', allowed=None, expected=None):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         tmp = Path(directory.name)
@@ -113,6 +114,8 @@ printf '%s' "$3" > "{tmp}/body"
                          alert_script_path=str(alert))
         if allowed is not None:
             variables['package_integrity_allowed_paths'] = allowed
+        if expected is not None:
+            variables['package_integrity_expected_contents'] = expected
         environment = Environment(undefined=StrictUndefined)
         environment.filters['quote'] = shlex.quote
         script = environment.from_string(
@@ -144,6 +147,34 @@ printf '%s' "$3" > "{tmp}/body"
         self.assertEqual((tmp / 'alerts').read_text().splitlines(), ['package-integrity-warning'])
         self.assertEqual((tmp / 'title').read_text(), 'パッケージの改ざん確認で差分が見つかりました')
         self.assertEqual((tmp / 'body').read_text().splitlines(), differences)
+
+    def test_expected_content_requires_exact_bytes(self):
+        expected_content = "operator ALL=(ALL) NOPASSWD: ALL\n"
+        for actual in (expected_content, expected_content.rstrip('\n'),
+                       expected_content + '\n', 'intruder ALL=(ALL) NOPASSWD: ALL\n',
+                       expected_content + '\x00', None):
+            with self.subTest(actual=actual), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "010_pi-nopasswd"
+                if actual is not None:
+                    path.write_bytes(actual.encode())
+                    path.chmod(0o440)
+                line = f'{"missing  " if actual is None else "??5??????"} c {path}'
+                tmp, _ = self.run_package_scan(line + '\n', expected=[
+                    {'path': str(path), 'content': expected_content}])
+                if actual == expected_content:
+                    self.assertFalse((tmp / 'alerts').exists())
+                else:
+                    self.assertEqual((tmp / 'alerts').read_text().splitlines(), ['package-integrity-warning'])
+                    self.assertEqual((tmp / 'body').read_text(), line)
+
+    def test_expected_content_and_paths_are_shell_quoted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config's [x] $(unused)"
+            content = "login'user $(unused) \"quoted\"\n\n"
+            path.write_text(content)
+            tmp, _ = self.run_package_scan(f'??5?????? c {path}\n', expected=[
+                {'path': str(path), 'content': content}])
+            self.assertFalse((tmp / 'alerts').exists())
 
     def test_previous_package_differences_do_not_alert(self):
         tmp, log = self.run_package_scan(previous='[old] Starting package integrity check...\n??5??????   /usr/bin/old\n[old] Package integrity check completed.\n')

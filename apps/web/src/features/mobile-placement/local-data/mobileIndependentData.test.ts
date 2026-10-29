@@ -13,7 +13,7 @@ const purchase: BasePurchaseSnapshot = { format: 2, version: 'base1', dataUpdate
 const schedule = { version: 's1', dataUpdatedAt: null, rows: [], knownFseibans: [] };
 const placements = { version: 'b1', dataUpdatedAt: null, rows: [] };
 const purchaseEnrichment: PurchaseEnrichmentSnapshot = { version: 'e1', dataUpdatedAt: null, rows: [
-  ['match', 'MD1', 'master'], ['machine', 'FS1', 'machine'], ['date', 'FS1', 'MD1', 'Part', '2026-11-01']
+  ['match', 'MD1', 'master'], ['machine', 'FS1', 'machine'], ['date', 'FS1', 'MD1', 'Part', '2026-11-01', '1', 0]
 ] };
 const legacy = { version: 'legacy1', dataUpdatedAt: null, rows: [packPurchase(row)] };
 const remoteApi = () => ({ versions: vi.fn().mockResolvedValue({ purchase, schedule, placements, purchaseEnrichment }),

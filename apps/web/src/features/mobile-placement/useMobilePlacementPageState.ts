@@ -22,6 +22,7 @@ import {
 import { scanFseibanNative } from './haizenNative';
 import { snapNativeLocalFirst, verifyLocalFirst } from './local-data/localFirstLookup';
 import { mobilePlacementQueryKeys } from './mobilePlacementQueryKeys';
+import { createSlipVerifyRecorder } from './verify-records/recordSlipVerify';
 
 import type { MobilePlacementShelfRegisterRouteState, OrderPlacementPageIntent } from './shelfSelection';
 import type { MobilePlacementScanField, MobilePlacementSlipResult } from './types';
@@ -32,6 +33,7 @@ import type { ActualSlipOcrResponse, MobilePlacementSlipMatchResponse } from '..
  */
 export function useMobilePlacementPageState() {
   const queryClient = useQueryClient();
+  const [verifyRecorder] = useState(createSlipVerifyRecorder);
   const [transferOrder, setTransferOrder] = useState('');
   const [transferPart, setTransferPart] = useState('');
   const [actualOrder, setActualOrder] = useState('');
@@ -189,27 +191,34 @@ export function useMobilePlacementPageState() {
     return snapNativeLocalFirst(result.tokens, result.text, () => snapFseibanTokens({ tokens: result.tokens, text: result.text }));
   }, false), [runActualSlipOcr]);
 
+  const linkLastVerifyRecord = useCallback((clientRecordId: string) => verifyRecorder.link({
+    transferOrderBarcodeRaw: transferOrder, transferPartBarcodeRaw: transferPart,
+    actualOrderBarcodeRaw: actualOrder, actualFseibanRaw: actualFseiban, actualPartBarcodeRaw: actualPart
+  }, clientRecordId), [verifyRecorder, transferOrder, transferPart, actualOrder, actualFseiban, actualPart]);
+
   const runSlipVerify = useCallback(async () => {
     setSlipVerifying(true);
     setSlipResult('idle');
     setSlipDetails(null);
+    const input = {
+      transferOrderBarcodeRaw: transferOrder,
+      transferPartBarcodeRaw: transferPart,
+      actualOrderBarcodeRaw: actualOrder,
+      actualFseibanRaw: actualFseiban,
+      actualPartBarcodeRaw: actualPart
+    };
     try {
-      const input = {
-        transferOrderBarcodeRaw: transferOrder,
-        transferPartBarcodeRaw: transferPart,
-        actualOrderBarcodeRaw: actualOrder,
-        actualFseibanRaw: actualFseiban,
-        actualPartBarcodeRaw: actualPart
-      };
       const res = await verifyLocalFirst(input, () => verifyMobilePlacementSlipMatch(input));
       setSlipDetails(res);
       setSlipResult(res.ok ? 'ok' : res.reason === 'order_not_found' || res.reason === 'transfer_not_found' || res.reason === 'part_required' ? 'not-found' : 'ng');
+      await verifyRecorder.record(input, res).catch(() => console.warn('Verify record could not be saved'));
     } catch {
       setSlipResult('error');
+      await verifyRecorder.record(input, 'error').catch(() => console.warn('Verify record could not be saved'));
     } finally {
       setSlipVerifying(false);
     }
-  }, [transferOrder, transferPart, actualOrder, actualFseiban, actualPart]);
+  }, [verifyRecorder, transferOrder, transferPart, actualOrder, actualFseiban, actualPart]);
 
   const runRegister = useCallback(async () => {
     setRegisterError(null);
@@ -335,6 +344,7 @@ export function useMobilePlacementPageState() {
     restoreShelfRegisterRouteState,
     slipVerifying,
     runSlipVerify,
+    linkLastVerifyRecord,
     shelfCode,
     selectShelf,
     orderBarcode,

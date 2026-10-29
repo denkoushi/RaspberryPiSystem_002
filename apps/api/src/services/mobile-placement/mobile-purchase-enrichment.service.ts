@@ -18,7 +18,8 @@ export async function buildMobilePurchaseEnrichment(): Promise<{ rows: PurchaseE
     for (const [key, value] of Object.entries(values)) if (key && value != null) rows.push([kind, key, value]);
   }
   for (const row of dates) {
-    if (row.plannedStartDate) rows.push(['date', row.seiban, row.fhincd, row.fhinmei, row.plannedStartDate.toISOString().slice(0, 10)]);
+    if (row.plannedStartDate) rows.push(['date', row.seiban, row.fhincd, row.fhinmei, row.plannedStartDate.toISOString().slice(0, 10),
+      row.productNo, row.completed ? 1 : 0]);
   }
   return { rows };
 }
