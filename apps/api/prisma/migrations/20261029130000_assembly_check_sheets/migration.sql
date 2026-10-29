@@ -216,7 +216,7 @@ ALTER TABLE "AssemblyCheckSheetStampHistory" ADD CONSTRAINT "AssemblyCheckSheetS
 -- AddForeignKey
 ALTER TABLE "AssemblyCheckSheetStampHistory" ADD CONSTRAINT "AssemblyCheckSheetStampHistory_itemId_fkey" FOREIGN KEY ("itemId") REFERENCES "AssemblyCheckSheetItem"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- Preserve the existing Employee Prisma model; these additive FKs are SQL-owned.
+-- AddForeignKey
 ALTER TABLE "AssemblyCheckSheet" ADD CONSTRAINT "AssemblyCheckSheet_completed_employee_fkey"
   FOREIGN KEY ("completedByEmployeeId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "AssemblyCheckSheetStamp" ADD CONSTRAINT "AssemblyCheckSheetStamp_employee_fkey"

@@ -198,6 +198,9 @@ model Employee {
   torqueTrainingSessions                        TorqueTrainingSession[]
   torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
   workInstructionEditorAuthentications          WorkInstructionEditorAuthentication[]
+  assemblyCheckSheetsCompleted                  AssemblyCheckSheet[]                           @relation("AssemblyCheckSheetCompletedBy")
+  assemblyCheckSheetStamps                      AssemblyCheckSheetStamp[]                      @relation("AssemblyCheckSheetStampEmployee")
+  assemblyCheckSheetStampHistory                AssemblyCheckSheetStampHistory[]               @relation("AssemblyCheckSheetStampHistoryEmployee")
 }
 
 model Item {
@@ -5996,7 +5999,6 @@ model AssemblyCheckSheet {
   headerValues                    Json
   startedAt                       DateTime @default(now())
   completedAt                     DateTime?
-  // Employee FKs are declared in SQL to avoid changing the existing Employee model.
   completedByEmployeeId           String?
   completedByEmployeeCodeSnapshot String?
   completedByEmployeeNameSnapshot String?
@@ -6006,6 +6008,7 @@ model AssemblyCheckSheet {
   clientDeviceId                  String?
   workUnit                        AssemblyWorkUnit @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
   revision                        AssemblyCheckSheetRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+  completedByEmployee             Employee? @relation("AssemblyCheckSheetCompletedBy", fields: [completedByEmployeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheet_completed_employee_fkey")
   stamps                          AssemblyCheckSheetStamp[]
   history                         AssemblyCheckSheetStampHistory[]
 
@@ -6019,7 +6022,7 @@ model AssemblyCheckSheetStamp {
   result               AssemblyCheckSheetResult
   values               Json
   flagged              Boolean @default(false)
-  // SQL FK to Employee; snapshots survive employee deletion.
+  // Snapshots survive employee deletion.
   employeeId           String?
   employeeCodeSnapshot String
   employeeNameSnapshot String
@@ -6029,6 +6032,7 @@ model AssemblyCheckSheetStamp {
   stampedAt            DateTime @default(now())
   sheet                AssemblyCheckSheet @relation(fields: [sheetId], references: [id], onDelete: Restrict)
   item                 AssemblyCheckSheetItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  employee             Employee? @relation("AssemblyCheckSheetStampEmployee", fields: [employeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheetStamp_employee_fkey")
 
   @@unique([sheetId, itemId], map: "AssemblyCheckSheetStamp_unique_item")
   @@index([itemId], map: "AssemblyCheckSheetStamp_idx_item")
@@ -6052,6 +6056,7 @@ model AssemblyCheckSheetStampHistory {
   supersededAt         DateTime @default(now())
   sheet                AssemblyCheckSheet @relation(fields: [sheetId], references: [id], onDelete: Restrict)
   item                 AssemblyCheckSheetItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  employee             Employee? @relation("AssemblyCheckSheetStampHistoryEmployee", fields: [employeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheetStampHistory_employee_fkey")
 
   @@index([sheetId, itemId, supersededAt], map: "AssemblyCheckSheetStampHistory_idx_item")
   @@index([itemId], map: "AssemblyCheckSheetStampHistory_idx_item_id")
