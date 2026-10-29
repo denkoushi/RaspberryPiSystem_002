@@ -127,7 +127,12 @@ case "$command_name" in
     preflight
     [[ ! -e "$work_dir/globals.sql" && ! -e "$work_dir/database.dump" && ! -e "$work_dir/migrate.done" ]] || fail 'Use a fresh work directory'
     # パスワードの内容は読まず、旧コンテナのbindだけを同じread-onlyパスへ渡す。
-    password_path=$(docker inspect "$db_container" | python3 -c 'import json,sys; c=json.load(sys.stdin)[0]; env=dict(x.split("=",1) for x in c["Config"]["Env"]); p=env["POSTGRES_PASSWORD_FILE"]; m=next(m for m in c["Mounts"] if m["Destination"]==p and m["Type"]=="bind" and not m["RW"]); print(m["Source"])')
+    # 旧コンテナがPOSTGRES_PASSWORD_FILE導入前に作られた場合は、Composeのdbのbindを使う。
+    password_path=$(docker inspect "$db_container" | python3 -c 'import json,sys; c=json.load(sys.stdin)[0]; env=dict(x.split("=",1) for x in c["Config"]["Env"]); p=env.get("POSTGRES_PASSWORD_FILE"); print(next((m["Source"] for m in c["Mounts"] if p and m["Destination"]==p and m["Type"]=="bind" and not m["RW"]), ""))')
+    if [[ -z "$password_path" ]]; then
+      password_path=$(config_value 'import json,sys; s=json.load(sys.stdin)["services"]["db"]; p=s["environment"]["POSTGRES_PASSWORD_FILE"]; print(next(v["source"] for v in s["volumes"] if v.get("type")=="bind" and v["target"]==p))')
+    fi
+    [[ -f "$password_path" ]] || fail 'Password file for the new cluster not found'
     docker exec "$db_container" pg_dumpall -U postgres --globals-only > "$work_dir/globals.sql"
     docker exec "$db_container" pg_dump -U postgres -Fc --create "$database" > "$work_dir/database.dump"
     report "$db_container" "$work_dir/old.report"
