@@ -106,6 +106,31 @@ class OSUpdateUnitTests(unittest.TestCase):
                     self.assertGreater(source.index(policy), next(i for i, task in enumerate(source)
                                      if task.get('ansible.builtin.import_tasks') == 'host-status-agent-storage.yml'))
 
+    def test_kiosk_package_integrity_is_nonfatal_after_health_and_os_policy(self):
+        source = tasks('roles/release_kiosk/tasks/main.yml')
+        body = source[0]['block'][1]['block']
+        health = next(task for task in body if task['name'] == 'Switch and verify one Pi4 kiosk')
+        os_policy = next(task for task in body
+                         if task['name'] == 'Converge the Pi4 kiosk weekly OS security update policy')
+        policy = next(task for task in body
+                      if task['name'] == 'Converge the Pi4 kiosk package integrity check')
+        self.assertEqual(health['block'][1]['ansible.builtin.import_tasks'], 'health.yml')
+        self.assertGreater(body.index(policy), body.index(health))
+        self.assertEqual(body.index(policy), body.index(os_policy) + 1)
+        self.assertEqual(policy.get('when'), os_policy.get('when'))
+        self.assertEqual(len(policy['block']), 1)
+        include = policy['block'][0]
+        self.assertEqual(include['ansible.builtin.include_role'], {
+            'name': 'kiosk', 'tasks_from': 'package-integrity'})
+        self.assertEqual(include['vars'], {'terminal_release_mode': 'full'})
+        self.assertNotIn('when', include)
+        self.assertEqual(len(policy['rescue']), 1)
+        self.assertEqual(set(policy['rescue'][0]), {'name', 'ansible.builtin.debug'})
+        message = policy['rescue'][0]['ansible.builtin.debug']['msg']
+        self.assertIn('the release continues.', message)
+        self.assertIn("(ansible_failed_result.msg | default('unknown') | string)[:300]", message)
+        self.assertNotIn('always', policy)
+
     def assert_guard(self, source):
         self.assertEqual(len(source), 1)
         guard = source[0]

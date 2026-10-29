@@ -15,8 +15,18 @@ ANSIBLE = ROOT / 'infrastructure/ansible'
 
 class KioskSecurityScansDeliveryTest(unittest.TestCase):
     def setUp(self):
-        self.tasks = yaml.safe_load((ANSIBLE / 'roles/kiosk/tasks/security.yml').read_text())
+        self.tasks = yaml.safe_load((ANSIBLE / 'roles/kiosk/tasks/package-integrity.yml').read_text())
+        self.security = yaml.safe_load((ANSIBLE / 'roles/kiosk/tasks/security.yml').read_text())
         self.variables = yaml.safe_load((ANSIBLE / 'group_vars/all.yml').read_text())
+
+    def test_full_provisioning_imports_package_integrity_after_clamav(self):
+        self.assertEqual(self.security[-1], {
+            'name': 'Apply kiosk package integrity check',
+            'ansible.builtin.import_tasks': 'package-integrity.yml'})
+        self.assertEqual(self.security[-2]['name'], 'Verify kiosk ClamAV cron entry before release')
+        for task in self.security[:2]:
+            self.assertEqual(task['loop'], ['{{ clamav_kiosk_log_dir }}'])
+        self.assertFalse(any('clamav' in str(task).lower() for task in self.tasks))
 
     def test_kiosk_removes_rkhunter_without_installing_or_scheduling_it(self):
         related = [task for task in self.tasks if 'rkhunter' in str(task)]
@@ -72,7 +82,15 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
 
     def test_kiosk_creates_and_checks_log_directory_and_deploys_rotation(self):
         for task in self.tasks[:2]:
-            self.assertIn('{{ package_integrity_log_dir }}', task['loop'])
+            self.assertEqual(task['loop'], ['{{ package_integrity_log_dir }}'])
+        self.assertEqual(self.tasks[0]['when'], "terminal_release_mode | default('full') == 'full'")
+        for task in self.tasks[1:3]:
+            self.assertEqual(task['when'], "terminal_release_mode | default('full') == 'release-only'")
+        self.assertEqual(self.tasks[1]['register'], 'kiosk_package_integrity_log_directories')
+        self.assertEqual(self.tasks[2]['loop'],
+                         '{{ kiosk_package_integrity_log_directories.results | default([]) }}')
+        self.assertEqual(self.tasks[2]['ansible.builtin.assert']['that'],
+                         self.security[2]['ansible.builtin.assert']['that'])
         self.assertEqual(self.variables['package_integrity_log_dir'], '/var/log/package-integrity')
         self.assertEqual(self.variables['package_integrity_log_file'], 'package-integrity-scan.log')
         deploy = next(task for task in self.tasks if task.get('ansible.builtin.template', {}).get('dest')
@@ -81,6 +99,10 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
             'src': '{{ playbook_dir }}/../templates/logrotate-security.conf.j2',
             'dest': '/etc/logrotate.d/raspisys-security',
             'owner': 'root', 'group': 'root', 'mode': '0644'})
+        rotation = Environment(undefined=StrictUndefined).from_string(
+            (ANSIBLE / 'templates/logrotate-security.conf.j2').read_text()).render(**self.variables)
+        self.assertIn('/var/log/package-integrity/*.log {', rotation)
+        self.assertNotIn('/var/log/clamav', rotation)
 
     def test_weekly_cron_and_release_verification_reject_missing_or_duplicate_lines(self):
         cron = next(task for task in self.tasks if task.get('ansible.builtin.cron', {}).get('name')

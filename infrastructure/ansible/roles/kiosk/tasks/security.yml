@@ -8,7 +8,6 @@
     mode: "0755"
   loop:
     - "{{ clamav_kiosk_log_dir }}"
-    - "{{ package_integrity_log_dir }}"
   when: terminal_release_mode | default('full') == 'full'
 
 - name: Check kiosk malware log directories before release
@@ -16,7 +15,6 @@
     path: "{{ item }}"
   loop:
     - "{{ clamav_kiosk_log_dir }}"
-    - "{{ package_integrity_log_dir }}"
   register: kiosk_malware_log_directories
   when: terminal_release_mode | default('full') == 'release-only'
 
@@ -115,71 +113,5 @@
     - terminal_release_mode | default('full') == 'release-only'
     - clamav_kiosk_enabled | default(false)
 
-- name: Remove kiosk rkhunter scan cron
-  ansible.builtin.cron:
-    name: "Weekly rkhunter scan (kiosk)"
-    user: root
-    state: absent
-
-- name: Remove kiosk rkhunter scan script
-  ansible.builtin.file:
-    path: /usr/local/bin/rkhunter-kiosk-scan.sh
-    state: absent
-
-- name: Remove rkhunter package from kiosk
-  ansible.builtin.apt:
-    name: rkhunter
-    state: absent
-    # Purge drops the package's own cron.daily/cron.weekly entries
-    purge: true
-
-- name: Deploy kiosk package integrity scan script
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/package-integrity-scan.sh.j2"
-    dest: /usr/local/bin/package-integrity-scan.sh
-    owner: root
-    group: root
-    mode: "0755"
-  vars:
-    package_integrity_scan_allowed_paths: "{{ package_integrity_allowed_paths + package_integrity_kiosk_extra_allowed_paths }}"
-    package_integrity_expected_contents:
-      - path: /etc/sudoers.d/010_pi-nopasswd
-        content: "{{ ansible_user }} ALL=(ALL) NOPASSWD: ALL\n"
-  when: package_integrity_enabled | default(false)
-
-- name: Schedule kiosk package integrity check
-  ansible.builtin.cron:
-    name: "Package integrity check (kiosk)"
-    user: root
-    minute: "{{ package_integrity_kiosk_cron.split()[0] }}"
-    hour: "{{ package_integrity_kiosk_cron.split()[1] }}"
-    day: "{{ package_integrity_kiosk_cron.split()[2] }}"
-    month: "{{ package_integrity_kiosk_cron.split()[3] }}"
-    weekday: "{{ package_integrity_kiosk_cron.split()[4] }}"
-    job: "/usr/local/bin/package-integrity-scan.sh >/dev/null 2>&1"
-  when:
-    - terminal_release_mode | default('full') == 'full'
-    - package_integrity_enabled | default(false)
-
-- name: Verify kiosk package integrity cron entry before release
-  ansible.builtin.shell: |
-    set -euo pipefail
-    expected="{{ package_integrity_kiosk_cron }} /usr/local/bin/package-integrity-scan.sh >/dev/null 2>&1"
-    cron="$(crontab -u root -l)"
-    test "$(printf '%s\n' "${cron}" | grep -Fxc -- '#Ansible: Package integrity check (kiosk)')" -eq 1
-    test "$(printf '%s\n' "${cron}" | grep -Fxc -- "${expected}")" -eq 1
-    test "$(printf '%s\n' "${cron}" | grep -Fc -- '/usr/local/bin/package-integrity-scan.sh')" -eq 1
-  args:
-    executable: /bin/bash
-  changed_when: false
-  when:
-    - terminal_release_mode | default('full') == 'release-only'
-    - package_integrity_enabled | default(false)
-
-- name: Deploy kiosk logrotate config for security logs
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/logrotate-security.conf.j2"
-    dest: /etc/logrotate.d/raspisys-security
-    owner: root
-    group: root
-    mode: "0644"
+- name: Apply kiosk package integrity check
+  ansible.builtin.import_tasks: package-integrity.yml
