@@ -11,6 +11,9 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.TextView
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
@@ -34,6 +37,7 @@ import java.io.FileNotFoundException
 import java.util.concurrent.FutureTask
 
 class MainActivity : ComponentActivity() {
+    private lateinit var appUpdater: AppUpdater
     private lateinit var webView: WebView
     private var scanning = false
     private var pageGeneration = 0
@@ -157,7 +161,13 @@ class MainActivity : ComponentActivity() {
             override fun shouldInterceptRequest(request: WebResourceRequest) = localDataResponse(request)
         })
         webView.addJavascriptInterface(NativeBridge(), "HaizenNative")
-        setContentView(webView)
+        val layout = FrameLayout(this)
+        layout.addView(webView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val updateBanner = TextView(this)
+        layout.addView(updateBanner, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+            (40 * resources.displayMetrics.density).toInt(), Gravity.TOP))
+        appUpdater = AppUpdater(this, updateBanner)
+        setContentView(layout)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (webView.canGoBack()) webView.goBack()
@@ -165,6 +175,12 @@ class MainActivity : ComponentActivity() {
         })
         webView.loadUrl(BuildConfig.HAIZEN_ORIGIN + BuildConfig.HAIZEN_START_PATH)
         LocalDataPrefetchWorker.schedule(this)
+        appUpdater.check()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::appUpdater.isInitialized) appUpdater.onResume()
     }
 
     private fun localDataResponse(request: WebResourceRequest): WebResourceResponse? {
@@ -353,6 +369,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::appUpdater.isInitialized) appUpdater.close()
         cancelSpeech()
         cameraRequest?.deny()
         cameraRequest = null
