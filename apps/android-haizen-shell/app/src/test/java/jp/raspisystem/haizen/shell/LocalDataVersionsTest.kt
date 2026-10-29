@@ -10,10 +10,10 @@ class LocalDataVersionsTest {
     private val latest = LocalDataVersions.Version("latest", "2026-10-28T00:00:00Z")
 
     @Test fun validatesDatasetKeysAndLengthBoundaries() {
-        for (key in listOf("a", "purchase", "future-data-2", "a".repeat(32))) {
+        for (key in listOf("a", "purchase", "purchaseEnrichment", "aZ9-", "future-data-2", "a".repeat(32))) {
             assertTrue(key, LocalDataVersions.isValidKey(key))
         }
-        for (key in listOf("", "A", "2data", "-data", "../purchase", "a/b", "a.json", "a_b", "a\n", "a".repeat(33))) {
+        for (key in listOf("", "A", "PurchaseEnrichment", "2data", "-data", "../purchase", "a/b", "a.json", "a_b", "a\n", "a".repeat(33))) {
             assertFalse(key, LocalDataVersions.isValidKey(key))
         }
     }

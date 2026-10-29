@@ -9,7 +9,7 @@ import { resetSyncSchedulerForTests, runSyncOperation, subscribeSync } from './s
 
 vi.mock('../../../api/http', () => ({ getResolvedClientKey: vi.fn(() => 'test-client-key') }));
 vi.mock('./networkGate', () => ({ canSyncNow: () => false, subscribeCanSync: () => () => {} }));
-const snapshot = { version: 'native-v2', dataUpdatedAt: '2026-10-28T00:00:00.000Z', rows: [] };
+const snapshot = { format: 2 as const, version: 'native-v2', dataUpdatedAt: '2026-10-28T00:00:00.000Z', rows: [] };
 const fetchMock = vi.fn();
 const response = (value: unknown) => ({ ok: true, json: async () => value });
 const nativeResponses = (versions: unknown = { purchase: snapshot }, data: unknown = snapshot) => {
@@ -35,7 +35,7 @@ it('imports and notifies subscribers even when the network gate is closed', asyn
   expect(canSyncNow()).toBe(false);
   await importNativeLocalData(store);
   expect(store.replace).toHaveBeenCalledWith({ purchase: snapshot });
-  expect(await store.versions()).toEqual({ purchase: { version: snapshot.version, dataUpdatedAt: snapshot.dataUpdatedAt } });
+  expect(await store.versions()).toEqual({ purchase: { version: snapshot.version, dataUpdatedAt: snapshot.dataUpdatedAt, format: 2 } });
   expect(listener).toHaveBeenCalledOnce();
   expect(fetchMock).toHaveBeenCalledWith('/__haizen-native/local-data/versions', { cache: 'no-store', signal: expect.any(AbortSignal) });
 });
@@ -57,12 +57,28 @@ it('does not overwrite newer local data', async () => {
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
-it.each([null, '2026-10-27T00:00:00.000Z'])('imports a different version when local timestamp is %s', async (dataUpdatedAt) => {
+it('imports a different version when native timestamp is strictly newer', async () => {
+  const dataUpdatedAt = '2026-10-27T00:00:00.000Z';
   await store.replace({ purchase: { ...snapshot, version: 'old', dataUpdatedAt } });
   vi.mocked(store.replace).mockClear();
   nativeResponses();
   await importNativeLocalData(store);
   expect(store.replace).toHaveBeenCalledWith({ purchase: snapshot });
+});
+
+it.each(['local', 'native'])('does not overwrite when the %s timestamp is null', async (side) => {
+  await store.replace({ purchase: { ...snapshot, version: 'old', dataUpdatedAt: side === 'local' ? null : '2026-10-27T00:00:00.000Z' } });
+  vi.mocked(store.replace).mockClear();
+  nativeResponses({ purchase: { ...snapshot, dataUpdatedAt: side === 'native' ? null : snapshot.dataUpdatedAt } });
+  await importNativeLocalData(store);
+  expect(store.replace).not.toHaveBeenCalled();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it.each([undefined, 1, '2'])('skips purchase with format %s', async (format) => {
+  nativeResponses(undefined, { ...snapshot, format });
+  await importNativeLocalData(store);
+  expect(store.replace).not.toHaveBeenCalled();
 });
 
 it('does not replace a different version with the same timestamp', async () => {
@@ -106,11 +122,20 @@ it('does not replace or notify when a snapshot version differs from the manifest
 
 it('imports supported kinds together and ignores unknown kinds', async () => {
   const schedule = { ...snapshot, knownFseibans: [] };
-  nativeResponses({ purchase: snapshot, schedule, future: snapshot });
-  fetchMock.mockResolvedValueOnce(response(schedule));
+  const purchaseEnrichment = { version: snapshot.version, dataUpdatedAt: snapshot.dataUpdatedAt, rows: [] };
+  const placements = { ...snapshot };
+  nativeResponses({ purchase: snapshot, purchaseEnrichment, schedule, placements, future: snapshot });
+  fetchMock.mockResolvedValueOnce(response(purchaseEnrichment))
+    .mockResolvedValueOnce(response(schedule)).mockResolvedValueOnce(response(placements));
   await importNativeLocalData(store);
-  expect(store.replace).toHaveBeenCalledExactlyOnceWith({ purchase: snapshot, schedule });
-  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(store.replace).toHaveBeenCalledExactlyOnceWith({ purchase: snapshot, purchaseEnrichment, schedule, placements });
+  expect(fetchMock).toHaveBeenCalledTimes(5);
+  expect(await store.versions()).toMatchObject({
+    purchase: { version: snapshot.version, format: 2 },
+    purchaseEnrichment: { version: snapshot.version },
+    schedule: { version: snapshot.version },
+    placements: { version: snapshot.version },
+  });
 });
 
 it('waits for the web write lane and then reads its latest metadata', async () => {

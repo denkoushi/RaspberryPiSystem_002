@@ -10,7 +10,7 @@ type Replacement = Parameters<MobileLocalDataStore['replace']>[0];
 type Kind = keyof Replacement;
 type Versions = Awaited<ReturnType<MobileLocalDataStore['versions']>>;
 // Add one entry when the store gains a dataset. The type check keeps this list exhaustive.
-const supportedKinds = { purchase: true, schedule: true } satisfies Record<Kind, true>;
+const supportedKinds = { purchase: true, purchaseEnrichment: true, schedule: true, placements: true } satisfies Record<Kind, true>;
 const base = '/__haizen-native/local-data';
 
 export function pushClientKeyToNative(): void {
@@ -45,9 +45,10 @@ export async function importNativeLocalData(store: MobileLocalDataStore = mobile
         const current = local[kind];
         if (!next || next.version === current?.version) return;
         // Equal timestamps can hide a deletion, so only a strictly newer file replaces local data.
-        if (current?.dataUpdatedAt && (!next.dataUpdatedAt ||
+        if (current && (!current.dataUpdatedAt || !next.dataUpdatedAt ||
             !(Date.parse(next.dataUpdatedAt) > Date.parse(current.dataUpdatedAt)))) return;
         const snapshot = await readNativeJson<NonNullable<Replacement[K]>>(`${base}/${kind}`, 180_000);
+        if (kind === 'purchase' && (!('format' in snapshot) || snapshot.format !== 2)) return;
         if (snapshot.version !== next.version) throw new Error('Native local data version changed');
         replacement[kind] = snapshot;
       };

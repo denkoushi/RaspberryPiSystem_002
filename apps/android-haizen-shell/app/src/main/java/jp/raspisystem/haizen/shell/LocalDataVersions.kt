@@ -4,7 +4,7 @@ package jp.raspisystem.haizen.shell
 object LocalDataVersions {
     data class Version(val version: String, val dataUpdatedAt: String?)
 
-    private val keyPattern = Regex("^[a-z][a-z0-9-]{0,31}$")
+    private val keyPattern = Regex("^[a-z][A-Za-z0-9-]{0,31}$")
     fun isValidKey(key: String) = keyPattern.matches(key)
 
     fun keysToFetch(cached: Map<String, Version>, latest: Map<String, Version>): List<String> =

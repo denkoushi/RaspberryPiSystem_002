@@ -33,16 +33,16 @@ class LocalDataPrefetchWorker(context: Context, parameters: WorkerParameters) : 
             if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Cannot create local-data")
             // Recover the actual file versions even if the previous process died before publishing versions.json.
             for (file in datasetFiles(directory)) {
-                try { cached[file.nameWithoutExtension] = readVersion(file) } catch (_: Exception) { /* Fetch again. */ }
+                try { cached[file.nameWithoutExtension] = readVersion(file, file.nameWithoutExtension == "purchase") } catch (_: Exception) { /* Fetch again. */ }
             }
             try {
-                val latest = request("/versions", key) { connection ->
+                val latest = request("/versions?format=2", key) { connection ->
                     if (connection.responseCode != 200) throw IOException("Versions request failed")
                     val json = connection.inputStream.bufferedReader(Charsets.UTF_8).use { JSONObject(it.readText()) }
                     buildMap {
                         for (name in json.keys()) {
                             if (!LocalDataVersions.isValidKey(name)) continue
-                            val value = json.getJSONObject(name)
+                            val value = json.optJSONObject(name) ?: continue
                             put(name, LocalDataVersions.Version(value.getString("version"),
                                 if (value.isNull("dataUpdatedAt")) null else value.getString("dataUpdatedAt")))
                         }
@@ -51,14 +51,14 @@ class LocalDataPrefetchWorker(context: Context, parameters: WorkerParameters) : 
                 for (name in LocalDataVersions.keysToFetch(cached, latest)) {
                     if (isStopped) throw IOException("Prefetch stopped")
                     val version = URLEncoder.encode(cached[name]?.version ?: "", "UTF-8")
-                    request("/${URLEncoder.encode(name, "UTF-8")}?version=$version", key) { connection ->
+                    request("/${URLEncoder.encode(name, "UTF-8")}?version=$version&format=2", key) { connection ->
                         when (connection.responseCode) {
                             304 -> Unit
                             200 -> {
                                 val temporary = File.createTempFile("$name-", ".tmp", directory)
                                 try {
                                     connection.inputStream.use { input -> temporary.outputStream().use { input.copyTo(it) } }
-                                    if (readVersion(temporary).version == latest.getValue(name).version && !isStopped) {
+                                    if (readVersion(temporary, name == "purchase").version == latest.getValue(name).version && !isStopped) {
                                         publish(temporary, File(directory, "$name.json"))
                                         downloaded[name] = latest.getValue(name)
                                     }
@@ -93,19 +93,22 @@ class LocalDataPrefetchWorker(context: Context, parameters: WorkerParameters) : 
     } ?: emptyList()
 
     // Stream over rows instead of materializing potentially large snapshots just to check their version.
-    private fun readVersion(file: File): LocalDataVersions.Version = JsonReader(file.reader(Charsets.UTF_8).buffered()).use { reader ->
+    private fun readVersion(file: File, requireFormat2: Boolean): LocalDataVersions.Version = JsonReader(file.reader(Charsets.UTF_8).buffered()).use { reader ->
         var version: String? = null
         var updatedAt: String? = null
+        var format2 = false
         reader.beginObject()
         while (reader.hasNext()) {
             when (reader.nextName()) {
                 "version" -> version = reader.nextString()
+                "format" -> if (reader.peek() == JsonToken.NUMBER) format2 = reader.nextString() == "2" else reader.skipValue()
                 "dataUpdatedAt" -> if (reader.peek() == JsonToken.NULL) reader.nextNull() else updatedAt = reader.nextString()
                 else -> reader.skipValue()
             }
         }
         reader.endObject()
         if (reader.peek() != JsonToken.END_DOCUMENT) throw IOException("Invalid snapshot")
+        if (requireFormat2 && !format2) throw IOException("Legacy purchase snapshot")
         LocalDataVersions.Version(version ?: throw IOException("Missing snapshot version"), updatedAt)
     }
 

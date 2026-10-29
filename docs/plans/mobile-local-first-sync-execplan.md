@@ -164,7 +164,7 @@ Zero2W 配膳状況は Milestone 2 の `placements` 表から作り、15 秒ご�
 
 この Milestone の終わりには、配膳アプリを閉じていても、スマホが Wi-Fi につながっていればデータ(照合・購買、後に置き場)が定期的に落ちる。圏外でアプリを開くと、その落としてあったデータで動く。アプリのアイコンは棚の絵になる。
 
-アプリ側(`apps/android-haizen-shell`)。`androidx.work` の定期の仕事を足す。条件は `NetworkType.UNMETERED`(Wi-Fi と同じ扱い。ウェブ側の Decision Log と合わせる)で、間隔は 30 分。仕事は `GET /kiosk/mobile-local-data/versions` を呼び、応答のキー(`purchase`、`schedule`、後から増える `placements` など)を全部回る。手元の版と違うキーだけ `GET /kiosk/mobile-local-data/<key>?version=<手元の版>` で取る。304 なら何もしない。200 なら中身の `version` が版の応答と一致することを確かめてから、アプリ専用の保存場所に一時ファイルで書いて置き換える。キーは英小文字・数字・ハイフンだけを受け付ける。認証の `x-client-key` は、ウェブ画面が新しいブリッジ `HaizenNative.setClientKey(key)` で渡したものを、アプリ専用の設定に保存して使う。ブリッジは信頼済みの配膳の画面からしか受け付けない。キーを受け取ったら、すぐ1回(同じ Wi-Fi 条件で)と定期の仕事を登録する。
+アプリ側(`apps/android-haizen-shell`)。`androidx.work` の定期の仕事を足す。条件は `NetworkType.UNMETERED`(Wi-Fi と同じ扱い。ウェブ側の Decision Log と合わせる)で、間隔は 30 分。仕事は `GET /kiosk/mobile-local-data/versions?format=2` を呼び、`purchase`、`purchaseEnrichment`、`schedule`、`placements` を扱う。手元の版と違うキーだけ `GET /kiosk/mobile-local-data/<key>?version=<手元の版>&format=2` でページ分割せず全体スナップショットを取る。304 なら何もしない。200 なら中身の `version` が版の応答と一致することを確かめてから、アプリ専用の保存場所に一時ファイルで書いて置き換える。キーは先頭が英小文字で、以降は英大文字・英小文字・数字・ハイフンだけを受け付ける。認証の `x-client-key` は、ウェブ画面が新しいブリッジ `HaizenNative.setClientKey(key)` で渡したものを、アプリ専用の設定に保存して使う。ブリッジは信頼済みの配膳の画面からしか受け付けない。キーを受け取ったら、すぐ1回(同じ Wi-Fi 条件で)と定期の仕事を登録する。
 
 落としたデータは、WebView の `shouldInterceptRequest` で同じオリジンの `/__haizen-native/local-data/versions` と `/__haizen-native/local-data/<key>` として画面に渡す。ファイルを渡すので、大きさに上限は無い。`allowFileAccess` は偽のままにする。アイコンは `apps/web/public/icons/haizen-*.png` から作る。`versionCode` を上げる(上げないと入れ直しができない)。
 
