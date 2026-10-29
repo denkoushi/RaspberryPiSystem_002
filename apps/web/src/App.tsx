@@ -20,6 +20,7 @@ import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-mea
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
+import { AssemblyCheckSheetsPage } from './pages/admin/AssemblyCheckSheetsPage';
 import { BackupConfigHistoryPage } from './pages/admin/BackupConfigHistoryPage';
 import { BackupHistoryPage } from './pages/admin/BackupHistoryPage';
 import { BackupRestorePage } from './pages/admin/BackupRestorePage';
@@ -380,6 +381,7 @@ function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="assembly-check-sheets" element={<AssemblyCheckSheetsPage />} />
         <Route path="tools">
           <Route path="raspi-inventory" element={<RaspiInventoryPage />} />
           <Route path="employees" element={<MovedToKioskTagDeskPage />} />

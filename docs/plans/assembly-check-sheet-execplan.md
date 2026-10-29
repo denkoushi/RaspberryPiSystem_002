@@ -15,12 +15,14 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 ## Progress
 
 - [x] (2026-10-29) Milestone 1 implementation: additive schema/migration, pure xlsx parser/normalizer, admin import/save + revision read API, shared payloads, and 23 focused tests. Sample: 22 groups / 57 items / 17 warnings. Repository-wide typecheck is blocked by errors outside this change; live DB migration/concurrency verification remains unperformed (DB unavailable).
-- [ ] Milestone 2: admin import/review/save screen.
+- [x] (2026-10-29) Milestone 2 implementation: admin head list, xlsx import/review table, header/department-member editors, new/revision saves, and pure editing/payload functions. Added 13 focused web tests; web typecheck and scoped lint pass. Manual sample upload/save against a live API remains unperformed.
 - [ ] Milestone 3: kiosk check-sheet page with NFC stamping, role check, NG pause/flag, conditional items.
 - [ ] Milestone 4: filled original .xlsx (raw XML patch) download and kiosk layout preview.
 - [ ] Milestone 5 (prototype, optional): LibreOffice headless PDF conversion feasibility on the API image.
 
 ## Surprises & Discoveries
+
+- Observation (Milestone 2): the existing employee hook (`useEmployees`, `/tools/employees`) and revision-head endpoint cover the admin workflow without API changes. Validation responses include `issues` with paths; the screen displays these next to Save and retains the draft after failure.
 
 - Observation (Milestone 1): bullets alone do not delimit the sample. Stamp-box borders join rows 43–44 into one item, rows 58–59 form the four-axis stroke item, and groups 21/22 have their item text in merged C:R cells. The parser uses merge masters and stamp borders; result: 22 groups, 57 items, 17 warnings across 15 items. The original file's SHA-256 was unchanged after read-only acceptance.
 - Observation (Milestone 1): item 7-4 combines 有/無 and manufacturer/model blanks in different cells. Its fields are retained with `multiple_value_cells_review`; the current single-cell `valueTarget` needs human review. The condition is guessed for 7-2 through 7-6 (until the next group), and absent voltage/stroke units remain empty with `unit_unknown`.
@@ -33,10 +35,14 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 
 ## Decision Log
 
+- Decision (Milestone 2): keep the admin-only pure editor functions beside the page, reuse the existing API client and React Query, and derive department pickers from item role keys plus saved member mappings (excluding rank roles). Empty header cells are omitted from the save payload; removing a row preserves the other rows' source mappings and warnings.
+  Rationale: implements the review boundary without changing shared contracts, employee APIs, or kiosk code.
+  Date/Author: 2026-10-29 / Codex
+
 - Decision: Use a dedicated `AssemblyCheckSheetAsset` model; `importId` is this immutable asset's id, with unique SHA-256 and storage key, stored through the existing durable file store. Repeated imports reuse the same bytes and identity.
   Rationale: avoids changes to existing asset relations/enums and preserves OLE objects by never rewriting the uploaded workbook. Unused imports remain stored as planned.
   Date/Author: 2026-10-29 / Codex
-- Decision: Keep Employee references as scalar ids in the new Prisma models and add their actual foreign keys in migration SQL (`ON DELETE SET NULL`), alongside the SQL partial unique head index. Future migrations must preserve these SQL-owned constraints.
+- Decision: Employee references are Prisma relations (`onDelete: SetNull`, named FKs) with inverse lists on Employee, following the repo convention. The partial unique head index is SQL-only; future migrations must preserve it.
   Rationale: the task permits changing existing models only for the AssemblyWorkUnit inverse relation; Prisma Employee inverse relations would exceed that boundary. Snapshots retain identity after employee deletion.
   Date/Author: 2026-10-29 / Codex
 - Decision: Revision saves lock the root row and atomically demote the head and insert the new revision/groups/items. The import sheet override is the `sheetName` query parameter; save revalidates the edited source sheet against the stored original.
