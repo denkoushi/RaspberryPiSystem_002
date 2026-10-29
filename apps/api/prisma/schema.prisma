@@ -6021,6 +6021,7 @@ model AssemblyCheckSheetStamp {
   itemId               String
   result               AssemblyCheckSheetResult
   values               Json
+  ngReason             String?
   flagged              Boolean @default(false)
   // Snapshots survive employee deletion.
   employeeId           String?
@@ -6045,6 +6046,7 @@ model AssemblyCheckSheetStampHistory {
   itemId               String
   result               AssemblyCheckSheetResult
   values               Json
+  ngReason             String?
   flagged              Boolean
   employeeId           String?
   employeeCodeSnapshot String

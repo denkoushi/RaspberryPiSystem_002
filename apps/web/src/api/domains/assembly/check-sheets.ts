@@ -2,6 +2,8 @@ import { api } from '../../http';
 
 import type {
   AssemblyCheckSheetImportPayload,
+  AssemblyCheckSheetPayload,
+  AssemblyCheckSheetStampInput,
   AssemblyCheckSheetRevisionPayload,
   AssemblyCheckSheetSavePayload
 } from '@raspi-system/shared-types';
@@ -20,5 +22,26 @@ export async function importAssemblyCheckSheet(file: File) {
 
 export async function saveAssemblyCheckSheetRevision(payload: AssemblyCheckSheetSavePayload) {
   const { data } = await api.post<AssemblyCheckSheetRevisionPayload>('/assembly/check-sheets/revisions', payload);
+  return data;
+}
+
+export async function openAssemblyCheckSheet(workUnitId: string, revisionRootId?: string) {
+  const { data } = await api.post<AssemblyCheckSheetPayload>('/assembly/check-sheets', { workUnitId, revisionRootId });
+  return data;
+}
+export async function getAssemblyCheckSheet(id: string) {
+  const { data } = await api.get<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}`);
+  return data;
+}
+export async function stampAssemblyCheckSheet(id: string, input: AssemblyCheckSheetStampInput) {
+  const { data } = await api.post<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/stamps`, input);
+  return data;
+}
+export async function skipAssemblyCheckSheetCondition(id: string, conditionKey: string, nfcTagUid: string) {
+  const { data } = await api.post<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/conditions`, { conditionKey, applies: false, nfcTagUid });
+  return data;
+}
+export async function transitionAssemblyCheckSheet(id: string, action: 'pause' | 'resume' | 'complete') {
+  const { data } = await api.post<AssemblyCheckSheetPayload>(`/assembly/check-sheets/${id}/${action}`);
   return data;
 }

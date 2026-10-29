@@ -14,13 +14,13 @@ import { runAssemblyTransaction } from '../assembly-transaction.js';
 import { normalizeCheckSheet } from './check-sheet-normalizer.js';
 import { parseCheckSheetXlsx } from './check-sheet-xlsx-parser.js';
 
-const revisionInclude = {
+export const revisionInclude = {
   groups: { orderBy: { sortOrder: 'asc' as const } },
   items: { orderBy: { sortOrder: 'asc' as const } }
 };
 type StoredRevision = Prisma.AssemblyCheckSheetRevisionGetPayload<{ include: typeof revisionInclude }>;
 
-function serializeRevision(revision: StoredRevision): AssemblyCheckSheetRevisionPayload {
+export function serializeRevision(revision: StoredRevision): AssemblyCheckSheetRevisionPayload {
   const proposal = assemblyCheckSheetProposalSchema.parse({
     ...revision,
     items: revision.items.map((item) => ({

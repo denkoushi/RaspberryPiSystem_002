@@ -13,6 +13,7 @@ import { registerAssemblyCheckSheetRoutes } from '../check-sheets.js';
 
 // Do not load local .env files or connect to a shared database in contract tests.
 vi.mock('../../../config/env.js', () => ({ env: { NODE_ENV: 'test', LOG_LEVEL: 'silent', JWT_ACCESS_SECRET: 'check-sheet-test-only-secret' } }));
+vi.mock('../shared.js', () => ({ tryGetClientDevice: async () => ({ id: 'synthetic-device', name: '組立1-01' }) }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {} }));
 vi.mock('../../../services/file-storage/file-storage-runtime.js', () => ({ getFileStorageRuntime: vi.fn() }));
 
@@ -39,7 +40,7 @@ describe('check-sheet routes', () => {
     app = Fastify();
     registerErrorHandler(app);
     await app.register(multipart);
-    await app.register(async (api: FastifyInstance) => registerAssemblyCheckSheetRoutes(api, { allowView: authorizeRoles('ADMIN', 'MANAGER', 'VIEWER') }, service), { prefix: '/api' });
+    await app.register(async (api: FastifyInstance) => registerAssemblyCheckSheetRoutes(api, { allowView: authorizeRoles('ADMIN', 'MANAGER', 'VIEWER'), allowWriteKiosk: authorizeRoles('ADMIN', 'MANAGER') }, service), { prefix: '/api' });
   });
   afterEach(async () => { await app.close(); vi.restoreAllMocks(); });
 

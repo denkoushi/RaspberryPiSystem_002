@@ -82,7 +82,7 @@ export type AssemblyCheckSheetImportPayload = {
   sheetNames: string[];
   proposal: AssemblyCheckSheetProposal;
 };
-export type AssemblyCheckSheetRevisionPayload = AssemblyCheckSheetProposal & {
+export type AssemblyCheckSheetRevisionPayload = Omit<AssemblyCheckSheetProposal, 'groups' | 'items'> & {
   id: string;
   revisionRootId: string;
   revisionNumber: number;
@@ -93,4 +93,32 @@ export type AssemblyCheckSheetRevisionPayload = AssemblyCheckSheetProposal & {
   createdAt: string;
   groups: (AssemblyCheckSheetProposal['groups'][number] & { id: string })[];
   items: (AssemblyCheckSheetItemProposal & { id: string; groupId: string })[];
+};
+
+export const assemblyCheckSheetCreateSchema = z.object({
+  workUnitId: z.string().guid(), revisionRootId: z.string().guid().optional()
+});
+export const assemblyCheckSheetActorSchema = z.object({
+  nfcTagUid: z.string().trim().min(1).max(200), clientDeviceId: z.string().max(200).optional()
+});
+export const assemblyCheckSheetStampSchema = assemblyCheckSheetActorSchema.extend({
+  itemId: z.string().guid(), result: z.enum(['OK', 'NG', 'NA']),
+  values: z.record(z.string(), z.union([z.string().max(5000), z.number().finite()])).default({}),
+  flagged: z.boolean().default(false), ngReason: z.string().trim().max(2000).optional()
+});
+export const assemblyCheckSheetConditionSchema = assemblyCheckSheetActorSchema.extend({
+  conditionKey: z.string().min(1).max(100), applies: z.literal(false)
+});
+export type AssemblyCheckSheetStampInput = z.infer<typeof assemblyCheckSheetStampSchema>;
+export type AssemblyCheckSheetActor = z.infer<typeof assemblyCheckSheetActorSchema>;
+export type AssemblyCheckSheetStampPayload = {
+  id: string; itemId: string; result: 'OK' | 'NG' | 'NA'; values: Record<string, string | number>;
+  flagged: boolean; ngReason: string | null; employeeId: string | null;
+  employeeCodeSnapshot: string; employeeNameSnapshot: string; positionNameSnapshot: string | null;
+  stampedAt: string;
+};
+export type AssemblyCheckSheetPayload = {
+  id: string; workUnitId: string; revisionId: string; status: 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED';
+  headerValues: Record<string, string>; pausedReason: string | null; startedAt: string; completedAt: string | null;
+  revision: AssemblyCheckSheetRevisionPayload; stamps: AssemblyCheckSheetStampPayload[];
 };

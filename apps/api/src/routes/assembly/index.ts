@@ -82,7 +82,7 @@ export async function registerAssemblyRoutes(app: FastifyInstance): Promise<void
   };
 
   const procedureService = new AssemblyProcedureDocumentService();
-  registerAssemblyCheckSheetRoutes(app, { allowView });
+  registerAssemblyCheckSheetRoutes(app, { allowView, allowWriteKiosk });
   const procedureDraftImportService = new AssemblyProcedureDraftImportService(procedureService);
   const procedureGmailImportService = createAssemblyProcedureGmailImportService();
   const libraryFilterOptionsService = new AssemblyLibraryFilterOptionsService();

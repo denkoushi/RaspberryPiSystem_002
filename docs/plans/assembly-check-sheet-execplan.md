@@ -16,11 +16,15 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 
 - [x] (2026-10-29) Milestone 1 implementation: additive schema/migration, pure xlsx parser/normalizer, admin import/save + revision read API, shared payloads, and 23 focused tests. Sample: 22 groups / 57 items / 17 warnings. Repository-wide typecheck is blocked by errors outside this change; live DB migration/concurrency verification remains unperformed (DB unavailable).
 - [x] (2026-10-29) Milestone 2 implementation: admin head list, xlsx import/review table, header/department-member editors, new/revision saves, and pure editing/payload functions. Added 13 focused web tests; web typecheck and scoped lint pass. Manual sample upload/save against a live API remains unperformed.
-- [ ] Milestone 3: kiosk check-sheet page with NFC stamping, role check, NG pause/flag, conditional items.
+- [x] (2026-10-29) Milestone 3 implementation: fixed-stage kiosk page, home-board entry, NFC stamping/history, rank/department checks, conditional NA, explicit pause/resume and completion rules. Focused API/web validation recorded below; live DB and browser/device verification remain unperformed.
 - [ ] Milestone 4: filled original .xlsx (raw XML patch) download and kiosk layout preview.
 - [ ] Milestone 5 (prototype, optional): LibreOffice headless PDF conversion feasibility on the API image.
 
 ## Surprises & Discoveries
+
+- Observation (Milestone 3): `Employee.positionName` is a display position, not a rank key. Reused `KnowledgePositionRank` lookup before comparing `KNOWLEDGE_POSITION_RANKS`. The existing revision payload intersected two array types, causing `.find`/`.map` to lose item/group IDs; replaced that intersection with `Omit` plus the existing ID-bearing arrays (no wire-format change).
+- Observation (Milestone 3): the approved mock records NG problem text, but Stamp/History had no dedicated field. Added nullable `ngReason` to both in migration `20261029140000_check_sheet_ng_reason`; the original migration is unchanged. No layout snapshot or paper export was added.
+- Observation (Milestone 3 validation): Vite preview startup was denied with `listen EPERM 127.0.0.1:4185`. DOM tests use the approved mock's synthetic 22-group data and verify scale at 1920×1080 and 1280×720, but cannot establish actual browser text wrapping, clipping, fonts, or hardware NFC behaviour.
 
 - Observation (Milestone 2): the existing employee hook (`useEmployees`, `/tools/employees`) and revision-head endpoint cover the admin workflow without API changes. Validation responses include `issues` with paths; the screen displays these next to Save and retains the draft after failure.
 
@@ -34,6 +38,19 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 - Observation: the sample's item text lives in merged range F:R per row, the 主項目 in merged C:E spanning several rows, the No in A:B, and the stamp column is S (header "ﾁｪｯｸ"). Value blanks are written inside the item text as full-width-space parentheses, e.g. `締結トルク（　　  N･m）`, `（　　　）Ｎ`, `（　OK　・　NG　・　該当無し　）`. Some items span two physical rows (rows 39–40, 45–46, 47–48). Role words appear in the text: `（班長）`, `（係長）`, and in the 主項目 `IOチェック（制御設計担当）`. Header cells (date, 出荷予定日, 製品No, 製番, 製品名, 客先名) are formulas pointing to an input block outside the print area (columns U..AC).
 
 ## Decision Log
+
+- Decision (Milestone 3): PAUSED sheets require `/resume`; neither a stamp nor complete implicitly resumes them. Unflagged NG stamps pause atomically and become the current retry item on resume. Flagged NG waits in the right-hand list until re-stamped. All mutations lock the sheet row; creation locks the work-unit row. Completed/invalidated units reject mutations.
+  Rationale: avoids an accidental tag read resuming stopped work and serializes stamp/history/complete decisions.
+  Date/Author: 2026-10-29 / Codex
+- Decision (Milestone 3): add the entry to the home board's existing selected-unit action row (「…」→台→「チェックシート」). Existing sheets return immediately. New sheets use the unique model-code match, or the only head if one exists; ambiguity exposes a compact model/document selector in that row and submits `revisionRootId`.
+  Rationale: preserves the current home layout and avoids a new navigation screen. Headers snapshot work ID, seiban and target unit; ship date/customer stay empty because this source does not contain them.
+  Date/Author: 2026-10-29 / Codex
+- Decision (Milestone 3): CHOICE stores its option in `values.result` (matching the import template), with additional fields using their exact inputSpec keys. OK requires every field; NG may omit unavailable measurements but validates all supplied values. NA has empty values. A flagged NG requires `ngReason`; this is a separate nullable column, including in history. Rank and department requirements are all checked, including every item of a condition before any NA write.
+  Rationale: permits pausing an inspection that cannot be measured without inventing numeric values, and keeps problem text out of typed measurement fields.
+  Date/Author: 2026-10-29 / Codex
+- Decision (Milestone 3): resolve employee identity and position on the server using the existing NFC resolver plus a wrapper. Prefer the authenticated kiosk's device ID over a supplied one; follow the existing API error envelope (`errorCode: CHECK_SHEET_ROLE_REQUIRED`, `details.requiredRoles`). Complete requires all OK/NA and no flags; it records completion time without inventing an approver identity.
+  Rationale: retains existing authentication/audit conventions. Paper copy stays a disabled button; mock-only tags and Milestone 4 output/preview are absent. Native inputs/buttons handle keys; pure functions and a hook handle input readiness, NFC deduplication and transitions. The existing Dialog supplies pause focus containment.
+  Date/Author: 2026-10-29 / Codex
 
 - Decision (Milestone 2): keep the admin-only pure editor functions beside the page, reuse the existing API client and React Query, and derive department pickers from item role keys plus saved member mappings (excluding rank roles). Empty header cells are omitted from the save payload; removing a row preserves the other rows' source mappings and warnings.
   Rationale: implements the review boundary without changing shared contracts, employee APIs, or kiosk code.
@@ -69,6 +86,53 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
 - Decision: Units (V, mm, N·m …) and conditional ranges (e.g. "モータブラケットが一体でない場合" covering 7-2..7-5) are guessed by the normalizer and confirmed/fixed by a human in the review screen (user decision 2026-10-29).
 
 ## Outcomes & Retrospective
+
+Milestone 3 (2026-10-29): local implementation complete. No commit/push/merge/deploy or live migration was performed. The worktree was clean at entry; all files below belong to this milestone.
+
+Validation (focused checks, approximately 10 minutes including diagnosing/fixing the new array type and scoped lint issues):
+
+| Working directory | Command | Result |
+| --- | --- | --- |
+| `apps/api` | `pnpm exec tsc --noEmit -p tsconfig.build.json` | Passed, 0 diagnostics |
+| `apps/api` | `pnpm exec vitest run check-sheet` | 4 files / 38 tests passed, 3.33 s |
+| `apps/api` | `pnpm exec prisma validate` | Passed; `prisma generate` also passed |
+| `apps/web` | `pnpm exec tsc --noEmit` | Passed, 0 diagnostics after fixing revision array types |
+| `apps/web` | `pnpm exec vitest run --config /tmp/assembly-check-web.config.mts src/features/assembly/checkSheet src/api/domains/assembly/check-sheets.test.ts src/features/assembly/assemblyRoutes.test.ts` | 5 files / 24 tests passed, 3.57 s |
+| API / Web / shared-types | `pnpm exec eslint <changed TS/TSX paths>` (API/Web final pass used `--fix` for import order) | All 21 changed TS/TSX files passed |
+| `packages/shared-types` | `pnpm exec tsc` | Passed |
+| Repository | `git diff --check` | Passed |
+| Repository | `python3 -m scripts.git_lifecycle.cli audit --json` | Initial audit passed; final audit failed (exit 4: GitHub API connection unavailable). Local worktree/status check completed; no Git mutations were performed. |
+
+The temporary Web config imports the existing Vite config and overrides only `envDir` to an empty temporary path, avoiding local `.env` reads. Tests mock persistence and use synthetic fixtures. Real DB migration/locking/rollback, hardware NFC, and browser visual comparison remain unverified. Browser preview could not listen in this sandbox. Existing Browserslist/baseline-browser-mapping age warnings are outside this milestone and were left unchanged. No paper XLSX, layoutSnapshot generation, or preview was implemented.
+
+Changed files (Milestone 3):
+
+- `apps/api/prisma/migrations/20261029140000_check_sheet_ng_reason/migration.sql`
+- `apps/api/prisma/schema.prisma`
+- `apps/api/src/routes/assembly/__tests__/check-sheet-kiosk.routes.test.ts`
+- `apps/api/src/routes/assembly/__tests__/check-sheet.routes.test.ts`
+- `apps/api/src/routes/assembly/check-sheets.ts`
+- `apps/api/src/routes/assembly/index.ts`
+- `apps/api/src/services/assembly/check-sheet/check-sheet-kiosk.service.ts`
+- `apps/api/src/services/assembly/check-sheet/check-sheet.service.ts`
+- `apps/web/src/App.tsx`
+- `apps/web/src/api/domains/assembly/check-sheets.ts`
+- `apps/web/src/features/assembly/AssemblyHomeBoard.tsx`
+- `apps/web/src/features/assembly/assemblyRoutes.ts`
+- `apps/web/src/features/assembly/checkSheet/CheckSheetCard.tsx`
+- `apps/web/src/features/assembly/checkSheet/CheckSheetScreen.test.tsx`
+- `apps/web/src/features/assembly/checkSheet/CheckSheetScreen.tsx`
+- `apps/web/src/features/assembly/checkSheet/OpenCheckSheetButton.test.tsx`
+- `apps/web/src/features/assembly/checkSheet/OpenCheckSheetButton.tsx`
+- `apps/web/src/features/assembly/checkSheet/checkSheet.css`
+- `apps/web/src/features/assembly/checkSheet/checkSheet.fixture.ts`
+- `apps/web/src/features/assembly/checkSheet/checkSheetState.test.ts`
+- `apps/web/src/features/assembly/checkSheet/checkSheetState.ts`
+- `apps/web/src/features/assembly/checkSheet/useCheckSheet.ts`
+- `apps/web/src/pages/kiosk/KioskAssemblyCheckSheetPage.tsx`
+- `docs/plans/assembly-check-sheet-execplan.md`
+- `packages/shared-types/src/assembly/assembly-check-sheet.ts`
+
 
 Milestone 1 (2026-10-29): implemented only the data/import/revision boundary. Added 7 tables and 3 enums; existing stored tables are unchanged. The migration was generated with an offline schema diff and augmented with additive Employee FKs and a unique head index. Prisma validate/generate, shared-types build, focused typecheck (new files plus dependencies and existing Fastify declarations), API scoped ESLint and shared-types ESLint passed.
 Parser, storage/service and route contract tests use synthetic ExcelJS workbooks and mocked persistence; customer data is not in the repository.
@@ -131,7 +195,7 @@ Acceptance: web tests for the page (render proposal, edit a unit, save payload),
 
 API (kiosk auth as in work-sessions):
 
-    POST /api/assembly/check-sheets               { workUnitId, revisionId? } → creates the unit's sheet on the current head revision of the chosen root (or returns the existing one)
+    POST /api/assembly/check-sheets               { workUnitId, revisionRootId? } → creates the unit's sheet on the current head revision of the chosen root (or returns the existing one)
     GET  /api/assembly/check-sheets/:id           sheet + its revision items + stamps
     POST /api/assembly/check-sheets/:id/stamps    { itemId, result, values, flagged, nfcTagUid, clientDeviceId } → resolves the tag server-side, enforces role (403 with code CHECK_SHEET_ROLE_REQUIRED and the required role labels), stores stamp + history
     POST /api/assembly/check-sheets/:id/conditions { conditionKey, applies:false, nfcTagUid } → NA stamps for that condition's items
@@ -180,3 +244,5 @@ The migration only adds tables, enums and (if chosen) one enum value; rolling ba
 Shared types for proposal, revision, sheet and stamp payloads go in `packages/shared-types` (follow existing assembly type files there). New direct dependency: jszip ^3 in apps/api. No changes to deploy scripts, Ansible, or kiosk client software.
 
 Plan update (2026-10-29 / Codex): recorded Milestone 1 implementation, acceptance counts, SQL-owned constraints, parser review warnings and local validation limits; later milestones remain unchanged.
+
+Plan update (2026-10-29 / Codex, Milestone 3): implemented only the kiosk/API milestone and recorded the entry, pause, role, value and NG-history decisions. No commit, push, merge, deployment, Milestone 4 output or customer workbook was included.
