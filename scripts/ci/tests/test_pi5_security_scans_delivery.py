@@ -36,10 +36,11 @@ class Pi5SecurityScansDeliveryTest(unittest.TestCase):
             'name': 'Daily rkhunter scan', 'user': 'root', 'state': 'absent'})
         self.assertNotIn('when', old)
         removal = next(task for task in tasks if task.get('ansible.builtin.file', {}).get('state') == 'absent')
-        self.assertEqual(removal['loop'], ['/usr/local/bin/rkhunter-scan.sh', '/etc/rkhunter.conf.local'])
+        self.assertEqual(removal['loop'], ['/usr/local/bin/rkhunter-scan.sh', '/etc/rkhunter.conf.local',
+                                           '/etc/cron.d/rkhunter-weekly', '/usr/local/bin/rkhunter-weekly-scan.sh'])
         self.assertNotIn('when', removal)
         package = next(task for task in tasks if task.get('ansible.builtin.apt', {}).get('name') == 'rkhunter')
-        self.assertEqual(package['ansible.builtin.apt'], {'name': 'rkhunter', 'state': 'absent', 'purge': False})
+        self.assertEqual(package['ansible.builtin.apt'], {'name': 'rkhunter', 'state': 'absent', 'purge': True})
         self.assertNotIn('when', package)
         self.assertFalse((ROOT / 'infrastructure/ansible/templates/rkhunter.conf.local.j2').exists())
         deploy = next(task for task in tasks if task.get('ansible.builtin.template', {}).get('dest') == '/usr/local/bin/package-integrity-scan.sh')
