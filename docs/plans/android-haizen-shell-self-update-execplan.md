@@ -28,6 +28,8 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 - Observation: CI の container-runtime-rehearsal は API の `/app/storage/` 配下のマウント先を決まった一覧と照らす。`/app/storage/haizen-app` を足すと「production storage targets differ」で落ちた。
   Evidence: `scripts/ci/rehearse-release-runtime.sh` の required 一覧。対処としてコンテナ側のマウント先を `/app/haizen-app` に移した(ホスト側は `storage/haizen-app` のまま)。
+- Observation: 反映後、Pi5 の `storage/haizen-app` は root 所有だった。標準の反映は `roles/server` ではなく `release_pi5` を通り、その保存先の準備(`prepare-storage.yml`)は決まった一覧しか作らない。無いままの置き場を Docker が root で作った。
+  Evidence: run 20261029-144755-6d863b の後の進捗追跡の確認(drwxr-xr-x root:root)。
 
 ## Decision Log
 
@@ -38,6 +40,9 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Date/Author: 2026-10-29 / Claude
 - Decision: Pi5 の置き場はホストの `${PI5_PROJECT_DIR}/storage/haizen-app`。API には `/app/haizen-app` に `:ro` でつなぐ。ディレクトリは `roles/server/tasks/main.yml` の既存の一覧に足して運用ユーザー所有で作る。
   Rationale: 既存の `storage/` 配下と同じ扱いで、Blue/Green のどちらの API からも同じファイルが見える。API は読むだけ。
+  Date/Author: 2026-10-29 / Claude
+- Decision: 置き場は `release_pi5/tasks/prepare-storage.yml` でも Compose の前に運用ユーザー所有・0755 で作り、すでに root 所有ならその場で直す。共通の保存先一覧(`pi5-storage-contract.yml`)には入れない。
+  Rationale: 一覧はコンテナ側 `/app/storage/*` と組で検査され、反映中は既存の root 所有を直さず止める決まり。この置き場は Mac から送る APK だけで反映が管理するデータは無いので、直しても失うものが無い。手作業の chown や全体の所有者移しの playbook を使わずに済む。
   Date/Author: 2026-10-29 / Claude
 - Decision: 版情報は APK の横の `version.json` (`{versionCode, versionName, fileName, sha256, size}`)。Node で APK を解析しない。`version.json` は手で書かず、Mac のスクリプトが `aapt2 dump badging` から作る。スクリプトは APK を先に、`version.json` を後に置く(途中で API が無いファイルを案内しないように)。どちらも一時名で送ってから mv で置き換える。
   Date/Author: 2026-10-29 / Claude
