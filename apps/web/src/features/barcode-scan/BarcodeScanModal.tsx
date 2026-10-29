@@ -19,6 +19,7 @@ export type BarcodeScanModalProps = {
   stabilityConfig?: BarcodeStabilityConfig;
   /** 未検出打ち切り ms（既定 30s） */
   idleTimeoutMs?: number;
+  onFrameCaptured?: UseBarcodeScanSessionOptions['onFrameCaptured'];
   onSuccess: (text: string) => void;
   /** 取消・タイムアウト・エラー閉じる（検索欄クリアは親） */
   onAbort: () => void;
@@ -35,6 +36,7 @@ export function BarcodeScanModal({
   nativeCameraResolution,
   stabilityConfig,
   idleTimeoutMs = 30_000,
+  onFrameCaptured,
   onSuccess,
   onAbort,
 }: BarcodeScanModalProps) {
@@ -61,6 +63,7 @@ export function BarcodeScanModal({
     nativeCameraResolution,
     stabilityConfig,
     idleTimeoutMs,
+    onFrameCaptured,
     onSuccess,
     onAbort,
   });

@@ -487,6 +487,7 @@ model Machine {
 }
 
 model ClientDevice {
+  mobileScanFrames MobileScanFrame[]
   id                                            String                                         @id @default(uuid())
   name                                          String
   location                                      String?
@@ -674,6 +675,7 @@ model MobilePlacementEvent {
 
 /// 部品配膳（製造order番号起点・Item は更新しない）
 model OrderPlacementEvent {
+  mobileScanFrames MobileScanFrame[]
   clientRecordId               String?                  @unique @map("client_record_id")
   slipKind                     String                   @default("manufacturing_order") @map("slip_kind")
   id                           String                   @id @default(uuid())
@@ -5841,4 +5843,45 @@ model MobilePlacementShelfLandmark {
   name                    String   @unique
   createdAt               DateTime @default(now())
   createdByClientDeviceId String?
+}
+
+
+enum MobileScanFrameKind {
+  scan_frame
+  placement_photo
+}
+
+model MobileScanFrame {
+  id                    String @id @default(uuid())
+  clientFrameId         String @unique
+  kind                  MobileScanFrameKind
+  clientDeviceId        String
+  clientRecordId        String?
+  orderPlacementEventId String?
+  shelfCodeRaw          String?
+  slipKind              String?
+  decodedValue          String?
+  manualValue           String?
+  outcome               String
+  decodeMs              Int
+  retryCount            Int
+  engine                String
+  camera                Json
+  torchOn               Boolean?
+  zoom                  Float?
+  cropBox               Json?
+  capturedAt            DateTime
+  cropKey               String?
+  fullKey               String
+  cropBytes             Int?
+  fullBytes             Int
+  createdAt             DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  orderPlacementEvent OrderPlacementEvent? @relation(fields: [orderPlacementEventId], references: [id], onDelete: SetNull)
+
+  @@index([kind, capturedAt])
+  @@index([shelfCodeRaw])
+  @@index([clientRecordId])
+  @@map("mobile_scan_frames")
 }
