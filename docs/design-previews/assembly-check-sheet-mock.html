@@ -1,0 +1,445 @@
+<title>組立チェックシート画面案</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Shippori+Mincho+B1:wght@800&display=swap">
+<style>
+/* 1920×1080 キオスク: 細い見出し帯 / 左にシート全体の地図 / 中央に今の項目 / 右に目印・控え・完了 */
+:root{
+  color-scheme:dark;
+  --bg:#1e293b; --panel:#0f172ab3; --panel-solid:#0f172a; --well:#020617; --line:#ffffff26; --line-soft:#ffffff14;
+  --fg:#f8fafc; --muted:#ffffff99; --dim:#ffffff61;
+  --cyan:#67e8f9; --cyan-ink:#083344; --sky:#7dd3fc; --nfc-box:#0c2438; --nfc-line:#1f5a86;
+  --ok:#86efac; --ng:#fbbf24; --ng-bg:#78350f55; --danger:#e5484d; --role:#c4b5fd;
+  --shu:#d9452b; --paper:#fbfaf6; --paper-ink:#1c1917; --paper-line:#57534e;
+  --sans:"Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --seal:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--cyan);outline-offset:2px}
+/* Pi4 の画面と同じ 1920×1080 の枠を、表示する画面の大きさに合わせて縮める */
+.app{position:absolute;left:50%;top:50%;width:1920px;height:1080px;padding:8px 16px;transform:translate(-50%,-50%) scale(var(--k,1));display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px}
+.num{font-variant-numeric:tabular-nums}
+
+/* 見出し帯 */
+.bar{display:flex;align-items:center;gap:20px;padding:5px 6px 5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel);min-width:0;flex-wrap:wrap}
+.bar h1{font-size:19px;font-weight:900;margin:0;white-space:nowrap}
+.doc{font-size:13px;color:var(--muted);white-space:nowrap}
+.kv{display:flex;gap:22px;flex-wrap:wrap;min-width:0;flex:1}
+.kv span{font-size:16px;font-weight:700;white-space:nowrap}
+.kv b{font-weight:500;color:var(--muted);margin-right:7px;font-size:13px}
+.prog{display:flex;align-items:center;gap:12px;white-space:nowrap}
+.prog-num{font-size:22px;font-weight:900}
+.prog-num small{font-size:14px;color:var(--muted);font-weight:500}
+.meter{width:200px;height:8px;border-radius:4px;background:var(--line-soft);overflow:hidden;display:flex}
+.meter i{display:block;height:100%;transition:width .3s}
+.m-ok{background:var(--shu)}.m-ng{background:var(--ng)}
+.btn{min-height:44px;padding:0 18px;border-radius:6px;border:1px solid var(--line);background:#0b1220;font-weight:700;font-size:16px;white-space:nowrap}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-stop{border-color:var(--danger);color:var(--danger);background:transparent}
+.btn-main{background:var(--cyan);color:var(--cyan-ink);border-color:var(--cyan)}
+
+.main{display:grid;grid-template-columns:680px minmax(0,1fr) 330px;gap:8px;min-height:0}
+.pane{border:1px solid var(--line);border-radius:6px;background:var(--panel);min-height:0}
+
+/* シート全体の地図: 1行=大項目、1マス=チェック項目 */
+.map{display:flex;flex-direction:column;padding:6px 8px 8px}
+.map-rows{flex:1;display:grid;grid-template-rows:repeat(22,minmax(0,1fr));min-height:0}
+.mrow{display:grid;grid-template-columns:26px 236px minmax(0,1fr);align-items:center;gap:8px;border-radius:5px;padding:0 6px 0 2px;min-height:0;border:0;background:transparent;text-align:left;width:100%}
+.mrow:hover{background:var(--line-soft)}
+.mrow.here{background:#155e7529}
+.mrow.here .mno{color:var(--cyan)}
+.mno{font-size:13px;color:var(--dim);text-align:right}
+.mname{font-size:14px;font-weight:700;line-height:1.2;color:var(--muted)}
+.mrow.here .mname,.mrow.open .mname{color:var(--fg)}
+.mrow.all .mname{color:var(--dim)}
+.cells{display:flex;gap:5px;align-items:center}
+.cell{position:relative;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;border:1.5px solid #ffffff3d;color:var(--dim);background:transparent;padding:0;flex:none}
+.cell.ok{border:2px solid var(--shu);color:var(--shu);font-family:var(--seal);font-size:15px;background:#d9452b14}
+.cell.ng{border:2px solid var(--ng);color:var(--ng);background:#fbbf2418}
+.cell.na{border:1.5px dashed #ffffff40;color:transparent}
+.cell.na::after{content:"";width:12px;height:2px;background:#ffffff59}
+.cell.cur{border:2px solid var(--cyan);color:var(--cyan-ink);background:var(--cyan);font-size:14px}
+.cell.cur::before{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--cyan);opacity:.5;animation:ring 1.6s ease-out infinite}
+@keyframes ring{0%{transform:scale(.8);opacity:.6}100%{transform:scale(1.15);opacity:0}}
+.cell.role:not(.ok):not(.cur)::after{content:"";position:absolute;right:-1px;top:-1px;width:9px;height:9px;border-radius:50%;background:var(--role)}
+.cond-gap{width:2px;height:22px;background:#c4b5fd66;border-radius:1px;margin:0 1px}
+
+/* 今の項目 */
+.focus{display:flex;flex-direction:column;gap:8px;min-height:0}
+.strip{display:grid;grid-template-columns:54px minmax(0,1fr) auto 44px;align-items:center;gap:12px;padding:0 14px;min-height:52px;border-radius:6px;border:1px solid var(--line-soft);background:#0f172a80;text-align:left;width:100%}
+.strip .sn{font-size:14px;color:var(--dim)}
+.strip .sq{font-size:16px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.strip .sv{font-size:15px;color:var(--fg)}
+.strip.prev{opacity:.75}
+.mini-seal{width:40px;height:40px;border-radius:50%;border:2px solid var(--shu);color:var(--shu);display:grid;place-items:center;font-family:var(--seal);font-size:13px;font-weight:800;transform:rotate(-6deg);line-height:1}
+.mini-seal.ng{border-color:var(--ng);color:var(--ng)}
+.mini-empty{width:36px;height:36px;border-radius:50%;border:1.5px dashed var(--line)}
+.next-h{font-size:13px;color:var(--dim);font-weight:700;letter-spacing:.1em;padding:4px 2px 0}
+.nexts{flex:1;display:flex;flex-direction:column;gap:6px;min-height:0;overflow:hidden}
+.nexts .strip{flex:none}
+.nexts{-webkit-mask-image:linear-gradient(#000 calc(100% - 90px),transparent);mask-image:linear-gradient(#000 calc(100% - 90px),transparent)}
+
+.card{position:relative;border:1px solid #67e8f966;border-radius:8px;background:linear-gradient(180deg,#0c1d2ecc,#0f172ae6);padding:20px 24px 22px;display:grid;grid-template-columns:minmax(0,1fr) 176px;gap:8px 28px;box-shadow:inset 4px 0 0 var(--cyan)}
+.card.ngmode{border-color:#fbbf2499;box-shadow:inset 4px 0 0 var(--ng)}
+.crumb{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.crumb .gn{font-size:16px;color:var(--muted);font-weight:700}
+.crumb .ino{font-size:15px;font-weight:900;color:var(--cyan-ink);background:var(--cyan);border-radius:4px;padding:2px 8px}
+.ngmode .crumb .ino{background:var(--ng);color:#451a03}
+.role-tag{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:14px;background:#4c1d9540;border:1px solid var(--role);color:#ede9fe;font-size:14px;font-weight:700;white-space:nowrap}
+.rev{font-size:13px;color:var(--ng);border:1px solid var(--ng);border-radius:3px;padding:0 5px;font-weight:700}
+.cbody{display:flex;flex-direction:column;gap:16px;min-width:0}
+.q{font-size:30px;font-weight:700;line-height:1.4;letter-spacing:.01em;margin:4px 0 0;text-wrap:pretty}
+.note{font-size:15px;color:var(--muted);margin-top:-6px}
+.ctrl{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+.f{display:inline-flex;align-items:center;gap:8px;font-size:15px;color:var(--muted)}
+.f input{height:56px;border-radius:6px;border:1px solid var(--line);background:var(--well);color:var(--fg);font:inherit;font-size:24px;font-weight:700;padding:0 12px;font-variant-numeric:tabular-nums}
+.f input.n{width:6.5ch;text-align:right}
+.f input.t{width:9ch}
+.f input.w{width:13ch}
+.unit{color:var(--fg);font-size:18px;font-weight:700}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--well)}
+.seg button{min-height:56px;min-width:72px;padding:0 20px;border:0;background:transparent;font-weight:900;font-size:20px;border-right:1px solid var(--line);color:var(--muted)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--cyan);color:var(--cyan-ink)}
+.seg.okng button{min-width:96px}
+.seg.okng button[data-v="OK"][aria-pressed="true"]{background:var(--ok);color:#052e16}
+.seg.okng button[data-v="NG"][aria-pressed="true"]{background:var(--ng);color:#451a03}
+.chips{display:inline-flex;gap:8px}
+.chips button{min-height:56px;min-width:60px;padding:0 14px;border-radius:7px;border:1px solid var(--line);background:var(--well);font-weight:900;font-size:20px;color:var(--muted)}
+.chips button[aria-pressed="true"]{background:var(--cyan);color:var(--cyan-ink);border-color:var(--cyan)}
+.cond{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:12px 14px;border:1px dashed #c4b5fd99;border-radius:7px;background:#4c1d9520}
+.cond .cl{font-size:18px;font-weight:700;color:#ede9fe}
+.ngbox{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px;border:1px solid var(--ng);border-radius:7px;background:var(--ng-bg)}
+.ngbox input{flex:1;min-width:14ch;height:52px;border-radius:6px;border:1px solid var(--line);background:var(--well);color:var(--fg);font:inherit;font-size:19px;padding:0 12px}
+.ngbox .btn{min-height:52px;background:var(--well)}
+.ngbox .btn.mark{border-color:var(--ng);color:var(--ng)}
+
+/* 社員タグの案内と押印欄 */
+.stampcol{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;grid-row:2 / span 2;grid-column:2}
+.slot{width:156px;height:156px;border-radius:50%;border:2px dashed #ffffff33;display:grid;place-items:center;position:relative}
+.slot.ready{border-color:var(--sky)}
+.slot.ready::before{content:"";position:absolute;inset:-10px;border-radius:50%;border:2px solid var(--sky);animation:ring 1.6s ease-out infinite}
+.slot .need{font-size:15px;color:var(--dim);font-weight:700;text-align:center;line-height:1.5}
+.seal{width:148px;height:148px;border-radius:50%;border:4px solid var(--shu);color:var(--shu);display:grid;place-items:center;text-align:center;line-height:1;transform:rotate(-7deg);background:#d9452b12}
+.seal .nm{font-family:var(--seal);font-size:40px;font-weight:800;letter-spacing:.06em}
+.seal .tm{font-size:16px;margin-top:6px;font-weight:700;font-variant-numeric:tabular-nums}
+.seal .rl{font-size:14px;font-weight:700;margin-bottom:4px}
+.seal.ng{border-color:var(--ng);color:var(--ng);background:#fbbf2412}
+.seal.na{border-color:#ffffff59;color:var(--muted);background:transparent}
+.seal.na .nm{font-size:26px}
+.seal.pop{animation:pop .3s cubic-bezier(.2,.9,.3,1.3)}
+@keyframes pop{0%{transform:rotate(-7deg) scale(1.6);opacity:0}100%{transform:rotate(-7deg) scale(1);opacity:1}}
+.nfc{grid-column:1;display:inline-flex;align-items:center;gap:14px;height:64px;padding:0 28px 0 10px;border-radius:32px;border:1.5px solid var(--sky);background:#7dd3fc1f;color:#e0f7ff;font-size:22px;font-weight:900;letter-spacing:.04em;width:fit-content}
+.nfc .ic{width:46px;height:46px;border-radius:50%;background:var(--sky);color:#06243a;display:grid;place-items:center}
+.nfc svg{width:26px;height:26px;animation:pulse 1.6s ease-in-out infinite}
+.nfc.role{border-color:var(--role);background:#c4b5fd1f;color:#f5f3ff}
+.nfc.role .ic{background:var(--role);color:#2e1065}
+.nfc.ng{border-color:var(--ng);background:#fbbf241f;color:#fff7e0}
+.nfc.ng .ic{background:var(--ng);color:#451a03}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.nfc svg,.slot.ready::before,.cell.cur::before,.seal.pop{animation:none}}
+
+/* 右の列 */
+.side{display:flex;flex-direction:column;gap:8px;min-height:0}
+.box{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:12px 14px}
+.box h3{margin:0 0 10px;font-size:15px;font-weight:900;display:flex;align-items:center;gap:8px}
+.box h3 .c{margin-left:auto;color:var(--ng);font-size:15px}
+.who{display:flex;align-items:center;gap:12px;font-size:17px;font-weight:700}
+.av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--shu);color:var(--shu);font-family:var(--seal);font-size:20px;font-weight:800}
+.who small{display:block;font-size:13px;color:var(--muted);font-weight:500}
+.flag{display:inline-block;width:0;height:0;border-left:10px solid var(--ng);border-top:6px solid transparent;border-bottom:6px solid transparent}
+.mk{width:100%;text-align:left;display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;padding:10px;border:1px solid #fbbf2455;background:var(--ng-bg);border-radius:6px;margin-top:6px;min-height:44px}
+.mk:first-child{margin-top:0}
+.mk .no{font-size:14px;color:#fde68a;font-weight:900}
+.mk .t{font-size:15px;font-weight:700}
+.mk .p{grid-column:2;font-size:14px;color:#fde68a}
+.empty{font-size:15px;color:var(--dim)}
+.marks{flex:1;min-height:0;overflow-y:auto}
+.copy{flex:1;min-height:0;display:flex;flex-direction:column;padding:12px 14px 14px}
+.thumb{flex:1;min-height:0;position:relative;overflow:hidden;border-radius:3px;background:var(--paper);border:0;padding:0;width:100%;display:block}
+.thumb::after{content:"";position:absolute;inset:auto 0 0;height:70px;background:linear-gradient(#fbfaf600,var(--paper))}
+.thumb .paper{width:794px;max-width:none;position:absolute;left:0;top:0;transform-origin:0 0;box-shadow:none;pointer-events:none}
+.thumb-open{position:absolute;right:10px;bottom:10px;z-index:2}
+.done-box{display:flex;flex-direction:column;gap:8px}
+.done-box .btn{width:100%;min-height:56px;font-size:19px}
+.why{font-size:14px;color:var(--muted);text-align:center}
+
+/* 試し用のタグ */
+.sim{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;align-items:center;padding:6px 8px;border-radius:8px;background:#000d;border:1px dashed #ffffff55;z-index:30;flex-wrap:wrap;max-width:calc(100% - 32px)}
+.sim span{font-size:12px;color:var(--muted);padding:0 4px}
+.sim button{height:34px;padding:0 10px;border-radius:5px;border:1px solid var(--line);background:#111827;font-size:13px;font-weight:700}
+.toast{position:fixed;left:50%;top:calc(70px + env(safe-area-inset-top,0px));transform:translateX(-50%);padding:12px 22px;border-radius:8px;background:#450a0a;border:1px solid var(--danger);font-weight:700;font-size:18px;z-index:40}
+
+/* 紙の控え */
+.ov{position:fixed;inset:0;background:#000c;z-index:50;display:flex;justify-content:center;overflow-y:auto;padding:24px max(16px,env(safe-area-inset-left,0px)) 24px max(16px,env(safe-area-inset-right,0px))}
+.ov-in{display:flex;flex-direction:column;gap:10px;align-items:center;max-width:100%}
+.ov-bar{display:flex;gap:10px;align-self:stretch;justify-content:flex-end}
+.paper{background:var(--paper);color:var(--paper-ink);width:794px;max-width:100%;padding:28px 30px;font-size:11px;box-shadow:0 10px 40px #0008}
+.p-top{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start}
+.p-top h2{margin:0;font-size:19px;letter-spacing:.2em;text-align:center}
+.p-doc{border:1px solid var(--paper-line);font-size:10px}
+.p-doc div{padding:2px 8px;border-bottom:1px solid var(--paper-line)}.p-doc div:last-child{border:0}
+.p-head{display:grid;grid-template-columns:repeat(4,1fr) 72px;border:1px solid var(--paper-line);margin-top:10px}
+.p-head div{border-right:1px solid var(--paper-line);border-bottom:1px solid var(--paper-line);padding:3px 6px;min-height:22px}
+.p-head b{font-weight:500;color:#57534e;margin-right:6px}
+.p-head .permit{grid-row:span 3;grid-column:5;border-bottom:0;border-right:0;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px}
+.p-seal{width:42px;height:42px;border-radius:50%;border:2px solid var(--shu);color:var(--shu);display:grid;place-items:center;font-family:var(--seal);font-size:13px;font-weight:800;line-height:1;text-align:center}
+.p-seal small{display:block;font-family:var(--sans);font-size:7px;font-weight:700;margin-top:1px}
+.p-seal.ng{border-color:#b45309;color:#b45309}.p-seal.na{border-color:#a8a29e;color:#78716c}
+table.p{width:100%;border-collapse:collapse;margin-top:10px}
+table.p th,table.p td{border:1px solid var(--paper-line);padding:2px 5px;vertical-align:middle}
+table.p th{background:#e7e5e4;font-weight:700;font-size:10px}
+table.p td.c{text-align:center;width:52px;height:48px}
+table.p td.g{width:110px;font-weight:700}
+table.p td.v{width:150px;font-variant-numeric:tabular-nums;color:#1e3a8a}
+table.p tr.ngr td{background:#fef3c7}
+.p-flag{color:#b45309;font-weight:700}
+.p-foot{display:flex;justify-content:space-between;margin-top:10px;font-size:10px;color:#57534e}
+
+</style>
+
+<div class="app">
+  <header class="bar">
+    <button class="btn" type="button" id="back">組立</button>
+    <h1>組立最終検査チェックシート</h1>
+    <span class="doc num">産3-A002BBC-1　△1 2026.10.15</span>
+    <div class="kv" id="hdr"></div>
+    <div class="prog"><span class="prog-num num" id="pnum"></span><span class="meter" id="meter"></span></div>
+    <button class="btn btn-stop" type="button" id="stopBtn">中断</button>
+  </header>
+  <div class="main">
+    <nav class="pane map" aria-label="シート全体"><div class="map-rows" id="map"></div></nav>
+    <section class="focus" id="focus"></section>
+    <aside class="side">
+      <div class="box"><div class="who"><span class="av">山</span><span>山田 一郎<small>作業者　組立1-01</small></span></div></div>
+      <div class="box marks" id="marksBox"><h3><span class="flag"></span>目印<span class="c num" id="mkc"></span></h3><div id="marks"></div></div>
+      <div class="box done-box">
+        <button class="btn" type="button" id="thumb">紙の控え</button>
+        <button class="btn btn-main" type="button" id="doneBtn">完了</button>
+        <div class="why num" id="why"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="sim" id="sim" aria-label="試し用の社員タグ"><span>試し：タグ</span></div>
+<div class="toast" id="toast" hidden></div>
+<div class="ov" id="ov" hidden><div class="ov-in"><div class="ov-bar"><button class="btn" type="button" id="printBtn">印刷</button><button class="btn" type="button" id="ovClose">閉じる</button></div><div class="paper" id="paper"></div></div></div>
+<div class="ov" id="stopOv" hidden><div class="ov-in" style="justify-content:center;gap:18px;margin:auto"><div style="font-size:28px;font-weight:900">中断中</div><div id="stopWhy" style="color:var(--ng);font-size:18px"></div><button class="btn btn-main" type="button" id="resume">再開</button></div></div>
+
+<script>
+(function(){
+const NFC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 8.5a8 8 0 0 1 0 7M9.5 6.5a12 12 0 0 1 0 11M13 4.5a16 16 0 0 1 0 15"/></svg>';
+const HDR={製番:'BA2610-0418',製品No:'0418-01',製品名:'XYZ 3軸ユニット',形式名:'(例) XYZ-300',客先名:'(例) 〇〇製作所',出荷予定日:'11/06'};
+const PEOPLE=[{id:'w',name:'山田',full:'山田 一郎',role:'作業者'},{id:'h',name:'佐藤',full:'佐藤 健',role:'班長'},{id:'k',name:'鈴木',full:'鈴木 誠',role:'係長'},{id:'d',name:'田中',full:'田中 修',role:'制御設計担当'}];
+// 記入の種類: c=確認だけ / f=数値・文字の欄 / s=選ぶ / x=軸を選ぶ / role=押す人の役割
+const G=[
+ ['ユニット（LMガイド、ボールねじ）',[
+  {q:'摺動抵抗のバラツキは無いか'},{q:'トルク、引っ掛かり、芯振れは無いか'},{q:'締付けトルク、マーキング[青色・白色]は良いか'},{q:'ボールの脱落はないか'},
+  {q:'ロックナットは確実に締め付けられているか',f:[{l:'締結トルク',u:'N·m',n:1}]}]],
+ ['リニア',[
+  {q:'マグネット取付け精度は良いか'},{q:'固定子と可動子の隙間はあるか'},{q:'リニアヘッド取付け精度は良いか'},{q:'スケール取付け精度は良いか'},{q:'リニアモータ向きは良いか'},{q:'リニアヘッドは調整取り外しが出来るか'},{q:'リファレンスマークは取り付けたか'},
+  {q:'使用ボルトは合っているか',f:[{l:'ボルト',w:1},{l:'区分'}]},{q:'締付トルクは規定表を確認したか'},
+  {q:'リニアスケール貼り付け方向を上長と確認したか',role:'上長'}]],
+ ['給油及び配管',[{q:'配管の干渉は無いか'},{q:'油、グリスの量及び漏れは無いか'}]],
+ ['エアー関係',[{q:'各部継手エアー漏れは無いか'},{q:'エアー設定値は良いか',f:[{l:'設定値',u:'MPa',n:1}]},{q:'エアーシリンダーセンサー図面通りに付いているか'}]],
+ ['ネジマーキング',[{q:'締付け完了ボルトにマーキング[青色・白色]がされているか'},{q:'締付け完了ボルトを最終チェックしピンクマーカをする'}]],
+ ['電装関係',[
+  {q:'ケーブルに異常なねじれ、折れ、切断はないか'},{q:'バルブ（VAC.CDA）のテスター確認'},
+  {q:'ドライバー入力電圧確認',f:[{l:'電圧',u:'V',n:1}]},{q:'センサーとドグが干渉なく感知するか',f:[{l:'センサー',u:'個',n:1}]},
+  {q:'センサー台取付位置は図面通りか　図面寸法通りになっているか',rev:'△1'},{q:'各軸のパラメータ確認'}]],
+ ['カップリング・モーター',[
+  {q:'取付側軸端及びカップリング内周を清掃後に締付けているか'},
+  {cond:'モータブラケットが一体でない場合'},
+  {q:'モータ台取付の際、専用の治具を使用する',ci:1},
+  {q:'クランプボルトのサイズと締結トルク',ci:1,f:[{l:'M',n:1},{l:'締結トルク',u:'N·m',n:1}],note:'締結トルクはメーカー推奨値参照'},
+  {q:'クランプボルトねじロック塗布（納入仕様図参照）',ci:1,s:['有','無'],f:[{l:'メーカー'},{l:'型式'}]},
+  {q:'カップリングのボルトを緩めた状態で抵抗なく動くこと',ci:1,f:[{l:'前後方向'},{l:'回転方向'}]},
+  {q:'各軸のモータ取付向きを確認したか　納入仕様図と組立図で取付向きが異なっていないか',x:['X','Y','Z','θ','その他']}]],
+ ['プーリ、ベルト',[{q:'モータプーリとボールねじプーリの位置はあっているか'},{q:'ベルトのテンションを確認したか',f:[{l:'テンション',u:'N',n:1}]}]],
+ ['トップテーブル',[{q:'トップテーブルの取り付け方向は合っているか'}]],
+ ['Cキャップ、CVキャップ',[{q:'ガイド面面一に打たれているか'}]],
+ ['表面処理',[{q:'剥がれ、傷の確認'}]],
+ ['防錆',[{q:'錆の処理、対策はされているか',f:[{l:'処理',w:1}]}]],
+ ['立ち合い検査',[{q:'立ち合い時、問題は無かったか'}]],
+ ['動作確認',[{q:'異音、異常振動は無いか'},{q:'部品の干渉はないか'},
+  {q:'メカストッパー間ストロークの確認',rev:'△1',f:[{l:'X',u:'mm',n:1},{l:'Y',u:'mm',n:1},{l:'Z',u:'mm',n:1},{l:'θ',u:'°',n:1}]},
+  {q:'サーボアンプ、モータが複数支給・購入の場合、ユニット1台に対し1セットで動作確認を実施したか'}]],
+ ['IOチェック',[{q:'配線した機器の入出力を確認',s:['OK','NG','該当無し'],noOkNg:1,role:'制御設計担当'}]],
+ ['最終検査',[{q:'仕様の許容値に合格しているか'}]],
+ ['銘番',[{q:'検査成績表と銘番は合っているか'},{q:'決められた場所に貼ってあるか'}]],
+ ['提出書類',[{q:'製品に検査成績表が付いているか'},{q:'捺印は確実か、保管は確実か'}]],
+ ['出荷',[{q:'決められた梱包方法か'}]],
+ ['残部品の確認',[{q:'取付け忘れの部品は無いか'},{q:'取付け忘れの部品は無いか',role:'班長'},{q:'残部品は無いか',role:'係長'}]],
+ ['チェックシートの全項目',[{q:'チェックシートの全項目は、適合しているか',role:'係長'}]],
+ ['検査成績表とデータ',[{q:'検査成績表とデータの数字は正しいか',role:'係長'}]]
+];
+let items=[],conds={};
+G.forEach((g,gi)=>{let k=0;g[1].forEach(it=>{if(it.cond){conds[gi]={label:it.cond,state:null,seal:null};return;}k++;items.push(Object.assign({gi,k,no:(gi+1)+'-'+k,res:null,vals:{},sel:null,axes:[],seal:null,ngText:'',mark:false},it));});});
+const W=PEOPLE[0];
+function seal(p,t,kind){return {name:p.name,role:p.role,time:t,kind:kind||'ok'};}
+// 例: 1〜5 は済み、4-2 は NG で目印、6 の途中まで
+let t=8*60+40;
+const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+items.forEach(it=>{if(it.gi<5){t+=3;
+  if(it.no==='4-2'){it.res='NG';it.vals={設定値:'0.50'};it.ngText='図面は 0.45 MPa';it.mark=true;it.seal=seal(W,hm(t),'ng');}
+  else{it.res='OK';it.seal=seal(it.role==='上長'?PEOPLE[1]:W,hm(t));
+   if(it.no==='1-5')it.vals={締結トルク:'12.5'};if(it.no==='2-8')it.vals={ボルト:'M5×12',区分:'A'};}}});
+items.filter(i=>i.gi===5).slice(0,2).forEach(it=>{t+=4;it.res='OK';it.seal=seal(W,hm(t));});
+let stopped=false,lastStamped=items.indexOf(items.find(i=>i.no==='6-2'));
+const $=id=>document.getElementById(id);
+function now(){const d=new Date();return hm(d.getHours()*60+d.getMinutes());}
+function isNA(it){return it.ci&&conds[it.gi]&&conds[it.gi].state==='na'&&conds[it.gi].seal;}
+function settled(it){return !!it.seal||isNA(it);}
+let curI=items.findIndex(i=>!settled(i));
+function ready(it){
+  if(it.ci&&conds[it.gi]&&conds[it.gi].state!=='ap')return false;
+  if(it.noOkNg)return !!it.sel;
+  if(it.res!=='OK')return false;
+  if(it.f&&it.f.some(f=>!String(it.vals[f.l]||'').trim()))return false;
+  if(it.s&&!it.sel)return false;
+  if(it.x&&!it.axes.length)return false;
+  return true;
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function valText(it,sep){return [...Object.entries(it.vals).map(([k,v])=>`${k} ${v}${(it.f||[]).find(f=>f.l===k)?.u||''}`),it.sel||'',it.axes.join(' ')].filter(Boolean).join(sep||'　');}
+function condPending(it){const c=it.ci&&conds[it.gi];return c&&!(c.state==='ap'||(c.state==='na'&&c.seal));}
+function needsNaSeal(it){const c=it.ci&&conds[it.gi];return c&&c.state==='na'&&!c.seal;}
+
+function mapHTML(){
+  return G.map((g,gi)=>{const its=items.filter(i=>i.gi===gi),d=its.filter(settled).length;
+    const here=items[curI]&&items[curI].gi===gi;
+    let cells='',condDone=false;
+    its.forEach(it=>{
+      if(it.ci&&!condDone){cells+='<span class="cond-gap" aria-hidden="true"></span>';condDone=true;}
+      const i=items.indexOf(it);
+      let cls=isNA(it)?'na':it.seal?(it.seal.kind==='ng'||it.mark?'ng':'ok'):'';
+      if(i===curI&&!settled(it))cls='cur';
+      if(it.role)cls+=' role';
+      const label=it.seal&&!isNA(it)?(it.seal.kind==='ng'||it.mark?'!':esc(it.seal.name[0])):it.k;
+      cells+=`<button type="button" class="cell ${cls}" data-go="${i}" aria-label="${it.no}">${isNA(it)?'':label}</button>`;
+    });
+    return `<div class="mrow ${here?'here':''} ${d===its.length?'all':d?'open':''}"><span class="mno num">${gi+1}</span><span class="mname">${esc(g[0])}</span><span class="cells">${cells}</span></div>`;
+  }).join('');
+}
+function sealHTML(s,pop){
+  return `<div class="seal ${s.kind==='ng'?'ng':s.kind==='na'?'na':''} ${pop?'pop':''}"><div>${s.role&&s.role!=='作業者'&&s.kind!=='na'?`<div class="rl">${esc(s.role)}</div>`:''}<div class="nm">${esc(s.kind==='na'?'該当なし':s.name)}</div><div class="tm num">${s.kind==='na'?esc(s.name)+' ':''}${esc(s.time)}</div></div></div>`;
+}
+function stripHTML(it,cls){
+  const i=items.indexOf(it);
+  const s=isNA(it)?'<div class="mini-seal" style="border-color:#ffffff59;color:var(--muted)">—</div>':it.seal?`<div class="mini-seal ${it.seal.kind==='ng'?'ng':''}">${esc(it.seal.name)}</div>`:'<div class="mini-empty"></div>';
+  const v=it.mark?`<span class="sv" style="color:#fde68a"><span class="flag"></span> ${esc(it.ngText)}</span>`:it.role&&!it.seal?`<span class="role-tag">${esc(it.role)}</span>`:`<span class="sv num">${esc(valText(it))}</span>`;
+  return `<button type="button" class="strip ${cls||''}" data-go="${i}"><span class="sn num">${it.no}</span><span class="sq">${esc(it.q)}</span>${v}${s}</button>`;
+}
+function focusHTML(fresh){
+  const it=items[curI];
+  if(!it)return `<div class="card" style="grid-template-columns:1fr;place-items:center;min-height:420px"><div style="text-align:center"><div class="q">全項目に印が揃いました</div><div class="note" style="margin-top:10px">右下の「完了」へ</div></div></div>`;
+  const i=curI,lock=settled(it),c=it.ci&&conds[it.gi];
+  let body='';
+  if(c&&!lock)body+=`<div class="cond"><span class="cl">${esc(c.label)}</span><div class="seg" role="group"><button type="button" data-cond="ap" aria-pressed="${c.state==='ap'}">該当</button><button type="button" data-cond="na" aria-pressed="${c.state==='na'}">該当なし</button></div></div>`;
+  let ctrl='';
+  if(!lock&&!condPending(it)){
+    if(it.f)ctrl+=it.f.map(f=>`<label class="f">${esc(f.l)}<input class="${f.n?'n':f.w?'w':'t'}" ${f.n?'inputmode="decimal"':''} data-i="${i}" data-f="${esc(f.l)}" value="${esc(it.vals[f.l]||'')}">${f.u?`<span class="unit">${f.u}</span>`:''}</label>`).join('');
+    if(it.x)ctrl+=`<span class="chips">${it.x.map(a=>`<button type="button" data-x="${a}" aria-pressed="${it.axes.includes(a)}">${a}</button>`).join('')}</span>`;
+    if(it.s)ctrl+=`<div class="seg" role="group">${it.s.map(o=>`<button type="button" data-s="${o}" aria-pressed="${it.sel===o}">${o}</button>`).join('')}</div>`;
+    if(!it.noOkNg)ctrl+=`<div class="seg okng" role="group"><button type="button" data-r="OK" data-v="OK" aria-pressed="${it.res==='OK'}">OK</button><button type="button" data-r="NG" data-v="NG" aria-pressed="${it.res==='NG'}">NG</button></div>`;
+  }else if(lock){const v=valText(it);if(v)ctrl+=`<span class="f" style="color:var(--fg);font-size:20px;font-weight:700">${esc(v)}</span>`;}
+  if(ctrl)body+=`<div class="ctrl">${ctrl}</div>`;
+  if(!lock&&it.res==='NG'&&!it.mark)body+=`<div class="ngbox"><input id="ngIn" data-ng="${i}" placeholder="問題点" value="${esc(it.ngText)}"><button type="button" class="btn" data-stop="1">中断</button><button type="button" class="btn mark" data-markit="1">目印を付けて次へ</button></div>`;
+  if(it.mark&&!lock)body+=`<div class="cond" style="border-color:var(--ng);background:var(--ng-bg);color:#fde68a;font-size:18px;font-weight:700"><span class="flag"></span>${esc(it.ngText)}</div>`;
+  // タグの案内
+  let nfc='',slot;
+  const tagReady=!lock&&(needsNaSeal(it)||ready(it)||it.mark);
+  if(tagReady){
+    const who=needsNaSeal(it)?'':it.role||'';
+    nfc=`<div class="nfc ${it.mark?'ng':who?'role':''}" role="status"><span class="ic">${NFC}</span>${esc(who?who+'のタグ':'社員タグ')}をかざす</div>`;
+  }
+  if(lock)slot=sealHTML(isNA(it)?{kind:'na',name:c.seal.name,time:c.seal.time}:it.seal,fresh);
+  else slot=`<div class="slot ${tagReady?'ready':''}"><span class="need">${it.role?esc(it.role)+'<br>':''}印</span></div>`;
+  const role=it.role?`<span class="role-tag">${esc(it.role)}</span>`:'';
+  return `<div class="card ${it.res==='NG'&&!lock?'ngmode':''}">
+    <div class="crumb"><span class="ino num">${it.no}</span><span class="gn">${it.gi+1}　${esc(G[it.gi][0])}</span>${role}${it.rev?`<span class="rev">${it.rev} 改訂</span>`:''}</div>
+    <div class="cbody"><div class="q">${esc(it.q)}</div>${it.note?`<div class="note">※ ${esc(it.note)}</div>`:''}${body}</div>
+    <div class="stampcol">${slot}</div>
+    ${nfc||'<div></div>'}
+  </div>`;
+}
+function render(fresh){
+  const done=items.filter(settled).length,ngc=items.filter(i=>i.mark).length,total=items.length;
+  $('hdr').innerHTML=['製番','製品名','出荷予定日'].map(k=>`<span><b>${k}</b>${esc(HDR[k])}</span>`).join('');
+  $('pnum').innerHTML=`${done}<small> / ${total}</small>`;
+  $('meter').innerHTML=`<i class="m-ok" style="width:${(done-ngc)/total*100}%"></i><i class="m-ng" style="width:${ngc/total*100}%"></i>`;
+  $('map').innerHTML=mapHTML();
+  // 中央: 直前の1件 / 今の項目 / 次の項目
+  const prev=lastStamped>=0&&lastStamped!==curI?items[lastStamped]:null;
+  const nexts=items.filter((x,i)=>i>curI&&!settled(x)).slice(0,12);
+  $('focus').innerHTML=(prev?stripHTML(prev,'prev'):'')+focusHTML(fresh)+(nexts.length?`<div class="next-h">次</div><div class="nexts">${nexts.map(x=>stripHTML(x)).join('')}</div>`:'');
+  const marks=items.filter(i=>i.mark);
+  $('mkc').textContent=marks.length?marks.length+'件':'';
+  $('marks').innerHTML=marks.length?marks.map(m=>`<button type="button" class="mk" data-go="${items.indexOf(m)}"><span class="no num">${m.no}</span><span class="t">${esc(m.q)}</span><span class="p">${esc(m.ngText)}</span></button>`).join(''):'<div class="empty">なし</div>';
+  const left=total-done;
+  $('doneBtn').disabled=left>0||marks.length>0;
+  $('why').textContent=left>0?`残り ${left} 項目`:(marks.length?`目印 ${marks.length} 件が残っています`:'');
+}
+let toastT;
+function toast(m){const el=$('toast');el.textContent=m;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>el.hidden=true,2200);}
+function nextOpen(from){let n=items.findIndex((x,i)=>i>from&&!settled(x));if(n<0)n=items.findIndex(x=>!settled(x));return n;}
+function tag(p){
+  if(stopped)return;
+  const it=items[curI];
+  if(!it||settled(it)){toast('押せる項目がありません');return;}
+  if(needsNaSeal(it)){const c=conds[it.gi];c.seal={name:p.name,time:now()};lastStamped=curI;const at=curI;render(true);setTimeout(()=>{curI=nextOpen(at);render();},700);return;}
+  if(!(ready(it)||it.mark)){toast(it.res==='NG'?'問題点を書いて「目印を付けて次へ」':'記入と OK を先に');return;}
+  if(it.role==='上長'&&p.role==='作業者'){toast('上長のタグが必要です');return;}
+  if(it.role&&it.role!=='上長'&&p.role!==it.role){toast(`${it.role}のタグが必要です`);return;}
+  it.seal=seal(p,now(),it.mark?'ng':'ok');lastStamped=curI;
+  render(true);
+  const at=curI;setTimeout(()=>{curI=nextOpen(at);render();},700);
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.go!==undefined){const i=+b.dataset.go;if(settled(items[i])&&!items[i].mark){toast(items[i].no+' は押印済み');return;}curI=i;render();return;}
+  if(b.dataset.p){tag(PEOPLE.find(p=>p.id===b.dataset.p));return;}
+  const it=items[curI];if(!it)return;
+  if(b.dataset.cond){const c=conds[it.gi];c.state=b.dataset.cond;c.seal=null;render();return;}
+  if(b.dataset.r){it.res=it.res===b.dataset.r?null:b.dataset.r;if(it.res!=='NG')it.mark=false;render();if(it.res==='NG'){const el=$('ngIn');el&&el.focus();}return;}
+  if(b.dataset.s){it.sel=b.dataset.s;render();return;}
+  if(b.dataset.x){const a=b.dataset.x;it.axes=it.axes.includes(a)?it.axes.filter(x=>x!==a):[...it.axes,a];render();return;}
+  if(b.dataset.markit){if(!it.ngText.trim()){toast('問題点を書いてください');$('ngIn').focus();return;}it.mark=true;render();return;}
+  if(b.dataset.stop){stopped=true;$('stopWhy').textContent=it.no+'　'+(it.ngText||'NG');$('stopOv').hidden=false;return;}
+});
+document.addEventListener('input',e=>{
+  const el=e.target;
+  if(el.dataset.f){const it=items[+el.dataset.i];const was=ready(it);it.vals[el.dataset.f]=el.value;if(was!==ready(it)){const pos=el.selectionStart;render();const n=document.querySelector(`input[data-f="${el.dataset.f}"]`);if(n){n.focus();try{n.setSelectionRange(pos,pos);}catch(_){}}}}
+  if(el.dataset.ng){items[+el.dataset.ng].ngText=el.value;}
+});
+$('stopBtn').onclick=()=>{stopped=true;$('stopWhy').textContent='';$('stopOv').hidden=false;};
+$('resume').onclick=()=>{stopped=false;$('stopOv').hidden=true;};
+$('back').onclick=()=>toast('組立のトップへ戻ります（画面案）');
+$('doneBtn').onclick=()=>toast('完了して承認待ちにします（画面案）');
+$('sim').insertAdjacentHTML('beforeend',PEOPLE.map(p=>`<button type="button" data-p="${p.id}">${p.name}（${p.role}）</button>`).join(''));
+function paper(el){
+  let rows='';
+  G.forEach((g,gi)=>{const its=items.filter(i=>i.gi===gi);its.forEach((it,k)=>{
+    const s=isNA(it)?{kind:'na',name:'',time:''}:it.seal;
+    rows+=`<tr class="${it.mark?'ngr':''}">${k===0?`<td rowspan="${its.length}" style="text-align:center;width:24px">${gi+1}</td><td class="g" rowspan="${its.length}">${esc(g[0])}</td>`:''}<td>${esc(it.q)}${it.rev?` ${it.rev}`:''}${it.mark?`<div class="p-flag">▶ ${esc(it.ngText)}</div>`:''}</td><td class="v">${isNA(it)?'該当なし':esc(valText(it,' / '))}</td><td class="c">${s?`<div class="p-seal ${s.kind}" style="margin:auto">${s.kind==='na'?'—':esc(s.name)}<small>${esc(s.time)}</small></div>`:''}</td></tr>`;});});
+  el.innerHTML=`<div class="p-top"><h2>組立最終検査チェックシート</h2><div class="p-doc"><div>文書番号</div><div>産3-A002BBC-1</div></div></div>
+  <div class="p-head"><div><b>日付</b>2026年10月29日</div><div><b>出荷予定日</b>2026/11/06</div><div><b>出荷確定日</b></div><div><b>製品No</b>${HDR.製品No}</div>
+  <div class="permit">出荷許可印<div class="p-seal na" style="border-style:dashed"></div></div>
+  <div><b>製品名</b>${HDR.製品名}</div><div><b>形式名</b>${HDR.形式名}</div><div><b>製番</b>${HDR.製番}</div><div><b>工程名</b>組立</div>
+  <div style="grid-column:span 2"><b>客先名</b>${HDR.客先名}</div><div style="grid-column:span 2"><b>納入仕様図番号</b></div></div>
+  <table class="p"><thead><tr><th>No</th><th>主項目</th><th>チェック項目</th><th>記入</th><th>印</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="p-foot"><span>作業者 ${W.full}　端末 組立1-01</span><span>${items.filter(settled).length} / ${items.length} 項目</span></div>`;
+}
+$('thumb').onclick=()=>{paper($('paper'));$('ov').hidden=false;};
+$('printBtn').onclick=()=>toast('印刷します（画面案）');
+$('ovClose').onclick=()=>{$('ov').hidden=true;};
+function fitApp(){document.querySelector('.app').style.setProperty('--k',Math.min(innerWidth/1920,innerHeight/1080));}
+addEventListener('resize',fitApp);fitApp();
+render();
+})();
+</script>

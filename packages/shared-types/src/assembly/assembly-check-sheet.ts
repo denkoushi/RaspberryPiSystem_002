@@ -1,0 +1,96 @@
+import { z } from 'zod';
+
+const cellAddress = z.string().regex(/^[A-Z]{1,3}[1-9]\d{0,6}$/);
+const fieldSchema = z.object({
+  key: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]*$/).max(80),
+  label: z.string().max(500),
+  unit: z.string().max(40).optional()
+});
+
+export const assemblyCheckSheetItemSchema = z.object({
+  groupNo: z.number().int().positive(),
+  itemKey: z.string().min(1).max(80),
+  sortOrder: z.number().int().nonnegative(),
+  label: z.string().min(1).max(10000),
+  note: z.string().max(5000).nullable(),
+  inputKind: z.enum(['OK_NG', 'NUMBER', 'TEXT', 'CHOICE', 'NONE']),
+  inputSpec: z.object({
+    fields: z.array(fieldSchema).max(50).optional(),
+    options: z.array(z.string().min(1).max(200)).max(50).optional()
+  }),
+  roleKeys: z.array(z.string().min(1).max(100)).max(30),
+  conditionKey: z.string().min(1).max(100).nullable(),
+  conditionLabel: z.string().min(1).max(2000).nullable(),
+  sourceRows: z.array(z.number().int().positive().max(1048576)).min(1).max(100),
+  stampCell: cellAddress,
+  valueTarget: z.discriminatedUnion('mode', [
+    z.object({ mode: z.literal('cell'), cell: cellAddress }),
+    z.object({ mode: z.literal('inline'), cell: cellAddress, template: z.string().max(20000) })
+  ]),
+  warnings: z.array(z.string().max(500)).max(100)
+}).superRefine((item, ctx) => {
+  const fields = item.inputSpec.fields ?? [];
+  if (new Set(fields.map((field) => field.key)).size !== fields.length) {
+    ctx.addIssue({ code: 'custom', message: 'Field keys must be unique' });
+  }
+  if (['NUMBER', 'TEXT'].includes(item.inputKind) && fields.length === 0) {
+    ctx.addIssue({ code: 'custom', message: 'Input fields are required' });
+  }
+  if (item.inputKind === 'CHOICE' && (item.inputSpec.options?.length ?? 0) < 2) {
+    ctx.addIssue({ code: 'custom', message: 'Choice options are required' });
+  }
+  if ((item.conditionKey === null) !== (item.conditionLabel === null)) {
+    ctx.addIssue({ code: 'custom', message: 'Condition key and label must be supplied together' });
+  }
+});
+
+export const assemblyCheckSheetProposalSchema = z.object({
+  documentNo: z.string().max(200),
+  title: z.string().min(1).max(500),
+  modelCode: z.string().max(200),
+  revisionLabel: z.string().max(200),
+  sourceSheetName: z.string().min(1).max(31),
+  headerCellMap: z.record(z.string().max(80), cellAddress),
+  stampColumn: z.string().regex(/^[A-Z]{1,3}$/),
+  departmentRoleMembers: z.record(z.string().max(100), z.array(z.string().guid()).max(1000)),
+  groups: z.array(z.object({
+    groupNo: z.number().int().positive(), label: z.string().min(1).max(2000),
+    sortOrder: z.number().int().nonnegative()
+  })).min(1).max(1000),
+  items: z.array(assemblyCheckSheetItemSchema).min(1).max(5000)
+}).superRefine((proposal, ctx) => {
+  const groupNos = new Set(proposal.groups.map((group) => group.groupNo));
+  if (groupNos.size !== proposal.groups.length ||
+      new Set(proposal.items.map((item) => item.itemKey)).size !== proposal.items.length ||
+      new Set(proposal.items.map((item) => item.stampCell)).size !== proposal.items.length ||
+      proposal.items.some((item) => !groupNos.has(item.groupNo))) {
+    ctx.addIssue({ code: 'custom', message: 'Groups, item keys and stamp cells must be unique and consistent' });
+  }
+});
+
+export const assemblyCheckSheetSaveSchema = z.object({
+  importId: z.string().guid(),
+  proposal: assemblyCheckSheetProposalSchema,
+  revisionRootId: z.string().guid().optional()
+});
+
+export type AssemblyCheckSheetProposal = z.infer<typeof assemblyCheckSheetProposalSchema>;
+export type AssemblyCheckSheetItemProposal = z.infer<typeof assemblyCheckSheetItemSchema>;
+export type AssemblyCheckSheetSavePayload = z.infer<typeof assemblyCheckSheetSaveSchema>;
+export type AssemblyCheckSheetImportPayload = {
+  importId: string;
+  sheetNames: string[];
+  proposal: AssemblyCheckSheetProposal;
+};
+export type AssemblyCheckSheetRevisionPayload = AssemblyCheckSheetProposal & {
+  id: string;
+  revisionRootId: string;
+  revisionNumber: number;
+  isRevisionHead: boolean;
+  sourceAssetId: string;
+  layoutSnapshot: unknown;
+  createdByUserId: string;
+  createdAt: string;
+  groups: (AssemblyCheckSheetProposal['groups'][number] & { id: string })[];
+  items: (AssemblyCheckSheetItemProposal & { id: string; groupId: string })[];
+};
