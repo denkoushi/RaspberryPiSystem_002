@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import { prisma } from '../../lib/prisma.js';
 import { normalizePartName } from '../../lib/part-name-normalize.js';
 import {
@@ -35,19 +37,7 @@ export async function findEarliestPlannedStartDatesForPurchaseRows(
   ))];
   if (seibans.length === 0) return purchaseRows.map(() => null);
 
-  const rows = await prisma.$queryRaw<ScheduleCandidate[]>`
-    SELECT
-      COALESCE(r."rowData"->>'FSEIBAN', '') AS seiban,
-      COALESCE(r."rowData"->>'FHINCD', '') AS fhincd,
-      COALESCE(r."rowData"->>'FHINMEI', '') AS fhinmei,
-      s."plannedStartDate"
-    FROM "CsvDashboardRow" r
-    INNER JOIN "ProductionScheduleOrderSupplement" s ON s."csvDashboardRowId" = r.id
-    WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND COALESCE(r."rowData"->>'FSEIBAN', '') = ANY(${seibans}::text[])
-      AND ${buildMaxProductNoWinnerCondition('r')}
-  `;
+  const rows = await listPurchasePlannedStartCandidates(seibans);
 
   const byMatchKey = new Map<string, Date>();
   const byNormalizedCode = new Map<string, Date>();
@@ -71,4 +61,21 @@ export async function findEarliestPlannedStartDatesForPurchaseRows(
     byPartName.get(lookupKey(row.seiban, normalizePartName(row.purchasePartName))) ??
     null
   );
+}
+
+/** Full schedule-derived candidates for independent mobile display data. */
+export async function listPurchasePlannedStartCandidates(seibans?: string[]): Promise<ScheduleCandidate[]> {
+  return await prisma.$queryRaw<ScheduleCandidate[]>`
+    SELECT
+      COALESCE(r."rowData"->>'FSEIBAN', '') AS seiban,
+      COALESCE(r."rowData"->>'FHINCD', '') AS fhincd,
+      COALESCE(r."rowData"->>'FHINMEI', '') AS fhinmei,
+      s."plannedStartDate"
+    FROM "CsvDashboardRow" r
+    INNER JOIN "ProductionScheduleOrderSupplement" s ON s."csvDashboardRowId" = r.id
+    WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      ${seibans ? Prisma.sql`AND COALESCE(r."rowData"->>'FSEIBAN', '') = ANY(${seibans}::text[])` : Prisma.empty}
+      AND ${buildMaxProductNoWinnerCondition('r')}
+  `;
 }

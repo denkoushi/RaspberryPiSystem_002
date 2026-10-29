@@ -2,7 +2,7 @@ import type { ProductionScheduleLookupRow } from './types.js';
 import type { PurchaseMatchRow } from './verify.js';
 
 export type DatasetVersion = { version: string; dataUpdatedAt: string | null };
-export type MobileDataVersions = { purchase: DatasetVersion; schedule: DatasetVersion; placements: DatasetVersion };
+export type MobileDataVersions = { purchase: DatasetVersion; schedule: DatasetVersion; placements: DatasetVersion; purchaseEnrichment?: DatasetVersion };
 export type LocalPurchaseRow = PurchaseMatchRow & {
   purchaseOrderNo: string;
   masterPartName: string;
@@ -53,3 +53,22 @@ export function unpackPlacement(r: PlacementTuple): LocalPlacementRow {
   return { id: r[0], manufacturingOrderBarcodeRaw: r[1], branchNo: r[2], shelfCodeRaw: r[3], updatedAt: r[4],
     fseiban: r[5], fhincd: r[6], fhinmei: r[7], productNo: r[8], machineName: r[9] };
 }
+
+// Independent purchase wire contract, negotiated with format=2. Legacy tuples remain unchanged.
+export type BasePurchaseRow = Omit<LocalPurchaseRow, 'masterPartName' | 'machineName' | 'plannedStartDate'>;
+export type BasePurchaseTuple = [string, string, string, string, string, string, number];
+export type BasePurchaseSnapshot = DatasetVersion & { format: 2; rows: BasePurchaseTuple[] };
+export type MobilePurchaseSnapshot = PurchaseSnapshot | BasePurchaseSnapshot;
+export function packBasePurchase(r: BasePurchaseRow): BasePurchaseTuple {
+  return [r.purchaseOrderNo, r.seiban, r.purchasePartName, r.purchasePartCodeRaw,
+    r.purchasePartCodeNormalized, r.purchasePartCodeMatchKey, r.acceptedQuantity];
+}
+export function unpackBasePurchase(r: BasePurchaseTuple): LocalPurchaseRow {
+  return { purchaseOrderNo: r[0], seiban: r[1], purchasePartName: r[2], purchasePartCodeRaw: r[3],
+    purchasePartCodeNormalized: r[4], purchasePartCodeMatchKey: r[5], acceptedQuantity: r[6],
+    masterPartName: '', machineName: '', plannedStartDate: null };
+}
+export type PurchaseEnrichmentTuple =
+  | ['match' | 'normalized' | 'machine', string, string]
+  | ['date', string, string, string, string]; // raw seiban, raw code, raw name, ISO date
+export type PurchaseEnrichmentSnapshot = DatasetVersion & { rows: PurchaseEnrichmentTuple[] };

@@ -2,16 +2,20 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { gzip } from 'node:zlib';
 
-import { packPlacement, packPurchase, packSchedule } from '@raspi-system/slip-match-core';
+import { packBasePurchase, packPlacement, packPurchase, packSchedule } from '@raspi-system/slip-match-core';
 
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { listAllScheduleLookupRows, listKnownScheduleFseibans } from '../production-schedule/production-schedule-lookup.service.js';
 import { enrichPurchaseOrderLookupRows } from '../purchase-order-lookup/purchase-order-lookup-query.service.js';
 
+import { buildMobilePurchaseEnrichment } from './mobile-purchase-enrichment.service.js';
+
 import { resolvePartSearchMachineNames } from './part-search/part-search-machine-name-fseibans.service.js';
 
-import type { DatasetVersion, MobileDataVersions, PurchaseTuple } from '@raspi-system/slip-match-core';
+import type { BasePurchaseTuple, DatasetVersion, MobileDataVersions, PurchaseTuple } from '@raspi-system/slip-match-core';
+
+type ServerMobileDataVersions = MobileDataVersions & { purchaseEnrichment: DatasetVersion; legacyPurchase: DatasetVersion };
 
 type Stamp = { _count: number; _max: { updatedAt: Date | null; createdAt: Date | null }; checksum?: string };
 function version(stamps: Stamp[]): DatasetVersion {
@@ -22,7 +26,7 @@ function version(stamps: Stamp[]): DatasetVersion {
   };
 }
 
-async function readMobileDataVersions(): Promise<MobileDataVersions> {
+async function readMobileDataVersions(): Promise<ServerMobileDataVersions> {
   const aggregate = { _count: true, _max: { updatedAt: true, createdAt: true } } as const;
   const [purchase, schedule, dates, machines, placements] = await Promise.all([
     prisma.purchaseOrderLookupRow.aggregate(aggregate),
@@ -35,20 +39,21 @@ async function readMobileDataVersions(): Promise<MobileDataVersions> {
       FROM "OrderPlacementBranchState"
     `
   ]);
-  return { purchase: version([purchase, schedule, dates, machines]), schedule: version([schedule]),
+  return { purchase: version([purchase]), purchaseEnrichment: version([schedule, dates, machines]),
+    legacyPurchase: version([purchase, schedule, dates, machines]), schedule: version([schedule]),
     placements: version([{ _count: placements[0].count,
       _max: { updatedAt: placements[0].updatedAt, createdAt: placements[0].createdAt }, checksum: placements[0].checksum }, schedule, machines]) };
 }
 
-let cachedVersions: { value: MobileDataVersions; expiresAt: number } | undefined;
-let pendingVersions: Promise<MobileDataVersions> | undefined;
+let cachedVersions: { value: ServerMobileDataVersions; expiresAt: number } | undefined;
+let pendingVersions: Promise<ServerMobileDataVersions> | undefined;
 let versionsGeneration = 0;
 export function invalidateMobileDataVersions() {
   ++versionsGeneration;
   cachedVersions = undefined;
   pendingVersions = undefined;
 }
-export async function getMobileDataVersions(forceRefresh = false): Promise<MobileDataVersions> {
+export async function getMobileDataVersions(forceRefresh = false): Promise<ServerMobileDataVersions> {
   if (!forceRefresh && cachedVersions && Date.now() < cachedVersions.expiresAt) return cachedVersions.value;
   if (!forceRefresh && pendingVersions) return pendingVersions;
   const generation = versionsGeneration;
@@ -60,7 +65,7 @@ export async function getMobileDataVersions(forceRefresh = false): Promise<Mobil
   try { return await work; } finally { if (pendingVersions === work) pendingVersions = undefined; }
 }
 
-export type MobileDataset = keyof MobileDataVersions;
+export type MobileDataset = keyof ServerMobileDataVersions;
 export type CachedMobileData = DatasetVersion & { jsonBytes: number; gzip: Buffer; rowCount: number; buildMs: number };
 const zip = promisify(gzip);
 
@@ -92,6 +97,7 @@ export function createMobileDataCache(
 }
 
 async function buildMobileData(kind: MobileDataset) {
+  if (kind === 'purchaseEnrichment') return buildMobilePurchaseEnrichment();
   if (kind === 'placements') {
     // Full snapshots by version: branch deletes have no tombstones, so a since-diff would retain deleted rows.
     const rows = await prisma.orderPlacementBranchState.findMany({ orderBy: { id: 'asc' }, select: {
@@ -119,6 +125,7 @@ async function buildMobileData(kind: MobileDataset) {
     return { rows: rows.map(packSchedule), knownFseibans };
   }
   const packed: PurchaseTuple[] = [];
+  const base: BasePurchaseTuple[] = [];
   let cursor: string | undefined;
   // Fetch and enrich one page at a time; only packed tuples survive into the next page.
   for (;;) {
@@ -127,13 +134,17 @@ async function buildMobileData(kind: MobileDataset) {
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
     });
     if (!batch.length) break;
-    const enriched = await enrichPurchaseOrderLookupRows(batch);
-    enriched.forEach((row, index) => packed.push(packPurchase({ ...row,
-      purchaseOrderNo: batch[index].purchaseOrderNo, purchasePartCodeMatchKey: batch[index].purchasePartCodeMatchKey })));
+    if (kind === 'purchase') {
+      batch.forEach((row) => base.push(packBasePurchase(row)));
+    } else {
+      const enriched = await enrichPurchaseOrderLookupRows(batch);
+      enriched.forEach((row, index) => packed.push(packPurchase({ ...row,
+        purchaseOrderNo: batch[index].purchaseOrderNo, purchasePartCodeMatchKey: batch[index].purchasePartCodeMatchKey })));
+    }
     if (batch.length < 5000) break;
     cursor = batch[batch.length - 1].id;
   }
-  return { rows: packed };
+  return kind === 'purchase' ? { format: 2 as const, rows: base } : { rows: packed };
 }
 
 export const getMobileDataSnapshot = createMobileDataCache();
