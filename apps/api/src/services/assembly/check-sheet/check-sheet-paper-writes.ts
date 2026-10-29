@@ -6,7 +6,8 @@ const tokyo = new Intl.DateTimeFormat('en-US', {
 export function buildCheckSheetWrites(sheet: AssemblyCheckSheetPayload): AssemblyCheckSheetCellWrite[] {
   const writes: AssemblyCheckSheetCellWrite[] = [];
   for (const [key, cell] of Object.entries(sheet.revision.headerCellMap)) {
-    if (Object.hasOwn(sheet.headerValues, key)) writes.push({ cell, text: sheet.headerValues[key] });
+    // Blank values keep whatever the original template prints in that cell.
+    if (Object.hasOwn(sheet.headerValues, key) && sheet.headerValues[key]?.trim()) writes.push({ cell, text: sheet.headerValues[key] });
   }
   for (const item of sheet.revision.items) {
     const stamp = sheet.stamps.find((entry) => entry.itemId === item.id);

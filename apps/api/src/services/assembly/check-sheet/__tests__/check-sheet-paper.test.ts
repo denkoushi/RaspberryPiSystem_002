@@ -139,7 +139,7 @@ describe('check-sheet paper writes', () => {
       { id: 'ng', stampCell: 'S3', inputSpec: {}, valueTarget: { mode: 'inline', cell: 'F3', template: 'M{size}（{torque} N·m）{missing}' } },
       { id: 'todo', stampCell: 'S4', inputSpec: {}, valueTarget: { mode: 'cell', cell: 'F4' } }
     ];
-    const sheet = { revision: { items, headerCellMap: { seiban: 'Q4', customer: 'K6' } }, headerValues: { seiban: '製番1' }, stamps: [
+    const sheet = { revision: { items, headerCellMap: { seiban: 'Q4', customer: 'K6' } }, headerValues: { seiban: '製番1', customer: ' ' }, stamps: [
       { itemId: 'ok', result: 'OK', values: { n: 0 }, employeeNameSnapshot: '山田　一郎', stampedAt: '2026-10-28T15:12:00Z' },
       { itemId: 'na', result: 'NA', values: {}, employeeNameSnapshot: '佐藤 次郎', stampedAt: '2026-10-29T00:12:00Z' },
       { itemId: 'ng', result: 'NG', flagged: true, values: { size: 5, torque: 12 }, employeeNameSnapshot: '鈴木', stampedAt: '2026-10-29T00:12:00Z' }
