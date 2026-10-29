@@ -28,7 +28,7 @@ set -e
 echo "[$(date +%Y-%m-%dT%H:%M:%S)] Package integrity check completed." >> "${LOG_FILE}"
 
 ALLOWED_PATHS=(
-{% for path in package_integrity_allowed_paths %}
+{% for path in package_integrity_scan_allowed_paths | default(package_integrity_allowed_paths) %}
   {{ path | quote }}
 {% endfor %}
 )
@@ -44,6 +44,12 @@ filter_differences() {
         continue 2
       fi
     done
+{% for expected in package_integrity_expected_contents | default([]) %}
+    # Only accept the exact expected bytes, including the trailing newline.
+    if [[ "${path}" == {{ expected.path | quote }} ]] && cmp -s "${path}" <(printf '%s' {{ expected.content | quote }}); then
+      continue
+    fi
+{% endfor %}
     printf '%s\n' "${line}"
     count=$((count + 1))
     if [[ ${count} -ge 50 ]]; then

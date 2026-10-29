@@ -154,7 +154,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             "clamav_kiosk_log_dir",
             "trivy_log_dir",
             "package_integrity_log_dir",
-            "rkhunter_kiosk_log_dir",
             "security_monitor_state_dir",
             "security_monitor_fail2ban_log",
         )

@@ -23,14 +23,23 @@ json_escape() {
 }
 
 # アラートファイルを生成
-ALERT_FILE="${ALERT_DIR}/alert-${TIMESTAMP}.json"
+ALERT_ID="${TIMESTAMP}"
+ALERT_FILE="${ALERT_DIR}/alert-${ALERT_ID}.json"
+SUFFIX=1
+# Reserve the name atomically so simultaneous alerts cannot overwrite each other.
+while ! (set -o noclobber; : > "${ALERT_FILE}") 2>/dev/null; do
+  [[ -e "${ALERT_FILE}" ]] || exit 1
+  SUFFIX=$((SUFFIX + 1))
+  ALERT_ID="${TIMESTAMP}-${SUFFIX}"
+  ALERT_FILE="${ALERT_DIR}/alert-${ALERT_ID}.json"
+done
 
 cat > "${ALERT_FILE}" <<EOF
 {
-  "id": "${TIMESTAMP}",
-  "type": "${ALERT_TYPE}",
-  "message": "${MESSAGE}",
-  "details": "${DETAILS}",
+  "id": "${ALERT_ID}",
+  "type": "$(json_escape "${ALERT_TYPE}")",
+  "message": "$(json_escape "${MESSAGE}")",
+  "details": "$(json_escape "${DETAILS}")",
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "acknowledged": false
 }

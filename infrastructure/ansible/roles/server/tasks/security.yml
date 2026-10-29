@@ -117,7 +117,7 @@
   changed_when: false
   when: ssh_hardening_enabled | default(false)
 
-# ClamAV/Trivy/rkhunterのタスクはmalware.ymlに統合されました
+# ClamAV/Trivy/パッケージ整合性確認のタスクはmalware.ymlに統合されました
 
 - name: Deploy logrotate config for security logs
   ansible.builtin.template:
