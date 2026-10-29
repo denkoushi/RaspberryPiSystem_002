@@ -144,7 +144,7 @@ Live DB migration/concurrency and hardware NFC/visual verification remain unperf
 
 Changed files:
 
-- `apps/api/prisma/migrations/20261029150000_check_sheet_transition_history/migration.sql`
+- `apps/api/prisma/migrations/20261029220000_check_sheet_transition_history/migration.sql`
 - `apps/api/prisma/schema.prisma`
 - `apps/api/src/routes/assembly/__tests__/check-sheet-kiosk.routes.test.ts`
 - `apps/api/src/routes/assembly/__tests__/check-sheet.routes.test.ts`
