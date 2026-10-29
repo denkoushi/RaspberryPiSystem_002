@@ -8,7 +8,6 @@
     mode: "0755"
   loop:
     - "{{ clamav_kiosk_log_dir }}"
-    - "{{ rkhunter_kiosk_log_dir }}"
   when: terminal_release_mode | default('full') == 'full'
 
 - name: Check kiosk malware log directories before release
@@ -16,7 +15,6 @@
     path: "{{ item }}"
   loop:
     - "{{ clamav_kiosk_log_dir }}"
-    - "{{ rkhunter_kiosk_log_dir }}"
   register: kiosk_malware_log_directories
   when: terminal_release_mode | default('full') == 'release-only'
 
@@ -115,80 +113,5 @@
     - terminal_release_mode | default('full') == 'release-only'
     - clamav_kiosk_enabled | default(false)
 
-- name: Check if rkhunter is already installed (kiosk)
-  ansible.builtin.shell: |
-    set -euo pipefail
-    dpkg-query -W -f='${Status}\n' rkhunter 2>/dev/null | grep -q "install ok installed"
-  args:
-    executable: /bin/bash
-  register: rkhunter_kiosk_pkg_check
-  changed_when: false
-  failed_when: false
-  when: rkhunter_kiosk_enabled | default(false)
-
-- name: Determine if rkhunter install is needed (kiosk)
-  ansible.builtin.set_fact:
-    rkhunter_kiosk_not_installed: "{{ (rkhunter_kiosk_pkg_check.rc | default(1)) != 0 }}"
-  when: rkhunter_kiosk_enabled | default(false)
-
-- name: Install rkhunter on kiosk
-  ansible.builtin.apt:
-    name: rkhunter
-    state: present
-    update_cache: true
-    cache_valid_time: "{{ apt_cache_valid_time_seconds | default(3600) }}"
-  when:
-    - terminal_release_mode | default('full') == 'full'
-    - rkhunter_kiosk_enabled | default(false)
-    - rkhunter_kiosk_not_installed | default(true)
-
-- name: Require rkhunter package before release
-  ansible.builtin.assert:
-    that:
-      - rkhunter_kiosk_pkg_check.rc == 0
-    fail_msg: rkhunter is missing; provision the kiosk before release.
-  when:
-    - terminal_release_mode | default('full') == 'release-only'
-    - rkhunter_kiosk_enabled | default(false)
-
-- name: Deploy kiosk rkhunter scan script
-  ansible.builtin.template:
-    src: "{{ playbook_dir }}/../templates/rkhunter-scan.sh.j2"
-    dest: /usr/local/bin/rkhunter-kiosk-scan.sh
-    owner: root
-    group: root
-    mode: "0755"
-  vars:
-    rkhunter_log_dir: "{{ rkhunter_kiosk_log_dir }}"
-    rkhunter_log_file: "{{ rkhunter_kiosk_log_file }}"
-  register: rkhunter_kiosk_script_deployed
-  when: rkhunter_kiosk_enabled | default(false)
-
-- name: Schedule kiosk rkhunter scan
-  ansible.builtin.cron:
-    name: "Weekly rkhunter scan (kiosk)"
-    user: root
-    minute: "{{ rkhunter_kiosk_cron.split()[0] }}"
-    hour: "{{ rkhunter_kiosk_cron.split()[1] }}"
-    day: "{{ rkhunter_kiosk_cron.split()[2] }}"
-    month: "{{ rkhunter_kiosk_cron.split()[3] }}"
-    weekday: "{{ rkhunter_kiosk_cron.split()[4] }}"
-    job: "/usr/local/bin/rkhunter-kiosk-scan.sh >/dev/null 2>&1"
-  when:
-    - terminal_release_mode | default('full') == 'full'
-    - rkhunter_kiosk_enabled | default(false)
-
-- name: Verify kiosk rkhunter cron entry before release
-  ansible.builtin.shell: |
-    set -euo pipefail
-    expected="{{ rkhunter_kiosk_cron }} /usr/local/bin/rkhunter-kiosk-scan.sh >/dev/null 2>&1"
-    cron="$(crontab -u root -l)"
-    test "$(printf '%s\n' "${cron}" | grep -Fxc -- '#Ansible: Weekly rkhunter scan (kiosk)')" -eq 1
-    test "$(printf '%s\n' "${cron}" | grep -Fxc -- "${expected}")" -eq 1
-    test "$(printf '%s\n' "${cron}" | grep -Fc -- '/usr/local/bin/rkhunter-kiosk-scan.sh')" -eq 1
-  args:
-    executable: /bin/bash
-  changed_when: false
-  when:
-    - terminal_release_mode | default('full') == 'release-only'
-    - rkhunter_kiosk_enabled | default(false)
+- name: Apply kiosk package integrity check
+  ansible.builtin.import_tasks: package-integrity.yml

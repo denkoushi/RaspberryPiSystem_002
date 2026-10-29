@@ -16,6 +16,7 @@ import { CheckIcon, PlusIcon } from '../InventoryIcons';
 import {
   invSetupTargets,
   invButtonGo,
+  invButtonDanger,
   invButtonSm,
   invButtonSmGhost,
   invError,
@@ -55,6 +56,8 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const mutations = useInventoryMutations(accessPassword, true);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [undoDismiss, setUndoDismiss] = useState<{ candidate: InventoryImport; draft: Draft } | null>(null);
+  const [hiddenMessageIds, setHiddenMessageIds] = useState<string[]>([]);
+  const [undoMessageId, setUndoMessageId] = useState<string | null>(null);
   const registered = registration.completed ?? null;
   const [suggestion, setSuggestion] = useState<{ candidateId: string; photoId: string; result: InventoryToolFieldSuggestion } | null>(null);
   const [reading, setReading] = useState(false);
@@ -92,14 +95,15 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const candidatesButtonRef = useRef<HTMLButtonElement>(null);
   useDismissOnOutside(candidatesRef, candidatesOpen, () => setCandidatesOpen(false));
   const candidateIndex = candidates.findIndex((entry) => entry.id === candidate?.id);
-  const chooseCandidate = (id: string) => { setSelectedId(id); setDone(null); setCandidatesOpen(false); };
+  const chooseCandidate = (id: string) => { setSelectedId(id); setDone(null); setUndoMessageId(null); setCandidatesOpen(false); };
   useEffect(() => { setPhotoPage((page) => Math.min(page, lastPhotoPage)); }, [lastPhotoPage]);
   const itemsQuery = useInventoryItems(draft.mode !== null);
   const selectedItem = itemsQuery.data?.find((item) => item.id === draft.itemId);
+  const optionScope = splitArea(draft.mode === 'EXISTING_ITEM' ? selectedItem?.compartments[0]?.area ?? '' : draft.area).machine === '生産技術課' ? 'seigi' : 'default';
   const waitingForTag = draft.mode === 'NEW_ITEM' && Boolean(draft.drawerId) && !draft.itemTagUid;
   const read = useArmedNfcRead(waitingForTag);
   const handledRef = useRef<NfcEvent | null>(null);
-  const failedMessages = (messagesQuery.data ?? []).filter((entry) => entry.outcome === 'RETRYABLE' || entry.outcome === 'PROCESSING');
+  const failedMessages = (messagesQuery.data ?? []).filter((entry) => !hiddenMessageIds.includes(entry.id) && (entry.outcome === 'RETRYABLE' || entry.outcome === 'PROCESSING'));
   const photoPending = mutations.deleteImportPhoto.isPending || mutations.rotateImportPhoto.isPending || mutations.reorderImportPhotos.isPending;
 
   // A different candidate starts over.
@@ -269,7 +273,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           toolSize: draft.toolSize,
         },
       });
-      setDone(`候補 #${candidate.sourceItemId} を登録しました`);
+      setDone(`候補 #${candidate.sourceItemId} を登録しました`); setUndoMessageId(null);
       setHiddenIds((ids) => [...ids, candidate.id]);
       completedIdRef.current = candidate.id;
       setRegistration({ selectedId: candidate.id, draft, completed: { candidateId: candidate.id, labelNumber: result.compartment?.labelNumber, name: result.item.name, location: isNew ? draft.drawerLabel : '写真を追加しました' } });
@@ -282,6 +286,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
 
   const dismiss = async () => {
     if (!candidate || working) return;
+    setUndoMessageId(null);
     setWorking(true);
     setUndoDismiss(null);
     setErrorAt('register');
@@ -290,7 +295,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
       await mutations.dismissImport.mutateAsync(candidate.id);
       if (registrationRef.current.selectedId === candidate.id) setUndoDismiss({ candidate, draft });
       setHiddenIds((ids) => [...ids, candidate.id]);
-      setDone(`候補 #${candidate.sourceItemId} は登録しません`);
+      setDone(`候補 #${candidate.sourceItemId} は登録しません`); setUndoMessageId(null);
       setRegistration((current) => current.selectedId === candidate.id ? {
         selectedId: candidates.find((entry) => entry.id !== candidate.id)?.id ?? null, draft: null,
       } : current);
@@ -311,7 +316,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
       setHiddenIds((ids) => ids.filter((id) => id !== undoDismiss.candidate.id));
       setRegistration((current) => current === beforeRestore ? { selectedId: undoDismiss.candidate.id, draft: undoDismiss.draft } : current);
       setUndoDismiss(null);
-      setDone('候補を戻しました');
+      setDone('候補を戻しました'); setUndoMessageId(null);
     } catch (caught) {
       setError(errorText(caught));
     } finally {
@@ -336,21 +341,36 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
   const suggestionFailed = visibleSuggestion && (visibleSuggestion.status === 'unavailable' || !visibleSuggestion.model.length && !visibleSuggestion.maker.length);
   const localError = (target: string) => <div className="h-8 shrink-0 overflow-hidden text-sm leading-4">{error && errorAt === target ? <p className="line-clamp-2 text-[#ffd0d0]" role="alert">{error}</p> : null}</div>;
 
+  const dismissMessage = async (id: string, dismissed: boolean) => {
+    setError(null);
+    setErrorAt(dismissed ? id : 'undo');
+    try {
+      await mutations.dismissImportMessage.mutateAsync({ id, dismissed });
+      setHiddenMessageIds(ids => dismissed ? [...ids, id] : ids.filter(entry => entry !== id));
+      setUndoMessageId(dismissed ? id : null);
+      setUndoDismiss(null);
+      setDone(dismissed ? '取込エラーを消しました' : null);
+    } catch (caught) { setError(errorText(caught)); }
+  };
   const retryPanel = failedMessages.length > 0 ? (
-    <section className="flex flex-wrap items-center gap-3 rounded-xl border border-inv-amber/40 bg-inv-amber/[0.12] px-3 py-2 text-sm text-[#ffe8bf]" aria-label="取込エラー">
-      <span className="font-bold">写真メールの取込に失敗:</span>
+    <section className="flex shrink-0 flex-col gap-2" aria-label="取込エラー">
       {failedMessages.map((entry) => (
-        <span key={entry.id} className="flex flex-col gap-1">
-          {entry.errorMessage ?? '再試行できるエラー'}
-          <button type="button" className={invButtonSm} disabled={mutations.retryImport.isPending} onClick={() => { setErrorAt(entry.id); setError(null); void mutations.retryImport.mutateAsync(entry.id).catch((caught) => setError(errorText(caught))); }}>もう一度取り込む</button>
-          {localError(entry.id)}
-        </span>
+        <div key={entry.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-inv-amber/40 bg-inv-amber/[0.12] px-3 py-2 text-sm text-[#ffe8bf]">
+          <div className="min-w-0 flex-1">
+            <b className="block">写真メールの取込に失敗</b>
+            <small className="text-[#d9c9a8]">{entry.errorMessage ?? '再試行できるエラー'}</small>
+          </div>
+          <button type="button" className={invButtonSm} disabled={mutations.retryImport.isPending || mutations.dismissImportMessage.isPending} onClick={() => { setErrorAt(entry.id); setError(null); void mutations.retryImport.mutateAsync(entry.id).catch((caught) => setError(errorText(caught))); }}>もう一度取り込む</button>
+          <button type="button" className={invButtonDanger} disabled={mutations.dismissImportMessage.isPending || mutations.retryImport.isPending} onClick={() => void dismissMessage(entry.id, true)}>消す</button>
+          {error && errorAt === entry.id ? <p className="basis-full text-sm text-[#ffd0d0]" role="alert">{error}</p> : null}
+        </div>
       ))}
     </section>
   ) : null;
   const doneBanner = <div className="flex h-12 shrink-0 items-center gap-3 overflow-hidden">
-    {done ? <p className="min-w-0 truncate text-base font-bold text-[#d7fbe9]" role="status">{done}</p> : null}
-    {undoDismiss ? <button type="button" className={invButtonSmGhost} disabled={working} onClick={() => void restore()}>元に戻す</button> : null}
+    {done ? <p className={`min-w-0 truncate text-base font-bold text-[#d7fbe9] ${undoMessageId ? 'rounded-xl border border-inv-green/[0.45] bg-inv-green/[0.12] px-3 py-2' : ''}`} role="status">{done}</p> : null}
+    {undoMessageId ? <button type="button" className={invButtonSmGhost} disabled={mutations.dismissImportMessage.isPending} onClick={() => void dismissMessage(undoMessageId, false)}>元に戻す</button> : null}
+    {undoDismiss && !undoMessageId ? <button type="button" className={invButtonSmGhost} disabled={working} onClick={() => void restore()}>元に戻す</button> : null}
     {errorAt === 'undo' ? localError('undo') : null}
   </div>;
 
@@ -496,6 +516,8 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
           <>
             <div className="fixed inset-0 z-40 bg-[#05080d]/60" aria-hidden="true" onClick={() => setOptionsOpen(false)} />
             <ToolValueBoard
+              key={optionScope}
+              scope={optionScope}
               accessPassword={accessPassword}
               current={{ name: draft.name, maker: draft.maker, toolName: draft.toolName, workMaterial: draft.workMaterial, toolSize: draft.toolSize, model: draft.model, usage: draft.usage }}
               onChange={(field, value) => update({ [field]: value } as Partial<Draft>)}

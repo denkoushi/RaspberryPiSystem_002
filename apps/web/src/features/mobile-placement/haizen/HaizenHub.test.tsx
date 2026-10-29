@@ -7,32 +7,37 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getOrderPlacementBranches, getMobilePlacementShelfMachines, moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
 import { api } from '../../../api/http';
 import { resetMobileConnectivityForTests, mobileRequest, MOBILE_REQUEST_TIMEOUT_MS, canUseMobileNetwork } from '../connectivity';
+import { mobileLocalDataStore } from '../local-data/mobileLocalDataStore';
 import { saveOrderBranches } from '../orderPlacementBranchesCache';
+import { saveScanFrame } from '../scan-frames/saveScanFrame';
 import { shelfOfflineQueueStore } from '../shelfMaster/offline/shelfOfflineQueueStore';
 import { MobileSyncProvider } from '../sync/MobileSyncProvider';
 import { resetSyncSchedulerForTests } from '../sync/syncScheduler';
 import { useMobilePlacementPageState } from '../useMobilePlacementPageState';
 import { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import { useRegisteredShelves } from '../useRegisteredShelves';
+import { verifyRecordStore } from '../verify-records/verifyRecordStore';
 
 import { HaizenHub } from './HaizenHub';
 import { haizenOfflineQueueStore } from './offline/haizenOfflineQueueStore';
 
 import type { HaizenHubSheet } from './HaizenHub';
+import type { ScanFrameCapture } from '../../barcode-scan/scanFrameCapture';
 
 vi.mock('../../../api/http', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 
-const mocks = vi.hoisted(() => ({ realBranches: false, branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
+const mocks = vi.hoisted(() => ({ scanValue: 'SCANNED', realBranches: false, branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
 vi.mock('../local-data/mobileLocalDataSync', () => ({ syncMobileLocalData: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   getOrderPlacementBranches: vi.fn(), getMobilePlacementShelfMachines: vi.fn(),
   moveOrderPlacementBranch: vi.fn(), registerOrderPlacement: vi.fn(),
   verifyMobilePlacementSlipMatch: vi.fn(), parseActualSlipImage: vi.fn(), getMobilePlacementShelfPhoto: vi.fn()
 }));
+vi.mock('../scan-frames/saveScanFrame', () => ({ saveScanFrame: vi.fn(() => 'frame-id'), onScanIdle: vi.fn() }));
 vi.mock('../../barcode-scan', () => ({
   KIOSK_STANDARD_BARCODE_SCAN_SESSION: {},
-  BarcodeScanModal: ({ open, onSuccess, onAbort, engine }: { open: boolean; onSuccess: (v: string) => void; onAbort: () => void; engine: string }) => open
-    ? <div role="dialog" aria-label="scanner"><span>{engine}</span><button onClick={() => onSuccess('SCANNED')}>scan</button><button onClick={onAbort}>abort</button></div> : null
+  BarcodeScanModal: ({ open, onSuccess, onAbort, engine, onFrameCaptured }: { onFrameCaptured?: (capture: ScanFrameCapture) => void; open: boolean; onSuccess: (v: string) => void; onAbort: () => void; engine: string }) => open
+    ? <div role="dialog" aria-label="scanner"><span>{engine}</span><button onClick={() => { onFrameCaptured?.({ outcome: 'decoded', decodedValue: mocks.scanValue, decodeMs: 1500, retryCount: 0, engine: 'native', camera: {}, cropBox: null, capturedAt: new Date().toISOString(), fullCanvas: document.createElement('canvas') }); onSuccess(mocks.scanValue); }}>scan</button><button onClick={onAbort}>abort</button><button onClick={() => { onFrameCaptured?.({ outcome: 'timeout', decodedValue: null, decodeMs: 30000, retryCount: 0, engine: 'native', camera: {}, cropBox: null, capturedAt: new Date().toISOString(), fullCanvas: document.createElement('canvas') }); onAbort(); }}>timeout</button></div> : null
 }));
 vi.mock('../useRegisteredShelves', () => ({ useRegisteredShelves: () => ({
   data: { shelves: [{ shelfCodeRaw: 'A-03', isStructured: true, machineName: '50013_540AP', direction: '北' }, { shelfCodeRaw: 'A-04', isStructured: true, machineName: '研削', direction: '南' }] },
@@ -87,10 +92,12 @@ async function chooseShelf(branchNo = 1) {
 beforeEach(async () => {
   vi.resetAllMocks();
   localStorage.clear();
+  mocks.scanValue = 'SCANNED';
   mocks.realBranches = false; mocks.branches = []; mocks.branchError = false; mocks.branchLoading = false; mocks.branchFetching = false;
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
   window.dispatchEvent(new Event('online'));
   vi.mocked(getMobilePlacementShelfMachines).mockResolvedValue({ machines: ['50013_540AP'], landmarks: ['電気室'] });
+  for (const record of await verifyRecordStore.list()) await verifyRecordStore.remove(record);
   for (const record of await shelfOfflineQueueStore.list()) await shelfOfflineQueueStore.remove(record.id);
   for (const record of await haizenOfflineQueueStore.list()) await haizenOfflineQueueStore.remove(record.clientRecordId);
   vi.mocked(registerOrderPlacement).mockResolvedValue({ branchState: { id: 'b1', branchNo: 1, shelfCodeRaw: 'A-03' }, event: { id: 'event1234' } } as Awaited<ReturnType<typeof registerOrderPlacement>>);
@@ -291,6 +298,10 @@ describe('Haizen hub', () => {
       shelfCodeRaw: 'A-03', manufacturingOrderBarcodeRaw: '0002178005', slipKind: 'manufacturing_order',
       clientRecordId: expect.any(String), placedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/), branchNo: 2
     }, 3000));
+    const placementId = vi.mocked(registerOrderPlacement).mock.calls[0][0].clientRecordId;
+    expect(await verifyRecordStore.list()).toEqual([expect.objectContaining({
+      transferOrderBarcodeRaw: '0002178005', actualOrderBarcodeRaw: '4501238876', clientRecordId: placementId
+    })]);
     await act(async () => resolve({ action: 'created', branchState: { branchNo: 2 }, event: { id: 'verify-put' } } as Awaited<ReturnType<typeof registerOrderPlacement>>));
     const toast = await screen.findByText('50013_540AP 北に 分配2を置きました');
     expect(toast.closest('main')).toBe(screen.getByRole('main'));
@@ -376,6 +387,69 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('button', { name: '現品票を読む' }));
     expect(screen.queryByRole('status', { name: '一致' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現品票を読む' })).toBeInTheDocument();
+  });
+  it.each(['manual', 'scan'] as const)('clears a stale transfer part after a new order via %s', async (method) => {
+    mount(); typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    fireEvent.change(screen.getByLabelText('移動票 部品番号'), { target: { value: 'STALE' } });
+    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferPartBarcodeRaw: 'STALE' })));
+    if (method === 'manual') {
+      fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: '0004099556' } });
+    } else {
+      mocks.scanValue = '0004099556';
+      fireEvent.click(screen.getByRole('button', { name: '移動票 製造orderをスキャン' }));
+      fireEvent.click(screen.getByText('scan'));
+      fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    }
+    expect(screen.getByLabelText('移動票 部品番号')).toHaveValue('');
+    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferOrderBarcodeRaw: '0004099556', transferPartBarcodeRaw: '' })));
+  });
+
+  it.each([
+    ['', 'MD004883240'],
+    ['0002178005', ' MD000006755-002 ']
+  ])('routes a part scan without replacing transfer order %j', (order, part) => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: order } });
+    fireEvent.change(screen.getByLabelText('移動票 部品番号'), { target: { value: 'STALE' } });
+    mocks.scanValue = part;
+    fireEvent.click(screen.getByRole('button', { name: '移動票 製造orderをスキャン' }));
+    fireEvent.click(screen.getByText('scan'));
+    expect(screen.queryByRole('dialog', { name: 'scanner' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    expect(screen.getByLabelText('移動票 製造order')).toHaveValue(order);
+    expect(screen.getByLabelText('移動票 部品番号')).toHaveValue(part.trim());
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps alphabetic transfer scans as order values in the place tab', () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    mocks.scanValue = 'MD004883240';
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    expect(screen.getByLabelText('移動票 製造order')).toHaveValue('MD004883240');
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+  });
+
+  describe.each(['api', 'device'] as const)('part mismatch messages via %s', (source) => {
+    it.each([
+      ['TRANSFER_PART_MISMATCH', '移動票の部品番号が違います'],
+      ['ACTUAL_PART_MISMATCH', '現品票の部品番号が違います'],
+      ['FSEIBAN_OR_PART_PAIR_MISMATCH', '部品が違います'],
+      [undefined, '部品が違います']
+    ] as const)('renders %s', async (legacyReason, message) => {
+      const response = { ok: false, reason: 'different_part' as const, legacyReason };
+      if (source === 'device') vi.spyOn(mobileLocalDataStore, 'verify').mockResolvedValue(response);
+      else vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue(response);
+      mount(); typeSlips();
+      expect(await screen.findByRole('status', { name: '不一致' })).toHaveTextContent(message);
+      if (source === 'device') expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+      else expect(verifyMobilePlacementSlipMatch).toHaveBeenCalled();
+    });
   });
   it('mismatch retries the actual slip, scanner stays auto-native', async () => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: false, reason: 'different_seiban', actual: { fseiban: 'FS2' } });
@@ -720,4 +794,94 @@ describe('Haizen hub', () => {
     expect(screen.getByRole('button', { name: 'ここへ移す' })).toBeEnabled();
   });
 
+});
+
+
+describe('Haizen scan frame wiring', () => {
+  it('attaches the same scan and clientRecordId immediately when placing', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    await chooseShelf();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    const photo = vi.mocked(saveScanFrame).mock.calls.find(([, details]) => details.kind === 'placement-photo');
+    expect(photo?.[0].decodedValue).toBe('SCANNED');
+    expect(photo?.[1]).toMatchObject({ shelfCodeRaw: 'A-03', slipKind: 'manufacturing_order' });
+    await waitFor(async () => expect((await haizenOfflineQueueStore.list())[0]?.clientRecordId).toBe(photo?.[1].clientRecordId));
+  });
+  it.each(['移動票', '現品票'])('keeps the %s photo after scanning a shelf on the place tab', async (slip) => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: `${slip}を読む` }));
+    fireEvent.click(screen.getByText('scan'));
+    const capture = vi.mocked(saveScanFrame).mock.calls[0][0];
+    fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '大きい画面で選ぶ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'QR', exact: true }));
+    mocks.scanValue = 'A-03';
+    fireEvent.click(screen.getByText('scan'));
+    expect(screen.getByRole('button', { name: 'ここに置く' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    const photo = vi.mocked(saveScanFrame).mock.calls.find(([, details]) => details.kind === 'placement-photo');
+    expect(photo?.[0]).toBe(capture);
+    expect(photo?.[1]).toMatchObject({ shelfCodeRaw: 'A-03', slipKind: slip === '移動票' ? 'manufacturing_order' : 'purchase_order' });
+    await waitFor(async () => expect((await haizenOfflineQueueStore.list())[0]?.clientRecordId).toBe(photo?.[1].clientRecordId));
+  });
+  it.each(['scan', 'manual'])('keeps the transfer photo through actual slip %s and shelf choice on verify', async (mode) => {
+    mount();
+    mocks.scanValue = '0002178005';
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    const capture = vi.mocked(saveScanFrame).mock.calls[0][0];
+    if (mode === 'scan') {
+      fireEvent.click(screen.getByRole('button', { name: '現品票を読む' }));
+      mocks.scanValue = 'ACTUAL';
+      fireEvent.click(screen.getByText('scan'));
+    } else {
+      fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+      fireEvent.change(screen.getByLabelText('現品票 注文番号 / 製造order'), { target: { value: 'ACTUAL' } });
+      fireEvent.change(screen.getByLabelText('現品票 部品番号'), { target: { value: 'PART1' } });
+      fireEvent.click(screen.getByRole('button', { name: '完了' }));
+    }
+    await screen.findByRole('status', { name: '一致' });
+    fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: '棚 50013_540AP 北', exact: true }));
+    expect(screen.getByRole('button', { name: 'ここに置く' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    const photo = vi.mocked(saveScanFrame).mock.calls.find(([, details]) => details.kind === 'placement-photo');
+    expect(photo?.[0]).toBe(capture);
+    expect(photo?.[1]).toMatchObject({ shelfCodeRaw: 'A-03', slipKind: 'manufacturing_order' });
+    await waitFor(async () => expect((await haizenOfflineQueueStore.list())[0]?.clientRecordId).toBe(photo?.[1].clientRecordId));
+  });
+  it('clears only the reread field when a new scan is aborted', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('abort'));
+    await chooseShelf();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    expect(vi.mocked(saveScanFrame).mock.calls.some(([, details]) => details.kind === 'placement-photo')).toBe(false);
+  });
+  it('does not attach a frame after replacing the number manually', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    typePlaceSlip('mo', 'OTHER');
+    await chooseShelf();
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    expect(vi.mocked(saveScanFrame).mock.calls.some(([, details]) => details.kind === 'placement-photo')).toBe(false);
+  });
+  it('enriches timeout metadata from the following manual input', () => {
+    vi.mocked(saveScanFrame).mockReturnValue('timeout-frame');
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('timeout'));
+    typePlaceSlip('mo', 'MANUAL');
+    expect(vi.mocked(saveScanFrame).mock.calls[0][1]).toMatchObject({ kind: 'scan-frame', manualValue: 'MANUAL' });
+  });
 });

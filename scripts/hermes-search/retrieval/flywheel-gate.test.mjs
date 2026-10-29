@@ -9,14 +9,21 @@ import { parseRunArgs, runCases, scorerEnv } from './flywheel-run.mjs';
 
 const kept = (a, b, extra = {}) => ({ a, b, seed: { style: 'terse' }, question: `q ${a}`, kept: true, reason: null, grades: { dgx: { a: 3, b: 1 }, jev: { a: 3, b: 1 } }, ...extra });
 
-test('synthetic filters never enter gate splits or offline runs even with content-looking fields', async () => {
-  const row = kept('a', 'b', { id: 'f-a', source: 'synthetic', kind: 'filter', filterCheck: { supported: true } });
-  assert.deepEqual(questionSet([row]), []);
-  assert.deepEqual(questionSet([kept('c', 'd'), row]), questionSet([kept('c', 'd')]));
+test('supported synthetic filters enter gate gains and losses without relevant labels', () => {
+  const rows = ['gain', 'loss'].map((id) => ({ id, source: 'synthetic', kind: 'filter', question: id, split: 'dev', filterCheck: { supported: true } }));
+  const questions = questionSet([...rows, { ...rows[0], id: 'unsupported', filterCheck: { supported: false } }]);
+  assert.equal(questions.length, 2);
+  assert.equal(questionSet([{ ...rows[0], split: undefined }])[0].split, splitOf('gain'));
+  const cases = (gained) => rows.map(({ id }) => ({ id, filterCheck: { supported: true, ok: (id === 'gain') === gained } }));
+  const comparison = compareRuns({ questions, baseline: { cases: cases(false) }, candidate: { cases: cases(true) } });
+  assert.equal(comparison.dev.n, 2);
+  assert.equal(comparison.dev.gained, 1);
+  assert.equal(comparison.dev.lost, 1);
+  assert.equal(comparison.real.n, 0);
+});
+
+test('offline runner still excludes synthetic filters from its separate content replay', async () => {
   const question = { id: 'a', source: 'synthetic', kind: 'filter', split: 'dev', relevant: [], question: 'recent' };
-  const comparison = compareRuns({ questions: [question], baseline: { cases: [] }, candidate: { cases: [] } });
-  assert.equal(comparison.dev.n, 0);
-  assert.equal(comparison.dev.skipped, 0);
   const run = await runCases({ questions: [question], records: [{ id: 'a' }], score: async () => assert.fail('filter excluded') });
   assert.deepEqual(run, { cases: [], skipped: 0 });
 });
@@ -320,4 +327,21 @@ test('offline filter checks receive cause mappings and the scorer keeps the stor
   assert.deepEqual(cases[0].filterCheck.expectedIds, ['a']);
   const options = parseRunArgs(['--snapshot', 's', '--questions', 'q', '--out', 'o']);
   assert.equal(scorerEnv(options, { HERMES_RETRIEVAL_CAUSE_STORE: '/tmp/cause-test.jsonl' }).HERMES_RETRIEVAL_CAUSE_STORE, '/tmp/cause-test.jsonl');
+});
+
+test('real and regression follow-up content checks count gains and losses with empty relevance', () => {
+  const rows = ['real', 'regression'].map((source, i) => ({ id: `r-fiction-${i}`, source, kind: 'content', split: i ? 'heldout' : 'dev',
+    question: '架空工場にも？', relevant: [], followUpCheck: { supported: true, ok: !i } }));
+  const questions = questionSet(rows);
+  assert.equal(questions.length, 2);
+  assert.ok(questions.every((row) => row.source === 'real'));
+  const cases = (after) => rows.map((row, i) => ({ id: row.id, shown: [], followUpCheck: { supported: true, ok: after ? !i : Boolean(i) } }));
+  const comparison = compareRuns({ questions, baseline: { cases: cases(false) }, candidate: { cases: cases(true) } });
+  assert.equal(comparison.dev.gained, 1);
+  assert.equal(comparison.heldout.lost, 1);
+  assert.deepEqual(comparison.real, { n: 2, skipped: 0, baselineShown: 1, candidateShown: 1, gained: 1, lost: 1, p: 1 });
+  const unsupported = compareRuns({ questions, baseline: { cases: cases(false) }, candidate: { cases: rows.map((row) => ({ id: row.id, followUpCheck: { supported: false, ok: null } })) } });
+  assert.equal(unsupported.real.skipped, 2);
+  assert.equal(questionSet([{ ...rows[0], followUpCheck: { supported: false } }]).length, 0);
+  assert.equal(questionSet([{ ...rows[0], relevant: ['fiction-record'], followUpCheck: { supported: false } }]).length, 1);
 });

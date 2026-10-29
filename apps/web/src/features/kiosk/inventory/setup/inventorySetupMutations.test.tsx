@@ -2,8 +2,8 @@ import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { rotateInventoryImportPhoto, rotateInventoryItemPhoto, deleteInventoryDrawer, deleteInventoryShelf, deleteInventoryTag, dismissInventoryImport, restoreInventoryImport, getInventoryImports, getInventoryImportMessages, getInventoryToolFieldValues } from '../../../../api/client';
-import { useInventoryImports, useInventoryImportMessages, useInventoryToolFieldValues, useInventoryMutations } from '../../../../api/hooks/item-inventory';
+import { rotateInventoryImportPhoto, rotateInventoryItemPhoto, deleteInventoryDrawer, deleteInventoryShelf, deleteInventoryTag, dismissInventoryImport, restoreInventoryImport, getInventoryImports, getInventoryImportMessages, getInventoryToolFieldValues, getInventoryToolFieldOptions, setInventoryImportMessageDismissed } from '../../../../api/client';
+import { useInventoryImports, useInventoryImportMessages, useInventoryToolFieldValues, useInventoryToolFieldOptions, useInventoryMutations } from '../../../../api/hooks/item-inventory';
 
 import { captureSetupPinSession, clearSetupPin, readSetupPin, rememberSetupPin, sendSetupRequest } from './setupPinSession';
 
@@ -14,12 +14,40 @@ vi.mock('../../../../api/client', async (original) => ({
   rotateInventoryImportPhoto: vi.fn(), rotateInventoryItemPhoto: vi.fn(),
   deleteInventoryDrawer: vi.fn(), deleteInventoryShelf: vi.fn(), deleteInventoryTag: vi.fn(),
   dismissInventoryImport: vi.fn(), restoreInventoryImport: vi.fn(),
-  getInventoryImports: vi.fn(), getInventoryImportMessages: vi.fn(), getInventoryToolFieldValues: vi.fn(),
+  getInventoryImports: vi.fn(), getInventoryImportMessages: vi.fn(), getInventoryToolFieldValues: vi.fn(), getInventoryToolFieldOptions: vi.fn(), setInventoryImportMessageDismissed: vi.fn(),
 }));
 
 describe('inventory setup mutations', () => {
   beforeEach(() => { vi.resetAllMocks(); clearSetupPin(); rememberSetupPin('2520'); });
   afterEach(() => { onlineManager.setOnline(true); clearSetupPin(); vi.useRealTimers(); });
+  it('caches and switches choices independently by scope', async () => {
+    vi.mocked(getInventoryToolFieldOptions).mockImplementation(async scope => ({ maker: [scope] }) as never);
+    vi.mocked(getInventoryToolFieldValues).mockImplementation(async (_pin, scope) => ({ maker: [{ value: scope, count: 1 }] }) as never);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const { result, rerender } = renderHook(({ scope }: { scope: 'default' | 'seigi' }) => ({
+      options: useInventoryToolFieldOptions(true, scope), values: useInventoryToolFieldValues('2520', true, true, scope),
+    }), { initialProps: { scope: 'default' }, wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+    await waitFor(() => expect(result.current.options.data?.maker).toEqual(['default']));
+    rerender({ scope: 'seigi' });
+    await waitFor(() => expect(result.current.values.data?.maker[0].value).toBe('seigi'));
+    expect(result.current.options.data?.maker).toEqual(['seigi']);
+    expect(client.getQueryData(['inventory-tool-field-options', 'default'])).toEqual({ maker: ['default'] });
+    expect(client.getQueryData(['inventory-tool-field-options', 'seigi'])).toEqual({ maker: ['seigi'] });
+  });
+
+  it('sends message dismissal and restoration with the PIN and invalidates message queries', async () => {
+    const client = new QueryClient();
+    client.setQueryData(['inventory-import-messages'], []);
+    const { result } = renderHook(() => useInventoryMutations('2520', true), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    for (const dismissed of [true, false]) {
+      await act(async () => { await result.current.dismissImportMessage.mutateAsync({ id: 'message', dismissed }); });
+      expect(setInventoryImportMessageDismissed).toHaveBeenCalledWith('message', dismissed, '2520');
+    }
+    expect(client.getQueryState(['inventory-import-messages'])?.isInvalidated).toBe(true);
+  });
+
   it.each(['import', 'item'] as const)('rotates a %s photo with the PIN and invalidates its query', async kind => {
     const client = new QueryClient();
     const key = kind === 'import' ? ['inventory-imports', 'setup', expect.any(Number)] : ['inventory-items'];
@@ -91,7 +119,7 @@ describe('inventory setup mutations', () => {
       wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(apiFunction).toHaveBeenCalledWith('2520');
+    expect(apiFunction).toHaveBeenCalledWith(...(apiFunction === getInventoryToolFieldValues ? ['2520', 'default'] : ['2520']));
     clearSetupPin();
     rememberSetupPin('2520');
     await act(async () => {
@@ -113,7 +141,7 @@ describe('inventory setup mutations', () => {
         wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
       });
       await waitFor(() => expect(result.current.isError).toBe(true));
-      expect(apiFunction).toHaveBeenCalledWith('2520');
+      expect(apiFunction).toHaveBeenCalledWith(...(apiFunction === getInventoryToolFieldValues ? ['2520', 'default'] : ['2520']));
       expect(readSetupPin()).toBeNull();
       unmount();
       client.clear();

@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bareId } from './flywheel-pairs.mjs';
-import { filterOutcome } from './flywheel-filter-check.mjs';
+import { filterOutcome, followUpLoss } from './flywheel-filter-check.mjs';
+import { regressionOk } from './flywheel-real.mjs';
 import { parseReceiptLines, summarizeReceipts, formatRouteReport } from './receipt-report.mjs';
 
 export function nightOfFile(filePath) {
@@ -49,11 +50,26 @@ function formatLearnedReport(summary) {
     + ` (heldout ${check?.heldout?.gained ?? 0}/${check?.heldout?.lost ?? 0}, real ${check?.real?.gained ?? 0}/${check?.real?.lost ?? 0})`;
 }
 
+export function plannerVersionCounts(rows) {
+  const versions = {};
+  for (const row of rows) {
+    const version = row.live?.questionVersion;
+    if (typeof version === 'string') versions[version] = (versions[version] ?? 0) + 1;
+  }
+  return versions;
+}
+
+function formatPlannerVersions(versions) {
+  return Object.keys(versions ?? {}).length ? `\n  planner versions: ${counts(versions)}` : '';
+}
+
 export function summarizeNight(rows, { labels = null } = {}) {
+  const plannerVersions = plannerVersionCounts(rows);
   const filterRows = rows.filter((row) => row.kind === 'filter');
   rows = rows.filter((row) => row.kind !== 'filter');
   const summary = {
     rows: rows.length,
+    plannerVersions,
     generated: 0,
     kept: 0,
     dropped: {},
@@ -162,9 +178,27 @@ function countReal(bucket, row) {
 }
 
 export function summarizeReal(rows) {
-  const summary = { ...realBucket(), dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 }, followUp: { ...realBucket(), filterMismatch: 0, byAction: {}, countAnswers: 0 } };
+  const summary = { regression: { replayed: 0, ok: 0, failed: 0 }, plannerVersions: plannerVersionCounts(rows), ...realBucket(), dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 }, followUp: { check: { supported: 0, ok: 0, scope: 0, missed: 0, wrong: 0, unsupported: {} }, ...realBucket(), filterMismatch: 0, byAction: {}, countAnswers: 0 } };
   for (const row of rows) {
-    if (row?.source !== 'real') continue;
+    if (!['real', 'regression'].includes(row?.source)) continue;
+    if (row.source === 'regression') {
+      summary.regression.replayed += 1;
+      summary.regression[regressionOk(row) === true ? 'ok' : 'failed'] += 1;
+    }
+    if (row.followUpCheck) {
+      const check = summary.followUp.check;
+      if (row.followUpCheck.supported === true) {
+        check.supported += 1;
+        if (row.followUpCheck.ok === true) check.ok += 1;
+        else {
+          const loss = followUpLoss(row.followUpCheck, null);
+          if (loss) check[loss.replace('follow_up_', '')] += 1;
+        }
+      } else {
+        const reason = row.followUpCheck.reason ?? 'unknown';
+        check.unsupported[reason] = (check.unsupported[reason] ?? 0) + 1;
+      }
+    }
     const followUp = Boolean(row.previousPlan);
     const outcome = row.dayOutcome;
     summary.dayOutcomes[outcome] = (summary.dayOutcomes[outcome] ?? 0) + 1;
@@ -203,7 +237,10 @@ export function formatRealReport(night, summary) {
     + `\n  filter questions ${summary.filter.questions}, correct ${summary.filter.ok}, mismatch ${summary.filter.mismatch}, unsupported ${summary.filter.questions - summary.filter.supported}`
     + (followUp.questions ? `\n  follow-up turns ${followUp.questions}, with relevant ${followUp.withRelevant}, relevant shown ${followUp.shown}`
       + `, lost ${Object.keys(followUp.lossStages).length ? counts(followUp.lossStages) : 'none'}, filter mismatch ${followUp.filterMismatch}, count answers ${followUp.countAnswers ?? 0}`
-      + Object.entries(followUp.byAction ?? {}).map(([action, bucket]) => `\n    ${action}: turns ${bucket.questions}, with relevant ${bucket.withRelevant}, relevant shown ${bucket.shown}, lost ${Object.keys(bucket.lossStages).length ? counts(bucket.lossStages) : 'none'}`).join('') : '');
+      + Object.entries(followUp.byAction ?? {}).map(([action, bucket]) => `\n    ${action}: turns ${bucket.questions}, with relevant ${bucket.withRelevant}, relevant shown ${bucket.shown}, lost ${Object.keys(bucket.lossStages).length ? counts(bucket.lossStages) : 'none'}`).join('') : '')
+    + (followUp.check ? `\n  follow-up check: supported ${followUp.check.supported}, ok ${followUp.check.ok}, scope ${followUp.check.scope}, missed ${followUp.check.missed}, wrong ${followUp.check.wrong}, unsupported ${Object.values(followUp.check.unsupported).reduce((sum, count) => sum + count, 0)} (${counts(followUp.check.unsupported) || 'none'})` : '')
+    + (summary.regression ? `\n  regressions: replayed ${summary.regression.replayed}, ok ${summary.regression.ok}, failed ${summary.regression.failed}` : '')
+    + formatPlannerVersions(summary.plannerVersions);
 }
 
 export function formatReport(night, summary) {
@@ -218,7 +255,7 @@ export function formatReport(night, summary) {
   if (live.scored === 0) {
     lines.push(`  live: not run for ${live.notRun} kept questions`);
     lines.push(...formatSyntheticFilters(summary.filter));
-    return lines.join('\n');
+    return lines.join('\n') + formatPlannerVersions(summary.plannerVersions);
   }
   lines.push(
     `  live (${live.scored} scored): relevant shown ${live.shown}`
@@ -236,7 +273,7 @@ export function formatReport(night, summary) {
   const reasons = Object.entries(summary.unavailableReasons ?? {}).sort((left, right) => right[1] - left[1]);
   if (reasons.length) lines.push(`  unavailable reasons: ${reasons.map(([reason, count]) => `${reason}=${count}`).join(', ')}`);
   lines.push(...formatSyntheticFilters(summary.filter));
-  return lines.join('\n');
+  return lines.join('\n') + formatPlannerVersions(summary.plannerVersions);
 }
 
 export function main(argv = process.argv.slice(2)) {

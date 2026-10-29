@@ -11,16 +11,8 @@ type MachineRow = {
   machineName: string | null;
 };
 
-/**
- * 生産スケジュール（MH/SH 行の FHINMEI 集約、無ければ補完テーブル）から、機種名クエリに部分一致する FSEIBAN の集合を返す。
- * 表示は登録製番ボタン下段の機種名と同系の正規化（{@link normalizeMachineNameForPartSearch}）で比較する。
- */
-export async function resolveFseibansMatchingMachineNameQuery(machineQueryRaw: string): Promise<Set<string>> {
-  const needle = normalizeMachineNameForPartSearch(machineQueryRaw);
-  if (needle.length === 0) {
-    return new Set();
-  }
-
+/** Shared MH/SH winner and supplement resolution for server search and device snapshots. */
+export async function resolvePartSearchMachineNames(requestedFseibans?: string[]): Promise<Map<string, string>> {
   const rows = await prisma.$queryRaw<MachineRow[]>`
     SELECT
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
@@ -38,11 +30,15 @@ export async function resolveFseibansMatchingMachineNameQuery(machineQueryRaw: s
     GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN')
   `;
 
+  const present = new Set(rows.map((row) => row.fseiban?.trim()));
+  for (const fseiban of requestedFseibans ?? []) {
+    if (fseiban && !present.has(fseiban)) { rows.push({ fseiban, machineName: null }); present.add(fseiban); }
+  }
   const supplementMachineNames = await findSupplementMachineNamesForMissing(
     rows.map((row) => [row.fseiban, row.machineName] as const)
   );
 
-  const out = new Set<string>();
+  const out = new Map<string, string>();
   for (const row of rows) {
     const fs = row.fseiban?.trim() ?? '';
     if (fs.length === 0) {
@@ -51,10 +47,14 @@ export async function resolveFseibansMatchingMachineNameQuery(machineQueryRaw: s
     const machineName = isMissingSeibanMachineName(row.machineName)
       ? (supplementMachineNames.get(fs) ?? row.machineName)
       : row.machineName;
-    const mn = normalizeMachineNameForPartSearch(machineName);
-    if (mn.includes(needle)) {
-      out.add(fs);
-    }
+    out.set(fs, machineName ?? '');
   }
   return out;
+}
+
+export async function resolveFseibansMatchingMachineNameQuery(machineQueryRaw: string): Promise<Set<string>> {
+  const needle = normalizeMachineNameForPartSearch(machineQueryRaw);
+  if (!needle) return new Set();
+  const names = await resolvePartSearchMachineNames();
+  return new Set([...names].filter(([, name]) => normalizeMachineNameForPartSearch(name).includes(needle)).map(([fs]) => fs));
 }

@@ -190,7 +190,7 @@ jobs:
             --health-interval=10s \
             --health-timeout=5s \
             --health-retries=5 \
-            pgvector/pgvector:pg15
+            pgvector/pgvector:pg18
 
       - name: Wait for PostgreSQL
         run: |
@@ -336,7 +336,7 @@ jobs:
             --health-interval=10s \
             --health-timeout=5s \
             --health-retries=5 \
-            pgvector/pgvector:pg15
+            pgvector/pgvector:pg18
 
       - name: Wait for PostgreSQL
         run: |
@@ -349,6 +349,11 @@ jobs:
           pnpm --filter @raspi-system/api exec prisma migrate status
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
+
+      - name: Test PostgreSQL major upgrade and rollback
+        run: |
+          python3 -m unittest scripts/server/tests/test_db_start_guard.py
+          bash scripts/server/tests/test-postgres-major-upgrade.sh
 
       - name: Test client key rotation with isolated PostgreSQL
         run: |
@@ -545,7 +550,7 @@ jobs:
           bash -n scripts/client/setup-nfc-agent.sh
           bash -n scripts/client/setup-signage-lite.sh
           bash -n scripts/client/setup-signage.sh
-          python3 -m pytest clients/haizen-agent/tests clients/nfc-agent/tests clients/zero-edge-agent/tests scripts/server/tests/test_security_review_collect.py
+          python3 -m pytest clients/haizen-agent/tests clients/nfc-agent/tests clients/zero-edge-agent/tests scripts/server/tests/test_security_review_collect.py scripts/server/tests/test_security_review_triage.py
           python3 -m unittest discover -s clients/status-agent/tests -p 'test_*.py'
 
       - name: Validate torque-agent
@@ -1142,7 +1147,7 @@ jobs:
             --health-interval=10s \
             --health-timeout=5s \
             --health-retries=5 \
-            pgvector/pgvector:pg15
+            pgvector/pgvector:pg18
 
       - name: Wait for PostgreSQL (smoke)
         run: |
@@ -1277,7 +1282,7 @@ jobs:
             --health-interval=10s \
             --health-timeout=5s \
             --health-retries=5 \
-            pgvector/pgvector:pg15
+            pgvector/pgvector:pg18
 
       - name: Wait for PostgreSQL
         run: |

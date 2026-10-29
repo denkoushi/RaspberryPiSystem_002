@@ -127,6 +127,9 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         # Inputs the launcher is rendered from: release_kiosk includes the
         # resolver, and the role defaults carry the browser flags.
         "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+        "infrastructure/ansible/roles/kiosk/tasks/package-integrity.yml",
+        "infrastructure/ansible/templates/package-integrity-scan.sh.j2",
+        "infrastructure/ansible/templates/logrotate-security.conf.j2",
         "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
         "infrastructure/ansible/roles/kiosk/defaults/main.yml",
         # Host and group variables decide the browser engine, its flags and
@@ -409,7 +412,7 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})
     if _has_prefix(normalized, "scripts/deploy") or normalized == "scripts/update-all-clients.sh":
         return frozenset({"repo_policy", "deploy_contract"})
-    if _has_prefix(normalized, "scripts/server/security-review") or normalized == "scripts/server/tests/test_security_review_collect.py":
+    if _has_prefix(normalized, "scripts/server/security-review") or normalized in {"scripts/server/tests/test_security_review_collect.py", "scripts/server/tests/test_security_review_triage.py"}:
         return frozenset({"repo_policy", "db_infra", "deploy_contract", "client"})
     if _has_prefix(normalized, "scripts/server"):
         return frozenset({"repo_policy", "db_infra", "deploy_contract"})

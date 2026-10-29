@@ -199,10 +199,32 @@ security_review_retry_until: "06:55"
 security_review_data_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}/storage/security-review"
 security_review_state_dir: /var/lib/security-review
 security_review_material_byte_cap: 192000
+security_review_changes_context_lines: 1
+# Last matching specific pattern wins; * is the fallback rank only.
+security_review_changes_priority:
+  - 'apps/api/src/routes/*'
+  - 'apps/api/src/*auth*'
+  - 'apps/api/src/middleware/*'
+  - 'apps/api/src/config/*'
+  - '*Dockerfile*'
+  - 'infrastructure/ansible/templates/*'
+  - 'infrastructure/ansible/roles/*/tasks/*'
+  - 'clients/*'
+  - '*'
+  - '*.test.*'
+  - '*.spec.*'
+  - '__tests__/*'
+  - '*/__tests__/*'
+  - 'tests/*'
+  - '*/tests/*'
+  - 'fixtures/*'
+  - '*/fixtures/*'
+  - '__fixtures__/*'
+  - '*/__fixtures__/*'
 security_review_caddy_unusual_hours: [0, 1, 2, 3, 4, 5]
 security_review_caddy_denied_statuses: [401, 403]
 security_review_caddy_unknown_path_statuses: [404]
-security_review_caddy_known_path_patterns: ['^/api/', '^/assets/', '^/(kiosk|admin|signage)(/|$)', '^/$']
+security_review_caddy_known_path_patterns: ['^/api/', '^/assets/', '^/icons/', '^/(manifest\.json|sw\.js|favicon\.ico)$', '^/(kiosk|admin|signage)(/|$)', '^/$']
 security_review_caddy_oversized_bytes: 10485760
 security_review_caddy_examples_per_rule: 10
 security_review_changes_exclude:
@@ -239,6 +261,8 @@ security_review_collector_config:
   timezone: Asia/Tokyo
   material_byte_cap: "{{ security_review_material_byte_cap }}"
   changes_exclude: "{{ security_review_changes_exclude }}"
+  changes_context_lines: "{{ security_review_changes_context_lines }}"
+  changes_priority: "{{ security_review_changes_priority }}"
   fail2ban_logs: ["{{ security_monitor_fail2ban_log }}*"]
   caddy_logs: ["{{ caddy_log_dir }}/access*.log", "{{ caddy_log_dir }}/access*.log.gz"]
   monitor_unit: security-monitor.service
@@ -263,34 +287,38 @@ security_review_collector_config:
       paths: ["{{ trivy_log_dir }}/trivy-image-scan.log*"]
       start: 'Starting Trivy image scan'
       end: 'Trivy image scan completed.'
-    - name: rkhunter
-      paths: ["{{ rkhunter_log_dir }}/{{ rkhunter_log_file }}*"]
-      start: 'Starting rkhunter check'
-      end: 'rkhunter check completed.'
+    - name: package-integrity
+      paths: ["{{ package_integrity_log_dir }}/{{ package_integrity_log_file }}*"]
+      start: 'Starting package integrity check...'
+      end: 'Package integrity check completed.'
 
 # Nightly scans run in a systemd scope with this disk bandwidth cap (path resolves to its backing disk)
 security_scan_io_device: "/"
 security_scan_io_bandwidth_max: "30M"
 
-rkhunter_server_enabled: true
-rkhunter_server_cron: "0 4 * * *"
-rkhunter_server_allow_dev_files:
-  - "/dev/shm/lttng-ust-wait-*"
-rkhunter_server_allow_hidden_files:
-  - "/etc/.updated"
-rkhunter_log_dir: "/var/log/rkhunter"
-rkhunter_log_file: "rkhunter-scan.log"
-rkhunter_ignore_patterns:
-  - "User 'clamav' has been added"
-  - "Group 'clamav' has been added"
-  - "PermitRootLogin"
-  - "/dev/shm/lttng-ust-wait"
-  - "/etc/.updated"
+package_integrity_enabled: true
+package_integrity_cron: "0 4 * * *"
+package_integrity_log_dir: "/var/log/package-integrity"
+package_integrity_log_file: "package-integrity-scan.log"
+package_integrity_allowed_paths:
+  - "/etc/skel/.bashrc"
+  - "/etc/chromium/master_preferences"
+  - "/etc/plymouth/plymouthd.conf"
+  - "/etc/login.defs"
+  - "/etc/xdg/labwc-greeter/environment"
+  - "/etc/xdg/pcmanfm/default/pcmanfm.conf"
+  - "/usr/share/firefox/distribution/distribution.ini"
+  - "/etc/default/useradd"
+  - "/etc/avahi/avahi-daemon.conf"
+  - "/usr/lib/modprobe.d/g_ether.conf"
+  - "/etc/wayvnc/config"
+  - "/etc/initramfs-tools/initramfs.conf"
+  - "/etc/lightdm/lightdm.conf"
 
-rkhunter_kiosk_enabled: true
-rkhunter_kiosk_cron: "30 2 * * 0"
-rkhunter_kiosk_log_dir: "/var/log/rkhunter"
-rkhunter_kiosk_log_file: "rkhunter-kiosk.log"
+package_integrity_expected_contents: []
+package_integrity_kiosk_cron: "30 2 * * 0"
+package_integrity_kiosk_extra_allowed_paths:
+  - "/etc/NetworkManager/NetworkManager.conf"
 
 # マルウェア対策設定
 clamav:
@@ -312,14 +340,6 @@ trivy:
     - "/opt/RaspberryPiSystem_002"
   cron:
     minute: "0"
-    hour: "4"
-    weekday: "0"
-
-rkhunter:
-  enabled: true
-  log_dir: "/var/log/rkhunter"
-  cron:
-    minute: "30"
     hour: "4"
     weekday: "0"
 

@@ -2,6 +2,7 @@ import { BarcodeFormat } from '@zxing/library';
 
 // Local structural types: lib.dom does not currently declare Shape Detection.
 export interface NativeBarcode {
+  boundingBox?: { x: number; y: number; width: number; height: number };
   rawValue: string;
   format: string;
 }

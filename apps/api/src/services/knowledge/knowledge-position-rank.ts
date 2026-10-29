@@ -1,6 +1,6 @@
-import type { KnowledgePositionRank } from '@raspi-system/shared-types';
+import { KNOWLEDGE_POSITION_RANKS, type KnowledgePositionRank } from '@raspi-system/shared-types';
 
-export const KNOWLEDGE_POSITION_RANKS = ['general', 'leader', 'section_chief', 'manager', 'general_manager', 'executive'] as const;
+export { KNOWLEDGE_POSITION_RANKS };
 export function positionRank(value: string | null | undefined): KnowledgePositionRank {
   return KNOWLEDGE_POSITION_RANKS.find(rank => rank === value) ?? 'general';
 }

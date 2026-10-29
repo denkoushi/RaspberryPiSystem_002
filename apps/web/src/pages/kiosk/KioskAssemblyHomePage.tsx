@@ -18,6 +18,7 @@ import {
   buildAssemblyLotWorkIds,
   createAssemblyRequestId,
   KIOSK_ASSEMBLY_TRAINING_PATH,
+  KIOSK_ASSEMBLY_CHECK_SHEETS_PATH,
   kioskAssemblyLibraryPath,
   kioskAssemblyManualsPath,
   kioskAssemblyManualsWorkshopPath,
@@ -436,6 +437,7 @@ export function KioskAssemblyHomePage() {
               </span>
             ) : null}
           </Link>
+          <Link to={KIOSK_ASSEMBLY_CHECK_SHEETS_PATH} className={navLinkClassName}>チェックシート</Link>
           <span aria-hidden="true" className="mx-2 h-7 w-px bg-[#344252]" />
           <Link to={kioskAssemblyTraceabilityPath()} className={navLinkClassName}>
             製品構成

@@ -33,7 +33,8 @@ class ClassifyChangesTests(unittest.TestCase):
         return {item["service"] for item in matrix}
 
     def test_security_review_collector_selects_its_fixture_test_job(self) -> None:
-        for path in ("scripts/server/security-review/collect.py", "scripts/server/security-review/known.py", "scripts/server/tests/test_security_review_collect.py"):
+        for path in ("scripts/server/security-review/collect.py", "scripts/server/security-review/known.py", "scripts/server/security-review/triage.py",
+                     "scripts/server/tests/test_security_review_collect.py", "scripts/server/tests/test_security_review_triage.py"):
             with self.subTest(path=path):
                 result = self.classify(Change("M", path))
                 self.assertEqual(self.selected(result), {"repo_policy", "db_infra", "deploy_contract", "client"})
@@ -329,6 +330,9 @@ class ClassifyChangesTests(unittest.TestCase):
             "infrastructure/ansible/templates/kiosk-launch.sh.j2",
             "infrastructure/ansible/templates/kiosk-browser.service.j2",
             "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
+            "infrastructure/ansible/roles/kiosk/tasks/package-integrity.yml",
+            "infrastructure/ansible/templates/package-integrity-scan.sh.j2",
+            "infrastructure/ansible/templates/logrotate-security.conf.j2",
             "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
             "infrastructure/ansible/roles/kiosk/defaults/main.yml",
             "infrastructure/ansible/inventory.yml",

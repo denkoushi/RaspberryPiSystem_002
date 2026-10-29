@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { logger } from '../../../lib/logger.js';
 
 import type { BackupConfig } from '../../backup/backup-config.js';
 import type { GmailMessage } from '../../backup/gmail-api-client.js';
@@ -9,6 +11,8 @@ import {
   type MachineSignalGmailPort,
 } from '../machine-signal-gmail-ingestion.service.js';
 import type { SignalReportImportSummary } from '../signal-report-import.service.js';
+
+vi.mock('../../../lib/logger.js', () => ({ logger: { warn: vi.fn() } }));
 
 const config = { storage: { provider: 'gmail', options: {} } } as unknown as BackupConfig;
 
@@ -61,7 +65,9 @@ function setup(options: { messages: GmailMessage[]; failedMessageIds?: string[] 
 }
 
 describe('MachineSignalGmailIngestionService', () => {
-  it('imports every CSV attachment of the mail, then marks it read and trashes it', async () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('imports every CSV attachment of the mail, then trashes it and marks it read', async () => {
     const { gmail, importFiles, service } = setup({
       messages: [message('m1', ['DailySummary_Signal1_20261001.csv', 'DailySummary_Signal2_20261001.csv', 'logo.png'])],
     });
@@ -79,7 +85,32 @@ describe('MachineSignalGmailIngestionService', () => {
     );
     expect(gmail.markAsRead).toHaveBeenCalledWith('m1');
     expect(gmail.trashMessage).toHaveBeenCalledWith('m1');
+    expect(vi.mocked(gmail.trashMessage).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(gmail.markAsRead).mock.invocationCallOrder[0]
+    );
     expect(summary).toMatchObject({ scanned: 1, processed: 1, skipped: 0 });
+  });
+
+  it('throws without marking the mail read when trashMessage fails', async () => {
+    const { gmail, service } = setup({ messages: [message('m1', ['DailySummary_Signal1_20261001.csv'])] });
+    vi.mocked(gmail.trashMessage).mockRejectedValue(new Error('trash failed'));
+
+    await expect(service.runOnce({ config, allowWait: false })).rejects.toThrow('trash failed');
+    expect(gmail.markAsRead).not.toHaveBeenCalled();
+  });
+
+  it('keeps the import successful when markAsRead fails after trashMessage', async () => {
+    const { gmail, service } = setup({ messages: [message('m1', ['DailySummary_Signal1_20261001.csv'])] });
+    const error = new Error('mark read failed');
+    vi.mocked(gmail.markAsRead).mockRejectedValue(error);
+
+    await expect(service.runOnce({ config, allowWait: false })).resolves.toMatchObject({
+      processed: 1, runs: [expect.objectContaining({ status: 'SUCCESS' })],
+    });
+    expect(gmail.trashMessage).toHaveBeenCalledWith('m1');
+    expect(logger.warn).toHaveBeenCalledWith(
+      { err: error, messageId: 'm1' }, '[MachineSignalGmail] Failed to mark trashed message as read'
+    );
   });
 
   it('leaves a mail in the inbox when none of its attachments could be imported', async () => {

@@ -1,5 +1,7 @@
 # ドキュメント索引
 
+- 在庫の準備（取込エラー取消・検索・タグ交換・課別選択肢）: [Plan](./plans/kiosk-inventory-setup-seigi.md)
+
 - Pi Zero棚スキャナーの独立配備・運用: [Runbook](./runbooks/zero-edge-agent.md)
 - キオスクのポータル画面・端末別カード選択: [Plan](./plans/kiosk-portal.md)
 - フローティングChatの操作ガイド（組立の登録・編集、固定案内の最初のスライス）: [ExecPlan](./plans/hermes-operation-guide-execplan.md)
@@ -1900,6 +1902,7 @@ APIの概要と詳細。
 | [deployment.md](./guides/deployment.md) | デプロイ手順 |
 | [production-setup.md](./guides/production-setup.md) | 本番環境セットアップ |
 | [backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
+| [PostgreSQL 15→18移行Runbook](./runbooks/postgres-15-to-18-upgrade.md) | 移行・比較・切戻し |
 | [monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [csv-import-export.md](./guides/csv-import-export.md) | CSVインポート・エクスポート |
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |

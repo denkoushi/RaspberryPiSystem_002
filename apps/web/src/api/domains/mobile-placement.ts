@@ -1,7 +1,6 @@
 import { api } from '../http';
 
 import type { ProductionScheduleListResponse } from './production-schedule';
-import type { PartPlacementSearchSuggestResponse } from '../../features/mobile-placement/part-search/types';
 import type { RegisteredShelfEntryDto } from '../../features/mobile-placement/registeredShelves/types';
 /** 配膳スマホ: 生産スケジュール一覧（`/api/mobile-placement/schedule`、x-client-key 必須） */
 /** GET /api/mobile-placement/registered-shelves（登録済み棚番候補） */
@@ -138,17 +137,6 @@ export async function postMobilePlacementShelfRelocate(sourceShelfCodeRaw: strin
     targetShelfCodeRaw: string;
     movedDisplayLabel: string | null;
   }>(`/mobile-placement/shelves/${encoded}/relocate`, { targetShelfCodeRaw });
-  return data;
-}
-
-/** 部品名検索（現在棚優先・スケジュール補助）。機種名は登録製番ボタン下段と同系の MH/SH 由来。機種名のみでも可。 */
-export async function getMobilePlacementPartSearchSuggest(q: string, machineName?: string) {
-  const { data } = await api.get<PartPlacementSearchSuggestResponse>('/mobile-placement/part-search/suggest', {
-    params: {
-      q: q ?? '',
-      ...(machineName != null && machineName.length > 0 ? { machineName } : {})
-    }
-  });
   return data;
 }
 

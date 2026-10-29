@@ -207,6 +207,13 @@ category: knowledge-base
   - **対象外**: 手動アップロードの空ファイルは今までどおり 400 を返す。
 - **トラブルシュート**: **「添付はあるのに取れない」**→ 管理実行の **`debug`**（`downloadedMessageIdSuffixes` / `disposedMessageIdSuffixes` 等）と **保存された raw CSV サイズ**を確認。**開発用 localhost への計測 POST** は **本番に含めない**（調査後はコードから除去する）。
 
+### 三島研削: 外部加工→社内塗装の品物が予定表に無く、配膳照合が「見つからない」になる（2026-10-29） {#mishima-grinding-msz-missing-2026-10-29}
+
+- **症状**: 配膳スマホの照合で、移動票（製造order `0004115511` / `0004115465`、製番 `BA1S6369` / `BA1S6368`、品目 `MD005251870`、工順460 塗装）が「見つからない」（`transfer_not_found`）になった。現品票の注文番号は購買データ（FKOBAINO）に正しくあった。
+- **原因**: 上流 PowerAutomate のクエリ（件名 **`生産日程_三島_研削工程`**）が `FSIGENCD` の IN 一覧で絞っており、社内塗装工程の資源コード **`MSZ`**（三島製造課）が入っていなかった。外部業者で加工し社内では塗装だけを通る品物は、予定表 CSV に 1 行も載らない。
+- **対処**: 上流クエリの IN 一覧に `"MSZ"` を追加した（ユーザー対応・2026-10-29）。手動取込後、2件が `ProductionSchedule_Mishima_Grinding` に入り、照合が OK になったことを実機で確認した。
+- **切り分け**: 照合で「見つからない」が出たら、まず本番 DB の `CsvDashboardRow`（`csvDashboardId=3f2f6b0e-…`）に `ProductNo` があるかを読み取りで確かめる。無ければ上流クエリの絞り込み（着手予定日の範囲・製番8文字・`FSIGENCD` 一覧）を確認する。DB にあるのにスマホで見つからない場合は端末データの同期遅れを疑う（[KB-339](./KB-339-mobile-placement-barcode-survey.md)）。
+
 ## FKOBAINO purchase order lookup from Gmail CSV (2026-04-20) {#fkobaino-purchase-order-lookup-from-gmail-csv-2026-04-20}
 
 - **Context**: Gmail 件名 **`FKOBAINO`** の CSV（注文番号・購買品名など）を **生産日程本体とは分離**して保持し、現品票の一次元バーコード（**10 桁 `FKOBAINO`**）から **製番・購買品名・既存マスタ品名（正規化 `FHINCD`）・機種名** をキオスクに表示する。

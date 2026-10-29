@@ -271,8 +271,17 @@ export async function replaceItemTag(db: PrismaClient, compartmentId: string, ui
     const compartment = await tx.inventoryCompartment.findUnique({ where: { id: compartmentId }, include: { itemTag: true } });
     if (!compartment) throw new ApiError(404, '在庫区画が見つかりません');
     await assertNfcUidAvailable(cleanUid, tx);
-    const existing = await tx.inventoryNfcTag.findUnique({ where: { uid: cleanUid } });
-    if (existing && existing.compartmentId !== compartmentId) throw new ApiError(409, 'このUIDは既に使用されています');
+    const existing = await tx.inventoryNfcTag.findUnique({
+      where: { uid: cleanUid },
+      include: { compartment: { include: { inventoryItem: true, drawer: { include: { shelf: true } } } } },
+    });
+    if (existing && existing.compartmentId !== compartmentId) {
+      const used = existing.compartment;
+      throw new ApiError(409, 'このUIDは既に使用されています', used ? { usedBy: {
+        itemName: used.inventoryItem.name, area: used.drawer.shelf.area,
+        shelfNumber: used.drawer.shelf.shelfNumber, drawerNumber: used.drawer.drawerNumber,
+      } } : undefined);
+    }
     if (compartment.itemTag && compartment.itemTag.uid !== cleanUid) {
       await tx.inventoryNfcTag.update({ where: { id: compartment.itemTag.id }, data: { compartmentId: null } });
     }

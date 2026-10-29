@@ -198,6 +198,9 @@ model Employee {
   torqueTrainingSessions                        TorqueTrainingSession[]
   torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
   workInstructionEditorAuthentications          WorkInstructionEditorAuthentication[]
+  assemblyCheckSheetsCompleted                  AssemblyCheckSheet[]                           @relation("AssemblyCheckSheetCompletedBy")
+  assemblyCheckSheetStamps                      AssemblyCheckSheetStamp[]                      @relation("AssemblyCheckSheetStampEmployee")
+  assemblyCheckSheetStampHistory                AssemblyCheckSheetStampHistory[]               @relation("AssemblyCheckSheetStampHistoryEmployee")
 }
 
 model Item {
@@ -487,6 +490,8 @@ model Machine {
 }
 
 model ClientDevice {
+  mobileSlipVerifyRecords MobileSlipVerifyRecord[]
+  mobileScanFrames MobileScanFrame[]
   id                                            String                                         @id @default(uuid())
   name                                          String
   location                                      String?
@@ -674,6 +679,7 @@ model MobilePlacementEvent {
 
 /// 部品配膳（製造order番号起点・Item は更新しない）
 model OrderPlacementEvent {
+  mobileScanFrames MobileScanFrame[]
   clientRecordId               String?                  @unique @map("client_record_id")
   slipKind                     String                   @default("manufacturing_order") @map("slip_kind")
   id                           String                   @id @default(uuid())
@@ -1019,12 +1025,13 @@ model InventoryItem {
 
 /// Pre-registered choices for tool fields (loaded from a supplier list), offered with the values already in use.
 model InventoryToolFieldPreset {
+  scope     String   @default("default")
   id        String   @id @default(uuid())
   field     String
   value     String
   createdAt DateTime @default(now())
 
-  @@unique([field, value])
+  @@unique([scope, field, value])
 }
 
 model InventoryToolValueDistinct {
@@ -1101,6 +1108,7 @@ model InventoryImportPhoto {
 }
 
 model InventoryImportMessage {
+  dismissedAt          DateTime?
   id                   String                  @id @default(uuid())
   gmailMessageId       String                  @unique
   payloadId            String?
@@ -3709,6 +3717,7 @@ model AssemblyWorkUnit {
   updatedAt                   DateTime                             @updatedAt
   lotSerial                   AssemblyLotSerial?
   workSession                 AssemblyWorkSession?
+  checkSheet                  AssemblyCheckSheet?
   invalidation                AssemblyWorkUnitInvalidation?
   parentCompositionLinks      AssemblyWorkUnitComposition[]        @relation("AssemblyCompositionParent")
   childCompositionLinks       AssemblyWorkUnitComposition[]        @relation("AssemblyCompositionChild")
@@ -5841,4 +5850,255 @@ model MobilePlacementShelfLandmark {
   name                    String   @unique
   createdAt               DateTime @default(now())
   createdByClientDeviceId String?
+}
+
+
+enum MobileScanFrameKind {
+  scan_frame
+  placement_photo
+}
+
+model MobileScanFrame {
+  id                    String @id @default(uuid())
+  clientFrameId         String @unique
+  kind                  MobileScanFrameKind
+  clientDeviceId        String
+  clientRecordId        String?
+  orderPlacementEventId String?
+  shelfCodeRaw          String?
+  slipKind              String?
+  decodedValue          String?
+  manualValue           String?
+  outcome               String
+  decodeMs              Int
+  retryCount            Int
+  engine                String
+  camera                Json
+  torchOn               Boolean?
+  zoom                  Float?
+  cropBox               Json?
+  capturedAt            DateTime
+  cropKey               String?
+  fullKey               String
+  cropBytes             Int?
+  fullBytes             Int
+  createdAt             DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  orderPlacementEvent OrderPlacementEvent? @relation(fields: [orderPlacementEventId], references: [id], onDelete: SetNull)
+
+  @@index([kind, capturedAt])
+  @@index([shelfCodeRaw])
+  @@index([clientRecordId])
+  @@map("mobile_scan_frames")
+}
+
+// Check sheets are independent of procedure drawings. Original XLSX bytes are immutable.
+enum AssemblyCheckSheetInputKind {
+  OK_NG
+  NUMBER
+  TEXT
+  CHOICE
+  NONE
+}
+
+enum AssemblyCheckSheetStatus {
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+}
+
+enum AssemblyCheckSheetResult {
+  OK
+  NG
+  NA
+}
+
+model AssemblyCheckSheetAsset {
+  id               String @id @default(uuid())
+  storageKey       String @unique
+  sha256           String @unique @db.Char(64)
+  byteSize         Int
+  contentType      String
+  originalFileName String?
+  createdAt        DateTime @default(now())
+  revisions        AssemblyCheckSheetRevision[]
+}
+
+model AssemblyCheckSheetRevision {
+  id                    String @id @default(uuid())
+  revisionRootId        String
+  revisionNumber        Int @default(1)
+  isRevisionHead        Boolean @default(true)
+  documentNo            String
+  title                 String
+  modelCode             String
+  revisionLabel         String
+  sourceAssetId         String
+  sourceSheetName        String
+  layoutSnapshot        Json?
+  headerCellMap         Json
+  stampColumn           String
+  departmentRoleMembers Json
+  createdByUserId       String
+  createdAt             DateTime @default(now())
+  sourceAsset           AssemblyCheckSheetAsset @relation(fields: [sourceAssetId], references: [id], onDelete: Restrict)
+  revisionRoot          AssemblyCheckSheetRevision @relation("CheckSheetRevisionRoot", fields: [revisionRootId], references: [id], onDelete: Restrict)
+  revisions             AssemblyCheckSheetRevision[] @relation("CheckSheetRevisionRoot")
+  groups                AssemblyCheckSheetGroup[]
+  items                 AssemblyCheckSheetItem[]
+  sheets                AssemblyCheckSheet[]
+
+  @@unique([revisionRootId, revisionNumber], map: "AssemblyCheckSheetRevision_unique_root_number")
+  @@index([revisionRootId, isRevisionHead], map: "AssemblyCheckSheetRevision_idx_head")
+  @@index([sourceAssetId], map: "AssemblyCheckSheetRevision_idx_asset")
+}
+
+model AssemblyCheckSheetGroup {
+  id         String @id @default(uuid())
+  revisionId String
+  groupNo    Int
+  label      String
+  sortOrder  Int
+  revision   AssemblyCheckSheetRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  items      AssemblyCheckSheetItem[]
+
+  @@unique([revisionId, groupNo], map: "AssemblyCheckSheetGroup_unique_number")
+  @@unique([id, revisionId], map: "AssemblyCheckSheetGroup_unique_revision")
+}
+
+model AssemblyCheckSheetItem {
+  id             String @id @default(uuid())
+  revisionId     String
+  groupId        String
+  itemKey        String
+  sortOrder      Int
+  label          String
+  note           String?
+  inputKind      AssemblyCheckSheetInputKind
+  inputSpec      Json
+  roleKeys       String[]
+  conditionKey   String?
+  conditionLabel String?
+  sourceRows     Int[]
+  stampCell      String
+  valueTarget    Json
+  warnings       Json
+  revision       AssemblyCheckSheetRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  group          AssemblyCheckSheetGroup @relation(fields: [groupId, revisionId], references: [id, revisionId], onDelete: Cascade)
+  stamps         AssemblyCheckSheetStamp[]
+  history        AssemblyCheckSheetStampHistory[]
+
+  @@unique([revisionId, itemKey], map: "AssemblyCheckSheetItem_unique_key")
+  @@unique([revisionId, stampCell], map: "AssemblyCheckSheetItem_unique_stamp_cell")
+  @@index([groupId, revisionId], map: "AssemblyCheckSheetItem_idx_group")
+}
+
+model AssemblyCheckSheet {
+  id                              String @id @default(uuid())
+  workUnitId                      String @unique
+  revisionId                      String
+  status                          AssemblyCheckSheetStatus @default(IN_PROGRESS)
+  headerValues                    Json
+  startedAt                       DateTime @default(now())
+  completedAt                     DateTime?
+  completedByEmployeeId           String?
+  completedByEmployeeCodeSnapshot String?
+  completedByEmployeeNameSnapshot String?
+  completedByNfcTagUidSnapshot     String?
+  completedByPositionNameSnapshot String?
+  pausedReason                    String?
+  transitionHistory               Json?
+  clientDeviceId                  String?
+  workUnit                        AssemblyWorkUnit @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
+  revision                        AssemblyCheckSheetRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+  completedByEmployee             Employee? @relation("AssemblyCheckSheetCompletedBy", fields: [completedByEmployeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheet_completed_employee_fkey")
+  stamps                          AssemblyCheckSheetStamp[]
+  history                         AssemblyCheckSheetStampHistory[]
+
+  @@index([revisionId], map: "AssemblyCheckSheet_idx_revision")
+}
+
+model AssemblyCheckSheetStamp {
+  id                   String @id @default(uuid())
+  sheetId              String
+  itemId               String
+  result               AssemblyCheckSheetResult
+  values               Json
+  ngReason             String?
+  flagged              Boolean @default(false)
+  // Snapshots survive employee deletion.
+  employeeId           String?
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+  nfcTagUidSnapshot    String
+  positionNameSnapshot String?
+  clientDeviceId       String?
+  stampedAt            DateTime @default(now())
+  sheet                AssemblyCheckSheet @relation(fields: [sheetId], references: [id], onDelete: Restrict)
+  item                 AssemblyCheckSheetItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  employee             Employee? @relation("AssemblyCheckSheetStampEmployee", fields: [employeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheetStamp_employee_fkey")
+
+  @@unique([sheetId, itemId], map: "AssemblyCheckSheetStamp_unique_item")
+  @@index([itemId], map: "AssemblyCheckSheetStamp_idx_item")
+}
+
+model AssemblyCheckSheetStampHistory {
+  id                   String @id @default(uuid())
+  stampId              String
+  sheetId              String
+  itemId               String
+  result               AssemblyCheckSheetResult
+  values               Json
+  ngReason             String?
+  flagged              Boolean
+  employeeId           String?
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+  nfcTagUidSnapshot    String
+  positionNameSnapshot String?
+  clientDeviceId       String?
+  stampedAt            DateTime
+  supersededAt         DateTime @default(now())
+  sheet                AssemblyCheckSheet @relation(fields: [sheetId], references: [id], onDelete: Restrict)
+  item                 AssemblyCheckSheetItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  employee             Employee? @relation("AssemblyCheckSheetStampHistoryEmployee", fields: [employeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheetStampHistory_employee_fkey")
+
+  @@index([sheetId, itemId, supersededAt], map: "AssemblyCheckSheetStampHistory_idx_item")
+  @@index([itemId], map: "AssemblyCheckSheetStampHistory_idx_item_id")
+}
+
+enum MobileSlipVerifyOutcome {
+  match
+  mismatch
+  not_found
+  error
+}
+
+model MobileSlipVerifyRecord {
+  id                      String @id @default(uuid())
+  clientVerifyId          String @unique
+  clientDeviceId          String
+  verifiedAt              DateTime
+  transferOrderBarcodeRaw String
+  transferPartRaw         String?
+  actualOrderBarcodeRaw   String
+  actualFseibanRaw        String
+  actualPartRaw           String?
+  outcome                 MobileSlipVerifyOutcome
+  reason                  String?
+  expectedFseiban         String?
+  expectedFhincd          String?
+  expectedPartName        String?
+  actualResolvedFseiban   String?
+  actualPartCode          String?
+  matchedBy               String?
+  clientRecordId          String?
+  createdAt               DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([verifiedAt])
+  @@index([transferOrderBarcodeRaw])
+  @@map("mobile_slip_verify_records")
 }

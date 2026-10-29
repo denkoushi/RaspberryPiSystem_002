@@ -40,7 +40,7 @@ export function hasGmailCredentials(config: BackupConfig): boolean {
 
 /**
  * 件名 AirGridFlexSignal のメールから、添付の日報CSVをすべて取り込む。
- * 保存できたメールだけ既読にしてゴミ箱へ移す。1件も読めなかったメールは受信箱に残し、次回からは飛ばす。
+ * 保存できたメールだけゴミ箱へ移し、既読化を試みる。1件も読めなかったメールは受信箱に残し、次回からは飛ばす。
  */
 export class MachineSignalGmailIngestionService {
   private running = false;
@@ -93,8 +93,13 @@ export class MachineSignalGmailIngestionService {
           logger?.warn({ messageId, fileCount: run.fileCount }, '[MachineSignalGmail] No report could be imported');
           continue;
         }
-        await gmail.markAsRead(messageId);
+        // 移動失敗時は未読のまま残し、次回の未読検索で再試行する。
         await gmail.trashMessage(messageId);
+        try {
+          await gmail.markAsRead(messageId);
+        } catch (error) {
+          logger?.warn({ err: error, messageId }, '[MachineSignalGmail] Failed to mark trashed message as read');
+        }
       }
       return summary;
     } finally {

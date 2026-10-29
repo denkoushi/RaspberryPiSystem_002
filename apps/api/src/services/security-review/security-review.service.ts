@@ -19,6 +19,8 @@ const bundleSchema = z.object({
   reviewedCommits: securityReviewReportSchema.shape.reviewedCommits,
   droppedLines: z.record(z.string(), z.number().int().nonnegative()),
   sourceErrors: z.array(z.string().max(100)),
+  carriedOver: z.number().int().nonnegative().default(0),
+  carryOverExpired: z.number().int().nonnegative().default(0),
 }).strict();
 const knownSchema = z.array(z.object({
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
@@ -110,6 +112,7 @@ export class SecurityReviewService {
     if (!bundles.length && reports.has(`${date}.json`)) return null;
     const report: SecurityReviewReport = { date, status: 'skipped', reviewedCommits: { from: '', to: '' }, chunks: [], findings: [] };
     const counts = { truncated: { security: 0, errors: 0, changes: 0 }, droppedLines: {} as Record<string, number>, knownFindingsDropped: 0,
+      carriedOver: 0, carryOverExpired: 0,
       knownFindingsState: 'not_read' as 'not_read' | 'loaded' | 'missing' | 'invalid' };
     let reason = 'no_bundle'; let completed = 0; let incomplete = false;
     try {
@@ -118,7 +121,9 @@ export class SecurityReviewService {
         const bundle = bundleSchema.parse(JSON.parse(await readFile(path.join(folder, 'manifest.json'), 'utf8')));
         report.reviewedCommits = bundle.reviewedCommits;
         counts.droppedLines = bundle.droppedLines;
-        incomplete = bundle.sourceErrors.length > 0;
+        counts.carriedOver = bundle.carriedOver;
+        counts.carryOverExpired = bundle.carryOverExpired;
+        incomplete = bundle.sourceErrors.length > 0 || bundle.carriedOver > 0 || bundle.carryOverExpired > 0;
         let known: z.infer<typeof knownSchema> = [];
         try {
           known = knownSchema.parse(JSON.parse(await readFile(path.join(root, 'known-findings.json'), 'utf8')));

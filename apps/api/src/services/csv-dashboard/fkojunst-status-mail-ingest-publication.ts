@@ -27,13 +27,15 @@ function buildDeferredRowUpdateValuesSql(updates: FkojunstDeferredRowUpdate[]): 
   return Prisma.join(
     updates.map(
       (update) =>
+        // VALUES has no target column to infer types from, and the Prisma 7 pg adapter binds
+        // Date/number params as text, so every non-text value carries an explicit cast.
         Prisma.sql`(
           ${update.id},
-          ${update.occurredAt},
+          ${update.occurredAt.toISOString()}::timestamptz AT TIME ZONE 'UTC',
           ${JSON.stringify(update.rowData)}::jsonb,
           ${update.sourceIngestRunId},
-          ${update.sourceRowOrdinal},
-          ${update.sourceIngestRunStartedAt}
+          ${update.sourceRowOrdinal}::integer,
+          ${update.sourceIngestRunStartedAt.toISOString()}::timestamptz AT TIME ZONE 'UTC'
         )`
     ),
     ','

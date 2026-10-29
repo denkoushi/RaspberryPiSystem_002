@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -28,6 +29,21 @@ describe('fkojunst-status-mail-ingest-publication', () => {
 
       expect(executeRaw).toHaveBeenCalledTimes(1);
       expect(executeRaw.mock.calls[0]?.[0]).toBeDefined();
+    });
+
+    it('casts non-text VALUES columns so Prisma 7 text-bound params match the row column types', async () => {
+      const executeRaw = vi.fn(async () => 1);
+      const tx = { $executeRaw: executeRaw };
+
+      await applyFkojunstDeferredRowUpdatesInTransaction(tx as never, [createUpdate('row-1')]);
+
+      const [strings, ...values] = executeRaw.mock.calls[0] as unknown as [TemplateStringsArray, ...unknown[]];
+      const sql = Prisma.sql(strings, ...values);
+      expect(sql.sql).toMatch(
+        /\?::timestamptz AT TIME ZONE 'UTC',\s*\?::jsonb,\s*\?,\s*\?::integer,\s*\?::timestamptz AT TIME ZONE 'UTC'/
+      );
+      expect(sql.values).toContain('2026-06-18T00:00:00.000Z');
+      expect(sql.values.some((value) => value instanceof Date)).toBe(false);
     });
 
     it('batches large update sets', async () => {

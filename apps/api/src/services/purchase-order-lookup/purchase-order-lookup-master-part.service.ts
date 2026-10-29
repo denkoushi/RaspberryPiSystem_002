@@ -23,9 +23,9 @@ export async function findMasterFhinmeiByMatchKey(matchKeyFhinCd: string): Promi
  * 照合キー FHINCD 集合で生産日程本体（winner 行）から FHINMEI をまとめて引く。
  * （括弧除去 + 末尾数値枝番除去 — `normalizePurchaseFhinCdForMatching` と同一）
  */
-export async function findMasterFhinmeisByMatchKey(matchKeyFhinCds: string[]): Promise<Record<string, string | null>> {
-  const keys = Array.from(new Set(matchKeyFhinCds.map((value) => value.trim()).filter((value) => value.length > 0)));
-  if (keys.length === 0) {
+export async function findMasterFhinmeisByMatchKey(matchKeyFhinCds?: string[]): Promise<Record<string, string | null>> {
+  const keys = Array.from(new Set((matchKeyFhinCds ?? []).map((value) => value.trim()).filter((value) => value.length > 0)));
+  if (matchKeyFhinCds && keys.length === 0) {
     return {};
   }
 
@@ -40,7 +40,7 @@ export async function findMasterFhinmeisByMatchKey(matchKeyFhinCds: string[]): P
     FROM "CsvDashboardRow"
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND ${matchExpr} IN (${Prisma.join(keys.map((key) => Prisma.sql`${key}`), ',')})
+      ${matchKeyFhinCds ? Prisma.sql`AND ${matchExpr} IN (${Prisma.join(keys)})` : Prisma.empty}
     GROUP BY 1
   `;
 
@@ -50,6 +50,8 @@ export async function findMasterFhinmeisByMatchKey(matchKeyFhinCds: string[]): P
   }
   for (const row of rows) {
     const key = row.matchKeyFhinCd.trim();
+    // Same exact-comparison guard as the normalized dictionary below.
+    if (row.matchKeyFhinCd !== key) continue;
     result[key] = row.fhinmei?.trim() || null;
   }
   return result;
@@ -67,10 +69,10 @@ export async function findMasterFhinmeiByNormalizedFhinCd(normalizedFhinCd: stri
  * 段階移行フォールバック用: 括弧除去のみの正規化 FHINCD 集合で FHINMEI をまとめて引く。
  */
 export async function findMasterFhinmeisByNormalizedFhinCd(
-  normalizedFhinCds: string[]
+  normalizedFhinCds?: string[]
 ): Promise<Record<string, string | null>> {
-  const keys = Array.from(new Set(normalizedFhinCds.map((value) => value.trim()).filter((value) => value.length > 0)));
-  if (keys.length === 0) {
+  const keys = Array.from(new Set((normalizedFhinCds ?? []).map((value) => value.trim()).filter((value) => value.length > 0)));
+  if (normalizedFhinCds && keys.length === 0) {
     return {};
   }
 
@@ -85,7 +87,7 @@ export async function findMasterFhinmeisByNormalizedFhinCd(
     FROM "CsvDashboardRow"
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-      AND ${normalizedExpr} IN (${Prisma.join(keys.map((key) => Prisma.sql`${key}`), ',')})
+      ${normalizedFhinCds ? Prisma.sql`AND ${normalizedExpr} IN (${Prisma.join(keys)})` : Prisma.empty}
     GROUP BY 1
   `;
 
@@ -95,6 +97,9 @@ export async function findMasterFhinmeisByNormalizedFhinCd(
   }
   for (const row of rows) {
     const key = row.normalizedFhinCd.trim();
+    // Filtered lookups compare against trimmed input; a global dictionary must not
+    // introduce groups that that exact SQL comparison would have excluded.
+    if (row.normalizedFhinCd !== key) continue;
     result[key] = row.fhinmei?.trim() || null;
   }
   return result;

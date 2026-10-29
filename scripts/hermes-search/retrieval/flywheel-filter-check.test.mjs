@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkFilterAnswer, expectedFilterResults, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
+import { checkFollowUpAnswer, checkFilterAnswer, expectedFilterResults, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay } from './period-parse.mjs';
 
 const catalog = { id: 'nonconformity', fields: [
@@ -181,4 +181,173 @@ test('empty classified bucket sets require an explicit cause group', () => {
   const args = { plan: { ...plan, breakdown: 'cause' }, records, catalog, causeById: new Map([['outside', 'drawing']]) };
   assert.equal(checkFilterAnswer({ ...args, groups: [{ axis: 'cause', buckets: [] }] }).ok, true);
   assert.equal(checkFilterAnswer(args).ok, false);
+});
+
+// Entirely fictional departments and passages; two factories, two sections each.
+const followCatalog = { id: 'nonconformity', fields: [{ key: 'originDepartmentName', role: 'organization' }] };
+const departments = ['架空Ａ工場試作部一課', '架空Ａ工場試作部二課', '架空Ｂ工場検証部一課', '架空Ｂ工場検証部二課'];
+const followRecords = Array.from({ length: 10 }, (_, i) => ({
+  id: `nonconformity:fiction-${i}`, originDepartmentName: departments[i % 4],
+  condition: i === 2 ? '異物の嚙み込みという架空の事象' : i === 3 ? '付着を確認したという架空の事象' : '通常状態という架空の事象',
+}));
+const org = (values, field = 'originDepartmentName', op = 'in') => ({ field, op, values });
+const priorFollowPlan = { filters: [org([departments[0]])], semanticQuery: '異物 付着' };
+const followPlan = { filters: [org(departments.slice(2))], semanticQuery: '別の語', diagnostics: { contentSpan: '異物の付着' } };
+const followCheck = (extra = {}) => checkFollowUpAnswer({ question: '架空Ｂ工場にも同事例ありますか？', previousPlan: priorFollowPlan,
+  plan: followPlan, shown: [], outcome: 'no_result', records: followRecords, catalog: followCatalog, bodyFields: ['condition'], ...extra });
+
+test('follow-up scope uses normalized longest question match and shared factory/division hierarchy', () => {
+  for (const question of ['架空Ｂ工場にも同事例？', '架空B工場検証部にも同事例？']) {
+    const check = followCheck({ question, shown: ['fiction-3', 'nonconformity:fiction-2'], outcome: 'answer' });
+    assert.equal(check.ok, true);
+    assert.equal(check.matchedCount, 2);
+    assert.deepEqual(check.expectedIds, ['fiction-2', 'fiction-3']);
+  }
+  const check = followCheck({ question: '架空B工場検証部一課にも？', plan: { ...followPlan, filters: [org([departments[2]])] }, shown: ['fiction-2'] });
+  assert.equal(check.ok, true);
+  assert.equal(check.matchedCount, 1);
+  assert.equal(followCheck({ question: '架空B工場検証部一課にも？', shown: ['fiction-2'] }).scopeOk, false);
+});
+
+test('follow-up scope falls back to previous organization and accepts a genuinely empty result', () => {
+  const plan = { ...followPlan, filters: priorFollowPlan.filters };
+  const check = followCheck({ question: '同じ範囲で他にも？', plan });
+  assert.equal(check.ok, true);
+  assert.equal(check.matchedCount, 0);
+  assert.equal(followCheck({ question: '同じ範囲で他にも？' }).scopeOk, false);
+  assert.equal(followCheck({ question: '他にも？', previousPlan: { filters: [] }, plan: { ...followPlan, filters: [] }, shown: ['fiction-2'] }).ok, true);
+});
+
+test('follow-up detects stale, missing and empty scope even when displayed records fit the plan', () => {
+  for (const filters of [priorFollowPlan.filters, [], [org([])]]) {
+    const check = followCheck({ plan: { ...followPlan, filters } });
+    assert.equal(check.scopeOk, false);
+    assert.equal(check.filtersOk, true);
+    assert.equal(check.ok, false);
+  }
+});
+
+test('follow-up detects missed and wrong content but accepts one specific token without order or count matching', () => {
+  const missed = followCheck();
+  assert.equal(missed.scopeOk, true);
+  assert.equal(missed.contentOk, false);
+  assert.equal(missed.matchedCount, 2);
+  for (const shown of [['fiction-0'], ['fiction-6'], ['missing']]) {
+    const wrong = followCheck({ shown, outcome: 'answer' });
+    assert.equal(wrong.contentOk, false);
+    assert.equal(wrong.ok, false);
+  }
+  assert.equal(followCheck({ shown: ['fiction-2'], outcome: 'answer' }).ok, true);
+  assert.equal(followCheck({ shown: ['fiction-2'], plan: { ...followPlan, filters: [...followPlan.filters, org(['absent'], 'part')] } }).filtersOk, false);
+});
+
+test('follow-up content falls back from diagnostics to plan span to semantic query with executor IDF', () => {
+  for (const plan of [followPlan, { ...followPlan, diagnostics: undefined, contentSpan: '異物の付着' },
+    { ...followPlan, diagnostics: undefined, semanticQuery: '異物 付着' }]) {
+    assert.equal(followCheck({ plan, shown: ['fiction-2'] }).ok, true);
+  }
+  const generic = followCheck({ plan: { ...followPlan, diagnostics: undefined, semanticQuery: '通常状態' }, shown: ['fiction-6'] });
+  assert.equal(generic.matchedCount, 0);
+  assert.equal(generic.contentOk, false);
+});
+
+test('follow-up reports unsupported reasons and null checks for count, no content, operators and first turns', () => {
+  for (const [extra, reason] of [
+    [{ outcome: 'count' }, 'count_answer'],
+    [{ plan: { ...followPlan, diagnostics: undefined, semanticQuery: '' } }, 'no_content'],
+    [{ plan: { ...followPlan, filters: [org(departments.slice(2), 'originDepartmentName', 'not')] } }, 'unsupported_op'],
+    [{ previousPlan: null }, 'not_follow_up'],
+  ]) {
+    assert.deepEqual(followCheck(extra), { supported: false, scopeOk: null, filtersOk: null, contentOk: null,
+      ok: null, matchedCount: null, expectedIds: [], shown: [], reason });
+  }
+});
+
+test('follow-up rejects unsupported previous organization operators only when falling back', () => {
+  for (const op of ['not_in', 'between', 'contains']) {
+    const previousPlan = { ...priorFollowPlan, filters: [org(departments.slice(2), 'originDepartmentName', op)] };
+    assert.deepEqual(followCheck({ question: '同じ範囲で他にも？', previousPlan, shown: ['nonconformity:fiction-2'] }), {
+      supported: false, scopeOk: null, filtersOk: null, contentOk: null, ok: null,
+      matchedCount: null, expectedIds: [], shown: ['fiction-2'], reason: 'unsupported_op',
+    });
+    assert.equal(followCheck({ previousPlan, shown: ['fiction-2'] }).ok, true);
+  }
+});
+
+test('follow-up not_in excludes matching values and accepts different or missing values', () => {
+  const records = followRecords.map((record, i) => ({ ...record, ...(i === 2 ? { part: ' 架空部品Ａ ' } : {}) }));
+  const plan = { ...followPlan, filters: [...followPlan.filters, org(['架空部品A'], 'part', 'not_in')] };
+  assert.equal(followCheck({ records, plan, shown: ['fiction-2'] }).filtersOk, false);
+  for (const part of [undefined, null, '', '架空部品B']) {
+    const corpus = records.map((record, i) => i === 3 ? { ...record, part } : record);
+    const check = followCheck({ records: corpus, plan, shown: ['fiction-3'] });
+    assert.equal(check.ok, true);
+    assert.equal(check.matchedCount, 1);
+    assert.deepEqual(check.expectedIds, ['fiction-3']);
+  }
+});
+
+test('follow-up rejects unknown operators on any plan filter', () => {
+  for (const field of ['originDepartmentName', 'part', 'discoveredOn']) {
+    for (const op of ['contains', 'gte', 'not']) {
+      const check = followCheck({ plan: { ...followPlan, filters: [...followPlan.filters, org(['架空値'], field, op)] } });
+      assert.equal(check.supported, false);
+      assert.equal(check.reason, 'unsupported_op');
+      assert.equal(check.ok, null);
+    }
+  }
+});
+
+test('follow-up empty answers respect non-organization filters while scope remains question-derived', () => {
+  const records = followRecords.map((record) => ({ ...record, discoveredOn: '2025-06-01', part: '架空部品A' }));
+  for (const filter of [
+    org(['2026-01-01', '2026-12-31'], 'discoveredOn', 'between'),
+    org(['2026-01-01'], 'discoveredOn', 'after'),
+    org(['2025-01-01'], 'discoveredOn', 'before'),
+    org(['架空部品B'], 'part', 'eq'),
+    org(['架空部品B', '架空部品C'], 'part', 'in'),
+  ]) {
+    const check = followCheck({ question: '架空Ｂ工場で2026年のものは？', records,
+      plan: { ...followPlan, filters: [...followPlan.filters, filter] } });
+    assert.equal(check.ok, true);
+    assert.equal(check.matchedCount, 0);
+    assert.deepEqual(check.expectedIds, []);
+  }
+  const stale = followCheck({ records, plan: { ...followPlan, filters: [...priorFollowPlan.filters,
+    org(['2025-01-01', '2025-12-31'], 'discoveredOn', 'between')] } });
+  assert.equal(stale.scopeOk, false);
+  assert.equal(stale.matchedCount, 2);
+  assert.deepEqual(stale.expectedIds, ['fiction-2', 'fiction-3']);
+});
+
+test('follow-up excludeShown removes previous bare ids only when explicitly enabled', () => {
+  const plan = { ...followPlan, filters: [org([departments[2]])] };
+  const args = { question: '同じ範囲で他にも？', previousPlan: plan };
+  for (const extra of [{ excludeShown: true }, { diagnostics: { ...plan.diagnostics, excludeShown: true } },
+    { excludeShown: false, diagnostics: { ...plan.diagnostics, excludeShown: true } }]) {
+    for (const previousShown of [['fiction-2'], ['nonconformity:fiction-2']]) {
+      const check = followCheck({ ...args, plan: { ...plan, ...extra }, previousShown });
+      assert.equal(check.ok, true);
+      assert.equal(check.matchedCount, 0);
+      assert.deepEqual(check.expectedIds, []);
+    }
+    assert.equal(followCheck({ ...args, plan: { ...plan, ...extra } }).matchedCount, 1);
+    assert.equal(followCheck({ ...args, plan: { ...plan, ...extra }, previousShown: ['fiction-3'] }).matchedCount, 1);
+  }
+  for (const excludeShown of [undefined, false, 'true']) {
+    const check = followCheck({ ...args, plan: { ...plan, excludeShown }, previousShown: ['fiction-2'] });
+    assert.equal(check.contentOk, false);
+    assert.equal(check.matchedCount, 1);
+  }
+});
+
+test('follow-up supports custom and default organization fields and caps expected bare ids at twenty', () => {
+  const records = Array.from({ length: 25 }, (_, i) => ({ id: `nonconformity:${i}`, unit: '架空課', condition: '希少語' }));
+  records.push(...Array.from({ length: 300 }, (_, i) => ({ id: `other-${i}`, unit: '別の架空課', condition: '通常語' })));
+  const check = followCheck({ question: '架空課にも？', records, catalog: { id: 'nonconformity', fields: [{ key: 'unit', role: 'organization' }] },
+    plan: { filters: [org(['架空課'], 'unit')], semanticQuery: '希少語' } });
+  assert.equal(check.matchedCount, 25);
+  assert.equal(check.expectedIds.length, 20);
+  assert.equal(check.expectedIds[0], '0');
+  assert.equal(followCheck({ catalog: { id: 'nonconformity', fields: [] }, shown: ['fiction-2'] }).ok, true);
 });

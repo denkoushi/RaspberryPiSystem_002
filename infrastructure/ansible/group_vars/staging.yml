@@ -164,18 +164,30 @@ trivy_skip_dirs:
 trivy_alert_ignore_patterns:
   - /certs/
   - /raspisys-staging-backups/
-rkhunter_server_enabled: true
-rkhunter_server_cron: '0 4 * * *'
-rkhunter_server_allow_dev_files:
-  - '/dev/shm/lttng-ust-wait-*'
-rkhunter_server_allow_hidden_files:
-  - '/etc/.updated'
-rkhunter_log_dir: /var/log/rkhunter-raspisys-staging
-rkhunter_log_file: rkhunter-scan.log
-rkhunter_kiosk_enabled: true
-rkhunter_kiosk_cron: '30 2 * * 0'
-rkhunter_kiosk_log_dir: /var/log/rkhunter-raspisys-staging
-rkhunter_kiosk_log_file: rkhunter-kiosk.log
+package_integrity_enabled: true
+package_integrity_cron: "0 4 * * *"
+package_integrity_log_dir: "/var/log/package-integrity-raspisys-staging"
+package_integrity_log_file: "package-integrity-scan.log"
+package_integrity_allowed_paths:
+  - "/etc/skel/.bashrc"
+  - "/etc/chromium/master_preferences"
+  - "/etc/plymouth/plymouthd.conf"
+  - "/etc/login.defs"
+  - "/etc/xdg/labwc-greeter/environment"
+  - "/etc/xdg/pcmanfm/default/pcmanfm.conf"
+  - "/usr/share/firefox/distribution/distribution.ini"
+  - "/etc/default/useradd"
+  - "/etc/avahi/avahi-daemon.conf"
+  - "/usr/lib/modprobe.d/g_ether.conf"
+  - "/etc/wayvnc/config"
+  - "/etc/initramfs-tools/initramfs.conf"
+  - "/etc/lightdm/lightdm.conf"
+
+package_integrity_expected_contents: []
+package_integrity_kiosk_cron: "30 2 * * 0"
+package_integrity_kiosk_extra_allowed_paths:
+  - "/etc/NetworkManager/NetworkManager.conf"
+
 clamav:
   enabled: true
   log_dir: /var/log/clamav-raspisys-staging
@@ -196,13 +208,6 @@ trivy:
     minute: '0'
     hour: '4'
     weekday: '0'
-rkhunter:
-  enabled: true
-  log_dir: /var/log/rkhunter-raspisys-staging
-  cron:
-    minute: '30'
-    hour: '4'
-
 security_monitor_enabled: true
 security_monitor_state_dir: /var/lib/security-monitor-raspisys-staging
 security_monitor_fail2ban_log: /var/log/fail2ban-raspisys-staging.log

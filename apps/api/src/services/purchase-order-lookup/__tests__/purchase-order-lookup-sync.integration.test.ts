@@ -83,6 +83,38 @@ describe('PurchaseOrderLookupSyncService', () => {
     expect(await prisma.purchaseOrderLookupRow.count({ where: { seiban: SEIBAN } })).toBe(ROW_COUNT);
   });
 
+  it.each([
+    { name: 'keeps updatedAt when importing the same CSV twice', quantity: 1, offset: ROW_COUNT },
+    { name: 'advances updatedAt only for the row with a changed accepted quantity', quantity: 2, offset: ROW_COUNT + 2 },
+  ])('$name', async ({ quantity, offset }) => {
+    const csv = (firstQuantity: number) => [
+      'FKOBAINO,FHINCD,FSEIBAN,FKOBAIHINMEI,FUPDTEDT,FKENSAOKSU,FKOBAIST',
+      `${orderNo(offset)},MD900009001-001,${SEIBAN},材料A,,${firstQuantity},R`,
+      `${orderNo(offset + 1)},MD900009002-001,${SEIBAN},材料B,2026-09-20T10:00:00,1,C`,
+    ].join('\n');
+    const service = new PurchaseOrderLookupSyncService();
+    await service.syncFromFkobainoDashboard({ ingestRunId: await ingestRunFor(csv(1)) });
+
+    const where = { seiban: SEIBAN, purchaseOrderNo: { in: [orderNo(offset), orderNo(offset + 1)] } };
+    // 時刻の精度や実行速度に依存せず、再取込で更新されたかを確かめる。
+    await prisma.purchaseOrderLookupRow.updateMany({ where, data: { updatedAt: new Date('2000-01-01T00:00:00Z') } });
+    const before = await prisma.purchaseOrderLookupRow.findMany({ where, orderBy: { purchaseOrderNo: 'asc' } });
+    expect(before).toHaveLength(2);
+
+    const result = await service.syncFromFkobainoDashboard({ ingestRunId: await ingestRunFor(csv(quantity)) });
+    const after = await prisma.purchaseOrderLookupRow.findMany({ where, orderBy: { purchaseOrderNo: 'asc' } });
+    expect(after).toHaveLength(2);
+    expect(result.skippedStale).toBe(quantity === 1 ? 2 : 1);
+    expect(after[0].id).toBe(before[0].id);
+    expect(after[0].acceptedQuantity).toBe(quantity);
+    if (quantity === 1) {
+      expect(after[0]).toEqual(before[0]);
+    } else {
+      expect(after[0].updatedAt.getTime()).toBeGreaterThan(before[0].updatedAt.getTime());
+    }
+    expect(after[1]).toEqual(before[1]);
+  });
+
   it('decides old and new by FUPDTEDT, not by import order', async () => {
     const header = 'FKOBAINO,FHINCD,FSEIBAN,FKOBAIHINMEI,FUPDTEDT,FKENSAOKSU,FSEZONO,FKOBAIST';
     const line = (i: number, name: string, updatedAt: string, qty: number, status: string) =>

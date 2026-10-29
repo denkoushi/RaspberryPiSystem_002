@@ -205,12 +205,14 @@ export async function suggestPartPlacementSearch(params: {
   `;
 
   const aliasLabel = aliasMatchedBy;
+  // 表示ラベルは比較用の畳み込み（濁点・長音の吸収）前の表記を使う。
+  const partLabel = params.q.normalize('NFKC').trim();
   const matchedQueryLabel =
     machinePartRaw.length > 0
       ? hasPartQuery
-        ? `${partNormalized} ${machinePartRaw}`
+        ? `${partLabel} ${machinePartRaw}`
         : machinePartRaw
-      : partNormalized;
+      : partLabel;
 
   const currentPlacements: PartPlacementSearchHitDto[] = currentRows.map((row) => {
     const productNo = row.product_no;

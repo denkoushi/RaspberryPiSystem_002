@@ -203,32 +203,34 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     const query = z.object({ weeks: z.enum(['4', '12', '26', '52']).default('12'), machine: z.string().trim().min(1).max(400).optional() }).parse(request.query ?? {});
     return services.inventory.dashboard(Number(query.weeks), query.machine);
   });
+  const scopeSchema = z.enum(['default', 'seigi']).default('default');
+  const scopeQuery = z.object({ scope: scopeSchema });
   const variantField = z.enum(['maker', 'toolName', 'model', 'toolSize', 'workMaterial', 'usage']);
   const variantValue = z.string().min(1).max(400).refine(value => value.trim().length > 0);
-  app.get('/item-inventory/tool-value-variants', { preHandler: [read] }, async () => services.inventory.toolValueVariants());
+  app.get('/item-inventory/tool-value-variants', { preHandler: [read] }, async (request) => services.inventory.toolValueVariants(scopeQuery.parse(request.query ?? {}).scope));
   app.post('/item-inventory/tool-value-variants/merge', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
-    const body = z.object({ field: variantField, to: variantValue, from: z.array(variantValue).min(1).max(100) }).parse(request.body ?? {});
-    return services.inventory.mergeToolValueVariants(body.field, body.to, body.from);
+    const body = z.object({ scope: scopeSchema, field: variantField, to: variantValue, from: z.array(variantValue).min(1).max(100) }).parse(request.body ?? {});
+    return services.inventory.mergeToolValueVariants(body.field, body.to, body.from, body.scope);
   });
   app.post('/item-inventory/tool-value-variants/dismiss', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = z.object({ field: variantField, values: z.array(variantValue).min(2).max(100) }).parse(request.body ?? {});
     return services.inventory.dismissToolValueVariants(body.field, body.values);
   });
 
-  app.get('/item-inventory/tool-field-options', { preHandler: [read] }, async () => ({ options: await services.inventory.listToolFieldOptions() }));
-  const toolFieldValueBody = z.object({ field: z.enum(INVENTORY_OPTION_FIELDS), value: z.string().max(400) });
-  app.get('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async () => ({ values: await services.inventory.listToolFieldValues() }));
+  app.get('/item-inventory/tool-field-options', { preHandler: [read] }, async (request) => ({ options: await services.inventory.listToolFieldOptions(scopeQuery.parse(request.query ?? {}).scope) }));
+  const toolFieldValueBody = z.object({ scope: scopeSchema, field: z.enum(INVENTORY_OPTION_FIELDS), value: z.string().max(400) });
+  app.get('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async (request) => ({ values: await services.inventory.listToolFieldValues(scopeQuery.parse(request.query ?? {}).scope) }));
   app.post('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const body = toolFieldValueBody.parse(request.body ?? {});
-    return await services.inventory.addToolFieldValue(body.field, body.value);
+    return await services.inventory.addToolFieldValue(body.field, body.value, body.scope);
   });
   app.put('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
-    const body = z.object({ field: z.enum(INVENTORY_OPTION_FIELDS), from: z.string().max(400), to: z.string().max(400) }).parse(request.body ?? {});
-    return await services.inventory.renameToolFieldValue(body.field, body.from, body.to);
+    const body = z.object({ scope: scopeSchema, field: z.enum(INVENTORY_OPTION_FIELDS), from: z.string().max(400), to: z.string().max(400) }).parse(request.body ?? {});
+    return await services.inventory.renameToolFieldValue(body.field, body.from, body.to, body.scope);
   });
   app.delete('/item-inventory/tool-field-values', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const query = toolFieldValueBody.parse(request.query ?? {});
-    return await services.inventory.deleteToolFieldValue(query.field, query.value);
+    return await services.inventory.deleteToolFieldValue(query.field, query.value, query.scope);
   });
   app.get('/item-inventory/units', { preHandler: [read] }, async () => ({ units: await services.inventory.listUnits() }));
   app.post('/item-inventory/units', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
@@ -269,6 +271,12 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   app.get('/item-inventory/import-summaries', { preHandler: [read] }, async () => ({ imports: await services.inventory.listPendingImportSummaries() }));
   app.get('/item-inventory/imports', { preHandler: [authorizeManageOrKiosk] }, async () => ({ imports: await services.inventory.listPendingImports() }));
   app.get('/item-inventory/import-messages', { preHandler: [authorizeManageOrKiosk] }, async () => ({ messages: await services.inventory.listImportMessages() }));
+
+  app.put('/item-inventory/import-messages/:id/dismissed', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = idParams.parse(request.params);
+    const { dismissed } = z.object({ dismissed: z.boolean() }).parse(request.body ?? {});
+    return { message: await services.inventory.setImportMessageDismissed(id, dismissed) };
+  });
 
   app.post('/item-inventory/transactions', { preHandler: [writeOrKiosk] }, async (request) => {
     const body = transactionBody.parse(request.body ?? {});

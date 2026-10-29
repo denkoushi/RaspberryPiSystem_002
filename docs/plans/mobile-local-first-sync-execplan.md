@@ -20,7 +20,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [ ] Milestone 1: 共通の同期層(アプリ全体で 1 つの同期係、Wi-Fi 判定、送信待ち箱の共通化、棚番登録の待ちを外す)。
 - [x] (2026-10-28) Milestone 1 の部分実装: 共通同期係、Provider、共有送信 runner、棚の保存直後の pending 応答、ローカル結果優先。DB/記録形式と outbox.ts の共通化は変更していない。回線判定は Decision Log のとおり Wi-Fi(または有線)と判定できたときだけ同期する。ローカルデータが一度も無いときだけ、同期できる状態ならサーバーに 3 秒問い合わせる。
 - [ ] Milestone 2: 配膳の読み取りをローカル化(現在の置き場データの版付き取得、棚写真の端末保存)。
-- [ ] Milestone 3: 部品検索をローカル化。
+- [x] (2026-10-28) Milestone 3 実装: placements の版付き全件取得、DB v2 と既存同期への追加、片手 UI の端末内検索、未送信の製造order表示、専用削除アウトボックスを接続。実機確認・本番反映は未実施。
 - [ ] Milestone 4: サーバーの汎用二重実行防止と、棚マスタ編集の送信待ち箱。
 - [ ] Milestone 5: Zero2W 配膳状況とパレットのローカル化。
 - [ ] Milestone 6: 残り(現品票の撮影 OCR の扱い、古い通信経路の削除、KB 更新)。
@@ -43,6 +43,18 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Evidence: 第三者レビューの指摘。`shelfOutboxRunner.ts` の flush と submit。
 
 ## Decision Log
+
+- Decision (2026-10-29 / Codex): mobile app shell の navigation を cache-first + 背景更新へ変更し、新版は次回起動から使う。`__raspi_kiosk_web_release` / `__raspi_web_runtime_recovery` 付き、キャッシュ無し、HTML の直接参照資産が欠ける場合は従来の network-first + 4秒 fallback を維持する。
+  Rationale: network-first により deploy ごとに 6.5 MB（非圧縮）の main bundle を再取得し、現場回線で約60秒の白画面が発生した。旧画面の遅延読込資産を保持して背景更新する。キャッシュ利用時は navigation の maintenance / HTTP-error HTML よりキャッシュを優先するが、API の `isMaintenance` と release 検証 reload は引き続き有効。
+
+- Decision (2026-10-28 / Codex): `placements` dataset と DB v2 の追加は部品検索の作業が担当する。配膳側は `listPlacementsByManufacturingOrder` を後続作業で使う。
+  Rationale: 部品検索を端末内で完結させるため、現在配置を先に端末へ持つ。v1 の購買・予定・metadata・known は保持する。
+- Decision (2026-10-28 / Codex): placements は版ごとの全件スナップショットにし、since-diff は実装しない。
+  Rationale: 削除に tombstone がないため差分だけでは削除を反映できない。小規模データなので全件置換を使い、件数・更新日時・ID/更新日時チェックサムを版に含める。
+- Decision (2026-10-28 / Codex): 機種名は既存サーバー検索と同じ MH/SH FHINMEI → 補完表の解決処理を共有し、表示用の半角英数・大文字にそろえて placements 行へ格納する。
+  Rationale: 端末側の検索に追加通信を要求せず、検索用のかな畳み込みで表示名を壊さない。機種名参照元の更新も placements の版に含める。
+- Decision (2026-10-28 / Codex): 削除は専用 `placement-delete-queue` に保存し、既存 `registerSyncJob` と Wi-Fi gate で送る。404 は完了、通信障害・5xx・408・429 は pending、その他の4xxは needs_check として行を復元する。
+  Rationale: haizen queue の schema を変えず、pending ID はスナップショット再取得後も隠す。送信成功後は `requestSync` で配置更新を要求する。サーバー削除成功・404時は版キャッシュを無効化し、削除前のスナップショットによる再表示を防ぐ。
 
 - Decision: 同期係は画面ではなく、スマホ用の画面群全体で 1 つだけ動かす。
   Rationale: 上の発見のとおり、画面ごとの同期では「裏で送る」が成り立たない。
@@ -67,6 +79,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Date/Author: 2026-10-28 / ユーザー、記録 Claude
 - Decision: 棚マスタの配置編集(区画のレイアウト編集、棚の移動、Zero2W の割り当て)もスマホの機能なので例外にしない。圏外でも操作を受け付けて端末にすぐ反映し、Wi-Fi に戻ったら裏で送る。再送に安全でない点は Milestone 4 の操作 ID(`MobileClientOperation`)で解消する。
   Rationale: ユーザー指摘(2026-10-28)「スマートフォンの話だぞ」。スマホの全機能をローカル優先にする。
+- Decision: [読取フレーム保存と配膳写真](mobile-scan-frame-capture-execplan.md)に従い、scan-frames ジョブを最後に登録した（2026-10-29）。
 
 
 - Decision: 現場のスマホは Chrome でホーム画面に追加した配膳の画面(棚の絵のアイコン)ではなく、配膳アプリ(`apps/android-haizen-shell`、ロボットのアイコン)に一本化する。アプリに、閉じていても Wi-Fi のときにデータを落とす仕組みを足す(Milestone 7)。
@@ -120,9 +133,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 この Milestone の終わりには、端末で一度も見ていない製造orderでも、圏外で分配枝が分かる。棚写真は圏外でも出る。
 
-サーバーに新しいデータ種別 `placements` を足す。`apps/api/src/services/mobile-placement/mobile-local-data.service.ts` の版と取得の仕組み(版が同じなら 304、版ごとに作った gzip を全端末で共有)に、現在の置き場(`OrderPlacementBranchState` の有効な行。製造order、枝番、棚、置いた時刻、日程の控え)を加える。版は件数と `updatedAt` の最大値から作る。置き場は変化が多いので、`GET /kiosk/mobile-local-data/placements?since=<版>` で前回からの差分(追加・変更・削除)も返せるようにし、差分を作れないときは全件を返す。
-
-端末側は `mobileLocalDataStore` に `placements` 表(製造orderで索引)を足す(IndexedDB の版を 2 に上げ、既存の表は消さない)。`useOrderPlacementBranches` は、この表とアウトボックスの未送信を重ねたものだけを読む。`orderPlacementBranchesCache.ts` の localStorage の控えは読むのをやめ、移行時に一度だけ消す。
+`placements` のサーバー取得・端末DB v2は Milestone 3 が担当する（Decision Log 参照）。この Milestone では `useOrderPlacementBranches` を `listPlacementsByManufacturingOrder` とアウトボックスの未送信の重ね合わせへ切り替える。`orderPlacementBranchesCache.ts` の localStorage の控えは読むのをやめ、移行時に一度だけ消す。
 
 棚写真は新しい IndexedDB `mobile-shelf-photos-v1` に、棚コードと `photoUpdatedAt` をキーにして画像(Blob)で持つ。同期係は登録済みの棚の一覧を見て、写真の版が変わった棚だけを Wi-Fi のときに取り直し、古い版は消す。`useShelfPhoto` はこの保存先だけを読む。
 
@@ -130,7 +141,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ### Milestone 3: 部品検索をローカル化
 
-部品検索をサーバーと同じ結果で端末内で行う。サーバーの検索は `apps/api/src/services/mobile-placement/part-search/` にあり、置き場を最優先、日程を補助にし、同義語辞書(`part-search-aliases.ts`)で広げ、表記ゆれは共有パッケージ `packages/part-search-core` でそろえる。辞書と順位付けの規則を `packages/part-search-core` へ移し、サーバーと端末の両方から使う。端末では Milestone 2 の `placements` 表と既存の `schedule` 表から探す。サーバーの API は他の利用者(キオスク)のために残す。受け入れ: 同じ入力の検索結果が、サーバーと端末で一致するテスト(固定データ)が通り、圏外でも入力のたびにすぐ候補が出る。部品検索の「削除」はアウトボックスを通す。
+承認済みの `PartSearchOneHandView` と `packages/part-search-core` の純粋検索を使い、端末の `placements` を検索する。pending の製造order配膳登録も `schedule` の ProductNo で結合して表示する。濁点・半濁点・長音の検索表記ゆれは共有コアで吸収する。サーバー suggest API は残し、スマホからの呼び出しと旧キーボード・palette は削除する。削除は専用アウトボックス経由とし、読み取り・入力操作は通信を待たない。受け入れ: オフライン検索、削除キュー、再取得時の pending 非表示、needs_check 復元がテストで確認できる。
 
 ### Milestone 4: サーバーの二重実行防止と棚マスタの編集
 

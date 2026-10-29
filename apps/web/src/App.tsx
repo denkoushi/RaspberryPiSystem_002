@@ -9,11 +9,12 @@ import { RequireAuth } from './components/RequireAuth';
 import { RouteLoadingScreen } from './components/RouteLoadingScreen';
 import { readProductionBuildConfig } from './config/productionBuildConfig';
 import { kioskAssemblyLibraryPath, parseAssemblyProcedureOrderSettingsSearch } from './features/assembly';
-import { KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from './features/assembly/assemblyRoutes';
+import { KIOSK_ASSEMBLY_CHECK_SHEETS_PATH, KIOSK_ASSEMBLY_CHECK_SHEET_PATH, KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from './features/assembly/assemblyRoutes';
 import { kioskLazy } from './features/kiosk/kioskLazyPreload';
 import { KioskScreenWatchHost } from './features/kiosk/screen-watch/KioskScreenWatchHost';
 import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
 import { registerMobileAppShell } from './features/mobile-app-shell/registerMobileAppShell';
+import { PlacementDeleteSyncJob } from './features/mobile-placement/part-search/offline/PlacementDeleteSyncJob';
 import { MobileSyncProvider } from './features/mobile-placement/sync/MobileSyncProvider';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
@@ -38,11 +39,14 @@ import { PalletMachineIllustrationsPage } from './pages/admin/PalletMachineIllus
 import { PartMeasurementTemplatesPage } from './pages/admin/PartMeasurementTemplatesPage';
 import { PhotoGallerySeedPage } from './pages/admin/PhotoGallerySeedPage';
 import { PhotoLoanLabelReviewsPage } from './pages/admin/PhotoLoanLabelReviewsPage';
+import { PlacementPhotosPage } from './pages/admin/PlacementPhotosPage';
 import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
 import { RaspiInventoryPage } from './pages/admin/RaspiInventoryPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
 import { SignageHubPage } from './pages/admin/SignageHubPage';
+import { KioskAssemblyCheckSheetPage } from './pages/kiosk/KioskAssemblyCheckSheetPage';
+import { KioskAssemblyCheckSheetsPage } from './pages/kiosk/KioskAssemblyCheckSheetsPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyManualsPage } from './pages/kiosk/KioskAssemblyManualsPage';
 import { KioskAssemblyManualsWorkshopPage } from './pages/kiosk/KioskAssemblyManualsWorkshopPage';
@@ -53,6 +57,8 @@ import { KioskBorrowPage } from './pages/kiosk/KioskBorrowPage';
 import { KioskCallPage } from './pages/kiosk/KioskCallPage';
 import { KioskDocumentsPage } from './pages/kiosk/KioskDocumentsPage';
 import { KioskHaizenPage } from './pages/kiosk/KioskHaizenPage';
+import { KioskHaizenTrailPage } from './pages/kiosk/KioskHaizenTrailPage';
+import { KioskHaizenVerifyHistoryPage } from './pages/kiosk/KioskHaizenVerifyHistoryPage';
 import { KioskInstrumentBorrowPage } from './pages/kiosk/KioskInstrumentBorrowPage';
 import { KioskItemInventoryDashboardPage } from './pages/kiosk/KioskItemInventoryDashboardPage';
 import { KioskItemInventoryPage } from './pages/kiosk/KioskItemInventoryPage';
@@ -228,8 +234,10 @@ function App() {
             path="/kiosk/production-schedule/planning-board"
             element={<ProductionScheduleGrindingPlanningBoardPage />}
           />
-          <Route element={<MobileSyncProvider><Outlet /></MobileSyncProvider>}>
+          <Route element={<MobileSyncProvider><PlacementDeleteSyncJob /><Outlet /></MobileSyncProvider>}>
             <Route path="/kiosk/inventory/haizen" element={<KioskHaizenPage />} />
+            <Route path="/kiosk/inventory/haizen/verify-history" element={<KioskHaizenVerifyHistoryPage />} />
+            <Route path="/kiosk/inventory/haizen/trail" element={<KioskHaizenTrailPage />} />
             <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
             <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
             <Route path="/kiosk/mobile-placement/shelf-master" element={<KioskMobileShelfMasterPage />} />
@@ -242,6 +250,8 @@ function App() {
           </Route>
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
+          <Route path={KIOSK_ASSEMBLY_CHECK_SHEETS_PATH} element={<KioskAssemblyCheckSheetsPage />} />
+          <Route path={KIOSK_ASSEMBLY_CHECK_SHEET_PATH} element={<KioskAssemblyCheckSheetPage />} />
           <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />
           <Route path={KIOSK_ASSEMBLY_MANUALS_PATH} element={<KioskAssemblyManualsPage />} />
           <Route path={KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH} element={<KioskAssemblyManualsWorkshopPage />} />
@@ -430,6 +440,7 @@ function App() {
         <Route path="knowledge-position-ranks" element={<MovedToKioskTagDeskPage positionRanks />} />
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
         <Route path="dgx-resource" element={<Navigate to="/admin/tools/dgx-resource" replace />} />
+        <Route path="placement-photos" element={<PlacementPhotosPage />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
         <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />

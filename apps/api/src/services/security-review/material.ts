@@ -44,9 +44,9 @@ export function prepareChunks(material: Record<ReviewKind, string>) {
   const pending: Record<ReviewKind, ReviewChunk[]> = { security: [], errors: [], changes: [] };
   const allocated = { security: 0, errors: 0, changes: 0 };
   for (const kind of kinds) {
-    const sections = kind === 'changes' ? material[kind].split(/(?=^diff --git )/m) : [material[kind]];
+    const texts = kind === 'changes' ? packChangeLines(material[kind]) : splitBytes(material[kind]);
     let index = 0;
-    for (const section of sections) for (const text of splitBytes(section)) {
+    for (const text of texts) {
       index++;
       pending[kind].push({ id: `${kind}-${index}`, kind, text });
     }
@@ -65,6 +65,27 @@ export function prepareChunks(material: Record<ReviewKind, string>) {
     truncated[kind] = pending[kind].length - allocated[kind];
   }
   return { chunks, truncated };
+}
+
+function packChangeLines(text: string): string[] {
+  const chunks: string[] = [];
+  let part = ''; let bytes = 0;
+  for (const line of text.match(/[^\n]*\n|[^\n]+/g) ?? []) {
+    const size = Buffer.byteLength(line, 'utf8');
+    if (bytes + size > MATERIAL_BYTES && part) {
+      chunks.push(part); part = ''; bytes = 0;
+    }
+    if (size > MATERIAL_BYTES) {
+      const pieces = splitBytes(line);
+      chunks.push(...pieces.slice(0, -1));
+      part = pieces[pieces.length - 1]!;
+      bytes = Buffer.byteLength(part, 'utf8');
+    } else {
+      part += line; bytes += size;
+    }
+  }
+  if (part) chunks.push(part);
+  return chunks;
 }
 
 export function quoteData(value: unknown): string {

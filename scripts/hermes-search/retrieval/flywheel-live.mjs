@@ -9,6 +9,7 @@ import { relevancePoolLimit } from './executor.mjs';
 import { RELEVANT } from './flywheel-filter.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 import { learnedQueriesById } from './flywheel-learn.mjs';
+import { createPlanner } from './planner-jev.mjs';
 import { relevanceFailureReason } from './relevance-jev.mjs';
 import { createRetrievalAnswering, loadCauseById, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
 
@@ -51,7 +52,7 @@ export function lossStage({ relevant, outcome, shown, candidates, judged }) {
  * than the day budget; `vectorStatus` in each result shows when the dense path still fell back.
  * The runner never refreshes the dense index; the worker owns that.
  */
-export async function createLiveScorer({ records, catalog, evaluate, env = process.env, vectorBudgetMs = NIGHT_VECTOR_BUDGET_MS, learned = null }) {
+export async function createLiveScorer({ records, catalog, evaluate, env = process.env, vectorBudgetMs = NIGHT_VECTOR_BUDGET_MS, learned = null, plannerOptions = {} }) {
   const settings = denseSettings(env);
   let dense = null;
   if (settings.queryEnabled && settings.origin) {
@@ -70,6 +71,7 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
     causeById,
     catalog,
     evaluate,
+    planner: createPlanner({ evaluate, ...plannerOptions }),
     dense,
     enrichmentById,
     learnedById,
@@ -87,6 +89,7 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
       const candidates = (result.candidateIds ?? []).slice(0, judged).map(bareId);
       return {
         outcome,
+        questionVersion: result.receipt?.jev?.questionVersion ?? null,
         followUpAction: result.receipt?.followUpAction?.chosen ?? null,
         rewrite: result.receipt?.rewrite ?? null,
         reason: outcome === 'unavailable' || outcome === 'failed' ? result.receipt?.reason ?? result.reason ?? null : null,

@@ -226,3 +226,24 @@ test('count results keep their rewrite and action on nightly rows', async () => 
   assert.equal(inputs.filter(input => input.questions.followUpAction).length, 1);
   assert.equal(row.plan.diagnostics, undefined);
 });
+
+test('live scorer passes the selected wording version and records it, defaulting to the baseline', async () => {
+  const { DEFAULT_PLANNER_QUESTION_VERSION, CANDIDATE_PLANNER_QUESTION_VERSION } = await import('./planner-jev.mjs');
+  for (const questionVersion of [undefined, CANDIDATE_PLANNER_QUESTION_VERSION]) {
+    let carry;
+    const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(),
+      env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' },
+      plannerOptions: questionVersion ? { questionVersion } : undefined,
+      evaluate: async ({ questions }) => {
+        carry = questions.contentCarry?.instructions ?? carry;
+        return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key,
+          key.startsWith('candidate_') || key === 'content' ? { type: 'noul', noul: 0.95 }
+            : { type: 'choice', choice: key === 'scope' ? 'nonconformity' : key === 'sort' ? 'relevance' : key === 'limit' ? 'unspecified' : key === 'contentCarry' ? 'same' : 'none' },
+        ])) };
+      },
+    });
+    const live = await score({ a: 'rec-alpha', question: '類例ある？', previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: 'surface scratch', sort: 'relevance', limit: 5 } });
+    assert.equal(live.questionVersion, questionVersion ?? DEFAULT_PLANNER_QUESTION_VERSION);
+    assert.equal(carry.includes('類例'), Boolean(questionVersion));
+  }
+});
