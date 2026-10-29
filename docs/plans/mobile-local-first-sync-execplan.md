@@ -43,6 +43,9 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Decision Log
 
+- Decision (2026-10-29 / Codex): mobile app shell の navigation を cache-first + 背景更新へ変更し、新版は次回起動から使う。`__raspi_kiosk_web_release` / `__raspi_web_runtime_recovery` 付き、キャッシュ無し、HTML の直接参照資産が欠ける場合は従来の network-first + 4秒 fallback を維持する。
+  Rationale: network-first により deploy ごとに 6.5 MB（非圧縮）の main bundle を再取得し、現場回線で約60秒の白画面が発生した。旧画面の遅延読込資産を保持して背景更新する。キャッシュ利用時は navigation の maintenance / HTTP-error HTML よりキャッシュを優先するが、API の `isMaintenance` と release 検証 reload は引き続き有効。
+
 - Decision (2026-10-28 / Codex): `placements` dataset と DB v2 の追加は部品検索の作業が担当する。配膳側は `listPlacementsByManufacturingOrder` を後続作業で使う。
   Rationale: 部品検索を端末内で完結させるため、現在配置を先に端末へ持つ。v1 の購買・予定・metadata・known は保持する。
 - Decision (2026-10-28 / Codex): placements は版ごとの全件スナップショットにし、since-diff は実装しない。

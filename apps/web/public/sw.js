@@ -3,10 +3,12 @@ const CACHE_PREFIX = 'mobile-app-shell-';
 const SHELL_CACHE = `${CACHE_PREFIX}v1-shell`;
 const ASSET_CACHE = `${CACHE_PREFIX}v1-assets`;
 const INDEX_URL = '/index.html';
+const SHELL_ASSETS_URL = '/app-shell-assets.json';
 const BUILD_MANIFEST = '/app-shell-manifest.json';
 const NETWORK_TIMEOUT_MS = 4000;
 const ASSET_FETCH_CONCURRENCY = 6;
 let shellUpdate = Promise.resolve();
+const assetFetches = new Map();
 
 function isMobilePath(pathname) {
   return pathname === '/kiosk/mobile-placement' ||
@@ -27,7 +29,7 @@ async function serveAsset(event) {
   if (!client) return fetch(event.request);
   const url = new URL(client.url);
   if (url.origin !== self.location.origin || !isMobilePath(url.pathname)) return fetch(event.request);
-  return cacheAsset(event.request);
+  return cacheAsset(event.request, false, event);
 }
 
 async function fetchWithTimeout(input, timeoutMs = NETWORK_TIMEOUT_MS) {
@@ -48,7 +50,7 @@ async function fetchWithTimeout(input, timeoutMs = NETWORK_TIMEOUT_MS) {
   }
 }
 
-function referencedAssets(html, manifest) {
+function directlyReferencedAssets(html) {
   const urls = new Set();
   for (const tag of html.matchAll(/<(?:script|link)\b[^>]*>/gi)) {
     const value = tag[0].match(/\b(?:src|href)\s*=\s*["']([^"']+)["']/i)?.[1];
@@ -56,6 +58,11 @@ function referencedAssets(html, manifest) {
     const url = new URL(value, self.location.origin);
     if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')) urls.add(url.href);
   }
+  return urls;
+}
+
+function referencedAssets(html, manifest) {
+  const urls = directlyReferencedAssets(html);
   const entry = manifest['index.html'];
   if (!entry || !urls.has(new URL(entry.file, self.location.origin).href)) {
     throw new Error('HTML/build manifest mismatch');
@@ -84,11 +91,21 @@ function isHtml(response) {
     response.headers.get('content-type')?.includes('text/html');
 }
 
-async function cacheAsset(request, strict = false) {
+async function fetchAsset(request) {
+  const url = new URL(typeof request === 'string' ? request : request.url, self.location.origin).href;
+  let pending = assetFetches.get(url);
+  if (!pending) {
+    pending = fetchWithTimeout(request, 30_000).finally(() => assetFetches.delete(url));
+    assetFetches.set(url, pending);
+  }
+  return (await pending).clone();
+}
+
+async function cacheAsset(request, strict = false, event) {
   const cache = await caches.open(ASSET_CACHE);
   const cached = await cache.match(request);
   if (cached) return cached;
-  const response = await fetchWithTimeout(request, 30_000);
+  const response = await fetchAsset(request);
   // A maintenance/SPA fallback is not a JavaScript/CSS asset.
   if (!response.ok || response.redirected || response.headers.get('content-type')?.includes('text/html')) {
     if (strict) throw new Error('App shell asset unavailable');
@@ -96,7 +113,10 @@ async function cacheAsset(request, strict = false) {
   }
   const write = cache.put(request, response.clone());
   if (strict) await write;
-  else await write.catch(() => {});
+  else {
+    const saving = write.catch(() => {});
+    if (event) event.waitUntil(saving);
+  }
   return response;
 }
 
@@ -121,9 +141,17 @@ async function saveShell(response, navigationEvent) {
   if (failure) throw failure;
   const cache = await caches.open(SHELL_CACHE);
   await cache.put(INDEX_URL, response);
+  // Pair the list with its HTML so an interrupted metadata write cannot collect
+  // lazy chunks using the previous shell's list.
+  await cache.put(SHELL_ASSETS_URL, new Response(JSON.stringify({ html, assets: [...assets] }),
+    { headers: { 'content-type': 'application/json' } }));
   if (!navigationEvent) return;
-  // Only collect after a successful online load with no other open windows (including
-  // uncontrolled ones). Never collect on offline fallback or while an older tab is open.
+  await collectAssets(assets, navigationEvent);
+}
+
+async function collectAssets(assets, navigationEvent) {
+  // Keep every file used by the served shell, including its lazy chunks. Other
+  // windows (including uncontrolled ones) may still need older files.
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   if (windows.some((client) => client.id !== navigationEvent.resultingClientId)) return;
   const assetCache = await caches.open(ASSET_CACHE);
@@ -139,6 +167,42 @@ function queueShellSave(response, event) {
 }
 
 async function navigate(event) {
+  const url = new URL(event.request.url);
+  if (isMobilePath(url.pathname) && !url.searchParams.has('__raspi_kiosk_web_release') &&
+      !url.searchParams.has('__raspi_web_runtime_recovery')) {
+    try {
+      const cache = await caches.open(SHELL_CACHE);
+      const cached = await cache.match(INDEX_URL);
+      if (cached) {
+        const html = await cached.clone().text();
+        const assets = await caches.open(ASSET_CACHE);
+        const present = await Promise.all([...directlyReferencedAssets(html)].map((asset) => assets.match(asset)));
+        if (present.every(Boolean)) {
+          // Capture this shell's list before the background save replaces it.
+          shellUpdate = shellUpdate.catch(() => {}).then(async () => {
+            // Re-read after earlier queued saves: collect only while the served shell is
+            // still the committed one, and never while another worker may be filling the
+            // shared asset cache for a newer shell.
+            if (self.registration?.installing || self.registration?.waiting) return;
+            const current = await cache.match(INDEX_URL);
+            const stored = await cache.match(SHELL_ASSETS_URL);
+            if (!current || !stored || (await current.text()) !== html) return;
+            const list = await stored.json();
+            if (list.html === html) await collectAssets(new Set(list.assets), event);
+          });
+          event.waitUntil(shellUpdate.catch(() => {}));
+          event.waitUntil(fetch(event.request, { cache: 'no-store' }).then((response) =>
+            queueShellSave(response.clone(), undefined)
+          ).catch(() => {}));
+          // Cached HTML wins over navigation maintenance/HTTP-error HTML. API-driven
+          // isMaintenance and release verification still apply to the running shell.
+          return cachedShellResponse(cached);
+        }
+      }
+    } catch {
+      // Cache failures leave the existing network-first path available.
+    }
+  }
   const network = fetch(event.request, { cache: 'no-store' });
   let timedOut = false;
   let timer;
@@ -162,20 +226,24 @@ async function navigate(event) {
     const cache = await caches.open(SHELL_CACHE);
     const cached = await cache.match(INDEX_URL);
     if (!cached) throw error;
-    // Boot can bypass only the mobile deploy-status wait even when navigator.onLine
-    // remains true (for example a disconnected VPN). API responses are never cached.
-    const html = (await cached.text()).replace('</head>',
-      '<meta name="mobile-app-shell-offline" content="true"></head>');
-    const headers = new Headers(cached.headers);
-    headers.delete('content-length');
-    headers.delete('content-encoding');
-    return new Response(html, { status: 200, headers });
+    return cachedShellResponse(cached);
   } finally {
     clearTimeout(timer);
   }
   // HTTP errors/maintenance responses remain authoritative. Storage failures must
   // not turn a successful online navigation into a stale response or a blank page.
   return response;
+}
+
+async function cachedShellResponse(cached) {
+  // The marker only skips blocking mount on deploy-status, even while online.
+  // API-driven maintenance and release-verification reloads still apply.
+  const html = (await cached.text()).replace('</head>',
+    '<meta name="mobile-app-shell-offline" content="true"></head>');
+  const headers = new Headers(cached.headers);
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  return new Response(html, { status: 200, headers });
 }
 
 self.addEventListener('install', (event) => {
