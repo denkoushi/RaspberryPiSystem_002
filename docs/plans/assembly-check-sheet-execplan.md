@@ -6,13 +6,15 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 Today the final assembly inspection of every machine unit is done on a printed Excel sheet ("組立最終検査チェックシート"). The worker writes values by hand and presses a personal hanko (seal) next to each row. After this change, a Pi4 kiosk standing next to the unit shows the same sheet as a one-screen checklist. For every item, the worker enters what that item asks for (OK/NG, a number with a unit, short text, a choice), then holds their employee NFC tag on the reader. The tag works as the hanko: the item gets a red round stamp with the person's family name and the time. Items that must be confirmed by a 班長 (leader), 係長 (section chief) or 制御設計担当 accept only a tag of such a person. When a check is NG, the worker chooses either 中断 (pause the sheet) or 目印を付けて次へ (flag the item and continue). When the sheet is finished, a "紙の控え" (paper copy) can be produced in the ORIGINAL Excel layout of that machine: the system writes the entered values and stamps into a copy of the original .xlsx and offers it for download, and the kiosk can show a preview of that layout.
 
-Sheets are imported by an administrator on a PC: upload the .xlsx, the system proposes a normalized item list, the administrator fixes it in a table and saves it as a revision. When a sheet is revised, units that already started keep the revision they started with.
+Sheets are imported from the kiosk assembly menu (「チェックシート」, `/kiosk/assembly/check-sheets`): upload the .xlsx, review the proposed items in a dark responsive card layout, and save a revision. Department members come from `/kiosk/employees` (employee ID and display name). The former admin route and navigation entry are removed. Import/save use `allowWriteKiosk`; revision creators retain the authenticated user ID or `client:<device id>` for a device-only request, and missing actors return 401. No schema or migration change is needed. When a sheet is revised, units that already started keep the revision they started with.
 
-To see it working after all milestones: import the sample workbook in the admin screen, save it, open `/kiosk/assembly/check-sheets/<id>` on a kiosk (or a desktop browser at 1920×1080), stamp a few items with test NFC tags, mark one NG with 目印, finish, press 紙の控え, and download the filled .xlsx; opening it in Excel shows the original sheet with the values and stamp text filled in, and its embedded objects intact.
+To see it working after all milestones: import the sample workbook from the kiosk assembly menu, save it, open `/kiosk/assembly/check-sheets/<id>` on a kiosk (or a desktop browser at 1920×1080), stamp a few items with test NFC tags, mark one NG with 目印, finish, press 紙の控え, and download the filled .xlsx; opening it in Excel shows the original sheet with the values and stamp text filled in, and its embedded objects intact.
 
 The approved screen design is the static mock `docs/design-previews/assembly-check-sheet-mock.html` (open it in a browser; it is self-contained). The kiosk page in Milestone 3 must reproduce its layout and behaviour. Read it before Milestone 3.
 
 ## Progress
+
+- [x] (2026-10-29) Moved import/review/save to the kiosk assembly library; added its menu/return links, kiosk employee selection, device authorization/creator tests, and preserved working-sheet routes. Browser verification is blocked by sandbox `listen EPERM` on 127.0.0.1:4185; final automated results are recorded under Outcomes below.
 
 - [x] (2026-10-29) Milestone 1 implementation: additive schema/migration, pure xlsx parser/normalizer, admin import/save + revision read API, shared payloads, and 23 focused tests. Sample: 22 groups / 57 items / 17 warnings. Repository-wide typecheck is blocked by errors outside this change; live DB migration/concurrency verification remains unperformed (DB unavailable).
 - [x] (2026-10-29) Milestone 2 implementation: admin head list, xlsx import/review table, header/department-member editors, new/revision saves, and pure editing/payload functions. Added 13 focused web tests; web typecheck and scoped lint pass. Manual sample upload/save against a live API remains unperformed.
@@ -96,14 +98,24 @@ The approved screen design is the static mock `docs/design-previews/assembly-che
   Rationale: exceljs loses the OLE objects and printer settings of the sample (see Surprises). Patching only the needed `<c>` elements keeps everything else byte-identical.
 - Decision: The kiosk preview of the paper copy is an HTML rendering of the original sheet's print area (merged cells, column widths, row heights, borders, alignment, font size) built from a layout snapshot captured at import time with exceljs (reading only, never writing), with the entered values and stamps overlaid. A true PDF is a later prototype (Milestone 5).
   Rationale: no PDF writer or LibreOffice exists in the API image today; adding LibreOffice to the arm64 image is a size/feasibility question that should not block the feature.
-- Decision: Import/review is an admin (PC) page under `/admin`, not a kiosk page.
-  Rationale: uploading .xlsx files and editing a 57-row table is PC work.
+- Decision (superseded 2026-10-29): Import/review was initially an admin (PC) page. The current workflow uses the kiosk assembly library so field staff can import and review without an administrator.
 - Decision: Item role requirement is stored as a list of role keys: `leader` (班長), `section_chief` (係長), and free department labels such as `制御設計担当`. Rank roles are checked with `Employee.positionName` mapped through the existing `apps/api/src/services/knowledge/knowledge-position-rank.ts` (rank at or above the required one passes). Department labels are checked against an explicit allow-list of employee ids kept per sheet revision (edited in the review screen). An employee with null `positionName` passes only items with no role requirement.
   Rationale: 制御設計担当 is not a rank; a small explicit list is predictable and auditable.
 - Decision: 梱包チェックシート and the link from NG flags to the 問題点 sheet are out of scope (user decision 2026-10-29: 梱包 later).
 - Decision: Units (V, mm, N·m …) and conditional ranges (e.g. "モータブラケットが一体でない場合" covering 7-2..7-5) are guessed by the normalizer and confirmed/fixed by a human in the review screen (user decision 2026-10-29).
 
 ## Outcomes & Retrospective
+
+### Kiosk import/review relocation (2026-10-29)
+
+Validation used existing package builds and generated Prisma Client only; no database connection or migration was performed. Missing local build outputs initially prevented test imports; building shared-types, slip-match-core, shelf-layout-core and part-search-core resolved them. The menu test was updated for the additional link and separator position.
+
+- API: `pnpm --filter @raspi-system/api exec vitest run src/routes/assembly src/services/assembly/check-sheet` — 26 files / 542 tests passed (125 seconds).
+- Web: `pnpm --filter @raspi-system/web exec vitest run src/features/assembly src/pages/kiosk src/layouts src/api/domains/assembly` — 135 files / 1,607 tests passed (102 seconds), including import/review/save, kiosk employee selection, return navigation and distinct library/working-sheet routes.
+- TypeScript: shared-types `tsc -b`, API `tsc --noEmit -p tsconfig.build.json`, Web `tsc --noEmit` passed.
+- `pnpm -r lint --max-warnings=0` passed after fixing import ordering in the moved page/tests and route registration. `pnpm kiosk-sop:source-refresh` updated only the source digest; `pnpm kiosk-sop:source-check` and `git diff --check` passed.
+- Browser/device QA remains unperformed: starting Vite on 127.0.0.1:4185 was blocked with `listen EPERM`, so actual 1920×1080 wrapping and horizontal overflow are not established by DOM tests. The library uses fixed-width revision columns and responsive item grids with bounded input widths.
+- No commit, push, migration, release or deploy was performed. Entry worktree was clean; all remaining changes belong to this task.
 
 ### Milestone 4 (2026-10-29)
 
@@ -160,8 +172,8 @@ Changed files:
 - `apps/web/src/features/assembly/checkSheet/CheckSheetScreen.tsx`
 - `apps/web/src/features/assembly/checkSheet/checkSheetState.ts`
 - `apps/web/src/features/assembly/checkSheet/useCheckSheet.ts`
-- `apps/web/src/pages/admin/AssemblyCheckSheetsPage.test.tsx`
-- `apps/web/src/pages/admin/assembly-check-sheets/editor.test.ts`
+- `apps/web/src/features/assembly/checkSheet/CheckSheetLibraryPage.test.tsx`
+- `apps/web/src/features/assembly/checkSheet/editor.test.ts`
 - `docs/plans/assembly-check-sheet-execplan.md`
 - `packages/shared-types/src/assembly/assembly-check-sheet.ts`
 - `packages/shared-types/src/knowledge/index.ts`

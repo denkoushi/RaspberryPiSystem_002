@@ -196,25 +196,26 @@ describe('KioskAssemblyHomePage', () => {
     );
   });
 
-  it('shows six text-only menu links in order with unchanged destinations and grouped separators', async () => {
+  it('shows seven text-only menu links in order with unchanged destinations and grouped separators', async () => {
     renderPage();
     const nav = screen.getByRole('navigation', { name: '組立メニュー' });
     const links = within(nav).getAllByRole('link');
     expect(links.map(link => link.getAttribute('aria-label') || link.textContent?.trim())).toEqual([
-      '見る', '作る・直す', '使う', '記録確認', '製品構成', '訓練'
+      '見る', '作る・直す', '使う', '記録確認', 'チェックシート', '製品構成', '訓練'
     ]);
     expect(links.map(link => link.getAttribute('href'))).toEqual([
       '/kiosk/assembly/manuals',
       '/kiosk/assembly/manuals/workshop',
       '/kiosk/assembly/library?focus=templates',
       '/kiosk/assembly/record-approvals',
+      '/kiosk/assembly/check-sheets',
       '/kiosk/assembly/traceability',
       '/kiosk/assembly/training'
     ]);
     expect(nav.querySelector('svg')).toBeNull();
     expect(within(nav).queryByText('手順書')).not.toBeInTheDocument();
     expect(within(nav).queryByText('手順を作る')).not.toBeInTheDocument();
-    for (const index of [1, 3]) {
+    for (const index of [1, 4]) {
       const separator = links[index].nextElementSibling;
       expect(separator).toHaveAttribute('aria-hidden', 'true');
       expect(separator).toHaveClass('w-px', 'h-7');
@@ -246,6 +247,7 @@ describe('KioskAssemblyHomePage', () => {
       '/kiosk/assembly/library?focus=templates'
     );
     expect(screen.queryByRole('link', { name: '閲覧順設定' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: '組立メニュー' })).getByRole('link', { name: 'チェックシート' })).toHaveAttribute('href', '/kiosk/assembly/check-sheets');
     expect(screen.getByRole('link', { name: '記録確認' })).toHaveAttribute('href', '/kiosk/assembly/record-approvals');
     fireEvent.change(screen.getByLabelText('製番'), { target: { value: 'asmtest-a' } });
 

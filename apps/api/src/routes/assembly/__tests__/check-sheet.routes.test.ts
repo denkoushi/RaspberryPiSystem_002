@@ -9,11 +9,15 @@ import { AssemblyCheckSheetService } from '../../../services/assembly/check-shee
 import { parseCheckSheetXlsx } from '../../../services/assembly/check-sheet/check-sheet-xlsx-parser.js';
 import { normalizeCheckSheet } from '../../../services/assembly/check-sheet/check-sheet-normalizer.js';
 import { makeCheckSheetWorkbook } from '../../../services/assembly/check-sheet/__tests__/check-sheet.fixture.js';
+import { requireClientDevice } from '../../kiosk/shared.js';
 import { registerAssemblyCheckSheetRoutes } from '../check-sheets.js';
 
 // Do not load local .env files or connect to a shared database in contract tests.
 vi.mock('../../../config/env.js', () => ({ env: { NODE_ENV: 'test', LOG_LEVEL: 'silent', JWT_ACCESS_SECRET: 'check-sheet-test-only-secret' } }));
-vi.mock('../shared.js', () => ({ tryGetClientDevice: async () => ({ id: 'synthetic-device', name: '組立1-01' }) }));
+vi.mock('../../kiosk/shared.js', () => ({ requireClientDevice: vi.fn(async (key: unknown) => {
+  if (key !== 'kiosk') throw new ApiError(401, '端末認証が必要です');
+  return { clientDevice: { id: 'synthetic-device', name: '組立1-01' } };
+}) }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {} }));
 vi.mock('../../../services/file-storage/file-storage-runtime.js', () => ({ getFileStorageRuntime: vi.fn() }));
 
@@ -40,7 +44,10 @@ describe('check-sheet routes', () => {
     app = Fastify();
     registerErrorHandler(app);
     await app.register(multipart);
-    await app.register(async (api: FastifyInstance) => registerAssemblyCheckSheetRoutes(api, { allowView: authorizeRoles('ADMIN', 'MANAGER', 'VIEWER'), allowWriteKiosk: authorizeRoles('ADMIN', 'MANAGER') }, service), { prefix: '/api' });
+    await app.register(async (api: FastifyInstance) => registerAssemblyCheckSheetRoutes(api, { allowView: authorizeRoles('ADMIN', 'MANAGER', 'VIEWER'), allowWriteKiosk: async (request, reply) => {
+      if (request.headers.authorization) return authorizeRoles('ADMIN', 'MANAGER')(request, reply);
+      await requireClientDevice(request.headers['x-client-key']);
+    } }, service), { prefix: '/api' });
   });
   afterEach(async () => { await app.close(); vi.restoreAllMocks(); });
 
@@ -55,7 +62,7 @@ describe('check-sheet routes', () => {
     expect(importer).toHaveBeenCalledWith(buffer, 'synthetic.xlsx', '合成チェックシート');
   });
 
-  it.each(['MANAGER', 'VIEWER'])('rejects both write routes for %s', async (role) => {
+  it.each(['VIEWER'])('rejects both write routes for %s', async (role) => {
     const importer = vi.spyOn(service, 'importWorkbook');
     const saver = vi.spyOn(service, 'saveRevision');
     for (const path of ['imports', 'revisions']) {
@@ -66,22 +73,49 @@ describe('check-sheet routes', () => {
     expect(saver).not.toHaveBeenCalled();
   });
 
-  it('rejects unauthenticated writes, including a kiosk key', async () => {
-    for (const path of ['imports', 'revisions']) {
-      const response = await app.inject({ method: 'POST', url: `/api/assembly/check-sheets/${path}`, headers: { 'x-client-key': 'kiosk' }, payload: {} });
-      expect(response.statusCode).toBe(401);
+  it('rejects unauthenticated writes and invalid kiosk keys', async () => {
+    for (const key of [undefined, 'invalid']) {
+      for (const path of ['imports', 'revisions']) {
+        const response = await app.inject({ method: 'POST', url: `/api/assembly/check-sheets/${path}`, headers: key ? { 'x-client-key': key } : {}, payload: {} });
+        expect(response.statusCode).toBe(401);
+      }
     }
   });
 
-  it('saves edited metadata with the authenticated user and requested root', async () => {
+  it.each(['ADMIN', 'MANAGER'])('saves edited metadata with the authenticated %s user and requested root', async (role) => {
     const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(await makeCheckSheetWorkbook()));
     proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
     proposal.modelCode = 'EDITED';
     const saver = vi.spyOn(service, 'saveRevision').mockResolvedValue({ id, ...proposal } as Awaited<ReturnType<AssemblyCheckSheetService['saveRevision']>>);
     const payload = { importId: id, revisionRootId: id, proposal };
-    const response = await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/revisions', headers: headers('ADMIN'), payload });
+    const response = await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/revisions', headers: { ...headers(role), 'x-client-key': 'kiosk' }, payload });
     expect(response.statusCode).toBe(200);
     expect(saver).toHaveBeenCalledWith(payload, id);
+  });
+
+  it('imports and saves with only a kiosk key, recording the device actor', async () => {
+    const buffer = await makeCheckSheetWorkbook();
+    const proposal = normalizeCheckSheet(await parseCheckSheetXlsx(buffer));
+    proposal.departmentRoleMembers = { 制御設計担当: ['00000000-0000-4000-8000-000000000003'] };
+    const importer = vi.spyOn(service, 'importWorkbook').mockResolvedValue({ importId: id, sheetNames: ['合成チェックシート'], proposal });
+    const saver = vi.spyOn(service, 'saveRevision').mockResolvedValue({ id, ...proposal } as Awaited<ReturnType<AssemblyCheckSheetService['saveRevision']>>);
+    const multipart = upload(buffer);
+    const response = await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/imports', ...multipart,
+      headers: { 'content-type': multipart.headers['content-type'], 'x-client-key': 'kiosk' } });
+    expect(response.statusCode).toBe(200);
+    expect(importer).toHaveBeenCalledWith(buffer, 'synthetic.xlsx', undefined);
+    const payload = { importId: response.json().importId, proposal: response.json().proposal };
+    const saved = await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/revisions', headers: { 'x-client-key': 'kiosk' }, payload });
+    expect(saved.statusCode).toBe(200);
+    expect(saver).toHaveBeenCalledWith(payload, 'client:synthetic-device');
+  });
+
+  it('rejects saving when the authenticated device can no longer be resolved', async () => {
+    vi.spyOn(await import('../shared.js'), 'tryGetClientDevice').mockResolvedValueOnce(null);
+    const saver = vi.spyOn(service, 'saveRevision');
+    const response = await app.inject({ method: 'POST', url: '/api/assembly/check-sheets/revisions', headers: { 'x-client-key': 'kiosk' }, payload: {} });
+    expect(response.statusCode).toBe(401);
+    expect(saver).not.toHaveBeenCalled();
   });
 
   it.each([{}, { 制御設計担当: [] }, { constructor: [] }])('rejects empty or missing department members: %j', async (members) => {
