@@ -12,15 +12,17 @@ export type PagedDataset = 'purchase' | 'schedule' | 'placements';
 type StagingState = PurchaseVersion & { nextPage: number; pageCount: number; pageSize: number; knownFseibans?: string[] };
 type StagingRow = BasePurchaseTuple | ScheduleTuple | PlacementTuple;
 const stagingStores = { purchase: 'stagingPurchase', schedule: 'stagingSchedule', placements: 'stagingPlacements' } as const;
+type PhysicalStore = PagedDataset | typeof stagingStores[PagedDataset];
+type LivePointer = { liveStore: PhysicalStore };
 type Versions = Partial<MobileDataVersions> & { purchase?: PurchaseVersion };
 type Replacement = { purchase?: MobilePurchaseSnapshot; purchaseEnrichment?: PurchaseEnrichmentSnapshot; schedule?: ScheduleSnapshot; placements?: PlacementsSnapshot };
 interface LocalDb extends DBSchema {
   purchaseEnrichment: { key: string; value: PurchaseEnrichmentSnapshot };
   known: { key: string; value: string[] };
-  metadata: { key: PagedDataset | 'purchaseEnrichment' | `staging:${PagedDataset}`; value: PurchaseVersion };
-  stagingPurchase: { key: number; value: PurchaseRecord };
-  stagingSchedule: { key: number; value: ScheduleRecord };
-  stagingPlacements: { key: string; value: LocalPlacementRow };
+  metadata: { key: PagedDataset | 'purchaseEnrichment' | `staging:${PagedDataset}` | `live:${PagedDataset}`; value: PurchaseVersion | LivePointer };
+  stagingPurchase: { key: number; value: PurchaseRecord; indexes: { purchaseOrderNo: string } };
+  stagingSchedule: { key: number; value: ScheduleRecord; indexes: { productNo: string; fseiban: string } };
+  stagingPlacements: { key: string; value: LocalPlacementRow; indexes: { manufacturingOrderBarcodeRaw: string } };
   placements: { key: string; value: LocalPlacementRow; indexes: { manufacturingOrderBarcodeRaw: string } };
   purchase: { key: number; value: PurchaseRecord; indexes: { purchaseOrderNo: string } };
   schedule: { key: number; value: ScheduleRecord; indexes: { productNo: string; fseiban: string } };
@@ -41,9 +43,26 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
   let readDisabled = false;
   let knownFseibans: string[] = [];
   const staging = new Map<PagedDataset, { state: StagingState; rows: StagingRow[] }>();
-  function db() {
-    dbPromise ??= typeof indexedDB === 'undefined' ? Promise.resolve(null) : openDB<LocalDb>(name, 4, {
-      upgrade(database, oldVersion) {
+  const liveStores = { purchase: 'purchase', schedule: 'schedule', placements: 'placements' } as {
+    [K in PagedDataset]: K | typeof stagingStores[K]
+  };
+  let pointerUpdate = Promise.resolve();
+  function setLiveStore<K extends PagedDataset>(kind: K, store: typeof liveStores[K]) { liveStores[kind] = store; }
+  function inactiveStore<K extends PagedDataset>(kind: K): K | typeof stagingStores[K] {
+    return liveStores[kind] === kind ? stagingStores[kind] : kind;
+  }
+  async function refreshPointers(database: IDBPDatabase<LocalDb>) {
+    const tx = database.transaction('metadata');
+    const kinds = ['purchase', 'schedule', 'placements'] as const;
+    const pointers = await Promise.all(kinds.map((kind) => tx.store.get(`live:${kind}`) as Promise<LivePointer | undefined>));
+    kinds.forEach((kind, i) => {
+      // Absent pointers are existing installs, whose original stores remain live.
+      setLiveStore(kind, pointers[i]?.liveStore === stagingStores[kind] ? stagingStores[kind] : kind);
+    });
+  }
+  async function db(waitForPointer = true) {
+    dbPromise ??= typeof indexedDB === 'undefined' ? Promise.resolve(null) : openDB<LocalDb>(name, 5, {
+      upgrade(database, oldVersion, _newVersion, tx) {
         if (oldVersion < 1) {
           database.createObjectStore('metadata');
           database.createObjectStore('known');
@@ -64,11 +83,31 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
           database.createObjectStore('stagingSchedule', { keyPath: 'ordinal' });
           database.createObjectStore('stagingPlacements', { keyPath: 'id' });
         }
+        if (oldVersion < 5) {
+          // Staging is re-downloadable; indexing 100k staged rows here would stall the upgrade on phones.
+          for (const kind of ['purchase', 'schedule', 'placements'] as const) {
+            void tx.objectStore(stagingStores[kind]).clear();
+            void tx.objectStore('metadata').delete(`staging:${kind}`);
+          }
+          tx.objectStore('stagingPurchase').createIndex('purchaseOrderNo', 'purchaseOrderNo');
+          tx.objectStore('stagingSchedule').createIndex('productNo', 'productNo');
+          tx.objectStore('stagingSchedule').createIndex('fseiban', 'fseiban');
+          tx.objectStore('stagingPlacements').createIndex('manufacturingOrderBarcodeRaw', 'manufacturingOrderBarcodeRaw');
+        }
       },
       // A newer build upgrading the schema must not wait on this tab; reopen on the next read.
       blocking() { const current = dbPromise; dbPromise = undefined; void current?.then((database) => database?.close()); }
+    }).then(async (database) => {
+      try { await refreshPointers(database); } catch {
+        for (const kind of ['purchase', 'schedule', 'placements'] as const) setLiveStore(kind, kind);
+      }
+      return database;
     }).catch(() => null);
-    return dbPromise;
+    const database = await dbPromise;
+    if (waitForPointer) await pointerUpdate;
+    // Another tab or store instance may have flipped a buffer since this one cached its pointers.
+    if (database) await refreshPointers(database).catch(() => undefined);
+    return database;
   }
   function index<T>(rows: T[], key: (row: T) => string) {
     const map = new Map<string, T[]>();
@@ -80,28 +119,28 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
     async listPlacements(): Promise<LocalPlacementRow[]> {
       if (readDisabled) return [];
       const database = await db();
-      return database ? database.getAll('placements') : [...placements.values()].map((row) => ({ ...row }));
+      return database ? database.getAll(liveStores.placements) : [...placements.values()].map((row) => ({ ...row }));
     },
     async listPlacementsByManufacturingOrder(order: string): Promise<LocalPlacementRow[]> {
       if (readDisabled) return [];
       const database = await db();
-      return database ? database.getAllFromIndex('placements', 'manufacturingOrderBarcodeRaw', order)
+      return database ? database.getAllFromIndex(liveStores.placements, 'manufacturingOrderBarcodeRaw', order)
         : [...placements.values()].filter((row) => row.manufacturingOrderBarcodeRaw === order).map((row) => ({ ...row }));
     },
     async listScheduleByProductNo(order: string): Promise<ProductionScheduleLookupRow[]> {
       if (readDisabled) return [];
       const database = await db();
-      return database ? ordered(await database.getAllFromIndex('schedule', 'productNo', order)) : productNo.get(order) ?? [];
+      return database ? ordered(await database.getAllFromIndex(liveStores.schedule, 'productNo', order)) : productNo.get(order) ?? [];
     },
     async removePlacement(id: string) {
       const database = await db();
-      if (database) await database.delete('placements', id); else placements.delete(id);
+      if (database) await database.delete(liveStores.placements, id); else placements.delete(id);
       notify();
     },
     async restorePlacement(row: LocalPlacementRow) {
       const database = await db();
       if (database) {
-        const tx = database.transaction('placements', 'readwrite');
+        const tx = database.transaction(liveStores.placements, 'readwrite');
         if (!await tx.store.get(row.id)) await tx.store.put(row);
         await tx.done;
       } else if (!placements.has(row.id)) placements.set(row.id, { ...row });
@@ -111,7 +150,7 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
       const database = await db();
       if (!database) return { ...versions };
       const tx = database.transaction('metadata');
-      const [p, s, b, e] = await Promise.all([tx.store.get('purchase'), tx.store.get('schedule'), tx.store.get('placements'), tx.store.get('purchaseEnrichment')]);
+      const [p, s, b, e] = await Promise.all([tx.store.get('purchase') as Promise<PurchaseVersion | undefined>, tx.store.get('schedule') as Promise<PurchaseVersion | undefined>, tx.store.get('placements') as Promise<PurchaseVersion | undefined>, tx.store.get('purchaseEnrichment') as Promise<PurchaseVersion | undefined>]);
       return { ...(p ? { purchase: p } : {}), ...(s ? { schedule: s } : {}), ...(b ? { placements: b } : {}), ...(e ? { purchaseEnrichment: e } : {}) };
     },
     async stagingState(kind: PagedDataset): Promise<StagingState | undefined> {
@@ -121,8 +160,12 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
     async discardStaging(kind: PagedDataset) {
       const database = await db();
       if (!database) { staging.delete(kind); return; }
-      const tx = database.transaction(['metadata', stagingStores[kind]], 'readwrite');
-      await Promise.all([tx.objectStore(stagingStores[kind]).clear(), tx.objectStore('metadata').delete(`staging:${kind}`), tx.done]);
+      const target = inactiveStore(kind);
+      const stateTx = database.transaction('metadata', 'readwrite');
+      await Promise.all([stateTx.store.delete(`staging:${kind}`), stateTx.done]);
+      const tx = database.transaction(target, 'readwrite');
+      await Promise.all([tx.store.clear(), tx.done]);
+      await refreshPointers(database);
     },
     async writeStagingPage(kind: PagedDataset, version: PurchaseVersion, page: number, pageCount: number,
       rows: StagingRow[], pageSize: number, known?: string[]) {
@@ -150,125 +193,159 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
         staging.set(kind, { state, rows: values });
         return;
       }
-      const tx = database.transaction(['metadata', stagingStores[kind]], 'readwrite');
+      const target = inactiveStore(kind);
+      const previous = await database.get('metadata', `staging:${kind}`) as StagingState | undefined;
+      const state = nextState(previous);
+      const tx = database.transaction(target, 'readwrite');
       const completed = tx.done.catch(() => {});
       try {
-        const previous = await tx.objectStore('metadata').get(`staging:${kind}`) as StagingState | undefined;
-        const state = nextState(previous);
         if (!previous || previous.version !== version.version || previous.pageSize !== pageSize ||
-            previous.pageCount !== pageCount || previous.format !== version.format) await tx.objectStore(stagingStores[kind]).clear();
+            previous.pageCount !== pageCount || previous.format !== version.format) await tx.objectStore(target).clear();
         for (let start = 0; start < rows.length; start += 1000) {
           await Promise.all(rows.slice(start, start + 1000).map((row, i) => {
             const ordinal = offset + start + i;
             const value = kind === 'purchase' ? { ...unpackBasePurchase(row as BasePurchaseTuple), ordinal }
               : kind === 'schedule' ? { ...unpackSchedule(row as ScheduleTuple), ordinal } : unpackPlacement(row as PlacementTuple);
-            return tx.objectStore(stagingStores[kind]).put(value);
+            return tx.objectStore(target).put(value);
           }));
         }
-        await tx.objectStore('metadata').put(state, `staging:${kind}`);
         await tx.done;
       } catch (error) {
         try { tx.abort(); } catch { /* Already aborted or committed. */ }
         await completed;
         throw error;
       }
+      const stateTx = database.transaction('metadata', 'readwrite');
+      await Promise.all([stateTx.store.put(state, `staging:${kind}`), stateTx.done]);
     },
     async promoteStaging(kind: PagedDataset) {
-      const database = await db();
-      if (!database) {
-        const staged = staging.get(kind);
-        if (!staged || staged.state.nextPage !== staged.state.pageCount + 1) throw new Error('Mobile staging incomplete');
-        if (kind === 'purchase') {
-          purchase = index(staged.rows.map((row, ordinal) => ({ ...unpackBasePurchase(row as BasePurchaseTuple), ordinal })), (row) => row.purchaseOrderNo);
-        } else if (kind === 'schedule') {
-          const rows = staged.rows.map((row, ordinal) => ({ ...unpackSchedule(row as ScheduleTuple), ordinal }));
-          productNo = index(rows, (row) => row.productNo); fseiban = index(rows, (row) => row.fseiban);
-          knownFseibans = staged.state.knownFseibans!;
-        } else {
-          placements = new Map(staged.rows.map((row) => { const value = unpackPlacement(row as PlacementTuple); return [value.id, value]; }));
-        }
-        const { version, dataUpdatedAt, format } = staged.state;
-        versions[kind] = { version, dataUpdatedAt, ...(format === 2 ? { format } : {}) };
-        staging.delete(kind);
-      } else {
-        const tx = database.transaction(['metadata', kind, stagingStores[kind], 'known'], 'readwrite');
-        let aborted = false;
-        tx.addEventListener('abort', () => { aborted = true; }, { once: true });
-        const completed = tx.done.then(() => true, () => false);
-        try {
-          const state = await tx.objectStore('metadata').get(`staging:${kind}`) as StagingState | undefined;
-          if (!state || state.nextPage !== state.pageCount + 1) throw new Error('Mobile staging incomplete');
-          await tx.objectStore(kind).clear();
-          let cursor = await tx.objectStore(stagingStores[kind]).openCursor();
-          while (cursor) {
-            await tx.objectStore(kind).put(cursor.value);
-            cursor = await cursor.continue();
+      const previousUpdate = pointerUpdate;
+      let releasePointer!: () => void;
+      // Reserve the flip before yielding, so concurrent reads wait for the committed pointer.
+      pointerUpdate = new Promise<void>((resolve) => { releasePointer = resolve; });
+      try {
+        await previousUpdate;
+        const database = await db(false);
+        if (!database) {
+          const staged = staging.get(kind);
+          if (!staged || staged.state.nextPage !== staged.state.pageCount + 1) throw new Error('Mobile staging incomplete');
+          if (kind === 'purchase') {
+            purchase = index(staged.rows.map((row, ordinal) => ({ ...unpackBasePurchase(row as BasePurchaseTuple), ordinal })), (row) => row.purchaseOrderNo);
+          } else if (kind === 'schedule') {
+            const rows = staged.rows.map((row, ordinal) => ({ ...unpackSchedule(row as ScheduleTuple), ordinal }));
+            productNo = index(rows, (row) => row.productNo); fseiban = index(rows, (row) => row.fseiban);
+            knownFseibans = staged.state.knownFseibans!;
+          } else {
+            placements = new Map(staged.rows.map((row) => { const value = unpackPlacement(row as PlacementTuple); return [value.id, value]; }));
           }
-          if (kind === 'schedule') await tx.objectStore('known').put(state.knownFseibans!, 'fseibans');
-          const { version, dataUpdatedAt, format } = state;
-          await tx.objectStore('metadata').put({ version, dataUpdatedAt, ...(format === 2 ? { format } : {}) }, kind);
-          await tx.objectStore(stagingStores[kind]).clear();
-          await tx.objectStore('metadata').delete(`staging:${kind}`);
-          await tx.done;
-        } catch (error) {
-          let abortRequested = false;
-          try { tx.abort(); abortRequested = true; } catch { /* Already aborted or committed. */ }
-          const committed = await completed;
-          if (committed || (!abortRequested && !aborted)) readDisabled = true;
-          throw error;
+          const { version, dataUpdatedAt, format } = staged.state;
+          versions[kind] = { version, dataUpdatedAt, ...(format === 2 ? { format } : {}) };
+          staging.delete(kind);
+        } else {
+          const target = inactiveStore(kind);
+          const tx = database.transaction(kind === 'schedule' ? ['metadata', 'known'] : ['metadata'], 'readwrite');
+          let aborted = false;
+          tx.addEventListener('abort', () => { aborted = true; }, { once: true });
+          const completed = tx.done.then(() => true, () => false);
+          try {
+            const state = await tx.objectStore('metadata').get(`staging:${kind}`) as StagingState | undefined;
+            if (!state || state.nextPage !== state.pageCount + 1) throw new Error('Mobile staging incomplete');
+            await tx.objectStore('metadata').put({ liveStore: target }, `live:${kind}`);
+            if (kind === 'schedule') await tx.objectStore('known').put(state.knownFseibans!, 'fseibans');
+            const { version, dataUpdatedAt, format } = state;
+            await tx.objectStore('metadata').put({ version, dataUpdatedAt, ...(format === 2 ? { format } : {}) }, kind);
+            await tx.objectStore('metadata').delete(`staging:${kind}`);
+            await tx.done;
+            setLiveStore(kind, target);
+          } catch (error) {
+            let abortRequested = false;
+            try { tx.abort(); abortRequested = true; } catch { /* Already aborted or committed. */ }
+            const committed = await completed;
+            if (committed || (!abortRequested && !aborted)) readDisabled = true;
+            throw error;
+          }
         }
-      }
-      readDisabled = false;
-      notify();
+        readDisabled = false;
+        notify();
+      } finally { releasePointer(); }
     },
     async replace(next: Replacement) {
       const database = await db();
       if (database) {
-        // Clear, rows and version commit together. Abort leaves the entire previous snapshot intact.
-        const tx = database.transaction(['metadata', 'purchase', 'schedule', 'known', 'placements', 'purchaseEnrichment'], 'readwrite');
-        let aborted = false;
-        tx.addEventListener('abort', () => { aborted = true; }, { once: true });
-        // Observe rejection immediately, even if a request fails before we await done.
-        const completed = tx.done.then(() => true, () => false);
-        try {
-          for (const kind of ['purchase', 'schedule', 'placements'] as const) {
-            const snapshot = next[kind];
-            if (!snapshot) continue;
-            await tx.objectStore(kind).clear();
-            // Await bounded batches so 225k IDB requests are never queued at once.
-            for (let offset = 0; offset < snapshot.rows.length; offset += 1000) {
+        const targets = { ...liveStores };
+        function setTarget<K extends PagedDataset>(kind: K, target: typeof liveStores[K]) { targets[kind] = target; }
+        for (const kind of ['purchase', 'schedule', 'placements'] as const) {
+          const snapshot = next[kind];
+          if (!snapshot) continue;
+          const target = inactiveStore(kind);
+          setTarget(kind, target);
+          // A full replacement supersedes paged staging. Keep the large clear off metadata.
+          const stagingTx = database.transaction('metadata', 'readwrite');
+          await Promise.all([stagingTx.store.delete(`staging:${kind}`), stagingTx.done]);
+          const clearTx = database.transaction(target, 'readwrite');
+          await Promise.all([clearTx.store.clear(), clearTx.done]);
+          for (let offset = 0; offset < snapshot.rows.length; offset += 1000) {
+            const rowTx = database.transaction(target, 'readwrite');
+            const completed = rowTx.done.catch(() => {});
+            try {
               if (kind === 'purchase' && next.purchase) {
                 const rows = 'format' in next.purchase
                   ? next.purchase.rows.slice(offset, offset + 1000).map(unpackBasePurchase)
                   : next.purchase.rows.slice(offset, offset + 1000).map(unpackPurchase);
-                await Promise.all(rows.map((row, i) => tx.objectStore('purchase').put({ ...row, ordinal: offset + i })));
+                await Promise.all(rows.map((row, i) => rowTx.objectStore(target).put({ ...row, ordinal: offset + i })));
               } else if (kind === 'placements' && next.placements) {
                 await Promise.all(next.placements.rows.slice(offset, offset + 1000).map((row) =>
-                  tx.objectStore('placements').put(unpackPlacement(row))));
+                  rowTx.objectStore(target).put(unpackPlacement(row))));
               } else if (kind === 'schedule' && next.schedule) {
                 await Promise.all(next.schedule.rows.slice(offset, offset + 1000).map((row, i) =>
-                  tx.objectStore('schedule').put({ ...unpackSchedule(row), ordinal: offset + i })));
+                  rowTx.objectStore(target).put({ ...unpackSchedule(row), ordinal: offset + i })));
               }
+              await rowTx.done;
+            } catch (error) {
+              try { rowTx.abort(); } catch { /* Already aborted or committed; only the inactive buffer changed. */ }
+              await completed;
+              throw error;
             }
-            await tx.objectStore('metadata').put({ version: snapshot.version, dataUpdatedAt: snapshot.dataUpdatedAt, ...('format' in snapshot ? { format: snapshot.format } : {}) }, kind);
           }
-          if (next.purchase && !('format' in next.purchase)) {
-            await tx.objectStore('purchaseEnrichment').clear();
-            await tx.objectStore('metadata').delete('purchaseEnrichment');
-          } else if (next.purchaseEnrichment) {
-            await tx.objectStore('purchaseEnrichment').put(next.purchaseEnrichment, 'current');
-            await tx.objectStore('metadata').put({ version: next.purchaseEnrichment.version,
-              dataUpdatedAt: next.purchaseEnrichment.dataUpdatedAt }, 'purchaseEnrichment');
-          }
-          if (next.schedule) await tx.objectStore('known').put(next.schedule.knownFseibans, 'fseibans');
-          await tx.done;
-        } catch (error) {
-          let abortRequested = false;
-          try { tx.abort(); abortRequested = true; } catch { /* May already be aborted or committed. */ }
-          const committed = await completed;
-          if (committed || (!abortRequested && !aborted)) readDisabled = true;
-          throw error;
         }
+        const previousUpdate = pointerUpdate;
+        let releasePointer!: () => void;
+        pointerUpdate = new Promise<void>((resolve) => { releasePointer = resolve; });
+        try {
+          await previousUpdate;
+          const tx = database.transaction(['metadata', 'known', 'purchaseEnrichment'], 'readwrite');
+          let aborted = false;
+          tx.addEventListener('abort', () => { aborted = true; }, { once: true });
+          const completed = tx.done.then(() => true, () => false);
+          try {
+            for (const kind of ['purchase', 'schedule', 'placements'] as const) {
+              const snapshot = next[kind];
+              if (!snapshot) continue;
+              await tx.objectStore('metadata').put({ liveStore: targets[kind] }, `live:${kind}`);
+              await tx.objectStore('metadata').put({ version: snapshot.version, dataUpdatedAt: snapshot.dataUpdatedAt,
+                ...('format' in snapshot ? { format: snapshot.format } : {}) }, kind);
+            }
+            if (next.purchase && !('format' in next.purchase)) {
+              await tx.objectStore('purchaseEnrichment').clear();
+              await tx.objectStore('metadata').delete('purchaseEnrichment');
+            } else if (next.purchaseEnrichment) {
+              await tx.objectStore('purchaseEnrichment').put(next.purchaseEnrichment, 'current');
+              await tx.objectStore('metadata').put({ version: next.purchaseEnrichment.version,
+                dataUpdatedAt: next.purchaseEnrichment.dataUpdatedAt }, 'purchaseEnrichment');
+            }
+            if (next.schedule) await tx.objectStore('known').put(next.schedule.knownFseibans, 'fseibans');
+            await tx.done;
+            for (const kind of ['purchase', 'schedule', 'placements'] as const) {
+              if (next[kind]) setLiveStore(kind, targets[kind]);
+            }
+          } catch (error) {
+            let abortRequested = false;
+            try { tx.abort(); abortRequested = true; } catch { /* May already be aborted or committed. */ }
+            const committed = await completed;
+            if (committed || (!abortRequested && !aborted)) readDisabled = true;
+            throw error;
+          }
+        } finally { releasePointer(); }
       } else {
         // Build replacements before publishing any part of the memory fallback.
         const p = next.purchase && ('format' in next.purchase
@@ -293,6 +370,7 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
         knownFseibans = nextKnownFseibans;
         delete versions.purchaseEnrichment;
         Object.assign(versions, nextVersions);
+        for (const kind of ['purchase', 'schedule', 'placements'] as const) if (next[kind]) staging.delete(kind);
       }
       readDisabled = false;
       notify();
@@ -306,9 +384,9 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
           const rows = purchase.get(order) ?? [];
           return { purchaseOrderNo: order, rows: versions.purchase.format === 2 ? enrichLocalPurchaseRows(rows, purchaseEnrichment!.rows) : rows };
         }
-        const tx = database.transaction(['metadata', 'purchase', 'purchaseEnrichment']);
-        const [meta, enrichmentMeta, rows] = await Promise.all([tx.objectStore('metadata').get('purchase'),
-          tx.objectStore('metadata').get('purchaseEnrichment'), tx.objectStore('purchase').index('purchaseOrderNo').getAll(order)]);
+        const tx = database.transaction(['metadata', liveStores.purchase, 'purchaseEnrichment']);
+        const [meta, enrichmentMeta, rows] = await Promise.all([tx.objectStore('metadata').get('purchase') as Promise<PurchaseVersion | undefined>,
+          tx.objectStore('metadata').get('purchaseEnrichment') as Promise<PurchaseVersion | undefined>, tx.objectStore(liveStores.purchase).index('purchaseOrderNo').getAll(order)]);
         // The enrichment value is large; read it once per version instead of on every scan.
         if (meta?.format === 2 && enrichmentMeta && enrichmentCache?.version !== enrichmentMeta.version) {
           const value = await tx.objectStore('purchaseEnrichment').get('current');
@@ -342,13 +420,13 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
           f = fseiban.get(seiban) ?? []; p = purchase.get(actual) ?? [];
         } else {
           // All lookup inputs come from one readonly transaction, including both version markers.
-          const tx = database.transaction(['metadata', 'purchase', 'schedule']);
+          const tx = database.transaction(['metadata', liveStores.purchase, liveStores.schedule]);
           const [pm, sm, tr, ar, fr, pr] = await Promise.all([
-            tx.objectStore('metadata').get('purchase'), tx.objectStore('metadata').get('schedule'),
-            tx.objectStore('schedule').index('productNo').getAll(transfer),
-            tx.objectStore('schedule').index('productNo').getAll(actual),
-            tx.objectStore('schedule').index('fseiban').getAll(seiban),
-            tx.objectStore('purchase').index('purchaseOrderNo').getAll(actual)
+            tx.objectStore('metadata').get('purchase') as Promise<PurchaseVersion | undefined>, tx.objectStore('metadata').get('schedule') as Promise<PurchaseVersion | undefined>,
+            tx.objectStore(liveStores.schedule).index('productNo').getAll(transfer),
+            tx.objectStore(liveStores.schedule).index('productNo').getAll(actual),
+            tx.objectStore(liveStores.schedule).index('fseiban').getAll(seiban),
+            tx.objectStore(liveStores.purchase).index('purchaseOrderNo').getAll(actual)
           ]);
           if (!pm || !sm) return null;
           t = ordered(tr); a = ordered(ar); f = ordered(fr); p = ordered(pr);

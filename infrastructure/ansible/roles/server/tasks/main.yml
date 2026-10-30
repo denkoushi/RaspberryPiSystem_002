@@ -100,6 +100,7 @@
     mode: '0750'
   loop:
     - "{{ repo_path }}/storage"
+    - "{{ repo_path }}/storage/haizen-app"
     - "{{ repo_path }}/storage/part-measurement-drawings-derivatives"
     - "{{ repo_path }}/storage/assembly-procedure-assets"
     - "{{ repo_path }}/storage/work-instruction-assets"
@@ -653,4 +654,8 @@
 
 - name: Deploy Pi5 power dispatcher
   ansible.builtin.import_tasks: power-dispatcher.yml
+  when: server_release_mode == 'full'
+
+- name: Deploy Pi5 Wi-Fi reconnect watchdog
+  ansible.builtin.import_tasks: wifi-reconnect.yml
   when: server_release_mode == 'full'

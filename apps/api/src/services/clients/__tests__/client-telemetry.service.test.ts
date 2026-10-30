@@ -10,7 +10,10 @@ import {
 import { prisma } from '../../../lib/prisma.js';
 import { deliverTelemetryNotice } from '../../kiosk-inquiry/system-notice-sources.js';
 import { KIOSK_ALERT_COOLDOWN_MS, KIOSK_NETWORK_ALERT_COOLDOWN_MS } from '../client-telemetry-alert-policy.js';
+import { deployWindowEndedAt } from '../kiosk-deploy-window.js';
 import { resolveRouteKey } from '../../alerts/alerts-config.js';
+
+vi.mock('../kiosk-deploy-window.js', () => ({ deployWindowEndedAt: vi.fn(async () => null) }));
 
 vi.mock('../../kiosk-inquiry/system-notice-sources.js', () => ({ deliverTelemetryNotice: vi.fn() }));
 
@@ -175,6 +178,36 @@ describe('OS update health delivery', () => {
 });
 
 describe('kiosk UI logs', () => {
+  it.each(['api_network', 'render_crash'])('suppresses %s without creating an Alert row during deploy', async (kind) => {
+    vi.mocked(deployWindowEndedAt).mockResolvedValueOnce(new Date(Date.now() + 60_000));
+    await storeClientLogs({ clientKey: 'key', clientId: 'placeholder', requestId: 'req', logs: [
+      { level: 'ERROR', message: 'failed', context: { category: 'kiosk_ui_error', kind, count: 99 } }
+    ] });
+    expect(deployWindowEndedAt).toHaveBeenCalledWith('pi4-real', expect.any(Date));
+    expect(prisma.clientLog.createMany).toHaveBeenCalled();
+    expect(prisma.clientLog.findMany).not.toHaveBeenCalled();
+    expect(prisma.alert.findFirst).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+  it('counts only errors after the deploy grace ends and resumes alerting', async () => {
+    vi.useFakeTimers();
+    const now = new Date('2026-10-30T00:00:00Z');
+    vi.setSystemTime(now);
+    vi.spyOn(process, 'uptime').mockReturnValue(3600);
+    const end = new Date(now.getTime() - 60_000);
+    vi.mocked(deployWindowEndedAt).mockResolvedValueOnce(end);
+    vi.mocked(prisma.clientLog.findMany).mockResolvedValue([{ context: { kind: 'api_network', count: 3 } }] as never);
+    vi.mocked(prisma.alert.findFirst).mockResolvedValue({ id: 'existing' } as never);
+    await storeClientLogs({ clientKey: 'key', clientId: 'placeholder', requestId: 'req', logs: [
+      { level: 'ERROR', message: 'failed', context: { category: 'kiosk_ui_error', kind: 'api_network' } }
+    ] });
+    expect(prisma.clientLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ createdAt: { gte: end } })
+    }));
+    expect(prisma.alert.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ type: 'kiosk-network-degraded' })
+    }));
+  });
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
   beforeEach(() => {
     vi.clearAllMocks();

@@ -44,6 +44,10 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Decision Log
 
+- Decision (2026-10-30 / Codex): paged dataset の昇格は既存の本体/staging store を交互に使い、`metadata` の `live:<kind>` ポインターと版（予定は `known` も）だけを同時更新する。ポインター無しは従来の本体 store を読む。ポインターは接続時にメモリーへ読み、昇格後に更新、replace/discard後に再取得する。
+  Rationale: Android 実機で10万行超のコピーtransactionが照合を長時間ブロックし、reloadで最初から再開していた。昇格では行storeを触らず、次版の開始/破棄だけ非live側をclearする。`replace()`はlive側を書き換える。DB v5はstaging側へ既存と同じ検索indexを追加するために必要で、storeの再作成や既存行のコピーは行わない。
+  Follow-up (2026-10-30): staging page は metadata 読取・非live行書込・進捗保存を分離し、`replace()` も非live側へ1000行単位で書いて最後にポインター・版・補完・knownを同時切替する。接続時のポインター読取失敗は従来storeへfallbackする。
+
 - Decision (2026-10-29 / Codex): mobile app shell の navigation を cache-first + 背景更新へ変更し、新版は次回起動から使う。`__raspi_kiosk_web_release` / `__raspi_web_runtime_recovery` 付き、キャッシュ無し、HTML の直接参照資産が欠ける場合は従来の network-first + 4秒 fallback を維持する。
   Rationale: network-first により deploy ごとに 6.5 MB（非圧縮）の main bundle を再取得し、現場回線で約60秒の白画面が発生した。旧画面の遅延読込資産を保持して背景更新する。キャッシュ利用時は navigation の maintenance / HTTP-error HTML よりキャッシュを優先するが、API の `isMaintenance` と release 検証 reload は引き続き有効。
 

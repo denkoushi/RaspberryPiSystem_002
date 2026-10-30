@@ -20,6 +20,8 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
+| アラートinboxの不正JSON・無通知スキップと保持期間 | [KB-431](./KB-431-alerts-inbox-silent-skips-and-retention.md) | 1件 | 2026-10-30: 約1万件の未配送、warn化・DB照合付き日次清掃・logrotate除外。旧ファイルはPi5に保管しSlack再送なし。 |
+| Pi5 Wi-Fi no-secrets 自動再接続 | [KB-430](./KB-430-pi5-wifi-no-secrets-reconnect.md) | 1件 | 2026-10-30 ルーター再起動後の切断継続・Gmail CSV取りこぼしと再接続タイマー。 |
 | 生産スケジュール（負荷調整・山崩し支援） | [KB-362-kiosk-load-balancing.md](./KB-362-kiosk-load-balancing.md) | 1件 | 3タブ·外注契約整合 **`cd42ebfe`**·Pi5 **`20260527-191646-1476`**·[ADR 外注上限](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md) |
 | 負荷調整×生産システム突合 | [KB-363-load-balancing-production-system-reconciliation.md](./KB-363-load-balancing-production-system-reconciliation.md) | 1件 | **FSIGENSHOYOYMD** vs 着手日·集計修正 **実装済**（PR #350）·検算 `reconcile-033-may-patterns.mjs` |
 | Pi5 Blue/Green cleanup / monitor lock handoff | [KB-400](./KB-400-pi5-bluegreen-cleanup-monitor-lock.md) | 1件 | **2026-07-13** cleanup handoff lock-conflict。最大30秒のcleanup専用再試行・manual mutation禁止・本番確認済み。 |
@@ -62,6 +64,7 @@ update-frequency: high
 | 業務 GLM（2台構成）の停止と再起動が止まり続けた件 | [KB-426](./KB-426-glm-tp2-crash-and-startup-hang.md) | 1件 | 2026-10-23: 停止は原因未確定（再現せず）。再起動の停止は Spark 2 の Wi-Fi の住所で待ち受けたため。VLLM_HOST_IP を固定して解消 |
 | DeepSeek V4.1-Flash-1017（DGX 2台）の業務チャットとコーディングの評価、測り直しの手順 | [KB-427](./KB-427-deepseek-v41-flash-local-eval.md) | 1件 | 2026-10-27: チャットは正答 110/116 だが誤り 5〜6（GLM 2）。コーディングは確認指示で Codex 並みだが 2〜3 倍遅い。業務 GLM・Codex のまま |
 | 切削01 の SD カード破損と、回収したカードの検査 | [KB-428](./KB-428-sessaku01-sd-card-failure.md) | 1件 | 2026-10-29: 全 31.3GB 読めて傷み 0、カード自身が書き込み禁止。寿命切れでなく個体不良の見込み。RoboDrill01/StoneBase01 は SSD 試験に合わせて計画交換 |
+| CVE-2026-98432(TCP の use-after-free)の暫定対策 | [KB-429](./KB-429-cve-2026-98432-mptcp-mitigation.md) | 1件 | 2026-10-30: 全台が修正前のカーネル。修正版が出るまで MPTCP を止め、tailscaled の待ち受けを TCP に戻す。stonebase で試験済み |
 | eMudhra G3B 中間 CA の不信頼化 | [KB-424](./KB-424-emudhra-g3b-distrust.md) | 1件 | OS/NSS の二層対策、標準ローリング更新経路、ロールバック。実機未反映。 |
 | AIセキュリティスキャン（2026-10・認可まわりの修正5件） | [KB-415](./KB-415-ai-security-scan-2026-10.md) | 1件 | 全体スキャンの指摘7件と対応、本番反映の証跡、未対応項目。 |
 | 外部侵入で運用不能になるリスクの低減（2026-10・復元確認/OS更新/失敗通知） | [KB-416](./KB-416-outside-intrusion-resilience-2026-10.md) | 1件 | 実機確認の結果、Pi5のOS更新と自動セキュリティ更新、バックアップ失敗通知、未対応項目。 |
@@ -474,7 +477,7 @@ update-frequency: high
 | [KB-145](./infrastructure/ansible-deployment.md#kb-145-backupjson新規作成時にgmail設定が消失する問題と健全性チェック追加) | backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加 | ✅ 解決済み |
 | [KB-157](./infrastructure/ansible-deployment.md#kb-157-pi3のstatus-agenttimerが無効化されていた問題) | Pi3のstatus-agent.timerが無効化されていた問題 | ✅ 解決済み |
 | [KB-158](./infrastructure/miscellaneous.md#kb-158-macのstatus-agent未設定問題とmacos対応) | Macのstatus-agent未設定問題とmacOS対応 | ✅ 解決済み |
-| [KB-159](./infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) | トークプラザ工場へのマルチサイト対応実装（inventory分離・プレフィックス命名規則） | ✅ 解決済み |
+| [KB-159](./infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) | トークプラザ別拠点構成の廃止 | 廃止済み |
 | [KB-160](./infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) | デプロイスクリプトのinventory引数必須化（誤デプロイ防止） | ✅ 解決済み |
 | [KB-161](./infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) | Dropbox basePathの分離対応（拠点別フォルダ分離） | ✅ 解決済み |
 | [KB-162](./infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) | デプロイスクリプトのinventory/playbookパス相対パス修正（Pi5上での実行時） | ✅ 解決済み |
@@ -502,7 +505,7 @@ update-frequency: high
 | [KB-218](./infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行) | SSH接続失敗の原因: fail2banによるIP Ban（存在しないユーザーでの認証試行） | ✅ 解決済み |
 | [KB-219](./infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題gitディレクトリがroot所有でデタッチ実行が失敗) | Pi5のGit権限問題: `.git`ディレクトリがroot所有でデタッチ実行が失敗 | ✅ 解決済み |
 | [KB-220](./infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) | NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される | ✅ 解決済み |
-| [KB-222](./infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同) | デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同 | ✅ 解決済み |
+| [KB-222](./infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題-旧別拠点用と標準inventoryの混同) | デプロイ時のinventory混同問題: 旧別拠点用と標準inventoryの混同 | ✅ 解決済み |
 | [KB-224](./infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題) | デプロイ時のマイグレーション未適用問題 | ✅ 解決済み |
 | [KB-226](./infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) | デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須） | ✅ 解決済み |
 | [KB-227](./infrastructure/ansible-deployment.md#kb-227-web-bundleデプロイ修正コード更新時のdocker再ビルド確実化) | Web bundleデプロイ修正: コード更新時のDocker再ビルド確実化 | ✅ 解決済み |
@@ -684,7 +687,7 @@ update-frequency: high
 - 2026-02-01: KB-226を更新（デプロイ方針の見直し: リモート実行のデフォルトデタッチ化実装）→ 2026-02-01に実装完了・デプロイ成功・実機検証完了（リモート実行時に自動的にデタッチモードで実行されること、`--foreground`オプションで前景実行可能なこと、`--attach`/`--status`でログ追尾・状態確認が正常に動作することを確認）
 - 2026-02-01: KB-220を追加（NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される）→ 2026-02-01に解決完了（Debianセキュリティポリシーの変更によりSHA1が拒否され、NodeSourceリポジトリを削除してデプロイ成功）
 - 2026-02-01: KB-221を追加（生産スケジュール納期日機能のUI改善（カスタムカレンダーUI実装））→ 2026-02-01に実装完了・CI成功・デプロイ成功・実機検証完了（カスタムカレンダーUI、今日/明日/明後日ボタン、自動確定、月ナビゲーション、React Hooksルール違反修正）
-- 2026-02-01: KB-222を追加（デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同）→ 2026-02-01に解決完了（inventory混同によりDNS名でデプロイ試行→失敗、標準手順（Tailscale IP経由）に戻してデプロイ成功）
+- 2026-02-01: KB-222を追加（デプロイ時のinventory混同問題: 旧別拠点用と標準inventoryの混同）→ 2026-02-01に解決完了（inventory混同によりDNS名でデプロイ試行→失敗、標準手順（Tailscale IP経由）に戻してデプロイ成功）
 - 2026-02-01: KB-223を追加（生産スケジュール備考のモーダル編集化と処理列追加）→ 2026-02-01に実装完了・CI成功・デプロイ成功・実機検証完了（備考モーダル編集化、備考2行表示、処理列追加、品番/製造order番号折り返し対応、データ整合性考慮）
 - 2026-02-01: KB-224を追加（デプロイ時のマイグレーション未適用問題）→ 2026-02-01に解決完了（デプロイ完了後にマイグレーションが未適用だったため、手動で`pnpm prisma migrate deploy`を実行して適用、デプロイ後チェックリストの徹底を確認）
 - 2026-02-02: KB-225を追加（キオスク入力フィールド保護ルールの実装と実機検証）→ 2026-02-02に実装完了・実機検証完了（入力フィールド削除・localStorage無効化・起動時防御・自動復旧機能を実装、IDとAPIキーが編集不可に改善、生産スケジュールの値が表示されることを確認）

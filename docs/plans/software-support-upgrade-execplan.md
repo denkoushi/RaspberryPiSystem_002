@@ -138,12 +138,19 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - [x] (2026-10-25) Brotli の脆弱性(CVE-2026-111497)対応として、API と kiosk-sop 生成の node:24-bookworm-slim を Node 24.21.0 の digest(sha256:2fe369e9…)から Node 24.22.1 の digest(index sha256:55fb5f5a…)へ差し替える別 PR を作成。土台は bookworm のままで、3件目の trixie 化とは分ける。
 - [x] (2026-10-29) PostgreSQL更新の手順2として、移行・比較・activateスクリプト、空DB初期化ガード、契約/ガード/E2Eテスト、[Runbook](../runbooks/postgres-15-to-18-upgrade.md)を追加。本番composeとDockerfile.apiは変更せず、切替は手順4で行う。
 
+- [x] (2026-10-29) PostgreSQL更新の手順3として、Macで読み取り専用の本番ダンプを使い試し移行・切戻しを実施。本番はPostgreSQL 15.17、DB 5.7GB、custom dump 242MB（SSH経由150秒）、コピーの復元82秒。preflight 3秒、migrate 100秒、停止＋activate 18は5秒、切戻しの停止＋activate 15は4秒。284行の比較レポートと拡張版（vector 0.8.7 / pg_trgm 1.6）は一致。Pi5は遅くなる見込みのため、保守時間は1時間を確保する。
+- [x] (2026-10-29) 手順4の切替PR用に、本番composeをpg18・新ボリューム・旧ボリュームread-only・起動ガードへ変更し、APIのPGDGクライアントを18へ更新。マージは移行当日のみ（Runbookの当日手順2）。標準デプロイはdbを再作成せず、migrate後に運用者が `activate --expect-major 18` で切り替える。本番移行は未実施。
+- [x] (2026-10-30) 本番移行を実施（切替PR #2398、修正PR #2404）。7:41の初回は旧dbコンテナがパスワードを環境変数で持ちmigrateが停止、自動でpg15へ戻した（停止約20秒、データ変更なし）。修正後、17:50開始で一括実行しRESULT=OK。Pi5の停止区間は719秒（migrate 579秒、activate 18は8秒、API/web再開100秒、migrate status確認19秒）。比較レポートの差分なし、PostgreSQL 18.6。旧ボリュームdb-dataは残し、移行時のダンプはMacへ写してsha256一致を確認。
+- [x] (2026-10-30) 3件目の Debian trixie 化: API と kiosk-sop 生成の基盤を node:24-trixie-slim(Node 24.22.2、index `sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446`、arm64 manifest `sha256:7924b020d1e9972de4d7838a7a8ab8c54ef0d6e51435d6a7d1dfa73c6f106241`)へ替え、PGDG を trixie-pgdg、t64 の部品名、最低版チェックを trixie の版に直した。Mac(arm64)で API イメージを作り、Debian 13.7・pg_dump 18.6・Python 3.13.5・ndlocr-lite・rapidocr・ansible・ffmpeg・pdftoppm が動くことを確認。圧縮サイズの手元見積もりは合計 1078966439 バイト、最大の層 619208532 バイト、33 層で予算内。kiosk-sop は生成照合と画面テスト 18 件が合格し、ソースのダイジェストだけ更新した。
+
 ## Surprises & Discoveries
 
+- trixie の python3-yaml(PyYAML 6.0.2)は pip で消せず、PyYAML 6.0.1 を指定する ndlocr-lite の導入が止まった。PyYAML 6.0.1 を `--ignore-installed` で先に pip 側へ入れて回避した。
 
 - Node 20 は 2026-04-30 でサポートが終わっており、点検時点で既に期限切れだった。
 - 業務 Hermes の中継部品は、標準反映がイメージの入れ替えを拒否する作りで、更新の通り道がまだ無い。
 - ESLint は既に 9 系へ更新済みだった。
+- 本番のdbコンテナは `POSTGRES_PASSWORD_FILE` 導入前に作られ、パスワードを環境変数で持っていた。移行スクリプトはComposeのdbのbindからパスワードファイルを取るよう修正した（#2404）。
 
 ## Decision Log
 

@@ -6,6 +6,6 @@ import { CheckSheetLibraryPage } from '../../features/assembly/checkSheet/CheckS
 
 export function KioskAssemblyCheckSheetsPage() {
   return <CheckSheetLibraryPage backLink={
-    <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex h-[60px] shrink-0 items-center px-6 text-[22px]')}>組立へ戻る</Link>
+    <Link to={KIOSK_ASSEMBLY_HOME_PATH} className={buttonClassName('ghostOnDark', 'inline-flex h-9 shrink-0 items-center !px-3 !py-0 text-base')}>組立へ戻る</Link>
   } />;
 }

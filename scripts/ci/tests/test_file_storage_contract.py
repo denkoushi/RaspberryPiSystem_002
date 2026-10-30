@@ -131,7 +131,7 @@ class FileStorageContractTest(unittest.TestCase):
             {entry["logical_key"] for entry in STORAGE_CONTRACT},
             {key for key in SERVER_MODEL["volumes"] if key in expected_keys},
         )
-        self.assertEqual(len(STORAGE_CONTRACT), 18)
+        self.assertEqual(len(STORAGE_CONTRACT), 19)
         self.assertTrue({"knowledge-assets-storage", "knowledge-git-storage"} <= expected_keys)
         for entry in STORAGE_CONTRACT:
             key = entry["logical_key"]
@@ -172,7 +172,7 @@ class FileStorageContractTest(unittest.TestCase):
             self.assertIn(source, BACKUP_SCRIPT)
 
     def test_knowledge_storage_is_in_runtime_rehearsal_and_disaster_recovery(self):
-        for suffix in ("knowledge-assets", "knowledge-git"):
+        for suffix in ("knowledge-assets", "knowledge-git", "assembly-check-sheet-sources"):
             runtime_path = f"/app/storage/{suffix}"
             for relative in ("scripts/ci/rehearse-release-runtime.sh", "infrastructure/docker/Dockerfile.api"):
                 self.assertIn(runtime_path, (ROOT / relative).read_text())

@@ -1,7 +1,7 @@
 # Pi Zero 棚スキャナー
 
 Pi Zero W / Zero 2 W のUSB HIDスキャナーを排他取得し、伝票を端末に割り当てた棚へ記録します。
-Python 3.9以上とDebianの`python3-evdev`のみを使用します。
+Python 3.9以上を使用し、USB HID入力にはDebianの`python3-evdev`が必要です。USB CDCシリアル入力は標準ライブラリのみで動作します。
 `/opt/zero-edge/zero-edge-agent`から`python3 -m zero_edge_agent`で起動できます。
 
 設定は`/etc/zero-edge-agent.conf`の`KEY="value"`形式です。
@@ -14,6 +14,9 @@ Python 3.9以上とDebianの`python3-evdev`のみを使用します。
 | `TLS_SKIP_VERIFY` | `0`（既定）は証明書検証、`1`は検証省略 |
 | `HID_DEVICE` | `/dev/input/event*`またはby-idパス。空ならキーボード能力で自動選択・再接続 |
 | `QUEUE_PATH` | 既定`/var/lib/zero-edge-agent/queue.db` |
+| `INPUT_MODE` | `evdev`（既定）またはUSB CDC入力の`serial` |
+| `SERIAL_DEVICE` | シリアル入力のttyパス。既定`/dev/ttyACM0` |
+| `READER_INIT_COMMANDS` | 接続時に送るASCIIコマンドを`;`で区切る。前後の空白・空項目は除外。既定は空（送信なし） |
 
 端末の配置ファイルは、上記設定、`/opt/zero-edge/zero-edge-agent/zero_edge_agent/*.py`、
 `/etc/systemd/system/zero-edge-agent.service`、SQLite DBとその`-wal`/`-shm`ファイルです。

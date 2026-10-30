@@ -5,6 +5,7 @@ describe('resolveFileStorageConfig', () => {
   it('keeps assembly procedure source and overlay assets on the durable path', () => {
     expect(DURABLE_FILE_NAMESPACES).toContain('assembly-procedure-assets');
     expect(DURABLE_FILE_NAMESPACES).toContain('work-instruction-assets');
+    expect(DURABLE_FILE_NAMESPACES).toContain('assembly-check-sheet-sources');
   });
 
   it('accepts consistent canonical and legacy settings', () => {

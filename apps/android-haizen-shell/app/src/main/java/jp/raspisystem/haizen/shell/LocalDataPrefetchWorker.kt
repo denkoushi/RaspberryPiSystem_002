@@ -132,6 +132,8 @@ class LocalDataPrefetchWorker(context: Context, parameters: WorkerParameters) : 
         private val downloadLock = Any()
         private fun preferences(context: Context) = context.getSharedPreferences("local-data", Context.MODE_PRIVATE)
 
+        fun clientKey(context: Context): String? = preferences(context).getString("client-key", null)
+
         fun setClientKey(context: Context, key: String) {
             preferences(context).edit().putString("client-key", key).apply()
             schedule(context)

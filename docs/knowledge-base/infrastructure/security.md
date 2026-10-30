@@ -348,6 +348,7 @@ update-frequency: medium
 - 正常な管理者編集やOSイメージ調整は、内容と由来を確認してから`group_vars/all.yml`と`group_vars/staging.yml`の`package_integrity_allowed_paths`へ絶対パスを追加する。完全一致のみ除外し、ワイルドカードは使わない。
 - 検査は`package-integrity-scan.sh`で実行し、差分・実行エラーは既存のアラートファイルへ、ログは夜間セキュリティレビューへ渡す。
 - 標準ローリング更新は`kiosk/tasks/security.yml`を実行しないため、PR #2378だけでは既存キオスクの置換が配布されなかった。共通タスク`kiosk/tasks/package-integrity.yml`をフル構築と`release_kiosk`から呼び、標準更新ではヘルス確認後に`terminal_release_mode: full`で適用する。適用失敗は警告として報告し、アプリのロールバック対象にしない。タスクとスキャン・logrotateテンプレートはCIのPi4配布対象に登録する。
+- Pi4の週次ClamAVエラーは、存在しないスキャン先・未更新DB・標準更新が`security.yml`を飛ばすことが原因。対象を`/home`・`/tmp`・`/var/tmp`・`/usr/local/bin`へ変更し、共通`kiosk/tasks/clamav.yml`を標準更新からも適用する。freshclamサービスは停止・無効化し、週次スキャン直前だけ低優先度・15分制限で更新する（更新失敗時も既存DBで続行、欠落パスは除外）。
 - キオスクのみNetworkManager設定を追加除外し、`/etc/sudoers.d/010_pi-nopasswd`はログインユーザーの初期設定と末尾改行まで完全一致する場合だけ除外する。
 - `generate-alert.sh`は複数行の詳細をJSONエスケープし、同秒の通知には連番を付ける。従来は複数行の通知が不正JSONとなり、取り込み時に捨てられていた。
 

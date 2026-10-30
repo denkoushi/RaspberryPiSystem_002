@@ -43,6 +43,8 @@ function previousPlanSummary(previousPlan) {
     sources: previousPlan.sources ?? [],
     filters: previousPlan.filters ?? [],
     ...(previousPlan.causeCategory !== undefined ? { causeCategory: previousPlan.causeCategory } : {}),
+    ...((previousPlan.contentSpan ?? previousPlan.diagnostics?.contentSpan) != null
+      ? { contentSpan: previousPlan.contentSpan ?? previousPlan.diagnostics?.contentSpan } : {}),
     semanticQuery: typeof previousPlan.semanticQuery === 'string' ? previousPlan.semanticQuery : '',
     sort: previousPlan.sort ?? null,
     limit: previousPlan.limit ?? null,
@@ -135,12 +137,12 @@ const CAUSE_SOURCE = 'nonconformity';
 // A classification bucket, never something a question asks for.
 const UNKNOWN_CAUSE = 'unknown';
 
-export const DEFAULT_PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-26b';
+export const DEFAULT_PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-28a';
 export const CANDIDATE_PLANNER_QUESTION_VERSION = 'planner-questions-2026-10-28a';
 export const PLANNER_QUESTION_VERSION = DEFAULT_PLANNER_QUESTION_VERSION;
 
 const QUESTION_TEXTS = {
-  [DEFAULT_PLANNER_QUESTION_VERSION]: {
+  ['planner-questions-2026-10-26b']: {
     hierarchyNote: '「配下の部署すべて」の選択肢は、発話がその階層だけを言い、より細かい部署を言っていないときに選ぶ。',
     contentCarry: '`request` の内容条件（何が起きたか）を、`previous_plan` の内容条件と比べて一つ選ぶ。',
   },
@@ -608,14 +610,15 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
         if (filter) dated.push(filter);
       }
       // A previous condition whose field the request names again is replaced, unless the request
-      // adds to it. A condition the request does not name is kept, unless the request drops it.
+      // adds to it. Only dropping, replacing, or starting anew may drop an unnamed condition.
       // Decided after the period filter, so a new period replaces the previous one.
       const named = new Set([...selected, ...dated].map((filter) => `${filter.source}\u0000${filter.field}`));
+      const canDrop = followUpAction === null || ['drop', 'replace', 'new'].includes(followUpAction);
       const carried = previousFilters.flatMap((filter, index) => {
         const same = named.has(`${filter.source}\u0000${filter.field}`);
         const decision = same
           ? chosen(answers[`add_${index}`], ['true', 'false']) === 'true'
-          : chosen(answers[`drop_${index}`], ['true', 'false']) !== 'true';
+          : !canDrop || chosen(answers[`drop_${index}`], ['true', 'false']) !== 'true';
         return decision ? [{ source: filter.source, field: filter.field, op: filter.op, values: [...filter.values] }] : [];
       });
       const pageFields = new Set(pageFilters.map((filter) => `${filter.source}\u0000${filter.field}`));
@@ -627,8 +630,9 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
       const judged = contentChoice === 'true' ? true : contentChoice === 'false' ? false : null;
       // A follow-up that does not restate its content keeps the previous content condition,
       // for example "そのうち三島工場資材課の" after "錆の不適合".
-      const carriedQuery = contentCarry === 'same' ? previousQuery : '';
-      const previousSpan = carriedQuery && typeof previousPlan?.contentSpan === 'string' ? previousPlan.contentSpan : null;
+      const carriedQuery = contentCarry === 'same'
+        ? previousPlan.contentSpan ?? previousPlan.diagnostics?.contentSpan ?? previousQuery : '';
+      const effectiveContentSpan = carriedQuery || contentSpan;
       // A short department form such as 「機構設計2課(製造)」 is not a listed term, so its pieces
       // would survive as content tokens; any token inside a selected value is part of the filter.
       const selectedValues = selected.flatMap((filter) => filter.values)
@@ -680,7 +684,7 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
           ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
-          ...(!breakdown ? (carriedQuery ? (previousSpan ? { contentSpan: previousSpan } : {}) : (contentSpan ? { contentSpan } : {})) : {}),
+          ...(!breakdown && effectiveContentSpan ? { contentSpan: effectiveContentSpan } : {}),
           ...(!breakdown && excludeShown ? { excludeShown: true } : {}),
         },
       };

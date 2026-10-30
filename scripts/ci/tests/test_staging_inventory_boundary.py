@@ -109,12 +109,11 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             self.assertIn("ansible_user:", example)
             self.assertIn("deploy_executor_host:", example)
 
-    def test_staging_does_not_reference_production_or_talkplaza_values(self) -> None:
+    def test_staging_does_not_reference_production_values(self) -> None:
         variables = (ANSIBLE / "group_vars" / "staging.yml").read_text(encoding="utf-8")
         inventory = (ANSIBLE / "inventory-staging.yml").read_text(encoding="utf-8")
         for text in (variables, inventory):
             self.assertNotIn("raspi4-assembly-01", text)
-            self.assertNotIn("talkplaza", text.lower())
             self.assertNotIn("100.", text)
             self.assertNotIn("192.168.", text)
         self.assertNotIn("/opt/RaspberryPiSystem_002/", variables)
@@ -147,7 +146,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             "caddy_log_dir",
             "alert_script_path",
             "clamav_server_scan_paths",
-            "clamav_kiosk_scan_paths",
             "trivy_scan_target",
             "trivy_skip_dirs",
             "clamav_server_log_dir",
@@ -162,6 +160,8 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             self.assertIn(key, production, key)
             if key != "network_mode":
                 self.assertNotEqual(staging[key], production[key], key)
+        # Kiosk foreign-file landing directories are shared across environments.
+        self.assertEqual(staging["clamav_kiosk_scan_paths"], production["clamav_kiosk_scan_paths"])
         self.assertEqual(staging["network_mode"], "tailscale")
         staging_text = (ANSIBLE / "group_vars" / "staging.yml").read_text(
             encoding="utf-8"
@@ -173,7 +173,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             "/opt/backups",
             "/var/log/caddy\n",
             "/opt/RaspberryPiSystem_002/",
-            "talkplaza",
         ):
             self.assertNotIn(forbidden, staging_text.lower(), forbidden)
 
@@ -249,7 +248,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                 self.assertNotIn("{{", serialized)
                 self.assertNotIn("REPLACE_WITH", serialized)
                 self.assertNotIn("__SET_", serialized)
-                self.assertNotIn("talkplaza", serialized.lower())
                 self.assertNotIn("/opt/RaspberryPiSystem_002/", serialized)
                 self.assertNotIn("/opt/backups", serialized)
                 self.assertNotIn("/var/log/caddy\"", serialized)
@@ -354,9 +352,7 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
     def test_existing_environment_files_do_not_import_staging_boundary(self) -> None:
         existing_environment_files = (
             ANSIBLE / "inventory.yml",
-            ANSIBLE / "inventory-talkplaza.yml",
             ANSIBLE / "group_vars" / "all.yml",
-            ANSIBLE / "group_vars" / "talkplaza.yml",
         )
         for path in existing_environment_files:
             text = path.read_text(encoding="utf-8").lower()

@@ -147,7 +147,10 @@ clamav_server_log_dir: /var/log/clamav-raspisys-staging
 clamav_server_log_file: clamav-scan.log
 clamav_kiosk_enabled: true
 clamav_kiosk_scan_paths:
-  - /opt/RaspberryPiSystem_002-staging/storage
+  - /home
+  - /tmp
+  - /var/tmp
+  - /usr/local/bin
 clamav_kiosk_scan_cron: '0 2 * * 0'
 clamav_kiosk_log_dir: /var/log/clamav-raspisys-staging
 clamav_kiosk_log_file: clamav-kiosk-scan.log

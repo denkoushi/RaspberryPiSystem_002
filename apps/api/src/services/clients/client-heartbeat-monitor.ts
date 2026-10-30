@@ -18,6 +18,8 @@ import {
   type HeartbeatAlertConfig
 } from './client-heartbeat-alert-policy.js';
 
+import { deployWindowEndedAt, refreshKioskDeployWindows } from './kiosk-deploy-window.js';
+
 const INTERVAL_MS = 60_000;
 
 type NewAlert = {
@@ -68,6 +70,7 @@ async function enqueueSlackAlert(alert: NewAlert): Promise<void> {
  *   通知前に戻った短い途絶は、途絶 Alert を確認済みにするだけ（Slack 側で抑止される）。
  */
 export async function runHeartbeatCheck(now: Date, config: HeartbeatAlertConfig): Promise<void> {
+  await refreshKioskDeployWindows(now);
   const statuses = await prisma.clientStatus.findMany({
     where: { lastSeen: { gte: new Date(now.getTime() - config.forgetAfterMs) } },
     select: { clientId: true, lastSeen: true }
@@ -77,6 +80,8 @@ export async function runHeartbeatCheck(now: Date, config: HeartbeatAlertConfig)
 
   for (const status of monitored) {
     if (!isStale(status, now, config)) continue;
+    const deployWindowEnd = await deployWindowEndedAt(status.clientId, now);
+    if (deployWindowEnd && now.getTime() < deployWindowEnd.getTime()) continue;
     const fingerprint = staleAlertFingerprint(status.clientId, status.lastSeen);
     const existing = await prisma.alert.findFirst({ where: { fingerprint }, select: { id: true } });
     if (existing) continue;
@@ -146,6 +151,7 @@ export class ClientHeartbeatMonitor {
     );
     this.timer = setInterval(() => {
       void runExclusiveSchedulerTick(this.tickExclusive, logger, 'ClientHeartbeatMonitor', async () => {
+        await refreshKioskDeployWindows(new Date());
         // API 自身（Pi5）が止まっていた直後は全端末の lastSeen が古いので、端末が再送するまで待つ。
         if (this.startedAt === null || Date.now() - this.startedAt < config.staleAfterMs) return;
         await runHeartbeatCheck(new Date(), config);

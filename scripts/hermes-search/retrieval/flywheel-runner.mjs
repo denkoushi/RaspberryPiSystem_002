@@ -200,6 +200,7 @@ export async function runFlywheelNight({
     if (final && line === previousLine && (status.night ?? nightOf(now())) === previousNight) return;
     try {
       const at = now();
+      await mkdir(settings.dir, { recursive: true, mode: 0o700 });
       await appendFile(path.join(settings.dir, `runner-${status.night ?? nightOf(at)}.log`),
         `${at.toISOString()} ${String(line).replace(/[\r\n]/gu, ' ')}\n`, { mode: 0o600 });
     } catch {
@@ -215,7 +216,7 @@ export async function runFlywheelNight({
     status.reason = reason;
     status.updatedAt = now().toISOString();
     status.lastLine = countLine(status);
-    if (settings.dir) {
+    if (settings.dir && status.night) {
       await mkdir(settings.dir, { recursive: true, mode: 0o700 });
       await writeJson(path.join(settings.dir, 'flywheel-status.json'), status);
     }

@@ -14,6 +14,9 @@ class Config:
     tls_skip_verify: bool = False
     hid_device: str = ""
     queue_path: str = "/var/lib/zero-edge-agent/queue.db"
+    input_mode: str = "evdev"
+    serial_device: str = "/dev/ttyACM0"
+    reader_init_commands: tuple = field(default=(), repr=False)
 
 
 def load_config() -> Config:
@@ -45,8 +48,14 @@ def load_config() -> Config:
         raise ValueError("API_BASE_URL must be an HTTP(S) origin without /api")
     if values.get("TLS_SKIP_VERIFY", "0") not in ("0", "1"):
         raise ValueError("TLS_SKIP_VERIFY must be 0 or 1")
+    if values.get("INPUT_MODE", "evdev") not in ("evdev", "serial"):
+        raise ValueError("INPUT_MODE must be evdev or serial")
     if any(ord(char) < 32 or ord(char) > 126 for char in values["X_CLIENT_KEY"]):
         raise ValueError("X_CLIENT_KEY must contain printable ASCII only")
     return Config(origin, values["X_CLIENT_KEY"], values.get("TLS_SKIP_VERIFY", "0") == "1",
                   values.get("HID_DEVICE", ""),
-                  values.get("QUEUE_PATH") or "/var/lib/zero-edge-agent/queue.db")
+                  values.get("QUEUE_PATH") or "/var/lib/zero-edge-agent/queue.db",
+                  values.get("INPUT_MODE", "evdev"),
+                  values.get("SERIAL_DEVICE", "/dev/ttyACM0"),
+                  tuple(command.strip() for command in values.get("READER_INIT_COMMANDS", "").split(";")
+                        if command.strip()))

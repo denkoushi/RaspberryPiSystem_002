@@ -70,6 +70,7 @@ services:
       - knowledge-assets-storage:/app/storage/knowledge-assets
       - procedure-materials-storage:/app/storage/procedure-materials
       - procedure-videos-storage:/app/storage/procedure-videos
+      - assembly-check-sheet-sources-storage:/app/storage/assembly-check-sheet-sources
       - knowledge-git-storage:/app/storage/knowledge-git
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
@@ -79,6 +80,8 @@ services:
       - file-integrity-storage:/app/storage/.integrity
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions
+      # 配膳アプリの更新APK（APIは読み取り専用）
+      - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/haizen-app:/app/haizen-app:ro
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/config:/app/config
       - ${PI5_BACKUP_DIR:-/opt/backups}:/opt/backups
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/apps/api:/app/host/apps/api:ro
@@ -513,6 +516,9 @@ volumes:
   procedure-videos-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage
+  assembly-check-sheet-sources-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-check-sheet-sources-storage
   knowledge-git-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage

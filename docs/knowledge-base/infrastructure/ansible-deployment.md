@@ -1625,78 +1625,7 @@ cat ~/.status-agent.conf
 
 ### [KB-159] トークプラザ工場へのマルチサイト対応実装（inventory分離・プレフィックス命名規則）
 
-**実装日**: 2026-01-14
-
-**事象**: 
-- トークプラザ工場（別拠点）に同一システムを導入する必要があった
-- 既存の第2工場と設定が混在しないようにする必要があった
-- 将来のデータベース統合時にクライアントIDやAPIキーのコンフリクトを回避する必要があった
-
-**要因**: 
-- **inventoryの一元管理**: 既存の`inventory.yml`は第2工場専用で、新拠点の設定を追加すると混在する
-- **クライアントIDの名前空間**: クライアントIDが重複すると、将来のDB統合時にコンフリクトが発生する
-- **外部連携の分離**: Slack/Dropbox/Gmailの資格情報を拠点ごとに分離する必要がある
-- **デプロイの安全性**: 誤って別拠点にデプロイするリスクを防ぐ必要がある
-
-**実装内容**:
-1. **inventoryファイルの分離**:
-   - `infrastructure/ansible/inventory-talkplaza.yml`を作成（トークプラザ工場専用）
-   - 第2工場は`inventory.yml`のまま維持
-   - 各inventoryでホスト名とクライアントIDにプレフィックスを付与（`talkplaza-`）
-
-2. **group_varsの分離**:
-   - `infrastructure/ansible/group_vars/talkplaza.yml`を作成
-   - DNS運用前提でホスト名を定義（`pi5.talkplaza.local`など）
-   - `network_mode: "local"`を設定（拠点間接続なし）
-
-3. **host_varsの分離**:
-   - `infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml`
-   - `infrastructure/ansible/host_vars/talkplaza-pi4/vault.yml`
-   - `infrastructure/ansible/host_vars/talkplaza-signage01/vault.yml`
-   - 各ホストのシークレットを`talkplaza-`プレフィックスで管理
-
-4. **プレフィックス命名規則**:
-   - クライアントID: `talkplaza-pi5-server`, `talkplaza-pi4-kiosk01`, `talkplaza-signage01`
-   - APIキー: `client-key-talkplaza-pi5-server`など
-   - ホスト名: `pi5.talkplaza.local`, `pi4.talkplaza.local`, `signage01.talkplaza.local`
-
-5. **デプロイスクリプトの改善**:
-   - `scripts/update-all-clients.sh`でinventory引数を必須化（誤デプロイ防止）
-   - デプロイ前にinventoryパスを表示し、確認プロンプトを追加
-
-**学んだこと**:
-- **inventory分離の重要性**: 各拠点の設定を完全に分離することで、設定の混在を防止できる
-- **プレフィックス命名規則**: クライアントIDやAPIキーにプレフィックスを付与することで、将来のDB統合時のコンフリクトを回避できる
-- **デプロイの安全性**: inventory引数を必須化することで、誤デプロイのリスクを大幅に削減できる
-- **スケーラビリティ**: 新拠点の追加は設定ファイルの追加のみで対応可能（コード変更不要）
-
-**解決状況**: ✅ **実装完了**（2026-01-14）
-
-**関連ファイル**:
-- `infrastructure/ansible/inventory-talkplaza.yml`（トークプラザ工場用inventory）
-- `infrastructure/ansible/group_vars/talkplaza.yml`（トークプラザ工場用group_vars）
-- `infrastructure/ansible/host_vars/talkplaza-*/vault.yml`（各ホストのシークレット）
-- `scripts/update-all-clients.sh`（デプロイスクリプト）
-- `docs/guides/talkplaza-rollout.md`（トークプラザ工場導入ガイド）
-
-**確認コマンド**:
-```bash
-# トークプラザ工場へのデプロイ
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
-
-# 第2工場へのデプロイ
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
-```
-
-**再発防止策**:
-- **inventory引数の必須化**: デプロイスクリプトでinventory引数を必須にし、誤デプロイを防止
-- **プレフィックス命名規則**: すべてのクライアントIDとAPIキーにプレフィックスを付与
-- **設定の完全分離**: 各拠点の設定を完全に分離し、混在を防止
-
-**注意事項**:
-- 第1工場への導入時も同様の手順で対応可能
-- 将来のDB統合時は、コード体系の非重複運用とCSVフォーマットの統一が必要
-- データモデルに「site」属性は追加しない（名前で判別する運用）
+**廃止決定（2026-10-30）**: トークプラザを別拠点・別サーバー・別DBとして構築する計画は、専用実機が作られず、サーバー Pi5 1台運用に決まったため廃止した。専用の構成・スクリプト・導入手順を削除し、トークプラザの Pi4 は `raspi4-assembly-02` として `infrastructure/ansible/inventory.yml` で管理する。
 
 ---
 
@@ -1772,7 +1701,7 @@ cat ~/.status-agent.conf
    - 実行前に確認メッセージを表示
 
 3. **usage関数の改善**:
-   - 使用例を追加（第2工場とトークプラザ工場の例）
+   - 使用例を追加（現行は標準inventoryのみ）
    - エラーメッセージにusageを表示
 
 **学んだこと**:
@@ -2322,9 +2251,8 @@ Slack通知を4系統（deploy/ops/security/support）に分類する機能を�
 # Pi5にSSH接続
 ssh denkon5sd02@<Pi5のIP>
 
-# rootに変更されたファイルの権限を修正
+# リポジトリへ移動
 cd /opt/RaspberryPiSystem_002
-sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml
 
 # リポジトリを最新化
 git stash  # ローカル変更がある場合
@@ -3432,18 +3360,20 @@ sudo apt-get update 2>&1 | grep -E '(ヒット|取得|エラー|W:)'
 
 ---
 
-### [KB-222] デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同
+<a id="kb-222-デプロイ時のinventory混同問題inventory&#45;talkplazaymlとinventoryymlの混同"></a>
+
+### [KB-222] デプロイ時のinventory混同問題: 旧別拠点用と標準inventoryの混同
 
 **発生日**: 2026-02-01  
 **Status**: ✅ 解決済み（2026-02-01）
 
 **事象**:
-- デプロイ実行時に`inventory-talkplaza.yml`（トークプラザ工場用）と`inventory.yml`（第2工場用）を混同
+- デプロイ実行時に旧別拠点用inventory（トークプラザ工場用）と`inventory.yml`（第2工場用）を混同
 - DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗
 - `sudo: a password is required`エラーが発生し、デプロイが中断
 
 **症状**:
-1. **inventory混同**: 第2工場のPi5にデプロイすべきところで、誤って`inventory-talkplaza.yml`を使用
+1. **inventory混同**: 第2工場のPi5にデプロイすべきところで、誤って旧別拠点用inventoryを使用
 2. **DNS名前解決失敗**: `pi5.talkplaza.local`がMac側で名前解決できず、SSH接続失敗
 3. **デプロイ中断**: デプロイスクリプトの事前チェックでSSH接続失敗により中断
 
@@ -3453,8 +3383,8 @@ ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provi
 ```
 
 **根本原因**:
-- **inventoryの混同**: `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用の論理ホスト名」として定義されているが、実機が存在しない可能性がある（KB-159参照）
-- **DNS名の使用**: `group_vars/talkplaza.yml`でDNS運用前提（`pi5.talkplaza.local`）が設定されているが、Mac側では名前解決できない
+- **inventoryの混同**: 実機のない旧別拠点用inventoryを選択した（廃止決定はKB-159参照）
+- **DNS名の使用**: 旧別拠点用変数はDNS運用前提（`pi5.talkplaza.local`）だったが、Mac側では名前解決できなかった
 - **標準手順の未遵守**: `docs/guides/deployment.md`の標準手順（Tailscale IP経由）を遵守せず、DNS名を使用した
 
 **有効だった対策**:
@@ -3466,13 +3396,11 @@ ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provi
 - **inventoryの確認**: デプロイ前に必ず対象inventoryを確認し、標準手順を遵守する
 - **Tailscale IPの使用**: DNS名ではなく、Tailscale IPを使用してSSH接続する（標準手順）
 - **デプロイ後の確認**: デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
-- **inventory-talkplaza.ymlの用途**: `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用」であり、第2工場のPi5には使用しない
 
 **再発防止**:
 - デプロイ前に必ず対象inventoryを確認し、標準手順（`docs/guides/deployment.md`）を遵守する
 - DNS名ではなく、Tailscale IPを使用してSSH接続する
 - デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
-- `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用」であることを明確に理解する
 
 **実機検証結果（2026-02-01）**:
 - ✅ Tailscale IP経由でSSH接続成功
@@ -3483,7 +3411,6 @@ ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provi
 **関連ファイル**:
 - `scripts/update-all-clients.sh`: デプロイスクリプト
 - `infrastructure/ansible/inventory.yml`: 第2工場用inventory
-- `infrastructure/ansible/inventory-talkplaza.yml`: トークプラザ工場用inventory（別拠点）
 - `docs/guides/deployment.md`: デプロイ標準手順
 
 **復旧手順（参考）**:
@@ -3497,7 +3424,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 ```
 
 **参考情報**:
-- [KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則): トークプラザ工場へのマルチサイト対応実装
+- [KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則): トークプラザ別拠点構成の廃止
 - [docs/guides/deployment.md](../guides/deployment.md): デプロイ標準手順
 - 通常、Node.jsをインストールする際に追加される（`curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
 - この問題はNodeSource側の対応待ちであり、システムのNode.jsは既にインストール済みで動作しているため、緊急の対応は不要

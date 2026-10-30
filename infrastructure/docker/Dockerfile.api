@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Isolated search worker runtime with the same pinned Node 24 base as the API.
-FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS hermes-search-runtime
+FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS hermes-search-runtime
 WORKDIR /opt/hermes-runtime
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -13,7 +13,7 @@ RUN install -D -m 0755 /usr/local/bin/node /opt/hermes-node/bin/node \
   && test -s /opt/hermes-node/bin/node \
   && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
 
-FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS workspace
+FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS workspace
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
@@ -69,7 +69,7 @@ WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate
 RUN nice -n 10 pnpm run build
 
-FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS api-runtime
+FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS api-runtime
 WORKDIR /app
 COPY --from=hermes-search-runtime /opt/hermes-node /opt/hermes-node
 COPY --from=hermes-search-runtime /opt/hermes-runtime /opt/hermes-runtime
@@ -77,39 +77,50 @@ ENV HERMES_QMD_ROOT=/opt/hermes-runtime/node_modules/@tobilu/qmd
 ARG NDLOCR_LITE_COMMIT=89f815899f0e85d236a1a90e75da012ca932dc7b
 # Bump the date to invalidate the cached apt layer; otherwise the CI build
 # cache keeps stale OS packages and Trivy fails on already-fixed Debian CVEs.
-ARG APT_CACHE_BUST=2026-10-27
+ARG APT_CACHE_BUST=2026-10-29
 
 RUN echo "apt refresh ${APT_CACHE_BUST}" \
   && apt-get update \
-  && apt-get install -y --no-install-recommends openssl ffmpeg poppler-utils fontconfig fonts-noto-cjk postgresql-client ansible-core python3 python3-pip git \
-    libgomp1 libgl1 libglib2.0-0 libsm6 libxext6 \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 libpango-1.0-0 \
-  && apt-get install -y --only-upgrade --no-install-recommends libssl3 openssl libgnutls30 libpq5 postgresql-client-15 python3-httplib2 libexpat1 libpcre2-8-0 \
-  && for package in libpq5 postgresql-client-15; do \
+  && apt-get install -y --no-install-recommends ca-certificates curl gpg \
+  && curl --fail --silent --show-error -o /usr/share/keyrings/postgresql.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  && test "$(gpg --batch --show-keys --with-colons /usr/share/keyrings/postgresql.asc | awk -F: '$1 == "fpr" {print $10; exit}')" = 'B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8' \
+  && echo 'deb [signed-by=/usr/share/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends openssl ffmpeg poppler-utils fontconfig fonts-noto-cjk postgresql-client-18 ansible-core python3 python3-pip git \
+    libgomp1 libgl1 libglib2.0-0t64 libsm6 libxext6 \
+    libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 \
+  && apt-get install -y --only-upgrade --no-install-recommends libssl3t64 openssl libgnutls30t64 libpq5 postgresql-client-18 python3-httplib2 libexpat1 libpcre2-8-0 \
+  && for package in libpq5 postgresql-client-18; do \
     installed_version="$(dpkg-query -W -f='${Version}' "${package}")"; \
-    dpkg --compare-versions "${installed_version}" ge '15.19-0+deb12u1' \
+    dpkg --compare-versions "${installed_version}" ge '18.6' \
       || { echo "${package} is below the required fixed version: ${installed_version}" >&2; exit 1; }; \
   done \
-  && gnutls_version="$(dpkg-query -W -f='${Version}' libgnutls30)" \
-  && dpkg --compare-versions "${gnutls_version}" ge '3.7.9-2+deb12u7' \
-    || { echo "libgnutls30 is below the required fixed version: ${gnutls_version}" >&2; exit 1; } \
+  && pg_dump --version | grep -Eq '^pg_dump \(PostgreSQL\) 18\.' \
+  && psql --version | grep -Eq '^psql \(PostgreSQL\) 18\.' \
+  && gnutls_version="$(dpkg-query -W -f='${Version}' libgnutls30t64)" \
+  && dpkg --compare-versions "${gnutls_version}" ge '3.8.9-3+deb13u4' \
+    || { echo "libgnutls30t64 is below the required fixed version: ${gnutls_version}" >&2; exit 1; } \
   && httplib2_version="$(dpkg-query -W -f='${Version}' python3-httplib2)" \
-  && dpkg --compare-versions "${httplib2_version}" ge '0.20.4-3+deb12u1' \
+  && dpkg --compare-versions "${httplib2_version}" ge '0.22.0-1+deb13u1' \
     || { echo "python3-httplib2 is below the required fixed version: ${httplib2_version}" >&2; exit 1; } \
   && expat_version="$(dpkg-query -W -f='${Version}' libexpat1)" \
-  && dpkg --compare-versions "${expat_version}" ge '2.5.0-1+deb12u5' \
+  && dpkg --compare-versions "${expat_version}" ge '2.9.0-1~deb13u1' \
     || { echo "libexpat1 is below the required fixed version: ${expat_version}" >&2; exit 1; } \
+  # ndlocr-lite pins PyYAML 6.0.1; pip cannot uninstall Debian's python3-yaml (no RECORD), so install beside it.
+  && python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed "PyYAML==6.0.1" \
   && python3 -m pip install --no-cache-dir --break-system-packages \
   "git+https://github.com/ndl-lab/ndlocr-lite.git@${NDLOCR_LITE_COMMIT}" \
   && python3 -m pip install --no-cache-dir --break-system-packages "protobuf>=6.33.5,<7" "pillow>=13.0.0,<14" "lxml>=6.1.0,<7" \
   # ndlocr-lite pins flet 0.27.6 (oauthlib<4) for its GUI only; the API uses the CLI, so take the CVE-2026-49272 fix.
   && python3 -m pip install --no-cache-dir --break-system-packages "oauthlib>=4.0.0,<5" \
   && python3 -m pip install --no-cache-dir --break-system-packages "rapidocr==3.8.4" "onnxruntime==1.20.1" \
+  # Bundled package test suites are never imported at runtime; dropping them keeps the image within its budget.
+  && find /usr/local/lib/python3*/dist-packages -depth -type d -name tests -exec rm -rf {} + \
   && command -v ndlocr-lite \
   && ndlocr-lite --help >/dev/null \
   && python3 -c "from rapidocr import RapidOCR; print('rapidocr-ok')" \
   && python3 -c "import oauthlib; assert int(oauthlib.__version__.split('.')[0]) >= 4, oauthlib.__version__" \
-  && apt-get purge -y python3-pip \
+  && apt-get purge -y python3-pip curl gpg \
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
 
@@ -166,6 +177,7 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/knowledge-assets \
   /app/storage/procedure-materials \
   /app/storage/procedure-videos \
+  /app/storage/assembly-check-sheet-sources \
   /app/storage/knowledge-git \
   /app/storage/measuring-instrument-genres \
   /app/storage/part-measurement-drawings \

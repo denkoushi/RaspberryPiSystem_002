@@ -246,8 +246,8 @@ export const KIOSK_NETWORK_ALERT_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 export const KIOSK_ERROR_THRESHOLD = 3;
 // Every kiosk reports failed requests right after an API restart (deploy); those must not page anyone.
 export const KIOSK_ALERT_STARTUP_GRACE_MS = 3 * 60 * 1000;
-export function kioskErrorCountSince(now: Date, apiStartedAt: Date): Date | null {
-  const graceEnd = apiStartedAt.getTime() + KIOSK_ALERT_STARTUP_GRACE_MS;
+export function kioskErrorCountSince(now: Date, apiStartedAt: Date, deployWindowEnd: Date | null = null): Date | null {
+  const graceEnd = Math.max(apiStartedAt.getTime() + KIOSK_ALERT_STARTUP_GRACE_MS, deployWindowEnd?.getTime() ?? -Infinity);
   if (now.getTime() < graceEnd) return null;
   return new Date(Math.max(now.getTime() - KIOSK_ERROR_WINDOW_MS, graceEnd));
 }
@@ -284,13 +284,17 @@ export function resolveTelemetryAlertDecision(
   clientId: string,
   entry: ClientTelemetryLogEntry,
   recentCount = 0,
-  now = new Date()
+  now = new Date(),
+  deployWindowEnd: Date | null = null
 ): TelemetryAlertDecision | null {
   if (!isRecord(entry.context)) return null;
   if (entry.context.category === OS_UPDATE_CATEGORY) {
     return osUpdateDecision(clientId, entry, entry.context);
   }
-  if (entry.context.category === 'kiosk_ui_error') return kioskDecision(clientId, entry, recentCount, now);
+  if (entry.context.category === 'kiosk_ui_error') {
+    if (deployWindowEnd && now.getTime() < deployWindowEnd.getTime()) return null;
+    return kioskDecision(clientId, entry, recentCount, now);
+  }
   if (entry.context.category === STORAGE_CATEGORY) {
     return storageDecision(clientId, entry, entry.context);
   }

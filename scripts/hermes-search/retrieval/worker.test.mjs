@@ -1344,12 +1344,13 @@ for (const [name, size, excludeShown, shownIds, semanticQuery, reject, expected]
   });
 }
 
-test('worker defaults to baseline and reloads active planner wording on corpus replacement', async (t) => {
+test('worker defaults to adopted wording and reloads active planner wording on corpus replacement', async (t) => {
   const { mkdtemp } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const path = await import('node:path');
   const { plannerVersionPath, writePlannerVersion } = await import('./flywheel-planner-version.mjs');
-  const { DEFAULT_PLANNER_QUESTION_VERSION: baseline, CANDIDATE_PLANNER_QUESTION_VERSION: candidate } = await import('./planner-jev.mjs');
+  const candidate = 'planner-questions-2026-10-26b';
+  const { DEFAULT_PLANNER_QUESTION_VERSION: baseline } = await import('./planner-jev.mjs');
   const file = plannerVersionPath(await mkdtemp(path.join(tmpdir(), 'worker-planner-')));
   const keys = ['HERMES_FLYWHEEL_PLANNER_VERSION_PATH', 'HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED'];
   const original = keys.map((key) => process.env[key]);
@@ -1371,4 +1372,19 @@ test('worker defaults to baseline and reloads active planner wording on corpus r
   process.env.HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED = 'false';
   await answering.replaceCorpus({ mode: 'full', records });
   assert.equal((await answering.answer('surface scratch')).receipt.jev.questionVersion, baseline);
+});
+
+test('filtered no_result reports the filtered count rather than the full corpus count', async () => {
+  for (const value of ['North Shop', 'South Shop']) {
+    const filters = [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: [value] }];
+    const answering = createRetrievalAnswering({ records, catalog,
+      planner: fixedPlanner(['nonconformity'], { semanticQuery: 'surface scratch', filters, display: catalog.fields.map(field => field.key) }),
+      evaluate: async ({ questions }) => ({ answers: Object.fromEntries(Object.keys(questions).map(key => [key, { type: 'noul', noul: 0.01 }])) }),
+    });
+    const result = await answering.answer('surface scratch');
+    const expected = records.filter(record => record.originDepartmentName === value).length;
+    assert.equal(result.receipt.outcome, 'no_result');
+    assert.equal(result.answer, noResultAnswer(expected));
+    assert.notEqual(expected, records.length);
+  }
 });
