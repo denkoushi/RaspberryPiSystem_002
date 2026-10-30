@@ -476,7 +476,7 @@ update-frequency: high
 | [KB-145](./infrastructure/ansible-deployment.md#kb-145-backupjson新規作成時にgmail設定が消失する問題と健全性チェック追加) | backup.json新規作成時にGmail設定が消失する問題と健全性チェック追加 | ✅ 解決済み |
 | [KB-157](./infrastructure/ansible-deployment.md#kb-157-pi3のstatus-agenttimerが無効化されていた問題) | Pi3のstatus-agent.timerが無効化されていた問題 | ✅ 解決済み |
 | [KB-158](./infrastructure/miscellaneous.md#kb-158-macのstatus-agent未設定問題とmacos対応) | Macのstatus-agent未設定問題とmacOS対応 | ✅ 解決済み |
-| [KB-159](./infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) | トークプラザ工場へのマルチサイト対応実装（inventory分離・プレフィックス命名規則） | ✅ 解決済み |
+| [KB-159](./infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) | トークプラザ別拠点構成の廃止 | 廃止済み |
 | [KB-160](./infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) | デプロイスクリプトのinventory引数必須化（誤デプロイ防止） | ✅ 解決済み |
 | [KB-161](./infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) | Dropbox basePathの分離対応（拠点別フォルダ分離） | ✅ 解決済み |
 | [KB-162](./infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) | デプロイスクリプトのinventory/playbookパス相対パス修正（Pi5上での実行時） | ✅ 解決済み |
@@ -504,7 +504,7 @@ update-frequency: high
 | [KB-218](./infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行) | SSH接続失敗の原因: fail2banによるIP Ban（存在しないユーザーでの認証試行） | ✅ 解決済み |
 | [KB-219](./infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題gitディレクトリがroot所有でデタッチ実行が失敗) | Pi5のGit権限問題: `.git`ディレクトリがroot所有でデタッチ実行が失敗 | ✅ 解決済み |
 | [KB-220](./infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される) | NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される | ✅ 解決済み |
-| [KB-222](./infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同) | デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同 | ✅ 解決済み |
+| [KB-222](./infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題-旧別拠点用と標準inventoryの混同) | デプロイ時のinventory混同問題: 旧別拠点用と標準inventoryの混同 | ✅ 解決済み |
 | [KB-224](./infrastructure/ansible-deployment.md#kb-224-デプロイ時のマイグレーション未適用問題) | デプロイ時のマイグレーション未適用問題 | ✅ 解決済み |
 | [KB-226](./infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) | デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須） | ✅ 解決済み |
 | [KB-227](./infrastructure/ansible-deployment.md#kb-227-web-bundleデプロイ修正コード更新時のdocker再ビルド確実化) | Web bundleデプロイ修正: コード更新時のDocker再ビルド確実化 | ✅ 解決済み |
@@ -686,7 +686,7 @@ update-frequency: high
 - 2026-02-01: KB-226を更新（デプロイ方針の見直し: リモート実行のデフォルトデタッチ化実装）→ 2026-02-01に実装完了・デプロイ成功・実機検証完了（リモート実行時に自動的にデタッチモードで実行されること、`--foreground`オプションで前景実行可能なこと、`--attach`/`--status`でログ追尾・状態確認が正常に動作することを確認）
 - 2026-02-01: KB-220を追加（NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される）→ 2026-02-01に解決完了（Debianセキュリティポリシーの変更によりSHA1が拒否され、NodeSourceリポジトリを削除してデプロイ成功）
 - 2026-02-01: KB-221を追加（生産スケジュール納期日機能のUI改善（カスタムカレンダーUI実装））→ 2026-02-01に実装完了・CI成功・デプロイ成功・実機検証完了（カスタムカレンダーUI、今日/明日/明後日ボタン、自動確定、月ナビゲーション、React Hooksルール違反修正）
-- 2026-02-01: KB-222を追加（デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同）→ 2026-02-01に解決完了（inventory混同によりDNS名でデプロイ試行→失敗、標準手順（Tailscale IP経由）に戻してデプロイ成功）
+- 2026-02-01: KB-222を追加（デプロイ時のinventory混同問題: 旧別拠点用と標準inventoryの混同）→ 2026-02-01に解決完了（inventory混同によりDNS名でデプロイ試行→失敗、標準手順（Tailscale IP経由）に戻してデプロイ成功）
 - 2026-02-01: KB-223を追加（生産スケジュール備考のモーダル編集化と処理列追加）→ 2026-02-01に実装完了・CI成功・デプロイ成功・実機検証完了（備考モーダル編集化、備考2行表示、処理列追加、品番/製造order番号折り返し対応、データ整合性考慮）
 - 2026-02-01: KB-224を追加（デプロイ時のマイグレーション未適用問題）→ 2026-02-01に解決完了（デプロイ完了後にマイグレーションが未適用だったため、手動で`pnpm prisma migrate deploy`を実行して適用、デプロイ後チェックリストの徹底を確認）
 - 2026-02-02: KB-225を追加（キオスク入力フィールド保護ルールの実装と実機検証）→ 2026-02-02に実装完了・実機検証完了（入力フィールド削除・localStorage無効化・起動時防御・自動復旧機能を実装、IDとAPIキーが編集不可に改善、生産スケジュールの値が表示されることを確認）

@@ -21,7 +21,7 @@ if grep -R -q 'ROLLING_RELEASE_LOCK_HELD' "${ROOT}/scripts/deploy/rolling_releas
   fail "legacy boolean lock fallback remains in the coordinator package"
 fi
 if grep -R -E -q \
-  'scripts/update-all-clients\.sh .*infrastructure/ansible/inventory(-talkplaza)?\.yml.*--(print-plan|dry-run)' \
+  'scripts/update-all-clients\.sh .*infrastructure/ansible/inventory\.yml.*--(print-plan|dry-run)' \
   "${ROOT}/.github/workflows"; then
   fail "hosted workflow invokes the deploy entrypoint against a production inventory"
 fi

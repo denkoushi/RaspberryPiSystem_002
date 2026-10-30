@@ -1405,7 +1405,7 @@
 
 ### 🆕 最新アップデート（2026-01-14）
 
-- **トークプラザ工場マルチサイト対応 正本**: [KB-159](./knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) · [KB-160](./knowledge-base/infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) · [KB-161](./knowledge-base/infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) · [KB-162](./knowledge-base/infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) · [talkplaza-rollout](./guides/talkplaza-rollout.md) · [deployment](./guides/deployment.md)。
+- **トークプラザ別拠点構成の廃止 正本**: [KB-159](./knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) · [KB-160](./knowledge-base/infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) · [KB-161](./knowledge-base/infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) · [KB-162](./knowledge-base/infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-01-09）
 

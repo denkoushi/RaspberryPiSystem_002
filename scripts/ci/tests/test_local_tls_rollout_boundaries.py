@@ -13,9 +13,7 @@ INVENTORY = (ANSIBLE / "inventory.yml").read_text()
 
 
 class LocalTlsRolloutBoundaryTest(unittest.TestCase):
-    def test_every_operational_step_is_normal_factory_only_and_approved(self):
-        for source in (TRUST, CERTIFICATE, VERIFY):
-            self.assertIn("'talkplaza' not in group_names", source)
+    def test_every_operational_step_requires_approval(self):
         self.assertIn("normal_factory_local_ca_trust_approved", TRUST)
         self.assertIn(
             "normal_factory_local_ca_certificate_activation_approved", CERTIFICATE

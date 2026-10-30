@@ -59,7 +59,6 @@ vault_slack_kiosk_support_webhook_url: "https://hooks.slack.com/services/..."  #
 
 **注意**: 
 - `vault_slack_kiosk_support_webhook_url` は既存のGeneralチャンネルのWebhook URLが設定されている可能性があります。これを `#rps-support` のWebhook URLに更新してください。
-- トークプラザ拠点（`infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml`）も同様に設定が必要です。
 
 ### 3. デプロイと検証
 
