@@ -198,6 +198,17 @@ security_review_nightly_cron: "0 6 * * *"
 security_review_retry_until: "06:55"
 security_review_data_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}/storage/security-review"
 security_review_state_dir: /var/lib/security-review
+security_review_kiosk_state_dir: /var/lib/security-review-kiosk
+security_review_kiosk_log_dir: /var/log/security-review-kiosk
+security_review_kiosk_log_path: /var/log/package-integrity/package-integrity-scan.log
+security_review_kiosk_alerts_dir: /opt/RaspberryPiSystem_002/alerts
+security_review_kiosk_output_alerts_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}/alerts"
+security_review_kiosk_host_timeout_seconds: 60
+security_review_kiosk_host_byte_cap: 4194304
+security_review_kiosk_log_byte_cap: 262144
+security_review_kiosk_alert_byte_cap: 32768
+security_review_kiosk_alerts_per_host: 50
+security_review_kiosk_summary_line_cap: 60
 security_review_material_byte_cap: 192000
 security_review_changes_context_lines: 1
 # Last matching specific pattern wins; * is the fallback rank only.
@@ -291,6 +302,10 @@ security_review_collector_config:
       paths: ["{{ package_integrity_log_dir }}/{{ package_integrity_log_file }}*"]
       start: 'Starting package integrity check...'
       end: 'Package integrity check completed.'
+    - name: kiosk-package-integrity
+      paths: ["{{ security_review_kiosk_log_dir }}/kiosk-package-integrity.log"]
+      start: 'Starting kiosk package integrity summary'
+      end: 'Kiosk package integrity summary completed.'
 
 # Nightly scans run in a systemd scope with this disk bandwidth cap (path resolves to its backing disk)
 security_scan_io_device: "/"
