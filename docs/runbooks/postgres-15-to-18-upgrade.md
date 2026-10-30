@@ -2,7 +2,7 @@
 id: postgres-15-to-18-upgrade
 title: PostgreSQL 15→18 移行・切戻しRunbook
 status: active
-last_verified: 2026-10-29
+last_verified: 2026-10-30
 ---
 
 # PostgreSQL 15→18 移行・切戻しRunbook
@@ -21,6 +21,7 @@ last_verified: 2026-10-29
   2026-10-29のMac試行はダンプ150秒、コピー復元82秒、preflight 3秒、migrate 100秒、
   停止＋activate 18は5秒、切戻しの停止＋activate 15は4秒。
   Pi5は遅くなる見込みのため、保守時間は1時間を確保する（[試行結果](../plans/software-support-upgrade-execplan.md#progress)）。
+  2026-10-30の本番（Pi5、DB 6.0GB）は停止区間719秒、うちmigrate 579秒だった。
 - 対象branch/不変SHAとCI成功を確認してから実機へ接続する。
 - Docker、Compose v2（JSON configと `--wait` 対応）、bash、Python 3を用意する。
   実行ユーザーはDockerとバックアップ用ディレクトリへの権限を持つこと。
