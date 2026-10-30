@@ -1,0 +1,83 @@
+---
+# Interim mitigation for CVE-2026-98432 until a fixed Raspberry Pi kernel ships
+# (6.12.113+ / 6.18.56+). The published exploit targets MPTCP listeners, and on
+# this fleet only tailscaled opens them. Imported directly by the standard
+# artifact release plays, like distrusted-intermediates.yml.
+- name: Disable MPTCP socket creation on the host
+  become: true
+  block:
+    - name: Persist net.mptcp.enabled=0 across reboots
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/90-raspi-disable-mptcp.conf
+        content: |
+          # CVE-2026-98432 interim mitigation (managed by Ansible)
+          net.mptcp.enabled = 0
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Read the running MPTCP setting
+      ansible.builtin.command: sysctl -n net.mptcp.enabled
+      register: common_mptcp_enabled_current
+      changed_when: false
+      failed_when: false
+
+    - name: Apply net.mptcp.enabled=0 to the running kernel
+      ansible.builtin.command: sysctl -w net.mptcp.enabled=0
+      changed_when: true
+      when:
+        - common_mptcp_enabled_current.rc == 0
+        - common_mptcp_enabled_current.stdout | trim != '0'
+
+    # The sysctl only blocks new MPTCP sockets; listeners opened earlier keep
+    # accepting MPTCP until their owner reopens them as plain TCP.
+    # Without -t, ss --mptcp lists only MPTCP sockets.
+    - name: List MPTCP listeners that were opened before the change
+      ansible.builtin.command: ss -Hlnp --mptcp
+      register: common_mptcp_listeners_before
+      changed_when: false
+      failed_when: false
+
+    # Run detached so the Tailscale-carried SSH session is not torn down
+    # in the middle of this task's own reply.
+    - name: Reopen tailscaled listeners as plain TCP
+      ansible.builtin.command:
+        argv:
+          - systemd-run
+          - --unit=raspi-mptcp-tailscaled-restart
+          - --on-active=2s
+          - --collect
+          - systemctl
+          - restart
+          - tailscaled.service
+      changed_when: true
+      when: common_mptcp_listeners_before.stdout | trim | length > 0
+
+    - name: Wait for the host to come back over Tailscale
+      ansible.builtin.wait_for_connection:
+        delay: 10
+        timeout: 120
+      when: common_mptcp_listeners_before.stdout | trim | length > 0
+
+    # Pi5 runs this play locally and then reaches the kiosks over Tailscale.
+    - name: Wait for Tailscale to be running again
+      ansible.builtin.command: tailscale status --json
+      register: common_mptcp_tailscale_status
+      until: >-
+        common_mptcp_tailscale_status.rc == 0 and
+        (common_mptcp_tailscale_status.stdout | from_json).BackendState == 'Running'
+      retries: 12
+      delay: 5
+      changed_when: false
+      when: common_mptcp_listeners_before.stdout | trim | length > 0
+
+    - name: List MPTCP listeners after tailscaled restarted
+      ansible.builtin.command: ss -Hlnp --mptcp
+      register: common_mptcp_listeners_after
+      changed_when: false
+      failed_when: false
+
+    - name: Report MPTCP listeners that another service still holds
+      ansible.builtin.debug:
+        msg: "MPTCP listeners remain until their service restarts: {{ common_mptcp_listeners_after.stdout_lines }}"
+      when: common_mptcp_listeners_after.stdout | trim | length > 0

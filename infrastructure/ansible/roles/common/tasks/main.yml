@@ -11,6 +11,9 @@
 - name: Distrust compromised eMudhra certificate authorities in every mode
   ansible.builtin.import_tasks: distrusted-intermediates.yml
 
+- name: Disable MPTCP in every mode (CVE-2026-98432 interim mitigation)
+  ansible.builtin.import_tasks: disable-mptcp.yml
+
 - name: Ensure repository parent directory exists
   ansible.builtin.file:
     path: "{{ repo_path }}"
