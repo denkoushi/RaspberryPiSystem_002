@@ -281,11 +281,11 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
     def test_api_runtime_boundary_precedes_application_source_and_provenance(self) -> None:
         runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
         workspace_boundary = API_DOCKERFILE.index(
-            "FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS workspace"
+            "FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS workspace"
         )
         build_boundary = API_DOCKERFILE.index("FROM workspace AS build")
         runtime_stage = API_DOCKERFILE.index(
-            "FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS api-runtime"
+            "FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS api-runtime"
         )
         self.assertLess(workspace_boundary, build_boundary)
         self.assertLess(build_boundary, runtime_stage)
@@ -330,7 +330,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
     def test_api_runtime_uses_only_required_production_dependencies(self) -> None:
         runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
         runtime_stage = API_DOCKERFILE.index(
-            "FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS api-runtime"
+            "FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS api-runtime"
         )
         runtime_definition = API_DOCKERFILE[runtime_stage:runtime_boundary]
 
@@ -349,7 +349,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         )
         self.assertNotIn("COPY apps/web/package.json", API_DOCKERFILE)
         workspace_start = API_DOCKERFILE.index(
-            "FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS workspace"
+            "FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS workspace"
         )
         workspace_definition = API_DOCKERFILE[
             workspace_start : API_DOCKERFILE.index("FROM workspace AS build")
