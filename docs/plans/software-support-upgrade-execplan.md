@@ -25,13 +25,14 @@
     | 4 | Python 3.11(NFC・バーコード・トルクの各 agent イメージ、hermes-answer-cache) | python:3.11-slim、pyproject は ^3.11 | python:3.13-slim(サポートは2029-10まで) | 2027-10 | infrastructure/docker/Dockerfile.nfc-agent、Dockerfile.barcode-agent、Dockerfile.torque-agent、services/hermes-answer-cache/Dockerfile、clients/*/pyproject.toml と lock。Pi4 群とキオスク端末 | 中(端末の読取りが止まると貸出・締付の現場作業に響く) | 前のイメージタグへ戻して Pi4 へ再反映 |
     | 5 | PostgreSQL 15(pgvector/pgvector:pg15) | 15 | 18(pgvector/pgvector:pg18、pgvector 0.8 系) | 2027-11-11 | infrastructure/docker/docker-compose.server.yml、docker-compose.mac-local.override.yml、.github/workflows/ci.yml と torque-release.yml、本番DBのデータ領域 | 高(本番データの移行を伴う) | 旧データ領域を消さずに残し、旧 pg15 コンテナへ切り戻す。移行前の pg_dump から復元も可能 |
     | 6 | React 18(apps/web) | 18.2 | 19 | 公式の終了日なし。新機能と修正は 19 系のみ | apps/web 全画面 | 中 | package.json と lockfile を戻す |
+    | 7 | pnpm(パッケージ管理ツール) | 10.34.6(CI の脆弱性監査だけ 11.4.0) | 12 | 10 と 11 は 2027-04-30(pnpm 公式 SECURITY.md) | package.json の packageManager と engines、.github/workflows/ci.yml の AUDIT_PNPM_VERSION、scripts/ci/pnpm-exact.sh とそのテスト。CI と API・web・kiosk-sop 生成のイメージビルド(corepack が package.json の版に従う) | 低〜中(上げるとビルド時の挙動が変わりうる。実機の動作は変わらない) | package.json と ci.yml の版を戻す commit(lockfile が 9.0 のままなら差し戻しも単純) |
 
 点検メモにあった ESLint 8 は、既に 9.39.5 へ更新済みのため対象から外す。TypeScript 5.4、Vite 6、Alpine 3.24、Go 1.27 は現時点で期限が近くないため一覧に入れない。
 
 ## 進める順番と理由
 
 
-期限の近い順は 1(終了済み)、2(保守終了済み)、3(LTS 期間中)、4(2027-10)、5(2027-11)、6(期限なし)となる。PostgreSQL は期限が最後のほうでも準備に時間がかかるので、4 と並行して試し移行だけ早めに始める。
+期限の近い順は 1(終了済み)、2(保守終了済み)、3(LTS 期間中)、7(2027-04)、4(2027-10)、5(2027-11)、6(期限なし)となる。7 の pnpm は 2027 年 1〜2 月に着手する。PostgreSQL は期限が最後のほうでも準備に時間がかかるので、4 と並行して試し移行だけ早めに始める。
 
 ## 各項目の手順
 
@@ -122,6 +123,10 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 別 PR で行う。期限がないため最後に回す。
 
+### 7. pnpm 10/11 → 12
+
+pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイルで Corepack では動かないため、Dockerfile 3 本と `scripts/ci/pnpm-exact.sh` は `npm install -g pnpm@<版>` 方式に変えた。設定は `package.json` の `pnpm` 欄から `pnpm-workspace.yaml` へ移し(`onlyBuiltDependencies` は `allowBuilds`、ビルドを走らせない `tesseract.js` は `false`)、lockfile は先頭に pnpm 自身の記録が 158 行増えただけで依存は変わらない。実行ファイルが約 23MB(圧縮後)増えるため、API イメージの圧縮サイズ予算を 1.1GB から 1.125GB に広げた。出典: https://github.com/pnpm/pnpm/security/policy と https://github.com/pnpm/pnpm/releases/tag/v12.0.0
+
 ## Progress
 
 
@@ -142,6 +147,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - [x] (2026-10-29) 手順4の切替PR用に、本番composeをpg18・新ボリューム・旧ボリュームread-only・起動ガードへ変更し、APIのPGDGクライアントを18へ更新。マージは移行当日のみ（Runbookの当日手順2）。標準デプロイはdbを再作成せず、migrate後に運用者が `activate --expect-major 18` で切り替える。本番移行は未実施。
 - [x] (2026-10-30) 本番移行を実施（切替PR #2398、修正PR #2404）。7:41の初回は旧dbコンテナがパスワードを環境変数で持ちmigrateが停止、自動でpg15へ戻した（停止約20秒、データ変更なし）。修正後、17:50開始で一括実行しRESULT=OK。Pi5の停止区間は719秒（migrate 579秒、activate 18は8秒、API/web再開100秒、migrate status確認19秒）。比較レポートの差分なし、PostgreSQL 18.6。旧ボリュームdb-dataは残し、移行時のダンプはMacへ写してsha256一致を確認。
 - [x] (2026-10-30) 3件目の Debian trixie 化: API と kiosk-sop 生成の基盤を node:24-trixie-slim(Node 24.22.2、index `sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446`、arm64 manifest `sha256:7924b020d1e9972de4d7838a7a8ab8c54ef0d6e51435d6a7d1dfa73c6f106241`)へ替え、PGDG を trixie-pgdg、t64 の部品名、最低版チェックを trixie の版に直した。Mac(arm64)で API イメージを作り、Debian 13.7・pg_dump 18.6・Python 3.13.5・ndlocr-lite・rapidocr・ansible・ffmpeg・pdftoppm が動くことを確認。圧縮サイズの手元見積もりは合計 1078966439 バイト、最大の層 619208532 バイト、33 層で予算内。kiosk-sop は生成照合と画面テスト 18 件が合格し、ソースのダイジェストだけ更新した。
+- [x] (2026-10-30) pnpm 10/11 のサポート終了(2027-04-30)を知り、対象一覧に 7 として追加。着手は 2027 年 1〜2 月の予定で、実装は未着手。
 
 ## Surprises & Discoveries
 

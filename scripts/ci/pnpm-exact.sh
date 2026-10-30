@@ -9,7 +9,7 @@ fail() {
   exit 2
 }
 
-for command in node python3 corepack; do
+for command in node python3; do
   command -v "$command" >/dev/null 2>&1 \
     || fail "required tool is missing: ${command}"
 done
@@ -30,29 +30,27 @@ PY
 [[ "$declared" =~ ^pnpm@([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
   || fail "packageManager must declare one exact pnpm version"
 expected="${BASH_REMATCH[1]}"
-corepack_bin="$(command -v corepack)"
-
-export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-export COREPACK_ENABLE_PROJECT_SPEC=1
-export COREPACK_ENABLE_STRICT=1
-
-resolved="$($corepack_bin "pnpm@${expected}" --version)" \
-  || fail "Corepack could not resolve pnpm ${expected}"
+install_hint="npm install -g pnpm@${expected}"
+pnpm_bin="$(command -v pnpm)" \
+  || fail "pnpm is not installed; run: ${install_hint}"
+# PATH entries may be relative. Keep an absolute executable path for the shim.
+pnpm_bin="$(python3 -c 'import os, sys; print(os.path.abspath(sys.argv[1]))' "$pnpm_bin")"
+resolved="$("$pnpm_bin" --version)" \
+  || fail "could not run pnpm; run: ${install_hint}"
 [[ "$resolved" == "$expected" ]] \
-  || fail "Corepack resolved pnpm ${resolved}, expected ${expected}"
+  || fail "pnpm ${resolved} does not match expected ${expected}; run: ${install_hint}"
 
 echo "[pnpm-exact] node=$(node --version) pnpm=${resolved} declaration=${declared}" >&2
 
-# Package scripts can invoke `pnpm` again. Put a run-scoped Corepack shim
+# Package scripts can invoke `pnpm` again. Put a run-scoped pnpm shim
 # ahead of the caller's PATH so those child invocations cannot fall back to a
-# globally installed, incompatible pnpm.
+# different, incompatible pnpm.
 shim_dir="$(mktemp -d "${TMPDIR:-/tmp}/raspisys-pnpm-exact.XXXXXX")"
 trap 'rm -rf -- "$shim_dir"' EXIT
-export PNPM_EXACT_COREPACK="$corepack_bin"
-export PNPM_EXACT_VERSION="$expected"
+export PNPM_EXACT_BIN="$pnpm_bin"
 printf '%s\n' \
   '#!/usr/bin/env bash' \
-  'exec "$PNPM_EXACT_COREPACK" "pnpm@$PNPM_EXACT_VERSION" "$@"' \
+  'exec "$PNPM_EXACT_BIN" "$@"' \
   > "$shim_dir/pnpm"
 chmod 0700 "$shim_dir/pnpm"
 
@@ -70,4 +68,4 @@ if ((install_seen && !frozen_seen)); then
 fi
 
 env CI=true PATH="${shim_dir}:${PATH}" \
-  "$corepack_bin" "pnpm@${expected}" "${args[@]}"
+  "$pnpm_bin" "${args[@]}"

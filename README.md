@@ -86,7 +86,7 @@ Codexを指示役、Cursorを実行役としてAI協調する場合は、[Codex/
 
 ## 開発準備
 
-1. Node.js 24 以上（推奨: 24.x）と pnpm 10.34.6 をインストールし、`corepack enable` を実行
+1. Node.js 24 以上（推奨: 24.x）をインストールし、リポジトリのルートで `npm install -g "$(node -p "require('./package.json').packageManager")"` を実行
 2. Python 3.11 + Poetry をインストール
 3. ルートで `pnpm install` を実行してワークスペース依存を取得
 4. `poetry install -C clients/nfc-agent` で NFC エージェント依存をセットアップ
@@ -164,7 +164,7 @@ pnpm test:e2e:headed
 - Node.js 24 系（推奨: `nvm`）
   - ⚠️ NodeSource（`deb.nodesource.com`）はOS側のGPG/署名ポリシー変更で `apt update` が失敗し、デプロイが中断する場合があります（例: 2026-02-01以降のSHA1拒否。詳細はKB-220）。
   - `curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -` を使う場合は、`/etc/apt/sources.list.d/nodesource.list` が残り続ける点に注意してください。
-- pnpm (`corepack enable`)
+- pnpm（リポジトリのルートで `npm install -g "$(node -p "require('./package.json').packageManager")"`）
 - Python 3.11 + Poetry（クライアント開発や手元検証用）
 
 ### インストール手順
