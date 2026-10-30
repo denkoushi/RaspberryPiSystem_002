@@ -164,6 +164,14 @@ describe('client telemetry alert policy', () => {
 });
 
 describe('kiosk UI alert policy', () => {
+  it('suppresses all kiosk errors until the deploy grace ends', () => {
+    const end = new Date('2026-10-30T00:05:00Z');
+    const entry = { level: 'ERROR' as const, message: 'failed', context: { category: 'kiosk_ui_error', kind: 'render_crash' } };
+    expect(resolveTelemetryAlertDecision('pi4', entry, 99, new Date(end.getTime() - 1), end)).toBeNull();
+    expect(resolveTelemetryAlertDecision('pi4', entry, 1, end, end)?.type).toBe('kiosk-ui-error');
+    expect(kioskErrorCountSince(new Date(end.getTime() - 1), new Date(0), end)).toBeNull();
+    expect(kioskErrorCountSince(end, new Date(0), end)).toEqual(end);
+  });
   const context = { category: 'kiosk_ui_error', kind: 'api_5xx', count: 2, route: '/kiosk/borrow', clientDeviceName: '組立端末', clientDeviceId: 'device-1', incidentCode: 'A7K2Q9', requestId: 'req-123' };
   const now = new Date('2026-10-08T00:01:00Z');
   it('alerts immediately for render crashes, even a single occurrence', () => {
