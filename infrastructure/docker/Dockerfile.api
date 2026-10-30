@@ -114,6 +114,8 @@ RUN echo "apt refresh ${APT_CACHE_BUST}" \
   # ndlocr-lite pins flet 0.27.6 (oauthlib<4) for its GUI only; the API uses the CLI, so take the CVE-2026-49272 fix.
   && python3 -m pip install --no-cache-dir --break-system-packages "oauthlib>=4.0.0,<5" \
   && python3 -m pip install --no-cache-dir --break-system-packages "rapidocr==3.8.4" "onnxruntime==1.20.1" \
+  # Bundled package test suites are never imported at runtime; dropping them keeps the image within its budget.
+  && find /usr/local/lib/python3*/dist-packages -depth -type d -name tests -exec rm -rf {} + \
   && command -v ndlocr-lite \
   && ndlocr-lite --help >/dev/null \
   && python3 -c "from rapidocr import RapidOCR; print('rapidocr-ok')" \
