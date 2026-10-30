@@ -31,7 +31,6 @@ type ClientForm = {
   siteKey: string;
   proxy: boolean;
   haizenEdge: boolean;
-  shelfLayout: boolean;
 };
 
 /** 台帳（ClientDevice）と稼働状況（ClientStatusEntry）を1行にまとめたもの。台帳にない報告は device が null */
@@ -46,8 +45,7 @@ const FORM_FIELD_LABELS: Record<keyof ClientForm, string> = {
   mode: '旧設定',
   siteKey: '拠点',
   proxy: '代理操作',
-  haizenEdge: 'Zero2W配膳',
-  shelfLayout: '棚レイアウト編集'
+  haizenEdge: 'Zero2W配膳'
 };
 const FORM_FIELDS = Object.keys(FORM_FIELD_LABELS) as Array<keyof ClientForm>;
 
@@ -62,8 +60,7 @@ function formFromDevice(device: ClientDevice): ClientForm {
     mode: device.defaultMode ?? 'TAG',
     siteKey: device.siteKey ?? '',
     proxy: Boolean(device.canProxyOtherDevices),
-    haizenEdge: Boolean(device.haizenEdgeEnabled),
-    shelfLayout: Boolean(device.shelfLayoutEditEnabled)
+    haizenEdge: Boolean(device.haizenEdgeEnabled)
   };
 }
 
@@ -322,7 +319,6 @@ export function ClientsPage() {
           defaultMode: form.mode,
           kioskInitialRoute: form.initialRoute || null,
           haizenEdgeEnabled: form.haizenEdge,
-          shelfLayoutEditEnabled: form.shelfLayout,
           siteKey: form.siteKey || null,
           canProxyOtherDevices: form.proxy
         }
@@ -611,8 +607,7 @@ export function ClientsPage() {
                               {(
                                 [
                                   [row.device?.canProxyOtherDevices, '代理', '代理操作'],
-                                  [row.device?.haizenEdgeEnabled, '配膳', 'Zero2W配膳'],
-                                  [row.device?.shelfLayoutEditEnabled, '棚', '棚レイアウト編集']
+                                  [row.device?.haizenEdgeEnabled, '配膳', 'Zero2W配膳']
                                 ] as const
                               ).map(([enabled, short, title]) =>
                                 enabled ? (
@@ -863,12 +858,6 @@ export function ClientsPage() {
                         ariaLabel="Zero2W配膳エッジ端末として扱う"
                         checked={form.haizenEdge}
                         onChange={(haizenEdge) => patchForm({ haizenEdge })}
-                      />
-                      <Switch
-                        label="棚レイアウト編集"
-                        ariaLabel="棚レイアウト編集を許可"
-                        checked={form.shelfLayout}
-                        onChange={(shelfLayout) => patchForm({ shelfLayout })}
                       />
                     </div>
 

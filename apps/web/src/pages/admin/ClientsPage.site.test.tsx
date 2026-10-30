@@ -115,11 +115,11 @@ describe('ClientsPage', () => {
 
   it('keeps an unsaved edit when another device is opened', () => {
     render(<ClientsPage />);
-    fireEvent.click(settings().getByRole('switch', { name: '棚レイアウト編集を許可' }));
+    fireEvent.click(settings().getByRole('switch', { name: 'Zero2W配膳エッジ端末として扱う' }));
     fireEvent.click(screen.getByRole('button', { name: /raspi4-sessaku-01/ }));
     expect(settings().getByRole('button', { name: '保存' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /Mac.*未保存/ }));
-    expect(settings().getByRole('switch', { name: '棚レイアウト編集を許可' })).toBeChecked();
+    expect(settings().getByRole('switch', { name: 'Zero2W配膳エッジ端末として扱う' })).toBeChecked();
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 

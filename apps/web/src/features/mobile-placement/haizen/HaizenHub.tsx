@@ -26,7 +26,7 @@ import type { useRegisteredShelves } from '../useRegisteredShelves';
 const menuTiles = [
   { label: 'パレット', hint: '加工機ごとの部品', path: '/kiosk/mobile-placement/pallet-viz', icon: 'pallet', color: colors.teal },
   { label: 'Zero2W 配膳', hint: '棚スキャナの記録', path: '/kiosk/mobile-placement/zero2w-status', icon: 'zero', color: colors.slip },
-  { label: '棚マスタ', hint: '工場の棚の配置を変える', path: '/kiosk/mobile-placement/shelf-master', icon: 'grid', color: colors.actual }
+  { label: '棚マスタ', hint: '写真で棚を登録する', path: '/kiosk/mobile-placement/shelf-master', icon: 'grid', color: colors.actual }
 ] as const;
 
 export type HaizenHubSheet = 'menu' | 'shelves' | 'inputs' | 'pending' | 'needs_check' | null;

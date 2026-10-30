@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
 import { parseStructuredShelfCode } from '../mobile-placement-registered-shelves.service.js';
-import { listShelfLayoutSummary, validateLayoutEntities } from '../shelf-layout-edit.service.js';
+import { listShelfLayoutSummary } from '../shelf-layout-read.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
@@ -23,20 +23,6 @@ describe('parseStructuredShelfCode tier', () => {
       slot: 2,
       tier: 1
     });
-  });
-});
-
-describe('validateLayoutEntities', () => {
-  it('rejects overlapping cells', () => {
-    expect(() =>
-      validateLayoutEntities(
-        [
-          { entityKind: 'SHELF', cellIndices: [0] },
-          { entityKind: 'AISLE', cellIndices: [0] }
-        ],
-        3
-      )
-    ).toThrow();
   });
 });
 
