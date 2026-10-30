@@ -105,6 +105,8 @@ export function createMobileLocalDataStore(name = 'mobile-local-data-v1') {
     }).catch(() => null);
     const database = await dbPromise;
     if (waitForPointer) await pointerUpdate;
+    // Another tab or store instance may have flipped a buffer since this one cached its pointers.
+    if (database) await refreshPointers(database).catch(() => undefined);
     return database;
   }
   function index<T>(rows: T[], key: (row: T) => string) {
