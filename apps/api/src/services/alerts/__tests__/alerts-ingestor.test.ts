@@ -271,6 +271,19 @@ describe('AlertsIngestor (Phase2)', () => {
     );
   });
 
+  it('warns about the same invalid file only once', async () => {
+    await fs.writeFile(path.join(tmpDir, 'alert-invalid.json'), 'invalid json content', 'utf-8');
+
+    const ingestor = new AlertsIngestor();
+    await ingestor.ingestOnceNow();
+    await ingestor.ingestOnceNow();
+
+    expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+    expect(mockLogger.info).toHaveBeenLastCalledWith(
+      { ingested: 0, skipped: 1, errors: 0, unparseable: 1 }, '[AlertsIngestor] Ingest completed'
+    );
+  });
+
   it('keeps empty file skips at debug', async () => {
     const filePath = path.join(tmpDir, 'alert-empty.json');
     await fs.writeFile(filePath, '');

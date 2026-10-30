@@ -15,17 +15,17 @@
     ]
   },
   "summary": {
-    "documentCount": 750,
-    "totalLines": 183214,
-    "totalBytes": 14944112,
+    "documentCount": 759,
+    "totalLines": 184419,
+    "totalBytes": 15109077,
     "withFrontmatter": 353,
-    "withStatus": 169,
+    "withStatus": 170,
     "sourceOfTruthDeclared": 115,
-    "execPlanReferences": 60,
+    "execPlanReferences": 61,
     "questionMarkCorruptionDocuments": 2,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 45,
-    "localLinkCount": 5477,
+    "longLineDocuments": 46,
+    "localLinkCount": 5526,
     "brokenLocalLinkCount": 129,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -6119,8 +6119,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2088,
-      "byteSize": 360620,
+      "lineCount": 2092,
+      "byteSize": 360918,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -7774,11 +7774,6 @@
         {
           "href": "./guides/status-agent.md",
           "targetPath": "docs/guides/status-agent.md",
-          "exists": true
-        },
-        {
-          "href": "./guides/talkplaza-rollout.md",
-          "targetPath": "docs/guides/talkplaza-rollout.md",
           "exists": true
         },
         {
@@ -10777,6 +10772,11 @@
           "exists": true
         },
         {
+          "href": "./plans/kiosk-inventory-setup-seigi.md",
+          "targetPath": "docs/plans/kiosk-inventory-setup-seigi.md",
+          "exists": true
+        },
+        {
           "href": "plans/kiosk-inventory-ux-execplan.md",
           "targetPath": "docs/plans/kiosk-inventory-ux-execplan.md",
           "exists": true
@@ -11397,6 +11397,11 @@
           "exists": true
         },
         {
+          "href": "./runbooks/postgres-15-to-18-upgrade.md",
+          "targetPath": "docs/runbooks/postgres-15-to-18-upgrade.md",
+          "exists": true
+        },
+        {
           "href": "./runbooks/scaw-nonconformity-self-inspection.md",
           "targetPath": "docs/runbooks/scaw-nonconformity-self-inspection.md",
           "exists": true
@@ -11404,6 +11409,11 @@
         {
           "href": "./runbooks/vnc-tailscale-recovery.md",
           "targetPath": "docs/runbooks/vnc-tailscale-recovery.md",
+          "exists": true
+        },
+        {
+          "href": "./runbooks/watch-camera.md",
+          "targetPath": "docs/runbooks/watch-camera.md",
           "exists": true
         },
         {
@@ -11557,100 +11567,100 @@
           "exists": false
         }
       ],
-      "inboundCount": 12,
+      "inboundCount": 13,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 344,
+          "line": 347,
           "length": 1132
         },
         {
-          "line": 360,
+          "line": 363,
           "length": 1242
         },
         {
-          "line": 364,
+          "line": 367,
           "length": 1022
         },
         {
-          "line": 375,
+          "line": 378,
           "length": 1147
         },
         {
-          "line": 379,
+          "line": 382,
           "length": 1065
         },
         {
-          "line": 427,
+          "line": 430,
           "length": 1165
         },
         {
-          "line": 433,
+          "line": 436,
           "length": 1458
         },
         {
-          "line": 445,
+          "line": 448,
           "length": 1025
         },
         {
-          "line": 459,
+          "line": 462,
           "length": 1398
         },
         {
-          "line": 461,
+          "line": 464,
           "length": 1133
         },
         {
-          "line": 465,
+          "line": 468,
           "length": 1170
         },
         {
-          "line": 473,
+          "line": 476,
           "length": 1059
         },
         {
-          "line": 481,
+          "line": 484,
           "length": 1129
         },
         {
-          "line": 485,
+          "line": 488,
           "length": 1135
         },
         {
-          "line": 489,
+          "line": 492,
           "length": 1117
         },
         {
-          "line": 604,
+          "line": 607,
           "length": 1013
         },
         {
-          "line": 791,
+          "line": 794,
           "length": 2038
         },
         {
-          "line": 807,
+          "line": 810,
           "length": 1496
         },
         {
-          "line": 813,
+          "line": 816,
           "length": 1177
         },
         {
-          "line": 1155,
+          "line": 1158,
           "length": 1449
         },
         {
-          "line": 1191,
+          "line": 1194,
           "length": 1136
         },
         {
-          "line": 1193,
+          "line": 1196,
           "length": 1239
         },
         {
-          "line": 1229,
+          "line": 1232,
           "length": 1004
         }
       ],
@@ -20233,8 +20243,8 @@
     },
     {
       "path": "docs/guides/local-alerts.md",
-      "lineCount": 428,
-      "byteSize": 17671,
+      "lineCount": 425,
+      "byteSize": 17550,
       "hasFrontmatter": true,
       "title": "ローカル環境対応の通知機能ガイド",
       "status": null,
@@ -20572,8 +20582,8 @@
     },
     {
       "path": "docs/guides/operation-manual.md",
-      "lineCount": 847,
-      "byteSize": 26034,
+      "lineCount": 844,
+      "byteSize": 25913,
       "hasFrontmatter": true,
       "title": "運用マニュアル",
       "status": null,
@@ -21299,7 +21309,7 @@
     {
       "path": "docs/guides/quick-start-deployment.md",
       "lineCount": 45,
-      "byteSize": 3108,
+      "byteSize": 3112,
       "hasFrontmatter": true,
       "title": "デプロイ・クイックスタート",
       "status": "active",
@@ -21311,8 +21321,8 @@
           "exists": true
         },
         {
-          "href": "./deployment.md#実行前確認",
-          "targetPath": "docs/guides/deployment.md",
+          "href": "../knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則",
+          "targetPath": "docs/knowledge-base/infrastructure/ansible-deployment.md",
           "exists": true
         },
         {
@@ -21321,7 +21331,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 11,
+      "inboundCount": 10,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -21663,8 +21673,8 @@
     },
     {
       "path": "docs/guides/slack-webhook-setup.md",
-      "lineCount": 217,
-      "byteSize": 10229,
+      "lineCount": 216,
+      "byteSize": 10102,
       "hasFrontmatter": false,
       "title": "Slack Webhook URL設定手順",
       "status": null,
@@ -21793,7 +21803,7 @@
     {
       "path": "docs/guides/status-agent.md",
       "lineCount": 242,
-      "byteSize": 12970,
+      "byteSize": 12940,
       "hasFrontmatter": false,
       "title": "🛰️ status-agent セットアップガイド",
       "status": null,
@@ -21806,21 +21816,6 @@
         }
       ],
       "inboundCount": 8,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/guides/talkplaza-rollout.md",
-      "lineCount": 85,
-      "byteSize": 3703,
-      "hasFrontmatter": true,
-      "title": "トークプラザ工場 導入チェックリスト（最小）",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -23413,8 +23408,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
-      "lineCount": 3226,
-      "byteSize": 442832,
+      "lineCount": 3233,
+      "byteSize": 444427,
       "hasFrontmatter": true,
       "title": "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装",
       "status": null,
@@ -23676,6 +23671,11 @@
           "exists": true
         },
         {
+          "href": "./KB-339-mobile-placement-barcode-survey.md",
+          "targetPath": "docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md",
+          "exists": true
+        },
+        {
           "href": "./KB-339-mobile-placement-barcode-survey.md#v24-barcode-reader-tuning-2026-04-23",
           "targetPath": "docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md",
           "exists": true
@@ -23741,19 +23741,19 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 219,
+          "line": 226,
           "length": 1414
         },
         {
-          "line": 221,
+          "line": 228,
           "length": 1048
         },
         {
-          "line": 230,
+          "line": 237,
           "length": 1224
         },
         {
-          "line": 680,
+          "line": 687,
           "length": 1803
         }
       ],
@@ -24802,8 +24802,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md",
-      "lineCount": 363,
-      "byteSize": 68032,
+      "lineCount": 388,
+      "byteSize": 73558,
       "hasFrontmatter": false,
       "title": "KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）",
       "status": null,
@@ -24900,7 +24900,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 31,
+      "inboundCount": 32,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -25787,8 +25787,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md",
-      "lineCount": 121,
-      "byteSize": 15013,
+      "lineCount": 125,
+      "byteSize": 15515,
       "hasFrontmatter": true,
       "title": "KB-368: Zero 2 W 配膳追跡（haizen API・エージェント・キオスク表示）",
       "status": null,
@@ -25822,6 +25822,11 @@
         {
           "href": "../runbooks/mobile-placement-smartphone.md",
           "targetPath": "docs/runbooks/mobile-placement-smartphone.md",
+          "exists": true
+        },
+        {
+          "href": "../runbooks/zero-edge-agent.md",
+          "targetPath": "docs/runbooks/zero-edge-agent.md",
           "exists": true
         },
         {
@@ -27783,7 +27788,7 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -27820,6 +27825,104 @@
         }
       ],
       "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-428-sessaku01-sd-card-failure.md",
+      "lineCount": 52,
+      "byteSize": 4545,
+      "hasFrontmatter": false,
+      "title": "KB-428: 切削01（raspi4-sessaku-01）の SD カード破損と、回収したカードの検査",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "./KB-425-pi4-robodrill01-network-stall-persistent-journal.md",
+          "targetPath": "docs/knowledge-base/KB-425-pi4-robodrill01-network-stall-persistent-journal.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-429-cve-2026-98432-mptcp-mitigation.md",
+      "lineCount": 31,
+      "byteSize": 2609,
+      "hasFrontmatter": false,
+      "title": "KB-429: CVE-2026-98432 の暫定対策(MPTCP 停止)",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-430-pi5-wifi-no-secrets-reconnect.md",
+      "lineCount": 33,
+      "byteSize": 3087,
+      "hasFrontmatter": false,
+      "title": "KB-430: Pi5 Wi-Fi no-secrets による切断継続と自動再接続",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../infrastructure/ansible/roles/server/tasks/wifi-reconnect.yml",
+          "targetPath": "infrastructure/ansible/roles/server/tasks/wifi-reconnect.yml",
+          "exists": true
+        },
+        {
+          "href": "../../infrastructure/ansible/templates/pi5-wifi-reconnect.sh.j2",
+          "targetPath": "infrastructure/ansible/templates/pi5-wifi-reconnect.sh.j2",
+          "exists": true
+        },
+        {
+          "href": "../../scripts/ci/tests/test_pi5_wifi_reconnect.py",
+          "targetPath": "scripts/ci/tests/test_pi5_wifi_reconnect.py",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/knowledge-base/KB-431-alerts-inbox-silent-skips-and-retention.md",
+      "lineCount": 44,
+      "byteSize": 3970,
+      "hasFrontmatter": false,
+      "title": "KB-431: Alerts inbox silent JSON skips and retention",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../apps/api/src/services/alerts/alerts-inbox-cleanup.ts",
+          "targetPath": "apps/api/src/services/alerts/alerts-inbox-cleanup.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/alerts/alerts-ingestor.ts",
+          "targetPath": "apps/api/src/services/alerts/alerts-ingestor.ts",
+          "exists": true
+        },
+        {
+          "href": "../../infrastructure/ansible/roles/kiosk/tasks/package-integrity.yml",
+          "targetPath": "infrastructure/ansible/roles/kiosk/tasks/package-integrity.yml",
+          "exists": true
+        }
+      ],
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -28593,8 +28696,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 893,
-      "byteSize": 272271,
+      "lineCount": 897,
+      "byteSize": 273329,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -29826,7 +29929,7 @@
           "exists": true
         },
         {
-          "href": "./infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同",
+          "href": "./infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題-旧別拠点用と標準inventoryの混同",
           "targetPath": "docs/knowledge-base/infrastructure/ansible-deployment.md",
           "exists": true
         },
@@ -31261,6 +31364,26 @@
           "exists": true
         },
         {
+          "href": "./KB-429-cve-2026-98432-mptcp-mitigation.md",
+          "targetPath": "docs/knowledge-base/KB-429-cve-2026-98432-mptcp-mitigation.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-430-pi5-wifi-no-secrets-reconnect.md",
+          "targetPath": "docs/knowledge-base/KB-430-pi5-wifi-no-secrets-reconnect.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-431-alerts-inbox-silent-skips-and-retention.md",
+          "targetPath": "docs/knowledge-base/KB-431-alerts-inbox-silent-skips-and-retention.md",
+          "exists": true
+        },
+        {
+          "href": "./KB-432-fjv-wifi-stall-kernel-firmware-align.md",
+          "targetPath": "docs/knowledge-base/KB-432-fjv-wifi-stall-kernel-firmware-align.md",
+          "exists": true
+        },
+        {
           "href": "./KB-investigation-kiosk-ime-and-power-regression.md",
           "targetPath": "docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
           "exists": true
@@ -31532,8 +31655,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/ansible-deployment.md",
-      "lineCount": 4368,
-      "byteSize": 281621,
+      "lineCount": 4295,
+      "byteSize": 277241,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - Ansible/デプロイ関連",
       "status": null,
@@ -31705,7 +31828,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 206,
+      "inboundCount": 209,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -31713,8 +31836,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/backup-restore.md",
-      "lineCount": 2208,
-      "byteSize": 137917,
+      "lineCount": 2201,
+      "byteSize": 137599,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - バックアップ・リストア関連",
       "status": null,
@@ -31793,6 +31916,11 @@
         {
           "href": "../index.md",
           "targetPath": "docs/knowledge-base/index.md",
+          "exists": true
+        },
+        {
+          "href": "./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則",
+          "targetPath": "docs/knowledge-base/infrastructure/ansible-deployment.md",
           "exists": true
         },
         {
@@ -31937,8 +32065,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/security.md",
-      "lineCount": 1320,
-      "byteSize": 84388,
+      "lineCount": 1321,
+      "byteSize": 84858,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - セキュリティ関連",
       "status": null,
@@ -32028,8 +32156,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/signage.md",
-      "lineCount": 2208,
-      "byteSize": 190029,
+      "lineCount": 2206,
+      "byteSize": 189825,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - サイネージ関連",
       "status": null,
@@ -33074,6 +33202,21 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/plans/android-haizen-shell-self-update-execplan.md",
+      "lineCount": 119,
+      "byteSize": 13594,
+      "hasFrontmatter": false,
+      "title": "配膳アプリが業務用 Pi5 から自分で新しい版を取り込む",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/plans/ansible-deploy-standardization-execplan.md",
       "lineCount": 340,
       "byteSize": 18079,
@@ -33203,6 +33346,38 @@
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/assembly-check-sheet-execplan.md",
+      "lineCount": 341,
+      "byteSize": 52065,
+      "hasFrontmatter": false,
+      "title": "Assembly check sheet: import per-machine Excel sheets and stamp each item with an employee NFC tag on the kiosk",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [
+        {
+          "line": 7,
+          "length": 1057
+        },
+        {
+          "line": 240,
+          "length": 1145
+        },
+        {
+          "line": 264,
+          "length": 1662
+        },
+        {
+          "line": 297,
+          "length": 1329
+        }
+      ],
       "referencesExecPlan": false
     },
     {
@@ -34531,8 +34706,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 868,
-      "byteSize": 137553,
+      "lineCount": 907,
+      "byteSize": 145609,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -35352,6 +35527,167 @@
       "replacementCharacterCount": 0,
       "longLines": [],
       "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/kiosk-inventory-setup-seigi.md",
+      "lineCount": 121,
+      "byteSize": 13450,
+      "hasFrontmatter": false,
+      "title": "Kiosk inventory setup: dismiss, search, tag feedback and scoped choices",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../../apps/api/prisma/migrations/20261029130000_inventory_setup_scope_and_dismiss/migration.sql",
+          "targetPath": "apps/api/prisma/migrations/20261029130000_inventory_setup_scope_and_dismiss/migration.sql",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/prisma/schema.prisma",
+          "targetPath": "apps/api/prisma/schema.prisma",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/scripts/inventory-tool-presets-import.mjs",
+          "targetPath": "apps/api/scripts/inventory-tool-presets-import.mjs",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/routes/item-inventory/dashboard.test.ts",
+          "targetPath": "apps/api/src/routes/item-inventory/dashboard.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/routes/item-inventory/index.ts",
+          "targetPath": "apps/api/src/routes/item-inventory/index.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/routes/item-inventory/phase2-api.test.ts",
+          "targetPath": "apps/api/src/routes/item-inventory/phase2-api.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/__tests__/inventory-dashboard.test.ts",
+          "targetPath": "apps/api/src/services/item-inventory/__tests__/inventory-dashboard.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/__tests__/inventory-setup-scope.test.ts",
+          "targetPath": "apps/api/src/services/item-inventory/__tests__/inventory-setup-scope.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/__tests__/item-inventory-gmail-ingestion.test.ts",
+          "targetPath": "apps/api/src/services/item-inventory/__tests__/item-inventory-gmail-ingestion.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/__tests__/item-inventory.service.test.ts",
+          "targetPath": "apps/api/src/services/item-inventory/__tests__/item-inventory.service.test.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/item-inventory-gmail-ingestion.service.ts",
+          "targetPath": "apps/api/src/services/item-inventory/item-inventory-gmail-ingestion.service.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/item-inventory-operations.ts",
+          "targetPath": "apps/api/src/services/item-inventory/item-inventory-operations.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/item-inventory-tool-fields.ts",
+          "targetPath": "apps/api/src/services/item-inventory/item-inventory-tool-fields.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/item-inventory-transactions.ts",
+          "targetPath": "apps/api/src/services/item-inventory/item-inventory-transactions.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/api/src/services/item-inventory/item-inventory.service.ts",
+          "targetPath": "apps/api/src/services/item-inventory/item-inventory.service.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/api/domains/item-inventory.ts",
+          "targetPath": "apps/web/src/api/domains/item-inventory.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/api/hooks/item-inventory.ts",
+          "targetPath": "apps/web/src/api/hooks/item-inventory.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/inventory/setup/InventoryItemEditTab.test.tsx",
+          "targetPath": "apps/web/src/features/kiosk/inventory/setup/InventoryItemEditTab.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/inventory/setup/InventoryItemEditTab.tsx",
+          "targetPath": "apps/web/src/features/kiosk/inventory/setup/InventoryItemEditTab.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/inventory/setup/InventoryRegistrationTab.test.tsx",
+          "targetPath": "apps/web/src/features/kiosk/inventory/setup/InventoryRegistrationTab.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/inventory/setup/InventoryRegistrationTab.tsx",
+          "targetPath": "apps/web/src/features/kiosk/inventory/setup/InventoryRegistrationTab.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/inventory/setup/inventorySetupMutations.test.tsx",
+          "targetPath": "apps/web/src/features/kiosk/inventory/setup/inventorySetupMutations.test.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/inventory/setup/NfcScanPanel.tsx",
+          "targetPath": "apps/web/src/features/kiosk/inventory/setup/NfcScanPanel.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/inventory/setup/setupError.ts",
+          "targetPath": "apps/web/src/features/kiosk/inventory/setup/setupError.ts",
+          "exists": true
+        },
+        {
+          "href": "../../apps/web/src/features/kiosk/inventory/setup/ToolValueBoard.tsx",
+          "targetPath": "apps/web/src/features/kiosk/inventory/setup/ToolValueBoard.tsx",
+          "exists": true
+        },
+        {
+          "href": "../../docs/INDEX.md",
+          "targetPath": "docs/INDEX.md",
+          "exists": true
+        },
+        {
+          "href": "../../docs/plans/kiosk-inventory-setup-seigi.md",
+          "targetPath": "docs/plans/kiosk-inventory-setup-seigi.md",
+          "exists": true
+        },
+        {
+          "href": "../../packages/shared-types/src/tools/index.ts",
+          "targetPath": "packages/shared-types/src/tools/index.ts",
+          "exists": true
+        },
+        {
+          "href": "../../packages/shared-types/src/tools/item-inventory.ts",
+          "targetPath": "packages/shared-types/src/tools/item-inventory.ts",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": true
     },
     {
       "path": "docs/plans/kiosk-inventory-ux-execplan.md",
@@ -36199,8 +36535,8 @@
     },
     {
       "path": "docs/plans/mobile-local-first-sync-execplan.md",
-      "lineCount": 215,
-      "byteSize": 28926,
+      "lineCount": 238,
+      "byteSize": 35518,
       "hasFrontmatter": false,
       "title": "スマホ全機能のローカル優先化と Wi-Fi 時だけの裏同期",
       "status": null,
@@ -36310,6 +36646,21 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
+      "path": "docs/plans/mobile-sync-delta-resume-status-execplan.md",
+      "lineCount": 179,
+      "byteSize": 30974,
+      "hasFrontmatter": false,
+      "title": "スマホのデータ同期: 分割保存と再開、購買の差分取得、1分ごとの確認、同期状態の表示",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37491,14 +37842,20 @@
     },
     {
       "path": "docs/plans/software-support-upgrade-execplan.md",
-      "lineCount": 166,
-      "byteSize": 21470,
+      "lineCount": 175,
+      "byteSize": 25133,
       "hasFrontmatter": false,
       "title": "古いソフトのサポート期限対応(期限の近い順)",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 0,
+      "localLinks": [
+        {
+          "href": "../runbooks/postgres-15-to-18-upgrade.md",
+          "targetPath": "docs/runbooks/postgres-15-to-18-upgrade.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -38309,7 +38666,7 @@
     {
       "path": "docs/runbooks/assembly-overlay-staging-hardware-acceptance.md",
       "lineCount": 584,
-      "byteSize": 40960,
+      "byteSize": 40842,
       "hasFrontmatter": true,
       "title": "組立手順書 Overlay staging 受入・性能計測 Runbook",
       "status": "active",
@@ -38817,8 +39174,8 @@
     },
     {
       "path": "docs/runbooks/google-drive-disaster-recovery.md",
-      "lineCount": 131,
-      "byteSize": 15893,
+      "lineCount": 132,
+      "byteSize": 16073,
       "hasFrontmatter": true,
       "title": "Business Pi 5 Google Drive disaster-recovery backup Runbook",
       "status": null,
@@ -39736,8 +40093,8 @@
     },
     {
       "path": "docs/runbooks/nightly-security-review.md",
-      "lineCount": 160,
-      "byteSize": 10491,
+      "lineCount": 189,
+      "byteSize": 12290,
       "hasFrontmatter": false,
       "title": "Nightly security review",
       "status": null,
@@ -39986,6 +40343,37 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/runbooks/postgres-15-to-18-upgrade.md",
+      "lineCount": 188,
+      "byteSize": 12187,
+      "hasFrontmatter": true,
+      "title": "PostgreSQL 15→18 移行・切戻しRunbook",
+      "status": "active",
+      "source_of_truth": null,
+      "localLinks": [
+        {
+          "href": "../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/software-support-upgrade-execplan.md#5-postgresql-15--18",
+          "targetPath": "docs/plans/software-support-upgrade-execplan.md",
+          "exists": true
+        },
+        {
+          "href": "../plans/software-support-upgrade-execplan.md#progress",
+          "targetPath": "docs/plans/software-support-upgrade-execplan.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 2,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/runbooks/scaw-nonconformity-self-inspection.md",
       "lineCount": 155,
       "byteSize": 13729,
@@ -40023,8 +40411,8 @@
     },
     {
       "path": "docs/runbooks/security-hardening-remediation.md",
-      "lineCount": 198,
-      "byteSize": 19660,
+      "lineCount": 192,
+      "byteSize": 17926,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
@@ -40046,8 +40434,8 @@
           "exists": true
         },
         {
-          "href": "../guides/quick-start-deployment.md",
-          "targetPath": "docs/guides/quick-start-deployment.md",
+          "href": "../knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則",
+          "targetPath": "docs/knowledge-base/infrastructure/ansible-deployment.md",
           "exists": true
         },
         {
@@ -40129,15 +40517,30 @@
       "referencesExecPlan": false
     },
     {
+      "path": "docs/runbooks/watch-camera.md",
+      "lineCount": 100,
+      "byteSize": 6710,
+      "hasFrontmatter": false,
+      "title": "監視カメラ(Pi Zero 2 W)運用",
+      "status": null,
+      "source_of_truth": null,
+      "localLinks": [],
+      "inboundCount": 1,
+      "hasQuestionMarkCorruption": false,
+      "replacementCharacterCount": 0,
+      "longLines": [],
+      "referencesExecPlan": false
+    },
+    {
       "path": "docs/runbooks/zero-edge-agent.md",
-      "lineCount": 70,
-      "byteSize": 5425,
+      "lineCount": 101,
+      "byteSize": 7896,
       "hasFrontmatter": false,
       "title": "Pi Zero 棚スキャナー運用",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -40933,7 +41336,7 @@
     {
       "path": "docs/security/incident-response.md",
       "lineCount": 381,
-      "byteSize": 11941,
+      "byteSize": 12163,
       "hasFrontmatter": false,
       "title": "インシデント対応手順",
       "status": null,
@@ -41010,7 +41413,7 @@
     {
       "path": "docs/security/phase9-10-specifications.md",
       "lineCount": 663,
-      "byteSize": 26452,
+      "byteSize": 26646,
       "hasFrontmatter": false,
       "title": "Phase 9/10 セキュリティ機能詳細仕様書",
       "status": null,

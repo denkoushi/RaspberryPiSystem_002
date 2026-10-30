@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,49 +22,94 @@ def sha256(path: Path) -> str:
 class ExactPnpmToolchainTests(unittest.TestCase):
     def test_package_manager_and_engine_declare_the_same_exact_version(self) -> None:
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-        self.assertEqual(package["packageManager"], "pnpm@10.34.6")
-        self.assertEqual(package["engines"]["pnpm"], "10.34.6")
+        self.assertEqual(package["packageManager"], "pnpm@12.16.1")
+        self.assertEqual(package["engines"]["pnpm"], "12.16.1")
 
-    def test_path_pnpm_is_ignored_and_declared_exact_version_is_used(self) -> None:
+    def run_wrapper(self, *arguments: str, version: str | None = None,
+                    missing: bool = False, broken: bool = False,
+                    relative_path: bool = False) -> subprocess.CompletedProcess[str]:
+        expected = json.loads((ROOT / "package.json").read_text())["packageManager"].split("@")[1]
         before = {path: sha256(path) for path in LOCK_FILES}
         with tempfile.TemporaryDirectory() as directory:
-            fake = Path(directory) / "pnpm"
-            marker = Path(directory) / "unexpected-pnpm-invocation"
-            fake.write_text(
-                '#!/usr/bin/env bash\ntouch "$FAKE_PNPM_MARKER"\necho 11.19.0\n',
-                encoding="utf-8",
-            )
-            fake.chmod(0o755)
+            tools = Path(directory)
+            # Isolate PATH so no real pnpm/Corepack or network is needed.
+            for command in ("bash", "node", "python3", "mktemp", "chmod", "rm", "sh", "dirname", "env"):
+                executable = sys.executable if command == "python3" else shutil.which(command)
+                self.assertIsNotNone(executable, command)
+                (tools / command).symlink_to(executable)
+            if not missing:
+                fake = tools / "pnpm"
+                fake.write_text(
+                    '#!/usr/bin/env bash\n'
+                    'if [[ "$1" == --version ]]; then\n'
+                    '  [[ "$FAKE_PNPM_BROKEN" == 1 ]] && exit 1\n'
+                    '  echo "$FAKE_PNPM_VERSION"; exit 0\n'
+                    'fi\n'
+                    '[[ "$CI" == true ]] || exit 3\n'
+                    'if [[ "$1" == exec ]]; then shift; exec "$@"; fi\n'
+                    'printf "%s\\n" "$@"\n',
+                    encoding="utf-8",
+                )
+                fake.chmod(0o755)
             environment = os.environ.copy()
-            environment["PATH"] = f"{directory}:{environment['PATH']}"
-            environment["FAKE_PNPM_MARKER"] = str(marker)
+            environment["PATH"] = f"{os.path.relpath(tools, ROOT)}:{os.defpath}" if relative_path else str(tools)
+            environment["FAKE_PNPM_VERSION"] = version if version is not None else expected
+            environment["FAKE_PNPM_BROKEN"] = "1" if broken else "0"
             result = subprocess.run(
-                [str(WRAPPER), "--version"],
-                cwd=ROOT,
-                env=environment,
-                capture_output=True,
-                text=True,
-                check=False,
+                [str(WRAPPER), *arguments], cwd=ROOT, env=environment,
+                capture_output=True, text=True, check=False,
             )
-
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "10.34.6")
-        self.assertIn("pnpm=10.34.6", result.stderr)
-        self.assertFalse(marker.exists())
         self.assertEqual(before, {path: sha256(path) for path in LOCK_FILES})
+        return result
+
+    def test_path_pnpm_matching_declared_exact_version_is_used(self) -> None:
+        result = self.run_wrapper("--version")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "12.16.1")
+        self.assertIn("pnpm=12.16.1", result.stderr)
+
+    def test_missing_mismatched_and_broken_pnpm_fail_with_install_hint(self) -> None:
+        for options in ({"missing": True}, {"version": "11.19.0"},
+                        {"version": "12.16.1-extra"}, {"broken": True}):
+            with self.subTest(options=options):
+                result = self.run_wrapper("install", **options)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("npm install -g pnpm@12.16.1", result.stderr)
 
     def test_child_package_script_uses_the_same_exact_pnpm(self) -> None:
-        result = subprocess.run(
-            [str(WRAPPER), "exec", "sh", "-c", "pnpm --version"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
+        result = self.run_wrapper("exec", "sh", "-c", "pnpm --version")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("10.34.6", result.stdout)
-        self.assertNotIn("11.19.0", result.stdout + result.stderr)
+        self.assertEqual(result.stdout.strip(), "12.16.1")
+
+    def test_relative_path_pnpm_is_absolute_in_child_shim(self) -> None:
+        result = self.run_wrapper(
+            "exec", "/bin/sh", "-c", "cd / && pnpm --version", relative_path=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "12.16.1")
+
+    def test_install_forces_frozen_lockfile_and_preserves_arguments(self) -> None:
+        result = self.run_wrapper("install", "--filter", "package with spaces")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(),
+                         ["install", "--filter", "package with spaces", "--frozen-lockfile"])
+        result = self.run_wrapper("install", "--frozen-lockfile")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines(), ["install", "--frozen-lockfile"])
+        result = self.run_wrapper("install", "--no-frozen-lockfile")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("may not disable the frozen lockfile contract", result.stderr)
+
+    def test_docker_pnpm_install_reads_package_manager(self) -> None:
+        for name, count in (("api", 2), ("web", 1), ("kiosk-sop-generator", 1)):
+            with self.subTest(image=name):
+                text = (ROOT / f"infrastructure/docker/Dockerfile.{name}").read_text()
+                self.assertEqual(text.count(
+                    "npm install -g \"$(node -p \"require('./package.json').packageManager\")\""
+                ), count)
+                self.assertNotIn("corepack", text.lower())
+                self.assertNotIn("pnpm@12.16.1", text)
 
     def test_canonical_deploy_children_do_not_call_bare_pnpm(self) -> None:
         canonical_root = ROOT / "scripts/ci/run-deploy-contracts-local.sh"

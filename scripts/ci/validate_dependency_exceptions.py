@@ -25,12 +25,20 @@ def trivy_ids(path: Path) -> set[str]:
 
 
 def override_ids(path: Path) -> set[str]:
-    package = load_json(path)
-    pnpm = package.get("pnpm")
-    overrides = pnpm.get("overrides") if isinstance(pnpm, dict) else None
-    if not isinstance(overrides, dict):
-        raise ValueError(f"{path}: pnpm.overrides must be an object")
-    return set(overrides)
+    ids: set[str] = set()
+    in_block = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith((" ", "\t")):
+            in_block = line.rstrip() == "overrides:"
+            continue
+        if in_block:
+            key, _, _ = line.strip().partition(": ")
+            ids.add(key.strip("'\""))
+    if not ids:
+        raise ValueError(f"{path}: overrides must be a non-empty mapping")
+    return ids
 
 
 def validate_entries(
@@ -79,7 +87,7 @@ def validate(root: Path, today: dt.date) -> list[str]:
         *validate_entries(ledger.get("trivy"), trivy_ids(root / ".trivyignore"), "trivy", today),
         *validate_entries(
             ledger.get("pnpmOverrides"),
-            override_ids(root / "package.json"),
+            override_ids(root / "pnpm-workspace.yaml"),
             "pnpm override",
             today,
         ),
