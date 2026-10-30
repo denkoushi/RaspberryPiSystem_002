@@ -31,7 +31,7 @@ COPY packages/slip-match-core/package.json ./packages/slip-match-core/package.js
 COPY packages/shelf-layout-core/package.json ./packages/shelf-layout-core/package.json
 
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
-  corepack enable \
+  npm install -g "$(node -p "require('./package.json').packageManager")" \
   && npm_config_fetch_retries=5 \
     npm_config_fetch_retry_factor=1 \
     npm_config_fetch_retry_mintimeout=2000 \
@@ -141,7 +141,7 @@ WORKDIR /app
 # Prisma 7 は全データベース用のクエリコンパイラ(wasm)を同梱する。PostgreSQL 以外と
 # source map は使わないため、install と同じ層で消して API イメージの圧縮サイズ予算に収める。
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
-  corepack enable \
+  npm install -g "$(node -p "require('./package.json').packageManager")" \
   && npm_config_fetch_retries=5 \
     npm_config_fetch_retry_factor=1 \
     npm_config_fetch_retry_mintimeout=2000 \
@@ -200,7 +200,6 @@ COPY --from=build /app/docs/kiosk-operation-guide ./docs/kiosk-operation-guide
 
 WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate
-RUN rm -rf /root/.cache/node/corepack
 
 # Release provenance is image metadata only. Keep it after every filesystem
 # mutation so a new release SHA/config hash can reuse unchanged runtime layers.

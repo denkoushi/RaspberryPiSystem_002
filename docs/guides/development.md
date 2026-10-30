@@ -48,7 +48,7 @@ Cursor の Application Support / `.cursor` を外部SSD（例: `/Volumes/SSD01/M
 ## 前提条件
 
 - Node.js 24以上
-- pnpm 10.34.6（`package.json` の `packageManager` に合わせる）
+- pnpm（`package.json` の `packageManager` に合わせる）
 - Python 3.11+
 - Poetry
 - Docker & Docker Compose
@@ -66,7 +66,7 @@ cd RaspberryPiSystem_002
 ### 2. 依存関係のインストール
 
 ```bash
-corepack enable
+npm install -g "$(node -p "require('./package.json').packageManager")"
 pnpm install
 poetry install -C clients/nfc-agent
 ```

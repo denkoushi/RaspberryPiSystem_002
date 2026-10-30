@@ -129,8 +129,8 @@ async function prepareAuditWorkspace(workspace, version) {
   const auditWorkspace = await mkdtemp(join(tmpdir(), 'raspisys-pnpm-audit-'));
   const manifest = JSON.parse(await readFile(join(workspace, 'package.json'), 'utf8'));
 
-  // pnpm 10 still uses legacy audit endpoints. Keep the pnpm 11 bulk client
-  // against an immutable lockfile copy, isolated from the workspace engine.
+  // Run the pinned bulk audit client against an immutable lockfile copy,
+  // isolated from the workspace install.
   manifest.packageManager = `pnpm@${version}`;
   manifest.engines = { ...manifest.engines, pnpm: version };
   delete manifest.pnpm;
@@ -193,7 +193,7 @@ async function runCriticalAudit(options) {
 }
 
 async function main() {
-  const version = process.env.AUDIT_PNPM_VERSION ?? '11.4.0';
+  const version = process.env.AUDIT_PNPM_VERSION ?? '12.16.1';
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
   const auditWorkspace = await prepareAuditWorkspace(workspace, version);
   const server = createServer((request, response) => {

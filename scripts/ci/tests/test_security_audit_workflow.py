@@ -16,7 +16,7 @@ class SecurityAuditWorkflowTests(unittest.TestCase):
         text = WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("node-version: '24'", text)
-        self.assertIn("AUDIT_PNPM_VERSION: '11.4.0'", text)
+        self.assertIn("AUDIT_PNPM_VERSION: '12.16.1'", text)
         self.assertIn("node scripts/ci/run-pnpm-bulk-audit.mjs", text)
         self.assertNotIn("--ignore-registry-errors", text)
         self.assertNotIn("pnpm audit --audit-level=critical", text)
