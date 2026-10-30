@@ -58,7 +58,71 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 ### 4. Python 3.11 → 3.13
 
-別 PR で行う。agent ごとの lock を 3.13 で作り直し、各 agent のテストを通す。Pi4 へ配るファイルは、main の最新がその変更の commit である間に全 Pi4 へ反映しないと届かないため、マージ後は他の PR をマージする前に Pi4 全台の反映を終える。端末ごとの文字コード(EUC-JP の端末がある)にも注意する。
+別 PR で行う。Pi4 へ配るファイルは、main の最新がその変更の commit である間に全 Pi4 へ反映しないと届かないため、マージ後は他の PR をマージする前に Pi4 全台の反映を終える。端末ごとの文字コード(EUC-JP の端末がある)にも注意する。
+
+#### 4-1. 影響範囲(2026-10-30 調査)
+
+書き換えるのは次の4つのイメージの土台だけである。
+
+- `infrastructure/docker/Dockerfile.nfc-agent`、`Dockerfile.barcode-agent`、`Dockerfile.torque-agent`。各3段(lock-export、builder、runtime)とも `python:3.11-slim`。CI の `pi4-agent-images-publish` が `linux/arm64` と `linux/arm/v7` を作り、`ghcr.io/denkoushi/raspisys-{nfc,barcode,torque}-agent:<main の SHA>` として push する。端末上ではビルドせず、role `release_kiosk` が pull して `docker compose --no-build` で切り替える。
+- `services/hermes-answer-cache/Dockerfile`(`python:3.11-slim`、arm64 のみ)。Pi5 の `business-hermes-answer-cache` で動き、role `release_pi5` が digest 付き参照で配る。Pi4 には関係しない。
+
+対象外は次のとおり。status-agent、haizen-agent、zero-edge-agent は端末の OS の `python3` で動くため、OS の版上げ(本計画の範囲外)に従う。`clients/haizen-agent/pyproject.toml` も OS の Python 用である。
+
+agent が動く端末(inventory の `kiosk` グループ):
+
+- NFC のみ: raspberrypi4、raspi4-robodrill01、raspi4-fjv60-80、raspi4-sessaku-01、raspi4-kensaku-02、raspi4-assembly-02
+- NFC とトルク: raspi4-assembly-01
+- NFC、バーコード、トルク: raspi4-kensaku-stonebase01(3つ全部が動く唯一の端末)
+- raspberrypi3(サイネージ)は agent イメージを使わない。
+
+事前の読み取り確認(2026-10-30 21:38、Pi5 から uname・docker ps・curl のみ):
+
+- Pi4 の 8 台はすべて aarch64(dpkg arm64)。armv7 の端末は無い。CI は両方を作るが、実際に届くのは arm64。
+- 8 台とも現在の agent イメージは c452a53c。nfc-agent の `readerConnected` は 8 台すべて true。
+- stonebase01: torque-agent は healthy で `/health` 200。barcode-agent は Up で `readerConnected` false(リーダー未接続のため。反映後も false のままなら正常)。
+- assembly-01: torque-agent は healthy で `/health` 200。
+- ほかの 6 台は nfc-agent だけが動いている。
+
+#### 4-2. 依存の確認(Mac の Docker で試しビルド)
+
+- 3つの agent を `python:3.13-slim`(3.13.18)へ差し替え、今の poetry.lock のまま arm64 と arm/v7 の両方でビルドした。6本とも成功し、各イメージで主要モジュール(nfc は smartcard・evdev・uvloop・httptools・fastapi、torque は evdev・uvloop・fastapi、barcode は serial・uvloop・fastapi)の import を確かめた。所要は arm64 が約1分、arm/v7 が 10〜13 分(QEMU、キャッシュなし)。
+- C 拡張: pyscard 2.3.1 と evdev 1.9.3 は Linux 用 wheel が無くソースからビルドするが、3.13 でも両アーキテクチャで通った。uvloop、httptools、pyyaml は armv7 用 wheel が無く QEMU でコンパイルされる(3.11 でも同じ)。pydantic-core と watchfiles は cp313 の wheel がある。
+- poetry.lock は作り直さない。lock には既に cp313 の wheel が載っており、`^3.11` の制約は 3.13 を含む。作り直すと全パッケージの版が動き、今回の変更が「Python の版」だけでなくなるため。
+- 3.13 と 3.12 で消えた標準モジュール(cgi、telnetlib、imghdr、distutils、asyncore など)は、clients/ と services/hermes-answer-cache/ で import されていない。
+- テストを 3.11 と 3.13 で同じ条件で比べた。nfc-agent は両方 6 件合格。torque-agent は両方 82 件合格・1 件失敗(`test_capture_kit.py` の replay の安全確認。コンテナを root で動かしたための環境由来で、3.11 でも同じく失敗する)。barcode-agent はテストが無く、import を確かめた。
+- hermes-answer-cache は 3.13 でイメージを作り、faiss・gptcache・fastembed・SQLAlchemy の import と、埋め込みモデルの焼き込みが通った。テスト 53 件合格。
+
+#### 4-3. 端末固有の注意
+
+- raspi4-robodrill01 と raspi4-kensaku-stonebase01 は `ja_JP.EUC-JP`。コンテナ内の Python はホストのロケールに依存しないが、Ansible の手作業の読み取りでは先に `LC_ALL=C.UTF-8` にする。
+- Pi4 に届くのは main の HEAD の SHA のイメージだけである。マージ後、Pi4 全台の反映が終わるまで他の PR をマージしない。試しの1台で確認を待つ間も、この止めは続く。
+- イメージの pull が `lookup ghcr.io ... server misbehaving` で失敗したら、その端末の `/etc/resolv.pre-tailscale-backup.conf` が空になっていないかを見る。切り替え前の失敗なので、端末は前の版のまま動き続ける。
+- 標準反映の正常確認は、各 agent の HTTP 応答(nfc と barcode は `/api/agent/status`、torque は `/health`)が 200 かどうかだけを見る。読取機が実際につながっているかは見ないので、反映の前後で `/api/agent/status` の `readerConnected` を比べ、さらに現場でカードを1回読ませて確かめる。
+
+#### 4-4. 戻し方
+
+- 反映中の失敗(pull、切り替え、HTTP 確認): role `release_kiosk` が切り替え前に今のイメージへ `raspi-standard-rollback:<run_id>-<agent>` の印を付け、失敗時はそのイメージで `--no-build` 起動し直す。自動で前の 3.11 版に戻る。
+- 反映後に不具合が分かった場合: 標準反映は main の HEAD しか配れないため、この PR を取り消す commit を main に入れ、CI が 3.11 のイメージを新しい SHA で作るのを待ち、Pi5 と該当 Pi4 を標準反映し直す。armv7 のビルドキャッシュは 3.13 で上書きされているため、取り消しの CI は KB-414 と同じく 1 時間近くかかる見込みである。その間、読取りの止まった端末は手作業での記録で運用する。
+- 戻せることの確かめ方: 試しの1台の反映で、run の記録に rollback 用の印付けが成功していること(`Capture current Pi4 agent images as temporary rollback tags` が ok)を確認する。取り消し commit による戻しは本番では試さず、PR の CI で 3.11 と 3.13 の両方のイメージが作れることをもって代える。
+
+#### 4-5. 反映の進め方
+
+1. PR をマージし、main の CI(3 agent × 2 アーキテクチャと hermes-answer-cache)が緑になるのを待つ。
+2. 反映前に、全 Pi4 の CPU の種類(`uname -m`、`dpkg --print-architecture`)と各 agent の `readerConnected` を読み取りだけで記録する。
+3. Pi5 を標準反映する(hermes-answer-cache が 3.13 になる)。
+4. 試しの1台として raspi4-kensaku-stonebase01 を `--limit` で反映する(2026-10-30 ユーザー指示)。3つの agent がすべて有効だが、今つながっている読取機は NFC リーダーだけである。EUC-JP の端末なので、手作業の Ansible の読み取りには `LC_ALL=C.UTF-8` を付ける(標準反映の role は対応済み)。現場の人が立ち会える時間に行う。
+5. stonebase01 の確認(反映後すぐ):
+   1. 読み取りだけで、3つの agent の HTTP 応答が 200 であること、NFC の `readerConnected` が反映前と同じ(true)であること、バーコードとトルクのコンテナが再起動を繰り返していないことを見る。
+   2. 現場で NFC カードを1回読ませ、キオスクの画面に読み取りが出ることを確かめる。実機での確認はこの1回だけ。
+   読めなければ、4-4 の手順で戻す。
+6. 問題がなければ、raspi4-assembly-01 を反映する。トルクレンチを実機で確かめられる端末で、NFC カードの読み取りとトルクレンチの1回の締め付けを現場で確かめる。トルクの部品は Bluetooth の入力を evdev で読むので、ここで初めて実機の入力を通す。
+7. NFC だけの6台(raspi4-kensaku-02、raspi4-sessaku-01、raspi4-fjv60-80、raspi4-assembly-02、raspberrypi4、raspi4-robodrill01)を1台ずつ反映し、それぞれ `readerConnected` を読み取りで確かめる。robodrill01 も EUC-JP の端末である。
+8. 全台終わるまで main への他のマージを止める。
+
+読取機がつながっていない部品の扱い: 3つの部品とも、読取機が無くても起動し、状態確認(nfc と barcode は `/api/agent/status`、torque は `/health`)は 200 を返す。読取機の有無は応答の中の `readerConnected` などに出るだけで、標準反映の正常確認は失敗しない。barcode のコンテナは `/dev/ttyACM0` を個別に割り当てず `privileged` で動くため、装置が無くても起動できる。torque は Bluetooth の入力が無いと待ち直しを続ける作りである(`hid_reader.py`)。
+
+バーコードを実機で確かめられる端末は今は無い(バーコードの部品が有効なのは stonebase01 だけで、読取機はつながっていない)。代わりに、3.13 のバーコード部品のイメージ(arm64 と arm/v7)の中で仮の端末(pty)を `SERIAL_DEVICE` に指定し、1行流すと `readerConnected: true` と `lastLine` に届くことを Mac で確かめた。バーコードの読取機を再びつなぐときに、現場で1回読ませて確かめる。
 
 ### 5. PostgreSQL 15 → 18
 
@@ -163,6 +227,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - 2026-10-26: pg は接続確立と空き接続待ちを1つの上限で扱う。そのため、Prisma 5 の `connect_timeout`(10秒)と `pool_timeout`(20秒)の長いほうを使い、本番で新たにタイムアウトが起きないようにした。
 - 2026-10-27: PostgreSQL の上げる先は 18 とした。19 は正式版がまだ出ていない(2026-11-19 予定)ため。
 - 2026-10-27: PostgreSQL はダンプと復元で移す。`pg_upgrade` は公式イメージだけでは使えず、18 のチェックサム既定の変更と、OS が変わることによる並び順の変化にも引っかかるため。旧ボリュームは消さずに残して戻し先にする。
+- 2026-10-30: Python 3.13 化では poetry.lock を作り直さず、イメージの土台だけを替える。lock は既に cp313 の wheel を含み、3.13 で両アーキテクチャのビルドとテストが通ったため。作り直すと依存の版も一緒に動き、不具合の原因を切り分けにくくなる。
 - 2026-10-25: 計画文書は1件目の PR に同梱する。文書は更新そのものではないため「1PR1ソフト」の決まりに反しない。
 
 ## Outcomes & Retrospective
