@@ -710,7 +710,7 @@ export function createRetrievalAnswering({
       if (executed.status === 'no_result') {
         return trialResult({
           status: 'completed',
-          answer: validation.plan.breakdown ? formatBreakdown(validation.plan, executed.groups, 0, visibleCatalog) : noResultAnswer(visibleCount),
+          answer: validation.plan.breakdown ? formatBreakdown(validation.plan, executed.groups, 0, visibleCatalog) : noResultAnswer(validation.plan.filters?.length > 0 ? executed.timings.filteredCount ?? visibleCount : visibleCount),
           ...(validation.plan.breakdown ? { display: { records: [], groups: executed.groups ?? [] } } : {}),
           recordIds: [],
           elapsedMs: elapsed(),

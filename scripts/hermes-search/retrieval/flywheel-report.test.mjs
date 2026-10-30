@@ -287,3 +287,18 @@ test('real report includes deterministic follow-up failures, unsupported reasons
   assert.match(report, /follow-up check: supported 4, ok 1, scope 1, missed 1, wrong 1, unsupported 3 \(no_content 2, count_answer 1\)/u);
   assert.match(report, /regressions: replayed 2, ok 1, failed 1/u);
 });
+
+test('real follow-ups without relevant labels count supported successes and scope losses', () => {
+  const rows = [false, true].map(ok => ({ source: 'real', relevant: [],
+    previousPlan: { filters: [], semanticQuery: 'scratch' },
+    live: live('other_shown', { followUpAction: 'replace' }),
+    followUpCheck: { supported: true, ok, scopeOk: ok },
+  }));
+  const summary = summarizeReal(rows);
+  for (const bucket of [summary, summary.followUp, summary.followUp.byAction.replace]) {
+    assert.equal(bucket.questions, 2);
+    assert.equal(bucket.withRelevant, 0);
+    assert.equal(bucket.shown, 1);
+    assert.deepEqual(bucket.lossStages, { follow_up_scope: 1 });
+  }
+});

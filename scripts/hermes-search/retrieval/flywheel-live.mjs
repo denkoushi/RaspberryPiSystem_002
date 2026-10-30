@@ -9,6 +9,7 @@ import { relevancePoolLimit } from './executor.mjs';
 import { RELEVANT } from './flywheel-filter.mjs';
 import { bareId } from './flywheel-pairs.mjs';
 import { learnedQueriesById } from './flywheel-learn.mjs';
+import { activePlannerQuestionVersion } from './flywheel-planner-version.mjs';
 import { createPlanner } from './planner-jev.mjs';
 import { relevanceFailureReason } from './relevance-jev.mjs';
 import { createRetrievalAnswering, loadCauseById, loadEnrichmentById, loadLearnedQueriesById } from './worker.mjs';
@@ -71,7 +72,7 @@ export async function createLiveScorer({ records, catalog, evaluate, env = proce
     causeById,
     catalog,
     evaluate,
-    planner: createPlanner({ evaluate, ...plannerOptions }),
+    planner: createPlanner({ evaluate, ...plannerOptions, questionVersion: plannerOptions.questionVersion ?? activePlannerQuestionVersion(env) }),
     dense,
     enrichmentById,
     learnedById,
