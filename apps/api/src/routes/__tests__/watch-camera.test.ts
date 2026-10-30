@@ -46,7 +46,7 @@ beforeEach(async () => {
   inference.complete.mockResolvedValue({ rawText: '{"person":false}' });
   app = Fastify();
   app.setErrorHandler((error, _request, reply) => {
-    reply.code(error instanceof ZodError ? 400 : error.statusCode ?? 500).send({ message: error.message });
+    reply.code(error instanceof ZodError ? 400 : error.statusCode ?? 500).send({ message: 'error' });
   });
   await app.register(rateLimit, { global: false });
   await registerWatchCameraRoutes(app);
