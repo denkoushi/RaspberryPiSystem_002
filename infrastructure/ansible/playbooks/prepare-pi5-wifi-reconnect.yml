@@ -1,0 +1,26 @@
+---
+# The standard release runs the server role in host-config-only mode, which
+# does not install the Wi-Fi reconnect timer. Apply this playbook when
+# templates/pi5-wifi-reconnect.* change.
+- name: Install the Pi5 Wi-Fi reconnect timer
+  hosts: server
+  gather_facts: false
+  become: true
+  serial: 1
+  vars:
+    repo_path: /opt/RaspberryPiSystem_002
+
+  pre_tasks:
+    - name: Require Wi-Fi reconnect delivery approval
+      ansible.builtin.assert:
+        that:
+          - pi5_wifi_reconnect_delivery_approved | default(false) | bool
+        fail_msg: >-
+          Set pi5_wifi_reconnect_delivery_approved=true only for the
+          separately approved Wi-Fi reconnect delivery.
+
+  tasks:
+    - name: Deploy the Wi-Fi reconnect script and units
+      ansible.builtin.import_role:
+        name: server
+        tasks_from: wifi-reconnect.yml

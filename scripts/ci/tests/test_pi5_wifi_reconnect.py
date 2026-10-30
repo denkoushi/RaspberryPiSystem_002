@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[3]
 TEMPLATES = ROOT / 'infrastructure/ansible/templates'
 SCRIPT = TEMPLATES / 'pi5-wifi-reconnect.sh.j2'
 SERVER_TASKS = ROOT / 'infrastructure/ansible/roles/server/tasks'
+DELIVERY_PLAYBOOK = ROOT / 'infrastructure/ansible/playbooks/prepare-pi5-wifi-reconnect.yml'
 
 
 class Pi5WifiReconnectTest(unittest.TestCase):
@@ -76,6 +77,16 @@ with open(os.environ['STUB_LOGS'], 'a') as stream:
         self.assertRegex(main, r"import_tasks: wifi-reconnect\.yml\n\s+when: server_release_mode == 'full'")
         self.assertLess(main.index('import_tasks: power-dispatcher.yml'),
                         main.index('import_tasks: wifi-reconnect.yml'))
+
+    def test_delivery_playbook_contract(self):
+        delivery = DELIVERY_PLAYBOOK.read_text()
+        self.assertRegex(delivery, r'hosts:\s*server')
+        self.assertIn('pi5_wifi_reconnect_delivery_approved', delivery)
+        self.assertIn('tasks_from: wifi-reconnect.yml', delivery)
+        self.assertNotIn('server_release_mode', (SERVER_TASKS / 'wifi-reconnect.yml').read_text())
+        self.assertIn(
+            'playbooks/prepare-pi5-wifi-reconnect.yml',
+            (ROOT / 'scripts/ci/run-deploy-contracts-local.sh').read_text())
 
     def test_timer_and_service_contract(self):
         timer = (TEMPLATES / 'pi5-wifi-reconnect.timer.j2').read_text()
