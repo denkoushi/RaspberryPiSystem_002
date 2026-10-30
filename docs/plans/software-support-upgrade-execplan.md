@@ -189,7 +189,7 @@ agent が動く端末(inventory の `kiosk` グループ):
 
 ### 7. pnpm 10/11 → 12
 
-pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイルで Corepack では動かないため、Dockerfile 3 本と `scripts/ci/pnpm-exact.sh` は `npm install -g pnpm@<版>` 方式に変えた。設定は `package.json` の `pnpm` 欄から `pnpm-workspace.yaml` へ移し(`onlyBuiltDependencies` は `allowBuilds`、ビルドを走らせない `tesseract.js` は `false`)、lockfile は先頭に pnpm 自身の記録が 158 行増えただけで依存は変わらない。pnpm 12 は取得メタデータのキャッシュを `/root/.cache/pnpm` に約 450MB 書き、`pnpm prisma generate` は実行前に依存を入れ直して `.pnpm` 全体を書き換える。API イメージが 1.57GB になったため、キャッシュを同じ層で消し、`pnpm-workspace.yaml` の `verifyDepsBeforeRun: false` で入れ直しを止めた(圧縮後 1.08GB、予算 1.1GB のまま)。出典: https://github.com/pnpm/pnpm/security/policy と https://github.com/pnpm/pnpm/releases/tag/v12.0.0
+pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイルで Corepack では動かないため、Dockerfile 3 本と `scripts/ci/pnpm-exact.sh` は `npm install -g pnpm@<版>` 方式に変えた。設定は `package.json` の `pnpm` 欄から `pnpm-workspace.yaml` へ移し(`onlyBuiltDependencies` は `allowBuilds`、ビルドを走らせない `tesseract.js` は `false`)、lockfile は先頭に pnpm 自身の記録が 158 行増えただけで依存は変わらない。pnpm 12 は取得メタデータのキャッシュを `/root/.cache/pnpm` に約 450MB 書き、`pnpm prisma generate` は実行前に依存を入れ直して `.pnpm` 全体を書き換える。API イメージが 1.57GB になったため、キャッシュを同じ層で消し、`pnpm-workspace.yaml` の `verifyDepsBeforeRun: false` で入れ直しを止めた(圧縮後 Mac で 1.08GB、CI の ARM64 で 1.104GB。pnpm 自体の増加分を見込み、予算は 1.125GB にした)。出典: https://github.com/pnpm/pnpm/security/policy と https://github.com/pnpm/pnpm/releases/tag/v12.0.0
 
 ## Progress
 
