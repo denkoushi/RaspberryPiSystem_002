@@ -8,7 +8,7 @@ import { api } from '../../../api/http';
 import { canUseMobileNetwork, mobileRequest, resetMobileConnectivityForTests } from '../connectivity';
 import { registerSyncJob, resetSyncSchedulerForTests, start, stop } from '../sync/syncScheduler';
 
-import { lookupPurchaseLocalFirst, snapNativeLocalFirst, verifyLocalFirst } from './localFirstLookup';
+import { LOCAL_READ_TIMEOUT_MS, lookupPurchaseLocalFirst, snapNativeLocalFirst, verifyLocalFirst } from './localFirstLookup';
 import { createMobileLocalDataStore, mobileLocalDataStore } from './mobileLocalDataStore';
 import * as mobileLocalDataSync from './mobileLocalDataSync';
 import { createMobileDataSync, mobileDataApi } from './mobileLocalDataSync';
@@ -139,6 +139,19 @@ describe('mobile local-first data', () => {
     expect(await verifyLocalFirst({ ...input, transferPartBarcodeRaw: 'WRONG' }, server, store)).toMatchObject({ ok: false, reason: 'different_part', legacyReason: 'TRANSFER_PART_MISMATCH' });
     expect(server).not.toHaveBeenCalled();
     expect(await store.snapNative(['FSNOPART'], '')).toMatchObject({ fseiban: 'FSNOPART', fseibanMatch: 'exact' });
+  });
+  it('asks the server when a local-data publish keeps the device stores busy', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = { ...createMobileLocalDataStore(), verify: () => new Promise<never>(() => {}) };
+      const server = vi.fn().mockResolvedValue({ ok: true });
+      const result = verifyLocalFirst(input, server, store, true);
+      await vi.advanceTimersByTimeAsync(LOCAL_READ_TIMEOUT_MS);
+      expect(await result).toEqual({ ok: true });
+      expect(server).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it('only downloads changed versions and shares in-flight synchronization', async () => {
     const store = createMobileLocalDataStore();
