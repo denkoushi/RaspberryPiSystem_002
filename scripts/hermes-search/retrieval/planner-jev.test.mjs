@@ -620,7 +620,7 @@ test('a follow-up that does not restate its content keeps the previous content c
   const previousPlan = { sources: ['nonconformity'], filters: [], semanticQuery: 'rust on the table please', contentSpan: 'rust on the table', sort: 'relevance', limit: 5 };
   const candidates = [{ term: 'South Shop', source: 'nonconformity', field: 'originDepartmentName', values: ['South Shop'] }];
   const refined = await createPlanner({ evaluate }).plan({ question: 'South Shopの不適合', previousPlan, catalog, candidates });
-  assert.equal(refined.plan.semanticQuery, 'rust on the table please');
+  assert.equal(refined.plan.semanticQuery, 'rust on the table');
   assert.deepEqual(refined.plan.diagnostics.contentDecision.residualTokens, []);
   assert.equal(refined.plan.diagnostics.contentDecision.residualOverride, undefined);
   // The judge reads the same content part as on the previous turn.
@@ -1022,7 +1022,7 @@ test('follow-up action is asked once with context, preserves confidence and over
   }
   assert.equal(inputs.length, 4);
   assert.deepEqual(Object.keys(inputs[1].questions.followUpAction.criteria), ['add', 'drop', 'replace', 'count', 'more', 'clarify', 'new']);
-  assert.equal(PLANNER_QUESTION_VERSION, 'planner-questions-2026-10-26b');
+  assert.equal(PLANNER_QUESTION_VERSION, 'planner-questions-2026-10-28a');
 });
 
 test('rewrite uses resolved labels, values and content with action tails and a 160 character cap', () => {
@@ -1046,8 +1046,10 @@ test('rewrite uses resolved labels, values and content with action tails and a 1
 });
 
 test('question versions change exactly hierarchy and content carry instructions, retaining all choices and logic', async () => {
-  const { DEFAULT_PLANNER_QUESTION_VERSION: baseline, CANDIDATE_PLANNER_QUESTION_VERSION: candidate, PLANNER_QUESTION_VERSIONS } = await import('./planner-jev.mjs');
-  assert.equal(PLANNER_QUESTION_VERSION, baseline);
+  const baseline = 'planner-questions-2026-10-26b';
+  const { DEFAULT_PLANNER_QUESTION_VERSION, CANDIDATE_PLANNER_QUESTION_VERSION: candidate, PLANNER_QUESTION_VERSIONS } = await import('./planner-jev.mjs');
+  assert.equal(PLANNER_QUESTION_VERSION, DEFAULT_PLANNER_QUESTION_VERSION);
+  assert.equal(DEFAULT_PLANNER_QUESTION_VERSION, candidate);
   assert.deepEqual(PLANNER_QUESTION_VERSIONS, [baseline, candidate]);
   for (const questionVersion of ['unknown', 'constructor', null]) {
     assert.throws(() => createPlanner({ questionVersion }), (error) => error instanceof TypeError
@@ -1064,12 +1066,12 @@ test('question versions change exactly hierarchy and content carry instructions,
       valueIndex: buildValueIndex(hierarchyRecords, catalog), now: '2026-10-28',
       previousPlan: { sources: ['nonconformity'], filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['東工場製造部機械課'] }], semanticQuery: '配管不良', sort: 'relevance', limit: 5 },
     });
-    assert.equal(result.receipt.questionVersion, questionVersion ?? baseline);
+    assert.equal(result.receipt.questionVersion, questionVersion ?? candidate);
     plans.push(result.plan);
   }
-  assert.deepEqual(received[0], received[1]);
+  assert.deepEqual(received[0], received[2]);
   assert.deepEqual(plans[0], plans[2]);
-  const before = received[0].questions;
+  const before = received[1].questions;
   const after = received[2].questions;
   assert.deepEqual(Object.keys(before).filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key])), ['field_0', 'contentCarry']);
   assert.ok(before.field_0.instructions.includes('「配下の部署すべて」の選択肢は、発話がその階層だけを言い、より細かい部署を言っていないときに選ぶ。指定がなければ none。'));
@@ -1078,5 +1080,52 @@ test('question versions change exactly hierarchy and content carry instructions,
   assert.match(after.contentCarry.instructions, /類例.*同じような.*他に.*同じ不具合.*新しい現象.*same/u);
   after.field_0.instructions = before.field_0.instructions;
   after.contentCarry.instructions = before.contentCarry.instructions;
-  assert.deepEqual(received[0], received[2]);
+  assert.deepEqual(received[1], received[2]);
 });
+
+for (const [name, semanticQuery, span, filters] of [
+  ['section to factory', '配管不良の不適合は他に何件ある？', '配管不良の不適合', [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['東工場製造部機械課'] }]],
+  ['unscoped to factory', '異物付着の最近の不適合３件', '異物付着 不適合', []],
+]) {
+  test(`follow-up ${name} carries content span rather than the previous request with a factory hierarchy`, async () => {
+    for (const location of ['top', 'diagnostics']) {
+      const previousPlan = { sources: ['nonconformity'], filters, semanticQuery,
+        ...(location === 'top' ? { contentSpan: span, diagnostics: { contentSpan: 'lower priority' } } : { diagnostics: { contentSpan: span } }),
+      };
+      let calls = 0;
+      const { plan } = await createPlanner({ evaluate: async (input) => {
+        calls += 1;
+        assert.equal(input.state.previous_plan.contentSpan, span);
+        const response = await hierarchyAnswers({ prefix: 0.8, none: 0.1 })(input);
+        response.answers.followUpAction = { type: 'choice', choice: 'replace' };
+        return response;
+      } }).plan({ question: name === 'section to factory' ? '西工場に類例ある？' : '西工場にも同事例ありますか？',
+        catalog, previousPlan, valueIndex: buildValueIndex(hierarchyRecords, catalog),
+      });
+      assert.equal(calls, 1);
+      assert.deepEqual(plan.filters, [{ source: 'nonconformity', field: 'originDepartmentName', op: 'in',
+        values: ['西工場製造部（加工）', '西工場製造部（製造）'],
+      }]);
+      assert.equal(plan.semanticQuery, span);
+      assert.equal(plan.diagnostics.contentSpan, span);
+    }
+  });
+}
+
+for (const action of ['add', 'count', 'more', 'clarify', 'drop', 'replace', 'new', null]) {
+  test(`follow-up ${action} ${['add', 'count', 'more', 'clarify'].includes(action) ? 'ignores' : 'honors'} drop_0 at 0.67 for an unnamed organization`, async () => {
+    const filters = [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['東工場製造部機械課'] }];
+    const question = '異物付着の最近の不適合３件';
+    const { plan } = await createPlanner({ evaluate: async ({ questions }) => ({ answers: {
+      ...Object.fromEntries(Object.keys(questions).filter(key => key.startsWith('field_')).map(key => [key, { type: 'choice', choice: 'none' }])),
+      followUpAction: { type: 'choice', choice: action },
+      drop_0: { type: 'noul', noul: 0.67 }, content: { type: 'noul', noul: true },
+      limit: { type: 'choice', choice: '3' },
+    } }) }).plan({ question, catalog, valueIndex: buildValueIndex(hierarchyRecords, catalog),
+      previousPlan: { sources: ['nonconformity'], filters, semanticQuery: '' },
+    });
+    assert.deepEqual(plan.filters, ['add', 'count', 'more', 'clarify'].includes(action) ? filters : []);
+    assert.equal(plan.semanticQuery, question);
+    assert.equal(plan.limit, 3);
+  });
+}

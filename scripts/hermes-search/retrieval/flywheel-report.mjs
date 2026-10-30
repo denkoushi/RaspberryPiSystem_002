@@ -171,7 +171,16 @@ function realBucket() {
 
 function countReal(bucket, row) {
   bucket.questions += 1;
-  if (!row.relevant?.length) return;
+  if (!row.relevant?.length) {
+    if (row.followUpCheck?.supported === true) {
+      if (row.followUpCheck.ok === true) bucket.shown += 1;
+      else if (row.followUpCheck.ok === false) {
+        const loss = followUpLoss(row.followUpCheck, null);
+        if (loss) bucket.lossStages[loss] = (bucket.lossStages[loss] ?? 0) + 1;
+      }
+    }
+    return;
+  }
   bucket.withRelevant += 1;
   if (row.live && row.live.loss == null) bucket.shown += 1;
   else if (row.live?.loss != null) bucket.lossStages[row.live.loss] = (bucket.lossStages[row.live.loss] ?? 0) + 1;

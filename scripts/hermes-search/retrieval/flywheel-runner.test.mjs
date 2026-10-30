@@ -184,12 +184,13 @@ test('identical final status lines are quiet, while changed counts, live and con
   const input = { records, settings: settings(dir, { maxQuestions: 0 }), now: () => time,
     readDense: async () => dense, chat: fakeChat(), jevEvaluate, live: liveShown, log: (line) => lines.push(line) };
   const logFile = path.join(dir, 'runner-2026-10-03.log');
-  await runFlywheelNight(input);
+  const previous = await runFlywheelNight(input);
+  writeFileSync(path.join(dir, 'flywheel-status.json'), JSON.stringify(previous));
   time = new Date('2026-10-03T21:05:00Z');
   await runFlywheelNight(input);
   assert.equal(readFileSync(logFile, 'utf8').trim().split('\n').length, 1);
   assert.match(readFileSync(logFile, 'utf8'), /reason=outside_window/u);
-  assert.equal(JSON.parse(readFileSync(path.join(dir, 'flywheel-status.json'), 'utf8')).updatedAt, time.toISOString());
+  assert.equal(JSON.parse(readFileSync(path.join(dir, 'flywheel-status.json'), 'utf8')).updatedAt, previous.updatedAt);
   assert.equal(lines.length, 2);
 
   time = night();
@@ -354,8 +355,7 @@ test('the runner stays idle when disabled, outside the window, or without an inf
   assert.equal((await runFlywheelNight({ records, settings: settings(dir), now: () => new Date('2026-10-03T03:00:00Z'), log })).reason, 'outside_window');
   assert.equal((await runFlywheelNight({ records, settings: settings(dir, { origin: '', token: '' }), now: night, log })).reason, 'not_configured');
   assert.match(lines[0], /^hermes retrieval flywheel reason=disabled /u);
-  const status = JSON.parse(readFileSync(path.join(dir, 'flywheel-status.json'), 'utf8'));
-  assert.equal(status.reason, 'not_configured');
+  assert.equal(existsSync(path.join(dir, 'flywheel-status.json')), false);
 });
 
 test('a night writes one text-free line per pair, keeps confirmed anchors, and respects the budget', async () => {
@@ -1126,9 +1126,10 @@ test('real filter-only count answers retain their action and rewrite without a r
   assert.notEqual(rows[1].filterCheck.ok, false);
 });
 
-async function plannerFixture(t, { active = null, budget = 2 } = {}) {
+async function plannerFixture(t, { active = 'planner-questions-2026-10-26b', budget = 2 } = {}) {
   const { plannerVersionPath, writePlannerVersion } = await import('./flywheel-planner-version.mjs');
-  const { DEFAULT_PLANNER_QUESTION_VERSION: baseline, CANDIDATE_PLANNER_QUESTION_VERSION: candidate } = await import('./planner-jev.mjs');
+  const baseline = 'planner-questions-2026-10-26b';
+  const { CANDIDATE_PLANNER_QUESTION_VERSION: candidate } = await import('./planner-jev.mjs');
   const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-planner-runner-'));
   const file = plannerVersionPath(dir);
   const keys = ['HERMES_FLYWHEEL_PLANNER_VERSION_PATH', 'HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED'];
@@ -1175,7 +1176,7 @@ test('phase six prefers follow-ups, caps comparisons, preserves active and resum
   assert.deepEqual(candidateCalls[0].row.previousShown, ['b1']);
   assert.deepEqual(f.calls.filter((call) => call.version === f.baseline).map(({ row }) => row.id), ['real-action']);
   const state = readPlannerVersion(f.file);
-  assert.equal(state.active, null);
+  assert.equal(state.active, f.baseline);
   assert.equal(state.candidate, f.candidate);
   assert.equal(state.checks.length, 1);
   assert.equal(state.checks[0].decision, 'report');
@@ -1241,15 +1242,14 @@ test('phase six does not run after the DGX busy guard trips', async (t) => {
   assert.equal(readPlannerVersion(f.file).checks.length, 0);
 });
 
-test('phase six preserves a stored active version with the kill switch off and uses spare budget for first turns', async (t) => {
+test('phase six preserves a stored active version with the kill switch off and skips the adopted candidate', async (t) => {
   const { readPlannerVersion, writePlannerVersion } = await import('./flywheel-planner-version.mjs');
   const f = await plannerFixture(t, { budget: 3 });
   await writePlannerVersion(f.file, { active: f.candidate, candidate: null, checks: [] });
   process.env.HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED = 'false';
   const status = await runFlywheelNight(f.input);
-  assert.equal(status.plannerVersion.active, f.baseline);
-  assert.equal(status.plannerVersion.compared, 3);
-  assert.deepEqual(f.calls.filter((call) => call.version === f.candidate).map(({ row }) => row.id ?? row.a), ['real-context', 'real-action', 'a1']);
+  assert.equal(status.plannerVersion, undefined);
+  assert.deepEqual(f.calls, []);
   assert.equal(readPlannerVersion(f.file).active, f.candidate);
 });
 
@@ -1360,9 +1360,10 @@ test('regression budget defaults to ten, caps at thirty and stays separate acros
   assert.deepEqual(rows.slice(0, 2).map((row) => row.id), ['r-queue-10', 'r-queue-11']);
 });
 
-test('planner version comparison recomputes follow-up checks for real content and regression rows', async () => {
+test('planner version comparison recomputes follow-up checks for real content and regression rows', async (t) => {
   const { plannerVersionPath, writePlannerVersion, readPlannerVersion } = await import('./flywheel-planner-version.mjs');
-  const { DEFAULT_PLANNER_QUESTION_VERSION: active, CANDIDATE_PLANNER_QUESTION_VERSION: candidate } = await import('./planner-jev.mjs');
+  const active = 'planner-questions-2026-10-26b';
+  const { CANDIDATE_PLANNER_QUESTION_VERSION: candidate } = await import('./planner-jev.mjs');
   const f = followUpFixture();
   await runFlywheelNight(f.input);
   const stored = readRealRows(readFileSync(realPath(f.dir, '2026-10-03'), 'utf8'))[0];
@@ -1372,6 +1373,11 @@ test('planner version comparison recomputes follow-up checks for real content an
   stored.source = 'regression';
   writeFileSync(realPath(f.dir, '2026-10-03'), JSON.stringify(stored) + '\n');
   const file = plannerVersionPath(f.dir);
+  const keys = ['HERMES_FLYWHEEL_PLANNER_VERSION_PATH', 'HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED'];
+  const previous = keys.map(key => process.env[key]);
+  t.after(() => keys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i]; }));
+  process.env.HERMES_FLYWHEEL_PLANNER_VERSION_PATH = file;
+  delete process.env.HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED;
   await writePlannerVersion(file, { active, candidate, checks: [] });
   const status = await runFlywheelNight({ ...f.input, live: null, settings: { ...f.input.settings, realBudget: 0, plannerBudget: 1 },
     liveFactory: async ({ plannerOptions }) => async () => f.result(plannerOptions.questionVersion === candidate ? { outcome: 'answer', shown: ['fiction-2'] } : {}),
@@ -1379,4 +1385,25 @@ test('planner version comparison recomputes follow-up checks for real content an
   assert.deepEqual(status.plannerVersion.real, { n: 1, gained: 1, lost: 0 });
   assert.equal(readPlannerVersion(file).checks[0].decision, 'report');
   assert.equal(readPlannerVersion(file).active, active);
+});
+
+test('early exits preserve the previous night status while still logging', async () => {
+  for (const reason of ['outside_window', 'disabled', 'not_configured']) {
+    const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-status-'));
+    const file = path.join(dir, 'flywheel-status.json');
+    const previous = JSON.stringify({ night: '2026-10-02', reason: 'budget_reached', shown: 17 });
+    writeFileSync(file, previous);
+    const lines = [];
+    const status = await runFlywheelNight({ records, settings: settings(dir, {
+      ...(reason === 'disabled' ? { enabled: false } : {}),
+      ...(reason === 'not_configured' ? { origin: '', token: '' } : {}),
+    }), now: reason === 'outside_window' ? () => new Date('2026-10-03T03:00:00Z') : night,
+      log: line => lines.push(line),
+    });
+    assert.equal(status.reason, reason);
+    assert.equal(status.night, null);
+    assert.equal(readFileSync(file, 'utf8'), previous);
+    assert.equal(lines.length, 1);
+    assert.match(readFileSync(path.join(dir, 'runner-2026-10-03.log'), 'utf8'), new RegExp(`reason=${reason}`));
+  }
 });
