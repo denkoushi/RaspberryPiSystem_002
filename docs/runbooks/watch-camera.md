@@ -15,8 +15,8 @@
 
 ## 端末を追加する
 
-1. 管理画面で端末キーを発行する。端末名は `zero-edge-cam-1` のように `zero-edge-cam-` で始める(死活監視と受信の両方がこの名前を見る)。
-2. Pi5 の `infrastructure/ansible/inventory-zero-edge-hosts.yml`(git 管理外、権限 0600)の `watch_cam` グループに書く。標準 fleet の `inventory.yml` には入れない。
+1. 端末名は `zero-edge-cam-1` のように `zero-edge-cam-` で始める(死活監視と受信の両方がこの名前を見る)。
+2. Pi5 の `infrastructure/ansible/inventory-zero-edge-hosts.yml`(git 管理外、権限 0600)の `watch_cam` グループに書く。標準 fleet の `inventory.yml` には入れない。端末キーは `openssl rand -hex 24` などで Pi5 上で作り、画面やチャットに出さない。
 
 ```yaml
 all:
@@ -31,7 +31,8 @@ all:
           watch_cam_client_key: "<端末キー>"
 ```
 
-3. 対象 SHA が main にあり CI が成功していることを確かめてから、Pi5 で実行する。
+3. 同じ端末キーで端末を API に登録する。管理画面に端末の追加機能は無いので、管理者の `POST /api/clients`(`{apiKey, name, location}`)を使う。管理者は二段階認証が必要で、ログインに `totpCode` を付ける。Pi5 では `https://127.0.0.1/api` に届く。パスワードと 6 桁コードは人が入力し、端末キーは上のファイルから読む。成功すると HTTP 200 が返る。
+4. 対象 SHA が main にあり CI が成功していることを確かめてから、Pi5 で実行する。
 
 ```sh
 ansible-playbook -i inventory.yml -i inventory-zero-edge.yml -i inventory-zero-edge-hosts.yml playbooks/watch-cam.yml --limit "zero-edge-cam-1"
