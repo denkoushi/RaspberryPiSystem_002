@@ -70,6 +70,7 @@ services:
       - knowledge-assets-storage:/app/storage/knowledge-assets
       - procedure-materials-storage:/app/storage/procedure-materials
       - procedure-videos-storage:/app/storage/procedure-videos
+      - assembly-check-sheet-sources-storage:/app/storage/assembly-check-sheet-sources
       - knowledge-git-storage:/app/storage/knowledge-git
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
@@ -515,6 +516,9 @@ volumes:
   procedure-videos-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_procedure-videos-storage
+  assembly-check-sheet-sources-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_assembly-check-sheet-sources-storage
   knowledge-git-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_knowledge-git-storage

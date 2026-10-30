@@ -202,6 +202,7 @@ required = {
     '/app/storage/knowledge-assets',
     '/app/storage/procedure-materials',
     '/app/storage/procedure-videos',
+    '/app/storage/assembly-check-sheet-sources',
     '/app/storage/knowledge-git',
     '/app/storage/thumbnails',
     '/app/storage/pdfs',
