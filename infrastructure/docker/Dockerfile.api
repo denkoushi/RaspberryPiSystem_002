@@ -140,6 +140,7 @@ COPY --from=workspace /app/packages/shelf-layout-core/package.json ./packages/sh
 WORKDIR /app
 # Prisma 7 は全データベース用のクエリコンパイラ(wasm)を同梱する。PostgreSQL 以外と
 # source map は使わないため、install と同じ層で消して API イメージの圧縮サイズ予算に収める。
+# pnpm 12 が書く取得メタデータのキャッシュ(約450MB)と npm のキャッシュも同じ層で消す。
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
   npm install -g "$(node -p "require('./package.json').packageManager")" \
   && npm_config_fetch_retries=5 \
@@ -152,7 +153,8 @@ RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
   && find /app/node_modules/.pnpm \
     \( -path '*/node_modules/@prisma/client/runtime/*' -o -path '*/node_modules/prisma/build/*' \) \
     \( -name '*mysql*' -o -name '*cockroachdb*' -o -name '*sqlserver*' -o -name '*sqlite*' -o -name '*.map' \) \
-    -type f -delete
+    -type f -delete \
+  && rm -rf /root/.cache/pnpm /root/.npm
 
 # Chromium for Playwright (signage playwright_html, kiosk document HTML→PDF; bundled browser).
 # prod install 後に実行（playwright パッケージが node_modules に入った後）。
