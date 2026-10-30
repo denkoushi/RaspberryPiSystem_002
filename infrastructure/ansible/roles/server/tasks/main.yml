@@ -655,3 +655,7 @@
 - name: Deploy Pi5 power dispatcher
   ansible.builtin.import_tasks: power-dispatcher.yml
   when: server_release_mode == 'full'
+
+- name: Deploy Pi5 Wi-Fi reconnect watchdog
+  ansible.builtin.import_tasks: wifi-reconnect.yml
+  when: server_release_mode == 'full'

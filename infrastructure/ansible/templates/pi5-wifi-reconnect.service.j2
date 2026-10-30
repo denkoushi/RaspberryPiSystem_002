@@ -1,0 +1,7 @@
+[Unit]
+Description=Pi5 Wi-Fi reconnection watchdog
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pi5-wifi-reconnect.sh

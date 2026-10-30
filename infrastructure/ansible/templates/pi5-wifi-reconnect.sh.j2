@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -u
+export LC_ALL=C
+
+command -v nmcli >/dev/null 2>&1 || exit 0
+[[ -d "${NET_CLASS_DIR:-/sys/class/net}/wlan0" ]] || exit 0
+
+read -r uptime_seconds _ < "${UPTIME_FILE:-/proc/uptime}" || exit 0
+uptime_seconds=${uptime_seconds%%.*}
+[[ "$uptime_seconds" =~ ^[0-9]+$ ]] || exit 0
+(( uptime_seconds >= 180 )) || exit 0
+
+state=$(nmcli -t -f STATE general) || exit 0
+[[ "$state" == connected* ]] && exit 0
+
+device_state=$(nmcli -g GENERAL.STATE device show wlan0) || exit 0
+[[ "$device_state" == 100* ]] && exit 0
+
+logger -t pi5-wifi-reconnect "Reconnecting wlan0: network=$state device=$device_state"
+if nmcli --wait 45 device connect wlan0 >/dev/null 2>&1; then
+    logger -t pi5-wifi-reconnect "wlan0 reconnect succeeded"
+else
+    result=$?
+    logger -t pi5-wifi-reconnect "wlan0 reconnect failed: rc=$result"
+fi
+exit 0
