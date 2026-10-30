@@ -75,20 +75,20 @@ describe('photo shelf picker', () => {
     if (!compact) expect(screen.getByRole('dialog', { name: '棚を選ぶ' })).toBeInTheDocument();
   });
 
-  it.each([false, true])('compact shows every machine without filter chips and overlays expand (disabled: %s)', (disabled) => {
+  it.each([false, true])('compact shows every machine and places tools below the grid (disabled: %s)', (disabled) => {
     const onExpand = vi.fn();
     render(<HaizenShelfPhotoList shelves={shelves} previousShelfCodes={['DAD-3220 北']} selected="DAD-3220 北"
       loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} compact disabled={disabled} onExpand={onExpand} />);
-    for (const name of ['全部', '前回', 'DAD-3220', '50013_540AP']) {
+    for (const name of ['全部', '前回']) {
       expect(screen.queryByRole('button', { name, exact: true })).not.toBeInTheDocument();
     }
     expect(screen.getAllByRole('button', { name: /^棚 / })).toHaveLength(shelves.length);
-    expect(screen.getByRole('heading', { name: 'DAD-3220 2棚' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '50013_540AP 1棚' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'DAD-3220', exact: true })).toBeInTheDocument();
     expect(within(screen.getByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' })).getByText('前回')).toBeInTheDocument();
     const expand = screen.getByRole('button', { name: '大きい画面で選ぶ' });
-    expect(expand).toHaveClass('absolute', 'right-0', 'top-0', '!h-9', 'w-9');
-    expect(expand.parentElement).toHaveClass('relative');
+    expect(expand).toHaveClass('!h-12', '!w-12');
+    expect(expand).not.toHaveClass('absolute');
     fireEvent.click(expand);
     expect(onExpand).toHaveBeenCalledTimes(disabled ? 0 : 1);
   });
@@ -140,6 +140,12 @@ describe('photo shelf picker', () => {
     render(<HaizenShelfPhotoList shelves={[{ ...shelves[0], photoUpdatedAt: 'now' }, shelves[3]]} previousShelfCodes={[]} selected=""
       loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} compact={compact} />);
     const tile = screen.getByRole('button', { name: '棚 DAD-3220 北 ロボドリル01 南 上段' });
+    if (compact) {
+      expect(within(tile).getByText('北 ロボドリル01 南 上段', { selector: 'b' })).toHaveClass('text-xl', 'font-black');
+      expect(within(tile).getByText('DAD-3220')).toHaveClass('font-mono', 'text-xs');
+      expect(tile).toHaveClass('border-[3px]');
+      return;
+    }
     const direction = within(tile).getByText('北', { selector: 'b' });
     const overlay = direction.parentElement;
     const photo = within(tile).getByRole('img');
@@ -299,8 +305,8 @@ describe.each([false, true])('shelf speech selection (compact: %s)', (compact) =
     mountSpeech();
     expect(mic()).toHaveClass('h-10', 'w-10', 'aria-pressed:bg-[var(--hp-shelf)]', 'aria-pressed:text-[var(--hp-bg)]');
     if (compact) {
-      expect(mic()).toHaveClass('absolute', 'right-11', '!h-9', '!w-9');
-      expect(mic().nextElementSibling).toBe(screen.getByRole('button', { name: '大きい画面で選ぶ' }));
+      expect(mic()).toHaveClass('!h-12', '!w-12');
+      expect(mic()).not.toHaveClass('absolute');
     } else expect(mic().nextElementSibling).toBe(screen.getByRole('button', { name: 'QR' }));
   });
   it('hides the microphone when isSpeechAvailable is missing', () => {
@@ -333,4 +339,17 @@ describe.each([false, true])('shelf speech selection (compact: %s)', (compact) =
     fireEvent.click(mic());
     expect(native.startSpeech).not.toHaveBeenCalled();
   });
+});
+
+it('compact machine chips scroll to the first tile without filtering shelves', () => {
+  const scrollTo = vi.fn();
+  render(<HaizenShelfPhotoList shelves={shelves} previousShelfCodes={[]} selected="" loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} compact />);
+  const tile = screen.getByRole('button', { name: '棚 50013_540AP 西' });
+  const grid = tile.parentElement!;
+  grid.scrollTo = scrollTo;
+  vi.spyOn(tile, 'getBoundingClientRect').mockReturnValue({ top: 220 } as DOMRect);
+  vi.spyOn(grid, 'getBoundingClientRect').mockReturnValue({ top: 20 } as DOMRect);
+  fireEvent.click(screen.getByRole('button', { name: '50013_540AP', exact: true }));
+  expect(scrollTo).toHaveBeenCalledWith({ top: 200, behavior: 'auto' });
+  expect(screen.getAllByRole('button', { name: /^棚 / })).toHaveLength(shelves.length);
 });

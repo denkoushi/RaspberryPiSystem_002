@@ -20,8 +20,8 @@ type ShelfPhotoListProps = {
 };
 
 /** Machine chips and the scrollable photo grid; shared by the full-screen picker and the 配膳 tab. */
-export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, loading, error, onRetry, onSelect, compact = false, onView, disabled = false, onExpand, children, renderHeader }: ShelfPhotoListProps & {
-  compact?: boolean; onView?: (shelf: RegisteredShelfEntryDto) => void;
+export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, loading, error, onRetry, onSelect, compact = false, onView, disabled = false, onExpand, onScan, children, renderHeader }: ShelfPhotoListProps & {
+  onScan?: () => void; compact?: boolean; onView?: (shelf: RegisteredShelfEntryDto) => void;
   /** Dims the grid until the 移動票 is read. */ disabled?: boolean;
   /** Shows a button that opens the full-screen picker. */ onExpand?: () => void;
   /** Loading or retry state between the chips and the grid. */ children?: ReactNode;
@@ -75,7 +75,7 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
     }
   };
   const speechButton = speechAvailable && <button type="button" aria-label="声で棚を選ぶ" aria-pressed={listening} disabled={disabled} onClick={speech}
-    className={`${hp.iconButton} ${compact ? 'absolute right-11 top-0 z-10 !h-9 !w-9' : ''} aria-pressed:bg-[var(--hp-shelf)] aria-pressed:text-[var(--hp-bg)]`}>
+    className={`${hp.iconButton} ${compact ? '!h-12 !w-12' : ''} aria-pressed:bg-[var(--hp-shelf)] aria-pressed:text-[var(--hp-bg)]`}>
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
       <rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
     </svg>
@@ -112,34 +112,44 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
       {onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} !h-[52px] w-[52px] shrink-0 !px-0 !text-2xl`} disabled={disabled} onClick={onExpand}>⤢</button>}
     </div>}
     <div className="relative flex min-h-0 flex-1 flex-col">
-    {compact && speechButton}
-    {compact && onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.chip} absolute right-0 top-0 z-10 !h-9 w-9 !px-0 !text-2xl`} disabled={disabled} onClick={onExpand}>⤢</button>}
     {speechFilter && <div className={`shrink-0 pb-2 ${pad} ${compact ? 'pr-24' : ''}`}>
       <button type="button" className={hp.chip} aria-label={`${speechFilter.text} の絞り込みを解除`} disabled={disabled} onClick={() => setSpeechFilter(null)}>{speechFilter.text} ×</button>
     </div>}
     {children}
     {loading ? <p className={hp.empty}>読込中…</p> : error ? <div role="alert" className={hp.empty}>棚を取得できませんでした <button className={hp.mini} onClick={onRetry}>再試行</button></div>
-      : <div ref={grid} aria-disabled={disabled || undefined} className={`grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto ${disabled ? 'pointer-events-none opacity-35' : ''} ${compact ? 'grid-cols-3 pb-2' : `grid-cols-2 ${pad} ${hp.hermesBottomPadding}`}`}>
+      : <div ref={grid} aria-disabled={disabled || undefined} className={`grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto ${disabled ? 'pointer-events-none opacity-35' : ''} ${compact ? 'grid-cols-2 pb-2' : `grid-cols-2 ${pad} ${hp.hermesBottomPadding}`}`}>
         {[...groups].map(([machineName, group]) => <Fragment key={machineName === null ? 'other' : `machine:${machineName}`}>
-          <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? `col-span-3 ${speechAvailable ? 'pr-24' : 'pr-10'}` : 'col-span-2'}`}>
+          {!compact && <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? `col-span-3 ${speechAvailable ? 'pr-24' : 'pr-10'}` : 'col-span-2'}`}>
             {machineName ?? 'その他'}<small className={`text-xs ${hp.muted}`}>{group.length}棚</small>
-          </h3>
+          </h3>}
           {group.map((s) => <button key={s.shelfCodeRaw} type="button" aria-label={`棚 ${[s.machineName, s.direction, s.displayLabel].filter(Boolean).join(' ') || '写真'}`} aria-pressed={selected === s.shelfCodeRaw} disabled={disabled}
-          className="relative overflow-hidden rounded-[14px] border-2 border-[var(--hp-line)] bg-[var(--hp-panel)] text-left aria-pressed:border-[var(--hp-shelf)]"
+          data-machine={s.machineName} className={`relative overflow-hidden rounded-[14px] ${compact ? "border-[3px] border-[var(--hp-panel)]" : "border-2 border-[var(--hp-line)]"} bg-[var(--hp-panel)] text-left aria-pressed:border-[var(--hp-shelf)]`}
           onClick={() => { setSpeechFilter(null); selected === s.shelfCodeRaw ? (onView ?? setViewer)(s) : onSelect(s.shelfCodeRaw); }}>
           <span className="relative block">
             <ShelfPhoto shelf={s} label={s.direction || s.displayLabel || '棚'} className="aspect-[4/3] w-full" />
-            {s.direction && <span className={`absolute inset-x-0 block bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.78))] pt-4 ${compact ? 'px-1.5 pb-1' : 'px-2 pb-1.5'}`}>
+            {compact ? <span className="absolute inset-x-0 bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,.85)_50%)] px-2 pb-[5px] pt-[22px] leading-[1.15]"><span className={`block truncate font-mono text-xs font-bold ${hp.muted}`}>{s.machineName}</span><b className="block truncate text-xl font-black text-[var(--hp-shelf)]">{[s.direction, s.displayLabel].filter(Boolean).join(" ") || s.shelfCodeRaw}</b></span> : s.direction && <span className={`absolute inset-x-0 block bottom-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.78))] pt-4 ${compact ? 'px-1.5 pb-1' : 'px-2 pb-1.5'}`}>
               <b className={`block truncate font-mono text-[var(--hp-shelf)] ${compact ? 'text-sm' : 'text-lg'}`}>{s.direction}</b>
             </span>}
           </span>
           {s.shelfCodeRaw === previousShelfCodes[0] && <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-[11px] font-black text-[var(--hp-bg)]">前回</span>}
-          <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>
+          {compact && selected === s.shelfCodeRaw && <span aria-hidden className="absolute right-1.5 top-1.5 grid h-[30px] w-[30px] place-items-center rounded-full bg-[var(--hp-shelf)] text-xl font-black text-[var(--hp-bg)]">✓</span>}
+          {!compact && <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>}
         </button>)}
         </Fragment>)}
-        {!filtered.length && <p className={`${hp.empty} ${compact ? 'col-span-3' : 'col-span-2'}`}>棚がありません</p>}
+        {!filtered.length && <p className={`${hp.empty} col-span-2`}>棚がありません</p>}
       </div>}
     </div>
+    {compact && <div aria-label="棚の操作" className={`flex shrink-0 items-center gap-1.5 pt-2 ${disabled ? 'opacity-35' : ''}`}>
+      {speechButton}
+      {onScan && <button type="button" className={`${hp.iconButton} !h-12 !w-12 font-black`} disabled={disabled} onClick={onScan}>QR</button>}
+      <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
+        {machines.map((name) => <button key={name} type="button" disabled={disabled} className={`${hp.chip} !h-12 !px-4 !font-mono !text-base`} onClick={() => {
+          const tile = [...(grid.current?.querySelectorAll<HTMLElement>('[data-machine]') ?? [])].find((tile) => tile.dataset.machine === name);
+          if (grid.current && tile) grid.current.scrollTo({ top: grid.current.scrollTop + tile.getBoundingClientRect().top - grid.current.getBoundingClientRect().top, behavior: 'auto' });
+        }}>{name}</button>)}
+      </div>
+      {onExpand && <button type="button" aria-label="大きい画面で選ぶ" className={`${hp.iconButton} !h-12 !w-12 text-2xl`} disabled={disabled} onClick={onExpand}>⤢</button>}
+    </div>}
     {viewer && <HaizenShelfPhotoViewer shelf={viewer} onClose={() => setViewer(null)} />}
   </>;
 }

@@ -1,8 +1,10 @@
 import { packPlacement, packSchedule } from '@raspi-system/slip-match-core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../features/mobile-placement/useRegisteredShelves', () => ({ useRegisteredShelves: () => ({ data: { shelves: [] } }) }));
 vi.mock('../../api/domains/mobile-placement', () => ({ deleteOrderPlacementBranch: vi.fn() }));
 vi.mock('../../features/mobile-placement/connectivity', () => ({ mobileRequest: (request: () => Promise<unknown>) => request() }));
 vi.mock('../../features/mobile-placement/sync/networkGate', () => ({ canSyncNow: vi.fn(() => false), useCanSync: () => false }));
@@ -29,10 +31,10 @@ function Destination() {
   return <output aria-label="遷移">{useNavigationType()} {location.pathname} {location.state?.openHaizenMenu ? 'メニュー' : ''}</output>;
 }
 function mount() {
-  return render(<MemoryRouter initialEntries={['/search']}><Routes>
+  return render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/search']}><Routes>
     <Route path="/search" element={<MobilePlacementPartSearchPage />} />
     <Route path="*" element={<Destination />} />
-  </Routes></MemoryRouter>);
+  </Routes></MemoryRouter></QueryClientProvider>);
 }
 const results = () => within(screen.getByRole('region', { name: '検索結果' }));
 const deleteRow = async () => {
