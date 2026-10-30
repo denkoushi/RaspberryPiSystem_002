@@ -33,12 +33,14 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
 
     def test_kiosk_removes_rkhunter_without_installing_or_scheduling_it(self):
         related = [task for task in self.tasks if 'rkhunter' in str(task)]
-        self.assertEqual(len(related), 3)
+        self.assertEqual(len(related), 4)
         self.assertEqual(related[0]['ansible.builtin.cron'], {
             'name': 'Weekly rkhunter scan (kiosk)', 'user': 'root', 'state': 'absent'})
         self.assertEqual(related[1]['ansible.builtin.file'], {
             'path': '/usr/local/bin/rkhunter-kiosk-scan.sh', 'state': 'absent'})
-        self.assertEqual(related[2]['ansible.builtin.apt'], {
+        self.assertEqual(related[2]['ansible.builtin.file'], {
+            'path': '/etc/cron.d/rkhunter-kiosk-scan', 'state': 'absent'})
+        self.assertEqual(related[3]['ansible.builtin.apt'], {
             'name': 'rkhunter', 'state': 'absent', 'purge': True})
         for task in related:
             self.assertNotIn('when', task)
@@ -153,6 +155,15 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
                          {'name': 'kiosk', 'tasks_from': 'clamav'})
         self.assertEqual(len(expected['rescue']), 1)
         self.assertIn('ansible.builtin.debug', expected['rescue'][0])
+
+    def test_clamav_removes_legacy_cron_d_copy_before_scheduling(self):
+        names = [task['name'] for task in self.clamav]
+        legacy = self.clamav[names.index('Remove legacy kiosk ClamAV cron.d entry')]
+        self.assertEqual(legacy['ansible.builtin.file'], {
+            'path': '/etc/cron.d/clamav-kiosk-scan', 'state': 'absent'})
+        self.assertEqual(legacy['when'], "terminal_release_mode | default('full') == 'full'")
+        self.assertLess(names.index('Remove legacy kiosk ClamAV cron.d entry'),
+                        names.index('Schedule kiosk ClamAV scan'))
 
     def test_clamav_packages_daemon_and_kiosk_render_vars(self):
         install = next(task for task in self.clamav if 'ansible.builtin.apt' in task)
