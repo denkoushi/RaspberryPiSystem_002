@@ -12,3 +12,13 @@ all:
         status_agent_api_base_url: "{{ api_base_url }}"
         status_agent_tls_skip_verify: "{{ zero_edge_tls_skip_verify }}"
 
+    watch_cam:
+      hosts: {}
+      vars:
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        ansible_python_interpreter: /usr/bin/python3
+        watch_cam_api_base_url: >-
+          {{ api_base_url | regex_replace('/api/?$', '') }}
+        watch_cam_tls_skip_verify: "1"
+        status_agent_api_base_url: "{{ api_base_url }}"
+        status_agent_tls_skip_verify: "{{ watch_cam_tls_skip_verify }}"

@@ -62,6 +62,8 @@ export class AlertsIngestor {
   private isRunning = false;
   private readonly tickExclusive = { locked: false };
   private lastCleanupAt: number | null = null;
+  // Warn once per file; a broken file stays in the newest-N window for weeks.
+  private readonly warnedUnparseable = new Set<string>();
 
   /**
    * Run ingestor once using current configuration.
@@ -165,7 +167,10 @@ export class AlertsIngestor {
         } catch {
           // noop
         }
-        logger?.warn({ filePath }, '[AlertsIngestor] Failed to read/parse alert file, skipping');
+        if (!this.warnedUnparseable.has(filePath)) {
+          this.warnedUnparseable.add(filePath);
+          logger?.warn({ filePath }, '[AlertsIngestor] Failed to read/parse alert file, skipping');
+        }
         unparseable++;
         skipped++;
         continue;

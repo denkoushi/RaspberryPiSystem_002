@@ -1,6 +1,6 @@
 # KB-431: Alerts inbox silent JSON skips and retention
 
-- Status: active; local implementation, not deployed
+- Status: deployed 2026-10-30 (#2423); logrotate delivery fixed in a follow-up
 - Scope: Pi5 API alerts inbox and kiosk security alert retention
 - Date: 2026-10-30
 
@@ -32,9 +32,16 @@ Old undelivered files are archived on Pi5, not re-sent to Slack. This code chang
 
 API tests cover strict parsing warnings, age boundaries, filename and file-type exclusions, DB membership, rotated files, batching, errors, and daily gating. Python contracts pin logrotate exclusions and kiosk cron path, pattern, depth, and ages.
 
+## Production Result (2026-10-30)
+
+- First cleanup on Pi5: deleted 10,163 empty files and 2,246 ingested files; kept 6,870 unparseable and 1,018 not-in-DB files. All eight kiosks have the cleanup cron and no alerts stanza.
+- The 7,920 remaining pre-fix files (written before 2026-10-29 12:30 JST) were archived to `~denkon5sd02/alerts-undelivered-20261030.tar.gz` on Pi5 with a file list beside it, then removed from the inbox. They were not re-sent.
+- The standard release runs the server role in `host-config-only` mode and skips `security.yml`, so Pi5's `/etc/logrotate.d/raspisys-security` kept the alerts stanza. The task moved to `malware.yml`; apply it with `playbooks/prepare-pi5-security-scans.yml`.
+- A broken file stays in the newest-N ingest window for weeks, so the warning is now logged once per file per process.
+
 ## Open Items
 
-Production deployment and verification remain separate work. The cleanup does not delete Alert database rows or repair historical undelivered alerts.
+The cleanup does not delete Alert database rows.
 
 ## References
 

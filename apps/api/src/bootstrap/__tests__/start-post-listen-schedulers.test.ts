@@ -74,6 +74,8 @@ describe('start-post-listen-schedulers fail-closed group', () => {
     const names = listPostListenSchedulerNames();
     expect(names).toContain('backup');
     expect(names).toContain('client-network-log-retention');
+    expect(names).toContain('watch-camera-retention');
+    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'watch-camera-retention')).toBe(true);
     expect(names).toContain('csv-import');
   });
 
@@ -172,6 +174,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'gmail-trash-cleanup',
       'due-management-tuning',
       'alerts-dispatcher',
+      'watch-camera-retention',
       'client-network-log-retention',
       'client-heartbeat-monitor',
       'system-notice-evaluator',
