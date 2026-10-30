@@ -30,7 +30,6 @@ ANSIBLE_ROOT = ROOT / "infrastructure/ansible"
 TORQUE_HELPER = ANSIBLE_ROOT / "roles/client/templates/torque-bluetooth-adapter.sh.j2"
 WEB_BUILD_VARS = ANSIBLE_ROOT / "group_vars/server/web-build.yml"
 PRIMARY_INVENTORY = ANSIBLE_ROOT / "inventory.yml"
-TALKPLAZA_INVENTORY = ANSIBLE_ROOT / "inventory-talkplaza.yml"
 WEB_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/web.env.j2"
 DOCKER_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/docker.env.j2"
 STATUS_AGENT_CONFIG_TEMPLATE = ANSIBLE_ROOT / "templates/status-agent.conf.j2"
@@ -125,15 +124,6 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false",
             rendered,
         )
-
-        talkplaza = TALKPLAZA_INVENTORY.read_text(encoding="utf-8")
-        for key in (
-            "web_kiosk_due_mgmt_layout_v2_enabled",
-            "web_kiosk_sop_popup_enabled",
-            "web_kiosk_production_schedule_order_split_enabled",
-        ):
-            with self.subTest(talkplaza_key=key):
-                self.assertIn(f'{key}: "false"', talkplaza)
 
     def test_every_repository_template_parses(self) -> None:
         templates = discover_templates(ANSIBLE_ROOT)
@@ -272,10 +262,6 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         self.assertNotIn(
             "pi5_artifact_promotion_enabled:",
             PRIMARY_INVENTORY.read_text(encoding="utf-8"),
-        )
-        self.assertNotIn(
-            "pi5_artifact_promotion_enabled:",
-            TALKPLAZA_INVENTORY.read_text(encoding="utf-8"),
         )
         environment = Environment(undefined=StrictUndefined)
         environment.filters["to_json"] = json.dumps

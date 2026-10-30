@@ -1263,8 +1263,7 @@ git clean -fd \
 **実装日**: 2026-01-14
 
 **事象**: 
-- トークプラザ工場への導入時に、Dropboxバックアップの保存先を拠点別に分離する必要があった
-- 既存の第2工場とトークプラザ工場のバックアップが混在しないようにする必要があった
+- 旧別拠点構想でDropboxバックアップの保存先を分離する必要があった（構想の廃止決定は[KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則)参照）
 
 **要因**: 
 - **basePathの未対応**: `StorageProviderFactory`で`basePath`が`DropboxStorageProvider`に渡されていなかった
@@ -1277,7 +1276,6 @@ git clean -fd \
 
 2. **Ansibleテンプレートの更新**:
    - `infrastructure/ansible/templates/docker.env.j2`に`DROPBOX_BASE_PATH`変数を追加
-   - トークプラザ工場では`DROPBOX_BASE_PATH=/backups/talkplaza`を設定
 
 3. **DropboxStorageProviderの対応**:
    - `basePath`が指定されている場合、そのパスを使用
@@ -1293,14 +1291,9 @@ git clean -fd \
 **関連ファイル**:
 - `apps/api/src/services/backup/storage-provider-factory.ts`（`basePath`の渡し方修正）
 - `infrastructure/ansible/templates/docker.env.j2`（`DROPBOX_BASE_PATH`変数追加）
-- `infrastructure/ansible/inventory-talkplaza.yml`（トークプラザ工場用設定）
 
 **確認コマンド**:
 ```bash
-# トークプラザ工場のDropbox basePath確認
-grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
-# → DROPBOX_BASE_PATH=/backups/talkplaza
-
 # 第2工場のDropbox basePath確認（デフォルト）
 grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 # → （未設定の場合はデフォルトパスを使用）
