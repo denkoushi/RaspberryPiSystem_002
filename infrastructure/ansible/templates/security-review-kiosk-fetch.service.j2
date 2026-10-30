@@ -1,0 +1,9 @@
+[Unit]
+Description=Fetch kiosk security material for the Pi5 review
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+UMask=0027
+ExecStart=/usr/bin/python3 /usr/local/bin/security-review-kiosk-fetch.py /etc/security-review-kiosk/fetch.json
+TimeoutStartSec=10min

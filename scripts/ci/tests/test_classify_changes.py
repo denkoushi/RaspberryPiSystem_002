@@ -34,7 +34,7 @@ class ClassifyChangesTests(unittest.TestCase):
 
     def test_security_review_collector_selects_its_fixture_test_job(self) -> None:
         for path in ("scripts/server/security-review/collect.py", "scripts/server/security-review/known.py", "scripts/server/security-review/triage.py",
-                     "scripts/server/tests/test_security_review_collect.py", "scripts/server/tests/test_security_review_triage.py"):
+                     "scripts/server/tests/test_security_review_collect.py", "scripts/server/tests/test_security_review_kiosk_fetch.py", "scripts/server/tests/test_security_review_triage.py"):
             with self.subTest(path=path):
                 result = self.classify(Change("M", path))
                 self.assertEqual(self.selected(result), {"repo_policy", "db_infra", "deploy_contract", "client"})

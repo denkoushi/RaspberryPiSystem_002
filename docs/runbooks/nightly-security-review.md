@@ -29,6 +29,35 @@ Set `security_review_nightly_enabled: true` and deliver the environment through
 an approved API release. Confirm the next report, its schema and the scheduler lease.
 The API data path is the container mount; the collector path is the host directory.
 
+## Kiosk security fetch
+
+Pi5's `security-review-kiosk-fetch.timer` runs hourly (with persistent catch-up),
+as the Ansible login user using its existing SSH key. It reads kiosk package
+integrity logs and alert files without sudo or kiosk changes. Both this timer and
+the nightly collector are gated by `security_review_collect_enabled`.
+Apply changes with the dedicated `prepare-pi5-security-review.yml` check/apply
+commands above; the standard release does not apply these host tasks.
+
+Configuration is `/etc/security-review-kiosk/fetch.json`; per-host watermarks are
+in `/var/lib/security-review-kiosk`. On each host's first successful fetch, the
+watermark is set to the newest existing alert filename and nothing is forwarded
+(no historical backfill). Later runs examine at most 50 new files per host,
+oldest first, advancing past empty or invalid files as well. Valid alerts are
+atomically published under the Pi5 project `alerts/` directory with host-prefixed
+IDs, host-suffixed filenames and `source.host`; an existing source is preserved
+as `source.original`. Existing destination files are skipped.
+
+The atomic `/var/log/security-review-kiosk/kiosk-package-integrity.log` summary
+contains each host's latest completed run (up to 60 body lines), or
+`unreachable` / `no_completed_run`. The nightly collector reads it as
+`kiosk-package-integrity`; unreachable hosts are summary content. SSH has a
+60-second deadline and a 4 MiB response cap per host; log tails are capped at
+256 KiB and individual alerts at 32 KiB (oversized alerts are skipped).
+Check `journalctl -u security-review-kiosk-fetch.service` for short per-host
+statuses; alert contents are never printed there. Before the first hourly run,
+start this service once before manually running the collector, so the summary
+file exists.
+
 ## Morning review with Claude
 
 After the operator authorizes access, fetch only the newest JSON report. Substitute
