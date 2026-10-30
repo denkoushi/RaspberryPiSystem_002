@@ -12,8 +12,8 @@ android {
         targetSdk = 34
         buildConfigField("String", "HAIZEN_ORIGIN", "\"https://raspberrypi.tail7312a3.ts.net:8443\"")
         buildConfigField("String", "HAIZEN_START_PATH", "\"/kiosk/mobile-placement\"")
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
