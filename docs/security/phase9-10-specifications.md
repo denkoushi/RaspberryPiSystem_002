@@ -280,7 +280,7 @@ done
 - **ClamAV**: `/var/log/clamav/*.log` - 週次ローテーション、52週保持
 - **Trivy**: `/var/log/trivy/*.log` - 週次ローテーション、52週保持
 - **rkhunter**: `/var/log/rkhunter/*.log` - 週次ローテーション、52週保持
-- **alerts**: `/opt/RaspberryPiSystem_002/alerts/*.json` - 週次ローテーション、26週保持
+- **alerts inbox**: logrotate対象外。Pi5ではAPIが日次でDB取り込み済みファイルを30日後に削除（`ALERTS_INBOX_RETENTION_DAYS`で変更可）。キオスクでは日次cronで30日経過したファイルを削除。空ファイルは双方とも1日経過後に削除。
 
 **デプロイ方法**:
 - Ansibleタスク（`infrastructure/ansible/roles/server/tasks/security.yml`）で`/etc/logrotate.d/raspisys-security`に配置
