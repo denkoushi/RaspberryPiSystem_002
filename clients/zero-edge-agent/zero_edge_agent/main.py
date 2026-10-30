@@ -4,6 +4,7 @@ import logging
 import signal
 import threading
 
+from . import serial_input
 from .classifier import Distribution, classify
 from .clock import is_synchronized
 from .config import load_config
@@ -51,7 +52,9 @@ def main():
         processor = ScanProcessor(queue)
         worker = threading.Thread(target=run_sender, args=(config, stop), name="sender")
         worker.start()
-        for scan in iter_scans(config.hid_device, stop):
+        scans = (serial_input.iter_scans(config.serial_device, stop, config.reader_init_commands)
+                 if config.input_mode == "serial" else iter_scans(config.hid_device, stop))
+        for scan in scans:
             processor.process(scan)
     except Exception as error:
         LOG.error("Agent stopped (%s)", type(error).__name__)

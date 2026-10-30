@@ -2,7 +2,7 @@
 title: 'KB-368: Zero 2 W 配膳追跡（haizen API・エージェント・キオスク表示）'
 tags: [Zero2W, mobile-placement, 配膳, HID, API]
 audience: [開発者, 運用者]
-last-verified: 2026-05-07
+last-verified: 2026-10-30
 category: knowledge-base
 ---
 
@@ -113,6 +113,10 @@ category: knowledge-base
 
 - **限定 NOPASSWD と全体 sudo の役割分離**: 断片の **`sudo_nopasswd_commands`** は **`status-agent` / `haizen-agent` の `systemctl`** などサービス操作向けで、サンプル断片に残す。**一方、Pi3/Pi4 と同じく playbook 全体を無人で通す前提**に合わせるには、**Zero の自動化ユーザー側で `sudo -n true` が通ること（実運用では `NOPASSWD: ALL`）** が必要だった。今回の `zero2w-tanaban01` はこの前提へそろえ、以後は Pi3/Pi4 と同じ感覚で `zero2w-edge-setup.yml` を再実行できる。
 - **広域健全性**: 当該運用整理後、**コード変更なし**で `./scripts/deploy/verify-phase12-real.sh` を再実行し **PASS 43 / WARN 0 / FAIL 0**（**約 74s**・Tailscale）を確認（[deployment.md](../guides/deployment.md) 2026-05-06 項）。
+
+## 読み取り機の OK/NG（2026-10-30）
+
+- `zero2w-tanaban01` の Tera 9200 を USB シリアルにし、Code128 だけ読むよう設定した。Code128 以外は鳴らない。長さ・数字の絞り込みと NG 音はこの機種では不可で、Code128 の `MD〜`（11文字）は鳴るがサーバーの 422 と通知で知らせる。設定命令と手順の正本は [zero-edge-agent.md](../runbooks/zero-edge-agent.md) の「読み取り機（Tera 9200）をシリアルで使う」。
 
 ## References
 
