@@ -20,6 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
+| アラートinboxの不正JSON・無通知スキップと保持期間 | [KB-431](./KB-431-alerts-inbox-silent-skips-and-retention.md) | 1件 | 2026-10-30: 約1万件の未配送、warn化・DB照合付き日次清掃・logrotate除外。旧ファイルはPi5に保管しSlack再送なし。 |
 | Pi5 Wi-Fi no-secrets 自動再接続 | [KB-430](./KB-430-pi5-wifi-no-secrets-reconnect.md) | 1件 | 2026-10-30 ルーター再起動後の切断継続・Gmail CSV取りこぼしと再接続タイマー。 |
 | 生産スケジュール（負荷調整・山崩し支援） | [KB-362-kiosk-load-balancing.md](./KB-362-kiosk-load-balancing.md) | 1件 | 3タブ·外注契約整合 **`cd42ebfe`**·Pi5 **`20260527-191646-1476`**·[ADR 外注上限](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md) |
 | 負荷調整×生産システム突合 | [KB-363-load-balancing-production-system-reconciliation.md](./KB-363-load-balancing-production-system-reconciliation.md) | 1件 | **FSIGENSHOYOYMD** vs 着手日·集計修正 **実装済**（PR #350）·検算 `reconcile-033-may-patterns.mjs` |

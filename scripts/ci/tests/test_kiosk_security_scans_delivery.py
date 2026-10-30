@@ -20,6 +20,25 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
         self.security = yaml.safe_load((ANSIBLE / 'roles/kiosk/tasks/security.yml').read_text())
         self.variables = yaml.safe_load((ANSIBLE / 'group_vars/all.yml').read_text())
 
+    def test_kiosk_alerts_inbox_cleanup_is_daily_and_bounded(self):
+        task = next(task for task in self.tasks
+                    if task.get('name') == 'Schedule kiosk alerts inbox cleanup')
+        cron = task['ansible.builtin.cron']
+        self.assertEqual(cron['user'], 'root')
+        self.assertEqual((cron['minute'], cron['hour']), ('25', '4'))
+        for field in ('day', 'month', 'weekday'):
+            self.assertEqual(cron.get(field, '*'), '*')
+        self.assertEqual(task['when'], "terminal_release_mode | default('full') == 'full'")
+        self.assertEqual(self.variables['security_review_kiosk_alerts_dir'],
+                         '/opt/RaspberryPiSystem_002/alerts')
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters['quote'] = shlex.quote
+        job = environment.from_string(cron['job']).render(**self.variables)
+        self.assertEqual(shlex.split(job), [
+            'find', '/opt/RaspberryPiSystem_002/alerts', '-maxdepth', '1', '-type', 'f',
+            '-name', 'alert-*.json*', '(', '(', '-empty', '-mmin', '+1440', ')',
+            '-o', '-mmin', '+43200', ')', '-delete'])
+
     def test_full_provisioning_imports_package_integrity_after_clamav(self):
         self.assertEqual(self.security[-1], {
             'name': 'Apply kiosk package integrity check',
