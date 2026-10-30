@@ -395,7 +395,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("docker image tag", adoption)
 
         self.assertIn("git diff --exit-code", compatibility)
-        self.assertIn("a926af9a92ba82de56f4ae152391a061d8c4449a", compatibility)
+        self.assertIn("dd08a3c7edcbc9f145f06363ef99b1c20cf5cb6f", compatibility)
         source_proof = compatibility.split(
             "Prove the adopted torque-agent source closure is unchanged", 1
         )[1].split("Setup pnpm workspace", 1)[0]
