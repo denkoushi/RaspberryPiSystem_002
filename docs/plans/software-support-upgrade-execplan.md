@@ -105,10 +105,18 @@ agent が動く端末(inventory の `kiosk` グループ):
 1. PR をマージし、main の CI(3 agent × 2 アーキテクチャと hermes-answer-cache)が緑になるのを待つ。
 2. 反映前に、全 Pi4 の CPU の種類(`uname -m`、`dpkg --print-architecture`)と各 agent の `readerConnected` を読み取りだけで記録する。
 3. Pi5 を標準反映する(hermes-answer-cache が 3.13 になる)。
-4. 試しの1台として raspi4-kensaku-02 を `--limit` で反映する。NFC だけが動く端末で、トルクやバーコードの業務に触れないため。反映後、`readerConnected` が反映前と同じであること、現場でカードを1回読んで貸出画面に反映されることを確かめる。
-5. 問題がなければ、NFC だけの残り5台を1台ずつ反映する。
-6. 最後に、トルクが動く raspi4-assembly-01 と、3つ全部が動く raspi4-kensaku-stonebase01 を反映し、トルクレンチとバーコードの読み取りも現場で確かめる。
-7. 全台終わるまで main への他のマージを止める。
+4. 試しの1台として raspi4-kensaku-stonebase01 を `--limit` で反映する(2026-10-30 ユーザー指示)。3つの agent がすべて有効だが、今つながっている読取機は NFC リーダーだけである。EUC-JP の端末なので、手作業の Ansible の読み取りには `LC_ALL=C.UTF-8` を付ける(標準反映の role は対応済み)。現場の人が立ち会える時間に行う。
+5. stonebase01 の確認(反映後すぐ):
+   1. 読み取りだけで、3つの agent の HTTP 応答が 200 であること、NFC の `readerConnected` が反映前と同じ(true)であること、バーコードとトルクのコンテナが再起動を繰り返していないことを見る。
+   2. 現場で NFC カードを1回読ませ、キオスクの画面に読み取りが出ることを確かめる。実機での確認はこの1回だけ。
+   読めなければ、4-4 の手順で戻す。
+6. 問題がなければ、raspi4-assembly-01 を反映する。トルクレンチを実機で確かめられる端末で、NFC カードの読み取りとトルクレンチの1回の締め付けを現場で確かめる。トルクの部品は Bluetooth の入力を evdev で読むので、ここで初めて実機の入力を通す。
+7. NFC だけの6台(raspi4-kensaku-02、raspi4-sessaku-01、raspi4-fjv60-80、raspi4-assembly-02、raspberrypi4、raspi4-robodrill01)を1台ずつ反映し、それぞれ `readerConnected` を読み取りで確かめる。robodrill01 も EUC-JP の端末である。
+8. 全台終わるまで main への他のマージを止める。
+
+読取機がつながっていない部品の扱い: 3つの部品とも、読取機が無くても起動し、状態確認(nfc と barcode は `/api/agent/status`、torque は `/health`)は 200 を返す。読取機の有無は応答の中の `readerConnected` などに出るだけで、標準反映の正常確認は失敗しない。barcode のコンテナは `/dev/ttyACM0` を個別に割り当てず `privileged` で動くため、装置が無くても起動できる。torque は Bluetooth の入力が無いと待ち直しを続ける作りである(`hid_reader.py`)。
+
+バーコードを実機で確かめられる端末は今は無い(バーコードの部品が有効なのは stonebase01 だけで、読取機はつながっていない)。代わりに、3.13 のバーコード部品のイメージ(arm64 と arm/v7)の中で仮の端末(pty)を `SERIAL_DEVICE` に指定し、1行流すと `readerConnected: true` と `lastLine` に届くことを Mac で確かめた。バーコードの読取機を再びつなぐときに、現場で1回読ませて確かめる。
 
 ### 5. PostgreSQL 15 → 18
 
