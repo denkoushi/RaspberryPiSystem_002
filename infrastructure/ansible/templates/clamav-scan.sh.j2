@@ -24,6 +24,29 @@ SCAN_TARGETS=(
 TIMESTAMP="$(date +%Y-%m-%dT%H:%M:%S)"
 echo "[$TIMESTAMP] Starting ClamAV scan..." >> "${LOG_FILE}"
 
+{% if clamav_update_before_scan | default(false) %}
+set +e
+"${LOW_PRIORITY[@]}" timeout 15m freshclam --quiet >> "${LOG_FILE}" 2>&1
+UPDATE_EXIT=$?
+set -e
+if [[ ${UPDATE_EXIT} -ne 0 ]]; then
+  echo "[$(date +%Y-%m-%dT%H:%M:%S)] Virus database update failed (exit ${UPDATE_EXIT}); scanning with the existing database." >> "${LOG_FILE}"
+fi
+
+EXISTING_TARGETS=()
+for path in "${SCAN_TARGETS[@]}"; do
+  if [[ -e "${path}" ]]; then
+    EXISTING_TARGETS+=("${path}")
+  else
+    echo "[$(date +%Y-%m-%dT%H:%M:%S)] Skipping missing scan path: ${path}" >> "${LOG_FILE}"
+  fi
+done
+if [[ {{ '${#' }}EXISTING_TARGETS[@]} -eq 0 ]]; then
+  echo "[$(date +%Y-%m-%dT%H:%M:%S)] No existing scan paths; scan cannot run." >> "${LOG_FILE}"
+  SCAN_EXIT=2
+else
+  SCAN_TARGETS=("${EXISTING_TARGETS[@]}")
+{% endif %}
 set +e
 "${LOW_PRIORITY[@]}" /usr/bin/clamscan \
   --recursive \
@@ -34,6 +57,9 @@ set +e
   "${SCAN_TARGETS[@]}" >> "${LOG_FILE}" 2>&1
 SCAN_EXIT=$?
 set -e
+{% if clamav_update_before_scan | default(false) %}
+fi
+{% endif %}
 
 echo "[$(date +%Y-%m-%dT%H:%M:%S)] Scan completed." >> "${LOG_FILE}"
 

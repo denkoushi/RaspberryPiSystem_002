@@ -331,6 +331,8 @@ class ClassifyChangesTests(unittest.TestCase):
             "infrastructure/ansible/templates/kiosk-browser.service.j2",
             "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
             "infrastructure/ansible/roles/kiosk/tasks/package-integrity.yml",
+            "infrastructure/ansible/roles/kiosk/tasks/clamav.yml",
+            "infrastructure/ansible/templates/clamav-scan.sh.j2",
             "infrastructure/ansible/templates/package-integrity-scan.sh.j2",
             "infrastructure/ansible/templates/logrotate-security.conf.j2",
             "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
