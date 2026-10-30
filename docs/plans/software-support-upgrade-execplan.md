@@ -140,6 +140,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 - [x] (2026-10-29) PostgreSQL更新の手順3として、Macで読み取り専用の本番ダンプを使い試し移行・切戻しを実施。本番はPostgreSQL 15.17、DB 5.7GB、custom dump 242MB（SSH経由150秒）、コピーの復元82秒。preflight 3秒、migrate 100秒、停止＋activate 18は5秒、切戻しの停止＋activate 15は4秒。284行の比較レポートと拡張版（vector 0.8.7 / pg_trgm 1.6）は一致。Pi5は遅くなる見込みのため、保守時間は1時間を確保する。
 - [x] (2026-10-29) 手順4の切替PR用に、本番composeをpg18・新ボリューム・旧ボリュームread-only・起動ガードへ変更し、APIのPGDGクライアントを18へ更新。マージは移行当日のみ（Runbookの当日手順2）。標準デプロイはdbを再作成せず、migrate後に運用者が `activate --expect-major 18` で切り替える。本番移行は未実施。
+- [x] (2026-10-30) 本番移行を実施（切替PR #2398、修正PR #2404）。7:41の初回は旧dbコンテナがパスワードを環境変数で持ちmigrateが停止、自動でpg15へ戻した（停止約20秒、データ変更なし）。修正後、17:50開始で一括実行しRESULT=OK。Pi5の停止区間は719秒（migrate 579秒、activate 18は8秒、API/web再開100秒、migrate status確認19秒）。比較レポートの差分なし、PostgreSQL 18.6。旧ボリュームdb-dataは残し、移行時のダンプはMacへ写してsha256一致を確認。
 
 ## Surprises & Discoveries
 
@@ -147,6 +148,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - Node 20 は 2026-04-30 でサポートが終わっており、点検時点で既に期限切れだった。
 - 業務 Hermes の中継部品は、標準反映がイメージの入れ替えを拒否する作りで、更新の通り道がまだ無い。
 - ESLint は既に 9 系へ更新済みだった。
+- 本番のdbコンテナは `POSTGRES_PASSWORD_FILE` 導入前に作られ、パスワードを環境変数で持っていた。移行スクリプトはComposeのdbのbindからパスワードファイルを取るよう修正した（#2404）。
 
 ## Decision Log
 
