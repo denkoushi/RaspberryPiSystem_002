@@ -64,7 +64,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { label: 'LocalLLM', to: '/admin/local-llm' },
       { label: '写真持出VLM', to: '/admin/photo-loan-label-reviews' },
       { label: 'ギャラリー教師登録', to: '/admin/photo-gallery-seed' },
-      { label: '配膳写真', to: '/admin/placement-photos' }
+      { label: '配膳写真', to: '/admin/placement-photos' },
+      { label: '監視カメラ', to: '/admin/watch-camera' }
     ]
   },
   {

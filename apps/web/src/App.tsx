@@ -45,6 +45,7 @@ import { RaspiInventoryPage } from './pages/admin/RaspiInventoryPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
 import { SignageHubPage } from './pages/admin/SignageHubPage';
+import { WatchCameraPage } from './pages/admin/WatchCameraPage';
 import { KioskAssemblyCheckSheetPage } from './pages/kiosk/KioskAssemblyCheckSheetPage';
 import { KioskAssemblyCheckSheetsPage } from './pages/kiosk/KioskAssemblyCheckSheetsPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
@@ -441,6 +442,7 @@ function App() {
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
         <Route path="dgx-resource" element={<Navigate to="/admin/tools/dgx-resource" replace />} />
         <Route path="placement-photos" element={<PlacementPhotosPage />} />
+        <Route path="watch-camera" element={<WatchCameraPage />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
         <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />
