@@ -1,25 +1,22 @@
-import { SHELF_DIRECTIONS, composeArea, type ShelfDirection } from '@raspi-system/shelf-layout-core';
-import { useQueryClient } from '@tanstack/react-query';
-import { isAxiosError } from 'axios';
-import { useEffect, useRef, useState } from 'react';
+import { SHELF_DIRECTIONS, composeArea } from '@raspi-system/shelf-layout-core';
+import { useState } from 'react';
 
-import { deleteMobilePlacementShelf, deleteMobilePlacementShelfLandmark, postMobilePlacementShelfLandmark, patchMobilePlacementShelfMemo, putMobilePlacementShelfPhoto } from '../../../../api/client';
 import { Dialog } from '../../../../components/ui/Dialog';
 import { HaizenHeader } from '../../haizen/HaizenHeader';
 import { HaizenIcon } from '../../haizen/HaizenIcon';
 import { HaizenSheet } from '../../haizen/HaizenSheet';
-import { mobilePlacementQueryKeys } from '../../mobilePlacementQueryKeys';
-import { resizeShelfPhoto, rotateShelfPhoto } from '../../shelfPhoto/resizeShelfPhoto';
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
 import { ShelfPhotoCamera } from '../../shelfPhoto/ShelfPhotoCamera';
 import { haizenPhoneStyle, hp } from '../../ui/haizenPhoneTokens';
 import { useRegisteredShelves } from '../../useRegisteredShelves';
 import { useShelfMachines } from '../../useShelfMachines';
+import { useShelfLandmarkEditor } from '../kiosk/useShelfLandmarkEditor';
+import { useShelfPhotoEditor } from '../kiosk/useShelfPhotoEditor';
 import { useShelfOfflineQueue } from '../offline/useShelfOfflineQueue';
-import { clearShelfPhotoDraft, readShelfPhotoDraft, saveShelfPhotoDraft } from '../shelfPhotoDraft';
-import { useAssignZero2wPreset, useHaizenTargetDevicesForShelfMaster } from '../useShelfMasterQueries';
-import { buildZero2wPiSelectOptions, findDeviceIdOnShelf, piSelectionRequiresApply } from '../zero2wPreset/zero2wPiSelectOptions';
-import { ZERO2W_PI_CLEAR, ZERO2W_PI_UNCHANGED, type Zero2wPiSelectValue } from '../zero2wPreset/zero2wPiSelectValue';
+import { clearShelfPhotoDraft, readShelfPhotoDraft } from '../shelfPhotoDraft';
+import { useHaizenTargetDevicesForShelfMaster } from '../useShelfMasterQueries';
+import { buildZero2wPiSelectOptions } from '../zero2wPreset/zero2wPiSelectOptions';
+import { ZERO2W_PI_CLEAR, ZERO2W_PI_UNCHANGED } from '../zero2wPreset/zero2wPiSelectValue';
 
 import type { RegisteredShelfEntryDto } from '../../registeredShelves';
 
@@ -77,86 +74,7 @@ export function ShelfPhotoMaster({ onMessage }: { onMessage?: (message: string) 
 }
 
 function ShelfPhotoForm({ shelf, shelves, machinesQuery, devicesQuery, submit, onClose, onMessage }: { shelf: RegisteredShelfEntryDto | null; shelves: RegisteredShelfEntryDto[]; machinesQuery: ReturnType<typeof useShelfMachines>; devicesQuery: ReturnType<typeof useHaizenTargetDevicesForShelfMaster>; submit: ReturnType<typeof useShelfOfflineQueue>['submit']; onClose: () => void; onMessage?: (message: string) => void }) {
-  const client = useQueryClient();
-  const assignPreset = useAssignZero2wPreset();
-  const [zeroSheet, setZeroSheet] = useState(false);
-  const [zeroDraft, setZeroDraft] = useState<Zero2wPiSelectValue>(ZERO2W_PI_UNCHANGED);
-  const [selectedPi, setSelectedPi] = useState<Zero2wPiSelectValue>(ZERO2W_PI_UNCHANGED);
-  const devices = devicesQuery.data?.devices ?? [];
-  const currentDeviceId = shelf ? findDeviceIdOnShelf(devices, shelf.shelfCodeRaw) : null;
-  const draftDeviceId = zeroDraft === ZERO2W_PI_UNCHANGED ? currentDeviceId : zeroDraft === ZERO2W_PI_CLEAR ? null : zeroDraft;
-  const draftDevice = devices.find((device) => device.id === draftDeviceId);
-  const input = useRef<HTMLInputElement>(null);
-  const [draft] = useState(() => shelf ? null : readShelfPhotoDraft());
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [machine, setMachine] = useState(draft?.machine ?? '');
-  const [landmarkSheet, setLandmarkSheet] = useState(false);
-  const [direction, setDirection] = useState<ShelfDirection | '' | null>(draft?.direction ?? null);
-  const [memo, setMemo] = useState(shelf?.displayLabel ?? draft?.memo ?? '');
-  const [savedMemo, setSavedMemo] = useState(shelf?.displayLabel?.trim() || null);
-  const [photo, setPhoto] = useState<Awaited<ReturnType<typeof resizeShelfPhoto>> | null>(null);
-  const createdCode = shelf?.shelfCodeRaw ?? null;
-  const [busy, setBusy] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    if (shelf) return;
-    saveShelfPhotoDraft({ machine, direction, memo });
-  }, [shelf, machine, direction, memo]);
-  const directions = ['北西', '北', '北東', '西', '', '東', '南西', '南', '南東'] as const;
-  const registeredDirections = new Set(directions.filter((d) => shelves.some((s) => s.shelfCodeRaw === (d ? composeArea(machine, d) : machine))));
-  const code = createdCode ?? (machine && direction !== null ? (direction ? composeArea(machine, direction) : machine) : '');
-  const canSave = !busy && Boolean(code) && (Boolean(createdCode) ||
-    (Boolean(photo) && direction !== null && !registeredDirections.has(direction) &&
-      !machinesQuery.isError && Boolean(machinesQuery.data?.machines.includes(machine) || machinesQuery.data?.landmarks?.includes(machine))));
-  const deleteShelf = async () => {
-    if (!shelf || busy) return;
-    setBusy(true); setError(null);
-    try {
-      await deleteMobilePlacementShelf(shelf.shelfCodeRaw);
-      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
-      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfLayout });
-      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.haizenTargetDevices });
-      onClose();
-      onMessage?.(`${shelf.shelfCodeRaw} を消しました`);
-    } catch (e) {
-      setError(isAxiosError(e) && typeof e.response?.data?.message === 'string' ? e.response.data.message : e instanceof Error ? e.message : '削除できませんでした');
-      setConfirmDelete(false);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const save = async () => {
-    if (!canSave) return;
-    setBusy(true); setError(null);
-    try {
-      const savedCode = createdCode ?? code.trim();
-      if (!createdCode && photo) {
-        const status = await submit({ shelfCodeRaw: savedCode, displayLabel: memo.trim() || null, photo });
-        clearShelfPhotoDraft();
-        if (status === 'pending') onMessage?.('未送信に保存しました');
-      } else {
-        if ((memo.trim() || null) !== savedMemo) {
-          await patchMobilePlacementShelfMemo(savedCode, memo.trim() || null);
-          setSavedMemo(memo.trim() || null);
-        }
-        if (photo) await putMobilePlacementShelfPhoto(savedCode, photo);
-      }
-      if (shelf?.isStructured && piSelectionRequiresApply(zeroDraft, currentDeviceId)) {
-        if (zeroDraft === ZERO2W_PI_CLEAR) {
-          if (currentDeviceId) await assignPreset.mutateAsync({ clientDeviceId: currentDeviceId, shelfCodeRaw: null });
-        } else {
-          await assignPreset.mutateAsync({ clientDeviceId: zeroDraft, shelfCodeRaw: savedCode });
-        }
-      }
-      onClose();
-    } catch (e) {
-      setError(isAxiosError(e) && typeof e.response?.data?.message === 'string' ? e.response.data.message : e instanceof Error ? e.message : '保存できませんでした');
-    } finally {
-      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
-      setBusy(false);
-    }
-  };
+  const { zeroSheet, setZeroSheet, selectedPi, setSelectedPi, setZeroDraft, devices, currentDeviceId, draftDeviceId, draftDevice, input, cameraOpen, setCameraOpen, machine, setMachine, landmarkSheet, setLandmarkSheet, direction, setDirection, memo, setMemo, photo, setPhoto, createdCode, busy, confirmDelete, setConfirmDelete, error, directions, registeredDirections, code, canSave, deleteShelf, save, selectPhoto, rotatePhoto } = useShelfPhotoEditor({ shelf, shelves, machinesQuery, devicesQuery, submit, onClose, onMessage });
   return <div style={haizenPhoneStyle}><Dialog isOpen closeOnEsc={!landmarkSheet && !cameraOpen && !zeroSheet} trapFocus={!landmarkSheet && !cameraOpen && !zeroSheet} onClose={() => { if (!busy && !landmarkSheet && !cameraOpen && !zeroSheet) onClose(); }} ariaLabel={shelf ? '棚を直す' : '棚を追加'} overlayZIndex={60}
     className="!fixed !inset-0 !m-auto !flex !h-dvh !max-h-none !w-full !max-w-[480px] !flex-col !rounded-none !border-0 !bg-[#0d0f0e] !p-0 !text-[#f2f4f1]">
     <div style={haizenPhoneStyle} className="flex min-h-0 flex-1 flex-col">
@@ -166,9 +84,7 @@ function ShelfPhotoForm({ shelf, shelves, machinesQuery, devicesQuery, submit, o
           <input ref={input} type="file" accept="image/*" capture="environment" aria-label="棚の写真" className="hidden" disabled={busy} onChange={async (e) => {
             const file = e.target.files?.[0]; e.target.value = '';
             if (!file) return;
-            setBusy(true); setError(null);
-            try { setPhoto(await resizeShelfPhoto(file)); } catch (err) { setError(err instanceof Error ? err.message : '写真を処理できませんでした'); }
-            finally { setBusy(false); }
+            await selectPhoto(file);
           }} />
           <div className="relative aspect-[4/3] max-h-[27dvh] w-full max-w-[280px] shrink-0 self-center">
             <button type="button" disabled={busy} className="relative grid h-full w-full place-items-center overflow-hidden rounded-2xl border-2 border-dashed border-[var(--hp-line)] bg-[var(--hp-panel)] text-[17px] font-bold" onClick={() => setCameraOpen(true)}>
@@ -177,11 +93,7 @@ function ShelfPhotoForm({ shelf, shelves, machinesQuery, devicesQuery, submit, o
               {(photo || shelf?.photoUpdatedAt) && <span className="absolute bottom-2 right-2 rounded-[10px] bg-[var(--hp-bg)] px-3 py-2.5 text-sm">撮り直す</span>}
             </button>
             {photo && <button type="button" aria-label="写真を回す" disabled={busy} className="absolute bottom-2 left-2 grid h-11 w-11 place-items-center rounded-[10px] bg-[var(--hp-bg)]"
-              onClick={async () => {
-                setBusy(true); setError(null);
-                try { setPhoto(await rotateShelfPhoto(photo)); } catch (err) { setError(err instanceof Error ? err.message : '写真を回せませんでした'); }
-                finally { setBusy(false); }
-              }}><HaizenIcon name="rotate" className="h-6 w-6" /></button>}
+              onClick={() => void rotatePhoto()}><HaizenIcon name="rotate" className="h-6 w-6" /></button>}
           </div>
           {!createdCode && <>
             <button type="button" aria-label="目安" disabled={busy || machinesQuery.isLoading || machinesQuery.isError}
@@ -247,30 +159,7 @@ function ShelfLandmarkSheet({ machine, shelves, machines, landmarks, onClose, on
   machine: string; shelves: RegisteredShelfEntryDto[]; machines: string[]; landmarks: string[];
   onClose: () => void; onSelect: (name: string) => void; onDelete: (name: string) => void;
 }) {
-  const client = useQueryClient();
-  const [name, setName] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const change = async (deleting?: string) => {
-    if (busy || (!deleting && !name.trim())) return;
-    setBusy(true); setError(null);
-    try {
-      if (deleting) {
-        await deleteMobilePlacementShelfLandmark(deleting);
-        onDelete(deleting);
-        setConfirmDelete(null);
-      } else {
-        const added = await postMobilePlacementShelfLandmark(name.trim());
-        onSelect(added.name);
-      }
-      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfMachines });
-      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
-    } catch (e) {
-      setError(isAxiosError(e) && typeof e.response?.data?.message === 'string' ? e.response.data.message : e instanceof Error ? e.message : '目安を更新できませんでした');
-      setConfirmDelete(null);
-    } finally { setBusy(false); }
-  };
+  const { name, setName, confirmDelete, setConfirmDelete, busy, error, change } = useShelfLandmarkEditor({ onSelect, onDelete });
   const row = (value: string, own: boolean) => {
     const used = shelves.some((s) => s.shelfCodeRaw === value || SHELF_DIRECTIONS.some((d) => s.shelfCodeRaw === composeArea(value, d)));
     const confirming = confirmDelete === value;

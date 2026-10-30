@@ -34,7 +34,8 @@ describe('photo-only shelf master', () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: width < 768, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     mount();
     expect(screen.getByRole('heading', { name: '棚マスタ' })).toBeInTheDocument();
-    await screen.findByRole('button', { name: '棚を追加' });
+    if (width < 768) await screen.findByRole('button', { name: '棚を追加' });
+    else expect(await screen.findByTestId('shelf-master-kiosk')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '棚を移す' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '配置を変える' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '再割当' })).not.toBeInTheDocument();
@@ -44,6 +45,7 @@ describe('photo-only shelf master', () => {
   });
 
   it('returns to the haizen hub with the hand-off state', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     mount();
     await screen.findByRole('button', { name: '棚を追加' });
     fireEvent.click(screen.getByRole('button', { name: '戻る' }));
