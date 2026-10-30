@@ -1,3 +1,4 @@
+import { getWatchCameraRetentionScheduler } from '../services/watch-camera/watch-camera-retention.scheduler.js';
 import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
 import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
 import { getCsvFeedFreshnessEvaluator } from '../services/kiosk-inquiry/csv-feed-freshness-evaluator.js';
@@ -266,6 +267,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'watch-camera-retention',
+      start: () => getWatchCameraRetentionScheduler().start(),
+      stop: () => getWatchCameraRetentionScheduler().stop(),
+    },
+    {
       name: 'client-network-log-retention',
       start: () => getClientNetworkLogRetentionScheduler().start(),
       stop: () => getClientNetworkLogRetentionScheduler().stop(),
@@ -351,6 +357,7 @@ export function listPostListenSchedulerNames(): string[] {
     'gmail-trash-cleanup',
     'due-management-tuning',
     'alerts-dispatcher',
+    'watch-camera-retention',
     'client-network-log-retention',
     'client-heartbeat-monitor',
     'system-notice-evaluator',

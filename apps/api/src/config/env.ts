@@ -23,11 +23,13 @@ import { networkEnvShape } from './env/network.js';
 import { procedureVideoEnvShape } from './env/procedure-video.js';
 import { procedureMaterialEnvShape } from './env/procedure-material.js';
 import { photoToolEnvShape } from './env/photo-tool.js';
+import { watchCameraEnvShape } from './env/watch-camera.js';
 import { signageEnvShape } from './env/signage.js';
 
 const envSchema = z
   .object({
     ...coreEnvShape,
+    ...watchCameraEnvShape,
     ...businessHermesEnvShape,
     ...securityReviewEnvShape,
     ...signageEnvShape,

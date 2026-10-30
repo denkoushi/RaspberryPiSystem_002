@@ -1,3 +1,4 @@
+import { registerWatchCameraRoutes } from './watch-camera/index.js';
 import type { FastifyInstance } from 'fastify';
 import { registerSystemRoutes } from './system/index.js';
 import { registerAuthRoutes } from './auth.js';
@@ -60,6 +61,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerKioskDocumentRoutes(subApp);
       await registerPartMeasurementRoutes(subApp);
       await registerMobilePlacementRoutes(subApp);
+      await registerWatchCameraRoutes(subApp);
       await registerImportRoutes(subApp);
       await registerStorageRoutes(subApp);
       await registerSignageRoutes(subApp);

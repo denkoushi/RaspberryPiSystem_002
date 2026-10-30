@@ -1,0 +1,236 @@
+---
+- name: Deploy Pi Zero watch camera and heartbeat
+  hosts: watch_cam
+  become: true
+  gather_facts: false
+  serial: 1
+  vars:
+    status_agent_client_key: "{{ watch_cam_client_key }}"
+    status_agent_storage_health_enabled: "0"
+    nfc_agent_client_id: ""
+    barcode_agent_enabled: false
+    torque_agent_enabled: false
+    terminal_agent_maintenance_leases: {}
+  pre_tasks:
+    - name: Require a device identity and key
+      ansible.builtin.assert:
+        that:
+          - status_agent_client_id | default('') | length > 0
+          - watch_cam_client_key | default('') | length > 0
+          - api_base_url | default('') | length > 0
+      no_log: true
+
+  tasks:
+    - name: Discover services before retiring unused agents
+      ansible.builtin.service_facts:
+
+    - name: Stop and disable unused agents and Bluetooth services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        enabled: false
+        state: stopped
+      loop:
+        - zero-edge-agent.service
+        - haizen-agent.service
+        - bluetooth.service
+        - hciuart.service
+      when: item in ansible_facts.services
+
+    - name: Ensure video group exists
+      ansible.builtin.group:
+        name: video
+        system: true
+
+    - name: Create camera service user
+      ansible.builtin.user:
+        name: watchcam
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+        groups: video
+        append: true
+
+    - name: Create journald configuration directory
+      ansible.builtin.file:
+        path: /etc/systemd/journald.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Keep journal in bounded volatile storage
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/watch-cam.conf
+        content: |
+          [Journal]
+          Storage=volatile
+          RuntimeMaxUse=8M
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart systemd-journald
+
+    - name: Install UVC capture tools from Debian packages
+      ansible.builtin.apt:
+        name: v4l-utils
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Discover the existing NTP client
+      ansible.builtin.service_facts:
+
+    - name: Select the existing NTP client or timesyncd
+      ansible.builtin.set_fact:
+        watch_cam_ntp_service: >-
+          {{ 'chrony.service' if 'chrony.service' in ansible_facts.services else
+             'ntp.service' if 'ntp.service' in ansible_facts.services else
+             'ntpsec.service' if 'ntpsec.service' in ansible_facts.services else
+             'systemd-timesyncd.service' }}
+
+    - name: Install timesyncd when no other NTP client exists
+      ansible.builtin.apt:
+        name: systemd-timesyncd
+        state: present
+      when: watch_cam_ntp_service == 'systemd-timesyncd.service'
+
+    - name: Enable NTP synchronization
+      ansible.builtin.systemd:
+        name: "{{ watch_cam_ntp_service }}"
+        enabled: true
+        state: started
+
+    - name: Create application directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /opt/watch-cam
+        - /opt/watch-cam/watch-cam-agent
+        - /opt/watch-cam/watch-cam-agent/watch_cam_agent
+        - /opt/watch-cam/status-agent
+
+    - name: Copy camera Python modules only
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: /opt/watch-cam/watch-cam-agent/watch_cam_agent/
+        owner: root
+        group: root
+        mode: '0644'
+      with_fileglob:
+        - >-
+          {{ playbook_dir ~ '/../../../clients/watch-cam-agent/'
+             ~ 'watch_cam_agent/*.py' }}
+      notify: Restart watch-cam-agent
+
+    - name: Copy heartbeat Python modules
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: /opt/watch-cam/status-agent/
+        owner: root
+        group: root
+        mode: '0644'
+      with_fileglob:
+        - "{{ playbook_dir }}/../../../clients/status-agent/*.py"
+      notify: Restart status-agent
+
+    # terminal_agent_health imports this even when peripheral monitoring is off.
+    - name: Copy the heartbeat maintenance contract dependency
+      ansible.builtin.copy:
+        src: >-
+          {{ playbook_dir ~ '/../../../scripts/deploy/rolling_release/'
+             ~ 'terminal_device_maintenance.py' }}
+        dest: /opt/watch-cam/status-agent/terminal_device_maintenance.py
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart status-agent
+
+    - name: Configure camera
+      ansible.builtin.template:
+        src: "{{ playbook_dir | dirname }}/templates/watch-cam-agent.conf.j2"
+        dest: /etc/watch-cam-agent.conf
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      notify: Restart watch-cam-agent
+
+    - name: Configure heartbeat
+      ansible.builtin.template:
+        src: "{{ playbook_dir | dirname }}/templates/status-agent.conf.j2"
+        dest: /etc/raspi-status-agent.conf
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      notify: Restart status-agent
+
+    - name: Install camera service
+      ansible.builtin.copy:
+        src: >-
+          {{ playbook_dir ~ '/../../../clients/watch-cam-agent/'
+             ~ 'watch-cam-agent.service' }}
+        dest: /etc/systemd/system/watch-cam-agent.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart watch-cam-agent
+
+    - name: Install standalone heartbeat service
+      ansible.builtin.template:
+        src: >-
+          {{ (playbook_dir | dirname) ~
+             '/templates/watch-cam-status-agent.service.j2' }}
+        dest: /etc/systemd/system/status-agent.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart status-agent
+
+    - name: Install heartbeat timer
+      ansible.builtin.copy:
+        src: >-
+          {{ playbook_dir }}/../../../clients/status-agent/status-agent.timer
+        dest: /etc/systemd/system/status-agent.timer
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart status-agent timer
+
+    - name: Enable camera and heartbeat timer
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        daemon_reload: true
+        enabled: true
+        state: started
+      loop:
+        - watch-cam-agent.service
+        - status-agent.timer
+
+  handlers:
+    - name: Restart watch-cam-agent
+      ansible.builtin.systemd:
+        name: watch-cam-agent.service
+        daemon_reload: true
+        state: restarted
+
+    - name: Restart status-agent
+      ansible.builtin.systemd:
+        name: status-agent.service
+        daemon_reload: true
+        state: restarted
+
+    - name: Restart status-agent timer
+      ansible.builtin.systemd:
+        name: status-agent.timer
+        daemon_reload: true
+        state: restarted
+
+    - name: Restart systemd-journald
+      ansible.builtin.systemd:
+        name: systemd-journald.service
+        state: restarted

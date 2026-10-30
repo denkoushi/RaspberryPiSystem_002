@@ -1,0 +1,34 @@
+[Unit]
+Description=Pi Zero Watch Camera
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=60
+WorkingDirectory=/opt/watch-cam/watch-cam-agent
+LoadCredential=watch-cam-agent.conf:/etc/watch-cam-agent.conf
+Environment=WATCH_CAM_AGENT_CONFIG=%d/watch-cam-agent.conf
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m watch_cam_agent
+User=watchcam
+SupplementaryGroups=video
+Restart=always
+RestartSec=5
+Nice=10
+MemoryMax=64M
+TimeoutStopSec=20
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+DevicePolicy=closed
+DeviceAllow=/dev/video* rw
+DeviceAllow=char-video4linux rw
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
