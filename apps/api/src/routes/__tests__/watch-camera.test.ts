@@ -50,7 +50,7 @@ beforeEach(async () => {
   });
   await app.register(rateLimit, { global: false });
   await registerWatchCameraRoutes(app);
-  app.post('/json-control', async (request) => request.body);
+  app.post('/json-control', async (request) => ({ parsedOk: (request.body as { ok?: unknown }).ok === true }));
 });
 afterEach(async () => { await app.close(); });
 
@@ -80,7 +80,7 @@ describe('watch camera receiving', () => {
   });
   it('keeps JSON parsing intact on other routes', async () => {
     const response = await app.inject({ method: 'POST', url: '/json-control', payload: { ok: true } });
-    expect(response.json()).toEqual({ ok: true });
+    expect(response.json()).toEqual({ parsedOk: true });
     expect((await post(Buffer.from('{"jpeg":true}'), 'application/json')).statusCode).toBe(400);
   });
   it('enforces 300KB and accepts exactly 300KB', async () => {
