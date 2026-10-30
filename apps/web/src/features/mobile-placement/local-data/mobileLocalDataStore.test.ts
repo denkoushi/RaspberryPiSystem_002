@@ -274,7 +274,9 @@ describe('IndexedDB staged snapshots', () => {
     await expect(store.promoteStaging('purchase')).rejects.toThrow('incomplete');
     transaction.mockClear();
     await store.replace({ purchaseEnrichment: { version: 'e1', dataUpdatedAt: null, rows: [] } });
-    expect(transaction.mock.calls).toEqual([[['metadata', 'known', 'purchaseEnrichment'], 'readwrite']]);
+    // Only the pointer refresh reads metadata; no data store is written.
+    expect(transaction.mock.calls.filter(([, mode]) => mode === 'readwrite'))
+      .toEqual([[['metadata', 'known', 'purchaseEnrichment'], 'readwrite']]);
   });
 
   it('returns the opened connection and original stores when pointer refresh fails', async () => {
