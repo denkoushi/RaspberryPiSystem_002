@@ -147,7 +147,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             "caddy_log_dir",
             "alert_script_path",
             "clamav_server_scan_paths",
-            "clamav_kiosk_scan_paths",
             "trivy_scan_target",
             "trivy_skip_dirs",
             "clamav_server_log_dir",
@@ -162,6 +161,8 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             self.assertIn(key, production, key)
             if key != "network_mode":
                 self.assertNotEqual(staging[key], production[key], key)
+        # Kiosk foreign-file landing directories are shared across environments.
+        self.assertEqual(staging["clamav_kiosk_scan_paths"], production["clamav_kiosk_scan_paths"])
         self.assertEqual(staging["network_mode"], "tailscale")
         staging_text = (ANSIBLE / "group_vars" / "staging.yml").read_text(
             encoding="utf-8"

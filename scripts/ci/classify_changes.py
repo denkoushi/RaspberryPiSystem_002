@@ -128,6 +128,8 @@ PI4_KIOSK_RELEASE_FILES = frozenset(
         # resolver, and the role defaults carry the browser flags.
         "infrastructure/ansible/roles/kiosk/tasks/resolve-browser.yml",
         "infrastructure/ansible/roles/kiosk/tasks/package-integrity.yml",
+        "infrastructure/ansible/roles/kiosk/tasks/clamav.yml",
+        "infrastructure/ansible/templates/clamav-scan.sh.j2",
         "infrastructure/ansible/templates/package-integrity-scan.sh.j2",
         "infrastructure/ansible/templates/logrotate-security.conf.j2",
         "infrastructure/ansible/roles/kiosk/templates/show-kiosk-panel.sh.j2",
