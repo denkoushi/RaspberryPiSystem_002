@@ -76,7 +76,13 @@ agent が動く端末(inventory の `kiosk` グループ):
 - NFC、バーコード、トルク: raspi4-kensaku-stonebase01(3つ全部が動く唯一の端末)
 - raspberrypi3(サイネージ)は agent イメージを使わない。
 
-各端末が 32bit(armv7)か 64bit(arm64)かは inventory に書かれていない。CI が両方を作るので、どちらでも同じ手順で届く。実機の読み取り確認で埋める(4-5)。
+事前の読み取り確認(2026-10-30 21:38、Pi5 から uname・docker ps・curl のみ):
+
+- Pi4 の 8 台はすべて aarch64(dpkg arm64)。armv7 の端末は無い。CI は両方を作るが、実際に届くのは arm64。
+- 8 台とも現在の agent イメージは c452a53c。nfc-agent の `readerConnected` は 8 台すべて true。
+- stonebase01: torque-agent は healthy で `/health` 200。barcode-agent は Up で `readerConnected` false(リーダー未接続のため。反映後も false のままなら正常)。
+- assembly-01: torque-agent は healthy で `/health` 200。
+- ほかの 6 台は nfc-agent だけが動いている。
 
 #### 4-2. 依存の確認(Mac の Docker で試しビルド)
 
