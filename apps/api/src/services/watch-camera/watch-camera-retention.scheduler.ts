@@ -18,8 +18,8 @@ export class WatchCameraRetentionScheduler {
     if (this.active) return;
     this.active = (async () => {
       try {
-        const deleted = await this.run();
-        logger.info({ deleted }, '[WatchCameraRetentionScheduler] Cleanup completed');
+        const result = await this.run();
+        logger.info(result, '[WatchCameraRetentionScheduler] Cleanup completed');
       } catch (err) {
         logger.warn({ err }, '[WatchCameraRetentionScheduler] Cleanup failed');
       }

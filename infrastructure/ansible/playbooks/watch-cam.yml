@@ -12,6 +12,20 @@
     torque_agent_enabled: false
     terminal_agent_maintenance_leases: {}
   pre_tasks:
+    - name: Read systemd version
+      ansible.builtin.command: systemctl --version
+      register: watch_cam_systemd_version
+      changed_when: false
+      check_mode: false
+
+    - name: Require systemd credential support
+      ansible.builtin.assert:
+        that:
+          - (watch_cam_systemd_version.stdout.split()[1] | int) >= 247
+        fail_msg: >-
+          watch-cam-agent の LoadCredential と %d には systemd 247 以上が必要です。
+          対象端末の OS / systemd を更新してから再実行してください。
+
     - name: Require a device identity and key
       ansible.builtin.assert:
         that:

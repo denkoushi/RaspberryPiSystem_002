@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
 import { pruneWatchCameraFrames } from '../watch-camera-retention.js';
 import { WatchCameraRetentionScheduler } from '../watch-camera-retention.scheduler.js';
@@ -22,22 +23,31 @@ describe('watch camera retention', () => {
     const rows = Array.from({ length: 200 }, (_, index) => ({ id: String(index), fileKey: `photos/watch-camera/${index}` }));
     vi.mocked(prisma.watchCameraFrame.findMany).mockResolvedValueOnce(rows as never).mockResolvedValueOnce([]);
     files.delete.mockRejectedValueOnce(Object.assign(new Error('missing'), { code: 'ENOENT' }));
-    expect(await pruneWatchCameraFrames(new Date('2026-10-30T00:00:00Z'))).toBe(200);
+    expect(await pruneWatchCameraFrames(new Date('2026-10-30T00:00:00Z'))).toEqual({ deleted: 200, failed: 0 });
     expect(prisma.watchCameraFrame.findMany).toHaveBeenCalledTimes(2);
     expect(prisma.watchCameraFrame.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 200,
       where: { capturedAt: { lt: new Date('2026-09-30T00:00:00Z') } } }));
     expect(files.delete).toHaveBeenCalledWith(rows[0].fileKey, { integrity: true });
     expect(files.delete.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(prisma.watchCameraFrame.deleteMany).mock.invocationCallOrder[0]);
   });
-  it('keeps DB rows when deleting files fails', async () => {
-    vi.mocked(prisma.watchCameraFrame.findMany).mockResolvedValue([{ id: 'a', fileKey: 'a' }] as never);
-    files.delete.mockRejectedValue(new Error('disk'));
-    await expect(pruneWatchCameraFrames()).rejects.toThrow('disk');
-    expect(prisma.watchCameraFrame.deleteMany).not.toHaveBeenCalled();
+  it('continues past a failed file, excludes it from later batches, and retries next run', async () => {
+    const rows = Array.from({ length: 201 }, (_, index) => ({ id: String(index), fileKey: `private-key/${index}` }));
+    vi.mocked(prisma.watchCameraFrame.findMany)
+      .mockResolvedValueOnce(rows.slice(0, 200) as never).mockResolvedValueOnce(rows.slice(200) as never);
+    files.delete.mockRejectedValueOnce(new TypeError('private-key/image-data'));
+    expect(await pruneWatchCameraFrames()).toEqual({ deleted: 200, failed: 1 });
+    expect(prisma.watchCameraFrame.deleteMany).toHaveBeenCalledTimes(200);
+    expect(prisma.watchCameraFrame.deleteMany).not.toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: '0' }) }));
+    expect(prisma.watchCameraFrame.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ id: { notIn: ['0'] } }),
+    }));
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ errorName: 'TypeError', failed: 1 }, 'Watch camera file deletion failed');
+    vi.mocked(prisma.watchCameraFrame.findMany).mockResolvedValueOnce([rows[0]] as never);
+    expect(await pruneWatchCameraFrames()).toEqual({ deleted: 1, failed: 0 });
   });
   it('schedules 03:40 JST once and waits for active cleanup on stop', async () => {
     let finish!: () => void;
-    const run = vi.fn(() => new Promise<number>((resolve) => { finish = () => resolve(1); }));
+    const run = vi.fn(() => new Promise<{ deleted: number; failed: number }>((resolve) => { finish = () => resolve({ deleted: 1, failed: 0 }); }));
     const scheduler = new WatchCameraRetentionScheduler(run);
     scheduler.start(); scheduler.start();
     expect(cron.schedule).toHaveBeenCalledExactlyOnceWith('40 3 * * *', expect.any(Function), { timezone: 'Asia/Tokyo' });

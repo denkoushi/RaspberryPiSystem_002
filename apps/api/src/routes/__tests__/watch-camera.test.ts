@@ -91,8 +91,22 @@ describe('watch camera receiving', () => {
   it('rate limits per key at 12 per minute', async () => {
     for (let n = 0; n < 12; n += 1) expect((await post()).statusCode).toBe(202);
     expect((await post()).statusCode).toBe(429);
-    expect((await post(jpeg, 'image/jpeg', 'another-key')).statusCode).toBe(202);
+    expect((await post(jpeg, 'image/jpeg', 'another-key')).statusCode).toBe(429);
   });
+  it('limits an IP even when invalid client keys rotate', async () => {
+    vi.mocked(requireClientDevice).mockRejectedValue(new ApiError(401, 'unauthorized'));
+    for (let n = 0; n < 12; n += 1) expect((await post(jpeg, 'image/jpeg', `fake-${n}`)).statusCode).toBe(401);
+    expect((await post(jpeg, 'image/jpeg', 'fake-next')).statusCode).toBe(429);
+    expect(requireClientDevice).toHaveBeenCalledTimes(12);
+  });
+  it('limits a normalized key across different IPs', async () => {
+    for (let n = 0; n < 13; n += 1) {
+      const response = await app.inject({ method: 'POST', url: '/watch-camera/frames', remoteAddress: `192.0.2.${n + 1}`,
+        headers: { 'content-type': 'image/jpeg', 'x-client-key': n % 2 ? '"camera-key"' : 'camera-key' }, payload: jpeg });
+      expect(response.statusCode).toBe(n < 12 ? 202 : 429);
+    }
+  });
+
 });
 
 describe('watch camera administration', () => {
@@ -124,10 +138,20 @@ describe('watch camera administration', () => {
     files.read.mockResolvedValue(image);
     const response = await app.inject({ url: `/watch-camera/admin/frames/${id}/${variant}`, headers: authorization('ADMIN') });
     expect(response.statusCode).toBe(200); expect(response.headers['content-type']).toBe('image/jpeg');
-    expect(response.headers['cache-control']).toBe('private');
+    expect(response.headers['cache-control']).toBe(variant === 'thumb' ? 'private, max-age=86400' : 'private');
     expect(files.read).toHaveBeenCalledWith('photos/watch-camera/image.jpg', { verifyIntegrity: true });
     if (variant === 'thumb') expect(await sharp(response.rawPayload).metadata()).toMatchObject({ width: 160, height: 80 });
     else expect(response.rawPayload).toEqual(image);
+  });
+  it.each(['full', 'thumb'])('returns 404 when the %s file is missing but the DB row remains', async (variant) => {
+    vi.mocked(prisma.watchCameraFrame.findUnique).mockResolvedValue({ fileKey: 'photos/watch-camera/missing.jpg' } as never);
+    files.read.mockRejectedValueOnce(Object.assign(new Error('missing'), { code: 'ENOENT' }));
+    expect((await app.inject({ url: `/watch-camera/admin/frames/${id}/${variant}`, headers: authorization('ADMIN') })).statusCode).toBe(404);
+  });
+  it('preserves storage errors other than missing files as 500', async () => {
+    vi.mocked(prisma.watchCameraFrame.findUnique).mockResolvedValue({ fileKey: 'photos/watch-camera/image.jpg' } as never);
+    files.read.mockRejectedValueOnce(Object.assign(new Error('storage unavailable'), { code: 'EIO' }));
+    expect((await app.inject({ url: `/watch-camera/admin/frames/${id}/full`, headers: authorization('ADMIN') })).statusCode).toBe(500);
   });
   it('returns 404 for missing images and 400 for invalid variants', async () => {
     vi.mocked(prisma.watchCameraFrame.findUnique).mockResolvedValue(null);

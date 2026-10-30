@@ -19,14 +19,23 @@ export function parsePersonResponse(rawText: string, minConfidence = 0.5): boole
 export class WatchCameraProcessor {
   private readonly devices = new Map<string, DeviceState>();
   private judging = false;
+  private lastWarningAt = -Infinity;
 
   constructor(private readonly deps: {
     now: () => Date;
+    warn: (message: string) => void;
     judgeIntervalMs: number;
     unjudgedIntervalMs: number;
     judge: (bytes: Buffer) => Promise<boolean>;
     save: (deviceId: string, frame: CameraFrame, judgement: Judgement) => Promise<boolean>;
   }) {}
+
+  private warnFailure(errorName: string): void {
+    const now = this.deps.now().getTime();
+    if (now - this.lastWarningAt < 60_000) return;
+    this.lastWarningAt = now;
+    this.deps.warn(`Watch camera processing failed: ${errorName}`);
+  }
 
   async receive(deviceId: string, bytes: Buffer): Promise<void> {
     let state = this.devices.get(deviceId);
@@ -53,8 +62,10 @@ export class WatchCameraProcessor {
         if (!this.judging) {
           this.judging = true;
           try { person = await this.deps.judge(bytes); }
-          catch { /* Failed inference uses the unjudged fallback. */ }
+          catch (error) { this.warnFailure(error instanceof Error ? error.name : 'UnknownError'); }
           finally { this.judging = false; }
+        } else {
+          this.warnFailure('InferenceDeferredError');
         }
         if (person === true) {
           for (const previous of state.ring) await save(previous, 'person');
@@ -66,6 +77,9 @@ export class WatchCameraProcessor {
       }
       state.ring.push(frame);
       if (state.ring.length > 3) state.ring.shift();
+    } catch (error) {
+      this.warnFailure(error instanceof Error ? error.name : 'UnknownError');
+      throw error;
     } finally {
       state.processing = false;
     }

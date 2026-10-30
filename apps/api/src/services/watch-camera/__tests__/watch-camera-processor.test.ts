@@ -1,15 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { InferenceDeferredError } from '../../inference/ports/text-completion.port.js';
+import { InferenceUnavailableError } from '../../inference/ports/multi-image-vision-completion.port.js';
 import type { CameraFrame, Judgement } from '../watch-camera-processor.js';
 import { parsePersonResponse, WatchCameraCapacity, WatchCameraProcessor } from '../watch-camera-processor.js';
 
 function setup() {
   let now = 0;
+  const warn = vi.fn();
   const judge = vi.fn(async () => false);
   const save = vi.fn(async (_device: string, _frame: CameraFrame, _judgement: Judgement) => true);
   const processor = new WatchCameraProcessor({ now: () => new Date(now), judgeIntervalMs: 30_000,
-    unjudgedIntervalMs: 60_000, judge, save });
-  return { judge, save, processor, receive: async (time: number, device = 'a') => {
+    unjudgedIntervalMs: 60_000, judge, save, warn });
+  return { judge, save, warn, processor, receive: async (time: number, device = 'a') => {
     now = time; await processor.receive(device, Buffer.from(String(time)));
   } };
 }
@@ -47,6 +50,7 @@ describe('watch camera processor', () => {
     await s.receive(10_000);
     await s.receive(10_000, 'b');
     expect(s.judge).toHaveBeenCalledTimes(1);
+    expect(s.warn).toHaveBeenCalledExactlyOnceWith('Watch camera processing failed: InferenceDeferredError');
     expect(s.save).toHaveBeenCalledTimes(1);
     expect(s.save).toHaveBeenCalledWith('b', expect.anything(), 'unjudged');
     finish(false); await pending;
@@ -54,9 +58,33 @@ describe('watch camera processor', () => {
     await s.receive(30_000);
     expect(s.save.mock.calls.filter((call) => call[0] === 'a')).toHaveLength(2);
   });
+  it.each([
+    [new InferenceDeferredError(), 'InferenceDeferredError'],
+    [new InferenceUnavailableError(), 'InferenceUnavailableError'],
+    [new SyntaxError('private image body'), 'SyntaxError'],
+    ['private key and body', 'UnknownError'],
+  ])('logs only the error name and throttles warnings across devices (%s)', async (error, name) => {
+    const s = setup(); s.judge.mockRejectedValue(error);
+    await s.receive(0);
+    await s.receive(30_000);
+    await s.receive(59_999, 'b');
+    expect(s.warn).toHaveBeenCalledExactlyOnceWith(`Watch camera processing failed: ${name}`);
+    await s.receive(60_000);
+    expect(s.warn).toHaveBeenCalledTimes(2);
+    expect(s.warn).toHaveBeenLastCalledWith(`Watch camera processing failed: ${name}`);
+    expect(s.save).toHaveBeenCalledWith('a', expect.anything(), 'unjudged');
+  });
+  it('logs synchronous model resolution errors and saves unjudged', async () => {
+    const s = setup();
+    s.judge.mockImplementation(() => { throw new Error('Background admission requires the DGX model alias'); });
+    await s.receive(0);
+    expect(s.warn).toHaveBeenCalledExactlyOnceWith('Watch camera processing failed: Error');
+    expect(s.save).toHaveBeenCalledWith('a', expect.anything(), 'unjudged');
+  });
   it('releases the processing flag after storage errors', async () => {
     const s = setup(); s.judge.mockResolvedValue(true); s.save.mockRejectedValueOnce(new Error('disk'));
     await expect(s.receive(0)).rejects.toThrow('disk');
+    expect(s.warn).toHaveBeenCalledExactlyOnceWith('Watch camera processing failed: Error');
     await s.receive(30_000);
     expect(s.judge).toHaveBeenCalledTimes(2);
   });

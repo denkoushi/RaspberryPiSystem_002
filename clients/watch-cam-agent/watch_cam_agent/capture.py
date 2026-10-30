@@ -14,6 +14,7 @@ def capture(device, run=subprocess.run):
     frame = result.stdout
     if len(frame) > MAX_FRAME_BYTES:
         raise ValueError("JPEG exceeds 300KB")
-    if not frame.startswith(b"\xff\xd8\xff") or not frame.endswith(b"\xff\xd9"):
+    end = frame.rfind(b"\xff\xd9")
+    if not frame.startswith(b"\xff\xd8\xff") or end == -1:
         raise ValueError("Invalid JPEG")
-    return frame
+    return frame[:end + 2]

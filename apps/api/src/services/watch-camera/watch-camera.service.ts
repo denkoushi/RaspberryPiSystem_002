@@ -54,11 +54,12 @@ export async function judgeWatchCameraFrame(imageBytes: Buffer): Promise<boolean
 const processor = new WatchCameraProcessor({
   now: () => new Date(), judgeIntervalMs: env.WATCH_CAMERA_JUDGE_INTERVAL_SEC * 1000,
   unjudgedIntervalMs: env.WATCH_CAMERA_UNJUDGED_INTERVAL_SEC * 1000,
+  warn: (message) => logger.warn(message),
   judge: judgeWatchCameraFrame, save: saveWatchCameraFrame,
 });
 
 export function acceptWatchCameraFrame(deviceId: string, bytes: Buffer): void {
-  void processor.receive(deviceId, bytes).catch(() => logger.warn('Watch camera frame processing failed'));
+  void processor.receive(deviceId, bytes).catch(() => { /* The processor logs failures with rate limiting. */ });
 }
 
 export const watchCameraQuerySchema = z.object({
@@ -78,7 +79,12 @@ export async function listWatchCameraFrames(query: z.infer<typeof watchCameraQue
 export async function readWatchCameraFrame(id: string, variant: 'full' | 'thumb') {
   const row = await prisma.watchCameraFrame.findUnique({ where: { id }, select: { fileKey: true } });
   if (!row) throw new ApiError(404, '写真がありません');
-  const bytes = await getFileStorageRuntime().store.read(row.fileKey, { verifyIntegrity: true });
+  let bytes: Buffer;
+  try { bytes = await getFileStorageRuntime().store.read(row.fileKey, { verifyIntegrity: true }); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') throw new ApiError(404, '写真がありません');
+    throw error;
+  }
   return variant === 'thumb'
     ? sharp(bytes).resize({ width: 160, height: 160, fit: 'inside', withoutEnlargement: true }).jpeg().toBuffer()
     : bytes;

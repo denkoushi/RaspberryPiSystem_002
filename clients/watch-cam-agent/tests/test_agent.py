@@ -83,6 +83,17 @@ class CaptureTests(unittest.TestCase):
             with self.subTest(error=error), self.assertRaises(type(error)):
                 capture('/dev/video0', Mock(side_effect=error))
 
+    def test_padding_is_trimmed_after_last_end_marker(self):
+        for frame in (JPEG, JPEG + b'\xff\xd9'):
+            with self.subTest(frame=frame):
+                run = Mock(return_value=SimpleNamespace(stdout=frame + b'\x00\x00padding'))
+                self.assertEqual(capture('/dev/video0', run), frame)
+
+    def test_padding_without_end_marker_is_rejected(self):
+        run = Mock(return_value=SimpleNamespace(stdout=JPEG[:-2] + b'\x00\x00padding'))
+        with self.assertRaisesRegex(ValueError, 'Invalid JPEG'):
+            capture('/dev/video0', run)
+
 
 class SenderTests(unittest.TestCase):
     def test_request(self):

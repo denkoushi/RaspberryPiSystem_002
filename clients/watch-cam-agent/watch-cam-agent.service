@@ -24,7 +24,6 @@ ProtectHome=true
 PrivateTmp=true
 NoNewPrivileges=true
 DevicePolicy=closed
-DeviceAllow=/dev/video* rw
 DeviceAllow=char-video4linux rw
 UMask=0077
 StandardOutput=journal
