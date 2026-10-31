@@ -238,7 +238,8 @@ test('follow-up detects missed and wrong content but accepts one specific token 
     assert.equal(wrong.ok, false);
   }
   assert.equal(followCheck({ shown: ['fiction-2'], outcome: 'answer' }).ok, true);
-  assert.equal(followCheck({ shown: ['fiction-2'], plan: { ...followPlan, filters: [...followPlan.filters, org(['absent'], 'part')] } }).filtersOk, false);
+  const records = followRecords.map((record, i) => i === 3 ? { ...record, part: 'absent' } : record);
+  assert.equal(followCheck({ records, shown: ['fiction-2'], plan: { ...followPlan, filters: [...followPlan.filters, org(['absent'], 'part')] } }).filtersOk, false);
 });
 
 test('follow-up content falls back from diagnostics to plan span to semantic query with executor IDF', () => {
@@ -247,8 +248,36 @@ test('follow-up content falls back from diagnostics to plan span to semantic que
     assert.equal(followCheck({ plan, shown: ['fiction-2'] }).ok, true);
   }
   const generic = followCheck({ plan: { ...followPlan, diagnostics: undefined, semanticQuery: '通常状態' }, shown: ['fiction-6'] });
-  assert.equal(generic.matchedCount, 0);
-  assert.equal(generic.contentOk, false);
+  assert.equal(generic.supported, false);
+  assert.equal(generic.reason, 'no_verbatim_content');
+  assert.equal(generic.contentOk, null);
+});
+
+test('follow-up strips standalone source labels before checking verbatim content', () => {
+  const records = followRecords.map((record, i) => i === 6 ? { ...record, condition: '不適合' } : record);
+  const plan = { ...followPlan, diagnostics: { contentSpan: '配管不良の不適合' } };
+  assert.deepEqual(followCheck({ records, plan, shown: ['fiction-6'] }), {
+    supported: false, scopeOk: null, filtersOk: null, contentOk: null, ok: null,
+    matchedCount: null, expectedIds: [], shown: ['fiction-6'], reason: 'no_verbatim_content',
+  });
+  const empty = followCheck({ records, plan });
+  assert.equal(empty.ok, true);
+  assert.equal(empty.matchedCount, 0);
+  assert.equal(followCheck({ plan: { ...plan, diagnostics: { contentSpan: '不適合' } } }).reason, 'no_content');
+});
+
+test('follow-up removes scope organizations and other filter values from content', () => {
+  const records = followRecords.map((record, i) => ({ ...record, part: '架空部品Z',
+    ...(i === 6 ? { condition: `${departments[2]} 架空部品Z` } : {}) }));
+  for (const filters of [followPlan.filters, []]) {
+    const plan = { ...followPlan, filters: [...filters, org(['架空部品Z'], 'part')],
+      diagnostics: { contentSpan: `${departments[2]} 架空部品Z 異物の不適合` } };
+    const check = followCheck({ records, plan, shown: ['fiction-2'] });
+    assert.equal(check.contentOk, true);
+    assert.deepEqual(check.expectedIds, ['fiction-2']);
+    const noContent = followCheck({ records, plan: { ...plan, diagnostics: { contentSpan: `${departments[2]} 架空部品Z 不適合` } } });
+    assert.equal(noContent.reason, 'no_content');
+  }
 });
 
 test('follow-up reports unsupported reasons and null checks for count, no content, operators and first turns', () => {

@@ -154,3 +154,40 @@ test('regression success streak resets on failure, unsupported checks and skippe
   assert.equal(queue.get(row.id).lastOk, 0);
   assert.equal(queue.get(row.id).firstFailedNight, '2026-10-01');
 });
+
+
+test('regression retires after three consecutive unsupported nights, including legacy rows', () => {
+  const row = { id: 'r-fiction', source: 'regression', question: '架空の追問い',
+    followUpCheck: { supported: false, ok: null, reason: 'no_verbatim_content' } };
+  const queue = new Map([[row.id, { id: row.id, lastNight: '2026-10-01', lastOk: 2 }]]);
+  for (const day of [2, 3]) {
+    updateRegression(queue, row, `2026-10-0${day}`);
+    assert.equal(queue.get(row.id).lastUnsupported, day - 1);
+    assert.equal(queue.get(row.id).lastOk, 0);
+    updateRegression(queue, row, `2026-10-0${day}`);
+    assert.equal(queue.get(row.id).lastUnsupported, day - 1);
+  }
+  updateRegression(queue, row, '2026-10-04');
+  assert.equal(queue.has(row.id), false);
+});
+
+test('regression unsupported streak resets on success, failure and skipped nights', () => {
+  const row = { id: 'r-fiction', source: 'regression', question: '架空の追問い',
+    filterCheck: { supported: false, ok: null } };
+  for (const ok of [true, false, null]) {
+    const queue = new Map([[row.id, { id: row.id, lastNight: '2026-10-01', lastOk: 0, lastUnsupported: 1 }]]);
+    updateRegression(queue, row, '2026-10-02');
+    assert.equal(queue.get(row.id).lastUnsupported, 2);
+    if (ok !== null) {
+      updateRegression(queue, { ...row, filterCheck: { supported: true, ok } }, '2026-10-03');
+      assert.equal(queue.get(row.id).lastUnsupported, 0);
+      assert.equal(queue.get(row.id).lastOk, Number(ok));
+    }
+    updateRegression(queue, row, '2026-10-04');
+    assert.equal(queue.get(row.id).lastUnsupported, 1);
+    updateRegression(queue, row, '2026-10-05');
+    assert.equal(queue.get(row.id).lastUnsupported, 2);
+    updateRegression(queue, row, '2026-10-06');
+    assert.equal(queue.has(row.id), false);
+  }
+});

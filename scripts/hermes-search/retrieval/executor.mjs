@@ -141,7 +141,7 @@ export function prepareLexicalCorpus(records, bodyFields) {
   return { documents, docCount, totalLength, avgLength: docCount ? totalLength / docCount : 0 };
 }
 
-function filterValueTexts(filters) {
+export function filterValueTexts(filters) {
   const values = [];
   for (const filter of filters ?? []) {
     for (const value of filter?.values ?? []) {
