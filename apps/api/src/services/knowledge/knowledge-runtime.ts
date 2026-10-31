@@ -25,6 +25,8 @@ import { ensureKnowledgeReferenceData } from './knowledge-reference-data.js';
 import { PrismaKnowledgeReviewerRepository } from './prisma-knowledge-reviewer.repository.js';
 import { fieldTree } from './knowledge-fields.js';
 import { PrismaKnowledgeSubjectRepository } from './prisma-knowledge-subject.repository.js';
+import { PrismaProcedureBoardRepository } from './prisma-procedure-board.repository.js';
+import { ProcedureBoardService } from './procedure-board.service.js';
 import { PrismaTriageRepository } from './prisma-triage.repository.js';
 
 async function resolvePoster(tagUid: string): Promise<Poster | null> {
@@ -66,6 +68,7 @@ function createKnowledgeRuntime() {
     scannedPartNumber: async intakeId => (await repository.byIds([intakeId]))[0]?.scannedPartNumber ?? null,
     logError: error => logger.warn({ err: error }, 'Knowledge procedure building failed') });
   return { fields: async () => fieldTree(await prisma.knowledgeField.findMany({ where: { active: true } })),
+    procedureBoards: new ProcedureBoardService(new PrismaProcedureBoardRepository(prisma)),
     subjects: new PrismaKnowledgeSubjectRepository(prisma), resolvePoster, reviewers: new PrismaKnowledgeReviewerRepository(prisma), repository, assets, documents, worker, procedures, materials, triage, procedureWorker, workTypes: activeWorkTypes,
     ensureReferenceData: () => ensureKnowledgeReferenceData(prisma, triage, procedures),
     intake: new KnowledgeIntakeService(repository, assets, resolvePoster, triage),

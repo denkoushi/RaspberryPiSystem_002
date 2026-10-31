@@ -50,6 +50,7 @@ export function useClientMutations() {
         kioskInitialRoute?: string | null;
         haizenEdgeEnabled?: boolean;
         shelfLayoutEditEnabled?: boolean;
+        procedureBoardEnabled?: boolean;
         siteKey?: string | null;
         canProxyOtherDevices?: boolean;
       };
