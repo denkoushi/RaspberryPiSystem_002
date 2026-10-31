@@ -14,6 +14,8 @@ export type TextCompletionRequest = {
   signal?: AbortSignal;
   jsonOutput?: boolean;
   background?: boolean;
+  /** Override the provider timeout for this request only. */
+  timeoutMs?: number;
 };
 
 export class InferenceDeferredError extends Error {
@@ -23,6 +25,7 @@ export class InferenceDeferredError extends Error {
 export type TextCompletionResult = {
   rawText: string;
   model: string;
+  finishReason?: string;
 };
 
 /**

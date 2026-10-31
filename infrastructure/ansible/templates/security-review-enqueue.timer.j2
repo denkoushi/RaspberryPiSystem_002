@@ -1,0 +1,9 @@
+[Unit]
+Description=Enqueue merged commits for private security review every hour
+
+[Timer]
+OnCalendar={{ security_review_enqueue_on_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -6,7 +6,7 @@
     owner: "{{ api_runtime_uid | default(1000) }}"
     group: "{{ api_runtime_gid | default(1000) }}"
     mode: '0700'
-  loop: ['', bundles, reports, triage]
+  loop: ['', bundles, reports, triage, queue, queue/pending, queue/claimed, queue/done, queue/failed, queue/progress, queue/invalid]
 
 - name: Create root-only collector configuration and state directories
   ansible.builtin.file:
@@ -60,6 +60,28 @@
     enabled: "{{ security_review_collect_enabled | bool }}"
     state: "{{ security_review_collect_enabled | bool | ternary('started', 'stopped') }}"
   when: not (ansible_check_mode and security_review_units is changed)
+
+- name: Deliver security review enqueue units
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-enqueue.{{ item }}.j2"
+    dest: "/etc/systemd/system/security-review-enqueue.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  register: security_review_enqueue_units
+
+- name: Reload enqueue units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: security_review_enqueue_units is changed
+
+- name: Apply the enqueue enable flag
+  ansible.builtin.systemd:
+    name: security-review-enqueue.timer
+    enabled: "{{ security_review_collect_enabled | bool }}"
+    state: "{{ security_review_collect_enabled | bool | ternary('started', 'stopped') }}"
+  when: not (ansible_check_mode and security_review_enqueue_units is changed)
 
 - name: Refresh the existing Trivy script with private review exclusions
   ansible.builtin.template:
