@@ -300,6 +300,75 @@
   when:
     - release_pi5_business_hermes_egress_transition_attempted | default(false) | bool
 
+- name: Restore the previous Business Hermes runtime after an approved image transition
+  block:
+    - name: Bind the captured Business Hermes image for rollback
+      ansible.builtin.set_fact:
+        release_pi5_compose_environment: "{{ release_pi5_compose_environment | combine({'BUSINESS_HERMES_IMAGE': release_pi5_business_hermes_existing_image}) }}"
+
+    - name: Recreate the previous Business Hermes runtime
+      ansible.builtin.command:
+        argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes'] }}"
+      environment: "{{ release_pi5_compose_environment }}"
+      changed_when: true
+
+    - name: Resolve the restored Business Hermes runtime
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - --all
+          - --filter
+          - "label=com.docker.compose.project={{ release_pi5_compose_project }}"
+          - --filter
+          - label=com.docker.compose.service=business-hermes
+          - --format
+          - "{{ '{{.ID}}' }}"
+      register: release_pi5_business_hermes_restored
+      changed_when: false
+
+    - name: Inspect the restored Business Hermes identity
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{.Config.Image}}|{{.State.Running}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' }}", "{{ release_pi5_business_hermes_restored.stdout | trim }}"]
+      register: release_pi5_business_hermes_restored_identity
+      changed_when: false
+
+    - name: Require the previous Business Hermes image to be healthy after rollback
+      ansible.builtin.assert:
+        that:
+          - release_pi5_business_hermes_restored.stdout | trim is match('^[0-9a-f]{12,64}$')
+          - release_pi5_business_hermes_restored_identity.stdout.split('|')[0] == release_pi5_business_hermes_existing_image
+          - release_pi5_business_hermes_restored_identity.stdout.split('|')[1] == 'true'
+          - release_pi5_business_hermes_restored_identity.stdout.split('|')[2] == 'healthy'
+        fail_msg: The previous Business Hermes image was not restored after the failed candidate.
+
+    - name: Return the previously inactive Business Hermes runtime to stopped state
+      ansible.builtin.command:
+        argv: [docker, stop, --time, '10', "{{ release_pi5_business_hermes_restored.stdout | trim }}"]
+      changed_when: true
+      when: not (release_pi5_business_hermes_existing_running | bool)
+
+    - name: Inspect the restored inactive Business Hermes state
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ release_pi5_business_hermes_restored.stdout | trim }}"]
+      register: release_pi5_business_hermes_restored_state
+      changed_when: false
+      when: not (release_pi5_business_hermes_existing_running | bool)
+
+    - name: Require the previously inactive Business Hermes runtime to remain stopped
+      ansible.builtin.assert:
+        that: [release_pi5_business_hermes_restored_state.stdout | trim == 'false']
+      when: not (release_pi5_business_hermes_existing_running | bool)
+
+    - name: Record verified Business Hermes image rollback
+      ansible.builtin.set_fact:
+        release_pi5_business_hermes_image_transition_rolled_back: true
+  rescue:
+    - name: Record incomplete Business Hermes image rollback without bypassing API rollback
+      ansible.builtin.set_fact:
+        release_pi5_business_hermes_image_restore_failed: true
+  when: release_pi5_business_hermes_image_transition_attempted | default(false) | bool
+
 - name: Restore the original Pi5 Compose environment after Business Hermes egress rollback
   ansible.builtin.set_fact:
     release_pi5_compose_environment: "{{ release_pi5_rollback_compose_environment }}"
@@ -400,6 +469,9 @@
   ansible.builtin.fail:
     msg: >-
       Standard Pi5 candidate failed; automatic rollback restored the previous route and scheduler when required.
+      {% if release_pi5_business_hermes_image_restore_failed | default(false) | bool %}
+      Business Hermes image rollback was incomplete and requires remediation.
+      {% endif %}
       {% if release_pi5_business_hermes_egress_restore_failed | default(false) | bool %}
       Business Hermes egress rollback was incomplete and requires remediation.
       {% endif %}
