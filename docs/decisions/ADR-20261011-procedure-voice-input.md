@@ -156,8 +156,9 @@ Both answer well inside the 5 s target.
 
 Decision: keep Whisper. Haas is close on listed terms in clean audio but
 worse in noise, and switching would need a new NeMo service in
-`denkoushi/DGXSparkControlPlane` without a measured gain. Revisit only with
-real kiosk recordings.
+`denkoushi/DGXSparkControlPlane` without a measured gain. The owner chose to
+keep Whisper as is and not run a real-recording test now (2026-10-31).
+Revisit only with real kiosk recordings.
 
 ## Consequences
 
