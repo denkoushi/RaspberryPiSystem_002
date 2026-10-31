@@ -1,6 +1,6 @@
 import type { ScenarioActionType } from './loadBalancingScenario';
 
-const PATHS: Record<ScenarioActionType, JSX.Element> = {
+const PATHS: Record<ScenarioActionType, React.JSX.Element> = {
   outsource: (
     <>
       <path d="M3 7h11v10H3zM14 10h4l3 3v4h-7" />

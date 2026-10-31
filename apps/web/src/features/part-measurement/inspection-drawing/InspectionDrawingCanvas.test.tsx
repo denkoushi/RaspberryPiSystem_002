@@ -113,7 +113,7 @@ function renderCanvas({
     />
   );
 
-  const viewport = screen.getByRole('presentation');
+  const viewport = screen.getAllByRole('presentation').find(element => element.getAttribute('role') === 'presentation')!;
   setViewportGeometry(viewport, zoom);
   const image = viewport.querySelector('img');
   if (!(image instanceof HTMLImageElement)) throw new Error('canvas image was not rendered');
@@ -223,7 +223,7 @@ describe('InspectionDrawingCanvas marker dragging', () => {
         onPointChange={vi.fn()}
       />
     );
-    const viewport = screen.getByRole('presentation');
+    const viewport = screen.getAllByRole('presentation').find(element => element.getAttribute('role') === 'presentation')!;
     setViewportGeometry(viewport, 1);
     const image = viewport.querySelector('img') as HTMLImageElement;
     Object.defineProperties(image, {

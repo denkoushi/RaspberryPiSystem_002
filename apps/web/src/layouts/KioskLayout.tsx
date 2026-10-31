@@ -296,7 +296,7 @@ export function KioskLayout() {
         ref={headerRef}
         id="kiosk-dock"
         aria-hidden={!isPortal && !headerReveal.isVisible}
-        {...(!isPortal && !headerReveal.isVisible ? { inert: '' } : {})}
+        {...(!isPortal && !headerReveal.isVisible ? { inert: true } : {})}
         className={clsx(
           'shrink-0 bg-inv-bg px-5 py-[14px]',
           isPortal ? 'relative z-40 border-b border-inv-line2' : KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,

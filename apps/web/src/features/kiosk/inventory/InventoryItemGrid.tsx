@@ -50,7 +50,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
   const [tooltip, setTooltip] = useState<{ compartment: InventoryCompartment; rect: DOMRect; element: HTMLElement } | null>(null);
   const [hoverPhotoIndex, setHoverPhotoIndex] = useState(0);
   const tooltipId = useId();
-  const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hideTooltip = useCallback(() => { clearTimeout(tooltipTimer.current); setTooltip(null); }, []);
   useEffect(() => {
     hideTooltip();
