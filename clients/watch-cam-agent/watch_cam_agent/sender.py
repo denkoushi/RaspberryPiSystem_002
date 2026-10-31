@@ -13,7 +13,10 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 class HttpClient:
     def __init__(self, config):
         self.config = config
-        context = ssl.create_default_context()
+        context = (ssl.create_default_context(cafile=config.tls_ca_file)
+                   if config.tls_ca_file else ssl.create_default_context())
+        if config.tls_ca_file:
+            context.check_hostname = False
         if config.tls_skip_verify:
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE

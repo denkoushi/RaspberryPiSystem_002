@@ -19,6 +19,8 @@ all:
         ansible_python_interpreter: /usr/bin/python3
         watch_cam_api_base_url: >-
           {{ api_base_url | regex_replace('/api/?$', '') }}
-        watch_cam_tls_skip_verify: "1"
+        watch_cam_tls_skip_verify: "0"
+        watch_cam_server_cert_sha256: "9a104cdf9ef4c95cf55aab988e508388fe99e09fd3b02957793600adbbcbcce3"
         status_agent_api_base_url: "{{ api_base_url }}"
-        status_agent_tls_skip_verify: "{{ watch_cam_tls_skip_verify }}"
+        # heartbeat agent の TLS 検証は別件として扱う。
+        status_agent_tls_skip_verify: "1"
