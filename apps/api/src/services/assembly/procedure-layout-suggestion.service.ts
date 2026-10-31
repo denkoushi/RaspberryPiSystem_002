@@ -15,6 +15,8 @@ import type { VisionCompletionPort } from '../inference/ports/vision-completion.
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 import { buildProcedureCaptionLearningPrompt } from './procedure-caption-learning-prompt.js';
 import { buildProcedureTextLearningPrompt } from './procedure-text-learning-prompt.js';
+import { buildPublishedExamplesPrompt, loadPublishedProcedures, selectPublishedExamples } from './procedure-published-examples.js';
+import { buildSiteVocabularyPrompt } from './procedure-site-vocabulary.js';
 import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
 import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts, suggestProcedureLayoutOverflow } from './procedure-layout.js';
 
@@ -130,6 +132,22 @@ export class ProcedureLayoutSuggestionService {
     } catch {
       throw new ApiError(422, 'ページ画像の寸法を取得できません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_DIMENSIONS_UNAVAILABLE');
     }
+    let publishedPrompt = '';
+    let vocabularyPrompt = '';
+    if (site) {
+      try {
+        const documents = await loadPublishedProcedures(site);
+        publishedPrompt = buildPublishedExamplesPrompt(selectPublishedExamples(documents, document.revisionMetadata.revisionRootId,
+          params.elements.flatMap(element => element.kind === 'TEXT' ? [element.text] : [])));
+      } catch (error) {
+        logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_published_examples_lookup_failed');
+      }
+      try {
+        vocabularyPrompt = buildSiteVocabularyPrompt(await prisma.assemblyProcedureSiteVocabulary.findMany({ where: { site }, orderBy: { term: 'asc' } }));
+      } catch (error) {
+        logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_site_vocabulary_lookup_failed');
+      }
+    }
     let learningPrompt = '';
     if (site) {
       try {
@@ -179,7 +197,7 @@ export class ProcedureLayoutSuggestionService {
           params.signal.throwIfAborted();
           const result = await this.text.complete({
             useCase: 'business_hermes', maxTokens: 4000, temperature: 0, enableThinking: false, jsonOutput: true, signal: params.signal,
-            messages: [{ role: 'system', content: textInstruction((site ? SITE_TEXT_RULES[site] : '') + learningPrompt) }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
+            messages: [{ role: 'system', content: textInstruction((site ? SITE_TEXT_RULES[site] : '') + vocabularyPrompt + publishedPrompt + learningPrompt) }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
           });
           params.signal.throwIfAborted();
           elements = rewriteProcedureTexts(elements, JSON.parse(result.rawText) as unknown);
@@ -224,7 +242,7 @@ export class ProcedureLayoutSuggestionService {
           if ((await sharp(imageBytes).metadata()).format !== 'jpeg') imageBytes = await sharp(imageBytes).rotate().jpeg().toBuffer();
           params.signal.throwIfAborted();
           const result = await (this.vision ?? getInferenceRuntime().createVisionCompletionPort()).complete({
-            userText: photoInstruction(document.name, rows.indexOf(row) + 1, pageTexts, site, captionLearningPrompt), imageBytes, mimeType: 'image/jpeg',
+            userText: photoInstruction(document.name, rows.indexOf(row) + 1, pageTexts, site, vocabularyPrompt + captionLearningPrompt), imageBytes, mimeType: 'image/jpeg',
             maxTokens: 120, temperature: 0, signal: params.signal,
           });
           params.signal.throwIfAborted();
