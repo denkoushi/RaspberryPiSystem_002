@@ -508,6 +508,8 @@ model ClientDevice {
   haizenPresetShelfCodeRaw                      String?
   /// Zero2W / haizen-agent からの配膳スキャン対象端末（キオスク設定・API 抽出の正）
   haizenEdgeEnabled                             Boolean                                        @default(false)
+  /// Null/false disable the kiosk procedure board.
+  procedureBoardEnabled                         Boolean?
   /// キオスク棚レイアウト編集（区画フロアプラン・マス割当）を許可する端末
   shelfLayoutEditEnabled                        Boolean                                        @default(false)
   /// 明示的な拠点（未設定時は location 文字列から推測する旧互換）
@@ -5342,6 +5344,7 @@ model KnowledgeProcedure {
   updatedAt           DateTime                     @updatedAt
   reviews             KnowledgeProcedureReview[]
   revisions           KnowledgeProcedureRevision[] @relation("KnowledgeProcedureRevisions")
+  board               KnowledgeProcedureBoard?
   materials           KnowledgeProcedureMaterial[]
   publishedRevision   KnowledgeProcedureRevision?  @relation("KnowledgeProcedurePublishedRevision", fields: [publishedRevisionId], references: [id], onDelete: Restrict)
 
@@ -6209,4 +6212,35 @@ model WatchCameraSampleFrame {
 
   @@index([sessionId, capturedAt])
   @@map("watch_camera_sample_frames")
+}
+
+model KnowledgeProcedureBoard {
+  id                          String @id
+  procedureId                 String @unique
+  layout                      Json
+  decisions                   Json @default("{}")
+  version                     Int @default(1)
+  materialFingerprint         String
+  lastRequestedClientDeviceId String
+  trialStartedAt              DateTime?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  procedure                   KnowledgeProcedure @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  events                      KnowledgeProcedureBoardEvent[]
+}
+
+model KnowledgeProcedureBoardEvent {
+  id             String @id
+  boardId        String
+  boardVersion   Int
+  type           String
+  dedupeKey      String? @unique
+  clientDeviceId String
+  occurredAt     DateTime
+  payload        Json
+  layoutHash     String?
+  board          KnowledgeProcedureBoard @relation(fields: [boardId], references: [id], onDelete: Restrict)
+
+  @@index([boardId, occurredAt])
+  @@index([boardId, boardVersion])
 }

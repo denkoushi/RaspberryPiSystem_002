@@ -72,6 +72,7 @@ export const updateClientSchema = z.object({
   kioskInitialRoute: z.enum(KIOSK_INITIAL_ROUTE_IDS).optional().nullable(),
   haizenEdgeEnabled: z.boolean().optional(),
   shelfLayoutEditEnabled: z.boolean().optional(),
+  procedureBoardEnabled: z.boolean().optional(),
   /** 明示拠点（Site.key）。null で未設定（location 文字列からの推測）に戻す */
   siteKey: z.string().trim().min(1).max(50).optional().nullable(),
   canProxyOtherDevices: z.boolean().optional()

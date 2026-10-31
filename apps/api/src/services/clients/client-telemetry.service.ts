@@ -225,6 +225,7 @@ export async function updateClientDevice(params: {
   kioskInitialRoute?: string | null;
   haizenEdgeEnabled?: boolean;
   shelfLayoutEditEnabled?: boolean;
+  procedureBoardEnabled?: boolean;
   siteKey?: string | null;
   canProxyOtherDevices?: boolean;
 }) {
@@ -236,6 +237,7 @@ export async function updateClientDevice(params: {
         defaultMode: params.defaultMode ?? undefined,
         ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
+        ...(params.procedureBoardEnabled !== undefined ? { procedureBoardEnabled: params.procedureBoardEnabled } : {}),
         ...(params.shelfLayoutEditEnabled !== undefined
           ? { shelfLayoutEditEnabled: params.shelfLayoutEditEnabled }
           : {}),

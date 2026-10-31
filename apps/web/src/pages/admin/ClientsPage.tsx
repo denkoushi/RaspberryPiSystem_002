@@ -32,6 +32,7 @@ type ClientForm = {
   proxy: boolean;
   haizenEdge: boolean;
   shelfLayout: boolean;
+  procedureBoard: boolean;
 };
 
 /** 台帳（ClientDevice）と稼働状況（ClientStatusEntry）を1行にまとめたもの。台帳にない報告は device が null */
@@ -47,7 +48,8 @@ const FORM_FIELD_LABELS: Record<keyof ClientForm, string> = {
   siteKey: '拠点',
   proxy: '代理操作',
   haizenEdge: 'Zero2W配膳',
-  shelfLayout: '棚レイアウト編集'
+  shelfLayout: '棚レイアウト編集',
+  procedureBoard: '手順づくり'
 };
 const FORM_FIELDS = Object.keys(FORM_FIELD_LABELS) as Array<keyof ClientForm>;
 
@@ -63,7 +65,8 @@ function formFromDevice(device: ClientDevice): ClientForm {
     siteKey: device.siteKey ?? '',
     proxy: Boolean(device.canProxyOtherDevices),
     haizenEdge: Boolean(device.haizenEdgeEnabled),
-    shelfLayout: Boolean(device.shelfLayoutEditEnabled)
+    shelfLayout: Boolean(device.shelfLayoutEditEnabled),
+    procedureBoard: device.procedureBoardEnabled === true
   };
 }
 
@@ -323,6 +326,7 @@ export function ClientsPage() {
           kioskInitialRoute: form.initialRoute || null,
           haizenEdgeEnabled: form.haizenEdge,
           shelfLayoutEditEnabled: form.shelfLayout,
+          procedureBoardEnabled: form.procedureBoard,
           siteKey: form.siteKey || null,
           canProxyOtherDevices: form.proxy
         }
@@ -612,7 +616,8 @@ export function ClientsPage() {
                                 [
                                   [row.device?.canProxyOtherDevices, '代理', '代理操作'],
                                   [row.device?.haizenEdgeEnabled, '配膳', 'Zero2W配膳'],
-                                  [row.device?.shelfLayoutEditEnabled, '棚', '棚レイアウト編集']
+                                  [row.device?.shelfLayoutEditEnabled, '棚', '棚レイアウト編集'],
+                                  [row.device?.procedureBoardEnabled === true, '手順', '手順づくり']
                                 ] as const
                               ).map(([enabled, short, title]) =>
                                 enabled ? (
@@ -869,6 +874,12 @@ export function ClientsPage() {
                         ariaLabel="棚レイアウト編集を許可"
                         checked={form.shelfLayout}
                         onChange={(shelfLayout) => patchForm({ shelfLayout })}
+                      />
+                      <Switch
+                        label="手順づくり"
+                        ariaLabel="手順づくりを許可"
+                        checked={form.procedureBoard}
+                        onChange={(procedureBoard) => patchForm({ procedureBoard })}
                       />
                     </div>
 
