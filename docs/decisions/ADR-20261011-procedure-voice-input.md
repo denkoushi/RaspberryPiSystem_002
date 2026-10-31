@@ -126,6 +126,39 @@ the Pi5 afterwards.
   badge following the real in-house LLM state, the seiban microphone layout on
   both boards, and recognition accuracy for spoken digits.
 
+## Haas-ja-v1.0 comparison (2026-10-31)
+
+[Haas-ja-v1.0](https://huggingface.co/third-intelligence/Haas-ja-v1.0)
+(Apache-2.0, 616M, NeMo only, Linux/NVIDIA only) was compared with the
+current `whisper-large-v3-turbo` as a possible replacement.
+
+- Audio: 22 procedure sentences written around `PROCEDURE_SPEECH_HINTS`,
+  read by macOS TTS (Kyoko, Flo), each clean and with brown noise: 88 clips.
+  The same audio went to both models, so the comparison is valid; absolute
+  numbers for real factory speech are not.
+- Whisper: the production engine at DGX loopback, with and without the
+  production hint string. Haas: the public Hugging Face demo, with and without
+  a vocabulary of the last 25 hint words per category (the demo's limit;
+  self-hosting has none). The DGX had no memory for Haas: the business LLM
+  holds 85% on both Sparks.
+- Scored after NFKC and punctuation removal, plus hits on the 25 shared terms.
+
+| Condition | CER clean | CER noise | Terms clean | Terms noise |
+| --- | --- | --- | --- | --- |
+| Whisper + hint | 8.4% | 8.2% | 78% | 77% |
+| Haas + vocabulary | 10.6% | 13.2% | 81% | 72% |
+| Whisper, no hint | 13.7% | 12.6% | 55% | 63% |
+| Haas, no vocabulary | 16.0% | 18.6% | 48% | 40% |
+
+Haas CER is partly inflated by the 11 words it was not given (固定子 and
+others). Both models miss 研削 (→検索) and 砥石 (→と石) even when listed.
+Both answer well inside the 5 s target.
+
+Decision: keep Whisper. Haas is close on listed terms in clean audio but
+worse in noise, and switching would need a new NeMo service in
+`denkoushi/DGXSparkControlPlane` without a measured gain. Revisit only with
+real kiosk recordings.
+
 ## Consequences
 
 - whisper-server must be started with `--convert` and ffmpeg must be installed
