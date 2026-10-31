@@ -6,7 +6,7 @@
     owner: "{{ api_runtime_uid | default(1000) }}"
     group: "{{ api_runtime_gid | default(1000) }}"
     mode: '0700'
-  loop: ['', bundles, reports, queue, queue/pending, queue/claimed, queue/done, queue/failed, queue/progress, queue/invalid]
+  loop: ['', bundles, reports, queue, queue/pending, queue/claimed, queue/done, queue/failed, queue/progress, queue/invalid, advisories, advisories/pending, advisories/claimed, advisories/done, advisories/invalid]
 
 - name: Deliver the lease-controlled security review settings
   ansible.builtin.lineinfile:
@@ -17,6 +17,9 @@
     mode: '0600'
   loop:
     - {key: SECURITY_REVIEW_NIGHTLY_ENABLED, value: "{{ security_review_nightly_enabled | default(false) | bool | ternary('true', 'false') }}"}
+    - {key: ADVISORY_CHECK_ENABLED, value: "{{ advisory_check_enabled | default(true) | bool | ternary('true', 'false') }}"}
+    - {key: ADVISORY_CHECK_DIR, value: /app/storage/security-review/advisories}
+    - {key: ADVISORY_CHECK_CRON, value: "{{ advisory_check_cron }}"}
     - {key: SECURITY_REVIEW_DATA_DIR, value: /app/storage/security-review}
     - {key: SECURITY_REVIEW_NIGHTLY_CRON, value: "{{ security_review_nightly_cron }}"}
     - {key: SECURITY_REVIEW_RETRY_UNTIL, value: "{{ security_review_retry_until }}"}

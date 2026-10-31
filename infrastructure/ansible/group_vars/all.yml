@@ -216,6 +216,27 @@ security_review_kiosk_log_byte_cap: 262144
 security_review_kiosk_alert_byte_cap: 32768
 security_review_kiosk_alerts_per_host: 50
 security_review_kiosk_summary_line_cap: 60
+advisory_check_enabled: true
+advisory_check_cron: '*/5 * * * *'
+# Hourly JPCERT investigation jobs; delivered only by the dedicated preparation playbook.
+jpcert_advisories_enabled: true
+jpcert_advisories_state_dir: /var/lib/jpcert-advisories
+jpcert_advisories_log_dir: /var/log/jpcert-advisories
+jpcert_advisories_config:
+  feed_url: https://www.jpcert.or.jp/rss/jpcert.rdf
+  rules_path: /etc/jpcert-advisories/rules.json
+  state_path: "{{ jpcert_advisories_state_dir }}/state.json"
+  alerts_dir: "{{ security_review_kiosk_output_alerts_dir }}"
+  jobs_dir: "{{ security_review_data_dir }}/advisories"
+  project_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"
+  log_path: "{{ jpcert_advisories_log_dir }}/jpcert-advisories.log"
+  timeout_seconds: 60
+  initial_lookback_days: 7
+  failure_alert_threshold: 3
+  summary_window_hours: 24
+  seen_retention_days: 90
+  max_details_chars: 8000
+
 security_review_material_byte_cap: 192000
 security_review_changes_context_lines: 1
 security_review_changes_backfill:
@@ -327,6 +348,10 @@ security_review_collector_config:
       paths: ["{{ security_review_kiosk_log_dir }}/kiosk-package-integrity.log"]
       start: 'Starting kiosk package integrity summary'
       end: 'Kiosk package integrity summary completed.'
+    - name: jpcert-advisories
+      paths: ["/var/log/jpcert-advisories/jpcert-advisories.log*"]
+      start: 'Starting JPCERT advisory check'
+      end: 'JPCERT advisory check completed.'
 
 # Nightly scans run in a systemd scope with this disk bandwidth cap (path resolves to its backing disk)
 security_scan_io_device: "/"
