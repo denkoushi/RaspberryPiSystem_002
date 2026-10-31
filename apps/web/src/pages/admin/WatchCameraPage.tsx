@@ -7,6 +7,8 @@ import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { useAuth } from '../../contexts/AuthContext';
 
+import { WatchCameraSampleTab } from './WatchCameraSampleTab';
+
 function CameraImage({ id, variant }: { id: string; variant: 'thumb' | 'full' }) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
@@ -35,7 +37,6 @@ function WatchCameraContent() {
     queryKey: ['watch-camera', date], queryFn: () => listWatchCameraFrames({ date }), enabled: Boolean(date)
   });
   return <div className="space-y-6">
-    <h1 className="text-2xl font-bold text-slate-900">監視カメラ</h1>
     <input type="date" aria-label="日付" value={date} onChange={(event) => { setDate(event.target.value); setSelected(null); }}
       className="rounded border border-slate-400 bg-white px-3 py-2 text-slate-900" />
     {isError && <p role="alert" className="text-red-600">写真を取得できませんでした</p>}
@@ -61,9 +62,21 @@ function WatchCameraContent() {
   </div>;
 }
 
+function WatchCameraTabs() {
+  const [tab, setTab] = useState<'records' | 'samples'>('records');
+  return <div className="space-y-6">
+    <h1 className="text-2xl font-bold text-slate-900">監視カメラ</h1>
+    <div role="tablist" className="flex gap-2" aria-label="監視カメラ">
+      <button type="button" role="tab" id="watch-camera-records-tab" aria-controls="watch-camera-panel" aria-selected={tab === 'records'} className={`rounded border px-4 py-2 ${tab === 'records' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-900'}`} onClick={() => setTab('records')}>記録</button>
+      <button type="button" role="tab" id="watch-camera-samples-tab" aria-controls="watch-camera-panel" aria-selected={tab === 'samples'} className={`rounded border px-4 py-2 ${tab === 'samples' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-900'}`} onClick={() => setTab('samples')}>見本</button>
+    </div>
+    <div role="tabpanel" id="watch-camera-panel" aria-labelledby={`watch-camera-${tab}-tab`}>{tab === 'records' ? <WatchCameraContent /> : <WatchCameraSampleTab />}</div>
+  </div>;
+}
+
 export function WatchCameraPage() {
   const { user } = useAuth();
   if (!user) return null;
   if (user.role !== 'ADMIN') return <Navigate to="/admin" replace />;
-  return <WatchCameraContent />;
+  return <WatchCameraTabs />;
 }
