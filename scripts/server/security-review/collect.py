@@ -231,33 +231,85 @@ def _enqueue_changes(config, now, git_call, source_errors):
         if any((root / folder / (sha + '.json')).exists() for folder in QUEUE_STATES) or any(
                 (root / 'invalid' / (folder + '-' + sha + '.json')).exists() for folder in QUEUE_STATES):
             continue
-        metadata = git_call(repo, 'show', '--no-patch', '--format=%P%n%cI', sha).stdout.splitlines()
-        parent = metadata[0].split()[0].lower() if metadata[0].strip() else None
-        committed_at = metadata[1]
-        if parent is not None and not re.fullmatch(SHA, parent):
-            raise ValueError('Invalid parent SHA')
-        timestamp(committed_at, now.tzinfo)
-        names = git_call(repo, 'diff-tree', '--root', '-m', '--first-parent', '--no-commit-id',
-                         '--no-renames', '--name-only', '-r', '-z', sha).stdout
-        files = []
-        omitted = 0
-        for name in dict.fromkeys(name for name in names.split('\0') if name):
-            if not allowed_file(name, config['changes_exclude']):
-                omitted += 1
-                continue
-            args = ['diff', parent, sha] if parent else ['show', '--format=', '--root', sha]
-            diff = git_call(repo, *args, '--no-ext-diff', '--no-textconv', '--no-renames',
-                            f'--unified={context}', '--', ':(literal)' + name).stdout
-            files.append({'path': name, 'diff': redact_code(diff)})
-        job = {'version': 1, 'sha': sha, 'parent': parent, 'committedAt': committed_at,
-               'enqueuedAt': now.isoformat(), 'files': files,
-               'bytes': sum(len(file['diff'].encode('utf-8')) for file in files), 'omittedFiles': omitted}
+        job = build_job(config, now, sha, git_call)
         atomic_write(root / 'pending' / (sha + '.json'), json.dumps(job, ensure_ascii=False) + '\n', uid, gid)
     # Partial enqueue is safe to retry because every SHA is checked in every state.
     atomic_write(state, reviewed['to'] + '\n', 0, 0)
     if carry.exists():
         carry.unlink()
     return reviewed, queue_counts(root)
+
+
+def build_job(config, now, sha, git_call):
+    repo = config['project_dir']
+    context = int(config.get('changes_context_lines', 1))
+    if context < 0:
+        raise ValueError('Invalid changes context')
+    metadata = git_call(repo, 'show', '--no-patch', '--format=%P%n%cI', sha).stdout.splitlines()
+    parent = metadata[0].split()[0].lower() if metadata[0].strip() else None
+    committed_at = metadata[1]
+    if parent is not None and not re.fullmatch(SHA, parent):
+        raise ValueError('Invalid parent SHA')
+    timestamp(committed_at, now.tzinfo)
+    names = git_call(repo, 'diff-tree', '--root', '-m', '--first-parent', '--no-commit-id',
+                     '--no-renames', '--name-only', '-r', '-z', sha).stdout
+    files = []
+    omitted = 0
+    for name in dict.fromkeys(name for name in names.split('\0') if name):
+        if not allowed_file(name, config['changes_exclude']):
+            omitted += 1
+            continue
+        args = ['diff', parent, sha] if parent else ['show', '--format=', '--root', sha]
+        diff = git_call(repo, *args, '--no-ext-diff', '--no-textconv', '--no-renames',
+                        f'--unified={context}', '--', ':(literal)' + name).stdout
+        files.append({'path': name, 'diff': redact_code(diff)})
+    job = {'version': 1, 'sha': sha, 'parent': parent, 'committedAt': committed_at,
+           'enqueuedAt': now.isoformat(), 'files': files,
+           'bytes': sum(len(file['diff'].encode('utf-8')) for file in files), 'omittedFiles': omitted}
+    return job
+
+
+def requeue_failed(config, now, reasons, dry_run=False, git_call=git):
+    state = Path(config['state_file'])
+    state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (state.parent / 'changes-enqueue.lock').open('a') as lock:
+        os.chmod(lock.name, 0o600)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        root = Path(config['data_dir']) / 'queue' if dry_run else queue_directories(config)
+        counts = {'requeued': 0, 'retained': 0, 'dryRun': dry_run}
+        for record in sorted((root / 'failed').glob('*.json')):
+            try:
+                result = json.loads(record.read_text())
+                sha = record.stem
+                units = result.get('failedUnits')
+                eligible = (re.fullmatch(SHA, sha) and result.get('sha') == sha and
+                            isinstance(units, list) and bool(units) and
+                            all(isinstance(unit, dict) and isinstance(unit.get('reason'), str) and
+                                unit['reason'] in reasons for unit in units))
+            except (ValueError, AttributeError):
+                eligible = False
+            if not eligible:
+                counts['retained'] += 1
+                continue
+            if dry_run:
+                counts['requeued'] += 1
+                continue
+            if git_call(config['project_dir'], 'cat-file', '-e', sha + '^{commit}', check=False).returncode:
+                print(json.dumps({'sha': sha, 'reason': 'commit_unreachable'}))
+                counts['retained'] += 1
+                continue
+            # Do not overwrite work that the API already owns.
+            if any((root / folder / record.name).exists() for folder in ('pending', 'claimed', 'done')):
+                counts['retained'] += 1
+                continue
+            job = build_job(config, now, sha, git_call)
+            atomic_write(root / 'pending' / record.name, json.dumps(job, ensure_ascii=False) + '\n',
+                         int(config['api_uid']), int(config['api_gid']))
+            record.unlink()
+            (root / 'progress' / record.name).unlink(missing_ok=True)
+            counts['requeued'] += 1
+        print(json.dumps(counts))
+        return counts
 
 
 def log_lines(patterns, since=None):
@@ -511,13 +563,19 @@ def collect(config, mode='nightly'):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=Path)
-    parser.add_argument('--mode', choices=['nightly', 'enqueue'], default='nightly')
+    parser.add_argument('--mode', choices=['nightly', 'enqueue', 'requeue-failed'], default='nightly')
+    parser.add_argument('--requeue-reasons', default='refused_or_vague,invalid_model_schema,completion_failed')
+    parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     with args.config.open(encoding='utf-8') as stream:
         config = json.load(stream)
     os.umask(0o077)
     try:
-        collect(config, args.mode)
+        if args.mode == 'requeue-failed':
+            requeue_failed(config, datetime.now(ZoneInfo(config['timezone'])),
+                           set(args.requeue_reasons.split(',')), args.dry_run)
+        else:
+            collect(config, args.mode)
     except Exception:
         parser.exit(1, 'Security review collection failed; the cursor advances only after all queue jobs are durable.\n')
 
