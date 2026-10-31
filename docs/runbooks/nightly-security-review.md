@@ -230,3 +230,78 @@ release procedure. Set `security_review_queue_enabled: false` to stop the backgr
 consumer as well. Set `security_review_collect_enabled: false` and repeat the dedicated
 playbook check/apply to stop and disable the collect and enqueue timers. Keep the
 private data for investigation; removing it requires separate approval.
+
+## JPCERT/CC 注意喚起の毎時取り込み
+
+実装・検証記録: [JPCERT advisory investigation](../plans/jpcert-advisory-investigation.md)。
+
+Pi5 の `jpcert-advisories-fetch.timer` が毎時（最大10分のランダム遅延、
+Persistent catch-up）RSS `https://www.jpcert.or.jp/rss/jpcert.rdf` を取得する。
+タイトル・description が `scripts/server/jpcert-advisories/rules.json` の製品に一致すると、
+調査ジョブ → API の業務LLMによる影響確認 → キオスクのフローティングチャット通知へ進む。
+一致項目の `alert-*.json` は作らない。取得の連続3回失敗時だけは従来の
+`jpcert-advisory-fetch-error` alert を検知時刻のファイル名・timestampで発行する。
+
+API は `ADVISORY_CHECK_CRON`（既定5分ごと）に古いジョブから最大3件を処理する。
+推論が混雑・タイムアウト・不正JSON等で失敗すると次のtickで再試行し、3回失敗または
+検知から3時間経過した時点で「AIで調べられませんでした」と通知する。
+通知配信失敗時は保存済み判定を使って次のtickで再配信する。
+再起動等で残ったclaimedは30分経過後にpendingへ戻る。ジョブIDを通知キーに使い重複配信を抑止する。
+
+設定は `/etc/jpcert-advisories/{fetch.json,rules.json}`、実行スクリプトは
+`/usr/local/bin/jpcert-advisories-fetch.py`、状態は `/var/lib/jpcert-advisories/state.json`、
+ログは `/var/log/jpcert-advisories/jpcert-advisories.log`。
+`jobs_dir` は `{{ security_review_data_dir }}/advisories`、APIからは既存bind mount経由の
+`/app/storage/security-review/advisories`。配下に `pending/claimed/done/invalid` を持つ。
+ジョブは0600、ディレクトリは0700、APIとcollectorは共通UID 1000。
+専用playbookのgetent/assertで `ansible_user` のUIDが `api_runtime_uid`（既定1000）と
+一致することを確認する。collectorユーザーはdockerグループ所属が前提。
+
+ジョブにはRSS本文・検知時刻・対象製品・導入バージョン・ページ本文を記録する。
+一致したリンクが **https / www.jpcert.or.jp** の場合だけ、その1ページを取得する。
+redirectやリンク追跡は行わず、RSSと同じUser-Agent/timeout、2 MiB上限。
+HTMLのscript/style/nav/header/footer等を除き、Weekly Reportの数字anchor付き見出しを
+特定できればその節だけを抽出する。特定できない場合は全体、最大12000文字。
+ページ取得失敗でも `page_text: ""` と `page_error` を記録してジョブを作成する。
+本文は信頼できないデータとしてLLMへ渡し、本文中の命令に従わないよう指定する。
+
+`probes` は閉じた種類 `dpkg/command/container/os_release/uname/package_json` のみ。
+コマンドはshellを使わずargv、各10秒・出力2000文字まで。未導入・停止コンテナは
+not installed/unavailable と記録する。API/Webのコンテナ名はrelease既定の
+`bluegreen-api-{blue,green}-1` / `bluegreen-web-{blue,green}-1`、DBは `docker-db-1`。
+Compose project名を変更する環境ではrulesのcontainersも合わせる。
+`package_json` は設定の `project_dir` 内の `apps/*/package.json` のdependency specを読む。
+これは導入済み実バージョンの証拠とは扱わず、不明ならAIは「判定できず」と回答する。
+
+専用collectorの配布は本番適用承認後、まずcheck/diff、その後applyする。
+標準releaseはcollectorを配布しない。APIのenv・共有ディレクトリは標準releaseで配布する。
+夜間collectorのscans追加は既存 `prepare-pi5-security-review.yml` もEnable節に従って配布する。
+
+```sh
+ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/prepare-pi5-jpcert-advisories.yml --limit raspberrypi5 --check --diff
+ansible-playbook -i infrastructure/ansible/inventory.yml infrastructure/ansible/playbooks/prepare-pi5-jpcert-advisories.yml --limit raspberrypi5
+systemctl list-timers jpcert-advisories-fetch.timer
+journalctl -u jpcert-advisories-fetch.service --since today
+cat /var/log/jpcert-advisories/jpcert-advisories.log
+# Pi5上でproject checkoutのルートから確認（ジョブの本文は非公開データ）
+find storage/security-review/advisories/pending storage/security-review/advisories/done -name '*.json' -type f
+```
+
+doneのJSONには `result`、再試行ジョブには `attempts` が残る。invalidはJSON/schema不正の隔離先。
+通知はキオスクのチャットでタイトル `JPCERT 注意喚起: 製品名` を確認する。
+初回は直近7日を対象とし、URLとdc:dateのhashでジョブを識別、原子的公開で上書きしない。
+同じURLでも日付が変われば別ジョブ。seenは90日保持、破損時は0600の.corruptを残す。
+条件付きGETの304でも初回検知から過去24時間の一致一覧をログへ再掲する。
+夜間レビューの最新完了ブロックと末尾約2000行のログ保持方式は変わらない。
+
+製品追加はrulesに `product/aliases/evidence` と必要な `probes` を追加する。
+aliases/excludeは正規表現ではなく大文字小文字を無視するリテラルで、前後のASCII英数字・
+underscoreを境界にする。evidenceには直接利用を示すrepo相対pathとpatternを記載する。
+probe例は `{"kind":"dpkg","packages":["chromium"]}`、
+`{"kind":"package_json","path":"apps/api/package.json","name":"fastify"}`。
+ホストと実行コンテナを区別し、rulesの契約テスト・fixtureテストを更新して専用playbookで配布する。
+
+停止は `advisory_check_enabled: false`（APIの `ADVISORY_CHECK_ENABLED=false`）を標準releaseで反映し、
+`jpcert_advisories_enabled: false` を専用playbookでcheck/applyして収集も止める。
+片方だけ無効にすると、収集停止または未処理ジョブの蓄積になる。stagingは両方既定で無効。
+状態・既存ジョブ・通知は保持する。

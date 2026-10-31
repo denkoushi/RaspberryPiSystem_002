@@ -8,6 +8,7 @@ import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js'
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
 import { getProcedureTermLearningScheduler } from '../services/assembly/procedure-term-learning.scheduler.js';
+import { getAdvisoryCheckScheduler } from '../services/advisory-check/advisory-check.scheduler.js';
 import { getSecurityReviewQueueScheduler } from '../services/security-review/security-review-queue.scheduler.js';
 import { getSecurityReviewScheduler } from '../services/security-review/security-review.scheduler.js';
 import { getBusinessHermesNightlyScheduler } from '../services/business-hermes/business-hermes-nightly.scheduler.js';
@@ -160,6 +161,8 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: () => grindingPlanningBoardWarmup.stop() },
     { name: 'procedure-term-learning', start: () => getProcedureTermLearningScheduler().start(),
       stop: () => getProcedureTermLearningScheduler().stop() },
+    { name: 'advisory-check', start: () => getAdvisoryCheckScheduler().start(),
+      stop: () => getAdvisoryCheckScheduler().stop() },
     { name: 'security-review-queue', start: () => getSecurityReviewQueueScheduler().start(),
       stop: () => getSecurityReviewQueueScheduler().stop() },
     { name: 'security-review-nightly', start: () => getSecurityReviewScheduler().start(),
@@ -350,6 +353,7 @@ export function listPostListenSchedulerNames(): string[] {
     'business-hermes-nightly',
     'security-review-nightly',
     'security-review-queue',
+    'advisory-check',
     'fkojunst-mail-superseded-prune',
     'file-storage-integrity-backfill',
     'backup',

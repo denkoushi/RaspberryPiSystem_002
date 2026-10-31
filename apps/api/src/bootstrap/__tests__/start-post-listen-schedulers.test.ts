@@ -78,6 +78,8 @@ describe('start-post-listen-schedulers fail-closed group', () => {
     expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'watch-camera-retention')).toBe(true);
     expect(names).toContain('csv-import');
     expect(names).toContain('security-review-queue');
+    expect(names).toContain('advisory-check');
+    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some(step => step.name === 'advisory-check')).toBe(true);
     expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'security-review-queue')).toBe(true);
   });
 
@@ -166,6 +168,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'business-hermes-nightly',
       'security-review-nightly',
       'security-review-queue',
+      'advisory-check',
       'fkojunst-mail-superseded-prune',
       'file-storage-integrity-backfill',
       'backup',
