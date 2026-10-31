@@ -63,6 +63,9 @@ timedatectl show -p NTPSynchronized --value
 - `WATCH_CAMERA_PERSON_PROMPT`: 判定の質問文。JSON の返し方はコードが後ろに付ける。
 - `WATCH_CAMERA_PERSON_MIN_CONFIDENCE`: 0〜1、既定 0.5。人ありとみなす最小の確信度。
 
+判定に送る画像だけ、Lab の L（輝度）に CLAHE をかける（色成分 a/b は維持）。失敗時は元画像で判定する。
+保存画像と管理画面の画像は元のまま。`WATCH_CAMERA_JUDGE_ENHANCE=false` で補正を停止できる（既定 true）。
+
 実際の作業場の写真で確かめる手順:
 
 1. 人が写る写真と写らない写真を、時間帯(朝・昼・夜、照明の違い)を変えて 10 枚ずつ以上集める。人は全身、体の一部だけ、遠く、機械の陰、の場合を入れる。
