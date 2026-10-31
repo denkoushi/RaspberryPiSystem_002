@@ -233,6 +233,7 @@ pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイ�
 - [x] (2026-10-31) PostgreSQL の後片付け: pg18 移行後の DR スナップショット(2026-10-30 23:00 の夜間分、snapshot_id 7bfadd98…、3437174433 bytes)が成功していることを確認し、Google Drive からの復元検証(`restore-check`)を通した(stage `restore_check_complete`)。復元した DB ダンプの見出しは PostgreSQL 18.6。復元先 `/var/tmp/raspi-google-drive-dr-restore-20261031-181349` は確認用に Pi5 へ残している。
 - [ ] PostgreSQL の旧ボリューム `db-data` の削除は 2026-11-13(移行から2週間)以降に、ユーザーの明示承認を得て別作業で行う。まだ消していない。
 - [x] (2026-10-31) 7件目の pnpm 12: #2427(pnpm 12.16.1、Corepack をやめて npm で入れる)、#2435(API イメージを予算内に戻す)、#2436(圧縮サイズ予算を 1.125GB に)をマージ。最終は main 9223b0be。この3件は Pi5 へ1回で反映した(run 20261030-184443-1ad230、成功・failed=0、api healthy、HTTP 正常)。
+- [x] (2026-10-31) 6件目の React 19: react / react-dom 19.3.1 へ上げた #2451 をマージ(main 19efd986)。Pi5 へ反映(run 20261031-115855-620138、成功・failed=0)。api と web は 19efd986 のイメージで、`/`、`/kiosk`、`/admin`、`/api/system/health` が 200。配信中の web の bundle に React 19.3.1 が入っていることを確かめた。
 
 ## Surprises & Discoveries
 
@@ -265,3 +266,4 @@ pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイ�
 - 1. Node.js 20 の中継部品: main e98e40bc(#2287)、本番反映 run 20261025-014627-11001b(main fa13444e)。両中継部品が node:24-alpine で healthy。戻しは不要だった。
 - (計画外)Brotli 脆弱性 CVE-2026-111497: API と kiosk-sop の node:24-bookworm-slim を Node 24.22.1 の digest へ(#2289)。同じ run で反映し、API の node -v が v24.22.1。
 - 2. Prisma 5 → 7: main 4f9d5030(#2306)、本番反映 run 20261026-044219-700883。#2300 は API イメージの容量予算を超えたため #2304 で取り消し、wasm を削って入れ直した。入れ直し後の戻しは不要だった。
+- 6. React 18 → 19: 更新済み。main 19efd986(#2451)、本番反映 run 20261031-115855-620138。戻しは不要だった。
