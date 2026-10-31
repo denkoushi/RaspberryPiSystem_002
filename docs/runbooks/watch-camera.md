@@ -11,7 +11,7 @@
 ## 対象 OS と前提
 
 - 端末は Raspberry Pi OS Bullseye 以降(systemd 247 以上)。playbook は先に systemd のバージョンを確かめ、足りなければ止まる。
-- 通信の TLS 検証は、既存の zero-edge と同じ方針で省略している(`TLS_SKIP_VERIFY=1`)。閉じた社内回線の前提で、外に出る回線では使わない。
+- カメラ agent は playbook がコピーした Pi5 証明書のみを信頼する（`inventory-zero-edge.yml` の SHA-256 で固定）。Pi5 証明書を交換したら `watch_cam_server_cert_sha256` を更新して再配備する。heartbeat agent の TLS 検証は引き続き省略する（別件）。
 
 ## 端末を追加する
 

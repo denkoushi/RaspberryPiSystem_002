@@ -2,6 +2,8 @@ import io
 import os
 from pathlib import Path
 import socket
+import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -14,7 +16,7 @@ import urllib.request
 
 from watch_cam_agent.capture import capture, MAX_FRAME_BYTES
 from watch_cam_agent.config import Config, load_config
-from watch_cam_agent.main import run_loop
+from watch_cam_agent.main import main, run_loop
 from watch_cam_agent.notify import sd_notify, watchdog_interval
 from watch_cam_agent.sender import HttpClient
 
@@ -35,6 +37,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config, CONFIG)
         self.assertEqual(config.video_device, "/dev/video0")
         self.assertEqual(config.interval_sec, 10)
+        self.assertEqual(config.tls_ca_file, "")
         self.assertNotIn("secret", repr(config))
 
     def test_overrides(self):
@@ -57,6 +60,22 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(ValueError) as error:
                 self.load(text)
             self.assertNotIn("secret", str(error.exception))
+
+    def test_ca_file(self):
+        base = 'API_BASE_URL=https://example.test\nX_CLIENT_KEY=secret\n'
+        with tempfile.TemporaryDirectory() as directory:
+            ca_file = Path(directory) / 'ca.pem'
+            ca_file.write_text('placeholder')
+            config = self.load(base + 'TLS_CA_FILE="%s"\n' % ca_file)
+            self.assertEqual(config.tls_ca_file, str(ca_file))
+            with self.assertRaisesRegex(ValueError, 'mutually exclusive'):
+                self.load(base + 'TLS_CA_FILE="%s"\nTLS_SKIP_VERIFY=1\n' % ca_file)
+            with patch('watch_cam_agent.config.os.access', return_value=False):
+                with self.assertRaisesRegex(ValueError, 'readable regular file'):
+                    self.load(base + 'TLS_CA_FILE="%s"\n' % ca_file)
+            for invalid in ('relative.pem', str(ca_file) + '.missing', directory):
+                with self.subTest(path=invalid), self.assertRaises(ValueError):
+                    self.load(base + 'TLS_CA_FILE="%s"\n' % invalid)
 
 
 class CaptureTests(unittest.TestCase):
@@ -130,6 +149,53 @@ class SenderTests(unittest.TestCase):
             HttpClient(Config('https://example.test', 'secret', True))
             self.assertFalse(context.return_value.check_hostname)
             self.assertEqual(context.return_value.verify_mode, 0)
+
+    def test_default_tls_verification(self):
+        client = HttpClient(CONFIG)
+        context = next(h._context for h in client.opener.handlers
+                       if isinstance(h, urllib.request.HTTPSHandler))
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
+    @unittest.skipUnless(shutil.which('openssl'), 'openssl is needed to generate a test certificate')
+    def test_pinned_ca_verification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ca_file = Path(directory) / 'ca.pem'
+            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+                            '-keyout', str(Path(directory) / 'key.pem'), '-out', str(ca_file),
+                            '-days', '1', '-subj', '/CN=pi5.test',
+                            '-addext', 'basicConstraints=critical,CA:TRUE'],
+                           check=True, capture_output=True, timeout=15)
+            client = HttpClient(Config('https://192.0.2.1', 'secret', tls_ca_file=str(ca_file)))
+            context = next(h._context for h in client.opener.handlers
+                           if isinstance(h, urllib.request.HTTPSHandler))
+            self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertFalse(context.check_hostname)
+            self.assertEqual(len(context.get_ca_certs()), 1)
+
+    def test_invalid_pem_fails_at_startup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ca_file = Path(directory) / 'ca.pem'
+            ca_file.write_text('invalid PEM')
+            config = Config('https://example.test', 'secret', tls_ca_file=str(ca_file))
+            with self.assertRaises(ssl.SSLError):
+                HttpClient(config)
+            with patch('watch_cam_agent.main.load_config', return_value=config), \
+                    patch('watch_cam_agent.main.install_stop_handlers'), \
+                    patch('watch_cam_agent.main.run_loop') as loop, \
+                    self.assertLogs('watch_cam_agent.main', level='ERROR') as logs:
+                self.assertEqual(main(), 1)
+            loop.assert_not_called()
+            self.assertNotIn('secret', str(logs.output))
+
+    def test_invalid_config_exits_before_loop(self):
+        with patch('watch_cam_agent.main.load_config', side_effect=ValueError('secret')), \
+                patch('watch_cam_agent.main.install_stop_handlers'), \
+                patch('watch_cam_agent.main.run_loop') as loop, \
+                self.assertLogs('watch_cam_agent.main', level='ERROR') as logs:
+            self.assertEqual(main(), 1)
+        loop.assert_not_called()
+        self.assertNotIn('secret', str(logs.output))
 
 
 class LoopTests(unittest.TestCase):

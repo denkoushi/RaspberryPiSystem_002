@@ -14,6 +14,7 @@ class Config:
     tls_skip_verify: bool = False
     video_device: str = "/dev/video0"
     interval_sec: int = 10
+    tls_ca_file: str = ""
 
 
 def load_config() -> Config:
@@ -45,6 +46,13 @@ def load_config() -> Config:
         raise ValueError("API_BASE_URL must be an HTTP(S) origin without /api")
     if values.get("TLS_SKIP_VERIFY", "0") not in ("0", "1"):
         raise ValueError("TLS_SKIP_VERIFY must be 0 or 1")
+    ca_file = values.get("TLS_CA_FILE", "")
+    if ca_file:
+        if values.get("TLS_SKIP_VERIFY", "0") == "1":
+            raise ValueError("TLS_CA_FILE and TLS_SKIP_VERIFY are mutually exclusive")
+        ca_path = Path(ca_file)
+        if not ca_path.is_absolute() or not ca_path.is_file() or not os.access(ca_path, os.R_OK):
+            raise ValueError("TLS_CA_FILE must be an absolute path to a readable regular file")
     if any(ord(char) < 32 or ord(char) > 126 for char in values["X_CLIENT_KEY"]):
         raise ValueError("X_CLIENT_KEY must contain printable ASCII only")
     device = values.get("VIDEO_DEVICE", "/dev/video0")
@@ -57,4 +65,4 @@ def load_config() -> Config:
     if interval < 5:
         raise ValueError("INTERVAL_SEC must be an integer >= 5")
     return Config(origin, values["X_CLIENT_KEY"], values.get("TLS_SKIP_VERIFY", "0") == "1",
-                  device, interval)
+                  device, interval, ca_file)
