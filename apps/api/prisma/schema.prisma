@@ -3460,6 +3460,7 @@ model AssemblyProcedureCaptionFeedback {
   documentId   String
   pageIndex    Int
   elementId    String
+  site         String?
   assetId      String
   documentName String
   contextText  String?
@@ -3472,6 +3473,7 @@ model AssemblyProcedureCaptionFeedback {
 
   @@unique([documentId, elementId])
   @@index([assetId])
+  @@index([site, outcome, resolvedAt])
 }
 
 /// Editable elements owned by one document revision. Coordinates are source
