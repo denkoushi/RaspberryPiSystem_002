@@ -41,6 +41,7 @@ import {
   errorForLog,
   isSchedulerStepStateAmbiguousError,
   SchedulerStartupCleanupError,
+  SchedulerStepStateAmbiguousError,
 } from './scheduler-errors.js';
 
 export type SchedulerStep = {
@@ -120,9 +121,25 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
     snapshotStore: leaderboardShellSnapshotStore
   });
   if (process.env.HERMES_KNOWLEDGE_ENABLED === 'true') {
+    const stopKnowledge = async () => {
+      const runtime = getKnowledgeRuntime();
+      const stopped = await Promise.allSettled([runtime.worker.stop(), runtime.procedureWorker.stop(), runtime.procedureBoardWorker.stop()]);
+      const errors = stopped.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (errors.length) throw new AggregateError(errors, 'Knowledge workers failed to stop');
+    };
     definitions.push({ name: 'hermes-knowledge',
-      start: async () => { const runtime = getKnowledgeRuntime(); await runtime.documents.initialize(); runtime.worker.start(); await runtime.ensureReferenceData(); runtime.procedureWorker.start(); },
-      stop: async () => { const runtime = getKnowledgeRuntime(); await Promise.all([runtime.worker.stop(), runtime.procedureWorker.stop()]); },
+      start: async () => {
+        const runtime = getKnowledgeRuntime();
+        try {
+          await runtime.documents.initialize(); runtime.worker.start(); await runtime.ensureReferenceData();
+          runtime.procedureWorker.start(); runtime.procedureBoardWorker.start();
+        } catch (error) {
+          try { await stopKnowledge(); }
+          catch (cleanupError) { throw new SchedulerStepStateAmbiguousError('hermes-knowledge', [...asErrors(error), ...asErrors(cleanupError)]); }
+          throw error;
+        }
+      },
+      stop: stopKnowledge,
     });
   }
   if (env.SIGNAGE_RENDER_ENABLED) {

@@ -15,7 +15,7 @@
 - [x] (2026-10-31 12:54Z) 必須ルール、承認済み HTML、試験計画、素材・推論・端末・キオスク・移行検証の実装を読み、計画を作成した。
 - [x] (2026-10-31 12:54Z) 現行の移行検証器が指定の端末フラグ追加文を拒否することを、DBに接続しない検証で確認した。
 - [ ] PR1: スキーマ、端末設定、盤面保存、操作記録、週次指標、対象テストを実装済み。DB不要テスト23件・既存worker回帰5件、schema、SQL、対象lint、変更部分の型検査は成功。専用DB検証と指定の全体型検査は環境・既存設定の阻害により未完了（Artifacts and Notes参照）。
-- [ ] PR2: 置き場所提案 worker、整形提案 API、延期・古い提案の処理を実装・検証する。
+- [ ] PR2: ローカル実装済み。指定5ファイル42件、schema、SQL、対象lint、build型検査が成功。DBのmigration適用・repository.local検証は依頼どおりClaude側へ引継ぎ（Artifacts and Notes参照）。
 - [ ] PR3: キオスク画面、操作、提案確認、ポーリング、対象テストと表示確認を完了する。
 - [ ] integrationPending: 各段階が別途承認された後、PR番号、push済みSHA、必要なCI、mainのmerge SHA、mainでの確認結果を記録する。
 - [ ] 別途承認されたdeployで対象端末をユーザーが選び、4週間の試験を始める。毎週数字と素材にない書き足しの件数を記録する。
@@ -494,6 +494,44 @@ PR1〜3の実装と必要な統合が済み、対象SHAのCI成功を確認し�
 migrationは専用DBで先に確認し、既存migrationのchecksumを変更しない。適用に失敗した場合は原因とDBの適用台帳を確認し、手で台帳を直したりresetしたりしない。本番の復旧は `docs/runbooks/deploy-status-recovery.md` をその時点で読み、承認済み標準経路で行う。本計画作成では実機接続もDB操作も行っていない。
 
 ## Artifacts and Notes
+
+### PR2実装証拠 (2026-10-31)
+
+指定の新規5ファイル・既存9ファイルと本計画のProgress/Artifactsだけを変更。開始時はcleanで既存WIPなし。commit/push/branch操作、PR、merge、deploy、実DGX・外部ネットワーク呼出しは未実施。依存定義・既存migration・既存ProcedureWorker・公開revision更新経路は変更していない。
+
+実装判断: 新表だけを追加し、盤面ロック下でversion/fingerprint更新、旧仕事のstale化、現行placement仕事の作成を直列化した。巡回は20盤面ずつ順送り、推論は5秒tickで同時1件。10分の推論timeoutより長い11分leaseを使い、期限とtokenの両方で完了を制限する。延期は30/60/120/240/300秒、JSON/schema不正はfailedで固定する。整形は元ページのitem集合を照合して元項目から再構築し、style以外の内容をモデルから受け取らない。戻すはstale後も現在のlayout/versionを保持する。HTTPはenqueue/pollだけを行い、推論を待たない。
+
+提案座標は各modeの挿入範囲を検証し、不在・配置済み・同一fingerprintで拒否済みの素材を落とす。見出し/抜けの数値は原文だけに照合し、抜けは短い未確認の問いに限定。conflictsは異なる2素材の原文quoteだけを残し、自動選択しない。過去提案も現行素材で再検証して別案件へ移った原文を配信しない。要求/判断UUIDの再送は重複記録しない。scheduler名hermes-knowledgeを保ち、全workerの通常停止・起動失敗時停止・後続グループ失敗時停止を検証した。計画の契約からの変更はない。
+
+検証はすべて `export PATH=/private/tmp/procedure-board-bin:$PATH` 後に実行（時間は概算）。
+
+    pnpm --filter @raspi-system/api test src/services/knowledge/__tests__/procedure-board-inference.test.ts src/services/knowledge/__tests__/procedure-board-worker.test.ts src/routes/__tests__/kiosk-procedure-boards.test.ts src/services/knowledge/__tests__/procedure-worker.test.ts src/bootstrap/__tests__/start-post-listen-schedulers.test.ts
+    exit 0、5ファイル42件pass、約17秒。すべてfake推論。初回の座標検証で提案の余分な属性をstrict座標schemaへ渡していた問題を修正済み。
+
+    pnpm --filter @raspi-system/api exec prisma generate
+    DATABASE_URL=postgresql://postgres:disposable-test@127.0.0.1:25433/knowledge_test pnpm --filter @raspi-system/api exec prisma validate
+    両方exit 0、Prisma Client 7.10.1生成・schema valid、各約1〜3秒。
+
+    python3 -B -m unittest discover -s scripts/deploy/tests -p test_validate_expand_only_migrations.py
+    前述のimportlib手順で20261101091000_add_knowledge_procedure_board_ai/migration.sqlをvalidate_sqlへ渡す
+    両方exit 0、既存34件pass（約5秒）・新規SQL検証OK。validatorは変更していない。
+
+    pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit
+    exit 0、約1分。最初はworkspace共通パッケージのdist不足で失敗し、既存shared-types/slip-match-core/shelf-layout-core/part-search-coreをbuildして準備した（定義・lockfile変更なし）。次に検出した今回のnull判定を修正し、成功した。
+
+    pnpm --filter @raspi-system/api exec tsc -p /private/tmp/procedure-board-pr2-tests.json
+    exit 0、約1分。既存tsconfigをextendsし、変更した5テストと既存Fastify型拡張だけをincludeした一時設定。最初の一時設定にFastify型拡張がなく失敗したため、既存宣言をincludeした。repository.localも型検査済みだがDB実行の証拠ではない。
+
+    pnpm --filter @raspi-system/api exec eslint <変更したTypeScript全12ファイル>
+    exit 0、約10秒。最後のrepository/DBテスト追記後はその2ファイルを再確認した。
+
+未実行: 依頼どおりDBのmigrate deployとrepository.localテストはClaude側へ引継ぎ。DBテストには仕事の重複防止、既存盤面作成/保存の競合、lease失効・token fencing、延期の上限、旧version/原文変更時のstale、failedの非再試行、整形の採用/戻す/再送、配置の採用/拒否/移動、見出し・未決定conflict、原文/公開revision不変、参照を外れた素材の扱いを追加した。実モデルの品質とDB上の状態遷移は未確認として区別する。
+
+#### PR2レビュー修正 (2026-10-31)
+
+開始時の未コミットPR2を保持して5点だけ修正。モデル出力のJSON/schema/整形項目検証は専用エラー型でfailedに限定し、DB・接続障害などはdeferredにする。整形要求は既存イベントIDを照合し、P2002時は既存save/appendEvents同様にトランザクションを再実行して、再送は既存提案、別盤面や別イベントとの衝突は409にする。stale整形のrevertは提案version/現在versionのどちらも受け付け、現在layout/versionを返す。無効端末はattempts増分を戻して固定30秒延期。dismiss/select_conflictのitemIdは禁止した。
+
+検証: 指定4ファイル42件pass（約8秒）、追加した整形項目不一致ケースを含むworker単独16件pass（約1秒、他3ファイルと合わせ43件）。build用tsc --noEmitと今回変更したTypeScript 8ファイルのeslintもexit 0（各約15秒以内）。workerテスト追記後は同ファイルのeslintを再実行。repository.localには同時再送・別盤面/既存イベントID衝突・固定30秒/attempts不増・stale後の両versionのrevertとaccept拒否を追加したが、DB実行は指定どおりClaudeへ引継ぎ。apps/web、migration SQL、本番設定、デプロイ関連は今回変更せず、commit/push/branch操作も未実施。
 
 ### PR1実装証拠 (2026-10-31)
 

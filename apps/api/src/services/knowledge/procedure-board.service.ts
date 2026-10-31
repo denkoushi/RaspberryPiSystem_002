@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 
-import { layoutSchema, normalizeLayout, placeItem, type BoardItem, type BoardLayout } from './procedure-board-layout.js';
+import { layoutSchema, normalizeLayout, placeItem, targetSchema, type BoardItem, type BoardLayout } from './procedure-board-layout.js';
 import type { PrismaProcedureBoardRepository } from './prisma-procedure-board.repository.js';
 
 const identity = z.string().min(1).max(200);
@@ -124,11 +124,43 @@ export function validateLayoutEvent(before: BoardLayout, after: BoardLayout, eve
   }
 }
 
+export const placementDecisionSchema = z.object({
+  expectedVersion: z.number().int().positive(), eventId: z.string().uuid(), proposalId: identity,
+  action: z.enum(['accept', 'dismiss', 'relocate', 'select_conflict']), itemId: z.string().uuid().optional(),
+  target: targetSchema.optional(), selectedMaterialId: identity.nullable().optional(), ...work,
+}).strict().superRefine((value, ctx) => {
+  if (Boolean(value.workId) !== (value.activeMs !== undefined)
+    || (value.action === 'relocate' && (!value.target || !value.itemId))
+    || (value.action === 'select_conflict' && value.selectedMaterialId === undefined)
+    || (!['accept', 'relocate'].includes(value.action) && value.itemId !== undefined)
+    || (value.action !== 'relocate' && value.target !== undefined)
+    || (value.action !== 'select_conflict' && value.selectedMaterialId !== undefined)) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid decision fields' });
+  }
+});
+export type PlacementDecision = z.infer<typeof placementDecisionSchema>;
+export const formatRequestSchema = z.object({ expectedVersion: z.number().int().positive(), requestId: z.string().uuid() }).strict();
+export const formatDecisionSchema = z.object({ expectedVersion: z.number().int().positive(), eventId: z.string().uuid(), action: z.enum(['accept', 'revert']) }).strict();
+export type FormatDecision = z.infer<typeof formatDecisionSchema>;
+export function suggestionStale(): never {
+  throw new ApiError(409, '提案が古くなっています', undefined, 'PROCEDURE_BOARD_SUGGESTION_STALE');
+}
+
 export class ProcedureBoardService {
   constructor(readonly repository: PrismaProcedureBoardRepository) {}
   async save(procedureId: string, clientDeviceId: string, raw: unknown) {
     const input = saveBoardSchema.parse(raw);
     return this.repository.save(procedureId, clientDeviceId, input.expectedVersion, normalizeLayout(input.layout), input.event);
+  }
+  async requestFormat(procedureId: string, clientDeviceId: string, raw: unknown) {
+    const input = formatRequestSchema.parse(raw);
+    return this.repository.enqueueAi(procedureId, clientDeviceId, 'format', input.requestId, input.expectedVersion);
+  }
+  async decidePlacement(procedureId: string, clientDeviceId: string, suggestionId: string, raw: unknown) {
+    return this.repository.decidePlacement(procedureId, clientDeviceId, suggestionId, placementDecisionSchema.parse(raw));
+  }
+  async decideFormat(procedureId: string, clientDeviceId: string, suggestionId: string, raw: unknown) {
+    return this.repository.decideFormat(procedureId, clientDeviceId, suggestionId, formatDecisionSchema.parse(raw));
   }
   async events(procedureId: string, clientDeviceId: string, raw: unknown) {
     const input = appendEventsSchema.parse(raw);

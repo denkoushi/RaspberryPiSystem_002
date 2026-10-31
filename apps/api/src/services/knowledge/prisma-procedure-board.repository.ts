@@ -1,20 +1,21 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import type { KnowledgeProcedureBoard, Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type KnowledgeProcedureBoard, type KnowledgeProcedureBoardAi, type PrismaClient } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 
 import { knowledgeSourceSchema } from './knowledge-source.js';
-import { emptyLayout, layoutSchema, type BoardLayout } from './procedure-board-layout.js';
-import { boardConflict, boardItems, decisionsSchema, emptyDecisions, invalidBoard, same, validateLayoutEvent, type BoardEvent } from './procedure-board.service.js';
+import { emptyLayout, layoutSchema, placeItem, type BoardLayout } from './procedure-board-layout.js';
+import { boardConflict, boardItems, decisionsSchema, emptyDecisions, invalidBoard, same, validateLayoutEvent, suggestionStale, type PlacementDecision, type FormatDecision, type BoardEvent } from './procedure-board.service.js';
+import { applyFormatResult, boardAiKindSchema, boardAiStateSchema, validateFormatResult, validatePlacementResult, type BoardAiInput } from './procedure-board-inference.js';
 import { cumulativeStats, weeklyMetrics, type RecordedBoardEvent } from './procedure-board-metrics.js';
 
 const asJson = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-const notFound = (): never => { throw new ApiError(404, '盤面または案件が見つかりません'); };
+function notFound(): never { throw new ApiError(404, '盤面または案件が見つかりません'); }
 const layoutHash = (layout: BoardLayout) => createHash('sha256').update(JSON.stringify(layoutSchema.parse(layout))).digest('hex');
 const decode = (board: KnowledgeProcedureBoard) => ({ boardId: board.id, procedureId: board.procedureId, version: board.version,
   layout: layoutSchema.parse(board.layout), decisions: decisionsSchema.parse(board.decisions), materialFingerprint: board.materialFingerprint,
-  ai: { status: 'unavailable' as const } });
+  ai: { status: 'pending' as const } });
 
 export class PrismaProcedureBoardRepository {
   constructor(private readonly db: PrismaClient, private readonly now: () => Date = () => new Date()) {}
@@ -56,27 +57,24 @@ export class PrismaProcedureBoardRepository {
       const board = await tx.knowledgeProcedureBoard.upsert({ where: { procedureId }, update: {}, create: {
         id, procedureId, layout: asJson(emptyLayout()), decisions: asJson(emptyDecisions()), materialFingerprint: fingerprint, lastRequestedClientDeviceId: clientDeviceId,
       } });
-      return { ...decode(board), created: !prior && board.id === id };
+      await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${board.id} FOR UPDATE`;
+      await this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
+      return { ...decode(await this.board(tx, procedureId)), created: !prior && board.id === id };
     });
     try { return await run(); } catch (error) {
       if ((error as { code?: string }).code !== 'P2002') throw error;
       return { ...decode(await this.board(this.db, procedureId)), created: false };
     }
   }
-  async refreshMaterials(procedureId: string) {
+  async refreshMaterials(procedureId: string, clientDeviceId?: string) {
     return this.db.$transaction(async tx => {
-      const board = await this.board(tx, procedureId);
-      const fingerprint = this.fingerprint(await this.materialsOf(tx, procedureId));
-      if (board.materialFingerprint !== fingerprint) {
-        await tx.knowledgeProcedureBoard.updateMany({ where: { id: board.id, version: board.version, materialFingerprint: board.materialFingerprint },
-          data: { materialFingerprint: fingerprint, version: { increment: 1 } } });
-      }
-      return this.board(tx, procedureId);
+      const prior = await this.board(tx, procedureId);
+      await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${prior.id} FOR UPDATE`;
+      return this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
     });
   }
-  async get(procedureId: string) {
-    const board = await this.refreshMaterials(procedureId);
-    return this.response(board);
+  async get(procedureId: string, clientDeviceId?: string) {
+    return this.response(await this.refreshMaterials(procedureId, clientDeviceId));
   }
   async materials(procedureId: string, cursor: string | undefined, limit: number) {
     return this.db.$transaction(async tx => {
@@ -95,8 +93,9 @@ export class PrismaProcedureBoardRepository {
     const material = await this.db.knowledgeProcedureMaterial.findFirst({ where: { id: materialId, procedureId, state: 'assigned' } });
     if (!material || !knowledgeSourceSchema.parse(material.source).images.some(image => image.id === imageId)) notFound();
   }
-  private async validateMaterials(tx: Prisma.TransactionClient, procedureId: string, layout: BoardLayout) {
-    const ids = [...new Set(boardItems(layout).flatMap(({ item }) => item.kind === 'material' ? [item.materialId] : []))];
+  private async validateMaterials(tx: Prisma.TransactionClient, procedureId: string, layout: BoardLayout, before: BoardLayout) {
+    const existing = boardItems(before);
+    const ids = [...new Set(boardItems(layout).flatMap(({ item }) => item.kind === 'material' && !existing.some(old => old.item.itemId === item.itemId && old.item.kind === 'material' && old.item.materialId === item.materialId) ? [item.materialId] : []))];
     const count = await tx.knowledgeProcedureMaterial.count({ where: { id: { in: ids }, procedureId, state: 'assigned' } });
     if (count !== ids.length) invalidBoard('案件に割り当てられた素材だけを配置してください');
   }
@@ -143,7 +142,7 @@ export class PrismaProcedureBoardRepository {
     const run = () => this.db.$transaction(async tx => {
       const prior = await this.board(tx, procedureId);
       await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${prior.id} FOR UPDATE`;
-      const board = await this.board(tx, procedureId);
+      const board = await this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
       const existing = await tx.knowledgeProcedureBoardEvent.findUnique({ where: { id: event.id },
         select: { boardId: true, clientDeviceId: true, layoutHash: true } });
       if (existing) {
@@ -151,14 +150,14 @@ export class PrismaProcedureBoardRepository {
         return board;
       }
       if (board.version !== expectedVersion) boardConflict(board.version);
-      await this.validateMaterials(tx, procedureId, layout);
+      await this.validateMaterials(tx, procedureId, layout, layoutSchema.parse(board.layout));
       validateLayoutEvent(layoutSchema.parse(board.layout), layout, event);
       const changed = await tx.knowledgeProcedureBoard.updateMany({ where: { id: board.id, version: expectedVersion }, data: {
         layout: asJson(layout), version: { increment: 1 }, lastRequestedClientDeviceId: clientDeviceId,
       } });
       if (changed.count !== 1) boardConflict((await this.board(tx, procedureId)).version);
       await this.insertEvent(tx, board, clientDeviceId, expectedVersion + 1, event, hash);
-      return this.board(tx, procedureId);
+      return this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
     });
     let board: KnowledgeProcedureBoard;
     try { board = await run(); } catch (error) {
@@ -166,6 +165,200 @@ export class PrismaProcedureBoardRepository {
       board = await run();
     }
     return this.response(board);
+  }
+  private snapshot(board: KnowledgeProcedureBoard, materials: Awaited<ReturnType<PrismaProcedureBoardRepository['materialsOf']>>): BoardAiInput {
+    return { layout: layoutSchema.parse(board.layout), decisions: decisionsSchema.parse(board.decisions), materialFingerprint: board.materialFingerprint,
+      materials: materials.map(row => ({ materialId: row.id, materialFingerprint: this.fingerprint([row]), source: knowledgeSourceSchema.parse(row.source),
+        derived: { label: 'AI-generated; not original facts', organized: row.organized } })) };
+  }
+  private async refreshLocked(tx: Prisma.TransactionClient, board: KnowledgeProcedureBoard, clientDeviceId?: string) {
+    const materials = await this.materialsOf(tx, board.procedureId);
+    const fingerprint = this.fingerprint(materials);
+    if (fingerprint !== board.materialFingerprint || (clientDeviceId && board.lastRequestedClientDeviceId !== clientDeviceId)) {
+      board = await tx.knowledgeProcedureBoard.update({ where: { id: board.id }, data: {
+        ...(fingerprint !== board.materialFingerprint ? { materialFingerprint: fingerprint, version: { increment: 1 } } : {}),
+        ...(clientDeviceId ? { lastRequestedClientDeviceId: clientDeviceId } : {}),
+      } });
+    }
+    await tx.knowledgeProcedureBoardAi.updateMany({ where: { boardId: board.id, boardVersion: { not: board.version },
+      state: { in: ['pending', 'running', 'ready', 'deferred', 'failed'] } }, data: { state: 'stale' } });
+    await tx.knowledgeProcedureBoardAi.upsert({ where: { boardId_kind_requestKey: { boardId: board.id, kind: 'placement', requestKey: String(board.version) } },
+      update: clientDeviceId ? { requestedByClientDeviceId: clientDeviceId } : {},
+      create: { id: randomUUID(), boardId: board.id, boardVersion: board.version, kind: 'placement', requestKey: String(board.version),
+        requestedByClientDeviceId: board.lastRequestedClientDeviceId, input: asJson(this.snapshot(board, materials)), retryAt: this.now() } });
+    return board;
+  }
+  async enqueueAi(procedureId: string, clientDeviceId: string, kind: 'placement' | 'format' = 'placement', requestKey?: string, expectedVersion?: number) {
+    const run = () => this.db.$transaction(async tx => {
+      const prior = await this.board(tx, procedureId);
+      await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${prior.id} FOR UPDATE`;
+      const board = await this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
+      const key = kind === 'placement' ? String(board.version) : requestKey!;
+      const existing = await tx.knowledgeProcedureBoardAi.findUnique({ where: { boardId_kind_requestKey: { boardId: board.id, kind, requestKey: key } } });
+      if (existing) {
+        if (kind === 'format' && (existing.boardVersion !== expectedVersion || existing.requestedByClientDeviceId !== clientDeviceId)) boardConflict(board.version);
+        return { proposalId: existing.id, boardVersion: existing.boardVersion, status: boardAiStateSchema.parse(existing.state), pollAfterMs: 5000 };
+      }
+      if (kind === 'format' && await tx.knowledgeProcedureBoardEvent.findUnique({ where: { id: key } })) boardConflict(board.version);
+      if (expectedVersion !== undefined && expectedVersion !== board.version) boardConflict(board.version);
+      const job = await tx.knowledgeProcedureBoardAi.create({ data: { id: randomUUID(), boardId: board.id, boardVersion: board.version, kind,
+        requestKey: key, requestedByClientDeviceId: clientDeviceId, retryAt: this.now(), input: asJson(this.snapshot(board, await this.materialsOf(tx, procedureId))) } });
+      await this.insertEvent(tx, board, clientDeviceId, board.version, { id: key, type: 'format_requested', payload: { suggestionSetId: job.id } });
+      return { proposalId: job.id, boardVersion: job.boardVersion, status: boardAiStateSchema.parse(job.state), pollAfterMs: 5000 };
+    });
+    try { return await run(); } catch (error) {
+      if ((error as { code?: string }).code !== 'P2002') throw error;
+      return run();
+    }
+  }
+  private sweepCursor: string | undefined;
+  async refreshAi() {
+    const boards = await this.db.knowledgeProcedureBoard.findMany({ where: this.sweepCursor ? { id: { gt: this.sweepCursor } } : {}, orderBy: { id: 'asc' }, take: 20, select: { id: true, procedureId: true } });
+    for (const board of boards) await this.refreshMaterials(board.procedureId);
+    this.sweepCursor = boards.length === 20 ? boards[19].id : undefined;
+  }
+  async aiClientEnabled(clientDeviceId: string) {
+    return (await this.db.clientDevice.findUnique({ where: { id: clientDeviceId }, select: { procedureBoardEnabled: true } }))?.procedureBoardEnabled === true;
+  }
+  async claimAi(leaseToken: string) {
+    const now = this.now();
+    const eligible = { OR: [{ state: { in: ['pending', 'deferred'] }, retryAt: { lte: now } }, { state: 'running', leaseUntil: { lte: now } }] };
+    const candidate = await this.db.knowledgeProcedureBoardAi.findFirst({ where: eligible, orderBy: [{ retryAt: 'asc' }, { createdAt: 'asc' }] });
+    if (!candidate) return null;
+    return this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${candidate.boardId} FOR UPDATE`;
+      const prior = await tx.knowledgeProcedureBoard.findUniqueOrThrow({ where: { id: candidate.boardId } });
+      const board = await this.refreshLocked(tx, prior);
+      const input = candidate.input as unknown as BoardAiInput;
+      if (board.version !== candidate.boardVersion || board.materialFingerprint !== input.materialFingerprint) return null;
+      const claimed = await tx.knowledgeProcedureBoardAi.updateMany({ where: { id: candidate.id, ...eligible }, data: {
+        state: 'running', leaseToken, leaseUntil: new Date(now.getTime() + 660000), attempts: { increment: 1 }, errorCode: null,
+      } });
+      if (claimed.count !== 1) return null;
+      const job = await tx.knowledgeProcedureBoardAi.findUniqueOrThrow({ where: { id: candidate.id } });
+      return { ...job, kind: boardAiKindSchema.parse(job.kind), state: boardAiStateSchema.parse(job.state), input: job.input as unknown as BoardAiInput };
+    });
+  }
+  async saveAiResult(id: string, leaseToken: string, boardVersion: number, result: unknown) {
+    return this.db.$transaction(async tx => {
+      const job = await tx.knowledgeProcedureBoardAi.findUniqueOrThrow({ where: { id } });
+      await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${job.boardId} FOR UPDATE`;
+      const board = await this.refreshLocked(tx, await tx.knowledgeProcedureBoard.findUniqueOrThrow({ where: { id: job.boardId } }));
+      const current = await tx.knowledgeProcedureBoardAi.findUniqueOrThrow({ where: { id } });
+      if (current.leaseToken !== leaseToken || !current.leaseUntil || current.leaseUntil <= this.now() || !['running', 'stale'].includes(current.state)) return false;
+      const input = current.input as unknown as BoardAiInput;
+      const validated = current.kind === 'placement' ? validatePlacementResult(result, input) : validateFormatResult(result, input);
+      const stale = board.version !== boardVersion || current.boardVersion !== boardVersion || input.materialFingerprint !== board.materialFingerprint;
+      await tx.knowledgeProcedureBoardAi.update({ where: { id }, data: { result: asJson(validated), state: stale ? 'stale' : 'ready', leaseToken: null, leaseUntil: null } });
+      return true;
+    });
+  }
+  async deferAi(id: string, leaseToken: string, code: string, deferred = true) {
+    const job = await this.db.knowledgeProcedureBoardAi.findUniqueOrThrow({ where: { id } });
+    const disabled = code === 'PROCEDURE_BOARD_CLIENT_DISABLED';
+    const delay = disabled ? 30000 : Math.min(300000, 30000 * 2 ** Math.min(4, Math.max(0, job.attempts - 1)));
+    await this.db.knowledgeProcedureBoardAi.updateMany({ where: { id, leaseToken, state: 'running' }, data: {
+      ...(disabled ? { attempts: Math.max(0, job.attempts - 1) } : {}),
+      state: deferred ? 'deferred' : 'failed', errorCode: code, retryAt: new Date(this.now().getTime() + delay), leaseToken: null, leaseUntil: null,
+    } });
+  }
+  async suggestions(procedureId: string, clientDeviceId: string) {
+    const board = await this.refreshMaterials(procedureId, clientDeviceId);
+    const [current, previous] = await Promise.all([
+      this.db.knowledgeProcedureBoardAi.findUnique({ where: { boardId_kind_requestKey: { boardId: board.id, kind: 'placement', requestKey: String(board.version) } } }),
+      this.db.knowledgeProcedureBoardAi.findFirst({ where: { boardId: board.id, kind: 'placement', boardVersion: { lt: board.version }, result: { not: Prisma.DbNull } }, orderBy: { boardVersion: 'desc' } }),
+    ]);
+    const input = this.snapshot(board, await this.materialsOf(this.db, procedureId));
+    const view = (job: KnowledgeProcedureBoardAi, stale: boolean) => ({ id: job.id, boardVersion: job.boardVersion, ...(stale ? { stale: true } : {}), ...validatePlacementResult(job.result, input) });
+    return { boardVersion: board.version, status: current ? boardAiStateSchema.parse(current.state) : 'pending',
+      current: current?.state === 'ready' ? view(current, false) : null, previous: previous ? view(previous, true) : null,
+      pollAfterMs: current?.state === 'deferred' ? 10000 : 5000 };
+  }
+  async formatProposal(procedureId: string, id: string, clientDeviceId: string) {
+    const board = await this.refreshMaterials(procedureId, clientDeviceId);
+    const job = await this.db.knowledgeProcedureBoardAi.findFirst({ where: { id, boardId: board.id, kind: 'format' } });
+    if (!job) notFound();
+    return { proposalId: id, boardVersion: job.boardVersion, status: boardAiStateSchema.parse(job.state), result: job.result, pollAfterMs: 5000 };
+  }
+  private async decisionReplay(tx: Prisma.TransactionClient, board: KnowledgeProcedureBoard, clientDeviceId: string, id: string, hash: string) {
+    const event = await tx.knowledgeProcedureBoardEvent.findUnique({ where: { id } });
+    if (!event) return false;
+    if (event.boardId !== board.id || event.clientDeviceId !== clientDeviceId || event.layoutHash !== hash) boardConflict(board.version);
+    return true;
+  }
+  async decidePlacement(procedureId: string, clientDeviceId: string, id: string, input: PlacementDecision) {
+    const board = await this.db.$transaction(async tx => {
+      const prior = await this.board(tx, procedureId);
+      await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${prior.id} FOR UPDATE`;
+      const board = await this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
+      const hash = createHash('sha256').update(JSON.stringify({ id, input })).digest('hex');
+      if (await this.decisionReplay(tx, board, clientDeviceId, input.eventId, hash)) return board;
+      const job = await tx.knowledgeProcedureBoardAi.findFirst({ where: { id, boardId: board.id, kind: 'placement' } });
+      if (!job) notFound();
+      if (job.state !== 'ready' || job.boardVersion !== board.version || input.expectedVersion !== board.version) suggestionStale();
+      const snapshot = this.snapshot(board, await this.materialsOf(tx, procedureId));
+      const result = validatePlacementResult(job.result, snapshot);
+      const placement = result.placements.find(proposal => proposal.id === input.proposalId);
+      const heading = result.headings.find(proposal => proposal.id === input.proposalId);
+      const conflict = result.conflicts.find(proposal => proposal.id === input.proposalId);
+      let layout = layoutSchema.parse(board.layout);
+      const decisions = decisionsSchema.parse(board.decisions);
+      const base = { suggestionSetId: id, proposalId: input.proposalId };
+      let event: BoardEvent;
+      if (placement && ['accept', 'dismiss', 'relocate'].includes(input.action)) {
+        const material = snapshot.materials.find(material => material.materialId === placement.materialId)!;
+        const work = { ...(input.workId ? { workId: input.workId, activeMs: input.activeMs } : {}) };
+        if (input.action === 'dismiss') {
+          decisions.dismissedPlacements.push({ materialId: material.materialId, materialFingerprint: material.materialFingerprint });
+          event = { id: input.eventId, type: 'placement_dismissed', payload: { ...base, materialId: material.materialId, ...work } };
+        } else {
+          if (!input.itemId || boardItems(layout).some(entry => entry.item.itemId === input.itemId)) invalidBoard();
+          const target = input.action === 'relocate' ? input.target! : { page: placement.page, row: placement.row, col: placement.col, index: placement.index, mode: placement.mode };
+          if (input.action === 'relocate' && same(target, { page: placement.page, row: placement.row, col: placement.col, index: placement.index, mode: placement.mode })) invalidBoard();
+          try { layout = placeItem(layout, { itemId: input.itemId, kind: 'material', materialId: material.materialId, origin: 'ai-accepted', style: material.source.images.length ? 'figure' : 'body' }, target); }
+          catch { invalidBoard(); }
+          const at = boardItems(layout).find(entry => entry.item.itemId === input.itemId)!.at;
+          if (input.action === 'accept' && !await tx.knowledgeProcedureBoardEvent.findUnique({ where: { dedupeKey: `show:${board.id}:${id}:${placement.id}` } })) invalidBoard('先に提案表示を記録してください');
+          event = { id: input.eventId, type: input.action === 'accept' ? 'placement_accepted' : 'ghost_relocated', payload: { ...base, materialId: material.materialId, itemId: input.itemId, to: at, ...work } };
+        }
+      } else if (heading && ['accept', 'dismiss'].includes(input.action) && !input.itemId && !input.workId) {
+        if (input.action === 'accept') layout.pages[heading.page - 1].heading = heading.text;
+        else decisions.dismissedHeadings.push({ page: heading.page, text: heading.text });
+        event = { id: input.eventId, type: input.action === 'accept' ? 'heading_accepted' : 'heading_dismissed', payload: base };
+      } else if (conflict && input.action === 'select_conflict' && !input.itemId && !input.workId) {
+        if (input.selectedMaterialId !== null && !conflict.materialIds.includes(input.selectedMaterialId!)) invalidBoard();
+        decisions.conflicts = decisions.conflicts.filter(entry => !entry.materialIds.every(materialId => conflict.materialIds.includes(materialId)));
+        decisions.conflicts.push({ materialIds: conflict.materialIds, selectedMaterialId: input.selectedMaterialId! });
+        event = { id: input.eventId, type: 'conflict_selected', payload: { ...base, selectedMaterialId: input.selectedMaterialId! } };
+      } else invalidBoard();
+      await tx.knowledgeProcedureBoard.update({ where: { id: board.id }, data: { layout: asJson(layout), decisions: asJson(decisionsSchema.parse(decisions)), version: { increment: 1 } } });
+      await this.insertEvent(tx, board, clientDeviceId, board.version + 1, event, hash);
+      return this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
+    });
+    return this.response(board);
+  }
+  async decideFormat(procedureId: string, clientDeviceId: string, id: string, input: FormatDecision) {
+    const result = await this.db.$transaction(async tx => {
+      const prior = await this.board(tx, procedureId);
+      await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${prior.id} FOR UPDATE`;
+      const current = await this.board(tx, procedureId);
+      const board = input.action === 'revert' ? current : await this.refreshLocked(tx, current, clientDeviceId);
+      const hash = createHash('sha256').update(JSON.stringify({ id, input })).digest('hex');
+      const job = await tx.knowledgeProcedureBoardAi.findFirst({ where: { id, boardId: board.id, kind: 'format' } });
+      if (!job) notFound();
+      if (await this.decisionReplay(tx, board, clientDeviceId, input.eventId, hash)) return { board, state: job.state };
+      if (input.action === 'accept' && (job.state !== 'ready' || job.boardVersion !== board.version || input.expectedVersion !== board.version)) suggestionStale();
+      if (['accepted', 'reverted'].includes(job.state)
+        || (input.expectedVersion !== job.boardVersion && input.expectedVersion !== board.version)) suggestionStale();
+      const layout = input.action === 'accept' ? applyFormatResult(job.result, layoutSchema.parse(board.layout)) : layoutSchema.parse(board.layout);
+      const state = input.action === 'accept' ? 'accepted' : 'reverted';
+      await tx.knowledgeProcedureBoardAi.update({ where: { id }, data: { state, leaseToken: null, leaseUntil: null } });
+      if (input.action === 'accept') await tx.knowledgeProcedureBoard.update({ where: { id: board.id }, data: { layout: asJson(layout), version: { increment: 1 } } });
+      await this.insertEvent(tx, board, clientDeviceId, board.version + (input.action === 'accept' ? 1 : 0),
+        { id: input.eventId, type: input.action === 'accept' ? 'format_accepted' : 'format_reverted', payload: { suggestionSetId: id } }, hash);
+      return { board: input.action === 'revert' ? board : await this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId), state };
+    });
+    return { ...await this.response(result.board), proposalId: id, state: result.state };
   }
   private async metricEvents(boardId: string) {
     return this.db.$queryRaw<RecordedBoardEvent[]>`
@@ -179,7 +372,8 @@ export class PrismaProcedureBoardRepository {
       FROM "KnowledgeProcedureBoardEvent" WHERE "boardId" = ${boardId}`;
   }
   private async response(board: KnowledgeProcedureBoard) {
-    return { ...decode(board), stats: cumulativeStats(await this.metricEvents(board.id), board.trialStartedAt) };
+    const job = await this.db.knowledgeProcedureBoardAi.findUnique({ where: { boardId_kind_requestKey: { boardId: board.id, kind: 'placement', requestKey: String(board.version) } } });
+    return { ...decode(board), ai: { status: job ? boardAiStateSchema.parse(job.state) : 'pending' }, stats: cumulativeStats(await this.metricEvents(board.id), board.trialStartedAt) };
   }
   async appendEvents(procedureId: string, clientDeviceId: string, version: number, events: BoardEvent[]) {
     const run = () => this.db.$transaction(async tx => {
@@ -202,11 +396,14 @@ export class PrismaProcedureBoardRepository {
   }
   async startTrial(procedureId: string, clientDeviceId: string, expectedVersion: number, startedAt: Date) {
     return this.db.$transaction(async tx => {
-      const board = await this.board(tx, procedureId);
+      const prior = await this.board(tx, procedureId);
+      await tx.$queryRaw`SELECT "id" FROM "KnowledgeProcedureBoard" WHERE "id" = ${prior.id} FOR UPDATE`;
+      const board = await this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
       if (board.trialStartedAt || board.version !== expectedVersion) boardConflict(board.version);
       const result = await tx.knowledgeProcedureBoard.updateMany({ where: { id: board.id, version: expectedVersion, trialStartedAt: null },
         data: { trialStartedAt: startedAt, version: { increment: 1 }, lastRequestedClientDeviceId: clientDeviceId } });
       if (result.count !== 1) boardConflict((await this.board(tx, procedureId)).version);
+      await this.refreshLocked(tx, await this.board(tx, procedureId), clientDeviceId);
       return { version: expectedVersion + 1, trialStartedAt: startedAt.toISOString() };
     });
   }
