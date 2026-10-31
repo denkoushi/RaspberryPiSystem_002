@@ -745,7 +745,20 @@
       - >-
         (release_pi5_business_hermes_existing_id | default('') | length == 0)
         or release_pi5_business_hermes_existing_image == release_pi5_business_hermes_image
-    fail_msg: Existing business Hermes image differs from this release; preserve it and roll the Hermes runtime separately.
+        or release_pi5_business_hermes_existing_image in release_pi5_business_hermes_replaceable_images
+    fail_msg: Existing business Hermes image differs from this release and is not an approved predecessor; preserve it and roll the Hermes runtime separately.
+  when:
+    - release_pi5_route == 'fresh'
+    - release_pi5_business_hermes_enabled | bool
+
+- name: Decide whether Business Hermes requires an approved image transition
+  ansible.builtin.set_fact:
+    release_pi5_business_hermes_image_transition_required: >-
+      {{
+        release_pi5_business_hermes_existing_id | length > 0
+        and release_pi5_business_hermes_existing_image != release_pi5_business_hermes_image
+        and release_pi5_business_hermes_existing_image in release_pi5_business_hermes_replaceable_images
+      }}
   when:
     - release_pi5_route == 'fresh'
     - release_pi5_business_hermes_enabled | bool
@@ -1102,13 +1115,14 @@
 - name: Mark the independent business Hermes startup boundary
   ansible.builtin.set_fact:
     release_pi5_business_hermes_start_attempted: true
+    release_pi5_business_hermes_image_transition_attempted: "{{ release_pi5_business_hermes_image_transition_required | bool }}"
   when:
     - release_pi5_route == 'fresh'
     - release_pi5_business_hermes_enabled | bool
 
 - name: Start the independent business Hermes runtime before candidate traffic
   ansible.builtin.command:
-    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'business-hermes'] }}"
+    argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string] + (['--no-deps', '--force-recreate'] if (release_pi5_business_hermes_image_transition_required | bool) else []) + ['business-hermes'] }}"
   environment: "{{ release_pi5_compose_environment }}"
   changed_when: true
   when:
