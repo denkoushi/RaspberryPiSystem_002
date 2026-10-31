@@ -61,22 +61,29 @@ export function checkFollowUpAnswer({ question, previousPlan, plan, shown = [], 
   }).filter((item) => surface.includes(item.prefix)).sort((left, right) => right.prefix.length - left.prefix.length);
   const expected = candidates.length ? [candidates[0]] : organization(previousPlan.filters);
   if (!candidates.length && expected.some((filter) => !['eq', 'in'].includes(filter.op))) return unsupported('unsupported_op');
-  const query = relevanceQuery(content, filterValueTexts([...expected, ...(plan?.filters ?? [])]));
+  const query = relevanceQuery(content, filterValueTexts([...expected, ...planned]));
   if (!contentTokens(query).length) return unsupported('no_content');
   const inScope = (record) => expected.every((filter) => (filter.values ?? []).some((value) => normalize(record[filter.field]) === normalize(value)));
   const scopeOk = expected.length === 0 || (planned.length > 0
     && planned.every((filter) => filter.values?.length > 0 && filter.values.every((value) =>
       expected.some((scope) => scope.field === filter.field && scope.values.some((item) => normalize(item) === normalize(value)))))
     && expected.every((scope) => planned.some((filter) => filter.field === scope.field)));
+  const byId = new Map(records.map((record) => [bareId(record.id), record]));
+  const filtersOk = ids.every((id) => byId.has(id) && matchesFilters(byId.get(id), plan?.filters ?? []));
   // Use the executor's whole-corpus IDF and passage matching, including its one-specific-token rule.
   const index = buildLexicalIndex(records, bodyFields, query);
   const matches = (record) => inScope(record) && matchesSpecificToken(record, bodyFields, index);
+  const verbatimCount = records.filter(matches).length;
+  if (!verbatimCount && ids.length) {
+    if (!scopeOk || !filtersOk) {
+      return { supported: true, scopeOk, filtersOk, contentOk: null, ok: false,
+        matchedCount: 0, expectedIds: [], shown: ids };
+    }
+    return unsupported(index.specificTokens.size ? 'no_verbatim_content' : 'no_specific_content');
+  }
   const otherFilters = (plan?.filters ?? []).filter((filter) => !fields.includes(filter.field));
   const excluded = new Set(plan?.excludeShown === true || plan?.diagnostics?.excludeShown === true ? previousShown.map(bareId) : []);
   const matched = records.filter((record) => matches(record) && matchesFilters(record, otherFilters) && !excluded.has(bareId(record.id)));
-  if (!matched.length && ids.length) return unsupported('no_verbatim_content');
-  const byId = new Map(records.map((record) => [bareId(record.id), record]));
-  const filtersOk = ids.every((id) => byId.has(id) && matchesFilters(byId.get(id), plan?.filters ?? []));
   const contentOk = ids.length ? ids.every((id) => byId.has(id) && matches(byId.get(id))) : matched.length === 0;
   return { supported: true, scopeOk, filtersOk, contentOk, ok: scopeOk && filtersOk && contentOk,
     matchedCount: matched.length, expectedIds: matched.slice(0, 20).map((record) => bareId(record.id)), shown: ids };

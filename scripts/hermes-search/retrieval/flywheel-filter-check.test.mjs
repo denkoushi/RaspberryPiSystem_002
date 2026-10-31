@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkFollowUpAnswer, checkFilterAnswer, expectedFilterResults, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
+import { checkFollowUpAnswer, checkFilterAnswer, expectedFilterResults, followUpLoss, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
 import { nextIsoDay, parsePeriods, previousIsoDay } from './period-parse.mjs';
 
 const catalog = { id: 'nonconformity', fields: [
@@ -249,12 +249,16 @@ test('follow-up content falls back from diagnostics to plan span to semantic que
   }
   const generic = followCheck({ plan: { ...followPlan, diagnostics: undefined, semanticQuery: '通常状態' }, shown: ['fiction-6'] });
   assert.equal(generic.supported, false);
-  assert.equal(generic.reason, 'no_verbatim_content');
+  assert.equal(generic.reason, 'no_specific_content');
+  const empty = followCheck({ plan: { ...followPlan, diagnostics: undefined, semanticQuery: '通常状態' } });
+  assert.equal(empty.contentOk, true);
+  assert.equal(empty.ok, true);
   assert.equal(generic.contentOk, null);
 });
 
 test('follow-up strips standalone source labels before checking verbatim content', () => {
-  const records = followRecords.map((record, i) => i === 6 ? { ...record, condition: '不適合' } : record);
+  const records = followRecords.map((record, i) => i === 0 ? { ...record, condition: '配管不良' }
+    : i === 6 ? { ...record, condition: '不適合' } : record);
   const plan = { ...followPlan, diagnostics: { contentSpan: '配管不良の不適合' } };
   assert.deepEqual(followCheck({ records, plan, shown: ['fiction-6'] }), {
     supported: false, scopeOk: null, filtersOk: null, contentOk: null, ok: null,
@@ -266,17 +270,61 @@ test('follow-up strips standalone source labels before checking verbatim content
   assert.equal(followCheck({ plan: { ...plan, diagnostics: { contentSpan: '不適合' } } }).reason, 'no_content');
 });
 
-test('follow-up removes scope organizations and other filter values from content', () => {
+test('follow-up removes scope organizations from content', () => {
   const records = followRecords.map((record, i) => ({ ...record, part: '架空部品Z',
     ...(i === 6 ? { condition: `${departments[2]} 架空部品Z` } : {}) }));
   for (const filters of [followPlan.filters, []]) {
     const plan = { ...followPlan, filters: [...filters, org(['架空部品Z'], 'part')],
-      diagnostics: { contentSpan: `${departments[2]} 架空部品Z 異物の不適合` } };
+      diagnostics: { contentSpan: `${departments[2]} 異物の不適合` } };
     const check = followCheck({ records, plan, shown: ['fiction-2'] });
     assert.equal(check.contentOk, true);
     assert.deepEqual(check.expectedIds, ['fiction-2']);
-    const noContent = followCheck({ records, plan: { ...plan, diagnostics: { contentSpan: `${departments[2]} 架空部品Z 不適合` } } });
+    const noContent = followCheck({ records, plan: { ...plan, diagnostics: { contentSpan: `${departments[2]} 不適合` } } });
     assert.equal(noContent.reason, 'no_content');
+  }
+});
+
+test('follow-up preserves scope and filter violations when no verbatim content is available', () => {
+  const records = followRecords.map((record, i) => i === 0 ? { ...record, condition: '配管破損' } : record);
+  for (const contentSpan of ['配管破損の不適合', '通常状態']) {
+    for (const [plan, shown, scopeOk, filtersOk, loss] of [
+      [{ ...followPlan, filters: priorFollowPlan.filters }, ['fiction-0'], false, true, 'follow_up_scope'],
+      [followPlan, ['fiction-0'], true, false, 'follow_up_wrong'],
+    ]) {
+      const check = followCheck({ records, plan: { ...plan, diagnostics: { contentSpan } }, shown });
+      assert.deepEqual(check, { supported: true, scopeOk, filtersOk, contentOk: null,
+        ok: false, matchedCount: 0, expectedIds: [], shown });
+      assert.equal(followUpLoss(check, 'fallback'), loss);
+    }
+  }
+});
+
+test('follow-up retains content overlapping a non-organization filter value', () => {
+  const records = followRecords.map((record, i) => ({ ...record, part: '配管破断',
+    ...(i === 2 ? { condition: '配管破損' } : {}) }));
+  const plan = { ...followPlan, filters: [...followPlan.filters, org(['配管破断'], 'part')],
+    diagnostics: { contentSpan: '配管破損の不適合' } };
+  const check = followCheck({ records, plan, shown: ['fiction-2'] });
+  assert.equal(check.supported, true);
+  assert.equal(check.contentOk, true);
+  assert.equal(check.ok, true);
+  assert.deepEqual(check.expectedIds, ['fiction-2']);
+});
+
+test('follow-up keeps content failures supported when filters or exclusions remove all matches', () => {
+  const records = followRecords.map((record, i) => ({ ...record, part: i === 6 ? '対象部品' : '別部品' }));
+  for (const extra of [
+    { plan: { ...followPlan, filters: [...followPlan.filters, org(['対象部品'], 'part')] } },
+    { plan: { ...followPlan, excludeShown: true }, previousShown: ['fiction-2', 'fiction-3'] },
+  ]) {
+    const check = followCheck({ records, shown: ['fiction-6'], ...extra });
+    assert.equal(check.supported, true);
+    assert.equal(check.scopeOk, true);
+    assert.equal(check.filtersOk, true);
+    assert.equal(check.contentOk, false);
+    assert.equal(check.ok, false);
+    assert.equal(check.matchedCount, 0);
+    assert.deepEqual(check.expectedIds, []);
   }
 });
 
