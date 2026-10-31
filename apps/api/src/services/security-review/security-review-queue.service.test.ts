@@ -3,10 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InferenceDeferredError, type TextCompletionRequest, type TextCompletionResult } from '../inference/ports/text-completion.port.js';
+import { logger } from '../../lib/logger.js';
 import { fingerprint, MATERIAL_BYTES } from './material.js';
 import { atomicJson, ensureQueue, queueCounts, readQueueResults, resultSchema, reviewActivity } from './queue-storage.js';
 import { halveMaterial } from './review-completion.js';
 import { jobUnits, quietTime, SecurityReviewQueueService } from './security-review-queue.service.js';
+
+vi.mock('../../lib/logger.js', () => ({ logger: { warn: vi.fn() } }));
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
@@ -37,6 +40,7 @@ async function enqueue(sha = 'a'.repeat(40), files = [{ path: 'app.ts', diff: '+
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'security-review-queue-test-'));
   current = new Date('2026-10-31T12:00:00+09:00');
+  vi.mocked(logger.warn).mockClear();
   complete.mockReset().mockResolvedValue(answer);
   vi.mocked(rename).mockClear();
   reviewActivity.nightly = false; reviewActivity.queueUnit = null;
@@ -105,6 +109,52 @@ describe('commit review queue', () => {
     expect(complete).toHaveBeenCalledTimes(1);
     expect(material(complete.mock.calls[0]![0])).toBe('+second\n');
     expect(await json('done', sha)).toMatchObject({ units: 2, findings: [finding] });
+  });
+
+  it('defers the first two vague answers for 30 minutes and fails the third without blocking other jobs', async () => {
+    const sha = await enqueue('a'.repeat(40), [
+      { path: 'app.ts', diff: '+synthetic line\n' }, { path: 'later.ts', diff: '+later\n' },
+    ], '2026-10-29T01:00:00.000Z');
+    const vague = { ...answer, rawText: '{"findings":[],"refusedOrVague":true}' };
+    complete.mockResolvedValueOnce(vague);
+    const next = await enqueue('b'.repeat(40));
+    await tick();
+    expect(await json('done', next)).toMatchObject({ sha: next });
+    expect(complete).toHaveBeenCalledTimes(2);
+    for (const attempt of [1, 2]) {
+      const progress = await json('progress', sha);
+      expect(progress.units[0]).toMatchObject({ vagueAttempts: attempt,
+        retryAfter: new Date(current.getTime() + 30 * 60_000).toISOString() });
+      expect(progress.units[0].result).toBeUndefined();
+      expect(await json('pending', sha)).toMatchObject({ sha });
+      const other = await enqueue(String(attempt).repeat(40));
+      complete.mockClear();
+      await tick();
+      expect(await json('done', other)).toMatchObject({ sha: other });
+      expect(complete).toHaveBeenCalledTimes(1);
+      complete.mockClear().mockResolvedValueOnce(vague);
+      current = new Date(current.getTime() + 30 * 60_000);
+      await tick();
+    }
+    expect(await json('failed', sha)).toMatchObject({ units: 2,
+      failedUnits: [{ path: 'app.ts', reason: 'refused_or_vague' }] });
+    expect(logger.warn).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenNthCalledWith(1, { sha, path: 'app.ts', vagueAttempts: 1 }, expect.any(String));
+    expect(logger.warn).toHaveBeenNthCalledWith(2, { sha, path: 'app.ts', vagueAttempts: 2 }, expect.any(String));
+  });
+
+  it('reads legacy progress without vagueAttempts and succeeds on a deferred retry', async () => {
+    const sha = await enqueue();
+    await atomicJson(filename('progress', sha), { version: 1, sha,
+      units: [{ id: '0', path: 'app.ts', text: '+legacy\n', attempts: 0 }] });
+    complete.mockResolvedValueOnce({ ...answer, rawText: '{"findings":[],"refusedOrVague":true}' });
+    await tick();
+    expect((await json('progress', sha)).units[0].vagueAttempts).toBe(1);
+    current = new Date(current.getTime() + 30 * 60_000);
+    await tick();
+    expect(await json('done', sha)).toMatchObject({ failedUnits: [] });
+    expect(material(complete.mock.calls[1]![0])).toBe('+legacy\n');
+    expect((await queueCounts(root)).invalid).toBe(0);
   });
 
   it('moves on to the next pending job when another process wins the claim rename', async () => {

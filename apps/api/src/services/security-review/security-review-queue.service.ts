@@ -1,6 +1,7 @@
 import { rename, rm, stat, utimes } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
+import { logger } from '../../lib/logger.js';
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { MATERIAL_BYTES, redactCode, splitBytes } from './material.js';
 import { completeReview, completionError, halveMaterial, loadKnown, timedOut, unavailable } from './review-completion.js';
@@ -8,6 +9,7 @@ import { atomicJson, ensureQueue, jobSchema, quarantine, readQueueJson, queueNam
 import { securityReviewFindingSchema } from './report-schema.js';
 
 const unitSchema = z.object({ id: z.string(), path: z.string(), text: z.string(), attempts: z.number().int().nonnegative().default(0),
+  vagueAttempts: z.number().int().nonnegative().default(0), retryAfter: z.string().datetime({ offset: true }).optional(),
   result: z.object({ findings: z.array(securityReviewFindingSchema), refusedOrVague: z.boolean(), error: z.string().optional() }).strict().optional(),
 }).strict();
 const progressSchema = z.object({ version: z.literal(1), sha: jobSchema.shape.sha, units: z.array(unitSchema) }).strict();
@@ -23,11 +25,11 @@ export function jobUnits(files: { path: string; diff: string }[]): Unit[] {
   const units: Unit[] = [];
   for (const file of files) {
     let text = '';
-    const flush = () => { if (text) { units.push({ id: String(units.length), path: file.path, text, attempts: 0 }); text = ''; } };
+    const flush = () => { if (text) { units.push({ id: String(units.length), path: file.path, text, attempts: 0, vagueAttempts: 0 }); text = ''; } };
     for (const line of redactCode(file.diff).match(/[^\n]*\n|[^\n]+/g) ?? []) {
       if (Buffer.byteLength(text + line) > MATERIAL_BYTES) flush();
       const pieces = splitBytes(line);
-      for (const piece of pieces.slice(0, -1)) units.push({ id: String(units.length), path: file.path, text: piece, attempts: 0 });
+      for (const piece of pieces.slice(0, -1)) units.push({ id: String(units.length), path: file.path, text: piece, attempts: 0, vagueAttempts: 0 });
       text += pieces.at(-1) ?? '';
     }
     flush();
@@ -61,7 +63,7 @@ export class SecurityReviewQueueService {
       if (job) pending.push({ name, job });
     }
     pending.sort((a, b) => a.job.committedAt.localeCompare(b.job.committedAt) || a.job.enqueuedAt.localeCompare(b.job.enqueuedAt) || a.name.localeCompare(b.name));
-    for (const { name, job } of pending) {
+    jobs: for (const { name, job } of pending) {
       if (blocked()) return;
       const claimed = path.join(root, 'claimed', name);
       try { await rename(path.join(root, 'pending', name), claimed); }
@@ -85,6 +87,7 @@ export class SecurityReviewQueueService {
           progress = { version: 1 as const, sha: job.sha, units: jobUnits(job.files) };
           await atomicJson(progressFile, progress);
         }
+        if (progress.units.some(unit => unit.retryAfter && Date.parse(unit.retryAfter) > now().getTime())) continue;
         const known = await loadKnown(this.deps.dataDir);
         for (let index = 0; index < progress.units.length; index++) {
           const unit = progress.units[index]!;
@@ -100,10 +103,20 @@ export class SecurityReviewQueueService {
             if (answer.length) {
               const halves = halveMaterial(unit.text);
               if (halves) {
-                progress.units.splice(index, 1, ...halves.map((text, half) => ({ id: `${unit.id}.${half}`, path: unit.path, text, attempts: 0 })));
+                progress.units.splice(index, 1, ...halves.map((text, half) => ({ id: `${unit.id}.${half}`, path: unit.path, text, attempts: 0, vagueAttempts: 0 })));
                 index--;
               } else unit.result = { findings: [], refusedOrVague: false, error: 'length_at_minimum_unit' };
             } else {
+              delete unit.retryAfter;
+              if (answer.refusedOrVague) {
+                unit.vagueAttempts++;
+                if (unit.vagueAttempts < 3) {
+                  unit.retryAfter = new Date(now().getTime() + 30 * 60_000).toISOString();
+                  await atomicJson(progressFile, progress);
+                  logger.warn({ sha: job.sha, path: unit.path, vagueAttempts: unit.vagueAttempts }, 'Security review retry scheduled');
+                  continue jobs;
+                }
+              }
               unit.result = { findings: answer.findings, refusedOrVague: answer.refusedOrVague,
                 ...(answer.refusedOrVague ? { error: 'refused_or_vague' } : {}) };
             }
@@ -113,7 +126,7 @@ export class SecurityReviewQueueService {
               unit.attempts++;
               if (unit.attempts >= 2) {
                 const halves = halveMaterial(unit.text);
-                if (halves) progress.units.splice(index, 1, ...halves.map((text, half) => ({ id: `${unit.id}.${half}`, path: unit.path, text, attempts: 0 })));
+                if (halves) progress.units.splice(index, 1, ...halves.map((text, half) => ({ id: `${unit.id}.${half}`, path: unit.path, text, attempts: 0, vagueAttempts: 0 })));
                 else unit.result = { findings: [], refusedOrVague: false, error: 'timeout_at_minimum_unit' };
               }
               if (!unit.result) index--;
