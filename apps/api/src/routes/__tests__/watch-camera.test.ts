@@ -21,6 +21,9 @@ vi.mock('../kiosk/shared.js', async () => ({
 }));
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
+  clientDevice: { findMany: vi.fn(), findUnique: vi.fn() },
+  watchCameraSampleSession: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn(), delete: vi.fn() },
+  watchCameraSampleFrame: { findMany: vi.fn(), groupBy: vi.fn(), updateMany: vi.fn() },
   watchCameraFrame: { aggregate: vi.fn(), create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
 } }));
 const files = vi.hoisted(() => ({ writeBatch: vi.fn(), delete: vi.fn(), read: vi.fn() }));
@@ -39,6 +42,7 @@ const post = (payload = jpeg, contentType = 'image/jpeg', key = 'camera-key') =>
   headers: { 'content-type': contentType, 'x-client-key': key }, payload });
 beforeEach(async () => {
   vi.resetAllMocks(); device += 1;
+  vi.mocked(prisma.watchCameraSampleSession.findFirst).mockResolvedValue(null);
   vi.mocked(requireClientDevice).mockResolvedValue({ clientDevice: { id: `device-${device}`, name: 'zero-edge-cam-1' } } as never);
   vi.mocked(prisma.watchCameraFrame.aggregate).mockResolvedValue({ _sum: { byteSize: 0 } } as never);
   vi.mocked(prisma.watchCameraFrame.findMany).mockResolvedValue([]);
@@ -182,5 +186,75 @@ describe('watch camera durable storage and inference', () => {
     expect(inference.complete).not.toHaveBeenCalled();
     inference.configured.mockReturnValue(true); inference.complete.mockResolvedValue({ rawText: '{"person":"yes"}' });
     await expect(judgeWatchCameraFrame(jpeg)).rejects.toThrow('Invalid person judgement');
+  });
+});
+
+
+describe('watch camera sample authorization', () => {
+  const endpoints = [
+    { method: 'GET' as const, url: '/watch-camera/admin/cameras' },
+    { method: 'GET' as const, url: '/watch-camera/admin/samples' },
+    { method: 'POST' as const, url: '/watch-camera/admin/samples', payload: {} },
+    { method: 'POST' as const, url: `/watch-camera/admin/samples/${id}/stop` },
+    { method: 'GET' as const, url: `/watch-camera/admin/samples/${id}/frames` },
+    { method: 'GET' as const, url: `/watch-camera/admin/sample-frames/${id}/thumb` },
+    { method: 'PATCH' as const, url: `/watch-camera/admin/sample-frames/${id}`, payload: { label: 'ok' } },
+    { method: 'DELETE' as const, url: `/watch-camera/admin/samples/${id}` },
+  ];
+  it.each(['MANAGER', 'VIEWER'])('rejects %s on every sample endpoint', async (role) => {
+    for (const endpoint of endpoints) {
+      expect((await app.inject({ ...endpoint, headers: authorization(role) })).statusCode).toBe(403);
+    }
+  });
+  it('requires authentication on every sample endpoint', async () => {
+    for (const endpoint of endpoints) expect((await app.inject(endpoint)).statusCode).toBe(401);
+  });
+  it.each([
+    { intervalSec: 20, durationSec: 300, maxFrames: 10 },
+    { intervalSec: 10, durationSec: 60, maxFrames: 10 },
+    { intervalSec: 10, durationSec: 300, maxFrames: 20001 },
+  ])('rejects invalid start input before DB access: %s', async (payload) => {
+    expect((await app.inject({ method: 'POST', url: '/watch-camera/admin/samples', headers: authorization('ADMIN'),
+      payload: { clientDeviceId: id, ...payload } })).statusCode).toBe(400);
+  });
+});
+
+
+describe('watch camera sample ADMIN API', () => {
+  it('creates sessions and returns 409 on a duplicate camera start', async () => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ name: 'zero-edge-cam-1' } as never);
+    vi.mocked(prisma.watchCameraSampleSession.create).mockResolvedValue({ id } as never);
+    const payload = { clientDeviceId: id, intervalSec: 30, durationSec: 3600, maxFrames: 2000 };
+    const response = await app.inject({ method: 'POST', url: '/watch-camera/admin/samples', payload, headers: authorization('ADMIN') });
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toEqual({ id });
+    expect(prisma.watchCameraSampleSession.create).toHaveBeenCalledWith({ data: expect.objectContaining(payload) });
+    vi.mocked(prisma.watchCameraSampleSession.findFirst).mockResolvedValue({ id } as never);
+    expect((await app.inject({ method: 'POST', url: '/watch-camera/admin/samples', payload, headers: authorization('ADMIN') })).statusCode).toBe(409);
+  });
+  it('lists cameras, sessions, and filtered frames as arrays', async () => {
+    vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([{ id, name: 'zero-edge-cam-1', location: null }] as never);
+    expect((await app.inject({ url: '/watch-camera/admin/cameras', headers: authorization('ADMIN') })).json()).toEqual([{ id, name: 'zero-edge-cam-1', location: null }]);
+    vi.mocked(prisma.watchCameraSampleSession.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.watchCameraSampleFrame.groupBy).mockResolvedValue([]);
+    expect((await app.inject({ url: `/watch-camera/admin/samples?clientDeviceId=${id}`, headers: authorization('ADMIN') })).json()).toEqual([]);
+    vi.mocked(prisma.watchCameraSampleFrame.findMany).mockResolvedValue([]);
+    expect((await app.inject({ url: `/watch-camera/admin/samples/${id}/frames?label=none&limit=200`, headers: authorization('ADMIN') })).json()).toEqual([]);
+    expect(prisma.watchCameraSampleFrame.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { sessionId: id, label: null }, take: 200 }));
+  });
+  it('labels, stops, and deletes sessions', async () => {
+    vi.mocked(prisma.watchCameraSampleFrame.updateMany).mockResolvedValue({ count: 1 });
+    expect((await app.inject({ method: 'PATCH', url: `/watch-camera/admin/sample-frames/${id}`, payload: { label: null }, headers: authorization('ADMIN') })).statusCode).toBe(204);
+    expect(prisma.watchCameraSampleFrame.updateMany).toHaveBeenCalledWith({ where: { id }, data: { label: null } });
+    vi.mocked(prisma.watchCameraSampleSession.findUnique).mockResolvedValue({ id, status: 'running' } as never);
+    vi.mocked(prisma.watchCameraSampleSession.update).mockResolvedValue({ id, status: 'stopped' } as never);
+    expect((await app.inject({ method: 'POST', url: `/watch-camera/admin/samples/${id}/stop`, headers: authorization('ADMIN') })).statusCode).toBe(200);
+    expect(prisma.watchCameraSampleSession.update).toHaveBeenCalledWith({ where: { id }, data: { status: 'stopped', endedAt: expect.any(Date) } });
+    vi.mocked(prisma.watchCameraSampleFrame.findMany).mockResolvedValue([]);
+    expect((await app.inject({ method: 'DELETE', url: `/watch-camera/admin/samples/${id}`, headers: authorization('ADMIN') })).statusCode).toBe(204);
+    expect(prisma.watchCameraSampleSession.delete).toHaveBeenCalledWith({ where: { id } });
+  });
+  it.each(['label=invalid', 'limit=201', 'limit=0'])('rejects invalid frame queries: %s', async (query) => {
+    expect((await app.inject({ url: `/watch-camera/admin/samples/${id}/frames?${query}`, headers: authorization('ADMIN') })).statusCode).toBe(400);
   });
 });

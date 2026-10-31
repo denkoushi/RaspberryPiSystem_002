@@ -9,7 +9,7 @@ describe('watch camera environment', () => {
     expect(schema.parse({})).toEqual({
       WATCH_CAMERA_PERSON_PROMPT: 'この写真に人が写っていますか。人の体の一部でも写っていれば true。',
       WATCH_CAMERA_PERSON_MIN_CONFIDENCE: 0.5, WATCH_CAMERA_JUDGE_INTERVAL_SEC: 30, WATCH_CAMERA_UNJUDGED_INTERVAL_SEC: 60,
-      WATCH_CAMERA_RETENTION_DAYS: 30, WATCH_CAMERA_MAX_BYTES: 2 * 1024 ** 3, WATCH_CAMERA_JUDGE_ENHANCE: true });
+      WATCH_CAMERA_SAMPLE_MAX_BYTES: 2 * 1024 ** 3, WATCH_CAMERA_RETENTION_DAYS: 30, WATCH_CAMERA_MAX_BYTES: 2 * 1024 ** 3, WATCH_CAMERA_JUDGE_ENHANCE: true });
   });
   it('accepts a custom prompt up to 1000 characters', () => {
     expect(schema.parse({ WATCH_CAMERA_PERSON_PROMPT: 'a'.repeat(1000) }).WATCH_CAMERA_PERSON_PROMPT).toBe('a'.repeat(1000));

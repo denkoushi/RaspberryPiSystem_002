@@ -493,6 +493,7 @@ model ClientDevice {
   mobileSlipVerifyRecords MobileSlipVerifyRecord[]
   mobileScanFrames MobileScanFrame[]
   watchCameraFrames WatchCameraFrame[]
+  watchCameraSampleSessions WatchCameraSampleSession[]
   id                                            String                                         @id @default(uuid())
   name                                          String
   location                                      String?
@@ -6126,4 +6127,54 @@ model WatchCameraFrame {
   @@index([capturedAt])
   @@index([clientDeviceId, capturedAt])
   @@map("watch_camera_frames")
+}
+
+
+enum WatchCameraSampleStatus {
+  running
+  stopped
+  completed
+}
+
+enum WatchCameraSampleLabel {
+  ok
+  ng
+  later
+}
+
+model WatchCameraSampleSession {
+  id             String @id @default(uuid())
+  clientDeviceId String
+  intervalSec    Int
+  durationSec    Int
+  maxFrames      Int
+  status         WatchCameraSampleStatus
+  startedAt      DateTime
+  endsAt         DateTime
+  endedAt        DateTime?
+  lastCapturedAt DateTime?
+  frameCount     Int @default(0)
+  byteSize       Int @default(0)
+  createdAt      DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  frames WatchCameraSampleFrame[]
+
+  @@index([clientDeviceId, status])
+  @@map("watch_camera_sample_sessions")
+}
+
+model WatchCameraSampleFrame {
+  id         String @id @default(uuid())
+  sessionId  String
+  capturedAt DateTime
+  fileKey    String
+  byteSize   Int
+  label      WatchCameraSampleLabel?
+  createdAt  DateTime @default(now())
+
+  session WatchCameraSampleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, capturedAt])
+  @@map("watch_camera_sample_frames")
 }
