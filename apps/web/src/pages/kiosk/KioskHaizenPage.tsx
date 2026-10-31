@@ -40,7 +40,7 @@ export function KioskHaizenPage() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<{ shelf: MobilePlacementRegisteredShelfEntry; rect: DOMRect } | null>(null);
   const tooltipId = useId();
-  const tooltipTimer = useRef<ReturnType<typeof setTimeout>>();
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hideTooltip = useCallback(() => { clearTimeout(tooltipTimer.current); setTooltip(null); }, []);
   const [toast, setToast] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);

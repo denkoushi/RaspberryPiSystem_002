@@ -37,7 +37,7 @@ export function useSerialBarcodeStream(
   /** テスト用。未指定時は VITE_BARCODE_AGENT_WS_URL または ws://localhost:7072/stream */
   wsUrl?: string
 ) {
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastProcessedEventIdRef = useRef<number | null>(null);
   const lastTextRef = useRef<string | null>(null);
   const enabledAtRef = useRef<string | null>(null);

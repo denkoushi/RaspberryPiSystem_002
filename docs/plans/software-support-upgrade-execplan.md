@@ -187,6 +187,21 @@ agent が動く端末(inventory の `kiosk` グループ):
 
 別 PR で行う。期限がないため最後に回す。
 
+上げる先は react / react-dom 19.3.1(2026-10-14 公開の最新安定版)、@types/react / @types/react-dom 19.3.0。React を使うのは `apps/web` だけで、`packages/*` と API は関係しない。
+
+影響調査(2026-10-31):
+
+- React 19 で消えた API は使っていない。関数部品の `defaultProps`、`propTypes`、string ref、`ReactDOM.render` / `hydrate` / `findDOMNode` / `unmountComponentAtNode`、`react-dom/test-utils`、`contextTypes`、`createFactory` は `apps/web/src` に無い。入口は既に `createRoot`。
+- 依存ライブラリは版を変えずに 19 対応済み(peerDependencies で確認)。react-router-dom 6.30.6(`>=16.8`)、@tanstack/react-query 5.90.10(`^18 || ^19`)、@tanstack/react-virtual 3.13.24、recharts 3.8.1、@xstate/react 6.0.0、@chatscope/chat-ui-kit-react 2.1.1、@a2ui/react 0.11.1。
+- テスト用の @testing-library/react 14 は React 18 専用のため 16.3.3 へ上げ、16 から別指定になった @testing-library/dom 10.4.2 を足す。
+- 型の変化で `tsc -b` が 41 件失敗する。`useRef<T>()` の引数必須化、`useRef<T>(null)` が `RefObject<T | null>` になったこと、グローバルの `JSX` 名前空間の廃止による。
+- 実行時の挙動が変わる箇所は1つ。`KioskLayout.tsx` がヘッダーを隠すときに `inert: ''` を渡しており、React 19 では空文字が偽になって属性が付かなくなる。`inert: true` にする。
+- recharts は `react-is` を同梱せず、そのままでは古い react-is 17 を拾う。17 は React 19 の要素を見分けられず、グラフ内の Fragment を展開できなくなるため、`apps/web` に react-is 19.3.1 を足す。
+- 単体テストは、タイマーを進める処理を `act` で包む、`alt=""` の画像の役割が testing-library 10 で `img` から `presentation` になったことへの追従、の2種類を直した。
+- lockfile は pnpm が誰も使っていない古い候補(jsdom 27 など)を整理するため、React 以外の行も減る。依存の版そのものは React とテスト用ライブラリ以外変わらない。
+
+確認は web の型チェック・lint・単体テスト・ビルド、E2E、キオスク画面と管理画面の表示で行う。戻すときは、この PR を revert して標準反映する(DB とイメージの形は変わらない)。
+
 ### 7. pnpm 10/11 → 12
 
 pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイルで Corepack では動かないため、Dockerfile 3 本と `scripts/ci/pnpm-exact.sh` は `npm install -g pnpm@<版>` 方式に変えた。設定は `package.json` の `pnpm` 欄から `pnpm-workspace.yaml` へ移し(`onlyBuiltDependencies` は `allowBuilds`、ビルドを走らせない `tesseract.js` は `false`)、lockfile は先頭に pnpm 自身の記録が 158 行増えただけで依存は変わらない。pnpm 12 は取得メタデータのキャッシュを `/root/.cache/pnpm` に約 450MB 書き、`pnpm prisma generate` は実行前に依存を入れ直して `.pnpm` 全体を書き換える。API イメージが 1.57GB になったため、キャッシュを同じ層で消し、`pnpm-workspace.yaml` の `verifyDepsBeforeRun: false` で入れ直しを止めた(圧縮後 Mac で 1.08GB、CI の ARM64 で 1.104GB。pnpm 自体の増加分を見込み、予算は 1.125GB にした)。出典: https://github.com/pnpm/pnpm/security/policy と https://github.com/pnpm/pnpm/releases/tag/v12.0.0
