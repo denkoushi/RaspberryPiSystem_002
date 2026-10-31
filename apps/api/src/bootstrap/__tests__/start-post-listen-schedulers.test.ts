@@ -77,6 +77,8 @@ describe('start-post-listen-schedulers fail-closed group', () => {
     expect(names).toContain('watch-camera-retention');
     expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'watch-camera-retention')).toBe(true);
     expect(names).toContain('csv-import');
+    expect(names).toContain('security-review-queue');
+    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'security-review-queue')).toBe(true);
   });
 
   it('stops started steps in reverse order', async () => {
@@ -163,6 +165,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'procedure-term-learning',
       'business-hermes-nightly',
       'security-review-nightly',
+      'security-review-queue',
       'fkojunst-mail-superseded-prune',
       'file-storage-integrity-backfill',
       'backup',

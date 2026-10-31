@@ -2,8 +2,7 @@ import { createTimeoutSignal } from '../../../lib/timeout-signal.js';
 import { emitInferenceCallOutcome } from '../observability/inference-observability.js';
 import { InferenceRouter } from '../routing/inference-router.js';
 
-import type { TextCompletionPort, TextCompletionRequest, TextCompletionResult } from '../ports/text-completion.port.js';
-import { InferenceDeferredError } from '../ports/text-completion.port.js';
+import { type TextCompletionPort, type TextCompletionRequest, type TextCompletionResult, InferenceDeferredError } from '../ports/text-completion.port.js';
 import { extractTextFromOpenAiStylePayload, type OpenAiStyleChatResponse } from './openai-chat-response.util.js';
 
 function inputSizeForMessages(messages: TextCompletionRequest['messages']): number {
@@ -30,7 +29,7 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
     let errorReason: string | undefined;
     let outputSize = 0;
 
-    const { signal, cleanup } = createTimeoutSignal(provider.timeoutMs);
+    const { signal, cleanup } = createTimeoutSignal(request.timeoutMs ?? provider.timeoutMs);
     try {
       const response = await this.deps.fetchImpl(new URL('/v1/chat/completions', provider.baseUrl), {
         method: 'POST',
@@ -58,8 +57,10 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
       }
 
       const payload = (await response.json()) as OpenAiStyleChatResponse;
-      const rawText = extractTextFromOpenAiStylePayload(payload);
-      if (!rawText) {
+      const finishReason = typeof payload.choices?.[0]?.finish_reason === 'string'
+        ? payload.choices[0].finish_reason : undefined;
+      const rawText = extractTextFromOpenAiStylePayload(payload) ?? '';
+      if (!rawText && !(request.useCase === 'security_review' && finishReason === 'length')) {
         errorReason = 'missing_assistant_text';
         throw new Error('Inference text response missing assistant text');
       }
@@ -74,9 +75,9 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
         inputSize,
         outputSize,
       });
-      return { rawText, model };
+      return { rawText, model, ...(finishReason === undefined ? {} : { finishReason }) };
     } catch (e) {
-      if (e instanceof Error && e.name === 'AbortError') {
+      if (signal.aborted || (e instanceof Error && e.name === 'TimeoutError')) {
         errorReason = 'timeout';
       } else if (!errorReason) {
         errorReason = e instanceof Error ? e.message.slice(0, 200) : 'unknown';
@@ -91,6 +92,7 @@ export class OpenAiCompatibleTextAdapter implements TextCompletionPort {
         inputSize,
         outputSize: 0,
       });
+      if (signal.aborted && !request.signal?.aborted) throw new DOMException('Inference call timed out', 'TimeoutError');
       throw e;
     } finally {
       cleanup();

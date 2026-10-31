@@ -4,9 +4,16 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { logger } from '../../lib/logger.js';
 import { InferenceDeferredError, type TextCompletionRequest } from '../inference/ports/text-completion.port.js';
-import { fingerprint, MATERIAL_BYTES, prepareChunks, redact } from './material.js';
+import { fingerprint, MATERIAL_BYTES, MAX_CHUNKS, prepareChunks, redact } from './material.js';
 import { securityReviewChunkAnswerSchema, securityReviewReportSchema, type DeviceHealth } from './report-schema.js';
-import { retryDeadline, SecurityReviewService } from './security-review.service.js';
+import { atomicJson, ensureQueue, queueCounts, readQueueResults, reviewActivity } from './queue-storage.js';
+import { CALL_TIMEOUT_MS } from './review-completion.js';
+import { RUN_TIMEOUT_MS, retryDeadline, SecurityReviewService } from './security-review.service.js';
+
+vi.mock('./queue-storage.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('./queue-storage.js')>();
+  return { ...actual, atomicJson: vi.fn(actual.atomicJson), queueCounts: vi.fn(actual.queueCounts), readQueueResults: vi.fn(actual.readQueueResults) };
+});
 
 vi.mock('../../lib/logger.js', () => ({ logger: { error: vi.fn() } }));
 
@@ -45,13 +52,13 @@ describe('Private security review', () => {
     await bundle('2026-10-25'); await bundle();
     const report = await run();
     expect(report).toMatchObject({ date: '2026-10-26', status: 'ok', deviceHealth: health, findings: [] });
-    expect(report?.chunks.map(chunk => chunk.kind)).toEqual(['security', 'errors', 'changes']);
+    expect(report?.chunks.map(chunk => chunk.kind)).toEqual(['security', 'errors']);
     expect(JSON.parse(report!.reason!)).toMatchObject({ carriedOver: 0, carryOverExpired: 0 });
     expect(clientErrors).toHaveBeenCalledWith(new Date('2026-10-25T06:00:00+09:00'));
     expect(deviceHealth).toHaveBeenCalledWith(new Date('2026-10-25T06:00:00+09:00'));
     expect(JSON.stringify(complete.mock.calls)).not.toContain('health-only-device');
     for (const [request] of complete.mock.calls) {
-      expect(request).toMatchObject({ useCase: 'security_review', background: true, maxTokens: 1200, temperature: 0, enableThinking: false, jsonOutput: true });
+      expect(request).toMatchObject({ useCase: 'security_review', background: true, maxTokens: 2000, timeoutMs: 120_000, temperature: 0, enableThinking: false, jsonOutput: true });
       expect(request.signal).toBeInstanceOf(AbortSignal);
     }
     const file = path.join(root, 'reports/2026-10-26.json');
@@ -65,15 +72,15 @@ describe('Private security review', () => {
   });
 
   it.each([{ carriedOver: 2, carryOverExpired: 0 }, { carriedOver: 0, carryOverExpired: 1 }])(
-    'accepts collector carry-over counts and reports incomplete coverage: %j', async counts => {
+    'accepts legacy carry-over counts without marking the queue partial: %j', async counts => {
       await bundle();
       const manifestFile = path.join(root, 'bundles/2026-10-26/manifest.json');
       const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
       await writeFile(manifestFile, JSON.stringify({ ...manifest, ...counts }));
       const report = await run();
-      expect(report?.status).toBe('partial');
+      expect(report?.status).toBe('ok');
       expect(JSON.parse(report!.reason!)).toMatchObject(counts);
-      expect(report?.chunks).toHaveLength(3);
+      expect(report?.chunks).toHaveLength(2);
       expect(securityReviewReportSchema.parse(report)).toEqual(report);
     });
 
@@ -83,9 +90,9 @@ describe('Private security review', () => {
     const report = await run();
     expect(report?.status).toBe('ok');
     expect(JSON.parse(report!.reason!).outcome).toBe('completed');
-    expect(complete).toHaveBeenCalledTimes(4);
+    expect(complete).toHaveBeenCalledTimes(3);
     expect(wait.mock.calls.map(call => call[0])).toEqual([10 * 60_000]);
-    expect(report?.chunks.map(item => item.id)).toEqual(['security-1', 'errors-1', 'changes-1']);
+    expect(report?.chunks.map(item => item.id)).toEqual(['security-1', 'errors-1']);
   });
 
   it('retries invalid JSON/schema once and records repeated failure without raw output', async () => {
@@ -95,7 +102,7 @@ describe('Private security review', () => {
     const report = await run();
     expect(report?.status).toBe('partial');
     expect(report?.chunks[0]?.error).toBe('invalid_model_schema');
-    expect(complete).toHaveBeenCalledTimes(4);
+    expect(complete).toHaveBeenCalledTimes(3);
     expect(JSON.stringify(report)).not.toContain('SECRET');
   });
 
@@ -128,11 +135,11 @@ describe('Private security review', () => {
   });
 
   it('caps UTF-8 bytes and fairly shares total chunks with truncation counts in the report', async () => {
-    const material = { security: '界'.repeat(6000), errors: 'e '.repeat(MATERIAL_BYTES * 10), changes: 'diff --git a/x b/x\n' + 'c '.repeat(MATERIAL_BYTES * 2) };
+    const material = { security: '界'.repeat(6000), errors: 'e '.repeat(MATERIAL_BYTES * 15), changes: 'diff --git a/x b/x\n' + 'c '.repeat(MATERIAL_BYTES * 2) };
     const prepared = prepareChunks(material);
     expect(prepared.chunks).toHaveLength(24);
     expect(prepared.chunks[0]?.kind).toBe('security');
-    expect(prepared.truncated).toEqual({ security: 0, errors: 4, changes: 0 });
+    expect(prepared.truncated).toEqual({ security: 0, errors: 14, changes: 0 });
     for (const chunk of prepared.chunks) {
       expect(Buffer.byteLength(chunk.text, 'utf8')).toBeLessThanOrEqual(MATERIAL_BYTES);
       expect(chunk.text).not.toContain('\uFFFD');
@@ -141,7 +148,7 @@ describe('Private security review', () => {
     const report = await run();
     expect(complete).toHaveBeenCalledTimes(24);
     expect(report?.status).toBe('partial');
-    expect(JSON.parse(report!.reason!).truncated).toEqual(prepared.truncated);
+    expect(JSON.parse(report!.reason!).truncated).toEqual(prepareChunks({ ...material, changes: '' }).truncated);
   });
 
   it('filters normalized known fingerprints and includes bounded known data in the prompt', async () => {
@@ -189,7 +196,7 @@ describe('Private security review', () => {
     });
     expect((await run())?.status).toBe('ok');
     expect(wait).toHaveBeenCalledTimes(1);
-    expect(complete).toHaveBeenCalledTimes(3);
+    expect(complete).toHaveBeenCalledTimes(2);
   });
 
   it('writes no_bundle at the final attempt and lets a later bundle replace it', async () => {
@@ -213,7 +220,7 @@ describe('Private security review', () => {
     const report = await run();
     expect(report).toMatchObject({ status: 'partial', deviceHealth: { attention: 'none', storage: { open: [], last24h: [] },
       ext4Errors: [], power: [], offline: [], unavailable: true } });
-    expect(complete).toHaveBeenCalledTimes(hasBundle ? 3 : 0);
+    expect(complete).toHaveBeenCalledTimes(hasBundle ? 2 : 0);
     expect(logger.error).toHaveBeenCalledWith({ error: 'TypeError', message: 'fixture health query failed' }, 'Security review device health unavailable');
     expect(JSON.parse(await readFile(path.join(root, 'reports/2026-10-26.json'), 'utf8'))).toEqual(report);
     if (!hasBundle) {
@@ -251,7 +258,7 @@ describe('Private security review', () => {
     expect(await readFile(path.join(root, 'known-findings.json'), 'utf8')).toBe('[]');
   });
 
-  it('preserves changes code while fully redacting security and errors', async () => {
+  it('reviews only logs at night and fully redacts security and errors', async () => {
     const name = 'apps/web/src/features/some-long-folder/SomeComponentName.test.tsx';
     const diff = `diff --git a/${name} b/${name}\n--- a/${name}\n+++ b/${name}\n+  const accessToken = req.headers.authorization;\n`;
     const key = '+-----BEGIN ' + 'PRIVATE KEY-----\n+private-data\n+-----END PRIVATE KEY-----\n';
@@ -266,8 +273,7 @@ describe('Private security review', () => {
     });
     expect(materials).toEqual([
       'Authorization: [REDACTED]\nCookie: [REDACTED]\n[REDACTED]\n',
-      'Authorization: [REDACTED]\nCookie: [REDACTED]\n[REDACTED]\n',
-      diff + '+[REDACTED]\n+https://[REDACTED]@example.test/path\n'
+      'Authorization: [REDACTED]\nCookie: [REDACTED]\n[REDACTED]\n'
     ]);
   });
 
@@ -277,5 +283,86 @@ describe('Private security review', () => {
     await bundle(); await run();
     expect(JSON.stringify(complete.mock.calls)).not.toContain('hidden');
     expect(JSON.stringify(complete.mock.calls)).toContain('ClientLog');
+  });
+});
+
+describe('Queued change results in nightly reports', () => {
+  const result = (sha: string, status: 'done' | 'failed' = 'done') => ({ version: 1, sha, status,
+    committedAt: '2026-10-01T00:00:00Z', finishedAt: '2026-10-02T00:00:00Z', units: 1,
+    failedUnits: status === 'failed' ? [{ path: 'app.ts', reason: 'length_at_minimum_unit' }] : [],
+    findings: [{ ...finding, kind: 'changes' }], reportedAt: null });
+  it('includes old unreported results, queue counts, and marks only after a report succeeds', async () => {
+    await bundle(); await ensureQueue(root);
+    const done = path.join(root, 'queue/done', 'a'.repeat(40) + '.json');
+    await atomicJson(done, result('a'.repeat(40)));
+    await atomicJson(path.join(root, 'queue/failed', 'b'.repeat(40) + '.json'), result('b'.repeat(40), 'failed'));
+    await atomicJson(path.join(root, 'queue/pending', 'c'.repeat(40) + '.json'), {
+      version: 1, sha: 'c'.repeat(40), parent: null, committedAt: '2026-10-03T00:00:00Z', enqueuedAt: '2026-10-04T00:00:00Z', files: [], bytes: 0, omittedFiles: 0,
+    });
+    complete.mockImplementation(async () => {
+      expect(JSON.parse(await readFile(done, 'utf8')).reportedAt).toBeNull(); return emptyAnswer;
+    });
+    const report = await run();
+    expect(report?.status).toBe('partial');
+    expect(report?.findings).toHaveLength(2);
+    expect(report?.changeQueue).toEqual({ reviewedCommits: 2, pending: 1, claimed: 0, failed: 1, invalid: 0, oldestPendingCommittedAt: '2026-10-03T00:00:00Z' });
+    expect(JSON.parse(await readFile(done, 'utf8')).reportedAt).toBe(current.toISOString());
+    complete.mockResolvedValue(emptyAnswer);
+    const rerun = await service().run(new AbortController().signal, { rerun: true });
+    expect(rerun?.changeQueue?.reviewedCommits).toBe(0);
+    expect(rerun?.status).toBe('ok');
+  });
+  it.each(['results', 'counts', 'reportedAt'])('writes a partial report despite queue %s failure', async operation => {
+    await bundle(); await ensureQueue(root);
+    const filename = path.join(root, 'queue/done', 'a'.repeat(40) + '.json');
+    await atomicJson(filename, result('a'.repeat(40)));
+    const actual = await vi.importActual<typeof import('./queue-storage.js')>('./queue-storage.js');
+    if (operation === 'results') vi.mocked(readQueueResults).mockRejectedValueOnce(Object.assign(new Error('read failed'), { code: 'EACCES' }));
+    if (operation === 'counts') vi.mocked(queueCounts).mockRejectedValueOnce(new Error('counts failed'));
+    if (operation === 'reportedAt') vi.mocked(atomicJson).mockImplementationOnce(async (target, value) => {
+      await actual.atomicJson(target, value);
+      vi.mocked(atomicJson).mockRejectedValueOnce(new Error('write failed'));
+    });
+    const report = await run();
+    expect(report?.status).toBe('partial');
+    expect(JSON.parse(report!.reason!).queueErrors).toHaveLength(1);
+    expect(JSON.parse(await readFile(path.join(root, 'reports/2026-10-26.json'), 'utf8'))).toEqual(report);
+    if (operation === 'reportedAt') expect(JSON.parse(await readFile(filename, 'utf8')).reportedAt).toBeNull();
+  });
+
+  it('keeps results unreported if publishing the nightly report fails', async () => {
+    await bundle(); await ensureQueue(root);
+    const filename = path.join(root, 'queue/done', 'a'.repeat(40) + '.json');
+    await atomicJson(filename, result('a'.repeat(40)));
+    await mkdir(path.join(root, 'reports/2026-10-26.json'), { recursive: true });
+    await expect(service().run(new AbortController().signal, { rerun: true })).rejects.toMatchObject({ code: 'EISDIR' });
+    expect(JSON.parse(await readFile(filename, 'utf8')).reportedAt).toBeNull();
+    expect(reviewActivity.nightly).toBe(false);
+  });
+  it('leaves overflowing results unreported for a following report', async () => {
+    await bundle(); await ensureQueue(root);
+    const first = result('a'.repeat(40)); first.findings = Array.from({ length: 9999 }, () => ({ ...finding, kind: 'changes' }));
+    await atomicJson(path.join(root, 'queue/done', 'a'.repeat(40) + '.json'), first);
+    const second = result('b'.repeat(40)); second.findings.push({ ...finding, kind: 'changes' });
+    const filename = path.join(root, 'queue/done', 'b'.repeat(40) + '.json'); await atomicJson(filename, second);
+    const report = await run();
+    expect(report?.findings).toHaveLength(9999);
+    expect(report?.changeQueue?.reviewedCommits).toBe(1);
+    expect(JSON.parse(await readFile(filename, 'utf8')).reportedAt).toBeNull();
+  });
+  it('splits truncated log input before parsing and records a minimum-unit failure', async () => {
+    await bundle(undefined, { security: 'line\n'.repeat(800), errors: '', changes: '' });
+    complete.mockResolvedValueOnce({ ...emptyAnswer, rawText: 'truncated', finishReason: 'length' } as typeof emptyAnswer);
+    const report = await run();
+    expect(report?.status).toBe('ok'); expect(complete).toHaveBeenCalledTimes(3);
+    expect(report?.chunks.map(chunk => chunk.id)).toEqual(['security-1.0', 'security-1.1']);
+    expect(MAX_CHUNKS * CALL_TIMEOUT_MS).toBeLessThan(RUN_TIMEOUT_MS);
+    await bundle('2026-10-25', { security: 'small', errors: '', changes: '' });
+    complete.mockResolvedValue({ ...emptyAnswer, finishReason: 'length' } as typeof emptyAnswer);
+    expect((await run())?.chunks[0]?.error).toBe('length_at_minimum_unit');
+  });
+  it('continues without changes.txt and releases nightly priority after failure', async () => {
+    await bundle(); await rm(path.join(root, 'bundles/2026-10-26/changes.txt'));
+    expect((await run())?.status).toBe('ok'); expect(reviewActivity.nightly).toBe(false);
   });
 });

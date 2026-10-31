@@ -12,6 +12,8 @@ You can see it working when, the morning after a deploy, a dated report exists i
 
 ## Progress
 
+- [x] (2026-10-31) Implement the persistent first-parent commit queue, resumable unit results, length splitting, and nightly `changeQueue` coverage; update collector delivery and hourly enqueue timers in both roles.
+- [ ] (2026-10-31) Complete validation with the repository-declared API dependencies. Python and focused API tests pass with local cached dependencies, but full API type-check, lint and bootstrap validation are blocked by missing or mismatched dependencies. Integration and production rollout are outside this task.
 - [x] (2026-10-26 14:00 JST) Agreed the scope and boundaries with the user (see Decision Log).
 - [x] (2026-10-26 15:00 JST) Researched existing nightly LLM jobs, log locations, storage conventions and DGX boundaries; findings are folded into Context and Orientation.
 - [x] (2026-10-26 16:00 JST) Independent review of the first draft; corrected the storage mount, file ownership, container names, scheduler registration, use-case routing, timeouts, retries, scan exclusion and deploy order.
@@ -55,6 +57,11 @@ You can see it working when, the morning after a deploy, a dated report exists i
   Evidence: `/var/log/trivy/trivy-scan.log` and `trivy-image-scan.log` FATAL lines on the Pi5; `infrastructure/ansible/templates/trivy-scan.sh.j2` and `trivy-image-scan.sh.j2`.
 
 ## Decision Log
+
+- Decision (2026-10-31): collect each first-parent commit into a private, idempotent job and review it whenever background inference is available. Save each completed unit, retain deferred work without expiry, and mark a commit done only after all units succeed. Migrate existing carry-over and enqueue configured backfill ranges; exclude tests from changes. Keep security/errors in the nightly run and report unreported queue results using `reportedAt`, with pending/claimed/failed counts in `changeQueue`; pending work alone does not make a report partial.
+  Rationale: user-confirmed production measurements showed changes exceeding the nightly budget by three to nine times, while cursor advancement and seven-day carry-over expiry permanently lost unread changes. The old partial flag also conflated backlog with failed review. Operational details are maintained in the [runbook](../runbooks/nightly-security-review.md#commit-review-queue).
+- Decision (2026-10-31): request only concrete medium/high findings with short fields, use 2000 output tokens and request-scoped 120-second provider and caller timeouts, preserve `finish_reason`, and recursively halve length-truncated inputs down to the minimum review unit. Persist an explicit failure if the minimum still truncates.
+  Rationale: the former 1200-token budget included reasoning tokens and truncated valid answers; identical retries repeated the failure. Raising tokens alone hit the provider and caller deadlines. Short prompts completed measured 8 KB inputs, so bounded splitting handles remaining truncation without silently dropping material. Other text-completion callers retain their provider timeout.
 
 - Decision (2026-10-28): close the morning review loop with a scheduled Claude task, verified small fixes through PRs, merges and deployments through the progress-tracking session, false-alarm feedback and private count records. Raw findings remain private.
 - Decision (2026-10-28): review the most security-relevant changed files first and carry files that do not fit to the next night instead of dropping them. Changes are packed across files at line boundaries and receive the chunks the logs leave unused, keeping room for the client errors the API adds.
@@ -103,6 +110,8 @@ You can see it working when, the morning after a deploy, a dated report exists i
   Date/Author: 2026-10-28 / Claude.
 
 ## Outcomes & Retrospective
+
+2026-10-31 queue implementation: collector tests (131) and related deployment contracts (27) pass. Review/inference tests including the queue scheduler (206) pass with temporary local dependency links and dotenv disabled. The installed pnpm launcher is missing its declared version; cached API dependencies do not match the lockfile, lack the Prisma adapter and workspace outputs, and lack the lint configuration dependency. Full API type-check, lint and scheduler bootstrap therefore remain unverified. No commit, push or deployment was performed. `triage.py` has no report reader or report-status/count assumptions, so it requires no format change.
 
 Repository work for Milestones 1 and 2 and the repository portions of Milestones 3 and 4 is implemented (2026-10-26). Production preparation, deployment, enablement, real report verification and the trial remain unperformed. See the [runbook](../runbooks/nightly-security-review.md) for the approved rollout sequence.
 
