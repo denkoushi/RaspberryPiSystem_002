@@ -3457,11 +3457,42 @@ model AssemblyProcedureLearnedTerm {
   @@unique([site, wrongText])
 }
 
+model AssemblyProcedureSiteVocabulary {
+  id            String   @id @default(uuid())
+  site          String
+  term          String
+  documentCount Int
+  updatedAt     DateTime @updatedAt
+
+  @@unique([site, term])
+}
+
+model AssemblyProcedureLearningSnapshot {
+  id                  String   @id @default(uuid())
+  site                String
+  day                 DateTime @db.Date
+  publishedDocuments  Int
+  textKept            Int
+  textEdited          Int
+  textReverted        Int
+  captionKept         Int
+  captionEdited       Int
+  captionDeleted      Int
+  learnedTerms        Int
+  vocabularyTerms     Int
+  vocabularyBuiltAt   DateTime?
+  vocabularyDocuments Int?
+  createdAt           DateTime @default(now())
+
+  @@unique([site, day])
+}
+
 model AssemblyProcedureCaptionFeedback {
   id           String                                  @id @default(uuid())
   documentId   String
   pageIndex    Int
   elementId    String
+  site         String?
   assetId      String
   documentName String
   contextText  String?
@@ -3474,6 +3505,7 @@ model AssemblyProcedureCaptionFeedback {
 
   @@unique([documentId, elementId])
   @@index([assetId])
+  @@index([site, outcome, resolvedAt])
 }
 
 /// Editable elements owned by one document revision. Coordinates are source

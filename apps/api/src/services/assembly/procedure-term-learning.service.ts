@@ -8,11 +8,12 @@ import { InferenceDeferredError, type TextCompletionPort } from '../inference/po
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
+import { learnSiteVocabulary, recordLearningSnapshot } from './procedure-site-vocabulary.js';
 
 const contexts = { assembly: ASSEMBLY_SITE_CONTEXT, grinding: GRINDING_SITE_CONTEXT };
 type Site = keyof typeof contexts;
 type Term = { wrongText: string; rightText: string; occurrences: number; documentCount: number };
-type Result = { site: Site; status: 'skipped' | 'updated' | 'dry-run' | 'failed'; terms: Term[] };
+type Result = { site: Site; status: 'skipped' | 'updated' | 'dry-run' | 'failed'; terms: Term[]; counts?: Awaited<ReturnType<typeof recordLearningSnapshot>> };
 type Evidence = Pick<AssemblyProcedureTextFeedback, 'id' | 'documentId' | 'aiText' | 'finalText'>;
 const proposalSchema = z.object({ pairs: z.array(z.object({ wrong: z.string(), right: z.string(), rowIds: z.array(z.string()) })) });
 type Pair = z.infer<typeof proposalSchema>['pairs'][number];
@@ -87,6 +88,23 @@ export async function runProcedureTermLearningOnce(options: { dryRun?: boolean; 
       logger.warn({ err: error, site, deferred: error instanceof InferenceDeferredError }, 'assembly_procedure_term_learning_failed');
       results.push({ site, status: 'failed', terms: [] });
       if (options.signal?.aborted) break;
+    }
+  }
+  const vocabularyResults: Partial<Record<Site, Awaited<ReturnType<typeof learnSiteVocabulary>>>> = {};
+  for (const site of Object.keys(contexts) as Site[]) {
+    try {
+      vocabularyResults[site] = await learnSiteVocabulary(site, { ...options, now });
+    } catch (error) {
+      logger.warn({ err: error, site, deferred: error instanceof InferenceDeferredError }, 'assembly_procedure_site_vocabulary_failed');
+    }
+  }
+  for (const site of Object.keys(contexts) as Site[]) {
+    try {
+      const counts = await recordLearningSnapshot(site, now, options.dryRun, vocabularyResults[site]);
+      const result = results.find(result => result.site === site);
+      if (result) result.counts = counts;
+    } catch (error) {
+      logger.warn({ err: error, site }, 'assembly_procedure_learning_snapshot_failed');
     }
   }
   return results;

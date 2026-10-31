@@ -45,9 +45,12 @@ describe('procedure layout suggestion routes', () => {
     vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue({ name: '架空の手順書', status: 'DRAFT', isActive: true, revisionMetadata: { revisionRootId: documentId, isRevisionHead: true } } as never);
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
     vi.spyOn(prisma.assemblyProcedureDocumentPage, 'findUnique').mockResolvedValue({ imageRelativePath: '/page.png' } as never);
+    vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.assemblyProcedureSiteVocabulary, 'findMany').mockResolvedValue([]);
     vi.spyOn(prisma.assemblyProcedureTextFeedback, 'createMany').mockResolvedValue({ count: 1 });
     vi.spyOn(prisma.assemblyProcedureTextFeedback, 'findMany').mockResolvedValue([]);
     vi.spyOn(prisma.assemblyProcedureLearnedTerm, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.assemblyProcedureCaptionFeedback, 'findMany').mockResolvedValue([]);
     vi.spyOn(prisma.assemblyProcedureCaptionFeedback, 'createMany').mockResolvedValue({ count: 2 });
     vi.spyOn(prisma.assemblyProcedureAsset, 'findMany').mockResolvedValue([{ id: 'asset-photo', storageKey: 'photo-key' }] as never);
     const buffer = await sharp({ create: { width: 1200, height: 1600, channels: 3, background: '#ffffff' } }).png().toBuffer();
@@ -84,6 +87,39 @@ describe('procedure layout suggestion routes', () => {
     expect(JSON.parse(request.messages[1].content)).toEqual({ texts: [{ id: 'text', text: payload.elements[0].kind === 'TEXT' ? payload.elements[0].text : '' }] });
     expect(controller.ensureReady).toHaveBeenCalledWith('business_hermes');
     expect(controller.release).toHaveBeenCalledWith('business_hermes');
+  });
+
+  it('adds published examples before corrections and vocabulary to both prompts only for a known site', async () => {
+    register();
+    vi.mocked(prisma.procedureManualAssignment.findMany).mockResolvedValue([{
+      process: { name: '研削', parent: null },
+      assemblyProcedureDocument: { revisionMetadata: { revisionRootId: 'other-root' } },
+    }] as never);
+    vi.mocked(prisma.assemblyProcedureDocument.findMany).mockResolvedValue([{
+      id: 'published', updatedAt: new Date(), publishedAt: new Date(),
+      revisionMetadata: { revisionRootId: 'other-root', updatedAt: new Date() },
+      overlayElements: [{ text: '使用治具\n・専用受台', updatedAt: new Date() }],
+    }] as never);
+    vi.mocked(prisma.assemblyProcedureSiteVocabulary.findMany).mockResolvedValue([{ term: '専用受台' }] as never);
+    vi.mocked(prisma.assemblyProcedureTextFeedback.findMany).mockResolvedValue([{ aiText: '元の文', finalText: '人の直し' }] as never);
+    vi.mocked(text.complete).mockResolvedValue({ rawText: '{"texts":[]}', model: 'test' });
+    const payload = { pageIndex: 0, elements: rowElements() };
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    const system = vi.mocked(text.complete).mock.lastCall![0].messages[0].content;
+    expect(system).toContain(JSON.stringify('使用治具\n・専用受台'));
+    expect(system.indexOf('同じ課の公開済み')).toBeLessThan(system.indexOf('人の直し'));
+    expect(system).toContain('この課の手順書で使われている呼び名: 専用受台');
+    expect(vi.mocked(vision.complete).mock.lastCall![0].userText).toContain('この課の手順書で使われている呼び名: 専用受台');
+    expect(prisma.assemblyProcedureSiteVocabulary.findMany).toHaveBeenCalledExactlyOnceWith({ where: { site: 'grinding' }, orderBy: { term: 'asc' } });
+    vi.mocked(prisma.procedureManualAssignment.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.assemblyProcedureSiteVocabulary.findMany).mockClear();
+    vi.mocked(prisma.assemblyProcedureDocument.findMany).mockClear();
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    expect(vi.mocked(text.complete).mock.lastCall![0].messages[0].content).not.toContain('同じ課の公開済み');
+    expect(vi.mocked(text.complete).mock.lastCall![0].messages[0].content).not.toContain('この課の手順書で');
+    expect(vi.mocked(vision.complete).mock.lastCall![0].userText).not.toContain('この課の手順書で');
+    expect(prisma.assemblyProcedureSiteVocabulary.findMany).not.toHaveBeenCalled();
+    expect(prisma.assemblyProcedureDocument.findMany).not.toHaveBeenCalled();
   });
 
   it('records rewritten texts with their originals and ignores unchanged texts', async () => {
@@ -265,7 +301,7 @@ describe('procedure layout suggestion routes', () => {
     expect(prisma.assemblyProcedureCaptionFeedback.createMany).toHaveBeenCalledExactlyOnceWith({
       skipDuplicates: true,
       data: result.addedElementIds.map((elementId: string, index: number) => ({ documentId, pageIndex: 0, elementId,
-        assetId: 'asset-photo', documentName: '架空の手順書', contextText: index === 0 ? '架空の工程' : null,
+        site: null, assetId: 'asset-photo', documentName: '架空の手順書', contextText: index === 0 ? '架空の工程' : null,
         aiText: 'ワーク2個を固定する', outcome: 'PROPOSED' }))
     });
     expect(result.addedElementIds).toHaveLength(2);
@@ -275,6 +311,58 @@ describe('procedure layout suggestion routes', () => {
     const heading = result.elements.find((element: { id: string }) => element.id === 't0');
     const added = result.elements.find((element: { id: string }) => element.id === result.addedElementIds[0]);
     expect(added.bbox.yRatio).toBeGreaterThan(heading.bbox.yRatio + heading.bbox.heightRatio);
+  });
+
+  it('preserves the original photo prompt for assembly and unknown sites and uses grinding names', async () => {
+    register();
+    vi.mocked(text.complete).mockResolvedValue({ rawText: '{"texts":[]}', model: 'test' });
+    const payload = { pageIndex: 0, elements: rowElements() };
+    const prompt = () => vi.mocked(vision.complete).mock.lastCall![0].userText;
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    const original = prompt();
+    expect(original).toContain('円柱の押さえは「重り」');
+    expect(original).toContain('磁石の台(電磁チャック)');
+    expect(prisma.assemblyProcedureCaptionFeedback.findMany).not.toHaveBeenCalled();
+    vi.mocked(prisma.procedureManualAssignment.findMany).mockResolvedValue([{ process: { name: '組立', parent: null } }] as never);
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    expect(prompt()).toBe(original);
+    vi.mocked(prisma.procedureManualAssignment.findMany).mockResolvedValue([{ process: { name: '検査', parent: { name: '研削工程' } } }] as never);
+    vi.mocked(vision.complete).mockResolvedValue({ rawText: 'コマを置く' });
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    for (const term of ['コマ', 'ジャッキ', 'ブロック', 'マグネットチャック', 'イケール', 'ダイヤルゲージ', '砥石']) expect(prompt()).toContain(term);
+    expect(prompt()).not.toContain('重り');
+    expect(prompt()).not.toContain('電磁チャック');
+    expect(prisma.assemblyProcedureCaptionFeedback.createMany).toHaveBeenCalledWith({
+      skipDuplicates: true, data: expect.arrayContaining([expect.objectContaining({ site: 'grinding' })])
+    });
+  });
+
+  it.each([['assembly', '組立'], ['grinding', '研削']])('uses caption corrections once per %s proposal and tolerates lookup failure', async (site, name) => {
+    register();
+    vi.mocked(text.complete).mockResolvedValue({ rawText: '{"texts":[]}', model: 'test' });
+    vi.mocked(prisma.procedureManualAssignment.findMany).mockResolvedValue([{ process: { name, parent: null } }] as never);
+    const payload = { pageIndex: 0, elements: rowElements() };
+    const prompt = () => vi.mocked(vision.complete).mock.lastCall![0].userText;
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    const baseline = prompt();
+    vi.mocked(prisma.assemblyProcedureCaptionFeedback.findMany).mockClear().mockResolvedValue([{ aiText: '台を配置する', finalText: '1. コマ3個を置く' }] as never);
+    vi.mocked(vision.complete).mockClear().mockResolvedValue({ rawText: 'ワークを固定する' });
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    expect(vision.complete).toHaveBeenCalledTimes(2);
+    expect(prisma.assemblyProcedureCaptionFeedback.findMany).toHaveBeenCalledExactlyOnceWith({
+      where: { site, outcome: 'EDITED', finalText: { not: null } },
+      orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }], take: 50, select: { aiText: true, finalText: true }
+    });
+    for (const [request] of vi.mocked(vision.complete).mock.calls) {
+      expect(request.userText).toContain('AI: "台を配置する" → 人: "コマ3個を置く"');
+      expect(request.userText).toContain('個数や品名を他の写真に持ち込まない');
+    }
+    expect(prisma.assemblyProcedureCaptionFeedback.createMany).toHaveBeenCalledWith({
+      skipDuplicates: true, data: expect.arrayContaining([expect.objectContaining({ site })])
+    });
+    vi.mocked(prisma.assemblyProcedureCaptionFeedback.findMany).mockRejectedValueOnce(new Error('lookup failed'));
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(200);
+    expect(prompt()).toBe(baseline);
   });
 
   it('returns the same successful proposal when feedback insertion fails', async () => {
