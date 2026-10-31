@@ -6195,6 +6195,7 @@ model KnowledgeProcedureBoard {
   updatedAt                   DateTime @updatedAt
   procedure                   KnowledgeProcedure @relation(fields: [procedureId], references: [id], onDelete: Restrict)
   events                      KnowledgeProcedureBoardEvent[]
+  aiJobs                      KnowledgeProcedureBoardAi[]
 }
 
 model KnowledgeProcedureBoardEvent {
@@ -6211,4 +6212,28 @@ model KnowledgeProcedureBoardEvent {
 
   @@index([boardId, occurredAt])
   @@index([boardId, boardVersion])
+}
+
+model KnowledgeProcedureBoardAi {
+  id                        String @id
+  boardId                   String
+  boardVersion              Int
+  kind                      String
+  requestKey                String
+  requestedByClientDeviceId String
+  state                     String @default("pending")
+  input                     Json
+  result                    Json?
+  attempts                  Int @default(0)
+  retryAt                   DateTime @default(now())
+  leaseToken                String?
+  leaseUntil                DateTime?
+  errorCode                 String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  board                     KnowledgeProcedureBoard @relation(fields: [boardId], references: [id], onDelete: Restrict)
+
+  @@unique([boardId, kind, requestKey])
+  @@index([state, retryAt, createdAt])
+  @@index([boardId, boardVersion, kind])
 }
