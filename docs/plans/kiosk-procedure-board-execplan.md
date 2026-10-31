@@ -16,7 +16,7 @@
 - [x] (2026-10-31 12:54Z) 現行の移行検証器が指定の端末フラグ追加文を拒否することを、DBに接続しない検証で確認した。
 - [ ] PR1: スキーマ、端末設定、盤面保存、操作記録、週次指標、対象テストを実装済み。DB不要テスト23件・既存worker回帰5件、schema、SQL、対象lint、変更部分の型検査は成功。専用DB検証と指定の全体型検査は環境・既存設定の阻害により未完了（Artifacts and Notes参照）。
 - [ ] PR2: ローカル実装済み。指定5ファイル42件、schema、SQL、対象lint、build型検査が成功。DBのmigration適用・repository.local検証は依頼どおりClaude側へ引継ぎ（Artifacts and Notes参照）。
-- [ ] PR3: キオスク画面、操作、提案確認、ポーリング、対象テストと表示確認を完了する。
+- [ ] PR3: webの盤面・編集・AI提案・直列保存をローカル実装。対象テストは直近29/30件成功（残るGETモック漏れを修正済み、追加実行の承認待ち）。対象lint、web build、取説source-check、既存ポータル7件は成功。最終差分の対象再検証とブラウザー/Pi4表示・性能確認は未完了。
 - [ ] integrationPending: 各段階が別途承認された後、PR番号、push済みSHA、必要なCI、mainのmerge SHA、mainでの確認結果を記録する。
 - [ ] 別途承認されたdeployで対象端末をユーザーが選び、4週間の試験を始める。毎週数字と素材にない書き足しの件数を記録する。
 - [ ] 4週目の合否を判定し、継続・拡大・終了の判断と運用証拠を記録する。
@@ -494,6 +494,18 @@ PR1〜3の実装と必要な統合が済み、対象SHAのCI成功を確認し�
 migrationは専用DBで先に確認し、既存migrationのchecksumを変更しない。適用に失敗した場合は原因とDBの適用台帳を確認し、手で台帳を直したりresetしたりしない。本番の復旧は `docs/runbooks/deploy-status-recovery.md` をその時点で読み、承認済み標準経路で行う。本計画作成では実機接続もDB操作も行っていない。
 
 ## Artifacts and Notes
+
+### PR3実装証拠 (2026-11-01)
+
+web内に案件選択と3ページ盤面を実装。素材配置・移動・3列までの段組み・列幅変更・外す・IME対応編集・直接テキスト・複製、AIの点線提案・見出し・食い違い判断・整形プレビューを既存HTTP契約へ接続した。403で編集停止、409でdraftを保持して最新を取得し、通信失敗時は自動書込みを止める。最新から再開しても元draftを別に保持する。
+
+端末capabilityはPR1で拡張済みの `/mobile-placement/client-capabilities`、ナレッジenabledは `/hermes-knowledge/capabilities` を併用する。設定API追加は不要で、API・DB・依存・本番設定は変更していない。承認済みモックの配置と操作を使い、サンプル文言は持ち込まない。色は指定済みDADS値を盤面ルートへ限定した。
+
+実APIのsaveBoardSchemaとvalidateLayoutEventはPUTごとに厳密に1操作を要求する。このため異種操作の一括PUTは行えず、約300msの待機後に各操作を直列PUTする。同一項目の連続編集・同一行の幅変更だけを1操作へまとめる。表示・作業時間の追記イベントはまとめて送る。提案表示はIntersectionObserverで可視のものだけを数え、採用判断の前に直列送信する。pointermoveはrefとrAFによる枠・幅のDOM更新だけを行う。
+
+検証の直近結果: 指定web対象テスト29/30件成功。残る1件は保存後のversion照合で使うGETモックの応答漏れで、fixtureを修正した。再実行上限に達したため、最終差分への追加実行はユーザーの承認待ち。対象eslintは成功、web buildは成功（既存サイズ警告のみ）、kiosk-sop:source-checkはfresh、既存KioskPortalPage.test.tsxは7件成功。build前に既存shelf-layout-core/slip-match-core/part-search-coreのdistを生成した。
+
+指定PATHのpnpm shimは存在しないbin/pnpm.cjsを参照していたため、同じインストールにある12.16.1のpnpm-nativeを一時PATHで利用した。開発サーバーはlisten EPERM、ChromiumはMachPortRendezvousのPermission denied、Computer Useはbrowser access host unavailableで表示検証できなかった。1920×1080の実ブラウザー表示、Pi4の30素材での50ms超タスク・100ms以内反映、実APIでの永続化は未検証。commit/push/PR/merge/deployは実施していない。
 
 ### PR2実装証拠 (2026-10-31)
 
