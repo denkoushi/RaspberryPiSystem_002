@@ -267,3 +267,7 @@ web_ws_base_url: /ws
 web_agent_ws_url: ws://staging-pi5.invalid:7071/stream
 web_agent_ws_mode: local
 web_barcode_agent_ws_url: ws://staging-pi5.invalid:7072/stream
+
+# Dedicated production host collector is opt-in for staging.
+jpcert_advisories_enabled: false
+advisory_check_enabled: false

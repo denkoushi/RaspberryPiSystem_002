@@ -51,8 +51,13 @@ release_pi5_compose_wait_seconds: 180
 release_pi5_load_retries: 30
 release_pi5_load_delay: 10
 release_pi5_business_hermes_enabled: "{{ business_hermes_enabled | default(false) }}"
-release_pi5_business_hermes_image: "{{ business_hermes_image | default('nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a') }}"
+release_pi5_business_hermes_image: "{{ business_hermes_image | default('nousresearch/hermes-agent:v0.22.5@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d') }}"
 release_pi5_business_hermes_egress_image: "{{ business_hermes_egress_image | default('node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53') }}"
+
+# Both Hermes services may replace approved predecessor images with the release pin;
+# any other differing image is still refused.
+release_pi5_business_hermes_replaceable_images:
+  - "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
 
 # Both egress services may replace approved predecessor images with the release pin;
 # any other differing image is still refused.

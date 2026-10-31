@@ -163,6 +163,54 @@
         mode: '0644'
       notify: Restart status-agent
 
+    - name: Install the pinned Pi5 camera certificate
+      when: watch_cam_tls_skip_verify | default('0') | string == '0'
+      block:
+        - name: Inspect the controller Pi5 certificate
+          ansible.builtin.stat:
+            path: "{{ watch_cam_server_cert_source | default(playbook_dir ~ '/../../../certs/cert.pem') }}"
+            checksum_algorithm: sha256
+          delegate_to: localhost
+          become: false
+          register: watch_cam_controller_cert
+
+        - name: Require the exact pinned Pi5 certificate
+          ansible.builtin.assert:
+            that:
+              - watch_cam_server_cert_sha256 | default('') is match('^[0-9a-f]{64}$')
+              - watch_cam_controller_cert.stat.exists | default(false)
+              - watch_cam_controller_cert.stat.isreg | default(false)
+              - not (watch_cam_controller_cert.stat.islnk | default(false))
+              - watch_cam_controller_cert.stat.checksum | default('') == watch_cam_server_cert_sha256 | default('')
+            fail_msg: >-
+              Pi5 証明書が存在しないか、固定した SHA-256 と一致しません。
+              watch_cam_server_cert_source と watch_cam_server_cert_sha256 を確認してください。
+          delegate_to: localhost
+          become: false
+
+        - name: Create camera certificate directory
+          ansible.builtin.file:
+            path: /etc/watch-cam-agent
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Copy the pinned Pi5 camera certificate
+          ansible.builtin.copy:
+            src: "{{ watch_cam_server_cert_source | default(playbook_dir ~ '/../../../certs/cert.pem') }}"
+            dest: /etc/watch-cam-agent/server-ca.pem
+            owner: root
+            group: root
+            mode: '0644'
+          notify: Restart watch-cam-agent
+
+    - name: Select camera CA file
+      ansible.builtin.set_fact:
+        watch_cam_tls_ca_file: >-
+          {{ '/etc/watch-cam-agent/server-ca.pem'
+             if watch_cam_tls_skip_verify | default('0') | string == '0' else '' }}
+
     - name: Configure camera
       ansible.builtin.template:
         src: "{{ playbook_dir | dirname }}/templates/watch-cam-agent.conf.j2"

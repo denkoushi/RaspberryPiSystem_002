@@ -196,6 +196,10 @@ trivy_alert_ignore_patterns:
 # Private nightly review: enabled after the host preparation and a verified manual collector run.
 security_review_collect_enabled: true
 security_review_nightly_enabled: true
+security_review_queue_enabled: true
+security_review_queue_cron: "*/10 * * * *"
+security_review_queue_quiet: "05:50-07:00"
+security_review_enqueue_on_calendar: hourly
 security_review_collect_on_calendar: "*-*-* 05:30:00 Asia/Tokyo"
 security_review_nightly_cron: "0 6 * * *"
 security_review_retry_until: "06:55"
@@ -212,8 +216,32 @@ security_review_kiosk_log_byte_cap: 262144
 security_review_kiosk_alert_byte_cap: 32768
 security_review_kiosk_alerts_per_host: 50
 security_review_kiosk_summary_line_cap: 60
+advisory_check_enabled: true
+advisory_check_cron: '*/5 * * * *'
+# Hourly JPCERT investigation jobs; delivered only by the dedicated preparation playbook.
+jpcert_advisories_enabled: true
+jpcert_advisories_state_dir: /var/lib/jpcert-advisories
+jpcert_advisories_log_dir: /var/log/jpcert-advisories
+jpcert_advisories_config:
+  feed_url: https://www.jpcert.or.jp/rss/jpcert.rdf
+  rules_path: /etc/jpcert-advisories/rules.json
+  state_path: "{{ jpcert_advisories_state_dir }}/state.json"
+  alerts_dir: "{{ security_review_kiosk_output_alerts_dir }}"
+  jobs_dir: "{{ security_review_data_dir }}/advisories"
+  project_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"
+  log_path: "{{ jpcert_advisories_log_dir }}/jpcert-advisories.log"
+  timeout_seconds: 60
+  initial_lookback_days: 7
+  failure_alert_threshold: 3
+  summary_window_hours: 24
+  seen_retention_days: 90
+  max_details_chars: 8000
+
 security_review_material_byte_cap: 192000
 security_review_changes_context_lines: 1
+security_review_changes_backfill:
+  - from: 7ffe3a87ff3a0f2ed5a2b543aa28241587e84b93
+    to: ff4f8c645444d908e6ed7cbcf2625a38870451a0
 # Last matching specific pattern wins; * is the fallback rank only.
 security_review_changes_priority:
   - 'apps/api/src/routes/*'
@@ -242,6 +270,16 @@ security_review_caddy_known_path_patterns: ['^/api/', '^/assets/', '^/icons/', '
 security_review_caddy_oversized_bytes: 10485760
 security_review_caddy_examples_per_rule: 10
 security_review_changes_exclude:
+  - '*.test.*'
+  - '*.spec.*'
+  - '__tests__/*'
+  - '*/__tests__/*'
+  - 'tests/*'
+  - '*/tests/*'
+  - 'test_*.py'
+  - '*/test_*.py'
+  - '*_test.py'
+  - 'e2e/*'
   - 'pnpm-lock.yaml'
   - '*package-lock.json'
   - '*.lock'
@@ -275,6 +313,7 @@ security_review_collector_config:
   timezone: Asia/Tokyo
   material_byte_cap: "{{ security_review_material_byte_cap }}"
   changes_exclude: "{{ security_review_changes_exclude }}"
+  changes_backfill: "{{ security_review_changes_backfill }}"
   changes_context_lines: "{{ security_review_changes_context_lines }}"
   changes_priority: "{{ security_review_changes_priority }}"
   fail2ban_logs: ["{{ security_monitor_fail2ban_log }}*"]
@@ -309,6 +348,10 @@ security_review_collector_config:
       paths: ["{{ security_review_kiosk_log_dir }}/kiosk-package-integrity.log"]
       start: 'Starting kiosk package integrity summary'
       end: 'Kiosk package integrity summary completed.'
+    - name: jpcert-advisories
+      paths: ["/var/log/jpcert-advisories/jpcert-advisories.log*"]
+      start: 'Starting JPCERT advisory check'
+      end: 'JPCERT advisory check completed.'
 
 # Nightly scans run in a systemd scope with this disk bandwidth cap (path resolves to its backing disk)
 security_scan_io_device: "/"

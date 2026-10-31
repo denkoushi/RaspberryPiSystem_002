@@ -1,0 +1,488 @@
+[
+  {
+    "product": "Debian / Raspberry Pi OS",
+    "aliases": [
+      "Debian",
+      "Raspberry Pi OS",
+      "Raspbian"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/templates/raspi-os-security-update.service.j2",
+        "pattern": "Raspberry Pi OS"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "os_release"
+      }
+    ]
+  },
+  {
+    "product": "Linux kernel",
+    "aliases": [
+      "Linux kernel",
+      "Linuxカーネル",
+      "Linux カーネル"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/group_vars/all.yml",
+        "pattern": "linux-image"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "uname"
+      }
+    ]
+  },
+  {
+    "product": "Node.js",
+    "aliases": [
+      "Node.js"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/docker/Dockerfile.api",
+        "pattern": "FROM node:24"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "container",
+        "containers": [
+          "bluegreen-api-blue-1",
+          "bluegreen-api-green-1"
+        ],
+        "argv": [
+          "node",
+          "--version"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "PostgreSQL",
+    "aliases": [
+      "PostgreSQL"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/docker/docker-compose.server.yml",
+        "pattern": "image: pgvector/pgvector:pg18"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "container",
+        "containers": [
+          "docker-db-1"
+        ],
+        "argv": [
+          "postgres",
+          "--version"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "Caddy",
+    "aliases": [
+      "Caddy"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/docker/Dockerfile.web",
+        "pattern": "github.com/caddyserver/caddy/v2"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "container",
+        "containers": [
+          "bluegreen-web-blue-1",
+          "bluegreen-web-green-1"
+        ],
+        "argv": [
+          "caddy",
+          "version"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "Docker Engine",
+    "aliases": [
+      "Docker",
+      "Docker Engine"
+    ],
+    "evidence": [
+      {
+        "path": "scripts/server/docker_image_retention_runtime.py",
+        "pattern": "\"image\", \"ls\""
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "docker-ce",
+          "docker.io"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "containerd",
+    "aliases": [
+      "containerd"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/group_vars/all.yml",
+        "pattern": "containerd\\[\\.\\]io"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "containerd.io",
+          "containerd"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "Chromium",
+    "aliases": [
+      "Chromium",
+      "Google Chrome",
+      "Chromium-based",
+      "Chromiumエンジン",
+      "Chromium エンジン"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/roles/kiosk/defaults/main.yml",
+        "pattern": "kiosk_browser_engine: \"chromium\""
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "chromium",
+          "chromium-browser"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "Tailscale",
+    "aliases": [
+      "Tailscale"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/roles/common/tasks/tailscale.yml",
+        "pattern": "name: tailscaled"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "command",
+        "argv": [
+          "tailscale",
+          "version"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "ClamAV",
+    "aliases": [
+      "ClamAV"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/roles/server/tasks/malware.yml",
+        "pattern": "      - clamav\\n"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "clamav"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "fail2ban",
+    "aliases": [
+      "fail2ban"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/roles/server/tasks/security.yml",
+        "pattern": "      - fail2ban"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "fail2ban"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "OpenSSH",
+    "aliases": [
+      "OpenSSH"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/templates/sshd-hardening.conf.j2",
+        "pattern": "PasswordAuthentication"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "openssh-server",
+          "openssh-client"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "sudo",
+    "aliases": [
+      "sudo"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/roles/client/templates/sudoers-client.j2",
+        "pattern": "NOPASSWD"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "sudo"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "Python",
+    "aliases": [
+      "Python"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/docker/Dockerfile.nfc-agent",
+        "pattern": "FROM python:3.13-slim"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "python3"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "Prisma",
+    "aliases": [
+      "Prisma"
+    ],
+    "evidence": [
+      {
+        "path": "apps/api/package.json",
+        "pattern": "\"@prisma/client\":"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "package_json",
+        "path": "apps/api/package.json",
+        "name": "@prisma/client"
+      }
+    ]
+  },
+  {
+    "product": "Fastify",
+    "aliases": [
+      "Fastify"
+    ],
+    "evidence": [
+      {
+        "path": "apps/api/package.json",
+        "pattern": "\"fastify\":"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "package_json",
+        "path": "apps/api/package.json",
+        "name": "fastify"
+      }
+    ]
+  },
+  {
+    "product": "React",
+    "aliases": [
+      "React"
+    ],
+    "evidence": [
+      {
+        "path": "apps/web/package.json",
+        "pattern": "\"react\":"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "package_json",
+        "path": "apps/web/package.json",
+        "name": "react"
+      }
+    ]
+  },
+  {
+    "product": "Vite",
+    "aliases": [
+      "Vite"
+    ],
+    "evidence": [
+      {
+        "path": "apps/web/package.json",
+        "pattern": "\"vite\":"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "package_json",
+        "path": "apps/web/package.json",
+        "name": "vite"
+      }
+    ]
+  },
+  {
+    "product": "Ansible",
+    "aliases": [
+      "Ansible"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/docker/Dockerfile.api",
+        "pattern": "ansible-core"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "container",
+        "containers": [
+          "bluegreen-api-blue-1",
+          "bluegreen-api-green-1"
+        ],
+        "argv": [
+          "ansible",
+          "--version"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "Trivy",
+    "aliases": [
+      "Trivy"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/templates/trivy-scan.sh.j2",
+        "pattern": "trivy fs"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "command",
+        "argv": [
+          "trivy",
+          "--version"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "OpenSSL",
+    "aliases": [
+      "OpenSSL"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/docker/Dockerfile.api",
+        "pattern": "apt-get install.*openssl"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "openssl",
+          "libssl3t64",
+          "libssl3"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "curl",
+    "aliases": [
+      "curl"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/ansible/roles/common/tasks/tailscale.yml",
+        "pattern": "name: curl"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "curl"
+        ]
+      }
+    ]
+  },
+  {
+    "product": "zlib",
+    "aliases": [
+      "zlib"
+    ],
+    "evidence": [
+      {
+        "path": "infrastructure/docker/Dockerfile.web",
+        "pattern": "apk upgrade.*zlib"
+      }
+    ],
+    "probes": [
+      {
+        "kind": "dpkg",
+        "packages": [
+          "zlib1g"
+        ]
+      }
+    ]
+  }
+]

@@ -6,7 +6,7 @@
     owner: "{{ api_runtime_uid | default(1000) }}"
     group: "{{ api_runtime_gid | default(1000) }}"
     mode: '0700'
-  loop: ['', bundles, reports]
+  loop: ['', bundles, reports, queue, queue/pending, queue/claimed, queue/done, queue/failed, queue/progress, queue/invalid, advisories, advisories/pending, advisories/claimed, advisories/done, advisories/invalid]
 
 - name: Deliver the lease-controlled security review settings
   ansible.builtin.lineinfile:
@@ -17,7 +17,84 @@
     mode: '0600'
   loop:
     - {key: SECURITY_REVIEW_NIGHTLY_ENABLED, value: "{{ security_review_nightly_enabled | default(false) | bool | ternary('true', 'false') }}"}
+    - {key: ADVISORY_CHECK_ENABLED, value: "{{ advisory_check_enabled | default(true) | bool | ternary('true', 'false') }}"}
+    - {key: ADVISORY_CHECK_DIR, value: /app/storage/security-review/advisories}
+    - {key: ADVISORY_CHECK_CRON, value: "{{ advisory_check_cron }}"}
     - {key: SECURITY_REVIEW_DATA_DIR, value: /app/storage/security-review}
     - {key: SECURITY_REVIEW_NIGHTLY_CRON, value: "{{ security_review_nightly_cron }}"}
     - {key: SECURITY_REVIEW_RETRY_UNTIL, value: "{{ security_review_retry_until }}"}
+    - {key: SECURITY_REVIEW_QUEUE_ENABLED, value: "{{ security_review_queue_enabled | default(true) | bool | ternary('true', 'false') }}"}
+    - {key: SECURITY_REVIEW_QUEUE_CRON, value: "{{ security_review_queue_cron }}"}
+    - {key: SECURITY_REVIEW_QUEUE_QUIET, value: "{{ security_review_queue_quiet }}"}
   no_log: true
+
+- name: Create root-only collector configuration and state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  loop:
+    - "{{ security_review_state_dir }}"
+    - /etc/security-review
+
+- name: Install the local security review collector
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/server/security-review/collect.py"
+    dest: /usr/local/bin/security-review-collect.py
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deliver collector paths and detection rules
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-collect.json.j2"
+    dest: /etc/security-review/collect.json
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Deliver security review collector units
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-collect.{{ item }}.j2"
+    dest: "/etc/systemd/system/security-review-collect.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  register: security_review_units
+
+- name: Reload collector units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: security_review_units is changed
+
+- name: Apply the collector enable flag
+  ansible.builtin.systemd:
+    name: security-review-collect.timer
+    enabled: "{{ security_review_collect_enabled | bool }}"
+    state: "{{ security_review_collect_enabled | bool | ternary('started', 'stopped') }}"
+  when: not (ansible_check_mode and security_review_units is changed)
+
+- name: Deliver security review enqueue units
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-enqueue.{{ item }}.j2"
+    dest: "/etc/systemd/system/security-review-enqueue.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  register: security_review_enqueue_units
+
+- name: Reload enqueue units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: security_review_enqueue_units is changed
+
+- name: Apply the enqueue enable flag
+  ansible.builtin.systemd:
+    name: security-review-enqueue.timer
+    enabled: "{{ security_review_collect_enabled | bool }}"
+    state: "{{ security_review_collect_enabled | bool | ternary('started', 'stopped') }}"
+  when: not (ansible_check_mode and security_review_enqueue_units is changed)

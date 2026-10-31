@@ -493,6 +493,7 @@ model ClientDevice {
   mobileSlipVerifyRecords MobileSlipVerifyRecord[]
   mobileScanFrames MobileScanFrame[]
   watchCameraFrames WatchCameraFrame[]
+  watchCameraSampleSessions WatchCameraSampleSession[]
   id                                            String                                         @id @default(uuid())
   name                                          String
   location                                      String?
@@ -3456,11 +3457,42 @@ model AssemblyProcedureLearnedTerm {
   @@unique([site, wrongText])
 }
 
+model AssemblyProcedureSiteVocabulary {
+  id            String   @id @default(uuid())
+  site          String
+  term          String
+  documentCount Int
+  updatedAt     DateTime @updatedAt
+
+  @@unique([site, term])
+}
+
+model AssemblyProcedureLearningSnapshot {
+  id                  String   @id @default(uuid())
+  site                String
+  day                 DateTime @db.Date
+  publishedDocuments  Int
+  textKept            Int
+  textEdited          Int
+  textReverted        Int
+  captionKept         Int
+  captionEdited       Int
+  captionDeleted      Int
+  learnedTerms        Int
+  vocabularyTerms     Int
+  vocabularyBuiltAt   DateTime?
+  vocabularyDocuments Int?
+  createdAt           DateTime @default(now())
+
+  @@unique([site, day])
+}
+
 model AssemblyProcedureCaptionFeedback {
   id           String                                  @id @default(uuid())
   documentId   String
   pageIndex    Int
   elementId    String
+  site         String?
   assetId      String
   documentName String
   contextText  String?
@@ -3473,6 +3505,7 @@ model AssemblyProcedureCaptionFeedback {
 
   @@unique([documentId, elementId])
   @@index([assetId])
+  @@index([site, outcome, resolvedAt])
 }
 
 /// Editable elements owned by one document revision. Coordinates are source
@@ -6128,4 +6161,54 @@ model WatchCameraFrame {
   @@index([capturedAt])
   @@index([clientDeviceId, capturedAt])
   @@map("watch_camera_frames")
+}
+
+
+enum WatchCameraSampleStatus {
+  running
+  stopped
+  completed
+}
+
+enum WatchCameraSampleLabel {
+  ok
+  ng
+  later
+}
+
+model WatchCameraSampleSession {
+  id             String @id @default(uuid())
+  clientDeviceId String
+  intervalSec    Int
+  durationSec    Int
+  maxFrames      Int
+  status         WatchCameraSampleStatus
+  startedAt      DateTime
+  endsAt         DateTime
+  endedAt        DateTime?
+  lastCapturedAt DateTime?
+  frameCount     Int @default(0)
+  byteSize       Int @default(0)
+  createdAt      DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  frames WatchCameraSampleFrame[]
+
+  @@index([clientDeviceId, status])
+  @@map("watch_camera_sample_sessions")
+}
+
+model WatchCameraSampleFrame {
+  id         String @id @default(uuid())
+  sessionId  String
+  capturedAt DateTime
+  fileKey    String
+  byteSize   Int
+  label      WatchCameraSampleLabel?
+  createdAt  DateTime @default(now())
+
+  session WatchCameraSampleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, capturedAt])
+  @@map("watch_camera_sample_frames")
 }

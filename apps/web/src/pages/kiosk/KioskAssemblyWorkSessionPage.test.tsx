@@ -287,6 +287,7 @@ const expandedFallbackSequence: AssemblyProcedureSequenceDto = {
 // revision 更新で案内が破棄され、表示されるかが解決と応答の順序に依存するため先に待つ。
 async function findHermesButtonAfterProcedureSettles() {
   await screen.findByText(/手順 1\/2/, undefined, { timeout: 5000 });
+  await act(async () => {});
   return screen.getByRole('button', { name: 'Hermesに確認' });
 }
 

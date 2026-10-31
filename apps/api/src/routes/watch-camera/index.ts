@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { acceptWatchCameraFrame, listWatchCameraFrames, readWatchCameraFrame, watchCameraQuerySchema } from '../../services/watch-camera/watch-camera.service.js';
+import { deleteSampleSession, labelSampleFrame, listSampleCameras, listSampleFrames, listSampleSessions, readSampleFrame, sampleFrameIdSchema, sampleFramesSchema, sampleIdSchema, sampleImageSchema, sampleLabelSchema, sampleListSchema, sampleStartSchema, startSampleSession, stopSampleSession } from '../../services/watch-camera/watch-camera-sample.service.js';
 import { normalizeClientKey, requireClientDevice } from '../kiosk/shared.js';
 
 export async function registerWatchCameraRoutes(app: FastifyInstance): Promise<void> {
@@ -46,4 +47,30 @@ export async function registerWatchCameraRoutes(app: FastifyInstance): Promise<v
     const { id, variant } = z.object({ id: z.string().uuid(), variant: z.enum(['full', 'thumb']) }).parse(request.params);
     return reply.header('Cache-Control', variant === 'thumb' ? 'private, max-age=86400' : 'private').type('image/jpeg').send(await readWatchCameraFrame(id, variant));
   });
+  app.get('/watch-camera/admin/cameras', { preHandler: authorizeRoles('ADMIN') }, async () => listSampleCameras());
+  app.post('/watch-camera/admin/samples', { preHandler: authorizeRoles('ADMIN') }, async (request, reply) => {
+    return reply.code(201).send(await startSampleSession(sampleStartSchema.parse(request.body)));
+  });
+  app.post('/watch-camera/admin/samples/:id/stop', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
+    return stopSampleSession(sampleIdSchema.parse(request.params).id);
+  });
+  app.get('/watch-camera/admin/samples', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
+    return listSampleSessions(sampleListSchema.parse(request.query).clientDeviceId);
+  });
+  app.get('/watch-camera/admin/samples/:id/frames', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
+    return listSampleFrames(sampleIdSchema.parse(request.params).id, sampleFramesSchema.parse(request.query));
+  });
+  app.get('/watch-camera/admin/sample-frames/:frameId/:variant', { preHandler: authorizeRoles('ADMIN') }, async (request, reply) => {
+    const { frameId, variant } = sampleImageSchema.parse(request.params);
+    return reply.header('Cache-Control', variant === 'thumb' ? 'private, max-age=86400' : 'private').type('image/jpeg').send(await readSampleFrame(frameId, variant));
+  });
+  app.patch('/watch-camera/admin/sample-frames/:frameId', { preHandler: authorizeRoles('ADMIN') }, async (request, reply) => {
+    await labelSampleFrame(sampleFrameIdSchema.parse(request.params).frameId, sampleLabelSchema.parse(request.body).label);
+    return reply.code(204).send();
+  });
+  app.delete('/watch-camera/admin/samples/:id', { preHandler: authorizeRoles('ADMIN') }, async (request, reply) => {
+    await deleteSampleSession(sampleIdSchema.parse(request.params).id);
+    return reply.code(204).send();
+  });
+
 }

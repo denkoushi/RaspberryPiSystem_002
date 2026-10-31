@@ -258,7 +258,7 @@ services:
 
   business-hermes:
     profiles: [business-hermes]
-    image: ${BUSINESS_HERMES_IMAGE:-nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a}
+    image: ${BUSINESS_HERMES_IMAGE:-nousresearch/hermes-agent:v0.22.5@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d}
     restart: unless-stopped
     user: "10000:10000"
     read_only: true
@@ -341,7 +341,7 @@ services:
 
   business-hermes-chat:
     profiles: [business-hermes-chat]
-    image: ${BUSINESS_HERMES_CHAT_IMAGE:-nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a}
+    image: ${BUSINESS_HERMES_CHAT_IMAGE:-nousresearch/hermes-agent:v0.22.5@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d}
     restart: unless-stopped
     user: "10000:10000"
     read_only: true

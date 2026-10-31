@@ -38,7 +38,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   const [position, setPosition] = useState({ left: 8, top: 8 });
   const [drop, setDrop] = useState<Drop | null>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const drag = useRef<Drag | null>(null);
   const cancelHide = useCallback(() => { clearTimeout(timer.current); }, []);
   const clearDrag = useCallback(() => {

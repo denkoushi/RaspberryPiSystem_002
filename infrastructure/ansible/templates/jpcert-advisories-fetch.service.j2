@@ -1,0 +1,15 @@
+[Unit]
+Description=Fetch relevant JPCERT/CC advisories into investigation jobs
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+UMask=0027
+ExecStart=/usr/bin/python3 /usr/local/bin/jpcert-advisories-fetch.py /etc/jpcert-advisories/fetch.json
+TimeoutStartSec=5min
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ jpcert_advisories_state_dir }} {{ jpcert_advisories_log_dir }} {{ security_review_kiosk_output_alerts_dir }} {{ security_review_data_dir }}/advisories/pending
+PrivateTmp=true

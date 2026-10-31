@@ -454,7 +454,7 @@ async function readAggregatedLoadSummary(params: {
       ) AS "rankedItems"
       WHERE "rankedItems"."itemRowNumber" = 1
     ),
-    "overrides" AS (
+    "overrides" AS MATERIALIZED (
       SELECT *
       FROM jsonb_to_recordset(${overrideJson}::jsonb) AS "overrideRows"(
         "itemKind" text,
@@ -473,27 +473,24 @@ async function readAggregatedLoadSummary(params: {
         "deduplicatedItems"."splitOrder",
         "deduplicatedItems"."originalResourceCd",
         CASE
-          WHEN "overrides"."overrideResourceCd" IS NULL
+          WHEN COALESCE("rowOverrides"."overrideResourceCd", "splitOverrides"."overrideResourceCd") IS NULL
           THEN "deduplicatedItems"."originalResourceCd"
-          ELSE "overrides"."overrideResourceCd"
+          ELSE COALESCE("rowOverrides"."overrideResourceCd", "splitOverrides"."overrideResourceCd")
         END AS "effectiveResourceCd",
         "deduplicatedItems"."requiredMinutes"
       FROM "deduplicatedItems"
-      LEFT JOIN "overrides"
-        ON (
-          "deduplicatedItems"."itemKind" = 'row'
-          AND "overrides"."itemKind" = 'row'
-          AND "overrides"."fseiban" = COALESCE("deduplicatedItems"."fseiban", '')
-          AND ("deduplicatedItems"."fseiban" <> '********' OR "overrides"."productNo" = COALESCE("deduplicatedItems"."productNo", ''))
-          AND "overrides"."fhincd" = COALESCE("deduplicatedItems"."fhincd", '')
-          AND "overrides"."resourceCd" = COALESCE("deduplicatedItems"."originalResourceCd", '')
-          AND "overrides"."processOrder" = COALESCE("deduplicatedItems"."processOrder", '')
-        )
-        OR (
-          "deduplicatedItems"."itemKind" = 'split'
-          AND "overrides"."itemKind" = 'split'
-          AND "overrides"."splitId" = "deduplicatedItems"."splitId"
-        )
+      LEFT JOIN "overrides" AS "rowOverrides"
+        ON "deduplicatedItems"."itemKind" = 'row'
+          AND "rowOverrides"."itemKind" = 'row'
+          AND "rowOverrides"."fseiban" = COALESCE("deduplicatedItems"."fseiban", '')
+          AND ("deduplicatedItems"."fseiban" <> '********' OR "rowOverrides"."productNo" = COALESCE("deduplicatedItems"."productNo", ''))
+          AND "rowOverrides"."fhincd" = COALESCE("deduplicatedItems"."fhincd", '')
+          AND "rowOverrides"."resourceCd" = COALESCE("deduplicatedItems"."originalResourceCd", '')
+          AND "rowOverrides"."processOrder" = COALESCE("deduplicatedItems"."processOrder", '')
+      LEFT JOIN "overrides" AS "splitOverrides"
+        ON "deduplicatedItems"."itemKind" = 'split'
+          AND "splitOverrides"."itemKind" = 'split'
+          AND "splitOverrides"."splitId" = "deduplicatedItems"."splitId"
     )
     SELECT
       "originalResourceCd",

@@ -70,8 +70,9 @@ def main():
     install_stop_handlers(stop)
     try:
         config = load_config()
+        client = HttpClient(config)
         LOG.info("Watch camera agent started")
-        run_loop(config, stop)
+        run_loop(config, stop, post=client.post)
     except Exception as error:
         LOG.error("Agent stopped (%s)", type(error).__name__)
         return 1

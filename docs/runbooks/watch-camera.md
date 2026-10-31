@@ -11,12 +11,12 @@
 ## 対象 OS と前提
 
 - 端末は Raspberry Pi OS Bullseye 以降(systemd 247 以上)。playbook は先に systemd のバージョンを確かめ、足りなければ止まる。
-- 通信の TLS 検証は、既存の zero-edge と同じ方針で省略している(`TLS_SKIP_VERIFY=1`)。閉じた社内回線の前提で、外に出る回線では使わない。
+- カメラ agent は playbook がコピーした Pi5 証明書のみを信頼する（`inventory-zero-edge.yml` の SHA-256 で固定）。Pi5 証明書を交換したら `watch_cam_server_cert_sha256` を更新して再配備する。heartbeat agent の TLS 検証は引き続き省略する（別件）。
 
 ## 端末を追加する
 
-1. 管理画面で端末キーを発行する。端末名は `zero-edge-cam-1` のように `zero-edge-cam-` で始める(死活監視と受信の両方がこの名前を見る)。
-2. Pi5 の `infrastructure/ansible/inventory-zero-edge-hosts.yml`(git 管理外、権限 0600)の `watch_cam` グループに書く。標準 fleet の `inventory.yml` には入れない。
+1. 端末名は `zero-edge-cam-1` のように `zero-edge-cam-` で始める(死活監視と受信の両方がこの名前を見る)。
+2. Pi5 の `infrastructure/ansible/inventory-zero-edge-hosts.yml`(git 管理外、権限 0600)の `watch_cam` グループに書く。標準 fleet の `inventory.yml` には入れない。端末キーは `openssl rand -hex 24` などで Pi5 上で作り、画面やチャットに出さない。
 
 ```yaml
 all:
@@ -31,7 +31,8 @@ all:
           watch_cam_client_key: "<端末キー>"
 ```
 
-3. 対象 SHA が main にあり CI が成功していることを確かめてから、Pi5 で実行する。
+3. 同じ端末キーで端末を API に登録する。管理画面に端末の追加機能は無いので、管理者の `POST /api/clients`(`{apiKey, name, location}`)を使う。管理者は二段階認証が必要で、ログインに `totpCode` を付ける。Pi5 では `https://127.0.0.1/api` に届く。パスワードと 6 桁コードは人が入力し、端末キーは上のファイルから読む。成功すると HTTP 200 が返る。
+4. 対象 SHA が main にあり CI が成功していることを確かめてから、Pi5 で実行する。
 
 ```sh
 ansible-playbook -i inventory.yml -i inventory-zero-edge.yml -i inventory-zero-edge-hosts.yml playbooks/watch-cam.yml --limit "zero-edge-cam-1"
@@ -61,6 +62,9 @@ timedatectl show -p NTPSynchronized --value
 
 - `WATCH_CAMERA_PERSON_PROMPT`: 判定の質問文。JSON の返し方はコードが後ろに付ける。
 - `WATCH_CAMERA_PERSON_MIN_CONFIDENCE`: 0〜1、既定 0.5。人ありとみなす最小の確信度。
+
+判定に送る画像だけ、Lab の L（輝度）に CLAHE をかける（色成分 a/b は維持）。失敗時は元画像で判定する。
+保存画像と管理画面の画像は元のまま。`WATCH_CAMERA_JUDGE_ENHANCE=false` で補正を停止できる（既定 true）。
 
 実際の作業場の写真で確かめる手順:
 
@@ -98,3 +102,10 @@ DGX の停止中は「未判定」の写真が増える。これは正常な縮�
 - 401/403: 端末キーと端末名(`zero-edge-cam-` 接頭辞)を確認し、playbook を再実行する。
 - 画像が来ない: カメラの接続(`v4l2-ctl --list-devices`)、Wi-Fi、時刻同期を確認する。サービスは異常終了や無応答(WatchdogSec=60)で自動再起動する。
 - 戻す場合は既知の正常なファイルを再配備する。Pi5 側の保存済み画像は残る。
+
+
+## 見本
+
+1. 管理画面「監視カメラ」→「見本」でカメラ・間隔・期間・上限枚数を選び、「撮影を始める」。期間または上限で終了し、途中なら「撮影を止める」。
+2. 直近の見本写真を開き、正常・異常・あとでを押して印づけする。同じ印を再度押すと解除でき、絞り込みで確認できる。
+3. 「この見本をすべて消す」を2回押して全消去する。保存先は `photos/watch-camera-samples/{sessionId}/{frameId}.jpg`、自動削除はせず手動削除のみ。専用合計上限は `WATCH_CAMERA_SAMPLE_MAX_BYTES`（既定2GiB、各セッションはInt上限まで）で、超える写真は保存せず撮影を完了する。

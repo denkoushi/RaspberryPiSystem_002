@@ -117,7 +117,7 @@ export function useKioskGrindingPlanningBoardProgressive(
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
   });
   const queryClient = useQueryClient();
-  const previousRevisionRef = useRef<{ paramsKey: string; revision: string }>();
+  const previousRevisionRef = useRef<{ paramsKey: string; revision: string } | undefined>(undefined);
   const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
   const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
   const [isAppending, setIsAppending] = useState(false);

@@ -21,7 +21,7 @@ function visibleRect(element: HTMLElement): GuideRect | null {
   return right > left && bottom > top ? { left, top, width: right - left, height: bottom - top } : null;
 }
 
-export function useGuideTarget(targetId: string | undefined, routeKey: string, cardRef: RefObject<HTMLElement>, iconRef: RefObject<HTMLElement>) {
+export function useGuideTarget(targetId: string | undefined, routeKey: string, cardRef: RefObject<HTMLElement | null>, iconRef: RefObject<HTMLElement | null>) {
   const [geometry, setGeometry] = useState<{ target: GuideRect | null; icon: GuideRect | null; size: { width: number; height: number }; viewport: { width: number; height: number } }>({
     target: null, icon: null, size: { width: 320, height: 280 }, viewport: { width: window.innerWidth, height: window.innerHeight },
   });

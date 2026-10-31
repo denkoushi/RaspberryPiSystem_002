@@ -57,7 +57,7 @@ export function useBarcodeScanSession({
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const stopNativeRef = useRef<(() => void) | null>(null);
   const disposedRef = useRef(true);
-  const timeoutIdRef = useRef<ReturnType<typeof window.setTimeout> | undefined>();
+  const timeoutIdRef = useRef<ReturnType<typeof window.setTimeout> | undefined>(undefined);
   const acquiredStreamRef = useRef<MediaStream | null>(null);
 
   onSuccessRef.current = onSuccess;

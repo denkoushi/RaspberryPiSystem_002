@@ -3307,6 +3307,44 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("'web-' + release_pi5_slot", argv)
         self.assertEqual(start["when"], "release_pi5_route == 'fresh'")
 
+    def test_pi5_hermes_image_guard_allows_only_approved_predecessor_transitions(self) -> None:
+        defaults = yaml.safe_load((ANSIBLE / "roles/release_pi5/defaults/main.yml").read_text())
+        approved = defaults["release_pi5_business_hermes_replaceable_images"]
+        self.assertEqual(approved, [
+            "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
+        ])
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        current = environment.from_string(defaults["release_pi5_business_hermes_image"]).render()
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        guard = next(task for task in prepare if task["name"] ==
+                     "Refuse to replace an independent business Hermes image during API/Web rollback window")
+        decision = next(task for task in prepare if task["name"] ==
+                        "Decide whether Business Hermes requires an approved image transition")
+        allowed = environment.compile_expression(guard["ansible.builtin.assert"]["that"][0])
+        transition = environment.from_string(decision["ansible.builtin.set_fact"][
+            "release_pi5_business_hermes_image_transition_required"])
+        for container_id, image, expected_allowed, expected_transition in (
+            ("", "", True, False),
+            ("existing", current, True, False),
+            ("existing", approved[0], True, True),
+            ("existing", "nousresearch/hermes-agent:unapproved@sha256:" + "a" * 64, False, False),
+            ("existing", defaults["release_pi5_business_hermes_egress_replaceable_images"][0], False, False),
+        ):
+            with self.subTest(container_id=container_id, image=image):
+                variables = {
+                    "release_pi5_business_hermes_existing_id": container_id,
+                    "release_pi5_business_hermes_existing_image": image,
+                    "release_pi5_business_hermes_image": current,
+                    "release_pi5_business_hermes_replaceable_images": approved,
+                }
+                self.assertEqual(allowed(**variables), expected_allowed)
+                self.assertEqual(transition.render(**variables), str(expected_transition))
+        names = [task["name"] for task in prepare]
+        self.assertLess(names.index(guard["name"]), names.index(decision["name"]))
+        self.assertLess(names.index(decision["name"]), names.index(
+            "Mark the independent business Hermes startup boundary"))
+
     def test_pi5_egress_image_guard_allows_only_approved_predecessor_transitions(self) -> None:
         defaults = yaml.safe_load((ANSIBLE / "roles/release_pi5/defaults/main.yml").read_text())
         approved = defaults["release_pi5_business_hermes_egress_replaceable_images"]
@@ -3927,10 +3965,108 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
 class ConsultationRuntimeReleaseTests(unittest.TestCase):
     """Execute the real Ansible start/rescue tasks against a stateful Docker double."""
 
-    def test_consultation_image_guard_limits_predecessors_to_egress(self) -> None:
+    def test_guide_approved_image_replacement_and_failed_candidate_restoration(self) -> None:
+        role = ANSIBLE / "roles/release_pi5"
+        defaults = yaml.safe_load((role / "defaults/main.yml").read_text())
+        previous = defaults["release_pi5_business_hermes_replaceable_images"][0]
+        current = Environment().from_string(defaults["release_pi5_business_hermes_image"]).render()
+        prepare = yaml.safe_load((role / "tasks/prepare.yml").read_text())
+        startup = [task for task in prepare if task["name"] in (
+            "Refuse to replace an independent business Hermes image during API/Web rollback window",
+            "Decide whether Business Hermes requires an approved image transition",
+            "Mark the independent business Hermes startup boundary",
+            "Start the independent business Hermes runtime before candidate traffic",
+        )]
+        cleanup = yaml.safe_load((role / "tasks/cleanup.yml").read_text())[1:5]
+        docker_script = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+p = Path(os.environ['HERMES_DOCKER_STATE'])
+s = json.loads(p.read_text())
+a = sys.argv[1:]
+s['events'].append(a)
+code = 0
+if a[0] == 'compose' and 'up' in a:
+    s['image'] = os.environ['BUSINESS_HERMES_IMAGE']
+    s['images'].append(s['image'])
+    s['running'] = True
+    if s.get('fail_start'):
+        s['fail_start'] = False
+        code = 1
+elif a[0] == 'ps':
+    print('abcdef123456')
+elif a[0] == 'inspect':
+    running = str(s['running']).lower()
+    print(s['image'] + '|' + running + '|healthy' if 'Config.Image' in a[2] else running)
+elif a[0] == 'stop':
+    s['running'] = False
+else:
+    code = 2
+p.write_text(json.dumps(s))
+sys.exit(code)
+'''
+        for running, failure in ((True, None), (True, "startup"), (True, "health"),
+                                 (False, "startup"), (False, "health")):
+            with self.subTest(running=running, failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                executable = root / "docker"
+                executable.write_text(docker_script)
+                executable.chmod(0o755)
+                state = root / "state.json"
+                state.write_text(json.dumps({"image": previous, "running": running,
+                                             "images": [], "events": [], "fail_start": failure == "startup"}))
+                compose_environment = {"HERMES_DOCKER_STATE": str(state), "BUSINESS_HERMES_IMAGE": current}
+                candidate = startup + ([{"ansible.builtin.fail": {"msg": "Simulate candidate health failure"}}]
+                                       if failure == "health" else [])
+                playbook = root / "check.yml"
+                playbook.write_text(yaml.safe_dump([{
+                    "hosts": "localhost", "connection": "local", "gather_facts": False,
+                    "vars": {
+                        "release_pi5_route": "fresh",
+                        "release_pi5_business_hermes_enabled": True,
+                        "release_pi5_business_hermes_existing_id": "abcdef123456",
+                        "release_pi5_business_hermes_existing_image": previous,
+                        "release_pi5_business_hermes_existing_running": running,
+                        "release_pi5_business_hermes_image": current,
+                        "release_pi5_business_hermes_replaceable_images": [previous],
+                        "release_pi5_compose_argv": [str(executable), "compose"],
+                        "release_pi5_compose_environment": compose_environment,
+                        "release_pi5_rollback_compose_environment": compose_environment,
+                        "release_pi5_compose_project": "bluegreen",
+                        "release_pi5_compose_wait_seconds": 10,
+                    },
+                    "environment": {"HERMES_DOCKER_STATE": str(state)},
+                    "tasks": [{"block": candidate, "rescue": [{"block": [
+                        {"ansible.builtin.import_tasks": str(role / "tasks/rollback.yml")}
+                    ], "rescue": [{"ansible.builtin.assert": {"that": [
+                        "ansible_failed_task.name == 'Preserve the original Pi5 candidate failure after rollback'",
+                        "release_pi5_business_hermes_image_transition_rolled_back | bool",
+                        "not (release_pi5_business_hermes_image_restore_failed | default(false) | bool)",
+                    ]}}]}], "always": cleanup if failure else []}],
+                }], sort_keys=False))
+                (root / "ansible.cfg").write_text("[defaults]\nretry_files_enabled = False\n")
+                env = dict(os.environ, ANSIBLE_CONFIG=str(root / "ansible.cfg"), ANSIBLE_NOCOLOR="1",
+                           PATH=str(root) + os.pathsep + os.environ["PATH"])
+                result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(playbook)],
+                                        env=env, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout[-5000:] + result.stderr[-1000:])
+                actual = json.loads(state.read_text())
+                self.assertEqual(actual["images"], [current, previous] if failure else [current])
+                self.assertEqual(actual["image"], previous if failure else current)
+                self.assertEqual(actual["running"], running if failure else True)
+                up = [event for event in actual["events"] if "up" in event]
+                for event in up:
+                    self.assertEqual(event[-1], "business-hermes")
+                    self.assertIn("--force-recreate", event)
+                    self.assertIn("--no-deps", event)
+                    self.assertIn("--wait", event)
+                self.assertFalse(any("rm" in event or "--volumes" in event for event in actual["events"]))
+
+    def test_consultation_image_guard_allows_only_service_approved_predecessors(self) -> None:
         role = ANSIBLE / "roles/release_pi5"
         defaults = yaml.safe_load((role / "defaults/main.yml").read_text())
         approved = defaults["release_pi5_business_hermes_egress_replaceable_images"]
+        hermes_approved = defaults["release_pi5_business_hermes_replaceable_images"]
         prepare = yaml.safe_load((role / "tasks/business-hermes-chat-prepare.yml").read_text())
         guard = next(task for task in prepare if task["name"] ==
                      "Preserve the fixed image boundary for existing consultation containers")
@@ -3942,6 +4078,7 @@ class ConsultationRuntimeReleaseTests(unittest.TestCase):
                 ("", "", True),
                 ("existing", current, True),
                 ("existing", approved[0], service == "business-hermes-chat-egress"),
+                ("existing", hermes_approved[0], service == "business-hermes-chat"),
                 ("existing", "unapproved-image", False),
             ):
                 with self.subTest(service=service, image=image):
@@ -3950,12 +4087,16 @@ class ConsultationRuntimeReleaseTests(unittest.TestCase):
                         business_hermes_chat_image="hermes-current",
                         business_hermes_chat_egress_image="egress-current",
                         release_pi5_business_hermes_egress_replaceable_images=approved,
+                        release_pi5_business_hermes_replaceable_images=hermes_approved,
                     ), expected)
         binding = next(task for task in prepare if task["name"] ==
                        "Bind consultation Compose paths and persistent candidate environment")
         self.assertIn("'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': business_hermes_chat_egress_image", str(binding))
+        self.assertIn("'BUSINESS_HERMES_CHAT_IMAGE': business_hermes_chat_image", str(binding))
         rollback = yaml.safe_load((role / "tasks/business-hermes-chat-rollback.yml").read_text())
         names = [task["name"] for task in rollback]
+        self.assertLess(names.index("Bind the captured consultation Hermes image for rollback"),
+                        names.index("Restore existing consultation containers after profile restoration"))
         self.assertLess(names.index("Bind the captured consultation egress image for rollback"),
                         names.index("Restore existing consultation containers after profile restoration"))
 
@@ -3980,6 +4121,8 @@ elif a[0] == 'compose':
         s['services'][service] = True
         if service == 'business-hermes-chat-egress':
             s['egress_images'].append(os.environ['BUSINESS_HERMES_CHAT_EGRESS_IMAGE'])
+        if service == 'business-hermes-chat':
+            s['hermes_images'].append(os.environ['BUSINESS_HERMES_CHAT_IMAGE'])
         if service == 'business-hermes-chat' and s.get('fail_start'):
             s['fail_start'] = False
             code = 1
@@ -3990,6 +4133,9 @@ elif a[0] == 'compose':
 p.write_text(json.dumps(s))
 sys.exit(code)
 '''
+        defaults = yaml.safe_load((ANSIBLE / 'roles/release_pi5/defaults/main.yml').read_text())
+        previous_hermes = defaults['release_pi5_business_hermes_replaceable_images'][0]
+        current_hermes = Environment().from_string(defaults['release_pi5_business_hermes_image']).render()
         for existing, fail_start, trial_enabled in [(False, False, False), (False, True, False), (True, False, False), (True, False, True), (True, True, True)]:
             with self.subTest(existing=existing, fail_start=fail_start, trial_enabled=trial_enabled), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -3998,9 +4144,9 @@ sys.exit(code)
                 executable.chmod(0o755)
                 initial = {'business-hermes-chat-egress': True, 'business-hermes-chat': False} if existing else {}
                 state = root / 'state.json'
-                state.write_text(json.dumps({'services': initial, 'network': existing, 'events': [], 'egress_images': [], 'fail_start': fail_start}))
+                state.write_text(json.dumps({'services': initial, 'network': existing, 'events': [], 'egress_images': [], 'hermes_images': [], 'fail_start': fail_start}))
                 before = [{'service': service, 'id': 'existing' if existing else '', 'running': running,
-                           'image': 'previous-egress' if service == 'business-hermes-chat-egress' else 'hermes-current'}
+                           'image': 'previous-egress' if service == 'business-hermes-chat-egress' else previous_hermes}
                           for service, running in [('business-hermes-chat-egress', existing), ('business-hermes-chat', False)]]
                 task_root = ANSIBLE / 'roles/release_pi5/tasks'
                 playbook = root / 'check.yml'
@@ -4008,7 +4154,8 @@ sys.exit(code)
                     'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
                     'vars': {'release_pi5_compose_argv': [str(executable), 'compose'],
                              'release_pi5_compose_environment': {'CHAT_DOCKER_STATE': str(state),
-                                                                 'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': 'new-egress'},
+                                                                 'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': 'new-egress',
+                                                                 'BUSINESS_HERMES_CHAT_IMAGE': current_hermes},
                              'release_pi5_compose_project': 'bluegreen', 'release_pi5_compose_wait_seconds': 10,
                              'release_pi5_gateway_id': 'gateway-fixture', 'release_pi5_chat_before': before,
                              'release_pi5_chat_gateway_connected': False,
@@ -4035,6 +4182,7 @@ sys.exit(code)
                 self.assertEqual(actual['services'], initial)
                 self.assertEqual(actual['network'], existing)
                 self.assertEqual(actual['egress_images'], ['new-egress', 'previous-egress'] if existing else ['new-egress'])
+                self.assertEqual(actual['hermes_images'], [current_hermes, previous_hermes] if existing else [current_hermes])
                 if not existing:
                     connect = next(event for event in actual['events'] if event[:2] == ['network', 'connect'])
                     self.assertEqual(connect[2:4], ['--alias', 'gateway'])

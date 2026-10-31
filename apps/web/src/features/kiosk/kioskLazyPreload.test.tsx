@@ -12,10 +12,10 @@ describe('kiosk registered lazy preloading', () => {
   it('loads in sequence once, observes gaps, continues after failure, and shares the lazy loader', async () => {
     const preloader = createKioskLazyPreloader();
     const calls: string[] = [];
-    let resolveFirst!: (value: { default: () => JSX.Element }) => void;
+    let resolveFirst!: (value: { default: () => React.JSX.Element }) => void;
     const first = vi.fn(() => {
       calls.push('first');
-      return new Promise<{ default: () => JSX.Element }>((resolve) => { resolveFirst = resolve; });
+      return new Promise<{ default: () => React.JSX.Element }>((resolve) => { resolveFirst = resolve; });
     });
     const First = preloader.lazy(first);
     const failure = vi.fn(async () => { calls.push('failed'); throw new Error('missing chunk'); });

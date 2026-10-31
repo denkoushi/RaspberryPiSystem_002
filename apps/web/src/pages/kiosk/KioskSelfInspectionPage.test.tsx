@@ -541,9 +541,9 @@ describe('KioskSelfInspectionPage HID scan workflow', () => {
       scannedPartNumber: 'MH009X',
       canonicalPartNumber: 'MH001'
     }));
-    expect(screen.getByRole('status')).toHaveTextContent(
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(
       '類似品番の保存に失敗しました。今回選択した作業要領書は閲覧できます。'
-    );
+    ));
 
     fireEvent.click(similarGrinding);
     expect(await screen.findByRole('dialog', { name: '作業要領書' })).toBeInTheDocument();
