@@ -212,6 +212,12 @@ pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイ�
 - [x] (2026-10-30) 本番移行を実施（切替PR #2398、修正PR #2404）。7:41の初回は旧dbコンテナがパスワードを環境変数で持ちmigrateが停止、自動でpg15へ戻した（停止約20秒、データ変更なし）。修正後、17:50開始で一括実行しRESULT=OK。Pi5の停止区間は719秒（migrate 579秒、activate 18は8秒、API/web再開100秒、migrate status確認19秒）。比較レポートの差分なし、PostgreSQL 18.6。旧ボリュームdb-dataは残し、移行時のダンプはMacへ写してsha256一致を確認。
 - [x] (2026-10-30) 3件目の Debian trixie 化: API と kiosk-sop 生成の基盤を node:24-trixie-slim(Node 24.22.2、index `sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446`、arm64 manifest `sha256:7924b020d1e9972de4d7838a7a8ab8c54ef0d6e51435d6a7d1dfa73c6f106241`)へ替え、PGDG を trixie-pgdg、t64 の部品名、最低版チェックを trixie の版に直した。Mac(arm64)で API イメージを作り、Debian 13.7・pg_dump 18.6・Python 3.13.5・ndlocr-lite・rapidocr・ansible・ffmpeg・pdftoppm が動くことを確認。圧縮サイズの手元見積もりは合計 1078966439 バイト、最大の層 619208532 バイト、33 層で予算内。kiosk-sop は生成照合と画面テスト 18 件が合格し、ソースのダイジェストだけ更新した。
 - [x] (2026-10-30) pnpm 10/11 のサポート終了(2027-04-30)を知り、対象一覧に 7 として追加。着手は 2027 年 1〜2 月の予定で、実装は未着手。
+- [x] (2026-10-30) 4件目の Python 3.13: NFC・バーコード・トルクの各 agent と回答キャッシュを `python:3.13-slim` に上げた #2426 をマージ(main dd08a3c7)。Pi5 へ反映(run 20261030-141919-5453cb、成功)したあと、Pi4 を1台ずつ反映した(全 8 台成功・failed=0)。順に stonebase01 20261030-143449-9d23bd、assembly-01 144624-66e184、kensaku-02 145705-3014ca、sessaku-01 150637-125f83、fjv60-80 151646-b64745、assembly-02 152623-8cb2c0、raspberrypi4 155831-215cc2、robodrill01 160802-58abf7。全台で nfc の `readerConnected` が true、再起動 0 回、イメージ dd08a3c7 だった。torque `/health` は assembly-01 と stonebase01 で 200。全台完了の 120 秒後に再確認しても同じだった。
+- [x] (2026-10-31) #2426 で torque-agent の Dockerfile が変わり、採用記録(a926af9a のまま)と食い違って別 PR の torque-release チェックが落ちたため、採用記録を dd08a3c7 のイメージ(index `sha256:a1736af1…`、run 41065917090)へ更新する #2431 をマージした(main 751ba8da)。実機のイメージは変わらないのでデプロイはしていない。
+- [ ] Python 3.13 の現地確認(stonebase01 でカード1枚、assembly-01 でカード1枚とトルクレンチの締付1回)。ユーザーの返事待ち。
+- [x] (2026-10-31) PostgreSQL の後片付け: pg18 移行後の DR スナップショット(2026-10-30 23:00 の夜間分、snapshot_id 7bfadd98…、3437174433 bytes)が成功していることを確認し、Google Drive からの復元検証(`restore-check`)を通した(stage `restore_check_complete`)。復元した DB ダンプの見出しは PostgreSQL 18.6。復元先 `/var/tmp/raspi-google-drive-dr-restore-20261031-181349` は確認用に Pi5 へ残している。
+- [ ] PostgreSQL の旧ボリューム `db-data` の削除は 2026-11-13(移行から2週間)以降に、ユーザーの明示承認を得て別作業で行う。まだ消していない。
+- [x] (2026-10-31) 7件目の pnpm 12: #2427(pnpm 12.16.1、Corepack をやめて npm で入れる)、#2435(API イメージを予算内に戻す)、#2436(圧縮サイズ予算を 1.125GB に)をマージ。最終は main 9223b0be。この3件は Pi5 へ1回で反映した(run 20261030-184443-1ad230、成功・failed=0、api healthy、HTTP 正常)。
 
 ## Surprises & Discoveries
 
