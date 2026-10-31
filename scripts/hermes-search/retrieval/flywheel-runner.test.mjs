@@ -1182,9 +1182,9 @@ test('phase six prefers follow-ups, caps comparisons, preserves active and resum
   assert.equal(state.checks[0].decision, 'report');
   assert.equal(state.checks[0].compared, 2);
   assert.equal(state.checks[0].affected, 2);
-  // The follow-up now scores the candidate's unrelated displayed content as a deterministic loss.
+  // No verbatim match makes the candidate follow-up unsupported and excludes it from comparisons.
   assert.deepEqual(status.plannerVersion, { active: f.baseline, candidate: f.candidate, compared: 2, affected: 2,
-    dev: { n: 1, gained: 0, lost: 0 }, heldout: { n: 1, gained: 0, lost: 1 }, real: { n: 2, gained: 0, lost: 1 } });
+    dev: { n: 1, gained: 0, lost: 0 }, heldout: { n: 0, gained: 0, lost: 0 }, real: { n: 1, gained: 0, lost: 0 } });
   assert.deepEqual(JSON.parse(readFileSync(path.join(f.dir, 'flywheel-status.json'), 'utf8')).plannerVersion, status.plannerVersion);
   assert.match(readFileSync(path.join(f.dir, 'runner-2026-10-03.log'), 'utf8'), /id=planner:real-context/u);
   const resumed = await runFlywheelNight(f.input);
@@ -1298,7 +1298,7 @@ test('regressions replay despite existingRealIds and zero real budget, then reti
   const first = await runFlywheelNight(f.input);
   assert.deepEqual(first.regression, { replayed: 0, ok: 0, failed: 0, pending: 1 });
   const [queued] = f.queue();
-  assert.deepEqual(Object.keys(queued), ['id', 'question', 'previousPlan', 'previousShown', 'context', 'receiptAt', 'firstFailedNight', 'lastNight', 'lastOk']);
+  assert.deepEqual(Object.keys(queued), ['id', 'question', 'previousPlan', 'previousShown', 'context', 'receiptAt', 'firstFailedNight', 'lastNight', 'lastOk', 'lastUnsupported']);
   assert.equal(queued.firstFailedNight, '2026-10-03');
   assert.equal(queued.lastOk, 0);
   assert.deepEqual(queued.context, ['異物の付着を探す架空の質問']);

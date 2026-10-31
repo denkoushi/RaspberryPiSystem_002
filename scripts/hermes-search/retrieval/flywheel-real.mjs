@@ -157,14 +157,15 @@ export function updateRegression(regressions, row, night) {
   const yesterday = new Date(Date.parse(`${night}T12:00:00Z`) - 24 * 3600 * 1000).toISOString().slice(0, 10);
   // lastOk is the consecutive successful-night count; gaps and unsupported checks reset it.
   const lastOk = ok === true ? (prior?.lastNight === yesterday ? prior.lastOk : 0) + 1 : 0;
-  if (lastOk >= 3) {
+  const lastUnsupported = ok === null ? (prior?.lastNight === yesterday ? prior.lastUnsupported ?? 0 : 0) + 1 : 0;
+  if (lastOk >= 3 || lastUnsupported >= 3) {
     regressions.delete(row.id);
     return;
   }
   regressions.set(row.id, {
     id: row.id, question: row.question, previousPlan: row.previousPlan ?? null,
     previousShown: row.previousShown ?? [], context: row.context ?? [], receiptAt: row.receiptAt,
-    firstFailedNight: prior?.firstFailedNight ?? night, lastNight: night, lastOk,
+    firstFailedNight: prior?.firstFailedNight ?? night, lastNight: night, lastOk, lastUnsupported,
   });
 }
 
