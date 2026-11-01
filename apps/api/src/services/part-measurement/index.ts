@@ -24,7 +24,7 @@ export { SelfInspectionService } from './self-inspection.service.js';
 export {
   PartMeasurementDrawingPlacementService,
   getPartMeasurementDrawingPlacementService,
-  PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION,
+  currentPlacementVersion,
   type PartMeasurementDrawingPlacementEditorResult,
   type PlacementReorderProvider
 } from './part-measurement-drawing-placement.service.js';
