@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE, GITHUB_OWNER
+
 import json
 import subprocess
 import sys
@@ -270,8 +272,9 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         rendered = environment.from_string(
             ARTIFACT_PROMOTION_TEMPLATE.read_text(encoding="utf-8")
         ).render(
+            raspisys_github_owner=GITHUB_OWNER,
             pi5_artifact_promotion_enabled=False,
-            pi5_artifact_ghcr_username="denkoushi",
+            pi5_artifact_ghcr_username=GITHUB_OWNER,
             pi5_artifact_ghcr_token="test-token",
         )
         policy = json.loads(rendered)
@@ -289,7 +292,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         )
         self.assertEqual(
             policy["releaseSetRepository"],
-            "ghcr.io/denkoushi/raspisys-release-set",
+            f"{GHCR_NAMESPACE}/raspisys-release-set",
         )
 
         tasks = SERVER_ROLE_TASKS.read_text(encoding="utf-8")

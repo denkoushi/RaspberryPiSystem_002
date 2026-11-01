@@ -16,6 +16,7 @@ from pathlib import Path
 
 try:
     from .release_artifact_contract import (
+        GHCR_NAMESPACE,
         FULL_SHA_RE,
         SHA256_RE,
         TORQUE_ADOPTED_SOURCE_SHA,
@@ -27,6 +28,7 @@ try:
     )
 except ImportError:  # Direct script execution from scripts/deploy.
     from release_artifact_contract import (
+        GHCR_NAMESPACE,
         FULL_SHA_RE,
         SHA256_RE,
         TORQUE_ADOPTED_SOURCE_SHA,
@@ -161,7 +163,7 @@ def adoption_predicate(
         "predicateType": TORQUE_ADOPTION_PREDICATE_TYPE,
         "component": "torque-agent",
         "subject": {
-            "repository": "ghcr.io/denkoushi/raspisys-torque-agent",
+            "repository": f"{GHCR_NAMESPACE}/raspisys-torque-agent",
             "indexDigest": INDEX_DIGEST,
             "platforms": [
                 {"platform": name, "digest": digest}

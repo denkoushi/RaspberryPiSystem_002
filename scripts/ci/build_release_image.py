@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.deploy.release_artifact_contract import EXPECTED_IMAGE_REPOSITORIES
+
 from scripts.deploy.release_build_contract import (
     BuildContractError,
     build_config_hash,
@@ -32,10 +34,7 @@ SERVICE_DOCKERFILES = {
     "api": "infrastructure/docker/Dockerfile.api",
     "web": "infrastructure/docker/Dockerfile.web",
 }
-SERVICE_REPOSITORIES = {
-    "api": "ghcr.io/denkoushi/raspisys-api",
-    "web": "ghcr.io/denkoushi/raspisys-web",
-}
+SERVICE_REPOSITORIES = EXPECTED_IMAGE_REPOSITORIES
 MAX_METADATA_BYTES = 1024 * 1024
 
 
