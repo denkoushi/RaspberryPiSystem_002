@@ -5,7 +5,7 @@ const itemSchema = z.discriminatedUnion('kind', [
   z.object({ itemId: z.string().uuid(), kind: z.literal('material'), materialId: z.string().min(1),
     override: z.string().max(12000).optional(), origin: z.enum(['human', 'ai-accepted']), style: styleSchema }).strict(),
   z.object({ itemId: z.string().uuid(), kind: z.literal('text'), textKind: z.enum(['title', 'subtitle', 'body']),
-    text: z.string().max(12000), origin: z.enum(['human', 'ai-accepted']), style: styleSchema }).strict(),
+    text: z.string().max(12000), origin: z.literal('human'), style: styleSchema }).strict(),
 ]);
 const rowSchema = z.object({ cols: z.array(z.object({ items: z.array(itemSchema).max(200) }).strict()).max(3),
   w: z.array(z.number().finite().positive()).max(3) }).strict()

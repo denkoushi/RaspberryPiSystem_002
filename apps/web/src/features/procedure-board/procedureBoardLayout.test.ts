@@ -22,6 +22,18 @@ describe('web / API layout contract', () => {
     expect(web.boardItems(client).filter(entry => entry.item.kind === 'material')).toHaveLength(2);
     expect(client.pages[0].rows[0].w).toEqual([1]);
   });
+  it('accepts only human-origin text cards while preserving AI material origins', () => {
+    const title: BoardItem = { itemId: crypto.randomUUID(), kind: 'text', textKind: 'title', text: '準備', origin: 'human', style: 'heading' };
+    for (const schema of [web.layoutSchema, server.layoutSchema]) {
+      const layout = web.placeItem(web.emptyLayout(), title, target);
+      expect(schema.parse(layout)).toEqual(layout);
+      const aiText = structuredClone(layout);
+      Object.assign(aiText.pages[0].rows[0].cols[0].items[0], { origin: 'ai-accepted' });
+      expect(schema.safeParse(aiText).success).toBe(false);
+      const aiMaterial = web.placeItem(layout, { itemId: crypto.randomUUID(), kind: 'material', materialId: 'm1', origin: 'ai-accepted', style: 'figure' }, { ...target, row: 1 });
+      expect(schema.parse(aiMaterial)).toEqual(aiMaterial);
+    }
+  });
   it('matches normalization of empty columns and stacked items', () => {
     const input = web.emptyLayout(); input.pages[0].rows = [{ cols: [{ items: [] }, { items: [text(), text()] }], w: [3, 7] }, { cols: [], w: [] }];
     expect(web.normalizeLayout(input)).toEqual(server.normalizeLayout(input));

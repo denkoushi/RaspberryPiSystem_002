@@ -43,7 +43,6 @@ export const boardEventSchema = z.discriminatedUnion('type', [
 export type BoardEvent = z.infer<typeof boardEventSchema>;
 export const decisionsSchema = z.object({
   dismissedPlacements: z.array(z.object({ materialId: identity, materialFingerprint: identity }).strict()).max(600),
-  acceptedHeadings: z.array(z.object({ page: z.number().int().min(1).max(3), text: z.string().max(120) }).strict()).max(600).default([]),
   dismissedHeadings: z.array(z.object({ page: z.number().int().min(1).max(3), text: z.string().max(120) }).strict()).max(600),
   conflicts: z.array(z.object({ materialIds: z.tuple([identity, identity]), selectedMaterialId: identity.nullable() }).strict()
     .refine(value => value.materialIds[0] !== value.materialIds[1] && (value.selectedMaterialId === null || value.materialIds.includes(value.selectedMaterialId)))).max(600),
@@ -84,7 +83,7 @@ export function validateLayoutEvent(before: BoardLayout, after: BoardLayout, eve
       if (old || next?.item.kind !== 'material' || next.item.origin !== 'human' || next.item.materialId !== event.payload.materialId || !same(next.at, event.payload.to)) invalidBoard();
       break;
     case 'text_created':
-      if (old || next?.item.kind !== 'text' || next.item.origin !== 'human' || !next.item.text.trim() || next.item.style !== ({ title: 'heading', subtitle: 'subheading', body: 'body' } as const)[next.item.textKind]) invalidBoard();
+      if (old || next?.item.kind !== 'text' || !next.item.text.trim() || next.item.style !== ({ title: 'heading', subtitle: 'subheading', body: 'body' } as const)[next.item.textKind]) invalidBoard();
       break;
     case 'item_duplicated': {
       const source = oldItems.find(entry => entry.item.itemId === event.payload.sourceItemId)?.item;

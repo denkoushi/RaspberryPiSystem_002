@@ -40,7 +40,7 @@ function fixture(layout = emptyLayout()) {
 const first = { page: 1, row: 0, col: 0, index: 0, mode: 'row' as const };
 
 describe('Procedure board heading cards', () => {
-  it.each(['accept', 'relocate'] as const)('creates an AI title card on %s and suppresses the original proposal after editing/removal', async action => {
+  it.each(['accept', 'relocate'] as const)('creates a human-origin title card on %s and suppresses the original proposal after editing/removal', async action => {
     const existing = { itemId: randomUUID(), kind: 'text' as const, textKind: 'body' as const, text: '本文', style: 'body' as const, origin: 'human' as const };
     const initial = placeItem(emptyLayout(), existing, first);
     const f = fixture(initial); const itemId = randomUUID(); const eventId = randomUUID();
@@ -48,7 +48,7 @@ describe('Procedure board heading cards', () => {
     const input = { expectedVersion: 1, eventId, proposalId: 'h', action, itemId, ...(action === 'relocate' ? { target } : {}) };
     const saved = await f.repository.decidePlacement('procedure', 'client', 'suggestions', input);
     const page = action === 'accept' ? 1 : 2;
-    const title = { itemId, kind: 'text', textKind: 'title', style: 'heading', text: '準備', origin: 'ai-accepted' };
+    const title = { itemId, kind: 'text', textKind: 'title', style: 'heading', text: '準備', origin: 'human' };
     expect(saved.layout.pages[page - 1].rows[0].cols[0].items[0]).toEqual(title);
     expect(saved.layout.pages[0].heading).toBe(''); expect(saved.version).toBe(2);
     const event = f.events[0];
@@ -57,6 +57,7 @@ describe('Procedure board heading cards', () => {
       payload: { suggestionSetId: 'suggestions', proposalId: 'h', itemId, to: { page, row: 0, col: 0, index: 0 } },
     });
     if (action === 'relocate') expect(cumulativeStats([{ ...event, type: 'ghost_relocated', payload: event.payload as Record<string, unknown>, occurredAt: new Date(), clientDeviceId: 'client' }], null).modified).toBe(1);
+    expect(saved.decisions).toEqual({ ...emptyDecisions(), dismissedHeadings: [{ page: 1, text: '準備' }] });
     // Suppression belongs to the original page and survives editing, moving or deleting the card.
     expect(validatePlacementResult(f.job.result, { layout: initial, decisions: saved.decisions, materialFingerprint: '', materials: [] }).headings).toEqual([]);
     expect((await f.repository.decidePlacement('procedure', 'client', 'suggestions', input)).version).toBe(2);
@@ -79,15 +80,14 @@ describe('Procedure board heading cards', () => {
   it('migrates old headings under the board lock exactly once with a new version and event', async () => {
     const legacy = emptyLayout(); legacy.pages[0].heading = '準備'; legacy.pages[2].heading = '仕上げ';
     const f = fixture(legacy);
-    // Also exercise old JSON decisions that have no acceptedHeadings property.
-    delete (f.current().decisions as Partial<ReturnType<typeof emptyDecisions>>).acceptedHeadings;
     const saved = await f.repository.get('procedure', 'client');
     expect(f.tx.$queryRaw.mock.calls.length).toBeGreaterThan(0);
     expect(saved.version).toBe(2); expect(saved.layout.pages.map(page => page.heading)).toEqual(['', '', '']);
     const items = [saved.layout.pages[0], saved.layout.pages[2]].map(page => page.rows[0].cols[0].items[0]);
     expect(items.map(item => item.kind === 'text' && item.text)).toEqual(['準備', '仕上げ']);
-    expect(items.every(item => item.kind === 'text' && item.origin === 'ai-accepted' && item.style === 'heading')).toBe(true);
+    expect(items.every(item => item.kind === 'text' && item.origin === 'human' && item.style === 'heading')).toBe(true);
     expect(f.events).toEqual([expect.objectContaining({ type: 'headings_migrated', boardVersion: 2, payload: { itemIds: items.map(item => item.itemId) } })]);
+    expect(saved.decisions).toEqual({ ...emptyDecisions(), dismissedHeadings: [{ page: 1, text: '準備' }, { page: 3, text: '仕上げ' }] });
     const again = await f.repository.get('procedure', 'client');
     expect(again.layout).toEqual(saved.layout); expect(again.version).toBe(2); expect(f.events).toHaveLength(1);
     expect(validatePlacementResult(f.job.result, { layout: saved.layout, decisions: saved.decisions, materialFingerprint: '', materials: [] }).headings).toEqual([]);

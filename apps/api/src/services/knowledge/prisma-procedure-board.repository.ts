@@ -178,8 +178,8 @@ export class PrismaProcedureBoardRepository {
     for (const page of legacy.pages) {
       if (!page.heading) continue;
       const itemId = randomUUID(); itemIds.push(itemId);
-      decisions.acceptedHeadings.push({ page: page.page, text: page.heading });
-      page.rows.unshift({ cols: [{ items: [{ itemId, kind: 'text', textKind: 'title', style: 'heading', text: page.heading, origin: 'ai-accepted' }] }], w: [1] });
+      decisions.dismissedHeadings.push({ page: page.page, text: page.heading });
+      page.rows.unshift({ cols: [{ items: [{ itemId, kind: 'text', textKind: 'title', style: 'heading', text: page.heading, origin: 'human' }] }], w: [1] });
       page.heading = '';
     }
     if (itemIds.length) {
@@ -349,9 +349,9 @@ export class PrismaProcedureBoardRepository {
           const proposed = { page: heading.page, row: 0, col: 0, index: 0, mode: 'row' as const };
           const target = input.action === 'relocate' ? input.target! : proposed;
           if (input.action === 'relocate' && same(target, proposed)) invalidBoard();
-          try { layout = placeItem(layout, { itemId: input.itemId, kind: 'text', textKind: 'title', style: 'heading', text: heading.text, origin: 'ai-accepted' }, target); }
+          try { layout = placeItem(layout, { itemId: input.itemId, kind: 'text', textKind: 'title', style: 'heading', text: heading.text, origin: 'human' }, target); }
           catch { invalidBoard(); }
-          decisions.acceptedHeadings.push({ page: heading.page, text: heading.text });
+          decisions.dismissedHeadings.push({ page: heading.page, text: heading.text });
           const to = boardItems(layout).find(entry => entry.item.itemId === input.itemId)!.at;
           event = { id: input.eventId, type: input.action === 'accept' ? 'heading_accepted' : 'ghost_relocated', payload: { ...base, itemId: input.itemId, to } };
         }
