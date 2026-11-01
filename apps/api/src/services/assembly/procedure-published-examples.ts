@@ -6,16 +6,22 @@ export type PublishedProcedure = {
 };
 export const compareStrings = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 
-/** Assignments on any revision determine the site, with assembly taking precedence. */
+/** The latest published revision per root is the current one, as in procedure-manual.service resolvePublished; assignments on any revision determine the site, with assembly taking precedence. */
 export async function loadPublishedProcedures(site: ProcedureSite): Promise<PublishedProcedure[]> {
-  const documents = await prisma.assemblyProcedureDocument.findMany({
-    where: { status: 'PUBLISHED', isActive: true, revisionMetadata: { isRevisionHead: true } },
+  const published = await prisma.assemblyProcedureDocument.findMany({
+    where: { status: 'PUBLISHED', isActive: true, revisionMetadata: { isNot: null } },
     select: {
       id: true, updatedAt: true, publishedAt: true,
-      revisionMetadata: { select: { revisionRootId: true, updatedAt: true } },
+      revisionMetadata: { select: { revisionRootId: true, revisionNumber: true, updatedAt: true } },
       overlayElements: { where: { kind: 'TEXT' }, select: { text: true, updatedAt: true } },
     },
   });
+  const latestByRoot = new Map<string, (typeof published)[number]>();
+  for (const document of published) {
+    const current = latestByRoot.get(document.revisionMetadata!.revisionRootId);
+    if (!current || document.revisionMetadata!.revisionNumber > current.revisionMetadata!.revisionNumber) latestByRoot.set(document.revisionMetadata!.revisionRootId, document);
+  }
+  const documents = [...latestByRoot.values()];
   if (!documents.length) return [];
   const assignments = await prisma.procedureManualAssignment.findMany({
     where: { assemblyProcedureDocument: { revisionMetadata: { revisionRootId: { in: documents.map(d => d.revisionMetadata!.revisionRootId) } } } },

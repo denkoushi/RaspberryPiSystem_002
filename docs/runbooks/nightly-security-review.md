@@ -151,6 +151,10 @@ and any findings from successful units. Queue directories are mode 0700 and file
 0600, owned by the API runtime UID/GID. Atomic temporary-file publication protects
 each write. Queue jobs and progress do not expire with nightly bundle retention.
 Malformed JSON/schema is quarantined in `queue/invalid/<original-folder>-<name>`; invalid or SHA-mismatched progress alone is quarantined and the job restarts.
+Vague/refused answers persist `vagueAttempts` (missing means 0): the first two return
+the job to pending with `retryAfter` 30 minutes later; the third fails with
+`refused_or_vague`. Waiting jobs are skipped so other pending commits continue.
+Retry warnings contain only SHA, path and attempt count.
 Timeouts increment unit attempts: two timeouts split the input in half, or fail with `timeout_at_minimum_unit` at the minimum size; deferred/unavailable inference does not increment attempts.
 
 The API consumes jobs oldest first until blocked or pending is empty, under the scheduler lease and
@@ -169,8 +173,13 @@ applies to nightly security/errors.
 
 Inspect a failed job's reason using authorized private access; its presence is not
 evidence of a clean commit. Resolve provider or input problems before arranging an
-explicit re-review. Preserve the failed result and progress evidence; do not delete
-queue files as a routine backlog fix or copy their diffs/findings into public issues.
+explicit re-review. With approved host access, run the collector as root using its existing config:
+`python3 /usr/local/bin/security-review-collect.py <config> --mode requeue-failed --dry-run`
+counts eligible records without rebuilding them; remove `--dry-run` to rebuild from git under the enqueue flock.
+`--requeue-reasons refused_or_vague,invalid_model_schema,completion_failed` is the default allowlist;
+every failed unit must match. Successful atomic pending publication removes the failed record and old progress;
+unreachable SHAs remain failed with a stdout reason. The final JSON line reports `requeued`, `retained` and `dryRun`
+(`requeued` counts candidates in dry-run). Do not copy diffs/findings into public issues.
 
 ## Reading changeQueue
 
