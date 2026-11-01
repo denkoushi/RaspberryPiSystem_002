@@ -19,6 +19,11 @@ export const drawingPlacementSemanticDeps = {
   readDrawing: (path: string) => PartMeasurementDrawingStorage.readDrawing(path)
 };
 
+const H7_TOLERANCES = [
+  [3, 0.010], [6, 0.012], [10, 0.015], [18, 0.018], [30, 0.021], [50, 0.025], [80, 0.030],
+  [120, 0.035], [180, 0.040], [250, 0.046], [315, 0.052], [400, 0.057], [500, 0.063]
+];
+
 const INSTRUCTIONS = `1枚目は写し元の図面です。青い丸の番号は人が付けた検査項目の丸数字です。
 2枚目は写し先の図面です。赤い D 番号は読み取れた寸法です。
 各丸数字が部品のどこの何を測っているか（例「上面図 全幅」）を考え、写し先で同じ箇所を測る D 番号を選んでください。
@@ -99,7 +104,7 @@ export async function transferItemsSemantically(input: {
   const assignments = input.sourceItems.map((item, i) => {
     const entry = byNumber.get(i + 1) ?? { n: i + 1, role: '', target: null };
     return {
-      measurementLabel: item.measurementLabel, ...entry,
+      measurementLabel: item.measurementLabel, depthMode: item.depthMode, valueKind: item.valueKind, ...entry,
       dimension: entry.target ? input.targetMap.dimensions[Number(entry.target.slice(1)) - 1] : null
     };
   });
@@ -125,10 +130,20 @@ export async function transferItemsSemantically(input: {
         result.lowerLimit = 0;
         result.upperLimit = value;
       } else if (wanted === 'depth') {
-        result.lowerLimit = value;
-        result.upperLimit = item.upperLimit === null ? null : round(value + (item.upperLimit - item.nominalValue));
+        if (dimension.depth === null && kind === 'len' && dimension.lowerTolerance !== null && dimension.upperTolerance !== null) {
+          result.lowerLimit = round(value + dimension.lowerTolerance);
+          result.upperLimit = round(value + dimension.upperTolerance);
+        } else {
+          result.lowerLimit = value;
+          result.upperLimit = item.upperLimit === null ? null : round(value + (item.upperLimit - item.nominalValue));
+        }
       } else {
-        const tolerance = suggestTolerances(dimension, wanted, value);
+        const fit = dimension.upperTolerance === null && dimension.lowerTolerance === null
+          ? text.normalize('NFKC').trim().match(/\d+(?:\.\d+)?\s*([A-Za-z](?:\d+|$))(?=$|[^A-Za-z0-9])/u)?.[1] : null;
+        const it7 = fit === 'H7' ? H7_TOLERANCES.find(([max]) => value <= max)?.[1] : null;
+        const tolerance = fit
+          ? { lower: it7 == null ? null : '0', upper: it7 == null ? null : String(it7) }
+          : suggestTolerances(dimension, wanted, value);
         if (tolerance.lower === null && tolerance.upper === null) {
           result.lowerLimit = item.lowerLimit === null ? null : round(value - (item.nominalValue - item.lowerLimit));
           result.upperLimit = item.upperLimit === null ? null : round(value + (item.upperLimit - item.nominalValue));

@@ -95,6 +95,77 @@ describe('transferItemsSemantically', () => {
       lowerLimit: test.lowerLimit, upperLimit: test.upperLimit });
   });
 
+  it.each([
+    { text: 'φ50 H7', nominal: 50, kind: 'len' as const, upper: 50.025 },
+    { text: 'φ５０ Ｈ７', nominal: 50, kind: 'hole' as const, upper: 50.025 },
+    { text: 'φ47H', nominal: 47, kind: 'hole' as const, upper: 47.025 },
+    { text: 'φ47G6', nominal: 47, kind: 'hole' as const, upper: 47.025 },
+    { text: 'φ47h7', nominal: 47, kind: 'hole' as const, upper: 47.025 },
+    { text: 'φ47H7+0.025/0', nominal: 47, kind: 'hole' as const, upper: 47.025, lowerTolerance: 0, upperTolerance: 0.025 }
+  ])('uses fit tolerances or preserves source widths for $text', async ({ upper, ...dimension }) => {
+    const [result] = await transferItemsSemantically({ ...input(),
+      sourceItems: [{ ...item, measurementLabel: '穴径', nominalValue: 47, lowerLimit: 47, upperLimit: 47.025 }],
+      targetMap: map([dim(dimension)]) }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: dimension.nominal,
+      lowerLimit: dimension.nominal, upperLimit: upper });
+  });
+
+  it('prioritizes explicit tolerances over the H7 table', async () => {
+    const [result] = await transferItemsSemantically({ ...input(),
+      sourceItems: [{ ...item, measurementLabel: '穴径' }],
+      targetMap: map([dim({ text: 'φ47H7+0.04/-0.01', kind: 'hole', nominal: 47,
+        upperTolerance: 0.04, lowerTolerance: -0.01 })]) }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 47, lowerLimit: 46.99, upperLimit: 47.04 });
+  });
+
+  it.each([
+    [3, 0.010], [6, 0.012], [10, 0.015], [18, 0.018], [30, 0.021], [50, 0.025], [80, 0.030],
+    [120, 0.035], [180, 0.040], [250, 0.046], [315, 0.052], [400, 0.057], [500, 0.063],
+    [3.001, 0.012], [50.001, 0.030], [500.001, 0.025]
+  ])('uses the inclusive H7 interval for %s', async (nominal, tolerance) => {
+    const [result] = await transferItemsSemantically({ ...input(),
+      sourceItems: [{ ...item, measurementLabel: '穴径', nominalValue: 47, lowerLimit: 47, upperLimit: 47.025 }],
+      targetMap: map([dim({ text: `φ${nominal} H7`, nominal })]) }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', lowerLimit: nominal,
+      upperLimit: Number((nominal + tolerance).toFixed(6)) });
+  });
+
+  it.each([
+    { measurementLabel: 'キリ穴深さ', nominalValue: 32, lowerLimit: 31.95, upperLimit: 32, nominal: 22 },
+    { measurementLabel: '深さ', nominalValue: 32.025, lowerLimit: 32, upperLimit: 32.05, nominal: 32 }
+  ])('uses explicit linear depth tolerances for $measurementLabel', async ({ nominal, ...source }) => {
+    const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, ...source }],
+      targetMap: map([dim({ text: `${nominal} 0/-0.05`, nominal, upperTolerance: 0, lowerTolerance: -0.05 })]) }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: nominal,
+      lowerLimit: nominal - 0.05, upperLimit: nominal });
+  });
+
+  it.each([
+    { measurementLabel: '穴径', text: '*32±0.05', kind: 'len' as const, reason: 'hole-kind-mismatch' },
+    { measurementLabel: '穴径', text: '21±0.05', kind: 'len' as const, reason: 'hole-kind-mismatch' },
+    { measurementLabel: '高さ', text: 'φ32+0.025/+0.015', kind: 'hole' as const, reason: 'length-kind-mismatch' },
+    { measurementLabel: 'ネジ穴ピッチ', text: '2-M4深サ8', kind: 'thread' as const, reason: 'length-kind-mismatch' },
+    { measurementLabel: '平行度', text: '⊥0.005A', kind: 'gdt' as const, reason: 'geometric-symbol-mismatch' },
+    { measurementLabel: '平面度', text: '⊥ 0.010 A', kind: 'gdt' as const, reason: 'geometric-symbol-mismatch' }
+  ])('rejects $text for $measurementLabel', async ({ measurementLabel, reason, ...dimension }) => {
+    const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, measurementLabel }],
+      targetMap: map([dim(dimension)]) }, deps);
+    expect(result).toMatchObject({ status: 'UNPLACED', dimension: null, candidates: [{ rejectionReason: reason }] });
+  });
+
+  it.each([
+    { measurementLabel: '穴径', text: 'φ21±0.05', kind: 'hole' as const },
+    { measurementLabel: '高さ', text: '32±0.05', kind: 'len' as const },
+    { measurementLabel: 'ネジ穴ピッチ', text: '21±0.05', kind: 'len' as const },
+    { measurementLabel: '平行度', text: '//0.005A', kind: 'gdt' as const },
+    { measurementLabel: '平面度', text: '⏥ 0.010', kind: 'gdt' as const },
+    { measurementLabel: '平面度', text: '0.007', kind: 'gdt' as const }
+  ])('allows $text for $measurementLabel', async ({ measurementLabel, ...dimension }) => {
+    const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, measurementLabel }],
+      targetMap: map([dim(dimension)]) }, deps);
+    expect(result.status).toBe('PROPOSED');
+  });
+
   it.each([null, 9.5])('preserves source widths only outside the general tolerance table with lower limit %s', async (lowerLimit) => {
     const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, lowerLimit }],
       targetMap: map([dim({ text: '5000', nominal: 5000 })]) }, deps);
@@ -125,7 +196,7 @@ describe('transferItemsSemantically', () => {
   it('proposes the target hole depth from diameter text', async () => {
     const [result] = await transferItemsSemantically({ ...input(),
       sourceItems: [{ ...item, measurementLabel: '穴深さ' }],
-      targetMap: map([dim({ text: 'φ10.1+0.1/0深15', kind: 'hole', nominal: 10.1, depth: 15 })])
+      targetMap: map([dim({ text: 'φ10.1+0.1/0深15', kind: 'hole', nominal: 10.1, depth: 15, upperTolerance: 0.1, lowerTolerance: 0 })])
     }, deps);
     expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 15, lowerLimit: 15, upperLimit: 15.8,
       dimension: { kind: 'hole' } });

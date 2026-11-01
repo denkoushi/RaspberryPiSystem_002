@@ -44,6 +44,62 @@ describe('semanticPlacementRejections', () => {
     expect(semanticPlacementRejections([assignment('穴深さ', { text, kind: 'hole', depth: 30 })])).toEqual([null]);
   });
 
+  it.each(['*32±0.05', '21±0.05'])('rejects a linear dimension for a hole: %s', (text) => {
+    expect(semanticPlacementRejections([assignment('穴径', { text })])).toEqual(['hole-kind-mismatch']);
+  });
+
+  it.each([
+    ['高さ', 'φ32+0.025/+0.015', 'hole'], ['ネジ穴ピッチ', '2-M4深サ8', 'thread'],
+    ...['φ', 'Φ', '⌀', 'ø', 'Ø'].map((symbol) => ['高さ', `2-${symbol}32`, 'len'] as const)
+  ] as const)('rejects the wrong kind for %s: %s', (label, text, kind) => {
+    expect(semanticPlacementRejections([assignment(label, { text, kind })])).toEqual(['length-kind-mismatch']);
+  });
+
+  it.each([
+    ['平行度', '⊥0.005A'], ['平面度', '⊥ 0.010 A'], ['直角度', '//0.01'], ['平面度', '∥0.01'],
+    ['平行度', '⏥0.01'], ['平行度', '▱0.01'], ['平行度', '◎0.01'], ['平行度', '○0.01'],
+    ['平行度', '⌭0.01'], ['平行度', '⌖0.01'], ['平行度', '↗0.01']
+  ])('rejects a different geometric symbol for %s: %s', (label, text) => {
+    expect(semanticPlacementRejections([assignment(label, { text, kind: 'gdt' })])).toEqual(['geometric-symbol-mismatch']);
+  });
+
+  it.each([
+    ['平行度', '//0.01'], ['平行度', '∥0.01'], ['直角度', '⊥0.01'], ['平面度', '⏥0.01'],
+    ['平面度', '▱0.01'], ['同心度', '◎0.01'], ['同軸度', '◎0.01'], ['真円度', '○0.01'],
+    ['円筒度', '⌭0.01'], ['位置度', '⌖0.01'], ['全振れ', '↗0.01'], ['平面度', '0.007']
+  ])('allows matching or absent geometric symbols for %s: %s', (label, text) => {
+    expect(semanticPlacementRejections([assignment(label, { text, kind: 'gdt' })])).toEqual([null]);
+  });
+
+  it('allows correct kinds and exempts depth, judgement and roughness from the new checks', () => {
+    for (const row of [
+      assignment('穴径', { text: 'φ50 H7' }), assignment('穴径', { kind: 'hole' }), assignment('高さ'),
+      assignment('ネジ穴ピッチ'), assignment('深さ', { kind: 'thread', depth: 8 }),
+      assignment('粗さ', { text: 'φ20', kind: 'hole' }),
+      { ...assignment('穴径'), valueKind: 'JUDGEMENT' as const }
+    ]) expect(semanticPlacementRejections([row])).toEqual([null]);
+    expect(semanticPlacementRejections([{
+      ...assignment('深さ', { kind: 'thread', depth: 8 }), depthMode: 'THROUGH'
+    }])).toEqual(['length-kind-mismatch']);
+  });
+
+  it('does not check symbols for geometric labels without a known symbol', () => {
+    expect(semanticPlacementRejections([assignment('真直度', { kind: 'gdt', text: '⊥0.005A' })])).toEqual([null]);
+  });
+
+  it('keeps diameter labels outside the hole label set on diameter dimensions', () => {
+    expect(semanticPlacementRejections([assignment('外径', { kind: 'hole', text: 'φ20' })])).toEqual([null]);
+  });
+
+  it('does not reserve dimensions rejected by the new individual checks', () => {
+    expect(semanticPlacementRejections([
+      assignment('穴径'), assignment('高さ'),
+      assignment('高さ', { kind: 'hole', text: 'φ20' }, 'D2'), assignment('穴径', { kind: 'hole' }, 'D2'),
+      assignment('平行度', { kind: 'gdt', text: '⊥0.005A' }, 'D3'),
+      assignment('直角度', { kind: 'gdt', text: '⊥0.005A' }, 'D3')
+    ])).toEqual(['hole-kind-mismatch', null, 'length-kind-mismatch', null, 'geometric-symbol-mismatch', null]);
+  });
+
   it('does not reserve dimensions for individually rejected items', () => {
     expect(semanticPlacementRejections([
       assignment('平面度'), assignment(), assignment(),
