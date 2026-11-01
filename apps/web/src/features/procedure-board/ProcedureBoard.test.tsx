@@ -108,6 +108,17 @@ describe('ProcedureBoard', () => {
     expect(vi.mocked(procedureBoardApi.decide).mock.calls[0][3]).toEqual({ proposalId: 'h', action: 'accept' });
     expect(screen.getByRole('button', { name: 'ここに置く' })).toBeDisabled();
   });
+  it('shows source date and kind only for loaded conflict materials', async () => {
+    vi.mocked(procedureBoardApi.suggestions).mockResolvedValue({ boardVersion: 1, status: 'ready', current: {
+      id: 'ai', boardVersion: 1, placements: [], headings: [], gaps: [],
+      conflicts: [{ id: 'c', materialIds: ['m', 'missing'], quotes: ['100', '200'] }],
+    }, previous: null, pollAfterMs: 5000 });
+    show();
+    const conflict = await screen.findByRole('group', { name: '食い違い' });
+    const known = within(conflict).getByRole('button', { name: '100 11-01 メモ' });
+    expect(known.querySelector('time')).toHaveAttribute('dateTime', material.createdAt);
+    expect(within(conflict).getByRole('button', { name: '200', exact: true }).querySelector('small')).toBeNull();
+  });
   it('records a dragged ghost as relocation while ordinary editing remains available', async () => {
     vi.mocked(procedureBoardApi.suggestions).mockResolvedValue({ boardVersion: 1, status: 'ready', current: { id: 'ai', boardVersion: 1,
       placements: [{ ...target, row: 1, id: 'p', materialId: 'm' }], headings: [], gaps: [], conflicts: [] }, previous: null, pollAfterMs: 5000 });
