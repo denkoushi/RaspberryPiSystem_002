@@ -7,18 +7,21 @@ export function semanticPlacementRejections(assignments: {
   target: string | null;
   dimension: PartMeasurementDrawingDimension | null;
 }[]): (string | null)[] {
-  const used = new Set<string>();
-  return assignments.map(({ measurementLabel, target, dimension }) => {
+  const rejections = assignments.map(({ measurementLabel, target, dimension }) => {
     if (!dimension || !target) return null;
     const text = dimension.text.normalize('NFKC').trim();
-    const duplicate = used.has(target);
-    used.add(target);
     if (dimension.kind === 'ref' || /^\(.*\)$/s.test(text)) return 'reference-dimension';
-    if (dimension.kind !== 'gdt' && duplicate) return 'duplicate-dimension';
     if (GEOMETRIC_LABEL.test(measurementLabel) !== (dimension.kind === 'gdt')) return 'geometric-kind-mismatch';
-    if (/深/.test(measurementLabel) && /^(?:\d+\s*[-×x]\s*)?[φΦ⌀øØ]/u.test(text)) return 'depth-to-diameter';
-    if (/Ra|Rz|▽/.test(text) || !/\d/.test(text) ||
+    if (/深/.test(measurementLabel) && dimension.depth === null && /^(?:\d+\s*[-×x]\s*)?[φΦ⌀øØ]/u.test(text)) return 'depth-to-diameter';
+    if ((!/粗さ|粗度|Ra|Rz/i.test(measurementLabel) && /Ra|Rz|▽/i.test(text)) || !/\d/.test(text) ||
       (dimension.kind === 'other' && !Number.isFinite(dimension.nominal))) return 'annotation-or-roughness';
+    return null;
+  });
+  const used = new Set<string>();
+  return assignments.map(({ target, dimension }, i) => {
+    if (rejections[i] || !dimension || !target) return rejections[i];
+    if (dimension.kind !== 'gdt' && used.has(target)) return 'duplicate-dimension';
+    used.add(target);
     return null;
   });
 }

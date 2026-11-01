@@ -37,7 +37,27 @@ describe('semanticPlacementRejections', () => {
   });
 
   it.each(['φ20', 'Φ20', '⌀20', 'ø20', 'Ø20', '4-φ20深30', '2×φ20'])('rejects diameter text for depth: %s', (text) => {
-    expect(semanticPlacementRejections([assignment('穴深サ', { text, kind: 'hole', depth: 30 })])).toEqual(['depth-to-diameter']);
+    expect(semanticPlacementRejections([assignment('穴深サ', { text, kind: 'hole', depth: null })])).toEqual(['depth-to-diameter']);
+  });
+
+  it.each(['4-φ20深30', 'φ10.1+0.1/0深15'])('allows diameter text with readable depth: %s', (text) => {
+    expect(semanticPlacementRejections([assignment('穴深さ', { text, kind: 'hole', depth: 30 })])).toEqual([null]);
+  });
+
+  it('does not reserve dimensions for individually rejected items', () => {
+    expect(semanticPlacementRejections([
+      assignment('平面度'), assignment(), assignment(),
+      assignment('深さ', { text: 'φ20', kind: 'hole' }, 'D2'),
+      assignment('穴径', { text: 'φ20', kind: 'hole' }, 'D2')
+    ])).toEqual(['geometric-kind-mismatch', null, 'duplicate-dimension', 'depth-to-diameter', null]);
+  });
+
+  it.each(['粗さ', '表面粗度', 'Ra', 'Rz'])('allows roughness symbols for %s items', (label) => {
+    expect(semanticPlacementRejections([
+      assignment(label, { text: 'Ra3.2' }), assignment(label, { text: 'Rz25' }, 'D2'),
+      assignment(label, { text: '▽25' }, 'D3')
+    ])).toEqual([null, null, null]);
+    expect(semanticPlacementRejections([assignment(label, { text: '注記' })])).toEqual(['annotation-or-roughness']);
   });
 
   it.each(['Ra3.2', 'Rz25', '▽25', '注記', '基準 A'])('rejects roughness and annotation text: %s', (text) => {

@@ -30,6 +30,7 @@ vi.mock('./part-measurement-drawing-dimension-map.service.js', () => ({ getPartM
 
 vi.mock('./part-measurement-drawing-sibling-match.service.js', () => ({ PartMeasurementDrawingSiblingMatchService: class {} }));
 
+import { InferenceUnavailableError } from '../inference/ports/multi-image-vision-completion.port.js';
 import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
 import { PartMeasurementDrawingPlacementService, currentPlacementVersion, placementVersionFor } from './part-measurement-drawing-placement.service.js';
 import { PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION } from './part-measurement-drawing-dimension-map-payload.js';
@@ -398,8 +399,7 @@ describe('semantic placement', () => {
     expect(mocks.vision.completeMany).not.toHaveBeenCalled();
   });
 
-  it('rethrows deferred inference without saving a run', async () => {
-    const deferred = new InferenceDeferredError();
+  it.each([new InferenceDeferredError(), new InferenceUnavailableError()])('rethrows %s without saving a run', async (deferred) => {
     mocks.vision.completeMany.mockRejectedValue(deferred);
     await expect(service.ensureRun('target', { processGroup: 'CUTTING' })).rejects.toBe(deferred);
     expect(db.$transaction).not.toHaveBeenCalled();
@@ -424,14 +424,14 @@ describe('semantic placement', () => {
     expect(mocks.vision.completeMany).not.toHaveBeenCalled();
   });
 
-  it('uses the active version for process keys and backfill SQL, stopping remaining transfers on deferral', async () => {
+  it.each([new InferenceDeferredError(), new InferenceUnavailableError()])('uses the active version and stops remaining transfers on %s', async (error) => {
     expect(currentPlacementVersion()).toBe('semantic-v1');
     expect(placementVersionFor('GRINDING')).toBe('semantic-v1:GRINDING');
     db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([
       { id: 'target', processGroup: 'CUTTING' }, { id: 'next', processGroup: 'GRINDING' }
     ]);
     const worker = new PartMeasurementDrawingPlacementService();
-    const ensure = vi.spyOn(worker, 'ensureRun').mockRejectedValueOnce(new InferenceDeferredError());
+    const ensure = vi.spyOn(worker, 'ensureRun').mockRejectedValueOnce(error);
     expect(await worker.backfill(30)).toMatchObject({ deferred: 1, failed: 0, ready: 0 });
     expect(ensure).toHaveBeenCalledOnce();
     expect(db.$queryRaw.mock.calls[1].slice(1)).toContain('semantic-v1:');
@@ -456,6 +456,23 @@ describe('disabled reference placement', () => {
     });
     expect(mocks.vision.completeMany).not.toHaveBeenCalled();
     expect(db.partMeasurementDrawingPlacementRun.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['no-match', 'no-visual', 'no-template', 'no-marker'])('creates a no-sibling run from the editor with %s', async (missing) => {
+    mocks.env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = true;
+    if (missing === 'no-match') db.partMeasurementDrawingSiblingMatch.findUnique.mockResolvedValue({ status: 'NO_MATCH', siblings: [] });
+    if (missing === 'no-visual') db.partMeasurementVisualTemplate.findMany.mockResolvedValue([]);
+    if (missing === 'no-template') db.partMeasurementTemplate.findMany.mockResolvedValue([]);
+    if (missing === 'no-marker') db.partMeasurementTemplate.findMany.mockResolvedValue([{
+      id: 'template', visualTemplateId: 'source', isActive: true, updatedAt: new Date(),
+      items: [{ ...sourceItem(), markerXRatio: null }]
+    }]);
+    db.partMeasurementDrawingPlacementRun.create.mockResolvedValue(run({ sourceTemplateId: null, sourceVisualTemplate: null, proposals: [] }));
+    expect(await service.listForEditor('target', 'CUTTING')).toMatchObject({ status: 'no-sibling', proposals: [], unplaced: [] });
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({
+      rankingMethod: 'none', sourceTemplateId: null, sourceVisualTemplateId: null, proposals: { create: [] }
+    });
+    expect(mocks.vision.completeMany).not.toHaveBeenCalled();
   });
 
   it('does not query or generate reference runs during backfill', async () => {

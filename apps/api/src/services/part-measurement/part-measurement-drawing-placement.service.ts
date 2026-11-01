@@ -1,6 +1,7 @@
 import { Prisma, type PartMeasurementProcessGroup, type PartMeasurementTemplateItem } from '@prisma/client';
 
 import { env } from '../../config/env.js';
+import { InferenceUnavailableError } from '../inference/ports/multi-image-vision-completion.port.js';
 import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
 
 import { ApiError } from '../../lib/errors.js';
@@ -130,8 +131,6 @@ export class PartMeasurementDrawingPlacementService {
     const where = { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: key };
     const existingRun = await prisma.partMeasurementDrawingPlacementRun.findUnique({ where, include: runInclude });
     if (existingRun) return runResult(existingRun);
-    // Semantic transfer takes minutes on the business LLM, so only the nightly backfill creates those runs.
-    if (semantic && match.status === 'MATCHED' && options.allowInference === false) return { status: 'map-pending', run: null };
     const target = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id: visualTemplateId } });
     if (!target) throw new ApiError(404, '図面テンプレートが見つかりません。');
     const siblings = match.status === 'MATCHED' ? siblingMatchesSchema.parse(match.siblings) : [];
@@ -154,7 +153,9 @@ export class PartMeasurementDrawingPlacementService {
           .map((template) => ({ ...template, items: sourceItems(template.items) }))
       }))
     });
-    let rankingMethod = semantic ? 'semantic' : 'position';
+    // Semantic transfer takes minutes on the business LLM, so only the nightly backfill creates those runs.
+    if (semantic && source && options.allowInference === false) return { status: 'map-pending', run: null };
+    let rankingMethod = semantic ? (source ? 'semantic' : 'none') : 'position';
     let transfers: PlacementTransferResult[] = [];
     if (source) {
       const existingItems = await this.existingItems(visualTemplateId, options.processGroup);
@@ -175,7 +176,7 @@ export class PartMeasurementDrawingPlacementService {
       try {
         transfers = await transfer();
       } catch (error) {
-        if (!semantic || error instanceof InferenceDeferredError) throw error;
+        if (!semantic || (error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError)) throw error;
         rankingMethod = 'semantic-failed';
         transfers = unplacedSemanticItems(source.template.items);
         log.warn({ err: error, visualTemplateId, sourceVisualTemplateId: source.sibling.id }, 'drawing semantic placement failed');
@@ -348,7 +349,7 @@ export class PartMeasurementDrawingPlacementService {
         else if (result.status === 'no-sibling') counts.noSibling++;
         else counts.mapPending++;
       } catch (error) {
-        if (env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED && error instanceof InferenceDeferredError) {
+        if (env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED && (error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError)) {
           counts.deferred++;
           break;
         }

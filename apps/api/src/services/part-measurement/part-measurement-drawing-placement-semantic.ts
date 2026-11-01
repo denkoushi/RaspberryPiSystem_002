@@ -80,17 +80,18 @@ export async function transferItemsSemantically(input: {
   });
   // GLM sometimes drops items or overruns the role length; keep what it answered instead of failing the run.
   const text = rawText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  const response = z.object({ items: z.array(z.object({
+  const response = z.object({ items: z.array(z.unknown()) }).parse(JSON.parse(text));
+  const entrySchema = z.object({
     n: z.number().int().min(1).max(input.sourceItems.length),
-    role: z.string().transform((role) => role.slice(0, 15)),
-    target: z.string().regex(/^D[1-9]\d*$/).nullable()
-  })).min(1) }).parse(JSON.parse(text));
-  const byNumber = new Map(response.items.map((entry) => [entry.n, entry]));
-  if (byNumber.size !== response.items.length) throw new Error('Duplicate semantic placement item number');
-  for (const entry of response.items) {
-    if (entry.target !== null && Number(entry.target.slice(1)) > input.targetMap.dimensions.length) {
-      throw new Error(`Invalid semantic placement target: ${entry.target}`);
-    }
+    role: z.string().transform((role) => role.slice(0, 15)).catch(''),
+    target: z.string().regex(/^D[1-9]\d*$/)
+      .refine((target) => Number(target.slice(1)) <= input.targetMap.dimensions.length).nullable().catch(null)
+  });
+  const byNumber = new Map<number, z.infer<typeof entrySchema>>();
+  for (const raw of response.items) {
+    const entry = entrySchema.safeParse(raw);
+    if (!entry.success || byNumber.has(entry.data.n)) continue;
+    byNumber.set(entry.data.n, entry.data);
   }
   const assignments = input.sourceItems.map((item, i) => {
     const entry = byNumber.get(i + 1) ?? { n: i + 1, role: '', target: null };
@@ -105,16 +106,17 @@ export async function transferItemsSemantically(input: {
     const { dimension, target, role } = assignments[i];
     if (!dimension || !target) return [result];
     const { text, xRatio, yRatio, kind } = dimension;
+    const wanted = resolveWantedDimensionKind(item.measurementLabel, item.depthMode === 'THROUGH' ? 'through' : 'measured');
     const value = item.valueKind === 'JUDGEMENT' ? item.nominalValue
-      : candidateValue(dimension, resolveWantedDimensionKind(item.measurementLabel, item.depthMode === 'THROUGH' ? 'through' : 'measured'));
+      : candidateValue(dimension, wanted);
     const rejectionReason = rejections[i] ?? (value === null ? 'unreadable-value' : null);
     result.candidates = [{ text, xRatio, yRatio, kind, distance: 0, role, target,
       ...(rejectionReason ? { rejectionReason } : {}) }];
     if (rejectionReason || value === null) return [result];
     result.nominalValue = value;
     if (item.valueKind !== 'JUDGEMENT') {
-      result.lowerLimit = item.lowerLimit === null ? null : value - (item.nominalValue - item.lowerLimit);
-      result.upperLimit = item.upperLimit === null ? null : value + (item.upperLimit - item.nominalValue);
+      result.lowerLimit = kind === 'gdt' || wanted === 'gdt' ? 0 : item.lowerLimit === null ? null : value - (item.nominalValue - item.lowerLimit);
+      result.upperLimit = kind === 'gdt' || wanted === 'gdt' ? value : item.upperLimit === null ? null : value + (item.upperLimit - item.nominalValue);
     }
     if (placementItemAlreadyExists({ measurementLabel: item.measurementLabel, nominalValue: value }, input.existingItems)) return [];
     const own = sourceItemDimension(input.sourceMap, item);

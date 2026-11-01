@@ -94,6 +94,23 @@ describe('transferItemsSemantically', () => {
     expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 30, lowerLimit: null, upperLimit: null });
   });
 
+  it('proposes the target hole depth from diameter text', async () => {
+    const [result] = await transferItemsSemantically({ ...input(),
+      sourceItems: [{ ...item, measurementLabel: '穴深さ' }],
+      targetMap: map([dim({ text: 'φ10.1+0.1/0深15', kind: 'hole', nominal: 10.1, depth: 15 })])
+    }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 15, lowerLimit: 14.5, upperLimit: 15.8,
+      dimension: { kind: 'hole' } });
+  });
+
+  it.each([0.1, 0.5])('sets geometric limits to zero and the new tolerance %s', async (nominal) => {
+    const [result] = await transferItemsSemantically({ ...input(),
+      sourceItems: [{ ...item, measurementLabel: '平面度', nominalValue: 0.2, lowerLimit: 0, upperLimit: 0.2 }],
+      targetMap: map([dim({ text: `平面度${nominal}`, kind: 'gdt', nominal })])
+    }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: nominal, lowerLimit: 0, upperLimit: nominal });
+  });
+
   it('retains judgement values and limits', async () => {
     const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, valueKind: 'JUDGEMENT' }] }, deps);
     expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 10, lowerLimit: 9.5, upperLimit: 10.8 });
@@ -125,16 +142,27 @@ describe('transferItemsSemantically', () => {
     expect(results[1].candidates[0].rejectionReason).toBe('duplicate-dimension');
   });
 
-  it.each([
-    'not JSON', '{"items":[',
-    JSON.stringify({ items: [{ n: 1, role: '', target: 'D2' }] }),
-    JSON.stringify({ items: [{ n: 0, role: '', target: 'D1' }] }),
-    JSON.stringify({ items: [{ n: 2, role: '', target: 'D1' }] }),
-    JSON.stringify({ items: [{ n: 1, role: '', target: 'D0' }] }),
-    JSON.stringify({ items: [] })
-  ])('rejects invalid or incomplete responses: %s', async (rawText) => {
+  it.each(['not JSON', '{"items":[', '{}'])('rejects broken JSON or missing items: %s', async (rawText) => {
     completeMany.mockResolvedValue({ rawText });
     await expect(transferItemsSemantically(input(), deps)).rejects.toThrow();
+  });
+
+  it.each(['D0', 'D3', 'D01', 'invalid'])('leaves invalid target %s unplaced and keeps valid items', async (target) => {
+    completeMany.mockResolvedValue(response([{ n: 1, role: '', target }, { n: 2, role: '', target: 'D1' }]));
+    const results = await transferItemsSemantically({ ...input(), sourceItems: [item, { ...item, id: 'second' }] }, deps);
+    expect(results.map((r) => r.status)).toEqual(['UNPLACED', 'PROPOSED']);
+    expect(results[0].candidates).toEqual([]);
+  });
+
+  it.each([0, -1, 3, 1.5])('ignores invalid source number %s and keeps valid items', async (n) => {
+    completeMany.mockResolvedValue(response([{ n, role: '', target: 'D1' }, { n: 2, role: '', target: 'D1' }]));
+    const results = await transferItemsSemantically({ ...input(), sourceItems: [item, { ...item, id: 'second' }] }, deps);
+    expect(results.map((r) => r.status)).toEqual(['UNPLACED', 'PROPOSED']);
+  });
+
+  it('leaves all items unplaced for an empty items array', async () => {
+    completeMany.mockResolvedValue(response([]));
+    expect(await transferItemsSemantically(input(), deps)).toMatchObject([{ status: 'UNPLACED' }]);
   });
 
   it('accepts fenced JSON, truncates long roles, and leaves unanswered items unplaced', async () => {
@@ -144,8 +172,15 @@ describe('transferItemsSemantically', () => {
     expect(results[0].candidates[0].role).toBe('123456789012345');
   });
 
-  it('rejects duplicate source numbers', async () => {
-    completeMany.mockResolvedValue(response([{ n: 1, role: '', target: 'D1' }, { n: 1, role: '', target: null }]));
-    await expect(transferItemsSemantically({ ...input(), sourceItems: [item, { ...item, id: 'second' }] }, deps)).rejects.toThrow('Duplicate');
+  it('keeps the first duplicate source answer and preserves other items', async () => {
+    completeMany.mockResolvedValue(response([
+      { n: 1, role: 'first', target: 'D1' }, { n: 1, role: 'duplicate', target: 'D2' },
+      { n: 2, role: 'second', target: 'D2' }
+    ]));
+    const results = await transferItemsSemantically({ ...input(), sourceItems: [item, { ...item, id: 'second' }],
+      targetMap: map([dim(), dim({ text: '30', nominal: 30 })]) }, deps);
+    expect(results.map((r) => r.status)).toEqual(['PROPOSED', 'PROPOSED']);
+    expect(results[0].candidates[0]).toMatchObject({ role: 'first', target: 'D1' });
+    expect(results[1].candidates[0]).toMatchObject({ role: 'second', target: 'D2' });
   });
 });
