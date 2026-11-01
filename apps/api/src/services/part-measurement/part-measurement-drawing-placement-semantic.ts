@@ -27,6 +27,9 @@ const H7_TOLERANCES = [
 const INSTRUCTIONS = `1枚目は写し元の図面です。青い丸の番号は人が付けた検査項目の丸数字です。
 2枚目は写し先の図面です。赤い D 番号は読み取れた寸法です。
 各丸数字が部品のどこの何を測っているか（例「上面図 全幅」）を考え、写し先で同じ箇所を測る D 番号を選んでください。
+丸数字一覧の sourceText と sourceKind は、写し元でその丸数字が指していた寸法の文字と種類です（読めなかったときは null）。
+x と y は図面上の位置で、左上が 0、右下が 1 です。どの図（正面図・側面図など）にあるかを位置で見分けてください。
+同じ種類の寸法を選び、端から穴まで・穴どうしのピッチ・外形、縦・横、どの図か、を写し元とそろえてください。
 数値の一致では選ばないでください。置けないときは target を null にしてください。
 全丸数字について1件ずつ出力してください。role は15字以内です。
 考えた過程は書かず、最初の文字から JSON を出してください。出力は JSON だけです。
@@ -56,6 +59,8 @@ async function annotatedImage(
   return sharp(data).composite([{ input: Buffer.from(svg) }]).jpeg({ quality: 85 }).toBuffer();
 }
 
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
 // DGX caps a call at 120s; stay just under it.
 export const SEMANTIC_PLACEMENT_TIMEOUT_MS = 115_000;
 
@@ -73,6 +78,7 @@ export async function transferItemsSemantically(input: {
   })), true);
   const target = await deps.readDrawing(input.targetDrawingPath);
   const targetImage = await annotatedImage(target.buffer, input.targetMap.dimensions, false);
+  const sourceDimensions = input.sourceItems.map((item) => sourceItemDimension(input.sourceMap, item));
   const { rawText } = await deps.vision().completeMany({
     images: [
       { label: 'source', mimeType: 'image/jpeg', imageBytes: sourceImage },
@@ -81,9 +87,12 @@ export async function transferItemsSemantically(input: {
     background: true, jsonOutput: true, timeoutMs: SEMANTIC_PLACEMENT_TIMEOUT_MS, temperature: 0, maxTokens: 6000,
     userText: `${INSTRUCTIONS}\n丸数字一覧:\n${JSON.stringify(input.sourceItems.map((item, i) => ({
       n: i + 1, measurementLabel: item.measurementLabel, nominalValue: item.nominalValue,
-      lowerLimit: item.lowerLimit, upperLimit: item.upperLimit
+      lowerLimit: item.lowerLimit, upperLimit: item.upperLimit,
+      sourceText: sourceDimensions[i]?.text ?? null, sourceKind: sourceDimensions[i]?.kind ?? null,
+      x: round2(item.markerXRatio), y: round2(item.markerYRatio)
     })))}\nD 番号一覧:\n${JSON.stringify(input.targetMap.dimensions.map((dimension, i) => ({
-      target: `D${i + 1}`, text: dimension.text, kind: dimension.kind
+      target: `D${i + 1}`, text: dimension.text, kind: dimension.kind,
+      x: round2(dimension.xRatio), y: round2(dimension.yRatio)
     })))}`
   });
   // GLM sometimes drops items or overruns the role length; keep what it answered instead of failing the run.
