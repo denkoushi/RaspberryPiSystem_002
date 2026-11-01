@@ -2,6 +2,7 @@
 
 - 在庫の準備（取込エラー取消・検索・タグ交換・課別選択肢）: [Plan](./plans/kiosk-inventory-setup-seigi.md)
 
+- 端末100台規模に向けた不足点と改善計画（サーバーの予備機、全台の監視、停止中の記録、更新の並列化、使い捨て端末、SD保護、非力な機種）: [ExecPlan](./plans/fleet-100-scale-gap-execplan.md)
 - Pi Zero棚スキャナーの独立配備・運用: [Runbook](./runbooks/zero-edge-agent.md)
 - Pi Zero 2 W 監視カメラ(人が来たときだけ静止画を保存): [Runbook](./runbooks/watch-camera.md)
 - キオスクのポータル画面・端末別カード選択: [Plan](./plans/kiosk-portal.md)

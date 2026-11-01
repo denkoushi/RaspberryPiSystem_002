@@ -713,3 +713,92 @@ def test_quarantined_sha_is_not_enqueued_again(tmp_path, monkeypatch):
     collector.enqueue_changes(config, NOW, run)
     assert not (root / 'pending' / (HEAD + '.json')).exists()
     assert not any(call[0] == 'show' for call in calls)
+
+
+@pytest.mark.parametrize('reasons,eligible', [
+    (['refused_or_vague'], True),
+    (['invalid_model_schema', 'completion_failed'], True),
+    (['refused_or_vague', 'timeout_at_minimum_unit'], False),
+    ([], False),
+])
+def test_requeue_failed_filters_reasons_and_rebuilds_job(tmp_path, monkeypatch, capsys, reasons, eligible):
+    diffs = {'src/main.ts': file_diff('src/main.ts', '+https://user:password@example.com\n'),
+             '.env': 'private', 'docs/x.md': 'excluded'}
+    config, run, calls = queue_fixture(tmp_path, monkeypatch, diffs)
+    root = collector.queue_directories(config)
+    record = root / 'failed' / (HEAD + '.json')
+    record.write_text(json.dumps({'sha': HEAD, 'failedUnits': [{'reason': reason} for reason in reasons]}))
+    progress = root / 'progress' / record.name
+    progress.write_text('old progress')
+
+    def locked_read(repo, *args, **kwargs):
+        with (tmp_path / 'changes-enqueue.lock').open('a') as competing:
+            with pytest.raises(BlockingIOError):
+                collector.fcntl.flock(competing.fileno(), collector.fcntl.LOCK_EX | collector.fcntl.LOCK_NB)
+        return run(repo, *args, **kwargs)
+
+    counts = collector.requeue_failed(config, NOW,
+        {'refused_or_vague', 'invalid_model_schema', 'completion_failed'}, git_call=locked_read)
+    assert counts == {'requeued': int(eligible), 'retained': int(not eligible), 'dryRun': False}
+    assert json.loads(capsys.readouterr().out) == counts
+    assert record.exists() is not eligible
+    assert progress.exists() is not eligible
+    assert Path(config['state_file']).read_text() == PREVIOUS
+    if eligible:
+        job = queued(config)
+        assert job['omittedFiles'] == 2
+        assert job['files'] == [{'path': 'src/main.ts', 'diff': collector.redact_code(diffs['src/main.ts'])}]
+        pending = root / 'pending' / record.name
+        assert pending.stat().st_mode & 0o777 == 0o600
+        assert pending.stat().st_uid == config['api_uid']
+        assert pending.stat().st_gid == config['api_gid']
+        assert all((root / state).stat().st_mode & 0o777 == 0o700 for state in collector.QUEUE_STATES)
+    else:
+        assert calls == []
+
+
+def test_requeue_failed_dry_run_counts_custom_reason_without_changes(tmp_path, monkeypatch, capsys):
+    config, _, _ = queue_fixture(tmp_path, monkeypatch)
+    root = collector.queue_directories(config)
+    record = root / 'failed' / (HEAD + '.json')
+    record.write_text(json.dumps({'sha': HEAD, 'failedUnits': [{'reason': 'custom'}]}))
+    progress = root / 'progress' / record.name
+    progress.write_text('old progress')
+    def no_git(*args, **kwargs):
+        pytest.fail('dry-run must only count candidates')
+    counts = collector.requeue_failed(config, NOW, {'custom'}, dry_run=True, git_call=no_git)
+    assert counts == {'requeued': 1, 'retained': 0, 'dryRun': True}
+    assert json.loads(capsys.readouterr().out) == counts
+    assert record.exists() and progress.read_text() == 'old progress'
+    assert not list((root / 'pending').iterdir())
+
+
+def test_requeue_failed_retains_unreachable_sha_and_continues(tmp_path, monkeypatch, capsys):
+    config, run, _ = queue_fixture(tmp_path, monkeypatch)
+    root = collector.queue_directories(config)
+    missing = 'f' * 40
+    for sha in [missing, HEAD]:
+        (root / 'failed' / (sha + '.json')).write_text(json.dumps(
+            {'sha': sha, 'failedUnits': [{'reason': 'refused_or_vague'}]}))
+    def read(repo, *args, **kwargs):
+        if args == ('cat-file', '-e', missing + '^{commit}'):
+            return SimpleNamespace(returncode=1)
+        return run(repo, *args, **kwargs)
+    counts = collector.requeue_failed(config, NOW, {'refused_or_vague'}, git_call=read)
+    assert counts == {'requeued': 1, 'retained': 1, 'dryRun': False}
+    output = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert output == [{'sha': missing, 'reason': 'commit_unreachable'}, counts]
+    assert (root / 'failed' / (missing + '.json')).exists()
+    assert queued(config)['sha'] == HEAD
+
+
+def test_cli_accepts_requeue_failed_options(tmp_path, monkeypatch):
+    config = tmp_path / 'fixture.json'
+    config.write_text('{"timezone":"Asia/Tokyo"}')
+    calls = []
+    monkeypatch.setattr(sys, 'argv', ['collect.py', str(config), '--mode', 'requeue-failed',
+                                    '--requeue-reasons', 'custom,completion_failed', '--dry-run'])
+    monkeypatch.setattr(collector, 'requeue_failed', lambda value, now, reasons, dry_run:
+                        calls.append((reasons, dry_run)))
+    collector.main()
+    assert calls == [({'custom', 'completion_failed'}, True)]
