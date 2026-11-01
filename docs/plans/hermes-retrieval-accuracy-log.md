@@ -926,3 +926,28 @@ Expected on the night after release: the 「異物付着 不適合」 row ok (em
 Reporting notes (no measurement change): `flywheel-status.json` was again overwritten by the later `budget_reached` start, and `planner-version.json` holds no check entry for 2026-10-30 although the baseline/candidate comparison ran; the night file and `runner-2026-10-30.log` are the records.
 
 Private files: `work/flywheel/real-2026-10-30.jsonl`, `runner-2026-10-30.log`, `questions-2026-10-30.jsonl`.
+
+### 2026-11-01: night 28, #2440 confirmed on the Pi 5; the remaining failure is the recent pool, now measurable (measurement)
+
+Night of 2026-10-31 (#2440 on the Pi 5, Pi 5 at eb397f79 which contains b2de537f, 22:04–22:33 JST): generated 86, kept 80, shown 62, dropped 20, labelled 60, label pending 44, learned 5 (rejected). Regression replay of the 4 rows from 2026-10-29, against the expectation written on 2026-10-31:
+
+- 「仙台工場の最近の不適合３件」: filter check ok, `lastOk 2` (retires after one more ok night).
+- 「仙台工場にも同事例ありますか？」 (content 「異物付着 不適合」, scope 仙台): ok as expected, `matchedCount 0`, `expected 0`, empty answer accepted; `lastOk 1`.
+- 「仙台工場に類例ある？」 (content 「配管不良の不適合」, scope 仙台): `unsupported`, `no_verbatim_content` as expected; `lastUnsupported 1`, retires after two more such nights.
+- 「異物付着の最近の不適合３件」 (scope 資材課 from the previous turn): not `no_specific_content` as predicted from the 2026-10-04 snapshot but a supported failure: `scopeOk true`, `filtersOk true`, `contentOk false`, `expected 1`, `shown 3`, `matchedCount 1`. On the live corpus 異物付着 is a specific word present verbatim in one 資材課 record, and the kiosk showed three records of which that one is the only verbatim match. The snapshot prediction was wrong only because the live corpus has the word; the check now reports a real retrieval loss instead of a scoring artefact.
+
+Reading: the check change did what it was meant to on all three content rows (two expected outcomes exact, the third a genuine failure rather than a false one). The one remaining failure is the retrieval candidate noted on 2026-10-31: the recent pool admits dense hits at a fraction of the top cosine without a content-token requirement (`buildRecentContentPool` in `executor.mjs`), so two of the three "recent" records for 異物付着 do not contain the word. This row now stays in the regression set with `lastOk 0` and measures that candidate night by night.
+
+Next: gate the recent pool on the lexical index's specific tokens (or require at least one content bigram) when the question carries a content span, and watch this row turn ok; the heldout and real counts must not drop. No check-side change is planned.
+
+Reporting notes (no measurement change): `flywheel-status.json` was overwritten by the later `budget_reached` start again (shows `generated 0`); the `completed` line in `runner-2026-10-31.log` is the record. `planner-version.json` still holds no check entry after 2026-10-28.
+
+Private files: `work/flywheel/real-2026-10-31.jsonl`, `runner-2026-10-31.log`, `questions-2026-10-31.jsonl`.
+
+### 2026-11-01: the recent pool now requires a content bigram of dense hits (change, not a measurement)
+
+Follows the night 28 reading: for 「異物付着の最近の不適合３件」 the kiosk showed three 資材課 records of which only one contains a content word. `buildRecentContentPool` (`executor.mjs`) admitted dense hits at 75% of the top cosine with no content-token requirement, while lexical rows have always needed `contentTokenScore > 0`; the newest-first relevance batches then let such records through.
+
+Change (this PR): a dense hit (hybrid or dense retriever) is admitted only when its lexical row has `contentTokenScore > 0`, that is, the record contains at least one bigram of a content word. When no record in the filtered set has one (paraphrases only), dense hits are admitted as before so recall does not drop to nothing. Thresholds, the lexical gate, the ordering and the judge batches are unchanged. 592 tests pass (589 + 3); a read-only Codex review found nothing.
+
+Expected on the night after release: the 「異物付着の最近の不適合３件」 row ok, or fewer records shown with every shown record containing a content bigram (a record with only the generic bigram still fails the verbatim check, which would then point at the judge, not the pool). Heldout and real counts must not fall; the dense-only fallback keeps the paraphrase case.

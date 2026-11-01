@@ -11,6 +11,8 @@ import { PrismaKnowledgeIntakeRepository } from './prisma-knowledge-intake.repos
 import { PrismaKnowledgeProcedureRepository } from './prisma-knowledge-procedure.repository.js';
 import { PrismaProcedureMaterialRepository } from './prisma-procedure-material.repository.js';
 import { ProcedureInference } from './procedure-inference.js';
+import { ProcedureBoardWorker } from './procedure-board-worker.js';
+import { ProcedureBoardInference } from './procedure-board-inference.js';
 import { ProcedureWorker } from './procedure-worker.js';
 import { GitKnowledgeDocumentStore } from './git-knowledge-document-store.js';
 import { KnowledgeAssetStore } from './knowledge-asset-store.js';
@@ -25,6 +27,8 @@ import { ensureKnowledgeReferenceData } from './knowledge-reference-data.js';
 import { PrismaKnowledgeReviewerRepository } from './prisma-knowledge-reviewer.repository.js';
 import { fieldTree } from './knowledge-fields.js';
 import { PrismaKnowledgeSubjectRepository } from './prisma-knowledge-subject.repository.js';
+import { PrismaProcedureBoardRepository } from './prisma-procedure-board.repository.js';
+import { ProcedureBoardService } from './procedure-board.service.js';
 import { PrismaTriageRepository } from './prisma-triage.repository.js';
 
 async function resolvePoster(tagUid: string): Promise<Poster | null> {
@@ -65,7 +69,11 @@ function createKnowledgeRuntime() {
     workTypes: activeWorkTypes, fieldRoots: activeFieldRoots,
     scannedPartNumber: async intakeId => (await repository.byIds([intakeId]))[0]?.scannedPartNumber ?? null,
     logError: error => logger.warn({ err: error }, 'Knowledge procedure building failed') });
-  return { fields: async () => fieldTree(await prisma.knowledgeField.findMany({ where: { active: true } })),
+  const boardRepository = new PrismaProcedureBoardRepository(prisma);
+  const procedureBoardWorker = new ProcedureBoardWorker({ repository: boardRepository, inference: new ProcedureBoardInference(text),
+    logError: error => logger.warn({ err: error }, 'Knowledge procedure board inference failed') });
+  return { procedureBoardWorker, fields: async () => fieldTree(await prisma.knowledgeField.findMany({ where: { active: true } })),
+    procedureBoards: new ProcedureBoardService(boardRepository),
     subjects: new PrismaKnowledgeSubjectRepository(prisma), resolvePoster, reviewers: new PrismaKnowledgeReviewerRepository(prisma), repository, assets, documents, worker, procedures, materials, triage, procedureWorker, workTypes: activeWorkTypes,
     ensureReferenceData: () => ensureKnowledgeReferenceData(prisma, triage, procedures),
     intake: new KnowledgeIntakeService(repository, assets, resolvePoster, triage),
