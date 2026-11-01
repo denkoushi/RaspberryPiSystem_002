@@ -33,7 +33,8 @@ try:
         GHCR_NAMESPACE, GITHUB_OWNER, GITHUB_OWNER_URL, SOURCE_REPOSITORY,
         SOURCE_REPOSITORY_URL, SIGNAGE_REPOSITORY,
     )
-except ImportError:  # Launched from scripts/deploy.
+except ImportError:  # Direct script execution; the contract lives in scripts/deploy.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from release_artifact_contract import (
         GHCR_NAMESPACE, GITHUB_OWNER, GITHUB_OWNER_URL, SOURCE_REPOSITORY,
         SOURCE_REPOSITORY_URL, SIGNAGE_REPOSITORY,
