@@ -169,9 +169,21 @@ describe('AlertsIngestor (Phase2)', () => {
     await writeAlert(tmpDir, 'alert-notice.json', { id: 'notice-test', type: 'rkhunter-warning', timestamp });
     await new AlertsIngestor().ingestOnceNow();
     expect(notices.expire).toHaveBeenCalledWith('rkhunter-warning', new Date(timestamp));
-    expect(notices.deliver).toHaveBeenCalledWith('rkhunter-warning', new Date(timestamp));
+    expect(notices.deliver).toHaveBeenCalledWith('rkhunter-warning', new Date(timestamp), undefined, undefined);
     expect(notices.expire.mock.invocationCallOrder[0]).toBeLessThan(mockAlertUpsert.mock.invocationCallOrder[0]);
     expect(mockAlertUpsert.mock.invocationCallOrder[0]).toBeLessThan(notices.deliver.mock.invocationCallOrder[0]);
+  });
+
+  it('stores Mac recovery and passes downtime to Chat without scheduling Slack', async () => {
+    const timestamp = new Date().toISOString();
+    const message = '業務用Pi5が戻りました（止まっていた時間: 0時間5分0秒）。';
+    await writeAlert(tmpDir, 'alert-recovered.json', {
+      id: 'recovery', type: 'pi5-watchdog-recovered', message, timestamp
+    });
+    await new AlertsIngestor().ingestOnceNow();
+    expect(mockAlertUpsert).toHaveBeenCalledOnce();
+    expect(notices.deliver).toHaveBeenCalledWith('pi5-watchdog-recovered', new Date(timestamp), undefined, message);
+    expect(mockAlertDeliveryUpsert).not.toHaveBeenCalled();
   });
 
   it('does not create duplicate alerts (upsert)', async () => {
