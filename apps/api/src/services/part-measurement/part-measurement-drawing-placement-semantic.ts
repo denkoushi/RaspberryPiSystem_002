@@ -110,7 +110,9 @@ export async function transferItemsSemantically(input: {
     if (!dimension || !target) return [result];
     const { text, xRatio, yRatio, kind } = dimension;
     const wanted = resolveWantedDimensionKind(item.measurementLabel, item.depthMode === 'THROUGH' ? 'through' : 'measured');
+    // A depth drawn as its own linear dimension (e.g. a counterbore depth) has no depth field; read its length instead.
     const value = item.valueKind === 'JUDGEMENT' ? item.nominalValue
+      : wanted === 'depth' && dimension.depth === null && kind === 'len' ? candidateValue(dimension, 'len')
       : candidateValue(dimension, wanted);
     const rejectionReason = rejections[i] ?? (value === null ? 'unreadable-value' : null);
     result.candidates = [{ text, xRatio, yRatio, kind, distance: 0, role, target,

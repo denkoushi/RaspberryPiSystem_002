@@ -125,8 +125,14 @@ describe('transferItemsSemantically', () => {
   it('leaves null targets and unreadable values UNPLACED', async () => {
     completeMany.mockResolvedValueOnce(response([{ n: 1, role: '不明', target: null }]));
     expect(await transferItemsSemantically(input(), deps)).toMatchObject([{ status: 'UNPLACED', markerXRatio: null, dimension: null }]);
-    const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, measurementLabel: '深さ' }] }, deps);
+    const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, measurementLabel: '深さ' }],
+      targetMap: map([dim({ text: '4-M6深', nominal: null, kind: 'thread' })]) }, deps);
     expect(result).toMatchObject({ status: 'UNPLACED', candidates: [{ rejectionReason: 'unreadable-value' }] });
+  });
+
+  it('reads a depth drawn as a linear dimension from its length', async () => {
+    const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, measurementLabel: '深さ' }] }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 20 });
   });
 
   it('persists rejection reasons and does not place unsafe assignments', async () => {
