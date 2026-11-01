@@ -36,6 +36,14 @@ class GitHubOwnerConfigTests(unittest.TestCase):
         )
         assert re.fullmatch(r"[a-z0-9-]+", contract.GITHUB_OWNER)
 
+    def test_signage_stage_imports_contract_when_run_as_ci_script(self):
+        # CI runs this file by path from the repository root, outside any package.
+        result = subprocess.run(
+            ["python3", "scripts/deploy/rolling_release/signage_artifact_stage.py", "--help"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        assert "Error" not in result.stderr, result.stderr
+
     def test_standalone_pi4_owner_matches_contract(self):
         source = (ROOT / "scripts/client/pi4-storage-maintenance.sh").read_text()
         assert f"GITHUB_OWNER='{contract.GITHUB_OWNER}'" in source
