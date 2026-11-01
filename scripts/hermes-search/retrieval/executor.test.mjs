@@ -495,6 +495,68 @@ test('hybrid recent content also admits a dense hit near the top cosine', () => 
   assert.deepEqual(pool.map((item) => item.record.id).sort(), ['dense-new', 'lexical-old']);
 });
 
+test('hybrid recent content rejects a top dense hit without a content token when another row matches', () => {
+  const byId = new Map([
+    ['lexical-match', { id: 'lexical-match' }],
+    ['dense-unrelated', { id: 'dense-unrelated' }],
+  ]);
+  const pool = buildRecentContentPool({
+    lexicalRows: [
+      { id: 'lexical-match', score: 4, contentTokenScore: 4 },
+      { id: 'dense-unrelated', score: 0, contentTokenScore: 0 },
+    ],
+    vectorOrdered: [{ id: 'dense-unrelated', cosine: 0.9 }],
+    retriever: 'hybrid',
+    byId,
+  });
+  assert.deepEqual(pool.map((item) => item.record.id), ['lexical-match']);
+});
+
+test('hybrid recent content admits a top dense hit when no lexical row has a content token', () => {
+  const byId = new Map([
+    ['dense-top', { id: 'dense-top' }],
+    ['weak-dense', { id: 'weak-dense' }],
+  ]);
+  const pool = buildRecentContentPool({
+    lexicalRows: [
+      { id: 'dense-top', score: 0, contentTokenScore: 0 },
+      { id: 'weak-dense', score: 0, contentTokenScore: 0 },
+    ],
+    vectorOrdered: [
+      { id: 'dense-top', cosine: 0.9 },
+      { id: 'weak-dense', cosine: 0.2 },
+    ],
+    retriever: 'hybrid',
+    byId,
+  });
+  assert.deepEqual(pool.map((item) => item.record.id), ['dense-top']);
+});
+
+test('dense recent content requires content tokens only when a lexical row matches', () => {
+  const byId = new Map([
+    ['lexical-match', { id: 'lexical-match' }],
+    ['dense-top', { id: 'dense-top' }],
+    ['dense-match', { id: 'dense-match' }],
+  ]);
+  for (const hasContentTokenMatch of [true, false]) {
+    const pool = buildRecentContentPool({
+      lexicalRows: [
+        { id: 'lexical-match', score: 4, contentTokenScore: hasContentTokenMatch ? 4 : 0 },
+        { id: 'dense-top', score: 0, contentTokenScore: 0 },
+        { id: 'dense-match', score: 0.1, contentTokenScore: hasContentTokenMatch ? 0.1 : 0 },
+      ],
+      vectorOrdered: [
+        { id: 'dense-top', cosine: 0.9 },
+        { id: 'dense-match', cosine: 0.8 },
+      ],
+      retriever: 'dense',
+      byId,
+    });
+    assert.deepEqual(pool.map((item) => item.record.id),
+      hasContentTokenMatch ? ['dense-match'] : ['dense-top', 'dense-match']);
+  }
+});
+
 test('hybrid falls back to lexical when query embedding times out', async () => {
   const executed = await execute(plan({
     semanticQuery: 'qxrare',

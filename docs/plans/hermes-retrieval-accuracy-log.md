@@ -943,3 +943,11 @@ Next: gate the recent pool on the lexical index's specific tokens (or require at
 Reporting notes (no measurement change): `flywheel-status.json` was overwritten by the later `budget_reached` start again (shows `generated 0`); the `completed` line in `runner-2026-10-31.log` is the record. `planner-version.json` still holds no check entry after 2026-10-28.
 
 Private files: `work/flywheel/real-2026-10-31.jsonl`, `runner-2026-10-31.log`, `questions-2026-10-31.jsonl`.
+
+### 2026-11-01: the recent pool now requires a content bigram of dense hits (change, not a measurement)
+
+Follows the night 28 reading: for 「異物付着の最近の不適合３件」 the kiosk showed three 資材課 records of which only one contains a content word. `buildRecentContentPool` (`executor.mjs`) admitted dense hits at 75% of the top cosine with no content-token requirement, while lexical rows have always needed `contentTokenScore > 0`; the newest-first relevance batches then let such records through.
+
+Change (this PR): a dense hit (hybrid or dense retriever) is admitted only when its lexical row has `contentTokenScore > 0`, that is, the record contains at least one bigram of a content word. When no record in the filtered set has one (paraphrases only), dense hits are admitted as before so recall does not drop to nothing. Thresholds, the lexical gate, the ordering and the judge batches are unchanged. 592 tests pass (589 + 3); a read-only Codex review found nothing.
+
+Expected on the night after release: the 「異物付着の最近の不適合３件」 row ok, or fewer records shown with every shown record containing a content bigram (a record with only the generic bigram still fails the verbatim check, which would then point at the judge, not the pool). Heldout and real counts must not fall; the dense-only fallback keeps the paraphrase case.

@@ -484,12 +484,14 @@ function dateRoleField(plan, catalog) {
 /**
  * Content gate after hard filters. Lexical rows need a substantive content
  * token and a score at the generic fraction of the top score. Hybrid and
- * dense also admit dense hits at the generic fraction of the top cosine.
+ * dense also admit dense hits at the generic fraction of the top cosine,
+ * requiring a substantive content token unless no lexical row has one.
  */
 export function buildRecentContentPool({ lexicalRows, vectorOrdered, retriever, byId }) {
   const lexicalTop = (lexicalRows ?? []).reduce((max, row) => Math.max(max, Number(row.score) || 0), 0);
   const lexicalFloor = lexicalTop * RECENT_CONTENT_LEXICAL_FRACTION;
   const lexicalById = new Map((lexicalRows ?? []).map((row) => [row.id, row]));
+  const hasContentTokenMatch = (lexicalRows ?? []).some((row) => Number(row.contentTokenScore) > 0);
   const admitted = new Map();
   if (retriever !== 'dense') {
     for (const row of lexicalRows ?? []) {
@@ -510,6 +512,7 @@ export function buildRecentContentPool({ lexicalRows, vectorOrdered, retriever, 
         const record = byId.get(row.id);
         if (!record) continue;
         const lexical = lexicalById.get(row.id);
+        if (hasContentTokenMatch && !(Number(lexical?.contentTokenScore) > 0)) continue;
         const existing = admitted.get(row.id);
         const score = Math.max(existing?.score ?? 0, cosine, Number(lexical?.score) || 0);
         admitted.set(row.id, {
