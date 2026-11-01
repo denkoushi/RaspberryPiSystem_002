@@ -18,6 +18,22 @@ from google_drive_dr.source_policy import (
 
 
 class SourcePolicyTests(unittest.TestCase):
+    def test_check_sheet_excel_originals_are_selected_for_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "config").mkdir()
+            (root / "config/backup.json").write_text("{}\n")
+            source_root = root / "storage/assembly-check-sheet-sources"
+            source_root.mkdir(parents=True)
+            (source_root / f"{'a' * 64}.xlsx").write_bytes(b"excel-original")
+            policy = default_policy(root, root / "credentials")
+
+            selection = resolve(policy)
+
+            self.assertIn("assembly-check-sheet-sources", selection.categories)
+            self.assertIn(source_root, selection.paths)
+            self.assertFalse(is_excluded(source_root, policy=policy))
+
     def test_work_instruction_originals_are_selected_without_derived_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

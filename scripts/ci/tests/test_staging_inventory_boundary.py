@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE, GITHUB_OWNER, SOURCE_REPOSITORY_URL
+
 import importlib.util
 import json
 import os
@@ -35,6 +37,10 @@ def _write_valid_staging_fixture(root: Path) -> Path:
     """Create a disposable inventory with direct private host vars."""
     group_vars = root / "group_vars"
     group_vars.mkdir(parents=True)
+    shared = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())
+    (group_vars / "all.yml").write_text(yaml.safe_dump({
+        key: shared[key] for key in ("raspisys_github_owner", "raspisys_historical_github_owners")
+    }))
     shutil.copy(ANSIBLE / "group_vars" / "staging.yml", group_vars / "staging.yml")
     shutil.copy(ANSIBLE / "inventory-staging.yml", root / "inventory-staging.yml")
     replacements = (
@@ -109,12 +115,11 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             self.assertIn("ansible_user:", example)
             self.assertIn("deploy_executor_host:", example)
 
-    def test_staging_does_not_reference_production_or_talkplaza_values(self) -> None:
+    def test_staging_does_not_reference_production_values(self) -> None:
         variables = (ANSIBLE / "group_vars" / "staging.yml").read_text(encoding="utf-8")
         inventory = (ANSIBLE / "inventory-staging.yml").read_text(encoding="utf-8")
         for text in (variables, inventory):
             self.assertNotIn("raspi4-assembly-01", text)
-            self.assertNotIn("talkplaza", text.lower())
             self.assertNotIn("100.", text)
             self.assertNotIn("192.168.", text)
         self.assertNotIn("/opt/RaspberryPiSystem_002/", variables)
@@ -147,7 +152,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             "caddy_log_dir",
             "alert_script_path",
             "clamav_server_scan_paths",
-            "clamav_kiosk_scan_paths",
             "trivy_scan_target",
             "trivy_skip_dirs",
             "clamav_server_log_dir",
@@ -162,6 +166,8 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             self.assertIn(key, production, key)
             if key != "network_mode":
                 self.assertNotEqual(staging[key], production[key], key)
+        # Kiosk foreign-file landing directories are shared across environments.
+        self.assertEqual(staging["clamav_kiosk_scan_paths"], production["clamav_kiosk_scan_paths"])
         self.assertEqual(staging["network_mode"], "tailscale")
         staging_text = (ANSIBLE / "group_vars" / "staging.yml").read_text(
             encoding="utf-8"
@@ -173,7 +179,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             "/opt/backups",
             "/var/log/caddy\n",
             "/opt/RaspberryPiSystem_002/",
-            "talkplaza",
         ):
             self.assertNotIn(forbidden, staging_text.lower(), forbidden)
 
@@ -239,6 +244,14 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             inventory = _write_valid_staging_fixture(Path(directory))
             for host in ("staging-pi5", "staging-pi4-kiosk01"):
                 values = _inventory_host(inventory, host)
+                # ansible-inventory leaves ordinary lazy Jinja variables unrendered.
+                self.assertEqual(values["raspisys_github_owner"], GITHUB_OWNER)
+                self.assertEqual(values["repo_remote"], "https://github.com/{{ raspisys_github_owner }}/RaspberryPiSystem_002.git")
+                from jinja2 import Environment, StrictUndefined
+                values["repo_remote"] = Environment(undefined=StrictUndefined).from_string(
+                    values["repo_remote"]
+                ).render(values)
+                self.assertEqual(values["repo_remote"], SOURCE_REPOSITORY_URL + ".git")
                 serialized = json.dumps(values, sort_keys=True)
                 if host == "staging-pi5":
                     self.assertEqual(values["ansible_host"], values["deploy_executor_host"])
@@ -249,7 +262,6 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                 self.assertNotIn("{{", serialized)
                 self.assertNotIn("REPLACE_WITH", serialized)
                 self.assertNotIn("__SET_", serialized)
-                self.assertNotIn("talkplaza", serialized.lower())
                 self.assertNotIn("/opt/RaspberryPiSystem_002/", serialized)
                 self.assertNotIn("/opt/backups", serialized)
                 self.assertNotIn("/var/log/caddy\"", serialized)
@@ -297,8 +309,8 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                 ANSIBLE / ".vault-pass.example"
             )
             signed_release_set = launcher.ReleaseArtifacts(
-                f"ghcr.io/denkoushi/raspisys-api:{STANDARD_SHA}",
-                f"ghcr.io/denkoushi/raspisys-web:{STANDARD_SHA}",
+                f"{GHCR_NAMESPACE}/raspisys-api:{STANDARD_SHA}",
+                f"{GHCR_NAMESPACE}/raspisys-web:{STANDARD_SHA}",
                 None,
                 None,
                 launcher.PI4_AGENT_SERVICES,
@@ -334,17 +346,17 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                         "profile": "pi5",
                         "hosts": ["staging-pi5"],
                         "images": [
-                            f"ghcr.io/denkoushi/raspisys-api:{STANDARD_SHA}-bbbbbbbbbbbbbbbb",
-                            f"ghcr.io/denkoushi/raspisys-web:{STANDARD_SHA}-bbbbbbbbbbbbbbbb",
+                            f"{GHCR_NAMESPACE}/raspisys-api:{STANDARD_SHA}-bbbbbbbbbbbbbbbb",
+                            f"{GHCR_NAMESPACE}/raspisys-web:{STANDARD_SHA}-bbbbbbbbbbbbbbbb",
                         ],
                     },
                     {
                         "profile": "pi4",
                         "hosts": ["staging-pi4-kiosk01"],
                         "images": [
-                            f"ghcr.io/denkoushi/raspisys-nfc-agent:{STANDARD_SHA}",
-                            f"ghcr.io/denkoushi/raspisys-barcode-agent:{STANDARD_SHA}",
-                            f"ghcr.io/denkoushi/raspisys-torque-agent:{STANDARD_SHA}",
+                            f"{GHCR_NAMESPACE}/raspisys-nfc-agent:{STANDARD_SHA}",
+                            f"{GHCR_NAMESPACE}/raspisys-barcode-agent:{STANDARD_SHA}",
+                            f"{GHCR_NAMESPACE}/raspisys-torque-agent:{STANDARD_SHA}",
                         ],
                     },
                 ],
@@ -354,9 +366,7 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
     def test_existing_environment_files_do_not_import_staging_boundary(self) -> None:
         existing_environment_files = (
             ANSIBLE / "inventory.yml",
-            ANSIBLE / "inventory-talkplaza.yml",
             ANSIBLE / "group_vars" / "all.yml",
-            ANSIBLE / "group_vars" / "talkplaza.yml",
         )
         for path in existing_environment_files:
             text = path.read_text(encoding="utf-8").lower()

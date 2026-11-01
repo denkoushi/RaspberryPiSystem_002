@@ -7,7 +7,7 @@ import type { RefObject } from 'react';
 
 type Props = {
   bars: GanttBar[];
-  content: RefObject<HTMLDivElement>;
+  content: RefObject<HTMLDivElement | null>;
   layout: GanttLayout;
   dayWidth: number;
   viewportWidth: number;

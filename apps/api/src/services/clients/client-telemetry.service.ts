@@ -19,6 +19,8 @@ import {
   type ClientTelemetryLogEntry
 } from './client-telemetry-alert-policy.js';
 
+import { deployWindowEndedAt } from './kiosk-deploy-window.js';
+
 const isKioskLog = (entry: ClientTelemetryLogEntry) =>
   entry.context?.category === 'kiosk_ui_error' || entry.context?.category === 'kiosk_net_stats';
 
@@ -35,9 +37,13 @@ async function createTelemetrySlackAlerts(params: {
     for (const entry of params.logs) {
       const kiosk = entry.context?.category === 'kiosk_ui_error';
       const now = new Date();
+      const deployWindowEnd = kiosk ? await deployWindowEndedAt(params.clientId, now) : null;
+      if (entry.level === 'ERROR' && deployWindowEnd && now.getTime() < deployWindowEnd.getTime()) {
+        logger.info({ clientId: params.clientId, reason: 'kiosk-deploy-window' }, '[ClientTelemetry] suppressed kiosk alert');
+      }
       let recentCount = 0;
       const deviceId = entry.context?.clientDeviceId;
-      const countSince = kioskErrorCountSince(now, new Date(now.getTime() - process.uptime() * 1000));
+      const countSince = kioskErrorCountSince(now, new Date(now.getTime() - process.uptime() * 1000), deployWindowEnd);
       if (kiosk && entry.level === 'ERROR' && countSince) {
         const recentLogs = await prisma.clientLog.findMany({
           where: {
@@ -54,7 +60,7 @@ async function createTelemetrySlackAlerts(params: {
           return sum + (isKioskNetworkError(context?.kind) === isKioskNetworkError(entry.context?.kind) ? kioskErrorCount(context) : 0);
         }, 0);
       }
-      const decision = resolveTelemetryAlertDecision(params.clientId, entry, recentCount, now);
+      const decision = resolveTelemetryAlertDecision(params.clientId, entry, recentCount, now, deployWindowEnd);
       const osUpdate = entry.context?.category === 'os_update_health';
       if ((entry.context?.category === 'terminal_agent_health' || osUpdate) && entry.context?.action === 'recovery') {
         await deliverTelemetryNotice(params.clientId, entry);
@@ -219,6 +225,7 @@ export async function updateClientDevice(params: {
   kioskInitialRoute?: string | null;
   haizenEdgeEnabled?: boolean;
   shelfLayoutEditEnabled?: boolean;
+  procedureBoardEnabled?: boolean;
   siteKey?: string | null;
   canProxyOtherDevices?: boolean;
 }) {
@@ -230,6 +237,7 @@ export async function updateClientDevice(params: {
         defaultMode: params.defaultMode ?? undefined,
         ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
+        ...(params.procedureBoardEnabled !== undefined ? { procedureBoardEnabled: params.procedureBoardEnabled } : {}),
         ...(params.shelfLayoutEditEnabled !== undefined
           ? { shelfLayoutEditEnabled: params.shelfLayoutEditEnabled }
           : {}),

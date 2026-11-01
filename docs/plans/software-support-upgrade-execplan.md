@@ -25,13 +25,14 @@
     | 4 | Python 3.11(NFC・バーコード・トルクの各 agent イメージ、hermes-answer-cache) | python:3.11-slim、pyproject は ^3.11 | python:3.13-slim(サポートは2029-10まで) | 2027-10 | infrastructure/docker/Dockerfile.nfc-agent、Dockerfile.barcode-agent、Dockerfile.torque-agent、services/hermes-answer-cache/Dockerfile、clients/*/pyproject.toml と lock。Pi4 群とキオスク端末 | 中(端末の読取りが止まると貸出・締付の現場作業に響く) | 前のイメージタグへ戻して Pi4 へ再反映 |
     | 5 | PostgreSQL 15(pgvector/pgvector:pg15) | 15 | 18(pgvector/pgvector:pg18、pgvector 0.8 系) | 2027-11-11 | infrastructure/docker/docker-compose.server.yml、docker-compose.mac-local.override.yml、.github/workflows/ci.yml と torque-release.yml、本番DBのデータ領域 | 高(本番データの移行を伴う) | 旧データ領域を消さずに残し、旧 pg15 コンテナへ切り戻す。移行前の pg_dump から復元も可能 |
     | 6 | React 18(apps/web) | 18.2 | 19 | 公式の終了日なし。新機能と修正は 19 系のみ | apps/web 全画面 | 中 | package.json と lockfile を戻す |
+    | 7 | pnpm(パッケージ管理ツール) | 10.34.6(CI の脆弱性監査だけ 11.4.0) | 12 | 10 と 11 は 2027-04-30(pnpm 公式 SECURITY.md) | package.json の packageManager と engines、.github/workflows/ci.yml の AUDIT_PNPM_VERSION、scripts/ci/pnpm-exact.sh とそのテスト。CI と API・web・kiosk-sop 生成のイメージビルド(corepack が package.json の版に従う) | 低〜中(上げるとビルド時の挙動が変わりうる。実機の動作は変わらない) | package.json と ci.yml の版を戻す commit(lockfile が 9.0 のままなら差し戻しも単純) |
 
 点検メモにあった ESLint 8 は、既に 9.39.5 へ更新済みのため対象から外す。TypeScript 5.4、Vite 6、Alpine 3.24、Go 1.27 は現時点で期限が近くないため一覧に入れない。
 
 ## 進める順番と理由
 
 
-期限の近い順は 1(終了済み)、2(保守終了済み)、3(LTS 期間中)、4(2027-10)、5(2027-11)、6(期限なし)となる。PostgreSQL は期限が最後のほうでも準備に時間がかかるので、4 と並行して試し移行だけ早めに始める。
+期限の近い順は 1(終了済み)、2(保守終了済み)、3(LTS 期間中)、7(2027-04)、4(2027-10)、5(2027-11)、6(期限なし)となる。7 の pnpm は 2027 年 1〜2 月に着手する。PostgreSQL は期限が最後のほうでも準備に時間がかかるので、4 と並行して試し移行だけ早めに始める。
 
 ## 各項目の手順
 
@@ -58,7 +59,71 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 ### 4. Python 3.11 → 3.13
 
-別 PR で行う。agent ごとの lock を 3.13 で作り直し、各 agent のテストを通す。Pi4 へ配るファイルは、main の最新がその変更の commit である間に全 Pi4 へ反映しないと届かないため、マージ後は他の PR をマージする前に Pi4 全台の反映を終える。端末ごとの文字コード(EUC-JP の端末がある)にも注意する。
+別 PR で行う。Pi4 へ配るファイルは、main の最新がその変更の commit である間に全 Pi4 へ反映しないと届かないため、マージ後は他の PR をマージする前に Pi4 全台の反映を終える。端末ごとの文字コード(EUC-JP の端末がある)にも注意する。
+
+#### 4-1. 影響範囲(2026-10-30 調査)
+
+書き換えるのは次の4つのイメージの土台だけである。
+
+- `infrastructure/docker/Dockerfile.nfc-agent`、`Dockerfile.barcode-agent`、`Dockerfile.torque-agent`。各3段(lock-export、builder、runtime)とも `python:3.11-slim`。CI の `pi4-agent-images-publish` が `linux/arm64` と `linux/arm/v7` を作り、`ghcr.io/denkoushi/raspisys-{nfc,barcode,torque}-agent:<main の SHA>` として push する。端末上ではビルドせず、role `release_kiosk` が pull して `docker compose --no-build` で切り替える。
+- `services/hermes-answer-cache/Dockerfile`(`python:3.11-slim`、arm64 のみ)。Pi5 の `business-hermes-answer-cache` で動き、role `release_pi5` が digest 付き参照で配る。Pi4 には関係しない。
+
+対象外は次のとおり。status-agent、haizen-agent、zero-edge-agent は端末の OS の `python3` で動くため、OS の版上げ(本計画の範囲外)に従う。`clients/haizen-agent/pyproject.toml` も OS の Python 用である。
+
+agent が動く端末(inventory の `kiosk` グループ):
+
+- NFC のみ: raspberrypi4、raspi4-robodrill01、raspi4-fjv60-80、raspi4-sessaku-01、raspi4-kensaku-02、raspi4-assembly-02
+- NFC とトルク: raspi4-assembly-01
+- NFC、バーコード、トルク: raspi4-kensaku-stonebase01(3つ全部が動く唯一の端末)
+- raspberrypi3(サイネージ)は agent イメージを使わない。
+
+事前の読み取り確認(2026-10-30 21:38、Pi5 から uname・docker ps・curl のみ):
+
+- Pi4 の 8 台はすべて aarch64(dpkg arm64)。armv7 の端末は無い。CI は両方を作るが、実際に届くのは arm64。
+- 8 台とも現在の agent イメージは c452a53c。nfc-agent の `readerConnected` は 8 台すべて true。
+- stonebase01: torque-agent は healthy で `/health` 200。barcode-agent は Up で `readerConnected` false(リーダー未接続のため。反映後も false のままなら正常)。
+- assembly-01: torque-agent は healthy で `/health` 200。
+- ほかの 6 台は nfc-agent だけが動いている。
+
+#### 4-2. 依存の確認(Mac の Docker で試しビルド)
+
+- 3つの agent を `python:3.13-slim`(3.13.18)へ差し替え、今の poetry.lock のまま arm64 と arm/v7 の両方でビルドした。6本とも成功し、各イメージで主要モジュール(nfc は smartcard・evdev・uvloop・httptools・fastapi、torque は evdev・uvloop・fastapi、barcode は serial・uvloop・fastapi)の import を確かめた。所要は arm64 が約1分、arm/v7 が 10〜13 分(QEMU、キャッシュなし)。
+- C 拡張: pyscard 2.3.1 と evdev 1.9.3 は Linux 用 wheel が無くソースからビルドするが、3.13 でも両アーキテクチャで通った。uvloop、httptools、pyyaml は armv7 用 wheel が無く QEMU でコンパイルされる(3.11 でも同じ)。pydantic-core と watchfiles は cp313 の wheel がある。
+- poetry.lock は作り直さない。lock には既に cp313 の wheel が載っており、`^3.11` の制約は 3.13 を含む。作り直すと全パッケージの版が動き、今回の変更が「Python の版」だけでなくなるため。
+- 3.13 と 3.12 で消えた標準モジュール(cgi、telnetlib、imghdr、distutils、asyncore など)は、clients/ と services/hermes-answer-cache/ で import されていない。
+- テストを 3.11 と 3.13 で同じ条件で比べた。nfc-agent は両方 6 件合格。torque-agent は両方 82 件合格・1 件失敗(`test_capture_kit.py` の replay の安全確認。コンテナを root で動かしたための環境由来で、3.11 でも同じく失敗する)。barcode-agent はテストが無く、import を確かめた。
+- hermes-answer-cache は 3.13 でイメージを作り、faiss・gptcache・fastembed・SQLAlchemy の import と、埋め込みモデルの焼き込みが通った。テスト 53 件合格。
+
+#### 4-3. 端末固有の注意
+
+- raspi4-robodrill01 と raspi4-kensaku-stonebase01 は `ja_JP.EUC-JP`。コンテナ内の Python はホストのロケールに依存しないが、Ansible の手作業の読み取りでは先に `LC_ALL=C.UTF-8` にする。
+- Pi4 に届くのは main の HEAD の SHA のイメージだけである。マージ後、Pi4 全台の反映が終わるまで他の PR をマージしない。試しの1台で確認を待つ間も、この止めは続く。
+- イメージの pull が `lookup ghcr.io ... server misbehaving` で失敗したら、その端末の `/etc/resolv.pre-tailscale-backup.conf` が空になっていないかを見る。切り替え前の失敗なので、端末は前の版のまま動き続ける。
+- 標準反映の正常確認は、各 agent の HTTP 応答(nfc と barcode は `/api/agent/status`、torque は `/health`)が 200 かどうかだけを見る。読取機が実際につながっているかは見ないので、反映の前後で `/api/agent/status` の `readerConnected` を比べ、さらに現場でカードを1回読ませて確かめる。
+
+#### 4-4. 戻し方
+
+- 反映中の失敗(pull、切り替え、HTTP 確認): role `release_kiosk` が切り替え前に今のイメージへ `raspi-standard-rollback:<run_id>-<agent>` の印を付け、失敗時はそのイメージで `--no-build` 起動し直す。自動で前の 3.11 版に戻る。
+- 反映後に不具合が分かった場合: 標準反映は main の HEAD しか配れないため、この PR を取り消す commit を main に入れ、CI が 3.11 のイメージを新しい SHA で作るのを待ち、Pi5 と該当 Pi4 を標準反映し直す。armv7 のビルドキャッシュは 3.13 で上書きされているため、取り消しの CI は KB-414 と同じく 1 時間近くかかる見込みである。その間、読取りの止まった端末は手作業での記録で運用する。
+- 戻せることの確かめ方: 試しの1台の反映で、run の記録に rollback 用の印付けが成功していること(`Capture current Pi4 agent images as temporary rollback tags` が ok)を確認する。取り消し commit による戻しは本番では試さず、PR の CI で 3.11 と 3.13 の両方のイメージが作れることをもって代える。
+
+#### 4-5. 反映の進め方
+
+1. PR をマージし、main の CI(3 agent × 2 アーキテクチャと hermes-answer-cache)が緑になるのを待つ。
+2. 反映前に、全 Pi4 の CPU の種類(`uname -m`、`dpkg --print-architecture`)と各 agent の `readerConnected` を読み取りだけで記録する。
+3. Pi5 を標準反映する(hermes-answer-cache が 3.13 になる)。
+4. 試しの1台として raspi4-kensaku-stonebase01 を `--limit` で反映する(2026-10-30 ユーザー指示)。3つの agent がすべて有効だが、今つながっている読取機は NFC リーダーだけである。EUC-JP の端末なので、手作業の Ansible の読み取りには `LC_ALL=C.UTF-8` を付ける(標準反映の role は対応済み)。現場の人が立ち会える時間に行う。
+5. stonebase01 の確認(反映後すぐ):
+   1. 読み取りだけで、3つの agent の HTTP 応答が 200 であること、NFC の `readerConnected` が反映前と同じ(true)であること、バーコードとトルクのコンテナが再起動を繰り返していないことを見る。
+   2. 現場で NFC カードを1回読ませ、キオスクの画面に読み取りが出ることを確かめる。実機での確認はこの1回だけ。
+   読めなければ、4-4 の手順で戻す。
+6. 問題がなければ、raspi4-assembly-01 を反映する。トルクレンチを実機で確かめられる端末で、NFC カードの読み取りとトルクレンチの1回の締め付けを現場で確かめる。トルクの部品は Bluetooth の入力を evdev で読むので、ここで初めて実機の入力を通す。
+7. NFC だけの6台(raspi4-kensaku-02、raspi4-sessaku-01、raspi4-fjv60-80、raspi4-assembly-02、raspberrypi4、raspi4-robodrill01)を1台ずつ反映し、それぞれ `readerConnected` を読み取りで確かめる。robodrill01 も EUC-JP の端末である。
+8. 全台終わるまで main への他のマージを止める。
+
+読取機がつながっていない部品の扱い: 3つの部品とも、読取機が無くても起動し、状態確認(nfc と barcode は `/api/agent/status`、torque は `/health`)は 200 を返す。読取機の有無は応答の中の `readerConnected` などに出るだけで、標準反映の正常確認は失敗しない。barcode のコンテナは `/dev/ttyACM0` を個別に割り当てず `privileged` で動くため、装置が無くても起動できる。torque は Bluetooth の入力が無いと待ち直しを続ける作りである(`hid_reader.py`)。
+
+バーコードを実機で確かめられる端末は今は無い(バーコードの部品が有効なのは stonebase01 だけで、読取機はつながっていない)。代わりに、3.13 のバーコード部品のイメージ(arm64 と arm/v7)の中で仮の端末(pty)を `SERIAL_DEVICE` に指定し、1行流すと `readerConnected: true` と `lastLine` に届くことを Mac で確かめた。バーコードの読取機を再びつなぐときに、現場で1回読ませて確かめる。
 
 ### 5. PostgreSQL 15 → 18
 
@@ -84,7 +149,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 
 **注意: 公式イメージの 18 はデータの置き場所が変わる。** PGDATA が `/var/lib/postgresql/18/docker` になり、mount 先は `/var/lib/postgresql` が推奨になった。古い mount 先のまま 18 を起動すると、起動に失敗するか、空の DB を新しく作ってしまう。そこで、新しいボリューム `db-data-pg18` を `/var/lib/postgresql` に mount する。旧 `db-data` は compose に宣言したまま残し、消さない。
 
-**最大の危険は、compose の版だけ変えて標準反映すること。** 空の pg18 が起動し、API の `migrate deploy` が空の DB に表を作るので、画面上はデータが消えたように見える。これを防ぐため、手順 2 の起動前チェックを先に入れ、本番の compose を切り替える PR は移行の当日にだけマージする。
+**最大の危険は、compose の版だけ変えて標準反映すること。** 標準デプロイ自体は `db` を再作成しないが、明示的な `up -d db` で空の pg18 が起動すると、API の `migrate deploy` が空の DB に表を作り、画面上はデータが消えたように見える。これを防ぐため、手順 2 の起動前チェックを先に入れ、本番の compose を切り替える PR は移行の当日にだけマージする。
 
 **手順**(PR は 1〜2 と 4 が別。どれも1つのソフト更新の準備として扱う)
 
@@ -92,7 +157,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 2. **移行用の手順書とスクリプトの PR。** 次の3つを入れる。
    - `scripts/server/postgres-major-upgrade.sh`。止める、取る、復元する、比べる、切り替える、を1本で行い、どこかで失敗したら止まる。
    - DB の起動前チェック。新しいボリュームが空で、旧 `db-data` にデータがあるときは起動を止める。誤って空の DB で動き出すのを防ぐ。
-   - Runbook `docs/runbooks/postgres-15-to-18-upgrade.md`。
+   - [Runbook](../runbooks/postgres-15-to-18-upgrade.md)。
 3. **試し移行(手元の Mac、arm64)。** Mac は Pi5 と同じ arm64 なので、ここで試す。
    1. 本番から読み取りだけでダンプを取る。`pg_dumpall --globals-only` と `pg_dump -Fc` の2つ。
    2. 本番 DB の大きさと Pi5 の空き容量を測る(読み取りのみ)。空き容量は、DB の大きさの2倍にダンプの分を足した量を目安とする。
@@ -101,25 +166,45 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
    5. 戻す手順(旧ボリュームへ切り替える)も1回試す。
    6. 本番データの写しは使い終わったら Mac から消す。
 4. **本番の compose を切り替える PR。** `db` の image を pg18 にし、mount を `db-data-pg18:/var/lib/postgresql` にする。旧 `db-data` の宣言は残す。手順 3 の結果を PR に書き、マージは手順 5 の当日に進行管理役が行う。
+   - Dockerfile.api の `postgresql-client-15`(API バックアップの pg_dump)を切替 PR までに18へ更新する。pg_dump 18 は15のサーバーも扱えるので先行更新できる。
 5. **本番移行(ユーザーの明示承認のあとにだけ行う)。**
    1. 業務が止まってよい時間帯をユーザーと決める。目安は手順 3 で測った時間の3倍。
    2. 開始前に、`backup.sh` の手動実行と、globals と `-Fc` のダンプを Pi5 の外(Mac)へ1部ずつ保管する。
    3. API と Web を止めて書き込みを止める。
    4. スクリプトで新しいボリュームへ復元し、件数を比べる。
-   5. 手順 4 の PR をマージして標準反映する。
+   5. 手順 4 の PR をマージして標準反映する(運用順序はRunbookに従い、クライアント停止前に行う)。標準デプロイは `db` を再作成しないため、旧 `db` を停止し、スクリプトの `activate --expect-major 18 --work-dir <dir>` で切り替える。
    6. health、主要画面、`migrate status` を確かめる。
    7. 業務を再開する前に、進めるか戻すかを決める。
 6. **後片付け。** 旧 `db-data` は少なくとも2週間残す。その間に DR スナップショットを1回取り、Google Drive からの復元検証を pg18 で通す。消すのは、ユーザーの承認を得て別の作業で行う。
 
 **戻し方**
 
-- 業務を再開する前なら、`db` を pg15 と旧 `db-data` に戻して(手順 4 の PR を revert して)標準反映する。旧ボリュームには一切書き込んでいないので、データは移行の直前のまま。
+- 業務を再開する前なら、`db` を pg15 と旧 `db-data` に戻して(手順 4 の PR を revert して)、スクリプトの `activate --expect-major 15 --work-dir <dir>` で起動・比較する。旧ボリュームには一切書き込んでいないので、データは移行の直前のまま。
 - 業務を再開した後に戻すと、再開後に書き込まれたデータが旧ボリュームに無い。そのため、戻すかどうかは再開前に決める。再開後に重い問題が出たときは、pg18 から取ったダンプを pg15 へ入れられるか試してから判断する(版を下げる復元は、うまくいく保証がない)。
 - 最後の手段は、移行直前のダンプ(Pi5 の外にある写し)から pg15 に復元すること。
 
 ### 6. React 18 → 19
 
 別 PR で行う。期限がないため最後に回す。
+
+上げる先は react / react-dom 19.3.1(2026-10-14 公開の最新安定版)、@types/react / @types/react-dom 19.3.0。React を使うのは `apps/web` だけで、`packages/*` と API は関係しない。
+
+影響調査(2026-10-31):
+
+- React 19 で消えた API は使っていない。関数部品の `defaultProps`、`propTypes`、string ref、`ReactDOM.render` / `hydrate` / `findDOMNode` / `unmountComponentAtNode`、`react-dom/test-utils`、`contextTypes`、`createFactory` は `apps/web/src` に無い。入口は既に `createRoot`。
+- 依存ライブラリは版を変えずに 19 対応済み(peerDependencies で確認)。react-router-dom 6.30.6(`>=16.8`)、@tanstack/react-query 5.90.10(`^18 || ^19`)、@tanstack/react-virtual 3.13.24、recharts 3.8.1、@xstate/react 6.0.0、@chatscope/chat-ui-kit-react 2.1.1、@a2ui/react 0.11.1。
+- テスト用の @testing-library/react 14 は React 18 専用のため 16.3.3 へ上げ、16 から別指定になった @testing-library/dom 10.4.2 を足す。
+- 型の変化で `tsc -b` が 41 件失敗する。`useRef<T>()` の引数必須化、`useRef<T>(null)` が `RefObject<T | null>` になったこと、グローバルの `JSX` 名前空間の廃止による。
+- 実行時の挙動が変わる箇所は1つ。`KioskLayout.tsx` がヘッダーを隠すときに `inert: ''` を渡しており、React 19 では空文字が偽になって属性が付かなくなる。`inert: true` にする。
+- recharts は `react-is` を同梱せず、そのままでは古い react-is 17 を拾う。17 は React 19 の要素を見分けられず、グラフ内の Fragment を展開できなくなるため、`apps/web` に react-is 19.3.1 を足す。
+- 単体テストは、タイマーを進める処理を `act` で包む、`alt=""` の画像の役割が testing-library 10 で `img` から `presentation` になったことへの追従、の2種類を直した。
+- lockfile は pnpm が誰も使っていない古い候補(jsdom 27 など)を整理するため、React 以外の行も減る。依存の版そのものは React とテスト用ライブラリ以外変わらない。
+
+確認は web の型チェック・lint・単体テスト・ビルド、E2E、キオスク画面と管理画面の表示で行う。戻すときは、この PR を revert して標準反映する(DB とイメージの形は変わらない)。
+
+### 7. pnpm 10/11 → 12
+
+pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイルで Corepack では動かないため、Dockerfile 3 本と `scripts/ci/pnpm-exact.sh` は `npm install -g pnpm@<版>` 方式に変えた。設定は `package.json` の `pnpm` 欄から `pnpm-workspace.yaml` へ移し(`onlyBuiltDependencies` は `allowBuilds`、ビルドを走らせない `tesseract.js` は `false`)、lockfile は先頭に pnpm 自身の記録が 158 行増えただけで依存は変わらない。pnpm 12 は取得メタデータのキャッシュを `/root/.cache/pnpm` に約 450MB 書き、`pnpm prisma generate` は実行前に依存を入れ直して `.pnpm` 全体を書き換える。API イメージが 1.57GB になったため、キャッシュを同じ層で消し、`pnpm-workspace.yaml` の `verifyDepsBeforeRun: false` で入れ直しを止めた(圧縮後 Mac で 1.08GB、CI の ARM64 で 1.104GB。pnpm 自体の増加分を見込み、予算は 1.125GB にした)。出典: https://github.com/pnpm/pnpm/security/policy と https://github.com/pnpm/pnpm/releases/tag/v12.0.0
 
 ## Progress
 
@@ -135,13 +220,29 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - [x] (2026-10-27) ユーザーが次に PostgreSQL 15 の更新へ進むことを選んだ(計画と準備までの承認。本番移行は別に承認を得る)。5 の手順を詳しく書いた。
 
 - [x] (2026-10-25) Brotli の脆弱性(CVE-2026-111497)対応として、API と kiosk-sop 生成の node:24-bookworm-slim を Node 24.21.0 の digest(sha256:2fe369e9…)から Node 24.22.1 の digest(index sha256:55fb5f5a…)へ差し替える別 PR を作成。土台は bookworm のままで、3件目の trixie 化とは分ける。
+- [x] (2026-10-29) PostgreSQL更新の手順2として、移行・比較・activateスクリプト、空DB初期化ガード、契約/ガード/E2Eテスト、[Runbook](../runbooks/postgres-15-to-18-upgrade.md)を追加。本番composeとDockerfile.apiは変更せず、切替は手順4で行う。
+
+- [x] (2026-10-29) PostgreSQL更新の手順3として、Macで読み取り専用の本番ダンプを使い試し移行・切戻しを実施。本番はPostgreSQL 15.17、DB 5.7GB、custom dump 242MB（SSH経由150秒）、コピーの復元82秒。preflight 3秒、migrate 100秒、停止＋activate 18は5秒、切戻しの停止＋activate 15は4秒。284行の比較レポートと拡張版（vector 0.8.7 / pg_trgm 1.6）は一致。Pi5は遅くなる見込みのため、保守時間は1時間を確保する。
+- [x] (2026-10-29) 手順4の切替PR用に、本番composeをpg18・新ボリューム・旧ボリュームread-only・起動ガードへ変更し、APIのPGDGクライアントを18へ更新。マージは移行当日のみ（Runbookの当日手順2）。標準デプロイはdbを再作成せず、migrate後に運用者が `activate --expect-major 18` で切り替える。本番移行は未実施。
+- [x] (2026-10-30) 本番移行を実施（切替PR #2398、修正PR #2404）。7:41の初回は旧dbコンテナがパスワードを環境変数で持ちmigrateが停止、自動でpg15へ戻した（停止約20秒、データ変更なし）。修正後、17:50開始で一括実行しRESULT=OK。Pi5の停止区間は719秒（migrate 579秒、activate 18は8秒、API/web再開100秒、migrate status確認19秒）。比較レポートの差分なし、PostgreSQL 18.6。旧ボリュームdb-dataは残し、移行時のダンプはMacへ写してsha256一致を確認。
+- [x] (2026-10-30) 3件目の Debian trixie 化: API と kiosk-sop 生成の基盤を node:24-trixie-slim(Node 24.22.2、index `sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446`、arm64 manifest `sha256:7924b020d1e9972de4d7838a7a8ab8c54ef0d6e51435d6a7d1dfa73c6f106241`)へ替え、PGDG を trixie-pgdg、t64 の部品名、最低版チェックを trixie の版に直した。Mac(arm64)で API イメージを作り、Debian 13.7・pg_dump 18.6・Python 3.13.5・ndlocr-lite・rapidocr・ansible・ffmpeg・pdftoppm が動くことを確認。圧縮サイズの手元見積もりは合計 1078966439 バイト、最大の層 619208532 バイト、33 層で予算内。kiosk-sop は生成照合と画面テスト 18 件が合格し、ソースのダイジェストだけ更新した。
+- [x] (2026-10-30) pnpm 10/11 のサポート終了(2027-04-30)を知り、対象一覧に 7 として追加。着手は 2027 年 1〜2 月の予定で、実装は未着手。
+- [x] (2026-10-30) 4件目の Python 3.13: NFC・バーコード・トルクの各 agent と回答キャッシュを `python:3.13-slim` に上げた #2426 をマージ(main dd08a3c7)。Pi5 へ反映(run 20261030-141919-5453cb、成功)したあと、Pi4 を1台ずつ反映した(全 8 台成功・failed=0)。順に stonebase01 20261030-143449-9d23bd、assembly-01 144624-66e184、kensaku-02 145705-3014ca、sessaku-01 150637-125f83、fjv60-80 151646-b64745、assembly-02 152623-8cb2c0、raspberrypi4 155831-215cc2、robodrill01 160802-58abf7。全台で nfc の `readerConnected` が true、再起動 0 回、イメージ dd08a3c7 だった。torque `/health` は assembly-01 と stonebase01 で 200。全台完了の 120 秒後に再確認しても同じだった。
+- [x] (2026-10-31) #2426 で torque-agent の Dockerfile が変わり、採用記録(a926af9a のまま)と食い違って別 PR の torque-release チェックが落ちたため、採用記録を dd08a3c7 のイメージ(index `sha256:a1736af1…`、run 41065917090)へ更新する #2431 をマージした(main 751ba8da)。実機のイメージは変わらないのでデプロイはしていない。
+- [ ] Python 3.13 の現地確認(stonebase01 でカード1枚、assembly-01 でカード1枚とトルクレンチの締付1回)。ユーザーの返事待ち。
+- [x] (2026-10-31) PostgreSQL の後片付け: pg18 移行後の DR スナップショット(2026-10-30 23:00 の夜間分、snapshot_id 7bfadd98…、3437174433 bytes)が成功していることを確認し、Google Drive からの復元検証(`restore-check`)を通した(stage `restore_check_complete`)。復元した DB ダンプの見出しは PostgreSQL 18.6。復元先 `/var/tmp/raspi-google-drive-dr-restore-20261031-181349` は確認用に Pi5 へ残している。
+- [ ] PostgreSQL の旧ボリューム `db-data` の削除は 2026-11-13(移行から2週間)以降に、ユーザーの明示承認を得て別作業で行う。まだ消していない。
+- [x] (2026-10-31) 7件目の pnpm 12: #2427(pnpm 12.16.1、Corepack をやめて npm で入れる)、#2435(API イメージを予算内に戻す)、#2436(圧縮サイズ予算を 1.125GB に)をマージ。最終は main 9223b0be。この3件は Pi5 へ1回で反映した(run 20261030-184443-1ad230、成功・failed=0、api healthy、HTTP 正常)。
+- [x] (2026-10-31) 6件目の React 19: react / react-dom 19.3.1 へ上げた #2451 をマージ(main 19efd986)。Pi5 へ反映(run 20261031-115855-620138、成功・failed=0)。api と web は 19efd986 のイメージで、`/`、`/kiosk`、`/admin`、`/api/system/health` が 200。配信中の web の bundle に React 19.3.1 が入っていることを確かめた。
 
 ## Surprises & Discoveries
 
+- trixie の python3-yaml(PyYAML 6.0.2)は pip で消せず、PyYAML 6.0.1 を指定する ndlocr-lite の導入が止まった。PyYAML 6.0.1 を `--ignore-installed` で先に pip 側へ入れて回避した。
 
 - Node 20 は 2026-04-30 でサポートが終わっており、点検時点で既に期限切れだった。
 - 業務 Hermes の中継部品は、標準反映がイメージの入れ替えを拒否する作りで、更新の通り道がまだ無い。
 - ESLint は既に 9 系へ更新済みだった。
+- 本番のdbコンテナは `POSTGRES_PASSWORD_FILE` 導入前に作られ、パスワードを環境変数で持っていた。移行スクリプトはComposeのdbのbindからパスワードファイルを取るよう修正した（#2404）。
 
 ## Decision Log
 
@@ -154,6 +255,7 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - 2026-10-26: pg は接続確立と空き接続待ちを1つの上限で扱う。そのため、Prisma 5 の `connect_timeout`(10秒)と `pool_timeout`(20秒)の長いほうを使い、本番で新たにタイムアウトが起きないようにした。
 - 2026-10-27: PostgreSQL の上げる先は 18 とした。19 は正式版がまだ出ていない(2026-11-19 予定)ため。
 - 2026-10-27: PostgreSQL はダンプと復元で移す。`pg_upgrade` は公式イメージだけでは使えず、18 のチェックサム既定の変更と、OS が変わることによる並び順の変化にも引っかかるため。旧ボリュームは消さずに残して戻し先にする。
+- 2026-10-30: Python 3.13 化では poetry.lock を作り直さず、イメージの土台だけを替える。lock は既に cp313 の wheel を含み、3.13 で両アーキテクチャのビルドとテストが通ったため。作り直すと依存の版も一緒に動き、不具合の原因を切り分けにくくなる。
 - 2026-10-25: 計画文書は1件目の PR に同梱する。文書は更新そのものではないため「1PR1ソフト」の決まりに反しない。
 
 ## Outcomes & Retrospective
@@ -164,3 +266,4 @@ digest は記憶で書かず、公式の multi-arch index の digest と Pi5 向
 - 1. Node.js 20 の中継部品: main e98e40bc(#2287)、本番反映 run 20261025-014627-11001b(main fa13444e)。両中継部品が node:24-alpine で healthy。戻しは不要だった。
 - (計画外)Brotli 脆弱性 CVE-2026-111497: API と kiosk-sop の node:24-bookworm-slim を Node 24.22.1 の digest へ(#2289)。同じ run で反映し、API の node -v が v24.22.1。
 - 2. Prisma 5 → 7: main 4f9d5030(#2306)、本番反映 run 20261026-044219-700883。#2300 は API イメージの容量予算を超えたため #2304 で取り消し、wasm を削って入れ直した。入れ直し後の戻しは不要だった。
+- 6. React 18 → 19: 更新済み。main 19efd986(#2451)、本番反映 run 20261031-115855-620138。戻しは不要だった。

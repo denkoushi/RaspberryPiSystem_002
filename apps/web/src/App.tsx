@@ -9,7 +9,7 @@ import { RequireAuth } from './components/RequireAuth';
 import { RouteLoadingScreen } from './components/RouteLoadingScreen';
 import { readProductionBuildConfig } from './config/productionBuildConfig';
 import { kioskAssemblyLibraryPath, parseAssemblyProcedureOrderSettingsSearch } from './features/assembly';
-import { KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from './features/assembly/assemblyRoutes';
+import { KIOSK_ASSEMBLY_CHECK_SHEETS_PATH, KIOSK_ASSEMBLY_CHECK_SHEET_PATH, KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from './features/assembly/assemblyRoutes';
 import { kioskLazy } from './features/kiosk/kioskLazyPreload';
 import { KioskScreenWatchHost } from './features/kiosk/screen-watch/KioskScreenWatchHost';
 import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
@@ -45,6 +45,9 @@ import { RaspiInventoryPage } from './pages/admin/RaspiInventoryPage';
 import { SecurityPage } from './pages/admin/SecurityPage';
 import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
 import { SignageHubPage } from './pages/admin/SignageHubPage';
+import { WatchCameraPage } from './pages/admin/WatchCameraPage';
+import { KioskAssemblyCheckSheetPage } from './pages/kiosk/KioskAssemblyCheckSheetPage';
+import { KioskAssemblyCheckSheetsPage } from './pages/kiosk/KioskAssemblyCheckSheetsPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
 import { KioskAssemblyManualsPage } from './pages/kiosk/KioskAssemblyManualsPage';
 import { KioskAssemblyManualsWorkshopPage } from './pages/kiosk/KioskAssemblyManualsWorkshopPage';
@@ -73,6 +76,7 @@ import { KioskPartMeasurementTemplatePage } from './pages/kiosk/KioskPartMeasure
 import { KioskPartMeasurementTemplatePickPage } from './pages/kiosk/KioskPartMeasurementTemplatePickPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskPortalPage } from './pages/kiosk/KioskPortalPage';
+import { KioskProcedureBoardPage } from './pages/kiosk/KioskProcedureBoardPage';
 import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { KioskSelfInspectionPage } from './pages/kiosk/KioskSelfInspectionPage';
@@ -207,6 +211,8 @@ function App() {
         <Route element={<KioskLayout />}>
           <Route path="/kiosk" element={<KioskRedirect />} />
           <Route path="/kiosk/portal" element={<KioskPortalPage />} />
+          <Route path="/kiosk/procedure-board" element={<KioskProcedureBoardPage />} />
+          <Route path="/kiosk/procedure-board/:procedureId" element={<KioskProcedureBoardPage />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
           <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
           <Route path="/kiosk/inventory/dashboard" element={<KioskItemInventoryDashboardPage />} />
@@ -248,6 +254,8 @@ function App() {
           </Route>
           <Route path="/kiosk/pallet-visualization" element={<KioskPalletVisualizationPage />} />
           <Route path="/kiosk/documents" element={<KioskDocumentsPage />} />
+          <Route path={KIOSK_ASSEMBLY_CHECK_SHEETS_PATH} element={<KioskAssemblyCheckSheetsPage />} />
+          <Route path={KIOSK_ASSEMBLY_CHECK_SHEET_PATH} element={<KioskAssemblyCheckSheetPage />} />
           <Route path="/kiosk/assembly" element={<KioskAssemblyHomePage />} />
           <Route path={KIOSK_ASSEMBLY_MANUALS_PATH} element={<KioskAssemblyManualsPage />} />
           <Route path={KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH} element={<KioskAssemblyManualsWorkshopPage />} />
@@ -437,6 +445,7 @@ function App() {
         <Route path="local-llm" element={<LocalLlmAdminPage />} />
         <Route path="dgx-resource" element={<Navigate to="/admin/tools/dgx-resource" replace />} />
         <Route path="placement-photos" element={<PlacementPhotosPage />} />
+        <Route path="watch-camera" element={<WatchCameraPage />} />
         <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
         <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
         <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />

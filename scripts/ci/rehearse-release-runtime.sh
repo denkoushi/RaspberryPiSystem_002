@@ -135,9 +135,9 @@ prepare_writable_volume() {
 new_volume db
 DB_VOLUME="$NEW_VOLUME"
 docker run -d --platform "$PLATFORM" --name "$DB_CONTAINER" --network "$NETWORK" --network-alias db \
-  --label "$LABEL" --label "$RUN_LABEL" -v "$DB_VOLUME:/var/lib/postgresql/data" \
+  --label "$LABEL" --label "$RUN_LABEL" -v "$DB_VOLUME:/var/lib/postgresql" \
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=borrow_return \
-  pgvector/pgvector:pg15 >/dev/null
+  pgvector/pgvector:pg18 >/dev/null
 for _ in $(seq 1 60); do
   docker exec "$DB_CONTAINER" pg_isready -U postgres -d borrow_return >/dev/null 2>&1 && break
   sleep 1
@@ -202,6 +202,7 @@ required = {
     '/app/storage/knowledge-assets',
     '/app/storage/procedure-materials',
     '/app/storage/procedure-videos',
+    '/app/storage/assembly-check-sheet-sources',
     '/app/storage/knowledge-git',
     '/app/storage/thumbnails',
     '/app/storage/pdfs',

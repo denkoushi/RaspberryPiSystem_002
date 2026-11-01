@@ -174,14 +174,15 @@ test('real summaries count only known relevance in shown and loss totals', () =>
     ...rows,
   ];
   assert.deepEqual(summarizeReal(realRows), {
+    regression: { replayed: 0, ok: 0, failed: 0 },
     plannerVersions: {},
     questions: 6, withRelevant: 4, shown: 1, lossStages: { not_in_pool: 1, judge_rejected: 1, other_shown: 1 },
     dayOutcomes: { answer: 3, no_result: 2, no_other: 1 },
     filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 },
-    followUp: { questions: 0, withRelevant: 0, shown: 0, lossStages: {}, filterMismatch: 0, byAction: {}, countAnswers: 0 },
+    followUp: { check: { supported: 0, ok: 0, scope: 0, missed: 0, wrong: 0, unsupported: {} }, questions: 0, withRelevant: 0, shown: 0, lossStages: {}, filterMismatch: 0, byAction: {}, countAnswers: 0 },
   });
   const formatted = formatRealReport('2026-10-03', summarizeReal(realRows));
-  assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1\n  filter questions 0, correct 0, mismatch 0, unsupported 0$/u);
+  assert.match(formatted, /^real 2026-10-03: questions 6, with relevant 4, relevant shown 1, nothing shown 2 \(outside judged candidates 1, rejected by judge 1, asked back or out of scope 0\), other records shown 1, day outcomes answer 3, no_result 2, no_other 1\n  filter questions 0, correct 0, mismatch 0, unsupported 0\n  follow-up check: supported 0, ok 0, scope 0, missed 0, wrong 0, unsupported 0 \(none\)\n  regressions: replayed 0, ok 0, failed 0$/u);
   assert.match(formatRealReport('2026-10-03', summarizeReal([])), /questions 0, with relevant 0, relevant shown 0.*day outcomes none/u);
 });
 
@@ -237,12 +238,12 @@ test('real follow-up turns are counted apart with their own losses', () => {
     { source: 'real', kind: 'filter', relevant: [], dayOutcome: 'answer', filterCheck: { supported: true, ok: false }, live: live('filter_mismatch') },
   ];
   const summary = summarizeReal(realRows);
-  assert.deepEqual(summary.followUp, { questions: 4, withRelevant: 3, shown: 1, lossStages: { other_shown: 1, not_in_pool: 1 }, filterMismatch: 1, countAnswers: 0, byAction: { unclassified: { questions: 4, withRelevant: 3, shown: 1, lossStages: { other_shown: 1, not_in_pool: 1 } } } });
+  assert.deepEqual(summary.followUp, { check: { supported: 0, ok: 0, scope: 0, missed: 0, wrong: 0, unsupported: {} }, questions: 4, withRelevant: 3, shown: 1, lossStages: { other_shown: 1, not_in_pool: 1 }, filterMismatch: 1, countAnswers: 0, byAction: { unclassified: { questions: 4, withRelevant: 3, shown: 1, lossStages: { other_shown: 1, not_in_pool: 1 } } } });
   assert.equal(summary.questions, 6);
   assert.equal(summary.filter.mismatch, 2);
   const formatted = formatRealReport('2026-10-03', summary);
-  assert.match(formatted, /\n  follow-up turns 4, with relevant 3, relevant shown 1, lost other_shown 1, not_in_pool 1, filter mismatch 1, count answers 0\n    unclassified: turns 4, with relevant 3, relevant shown 1, lost other_shown 1, not_in_pool 1$/u);
-  assert.equal(formatRealReport('2026-10-03', summarizeReal(realRows.slice(0, 1))).includes('follow-up'), false);
+  assert.match(formatted, /\n  follow-up turns 4, with relevant 3, relevant shown 1, lost other_shown 1, not_in_pool 1, filter mismatch 1, count answers 0\n    unclassified: turns 4, with relevant 3, relevant shown 1, lost other_shown 1, not_in_pool 1\n  follow-up check:/u);
+  assert.equal(formatRealReport('2026-10-03', summarizeReal(realRows.slice(0, 1))).includes('follow-up turns'), false);
 });
 
 
@@ -266,4 +267,38 @@ test('night and real reports show recorded planner version counts', () => {
   const versionRows = [{ ...rows[0], live: { ...live(null), questionVersion } }, { ...rows[0], live: { ...live(null), questionVersion } }];
   assert.match(formatReport('2026-10-28', summarizeNight(versionRows)), /planner versions: planner-questions-2026-10-26b 2/u);
   assert.match(formatRealReport('2026-10-28', summarizeReal(versionRows.map((row) => ({ ...row, source: 'real' })))), /planner versions: planner-questions-2026-10-26b 2/u);
+});
+
+test('real report includes deterministic follow-up failures, unsupported reasons and regression replays', () => {
+  const checks = [
+    { supported: true, ok: true },
+    { supported: true, ok: false, scopeOk: false },
+    { supported: true, ok: false, scopeOk: true, shown: [], matchedCount: 2 },
+    { supported: true, ok: false, scopeOk: true, shown: ['fiction-wrong'], matchedCount: 2 },
+    { supported: false, ok: null, reason: 'count_answer' },
+    { supported: false, ok: null, reason: 'no_content' },
+    { supported: false, ok: null, reason: 'no_content' },
+  ];
+  const rows = checks.map((followUpCheck, i) => ({ source: i < 2 ? 'regression' : 'real', previousPlan: {}, relevant: [], followUpCheck }));
+  const summary = summarizeReal(rows);
+  assert.deepEqual(summary.followUp.check, { supported: 4, ok: 1, scope: 1, missed: 1, wrong: 1, unsupported: { count_answer: 1, no_content: 2 } });
+  assert.deepEqual(summary.regression, { replayed: 2, ok: 1, failed: 1 });
+  const report = formatRealReport('2026-10-03', summary);
+  assert.match(report, /follow-up check: supported 4, ok 1, scope 1, missed 1, wrong 1, unsupported 3 \(no_content 2, count_answer 1\)/u);
+  assert.match(report, /regressions: replayed 2, ok 1, failed 1/u);
+});
+
+test('real follow-ups without relevant labels count supported successes and scope losses', () => {
+  const rows = [false, true].map(ok => ({ source: 'real', relevant: [],
+    previousPlan: { filters: [], semanticQuery: 'scratch' },
+    live: live('other_shown', { followUpAction: 'replace' }),
+    followUpCheck: { supported: true, ok, scopeOk: ok },
+  }));
+  const summary = summarizeReal(rows);
+  for (const bucket of [summary, summary.followUp, summary.followUp.byAction.replace]) {
+    assert.equal(bucket.questions, 2);
+    assert.equal(bucket.withRelevant, 0);
+    assert.equal(bucket.shown, 1);
+    assert.deepEqual(bucket.lossStages, { follow_up_scope: 1 });
+  }
 });

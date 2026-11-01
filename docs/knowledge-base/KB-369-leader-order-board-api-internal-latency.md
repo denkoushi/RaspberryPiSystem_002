@@ -157,10 +157,12 @@ category: knowledge-base
 - 本番では資源ごとの shell が並列に動くので、画面の応答時間は反映後に改めて確認する。
 - 補足: `csv_dashboard_row_prod_schedule_residual_key_idx` は、この 2 本の SQL からは使われなくなった。削除するかどうかは `pg_stat_user_indexes.idx_scan` を見てから別に判断する。
 
-**同じ型の遅さ（未修正）**: 研削計画ボードの `GET .../grinding-planning-board/load` にも同じ型の遅さがある。
+**同じ型の遅さ（2026-10-31 修正）**: 研削計画ボードの `GET .../grinding-planning-board/load` にも同じ型の遅さがあった。
 
 - `grinding-planning-board-load-summary.ts` の集計 SQL が 9.4 s かかる。
 - 上書き 354 行を渡す `jsonb_to_recordset` と 60,517 行を Nested Loop Left Join しており（推定 1 行）、`Rows Removed by Join Filter: 21,422,927` になっている。
+- 2026-10-31 の本番計測（読み取り専用トランザクションで EXPLAIN ANALYZE）では、上書き 1,322 行 × 81,593 行で `Rows Removed by Join Filter: 107,865,468`、集計 SQL 約 40 s。原因は行の上書きと分割の上書きを最上位の `OR` で 1 つの LEFT JOIN にまとめていたこと（等号条件があってもハッシュ結合にできない）。
+- 修正: 上書き CTE を `MATERIALIZED` にし、行用と分割用の 2 つの LEFT JOIN に分けた。結果（件数の重なり方、上書き値が NULL のときの扱い）は変えていない。統合テストで同値を確認。
 
 **Prevention**: 少数キーの照合は、`VALUES` や JSON の行集合との JOIN にしない。`= ANY(text[])` か、ハッシュ結合が効く形にする。候補行の見積もりが外れると、Nested Loop の総当たりになる。
 

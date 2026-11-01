@@ -1,0 +1,6 @@
+API_BASE_URL="{{ watch_cam_api_base_url }}"
+X_CLIENT_KEY="{{ watch_cam_client_key }}"
+TLS_SKIP_VERIFY="{{ watch_cam_tls_skip_verify | default('0') }}"
+TLS_CA_FILE="{{ watch_cam_tls_ca_file | default('') }}"
+VIDEO_DEVICE="{{ watch_cam_video_device | default('/dev/video0') }}"
+INTERVAL_SEC="{{ watch_cam_interval_sec | default(10) }}"

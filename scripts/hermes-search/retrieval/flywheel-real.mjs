@@ -1,6 +1,6 @@
 // Real kiosk questions; only questions, receipt metadata, and record ids leave the receipts.
 import { createHash } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { bareId } from './flywheel-pairs.mjs';
 
@@ -20,6 +20,7 @@ export function planSummary(plan) {
     filters: Array.isArray(plan.filters) ? plan.filters : [],
     ...(plan.causeCategory !== undefined ? { causeCategory: plan.causeCategory } : {}),
     semanticQuery: typeof plan.semanticQuery === 'string' ? plan.semanticQuery : '',
+    ...(typeof plan.contentSpan === 'string' ? { contentSpan: plan.contentSpan } : {}),
     sort: plan.sort ?? null,
     limit: plan.limit ?? null,
   };
@@ -70,9 +71,15 @@ function shownOf(row) {
  */
 export async function readReceiptQuestions({ receiptsDir, days }) {
   const rows = [];
-  for (const day of days) {
+  const requestIds = new Set();
+  for (const day of new Set(days)) {
     for (const row of await readRows(path.join(receiptsDir, `receipts-${day}.jsonl`))) {
-      if (row?.hermesReceipt && typeof row.at === 'string') rows.push(row);
+      if (!row?.hermesReceipt || typeof row.at !== 'string') continue;
+      if (row.requestId) {
+        if (requestIds.has(row.requestId)) continue;
+        requestIds.add(row.requestId);
+      }
+      rows.push(row);
     }
   }
   const sessions = new Map();
@@ -124,6 +131,42 @@ export async function readReceiptQuestions({ receiptsDir, days }) {
 
 export function realPath(dir, night) {
   return path.join(dir, `real-${night}.jsonl`);
+}
+
+export async function readRegressions(dir) {
+  return new Map((await readRows(path.join(dir, 'regressions.jsonl'))).filter((row) => row?.id).map((row) => [row.id, row]));
+}
+
+export async function writeRegressions(dir, regressions) {
+  const file = path.join(dir, 'regressions.jsonl');
+  const temporary = `${file}.${process.pid}.tmp`;
+  await writeFile(temporary, [...regressions.values()].map((row) => `${JSON.stringify(row)}\n`).join(''), { mode: 0o600 });
+  await rename(temporary, file);
+}
+
+export function regressionOk(row) {
+  if (row.followUpCheck?.supported === true) return row.followUpCheck.ok;
+  return row.filterCheck?.ok ?? null;
+}
+
+export function updateRegression(regressions, row, night) {
+  if (!['real', 'regression'].includes(row.source)) return;
+  const prior = regressions.get(row.id);
+  const ok = regressionOk(row);
+  if ((!prior && ok !== false) || prior?.lastNight === night) return;
+  const yesterday = new Date(Date.parse(`${night}T12:00:00Z`) - 24 * 3600 * 1000).toISOString().slice(0, 10);
+  // lastOk is the consecutive successful-night count; gaps and unsupported checks reset it.
+  const lastOk = ok === true ? (prior?.lastNight === yesterday ? prior.lastOk : 0) + 1 : 0;
+  const lastUnsupported = ok === null ? (prior?.lastNight === yesterday ? prior.lastUnsupported ?? 0 : 0) + 1 : 0;
+  if (lastOk >= 3 || lastUnsupported >= 3) {
+    regressions.delete(row.id);
+    return;
+  }
+  regressions.set(row.id, {
+    id: row.id, question: row.question, previousPlan: row.previousPlan ?? null,
+    previousShown: row.previousShown ?? [], context: row.context ?? [], receiptAt: row.receiptAt,
+    firstFailedNight: prior?.firstFailedNight ?? night, lastNight: night, lastOk, lastUnsupported,
+  });
 }
 
 export async function existingRealIds(dir) {

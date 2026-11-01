@@ -11,7 +11,7 @@ export type InstrumentBorrowTagUidFieldsProps = {
   employeeTagUid: string;
   onEmployeeTagUidChange: (value: string) => void;
   onEmployeeKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
-  employeeInputRef: RefObject<HTMLInputElement>;
+  employeeInputRef: RefObject<HTMLInputElement | null>;
   employeeInputDisabled: boolean;
   employeePlaceholder?: string;
 };

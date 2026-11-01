@@ -16,20 +16,20 @@ related_docs:
 
 このRunbookは、組立手順書（`AssemblyProcedureDocument`）の編集・公開と、公開済み手順書のキオスク表示について、Pi4/Pi5固有の性能を任意の実機受入で確認するための正本である。Mac/Docker、実文書、実PostgreSQL、Playwright、SOPによる一次受入は完了済みであり、専用端末の新規調達は要求しない。実機受入を行える場合だけ、専用stagingまたは通常導入時の承認済みcanaryで本書を使う。
 
-> **今回の作業では実行禁止:** deploy、rollback、SSH、Docker操作、DB操作、実機への接続、production/TalkPlazaへの接続は行わない。今回実施できるのは、ローカルのinventory境界・構文・契約検証と、この手順書の整備だけである。
+> **今回の作業では実行禁止:** deploy、rollback、SSH、Docker操作、DB操作、実機への接続、productionへの接続は行わない。今回実施できるのは、ローカルのinventory境界・構文・契約検証と、この手順書の整備だけである。
 
 ## 0. 境界と前提
 
 - 実機未実施で残る未確認事項は、Pi4/Pi5固有のCPU、memory、温度、描画体感、ROI/Poppler/OCR処理時間である。機能・互換性・DB/API/Web・実文書フローの一次受入とは分離して記録する。
 - 専用staging端末が存在しないことを停止条件や端末調達要求にしない。通常導入時にcanaryが承認された場合は、DBや文書を変更しないreadonly表示から開始し、rollback可能性を確認してからtest fixtureに限定したROI/OCRへ進む。
-- 専用stagingを利用できる場合は、以下の隔離inventoryとnamespaceをそのまま使う。利用できない場合もproduction/TalkPlaza値をstagingへ流用しない。
+- 専用stagingを利用できる場合は、以下の隔離inventoryとnamespaceをそのまま使う。利用できない場合もproduction値をstagingへ流用しない。
 
 - 対象SHAはCI成功済みの40文字SHAを一つだけ指定する。ローカルのfeature worktreeのHEADや未コミット差分をデプロイ証拠にしない。
-- stagingのinventoryは `infrastructure/ansible/inventory-staging.yml`、変数は `infrastructure/ansible/group_vars/staging.yml` と専用private host varsを使う。productionの `inventory.yml`、TalkPlazaの `inventory-talkplaza.yml`、本番DB/asset path/credentialは使わない。
+- stagingのinventoryは `infrastructure/ansible/inventory-staging.yml`、変数は `infrastructure/ansible/group_vars/staging.yml` と専用private host varsを使う。productionの `inventory.yml`、本番DB/asset path/credentialは使わない。
 - 現在コミットされているstaging boundaryは `staging_deploy_enabled: false` と placeholder hostである。専用Pi5/Pi4、private vars、承認済みSHAが揃うまで、実行可能なstaging deployとして扱わない。
 - stagingのDB名、Docker compose project、network、storage rootはproductionと別であることをplanで確認する。少しでも一致または未解決なら停止する。
 - access password、`x-client-key`、JWT、Vault、API responseのsecretは、approved secret managerまたは既存のキオスク設定からその場で注入する。ファイル、shell history、TSV、screenshotへ保存しない。
-- `scripts/ci/run-deploy-contracts-local.sh` はproduction/TalkPlaza inventoryも構文検証対象にするため、この受入では実行しない。必要なstaging boundary検証だけを下記のコマンドで行う。
+- `scripts/ci/run-deploy-contracts-local.sh` はproduction inventoryも構文検証対象にするため、この受入では実行しない。必要なstaging boundary検証だけを下記のコマンドで行う。
 
 受入担当は次の値を承認済みのstaging情報で置き換える。値はfixture専用とし、productionのIDやURLを入れない。
 
@@ -60,7 +60,7 @@ release SHA/CI artifact、test fixture ID、approver/window/evidence dir、CPU/m
 
 ### 接続前 checklist
 
-- [ ] 作業対象は `inventory-staging.yml` と明示されたstaging hostだけで、`inventory.yml` / `inventory-talkplaza.yml` / TalkPlaza URLが混ざっていない。
+- [ ] 作業対象は `inventory-staging.yml` と明示されたstaging hostだけで、`inventory.yml` / production URLが混ざっていない。
 - [ ] staging専用DB、compose project、Docker network、storage root、client key、access passwordの注入元を確認した。secret本文はMacへ保存していない。
 - [ ] exact SHA、CI成功、artifact digest、rollback evidence、approver、window、evidence dir、resource thresholdsを記録した。
 - [ ] `git status --short` と `git diff --check` を実施し、feature worktreeの既存変更をdeploy証拠にしないと確認した。
@@ -550,7 +550,7 @@ rollback完了は、`ActiveState=active`、`SubState=exited`、`Result=success`�
 
 | gate | command / evidence | expected | observed | status | operator / time |
 |---|---|---|---|---|---|
-| inventory boundary | staging boundary test / graph | staging placeholder-only、production/TalkPlaza参照なし |  |  |  |
+| inventory boundary | staging boundary test / graph | staging placeholder-only、production参照なし |  |  |  |
 | syntax | staging playbook `--syntax-check` | local parse success、remote 0件 |  |  |  |
 | plan | print-plan JSON + SHA256 | exact SHA、scope、image、rollback一致 |  |  |  |
 | approval | approver record | 二者承認、run ID、digest記録 |  |  |  |
@@ -562,7 +562,7 @@ rollback完了は、`ActiveState=active`、`SubState=exited`、`Result=success`�
 | rollback | `--status` raw fields / role result | successまたはrescue rollbackの一次証拠 |  |  |  |
 | cleanup | discard/GC receipt | test asset/document/evidence residue 0 |  |  |  |
 
-次のいずれかは即時停止条件である: exact SHA/digest不一致、inventory host mismatch、production/TalkPlaza URLまたはpath検出、未承認の`--detach`、rollback証拠欠落、readonly画面でROI/OCR request検出、HTTP error、source path不明、asset quality不合格、owner-approved resource threshold超過、cleanup residue、またはsecretのログ出力。
+次のいずれかは即時停止条件である: exact SHA/digest不一致、inventory host mismatch、production URLまたはpath検出、未承認の`--detach`、rollback証拠欠落、readonly画面でROI/OCR request検出、HTTP error、source path不明、asset quality不合格、owner-approved resource threshold超過、cleanup residue、またはsecretのログ出力。
 
 ## 8. 既存計測ツールとの関係
 

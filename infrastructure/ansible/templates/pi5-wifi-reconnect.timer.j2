@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically check Pi5 Wi-Fi connectivity
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+Unit=pi5-wifi-reconnect.service
+
+[Install]
+WantedBy=timers.target

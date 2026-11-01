@@ -1,6 +1,9 @@
+import { matchRoutes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
 import {
+  KIOSK_ASSEMBLY_CHECK_SHEETS_PATH,
+  KIOSK_ASSEMBLY_CHECK_SHEET_PATH,
   KIOSK_ASSEMBLY_HOME_PATH,
   KIOSK_ASSEMBLY_LIBRARY_PATH,
   KIOSK_ASSEMBLY_MANUALS_PATH,
@@ -19,6 +22,13 @@ import {
 } from './assemblyRoutes';
 
 describe('assemblyRoutes', () => {
+  it('distinguishes the check sheet library from a working sheet', () => {
+    const routes = [{ path: KIOSK_ASSEMBLY_CHECK_SHEETS_PATH }, { path: KIOSK_ASSEMBLY_CHECK_SHEET_PATH }];
+    expect(KIOSK_ASSEMBLY_CHECK_SHEETS_PATH).toBe('/kiosk/assembly/check-sheets');
+    expect(matchRoutes(routes, '/kiosk/assembly/check-sheets')?.[0].route.path).toBe(KIOSK_ASSEMBLY_CHECK_SHEETS_PATH);
+    expect(matchRoutes(routes, '/kiosk/assembly/check-sheets/sheet-1')?.[0].params.sheetId).toBe('sheet-1');
+  });
+
   it('builds manuals and workshop paths with encoded model/process context', () => {
     expect(kioskAssemblyManualsPath()).toBe(KIOSK_ASSEMBLY_MANUALS_PATH);
     expect(kioskAssemblyManualsWorkshopPath()).toBe(KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH);

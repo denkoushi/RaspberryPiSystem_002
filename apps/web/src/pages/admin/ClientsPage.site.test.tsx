@@ -16,6 +16,7 @@ vi.mock('../../api/hooks', () => ({
         apiKey: 'client-key-mac-kiosk1',
         siteKey: null,
         canProxyOtherDevices: true,
+        procedureBoardEnabled: true,
         kioskInitialRoute: 'assembly',
         createdAt: '2026-09-26T00:00:00Z',
         updatedAt: '2026-09-26T00:00:00Z'
@@ -27,6 +28,7 @@ vi.mock('../../api/hooks', () => ({
         apiKey: 'client-key-raspi4-sessaku-01-kiosk1',
         siteKey: '第2工場',
         canProxyOtherDevices: false,
+        procedureBoardEnabled: null,
         statusClientId: 'raspi4-sessaku-01',
         createdAt: '2026-09-26T00:00:00Z',
         updatedAt: '2026-09-26T00:00:00Z'
@@ -121,6 +123,22 @@ describe('ClientsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Mac.*未保存/ }));
     expect(settings().getByRole('switch', { name: '棚レイアウト編集を許可' })).toBeChecked();
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('shows, preserves and submits the procedure board capability', async () => {
+    render(<ClientsPage />);
+    expect(settings().getByRole('switch', { name: '手順づくりを許可' })).toBeChecked();
+    fireEvent.change(settings().getByLabelText('起動先'), { target: { value: 'borrow_tag' } });
+    fireEvent.click(settings().getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ id: 'mac', payload: expect.objectContaining({ procedureBoardEnabled: true }) }));
+    fireEvent.click(settings().getByRole('switch', { name: '手順づくりを許可' }));
+    fireEvent.click(screen.getByRole('button', { name: /raspi4-sessaku-01/ }));
+    expect(settings().getByRole('switch', { name: '手順づくりを許可' })).not.toBeChecked();
+    expect(settings().getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Mac.*未保存/ }));
+    expect(settings().getByRole('switch', { name: '手順づくりを許可' })).not.toBeChecked();
+    fireEvent.click(settings().getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenLastCalledWith({ id: 'mac', payload: expect.objectContaining({ procedureBoardEnabled: false }) }));
   });
 
   it('joins the status report to its device and lists reports without a device', () => {

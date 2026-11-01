@@ -72,6 +72,10 @@ pi5_phase3_storage_contract:
     suffix: procedure-videos
     runtime_path: /app/storage/procedure-videos
     mode: '0755'
+  - logical_key: assembly-check-sheet-sources-storage
+    suffix: assembly-check-sheet-sources
+    runtime_path: /app/storage/assembly-check-sheet-sources
+    mode: '0755'
   - logical_key: knowledge-git-storage
     suffix: knowledge-git
     runtime_path: /app/storage/knowledge-git

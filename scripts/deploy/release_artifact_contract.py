@@ -11,6 +11,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+GITHUB_OWNER = "denkoushi"
+HISTORICAL_GITHUB_OWNERS: tuple[str, ...] = ()
+assert all(re.fullmatch(r"[a-z0-9-]+", owner) for owner in (GITHUB_OWNER, *HISTORICAL_GITHUB_OWNERS))
+SOURCE_REPOSITORY = f"{GITHUB_OWNER}/RaspberryPiSystem_002"
+SOURCE_REPOSITORY_URL = f"https://github.com/{SOURCE_REPOSITORY}"
+GITHUB_OWNER_URL = f"https://github.com/{GITHUB_OWNER}"
+GHCR_NAMESPACE = f"ghcr.io/{GITHUB_OWNER}"
+SIGNAGE_REPOSITORY = f"{GHCR_NAMESPACE}/raspisys-pi3-signage"
+
 FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 CONFIG_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -29,21 +38,21 @@ OCI_DIGEST_REFERENCE_RE = re.compile(
 WORKFLOW_RE = re.compile(r"^\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml$")
 MAX_JSON_BYTES = 64 * 1024
 EXPECTED_IMAGE_REPOSITORIES = {
-    "api": "ghcr.io/denkoushi/raspisys-api",
-    "web": "ghcr.io/denkoushi/raspisys-web",
+    "api": f"{GHCR_NAMESPACE}/raspisys-api",
+    "web": f"{GHCR_NAMESPACE}/raspisys-web",
 }
 PI4_AGENT_SERVICES = ("nfc-agent", "barcode-agent", "torque-agent")
 PI4_AGENT_SERVICE_SET = frozenset(PI4_AGENT_SERVICES)
-TORQUE_AGENT_REPOSITORY = "ghcr.io/denkoushi/raspisys-torque-agent"
-RELEASE_SET_REPOSITORY = "ghcr.io/denkoushi/raspisys-release-set"
+TORQUE_AGENT_REPOSITORY = f"{GHCR_NAMESPACE}/raspisys-torque-agent"
+RELEASE_SET_REPOSITORY = f"{GHCR_NAMESPACE}/raspisys-release-set"
 TORQUE_PROTOCOL_NAME = "torque-ownership"
 TORQUE_PROTOCOL_VERSION = 1
-TORQUE_ADOPTED_SOURCE_SHA = "a926af9a92ba82de56f4ae152391a061d8c4449a"
+TORQUE_ADOPTED_SOURCE_SHA = "dd08a3c7edcbc9f145f06363ef99b1c20cf5cb6f"
 TORQUE_ORIGINAL_WORKFLOW = ".github/workflows/ci.yml"
-TORQUE_ORIGINAL_RUN_ID = 39545694734
-TORQUE_ORIGINAL_JOB_ID = 119045547502
+TORQUE_ORIGINAL_RUN_ID = 41065917090
+TORQUE_ORIGINAL_JOB_ID = 124099680224
 TORQUE_ADOPTION_PREDICATE_TYPE = (
-    "https://github.com/denkoushi/RaspberryPiSystem_002/"
+    f"{SOURCE_REPOSITORY_URL}/"
     "attestations/torque-agent-component-adoption/v1"
 )
 TORQUE_PROTOCOL_SOURCE_CLOSURE = (

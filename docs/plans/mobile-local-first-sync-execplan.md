@@ -24,6 +24,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [ ] Milestone 4: サーバーの汎用二重実行防止と、棚マスタ編集の送信待ち箱。
 - [ ] Milestone 5: Zero2W 配膳状況とパレットのローカル化。
 - [ ] Milestone 6: 残り(現品票の撮影 OCR の扱い、古い通信経路の削除、KB 更新)。
+- [x] (2026-10-28) Milestone 7 の実装: アプリの裏取得(WorkManager、Wi-Fi 条件、30 分)、ブリッジ setClientKey、ファイルの受け渡し(Service Worker 経由も含む)、画面側の取り込み、棚の絵のアイコン、版 0.2。実機確認は未実施。
 
 
 ## Surprises & Discoveries
@@ -42,6 +43,10 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Evidence: 第三者レビューの指摘。`shelfOutboxRunner.ts` の flush と submit。
 
 ## Decision Log
+
+- Decision (2026-10-30 / Codex): paged dataset の昇格は既存の本体/staging store を交互に使い、`metadata` の `live:<kind>` ポインターと版（予定は `known` も）だけを同時更新する。ポインター無しは従来の本体 store を読む。ポインターは接続時にメモリーへ読み、昇格後に更新、replace/discard後に再取得する。
+  Rationale: Android 実機で10万行超のコピーtransactionが照合を長時間ブロックし、reloadで最初から再開していた。昇格では行storeを触らず、次版の開始/破棄だけ非live側をclearする。`replace()`はlive側を書き換える。DB v5はstaging側へ既存と同じ検索indexを追加するために必要で、storeの再作成や既存行のコピーは行わない。
+  Follow-up (2026-10-30): staging page は metadata 読取・非live行書込・進捗保存を分離し、`replace()` も非live側へ1000行単位で書いて最後にポインター・版・補完・knownを同時切替する。接続時のポインター読取失敗は従来storeへfallbackする。
 
 - Decision (2026-10-29 / Codex): mobile app shell の navigation を cache-first + 背景更新へ変更し、新版は次回起動から使う。`__raspi_kiosk_web_release` / `__raspi_web_runtime_recovery` 付き、キャッシュ無し、HTML の直接参照資産が欠ける場合は従来の network-first + 4秒 fallback を維持する。
   Rationale: network-first により deploy ごとに 6.5 MB（非圧縮）の main bundle を再取得し、現場回線で約60秒の白画面が発生した。旧画面の遅延読込資産を保持して背景更新する。キャッシュ利用時は navigation の maintenance / HTTP-error HTML よりキャッシュを優先するが、API の `isMaintenance` と release 検証 reload は引き続き有効。
@@ -79,6 +84,11 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - Decision: 棚マスタの配置編集(区画のレイアウト編集、棚の移動、Zero2W の割り当て)もスマホの機能なので例外にしない。圏外でも操作を受け付けて端末にすぐ反映し、Wi-Fi に戻ったら裏で送る。再送に安全でない点は Milestone 4 の操作 ID(`MobileClientOperation`)で解消する。
   Rationale: ユーザー指摘(2026-10-28)「スマートフォンの話だぞ」。スマホの全機能をローカル優先にする。
 - Decision: [読取フレーム保存と配膳写真](mobile-scan-frame-capture-execplan.md)に従い、scan-frames ジョブを最後に登録した（2026-10-29）。
+
+
+- Decision: 現場のスマホは Chrome でホーム画面に追加した配膳の画面(棚の絵のアイコン)ではなく、配膳アプリ(`apps/android-haizen-shell`、ロボットのアイコン)に一本化する。アプリに、閉じていても Wi-Fi のときにデータを落とす仕組みを足す(Milestone 7)。
+  Rationale: ウェブページの処理は画面を開いている間しか動かない。そのため「圏外へ行く前に Wi-Fi の所で一度画面を開く」ことが運用の前提になっていた。Chrome の Periodic Background Sync は、間隔をブラウザが決め(半日程度)、WebView では使えないので頼れない。Android の WorkManager なら、アプリを閉じていても Wi-Fi(従量制でない回線)のときに定期的に動かせる。Chrome で開いた画面にはこの仕組みは効かないが、これまでどおり開いている間の同期は動く。
+  Date/Author: 2026-10-28 / ユーザー承認、記録 Claude
 
 
 ## Outcomes & Retrospective
@@ -152,6 +162,19 @@ Zero2W 配膳状況は Milestone 2 の `placements` 表から作り、15 秒ご�
 ### Milestone 6: 仕上げ
 
 ブラウザ撮影の現品票 OCR は、同期できないときに撮影ボタンを押せなくする。使われなくなった古い経路(`useMobilePlacementPageState.ts` の `runRegister` が呼ぶ `registerOrderPlacement` の直接送信と `moveOrderPlacementBranch`)を消す。`docs/knowledge-base/KB-339-mobile-placement-barcode-survey.md` にローカル優先の仕組みと実機確認の結果を記録する。
+
+
+### Milestone 7: 配膳アプリの裏ダウンロード
+
+この Milestone の終わりには、配膳アプリを閉じていても、スマホが Wi-Fi につながっていればデータ(照合・購買、後に置き場)が定期的に落ちる。圏外でアプリを開くと、その落としてあったデータで動く。アプリのアイコンは棚の絵になる。
+
+アプリ側(`apps/android-haizen-shell`)。`androidx.work` の定期の仕事を足す。条件は `NetworkType.UNMETERED`(Wi-Fi と同じ扱い。ウェブ側の Decision Log と合わせる)で、間隔は 30 分。仕事は `GET /kiosk/mobile-local-data/versions?format=2` を呼び、`purchase`、`purchaseEnrichment`、`schedule`、`placements` を扱う。手元の版と違うキーだけ `GET /kiosk/mobile-local-data/<key>?version=<手元の版>&format=2` でページ分割せず全体スナップショットを取る。304 なら何もしない。200 なら中身の `version` が版の応答と一致することを確かめてから、アプリ専用の保存場所に一時ファイルで書いて置き換える。キーは先頭が英小文字で、以降は英大文字・英小文字・数字・ハイフンだけを受け付ける。認証の `x-client-key` は、ウェブ画面が新しいブリッジ `HaizenNative.setClientKey(key)` で渡したものを、アプリ専用の設定に保存して使う。ブリッジは信頼済みの配膳の画面からしか受け付けない。キーを受け取ったら、すぐ1回(同じ Wi-Fi 条件で)と定期の仕事を登録する。
+
+落としたデータは、WebView の `shouldInterceptRequest` で同じオリジンの `/__haizen-native/local-data/versions` と `/__haizen-native/local-data/<key>` として画面に渡す。ファイルを渡すので、大きさに上限は無い。`allowFileAccess` は偽のままにする。アイコンは `apps/web/public/icons/haizen-*.png` から作る。`versionCode` を上げる(上げないと入れ直しができない)。
+
+画面側。新しいファイル `apps/web/src/features/mobile-placement/sync/nativeLocalDataImport.ts` に二つの処理を置く。一つ目は、アプリの中で動いているときに、クライアントキーを `HaizenNative.setClientKey` で渡す。古いアプリにこのブリッジが無いときは何もしない。二つ目は、アプリが落としたデータを端末の DB に取り込む。`/__haizen-native/local-data/versions` を読み、端末の DB が知っている種類のうち、版が違い、かつ `dataUpdatedAt` が手元より古くないものだけを取り込む(`store.replace`)。これは同期係(`syncScheduler`)の Wi-Fi 判定の外で動かす。同期係は Wi-Fi でないときに全部の仕事を止めるので、その中に入れると圏外で取り込めないからである。起動時と、画面が前面に戻ったときに動かす。ウェブ自身の取得と同時に DB を書かないよう、`runSyncOperation` で順番に並べる。`mobileLocalDataStore.ts` と `mobileLocalDataSync.ts` は変えない(部品検索の作業が触るため)。
+
+受け入れ: 画面側の自動テストで、(1) 同期係が止まっている(Wi-Fi でない)ときも取り込みが動く、(2) 版が同じなら何もしない、(3) アプリの控えが手元より新しくなければ(同じ時刻も含む)上書きしない、(4) ブリッジが無ければ何もしない、が通る。アプリ側は単体テストと `./gradlew testDebugUnitTest assembleDebug` が通る。実機では、アプリを閉じて Wi-Fi のまま 30 分以上置いたあと、機内モードにしてアプリを開き、「圏外 M/D」の日付が新しくなっていることを確かめる。Tailscale がバックグラウンドで止められていると落とせないので、実機確認のときに合わせて見る。また「Wi-Fi のときだけ」の条件は Tailscale の VPN が従量制扱いだと満たされず一度も動かないので、落ちてこなければ `adb shell dumpsys connectivity` で VPN の回線に NOT_METERED が付いているかを見る。
 
 
 ## Concrete Steps

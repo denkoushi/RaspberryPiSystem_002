@@ -21,6 +21,9 @@ def test_config_defaults_and_env_path(tmp_path, monkeypatch):
     assert not config.tls_skip_verify
     assert config.hid_device == ""
     assert config.queue_path == "/var/lib/zero-edge-agent/queue.db"
+    assert config.input_mode == "evdev"
+    assert config.serial_device == "/dev/ttyACM0"
+    assert config.reader_init_commands == ()
     assert "secret" not in repr(config)
 
 
@@ -40,6 +43,8 @@ def test_config_overrides(tmp_path, monkeypatch):
     'API_BASE_URL="https://example.test/api"\nX_CLIENT_KEY="secret"',
     'API_BASE_URL="https://user:secret@example.test"\nX_CLIENT_KEY="secret"',
     'API_BASE_URL="https://example.test"\nX_CLIENT_KEY="secret"\nTLS_SKIP_VERIFY="yes"',
+    'API_BASE_URL="https://example.test"\nX_CLIENT_KEY="secret"\nINPUT_MODE="secret"',
+    'API_BASE_URL="https://example.test"\nX_CLIENT_KEY="secret"\nINPUT_MODE=""',
     'API_BASE_URL="https://example.test"\nX_CLIENT_KEY="secret',
 ])
 def test_invalid_config_never_echoes_key(tmp_path, monkeypatch, contents):
@@ -49,6 +54,24 @@ def test_invalid_config_never_echoes_key(tmp_path, monkeypatch, contents):
     with pytest.raises(ValueError) as error:
         load_config()
     assert "secret" not in str(error.value)
+
+
+@pytest.mark.parametrize("commands, expected", [
+    ("", ()), (" ; ; ", ()),
+    (" C_CMD_R000 ; ; C_CMD_2801; S_CMD_04VL100 ; ",
+     ("C_CMD_R000", "C_CMD_2801", "S_CMD_04VL100")),
+])
+def test_serial_config(tmp_path, monkeypatch, commands, expected):
+    path = tmp_path / "agent.conf"
+    path.write_text('API_BASE_URL="https://example.test"\nX_CLIENT_KEY="secret"\n'
+                    'INPUT_MODE="serial"\nSERIAL_DEVICE="/dev/ttyACM1"\n'
+                    'READER_INIT_COMMANDS="%s"\n' % commands)
+    monkeypatch.setenv("ZERO_EDGE_AGENT_CONFIG", str(path))
+    config = load_config()
+    assert config.input_mode == "serial"
+    assert config.serial_device == "/dev/ttyACM1"
+    assert config.reader_init_commands == expected
+    assert "C_CMD" not in repr(config)
 
 
 def test_decoder_shift_digits_letters_colon_and_enter():

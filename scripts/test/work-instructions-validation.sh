@@ -11,9 +11,9 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! docker image inspect pgvector/pgvector:pg15 >/dev/null 2>&1; then
-  echo "pgvector/pgvector:pg15 is not available locally; pulling the pinned test image" >&2
-  docker pull pgvector/pgvector:pg15
+if ! docker image inspect pgvector/pgvector:pg18 >/dev/null 2>&1; then
+  echo "pgvector/pgvector:pg18 is not available locally; pulling the pinned test image" >&2
+  docker pull pgvector/pgvector:pg18
 fi
 
 RUN_ID="$(date +%Y%m%d%H%M%S)-$$-${RANDOM}"
@@ -107,7 +107,7 @@ VOLUME_CREATED=1
 CONTAINER_ID="$(docker run --pull=never --detach \
   --name "${CONTAINER_NAME}" \
   --label "rps.validation=sharepoint-work-instructions" \
-  --mount "type=volume,source=${VOLUME_NAME},target=/var/lib/postgresql/data" \
+  --mount "type=volume,source=${VOLUME_NAME},target=/var/lib/postgresql" \
   --env POSTGRES_PASSWORD=postgres \
   --env POSTGRES_DB=borrow_return \
   --publish 127.0.0.1::5432 \
@@ -115,7 +115,7 @@ CONTAINER_ID="$(docker run --pull=never --detach \
   --health-interval=2s \
   --health-timeout=5s \
   --health-retries=30 \
-  pgvector/pgvector:pg15)"
+  pgvector/pgvector:pg18)"
 
 TEST_PORT="$(docker port "${CONTAINER_ID}" 5432/tcp | sed -n 's/.*:\([0-9][0-9]*\)$/\1/p')"
 if [[ -z "${TEST_PORT}" ]]; then

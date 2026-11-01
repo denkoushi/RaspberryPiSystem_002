@@ -147,7 +147,10 @@ clamav_server_log_dir: /var/log/clamav-raspisys-staging
 clamav_server_log_file: clamav-scan.log
 clamav_kiosk_enabled: true
 clamav_kiosk_scan_paths:
-  - /opt/RaspberryPiSystem_002-staging/storage
+  - /home
+  - /tmp
+  - /var/tmp
+  - /usr/local/bin
 clamav_kiosk_scan_cron: '0 2 * * 0'
 clamav_kiosk_log_dir: /var/log/clamav-raspisys-staging
 clamav_kiosk_log_file: clamav-kiosk-scan.log
@@ -220,7 +223,7 @@ security_monitor_ignore_addr_prefixes: '127.0.0.1 ::1 fd7a: fe80:'
 pi5_artifact_promotion_enabled: false
 pi5_artifact_ghcr_username: ''
 pi5_artifact_ghcr_token: ''
-repo_remote: https://github.com/denkoushi/RaspberryPiSystem_002.git
+repo_remote: "https://github.com/{{ raspisys_github_owner }}/RaspberryPiSystem_002.git"
 repo_version: main
 git_deploy_key: ''
 git_environment: {}
@@ -264,3 +267,7 @@ web_ws_base_url: /ws
 web_agent_ws_url: ws://staging-pi5.invalid:7071/stream
 web_agent_ws_mode: local
 web_barcode_agent_ws_url: ws://staging-pi5.invalid:7072/stream
+
+# Dedicated production host collector is opt-in for staging.
+jpcert_advisories_enabled: false
+advisory_check_enabled: false

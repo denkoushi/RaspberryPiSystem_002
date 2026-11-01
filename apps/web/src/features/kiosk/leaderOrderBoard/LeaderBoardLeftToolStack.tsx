@@ -21,7 +21,7 @@ import type { LeaderOrderBoardDeviceCard } from './useLeaderOrderBoardDeviceCont
 import type { RefObject } from 'react';
 
 export type LeaderBoardLeftToolStackProps = {
-  leftToolStackOuterRef: RefObject<HTMLDivElement>;
+  leftToolStackOuterRef: RefObject<HTMLDivElement | null>;
   drawerReveal: {
     isVisible: boolean;
     onDrawerMouseEnter: () => void;

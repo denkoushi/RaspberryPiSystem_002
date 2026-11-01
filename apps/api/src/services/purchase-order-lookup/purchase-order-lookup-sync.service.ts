@@ -21,7 +21,7 @@ export type PurchaseOrderLookupSyncResult = {
   /** 後方互換のため維持。意味は `upserted` と同じ。 */
   inserted: number;
   upserted: number;
-  /** DB の行の方が更新日時（`FUPDTEDT`）が新しく、書き込まなかった行数。 */
+  /** DB の行より古い、または内容が同じため、書き込まなかった行数。 */
   skippedStale: number;
 };
 
@@ -108,8 +108,18 @@ export class PurchaseOrderLookupSyncService {
           "sourceUpdatedAt" = EXCLUDED."sourceUpdatedAt",
           "lineIndex" = EXCLUDED."lineIndex",
           "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "PurchaseOrderLookupRow"."sourceUpdatedAt" IS NULL
-          OR EXCLUDED."sourceUpdatedAt" >= "PurchaseOrderLookupRow"."sourceUpdatedAt"
+        WHERE ("PurchaseOrderLookupRow"."sourceUpdatedAt" IS NULL
+          OR EXCLUDED."sourceUpdatedAt" >= "PurchaseOrderLookupRow"."sourceUpdatedAt")
+          AND (
+            EXCLUDED."purchasePartCodeRaw" IS DISTINCT FROM "PurchaseOrderLookupRow"."purchasePartCodeRaw"
+            OR EXCLUDED."purchasePartCodeNormalized" IS DISTINCT FROM "PurchaseOrderLookupRow"."purchasePartCodeNormalized"
+            OR EXCLUDED."purchasePartName" IS DISTINCT FROM "PurchaseOrderLookupRow"."purchasePartName"
+            OR EXCLUDED."acceptedQuantity" IS DISTINCT FROM "PurchaseOrderLookupRow"."acceptedQuantity"
+            OR EXCLUDED."sourceUpdatedAt" IS DISTINCT FROM "PurchaseOrderLookupRow"."sourceUpdatedAt"
+            OR EXCLUDED."lineIndex" IS DISTINCT FROM "PurchaseOrderLookupRow"."lineIndex"
+            OR COALESCE(EXCLUDED."purchaseStatus", "PurchaseOrderLookupRow"."purchaseStatus")
+              IS DISTINCT FROM "PurchaseOrderLookupRow"."purchaseStatus"
+          )
       `;
     }
 

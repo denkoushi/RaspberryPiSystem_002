@@ -23,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-for command in docker curl grep sed node corepack; do
+for command in docker curl grep sed node pnpm; do
   command -v "$command" >/dev/null 2>&1 || fail "required command is missing: $command"
 done
 docker info >/dev/null 2>&1 || fail 'a running Docker daemon is required'

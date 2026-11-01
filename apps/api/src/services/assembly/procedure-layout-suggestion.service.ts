@@ -13,7 +13,10 @@ import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
+import { buildProcedureCaptionLearningPrompt } from './procedure-caption-learning-prompt.js';
 import { buildProcedureTextLearningPrompt } from './procedure-text-learning-prompt.js';
+import { buildPublishedExamplesPrompt, loadPublishedProcedures, selectPublishedExamples } from './procedure-published-examples.js';
+import { buildSiteVocabularyPrompt } from './procedure-site-vocabulary.js';
 import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
 import { arrangeProcedureLayout, assignProcedureLayoutRows, median, procedureRowNeedsCaption, ProcedureLayoutError, rewriteProcedureTexts, suggestProcedureLayoutOverflow } from './procedure-layout.js';
 
@@ -43,18 +46,20 @@ ${siteContext}例:
 出力: "1. ボルトを締めて芯出し\n2. ゲージで端の傾き 0.02 以内\n3. 高さ 0.5 以内なら加工開始\n切り込み 5μ"
 JSONだけを返す: {"texts":[{"id":"...","text":"..."}]}`;
 
-const photoInstruction = (name: string, n: number, pageTexts: string) => `手順書「${name}」の${n}枚目の写真です。
+const photoInstruction = (name: string, n: number, pageTexts: string, site: ProcedureSite | null, learningPrompt: string) => `手順書「${name}」の${n}枚目の写真です。
 このページの文章(参考):
 ${pageTexts}
 
 この写真で作業者が行っている準備・段取り・測定を、手順書に載せる1行(全角20字以内、体言止めか「〜する」)で書いてください。
 規則:
-- 現場の言葉を使う: 加工する品物は「ワーク」、L字や箱形の治具は「イケール」、円柱の押さえは「重り」、測定器は「ダイヤルゲージ」、回転する石は「砥石」。色や形(オレンジ色、銀色、円筒など)では呼ばない。
+${site === 'grinding'
+  ? '- 現場の言葉を使う: 加工する品物は「ワーク」、ワークを載せる受け台は「コマ」、下から当てる支えは「ジャッキ」、横から挟んで止めるのは「ブロック」、磁石の台は「マグネットチャック」、L字や箱形の治具は「イケール」、測定器は「ダイヤルゲージ」、回転する石は「砥石」。色や形(オレンジ色、銀色、円筒など)では呼ばない。'
+  : '- 現場の言葉を使う: 加工する品物は「ワーク」、L字や箱形の治具は「イケール」、円柱の押さえは「重り」、測定器は「ダイヤルゲージ」、回転する石は「砥石」。色や形(オレンジ色、銀色、円筒など)では呼ばない。'}
 - 同じ物が複数あれば必ず数えて個数を入れる。
-- 置いてある台の種類は、磁石の台(電磁チャック)だとはっきり分かるときだけ書く。分からなければ台の名前は書かない。
+- 置いてある台の種類は、磁石の台(${site === 'grinding' ? 'マグネットチャック' : '電磁チャック'})だとはっきり分かるときだけ書く。分からなければ台の名前は書かない。
 - 写真に見えないことは書かない。機械が動いているかどうかは書かない。
 - はっきり分からないときは「不明」とだけ書く。
-1行だけを返す。`;
+${learningPrompt}1行だけを返す。`;
 
 type SuggestParams = ProcedureLayoutSuggestionRequest & { documentId: string; signal: AbortSignal };
 export class ProcedureLayoutSuggestionService {
@@ -127,6 +132,22 @@ export class ProcedureLayoutSuggestionService {
     } catch {
       throw new ApiError(422, 'ページ画像の寸法を取得できません', undefined, 'ASSEMBLY_PROCEDURE_LAYOUT_DIMENSIONS_UNAVAILABLE');
     }
+    let publishedPrompt = '';
+    let vocabularyPrompt = '';
+    if (site) {
+      try {
+        const documents = await loadPublishedProcedures(site);
+        publishedPrompt = buildPublishedExamplesPrompt(selectPublishedExamples(documents, document.revisionMetadata.revisionRootId,
+          params.elements.flatMap(element => element.kind === 'TEXT' ? [element.text] : [])));
+      } catch (error) {
+        logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_published_examples_lookup_failed');
+      }
+      try {
+        vocabularyPrompt = buildSiteVocabularyPrompt(await prisma.assemblyProcedureSiteVocabulary.findMany({ where: { site }, orderBy: { term: 'asc' } }));
+      } catch (error) {
+        logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_site_vocabulary_lookup_failed');
+      }
+    }
     let learningPrompt = '';
     if (site) {
       try {
@@ -138,6 +159,18 @@ export class ProcedureLayoutSuggestionService {
         learningPrompt = buildProcedureTextLearningPrompt(examples, terms);
       } catch (error) {
         logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_text_learning_lookup_failed');
+      }
+    }
+    let captionLearningPrompt = '';
+    if (site) {
+      try {
+        const examples = await prisma.assemblyProcedureCaptionFeedback.findMany({
+          where: { site, outcome: 'EDITED', finalText: { not: null } },
+          orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }], take: 50, select: { aiText: true, finalText: true }
+        });
+        captionLearningPrompt = buildProcedureCaptionLearningPrompt(examples);
+      } catch (error) {
+        logger.warn({ err: error, documentId: params.documentId }, 'assembly_procedure_caption_learning_lookup_failed');
       }
     }
     const rows = assignProcedureLayoutRows(params.elements, pageSize);
@@ -164,7 +197,7 @@ export class ProcedureLayoutSuggestionService {
           params.signal.throwIfAborted();
           const result = await this.text.complete({
             useCase: 'business_hermes', maxTokens: 4000, temperature: 0, enableThinking: false, jsonOutput: true, signal: params.signal,
-            messages: [{ role: 'system', content: textInstruction((site ? SITE_TEXT_RULES[site] : '') + learningPrompt) }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
+            messages: [{ role: 'system', content: textInstruction((site ? SITE_TEXT_RULES[site] : '') + vocabularyPrompt + publishedPrompt + learningPrompt) }, { role: 'user', content: JSON.stringify({ texts: texts.map(({ id, text }) => ({ id, text })) }) }],
           });
           params.signal.throwIfAborted();
           elements = rewriteProcedureTexts(elements, JSON.parse(result.rawText) as unknown);
@@ -209,7 +242,7 @@ export class ProcedureLayoutSuggestionService {
           if ((await sharp(imageBytes).metadata()).format !== 'jpeg') imageBytes = await sharp(imageBytes).rotate().jpeg().toBuffer();
           params.signal.throwIfAborted();
           const result = await (this.vision ?? getInferenceRuntime().createVisionCompletionPort()).complete({
-            userText: photoInstruction(document.name, rows.indexOf(row) + 1, pageTexts), imageBytes, mimeType: 'image/jpeg',
+            userText: photoInstruction(document.name, rows.indexOf(row) + 1, pageTexts, site, vocabularyPrompt + captionLearningPrompt), imageBytes, mimeType: 'image/jpeg',
             maxTokens: 120, temperature: 0, signal: params.signal,
           });
           params.signal.throwIfAborted();
@@ -227,7 +260,7 @@ export class ProcedureLayoutSuggestionService {
             return original?.kind === 'TEXT' ? original.text : '';
           }).join('\n').trim() || null;
           feedback.push({ documentId: params.documentId, pageIndex: params.pageIndex, elementId: id,
-            assetId: image.assetId, documentName: document.name, contextText, aiText: line, outcome: 'PROPOSED' });
+            site, assetId: image.assetId, documentName: document.name, contextText, aiText: line, outcome: 'PROPOSED' });
           const insertAt = row.textIds.length ? 1 : 0;
           row.textIds.splice(insertAt, 0, id);
           elements = [...elements, added]; byId.set(id, added); addedElementIds.push(id);

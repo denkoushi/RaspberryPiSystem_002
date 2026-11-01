@@ -8,7 +8,6 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from time import perf_counter
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -40,7 +39,7 @@ def fake_git(ancestor=0, commits=None):
         calls.append(args)
         if args == ('rev-parse', 'HEAD'):
             return SimpleNamespace(stdout=HEAD + '\n', returncode=0)
-        if args[0] == 'merge-base':
+        if args[0] in ('merge-base', 'cat-file'):
             return SimpleNamespace(stdout='', returncode=ancestor)
         if args[0] == 'log':
             return SimpleNamespace(stdout='\n'.join(commits or [HEAD]), returncode=0)
@@ -81,37 +80,6 @@ def test_redaction_removes_request_queries(text):
     assert '?[REDACTED]' in collector.redact(text)
 
 
-@pytest.mark.parametrize('fallback', [False, True])
-def test_changes_preserve_diff_and_redact_only_keys_and_url_credentials(tmp_path, fallback):
-    name = 'apps/web/src/features/some-long-folder/SomeComponentName.test.tsx'
-    diff = f'diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n+  const accessToken = req.headers.authorization;\n'
-    key = '+-----BEGIN ' + 'PRIVATE KEY-----\n+private-data\n+-----END PRIVATE KEY-----\n'
-    url = '+https://user:hidden-password@example.test/path\n'
-    assert collector.redact_code(diff) == diff
-    assert 'private-data' not in collector.redact_code(key)
-    assert collector.redact_code(url) == '+https://[REDACTED]@example.test/path\n'
-
-    def run(repo, *args, check=True):
-        if args[0] == 'rev-parse':
-            return SimpleNamespace(stdout=HEAD if args[-1] == 'HEAD' else PARENT, returncode=0)
-        if args[0] == 'merge-base':
-            return SimpleNamespace(stdout='', returncode=0)
-        if '--name-only' in args:
-            return SimpleNamespace(stdout=name + '\0', returncode=0)
-        if '--' in args:
-            return SimpleNamespace(stdout=diff + key + url, returncode=0)
-        return SimpleNamespace(stdout=HEAD, returncode=0)
-    state = tmp_path / 'state'
-    if not fallback:
-        state.write_text(PREVIOUS)
-    material = collector.Material(4000)
-    collector.collect_changes({'project_dir': '/fixture', 'state_file': str(state), 'changes_exclude': []}, material, NOW, run)
-    assert diff in material.text()
-    assert 'private-data' not in material.text()
-    assert 'hidden-password' not in material.text()
-    assert '+https://[REDACTED]@example.test/path' in material.text()
-
-
 @pytest.mark.parametrize('kind', ['security', 'errors'])
 def test_log_material_keeps_full_redaction(kind):
     materials = {kind: collector.Material(4000)}
@@ -140,7 +108,8 @@ def test_release_prepares_private_bind_directories_before_settings():
     assert 'ansible.builtin.file:' in storage
     assert 'path: "{{ release_pi5_project_dir }}/storage/security-review/{{ item }}"' in storage
     assert 'state: directory' in storage
-    assert "loop: ['', bundles, reports]" in storage
+    for folder in ['', 'bundles', 'reports', 'queue', 'queue/pending', 'queue/claimed', 'queue/done', 'queue/failed', 'queue/progress']:
+        assert folder in storage
     for field in ['owner', 'group', 'mode']:
         assert re.search(rf'^    {field}: .+$', storage, re.M)[0] == re.search(rf'^    {field}: .+$', pattern, re.M)[0]
     assert 'ansible.builtin.lineinfile:' in settings
@@ -271,26 +240,6 @@ def test_git_safe_directory_and_read_only_command(monkeypatch):
     assert calls == [['git', '-c', 'safe.directory=/fixture/repo', '-C', '/fixture/repo', 'diff', PREVIOUS + '..' + HEAD]]
 
 
-def test_changes_filter_does_not_read_excluded_paths(tmp_path):
-    seen = []
-
-    def run(repo, *args, check=True):
-        seen.append(args)
-        if args[0] == 'rev-parse':
-            return SimpleNamespace(stdout=HEAD, returncode=0)
-        if args[0] == 'merge-base':
-            return SimpleNamespace(stdout='', returncode=0)
-        if '--name-only' in args:
-            return SimpleNamespace(stdout='src/main.ts\0.env\0docs/x.md\0generated/x.ts\0', returncode=0)
-        return SimpleNamespace(stdout='fixture diff', returncode=0)
-    state = tmp_path / 'state'
-    state.write_text(PREVIOUS)
-    collector.collect_changes({'project_dir': '/fixture', 'state_file': str(state),
-                               'changes_exclude': ['.env*', 'docs/*', 'generated/*']}, collector.Material(100), NOW, run)
-    paths = [args[-1] for args in seen if '--' in args]
-    assert paths == [':(literal)src/main.ts']
-
-
 def test_caddy_counts_rules_caps_and_last_day():
     rules = {'unusual_hours': [5], 'denied_statuses': [401, 403], 'unknown_path_statuses': [404],
              'known_path_patterns': ['^/api/'], 'oversized_bytes': 10, 'examples_per_rule': 1}
@@ -365,7 +314,7 @@ def test_monitor_summary_drops_only_unit_lifecycle_and_counts_failures():
 
 def test_collect_writes_monitor_groups_and_caddy_coverage_as_json_lines(monkeypatch):
     captured = {}
-    monkeypatch.setattr(collector, 'collect_changes', lambda *args, **kwargs: {'from': PREVIOUS, 'to': HEAD})
+    monkeypatch.setattr(collector, 'enqueue_changes', lambda *args, **kwargs: ({'from': PREVIOUS, 'to': HEAD}, dict.fromkeys(['pending', 'claimed', 'done', 'failed'], 0)))
     monkeypatch.setattr(collector, 'log_lines', lambda patterns, since=None: iter([]))
     monkeypatch.setattr(collector, 'command', lambda args: SimpleNamespace(stdout=(
         f'{NOW.isoformat()} host systemd[1]: security-monitor.service: Deactivated successfully.\n'
@@ -381,8 +330,8 @@ def test_collect_writes_monitor_groups_and_caddy_coverage_as_json_lines(monkeypa
         'source': 'monitor', 'message': "security-monitor.service: Failed with result 'exit-code'.",
         'count': 1, 'first': NOW.isoformat(), 'last': NOW.isoformat()}]
     assert captured['manifest']['sourceErrors'] == []
-    assert captured['manifest']['carriedOver'] == 0
-    assert captured['manifest']['carryOverExpired'] == 0
+    assert captured['manifest']['queue'] == dict.fromkeys(['pending', 'claimed', 'done', 'failed'], 0)
+    assert 'carriedOver' not in captured['manifest']
 
 
 def test_caddy_access_log_retention_variants():
@@ -417,7 +366,7 @@ def test_docker_error_grouping_and_level():
                        'first': (NOW - timedelta(minutes=2)).isoformat(), 'last': NOW.isoformat()}]
 
 
-def test_bundle_publication_state_last_and_permissions(tmp_path, monkeypatch):
+def test_bundle_publication_is_atomic_and_private(tmp_path, monkeypatch):
     (tmp_path / 'bundles').mkdir()
     state = tmp_path / 'state'
     config = {'data_dir': str(tmp_path), 'state_file': str(state), 'api_uid': os.getuid(), 'api_gid': os.getgid()}
@@ -434,14 +383,14 @@ def test_bundle_publication_state_last_and_permissions(tmp_path, monkeypatch):
         original(filename, text, os.getuid(), os.getgid())
     monkeypatch.setattr(collector, 'atomic_write', write)
     collector.publish_bundle(config, '2026-10-26', {'changes': material}, manifest)
-    assert calls[-1] == 'state' and state.read_text().strip() == HEAD
+    assert calls[-1] == 'manifest.json' and not state.exists()
     assert (tmp_path / 'bundles/2026-10-26').stat().st_mode & 0o777 == 0o700
     assert (tmp_path / 'bundles/2026-10-26/changes.txt').stat().st_mode & 0o777 == 0o600
-    # Failed rewrite leaves the prior complete bundle and cursor intact.
+    # Failed rewrite leaves the prior complete bundle intact.
     monkeypatch.setattr(collector, 'atomic_write', lambda *args: (_ for _ in ()).throw(OSError('fixture')))
     with pytest.raises(OSError):
         collector.publish_bundle(config, '2026-10-26', {'changes': material}, manifest)
-    assert state.read_text().strip() == HEAD
+    assert not state.exists()
     assert (tmp_path / 'bundles/2026-10-26/manifest.json').exists()
 
 
@@ -462,27 +411,6 @@ def test_missing_source_is_not_reported_as_clean(tmp_path):
         list(collector.log_lines([str(tmp_path / 'missing*.log')]))
 
 
-def test_fallback_includes_merge_changes_against_first_parent(tmp_path):
-    calls = []
-
-    def run(repo, *args, check=True):
-        calls.append(args)
-        if args[0] == 'rev-parse':
-            return SimpleNamespace(stdout=HEAD if args[-1] == 'HEAD' else PARENT, returncode=0)
-        if args[0] == 'log':
-            return SimpleNamespace(stdout=HEAD, returncode=0)
-        if args[0] == 'diff-tree':
-            assert '-m' in args and '--first-parent' in args
-            return SimpleNamespace(stdout='src/merged.ts\0', returncode=0)
-        if '--format=' in args:
-            assert '--diff-merges=first-parent' in args
-            return SimpleNamespace(stdout='diff --git a/src/merged.ts b/src/merged.ts\n+merged change', returncode=0)
-        return SimpleNamespace(stdout='merge fixture', returncode=0)
-    material = collector.Material(1000)
-    collector.collect_changes({'project_dir': '/fixture', 'state_file': str(tmp_path / 'missing-state'), 'changes_exclude': []}, material, NOW, run)
-    assert '+merged change' in material.text()
-
-
 def test_log_lines_skips_rotations_last_written_before_window(tmp_path):
     old = tmp_path / 'access-old.log'
     new = tmp_path / 'access-new.log'
@@ -494,168 +422,8 @@ def test_log_lines_skips_rotations_last_written_before_window(tmp_path):
     assert lines == ['new\n']
 
 
-def change_fixture(tmp_path, diffs, context=1):
-    state = tmp_path / 'state'
-    state.write_text(PREVIOUS)
-    config = {'project_dir': '/fixture', 'state_file': str(state), 'changes_exclude': ['*.md'],
-              'changes_context_lines': context}
-    calls = []
-
-    def run(repo, *args, check=True):
-        calls.append(args)
-        if args == ('rev-parse', 'HEAD'):
-            return SimpleNamespace(stdout=HEAD, returncode=0)
-        if args[0] == 'merge-base':
-            return SimpleNamespace(stdout='', returncode=0)
-        if '--name-only' in args:
-            return SimpleNamespace(stdout='\0'.join(diffs), returncode=0)
-        if '--' in args:
-            assert f'--unified={context}' in args
-            assert '--no-ext-diff' in args and '--no-textconv' in args
-            name = args[-1].removeprefix(':(literal)')
-            return SimpleNamespace(stdout=diffs[name], returncode=0)
-        raise AssertionError(args)
-    return config, run, calls
-
-
 def file_diff(name, body='+change\n'):
     return f'diff --git a/{name} b/{name}\n{body}'
-
-
-def test_changes_priority_puts_nested_tests_and_fixtures_last(tmp_path):
-    names = ['apps/api/src/routes/auth.test.ts', 'tests/check.py', 'clients/agent/tests/test_x.py',
-             'apps/api/src/routes/__tests__/auth.ts', 'apps/api/src/routes/__fixtures__/data.ts',
-             'src/ordinary.ts', 'clients/agent/main.py', 'infrastructure/ansible/templates/server.j2',
-             'apps/api/src/routes/auth.ts', 'ignored.md']
-    config, run, _ = change_fixture(tmp_path, {name: file_diff(name) for name in names}, context=2)
-    material = collector.Material(collector.DEFAULT_CHANGES_BYTE_CAP)
-    collector.collect_changes(config, material, NOW, run)
-    ordered = re.findall(r'^diff --git a/(.*?) b/', material.text(), re.M)
-    assert ordered[:4] == [names[8], names[7], names[6], names[5]]
-    assert all(name in names[:5] for name in ordered[4:])
-    assert 'ignored.md' not in material.text()
-    assert material.carry_over == []  # Small files share the line-packed API chunks.
-    assert material.dropped == 0
-    config['changes_priority'] = ['clients/*', 'apps/api/src/routes/*', '*']
-    changed = collector.Material(60000)
-    collector.collect_changes(config, changed, NOW, run)
-    assert changed.text().startswith('diff --git a/clients/')
-
-
-def test_changes_carry_whole_files_and_sort_with_fresh_priority_next_night(tmp_path):
-    diffs = {name: file_diff(name, '+界' * 20 + '\n') for name in ['a.ts', 'b.ts']}
-    config, run, _ = change_fixture(tmp_path, diffs)
-    material = collector.Material(250)
-    reviewed = collector.collect_changes(config, material, NOW, run)
-    assert material.text().startswith(diffs['a.ts']) and 'b.ts' not in material.text()
-    assert material.dropped == 0
-    assert material.carry_over == [{'revision': PREVIOUS + '..' + HEAD, 'file': 'b.ts', 'since': NOW.isoformat()}]
-    assert not collector.carry_over_file(config).exists()  # Collection alone never writes state.
-    collector.carry_over_file(config).write_text(json.dumps(material.carry_over))
-    Path(config['state_file']).write_text(reviewed['to'])
-    diffs['apps/api/src/routes/new.ts'] = file_diff('apps/api/src/routes/new.ts')
-    next_material = collector.Material(60000)
-    collector.collect_changes(config, next_material, NOW + timedelta(days=1), run)
-    assert next_material.text().startswith(diffs['apps/api/src/routes/new.ts'])
-    assert next_material.text().index('b.ts') < next_material.text().index('a.ts')
-    assert next_material.carry_over == []
-
-
-def test_changes_expire_rollback_and_old_entries_but_keep_seven_day_boundary(tmp_path):
-    diffs = {'keep.ts': file_diff('keep.ts')}
-    config, run, calls = change_fixture(tmp_path, diffs)
-    entries = [
-        {'revision': PARENT, 'file': 'rollback.ts', 'since': NOW.isoformat()},
-        {'revision': HEAD, 'file': 'expired.ts', 'since': (NOW - timedelta(days=7, seconds=1)).isoformat()},
-        {'revision': HEAD, 'file': 'keep.ts', 'since': (NOW - timedelta(days=7)).isoformat()},
-    ]
-    collector.carry_over_file(config).write_text(json.dumps(entries))
-
-    def rollback(repo, *args, check=True):
-        if args[:3] == ('merge-base', '--is-ancestor', PARENT):
-            return SimpleNamespace(stdout='', returncode=1)
-        return run(repo, *args, check=check)
-    material = collector.Material(60000)
-    collector.collect_changes(config, material, NOW, rollback)
-    assert material.carry_over_expired == 2
-    assert material.text().startswith(diffs['keep.ts'])
-    assert not any('expired.ts' in str(call) or 'rollback.ts' in str(call) for call in calls)
-
-
-def test_changes_repeated_deferral_preserves_age_and_deduplicates(tmp_path):
-    diffs = {name: file_diff(name, '+abc\n' * 10) for name in ['a.ts', 'b.ts']}
-    config, run, _ = change_fixture(tmp_path, diffs)
-    entries = [{'revision': PREVIOUS + '..' + HEAD, 'file': name, 'since': NOW.isoformat()} for name in diffs]
-    collector.carry_over_file(config).write_text(json.dumps(entries))
-    material = collector.Material(220)
-    collector.collect_changes(config, material, NOW + timedelta(days=2), run)
-    assert material.carry_over == [entries[1]]
-    assert material.text().count('diff --git') == 1
-
-
-def test_changes_oversize_file_keeps_only_contiguous_prefix_and_counts_dropped_lines(tmp_path):
-    name = 'large.ts'
-    diff = file_diff(name, '+first\n+' + '界' * 80 + '\n+small-after-large\n')
-    config, run, _ = change_fixture(tmp_path, {name: diff})
-    material = collector.Material(100)
-    collector.collect_changes(config, material, NOW, run)
-    assert material.text() == file_diff(name, '+first\n')
-    assert material.dropped == 2
-    assert material.carry_over == []
-    assert material.bytes <= 100
-
-
-def test_changes_chunk_budget_matches_api_and_does_not_drop_small_files(tmp_path):
-    api = ROOT.parents[2] / 'apps/api/src/services/security-review/material.ts'
-    source = api.read_text()
-    assert f'MATERIAL_BYTES = {collector.REVIEW_CHUNK_BYTES};' in source
-    assert f'MAX_CHUNKS = {collector.MAX_REVIEW_CHUNKS};' in source
-    diffs = {f'{i:02}.ts': file_diff(f'{i:02}.ts') for i in range(24)}
-    config, run, _ = change_fixture(tmp_path, diffs)
-    material = collector.Material(collector.DEFAULT_CHANGES_BYTE_CAP)
-    collector.collect_changes(config, material, NOW, run)
-    assert collector.changes_chunk_count(material.text()) == 1
-    assert material.text().count('diff --git') == 24
-    assert material.carry_over == []
-    assert material.dropped == 0
-    # UTF-8 boundaries can require more chunks than ceil(bytes / 8000).
-    assert collector.changes_chunk_count('界' * 5333) == 3
-
-
-@pytest.mark.parametrize('fail_at', ['material', 'publication'])
-def test_changes_carry_over_saved_only_after_bundle_publication(tmp_path, monkeypatch, fail_at):
-    (tmp_path / 'bundles').mkdir()
-    state = tmp_path / 'state'
-    state.write_text(PREVIOUS)
-    config = {'data_dir': str(tmp_path), 'state_file': str(state), 'api_uid': os.getuid(), 'api_gid': os.getgid()}
-    pending = collector.carry_over_file(config)
-    pending.write_text('[]\n')
-    material = collector.Material(100)
-    material.carry_over = [{'revision': HEAD, 'file': 'next.ts', 'since': NOW.isoformat()}]
-    manifest = {'reviewedCommits': {'from': PREVIOUS, 'to': HEAD}, 'carriedOver': 1, 'carryOverExpired': 0}
-    original_write, original_rename = collector.atomic_write, collector.os.rename
-
-    def write(filename, text, uid, gid):
-        if fail_at == 'material' and filename.name == 'changes.txt':
-            raise OSError('fixture')
-        if filename in (state, pending):
-            assert (tmp_path / 'bundles/2026-10-26/manifest.json').exists()
-        original_write(filename, text, os.getuid(), os.getgid())
-
-    def rename(src, dest):
-        if fail_at == 'publication' and Path(dest).name == '2026-10-26':
-            raise OSError('fixture')
-        original_rename(src, dest)
-    monkeypatch.setattr(collector, 'atomic_write', write)
-    monkeypatch.setattr(collector.os, 'rename', rename)
-    with pytest.raises(OSError):
-        collector.publish_bundle(config, '2026-10-26', {'changes': material}, manifest)
-    assert pending.read_text() == '[]\n' and state.read_text() == PREVIOUS
-    fail_at = None
-    collector.publish_bundle(config, '2026-10-26', {'changes': material}, manifest)
-    assert json.loads(pending.read_text()) == material.carry_over
-    assert pending.stat().st_mode & 0o777 == 0o600
-    assert state.read_text().strip() == HEAD
 
 
 def test_server_installs_triage_with_known_tool_and_private_api_directory():
@@ -663,274 +431,374 @@ def test_server_installs_triage_with_known_tool_and_private_api_directory():
     assert '{src: known.py, dest: /usr/local/bin/security-review-known.py}' in tasks
     assert '{src: triage.py, dest: /usr/local/bin/security-review-triage.py}' in tasks
     directories = tasks.split('- name: Create root-only collector')[0]
-    assert "loop: ['', bundles, reports, triage]" in directories
+    for folder in ['bundles', 'reports', 'triage', 'queue/pending', 'queue/claimed', 'queue/done', 'queue/failed', 'queue/progress']:
+        assert folder in directories
     assert 'owner: "{{ api_runtime_uid | default(1000) }}"' in directories
     assert 'group: "{{ api_runtime_gid | default(1000) }}"' in directories
     assert "mode: '0700'" in directories
 
 
-@pytest.mark.parametrize('cap', [0, 64001])
-def test_changes_rejects_byte_caps_outside_guaranteed_api_capacity(tmp_path, cap):
-    config, run, _ = change_fixture(tmp_path, {})
-    with pytest.raises(ValueError, match='Invalid changes limits'):
-        collector.collect_changes(config, collector.Material(cap), NOW, run)
+def queue_fixture(tmp_path, monkeypatch, diffs=None, commits=None, root_commit=False):
+    commits = commits if commits is not None else [HEAD]
+    diffs = diffs if diffs is not None else {'src/main.ts': file_diff('src/main.ts')}
+    state = tmp_path / 'state'
+    state.write_text(PREVIOUS)
+    config = {'project_dir': '/fixture', 'state_file': str(state), 'data_dir': str(tmp_path),
+              'api_uid': os.getuid(), 'api_gid': os.getgid(), 'changes_exclude': ['.env*', '*.md'],
+              'changes_context_lines': 1}
+    calls = []
+    original = collector.atomic_write
+    monkeypatch.setattr(collector, 'atomic_write', lambda filename, text, uid, gid:
+                        original(filename, text, os.getuid(), os.getgid()))
+
+    def run(repo, *args, check=True):
+        calls.append(args)
+        if args == ('rev-parse', 'HEAD'):
+            return SimpleNamespace(stdout=HEAD, returncode=0)
+        if args[0] in ('merge-base', 'cat-file'):
+            return SimpleNamespace(stdout='', returncode=0)
+        if args[0] in ('rev-list', 'log'):
+            assert '--first-parent' in args and '--reverse' in args
+            return SimpleNamespace(stdout='\n'.join(commits), returncode=0)
+        if args[:2] == ('rev-parse', '--verify'):
+            return SimpleNamespace(stdout='', returncode=1 if root_commit else 0)
+        if args[0] == 'show' and '--no-patch' in args:
+            return SimpleNamespace(stdout=('' if root_commit else PARENT) + '\n' + NOW.isoformat() + '\n', returncode=0)
+        if '--name-only' in args:
+            assert '--first-parent' in args
+            return SimpleNamespace(stdout='\0'.join(diffs) + '\0', returncode=0)
+        if '--' in args:
+            assert '--unified=1' in args
+            assert '--no-ext-diff' in args and '--no-textconv' in args
+            if root_commit:
+                assert args[0] == 'show' and '--root' in args
+            else:
+                assert args[:2] == ('diff', PARENT)
+            name = args[-1].removeprefix(':(literal)')
+            return SimpleNamespace(stdout=diffs[name], returncode=0)
+        raise AssertionError(args)
+    return config, run, calls
 
 
-def test_changes_oversize_prefix_respects_remaining_utf8_chunks(tmp_path):
-    diffs = {f'{i}.ts': file_diff(f'{i}.ts') for i in range(7)}
-    diffs['large.ts'] = file_diff('large.ts', ('+界界界\n' * 8000))
-    config, run, _ = change_fixture(tmp_path, diffs)
-    material = collector.Material(collector.DEFAULT_CHANGES_BYTE_CAP)
-    collector.collect_changes(config, material, NOW, run)
-    assert material.text().count('diff --git') == 8
-    assert collector.changes_chunk_count(material.text()) == 8
-    assert 0 < material.dropped < 3000
-    assert collector.changes_chunk_count(material.text() + '+界界界\n') == 9
-    assert material.carry_over == []
+def queued(config, sha=HEAD, folder='pending'):
+    return json.loads((Path(config['data_dir']) / 'queue' / folder / (sha + '.json')).read_text())
 
 
-# Fixed counts mirror the prepareChunks cases in material.test.ts.
-@pytest.mark.parametrize(('text', 'count'), [
-    ('', 0),
-    (('a' * 3999 + '\n') * 2, 1),
-    (('a' * 4000 + '\n') * 2, 2),
-    ('界' * 2666 + '\n+x', 2),
-    ('界' * 5333, 3),
-    ('+first\n' + '界' * 2667 + '\n+last\n', 3),
-    ('a' * 7999 + '\r\n\nlast', 2),
-    ('a\u2028b\rc\nlast', 1),
-    (''.join(f'diff --git a/{i} b/{i}\n+{"x" * 100}\n' for i in range(164)), 3),
-])
-def test_changes_line_packing_matches_api_fixed_examples(text, count):
-    assert collector.changes_chunk_count(text) == count
+@pytest.mark.parametrize('root_commit', [False, True])
+def test_enqueue_preserves_entire_redacted_job_and_permissions(tmp_path, monkeypatch, root_commit):
+    diff = file_diff('src/main.ts', '+const accessToken = req.headers.authorization;\n' + '+界\n' * 10000)
+    diff += '+https://user:hidden-password@example.test/path\n'
+    diff += '+-----BEGIN PRIVATE KEY-----\n+private-data\n+-----END PRIVATE KEY-----\n'
+    config, run, _ = queue_fixture(tmp_path, monkeypatch, {'src/main.ts': diff}, root_commit=root_commit)
+    reviewed, counts = collector.enqueue_changes(config, NOW, run)
+    job = queued(config)
+    assert set(job) == {'version', 'sha', 'parent', 'committedAt', 'enqueuedAt', 'files', 'bytes', 'omittedFiles'}
+    assert job == {'version': 1, 'sha': HEAD, 'parent': None if root_commit else PARENT,
+                   'committedAt': NOW.isoformat(), 'enqueuedAt': NOW.isoformat(),
+                   'files': [{'path': 'src/main.ts', 'diff': collector.redact_code(diff)}],
+                   'bytes': len(collector.redact_code(diff).encode()), 'omittedFiles': 0}
+    assert 'private-data' not in job['files'][0]['diff']
+    assert 'hidden-password' not in job['files'][0]['diff']
+    assert '+界\n' * 10000 in job['files'][0]['diff']
+    assert reviewed == {'from': PREVIOUS, 'to': HEAD}
+    assert counts == {'pending': 1, 'claimed': 0, 'done': 0, 'failed': 0, 'invalid': 0}
+    assert Path(config['state_file']).read_text().strip() == HEAD
+    root = tmp_path / 'queue'
+    for folder in [root, *(root / name for name in collector.QUEUE_STATES)]:
+        assert folder.stat().st_mode & 0o777 == 0o700
+        assert folder.stat().st_uid == os.getuid()
+    assert (root / 'pending' / (HEAD + '.json')).stat().st_mode & 0o777 == 0o600
 
 
-def test_changes_line_padding_can_make_file_oversize_below_byte_cap(tmp_path):
-    diff = file_diff('large.ts', ('+' * 4000 + '\n') * 10)
-    config, run, _ = change_fixture(tmp_path, {'large.ts': diff})
-    material = collector.Material(collector.DEFAULT_CHANGES_BYTE_CAP)
-    assert len(diff.encode('utf-8')) < material.cap
-    collector.collect_changes(config, material, NOW, run)
-    assert material.text() == file_diff('large.ts', ('+' * 4000 + '\n') * 8)
-    assert collector.changes_chunk_count(material.text()) == 8
-    assert material.dropped == 2
-    assert material.carry_over == []
+@pytest.mark.parametrize('folder', collector.QUEUE_STATES)
+def test_enqueue_is_idempotent_in_every_state(tmp_path, monkeypatch, folder):
+    config, run, calls = queue_fixture(tmp_path, monkeypatch)
+    root = collector.queue_directories(config)
+    existing = root / folder / (HEAD + '.json')
+    existing.write_text('{"fixture":true}')
+    collector.enqueue_changes(config, NOW, run)
+    collector.enqueue_changes(config, NOW, run)
+    assert existing.read_text() == '{"fixture":true}'
+    assert not any('--name-only' in call or '--no-patch' in call for call in calls)
+    assert len(list(root.glob('*/*.json'))) == 1
 
 
-def test_changes_small_file_uses_space_in_eighth_chunk(tmp_path):
-    diffs = {'a.ts': file_diff('a.ts', ('+' * 4000 + '\n') * 8), 'b.ts': file_diff('b.ts')}
-    config, run, _ = change_fixture(tmp_path, diffs)
-    material = collector.Material(collector.DEFAULT_CHANGES_BYTE_CAP)
-    collector.collect_changes(config, material, NOW, run)
-    assert collector.changes_chunk_count(material.text()) == 8
-    assert diffs['b.ts'] in material.text()
-    assert material.dropped == 0
-    assert material.carry_over == []
+def test_enqueue_filters_before_reading_diff_and_counts_omissions(tmp_path, monkeypatch):
+    names = ['src/main.ts', '.env', 'docs/x.md', 'src/a.test.ts', 'src/a.test.tsx',
+             'src/a.spec.ts', 'src/__tests__/x.ts', 'clients/tests/a.py', 'test_a.py',
+             'src/a_test.py', 'e2e/browser.ts']
+    config, run, calls = queue_fixture(tmp_path, monkeypatch, {name: file_diff(name) for name in names})
+    config['changes_exclude'] += ['*.test.ts', '*.test.tsx', '*.spec.ts', '*/__tests__/*',
+                                  '*/tests/*', 'test_*.py', '*_test.py', 'e2e/*']
+    collector.enqueue_changes(config, NOW, run)
+    assert queued(config)['omittedFiles'] == len(names) - 1
+    assert [file['path'] for file in queued(config)['files']] == ['src/main.ts']
+    assert [call[-1] for call in calls if '--' in call] == [':(literal)src/main.ts']
 
 
-# Fixed counts mirror splitBytes examples in material.test.ts (not line packing).
-@pytest.mark.parametrize(('text', 'count'), [
-    ('', 0),
-    ('a' * 8000, 1),
-    ('a' * 8001, 2),
-    (('a' * 4000 + '\n') * 3, 2),
-    ('界' * 5333, 3),
-    ('a' * 7999 + '界', 2),
-    ('😀' * 2000, 1),
-    ('😀' * 2001, 2),
-    ('a' * 7999 + '\r\n\nlast', 2),
-])
-def test_split_bytes_chunk_count_matches_api_fixed_examples(text, count):
-    assert collector.split_bytes_chunk_count(text) == count
+def test_enqueue_migrates_all_old_ranges_without_expiration_and_backfills(tmp_path, monkeypatch):
+    extra = 'd' * 40
+    config, run, calls = queue_fixture(tmp_path, monkeypatch, commits=[HEAD, extra])
+    carry = collector.carry_over_file(config)
+    carry.write_text(json.dumps([
+        {'revision': PREVIOUS + '..' + HEAD, 'file': 'a.ts', 'since': '2000-01-01'},
+        {'revision': extra, 'file': 'old.ts', 'since': '2000-01-01'},
+        {'revision': extra, 'file': 'duplicate.ts', 'since': '2000-01-01'}]))
+    config['changes_backfill'] = [{'from': PARENT, 'to': extra}]
+    collector.enqueue_changes(config, NOW, run)
+    assert not carry.exists()
+    assert queued(config, extra)['sha'] == extra
+    assert ('rev-list', '--first-parent', '--reverse', PARENT + '..' + extra) in calls
+    assert len(list((tmp_path / 'queue/pending').glob('*.json'))) == 2
+    collector.enqueue_changes(config, NOW, run)
+    assert len(list((tmp_path / 'queue/pending').glob('*.json'))) == 2
 
 
-@pytest.mark.parametrize(('security_size', 'errors_size', 'budget'), [
-    (1, 1, 20),
-    (2666, 1, 19),
-    (50000, 50000, 8),
-    (0, 0, 22),
-])
-def test_collect_allocates_unused_log_chunks_to_changes(tmp_path, monkeypatch, security_size, errors_size, budget):
-    diffs = {f'{i:02}.ts': file_diff(f'{i:02}.ts', '+' + 'x' * 7800 + '\n') for i in range(30)}
-    config, run, _ = change_fixture(tmp_path, diffs)
-    config.update(timezone='Asia/Tokyo', material_byte_cap=192000, fail2ban_logs=[],
-                  caddy_logs=[], caddy_rules={}, monitor_unit='fixture', scans=[], containers=['api'])
-    monkeypatch.setattr(collector, 'log_lines', lambda *args: iter([]))
-    monkeypatch.setattr(collector, 'fail2ban_summary', lambda *args: {})
-    monkeypatch.setattr(collector, 'caddy_summary', lambda *args: {})
-    monkeypatch.setattr(collector, 'command', lambda *args, **kwargs: SimpleNamespace(stdout='', returncode=0))
+@pytest.mark.parametrize('failure', ['diff', 'write', 'state'])
+def test_enqueue_failure_keeps_cursor_and_legacy_and_retry_is_safe(tmp_path, monkeypatch, failure):
+    extra = 'd' * 40
+    config, run, _ = queue_fixture(tmp_path, monkeypatch, commits=[extra, HEAD])
+    carry = collector.carry_over_file(config)
+    carry.write_text(json.dumps([{'revision': extra}]))
+    original = collector.atomic_write
 
-    def groups(size):
-        return [{'message': '界' * min(100, size - offset)} for offset in range(0, size, 100)]
+    def write(filename, text, uid, gid):
+        if (failure == 'write' and filename.name == HEAD + '.json') or (failure == 'state' and filename == Path(config['state_file'])):
+            raise OSError('fixture write failure')
+        if filename == Path(config['state_file']):
+            assert all((tmp_path / 'queue/pending' / (sha + '.json')).exists() for sha in [extra, HEAD])
+        original(filename, text, uid, gid)
 
-    monkeypatch.setattr(collector, 'monitor_summary', lambda *args: groups(security_size))
-    monkeypatch.setattr(collector, 'docker_log_lines', lambda *args: iter([]))
-    monkeypatch.setattr(collector, 'docker_errors', lambda *args: groups(errors_size))
-    original = collector.collect_changes
-
-    def changes(config, material, now, *, chunk_budget):
-        assert chunk_budget == budget
-        assert material.cap == budget * collector.REVIEW_CHUNK_BYTES
-        return original(config, material, now, run, chunk_budget=chunk_budget)
-
-    captured = {}
-    monkeypatch.setattr(collector, 'collect_changes', changes)
-    monkeypatch.setattr(collector, 'publish_bundle', lambda config, date, materials, manifest: captured.update(
-        materials=materials, manifest=manifest))
-    collector.collect(config)
-    material = captured['materials']['changes']
-    assert collector.changes_chunk_count(material.text()) == budget
-    assert material.text().count('diff --git') == budget
-    assert len(material.carry_over) == 30 - budget
-    assert material.dropped == 0
+    def git_read(repo, *args, **kwargs):
+        if failure == 'diff' and '--' in args and HEAD in args:
+            raise OSError('fixture diff failure')
+        return run(repo, *args, **kwargs)
+    monkeypatch.setattr(collector, 'atomic_write', write)
+    with pytest.raises(OSError, match='fixture'):
+        collector.enqueue_changes(config, NOW, git_read)
     assert Path(config['state_file']).read_text() == PREVIOUS
-    assert not collector.carry_over_file(config).exists()
+    assert carry.exists()
+    assert queued(config, extra)['sha'] == extra
+    monkeypatch.setattr(collector, 'atomic_write', original)
+    collector.enqueue_changes(config, NOW, run)
+    assert Path(config['state_file']).read_text().strip() == HEAD
+    assert not carry.exists()
 
 
-@pytest.mark.parametrize('fail_at', ['head', 'diff'])
-def test_collect_git_read_failure_does_not_publish_or_save_state(tmp_path, monkeypatch, fail_at):
-    config, run, _ = change_fixture(tmp_path, {'a.ts': file_diff('a.ts')})
-    config.update(timezone='Asia/Tokyo', material_byte_cap=192000, fail2ban_logs=[],
-                  caddy_logs=[], caddy_rules={}, monitor_unit='fixture', scans=[], containers=[])
-    pending = collector.carry_over_file(config)
-    pending.write_text('[]\n')
-    monkeypatch.setattr(collector, 'log_lines', lambda *args: iter([]))
-    monkeypatch.setattr(collector, 'command', lambda *args: SimpleNamespace(stdout=''))
-    original = collector.collect_changes
+@pytest.mark.parametrize('contents', ['{broken', '{}', '[{}]', '[{"revision":"--bad-option"}]'])
+def test_invalid_migration_is_preserved_without_advancing_state(tmp_path, monkeypatch, contents):
+    config, run, calls = queue_fixture(tmp_path, monkeypatch)
+    carry = collector.carry_over_file(config)
+    carry.write_text(contents)
+    with pytest.raises((ValueError, KeyError)):
+        collector.enqueue_changes(config, NOW, run)
+    assert carry.read_text() == contents
+    assert Path(config['state_file']).read_text() == PREVIOUS
+    assert not any('--bad-option' in call for call in calls)
 
-    def failing_git(repo, *args, **kwargs):
-        if (fail_at == 'head' and args == ('rev-parse', 'HEAD')) or (fail_at == 'diff' and '--' in args):
-            raise RuntimeError('local source command failed')
+
+def test_enqueue_mode_never_reads_logs_or_publishes_bundle(tmp_path, monkeypatch):
+    config, run, _ = queue_fixture(tmp_path, monkeypatch)
+    config['timezone'] = 'Asia/Tokyo'
+    original = collector.enqueue_changes
+    monkeypatch.setattr(collector, 'enqueue_changes', lambda config, now, **kwargs: original(config, now, run, **kwargs))
+    monkeypatch.setattr(collector, 'command', lambda *args: pytest.fail('enqueue must not collect logs'))
+    monkeypatch.setattr(collector, 'publish_bundle', lambda *args: pytest.fail('enqueue must not publish bundle'))
+    collector.collect(config, mode='enqueue')
+    assert queued(config)['sha'] == HEAD
+    assert not (tmp_path / 'bundles').exists()
+
+
+def test_cli_accepts_enqueue_mode(tmp_path, monkeypatch):
+    config = tmp_path / 'fixture.json'
+    config.write_text('{}')
+    calls = []
+    monkeypatch.setattr(sys, 'argv', ['collect.py', str(config), '--mode', 'enqueue'])
+    monkeypatch.setattr(collector, 'collect', lambda value, mode: calls.append((value, mode)))
+    collector.main()
+    assert calls == [({}, 'enqueue')]
+
+
+@pytest.mark.parametrize('source', ['carry', 'backfill'])
+def test_unavailable_revision_is_reported_and_other_jobs_continue(tmp_path, monkeypatch, source):
+    config, run, calls = queue_fixture(tmp_path, monkeypatch)
+    missing = 'e' * 40
+    if source == 'carry':
+        collector.carry_over_file(config).write_text(json.dumps([{'revision': missing}, {'revision': HEAD}]))
+    else:
+        config['changes_backfill'] = [{'from': missing, 'to': HEAD}]
+
+    def read(repo, *args, **kwargs):
+        if args == ('cat-file', '-e', missing + '^{commit}'):
+            return SimpleNamespace(returncode=1, stdout='')
+        return run(repo, *args, **kwargs)
+    errors = []
+    collector.enqueue_changes(config, NOW, read, source_errors=errors)
+    assert errors == ['changes_revision_unavailable:' + missing[:12]]
+    assert queued(config)['sha'] == HEAD
+    assert not (tmp_path / 'queue/pending' / (missing + '.json')).exists()
+    assert Path(config['state_file']).read_text().strip() == HEAD
+
+
+def test_uppercase_shas_are_normalized_before_git_and_filenames(tmp_path, monkeypatch):
+    config, run, calls = queue_fixture(tmp_path, monkeypatch, commits=[HEAD.upper()])
+    Path(config['state_file']).write_text(PREVIOUS.upper())
+    collector.carry_over_file(config).write_text(json.dumps([{'revision': HEAD.upper()}]))
+    config['changes_backfill'] = [{'from': PARENT.upper(), 'to': HEAD.upper()}]
+
+    def read(repo, *args, **kwargs):
+        result = run(repo, *args, **kwargs)
+        if args == ('rev-parse', 'HEAD') or (args[0] == 'show' and '--no-patch' in args):
+            result.stdout = result.stdout.upper()
+        return result
+    collector.enqueue_changes(config, NOW, read)
+    assert queued(config)['sha'] == HEAD
+    assert queued(config)['parent'] == PARENT
+    assert Path(config['state_file']).read_text().strip() == HEAD
+    assert ('merge-base', '--is-ancestor', PREVIOUS, HEAD) in calls
+    assert ('cat-file', '-e', HEAD + '^{commit}') in calls
+    assert list((tmp_path / 'queue/pending').glob('*.json')) == [tmp_path / 'queue/pending' / (HEAD + '.json')]
+
+
+def test_nightly_publishes_logs_even_when_enqueue_fails_without_advancing_cursor(tmp_path, monkeypatch):
+    config, run, _ = queue_fixture(tmp_path, monkeypatch)
+    config.update(timezone='Asia/Tokyo', material_byte_cap=8000, fail2ban_logs=[], caddy_logs=[],
+                  caddy_rules={}, monitor_unit='monitor', scans=[], containers=[])
+    original = collector.enqueue_changes
+
+    def fail(repo, *args, **kwargs):
+        if args[0] == 'rev-list':
+            raise RuntimeError('cannot enqueue range')
+        return run(repo, *args, **kwargs)
+    monkeypatch.setattr(collector, 'enqueue_changes', lambda config, now, **kwargs: original(config, now, fail, **kwargs))
+    monkeypatch.setattr(collector, 'command', lambda *args, **kwargs: SimpleNamespace(stdout=''))
+    monkeypatch.setattr(collector, 'log_lines', lambda *args, **kwargs: iter([]))
+    (tmp_path / 'bundles').mkdir()
+    collector.collect(config)
+    manifests = list((tmp_path / 'bundles').glob('*/manifest.json'))
+    assert len(manifests) == 1
+    assert 'changes_enqueue_failed' in json.loads(manifests[0].read_text())['sourceErrors']
+    assert (manifests[0].parent / 'security.txt').exists()
+    assert (manifests[0].parent / 'errors.txt').exists()
+    assert Path(config['state_file']).read_text() == PREVIOUS
+
+
+def test_enqueue_holds_exclusive_state_lock_during_all_work(tmp_path, monkeypatch):
+    config, run, _ = queue_fixture(tmp_path, monkeypatch)
+    original = collector.fcntl.flock
+    locked = []
+
+    def lock(descriptor, operation):
+        assert operation == collector.fcntl.LOCK_EX
+        original(descriptor, operation)
+        locked.append(descriptor)
+    monkeypatch.setattr(collector.fcntl, 'flock', lock)
+
+    def read(repo, *args, **kwargs):
+        assert locked
+        with (tmp_path / 'changes-enqueue.lock').open('a') as competing:
+            with pytest.raises(BlockingIOError):
+                original(competing.fileno(), collector.fcntl.LOCK_EX | collector.fcntl.LOCK_NB)
+        return run(repo, *args, **kwargs)
+    collector.enqueue_changes(config, NOW, read)
+    with (tmp_path / 'changes-enqueue.lock').open('a') as competing:
+        original(competing.fileno(), collector.fcntl.LOCK_EX | collector.fcntl.LOCK_NB)
+    assert (tmp_path / 'changes-enqueue.lock').stat().st_mode & 0o777 == 0o600
+
+
+def test_quarantined_sha_is_not_enqueued_again(tmp_path, monkeypatch):
+    config, run, calls = queue_fixture(tmp_path, monkeypatch)
+    root = collector.queue_directories(config)
+    (root / 'invalid' / ('pending-' + HEAD + '.json')).write_text('{}')
+    collector.enqueue_changes(config, NOW, run)
+    assert not (root / 'pending' / (HEAD + '.json')).exists()
+    assert not any(call[0] == 'show' for call in calls)
+
+
+@pytest.mark.parametrize('reasons,eligible', [
+    (['refused_or_vague'], True),
+    (['invalid_model_schema', 'completion_failed'], True),
+    (['refused_or_vague', 'timeout_at_minimum_unit'], False),
+    ([], False),
+])
+def test_requeue_failed_filters_reasons_and_rebuilds_job(tmp_path, monkeypatch, capsys, reasons, eligible):
+    diffs = {'src/main.ts': file_diff('src/main.ts', '+https://user:password@example.com\n'),
+             '.env': 'private', 'docs/x.md': 'excluded'}
+    config, run, calls = queue_fixture(tmp_path, monkeypatch, diffs)
+    root = collector.queue_directories(config)
+    record = root / 'failed' / (HEAD + '.json')
+    record.write_text(json.dumps({'sha': HEAD, 'failedUnits': [{'reason': reason} for reason in reasons]}))
+    progress = root / 'progress' / record.name
+    progress.write_text('old progress')
+
+    def locked_read(repo, *args, **kwargs):
+        with (tmp_path / 'changes-enqueue.lock').open('a') as competing:
+            with pytest.raises(BlockingIOError):
+                collector.fcntl.flock(competing.fileno(), collector.fcntl.LOCK_EX | collector.fcntl.LOCK_NB)
         return run(repo, *args, **kwargs)
 
-    monkeypatch.setattr(collector, 'collect_changes', lambda config, material, now, **kwargs:
-                        original(config, material, now, failing_git, **kwargs))
-    monkeypatch.setattr(collector, 'publish_bundle', lambda *args: pytest.fail('must not publish after git failure'))
-    with pytest.raises(RuntimeError, match='local source command failed'):
-        collector.collect(config)
+    counts = collector.requeue_failed(config, NOW,
+        {'refused_or_vague', 'invalid_model_schema', 'completion_failed'}, git_call=locked_read)
+    assert counts == {'requeued': int(eligible), 'retained': int(not eligible), 'dryRun': False}
+    assert json.loads(capsys.readouterr().out) == counts
+    assert record.exists() is not eligible
+    assert progress.exists() is not eligible
     assert Path(config['state_file']).read_text() == PREVIOUS
-    assert pending.read_text() == '[]\n'
+    if eligible:
+        job = queued(config)
+        assert job['omittedFiles'] == 2
+        assert job['files'] == [{'path': 'src/main.ts', 'diff': collector.redact_code(diffs['src/main.ts'])}]
+        pending = root / 'pending' / record.name
+        assert pending.stat().st_mode & 0o777 == 0o600
+        assert pending.stat().st_uid == config['api_uid']
+        assert pending.stat().st_gid == config['api_gid']
+        assert all((root / state).stat().st_mode & 0o777 == 0o700 for state in collector.QUEUE_STATES)
+    else:
+        assert calls == []
 
 
-@pytest.mark.parametrize('bad', [
-    None, [], {}, {'revision': HEAD},
-    {'revision': HEAD, 'file': 'bad.ts', 'since': 'not-a-date'},
-    {'revision': HEAD, 'file': 'bad.ts', 'since': None},
-    {'revision': HEAD, 'file': None, 'since': NOW.isoformat()},
-    {'revision': '--bad-option', 'file': 'bad.ts', 'since': NOW.isoformat()},
-    {'revision': 'a' * 41, 'file': 'bad.ts', 'since': NOW.isoformat()},
-    {'revision': [], 'file': 'bad.ts', 'since': NOW.isoformat()},
-])
-def test_changes_skips_invalid_carry_over_entries_and_keeps_valid_neighbors(tmp_path, bad):
-    config, run, calls = change_fixture(tmp_path, {'good.ts': file_diff('good.ts')})
-    valid = {'revision': PREVIOUS + '..' + HEAD, 'file': 'good.ts', 'since': NOW.isoformat()}
-    collector.carry_over_file(config).write_text(json.dumps([valid, bad, valid]))
-    material = collector.Material(60000)
-    collector.collect_changes(config, material, NOW, run)
-    assert material.carry_over_expired == 1
-    assert material.text().count('diff --git') == 1
-    assert material.carry_over == []
-    assert not any('--bad-option' in args for args in calls)
+def test_requeue_failed_dry_run_counts_custom_reason_without_changes(tmp_path, monkeypatch, capsys):
+    config, _, _ = queue_fixture(tmp_path, monkeypatch)
+    root = collector.queue_directories(config)
+    record = root / 'failed' / (HEAD + '.json')
+    record.write_text(json.dumps({'sha': HEAD, 'failedUnits': [{'reason': 'custom'}]}))
+    progress = root / 'progress' / record.name
+    progress.write_text('old progress')
+    def no_git(*args, **kwargs):
+        pytest.fail('dry-run must only count candidates')
+    counts = collector.requeue_failed(config, NOW, {'custom'}, dry_run=True, git_call=no_git)
+    assert counts == {'requeued': 1, 'retained': 0, 'dryRun': True}
+    assert json.loads(capsys.readouterr().out) == counts
+    assert record.exists() and progress.read_text() == 'old progress'
+    assert not list((root / 'pending').iterdir())
 
 
-@pytest.mark.parametrize('contents', ['{broken', '{}', 'null', '42', '"text"', '[{}]', 'unreadable'])
-def test_collect_recovers_bad_queue_and_rewrites_it_after_publication(tmp_path, monkeypatch, contents):
-    config, run, _ = change_fixture(tmp_path, {'good.ts': file_diff('good.ts')})
-    config.update(data_dir=str(tmp_path), api_uid=os.getuid(), api_gid=os.getgid(),
-                  timezone='Asia/Tokyo', material_byte_cap=192000, fail2ban_logs=[], caddy_logs=[],
-                  caddy_rules={}, monitor_unit='fixture', scans=[], containers=[])
-    (tmp_path / 'bundles').mkdir()
-    pending = collector.carry_over_file(config)
-    pending.write_text(contents)
-    if contents == 'unreadable':
-        original_read = Path.read_text
-
-        def read(path, *args, **kwargs):
-            if path == pending:
-                raise OSError('fixture unreadable')
-            return original_read(path, *args, **kwargs)
-        monkeypatch.setattr(Path, 'read_text', read)
-    original_changes, original_write = collector.collect_changes, collector.atomic_write
-    monkeypatch.setattr(collector, 'collect_changes', lambda config, material, now, **kwargs:
-                        original_changes(config, material, now, run, **kwargs))
-    monkeypatch.setattr(collector, 'atomic_write', lambda filename, text, uid, gid:
-                        original_write(filename, text, os.getuid(), os.getgid()))
-    monkeypatch.setattr(collector, 'log_lines', lambda *args: iter([]))
-    monkeypatch.setattr(collector, 'command', lambda *args: SimpleNamespace(stdout=''))
-    collector.collect(config)
-    manifest = json.loads(next((tmp_path / 'bundles').glob('*/manifest.json')).read_text())
-    assert manifest['carryOverExpired'] == 1
-    assert manifest['carriedOver'] == 0
-    assert pending.read_bytes() == b'[]\n'
-    assert Path(config['state_file']).read_text().strip() == HEAD
-    assert 'good.ts' in next((tmp_path / 'bundles').glob('*/changes.txt')).read_text()
+def test_requeue_failed_retains_unreachable_sha_and_continues(tmp_path, monkeypatch, capsys):
+    config, run, _ = queue_fixture(tmp_path, monkeypatch)
+    root = collector.queue_directories(config)
+    missing = 'f' * 40
+    for sha in [missing, HEAD]:
+        (root / 'failed' / (sha + '.json')).write_text(json.dumps(
+            {'sha': sha, 'failedUnits': [{'reason': 'refused_or_vague'}]}))
+    def read(repo, *args, **kwargs):
+        if args == ('cat-file', '-e', missing + '^{commit}'):
+            return SimpleNamespace(returncode=1)
+        return run(repo, *args, **kwargs)
+    counts = collector.requeue_failed(config, NOW, {'refused_or_vague'}, git_call=read)
+    assert counts == {'requeued': 1, 'retained': 1, 'dryRun': False}
+    output = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert output == [{'sha': missing, 'reason': 'commit_unreachable'}, counts]
+    assert (root / 'failed' / (missing + '.json')).exists()
+    assert queued(config)['sha'] == HEAD
 
 
-def test_changes_counts_newly_excluded_carry_over_entries(tmp_path):
-    config, run, calls = change_fixture(tmp_path, {'ignored.md': file_diff('ignored.md')})
-    pending = {'revision': HEAD, 'file': 'ignored.md', 'since': NOW.isoformat()}
-    collector.carry_over_file(config).write_text(json.dumps([pending]))
-    material = collector.Material(60000)
-    collector.collect_changes(config, material, NOW, run)
-    assert material.carry_over_expired == 1
-    assert material.lines == material.carry_over == []
-    assert not any('--' in args for args in calls)
-
-
-def test_changes_combines_priority_then_age_then_filename(tmp_path):
-    names = ['tests/old.test.ts', 'apps/api/src/auth.ts', 'apps/api/src/routes/new.ts',
-             'z.ts', 'a.ts', 'b.ts']
-    config, run, calls = change_fixture(tmp_path, {name: file_diff(name) for name in names})
-    entries = [{'revision': PREVIOUS + '..' + HEAD, 'file': name,
-                'since': (NOW - timedelta(days=days)).isoformat()}
-               for name, days in [('tests/old.test.ts', 3), ('b.ts', 1), ('z.ts', 2), ('a.ts', 1)]]
-    collector.carry_over_file(config).write_text(json.dumps(entries))
-    material = collector.Material(60000)
-    collector.collect_changes(config, material, NOW, run)
-    assert [args[-1].removeprefix(':(literal)') for args in calls if '--' in args] == [
-        'apps/api/src/routes/new.ts', 'apps/api/src/auth.ts', 'z.ts', 'a.ts', 'b.ts', 'tests/old.test.ts']
-    assert material.carry_over_expired == 0
-
-
-def test_changes_first_line_over_cap_adds_no_empty_section_and_counts_loss(tmp_path):
-    config, run, _ = change_fixture(tmp_path, {'a.ts': '+too-long-first-line\n+second\n'})
-    material = collector.Material(5)
-    collector.collect_changes(config, material, NOW, run)
-    assert material.lines == []
-    assert material.bytes == 0
-    assert material.dropped == 2
-    assert material.carry_over == []
-
-
-def test_changes_ten_thousand_line_prefix_is_incremental(tmp_path):
-    config, run, _ = change_fixture(tmp_path, {'large.ts': file_diff('large.ts', '+界界界\n' * 10000)})
-    material = collector.Material(collector.DEFAULT_CHANGES_BYTE_CAP)
-    started = perf_counter()
-    collector.collect_changes(config, material, NOW, run)
-    elapsed = perf_counter() - started
-    print(f'10000-line prefix: {elapsed:.6f}s')
-    assert elapsed < 5
-    assert collector.changes_chunk_count(material.text()) == collector.CHANGES_CHUNKS
-    assert 0 < material.dropped < 10000
-    assert material.text() == file_diff('large.ts', '+界界界\n' * (10000 - material.dropped))
-    assert material.carry_over == []
-
-
-def test_changes_full_budget_defers_ten_thousand_candidates_without_diff(tmp_path):
-    revision = PREVIOUS + '..' + HEAD
-    provenance = 'review revision ' + revision + '\n'
-    first = 'a' * (collector.REVIEW_CHUNK_BYTES - len(provenance) - 1) + '\n'
-    diffs = {'00000.ts': first, **{f'{i:05}.ts': '+later\n' for i in range(1, 10001)}}
-    config, run, calls = change_fixture(tmp_path, diffs)
-    material = collector.Material(collector.REVIEW_CHUNK_BYTES)
-    started = perf_counter()
-    collector.collect_changes(config, material, NOW, run, chunk_budget=1)
-    elapsed = perf_counter() - started
-    print(f'10000 deferred candidates: {elapsed:.6f}s')
-    assert elapsed < 5
-    assert material.text() == first + provenance
-    assert material.bytes == material.cap
-    assert collector.changes_chunk_count(material.text()) == 1
-    assert len(material.carry_over) == 10000
-    assert material.dropped == 0
-    assert len([args for args in calls if '--' in args]) == 1
+def test_cli_accepts_requeue_failed_options(tmp_path, monkeypatch):
+    config = tmp_path / 'fixture.json'
+    config.write_text('{"timezone":"Asia/Tokyo"}')
+    calls = []
+    monkeypatch.setattr(sys, 'argv', ['collect.py', str(config), '--mode', 'requeue-failed',
+                                    '--requeue-reasons', 'custom,completion_failed', '--dry-run'])
+    monkeypatch.setattr(collector, 'requeue_failed', lambda value, now, reasons, dry_run:
+                        calls.append((reasons, dry_run)))
+    collector.main()
+    assert calls == [({'custom', 'completion_failed'}, True)]

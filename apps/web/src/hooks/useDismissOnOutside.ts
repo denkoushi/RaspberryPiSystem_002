@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import type { RefObject } from 'react';
 
 /** 開いている間だけ、要素の外側の押下と Escape で `onDismiss` を呼ぶ。 */
-export function useDismissOnOutside(ref: RefObject<HTMLElement>, open: boolean, onDismiss: () => void) {
+export function useDismissOnOutside(ref: RefObject<HTMLElement | null>, open: boolean, onDismiss: () => void) {
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {

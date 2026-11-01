@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { existingRealIds, planSummary, readRealRows, readReceiptQuestions, realId, realPath } from './flywheel-real.mjs';
+import { updateRegression, existingRealIds, planSummary, readRealRows, readReceiptQuestions, realId, realPath } from './flywheel-real.mjs';
 
 test('consultation route rows are not read as receipt questions', async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-real-routes-'));
@@ -113,4 +113,81 @@ test('receipts sharing a session replay as follow-ups with the previous plan, sh
   assert.equal(alone.id, realId('他に何件ある？'));
   assert.equal('previousPlan' in alone, false);
   assert.equal(new Set(questions.map((item) => item.id)).size, questions.length);
+});
+
+test('planSummary preserves contentSpan without adding it to older plans', () => {
+  const plan = { semanticQuery: '架空の内容', contentSpan: '架空内容語', diagnostics: { extra: true } };
+  assert.equal(planSummary(plan).contentSpan, '架空内容語');
+  assert.equal('contentSpan' in planSummary({ semanticQuery: '旧形式' }), false);
+  assert.equal('diagnostics' in planSummary(plan), false);
+});
+
+test('duplicate days and requestIds never duplicate session turns or context', async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-dedup-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const rows = [0, 1, 2].map((i) => ({
+    requestId: `fiction-${i}`, sessionId: 'fiction-session', at: `2026-10-03T01:0${i}:00Z`, recordIds: [],
+    hermesReceipt: { question: `架空の質問${i}`, outcome: 'no_result', plan: { semanticQuery: '架空の内容', contentSpan: '架空内容語' } },
+  }));
+  for (const day of ['2026-10-02', '2026-10-03']) {
+    writeFileSync(path.join(dir, `receipts-${day}.jsonl`), [...rows, ...rows].map(JSON.stringify).join('\n'));
+  }
+  const questions = await readReceiptQuestions({ receiptsDir: dir, days: ['2026-10-03', '2026-10-03', '2026-10-02'] });
+  assert.deepEqual(questions.map((row) => row.turn), [0, 1, 2]);
+  assert.deepEqual(questions[2].context, ['架空の質問0', '架空の質問1']);
+  assert.equal(questions[2].previousPlan.contentSpan, '架空内容語');
+});
+
+test('regression success streak resets on failure, unsupported checks and skipped nights', () => {
+  const row = { id: 'r-fiction', source: 'real', question: '架空の追問い', filterCheck: { supported: true, ok: false } };
+  const queue = new Map();
+  updateRegression(queue, row, '2026-10-01');
+  updateRegression(queue, { ...row, filterCheck: { supported: true, ok: true } }, '2026-10-02');
+  assert.equal(queue.get(row.id).lastOk, 1);
+  updateRegression(queue, { ...row, filterCheck: { supported: true, ok: true } }, '2026-10-04');
+  assert.equal(queue.get(row.id).lastOk, 1);
+  updateRegression(queue, { ...row, filterCheck: { supported: false, ok: null } }, '2026-10-05');
+  assert.equal(queue.get(row.id).lastOk, 0);
+  updateRegression(queue, { ...row, filterCheck: { supported: true, ok: true } }, '2026-10-06');
+  updateRegression(queue, row, '2026-10-07');
+  assert.equal(queue.size, 1);
+  assert.equal(queue.get(row.id).lastOk, 0);
+  assert.equal(queue.get(row.id).firstFailedNight, '2026-10-01');
+});
+
+
+test('regression retires after three consecutive unsupported nights, including legacy rows', () => {
+  const row = { id: 'r-fiction', source: 'regression', question: '架空の追問い',
+    followUpCheck: { supported: false, ok: null, reason: 'no_verbatim_content' } };
+  const queue = new Map([[row.id, { id: row.id, lastNight: '2026-10-01', lastOk: 2 }]]);
+  for (const day of [2, 3]) {
+    updateRegression(queue, row, `2026-10-0${day}`);
+    assert.equal(queue.get(row.id).lastUnsupported, day - 1);
+    assert.equal(queue.get(row.id).lastOk, 0);
+    updateRegression(queue, row, `2026-10-0${day}`);
+    assert.equal(queue.get(row.id).lastUnsupported, day - 1);
+  }
+  updateRegression(queue, row, '2026-10-04');
+  assert.equal(queue.has(row.id), false);
+});
+
+test('regression unsupported streak resets on success, failure and skipped nights', () => {
+  const row = { id: 'r-fiction', source: 'regression', question: '架空の追問い',
+    filterCheck: { supported: false, ok: null } };
+  for (const ok of [true, false, null]) {
+    const queue = new Map([[row.id, { id: row.id, lastNight: '2026-10-01', lastOk: 0, lastUnsupported: 1 }]]);
+    updateRegression(queue, row, '2026-10-02');
+    assert.equal(queue.get(row.id).lastUnsupported, 2);
+    if (ok !== null) {
+      updateRegression(queue, { ...row, filterCheck: { supported: true, ok } }, '2026-10-03');
+      assert.equal(queue.get(row.id).lastUnsupported, 0);
+      assert.equal(queue.get(row.id).lastOk, Number(ok));
+    }
+    updateRegression(queue, row, '2026-10-04');
+    assert.equal(queue.get(row.id).lastUnsupported, 1);
+    updateRegression(queue, row, '2026-10-05');
+    assert.equal(queue.get(row.id).lastUnsupported, 2);
+    updateRegression(queue, row, '2026-10-06');
+    assert.equal(queue.has(row.id), false);
+  }
 });

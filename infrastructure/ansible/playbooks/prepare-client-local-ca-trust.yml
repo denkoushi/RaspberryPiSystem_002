@@ -8,10 +8,9 @@
     local_ca_install_path: /usr/local/share/ca-certificates/raspi-system-local-ca.crt
 
   pre_tasks:
-    - name: Refuse TalkPlaza and require explicit CA trust approval
+    - name: Require explicit CA trust approval
       ansible.builtin.assert:
         that:
-          - "'talkplaza' not in group_names"
           - normal_factory_local_ca_trust_approved | default(false) | bool
           - local_ca_certificate_source | default('') | length > 0
           - local_ca_certificate_sha256 | default('') is match('^[0-9a-f]{64}$')

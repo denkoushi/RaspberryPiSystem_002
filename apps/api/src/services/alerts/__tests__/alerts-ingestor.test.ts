@@ -10,6 +10,9 @@ vi.mock('../../kiosk-inquiry/system-notice-sources.js', () => ({
 }));
 
 // Prismaのモック（AlertsIngestorのインポート前にモックを設定）
+const mockLogger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), debug: vi.fn() }));
+vi.mock('../../../lib/logger.js', () => ({ logger: mockLogger }));
+const mockAlertFindMany = vi.hoisted(() => vi.fn());
 const mockAlertUpsert = vi.hoisted(() => vi.fn());
 const mockAlertDeliveryUpsert = vi.hoisted(() => vi.fn());
 
@@ -17,7 +20,7 @@ vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     alert: {
       upsert: mockAlertUpsert,
-      findMany: vi.fn(),
+      findMany: mockAlertFindMany,
       findUnique: vi.fn(),
       update: vi.fn()
     },
@@ -57,6 +60,7 @@ describe('AlertsIngestor (Phase2)', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockAlertFindMany.mockResolvedValue([]);
     mockAlertUpsert.mockClear();
     mockAlertDeliveryUpsert.mockClear();
     mockLoadAlertsDispatcherConfig.mockClear();
@@ -258,6 +262,63 @@ describe('AlertsIngestor (Phase2)', () => {
     await ingestor.ingestOnceNow();
 
     expect(mockAlertUpsert).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      { filePath: path.join(tmpDir, 'alert-invalid.json') },
+      '[AlertsIngestor] Failed to read/parse alert file, skipping'
+    );
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      { ingested: 0, skipped: 1, errors: 0, unparseable: 1 }, '[AlertsIngestor] Ingest completed'
+    );
+  });
+
+  it('warns about the same invalid file only once', async () => {
+    await fs.writeFile(path.join(tmpDir, 'alert-invalid.json'), 'invalid json content', 'utf-8');
+
+    const ingestor = new AlertsIngestor();
+    await ingestor.ingestOnceNow();
+    await ingestor.ingestOnceNow();
+
+    expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+    expect(mockLogger.info).toHaveBeenLastCalledWith(
+      { ingested: 0, skipped: 1, errors: 0, unparseable: 1 }, '[AlertsIngestor] Ingest completed'
+    );
+  });
+
+  it('keeps empty file skips at debug', async () => {
+    const filePath = path.join(tmpDir, 'alert-empty.json');
+    await fs.writeFile(filePath, '');
+    await new AlertsIngestor().ingestOnceNow();
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.debug).toHaveBeenCalledWith({ filePath }, '[AlertsIngestor] Empty alert file, skipping');
+  });
+
+  it('warns on read failure with the file path', async () => {
+    const filePath = path.join(tmpDir, 'alert-unreadable.json');
+    await fs.mkdir(filePath);
+    await new AlertsIngestor().ingestOnceNow();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      { filePath }, '[AlertsIngestor] Failed to read/parse alert file, skipping'
+    );
+  });
+
+  it('runs cleanup at most once per day and only when ingest is enabled', async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    const ingestor = new AlertsIngestor();
+    try {
+      process.env.ALERTS_DB_INGEST_ENABLED = 'false';
+      await ingestor.ingestOnceNow();
+      expect(mockLogger.info).not.toHaveBeenCalled();
+      process.env.ALERTS_DB_INGEST_ENABLED = 'true';
+      await ingestor.ingestOnceNow();
+      await ingestor.ingestOnceNow();
+      expect(mockLogger.info).toHaveBeenCalledTimes(1);
+      clock.mockReturnValue(now + 86400_000);
+      await ingestor.ingestOnceNow();
+      expect(mockLogger.info).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('handles string details as JSON object', async () => {

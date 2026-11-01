@@ -34,6 +34,7 @@ The runner includes the current application source and checked-out SHA, a Git bu
 
 - `config/backup.json`, application/web/Docker environment files, certificate files, backup-only SSH authority, and release configuration;
 - primary photos, PDFs, inspection drawings, assembly procedure images, measuring-instrument genre images, pallet-machine illustrations, CSV dashboards, and the integrity catalog; and
+- assembly check-sheet Excel originals (`storage/assembly-check-sheet-sources`), protected by Google Drive DR like `procedure-materials` and excluded from Dropbox recommendations;
 - the generated PostgreSQL dump and Git bundle in the run's private staging area.
 
 The runner excludes `.ssh` authority directories, Google OAuth credentials, the restic password, Tailscale identity/state for automatic restoration, thumbnails, PDF-page renders, signage renders, drawing derivatives, caches, logs, build results, Docker images, and the raw PostgreSQL volume. A missing optional path or dirty Git worktree creates a warning in the non-secret manifest; it does not stop the DB, Git, or available primary-file backup.

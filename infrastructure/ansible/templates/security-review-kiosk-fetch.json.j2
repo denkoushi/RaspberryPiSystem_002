@@ -1,0 +1,19 @@
+{
+  "kiosks": [
+{% for h in groups['kiosk'] %}
+    {"name": {{ h | to_json }}, "address": {{ hostvars[h].ansible_host | to_json }}, "user": {{ hostvars[h].ansible_user | to_json }}}{% if not loop.last %},{% endif %}
+
+{% endfor %}
+  ],
+  "state_dir": {{ security_review_kiosk_state_dir | to_json }},
+  "summary_path": {{ (security_review_kiosk_log_dir ~ '/kiosk-package-integrity.log') | to_json }},
+  "output_alerts_dir": {{ security_review_kiosk_output_alerts_dir | to_json }},
+  "log_path": {{ security_review_kiosk_log_path | to_json }},
+  "alerts_dir": {{ security_review_kiosk_alerts_dir | to_json }},
+  "host_timeout_seconds": {{ security_review_kiosk_host_timeout_seconds | int }},
+  "host_byte_cap": {{ security_review_kiosk_host_byte_cap | int }},
+  "log_byte_cap": {{ security_review_kiosk_log_byte_cap | int }},
+  "alert_byte_cap": {{ security_review_kiosk_alert_byte_cap | int }},
+  "alerts_per_host": {{ security_review_kiosk_alerts_per_host | int }},
+  "summary_line_cap": {{ security_review_kiosk_summary_line_cap | int }}
+}

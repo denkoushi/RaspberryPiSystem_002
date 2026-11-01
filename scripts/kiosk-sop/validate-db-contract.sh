@@ -53,7 +53,7 @@ docker volume create "$volume_name" >/dev/null
 docker run --detach \
   --name "$container_name" \
   --network "$network_name" \
-  --volume "$volume_name:/var/lib/postgresql/data" \
+  --volume "$volume_name:/var/lib/postgresql" \
   --publish 127.0.0.1::5432 \
   --env POSTGRES_PASSWORD=postgres \
   --env POSTGRES_DB=borrow_return \
@@ -61,7 +61,7 @@ docker run --detach \
   --health-interval=2s \
   --health-timeout=2s \
   --health-retries=30 \
-  pgvector/pgvector:pg15 >/dev/null
+  pgvector/pgvector:pg18 >/dev/null
 
 for _ in $(seq 1 60); do
   if docker exec "$container_name" pg_isready -U postgres -d borrow_return >/dev/null 2>&1; then

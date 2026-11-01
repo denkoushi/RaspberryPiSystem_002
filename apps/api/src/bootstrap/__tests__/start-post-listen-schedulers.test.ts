@@ -5,6 +5,11 @@ import { env } from '../../config/env.js';
 import { leaderboardShellSnapshotStore } from '../../services/production-schedule/leaderboard/kiosk-leaderboard-snapshot-store.js';
 import { createGrindingPlanningBoardStartupWarmup } from '../../services/production-schedule/grinding-planning-board/startup-warmup.js';
 
+const knowledge = vi.hoisted(() => ({
+  documents: { initialize: vi.fn() }, ensureReferenceData: vi.fn(),
+  worker: { start: vi.fn(), stop: vi.fn() }, procedureWorker: { start: vi.fn(), stop: vi.fn() }, procedureBoardWorker: { start: vi.fn(), stop: vi.fn() },
+}));
+vi.mock('../../services/knowledge/knowledge-runtime.js', () => ({ getKnowledgeRuntime: () => knowledge }));
 vi.mock('../../services/production-schedule/grinding-planning-board/startup-warmup.js', () => ({
   createGrindingPlanningBoardStartupWarmup: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() }))
 }));
@@ -55,6 +60,27 @@ function trackedSteps(
 }
 
 describe('start-post-listen-schedulers fail-closed group', () => {
+  it('starts/stops all knowledge workers and cleans them up on startup and later group failure', async () => {
+    vi.stubEnv('HERMES_KNOWLEDGE_ENABLED', 'true');
+    try {
+      const definition = () => buildPostListenSchedulerDefinitions({} as FastifyInstance).find(step => step.name === 'hermes-knowledge')!;
+      const workers = [knowledge.worker, knowledge.procedureWorker, knowledge.procedureBoardWorker];
+      vi.clearAllMocks();
+      await definition().start(); await definition().stop();
+      for (const worker of workers) { expect(worker.start).toHaveBeenCalledOnce(); expect(worker.stop).toHaveBeenCalledOnce(); }
+      vi.clearAllMocks();
+      await expect(startSchedulerStepGroup([definition(), { name: 'later', start: () => { throw new Error('later failed'); }, stop: vi.fn() }])).rejects.toThrow('later failed');
+      for (const worker of workers) expect(worker.stop).toHaveBeenCalledOnce();
+      vi.clearAllMocks(); knowledge.procedureBoardWorker.start.mockImplementationOnce(() => { throw new Error('board start failed'); });
+      await expect(definition().start()).rejects.toThrow('board start failed');
+      for (const worker of workers) expect(worker.stop).toHaveBeenCalledOnce();
+      vi.clearAllMocks(); knowledge.ensureReferenceData.mockRejectedValueOnce(new Error('reference failed'));
+      knowledge.worker.stop.mockRejectedValueOnce(new Error('stop failed'));
+      await expect(definition().start()).rejects.toBeInstanceOf(SchedulerStepStateAmbiguousError);
+      for (const worker of workers) expect(worker.stop).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it('wires warmup to the kiosk route snapshot store and registers its shutdown', async () => {
     const definition = buildPostListenSchedulerDefinitions({} as FastifyInstance)
       .find((step) => step.name === 'grinding-planning-board-startup-warmup')!;
@@ -74,7 +100,13 @@ describe('start-post-listen-schedulers fail-closed group', () => {
     const names = listPostListenSchedulerNames();
     expect(names).toContain('backup');
     expect(names).toContain('client-network-log-retention');
+    expect(names).toContain('watch-camera-retention');
+    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'watch-camera-retention')).toBe(true);
     expect(names).toContain('csv-import');
+    expect(names).toContain('security-review-queue');
+    expect(names).toContain('advisory-check');
+    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some(step => step.name === 'advisory-check')).toBe(true);
+    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'security-review-queue')).toBe(true);
   });
 
   it('stops started steps in reverse order', async () => {
@@ -161,6 +193,8 @@ describe('start-post-listen-schedulers naming contract', () => {
       'procedure-term-learning',
       'business-hermes-nightly',
       'security-review-nightly',
+      'security-review-queue',
+      'advisory-check',
       'fkojunst-mail-superseded-prune',
       'file-storage-integrity-backfill',
       'backup',
@@ -172,6 +206,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'gmail-trash-cleanup',
       'due-management-tuning',
       'alerts-dispatcher',
+      'watch-camera-retention',
       'client-network-log-retention',
       'client-heartbeat-monitor',
       'system-notice-evaluator',

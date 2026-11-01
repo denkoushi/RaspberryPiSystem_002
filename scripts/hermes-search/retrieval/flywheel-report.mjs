@@ -7,7 +7,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bareId } from './flywheel-pairs.mjs';
-import { filterOutcome } from './flywheel-filter-check.mjs';
+import { filterOutcome, followUpLoss } from './flywheel-filter-check.mjs';
+import { regressionOk } from './flywheel-real.mjs';
 import { parseReceiptLines, summarizeReceipts, formatRouteReport } from './receipt-report.mjs';
 
 export function nightOfFile(filePath) {
@@ -170,16 +171,43 @@ function realBucket() {
 
 function countReal(bucket, row) {
   bucket.questions += 1;
-  if (!row.relevant?.length) return;
+  if (!row.relevant?.length) {
+    if (row.followUpCheck?.supported === true) {
+      if (row.followUpCheck.ok === true) bucket.shown += 1;
+      else if (row.followUpCheck.ok === false) {
+        const loss = followUpLoss(row.followUpCheck, null);
+        if (loss) bucket.lossStages[loss] = (bucket.lossStages[loss] ?? 0) + 1;
+      }
+    }
+    return;
+  }
   bucket.withRelevant += 1;
   if (row.live && row.live.loss == null) bucket.shown += 1;
   else if (row.live?.loss != null) bucket.lossStages[row.live.loss] = (bucket.lossStages[row.live.loss] ?? 0) + 1;
 }
 
 export function summarizeReal(rows) {
-  const summary = { plannerVersions: plannerVersionCounts(rows), ...realBucket(), dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 }, followUp: { ...realBucket(), filterMismatch: 0, byAction: {}, countAnswers: 0 } };
+  const summary = { regression: { replayed: 0, ok: 0, failed: 0 }, plannerVersions: plannerVersionCounts(rows), ...realBucket(), dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 }, followUp: { check: { supported: 0, ok: 0, scope: 0, missed: 0, wrong: 0, unsupported: {} }, ...realBucket(), filterMismatch: 0, byAction: {}, countAnswers: 0 } };
   for (const row of rows) {
-    if (row?.source !== 'real') continue;
+    if (!['real', 'regression'].includes(row?.source)) continue;
+    if (row.source === 'regression') {
+      summary.regression.replayed += 1;
+      summary.regression[regressionOk(row) === true ? 'ok' : 'failed'] += 1;
+    }
+    if (row.followUpCheck) {
+      const check = summary.followUp.check;
+      if (row.followUpCheck.supported === true) {
+        check.supported += 1;
+        if (row.followUpCheck.ok === true) check.ok += 1;
+        else {
+          const loss = followUpLoss(row.followUpCheck, null);
+          if (loss) check[loss.replace('follow_up_', '')] += 1;
+        }
+      } else {
+        const reason = row.followUpCheck.reason ?? 'unknown';
+        check.unsupported[reason] = (check.unsupported[reason] ?? 0) + 1;
+      }
+    }
     const followUp = Boolean(row.previousPlan);
     const outcome = row.dayOutcome;
     summary.dayOutcomes[outcome] = (summary.dayOutcomes[outcome] ?? 0) + 1;
@@ -219,6 +247,8 @@ export function formatRealReport(night, summary) {
     + (followUp.questions ? `\n  follow-up turns ${followUp.questions}, with relevant ${followUp.withRelevant}, relevant shown ${followUp.shown}`
       + `, lost ${Object.keys(followUp.lossStages).length ? counts(followUp.lossStages) : 'none'}, filter mismatch ${followUp.filterMismatch}, count answers ${followUp.countAnswers ?? 0}`
       + Object.entries(followUp.byAction ?? {}).map(([action, bucket]) => `\n    ${action}: turns ${bucket.questions}, with relevant ${bucket.withRelevant}, relevant shown ${bucket.shown}, lost ${Object.keys(bucket.lossStages).length ? counts(bucket.lossStages) : 'none'}`).join('') : '')
+    + (followUp.check ? `\n  follow-up check: supported ${followUp.check.supported}, ok ${followUp.check.ok}, scope ${followUp.check.scope}, missed ${followUp.check.missed}, wrong ${followUp.check.wrong}, unsupported ${Object.values(followUp.check.unsupported).reduce((sum, count) => sum + count, 0)} (${counts(followUp.check.unsupported) || 'none'})` : '')
+    + (summary.regression ? `\n  regressions: replayed ${summary.regression.replayed}, ok ${summary.regression.ok}, failed ${summary.regression.failed}` : '')
     + formatPlannerVersions(summary.plannerVersions);
 }
 

@@ -237,6 +237,80 @@ describeIntegration('grinding planning board lightweight load summary integratio
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+  it.each([
+    { name: 'row match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'masked order product match', fseiban: '********', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'masked order product mismatch', fseiban: '********', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 0 },
+    { name: 'NULL order retains the product residual', fseiban: null, productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 0 },
+    { name: 'NULL order and NULL product retain the product residual', fseiban: null, productNo: null, overrideProductNo: '', split: false, resources: ['G-02'], movedCount: 0 },
+    { name: 'empty order matches without a product', fseiban: '', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'split match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02'], movedCount: 1 },
+    { name: 'two matching row overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02', 'G-02'], movedCount: 2 },
+    { name: 'two matching split overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02', 'G-02'], movedCount: 2 },
+    { name: 'NULL resource falls back to original', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: [null], movedCount: 0 },
+    { name: 'NULL split resource falls back to original', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: [null], movedCount: 0 },
+    { name: 'NULL resource preserves duplicate matches', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: [null, 'G-02'], movedCount: 1 }
+  ])('preserves override join semantics: $name', async (spec) => {
+    const siteKey = `it-${randomUUID().slice(0, 8)}`;
+    const rowData = {
+      FSEIBAN: spec.fseiban, ProductNo: spec.productNo,
+      FHINCD: 'PART', FSIGENCD: 'G-01', FKOJUN: '1', FSIGENSHOYORYO: '10'
+    };
+    const created = await db().csvDashboardRow.create({
+      data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+        dataHash: randomUUID(), rowData },
+      select: { id: true }
+    });
+    const fixture = { siteKey, rowIds: [created.id], splitIds: [] as string[] };
+    fixtures.push(fixture);
+    if (spec.split) {
+      await db().productionScheduleOrderSupplement.create({
+        data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: created.id,
+          sourceCsvDashboardId: siteKey, productNo: 'P1', resourceCd: 'G-01', processOrder: '1', plannedQuantity: 1 }
+      });
+      const split = await db().productionScheduleOrderSplit.create({
+        data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: created.id,
+          splitNo: 1, splitQuantity: 1 },
+        select: { id: true }
+      });
+      fixture.splitIds.push(split.id);
+    }
+    const rowItemKey = buildGrindingPlanningBoardRowItemId({ ...rowData, ProductNo: spec.overrideProductNo });
+    const splitItemKey = `split:${fixture.splitIds[0] ?? 'unmatched'}`;
+    // Supply duplicate bindings at the reader boundary: persisted item keys are unique.
+    // Both kinds are present to catch accidental cross-kind matches; the aggregate SQL runs in Postgres.
+    const overrideRows = [
+      ...spec.resources.map((overrideResourceCd) => ({
+        itemKey: spec.split ? splitItemKey : rowItemKey, overrideResourceCd
+      })),
+      { itemKey: spec.split ? rowItemKey : splitItemKey, overrideResourceCd: 'G-99' }
+    ];
+    const client = {
+      async $queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T> {
+        if ('sql' in query && !query.sql.includes('"effectiveItems"')) return overrideRows as T;
+        return db().$queryRaw<T>(query, ...values);
+      }
+    };
+    const summary = await summaryReader()({
+      client, siteKey, category: 'grinding', splitEnabled: true,
+      leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ${created.id}`,
+      isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
+    });
+    const itemCount = spec.resources.length;
+    expect(summary.load.find((entry) => entry.resourceCd === 'G-01')).toMatchObject({
+      originalItemCount: itemCount, originalRequiredMinutes: 10 * itemCount,
+      alternateItemCount: itemCount - spec.movedCount, alternateRequiredMinutes: 10 * (itemCount - spec.movedCount)
+    });
+    if (spec.movedCount > 0) {
+      expect(summary.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({
+        originalItemCount: 0, originalRequiredMinutes: 0,
+        alternateItemCount: spec.movedCount, alternateRequiredMinutes: 10 * spec.movedCount
+      });
+    }
+    expect(summary.load.map((entry) => entry.resourceCd)).toEqual(spec.movedCount > 0 ? ['G-01', 'G-02'] : ['G-01']);
+    expect(summary.unknownRequiredMinutesCount).toBe(0);
+  });
+
   it('counts separate unassigned orders and applies only the matching order override', async () => {
     const siteKey = `it-${randomUUID().slice(0, 8)}`;
     const base = { FSEIBAN: '********', FHINCD: 'MASKED-PART', FSIGENCD: 'G-01', FKOJUN: '230' };

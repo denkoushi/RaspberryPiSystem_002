@@ -10,10 +10,9 @@
     pi5_private_key_path: "{{ repo_path }}/certs/key.pem"
 
   pre_tasks:
-    - name: Refuse TalkPlaza and require explicit certificate activation approval
+    - name: Require explicit certificate activation approval
       ansible.builtin.assert:
         that:
-          - "'talkplaza' not in group_names"
           - normal_factory_local_ca_certificate_activation_approved | default(false) | bool
           - local_ca_certificate_source | default('') | length > 0
           - pi5_leaf_certificate_source | default('') | length > 0

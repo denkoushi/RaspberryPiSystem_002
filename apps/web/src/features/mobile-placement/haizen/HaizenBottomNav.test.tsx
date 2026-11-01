@@ -21,6 +21,7 @@ describe('HaizenBottomNav', () => {
     fireEvent.click(within(bottom).getByRole('button', { name: 'ほかの画面' }));
     expect(onMenu).toHaveBeenCalledOnce();
     expect(bottom.lastElementChild).toContainElement(tablist);
+    expect(tablist.parentElement).toHaveClass('pr-[var(--hp-hermes-gutter)]');
     expect(bottom.firstElementChild).toContainElement(screen.getByRole('button', { name: '次を照合' }));
   });
 

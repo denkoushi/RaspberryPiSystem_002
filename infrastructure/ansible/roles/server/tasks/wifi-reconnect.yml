@@ -1,0 +1,34 @@
+---
+- name: Deploy Pi5 Wi-Fi reconnect script
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/pi5-wifi-reconnect.sh.j2"
+    dest: /usr/local/bin/pi5-wifi-reconnect.sh
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy Pi5 Wi-Fi reconnect systemd service
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/pi5-wifi-reconnect.service.j2"
+    dest: /etc/systemd/system/pi5-wifi-reconnect.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy Pi5 Wi-Fi reconnect systemd timer
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/pi5-wifi-reconnect.timer.j2"
+    dest: /etc/systemd/system/pi5-wifi-reconnect.timer
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Reload systemd for Wi-Fi reconnect units
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start Wi-Fi reconnect timer
+  ansible.builtin.systemd:
+    name: pi5-wifi-reconnect.timer
+    enabled: true
+    state: started

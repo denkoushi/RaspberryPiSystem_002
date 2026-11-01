@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE
+
 import json
 import tempfile
 import unittest
@@ -77,7 +79,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
                 service="web",
                 release_sha=SHA,
                 expected_config_hash=config_hash,
-                repository="ghcr.io/denkoushi/raspisys-web",
+                repository=f"{GHCR_NAMESPACE}/raspisys-web",
                 metadata_path=metadata_path,
             )
         joined = "\n".join(command)
@@ -87,10 +89,10 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         self.assertIn("--sbom=true", command)
         self.assertIn(f"BUILD_COMMIT={SHA}", command)
         self.assertIn(
-            "type=registry,ref=ghcr.io/denkoushi/raspisys-web:buildcache-web-arm64", command
+            f"type=registry,ref={GHCR_NAMESPACE}/raspisys-web:buildcache-web-arm64", command
         )
         cache_to = command[command.index("--cache-to") + 1]
-        self.assertTrue(cache_to.startswith("type=registry,ref=ghcr.io/denkoushi/raspisys-web:buildcache-web-arm64,"))
+        self.assertTrue(cache_to.startswith(f"type=registry,ref={GHCR_NAMESPACE}/raspisys-web:buildcache-web-arm64,"))
         self.assertIn("mode=max", cache_to)
         self.assertNotIn("type=gha", cache_to)
         self.assertIn("VITE_AGENT_WS_MODE=local", command)
@@ -109,7 +111,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
                     service="api",
                     release_sha=SHA,
                     expected_config_hash="b" * 64,
-                    repository="ghcr.io/denkoushi/raspisys-api",
+                    repository=f"{GHCR_NAMESPACE}/raspisys-api",
                     metadata_path=Path(directory) / "metadata.json",
                 )
 
@@ -129,7 +131,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
                     service="api",
                     release_sha=SHA,
                     expected_config_hash=build_config_hash(contract),
-                    repository="ghcr.io/denkoushi/raspisys-web",
+                    repository=f"{GHCR_NAMESPACE}/raspisys-web",
                     metadata_path=Path(directory) / "metadata.json",
                 )
 
@@ -281,11 +283,11 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
     def test_api_runtime_boundary_precedes_application_source_and_provenance(self) -> None:
         runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
         workspace_boundary = API_DOCKERFILE.index(
-            "FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS workspace"
+            "FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS workspace"
         )
         build_boundary = API_DOCKERFILE.index("FROM workspace AS build")
         runtime_stage = API_DOCKERFILE.index(
-            "FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS api-runtime"
+            "FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS api-runtime"
         )
         self.assertLess(workspace_boundary, build_boundary)
         self.assertLess(build_boundary, runtime_stage)
@@ -330,7 +332,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
     def test_api_runtime_uses_only_required_production_dependencies(self) -> None:
         runtime_boundary = API_DOCKERFILE.index("FROM api-runtime AS api")
         runtime_stage = API_DOCKERFILE.index(
-            "FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS api-runtime"
+            "FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS api-runtime"
         )
         runtime_definition = API_DOCKERFILE[runtime_stage:runtime_boundary]
 
@@ -349,7 +351,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         )
         self.assertNotIn("COPY apps/web/package.json", API_DOCKERFILE)
         workspace_start = API_DOCKERFILE.index(
-            "FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS workspace"
+            "FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS workspace"
         )
         workspace_definition = API_DOCKERFILE[
             workspace_start : API_DOCKERFILE.index("FROM workspace AS build")

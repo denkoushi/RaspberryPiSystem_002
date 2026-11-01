@@ -197,8 +197,8 @@ cp /opt/backups/api_env_YYYYMMDD_HHMMSS.env apps/api/.env
 ### ステップ6: 依存関係のインストール
 
 ```bash
-# pnpmの有効化
-corepack enable
+# package.json で指定された pnpm のインストール
+npm install -g "$(node -p "require('./package.json').packageManager")"
 
 # 依存関係のインストール
 pnpm install

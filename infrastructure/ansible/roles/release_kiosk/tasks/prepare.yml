@@ -10,7 +10,7 @@
       - >-
         ('torque-agent' not in release_kiosk_agent_services)
         or (release_torque_cutover | default(false) | bool
-          and release_kiosk_torque_image is match('^ghcr\\.io/denkoushi/raspisys-torque-agent@sha256:[0-9a-f]{64}$'))
+          and release_kiosk_torque_image is match('^ghcr\\.io/' ~ (raspisys_github_owner | regex_escape) ~ '/raspisys-torque-agent@sha256:[0-9a-f]{64}$'))
         or (not (release_torque_cutover | default(false) | bool)
           and release_sha in release_kiosk_torque_image)
       - >-
@@ -401,7 +401,11 @@
 
 - name: Stage the Pi4 storage maintenance script
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../../scripts/client/pi4-storage-maintenance.sh"
+    content: >-
+      {{ lookup('file', playbook_dir ~ '/../../../scripts/client/pi4-storage-maintenance.sh')
+         | regex_replace('(?m)^GITHUB_OWNER=.*$', 'GITHUB_OWNER=' ~ (raspisys_github_owner | quote))
+         | regex_replace('(?m)^HISTORICAL_GITHUB_OWNERS=.*$',
+                         'HISTORICAL_GITHUB_OWNERS=(' ~ (raspisys_historical_github_owners | map('quote') | join(' ')) ~ ')') }}
     dest: "{{ release_kiosk_stage_dir }}/pi4-storage-maintenance.sh"
     owner: root
     group: root

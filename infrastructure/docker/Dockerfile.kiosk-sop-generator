@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS node-runtime
+FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS node-runtime
 FROM mcr.microsoft.com/playwright:v1.56.1-noble@sha256:f1e7e01021efd65dd1a2c56064be399f3e4de00fd021ac561325f2bfbb2b837a
 
 WORKDIR /workspace
@@ -9,10 +9,7 @@ ENV CI=true \
     LC_ALL=ja_JP.UTF-8
 
 COPY --from=node-runtime /usr/local/ /usr/local/
-# The node image's yarn symlinks point into /opt, which is not copied; drop them so corepack enable does not fail on a dangling link.
-RUN rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg \
-    && node --version | grep -Eq '^v24\.' \
-    && corepack enable
+RUN node --version | grep -Eq '^v24\.'
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY patches ./patches
 COPY infrastructure/docker/Dockerfile.kiosk-sop-generator infrastructure/docker/Dockerfile.kiosk-sop-generator
@@ -23,7 +20,8 @@ COPY packages/part-search-core/package.json packages/part-search-core/package.js
 COPY packages/slip-match-core/package.json packages/slip-match-core/package.json
 COPY packages/shelf-layout-core/package.json packages/shelf-layout-core/package.json
 RUN --mount=type=cache,id=raspi-kiosk-sop-pnpm,target=/pnpm/store,sharing=locked \
-    pnpm install --frozen-lockfile --store-dir=/pnpm/store
+    npm install -g "$(node -p "require('./package.json').packageManager")" \
+    && pnpm install --frozen-lockfile --store-dir=/pnpm/store
 COPY packages ./packages
 RUN pnpm --filter @raspi-system/shared-types build \
     && pnpm --filter @raspi-system/kiosk-sop-core build \

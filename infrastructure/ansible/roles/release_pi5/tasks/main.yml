@@ -112,6 +112,19 @@
         - name: Report that the Pi5 Tailscale HTTPS entrance was not applied
           ansible.builtin.debug:
             msg: "The Tailscale HTTPS entrance was not applied on {{ inventory_hostname }}; the release continues."
+
+    # Same non-fatal host policy as above: /admin needs the real tailnet source.
+    - name: Converge the Pi5 Tailscale source address policy
+      when:
+        - "'server' in group_names"
+        - tailscale_enabled | default(false)
+      block:
+        - name: Apply the Pi5 Tailscale source address policy
+          ansible.builtin.import_tasks: host-tailscale-no-snat.yml
+      rescue:
+        - name: Report that the Pi5 Tailscale source address policy was not applied
+          ansible.builtin.debug:
+            msg: "The Tailscale source address policy was not applied on {{ inventory_hostname }}; the release continues."
   always:
     - name: Clear the release marker even if rollback or cleanup failed
       ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getOrderPlacementBranches, getMobilePlacementShelfMachines, moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
 import { api } from '../../../api/http';
 import { resetMobileConnectivityForTests, mobileRequest, MOBILE_REQUEST_TIMEOUT_MS, canUseMobileNetwork } from '../connectivity';
+import { mobileLocalDataStore } from '../local-data/mobileLocalDataStore';
 import { saveOrderBranches } from '../orderPlacementBranchesCache';
 import { saveScanFrame } from '../scan-frames/saveScanFrame';
 import { shelfOfflineQueueStore } from '../shelfMaster/offline/shelfOfflineQueueStore';
@@ -220,7 +221,7 @@ describe('Haizen hub', () => {
     expect(within(screen.getByRole('contentinfo')).getAllByRole('button')).toHaveLength(1);
     const slipButton = screen.getByRole('button', { name: '移動票を読む' });
     expect(slipButton.closest('main')).toBeNull();
-    expect(slipButton.parentElement?.nextElementSibling).toBe(screen.getByRole('contentinfo'));
+    expect(slipButton.parentElement?.parentElement?.nextElementSibling).toBe(screen.getByRole('contentinfo'));
     const list = within(screen.getByRole('region', { name: '棚の写真' }));
     expect(screen.queryByRole('button', { name: '棚を読む' })).not.toBeInTheDocument();
     expect(screen.queryByText('先に票を読む')).not.toBeInTheDocument();
@@ -272,7 +273,7 @@ describe('Haizen hub', () => {
     expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toBeDisabled();
     typeSlips();
     const result = await screen.findByRole('status', { name: '一致' });
-    expect(result).toHaveClass('shrink-0', 'items-center', 'py-1.5');
+    expect(result).toHaveClass('shrink-0', 'items-center', 'h-12');
     expect(result).toHaveTextContent('FS1 PART1 ブラケット');
     expect(screen.getByRole('group', { name: '分配' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '次を照合' })).toBeEnabled();
@@ -288,7 +289,7 @@ describe('Haizen hub', () => {
     expect(registerOrderPlacement).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '閉じる', exact: true }));
     const primary = screen.getByRole('button', { name: 'ここに置く' });
-    expect(primary.parentElement).toBe(screen.getByRole('button', { name: '移動票を読む' }).parentElement);
+    expect(primary.parentElement).toBe(screen.getByRole('button', { name: '移動票を読む' }).parentElement?.parentElement);
     fireEvent.click(primary);
     // The slips clear while the send is still waiting on the network.
     expect(screen.getByRole('button', { name: '移動票を読む' })).not.toHaveTextContent('0002178005');
@@ -387,6 +388,69 @@ describe('Haizen hub', () => {
     expect(screen.queryByRole('status', { name: '一致' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現品票を読む' })).toBeInTheDocument();
   });
+  it.each(['manual', 'scan'] as const)('clears a stale transfer part after a new order via %s', async (method) => {
+    mount(); typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    fireEvent.change(screen.getByLabelText('移動票 部品番号'), { target: { value: 'STALE' } });
+    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferPartBarcodeRaw: 'STALE' })));
+    if (method === 'manual') {
+      fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: '0004099556' } });
+    } else {
+      mocks.scanValue = '0004099556';
+      fireEvent.click(screen.getByRole('button', { name: '移動票 製造orderをスキャン' }));
+      fireEvent.click(screen.getByText('scan'));
+      fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    }
+    expect(screen.getByLabelText('移動票 部品番号')).toHaveValue('');
+    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferOrderBarcodeRaw: '0004099556', transferPartBarcodeRaw: '' })));
+  });
+
+  it.each([
+    ['', 'MD004883240'],
+    ['0002178005', ' MD000006755-002 ']
+  ])('routes a part scan without replacing transfer order %j', (order, part) => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: order } });
+    fireEvent.change(screen.getByLabelText('移動票 部品番号'), { target: { value: 'STALE' } });
+    mocks.scanValue = part;
+    fireEvent.click(screen.getByRole('button', { name: '移動票 製造orderをスキャン' }));
+    fireEvent.click(screen.getByText('scan'));
+    expect(screen.queryByRole('dialog', { name: 'scanner' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    expect(screen.getByLabelText('移動票 製造order')).toHaveValue(order);
+    expect(screen.getByLabelText('移動票 部品番号')).toHaveValue(part.trim());
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps alphabetic transfer scans as order values in the place tab', () => {
+    mount();
+    fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
+    mocks.scanValue = 'MD004883240';
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+    expect(screen.getByLabelText('移動票 製造order')).toHaveValue('MD004883240');
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+  });
+
+  describe.each(['api', 'device'] as const)('part mismatch messages via %s', (source) => {
+    it.each([
+      ['TRANSFER_PART_MISMATCH', '移動票の部品番号が違います'],
+      ['ACTUAL_PART_MISMATCH', '現品票の部品番号が違います'],
+      ['FSEIBAN_OR_PART_PAIR_MISMATCH', '部品が違います'],
+      [undefined, '部品が違います']
+    ] as const)('renders %s', async (legacyReason, message) => {
+      const response = { ok: false, reason: 'different_part' as const, legacyReason };
+      if (source === 'device') vi.spyOn(mobileLocalDataStore, 'verify').mockResolvedValue(response);
+      else vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue(response);
+      mount(); typeSlips();
+      expect(await screen.findByRole('status', { name: '不一致' })).toHaveTextContent(message);
+      if (source === 'device') expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+      else expect(verifyMobilePlacementSlipMatch).toHaveBeenCalled();
+    });
+  });
   it('mismatch retries the actual slip, scanner stays auto-native', async () => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: false, reason: 'different_seiban', actual: { fseiban: 'FS2' } });
     mount();
@@ -451,7 +515,7 @@ describe('Haizen hub', () => {
     expect(registerOrderPlacement).not.toHaveBeenCalled();
   });
   it.each([
-    ['different_seiban', '不一致', 'この注文は別の製番(FS2)の材料です'],
+    ['different_seiban', '不一致', '別の製番'],
     ['different_part', '不一致', '部品が違います'],
     ['order_not_found', '未登録', 'この注文番号はまだ届いていません'],
     ['transfer_not_found', '未登録', 'この製造orderが見つかりません']
@@ -459,7 +523,7 @@ describe('Haizen hub', () => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: false, reason, actual: { fseiban: 'FS2' } });
     mount(); typeSlips();
     await screen.findByRole('status', { name: title });
-    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: title })).toHaveTextContent(message);
     if (title === '未登録') {
       expect(screen.getByRole('button', { name: '写真で製番' })).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '部品番号' }));
@@ -508,11 +572,11 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
     const mo = screen.getByRole('button', { name: '移動票を読む' });
     const po = screen.getByRole('button', { name: '現品票を読む' });
-    expect(mo.parentElement).toBe(po.parentElement);
+    expect(mo.parentElement?.parentElement).toBe(po.parentElement?.parentElement);
     const primary = screen.getByRole('button', { name: 'ここに置く' });
     expect(primary).toBeDisabled();
-    expect(mo.parentElement).toBe(primary.parentElement);
-    expect(po.parentElement).toHaveClass('grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]');
+    expect(mo.parentElement?.parentElement).toBe(primary.parentElement);
+    expect(po.parentElement?.parentElement).toHaveClass('grid-cols-3');
     expect(mo.querySelector('svg')).toBeNull();
     expect(po.querySelector('svg')).toBeNull();
     fireEvent.click(po);
@@ -572,7 +636,8 @@ describe('Haizen hub', () => {
   it('shows six compact stamp buttons above the primary action and requires stamp then shelf', async () => {
     mount(); typePlaceSlip();
     const group = screen.getByRole('group', { name: '分配' });
-    expect(within(group).getAllByRole('button').map(button => button.textContent)).toEqual(['分配なし', '分配1', '分配2', '分配3', '分配4', '分配5']);
+    expect(within(group).getAllByRole('button').map(button => button.textContent)).toEqual(['分配なし', '1', '2', '3', '4', '5']);
+    expect(within(group).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['分配なし', '分配1', '分配2', '分配3', '分配4', '分配5']);
     expect(group.closest('main')).toBeNull();
     expect(group.parentElement?.nextElementSibling).toBe(screen.getByRole('button', { name: 'ここに置く' }).parentElement);
     expect(screen.queryByText(/新規/)).not.toBeInTheDocument();
@@ -754,7 +819,7 @@ describe('Haizen scan frame wiring', () => {
     const capture = vi.mocked(saveScanFrame).mock.calls[0][0];
     fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '大きい画面で選ぶ' }));
-    fireEvent.click(screen.getByRole('button', { name: 'QR', exact: true }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '棚を選ぶ' })).getByRole('button', { name: 'QR', exact: true }));
     mocks.scanValue = 'A-03';
     fireEvent.click(screen.getByText('scan'));
     expect(screen.getByRole('button', { name: 'ここに置く' })).toBeEnabled();
@@ -766,6 +831,7 @@ describe('Haizen scan frame wiring', () => {
   });
   it.each(['scan', 'manual'])('keeps the transfer photo through actual slip %s and shelf choice on verify', async (mode) => {
     mount();
+    mocks.scanValue = '0002178005';
     fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
     fireEvent.click(screen.getByText('scan'));
     const capture = vi.mocked(saveScanFrame).mock.calls[0][0];

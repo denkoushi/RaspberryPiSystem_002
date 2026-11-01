@@ -2,7 +2,9 @@
 
 - 在庫の準備（取込エラー取消・検索・タグ交換・課別選択肢）: [Plan](./plans/kiosk-inventory-setup-seigi.md)
 
+- 端末100台規模に向けた不足点と改善計画（サーバーの予備機、全台の監視、停止中の記録、更新の並列化、使い捨て端末、SD保護、非力な機種）: [ExecPlan](./plans/fleet-100-scale-gap-execplan.md)
 - Pi Zero棚スキャナーの独立配備・運用: [Runbook](./runbooks/zero-edge-agent.md)
+- Pi Zero 2 W 監視カメラ(人が来たときだけ静止画を保存): [Runbook](./runbooks/watch-camera.md)
 - キオスクのポータル画面・端末別カード選択: [Plan](./plans/kiosk-portal.md)
 - フローティングChatの操作ガイド（組立の登録・編集、固定案内の最初のスライス）: [ExecPlan](./plans/hermes-operation-guide-execplan.md)
 - フローティングChatをシステム全体の案内役にする（操作の問い合わせ、不具合の受付、入口の一本化、計測）: [ExecPlan](./plans/kiosk-chat-system-guide-execplan.md)
@@ -1405,7 +1407,7 @@
 
 ### 🆕 最新アップデート（2026-01-14）
 
-- **トークプラザ工場マルチサイト対応 正本**: [KB-159](./knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) · [KB-160](./knowledge-base/infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) · [KB-161](./knowledge-base/infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) · [KB-162](./knowledge-base/infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) · [talkplaza-rollout](./guides/talkplaza-rollout.md) · [deployment](./guides/deployment.md)。
+- **トークプラザ別拠点構成の廃止 正本**: [KB-159](./knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則) · [KB-160](./knowledge-base/infrastructure/ansible-deployment.md#kb-160-デプロイスクリプトのinventory引数必須化誤デプロイ防止) · [KB-161](./knowledge-base/infrastructure/backup-restore.md#kb-161-dropbox-basepathの分離対応拠点別フォルダ分離) · [KB-162](./knowledge-base/infrastructure/ansible-deployment.md#kb-162-デプロイスクリプトのinventoryplaybookパス相対パス修正pi5上での実行時) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-01-09）
 
@@ -1902,6 +1904,7 @@ APIの概要と詳細。
 | [deployment.md](./guides/deployment.md) | デプロイ手順 |
 | [production-setup.md](./guides/production-setup.md) | 本番環境セットアップ |
 | [backup-and-restore.md](./guides/backup-and-restore.md) | バックアップ・リストア |
+| [PostgreSQL 15→18移行Runbook](./runbooks/postgres-15-to-18-upgrade.md) | 移行・比較・切戻し |
 | [monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [csv-import-export.md](./guides/csv-import-export.md) | CSVインポート・エクスポート |
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |

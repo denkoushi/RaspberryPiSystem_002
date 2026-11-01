@@ -227,7 +227,7 @@ test('count results keep their rewrite and action on nightly rows', async () => 
   assert.equal(row.plan.diagnostics, undefined);
 });
 
-test('live scorer passes the selected wording version and records it, defaulting to the baseline', async () => {
+test('live scorer passes the selected wording version and records it, defaulting to the adopted version', async () => {
   const { DEFAULT_PLANNER_QUESTION_VERSION, CANDIDATE_PLANNER_QUESTION_VERSION } = await import('./planner-jev.mjs');
   for (const questionVersion of [undefined, CANDIDATE_PLANNER_QUESTION_VERSION]) {
     let carry;
@@ -244,6 +244,29 @@ test('live scorer passes the selected wording version and records it, defaulting
     });
     const live = await score({ a: 'rec-alpha', question: '類例ある？', previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: 'surface scratch', sort: 'relevance', limit: 5 } });
     assert.equal(live.questionVersion, questionVersion ?? DEFAULT_PLANNER_QUESTION_VERSION);
-    assert.equal(carry.includes('類例'), Boolean(questionVersion));
+    assert.equal(carry.includes('類例'), (questionVersion ?? DEFAULT_PLANNER_QUESTION_VERSION) === CANDIDATE_PLANNER_QUESTION_VERSION);
+  }
+});
+
+test('live scorer uses the active question wording from its env and honors an explicit version', async () => {
+  const { plannerVersionPath, writePlannerVersion } = await import('./flywheel-planner-version.mjs');
+  const { DEFAULT_PLANNER_QUESTION_VERSION } = await import('./planner-jev.mjs');
+  const file = plannerVersionPath(await mkdtemp(path.join(tmpdir(), 'live-planner-')));
+  const oldVersion = 'planner-questions-2026-10-26b';
+  await writePlannerVersion(file, { active: oldVersion, candidate: null, checks: [] });
+  for (const explicit of [undefined, DEFAULT_PLANNER_QUESTION_VERSION]) {
+    let instructions;
+    const score = await createLiveScorer({ records, catalog: loadNonconformityCatalog(),
+      env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false', HERMES_FLYWHEEL_PLANNER_VERSION_PATH: file },
+      plannerOptions: { questionVersion: explicit },
+      evaluate: async ({ questions }) => {
+        instructions = questions.contentCarry.instructions;
+        return { answers: { contentCarry: { type: 'choice', choice: 'same' } } };
+      },
+    });
+    const result = await score({ question: '類例ある？', previousPlan: { sources: ['nonconformity'], filters: [], semanticQuery: 'surface scratch' } });
+    assert.equal(result.questionVersion, explicit ?? oldVersion);
+    if (explicit) assert.match(instructions, /類例.*新しい現象/u);
+    else assert.equal(instructions, '`request` の内容条件（何が起きたか）を、`previous_plan` の内容条件と比べて一つ選ぶ。');
   }
 });

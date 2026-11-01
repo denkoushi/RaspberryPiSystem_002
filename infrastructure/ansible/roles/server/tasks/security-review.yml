@@ -6,7 +6,7 @@
     owner: "{{ api_runtime_uid | default(1000) }}"
     group: "{{ api_runtime_gid | default(1000) }}"
     mode: '0700'
-  loop: ['', bundles, reports, triage]
+  loop: ['', bundles, reports, triage, queue, queue/pending, queue/claimed, queue/done, queue/failed, queue/progress, queue/invalid]
 
 - name: Create root-only collector configuration and state directories
   ansible.builtin.file:
@@ -61,6 +61,28 @@
     state: "{{ security_review_collect_enabled | bool | ternary('started', 'stopped') }}"
   when: not (ansible_check_mode and security_review_units is changed)
 
+- name: Deliver security review enqueue units
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-enqueue.{{ item }}.j2"
+    dest: "/etc/systemd/system/security-review-enqueue.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  register: security_review_enqueue_units
+
+- name: Reload enqueue units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: security_review_enqueue_units is changed
+
+- name: Apply the enqueue enable flag
+  ansible.builtin.systemd:
+    name: security-review-enqueue.timer
+    enabled: "{{ security_review_collect_enabled | bool }}"
+    state: "{{ security_review_collect_enabled | bool | ternary('started', 'stopped') }}"
+  when: not (ansible_check_mode and security_review_enqueue_units is changed)
+
 - name: Refresh the existing Trivy script with private review exclusions
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/trivy-scan.sh.j2"
@@ -69,3 +91,53 @@
     group: root
     mode: '0755'
   when: trivy_enabled | default(false) | bool
+
+- name: Create kiosk fetch configuration, state and summary directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/security-review-kiosk, mode: '0750'}
+    - {path: "{{ security_review_kiosk_state_dir }}", mode: '0700'}
+    - {path: "{{ security_review_kiosk_log_dir }}", mode: '0750'}
+
+- name: Install the kiosk fetch script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../../scripts/server/security-review/kiosk_fetch.py"
+    dest: /usr/local/bin/security-review-kiosk-fetch.py
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deliver kiosk fetch configuration
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-kiosk-fetch.json.j2"
+    dest: /etc/security-review-kiosk/fetch.json
+    owner: root
+    group: "{{ ansible_user }}"
+    mode: '0640'
+
+- name: Deliver security review kiosk fetch units
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/security-review-kiosk-fetch.{{ item }}.j2"
+    dest: "/etc/systemd/system/security-review-kiosk-fetch.{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+  register: security_review_kiosk_units
+
+- name: Reload kiosk fetch units
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: security_review_kiosk_units is changed
+
+- name: Apply the kiosk fetch collector enable flag
+  ansible.builtin.systemd:
+    name: security-review-kiosk-fetch.timer
+    enabled: "{{ security_review_collect_enabled | bool }}"
+    state: "{{ security_review_collect_enabled | bool | ternary('started', 'stopped') }}"
+  when: not (ansible_check_mode and security_review_kiosk_units is changed)

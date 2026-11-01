@@ -11,12 +11,18 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.TextView
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
+import android.webkit.ServiceWorkerClient
+import android.webkit.ServiceWorkerController
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -24,9 +30,14 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileNotFoundException
 import java.util.concurrent.FutureTask
 
 class MainActivity : ComponentActivity() {
+    private lateinit var appUpdater: AppUpdater
     private lateinit var webView: WebView
     private var scanning = false
     private var pageGeneration = 0
@@ -84,6 +95,8 @@ class MainActivity : ComponentActivity() {
             allowContentAccess = true // File chooser uploads.
         }
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) = localDataResponse(request)
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (trusted(request.url.toString())) return false
                 if (request.isForMainFrame) openExternal(request.url)
@@ -143,14 +156,48 @@ class MainActivity : ComponentActivity() {
                 return true
             }
         }
+        // The page's service worker can forward fetches outside WebViewClient; serve local data on both paths.
+        ServiceWorkerController.getInstance().setServiceWorkerClient(object : ServiceWorkerClient() {
+            override fun shouldInterceptRequest(request: WebResourceRequest) = localDataResponse(request)
+        })
         webView.addJavascriptInterface(NativeBridge(), "HaizenNative")
-        setContentView(webView)
+        val layout = FrameLayout(this)
+        layout.addView(webView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val updateBanner = TextView(this)
+        layout.addView(updateBanner, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+            (40 * resources.displayMetrics.density).toInt(), Gravity.TOP))
+        appUpdater = AppUpdater(this, updateBanner)
+        setContentView(layout)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (webView.canGoBack()) webView.goBack()
             }
         })
         webView.loadUrl(BuildConfig.HAIZEN_ORIGIN + BuildConfig.HAIZEN_START_PATH)
+        LocalDataPrefetchWorker.schedule(this)
+        appUpdater.check()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::appUpdater.isInitialized) appUpdater.onResume()
+    }
+
+    private fun localDataResponse(request: WebResourceRequest): WebResourceResponse? {
+        if (request.method != "GET" || !trusted(request.url.toString())) return null
+        val path = request.url.encodedPath ?: return null
+        val prefix = "/__haizen-native/local-data/"
+        if (!path.startsWith(prefix)) return null
+        val key = path.removePrefix(prefix)
+        if (!LocalDataVersions.isValidKey(key)) return null
+        val headers = mapOf("Cache-Control" to "no-store")
+        return try {
+            WebResourceResponse("application/json", "utf-8", 200, "OK", headers,
+                FileInputStream(File(filesDir, "local-data/$key.json")))
+        } catch (_: FileNotFoundException) {
+            WebResourceResponse("application/json", "utf-8", 404, "Not Found", headers,
+                ByteArrayInputStream(byteArrayOf()))
+        }
     }
 
     private fun trusted(url: String?) = HaizenOrigin.matches(url, BuildConfig.HAIZEN_ORIGIN)
@@ -227,6 +274,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private inner class NativeBridge {
+        @JavascriptInterface
+        fun setClientKey(key: String) {
+            if (key.isBlank() || key.length > 512) return
+            val task = FutureTask {
+                if (trustedPage()) LocalDataPrefetchWorker.setClientKey(this@MainActivity, key)
+            }
+            if (Looper.myLooper() == Looper.getMainLooper()) task.run() else runOnUiThread(task)
+            task.get()
+        }
+
         @JavascriptInterface
         fun isAvailable(): Boolean {
             // JS interfaces run on WebView's bridge thread; WebView.url is UI-thread-only.
@@ -312,6 +369,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::appUpdater.isInitialized) appUpdater.close()
         cancelSpeech()
         cameraRequest?.deny()
         cameraRequest = null

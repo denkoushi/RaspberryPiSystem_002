@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -5,12 +6,15 @@ import { PartSearchOneHandView } from '../PartSearchOneHandView';
 
 import type { PartSearchRow } from '@raspi-system/part-search-core';
 
+vi.mock('../../../useRegisteredShelves', () => ({ useRegisteredShelves: () => ({ data: { shelves: [{ shelfCodeRaw: 'A01-1', isStructured: true, photoUpdatedAt: '2026-10-30' }] } }) }));
+vi.mock('../../../shelfPhoto/useShelfPhoto', () => ({ useShelfPhoto: (_code: string, updatedAt?: string) => ({ url: updatedAt ? '/shelf.jpg' : undefined }) }));
+
 const rows: PartSearchRow[] = [
   { id: '1', shelfCodeRaw: 'A01-1', fseiban: 'BE01', fhincd: 'P-01', fhinmei: 'テーブル', machineName: 'DAD3350', productNo: '1', manufacturingOrder: '012345', branchNo: 0 },
   { id: '2', shelfCodeRaw: 'B02-2', fseiban: 'BE02', fhincd: 'P-02', fhinmei: 'パルプ', machineName: 'DFD6362', productNo: '2', branchNo: 2 }
 ];
 function mount(onDelete = vi.fn<(row: PartSearchRow) => Promise<void>>().mockResolvedValue(undefined)) {
-  return { ...render(<PartSearchOneHandView rows={rows} offline={false} onDelete={onDelete} />), onDelete };
+  return { ...render(<QueryClientProvider client={new QueryClient()}><PartSearchOneHandView rows={rows} offline={false} onDelete={onDelete} /></QueryClientProvider>), onDelete };
 }
 const key = (name: string) => screen.getByRole('button', { name });
 const field = (name: string) => within(screen.getByRole('group', { name: 'さがす項目' })).getByRole('button', { name });
@@ -230,7 +234,7 @@ describe('PartSearchOneHandView', () => {
     rerender(<PartSearchOneHandView rows={rows.slice(1)} offline={false} onDelete={onDelete} />);
     expect(within(results()).queryByText('テーブル')).not.toBeInTheDocument();
     expect(screen.getByText('1件', { exact: true })).toBeInTheDocument();
-    rerender(<PartSearchOneHandView rows={rows} offline={false} onDelete={onDelete} />);
+    rerender(<QueryClientProvider client={new QueryClient()}><PartSearchOneHandView rows={rows} offline={false} onDelete={onDelete} /></QueryClientProvider>);
     expect(within(results()).getByText('テーブル')).toBeInTheDocument();
   });
 
@@ -255,4 +259,13 @@ describe('PartSearchOneHandView', () => {
     expect(screen.getByText('見つかりません')).toBeInTheDocument();
     expect(key('て')).toBeDisabled();
   });
+});
+
+it('opens the registered shelf photo viewer without selecting the hit, and shows a fallback for unknown shelves', () => {
+  mount();
+  expect(within(key('棚 A01-1 の写真')).getByRole('img')).toHaveAttribute('src', '/shelf.jpg');
+  expect(within(key('棚 B02-2 の写真')).getByLabelText('B02-2 写真なし')).toBeInTheDocument();
+  fireEvent.click(key('棚 A01-1 の写真'));
+  expect(screen.getByRole('dialog', { name: '棚の写真を拡大' })).toBeInTheDocument();
+  expect(key('A01-1 テーブル')).toHaveAttribute('aria-expanded', 'false');
 });

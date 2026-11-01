@@ -21,7 +21,7 @@ export function useProcedureVideoAutoEdit(video: ProcedureVideoDto | undefined, 
   const [toast, setToast] = useState<string | null>(null);
   const pending = useRef<{ videoId: string; suggestionId: string; row: ProcedureVideoAutoEditDto } | null>(null);
   const undo = useRef<ProcedureVideoAutoEditScene[] | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const callbacks = useRef({ onChanged, onError });
   callbacks.current = { onChanged, onError };
   const videoId = video?.id;

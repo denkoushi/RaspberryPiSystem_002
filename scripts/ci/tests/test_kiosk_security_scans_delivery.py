@@ -16,26 +16,50 @@ ANSIBLE = ROOT / 'infrastructure/ansible'
 class KioskSecurityScansDeliveryTest(unittest.TestCase):
     def setUp(self):
         self.tasks = yaml.safe_load((ANSIBLE / 'roles/kiosk/tasks/package-integrity.yml').read_text())
+        self.clamav = yaml.safe_load((ANSIBLE / 'roles/kiosk/tasks/clamav.yml').read_text())
         self.security = yaml.safe_load((ANSIBLE / 'roles/kiosk/tasks/security.yml').read_text())
         self.variables = yaml.safe_load((ANSIBLE / 'group_vars/all.yml').read_text())
+
+    def test_kiosk_alerts_inbox_cleanup_is_daily_and_bounded(self):
+        task = next(task for task in self.tasks
+                    if task.get('name') == 'Schedule kiosk alerts inbox cleanup')
+        cron = task['ansible.builtin.cron']
+        self.assertEqual(cron['user'], 'root')
+        self.assertEqual((cron['minute'], cron['hour']), ('25', '4'))
+        for field in ('day', 'month', 'weekday'):
+            self.assertEqual(cron.get(field, '*'), '*')
+        self.assertEqual(task['when'], "terminal_release_mode | default('full') == 'full'")
+        self.assertEqual(self.variables['security_review_kiosk_alerts_dir'],
+                         '/opt/RaspberryPiSystem_002/alerts')
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters['quote'] = shlex.quote
+        job = environment.from_string(cron['job']).render(**self.variables)
+        self.assertEqual(shlex.split(job), [
+            'find', '/opt/RaspberryPiSystem_002/alerts', '-maxdepth', '1', '-type', 'f',
+            '-name', 'alert-*.json*', '(', '(', '-empty', '-mmin', '+1440', ')',
+            '-o', '-mmin', '+43200', ')', '-delete'])
 
     def test_full_provisioning_imports_package_integrity_after_clamav(self):
         self.assertEqual(self.security[-1], {
             'name': 'Apply kiosk package integrity check',
             'ansible.builtin.import_tasks': 'package-integrity.yml'})
-        self.assertEqual(self.security[-2]['name'], 'Verify kiosk ClamAV cron entry before release')
-        for task in self.security[:2]:
+        self.assertEqual(self.security[-2], {
+            'name': 'Apply kiosk ClamAV scan', 'ansible.builtin.import_tasks': 'clamav.yml'})
+        self.assertEqual(self.clamav[-1]['name'], 'Verify kiosk ClamAV cron entry before release')
+        for task in self.clamav[:2]:
             self.assertEqual(task['loop'], ['{{ clamav_kiosk_log_dir }}'])
         self.assertFalse(any('clamav' in str(task).lower() for task in self.tasks))
 
     def test_kiosk_removes_rkhunter_without_installing_or_scheduling_it(self):
         related = [task for task in self.tasks if 'rkhunter' in str(task)]
-        self.assertEqual(len(related), 3)
+        self.assertEqual(len(related), 4)
         self.assertEqual(related[0]['ansible.builtin.cron'], {
             'name': 'Weekly rkhunter scan (kiosk)', 'user': 'root', 'state': 'absent'})
         self.assertEqual(related[1]['ansible.builtin.file'], {
             'path': '/usr/local/bin/rkhunter-kiosk-scan.sh', 'state': 'absent'})
-        self.assertEqual(related[2]['ansible.builtin.apt'], {
+        self.assertEqual(related[2]['ansible.builtin.file'], {
+            'path': '/etc/cron.d/rkhunter-kiosk-scan', 'state': 'absent'})
+        self.assertEqual(related[3]['ansible.builtin.apt'], {
             'name': 'rkhunter', 'state': 'absent', 'purge': True})
         for task in related:
             self.assertNotIn('when', task)
@@ -90,7 +114,7 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
         self.assertEqual(self.tasks[2]['loop'],
                          '{{ kiosk_package_integrity_log_directories.results | default([]) }}')
         self.assertEqual(self.tasks[2]['ansible.builtin.assert']['that'],
-                         self.security[2]['ansible.builtin.assert']['that'])
+                         self.clamav[2]['ansible.builtin.assert']['that'])
         self.assertEqual(self.variables['package_integrity_log_dir'], '/var/log/package-integrity')
         self.assertEqual(self.variables['package_integrity_log_file'], 'package-integrity-scan.log')
         deploy = next(task for task in self.tasks if task.get('ansible.builtin.template', {}).get('dest')
@@ -134,6 +158,119 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
                     result = subprocess.run(['bash', '-c', script], capture_output=True, text=True,
                                             env={'PATH': f'{tmp}{os.pathsep}{os.defpath}'})
                     self.assertEqual(result.returncode == 0, succeeds, result.stderr)
+
+    def test_clamav_release_convergence_matches_package_integrity(self):
+        tasks = yaml.safe_load((ANSIBLE / 'roles/release_kiosk/tasks/main.yml').read_text())
+        post_health = tasks[0]['block'][1]['block']
+        index = next(i for i, task in enumerate(post_health)
+                     if task['name'] == 'Converge the Pi4 kiosk package integrity check')
+        expected = yaml.safe_load(yaml.safe_dump(post_health[index])
+                                  .replace('package integrity check', 'ClamAV scan')
+                                  .replace('Package integrity check', 'ClamAV scan')
+                                  .replace('package-integrity', 'clamav'))
+        self.assertEqual(post_health[index + 1], expected)
+        self.assertEqual(expected['block'][0]['vars'], {'terminal_release_mode': 'full'})
+        self.assertEqual(expected['block'][0]['ansible.builtin.include_role'],
+                         {'name': 'kiosk', 'tasks_from': 'clamav'})
+        self.assertEqual(len(expected['rescue']), 1)
+        self.assertIn('ansible.builtin.debug', expected['rescue'][0])
+
+    def test_clamav_removes_legacy_cron_d_copy_before_scheduling(self):
+        names = [task['name'] for task in self.clamav]
+        legacy = self.clamav[names.index('Remove legacy kiosk ClamAV cron.d entry')]
+        self.assertEqual(legacy['ansible.builtin.file'], {
+            'path': '/etc/cron.d/clamav-kiosk-scan', 'state': 'absent'})
+        self.assertEqual(legacy['when'], "terminal_release_mode | default('full') == 'full'")
+        self.assertLess(names.index('Remove legacy kiosk ClamAV cron.d entry'),
+                        names.index('Schedule kiosk ClamAV scan'))
+
+    def test_clamav_packages_daemon_and_kiosk_render_vars(self):
+        install = next(task for task in self.clamav if 'ansible.builtin.apt' in task)
+        self.assertEqual(install['ansible.builtin.apt']['name'], ['clamav', 'clamav-freshclam'])
+        stop = next(task for task in self.clamav if 'ansible.builtin.systemd' in task)
+        self.assertGreater(self.clamav.index(stop), self.clamav.index(install))
+        self.assertEqual(stop['ansible.builtin.systemd'], {
+            'name': 'clamav-freshclam.service', 'enabled': False, 'state': 'stopped'})
+        self.assertEqual(stop['when'], ["terminal_release_mode | default('full') == 'full'",
+                                       'clamav_kiosk_enabled | default(false)'])
+        deploy = next(task for task in self.clamav if 'ansible.builtin.template' in task)
+        self.assertTrue(deploy['vars']['clamav_update_before_scan'])
+        self.assertEqual(deploy['vars']['clamav_scan_paths'], '{{ clamav_kiosk_scan_paths }}')
+        self.assertEqual(deploy['when'], 'clamav_kiosk_enabled | default(false)')
+        for group in ('all', 'staging'):
+            variables = yaml.safe_load((ANSIBLE / f'group_vars/{group}.yml').read_text())
+            self.assertEqual(variables['clamav_kiosk_scan_paths'],
+                             ['/home', '/tmp', '/var/tmp', '/usr/local/bin'])
+
+    def render_clamav(self, **overrides):
+        variables = dict(clamav_log_dir='/var/log/clamav', clamav_log_file='clamav-scan.log',
+                         clamav_scan_paths=['/opt/RaspberryPiSystem_002/storage', '/opt/backups'],
+                         alert_script_path='/usr/local/bin/generate-alert.sh')
+        variables.update(overrides)
+        return Environment(undefined=StrictUndefined, trim_blocks=True, lstrip_blocks=True,
+                           keep_trailing_newline=True).from_string(
+            (ANSIBLE / 'templates/clamav-scan.sh.j2').read_text()).render(**variables)
+
+    def test_pi5_render_is_byte_identical_to_original_golden(self):
+        # Captured from the pre-change template using Ansible's whitespace settings.
+        golden = (Path(__file__).parent / 'fixtures/clamav-pi5-scan.sh').read_bytes()
+        self.assertEqual(self.render_clamav().encode(), golden)
+        self.assertEqual(self.render_clamav(clamav_update_before_scan=False).encode(), golden)
+
+    def test_clamav_update_and_missing_targets(self):
+        for update_exit, scan_exit, has_target in ((0, 0, True), (7, 0, True),
+                                                  (124, 0, True), (0, 1, True),
+                                                  (0, 2, True), (7, 0, False)):
+            with self.subTest(update_exit=update_exit, scan_exit=scan_exit, has_target=has_target), \
+                    tempfile.TemporaryDirectory() as directory:
+                tmp = Path(directory)
+                target = tmp / 'existing'
+                target.mkdir()
+                missing = tmp / 'missing'
+                commands = {
+                    'nice': 'printf "priority:%s\\n" "$*" >> "$TRACE"; shift 2; exec "$@"',
+                    'timeout': 'printf "timeout:%s\\n" "$*" >> "$TRACE"; shift; exec "$@"',
+                    'freshclam': 'echo "freshclam:$*" >> "$TRACE"; echo update-output; exit "$UPDATE_EXIT"',
+                    'clamscan': 'echo "clamscan:$*" >> "$TRACE"; echo "test FOUND"; exit "$SCAN_EXIT"',
+                    'alert': 'echo "$1" >> "$ALERTS"',
+                }
+                for name, body in commands.items():
+                    command = tmp / name
+                    command.write_text('#!/bin/bash\n' + body + '\n')
+                    command.chmod(0o755)
+                script = self.render_clamav(
+                    clamav_update_before_scan=True, clamav_log_dir=str(tmp), clamav_log_file='scan.log',
+                    clamav_scan_paths=([str(target)] if has_target else []) + [str(missing)],
+                    alert_script_path=str(tmp / 'alert'))
+                # Prevent host cgroup use; replace only the absolute scanner with our stub.
+                script = script.replace('command -v systemd-run', 'false')
+                script = script.replace('/usr/bin/clamscan', shlex.quote(str(tmp / 'clamscan')))
+                subprocess.run(['bash', '-n'], input=script, text=True, check=True, capture_output=True)
+                result = subprocess.run(['bash', '-c', script], text=True, capture_output=True, env={
+                    'PATH': f'{tmp}{os.pathsep}{os.defpath}', 'TRACE': str(tmp / 'trace'),
+                    'ALERTS': str(tmp / 'alerts'), 'UPDATE_EXIT': str(update_exit), 'SCAN_EXIT': str(scan_exit)})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                trace = (tmp / 'trace').read_text()
+                log = (tmp / 'scan.log').read_text()
+                self.assertIn('priority:-n 19 timeout 15m freshclam --quiet', trace)
+                self.assertIn('timeout:15m freshclam --quiet', trace)
+                self.assertIn('update-output', log)
+                self.assertIn(f'Skipping missing scan path: {missing}', log)
+                if update_exit:
+                    self.assertIn(f'Virus database update failed (exit {update_exit}); scanning with the existing database.', log)
+                else:
+                    self.assertNotIn('Virus database update failed', log)
+                if has_target:
+                    self.assertIn(f'--max-scansize=400M {target}', trace)
+                    self.assertLess(trace.index('freshclam:--quiet'), trace.index('clamscan:'))
+                    self.assertNotIn(str(missing), trace)
+                else:
+                    self.assertNotIn('clamscan:', trace)
+                    self.assertIn('No existing scan paths', log)
+                alerts = (tmp / 'alerts').read_text().splitlines() if (tmp / 'alerts').exists() else []
+                expected = (['clamav-scan-error'] if not has_target or scan_exit > 1 else
+                            ['clamav-detection'] if scan_exit == 1 else [])
+                self.assertEqual(alerts, expected)
 
 
 if __name__ == '__main__':

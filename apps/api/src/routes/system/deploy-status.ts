@@ -5,11 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { resolveStatusClientIdFromRawKey } from '../../services/clients/client-device-auth.service.js';
 
-function deployStatusFilePath(): string {
-  return process.env.DEPLOY_STATUS_FILE_PATH ?? '/app/config/deploy-status.json';
-}
-
-const DEPLOY_STATUS_ENTRY_TTL_MS = 30 * 60 * 1000;
+import { deployStatusFilePath, DEPLOY_STATUS_ENTRY_TTL_MS } from '../../lib/deploy-status-file.js';
 const EXPIRING_DEPLOY_PHASES = new Set(['notice', 'preparing', 'deploying', 'failed']);
 
 const DEPLOY_STATUS_HELPER_TIMEOUT_MS = 15_000;

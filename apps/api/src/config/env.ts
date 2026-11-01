@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
 import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';
+import { advisoryCheckEnvShape } from './env/advisory-check.js';
 import { alertsEnvShape } from './env/alerts.js';
 import { securityReviewEnvShape } from './env/security-review.js';
 import { businessHermesEnvShape } from './env/business-hermes.js';
@@ -23,13 +24,16 @@ import { networkEnvShape } from './env/network.js';
 import { procedureVideoEnvShape } from './env/procedure-video.js';
 import { procedureMaterialEnvShape } from './env/procedure-material.js';
 import { photoToolEnvShape } from './env/photo-tool.js';
+import { watchCameraEnvShape } from './env/watch-camera.js';
 import { signageEnvShape } from './env/signage.js';
 
 const envSchema = z
   .object({
     ...coreEnvShape,
+    ...watchCameraEnvShape,
     ...businessHermesEnvShape,
     ...securityReviewEnvShape,
+    ...advisoryCheckEnvShape,
     ...signageEnvShape,
     ...networkEnvShape,
     ...alertsEnvShape,

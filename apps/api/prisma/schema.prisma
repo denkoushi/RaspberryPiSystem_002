@@ -198,6 +198,9 @@ model Employee {
   torqueTrainingSessions                        TorqueTrainingSession[]
   torqueTrainingConfirmations                   TorqueTrainingWrenchConfirmation[]
   workInstructionEditorAuthentications          WorkInstructionEditorAuthentication[]
+  assemblyCheckSheetsCompleted                  AssemblyCheckSheet[]                           @relation("AssemblyCheckSheetCompletedBy")
+  assemblyCheckSheetStamps                      AssemblyCheckSheetStamp[]                      @relation("AssemblyCheckSheetStampEmployee")
+  assemblyCheckSheetStampHistory                AssemblyCheckSheetStampHistory[]               @relation("AssemblyCheckSheetStampHistoryEmployee")
 }
 
 model Item {
@@ -489,6 +492,8 @@ model Machine {
 model ClientDevice {
   mobileSlipVerifyRecords MobileSlipVerifyRecord[]
   mobileScanFrames MobileScanFrame[]
+  watchCameraFrames WatchCameraFrame[]
+  watchCameraSampleSessions WatchCameraSampleSession[]
   id                                            String                                         @id @default(uuid())
   name                                          String
   location                                      String?
@@ -503,6 +508,8 @@ model ClientDevice {
   haizenPresetShelfCodeRaw                      String?
   /// Zero2W / haizen-agent からの配膳スキャン対象端末（キオスク設定・API 抽出の正）
   haizenEdgeEnabled                             Boolean                                        @default(false)
+  /// Null/false disable the kiosk procedure board.
+  procedureBoardEnabled                         Boolean?
   /// キオスク棚レイアウト編集（区画フロアプラン・マス割当）を許可する端末
   shelfLayoutEditEnabled                        Boolean                                        @default(false)
   /// 明示的な拠点（未設定時は location 文字列から推測する旧互換）
@@ -3450,11 +3457,42 @@ model AssemblyProcedureLearnedTerm {
   @@unique([site, wrongText])
 }
 
+model AssemblyProcedureSiteVocabulary {
+  id            String   @id @default(uuid())
+  site          String
+  term          String
+  documentCount Int
+  updatedAt     DateTime @updatedAt
+
+  @@unique([site, term])
+}
+
+model AssemblyProcedureLearningSnapshot {
+  id                  String   @id @default(uuid())
+  site                String
+  day                 DateTime @db.Date
+  publishedDocuments  Int
+  textKept            Int
+  textEdited          Int
+  textReverted        Int
+  captionKept         Int
+  captionEdited       Int
+  captionDeleted      Int
+  learnedTerms        Int
+  vocabularyTerms     Int
+  vocabularyBuiltAt   DateTime?
+  vocabularyDocuments Int?
+  createdAt           DateTime @default(now())
+
+  @@unique([site, day])
+}
+
 model AssemblyProcedureCaptionFeedback {
   id           String                                  @id @default(uuid())
   documentId   String
   pageIndex    Int
   elementId    String
+  site         String?
   assetId      String
   documentName String
   contextText  String?
@@ -3467,6 +3505,7 @@ model AssemblyProcedureCaptionFeedback {
 
   @@unique([documentId, elementId])
   @@index([assetId])
+  @@index([site, outcome, resolvedAt])
 }
 
 /// Editable elements owned by one document revision. Coordinates are source
@@ -3714,6 +3753,7 @@ model AssemblyWorkUnit {
   updatedAt                   DateTime                             @updatedAt
   lotSerial                   AssemblyLotSerial?
   workSession                 AssemblyWorkSession?
+  checkSheet                  AssemblyCheckSheet?
   invalidation                AssemblyWorkUnitInvalidation?
   parentCompositionLinks      AssemblyWorkUnitComposition[]        @relation("AssemblyCompositionParent")
   childCompositionLinks       AssemblyWorkUnitComposition[]        @relation("AssemblyCompositionChild")
@@ -5304,6 +5344,7 @@ model KnowledgeProcedure {
   updatedAt           DateTime                     @updatedAt
   reviews             KnowledgeProcedureReview[]
   revisions           KnowledgeProcedureRevision[] @relation("KnowledgeProcedureRevisions")
+  board               KnowledgeProcedureBoard?
   materials           KnowledgeProcedureMaterial[]
   publishedRevision   KnowledgeProcedureRevision?  @relation("KnowledgeProcedurePublishedRevision", fields: [publishedRevisionId], references: [id], onDelete: Restrict)
 
@@ -5889,6 +5930,184 @@ model MobileScanFrame {
   @@map("mobile_scan_frames")
 }
 
+// Check sheets are independent of procedure drawings. Original XLSX bytes are immutable.
+enum AssemblyCheckSheetInputKind {
+  OK_NG
+  NUMBER
+  TEXT
+  CHOICE
+  NONE
+}
+
+enum AssemblyCheckSheetStatus {
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+}
+
+enum AssemblyCheckSheetResult {
+  OK
+  NG
+  NA
+}
+
+model AssemblyCheckSheetAsset {
+  id               String @id @default(uuid())
+  storageKey       String @unique
+  sha256           String @unique @db.Char(64)
+  byteSize         Int
+  contentType      String
+  originalFileName String?
+  gmailMessageId   String?
+  receivedAt       DateTime?
+  dismissedAt      DateTime?
+  createdAt        DateTime @default(now())
+  revisions        AssemblyCheckSheetRevision[]
+}
+
+model AssemblyCheckSheetRevision {
+  id                    String @id @default(uuid())
+  revisionRootId        String
+  revisionNumber        Int @default(1)
+  isRevisionHead        Boolean @default(true)
+  documentNo            String
+  title                 String
+  modelCode             String
+  revisionLabel         String
+  sourceAssetId         String
+  sourceSheetName        String
+  layoutSnapshot        Json?
+  headerCellMap         Json
+  stampColumn           String
+  departmentRoleMembers Json
+  createdByUserId       String
+  createdAt             DateTime @default(now())
+  sourceAsset           AssemblyCheckSheetAsset @relation(fields: [sourceAssetId], references: [id], onDelete: Restrict)
+  revisionRoot          AssemblyCheckSheetRevision @relation("CheckSheetRevisionRoot", fields: [revisionRootId], references: [id], onDelete: Restrict)
+  revisions             AssemblyCheckSheetRevision[] @relation("CheckSheetRevisionRoot")
+  groups                AssemblyCheckSheetGroup[]
+  items                 AssemblyCheckSheetItem[]
+  sheets                AssemblyCheckSheet[]
+
+  @@unique([revisionRootId, revisionNumber], map: "AssemblyCheckSheetRevision_unique_root_number")
+  @@index([revisionRootId, isRevisionHead], map: "AssemblyCheckSheetRevision_idx_head")
+  @@index([sourceAssetId], map: "AssemblyCheckSheetRevision_idx_asset")
+}
+
+model AssemblyCheckSheetGroup {
+  id         String @id @default(uuid())
+  revisionId String
+  groupNo    Int
+  label      String
+  sortOrder  Int
+  revision   AssemblyCheckSheetRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  items      AssemblyCheckSheetItem[]
+
+  @@unique([revisionId, groupNo], map: "AssemblyCheckSheetGroup_unique_number")
+  @@unique([id, revisionId], map: "AssemblyCheckSheetGroup_unique_revision")
+}
+
+model AssemblyCheckSheetItem {
+  id             String @id @default(uuid())
+  revisionId     String
+  groupId        String
+  itemKey        String
+  sortOrder      Int
+  label          String
+  note           String?
+  inputKind      AssemblyCheckSheetInputKind
+  inputSpec      Json
+  roleKeys       String[]
+  conditionKey   String?
+  conditionLabel String?
+  sourceRows     Int[]
+  stampCell      String
+  valueTarget    Json
+  warnings       Json
+  revision       AssemblyCheckSheetRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  group          AssemblyCheckSheetGroup @relation(fields: [groupId, revisionId], references: [id, revisionId], onDelete: Cascade)
+  stamps         AssemblyCheckSheetStamp[]
+  history        AssemblyCheckSheetStampHistory[]
+
+  @@unique([revisionId, itemKey], map: "AssemblyCheckSheetItem_unique_key")
+  @@unique([revisionId, stampCell], map: "AssemblyCheckSheetItem_unique_stamp_cell")
+  @@index([groupId, revisionId], map: "AssemblyCheckSheetItem_idx_group")
+}
+
+model AssemblyCheckSheet {
+  id                              String @id @default(uuid())
+  workUnitId                      String @unique
+  revisionId                      String
+  status                          AssemblyCheckSheetStatus @default(IN_PROGRESS)
+  headerValues                    Json
+  startedAt                       DateTime @default(now())
+  completedAt                     DateTime?
+  completedByEmployeeId           String?
+  completedByEmployeeCodeSnapshot String?
+  completedByEmployeeNameSnapshot String?
+  completedByNfcTagUidSnapshot     String?
+  completedByPositionNameSnapshot String?
+  pausedReason                    String?
+  transitionHistory               Json?
+  clientDeviceId                  String?
+  workUnit                        AssemblyWorkUnit @relation(fields: [workUnitId], references: [id], onDelete: Restrict)
+  revision                        AssemblyCheckSheetRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+  completedByEmployee             Employee? @relation("AssemblyCheckSheetCompletedBy", fields: [completedByEmployeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheet_completed_employee_fkey")
+  stamps                          AssemblyCheckSheetStamp[]
+  history                         AssemblyCheckSheetStampHistory[]
+
+  @@index([revisionId], map: "AssemblyCheckSheet_idx_revision")
+}
+
+model AssemblyCheckSheetStamp {
+  id                   String @id @default(uuid())
+  sheetId              String
+  itemId               String
+  result               AssemblyCheckSheetResult
+  values               Json
+  ngReason             String?
+  flagged              Boolean @default(false)
+  // Snapshots survive employee deletion.
+  employeeId           String?
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+  nfcTagUidSnapshot    String
+  positionNameSnapshot String?
+  clientDeviceId       String?
+  stampedAt            DateTime @default(now())
+  sheet                AssemblyCheckSheet @relation(fields: [sheetId], references: [id], onDelete: Restrict)
+  item                 AssemblyCheckSheetItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  employee             Employee? @relation("AssemblyCheckSheetStampEmployee", fields: [employeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheetStamp_employee_fkey")
+
+  @@unique([sheetId, itemId], map: "AssemblyCheckSheetStamp_unique_item")
+  @@index([itemId], map: "AssemblyCheckSheetStamp_idx_item")
+}
+
+model AssemblyCheckSheetStampHistory {
+  id                   String @id @default(uuid())
+  stampId              String
+  sheetId              String
+  itemId               String
+  result               AssemblyCheckSheetResult
+  values               Json
+  ngReason             String?
+  flagged              Boolean
+  employeeId           String?
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+  nfcTagUidSnapshot    String
+  positionNameSnapshot String?
+  clientDeviceId       String?
+  stampedAt            DateTime
+  supersededAt         DateTime @default(now())
+  sheet                AssemblyCheckSheet @relation(fields: [sheetId], references: [id], onDelete: Restrict)
+  item                 AssemblyCheckSheetItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  employee             Employee? @relation("AssemblyCheckSheetStampHistoryEmployee", fields: [employeeId], references: [id], onDelete: SetNull, map: "AssemblyCheckSheetStampHistory_employee_fkey")
+
+  @@index([sheetId, itemId, supersededAt], map: "AssemblyCheckSheetStampHistory_idx_item")
+  @@index([itemId], map: "AssemblyCheckSheetStampHistory_idx_item_id")
+}
+
 enum MobileSlipVerifyOutcome {
   match
   mismatch
@@ -5922,4 +6141,131 @@ model MobileSlipVerifyRecord {
   @@index([verifiedAt])
   @@index([transferOrderBarcodeRaw])
   @@map("mobile_slip_verify_records")
+}
+
+enum WatchCameraJudgement {
+  person
+  unjudged
+}
+
+model WatchCameraFrame {
+  id             String @id @default(uuid())
+  clientDeviceId String
+  capturedAt     DateTime
+  judgement      WatchCameraJudgement
+  fileKey        String
+  byteSize       Int
+  createdAt      DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([capturedAt])
+  @@index([clientDeviceId, capturedAt])
+  @@map("watch_camera_frames")
+}
+
+
+enum WatchCameraSampleStatus {
+  running
+  stopped
+  completed
+}
+
+enum WatchCameraSampleLabel {
+  ok
+  ng
+  later
+}
+
+model WatchCameraSampleSession {
+  id             String @id @default(uuid())
+  clientDeviceId String
+  intervalSec    Int
+  durationSec    Int
+  maxFrames      Int
+  status         WatchCameraSampleStatus
+  startedAt      DateTime
+  endsAt         DateTime
+  endedAt        DateTime?
+  lastCapturedAt DateTime?
+  frameCount     Int @default(0)
+  byteSize       Int @default(0)
+  createdAt      DateTime @default(now())
+
+  clientDevice ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Restrict)
+  frames WatchCameraSampleFrame[]
+
+  @@index([clientDeviceId, status])
+  @@map("watch_camera_sample_sessions")
+}
+
+model WatchCameraSampleFrame {
+  id         String @id @default(uuid())
+  sessionId  String
+  capturedAt DateTime
+  fileKey    String
+  byteSize   Int
+  label      WatchCameraSampleLabel?
+  createdAt  DateTime @default(now())
+
+  session WatchCameraSampleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, capturedAt])
+  @@map("watch_camera_sample_frames")
+}
+
+model KnowledgeProcedureBoard {
+  id                          String @id
+  procedureId                 String @unique
+  layout                      Json
+  decisions                   Json @default("{}")
+  version                     Int @default(1)
+  materialFingerprint         String
+  lastRequestedClientDeviceId String
+  trialStartedAt              DateTime?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  procedure                   KnowledgeProcedure @relation(fields: [procedureId], references: [id], onDelete: Restrict)
+  events                      KnowledgeProcedureBoardEvent[]
+  aiJobs                      KnowledgeProcedureBoardAi[]
+}
+
+model KnowledgeProcedureBoardEvent {
+  id             String @id
+  boardId        String
+  boardVersion   Int
+  type           String
+  dedupeKey      String? @unique
+  clientDeviceId String
+  occurredAt     DateTime
+  payload        Json
+  layoutHash     String?
+  board          KnowledgeProcedureBoard @relation(fields: [boardId], references: [id], onDelete: Restrict)
+
+  @@index([boardId, occurredAt])
+  @@index([boardId, boardVersion])
+}
+
+model KnowledgeProcedureBoardAi {
+  id                        String @id
+  boardId                   String
+  boardVersion              Int
+  kind                      String
+  requestKey                String
+  requestedByClientDeviceId String
+  state                     String @default("pending")
+  input                     Json
+  result                    Json?
+  attempts                  Int @default(0)
+  retryAt                   DateTime @default(now())
+  leaseToken                String?
+  leaseUntil                DateTime?
+  errorCode                 String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  board                     KnowledgeProcedureBoard @relation(fields: [boardId], references: [id], onDelete: Restrict)
+
+  @@unique([boardId, kind, requestKey])
+  @@index([state, retryAt, createdAt])
+  @@index([boardId, boardVersion, kind])
 }

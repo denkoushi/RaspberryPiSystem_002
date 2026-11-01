@@ -6,6 +6,7 @@ import { logger } from '../../lib/logger.js';
 import { runExclusiveSchedulerTick } from '../../lib/exclusive-scheduler-tick.js';
 import { loadAlertsDispatcherConfig, resolveRouteKey } from './alerts-config.js';
 import { AlertSeverity, AlertChannel, AlertDeliveryStatus } from '@prisma/client';
+import { cleanupAlertsInbox } from './alerts-inbox-cleanup.js';
 
 type AlertFile = {
   id?: string;
@@ -60,6 +61,9 @@ export class AlertsIngestor {
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
   private readonly tickExclusive = { locked: false };
+  private lastCleanupAt: number | null = null;
+  // Warn once per file; a broken file stays in the newest-N window for weeks.
+  private readonly warnedUnparseable = new Set<string>();
 
   /**
    * Run ingestor once using current configuration.
@@ -131,6 +135,13 @@ export class AlertsIngestor {
     config: Awaited<ReturnType<typeof loadAlertsDispatcherConfig>>,
     ingestConfig: { enabled: boolean; intervalSeconds: number; limit: number }
   ): Promise<void> {
+    const now = Date.now();
+    if (this.lastCleanupAt === null || now - this.lastCleanupAt >= 86400_000) {
+      this.lastCleanupAt = now;
+      await cleanupAlertsInbox(config.alertsDir, now).catch((err) =>
+        logger?.warn({ err }, '[AlertsIngestor] Inbox cleanup failed')
+      );
+    }
     const files = await listAlertFiles(config.alertsDir);
     if (files.length === 0) return;
 
@@ -140,11 +151,12 @@ export class AlertsIngestor {
     let ingested = 0;
     let skipped = 0;
     let errors = 0;
+    let unparseable = 0;
 
     for (const filePath of candidates) {
       const alert = await readAlert(filePath);
       if (!alert) {
-        // 空ファイルや壊れたJSONは運用上起こりうる（ローテーション/部分書き込み等）ので安全にスキップ
+        // 空ファイルは書き込み途中の可能性があるためdebugでスキップ
         try {
           const stat = await fs.stat(filePath);
           if (stat.size === 0) {
@@ -155,7 +167,11 @@ export class AlertsIngestor {
         } catch {
           // noop
         }
-        logger?.debug({ filePath }, '[AlertsIngestor] Failed to read/parse alert file, skipping');
+        if (!this.warnedUnparseable.has(filePath)) {
+          this.warnedUnparseable.add(filePath);
+          logger?.warn({ filePath }, '[AlertsIngestor] Failed to read/parse alert file, skipping');
+        }
+        unparseable++;
         skipped++;
         continue;
       }
@@ -244,7 +260,7 @@ export class AlertsIngestor {
     }
 
     if (ingested > 0 || skipped > 0 || errors > 0) {
-      logger?.info({ ingested, skipped, errors }, '[AlertsIngestor] Ingest completed');
+      logger?.info({ ingested, skipped, errors, unparseable }, '[AlertsIngestor] Ingest completed');
     }
   }
 }

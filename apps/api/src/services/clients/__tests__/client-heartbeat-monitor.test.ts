@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AlertDeliveryStatus, AlertSeverity } from '@prisma/client';
 
-import { runHeartbeatCheck } from '../client-heartbeat-monitor.js';
+import { deployWindowEndedAt, refreshKioskDeployWindows } from '../kiosk-deploy-window.js';
+import { ClientHeartbeatMonitor, runHeartbeatCheck } from '../client-heartbeat-monitor.js';
 import {
   isMonitoredClient,
   isStale,
@@ -9,6 +10,11 @@ import {
   staleAlertFingerprint
 } from '../client-heartbeat-alert-policy.js';
 import { prisma } from '../../../lib/prisma.js';
+
+vi.mock('../kiosk-deploy-window.js', () => ({
+  deployWindowEndedAt: vi.fn(async () => null),
+  refreshKioskDeployWindows: vi.fn()
+}));
 
 vi.mock('../../../lib/prisma.js', () => {
   const tx = {
@@ -82,6 +88,21 @@ describe('runHeartbeatCheck', () => {
     vi.clearAllMocks();
     vi.mocked(prisma.alert.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.alert.findMany).mockResolvedValue([]);
+  });
+
+  it('skips a stale client during deploy and alerts on the same outage after grace', async () => {
+    vi.mocked(prisma.clientStatus.findMany).mockResolvedValue([
+      { clientId: 'raspi4-silent-kiosk1', lastSeen: minutesAgo(15) }
+    ] as never);
+    const end = new Date(NOW.getTime() + 5 * 60_000);
+    vi.mocked(deployWindowEndedAt).mockResolvedValueOnce(end);
+    await runHeartbeatCheck(NOW, config);
+    expect(prisma.alert.findFirst).not.toHaveBeenCalled();
+    expect(createdAlerts()).toHaveLength(0);
+    vi.mocked(deployWindowEndedAt).mockResolvedValueOnce(end);
+    await runHeartbeatCheck(end, config);
+    expect(createdAlerts()).toHaveLength(1);
+    expect(createdAlerts()[0].type).toBe('client-heartbeat-stale');
   });
 
   it('queues one Slack warning for a silent Pi and ignores fresh and unmonitored clients', async () => {
@@ -182,5 +203,23 @@ describe('runHeartbeatCheck', () => {
 
     expect(prisma.alert.update).not.toHaveBeenCalled();
     expect(createdAlerts()).toHaveLength(0);
+  });
+});
+
+
+describe('heartbeat tick deploy sampling', () => {
+  afterEach(() => { vi.useRealTimers(); });
+  it('refreshes deploy windows during startup grace before checking heartbeats', async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    const monitor = new ClientHeartbeatMonitor();
+    try {
+      await monitor.start();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(refreshKioskDeployWindows).toHaveBeenCalledWith(expect.any(Date));
+      expect(prisma.clientStatus.findMany).not.toHaveBeenCalled();
+    } finally {
+      await monitor.stop();
+    }
   });
 });

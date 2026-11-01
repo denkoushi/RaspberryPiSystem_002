@@ -866,3 +866,88 @@ Not yet done from the 2026-10-28 kiosk ask: the user tested the factory follow-u
 Next change (one PR, in this order of weight): follow-up-shaped synthetic questions with computed answers (department question → 「他に何件ある？」 as department ∩ content count; → 「〈other factory〉にも同事例ある？」 as factory ∩ content, targets from the records) and the adoption rule written in the ExecPlan (affected rows only, zero held-out and real loss, a minimum affected count); `contentCarry=same` carries the previous content span, not the previous question sentence; the live scorer reads `active` instead of the baseline; `compareRuns` counts synthetic filter rows by `filterCheck.ok`; receipts deduplicated by day and `requestId`; the no-result sentence prints the filtered count.
 
 Private files: `work/flywheel/planner-version.json`, `real-2026-10-28.jsonl`, `runner-2026-10-28.log`, `receipts-2026-10-29.jsonl`.
+
+### 2026-10-29: real follow-up turns are scored against a computed answer, and failed conversations are replayed nightly until they pass (change, not a measurement)
+
+Why: the 2026-10-28 and 2026-10-29 kiosk misses above were each found by reading receipts by hand, and a real follow-up carried no labels of its own, so the night could neither score it nor notice when it was fixed. The order of work was changed on 2026-10-29: score the real follow-ups first, keep every failed conversation as a regression, then fix, then add follow-up-shaped synthetic questions, then state the adoption rule.
+
+Change (#2387, merged baede241, on the Pi 5 since run 20261029-093210-a4f978; `flywheel-filter-check.mjs`, `flywheel-real.mjs`, `flywheel-runner.mjs`, `flywheel-gate.mjs`, `flywheel-planner-version.mjs`, `flywheel-report.mjs`):
+- `checkFollowUpAnswer` computes the expected set of a real follow-up from the records: the scope is the longest organization name in the question (catalog values and `hierarchyGroups`), or the previous plan's organization filter when the question names none; the content is the `contentSpan` or `semanticQuery` reduced to its specific tokens (`buildLexicalIndex` / `matchesSpecificToken` of the executor, generic tokens dropped), one match is enough; the plan's other filters and `excludeShown` are applied to the expected set. Counts and order are not compared. `followUpLoss` names the failure `follow_up_scope` (the shown records are outside the expected organization), `follow_up_missed` (nothing shown, expected records exist) or `follow_up_wrong`. Count answers are `unsupported` (`count_answer`).
+- `regressions.jsonl` (flywheel directory): every failed real row is kept (question, previous plan, previous shown ids, context, no record text) and replayed from the next night (`source: regression`, `HERMES_FLYWHEEL_REGRESSION_BUDGET` default 10, cap 30, outside `existingRealIds`); three consecutive passing nights delete the row. `status.regression` holds replayed, ok, failed, pending.
+- Gate and planner-version comparison count a follow-up row as gained or lost by `followUpCheck.ok` even when `relevant` is empty, and count the synthetic filter rows; the plan summary keeps `contentSpan`; `days` and `requestId` are deduplicated (the double read of 2026-10-29 above). The morning report prints a `follow-up check` line and a `regressions` line.
+
+Tests: `node --test scripts/hermes-search/retrieval/*.test.mjs` 568 pass (Codex gpt-6-astra/high implemented; a read-only review by the same model found 4 defects, fixed before merge).
+
+Known gap: `flywheel-run.mjs` (the Mac comparison) has no `followUpCheck`, so real follow-up rows are `skipped` there.
+
+### 2026-10-30: night 26, 88%; first scored real follow-ups, 3 of 4 lost on scope, 4 regressions recorded (measurement)
+
+Night of 2026-10-29 (#2387 on the Pi 5, `planner-questions-2026-10-26b`): 64 of 73 live content rows matched a target (88%), other records shown 5, nothing shown 4 (all 4 outside the judged candidates, 0 rejected by the judge, no ask-back), synthetic filter questions 10 of 10 correct. Generated 83, kept 73 (dropped: copied run 18, anchor not confirmed 10, too similar 3, copied words 2). Best night so far (night 24 81%, night 25 76%); the DGX was not ready at 22:04 JST (`timeout`), so the real and filter phases ran first and the generation completed at 22:31 JST after a second start.
+
+Planner-version comparison, night 2: compared 18 rows, `affected` 3, dev 11 rows (6 shown under the baseline, 7 under the candidate, gained 1, lost 0), held-out 7 rows (6 of 6, 0/0), real 8 rows (shown 2 under the baseline, 3 under the candidate, gained 1, lost 0), decision `report`, `active` unchanged. The gained row is the first turn 「仙台工場の最近の不適合３件」: the baseline asked back (`clarification`, `originDepartmentName` unresolved, `filter_mismatch`), the candidate answered. Its id is listed under `dev.gainedIds` although the row is real; the split attribution of real rows in the comparison needs a look before the adoption rule relies on these counts.
+
+Real replay (8 turns: the 2026-10-29 14:05 JST conversation, the 2026-10-29 factory question, and the 2026-10-28 08:05 JST conversation read again from the previous day's receipts), the first night scored by `checkFollowUpAnswer`: supported 4, ok 1, scope 3, missed 0, wrong 0, unsupported 2 (count answers).
+
+- Ok: 「砥石をぶつけた事例、三島工場の不適合を２件」 (factory `in` filter over the 三島 departments, 2 shown, expected set 90 — the content test accepts any one specific token, so the set is wide but the shown records are inside it).
+- Scope, kept nothing: 「異物付着の最近の不適合３件」 after 「資材課の最近の不適合２件」. The check carries 資材課 as the scope because the question names no organization; the live plan dropped the department (`絞らない`), searched nationwide, 3 shown, expected 28 inside 資材課. Whether the user meant 資材課 or nationwide is the open question of this row; the check takes the 2026-10-26 decision (a follow-up keeps the previous condition unless replaced).
+- Scope, factory not applied: 「仙台工場にも同事例ありますか？」. In the replay the plan had no filter at all (on the kiosk the same turn carried the 仙台 `in` filter and found nothing), `semanticQuery` the previous question verbatim, 1 shown outside 仙台; expected 250 inside 仙台 — wider than the 24 「異物」 records counted on 2026-10-29, so for this row the one-token content test is loose and the regression result will need a look at what it accepts.
+- Scope, old department kept: 「仙台工場に類例ある？」 (turn 4 of the 2026-10-28 conversation): `replace` but `originDepartmentName = 三島工場製造部組立1課（製造）` kept, `no_result`; expected 2 records inside 仙台 with 配管不良. This is the row the fix must turn into a pass.
+- Unsupported: the two count turns (「配管不良の不適合は他に何件ある？」「１件以上ということは、１００件の可能性もある？」), `count_answer`; the count path is still not scored and still not measured on the kiosk.
+
+Pool or judge: none of the real misses is a pool miss; all three are planner scope (the department filter dropped, not applied, or kept from the previous turn). The 4 synthetic nothing-shown rows are pool misses on the display path.
+
+`regressions.jsonl` holds 4 rows after the first night (the three scope rows and the asked-back first turn, `firstFailedNight 2026-10-29`, `lastOk 0`); replay starts on the night of 2026-10-30.
+
+Two reporting defects, no measurement change:
+- `flywheel-status.json` is rewritten by the `outside_window` starts (06:03 and 10:09 JST), so by morning the night's counts and `status.regression` are gone from it; the night file, `runner-YYYY-MM-DD.log` and `planner-version.json` are the records to read.
+- The report's per-action `lost` lines count only rows with labels, so 2 of the 3 scope losses (rows with `relevant=[]`) appear only in the `follow-up check` line (`add: lost follow_up_scope 1`, `replace: lost none`).
+
+Next change (B, one PR): `planner-jev.mjs` — `contentCarry=same` uses `previousPlan.contentSpan` and shows it in `previousPlanSummary`; when the action is `replace` or `add` and no same-field value was selected, the old condition is not kept silently; `worker.mjs` — `noResultAnswer` prints `executed.timings.filteredCount` when the plan has filters; `createLiveScorer` reads `active` from `planner-version.json`. Expected on the night after release: the 「仙台工場に類例ある？」 regression row ok (the first loss turned into a gain), then the follow-up-shaped synthetic questions and the adoption rule (affected rows only, zero held-out and real loss, a minimum affected count) in the ExecPlan.
+
+Private files: `work/flywheel/questions-2026-10-29.jsonl`, `real-2026-10-29.jsonl`, `runner-2026-10-29.log`, `planner-version.json` (in the log file), `pi5-read-2026-10-30.txt`.
+
+### 2026-10-31: night 27, #2411 fixed the scope losses; the three remaining failures are the content test, which matched on the source name (measurement and change)
+
+Night of 2026-10-30 (#2411 on the Pi 5, run 20261030-031816-ae9693, `planner-questions-2026-10-28a`, 22:02–22:37 JST): generated 26, kept 24, shown 53, dropped 13, labelled 60, label pending 88, learned 4 (rejected). Regression replay of the 4 rows from 2026-10-29: 1 ok (the asked-back first turn 「仙台工場の最近の不適合３件」, `lastOk 1`), 3 failed. All three failed rows now have `scopeOk true` and `filtersOk true` (the 2026-10-30 fix did what it was meant to: the department is no longer dropped, left unapplied, or kept from the previous turn) and fail only on `contentOk`:
+
+- 「仙台工場に類例ある？」 (content 「配管不良の不適合」, scope 仙台): the plan now carries the 仙台 filter and shows records that match the bigram 配管; the check rejects them because none contains 配管不良 verbatim.
+- 「仙台工場にも同事例ありますか？」 (content 「異物付着 不適合」, scope 仙台): `no_result`, `follow_up_missed`; the check expects 238 records.
+- 「異物付着の最近の不適合３件」 (scope 資材課 from the previous turn): 3 shown, `follow_up_wrong`, expected set 28.
+
+Why the content test is wrong here (checked on the 2026-10-04 snapshot, 8209 records, 4722 in 仙台): `checkFollowUpAnswer` tokenised the content span with `contentTokens`, which keeps the source name 不適合 as a word, and 不適合 passes the specific-token threshold (322 of 8209 records, 238 inside 仙台), while the real content words are absent verbatim (配管不良 in 1 record nationwide, none in 仙台; 異物付着 in none). So the expected set was "records that say 不適合", the shown records (bigram hits on 配管) were outside it, and the empty answer for 異物付着 was scored against 238 "expected" records. With the source name dropped, the verbatim in-scope count is 0 for all three rows, which is exactly the case the lexical proxy cannot judge. The executor's judge already sees the question through `relevanceQuery` (source name and filter values removed); the check did not.
+
+Change (this PR; `flywheel-filter-check.mjs`, `flywheel-real.mjs`):
+- The content words of the check are taken through `relevanceQuery` with the scope and the plan's organization values (source name and organization names removed, as the judge sees them; other filter values are not removed, so a part name that overlaps a content word does not empty it). An empty result is `no_content` as before.
+- Scope and filter violations of the shown records are decided first and stay `ok false` (`contentOk null`) even when nothing matches verbatim. Otherwise, when no in-scope record contains a specific content word verbatim and records were shown, the check is `unsupported`: `no_specific_content` when every content word is generic or absent from the corpus (異物付着), `no_verbatim_content` when a specific word exists but not inside the scope (配管不良); when nothing was shown, the empty answer stays `ok`. The verbatim count is taken before the plan's other filters and `excludeShown`, so a set emptied only by those still fails as before.
+- A regression row whose replay is unsupported three nights in a row is retired (`lastUnsupported`, counted like `lastOk`); one or two unsupported nights still reset `lastOk` and keep the row.
+
+Expected on the night after release: the 「異物付着 不適合」 row ok (empty answer, no verbatim match), the 「配管不良」 row `no_verbatim_content`, the 「異物付着の最近の不適合３件」 row `no_specific_content`, both retired after three nights. Checked on the snapshot with the three plan shapes (589 tests pass; a read-only Codex review found the filter-value and ordering defects fixed above). The 「異物付着の最近の不適合３件」 row is also the next retrieval candidate: of its 3 shown records in 資材課, two contain neither 異物 nor 付着 (one contains 付着 only), which points at the recent-pool gate (`buildRecentContentPool` admits dense hits at a fraction of the top cosine without a content-token requirement). That is kept out of this PR so the next morning's counts stay attributable to the check change.
+
+Reporting notes (no measurement change): `flywheel-status.json` was again overwritten by the later `budget_reached` start, and `planner-version.json` holds no check entry for 2026-10-30 although the baseline/candidate comparison ran; the night file and `runner-2026-10-30.log` are the records.
+
+Private files: `work/flywheel/real-2026-10-30.jsonl`, `runner-2026-10-30.log`, `questions-2026-10-30.jsonl`.
+
+### 2026-11-01: night 28, #2440 confirmed on the Pi 5; the remaining failure is the recent pool, now measurable (measurement)
+
+Night of 2026-10-31 (#2440 on the Pi 5, Pi 5 at eb397f79 which contains b2de537f, 22:04–22:33 JST): generated 86, kept 80, shown 62, dropped 20, labelled 60, label pending 44, learned 5 (rejected). Regression replay of the 4 rows from 2026-10-29, against the expectation written on 2026-10-31:
+
+- 「仙台工場の最近の不適合３件」: filter check ok, `lastOk 2` (retires after one more ok night).
+- 「仙台工場にも同事例ありますか？」 (content 「異物付着 不適合」, scope 仙台): ok as expected, `matchedCount 0`, `expected 0`, empty answer accepted; `lastOk 1`.
+- 「仙台工場に類例ある？」 (content 「配管不良の不適合」, scope 仙台): `unsupported`, `no_verbatim_content` as expected; `lastUnsupported 1`, retires after two more such nights.
+- 「異物付着の最近の不適合３件」 (scope 資材課 from the previous turn): not `no_specific_content` as predicted from the 2026-10-04 snapshot but a supported failure: `scopeOk true`, `filtersOk true`, `contentOk false`, `expected 1`, `shown 3`, `matchedCount 1`. On the live corpus 異物付着 is a specific word present verbatim in one 資材課 record, and the kiosk showed three records of which that one is the only verbatim match. The snapshot prediction was wrong only because the live corpus has the word; the check now reports a real retrieval loss instead of a scoring artefact.
+
+Reading: the check change did what it was meant to on all three content rows (two expected outcomes exact, the third a genuine failure rather than a false one). The one remaining failure is the retrieval candidate noted on 2026-10-31: the recent pool admits dense hits at a fraction of the top cosine without a content-token requirement (`buildRecentContentPool` in `executor.mjs`), so two of the three "recent" records for 異物付着 do not contain the word. This row now stays in the regression set with `lastOk 0` and measures that candidate night by night.
+
+Next: gate the recent pool on the lexical index's specific tokens (or require at least one content bigram) when the question carries a content span, and watch this row turn ok; the heldout and real counts must not drop. No check-side change is planned.
+
+Reporting notes (no measurement change): `flywheel-status.json` was overwritten by the later `budget_reached` start again (shows `generated 0`); the `completed` line in `runner-2026-10-31.log` is the record. `planner-version.json` still holds no check entry after 2026-10-28.
+
+Private files: `work/flywheel/real-2026-10-31.jsonl`, `runner-2026-10-31.log`, `questions-2026-10-31.jsonl`.
+
+### 2026-11-01: the recent pool now requires a content bigram of dense hits (change, not a measurement)
+
+Follows the night 28 reading: for 「異物付着の最近の不適合３件」 the kiosk showed three 資材課 records of which only one contains a content word. `buildRecentContentPool` (`executor.mjs`) admitted dense hits at 75% of the top cosine with no content-token requirement, while lexical rows have always needed `contentTokenScore > 0`; the newest-first relevance batches then let such records through.
+
+Change (this PR): a dense hit (hybrid or dense retriever) is admitted only when its lexical row has `contentTokenScore > 0`, that is, the record contains at least one bigram of a content word. When no record in the filtered set has one (paraphrases only), dense hits are admitted as before so recall does not drop to nothing. Thresholds, the lexical gate, the ordering and the judge batches are unchanged. 592 tests pass (589 + 3); a read-only Codex review found nothing.
+
+Expected on the night after release: the 「異物付着の最近の不適合３件」 row ok, or fewer records shown with every shown record containing a content bigram (a record with only the generic bigram still fails the verbatim check, which would then point at the judge, not the pool). Heldout and real counts must not fall; the dense-only fallback keeps the paraphrase case.
