@@ -11,7 +11,7 @@ import type { PrismaProcedureBoardRepository } from '../../services/knowledge/pr
 import { registerKioskProcedureBoardRoutes } from '../kiosk-procedure-boards.js';
 
 const mocks = vi.hoisted(() => ({ enabled: true, repository: { listProcedures: vi.fn(), getOrCreate: vi.fn(), get: vi.fn(), save: vi.fn(),
-  appendEvents: vi.fn(), materials: vi.fn(), image: vi.fn(), startTrial: vi.fn(), weeklyMetrics: vi.fn() }, readDisplay: vi.fn(), device: { findUniqueOrThrow: vi.fn(), update: vi.fn() } }));
+  suggestions: vi.fn(), enqueueAi: vi.fn(), decidePlacement: vi.fn(), decideFormat: vi.fn(), formatProposal: vi.fn(), appendEvents: vi.fn(), materials: vi.fn(), image: vi.fn(), startTrial: vi.fn(), weeklyMetrics: vi.fn() }, readDisplay: vi.fn(), device: { findUniqueOrThrow: vi.fn(), update: vi.fn() } }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: { clientDevice: mocks.device } }));
 vi.mock('../../lib/logger.js', () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 vi.mock('../../services/kiosk-inquiry/system-notice-sources.js', () => ({ deliverTelemetryNotice: vi.fn() }));
@@ -62,7 +62,7 @@ describe('Kiosk procedure board HTTP contract', () => {
   it('requires client authentication and both capabilities on every route, before body parsing', async () => {
     const app = server();
     for (const [method, path] of [['GET', '/procedures'], ['POST', ''], ['GET', ''], ['PUT', ''], ['GET', '/materials'],
-      ['GET', `/materials/m1/images/${'a'.repeat(64)}`], ['POST', '/events'], ['PUT', '/trial'], ['GET', '/metrics']] as const) {
+      ['GET', `/materials/m1/images/${'a'.repeat(64)}`], ['POST', '/events'], ['PUT', '/trial'], ['GET', '/metrics'], ['GET', '/suggestions'], ['POST', '/suggestions/ai-1/decisions'], ['POST', '/format-proposals'], ['GET', '/format-proposals/fmt-1'], ['POST', '/format-proposals/fmt-1/decision']] as const) {
       const endpoint = path === '/procedures' ? '/kiosk/procedure-boards/procedures' : url + path;
       expect((await app.inject({ method, url: endpoint, headers: { authorization: 'Bearer admin' } })).statusCode).toBe(401);
       mocks.enabled = false;
@@ -139,4 +139,58 @@ describe('Kiosk procedure board HTTP contract', () => {
     expect((await app.inject({ url: url + '/metrics?trialStart=2026-10-31T15:00:00Z&weeks=4', headers })).json()).toEqual({ timezone: 'Asia/Tokyo', weeks: [] });
     await app.close();
   });
+  it('queues format work with 202 immediately and polls without waiting for inference', async () => {
+    const app = server(); const requestId = randomUUID();
+    mocks.repository.enqueueAi.mockResolvedValue({ proposalId: 'fmt-1', boardVersion: 8, status: 'pending', pollAfterMs: 5000 });
+    const response = await app.inject({ method: 'POST', url: url + '/format-proposals', headers, payload: { expectedVersion: 8, requestId } });
+    expect(response.statusCode).toBe(202); expect(response.json()).toMatchObject({ status: 'pending', pollAfterMs: 5000 });
+    expect(mocks.repository.enqueueAi).toHaveBeenCalledWith('topic-1', 'device-1', 'format', requestId, 8);
+    mocks.repository.formatProposal.mockResolvedValue({ proposalId: 'fmt-1', status: 'deferred' });
+    expect((await app.inject({ url: url + '/format-proposals/fmt-1', headers })).json()).toMatchObject({ status: 'deferred' });
+    expect(mocks.repository.formatProposal).toHaveBeenCalledWith('topic-1', 'fmt-1', 'device-1');
+    mocks.repository.suggestions.mockResolvedValue({ boardVersion: 8, status: 'deferred', current: null, previous: { id: 'ai-7', stale: true }, pollAfterMs: 10000 });
+    expect((await app.inject({ url: url + '/suggestions', headers })).json()).toMatchObject({ status: 'deferred', previous: { stale: true } });
+    expect(mocks.repository.suggestions).toHaveBeenCalledWith('topic-1', 'device-1');
+    expect((await app.inject({ method: 'POST', url: url + '/format-proposals', headers, payload: { expectedVersion: 8, requestId, clientDeviceId: 'forged' } })).statusCode).toBe(400);
+    mocks.repository.enqueueAi.mockRejectedValueOnce(new ApiError(409, 'conflict', { currentVersion: 8 }, 'PROCEDURE_BOARD_VERSION_CONFLICT'));
+    const conflict = await app.inject({ method: 'POST', url: url + '/format-proposals', headers, payload: { expectedVersion: 8, requestId } });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json()).toMatchObject({ code: 'PROCEDURE_BOARD_VERSION_CONFLICT', currentVersion: 8 });
+    await app.close();
+  });
+  it('validates decisions, forwards request identity and returns the stale error code', async () => {
+    const app = server(); const eventId = randomUUID();
+    const decision = { expectedVersion: 7, eventId, proposalId: 'p1', action: 'accept', itemId: randomUUID() };
+    mocks.repository.decidePlacement.mockResolvedValue({ version: 8 });
+    expect((await app.inject({ method: 'POST', url: url + '/suggestions/ai-7/decisions', headers, payload: decision })).json()).toEqual({ version: 8 });
+    expect(mocks.repository.decidePlacement).toHaveBeenCalledWith('topic-1', 'device-1', 'ai-7', decision);
+    const target = { page: 1, row: 0, col: 0, index: 0, mode: 'row' };
+    expect((await app.inject({ method: 'POST', url: url + '/suggestions/ai-7/decisions', headers, payload: { ...decision, action: 'relocate', target } })).statusCode).toBe(200);
+    for (const invalid of [{ ...decision, employeeId: 'x' }, { ...decision, action: 'relocate' }, { ...decision, workId: randomUUID() }, { ...decision, action: 'select_conflict' }]) {
+      expect((await app.inject({ method: 'POST', url: url + '/suggestions/ai-7/decisions', headers, payload: invalid })).statusCode).toBe(400);
+    }
+    for (const action of ['dismiss', 'select_conflict']) {
+      const payload = { expectedVersion: 7, eventId, proposalId: 'p1', action,
+        ...(action === 'select_conflict' ? { selectedMaterialId: null } : {}) };
+      const calls = mocks.repository.decidePlacement.mock.calls.length;
+      expect((await app.inject({ method: 'POST', url: url + '/suggestions/ai-7/decisions', headers,
+        payload: { ...payload, itemId: randomUUID() } })).statusCode).toBe(400);
+      expect(mocks.repository.decidePlacement).toHaveBeenCalledTimes(calls);
+      expect((await app.inject({ method: 'POST', url: url + '/suggestions/ai-7/decisions', headers, payload })).statusCode).toBe(200);
+    }
+    expect((await app.inject({ method: 'POST', url: url + '/suggestions/ai-7/decisions', headers,
+      payload: { expectedVersion: 7, eventId, proposalId: 'h1', action: 'accept' } })).statusCode).toBe(200);
+    const stale = new ApiError(409, 'stale', undefined, 'PROCEDURE_BOARD_SUGGESTION_STALE');
+    mocks.repository.decidePlacement.mockRejectedValue(stale);
+    const response = await app.inject({ method: 'POST', url: url + '/suggestions/ai-7/decisions', headers, payload: decision });
+    expect(response.statusCode).toBe(409); expect(response.json().code).toBe('PROCEDURE_BOARD_SUGGESTION_STALE');
+    mocks.repository.decideFormat.mockRejectedValueOnce(stale).mockResolvedValueOnce({ version: 8, state: 'reverted', layout: emptyLayout() });
+    const format = { expectedVersion: 8, eventId, action: 'accept' };
+    expect((await app.inject({ method: 'POST', url: url + '/format-proposals/fmt-8/decision', headers, payload: format })).statusCode).toBe(409);
+    const reverted = await app.inject({ method: 'POST', url: url + '/format-proposals/fmt-8/decision', headers, payload: { ...format, action: 'revert' } });
+    expect(reverted.json()).toMatchObject({ version: 8, state: 'reverted', layout: emptyLayout() });
+    expect(mocks.repository.decideFormat).toHaveBeenLastCalledWith('topic-1', 'device-1', 'fmt-8', { ...format, action: 'revert' });
+    await app.close();
+  });
+
 });

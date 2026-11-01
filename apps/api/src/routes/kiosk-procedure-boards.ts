@@ -36,11 +36,27 @@ export function registerKioskProcedureBoardRoutes(app: FastifyInstance) {
       await repository().image(procedureId, materialId, imageId);
       return reply.type('image/jpeg').send(await getKnowledgeRuntime().assets.readDisplay(imageId));
     });
-    boardApp.get('/:procedureId', async request => repository().get(paramsSchema.parse(request.params).procedureId));
+    boardApp.get('/:procedureId', async request => repository().get(paramsSchema.parse(request.params).procedureId, await clientId(request.headers['x-client-key'])));
     boardApp.put('/:procedureId', { bodyLimit: 10_000_000 }, async request => getKnowledgeRuntime().procedureBoards.save(
       paramsSchema.parse(request.params).procedureId, await clientId(request.headers['x-client-key']), request.body));
     boardApp.post('/:procedureId/events', async request => getKnowledgeRuntime().procedureBoards.events(
       paramsSchema.parse(request.params).procedureId, await clientId(request.headers['x-client-key']), request.body));
+    boardApp.get('/:procedureId/suggestions', async request => repository().suggestions(
+      paramsSchema.parse(request.params).procedureId, await clientId(request.headers['x-client-key'])));
+    boardApp.post('/:procedureId/suggestions/:suggestionId/decisions', async request => {
+      const { procedureId, suggestionId } = paramsSchema.extend({ suggestionId: z.string().min(1).max(200) }).parse(request.params);
+      return getKnowledgeRuntime().procedureBoards.decidePlacement(procedureId, await clientId(request.headers['x-client-key']), suggestionId, request.body);
+    });
+    boardApp.post('/:procedureId/format-proposals', async (request, reply) => reply.code(202).send(
+      await getKnowledgeRuntime().procedureBoards.requestFormat(paramsSchema.parse(request.params).procedureId, await clientId(request.headers['x-client-key']), request.body)));
+    boardApp.get('/:procedureId/format-proposals/:proposalId', async request => {
+      const { procedureId, proposalId } = paramsSchema.extend({ proposalId: z.string().min(1).max(200) }).parse(request.params);
+      return repository().formatProposal(procedureId, proposalId, await clientId(request.headers['x-client-key']));
+    });
+    boardApp.post('/:procedureId/format-proposals/:proposalId/decision', async request => {
+      const { procedureId, proposalId } = paramsSchema.extend({ proposalId: z.string().min(1).max(200) }).parse(request.params);
+      return getKnowledgeRuntime().procedureBoards.decideFormat(procedureId, await clientId(request.headers['x-client-key']), proposalId, request.body);
+    });
     boardApp.put('/:procedureId/trial', async request => {
       const { expectedVersion, startedAt } = z.object({ expectedVersion: z.number().int().positive(), startedAt: z.string().datetime({ offset: true }) }).strict().parse(request.body);
       return repository().startTrial(paramsSchema.parse(request.params).procedureId, await clientId(request.headers['x-client-key']), expectedVersion, new Date(startedAt));
