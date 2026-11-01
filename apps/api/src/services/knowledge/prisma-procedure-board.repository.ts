@@ -172,6 +172,24 @@ export class PrismaProcedureBoardRepository {
         derived: { label: 'AI-generated; not original facts', organized: row.organized } })) };
   }
   private async refreshLocked(tx: Prisma.TransactionClient, board: KnowledgeProcedureBoard, clientDeviceId?: string) {
+    const legacy = layoutSchema.parse(board.layout);
+    const decisions = decisionsSchema.parse(board.decisions);
+    const itemIds: string[] = [];
+    for (const page of legacy.pages) {
+      if (!page.heading) continue;
+      const itemId = randomUUID(); itemIds.push(itemId);
+      decisions.acceptedHeadings.push({ page: page.page, text: page.heading });
+      page.rows.unshift({ cols: [{ items: [{ itemId, kind: 'text', textKind: 'title', style: 'heading', text: page.heading, origin: 'ai-accepted' }] }], w: [1] });
+      page.heading = '';
+    }
+    if (itemIds.length) {
+      const layout = layoutSchema.parse(legacy);
+      const actor = clientDeviceId ?? board.lastRequestedClientDeviceId;
+      board = await tx.knowledgeProcedureBoard.update({ where: { id: board.id }, data: {
+        layout: asJson(layout), decisions: asJson(decisionsSchema.parse(decisions)), version: { increment: 1 },
+      } });
+      await this.insertEvent(tx, board, actor, board.version, { id: randomUUID(), type: 'headings_migrated', payload: { itemIds } }, layoutHash(layout));
+    }
     const materials = await this.materialsOf(tx, board.procedureId);
     const fingerprint = this.fingerprint(materials);
     if (fingerprint !== board.materialFingerprint || (clientDeviceId && board.lastRequestedClientDeviceId !== clientDeviceId)) {
@@ -321,10 +339,22 @@ export class PrismaProcedureBoardRepository {
           if (input.action === 'accept' && !await tx.knowledgeProcedureBoardEvent.findUnique({ where: { dedupeKey: `show:${board.id}:${id}:${placement.id}` } })) invalidBoard('先に提案表示を記録してください');
           event = { id: input.eventId, type: input.action === 'accept' ? 'placement_accepted' : 'ghost_relocated', payload: { ...base, materialId: material.materialId, itemId: input.itemId, to: at, ...work } };
         }
-      } else if (heading && ['accept', 'dismiss'].includes(input.action) && !input.itemId && !input.workId) {
-        if (input.action === 'accept') layout.pages[heading.page - 1].heading = heading.text;
-        else decisions.dismissedHeadings.push({ page: heading.page, text: heading.text });
-        event = { id: input.eventId, type: input.action === 'accept' ? 'heading_accepted' : 'heading_dismissed', payload: base };
+      } else if (heading && ['accept', 'dismiss', 'relocate'].includes(input.action) && !input.workId) {
+        if (input.action === 'dismiss') {
+          if (input.itemId) invalidBoard();
+          decisions.dismissedHeadings.push({ page: heading.page, text: heading.text });
+          event = { id: input.eventId, type: 'heading_dismissed', payload: base };
+        } else {
+          if (!input.itemId || boardItems(layout).some(entry => entry.item.itemId === input.itemId)) invalidBoard();
+          const proposed = { page: heading.page, row: 0, col: 0, index: 0, mode: 'row' as const };
+          const target = input.action === 'relocate' ? input.target! : proposed;
+          if (input.action === 'relocate' && same(target, proposed)) invalidBoard();
+          try { layout = placeItem(layout, { itemId: input.itemId, kind: 'text', textKind: 'title', style: 'heading', text: heading.text, origin: 'ai-accepted' }, target); }
+          catch { invalidBoard(); }
+          decisions.acceptedHeadings.push({ page: heading.page, text: heading.text });
+          const to = boardItems(layout).find(entry => entry.item.itemId === input.itemId)!.at;
+          event = { id: input.eventId, type: input.action === 'accept' ? 'heading_accepted' : 'ghost_relocated', payload: { ...base, itemId: input.itemId, to } };
+        }
       } else if (conflict && input.action === 'select_conflict' && !input.itemId && !input.workId) {
         if (input.selectedMaterialId !== null && !conflict.materialIds.includes(input.selectedMaterialId!)) invalidBoard();
         decisions.conflicts = decisions.conflicts.filter(entry => !entry.materialIds.every(materialId => conflict.materialIds.includes(materialId)));

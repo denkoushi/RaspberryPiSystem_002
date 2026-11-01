@@ -77,6 +77,7 @@ export function validatePlacementResult(raw: unknown, input: BoardAiInput): Plac
     seen.add(proposal.materialId); return true;
   });
   result.headings = result.headings.filter(proposal => !input.layout.pages[proposal.page - 1].heading && groundedNumbers(proposal.text)
+    && !(input.decisions.acceptedHeadings ?? []).some(entry => entry.page === proposal.page && entry.text === proposal.text)
     && !input.decisions.dismissedHeadings.some(entry => entry.page === proposal.page && entry.text === proposal.text));
   // Only an unconfirmed question may describe a gap; never promote a generated instruction to a fact.
   result.gaps = result.gaps.filter(proposal => groundedNumbers(proposal.text) && /(?:ですか|ますか|でしょうか|[?？])$/.test(proposal.text)

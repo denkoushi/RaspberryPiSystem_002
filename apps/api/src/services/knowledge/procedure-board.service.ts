@@ -19,14 +19,15 @@ export const boardEventSchema = z.discriminatedUnion('type', [
   event('placement_shown', suggestion),
   event('placement_accepted', { ...located, ...suggestion, to: position }),
   event('placement_dismissed', { ...suggestion, ...work }),
-  event('ghost_relocated', { ...located, ...suggestion, to: position }),
+  event('ghost_relocated', { ...located, suggestionSetId: identity, proposalId: identity, to: position }),
   event('material_placed', { ...material, itemId: z.string().uuid(), to: position }),
   event('item_moved', { ...located, from: position, to: position }),
   event('item_removed', located), event('text_edited', located),
   event('text_created', { itemId: z.string().uuid() }),
   event('item_duplicated', { itemId: z.string().uuid(), sourceItemId: z.string().uuid() }),
   event('columns_resized', { page: z.number().int().min(1).max(3), row: z.number().int().nonnegative() }),
-  event('heading_accepted', { suggestionSetId: identity, proposalId: identity }),
+  event('heading_accepted', { suggestionSetId: identity, proposalId: identity, itemId: z.string().uuid(), to: position }),
+  event('headings_migrated', { itemIds: z.array(z.string().uuid()).min(1).max(3) }),
   event('heading_dismissed', { suggestionSetId: identity, proposalId: identity }),
   event('conflict_selected', { suggestionSetId: identity, proposalId: identity, selectedMaterialId: identity.nullable() }),
   event('format_requested', { suggestionSetId: identity }), event('format_accepted', { suggestionSetId: identity }),
@@ -42,6 +43,7 @@ export const boardEventSchema = z.discriminatedUnion('type', [
 export type BoardEvent = z.infer<typeof boardEventSchema>;
 export const decisionsSchema = z.object({
   dismissedPlacements: z.array(z.object({ materialId: identity, materialFingerprint: identity }).strict()).max(600),
+  acceptedHeadings: z.array(z.object({ page: z.number().int().min(1).max(3), text: z.string().max(120) }).strict()).max(600).default([]),
   dismissedHeadings: z.array(z.object({ page: z.number().int().min(1).max(3), text: z.string().max(120) }).strict()).max(600),
   conflicts: z.array(z.object({ materialIds: z.tuple([identity, identity]), selectedMaterialId: identity.nullable() }).strict()
     .refine(value => value.materialIds[0] !== value.materialIds[1] && (value.selectedMaterialId === null || value.materialIds.includes(value.selectedMaterialId)))).max(600),
@@ -82,7 +84,7 @@ export function validateLayoutEvent(before: BoardLayout, after: BoardLayout, eve
       if (old || next?.item.kind !== 'material' || next.item.origin !== 'human' || next.item.materialId !== event.payload.materialId || !same(next.at, event.payload.to)) invalidBoard();
       break;
     case 'text_created':
-      if (old || next?.item.kind !== 'text' || !next.item.text.trim() || next.item.style !== ({ title: 'heading', subtitle: 'subheading', body: 'body' } as const)[next.item.textKind]) invalidBoard();
+      if (old || next?.item.kind !== 'text' || next.item.origin !== 'human' || !next.item.text.trim() || next.item.style !== ({ title: 'heading', subtitle: 'subheading', body: 'body' } as const)[next.item.textKind]) invalidBoard();
       break;
     case 'item_duplicated': {
       const source = oldItems.find(entry => entry.item.itemId === event.payload.sourceItemId)?.item;

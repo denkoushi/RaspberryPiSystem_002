@@ -97,8 +97,8 @@ const Page = memo(function Page({ page, procedureId, materials, set, stale, coll
     </header>
     {!collapsed && <div className="pb-scroll">
       {page.heading && <h2 className="pb-page-heading">{page.heading}</h2>}
-      {!page.heading && heading && <div className={`pb-heading-ghost${stale ? ' pb-stale' : ''}`}><strong>{heading.text}</strong><span className="pb-actions">
-        {icon('見出しにする', '✓', () => decide({ proposalId: heading.id, action: 'accept' }), disabled || stale)}
+      {!page.heading && heading && <div data-ghost={heading.id} className={`pb-card pb-ghost pb-heading-ghost${stale ? ' pb-stale' : ''}`}><strong>{heading.text}</strong><span className="pb-actions">
+        {icon('見出しにする', '✓', () => decide({ proposalId: heading.id, action: 'accept', itemId: crypto.randomUUID() }), disabled || stale)}
         {icon('見出しを外す', '×', () => decide({ proposalId: heading.id, action: 'dismiss' }), disabled || stale)}</span></div>}
       {Array.from({ length: page.rows.length + 1 }, (_, r) => {
         const row = page.rows[r];
@@ -140,6 +140,7 @@ const Page = memo(function Page({ page, procedureId, materials, set, stale, coll
 });
 
 type Drag = { node: HTMLElement; x: number; y: number; nowX: number; nowY: number; on: boolean; itemId?: string; materialId?: string;
+  geometry?: Map<HTMLElement, { rect: DOMRect; cards: { itemId: string; box: DOMRect }[] }>; sourceWidth?: number;
   ghostId?: string; target?: BoardTarget; tray?: boolean; base: BoardLayout; positions: Map<string, ReturnType<typeof boardItems>[number]['at']>; hold?: ReturnType<typeof setTimeout>; waiting?: boolean; resize?: { page: number; row: number; col: number; widths: number[]; width: number; now: number[] } };
 export function ProcedureBoard({ procedureId, title, materials: materialList, materialError }: { procedureId: string; title: string; materials: Material[]; materialError?: unknown }) {
   const state = useProcedureBoard(procedureId); const { session, draft } = state;
@@ -221,6 +222,13 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
   }, [session]);
   useEffect(() => () => { cancelAnimationFrame(frame.current); clearTimeout(drag.current?.hold); }, []);
   useEffect(() => { if (disabled && drag.current) cleanupDrag(); }, [disabled, cleanupDrag]);
+  function measurePages(d: Drag) {
+    return new Map([...root.current!.querySelectorAll<HTMLElement>('.pb-page[data-drop]')].map(page => [page, {
+      rect: page.getBoundingClientRect(),
+      cards: [...page.querySelectorAll<HTMLElement>('[data-item]')].filter(node => node.dataset.item !== d.itemId)
+        .map(node => ({ itemId: node.dataset.item!, box: node.getBoundingClientRect() })),
+    }]));
+  }
   function step() {
     frame.current = 0; const d = drag.current; if (!d || d.waiting) return;
     if (d.resize) {
@@ -230,26 +238,27 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
       d.node.style.gridTemplateColumns = r.now.map(w => `minmax(0,${w}fr)`).join(' 20px '); return;
     }
     if (!d.on && Math.hypot(d.nowX - d.x, d.nowY - d.y) < 6) return;
+    // Finish geometry reads before writing the clone, transform or indicator.
+    const hit = document.elementFromPoint(d.nowX, d.nowY)?.closest<HTMLElement>('[data-drop]');
+    d.geometry ??= measurePages(d);
     if (!d.on && lift.current) {
       const clone = d.node.cloneNode(true) as HTMLElement;
       clone.removeAttribute('tabindex'); clone.removeAttribute('aria-current'); clone.setAttribute('inert', '');
       clone.querySelectorAll('[tabindex],button,textarea').forEach(node => node.setAttribute('tabindex', '-1'));
       lift.current.className = `pb-lift ${d.node.closest('.pb-tray') ? 'pb-tray' : 'pb-page'}`;
       lift.current.replaceChildren(clone); lift.current.hidden = false;
-      lift.current.style.width = `${Math.min(d.node.getBoundingClientRect().width, 238)}px`;
+      lift.current.style.width = `${Math.min(d.sourceWidth!, 238)}px`;
       d.node.classList.add('pb-dragging');
     }
     d.on = true;
-    if (lift.current) lift.current.style.transform = `translate(${d.nowX - 28}px,${d.nowY - 14}px) rotate(-1.5deg)`;
-    const hit = document.elementFromPoint(d.nowX, d.nowY)?.closest<HTMLElement>('[data-drop]');
+    if (lift.current) lift.current.style.transform = `translate3d(${d.nowX - 28}px,${d.nowY - 14}px,0)`;
     d.target = undefined; d.tray = hit?.dataset.drop === 'tray';
     if (!hit || d.tray) { if (indicator.current) indicator.current.hidden = true; return; }
     const page = Number(hit.dataset.drop); const basePage = d.base.pages[page - 1];
-    let target = rowTarget(page, basePage.rows.length); let rect = hit.getBoundingClientRect();
-    const cards = [...hit.querySelectorAll<HTMLElement>('[data-item]')].filter(node => node.dataset.item !== d.itemId);
-    for (const node of cards) {
-      const at = d.positions.get(node.dataset.item!); if (!at) continue;
-      const box = node.getBoundingClientRect();
+    const geometry = d.geometry.get(hit); if (!geometry) return;
+    let target = rowTarget(page, basePage.rows.length); let rect = geometry.rect;
+    for (const { itemId, box } of geometry.cards) {
+      const at = d.positions.get(itemId); if (!at) continue;
       if (d.nowY < box.top) { target = rowTarget(page, at.row); break; }
       if (d.nowX >= box.left && d.nowX <= box.right && d.nowY >= box.top && d.nowY <= box.bottom) {
         rect = box; const ratio = (d.nowX - box.left) / box.width; const after = d.nowY > box.top + box.height / 2;
@@ -290,6 +299,8 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
       const base = itemId ? removeItem(draft, itemId) : draft;
       const d: Drag = { node, itemId, materialId, ghostId, x: event.clientX, y: event.clientY, nowX: event.clientX, nowY: event.clientY, on: false,
         base, positions: new Map(boardItems(base).map(({ item, at }) => [item.itemId, at])), waiting: event.pointerType === 'touch' };
+      d.sourceWidth = node.getBoundingClientRect().width;
+      d.geometry = measurePages(d);
       drag.current = d;
       if (d.waiting) {
         d.hold = setTimeout(() => {
@@ -312,7 +323,8 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
       else if (d.tray && d.ghostId) decide({ proposalId: d.ghostId, action: 'dismiss' });
       else if (d.target) {
         if (d.ghostId) {
-          const ghost = set?.placements.find(ghost => ghost.id === d.ghostId);
+          const heading = set?.headings.find(ghost => ghost.id === d.ghostId);
+          const ghost = set?.placements.find(ghost => ghost.id === d.ghostId) ?? (heading && rowTarget(heading.page, 0));
           const same = ghost && (['page', 'row', 'col', 'index', 'mode'] as const).every(key => ghost[key] === d.target![key]);
           decide(same ? { proposalId: d.ghostId, action: 'accept', itemId: crypto.randomUUID() } : { proposalId: d.ghostId, action: 'relocate', itemId: crypto.randomUUID(), target: d.target });
         }
@@ -329,6 +341,7 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
   };
   const shared = { procedureId, materials, disabled, begin, select: setSelected, commit, cancel: endEdit, remove, decide, shown: session.show, resize };
   return <div className="procedure-board" ref={root} onPointerDown={pointerDown}
+    onScrollCapture={() => { if (drag.current) drag.current.geometry = undefined; }}
     onInput={() => session.touch()} onPointerMove={event => { const d = drag.current; if (!d) return; if (d.waiting && (event.clientX !== d.x || event.clientY !== d.y)) { cleanupDrag(); return; } session.touch(); d.nowX = event.clientX; d.nowY = event.clientY; if (!frame.current) frame.current = requestAnimationFrame(step); }}
     onPointerUp={event => pointerUp(event)} onPointerCancel={event => pointerUp(event, true)}
     onLostPointerCapture={() => { if (drag.current) cleanupDrag(); }}

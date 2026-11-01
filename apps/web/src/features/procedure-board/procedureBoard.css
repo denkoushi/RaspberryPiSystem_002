@@ -1,11 +1,11 @@
 .procedure-board {
-  --pb-desk:#e4e8ef; --pb-desk-2:#d6dce6; --pb-paper:#fff;
-  --pb-ink:#141a26; --pb-ink-2:#4a5468; --pb-ink-3:#7c8597; --pb-rule:#cdd3de;
-  --pb-blue:#0031d8; --pb-blue-soft:#e8edff;
-  --pb-ai:#9a7400; --pb-ai-ink:#5c4500; --pb-ai-bg:#fff7d6;
-  --pb-red:#c20000; --pb-red-bg:#fee; --pb-green:#18794e; --pb-focus:#ffd43d;
+  --pb-desk:#10141c; --pb-desk-2:#1b2130; --pb-paper:#1c2230;
+  --pb-ink:#e3e8f1; --pb-ink-2:#a9b2c3; --pb-ink-3:#737d91; --pb-rule:#323a4b;
+  --pb-blue:#7d97ff; --pb-blue-fill:#3359ff; --pb-blue-soft:#222c48;
+  --pb-ai:#c9a23a; --pb-ai-ink:#ecd28a; --pb-ai-bg:#2a2414;
+  --pb-red:#ff7a7a; --pb-red-bg:#331a1d; --pb-green:#4cc38a; --pb-focus:#ffd43d;
   --pb-bar:36.5px; --pb-tray:252px; --pb-strip:28px;
-  color-scheme:light; background:var(--pb-desk); color:var(--pb-ink); font-size:11px; line-height:1.6;
+  color-scheme:dark; background:var(--pb-desk); color:var(--pb-ink); font-size:11px; line-height:1.6;
   position:relative; flex:1; min-height:0; min-width:0; overflow:hidden; display:flex; flex-direction:column;
   padding:0 max(11px, env(safe-area-inset-right, 0px)) 8.5px max(11px, env(safe-area-inset-left, 0px)); gap:5.5px;
 }
@@ -29,7 +29,7 @@
 @keyframes pb-pulse { 50% { opacity:.25; } }
 .procedure-board .pb-stats { display:flex; gap:11px; color:var(--pb-ink-3); font-size:10.5px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .procedure-board .pb-stats b { margin-left:4px; color:var(--pb-ink); font-size:12.5px; font-weight:700; }
-.procedure-board button.pb-primary { padding:0 14px; background:var(--pb-blue); color:var(--pb-paper); font-weight:700; white-space:nowrap; }
+.procedure-board button.pb-primary { padding:0 14px; background:var(--pb-blue-fill); color:#fff; font-weight:700; white-space:nowrap; }
 .procedure-board button.pb-primary:hover { filter:brightness(1.15); }
 .procedure-board button.pb-outline { padding:0 12.5px; border:1.5px solid var(--pb-blue); background:var(--pb-paper); color:var(--pb-blue); font-weight:700; }
 .procedure-board [role=alert] { color:var(--pb-red); font-weight:700; }
@@ -43,7 +43,7 @@
 .procedure-board .pb-page-total { color:var(--pb-ink-3); font-size:10px; }
 .procedure-board .pb-scroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; display:flex; flex-direction:column; }
 .procedure-board .pb-tray .pb-scroll { padding:1.5px 3px 5.5px 1.5px; gap:4px; }
-.procedure-board .pb-page .pb-scroll { background:var(--pb-paper); border-radius:3px; box-shadow:0 1px 1.5px #141a2614,0 5.5px 17px -12px #141a262e; position:relative; padding:19.5px 19.5px 28px; gap:10px; }
+.procedure-board .pb-page .pb-scroll { background:var(--pb-paper); border-radius:3px; box-shadow:0 0 0 1px #262e3e,0 6px 18px -10px rgba(0,0,0,.6); position:relative; padding:19.5px 19.5px 28px; gap:10px; }
 .procedure-board .pb-collapsed>header { flex-direction:column; height:100%; padding:4px 0; background:var(--pb-desk-2); border-radius:7px; }
 .procedure-board .pb-collapsed>header>button { margin:0; order:-1; width:28px; }
 .procedure-board .pb-collapsed h2 { writing-mode:vertical-rl; letter-spacing:.2em; }
@@ -53,9 +53,9 @@
 .procedure-board .pb-text { display:block; min-width:0; white-space:pre-wrap; cursor:text; }
 .procedure-board .pb-meta { display:flex; align-items:center; gap:4px; color:var(--pb-ink-3); font-size:9px; font-variant-numeric:tabular-nums; line-height:1; }
 .procedure-board .pb-photo { display:block; width:56px; height:35px; border-radius:4px; overflow:hidden; background:var(--pb-desk); }
-.procedure-board .pb-photo img { width:100%; height:100%; object-fit:cover; }
-.procedure-board .pb-memo-picture { display:block; width:56px; height:35px; border-radius:4px; background:repeating-linear-gradient(transparent 0 7.5px,var(--pb-rule) 7.5px 8.5px) 0 4px/100% calc(100% - 4px) no-repeat,#f6f4ec; }
-.procedure-board .pb-tray .pb-card { display:grid; grid-template-columns:56px minmax(0,1fr); gap:3px 8.5px; align-items:start; padding:5.5px; border-radius:7px; background:var(--pb-paper); box-shadow:0 1px 0 var(--pb-rule); flex-shrink:0; }
+.procedure-board .pb-photo img { width:100%; height:100%; object-fit:cover; filter:brightness(.82) saturate(.9); }
+.procedure-board .pb-memo-picture { display:block; width:56px; height:35px; border-radius:4px; background:repeating-linear-gradient(transparent 0 7.5px,var(--pb-rule) 7.5px 8.5px) 0 4px/100% calc(100% - 4px) no-repeat,#252c3a; }
+.procedure-board .pb-tray .pb-card { display:grid; grid-template-columns:56px minmax(0,1fr); gap:3px 8.5px; align-items:start; padding:5.5px; border-radius:7px; background:var(--pb-paper); box-shadow:0 0 0 1px #262e3e; flex-shrink:0; }
 .procedure-board .pb-tray .pb-card:hover { box-shadow:0 0 0 1.5px var(--pb-rule); }
 .procedure-board .pb-tray .pb-card .pb-meta { grid-column:2; grid-row:1; }
 .procedure-board .pb-tray .pb-card :is(.pb-photo,.pb-memo-picture) { grid-column:1; grid-row:1 / span 2; }
@@ -108,10 +108,10 @@
 .procedure-board .pb-key-number { color:var(--pb-blue); font-weight:700; }
 .procedure-board .pb-drop-indicator { position:fixed; pointer-events:none; z-index:50; border:0; border-top:3px solid var(--pb-blue); border-radius:2px; }
 .procedure-board .pb-drop-indicator[data-direction=vertical] { border-top:0; border-left:3px solid var(--pb-blue); }
-.procedure-board .pb-lift { position:fixed; left:0; top:0; pointer-events:none; z-index:60; opacity:.92; transform-origin:14px 14px; box-shadow:0 12.5px 28px -10px #141a2673; border-radius:7px; background:var(--pb-paper); max-width:238px; }
+.procedure-board .pb-lift { position:fixed; left:0; top:0; pointer-events:none; z-index:60; will-change:transform; box-shadow:0 0 0 1px var(--pb-blue),0 2px 4px #0006; border-radius:7px; background:var(--pb-paper); max-width:238px; }
 .procedure-board .pb-lift .pb-card { margin:0; }
 .procedure-board .pb-dragging { opacity:.35; }
-.procedure-board .pb-preview { position:fixed; inset:0; z-index:40; background:#141a2673; display:grid; place-items:center; padding:17px; }
+.procedure-board .pb-preview { position:fixed; inset:0; z-index:40; background:#0009; display:grid; place-items:center; padding:17px; }
 .procedure-board .pb-preview-panel { background:var(--pb-desk); border-radius:8.5px; width:min(1050px,100%); max-height:100%; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 21px 56px -20px #0008; }
 .procedure-board .pb-preview-panel>header { display:flex; align-items:center; gap:8.5px; padding:8.5px 11px; background:var(--pb-paper); }
 .procedure-board .pb-preview-panel>header strong { font-size:12.5px; }
