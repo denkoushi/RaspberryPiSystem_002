@@ -70,15 +70,43 @@ describe('transferItemsSemantically', () => {
     expect([image.width, image.height]).toEqual([1600, 800]);
   });
 
-  it('uses the target value, preserves tolerance widths, and uses the source dimension offset', async () => {
+  it('uses the target value and general tolerance, and caps the source dimension offset', async () => {
     const [result] = await transferItemsSemantically({
       ...input(), sourceMap: map([dim({ nominal: 10, xRatio: 0.47, yRatio: 0.54 })])
     }, deps);
-    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 20, lowerLimit: 19.5,
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 20, lowerLimit: 19.8, upperLimit: 20.2,
       dimension: { text: '20' }, candidates: [{ role: '上面図 全幅', target: 'D1' }] });
-    expect(result.upperLimit).toBeCloseTo(20.8);
-    expect(result.markerXRatio).toBeCloseTo(0.83);
-    expect(result.markerYRatio).toBeCloseTo(0.66);
+    expect(result.markerXRatio).toBeCloseTo(0.818);
+    expect(result.markerYRatio).toBeCloseTo(0.676);
+    expect(Math.hypot(result.markerXRatio! - 0.8, result.markerYRatio! - 0.7)).toBeCloseTo(0.03);
+  });
+
+  it.each([
+    { nominal: 27, lowerTolerance: -0.1, upperTolerance: 0.1, lowerLimit: 26.9, upperLimit: 27.1 },
+    { nominal: 27, lowerTolerance: -0.3, upperTolerance: 0.1, lowerLimit: 26.7, upperLimit: 27.1 },
+    { nominal: 50, lowerTolerance: 0, upperTolerance: 0.025, lowerLimit: 50, upperLimit: 50.025 }
+  ])('uses explicit target tolerances for $nominal with lower tolerance $lowerTolerance', async (test) => {
+    const [result] = await transferItemsSemantically({ ...input(),
+      sourceItems: [{ ...item, lowerLimit: 10, upperLimit: 10 }],
+      targetMap: map([dim({ text: String(test.nominal), nominal: test.nominal,
+        lowerTolerance: test.lowerTolerance, upperTolerance: test.upperTolerance })])
+    }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: test.nominal,
+      lowerLimit: test.lowerLimit, upperLimit: test.upperLimit });
+  });
+
+  it.each([null, 9.5])('preserves source widths only outside the general tolerance table with lower limit %s', async (lowerLimit) => {
+    const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, lowerLimit }],
+      targetMap: map([dim({ text: '5000', nominal: 5000 })]) }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 5000,
+      lowerLimit: lowerLimit === null ? null : 4999.5, upperLimit: 5000.8 });
+  });
+
+  it.each([0, 0.01, 0.03])('preserves source offsets of length %s within the cap', async (offset) => {
+    const [result] = await transferItemsSemantically({ ...input(),
+      sourceMap: map([dim({ nominal: 10, xRatio: 0.5 - offset, yRatio: 0.5 })]) }, deps);
+    expect(result.markerXRatio).toBeCloseTo(0.8 + offset);
+    expect(result.markerYRatio).toBeCloseTo(0.7);
   });
 
   it('uses default offsets and clamps to the drawing bounds', async () => {
@@ -86,12 +114,12 @@ describe('transferItemsSemantically', () => {
     expect([result.markerXRatio, result.markerYRatio]).toEqual([0.99, 0.01]);
   });
 
-  it('reads depth values and preserves nullable limits', async () => {
+  it('uses the target depth as the lower limit and preserves a null upper limit', async () => {
     const [result] = await transferItemsSemantically({ ...input(),
       sourceItems: [{ ...item, measurementLabel: '穴深さ', lowerLimit: null, upperLimit: null }],
       targetMap: map([dim({ text: '深30', depth: 30 })])
     }, deps);
-    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 30, lowerLimit: null, upperLimit: null });
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 30, lowerLimit: 30, upperLimit: null });
   });
 
   it('proposes the target hole depth from diameter text', async () => {
@@ -99,7 +127,7 @@ describe('transferItemsSemantically', () => {
       sourceItems: [{ ...item, measurementLabel: '穴深さ' }],
       targetMap: map([dim({ text: 'φ10.1+0.1/0深15', kind: 'hole', nominal: 10.1, depth: 15 })])
     }, deps);
-    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 15, lowerLimit: 14.5, upperLimit: 15.8,
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 15, lowerLimit: 15, upperLimit: 15.8,
       dimension: { kind: 'hole' } });
   });
 
@@ -114,6 +142,24 @@ describe('transferItemsSemantically', () => {
   it('retains judgement values and limits', async () => {
     const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, valueKind: 'JUDGEMENT' }] }, deps);
     expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 10, lowerLimit: 9.5, upperLimit: 10.8 });
+  });
+
+  it('retains a zero judgement value', async () => {
+    const [result] = await transferItemsSemantically({ ...input(),
+      sourceItems: [{ ...item, valueKind: 'JUDGEMENT', nominalValue: 0, lowerLimit: null, upperLimit: null }] }, deps);
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 0, lowerLimit: null, upperLimit: null });
+  });
+
+  it.each([
+    { text: '0H7+0.025/0', kind: 'hole' as const, nominal: 0, measurementLabel: '穴径' },
+    { text: '⊥0.005', kind: 'gdt' as const, nominal: 0, measurementLabel: '直角度' },
+    { text: '-1', kind: 'len' as const, nominal: -1, measurementLabel: '長さ' },
+    { text: '深0', kind: 'hole' as const, nominal: 10, depth: 0, measurementLabel: '深さ' }
+  ])('rejects non-positive numeric values from $text', async ({ measurementLabel, ...dimension }) => {
+    const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, measurementLabel }],
+      targetMap: map([dim(dimension)]) }, deps);
+    expect(result).toMatchObject({ status: 'UNPLACED', dimension: null, markerXRatio: null, markerYRatio: null,
+      candidates: [{ rejectionReason: 'unreadable-value' }] });
   });
 
   it('deduplicates existing items by the transferred value rather than the source value', async () => {
@@ -132,7 +178,7 @@ describe('transferItemsSemantically', () => {
 
   it('reads a depth drawn as a linear dimension from its length', async () => {
     const [result] = await transferItemsSemantically({ ...input(), sourceItems: [{ ...item, measurementLabel: '深さ' }] }, deps);
-    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 20 });
+    expect(result).toMatchObject({ status: 'PROPOSED', nominalValue: 20, lowerLimit: 20, upperLimit: 20.8 });
   });
 
   it('persists rejection reasons and does not place unsafe assignments', async () => {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
-import { candidateValue, resolveWantedDimensionKind } from './part-measurement-drawing-dimension-map-candidates.js';
+import { candidateValue, resolveWantedDimensionKind, suggestTolerances } from './part-measurement-drawing-dimension-map-candidates.js';
 import { semanticPlacementRejections } from './part-measurement-drawing-placement-semantic-checks.js';
 import {
   placementItemAlreadyExists,
@@ -114,21 +114,43 @@ export async function transferItemsSemantically(input: {
     const value = item.valueKind === 'JUDGEMENT' ? item.nominalValue
       : wanted === 'depth' && dimension.depth === null && kind === 'len' ? candidateValue(dimension, 'len')
       : candidateValue(dimension, wanted);
-    const rejectionReason = rejections[i] ?? (value === null ? 'unreadable-value' : null);
+    const rejectionReason = rejections[i] ?? (value === null || (item.valueKind !== 'JUDGEMENT' && value <= 0) ? 'unreadable-value' : null);
     result.candidates = [{ text, xRatio, yRatio, kind, distance: 0, role, target,
       ...(rejectionReason ? { rejectionReason } : {}) }];
     if (rejectionReason || value === null) return [result];
     result.nominalValue = value;
     if (item.valueKind !== 'JUDGEMENT') {
-      result.lowerLimit = kind === 'gdt' || wanted === 'gdt' ? 0 : item.lowerLimit === null ? null : value - (item.nominalValue - item.lowerLimit);
-      result.upperLimit = kind === 'gdt' || wanted === 'gdt' ? value : item.upperLimit === null ? null : value + (item.upperLimit - item.nominalValue);
+      const round = (limit: number) => Number(limit.toFixed(6));
+      if (kind === 'gdt' || wanted === 'gdt') {
+        result.lowerLimit = 0;
+        result.upperLimit = value;
+      } else if (wanted === 'depth') {
+        result.lowerLimit = value;
+        result.upperLimit = item.upperLimit === null ? null : round(value + (item.upperLimit - item.nominalValue));
+      } else {
+        const tolerance = suggestTolerances(dimension, wanted, value);
+        if (tolerance.lower === null && tolerance.upper === null) {
+          result.lowerLimit = item.lowerLimit === null ? null : round(value - (item.nominalValue - item.lowerLimit));
+          result.upperLimit = item.upperLimit === null ? null : round(value + (item.upperLimit - item.nominalValue));
+        } else {
+          result.lowerLimit = tolerance.lower === null ? null : round(value + Number(tolerance.lower));
+          result.upperLimit = tolerance.upper === null ? null : round(value + Number(tolerance.upper));
+        }
+      }
     }
     if (placementItemAlreadyExists({ measurementLabel: item.measurementLabel, nominalValue: value }, input.existingItems)) return [];
     const own = sourceItemDimension(input.sourceMap, item);
+    let offsetX = own ? item.markerXRatio - own.xRatio : 0.02;
+    let offsetY = own ? item.markerYRatio - own.yRatio : -0.02;
+    const offsetLength = Math.hypot(offsetX, offsetY);
+    if (own && offsetLength > 0.03) {
+      offsetX *= 0.03 / offsetLength;
+      offsetY *= 0.03 / offsetLength;
+    }
     return [{
       ...result, status: 'PROPOSED', dimension: { text, xRatio, yRatio, kind },
-      markerXRatio: Math.min(0.99, Math.max(0.01, xRatio + (own ? item.markerXRatio - own.xRatio : 0.02))),
-      markerYRatio: Math.min(0.99, Math.max(0.01, yRatio + (own ? item.markerYRatio - own.yRatio : -0.02)))
+      markerXRatio: Math.min(0.99, Math.max(0.01, xRatio + offsetX)),
+      markerYRatio: Math.min(0.99, Math.max(0.01, yRatio + offsetY))
     }];
   });
 }

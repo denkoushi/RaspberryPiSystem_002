@@ -42,7 +42,7 @@ const target = { id: 'target', name: 'スタンド', drawingImageRelativePath: '
 const source = { id: 'source', name: '足', drawingImageRelativePath: 'source.png' };
 const payload = {
   image: { width: 2000, height: 1000 },
-  dimensions: [{ text: '10', nominal: 10, kind: 'len', depth: null, xRatio: 0.5, yRatio: 0.5 }]
+  dimensions: [{ text: '10', nominal: 10, kind: 'len', upperTolerance: null, lowerTolerance: null, depth: null, xRatio: 0.5, yRatio: 0.5 }]
 };
 const sourceItem = () => ({
   id: 'source-item', sortOrder: 1, measurementPoint: '穴A', decimalPlaces: 3, measurementLabel: '長さ', nominalValue: decimal(10),
@@ -331,7 +331,7 @@ describe('semantic placement', () => {
     } : null);
   });
 
-  it('persists target values and shifted limits atomically, without calling JEV', async () => {
+  it('persists target values and general-tolerance limits atomically, without calling JEV', async () => {
     const reorderProvider = vi.fn();
     const reorder = vi.fn();
     await service.ensureRun('target', { processGroup: 'CUTTING', reorder, reorderProvider });
@@ -344,8 +344,8 @@ describe('semantic placement', () => {
     expect(data.proposals.create[0]).toMatchObject({
       status: 'PROPOSED', nominalValue: 20, measurementLabel: '長さ', measurementPoint: '穴A', decimalPlaces: 3
     });
-    expect(data.proposals.create[0].lowerLimit).toBeCloseTo(19.123456);
-    expect(data.proposals.create[0].upperLimit).toBeCloseTo(20.987654);
+    expect(data.proposals.create[0].lowerLimit).toBeCloseTo(19.8);
+    expect(data.proposals.create[0].upperLimit).toBeCloseTo(20.2);
   });
 
   it('chooses the first valid sibling and its newest template, irrespective of value matches', async () => {
