@@ -52,7 +52,7 @@
 - Observation: (M0、2026-11-01 実測)Pi5 の Google Drive の写しは毎晩動いている。`raspi-google-drive-dr.timer` は enabled で、毎晩 23:00 に始まり約6分で終わる。直近3晩(10/29・10/30・10/31)はどれも `backup_complete` で、最新は 2026-10-31 23:05:57、大きさは約3.5GB。
   Evidence: Pi5 の `systemctl list-timers --all`、`systemctl show raspi-google-drive-dr.service`(`Result=success`)、`journalctl -u raspi-google-drive-dr.service` の `stage":"backup_complete"` の行。
 
-- Observation: (M0)今の標準経路で Pi4 1台を更新すると、1台指定の run で約8〜10分かかる。8台のうち7台は 7分51秒〜9分56秒(中央値 約8分10秒)で、raspi4-assembly-02 だけ 30分15秒かかった。この1台が遅い理由はまだ調べていない。Pi5・Pi4 8台・Pi3 をまとめた全台の run は 1時間33分〜1時間36分だった。どの run も recap は failed=0、unreachable=0。古い記録の「1台3分強〜6分半」より今の方が長い。
+- Observation: (M0)今の標準経路で Pi4 1台を更新すると、1台指定の run で約8〜10分かかる。8台のうち7台は 7分51秒〜9分56秒(中央値 約8分10秒)で、raspi4-assembly-02 だけ 30分15秒かかった。この1台だけ別の敷地にあり、モバイルルータでつないでいるため遅い(ユーザー確認、2026-11-01)。回線の細い端末が全体の時間を延ばす例で、4番の中継キャッシュと波の分け方で扱う。Pi5・Pi4 8台・Pi3 をまとめた全台の run は 1時間33分〜1時間36分だった。どの run も recap は failed=0、unreachable=0。古い記録の「1台3分強〜6分半」より今の方が長い。
   Evidence: Pi5 の `journalctl -u raspi-standard-release-<run>.service` の最初と最後の行の時刻。1台指定は 2026-10-30〜31 の run `20261030-143449-9d23bd` から `20261030-160802-58abf7` までの8本、全台は `20261030-052653-1a9d0f` と `20261030-111753-7cfabe`。手元からの `scripts/update-all-clients.sh --status` は作業フォルダに vault の鍵が無く読めなかったので、Pi5 の journal を直接読んだ。
 
 - Observation: (M0)Pi3 はメモリに余裕がほとんど無い。全 416MB のうち使用 293MB、使える分は約123MB で、スワップを 415MB 中 244MB 使っている。Pi4 は 3.7GB 中の使用が 0.8〜1.4GB で、使える分が 2.4〜3.0GB ある。
