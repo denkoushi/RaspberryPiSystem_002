@@ -76,6 +76,7 @@ import { KioskPartMeasurementTemplatePage } from './pages/kiosk/KioskPartMeasure
 import { KioskPartMeasurementTemplatePickPage } from './pages/kiosk/KioskPartMeasurementTemplatePickPage';
 import { KioskPhotoBorrowPage } from './pages/kiosk/KioskPhotoBorrowPage';
 import { KioskPortalPage } from './pages/kiosk/KioskPortalPage';
+import { KioskProcedureBoardPage } from './pages/kiosk/KioskProcedureBoardPage';
 import { KioskRiggingAnalyticsPage } from './pages/kiosk/KioskRiggingAnalyticsPage';
 import { KioskRiggingBorrowPage } from './pages/kiosk/KioskRiggingBorrowPage';
 import { KioskSelfInspectionPage } from './pages/kiosk/KioskSelfInspectionPage';
@@ -210,6 +211,8 @@ function App() {
         <Route element={<KioskLayout />}>
           <Route path="/kiosk" element={<KioskRedirect />} />
           <Route path="/kiosk/portal" element={<KioskPortalPage />} />
+          <Route path="/kiosk/procedure-board" element={<KioskProcedureBoardPage />} />
+          <Route path="/kiosk/procedure-board/:procedureId" element={<KioskProcedureBoardPage />} />
           <Route path="/kiosk/tag" element={<KioskBorrowPage />} />
           <Route path="/kiosk/inventory" element={<KioskItemInventoryPage />} />
           <Route path="/kiosk/inventory/dashboard" element={<KioskItemInventoryDashboardPage />} />
