@@ -21,7 +21,7 @@ import {
   type PlacementTransferResult
 } from './part-measurement-drawing-placement-transfer.js';
 
-import { transferItemsSemantically, unplacedSemanticItems } from './part-measurement-drawing-placement-semantic.js';
+import { SEMANTIC_PLACEMENT_TIMEOUT_MS, transferItemsSemantically, unplacedSemanticItems } from './part-measurement-drawing-placement-semantic.js';
 
 import { siblingMatchesSchema, SIBLING_MATCH_VERSION } from './part-measurement-drawing-sibling-match.js';
 import { PartMeasurementDrawingSiblingMatchService } from './part-measurement-drawing-sibling-match.service.js';
@@ -173,10 +173,13 @@ export class PartMeasurementDrawingPlacementService {
         rankingMethod = reorder ? 'jev' : 'position';
         return transferItems({ targetMap, sourceMap, sourceItems: source.template.items, existingItems, reorder: reorder ?? undefined });
       };
+      const startedAt = Date.now();
       try {
         transfers = await transfer();
       } catch (error) {
-        if (!semantic || (error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError)) throw error;
+        // A call that ran out its whole timeout would time out again every night, so store it as failed instead of retrying.
+        const timedOut = Date.now() - startedAt >= SEMANTIC_PLACEMENT_TIMEOUT_MS - 1_000;
+        if (!semantic || error instanceof InferenceDeferredError || (error instanceof InferenceUnavailableError && !timedOut)) throw error;
         rankingMethod = 'semantic-failed';
         transfers = unplacedSemanticItems(source.template.items);
         log.warn({ err: error, visualTemplateId, sourceVisualTemplateId: source.sibling.id }, 'drawing semantic placement failed');

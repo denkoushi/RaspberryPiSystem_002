@@ -407,6 +407,14 @@ describe('semantic placement', () => {
     expect(mocks.warn).not.toHaveBeenCalled();
   });
 
+  it('saves a failed run when the call ran out its whole timeout', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(115_000);
+    mocks.vision.completeMany.mockRejectedValue(new InferenceUnavailableError());
+    await service.ensureRun('target', { processGroup: 'CUTTING' });
+    now.mockRestore();
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ rankingMethod: 'semantic-failed', proposalCount: 0 });
+  });
+
   it('persists M3 rejections and preserves the explanation in candidates', async () => {
     mocks.maps.getCompletedPayload.mockResolvedValue({ ...payload, dimensions: [{ ...payload.dimensions[0], kind: 'ref' }] });
     await service.ensureRun('target', { processGroup: 'CUTTING' });
