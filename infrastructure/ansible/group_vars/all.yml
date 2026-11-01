@@ -1,3 +1,6 @@
+raspisys_github_owner: "denkoushi"
+raspisys_historical_github_owners: []
+
 # ネットワークモードを切り替えることで、Ansibleが参照するIPアドレスを変更できます。
 # - tailscale: Tailscale経由のIPを使用（通常運用・標準）
 # - local: ローカルネットワークのIPを使用（緊急時のみ）

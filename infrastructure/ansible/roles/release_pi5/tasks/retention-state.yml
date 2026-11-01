@@ -98,10 +98,10 @@
 - name: Validate every existing Pi5 retention entry
   ansible.builtin.assert:
     that:
-      - release_pi5_retention_existing_state.current.api.reference is match('^(?:ghcr\\.io/denkoushi/raspisys-api|raspi-system-api|docker-api):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
-      - release_pi5_retention_existing_state.current.web.reference is match('^(?:ghcr\\.io/denkoushi/raspisys-web|raspi-system-web|docker-web):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
-      - release_pi5_retention_existing_state.previous.api.reference is match('^(?:ghcr\\.io/denkoushi/raspisys-api|raspi-system-api|docker-api):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
-      - release_pi5_retention_existing_state.previous.web.reference is match('^(?:ghcr\\.io/denkoushi/raspisys-web|raspi-system-web|docker-web):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.current.api.reference is match('^(?:' ~ (([raspisys_github_owner] + raspisys_historical_github_owners) | map('regex_escape') | map('regex_replace', '^', 'ghcr\\.io/') | map('regex_replace', '$', '/raspisys-api') | join('|')) ~ '|raspi-system-api|docker-api):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.current.web.reference is match('^(?:' ~ (([raspisys_github_owner] + raspisys_historical_github_owners) | map('regex_escape') | map('regex_replace', '^', 'ghcr\\.io/') | map('regex_replace', '$', '/raspisys-web') | join('|')) ~ '|raspi-system-web|docker-web):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.previous.api.reference is match('^(?:' ~ (([raspisys_github_owner] + raspisys_historical_github_owners) | map('regex_escape') | map('regex_replace', '^', 'ghcr\\.io/') | map('regex_replace', '$', '/raspisys-api') | join('|')) ~ '|raspi-system-api|docker-api):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
+      - release_pi5_retention_existing_state.previous.web.reference is match('^(?:' ~ (([raspisys_github_owner] + raspisys_historical_github_owners) | map('regex_escape') | map('regex_replace', '^', 'ghcr\\.io/') | map('regex_replace', '$', '/raspisys-web') | join('|')) ~ '|raspi-system-web|docker-web):[0-9a-f]{40}(?:-[0-9a-f]{16})?@sha256:[0-9a-f]{64}$')
       - release_pi5_retention_existing_state.current.api.imageId is match('^sha256:[0-9a-f]{64}$')
       - release_pi5_retention_existing_state.current.web.imageId is match('^sha256:[0-9a-f]{64}$')
       - release_pi5_retention_existing_state.previous.api.imageId is match('^sha256:[0-9a-f]{64}$')

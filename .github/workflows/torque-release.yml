@@ -310,6 +310,10 @@ jobs:
       origin_run_id: ${{ steps.identity.outputs.origin_run_id }}
       origin_job_id: ${{ steps.identity.outputs.origin_job_id }}
     steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact adopting main source with history
         uses: actions/checkout@v7
         with:
@@ -387,12 +391,12 @@ jobs:
             --index-json torque-agent-index.json \
             > torque-agent-adoption.json
           {
-            echo 'repository=ghcr.io/denkoushi/raspisys-torque-agent'
+            echo 'repository=ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent'
             echo 'index_digest=sha256:a1736af12a5a0b65650bcfe8df79767f16e48273596b14fd266c25e737834250'
             echo 'source_sha=dd08a3c7edcbc9f145f06363ef99b1c20cf5cb6f'
             echo 'arm64_digest=sha256:f592611dded65f238119dcb21f926946064d13eeca8c507fc2652364a2d77777'
             echo 'armv7_digest=sha256:2dcf00647c35e4f9d851555af56a5e3244cfdbe9c38f9745d45faf623f376ee8'
-            echo 'predicate_type=https://github.com/denkoushi/RaspberryPiSystem_002/attestations/torque-agent-component-adoption/v1'
+            echo 'predicate_type=https://github.com/${{ github.repository }}/attestations/torque-agent-component-adoption/v1'
             echo 'origin_workflow=.github/workflows/ci.yml'
             echo 'origin_run_id=41065917090'
             echo 'origin_job_id=124099680224'
@@ -401,7 +405,7 @@ jobs:
       - name: Sign adoption of the existing immutable torque-agent digest
         uses: actions/attest@v4
         with:
-          subject-name: ghcr.io/denkoushi/raspisys-torque-agent
+          subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent
           subject-digest: ${{ steps.identity.outputs.index_digest }}
           predicate-type: ${{ steps.identity.outputs.predicate_type }}
           predicate-path: torque-agent-adoption.json
@@ -410,7 +414,7 @@ jobs:
       - name: Verify the published component adoption signature
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EXACT_REFERENCE: ghcr.io/denkoushi/raspisys-torque-agent@${{ steps.identity.outputs.index_digest }}
+          EXACT_REFERENCE: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-torque-agent@${{ steps.identity.outputs.index_digest }}
           PREDICATE_TYPE: ${{ steps.identity.outputs.predicate_type }}
         run: |
           gh attestation verify "oci://${EXACT_REFERENCE}" \
@@ -440,6 +444,10 @@ jobs:
       id-token: write
       packages: write
     steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
         uses: actions/checkout@v7
         with:
@@ -493,7 +501,7 @@ jobs:
           CONFIG_HASH: ${{ steps.contract.outputs.config_hash }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          reference="ghcr.io/denkoushi/raspisys-release-set:${GITHUB_SHA}-${CONFIG_HASH}"
+          reference="ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set:${GITHUB_SHA}-${CONFIG_HASH}"
           docker buildx imagetools inspect "$reference" \
             --format '{{json .Manifest}}' > release-set-v1-descriptor.json
           manifest_digest="$(python3 - <<'PY'
@@ -502,7 +510,7 @@ jobs:
           print(json.loads(Path('release-set-v1-descriptor.json').read_text())['digest'])
           PY
           )"
-          exact_reference="ghcr.io/denkoushi/raspisys-release-set@${manifest_digest}"
+          exact_reference="ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set@${manifest_digest}"
           gh attestation verify "oci://${exact_reference}" \
             --bundle-from-oci \
             --repo "$GITHUB_REPOSITORY" \
@@ -594,7 +602,7 @@ jobs:
           CONFIG_HASH: ${{ steps.contract.outputs.config_hash }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          reference="ghcr.io/denkoushi/raspisys-release-set:${GITHUB_SHA}-${CONFIG_HASH}-torque-v2"
+          reference="ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set:${GITHUB_SHA}-${CONFIG_HASH}-torque-v2"
           if ! docker buildx imagetools inspect "$reference" \
             --format '{{json .Manifest}}' > existing-descriptor.json 2>/dev/null; then
             echo 'exists=false' >> "$GITHUB_OUTPUT"
@@ -606,7 +614,7 @@ jobs:
           print(json.loads(Path('existing-descriptor.json').read_text())['digest'])
           PY
           )"
-          exact_reference="ghcr.io/denkoushi/raspisys-release-set@${digest}"
+          exact_reference="ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set@${digest}"
           gh attestation verify "oci://${exact_reference}" \
             --bundle-from-oci \
             --repo "$GITHUB_REPOSITORY" \
@@ -635,7 +643,7 @@ jobs:
           file: infrastructure/docker/Dockerfile.release-set
           platforms: linux/arm64
           push: true
-          tags: ghcr.io/denkoushi/raspisys-release-set:${{ github.sha }}-${{ steps.contract.outputs.config_hash }}-torque-v2
+          tags: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set:${{ github.sha }}-${{ steps.contract.outputs.config_hash }}-torque-v2
           build-args: |
             BUILD_COMMIT=${{ github.sha }}
             BUILD_CONFIG_HASH=${{ steps.contract.outputs.config_hash }}
@@ -646,7 +654,7 @@ jobs:
         if: ${{ steps.existing.outputs.exists != 'true' }}
         uses: actions/attest@v4
         with:
-          subject-name: ghcr.io/denkoushi/raspisys-release-set
+          subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set
           subject-digest: ${{ steps.publish.outputs.digest }}
           push-to-registry: true
 

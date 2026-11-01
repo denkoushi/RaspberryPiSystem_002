@@ -29,6 +29,17 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Protocol, Sequence
 
 try:
+    from ..release_artifact_contract import (
+        GHCR_NAMESPACE, GITHUB_OWNER, GITHUB_OWNER_URL, SOURCE_REPOSITORY,
+        SOURCE_REPOSITORY_URL, SIGNAGE_REPOSITORY,
+    )
+except ImportError:  # Launched from scripts/deploy.
+    from release_artifact_contract import (
+        GHCR_NAMESPACE, GITHUB_OWNER, GITHUB_OWNER_URL, SOURCE_REPOSITORY,
+        SOURCE_REPOSITORY_URL, SIGNAGE_REPOSITORY,
+    )
+
+try:
     from .attestation_environment import isolated_attestation_environment
 except ImportError:  # Direct script execution from this directory.
     from attestation_environment import isolated_attestation_environment
@@ -36,15 +47,14 @@ except ImportError:  # Direct script execution from this directory.
 
 SCHEMA_VERSION = 1
 OPERATION = "pi3-signage-acquire-and-stage"
-ARTIFACT_REPOSITORY = "ghcr.io/denkoushi/raspisys-pi3-signage"
+ARTIFACT_REPOSITORY = SIGNAGE_REPOSITORY
 PREDICATE_TYPE = (
-    "https://github.com/denkoushi/RaspberryPiSystem_002/"
+    f"{SOURCE_REPOSITORY_URL}/"
     "attestations/pi3-signage-release/v1"
 )
 STATEMENT_TYPE = "https://in-toto.io/Statement/v1"
-SOURCE_REPOSITORY = "denkoushi/RaspberryPiSystem_002"
 SIGNER_IDENTITY = (
-    "https://github.com/denkoushi/RaspberryPiSystem_002/"
+    f"{SOURCE_REPOSITORY_URL}/"
     ".github/workflows/ci.yml@refs/heads/main"
 )
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
@@ -146,10 +156,10 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 ARTIFACT_REF_RE = re.compile(
-    r"^ghcr\.io/denkoushi/raspisys-pi3-signage:([0-9a-f]{40})$"
+    fr"^ghcr\.io/{GITHUB_OWNER}/raspisys-pi3-signage:([0-9a-f]{{40}})$"
 )
 ARTIFACT_EXACT_REF_RE = re.compile(
-    r"^ghcr\.io/denkoushi/raspisys-pi3-signage@(sha256:[0-9a-f]{64})$"
+    fr"^ghcr\.io/{GITHUB_OWNER}/raspisys-pi3-signage@(sha256:[0-9a-f]{{64}})$"
 )
 MAX_OCI_DOCUMENT_BYTES = 2 * 1024 * 1024
 MAX_OCI_LAYER_BYTES = 16 * 1024 * 1024
@@ -1396,7 +1406,7 @@ def load_registry_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, str]:
         or value.get("repository") != SOURCE_REPOSITORY
         or value.get("workflow") != ".github/workflows/ci.yml"
         or value.get("releaseSetRepository")
-        != "ghcr.io/denkoushi/raspisys-release-set"
+        != f"{GHCR_NAMESPACE}/raspisys-release-set"
         or not isinstance(value.get("username"), str)
         or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}", value["username"])
         or not isinstance(value.get("token"), str)
@@ -1470,7 +1480,7 @@ class GhcrAcquisition:
         query = urllib.parse.urlencode(
             {
                 "service": "ghcr.io",
-                "scope": "repository:denkoushi/raspisys-pi3-signage:pull",
+                "scope": f"repository:{GITHUB_OWNER}/raspisys-pi3-signage:pull",
             }
         )
         headers = {"User-Agent": "raspisystem-pi3-signage-stage/1"}
@@ -1507,7 +1517,7 @@ class GhcrAcquisition:
         accept = ", ".join(sorted(self._INDEX_MEDIA_TYPES | self._MANIFEST_MEDIA_TYPES))
         encoded = urllib.parse.quote(reference, safe=":")
         raw, headers = self._request(
-            "https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/manifests/" + encoded,
+            f"https://ghcr.io/v2/{GITHUB_OWNER}/raspisys-pi3-signage/manifests/" + encoded,
             accept=accept,
             max_bytes=MAX_OCI_DOCUMENT_BYTES,
         )
@@ -1551,7 +1561,7 @@ class GhcrAcquisition:
 
     def _blob(self, digest: str, *, max_bytes: int) -> bytes:
         raw, _headers = self._request(
-            "https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/blobs/" + digest,
+            f"https://ghcr.io/v2/{GITHUB_OWNER}/raspisys-pi3-signage/blobs/" + digest,
             max_bytes=max_bytes,
         )
         if "sha256:" + _sha256_bytes(raw) != digest:
@@ -1832,7 +1842,7 @@ class GhAttestor:
             "sourceRepositoryURI": f"https://github.com/{SOURCE_REPOSITORY}",
             "sourceRepositoryDigest": source_sha,
             "sourceRepositoryRef": "refs/heads/main",
-            "sourceRepositoryOwnerURI": "https://github.com/denkoushi",
+            "sourceRepositoryOwnerURI": GITHUB_OWNER_URL,
         }
         if (
             not isinstance(statement, Mapping)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE, GITHUB_OWNER
+
 import base64
 import json
 from pathlib import Path
@@ -208,8 +210,8 @@ class DockerPullProgressTests(unittest.TestCase):
             clock=clock,
         )
         result = puller.pull(
-            "ghcr.io/denkoushi/raspisys-api@sha256:" + "a" * 64,
-            username="denkoushi",
+            f"{GHCR_NAMESPACE}/raspisys-api@sha256:" + "a" * 64,
+            username=GITHUB_OWNER,
             token="token-not-for-output",
             execution=PullExecution(
                 stage="api-image-pull",
@@ -235,8 +237,8 @@ class DockerPullProgressTests(unittest.TestCase):
         )
         with self.assertRaises(PullTimedOut) as raised:
             puller.pull(
-                "ghcr.io/denkoushi/raspisys-api@sha256:" + "a" * 64,
-                username="denkoushi",
+                f"{GHCR_NAMESPACE}/raspisys-api@sha256:" + "a" * 64,
+                username=GITHUB_OWNER,
                 token="",
                 execution=PullExecution(
                     stage="api-image-pull",
@@ -263,8 +265,8 @@ class DockerPullProgressTests(unittest.TestCase):
 
         with self.assertRaises(KeyboardInterrupt):
             puller.pull(
-                "ghcr.io/denkoushi/raspisys-api@sha256:" + "a" * 64,
-                username="denkoushi",
+                f"{GHCR_NAMESPACE}/raspisys-api@sha256:" + "a" * 64,
+                username=GITHUB_OWNER,
                 token="",
                 execution=PullExecution(
                     stage="api-image-pull",

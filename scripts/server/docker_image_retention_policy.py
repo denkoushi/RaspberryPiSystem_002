@@ -14,7 +14,7 @@ if __package__:
         MINIMUM_AGE_SECONDS,
         PLAN_KIND,
         PLAN_SCHEMA_VERSION,
-        RELEASE_SET_REPOSITORY,
+        RELEASE_SET_REPOSITORIES,
         RELEASE_SHA_RE,
         ImageRecord,
         RetentionError,
@@ -32,7 +32,7 @@ else:
         MINIMUM_AGE_SECONDS,
         PLAN_KIND,
         PLAN_SCHEMA_VERSION,
-        RELEASE_SET_REPOSITORY,
+        RELEASE_SET_REPOSITORIES,
         RELEASE_SHA_RE,
         ImageRecord,
         RetentionError,
@@ -117,7 +117,7 @@ def _candidate_images(
             excluded["retainedImage"].append(image.image_id)
             continue
         if (
-            RELEASE_SET_REPOSITORY in image.repositories
+            image.repositories.intersection(RELEASE_SET_REPOSITORIES)
             and image.release_revisions.intersection(state.retained_release_shas)
         ):
             excluded["retainedReleaseSetRevision"].append(image.image_id)

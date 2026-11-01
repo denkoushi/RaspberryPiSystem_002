@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE, GITHUB_OWNER, SOURCE_REPOSITORY_URL
+
 import importlib.util
 import json
 import os
@@ -35,6 +37,10 @@ def _write_valid_staging_fixture(root: Path) -> Path:
     """Create a disposable inventory with direct private host vars."""
     group_vars = root / "group_vars"
     group_vars.mkdir(parents=True)
+    shared = yaml.safe_load((ANSIBLE / "group_vars/all.yml").read_text())
+    (group_vars / "all.yml").write_text(yaml.safe_dump({
+        key: shared[key] for key in ("raspisys_github_owner", "raspisys_historical_github_owners")
+    }))
     shutil.copy(ANSIBLE / "group_vars" / "staging.yml", group_vars / "staging.yml")
     shutil.copy(ANSIBLE / "inventory-staging.yml", root / "inventory-staging.yml")
     replacements = (
@@ -238,6 +244,14 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
             inventory = _write_valid_staging_fixture(Path(directory))
             for host in ("staging-pi5", "staging-pi4-kiosk01"):
                 values = _inventory_host(inventory, host)
+                # ansible-inventory leaves ordinary lazy Jinja variables unrendered.
+                self.assertEqual(values["raspisys_github_owner"], GITHUB_OWNER)
+                self.assertEqual(values["repo_remote"], "https://github.com/{{ raspisys_github_owner }}/RaspberryPiSystem_002.git")
+                from jinja2 import Environment, StrictUndefined
+                values["repo_remote"] = Environment(undefined=StrictUndefined).from_string(
+                    values["repo_remote"]
+                ).render(values)
+                self.assertEqual(values["repo_remote"], SOURCE_REPOSITORY_URL + ".git")
                 serialized = json.dumps(values, sort_keys=True)
                 if host == "staging-pi5":
                     self.assertEqual(values["ansible_host"], values["deploy_executor_host"])
@@ -295,8 +309,8 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                 ANSIBLE / ".vault-pass.example"
             )
             signed_release_set = launcher.ReleaseArtifacts(
-                f"ghcr.io/denkoushi/raspisys-api:{STANDARD_SHA}",
-                f"ghcr.io/denkoushi/raspisys-web:{STANDARD_SHA}",
+                f"{GHCR_NAMESPACE}/raspisys-api:{STANDARD_SHA}",
+                f"{GHCR_NAMESPACE}/raspisys-web:{STANDARD_SHA}",
                 None,
                 None,
                 launcher.PI4_AGENT_SERVICES,
@@ -332,17 +346,17 @@ class StagingInventoryBoundaryTest(unittest.TestCase):
                         "profile": "pi5",
                         "hosts": ["staging-pi5"],
                         "images": [
-                            f"ghcr.io/denkoushi/raspisys-api:{STANDARD_SHA}-bbbbbbbbbbbbbbbb",
-                            f"ghcr.io/denkoushi/raspisys-web:{STANDARD_SHA}-bbbbbbbbbbbbbbbb",
+                            f"{GHCR_NAMESPACE}/raspisys-api:{STANDARD_SHA}-bbbbbbbbbbbbbbbb",
+                            f"{GHCR_NAMESPACE}/raspisys-web:{STANDARD_SHA}-bbbbbbbbbbbbbbbb",
                         ],
                     },
                     {
                         "profile": "pi4",
                         "hosts": ["staging-pi4-kiosk01"],
                         "images": [
-                            f"ghcr.io/denkoushi/raspisys-nfc-agent:{STANDARD_SHA}",
-                            f"ghcr.io/denkoushi/raspisys-barcode-agent:{STANDARD_SHA}",
-                            f"ghcr.io/denkoushi/raspisys-torque-agent:{STANDARD_SHA}",
+                            f"{GHCR_NAMESPACE}/raspisys-nfc-agent:{STANDARD_SHA}",
+                            f"{GHCR_NAMESPACE}/raspisys-barcode-agent:{STANDARD_SHA}",
+                            f"{GHCR_NAMESPACE}/raspisys-torque-agent:{STANDARD_SHA}",
                         ],
                     },
                 ],

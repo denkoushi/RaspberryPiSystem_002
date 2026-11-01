@@ -1,7 +1,7 @@
 ---
 release_sha: ""
 release_run_id: ""
-release_signage_artifact_image: "ghcr.io/denkoushi/raspisys-pi3-signage:{{ release_sha }}"
+release_signage_artifact_image: "ghcr.io/{{ raspisys_github_owner }}/raspisys-pi3-signage:{{ release_sha }}"
 release_signage_artifact_path: ""
 release_signage_artifact_sha256: ""
 release_signage_controller_root: /var/lib/raspi-release/signage-artifacts

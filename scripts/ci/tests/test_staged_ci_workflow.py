@@ -265,7 +265,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("id: publish", publish)
         self.assertEqual(
             publish.count(
-                "image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}"
+                "image-ref: ghcr.io/${{ steps.ghcr.outputs.owner }}/${{ matrix.repository }}@${{ steps.publish.outputs.digest }}"
             ),
             2,
         )
@@ -303,7 +303,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("attestations: write", publish)
         self.assertIn("id-token: write", publish)
         self.assertIn("actions/download-artifact@v8", publish)
-        self.assertIn("ghcr.io/denkoushi/raspisys-pi3-signage:${{ github.sha }}", publish)
+        self.assertIn("ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage:${{ github.sha }}", publish)
         self.assertIn("predicate-path: signage-release-attestation.json", publish)
         self.assertIn("push-to-registry: true", publish)
         self.assertIn("gh version 2.96.0", publish)
@@ -531,10 +531,12 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("SOURCE_CLOSURE_UNCHANGED", required)
 
     def test_torque_workflow_identity_matches_adoption_contract_constants(self) -> None:
+        resolved = TORQUE_RELEASE.replace(
+            "ghcr.io/${{ steps.ghcr.outputs.owner }}/", release_contract.GHCR_NAMESPACE + "/"
+        ).replace("${{ github.repository }}", release_contract.SOURCE_REPOSITORY)
         expected_lines = (
             f"            {release_contract.TORQUE_ADOPTED_SOURCE_SHA} \\",
             f"          BASELINE_SHA: {release_contract.TORQUE_ADOPTED_SOURCE_SHA}",
-            f"          TORQUE_REFERENCE: {release_contract.TORQUE_AGENT_REPOSITORY}@{adoption_contract.INDEX_DIGEST}",
             f"            echo 'repository={release_contract.TORQUE_AGENT_REPOSITORY}'",
             f"            echo 'index_digest={adoption_contract.INDEX_DIGEST}'",
             f"            echo 'source_sha={release_contract.TORQUE_ADOPTED_SOURCE_SHA}'",
@@ -547,12 +549,13 @@ class StagedCiWorkflowTests(unittest.TestCase):
         )
         for line in expected_lines:
             with self.subTest(line=line):
-                self.assertIn(line, TORQUE_RELEASE)
-        image_reference = (
-            f"          image-ref: {release_contract.TORQUE_AGENT_REPOSITORY}@"
-            f"{adoption_contract.INDEX_DIGEST}"
+                self.assertIn(line, resolved)
+        fixed_references = re.findall(
+            r"(?:TORQUE_REFERENCE|image-ref): (ghcr\.io/[^\s]+@" + adoption_contract.INDEX_DIGEST + ")",
+            TORQUE_RELEASE,
         )
-        self.assertEqual(TORQUE_RELEASE.count(image_reference), 2)
+        self.assertEqual(len(fixed_references), 3)
+        self.assertEqual(len(set(fixed_references)), 1)
 
     def test_torque_v2_cannot_block_normal_release_or_required_pr_checks(self) -> None:
         required = job_block(CI, "ci-required")
