@@ -33,6 +33,9 @@ function ProtectedPhoto({ path }: { path: string }) {
   const { blobUrl } = useProtectedImageBlobUrl(path);
   return blobUrl ? <img src={blobUrl} alt="" width={160} height={100} loading="lazy" draggable={false} /> : null;
 }
+function MaterialMeta({ material }: { material: Material }) {
+  return <span className="pb-meta"><time dateTime={material.createdAt}>{material.createdAt.slice(5, 10)}</time><span role="img" aria-label={material.pdf ? 'PDF' : material.images.length ? '写真' : 'メモ'}>{material.pdf ? '▤' : material.images.length ? '▧' : '≡'}</span>{material.pdf && <span>{material.pdf.pageNumber}</span>}</span>;
+}
 function Editor({ initial, commit, cancel, disabled }: { initial: string; commit: (text: string) => void; cancel: () => void; disabled: boolean }) {
   const [text, setText] = useState(initial); const done = useRef(false); const composing = useRef(false);
   const finish = (save: boolean) => { if (done.current) return; done.current = true; if (save) commit(text); else cancel(); };
@@ -59,7 +62,7 @@ const Card = memo(function Card({ procedureId, item, material, ghost, selected, 
   }, [ghost, shown, stale]);
   const text = item?.kind === 'text' ? item.text : item?.kind === 'material' ? item.override ?? material?.text ?? '素材がありません' : material?.text ?? '';
   return <article ref={node} tabIndex={0} aria-label={ghost ? `提案 ${text}` : text || '新しい本文'} aria-current={item && selected ? 'true' : undefined}
-    className={`pb-card pb-${item?.style ?? (material?.images.length ? 'figure' : 'body')}${ghost ? ' pb-ghost' : ''}${stale ? ' pb-stale' : ''}${selected ? ' pb-selected' : ''}`}
+    className={`pb-card pb-${item?.style ?? (material?.images.length ? 'figure' : 'body')}${item && material?.images.length && item.style !== 'figure' ? ' pb-image-body' : ''}${ghost ? ' pb-ghost' : ''}${stale ? ' pb-stale' : ''}${selected ? ' pb-selected' : ''}`}
     data-item={item?.itemId} data-material={material?.materialId} data-ghost={ghost?.id}
     data-page={page} data-row={row} data-col={col} data-index={index} data-count={count}
     onFocus={() => { if (item) select(item.itemId); }} onClick={() => { if (item) select(item.itemId); }}
@@ -67,13 +70,14 @@ const Card = memo(function Card({ procedureId, item, material, ghost, selected, 
       if (event.target instanceof HTMLTextAreaElement) return;
       if (event.key === 'Enter' && item && !disabled) { event.preventDefault(); begin(item.itemId); }
     }}>
-    {material && <span className="pb-meta"><time dateTime={material.createdAt}>{material.createdAt.slice(5, 10)}</time><span role="img" aria-label={material.pdf ? 'PDF' : material.images.length ? '写真' : 'メモ'}>{material.pdf ? '▤' : material.images.length ? '▧' : '≡'}</span>{material.pdf && <span>{material.pdf.pageNumber}</span>}</span>}
+    {material && <MaterialMeta material={material} />}
+    {material && !material.images.length && <span className="pb-memo-picture" aria-hidden="true" />}
     {material?.images.map(image => <Photo key={image.id} path={`${boardPath(procedureId)}/materials/${encodeURIComponent(material.materialId)}/images/${image.id}`} />)}
     {editing ? <Editor key={editing.itemId} initial={editing.initial} commit={commit} cancel={cancel} disabled={disabled} />
       : <span className="pb-text" onClick={() => { if (item && !disabled) begin(item.itemId); }}>{text}</span>}
     {ghost ? <span className="pb-actions">
-      {icon('提案を外す', '×', () => decide({ proposalId: ghost.id, action: 'dismiss' }), disabled || stale)}
       {icon('ここに置く', '✓', () => decide({ proposalId: ghost.id, action: 'accept', itemId: crypto.randomUUID() }), disabled || stale)}
+      {icon('提案を外す', '×', () => decide({ proposalId: ghost.id, action: 'dismiss' }), disabled || stale)}
     </span> : item && selected && !editing ? icon('外す', '×', () => remove(item.itemId), disabled) : null}
   </article>;
 });
@@ -88,13 +92,14 @@ const Page = memo(function Page({ page, procedureId, materials, set, stale, coll
   const shared = { procedureId, disabled, begin, select, commit, cancel, remove, decide, shown };
   const ghostCard = (ghost: Ghost) => <Card key={`ghost:${ghost.id}`} {...shared} ghost={ghost} material={materials.get(ghost.materialId)} stale={stale} />;
   return <section className={`pb-pane pb-page${collapsed ? ' pb-collapsed' : ''}`} data-drop={page.page} aria-label={`ページ${page.page}`} onClick={event => { if (collapsed && !(event.target as HTMLElement).closest('button')) toggle(page.page); }}>
-    <header><span>{page.page}</span><h2>{page.heading}</h2>
-      {!collapsed && !page.heading && heading && <span className={`pb-heading-ghost${stale ? ' pb-stale' : ''}`}>{heading.text}
-        {icon('見出しを外す', '×', () => decide({ proposalId: heading.id, action: 'dismiss' }), disabled || stale)}
-        {icon('見出しにする', '✓', () => decide({ proposalId: heading.id, action: 'accept' }), disabled || stale)}</span>}
+    <header><span className="pb-page-number">{page.page}</span><span className="pb-page-total">/ 3</span>
       {icon(collapsed ? `ページ${page.page}を開く` : `ページ${page.page}を閉じる`, collapsed ? '+' : '−', () => toggle(page.page))}
     </header>
     {!collapsed && <div className="pb-scroll">
+      {page.heading && <h2 className="pb-page-heading">{page.heading}</h2>}
+      {!page.heading && heading && <div className={`pb-heading-ghost${stale ? ' pb-stale' : ''}`}><strong>{heading.text}</strong><span className="pb-actions">
+        {icon('見出しにする', '✓', () => decide({ proposalId: heading.id, action: 'accept' }), disabled || stale)}
+        {icon('見出しを外す', '×', () => decide({ proposalId: heading.id, action: 'dismiss' }), disabled || stale)}</span></div>}
       {Array.from({ length: page.rows.length + 1 }, (_, r) => {
         const row = page.rows[r];
         return <div className="pb-row-group" key={r}>
@@ -126,7 +131,7 @@ const Page = memo(function Page({ page, procedureId, materials, set, stale, coll
               </div>)}
             </div>;
           })()}
-          {set?.gaps.filter(gap => gap.page === page.page && gap.row === r).map(gap => <div className="pb-gap" key={gap.id}>? {gap.text}</div>)}
+          {set?.gaps.filter(gap => gap.page === page.page && gap.row === r).map(gap => <div className="pb-gap" key={gap.id}><b>?</b> {gap.text}</div>)}
         </div>;
       })}
       {page.rows.length === 0 && ghosts.length === 0 && <div className="pb-empty">{page.page}</div>}
@@ -141,6 +146,7 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
   useEffect(() => { if (materialError) void session.readError(materialError); }, [materialError, session]);
   const [selected, setSelected] = useState<string>(); const [editing, setEditing] = useState<Editing>();
   const [closed, setClosed] = useState<number[]>([]); const root = useRef<HTMLDivElement>(null); const indicator = useRef<HTMLDivElement>(null);
+  const lift = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | undefined>(undefined); const frame = useRef(0); const skipClick = useRef(false);
   const disabled = state.forbidden || state.stopped;
   const live = useRef({ draft, editing, disabled });
@@ -209,6 +215,8 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
     cancelAnimationFrame(frame.current); frame.current = 0;
     clearTimeout(drag.current?.hold);
     if (indicator.current) indicator.current.hidden = true;
+    drag.current?.node.classList.remove('pb-dragging');
+    if (lift.current) { lift.current.replaceChildren(); lift.current.hidden = true; }
     drag.current = undefined; session.busy(false);
   }, [session]);
   useEffect(() => () => { cancelAnimationFrame(frame.current); clearTimeout(drag.current?.hold); }, []);
@@ -222,7 +230,17 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
       d.node.style.gridTemplateColumns = r.now.map(w => `minmax(0,${w}fr)`).join(' 20px '); return;
     }
     if (!d.on && Math.hypot(d.nowX - d.x, d.nowY - d.y) < 6) return;
+    if (!d.on && lift.current) {
+      const clone = d.node.cloneNode(true) as HTMLElement;
+      clone.removeAttribute('tabindex'); clone.removeAttribute('aria-current'); clone.setAttribute('inert', '');
+      clone.querySelectorAll('[tabindex],button,textarea').forEach(node => node.setAttribute('tabindex', '-1'));
+      lift.current.className = `pb-lift ${d.node.closest('.pb-tray') ? 'pb-tray' : 'pb-page'}`;
+      lift.current.replaceChildren(clone); lift.current.hidden = false;
+      lift.current.style.width = `${Math.min(d.node.getBoundingClientRect().width, 238)}px`;
+      d.node.classList.add('pb-dragging');
+    }
     d.on = true;
+    if (lift.current) lift.current.style.transform = `translate(${d.nowX - 28}px,${d.nowY - 14}px) rotate(-1.5deg)`;
     const hit = document.elementFromPoint(d.nowX, d.nowY)?.closest<HTMLElement>('[data-drop]');
     d.target = undefined; d.tray = hit?.dataset.drop === 'tray';
     if (!hit || d.tray) { if (indicator.current) indicator.current.hidden = true; return; }
@@ -249,6 +267,7 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
     d.target = target;
     if (indicator.current) {
       indicator.current.hidden = false;
+      indicator.current.dataset.direction = target.mode === 'col' ? 'vertical' : 'horizontal';
       Object.assign(indicator.current.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px` });
     }
   }
@@ -309,7 +328,7 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
     cleanupDrag(); (event.target as HTMLElement).releasePointerCapture?.(event.pointerId);
   };
   const shared = { procedureId, materials, disabled, begin, select: setSelected, commit, cancel: endEdit, remove, decide, shown: session.show, resize };
-  return <div className="procedure-board bg-inv-bg text-inv-text" ref={root} onPointerDown={pointerDown}
+  return <div className="procedure-board" ref={root} onPointerDown={pointerDown}
     onInput={() => session.touch()} onPointerMove={event => { const d = drag.current; if (!d) return; if (d.waiting && (event.clientX !== d.x || event.clientY !== d.y)) { cleanupDrag(); return; } session.touch(); d.nowX = event.clientX; d.nowY = event.clientY; if (!frame.current) frame.current = requestAnimationFrame(step); }}
     onPointerUp={event => pointerUp(event)} onPointerCancel={event => pointerUp(event, true)}
     onLostPointerCapture={() => { if (drag.current) cleanupDrag(); }}
@@ -317,27 +336,34 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
     onFocusCapture={event => session.touch((event.target as HTMLElement).closest<HTMLElement>('[data-material]')?.dataset.material)}
     onKeyDown={event => { session.touch(); if (event.key === 'Delete' && selected && !editing && !disabled && !(event.target instanceof HTMLInputElement)) { event.preventDefault(); remove(selected); } }}>
     <div className="pb-bar">
-      <Link to="/kiosk/procedure-board" aria-label="案件選択">‹</Link><h1>{title}</h1>
+      <div className="pb-title-group"><Link className="pb-back" to="/kiosk/procedure-board" aria-label="案件選択">‹</Link><h1>{title}</h1></div>
+      <div className="pb-tools">
       <button type="button" disabled={disabled || !draft || !!editing} onClick={() => addText('title')}>タイトル</button>
       <button type="button" disabled={disabled || !draft || !!editing} onClick={() => addText('subtitle')}>サブタイトル</button>
       <button type="button" disabled={disabled || !draft || !!editing} onClick={() => addText('body')}>本文</button>
-      <button type="button" disabled={disabled || !selectedAt || !!editing} onClick={duplicate}>複製</button>
-      <button type="button" disabled={disabled || state.stopped || !!state.format} onClick={session.requestFormat}>AIで整える</button>
-      {state.format && <><button type="button" onClick={() => session.decideFormat('accept')} disabled={!preview || disabled}>採用</button>
-        <button type="button" onClick={() => session.decideFormat('revert')} disabled={disabled}>戻す</button></>}
-      {state.suggestions && ['pending', 'running', 'deferred'].includes(state.suggestions.status) && <span role="status">解析中</span>}
-      {state.format && ['pending', 'running', 'deferred'].includes(state.format.status) && <span role="status">整形中</span>}
-      {state.board?.stats && <span className="pb-stats">採用 {state.board.stats.accepted} 修正 {state.board.stats.modified} 手動 {state.board.stats.manual}</span>}
+      <span className="pb-separator" aria-hidden="true" />
+      <button type="button" disabled={disabled || !selectedAt || !!editing} onClick={duplicate}>複製</button></div>
+      <span className="pb-spacer" />
+      {state.suggestions && ['pending', 'running', 'deferred'].includes(state.suggestions.status) && <span className="pb-status" role="status"><i aria-hidden="true" />解析中</span>}
+      {state.format && ['pending', 'running', 'deferred'].includes(state.format.status) && <span className="pb-status" role="status"><i aria-hidden="true" />整形中</span>}
+      {state.board?.stats && <span className="pb-stats"><span>採用 <b>{state.board.stats.accepted}</b></span><span>修正 <b>{state.board.stats.modified}</b></span><span>手動 <b>{state.board.stats.manual}</b></span></span>}
+      {state.format ? <><button className="pb-outline" type="button" onClick={() => session.decideFormat('revert')} disabled={disabled}>戻す</button>
+        <button className="pb-primary" type="button" onClick={() => session.decideFormat('accept')} disabled={!preview || disabled}>採用</button></>
+        : <button className="pb-primary" type="button" disabled={disabled || state.stopped} onClick={session.requestFormat}>AIで整える</button>}
       {state.error && <span role="alert">{state.error}</span>}
       {state.latest ? icon('最新から再開', '↻', session.latest, state.forbidden) : state.stopped && icon('最新を取得', '↻', () => void session.refresh(), state.forbidden)}
       {state.recovery && icon('下書きを表示', '▤', session.recover)}
     </div>
-    {display ? <div className="pb-main" style={{ gridTemplateColumns: [closed.includes(0) ? '40px' : '380px', ...[1, 2, 3].map(p => closed.includes(p) ? '40px' : 'minmax(0,1fr)')].join(' ') }}>
+    {display ? <div className="pb-main" style={{ gridTemplateColumns: [closed.includes(0) ? 'var(--pb-strip)' : 'var(--pb-tray)', ...[1, 2, 3].map(p => closed.includes(p) ? 'var(--pb-strip)' : 'minmax(0,1fr)')].join(' ') }}>
       <section className={`pb-pane pb-tray${closed.includes(0) ? ' pb-collapsed' : ''}`} data-drop="tray" aria-label="素材" onClick={event => { if (closed.includes(0) && !(event.target as HTMLElement).closest('button')) setClosed(list => list.filter(p => p !== 0)); }}>
         <header><h2>素材</h2><span>{materialList.length - placed.size}</span>{icon(closed.includes(0) ? '素材を開く' : '素材を閉じる', closed.includes(0) ? '+' : '−', () => setClosed(list => list.includes(0) ? list.filter(p => p !== 0) : [...list, 0]))}</header>
         {!closed.includes(0) && <div className="pb-scroll">{materialList.filter(material => !placed.has(material.materialId)).map(material => <Card key={material.materialId} {...shared} material={material} />)}
-          {visibleSet?.conflicts.map(conflict => <div className="pb-conflict" key={conflict.id} role="group" aria-label="食い違い">{conflict.materialIds.map((id, i) =>
-            <button type="button" key={id} disabled={stale || disabled} onClick={() => decide({ proposalId: conflict.id, action: 'select_conflict', selectedMaterialId: id })}>{conflict.quotes[i]}</button>)}</div>)}
+          {visibleSet?.conflicts.map(conflict => <div className="pb-conflict" key={conflict.id} role="group" aria-label="食い違い">
+            <div className="pb-conflict-heading"><span aria-hidden="true">⚠</span>食い違い</div><div className="pb-conflict-options">{conflict.materialIds.map((id, i) => {
+              const material = materials.get(id);
+              return <button type="button" key={id} disabled={stale || disabled} onClick={() => decide({ proposalId: conflict.id, action: 'select_conflict', selectedMaterialId: id })}>{conflict.quotes[i]}
+                {material && <small><time dateTime={material.createdAt}>{material.createdAt.slice(5, 10)}</time> {material.pdf ? 'PDF' : material.images.length ? '写真' : 'メモ'}</small>}</button>;
+            })}</div></div>)}
         </div>}
       </section>
       {display.pages.map(page => <Page key={page.page} {...shared} page={page} set={visibleSet} stale={stale} collapsed={closed.includes(page.page)}
@@ -345,7 +371,13 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
         selected={boardItems({ ...display!, pages: [page] }).some(entry => entry.item.itemId === selected) ? selected : undefined}
         editing={editing} />)}
     </div> : <p role="status">{state.forbidden ? '手順づくりは無効です' : '読み込み中…'}</p>}
-    {preview && <div className="pb-preview" aria-label="整形プレビュー">{preview.pages.map(page => <Page key={page.page} {...shared} page={page} stale collapsed={false} toggle={toggle} disabled />)}</div>}
+    {preview && <div className="pb-preview" aria-label="整形プレビュー" onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}><div className="pb-preview-panel">
+      <header><strong>{title}</strong><span className="pb-spacer" />
+        <button className="pb-outline" type="button" onClick={() => session.decideFormat('revert')} disabled={disabled}>戻す</button>
+        <button className="pb-primary" type="button" onClick={() => session.decideFormat('accept')} disabled={disabled}>採用</button></header>
+      <div className="pb-preview-pages">{preview.pages.map(page => <Page key={page.page} {...shared} page={page} stale collapsed={false} toggle={toggle} disabled />)}</div>
+    </div></div>}
+    <div ref={lift} className="pb-lift" aria-hidden="true" hidden />
     <div ref={indicator} className="pb-drop-indicator" hidden />
   </div>;
 }

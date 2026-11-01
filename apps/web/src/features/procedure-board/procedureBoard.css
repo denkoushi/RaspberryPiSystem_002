@@ -1,64 +1,140 @@
 .procedure-board {
-  /* 出典: @digital-go-jp/design-tokens 1.1.9 dist/tokens.css */
-  --blue-50:#e8f1fe; --blue-100:#d9e6ff; --blue-200:#c5d7fb; --blue-600:#3460fb;
-  --blue-800:#0031d8; --blue-900:#0017c1; --blue-1000:#00118f;
-  --solid-gray-50:#f2f2f2; --solid-gray-100:#e6e6e6; --solid-gray-200:#cccccc;
-  --solid-gray-420:#949494; --solid-gray-536:#767676; --solid-gray-600:#666666;
-  --solid-gray-800:#333333; --solid-gray-900:#1a1a1a; --white:#ffffff; --black:#000000;
-  --success-1:#259d63; --error-1:#ec0000; --warning-yellow-1:#b78f00; --warning-orange-1:#fb5b01; --focus:#ffd43d;
-  position:relative; flex:1; min-height:0; min-width:0; overflow:hidden; display:flex; flex-direction:column; gap:6px; font-size:16px;
+  --pb-desk:#e4e8ef; --pb-desk-2:#d6dce6; --pb-paper:#fff;
+  --pb-ink:#141a26; --pb-ink-2:#4a5468; --pb-ink-3:#7c8597; --pb-rule:#cdd3de;
+  --pb-blue:#0031d8; --pb-blue-soft:#e8edff;
+  --pb-ai:#9a7400; --pb-ai-ink:#5c4500; --pb-ai-bg:#fff7d6;
+  --pb-red:#c20000; --pb-red-bg:#fee; --pb-green:#18794e; --pb-focus:#ffd43d;
+  --pb-bar:36.5px; --pb-tray:252px; --pb-strip:28px;
+  color-scheme:light; background:var(--pb-desk); color:var(--pb-ink); font-size:11px; line-height:1.6;
+  position:relative; flex:1; min-height:0; min-width:0; overflow:hidden; display:flex; flex-direction:column;
+  padding:0 max(11px, env(safe-area-inset-right, 0px)) 8.5px max(11px, env(safe-area-inset-left, 0px)); gap:5.5px;
 }
-.procedure-board button,.procedure-board a { min-height:44px; padding:0 10px; border:1px solid var(--solid-gray-536); border-radius:4px; flex-shrink:0; }
-.procedure-board button:disabled { opacity:.45; cursor:default; }
-.procedure-board :is(button,a,input,textarea,[tabindex]):focus-visible { outline:3px solid var(--focus); outline-offset:2px; box-shadow:0 0 0 5px var(--black); }
-.procedure-board .pb-bar { display:flex; align-items:center; gap:6px; min-height:46px; flex-wrap:wrap; }
-.procedure-board .pb-bar h1 { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700; }
-.procedure-board .pb-bar a { display:grid; place-items:center; }
-.procedure-board .pb-stats { margin-left:auto; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.procedure-board [role=alert] { color:var(--warning-orange-1); }
-.procedure-board .pb-main { min-height:0; flex:1; display:grid; gap:6px; overflow:hidden; }
-.procedure-board .pb-pane { min-height:0; min-width:0; display:flex; flex-direction:column; border:1px solid var(--solid-gray-536); border-radius:4px; overflow:hidden; }
-.procedure-board .pb-pane>header { display:flex; align-items:center; gap:6px; min-height:44px; padding-left:8px; border-bottom:1px solid var(--solid-gray-536); }
-.procedure-board h2 { flex:1; min-width:0; font-weight:700; overflow-wrap:anywhere; }
-.procedure-board .pb-scroll { flex:1; min-height:0; overflow:auto; padding:6px; display:flex; flex-direction:column; gap:4px; contain:layout paint; }
-.procedure-board .pb-collapsed>header { flex-direction:column; height:100%; padding:6px 0; }
-.procedure-board .pb-collapsed h2 { flex:0 0 auto; writing-mode:vertical-rl; }
-.procedure-board .pb-collapsed button { padding:0; width:36px; }
-.procedure-board .pb-card { display:flex; align-items:center; gap:6px; border:1px solid var(--solid-gray-536); border-radius:4px; padding:4px 6px; min-height:44px; position:relative; user-select:none; touch-action:pan-y; overflow-wrap:anywhere; }
-.procedure-board .pb-text { flex:1; min-width:0; white-space:pre-wrap; cursor:text; }
-.procedure-board .pb-meta { font-size:12px; display:flex; flex-direction:column; flex-shrink:0; font-variant-numeric:tabular-nums; }
-.procedure-board .pb-photo { display:block; width:80px; height:50px; flex-shrink:0; }
-.procedure-board .pb-photo img { width:100%; height:100%; object-fit:contain; }
-.procedure-board .pb-page .pb-figure { flex-wrap:wrap; }
-.procedure-board .pb-page .pb-figure .pb-photo { width:160px; height:100px; max-width:100%; }
-.procedure-board .pb-page .pb-figure .pb-text { flex-basis:100%; }
-.procedure-board .pb-selected { border:2px solid var(--blue-600); }
-.procedure-board .pb-ghost,.procedure-board .pb-heading-ghost { border:2px dashed var(--warning-yellow-1); }
+.procedure-board *, .procedure-board *::before, .procedure-board *::after { box-sizing:border-box; }
+.procedure-board [hidden] { display:none!important; }
+.procedure-board button { font:inherit; color:inherit; cursor:pointer; border:0; border-radius:5.5px; height:31px; padding:0 10px; background:none; flex-shrink:0; }
+.procedure-board button:hover { background:var(--pb-desk-2); }
+.procedure-board button:disabled { opacity:.5; cursor:default; }
+.procedure-board :focus-visible { outline:2px solid var(--pb-focus); outline-offset:1.5px; }
+.procedure-board .pb-bar { display:flex; align-items:center; gap:14px; min-width:0; min-height:var(--pb-bar); }
+.procedure-board .pb-title-group,.procedure-board .pb-tools { display:flex; align-items:center; gap:1.5px; min-width:0; }
+.procedure-board .pb-tools { flex-shrink:0; }
+.procedure-board .pb-bar button { font-weight:700; white-space:nowrap; }
+.procedure-board .pb-back { width:31px; height:31px; flex-shrink:0; border-radius:5.5px; display:grid; place-items:center; text-decoration:none; color:var(--pb-ink-2); font-size:19.5px; line-height:1; }
+.procedure-board .pb-back:hover { background:var(--pb-desk-2); }
+.procedure-board .pb-bar h1 { margin:0; min-width:0; font-size:15.5px; font-weight:700; letter-spacing:.02em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.procedure-board .pb-separator { width:1px; height:17px; background:var(--pb-rule); margin:0 5.5px; flex-shrink:0; }
+.procedure-board .pb-spacer { flex:1; }
+.procedure-board .pb-status { display:flex; align-items:center; gap:5.5px; color:var(--pb-ink-2); font-size:10.5px; white-space:nowrap; }
+.procedure-board .pb-status i { width:5.5px; height:5.5px; border-radius:50%; background:var(--pb-ai); animation:pb-pulse 1.2s ease-in-out infinite; }
+@keyframes pb-pulse { 50% { opacity:.25; } }
+.procedure-board .pb-stats { display:flex; gap:11px; color:var(--pb-ink-3); font-size:10.5px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.procedure-board .pb-stats b { margin-left:4px; color:var(--pb-ink); font-size:12.5px; font-weight:700; }
+.procedure-board button.pb-primary { padding:0 14px; background:var(--pb-blue); color:var(--pb-paper); font-weight:700; white-space:nowrap; }
+.procedure-board button.pb-primary:hover { filter:brightness(1.15); }
+.procedure-board button.pb-outline { padding:0 12.5px; border:1.5px solid var(--pb-blue); background:var(--pb-paper); color:var(--pb-blue); font-weight:700; }
+.procedure-board [role=alert] { color:var(--pb-red); font-weight:700; }
+.procedure-board .pb-main { min-height:0; flex:1; display:grid; gap:8.5px; overflow:hidden; transition:grid-template-columns .22s ease; }
+.procedure-board .pb-pane { display:flex; flex-direction:column; min-height:0; min-width:0; }
+.procedure-board .pb-pane>header { display:flex; align-items:center; gap:7px; height:31px; flex-shrink:0; padding:0 3px 0 5.5px; }
+.procedure-board .pb-pane>header h2 { margin:0; font-size:11px; font-weight:700; }
+.procedure-board .pb-pane>header>button { margin-left:auto; padding:0; width:31px; font-size:15.5px; color:var(--pb-ink-2); }
+.procedure-board .pb-tray>header>span { color:var(--pb-ink-3); font-size:10px; font-variant-numeric:tabular-nums; }
+.procedure-board .pb-page-number { font-size:19.5px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
+.procedure-board .pb-page-total { color:var(--pb-ink-3); font-size:10px; }
+.procedure-board .pb-scroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; display:flex; flex-direction:column; }
+.procedure-board .pb-tray .pb-scroll { padding:1.5px 3px 5.5px 1.5px; gap:4px; }
+.procedure-board .pb-page .pb-scroll { background:var(--pb-paper); border-radius:3px; box-shadow:0 1px 1.5px #141a2614,0 5.5px 17px -12px #141a262e; position:relative; padding:19.5px 19.5px 28px; gap:10px; }
+.procedure-board .pb-collapsed>header { flex-direction:column; height:100%; padding:4px 0; background:var(--pb-desk-2); border-radius:7px; }
+.procedure-board .pb-collapsed>header>button { margin:0; order:-1; width:28px; }
+.procedure-board .pb-collapsed h2 { writing-mode:vertical-rl; letter-spacing:.2em; }
+.procedure-board .pb-collapsed .pb-page-number { font-size:14px; }
+.procedure-board .pb-collapsed .pb-page-total,.procedure-board .pb-collapsed.pb-tray>header>span { display:none; }
+.procedure-board .pb-card { position:relative; border-radius:4px; padding:4px 5.5px; min-width:0; user-select:none; touch-action:pan-y; overflow-wrap:anywhere; cursor:grab; }
+.procedure-board .pb-text { display:block; min-width:0; white-space:pre-wrap; cursor:text; }
+.procedure-board .pb-meta { display:flex; align-items:center; gap:4px; color:var(--pb-ink-3); font-size:9px; font-variant-numeric:tabular-nums; line-height:1; }
+.procedure-board .pb-photo { display:block; width:56px; height:35px; border-radius:4px; overflow:hidden; background:var(--pb-desk); }
+.procedure-board .pb-photo img { width:100%; height:100%; object-fit:cover; }
+.procedure-board .pb-memo-picture { display:block; width:56px; height:35px; border-radius:4px; background:repeating-linear-gradient(transparent 0 7.5px,var(--pb-rule) 7.5px 8.5px) 0 4px/100% calc(100% - 4px) no-repeat,#f6f4ec; }
+.procedure-board .pb-tray .pb-card { display:grid; grid-template-columns:56px minmax(0,1fr); gap:3px 8.5px; align-items:start; padding:5.5px; border-radius:7px; background:var(--pb-paper); box-shadow:0 1px 0 var(--pb-rule); flex-shrink:0; }
+.procedure-board .pb-tray .pb-card:hover { box-shadow:0 0 0 1.5px var(--pb-rule); }
+.procedure-board .pb-tray .pb-card .pb-meta { grid-column:2; grid-row:1; }
+.procedure-board .pb-tray .pb-card :is(.pb-photo,.pb-memo-picture) { grid-column:1; grid-row:1 / span 2; }
+.procedure-board .pb-tray .pb-card .pb-text { grid-column:2; font-size:10.5px; line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.procedure-board .pb-page .pb-card { margin:-6px -8px; }
+.procedure-board .pb-page .pb-card:hover { background:var(--pb-blue-soft); }
+.procedure-board .pb-page .pb-card.pb-selected { box-shadow:0 0 0 2px var(--pb-blue); background:none; }
+.procedure-board .pb-page .pb-meta { position:absolute; top:-2px; right:5.5px; opacity:0; transition:opacity .15s; }
+.procedure-board .pb-page .pb-card:hover .pb-meta,.procedure-board .pb-selected .pb-meta { opacity:1; }
+.procedure-board .pb-page .pb-memo-picture { display:none; }
+.procedure-board .pb-page .pb-text { font-size:12px; line-height:1.75; }
+.procedure-board .pb-heading .pb-text,.procedure-board .pb-page-heading { margin:0; font-size:21px; line-height:1.3; letter-spacing:.01em; text-wrap:balance; font-weight:700; overflow-wrap:anywhere; }
+.procedure-board .pb-subheading .pb-text { font-size:14px; font-weight:700; line-height:1.4; padding-bottom:4px; border-bottom:1.5px solid var(--pb-ink); }
+.procedure-board .pb-page .pb-figure .pb-photo { width:100%; max-width:112px; height:auto; aspect-ratio:16/10; border-radius:3px; }
+.procedure-board .pb-page .pb-figure .pb-text { font-size:10px; color:var(--pb-ink-2); margin-top:4px; }
+.procedure-board .pb-page .pb-image-body { display:grid; grid-template-columns:minmax(0,112px) minmax(0,1fr); gap:8.5px; align-items:start; }
+.procedure-board .pb-page .pb-image-body .pb-photo { width:100%; height:auto; aspect-ratio:16/10; }
+.procedure-board .pb-card>button { position:absolute; right:0; top:0; background:var(--pb-paper); width:31px; padding:0; }
+.procedure-board .pb-ghost,.procedure-board .pb-heading-ghost { border:1.5px dashed var(--pb-ai); background:var(--pb-ai-bg); padding:7px 8.5px; border-radius:4px; display:flex; gap:8.5px; align-items:center; color:var(--pb-ai-ink); }
+.procedure-board .pb-page .pb-card.pb-ghost { margin:0; background:var(--pb-ai-bg); }
+.procedure-board .pb-page .pb-ghost .pb-text { font-size:11px; flex:1; }
+.procedure-board .pb-page .pb-ghost .pb-photo { width:56px; height:35px; flex-shrink:0; }
+.procedure-board .pb-heading-ghost strong { flex:1; min-width:0; font-size:14px; overflow-wrap:anywhere; }
 .procedure-board .pb-stale { opacity:.45; }
-.procedure-board .pb-actions { display:flex; flex-shrink:0; }
-.procedure-board .pb-actions button { width:44px; padding:0; }
-.procedure-board .pb-heading-ghost { display:flex; align-items:center; flex:1; min-width:0; overflow-wrap:anywhere; }
-.procedure-board textarea { width:100%; min-height:90px; resize:vertical; padding:4px; color:var(--black); background:var(--white); user-select:text; touch-action:auto; }
-.procedure-board .pb-row-group,.procedure-board .pb-column,.procedure-board .pb-item-slot { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.procedure-board .pb-actions { display:flex; gap:4px; flex-shrink:0; }
+.procedure-board .pb-actions button { width:31px; padding:0; font-size:14px; font-weight:700; }
+.procedure-board .pb-actions button:first-child { background:var(--pb-ink); color:var(--pb-paper); }
+.procedure-board .pb-actions button:last-child { border:1.5px solid var(--pb-ai); color:var(--pb-ai-ink); background:transparent; }
+.procedure-board textarea { width:100%; font:inherit; line-height:inherit; min-height:1.6em; resize:none; field-sizing:content; border:0; border-radius:3px; padding:1.5px 3px; outline:2px solid var(--pb-blue); color:var(--pb-ink); background:var(--pb-paper); user-select:text; touch-action:auto; }
+.procedure-board .pb-heading textarea { font-size:21px; font-weight:700; line-height:1.3; }
+.procedure-board .pb-subheading textarea { font-size:14px; font-weight:700; }
+.procedure-board .pb-body textarea { font-size:12px; }
+.procedure-board .pb-row-group,.procedure-board .pb-column,.procedure-board .pb-item-slot { display:flex; flex-direction:column; gap:10px; min-width:0; }
 .procedure-board .pb-row { display:grid; align-items:stretch; }
 .procedure-board .pb-column-pair { display:contents; }
-.procedure-board .pb-split { width:20px; height:100%; min-height:44px; margin:0; cursor:col-resize; touch-action:none; appearance:none; background:transparent; }
-.procedure-board .pb-split::-webkit-slider-thumb { appearance:none; width:4px; height:44px; background:var(--solid-gray-536); }
-.procedure-board .pb-gap { border:2px dashed var(--solid-gray-536); padding:8px; }
-.procedure-board .pb-conflict { display:flex; gap:4px; flex-wrap:wrap; border:2px solid var(--error-1); padding:4px; }
-.procedure-board .pb-empty { flex:1; min-height:120px; display:grid; place-items:center; border:1px dashed var(--solid-gray-536); color:var(--solid-gray-420); font-size:32px; }
-.procedure-board .pb-heading { font-size:24px; font-weight:700; }
-.procedure-board .pb-subheading { font-size:20px; font-weight:700; }
-.procedure-board .pb-caution { border-left:4px solid var(--warning-orange-1); }
-.procedure-board .pb-key-number { color:var(--blue-200); font-weight:700; }
-.procedure-board .pb-drop-indicator { position:fixed; pointer-events:none; z-index:50; border:3px solid var(--blue-600); background:transparent; }
-.procedure-board .pb-drop-indicator[hidden] { display:none; }
-.procedure-board .pb-preview { position:absolute; inset:52px 0 0 386px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; pointer-events:none; background:var(--solid-gray-900); border:2px solid var(--blue-600); }
-@media(max-width:900px) {
+/* 20px の幅は既存の列幅計算と共通。見える取っ手だけを細くする。 */
+.procedure-board .pb-split { width:20px; height:100%; min-height:31px; margin:0; cursor:col-resize; touch-action:none; appearance:none; background:transparent; }
+.procedure-board .pb-split::-webkit-slider-thumb { appearance:none; width:1.5px; height:31px; background:var(--pb-rule); border-radius:1.5px; }
+.procedure-board .pb-split::-moz-range-thumb { width:1.5px; height:31px; border:0; background:var(--pb-rule); }
+.procedure-board .pb-gap { display:flex; align-items:center; gap:7px; color:var(--pb-ai-ink); font-weight:700; padding:5.5px 8.5px; border-left:3px solid var(--pb-ai); background:var(--pb-ai-bg); border-radius:0 4px 4px 0; }
+.procedure-board .pb-gap b { font-size:14px; }
+.procedure-board .pb-conflict { border:1.5px solid var(--pb-red); background:var(--pb-red-bg); border-radius:5.5px; padding:8.5px 10px; display:grid; gap:7px; }
+.procedure-board .pb-conflict-heading { display:flex; align-items:center; gap:5.5px; color:var(--pb-red); font-weight:700; }
+.procedure-board .pb-conflict-options { display:flex; flex-wrap:wrap; gap:5.5px; }
+.procedure-board .pb-conflict-options button { height:auto; min-height:31px; padding:4px 10px; border:1.5px solid var(--pb-rule); background:var(--pb-paper); text-align:left; font-size:11px; }
+.procedure-board .pb-conflict-options button:hover { border-color:var(--pb-ink); }
+.procedure-board .pb-conflict-options small { display:block; color:var(--pb-ink-3); font-size:8.5px; font-variant-numeric:tabular-nums; }
+.procedure-board .pb-empty { flex:1; min-height:120px; display:grid; place-items:center; color:var(--pb-desk); font-size:154px; font-weight:700; line-height:1; letter-spacing:-.04em; user-select:none; }
+.procedure-board .pb-caution { border-left:3px solid var(--pb-ai); }
+.procedure-board .pb-key-number { color:var(--pb-blue); font-weight:700; }
+.procedure-board .pb-drop-indicator { position:fixed; pointer-events:none; z-index:50; border:0; border-top:3px solid var(--pb-blue); border-radius:2px; }
+.procedure-board .pb-drop-indicator[data-direction=vertical] { border-top:0; border-left:3px solid var(--pb-blue); }
+.procedure-board .pb-lift { position:fixed; left:0; top:0; pointer-events:none; z-index:60; opacity:.92; transform-origin:14px 14px; box-shadow:0 12.5px 28px -10px #141a2673; border-radius:7px; background:var(--pb-paper); max-width:238px; }
+.procedure-board .pb-lift .pb-card { margin:0; }
+.procedure-board .pb-dragging { opacity:.35; }
+.procedure-board .pb-preview { position:fixed; inset:0; z-index:40; background:#141a2673; display:grid; place-items:center; padding:17px; }
+.procedure-board .pb-preview-panel { background:var(--pb-desk); border-radius:8.5px; width:min(1050px,100%); max-height:100%; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 21px 56px -20px #0008; }
+.procedure-board .pb-preview-panel>header { display:flex; align-items:center; gap:8.5px; padding:8.5px 11px; background:var(--pb-paper); }
+.procedure-board .pb-preview-panel>header strong { font-size:12.5px; }
+.procedure-board .pb-preview-pages { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8.5px; padding:11px; overflow:auto; min-height:0; }
+.procedure-board .pb-preview-pages .pb-scroll { min-height:294px; }
+@media (max-width:1400px) {
+  .procedure-board { --pb-tray:210px; }
+  .procedure-board .pb-page .pb-scroll { padding:14px 14px 22.5px; }
+  .procedure-board .pb-heading .pb-text { font-size:18px; }
+  .procedure-board .pb-heading-ghost strong { font-size:12.5px; }
+  .procedure-board .pb-bar { gap:8.5px; }
+  .procedure-board .pb-bar button { padding-inline:7px; }
+  .procedure-board .pb-stats { gap:7px; }
+}
+@media (max-width:900px) {
   .procedure-board .pb-main { grid-template-columns:minmax(0,1fr)!important; overflow:auto; }
   .procedure-board .pb-pane { height:350px; flex-shrink:0; }
-  .procedure-board .pb-collapsed { height:44px; }
+  .procedure-board .pb-collapsed { height:31px; }
   .procedure-board .pb-collapsed>header { flex-direction:row; }
   .procedure-board .pb-collapsed h2 { writing-mode:horizontal-tb; }
-  .procedure-board .pb-preview { left:0; }
+  .procedure-board .pb-bar { flex-wrap:wrap; }
+  .procedure-board .pb-preview-pages { grid-template-columns:minmax(0,1fr); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .procedure-board *, .procedure-board *::before, .procedure-board *::after { animation:none!important; transition:none!important; }
 }
