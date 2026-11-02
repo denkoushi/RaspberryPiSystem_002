@@ -235,8 +235,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       const overlay = completionOverlay.get(item.sourceRowId);
       if (!overlay || overlay.siteKey !== data?.siteKey || item.completionSource === 'import') return item;
       return { ...item, isCompleted: overlay.isCompleted, completionSource: overlay.completionSource };
-    }).filter((item) => status === 'all' || item.isCompleted === (status === 'complete'));
-  }, [queuedItems, completionOverlay, data?.siteKey, category, status]);
+    }).filter((item) => boardQuery.isPlaceholderData || status === 'all' || item.isCompleted === (status === 'complete'));
+  }, [queuedItems, completionOverlay, data?.siteKey, category, status, boardQuery.isPlaceholderData]);
 
   const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(displayItems), [displayItems]);
   const chipsQuery = useKioskGrindingPlanningBoardProcessChips(chipParts);
@@ -663,7 +663,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   return (
     <PlanningBoardProcessChipsContext.Provider value={chipsByPart}>
     <PlanningBoardPlacementContext.Provider value={placementByPart}>
-    <main className="min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
+    <main className="relative min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
       <PlanningBoardToolbar
         largeScreen={largeScreen} onToggleLargeScreen={() => changeLargeScreen(!largeScreen)}
         colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
@@ -723,7 +723,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           onClick={() => { void toggleCompletion(completionNotice.item, 'incomplete'); setCompletionNotice(null); }}>↶ 戻す</button>
       </div>}
       {scanNotice && <p role="status" className="pointer-events-none fixed left-1/2 top-16 z-[90] -translate-x-1/2 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">{scanNotice.text}</p>}
-      {boardQuery.isError ? <p className="p-5 text-sm text-rose-200">一覧を読み込めませんでした。</p> : null}
+      {boardQuery.isError ? <p className={`${data ? 'absolute z-50 ' : ''}p-5 text-sm text-rose-200`}>一覧を読み込めませんでした。</p> : null}
       <PlanningBoardPageView
         data={data} ganttEnabled={ganttEnabled} focusedSeiban={focusedSeiban} setFocusedSeiban={setFocusedSeiban}
         colorBySeiban={colorBySeiban} registeredFseibans={registeredFseibans} gantt={gantt} ganttLayout={ganttLayout}

@@ -543,12 +543,15 @@ describe('forward PlanningBoardGanttView', () => {
   it('focuses a part across resource rows in process order, switches parts and toggles closed', () => {
     const values = forwardProps(chainItems());
     render(<PlanningBoardGanttView {...values} resourceNameMap={{ '306': ['306 ＮＣ研削盤'] }} selectedItemIds={new Set(['a', 'c'])} />);
+    const reservedStrip = screen.getByLabelText('ガントの日付と工程').previousElementSibling;
+    expect(reservedStrip).toHaveClass('h-[61px]');
     const a = screen.getByTestId('planning-gantt-bar-a');
     const b = screen.getByTestId('planning-gantt-bar-b');
     expect(a).toHaveClass('outline-emerald-300');
     expect(screen.getByTestId('planning-gantt-due-a')).toHaveTextContent('▲');
     tap(b);
     const strip = screen.getByRole('region', { name: '工程のつながり' });
+    expect(strip.parentElement).toBe(reservedStrip);
     expect(strip).toHaveTextContent('26-1001 · P1 · 2工程');
     const steps = within(strip).getAllByRole('button');
     expect(steps[0]).toHaveTextContent('工順2 · 305');
@@ -618,14 +621,16 @@ describe('forward PlanningBoardGanttView', () => {
     rerender(<PlanningBoardGanttView {...props()} />);
     expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
   });
-  it('measures segment endpoints, remeasures on scale/resize and scrolls to the current step', () => {
+  it('measures segment endpoints, keeps the viewport height when the chain opens or closes and scrolls to the current step', () => {
     const values = forwardProps(chainItems());
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
     const viewport = screen.getByLabelText('ガントの日付と工程');
     const content = viewport.firstElementChild as HTMLElement;
     const rect = (left: number, top: number, width: number, height: number) => ({ left, top, right: left + width, bottom: top + height, width, height } as DOMRect);
     vi.spyOn(content, 'getBoundingClientRect').mockReturnValue(rect(10, 50, 3000, 500));
-    vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => rect(10, screen.queryByTestId('planning-gantt-chain-strip') ? 180 : 100, 1120, 500));
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(rect(10, 180, 1120, 500));
+    act(() => { window.dispatchEvent(new Event('resize')); });
+    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 190}px` });
     const segments = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)).find(bar => bar.item.itemId === 'a')!.segments!;
     const last = screen.getByTestId(`planning-gantt-bar-a-segment-${segments.length - 1}`);
     vi.spyOn(last, 'getBoundingClientRect').mockReturnValue(rect(500, 100, 80, 70));
@@ -655,7 +660,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent(window, new Event('resize'));
     expect(path).toHaveAttribute('d', 'M 570 85 C 730 85, 730 285, 890 285');
     fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
-    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 110}px` });
+    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 190}px` });
   });
   it('shows only the process order and machine in each strip step, without times', () => {
     const values = forwardProps([item({ requiredMinutes: 480, originalDueDate: '2026-10-13' }), item({ itemId: 'b', processOrder: '20', requiredMinutesKnown: false })]);
