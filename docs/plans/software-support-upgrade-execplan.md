@@ -239,7 +239,7 @@ GitHub の ubuntu-latest が 26.04 に変わり、Playwright 1.56 が対応し�
 - [ ] PostgreSQL の旧ボリューム `db-data` の削除は 2026-11-13(移行から2週間)以降に、ユーザーの明示承認を得て別作業で行う。まだ消していない。
 - [x] (2026-10-31) 7件目の pnpm 12: #2427(pnpm 12.16.1、Corepack をやめて npm で入れる)、#2435(API イメージを予算内に戻す)、#2436(圧縮サイズ予算を 1.125GB に)をマージ。最終は main 9223b0be。この3件は Pi5 へ1回で反映した(run 20261030-184443-1ad230、成功・failed=0、api healthy、HTTP 正常)。
 - [x] (2026-10-31) 6件目の React 19: react / react-dom 19.3.1 へ上げた #2451 をマージ(main 19efd986)。Pi5 へ反映(run 20261031-115855-620138、成功・failed=0)。api と web は 19efd986 のイメージで、`/`、`/kiosk`、`/admin`、`/api/system/health` が 200。配信中の web の bundle に React 19.3.1 が入っていることを確かめた。
-- [ ] (2026-11-02) 8件目の Playwright: ubuntu-latest(26.04)で e2e が落ちたため、#2471(main 875919b7)で e2e のランナーを ubuntu-24.04 に固定した。続けて Playwright を 1.64.1 へ上げ、ubuntu-latest で e2e が通るのを確かめて固定を外す PR を作る。
+- [x] (2026-11-02) 8件目の Playwright: ubuntu-latest(26.04)で e2e が落ちたため、#2471(main 875919b7)で e2e のランナーを ubuntu-24.04 に固定した。続けて #2474(main 437c7939)で Playwright を 1.64.1 へ上げ、e2e のランナーを ubuntu-latest に戻した(e2e は ubuntu-26.04 で合格。kiosk-sop は描画差を避けるため ubuntu-24.04 のまま)。Pi5 へ反映(run 20261102-012107-105005、failed=0)し、health の checks.playwright が ok、サイネージの定期描画の成功、直近10分の API エラー0件を確かめた。
 
 ## Surprises & Discoveries
 
