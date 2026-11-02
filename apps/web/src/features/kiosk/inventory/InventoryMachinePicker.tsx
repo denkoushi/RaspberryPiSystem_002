@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 
 import { saveInventoryMachineOrder, type InventoryMachine } from '../../../api/client';
 import { normalizeMachineName } from '../productionSchedule/machineName';
@@ -6,6 +6,11 @@ import { normalizeMachineName } from '../productionSchedule/machineName';
 import { PinIcon } from './InventoryIcons';
 import { messageFromError } from './inventoryPageModel';
 import { invEyebrow } from './inventoryUi';
+
+// 語の途中では折り返さず、語と語の間で折り返す。1語が枠より長いときだけ語の中で折る。
+function machineNameWords(name: string) {
+  return name.split(' ').map((word, index) => <Fragment key={index}>{index > 0 ? ' ' : null}<span className="inline-block max-w-full [overflow-wrap:anywhere]">{word}</span></Fragment>);
+}
 
 export function InventoryMachinePicker({ machines, selectedId, editing, onEditing, onSelect, nudge, disabled, onError, onOrderSaved }: {
   machines: InventoryMachine[]; selectedId: string | null; editing: boolean; onEditing: (value: boolean) => void;
@@ -36,12 +41,12 @@ export function InventoryMachinePicker({ machines, selectedId, editing, onEditin
     catch (error) { setOrder(current.before); onError(messageFromError(error)); }
     finally { setSaving(false); }
   };
-  return <div>
-    <div className="mb-2 flex items-center justify-between">
+  return <div className="flex min-h-[124px] flex-1 flex-col">
+    <div className="mb-2 flex shrink-0 items-center justify-between">
       <p className={invEyebrow}>使う加工機</p>
       <button type="button" aria-label="並び順を変える" aria-pressed={editing} disabled={disabled || saving || dragId !== null} onClick={() => onEditing(!editing)} className={`flex h-11 w-11 items-center justify-center rounded-xl border ${editing ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-transparent text-inv-muted'}`}><PinIcon size={20} /></button>
     </div>
-    <div role="group" aria-label="使う加工機" className={`grid grid-cols-3 gap-2 rounded-xl ${nudge ? 'ring-2 ring-inv-amber ring-offset-4 ring-offset-inv-s1' : ''}`}
+    <div role="group" aria-label="使う加工機" className={`grid min-h-0 flex-1 auto-rows-[56px] grid-cols-3 content-start gap-2 overflow-y-auto overscroll-contain rounded-xl ${nudge ? 'outline outline-2 outline-offset-[-2px] outline-inv-amber' : ''}`}
       onPointerMove={event => {
         const current = drag.current;
         if (!current) return;
@@ -66,10 +71,10 @@ export function InventoryMachinePicker({ machines, selectedId, editing, onEditin
           setDragId(machine.id);
         }}
         onClick={() => { if (!editing) onSelect(machine.id); }}
-        className={`h-14 min-w-0 truncate rounded-xl border-[1.5px] px-2 text-lg font-extrabold ${editing ? 'touch-none select-none cursor-grab border-dashed border-inv-cyan bg-inv-s1' : selectedId === machine.id ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-inv-s2'} ${dragId === machine.id ? 'opacity-40' : ''}`}>
-        {normalizeMachineName(machine.shortName || machine.name)}
+        className={`flex h-14 min-w-0 items-center justify-center rounded-xl border-[1.5px] px-1.5 text-center text-base font-extrabold leading-tight ${editing ? 'touch-none select-none cursor-grab border-dashed border-inv-cyan bg-inv-s1' : selectedId === machine.id ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-inv-s2'} ${dragId === machine.id ? 'opacity-40' : ''}`}>
+        <span className="line-clamp-2">{machineNameWords(normalizeMachineName(machine.shortName || machine.name))}</span>
       </button>)}
     </div>
-    {ghost ? <div aria-hidden="true" className="pointer-events-none fixed z-50 flex h-14 items-center justify-center truncate rounded-xl border-[1.5px] border-inv-cyan bg-inv-s3 px-2 text-lg font-extrabold text-inv-text shadow-xl" style={{ width: ghost.width, left: ghost.x, top: ghost.y }}>{ghost.name}</div> : null}
+    {ghost ? <div aria-hidden="true" className="pointer-events-none fixed z-50 flex h-14 items-center justify-center rounded-xl border-[1.5px] border-inv-cyan bg-inv-s3 px-1.5 text-center text-base font-extrabold leading-tight text-inv-text shadow-xl" style={{ width: ghost.width, left: ghost.x, top: ghost.y }}><span className="line-clamp-2">{machineNameWords(ghost.name)}</span></div> : null}
   </div>;
 }
