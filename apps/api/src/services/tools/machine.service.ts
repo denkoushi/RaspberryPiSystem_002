@@ -1,10 +1,12 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { TagDeskService, normalizeTagUid } from '../tag-desk/tag-desk.service.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { resolveJstSignageBusinessDate } from '../../lib/signage-business-day.js';
 import { isDailyInspectionKpiInspected } from './daily-inspection-kpi.js';
 
 export interface MachineQuery {
+  siteKey?: string | null;
   search?: string;
   operatingStatus?: string;
 }
@@ -238,6 +240,7 @@ export interface CreateMachinePayload {
   processClassification?: string;
   coolant?: string;
   resourceCd?: string | null;
+  siteKey?: string | null;
 }
 
 export interface UpdateMachinePayload {
@@ -250,11 +253,14 @@ export interface UpdateMachinePayload {
   processClassification?: string;
   coolant?: string;
   resourceCd?: string | null;
+  siteKey?: string | null;
 }
 
 export class MachineService {
   async findAll(query: MachineQuery) {
+    await this.validateSite(query.siteKey);
     const where: Prisma.MachineWhereInput = {
+      ...(query.siteKey !== undefined ? { siteKey: query.siteKey || null } : {}),
       ...(query.operatingStatus ? { operatingStatus: query.operatingStatus } : {}),
       ...(query.search
         ? {
@@ -271,6 +277,7 @@ export class MachineService {
 
     return prisma.machine.findMany({
       where,
+      include: { site: { select: { key: true, displayName: true } }, nfcTags: { select: { id: true, uid: true }, orderBy: { createdAt: 'asc' } } },
       orderBy: [{ classification: 'asc' }, { equipmentManagementNumber: 'asc' }],
     });
   }
@@ -287,7 +294,45 @@ export class MachineService {
     return [...choices.values()];
   }
 
+  private async validateSite(siteKey?: string | null) {
+    if (siteKey && !await prisma.site.findUnique({ where: { key: siteKey } })) {
+      throw new ApiError(400, '拠点が見つかりません');
+    }
+  }
+
+  async addNfcTag(machineId: string, rawUid: string) {
+    const uid = normalizeTagUid(rawUid);
+    if (uid.length < 4) throw new ApiError(400, 'タグのIDが短すぎます', undefined, 'TAG_UID_INVALID');
+    const desk = new TagDeskService();
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const machine = await tx.machine.findUnique({ where: { id: machineId } });
+        if (!machine) throw new ApiError(404, '加工機が見つかりません');
+        const usedBy = await desk.findUsage(tx, uid);
+        if (usedBy) throw new ApiError(409, `このタグは「${usedBy}」で使われています。先に外してください`, { usedBy }, 'TAG_IN_USE');
+        const tag = await tx.machineNfcTag.create({ data: { machineId, uid } });
+        await desk.record(tx, { uid, action: 'LINK', targetKind: 'machine', targetId: machineId, targetLabel: machine.name, clientDeviceId: null });
+        return tag;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ApiError(409, 'このタグは別の場所で使われています。先に外してください', undefined, 'TAG_IN_USE');
+      }
+      throw error;
+    }
+  }
+
+  async removeNfcTag(machineId: string, tagId: string) {
+    return prisma.$transaction(async (tx) => {
+      const tag = await tx.machineNfcTag.findUnique({ where: { id: tagId }, include: { machine: true } });
+      if (!tag || tag.machineId !== machineId) throw new ApiError(404, 'この紐づけは見つかりません。すでに外れています');
+      await tx.machineNfcTag.delete({ where: { id: tagId } });
+      await new TagDeskService().record(tx, { uid: tag.uid, action: 'UNLINK', targetKind: 'machine', targetId: machineId, targetLabel: tag.machine.name, clientDeviceId: null });
+    });
+  }
+
   async create(payload: CreateMachinePayload) {
+    await this.validateSite(payload.siteKey);
     const existing = await prisma.machine.findUnique({
       where: { equipmentManagementNumber: payload.equipmentManagementNumber },
     });
@@ -307,11 +352,13 @@ export class MachineService {
         processClassification: payload.processClassification || null,
         coolant: payload.coolant || null,
         resourceCd: payload.resourceCd ?? null,
+        siteKey: payload.siteKey || null,
       },
     });
   }
 
   async update(id: string, payload: UpdateMachinePayload) {
+    await this.validateSite(payload.siteKey);
     const existing = await prisma.machine.findUnique({ where: { id } });
     if (!existing) {
       throw new ApiError(404, '加工機が見つかりません');
@@ -322,6 +369,7 @@ export class MachineService {
       data: {
         name: payload.name ?? existing.name,
         resourceCd: payload.resourceCd,
+        siteKey: payload.siteKey === undefined ? undefined : payload.siteKey || null,
         shortName: payload.shortName !== undefined ? payload.shortName || null : existing.shortName,
         classification: payload.classification !== undefined ? payload.classification || null : existing.classification,
         operatingStatus: payload.operatingStatus !== undefined ? payload.operatingStatus || null : existing.operatingStatus,

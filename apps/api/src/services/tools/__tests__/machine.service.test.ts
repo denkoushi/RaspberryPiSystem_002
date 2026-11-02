@@ -314,6 +314,7 @@ describe('MachineService', () => {
         ],
       },
       orderBy: [{ classification: 'asc' }, { equipmentManagementNumber: 'asc' }],
+      include: expect.objectContaining({ site: expect.anything(), nfcTags: expect.anything() }),
     });
   });
 

@@ -20,6 +20,9 @@ export async function getEmployees() {
 }
 
 export interface Machine {
+  siteKey?: string | null;
+  site?: { key: string; displayName: string } | null;
+  nfcTags?: { id: string; uid: string }[];
   id: string;
   equipmentManagementNumber: string;
   name: string;
@@ -65,6 +68,7 @@ export async function getUninspectedMachines(params: { csvDashboardId: string; d
 }
 
 export interface CreateMachineInput {
+  siteKey?: string | null;
   equipmentManagementNumber: string;
   name: string;
   shortName?: string;
@@ -78,6 +82,7 @@ export interface CreateMachineInput {
 }
 
 export interface UpdateMachineInput {
+  siteKey?: string | null;
   name?: string;
   shortName?: string;
   classification?: string;
@@ -289,4 +294,12 @@ export async function getTransactions(
     }
   );
   return data;
+}
+
+export async function addMachineNfcTag(machineId: string, uid: string) {
+  const { data } = await api.post<{ tag: { id: string; uid: string } }>(`/tools/machines/${machineId}/nfc-tags`, { uid });
+  return data.tag;
+}
+export async function removeMachineNfcTag(machineId: string, tagId: string) {
+  await api.delete(`/tools/machines/${machineId}/nfc-tags/${tagId}`);
 }

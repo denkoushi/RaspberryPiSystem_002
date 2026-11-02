@@ -5,6 +5,7 @@ import { MachineService } from '../../../services/tools/machine.service.js';
 
 const machineListQuerySchema = z.object({
   search: z.string().optional(),
+  siteKey: z.string().trim().max(50).nullable().optional().transform(value => value === '' ? null : value),
   operatingStatus: z.string().optional(),
 });
 
@@ -26,6 +27,7 @@ const createMachineSchema = z.object({
   processClassification: z.string().optional(),
   coolant: z.string().optional(),
   resourceCd: resourceCdSchema,
+  siteKey: z.string().trim().max(50).nullable().optional().transform(value => value === '' ? null : value),
 });
 
 const updateMachineSchema = z.object({
@@ -38,6 +40,7 @@ const updateMachineSchema = z.object({
   processClassification: z.string().optional(),
   coolant: z.string().optional(),
   resourceCd: resourceCdSchema,
+  siteKey: z.string().trim().max(50).nullable().optional().transform(value => value === '' ? null : value),
 });
 
 export async function registerMachineRoutes(app: FastifyInstance): Promise<void> {
@@ -73,6 +76,18 @@ export async function registerMachineRoutes(app: FastifyInstance): Promise<void>
     const payload = updateMachineSchema.parse(request.body);
     const machine = await service.update(id, payload);
     return { machine };
+  });
+
+  app.post('/machines/:id/nfc-tags', { preHandler: canEdit }, async (request) => {
+    const { id } = request.params as { id: string };
+    const { uid } = z.object({ uid: z.string().trim().min(4).max(256) }).parse(request.body);
+    return { tag: await service.addNfcTag(id, uid) };
+  });
+
+  app.delete('/machines/:id/nfc-tags/:tagId', { preHandler: canEdit }, async (request) => {
+    const { id, tagId } = request.params as { id: string; tagId: string };
+    await service.removeNfcTag(id, tagId);
+    return { success: true };
   });
 
   app.delete('/machines/:id', { preHandler: canEdit, config: { rateLimit: false } }, async (request) => {

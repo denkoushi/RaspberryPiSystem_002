@@ -164,6 +164,7 @@ const transactionBody = z.object({
   quantityTagUid: z.string().trim().min(1).max(256),
   restockTagUid: z.string().trim().min(1).max(256).optional(),
   restock: z.boolean().default(false),
+  machineId: z.string().guid().optional(),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
 const touchTransactionBody = z.object({
@@ -171,6 +172,7 @@ const touchTransactionBody = z.object({
   quantity: z.number().int().min(1).max(999999),
   restock: z.boolean().default(false),
   expectedBeforeQuantity: z.number().int().min(0).optional(),
+  machineId: z.string().guid().optional(),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
 const inventorySettingsAccessPasswordBody = z.object({
@@ -189,9 +191,21 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     });
   });
 
+  app.get('/item-inventory/machines', async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    return { machines: await services.inventory.listMachines(clientDevice.id) };
+  });
+
+  app.put('/item-inventory/machines/order', async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { machineIds } = z.object({ machineIds: z.array(z.string().guid()) }).parse(request.body);
+    await services.inventory.saveMachineOrder(clientDevice.id, machineIds);
+    return { success: true };
+  });
+
   app.get('/item-inventory/tags/resolve', { preHandler: [read] }, async (request) => {
     const query = uidQuery.parse(request.query ?? {});
-    return { tag: await services.inventory.resolveTag(query.uid) };
+    return { tag: await services.inventory.resolveTag(query.uid, (await actor(request)).clientId) };
   });
 
   app.get('/item-inventory/compartments/by-label/:labelNumber', { preHandler: [read] }, async (request) => {

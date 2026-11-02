@@ -7,6 +7,7 @@ import { MeasuringInstrumentService } from '../measuring-instrument.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    machineNfcTag: { findUnique: vi.fn() },
     measuringInstrument: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('MeasuringInstrumentService', () => {
   let service: MeasuringInstrumentService;
   const tx = {
+    machineNfcTag: { findUnique: vi.fn() },
     measuringInstrument: {
       create: vi.fn(),
       update: vi.fn(),
