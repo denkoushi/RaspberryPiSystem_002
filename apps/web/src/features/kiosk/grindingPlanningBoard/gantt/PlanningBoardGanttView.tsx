@@ -1,6 +1,6 @@
 import { GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS, GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
@@ -176,7 +176,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const width = (layout.end - layout.start) * dayWidth;
   const showHours = dayWidth >= HOUR_TICK_MIN_DAY_WIDTH;
   const hourTicks = scale === 1 ? EVERY_HOUR : HOUR_TICKS;
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = viewport.current;
     if (!element) return;
     // Fill the screen down to the bottom edge instead of guessing the height of the chrome above.
@@ -191,7 +191,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     observer?.observe(element);
     if (legend.current) observer?.observe(legend.current);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [showChain, colorBySeiban]);
+  }, [colorBySeiban]);
   useEffect(() => {
     if (!viewport.current) return;
     const previous = previousAxis.current;
@@ -285,12 +285,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   </>;
   return (
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
-      {capacityError && <p role="alert" className="px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
-      {showChain && <PlanningBoardChainStrip bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
-        onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds} disabled={interaction.disabled}
-        onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
+      {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
+      <div className="h-[61px] overflow-hidden">
+        {showChain && <PlanningBoardChainStrip bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+          onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds} disabled={interaction.disabled}
+          onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
+      </div>
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto"
-        style={{ height: viewportHeight ?? undefined }} tabIndex={0} aria-label="ガントの日付と工程"
+        style={{ height: viewportHeight ?? undefined, overflowAnchor: 'none' }} tabIndex={0} aria-label="ガントの日付と工程"
         onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width }}>

@@ -119,6 +119,7 @@ export function useKioskGrindingPlanningBoardProgressive(
   const queryClient = useQueryClient();
   const previousRevisionRef = useRef<{ paramsKey: string; revision: string } | undefined>(undefined);
   const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
+  const mergedParamsKeyRef = useRef<string | null>(null);
   const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
   const [isAppending, setIsAppending] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
@@ -135,7 +136,6 @@ export function useKioskGrindingPlanningBoardProgressive(
     runIdRef.current += 1;
     syncedSignatureRef.current = null;
     staleRefetchCountRef.current = 0;
-    setMergedData(undefined);
     setIsAppending(false);
     setIsComplete(false);
     setAppendError(null);
@@ -171,6 +171,7 @@ export function useKioskGrindingPlanningBoardProgressive(
     let cursor = initial.nextCursor;
     let previousCursor = -1;
 
+    mergedParamsKeyRef.current = paramsKey;
     setMergedData({ ...initial, items, nextCursor: cursor });
     setAppendError(null);
     setIsComplete(cursor == null);
@@ -242,11 +243,12 @@ export function useKioskGrindingPlanningBoardProgressive(
       syncedSignatureRef.current = null;
       if (runId === runIdRef.current) setIsAppending(false);
     };
-  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, refetch, stableParams]);
+  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, refetch, stableParams, paramsKey]);
 
   const displayData = mergedData ?? firstData;
   const hasStableData = Boolean(
-    firstData && !query.isPlaceholderData && mergedData?.snapshotId === firstData.snapshotId
+    firstData && !query.isPlaceholderData && mergedParamsKeyRef.current === paramsKey &&
+    mergedData?.snapshotId === firstData.snapshotId
   );
   // A same-scope revalidation keeps the current snapshot usable. Placeholder
   // data and the first fetch remain unready through hasStableData above.

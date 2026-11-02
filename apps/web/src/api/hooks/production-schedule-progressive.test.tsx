@@ -316,6 +316,31 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     releaseNext?.();
   });
 
+  it('keeps every appended row visible while a new scope is loading and ignores the cancelled append', async () => {
+    let resolveAppend!: (value: GrindingPlanningBoardResponse) => void;
+    let resolveScope!: (value: GrindingPlanningBoardResponse) => void;
+    mocks.getBoard
+      .mockResolvedValueOnce(response([item('1')], '160'))
+      .mockResolvedValueOnce(response([item('2')], '320'))
+      .mockImplementationOnce(() => new Promise<GrindingPlanningBoardResponse>((resolve) => { resolveAppend = resolve; }))
+      .mockImplementationOnce(() => new Promise<GrindingPlanningBoardResponse>((resolve) => { resolveScope = resolve; }));
+    const hook = renderHook(
+      ({ completionFilter }: { completionFilter: 'all' | 'incomplete' }) => useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban', completionFilter }),
+      { initialProps: { completionFilter: 'incomplete' }, wrapper: wrapper() }
+    );
+    await waitFor(() => expect(hook.result.current.data?.items).toHaveLength(2));
+    hook.rerender({ completionFilter: 'all' });
+    await waitFor(() => expect(hook.result.current.isPlaceholderData).toBe(true));
+    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1', '2']);
+    expect(hook.result.current.scopeReady).toBe(false);
+    expect(hook.result.current.isComplete).toBe(false);
+    await act(async () => { resolveAppend(response([item('3')], null)); });
+    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1', '2']);
+    await act(async () => { resolveScope(response([item('4')], null, { snapshotId: 'snapshot-2' })); });
+    await waitFor(() => expect(hook.result.current.scopeReady).toBe(true));
+    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['4']);
+  });
+
   it('製番順mutationはinvalidate完了をmutateAsyncの完了条件にしない', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     let releaseInvalidate: (() => void) | undefined;
