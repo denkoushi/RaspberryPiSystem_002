@@ -28,23 +28,19 @@ const payload: PartMeasurementDrawingDimensionMapPayload = {
 };
 const db = mocks.prisma;
 const completeMany = vi.fn();
-const requestJevChoice = vi.fn();
 const deps = {
   enabled: vi.fn(() => true), vision: () => ({ completeMany }),
-  jevConfig: vi.fn(() => ({ enabled: true, apiKey: 'test-key', timeoutMs: 20000 })), requestJevChoice,
+  candidateLimit: () => 8,
   readDrawing: vi.fn(async (_path: string) => ({ buffer: await sharp({ create: {
     width: 2000, height: 1000, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 }
   } }).png().toBuffer(), contentType: 'image/png' }))
 };
 const service = new PartMeasurementDrawingSiblingMatchService(deps);
-const response = (confidence: number, sameFamily = true) => ({ rawText: JSON.stringify({ candidates: [
-  { label: 'candidate_1', sameFamily, confidence }
-] }) });
+const response = (shapeSimilarity: number) => ({ rawText: JSON.stringify({ shapeSimilarity }) });
 
 beforeEach(async () => {
   vi.clearAllMocks();
   deps.enabled.mockReturnValue(true);
-  deps.jevConfig.mockReturnValue({ enabled: true, apiKey: 'test-key', timeoutMs: 20000 });
   mocks.ocr.getCurrentStatus.mockResolvedValue({ drawingImageFingerprint: 'hash' });
   mocks.maps.getCompletedPayload.mockResolvedValue(payload);
   db.partMeasurementDrawingSiblingMatch.findUnique.mockResolvedValue(null);
@@ -57,114 +53,77 @@ beforeEach(async () => {
       payloadCompressed: await encodePartMeasurementDrawingDimensionMapPayload(payload), payloadEncoding: 'gzip+json' }]
   }]);
   completeMany.mockResolvedValue(response(0.9));
-  requestJevChoice.mockResolvedValue({ candidate_1: 0.8, none: 0.2 });
 });
 
 describe('drawing sibling match', () => {
-  it('uses one background multi-image call, resized whole drawings, and saves content matches across names', async () => {
+  it('persists a shape match across names and uses resized background images', async () => {
     expect(await service.match('target')).toMatchObject({ status: 'MATCHED', method: 'dgx-vision', siblings: [{ visualTemplateId: 'source', confidence: 0.9 }] });
     expect(completeMany).toHaveBeenCalledOnce();
     const input = completeMany.mock.calls[0][0];
-    expect(input).toMatchObject({ background: true, jsonOutput: true, timeoutMs: 115000 });
-    expect(input.images.map((image) => image.label)).toEqual(['target', 'candidate_1']);
+    expect(input).toMatchObject({ background: true, jsonOutput: true, timeoutMs: 115000, maxTokens: 600 });
+    expect(input.images.map((image: { label: string }) => image.label)).toEqual(['target', 'candidate_1']);
     expect(await sharp(input.images[0].imageBytes).metadata()).toMatchObject({ width: 1280, height: 640, format: 'jpeg' });
     const { data } = await sharp(input.images[0].imageBytes).raw().toBuffer({ resolveWithObject: true });
     expect([...data.subarray(0, 3)]).toEqual([255, 255, 255]);
-    expect(requestJevChoice).not.toHaveBeenCalled();
+    expect(db.partMeasurementDrawingSiblingMatch.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      visualTemplateId_drawingImageFingerprint_matchVersion: { visualTemplateId: 'target', drawingImageFingerprint: 'hash', matchVersion: 'sibling-shape-v1' }
+    } }));
+    expect(db.partMeasurementVisualTemplate.findMany).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    { confidence: 0.49, sameFamily: true, status: 'NO_MATCH' },
-    { confidence: 0.5, sameFamily: true, status: 'MATCHED' },
-    { confidence: 0.9, sameFamily: false, status: 'NO_MATCH' }
-  ])('applies the family and 0.5 thresholds ($confidence, $sameFamily)', async ({ confidence, sameFamily, status }) => {
-    deps.jevConfig.mockReturnValue({ enabled: false, apiKey: '', timeoutMs: 20000 });
-    completeMany.mockResolvedValue(response(confidence, sameFamily));
+  it.each([{ score: 0.79, status: 'NO_MATCH' }, { score: 0.8, status: 'MATCHED' }])('applies the shape threshold ($score)', async ({ score, status }) => {
+    completeMany.mockResolvedValue(response(score));
     expect(await service.match('target')).toMatchObject({ status, method: 'dgx-vision' });
   });
 
-  it('ranks accepted siblings by confidence regardless of response order', async () => {
+  it('calls each candidate separately and persists descending scores', async () => {
     const [source] = await db.partMeasurementVisualTemplate.findMany();
-    db.partMeasurementVisualTemplate.findMany.mockResolvedValue([source, { ...source, id: 'second' }]);
-    completeMany.mockResolvedValue({ rawText: JSON.stringify({ candidates: [
-      { label: 'candidate_2', sameFamily: true, confidence: 0.8 },
-      { label: 'candidate_1', sameFamily: true, confidence: 0.9 }
-    ] }) });
+    db.partMeasurementVisualTemplate.findMany.mockClear().mockResolvedValue([source, { ...source, id: 'second' }]);
+    completeMany.mockResolvedValueOnce(response(0.8)).mockResolvedValueOnce(response(0.9));
     expect(await service.match('target')).toMatchObject({ siblings: [
-      { visualTemplateId: 'second', confidence: 0.9 }, { visualTemplateId: 'source', confidence: 0.8 }
+      { visualTemplateId: 'source', confidence: 0.9 }, { visualTemplateId: 'second', confidence: 0.8 }
     ] });
+    expect(completeMany).toHaveBeenCalledTimes(2);
+    expect(db.partMeasurementVisualTemplate.findMany).toHaveBeenCalledOnce();
   });
 
-  it('keeps deferred inference PENDING once, then lets JEV decide', async () => {
+  it('keeps deferred inference PENDING beyond three attempts', async () => {
     completeMany.mockRejectedValue(new InferenceDeferredError());
-    expect(await service.match('target')).toMatchObject({ status: 'PENDING', siblings: [] });
+    for (let i = 0; i < 4; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      expect(await service.match('target')).toMatchObject({ status: 'PENDING', siblings: [], lastError: 'DGX background admission deferred' });
+    }
     expect(db.partMeasurementDrawingSiblingMatch.upsert).toHaveBeenLastCalledWith(expect.objectContaining({ update: { attempts: { increment: 1 } } }));
-    expect(requestJevChoice).not.toHaveBeenCalled();
-    expect(await service.match('target')).toMatchObject({ status: 'MATCHED', method: 'jev-vision' });
-    expect(requestJevChoice).toHaveBeenCalledOnce();
   });
 
-  it('retries deferred inference until the third attempt when JEV is unavailable, then uses names', async () => {
-    deps.jevConfig.mockReturnValue({ enabled: false, apiKey: '', timeoutMs: 20000 });
-    completeMany.mockRejectedValue(new InferenceDeferredError());
-    db.partMeasurementVisualTemplate.findUniqueOrThrow.mockResolvedValue({ id: 'target', name: '足(左)', drawingImageRelativePath: 'target.png' });
-    expect(await service.match('target')).toMatchObject({ status: 'PENDING' });
-    expect(await service.match('target')).toMatchObject({ status: 'PENDING' });
-    expect(await service.match('target')).toMatchObject({ status: 'MATCHED', method: 'name' });
-  });
-
-  it.each(['error', 'invalid', 'uncertain'])('uses JEV for %s DGX output', async (mode) => {
+  it.each(['error', 'invalid'])('retries %s then persists NO_MATCH without using matching names', async (mode) => {
     if (mode === 'error') completeMany.mockRejectedValue(new Error('timeout'));
-    else completeMany.mockResolvedValue(mode === 'invalid' ? { rawText: '{}' } : response(0.6));
-    expect(await service.match('target')).toMatchObject({ status: 'MATCHED', method: 'jev-vision', siblings: [{ visualTemplateId: 'source', confidence: 0.7 }] });
-    expect(requestJevChoice).toHaveBeenCalledWith(expect.objectContaining({
-      assets: { target: expect.any(Object), candidate_1: expect.any(Object) },
-      criteria: { candidate_1: expect.any(String), none: expect.any(String) }
-    }));
-  });
-
-  it('persists JEV none as NO_MATCH', async () => {
-    completeMany.mockRejectedValue(new Error('timeout'));
-    requestJevChoice.mockResolvedValue({ none: 0.8, candidate_1: 0.2 });
-    expect(await service.match('target')).toMatchObject({ status: 'NO_MATCH', method: 'jev-vision', siblings: [] });
-  });
-
-  it.each(['disabled', 'missing-key', 'failed'])('retries DGX errors then falls back to names when JEV is %s', async (mode) => {
-    deps.jevConfig.mockReturnValue({ enabled: mode !== 'disabled', apiKey: mode === 'missing-key' ? '' : 'test-key', timeoutMs: 20000 });
-    requestJevChoice.mockRejectedValue(new Error('JEV failed'));
-    completeMany.mockRejectedValue(new Error('timeout'));
+    else completeMany.mockResolvedValue({ rawText: '{}' });
     db.partMeasurementVisualTemplate.findUniqueOrThrow.mockResolvedValue({ id: 'target', name: '足(左)', drawingImageRelativePath: 'target.png' });
     expect(await service.match('target')).toMatchObject({ status: 'PENDING' });
     expect(await service.match('target')).toMatchObject({ status: 'PENDING' });
-    expect(await service.match('target')).toMatchObject({ status: 'MATCHED', method: 'name', siblings: [{ visualTemplateId: 'source', confidence: 0.4 }] });
-    if (mode !== 'failed') expect(requestJevChoice).not.toHaveBeenCalled();
+    expect(await service.match('target')).toMatchObject({ status: 'NO_MATCH', method: 'dgx-vision', siblings: [], lastError: expect.any(String) });
   });
 
-  it('falls back to NO_MATCH after three errors without a name sibling', async () => {
-    deps.jevConfig.mockReturnValue({ enabled: false, apiKey: '', timeoutMs: 20000 });
-    completeMany.mockRejectedValue(new Error('timeout'));
-    db.partMeasurementDrawingSiblingMatch.upsert.mockResolvedValue({ id: 'match', attempts: 3 });
-    expect(await service.match('target')).toMatchObject({ status: 'NO_MATCH', method: 'name', siblings: [] });
+  it('records an unreadable target image and stops after three attempts', async () => {
+    for (let i = 0; i < 3; i++) deps.readDrawing.mockRejectedValueOnce(new Error('missing drawing'));
+    expect(await service.match('target')).toMatchObject({ status: 'PENDING', lastError: 'missing drawing' });
+    expect(await service.match('target')).toMatchObject({ status: 'PENDING' });
+    expect(await service.match('target')).toMatchObject({ status: 'NO_MATCH', siblings: [], lastError: 'missing drawing' });
+    expect(completeMany).not.toHaveBeenCalled();
   });
 
-  it('uses only name candidates when vision is disabled', async () => {
+  it('does not use names or read images when vision is disabled', async () => {
     deps.enabled.mockReturnValue(false);
-    expect(await service.match('target')).toMatchObject({ status: 'NO_MATCH', method: 'name' });
     db.partMeasurementVisualTemplate.findUniqueOrThrow.mockResolvedValue({ id: 'target', name: '足(左)' });
-    expect(await service.match('target')).toMatchObject({ status: 'MATCHED', method: 'name', siblings: [{ visualTemplateId: 'source', confidence: 0.4 }] });
+    expect(await service.match('target')).toMatchObject({ status: 'NO_MATCH', method: 'dgx-vision', siblings: [] });
     expect(completeMany).not.toHaveBeenCalled();
     expect(deps.readDrawing).not.toHaveBeenCalled();
   });
 
   it('finishes without vision when there are no eligible completed maps', async () => {
     db.partMeasurementVisualTemplate.findMany.mockResolvedValue([{ id: 'source', name: '足', dimensionMaps: [] }]);
-    expect(await service.match('target')).toMatchObject({ status: 'NO_MATCH', method: 'name' });
+    expect(await service.match('target')).toMatchObject({ status: 'NO_MATCH', method: 'dgx-vision' });
     expect(completeMany).not.toHaveBeenCalled();
-  });
-
-  it('keeps a valid uncertain DGX result when JEV is unavailable', async () => {
-    completeMany.mockResolvedValue(response(0.6));
-    deps.jevConfig.mockReturnValue({ enabled: false, apiKey: '', timeoutMs: 20000 });
-    expect(await service.match('target')).toMatchObject({ status: 'MATCHED', method: 'dgx-vision' });
   });
 });

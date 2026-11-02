@@ -36,6 +36,7 @@ type Props = {
   proposalMarkers?: DrawingProposalMarker[];
   selectedProposalId?: string | null;
   onSelectProposal?: (id: string) => void;
+  onProposalMove?: (id: string, xRatio: number, yRatio: number) => void;
   /** 未指定時は図面上への新規配置を無効化（閲覧専用） */
   onAddPoint?: (xRatio: number, yRatio: number) => void;
   /** 丸数字をドラッグして位置を変更する（未指定時は閲覧専用） */
@@ -62,6 +63,7 @@ type PendingPlacePointer = {
 type PendingPointDrag = {
   pointerId: number;
   pointId: string;
+  proposal?: boolean;
   startClientX: number;
   startClientY: number;
   maxMovementPx: number;
@@ -82,6 +84,7 @@ export function InspectionDrawingCanvas({
   proposalMarkers,
   selectedProposalId,
   onSelectProposal,
+  onProposalMove,
   onAddPoint,
   onPointChange,
   onSetCalloutTip,
@@ -95,6 +98,8 @@ export function InspectionDrawingCanvas({
   const suppressScrollNotifyRef = useRef(false);
   const pendingPlaceRef = useRef<PendingPlacePointer | null>(null);
   const pendingPointDragRef = useRef<PendingPointDrag | null>(null);
+  const [draggingProposalId, setDraggingProposalId] = useState<string | null>(null);
+  const suppressProposalClickRef = useRef<string | null>(null);
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const zoomedLayout = useZoomedCanvasLayout(viewportRef, naturalSize, zoom);
 
@@ -312,6 +317,7 @@ export function InspectionDrawingCanvas({
       return true;
     }
     drag.dragging = true;
+    if (drag.proposal) setDraggingProposalId(drag.pointId);
     const ratios = ratiosAtClientClamped(e.clientX, e.clientY);
     if (ratios) {
       drag.pendingRatios = ratios;
@@ -335,9 +341,16 @@ export function InspectionDrawingCanvas({
       applyPointDragStyle(drag, ratios);
     }
     const pointId = drag.pointId;
-    restorePointDrag(e.pointerId, false);
+    restorePointDrag(e.pointerId, Boolean(drag.proposal));
+    if (drag.proposal) {
+      setDraggingProposalId(null);
+      suppressProposalClickRef.current = pointId;
+      if (!shouldChange) onSelectProposal?.(pointId);
+    }
     if (shouldChange && ratios) {
-      onPointChange?.(pointId, ratios);
+      if (drag.proposal) {
+        onProposalMove?.(pointId, ratios.xRatio, ratios.yRatio);
+      } else onPointChange?.(pointId, ratios);
       e.preventDefault();
       e.stopPropagation();
     }
@@ -349,6 +362,7 @@ export function InspectionDrawingCanvas({
       return false;
     }
     restorePointDrag(e.pointerId, true);
+    setDraggingProposalId(null);
     e.preventDefault();
     e.stopPropagation();
     return true;
@@ -486,30 +500,60 @@ export function InspectionDrawingCanvas({
               layout={zoomedLayout}
             />
           ) : null}
-          {image ? proposalMarkers?.map((proposal) => (
-            <button
-              key={proposal.id}
-              type="button"
-              aria-label={`AI案 ${proposal.markerNo} ${proposal.measurementLabel}`}
-              aria-pressed={selectedProposalId === proposal.id}
-              className={clsx(
-                'absolute z-20 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-dashed border-[#d97706] bg-amber-100 font-bold text-amber-900',
-                selectedProposalId === proposal.id && 'ring-4 ring-blue-500'
-              )}
-              style={{
-                left: image.offsetX + proposal.markerXRatio * image.width,
-                top: image.offsetY + proposal.markerYRatio * image.height
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              onPointerUp={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSelectProposal?.(proposal.id);
-              }}
-            >
-              {proposal.markerNo}
-            </button>
-          )) : null}
+          {image ? proposalMarkers?.map((proposal) => {
+            const hasAnchor = proposal.anchorXRatio != null && proposal.anchorYRatio != null;
+            const anchorX = image.offsetX + (hasAnchor ? proposal.anchorXRatio! : proposal.markerXRatio) * image.width;
+            const anchorY = image.offsetY + (hasAnchor ? proposal.anchorYRatio! : proposal.markerYRatio) * image.height;
+            const insetX = Math.min(22, image.width / 2);
+            const insetY = Math.min(22, image.height / 2);
+            const left = Math.max(image.offsetX + insetX, Math.min(image.offsetX + image.width - insetX, anchorX + 34));
+            const top = Math.max(image.offsetY + insetY, Math.min(image.offsetY + image.height - insetY, anchorY - 34));
+            return (
+              <div key={proposal.id}>
+                <svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={zoomedLayout.contentWidth} height={zoomedLayout.contentHeight}>
+                  {draggingProposalId !== proposal.id ? (
+                    <line x1={anchorX} y1={anchorY} x2={left} y2={top} stroke="#d97706" strokeWidth={2} strokeDasharray="5 3" />
+                  ) : null}
+                </svg>
+                <div className="absolute z-20 -translate-x-1/2 -translate-y-1/2" style={{ left, top }}>
+                  <button
+                    type="button"
+                    aria-label={`AI案 ${proposal.markerNo} ${proposal.measurementLabel}`}
+                    aria-pressed={selectedProposalId === proposal.id}
+                    className={clsx(
+                      'flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-dashed border-[#d97706] bg-amber-100 font-bold text-amber-900',
+                      onProposalMove && 'touch-none cursor-move',
+                      selectedProposalId === proposal.id && 'ring-4 ring-blue-500'
+                    )}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      suppressProposalClickRef.current = null;
+                      if (event.button !== 0 || !onProposalMove || mode === 'test') return;
+                      const markerElement = event.currentTarget.parentElement! as HTMLDivElement;
+                      pendingPointDragRef.current = {
+                        pointerId: event.pointerId, pointId: proposal.id, proposal: true,
+                        startClientX: event.clientX, startClientY: event.clientY,
+                        maxMovementPx: 0, dragging: false, markerElement,
+                        originalStyleLeft: markerElement.style.left, originalStyleTop: markerElement.style.top,
+                        pendingRatios: null, frameId: null
+                      };
+                      viewportRef.current?.setPointerCapture?.(event.pointerId);
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (suppressProposalClickRef.current === proposal.id) {
+                        suppressProposalClickRef.current = null;
+                        if (event.detail !== 0) return;
+                      }
+                      onSelectProposal?.(proposal.id);
+                    }}
+                  >
+                    {proposal.markerNo}
+                  </button>
+                </div>
+              </div>
+            );
+          }) : null}
           {image
             ? points.map((pt) => {
                 const status = resolveMeasurementPointInputStatus(pt);

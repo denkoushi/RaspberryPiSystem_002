@@ -18,6 +18,8 @@ export type DrawingPlacementProposal = DrawingPlacementRow & {
   sortOrder: number;
   markerXRatio: number | null;
   markerYRatio: number | null;
+  anchorXRatio: number | null;
+  anchorYRatio: number | null;
   dimensionText: string | null;
 };
 

@@ -1,8 +1,8 @@
 import { Prisma, type PartMeasurementProcessGroup, type PartMeasurementTemplateItem } from '@prisma/client';
 
 import { env } from '../../config/env.js';
+import { InferenceUnavailableError } from '../inference/ports/multi-image-vision-completion.port.js';
 import { InferenceDeferredError } from '../inference/ports/text-completion.port.js';
-import { PartMeasurementDrawingReferencePlacementService, referencePlacementVersionFor } from './part-measurement-drawing-reference-placement.service.js';
 
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
@@ -17,16 +17,19 @@ import {
   type DimensionMap,
   type PlacementExistingItem,
   type PlacementReorder,
-  type PlacementSourceItem
+  type PlacementSourceItem,
+  type PlacementTransferResult
 } from './part-measurement-drawing-placement-transfer.js';
+
+import { SEMANTIC_PLACEMENT_TIMEOUT_MS, transferItemsSemantically, unplacedSemanticItems } from './part-measurement-drawing-placement-semantic.js';
 
 import { siblingMatchesSchema, SIBLING_MATCH_VERSION } from './part-measurement-drawing-sibling-match.js';
 import { PartMeasurementDrawingSiblingMatchService } from './part-measurement-drawing-sibling-match.service.js';
 
-export const PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION = 'transfer-v2';
+export const currentPlacementVersion = () => env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED ? 'semantic-v1' : 'transfer-v2';
 // The process is part of the version so the existing unique run key stays unchanged (expand-only migration).
 export const placementVersionFor = (processGroup: PartMeasurementProcessGroup) =>
-  `${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}:${processGroup}`;
+  `${currentPlacementVersion()}:${processGroup}`;
 export type PlacementReorderProvider = (
   visualTemplateId: string, source: { sourceVisualTemplateId: string; sourceMap: DimensionMap | null }
 ) =>
@@ -49,6 +52,8 @@ export type PartMeasurementDrawingPlacementEditorResult = {
     valueKind: 'numeric' | 'judgement';
     markerXRatio: number | null;
     markerYRatio: number | null;
+    anchorXRatio: number | null;
+    anchorYRatio: number | null;
     dimensionText: string | null;
   }[];
   unplaced: {
@@ -102,17 +107,14 @@ export class PartMeasurementDrawingPlacementService {
   constructor(
     private readonly drawingOcrService = getPartMeasurementDrawingOcrService(),
     private readonly dimensionMapService = getPartMeasurementDrawingDimensionMapService(),
-    private readonly siblingMatchService = new PartMeasurementDrawingSiblingMatchService(),
-    private readonly referenceService?: Pick<PartMeasurementDrawingReferencePlacementService, 'findRun' | 'ensureRun'>
+    private readonly siblingMatchService = new PartMeasurementDrawingSiblingMatchService()
   ) {}
 
-  private referencePlacement() {
-    return this.referenceService ?? new PartMeasurementDrawingReferencePlacementService();
-  }
-
   async ensureRun(visualTemplateId: string, options: {
-    processGroup: PartMeasurementProcessGroup; reorder?: PlacementReorder; reorderProvider?: PlacementReorderProvider | null
+    processGroup: PartMeasurementProcessGroup; reorder?: PlacementReorder; reorderProvider?: PlacementReorderProvider | null;
+    allowInference?: boolean;
   }): Promise<EnsureRunResult> {
+    const semantic = env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED;
     const { drawingImageFingerprint } = await this.drawingOcrService.getCurrentStatus(visualTemplateId);
     const targetMap = await this.dimensionMapService.getCompletedPayload(visualTemplateId, drawingImageFingerprint);
     if (!targetMap) return { status: 'map-pending', run: null };
@@ -136,7 +138,7 @@ export class PartMeasurementDrawingPlacementService {
     const siblings = match.status === 'MATCHED' ? siblingMatchesSchema.parse(match.siblings) : [];
     const visuals = siblings.length ? await prisma.partMeasurementVisualTemplate.findMany({
       where: { id: { in: siblings.map((sibling) => sibling.visualTemplateId) }, isActive: true },
-      select: { id: true, name: true }
+      select: { id: true, name: true, drawingImageRelativePath: true }
     }) : [];
     const siblingVisuals = siblings.flatMap((sibling) => visuals.filter((visual) => visual.id === sibling.visualTemplateId));
     const templates = siblingVisuals.length ? await prisma.partMeasurementTemplate.findMany({
@@ -146,28 +148,45 @@ export class PartMeasurementDrawingPlacementService {
       orderBy: { id: 'asc' }
     }) : [];
     const source = chooseSourceSibling({
-      target, targetMap,
+      target, targetMap, semantic,
       siblings: siblingVisuals.map((visual) => ({
         ...visual, isActive: true,
         templates: templates.filter((template) => template.visualTemplateId === visual.id)
           .map((template) => ({ ...template, items: sourceItems(template.items) }))
       }))
     });
-    let sourceMap = null;
+    // Semantic transfer takes minutes on the business LLM, so only the nightly backfill creates those runs.
+    if (semantic && source && options.allowInference === false) return { status: 'map-pending', run: null };
+    let rankingMethod = semantic ? (source ? 'semantic' : 'none') : 'position';
+    let transfers: PlacementTransferResult[] = [];
     if (source) {
-      const status = await this.drawingOcrService.getCurrentStatus(source.sibling.id);
-      sourceMap = await this.dimensionMapService.getCompletedPayload(source.sibling.id, status.drawingImageFingerprint);
+      const existingItems = await this.existingItems(visualTemplateId, options.processGroup);
+      const transfer = async () => {
+        const status = await this.drawingOcrService.getCurrentStatus(source.sibling.id);
+        const sourceMap = await this.dimensionMapService.getCompletedPayload(source.sibling.id, status.drawingImageFingerprint);
+        if (semantic) return transferItemsSemantically({
+          sourceDrawingPath: siblingVisuals.find((visual) => visual.id === source.sibling.id)!.drawingImageRelativePath,
+          targetDrawingPath: target.drawingImageRelativePath,
+          targetMap, sourceMap, sourceItems: source.template.items, existingItems
+        });
+        const reorder = options.reorder ?? await options.reorderProvider?.(visualTemplateId, {
+          sourceVisualTemplateId: source.sibling.id, sourceMap
+        });
+        rankingMethod = reorder ? 'jev' : 'position';
+        return transferItems({ targetMap, sourceMap, sourceItems: source.template.items, existingItems, reorder: reorder ?? undefined });
+      };
+      const startedAt = Date.now();
+      try {
+        transfers = await transfer();
+      } catch (error) {
+        // A call that ran out its whole timeout would time out again every night, so store it as failed instead of retrying.
+        const timedOut = Date.now() - startedAt >= SEMANTIC_PLACEMENT_TIMEOUT_MS - 1_000;
+        if (!semantic || error instanceof InferenceDeferredError || (error instanceof InferenceUnavailableError && !timedOut)) throw error;
+        rankingMethod = 'semantic-failed';
+        transfers = unplacedSemanticItems(source.template.items);
+        log.warn({ err: error, visualTemplateId, sourceVisualTemplateId: source.sibling.id }, 'drawing semantic placement failed');
+      }
     }
-    const reorder = options.reorder ?? (source ? await options.reorderProvider?.(visualTemplateId, {
-      sourceVisualTemplateId: source.sibling.id, sourceMap
-    }) : undefined);
-    const transfers = source ? await transferItems({
-      targetMap,
-      sourceMap,
-      sourceItems: source.template.items,
-      existingItems: await this.existingItems(visualTemplateId, options.processGroup),
-      reorder: reorder ?? undefined
-    }) : [];
     const originalItems = new Map(templates.flatMap((template) => template.items).map((item) => [item.id, item]));
     try {
       // Nested creation is one transaction, including the unique run key and all its proposals.
@@ -176,7 +195,7 @@ export class PartMeasurementDrawingPlacementService {
           ...key,
           sourceVisualTemplateId: source?.sibling.id ?? null,
           sourceTemplateId: source?.template.id ?? null,
-          rankingMethod: reorder ? 'jev' : 'position',
+          rankingMethod,
           proposalCount: transfers.filter((entry) => entry.status === 'PROPOSED').length,
           unplacedCount: transfers.filter((entry) => entry.status === 'UNPLACED').length,
           proposals: { create: transfers.map((entry) => {
@@ -189,9 +208,9 @@ export class PartMeasurementDrawingPlacementService {
               measurementLabel: entry.item.measurementLabel,
               measurementPoint: original.measurementPoint,
               decimalPlaces: original.decimalPlaces,
-              nominalValue: original.nominalValue!,
-              lowerLimit: original.lowerLimit,
-              upperLimit: original.upperLimit,
+              nominalValue: semantic ? entry.nominalValue : original.nominalValue!,
+              lowerLimit: semantic ? entry.lowerLimit : original.lowerLimit,
+              upperLimit: semantic ? entry.upperLimit : original.upperLimit,
               depthMode: entry.item.depthMode,
               valueKind: entry.item.valueKind,
               markerXRatio: entry.markerXRatio,
@@ -222,17 +241,12 @@ export class PartMeasurementDrawingPlacementService {
   }
 
   async listForEditor(visualTemplateId: string, processGroup: PartMeasurementProcessGroup): Promise<PartMeasurementDrawingPlacementEditorResult> {
-    const saved = env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED
-      ? await this.referencePlacement().findRun(visualTemplateId, processGroup) : null;
-    // An empty reference run falls back to the transfer proposals.
-    const reference = saved?.proposals.some((row) => row.status === 'PROPOSED') ? saved : null;
-    const result: EnsureRunResult = reference ? { status: 'ready', run: reference }
-      : await this.ensureRun(visualTemplateId, { processGroup });
+    const result = await this.ensureRun(visualTemplateId, { processGroup, allowInference: false });
     if (!result.run) return { status: result.status, sourceDrawingName: null, proposals: [], unplaced: [] };
     const existingItems = await this.existingItems(visualTemplateId, processGroup);
     return {
       status: result.status,
-      sourceDrawingName: reference ? null : result.run.sourceVisualTemplate?.name ?? null,
+      sourceDrawingName: result.run.sourceVisualTemplate?.name ?? null,
       proposals: result.run.proposals
         .filter((row) => row.status === 'PROPOSED' && !placementItemAlreadyExists({
           measurementLabel: row.measurementLabel, nominalValue: row.nominalValue.toNumber()
@@ -244,6 +258,10 @@ export class PartMeasurementDrawingPlacementService {
           depthMode: row.depthMode === 'THROUGH' ? 'through' : 'measured',
           valueKind: row.valueKind === 'JUDGEMENT' ? 'judgement' : 'numeric',
           markerXRatio: numeric(row.markerXRatio), markerYRatio: numeric(row.markerYRatio),
+          anchorXRatio: row.dimension && typeof row.dimension === 'object' && 'xRatio' in row.dimension &&
+            typeof row.dimension.xRatio === 'number' ? row.dimension.xRatio : null,
+          anchorYRatio: row.dimension && typeof row.dimension === 'object' && 'yRatio' in row.dimension &&
+            typeof row.dimension.yRatio === 'number' ? row.dimension.yRatio : null,
           dimensionText: row.dimension && typeof row.dimension === 'object' && 'text' in row.dimension &&
             typeof row.dimension.text === 'string' ? row.dimension.text : null
         })),
@@ -296,7 +314,7 @@ export class PartMeasurementDrawingPlacementService {
       ORDER BY (s."id" IS NULL) ASC, COALESCE(s."updatedAt", m."createdAt") ASC, m."id" ASC LIMIT ${batchLimit}
     `;
     const counts = { scanned: targets.length, matched: 0, noMatch: 0, deferred: 0, jev: 0,
-      ready: 0, noSibling: 0, mapPending: 0, failed: 0, referenceReady: 0, referenceDeferred: 0, referenceFailed: 0 };
+      ready: 0, noSibling: 0, mapPending: 0, failed: 0 };
     for (const target of targets) {
       try {
         // eslint-disable-next-line no-await-in-loop
@@ -328,7 +346,7 @@ export class PartMeasurementDrawingPlacementService {
         SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r WHERE r."visualTemplateId" = m."id"
           AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
           AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
-          AND r."placementVersion" = (${`${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}:`}::text || p."processGroup"::text)
+          AND r."placementVersion" = (${`${currentPlacementVersion()}:`}::text || p."processGroup"::text)
       )
       ORDER BY m."createdAt" ASC, m."id" ASC, p."processGroup" ASC LIMIT ${batchLimit}
     `;
@@ -340,47 +358,12 @@ export class PartMeasurementDrawingPlacementService {
         else if (result.status === 'no-sibling') counts.noSibling++;
         else counts.mapPending++;
       } catch (error) {
+        if (env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED && (error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError)) {
+          counts.deferred++;
+          break;
+        }
         counts.failed++;
         log.warn({ err: error, visualTemplateId: row.id }, 'drawing placement backfill failed');
-      }
-    }
-    if (env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED) {
-      const referenceTargets = await prisma.$queryRaw<Array<{ id: string; processGroup: PartMeasurementProcessGroup }>>`
-        WITH maps AS (${latestMaps})
-        SELECT m."id", p."processGroup" FROM maps m
-        CROSS JOIN (VALUES ('CUTTING'::"PartMeasurementProcessGroup"), ('GRINDING'::"PartMeasurementProcessGroup")) p("processGroup")
-        WHERE EXISTS (
-          SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r WHERE r."visualTemplateId" = m."id"
-            AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
-            AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
-            AND r."placementVersion" = (${`${PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION}:`}::text || p."processGroup"::text)
-        ) AND NOT EXISTS (
-          SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r WHERE r."visualTemplateId" = m."id"
-            AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
-            AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
-            AND r."placementVersion" = CASE p."processGroup"
-              WHEN 'CUTTING' THEN ${referencePlacementVersionFor('CUTTING')} ELSE ${referencePlacementVersionFor('GRINDING')} END
-        ) AND NOT EXISTS (
-          SELECT 1 FROM "PartMeasurementTemplate" t JOIN "PartMeasurementTemplateItem" i ON i."templateId" = t."id"
-          WHERE t."visualTemplateId" = m."id" AND t."isActive" = TRUE AND t."processGroup" = p."processGroup"
-            AND i."markerXRatio" IS NOT NULL AND i."markerYRatio" IS NOT NULL
-        )
-        ORDER BY m."createdAt" ASC, m."id" ASC, p."processGroup" ASC LIMIT 3
-      `;
-      const reference = this.referencePlacement();
-      for (const row of referenceTargets) {
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const run = await reference.ensureRun(row.id, row.processGroup);
-          if (run) counts.referenceReady++;
-        } catch (error) {
-          if (error instanceof InferenceDeferredError) {
-            counts.referenceDeferred++;
-            break;
-          }
-          counts.referenceFailed++;
-          log.warn({ visualTemplateId: row.id, processGroup: row.processGroup }, 'drawing reference placement failed');
-        }
       }
     }
     return counts;

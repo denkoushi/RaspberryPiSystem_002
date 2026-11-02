@@ -3,10 +3,12 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { listPartMeasurementDrawingOcrCandidates } from '../../../api/domains/part-measurement';
 import {
   getInspectionDrawingPlacementProposals,
   postInspectionDrawingPlacementDecisions
 } from '../../../api/domains/part-measurement-placement';
+
 
 import { drawingPointToTemplateItemInput } from './markerNumbering';
 import { useInspectionDrawingPlacementProposals } from './useInspectionDrawingPlacementProposals';
@@ -14,6 +16,8 @@ import { useInspectionDrawingPlacementProposals } from './useInspectionDrawingPl
 import type { InspectionDrawingPoint } from './types';
 import type { DrawingPlacementResponse } from '../../../api/domains/part-measurement-placement';
 import type { ReactNode } from 'react';
+
+vi.mock('../../../api/domains/part-measurement', () => ({ listPartMeasurementDrawingOcrCandidates: vi.fn() }));
 
 vi.mock('../../../api/domains/part-measurement-placement', () => ({
   getInspectionDrawingPlacementProposals: vi.fn(),
@@ -24,7 +28,7 @@ const first = {
   id: 'proposal-1', sortOrder: 0, measurementLabel: '内径', measurementPoint: '内径（裏面）',
   nominalValue: 56, lowerLimit: 55.98, upperLimit: 56.03, decimalPlaces: 3,
   depthMode: 'measured' as const, valueKind: 'numeric' as const, markerXRatio: 0.3, markerYRatio: 0.4,
-  dimensionText: 'Φ56 h7'
+  anchorXRatio: null, anchorYRatio: null, dimensionText: 'Φ56 h7'
 };
 const response: DrawingPlacementResponse = {
   status: 'ready', sourceDrawingName: '兄弟図面.png',
@@ -59,6 +63,7 @@ function setup(enabled = true) {
 describe('useInspectionDrawingPlacementProposals', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listPartMeasurementDrawingOcrCandidates).mockResolvedValue({ status: 'completed', candidates: [] });
     vi.mocked(getInspectionDrawingPlacementProposals).mockResolvedValue(response);
     vi.mocked(postInspectionDrawingPlacementDecisions).mockResolvedValue({ updated: 1 });
   });
@@ -106,6 +111,58 @@ describe('useInspectionDrawingPlacementProposals', () => {
     expect(postInspectionDrawingPlacementDecisions).toHaveBeenCalledWith(
       'visual-1', { approvedIds: ['proposal-2'] }, 'kiosk-key'
     );
+  });
+
+  it('moves the anchor, takes the latest OCR values, and rejects the moved AI position after save', async () => {
+    let resolveOld!: (result: Awaited<ReturnType<typeof listPartMeasurementDrawingOcrCandidates>>) => void;
+    vi.mocked(listPartMeasurementDrawingOcrCandidates).mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
+    const candidate = {
+      valueText: '80', rawText: 'Φ80', dimensionText: 'Φ80 ±0.1', source: 'dimensionMap' as const, suggestedLowerTolerance: '-0.1',
+      suggestedUpperTolerance: '0.2', confidence: 1, score: 1, distanceRatio: 0,
+      xRatio: 0.6, yRatio: 0.7, widthRatio: 0.1, heightRatio: 0.1,
+      passKind: 'full' as const, preprocessKind: 'raw' as const, rotation: 0
+    };
+    const { result } = setup();
+    await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
+    act(() => result.current.placement.moveProposal(first.id, 0.4, 0.5));
+    expect(result.current.placement.selectedProposalId).toBe(first.id);
+    vi.mocked(listPartMeasurementDrawingOcrCandidates).mockResolvedValueOnce({ status: 'completed', candidates: [candidate] });
+    await act(async () => result.current.placement.moveProposal(first.id, 0.6, 0.7));
+    await act(async () => resolveOld({ status: 'completed', candidates: [{ ...candidate, valueText: '99' }] }));
+    expect(result.current.placement.proposals[0]).toMatchObject({
+      anchorXRatio: 0.6, anchorYRatio: 0.7, nominalValue: 80,
+      dimensionText: 'Φ80 ±0.1', lowerLimit: 79.9, upperLimit: 80.2
+    });
+    act(() => result.current.placement.approve(first));
+    expect(result.current.points[0]).toMatchObject({
+      nominalRaw: '80', xRatio: 0.63, yRatio: 0.7 - 0.03, calloutTipXRatio: 0.6, calloutTipYRatio: 0.7
+    });
+    act(() => result.current.placement.approveAll());
+    await act(() => result.current.save());
+    expect(postInspectionDrawingPlacementDecisions).toHaveBeenCalledWith('visual-1', {
+      approvedIds: ['proposal-2'], rejectedIds: [first.id]
+    }, 'kiosk-key');
+  });
+
+  it('keeps values without a candidate, uses the general tolerance without a stated one, and clears overrides for another drawing', async () => {
+    const { result, rerender } = setup();
+    await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
+    await act(async () => result.current.placement.moveProposal(first.id, 1.2, -0.2));
+    expect(result.current.placement.proposals[0]).toMatchObject({
+      anchorXRatio: 1, anchorYRatio: 0, nominalValue: 56, lowerLimit: 55.98, upperLimit: 56.03
+    });
+    vi.mocked(listPartMeasurementDrawingOcrCandidates).mockResolvedValueOnce({ status: 'completed', candidates: [{
+      valueText: '80', rawText: 'Φ80', confidence: 1, score: 1, distanceRatio: 0,
+      xRatio: 0.6, yRatio: 0.7, widthRatio: 0.1, heightRatio: 0.1,
+      passKind: 'full', preprocessKind: 'raw', rotation: 0
+    }] });
+    await act(async () => result.current.placement.moveProposal(first.id, 0.6, 0.7));
+    expect(result.current.placement.proposals[0]).toMatchObject({
+      nominalValue: 80, dimensionText: 'Φ80', lowerLimit: 79.7, upperLimit: 80.3
+    });
+    rerender({ id: 'visual-2', editable: true, processGroup: 'cutting' });
+    await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
+    expect(result.current.placement.proposals[0].anchorXRatio).toBeNull();
   });
 
   it('rejects immediately and does not let a failed decision affect the UI or save', async () => {
