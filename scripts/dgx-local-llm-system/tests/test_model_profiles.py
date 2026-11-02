@@ -316,3 +316,23 @@ class ModelProfileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BusinessDeepseekManifestTests(unittest.TestCase):
+    def test_new_manifest_is_hidden_off_disabled_on_and_has_business_contract(self):
+        from unittest.mock import patch
+        root = str(MODULE_DIR / 'model-registry.examples')
+        profile_id = 'business_deepseek_v41_flash_tp2'
+        with patch.dict('os.environ', {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'false'}):
+            self.assertNotIn(profile_id, [p.id for p in load_model_profiles(root)])
+            with self.assertRaises(UnknownModelProfileError):
+                validate_startable_profile(root, profile_id)
+        with patch.dict('os.environ', {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true'}):
+            profile = next(p for p in load_model_profiles(root) if p.id == profile_id)
+            self.assertFalse(profile.enabled)
+            self.assertTrue(profile.business_orchestration_eligible)
+            self.assertEqual(profile.served_alias, 'system-prod-primary')
+            self.assertEqual(profile.declared_capabilities, ('text',))
+            self.assertEqual(profile.expected_cold_start_sec, 900)
+            self.assertEqual(profile.launcher_hints['blueAbliterated'], '0')
+            self.assertEqual(profile.runtime_profile['engine'], 'control-server')

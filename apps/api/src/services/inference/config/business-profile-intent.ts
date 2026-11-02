@@ -4,6 +4,7 @@ import { getBusinessProfileIntentStore } from './business-profile-intent-store.j
 import type { LocalLlmRuntimeUseCase } from '../runtime/local-llm-runtime-control.port.js';
 
 export type BusinessProfileIntentEnv = {
+  businessDeepseekSwitchEnabled?: boolean;
   businessRuntimeStartProfileId?: string;
   photoLabelRuntimeStartProfileId?: string;
   documentSummaryRuntimeStartProfileId?: string;
@@ -53,6 +54,7 @@ export function resolveBusinessRuntimeStartProfile(
   env: BusinessProfileIntentEnv,
   provider?: InferenceProviderDefinition
 ): ResolvedBusinessProfileIntent | undefined {
+  if (env.businessDeepseekSwitchEnabled) return undefined;
   const fromProvider = provider?.runtimeStartProfileId?.trim();
   if (fromProvider) {
     return { modelProfileId: fromProvider, source: 'provider' };
@@ -82,6 +84,7 @@ export function resolveRuntimeStartProfileIdForBusinessUseCase(
   env: BusinessProfileIntentEnv,
   provider?: InferenceProviderDefinition
 ): string | undefined {
+  if (env.businessDeepseekSwitchEnabled && isBusinessRuntimeUseCase(useCase)) return undefined;
   if (!isBusinessRuntimeUseCase(useCase)) {
     return legacyProfileForUseCase(useCase, env);
   }
@@ -98,6 +101,7 @@ export function resolveRuntimeStartProfileIdForBusinessUseCase(
  * 共通 business profile と用途別 env が食い違う場合は起動前に失敗させる。
  */
 export function assertBusinessProfileIntentEnvConsistency(env: BusinessProfileIntentEnv): void {
+  if (env.businessDeepseekSwitchEnabled) return;
   const business = env.businessRuntimeStartProfileId?.trim();
   if (!business) {
     return;

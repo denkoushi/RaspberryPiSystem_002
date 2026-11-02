@@ -1,0 +1,28 @@
+{
+  "modelProfileId": "business_deepseek_v41_flash_tp2",
+  "displayNameJa": "業務 DeepSeek V4.1 Flash (2台 TP2)",
+  "backend": "blue",
+  "businessOrchestrationEligible": true,
+  "enabled": false,
+  "servedAlias": "system-prod-primary",
+  "declaredCapabilities": ["text"],
+  "visionRequiresMmproj": false,
+  "sparkCount": 2,
+  "expectedColdStartSec": 900,
+  "runtimeProfile": {
+    "engine": "control-server",
+    "coexistencePolicy": "exclusive_both_sparks",
+    "openaiModelId": "system-prod-primary"
+  },
+  "launcherHints": {
+    "blueServerAdapter": "dsv41_tensorfold_2x",
+    "blueServerMode": "container",
+    "blueAbliterated": "0",
+    "blueWorkerSshTarget": "ubudgxkoushi@192.168.100.11",
+    "blueUpstreamRecipeDir": "/srv/dgx/system-prod/kits/deepseek-v41-flash-tp2",
+    "blueUpstreamRecipeRevision": "f424dfe3b14ac9f02fe12f5777c852dba967a79a"
+  },
+  "sourceKind": "github_revision",
+  "sourceModelRef": "MiaAI-Lab/DeepSeek-v4.1-Flash-1017-2x-DGX-Sparks@f424dfe3b14ac9f02fe12f5777c852dba967a79a",
+  "format": "EXL3"
+}

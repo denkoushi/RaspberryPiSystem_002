@@ -24,6 +24,40 @@ update-frequency: high
 - ただし写真持出 VLM を壊さないため、**途中経路として text 先行の段階切替も取れる**ようにしておく
 - Pi5 API が期待する `/healthz`、`/v1/chat/completions`、`/start`、`/stop` の運用形を維持する
 
+## 業務 GLM / DeepSeek 切替（既定 off）
+
+`BUSINESS_DEEPSEEK_SWITCH_ENABLED=false` が既定。API / gateway / control-server と、その子のadapterへ同じ値を渡す。
+CP側は別の `DGX_BUSINESS_DEEPSEEK_SWITCH_ENABLED`。片側のみon、CP capabilityの404・不達・契約版違いでは管理画面の選択を受け付けない。
+
+1. 別途承認されたoperator作業で、専用kit `/srv/dgx/system-prod/kits/deepseek-v41-flash-tp2` を
+   `f424dfe3b14ac9f02fe12f5777c852dba967a79a` に固定し、`business_tensorfold.py` の `ENV` と同じ設定で準備する。
+   ABLIT=0、両rankの専用image、重み、Engram、rank cache、NFS、prepared markerを事前準備する。
+   private kit/cache/logへのsymlinkやHF認証を流用しない。業務起動は検査だけでbuild/download/prepareしない。
+2. 両Sparkの `/srv/dgx/system-prod/{data,state,logs}/deepseek-v41` を業務専用にする（dir 0700 / log 0600）。
+   kitのworker SSHはSpark 1のfabricアドレス `192.168.100.10` とし、専用SSH認証を事前設定する。
+   起動ログは10世代・7日以内、コンテナのprompt/応答ログは破棄する。
+   8889はfabric IP bind、Spark 1 gatewayのみ許可し、privateの8888は業務LAN/Piから遮断する。
+   `API_KEY=1` の既存0600 keyをgateway/control-serverの `BUSINESS_DEEPSEEK_UPSTREAM_API_KEY` に安全に供給する。
+   secretはGit外のroot所有0600 storeへ置く。実機でログ本文抑止・分離を確認できるまで有効化しない。
+3. 正常なGLM active JSONから、先に業務flagをonにしてcontrol-serverを起動する。
+   `selectedBusinessProfileId=business_glm53_flash_fp4_tp2`、非負整数 `selectionRevision`、
+   `businessTransition=idle|loading|ready|failed` の初期化を確認する。private active・欠落・壊れたstateでは移行を拒否する。
+   control-serverが `<DGX_ACTIVE_MODEL_STATE_PATH>.lock` を作成する。gatewayにはstateディレクトリの
+   traverse権限とstate JSON / lockの読み取り権限を付与する。共有flockは読み取り専用で開き、gatewayの書き込み権限は不要。
+4. 次にCP flagをonにし、業務principalで `GET /system/business-model-switch-capability` が
+   `{"enabled":true,"contractVersion":1}` を返すことを確認してから、配置済みbusiness DeepSeek manifestをenabledにする。
+   既存「DGXリソース」の一覧から選択し、通常/SSEのalias、画像拒否、両rankの世代・停止/GPU解放、
+   再起動/keep-warm/private解放後の選択保持を確認する。準備済み生成readyは900秒目標、1200秒上限。
+
+rollbackは両gateをonのまま停止証明→GLM明示選択→ready確認、その後 **CP flag off→業務flag off** の順。
+DeepSeek稼働中にflagを先に戻さない。privateの既存データは削除しない。
+
+control-server再起動時、監視threadのない `loading` は `failed` / `business_control_restarted` に遷移する。
+次の `/start` で新しいgenerationを起動する。kitの置換anchor不一致は `business_kit_layout_mismatch` として
+停止前に拒否する。完全な準備検査はstart前または `business_tensorfold.py check` だけで実行し、statusはprepared markerを参照する。
+`gpuReleased` は業務コンテナのプロセスがGPUを解放した状態を表す。停止確認は業務の8889 / 38083と対象コンテナに限定し、
+privateの8888やComfyUIのGPU利用は停止条件に含めない。
+
 ## 私用 Pi5 `stackchan-bridge` との区別（境界・read-only）
 
 - **本 Runbook の主対象**は **職場 Pi5 API** が **`LOCAL_LLM_*`** 経由で扱う **DGX system-prod gateway**（単一キュー・用途別 keep-warm 含む）。
