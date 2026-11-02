@@ -119,7 +119,7 @@ export function InspectionDrawingPointSummaryList({
                   onPointerDownCapture={onSelectPointerDownCapture}
                   onClick={() => onSelectPoint(pt.id)}
                 >
-                  <span className="truncate">
+                  <span className="break-all [overflow-wrap:anywhere]">
                     <span className={clsx('font-bold', selected ? (layout === 'twoColumn' ? 'text-cyan-100' : 'text-cyan-200') : 'text-white/80')}>
                       No.{pt.markerNo}
                     </span>
@@ -130,7 +130,7 @@ export function InspectionDrawingPointSummaryList({
                   </span>
                   {showMeasurementStatus ? (
                     <span className="flex min-w-0 items-center justify-between gap-2 text-white/75">
-                      <span className="min-w-0 flex-1 truncate">
+                      <span className="min-w-0 flex-1 break-all [overflow-wrap:anywhere]">
                         <span className="text-white/50">測定値</span> {testValueDisplay}
                       </span>
                       {inputStatus ? (
@@ -148,11 +148,11 @@ export function InspectionDrawingPointSummaryList({
                       ) : null}
                     </span>
                   ) : pt.valueKind === 'judgement' ? (
-                    <span className="truncate font-semibold text-cyan-100">OK/NG判定</span>
+                    <span className="break-all [overflow-wrap:anywhere] font-semibold text-cyan-100">OK/NG判定</span>
                   ) : isInspectionDrawingThroughDepthMode(pt.depthMode) ? (
-                    <span className="truncate font-semibold text-cyan-100">通し</span>
+                    <span className="break-all [overflow-wrap:anywhere] font-semibold text-cyan-100">通し</span>
                   ) : (
-                    <span className="truncate text-white/75">
+                    <span className="break-all [overflow-wrap:anywhere] text-white/75">
                       <span className="text-white/50">基準</span> {displayRaw(pt.nominalRaw)}
                       <span className="mx-1 text-white/30">·</span>
                       <span className="text-white/50">上限</span> {displayRaw(pt.upperToleranceRaw)}

@@ -52,6 +52,8 @@ export type PartMeasurementDrawingPlacementEditorResult = {
     valueKind: 'numeric' | 'judgement';
     markerXRatio: number | null;
     markerYRatio: number | null;
+    anchorXRatio: number | null;
+    anchorYRatio: number | null;
     dimensionText: string | null;
   }[];
   unplaced: {
@@ -256,6 +258,10 @@ export class PartMeasurementDrawingPlacementService {
           depthMode: row.depthMode === 'THROUGH' ? 'through' : 'measured',
           valueKind: row.valueKind === 'JUDGEMENT' ? 'judgement' : 'numeric',
           markerXRatio: numeric(row.markerXRatio), markerYRatio: numeric(row.markerYRatio),
+          anchorXRatio: row.dimension && typeof row.dimension === 'object' && 'xRatio' in row.dimension &&
+            typeof row.dimension.xRatio === 'number' ? row.dimension.xRatio : null,
+          anchorYRatio: row.dimension && typeof row.dimension === 'object' && 'yRatio' in row.dimension &&
+            typeof row.dimension.yRatio === 'number' ? row.dimension.yRatio : null,
           dimensionText: row.dimension && typeof row.dimension === 'object' && 'text' in row.dimension &&
             typeof row.dimension.text === 'string' ? row.dimension.text : null
         })),

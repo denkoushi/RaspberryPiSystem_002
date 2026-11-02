@@ -11,7 +11,7 @@ const row: DrawingProposalMarker = {
   id: 'proposal-1', sortOrder: 0, measurementLabel: '内径', measurementPoint: null,
   nominalValue: 56, lowerLimit: 55.98, upperLimit: 56.03, decimalPlaces: 3,
   depthMode: 'measured', valueKind: 'numeric', markerXRatio: 0.3, markerYRatio: 0.4,
-  dimensionText: 'Φ56 h7', markerNo: 4
+  anchorXRatio: null, anchorYRatio: null, dimensionText: 'Φ56 h7', markerNo: 4
 };
 const unplaced = { ...row, id: 'unplaced-1', reason: 'no-candidate' as const };
 
@@ -50,8 +50,9 @@ function renderPanel({ empty = false, disabled = false } = {}) {
 describe('InspectionDrawingProposalPanel', () => {
   it('selects, approves and bulk approves with the displayed proposal', () => {
     const callbacks = renderPanel();
-    expect(screen.getByText('内径 Φ56 h7')).toBeInTheDocument();
-    expect(screen.getByText('55.98〜56.03・元 兄弟図面.png')).toBeInTheDocument();
+    expect(screen.getByText('内径', { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getByText('Φ56 h7')).toBeInTheDocument();
+    expect(screen.getByText('55.98〜56.03')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'AI案 4 内径 を選択' }));
     expect(callbacks.selectProposal).toHaveBeenCalledWith(row.id);
     fireEvent.click(screen.getByRole('button', { name: 'AI案 4 を承認' }));

@@ -84,6 +84,7 @@ function renderCanvas({
   withPointChange = true,
   proposalMarkers,
   selectedProposalId,
+  onProposalMove = vi.fn(),
   onSelectProposal = vi.fn()
 }: {
   mode?: 'place' | 'callout' | 'test';
@@ -94,6 +95,7 @@ function renderCanvas({
   withPointChange?: boolean;
   proposalMarkers?: DrawingProposalMarker[];
   selectedProposalId?: string | null;
+  onProposalMove?: ReturnType<typeof vi.fn>;
   onSelectProposal?: ReturnType<typeof vi.fn>;
 } = {}) {
   render(
@@ -103,6 +105,7 @@ function renderCanvas({
       proposalMarkers={proposalMarkers}
       selectedProposalId={selectedProposalId}
       onSelectProposal={onSelectProposal}
+      onProposalMove={onProposalMove}
       mode={mode}
       zoom={zoom}
       selectedPointId={null}
@@ -241,29 +244,45 @@ describe('InspectionDrawingCanvas marker dragging', () => {
     expect(marker.parentElement).toHaveStyle({ left: '200px', top: '150px' });
   });
 
-  it('renders accessible dashed proposals that select without dragging or placing a normal point', () => {
+  it.each([false, true])('renders a leader and distinguishes a proposal tap from a drag (%s)', (drag) => {
+    const onProposalMove = vi.fn();
     const onSelectProposal = vi.fn();
     const proposal: DrawingProposalMarker = {
       id: 'proposal-1', sortOrder: 0, markerNo: 2, measurementLabel: '内径', measurementPoint: null,
       nominalValue: 56, lowerLimit: 55.98, upperLimit: 56.03, decimalPlaces: 3,
       depthMode: 'measured', valueKind: 'numeric', markerXRatio: 0.6, markerYRatio: 0.4,
-      dimensionText: 'Φ56 h7'
+      anchorXRatio: null, anchorYRatio: null, dimensionText: 'Φ56 h7'
     };
     const { viewport, onAddPoint, onPointChange } = renderCanvas({
-      proposalMarkers: [proposal], selectedProposalId: proposal.id, onSelectProposal
+      proposalMarkers: [proposal], selectedProposalId: proposal.id, onSelectProposal, onProposalMove
     });
     const marker = screen.getByRole('button', { name: 'AI案 2 内径' });
     expect(marker).toHaveAttribute('aria-pressed', 'true');
     expect(marker).toHaveClass('border-dashed', 'border-[3px]', 'border-[#d97706]', 'ring-blue-500');
-    expect(marker).toHaveStyle({ left: '480px', top: '240px' });
+    expect(marker.parentElement).toHaveStyle({ left: '514px', top: '206px' });
+    expect(viewport.querySelector('line[stroke="#d97706"]')).toHaveAttribute('stroke-dasharray', '5 3');
     fireEvent.pointerDown(marker, { pointerId: 9, button: 0, clientX: 490, clientY: 260 });
-    fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 600, clientY: 300 });
-    fireEvent.pointerUp(viewport, { pointerId: 9, clientX: 600, clientY: 300 });
-    fireEvent.click(marker);
-    expect(onSelectProposal).toHaveBeenCalledWith(proposal.id);
+    if (drag) {
+      expect(capturedPointers.get(viewport)?.has(9)).toBe(true);
+      fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 600, clientY: 300 });
+      flushAnimationFrames();
+      expect(marker.parentElement).toHaveStyle({ left: '590px', top: '280px' });
+      expect(viewport.querySelector('line[stroke="#d97706"]')).toBeNull();
+    }
+    fireEvent.pointerUp(viewport, { pointerId: 9, clientX: drag ? 600 : 490, clientY: drag ? 300 : 260 });
+    fireEvent.click(marker, { detail: 1 });
+    if (drag) {
+      expect(onProposalMove).toHaveBeenCalledWith(proposal.id, 590 / 800, 280 / 600);
+      expect(onSelectProposal).not.toHaveBeenCalled();
+    } else {
+      expect(onSelectProposal).toHaveBeenCalledExactlyOnceWith(proposal.id);
+      expect(onProposalMove).not.toHaveBeenCalled();
+    }
     expect(onAddPoint).not.toHaveBeenCalled();
     expect(onPointChange).not.toHaveBeenCalled();
-    expect(marker).toHaveStyle({ left: '480px', top: '240px' });
+    expect(marker.parentElement).toHaveStyle({ left: '514px', top: '206px' });
+    fireEvent.click(marker, { detail: 0 });
+    expect(onSelectProposal).toHaveBeenCalledWith(proposal.id);
   });
 
   it('does not render proposals when the optional prop is absent', () => {

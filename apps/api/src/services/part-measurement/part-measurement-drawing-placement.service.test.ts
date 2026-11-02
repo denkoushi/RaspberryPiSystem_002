@@ -50,7 +50,7 @@ const sourceItem = () => ({
   markerXRatio: decimal(0.5), markerYRatio: decimal(0.5), calloutTipXRatio: null, calloutTipYRatio: null
 });
 const proposal = () => ({
-  ...sourceItem(), id: 'proposal', status: 'PROPOSED', dimension: { text: '10' }
+  ...sourceItem(), id: 'proposal', status: 'PROPOSED', dimension: { text: '10', xRatio: 0.48, yRatio: 0.52 }
 });
 const run = (overrides = {}) => ({
   id: 'run', sourceTemplateId: 'template', sourceVisualTemplate: { name: source.name },
@@ -242,7 +242,7 @@ describe('listForEditor', () => {
       proposals: [{
         id: 'proposal', sortOrder: 1, measurementPoint: '穴A', decimalPlaces: 3, measurementLabel: '長さ', nominalValue: 10,
         lowerLimit: 9.123456, upperLimit: 10.987654, depthMode: 'measured', valueKind: 'numeric',
-        markerXRatio: 0.5, markerYRatio: 0.5, dimensionText: '10'
+        markerXRatio: 0.5, markerYRatio: 0.5, anchorXRatio: 0.48, anchorYRatio: 0.52, dimensionText: '10'
       }],
       unplaced: [{ id: 'unplaced', measurementLabel: '長さ', measurementPoint: '穴A', decimalPlaces: 3, nominalValue: 10,
         lowerLimit: 9.123456, upperLimit: 10.987654, depthMode: 'measured', valueKind: 'numeric', reason: 'no-candidate' }]
@@ -264,7 +264,7 @@ describe('listForEditor', () => {
     }));
     expect(await service.listForEditor('target', 'CUTTING')).toMatchObject({
       status: 'ready', sourceDrawingName: null,
-      proposals: [{ measurementPoint: null, decimalPlaces: 0, depthMode: 'through', valueKind: 'judgement', lowerLimit: null, upperLimit: null, dimensionText: null }]
+      proposals: [{ measurementPoint: null, decimalPlaces: 0, depthMode: 'through', valueKind: 'judgement', lowerLimit: null, upperLimit: null, dimensionText: null, anchorXRatio: null, anchorYRatio: null }]
     });
   });
 });

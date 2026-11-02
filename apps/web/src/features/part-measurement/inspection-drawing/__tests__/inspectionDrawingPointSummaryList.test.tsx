@@ -101,7 +101,7 @@ describe('InspectionDrawingPointSummaryList', () => {
     expect(button.className).toContain('ring-cyan-300');
   });
 
-  it('shrinks measurement value row in twoColumn layout so status label stays visible', () => {
+  it('wraps measurement value row in twoColumn layout so status label stays visible', () => {
     const points = [makePoint({ id: 'p1', markerNo: 1, testValue: '12345678901234567890' })];
 
     const { container } = render(
@@ -115,7 +115,7 @@ describe('InspectionDrawingPointSummaryList', () => {
       />
     );
 
-    const valueRow = container.querySelector('.min-w-0.flex-1.truncate');
+    const valueRow = container.querySelector('.min-w-0.flex-1.break-all');
     expect(valueRow).toBeTruthy();
     expect(valueRow?.textContent).toContain('12345678901234567890');
     expect(screen.getByText('NG')).toBeInTheDocument();
