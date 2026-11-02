@@ -1,28 +1,28 @@
 {
   "artifacts": {
-    "manual.html": "1c64a0ee709469479d90d911582dafa9020fd57a5cef8cb41e85f56725091f28",
-    "screens/edit-advanced-point.png": "e35f4e24cc1d62645d235076720dfb5c8465501c228cc10a109731942b196fd4",
-    "screens/edit-basics.png": "997356b385c7c733f159d7d4c36a2b698fc17e36d26f519793e9952aef9fc146",
-    "screens/edit-group-history.png": "aecf95bd91aa04d19564e0e125183a1188630a72fb310b9931d781f682ac608f",
-    "screens/edit-point-management.png": "997356b385c7c733f159d7d4c36a2b698fc17e36d26f519793e9952aef9fc146",
-    "screens/edit-required-point.png": "997356b385c7c733f159d7d4c36a2b698fc17e36d26f519793e9952aef9fc146",
-    "screens/edit-trial-report.png": "997356b385c7c733f159d7d4c36a2b698fc17e36d26f519793e9952aef9fc146",
-    "screens/edit-visual-source.png": "755548d8f33ae035625c32258f5773dca0b4d49b602e8611cccc34aba770e968",
-    "screens/library-entry-search.png": "28a721cdb9c1d4b20a468348bb2b12afea8b9bb5157c73b1a92bdcd037ca8e55",
-    "screens/library-template-management.png": "28a721cdb9c1d4b20a468348bb2b12afea8b9bb5157c73b1a92bdcd037ca8e55",
-    "screens/library-visual-management.png": "24590300258ebb14fc990b04f77abf3e12a10d705d77ff4534c919d883812d62",
-    "sheets/edit-advanced-point.png": "d69d9952e5a1b277a9cd460dc1d808ef6e920033b9c2786936dc5b668e2b5281",
-    "sheets/edit-basics.png": "7affcd3163d15120da6014cfd95ed1a9a74890b6e65d41eb7fdba2acf5265f2c",
-    "sheets/edit-group-history.png": "3072ecdd055d8f43871a3f5dac544e8fa25da9d50db97d1738285f5d039b45cd",
-    "sheets/edit-point-management.png": "1c70e1bf865b6c4bf144a1b16ddc6645209779f20cf1fe48b32eb398d8ab32df",
-    "sheets/edit-required-point.png": "22358bb58a584e4fc9f5b0e0c579600c5413eab6bcf58c2544ed70ad501deff5",
-    "sheets/edit-trial-report.png": "87bb6bbb216fcb7a8bfb966ef2bed671905533881740e6beeb81d06f811af3dc",
-    "sheets/edit-visual-source.png": "5698ed03f9fa398b1f2ba48f18b00db8b18111eed2b09d1530babe84863ab27d",
-    "sheets/library-entry-search.png": "0a5b68b6ce4b759611a71c2d2bcdfc694b9535bd932b142a84760e5d074fefa2",
-    "sheets/library-template-management.png": "6d90b67ae73e52ca1d7f5c0dda177eb76aa702f274947431bc3aa83b991ed2f4",
-    "sheets/library-visual-management.png": "de6e575f33320a2feebc8cf0b6b0cd0c06414df3e139467090457353372528b9"
+    "manual.html": "4fa95649e98aec54168c2b646c4cacaef622a603ecaffeb3de5b24efa303078b",
+    "screens/edit-advanced-point.png": "1904dec65fed3bb7ecdf0c9e6bff668be5ff338835daf1469dfc0865313aed85",
+    "screens/edit-basics.png": "7c637479ade4863fb7f436297a4fbfafe6cf6e4e879770a8ea412ff505e77100",
+    "screens/edit-group-history.png": "78aef5bd04f14ea1f57245dbebc39e129a108782838c3f518e0eedc80622d1b5",
+    "screens/edit-point-management.png": "7c637479ade4863fb7f436297a4fbfafe6cf6e4e879770a8ea412ff505e77100",
+    "screens/edit-required-point.png": "7c637479ade4863fb7f436297a4fbfafe6cf6e4e879770a8ea412ff505e77100",
+    "screens/edit-trial-report.png": "7c637479ade4863fb7f436297a4fbfafe6cf6e4e879770a8ea412ff505e77100",
+    "screens/edit-visual-source.png": "1f37961e1c5cc686c204acb4b85e632152ce211dd9f538ae6d7deedf873784b9",
+    "screens/library-entry-search.png": "16e7b6dfa3f202d178b0fb8911aa7bd732c3e5dea3583b78bf2eab56f11af648",
+    "screens/library-template-management.png": "16e7b6dfa3f202d178b0fb8911aa7bd732c3e5dea3583b78bf2eab56f11af648",
+    "screens/library-visual-management.png": "f38c65d879444ff69c27a17e124258817a4c5437b9cf89a5b8c67b7472c6f544",
+    "sheets/edit-advanced-point.png": "11cfc37cf7952b37177eb21c4eeed14cf4441136268cb5eddfda11bb72654cb8",
+    "sheets/edit-basics.png": "9a40ed261f976493603d68d210e28230c567cfbd824cf20abf01b2d3f07cebff",
+    "sheets/edit-group-history.png": "dbc87a0a45c70d6165b86b9f9e44fcebd11449478f03bc0c6973e76394b47bf5",
+    "sheets/edit-point-management.png": "3830bbf9e1f2e8142a73defdd3a2f930a2a4a3c5a543b30425c6a6d6004e4862",
+    "sheets/edit-required-point.png": "885df6e282c1e939fd7dedd731c3448ab6cbd05ee2252cd654e7ae8b8d1ce59a",
+    "sheets/edit-trial-report.png": "8e382dffab3291204832cc1f03e5812cdb6d2ad64e4ff3c15349ec05ecc77221",
+    "sheets/edit-visual-source.png": "8993809c3bb77c9dd57b98543a52d6752bc3430a2a6520d9bfc2a40948ad3c65",
+    "sheets/library-entry-search.png": "e4e07a69ebeba7af119d8270e3e387067a5cd78e44a625272db169a1d0b0ecc8",
+    "sheets/library-template-management.png": "1e48e899e1c4ac70cb0eaad81732d3161051109b63613b3df32df8241a22e2f4",
+    "sheets/library-visual-management.png": "e1dee3c17fbd645c3c1a6d3b7c33f45e1dfeaa81791d50be380e3eb4d9e86d6b"
   },
-  "browserVersion": "141.0.7390.37",
+  "browserVersion": "156.0.8078.80",
   "definitionSha256": "b07cc7dbe4f1b9d7f004d8c708baf828731fac3bd12419d402eddae24127ee5e",
   "generatorVersion": "1.3.0",
   "geometry": {
@@ -51,7 +51,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.5188621238425926
+          "y": 0.5188982928240741
         },
         "targetId": "face-thread"
       },
@@ -65,7 +65,7 @@
         },
         "target": {
           "x": 0.9765523274739584,
-          "y": 0.5188621238425926
+          "y": 0.5188982928240741
         },
         "targetId": "direct-label"
       },
@@ -79,7 +79,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.6167896412037037
+          "y": 0.6168619791666666
         },
         "targetId": "ocr-candidate"
       }
@@ -267,7 +267,7 @@
         },
         "target": {
           "x": 0.896484375,
-          "y": 0.6985134548611112
+          "y": 0.6986219618055556
         },
         "targetId": "delete-one-point"
       },
@@ -281,7 +281,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.6985134548611112
+          "y": 0.6986219618055556
         },
         "targetId": "delete-all-points"
       }
@@ -297,7 +297,7 @@
         },
         "target": {
           "x": 0.97265625,
-          "y": 0.7992078993055556
+          "y": 0.79931640625
         },
         "targetId": "select-point"
       },
@@ -325,7 +325,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.5288266782407407
+          "y": 0.5288990162037037
         },
         "targetId": "nominal-value"
       },
@@ -339,7 +339,7 @@
         },
         "target": {
           "x": 0.896484375,
-          "y": 0.6637912326388888
+          "y": 0.6638997395833334
         },
         "targetId": "upper-tolerance"
       },
@@ -353,7 +353,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.6637912326388888
+          "y": 0.6638997395833334
         },
         "targetId": "lower-tolerance"
       }
@@ -663,7 +663,7 @@
       }
     ]
   },
-  "htmlSha256": "1c64a0ee709469479d90d911582dafa9020fd57a5cef8cb41e85f56725091f28",
+  "htmlSha256": "4fa95649e98aec54168c2b646c4cacaef622a603ecaffeb3de5b24efa303078b",
   "schemaVersion": 1,
-  "sourceSha256": "0f663d7ea78f445ba8ed18715d4aa65a9197afdecdb234d8db8b3ccdeb7a8358"
+  "sourceSha256": "077fc4f2d37f8ee0b06031fb9547e35edbe367e721e20efe1dc88b895dc7f48c"
 }
