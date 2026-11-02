@@ -50,7 +50,7 @@
 .procedure-board .pb-collapsed .pb-page-number { font-size:14px; }
 .procedure-board .pb-collapsed .pb-page-total,.procedure-board .pb-collapsed.pb-tray>header>span { display:none; }
 .procedure-board .pb-card { position:relative; border-radius:4px; padding:4px 5.5px; min-width:0; user-select:none; touch-action:pan-y; overflow-wrap:anywhere; cursor:grab; }
-.procedure-board .pb-text { display:block; min-width:0; white-space:pre-wrap; cursor:text; }
+.procedure-board .pb-text { display:block; min-width:0; white-space:pre-wrap; }
 .procedure-board .pb-meta { display:flex; align-items:center; gap:4px; color:var(--pb-ink-3); font-size:9px; font-variant-numeric:tabular-nums; line-height:1; }
 .procedure-board .pb-photo { display:block; width:56px; height:35px; border-radius:4px; overflow:hidden; background:var(--pb-desk); }
 .procedure-board .pb-photo img { width:100%; height:100%; object-fit:cover; filter:brightness(.82) saturate(.9); }
