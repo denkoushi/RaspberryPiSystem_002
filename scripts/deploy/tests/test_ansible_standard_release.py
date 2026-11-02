@@ -1654,55 +1654,73 @@ esac
         self.assertNotIn('"msg": "BROWSER_START_MUST_NOT_APPEAR"', output)
 
     def test_pi4_waves_stop_before_the_next_wave_after_a_rescued_failure(self) -> None:
-        pi4 = next(
-            play
-            for play in yaml.safe_load(PLAYBOOK)
-            if play.get("roles") == [{"role": "release_kiosk"}]
-        )
-        gate = pi4["pre_tasks"][0]
+        plays = yaml.safe_load(PLAYBOOK)
+        pi4 = next(play for play in plays if play.get("roles") == [{"role": "release_kiosk"}])
+        pi3 = next(play for play in plays if play.get("roles") == [{"role": "release_signage"}])
+        started, gate = pi4["pre_tasks"][:2]
+        finished = pi4["post_tasks"][-1]
+        pi3_gate = pi3["pre_tasks"][0]
+        self.assertEqual(started["name"], "Mark this kiosk as started for the Pi3 gate")
         self.assertEqual(gate["name"], "Stop before this wave when a kiosk in an earlier wave failed")
-        simulated = {
-            "hosts": "kiosk",
-            "gather_facts": False,
-            "serial": pi4["serial"],
-            "max_fail_percentage": pi4["max_fail_percentage"],
-            "order": "inventory",
-            "pre_tasks": [gate],
-            "tasks": [
+        self.assertEqual(finished["name"], "Mark this kiosk as finished for the Pi3 gate")
+        self.assertEqual(pi3_gate["name"], "Stop before Pi3 when a Pi4 kiosk started but did not finish")
+
+        def simulated(failing: str) -> list[dict[str, object]]:
+            return [
                 {
-                    "block": [
-                        {"ansible.builtin.debug": {"msg": "SWITCH {{ inventory_hostname }}"}},
+                    "hosts": "kiosk",
+                    "gather_facts": False,
+                    "serial": pi4["serial"],
+                    "max_fail_percentage": pi4["max_fail_percentage"],
+                    "order": "inventory",
+                    "pre_tasks": [started, gate],
+                    "tasks": [
                         {
                             "block": [
+                                {"ansible.builtin.debug": {"msg": "SWITCH {{ inventory_hostname }}"}},
                                 {
-                                    "ansible.builtin.fail": {"msg": "simulated health failure"},
-                                    "when": "inventory_hostname == 'kiosk-03'",
+                                    "block": [
+                                        {
+                                            "ansible.builtin.fail": {"msg": "simulated health failure"},
+                                            "when": f"inventory_hostname == '{failing}'",
+                                        },
+                                        {"ansible.builtin.debug": {"msg": "HEALTHY {{ inventory_hostname }}"}},
+                                    ],
+                                    "rescue": [
+                                        {"ansible.builtin.fail": {"msg": "rolled back {{ inventory_hostname }}"}},
+                                    ],
                                 },
-                                {"ansible.builtin.debug": {"msg": "HEALTHY {{ inventory_hostname }}"}},
                             ],
-                            "rescue": [
-                                {"ansible.builtin.fail": {"msg": "rolled back {{ inventory_hostname }}"}},
-                            ],
-                        },
+                            "rescue": [{"ansible.builtin.fail": {"msg": "preserve the Pi4 failure"}}],
+                            "always": [{"ansible.builtin.debug": {"msg": "CLEAR {{ inventory_hostname }}"}}],
+                        }
                     ],
-                    "rescue": [{"ansible.builtin.fail": {"msg": "preserve the Pi4 failure"}}],
-                    "always": [{"ansible.builtin.debug": {"msg": "CLEAR {{ inventory_hostname }}"}}],
-                }
-            ],
-        }
+                    "post_tasks": [finished],
+                },
+                {
+                    "hosts": "signage",
+                    "gather_facts": False,
+                    "serial": pi3["serial"],
+                    "pre_tasks": [pi3_gate],
+                    "tasks": [{"ansible.builtin.debug": {"msg": "PI3 SWITCH {{ inventory_hostname }}"}}],
+                },
+            ]
+
         hosts = "".join(
             f"        kiosk-{index:02d}:\n          ansible_connection: local\n"
             for index in range(1, 13)
         )
 
-        def run(torque_cutover: bool) -> tuple[int, str]:
+        def run(torque_cutover: bool, failing: str) -> tuple[int, str]:
             with tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / "inventory.yml").write_text(
-                    "all:\n  children:\n    kiosk:\n      hosts:\n" + hosts,
+                    "all:\n  children:\n    kiosk:\n      hosts:\n"
+                    + hosts
+                    + "    signage:\n      hosts:\n        signage-01:\n          ansible_connection: local\n",
                     encoding="utf-8",
                 )
-                (root / "playbook.yml").write_text(yaml.safe_dump([simulated]), encoding="utf-8")
+                (root / "playbook.yml").write_text(yaml.safe_dump(simulated(failing)), encoding="utf-8")
                 result = subprocess.run(
                     [
                         "ansible-playbook",
@@ -1718,23 +1736,38 @@ esac
                 )
             return result.returncode, result.stdout + result.stderr
 
-        returncode, output = run(False)
+        returncode, output = run(False, "kiosk-03")
         self.assertNotEqual(returncode, 0)
         # Wave 1 is kiosk-01; wave 2 (kiosk-02..06) finishes every lifecycle, including the failed host.
         for index in range(1, 7):
             self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
         self.assertNotIn('"msg": "SWITCH kiosk-07"', output)
-        self.assertIn("Not started: an earlier Pi4 wave failed on kiosk-03.", output)
+        self.assertIn("Not started: an earlier Pi4 wave failed or was unreachable on kiosk-03.", output)
         self.assertNotIn("kiosk-10", output)
+        self.assertNotIn("PI3 SWITCH", output)
+
+        # A failure in the last wave (kiosk-10..12) has no next Pi4 wave to stop, so Pi3 stops instead.
+        returncode, output = run(False, "kiosk-12")
+        self.assertNotEqual(returncode, 0)
+        for index in range(1, 13):
+            self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
+        self.assertIn("Not started: Pi4 did not finish on kiosk-12.", output)
+        self.assertNotIn("PI3 SWITCH", output)
+
+        # Pi3 still runs after every kiosk finished.
+        returncode, output = run(False, "none")
+        self.assertEqual(returncode, 0, output)
+        self.assertIn('"msg": "PI3 SWITCH signage-01"', output)
 
         # Torque cutover keeps one kiosk per batch, as before the waves.
-        returncode, output = run(True)
+        returncode, output = run(True, "kiosk-03")
         self.assertNotEqual(returncode, 0)
         for index in range(1, 4):
             self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
         self.assertEqual(output.count("PLAY [kiosk]"), 3)
         self.assertNotIn("kiosk-04", output)
         self.assertNotIn("Not started", output)
+        self.assertNotIn("PI3 SWITCH", output)
 
     def test_pi4_notice_contract_and_policy_constants(self) -> None:
         role = ANSIBLE / 'roles/release_kiosk'
