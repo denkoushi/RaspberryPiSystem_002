@@ -60,6 +60,7 @@ def healthy():
             return False
         # 自己署名で CA 検証が通らないため、証明書全体の SHA-256 を固定値と照合し、一致した同じ接続だけで問い合わせる。
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         connection = PinnedConnection(target.hostname, target.port or 443, timeout=15, context=context)
