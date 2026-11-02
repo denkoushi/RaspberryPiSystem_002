@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE, SOURCE_REPOSITORY
+
 import argparse
 import fcntl
 import hashlib
@@ -919,11 +921,11 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         commands: list[list[str]] = []
         release = types.SimpleNamespace(
             api=types.SimpleNamespace(
-                repository="ghcr.io/denkoushi/raspisys-api",
+                repository=f"{GHCR_NAMESPACE}/raspisys-api",
                 digest="sha256:" + "1" * 64,
             ),
             web=types.SimpleNamespace(
-                repository="ghcr.io/denkoushi/raspisys-web",
+                repository=f"{GHCR_NAMESPACE}/raspisys-web",
                 digest="sha256:" + "2" * 64,
             ),
             torque_agent=None,
@@ -941,7 +943,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         with mock.patch.object(MODULE, "config_hash", return_value="b" * 64), mock.patch.object(
             MODULE, "parse_release_set", return_value=release
         ), mock.patch.object(MODULE, "validate_release_set"), mock.patch.object(
-            MODULE, "_exact_repo_digest", return_value="ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64
+            MODULE, "_exact_repo_digest", return_value=f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:" + "9" * 64
         ), mock.patch.object(
             MODULE, "verify_component_attestation"
         ), mock.patch.object(
@@ -989,22 +991,22 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
     def test_v2_release_set_returns_exact_torque_digest_and_verifies_adoption(self) -> None:
         commands: list[list[str]] = []
         torque = types.SimpleNamespace(
-            repository="ghcr.io/denkoushi/raspisys-torque-agent",
+            repository=f"{GHCR_NAMESPACE}/raspisys-torque-agent",
             index_digest="sha256:" + "3" * 64,
         )
         compatibility = types.SimpleNamespace(protocol_version=1)
         release = types.SimpleNamespace(
             schema_version=2,
-            source_repository="denkoushi/RaspberryPiSystem_002",
+            source_repository=SOURCE_REPOSITORY,
             source_sha=SHA,
             source_ref="refs/heads/main",
             config_hash="b" * 64,
             api=types.SimpleNamespace(
-                repository="ghcr.io/denkoushi/raspisys-api",
+                repository=f"{GHCR_NAMESPACE}/raspisys-api",
                 digest="sha256:" + "1" * 64,
             ),
             web=types.SimpleNamespace(
-                repository="ghcr.io/denkoushi/raspisys-web",
+                repository=f"{GHCR_NAMESPACE}/raspisys-web",
                 digest="sha256:" + "2" * 64,
             ),
             torque_agent=torque,
@@ -1020,12 +1022,12 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
                 run_attempt=2,
             ),
             base_release_set=types.SimpleNamespace(
-                digest="ghcr.io/denkoushi/raspisys-release-set@sha256:" + "8" * 64,
+                digest=f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:" + "8" * 64,
             ),
         )
         base_release = types.SimpleNamespace(
             schema_version=1,
-            source_repository="denkoushi/RaspberryPiSystem_002",
+            source_repository=SOURCE_REPOSITORY,
             source_sha=SHA,
             source_ref="refs/heads/main",
             config_hash="b" * 64,
@@ -1045,7 +1047,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         with mock.patch.object(MODULE, "config_hash", return_value="b" * 64), mock.patch.object(
             MODULE, "parse_release_set", side_effect=[release, base_release]
         ), mock.patch.object(MODULE, "validate_release_set"), mock.patch.object(
-            MODULE, "_exact_repo_digest", return_value="ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64
+            MODULE, "_exact_repo_digest", return_value=f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:" + "9" * 64
         ), mock.patch.object(
             MODULE, "verify_component_attestation"
         ) as verify, mock.patch.object(MODULE, "run", side_effect=fake_run):
@@ -1055,7 +1057,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
 
         self.assertEqual(
             artifacts.torque_agent,
-            "ghcr.io/denkoushi/raspisys-torque-agent@sha256:" + "3" * 64,
+            f"{GHCR_NAMESPACE}/raspisys-torque-agent@sha256:" + "3" * 64,
         )
         self.assertEqual(artifacts.torque_protocol_version, 1)
         self.assertEqual(verify.call_count, 3)
@@ -1070,8 +1072,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         self.assertEqual(
             created_references,
             [
-                "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64,
-                "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "8" * 64,
+                f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:" + "9" * 64,
+                f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:" + "8" * 64,
             ],
         )
 
@@ -1081,7 +1083,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "image": (
                 "api",
                 types.SimpleNamespace(
-                    repository="ghcr.io/denkoushi/raspisys-api",
+                    repository=f"{GHCR_NAMESPACE}/raspisys-api",
                     digest="sha256:" + "7" * 64,
                 ),
             ),
@@ -1098,7 +1100,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             ), mock.patch.object(
                 MODULE,
                 "_exact_repo_digest",
-                return_value="ghcr.io/denkoushi/raspisys-release-set@sha256:"
+                return_value=f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:"
                 + "9" * 64,
             ), mock.patch.object(
                 MODULE, "verify_component_attestation"
@@ -1160,7 +1162,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             MODULE, "validate_adoption_predicate", side_effect=validate
         ) as validator:
             MODULE.verify_component_attestation(
-                "ghcr.io/denkoushi/raspisys-torque-agent@sha256:" + "3" * 64,
+                f"{GHCR_NAMESPACE}/raspisys-torque-agent@sha256:" + "3" * 64,
                 SHA,
                 predicate_type=MODULE.TORQUE_ADOPTION_PREDICATE_TYPE,
                 adoption_workflow=(".github/workflows/ci.yml", 123, 2),
@@ -1197,7 +1199,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             },
         }
         selection = (("pi5", ("pi5",)), ("pi4", ("pi4-a",)))
-        torque_reference = "ghcr.io/denkoushi/raspisys-torque-agent@sha256:" + "3" * 64
+        torque_reference = f"{GHCR_NAMESPACE}/raspisys-torque-agent@sha256:" + "3" * 64
         artifacts = MODULE.ReleaseArtifacts(
             f"api:{SHA}@sha256:{'1' * 64}",
             f"web:{SHA}@sha256:{'2' * 64}",
@@ -1265,15 +1267,15 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
 
         self.assertEqual(
             images,
-            {"pi4": [f"ghcr.io/denkoushi/raspisys-barcode-agent:{SHA}"]},
+            {"pi4": [f"{GHCR_NAMESPACE}/raspisys-barcode-agent:{SHA}"]},
         )
 
     def test_unpublished_plan_images_reports_only_missing_registry_tags(self) -> None:
         document = {
             "executionOrder": [
-                {"profile": "pi5", "images": [f"ghcr.io/denkoushi/raspisys-api:{SHA}-abc"]},
+                {"profile": "pi5", "images": [f"{GHCR_NAMESPACE}/raspisys-api:{SHA}-abc"]},
                 {"profile": "pi4", "images": ["release-set-v2:x:torque-agent"]},
-                {"profile": "pi3", "images": [f"ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}"]},
+                {"profile": "pi3", "images": [f"{GHCR_NAMESPACE}/raspisys-pi3-signage:{SHA}"]},
             ]
         }
         inspected: list[str] = []
@@ -1285,7 +1287,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
         with mock.patch.object(MODULE, "run", side_effect=fake_run):
             missing = MODULE.unpublished_plan_images(document)
 
-        self.assertEqual(missing, [f"ghcr.io/denkoushi/raspisys-pi3-signage:{SHA}"])
+        self.assertEqual(missing, [f"{GHCR_NAMESPACE}/raspisys-pi3-signage:{SHA}"])
         # The torque cutover placeholder is not a registry reference.
         self.assertEqual(len(inspected), 2)
 
@@ -1323,7 +1325,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             RuntimeError,
-            f"release artifacts are not published for this SHA: ghcr.io/denkoushi/raspisys-nfc-agent:{SHA}",
+            f"release artifacts are not published for this SHA: {GHCR_NAMESPACE}/raspisys-nfc-agent:{SHA}",
         ):
             self._print_plan(artifacts, fake_run, "pi4-a")
 

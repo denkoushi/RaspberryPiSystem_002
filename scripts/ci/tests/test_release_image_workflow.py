@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE
+
 import json
 import tempfile
 import unittest
@@ -77,7 +79,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
                 service="web",
                 release_sha=SHA,
                 expected_config_hash=config_hash,
-                repository="ghcr.io/denkoushi/raspisys-web",
+                repository=f"{GHCR_NAMESPACE}/raspisys-web",
                 metadata_path=metadata_path,
             )
         joined = "\n".join(command)
@@ -87,10 +89,10 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
         self.assertIn("--sbom=true", command)
         self.assertIn(f"BUILD_COMMIT={SHA}", command)
         self.assertIn(
-            "type=registry,ref=ghcr.io/denkoushi/raspisys-web:buildcache-web-arm64", command
+            f"type=registry,ref={GHCR_NAMESPACE}/raspisys-web:buildcache-web-arm64", command
         )
         cache_to = command[command.index("--cache-to") + 1]
-        self.assertTrue(cache_to.startswith("type=registry,ref=ghcr.io/denkoushi/raspisys-web:buildcache-web-arm64,"))
+        self.assertTrue(cache_to.startswith(f"type=registry,ref={GHCR_NAMESPACE}/raspisys-web:buildcache-web-arm64,"))
         self.assertIn("mode=max", cache_to)
         self.assertNotIn("type=gha", cache_to)
         self.assertIn("VITE_AGENT_WS_MODE=local", command)
@@ -109,7 +111,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
                     service="api",
                     release_sha=SHA,
                     expected_config_hash="b" * 64,
-                    repository="ghcr.io/denkoushi/raspisys-api",
+                    repository=f"{GHCR_NAMESPACE}/raspisys-api",
                     metadata_path=Path(directory) / "metadata.json",
                 )
 
@@ -129,7 +131,7 @@ class ReleaseImageWorkflowTests(unittest.TestCase):
                     service="api",
                     release_sha=SHA,
                     expected_config_hash=build_config_hash(contract),
-                    repository="ghcr.io/denkoushi/raspisys-web",
+                    repository=f"{GHCR_NAMESPACE}/raspisys-web",
                     metadata_path=Path(directory) / "metadata.json",
                 )
 

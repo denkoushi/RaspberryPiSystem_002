@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from release_artifact_contract import (
+    GHCR_NAMESPACE,
+    SOURCE_REPOSITORY,
     PI4_AGENT_SERVICES,
     ReleaseSet,
     TORQUE_ADOPTION_PREDICATE_TYPE,
@@ -522,7 +524,7 @@ def image_plan(
     result: dict[str, Any] = {}
     if "pi5" in profiles:
         suffix = build_hash[:16]
-        result["pi5"] = [f"ghcr.io/denkoushi/raspisys-api:{sha}-{suffix}", f"ghcr.io/denkoushi/raspisys-web:{sha}-{suffix}"]
+        result["pi5"] = [f"{GHCR_NAMESPACE}/raspisys-api:{sha}-{suffix}", f"{GHCR_NAMESPACE}/raspisys-web:{sha}-{suffix}"]
     if "pi4" in profiles:
         selected_agents = tuple(
             ((TORQUE_CUTOVER_SERVICE,) if torque_cutover else PI4_AGENT_SERVICES)
@@ -537,11 +539,11 @@ def image_plan(
             result["pi4"] = [f"release-set-v2:{sha}:torque-agent"]
         else:
             result["pi4"] = [
-                f"ghcr.io/denkoushi/raspisys-{service.removesuffix('-agent')}-agent:{sha}"
+                f"{GHCR_NAMESPACE}/raspisys-{service.removesuffix('-agent')}-agent:{sha}"
                 for service in selected_agents
             ]
     if "pi3" in profiles:
-        result["pi3"] = [f"ghcr.io/denkoushi/raspisys-pi3-signage:{sha}"]
+        result["pi3"] = [f"{GHCR_NAMESPACE}/raspisys-pi3-signage:{sha}"]
     return result
 
 
@@ -622,7 +624,7 @@ def plan(
         variables.update(
             {
                 "release_kiosk_torque_image": (
-                    f"ghcr.io/denkoushi/raspisys-torque-agent@sha256:{'0' * 64}"
+                    f"{GHCR_NAMESPACE}/raspisys-torque-agent@sha256:{'0' * 64}"
                 ),
                 "release_torque_protocol_contract_version": 1,
             }
@@ -1129,7 +1131,7 @@ def _verify_component_attestation_command(
         f"oci://{exact_reference}",
         "--bundle-from-oci",
         "--repo",
-        "denkoushi/RaspberryPiSystem_002",
+        SOURCE_REPOSITORY,
         "--source-digest",
         source_sha,
         "--source-ref",
@@ -1198,7 +1200,7 @@ def release_set_artifacts(
     build_hash = config_hash(sha, inventory)
     tag_suffix = "-torque-v2" if require_torque else ""
     reference = (
-        f"ghcr.io/denkoushi/raspisys-release-set:"
+        f"{GHCR_NAMESPACE}/raspisys-release-set:"
         f"{sha}-{build_hash}{tag_suffix}"
     )
     run(["docker", "image", "pull", reference])
@@ -1207,7 +1209,7 @@ def release_set_artifacts(
     release = _read_release_set_from_image(exact_release_set)
     validate_release_set(
         release,
-        "denkoushi/RaspberryPiSystem_002",
+        SOURCE_REPOSITORY,
         sha,
         build_hash,
         ".github/workflows/ci.yml",
@@ -1226,7 +1228,7 @@ def release_set_artifacts(
         base_release = _read_release_set_from_image(base_reference)
         validate_release_set(
             base_release,
-            "denkoushi/RaspberryPiSystem_002",
+            SOURCE_REPOSITORY,
             sha,
             build_hash,
             ".github/workflows/ci.yml",
@@ -1309,7 +1311,7 @@ def normalize_torque_cutover_plan(
 
 
 def signage_identity(sha: str) -> tuple[str, str]:
-    reference = f"ghcr.io/denkoushi/raspisys-pi3-signage:{sha}"
+    reference = f"{GHCR_NAMESPACE}/raspisys-pi3-signage:{sha}"
     run(["docker", "image", "pull", "--platform", "linux/arm/v7", reference])
     digest = run(["docker", "image", "inspect", "--format", '{{index .Config.Labels "io.raspisystem.signage.artifact-sha256"}}', reference]).stdout.strip()
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
@@ -1381,7 +1383,7 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         variables["release_kiosk_notice_enabled"] = False
     cache_enabled = selected.get('_meta', {}).get('hostvars', {}).get('raspberrypi5', {}).get('business_hermes_answer_cache_enabled', False)
     if 'pi5' in profiles and cache_enabled in (True, 'true'):
-        reference = f'ghcr.io/denkoushi/raspisys-hermes-answer-cache:{args.sha}'
+        reference = f'{GHCR_NAMESPACE}/raspisys-hermes-answer-cache:{args.sha}'
         run(['docker', 'image', 'pull', '--platform', 'linux/arm64', reference])
         exact = _exact_repo_digest(reference)
         verify_component_attestation(exact, args.sha)

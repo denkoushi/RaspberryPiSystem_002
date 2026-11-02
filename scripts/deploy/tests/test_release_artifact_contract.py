@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE, SOURCE_REPOSITORY
+
 import json
 import io
 import tempfile
@@ -20,7 +22,7 @@ from scripts.deploy.release_artifact_contract import (
     validate_release_set,
 )
 
-REPOSITORY = "denkoushi/RaspberryPiSystem_002"
+REPOSITORY = SOURCE_REPOSITORY
 SHA = "a" * 40
 CONFIG_HASH = "b" * 64
 WORKFLOW = ".github/workflows/ci.yml"
@@ -39,11 +41,11 @@ def valid_release_set() -> dict[str, object]:
         "platform": {"os": "linux", "architecture": "arm64"},
         "images": {
             "api": {
-                "repository": "ghcr.io/denkoushi/raspisys-api",
+                "repository": f"{GHCR_NAMESPACE}/raspisys-api",
                 "digest": "sha256:" + "1" * 64,
             },
             "web": {
-                "repository": "ghcr.io/denkoushi/raspisys-web",
+                "repository": f"{GHCR_NAMESPACE}/raspisys-web",
                 "digest": "sha256:" + "2" * 64,
             },
         },
@@ -64,7 +66,7 @@ def valid_release_set_v2() -> dict[str, object]:
     torque_digest = "sha256:" + "3" * 64
     document["components"] = {
         "torqueAgent": {
-            "repository": "ghcr.io/denkoushi/raspisys-torque-agent",
+            "repository": f"{GHCR_NAMESPACE}/raspisys-torque-agent",
             "indexDigest": torque_digest,
             "sourceSha": TORQUE_ADOPTED_SOURCE_SHA,
             "platforms": [
@@ -96,7 +98,7 @@ def valid_release_set_v2() -> dict[str, object]:
         "runAttempt": 2,
     }
     document["baseReleaseSet"] = {
-        "digest": "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64,
+        "digest": f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:" + "9" * 64,
         "schemaVersion": 1,
         "sourceSha": SHA,
         "configHash": CONFIG_HASH,
@@ -216,7 +218,7 @@ class ReleaseArtifactContractTests(unittest.TestCase):
         assert isinstance(images, dict)
         api = images["api"]
         assert isinstance(api, dict)
-        api["repository"] = "ghcr.io/denkoushi/raspisys-api:latest"
+        api["repository"] = f"{GHCR_NAMESPACE}/raspisys-api:latest"
         with self.assertRaisesRegex(ReleaseArtifactError, "malformed"):
             parse_release_set(json.dumps(document))
 
@@ -226,7 +228,7 @@ class ReleaseArtifactContractTests(unittest.TestCase):
         assert isinstance(images, dict)
         api = images["api"]
         assert isinstance(api, dict)
-        api["repository"] = "ghcr.io/denkoushi/other-api"
+        api["repository"] = f"{GHCR_NAMESPACE}/other-api"
 
         release_set = parse_release_set(json.dumps(document))
         with self.assertRaisesRegex(ReleaseArtifactError, "API image repository"):
@@ -251,7 +253,7 @@ class ReleaseArtifactContractTests(unittest.TestCase):
         assert release_set.base_release_set is not None
         self.assertEqual(
             release_set.base_release_set.digest,
-            "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64,
+            f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:" + "9" * 64,
         )
         self.assertIsNotNone(release_set.composition_workflow)
         assert release_set.composition_workflow is not None
@@ -289,11 +291,11 @@ class ReleaseArtifactContractTests(unittest.TestCase):
             "--config-hash",
             CONFIG_HASH,
             "--api-repository",
-            "ghcr.io/denkoushi/raspisys-api",
+            f"{GHCR_NAMESPACE}/raspisys-api",
             "--api-digest",
             "sha256:" + "1" * 64,
             "--web-repository",
-            "ghcr.io/denkoushi/raspisys-web",
+            f"{GHCR_NAMESPACE}/raspisys-web",
             "--web-digest",
             "sha256:" + "2" * 64,
             "--workflow",
@@ -318,9 +320,9 @@ class ReleaseArtifactContractTests(unittest.TestCase):
             "--composition-run-attempt",
             "2",
             "--base-release-digest",
-            "ghcr.io/denkoushi/raspisys-release-set@sha256:" + "9" * 64,
+            f"{GHCR_NAMESPACE}/raspisys-release-set@sha256:" + "9" * 64,
             "--torque-repository",
-            "ghcr.io/denkoushi/raspisys-torque-agent",
+            f"{GHCR_NAMESPACE}/raspisys-torque-agent",
             "--torque-index-digest",
             "sha256:" + "3" * 64,
             "--torque-source-sha",

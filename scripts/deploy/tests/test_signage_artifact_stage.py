@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE, GITHUB_OWNER, GITHUB_OWNER_URL
+
 import base64
 import copy
 from contextlib import nullcontext
@@ -24,7 +26,7 @@ from scripts.deploy.rolling_release import signage_artifact_stage as stage
 PROJECT = Path(__file__).resolve().parents[3]
 SOURCE_SHA = "e1bcd74d5b114d4a5ee3f54df48b94b1019780c3"
 OCI_DIGEST = "sha256:" + "d" * 64
-ARTIFACT_REF = f"ghcr.io/denkoushi/raspisys-pi3-signage:{SOURCE_SHA}"
+ARTIFACT_REF = f"{GHCR_NAMESPACE}/raspisys-pi3-signage:{SOURCE_SHA}"
 RUN_ID = "20260806-160000-abcdef"
 HOST = "raspberrypi3"
 VERIFIER_SOURCE = (
@@ -192,7 +194,7 @@ def attestation_statement(descriptor: dict[str, object]) -> dict[str, object]:
         "_type": stage.STATEMENT_TYPE,
         "subject": [
             {
-                "name": "ghcr.io/denkoushi/raspisys-pi3-signage",
+                "name": f"{GHCR_NAMESPACE}/raspisys-pi3-signage",
                 "digest": {"sha256": OCI_DIGEST.removeprefix("sha256:")},
             }
         ],
@@ -398,7 +400,7 @@ class SignageArtifactStageE2E(unittest.TestCase):
             "releaseScope": "pi3-signage-artifact",
             "sourceSha": SOURCE_SHA,
             "exactReference": (
-                "ghcr.io/denkoushi/raspisys-pi3-signage@" + OCI_DIGEST
+                f"{GHCR_NAMESPACE}/raspisys-pi3-signage@" + OCI_DIGEST
             ),
             "ociDigest": OCI_DIGEST,
             "artifactSha256": self.descriptor["artifactSha256"],
@@ -432,7 +434,7 @@ class SignageArtifactStageE2E(unittest.TestCase):
                 self.assertEqual(transport.events, [])
 
         transport = self.transport()
-        wrong_exact = "ghcr.io/denkoushi/raspisys-pi3-signage@sha256:" + "a" * 64
+        wrong_exact = f"{GHCR_NAMESPACE}/raspisys-pi3-signage@sha256:" + "a" * 64
         report = stage.acquire_and_stage(
             wrong_exact,
             self.target,
@@ -718,22 +720,22 @@ class GhcrAcquisitionContract(unittest.TestCase):
         ).encode()
         index_digest = "sha256:" + hashlib.sha256(index).hexdigest()
         responses = {
-            "https://ghcr.io/token?service=ghcr.io&scope=repository%3Adenkoushi%2Fraspisys-pi3-signage%3Apull": FakeHttpResponse(
+            f"https://ghcr.io/token?service=ghcr.io&scope=repository%3A{GITHUB_OWNER}%2Fraspisys-pi3-signage%3Apull": FakeHttpResponse(
                 b'{"token":"fixture-bearer"}'
             ),
-            f"https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/manifests/{SOURCE_SHA}": FakeHttpResponse(
+            f"https://ghcr.io/v2/{GITHUB_OWNER}/raspisys-pi3-signage/manifests/{SOURCE_SHA}": FakeHttpResponse(
                 index, {"Docker-Content-Digest": index_digest}
             ),
-            f"https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/manifests/{index_digest}": FakeHttpResponse(
+            f"https://ghcr.io/v2/{GITHUB_OWNER}/raspisys-pi3-signage/manifests/{index_digest}": FakeHttpResponse(
                 index, {"Docker-Content-Digest": index_digest}
             ),
-            f"https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/manifests/{manifest_digest}": FakeHttpResponse(
+            f"https://ghcr.io/v2/{GITHUB_OWNER}/raspisys-pi3-signage/manifests/{manifest_digest}": FakeHttpResponse(
                 manifest, {"Docker-Content-Digest": manifest_digest}
             ),
         }
         for descriptor, payload in zip(layer_descriptors, layers):
             responses[
-                "https://ghcr.io/v2/denkoushi/raspisys-pi3-signage/blobs/"
+                f"https://ghcr.io/v2/{GITHUB_OWNER}/raspisys-pi3-signage/blobs/"
                 + descriptor["digest"]
             ] = FakeHttpResponse(
                 payload + (b"corrupt" if corrupt_layer and payload is layers[0] else b"")
@@ -753,7 +755,7 @@ class GhcrAcquisitionContract(unittest.TestCase):
         destination = self.root / "download"
         destination.mkdir()
         acquisition = stage.GhcrAcquisition(
-            {"username": "denkoushi", "token": "fixture-token"},
+            {"username": GITHUB_OWNER, "token": "fixture-token"},
             opener=opener,
         )
 
@@ -773,7 +775,7 @@ class GhcrAcquisitionContract(unittest.TestCase):
         destination = self.root / "download-exact"
         destination.mkdir()
         acquisition = stage.GhcrAcquisition(
-            {"username": "denkoushi", "token": "fixture-token"},
+            {"username": GITHUB_OWNER, "token": "fixture-token"},
             opener=opener,
         )
 
@@ -791,7 +793,7 @@ class GhcrAcquisitionContract(unittest.TestCase):
         destination = self.root / "download"
         destination.mkdir()
         acquisition = stage.GhcrAcquisition(
-            {"username": "denkoushi", "token": "fixture-token"},
+            {"username": GITHUB_OWNER, "token": "fixture-token"},
             opener=opener,
         )
 
@@ -818,7 +820,7 @@ class GhcrAcquisitionContract(unittest.TestCase):
                             "sourceRepositoryURI": f"https://github.com/{stage.SOURCE_REPOSITORY}",
                             "sourceRepositoryDigest": SOURCE_SHA,
                             "sourceRepositoryRef": "refs/heads/main",
-                            "sourceRepositoryOwnerURI": "https://github.com/denkoushi",
+                            "sourceRepositoryOwnerURI": GITHUB_OWNER_URL,
                         }
                     },
                 }
@@ -840,7 +842,7 @@ class GhcrAcquisitionContract(unittest.TestCase):
 
         with patch.object(stage.subprocess, "run", side_effect=run_command) as run:
             result = stage.GhAttestor(
-                {"username": "denkoushi", "token": "fixture-token"},
+                {"username": GITHUB_OWNER, "token": "fixture-token"},
                 gh="/usr/bin/gh",
             ).verify(
                 ARTIFACT_REF,

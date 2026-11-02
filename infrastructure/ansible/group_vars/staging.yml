@@ -223,7 +223,7 @@ security_monitor_ignore_addr_prefixes: '127.0.0.1 ::1 fd7a: fe80:'
 pi5_artifact_promotion_enabled: false
 pi5_artifact_ghcr_username: ''
 pi5_artifact_ghcr_token: ''
-repo_remote: https://github.com/denkoushi/RaspberryPiSystem_002.git
+repo_remote: "https://github.com/{{ raspisys_github_owner }}/RaspberryPiSystem_002.git"
 repo_version: main
 git_deploy_key: ''
 git_environment: {}

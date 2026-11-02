@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+read -r SOURCE_REPOSITORY API_REPOSITORY WEB_REPOSITORY < <(
+  cd "$ROOT" && python3 -c 'from scripts.deploy.release_artifact_contract import SOURCE_REPOSITORY, EXPECTED_IMAGE_REPOSITORIES; print(SOURCE_REPOSITORY, EXPECTED_IMAGE_REPOSITORIES["api"], EXPECTED_IMAGE_REPOSITORIES["web"])'
+)
 CONTRACT=""
 SHA=""
 
@@ -175,12 +178,12 @@ WEB_DIGEST="$(
 [[ "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
 
 python3 "$ROOT/scripts/deploy/release_artifact_contract.py" create \
-  --repository denkoushi/RaspberryPiSystem_002 \
+  --repository "$SOURCE_REPOSITORY" \
   --sha "$SHA" \
   --config-hash "$CONFIG_HASH" \
-  --api-repository ghcr.io/denkoushi/raspisys-api \
+  --api-repository "$API_REPOSITORY" \
   --api-digest "$API_DIGEST" \
-  --web-repository ghcr.io/denkoushi/raspisys-web \
+  --web-repository "$WEB_REPOSITORY" \
   --web-digest "$WEB_DIGEST" \
   --workflow .github/workflows/ci.yml \
   --run-id 1 \
@@ -237,7 +240,7 @@ docker create \
 docker cp "$EXTRACT_CONTAINER:/release-set.json" "$TEMP_DIR/extracted.json"
 docker rm -f "$EXTRACT_CONTAINER" >/dev/null
 python3 "$ROOT/scripts/deploy/release_artifact_contract.py" verify \
-  --repository denkoushi/RaspberryPiSystem_002 \
+  --repository "$SOURCE_REPOSITORY" \
   --sha "$SHA" \
   --config-hash "$CONFIG_HASH" \
   --workflow .github/workflows/ci.yml \

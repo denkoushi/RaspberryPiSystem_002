@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE
+
 import json
 import subprocess
 import sys
@@ -129,14 +131,14 @@ class DockerImageRetentionCliTests(unittest.TestCase):
                     "current": {
                         "api": {
                             "reference": release_reference(
-                                "ghcr.io/denkoushi/raspisys-api", CURRENT_SHA, current_api
+                                f"{GHCR_NAMESPACE}/raspisys-api", CURRENT_SHA, current_api
                             ),
                             "imageId": current_api,
                             "releaseSha": CURRENT_SHA,
                         },
                         "web": {
                             "reference": release_reference(
-                                "ghcr.io/denkoushi/raspisys-web", CURRENT_SHA, current_web
+                                f"{GHCR_NAMESPACE}/raspisys-web", CURRENT_SHA, current_web
                             ),
                             "imageId": current_web,
                             "releaseSha": CURRENT_SHA,
@@ -145,14 +147,14 @@ class DockerImageRetentionCliTests(unittest.TestCase):
                     "previous": {
                         "api": {
                             "reference": release_reference(
-                                "ghcr.io/denkoushi/raspisys-api", PREVIOUS_SHA, previous_api
+                                f"{GHCR_NAMESPACE}/raspisys-api", PREVIOUS_SHA, previous_api
                             ),
                             "imageId": previous_api,
                             "releaseSha": PREVIOUS_SHA,
                         },
                         "web": {
                             "reference": release_reference(
-                                "ghcr.io/denkoushi/raspisys-web", PREVIOUS_SHA, previous_web
+                                f"{GHCR_NAMESPACE}/raspisys-web", PREVIOUS_SHA, previous_web
                             ),
                             "imageId": previous_web,
                             "releaseSha": PREVIOUS_SHA,
@@ -190,10 +192,10 @@ class DockerImageRetentionCliTests(unittest.TestCase):
     def _base_docker_state(self) -> dict:
         images: dict[str, dict] = {}
         for digit, repository, sha in (
-            ("1", "ghcr.io/denkoushi/raspisys-api", CURRENT_SHA),
-            ("2", "ghcr.io/denkoushi/raspisys-web", CURRENT_SHA),
-            ("3", "ghcr.io/denkoushi/raspisys-api", PREVIOUS_SHA),
-            ("4", "ghcr.io/denkoushi/raspisys-web", PREVIOUS_SHA),
+            ("1", f"{GHCR_NAMESPACE}/raspisys-api", CURRENT_SHA),
+            ("2", f"{GHCR_NAMESPACE}/raspisys-web", CURRENT_SHA),
+            ("3", f"{GHCR_NAMESPACE}/raspisys-api", PREVIOUS_SHA),
+            ("4", f"{GHCR_NAMESPACE}/raspisys-web", PREVIOUS_SHA),
         ):
             image_id, image = self._image(digit, repository, release_sha=sha)
             images[image_id] = image
@@ -242,9 +244,9 @@ class DockerImageRetentionCliTests(unittest.TestCase):
         state = self._base_docker_state()
         images = state["images"]
         for digit, repository in (
-            ("5", "ghcr.io/denkoushi/raspisys-api"),
-            ("6", "ghcr.io/denkoushi/raspisys-web"),
-            ("7", "ghcr.io/denkoushi/raspisys-release-set"),
+            ("5", f"{GHCR_NAMESPACE}/raspisys-api"),
+            ("6", f"{GHCR_NAMESPACE}/raspisys-web"),
+            ("7", f"{GHCR_NAMESPACE}/raspisys-release-set"),
             ("8", "raspi-system-api"),
             ("9", "raspi-system-web"),
             ("a", "docker-api"),
@@ -253,21 +255,21 @@ class DockerImageRetentionCliTests(unittest.TestCase):
             image_id, image = self._image(digit, repository)
             images[image_id] = image
         young_id, young = self._image(
-            "c", "ghcr.io/denkoushi/raspisys-api", created="2026-08-31T12:01:00Z"
+            "c", f"{GHCR_NAMESPACE}/raspisys-api", created="2026-08-31T12:01:00Z"
         )
         images[young_id] = young
         release_set_current_id, release_set_current = self._image(
-            "d", "ghcr.io/denkoushi/raspisys-release-set", release_sha=CURRENT_SHA
+            "d", f"{GHCR_NAMESPACE}/raspisys-release-set", release_sha=CURRENT_SHA
         )
         images[release_set_current_id] = release_set_current
-        other_id, other = self._image("e", "ghcr.io/denkoushi/other")
+        other_id, other = self._image("e", f"{GHCR_NAMESPACE}/other")
         images[other_id] = other
         alias_id, alias = self._image(
             "f",
-            "ghcr.io/denkoushi/raspisys-api",
+            f"{GHCR_NAMESPACE}/raspisys-api",
             aliases=[
-                "ghcr.io/denkoushi/raspisys-api:old",
-                "ghcr.io/denkoushi/other:old",
+                f"{GHCR_NAMESPACE}/raspisys-api:old",
+                f"{GHCR_NAMESPACE}/other:old",
             ],
         )
         images[alias_id] = alias
@@ -301,7 +303,7 @@ class DockerImageRetentionCliTests(unittest.TestCase):
 
     def test_default_read_mode_and_plan_never_remove(self) -> None:
         state = self._base_docker_state()
-        old_id, old = self._image("5", "ghcr.io/denkoushi/raspisys-api")
+        old_id, old = self._image("5", f"{GHCR_NAMESPACE}/raspisys-api")
         state["images"][old_id] = old
         self.fake.write(state)
 
@@ -337,7 +339,7 @@ class DockerImageRetentionCliTests(unittest.TestCase):
 
     def test_invalid_state_blocks_apply_before_docker_mutation(self) -> None:
         state = self._base_docker_state()
-        old_id, old = self._image("5", "ghcr.io/denkoushi/raspisys-api")
+        old_id, old = self._image("5", f"{GHCR_NAMESPACE}/raspisys-api")
         state["images"][old_id] = old
         self.fake.write(state)
         self.assertEqual(self._run("plan").returncode, 0)
@@ -353,7 +355,7 @@ class DockerImageRetentionCliTests(unittest.TestCase):
 
     def test_apply_requires_sealed_plan_and_rejects_state_drift(self) -> None:
         state = self._base_docker_state()
-        old_id, old = self._image("5", "ghcr.io/denkoushi/raspisys-api")
+        old_id, old = self._image("5", f"{GHCR_NAMESPACE}/raspisys-api")
         state["images"][old_id] = old
         self.fake.write(state)
         self.assertEqual(self._run("plan").returncode, 0)
@@ -370,8 +372,8 @@ class DockerImageRetentionCliTests(unittest.TestCase):
 
     def test_apply_removes_only_full_ids_individually_and_reports_refusal(self) -> None:
         state = self._base_docker_state()
-        first_id, first = self._image("5", "ghcr.io/denkoushi/raspisys-api")
-        second_id, second = self._image("6", "ghcr.io/denkoushi/raspisys-web")
+        first_id, first = self._image("5", f"{GHCR_NAMESPACE}/raspisys-api")
+        second_id, second = self._image("6", f"{GHCR_NAMESPACE}/raspisys-web")
         state["images"].update({first_id: first, second_id: second})
         state["refuse"] = [second_id]
         self.fake.write(state)
@@ -393,10 +395,10 @@ class DockerImageRetentionCliTests(unittest.TestCase):
     def test_exactly_24_hours_old_is_eligible_but_younger_is_not(self) -> None:
         state = self._base_docker_state()
         exact_id, exact = self._image(
-            "5", "ghcr.io/denkoushi/raspisys-api", created="2026-08-31T00:00:00Z"
+            "5", f"{GHCR_NAMESPACE}/raspisys-api", created="2026-08-31T00:00:00Z"
         )
         young_id, young = self._image(
-            "6", "ghcr.io/denkoushi/raspisys-web", created="2026-08-31T00:00:00.000001Z"
+            "6", f"{GHCR_NAMESPACE}/raspisys-web", created="2026-08-31T00:00:00.000001Z"
         )
         state["images"].update({exact_id: exact, young_id: young})
         self.fake.write(state)
@@ -410,7 +412,7 @@ class DockerImageRetentionCliTests(unittest.TestCase):
 
     def test_current_ids_must_be_referenced_by_running_containers(self) -> None:
         state = self._base_docker_state()
-        old_id, old = self._image("5", "ghcr.io/denkoushi/raspisys-api")
+        old_id, old = self._image("5", f"{GHCR_NAMESPACE}/raspisys-api")
         state["images"][old_id] = old
         # Keep the stopped-container set complete, but omit current Web from
         # the running set.  Current identity validation must use running
@@ -434,7 +436,7 @@ class DockerImageRetentionCliTests(unittest.TestCase):
         # reference.  Point current API at the previous API digest while the
         # recorded imageId remains the current API ID.
         document["current"]["api"]["reference"] = release_reference(
-            "ghcr.io/denkoushi/raspisys-api", CURRENT_SHA, full_id("3")
+            f"{GHCR_NAMESPACE}/raspisys-api", CURRENT_SHA, full_id("3")
         )
         self.state_path.write_text(json.dumps(document), encoding="utf-8")
         self.fake.write(state)
@@ -457,9 +459,9 @@ class DockerImageRetentionCliTests(unittest.TestCase):
             document = json.loads(json.dumps(original))
             document[generation][service]["releaseSha"] = release_sha
             repository = (
-                "ghcr.io/denkoushi/raspisys-web"
+                f"{GHCR_NAMESPACE}/raspisys-web"
                 if service == "web"
-                else "ghcr.io/denkoushi/raspisys-api"
+                else f"{GHCR_NAMESPACE}/raspisys-api"
             )
             document[generation][service]["reference"] = release_reference(
                 repository, release_sha, image_id
@@ -478,8 +480,8 @@ class DockerImageRetentionCliTests(unittest.TestCase):
         original = json.loads(self.state_path.read_text(encoding="utf-8"))
         self.fake.write(self._base_docker_state())
         invalid_references = (
-            "ghcr.io/denkoushi/raspisys-api:" + CURRENT_SHA,
-            "ghcr.io/denkoushi/raspisys-api:" + PREVIOUS_SHA + "-aaaaaaaaaaaaaaaa@" + full_id("1"),
+            f"{GHCR_NAMESPACE}/raspisys-api:" + CURRENT_SHA,
+            f"{GHCR_NAMESPACE}/raspisys-api:" + PREVIOUS_SHA + "-aaaaaaaaaaaaaaaa@" + full_id("1"),
         )
         for reference in invalid_references:
             document = json.loads(json.dumps(original))
@@ -497,7 +499,7 @@ class DockerImageRetentionCliTests(unittest.TestCase):
 
     def test_apply_rechecks_current_running_ids_after_deletion(self) -> None:
         state = self._base_docker_state()
-        old_id, old = self._image("5", "ghcr.io/denkoushi/raspisys-api")
+        old_id, old = self._image("5", f"{GHCR_NAMESPACE}/raspisys-api")
         state["images"][old_id] = old
         state["runningAfterRm"] = {"1" * 12: full_id("1")}
         self.fake.write(state)

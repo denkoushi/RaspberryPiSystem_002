@@ -10,8 +10,9 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 BIN_DIR="${TMP_DIR}/bin"
 mkdir -p "${BIN_DIR}"
 
-NFC="ghcr.io/denkoushi/raspisys-nfc-agent"
-TORQUE="ghcr.io/denkoushi/raspisys-torque-agent"
+GHCR_NAMESPACE="$(cd "$ROOT" && python3 -c 'from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE; print(GHCR_NAMESPACE)')"
+NFC="${GHCR_NAMESPACE}/raspisys-nfc-agent"
+TORQUE="${GHCR_NAMESPACE}/raspisys-torque-agent"
 
 # ID, repository, tag, created, last tag time
 cat > "${TMP_DIR}/images.tsv" <<EOF
