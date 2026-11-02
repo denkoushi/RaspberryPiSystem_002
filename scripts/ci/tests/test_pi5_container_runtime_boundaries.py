@@ -2,6 +2,8 @@ from pathlib import Path
 import re
 import unittest
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[3]
 SERVER = (ROOT / "infrastructure/docker/docker-compose.server.yml").read_text()
@@ -38,6 +40,23 @@ def service(compose: str, name: str) -> str:
 
 
 class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
+    def test_compose_log_limits_preserve_stateful_runtime_configuration(self):
+        # These persistent runtimes can remain running on an unchanged deploy.
+        # Adding logging alone would recreate them during Compose convergence.
+        excluded = {"business-hermes", "business-hermes-chat", "business-hermes-answer-cache"}
+        expected = {"driver": "json-file", "options": {"max-size": "10m", "max-file": "3"}}
+        phase3 = yaml.safe_load(PHASE3)
+        self.assertTrue(excluded <= phase3["services"].keys())
+        for filename in ("docker-compose.phase3.yml", "docker-compose.phase3.migration.yml"):
+            compose = yaml.safe_load((ROOT / "infrastructure/docker" / filename).read_text())
+            self.assertEqual(compose["x-default-logging"], expected)
+            for name, config in compose["services"].items():
+                with self.subTest(file=filename, service=name):
+                    if name in excluded:
+                        self.assertNotIn("logging", config)
+                    else:
+                        self.assertEqual(config["logging"], expected)
+
     def test_hermes_worker_runtime_is_staged_and_verified(self):
         self.assertIn(
             "install -D -m 0755 /usr/local/bin/node /opt/hermes-node/bin/node",
