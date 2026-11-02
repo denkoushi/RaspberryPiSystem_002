@@ -13,7 +13,6 @@ import {
   expectApiError
 } from './helpers.js';
 import { prisma } from '../../lib/prisma.js';
-import { resetImageOcrPortForTests } from '../../services/ocr/image-ocr-runtime.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../services/production-schedule/constants.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -22,33 +21,11 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 process.env.PHOTO_STORAGE_DIR ??= '/tmp/test-mobile-placement';
 process.env.SIGNAGE_RENDER_DIR ??= '/tmp/test-mobile-placement/signage';
 
-/** 1x1 PNG（multipart 用） */
+/** 1x1 PNG（棚写真用） */
 const MIN_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64'
 );
-
-function buildMultipartImageField(
-  fieldName: string,
-  filename: string,
-  buf: Buffer,
-  mime: string
-): { body: Buffer; contentType: string } {
-  const boundary = `----testMpImg${Date.now()}`;
-  const crlf = '\r\n';
-  const parts: Buffer[] = [];
-  const push = (s: string) => parts.push(Buffer.from(s, 'utf8'));
-  push(`--${boundary}${crlf}`);
-  push(
-    `Content-Disposition: form-data; name="${fieldName}"; filename="${filename}"${crlf}Content-Type: ${mime}${crlf}${crlf}`
-  );
-  parts.push(buf);
-  push(`${crlf}--${boundary}--${crlf}`);
-  return {
-    body: Buffer.concat(parts),
-    contentType: `multipart/form-data; boundary=${boundary}`
-  };
-}
 
 describe('mobile-placement API', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
@@ -445,51 +422,6 @@ describe('mobile-placement API', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: true, reason: 'match', actualResolvedBy: 'fseiban' });
-  });
-
-  it.each([['BE1N9321', 'exact', false], ['8E1N9321', 'corrected', false], ['8E1N9321', 'corrected', true]] as const)('POST /api/mobile-placement/parse-actual-slip-image snaps %s (%s, neighbour row: %s)', async (raw, match, withNeighbour) => {
-    await prisma.csvDashboard.create({ data: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID, name: 'test schedule', columnDefinitions: {}, templateConfig: {} } });
-    await prisma.csvDashboardRow.create({ data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
-      rowData: { ProductNo: '0002178005', FSEIBAN: ' BE1N9321 ', FHINCD: 'H-1', FSIGENCD: 'G1', FKOJUN: '1' } } });
-    const { apiKey: clientApiKey } = await createTestClientDevice();
-    if (withNeighbour) {
-      await prisma.csvDashboardRow.create({ data: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
-        rowData: { ProductNo: '0002178006', FSEIBAN: 'BE1N9327', FHINCD: 'H-2', FSIGENCD: 'G1', FKOJUN: '1' }
-      } });
-    }
-    const prev = process.env.IMAGE_OCR_STUB_TEXT;
-    process.env.IMAGE_OCR_STUB_TEXT = `製造オーダNo 0002178005\n製番 ${raw}`;
-    resetImageOcrPortForTests();
-    try {
-      const { body, contentType } = buildMultipartImageField('image', 't.png', MIN_PNG, 'image/png');
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/mobile-placement/parse-actual-slip-image',
-        headers: {
-          'Content-Type': contentType,
-          'x-client-key': clientApiKey
-        },
-        payload: body
-      });
-      expect(res.statusCode).toBe(200);
-      const j = res.json() as {
-        engine: string;
-        manufacturingOrder10: string | null;
-        fseiban: string | null;
-      };
-      expect(j).toMatchObject({ fseibanRaw: raw, fseibanMatch: match, fseibanCandidates: withNeighbour && match === 'corrected' ? ['BE1N9321', 'BE1N9327'] : ['BE1N9321'] });
-      expect(j.engine).toBe('stub');
-      expect(j.manufacturingOrder10).toBe('0002178005');
-      expect(j.fseiban).toBe('BE1N9321');
-    } finally {
-      if (prev === undefined) {
-        delete process.env.IMAGE_OCR_STUB_TEXT;
-      } else {
-        process.env.IMAGE_OCR_STUB_TEXT = prev;
-      }
-      resetImageOcrPortForTests();
-    }
   });
 
   it.each([

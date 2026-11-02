@@ -50,8 +50,6 @@ export function MobilePlacementVerifyExpandedPanel(props: PanelProps) {
             onChange: props.onChangeActualPart,
             onScan: props.onScanActualPart
           }}
-          onImageOcr={props.onPickActualSlipImage}
-          imageOcrBusy={props.actualSlipImageOcrBusy}
           ocrFeedback={props.actualSlipOcrFeedback}
         />
       </div>

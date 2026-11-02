@@ -35,7 +35,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   mp: HaizenState; shelves: ReturnType<typeof useRegisteredShelves>;
   sheet: HaizenHubSheet; setSheet: (sheet: HaizenHubSheet) => void;
   branches: ReturnType<typeof useOrderPlacementBranches>;
-  onNavigate: (path: string) => void; onShelfMaster: () => void; onPhoto: () => void;
+  onNavigate: (path: string) => void; onShelfMaster: () => void; onPhoto?: () => void;
 }) {
   const [tab, setTab] = useState<'verify' | 'place'>(() => {
     try { return localStorage.getItem('haizen-tab') === 'place' ? 'place' : 'verify'; } catch { return 'verify'; }
@@ -212,7 +212,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
                 {flow.result === 'ng' ? <><span className="font-mono">{mp.slipDetails?.expected?.fseiban}</span>{' '}{mp.slipDetails?.reason === 'different_seiban' ? '別の製番' : mp.slipDetails?.legacyReason === 'TRANSFER_PART_MISMATCH' ? '移動票の部品番号が違います' : mp.slipDetails?.legacyReason === 'ACTUAL_PART_MISMATCH' ? '現品票の部品番号が違います' : '部品が違います'}</> : flow.result === 'not-found' ? (mp.slipDetails?.reason === 'transfer_not_found' ? 'この製造orderが見つかりません' : mp.slipDetails?.reason === 'part_required' ? '部品番号も読んでください' : 'この注文番号はまだ届いていません') : null}
               </span>
             </section>
-            {flow.result === 'not-found' && <div className="flex shrink-0 gap-2"><button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={onPhoto}>写真で製番</button><button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={() => setSheet('inputs')}>部品番号</button></div>}
+            {flow.result === 'not-found' && <div className="flex shrink-0 gap-2">{onPhoto && <button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={onPhoto}>写真で製番</button>}<button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={() => setSheet('inputs')}>部品番号</button></div>}
           </>}
           <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
             <HaizenShelfPhotoList key={`${mp.transferOrder}:${verifyBranchNo}:${previousShelfCodes.join()}`} compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
