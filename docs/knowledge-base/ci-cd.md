@@ -831,7 +831,7 @@ update-frequency: high
 
 ---
 
-### [KB-435] kiosk-sop の firefox E2E が取説の「次へ」の後で止まり 120 秒で失敗する
+### [KB-436] kiosk-sop の firefox E2E が取説の「次へ」の後で止まり 120 秒で失敗する
 
 **発生日**: 2026-11-02
 
