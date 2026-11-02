@@ -28,6 +28,10 @@
 - [ ] M4: NFC・バーコード・配膳端末の記録を、サーバーが受け取るまで端末に残す。
 - [ ] M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 にイメージの中継キャッシュを置く。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
+  - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
+  - [ ] Step 2: rpi-image-gen で共通 OS イメージを作る。
+  - [ ] Step 3: 初回起動の登録を整える。
+  - [ ] Step 4: 実機で差し替え訓練を行い、30分以内か測る。
 - [ ] M7: 端末側の Docker ログの上限と、SD カード保護の試行。
   - [x] (2026-11-02) Step 1: Pi5 phase3・migration、kiosk template、client Compose に json-file 10m × 3 の上限を実装。状態を持つ `business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache` は追加再作成を避けるため除外。
   - [ ] 本番適用と `docker inspect` 確認（gateway は標準更新で再作成しないため別途適用が必要）、高耐久 SD・USB SSD・読み取り専用ルートの試行。
