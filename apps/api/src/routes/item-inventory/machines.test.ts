@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => ({
   db: {
+    productionScheduleResourceMaster: { findMany: vi.fn() },
     clientDevice: { findUnique: vi.fn() },
     machine: { findMany: vi.fn(), findUnique: vi.fn() },
     machineNfcTag: { findUnique: vi.fn() },
@@ -26,7 +27,7 @@ import { registerItemInventoryRoutes } from './index.js';
 
 const machineId = 'a0000000-0000-4000-8000-000000000001';
 const compartmentId = 'c0000000-0000-4000-8000-000000000001';
-const machine = { id: machineId, name: '旋盤', shortName: '旋', equipmentManagementNumber: '001', siteKey: 'a' };
+const machine = { id: machineId, name: '旋盤', shortName: '旋', equipmentManagementNumber: '001', resourceCd: null };
 async function request(options: InjectOptions) {
   const app = Fastify();
   registerErrorHandler(app);
@@ -38,6 +39,7 @@ async function request(options: InjectOptions) {
 beforeEach(() => {
   vi.resetAllMocks();
   db.clientDevice.findUnique.mockImplementation(async ({ where }) => where.apiKey === 'key' || where.id === 'd' ? { id: 'd', siteKey: 'a' } : null);
+  db.productionScheduleResourceMaster.findMany.mockResolvedValue([{ resourceCd: 'S001', resourceGroupCd: 'S-1' }]);
   db.machine.findUnique.mockResolvedValue(machine);
   db.machine.findMany.mockResolvedValue([machine]);
   db.kioskInventoryMachineOrder.findMany.mockResolvedValue([]);
@@ -55,36 +57,40 @@ describe('inventory machine API', () => {
   });
 
   it('lists machines and saves the terminal order without a settings password', async () => {
+    db.clientDevice.findUnique.mockResolvedValue({ id: 'd', siteKey: null });
+    db.machine.findMany.mockResolvedValue([machine, { ...machine, id: 'sendai', resourceCd: 'S001' }]);
     const listed = await request({ method: 'GET', url: '/item-inventory/machines' });
     expect(listed.statusCode).toBe(200);
     expect(listed.json().machines).toMatchObject([{ id: machineId }]);
+    expect(listed.json().machines).toHaveLength(1);
+    db.machine.findMany.mockResolvedValue([machine]);
     const saved = await request({ method: 'PUT', url: '/item-inventory/machines/order', payload: { machineIds: [machineId] } });
     expect(saved.statusCode).toBe(200);
     expect(saved.json()).toEqual({ success: true });
   });
 
-  it('returns 400 for outside-site order IDs', async () => {
-    db.machine.findMany.mockResolvedValue([]);
+  it('returns 400 for Sendai order IDs', async () => {
+    db.machine.findMany.mockResolvedValue([{ ...machine, resourceCd: 'S001' }]);
     expect((await request({ method: 'PUT', url: '/item-inventory/machines/order', payload: { machineIds: [machineId] } })).statusCode).toBe(400);
   });
 
-  it('resolves MACHINE and hides machines from another site', async () => {
+  it('resolves MACHINE and hides Sendai machines', async () => {
     db.machineNfcTag.findUnique.mockResolvedValue({ machine });
     const resolved = await request({ method: 'GET', url: '/item-inventory/tags/resolve?uid=ABCD' });
     expect(resolved.statusCode).toBe(200);
     expect(resolved.json()).toEqual({ tag: { kind: 'MACHINE', machine: { id: machineId, name: '旋盤', shortName: '旋' } } });
-    db.machineNfcTag.findUnique.mockResolvedValue({ machine: { ...machine, siteKey: 'b' } });
+    db.machineNfcTag.findUnique.mockResolvedValue({ machine: { ...machine, resourceCd: ' s001 ' } });
     expect((await request({ method: 'GET', url: '/item-inventory/tags/resolve?uid=ABCD' })).json()).toEqual({ tag: null });
   });
 
-  it.each(['transactions', 'touch-transactions'])('accepts optional machineId and rejects another site for %s', async path => {
+  it.each(['transactions', 'touch-transactions'])('accepts optional machineId and rejects Sendai for %s', async path => {
     db.inventoryNfcTag.findUnique.mockImplementation(async ({ where }) => where.uid === 'item' ? { kind: 'ITEM', compartmentId } : { id: 'q', kind: 'QUANTITY', quantity: 1 });
     const payload = path === 'transactions' ? { itemTagUid: 'item', quantityTagUid: 'q' } : { compartmentId, quantity: 1 };
     const options = { method: 'POST' as const, url: `/item-inventory/${path}` };
     const withMachine = await request({ ...options, payload: { ...payload, machineId } });
     expect(withMachine.statusCode).toBe(200);
     expect(withMachine.json().transaction.machineId).toBe(machineId);
-    db.machine.findUnique.mockResolvedValue({ ...machine, siteKey: 'b' });
+    db.machine.findUnique.mockResolvedValue({ ...machine, resourceCd: ' s001 ' });
     expect((await request({ ...options, payload: { ...payload, machineId } })).statusCode).toBe(400);
     const without = await request({ ...options, payload });
     expect(without.statusCode).toBe(200);

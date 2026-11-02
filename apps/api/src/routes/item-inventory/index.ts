@@ -205,7 +205,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
 
   app.get('/item-inventory/tags/resolve', { preHandler: [read] }, async (request) => {
     const query = uidQuery.parse(request.query ?? {});
-    return { tag: await services.inventory.resolveTag(query.uid, (await actor(request)).clientId) };
+    return { tag: await services.inventory.resolveTag(query.uid) };
   });
 
   app.get('/item-inventory/compartments/by-label/:labelNumber', { preHandler: [read] }, async (request) => {

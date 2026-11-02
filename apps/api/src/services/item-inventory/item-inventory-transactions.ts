@@ -1,4 +1,4 @@
-import { assertMachineForClient } from './item-inventory-machines.js';
+import { assertMishimaMachine } from './item-inventory-machines.js';
 import { Prisma, PrismaClient, InventoryNfcTagKind, InventoryTransactionAction } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { TRANSACTION_INCLUDE, positiveInteger, nonNegativeInteger, assertNfcUidAvailable, runSerializable } from './item-inventory.helpers.js';
@@ -120,7 +120,7 @@ export async function processStockTransaction(
         const prior = await tx.inventoryTransaction.findFirst({ where: { clientId: input.actor.clientId, idempotencyKey: input.idempotencyKey }, include: TRANSACTION_INCLUDE });
         if (prior) return { transaction: prior, replayed: true };
       }
-      if (input.machineId) await assertMachineForClient(tx, input.machineId, input.actor?.clientId);
+      if (input.machineId) await assertMishimaMachine(tx, input.machineId);
       const movement = await resolveMovement(tx);
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${movement.compartmentId} FOR UPDATE`);
       if (input.expectedCompartmentId !== undefined && input.expectedCompartmentId !== movement.compartmentId) {

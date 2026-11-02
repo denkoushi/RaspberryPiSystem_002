@@ -2,7 +2,7 @@ import axios from 'axios';
 import { FormEvent, Fragment, useEffect, useRef, useState } from 'react';
 
 import { getApiErrorMessage } from '../../api/errors';
-import { useMachineMutations, useMachines, useMachineResourceChoices, useSites } from '../../api/hooks';
+import { useMachineMutations, useMachines, useMachineResourceChoices } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -15,7 +15,6 @@ const initialForm = {
   equipmentManagementNumber: '',
   name: '',
   shortName: '',
-  siteKey: '',
   classification: '',
   operatingStatus: '',
   ncManual: '',
@@ -29,7 +28,6 @@ export function MachinesPage() {
   const [search, setSearch] = useState('');
   const [operatingStatusFilter, setOperatingStatusFilter] = useState<string>('');
   const { data, isLoading } = useMachines({ search: search || undefined, operatingStatus: operatingStatusFilter || undefined });
-  const sites = useSites();
   const resourceChoices = useMachineResourceChoices();
   const { create, update, remove, addTag, removeTag } = useMachineMutations();
   const confirm = useConfirm();
@@ -66,7 +64,6 @@ export function MachinesPage() {
           payload: {
             name: form.name,
             resourceCd: form.resourceCd || null,
-          siteKey: form.siteKey || null,
             shortName: form.shortName || undefined,
             classification: form.classification || undefined,
             operatingStatus: form.operatingStatus || undefined,
@@ -81,7 +78,6 @@ export function MachinesPage() {
           equipmentManagementNumber: form.equipmentManagementNumber,
           name: form.name,
           resourceCd: form.resourceCd || null,
-          siteKey: form.siteKey || null,
           shortName: form.shortName || undefined,
           classification: form.classification || undefined,
           operatingStatus: form.operatingStatus || undefined,
@@ -104,7 +100,6 @@ export function MachinesPage() {
     setForm({
       equipmentManagementNumber: machine.equipmentManagementNumber,
       name: machine.name,
-      siteKey: machine.siteKey ?? '',
       resourceCd: machine.resourceCd ?? '',
       shortName: machine.shortName ?? '',
       classification: machine.classification ?? '',
@@ -186,13 +181,6 @@ export function MachinesPage() {
           <label className="text-sm font-semibold text-slate-700">
             加工機略称
             <Input value={form.shortName} onChange={(e) => setForm({ ...form, shortName: e.target.value })} />
-          </label>
-          <label className="text-sm font-semibold text-slate-700">工場
-            <select className="block rounded-md border-2 border-slate-500 bg-white px-3 py-2 text-slate-900" value={form.siteKey} disabled={sites.isLoading || sites.isError} onChange={event => setForm({ ...form, siteKey: event.target.value })}>
-              <option value="">未設定</option>
-              {sites.data?.map(site => <option key={site.key} value={site.key}>{site.displayName}</option>)}
-            </select>
-            {sites.isError ? <span role="alert" className="text-red-700">工場の取得に失敗しました</span> : null}
           </label>
           <label className="text-sm font-semibold text-slate-700">
             加工機分類
@@ -305,7 +293,7 @@ export function MachinesPage() {
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.name}</td>
                     <td className="px-2 py-1 font-mono text-sm text-slate-700">{machine.resourceCd ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.shortName ?? '-'}</td>
-                    <td className="px-2 py-1 text-sm text-slate-700">{machine.site?.displayName ?? ''}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{machine.factory === 'SENDAI' ? '仙台工場' : '三島工場'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.classification ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.operatingStatus ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.maker ?? '-'}</td>
