@@ -382,3 +382,31 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
     await c.release('document_summary');
   });
 });
+
+
+describe('DGX business selection authority', () => {
+  it.each(['document_summary', 'photo_label'] as const)('restores selected DeepSeek for %s without a fixed profile', async (useCase) => {
+    resetMainLocalLlmRuntimeControlQueueForTests();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      if (String(input).endsWith('/system/model-profiles')) return Response.json({ activeProfileId: 'business_deepseek_v41_flash_tp2',
+        state: { selectedBusinessProfileId: 'business_deepseek_v41_flash_tp2', selectionRevision: 9,
+          businessTransition: 'ready', runtimeReadyCapabilities: ['text'] } });
+      return new Response('ok', { status: 200 });
+    });
+    const deps = { fetchImpl, startUrl: 'http://cp.test/start', stopUrl: 'http://cp.test/stop', controlToken: 'ctrl',
+      healthCheckBaseUrl: 'http://cp.test', llmToken: 'business', readyTimeoutMs: 1000, startRequestTimeoutMs: 1000,
+      stopRequestTimeoutMs: 1000, healthPollIntervalMs: 1,
+      runtimeIntentEnv: { runtimeStartProfileEnabled: true, businessDeepseekSwitchEnabled: true,
+        businessRuntimeStartProfileId: 'old-glm', photoLabelRuntimeStartProfileId: 'photo-glm' },
+      provider: { ...testProvider, runtimeStartProfileId: 'provider-glm' } };
+    // A new instance after API restart still restores the DGX-selected profile.
+    for (let restart = 0; restart < 2; restart += 1) {
+      const controller = new HttpOnDemandLocalLlmRuntimeController(deps);
+      if (useCase === 'photo_label') await expect(controller.ensureReady(useCase)).rejects.toThrow('lacks vision');
+      else await controller.ensureReady(useCase);
+    }
+    const calls = fetchImpl.mock.calls.filter(([url]) => String(url).endsWith('/start'));
+    expect(calls).toHaveLength(2);
+    for (const [, init] of calls) expect(JSON.parse(String(init?.body))).toEqual({ reason: 'business-restore' });
+  });
+});
