@@ -3,7 +3,7 @@
 # have no linux/arm/v7 wheels, and compiling them under QEMU took 23-37 minutes
 # of every uncached Pi4 agent build. The target stage installs only what
 # poetry.lock names, and pip verifies each file against the lock's hashes.
-FROM --platform=$BUILDPLATFORM python:3.13-slim AS lock-export
+FROM --platform=$BUILDPLATFORM python:3.15-slim AS lock-export
 WORKDIR /export
 RUN pip install --no-cache-dir poetry==2.4.1 poetry-plugin-export==1.10.1
 COPY clients/torque-agent/pyproject.toml clients/torque-agent/poetry.lock ./
@@ -11,7 +11,7 @@ RUN poetry export --only main --format requirements.txt --output requirements.tx
 COPY clients/torque-agent/README.md ./README.md
 COPY clients/torque-agent/torque_agent ./torque_agent
 RUN poetry build --format wheel
-FROM python:3.13-slim AS builder
+FROM python:3.15-slim AS builder
 WORKDIR /build
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -25,7 +25,7 @@ COPY --from=lock-export /export/dist ./dist
 RUN pip install --no-cache-dir --no-deps dist/*.whl \
   && python -m pip uninstall --yes pip setuptools wheel
 
-FROM python:3.13-slim AS runtime
+FROM python:3.15-slim AS runtime
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
