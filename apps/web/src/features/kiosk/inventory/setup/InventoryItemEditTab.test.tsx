@@ -64,21 +64,22 @@ describe('InventoryItemEditTab', () => {
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-  it('searches padded labels, highlights matching text and jumps to shelf groups', () => {
-    const scroll = vi.fn();
-    vi.stubGlobal('HTMLElement', window.HTMLElement);
-    window.HTMLElement.prototype.scrollIntoView = scroll;
+  it('searches padded labels, highlights matches and selects shelves in the tree', () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
     const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
     fireEvent.change(list.getByLabelText('品名・型式・番号で探す'), { target: { value: '００４２' } });
     expect(list.getByRole('button', { name: /治具A/ })).toHaveTextContent('0042');
     expect(list.queryByRole('button', { name: /ItemlistRaspi/ })).not.toBeInTheDocument();
     expect(list.getByText('0042').tagName).toBe('MARK');
-    fireEvent.click(list.getByRole('button', { name: `${area}・棚1` }));
-    expect(scroll).toHaveBeenCalledWith({ block: 'start' });
+    fireEvent.click(list.getByRole('button', { name: `${area}・棚1 1件` }));
+    expect(list.getByRole('button', { name: `${area}・棚1 1件` })).toHaveAttribute('aria-pressed', 'true');
+    expect(list.queryByRole('heading', { level: 3 })).not.toBeInTheDocument();
     fireEvent.change(list.getByLabelText('品名・型式・番号で探す'), { target: { value: '治具' } });
     expect(list.getByText('治具').tagName).toBe('MARK');
-    delete (window.HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;
+    expect(list.getByRole('button', { name: 'すべて 1件' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(list.getByRole('button', { name: '消す' }));
+    expect(list.getByLabelText('品名・型式・番号で探す')).toHaveValue('');
+    expect(list.getByRole('button', { name: /ItemlistRaspi/ })).toBeInTheDocument();
   });
 
   it('filters departments and scopes the board by the first placement, not imported area', () => {
@@ -100,11 +101,44 @@ describe('InventoryItemEditTab', () => {
     } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
   });
 
+  it('keeps empty tree nodes visible and counts after search and provisional filtering', () => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
+    fireEvent.click(list.getByRole('button', { name: '仮名だけ 1件' }));
+    const shelf = list.getByRole('button', { name: `${area}・棚1 0件` });
+    expect(shelf).toHaveClass('opacity-[0.32]');
+    expect(list.getByRole('button', { name: 'すべて 1件' })).toBeInTheDocument();
+    expect(list.queryByRole('button', { name: /治具A/ })).not.toBeInTheDocument();
+    fireEvent.click(shelf);
+    expect(list.getByText('見つかりません')).toBeInTheDocument();
+    fireEvent.change(list.getByLabelText('品名・型式・番号で探す'), { target: { value: '治具' } });
+    expect(list.getByRole('button', { name: 'すべて 0件' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(list.getByRole('button', { name: '仮名だけ 1件' }));
+    expect(list.getByText('治具').tagName).toBe('MARK');
+    expect(list.getByRole('button', { name: `${area}・棚1 1件` })).not.toHaveClass('opacity-[0.32]');
+  });
+
+  it('shows shelf headings for a department and keeps deletion in its confirmation flow', async () => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
+    fireEvent.click(list.getByRole('button', { name: `${area} 1件` }));
+    expect(list.getByRole('heading', { level: 3, name: `${area}・棚1 1件` })).toBeInTheDocument();
+    fireEvent.click(list.getByRole('button', { name: /治具A/ }));
+    expect(screen.getByRole('heading', { name: '治具A' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'アイテムを削除' }));
+    expect(mutations.deleteItem.mutateAsync).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(screen.queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'アイテムを削除' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '削除する' })); });
+    expect(mutations.deleteItem.mutateAsync).toHaveBeenCalledWith('item-1');
+  });
+
   it('keeps replacement open with the usage location and accepts a different manual UID', async () => {
     mutations.replaceTag.mutateAsync.mockRejectedValueOnce({ response: { data: { message: 'このUIDは既に使用されています', details: { usedBy: { itemName: 'ドリル', area: '生産技術課 北', shelfNumber: 2, drawerNumber: 3 } } } } });
     render(<InventoryItemEditTab accessPassword="2520" />);
     fireEvent.click(within(screen.getByRole('navigation', { name: 'アイテム一覧' })).getByRole('button', { name: /治具A/ }));
-    expect(screen.getByText('…tag-1')).toBeInTheDocument();
+    expect(screen.getByText('タグ …tag-1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'タグを交換' }));
     expect(screen.getByText('新しい品物タグをかざす')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'IDを手で入れる' }));

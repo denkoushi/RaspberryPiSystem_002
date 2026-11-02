@@ -70,5 +70,6 @@ docker run --rm --init --ipc=host --network=none --platform "$generator_platform
       --preview /workspace/docs/design-previews/kiosk-assembly-procedure-template-sop.html \
       --diagnostics-root /diagnostics/assembly
     # One worker per browser project: the same 18 tests, Chromium and Firefox side by side.
-    pnpm exec playwright test --config=playwright.kiosk-sop.config.ts --workers=2
+    pnpm exec playwright test --config=playwright.kiosk-sop.config.ts --workers=2 \
+      --output=/diagnostics/playwright-test-results
   '

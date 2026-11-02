@@ -8,8 +8,11 @@ import { ganttResourceLabel } from './ganttResourceLabel';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { Ref } from 'react';
 
 type Props = {
+  ref?: Ref<HTMLDivElement>;
+  bottom: number;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
   completionPendingRowIds?: ReadonlySet<string>;
   disabled?: boolean;
@@ -19,9 +22,9 @@ type Props = {
   onStep: (bar: GanttBar) => void;
   onClose: () => void;
 };
-export function PlanningBoardChainStrip({ bars, resourceNameMap, currentItemId, onStep, onClose, onCompleteToggle, completionPendingRowIds, disabled }: Props) {
+export function PlanningBoardChainStrip({ ref, bottom, bars, resourceNameMap, currentItemId, onStep, onClose, onCompleteToggle, completionPendingRowIds, disabled }: Props) {
   const part = bars[0]!.item;
-  return <div data-testid="planning-gantt-chain-strip" role="region" aria-label="工程のつながり" className="flex items-center gap-3 overflow-x-auto border-b border-slate-700 bg-slate-950 p-2 text-xs text-slate-100">
+  return <div ref={ref} style={{ bottom }} data-testid="planning-gantt-chain-strip" role="region" aria-label="工程のつながり" className="absolute inset-x-0 z-50 flex items-center gap-3 overflow-x-auto border-t border-slate-700 bg-slate-950 p-2 shadow-[0_-4px_12px_rgb(0_0_0/0.35)] text-xs text-slate-100">
     <div className="shrink-0">
       <strong className="text-base">{part.fhinmei || part.fhincd}</strong>
       <div className="text-sm text-white">{part.fseiban} · {part.fhincd} · {bars.length}工程</div>

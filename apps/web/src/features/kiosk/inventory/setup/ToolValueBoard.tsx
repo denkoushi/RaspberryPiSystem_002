@@ -81,7 +81,7 @@ function Slot({ label, value, draftValue, required, disabled, onCommit, onClear 
         ref={input}
         aria-label={`${label}の値`}
         placeholder="—"
-        className={`${field} h-11 w-full border-inv-line2 pl-3 pr-12 text-[15px] font-bold focus:border-inv-cyan`}
+        className={`${field} h-11 w-full border-inv-line2 pl-2 pr-11 text-[14px] font-bold focus:border-inv-cyan`}
         value={text}
         disabled={disabled}
         onChange={(event) => setText(event.target.value)}
@@ -181,13 +181,13 @@ export function ToolValueBoard({ scope = 'default', accessPassword, current, dra
   const rowClass = `flex min-h-11 min-w-11 shrink-0 items-center gap-1.5 rounded-lg border py-[5px] text-left leading-snug ${dense ? 'pl-2 pr-1.5' : 'pl-2.5 pr-1.5'}`;
   const lanes = dense
     ? 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)_minmax(0,0.85fr)_minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,0.9fr)]'
-    : 'grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,1.7fr)_minmax(0,1fr)]';
+    : 'grid-cols-[minmax(0,1.7fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,1.3fr)_minmax(0,0.85fr)]';
 
   return (
     <section
       role={onClose ? 'dialog' : undefined}
       aria-label="名前・工具情報"
-      className={`flex min-h-0 flex-col gap-3 rounded-[18px] border bg-inv-s1 px-[18px] pb-[18px] pt-3.5 text-inv-text ${organizing ? 'border-inv-amber/60' : dense ? 'border-inv-line2' : 'border-inv-line'} ${className}`}
+      className={`flex min-h-0 flex-col gap-3 rounded-[18px] border bg-inv-s1 ${dense ? 'px-[18px] pb-[18px]' : 'px-3.5 pb-3.5'} pt-3.5 text-inv-text ${organizing ? 'border-inv-amber/60' : dense ? 'border-inv-line2' : 'border-inv-line'} ${className}`}
     >
       <div className="flex h-11 shrink-0 items-center gap-3">
         <h3 className="text-[15px] font-black">名前・工具情報</h3>
@@ -205,7 +205,7 @@ export function ToolValueBoard({ scope = 'default', accessPassword, current, dra
         </button>
         {onClose ? <button type="button" className={`${iconButton} h-11 w-11`} aria-label="閉じる" onClick={onClose}><CloseIcon /></button> : null}
       </div>
-      <div className={`grid min-h-0 flex-1 gap-2 ${lanes}`}>
+      <div className={`grid min-h-0 flex-1 ${dense ? 'gap-2' : 'gap-1.5'} ${lanes}`}>
         {TOOL_BOARD_COLUMNS.map((column) => {
           const choices = toolValueOptions(column.key, options.data?.[column.key] ?? []);
           const value = current[column.key];
@@ -213,7 +213,7 @@ export function ToolValueBoard({ scope = 'default', accessPassword, current, dra
           const shown = provisional ? '' : value;
           const tone = organizing ? 'border-transparent' : provisional ? 'border-inv-amber/45' : shown ? 'border-inv-cyan/35' : 'border-transparent';
           return (
-            <div key={column.key} role="group" aria-label={column.label} className={`flex min-h-0 min-w-0 flex-col gap-1.5 rounded-xl border bg-inv-s2/60 ${dense ? 'p-1.5' : 'p-2'} ${tone}`}>
+            <div key={column.key} role="group" aria-label={column.label} className={`flex min-h-0 min-w-0 flex-col gap-1.5 rounded-xl border bg-inv-s2/60 p-1.5 ${tone}`}>
               <div className="flex h-[18px] items-center gap-1.5 px-0.5">
                 <span className={invEyebrow}>{column.label}</span>
                 {provisional ? <span className="rounded-[5px] bg-inv-amber/[0.12] px-1.5 text-[10.5px] font-bold tracking-[0.08em] text-inv-amber">仮名</span> : null}
@@ -233,7 +233,7 @@ export function ToolValueBoard({ scope = 'default', accessPassword, current, dra
               <div className="flex h-12 shrink-0 items-center overflow-hidden text-sm leading-4">
                 {error && errorField === column.key ? <p role="alert" className={`line-clamp-2 ${invError}`}>{error}</p> : statusField === column.key ? status : null}
               </div>
-              <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto border-t border-dashed border-inv-line pt-1.5">
+              <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pb-[22px] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(#000_calc(100%-22px),transparent)] border-t border-dashed border-inv-line pt-1.5">
                 {organizing ? (
                   <>
                     {(values.data?.[column.key] ?? []).map((entry) => {
@@ -286,7 +286,7 @@ export function ToolValueBoard({ scope = 'default', accessPassword, current, dra
                   </>
                 ) : (
                   <>
-                    {choices.length === 0 ? <span className="px-0.5 py-2 text-[13px] text-inv-faint">まだありません</span> : null}
+                    {choices.length === 0 ? <span className="px-0.5 py-2 text-[13px] text-inv-faint"><span className="inline-block">まだ</span><span className="inline-block">ありません</span></span> : null}
                     {choices.map((option) => {
                       const on = column.key === 'name' ? shown === option : splitToolValues(shown).includes(option);
                       return (

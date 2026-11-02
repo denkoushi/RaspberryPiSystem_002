@@ -235,6 +235,28 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('keeps previous rows mounted and locked while the completion filter is loading', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
+    const row = screen.getByTestId('planning-board-item-a');
+    mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isFetching: true,
+      isPlaceholderData: true, scopeReady: false, hasStableData: false, refetch: mocks.refetch });
+    fireEvent.click(screen.getByRole('button', { name: '完了', exact: true }));
+    expect(screen.getByTestId('planning-board-item-a')).toBe(row);
+    expect(within(row).getByRole('checkbox')).toBeDisabled();
+  });
+
+  it('keeps resource scroll containers mounted when category changes', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    openListView();
+    const row = screen.getByTestId('planning-board-item-a');
+    const scroll = row.closest('[data-resource-scroll]')!;
+    scroll.scrollTop = 120;
+    fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
+    expect(screen.getByTestId('planning-board-item-a').closest('[data-resource-scroll]')).toBe(scroll);
+    expect(scroll.scrollTop).toBe(120);
+  });
+
   it('provides loaded part chips and hides them after a chip fetch error without breaking the board', () => {
     const data = { chipsByPartKey: { ['26-1041\0PRODUCT-a\0PART-a']: [{ rowId: 'chip-a', resourceCd: 'CHIP-305', isCompleted: true }] } };
     mocks.processChips.mockReturnValue({ data, isError: false });

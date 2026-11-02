@@ -1,3 +1,4 @@
+import { listMachines, saveMachineOrder } from './item-inventory-machines.js';
 import type { InventoryToolScope, InventoryVariantField } from '@raspi-system/shared-types';
 import { Prisma, PrismaClient, InventoryImportPayloadStatus } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
@@ -23,6 +24,10 @@ export class ItemInventoryService {
   private async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> { return runSerializable(this.db, work); }
 
   async resolveTag(uid: string) { return resolveTag(this.db, uid); }
+
+  async listMachines(clientId: string) { return listMachines(this.db, clientId); }
+
+  async saveMachineOrder(clientId: string, machineIds: string[]) { return saveMachineOrder(this.db, clientId, machineIds); }
 
   async resolveCompartmentByLabelNumber(labelNumber: number) { return resolveCompartmentByLabelNumber(this.db, labelNumber); }
 
@@ -149,6 +154,7 @@ export class ItemInventoryService {
     quantityTagUid: string;
     restockTagUid?: string;
     restock: boolean;
+    machineId?: string;
     idempotencyKey?: string;
     actor?: InventoryActor;
   }) { return processTransaction(this.db, input); }
@@ -158,12 +164,13 @@ export class ItemInventoryService {
     quantity: number;
     restock?: boolean;
     expectedBeforeQuantity?: number;
+    machineId?: string;
     idempotencyKey?: string;
     actor?: InventoryActor;
   }) { return processTouchTransaction(this.db, input); }
 
   private async processStockTransaction(
-    input: { restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
+    input: { machineId?: string; restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
     resolveMovement: (tx: Prisma.TransactionClient) => Promise<{
       compartmentId: string;
       quantity: number;

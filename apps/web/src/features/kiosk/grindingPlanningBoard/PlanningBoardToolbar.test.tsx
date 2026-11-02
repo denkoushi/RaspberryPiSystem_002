@@ -12,6 +12,13 @@ const props = (): PlanningBoardToolbarProps => ({
   onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
+  it('reserves the same toolbar height across Gantt and focus controls', () => {
+    const values = props();
+    const { container, rerender } = render(<PlanningBoardToolbar {...values} />);
+    expect(container.firstElementChild).toHaveClass('h-[66px]');
+    rerender(<PlanningBoardToolbar {...values} ganttEnabled={false} focusedSeiban="26-1041" />);
+    expect(container.firstElementChild).toHaveClass('h-[66px]');
+  });
   it.each([false, true])('keeps the icon-only scan control outside the Gantt group with gantt=%s', (ganttEnabled) => {
     render(<PlanningBoardToolbar {...props()} ganttEnabled={ganttEnabled} onOrderScan={() => null} />);
     const scan = screen.getByRole('button', { name: '移動票で製番を探す' });

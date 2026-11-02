@@ -3,7 +3,6 @@ import { extractManufacturingOrder10 } from '../../services/mobile-placement/gen
 import { buildActualSlipOcrPreviewSafe } from '../../services/mobile-placement/actual-slip-ocr-preview.js';
 import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
-import type { MultipartFile } from '@fastify/multipart';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
@@ -15,7 +14,6 @@ import { registerMobileScanFrameRoutes } from './scan-frames.js';
 import { registerMobileVerifyRecordRoutes } from './verify-records.js';
 import { registerOrderTrailRoutes } from './order-trail.js';
 import { registerMobilePlacementScheduleRoute } from './schedule-list.js';
-import { parseActualSlipImageFromUpload } from '../../services/mobile-placement/actual-slip-image-ocr.service.js';
 import { registerPlacement, resolveItemByBarcode } from '../../services/mobile-placement/mobile-placement.service.js';
 import { registerOrderPlacement } from '../../services/mobile-placement/mobile-placement-order-placement.service.js';
 import { registerEdgeScan } from '../../services/mobile-placement/edge-scan.service.js';
@@ -53,7 +51,6 @@ import {
   replaceShelfLayoutZone
 } from '../../services/mobile-placement/shelf-layout-edit.service.js';
 import { relocateMobilePlacementShelf } from '../../services/mobile-placement/shelf-relocate.service.js';
-import type { ImageOcrMimeType } from '../../services/ocr/ports/image-ocr.port.js';
 
 const snapFseibanTokensBodySchema = z.object({
   tokens: z.array(z.string().min(1).max(32)).min(1).max(50),
@@ -99,26 +96,6 @@ const verifySlipMatchBodySchema = z
       });
     }
   });
-
-async function readMultipartFile(part: MultipartFile): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of part.file) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
-}
-
-function inferImageMimeFromMimeAndFilename(mimetype: string, filename: string): ImageOcrMimeType {
-  const m = mimetype.toLowerCase();
-  if (m.includes('jpeg') || m.includes('jpg')) return 'image/jpeg';
-  if (m.includes('png')) return 'image/png';
-  if (m.includes('webp')) return 'image/webp';
-  const lower = filename.toLowerCase();
-  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  return 'image/jpeg';
-}
 
 const registerOrderPlacementBodySchema = z.object({
   branchNo: z.number().int().min(0).max(5).optional(),
@@ -467,74 +444,6 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     });
     return result;
   });
-
-  /**
-   * 現品票の撮影画像から OCR し、製造order（10桁）と製番（FSEIBAN）候補を返す（副作用なし）。
-   */
-  app.post(
-    '/mobile-placement/parse-actual-slip-image',
-    { config: { rateLimit: false } },
-    async (request: FastifyRequest) => {
-      await requireClientDevice(request.headers['x-client-key']);
-      if (!request.isMultipart()) {
-        throw new ApiError(
-          400,
-          'multipart/form-data が必要です',
-          undefined,
-          'MOBILE_PLACEMENT_MULTIPART_REQUIRED'
-        );
-      }
-      let fileBuffer: Buffer | null = null;
-      let mime = '';
-      let filename = '';
-      const parts = request.parts();
-      for await (const part of parts) {
-        if (part.type === 'file' && part.fieldname === 'image') {
-          fileBuffer = await readMultipartFile(part as MultipartFile);
-          mime = part.mimetype;
-          filename = part.filename || '';
-        }
-      }
-      if (!fileBuffer) {
-        throw new ApiError(400, '画像ファイルが必要です', undefined, 'MOBILE_PLACEMENT_IMAGE_REQUIRED');
-      }
-      const imageMime = inferImageMimeFromMimeAndFilename(mime, filename);
-      const result = await parseActualSlipImageFromUpload({
-        imageBytes: fileBuffer,
-        mimeType: imageMime,
-        requestId: request.id
-      });
-      let snap: FseibanSnapResult = { match: 'none', fseiban: null, candidates: [] };
-      try {
-        const known = await getKnownFseibans();
-        snap = snapFseiban(result.fseibanOcrTokens, known);
-      } catch {
-        request.log.warn({ route: 'parse-actual-slip-image' }, 'FSEIBAN lookup unavailable; using OCR result');
-      }
-      request.log.info(
-        {
-          route: 'parse-actual-slip-image',
-          fseibanMatch: snap.match,
-          fseibanCandidateCount: snap.candidates.length,
-          ocrTextChars: result.ocrText.length,
-          hasManufacturingOrder10: result.manufacturingOrder10 != null,
-          hasFseiban: result.fseiban != null,
-          engine: result.engine
-        },
-        'parse-actual-slip-image completed'
-      );
-      return {
-        engine: result.engine,
-        ocrText: result.ocrText,
-        ocrPreviewSafe: result.ocrPreviewSafe,
-        manufacturingOrder10: result.manufacturingOrder10,
-        fseibanRaw: result.fseiban,
-        fseibanMatch: snap.match,
-        fseibanCandidates: snap.candidates,
-        fseiban: snap.fseiban ?? result.fseiban
-      };
-    }
-  );
 
   app.post('/mobile-placement/snap-fseiban-tokens', { config: { rateLimit: false } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);

@@ -1,5 +1,7 @@
 # 配膳スマホ（Android）セットアップ・検証 Runbook
 
+2026-11-02: `parse-actual-slip-image` と固定ROIのサーバ写真OCRを削除。写真読取はAndroid ML Kit → `snap-fseiban-tokens` のみで、通常ブラウザには写真読取ボタンを表示しない。以下の旧写真OCR・ファイル入力の記述は当時の履歴。現行契約は [API仕様](../api/mobile-placement.md#post-apimobile-placementsnap-fseiban-tokens) を参照。
+
 ## 棚名を加工機・方角へ切り替える
 
 - 新規棚は `加工機名 方角`（例: `DAD-3220 北`）で登録する。番号は付けず、同じ組合せは409で拒否する。
@@ -124,7 +126,7 @@ curl -sk -X PATCH "https://<Pi5>/api/mobile-placement/order-placement-branches/<
   -H "Content-Type: application/json" -H "x-client-key: <key>" \
   -d '{"shelfCodeRaw":"西-北-03"}'
 
-# 現品票画像 OCR（multipart・JPEG/PNG/WebP）
+# 旧現品票画像 OCR（2026-11-02 に削除。以下は履歴・実行不可）
 curl -sk -X POST "https://<Pi5>/api/mobile-placement/parse-actual-slip-image" \
   -H "x-client-key: <key>" -F "image=@/path/to/slip.jpg"
 
@@ -227,7 +229,7 @@ Android Chrome でアプリとして入れるには、警告の出ない証明�
 - **Pi5 で `git stash push -u` しても `failed to remove ... 許可がありません`**: 変更ファイルが **`root:root` 所有**の典型。`apps/api/src/services/mobile-placement`、`apps/web/src/features/mobile-placement`、migration などの対象パスを **`sudo chown -R denkon5sd02:denkon5sd02 ...`** してから再度 `git stash push -u`
 - **別のreleaseが実行中と表示される**: run IDを確認して `scripts/update-all-clients.sh --status RUN_ID` を使う。停止や復旧が必要な場合は [deploy-status-recovery.md](./deploy-status-recovery.md) の標準手順に従い、process kill、lock削除、運用情報の手編集は行わない。
 - **画像OCRが遅い／初回だけ長い**: Pi5 API コンテナで **tesseract.js ワーカ初回起動**で数十秒かかることがある。連続利用ではキャッシュされやすい。現品票 OCR は **用途別に複数パス**（`jpn+eng` + `eng`×2）を **直列**で回すため、初回以外も **単一パス時より時間がかかる**場合がある。極端に大きい画像はサーバ側で縮小されるが、**ピント・コントラスト**を確保すると精度が上がる
-- **画像OCR後に欄が空のまま／無反応に見える**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間・**V8 以降**: `mo10ParseSource` / `mo10Candidate10Count` 等）が出るので、Pi5 の API ログで後追い可能。**製造ラベルが分断**されて製造orderが取れないケースは V8 パーサで緩和（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)）
+- **旧画像OCR後に欄が空のまま／無反応に見える（2026-11-02 に削除済みの経路）**: 撮影後、現品票列の下に **成功（抽出値の表示）／候補なし／エラー**のいずれかが出ること。候補なしのときは再撮影または手入力。API 側は `parse-actual-slip-image` 完了時に構造化ログ（入力サイズ・OCR 文字数・候補有無・所要時間・**V8 以降**: `mo10ParseSource` / `mo10Candidate10Count` 等）が出るので、Pi5 の API ログで後追い可能。**製造ラベルが分断**されて製造orderが取れないケースは V8 パーサで緩和（[KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md)）
 - **`mo10ParseSource` が `global-filter` だが製造orderが空／誤り**: **V11** 以降、同一行に **注文番号＋枝番**があるとその行の 10 桁は除外され、残り候補から文脈スコアで選ぶ。ログの `mo10Candidate10Count` / `mo10AfterOrderBlockFilterCount` と [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V11** を参照
 - **V12 以降の現品票 OCR で欄が空になりやすい**: **ROI 切り出し**が帳票レイアウトとズレると、その領域の OCR が空になり製造order／製番が取れない。Pi5 ログの **`mo10ResolvedFromRoi`**（`moHeader` / `moFooter`）と [KB-339](../knowledge-base/KB-339-mobile-placement-barcode-survey.md) **V12** を参照。撮影は **正面・全体が枠内**になるよう寄せる
 - **Zero2W 担当棚ページが出ない／ボタンが無い**: Pi5 の **`web` が当該コミット**か確認し、キオスクで **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）

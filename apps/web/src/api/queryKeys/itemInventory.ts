@@ -1,5 +1,6 @@
 /** `invalidateInventory` refreshes every entry here, so keep only the prefix keys in this object. */
 export const inventoryKeys = {
+  machinesAll: ['inventory-machines'] as const,
   dashboardAll: ['inventory-dashboard'] as const,
   variantsAll: ['inventory-value-variants'] as const,
   itemsAll: ['inventory-items'] as const,
