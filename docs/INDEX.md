@@ -51,6 +51,7 @@
 ### 業務Pi 5 Google Drive暗号化DR（2026-08-20・ローカル実装／検証中）
 
 - **全損復旧用の独立resticスナップショット**: Dropboxは個別復元、Google DriveはPi 5全損DR。**正本**: [ExecPlan](./plans/google-drive-disaster-recovery-execplan.md) · [ADR](./decisions/ADR-20260820-google-drive-disaster-recovery.md) · [Runbook](./runbooks/google-drive-disaster-recovery.md) · [バックアップ・リストアガイド](./guides/backup-and-restore.md)
+- **Pi5 復旧訓練（切り替えなし）**: 予備機で復旧時間を測り、許容停止時間・許容損失を決めるための [Runbook・記録表](./runbooks/pi5-restore-drill.md)。
 - **Pi4 SDカードの週次バックアップと交換**: Pi5がPi4のSDを週1回Pi5 SSDへ暗号化保存しGoogle Driveへも複製、故障時はPi5から同じ端末用の新しいSDへ復元。**正本**: [Runbook](./runbooks/pi4-sd-card-backup.md) · [ADR](./decisions/ADR-20260930-pi4-sd-card-backup.md) · [ExecPlan](./plans/pi4-sd-card-backup-execplan.md)
 
 ### キオスクお問い合わせ受信箱（2026-10-09）
