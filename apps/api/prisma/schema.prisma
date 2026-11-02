@@ -509,13 +509,10 @@ model Machine {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
-  siteKey                   String?
-  site                      Site? @relation(fields: [siteKey], references: [key], onDelete: Restrict, onUpdate: Cascade)
   nfcTags                   MachineNfcTag[]
   kioskInventoryOrders      KioskInventoryMachineOrder[]
   inventoryTransactions     InventoryTransaction[]
 
-  @@index([siteKey])
   @@index([operatingStatus])
   @@index([classification])
   @@index([resourceCd])
@@ -599,7 +596,6 @@ model Site {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   devices     ClientDevice[]
-  machines    Machine[]
 }
 
 /// Zero2W / ヘッドレスエッジ由来の配膳スキャン履歴（1スキャン1行）

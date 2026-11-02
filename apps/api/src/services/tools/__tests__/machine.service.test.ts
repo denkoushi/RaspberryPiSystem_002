@@ -5,6 +5,7 @@ import { ApiError } from '../../../lib/errors.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    productionScheduleResourceMaster: { findMany: vi.fn().mockResolvedValue([]) },
     machine: {
       findMany: vi.fn(),
       findUnique: vi.fn(),
@@ -314,7 +315,7 @@ describe('MachineService', () => {
         ],
       },
       orderBy: [{ classification: 'asc' }, { equipmentManagementNumber: 'asc' }],
-      include: expect.objectContaining({ site: expect.anything(), nfcTags: expect.anything() }),
+      include: expect.objectContaining({ nfcTags: expect.anything() }),
     });
   });
 

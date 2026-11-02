@@ -23,7 +23,7 @@ export class ItemInventoryService {
 
   private async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> { return runSerializable(this.db, work); }
 
-  async resolveTag(uid: string, clientId?: string | null) { return resolveTag(this.db, uid, clientId); }
+  async resolveTag(uid: string) { return resolveTag(this.db, uid); }
 
   async listMachines(clientId: string) { return listMachines(this.db, clientId); }
 

@@ -667,6 +667,7 @@ describe('procedure-manuals workshop', () => {
     expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
     expect(mocks.verify).not.toHaveBeenCalled();
     expect(within(dialog).getByRole('button', { name: '閉じる' })).toBeInTheDocument();
+    await waitFor(() => expect(dialog).toHaveFocus());
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(dialog).not.toBeInTheDocument();
   });

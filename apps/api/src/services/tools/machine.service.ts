@@ -1,3 +1,5 @@
+import { resolveMachineFactory } from './machine-factory.js';
+import { getSendaiResourceCds } from '../production-schedule/resource-master.service.js';
 import { Prisma } from '@prisma/client';
 import { TagDeskService, normalizeTagUid } from '../tag-desk/tag-desk.service.js';
 import { prisma } from '../../lib/prisma.js';
@@ -6,7 +8,6 @@ import { resolveJstSignageBusinessDate } from '../../lib/signage-business-day.js
 import { isDailyInspectionKpiInspected } from './daily-inspection-kpi.js';
 
 export interface MachineQuery {
-  siteKey?: string | null;
   search?: string;
   operatingStatus?: string;
 }
@@ -240,7 +241,6 @@ export interface CreateMachinePayload {
   processClassification?: string;
   coolant?: string;
   resourceCd?: string | null;
-  siteKey?: string | null;
 }
 
 export interface UpdateMachinePayload {
@@ -253,14 +253,11 @@ export interface UpdateMachinePayload {
   processClassification?: string;
   coolant?: string;
   resourceCd?: string | null;
-  siteKey?: string | null;
 }
 
 export class MachineService {
   async findAll(query: MachineQuery) {
-    await this.validateSite(query.siteKey);
     const where: Prisma.MachineWhereInput = {
-      ...(query.siteKey !== undefined ? { siteKey: query.siteKey || null } : {}),
       ...(query.operatingStatus ? { operatingStatus: query.operatingStatus } : {}),
       ...(query.search
         ? {
@@ -275,11 +272,13 @@ export class MachineService {
         : {}),
     };
 
-    return prisma.machine.findMany({
+    const machines = await prisma.machine.findMany({
       where,
-      include: { site: { select: { key: true, displayName: true } }, nfcTags: { select: { id: true, uid: true }, orderBy: { createdAt: 'asc' } } },
+      include: { nfcTags: { select: { id: true, uid: true }, orderBy: { createdAt: 'asc' } } },
       orderBy: [{ classification: 'asc' }, { equipmentManagementNumber: 'asc' }],
     });
+    const sendaiResourceCds = await getSendaiResourceCds();
+    return machines.map(machine => ({ ...machine, factory: resolveMachineFactory(machine.resourceCd, sendaiResourceCds) }));
   }
 
   async findResourceChoices() {
@@ -292,12 +291,6 @@ export class MachineService {
       if (!choices.has(row.resourceCd)) choices.set(row.resourceCd, row);
     }
     return [...choices.values()];
-  }
-
-  private async validateSite(siteKey?: string | null) {
-    if (siteKey && !await prisma.site.findUnique({ where: { key: siteKey } })) {
-      throw new ApiError(400, '拠点が見つかりません');
-    }
   }
 
   async addNfcTag(machineId: string, rawUid: string) {
@@ -332,7 +325,6 @@ export class MachineService {
   }
 
   async create(payload: CreateMachinePayload) {
-    await this.validateSite(payload.siteKey);
     const existing = await prisma.machine.findUnique({
       where: { equipmentManagementNumber: payload.equipmentManagementNumber },
     });
@@ -352,13 +344,11 @@ export class MachineService {
         processClassification: payload.processClassification || null,
         coolant: payload.coolant || null,
         resourceCd: payload.resourceCd ?? null,
-        siteKey: payload.siteKey || null,
       },
     });
   }
 
   async update(id: string, payload: UpdateMachinePayload) {
-    await this.validateSite(payload.siteKey);
     const existing = await prisma.machine.findUnique({ where: { id } });
     if (!existing) {
       throw new ApiError(404, '加工機が見つかりません');
@@ -369,7 +359,6 @@ export class MachineService {
       data: {
         name: payload.name ?? existing.name,
         resourceCd: payload.resourceCd,
-        siteKey: payload.siteKey === undefined ? undefined : payload.siteKey || null,
         shortName: payload.shortName !== undefined ? payload.shortName || null : existing.shortName,
         classification: payload.classification !== undefined ? payload.classification || null : existing.classification,
         operatingStatus: payload.operatingStatus !== undefined ? payload.operatingStatus || null : existing.operatingStatus,

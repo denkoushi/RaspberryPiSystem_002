@@ -3,11 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MachinesPage } from './MachinesPage';
 
-const mocks = vi.hoisted(() => ({ update: vi.fn(), create: vi.fn(), resourceCd: '021', addTag: vi.fn(), removeTag: vi.fn(), siteKey: 'mishima', nfcEvent: null as unknown }));
+const mocks = vi.hoisted(() => ({ update: vi.fn(), create: vi.fn(), resourceCd: '021', addTag: vi.fn(), removeTag: vi.fn(), factory: 'MISHIMA', nfcEvent: null as unknown }));
 vi.mock('../../api/hooks', () => ({
-  useSites: () => ({ data: [{ key: 'mishima', displayName: '三島工場' }, { key: 'sendai', displayName: '仙台工場' }] }),
-  useMachines: () => ({ data: [{ id: 'm1', equipmentManagementNumber: '10018', name: '加工機', resourceCd: mocks.resourceCd, siteKey: mocks.siteKey, site: { key: 'mishima', displayName: '三島工場' }, nfcTags: [{ id: 'tag1', uid: 'UID-1' }] }], isLoading: false }),
-  useMachineResourceChoices: () => ({ data: [{ resourceCd: '021', addTag: vi.fn(), removeTag: vi.fn(), siteKey: 'mishima', nfcEvent: null as unknown, resourceName: '旋盤' }, { resourceCd: '022', resourceName: '研削盤' }] }),
+  useMachines: () => ({ data: [{ id: 'm1', equipmentManagementNumber: '10018', name: '加工機', resourceCd: mocks.resourceCd, factory: mocks.factory, nfcTags: [{ id: 'tag1', uid: 'UID-1' }] }], isLoading: false }),
+  useMachineResourceChoices: () => ({ data: [{ resourceCd: '021', addTag: vi.fn(), removeTag: vi.fn(), factory: 'MISHIMA', nfcEvent: null as unknown, resourceName: '旋盤' }, { resourceCd: '022', resourceName: '研削盤' }] }),
   useMachineMutations: () => ({ create: { mutateAsync: mocks.create }, update: { mutateAsync: mocks.update }, remove: {}, addTag: { mutateAsync: mocks.addTag }, removeTag: { mutateAsync: mocks.removeTag } }),
 }));
 vi.mock('../../hooks/useNfcStream', () => ({ useNfcStream: () => mocks.nfcEvent }));
@@ -16,6 +15,7 @@ vi.mock('../../contexts/ConfirmContext', () => ({ useConfirm: () => vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.resourceCd = '021';
+  mocks.factory = 'MISHIMA';
 });
 
 describe('MachinesPage resourceCd', () => {
@@ -50,16 +50,18 @@ describe('MachinesPage resourceCd', () => {
   });
 });
 
-describe('machine sites and NFC tags', () => {
-  it('shows site and tags and sends the selected site on edit', async () => {
+describe('machine factories and NFC tags', () => {
+  it.each([['MISHIMA', '三島工場'], ['SENDAI', '仙台工場']])('shows %s factory without a factory select', async (factory, label) => {
+    mocks.factory = factory;
     render(<MachinesPage />);
-    expect(within(screen.getByRole('table')).getByText('三島工場')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText(label)).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'NFCタグ' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '工場' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '編集', exact: true }));
-    expect(screen.getByRole('combobox', { name: '工場' })).toHaveValue('mishima');
-    fireEvent.change(screen.getByRole('combobox', { name: '工場' }), { target: { value: 'sendai' } });
+    expect(screen.queryByRole('combobox', { name: '工場' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '上書き保存' }));
-    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith({ id: 'm1', payload: expect.objectContaining({ siteKey: 'sendai' }) }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    expect(mocks.update.mock.calls[0][0].payload).not.toHaveProperty('siteKey');
   });
   it('adds and removes a tag', async () => {
     render(<MachinesPage />);

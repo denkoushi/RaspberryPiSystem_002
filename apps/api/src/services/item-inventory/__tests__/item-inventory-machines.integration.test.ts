@@ -22,7 +22,7 @@ if (hasDedicatedDatabase) {
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
-  it('restricts site deletion and retains transactions when machines are deleted', async () => {
+  it('allows unrelated site deletion and retains transactions when machines are deleted', async () => {
     if (!database) throw new Error('Dedicated TEST_DATABASE_URL is required');
     const db = database;
     const suffix = randomUUID();
@@ -33,8 +33,9 @@ if (hasDedicatedDatabase) {
     const transactionId = randomUUID();
     try {
       await db.site.create({ data: { key: siteKey, displayName: siteKey } });
-      await db.machine.create({ data: { id: machineId, equipmentManagementNumber: suffix, name: '旋盤', siteKey } });
-      await expect(db.site.delete({ where: { key: siteKey } })).rejects.toMatchObject({ code: 'P2003' });
+      await db.machine.create({ data: { id: machineId, equipmentManagementNumber: suffix, name: '旋盤' } });
+      await db.site.delete({ where: { key: siteKey } });
+      await db.site.create({ data: { key: siteKey, displayName: siteKey } });
       await db.clientDevice.create({ data: { id: deviceId, name: 'test', apiKey: suffix, siteKey } });
       await db.machineNfcTag.create({ data: { machineId, uid: suffix } });
       await db.kioskInventoryMachineOrder.create({ data: { clientDeviceId: deviceId, machineId, position: 0 } });

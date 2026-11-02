@@ -5,7 +5,6 @@ import { MachineService } from '../../../services/tools/machine.service.js';
 
 const machineListQuerySchema = z.object({
   search: z.string().optional(),
-  siteKey: z.string().trim().max(50).nullable().optional().transform(value => value === '' ? null : value),
   operatingStatus: z.string().optional(),
 });
 
@@ -27,7 +26,6 @@ const createMachineSchema = z.object({
   processClassification: z.string().optional(),
   coolant: z.string().optional(),
   resourceCd: resourceCdSchema,
-  siteKey: z.string().trim().max(50).nullable().optional().transform(value => value === '' ? null : value),
 });
 
 const updateMachineSchema = z.object({
@@ -40,7 +38,6 @@ const updateMachineSchema = z.object({
   processClassification: z.string().optional(),
   coolant: z.string().optional(),
   resourceCd: resourceCdSchema,
-  siteKey: z.string().trim().max(50).nullable().optional().transform(value => value === '' ? null : value),
 });
 
 export async function registerMachineRoutes(app: FastifyInstance): Promise<void> {

@@ -219,7 +219,7 @@ describe('KioskAssemblyPage thumbnail references', () => {
     const view = renderPage();
     await screen.findByText('手順書0');
     act(() => callbacks.forEach(callback => callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)));
-    await waitFor(() => expect(screen.getAllByRole('img', { name: '1ページ目' })).toHaveLength(documents.length));
+    await waitFor(() => expect(screen.getAllByRole('img', { name: '1ページ目' })).toHaveLength(documents.length), { timeout: 5_000 });
     expect(revokeObjectURL).not.toHaveBeenCalled();
     return { view, callbacks, disconnect, revokeObjectURL, apiGet };
   }

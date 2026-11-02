@@ -20,8 +20,7 @@ export async function getEmployees() {
 }
 
 export interface Machine {
-  siteKey?: string | null;
-  site?: { key: string; displayName: string } | null;
+  factory: 'MISHIMA' | 'SENDAI';
   nfcTags?: { id: string; uid: string }[];
   id: string;
   equipmentManagementNumber: string;
@@ -44,7 +43,7 @@ export interface UninspectedMachinesResponse {
   totalRunningMachines: number;
   inspectedRunningCount: number;
   uninspectedCount: number;
-  uninspectedMachines: Machine[];
+  uninspectedMachines: Omit<Machine, 'factory'>[];
 }
 
 export async function getMachines(params?: { search?: string; operatingStatus?: string }) {
@@ -68,7 +67,6 @@ export async function getUninspectedMachines(params: { csvDashboardId: string; d
 }
 
 export interface CreateMachineInput {
-  siteKey?: string | null;
   equipmentManagementNumber: string;
   name: string;
   shortName?: string;
@@ -82,7 +80,6 @@ export interface CreateMachineInput {
 }
 
 export interface UpdateMachineInput {
-  siteKey?: string | null;
   name?: string;
   shortName?: string;
   classification?: string;
@@ -95,12 +92,12 @@ export interface UpdateMachineInput {
 }
 
 export async function createMachine(input: CreateMachineInput) {
-  const { data } = await api.post<{ machine: Machine }>('/tools/machines', input);
+  const { data } = await api.post<{ machine: Omit<Machine, 'factory'> }>('/tools/machines', input);
   return data.machine;
 }
 
 export async function updateMachine(id: string, input: UpdateMachineInput) {
-  const { data } = await api.put<{ machine: Machine }>(`/tools/machines/${id}`, input);
+  const { data } = await api.put<{ machine: Omit<Machine, 'factory'> }>(`/tools/machines/${id}`, input);
   return data.machine;
 }
 

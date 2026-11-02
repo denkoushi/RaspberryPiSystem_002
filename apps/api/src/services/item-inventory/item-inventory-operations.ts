@@ -1,3 +1,5 @@
+import { resolveMachineFactory } from '../tools/machine-factory.js';
+import { getSendaiResourceCds } from '../production-schedule/resource-master.service.js';
 import { aggregateInventoryDashboard, dashboardPeriod } from './inventory-dashboard.js';
 import { Prisma, PrismaClient, InventoryImportPayloadStatus, InventoryNfcTagKind } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
@@ -7,7 +9,7 @@ import { INVENTORY_OPTION_FIELDS, TOOL_FIELD_VALUE_MAX_LENGTH } from './item-inv
 import type { InventoryOptionField } from './item-inventory.fields.js';
 import { InventoryConflictError } from './item-inventory.errors.js';
 
-export async function resolveTag(db: PrismaClient, uid: string, clientId?: string | null) {
+export async function resolveTag(db: PrismaClient, uid: string) {
   const tag = await db.inventoryNfcTag.findUnique({
     where: { uid: uid.trim() },
     include: {
@@ -17,10 +19,7 @@ export async function resolveTag(db: PrismaClient, uid: string, clientId?: strin
   if (!tag) {
     const machineTag = await db.machineNfcTag.findUnique({ where: { uid: uid.trim() }, include: { machine: true } });
     if (!machineTag) return null;
-    if (clientId) {
-      const device = await db.clientDevice.findUnique({ where: { id: clientId }, select: { siteKey: true } });
-      if (!device?.siteKey || device.siteKey !== machineTag.machine.siteKey) return null;
-    }
+    if (resolveMachineFactory(machineTag.machine.resourceCd, await getSendaiResourceCds()) !== 'MISHIMA') return null;
     const { id, name, shortName } = machineTag.machine;
     return { kind: 'MACHINE' as const, machine: { id, name, shortName } };
   }
