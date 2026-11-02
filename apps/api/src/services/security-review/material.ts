@@ -4,7 +4,7 @@ import type { SecurityReviewFinding } from './report-schema.js';
 export const MATERIAL_BYTES = 8000;
 export const MAX_CHUNKS = 24;
 export type ReviewKind = SecurityReviewFinding['kind'];
-export type ReviewChunk = { id: string; kind: ReviewKind; text: string };
+export type ReviewChunk = { id: string; kind: ReviewKind; text: string; reviewedElsewhere?: string[] };
 
 export function fingerprint(finding: Pick<SecurityReviewFinding, 'kind' | 'location' | 'what'>): string {
   const normalize = (value: string) => value.normalize('NFKC').trim().toLowerCase().replace(/\s+/gu, ' ');

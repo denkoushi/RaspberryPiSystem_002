@@ -154,7 +154,9 @@ Malformed JSON/schema is quarantined in `queue/invalid/<original-folder>-<name>`
 Vague/refused answers persist `vagueAttempts` (missing means 0): the first two return
 the job to pending with `retryAfter` 30 minutes later; the third fails with
 `refused_or_vague`. Waiting jobs are skipped so other pending commits continue.
-Retry warnings contain only SHA, path and attempt count.
+The model may supply a bounded `vagueReason`; terminal unit results retain it and
+failed records expose it as `failedUnits[].detail`. Retry warnings include this reason,
+all unit paths (bounded) and the attempt count. Older records without these fields remain valid.
 Timeouts increment unit attempts: two timeouts split the input in half, or fail with `timeout_at_minimum_unit` at the minimum size; deferred/unavailable inference does not increment attempts.
 
 The API consumes jobs oldest first until blocked or pending is empty, under the scheduler lease and
@@ -164,7 +166,13 @@ New units do not start during the quiet interval or a nightly review. Deferral,
 unavailable inference, or entry into the quiet interval returns the job to pending
 with progress intact; claims untouched for two hours are reclaimed on a later tick.
 
-Review units are at most 8 KB, preferring file and line boundaries. Only concrete
+Review units pack consecutive files of one commit in order up to 8 KB and identify
+all covered paths. Larger files use the fewest roughly balanced pieces at line boundaries,
+with a file continuation header included in the budget; only over-long lines use byte splits.
+A completed review with no medium/high issue returns empty findings and is not vague,
+even for small, cosmetic or partial changes. Each unit lists, as `filesReviewedSeparately`
+(at most 50), the paths covered by the commit's other units, including other pieces of a split
+file; their absence from the unit is not a reason for a vague answer. Only concrete
 medium/high findings are requested, with short fields and the known-findings list.
 A call has 2000 output tokens and a 120-second timeout. `finishReason: length` splits
 the input again down to 1 KB, using UTF-8 byte boundaries for oversized lines. A unit

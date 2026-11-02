@@ -13,6 +13,7 @@ export const securityReviewFindingSchema = z.object({
 export const securityReviewChunkAnswerSchema = z.object({
   findings: z.array(securityReviewFindingSchema).max(20),
   refusedOrVague: z.boolean(),
+  vagueReason: bounded(200).optional(),
 }).strict();
 const deviceFields = { clientId: bounded(200), device: bounded(500) };
 const storageAlertSchema = z.object({

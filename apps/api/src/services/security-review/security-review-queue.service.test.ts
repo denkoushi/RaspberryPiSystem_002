@@ -98,7 +98,7 @@ describe('commit review queue', () => {
   });
 
   it.each([new InferenceDeferredError(), new TypeError('fetch failed')])('preserves successful progress and resumes after unavailable inference: %s', async error => {
-    const sha = await enqueue(undefined, [{ path: 'first.ts', diff: '+first\n' }, { path: 'second.ts', diff: '+second\n' }]);
+    const sha = await enqueue(undefined, [{ path: 'first.ts', diff: '+first\n'.repeat(1142) }, { path: 'second.ts', diff: '+second\n' }]);
     complete.mockResolvedValueOnce({ ...answer, rawText: JSON.stringify({ findings: [finding], refusedOrVague: false }) }).mockRejectedValueOnce(error);
     await tick();
     expect((await json('progress', sha)).units.map((unit: { result?: unknown }) => Boolean(unit.result))).toEqual([true, false]);
@@ -115,7 +115,7 @@ describe('commit review queue', () => {
     const sha = await enqueue('a'.repeat(40), [
       { path: 'app.ts', diff: '+synthetic line\n' }, { path: 'later.ts', diff: '+later\n' },
     ], '2026-10-29T01:00:00.000Z');
-    const vague = { ...answer, rawText: '{"findings":[],"refusedOrVague":true}' };
+    const vague = { ...answer, rawText: JSON.stringify({ findings: [], refusedOrVague: true, vagueReason: 'Missing dependency code' }) };
     complete.mockResolvedValueOnce(vague);
     const next = await enqueue('b'.repeat(40));
     await tick();
@@ -136,11 +136,11 @@ describe('commit review queue', () => {
       current = new Date(current.getTime() + 30 * 60_000);
       await tick();
     }
-    expect(await json('failed', sha)).toMatchObject({ units: 2,
-      failedUnits: [{ path: 'app.ts', reason: 'refused_or_vague' }] });
+    expect(await json('failed', sha)).toMatchObject({ units: 1,
+      failedUnits: [{ path: 'app.ts', paths: ['app.ts', 'later.ts'], reason: 'refused_or_vague', detail: 'Missing dependency code' }] });
     expect(logger.warn).toHaveBeenCalledTimes(2);
-    expect(logger.warn).toHaveBeenNthCalledWith(1, { sha, path: 'app.ts', vagueAttempts: 1 }, expect.any(String));
-    expect(logger.warn).toHaveBeenNthCalledWith(2, { sha, path: 'app.ts', vagueAttempts: 2 }, expect.any(String));
+    expect(logger.warn).toHaveBeenNthCalledWith(1, { sha, path: 'app.ts, later.ts', vagueAttempts: 1, vagueReason: 'Missing dependency code' }, expect.any(String));
+    expect(logger.warn).toHaveBeenNthCalledWith(2, { sha, path: 'app.ts, later.ts', vagueAttempts: 2, vagueReason: 'Missing dependency code' }, expect.any(String));
   });
 
   it('reads legacy progress without vagueAttempts and succeeds on a deferred retry', async () => {
@@ -196,7 +196,7 @@ describe('commit review queue', () => {
   });
 
   it.each(['quiet', 'nightly'] as const)('finishes the current unit and pauses before the next for %s', async mode => {
-    const sha = await enqueue(undefined, [{ path: 'first.ts', diff: '+first\n' }, { path: 'second.ts', diff: '+second\n' }]);
+    const sha = await enqueue(undefined, [{ path: 'first.ts', diff: '+first\n'.repeat(1142) }, { path: 'second.ts', diff: '+second\n' }]);
     complete.mockImplementationOnce(async () => {
       if (mode === 'quiet') current = new Date('2026-11-01T05:50:00+09:00');
       else reviewActivity.nightly = true;
@@ -303,13 +303,58 @@ describe('commit review queue', () => {
     expect(await json('done', sha)).toMatchObject({ findings: [] });
     expect(complete.mock.calls[0]![0].messages[1]!.content).toContain(finding.what);
   });
+  it('names the files of the same change that other units review', async () => {
+    const large = '+line\n'.repeat(1500);
+    await enqueue('c'.repeat(40), [{ path: 'small.ts', diff: '+small\n' }, { path: 'large.ts', diff: large }]);
+    await tick();
+    const data = complete.mock.calls.map(([request]) => JSON.parse(request.messages[1]!.content
+      .slice('BEGIN_REVIEW_DATA\n'.length, -'\nEND_REVIEW_DATA'.length)));
+    expect(data).toHaveLength(3);
+    expect(data[0]!.filesReviewedSeparately).toEqual(['large.ts']);
+    expect(data[1]!.filesReviewedSeparately).toEqual(['small.ts', 'large.ts']);
+    expect(data[2]!.filesReviewedSeparately).toEqual(['small.ts', 'large.ts']);
+    await enqueue('d'.repeat(40));
+    complete.mockClear();
+    await tick();
+    expect(complete.mock.calls[0]![0].messages[1]!.content).not.toContain('filesReviewedSeparately');
+  });
 });
 
 describe('queue unit boundaries', () => {
+  it('packs consecutive small files in order with stable unique ids', () => {
+    const files = [{ path: 'AndroidManifest.xml', diff: '+manifest\n' }, { path: 'MainActivity.kt', diff: '+activity\n' },
+      { path: 'AppUpdater.kt', diff: '+updater\n' }];
+    const units = jobUnits(files);
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ path: files[0]!.path, paths: files.map(file => file.path), text: files.map(file => file.diff).join('\n') });
+    expect(jobUnits(files)).toEqual(units);
+  });
+
+  it.each([8152, 8289, 8824, 17000])('balances large files without tiny tails: %i bytes', bytes => {
+    const diff = '+line\n'.repeat(Math.ceil(bytes / 6));
+    const units = jobUnits([{ path: 'large.ts', diff }]);
+    expect(units).toHaveLength(Math.ceil(Buffer.byteLength(diff) / (MATERIAL_BYTES - 40)));
+    expect(new Set(units.map(unit => unit.id)).size).toBe(units.length);
+    for (const [index, unit] of units.entries()) {
+      expect(Buffer.byteLength(unit.text)).toBeLessThanOrEqual(MATERIAL_BYTES);
+      expect(Buffer.byteLength(unit.text)).toBeGreaterThan(4000);
+      if (index) expect(unit.text).toMatch(/^--- large.ts \(continued\) ---\n/);
+      expect(unit.text.endsWith('\n')).toBe(true);
+    }
+  });
+
+  it('uses the fewest pieces for an over-long UTF-8 line, including header overhead', () => {
+    const diff = '界'.repeat(5320);
+    const units = jobUnits([{ path: 'huge.ts', diff }]);
+    expect(units).toHaveLength(2);
+    expect(units.map(unit => unit.text.replace(/^--- .* \(continued\) ---\n/, '')).join('')).toBe(diff);
+    expect(units.every(unit => Buffer.byteLength(unit.text) <= MATERIAL_BYTES)).toBe(true);
+  });
+
   it('preserves file and line boundaries and all UTF-8 content, including oversized lines', () => {
     const files = [{ path: 'a.ts', diff: '+a\n'.repeat(3000) }, { path: 'b.ts', diff: '界'.repeat(4000) }];
     const units = jobUnits(files);
-    for (const file of files) expect(units.filter(unit => unit.path === file.path).map(unit => unit.text).join('')).toBe(file.diff);
+    for (const file of files) expect(units.filter(unit => unit.path === file.path).map(unit => unit.text.replace(/^--- .* \(continued\) ---\n/, '')).join('')).toBe(file.diff);
     for (const unit of units) {
       expect(Buffer.byteLength(unit.text)).toBeLessThanOrEqual(MATERIAL_BYTES);
       expect(unit.text).not.toContain('\uFFFD');
