@@ -13,7 +13,8 @@ export const jobSchema = z.object({ version: z.literal(1), sha, parent: sha.null
 }).strict();
 export const resultSchema = z.object({ version: z.literal(1), sha, committedAt: z.string().datetime({ offset: true }),
   finishedAt: z.string().datetime({ offset: true }), status: z.enum(['done', 'failed']), units: z.number().int().nonnegative(),
-  failedUnits: z.array(z.object({ path: z.string(), reason: z.string() }).strict()),
+  failedUnits: z.array(z.object({ path: z.string(), paths: z.array(z.string().transform(value => value.slice(0, 500))).optional(),
+    reason: z.string(), detail: z.string().min(1).transform(value => value.slice(0, 200)).optional() }).strict()),
   findings: z.array(securityReviewFindingSchema), reportedAt: z.string().datetime({ offset: true }).nullable(),
 }).strict();
 export type QueueResult = z.infer<typeof resultSchema>;

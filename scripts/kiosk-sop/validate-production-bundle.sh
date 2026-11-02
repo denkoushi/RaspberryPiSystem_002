@@ -7,7 +7,7 @@ image_tag="raspisys-kiosk-sop-web:$validation_id"
 container_name="raspi-$validation_id"
 network_name="raspi-$validation_id"
 validation_label="raspi.validation.id=$validation_id"
-playwright_image="raspisys-kiosk-sop-generator:playwright-1.56.1"
+playwright_image="raspisys-kiosk-sop-generator:playwright-1.64.1"
 
 fail() {
   echo "FAIL: $*" >&2
