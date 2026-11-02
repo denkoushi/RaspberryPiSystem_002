@@ -1135,7 +1135,7 @@ jobs:
     name: e2e-smoke
     needs: change-classification
     if: ${{ github.event_name != 'push' && needs.change-classification.outputs.e2e == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -1246,7 +1246,7 @@ jobs:
     name: e2e-tests (${{ matrix.shard }})
     needs: change-classification
     if: ${{ github.event_name != 'push' && needs.change-classification.outputs.e2e == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
