@@ -1,5 +1,7 @@
 # 配膳スマホの製番かざし読み取り（Android 薄型アプリ）
 
+2026-11-02: `parse-actual-slip-image` と固定ROIのサーバ写真OCRを削除。写真読取はAndroid ML Kit → `snap-fseiban-tokens` のみで、通常ブラウザには写真読取ボタンを表示しない。以下の旧写真OCR・ファイル入力の記述は当時の履歴。現行契約は [API仕様](../api/mobile-placement.md#post-apimobile-placementsnap-fseiban-tokens) を参照。
+
 This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds. It follows `.agent/PLANS.md`.
 
 
