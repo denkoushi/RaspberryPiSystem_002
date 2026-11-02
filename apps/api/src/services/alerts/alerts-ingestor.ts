@@ -223,7 +223,13 @@ export class AlertsIngestor {
           }
         });
 
-        await deliverFileAlertNotice(alert.type, timestamp);
+        await deliverFileAlertNotice(alert.type, timestamp, undefined, alert.message);
+
+        // Mac watchdog recovery is Chat-only; existing alert delivery policies stay unchanged.
+        if (alert.type === 'pi5-watchdog-recovered') {
+          ingested++;
+          continue;
+        }
 
         // AlertDeliveryを初回作成（既に存在する場合はスキップ）
         const routeKey = resolveRouteKey(alert.type, config.routing);

@@ -55,6 +55,7 @@
 
 ### キオスクお問い合わせ受信箱（2026-10-09）
 
+- **Mac から業務用 Pi5 の健康確認と復旧通知**: [Runbook](./runbooks/mac-pi5-watchdog.md)
 - **お問い合わせを端末で受けて返信**: 指定した端末の丸ボタンが未読でオレンジになり、社員証タッチで読んで返信できる。**正本**: [Runbook](./runbooks/kiosk-inquiry-inbox.md)
 
 ### Deployワークフロー安全短縮 Phase 1–2（2026-07-29 · Phase 2実装済み）
