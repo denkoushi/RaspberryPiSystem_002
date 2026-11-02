@@ -52,6 +52,7 @@
 
 - **全損復旧用の独立resticスナップショット**: Dropboxは個別復元、Google DriveはPi 5全損DR。**正本**: [ExecPlan](./plans/google-drive-disaster-recovery-execplan.md) · [ADR](./decisions/ADR-20260820-google-drive-disaster-recovery.md) · [Runbook](./runbooks/google-drive-disaster-recovery.md) · [バックアップ・リストアガイド](./guides/backup-and-restore.md)
 - **Pi4 SDカードの週次バックアップと交換**: Pi5がPi4のSDを週1回Pi5 SSDへ暗号化保存しGoogle Driveへも複製、故障時はPi5から同じ端末用の新しいSDへ復元。**正本**: [Runbook](./runbooks/pi4-sd-card-backup.md) · [ADR](./decisions/ADR-20260930-pi4-sd-card-backup.md) · [ExecPlan](./plans/pi4-sd-card-backup-execplan.md)
+- **Pi4 キオスクの予備機差し替え**: SD・本体・両方の故障時の手順、旧識別の隔離と30分目標の訓練。[Runbook](./runbooks/pi4-spare-swap.md)
 
 ### キオスクお問い合わせ受信箱（2026-10-09）
 
