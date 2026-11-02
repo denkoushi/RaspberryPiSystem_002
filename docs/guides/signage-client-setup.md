@@ -66,6 +66,8 @@ HTTPS／自己署名証明書の扱いは Pi 向け Chromium と同様。端末�
 
 ## 前提条件
 
+**旧記録（Pi 向け）**: 以下の Pi セットアップ・Chromium の手順は過去の記録であり、現在の Pi3 へ適用しない。Pi3 は `feh` を使い、Docker・Chromium は使わない。Zero も表示端末にしない。現行の機種選定は[機種ごとの役割と資源](../runbooks/device-model-roles.md)に従う。
+
 - Raspberry Pi 3 または Raspberry Pi Zero 2W
 - Raspberry Pi OS (64bit) がインストール済み
 - HDMI接続のディスプレイ（1920x1080推奨）
@@ -98,7 +100,7 @@ sudo ./scripts/client/setup-signage.sh https://192.168.10.230/signage
 
 ### 4. 動作確認
 
-セットアップスクリプト実行後、自動的にChromiumが起動し、サイネージが表示されます。
+旧構成ではセットアップスクリプト実行後に Chromium が起動した。現在の Pi3 は `signage-lite.service` と `feh` を使う（[現行の役割表](../runbooks/device-model-roles.md)）。
 
 手動で確認する場合：
 
@@ -132,7 +134,7 @@ sudo reboot
 2. 恒久: **`Disable key expiry`**（常時稼働サイネージ推奨・2026-06-04 本番は全端末適用済み）
 3. 詳細: [Runbook: pi3-signage-tailscale-recovery.md](../runbooks/pi3-signage-tailscale-recovery.md) · [KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)
 
-### Chromiumが起動しない
+### Chromiumが起動しない（旧構成の記録）
 
 ```bash
 # ログを確認

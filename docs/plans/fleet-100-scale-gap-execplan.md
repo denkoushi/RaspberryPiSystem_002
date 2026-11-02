@@ -41,7 +41,7 @@
 - [ ] M7: 端末側の Docker ログの上限と、SD カード保護の試行。
   - [x] (2026-11-02) Step 1: Pi5 phase3・migration、kiosk template、client Compose に json-file 10m × 3 の上限を実装。状態を持つ `business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache` は追加再作成を避けるため除外。
   - [ ] 本番適用と `docker inspect` 確認（gateway は標準更新で再作成しないため別途適用が必要）、高耐久 SD・USB SSD・読み取り専用ルートの試行。
-- [ ] M8: 機種ごとの役割と資源の表を runbook に残す。
+- [x] M8: 2026-11-02 機種ごとの役割と資源の表を `docs/runbooks/device-model-roles.md` に残した。
 
 
 ## Surprises & Discoveries
