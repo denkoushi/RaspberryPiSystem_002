@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { inventoryThumbnailUrl, resolveInventoryTag, resolveInventoryLabelNumber, type InventoryItem, type InventoryTag, type ResolvedInventoryTag } from '../../api/client';
-import { useInventoryMachines, useInventoryCompartmentHistory, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { useInventoryMachineOptionalDepartments, useInventoryMachines, useInventoryCompartmentHistory, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 import { inventoryOfflineQueueStore } from '../../features/kiosk/inventory/offline/inventoryOfflineQueueStore';
 import { InventoryNfcRouter } from '../../features/kiosk/InventoryNfcRouter';
 import { useNfcStream } from '../../hooks/useNfcStream';
@@ -21,6 +21,7 @@ vi.mock('../../features/kiosk/inventory/offline/inventoryOfflineQueueStore', () 
   inventoryOfflineQueueStore: { list: vi.fn(async () => []), prune: vi.fn(), add: vi.fn(), fail: vi.fn(), remove: vi.fn() },
 }));
 vi.mock('../../api/hooks', () => ({
+  useInventoryMachineOptionalDepartments: vi.fn(() => ({ data: [], isSuccess: true, isFetching: false })),
   useInventoryMachines: vi.fn(() => ({ data: [], isLoading: false })),
   useInventoryMutations: vi.fn(),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
@@ -1605,6 +1606,7 @@ describe('inventory number keypad', () => {
 });
 
 beforeEach(() => {
+  vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({ data: [], isSuccess: true, isFetching: false } as never);
   vi.mocked(useInventoryMachines).mockReturnValue({ data: [], isLoading: false } as never);
   vi.mocked(inventoryOfflineQueueStore.list).mockResolvedValue([]);
 });
@@ -1616,6 +1618,34 @@ describe('inventory machine picking', () => {
     vi.mocked(useInventoryMachines).mockReturnValue({ data: [machine], isLoading: false } as never);
     vi.mocked(useInventoryItems).mockReturnValue({ data: [], isLoading: false } as never);
   });
+  it.each([false, true])('issues from an optional department with selected machine=%s', async selected => {
+    vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({ data: ['生産技術課'], isSuccess: true, isFetching: false } as never);
+    const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE' }) });
+    vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);
+    const scan = renderWithNfc();
+    await scan({ ...itemTag, compartment: { ...itemTag.compartment, area: '生産技術課 北' } });
+    expect(screen.getByRole('group', { name: '使う加工機' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1個を払い出す' })).toHaveAttribute('aria-disabled', 'false');
+    expect(screen.getByRole('button', { name: 'ほかの数' })).toHaveAttribute('aria-disabled', 'false');
+    if (selected) fireEvent.click(screen.getByRole('button', { name: 'NHX4000' }));
+    fireEvent.click(screen.getByRole('button', { name: '1個を払い出す' }));
+    await waitFor(() => expect(touch).toHaveBeenCalledWith(expect.objectContaining({ quantity: 1, machineId: selected ? 'm1' : undefined })));
+  });
+
+  it.each(['required', 'loading', 'failed', 'refreshing'])('requires a machine for department settings state=%s', async state => {
+    vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({
+      data: state === 'loading' ? undefined : ['生産技術課'], isSuccess: state !== 'failed' && state !== 'loading', isFetching: state === 'loading' || state === 'refreshing',
+    } as never);
+    const touch = vi.fn();
+    vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);
+    const scan = renderWithNfc();
+    await scan({ ...itemTag, compartment: { ...itemTag.compartment, area: state === 'required' ? '機械課 北' : '生産技術課 北' } });
+    const quantity = screen.getByRole('button', { name: '1個を払い出す' });
+    expect(quantity).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(quantity);
+    expect(touch).not.toHaveBeenCalled();
+  });
+
   it('blocks quantities and other numbers until a machine is selected, then sends and clears machineId', async () => {
     const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE', machine }) });
     vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);

@@ -505,3 +505,13 @@ export async function rotateInventoryItemPhoto(itemId: string, photoId: string, 
   });
   return data.result;
 }
+
+export async function getInventoryMachineOptionalDepartments() {
+  const { data } = await api.get<{ departments: string[] }>('/item-inventory/machine-optional-departments');
+  return data.departments;
+}
+
+export async function setInventoryDepartmentMachineRequired(input: { department: string; machineRequired: boolean }, accessPassword?: string) {
+  const { data } = await api.put('/item-inventory/machine-optional-departments', input, { headers: inventorySettingsHeaders(accessPassword) });
+  return data;
+}

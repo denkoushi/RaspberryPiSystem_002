@@ -1,8 +1,9 @@
+import { splitArea } from '@raspi-system/shelf-layout-core';
 import { useMemo, useState } from 'react';
 
-import { useInventoryImports, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
+import { useInventoryMachineOptionalDepartments, useInventoryImports, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
 import { EditIcon, PinIcon, PlusIcon } from '../InventoryIcons';
-import { invSetupTargets, invButtonSm, invButtonSmGhost, invCard, invEyebrow, invSegAdd } from '../inventoryUi';
+import { invSetupTargets, invButtonSm, invButtonSmGhost, invCard, invSegAdd } from '../inventoryUi';
 
 import { AreaNameEditor } from './AreaNameEditor';
 import { setupErrorText as errorText } from './setupError';
@@ -14,11 +15,20 @@ function nextNumber(numbers: number[]): number {
 }
 
 export function InventoryShelvesTab({ accessPassword }: { accessPassword: string }) {
+  const departmentsQuery = useInventoryMachineOptionalDepartments();
   const locationsQuery = useInventoryLocations();
   const importsQuery = useInventoryImports(accessPassword, true);
   const mutations = useInventoryMutations(accessPassword, true);
   const shelves = useMemo(() => locationsQuery.data ?? [], [locationsQuery.data]);
   const areas = useMemo(() => [...new Set(shelves.map((shelf) => shelf.area))].sort((a, b) => a.localeCompare(b, 'ja')), [shelves]);
+  const departments = useMemo(() => {
+    const groups = new Map<string, string[]>();
+    for (const area of areas) {
+      const { machine } = splitArea(area);
+      groups.set(machine, [...(groups.get(machine) ?? []), area]);
+    }
+    return [...groups];
+  }, [areas]);
   // Machines of mailed candidates, offered as buttons when naming an area.
   const machineChoices = useMemo(() => [...new Set((importsQuery.data ?? []).map((entry) => entry.area))], [importsQuery.data]);
   const [areaName, setAreaName] = useState<string | null>(null);
@@ -79,22 +89,44 @@ export function InventoryShelvesTab({ accessPassword }: { accessPassword: string
 
   return (
     <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 pt-4`}>
-      <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)] gap-5">
+      <div className="grid min-h-0 flex-1 grid-cols-[420px_minmax(0,1fr)] gap-5">
         <section className="flex min-h-0 flex-col gap-2 overflow-y-auto" aria-label="エリア">
-          <h2 className={invEyebrow}>エリア（加工機 ＋ 方角）</h2>
-          {areas.map((entry) => (
-            <button
-              key={entry}
-              type="button"
-              aria-pressed={entry === area}
-              className={`flex h-14 shrink-0 items-center gap-2.5 rounded-xl px-3.5 text-left text-[15px] font-bold ${entry === area ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-s1 hover:bg-inv-s2'}`}
-              onClick={() => { setAreaName(entry); setEditor(null); }}
-            >
-              <PinIcon />
-              <span className="min-w-0 flex-1 line-clamp-2 break-all">{entry}</span>
-              <span className="shrink-0 text-xs font-normal tabular-nums text-inv-faint">棚{shelfCount(entry)}・{drawerCount(entry)}</span>
-            </button>
-          ))}
+          {departments.map(([department, entries]) => {
+            const machineRequired = !departmentsQuery.data?.includes(department);
+            return (
+              <section key={department} aria-label={department} className={`${invCard} flex shrink-0 flex-col gap-2 p-3`}>
+                <div className="flex min-h-12 items-center justify-between gap-3">
+                  <h2 className="min-w-0 break-all text-lg font-bold">{department}</h2>
+                  <button
+                    type="button"
+                    aria-pressed={machineRequired}
+                    disabled={pending || mutations.setDepartmentMachineRequired.isPending || !departmentsQuery.isSuccess || departmentsQuery.isFetching}
+                    className={`flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-bold disabled:opacity-40 ${machineRequired ? 'border-inv-cyan text-inv-cyan' : 'border-inv-line2 text-inv-muted'}`}
+                    onClick={() => void run(() => mutations.setDepartmentMachineRequired.mutateAsync({ department, machineRequired: !machineRequired }), '', undefined, `department:${department}`)}
+                  >
+                    加工機選ぶ
+                    <span aria-hidden="true" className={`flex h-5 w-9 items-center rounded-full border px-0.5 ${machineRequired ? 'justify-end border-inv-cyan' : 'justify-start border-inv-line2'}`}>
+                      <span className={`h-3 w-3 rounded-full ${machineRequired ? 'bg-inv-cyan' : 'bg-inv-muted'}`} />
+                    </span>
+                  </button>
+                </div>
+                {error && errorAt === `department:${department}` ? localError(`department:${department}`) : null}
+                {entries.map((entry) => (
+                  <button
+                    key={entry}
+                    type="button"
+                    aria-pressed={entry === area}
+                    className={`flex h-14 shrink-0 items-center gap-2.5 rounded-xl px-3.5 text-left text-[15px] font-bold ${entry === area ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-s1 hover:bg-inv-s2'}`}
+                    onClick={() => { setAreaName(entry); setEditor(null); }}
+                  >
+                    <PinIcon />
+                    <span className="min-w-0 flex-1 line-clamp-2 break-all">{splitArea(entry).direction ?? department}</span>
+                    <span className="shrink-0 text-xs font-normal tabular-nums text-inv-faint">棚{shelfCount(entry)}・{drawerCount(entry)}</span>
+                  </button>
+                ))}
+              </section>
+            );
+          })}
           <button type="button" className={`${invSegAdd} h-12 shrink-0 justify-start px-3.5`} disabled={pending} onClick={() => setEditor('new')}>＋ 新しいエリア</button>
         </section>
 

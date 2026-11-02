@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db } = vi.hoisted(() => ({
   db: {
+    inventoryMachineOptionalDepartment: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     productionScheduleResourceMaster: { findMany: vi.fn() },
     clientDevice: { findUnique: vi.fn() },
     machine: { findMany: vi.fn(), findUnique: vi.fn() },
@@ -15,6 +16,7 @@ const { db } = vi.hoisted(() => ({
     $transaction: vi.fn(),
   },
 }));
+vi.mock('../../services/production-schedule/production-schedule-settings.service.js', () => ({ SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: vi.fn(async ({ password }) => ({ success: password === '2520' })) }));
 vi.mock('../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../../lib/prisma.js', () => ({ prisma: db }));
 vi.mock('../../services/item-inventory/item-inventory-service.factory.js', async () => {
@@ -95,5 +97,47 @@ describe('inventory machine API', () => {
     const without = await request({ ...options, payload });
     expect(without.statusCode).toBe(200);
     expect(without.json().transaction.machineId).toBeNull();
+  });
+});
+
+describe('inventory department machine requirement API', () => {
+  const url = '/item-inventory/machine-optional-departments';
+  const department = '生産技術課';
+  const headers = { 'x-client-key': 'key', 'x-kiosk-access-password': '2520' };
+
+  it('lists the optional departments with the locations read authorization', async () => {
+    db.inventoryMachineOptionalDepartment.findMany.mockResolvedValue([{ department }]);
+    const response = await request({ method: 'GET', url });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ departments: [department] });
+    expect(db.inventoryMachineOptionalDepartment.findMany).toHaveBeenCalledWith({ orderBy: { department: 'asc' } });
+    expect((await request({ method: 'GET', url, headers: {} })).statusCode).toBe(401);
+  });
+
+  it('idempotently disables and enables the requirement with a verified settings PIN', async () => {
+    const rows = new Set<string>();
+    db.inventoryMachineOptionalDepartment.upsert.mockImplementation(async ({ create }) => { rows.add(create.department); });
+    db.inventoryMachineOptionalDepartment.deleteMany.mockImplementation(async ({ where }) => { rows.delete(where.department); });
+    for (const machineRequired of [false, false, true, true]) {
+      const response = await request({ method: 'PUT', url, headers, payload: { department: ` ${department} `, machineRequired } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ department, machineRequired });
+      expect(rows.has(department)).toBe(!machineRequired);
+    }
+    expect(db.inventoryMachineOptionalDepartment.upsert).toHaveBeenCalledWith({ where: { department }, create: { department }, update: {} });
+    expect(db.inventoryMachineOptionalDepartment.deleteMany).toHaveBeenCalledWith({ where: { department } });
+  });
+
+  it.each([{}, { 'x-client-key': 'key' }, { 'x-client-key': 'key', 'x-kiosk-access-password': '0000' }])('rejects writes without management authorization: %j', async credentials => {
+    const response = await request({ method: 'PUT', url, headers: credentials, payload: { department, machineRequired: false } });
+    expect([401, 403]).toContain(response.statusCode);
+    expect(db.inventoryMachineOptionalDepartment.upsert).not.toHaveBeenCalled();
+    expect(db.inventoryMachineOptionalDepartment.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each([{ department: '', machineRequired: false }, { department: '   ', machineRequired: true }, { department: 'a'.repeat(201), machineRequired: false }, { department, machineRequired: 'false' }, { department }])('rejects invalid settings: %j', async payload => {
+    expect((await request({ method: 'PUT', url, headers, payload })).statusCode).toBe(400);
+    expect(db.inventoryMachineOptionalDepartment.upsert).not.toHaveBeenCalled();
+    expect(db.inventoryMachineOptionalDepartment.deleteMany).not.toHaveBeenCalled();
   });
 });

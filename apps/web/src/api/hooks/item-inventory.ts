@@ -27,6 +27,8 @@ import {
   getInventoryItems,
   getInventoryMachines,
   getInventoryLocations,
+  getInventoryMachineOptionalDepartments,
+  setInventoryDepartmentMachineRequired,
   getInventoryTags,
   getInventoryToolFieldOptions,
   getInventoryToolFieldValues,
@@ -62,6 +64,7 @@ import { inventoryKeys, itemInventoryQueryKeys } from '../queryKeys/itemInventor
 import type { InventoryToolScope } from '@raspi-system/shared-types';
 
 export function useInventoryItems(enabled = true) { return useQuery({ queryKey: inventoryKeys.itemsAll, queryFn: getInventoryItems, enabled }); }
+export function useInventoryMachineOptionalDepartments() { return useQuery({ queryKey: inventoryKeys.machineOptionalDepartmentsAll, queryFn: getInventoryMachineOptionalDepartments }); }
 export function useInventoryLocations() { return useQuery({ queryKey: inventoryKeys.locationsAll, queryFn: getInventoryLocations }); }
 export function useInventoryToolFieldOptions(enabled = true, scope: InventoryToolScope = 'default') { return useQuery({ queryKey: [...inventoryKeys.toolFieldOptionsAll, scope], queryFn: () => getInventoryToolFieldOptions(scope), enabled }); }
 export function useInventoryToolFieldValues(accessPassword: string, enabled = true, setup = false, scope: InventoryToolScope = 'default') {
@@ -220,6 +223,7 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
     deleteTag: useMutation({ mutationFn: (id: string) => send(() => deleteInventoryTag(id, accessPassword)), onSuccess: invalidate }),
     bindCompartment: useMutation({ mutationFn: (input: Parameters<typeof bindInventoryCompartment>[0]) => send(() => bindInventoryCompartment(input, accessPassword)), onSuccess: invalidate }),
     createShelf: useMutation({ mutationFn: (input: Parameters<typeof createInventoryShelf>[0]) => send(() => createInventoryShelf(input, accessPassword)), onSuccess: invalidate }),
+    setDepartmentMachineRequired: useMutation({ mutationFn: (input: Parameters<typeof setInventoryDepartmentMachineRequired>[0]) => send(() => setInventoryDepartmentMachineRequired(input, accessPassword)), onSuccess: () => queryClient.invalidateQueries({ queryKey: inventoryKeys.machineOptionalDepartmentsAll }) }),
     renameArea: useMutation({ mutationFn: ({ from, to }: { from: string; to: string }) => send(() => renameInventoryArea(from, to, accessPassword)), onSuccess: invalidate }),
     createDrawer: useMutation({ mutationFn: (input: Parameters<typeof createInventoryDrawer>[0]) => send(() => createInventoryDrawer(input, accessPassword)), onSuccess: invalidate }),
     quantityTag: useMutation({ mutationFn: (input: Parameters<typeof registerInventoryQuantityTag>[0]) => send(() => registerInventoryQuantityTag(input, accessPassword)), onSuccess: invalidate }),
