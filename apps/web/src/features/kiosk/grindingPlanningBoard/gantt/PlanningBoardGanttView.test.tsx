@@ -543,15 +543,21 @@ describe('forward PlanningBoardGanttView', () => {
   it('focuses a part across resource rows in process order, switches parts and toggles closed', () => {
     const values = forwardProps(chainItems());
     render(<PlanningBoardGanttView {...values} resourceNameMap={{ '306': ['306 ＮＣ研削盤'] }} selectedItemIds={new Set(['a', 'c'])} />);
-    const reservedStrip = screen.getByLabelText('ガントの日付と工程').previousElementSibling;
-    expect(reservedStrip).toHaveClass('h-[61px]');
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const section = screen.getByRole('region', { name: '製番ボード ガント' });
+    expect(section.firstElementChild).toBe(viewport);
+    expect(viewport.previousElementSibling).toBeNull();
     const a = screen.getByTestId('planning-gantt-bar-a');
     const b = screen.getByTestId('planning-gantt-bar-b');
     expect(a).toHaveClass('outline-emerald-300');
     expect(screen.getByTestId('planning-gantt-due-a')).toHaveTextContent('▲');
     tap(b);
     const strip = screen.getByRole('region', { name: '工程のつながり' });
-    expect(strip.parentElement).toBe(reservedStrip);
+    expect(strip.parentElement).toBe(section);
+    expect(viewport).not.toContainElement(strip);
+    expect(strip).toHaveClass('absolute', 'inset-x-0', 'z-50', 'border-t');
+    fireEvent.pointerDown(strip, { button: 1 });
+    expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
     expect(strip).toHaveTextContent('26-1001 · P1 · 2工程');
     const steps = within(strip).getAllByRole('button');
     expect(steps[0]).toHaveTextContent('工順2 · 305');
@@ -628,15 +634,18 @@ describe('forward PlanningBoardGanttView', () => {
     const content = viewport.firstElementChild as HTMLElement;
     const rect = (left: number, top: number, width: number, height: number) => ({ left, top, right: left + width, bottom: top + height, width, height } as DOMRect);
     vi.spyOn(content, 'getBoundingClientRect').mockReturnValue(rect(10, 50, 3000, 500));
-    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(rect(10, 180, 1120, 500));
+    const viewportBounds = rect(10, 120, 1120, 500);
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(viewportBounds);
+    const bottomGap = 10; // GANTT_BOTTOM_GAP
+    const expectedHeight = `${Math.max(192, Math.floor(window.innerHeight - viewportBounds.top - bottomGap))}px`;
     act(() => { window.dispatchEvent(new Event('resize')); });
-    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 190}px` });
+    expect(viewport).toHaveStyle({ height: expectedHeight });
     const segments = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)).find(bar => bar.item.itemId === 'a')!.segments!;
     const last = screen.getByTestId(`planning-gantt-bar-a-segment-${segments.length - 1}`);
     vi.spyOn(last, 'getBoundingClientRect').mockReturnValue(rect(500, 100, 80, 70));
     const measureNext = vi.spyOn(screen.getByTestId('planning-gantt-bar-b'), 'getBoundingClientRect').mockReturnValue(rect(700, 300, 40, 70));
     tap(screen.getByTestId('planning-gantt-bar-a'));
-    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 190}px` });
+    expect(viewport).toHaveStyle({ height: expectedHeight });
     const path = screen.getByTestId('planning-gantt-chain-link');
     expect(path).toHaveAttribute('d', 'M 570 85 C 630 85, 630 285, 690 285');
     expect(path).toHaveAttribute('stroke-dasharray', '6 4');
@@ -647,11 +656,11 @@ describe('forward PlanningBoardGanttView', () => {
     expect(step).toHaveAttribute('aria-current', 'step');
     expect(step).toHaveClass('ring-white');
     expect(viewport.scrollLeft).toBe(66);
-    expect(viewport.scrollTop).toBe(84);
+    expect(viewport.scrollTop).toBe(144);
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     fireEvent.click(step);
-    expect(scrollTo).toHaveBeenCalledWith({ left: 132, top: 168, behavior: 'smooth' });
+    expect(scrollTo).toHaveBeenCalledWith({ left: 132, top: 288, behavior: 'smooth' });
     measureNext.mockReturnValue(rect(800, 300, 40, 70));
     rerender(<PlanningBoardGanttView {...values} scale={4} />);
     expect(path).toHaveAttribute('d', 'M 570 85 C 680 85, 680 285, 790 285');
@@ -660,7 +669,59 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent(window, new Event('resize'));
     expect(path).toHaveAttribute('d', 'M 570 85 C 730 85, 730 285, 890 285');
     fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
-    expect(viewport).toHaveStyle({ height: `${window.innerHeight - 190}px` });
+    expect(viewport).toHaveStyle({ height: expectedHeight });
+  });
+  it.each([false, true])('overlays the viewport bottom and reserves only the measured strip height (legend=%s)', (colorBySeiban) => {
+    const observers = new Map<Element, () => void>();
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private callback: () => void) {}
+      observe(element: Element) { observers.set(element, this.callback); }
+      disconnect() {}
+    });
+    render(<PlanningBoardGanttView {...forwardProps(chainItems())} colorBySeiban={colorBySeiban} />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const content = viewport.firstElementChild as HTMLElement;
+    const section = screen.getByRole('region', { name: '製番ボード ガント' });
+    const legend = screen.queryByRole('group', { name: '製番の色分け凡例' });
+    if (legend) Object.defineProperty(legend, 'offsetHeight', { configurable: true, value: 52 });
+    fireEvent(window, new Event('resize'));
+    const height = viewport.style.height;
+    expect(section.firstElementChild).toBe(viewport);
+    expect(content).toHaveStyle({ paddingBottom: '0px' });
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    const strip = screen.getByTestId('planning-gantt-chain-strip');
+    expect(strip.parentElement).toBe(section);
+    expect(strip).toHaveStyle({ bottom: colorBySeiban ? '52px' : '0px' });
+    expect(observers.has(strip)).toBe(true);
+    for (const stripHeight of [80, 96]) {
+      Object.defineProperty(strip, 'offsetHeight', { configurable: true, value: stripHeight });
+      act(() => observers.get(strip)!());
+      expect(content).toHaveStyle({ paddingBottom: `${stripHeight}px` });
+      expect(viewport).toHaveStyle({ scrollPaddingBottom: `${stripHeight}px`, overflowAnchor: 'none' });
+      expect(viewport.style.height).toBe(height);
+      expect(section.firstElementChild).toBe(viewport);
+    }
+    if (legend) {
+      Object.defineProperty(legend, 'offsetHeight', { configurable: true, value: 104 });
+      act(() => observers.get(legend)!());
+      expect(strip).toHaveStyle({ bottom: '104px' });
+    }
+    // In a short viewport the usual 36px top offset would leave the bar under the strip.
+    Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 });
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 100, left: 0 } as DOMRect);
+    vi.spyOn(screen.getByTestId('planning-gantt-bar-b'), 'getBoundingClientRect')
+      .mockReturnValue({ top: 400, bottom: 500, left: 700, width: 40 } as DOMRect);
+    const scrollTo = vi.fn();
+    Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
+    fireEvent.click(within(strip).getByRole('button', { name: /工順20/ }));
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 500 - 100 - 200 + 96, behavior: 'smooth' }));
+    const heightBeforeClose = viewport.style.height;
+    fireEvent.click(within(strip).getByRole('button', { name: '工程のつながりを閉じる' }));
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+    expect(content).toHaveStyle({ paddingBottom: '0px' });
+    expect(viewport).toHaveStyle({ scrollPaddingBottom: '0px', overflowAnchor: 'none' });
+    expect(viewport.style.height).toBe(heightBeforeClose);
+    expect(section.firstElementChild).toBe(viewport);
   });
   it('shows only the process order and machine in each strip step, without times', () => {
     const values = forwardProps([item({ requiredMinutes: 480, originalDueDate: '2026-10-13' }), item({ itemId: 'b', processOrder: '20', requiredMinutesKnown: false })]);

@@ -118,6 +118,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     return () => document.removeEventListener('keydown', clear);
   }, [focusedSeiban, setFocusedSeiban]);
   const legend = useRef<HTMLDivElement>(null);
+  const [legendHeight, setLegendHeight] = useState(0);
+  const chainStrip = useRef<HTMLDivElement>(null);
+  const [chainStripHeight, setChainStripHeight] = useState(0);
   const [dragPreview, setDragPreview] = useState<ForwardDragPreview | null>(null);
   const dragLanes = useMemo(() => layout.groups.flatMap((group) => group.resource
     ? [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars) }] : []), [layout]);
@@ -163,6 +166,17 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   useEffect(() => {
     if (!showChain) { setFocusedPartKey(null); setCurrentItemId(null); }
   }, [showChain]);
+  useLayoutEffect(() => {
+    const element = chainStrip.current;
+    if (!showChain || !element) return;
+    const measure = () => setChainStripHeight(element.offsetHeight);
+    measure();
+    window.addEventListener('resize', measure);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
+  }, [showChain]);
+  const bottomInset = showChain ? chainStripHeight : 0;
   const focusChain = (bar: GanttBar) => {
     setFocusedPartKey(focusedPartKey === bar.partKey ? null : bar.partKey);
     setCurrentItemId(null);
@@ -183,6 +197,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const measure = () => {
       if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
       const top = element.getBoundingClientRect().top;
+      setLegendHeight(legend.current?.offsetHeight ?? 0);
       if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor((window.innerHeight - top) / pageZoom() - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
     };
     measure();
@@ -249,7 +264,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     // Centre the bar, but keep its start in view when it is wider than the chart.
     const barLeft = element.scrollLeft + (rect.left - bounds.left) / pageZoom();
     const left = Math.max(0, Math.min(barLeft + rect.width / pageZoom() / 2 - (viewportWidth + labelWidth) / 2, barLeft - labelWidth - 16));
-    const top = Math.max(0, element.scrollTop + (rect.top - bounds.top) / pageZoom() - 36);
+    const visibleHeight = element.clientHeight || viewportHeight || bounds.height / pageZoom();
+    const top = Math.max(0, element.scrollTop + (rect.top - bounds.top) / pageZoom() - 36,
+      element.scrollTop + (rect.bottom - bounds.top) / pageZoom() - visibleHeight + bottomInset);
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
     else { element.scrollLeft = left; element.scrollTop = top; }
   };
@@ -286,16 +303,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   return (
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
-      <div className="h-[61px] overflow-hidden">
-        {showChain && <PlanningBoardChainStrip bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
-          onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds} disabled={interaction.disabled}
-          onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
-      </div>
       <div ref={viewport} onScroll={() => queuePopover.current?.close()} className="relative min-h-48 overflow-auto"
-        style={{ height: viewportHeight ?? undefined, overflowAnchor: 'none' }} tabIndex={0} aria-label="ガントの日付と工程"
+        style={{ height: viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
         onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
-        <div ref={content} className="relative isolate" style={{ width: labelWidth + width }}>
+        <div ref={content} className="relative isolate" style={{ width: labelWidth + width, paddingBottom: bottomInset }}>
           <div className="sticky top-0 z-30 flex h-9 border-b border-slate-700 bg-slate-950">
             {/* The ‹ › buttons sit in the top-left corner so they never cover bars. */}
             <div className="sticky left-0 z-40 flex shrink-0 items-center justify-center gap-2 bg-slate-950 px-2" style={{ width: labelWidth }} role="group" aria-label="ガントの左右送り">
@@ -360,6 +372,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
+      {showChain && <PlanningBoardChainStrip ref={chainStrip} bottom={legendHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+        onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds} disabled={interaction.disabled}
+        onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
       {seibanColors && <div ref={legend} role="group" aria-label="製番の色分け凡例" className="flex flex-wrap gap-2 border-t border-slate-700 px-2 py-1 text-xs text-slate-200">
         {[...seibanColors].map(([seiban, color]) => <button key={seiban} type="button" aria-pressed={focusedSeiban === seiban}
           onClick={() => focusedSeiban === seiban ? setFocusedSeiban(null) : focusSeiban(seiban)}
