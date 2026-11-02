@@ -828,3 +828,25 @@ update-frequency: high
 - `pip` の競合警告が出てもビルドが通る場合は、**実際に入った Pillow バージョン**（`pip show pillow`）と Trivy 結果をセットで見る
 
 **関連**: [deployment.md](../guides/deployment.md)、[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress（キオスク計測機器持出レイアウト・2026-04-14）
+
+---
+
+### [KB-435] kiosk-sop の firefox E2E が取説の「次へ」の後で止まり 120 秒で失敗する
+
+**発生日**: 2026-11-02
+
+**事象**:
+- `kiosk-sop` ジョブの `e2e/inspection-drawing-sop-popup.spec.ts`「全取説カードの引出線はカード端と丸数字外周を結ぶ」（firefox）が、ときどき `Test timeout of 120000ms exceeded.` で失敗する。やり直すと通る
+- トレースでは「次の手順」クリック直後の `expect(sheet).toBeVisible()`（5 秒上限）が返らず、80 秒以上 OPEN のまま。失敗時の画面写真ではアプリは次のシートを正しく表示している
+- 原因: `KioskSopDialog` が同じ `<iframe sandbox>` の `srcDoc`（約 1.4MB）を差し替えてシートを切り替えていた。この再ナビゲーションを Firefox の自動操作が見失い、frame locator が戻らなくなる。1 テストで 9 回差し替えるため、負荷が高い CI（chromium と並列）で起きやすい
+- 再現: `linux/amd64` の kiosk-sop イメージで `--project=firefox --grep "全取説カード" --repeat-each=4` を実行すると 12 回中 3 回停止
+
+**有効だった対策**:
+- ✅ `iframe` に `key={sheet.id}` を付け、シートごとに新しい iframe を作る（利用者から見た動きは同じ）。同条件 24 回で停止 0、両ブラウザ全 36 件合格
+- ✅ 診断を残す: `playwright.kiosk-sop.config.ts` を `trace: 'retain-on-failure'`、`actionTimeout: 15_000` にし、`run-kiosk-sop-artifact-contract.sh` の `--output` を diagnostics フォルダへ向けて、既存のアーティファクトに画面写真・`error-context.md`・`trace.zip` が入るようにした
+
+**再発防止**:
+- 取説の iframe を同じ要素のまま `srcDoc` で切り替える形に戻さない
+- kiosk-sop の失敗は、アーティファクトの `playwright-test-results/**/trace.zip` で最後に OPEN のままの呼び出しを見る
+
+**関連**: [KioskSopDialog.tsx](../../apps/web/src/features/kiosk-sop/KioskSopDialog.tsx)、[playwright.kiosk-sop.config.ts](../../playwright.kiosk-sop.config.ts)

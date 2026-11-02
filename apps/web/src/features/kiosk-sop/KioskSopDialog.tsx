@@ -99,7 +99,10 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
       </header>
 
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-900">
+        {/* A new browsing context per sheet: re-navigating one srcdoc iframe
+            intermittently loses the frame in Firefox automation. */}
         <iframe
+          key={sheet.id}
           ref={frameRef}
           title={`${manual.title} — ${sheet.label}`}
           data-testid="kiosk-sop-frame"
