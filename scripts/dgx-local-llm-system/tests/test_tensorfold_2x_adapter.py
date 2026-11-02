@@ -433,7 +433,7 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
         command = runner.call_args.args[0]
         self.assertEqual(command[:6], ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--'])
         self.assertEqual(command[6], self.module.TARGET)
-        for expected in ('ABLIT=0', 'PREPARE=0', 'PORT=8889', 'API_KEY=1',
+        for expected in ('ABLIT=1', 'PREPARE=0', 'PORT=8889', 'API_KEY=1',
                          'CONTAINER_NAME=business-dsv41-1017-exl3-tf', 'prepared_state',
                          'worker_image_ident', 'worker_files_check', '--pull never',
                          'rank0of2-', 'rank1of2-', 'ENGRAM_SHARDS', 'HEAD_NFS_VOLUME'):
@@ -468,6 +468,7 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
         self.assertLess(script.index('names=$(docker ps -a'), script.index('setsid nohup'))
         self.assertEqual(self.module.ENV['HF_HOME'], '/srv/dgx/system-prod/data/deepseek-v41/hf')
         self.assertEqual(self.module.ENV['SPILL_GIB'], '0')
+        self.assertEqual(self.module.ENV['SPILL_WEIGHTS_SHA'], '0')
 
     def test_stop_retains_markers_when_either_rank_gpu_listener_or_watchdog_remains(self):
         from unittest.mock import patch
@@ -518,12 +519,15 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
 
     def test_kit_patch_requires_unique_anchors_and_launches_with_bash_c(self):
         from unittest.mock import patch
-        source = ('set -eu\ncd "$(dirname "${BASH_SOURCE[0]}")"\n'
+        source = ('set -eu\ncd "$(dirname "$(readlink -f "$0")")"\n'
                   'source ./scripts/nodes.sh\nCACHE="$HOME/.cache/dsv41-tensorfold"\n'
-                  'RUN_ARGS="--example"\nprintf "%s\\n" "$PWD" "$RUN_ARGS"\n')
-        anchors = ('${BASH_SOURCE[0]}', 'source ./scripts/nodes.sh',
-                   '$HOME/.cache/dsv41-tensorfold', 'RUN_ARGS="')
-        with tempfile.TemporaryDirectory() as directory:
+                  'RUN_ARGS="--example"\nprintf "%s\\n" "$PWD" "$RUN_ARGS"\n'
+                  '# docker run head\n# docker run worker\n# docker run probe\n')
+        anchors = ('source ./scripts/nodes.sh',
+                   '$HOME/.cache/dsv41-tensorfold', 'RUN_ARGS="', 'docker run head')
+        # Exercise the launch transformation independently of the marker helper below.
+        setup = 'shared_config() { :; }; business_prepared() { :; }; prepared_state() { :; }'
+        with tempfile.TemporaryDirectory() as directory, patch.object(self.module, 'SHARED_SETUP', setup):
             root = Path(directory)
             (root / 'scripts').mkdir()
             (root / 'scripts/nodes.sh').write_text('')
@@ -546,6 +550,7 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
                 cwd=root, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn('BASH_SOURCE', output.read_text())
+            self.assertEqual(output.read_text().count('docker run --pull never '), 3)
             launched = subprocess.run(['bash', '-eu', '-c', output.read_text(), str(root / 'start.sh')],
                 cwd='/', capture_output=True, text=True)
             self.assertEqual(launched.returncode, 0, launched.stderr)
@@ -582,12 +587,115 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
             self.assertEqual(events.read_text(), 'ssh-check\n')
             self.assertEqual(marker.read_text(), before)
 
-    def test_business_config_cannot_inherit_private_key_engram_or_foreground(self):
+    def test_business_config_shares_only_prepared_artifacts(self):
         values = self.module.ENV
         self.assertEqual(values['API_KEY_FILE'], '/srv/dgx/system-prod/state/deepseek-v41/api-key')
         self.assertEqual(values['HEAD_ENGRAM_DIR'], '')
         self.assertEqual(values['FOREGROUND'], '0')
-        self.assertEqual(values['MODEL_REVISION'], '45ee5d0fd106c94a3d77f721e09cbb2f50e5a16b')
+        self.assertEqual(values['MODEL_REVISION'], '')  # Immutable SHA comes from the private marker.
+        self.assertEqual(values['ABLIT'], '1')
+        self.assertEqual(values['ABLIT_ID'], 'drowzeys/keys-DeepSeek-V4.1-Flash-1017-Abliterated')
+        self.assertEqual(values['ABLIT_REVISION'], '0bdc2036113c4fdda38ef6005b3cbc0bc0dfa0f0')
+        self.assertEqual(values['HF_CACHE'], '/srv/ssd/hf')
+        self.assertEqual(values['NFS_PATH'], '/srv/ssd/hf')
+        self.assertEqual(values['WORKER_ENGRAM_DIR'], '/home/ubudgxkoushi/.cache/dsv41-tensorfold/engram-1bae0e10')
+        self.assertEqual(values['WORKER_CACHE_DIR'], '/home/ubudgxkoushi/.cache/dsv41-tensorfold/rank-cache-878f5689-ablit-0bdc2036')
+        for key in ('STATE_DIR', 'LOG_DIR', 'TMPDIR', 'XDG_CACHE_HOME', 'HOME', 'HF_HOME',
+                    'SPILL_DIR', 'WORKER_SPILL_DIR', 'API_KEY_FILE'):
+            self.assertTrue(values[key].startswith('/srv/dgx/system-prod/'), key)
+
+    def test_private_marker_is_read_only_and_requires_matching_preparation(self):
+        revision = '878f5689' + 'a' * 32
+        values = self.module.ENV
+        private = {'model': values['MODEL_ID'] + '@' + revision, 'ablit': '1',
+                   'overlay': values['ABLIT_ID'] + '@' + values['ABLIT_REVISION'] + '+stock-dtypes',
+                   'image': 'image-identity', 'kit': values['KIT_REF'], 'template': 'template-hash',
+                   'hf': values['HF_CACHE'], 'nfs_path': values['NFS_PATH'],
+                   'nfs_volume': 'dsv41-1017-exl3-hf',
+                   'wengram': values['WORKER_ENGRAM_DIR'].replace('/home/ubudgxkoushi/', '$HOME/'),
+                   'wcache': values['WORKER_CACHE_DIR'].replace('/home/ubudgxkoushi/', '$HOME/')}
+        business = {**private, 'nfs_volume': values['NFS_VOLUME'],
+                    'wengram': values['WORKER_ENGRAM_DIR'], 'wcache': values['WORKER_CACHE_DIR']}
+
+        def serialize(fields):
+            return shlex.join([f'{key}={value}' for key, value in fields.items()])
+
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'prepared'
+            marker.write_text(serialize(private))
+            marker.chmod(0o400)
+            before = marker.stat()
+            environment = {**os.environ, **values, 'PYTHONOPTIMIZE': '1', 'SHARED_PREPARED_MARKER': str(marker),
+                           'TEST_STATE': serialize(business)}
+            script = self.module.SHARED_SETUP + '\nshared_config\nbusiness_prepared check "$TEST_STATE"\nprintf "%s\\n" "$MODEL_REVISION" "$DATA_DIR"\n'
+            result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), [revision, '/srv/ssd/hf/tensorfold-dsv41/878f5689-ablit-0bdc2036'])
+            self.assertEqual(marker.read_text(), serialize(private))
+            self.assertEqual(marker.stat().st_mtime_ns, before.st_mtime_ns)
+            self.assertEqual(list(Path(directory).iterdir()), [marker])
+            for key, value in (('ablit', '0'), ('overlay', 'wrong'), ('image', 'other-image'),
+                               ('model', values['MODEL_ID'] + '@' + 'b' * 40),
+                               ('kit', 'other-kit'), ('template', 'other-template'),
+                               ('nfs_volume', 'unrelated'), ('wcache', '/other/cache')):
+                with self.subTest(key=key):
+                    result = subprocess.run(['bash', '-eu', '-c', script],
+                        env={**environment, 'TEST_STATE': serialize({**business, key: value})},
+                        capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+            for key, value in (('ABLIT', '0'), ('PREPARE', 'auto'), ('SPILL_GIB', '1'), ('SPILL_WEIGHTS_SHA', '1')):
+                with self.subTest(key=key):
+                    result = subprocess.run(['bash', '-eu', '-c', script], env={**environment, key: value},
+                        capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+            marker.chmod(0o600)
+            marker.write_text(serialize({**private, 'model': values['MODEL_ID'] + '@' + 'b' * 40}))
+            result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            marker.unlink()
+            result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_both_nfs_volumes_must_name_the_exact_read_only_export(self):
+        check = self.module.CHECK
+        volume_check = check[check.index('for rank in 0 1; do'):check.index('# Recompute index identities')]
+        script = ('docker() { printf "%s\\n" "$HEAD_VOLUME"; }; '
+                  'worker() { printf "%s\\n" "$WORKER_VOLUME"; };\n' + volume_check)
+        good = ':/srv/ssd/hf addr=192.168.100.11,nfsvers=4.2,ro,hard'
+        environment = {**os.environ, **self.module.ENV, 'HEAD_VOLUME': good, 'WORKER_VOLUME': good}
+        result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for key in ('HEAD_VOLUME', 'WORKER_VOLUME'):
+            for bad in (good.replace(',ro,', ',rw,'), good.replace(',ro,', ','), good + ',rw',
+                        good.replace('/srv/ssd/hf', '/wrong'), good.replace('192.168.100.11', '192.168.100.10')):
+                with self.subTest(key=key, bad=bad):
+                    result = subprocess.run(['bash', '-eu', '-c', script], env={**environment, key: bad},
+                        capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+
+    def test_shared_and_business_directories_must_exist_without_symlinks(self):
+        check = self.module.CHECK
+        directory_check = check[check.index('for dir in "$HF_CACHE"'):check.index('[[ -s "$API_KEY_FILE"')]
+        script = ('worker() { shift; eval "$*"; }; engram_cache_dir() { echo "$HF_CACHE/engram"; }; '
+                  'engram_rev() { echo revision; };\n' + directory_check)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            keys = ('HF_CACHE', 'DATA_DIR', 'STATE_DIR', 'LOG_DIR', 'HOME', 'HF_HOME', 'TMPDIR',
+                    'XDG_CACHE_HOME', 'SPILL_DIR', 'WORKER_CACHE_DIR', 'WORKER_ENGRAM_DIR', 'WORKER_SPILL_DIR')
+            environment = {**os.environ, **{key: str(root / key) for key in keys}, 'KIT_SUB': 'kit-sub'}
+            for path in [*(root / key for key in keys), root / 'DATA_DIR/checkpoint', root / 'DATA_DIR/model',
+                         root / 'DATA_DIR/rank-cache', root / 'HF_CACHE/kit-sub/kit', root / 'HF_CACHE/engram/snapshots/revision']:
+                path.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            alias = root / 'alias'
+            alias.symlink_to(root / 'WORKER_CACHE_DIR', target_is_directory=True)
+            for key in keys:
+                for bad in (str(alias), str(root / 'missing')):
+                    with self.subTest(key=key, bad=bad):
+                        result = subprocess.run(['bash', '-eu', '-c', script], env={**environment, key: bad},
+                            capture_output=True, text=True)
+                        self.assertNotEqual(result.returncode, 0)
 
     def test_private_tensorfold_stop_proof_inspects_actual_container_on_both_sparks(self):
         from unittest.mock import Mock, patch

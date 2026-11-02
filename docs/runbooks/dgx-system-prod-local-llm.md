@@ -30,15 +30,56 @@ update-frequency: high
 CP側は別の `DGX_BUSINESS_DEEPSEEK_SWITCH_ENABLED`。片側のみon、CP capabilityの404・不達・契約版違いでは管理画面の選択を受け付けない。
 
 1. 別途承認されたoperator作業で、専用kit `/srv/dgx/system-prod/kits/deepseek-v41-flash-tp2` を
-   `f424dfe3b14ac9f02fe12f5777c852dba967a79a` に固定し、`business_tensorfold.py` の `ENV` と同じ設定で準備する。
-   ABLIT=0、両rankの専用image、重み、Engram、rank cache、NFS、prepared markerを事前準備する。
-   private kit/cache/logへのsymlinkやHF認証を流用しない。業務起動は検査だけでbuild/download/prepareしない。
-2. 両Sparkの `/srv/dgx/system-prod/{data,state,logs}/deepseek-v41` を業務専用にする（dir 0700 / log 0600）。
-   kitのworker SSHはSpark 1のfabricアドレス `192.168.100.10` とし、専用SSH認証を事前設定する。
+   `f424dfe3b14ac9f02fe12f5777c852dba967a79a` に固定する。kitのworker SSHは
+   `ubudgxkoushi@192.168.100.10`（Spark 1）とし、専用SSH認証を事前設定する。
+   **業務用のprepare・build・download・モデルコピーは行わない。** 所有者の決定により業務もprivateと同じ
+   uncensoredモデル（`ABLIT=1`、EAQ v1、overlay `0bdc2036113c4fdda38ef6005b3cbc0bc0dfa0f0`）を使う。
+   公開モデル成果物にユーザーデータは含まれず、両Sparkの既存image `tensorfold-dsv41:exl3-tp2-<hash>` を再利用する。
+   Spark 2（head、`192.168.100.11`）の `/srv/ssd/hf`、その下の
+   `tensorfold-dsv41/878f5689-ablit-0bdc2036` と `tensorfold-dsv41/kit-abe07c7d`、Spark 1の
+   `/home/ubudgxkoushi/.cache/dsv41-tensorfold/engram-1bae0e10` と
+   `/home/ubudgxkoushi/.cache/dsv41-tensorfold/rank-cache-878f5689-ablit-0bdc2036` がprivate側で準備済みであることを確認する。
+   Spark 2の `/home/ubudgxkoushi/.local/state/dsv41-tensorfold/prepared` を読み取り専用で参照する。
+   markerの完全なmodel revisionは `878f5689` prefix必須で、業務markerの作成・コピーは不要。
+   marker照合ではworkerパスのリテラル `$HOME/` を `/home/ubudgxkoushi/` へ、既存/業務のNFS volume名だけを正規化し、
+   他の全設定・image identity・template hashの一致、rank index identity、Engram shardサイズを検査する。
+   不一致や欠落は停止前に拒否する。修復はprivateの所有者が別途行い、業務から共有成果物やprivate stateを更新しない。
+2. Spark 2のNFS export `/srv/ssd/hf` が **Spark 1 (`192.168.100.10`) とhead自身 (`192.168.100.11`) の双方にro**
+   で公開されていることを確認する。既存 `/etc/exports` のworker向け `192.168.100.10(ro,no_subtree_check)` を保持し、
+   head向けの許可がなければ同じexportへ `192.168.100.11(ro,no_subtree_check)` を追加し、通常のNFS設定反映手順を使う。
+   以下を各ホストで実行する（既存volumeがあれば削除・作り直しせず、同じdevice/serverかつ `ro`、`rw` なしをinspectで確認して再利用する）。
+
+   ```bash
+   # Spark 1: worker用の業務volume
+   docker volume create --driver local --opt type=nfs --opt device=:/srv/ssd/hf \
+     --opt o=addr=192.168.100.11,nfsvers=4.2,ro,nconnect=8,rsize=1048576,wsize=1048576,hard,timeo=600 business-dsv41-hf
+   # Spark 2: head用の業務volume
+   docker volume create --driver local --opt type=nfs --opt device=:/srv/ssd/hf \
+     --opt o=addr=192.168.100.11,nfsvers=4.2,ro,nconnect=8,rsize=1048576,wsize=1048576,hard,timeo=600 business-dsv41-hf-head
+   # 各ホスト: 上記volume名で確認
+   docker volume inspect <volume-name>
+   ```
+
+   両Sparkで業務実行ユーザー所有の実ディレクトリを作成する（symlink不可）。
+
+   ```bash
+   install -d -m 0700 /srv/dgx/system-prod/state/deepseek-v41 \
+     /srv/dgx/system-prod/state/deepseek-v41/logs \
+     /srv/dgx/system-prod/logs/deepseek-v41 \
+     /srv/dgx/system-prod/data/deepseek-v41/{home,hf,tmp,cache,spill}
+   ```
+
+   shared dirsも指定の絶対パスに存在する実ディレクトリでなければ拒否する。
+   HOME・HF_HOME・XDG cache・tmp・spill・lock・generation・launcher/memguard PID・ログは業務領域に分離する。
+   `SPILL_GIB=0` / `SPILL_WEIGHTS_SHA=0` を固定し、共有rank cache内のハッシュキャッシュ作成を防ぐ。
    起動ログは10世代・7日以内、コンテナのprompt/応答ログは破棄する。
-   8889はfabric IP bind、Spark 1 gatewayのみ許可し、privateの8888は業務LAN/Piから遮断する。
-   `API_KEY=1` の既存0600 keyをgateway/control-serverの `BUSINESS_DEEPSEEK_UPSTREAM_API_KEY` に安全に供給する。
+   portは8889（fabric IP bind、Spark 1 gatewayのみ許可）、container名は `business-dsv41-1017-exl3-tf`、
+   served nameは `system-prod-primary`。privateの8888は業務LAN/Piから遮断する。
+   Spark 2の `/srv/dgx/system-prod/state/deepseek-v41/api-key` にprivateと異なる非空の業務API keyを0600で配置し、
+   `API_KEY=1` とgateway/control-serverの `BUSINESS_DEEPSEEK_UPSTREAM_API_KEY` に安全に供給する。
    secretはGit外のroot所有0600 storeへ置く。実機でログ本文抑止・分離を確認できるまで有効化しない。
+   Spark 1の配置済みadapterから `BUSINESS_DEEPSEEK_SWITCH_ENABLED=true python3 /srv/dgx/system-prod/bin/business_tensorfold.py check`
+   を実行し、共有準備検査の成功を確認する。この単発の検査以外は既定offを維持する。
 3. 正常なGLM active JSONから、先に業務flagをonにしてcontrol-serverを起動する。
    `selectedBusinessProfileId=business_glm53_flash_fp4_tp2`、非負整数 `selectionRevision`、
    `businessTransition=idle|loading|ready|failed` の初期化を確認する。private active・欠落・壊れたstateでは移行を拒否する。
