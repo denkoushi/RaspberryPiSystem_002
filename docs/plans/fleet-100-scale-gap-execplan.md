@@ -21,7 +21,7 @@
 
 - [x] (2026-11-01) 7点の現状をリポジトリから調査した(Codex `gpt-6.1-sol` / `medium` の読み取り専用調査と、主な根拠行の手元での確認)。本番機には接続していない。
 - [x] (2026-11-01) 本書を書いた。
-- [ ] M0: 本番の読み取り専用の実測(DR タイマーの有効状態と最新スナップショットの日時、直近の標準更新の1台あたり所要時間、Pi3 と Zero 2W の常時メモリ)。親セッション経由でユーザーの許可を得てから行う。
+- [x] M0: 本番の読み取り専用の実測(2026-11-01、ユーザーの許可のもと Claude が実施)。DR タイマーは有効で毎晩成功、Pi4 1台の標準更新は約8分、Pi3 は空きメモリが約120MB。結果は Surprises & Discoveries の 2026-11-01 の項。
 - [ ] M1: 中心サーバーの復旧訓練で今の復旧時間を測り、許容停止時間をユーザーと決める。
 - [ ] M2: 予備の業務用 Pi5 と PostgreSQL 18 の複製、手動切り替えの手順書。
 - [ ] M3: Pi5 の外の見張り、台帳との突き合わせ、閾値の統一、通知先の整理。
@@ -48,6 +48,18 @@
 
 - Observation: 更新時間の実測は古いものしかない。カナリア1台を含む更新が Docker build の省略で 6分34秒から 3分11秒に縮んだ記録(`docs/knowledge-base/infrastructure/ansible-deployment-performance.md:114,131`)と、2026-07-20 の端末適用 241,853 ms の記録(`docs/plans/deploy-speed-phase-b-execplan.md:70`)がある。8月以降の今の標準経路での1台あたりの時間は未測定である。
 
+
+- Observation: (M0、2026-11-01 実測)Pi5 の Google Drive の写しは毎晩動いている。`raspi-google-drive-dr.timer` は enabled で、毎晩 23:00 に始まり約6分で終わる。直近3晩(10/29・10/30・10/31)はどれも `backup_complete` で、最新は 2026-10-31 23:05:57、大きさは約3.5GB。
+  Evidence: Pi5 の `systemctl list-timers --all`、`systemctl show raspi-google-drive-dr.service`(`Result=success`)、`journalctl -u raspi-google-drive-dr.service` の `stage":"backup_complete"` の行。
+
+- Observation: (M0)今の標準経路で Pi4 1台を更新すると、1台指定の run で約8〜10分かかる。8台のうち7台は 7分51秒〜9分56秒(中央値 約8分10秒)で、raspi4-assembly-02 だけ 30分15秒かかった。この1台だけ別の敷地にあり、モバイルルータでつないでいるため遅い(ユーザー確認、2026-11-01)。回線の細い端末が全体の時間を延ばす例で、4番の中継キャッシュと波の分け方で扱う。Pi5・Pi4 8台・Pi3 をまとめた全台の run は 1時間33分〜1時間36分だった。どの run も recap は failed=0、unreachable=0。古い記録の「1台3分強〜6分半」より今の方が長い。
+  Evidence: Pi5 の `journalctl -u raspi-standard-release-<run>.service` の最初と最後の行の時刻。1台指定は 2026-10-30〜31 の run `20261030-143449-9d23bd` から `20261030-160802-58abf7` までの8本、全台は `20261030-052653-1a9d0f` と `20261030-111753-7cfabe`。手元からの `scripts/update-all-clients.sh --status` は作業フォルダに vault の鍵が無く読めなかったので、Pi5 の journal を直接読んだ。
+
+- Observation: (M0)Pi3 はメモリに余裕がほとんど無い。全 416MB のうち使用 293MB、使える分は約123MB で、スワップを 415MB 中 244MB 使っている。Pi4 は 3.7GB 中の使用が 0.8〜1.4GB で、使える分が 2.4〜3.0GB ある。
+  Evidence: 2026-11-01 09:40 ごろ、Pi5 から ansible の `command` で `free -m` を各台に実行(書き込みなし)。
+
+- Observation: (M0)Zero 系は今 `zero-edge-cam-1` の1台だけで、機種は Zero 2W ではなく Raspberry Pi Zero W Rev 1.1 だった。全 426MB のうち使用 190MB、使える分は約236MB。本書で Zero 2W と書いた見積もりは、今ある1台には当てはまらない。
+  Evidence: Pi5 の `inventory-zero-edge-hosts.yml` を使った ansible の `command` で `/proc/device-tree/model` と `free -m` を読んだ。
 
 ## Decision Log
 
@@ -146,7 +158,7 @@ Pi4 キオスクは Chromium で画面を出し、NFC・バーコード・トル
 
 今の状態。上の Context のとおり、Pi5 から Ansible で1台ずつ送る。各端末は自分でイメージを ghcr.io から取り、取り終えてから切り替える(`infrastructure/ansible/roles/release_kiosk/tasks/prepare.yml:253`)ので、端末での組み立ては無い。対象は `--print-plan` で確かめ、`--limit` か `--full-fleet` を付けないと動かない。カナリア用のグループ `kiosk_canary` と `signage_canary` がある(`infrastructure/ansible/inventory.yml:602-608`)。端末が自分で取りに行く仕組みや A/B 区画の仕組みは無い。
 
-100台の見積もり。1台ずつなので、全体の時間は「台数 × 1台あたりの時間」でほぼ決まる。古い実測の1台あたり3分強〜6分半を使うと、Pi4 100台で約5〜11時間、作業者への事前通知(1台あたり約125秒、`docs/guides/deployment.md:143`)を付けるとさらに約3.5時間増える。今の標準経路での実測が無いので、M0 で測り直してからこの数字を直す。加えて、100台がそれぞれ ghcr.io からイメージを取ると、工場のインターネット回線に同じイメージを100回流すことになる。携帯回線の端末は既に約15KB/sで時間切れを起こしている(`docs/runbooks/pi4-sd-card-backup.md:24`)。
+100台の見積もり。1台ずつなので、全体の時間は「台数 × 1台あたりの時間」でほぼ決まる。M0 の実測(2026-11-01)では今の標準経路で Pi4 1台が約8分かかるので、Pi4 100台で約13〜14時間になる。作業者への事前通知(1台あたり約125秒、`docs/guides/deployment.md:143`)を付けるとさらに約3.5時間増える。今の10台の全台更新でも既に約1時間35分かかっている。加えて、100台がそれぞれ ghcr.io からイメージを取ると、工場のインターネット回線に同じイメージを100回流すことになる。携帯回線の端末は既に約15KB/sで時間切れを起こしている(`docs/runbooks/pi4-sd-card-backup.md:24`)。
 
 足りない所。夜の保守時間の中に全台の更新が収まらなくなる。回線の細い端末が全体を止める。
 
