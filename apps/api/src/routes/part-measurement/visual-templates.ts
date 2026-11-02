@@ -172,6 +172,11 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
         const { id } = z.object({ id: z.string().guid() }).parse(request.params);
         const body = z.object({
           approvedIds: z.array(z.string().guid()).max(200).optional().default([]),
+          approvedPositions: z.array(z.object({
+            id: z.string().guid(),
+            xRatio: z.number().min(0).max(1),
+            yRatio: z.number().min(0).max(1)
+          })).max(200).optional(),
           rejectedIds: z.array(z.string().guid()).max(200).optional().default([])
         }).parse(request.body);
         return drawingPlacementService.recordDecisions(id, body);

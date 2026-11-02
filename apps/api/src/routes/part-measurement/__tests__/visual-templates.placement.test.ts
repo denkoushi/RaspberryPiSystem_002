@@ -56,6 +56,34 @@ describe('placement proposal route contracts', () => {
     expect(allowView).not.toHaveBeenCalled();
   });
 
+  it.each([[0, 1], [1, 0], [0.25, 0.75]])('accepts approved positions (%s, %s)', async (xRatio, yRatio) => {
+    drawingPlacementService.recordDecisions.mockResolvedValue({ updated: 1 });
+    const approvedPositions = [{ id: proposalId, xRatio, yRatio }];
+    const response = await app.inject({
+      method: 'POST', url: `${url}/decisions`, payload: { approvedIds: [proposalId], approvedPositions }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(drawingPlacementService.recordDecisions).toHaveBeenCalledWith(id, {
+      approvedIds: [proposalId], rejectedIds: [], approvedPositions
+    });
+  });
+
+  it.each([
+    [{ id: proposalId, xRatio: -0.01, yRatio: 0.5 }],
+    [{ id: proposalId, xRatio: 1.01, yRatio: 0.5 }],
+    [{ id: proposalId, xRatio: 0.5, yRatio: -0.01 }],
+    [{ id: proposalId, xRatio: 0.5, yRatio: 1.01 }],
+    [{ id: proposalId, xRatio: '0.5', yRatio: 0.5 }],
+    [{ id: proposalId, xRatio: null, yRatio: 0.5 }],
+    [{ id: proposalId, xRatio: 0.5 }],
+    [{ id: 'bad-id', xRatio: 0.5, yRatio: 0.5 }],
+    Array(201).fill({ id: proposalId, xRatio: 0.5, yRatio: 0.5 })
+  ].map((approvedPositions) => ({ approvedPositions })))('rejects invalid approved positions %#', async (payload) => {
+    const response = await app.inject({ method: 'POST', url: `${url}/decisions`, payload });
+    expect(response.statusCode).toBe(400);
+    expect(drawingPlacementService.recordDecisions).not.toHaveBeenCalled();
+  });
+
   it('returns the saved-item fields for both proposals and unplaced items', async () => {
     const item = {
       id: proposalId, measurementLabel: '深さ', measurementPoint: null, decimalPlaces: 2,

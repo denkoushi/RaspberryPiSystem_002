@@ -3115,6 +3115,8 @@ model PartMeasurementDrawingPlacementProposal {
   markerYRatio      Decimal? @db.Decimal(10, 8)
   dimension         Json?
   candidates        Json
+  decidedMarkerXRatio Decimal? @db.Decimal(10, 8)
+  decidedMarkerYRatio Decimal? @db.Decimal(10, 8)
   decidedAt         DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

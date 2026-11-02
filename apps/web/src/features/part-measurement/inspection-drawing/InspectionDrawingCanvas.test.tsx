@@ -21,6 +21,13 @@ const point: InspectionDrawingPoint = {
   testValue: ''
 };
 
+const proposal: DrawingProposalMarker = {
+  id: 'proposal-1', sortOrder: 0, markerNo: 2, measurementLabel: '内径', measurementPoint: null,
+  nominalValue: 56, lowerLimit: 55.98, upperLimit: 56.03, decimalPlaces: 3,
+  depthMode: 'measured', valueKind: 'numeric', markerXRatio: 0.6, markerYRatio: 0.4,
+  dimensionText: 'Φ56 h7'
+};
+
 const viewportRect = {
   x: 10,
   y: 20,
@@ -84,7 +91,8 @@ function renderCanvas({
   withPointChange = true,
   proposalMarkers,
   selectedProposalId,
-  onSelectProposal = vi.fn()
+  onSelectProposal = vi.fn(),
+  onProposalMove
 }: {
   mode?: 'place' | 'callout' | 'test';
   zoom?: number;
@@ -95,6 +103,7 @@ function renderCanvas({
   proposalMarkers?: DrawingProposalMarker[];
   selectedProposalId?: string | null;
   onSelectProposal?: ReturnType<typeof vi.fn>;
+  onProposalMove?: ReturnType<typeof vi.fn>;
 } = {}) {
   render(
     <InspectionDrawingCanvas
@@ -103,6 +112,7 @@ function renderCanvas({
       proposalMarkers={proposalMarkers}
       selectedProposalId={selectedProposalId}
       onSelectProposal={onSelectProposal}
+      onProposalMove={onProposalMove}
       mode={mode}
       zoom={zoom}
       selectedPointId={null}
@@ -243,12 +253,7 @@ describe('InspectionDrawingCanvas marker dragging', () => {
 
   it('renders accessible dashed proposals that select without dragging or placing a normal point', () => {
     const onSelectProposal = vi.fn();
-    const proposal: DrawingProposalMarker = {
-      id: 'proposal-1', sortOrder: 0, markerNo: 2, measurementLabel: '内径', measurementPoint: null,
-      nominalValue: 56, lowerLimit: 55.98, upperLimit: 56.03, decimalPlaces: 3,
-      depthMode: 'measured', valueKind: 'numeric', markerXRatio: 0.6, markerYRatio: 0.4,
-      dimensionText: 'Φ56 h7'
-    };
+
     const { viewport, onAddPoint, onPointChange } = renderCanvas({
       proposalMarkers: [proposal], selectedProposalId: proposal.id, onSelectProposal
     });
@@ -263,6 +268,69 @@ describe('InspectionDrawingCanvas marker dragging', () => {
     expect(onSelectProposal).toHaveBeenCalledWith(proposal.id);
     expect(onAddPoint).not.toHaveBeenCalled();
     expect(onPointChange).not.toHaveBeenCalled();
+    expect(marker).toHaveStyle({ left: '480px', top: '240px' });
+  });
+
+  it.each([1, 2])('drags proposals with shared rAF handling at zoom %s and commits only on release', (zoom) => {
+    const onProposalMove = vi.fn();
+    const { viewport, onPointChange, onAddPoint } = renderCanvas({
+      zoom, proposalMarkers: [proposal], onProposalMove
+    });
+    const marker = screen.getByRole('button', { name: 'AI案 2 内径' });
+    const originalLeft = marker.style.left;
+    fireEvent.pointerDown(marker, { pointerId: 9, button: 0, clientX: 490, clientY: 260 });
+    const framesBefore = requestAnimationFrameMock.mock.calls.length;
+    fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 600, clientY: 320 });
+    fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 610, clientY: 320 });
+    expect(requestAnimationFrameMock.mock.calls.length).toBe(framesBefore + 1);
+    expect(marker.style.left).toBe(originalLeft);
+    expect(onProposalMove).not.toHaveBeenCalled();
+    flushAnimationFrames();
+    expect(marker).toHaveStyle(zoom === 1 ? { left: '600px', top: '300px' } : { left: '800px', top: '400px' });
+    fireEvent.pointerUp(viewport, { pointerId: 9, clientX: 610, clientY: 320 });
+    expect(onProposalMove).toHaveBeenCalledExactlyOnceWith(proposal.id,
+      zoom === 1 ? { xRatio: 0.75, yRatio: 0.5 } : { xRatio: 0.5, yRatio: 1 / 3 });
+    expect(onPointChange).not.toHaveBeenCalled();
+    expect(onAddPoint).not.toHaveBeenCalled();
+    expect(viewport.hasPointerCapture(9)).toBe(false);
+  });
+
+  it('keeps a proposal click below the threshold as selection', () => {
+    const onProposalMove = vi.fn();
+    const onSelectProposal = vi.fn();
+    const { viewport } = renderCanvas({ proposalMarkers: [proposal], onProposalMove, onSelectProposal });
+    const marker = screen.getByRole('button', { name: 'AI案 2 内径' });
+    fireEvent.pointerDown(marker, { pointerId: 9, button: 0, clientX: 490, clientY: 260 });
+    const clientX = 490 + INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX - 1;
+    fireEvent.pointerMove(viewport, { pointerId: 9, clientX, clientY: 260 });
+    fireEvent.pointerUp(viewport, { pointerId: 9, clientX, clientY: 260 });
+    fireEvent.click(marker, { detail: 1 });
+    expect(onSelectProposal).toHaveBeenCalledExactlyOnceWith(proposal.id);
+    expect(onProposalMove).not.toHaveBeenCalled();
+    expect(marker).toHaveStyle({ left: '480px', top: '240px' });
+  });
+
+  it('restores a cancelled proposal drag and does not notify', () => {
+    const onProposalMove = vi.fn();
+    const { viewport } = renderCanvas({ proposalMarkers: [proposal], onProposalMove });
+    const marker = screen.getByRole('button', { name: 'AI案 2 内径' });
+    fireEvent.pointerDown(marker, { pointerId: 9, button: 0, clientX: 490, clientY: 260 });
+    fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 900, clientY: -100 });
+    flushAnimationFrames();
+    expect(marker).toHaveStyle({ left: '800px', top: '0px' });
+    fireEvent.pointerCancel(viewport, { pointerId: 9 });
+    expect(marker).toHaveStyle({ left: '480px', top: '240px' });
+    expect(onProposalMove).not.toHaveBeenCalled();
+  });
+
+  it('does not drag proposals in test mode', () => {
+    const onProposalMove = vi.fn();
+    const { viewport } = renderCanvas({ mode: 'test', proposalMarkers: [proposal], onProposalMove });
+    const marker = screen.getByRole('button', { name: 'AI案 2 内径' });
+    fireEvent.pointerDown(marker, { pointerId: 9, button: 0, clientX: 490, clientY: 260 });
+    fireEvent.pointerMove(viewport, { pointerId: 9, clientX: 600, clientY: 300 });
+    fireEvent.pointerUp(viewport, { pointerId: 9, clientX: 600, clientY: 300 });
+    expect(onProposalMove).not.toHaveBeenCalled();
     expect(marker).toHaveStyle({ left: '480px', top: '240px' });
   });
 
