@@ -64,6 +64,13 @@ describe('Procedure board inference boundary', () => {
     expect(validated.headings.map(h => h.id)).toEqual(['h3']); expect(validated.gaps.map(g => g.id)).toEqual(['g3']);
     expect(validated.conflicts).toEqual([response.conflicts[0]]); expect(source.decisions.conflicts).toEqual([]);
   });
+  it('suppresses confirmed headings via dismissedHeadings only for their original page and text', () => {
+    const source = input(); source.decisions.dismissedHeadings = [{ page: 1, text: '準備' }];
+    const response = { ...result(), headings: [{ id: 'h1', page: 1, text: '準備' }, { id: 'h2', page: 2, text: '準備' }, { id: 'h3', page: 1, text: '仕上げ' }] };
+    expect(validatePlacementResult(response, source).headings.map(h => h.id)).toEqual(['h2', 'h3']);
+    source.decisions.dismissedHeadings = [];
+    expect(validatePlacementResult(response, source).headings).toHaveLength(3);
+  });
   it('fails strict schemas, limits and malformed JSON without calling another provider', async () => {
     for (const raw of [ { ...result(), css: 'red' }, { ...result(), placements: [{ ...result().placements[0], text: '改変' }] },
       ...(['placements', 'headings', 'gaps', 'conflicts'] as const).map((key, i) => ({ ...result(), [key]: Array([5, 4, 7, 11][i]).fill({}) })),

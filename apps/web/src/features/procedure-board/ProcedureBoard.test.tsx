@@ -105,8 +105,25 @@ describe('ProcedureBoard', () => {
     expect(screen.getByRole('group', { name: '食い違い' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '見出しにする' }));
     await waitFor(() => expect(procedureBoardApi.decide).toHaveBeenCalledOnce());
-    expect(vi.mocked(procedureBoardApi.decide).mock.calls[0][3]).toEqual({ proposalId: 'h', action: 'accept' });
+    expect(vi.mocked(procedureBoardApi.decide).mock.calls[0][3]).toEqual({ proposalId: 'h', action: 'accept', itemId: expect.any(String) });
     expect(screen.getByRole('button', { name: 'ここに置く' })).toBeDisabled();
+  });
+  it.each([1, 3])('drags a heading ghost to page %s as acceptance or relocation', async pageNumber => {
+    vi.mocked(procedureBoardApi.suggestions).mockResolvedValue({ boardVersion: 1, status: 'ready', current: {
+      id: 'ai', boardVersion: 1, placements: [], headings: [{ id: 'h', page: 1, text: '見出し案' }], gaps: [], conflicts: [],
+    }, previous: null, pollAfterMs: 5000 });
+    vi.mocked(procedureBoardApi.decide).mockResolvedValue({ ...board, version: 2 });
+    show(); await waitFor(() => expect(screen.getByRole('button', { name: '見出しにする' })).toBeEnabled());
+    const ghost = screen.getByText('見出し案').closest<HTMLElement>('.pb-card')!;
+    expect(ghost).toHaveAttribute('data-ghost', 'h');
+    const original = within(screen.getByRole('region', { name: 'ページ1' })).getByRole('article');
+    vi.spyOn(original, 'getBoundingClientRect').mockReturnValue(rect(400, 200, 400, 100));
+    dragTo(ghost, screen.getByRole('region', { name: `ページ${pageNumber}` }), 500, 100);
+    await waitFor(() => expect(procedureBoardApi.decide).toHaveBeenCalledOnce());
+    const decision = vi.mocked(procedureBoardApi.decide).mock.calls[0][3];
+    expect(decision).toEqual({ proposalId: 'h', action: pageNumber === 1 ? 'accept' : 'relocate', itemId: expect.any(String),
+      ...(pageNumber === 3 ? { target: { ...target, page: 3 } } : {}) });
+    expect(decision.itemId).toMatch(/^[0-9a-f-]{36}$/);
   });
   it('shows source date and kind only for loaded conflict materials', async () => {
     vi.mocked(procedureBoardApi.suggestions).mockResolvedValue({ boardVersion: 1, status: 'ready', current: {
@@ -154,13 +171,21 @@ describe('ProcedureBoard', () => {
     const shelf = screen.getByText('素材の原文').closest('article')!;
     const page = screen.getByRole('region', { name: 'ページ1' });
     vi.spyOn(document, 'elementFromPoint').mockReturnValue(page);
+    const card = within(page).getByRole('article');
+    const measure = vi.spyOn(card, 'getBoundingClientRect');
+    const query = vi.spyOn(page, 'querySelectorAll');
     const scan = vi.spyOn(layoutFunctions, 'boardItems');
-    fireEvent.pointerDown(shelf, { button: 0, clientX: 10, clientY: 10 }); scan.mockClear();
+    fireEvent.pointerDown(shelf, { button: 0, clientX: 10, clientY: 10 }); scan.mockClear(); measure.mockClear(); query.mockClear();
     for (const x of [500, 600]) {
       fireEvent.pointerMove(shelf, { clientX: x, clientY: 200 });
       await act(async () => new Promise(resolve => requestAnimationFrame(resolve)));
     }
-    expect(scan).not.toHaveBeenCalled(); fireEvent.pointerCancel(shelf);
+    expect(scan).not.toHaveBeenCalled(); expect(measure).not.toHaveBeenCalled(); expect(query).not.toHaveBeenCalled();
+    fireEvent.scroll(page.querySelector('.pb-scroll')!);
+    fireEvent.pointerMove(shelf, { clientX: 650, clientY: 200 });
+    await act(async () => new Promise(resolve => requestAnimationFrame(resolve)));
+    expect(measure).toHaveBeenCalledOnce(); expect(query).toHaveBeenCalledOnce();
+    fireEvent.pointerCancel(shelf);
   });
   it('keeps pages and shelf cards memoized through busy changes and save completion', async () => {
     const shelfReads = vi.fn(() => '素材の原文');

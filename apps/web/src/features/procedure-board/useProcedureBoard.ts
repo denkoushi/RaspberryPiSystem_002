@@ -239,12 +239,14 @@ export function useProcedureBoard(procedureId: string) {
   useEffect(() => session.start(), [session]);
   const suggestions = useQuery({ queryKey: ['procedure-board', procedureId, 'suggestions'],
     queryFn: () => procedureBoardApi.suggestions(procedureId), enabled: !!state.board && !state.forbidden && !state.stopped,
+    notifyOnChangeProps: state.busy ? [] : ['data', 'error'],
     retry: false, refetchInterval: query => query.state.data?.pollAfterMs ?? 5000, refetchIntervalInBackground: false });
   useEffect(() => { if (suggestions.data) void session.receive(suggestions.data); }, [session, suggestions.data]);
   useEffect(() => { if (suggestions.error) void session.readError(suggestions.error); }, [session, suggestions.error]);
   const format = useQuery({ queryKey: ['procedure-board', procedureId, 'format', state.format?.proposalId],
     queryFn: () => procedureBoardApi.format(procedureId, state.format!.proposalId),
     enabled: !!state.format && !state.forbidden && !['ready', 'stale', 'failed', 'accepted', 'reverted'].includes(state.format.status),
+    notifyOnChangeProps: state.busy ? [] : ['data', 'error'],
     retry: false, refetchInterval: query => query.state.data?.pollAfterMs ?? 5000, refetchIntervalInBackground: false });
   useEffect(() => { if (format.data && !state.busy) session.receiveFormat(format.data); }, [format.data, session, state.busy]);
   useEffect(() => { if (format.error) void session.readError(format.error); }, [format.error, session]);
