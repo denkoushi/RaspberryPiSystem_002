@@ -1630,7 +1630,7 @@ describe('inventory machine picking', () => {
     await scan(quantityTag);
     expect(touch).not.toHaveBeenCalled();
     expect(screen.queryByRole('region', { name: 'ほかの数を入れる' })).not.toBeInTheDocument();
-    expect(screen.getByRole('group', { name: '使う加工機' })).toHaveClass('ring-inv-amber');
+    expect(screen.getByRole('group', { name: '使う加工機' })).toHaveClass('outline-inv-amber');
     fireEvent.click(screen.getByRole('button', { name: 'NHX4000' }));
     fireEvent.click(quantity);
     await waitFor(() => expect(touch).toHaveBeenCalledWith(expect.objectContaining({ machineId: 'm1', quantity: 1, restock: false })));
