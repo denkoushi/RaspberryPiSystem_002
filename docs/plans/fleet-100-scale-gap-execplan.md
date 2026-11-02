@@ -1,7 +1,7 @@
 # 端末100台規模に向けた不足点と改善計画(効き目の大きい順)
 
 
-本書は `.agent/PLANS.md` に従う実行計画である。Progress、Surprises & Discoveries、Decision Log、Outcomes & Retrospective を作業に合わせて更新する。今回(2026-11-01)は調査と計画だけを行い、実装は一つも始めていない。どの項目から着手するかは、ユーザーが本書を読んでから決める。
+本書は `.agent/PLANS.md` に従う実行計画である。Progress、Surprises & Discoveries、Decision Log、Outcomes & Retrospective を作業に合わせて更新する。2026-11-01 に調査と計画を行い、2026-11-02 に M7 step 1 の Compose ログ上限をローカル実装した。本番反映は未実施。
 
 
 ## Purpose / Big Picture
@@ -29,6 +29,8 @@
 - [ ] M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 にイメージの中継キャッシュを置く。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
 - [ ] M7: 端末側の Docker ログの上限と、SD カード保護の試行。
+  - [x] (2026-11-02) Step 1: Pi5 phase3・migration、kiosk template、client Compose に json-file 10m × 3 の上限を実装。状態を持つ `business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache` は追加再作成を避けるため除外。
+  - [ ] 本番適用と `docker inspect` 確認（gateway は標準更新で再作成しないため別途適用が必要）、高耐久 SD・USB SSD・読み取り専用ルートの試行。
 - [ ] M8: 機種ごとの役割と資源の表を runbook に残す。
 
 
@@ -51,6 +53,10 @@
 
 ## Decision Log
 
+
+- Decision: M7 step 1 は各 Compose の共通 logging anchor で json-file の `max-size: "10m"`・`max-file: "3"` を指定し、`daemon.json` は追加しない。
+  Rationale: Docker daemon の再起動による全コンテナ停止を避け、journald は現状維持する。通常は同一設定で稼働を続ける状態付き Hermes 3サービスは、ログ設定だけで再作成されないよう除外する。API/Web は非稼働スロット、kiosk は有効なエージェントだけに適用され、永続ボリュームは維持される。
+  Date/Author: 2026-11-02 / Codex
 
 - Decision: 更新の骨格は今の「Pi5 から Ansible で順に送る方式」のまま残し、A/B 区画(Mender、RAUC、SWUpdate)や端末が自分で取りに行く方式(ansible-pull など)には移らない。
   Rationale: `docs/decisions/ADR-20260810-risk-based-deploy-impact-contract.md:83` で RAUC などの外部の配布基盤は既に採らないと決めている。今の方式は事前確認(`--print-plan`)、対象の明示(`--limit` か `--full-fleet`)、1台ずつの健全確認と戻しを持ち、段階的に広げる運用と合っている。100台で困るのは方式ではなく所要時間なので、並列化とキャッシュで解く。
@@ -84,7 +90,7 @@
 ## Outcomes & Retrospective
 
 
-2026-11-01 時点では調査と計画だけが終わっている。実装・本番の実測・ユーザーの着手判断はいずれも未実施である。
+2026-11-02 時点で M7 step 1 の Compose ログ上限をローカル実装済み（状態付き Hermes 3サービスは除外）。本番反映・実測と、SD/SSD・読み取り専用ルートの試行は未実施である。
 
 
 ## Context and Orientation
@@ -170,7 +176,7 @@ Pi4 キオスクは Chromium で画面を出し、NFC・バーコード・トル
 ### 6番 SD カードの保護(照合項目3)
 
 
-今の状態。Pi4 と Pi5 の journald は SD に残し、200MB を上限にしている(`infrastructure/ansible/roles/release_kiosk/tasks/host-journald.yml`)。監視カメラは RAM だけに残す(`infrastructure/ansible/playbooks/watch-cam.yml:75-85`)。Pi3 のサイネージ画像は RAM 上の `/run/signage` に置く。Docker のログの上限は、Pi5 の古い構成ファイル(`docker-compose.server.yml`)の api と web にだけあり、今の Pi5 の青緑の構成と端末の構成(`infrastructure/ansible/roles/release_kiosk/templates/client-compose.yml.j2`)には無い。Docker 全体の既定の上限(`/etc/docker/daemon.json`)も無い。読み取り専用のルート、log2ram、端末の SSD 起動はどれも無い。Pi5 は SSD から起動している。`status-agent` が SD の書き込み量と健康を見ている。
+今の状態。Pi4 と Pi5 の journald は SD に残し、200MB を上限にしている(`infrastructure/ansible/roles/release_kiosk/tasks/host-journald.yml`)。監視カメラは RAM だけに残す(`infrastructure/ansible/playbooks/watch-cam.yml:75-85`)。Pi3 のサイネージ画像は RAM 上の `/run/signage` に置く。Docker のログの上限は、従来は Pi5 の古い構成ファイル(`docker-compose.server.yml`)の api と web にだけあったが、今の Pi5 の青緑の構成と端末の構成には 2026-11-02 に 10m × 3 の上限を実装した（除外と適用待ちは Progress 参照）。Docker 全体の既定の上限(`/etc/docker/daemon.json`)も無い。読み取り専用のルート、log2ram、端末の SSD 起動はどれも無い。Pi5 は SSD から起動している。`status-agent` が SD の書き込み量と健康を見ている。
 
 足りない所。端末の Docker のログに上限が無いので、部品が大量にログを出すと SD を埋め、摩耗も進む。100台あると、年に数枚の SD の故障は避けられない。
 
@@ -220,4 +226,4 @@ M1 以降は、各項目の着手が決まったときに、その項目だけ�
 ## Interfaces and Dependencies
 
 
-本書は計画だけで、新しい部品やインターフェースはまだ作らない。各項目で使う予定の外部のものは次のとおりで、いずれも採るかどうかは着手時に決める。PostgreSQL 18 の標準のストリーミング複製と WAL の保管(1番)、Ansible の `serial` の段階指定と `max_fail_percentage`(4番)、Docker の registry のプルスルーのキャッシュ(4番)、rpi-image-gen(5番)、Docker の `daemon.json` の `log-opts`(6番)。
+M7 step 1 以外は計画段階である。各項目で使う予定の外部のものは次のとおりで、未着手の項目は着手時に採否を決める。PostgreSQL 18 の標準のストリーミング複製と WAL の保管(1番)、Ansible の `serial` の段階指定と `max_fail_percentage`(4番)、Docker の registry のプルスルーのキャッシュ(4番)、rpi-image-gen(5番)、Compose の `logging` 設定(6番、step 1 はローカル実装済み)。
