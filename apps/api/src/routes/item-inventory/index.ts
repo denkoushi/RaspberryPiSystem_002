@@ -273,6 +273,12 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   });
   app.get('/item-inventory/tags', { preHandler: [read] }, async () => ({ tags: await services.inventory.listTags() }));
   app.get('/item-inventory/locations', { preHandler: [read] }, async () => ({ locations: await services.inventory.listLocations() }));
+  app.get('/item-inventory/machine-optional-departments', { preHandler: [read] }, async () => ({ departments: await services.inventory.listMachineOptionalDepartments() }));
+  app.put('/item-inventory/machine-optional-departments', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ department: z.string().trim().min(1).max(200), machineRequired: z.boolean() }).parse(request.body);
+    return services.inventory.setDepartmentMachineRequired(body.department, body.machineRequired);
+  });
+
   app.get('/item-inventory/items', { preHandler: [read] }, async () => ({ items: await services.inventory.listItems() }));
   app.get('/item-inventory/history', { preHandler: [read] }, async (request) => {
     const query = z.object({

@@ -1,4 +1,5 @@
 import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
+import { splitArea } from '@raspi-system/shelf-layout-core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -11,7 +12,7 @@ import {
   type InventoryImportSummary,
   type InventoryTag,
 } from '../../api/client';
-import { useInventoryMachines, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { useInventoryMachineOptionalDepartments, useInventoryMachines, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 import { inventoryKeys } from '../../api/queryKeys/itemInventory';
 import { KioskHomeIcon } from '../../components/kiosk/KioskHomeIcon';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
@@ -72,6 +73,8 @@ export function KioskItemInventoryPage() {
   const [numberBusy, setNumberBusy] = useState(false);
   const numberLookupRef = useRef(0);
   const [restockMode, setRestockMode] = useState(false);
+  const departmentsQuery = useInventoryMachineOptionalDepartments();
+  const machineOptional = (tag: InventoryTag | null) => Boolean(departmentsQuery.isSuccess && !departmentsQuery.isFetching && tag?.compartment && departmentsQuery.data?.includes(splitArea(tag.compartment.area).machine));
   const machinesQuery = useInventoryMachines();
   const machines = machinesQuery.data ?? [];
   const machinesLoading = machinesQuery.data === undefined && machinesQuery.isLoading;
@@ -89,12 +92,13 @@ export function KioskItemInventoryPage() {
   const canIssue = () => {
     if (flowRef.current.restockMode) return true;
     if (editingRef.current) return false;
+    if (machineOptional(flowRef.current.selectedTag)) return true;
     if (machinesLoading) return false;
     if (machines.length && !machineRef.current) { setMachineNudge(true); return false; }
     return true;
   };
-  const quantityLocked = !restockMode && (machineEditing || machinesLoading || (machines.length > 0 && !machineId));
   const [selectedTag, setSelectedTag] = useState<InventoryTag | null>(null);
+  const quantityLocked = !restockMode && (machineEditing || (!machineOptional(selectedTag) && (machinesLoading || (machines.length > 0 && !machineId))));
   const [message, setMessage] = useState('アイテムNFCタグを読み取ってください');
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
   const [lastTransaction, setLastTransaction] = useState<InventoryMovementTransaction | null>(null);
