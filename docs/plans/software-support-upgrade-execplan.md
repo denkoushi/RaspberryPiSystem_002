@@ -26,6 +26,7 @@
     | 5 | PostgreSQL 15(pgvector/pgvector:pg15) | 15 | 18(pgvector/pgvector:pg18、pgvector 0.8 系) | 2027-11-11 | infrastructure/docker/docker-compose.server.yml、docker-compose.mac-local.override.yml、.github/workflows/ci.yml と torque-release.yml、本番DBのデータ領域 | 高(本番データの移行を伴う) | 旧データ領域を消さずに残し、旧 pg15 コンテナへ切り戻す。移行前の pg_dump から復元も可能 |
     | 6 | React 18(apps/web) | 18.2 | 19 | 公式の終了日なし。新機能と修正は 19 系のみ | apps/web 全画面 | 中 | package.json と lockfile を戻す |
     | 7 | pnpm(パッケージ管理ツール) | 10.34.6(CI の脆弱性監査だけ 11.4.0) | 12 | 10 と 11 は 2027-04-30(pnpm 公式 SECURITY.md) | package.json の packageManager と engines、.github/workflows/ci.yml の AUDIT_PNPM_VERSION、scripts/ci/pnpm-exact.sh とそのテスト。CI と API・web・kiosk-sop 生成のイメージビルド(corepack が package.json の版に従う) | 低〜中(上げるとビルド時の挙動が変わりうる。実機の動作は変わらない) | package.json と ci.yml の版を戻す commit(lockfile が 9.0 のままなら差し戻しも単純) |
+    | 8 | Playwright(e2e テストと、API・kiosk-sop 生成のブラウザ) | 1.56.1(apps/api の指定は ^1.51.1) | 1.64.1 | 1.56 は ubuntu-latest(26.04)に対応しておらず、e2e が落ちる(2026-11-02) | package.json と apps/api/package.json、pnpm-lock.yaml、infrastructure/docker/Dockerfile.kiosk-sop-generator の土台イメージ、kiosk-sop の生成物、.github/workflows/ci.yml の e2e 2ジョブの runs-on。API イメージに入る Chromium の版も変わる | 低〜中(サイネージの HTML 描画とキオスク文書の PDF 化に使う Chromium が変わる) | package.json・lockfile・Dockerfile を戻し、e2e のランナーを ubuntu-24.04 に固定し直す |
 
 点検メモにあった ESLint 8 は、既に 9.39.5 へ更新済みのため対象から外す。TypeScript 5.4、Vite 6、Alpine 3.24、Go 1.27 は現時点で期限が近くないため一覧に入れない。
 
@@ -206,6 +207,10 @@ agent が動く端末(inventory の `kiosk` グループ):
 
 pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイルで Corepack では動かないため、Dockerfile 3 本と `scripts/ci/pnpm-exact.sh` は `npm install -g pnpm@<版>` 方式に変えた。設定は `package.json` の `pnpm` 欄から `pnpm-workspace.yaml` へ移し(`onlyBuiltDependencies` は `allowBuilds`、ビルドを走らせない `tesseract.js` は `false`)、lockfile は先頭に pnpm 自身の記録が 158 行増えただけで依存は変わらない。pnpm 12 は取得メタデータのキャッシュを `/root/.cache/pnpm` に約 450MB 書き、`pnpm prisma generate` は実行前に依存を入れ直して `.pnpm` 全体を書き換える。API イメージが 1.57GB になったため、キャッシュを同じ層で消し、`pnpm-workspace.yaml` の `verifyDepsBeforeRun: false` で入れ直しを止めた(圧縮後 Mac で 1.08GB、CI の ARM64 で 1.104GB。pnpm 自体の増加分を見込み、予算は 1.125GB にした)。出典: https://github.com/pnpm/pnpm/security/policy と https://github.com/pnpm/pnpm/releases/tag/v12.0.0
 
+### 8. Playwright 1.56 → 1.64(e2e のランナーを ubuntu-latest に戻す)
+
+GitHub の ubuntu-latest が 26.04 に変わり、Playwright 1.56 が対応していないため e2e が落ちた(main の定期 CI run 41351200829)。応急処置として #2471 で e2e の2ジョブを ubuntu-24.04 に固定した。本対応では Playwright を 1.64.1 へ上げ、kiosk-sop 生成の土台イメージを `mcr.microsoft.com/playwright:v1.64.1-noble`(digest 固定)に替えて手順書を作り直し、e2e の固定を外して ubuntu-latest で通ることを CI で確かめる。kiosk-sop ジョブの ubuntu-24.04 固定は描画差のための別の理由なので残す。
+
 ## Progress
 
 
@@ -234,6 +239,7 @@ pnpm 12.16.1 へ上げた(2026-10-30)。pnpm 12 は Rust 製の実行ファイ�
 - [ ] PostgreSQL の旧ボリューム `db-data` の削除は 2026-11-13(移行から2週間)以降に、ユーザーの明示承認を得て別作業で行う。まだ消していない。
 - [x] (2026-10-31) 7件目の pnpm 12: #2427(pnpm 12.16.1、Corepack をやめて npm で入れる)、#2435(API イメージを予算内に戻す)、#2436(圧縮サイズ予算を 1.125GB に)をマージ。最終は main 9223b0be。この3件は Pi5 へ1回で反映した(run 20261030-184443-1ad230、成功・failed=0、api healthy、HTTP 正常)。
 - [x] (2026-10-31) 6件目の React 19: react / react-dom 19.3.1 へ上げた #2451 をマージ(main 19efd986)。Pi5 へ反映(run 20261031-115855-620138、成功・failed=0)。api と web は 19efd986 のイメージで、`/`、`/kiosk`、`/admin`、`/api/system/health` が 200。配信中の web の bundle に React 19.3.1 が入っていることを確かめた。
+- [ ] (2026-11-02) 8件目の Playwright: ubuntu-latest(26.04)で e2e が落ちたため、#2471(main 875919b7)で e2e のランナーを ubuntu-24.04 に固定した。続けて Playwright を 1.64.1 へ上げ、ubuntu-latest で e2e が通るのを確かめて固定を外す PR を作る。
 
 ## Surprises & Discoveries
 
