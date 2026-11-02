@@ -468,6 +468,31 @@ model RiggingInspectionRecord {
   @@index([inspectedAt])
 }
 
+model MachineNfcTag {
+  id        String   @id @default(uuid())
+  machineId String
+  uid       String   @unique
+  createdAt DateTime @default(now())
+  machine   Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@index([machineId])
+}
+
+model KioskInventoryMachineOrder {
+  id             String       @id @default(uuid())
+  clientDeviceId String
+  machineId      String
+  position       Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  clientDevice   ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Cascade)
+  machine        Machine      @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@unique([clientDeviceId, machineId])
+  @@index([clientDeviceId, position])
+  @@index([machineId])
+}
+
 model Machine {
   id                        String   @id @default(uuid())
   equipmentManagementNumber String   @unique
@@ -484,12 +509,20 @@ model Machine {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
+  siteKey                   String?
+  site                      Site? @relation(fields: [siteKey], references: [key], onDelete: Restrict, onUpdate: Cascade)
+  nfcTags                   MachineNfcTag[]
+  kioskInventoryOrders      KioskInventoryMachineOrder[]
+  inventoryTransactions     InventoryTransaction[]
+
+  @@index([siteKey])
   @@index([operatingStatus])
   @@index([classification])
   @@index([resourceCd])
 }
 
 model ClientDevice {
+  kioskInventoryMachineOrders KioskInventoryMachineOrder[]
   mobileSlipVerifyRecords MobileSlipVerifyRecord[]
   mobileScanFrames MobileScanFrame[]
   watchCameraFrames WatchCameraFrame[]
@@ -566,6 +599,7 @@ model Site {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   devices     ClientDevice[]
+  machines    Machine[]
 }
 
 /// Zero2W / ヘッドレスエッジ由来の配膳スキャン履歴（1スキャン1行）
@@ -1226,6 +1260,10 @@ model InventoryTransaction {
   reversalOf        InventoryTransaction?      @relation("InventoryTransactionReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
   reversedBy        InventoryTransaction?      @relation("InventoryTransactionReversal")
 
+  machineId         String?
+  machine           Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+
+  @@index([machineId])
   @@unique([clientId, idempotencyKey])
   @@index([compartmentId, createdAt])
   @@index([inventoryItemId, createdAt])

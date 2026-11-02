@@ -11,7 +11,7 @@ import {
   type InventoryImportSummary,
   type InventoryTag,
 } from '../../api/client';
-import { useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { useInventoryMachines, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 import { inventoryKeys } from '../../api/queryKeys/itemInventory';
 import { KioskHomeIcon } from '../../components/kiosk/KioskHomeIcon';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
@@ -23,6 +23,7 @@ import {
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
 import { BackIcon, ChartIcon, EditIcon, GridIcon, ListIcon, LockIcon, PinIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { detailLabels, InventoryItemGrid, type InventoryThumbnailSize, type InventoryViewMode } from '../../features/kiosk/inventory/InventoryItemGrid';
+import { InventoryMachinePicker } from '../../features/kiosk/inventory/InventoryMachinePicker';
 import {
   defaultAreasKey,
   EMPTY_COMPARTMENTS,
@@ -52,6 +53,7 @@ import {
 } from '../../features/kiosk/inventory/inventoryUi';
 import { NfcPrompt } from '../../features/kiosk/inventory/NfcPrompt';
 import { useInventoryNfcQueue } from '../../features/kiosk/inventory/useInventoryNfcQueue';
+import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
@@ -70,6 +72,28 @@ export function KioskItemInventoryPage() {
   const [numberBusy, setNumberBusy] = useState(false);
   const numberLookupRef = useRef(0);
   const [restockMode, setRestockMode] = useState(false);
+  const machinesQuery = useInventoryMachines();
+  const machines = machinesQuery.data ?? [];
+  const machinesLoading = machinesQuery.data === undefined && machinesQuery.isLoading;
+  const [machineId, setMachineId] = useState<string | null>(null);
+  const machineRef = useRef<string | null>(null);
+  const [machineEditing, setMachineEditing] = useState(false);
+  const editingRef = useRef(false);
+  const [machineNudge, setMachineNudge] = useState(false);
+  useEffect(() => {
+    if (!machineNudge) return;
+    const timer = window.setTimeout(() => setMachineNudge(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [machineNudge]);
+  const selectMachine = (id: string | null) => { machineRef.current = id; setMachineId(id); };
+  const canIssue = () => {
+    if (flowRef.current.restockMode) return true;
+    if (editingRef.current) return false;
+    if (machinesLoading) return false;
+    if (machines.length && !machineRef.current) { setMachineNudge(true); return false; }
+    return true;
+  };
+  const quantityLocked = !restockMode && (machineEditing || machinesLoading || (machines.length > 0 && !machineId));
   const [selectedTag, setSelectedTag] = useState<InventoryTag | null>(null);
   const [message, setMessage] = useState('アイテムNFCタグを読み取ってください');
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
@@ -147,10 +171,13 @@ export function KioskItemInventoryPage() {
   const selectTag = useCallback((tag: InventoryTag | null) => {
     const current = selectedTagRef.current;
     if (current?.uid !== tag?.uid || current?.compartment?.id !== tag?.compartment?.id) {
+      machineRef.current = null;
+      setMachineId(null);
       verificationGenerationRef.current += 1;
       selectionVerificationRef.current = null;
       setRefreshingTag(false);
     }
+    if (!tag) { editingRef.current = false; setMachineEditing(false); }
     setNumberOpen(false);
     numberLookupRef.current += 1;
     selectedTagRef.current = tag;
@@ -216,6 +243,8 @@ export function KioskItemInventoryPage() {
 
   const reset = useCallback(() => {
     selectTag(null);
+    editingRef.current = false;
+    setMachineEditing(false);
     const flow = flowRef.current;
     flow.restockMode = false;
     flow.restockTagUid = null;
@@ -235,6 +264,8 @@ export function KioskItemInventoryPage() {
     setResultTransaction(transaction);
     setLastTransactionUnit(unit);
     setMessage(restock ? `補充しました（${transaction.delta}${unit}）` : `払い出しました（${Math.abs(transaction.delta)}${unit}）`);
+    if (!restock && transaction.machine) setMessage(`払い出し −${Math.abs(transaction.delta)} ${unit}・${normalizeMachineName(transaction.machine.shortName || transaction.machine.name)}`);
+    selectMachine(null);
     setMessageKind('success');
     setQuantityError(null);
     playInventoryTone(restock ? 'restock' : 'success');
@@ -261,6 +292,7 @@ export function KioskItemInventoryPage() {
     setRestockMode, setQuantityError, setLastTransaction, selectionVerificationRef,
     verificationGenerationRef, setRefreshingTag, setCorrectionError,
     runOperation, mutations, completeMovement, handleTouchError,
+    canIssue, machineRef, selectMachine, editingRef,
   });
 
   useEffect(() => {
@@ -276,10 +308,10 @@ export function KioskItemInventoryPage() {
 
   useEffect(() => {
     // Counting or picking by touch can take a while; do not reset under the worker's hands.
-    if (panel !== 'none' || busy || refreshingTag || numberOpen) return;
+    if (panel !== 'none' || busy || refreshingTag || numberOpen || machineEditing) return;
     const timer = window.setTimeout(reset, 30000);
     return () => window.clearTimeout(timer);
-  }, [restockMode, selectedTag, message, panel, activity, reset, busy, refreshingTag, numberOpen]);
+  }, [restockMode, selectedTag, message, panel, activity, reset, busy, refreshingTag, numberOpen, machineEditing, machineId]);
 
   useEffect(() => {
     if (messageKind === 'info') return;
@@ -365,7 +397,7 @@ export function KioskItemInventoryPage() {
       const tag = selectedTagRef.current;
       if (tag?.uid) {
         const latest = await resolveInventoryTag(tag.uid).catch(() => null);
-        if (latest?.compartment?.id === tag.compartment?.id && mountedRef.current) selectTag(latest);
+        if (latest?.kind === 'ITEM' && latest.compartment?.id === tag.compartment?.id && mountedRef.current) selectTag(latest);
       } else await refreshDisplayedStock();
     });
   };
@@ -375,10 +407,14 @@ export function KioskItemInventoryPage() {
     flowRef.current.restockMode = restock;
     flowRef.current.restockTagUid = null;
     setRestockMode(restock);
+    selectMachine(null);
+    editingRef.current = false;
+    setMachineEditing(false);
     setQuantityError(null);
   };
 
   const submitQuantity = async (quantity: number) => {
+    if (!canIssue()) return;
     setQuantityError(null);
     await runOperation(async () => {
       const compartment = selectedTagRef.current?.compartment;
@@ -386,6 +422,7 @@ export function KioskItemInventoryPage() {
       const restock = flowRef.current.restockMode;
       const result = await mutations.touchTransaction.mutateAsync({
         compartmentId: compartment.id, quantity, restock,
+        machineId: restock ? undefined : machineRef.current ?? undefined,
         expectedBeforeQuantity: compartment.stockQuantity, idempotencyKey: crypto.randomUUID(),
       });
       await completeMovement(result.transaction, restock);
@@ -405,7 +442,7 @@ export function KioskItemInventoryPage() {
     <p role="status" aria-live="polite" className={`inline-flex h-11 items-center rounded-full border-[1.5px] px-5 text-base font-bold ${messageKind === 'success' ? invSuccess : invError}`}>{message}</p>
   );
   const prompt = messageKind !== 'info' ? resultBadge : selectedTag?.compartment ? (
-    <NfcPrompt size="small" label="数を押す か 数量タグ" tone={restockMode ? 'green' : 'amber'} />
+    <NfcPrompt size="small" label={!restockMode && machines.length > 0 && !machineId ? '加工機タグ か 加工機を押す' : '数を押す か 数量タグ'} tone={restockMode ? 'green' : machines.length > 0 && !machineId ? 'sky' : 'amber'} />
   ) : (
     <NfcPrompt size="small" label="アイテムタグ" tone={restockMode ? 'green' : 'sky'} sub={restockMode ? '補充' : undefined} />
   );
@@ -469,12 +506,13 @@ export function KioskItemInventoryPage() {
                     {messageKind === 'success' && resultTransaction?.compartmentId === selectedCompartment.id ? <span className={`text-2xl font-black tabular-nums ${resultTransaction.action === 'ISSUE' ? 'text-inv-amber' : resultTransaction.action === 'RESTOCK' ? 'text-inv-green' : 'text-inv-muted'}`}>{formatSignedDelta(resultTransaction.delta)}</span> : null}
                   </dd>
                 </dl>
+                {!restockMode && machines.length > 0 ? <InventoryMachinePicker machines={machines} selectedId={machineId} editing={machineEditing} onEditing={value => { editingRef.current = value; setMachineEditing(value); setPanel('none'); setMessageKind('info'); }} onSelect={id => { selectMachine(machineId === id ? null : id); setMessageKind('info'); }} nudge={machineNudge} disabled={busy || refreshingTag} onOrderSaved={ordered => queryClient.setQueryData(inventoryKeys.machinesAll, ordered)} onError={error => { setMessage(error); setMessageKind('error'); }} /> : null}
                 <p className={invEyebrow}>{restockMode ? '補充する数' : '払い出す数'}</p>
                 <div className="grid grid-cols-5 gap-2" role="group" aria-label={restockMode ? '補充する数' : '払い出す数'}>
-                  {Array.from({ length: 20 }, (_, index) => index + 1).map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-[70px] rounded-xl border-[1.5px] text-[28px] font-black tabular-nums disabled:opacity-40 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity) || (!restockMode && quantity > selectedCompartment.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
+                  {Array.from({ length: 20 }, (_, index) => index + 1).map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-[70px] rounded-xl border-[1.5px] text-[28px] font-black tabular-nums disabled:opacity-40 aria-disabled:opacity-30 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} aria-disabled={quantityLocked} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity) || (!restockMode && quantity > selectedCompartment.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
                 </div>
                 <div className="flex items-center gap-2.5">
-                  <button type="button" className="h-12 shrink-0 rounded-xl border border-inv-line2 bg-inv-s2 px-4 text-[15px] font-bold disabled:opacity-40" disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity)} onClick={() => { setQuantityError(null); setPanel('quantity'); }}>ほかの数</button>
+                  <button type="button" aria-disabled={quantityLocked} className="h-12 shrink-0 rounded-xl border border-inv-line2 bg-inv-s2 px-4 text-[15px] font-bold disabled:opacity-40 aria-disabled:opacity-30" disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity)} onClick={() => { if (!canIssue()) return; setQuantityError(null); setPanel('quantity'); }}>ほかの数</button>
                   <button type="button" className={`${invButtonGhost} ml-auto min-h-11 min-w-0 !whitespace-normal border-transparent px-1 text-[15px] text-inv-muted underline underline-offset-4`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment?.stockQuantity)} onClick={() => { setCorrectionError(null); setPanel('correct'); }}><EditIcon />数が合わないときは直す</button>
                 </div>
                 <div className="h-11 shrink-0" aria-live="polite">{quantityError && panel !== 'quantity' ? <p role="alert" className="text-inv-red">{quantityError}</p> : null}</div>

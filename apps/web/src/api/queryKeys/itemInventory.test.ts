@@ -4,6 +4,7 @@ import { inventoryKeys, itemInventoryQueryKeys } from './itemInventory';
 
 describe('itemInventoryQueryKeys', () => {
   it('preserves constant values and prefix lengths', () => {
+    expect(inventoryKeys.machinesAll).toEqual(['inventory-machines']);
     expect(inventoryKeys.dashboardAll).toEqual(['inventory-dashboard']);
     expect(inventoryKeys.variantsAll).toEqual(['inventory-value-variants']);
     expect(inventoryKeys.itemsAll).toEqual(['inventory-items']);
@@ -87,6 +88,7 @@ describe('itemInventoryQueryKeys', () => {
 
   it('preserves the bulk invalidation keys and their order', () => {
     expect(Object.values(inventoryKeys)).toEqual([
+      ['inventory-machines'],
       ['inventory-dashboard'],
       ['inventory-value-variants'],
       ['inventory-items'],

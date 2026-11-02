@@ -14,6 +14,7 @@ function transactionDb(overrides: Record<string, unknown> = {}) {
     item: { findFirst: vi.fn().mockResolvedValue(null) },
     measuringInstrumentTag: { findFirst: vi.fn().mockResolvedValue(null) },
     riggingGearTag: { findFirst: vi.fn().mockResolvedValue(null) },
+    machineNfcTag: { findUnique: vi.fn().mockResolvedValue(null) },
     inventoryNfcTag: {
       findUnique: vi.fn().mockResolvedValue(null),
       upsert: vi.fn(),
@@ -220,6 +221,7 @@ describe('ItemInventoryService safety boundaries', () => {
       item: { findFirst: vi.fn().mockResolvedValue(null) },
       measuringInstrumentTag: { findFirst: vi.fn().mockResolvedValue(null) },
       riggingGearTag: { findFirst: vi.fn().mockResolvedValue(null) },
+      machineNfcTag: { findUnique: vi.fn().mockResolvedValue(null) },
     };
     const db = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
     const service = new ItemInventoryService(db as never);
@@ -330,6 +332,7 @@ describe('ItemInventoryService safety boundaries', () => {
       item: { findFirst: vi.fn().mockResolvedValue(null) },
       measuringInstrumentTag: { findFirst: vi.fn().mockResolvedValue(null) },
       riggingGearTag: { findFirst: vi.fn().mockResolvedValue(null) },
+      machineNfcTag: { findUnique: vi.fn().mockResolvedValue(null) },
       inventoryItem: { findUnique: vi.fn().mockResolvedValue(item) },
       inventoryDrawer: { findUnique: vi.fn().mockResolvedValue(drawer) },
       inventoryCompartment: { create: vi.fn().mockResolvedValue(compartment) },
@@ -384,6 +387,7 @@ describe('ItemInventoryService safety boundaries', () => {
       item: { findFirst: vi.fn().mockResolvedValue(null) },
       measuringInstrumentTag: { findFirst: vi.fn().mockResolvedValue(null) },
       riggingGearTag: { findFirst: vi.fn().mockResolvedValue(null) },
+      machineNfcTag: { findUnique: vi.fn().mockResolvedValue(null) },
       inventoryItem: { findUnique: vi.fn().mockResolvedValue(item) },
       inventoryDrawer: { findUnique: vi.fn().mockResolvedValue(drawer) },
       inventoryCompartment: { create: vi.fn().mockResolvedValue(compartment) },
@@ -486,7 +490,7 @@ describe('ItemInventoryService stock transactions', () => {
     expect(replay.replayed).toBe(true);
     expect(state.compartment.stockQuantity).toBe(10);
     expect(state.transactions).toHaveLength(2);
-    const include = { inventoryItem: true, compartment: { include: { drawer: { include: { shelf: true } } } } };
+    const include = { machine: { select: { id: true, name: true, shortName: true } }, inventoryItem: true, compartment: { include: { drawer: { include: { shelf: true } } } } };
     expect(tx.inventoryTransaction.create).toHaveBeenCalledWith(expect.objectContaining({ include }));
     expect(tx.inventoryTransaction.findFirst).toHaveBeenCalledWith(expect.objectContaining({ include }));
   });

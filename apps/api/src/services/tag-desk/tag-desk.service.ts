@@ -7,8 +7,8 @@ import { canApprove, positionRank } from '../knowledge/knowledge-position-rank.j
 /** Master records that carry NFC tags and are managed on the kiosk tag desk. */
 export const TAG_DESK_KINDS = ['employee', 'item', 'instrument', 'rigging'] as const;
 export type TagDeskKind = (typeof TAG_DESK_KINDS)[number];
-/** Inventory shelf / quantity / restock tags can only be released here; they are attached in inventory setup. */
-export type TagBindingKind = TagDeskKind | 'inventory';
+/** Inventory and machine tags are attached through their own management APIs. */
+export type TagBindingKind = TagDeskKind | 'inventory' | 'machine';
 
 export type TagDeskTag = { bindingId: string; uid: string };
 export type PositionApproval = 'approver' | 'none' | 'unmapped';
@@ -207,11 +207,12 @@ export class TagDeskService {
   async resolve(rawUid: string): Promise<TagBinding[]> {
     const uid = normalizeTagUid(rawUid);
     if (!uid) return [];
-    const [employee, item, instrumentTag, riggingTag, inventoryTag] = await Promise.all([
+    const [employee, item, instrumentTag, riggingTag, machineTag, inventoryTag] = await Promise.all([
       prisma.employee.findUnique({ where: { nfcTagUid: uid } }),
       prisma.item.findUnique({ where: { nfcTagUid: uid } }),
       prisma.measuringInstrumentTag.findUnique({ where: { rfidTagUid: uid }, include: { measuringInstrument: true } }),
       prisma.riggingGearTag.findUnique({ where: { rfidTagUid: uid }, include: { riggingGear: true } }),
+      prisma.machineNfcTag.findUnique({ where: { uid }, include: { machine: true } }),
       prisma.inventoryNfcTag.findUnique({
         where: { uid },
         include: { compartment: { include: { inventoryItem: true, drawer: { include: { shelf: true } } } } }
@@ -266,6 +267,11 @@ export class TagDeskService {
         kind: 'inventory', bindingId: inventoryTag.id, targetId: inventoryTag.compartmentId, code: INVENTORY_TAG_LABELS[inventoryTag.kind],
         name, sub: place, status: null, activeLoans: 0, recent: []
       });
+    }
+    if (machineTag) {
+      const m = machineTag.machine;
+      bindings.push({ kind: 'machine', bindingId: machineTag.id, targetId: m.id,
+        code: m.equipmentManagementNumber, name: `加工機 ${m.name}`, sub: null, status: null, activeLoans: 0, recent: [] });
     }
     return bindings;
   }
@@ -362,6 +368,13 @@ export class TagDeskService {
           await this.record(tx, { uid: tag.rfidTagUid, action: 'UNLINK', targetKind: 'rigging', targetId: tag.riggingGearId, targetLabel: tag.riggingGear.name, clientDeviceId: input.clientDeviceId });
           return;
         }
+        case 'machine': {
+          const tag = await tx.machineNfcTag.findUnique({ where: { id: input.bindingId }, include: { machine: true } });
+          if (!tag) throw notFound();
+          await tx.machineNfcTag.delete({ where: { id: tag.id } });
+          await this.record(tx, { uid: tag.uid, action: 'UNLINK', targetKind: 'machine', targetId: tag.machineId, targetLabel: tag.machine.name, clientDeviceId: input.clientDeviceId });
+          return;
+        }
         case 'inventory': {
           const tag = await tx.inventoryNfcTag.findUnique({ where: { id: input.bindingId }, include: { compartment: { include: { inventoryItem: true } } } });
           if (!tag) throw notFound();
@@ -415,22 +428,24 @@ export class TagDeskService {
   }
 
   /** Label of the first record this UID is bound to, or null when it is free. */
-  private async findUsage(tx: Tx, uid: string): Promise<string | null> {
-    const [employee, item, instrumentTag, riggingTag, inventoryTag] = await Promise.all([
+  async findUsage(tx: Tx, uid: string): Promise<string | null> {
+    const [employee, item, instrumentTag, riggingTag, inventoryTag, machineTag] = await Promise.all([
       tx.employee.findUnique({ where: { nfcTagUid: uid }, select: { displayName: true } }),
       tx.item.findUnique({ where: { nfcTagUid: uid }, select: { name: true } }),
       tx.measuringInstrumentTag.findUnique({ where: { rfidTagUid: uid }, select: { measuringInstrument: { select: { name: true } } } }),
       tx.riggingGearTag.findUnique({ where: { rfidTagUid: uid }, select: { riggingGear: { select: { name: true } } } }),
-      tx.inventoryNfcTag.findUnique({ where: { uid }, select: { kind: true } })
+      tx.inventoryNfcTag.findUnique({ where: { uid }, select: { kind: true } }),
+      tx.machineNfcTag.findUnique({ where: { uid }, include: { machine: true } })
     ]);
     return employee?.displayName
       ?? item?.name
       ?? instrumentTag?.measuringInstrument.name
       ?? riggingTag?.riggingGear.name
-      ?? (inventoryTag ? INVENTORY_TAG_LABELS[inventoryTag.kind] : null);
+      ?? (inventoryTag ? INVENTORY_TAG_LABELS[inventoryTag.kind] : null)
+      ?? (machineTag ? `加工機 ${machineTag.machine.name}` : null);
   }
 
-  private async record(tx: Tx, event: { uid: string; action: 'LINK' | 'UNLINK'; targetKind: string; targetId: string | null; targetLabel: string; clientDeviceId: string | null }) {
+  async record(tx: Tx, event: { uid: string; action: 'LINK' | 'UNLINK'; targetKind: string; targetId: string | null; targetLabel: string; clientDeviceId: string | null }) {
     await tx.nfcTagBindingEvent.create({ data: event });
   }
 }

@@ -25,6 +25,7 @@ import {
   getInventoryImportSummaries,
   getInventoryImportMessages,
   getInventoryItems,
+  getInventoryMachines,
   getInventoryLocations,
   getInventoryTags,
   getInventoryToolFieldOptions,
@@ -104,7 +105,9 @@ export function useResolvedInventoryLabelNumber(labelNumber: string, enabled = t
 }
 
 function invalidateInventory(queryClient: ReturnType<typeof useQueryClient>) {
-  for (const key of Object.values(inventoryKeys)) void queryClient.invalidateQueries({ queryKey: key });
+  for (const [name, key] of Object.entries(inventoryKeys)) {
+    if (name !== 'machinesAll') void queryClient.invalidateQueries({ queryKey: key });
+  }
 }
 
 export function useInventoryMutations(accessPassword?: string, setup = false) {
@@ -258,4 +261,8 @@ export function useInventoryDashboard(weeks: number, machine: string | undefined
 export function useInventoryValueVariants(accessPassword?: string, scope: InventoryToolScope = 'default') {
   return useQuery({ queryKey: [...inventoryKeys.variantsAll, scope],
     queryFn: () => getInventoryValueVariants(accessPassword, scope) });
+}
+
+export function useInventoryMachines() {
+  return useQuery({ queryKey: inventoryKeys.machinesAll, queryFn: getInventoryMachines });
 }
