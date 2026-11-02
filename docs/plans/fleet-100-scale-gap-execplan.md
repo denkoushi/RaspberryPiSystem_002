@@ -27,6 +27,8 @@
 - [ ] M3: Pi5 の外の見張り、台帳との突き合わせ、閾値の統一、通知先の整理。
 - [ ] M4: NFC・バーコード・配膳端末の記録を、サーバーが受け取るまで端末に残す。
 - [ ] M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 にイメージの中継キャッシュを置く。
+  - [x] (2026-11-02) Step 1: Pi4 の play を `serial: [1, 5, "25%", "100%"]` の波にし、前の波で失敗した端末があれば次の波の先頭で止める確認を入れた。トルク切り替えは `serial: 1` のまま。手元の12台の模擬でだけ確かめた。
+  - [ ] Step 2: 全対象の取得(prepare)を切り替えの前に並列で済ませる。Step 3: Pi5 にイメージの中継キャッシュ。試験環境の複数台で波と停止を確かめ、全体の時間を記録する。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
 - [ ] M7: 端末側の Docker ログの上限と、SD カード保護の試行。
 - [ ] M8: 機種ごとの役割と資源の表を runbook に残す。
@@ -34,6 +36,9 @@
 
 ## Surprises & Discoveries
 
+
+- Observation: Pi4 の更新役割の失敗は rescue で戻したあと失敗として終わるため、`serial` を段階の指定にすると `max_fail_percentage: 0` が次の波を止めない。`serial: 1` では「波の全台が失敗」の扱いで止まっていたので、今まで表に出ていなかった。
+  Evidence: block/rescue/always の中で1台を失敗させた12台の模擬で、`serial: [1, 5, "25%", "100%"]` と `max_fail_percentage: 0` のまま kiosk-07〜12 も更新された(Ansible core 2.19.4)。`scripts/deploy/tests/test_ansible_standard_release.py` の `test_pi4_waves_stop_before_the_next_wave_after_a_rescued_failure` に残した。
 
 - Observation: NFC の端末側の記録は、中心サーバーが受け取ったときではなく、同じ端末のブラウザへ渡せた時点で消える。サーバーが止まっていてもブラウザが開いていれば消え、業務の処理が失敗しても再送されない。
   Evidence: `clients/nfc-agent/nfc_agent/main.py:123-129` で `queue_store.enqueue` の直後に `event_manager.broadcast` が成功すると `queue_store.delete([event_id])` を呼ぶ。
@@ -51,6 +56,10 @@
 
 ## Decision Log
 
+
+- Decision: M5 step 1 は Pi4 の play の先頭に「前の波で失敗した端末があれば止める」確認を置き、`max_fail_percentage: 0` は残す。
+  Rationale: 失敗した波の他の端末は、それぞれの更新と後片付け(画面のお知らせの解除、run のデータの削除)を最後まで終える。次の波の端末は何も変えずに失敗扱いで止まり、Pi3 の play へも進まないので、今の「1台失敗したら止まる」と同じ広がり方になる。止まった端末は記録上は失敗になるが、メッセージは「Not started」で未着手と分かる。
+  Date/Author: 2026-11-02 / Claude
 
 - Decision: 更新の骨格は今の「Pi5 から Ansible で順に送る方式」のまま残し、A/B 区画(Mender、RAUC、SWUpdate)や端末が自分で取りに行く方式(ansible-pull など)には移らない。
   Rationale: `docs/decisions/ADR-20260810-risk-based-deploy-impact-contract.md:83` で RAUC などの外部の配布基盤は既に採らないと決めている。今の方式は事前確認(`--print-plan`)、対象の明示(`--limit` か `--full-fleet`)、1台ずつの健全確認と戻しを持ち、段階的に広げる運用と合っている。100台で困るのは方式ではなく所要時間なので、並列化とキャッシュで解く。

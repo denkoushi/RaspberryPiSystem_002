@@ -212,16 +212,29 @@
   roles:
     - role: release_pi5
 
-- name: Update Pi4 kiosks one target at a time
+- name: Update Pi4 kiosks in canary waves
   hosts: kiosk
   gather_facts: false
   become: true
-  serial: 1
+  # Normal releases widen 1 -> 5 -> 25% -> rest. Torque cutover stays one at a time.
+  serial: "{{ [1] if (release_torque_cutover | default(false) | bool) else [1, 5, '25%', '100%'] }}"
   max_fail_percentage: "{{ 100 if (release_torque_cutover | default(false) | bool) else 0 }}"
   order: inventory
   tags:
     - pi4
   pre_tasks:
+    # A failure inside the role's rescue/always path does not trip
+    # max_fail_percentage across serial batches, so stop the next wave here
+    # before any of its kiosks are touched.
+    - name: Stop before this wave when a kiosk in an earlier wave failed
+      ansible.builtin.fail:
+        msg: >-
+          Not started: an earlier Pi4 wave failed on
+          {{ ansible_play_hosts_all | difference(ansible_play_hosts) | difference(ansible_play_batch) | join(', ') }}.
+      when:
+        - not (release_torque_cutover | default(false) | bool)
+        - (ansible_play_hosts_all | difference(ansible_play_hosts) | difference(ansible_play_batch)) | length > 0
+
     - name: Apply host certificate distrust before the kiosk release
       ansible.builtin.import_role:
         name: common

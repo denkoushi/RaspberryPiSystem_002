@@ -1396,7 +1396,12 @@ esac
 
     def test_top_level_route_is_explicit_and_serial(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
-        self.assertEqual(PLAYBOOK.count("  serial: 1\n"), 3)
+        self.assertEqual(PLAYBOOK.count("  serial: 1\n"), 2)
+        pi4 = next(play for play in plays if play.get("roles") == [{"role": "release_kiosk"}])
+        self.assertEqual(
+            pi4["serial"],
+            "{{ [1] if (release_torque_cutover | default(false) | bool) else [1, 5, '25%', '100%'] }}",
+        )
         self.assertLess(PLAYBOOK.index("role: release_pi5"), PLAYBOOK.index("role: release_kiosk"))
         self.assertLess(
             PLAYBOOK.index("role: release_kiosk"),
@@ -1440,7 +1445,7 @@ esac
                 "Aggregate QUIESCED and restore all reachable kiosks on shared failure",
                 "Finalize QUIESCED before changing the control plane",
                 "Prepare and switch the Pi5 control plane",
-                "Update Pi4 kiosks one target at a time",
+                "Update Pi4 kiosks in canary waves",
                 "Aggregate all selected torque candidates before ownership resumes",
             ],
         )
@@ -1647,6 +1652,89 @@ esac
         self.assertIn("AGGREGATE=False host=kiosk-b", output)
         self.assertIn("AGGREGATE=False host=kiosk-c", output)
         self.assertNotIn('"msg": "BROWSER_START_MUST_NOT_APPEAR"', output)
+
+    def test_pi4_waves_stop_before_the_next_wave_after_a_rescued_failure(self) -> None:
+        pi4 = next(
+            play
+            for play in yaml.safe_load(PLAYBOOK)
+            if play.get("roles") == [{"role": "release_kiosk"}]
+        )
+        gate = pi4["pre_tasks"][0]
+        self.assertEqual(gate["name"], "Stop before this wave when a kiosk in an earlier wave failed")
+        simulated = {
+            "hosts": "kiosk",
+            "gather_facts": False,
+            "serial": pi4["serial"],
+            "max_fail_percentage": pi4["max_fail_percentage"],
+            "order": "inventory",
+            "pre_tasks": [gate],
+            "tasks": [
+                {
+                    "block": [
+                        {"ansible.builtin.debug": {"msg": "SWITCH {{ inventory_hostname }}"}},
+                        {
+                            "block": [
+                                {
+                                    "ansible.builtin.fail": {"msg": "simulated health failure"},
+                                    "when": "inventory_hostname == 'kiosk-03'",
+                                },
+                                {"ansible.builtin.debug": {"msg": "HEALTHY {{ inventory_hostname }}"}},
+                            ],
+                            "rescue": [
+                                {"ansible.builtin.fail": {"msg": "rolled back {{ inventory_hostname }}"}},
+                            ],
+                        },
+                    ],
+                    "rescue": [{"ansible.builtin.fail": {"msg": "preserve the Pi4 failure"}}],
+                    "always": [{"ansible.builtin.debug": {"msg": "CLEAR {{ inventory_hostname }}"}}],
+                }
+            ],
+        }
+        hosts = "".join(
+            f"        kiosk-{index:02d}:\n          ansible_connection: local\n"
+            for index in range(1, 13)
+        )
+
+        def run(torque_cutover: bool) -> tuple[int, str]:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "inventory.yml").write_text(
+                    "all:\n  children:\n    kiosk:\n      hosts:\n" + hosts,
+                    encoding="utf-8",
+                )
+                (root / "playbook.yml").write_text(yaml.safe_dump([simulated]), encoding="utf-8")
+                result = subprocess.run(
+                    [
+                        "ansible-playbook",
+                        "-i",
+                        str(root / "inventory.yml"),
+                        str(root / "playbook.yml"),
+                        "-e",
+                        json.dumps({"release_torque_cutover": torque_cutover}),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            return result.returncode, result.stdout + result.stderr
+
+        returncode, output = run(False)
+        self.assertNotEqual(returncode, 0)
+        # Wave 1 is kiosk-01; wave 2 (kiosk-02..06) finishes every lifecycle, including the failed host.
+        for index in range(1, 7):
+            self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
+        self.assertNotIn('"msg": "SWITCH kiosk-07"', output)
+        self.assertIn("Not started: an earlier Pi4 wave failed on kiosk-03.", output)
+        self.assertNotIn("kiosk-10", output)
+
+        # Torque cutover keeps one kiosk per batch, as before the waves.
+        returncode, output = run(True)
+        self.assertNotEqual(returncode, 0)
+        for index in range(1, 4):
+            self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
+        self.assertEqual(output.count("PLAY [kiosk]"), 3)
+        self.assertNotIn("kiosk-04", output)
+        self.assertNotIn("Not started", output)
 
     def test_pi4_notice_contract_and_policy_constants(self) -> None:
         role = ANSIBLE / 'roles/release_kiosk'
