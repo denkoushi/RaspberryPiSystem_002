@@ -1,7 +1,7 @@
 # 端末100台規模に向けた不足点と改善計画(効き目の大きい順)
 
 
-本書は `.agent/PLANS.md` に従う実行計画である。Progress、Surprises & Discoveries、Decision Log、Outcomes & Retrospective を作業に合わせて更新する。今回(2026-11-01)は調査と計画だけを行い、実装は一つも始めていない。どの項目から着手するかは、ユーザーが本書を読んでから決める。
+本書は `.agent/PLANS.md` に従う実行計画である。Progress、Surprises & Discoveries、Decision Log、Outcomes & Retrospective を作業に合わせて更新する。2026-11-01 に調査と計画を行い、2026-11-02 に M7 step 1 の Compose ログ上限をローカル実装した。本番反映は未実施。
 
 
 ## Purpose / Big Picture
@@ -23,14 +23,26 @@
 - [x] (2026-11-01) 本書を書いた。
 - [ ] M0: 本番の読み取り専用の実測(DR タイマーの有効状態と最新スナップショットの日時、直近の標準更新の1台あたり所要時間、Pi3 と Zero 2W の常時メモリ)。親セッション経由でユーザーの許可を得てから行う。
 - [ ] M1: 中心サーバーの復旧訓練で今の復旧時間を測り、許容停止時間をユーザーと決める。
+  - [x] (2026-11-02) Step 1: 復旧訓練の手順と記録表 [Pi5 復旧訓練 Runbook](../runbooks/pi5-restore-drill.md) を作成した。切り替えはしない訓練。
+  - [ ] Step 2: 予備の Pi5 か SSD で訓練を1回行い、時間を記録する(実機。ユーザーの作業)。
+  - [ ] Step 3: 測った時間を見て、許容停止時間と許容損失をユーザーが決める。
 - [ ] M2: 予備の業務用 Pi5 と PostgreSQL 18 の複製、手動切り替えの手順書。
 - [ ] M3: Pi5 の外の見張り、台帳との突き合わせ、閾値の統一、通知先の整理。
 - [ ] M4: NFC・バーコード・配膳端末の記録を、サーバーが受け取るまで端末に残す。
+  - [x] (2026-11-02) 1段目: キオスク在庫画面の数量タグでの払出・補充を、サーバーが応答しないときはブラウザの送信待ち(IndexedDB)に残し、2xx で消す。詳細は [在庫画面の計画](kiosk-inventory-ux-execplan.md#inventory-nfc-offline-requests-2026-11-02)。
+  - [ ] 貸出(工具・測定機器・吊具)。遅れて届いたときの順番の扱いをユーザーに確認中。
+  - [ ] バーコード(パレット可視化への追加・置換)。API に冪等キーが無いので、API の変更と合わせて入れる。
 - [ ] M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 にイメージの中継キャッシュを置く。
   - [x] (2026-11-02) Step 1: Pi4 の play を `serial: [1, 5, "25%", "100%"]` の波にし、前の波で失敗した端末があれば次の波の先頭で止め、最後の波で失敗したときは Pi3 の play の先頭で止める確認を入れた。トルク切り替えは `serial: 1` のまま。手元の12台の模擬でだけ確かめた。
   - [ ] Step 2: 全対象の取得(prepare)を切り替えの前に並列で済ませる。Step 3: Pi5 にイメージの中継キャッシュ。試験環境の複数台で波と停止を確かめ、全体の時間を記録する。あわせて、`forks = 5` と波の中の足並みにより、25台・69台の波では予告を受けた端末が長く保守画面で待つことを解く(forks を波に合わせるか、予告を切り離す)。最初の1台を試験端末に決める方法も決める(今は inventory の並び順の先頭)。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
+  - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
+  - [ ] Step 2: rpi-image-gen で共通 OS イメージを作る。
+  - [ ] Step 3: 初回起動の登録を整える。
+  - [ ] Step 4: 実機で差し替え訓練を行い、30分以内か測る。
 - [ ] M7: 端末側の Docker ログの上限と、SD カード保護の試行。
+  - [x] (2026-11-02) Step 1: Pi5 phase3・migration、kiosk template、client Compose に json-file 10m × 3 の上限を実装。状態を持つ `business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache` は追加再作成を避けるため除外。
+  - [ ] 本番適用と `docker inspect` 確認（gateway は標準更新で再作成しないため別途適用が必要）、高耐久 SD・USB SSD・読み取り専用ルートの試行。
 - [ ] M8: 機種ごとの役割と資源の表を runbook に残す。
 
 
@@ -60,6 +72,18 @@
 - Decision: M5 step 1 は Pi4 の play の先頭に「前の波で失敗した端末があれば止める」確認を置き、`max_fail_percentage: 0` は残す。
   Rationale: 失敗した波の他の端末は、それぞれの更新と後片付け(画面のお知らせの解除、run のデータの削除)を最後まで終える。次の波の端末は何も変えずに失敗扱いで止まる。最後の波で失敗したときは次の波が無いため、各端末に「始めた」「終えた」の印を付け、Pi3 の play の先頭で「始めたが終えていない」端末があれば止める。これで Pi3 の play へも進まないので、今の「1台失敗したら止まる」と同じ広がり方になる。止まった端末は記録上は失敗になるが、メッセージは「Not started」で未着手と分かる。
   Date/Author: 2026-11-02 / Claude
+
+- Decision: M4 では、端末の部品(nfc-agent、barcode-agent)が持つ生の読み取りを後で流し直すのではなく、画面が組み立てた業務の要求(送り先の API、本文、冪等キー)をブラウザの送信待ちに残して再送する。
+  Rationale: 同じタグでも、どの業務になるかは開いている画面と途中の状態(工具→社員の順など)で決まる。生の読み取りを復旧後に流すと、そのとき開いている別の画面で別の業務として登録されるおそれがある。ブラウザ側(`apps/web/src/hooks/useNfcStream.ts`)も、画面を開く前の読み取りは捨てる作りで、これは正しい。業務の要求ならサーバーの冪等キーで重複を捨てられる。
+  Date/Author: 2026-11-02 / Claude
+
+- Decision: 配膳端末の古い部品(`clients/haizen-agent`)には送信待ちを足さない。
+  Rationale: `docs/plans/zero-edge-placement-execplan.md` で新しい `clients/zero-edge-agent` に置き換えて削除することが決まっており、新しい部品は SQLite の送信待ちと再送を既に持つ。古い部品は本番で使われていない。
+  Date/Author: 2026-11-02 / Claude
+
+- Decision: M7 step 1 は各 Compose の共通 logging anchor で json-file の `max-size: "10m"`・`max-file: "3"` を指定し、`daemon.json` は追加しない。
+  Rationale: Docker daemon の再起動による全コンテナ停止を避け、journald は現状維持する。通常は同一設定で稼働を続ける状態付き Hermes 3サービスは、ログ設定だけで再作成されないよう除外する。API/Web は非稼働スロット、kiosk は有効なエージェントだけに適用され、永続ボリュームは維持される。
+  Date/Author: 2026-11-02 / Codex
 
 - Decision: 更新の骨格は今の「Pi5 から Ansible で順に送る方式」のまま残し、A/B 区画(Mender、RAUC、SWUpdate)や端末が自分で取りに行く方式(ansible-pull など)には移らない。
   Rationale: `docs/decisions/ADR-20260810-risk-based-deploy-impact-contract.md:83` で RAUC などの外部の配布基盤は既に採らないと決めている。今の方式は事前確認(`--print-plan`)、対象の明示(`--limit` か `--full-fleet`)、1台ずつの健全確認と戻しを持ち、段階的に広げる運用と合っている。100台で困るのは方式ではなく所要時間なので、並列化とキャッシュで解く。
@@ -93,7 +117,7 @@
 ## Outcomes & Retrospective
 
 
-2026-11-01 時点では調査と計画だけが終わっている。実装・本番の実測・ユーザーの着手判断はいずれも未実施である。
+2026-11-02 時点で M7 step 1 の Compose ログ上限をローカル実装済み（状態付き Hermes 3サービスは除外）。本番反映・実測と、SD/SSD・読み取り専用ルートの試行は未実施である。
 
 
 ## Context and Orientation
@@ -179,7 +203,7 @@ Pi4 キオスクは Chromium で画面を出し、NFC・バーコード・トル
 ### 6番 SD カードの保護(照合項目3)
 
 
-今の状態。Pi4 と Pi5 の journald は SD に残し、200MB を上限にしている(`infrastructure/ansible/roles/release_kiosk/tasks/host-journald.yml`)。監視カメラは RAM だけに残す(`infrastructure/ansible/playbooks/watch-cam.yml:75-85`)。Pi3 のサイネージ画像は RAM 上の `/run/signage` に置く。Docker のログの上限は、Pi5 の古い構成ファイル(`docker-compose.server.yml`)の api と web にだけあり、今の Pi5 の青緑の構成と端末の構成(`infrastructure/ansible/roles/release_kiosk/templates/client-compose.yml.j2`)には無い。Docker 全体の既定の上限(`/etc/docker/daemon.json`)も無い。読み取り専用のルート、log2ram、端末の SSD 起動はどれも無い。Pi5 は SSD から起動している。`status-agent` が SD の書き込み量と健康を見ている。
+今の状態。Pi4 と Pi5 の journald は SD に残し、200MB を上限にしている(`infrastructure/ansible/roles/release_kiosk/tasks/host-journald.yml`)。監視カメラは RAM だけに残す(`infrastructure/ansible/playbooks/watch-cam.yml:75-85`)。Pi3 のサイネージ画像は RAM 上の `/run/signage` に置く。Docker のログの上限は、従来は Pi5 の古い構成ファイル(`docker-compose.server.yml`)の api と web にだけあったが、今の Pi5 の青緑の構成と端末の構成には 2026-11-02 に 10m × 3 の上限を実装した（除外と適用待ちは Progress 参照）。Docker 全体の既定の上限(`/etc/docker/daemon.json`)も無い。読み取り専用のルート、log2ram、端末の SSD 起動はどれも無い。Pi5 は SSD から起動している。`status-agent` が SD の書き込み量と健康を見ている。
 
 足りない所。端末の Docker のログに上限が無いので、部品が大量にログを出すと SD を埋め、摩耗も進む。100台あると、年に数枚の SD の故障は避けられない。
 
@@ -229,4 +253,4 @@ M1 以降は、各項目の着手が決まったときに、その項目だけ�
 ## Interfaces and Dependencies
 
 
-本書は計画だけで、新しい部品やインターフェースはまだ作らない。各項目で使う予定の外部のものは次のとおりで、いずれも採るかどうかは着手時に決める。PostgreSQL 18 の標準のストリーミング複製と WAL の保管(1番)、Ansible の `serial` の段階指定と `max_fail_percentage`(4番)、Docker の registry のプルスルーのキャッシュ(4番)、rpi-image-gen(5番)、Docker の `daemon.json` の `log-opts`(6番)。
+M7 step 1 以外は計画段階である。各項目で使う予定の外部のものは次のとおりで、未着手の項目は着手時に採否を決める。PostgreSQL 18 の標準のストリーミング複製と WAL の保管(1番)、Ansible の `serial` の段階指定と `max_fail_percentage`(4番)、Docker の registry のプルスルーのキャッシュ(4番)、rpi-image-gen(5番)、Compose の `logging` 設定(6番、step 1 はローカル実装済み)。
