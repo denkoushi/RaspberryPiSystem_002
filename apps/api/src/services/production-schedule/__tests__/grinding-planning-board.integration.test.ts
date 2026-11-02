@@ -321,6 +321,54 @@ describeIntegration('grinding planning board service real Postgres integration',
   });
 
 
+  it('matches legacy winner SQL IDs, order and every hydrate field after bounded in-memory intersection', async () => {
+    const f = await createFixture();
+    const [loser, winner, other, progress] = await addRows(f, [
+      { fseiban: `${f.prefix}-A`, fhincd: 'PART-A', processOrder: '1', productNo: '1' },
+      { fseiban: `${f.prefix}-A`, fhincd: 'PART-A', processOrder: '1', productNo: '2', completed: true, splitQuantity: 2 },
+      { fseiban: `${f.prefix}-B`, fhincd: 'PART-B', processOrder: '1', productNo: '3' },
+      { fseiban: `${f.prefix}-A`, fhincd: 'PART-C', processOrder: '2', productNo: '1', resourceCd: '100' }
+    ]);
+    const { Prisma } = await import('@prisma/client');
+    const { buildProductionScheduleLeaderboardMaterializedWinners } = await import('../row-resolver/max-product-no-winner-materialization.js');
+    const { prepareProductionScheduleDashboardFilters } = await import('../production-schedule-query/filters.js');
+    const { fetchLeaderboardPlanningScopedParentRowIds } = await import('../leaderboard/leaderboard-row-selection.service.js');
+    const { fetchLeaderboardScheduleHydratedRowsOrderedByIds } = await import('../leaderboard/leaderboard-shell-hydrate.service.js');
+    const { baseWhere, winnerRowIds } = await buildProductionScheduleLeaderboardMaterializedWinners(db());
+    const dashboardWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
+    expect(winnerRowIds.has(loser!)).toBe(false);
+    expect(winnerRowIds.has(winner!)).toBe(true);
+
+    for (const resourceCategory of ['grinding', undefined] as const) {
+      const filters = await prepareProductionScheduleDashboardFilters({
+        queryText: '', productNos: [], resourceCds: [], assignedOnlyCds: [], resourceCategory,
+        hasNoteOnly: false, hasDueDateOnly: false, allowResourceOnly: true,
+        locationKey: f.siteKey, siteKey: f.siteKey, planningFseibans: f.seibans
+      });
+      if (filters.kind === 'blocked_empty_search') throw new Error('fixture scope must be searchable');
+      const legacyIds = await fetchLeaderboardPlanningScopedParentRowIds({
+        leaderboardMaterializedBaseWhere: baseWhere, queryWhere: filters.queryWhere, completionFilter: 'all'
+      });
+      const boundedIds = await fetchLeaderboardPlanningScopedParentRowIds({
+        leaderboardMaterializedBaseWhere: dashboardWhere, winnerRowIds, queryWhere: filters.queryWhere, completionFilter: 'all'
+      });
+      expect(boundedIds).toEqual(legacyIds);
+      expect(boundedIds).toEqual((resourceCategory ? [winner!, other!] : [winner!, other!, progress!]).sort());
+      expect(boundedIds).not.toContain(loser);
+      // Exercise identity, detail-only supplement, and progress hydration with caches disabled.
+      for (const shape of [{}, { includePlanningDetails: true, planningSource: true, planningDetailsOnly: true }, { includePlanningDetails: true }]) {
+        const hydrate = (where: Prisma.Sql, orderedRowIds: string[]) => fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+          ...shape, orderedRowIds, locationKey: f.siteKey, siteScopedGlobalRankLocation: f.siteKey,
+          leaderboardMaterializedBaseWhere: where, leaderboardShellListWhere: where,
+          includeRank: false, maxRows: orderedRowIds.length
+        });
+        const legacy = await hydrate(baseWhere, legacyIds);
+        const bounded = await hydrate(dashboardWhere, boundedIds);
+        expect(JSON.stringify(bounded)).toBe(JSON.stringify(legacy));
+      }
+    }
+  });
+
   it('reuses first pages and observes CSV, progress, and other-terminal overrides on the next read', async () => {
     const f = await createFixture();
     await addRows(f, [{ fseiban: `${f.prefix}-ORDER`, fhincd: 'PART-A' }, { fseiban: `${f.prefix}-ORDER`, fhincd: 'PART-B' }]);
