@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
-image_tag="raspisys-kiosk-sop-generator:playwright-1.56.1"
+image_tag="raspisys-kiosk-sop-generator:playwright-1.64.1"
 generator_platform="linux/amd64"
 dockerfile="$repo_root/infrastructure/docker/Dockerfile.kiosk-sop-generator"
 inspection_preview_path="$repo_root/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html"
