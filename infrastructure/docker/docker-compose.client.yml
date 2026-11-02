@@ -2,8 +2,15 @@
 # 初回/手動セットアップ時は setup-nfc-agent.sh が .env 未存在なら .env.example をコピーして作成する。
 # Hardened variant: client_agents_hardened in the release_kiosk template; see runbook C-13
 # docs/runbooks/security-hardening-remediation.md.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   nfc-agent:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.nfc-agent
@@ -22,6 +29,7 @@ services:
   # シリアル(CDC ACM)バーコードリーダー用。Ansible が clients/barcode-agent/.env を配布する。
   # profile=barcode のため、通常の `docker compose up -d` では起動しない（nfc-agent のみ）。
   barcode-agent:
+    logging: *default-logging
     profiles:
       - barcode
     build:
@@ -35,6 +43,7 @@ services:
     restart: unless-stopped
 
   torque-agent:
+    logging: *default-logging
     profiles:
       - torque
     build:
