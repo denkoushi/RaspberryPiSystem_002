@@ -35,7 +35,8 @@ ENV = {
     'NFS_PATH': '/srv/ssd/hf', 'NFS_SERVER': '192.168.100.11',
     'NFS_VOLUME': 'business-dsv41-hf', 'HEAD_NFS_VOLUME': 'business-dsv41-hf-head',
     'HEAD_NFS_SERVER': '192.168.100.11',
-    'WORKER2': '', 'WORKER3': '',
+    # The private kit takes WORKER from its untracked scripts/local.sh; the business clone has none.
+    'WORKER': 'ubudgxkoushi@192.168.100.10', 'WORKER2': '', 'WORKER3': '',
     'WORKER_ENGRAM_DIR': '/home/ubudgxkoushi/.cache/dsv41-tensorfold/engram-1bae0e10',
     'WORKER_CACHE_DIR': '/home/ubudgxkoushi/.cache/dsv41-tensorfold/rank-cache-878f5689-ablit-0bdc2036',
     'STATE_DIR': ROOT + '/state/deepseek-v41', 'LOG_DIR': ROOT + '/logs/deepseek-v41',
@@ -65,6 +66,9 @@ def fields(value):
     # Volume names are local Docker handles for the same checked read-only export.
     assert result['nfs_volume'] in ('dsv41-1017-exl3-hf', 'business-dsv41-hf')
     result['nfs_volume'] = 'dsv41-1017-exl3-hf'
+    # Private leaves NFS_SERVER empty and the kit resolves the head's link address; business pins it.
+    assert result['nfs1'] in ('', '192.168.100.11')
+    result['nfs1'] = '192.168.100.11'
     return result
 
 private = fields(Path(sys.argv[1]).read_text())
