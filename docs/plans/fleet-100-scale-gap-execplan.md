@@ -26,6 +26,9 @@
 - [ ] M2: 予備の業務用 Pi5 と PostgreSQL 18 の複製、手動切り替えの手順書。
 - [ ] M3: Pi5 の外の見張り、台帳との突き合わせ、閾値の統一、通知先の整理。
 - [ ] M4: NFC・バーコード・配膳端末の記録を、サーバーが受け取るまで端末に残す。
+  - [x] (2026-11-02) 1段目: キオスク在庫画面の数量タグでの払出・補充を、サーバーが応答しないときはブラウザの送信待ち(IndexedDB)に残し、2xx で消す。詳細は [在庫画面の計画](kiosk-inventory-ux-execplan.md#inventory-nfc-offline-requests-2026-11-02)。
+  - [ ] 貸出(工具・測定機器・吊具)。遅れて届いたときの順番の扱いをユーザーに確認中。
+  - [ ] バーコード(パレット可視化への追加・置換)。API に冪等キーが無いので、API の変更と合わせて入れる。
 - [ ] M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 にイメージの中継キャッシュを置く。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
   - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
@@ -57,6 +60,14 @@
 
 ## Decision Log
 
+
+- Decision: M4 では、端末の部品(nfc-agent、barcode-agent)が持つ生の読み取りを後で流し直すのではなく、画面が組み立てた業務の要求(送り先の API、本文、冪等キー)をブラウザの送信待ちに残して再送する。
+  Rationale: 同じタグでも、どの業務になるかは開いている画面と途中の状態(工具→社員の順など)で決まる。生の読み取りを復旧後に流すと、そのとき開いている別の画面で別の業務として登録されるおそれがある。ブラウザ側(`apps/web/src/hooks/useNfcStream.ts`)も、画面を開く前の読み取りは捨てる作りで、これは正しい。業務の要求ならサーバーの冪等キーで重複を捨てられる。
+  Date/Author: 2026-11-02 / Claude
+
+- Decision: 配膳端末の古い部品(`clients/haizen-agent`)には送信待ちを足さない。
+  Rationale: `docs/plans/zero-edge-placement-execplan.md` で新しい `clients/zero-edge-agent` に置き換えて削除することが決まっており、新しい部品は SQLite の送信待ちと再送を既に持つ。古い部品は本番で使われていない。
+  Date/Author: 2026-11-02 / Claude
 
 - Decision: M7 step 1 は各 Compose の共通 logging anchor で json-file の `max-size: "10m"`・`max-file: "3"` を指定し、`daemon.json` は追加しない。
   Rationale: Docker daemon の再起動による全コンテナ停止を避け、journald は現状維持する。通常は同一設定で稼働を続ける状態付き Hermes 3サービスは、ログ設定だけで再作成されないよう除外する。API/Web は非稼働スロット、kiosk は有効なエージェントだけに適用され、永続ボリュームは維持される。
