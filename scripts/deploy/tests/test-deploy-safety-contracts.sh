@@ -74,7 +74,11 @@ assert [play.get("hosts") for play in plays] == [
     "server", "kiosk", "kiosk", "server", "kiosk", "kiosk", "server",
     "server", "kiosk", "kiosk", "signage"
 ]
-assert [play.get("serial") for play in plays if "serial" in play] == [1, 1, 1]
+assert [play.get("serial") for play in plays if "serial" in play] == [
+    1,
+    "{{ [1] if (release_torque_cutover | default(false) | bool) else [1, 5, '25%', '100%'] }}",
+    1,
+]
 role_plays = [play for play in plays if play.get("roles")]
 assert [play.get("roles", [{}])[0].get("role") for play in role_plays] == [
     "release_pi5",
