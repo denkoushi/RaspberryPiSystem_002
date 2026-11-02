@@ -20,6 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
+| Power BI クエリの15MB制限による生産日程CSV欠落 | [KB-435](./KB-435-powerbi-query-15mb-csv-truncation.md) | 1件 | 2026-11-02: MSZ追加後に応答上限で後半の製番が欠落し照合が未登録。期間分割で取込復旧、日次化と現場の再スキャンは未完了 |
 | キオスクの音声入出力の検討（個人スマホ・Bluetooth・USB） | [KB-434](./KB-434-kiosk-voice-io-options.md) | 1件 | 2026-10-31: 個人スマホ+一回限りQRは可能だがWi-Fi分離が厄介で見送り。Bluetoothは不可。各Pi4にUSBスピーカーフォンの方向 |
 | Tailscale 経由で管理画面が Forbidden になる件と Pi5 の SNAT 停止 | [KB-433](./KB-433-pi5-tailscale-snat-admin-forbidden.md) | 1件 | 2026-10-31: tailnet の接続元が Docker bridge のアドレスに書き換えられ /admin が 403。Pi5 の Tailscale SNAT を止め、標準リリースにも追加 |
 | FJV の Wi-Fi 切断が戻らない件とカーネル・ファームウェアの版合わせ | [KB-432](./KB-432-fjv-wifi-stall-kernel-firmware-align.md) | 1件 | 2026-10-30: FJV だけカーネル・Wi-Fi ファームウェアが約1年前のまま。手動で 6.18.34 と最新ファームウェアへ。ルーター再起動後に自力で再接続した |
