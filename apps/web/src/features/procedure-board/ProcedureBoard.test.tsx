@@ -110,7 +110,7 @@ describe('ProcedureBoard', () => {
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' }); expect(procedureBoardApi.save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
     fireEvent.change(screen.getByRole('textbox'), { target: { value: label + '追加' } }); fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
-    expect(screen.getByText(label + '追加')).toBeInTheDocument();
+    expect(screen.getByText(label + '追加', { selector: '.pb-text' })).toBeInTheDocument();
     await waitFor(() => expect(procedureBoardApi.save).toHaveBeenCalledOnce());
     expect(boardItems(board.layout).map(entry => entry.item.kind === 'text' && entry.item.text)).toEqual(['<img src=x onerror=alert(1)>', label + '追加']);
   });
