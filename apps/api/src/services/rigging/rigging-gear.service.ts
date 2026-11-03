@@ -1,3 +1,4 @@
+import { assertMachineNfcUidAvailable } from '../../lib/nfc-uid-availability.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { RiggingStatus, type Prisma } from '@prisma/client';
@@ -76,6 +77,7 @@ export class RiggingGearService {
       });
 
       if (input.rfidTagUid) {
+        await assertMachineNfcUidAvailable(input.rfidTagUid, tx);
         await tx.riggingGearTag.create({
           data: { riggingGearId: gear.id, rfidTagUid: input.rfidTagUid }
         });
@@ -110,6 +112,7 @@ export class RiggingGearService {
       });
 
       if (input.rfidTagUid !== undefined) {
+        if (input.rfidTagUid) await assertMachineNfcUidAvailable(input.rfidTagUid, tx);
         // 既存タグを全削除して再作成（単一タグ前提）
         await tx.riggingGearTag.deleteMany({ where: { riggingGearId: id } });
         if (input.rfidTagUid) {

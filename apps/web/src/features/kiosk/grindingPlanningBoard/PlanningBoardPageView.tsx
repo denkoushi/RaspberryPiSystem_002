@@ -134,7 +134,6 @@ export function PlanningBoardPageView({
       ) : data ? (
         <div className="mt-2">
           <PlanningBoardResourceView
-            key={`${data.siteKey}:${category}`}
             preferenceScope={`${data.siteKey}:${category}`}
             items={visibleItems}
             focusedSeiban={focusedSeiban}

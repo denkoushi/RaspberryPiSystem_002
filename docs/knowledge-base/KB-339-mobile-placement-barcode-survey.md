@@ -1,12 +1,14 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
+2026-11-02: `parse-actual-slip-image` と固定ROIのサーバ写真OCRを削除。写真読取はAndroid ML Kit → `snap-fseiban-tokens` のみで、通常ブラウザには写真読取ボタンを表示しない。以下の旧写真OCR・ファイル入力の記述は当時の履歴。現行契約は [API仕様](../api/mobile-placement.md#post-apimobile-placementsnap-fseiban-tokens) を参照。
+
 最終更新: 2026-04-25（**V27 パレット可視化 部品カード UI**）・2026-04-24（**V26 購買照会バーコード即時確定**）・2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
 
 ## FSEIBAN OCR snap（2026-10-15）
 
 印字製番の誤読で日程の完全一致照合が失敗するため、既存OCR抽出後に日程の有効製番へ重み付き距離で補正する。近接候補を区別できない場合は作業者が候補ボタンで選択する。移動票の製番は補正のヒントに使わない（実在する別製番へ寄せて取り違えを見逃さないため）。自動補正は類似文字の置換2文字までに限る。取得失敗時は既存抽出値へフォールバックする。
 
-契約・閾値・キャッシュの詳細は [API仕様](../api/mobile-placement.md#post-apimobile-placementparse-actual-slip-image) を参照。ローカル実装のみで、本番反映は未実施。
+契約・閾値・キャッシュの詳細は [API仕様](../api/mobile-placement.md#post-apimobile-placementsnap-fseiban-tokens) を参照。ローカル実装のみで、本番反映は未実施。
 
 ## V27（2026-04-25）キオスク／配膳 パレット可視化 部品カード UI（`PalletVizItemCard`） {#v27-pallet-viz-item-card-ui-2026-04-25}
 

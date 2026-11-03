@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 mode="${1:-check}"
 shift || true
-image_tag="raspisys-kiosk-sop-generator:playwright-1.56.1"
+image_tag="raspisys-kiosk-sop-generator:playwright-1.64.1"
 generator_platform="linux/amd64"
 dockerfile="$repo_root/infrastructure/docker/Dockerfile.kiosk-sop-generator"
 generated_root="$repo_root/apps/web/src/generated/kiosk-sop"

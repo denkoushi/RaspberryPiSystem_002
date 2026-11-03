@@ -189,7 +189,7 @@ export function PlanningBoardToolbar({
     (scalePanel.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? scalePanel.current.querySelector<HTMLButtonElement>('button'))?.focus();
   }, [scaleOpen]);
   return (
-    <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
+    <div className="flex h-[66px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
         type="button"
         onClick={onOpenDrawer}

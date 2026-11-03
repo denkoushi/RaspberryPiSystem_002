@@ -1,17 +1,25 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { resolveInventoryTag } from '../../../api/client';
 import { inventoryKeys } from '../../../api/queryKeys/itemInventory';
 
 import { isClientError, messageFromError, playInventoryTone } from './inventoryPageModel';
+import { INVENTORY_QUEUE_FULL_MESSAGE } from './offline/inventoryOfflineQueueStore';
+import { isRetryableInventoryError } from './offline/inventoryOutboxRunner';
+import { useInventoryOfflineQueue } from './offline/useInventoryOfflineQueue';
 
-import type { InventoryMovementTransaction, InventoryTag } from '../../../api/client';
+import type { InventoryQueueInput } from './offline/inventoryOfflineQueueStore';
+import type { InventoryMovementTransaction, InventoryTag, ResolvedInventoryTag } from '../../../api/client';
 import type { useInventoryMutations } from '../../../api/hooks';
 import type { NfcEvent } from '../../../hooks/useNfcStream';
 import type { QueryClient } from '@tanstack/react-query';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 type Options = {
+  canIssue: () => boolean;
+  machineRef: MutableRefObject<string | null>;
+  editingRef: MutableRefObject<boolean>;
+  selectMachine: (id: string | null) => void;
   drainEventsRef: MutableRefObject<() => Promise<void>>;
   drainingRef: MutableRefObject<boolean>;
   flowRef: MutableRefObject<{
@@ -41,12 +49,16 @@ type Options = {
 };
 
 export function useInventoryNfcQueue({
+  canIssue, machineRef, selectMachine, editingRef,
   drainEventsRef, drainingRef, flowRef, eventQueueRef, queryClient,
   setMessage, setMessageKind, mountedRef, setPanel, selectTag,
   setRestockMode, setQuantityError, setLastTransaction, selectionVerificationRef,
   verificationGenerationRef, setRefreshingTag, setCorrectionError,
   runOperation, mutations, completeMovement, handleTouchError,
 }: Options) {
+  const outbox = useInventoryOfflineQueue(setMessage, setMessageKind);
+  const canIssueRef = useRef(canIssue);
+  canIssueRef.current = canIssue;
   useEffect(() => {
     drainEventsRef.current = async () => {
       if (drainingRef.current || flowRef.current.processing) return;
@@ -55,7 +67,7 @@ export function useInventoryNfcQueue({
         while (eventQueueRef.current.length > 0 && !flowRef.current.processing) {
           const event = eventQueueRef.current[0];
           if (!event) continue;
-          let tag: InventoryTag | null;
+          let tag: ResolvedInventoryTag | null;
           try {
             tag = event.inventoryTag ?? await resolveInventoryTag(event.uid);
           } catch (error) {
@@ -77,6 +89,13 @@ export function useInventoryNfcQueue({
           eventQueueRef.current.shift();
           if (!tag) continue;
           const flow = flowRef.current;
+          if (tag.kind === 'MACHINE') {
+            if (!flow.restockMode && flow.selectedTag?.compartment && !editingRef.current) {
+              selectMachine(tag.machine.id);
+              setMessageKind('info');
+            }
+            continue;
+          }
           setPanel('none');
           if (tag.kind === 'RESTOCK') {
             selectTag(null);
@@ -140,6 +159,7 @@ export function useInventoryNfcQueue({
             }
             continue;
           }
+          if (tag.kind !== 'QUANTITY' || !canIssueRef.current()) continue;
           let touchRoute = false;
           await runOperation(async () => {
             const generation = verificationGenerationRef.current;
@@ -153,10 +173,43 @@ export function useInventoryNfcQueue({
             }
             const restock = flow.restockMode;
             touchRoute = !selected.uid || (restock && !flow.restockTagUid);
-            const idempotencyKey = `nfc-${event.eventId ?? `${event.uid}-${event.timestamp}`}`;
-            let result;
+            const idempotencyKey = `nfc-${event.eventKey ?? event.eventId ?? `${event.uid}-${event.timestamp}`}`;
+            const createdAt = new Date().toISOString();
+            const queueMovement = async (request: InventoryQueueInput, flush = false) => {
+              const records = await outbox.save({ ...request, display: {
+                itemName: compartment.item?.name,
+                quantity: request.route === 'touchTransaction' ? request.body.quantity : tag.quantity!, restock,
+              } });
+              if (flush) void outbox.flush().catch(error => console.warn('Inventory offline replay failed', error));
+              if (!mountedRef.current || generation !== verificationGenerationRef.current) return false;
+              const pending = records.filter(record => record.status === 'pending').length;
+              const failed = records.length - pending;
+              setLastTransaction(null);
+              setQuantityError(null);
+              selectMachine(null);
+              flow.restockMode = false;
+              flow.restockTagUid = null;
+              setRestockMode(false);
+              setMessage(`未送信 ${pending} 件${failed ? `・失敗 ${failed} 件` : ''}`);
+              // The daily screen renders message text only for success/error; info shows the NFC prompt.
+              setMessageKind(failed ? 'error' : 'success');
+              playInventoryTone('success');
+              return true;
+            };
+            let request: InventoryQueueInput;
             if (touchRoute) {
-              const latestQuantity = await resolveInventoryTag(tag.uid);
+              let latestQuantity;
+              try {
+                latestQuantity = await resolveInventoryTag(tag.uid);
+              } catch (error) {
+                if (!isRetryableInventoryError(error)) throw error;
+                if (!Number.isInteger(tag.quantity) || !tag.quantity || tag.quantity <= 0 || tag.quantity > 999999) throw error;
+                return queueMovement({
+                  route: 'touchTransaction', createdAt,
+                  body: { compartmentId: compartment.id, quantity: tag.quantity, restock,
+                    machineId: restock ? undefined : machineRef.current ?? undefined, idempotencyKey },
+                }, await outbox.hasPending());
+              }
               if (!mountedRef.current || generation !== verificationGenerationRef.current) return false;
               if (latestQuantity?.kind !== 'QUANTITY' || !latestQuantity.quantity || latestQuantity.quantity <= 0) {
                 void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
@@ -164,20 +217,38 @@ export function useInventoryNfcQueue({
                 setMessageKind('error');
                 return false;
               }
-              result = await mutations.touchTransaction.mutateAsync({
-                compartmentId: compartment.id, quantity: latestQuantity.quantity, restock,
-                expectedBeforeQuantity: compartment.stockQuantity, idempotencyKey,
-              });
+              request = {
+                route: 'touchTransaction', createdAt,
+                body: { compartmentId: compartment.id, quantity: latestQuantity.quantity, restock,
+                  machineId: restock ? undefined : machineRef.current ?? undefined, idempotencyKey },
+              };
             } else {
-              result = await mutations.transaction.mutateAsync({
-                itemTagUid: selected.uid, expectedCompartmentId: compartment.id, quantityTagUid: tag.uid,
-                restockTagUid: flow.restockTagUid ?? undefined, restock, idempotencyKey,
-              });
+              request = {
+                route: 'transaction', createdAt,
+                body: { itemTagUid: selected.uid, expectedCompartmentId: compartment.id, quantityTagUid: tag.uid,
+                  restockTagUid: flow.restockTagUid ?? undefined, restock, idempotencyKey,
+                  machineId: restock ? undefined : machineRef.current ?? undefined },
+              };
+            }
+            if (await outbox.hasPending()) return queueMovement(request, true);
+            if (!mountedRef.current || generation !== verificationGenerationRef.current) return false;
+            let result;
+            try {
+              result = request.route === 'transaction'
+                ? await mutations.transaction.mutateAsync(request.body)
+                : await mutations.touchTransaction.mutateAsync({ ...request.body, expectedBeforeQuantity: compartment.stockQuantity });
+            } catch (error) {
+              if (!isRetryableInventoryError(error)) throw error;
+              return queueMovement(request);
             }
             await completeMovement(result.transaction, restock);
             return true;
           }, async (error) => {
-            if (touchRoute) await handleTouchError(error);
+            if (error instanceof Error && error.message === INVENTORY_QUEUE_FULL_MESSAGE) {
+              setMessage(INVENTORY_QUEUE_FULL_MESSAGE);
+              setMessageKind('error');
+              playInventoryTone('error');
+            } else if (touchRoute) await handleTouchError(error);
             else {
               const response = (error as { response?: { status?: number; data?: { code?: string; errorCode?: string } } })?.response;
               if (response?.status === 409 && (response.data?.errorCode ?? response.data?.code) === 'INVENTORY_CONFLICT') {

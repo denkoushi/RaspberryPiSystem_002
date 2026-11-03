@@ -17,6 +17,8 @@ import {
   getEmployees,
   getItems,
   getMachines,
+  addMachineNfcTag,
+  removeMachineNfcTag,
   getMachineResourceChoices,
   getUninspectedMachines,
   createMachine,
@@ -98,7 +100,15 @@ export function useMachineMutations() {
     mutationFn: (id: string) => deleteMachine(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
   });
-  return { create, update, remove };
+  const addTag = useMutation({
+    mutationFn: ({ machineId, uid }: { machineId: string; uid: string }) => addMachineNfcTag(machineId, uid),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
+  });
+  const removeTag = useMutation({
+    mutationFn: ({ machineId, tagId }: { machineId: string; tagId: string }) => removeMachineNfcTag(machineId, tagId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
+  });
+  return { create, update, remove, addTag, removeTag };
 }
 
 export function useEmployeeMutations() {

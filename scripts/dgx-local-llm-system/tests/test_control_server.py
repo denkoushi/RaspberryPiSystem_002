@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 import threading
 import unittest
@@ -863,3 +864,245 @@ class ControlServerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BusinessSwitchContractTests(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        ProfilelessStartTests.setUp(self)
+        self.flag = patch.dict('os.environ', {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true'})
+        self.flag.start()
+        self.addCleanup(self.flag.stop)
+        self.calls = []
+        self.deep = 'business_deepseek_v41_flash_tp2'
+        manifest = json.loads((MODULE_PATH.parent / 'model-registry.examples' / self.deep / 'manifest.json').read_text())
+        manifest['enabled'] = True
+        target = self.manifest.parent.parent / 'deepseek/manifest.json'
+        target.parent.mkdir()
+        target.write_text(json.dumps(manifest))
+        self.prepared = patch('business_tensorfold.check_prepared')
+        self.prepared_mock = self.prepared.start()
+        self.addCleanup(self.prepared.stop)
+        self.monitor = patch.object(self.module, 'monitor_business_ready')
+        self.monitor_mock = self.monitor.start()
+        self.addCleanup(self.monitor.stop)
+        self.threads = patch.object(self.module.threading, 'Thread')
+        self.thread_mock = self.threads.start()
+        self.thread_mock.return_value.is_alive.return_value = True
+        self.addCleanup(self.threads.stop)
+        self.handler = self.module.make_handler(self.config, lambda cmd, extra_env=None: self.calls.append((cmd, extra_env)))
+
+    def request(self, path='/start', method='POST', **body):
+        data = json.dumps(body).encode()
+        request = (f'{method} {path} HTTP/1.0\r\nX-Runtime-Control-Token: runtime-token\r\nContent-Length: {len(data)}\r\n\r\n'.encode() + data)
+        output = io.BytesIO()
+        class Connection:
+            def makefile(self, *args): return io.BytesIO(request)
+            def sendall(self, data): output.write(data)
+        self.handler(Connection(), ('127.0.0.1', 0), object())
+        header, payload = output.getvalue().split(b'\r\n\r\n', 1)
+        return int(header.split()[1]), json.loads(payload)
+
+    def state_value(self):
+        return json.loads(self.state.read_text())
+
+    def test_migrate_only_valid_business_state_and_preserve_off_serialization(self):
+        from unittest.mock import patch
+        value = self.state_value()
+        self.assertEqual((value['selectedBusinessProfileId'], value['selectionRevision'], value['businessTransition']),
+                         (self.profile.id, 0, 'idle'))
+        for body in ({}, {'modelProfileId': 'private_test'}, {'selectedBusinessProfileId': self.deep, 'selectionRevision': True}, []):
+            self.state.write_text(json.dumps(body))
+            with self.assertRaises(self.module.BusinessRestoreUnavailableError):
+                self.module.make_handler(self.config)
+        self.state.write_text('{broken')
+        with self.assertRaises(self.module.BusinessRestoreUnavailableError):
+            self.module.make_handler(self.config)
+        with patch.dict('os.environ', {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'false'}):
+            self.module.write_active_model_state(str(self.state), self.profile)
+            self.assertNotIn('selectionRevision', self.state_value())
+            self.assertNotIn('businessTransition', self.state_value())
+
+    def test_explicit_selection_is_atomic_loading_and_stale_restore_is_conflict(self):
+        status, _ = self.request(modelProfileId=self.deep, reason='business-model-selection')
+        self.assertEqual(status, 200)
+        value = self.state_value()
+        self.assertEqual(value['selectedBusinessProfileId'], self.deep)
+        self.assertEqual(value['selectionRevision'], 1)
+        self.assertEqual(value['businessTransition'], 'loading')
+        self.assertTrue(value['businessGeneration'])
+        self.assertEqual(self.calls[-1][1]['DGX_BUSINESS_GENERATION'], value['businessGeneration'])
+        self.assertEqual(self.calls[-1][1]['BLUE_ABLITERATED'], '0')
+        count = len(self.calls)
+        for request in ({'modelProfileId': self.profile.id, 'reason': 'keep-warm', 'selectionRevision': 0},
+                        {'modelProfileId': self.deep, 'reason': 'business-restore', 'selectionRevision': 0},
+                        {'modelProfileId': self.deep, 'reason': 'keep-warm'},
+                        {'modelProfileId': self.deep, 'reason': 'business-restore', 'selectionRevision': True}):
+            self.assertEqual(self.request(**request)[0], 409)
+        self.assertEqual(len(self.calls), count)
+        self.assertEqual(self.request(modelProfileId=self.deep, reason='business-model-selection')[0], 200)
+        self.assertEqual(self.state_value(), value)  # duplicate click does not replace the generation
+        self.assertEqual(len(self.calls), count)
+
+    def test_unprepared_selection_does_not_stop_or_change_selection(self):
+        self.prepared_mock.side_effect = RuntimeError('business_deepseek_unprepared')
+        before = self.state_value()
+        status, payload = self.request(modelProfileId=self.deep, reason='business-model-selection')
+        self.assertEqual(status, 503)
+        self.assertIn('business_deepseek_unprepared', payload['message'])
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.state_value(), before)
+
+    def test_kit_layout_mismatch_refuses_before_stopping(self):
+        self.prepared_mock.side_effect = RuntimeError('business_kit_layout_mismatch')
+        before = self.state.read_bytes()
+        status, payload = self.request(modelProfileId=self.deep, reason='business-model-selection')
+        self.assertEqual(status, 503)
+        self.assertIn('business_kit_layout_mismatch', payload['message'])
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.state.read_bytes(), before)
+
+    def test_restarted_control_fails_orphaned_loading_then_restarts_same_profile(self):
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        previous = self.state_value()
+        self.module._business_monitors.clear()  # Process-local threads are lost on restart.
+        self.handler = self.module.make_handler(self.config, lambda cmd, extra_env=None: self.calls.append((cmd, extra_env)))
+        current = self.state_value()
+        self.assertEqual(current['businessTransition'], 'failed')
+        self.assertEqual(current['businessFailureReason'], 'business_control_restarted')
+        self.assertEqual(current['businessGeneration'], previous['businessGeneration'])
+        result = {'generation': previous['businessGeneration'], 'prepared': True, 'ranks': []}
+        from unittest.mock import patch
+        with patch('business_tensorfold.runtime_status', return_value=result):
+            self.assertEqual(self.module.business_runtime_status(self.config)['failureReason'], 'business_control_restarted')
+        count = len(self.calls)
+        self.assertEqual(self.request(reason='business-restore')[0], 200)
+        self.assertGreater(len(self.calls), count)
+        self.assertNotEqual(self.state_value()['businessGeneration'], previous['businessGeneration'])
+        self.assertNotIn('businessFailureReason', self.state_value())
+
+    def test_monitor_accepts_deepseek_probe_answered_only_in_reasoning(self):
+        from unittest.mock import patch
+        real_monitor = self.monitor.temp_original
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        replies = [{'data': [{'id': 'system-prod-primary'}]},
+                   {'choices': [{'message': {'role': 'assistant', 'content': '', 'reasoning_content': 'OK'}}]}]
+        class Reply:
+            def __init__(self, value): self.value = value
+            def __enter__(self): return io.BytesIO(json.dumps(self.value).encode())
+            def __exit__(self, *args): return False
+        ready = {'prepared': True, 'failureReason': None, 'ranks': [{'running': True}, {'running': True}]}
+        with patch.dict('os.environ', {'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': 'test-key'}), \
+             patch.object(self.module.urllib.request, 'urlopen', side_effect=lambda *a, **k: Reply(replies.pop(0))), \
+             patch('business_tensorfold.runtime_status', return_value=ready), \
+             patch.object(self.module.time, 'sleep', side_effect=AssertionError('probe retried')):
+            real_monitor(config, identity, profile)
+        self.assertEqual(self.state_value()['businessTransition'], 'ready')
+
+    def test_start_defensively_fails_loading_when_monitor_died(self):
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        previous = self.state_value()
+        self.thread_mock.return_value.is_alive.return_value = False
+        self.prepared_mock.side_effect = RuntimeError('business_deepseek_unprepared')
+        self.assertEqual(self.request(reason='business-restore')[0], 503)
+        self.assertEqual(self.state_value()['businessFailureReason'], 'business_control_restarted')
+        self.prepared_mock.side_effect = None
+        self.assertEqual(self.request(reason='business-restore')[0], 200)
+        self.assertNotEqual(self.state_value()['businessGeneration'], previous['businessGeneration'])
+
+    def test_initial_glm_resource_state_has_valid_identity_and_observed_ranks(self):
+        from unittest.mock import patch
+        before = self.state.read_bytes()
+        for running in (False, True):
+            rank_output = 'true\nfalse\n' if running else 'false\ntrue\n'
+            outputs = [subprocess.CompletedProcess([], 0, stdout=rank_output),
+                       subprocess.CompletedProcess([], 0, stdout=rank_output),
+                       subprocess.CompletedProcess([], 0, stdout='listener' if running else '')]
+            with self.subTest(running=running), patch('resource_state.subprocess.run', side_effect=outputs):
+                status, payload = self.request('/system/resource-state', method='GET')
+            self.assertEqual(status, 200)
+            value = payload['businessRuntime']
+            self.assertTrue(value['generation'])
+            self.assertEqual(value['selectionRevision'], 0)
+            self.assertEqual(value['modelProfileId'], self.profile.id)
+            self.assertTrue(value['prepared'])
+            self.assertIsNone(value['failureReason'])
+            self.assertEqual(value['apiListenerClosed'], not running)
+            self.assertEqual(value['ranks'], [dict(rank=r, generation=value['generation'],
+                running=running, gpuReleased=not running) for r in (0, 1)])
+        self.assertEqual(self.state.read_bytes(), before)
+
+    def test_private_start_stop_preserves_selection_and_restore_uses_selected(self):
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        value = self.state_value()
+        private = json.loads((MODULE_PATH.parent / 'tests/fixtures/private_deepseek_v41_flash_tp2/manifest.json').read_text())
+        private['enabled'] = True
+        private['currentStorageLocation'] = str(self.storage)
+        target = self.manifest.parent.parent / 'private/manifest.json'
+        target.parent.mkdir()
+        target.write_text(json.dumps(private))
+        self.assertEqual(self.request(modelProfileId=private['modelProfileId'])[0], 200)
+        self.assertFalse(self.state_value()['businessOrchestrationEligible'])
+        self.assertEqual(self.request('/stop-force')[0], 200)
+        self.assertEqual(self.state_value()['selectedBusinessProfileId'], self.deep)
+        self.assertEqual(self.state_value()['selectionRevision'], value['selectionRevision'])
+        self.assertEqual(self.request(reason='business-restore')[0], 200)
+        self.assertEqual(self.state_value()['modelProfileId'], self.deep)
+        self.assertNotEqual(self.state_value()['businessGeneration'], value['businessGeneration'])
+
+    def test_failed_start_keeps_new_selection_and_generation(self):
+        def fail(cmd, extra_env=None):
+            if extra_env:
+                raise RuntimeError('failure with secret output')
+        self.handler = self.module.make_handler(self.config, fail)
+        status, payload = self.request(modelProfileId=self.deep, reason='business-model-selection')
+        self.assertEqual(status, 503)
+        self.assertEqual(payload['code'], 'business_runtime_start_failed')
+        value = self.state_value()
+        self.assertEqual(value['selectedBusinessProfileId'], self.deep)
+        self.assertEqual(value['businessTransition'], 'failed')
+        self.assertNotIn('secret', json.dumps(payload))
+
+    def test_same_selected_profile_start_after_stop_has_new_generation(self):
+        self.request(reason='business-restore')
+        previous = self.state_value()
+        self.request('/stop-force')
+        self.request(reason='business-restore')
+        self.assertEqual(self.state_value()['selectionRevision'], previous['selectionRevision'])
+        self.assertNotEqual(self.state_value()['businessGeneration'], previous['businessGeneration'])
+
+    def test_status_matches_cp_fields_and_revision(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        generation = self.state_value()['businessGeneration']
+        result = {'generation': generation, 'prepared': True,
+                  'ranks': [{'rank': r, 'generation': generation, 'running': True, 'gpuReleased': False} for r in (0, 1)],
+                  'launcherStopped': False, 'watchdogStopped': False, 'apiListenerClosed': False, 'failureReason': None}
+        with patch('business_tensorfold.runtime_status', return_value=result):
+            status = self.module.business_runtime_status(self.config)
+        self.assertEqual(set(status), {'modelProfileId', 'selectionRevision', 'generation', 'prepared', 'ranks',
+                                      'launcherStopped', 'watchdogStopped', 'apiListenerClosed', 'failureReason'})
+        self.assertEqual(status['modelProfileId'], self.deep)
+        self.assertEqual(status['selectionRevision'], 1)
+        self.assertEqual({r['rank'] for r in status['ranks']}, {0, 1})
+
+    def test_inference_lock_holds_lifecycle_until_request_drains(self):
+        from active_model_state import business_state_lock
+        with business_state_lock(str(self.state), exclusive=False):
+            with self.assertRaises(BlockingIOError):
+                with business_state_lock(str(self.state), blocking=False):
+                    self.fail('lifecycle acquired while inference was in flight')
+
+    def test_failed_stop_keeps_selection_and_blocks_inference(self):
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        previous = self.state_value()
+        def fail(*args):
+            raise RuntimeError('rank 1 still running')
+        self.handler = self.module.make_handler(self.config, fail)
+        self.assertEqual(self.request('/stop-force')[0], 503)
+        current = self.state_value()
+        self.assertEqual(current['selectedBusinessProfileId'], previous['selectedBusinessProfileId'])
+        self.assertEqual(current['selectionRevision'], previous['selectionRevision'])
+        self.assertEqual(current['businessTransition'], 'failed')
+        self.assertEqual(current['businessFailureReason'], 'business_runtime_stop_unverified')

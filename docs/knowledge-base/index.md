@@ -20,6 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
+| Power BI クエリの15MB制限による生産日程CSV欠落 | [KB-435](./KB-435-powerbi-query-15mb-csv-truncation.md) | 1件 | 2026-11-02: MSZ追加後に応答上限で後半の製番が欠落し照合が未登録。期間分割で取込復旧、日次化と現場の再スキャンは未完了 |
 | キオスクの音声入出力の検討（個人スマホ・Bluetooth・USB） | [KB-434](./KB-434-kiosk-voice-io-options.md) | 1件 | 2026-10-31: 個人スマホ+一回限りQRは可能だがWi-Fi分離が厄介で見送り。Bluetoothは不可。各Pi4にUSBスピーカーフォンの方向 |
 | Tailscale 経由で管理画面が Forbidden になる件と Pi5 の SNAT 停止 | [KB-433](./KB-433-pi5-tailscale-snat-admin-forbidden.md) | 1件 | 2026-10-31: tailnet の接続元が Docker bridge のアドレスに書き換えられ /admin が 403。Pi5 の Tailscale SNAT を止め、標準リリースにも追加 |
 | FJV の Wi-Fi 切断が戻らない件とカーネル・ファームウェアの版合わせ | [KB-432](./KB-432-fjv-wifi-stall-kernel-firmware-align.md) | 1件 | 2026-10-30: FJV だけカーネル・Wi-Fi ファームウェアが約1年前のまま。手動で 6.18.34 と最新ファームウェアへ。ルーター再起動後に自力で再接続した |
@@ -136,7 +137,7 @@ update-frequency: high
 | DGXリソース Phase3–11（補助起停〜複合シナリオ／運用コンソール／目的別4操作／post-policy・最小 UI・gateway／Strict Ready／進行中表示持続化・業務復帰モデル選択） | [KB-365-dgx-resource-phase3-workload-orchestration.md](./KB-365-dgx-resource-phase3-workload-orchestration.md) | 1件 | 詳細はリンク先を参照。 |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 63件 | 詳細はリンク先を参照。 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
-| CI/CD関連 | [ci-cd.md](./ci-cd.md) | 19件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit）、test-excludeとminimatchの非互換エラー、Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される、ユニットテストでPrismaモデル未モック（KB-298）、Prisma JSONカラムへのRecord/null代入でCIビルド失敗（KB-299）、location-scope-resolverブランド型CIビルド失敗・verify-phase12 ping失敗（KB-302）、Caddy依存CVEsでTrivy image web失敗（KB-307）、trivy-action タグ参照解決失敗（KB-310）、Trivy image api の Pillow CVE-2026-40192（KB-342）、GitHub Actions ジョブ分割・composite action・CI 高速化（KB-353）、**`api-db-and-infra` Wait for PostgreSQL フレーク（KB-358）**、**Mac `python3`/`pyenv` 経路と `update-all-clients` 警告（KB-359）**、**import `replaceExisting` full suite flake（KB-395）**、**route統合テストfixture/`postgres-test-local`消失（KB-396）** |
+| CI/CD関連 | [ci-cd.md](./ci-cd.md) | 20件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit）、test-excludeとminimatchの非互換エラー、Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される、ユニットテストでPrismaモデル未モック（KB-298）、Prisma JSONカラムへのRecord/null代入でCIビルド失敗（KB-299）、location-scope-resolverブランド型CIビルド失敗・verify-phase12 ping失敗（KB-302）、Caddy依存CVEsでTrivy image web失敗（KB-307）、trivy-action タグ参照解決失敗（KB-310）、Trivy image api の Pillow CVE-2026-40192（KB-342）、GitHub Actions ジョブ分割・composite action・CI 高速化（KB-353）、**`api-db-and-infra` Wait for PostgreSQL フレーク（KB-358）**、**Mac `python3`/`pyenv` 経路と `update-all-clients` 警告（KB-359）**、**import `replaceExisting` full suite flake（KB-395）**、**route統合テストfixture/`postgres-test-local`消失（KB-396）**、**kiosk-sop firefox E2E が取説の「次へ」後に停止（KB-436）** |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 77件（サブカテゴリ別に分割） | 詳細はリンク先を参照。 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 32件 | 詳細はリンク先を参照。 |

@@ -12,7 +12,7 @@ import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { isSendaiResourceGroupCd } from '../resource-master.service.js';
 import { type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
-import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
+import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import { asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type SplitRankRow, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
 
@@ -94,15 +94,15 @@ export async function readPlanningSource(params: {
   leaderboardGenerationToken?: string;
 }): Promise<PlanningSource> {
   const generationToken = params.leaderboardGenerationToken ?? await readGrindingPlanningBoardSnapshotGenerationToken();
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken });
+  const { baseWhere, winnerRowIds } = await resolveLeaderboardMaterializedWinnersWithGenerationCache(prisma, { generationToken });
+  const dashboardWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
   const order = uniqueFseibans(params.fseibans);
   if (order.length === 0) {
     return { baseWhere, generationToken, rows: [], details: new Map(), progressRows: [] };
   }
 
-  // Reuse the existing winner/category selection path, but apply the registered
-  // seiban scope before reading any parent rows. This deliberately selects IDs
-  // only; full row hydration is delegated to the shared canonical cache path.
+  // SQL keeps the seiban/category filters and ID ordering; membership is
+  // intersected in memory with the exact same generation's winners afterwards.
   const filters = await prepareProductionScheduleDashboardFilters({
     queryText: '',
     productNos: [],
@@ -120,7 +120,8 @@ export async function readPlanningSource(params: {
     return { baseWhere, generationToken, rows: [], details: new Map(), progressRows: [] };
   }
   const orderedRowIds = await fetchLeaderboardPlanningScopedParentRowIds({
-    leaderboardMaterializedBaseWhere: baseWhere,
+    leaderboardMaterializedBaseWhere: dashboardWhere,
+    winnerRowIds,
     queryWhere: filters.queryWhere,
     completionFilter: 'all'
   });
@@ -143,11 +144,15 @@ export async function readPlanningSource(params: {
   const progressRowIds = progressFilters.kind === 'blocked_empty_search'
     ? []
     : await fetchLeaderboardPlanningScopedParentRowIds({
-        leaderboardMaterializedBaseWhere: baseWhere,
+        leaderboardMaterializedBaseWhere: dashboardWhere,
+        winnerRowIds,
         queryWhere: progressFilters.queryWhere,
         completionFilter: 'all'
       });
   const cacheKey = { siteKey: params.siteKey, generationToken };
+
+  // Every hydrate ID comes from the winner-filtered selectors above. Under the
+  // explicit ID predicate, dashboard-only WHERE is equivalent to baseWhere.
 
   const identityRows = await loadLeaderboardCanonicalRows({
     key: { ...cacheKey, rankContext: 'none' },
@@ -159,8 +164,8 @@ export async function readPlanningSource(params: {
         orderedRowIds: missingIds,
         locationKey: params.siteKey,
         siteScopedGlobalRankLocation: params.siteKey,
-        leaderboardMaterializedBaseWhere: baseWhere,
-        leaderboardShellListWhere: baseWhere,
+        leaderboardMaterializedBaseWhere: dashboardWhere,
+        leaderboardShellListWhere: dashboardWhere,
         includeRank: false,
         canonicalSourceGenerationToken: generationToken,
         canonicalSourceSiteKey: params.siteKey,
@@ -178,8 +183,8 @@ export async function readPlanningSource(params: {
         orderedRowIds: missingIds,
         locationKey: params.siteKey,
         siteScopedGlobalRankLocation: params.siteKey,
-        leaderboardMaterializedBaseWhere: baseWhere,
-        leaderboardShellListWhere: baseWhere,
+        leaderboardMaterializedBaseWhere: dashboardWhere,
+        leaderboardShellListWhere: dashboardWhere,
         includePlanningDetails: true,
         includeRank: false,
         planningSource: true,
@@ -201,8 +206,8 @@ export async function readPlanningSource(params: {
         orderedRowIds: missingIds,
         locationKey: params.siteKey,
         siteScopedGlobalRankLocation: params.siteKey,
-        leaderboardMaterializedBaseWhere: baseWhere,
-        leaderboardShellListWhere: baseWhere,
+        leaderboardMaterializedBaseWhere: dashboardWhere,
+        leaderboardShellListWhere: dashboardWhere,
         includePlanningDetails: true,
         includeRank: false,
         canonicalSourceGenerationToken: generationToken,

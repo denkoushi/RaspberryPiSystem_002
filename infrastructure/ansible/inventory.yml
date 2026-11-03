@@ -127,6 +127,7 @@ all:
           api_local_llm_runtime_warm_window_end_hour: "23"
           # DGXリソース管理（未設定時は監視/起停を自動有効化しない）
           api_dgx_resource_metrics_url: "{{ vault_api_dgx_resource_metrics_url | default('') }}"
+          api_business_deepseek_switch_enabled: "{{ vault_api_business_deepseek_switch_enabled | default(false) }}"
           api_dgx_resource_embedding_health_url: "{{ vault_api_dgx_resource_embedding_health_url | default('') }}"
           api_dgx_resource_spark_host_status_url: "{{ vault_api_dgx_resource_spark_host_status_url | default('') }}"
           api_dgx_resource_probe_timeout_ms: "{{ vault_api_dgx_resource_probe_timeout_ms | default('10000') }}"

@@ -112,10 +112,10 @@ Third part of the review: the daily screen can be used by touch alone, and a tag
   - An operation waits for the background check of the selection before it is sent, and is dropped if the check changes the drawer.
   - When an operation fails, scans read up to that moment are dropped, also across leaving and reopening the screen (the failure time is kept outside the component).
   - The tag route accepts `expectedCompartmentId`; if the tag now belongs to another drawer the API answers 409 `INVENTORY_CONFLICT` (タグの登録が変わりました) and nothing moves. A replay with the same idempotency key returns the first result before this check.
-  - No answer (network error or 5xx) is treated as unknown: the item list is re-read and the screen says 通信できませんでした。在庫数を確かめてください. It does not retry by itself.
+  - Manual number-button failures remain uncertain and are not automatically retried. Quantity-tag requests now use the [inventory NFC offline request queue](../plans/kiosk-inventory-ux-execplan.md#inventory-nfc-offline-requests-2026-11-02).
   - 補充 chosen on the header, or a quantity tag on a drawer without a tag, re-reads the quantity and goes through the touch route.
 - The screen reads API errors from `errorCode` (what the error handler sends), falling back to `code`.
-- Accepted limit: a quantity or restock tag deleted on another terminal is still treated as an inventory tag for up to 5 minutes here. No stock moves, because the server rejects it.
+- Accepted limit: a quantity or restock tag deleted on another terminal is still treated as an inventory tag for up to 5 minutes here. Online verification rejects it; queued touch requests can use the scan-time cached quantity (see the offline request decision above).
 - Not checked: the real look at 1920×1080 on a kiosk. Tests cover behaviour only.
 
 ## Updates (2026-10-08, API)

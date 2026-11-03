@@ -1,3 +1,4 @@
+import { assertMachineNfcUidAvailable } from '../../lib/nfc-uid-availability.js';
 import type { MeasuringInstrumentTag } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
@@ -15,6 +16,7 @@ export class MeasuringInstrumentTagService {
   }
 
   async create(data: TagCreateInput): Promise<MeasuringInstrumentTag> {
+    await assertMachineNfcUidAvailable(data.rfidTagUid, prisma);
     return await prisma.measuringInstrumentTag.create({ data });
   }
 

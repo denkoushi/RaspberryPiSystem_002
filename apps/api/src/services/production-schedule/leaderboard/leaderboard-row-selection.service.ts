@@ -560,6 +560,8 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
 /** Planning source: enumerate only parent IDs already restricted by the registered seiban/category scope. */
 export async function fetchLeaderboardPlanningScopedParentRowIds(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
+  /** When base WHERE is dashboard-only, intersect scoped candidates with this generation's winners. */
+  winnerRowIds?: ReadonlySet<string>;
   queryWhere: Prisma.Sql;
   completionFilter?: ProductionScheduleCompletionFilter;
   processChangeResidualMode?: ProcessChangeResidualMode;
@@ -579,7 +581,9 @@ export async function fetchLeaderboardPlanningScopedParentRowIds(params: {
     WHERE ${where}
     ORDER BY "CsvDashboardRow"."id" ASC
   `);
-  return rows.map((row) => row.id).filter((id): id is string => typeof id === 'string' && id.length > 0);
+  return rows.map((row) => row.id).filter((id): id is string =>
+    typeof id === 'string' && id.length > 0 && (params.winnerRowIds === undefined || params.winnerRowIds.has(id))
+  );
 }
 
 /**

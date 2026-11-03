@@ -951,3 +951,28 @@ Follows the night 28 reading: for 「異物付着の最近の不適合３件」 
 Change (this PR): a dense hit (hybrid or dense retriever) is admitted only when its lexical row has `contentTokenScore > 0`, that is, the record contains at least one bigram of a content word. When no record in the filtered set has one (paraphrases only), dense hits are admitted as before so recall does not drop to nothing. Thresholds, the lexical gate, the ordering and the judge batches are unchanged. 592 tests pass (589 + 3); a read-only Codex review found nothing.
 
 Expected on the night after release: the 「異物付着の最近の不適合３件」 row ok, or fewer records shown with every shown record containing a content bigram (a record with only the generic bigram still fails the verbatim check, which would then point at the judge, not the pool). Heldout and real counts must not fall; the dense-only fallback keeps the paraphrase case.
+
+### 2026-11-02: night 29, #2462 on the Pi 5 did what it specified and the row still fails; the pool and the check define "contains the content word" differently (measurement)
+
+Night of 2026-11-01 (Pi 5 at 726739c8, which contains #2462; 22:20–22:26 JST): generated 75, kept 68, shown 50, dropped 32, labelled 60, label pending 61, learned 3 (active: heldout gained 3 / lost 0, real 0 / 0), `lossStages not_in_pool 3` (7 the night before). No recall loss attributable to the recent-pool gate. Regression replay of the 4 rows:
+
+- 「仙台工場の最近の不適合３件」: ok for the third night, retired from `regressions.jsonl`.
+- 「仙台工場にも同事例ありますか？」: ok, `lastOk 2`.
+- 「仙台工場に類例ある？」: `unsupported` (`no_verbatim_content`), `lastUnsupported 2`; retires if tonight is the same.
+- 「異物付着の最近の不適合３件」: the same 3 records as night 28 (same ids, same order), `matchedCount 1`, `expected 1`, `contentOk false`, `lastOk 0`. The change in #2462 did not alter the shown set.
+
+Why (checked on the Pi 5 with the executor's own `buildLexicalIndex`, printing only bigram keys and counts; no record text read): the live worker attaches the stored enrichment (`HERMES_RETRIEVAL_ENRICHMENT_ENABLED=true`), and `recordPassage` folds the enrichment summary and search-hint queries into the passage the lexical index scores. Of the two shown records without the verbatim word:
+
+- one has no content bigram at all in its body fields, but its enrichment summary and two of its queries contain 異物 (4 bigram hits), so `contentTokenScore > 0`;
+- the other contains 付着 once in its body fields (and once more in its summary and a query).
+
+So both pass the #2462 gate as specified (at least one bigram of a content word in the scored passage), and the judge accepted them. The check, on the other hand, demands the whole word 異物付着 verbatim in body fields only, which exactly one 資材課 record has on the live corpus. Night 28's reading ("a real retrieval loss") stands only under the check's definition; under the pool's definition the kiosk answered a request for 3 with the 1 verbatim record plus the 2 nearest (異物, 付着) in the same department. This is the branch the 2026-11-01 change entry anticipated ("a record with only the generic bigram still fails the verbatim check, which would then point at the judge"), now with the cause pinned to the definition gap rather than to the gate.
+
+Two caveats: the Pi 5 `snapshot.json` (8209 records, 2026-09-12) is not the live corpus (the verbatim record is live but absent from it; the enrichment store holds 8322 entries), so the bigram check is a proxy, valid for the two non-verbatim records which are in both; and the 3 learned queries that went active last night merge into the enrichment queries at load (`applyEnrichment`), so they also feed this gate, a confound to watch in tonight's counts.
+
+Next, pending a product decision (what the kiosk shows when fewer verbatim records exist than asked):
+- A (verbatim first): when any in-scope record contains a whole content word, the recent pool admits only those, and falls back to the current bigram gate when none does (as #2462 does for paraphrases). The row passes, the kiosk shows 1 record for this question, no check change.
+- B (near records fill the count): keep the kiosk behaviour and let the check pass when every expected record is shown and each extra shown record contains a content bigram; this reverses night 28's reading.
+Dropping the enrichment text from the gate alone removes one of the two records and leaves the row failing, so it is not a resolution by itself.
+
+Private files: `work/flywheel/real-2026-11-01.jsonl`, `runner-2026-11-01.log`, `questions-2026-11-01.jsonl`, `learned-queries.jsonl`.

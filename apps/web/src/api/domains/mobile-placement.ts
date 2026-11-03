@@ -226,14 +226,6 @@ export type ActualSlipOcrResponse = {
   fseibanCandidates: string[];
 };
 
-/** 現品票画像を OCR し、製造order（10桁）と製番候補を返す */
-export async function parseActualSlipImage(imageFile: File) {
-  const form = new FormData();
-  form.append('image', imageFile);
-  const { data } = await api.post<ActualSlipOcrResponse>('/mobile-placement/parse-actual-slip-image', form);
-  return data;
-}
-
 export async function snapFseibanTokens(payload: { tokens: string[]; text?: string }) {
   const { data } = await api.post<ActualSlipOcrResponse>('/mobile-placement/snap-fseiban-tokens', payload);
   return data;

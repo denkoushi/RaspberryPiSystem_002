@@ -468,6 +468,31 @@ model RiggingInspectionRecord {
   @@index([inspectedAt])
 }
 
+model MachineNfcTag {
+  id        String   @id @default(uuid())
+  machineId String
+  uid       String   @unique
+  createdAt DateTime @default(now())
+  machine   Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@index([machineId])
+}
+
+model KioskInventoryMachineOrder {
+  id             String       @id @default(uuid())
+  clientDeviceId String
+  machineId      String
+  position       Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  clientDevice   ClientDevice @relation(fields: [clientDeviceId], references: [id], onDelete: Cascade)
+  machine        Machine      @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@unique([clientDeviceId, machineId])
+  @@index([clientDeviceId, position])
+  @@index([machineId])
+}
+
 model Machine {
   id                        String   @id @default(uuid())
   equipmentManagementNumber String   @unique
@@ -484,12 +509,17 @@ model Machine {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
+  nfcTags                   MachineNfcTag[]
+  kioskInventoryOrders      KioskInventoryMachineOrder[]
+  inventoryTransactions     InventoryTransaction[]
+
   @@index([operatingStatus])
   @@index([classification])
   @@index([resourceCd])
 }
 
 model ClientDevice {
+  kioskInventoryMachineOrders KioskInventoryMachineOrder[]
   mobileSlipVerifyRecords MobileSlipVerifyRecord[]
   mobileScanFrames MobileScanFrame[]
   watchCameraFrames WatchCameraFrame[]
@@ -1129,6 +1159,11 @@ model InventoryImportMessage {
   @@index([payloadId])
 }
 
+model InventoryMachineOptionalDepartment {
+  department String   @id
+  createdAt  DateTime @default(now())
+}
+
 model InventoryShelf {
   id          String            @id @default(uuid())
   area        String
@@ -1226,6 +1261,10 @@ model InventoryTransaction {
   reversalOf        InventoryTransaction?      @relation("InventoryTransactionReversal", fields: [reversalOfId], references: [id], onDelete: SetNull)
   reversedBy        InventoryTransaction?      @relation("InventoryTransactionReversal")
 
+  machineId         String?
+  machine           Machine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+
+  @@index([machineId])
   @@unique([clientId, idempotencyKey])
   @@index([compartmentId, createdAt])
   @@index([inventoryItemId, createdAt])

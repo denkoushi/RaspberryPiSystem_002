@@ -5,6 +5,9 @@ set -euo pipefail
 # 新しい設定では BLUE_* を推奨しつつ、既存の TRTLLM_* 互換も維持する。
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "${BLUE_MODEL_PROFILE_ID:-}" == "business_deepseek_v41_flash_tp2" ]]; then
+  exec "${SCRIPT_DIR}/tensorfold-2x-adapter.sh"
+fi
 CONTAINER_NAME="${BLUE_CONTAINER_NAME:-${TRTLLM_CONTAINER_NAME:-system-prod-trtllm}}"
 MODE="${BLUE_SERVER_MODE:-${TRTLLM_SERVER_MODE:-container}}"
 IMAGE="${BLUE_SERVER_IMAGE:-${TRTLLM_SERVER_IMAGE:-}}"

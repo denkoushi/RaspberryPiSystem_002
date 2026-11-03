@@ -31,6 +31,10 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
+import uuid
+import urllib.request
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -47,7 +51,9 @@ from dgx_llm_single_active_guard import (  # noqa: E402
     single_active_guard_enabled,
     validate_both_backend_stops_configured,
 )
-from active_model_state import active_model_state_to_api, read_active_model_state, write_active_model_state  # noqa: E402
+from active_model_state import (active_model_state_to_api, read_active_model_state, write_active_model_state,
+    business_switch_enabled, business_selection_state, business_state_lock, replace_active_payload,
+    BUSINESS_PROFILES, DEEPSEEK_PROFILE, GLM_PROFILE)  # noqa: E402
 from model_profiles import (  # noqa: E402
     BusinessRestoreUnavailableError,
     ModelProfileError,
@@ -270,7 +276,123 @@ def write_resource_state_best_effort(
     return state_to_api(state)
 
 
+class SelectionConflict(ModelProfileError):
+    status_code = 409
+    code = "BUSINESS_SELECTION_CONFLICT"
+
+
+def assert_selection_request(state: dict, body: dict) -> None:
+    profile_id = body.get("modelProfileId")
+    revision = body.get("selectionRevision")
+    if ((profile_id is not None and profile_id != state["selectedBusinessProfileId"])
+            or (revision is not None and (type(revision) is not int or revision != state["selectionRevision"]))
+            or (body.get("reason") == "keep-warm" and revision is None)):
+        raise SelectionConflict("stale or mismatching business selection")
+
+
+def business_runtime_status(config: ControlConfig) -> dict:
+    from business_tensorfold import runtime_status
+    state = business_selection_state(config.active_model_state_path)
+    generation = state.get("businessGeneration")
+    if (not generation and state["selectedBusinessProfileId"] == GLM_PROFILE
+            and state["businessTransition"] == "idle" and state["selectionRevision"] == 0):
+        # Legacy GLM has no launch generation. Inspect its real ranks under a
+        # stable initial identity; a subsequent start creates a fresh generation.
+        generation = "business-glm-initial-0"
+    if not isinstance(generation, str) or not generation:
+        raise BusinessRestoreUnavailableError("business runtime generation unavailable")
+    if state["selectedBusinessProfileId"] == DEEPSEEK_PROFILE:
+        result = runtime_status(generation)
+    else:
+        from resource_state import glm_business_runtime
+        result = glm_business_runtime(generation)
+    result.update(modelProfileId=state["selectedBusinessProfileId"], selectionRevision=state["selectionRevision"])
+    if state.get("businessFailureReason"):
+        result["failureReason"] = state["businessFailureReason"]
+    if business_selection_state(config.active_model_state_path) != state:
+        raise SelectionConflict("business runtime changed during inspection")
+    return result
+
+
+def business_active_running(config: ControlConfig) -> bool:
+    try:
+        value = business_runtime_status(config)
+        return value["prepared"] and not value["failureReason"] and all(r["running"] for r in value["ranks"])
+    except Exception:
+        return False
+
+
+def monitor_business_ready(config: ControlConfig, identity: tuple, profile: ModelProfile) -> None:
+    # Detached start stays within the existing command timeout. Readiness is
+    # fenced by selection + generation and never probes through a loading gateway.
+    from business_tensorfold import runtime_status
+    deadline = time.monotonic() + 1200
+    failure = "business_readiness_timeout"
+    base = "http://192.168.100.11:8889" if profile.id == DEEPSEEK_PROFILE else "http://127.0.0.1:38083"
+    headers = {}
+    if profile.id == DEEPSEEK_PROFILE:
+        key = os.environ.get("BUSINESS_DEEPSEEK_UPSTREAM_API_KEY", "").strip()
+        if not key:
+            failure = "business_upstream_key_missing"
+            deadline = 0
+        headers["Authorization"] = "Bearer " + key
+    while time.monotonic() < deadline:
+        try:
+            with business_state_lock(config.active_model_state_path, exclusive=False):
+                state = business_selection_state(config.active_model_state_path)
+                if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) != identity or state["businessTransition"] != "loading":
+                    return
+                with urllib.request.urlopen(urllib.request.Request(base + "/v1/models", headers=headers), timeout=8) as response:
+                    models = json.load(response)["data"]
+                if not any(m.get("id") == "system-prod-primary" for m in models):
+                    raise ValueError("alias mismatch")
+                body = {"model": "system-prod-primary", "messages": [{"role": "user", "content": "Reply OK."}], "max_tokens": 16, "temperature": 0}
+                if profile.id != DEEPSEEK_PROFILE:
+                    body["chat_template_kwargs"] = {"reasoning_effort": "low"}
+                request = urllib.request.Request(base + "/v1/chat/completions", data=json.dumps(body).encode(), headers={**headers, "Content-Type": "application/json"})
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    message = json.load(response)["choices"][0]["message"]
+                # DeepSeek can spend the short probe budget on reasoning_content alone.
+                if not any(isinstance(message.get(k), str) and message[k].strip() for k in ("content", "reasoning_content")):
+                    raise ValueError("empty inference probe")
+                if profile.id == DEEPSEEK_PROFILE:
+                    status = runtime_status(identity[2])
+                    if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
+                        raise ValueError("runtime not ready")
+            with business_state_lock(config.active_model_state_path):
+                state = business_selection_state(config.active_model_state_path)
+                if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
+                    state["businessTransition"] = "ready"
+                    replace_active_payload(config.active_model_state_path, state)
+            return
+        except Exception:
+            time.sleep(5)
+    with business_state_lock(config.active_model_state_path):
+        state = business_selection_state(config.active_model_state_path)
+        if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
+            state.update(businessTransition="failed", businessFailureReason=failure)
+            replace_active_payload(config.active_model_state_path, state)
+
+
+_business_monitors: dict[str, tuple[tuple, threading.Thread]] = {}
+
+
+def recover_business_loading(config: ControlConfig, state: dict) -> dict:
+    # Caller holds the lifecycle lock, so a start cannot race registration.
+    identity = (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration"))
+    monitor = _business_monitors.get(config.active_model_state_path)
+    if state["businessTransition"] == "loading" and not (
+            monitor and monitor[0] == identity and monitor[1].is_alive()):
+        state.update(businessTransition="failed", businessFailureReason="business_control_restarted")
+        replace_active_payload(config.active_model_state_path, state)
+    return state
+
+
 def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shell) -> type[BaseHTTPRequestHandler]:
+    if business_switch_enabled():
+        with business_state_lock(config.active_model_state_path):
+            recover_business_loading(config, business_selection_state(config.active_model_state_path, config.model_registry_root))
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "dgx-llm-runtime-control/1.0"
 
@@ -297,6 +419,12 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
             if not self._auth_ok():
                 self._send_text(401, "unauthorized")
                 return
+            if self.path == "/system/resource-state" and business_switch_enabled():
+                try:
+                    self._send_json(200, {"ok": True, "businessRuntime": business_runtime_status(config)})
+                except Exception:
+                    self._send_json(503, {"ok": False, "code": "BUSINESS_RUNTIME_UNAVAILABLE"})
+                return
             if self.path == "/healthz":
                 self._send_text(200, "ok\n")
                 return
@@ -307,6 +435,9 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                 self._send_text(401, "unauthorized")
                 return
             try:
+                if business_switch_enabled() and self.path in {"/start", "/stop", "/stop-force"}:
+                    self._business_post(read_json_body(self))
+                    return
                 if self.path == "/start":
                     body = read_json_body(self)
                     model_profile_id = body.get("modelProfileId")
@@ -404,12 +535,106 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     return
                 self._send_text(404, "not found")
             except subprocess.CalledProcessError as exc:
+                if business_switch_enabled():
+                    self._send_json(503, {"ok": False, "code": "business_runtime_control_failed"})
+                    return
                 detail = exc.stderr or exc.stdout or str(exc)
                 self._send_text(500, detail[:2000])
             except ModelProfileError as exc:
                 self._send_json(exc.status_code, {"ok": False, "code": exc.code, "message": str(exc)})
             except Exception as exc:  # pragma: no cover
                 self._send_text(500, str(exc))
+
+        def _business_post(self, body: dict) -> None:
+            reason = _string_body_value(body, "reason")
+            with business_state_lock(config.active_model_state_path):
+                state = business_selection_state(config.active_model_state_path)
+                if self.path == "/start":
+                    state = recover_business_loading(config, state)
+                if reason in {"keep-warm", "business-restore"}:
+                    assert_selection_request(state, body)
+                if self.path != "/start":
+                    backend, source = resolve_effective_backend(config)
+                    # Selection never changes on a private stop or recovery stop.
+                    stop_env = None
+                    if state.get("modelProfileId") == DEEPSEEK_PROFILE:
+                        stop_env = {"DGX_BUSINESS_GENERATION": state.get("businessGeneration", "")}
+                    command = resolve_command(config, self.path[1:], backend)
+                    try:
+                        command_runner(command, stop_env)
+                    except Exception:
+                        state.update(businessTransition="failed", businessFailureReason="business_runtime_stop_unverified")
+                        replace_active_payload(config.active_model_state_path, state)
+                        self._send_json(503, {"ok": False, "code": "business_runtime_stop_unverified"})
+                        return
+                    if command != ":":
+                        state["businessTransition"] = "idle"
+                    replace_active_payload(config.active_model_state_path, state)
+                    self._send_json(200, {"ok": True, "action": self.path[1:], "backend": backend, "backendSource": source})
+                    return
+                requested = _string_body_value(body, "modelProfileId")
+                selected = state["selectedBusinessProfileId"]
+                profile_id = requested or selected
+                profile = validate_startable_profile(config.model_registry_root, profile_id)
+                explicit = reason == "business-model-selection"
+                if explicit and (profile_id not in BUSINESS_PROFILES or not profile.business_orchestration_eligible):
+                    raise SelectionConflict("unsupported business profile")
+                if profile.business_orchestration_eligible:
+                    if profile_id not in BUSINESS_PROFILES:
+                        raise SelectionConflict("unsupported business profile")
+                    if not explicit:
+                        assert_selection_request(state, body)
+                    if profile_id == DEEPSEEK_PROFILE:
+                        from business_tensorfold import check_prepared
+                        try:
+                            check_prepared()
+                        except RuntimeError as error:
+                            raise BusinessRestoreUnavailableError(str(error)) from error
+                    # Duplicate UI clicks and keep-warm do not create a new generation.
+                    if (profile_id == selected and state.get("modelProfileId") == selected
+                            and (state["businessTransition"] == "loading" or (
+                                state["businessTransition"] == "ready" and business_active_running(config)))):
+                        self._send_json(200, {"ok": True, "action": "start", "backend": profile.backend})
+                        return
+                    if explicit:
+                        state["selectedBusinessProfileId"] = profile_id
+                        state["selectionRevision"] += 1
+                    state.update(businessTransition="loading", businessGeneration=uuid.uuid4().hex)
+                    state.pop("businessFailureReason", None)
+                else:
+                    if not profile.id.startswith("private_"):
+                        raise SelectionConflict("unsupported private profile")
+                    state["businessTransition"] = "idle"
+                replace_active_payload(config.active_model_state_path, state)
+                try:
+                    # Drain has completed under the shared gateway/lifecycle lock.
+                    # Always stop blue too: GLM and DeepSeek share that backend.
+                    command_runner(resolve_command(config, "stop-force", "blue"))
+                    if single_active_guard_enabled():
+                        command_runner(resolve_command(config, "stop-force", "green"))
+                    start_env = launcher_env_for_profile(profile)
+                    if profile.business_orchestration_eligible:
+                        start_env["DGX_BUSINESS_GENERATION"] = state["businessGeneration"]
+                    command_runner(resolve_command(config, "start", profile.backend), start_env)
+                    ready_caps, vision_reason = assess_runtime_readiness(profile, start_env=start_env)
+                    active = write_active_model_state(config.active_model_state_path, profile,
+                        runtime_ready_capabilities=ready_caps, vision_ready_reason=vision_reason)
+                    write_resource_state_best_effort(config, owner=infer_owner_from_profile(profile, reason),
+                        status="preparing", action="start", reason=reason, profile=profile,
+                        backend=profile.backend, guarantee_level="post_only")
+                except Exception:
+                    state = business_selection_state(config.active_model_state_path)
+                    state.update(businessTransition="failed", businessFailureReason="business_runtime_start_failed")
+                    replace_active_payload(config.active_model_state_path, state)
+                    self._send_json(503, {"ok": False, "code": "business_runtime_start_failed"})
+                    return
+                if profile.business_orchestration_eligible:
+                    identity = (state["selectedBusinessProfileId"], state["selectionRevision"], state["businessGeneration"])
+                    monitor = threading.Thread(target=monitor_business_ready, args=(config, identity, profile), daemon=True)
+                    _business_monitors[config.active_model_state_path] = (identity, monitor)
+                    monitor.start()
+                self._send_json(200, {"ok": True, "action": "start", "backend": profile.backend,
+                                      "modelProfile": active_model_state_to_api(active)})
 
         def log_message(self, fmt: str, *args: object) -> None:
             sys.stderr.write("[dgx-llm-runtime-control] " + (fmt % args) + "\n")

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
-image_tag="raspisys-kiosk-sop-generator:playwright-1.56.1"
+image_tag="raspisys-kiosk-sop-generator:playwright-1.64.1"
 generator_platform="linux/amd64"
 dockerfile="$repo_root/infrastructure/docker/Dockerfile.kiosk-sop-generator"
 inspection_preview_path="$repo_root/docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html"
@@ -69,6 +69,7 @@ docker run --rm --init --ipc=host --network=none --platform "$generator_platform
       --actual-root /diagnostics/candidate/assembly-procedure-template \
       --preview /workspace/docs/design-previews/kiosk-assembly-procedure-template-sop.html \
       --diagnostics-root /diagnostics/assembly
-    # One worker per browser project: the same 18 tests, Chromium and Firefox side by side.
-    pnpm exec playwright test --config=playwright.kiosk-sop.config.ts --workers=2
+    # Chromium only: every production kiosk runs it.
+    pnpm exec playwright test --config=playwright.kiosk-sop.config.ts --workers=2 \
+      --output=/diagnostics/playwright-test-results
   '

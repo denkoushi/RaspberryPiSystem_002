@@ -339,8 +339,10 @@ describe.skipIf(!enabled)('Procedure board PostgreSQL contract', () => {
       const suppressed = await placementJob(); const suppressedRun = await claim(suppressed.job.id);
       await repository.saveAiResult(suppressed.job.id, suppressedRun.token, suppressed.board.version, { ...emptyResult, placements: [proposal], headings: [{ id: 'h1', page: 2, text: '準備' }] });
       expect((await repository.suggestions(procedureId, 'client-1')).current?.placements).toEqual([]);
-      const headed = await repository.decidePlacement(procedureId, 'client-1', suppressed.job.id, { expectedVersion: suppressed.board.version, eventId: randomUUID(), proposalId: 'h1', action: 'accept' });
-      expect(headed.layout.pages[1].heading).toBe('準備');
+      const headed = await repository.decidePlacement(procedureId, 'client-1', suppressed.job.id, { expectedVersion: suppressed.board.version, eventId: randomUUID(), proposalId: 'h1', action: 'accept', itemId: randomUUID() });
+      expect(headed.layout.pages[1].heading).toBe('');
+      expect(headed.layout.pages[1].rows[0].cols[0].items[0]).toMatchObject({ kind: 'text', text: '準備', origin: 'human' });
+      expect(headed.decisions.dismissedHeadings).toContainEqual({ page: 2, text: '準備' });
       const manualItem = { itemId: randomUUID(), kind: 'material' as const, materialId: extraId, origin: 'human' as const, style: 'body' as const };
       const manual = await repository.save(procedureId, 'client-1', headed.version, placeItem(headed.layout, manualItem, { page: 2, row: 0, col: 0, index: 0, mode: 'row' }), { id: randomUUID(), type: 'material_placed', payload: { itemId: manualItem.itemId, materialId: extraId, to: { page: 2, row: 0, col: 0, index: 0 } } });
       await repository.save(procedureId, 'client-1', manual.version, headed.layout, { id: randomUUID(), type: 'item_removed', payload: { itemId: manualItem.itemId, materialId: extraId } });

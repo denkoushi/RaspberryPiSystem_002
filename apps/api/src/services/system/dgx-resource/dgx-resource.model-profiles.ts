@@ -87,6 +87,9 @@ export type DgxResourceSharedState = {
 export type DgxActiveModelRuntimeState = {
   runtimeReadyCapabilities: readonly string[];
   visionReadyReason: string | null;
+  selectedBusinessProfileId?: string;
+  selectionRevision?: number;
+  businessTransition?: 'idle' | 'loading' | 'ready' | 'failed';
 };
 
 export type DgxModelProfilesOverview = {
@@ -208,10 +211,17 @@ export function parseDgxActiveModelRuntimeState(state: unknown): DgxActiveModelR
   }
   const runtimeReadyCapabilities = asStringArray(state.runtimeReadyCapabilities);
   const visionReadyReason = asString(state.visionReadyReason) ?? null;
-  if (runtimeReadyCapabilities.length === 0 && visionReadyReason === null) {
+  if (runtimeReadyCapabilities.length === 0 && visionReadyReason === null && !state.selectedBusinessProfileId) {
     return null;
   }
-  return { runtimeReadyCapabilities, visionReadyReason };
+  const selected = asString(state.selectedBusinessProfileId);
+  const revision = state.selectionRevision;
+  const transition = state.businessTransition;
+  const selection: Partial<DgxActiveModelRuntimeState> = (selected === 'business_glm53_flash_fp4_tp2' || selected === 'business_deepseek_v41_flash_tp2') && Number.isSafeInteger(revision) && (revision as number) >= 0 &&
+    (transition === 'idle' || transition === 'loading' || transition === 'ready' || transition === 'failed')
+    ? { selectedBusinessProfileId: selected, selectionRevision: revision as number, businessTransition: transition }
+    : {};
+  return { runtimeReadyCapabilities, visionReadyReason, ...selection };
 }
 
 export function profileDeclaresVision(profile: DgxBusinessModelProfile): boolean {
@@ -297,6 +307,7 @@ export async function fetchDgxModelProfilesOverview(input: {
   sharedToken?: string;
   fetchImpl: typeof fetch;
   timeoutMs: number;
+  businessDeepseekSwitchEnabled?: boolean;
 }): Promise<DgxModelProfilesOverview> {
   if (!input.baseUrl || !input.sharedToken) {
     return enrichModelProfilesOverview({
@@ -340,6 +351,8 @@ export async function fetchDgxModelProfilesOverview(input: {
     const profiles = Array.isArray(body.profiles)
       ? body.profiles.map(normalizeDgxModelProfile).filter((p): p is DgxBusinessModelProfile => p !== null)
       : [];
+    const visibleProfiles = input.businessDeepseekSwitchEnabled ? profiles
+      : profiles.filter((profile) => profile.id !== 'business_deepseek_v41_flash_tp2');
     const activeProfileId = asString(body.activeProfileId) ?? null;
     const activeStateBackend = parseActiveStateBackend(body.state);
     const activeRuntimeState = parseDgxActiveModelRuntimeState(body.state);
@@ -347,7 +360,7 @@ export async function fetchDgxModelProfilesOverview(input: {
     return enrichModelProfilesOverview({
       configured: true,
       status: 'ok',
-      available: profiles,
+      available: visibleProfiles,
       businessReturnSelectable: [],
       activeProfileId,
       activeStateBackend,
@@ -370,6 +383,29 @@ export async function fetchDgxModelProfilesOverview(input: {
       resourceState: null,
       errorMessageJa: 'DGX model profiles API に接続できませんでした',
     });
+  } finally {
+    cleanup();
+  }
+}
+
+/** CP capability is authenticated as the same business principal as catalog reads. */
+export async function fetchBusinessModelSwitchCapability(input: {
+  baseUrl?: string;
+  sharedToken?: string;
+  fetchImpl: typeof fetch;
+  timeoutMs: number;
+}): Promise<boolean> {
+  if (!input.baseUrl || !input.sharedToken) return false;
+  const { signal, cleanup } = createTimeoutSignal(input.timeoutMs);
+  try {
+    const response = await input.fetchImpl(new URL('/system/business-model-switch-capability', input.baseUrl), {
+      method: 'GET', headers: { 'X-LLM-Token': input.sharedToken }, signal,
+    });
+    if (!response.ok) return false;
+    const value: unknown = await response.json();
+    return isRecord(value) && value.enabled === true && value.contractVersion === 1;
+  } catch {
+    return false;
   } finally {
     cleanup();
   }

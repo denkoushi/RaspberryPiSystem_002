@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { FormEvent, useState } from 'react';
+import { FormEvent, Fragment, useEffect, useRef, useState } from 'react';
 
 import { getApiErrorMessage } from '../../api/errors';
 import { useMachineMutations, useMachines, useMachineResourceChoices } from '../../api/hooks';
@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { useConfirm } from '../../contexts/ConfirmContext';
+import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { Machine } from '../../api/client';
 
@@ -28,10 +29,31 @@ export function MachinesPage() {
   const [operatingStatusFilter, setOperatingStatusFilter] = useState<string>('');
   const { data, isLoading } = useMachines({ search: search || undefined, operatingStatus: operatingStatusFilter || undefined });
   const resourceChoices = useMachineResourceChoices();
-  const { create, update, remove } = useMachineMutations();
+  const { create, update, remove, addTag, removeTag } = useMachineMutations();
   const confirm = useConfirm();
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [tagUid, setTagUid] = useState('');
+  const [scanTarget, setScanTarget] = useState<string | null>(null);
+  const [tagError, setTagError] = useState<string | null>(null);
+  const nfcEvent = useNfcStream(scanTarget !== null, undefined, { suppressInventoryRouting: true });
+  const baselineRef = useRef<string | null>(null);
+  const nfcKey = nfcEvent ? String(nfcEvent.eventId ?? `${nfcEvent.uid}:${nfcEvent.timestamp}`) : null;
+  useEffect(() => {
+    if (!scanTarget || !nfcEvent || nfcKey === baselineRef.current) return;
+    baselineRef.current = nfcKey;
+    setTagUid(nfcEvent.uid);
+    setScanTarget(null);
+  }, [nfcEvent, nfcKey, scanTarget]);
+  const changeTag = async (machineId: string, tagId?: string) => {
+    setTagError(null);
+    try {
+      if (tagId) await removeTag.mutateAsync({ machineId, tagId });
+      else { await addTag.mutateAsync({ machineId, uid: tagUid.trim() }); setAddingId(null); setScanTarget(null); setTagUid(''); }
+    } catch (error) { setTagError(getApiErrorMessage(error, 'NFCタグの変更に失敗しました')); }
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -244,33 +266,41 @@ export function MachinesPage() {
             </p>
           </div>
         ) : null}
+        {tagError ? <p role="alert" className="mb-4 rounded-lg bg-red-600 p-4 text-sm font-semibold text-white">{tagError}</p> : null}
         {isLoading ? (
           <p className="text-sm font-semibold text-slate-700">読み込み中...</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="w-full whitespace-nowrap text-left text-sm">
               <thead className="bg-slate-200">
                 <tr className="border-b-2 border-slate-500">
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">設備管理番号</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">加工機名称</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">資源CD</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">略称</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">工場</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">分類</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">稼働状態</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">メーカー</th>
+                  <th className="px-2 py-1 text-sm font-semibold text-slate-900">NFCタグ</th>
                   <th className="px-2 py-1 text-sm font-semibold text-slate-900">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {data?.map((machine) => (
-                  <tr key={machine.id} className="border-t border-slate-500">
+                  <Fragment key={machine.id}><tr className="border-t border-slate-500">
                     <td className="px-2 py-1 font-mono text-sm text-slate-700">{machine.equipmentManagementNumber}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.name}</td>
                     <td className="px-2 py-1 font-mono text-sm text-slate-700">{machine.resourceCd ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.shortName ?? '-'}</td>
+                    <td className="px-2 py-1 text-sm text-slate-700">{machine.factory === 'SENDAI' ? '仙台工場' : '三島工場'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.classification ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.operatingStatus ?? '-'}</td>
                     <td className="px-2 py-1 text-sm text-slate-700">{machine.maker ?? '-'}</td>
+                    <td className="px-2 py-1"><div className="flex items-center gap-1">
+                      {machine.nfcTags?.map(tag => <span key={tag.id} className="inline-flex h-[26px] items-center gap-1 rounded-full bg-sky-100 pl-2 pr-1 font-mono text-xs font-bold text-sky-800">{tag.uid}<button type="button" aria-label={`${tag.uid}を外す`} disabled={removeTag.isPending} onClick={() => void changeTag(machine.id, tag.id)} className="h-5 w-5 rounded-full hover:bg-sky-200">×</button></span>)}
+                      <button type="button" aria-label={`${machine.name}のタグを追加`} className="h-[26px] w-[26px] rounded-full border border-dashed border-slate-500 text-slate-700" onClick={() => { setAddingId(machine.id); setTagUid(''); setScanTarget(null); setTagError(null); }}>＋</button>
+                    </div></td>
                     <td className="px-2 py-1 flex gap-2">
                       <Button className="px-2 py-1 text-xs" onClick={() => startEdit(machine)}>編集</Button>
                       <Button className="px-2 py-1 text-xs" variant="ghost" onClick={() => handleDelete(machine.id)} disabled={remove.isPending}>
@@ -278,6 +308,13 @@ export function MachinesPage() {
                       </Button>
                     </td>
                   </tr>
+                  {addingId === machine.id ? <tr className="bg-sky-50"><td colSpan={8}></td><td colSpan={2} className="px-2 py-2"><div className="flex items-center gap-2">
+                    <Input aria-label="UID" placeholder="UID" value={tagUid} onChange={event => setTagUid(event.target.value)} />
+                    <Button type="button" className={scanTarget ? 'bg-amber-500' : ''} disabled={scanTarget !== null || addTag.isPending} onClick={() => { baselineRef.current = nfcKey; setScanTarget(machine.id); }}>{scanTarget === machine.id ? '読み取り中…' : 'NFCを読み取る'}</Button>
+                    <Button type="button" disabled={!tagUid.trim() || addTag.isPending} onClick={() => void changeTag(machine.id)}>追加</Button>
+                    <Button type="button" variant="ghost" onClick={() => { setAddingId(null); setScanTarget(null); }}>やめる</Button>
+                  </div></td></tr> : null}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
