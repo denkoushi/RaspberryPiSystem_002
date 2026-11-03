@@ -120,7 +120,7 @@ export function DashboardPage() {
                 {alerts && alerts.staleClients > 0 && (
                   <p>
                     <Link to="/admin/clients" className="underline">
-                      {alerts.staleClients}台のクライアントが12時間以上オフラインです
+                      {alerts.staleClients}台のクライアントがオフラインです
                     </Link>
                   </p>
                 )}
@@ -192,7 +192,7 @@ export function DashboardPage() {
               </p>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-700">オフライン（12時間超）</p>
+              <p className="text-sm font-semibold text-slate-700">オフライン</p>
               <p className="text-2xl font-bold text-red-600">
                 {clientStatuses.data.filter((c) => c.stale).length}
               </p>

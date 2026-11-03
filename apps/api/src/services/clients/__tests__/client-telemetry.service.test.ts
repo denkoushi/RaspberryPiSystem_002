@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  getClientStatusesWithLatestLogs,
   listClientDevices,
   listClientLogs,
   registerClientDeviceAdmin,
@@ -24,7 +25,7 @@ vi.mock('../../../lib/prisma.js', () => ({
       update: vi.fn(),
       findMany: vi.fn(),
     },
-    clientStatus: { upsert: vi.fn() },
+    clientStatus: { upsert: vi.fn(), findMany: vi.fn() },
     clientLog: {
       createMany: vi.fn(),
       findMany: vi.fn(),
@@ -117,6 +118,36 @@ describe('client-telemetry.service', () => {
         }),
       ],
     });
+  });
+});
+
+
+describe('client status stale threshold', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+  });
+
+  it.each([
+    [undefined, [false, false, true]],
+    ['20', [false, false, false]],
+    ['5', [true, true, true]],
+  ])('follows CLIENT_HEARTBEAT_STALE_MINUTES=%s', async (minutes, expected) => {
+    vi.stubEnv('CLIENT_HEARTBEAT_STALE_MINUTES', minutes);
+    vi.useFakeTimers();
+    const now = new Date('2026-11-03T00:00:00Z');
+    vi.setSystemTime(now);
+    vi.mocked(prisma.clientStatus.findMany).mockResolvedValue(
+      [9, 10, 11].map((silentMinutes) => ({
+        clientId: `client-${silentMinutes}`,
+        lastSeen: new Date(now.getTime() - silentMinutes * 60_000),
+      })) as never
+    );
+    vi.mocked(prisma.clientLog.findMany).mockResolvedValue([]);
+
+    const result = await getClientStatusesWithLatestLogs('req-threshold');
+
+    expect(result.clients.map((client) => client.stale)).toEqual(expected);
   });
 });
 

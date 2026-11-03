@@ -20,11 +20,10 @@ import {
 } from './client-telemetry-alert-policy.js';
 
 import { deployWindowEndedAt } from './kiosk-deploy-window.js';
+import { loadHeartbeatAlertConfig } from './client-heartbeat-alert-policy.js';
 
 const isKioskLog = (entry: ClientTelemetryLogEntry) =>
   entry.context?.category === 'kiosk_ui_error' || entry.context?.category === 'kiosk_net_stats';
-
-const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
 
 async function createTelemetrySlackAlerts(params: {
   clientId: string;
@@ -378,6 +377,7 @@ export async function getClientStatusesWithLatestLogs(requestId: string) {
     orderBy: { hostname: 'asc' }
   });
 
+  const staleThresholdMs = loadHeartbeatAlertConfig().staleAfterMs;
   const clientIds = statuses.map((status) => status.clientId);
   let groupedLogs = new Map<string, { level: string; message: string; createdAt: Date }[]>();
   if (clientIds.length > 0) {
