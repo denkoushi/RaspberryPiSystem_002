@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const borrowSchema = z.object({
+  eventKey: z.string().uuid().optional(),
+  readAt: z.coerce.date().optional(),
   itemTagUid: z.string().min(4),
   employeeTagUid: z.string().min(4),
   clientId: z.string().guid().optional(),
@@ -9,6 +11,8 @@ export const borrowSchema = z.object({
 });
 
 export const returnSchema = z.object({
+  eventKey: z.string().uuid().optional(),
+  readAt: z.coerce.date().optional(),
   loanId: z.string().guid(),
   clientId: z.string().guid().optional(),
   performedByUserId: z.string().guid().optional(),

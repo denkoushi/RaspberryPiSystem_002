@@ -1,3 +1,4 @@
+import { runLoanEvent, loanEventFingerprint, resolveLoanReadAt, type LoanEventInput } from '../loan/loan-event.js';
 import type { Loan } from '@prisma/client';
 import { ItemStatus, MeasuringInstrumentStatus, RiggingStatus, TransactionAction } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
@@ -22,7 +23,7 @@ import {
   cleanupUncommittedPhoto,
 } from './photo-borrow-idempotency.js';
 
-export interface BorrowInput {
+export interface BorrowInput extends LoanEventInput {
   itemTagUid: string;
   employeeTagUid: string;
   clientId?: string;
@@ -38,7 +39,7 @@ export interface PhotoBorrowInput {
   idempotencyKey?: string;
 }
 
-export interface ReturnInput {
+export interface ReturnInput extends LoanEventInput {
   loanId: string;
   clientId?: string;
   performedByUserId?: string;
@@ -83,6 +84,10 @@ export class LoanService {
    * 持出処理
    */
   async borrow(input: BorrowInput, resolvedClientId?: string): Promise<LoanWithRelations> {
+    return runLoanEvent(input, resolvedClientId, 'tool.borrow', () => this.borrowOnce(input, resolvedClientId));
+  }
+
+  private async borrowOnce(input: BorrowInput, resolvedClientId?: string): Promise<LoanWithRelations> {
     logger.info(
       {
         itemTagUid: input.itemTagUid,
@@ -135,12 +140,15 @@ export class LoanService {
       nfcTagUid: employee.nfcTagUid ?? null
     };
 
+    const timing = resolveLoanReadAt(input.readAt);
     let loan: LoanWithRelations;
     try {
       loan = await prisma.$transaction(async (tx) => {
         const createdLoan = await tx.loan.create({
           data: {
             itemId: item.id,
+          borrowedAt: timing.eventAt,
+          borrowReceivedAt: timing.receivedAt,
             employeeId: employee.id,
             clientId: resolvedClientId,
             dueAt: input.dueAt,
@@ -155,6 +163,8 @@ export class LoanService {
           data: {
             loanId: createdLoan.id,
             action: TransactionAction.BORROW,
+          eventKey: input.eventKey,
+          eventFingerprint: input.eventKey ? loanEventFingerprint(input, 'tool.borrow') : undefined,
             actorEmployeeId: employee.id,
             clientId: resolvedClientId,
             details: {
@@ -194,6 +204,10 @@ export class LoanService {
     resolvedClientId?: string,
     performedByUserId?: string
   ): Promise<LoanWithRelations> {
+    return runLoanEvent(input, resolvedClientId, 'tool.return', () => this.returnOnce(input, resolvedClientId, performedByUserId));
+  }
+
+  private async returnOnce(input: ReturnInput, resolvedClientId?: string, performedByUserId?: string): Promise<LoanWithRelations> {
     logger.info(
       {
         loanId: input.loanId,
@@ -243,13 +257,19 @@ export class LoanService {
       nfcTagUid: loan.employee.nfcTagUid ?? null
     };
 
+    const timing = resolveLoanReadAt(input.readAt);
+    const returnedAt = new Date(Math.max(timing.eventAt.getTime(), loan.borrowedAt.getTime()));
+    if (returnedAt.getTime() !== timing.eventAt.getTime()) {
+      logger.warn({ loanId: loan.id, eventAt: timing.eventAt, borrowedAt: loan.borrowedAt }, 'Return time clamped to borrow time');
+    }
     const updatedLoan = await prisma.$transaction(async (tx) => {
       await claimActiveLoanTransition({
         tx,
         loanId: loan.id,
         transition: 'RETURN',
         data: {
-          returnedAt: new Date(),
+          returnedAt,
+          returnReceivedAt: timing.receivedAt,
           clientId: resolvedClientId ?? loan.clientId,
           notes: input.note ?? loan.notes ?? undefined
         }
@@ -280,6 +300,8 @@ export class LoanService {
         data: {
           loanId: loan.id,
           action: TransactionAction.RETURN,
+        eventKey: input.eventKey,
+        eventFingerprint: input.eventKey ? loanEventFingerprint(input, 'tool.return') : undefined,
           actorEmployeeId: loan.employeeId,
           performedByUserId: finalPerformedByUserId,
           clientId: resolvedClientId ?? loan.clientId,

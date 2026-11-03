@@ -65,6 +65,9 @@ export interface InspectionRecord {
 }
 
 export interface MeasuringInstrumentBorrowPayload {
+  inspectionItemIds?: string[];
+  eventKey?: string;
+  readAt?: string;
   instrumentTagUid?: string;
   instrumentId?: string;
   employeeTagUid: string;
@@ -74,6 +77,8 @@ export interface MeasuringInstrumentBorrowPayload {
 }
 
 export interface MeasuringInstrumentReturnPayload {
+  eventKey?: string;
+  readAt?: string;
   loanId: string;
   clientId?: string;
   performedByUserId?: string;

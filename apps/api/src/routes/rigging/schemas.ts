@@ -64,6 +64,8 @@ export const riggingInspectionRecordQuerySchema = z.object({
 });
 
 export const riggingBorrowSchema = z.object({
+  eventKey: z.string().uuid().optional(),
+  readAt: z.coerce.date().optional(),
   riggingTagUid: z.string().min(1).optional(),
   riggingGearId: z.string().guid().optional(),
   employeeTagUid: z.string().min(1),
@@ -73,6 +75,8 @@ export const riggingBorrowSchema = z.object({
 });
 
 export const riggingReturnSchema = z.object({
+  eventKey: z.string().uuid().optional(),
+  readAt: z.coerce.date().optional(),
   loanId: z.string().guid(),
   clientId: z.string().guid().optional(),
   performedByUserId: z.string().guid().optional(),

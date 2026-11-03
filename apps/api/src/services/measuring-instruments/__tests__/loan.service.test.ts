@@ -152,6 +152,8 @@ describe('MeasuringInstrumentLoanService', () => {
       });
       expect(txLoanCreate!).toHaveBeenCalledWith({
         data: {
+          borrowedAt: expect.any(Date),
+          borrowReceivedAt: expect.any(Date),
           measuringInstrumentId: 'instrument-123',
           employeeId: 'employee-123',
           clientId: 'client-123',
@@ -337,7 +339,7 @@ describe('MeasuringInstrumentLoanService', () => {
       });
       expect(txLoanUpdateMany!).toHaveBeenCalledWith({
         where: { id: 'loan-123', returnedAt: null, cancelledAt: null },
-        data: { returnedAt: expect.any(Date), notes: 'return note' },
+        data: { returnedAt: expect.any(Date), returnReceivedAt: expect.any(Date), notes: 'return note' },
       });
       expect(txInstrumentUpdate!).toHaveBeenCalledWith({
         where: { id: 'instrument-123' },
