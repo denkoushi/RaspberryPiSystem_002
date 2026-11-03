@@ -163,7 +163,7 @@ function TagView({ state, bindings, confirming, setConfirming }: { state: TagDes
           sub={binding.sub}
           sub2={binding.sub2}
           tone={binding.bindingId === confirming ? 'cutting' : 'target'}
-          onOpen={binding.kind !== 'inventory' ? () => state.setKind(binding.kind as Exclude<typeof binding.kind, 'inventory'>) : undefined}
+          onOpen={binding.kind !== 'inventory' && binding.kind !== 'machine' ? () => state.setKind(binding.kind as Exclude<typeof binding.kind, 'inventory' | 'machine'>) : undefined}
           chips={(
             <>
               {loanChip(binding)}

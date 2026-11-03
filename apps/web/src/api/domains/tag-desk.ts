@@ -6,7 +6,7 @@ import type { KnowledgePositionRanksRequest, KnowledgePositionRanksResponse } fr
 /** Master records whose NFC tags are managed on the kiosk tag desk. */
 export type TagDeskKind = 'employee' | 'item' | 'instrument' | 'rigging';
 /** Inventory shelf / quantity / restock tags: released here, attached in inventory setup. */
-export type TagBindingKind = TagDeskKind | 'inventory';
+export type TagBindingKind = TagDeskKind | 'inventory' | 'machine';
 
 export type TagDeskTag = { bindingId: string; uid: string };
 export type PositionApproval = 'approver' | 'none' | 'unmapped';

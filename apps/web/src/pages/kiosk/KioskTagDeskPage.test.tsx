@@ -180,6 +180,25 @@ describe('KioskTagDeskPage', () => {
     expect(await within(dock).findByText('山本 健太 から外しました')).toBeInTheDocument();
   });
 
+  it('renders a machine binding with unlink only and releases it after confirmation', async () => {
+    api.resolveTagDeskUid.mockResolvedValue([{
+      kind: 'machine', bindingId: 'machine-tag', targetId: 'm', code: '001', name: '加工機 旋盤',
+      sub: null, status: null, activeLoans: 0, recent: []
+    }]);
+    await unlock();
+    scan('04A1B2C3D45E80', 1);
+    const dock = screen.getByRole('region', { name: '読み取ったタグ' });
+    await within(dock).findByText('加工機 旋盤');
+    expect(within(dock).getByText('加工機')).toBeInTheDocument();
+    expect(within(dock).getByText('在庫の払い出し')).toBeInTheDocument();
+    expect(within(dock).queryByRole('button', { name: /一覧で開く|編集/ })).not.toBeInTheDocument();
+    fireEvent.click(within(dock).getByRole('button', { name: '外す' }));
+    expect(api.unlinkTagDeskTag).not.toHaveBeenCalled();
+    api.resolveTagDeskUid.mockResolvedValue([]);
+    fireEvent.click(within(dock).getByRole('button', { name: '外す' }));
+    await waitFor(() => expect(api.unlinkTagDeskTag).toHaveBeenCalledWith('4821', { kind: 'machine', bindingId: 'machine-tag' }));
+  });
+
   it('binds a free tag to the row picked in the list', async () => {
     api.resolveTagDeskUid.mockResolvedValue([]);
     await unlock();

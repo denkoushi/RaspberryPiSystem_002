@@ -72,6 +72,7 @@ export function KindIcon({ kind, className = 'h-5 w-5' }: IconProps & { kind: Ta
       return <svg {...base} strokeWidth={2} className={className}><path d="M4 17a8 8 0 1 1 16 0" /><path d="m12 17 4-5" /><circle cx="12" cy="17" r="1.3" fill="currentColor" /></svg>;
     case 'rigging':
       return <svg {...base} strokeWidth={2} className={className}><circle cx="12" cy="4.5" r="2" /><path d="M12 6.5V13a4 4 0 1 1-4 4" /></svg>;
+    case 'machine':
     case 'inventory':
       return <svg {...base} strokeWidth={2} className={className}><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5Z" /><path d="M3 7.5 12 12l9-4.5M12 12v9" /></svg>;
   }

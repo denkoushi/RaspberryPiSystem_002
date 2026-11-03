@@ -1,3 +1,4 @@
+import { assertMachineNfcUidAvailable } from '../../../lib/nfc-uid-availability.js';
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
 import pkg from '@prisma/client';
@@ -174,6 +175,7 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
         const tagUid = row.rfidTagUid?.trim() || null;
 
         try {
+          if (tagUid) await assertMachineNfcUidAvailable(tagUid, tx);
           const existing = await tx.measuringInstrument.findUnique({
             where: { managementNumber: row.managementNumber }
           });

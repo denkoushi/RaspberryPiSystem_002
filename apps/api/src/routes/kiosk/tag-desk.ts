@@ -42,7 +42,7 @@ const linkBody = z.object({
   replace: z.boolean().optional()
 });
 const unlinkBody = z.object({
-  kind: z.enum([...TAG_DESK_KINDS, 'inventory']),
+  kind: z.enum([...TAG_DESK_KINDS, 'inventory', 'machine']),
   bindingId: z.string().guid()
 });
 

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getOrderPlacementBranches, getMobilePlacementShelfMachines, moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
 import { api } from '../../../api/http';
 import { resetMobileConnectivityForTests, mobileRequest, MOBILE_REQUEST_TIMEOUT_MS, canUseMobileNetwork } from '../connectivity';
+import { isHaizenNativeAvailable } from '../haizenNative';
 import { mobileLocalDataStore } from '../local-data/mobileLocalDataStore';
 import { saveOrderBranches } from '../orderPlacementBranchesCache';
 import { saveScanFrame } from '../scan-frames/saveScanFrame';
@@ -31,7 +32,7 @@ vi.mock('../local-data/mobileLocalDataSync', () => ({ syncMobileLocalData: vi.fn
 vi.mock('../../../api/client', () => ({
   getOrderPlacementBranches: vi.fn(), getMobilePlacementShelfMachines: vi.fn(),
   moveOrderPlacementBranch: vi.fn(), registerOrderPlacement: vi.fn(),
-  verifyMobilePlacementSlipMatch: vi.fn(), parseActualSlipImage: vi.fn(), getMobilePlacementShelfPhoto: vi.fn()
+  verifyMobilePlacementSlipMatch: vi.fn(), snapFseibanTokens: vi.fn(), getMobilePlacementShelfPhoto: vi.fn()
 }));
 vi.mock('../scan-frames/saveScanFrame', () => ({ saveScanFrame: vi.fn(() => 'frame-id'), onScanIdle: vi.fn() }));
 vi.mock('../../barcode-scan', () => ({
@@ -60,7 +61,7 @@ function Harness() {
   const navigate = useNavigate();
   return <>
     <button onClick={() => setSheet('inputs')}>open inputs</button>
-    <HaizenHub mp={mp} sheet={sheet} setSheet={setSheet} shelves={shelves} branches={branches} onNavigate={navigate} onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master')} onPhoto={() => { mp.setActualOrder(''); mp.setActualFseiban('FS-PHOTO'); }} />
+    <HaizenHub mp={mp} sheet={sheet} setSheet={setSheet} shelves={shelves} branches={branches} onNavigate={navigate} onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master')} onPhoto={isHaizenNativeAvailable() ? () => { void mp.scanActualSlipNative(); } : undefined} />
   </>;
 }
 function mount() {
@@ -91,6 +92,7 @@ async function chooseShelf(branchNo = 1) {
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  delete window.HaizenNative;
   localStorage.clear();
   mocks.scanValue = 'SCANNED';
   mocks.realBranches = false; mocks.branches = []; mocks.branchError = false; mocks.branchLoading = false; mocks.branchFetching = false;
@@ -519,23 +521,32 @@ describe('Haizen hub', () => {
     ['different_part', '不一致', '部品が違います'],
     ['order_not_found', '未登録', 'この注文番号はまだ届いていません'],
     ['transfer_not_found', '未登録', 'この製造orderが見つかりません']
-  ] as const)('renders %s', async (reason, title, message) => {
+  ] as const)('renders %s; ネイティブなしでは写真で製番を出さず部品番号を残す', async (reason, title, message) => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: false, reason, actual: { fseiban: 'FS2' } });
     mount(); typeSlips();
     await screen.findByRole('status', { name: title });
     expect(screen.getByRole('status', { name: title })).toHaveTextContent(message);
     if (title === '未登録') {
-      expect(screen.getByRole('button', { name: '写真で製番' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '写真で製番' })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '部品番号' }));
       expect(screen.getByLabelText('現品票 部品番号')).toBeInTheDocument();
     }
   });
-  it('rechecks a photo fseiban fallback after an unknown order', async () => {
+  it('ネイティブありでは写真で製番を表示し、押すと scanActualSlipNative を呼ぶ', async () => {
+    window.HaizenNative = { isAvailable: () => true, scanFseiban: vi.fn() };
+    const scan = vi.spyOn(await import('../haizenNative'), 'scanFseibanNative').mockResolvedValue({ status: 'cancelled' });
+    const stateModule = await import('../useMobilePlacementPageState');
+    const original = stateModule.useMobilePlacementPageState;
+    const scanActualSlipNative = vi.fn();
+    vi.spyOn(stateModule, 'useMobilePlacementPageState').mockImplementation(() => {
+      const mp = original();
+      return { ...mp, scanActualSlipNative: (...args) => { scanActualSlipNative(); return mp.scanActualSlipNative(...args); } };
+    });
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValueOnce({ ok: false, reason: 'order_not_found' });
     mount(); typeSlips();
     fireEvent.click(await screen.findByRole('button', { name: '写真で製番' }));
-    await screen.findByRole('status', { name: '一致' });
-    expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ actualOrderBarcodeRaw: '', actualFseibanRaw: 'FS-PHOTO' }));
+    expect(scanActualSlipNative).toHaveBeenCalledOnce();
+    expect(scan).toHaveBeenCalledOnce();
   });
   it('HTTP 400 failures are errors, with a serialized retry', async () => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockRejectedValueOnce({ isAxiosError: true, response: { status: 400 } });

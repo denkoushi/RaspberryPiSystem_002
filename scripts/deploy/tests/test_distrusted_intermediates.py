@@ -126,9 +126,15 @@ class DistrustedIntermediatesTests(unittest.TestCase):
         for tag, hosts in (("pi5", "server"), ("pi4", "kiosk"), ("pi3", "signage")):
             play = next(play for play in plays if tag in play["tags"])
             self.assertEqual(play["hosts"], hosts)
-            task = play["pre_tasks"][0]
-            self.assertEqual(task["ansible.builtin.import_role"], {"name": "common", "tasks_from": "distrusted-intermediates"})
+            index, task = next(
+                (i, t)
+                for i, t in enumerate(play["pre_tasks"])
+                if t.get("ansible.builtin.import_role") == {"name": "common", "tasks_from": "distrusted-intermediates"}
+            )
             self.assertNotIn("when", task)
+            # Only the release-wave guards may run before it; they change nothing on the host.
+            for guard in play["pre_tasks"][:index]:
+                self.assertTrue(set(guard) & {"ansible.builtin.fail", "ansible.builtin.set_fact"}, guard.get("name"))
         common = yaml.safe_load((ANSIBLE / "roles/common/tasks/main.yml").read_text())
         include = next(t for t in common if t.get("ansible.builtin.import_tasks") == "distrusted-intermediates.yml")
         self.assertNotIn("when", include)

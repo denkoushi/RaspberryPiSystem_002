@@ -1,3 +1,4 @@
+import { assertMishimaMachine } from './item-inventory-machines.js';
 import { Prisma, PrismaClient, InventoryNfcTagKind, InventoryTransactionAction } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { TRANSACTION_INCLUDE, positiveInteger, nonNegativeInteger, assertNfcUidAvailable, runSerializable } from './item-inventory.helpers.js';
@@ -57,6 +58,7 @@ export async function processTransaction(db: PrismaClient, input: {
   quantityTagUid: string;
   restockTagUid?: string;
   restock: boolean;
+  machineId?: string;
   idempotencyKey?: string;
   actor?: InventoryActor;
 }) {
@@ -87,6 +89,7 @@ export async function processTouchTransaction(db: PrismaClient, input: {
   quantity: number;
   restock?: boolean;
   expectedBeforeQuantity?: number;
+  machineId?: string;
   idempotencyKey?: string;
   actor?: InventoryActor;
 }) {
@@ -102,7 +105,7 @@ export async function processTouchTransaction(db: PrismaClient, input: {
 
 export async function processStockTransaction(
   db: PrismaClient,
-  input: { restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
+  input: { machineId?: string; restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
   resolveMovement: (tx: Prisma.TransactionClient) => Promise<{
     compartmentId: string;
     quantity: number;
@@ -117,6 +120,7 @@ export async function processStockTransaction(
         const prior = await tx.inventoryTransaction.findFirst({ where: { clientId: input.actor.clientId, idempotencyKey: input.idempotencyKey }, include: TRANSACTION_INCLUDE });
         if (prior) return { transaction: prior, replayed: true };
       }
+      if (input.machineId) await assertMishimaMachine(tx, input.machineId);
       const movement = await resolveMovement(tx);
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${movement.compartmentId} FOR UPDATE`);
       if (input.expectedCompartmentId !== undefined && input.expectedCompartmentId !== movement.compartmentId) {
@@ -144,6 +148,7 @@ export async function processStockTransaction(
           compartmentId: compartment.id,
           clientId: input.actor?.clientId ?? null,
           performedByUserId: input.actor?.performedByUserId ?? null,
+          machineId: input.machineId ?? null,
           quantityTagId: movement.quantityTagId ?? null,
           idempotencyKey: input.idempotencyKey ?? null,
           delta,
@@ -198,6 +203,7 @@ export async function cancelTransaction(db: PrismaClient, id: string, actor: Inv
         compartmentId: original.compartmentId,
         clientId: actor.clientId ?? null,
         performedByUserId: actor.performedByUserId ?? null,
+        machineId: original.machineId,
         reversalOfId: original.id,
         delta: -original.delta,
         beforeQuantity: compartment.stockQuantity,

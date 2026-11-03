@@ -5,7 +5,7 @@ import { getBusinessProfileIntentStore } from '../../inference/config/business-p
 import { readPhotoToolEmbeddingHealth } from '../../tools/photo-tool-label/photo-tool-embedding-health.js';
 
 import { executeGatewayRuntimeStartStop } from './dgx-resource.gateway-runtime.executor.js';
-import { fetchDgxModelProfilesOverview, profileDeclaresVision, type DgxBusinessModelProfile } from './dgx-resource.model-profiles.js';
+import { fetchBusinessModelSwitchCapability, fetchDgxModelProfilesOverview, profileDeclaresVision, type DgxBusinessModelProfile } from './dgx-resource.model-profiles.js';
 import {
   executeDgxModelStorageDelete, previewDgxModelStorageDelete,
   type DgxModelStorageDeleteExecuteResult, type DgxModelStorageDeletePreview,
@@ -88,6 +88,11 @@ export type DgxResourceServiceDeps = {
   metricsUrl?: string;
 };
 
+function switchProfileAllowed(id: string): boolean {
+  return !env.BUSINESS_DEEPSEEK_SWITCH_ENABLED ||
+    id === 'business_glm53_flash_fp4_tp2' || id === 'business_deepseek_v41_flash_tp2';
+}
+
 function displayName(profile: DgxBusinessModelProfile): string {
   const name = profile.displayNameJa.replace(/^業務\s*/, '').trim();
   return name && profile.displayNameJa !== profile.id ? name : '名称未登録のモデル';
@@ -112,8 +117,15 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     const config = deps.getAdminLocalLlmRuntimeConfig();
     return fetchDgxModelProfilesOverview({
       baseUrl: config.baseUrl, sharedToken: config.sharedToken,
+      businessDeepseekSwitchEnabled: env.BUSINESS_DEEPSEEK_SWITCH_ENABLED,
       fetchImpl: deps.fetchImpl, timeoutMs: deps.probeTimeoutMs,
     });
+  };
+  const selectionAvailable = () => {
+    if (!env.BUSINESS_DEEPSEEK_SWITCH_ENABLED) return Promise.resolve(true);
+    const config = deps.getAdminLocalLlmRuntimeConfig();
+    return fetchBusinessModelSwitchCapability({ baseUrl: config.baseUrl, sharedToken: config.sharedToken,
+      fetchImpl: deps.fetchImpl, timeoutMs: deps.probeTimeoutMs });
   };
   const fetchMetrics = async () => {
     const config = deps.getAdminLocalLlmRuntimeConfig();
@@ -155,12 +167,12 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         await executeGatewayRuntimeStartStop(deps, 'start', reason, profile.id);
         store.setReturnPhase('checking');
       };
-      await start('return_to_business');
+      await start(env.BUSINESS_DEEPSEEK_SWITCH_ENABLED ? 'business-model-selection' : 'return_to_business');
       const ready = await waitBusinessReadiness({
         collect, modelProfileId: profile.id,
         timeoutMs: env.LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS,
         pollIntervalMs: env.LOCAL_LLM_RUNTIME_HEALTH_POLL_INTERVAL_MS,
-        retryStart: () => start('return_to_business_retry'),
+        retryStart: () => start(env.BUSINESS_DEEPSEEK_SWITCH_ENABLED ? 'business-model-selection' : 'return_to_business_retry'),
       });
       if (!ready) {
         const reason = 'モデルの準備が時間内に終わりませんでした。状態を確認して、もう一度お試しください。';
@@ -168,7 +180,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
         store.appendEvent(`モデルを起動できませんでした。${reason}`);
         return;
       }
-      getBusinessProfileIntentStore().setFromOrchestration(profile.id);
+      if (!env.BUSINESS_DEEPSEEK_SWITCH_ENABLED) getBusinessProfileIntentStore().setFromOrchestration(profile.id);
       store.finishReturn(null);
       store.appendEvent(`「${displayName(profile)}」に切り替えました。`);
     } catch {
@@ -183,9 +195,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   return {
     getEvents: (limit) => store.getEvents(Math.min(limit, 20)),
     async getOverview() {
-      const [snapshot, metrics] = await Promise.all([collect(), fetchMetrics()]);
+      const [snapshot, metrics, canSelect] = await Promise.all([collect(), fetchMetrics(), selectionAvailable()]);
       const profiles = enrichDgxModelProfilesStartupFit(snapshot.modelProfiles, metrics);
-      const intendedId = resolveBusinessRuntimeStartProfile({
+      const intendedId = env.BUSINESS_DEEPSEEK_SWITCH_ENABLED ? profiles.activeRuntimeState?.selectedBusinessProfileId : resolveBusinessRuntimeStartProfile({
         businessRuntimeStartProfileId: env.INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID,
       })?.modelProfileId;
       const label = (id: string | null | undefined): ProfileLabel | null => {
@@ -235,7 +247,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           isRecommended: profile.recommended,
           startupFit: profile.startupFit?.status === 'fits' ? 'fits' as const
             : profile.startupFit?.status === 'insufficient' ? 'insufficient' as const : 'unknown' as const,
-          startable: unavailableReason(profile) === null, unavailableReasonJa: unavailableReason(profile),
+          startable: canSelect && switchProfileAllowed(profile.id) && unavailableReason(profile) === null, unavailableReasonJa: unavailableReason(profile),
           deletable: profile.deleteProtection?.canDelete === true && !profile.deleteProtection.protected && profiles.activeProfileId !== profile.id,
         })),
         modelProfilesAvailable: profiles.status === 'ok', businessReturn, alerts,
@@ -246,6 +258,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       let backgroundOwnsLock = false;
       try {
         if (body.type === 'RETURN_TO_BUSINESS') {
+          if (!(await selectionAvailable())) {
+            throw new ApiError(409, 'DGX のモデル切替が利用できません。', undefined, 'DGX_BUSINESS_SWITCH_UNAVAILABLE');
+          }
           const [catalog, metrics] = await Promise.all([fetchProfiles(), fetchMetrics()]);
           const profiles = enrichDgxModelProfilesStartupFit(catalog, metrics);
           if (profiles.status !== 'ok') {
@@ -253,6 +268,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           }
           const profile = profiles.available.find((item) => item.id === body.modelProfileId);
           if (!profile) throw new ApiError(400, '選んだモデルが見つかりません。', undefined, 'DGX_MODEL_PROFILE_UNKNOWN');
+          if (!switchProfileAllowed(profile.id)) throw new ApiError(409, 'このモデルは切替対象ではありません。', undefined, 'DGX_MODEL_PROFILE_UNAVAILABLE');
           const reason = unavailableReason(profile);
           if (reason) throw new ApiError(409, `このモデルは起動できません（${reason}）。`, undefined, 'DGX_MODEL_PROFILE_UNAVAILABLE');
           const businessReturn = store.startReturn(profile.id);

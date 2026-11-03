@@ -3,17 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MachinesPage } from './MachinesPage';
 
-const mocks = vi.hoisted(() => ({ update: vi.fn(), create: vi.fn(), resourceCd: '021' }));
+const mocks = vi.hoisted(() => ({ update: vi.fn(), create: vi.fn(), resourceCd: '021', addTag: vi.fn(), removeTag: vi.fn(), factory: 'MISHIMA', nfcEvent: null as unknown }));
 vi.mock('../../api/hooks', () => ({
-  useMachines: () => ({ data: [{ id: 'm1', equipmentManagementNumber: '10018', name: '加工機', resourceCd: mocks.resourceCd }], isLoading: false }),
-  useMachineResourceChoices: () => ({ data: [{ resourceCd: '021', resourceName: '旋盤' }, { resourceCd: '022', resourceName: '研削盤' }] }),
-  useMachineMutations: () => ({ create: { mutateAsync: mocks.create }, update: { mutateAsync: mocks.update }, remove: {} }),
+  useMachines: () => ({ data: [{ id: 'm1', equipmentManagementNumber: '10018', name: '加工機', resourceCd: mocks.resourceCd, factory: mocks.factory, nfcTags: [{ id: 'tag1', uid: 'UID-1' }] }], isLoading: false }),
+  useMachineResourceChoices: () => ({ data: [{ resourceCd: '021', addTag: vi.fn(), removeTag: vi.fn(), factory: 'MISHIMA', nfcEvent: null as unknown, resourceName: '旋盤' }, { resourceCd: '022', resourceName: '研削盤' }] }),
+  useMachineMutations: () => ({ create: { mutateAsync: mocks.create }, update: { mutateAsync: mocks.update }, remove: {}, addTag: { mutateAsync: mocks.addTag }, removeTag: { mutateAsync: mocks.removeTag } }),
 }));
+vi.mock('../../hooks/useNfcStream', () => ({ useNfcStream: () => mocks.nfcEvent }));
 vi.mock('../../contexts/ConfirmContext', () => ({ useConfirm: () => vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.resourceCd = '021';
+  mocks.factory = 'MISHIMA';
 });
 
 describe('MachinesPage resourceCd', () => {
@@ -45,5 +47,49 @@ describe('MachinesPage resourceCd', () => {
     fireEvent.change(screen.getByRole('combobox', { name: '資源CD' }), { target: { value: '022' } });
     fireEvent.click(screen.getByRole('button', { name: '登録' }));
     await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ resourceCd: '022' })));
+  });
+});
+
+describe('machine factories and NFC tags', () => {
+  it.each([['MISHIMA', '三島工場'], ['SENDAI', '仙台工場']])('shows %s factory without a factory select', async (factory, label) => {
+    mocks.factory = factory;
+    render(<MachinesPage />);
+    expect(within(screen.getByRole('table')).getByText(label)).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'NFCタグ' })).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: '工場' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '編集', exact: true }));
+    expect(screen.queryByRole('combobox', { name: '工場' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '上書き保存' }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+    expect(mocks.update.mock.calls[0][0].payload).not.toHaveProperty('siteKey');
+  });
+  it('adds and removes a tag', async () => {
+    render(<MachinesPage />);
+    fireEvent.click(screen.getByRole('button', { name: '加工機のタグを追加' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'UID' }), { target: { value: 'UID-2' } });
+    fireEvent.click(screen.getByRole('button', { name: '追加', exact: true }));
+    await waitFor(() => expect(mocks.addTag).toHaveBeenCalledWith({ machineId: 'm1', uid: 'UID-2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'UID-1を外す' }));
+    await waitFor(() => expect(mocks.removeTag).toHaveBeenCalledWith({ machineId: 'm1', tagId: 'tag1' }));
+  });
+  it('ignores an old NFC event and fills UID from a newly armed read', async () => {
+    mocks.nfcEvent = { uid: 'OLD', eventId: 'old', timestamp: 'old' };
+    const view = render(<MachinesPage />);
+    fireEvent.click(screen.getByRole('button', { name: '加工機のタグを追加' }));
+    fireEvent.click(screen.getByRole('button', { name: 'NFCを読み取る' }));
+    expect(screen.getByRole('textbox', { name: 'UID' })).toHaveValue('');
+    mocks.nfcEvent = { uid: 'NEW', eventId: 'new', timestamp: 'new' };
+    view.rerender(<MachinesPage />);
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'UID' })).toHaveValue('NEW'));
+    expect(screen.getByRole('button', { name: 'NFCを読み取る' })).toBeInTheDocument();
+    mocks.nfcEvent = null;
+  });
+  it('shows the API conflict message', async () => {
+    mocks.addTag.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409, data: { message: 'このUIDは使用済みです' } } });
+    render(<MachinesPage />);
+    fireEvent.click(screen.getByRole('button', { name: '加工機のタグを追加' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'UID' }), { target: { value: 'USED' } });
+    fireEvent.click(screen.getByRole('button', { name: '追加', exact: true }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('このUIDは使用済みです');
   });
 });

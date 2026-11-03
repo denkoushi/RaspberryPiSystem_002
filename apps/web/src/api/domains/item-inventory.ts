@@ -7,6 +7,14 @@ function inventorySettingsHeaders(accessPassword?: string) {
 }
 
 export type InventoryTagKind = 'ITEM' | 'QUANTITY' | 'RESTOCK';
+export type InventoryMachine = { id: string; name: string; shortName: string | null; equipmentManagementNumber: string };
+export async function getInventoryMachines() {
+  const { data } = await api.get<{ machines: InventoryMachine[] }>('/item-inventory/machines');
+  return data.machines;
+}
+export async function saveInventoryMachineOrder(machineIds: string[]) {
+  await api.put('/item-inventory/machines/order', { machineIds });
+}
 export type InventoryPhoto = { id: string; photoIndex: number; photoUrl: string; originalFilename: string };
 export type InventoryImportPhoto = { id: string; photoIndex: number; filename: string; photoUrl: string; sha256: string };
 type InventoryItemFields = {
@@ -49,7 +57,9 @@ export type InventoryTag = {
   kind: InventoryTagKind;
   quantity: number | null;
   compartment: InventoryCompartment | null;
+  machine?: never;
 };
+export type ResolvedInventoryTag = InventoryTag | { kind: 'MACHINE'; machine: Pick<InventoryMachine, 'id' | 'name' | 'shortName'>; id?: never; uid?: never; quantity?: never; compartment?: never };
 export type InventoryShelf = {
   id: string;
   area: string;
@@ -85,6 +95,7 @@ export type InventoryImportSummary = {
 };
 export type InventoryHistoryEntry = {
   id: string;
+  machine?: Pick<InventoryMachine, 'id' | 'name' | 'shortName'> | null;
   action: string;
   inventoryItemId: string;
   compartmentId: string | null;
@@ -102,7 +113,7 @@ export type InventoryMovementTransaction = Omit<InventoryHistoryEntry, 'inventor
   & Partial<Pick<InventoryHistoryEntry, 'inventoryItem' | 'compartment'>>;
 
 export async function resolveInventoryTag(uid: string) {
-  const { data } = await api.get<{ tag: InventoryTag | null }>('/item-inventory/tags/resolve', { params: { uid } });
+  const { data } = await api.get<{ tag: ResolvedInventoryTag | null }>('/item-inventory/tags/resolve', { params: { uid } });
   return data.tag;
 }
 
@@ -371,6 +382,7 @@ export async function registerInventoryRestockTag(uid: string, accessPassword?: 
 export async function processInventoryTransaction(input: {
   itemTagUid: string;
   expectedCompartmentId?: string;
+  machineId?: string;
   quantityTagUid: string;
   restockTagUid?: string;
   restock: boolean;
@@ -382,6 +394,7 @@ export async function processInventoryTransaction(input: {
 
 export async function processInventoryTouchTransaction(input: {
   compartmentId: string;
+  machineId?: string;
   quantity: number;
   restock?: boolean;
   expectedBeforeQuantity?: number;
@@ -491,4 +504,14 @@ export async function rotateInventoryItemPhoto(itemId: string, photoId: string, 
     headers: inventorySettingsHeaders(accessPassword)
   });
   return data.result;
+}
+
+export async function getInventoryMachineOptionalDepartments() {
+  const { data } = await api.get<{ departments: string[] }>('/item-inventory/machine-optional-departments');
+  return data.departments;
+}
+
+export async function setInventoryDepartmentMachineRequired(input: { department: string; machineRequired: boolean }, accessPassword?: string) {
+  const { data } = await api.put('/item-inventory/machine-optional-departments', input, { headers: inventorySettingsHeaders(accessPassword) });
+  return data;
 }

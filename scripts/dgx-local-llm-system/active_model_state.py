@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import fcntl
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +11,62 @@ from typing import Any
 
 from model_profiles import ModelProfile
 from profile_capabilities import capabilities_to_api
+
+GLM_PROFILE = "business_glm53_flash_fp4_tp2"
+DEEPSEEK_PROFILE = "business_deepseek_v41_flash_tp2"
+BUSINESS_PROFILES = {GLM_PROFILE, DEEPSEEK_PROFILE}
+
+
+def business_switch_enabled() -> bool:
+    return os.environ.get("BUSINESS_DEEPSEEK_SWITCH_ENABLED", "") in {"true", "1"}
+
+
+@contextmanager
+def business_state_lock(path: str, *, exclusive: bool = True, blocking: bool = True):
+    # Shared by the gateway (including streams) and lifecycle writer processes.
+    target = Path(path + ".lock")
+    if exclusive:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a" if exclusive else "r") as lock:
+        mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+        fcntl.flock(lock, mode | (0 if blocking else fcntl.LOCK_NB))
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def replace_active_payload(path: str, payload: dict) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(target)
+
+
+def business_selection_state(path: str, registry_root: str | None = None) -> dict:
+    """Only the control server calls this with a registry to migrate old state."""
+    from model_profiles import validate_startable_profile, BusinessRestoreUnavailableError
+    try:
+        body = json.loads(Path(path).read_text())
+        active = body.get("modelProfileId") or body.get("activeProfileId")
+        if "selectedBusinessProfileId" not in body:
+            if registry_root is None or active not in BUSINESS_PROFILES or read_active_model_state(path) is None:
+                raise ValueError("valid active business state required")
+            profile = validate_startable_profile(registry_root, active)
+            if not profile.business_orchestration_eligible:
+                raise ValueError("ineligible active state")
+            body.update(selectedBusinessProfileId=active, selectionRevision=0, businessTransition="idle")
+            replace_active_payload(path, body)
+        if (body["selectedBusinessProfileId"] not in BUSINESS_PROFILES
+                or type(body["selectionRevision"]) is not int or body["selectionRevision"] < 0
+                or body["businessTransition"] not in {"idle", "loading", "ready", "failed"}
+                or not (active in BUSINESS_PROFILES or (isinstance(active, str)
+                    and active.startswith("private_") and body.get("businessOrchestrationEligible") is False))):
+            raise ValueError("invalid business selection")
+        return body
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        raise BusinessRestoreUnavailableError("business selection unavailable; operator recovery required") from error
 
 
 @dataclass(frozen=True)
@@ -22,6 +81,7 @@ class ActiveModelState:
     declared_capabilities: tuple[str, ...] = ("text",)
     runtime_ready_capabilities: tuple[str, ...] = ("text",)
     vision_ready_reason: str | None = None
+    business_selection: dict[str, Any] | None = None
 
 
 def state_from_profile(
@@ -62,6 +122,8 @@ def active_model_state_to_api(state: ActiveModelState) -> dict[str, Any]:
         payload["modelFamily"] = state.model_family
     if state.vision_ready_reason:
         payload["visionReadyReason"] = state.vision_ready_reason
+    if business_switch_enabled() and state.business_selection is not None:
+        payload.update(state.business_selection)
     return payload
 
 
@@ -77,6 +139,13 @@ def write_active_model_state(
         runtime_ready_capabilities=runtime_ready_capabilities,
         vision_ready_reason=vision_ready_reason,
     )
+    if business_switch_enabled():
+        from dataclasses import replace
+        previous = business_selection_state(path)
+        selection = {k: v for k, v in previous.items() if k.startswith("business") or k in {
+            "selectedBusinessProfileId", "selectionRevision"}}
+        selection["businessOrchestrationEligible"] = profile.business_orchestration_eligible
+        state = replace(state, business_selection=selection)
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
@@ -127,4 +196,6 @@ def read_active_model_state(path: str) -> ActiveModelState | None:
         declared_capabilities=declared,
         runtime_ready_capabilities=runtime_ready,
         vision_ready_reason=vision_reason if isinstance(vision_reason, str) and vision_reason else None,
+        business_selection=({k: v for k, v in body.items() if k.startswith("business") or k in {
+            "selectedBusinessProfileId", "selectionRevision"}} if business_switch_enabled() else None),
     )

@@ -417,3 +417,355 @@ class DeepSeekAdapterTests(unittest.TestCase):
                 self.assertEqual(stop["path"], expected_path)
                 self.assertFalse((self.root / "injected").exists())
                 self.assertFalse((self.clone / "injected").exists())
+
+
+class BusinessTensorfoldContractTests(unittest.TestCase):
+    def setUp(self):
+        import sys
+        sys.path.insert(0, str(MODULE_DIR))
+        import business_tensorfold
+        self.module = business_tensorfold
+
+    def test_prepared_inspection_is_fixed_and_never_prepares_builds_or_downloads(self):
+        from unittest.mock import Mock
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout='', stderr=''))
+        self.module.check_prepared(runner=runner)
+        command = runner.call_args.args[0]
+        self.assertEqual(command[:6], ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--'])
+        self.assertEqual(command[6], self.module.TARGET)
+        for expected in ('ABLIT=1', 'PREPARE=0', 'PORT=8889', 'API_KEY=1',
+                         'CONTAINER_NAME=business-dsv41-1017-exl3-tf', 'prepared_state',
+                         'worker_image_ident', 'worker_files_check', '--pull never',
+                         'rank0of2-', 'rank1of2-', 'ENGRAM_SHARDS', 'HEAD_NFS_VOLUME'):
+            self.assertIn(expected, command[-1])
+        for forbidden in ('./scripts/prepare.sh', 'docker build', 'docker pull', 'huggingface-cli', 'docker stop', 'docker rm'):
+            self.assertNotIn(forbidden, command[-1])
+        self.assertNotIn('.cache/huggingface', command[-1])
+        self.assertNotIn('private-personal', command[-1])
+
+    def test_unprepared_check_fails_before_any_stop_or_launch(self):
+        from unittest.mock import patch
+        with patch.object(self.module, 'remote', side_effect=subprocess.CalledProcessError(1, ['fake'], stderr='secret')) as remote:
+            with self.assertRaisesRegex(RuntimeError, '^business_deepseek_unprepared$'):
+                self.module.start('generation-1')
+        self.assertEqual(remote.call_count, 1)
+        self.assertNotIn('setsid', remote.call_args.args[0])
+
+    def test_business_launch_is_detached_and_isolates_logs_memguard_cache(self):
+        from unittest.mock import patch
+        with patch.object(self.module, 'check_prepared'), patch.object(self.module, 'remote') as remote:
+            self.module.start('generation-1')
+        script = remote.call_args.args[0]
+        embedded = script.split("<<'EDIT'\n", 1)[1].split('\nEDIT', 1)[0]
+        compile(embedded, '<business launch edit>', 'exec')
+        result = subprocess.run(['bash', '-n'], input=script, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for expected in ('setsid nohup', 'launcher.pid', '--log-driver none', 'chmod 700', 'chmod 600',
+                         'mtime +7', 'start.log.10', 'MEMGUARD_REMOTE_DIR=/srv/dgx/system-prod/state/deepseek-v41',
+                         'generation-1'):
+            self.assertIn(expected, script)
+        self.assertNotIn('./start.sh restart', script)
+        self.assertLess(script.index('names=$(docker ps -a'), script.index('setsid nohup'))
+        self.assertEqual(self.module.ENV['HF_HOME'], '/srv/dgx/system-prod/data/deepseek-v41/hf')
+        self.assertEqual(self.module.ENV['SPILL_GIB'], '0')
+        self.assertEqual(self.module.ENV['SPILL_WEIGHTS_SHA'], '0')
+
+    def test_stop_retains_markers_when_either_rank_gpu_listener_or_watchdog_remains(self):
+        from unittest.mock import patch
+        base = {'generation': 'g', 'prepared': True,
+                'ranks': [{'rank': r, 'generation': 'g', 'running': False, 'gpuReleased': True} for r in (0, 1)],
+                'launcherStopped': True, 'watchdogStopped': True, 'apiListenerClosed': True, 'failureReason': None}
+        for key in ('running', 'gpuReleased', 'launcherStopped', 'watchdogStopped', 'apiListenerClosed'):
+            value = json.loads(json.dumps(base))
+            if key in ('running', 'gpuReleased'):
+                value['ranks'][1][key] = key == 'running'
+            else:
+                value[key] = False
+            with self.subTest(key=key), patch.object(self.module, 'remote'), patch.object(self.module, 'runtime_status', return_value=value):
+                with self.assertRaisesRegex(RuntimeError, 'business_runtime_stop_unverified'):
+                    self.module.stop('g')
+        with patch.object(self.module, 'remote'), patch.object(self.module, 'runtime_status', return_value=base):
+            self.module.stop('g')
+
+    def test_status_refuses_stale_generation_and_ssh_failure(self):
+        from unittest.mock import patch
+        lines = 'true\n' + 'false\ntrue\ntrue\ntrue\ntrue\n\ng\n\n2026-11-02T12:00:00+00:00\n' * 2
+        with patch.object(self.module, 'check_prepared'), patch.object(self.module, 'remote', return_value=lines):
+            value = self.module.runtime_status('g')
+            self.assertEqual(len(value['ranks']), 2)
+            self.assertTrue(all(r['gpuReleased'] for r in value['ranks']))
+            with self.assertRaisesRegex(RuntimeError, 'generation_mismatch'):
+                self.module.runtime_status('old')
+        with patch.object(self.module, 'check_prepared'), patch.object(self.module, 'remote', side_effect=subprocess.CalledProcessError(255, ['fake'])):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.module.runtime_status('g')
+
+    def test_status_and_stop_only_read_prepared_marker_without_full_inspection(self):
+        from unittest.mock import patch
+        nodes = 'false\ntrue\ntrue\ntrue\ntrue\n\ng\n\n2026-11-02T12:00:00+00:00\n' * 2
+        for prepared in (True, False):
+            lines = str(prepared).lower() + '\n' + nodes
+            with self.subTest(prepared=prepared), patch.object(self.module, 'check_prepared') as check, \
+                    patch.object(self.module, 'remote', return_value=lines) as remote:
+                value = self.module.runtime_status('g')
+                self.assertIs(value['prepared'], prepared)
+                self.assertEqual(value['failureReason'], None if prepared else 'business_deepseek_unprepared')
+                self.assertIn('PREPARED_MARKER', remote.call_args.args[0])
+                self.assertNotIn('docker run', remote.call_args.args[0])
+                self.assertNotIn('worker_files_check', remote.call_args.args[0])
+                remote.side_effect = ['', lines]
+                self.module.stop('g')
+                check.assert_not_called()
+
+    def test_kit_patch_requires_unique_anchors_and_launches_with_bash_c(self):
+        from unittest.mock import patch
+        source = ('set -eu\ncd "$(dirname "$(readlink -f "$0")")"\n'
+                  'source ./scripts/nodes.sh\nCACHE="$HOME/.cache/dsv41-tensorfold"\n'
+                  'RUN_ARGS="--example"\nprintf "%s\\n" "$PWD" "$RUN_ARGS"\n'
+                  '# docker run head\n# docker run worker\n# docker run probe\n')
+        anchors = ('source ./scripts/nodes.sh',
+                   '$HOME/.cache/dsv41-tensorfold', 'RUN_ARGS="', 'docker run head')
+        # Exercise the launch transformation independently of the marker helper below.
+        setup = 'shared_config() { :; }; business_prepared() { :; }; prepared_state() { :; }'
+        with tempfile.TemporaryDirectory() as directory, patch.object(self.module, 'SHARED_SETUP', setup):
+            root = Path(directory)
+            (root / 'scripts').mkdir()
+            (root / 'scripts/nodes.sh').write_text('')
+            output = root / 'launch.sh'
+            for anchor in anchors:
+                for changed in (source.replace(anchor, ''), source + '\n# ' + anchor):
+                    with self.subTest(anchor=anchor, changed=changed):
+                        (root / 'start.sh').write_text(changed)
+                        result = subprocess.run(['bash', '-eu', '-c', self.module.launch_patch(shlex.quote(str(output)))],
+                            cwd=root, capture_output=True, text=True)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn('business_kit_layout_mismatch', result.stderr)
+                        self.assertFalse(output.exists())
+                        error = subprocess.CalledProcessError(result.returncode, ['fake'], stderr=result.stderr)
+                        with patch.object(self.module, 'remote', side_effect=error):
+                            with self.assertRaisesRegex(RuntimeError, '^business_kit_layout_mismatch$'):
+                                self.module.check_prepared()
+            (root / 'start.sh').write_text(source)
+            result = subprocess.run(['bash', '-eu', '-c', self.module.launch_patch(shlex.quote(str(output)))],
+                cwd=root, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn('BASH_SOURCE', output.read_text())
+            self.assertEqual(output.read_text().count('docker run --pull never '), 3)
+            launched = subprocess.run(['bash', '-eu', '-c', output.read_text(), str(root / 'start.sh')],
+                cwd='/', capture_output=True, text=True)
+            self.assertEqual(launched.returncode, 0, launched.stderr)
+            self.assertEqual(Path(launched.stdout.splitlines()[0]).resolve(), root.resolve())
+            self.assertEqual(launched.stdout.splitlines()[1], '--log-driver none --example')
+
+    def test_business_shell_unprepared_refuses_before_stopping_existing_runtime(self):
+        # Exercise the actual adapter entry and SSH command with only fake binaries.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / 'bin'
+            binary.mkdir()
+            events = root / 'events'
+            for name, code in {
+                'ssh': '#!/bin/sh\nprintf "ssh-check\\n" >> "$EVENTS"\nexit 255\n',
+                'docker': '#!/bin/sh\nprintf "docker-mutation\\n" >> "$EVENTS"\nexit 99\n',
+            }.items():
+                path = binary / name
+                path.write_text(code)
+                path.chmod(0o755)
+            marker = root / 'marker.json'
+            before = json.dumps({'containerName': 'existing-rank1', 'sshTarget': 'user@worker'})
+            marker.write_text(before)
+            environment = {**os.environ, 'PATH': str(binary) + os.pathsep + os.environ['PATH'],
+                'EVENTS': str(events), 'BLUE_MODEL_PROFILE_ID': 'business_deepseek_v41_flash_tp2',
+                'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true', 'BLUE_SERVER_ADAPTER': 'dsv41_tensorfold_2x',
+                'BLUE_SERVER_MODE': 'container', 'BLUE_WORKER_SSH_TARGET': self.module.TARGET,
+                'BLUE_QWEN38_RECIPE_DIR': self.module.RECIPE, 'BLUE_QWEN38_RECIPE_REVISION': self.module.REVISION,
+                'BLUE_REMOTE_WORKER_MARKER_PATH': str(marker), 'BLUE_ABLITERATED': '0'}
+            result = subprocess.run(['bash', str(MODULE_DIR / 'tensorfold-2x-adapter.sh')],
+                env=environment, capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('business_deepseek_unprepared', result.stderr)
+            self.assertEqual(events.read_text(), 'ssh-check\n')
+            self.assertEqual(marker.read_text(), before)
+
+    def test_business_config_shares_only_prepared_artifacts(self):
+        values = self.module.ENV
+        self.assertEqual(values['API_KEY_FILE'], '/srv/dgx/system-prod/state/deepseek-v41/api-key')
+        self.assertEqual(values['HEAD_ENGRAM_DIR'], '')
+        self.assertEqual(values['FOREGROUND'], '0')
+        self.assertEqual(values['MODEL_REVISION'], '')  # Immutable SHA comes from the private marker.
+        self.assertEqual(values['ABLIT'], '1')
+        self.assertEqual(values['ABLIT_ID'], 'drowzeys/keys-DeepSeek-V4.1-Flash-1017-Abliterated')
+        self.assertEqual(values['ABLIT_REVISION'], '0bdc2036113c4fdda38ef6005b3cbc0bc0dfa0f0')
+        self.assertEqual(values['HF_CACHE'], '/srv/ssd/hf')
+        self.assertEqual(values['NFS_PATH'], '/srv/ssd/hf')
+        self.assertEqual(values['WORKER'], 'ubudgxkoushi@192.168.100.10')
+        self.assertEqual(values['WORKER_ENGRAM_DIR'], '/home/ubudgxkoushi/.cache/dsv41-tensorfold/engram-1bae0e10')
+        self.assertEqual(values['WORKER_CACHE_DIR'], '/home/ubudgxkoushi/.cache/dsv41-tensorfold/rank-cache-878f5689-ablit-0bdc2036')
+        for key in ('STATE_DIR', 'LOG_DIR', 'TMPDIR', 'XDG_CACHE_HOME', 'HOME', 'HF_HOME',
+                    'SPILL_DIR', 'WORKER_SPILL_DIR', 'API_KEY_FILE'):
+            self.assertTrue(values[key].startswith('/srv/dgx/system-prod/'), key)
+
+    def test_private_marker_is_read_only_and_requires_matching_preparation(self):
+        revision = '878f5689' + 'a' * 32
+        values = self.module.ENV
+        private = {'model': values['MODEL_ID'] + '@' + revision, 'ablit': '1',
+                   'overlay': values['ABLIT_ID'] + '@' + values['ABLIT_REVISION'] + '+stock-dtypes',
+                   'image': 'image-identity', 'kit': values['KIT_REF'], 'template': 'template-hash',
+                   'hf': values['HF_CACHE'], 'nfs_path': values['NFS_PATH'],
+                   'nfs_volume': 'dsv41-1017-exl3-hf', 'w': values['WORKER'],
+                   'nfs1': '', 'nfs2': '', 'nfs3': '',
+                   'wengram': values['WORKER_ENGRAM_DIR'].replace('/home/ubudgxkoushi/', '$HOME/'),
+                   'wcache': values['WORKER_CACHE_DIR'].replace('/home/ubudgxkoushi/', '$HOME/')}
+        business = {**private, 'nfs_volume': values['NFS_VOLUME'], 'nfs1': values['NFS_SERVER'],
+                    'wengram': values['WORKER_ENGRAM_DIR'], 'wcache': values['WORKER_CACHE_DIR']}
+
+        def serialize(fields):
+            return shlex.join([f'{key}={value}' for key, value in fields.items()])
+
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'prepared'
+            marker.write_text(serialize(private))
+            marker.chmod(0o400)
+            before = marker.stat()
+            environment = {**os.environ, **values, 'PYTHONOPTIMIZE': '1', 'SHARED_PREPARED_MARKER': str(marker),
+                           'TEST_STATE': serialize(business)}
+            script = self.module.SHARED_SETUP + '\nshared_config\nbusiness_prepared check "$TEST_STATE"\nprintf "%s\\n" "$MODEL_REVISION" "$DATA_DIR"\n'
+            result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), [revision, '/srv/ssd/hf/tensorfold-dsv41/878f5689-ablit-0bdc2036'])
+            self.assertEqual(marker.read_text(), serialize(private))
+            self.assertEqual(marker.stat().st_mtime_ns, before.st_mtime_ns)
+            self.assertEqual(list(Path(directory).iterdir()), [marker])
+            for key, value in (('ablit', '0'), ('overlay', 'wrong'), ('image', 'other-image'),
+                               ('model', values['MODEL_ID'] + '@' + 'b' * 40),
+                               ('kit', 'other-kit'), ('template', 'other-template'),
+                               ('nfs_volume', 'unrelated'), ('wcache', '/other/cache'),
+                               ('w', 'other@192.168.100.12'), ('nfs1', '192.168.100.12'), ('nfs2', '192.168.100.12')):
+                with self.subTest(key=key):
+                    result = subprocess.run(['bash', '-eu', '-c', script],
+                        env={**environment, 'TEST_STATE': serialize({**business, key: value})},
+                        capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+            for key, value in (('ABLIT', '0'), ('PREPARE', 'auto'), ('SPILL_GIB', '1'), ('SPILL_WEIGHTS_SHA', '1')):
+                with self.subTest(key=key):
+                    result = subprocess.run(['bash', '-eu', '-c', script], env={**environment, key: value},
+                        capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+            marker.chmod(0o600)
+            marker.write_text(serialize({**private, 'model': values['MODEL_ID'] + '@' + 'b' * 40}))
+            result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            marker.unlink()
+            result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_both_nfs_volumes_must_name_the_exact_read_only_export(self):
+        check = self.module.CHECK
+        volume_check = check[check.index('for rank in 0 1; do'):check.index('# Recompute index identities')]
+        script = ('docker() { printf "%s\\n" "$HEAD_VOLUME"; }; '
+                  'worker() { printf "%s\\n" "$WORKER_VOLUME"; };\n' + volume_check)
+        good = ':/srv/ssd/hf addr=192.168.100.11,nfsvers=4.2,ro,hard'
+        environment = {**os.environ, **self.module.ENV, 'HEAD_VOLUME': good, 'WORKER_VOLUME': good}
+        result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for key in ('HEAD_VOLUME', 'WORKER_VOLUME'):
+            for bad in (good.replace(',ro,', ',rw,'), good.replace(',ro,', ','), good + ',rw',
+                        good.replace('/srv/ssd/hf', '/wrong'), good.replace('192.168.100.11', '192.168.100.10')):
+                with self.subTest(key=key, bad=bad):
+                    result = subprocess.run(['bash', '-eu', '-c', script], env={**environment, key: bad},
+                        capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+
+    def test_shared_and_business_directories_must_exist_without_symlinks(self):
+        check = self.module.CHECK
+        directory_check = check[check.index('for dir in "$HF_CACHE"'):check.index('[[ -s "$API_KEY_FILE"')]
+        script = ('worker() { shift; eval "$*"; }; engram_cache_dir() { echo "$HF_CACHE/engram"; }; '
+                  'engram_rev() { echo revision; };\n' + directory_check)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            keys = ('HF_CACHE', 'DATA_DIR', 'STATE_DIR', 'LOG_DIR', 'HOME', 'HF_HOME', 'TMPDIR',
+                    'XDG_CACHE_HOME', 'SPILL_DIR', 'WORKER_CACHE_DIR', 'WORKER_ENGRAM_DIR', 'WORKER_SPILL_DIR')
+            environment = {**os.environ, **{key: str(root / key) for key in keys}, 'KIT_SUB': 'kit-sub'}
+            for path in [*(root / key for key in keys), root / 'DATA_DIR/checkpoint', root / 'DATA_DIR/model',
+                         root / 'DATA_DIR/rank-cache', root / 'HF_CACHE/kit-sub/kit', root / 'HF_CACHE/engram/snapshots/revision']:
+                path.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run(['bash', '-eu', '-c', script], env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            alias = root / 'alias'
+            alias.symlink_to(root / 'WORKER_CACHE_DIR', target_is_directory=True)
+            for key in keys:
+                for bad in (str(alias), str(root / 'missing')):
+                    with self.subTest(key=key, bad=bad):
+                        result = subprocess.run(['bash', '-eu', '-c', script], env={**environment, key: bad},
+                            capture_output=True, text=True)
+                        self.assertNotEqual(result.returncode, 0)
+
+    def test_private_tensorfold_stop_proof_inspects_actual_container_on_both_sparks(self):
+        from unittest.mock import Mock, patch
+        import resource_state
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'worker.json'
+            for adapter, name in (('dsv41_tensorfold_2x', 'dsv41-1017-exl3-tf'),
+                                  ('glm53_tensorfold_2x', 'configured-glm-container')):
+                path.write_text(json.dumps({'adapter': adapter, 'cloneDir': '/kit/clone', 'sshTarget': 'user@worker'}))
+                runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout=name, stderr=''))
+                with patch.object(resource_state.subprocess, 'run', runner), patch.object(resource_state, 'verify_rank_stopped') as verify:
+                    resource_state.verify_blue_stopped(str(path), 'system-prod-trtllm')
+                    self.assertIn(((name,), {}), verify.call_args_list)
+                    self.assertIn(((name, 'user@worker'), {}), verify.call_args_list)
+
+    def test_business_stop_checks_owned_containers_and_ports_with_private_gpu_active(self):
+        from unittest.mock import patch
+        import resource_state
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / 'bin'
+            binary.mkdir()
+            # Fake a private GPU workload and private listener throughout. Any
+            # global GPU query is an error; only the named business container counts.
+            programs = {
+                'nvidia-smi': '#!/bin/sh\necho private-gpu-workload\nexit 99\n',
+                'ss': '#!/bin/sh\ncase "$*" in *8888*) echo private-listener;; '
+                      '*"$BUSINESS_BUSY_PORT"*) test -z "$BUSINESS_BUSY_PORT" || echo business-listener;; esac\nexit 0\n',
+                'docker': '''#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+if args[0] == 'ps':
+    name = os.environ.get('BUSINESS_RUNNING_NAME', '')
+    if name and 'name=^/' + name + '$' in args:
+        print(name if '{{.Names}}' in args else 'business-id')
+elif args[0] == 'inspect':
+    field = args[2]
+    print('true' if field == '{{.State.Running}}' else
+          '2026-11-02T12:01:00+00:00' if field == '{{.State.StartedAt}}' else 'business-id')
+elif args[0] != 'info':
+    sys.exit(99)
+''',
+            }
+            for name, code in programs.items():
+                path = binary / name
+                path.write_text(code)
+                path.chmod(0o755)
+            (root / 'generation').write_text('g\n')
+            (root / 'generation-started-at').write_text('2026-11-02T12:00:00+00:00\n')
+            environment = {'PATH': str(binary) + os.pathsep + os.environ['PATH'],
+                'BUSINESS_RUNNING_NAME': '', 'BUSINESS_BUSY_PORT': ''}
+            with patch.dict(os.environ, environment):
+                resource_state.verify_rank_stopped('system-prod-trtllm')
+                for running in (False, True):
+                    name = self.module.ENV['CONTAINER_NAME']
+                    with patch.dict(os.environ, {'BUSINESS_RUNNING_NAME': name if running else ''}):
+                        value = subprocess.run(['bash', '-c', self.module.NODE_STATUS, 'bash', name,
+                            str(root), str(root), '8889'], check=True, capture_output=True, text=True)
+                    self.assertEqual(value.stdout.splitlines()[:2],
+                        ['true', 'false'] if running else ['false', 'true'])
+                for changes in ({'BUSINESS_RUNNING_NAME': 'system-prod-trtllm'},
+                                {'BUSINESS_BUSY_PORT': '8889'}, {'BUSINESS_BUSY_PORT': '38083'}):
+                    with self.subTest(changes=changes), patch.dict(os.environ, changes):
+                        with self.assertRaises(subprocess.CalledProcessError):
+                            resource_state.verify_rank_stopped('system-prod-trtllm')
+                for port in ('8889', ''):
+                    with patch.dict(os.environ, {'BUSINESS_BUSY_PORT': port}):
+                        value = subprocess.run(['bash', '-c', self.module.NODE_STATUS, 'bash', name,
+                            str(root), str(root), '8889'], check=True, capture_output=True, text=True)
+                    self.assertEqual(value.stdout.splitlines()[4], 'false' if port else 'true')

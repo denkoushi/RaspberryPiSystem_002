@@ -11,8 +11,15 @@ export async function assertInventoryNfcUidAvailable(
   uid: string,
   db: PrismaClient | Prisma.TransactionClient,
 ): Promise<void> {
+  await assertMachineNfcUidAvailable(uid, db);
   const inventoryTag = await db.inventoryNfcTag.findFirst({ where: { uid }, select: { id: true } });
   if (inventoryTag) {
     throw new ApiError(409, 'このUIDは在庫管理のNFCタグで使用中です');
   }
+}
+
+/** Master-tag writes must also respect machine tag bindings. */
+export async function assertMachineNfcUidAvailable(uid: string, db: PrismaClient | Prisma.TransactionClient): Promise<void> {
+  const tag = await db.machineNfcTag.findUnique({ where: { uid: uid.trim() }, select: { id: true } });
+  if (tag) throw new ApiError(409, 'このUIDは加工機のNFCタグで使用中です');
 }

@@ -50,7 +50,8 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 
-from active_model_state import active_model_state_to_api, read_active_model_state
+from active_model_state import (active_model_state_to_api, read_active_model_state, business_switch_enabled,
+    business_selection_state, business_state_lock, GLM_PROFILE, DEEPSEEK_PROFILE)
 from gateway_llm_auth import load_llm_shared_tokens_from_env, llm_shared_token_ok
 from model_profiles import UnknownModelProfileError, find_model_profile, load_model_profiles, model_profile_to_api
 from model_storage_delete import (
@@ -205,6 +206,57 @@ def resolve_backend_base_url(config: GatewayConfig) -> str:
     if active_backend == "blue":
         return config.blue_backend_base_url or config.legacy_backend_base_url
     return config.green_backend_base_url or config.legacy_backend_base_url
+
+
+def business_route(config: GatewayConfig) -> tuple[str, dict[str, str], str]:
+    state = business_selection_state(config.active_model_state_path)
+    profile = state.get("modelProfileId") or state.get("activeProfileId")
+    active = read_active_model_state(config.active_model_state_path)
+    generation = state.get("businessGeneration")
+    legacy_glm = (not generation and state["selectedBusinessProfileId"] == GLM_PROFILE
+        and state["businessTransition"] == "idle" and state["selectionRevision"] == 0)
+    if (active is None or active.backend != "blue" or active.served_alias != "system-prod-primary"
+            or profile != state["selectedBusinessProfileId"]
+            or (not legacy_glm and (state["businessTransition"] != "ready"
+                or not isinstance(generation, str) or not generation))):
+        raise ValueError("business_runtime_unavailable")
+    if profile == GLM_PROFILE:
+        return "http://127.0.0.1:38083", {}, profile
+    if profile == DEEPSEEK_PROFILE:
+        key = os.environ.get("BUSINESS_DEEPSEEK_UPSTREAM_API_KEY", "").strip()
+        if not key:
+            raise ValueError("business_upstream_key_missing")
+        return "http://192.168.100.11:8889", {"Authorization": "Bearer " + key}, profile
+    raise ValueError("business_runtime_unavailable")
+
+
+def business_has_image(value) -> bool:
+    messages = value.get("messages", [])
+    return isinstance(messages, list) and any(
+        isinstance(message, dict) and isinstance(message.get("content"), list) and any(
+            isinstance(part, dict) and part.get("type") in {"image_url", "input_image", "image"}
+            for part in message["content"])
+        for message in messages)
+
+
+def business_sse_alias(line: bytes) -> bytes:
+    if not line.startswith(b"data:"):
+        return line
+    try:
+        value = json.loads(line[5:])
+    except (ValueError, UnicodeDecodeError):
+        return line
+    if not isinstance(value, dict) or "model" not in value:
+        return line
+    value["model"] = "system-prod-primary"
+    return b"data: " + json.dumps(value, ensure_ascii=False).encode() + (b"\r" if line.endswith(b"\r") else b"")
+
+
+def business_response_alias(body: bytes) -> bytes:
+    value = json.loads(body)
+    if isinstance(value, dict) and "model" in value:
+        value["model"] = "system-prod-primary"
+    return json.dumps(value, ensure_ascii=False).encode()
 
 
 def read_body(handler: BaseHTTPRequestHandler) -> bytes:
@@ -827,7 +879,7 @@ def make_handler(
             self.end_headers()
             self.wfile.write(body)
 
-        def _proxy_stream(self, url: str, body: bytes, headers: dict[str, str]) -> None:
+        def _proxy_stream(self, url: str, body: bytes, headers: dict[str, str], *, business: bool = False) -> None:
             req = urllib.request.Request(url, data=body, method="POST", headers=headers)
             self.close_connection = True
             response_started = False
@@ -844,10 +896,22 @@ def make_handler(
                         self.send_header("Connection", "close")
                         response_started = True
                         self.end_headers()
+                        pending = b""
                         while chunk:
+                            if business:
+                                pending += chunk
+                                lines = pending.split(b"\n")
+                                pending = lines.pop()
+                                out = []
+                                for line in lines:
+                                    out.append(business_sse_alias(line) + b"\n")
+                                chunk = b"".join(out)
                             self.wfile.write(chunk)
                             self.wfile.flush()
                             chunk = response.read1(65536)
+                        if business and pending:
+                            self.wfile.write(business_sse_alias(pending))
+                            self.wfile.flush()
                 except urllib.error.HTTPError as exc:
                     with exc:
                         if not response_started:
@@ -912,6 +976,22 @@ def make_handler(
                     self._send_json(503, {"ok": False, "code": "MODEL_PROFILES_UNAVAILABLE", "message": str(exc)})
                 return
             if self.path == "/system/resource-state":
+                if business_switch_enabled():
+                    if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
+                        self._send_text(403, "forbidden")
+                        return
+                    status, body, content_type = proxy_impl("GET", config.runtime_control_base_url + self.path, b"",
+                        {"X-Runtime-Control-Token": config.runtime_control_token})
+                    if status == 200:
+                        try:
+                            runtime = json.loads(body)["businessRuntime"]
+                            resource = read_resource_state(config.resource_state_path)
+                            self._send_json(200, {"ok": True, **(state_to_api(resource) if resource else {}), "businessRuntime": runtime})
+                        except (ValueError, KeyError, TypeError):
+                            self._send_json(503, {"ok": False, "code": "BUSINESS_RUNTIME_UNAVAILABLE"})
+                    else:
+                        self._send(status, body, content_type)
+                    return
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
@@ -986,6 +1066,9 @@ def make_handler(
             if self.path.startswith("/v1/"):
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
+                    return
+                if business_switch_enabled():
+                    self._business_v1("GET", b"")
                     return
                 active_backend = resolve_active_backend(config)
                 status, body, content_type = proxy_impl(
@@ -1394,6 +1477,9 @@ def make_handler(
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
+                if business_switch_enabled():
+                    self._business_v1("POST", body)
+                    return
                 headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
                 active_backend = resolve_active_backend(config)
                 upstream_body = inject_blue_chat_completions_defaults(
@@ -1418,6 +1504,45 @@ def make_handler(
                 self._send(status, resp_body, content_type)
                 return
             self._send_text(404, "not found")
+
+        def _business_v1(self, method: str, body: bytes) -> None:
+            try:
+                # A lifecycle mutation waits for every normal/streaming request to
+                # finish; arrivals during that mutation fail closed immediately.
+                with business_state_lock(config.active_model_state_path, exclusive=False, blocking=False):
+                    base, auth, profile = business_route(config)
+                    headers = {"Content-Type": "application/json", **auth}
+                    if method == "POST":
+                        try:
+                            payload = json.loads(body)
+                            if not isinstance(payload, dict):
+                                raise ValueError("invalid_request")
+                            if payload.get("model", "system-prod-primary") != "system-prod-primary":
+                                raise ValueError("unsupported_model")
+                            if profile == DEEPSEEK_PROFILE and (business_has_image(payload) or "/images" in self.path):
+                                raise ValueError("image_requests_unsupported")
+                        except (ValueError, UnicodeDecodeError) as error:
+                            self._send_json(400, {"error": {"code": str(error)}})
+                            return
+                        payload["model"] = "system-prod-primary"
+                        body = json.dumps(payload, ensure_ascii=False).encode()
+                        if profile == GLM_PROFILE:
+                            body = inject_blue_chat_completions_defaults(self.path, body, "blue", config)
+                        if self.path.rstrip("/").endswith("/completions") and payload.get("stream") is True:
+                            self._proxy_stream(base + self.path, body, headers, business=True)
+                            return
+                    status, response, content_type = proxy_impl(method, base + self.path, body, headers)
+                    if 200 <= status < 300:
+                        if self.path == "/v1/models":
+                            models = json.loads(response).get("data", [])
+                            if not any(m.get("id") == "system-prod-primary" for m in models):
+                                raise ValueError("business_alias_unavailable")
+                            response = json.dumps({"object": "list", "data": [m for m in models if m.get("id") == "system-prod-primary"]}).encode()
+                        else:
+                            response = business_response_alias(response)
+                    self._send(status, response, content_type)
+            except Exception:
+                self._send_json(503, {"error": {"code": "business_runtime_unavailable"}})
 
         def log_message(self, fmt: str, *args: object) -> None:
             sys.stderr.write("[dgx-local-llm-gateway] " + (fmt % args) + "\n")

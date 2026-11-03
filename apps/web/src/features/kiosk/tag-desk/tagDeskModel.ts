@@ -16,6 +16,7 @@ export const KIND_META: Record<TagBindingKind, KindMeta> = {
   item: { label: '工具', codeLabel: '管理番号', subLabel: '保管場所', uses: ['持出・返却'] },
   instrument: { label: '計測機器', codeLabel: '管理番号', subLabel: '保管場所', uses: ['持出・返却', '自主検査 使用機器', '使用前点検'] },
   rigging: { label: '吊具', codeLabel: '管理番号', subLabel: '保管場所', uses: ['持出・返却', '点検記録'] },
+  machine: { label: '加工機', codeLabel: '種類', subLabel: '場所', uses: ['在庫の払い出し'] },
   inventory: { label: '在庫タグ', codeLabel: '種類', subLabel: '場所', uses: ['在庫の出庫・補充'] }
 };
 

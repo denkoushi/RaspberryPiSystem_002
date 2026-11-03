@@ -164,6 +164,7 @@ const transactionBody = z.object({
   quantityTagUid: z.string().trim().min(1).max(256),
   restockTagUid: z.string().trim().min(1).max(256).optional(),
   restock: z.boolean().default(false),
+  machineId: z.string().guid().optional(),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
 const touchTransactionBody = z.object({
@@ -171,6 +172,7 @@ const touchTransactionBody = z.object({
   quantity: z.number().int().min(1).max(999999),
   restock: z.boolean().default(false),
   expectedBeforeQuantity: z.number().int().min(0).optional(),
+  machineId: z.string().guid().optional(),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
 const inventorySettingsAccessPasswordBody = z.object({
@@ -187,6 +189,18 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
       password: body.password
     });
+  });
+
+  app.get('/item-inventory/machines', async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    return { machines: await services.inventory.listMachines(clientDevice.id) };
+  });
+
+  app.put('/item-inventory/machines/order', async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { machineIds } = z.object({ machineIds: z.array(z.string().guid()) }).parse(request.body);
+    await services.inventory.saveMachineOrder(clientDevice.id, machineIds);
+    return { success: true };
   });
 
   app.get('/item-inventory/tags/resolve', { preHandler: [read] }, async (request) => {
@@ -259,6 +273,12 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   });
   app.get('/item-inventory/tags', { preHandler: [read] }, async () => ({ tags: await services.inventory.listTags() }));
   app.get('/item-inventory/locations', { preHandler: [read] }, async () => ({ locations: await services.inventory.listLocations() }));
+  app.get('/item-inventory/machine-optional-departments', { preHandler: [read] }, async () => ({ departments: await services.inventory.listMachineOptionalDepartments() }));
+  app.put('/item-inventory/machine-optional-departments', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ department: z.string().trim().min(1).max(200), machineRequired: z.boolean() }).parse(request.body);
+    return services.inventory.setDepartmentMachineRequired(body.department, body.machineRequired);
+  });
+
   app.get('/item-inventory/items', { preHandler: [read] }, async () => ({ items: await services.inventory.listItems() }));
   app.get('/item-inventory/history', { preHandler: [read] }, async (request) => {
     const query = z.object({

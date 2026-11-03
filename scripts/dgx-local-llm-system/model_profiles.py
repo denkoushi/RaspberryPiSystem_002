@@ -155,9 +155,15 @@ def load_model_profiles(registry_root: str) -> list[ModelProfile]:
     root = Path(registry_root)
     if not root.exists():
         return []
+    from active_model_state import business_switch_enabled, DEEPSEEK_PROFILE
     profiles: list[ModelProfile] = []
     for manifest in sorted(root.glob("*/manifest.json")):
-        profiles.append(load_model_profile_manifest(manifest))
+        if manifest.parent.name == DEEPSEEK_PROFILE and not business_switch_enabled():
+            continue
+        profile = load_model_profile_manifest(manifest)
+        if profile.id == DEEPSEEK_PROFILE and not business_switch_enabled():
+            continue
+        profiles.append(profile)
     return profiles
 
 

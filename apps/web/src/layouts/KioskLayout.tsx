@@ -16,6 +16,7 @@ import {
   VIEWPORT_MIN_HEIGHT_FULL
 } from '../constants/viewportLayout';
 import { KIOSK_ASSEMBLY_CHECK_SHEETS_PATH, KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from '../features/assembly/assemblyRoutes';
+import { useInventoryOutboxReplay } from '../features/kiosk/inventory/offline/useInventoryOutboxReplay';
 import { InventoryNfcRouter } from '../features/kiosk/InventoryNfcRouter';
 import {
   KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
@@ -43,6 +44,7 @@ import { useKioskBottomRightHeaderReveal } from '../hooks/useKioskBottomRightHea
 import type { TimedHoverRevealCloseReason } from '../hooks/useTimedHoverReveal';
 
 export function KioskLayout() {
+  useInventoryOutboxReplay();
   const clientKey = getResolvedClientKey();
   const callTargetsQuery = useKioskCallTargets();
   const selfClientId = callTargetsQuery.data?.selfClientId ?? '';

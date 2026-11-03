@@ -1120,3 +1120,203 @@ class PrivateComfyWorkerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BusinessRoutingContractTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.state = self.root / 'active.json'
+        Path(str(self.state) + '.lock').touch()  # Created by control-server init.
+        self.value = {'modelProfileId': 'business_deepseek_v41_flash_tp2', 'backend': 'blue',
+            'displayNameJa': 'DeepSeek', 'servedAlias': 'system-prod-primary', 'stateUpdatedAt': '2026-11-02T00:00:00Z',
+            'selectedBusinessProfileId': 'business_deepseek_v41_flash_tp2', 'selectionRevision': 3,
+            'businessTransition': 'ready', 'businessGeneration': 'generation-3'}
+        self.state.write_text(json.dumps(self.value))
+        self.config = replace(self.module.load_config_from_env(), active_model_state_path=str(self.state),
+            llm_shared_tokens=frozenset({'client-key'}), runtime_control_token='control-key',
+            blue_backend_base_url='http://untrusted.invalid', model_registry_root=str(self.root / 'registry'))
+        self.flag = patch.dict(os.environ, {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true',
+            'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': 'business-only-key'})
+        self.flag.start()
+        self.addCleanup(self.flag.stop)
+        self.calls = []
+        def proxy(method, url, body, headers):
+            self.calls.append((method, url, body, headers))
+            if url.endswith('/v1/models'):
+                return 200, b'{"data":[{"id":"system-prod-primary"},{"id":"private-model"}]}', 'application/json'
+            if url.endswith('/system/resource-state'):
+                return 200, b'{"ok":true,"businessRuntime":{"generation":"g"}}', 'application/json'
+            return 200, b'{"model":"upstream-internal-name","choices":[]}', 'application/json'
+        self.handler = self.module.make_handler(self.config, proxy)
+
+    def request(self, method='POST', path='/v1/chat/completions', payload=None, token='client-key', runtime_token=None):
+        data = json.dumps(payload or {'model': 'system-prod-primary', 'messages': [{'role': 'user', 'content': 'hello'}]}).encode() if method == 'POST' else b''
+        headers = f'{method} {path} HTTP/1.0\r\nAuthorization: Bearer {token}\r\nContent-Length: {len(data)}\r\n'
+        if runtime_token:
+            headers += f'X-Runtime-Control-Token: {runtime_token}\r\n'
+        request = headers.encode() + b'\r\n' + data
+        output = io.BytesIO()
+        class Connection:
+            def makefile(self, *args): return io.BytesIO(request)
+            def sendall(self, data): output.write(data)
+        self.handler(Connection(), ('127.0.0.1', 0), object())
+        head, body = output.getvalue().split(b'\r\n\r\n', 1)
+        return int(head.split()[1]), body
+
+    def test_deepseek_fixed_route_credential_alias_and_no_glm_transform(self):
+        status, body = self.request()
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['model'], 'system-prod-primary')
+        method, url, body, headers = self.calls[-1]
+        self.assertEqual(url, 'http://192.168.100.11:8889/v1/chat/completions')
+        self.assertEqual(headers['Authorization'], 'Bearer business-only-key')
+        self.assertNotIn('client-key', str(headers))
+        self.assertNotIn('chat_template_kwargs', json.loads(body))
+        status, body = self.request('GET', '/v1/models')
+        self.assertEqual(status, 200)
+        self.assertEqual([m['id'] for m in json.loads(body)['data']], ['system-prod-primary'])
+
+    def test_glm_fixed_route_ignores_backend_url_env(self):
+        self.value.update(modelProfileId='business_glm53_flash_fp4_tp2', selectedBusinessProfileId='business_glm53_flash_fp4_tp2')
+        self.state.write_text(json.dumps(self.value))
+        self.assertEqual(self.request()[0], 200)
+        self.assertEqual(self.calls[-1][1], 'http://127.0.0.1:38083/v1/chat/completions')
+        self.assertNotIn('Authorization', self.calls[-1][3])
+
+    def test_legacy_glm_initial_state_routes_without_generation(self):
+        self.value.update(modelProfileId=self.module.GLM_PROFILE, selectedBusinessProfileId=self.module.GLM_PROFILE,
+            businessTransition='idle', selectionRevision=0)
+        self.value.pop('businessGeneration')
+        for generation in (None, ''):
+            if generation is not None:
+                self.value['businessGeneration'] = generation
+            self.state.write_text(json.dumps(self.value))
+            for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                with self.subTest(generation=generation, path=path):
+                    self.assertEqual(self.request(method, path)[0], 200)
+                    self.assertEqual(self.calls[-1][1], 'http://127.0.0.1:38083' + path)
+                    self.assertNotIn('Authorization', self.calls[-1][3])
+
+    def test_legacy_glm_initial_state_boundaries_fail_closed(self):
+        self.value.update(modelProfileId=self.module.GLM_PROFILE, selectedBusinessProfileId=self.module.GLM_PROFILE,
+            businessTransition='idle', selectionRevision=0)
+        self.value.pop('businessGeneration')
+        for changes in ({'selectionRevision': 1}, {'businessTransition': 'loading'},
+                        {'businessTransition': 'failed'}, {'backend': 'green'},
+                        {'servedAlias': 'other'}, {'businessGeneration': 'generation-1'},
+                        {'modelProfileId': self.module.DEEPSEEK_PROFILE},
+                        {'modelProfileId': self.module.DEEPSEEK_PROFILE,
+                         'selectedBusinessProfileId': self.module.DEEPSEEK_PROFILE}):
+            self.state.write_text(json.dumps({**self.value, **changes}))
+            for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                with self.subTest(changes=changes, path=path):
+                    status, body = self.request(method, path)
+                    self.assertEqual(status, 503)
+                    self.assertEqual(json.loads(body)['error']['code'], 'business_runtime_unavailable')
+        self.assertEqual(self.calls, [])
+
+    def test_images_wrong_model_missing_key_and_unknown_private_or_transition_fail_closed(self):
+        self.assertEqual(self.request(payload={'messages': [{'content': [{'type': 'image_url', 'image_url': {'url': 'data:secret'}}]}]})[0], 400)
+        self.assertEqual(self.request(payload={'model': 'other'})[0], 400)
+        for changes in ({'businessTransition': 'loading'}, {'businessTransition': 'failed'},
+                        {'modelProfileId': 'private_deepseek_v41_flash_tp2'}, {'businessGeneration': ''}):
+            self.state.write_text(json.dumps({**self.value, **changes}))
+            self.assertEqual(self.request()[0], 503)
+            self.assertEqual(self.request('GET', '/v1/models')[0], 503)
+        self.state.write_text('{broken')
+        self.assertEqual(self.request()[0], 503)
+        self.state.write_text(json.dumps(self.value))
+        with patch.dict(os.environ, {'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': ''}):
+            self.assertEqual(self.request()[0], 503)
+        self.assertEqual(self.calls, [])
+
+    def test_sse_alias_auth_and_raw_deepseek_body(self):
+        chunks = [b'data: {"model":"internal","choices":[{"delta":{"content":"he',
+                  b'llo"}}]}\n\ndata: [DONE]\n\n', b'']
+        response = io.BytesIO()
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        response.read1 = Mock(side_effect=chunks)
+        with patch.object(self.module.urllib.request, 'urlopen', return_value=response) as upstream:
+            status, body = self.request(payload={'model': 'system-prod-primary', 'stream': True, 'messages': []})
+        self.assertEqual(status, 200)
+        self.assertIn(b'"model": "system-prod-primary"', body)
+        self.assertIn(b'hello', body)
+        self.assertIn(b'data: [DONE]', body)
+        req = upstream.call_args.args[0]
+        self.assertEqual(req.full_url, 'http://192.168.100.11:8889/v1/chat/completions')
+        self.assertEqual(req.get_header('Authorization'), 'Bearer business-only-key')
+        self.assertNotIn('chat_template_kwargs', json.loads(req.data))
+        self.assertTrue(response.closed)
+
+    def test_sse_preserves_non_objects_keepalives_comments_and_split_lines(self):
+        raw = (b': keepalive\r\ndata: ping\ndata: [DONE]\n\ndata: [1,2]\n'
+               b'data: "text"\ndata: null\ndata: {broken}\ndata: \xff\n'
+               b'data: {"choices":[]}\ndata: {"model":"internal","choices":[]}\r\n'
+               b'data: final keepalive')
+        # Split every byte, including data:, UTF-8/non-JSON and CRLF boundaries.
+        for chunks in ([raw, b''], [bytes([c]) for c in raw] + [b'']):
+            response = io.BytesIO()
+            response.status = 200
+            response.headers = {'Content-Type': 'text/event-stream'}
+            response.read1 = Mock(side_effect=chunks)
+            with self.subTest(chunks=len(chunks)), patch.object(self.module.urllib.request, 'urlopen', return_value=response):
+                status, body = self.request(payload={'stream': True, 'messages': []})
+            self.assertEqual(status, 200)
+            self.assertEqual(body, raw.replace(b'data: {"model":"internal","choices":[]}',
+                b'data: {"model": "system-prod-primary", "choices": []}'))
+
+    def test_image_named_tool_schema_is_allowed_but_image_content_is_rejected(self):
+        payload = {'messages': [{'role': 'user', 'content': 'Describe the image property'}],
+            'tools': [{'type': 'function', 'function': {'name': 'image', 'parameters':
+                {'type': 'object', 'properties': {'image': {'type': 'string'},
+                    'input': {'type': 'image_url'}}}}}]}
+        self.assertEqual(self.request(payload=payload)[0], 200)
+        self.assertEqual(json.loads(self.calls[-1][2])['tools'], payload['tools'])
+        for kind in ('image_url', 'input_image', 'image'):
+            with self.subTest(kind=kind):
+                payload['messages'][0]['content'] = [{'type': kind, 'image_url': {'url': 'unused'}}]
+                self.assertEqual(self.request(payload=payload)[0], 400)
+
+    def test_gateway_shared_lock_requires_only_read_access(self):
+        original_open = Path.open
+        modes = []
+        def restricted_open(path, mode='r', *args, **kwargs):
+            if str(path).endswith('.lock'):
+                modes.append(mode)
+                if mode != 'r':
+                    raise PermissionError('gateway cannot write the lock')
+            return original_open(path, mode, *args, **kwargs)
+        with patch.object(Path, 'open', restricted_open):
+            self.assertEqual(self.request()[0], 200)
+        self.assertEqual(modes, ['r'])
+
+    def test_resource_status_requires_runtime_token_and_proxies_structured_control_status(self):
+        self.assertEqual(self.request('GET', '/system/resource-state')[0], 403)
+        self.assertEqual(self.request('GET', '/system/resource-state', runtime_token='control-key')[0], 200)
+        self.assertEqual(self.calls[-1][3], {'X-Runtime-Control-Token': 'control-key'})
+        self.assertEqual(self.calls[-1][1], self.config.runtime_control_base_url + '/system/resource-state')
+
+    def test_exclusive_lifecycle_lock_refuses_new_inference(self):
+        from active_model_state import business_state_lock
+        with business_state_lock(str(self.state)):
+            self.assertEqual(self.request()[0], 503)
+        self.assertEqual(self.calls, [])
+
+    def test_flag_off_keeps_normal_and_sse_response_bytes(self):
+        raw = b'data: {"model":"internal-name","choices":[]}\n\ndata: [DONE]\n\n'
+        response = io.BytesIO(raw)
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        with patch.dict(os.environ, {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'false'}):
+            status, body = self.request()
+            self.assertEqual(status, 200)
+            self.assertEqual(body, b'{"model":"upstream-internal-name","choices":[]}')
+            self.assertEqual(self.calls[-1][3], {'Content-Type': 'application/json'})
+            with patch.object(self.module.urllib.request, 'urlopen', return_value=response):
+                status, body = self.request(payload={'stream': True})
+            self.assertEqual(status, 200)
+            self.assertEqual(body, raw)

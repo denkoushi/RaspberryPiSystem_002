@@ -6,6 +6,7 @@ import { RiggingGearService } from '../rigging-gear.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    machineNfcTag: { findUnique: vi.fn() },
     riggingGear: {
       findMany: vi.fn(),
       update: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('RiggingGearService', () => {
   let service: RiggingGearService;
   const tx = {
+    machineNfcTag: { findUnique: vi.fn() },
     riggingGear: {
       create: vi.fn(),
       update: vi.fn(),
