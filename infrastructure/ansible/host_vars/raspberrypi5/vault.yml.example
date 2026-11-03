@@ -15,6 +15,7 @@ vault_api_local_llm_runtime_control_token: ""
 
 # DGXリソース管理（空なら read-only / 設定不足としてUI表示）
 vault_api_dgx_resource_metrics_url: ""
+vault_api_business_deepseek_switch_enabled: false
 vault_api_dgx_resource_embedding_health_url: ""
 vault_api_dgx_resource_spark_host_status_url: ""
 vault_api_dgx_resource_probe_timeout_ms: "10000"
