@@ -870,7 +870,8 @@ class BusinessSwitchContractTests(unittest.TestCase):
     def setUp(self):
         from unittest.mock import patch
         ProfilelessStartTests.setUp(self)
-        self.flag = patch.dict('os.environ', {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true'})
+        self.flag = patch.dict('os.environ', {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true',
+                                            'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'false'})
         self.flag.start()
         self.addCleanup(self.flag.stop)
         self.calls = []
@@ -1086,6 +1087,37 @@ class BusinessSwitchContractTests(unittest.TestCase):
         self.assertEqual(status['modelProfileId'], self.deep)
         self.assertEqual(status['selectionRevision'], 1)
         self.assertEqual({r['rank'] for r in status['ranks']}, {0, 1})
+
+    def test_sharing_inspection_requires_opt_in_ready_deepseek_selection(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        value = self.state_value()
+        for enabled, transition, failure, expected in (
+                ('false', 'ready', None, False), ('true', 'ready', None, True),
+                ('true', 'loading', None, False), ('true', 'failed', None, False),
+                ('true', 'ready', 'business_runtime_start_failed', False)):
+            with self.subTest(enabled=enabled, transition=transition, failure=failure):
+                self.state.write_text(json.dumps({**value, 'businessTransition': transition,
+                                                 'businessFailureReason': failure}))
+                with patch.dict('os.environ', {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': enabled}), \
+                        patch('business_tensorfold.runtime_status', return_value={'generation': value['businessGeneration']}) as inspect:
+                    result = self.module.business_runtime_status(self.config)
+                inspect.assert_called_once_with(value['businessGeneration'], sharing=expected)
+                self.assertEqual(result['selectionRevision'], value['selectionRevision'])
+
+    def test_sharing_inspection_refuses_selection_change_during_observation(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        value = self.state_value()
+        self.state.write_text(json.dumps({**value, 'businessTransition': 'ready'}))
+        def inspect(*args, **kwargs):
+            self.state.write_text(json.dumps({**value, 'businessTransition': 'loading',
+                                             'businessGeneration': 'new-generation'}))
+            return {'generation': value['businessGeneration']}
+        with patch.dict('os.environ', {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}), \
+                patch('business_tensorfold.runtime_status', side_effect=inspect):
+            with self.assertRaises(self.module.SelectionConflict):
+                self.module.business_runtime_status(self.config)
 
     def test_inference_lock_holds_lifecycle_until_request_drains(self):
         from active_model_state import business_state_lock
