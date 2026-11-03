@@ -69,12 +69,14 @@ export async function expireFileAlertNotice(type: string | undefined, timestamp:
   }
 }
 
-export async function deliverFileAlertNotice(type: string | undefined, timestamp: Date, now = new Date()): Promise<void> {
+export async function deliverFileAlertNotice(type: string | undefined, timestamp: Date, now = new Date(), message?: string): Promise<void> {
   if (!type?.trim() || now.getTime() - timestamp.getTime() >= FILE_NOTICE_EXPIRY_MS) return;
   try {
     await deliverSystemNotice({ key: `${FILE_NOTICE_PREFIX}${type}`, state: 'open',
-      title: type === 'rkhunter-warning' ? 'システムの安全確認' : 'システムの確認',
-      body: type === 'rkhunter-warning' ? '安全確認で注意事項が見つかりました。' : 'システムの確認が必要です。'
+      // Event time dedupes re-ingestion, while each later recovery can append immediately.
+      ...(type === 'pi5-watchdog-recovered' ? { repeatMs: 1 } : {}),
+      title: type === 'pi5-watchdog-recovered' ? '業務用Pi5の復旧' : type === 'rkhunter-warning' ? 'システムの安全確認' : 'システムの確認',
+      body: type === 'pi5-watchdog-recovered' ? message?.trim().slice(0, 500) || '業務用Pi5が戻りました。' : type === 'rkhunter-warning' ? '安全確認で注意事項が見つかりました。' : 'システムの確認が必要です。'
     }, timestamp);
   } catch (err) {
     logger.warn({ err, type }, '[SystemNotice] File alert notice failed');

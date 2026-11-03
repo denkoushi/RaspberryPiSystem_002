@@ -1186,6 +1186,38 @@ class BusinessRoutingContractTests(unittest.TestCase):
         self.assertEqual(self.calls[-1][1], 'http://127.0.0.1:38083/v1/chat/completions')
         self.assertNotIn('Authorization', self.calls[-1][3])
 
+    def test_legacy_glm_initial_state_routes_without_generation(self):
+        self.value.update(modelProfileId=self.module.GLM_PROFILE, selectedBusinessProfileId=self.module.GLM_PROFILE,
+            businessTransition='idle', selectionRevision=0)
+        self.value.pop('businessGeneration')
+        for generation in (None, ''):
+            if generation is not None:
+                self.value['businessGeneration'] = generation
+            self.state.write_text(json.dumps(self.value))
+            for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                with self.subTest(generation=generation, path=path):
+                    self.assertEqual(self.request(method, path)[0], 200)
+                    self.assertEqual(self.calls[-1][1], 'http://127.0.0.1:38083' + path)
+                    self.assertNotIn('Authorization', self.calls[-1][3])
+
+    def test_legacy_glm_initial_state_boundaries_fail_closed(self):
+        self.value.update(modelProfileId=self.module.GLM_PROFILE, selectedBusinessProfileId=self.module.GLM_PROFILE,
+            businessTransition='idle', selectionRevision=0)
+        self.value.pop('businessGeneration')
+        for changes in ({'selectionRevision': 1}, {'businessTransition': 'loading'},
+                        {'businessTransition': 'failed'}, {'backend': 'green'},
+                        {'servedAlias': 'other'}, {'businessGeneration': 'generation-1'},
+                        {'modelProfileId': self.module.DEEPSEEK_PROFILE},
+                        {'modelProfileId': self.module.DEEPSEEK_PROFILE,
+                         'selectedBusinessProfileId': self.module.DEEPSEEK_PROFILE}):
+            self.state.write_text(json.dumps({**self.value, **changes}))
+            for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                with self.subTest(changes=changes, path=path):
+                    status, body = self.request(method, path)
+                    self.assertEqual(status, 503)
+                    self.assertEqual(json.loads(body)['error']['code'], 'business_runtime_unavailable')
+        self.assertEqual(self.calls, [])
+
     def test_images_wrong_model_missing_key_and_unknown_private_or_transition_fail_closed(self):
         self.assertEqual(self.request(payload={'messages': [{'content': [{'type': 'image_url', 'image_url': {'url': 'data:secret'}}]}]})[0], 400)
         self.assertEqual(self.request(payload={'model': 'other'})[0], 400)

@@ -12,6 +12,7 @@ import {
   RECENT_CONTENT_DEADLINE_MS,
   RECENT_CONTENT_BATCH_ESTIMATE_MS,
   buildRecentContentPool,
+  matchesSpecificBodyToken,
 } from './executor.mjs';
 import { records } from './fixtures/synthetic-records.mjs';
 import { QUERY_PLAN_SCHEMA } from './query-plan.mjs';
@@ -473,87 +474,99 @@ test('relevance sort and filter-only questions keep the previous candidate order
 });
 
 test('hybrid recent content also admits a dense hit near the top cosine', () => {
-  assert.equal(RECENT_CONTENT_DENSE_FRACTION, 0.75);
-  const byId = new Map([
-    ['lexical-old', { id: 'lexical-old' }],
-    ['dense-new', { id: 'dense-new' }],
-    ['weak-dense', { id: 'weak-dense' }],
-  ]);
-  const pool = buildRecentContentPool({
-    lexicalRows: [
-      { id: 'lexical-old', score: 4, contentTokenScore: 4 },
-      { id: 'dense-new', score: 0.1, contentTokenScore: 0.1 },
-      { id: 'weak-dense', score: 0, contentTokenScore: 0 },
-    ],
-    vectorOrdered: [
-      { id: 'dense-new', cosine: 0.9 },
-      { id: 'weak-dense', cosine: 0.2 },
-    ],
-    retriever: 'hybrid',
-    byId,
-  });
-  assert.deepEqual(pool.map((item) => item.record.id).sort(), ['dense-new', 'lexical-old']);
+  for (const verbatimIds of [undefined, new Set()]) {
+    assert.equal(RECENT_CONTENT_DENSE_FRACTION, 0.75);
+    const byId = new Map([
+      ['lexical-old', { id: 'lexical-old' }],
+      ['dense-new', { id: 'dense-new' }],
+      ['weak-dense', { id: 'weak-dense' }],
+    ]);
+    const pool = buildRecentContentPool({
+      lexicalRows: [
+        { id: 'lexical-old', score: 4, contentTokenScore: 4 },
+        { id: 'dense-new', score: 0.1, contentTokenScore: 0.1 },
+        { id: 'weak-dense', score: 0, contentTokenScore: 0 },
+      ],
+      vectorOrdered: [
+        { id: 'dense-new', cosine: 0.9 },
+        { id: 'weak-dense', cosine: 0.2 },
+      ],
+      retriever: 'hybrid',
+      byId,
+      verbatimIds,
+    });
+    assert.deepEqual(pool.map((item) => item.record.id).sort(), ['dense-new', 'lexical-old']);
+  }
 });
 
 test('hybrid recent content rejects a top dense hit without a content token when another row matches', () => {
-  const byId = new Map([
-    ['lexical-match', { id: 'lexical-match' }],
-    ['dense-unrelated', { id: 'dense-unrelated' }],
-  ]);
-  const pool = buildRecentContentPool({
-    lexicalRows: [
-      { id: 'lexical-match', score: 4, contentTokenScore: 4 },
-      { id: 'dense-unrelated', score: 0, contentTokenScore: 0 },
-    ],
-    vectorOrdered: [{ id: 'dense-unrelated', cosine: 0.9 }],
-    retriever: 'hybrid',
-    byId,
-  });
-  assert.deepEqual(pool.map((item) => item.record.id), ['lexical-match']);
+  for (const verbatimIds of [undefined, new Set()]) {
+    const byId = new Map([
+      ['lexical-match', { id: 'lexical-match' }],
+      ['dense-unrelated', { id: 'dense-unrelated' }],
+    ]);
+    const pool = buildRecentContentPool({
+      lexicalRows: [
+        { id: 'lexical-match', score: 4, contentTokenScore: 4 },
+        { id: 'dense-unrelated', score: 0, contentTokenScore: 0 },
+      ],
+      vectorOrdered: [{ id: 'dense-unrelated', cosine: 0.9 }],
+      retriever: 'hybrid',
+      byId,
+      verbatimIds,
+    });
+    assert.deepEqual(pool.map((item) => item.record.id), ['lexical-match']);
+  }
 });
 
 test('hybrid recent content admits a top dense hit when no lexical row has a content token', () => {
-  const byId = new Map([
-    ['dense-top', { id: 'dense-top' }],
-    ['weak-dense', { id: 'weak-dense' }],
-  ]);
-  const pool = buildRecentContentPool({
-    lexicalRows: [
-      { id: 'dense-top', score: 0, contentTokenScore: 0 },
-      { id: 'weak-dense', score: 0, contentTokenScore: 0 },
-    ],
-    vectorOrdered: [
-      { id: 'dense-top', cosine: 0.9 },
-      { id: 'weak-dense', cosine: 0.2 },
-    ],
-    retriever: 'hybrid',
-    byId,
-  });
-  assert.deepEqual(pool.map((item) => item.record.id), ['dense-top']);
-});
-
-test('dense recent content requires content tokens only when a lexical row matches', () => {
-  const byId = new Map([
-    ['lexical-match', { id: 'lexical-match' }],
-    ['dense-top', { id: 'dense-top' }],
-    ['dense-match', { id: 'dense-match' }],
-  ]);
-  for (const hasContentTokenMatch of [true, false]) {
+  for (const verbatimIds of [undefined, new Set()]) {
+    const byId = new Map([
+      ['dense-top', { id: 'dense-top' }],
+      ['weak-dense', { id: 'weak-dense' }],
+    ]);
     const pool = buildRecentContentPool({
       lexicalRows: [
-        { id: 'lexical-match', score: 4, contentTokenScore: hasContentTokenMatch ? 4 : 0 },
         { id: 'dense-top', score: 0, contentTokenScore: 0 },
-        { id: 'dense-match', score: 0.1, contentTokenScore: hasContentTokenMatch ? 0.1 : 0 },
+        { id: 'weak-dense', score: 0, contentTokenScore: 0 },
       ],
       vectorOrdered: [
         { id: 'dense-top', cosine: 0.9 },
-        { id: 'dense-match', cosine: 0.8 },
+        { id: 'weak-dense', cosine: 0.2 },
       ],
-      retriever: 'dense',
+      retriever: 'hybrid',
       byId,
+      verbatimIds,
     });
-    assert.deepEqual(pool.map((item) => item.record.id),
-      hasContentTokenMatch ? ['dense-match'] : ['dense-top', 'dense-match']);
+    assert.deepEqual(pool.map((item) => item.record.id), ['dense-top']);
+  }
+});
+
+test('dense recent content requires content tokens only when a lexical row matches', () => {
+  for (const verbatimIds of [undefined, new Set()]) {
+    const byId = new Map([
+      ['lexical-match', { id: 'lexical-match' }],
+      ['dense-top', { id: 'dense-top' }],
+      ['dense-match', { id: 'dense-match' }],
+    ]);
+    for (const hasContentTokenMatch of [true, false]) {
+      const pool = buildRecentContentPool({
+        lexicalRows: [
+          { id: 'lexical-match', score: 4, contentTokenScore: hasContentTokenMatch ? 4 : 0 },
+          { id: 'dense-top', score: 0, contentTokenScore: 0 },
+          { id: 'dense-match', score: 0.1, contentTokenScore: hasContentTokenMatch ? 0.1 : 0 },
+        ],
+        vectorOrdered: [
+          { id: 'dense-top', cosine: 0.9 },
+          { id: 'dense-match', cosine: 0.8 },
+        ],
+        retriever: 'dense',
+        byId,
+        verbatimIds,
+      });
+      assert.deepEqual(pool.map((item) => item.record.id),
+        hasContentTokenMatch ? ['dense-match'] : ['dense-top', 'dense-match']);
+    }
   }
 });
 
@@ -840,4 +853,53 @@ test('cause breakdown retains an entirely unclassified filtered set', async () =
   assert.equal(result.groups[0].axis, 'cause');
   assert.deepEqual(result.groups[0].buckets, []);
   assert.equal(result.groups[0].otherCount, 1);
+});
+
+test('recent content restricts hybrid and lexical pools to nonempty verbatimIds regardless of score', () => {
+  const byId = new Map(['outside', 'zero', 'low', 'dense-only'].map((id) => [id, { id }]));
+  for (const retriever of ['hybrid', 'lexical', 'dense']) {
+    const pool = buildRecentContentPool({
+      lexicalRows: [
+        { id: 'outside', score: 100, contentTokenScore: 100 },
+        { id: 'zero', score: 0, contentTokenScore: 0 },
+        { id: 'low', score: 0.1, contentTokenScore: 0 },
+      ],
+      vectorOrdered: [
+        { id: 'outside', cosine: 1 },
+        { id: 'zero', cosine: 0 },
+        { id: 'low', cosine: 0.01 },
+        { id: 'dense-only', cosine: 0.02 },
+      ],
+      retriever,
+      byId,
+      verbatimIds: new Set(['zero', 'low', 'dense-only']),
+    });
+    assert.deepEqual(pool.map((item) => [item.record.id, item.score]),
+      retriever === 'lexical' ? [['zero', 0], ['low', 0.1]]
+        : [['zero', 0], ['low', 0.1], ['dense-only', 0.02]]);
+  }
+});
+
+test('matchesSpecificBodyToken ignores enrichment and quiet tokens and normalizes body text', () => {
+  const index = { specificTokens: new Set(['abcd', 'quiet']), quietTokens: new Set(['quiet']) };
+  assert.equal(matchesSpecificBodyToken({ condition: 'other', enrichment: { summary: 'abcd', queries: [], tags: [] } }, ['condition'], index), false);
+  assert.equal(matchesSpecificBodyToken({ condition: 'quiet' }, ['condition'], index), false);
+  assert.equal(matchesSpecificBodyToken({ condition: 'ＡＢ cD' }, ['condition'], index), true);
+});
+
+test('recent content keeps only whole body token matches over partial and enrichment matches', async () => {
+  const executed = await execute(recentContentPlan({ semanticQuery: 'abcd', limit: 3 }), {
+    records: [
+      ...Array.from({ length: 20 }, (_, index) => bodyRecord(`unrelated-${index}`, '2025-01-01', 'unrelated')),
+      bodyRecord('whole', '2026-01-01', 'abcd'),
+      bodyRecord('partial', '2026-02-01', 'ab separated cd'),
+      bodyRecord('enriched', '2026-03-01', 'other', { enrichment: { summary: 'abcd', queries: [], tags: [] } }),
+    ],
+    catalog,
+    relevance: async ({ candidates }) => ({
+      ok: true,
+      ranked: candidates.map((item) => ({ id: item.id, probability: 0.9 })),
+    }),
+  });
+  assert.deepEqual(executed.results.map((result) => result.recordId), ['whole']);
 });
