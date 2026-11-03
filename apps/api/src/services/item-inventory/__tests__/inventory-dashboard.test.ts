@@ -7,7 +7,7 @@ const now = new Date('2026-10-14T23:00:00Z');
 const place = (area: string) => ({ drawer: { shelf: { area } } });
 const item = (id: string, price: number | null, stock = 2): DashboardItemRow => ({ id, name: id, toolName: 'ドリル', maker: 'OSG', unit: '本', unitPrice: price,
   compartments: [{ labelNumber: 12, stockQuantity: stock, ...place('A 北') }, { labelNumber: 13, stockQuantity: 1, ...place('B 南') }] });
-const issue = (id: string, date: string, quantity: number, area = 'A 北', cancelled = false): DashboardIssueRow => ({ inventoryItemId: id, createdAt: new Date(date), delta: -quantity, compartment: place(area), reversedBy: cancelled ? { id: 'cancel' } : null });
+const issue = (id: string, date: string, quantity: number, area = 'A 北', cancelled = false): DashboardIssueRow => ({ machineId: null, machine: null, inventoryItemId: id, createdAt: new Date(date), delta: -quantity, compartment: place(area), reversedBy: cancelled ? { id: 'cancel' } : null });
 
 describe('inventory dashboard', () => {
   it('uses Monday midnight in Tokyo across year and UTC day boundaries', () => {
@@ -42,6 +42,25 @@ describe('inventory dashboard', () => {
     expect(result.machines).toEqual(['A', 'B']);
     expect(aggregateInventoryDashboard([item('a', 2)], [], 4, now, 'unknown').items).toEqual([]);
   });
+  it('groups current usage by machine, keeps null last, and respects reversals and shelves', () => {
+    const assigned = (id: string, quantity: number, machineId: string, shortName: string | null = null) => ({
+      ...issue(id, '2026-10-12T00:00:00Z', quantity), machineId, machine: { name: `Machine ${machineId}`, shortName },
+    });
+    const issues = [assigned('a', 3, 'm1', 'MC1'), assigned('b', 2, 'm1', 'MC1'), assigned('a', 8, 'm2'),
+      issue('a', '2026-09-21T00:00:00Z', 20), // null sorts last despite the largest quantity
+      { ...assigned('a', 100, 'm3'), reversedBy: { id: 'cancel' } },
+      { ...assigned('a', 100, 'm4'), compartment: place('B 南') },
+      { ...assigned('a', 100, 'm5'), createdAt: new Date('2026-09-14T00:00:00Z') }];
+    const result = aggregateInventoryDashboard([item('a', 2), item('b', 3)], issues, 4, now, 'A');
+    expect(result.machineUsage).toEqual([
+      { machineId: 'm2', name: 'Machine m2', issued: 8, weekly: [0, 0, 0, 8], itemIssued: { a: 8 } },
+      { machineId: 'm1', name: 'MC1', issued: 5, weekly: [0, 0, 0, 5], itemIssued: { a: 3, b: 2 } },
+      { machineId: null, name: '加工機なし', issued: 20, weekly: [20, 0, 0, 0], itemIssued: { a: 20 } },
+    ]);
+    expect(result.machineUsage.reduce((sum, row) => sum + row.issued, 0)).toBe(result.totalIssued);
+    expect(aggregateInventoryDashboard([item('a', 2)], [assigned('a', 3, 'm1')], 4, now).machineUsage).toHaveLength(1);
+    expect(aggregateInventoryDashboard([item('a', 2)], [], 4, now).machineUsage).toEqual([]);
+  });
   it('returns zero-filled empty periods and all items without a location when unfiltered', () => {
     const row = { ...item('no-location', null), compartments: [] };
     const result = aggregateInventoryDashboard([row], [], 52, now);
@@ -54,7 +73,7 @@ describe('inventory dashboard', () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const service = new ItemInventoryService({ inventoryItem: { findMany }, inventoryTransaction: { findMany } } as never);
     await service.dashboard(12, undefined, now);
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { action: 'ISSUE', createdAt: { gte: dashboardPeriod(12, now).previousStart, lte: now }, inventoryItem: { deletedAt: null } }, select: expect.objectContaining({ delta: true, reversedBy: { select: { id: true } } }) }));
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { action: 'ISSUE', createdAt: { gte: dashboardPeriod(12, now).previousStart, lte: now }, inventoryItem: { deletedAt: null } }, select: expect.objectContaining({ delta: true, machineId: true, machine: { select: { name: true, shortName: true } }, reversedBy: { select: { id: true } } }) }));
   });
   it('persists all unique sorted dismissal pairs and preserves raw merge sources', async () => {
     const createMany = vi.fn().mockResolvedValue({ count: 3 });

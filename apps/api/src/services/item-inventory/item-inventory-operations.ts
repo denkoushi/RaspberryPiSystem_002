@@ -253,7 +253,7 @@ export async function dashboard(db: PrismaClient, weeks: number, machine?: strin
     }),
     db.inventoryTransaction.findMany({
       where: { action: 'ISSUE', createdAt: { gte: period.previousStart, lte: period.end }, inventoryItem: { deletedAt: null } },
-      select: { inventoryItemId: true, delta: true, createdAt: true, reversedBy: { select: { id: true } },
+      select: { inventoryItemId: true, delta: true, createdAt: true, machineId: true, machine: { select: { name: true, shortName: true } }, reversedBy: { select: { id: true } },
         compartment: { select: { drawer: { select: { shelf: { select: { area: true } } } } } } },
     }),
   ]);
