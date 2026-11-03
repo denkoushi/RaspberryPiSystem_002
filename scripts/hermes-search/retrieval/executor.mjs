@@ -232,6 +232,20 @@ export function matchesSpecificToken(record, bodyFields, index) {
   return false;
 }
 
+/** Match whole tokens in body fields only to use the same definition as nightly validation. */
+export function matchesSpecificBodyToken(record, bodyFields, index) {
+  if (!index?.specificTokens?.size) return false;
+  const folded = bodyFields.map((key) => record?.[key])
+    .filter((value) => typeof value === 'string' && value)
+    .join('\n').normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+  if (!folded) return false;
+  for (const token of index.specificTokens) {
+    if (index.quietTokens?.has(token)) continue;
+    if (folded.includes(token)) return true;
+  }
+  return false;
+}
+
 function bm25Weight(tf, idf, length, average) {
   if (!tf || !idf) return 0;
   const denom = tf + (BM25_K1 * (1 - BM25_B + (BM25_B * (length / average))));
@@ -487,7 +501,8 @@ function dateRoleField(plan, catalog) {
  * dense also admit dense hits at the generic fraction of the top cosine,
  * requiring a substantive content token unless no lexical row has one.
  */
-export function buildRecentContentPool({ lexicalRows, vectorOrdered, retriever, byId }) {
+export function buildRecentContentPool({ lexicalRows, vectorOrdered, retriever, byId, verbatimIds }) {
+  const hasVerbatimMatches = verbatimIds?.size > 0;
   const lexicalTop = (lexicalRows ?? []).reduce((max, row) => Math.max(max, Number(row.score) || 0), 0);
   const lexicalFloor = lexicalTop * RECENT_CONTENT_LEXICAL_FRACTION;
   const lexicalById = new Map((lexicalRows ?? []).map((row) => [row.id, row]));
@@ -496,7 +511,8 @@ export function buildRecentContentPool({ lexicalRows, vectorOrdered, retriever, 
   if (retriever !== 'dense') {
     for (const row of lexicalRows ?? []) {
       const score = Number(row.score) || 0;
-      if (!(Number(row.contentTokenScore) > 0) || score <= 0 || score < lexicalFloor) continue;
+      if (hasVerbatimMatches ? !verbatimIds.has(row.id)
+        : (!(Number(row.contentTokenScore) > 0) || score <= 0 || score < lexicalFloor)) continue;
       const record = byId.get(row.id);
       if (!record) continue;
       admitted.set(row.id, { record, score, lexicalValue: score });
@@ -505,14 +521,14 @@ export function buildRecentContentPool({ lexicalRows, vectorOrdered, retriever, 
   if (retriever === 'hybrid' || retriever === 'dense') {
     const denseTop = (vectorOrdered ?? []).reduce((max, row) => Math.max(max, Number(row.cosine) || 0), 0);
     const denseFloor = denseTop * RECENT_CONTENT_DENSE_FRACTION;
-    if (denseTop > 0) {
+    if (hasVerbatimMatches || denseTop > 0) {
       for (const row of vectorOrdered ?? []) {
         const cosine = Number(row.cosine) || 0;
-        if (cosine < denseFloor) continue;
+        if (hasVerbatimMatches ? !verbatimIds.has(row.id) : cosine < denseFloor) continue;
         const record = byId.get(row.id);
         if (!record) continue;
         const lexical = lexicalById.get(row.id);
-        if (hasContentTokenMatch && !(Number(lexical?.contentTokenScore) > 0)) continue;
+        if (!hasVerbatimMatches && hasContentTokenMatch && !(Number(lexical?.contentTokenScore) > 0)) continue;
         const existing = admitted.get(row.id);
         const score = Math.max(existing?.score ?? 0, cosine, Number(lexical?.score) || 0);
         admitted.set(row.id, {
@@ -668,11 +684,15 @@ async function prepareCandidateRanking(plan, options, records) {
   const poolLimit = options.countOnly === true ? COUNT_POOL_LIMIT : (options.candidateLimit ?? relevancePoolLimit(options));
   if (recentContent) {
     const dateField = dateRoleField(plan, options.catalog);
+    const verbatimIds = lexicalIndex && !customLexical
+      ? new Set(filtered.filter((record) => matchesSpecificBodyToken(record, bodyFields, lexicalIndex)).map((record) => record.id))
+      : undefined;
     ranked = orderRecentContentPool(buildRecentContentPool({
       lexicalRows,
       vectorOrdered,
       retriever,
       byId,
+      verbatimIds,
     }), dateField);
     candidateIds = ranked.map((item) => item.record.id);
   } else if (filteredOnly) {
