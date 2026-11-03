@@ -1,3 +1,4 @@
+import { countActivePlacementsOnShelf } from './placement-completion.service.js';
 import {
   buildAutoDisplayLabel,
   indexToRc,
@@ -14,14 +15,13 @@ import { macroZoneIdForShelfCode } from './shelf-layout-edit.service.js';
 type PrismaTx = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
 async function shelfHasOperationalData(db: PrismaTx, shelfCodeRaw: string): Promise<boolean> {
-  const [branchCount, haizenCount, presetCount] = await Promise.all([
-    db.orderPlacementBranchState.count({ where: { shelfCodeRaw } }),
-    db.haizenCurrentPlacement.count({ where: { shelfCodeRaw } }),
+  const [placementCount, presetCount] = await Promise.all([
+    countActivePlacementsOnShelf(db, shelfCodeRaw),
     db.clientDevice.count({
       where: { haizenPresetShelfCodeRaw: shelfCodeRaw, haizenEdgeEnabled: true }
     })
   ]);
-  return branchCount > 0 || haizenCount > 0 || presetCount > 0;
+  return placementCount > 0 || presetCount > 0;
 }
 
 async function recomputeDisplayLabelForShelf(
