@@ -307,6 +307,7 @@ security_review_changes_exclude:
   - 'certs/*'
   - '*secret*'
   - '*credentials*'
+  - '*vault.yml'
 security_review_collector_config:
   project_dir: "{{ pi5_project_dir | default(repo_path | default('/opt/RaspberryPiSystem_002')) }}"
   data_dir: "{{ security_review_data_dir }}"
