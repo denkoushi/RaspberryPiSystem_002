@@ -623,6 +623,19 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 self.assertNotIn('privateSharingEvidence', self.sharing_status(**kwargs)[0])
 
+    def test_sharing_evidence_accepts_the_pinned_image_entrypoint_only(self):
+        def entrypoint(path):
+            def change(observations):
+                for observed in observations:
+                    observed['args'].insert(0, observed['path'])
+                    observed['path'] = path
+            return change
+        evidence = self.sharing_status(entrypoint('/opt/nvidia/nvidia_entrypoint.sh'))[0]['privateSharingEvidence']
+        self.assertEqual(evidence['runtimeIdentity'], 'tensorfold-native:serve:8889:parallel4:thinking')
+        for path in ('/bin/sh', '/opt/other/entrypoint.sh'):
+            with self.subTest(path=path):
+                self.assertNotIn('privateSharingEvidence', self.sharing_status(entrypoint(path))[0])
+
     def test_sharing_evidence_is_omitted_for_unknown_unsafe_or_stale_facts_on_either_rank(self):
         mutations = [
             lambda o: o.pop('logDriver'), lambda o: o.update(logDriver=''),

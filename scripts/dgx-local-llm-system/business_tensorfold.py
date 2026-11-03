@@ -169,6 +169,8 @@ if [[ "$running" == true ]]; then started=$(docker inspect -f '{{.State.StartedA
 printf '%s\n' "$running" "$released" "$launcher" "$watchdog" "$closed" "$id" "$(cat "$state/generation")" "$started" "$(cat "$state/generation-started-at")"
 '''
 
+IMAGE_ENTRYPOINT = '/opt/nvidia/nvidia_entrypoint.sh'
+
 # Project only launch metadata, never Docker's environment or API-key contents.
 SHARING_INSPECT = r'''{"id":{{json .Id}},"image":{{json .Image}},"path":{{json .Path}},"args":{{json .Args}},"running":{{json .State.Running}},"startedAt":{{json .State.StartedAt}},"labels":{{json .Config.Labels}},"logDriver":{{json .HostConfig.LogConfig.Type}},"readOnly":{{json .HostConfig.ReadonlyRootfs}},"mounts":{{json .Mounts}},"tmpfs":{{json .HostConfig.Tmpfs}}}'''
 
@@ -192,7 +194,11 @@ def sharing_evidence(generation: str, nodes: list, observations: list, prepared_
                     or observed['tmpfs'] != {'/tmp': 'rw,noexec,nosuid,size=64m'}):
                 return None
             argv = [observed['path'], *observed['args']]
-            if not all(isinstance(arg, str) for arg in argv) or any(arg.startswith('--learn') for arg in argv):
+            # The pinned image runs its fixed NVIDIA entrypoint, which then execs the
+            # engine; Docker records that entrypoint as Path and the engine in Args.
+            if argv[0] == IMAGE_ENTRYPOINT:
+                argv = argv[1:]
+            if not argv or not all(isinstance(arg, str) for arg in argv) or any(arg.startswith('--learn') for arg in argv):
                 return None
             # Require the pinned direct command, not a shell/entrypoint assertion.
             if rank == 0:
@@ -205,6 +211,7 @@ def sharing_evidence(generation: str, nodes: list, observations: list, prepared_
                         or any(arg.startswith(('--prompt-cache-gib=', '--port=', '--parallel=', '--thinking=')) for arg in argv)):
                     return None
                 model = argv[2]
+                head = argv
             else:
                 if argv[0] != 'tf-dsv41-lanes' or argv[2:5] != ['/rank-cache', '1', '2']:
                     return None
@@ -221,9 +228,8 @@ def sharing_evidence(generation: str, nodes: list, observations: list, prepared_
             return None
         # No durable writable filesystem, no learning/prompt cache, and Docker
         # discards the pinned engine's stdout/stderr (including response logs).
-        head = observations[0]['args']
         return {'generation': generation, 'weightsRevision': revisions[0],
-                'runtimeIdentity': ':'.join((observations[0]['path'], head[0],
+                'runtimeIdentity': ':'.join((head[0], head[1],
                     head[head.index('--port') + 1], 'parallel' + head[head.index('--parallel') + 1],
                     'thinking')),
                 'promptCacheGiB': 0, 'learn': False, 'logDriver': observations[0]['logDriver'],
