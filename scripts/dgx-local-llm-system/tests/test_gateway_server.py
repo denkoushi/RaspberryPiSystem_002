@@ -1139,24 +1139,36 @@ class BusinessRoutingContractTests(unittest.TestCase):
             llm_shared_tokens=frozenset({'client-key'}), runtime_control_token='control-key',
             blue_backend_base_url='http://untrusted.invalid', model_registry_root=str(self.root / 'registry'))
         self.flag = patch.dict(os.environ, {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true',
+            'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'false',
             'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': 'business-only-key'})
         self.flag.start()
         self.addCleanup(self.flag.stop)
         self.calls = []
+        self.runtime = {'modelProfileId': self.module.DEEPSEEK_PROFILE, 'selectionRevision': 3,
+            'generation': 'generation-3', 'prepared': True, 'failureReason': None, 'apiListenerClosed': False,
+            'launcherStopped': False, 'watchdogStopped': False,
+            'ranks': [{'rank': r, 'generation': 'generation-3', 'running': True, 'gpuReleased': False} for r in (0, 1)],
+            'privateSharingEvidence': {'generation': 'generation-3', 'weightsRevision': '878f5689-ablit-0bdc2036',
+                'runtimeIdentity': 'tensorfold-native:serve:8889:parallel4:thinking', 'promptCacheGiB': 0,
+                'learn': False, 'logDriver': 'none', 'requestResponseLogging': False, 'persistsConversations': False}}
         def proxy(method, url, body, headers):
             self.calls.append((method, url, body, headers))
             if url.endswith('/v1/models'):
                 return 200, b'{"data":[{"id":"system-prod-primary"},{"id":"private-model"}]}', 'application/json'
             if url.endswith('/system/resource-state'):
-                return 200, b'{"ok":true,"businessRuntime":{"generation":"g"}}', 'application/json'
+                return 200, json.dumps({'ok': True, 'businessRuntime': self.runtime}).encode(), 'application/json'
             return 200, b'{"model":"upstream-internal-name","choices":[]}', 'application/json'
         self.handler = self.module.make_handler(self.config, proxy)
 
-    def request(self, method='POST', path='/v1/chat/completions', payload=None, token='client-key', runtime_token=None):
+    def request(self, method='POST', path='/v1/chat/completions', payload=None, token='client-key', runtime_token=None,
+                shared=None, extra_headers=''):
         data = json.dumps(payload or {'model': 'system-prod-primary', 'messages': [{'role': 'user', 'content': 'hello'}]}).encode() if method == 'POST' else b''
         headers = f'{method} {path} HTTP/1.0\r\nAuthorization: Bearer {token}\r\nContent-Length: {len(data)}\r\n'
         if runtime_token:
             headers += f'X-Runtime-Control-Token: {runtime_token}\r\n'
+        if shared is not None:
+            headers += f'X-Private-Shared-Runtime: {shared}\r\n'
+        headers += extra_headers
         request = headers.encode() + b'\r\n' + data
         output = io.BytesIO()
         class Connection:
@@ -1165,6 +1177,114 @@ class BusinessRoutingContractTests(unittest.TestCase):
         self.handler(Connection(), ('127.0.0.1', 0), object())
         head, body = output.getvalue().split(b'\r\n\r\n', 1)
         return int(head.split()[1]), body
+
+    def test_shared_header_rejects_stale_empty_duplicate_or_disabled_without_body_echo(self):
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
+            for shared in ('2:generation-3', '3:stale-generation', '', 'private-body-sentinel'):
+                for method in ('GET', 'POST'):
+                    with self.subTest(shared=shared, method=method):
+                        status, body = self.request(method, shared=shared,
+                            payload={'messages': [{'content': 'private-body-sentinel'}]})
+                        self.assertEqual((status, body), (409, b''))
+            self.assertEqual(self.request(shared='3:generation-3',
+                extra_headers='X-Private-Shared-Runtime: 3:generation-3\r\n'), (409, b''))
+        self.assertEqual(self.calls, [])
+        for flags in ({'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'false'},
+                      {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true', 'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'false'}):
+            with patch.dict(os.environ, flags):
+                self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+        self.assertFalse(any(url.endswith('/v1/chat/completions') for _, url, _, _ in self.calls))
+
+    def test_matching_shared_header_passes_with_fixed_route_fresh_proof_and_no_body_logs(self):
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}), \
+                patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs, \
+                patch.object(self.module, 'emit_agent_debug_log') as debug:
+            for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                self.assertEqual(self.request(method, path, shared='3:generation-3',
+                    payload={'messages': [{'role': 'user', 'content': 'private-body-sentinel'}]})[0], 200)
+                self.assertEqual(self.calls[-2][1], self.config.runtime_control_base_url + '/system/resource-state')
+                self.assertEqual(self.calls[-1][1], 'http://192.168.100.11:8889' + path)
+                self.assertNotIn('X-Private-Shared-Runtime', self.calls[-1][3])
+            self.assertEqual(logs.getvalue(), '')
+            debug.assert_not_called()
+
+    def test_shared_status_attestation_publishes_only_complete_current_ready_proof(self):
+        def snapshot():
+            status, body = self.request('GET', '/system/resource-state', runtime_token='control-key')
+            self.assertEqual(status, 200)
+            runtime = json.loads(body)['businessRuntime']
+            self.assertNotIn('privateSharingEvidence', runtime)
+            return runtime
+        self.assertNotIn('privateSharing', snapshot())
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
+            proof = snapshot()['privateSharing']
+            self.assertEqual(proof, {**self.runtime['privateSharingEvidence'], 'selectionRevision': 3,
+                                    'generationFenced': True})
+            original = json.loads(json.dumps(self.runtime))
+            mutations = [lambda r: r.pop('privateSharingEvidence'),
+                lambda r: r['privateSharingEvidence'].pop('logDriver'),
+                lambda r: r['privateSharingEvidence'].update(logDriver='unknown'),
+                lambda r: r['privateSharingEvidence'].update(learn=0),
+                lambda r: r['privateSharingEvidence'].update(promptCacheGiB=False),
+                lambda r: r['privateSharingEvidence'].update(requestResponseLogging=True),
+                lambda r: r['privateSharingEvidence'].update(persistsConversations=True),
+                lambda r: r.update(generation='stale'), lambda r: r.update(selectionRevision=2),
+                lambda r: r.update(prepared=False), lambda r: r.update(apiListenerClosed=True),
+                lambda r: r.update(failureReason='business_control_restarted'),
+                lambda r: r['ranks'][1].update(running=False)]
+            for index, mutate in enumerate(mutations):
+                with self.subTest(mutation=index):
+                    self.runtime = json.loads(json.dumps(original))
+                    mutate(self.runtime)
+                    self.assertNotIn('privateSharing', snapshot())
+                    self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+            self.runtime = original
+            for transition in ('loading', 'failed', 'idle'):
+                self.state.write_text(json.dumps({**self.value, 'businessTransition': transition}))
+                self.assertNotIn('privateSharing', snapshot())
+                self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+
+    def test_no_shared_header_retains_business_behavior_even_without_proof(self):
+        self.runtime.pop('privateSharingEvidence')
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
+            self.assertEqual(self.request()[0], 200)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.calls[0][1], 'http://192.168.100.11:8889/v1/chat/completions')
+
+    def test_shared_requests_refuse_glm_and_mutations_and_hold_generation_during_forward(self):
+        from active_model_state import business_state_lock
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
+            with business_state_lock(str(self.state)):
+                self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+            self.assertEqual(self.request(path='/start', shared='3:generation-3'), (409, b''))
+            self.state.write_text(json.dumps({**self.value, 'modelProfileId': self.module.GLM_PROFILE,
+                'selectedBusinessProfileId': self.module.GLM_PROFILE}))
+            self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+            self.assertEqual(self.calls, [])
+            self.state.write_text(json.dumps(self.value))
+            def proxy(method, url, body, headers):
+                with self.assertRaises(BlockingIOError):
+                    with business_state_lock(str(self.state), blocking=False):
+                        pass
+                if url.endswith('/system/resource-state'):
+                    return 200, json.dumps({'businessRuntime': self.runtime}).encode(), 'application/json'
+                return 200, b'{"model":"system-prod-primary","choices":[]}', 'application/json'
+            self.handler = self.module.make_handler(self.config, proxy)
+            self.assertEqual(self.request(shared='3:generation-3')[0], 200)
+
+    def test_shared_stream_uses_matching_generation_and_does_not_log_output(self):
+        response = io.BytesIO()
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        response.read1 = Mock(side_effect=[b'data: {"model":"internal","choices":[{"delta":{"content":"private-output"}}]}\n\n', b''])
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}), \
+                patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs, \
+                patch.object(self.module.urllib.request, 'urlopen', return_value=response) as upstream:
+            status, body = self.request(payload={'stream': True}, shared='3:generation-3')
+        self.assertEqual(status, 200)
+        self.assertIn(b'private-output', body)
+        self.assertEqual(upstream.call_args.args[0].full_url, 'http://192.168.100.11:8889/v1/chat/completions')
+        self.assertEqual(logs.getvalue(), '')
 
     def test_deepseek_fixed_route_credential_alias_and_no_glm_transform(self):
         status, body = self.request()
