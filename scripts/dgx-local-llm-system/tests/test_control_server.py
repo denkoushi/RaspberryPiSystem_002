@@ -981,6 +981,25 @@ class BusinessSwitchContractTests(unittest.TestCase):
         self.assertNotEqual(self.state_value()['businessGeneration'], previous['businessGeneration'])
         self.assertNotIn('businessFailureReason', self.state_value())
 
+    def test_monitor_accepts_deepseek_probe_answered_only_in_reasoning(self):
+        from unittest.mock import patch
+        real_monitor = self.monitor.temp_original
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        replies = [{'data': [{'id': 'system-prod-primary'}]},
+                   {'choices': [{'message': {'role': 'assistant', 'content': '', 'reasoning_content': 'OK'}}]}]
+        class Reply:
+            def __init__(self, value): self.value = value
+            def __enter__(self): return io.BytesIO(json.dumps(self.value).encode())
+            def __exit__(self, *args): return False
+        ready = {'prepared': True, 'failureReason': None, 'ranks': [{'running': True}, {'running': True}]}
+        with patch.dict('os.environ', {'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': 'test-key'}), \
+             patch.object(self.module.urllib.request, 'urlopen', side_effect=lambda *a, **k: Reply(replies.pop(0))), \
+             patch('business_tensorfold.runtime_status', return_value=ready), \
+             patch.object(self.module.time, 'sleep', side_effect=AssertionError('probe retried')):
+            real_monitor(config, identity, profile)
+        self.assertEqual(self.state_value()['businessTransition'], 'ready')
+
     def test_start_defensively_fails_loading_when_monitor_died(self):
         self.request(modelProfileId=self.deep, reason='business-model-selection')
         previous = self.state_value()

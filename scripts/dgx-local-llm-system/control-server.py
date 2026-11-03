@@ -351,8 +351,9 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
                     body["chat_template_kwargs"] = {"reasoning_effort": "low"}
                 request = urllib.request.Request(base + "/v1/chat/completions", data=json.dumps(body).encode(), headers={**headers, "Content-Type": "application/json"})
                 with urllib.request.urlopen(request, timeout=30) as response:
-                    message = json.load(response)["choices"][0]["message"]["content"]
-                if not isinstance(message, str) or not message.strip():
+                    message = json.load(response)["choices"][0]["message"]
+                # DeepSeek can spend the short probe budget on reasoning_content alone.
+                if not any(isinstance(message.get(k), str) and message[k].strip() for k in ("content", "reasoning_content")):
                     raise ValueError("empty inference probe")
                 if profile.id == DEEPSEEK_PROFILE:
                     status = runtime_status(identity[2])
