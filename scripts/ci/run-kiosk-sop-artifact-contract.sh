@@ -69,7 +69,7 @@ docker run --rm --init --ipc=host --network=none --platform "$generator_platform
       --actual-root /diagnostics/candidate/assembly-procedure-template \
       --preview /workspace/docs/design-previews/kiosk-assembly-procedure-template-sop.html \
       --diagnostics-root /diagnostics/assembly
-    # Chromium only (the production kiosk browser); two workers split the 9 tests.
+    # Chromium only: every production kiosk runs it.
     pnpm exec playwright test --config=playwright.kiosk-sop.config.ts --workers=2 \
       --output=/diagnostics/playwright-test-results
   '
