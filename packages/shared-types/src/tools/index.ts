@@ -101,6 +101,8 @@ export interface Transaction {
 }
 
 export interface BorrowPayload {
+  eventKey?: string;
+  readAt?: string;
   itemTagUid: string;
   employeeTagUid: string;
   clientId?: string;
@@ -109,6 +111,8 @@ export interface BorrowPayload {
 }
 
 export interface ReturnPayload {
+  eventKey?: string;
+  readAt?: string;
   loanId: string;
   clientId?: string;
   note?: string | null;

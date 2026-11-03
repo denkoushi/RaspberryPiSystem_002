@@ -31,6 +31,7 @@ import {
   advanceKioskWebActivation,
   kioskWebNavigation
 } from '../features/kiosk/kioskWebActivation';
+import { useLoanOutboxReplay } from '../features/kiosk/loan/offline/useLoanOutboxReplay';
 import { KioskPortalControls } from '../features/kiosk/portal/KioskPortalControls';
 import { useKioskPortalLargeScreen } from '../features/kiosk/portal/useKioskPortalLargeScreen';
 import { useKioskSeamlessWebUpdate } from '../features/kiosk/useKioskSeamlessWebUpdate';
@@ -45,6 +46,7 @@ import type { TimedHoverRevealCloseReason } from '../hooks/useTimedHoverReveal';
 
 export function KioskLayout() {
   useInventoryOutboxReplay();
+  useLoanOutboxReplay();
   const clientKey = getResolvedClientKey();
   const callTargetsQuery = useKioskCallTargets();
   const selfClientId = callTargetsQuery.data?.selfClientId ?? '';

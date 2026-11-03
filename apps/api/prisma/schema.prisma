@@ -954,6 +954,8 @@ model Loan {
   notes                                        String?
   photoUrl                                     String? // 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
   photoTakenAt                                 DateTime? // 撮影日時
+  borrowReceivedAt                            DateTime?
+  returnReceivedAt                            DateTime?
   photoBorrowIdempotencyKey                    String?                                       @db.Uuid
   photoBorrowRequestFingerprint                String?                                       @db.Char(64)
   /// VLM が付与した表示用工具名（写真持出・マスタ Item 非紐づけ）
@@ -1005,6 +1007,8 @@ model Transaction {
   actorEmployeeId   String?
   performedByUserId String?
   clientId          String?
+  eventKey          String?           @db.Uuid
+  eventFingerprint  String?           @db.Char(64)
   details           Json?
   createdAt         DateTime          @default(now())
   loan              Loan?             @relation(fields: [loanId], references: [id])
@@ -1012,6 +1016,7 @@ model Transaction {
   performedByUser   User?             @relation(fields: [performedByUserId], references: [id])
   client            ClientDevice?     @relation(fields: [clientId], references: [id])
 
+  @@unique([clientId, eventKey], map: "Transaction_event_key_uidx")
   @@index([loanId])
   @@index([actorEmployeeId])
   @@index([performedByUserId])

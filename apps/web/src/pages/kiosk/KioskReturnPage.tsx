@@ -2,7 +2,8 @@ import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 
 import { api, getResolvedClientKey, postClientLogs } from '../../api/client';
-import { useActiveLoans, useReturnMutation, useCancelLoanMutation } from '../../api/hooks';
+import { useActiveLoans, useCancelLoanMutation } from '../../api/hooks';
+import { useKioskReturnMutation } from '../../api/hooks/tools';
 import { KioskActiveLoanCard } from '../../components/kiosk/KioskActiveLoanCard';
 import { presentActiveLoanListLines } from '../../features/kiosk/activeLoanListLines';
 import { formatKioskActiveLoanBorrowedAt } from '../../features/kiosk/formatKioskActiveLoanBorrowedAt';
@@ -12,6 +13,7 @@ import {
   kioskPanelClassName,
   kioskSectionTitleClassName,
 } from '../../features/kiosk/kioskTheme';
+import { useLoanOfflineQueue } from '../../features/kiosk/loan/offline/useLoanOfflineQueue';
 
 import type { Loan, ReturnPayload } from '../../api/types';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -37,7 +39,8 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
 
   // propsで提供されている場合はそれを使用、なければ自分で取得したものを使用
   const loansQuery = providedLoansQuery || ownLoansQuery;
-  const returnMutation = useReturnMutation(resolvedClientKey);
+  const returnMutation = useKioskReturnMutation();
+  const outbox = useLoanOfflineQueue();
   const cancelMutation = useCancelLoanMutation(resolvedClientKey);
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
 
@@ -52,8 +55,8 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
   const handleReturn = async (loanId: string) => {
     const payload: ReturnPayload = { loanId };
     try {
-      await returnMutation.mutateAsync(payload);
-      await loansQuery.refetch();
+      const loan = await returnMutation.mutateAsync(payload);
+      if (loan) await loansQuery.refetch();
     } catch (error) {
       const apiErr = error as Partial<AxiosError<{ message?: string }>>;
       const apiMessage: string | undefined = apiErr.response?.data?.message;
@@ -157,11 +160,12 @@ export function KioskReturnPage({ loansQuery: providedLoansQuery, clientKey: pro
 
   return (
     <div className="h-full flex flex-col">
+      {outbox.message ? <p role="status" className="text-sm font-semibold">{outbox.message}</p> : null}
       <section className={clsx(kioskPanelClassName, 'flex h-full flex-col p-4 text-white')}>
         <header className="mb-3 shrink-0">
           <h2 className={kioskSectionTitleClassName}>持出一覧</h2>
         </header>
-        {loansQuery.isError ? (
+        {loansQuery.isError && !loansQuery.data ? (
           <p className="text-sm font-semibold text-red-400">返却一覧の取得に失敗しました</p>
         ) : loansQuery.isLoading ? (
           <p className="text-sm text-white/80">読み込み中...</p>
