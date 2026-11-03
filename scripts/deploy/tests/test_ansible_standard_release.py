@@ -372,6 +372,8 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("procedure_material_split_suggestion_enabled | default(false)", bindings["PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED"])
         self.assertIn("inspection_drawing_transfer_jev_enabled | default(false)", bindings["INSPECTION_DRAWING_TRANSFER_JEV_ENABLED"])
         self.assertIn("inspection_drawing_reference_placement_enabled | default(false)", bindings["INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED"])
+        # The business GLM/DeepSeek switch flag reaches the API the same way, off unless the inventory sets it
+        self.assertIn("api_business_deepseek_switch_enabled | default(false)", bindings["BUSINESS_DEEPSEEK_SWITCH_ENABLED"])
         self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
         self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
         self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")
