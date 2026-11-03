@@ -1,3 +1,4 @@
+import { filterActivePlacements } from './placement-completion.service.js';
 import { prisma } from '../../lib/prisma.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../production-schedule/seiban-machine-display-names.service.js';
 
@@ -15,25 +16,23 @@ function snapshotText(snapshot: Prisma.JsonValue | null, field: string): string 
 export async function listHaizenOverview() {
   const [branches, zero2w] = await Promise.all([prisma.orderPlacementBranchState.findMany({
     orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-    take: HAIZEN_OVERVIEW_LIMIT + 1,
     select: {
-      id: true, manufacturingOrderBarcodeRaw: true, branchNo: true,
+      id: true, slipKind: true, manufacturingOrderBarcodeRaw: true, branchNo: true,
       shelfCodeRaw: true, scheduleSnapshot: true, updatedAt: true
     }
   }), prisma.haizenCurrentPlacement.findMany({
     orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-    take: HAIZEN_OVERVIEW_LIMIT + 1,
     select: {
       id: true, manufacturingOrderBarcodeRaw: true,
       shelfCodeRaw: true, scheduleSnapshot: true, updatedAt: true
     }
   })]);
-  const placements = [
+  const placements = (await filterActivePlacements([
     ...branches.map(row => ({ ...row, source: 'branch' as const })),
-    ...zero2w.map(row => ({ ...row, source: 'zero2w' as const, branchNo: null }))
-  ].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || a.id.localeCompare(b.id) || a.source.localeCompare(b.source));
-  const rows = placements.slice(0, HAIZEN_OVERVIEW_LIMIT).map(({ scheduleSnapshot, updatedAt, ...placement }) => ({
-    ...placement,
+    ...zero2w.map(row => ({ ...row, source: 'zero2w' as const, branchNo: null, slipKind: undefined }))
+  ])).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || a.id.localeCompare(b.id) || a.source.localeCompare(b.source));
+  const rows = placements.slice(0, HAIZEN_OVERVIEW_LIMIT).map(({ scheduleSnapshot, updatedAt, id, source, branchNo, shelfCodeRaw, manufacturingOrderBarcodeRaw }) => ({
+    id, source, branchNo, shelfCodeRaw, manufacturingOrderBarcodeRaw,
     fseiban: snapshotText(scheduleSnapshot, 'FSEIBAN'),
     fhincd: snapshotText(scheduleSnapshot, 'FHINCD'),
     fhinmei: snapshotText(scheduleSnapshot, 'FHINMEI'),

@@ -1,3 +1,4 @@
+import { filterActivePlacements } from './placement-completion.service.js';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
@@ -28,7 +29,7 @@ export async function listOrderPlacementBranches(
     where: { manufacturingOrderBarcodeRaw: key },
     orderBy: { branchNo: 'asc' }
   });
-  return rows.map((r) => ({
+  return (await filterActivePlacements(rows)).map((r) => ({
     id: r.id,
     manufacturingOrderBarcodeRaw: r.manufacturingOrderBarcodeRaw,
     branchNo: r.branchNo,
