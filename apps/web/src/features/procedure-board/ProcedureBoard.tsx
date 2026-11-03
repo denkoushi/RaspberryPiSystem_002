@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
@@ -82,27 +82,37 @@ const Card = memo(function Card({ procedureId, item, material, ghost, selected, 
   </article>;
 });
 
+type ContentsEntry = { itemId: string; text: string };
+
 type PageProps = { page: BoardLayout['pages'][number]; procedureId: string; materials: Map<string, Material>;
-  set?: SuggestionSet | null; stale: boolean; collapsed: boolean; toggle: (page: number) => void; selected?: string;
+  contents?: ContentsEntry[]; set?: SuggestionSet | null; stale: boolean; collapsed: boolean; toggle: (page: number) => void; selected?: string;
   editing?: Editing; disabled: boolean; begin: CardProps['begin']; select: CardProps['select']; commit: CardProps['commit'];
   cancel: CardProps['cancel']; remove: CardProps['remove']; decide: CardProps['decide']; shown: CardProps['shown']; resize: (page: number, row: number, col: number, value: number) => void };
-const Page = memo(function Page({ page, procedureId, materials, set, stale, collapsed, toggle, selected, editing, disabled, begin, select, commit, cancel, remove, decide, shown, resize }: PageProps) {
+const Page = memo(function Page({ page, contents, procedureId, materials, set, stale, collapsed, toggle, selected, editing, disabled, begin, select, commit, cancel, remove, decide, shown, resize }: PageProps) {
   const heading = set?.headings.find(heading => heading.page === page.page);
   const ghosts = set?.placements.filter(ghost => ghost.page === page.page) ?? [];
   const shared = { procedureId, disabled, begin, select, commit, cancel, remove, decide, shown };
   const ghostCard = (ghost: Ghost) => <Card key={`ghost:${ghost.id}`} {...shared} ghost={ghost} material={materials.get(ghost.materialId)} stale={stale} />;
+  const contentsAfterTitle = page.rows[0]?.cols[0]?.items[0]?.style === 'heading';
+  const contentsNav = !!contents?.length && <nav className="pb-contents" aria-label="目次"><b>目次</b>
+    {contents.map(entry => <button type="button" key={entry.itemId} onClick={event => {
+      const target = event.currentTarget.closest('.procedure-board')?.querySelector(`[data-item="${entry.itemId}"]`);
+      target?.scrollIntoView({ block: 'start', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }}>{entry.text}</button>)}
+  </nav>;
   return <section className={`pb-pane pb-page${collapsed ? ' pb-collapsed' : ''}`} data-drop={page.page} aria-label={`ページ${page.page}`} onClick={event => { if (collapsed && !(event.target as HTMLElement).closest('button')) toggle(page.page); }}>
     <header><span className="pb-page-number">{page.page}</span><span className="pb-page-total">/ 3</span>
       {icon(collapsed ? `ページ${page.page}を開く` : `ページ${page.page}を閉じる`, collapsed ? '+' : '−', () => toggle(page.page))}
     </header>
     {!collapsed && <div className="pb-scroll">
       {page.heading && <h2 className="pb-page-heading">{page.heading}</h2>}
+      {!contentsAfterTitle && contentsNav}
       {!page.heading && heading && <div data-ghost={heading.id} className={`pb-card pb-ghost pb-heading-ghost${stale ? ' pb-stale' : ''}`}><strong>{heading.text}</strong><span className="pb-actions">
         {icon('見出しにする', '✓', () => decide({ proposalId: heading.id, action: 'accept', itemId: crypto.randomUUID() }), disabled || stale)}
         {icon('見出しを外す', '×', () => decide({ proposalId: heading.id, action: 'dismiss' }), disabled || stale)}</span></div>}
       {Array.from({ length: page.rows.length + 1 }, (_, r) => {
         const row = page.rows[r];
-        return <div className="pb-row-group" key={r}>
+        return <Fragment key={r}><div className="pb-row-group">
           {ghosts.filter(ghost => ghost.mode === 'row' && ghost.row === r).map(ghostCard)}
           {row && (() => {
             const columns: { index: number; ghost?: Ghost }[] = row.cols.map((_, index) => ({ index }));
@@ -132,7 +142,7 @@ const Page = memo(function Page({ page, procedureId, materials, set, stale, coll
             </div>;
           })()}
           {set?.gaps.filter(gap => gap.page === page.page && gap.row === r).map(gap => <div className="pb-gap" key={gap.id}><b>?</b> {gap.text}</div>)}
-        </div>;
+        </div>{r === 0 && contentsAfterTitle && contentsNav}</Fragment>;
       })}
       {page.rows.length === 0 && ghosts.length === 0 && <div className="pb-empty">{page.page}</div>}
     </div>}
@@ -201,6 +211,8 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
     const { set, stale } = proposals.current;
     if (set && !stale) session.decide(set.id, decision);
   }, [session]);
+  const contents = useMemo(() => draft ? boardItems(draft).flatMap(({ item }) =>
+    item.kind === 'text' && item.style === 'subheading' ? [{ itemId: item.itemId, text: item.text }] : []) : [], [draft]);
   const placed = useMemo(() => new Set(draft ? boardItems(draft).flatMap(({ item }) => item.kind === 'material' ? [item.materialId] : []) : []), [draft]);
   const visibleSet = useMemo(() => set ? { ...set, placements: set.placements.filter(p => !placed.has(p.materialId)) } : null, [placed, set]);
   const preview = draft && state.format?.boardVersion === state.board?.version && state.pending === 0 ? formatPreview(draft, state.format) : undefined;
@@ -380,7 +392,7 @@ export function ProcedureBoard({ procedureId, title, materials: materialList, ma
         </div>}
       </section>
       {display.pages.map(page => <Page key={page.page} {...shared} page={page} set={visibleSet} stale={stale} collapsed={closed.includes(page.page)}
-        toggle={toggle}
+        toggle={toggle} contents={page.page === 1 ? contents : undefined}
         selected={boardItems({ ...display!, pages: [page] }).some(entry => entry.item.itemId === selected) ? selected : undefined}
         editing={editing} />)}
     </div> : <p role="status">{state.forbidden ? '手順づくりは無効です' : '読み込み中…'}</p>}

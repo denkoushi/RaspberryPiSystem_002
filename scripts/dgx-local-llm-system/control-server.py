@@ -302,7 +302,9 @@ def business_runtime_status(config: ControlConfig) -> dict:
     if not isinstance(generation, str) or not generation:
         raise BusinessRestoreUnavailableError("business runtime generation unavailable")
     if state["selectedBusinessProfileId"] == DEEPSEEK_PROFILE:
-        result = runtime_status(generation)
+        result = runtime_status(generation, sharing=(
+            os.environ.get("DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "") in {"true", "1"}
+            and state["businessTransition"] == "ready" and not state.get("businessFailureReason")))
     else:
         from resource_state import glm_business_runtime
         result = glm_business_runtime(generation)

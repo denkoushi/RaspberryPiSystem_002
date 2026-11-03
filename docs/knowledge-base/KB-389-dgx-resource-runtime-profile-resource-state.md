@@ -3,7 +3,7 @@ title: KB-389 DGX resource runtimeProfile and shared resourceState
 tags: [DGX, DGX_RESOURCE, Spark, runtimeProfile, resourceState, vLLM]
 audience: [開発者, 運用者]
 last-verified: 2026-06-15
-last-updated: 2026-06-15-preflight-metrics-deploy
+last-updated: 2026-11-03
 category: knowledge-base
 status: active
 scope: DGX Spark system-prod LocalLLM, Pi5 `/admin/tools/dgx-resource`, profile-scoped memory budget
@@ -67,6 +67,16 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - `status`: `preparing` | `released` (see Open Items — `ready` not written yet)
 - Pi5 admin shows **`DGX 所有`** via `overview.runtimeSummary.resourceOwnerLabelJa`
 - Strict Ready / business readiness still uses Pi5 orchestration + `/v1/models`; resourceState is **display and cross-workload lease hint**, not a KPI.
+
+### Business DeepSeek private-sharing attestation (local implementation · 2026-11-03)
+
+- `DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED` defaults to false in the Business launcher, control server and gateway; the existing `BUSINESS_DEEPSEEK_SWITCH_ENABLED` must also be enabled. Enabling requires a new Business DeepSeek launch: existing containers cannot acquire proof by changing the flag alone. GLM and the Private port 8888 launcher are unchanged.
+- Business DeepSeek always refuses all `--learn*` options. Opt-in launches additionally pin `--prompt-cache-gib 0` and use a read-only container root, read-only data mounts and memory-only `/tmp`; both containers retain Docker `--log-driver none`.
+- Authenticated gateway `GET /system/resource-state` optionally adds `businessRuntime.privateSharing`. Missing, unknown, unsafe, stopped, loading or stale observations omit it. Internal `privateSharingEvidence` from the control server is removed at the gateway; only the gateway publishes the complete attestation.
+- `generation` comes from matching state/launch labels and live container IDs/start times on both ranks; `selectionRevision` is the current integer selection revision. Prepared-marker verification and matching live image IDs, model/checkpoint paths and worker rank-cache mount establish `weightsRevision`. Observed native serve/port/parallel/thinking arguments establish `runtimeIdentity`.
+- `promptCacheGiB` and `learn` come from the observed argv; `logDriver` comes from Docker inspection on both ranks. Discarded engine stdout/stderr, read-only durable storage and absent learning/retained prompt cache establish `requestResponseLogging: false` and `persistsConversations: false`. Gateway shared-request access logging is suppressed; its forwarding paths do not log bodies.
+- `generationFenced: true` is added only by the gateway after checking the proof against the current ready selection under the existing lifecycle/routing lock. `X-Private-Shared-Runtime: <selectionRevision>:<generation>` requires fresh proof and fixes the upstream for the entire request/stream. Stale, duplicate, empty or unverified headers return an empty HTTP 409 response. Requests without the header retain existing routing and locking.
+- Contract owner: [DGXSparkControlPlane repository boundary](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md) and [shared-model contract](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/exec-plans/shared-model-both-pis.md). This is local implementation evidence only; live container startup with a read-only root, engine behavior and two-rank operation still require operator validation before enablement. No deployment was performed.
 
 ### Async business-return UX (Pi5 only · 2026-06-07)
 

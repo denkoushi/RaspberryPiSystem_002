@@ -521,10 +521,15 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
         from unittest.mock import patch
         source = ('set -eu\ncd "$(dirname "$(readlink -f "$0")")"\n'
                   'source ./scripts/nodes.sh\nCACHE="$HOME/.cache/dsv41-tensorfold"\n'
-                  'RUN_ARGS="--example"\nprintf "%s\\n" "$PWD" "$RUN_ARGS"\n'
+                  'DGX_BUSINESS_GENERATION=g\nEXPECTED_REVISION=pinned\nDGX_PRIVATE_SHARED_DEEPSEEK_ENABLED=1\n'
+                  'SERVE=(tensorfold-native serve /model --port 8889 --parallel 4 --thinking)\nSERVE+=("$@")\n'
+                  'RUN_ARGS="--example"\nDATA_SUB=prepared\nDATA=/hf/$DATA_SUB\n'
+                  'printf "%s\\n" "$PWD" "$RUN_ARGS"\n'
+                  'printf "%s\\n" "${SERVE[*]}"\n'
                   '# docker run head\n# docker run worker\n# docker run probe\n')
         anchors = ('source ./scripts/nodes.sh',
-                   '$HOME/.cache/dsv41-tensorfold', 'RUN_ARGS="', 'docker run head')
+                   '$HOME/.cache/dsv41-tensorfold', 'RUN_ARGS="', 'docker run head',
+                   'SERVE+=("$@")', 'DATA=/hf/$DATA_SUB')
         # Exercise the launch transformation independently of the marker helper below.
         setup = 'shared_config() { :; }; business_prepared() { :; }; prepared_state() { :; }'
         with tempfile.TemporaryDirectory() as directory, patch.object(self.module, 'SHARED_SETUP', setup):
@@ -555,7 +560,109 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
                 cwd='/', capture_output=True, text=True)
             self.assertEqual(launched.returncode, 0, launched.stderr)
             self.assertEqual(Path(launched.stdout.splitlines()[0]).resolve(), root.resolve())
-            self.assertEqual(launched.stdout.splitlines()[1], '--log-driver none --example')
+            self.assertIn('--log-driver none', launched.stdout.splitlines()[1])
+            self.assertIn('business.generation=g', launched.stdout.splitlines()[1])
+            self.assertIn('--read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m', launched.stdout.splitlines()[1])
+            argv = shlex.split(launched.stdout.splitlines()[2])
+            self.assertEqual(argv[-2:], ['--prompt-cache-gib', '0'])
+            self.assertFalse(any(arg.startswith('--learn') for arg in argv))
+            unshared = subprocess.run(['bash', '-eu', '-c', output.read_text().replace('DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED=1\n', 'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED=0\n'),
+                str(root / 'start.sh')], cwd='/', capture_output=True, text=True)
+            self.assertEqual(unshared.returncode, 0, unshared.stderr)
+            self.assertNotIn('--read-only', unshared.stdout.splitlines()[1])
+            self.assertNotIn('--prompt-cache-gib', shlex.split(unshared.stdout.splitlines()[2]))
+            for option in ('--learn', '--learn-dir', '--learn-gib', '--learn=true'):
+                with self.subTest(option=option):
+                    refused = subprocess.run(['bash', '-eu', '-c', output.read_text(), str(root / 'start.sh'), option],
+                        cwd=root, capture_output=True, text=True)
+                    self.assertNotEqual(refused.returncode, 0)
+                    self.assertIn('business_learning_forbidden', refused.stderr)
+
+    def sharing_status(self, change=None, *, prepared=True, sharing=True, image=None):
+        from unittest.mock import Mock
+        image_id = 'sha256:' + 'a' * 64
+        started = '2026-11-03T00:01:00+00:00'
+        weights = '878f5689-ablit-0bdc2036'
+        model = '/hf/tensorfold-dsv41/' + weights
+        observations = [{
+            'id': 'container-' + str(rank), 'image': image_id, 'running': True, 'startedAt': started,
+            'labels': {'business.generation': 'g', 'business.recipe-revision': self.module.REVISION},
+            'path': 'tensorfold-native' if rank == 0 else 'tf-dsv41-lanes',
+            'args': ['serve', model + '/model', '--port', '8889', '--parallel', '4', '--thinking',
+                     '--prompt-cache-gib', '0'] if rank == 0 else
+                    [model + '/checkpoint', '/rank-cache', '1', '2', 'head', '29620', '/kit'],
+            'logDriver': 'none', 'readOnly': True,
+            'tmpfs': {'/tmp': 'rw,noexec,nosuid,size=64m'},
+            'mounts': [{'Type': 'volume', 'Source': '/volumes/business-hf', 'Destination': '/hf', 'RW': False},
+                       {'Type': 'bind', 'Source': '/cache/rank-cache-' + weights, 'Destination': '/rank-cache', 'RW': False}],
+        } for rank in (0, 1)]
+        if change:
+            change(observations)
+        nodes = [["true", "false", "false", "false", "false", 'container-' + str(rank), 'g', started,
+                  '2026-11-03T00:00:00+00:00'] for rank in (0, 1)]
+        lines = [str(prepared).lower(), *nodes[0], *nodes[1]]
+        if sharing:
+            lines += [*(json.dumps(v) for v in observations), image if image is not None else image_id]
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout='\n'.join(lines) + '\n', stderr=''))
+        status = self.module.runtime_status('g', runner=runner, sharing=sharing)
+        return status, runner.call_args.args[0][-1]
+
+    def test_sharing_evidence_uses_both_live_containers_and_prepared_image(self):
+        status, command = self.sharing_status()
+        evidence = status['privateSharingEvidence']
+        self.assertEqual(evidence, {'generation': 'g', 'weightsRevision': '878f5689-ablit-0bdc2036',
+            'runtimeIdentity': 'tensorfold-native:serve:8889:parallel4:thinking', 'promptCacheGiB': 0,
+            'learn': False, 'logDriver': 'none', 'requestResponseLogging': False, 'persistsConversations': False})
+        self.assertNotIn('privateSharing', status)  # Only the gateway can prove its fence.
+        self.assertIn('business_prepared check', command)
+        self.assertNotIn('.Config.Env', command)
+        # SHARED_SETUP defines worker_nfs, but status must never invoke it.
+        self.assertNotIn('worker_nfs 1', command)
+        self.assertNotIn('worker_files_check', command)
+        for kwargs in ({'sharing': False}, {'prepared': False}, {'image': 'unknown'}):
+            with self.subTest(kwargs=kwargs):
+                self.assertNotIn('privateSharingEvidence', self.sharing_status(**kwargs)[0])
+
+    def test_sharing_evidence_accepts_the_pinned_image_entrypoint_only(self):
+        def entrypoint(path):
+            def change(observations):
+                for observed in observations:
+                    observed['args'].insert(0, observed['path'])
+                    observed['path'] = path
+            return change
+        evidence = self.sharing_status(entrypoint('/opt/nvidia/nvidia_entrypoint.sh'))[0]['privateSharingEvidence']
+        self.assertEqual(evidence['runtimeIdentity'], 'tensorfold-native:serve:8889:parallel4:thinking')
+        for path in ('/bin/sh', '/opt/other/entrypoint.sh'):
+            with self.subTest(path=path):
+                self.assertNotIn('privateSharingEvidence', self.sharing_status(entrypoint(path))[0])
+
+    def test_sharing_evidence_is_omitted_for_unknown_unsafe_or_stale_facts_on_either_rank(self):
+        mutations = [
+            lambda o: o.pop('logDriver'), lambda o: o.update(logDriver=''),
+            lambda o: o.update(logDriver='json-file'), lambda o: o.update(readOnly=False),
+            lambda o: o.update(id='replaced'), lambda o: o.update(image='sha256:' + 'b' * 64),
+            lambda o: o.update(startedAt='restarted'), lambda o: o.update(running=False),
+            lambda o: o['labels'].update({'business.generation': 'stale'}),
+            lambda o: o['labels'].update({'business.recipe-revision': 'unknown'}),
+            lambda o: o['mounts'][0].update(RW=True), lambda o: o.update(tmpfs={}),
+            lambda o: o['args'].extend(['--learn']), lambda o: o['args'].extend(['--learn-dir', '/tmp/learn']),
+            lambda o: o['args'].extend(['--learn-gib', '1']),
+            lambda o: o.update(path='sh'), lambda o: o['args'].__setitem__(1, '/other/weights'),
+        ]
+        for rank in (0, 1):
+            for index, mutate in enumerate(mutations):
+                with self.subTest(rank=rank, mutation=index):
+                    status, _ = self.sharing_status(lambda obs: mutate(obs[rank]))
+                    self.assertNotIn('privateSharingEvidence', status)
+        for args in (['--prompt-cache-gib', '1'], ['--parallel', '8'], ['--port', '8888'],
+                     ['--no-thinking'], ['--prompt-cache-gib=0'], ['--thinking=false']):
+            with self.subTest(args=args):
+                status, _ = self.sharing_status(lambda obs: obs[0]['args'].extend(args))
+                self.assertNotIn('privateSharingEvidence', status)
+        status, _ = self.sharing_status(lambda obs: obs[0]['args'].__setitem__(-1, '2'))
+        self.assertNotIn('privateSharingEvidence', status)
+        status, _ = self.sharing_status(lambda obs: obs[0]['args'].__delitem__(slice(-2, None)))
+        self.assertNotIn('privateSharingEvidence', status)
 
     def test_business_shell_unprepared_refuses_before_stopping_existing_runtime(self):
         # Exercise the actual adapter entry and SSH command with only fake binaries.

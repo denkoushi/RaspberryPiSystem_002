@@ -1,14 +1,15 @@
 import { FormEvent, useMemo, useState } from 'react';
 
-import { returnMeasuringInstrument } from '../../api/client';
 import { useActiveLoans } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { useLoanOfflineQueue } from '../../features/kiosk/loan/offline/useLoanOfflineQueue';
 
 import type { Loan } from '../../api/types';
 
 export function KioskInstrumentReturnPage() {
+  const outbox = useLoanOfflineQueue();
   const loansQuery = useActiveLoans();
   const instrumentLoans = useMemo(
     () => (loansQuery.data ?? []).filter((loan) => loan.measuringInstrumentId),
@@ -35,14 +36,14 @@ export function KioskInstrumentReturnPage() {
   };
 
   const handleReturn = async (targetLoanId: string) => {
-    const loan = await returnMeasuringInstrument({
+    const loan = await outbox.submit({ route: 'instrumentReturn', body: {
       loanId: targetLoanId,
       note: note || undefined
-    });
-    setMessage(`返却完了: Loan ID = ${loan.id}`);
+    } });
+    setMessage(loan ? `返却完了: Loan ID = ${loan.id}` : null);
     setLoanId('');
     setNote('');
-    await loansQuery.refetch();
+    if (loan) await loansQuery.refetch();
   };
 
   const renderLoanRow = (loan: Loan) => {
@@ -92,11 +93,11 @@ export function KioskInstrumentReturnPage() {
             </Button>
           </div>
         </form>
-        {message ? <p className="mt-4 text-sm text-white/80">{message}</p> : null}
+        {message || outbox.message ? <p role="status" className="mt-4 text-sm text-white/80">{message || outbox.message}</p> : null}
       </Card>
 
       <Card title="貸出中の計測機器">
-        {loansQuery.isError ? (
+        {loansQuery.isError && !loansQuery.data ? (
           <p className="text-sm text-red-400">貸出一覧の取得に失敗しました。</p>
         ) : loansQuery.isLoading ? (
           <p className="text-sm text-white/70">読み込み中…</p>
