@@ -35,6 +35,21 @@ export class ItemInventoryService {
 
   async listLocations() { return listLocations(this.db); }
 
+  async listMachineOptionalDepartments(): Promise<string[]> {
+    const rows = await this.db.inventoryMachineOptionalDepartment.findMany({ orderBy: { department: 'asc' } });
+    return rows.map(row => row.department);
+  }
+
+  async setDepartmentMachineRequired(department: string, machineRequired: boolean) {
+    if (machineRequired) {
+      await this.db.inventoryMachineOptionalDepartment.deleteMany({ where: { department } });
+    } else {
+      await this.db.inventoryMachineOptionalDepartment.upsert({ where: { department }, create: { department }, update: {} });
+    }
+    return { department, machineRequired };
+  }
+
+
   async listItems() { return listItems(this.db); }
 
   async deleteItem(itemId: string) { return deleteItem(this.db, itemId); }

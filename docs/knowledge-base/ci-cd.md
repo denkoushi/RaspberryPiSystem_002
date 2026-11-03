@@ -845,6 +845,8 @@ update-frequency: high
 - ✅ `iframe` に `key={sheet.id}` を付け、シートごとに新しい iframe を作る（利用者から見た動きは同じ）。同条件 24 回で停止 0、両ブラウザ全 36 件合格
 - ✅ 診断を残す: `playwright.kiosk-sop.config.ts` を `trace: 'retain-on-failure'`、`actionTimeout: 15_000` にし、`run-kiosk-sop-artifact-contract.sh` の `--output` を diagnostics フォルダへ向けて、既存のアーティファクトに画面写真・`error-context.md`・`trace.zip` が入るようにした
 
+- ✅ 2026-11-03: 本番キオスクは全台 Chromium のため、`playwright.kiosk-sop.config.ts` から firefox の project を外した
+
 **再発防止**:
 - 取説の iframe を同じ要素のまま `srcDoc` で切り替える形に戻さない
 - kiosk-sop の失敗は、アーティファクトの `playwright-test-results/**/trace.zip` で最後に OPEN のままの呼び出しを見る

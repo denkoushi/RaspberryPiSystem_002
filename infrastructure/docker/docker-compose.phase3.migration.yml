@@ -1,10 +1,18 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   api-blue:
+    logging: *default-logging
     # Loaded only by the ephemeral migration command, never by slot startup.
     env_file:
       - ${MIGRATION_DATABASE_ENV_FILE:?MIGRATION_DATABASE_ENV_FILE is required}
 
   api-green:
+    logging: *default-logging
     # Loaded only by the ephemeral migration command, never by slot startup.
     env_file:
       - ${MIGRATION_DATABASE_ENV_FILE:?MIGRATION_DATABASE_ENV_FILE is required}

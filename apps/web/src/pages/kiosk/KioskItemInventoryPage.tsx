@@ -1,4 +1,5 @@
 import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
+import { splitArea } from '@raspi-system/shelf-layout-core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -11,7 +12,7 @@ import {
   type InventoryImportSummary,
   type InventoryTag,
 } from '../../api/client';
-import { useInventoryMachines, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { useInventoryMachineOptionalDepartments, useInventoryMachines, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
 import { inventoryKeys } from '../../api/queryKeys/itemInventory';
 import { KioskHomeIcon } from '../../components/kiosk/KioskHomeIcon';
 import { InventoryCorrectionPanel } from '../../features/kiosk/inventory/InventoryCorrectionPanel';
@@ -72,6 +73,8 @@ export function KioskItemInventoryPage() {
   const [numberBusy, setNumberBusy] = useState(false);
   const numberLookupRef = useRef(0);
   const [restockMode, setRestockMode] = useState(false);
+  const departmentsQuery = useInventoryMachineOptionalDepartments();
+  const machineOptional = (tag: InventoryTag | null) => Boolean(departmentsQuery.isSuccess && !departmentsQuery.isFetching && tag?.compartment && departmentsQuery.data?.includes(splitArea(tag.compartment.area).machine));
   const machinesQuery = useInventoryMachines();
   const machines = machinesQuery.data ?? [];
   const machinesLoading = machinesQuery.data === undefined && machinesQuery.isLoading;
@@ -89,12 +92,13 @@ export function KioskItemInventoryPage() {
   const canIssue = () => {
     if (flowRef.current.restockMode) return true;
     if (editingRef.current) return false;
+    if (machineOptional(flowRef.current.selectedTag)) return true;
     if (machinesLoading) return false;
     if (machines.length && !machineRef.current) { setMachineNudge(true); return false; }
     return true;
   };
-  const quantityLocked = !restockMode && (machineEditing || machinesLoading || (machines.length > 0 && !machineId));
   const [selectedTag, setSelectedTag] = useState<InventoryTag | null>(null);
+  const quantityLocked = !restockMode && (machineEditing || (!machineOptional(selectedTag) && (machinesLoading || (machines.length > 0 && !machineId))));
   const [message, setMessage] = useState('アイテムNFCタグを読み取ってください');
   const [messageKind, setMessageKind] = useState<'info' | 'success' | 'error'>('info');
   const [lastTransaction, setLastTransaction] = useState<InventoryMovementTransaction | null>(null);
@@ -483,13 +487,13 @@ export function KioskItemInventoryPage() {
           <div className="min-h-0">
             <InventoryPhotoPane key={selectedCompartment.id} photos={selectedPhotos} />
           </div>
-          <div className="flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto">
+          <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
             <div className="shrink-0">
               <h2 title={selectedCompartment.item.name} className="line-clamp-3 break-all text-[30px] font-black leading-tight">{selectedCompartment.item.name}</h2>
               <p className="min-w-0 break-all text-[17px] text-inv-muted"><span className={`${invLabelNumber} mr-2`}>{formatInventoryLabelNumber(selectedCompartment.labelNumber)}</span>{selectedCompartment.area}・棚{selectedCompartment.shelfNumber}・引き出し{selectedCompartment.drawerNumber}</p>
             </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,432px)] items-start gap-5">
-              <div className="flex min-w-0 flex-col gap-4">
+            <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,432px)] gap-5">
+              <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto">
                 <dl aria-label="アイテムの情報" className="flex flex-col">
                   {(Object.keys(detailLabels) as (keyof typeof detailLabels)[]).map((field) => selectedCompartment.item[field]?.trim() ? <div key={field} className="grid grid-cols-[72px_minmax(0,1fr)] items-baseline gap-3 border-t border-inv-line py-[9px] last:border-b"><dt className="text-base text-inv-faint">{detailLabels[field]}</dt><dd className="min-w-0 break-all text-[21px] font-bold leading-snug">{selectedCompartment.item[field]}</dd></div> : null)}
                 </dl>
@@ -497,8 +501,8 @@ export function KioskItemInventoryPage() {
                   <InventoryRecentHistory key={selectedCompartment.id} compartmentId={selectedCompartment.id} />
                 </div>
               </div>
-              <div className={`${invCard} flex min-w-0 flex-col gap-2.5 rounded-[18px] p-4`}>
-                <dl className="flex items-baseline gap-2 border-b border-inv-line pb-3">
+              <div className={`${invCard} flex min-h-0 min-w-0 flex-col gap-2.5 self-start rounded-[18px] p-4 ${!restockMode && machines.length > 0 ? 'h-full' : ''}`}>
+                <dl className="flex shrink-0 items-baseline gap-2 border-b border-inv-line pb-3">
                   <dt className={`${invEyebrow} mr-auto self-center`}>現在庫</dt>
                   <dd aria-label="現在庫" className="flex min-w-0 flex-wrap items-baseline justify-end gap-2">
                     <span className="max-w-full shrink-0 break-all text-5xl font-black leading-none tracking-[-0.02em] tabular-nums">{Number.isFinite(selectedCompartment.stockQuantity) ? selectedCompartment.stockQuantity : '—'}</span>
@@ -507,11 +511,11 @@ export function KioskItemInventoryPage() {
                   </dd>
                 </dl>
                 {!restockMode && machines.length > 0 ? <InventoryMachinePicker machines={machines} selectedId={machineId} editing={machineEditing} onEditing={value => { editingRef.current = value; setMachineEditing(value); setPanel('none'); setMessageKind('info'); }} onSelect={id => { selectMachine(machineId === id ? null : id); setMessageKind('info'); }} nudge={machineNudge} disabled={busy || refreshingTag} onOrderSaved={ordered => queryClient.setQueryData(inventoryKeys.machinesAll, ordered)} onError={error => { setMessage(error); setMessageKind('error'); }} /> : null}
-                <p className={invEyebrow}>{restockMode ? '補充する数' : '払い出す数'}</p>
-                <div className="grid grid-cols-5 gap-2" role="group" aria-label={restockMode ? '補充する数' : '払い出す数'}>
-                  {Array.from({ length: 20 }, (_, index) => index + 1).map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-[70px] rounded-xl border-[1.5px] text-[28px] font-black tabular-nums disabled:opacity-40 aria-disabled:opacity-30 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} aria-disabled={quantityLocked} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity) || (!restockMode && quantity > selectedCompartment.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
+                <p className={`${invEyebrow} shrink-0`}>{restockMode ? '補充する数' : '払い出す数'}</p>
+                <div className="grid shrink-0 grid-cols-5 gap-2" role="group" aria-label={restockMode ? '補充する数' : '払い出す数'}>
+                  {Array.from({ length: 20 }, (_, index) => index + 1).map((quantity) => <button key={quantity} type="button" aria-label={`${quantity}${unitLabel(selectedCompartment.item)}を${restockMode ? '補充' : '払い出す'}`} className={`h-[clamp(52px,6.5vh,70px)] rounded-xl border-[1.5px] text-[28px] font-black tabular-nums disabled:opacity-40 aria-disabled:opacity-30 ${restockMode ? 'border-inv-green bg-inv-green/10' : 'border-inv-amber bg-inv-amber/10'}`} aria-disabled={quantityLocked} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity) || (!restockMode && quantity > selectedCompartment.stockQuantity)} onClick={() => void submitQuantity(quantity)}>{quantity}</button>)}
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex shrink-0 items-center gap-2.5">
                   <button type="button" aria-disabled={quantityLocked} className="h-12 shrink-0 rounded-xl border border-inv-line2 bg-inv-s2 px-4 text-[15px] font-bold disabled:opacity-40 aria-disabled:opacity-30" disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment.stockQuantity)} onClick={() => { if (!canIssue()) return; setQuantityError(null); setPanel('quantity'); }}>ほかの数</button>
                   <button type="button" className={`${invButtonGhost} ml-auto min-h-11 min-w-0 !whitespace-normal border-transparent px-1 text-[15px] text-inv-muted underline underline-offset-4`} disabled={busy || refreshingTag || !Number.isFinite(selectedCompartment?.stockQuantity)} onClick={() => { setCorrectionError(null); setPanel('correct'); }}><EditIcon />数が合わないときは直す</button>
                 </div>

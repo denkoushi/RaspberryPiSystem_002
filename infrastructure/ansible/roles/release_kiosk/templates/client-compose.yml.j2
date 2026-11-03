@@ -1,6 +1,13 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
 {% if 'nfc-agent' in release_kiosk_services %}
   nfc-agent:
+    logging: *default-logging
     image: {{ release_kiosk_compose_images['nfc-agent'] | to_json }}
     network_mode: host
 {% if client_agents_hardened | default(false) | bool %}
@@ -35,6 +42,7 @@ services:
 {% endif %}
 {% if 'barcode-agent' in release_kiosk_services %}
   barcode-agent:
+    logging: *default-logging
     image: {{ release_kiosk_compose_images['barcode-agent'] | to_json }}
     network_mode: host
 {% if client_agents_hardened | default(false) | bool %}
@@ -61,6 +69,7 @@ services:
 {% endif %}
 {% if 'torque-agent' in release_kiosk_services %}
   torque-agent:
+    logging: *default-logging
     image: {{ release_kiosk_compose_images['torque-agent'] | to_json }}
     network_mode: host
 {% if client_agents_hardened | default(false) | bool %}

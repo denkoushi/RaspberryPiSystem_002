@@ -1159,6 +1159,11 @@ model InventoryImportMessage {
   @@index([payloadId])
 }
 
+model InventoryMachineOptionalDepartment {
+  department String   @id
+  createdAt  DateTime @default(now())
+}
+
 model InventoryShelf {
   id          String            @id @default(uuid())
   area        String

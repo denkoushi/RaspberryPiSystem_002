@@ -212,16 +212,33 @@
   roles:
     - role: release_pi5
 
-- name: Update Pi4 kiosks one target at a time
+- name: Update Pi4 kiosks in canary waves
   hosts: kiosk
   gather_facts: false
   become: true
-  serial: 1
+  # Normal releases widen 1 -> 5 -> 25% -> rest. Torque cutover stays one at a time.
+  serial: "{{ [1] if (release_torque_cutover | default(false) | bool) else [1, 5, '25%', '100%'] }}"
   max_fail_percentage: "{{ 100 if (release_torque_cutover | default(false) | bool) else 0 }}"
   order: inventory
   tags:
     - pi4
   pre_tasks:
+    - name: Mark this kiosk as started for the Pi3 gate
+      ansible.builtin.set_fact:
+        release_pi4_started: true
+
+    # A failure inside the role's rescue/always path does not trip
+    # max_fail_percentage across serial batches, so stop the next wave here
+    # before any of its kiosks are touched.
+    - name: Stop before this wave when a kiosk in an earlier wave failed
+      ansible.builtin.fail:
+        msg: >-
+          Not started: an earlier Pi4 wave failed or was unreachable on
+          {{ ansible_play_hosts_all | difference(ansible_play_hosts) | join(', ') }}.
+      when:
+        - not (release_torque_cutover | default(false) | bool)
+        - (ansible_play_hosts_all | difference(ansible_play_hosts)) | length > 0
+
     - name: Apply host certificate distrust before the kiosk release
       ansible.builtin.import_role:
         name: common
@@ -237,6 +254,9 @@
       ansible.builtin.import_role:
         name: release_kiosk
         tasks_from: host-journald
+    - name: Mark this kiosk as finished for the Pi3 gate
+      ansible.builtin.set_fact:
+        release_pi4_finished: true
 
 - name: Aggregate all selected torque candidates before ownership resumes
   hosts: kiosk
@@ -269,6 +289,19 @@
   tags:
     - pi3
   pre_tasks:
+    # A failure in the last Pi4 wave leaves other kiosks in that wave
+    # successful, so the playbook does not end by itself before Pi3.
+    - name: Stop before Pi3 when a Pi4 kiosk started but did not finish
+      vars:
+        release_pi4_unfinished: >-
+          {{ groups['kiosk'] | default([]) | map('extract', hostvars)
+             | selectattr('release_pi4_started', 'defined')
+             | rejectattr('release_pi4_finished', 'defined')
+             | map(attribute='inventory_hostname') | list }}
+      ansible.builtin.fail:
+        msg: "Not started: Pi4 did not finish on {{ release_pi4_unfinished | join(', ') }}."
+      when: release_pi4_unfinished | length > 0
+
     - name: Apply host certificate distrust before the signage release
       ansible.builtin.import_role:
         name: common

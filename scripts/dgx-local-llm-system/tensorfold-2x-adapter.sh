@@ -48,6 +48,26 @@ PY
   ssh -o BatchMode=yes -o ConnectTimeout=10 -- "${WORKER_SSH}" "${command}"
 }
 
+if [[ "${BLUE_MODEL_PROFILE_ID:-}" == "business_deepseek_v41_flash_tp2" ]]; then
+  [[ "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-false}" == true || "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-0}" == 1 ]] || fail "business_switch_disabled"
+  # Fail before stopping either rank or any other workload; no automatic preparation.
+  python3 "${SCRIPT_DIR}/business_tensorfold.py" check
+  bash "${SCRIPT_DIR}/stop-trtllm-server.sh"
+  python3 - "${MARKER}" "${DGX_BUSINESS_GENERATION:?}" <<'MARKER'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+path.parent.mkdir(parents=True, exist_ok=True)
+tmp = path.with_suffix(path.suffix + '.tmp')
+tmp.write_text(json.dumps({'adapter': 'dsv41_tensorfold_2x', 'business': True,
+    'generation': sys.argv[2], 'sshTarget': 'ubudgxkoushi@192.168.100.11',
+    'cloneDir': '/srv/dgx/system-prod/kits/deepseek-v41-flash-tp2'}) + '\n')
+tmp.replace(path)
+MARKER
+  exec python3 "${SCRIPT_DIR}/business_tensorfold.py" start
+fi
+
 bash "${SCRIPT_DIR}/stop-trtllm-server.sh"
 REVISION="$(worker git -C "${RECIPE_DIR}" rev-parse HEAD)" || fail "cannot read recipe revision"
 [[ "${REVISION}" == "${EXPECTED_REVISION}" ]] || fail "recipe revision mismatch"

@@ -5,8 +5,75 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import subprocess
+import shlex
+import re
 
 from model_profiles import ModelProfile
+
+
+def verify_rank_stopped(name: str, target: str | None = None) -> None:
+    if not re.fullmatch(r"[a-zA-Z0-9_.-]+", name):
+        raise RuntimeError("business_runtime_stop_unverified")
+    script = ('set -eu; names=$(docker ps --filter name=^/' + name +
+              '$ --format {{.ID}}); test -z "$names"; '
+              'for port in 38083 8889; do listeners=$(ss -H -ltn "sport = :$port"); test -z "$listeners"; done')
+    command = ["bash", "-c", script]
+    if target is not None:
+        if not re.fullmatch(r"[a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+", target):
+            raise RuntimeError("business_runtime_stop_unverified")
+        command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", target, shlex.join(command)]
+    subprocess.run(command, check=True, capture_output=True, text=True, timeout=20)
+
+
+def verify_blue_stopped(marker_path: str, container: str) -> None:
+    marker = json.loads(Path(marker_path).read_text())
+    verify_rank_stopped(container)
+    # Non-business TensorFold retains its legacy commands, followed by proof.
+    name = marker.get("containerName", "dsv41-1017-exl3-tf")
+    verify_rank_stopped(name, marker["sshTarget"])
+    if marker.get("adapter"):
+        # Inspect the private kit's own pid files without changing its commands,
+        # paths or logs. An SSH failure cannot clear its recovery marker.
+        clone = marker.get("cloneDir")
+        if not isinstance(clone, str) or not clone.startswith("/") or "\n" in clone:
+            raise RuntimeError("business_runtime_stop_unverified")
+        inspect = ["bash", "-eu", "-c", 'cd "$1"; source scripts/config.sh; printf "%s" "$CONTAINER_NAME"', "bash", clone]
+        actual_name = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", marker["sshTarget"],
+            shlex.join(inspect)], check=True, capture_output=True, text=True, timeout=20).stdout.strip()
+        verify_rank_stopped(actual_name)
+        verify_rank_stopped(actual_name, marker["sshTarget"])
+        command = ["bash", "-eu", "-c", 'cd "$1"; source scripts/config.sh; source scripts/nodes.sh; '
+            'test ! -e "$STATE_DIR/start.lock" || flock -n "$STATE_DIR/start.lock" true; '
+            'for file in "$STATE_DIR/memguard.pid"; do if test -e "$file"; then '
+            'pid=$(cat "$file"); if test -n "$pid" && kill -0 "$pid" 2>/dev/null; then exit 1; fi; fi; done; '
+            'worker 1 "if test -e $MEMGUARD_REMOTE_DIR/memguard.pid; then '
+            'pid=\\$(cat $MEMGUARD_REMOTE_DIR/memguard.pid); if kill -0 \\$pid 2>/dev/null; then exit 1; fi; fi"',
+            "bash", clone]
+        subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", marker["sshTarget"],
+                        shlex.join(command)], check=True, capture_output=True, text=True, timeout=30)
+
+
+def glm_business_runtime(generation: str) -> dict:
+    from business_tensorfold import TARGET
+    ranks = []
+    for rank, (name, target) in enumerate((("system-prod-trtllm", None), ("system-prod-trtllm-rank1", TARGET))):
+        script = ('set -eu; docker info >/dev/null; '
+                  'names=$(docker ps --filter name=^/' + name + '$ --format {{.ID}}); running=false; if test -n "$names"; then running=true; fi; '
+                  # Docker owns the container processes and their GPU contexts;
+                  # private containers may legitimately keep using the GPU.
+                  'released=false; if test "$running" = false; then released=true; fi; '
+                  'printf "%s\\n%s\\n" "$running" "$released"')
+        command = ["bash", "-c", script]
+        if target:
+            command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", target, shlex.join(command)]
+        values = subprocess.run(command, check=True, capture_output=True, text=True, timeout=20).stdout.splitlines()
+        if len(values) != 2 or any(v not in {"true", "false"} for v in values):
+            raise RuntimeError("business_runtime_status_unavailable")
+        ranks.append({"rank": rank, "generation": generation, "running": values[0] == "true", "gpuReleased": values[1] == "true"})
+    closed = subprocess.run(["ss", "-H", "-ltn", "sport = :38083"], check=True, capture_output=True, text=True, timeout=8).stdout.strip() == ""
+    return {"generation": generation, "prepared": True, "ranks": ranks,
+            "launcherStopped": True, "watchdogStopped": True, "apiListenerClosed": closed, "failureReason": None}
 
 
 ResourceOwner = str
@@ -112,3 +179,13 @@ def read_resource_state(path: str) -> DgxResourceState | None:
         backend=body.get("backend") if isinstance(body.get("backend"), str) else None,
         guarantee_level=body.get("guaranteeLevel") if isinstance(body.get("guaranteeLevel"), str) else None,
     )
+
+
+if __name__ == "__main__":
+    import sys
+    if sys.argv[1] == "verify-stop":
+        verify_blue_stopped(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "verify-empty":
+        from business_tensorfold import TARGET
+        verify_rank_stopped(sys.argv[2])
+        verify_rank_stopped("system-prod-trtllm-rank1", TARGET)

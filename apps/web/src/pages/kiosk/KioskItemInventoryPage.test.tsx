@@ -5,7 +5,8 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-rou
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { inventoryThumbnailUrl, resolveInventoryTag, resolveInventoryLabelNumber, type InventoryItem, type InventoryTag, type ResolvedInventoryTag } from '../../api/client';
-import { useInventoryMachines, useInventoryCompartmentHistory, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { useInventoryMachineOptionalDepartments, useInventoryMachines, useInventoryCompartmentHistory, useInventoryImportSummaries, useInventoryItems, useInventoryMutations } from '../../api/hooks';
+import { inventoryOfflineQueueStore } from '../../features/kiosk/inventory/offline/inventoryOfflineQueueStore';
 import { InventoryNfcRouter } from '../../features/kiosk/InventoryNfcRouter';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
@@ -16,7 +17,11 @@ import type { NfcEvent } from '../../hooks/useNfcStream';
 
 vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn(), resolveInventoryLabelNumber: vi.fn(), saveInventoryMachineOrder: vi.fn(), inventoryThumbnailUrl: vi.fn((value: string) => value) }));
 vi.mock('../../api/hooks/item-inventory', () => ({ useInventoryTags: vi.fn() }));
+vi.mock('../../features/kiosk/inventory/offline/inventoryOfflineQueueStore', () => ({
+  inventoryOfflineQueueStore: { list: vi.fn(async () => []), prune: vi.fn(), add: vi.fn(), fail: vi.fn(), remove: vi.fn() },
+}));
 vi.mock('../../api/hooks', () => ({
+  useInventoryMachineOptionalDepartments: vi.fn(() => ({ data: [], isSuccess: true, isFetching: false })),
   useInventoryMachines: vi.fn(() => ({ data: [], isLoading: false })),
   useInventoryMutations: vi.fn(),
   useInventoryItems: vi.fn(() => ({ data: [], isLoading: false })),
@@ -1600,7 +1605,11 @@ describe('inventory number keypad', () => {
   });
 });
 
-beforeEach(() => { vi.mocked(useInventoryMachines).mockReturnValue({ data: [], isLoading: false } as never); });
+beforeEach(() => {
+  vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({ data: [], isSuccess: true, isFetching: false } as never);
+  vi.mocked(useInventoryMachines).mockReturnValue({ data: [], isLoading: false } as never);
+  vi.mocked(inventoryOfflineQueueStore.list).mockResolvedValue([]);
+});
 
 describe('inventory machine picking', () => {
   const machine = { id: 'm1', name: '横形加工機', shortName: 'ＮＨＸ４０００', equipmentManagementNumber: 'M1' };
@@ -1609,6 +1618,34 @@ describe('inventory machine picking', () => {
     vi.mocked(useInventoryMachines).mockReturnValue({ data: [machine], isLoading: false } as never);
     vi.mocked(useInventoryItems).mockReturnValue({ data: [], isLoading: false } as never);
   });
+  it.each([false, true])('issues from an optional department with selected machine=%s', async selected => {
+    vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({ data: ['生産技術課'], isSuccess: true, isFetching: false } as never);
+    const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE' }) });
+    vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);
+    const scan = renderWithNfc();
+    await scan({ ...itemTag, compartment: { ...itemTag.compartment, area: '生産技術課 北' } });
+    expect(screen.getByRole('group', { name: '使う加工機' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '1個を払い出す' })).toHaveAttribute('aria-disabled', 'false');
+    expect(screen.getByRole('button', { name: 'ほかの数' })).toHaveAttribute('aria-disabled', 'false');
+    if (selected) fireEvent.click(screen.getByRole('button', { name: 'NHX4000' }));
+    fireEvent.click(screen.getByRole('button', { name: '1個を払い出す' }));
+    await waitFor(() => expect(touch).toHaveBeenCalledWith(expect.objectContaining({ quantity: 1, machineId: selected ? 'm1' : undefined })));
+  });
+
+  it.each(['required', 'loading', 'failed', 'refreshing'])('requires a machine for department settings state=%s', async state => {
+    vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({
+      data: state === 'loading' ? undefined : ['生産技術課'], isSuccess: state !== 'failed' && state !== 'loading', isFetching: state === 'loading' || state === 'refreshing',
+    } as never);
+    const touch = vi.fn();
+    vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);
+    const scan = renderWithNfc();
+    await scan({ ...itemTag, compartment: { ...itemTag.compartment, area: state === 'required' ? '機械課 北' : '生産技術課 北' } });
+    const quantity = screen.getByRole('button', { name: '1個を払い出す' });
+    expect(quantity).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(quantity);
+    expect(touch).not.toHaveBeenCalled();
+  });
+
   it('blocks quantities and other numbers until a machine is selected, then sends and clears machineId', async () => {
     const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE', machine }) });
     vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);
@@ -1623,7 +1660,7 @@ describe('inventory machine picking', () => {
     await scan(quantityTag);
     expect(touch).not.toHaveBeenCalled();
     expect(screen.queryByRole('region', { name: 'ほかの数を入れる' })).not.toBeInTheDocument();
-    expect(screen.getByRole('group', { name: '使う加工機' })).toHaveClass('ring-inv-amber');
+    expect(screen.getByRole('group', { name: '使う加工機' })).toHaveClass('outline-inv-amber');
     fireEvent.click(screen.getByRole('button', { name: 'NHX4000' }));
     fireEvent.click(quantity);
     await waitFor(() => expect(touch).toHaveBeenCalledWith(expect.objectContaining({ machineId: 'm1', quantity: 1, restock: false })));
@@ -1686,5 +1723,30 @@ describe('inventory machine picking', () => {
     expect(screen.getByRole('button', { name: '1個を払い出す' })).toHaveAttribute('aria-disabled', 'false');
     fireEvent.click(screen.getByRole('button', { name: '1個を払い出す' }));
     await waitFor(() => expect(touch).toHaveBeenCalledWith(expect.objectContaining({ quantity: 1, machineId: undefined })));
+  });
+});
+
+describe('KioskItemInventoryPage offline NFC feedback', () => {
+  it('renders the short pending count in the existing status badge after a failed send', async () => {
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [], isLoading: false } as never);
+    vi.mocked(useInventoryImportSummaries).mockReturnValue({ data: [], isLoading: false } as never);
+    const mutateAsync = vi.fn().mockRejectedValue({ isAxiosError: true, response: { status: 503 } });
+    vi.mocked(useInventoryMutations).mockReturnValue({ transaction: { mutateAsync }, cancel: { mutateAsync: vi.fn() } } as never);
+    vi.mocked(inventoryOfflineQueueStore.add).mockImplementationOnce(async input => {
+      vi.mocked(inventoryOfflineQueueStore.list).mockResolvedValue([
+        { ...input, idempotencyKey: input.body.idempotencyKey, status: 'pending' },
+      ]);
+    });
+    let navigateToEvent!: (event: NfcEvent) => void;
+    function Driver() {
+      const navigate = useNavigate();
+      navigateToEvent = event => navigate('/kiosk/inventory', { replace: true, state: { inventoryNfcEvent: event } });
+      return <KioskItemInventoryPage />;
+    }
+    render(<MemoryRouter initialEntries={['/kiosk/inventory']}><Driver /></MemoryRouter>);
+    await act(async () => { navigateToEvent({ uid: itemTag.uid, timestamp: new Date().toISOString(), inventoryTag: itemTag }); });
+    await act(async () => { navigateToEvent({ uid: quantityTag.uid, eventId: 'offline', timestamp: new Date().toISOString(), inventoryTag: quantityTag }); });
+    expect(screen.getByRole('status')).toHaveTextContent('未送信 1 件');
+    expect(screen.queryByRole('button', { name: /取消：/ })).not.toBeInTheDocument();
   });
 });

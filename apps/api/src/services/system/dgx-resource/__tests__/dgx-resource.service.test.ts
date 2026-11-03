@@ -27,6 +27,7 @@ function setup() {
   let metrics: MetricsPayload = { unifiedMemoryUsedGiB: 32, unifiedMemoryTotalGiB: 128, startupFreeMemoryGiB: 80, gpuUtilPct: 23, gpuTemperatureC: 45, gpuPowerDrawW: 60 };
   const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const url = String(input);
+    if (url.endsWith('/system/business-model-switch-capability')) return Response.json({ enabled: true, contractVersion: 1 });
     if (url.endsWith('/start')) return new Response('', { status: startOk ? 200 : 500 });
     if (url.endsWith('/stop-force')) return new Response('');
     if (url.endsWith('/system/model-profiles')) return Response.json(upstream);
@@ -54,6 +55,7 @@ function setup() {
 }
 
 const original = {
+  BUSINESS_DEEPSEEK_SWITCH_ENABLED: env.BUSINESS_DEEPSEEK_SWITCH_ENABLED,
   LOCAL_LLM_RUNTIME_MODE: env.LOCAL_LLM_RUNTIME_MODE,
   LOCAL_LLM_RUNTIME_CONTROL_START_URL: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
   LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
@@ -66,6 +68,7 @@ const original = {
 beforeEach(() => {
   vi.useFakeTimers();
   Object.assign(env, {
+    BUSINESS_DEEPSEEK_SWITCH_ENABLED: false,
     LOCAL_LLM_RUNTIME_MODE: 'on_demand',
     LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://dgx.test/start',
     LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://dgx.test/stop',
@@ -291,5 +294,38 @@ describe('switch console overview', () => {
     expect(test.stateStore.getBusinessReturn().phase).toBe('checking');
     await vi.advanceTimersByTimeAsync(20);
     expect(test.stateStore.getBusinessReturn()).toMatchObject({ state: 'succeeded', phase: null });
+  });
+});
+
+
+describe('business switch capability gate', () => {
+  it('off does not request capability or expose the new manifest', async () => {
+    const test = setup();
+    test.upstream.profiles.push({ ...test.profile, id: 'business_deepseek_v41_flash_tp2' });
+    expect((await test.svc.getOverview()).modelProfiles.map((p) => p.id)).toEqual(['model-a']);
+    expect(test.fetchImpl.mock.calls.some(([url]) => String(url).includes('switch-capability'))).toBe(false);
+  });
+  it('one-sided enable closes selection before a start request and disables the existing list', async () => {
+    env.BUSINESS_DEEPSEEK_SWITCH_ENABLED = true;
+    const test = setup();
+    test.fetchImpl.mockImplementation(async () => new Response('', { status: 404 }));
+    expect((await test.svc.getOverview()).modelProfiles.every((p) => !p.startable)).toBe(true);
+    await expect(test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: 'model-a' })).rejects.toMatchObject({ statusCode: 409 });
+    expect(test.fetchImpl.mock.calls.some(([url]) => String(url).endsWith('/start'))).toBe(false);
+    expect(test.stateStore.getBusinessReturn().state).not.toBe('in_progress');
+  });
+  it('uses explicit selection reason and leaves the Pi intent store alone', async () => {
+    env.BUSINESS_DEEPSEEK_SWITCH_ENABLED = true;
+    getBusinessProfileIntentStore().setFromOrchestration('stale-env-glm');
+    const test = setup();
+    const modelProfileId = 'business_glm53_flash_fp4_tp2';
+    test.profile.id = modelProfileId;
+    test.upstream.activeProfileId = modelProfileId;
+    await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId });
+    await vi.runAllTimersAsync();
+    const call = test.fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/start'));
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ reason: 'business-model-selection', modelProfileId });
+    expect(getBusinessProfileIntentStore().getModelProfileId()).toBe('stale-env-glm');
+    expect(test.stateStore.getBusinessReturn().state).toBe('succeeded');
   });
 });

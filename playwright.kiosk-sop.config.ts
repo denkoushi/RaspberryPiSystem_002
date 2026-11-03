@@ -20,8 +20,8 @@ export default defineConfig({
     actionTimeout: 15_000
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } }
+    // Every production kiosk runs Chromium; Firefox is not a target any more.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } }
   ],
   webServer: externalBaseURL ? undefined : {
     command: 'pnpm --filter @raspi-system/web dev --host 127.0.0.1 --port 4173',
