@@ -294,6 +294,69 @@ def business_response_alias(body: bytes) -> bytes:
     return json.dumps(value, ensure_ascii=False).encode()
 
 
+def deepseek_json_request(payload: dict) -> tuple[dict, bool]:
+    guided = [key for key in payload if key.startswith("guided_")]
+    if "response_format" not in payload and not guided:
+        return payload, False
+    result = {key: value for key, value in payload.items() if key != "response_format" and key not in guided}
+    response_format = payload.get("response_format")
+    if isinstance(response_format, dict) and response_format.get("type") == "text" and not guided:
+        return result, False
+    schema = None
+    if isinstance(response_format, dict) and isinstance(response_format.get("json_schema"), dict):
+        schema = response_format["json_schema"].get("schema")
+    if schema is None:
+        schema = payload.get("guided_json")
+        if isinstance(schema, str):
+            try:
+                schema = json.loads(schema)
+            except ValueError:
+                schema = None
+    instruction = "Answer with exactly one JSON object, no code fences, no text before or after it."
+    if isinstance(schema, dict):
+        instruction += "\nJSON schema: " + json.dumps(schema, ensure_ascii=False)
+    messages = list(result.get("messages") or [])
+    first = messages[0] if messages else None
+    if isinstance(first, dict) and first.get("role") == "system" and isinstance(first.get("content"), (str, list)):
+        content = first["content"]
+        content = content + "\n\n" + instruction if isinstance(content, str) else content + [{"type": "text", "text": instruction}]
+        messages[0] = {**first, "content": content}
+    else:
+        messages.insert(0, {"role": "system", "content": instruction})
+    result["messages"] = messages
+    return result, True
+
+
+def deepseek_json_response(body: bytes) -> bytes:
+    try:
+        value = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return body
+    choices = value.get("choices", []) if isinstance(value, dict) else []
+    for choice in choices if isinstance(choices, list) else []:
+        message = choice.get("message") if isinstance(choice, dict) else None
+        if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+            continue
+        content = re.sub(r"<think>.*?</think>", "", message["content"], flags=re.DOTALL).strip()
+        content = re.sub(r"^```(?:json)?\s*\n?(.*?)\s*```$", r"\1", content, flags=re.DOTALL).strip()
+        try:
+            obj = json.loads(content)
+        except ValueError:
+            obj = None
+        if not isinstance(obj, dict):
+            decoder = json.JSONDecoder()
+            for match in re.finditer(r"\{", content):
+                try:
+                    obj, _ = decoder.raw_decode(content, match.start())
+                except ValueError:
+                    continue
+                if isinstance(obj, dict):
+                    break
+        if isinstance(obj, dict):
+            message["content"] = json.dumps(obj, ensure_ascii=False)
+    return business_response_alias(json.dumps(value, ensure_ascii=False).encode())
+
+
 def read_body(handler: BaseHTTPRequestHandler) -> bytes:
     length = int(handler.headers.get("Content-Length", "0"))
     return handler.rfile.read(length) if length > 0 else b""
@@ -1560,6 +1623,7 @@ def make_handler(
 
         def _business_v1(self, method: str, body: bytes) -> None:
             shared = self.headers.get("X-Private-Shared-Runtime")
+            json_mode = False
             try:
                 # A lifecycle mutation waits for every normal/streaming request to
                 # finish; arrivals during that mutation fail closed immediately.
@@ -1595,6 +1659,9 @@ def make_handler(
                         body = json.dumps(payload, ensure_ascii=False).encode()
                         if profile == GLM_PROFILE:
                             body = inject_blue_chat_completions_defaults(self.path, body, "blue", config)
+                        elif profile == DEEPSEEK_PROFILE and self.path.rstrip("/").endswith("/chat/completions"):
+                            payload, json_mode = deepseek_json_request(payload)
+                            body = json.dumps(payload, ensure_ascii=False).encode()
                         if self.path.rstrip("/").endswith("/completions") and payload.get("stream") is True:
                             self._proxy_stream(base + self.path, body, headers, business=True)
                             return
@@ -1606,7 +1673,7 @@ def make_handler(
                                 raise ValueError("business_alias_unavailable")
                             response = json.dumps({"object": "list", "data": [m for m in models if m.get("id") == "system-prod-primary"]}).encode()
                         else:
-                            response = business_response_alias(response)
+                            response = deepseek_json_response(response) if json_mode else business_response_alias(response)
                     self._send(status, response, content_type)
             except Exception:
                 if shared is not None:

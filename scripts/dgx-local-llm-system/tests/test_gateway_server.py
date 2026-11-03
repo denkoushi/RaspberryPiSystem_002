@@ -1178,6 +1178,111 @@ class BusinessRoutingContractTests(unittest.TestCase):
         head, body = output.getvalue().split(b'\r\n\r\n', 1)
         return int(head.split()[1]), body
 
+    def test_deepseek_json_object_adds_system_instruction_without_mutating_input(self):
+        for content in ('Original system', [{'type': 'text', 'text': 'Original system'}], None):
+            with self.subTest(content=content):
+                payload = {'messages': [{'role': 'system', 'content': content}],
+                    'response_format': {'type': 'json_object'}}
+                original = json.dumps(payload)
+                prepared, enabled = self.module.deepseek_json_request(payload)
+                self.assertTrue(enabled)
+                self.assertEqual(json.dumps(payload), original)
+                self.assertNotIn('response_format', prepared)
+                self.assertIn('exactly one JSON object', str(prepared['messages'][0]['content']))
+                self.assertEqual(self.request(payload=payload)[0], 200)
+                sent = json.loads(self.calls[-1][2])
+                self.assertNotIn('response_format', sent)
+                self.assertIn('no code fences', str(sent['messages'][0]['content']))
+                if isinstance(content, str):
+                    self.assertTrue(sent['messages'][0]['content'].startswith(content + '\n\n'))
+                elif isinstance(content, list):
+                    self.assertEqual(sent['messages'][0]['content'][:-1], content)
+                else:
+                    self.assertEqual(sent['messages'][1], payload['messages'][0])
+
+    def test_deepseek_json_schema_removes_guided_fields_and_adds_schema(self):
+        schema = {'type': 'object', 'properties': {'名前': {'type': 'string'}}}
+        for fields in ({'guided_json': schema}, {'guided_json': json.dumps(schema)},
+                       {'response_format': {'type': 'json_schema', 'json_schema': {'schema': schema}}}):
+            with self.subTest(fields=fields):
+                payload = {'messages': [{'role': 'user', 'content': 'hello'}],
+                    'guided_regex': '.*', 'guided_custom': True, **fields}
+                self.assertEqual(self.request(payload=payload)[0], 200)
+                sent = json.loads(self.calls[-1][2])
+                self.assertFalse(any(key.startswith('guided_') for key in sent))
+                self.assertNotIn('response_format', sent)
+                self.assertIn(json.dumps(schema, ensure_ascii=False), sent['messages'][0]['content'])
+                self.assertEqual(sent['messages'][1:], payload['messages'])
+
+    def test_deepseek_json_response_extracts_objects_and_keeps_alias(self):
+        obj = {'名前': 'value'}
+        encoded = json.dumps(obj, ensure_ascii=False)
+        contents = [encoded, '<think>reasoning\nmore</think>\n```json\n' + encoded + '\n```',
+            '```\n' + encoded + '\n```', 'prefix {broken} then ' + encoded + ' trailing',
+            '[' + encoded + ']', 'unextractable content', '[1, 2]', None]
+        raw = json.dumps({'model': 'internal', 'choices': [
+            {'message': {'content': content}} for content in contents]}).encode()
+        self.handler = self.module.make_handler(self.config, Mock(return_value=(200, raw, 'application/json')))
+        status, body = self.request(payload={'response_format': {'type': 'json_object'}})
+        self.assertEqual(status, 200)
+        result = json.loads(body)
+        self.assertEqual(result['model'], 'system-prod-primary')
+        for index, choice in enumerate(result['choices']):
+            if index < 5:
+                self.assertEqual(json.loads(choice['message']['content']), obj)
+            else:
+                self.assertEqual(choice['message']['content'], contents[index])
+
+    def test_deepseek_json_invalid_response_body_and_errors_are_unchanged(self):
+        for status, raw in ((200, b'{broken'), (200, b'\xff'), (400, b'upstream error')):
+            with self.subTest(status=status, raw=raw):
+                self.assertEqual(self.module.deepseek_json_response(raw), raw)
+                self.handler = self.module.make_handler(self.config, Mock(return_value=(status, raw, 'application/json')))
+                self.assertEqual(self.request(payload={'response_format': {'type': 'json_object'}}), (status, raw))
+
+    def test_deepseek_without_json_mode_preserves_existing_body_and_content(self):
+        raw = b'{"model":"internal","choices":[{"message":{"content":"```json\\n{}\\n```"}}]}'
+        for fields in ({}, {'response_format': {'type': 'text'}}):
+            with self.subTest(fields=fields):
+                payload = {'model': 'system-prod-primary', 'messages': [{'role': 'user', 'content': 'hello'}], **fields}
+                proxy = Mock(return_value=(200, raw, 'application/json'))
+                self.handler = self.module.make_handler(self.config, proxy)
+                status, body = self.request(payload=payload)
+                self.assertEqual(status, 200)
+                expected = {key: value for key, value in payload.items() if key != 'response_format'}
+                self.assertEqual(proxy.call_args.args[2], json.dumps(expected, ensure_ascii=False).encode())
+                self.assertEqual(body, self.module.business_response_alias(raw))
+                prepared, enabled = self.module.deepseek_json_request(payload)
+                self.assertFalse(enabled)
+                self.assertEqual(prepared, expected)
+
+    def test_json_mode_only_applies_to_deepseek_chat_completions(self):
+        payload = {'response_format': {'type': 'json_object'}, 'messages': []}
+        self.assertEqual(self.request(path='/v1/completions', payload=payload)[0], 200)
+        self.assertEqual(json.loads(self.calls[-1][2])['response_format'], payload['response_format'])
+        self.value.update(modelProfileId=self.module.GLM_PROFILE, selectedBusinessProfileId=self.module.GLM_PROFILE)
+        self.state.write_text(json.dumps(self.value))
+        self.assertEqual(self.request(payload=payload)[0], 200)
+        expected = self.module.inject_blue_chat_completions_defaults('/v1/chat/completions',
+            json.dumps({**payload, 'model': 'system-prod-primary'}, ensure_ascii=False).encode(), 'blue', self.config)
+        self.assertEqual(self.calls[-1][2], expected)
+        self.assertEqual(json.loads(self.calls[-1][2])['response_format'], payload['response_format'])
+
+    def test_deepseek_json_stream_only_changes_request(self):
+        raw = b'data: {"model":"internal","choices":[{"delta":{"content":"```json"}}]}\n\ndata: [DONE]\n\n'
+        response = io.BytesIO(raw)
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        with patch.object(self.module.urllib.request, 'urlopen', return_value=response) as upstream:
+            status, body = self.request(path='/v1/chat/completions/', payload={'stream': True,
+                'response_format': {'type': 'json_object'}, 'messages': []})
+        self.assertEqual(status, 200)
+        sent = json.loads(upstream.call_args.args[0].data)
+        self.assertNotIn('response_format', sent)
+        self.assertIn('exactly one JSON object', sent['messages'][0]['content'])
+        self.assertEqual(body, raw.replace(b'"model":"internal","choices":[{"delta":{"content":"```json"}}]',
+            b'"model": "system-prod-primary", "choices": [{"delta": {"content": "```json"}}]'))
+
     def test_shared_header_rejects_stale_empty_duplicate_or_disabled_without_body_echo(self):
         with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
             for shared in ('2:generation-3', '3:stale-generation', '', 'private-body-sentinel'):
