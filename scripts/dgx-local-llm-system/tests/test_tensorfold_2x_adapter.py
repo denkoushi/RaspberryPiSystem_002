@@ -598,6 +598,7 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
         self.assertEqual(values['ABLIT_REVISION'], '0bdc2036113c4fdda38ef6005b3cbc0bc0dfa0f0')
         self.assertEqual(values['HF_CACHE'], '/srv/ssd/hf')
         self.assertEqual(values['NFS_PATH'], '/srv/ssd/hf')
+        self.assertEqual(values['WORKER'], 'ubudgxkoushi@192.168.100.10')
         self.assertEqual(values['WORKER_ENGRAM_DIR'], '/home/ubudgxkoushi/.cache/dsv41-tensorfold/engram-1bae0e10')
         self.assertEqual(values['WORKER_CACHE_DIR'], '/home/ubudgxkoushi/.cache/dsv41-tensorfold/rank-cache-878f5689-ablit-0bdc2036')
         for key in ('STATE_DIR', 'LOG_DIR', 'TMPDIR', 'XDG_CACHE_HOME', 'HOME', 'HF_HOME',
@@ -611,10 +612,11 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
                    'overlay': values['ABLIT_ID'] + '@' + values['ABLIT_REVISION'] + '+stock-dtypes',
                    'image': 'image-identity', 'kit': values['KIT_REF'], 'template': 'template-hash',
                    'hf': values['HF_CACHE'], 'nfs_path': values['NFS_PATH'],
-                   'nfs_volume': 'dsv41-1017-exl3-hf',
+                   'nfs_volume': 'dsv41-1017-exl3-hf', 'w': values['WORKER'],
+                   'nfs1': '', 'nfs2': '', 'nfs3': '',
                    'wengram': values['WORKER_ENGRAM_DIR'].replace('/home/ubudgxkoushi/', '$HOME/'),
                    'wcache': values['WORKER_CACHE_DIR'].replace('/home/ubudgxkoushi/', '$HOME/')}
-        business = {**private, 'nfs_volume': values['NFS_VOLUME'],
+        business = {**private, 'nfs_volume': values['NFS_VOLUME'], 'nfs1': values['NFS_SERVER'],
                     'wengram': values['WORKER_ENGRAM_DIR'], 'wcache': values['WORKER_CACHE_DIR']}
 
         def serialize(fields):
@@ -637,7 +639,8 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
             for key, value in (('ablit', '0'), ('overlay', 'wrong'), ('image', 'other-image'),
                                ('model', values['MODEL_ID'] + '@' + 'b' * 40),
                                ('kit', 'other-kit'), ('template', 'other-template'),
-                               ('nfs_volume', 'unrelated'), ('wcache', '/other/cache')):
+                               ('nfs_volume', 'unrelated'), ('wcache', '/other/cache'),
+                               ('w', 'other@192.168.100.12'), ('nfs1', '192.168.100.12'), ('nfs2', '192.168.100.12')):
                 with self.subTest(key=key):
                     result = subprocess.run(['bash', '-eu', '-c', script],
                         env={**environment, 'TEST_STATE': serialize({**business, key: value})},
