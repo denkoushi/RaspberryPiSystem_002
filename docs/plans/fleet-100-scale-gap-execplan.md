@@ -29,8 +29,8 @@
 - [ ] M2: 予備の業務用 Pi5 と PostgreSQL 18 の複製、手動切り替えの手順書。
 - [ ] M3: Pi5 の外の見張り、台帳との突き合わせ、閾値の統一、通知先の整理。1つ目は運用者の Mac 向けに着手（[Runbook](../runbooks/mac-pi5-watchdog.md)）。M3 全体は未完。
 - [ ] M4: NFC・バーコード・配膳端末の記録を、サーバーが受け取るまで端末に残す。
-  - [x] (2026-11-02) 1段目: キオスク在庫画面の数量タグでの払出・補充を、サーバーが応答しないときはブラウザの送信待ち(IndexedDB)に残し、2xx で消す。詳細は [在庫画面の計画](kiosk-inventory-ux-execplan.md#inventory-nfc-offline-requests-2026-11-02)。
-  - [ ] 貸出(工具・測定機器・吊具)。遅れて届いたときの順番の扱いをユーザーに確認中。
+  - [x] (2026-11-02) 1段目: キオスク在庫画面の数量タグでの払出・補充を、サーバーが応答しないときはブラウザの送信待ち(IndexedDB)に残し、2xx で消す。詳細は [在庫画面の計画](kiosk-inventory-ux-execplan.md#inventory-nfc-offline-requests-2026-11-02)。main c5a33775、Pi5 反映 run 20261102-150818-a2a90d。2026-11-02 にユーザーが kensaku-stonebase01 の在庫画面で NFC の払出がいつもどおり反映されることを確かめた。
+  - [ ] 貸出(工具・測定機器・吊具)。2026-11-02 にユーザーが案1に決めた: サーバーが止まっている間はキオスクに残し、戻ったら自動で登録する。画面に「未送信 N 件」を出す。読み取った時刻を一緒に送り、サーバーはその時刻の順に処理する。重複は eventKey で落とす。
   - [ ] バーコード(パレット可視化への追加・置換)。API に冪等キーが無いので、API の変更と合わせて入れる。
 - [ ] M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 にイメージの中継キャッシュを置く。
   - [x] (2026-11-02) Step 1: Pi4 の play を `serial: [1, 5, "25%", "100%"]` の波にし、前の波で失敗した端末があれば次の波の先頭で止め、最後の波で失敗したときは Pi3 の play の先頭で止める確認を入れた。トルク切り替えは `serial: 1` のまま。手元の12台の模擬でだけ確かめた。
@@ -57,6 +57,7 @@
 
 - Observation: 監視の「途絶」の基準が2つあり、食い違っている。通知は10分無連絡で出るが、管理画面の端末一覧は12時間無連絡で初めてオフライン扱いにする。
   Evidence: `apps/api/src/services/clients/client-heartbeat-alert-policy.ts:11` の `DEFAULT_STALE_MINUTES = 10` と、`apps/api/src/services/clients/client-telemetry.service.ts:27` の `staleThresholdMs = 1000 * 60 * 60 * 12`。
+  Resolution: (2026-11-02) 管理画面の端末一覧とダッシュボードも、通知と同じ `loadHeartbeatAlertConfig().staleAfterMs`(既定10分、`CLIENT_HEARTBEAT_STALE_MINUTES`)で判定するようにし、画面の「12時間」の表記を外した。
 
 - Observation: 途絶の見張りは「一度でも報告してきた端末」だけを見ている。台帳に載っていても一度も報告しない端末と、7日以上黙った端末は見張りから外れる。
   Evidence: `apps/api/src/services/clients/client-heartbeat-monitor.ts:74-78` が `clientStatus` の `lastSeen` が `forgetAfterMs` 以内の行から対象を作る。
