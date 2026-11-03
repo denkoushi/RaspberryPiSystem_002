@@ -71,7 +71,8 @@ def check_queue_settings_backfill_and_test_exclusions():
     for path in ('apps/api/src/example.test.ts', 'apps/web/src/example.test.tsx',
                  'apps/api/src/example.spec.ts', 'packages/core/src/__tests__/example.ts',
                  'scripts/server/tests/test_example.py', 'services/cache/test_example.py',
-                 'services/cache/example_test.py', 'test_example.py', 'e2e/example.ts'):
+                 'services/cache/example_test.py', 'test_example.py', 'e2e/example.ts',
+                 'infrastructure/ansible/host_vars/raspberrypi5/vault.yml', 'vault.yml'):
         assert any(fnmatch.fnmatch(path, pattern) for pattern in excludes), path
     assert not any(fnmatch.fnmatch('apps/api/src/services/example.ts', pattern) for pattern in excludes)
     release_tasks = yaml.safe_load((ANSIBLE / 'roles/release_pi5/tasks/security-review.yml').read_text())
