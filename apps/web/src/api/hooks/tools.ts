@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { loanOutboxRunner } from '../../features/kiosk/loan/offline/loanOutboxRunner';
 import {
   borrowItem,
   cancelLoan,
@@ -282,3 +283,17 @@ export function useUnifiedItems(params?: UnifiedListParams) {
 }
 
 // 吊具
+
+export function useKioskBorrowMutation() {
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: (payload: BorrowPayload) => loanOutboxRunner.submit({ route: 'toolBorrow', body: payload }, payload.readAt),
+  });
+}
+
+export function useKioskReturnMutation() {
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: (payload: ReturnPayload) => loanOutboxRunner.submit({ route: 'toolReturn', body: payload }, payload.readAt),
+  });
+}

@@ -18,6 +18,7 @@ vi.mock('./procedureBoardApi', async original => ({ ...await original<typeof imp
 const material: Material = { materialId: 'm', text: '素材の原文', createdAt: '2026-11-01T00:00:00Z', images: [], pdf: null };
 const text = (): BoardItem => ({ itemId: crypto.randomUUID(), kind: 'text', textKind: 'body', text: '<img src=x onerror=alert(1)>', origin: 'human', style: 'body' });
 const target: BoardTarget = { page: 1, row: 0, col: 0, index: 0, mode: 'row' };
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
 let board: BoardResponse;
 function show(materialError?: unknown) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -46,8 +47,49 @@ beforeEach(() => {
   vi.mocked(procedureBoardApi.save).mockImplementation(async (_id, version, layout, event) => { validateLayoutEvent(board.layout, layout, boardEventSchema.parse(event)); board = { ...board, layout, version: version + 1 }; return board; });
   vi.mocked(procedureBoardApi.suggestions).mockResolvedValue({ boardVersion: 1, status: 'pending', current: null, previous: null, pollAfterMs: 5000 });
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers(); vi.unstubAllGlobals();
+  if (originalScrollIntoView) Object.defineProperty(Element.prototype, 'scrollIntoView', originalScrollIntoView);
+  else Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+});
 describe('ProcedureBoard', () => {
+  it.each([false, true])('lists subtitles across pages after the title row (%s)', async hasTitle => {
+    const first: BoardItem = { ...text(), kind: 'text', textKind: 'subtitle', style: 'subheading', text: '準備' };
+    const second: BoardItem = { ...first, itemId: crypto.randomUUID(), text: '点検' };
+    board.layout = placeItem(board.layout, first, { ...target, row: 1 });
+    board.layout = placeItem(board.layout, second, { ...target, page: 2 });
+    if (hasTitle) {
+      const title = board.layout.pages[0].rows[0].cols[0].items[0];
+      title.style = 'heading';
+    } else board.layout.pages[0].heading = '手順書';
+    show();
+    const contents = await screen.findByRole('navigation', { name: '目次' });
+    const page = screen.getByRole('region', { name: 'ページ1' });
+    expect(page).toContainElement(contents);
+    expect(within(contents).getAllByRole('button').map(button => button.textContent)).toEqual(['準備', '点検']);
+    expect(contents.previousElementSibling).toHaveClass(hasTitle ? 'pb-row-group' : 'pb-page-heading');
+    expect(contents.querySelector('[data-item], [data-ghost], .pb-card')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'ページ1を閉じる' }));
+    expect(screen.queryByRole('navigation', { name: '目次' })).not.toBeInTheDocument();
+  });
+  it('does not show contents without subtitles', async () => {
+    show(); await screen.findByText('<img src=x onerror=alert(1)>');
+    expect(screen.queryByRole('navigation', { name: '目次' })).not.toBeInTheDocument();
+  });
+  it.each([false, true])('scrolls the target subtitle on another page with reduced motion %s', async reduced => {
+    const subtitle: BoardItem = { ...text(), kind: 'text', textKind: 'subtitle', style: 'subheading', text: '確認' };
+    board.layout = placeItem(board.layout, subtitle, { ...target, page: 2 });
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: scrollIntoView });
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: reduced })));
+    show();
+    const contents = await screen.findByRole('navigation', { name: '目次' });
+    const card = within(screen.getByRole('region', { name: 'ページ2' })).getByRole('article', { name: '確認' });
+    fireEvent.click(within(contents).getByRole('button', { name: '確認' }));
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+    expect(scrollIntoView.mock.instances[0]).toBe(card);
+  });
   it('renders literal text and edits in place with IME Enter, Escape and blur', async () => {
     show(); const original = await screen.findByText('<img src=x onerror=alert(1)>');
     expect(original.querySelector('img')).toBeNull(); fireEvent.click(original);
@@ -68,7 +110,7 @@ describe('ProcedureBoard', () => {
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' }); expect(procedureBoardApi.save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
     fireEvent.change(screen.getByRole('textbox'), { target: { value: label + '追加' } }); fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
-    expect(screen.getByText(label + '追加')).toBeInTheDocument();
+    expect(screen.getByText(label + '追加', { selector: '.pb-text' })).toBeInTheDocument();
     await waitFor(() => expect(procedureBoardApi.save).toHaveBeenCalledOnce());
     expect(boardItems(board.layout).map(entry => entry.item.kind === 'text' && entry.item.text)).toEqual(['<img src=x onerror=alert(1)>', label + '追加']);
   });

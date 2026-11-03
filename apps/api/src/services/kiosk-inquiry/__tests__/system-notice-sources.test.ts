@@ -97,6 +97,17 @@ describe('alert notice bridges', () => {
     await deliverFileAlertNotice('rkhunter-warning', timestamp, now);
     expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ key: 'file:rkhunter-warning' }), timestamp);
   });
+  it('shows Mac recovery downtime and permits a second outage within 24 hours', async () => {
+    const message = '業務用Pi5が戻りました（止まっていた時間: 0時間5分0秒）。';
+    await deliverFileAlertNotice('pi5-watchdog-recovered', now, now, message);
+    expect(mocks.deliver).toHaveBeenCalledExactlyOnceWith({
+      key: 'file:pi5-watchdog-recovered', title: '業務用Pi5の復旧', body: message, state: 'open', repeatMs: 1
+    }, now);
+  });
+  it('uses Japanese fallback text for a recovery without a message', async () => {
+    await deliverFileAlertNotice('pi5-watchdog-recovered', now, now);
+    expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ body: '業務用Pi5が戻りました。' }), now);
+  });
   it('checks the previous file occurrence at event time before storage', async () => {
     await expireFileAlertNotice('rkhunter-warning', now);
     expect(mocks.expire).toHaveBeenCalledWith(now, 'rkhunter-warning');

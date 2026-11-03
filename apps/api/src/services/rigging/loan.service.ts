@@ -1,3 +1,4 @@
+import { runLoanEvent, loanEventFingerprint, resolveLoanReadAt, type LoanEventInput } from '../loan/loan-event.js';
 import type { Loan } from '@prisma/client';
 import { RiggingStatus, TransactionAction } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
@@ -13,7 +14,7 @@ import {
 } from '../loan/loan-transaction.helpers.js';
 import { activeLoanConflict } from '../loan/loan-concurrency.js';
 
-export interface RiggingBorrowInput {
+export interface RiggingBorrowInput extends LoanEventInput {
   riggingTagUid?: string;
   riggingGearId?: string;
   employeeTagUid: string;
@@ -22,7 +23,7 @@ export interface RiggingBorrowInput {
   note?: string | null;
 }
 
-export interface RiggingReturnInput {
+export interface RiggingReturnInput extends LoanEventInput {
   loanId: string;
   clientId?: string;
   performedByUserId?: string;
@@ -55,6 +56,10 @@ export class RiggingLoanService {
   }
 
   async borrow(input: RiggingBorrowInput): Promise<LoanWithRelations> {
+    return runLoanEvent(input, input.clientId, 'rigging.borrow', () => this.borrowOnce(input));
+  }
+
+  private async borrowOnce(input: RiggingBorrowInput): Promise<LoanWithRelations> {
     logger.info({ input }, 'Rigging borrow request started');
 
     if (!input.riggingTagUid && !input.riggingGearId) {
@@ -95,10 +100,13 @@ export class RiggingLoanService {
       name: employee.displayName
     };
 
+    const timing = resolveLoanReadAt(input.readAt);
     const loan = await executeAssetBorrowTransaction<LoanWithRelations>({
       loanCreate: {
         data: {
           riggingGearId: gear.id,
+          borrowedAt: timing.eventAt,
+          borrowReceivedAt: timing.receivedAt,
           employeeId: employee.id,
           clientId: input.clientId,
           dueAt: input.dueAt,
@@ -114,6 +122,8 @@ export class RiggingLoanService {
       buildTransactionCreateData: (createdLoan) => ({
         loanId: createdLoan.id,
         action: TransactionAction.BORROW,
+          eventKey: input.eventKey,
+          eventFingerprint: input.eventKey ? loanEventFingerprint(input, 'rigging.borrow') : undefined,
         actorEmployeeId: employee.id,
         clientId: input.clientId,
         details: {
@@ -142,6 +152,10 @@ export class RiggingLoanService {
   }
 
   async return(input: RiggingReturnInput): Promise<LoanWithRelations> {
+    return runLoanEvent(input, input.clientId, 'rigging.return', () => this.returnOnce(input));
+  }
+
+  private async returnOnce(input: RiggingReturnInput): Promise<LoanWithRelations> {
     logger.info({ loanId: input.loanId, clientId: input.clientId }, 'Rigging return request started');
 
     const loan = await prisma.loan.findUnique({ where: { id: input.loanId }, include: { riggingGear: true } });
@@ -155,10 +169,15 @@ export class RiggingLoanService {
       throw new ApiError(409, '取消済みの貸出記録は返却できません', undefined, 'LOAN_ALREADY_CANCELLED');
     }
 
+    const timing = resolveLoanReadAt(input.readAt);
+    const returnedAt = new Date(Math.max(timing.eventAt.getTime(), loan.borrowedAt.getTime()));
+    if (returnedAt.getTime() !== timing.eventAt.getTime()) {
+      logger.warn({ loanId: loan.id, eventAt: timing.eventAt, borrowedAt: loan.borrowedAt }, 'Return time clamped to borrow time');
+    }
     const updatedLoan = await executeAssetReturnTransaction<LoanWithRelations>({
       loanId: input.loanId,
       loanUpdate: {
-        data: { returnedAt: new Date(), notes: input.note ?? undefined },
+        data: { returnedAt, returnReceivedAt: timing.receivedAt, notes: input.note ?? undefined },
         include: { riggingGear: true, employee: true, client: true }
       },
       assetId: loan.riggingGearId,
@@ -170,6 +189,8 @@ export class RiggingLoanService {
       transactionCreate: {
         loanId: loan.id,
         action: TransactionAction.RETURN,
+        eventKey: input.eventKey,
+        eventFingerprint: input.eventKey ? loanEventFingerprint(input, 'rigging.return') : undefined,
         actorEmployeeId: loan.employeeId ?? undefined,
         clientId: input.clientId ?? loan.clientId ?? undefined,
         details: {

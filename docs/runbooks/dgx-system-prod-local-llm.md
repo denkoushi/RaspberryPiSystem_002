@@ -93,6 +93,12 @@ CP側は別の `DGX_BUSINESS_DEEPSEEK_SWITCH_ENABLED`。片側のみon、CP capa
 rollbackは両gateをonのまま停止証明→GLM明示選択→ready確認、その後 **CP flag off→業務flag off** の順。
 DeepSeek稼働中にflagを先に戻さない。privateの既存データは削除しない。
 
+業務DeepSeek（tensorfold）は `response_format` / `guided_*` を受け付けない。gatewayは業務DeepSeek宛ての
+`/chat/completions` からこれらを外し、JSONオブジェクトだけで答える指示（schemaがあれば併記）をsystemに足す。
+非ストリーム応答は本文から `<think>` とコードフェンスを除いてJSONオブジェクトを取り出し、`content` を置き換える。
+取り出せない本文はそのまま返す。GLM宛ての要求は変えない。この変更はPi5の標準デプロイでは反映されず、
+`gateway-server.py` を `/srv/dgx/system-prod/bin/` へ配置してgatewayを再起動したときに効く。
+
 control-server再起動時、監視threadのない `loading` は `failed` / `business_control_restarted` に遷移する。
 次の `/start` で新しいgenerationを起動する。kitの置換anchor不一致は `business_kit_layout_mismatch` として
 停止前に拒否する。完全な準備検査はstart前または `business_tensorfold.py check` だけで実行し、statusはprepared markerを参照する。

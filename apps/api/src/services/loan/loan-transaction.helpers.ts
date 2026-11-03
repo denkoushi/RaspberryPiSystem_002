@@ -26,6 +26,7 @@ export async function executeAssetBorrowTransaction<TLoan extends { id: string }
     data: Prisma.LoanUncheckedCreateInput;
     include: Prisma.LoanInclude;
   };
+  afterCreate?: (tx: LoanTransactionClient, loan: TLoan) => Promise<void>;
   setAssetInUse: (tx: LoanTransactionClient) => Promise<unknown>;
   buildTransactionCreateData: (
     createdLoan: TLoan,
@@ -39,6 +40,7 @@ export async function executeAssetBorrowTransaction<TLoan extends { id: string }
       })) as unknown as TLoan;
 
       await params.setAssetInUse(tx);
+      await params.afterCreate?.(tx, createdLoan);
 
       await tx.transaction.create({
         data: params.buildTransactionCreateData(createdLoan),
@@ -54,7 +56,7 @@ export async function executeAssetBorrowTransaction<TLoan extends { id: string }
 export async function executeAssetReturnTransaction<TLoan>(params: {
   loanId: string;
   loanUpdate: {
-    data: { returnedAt: Date; notes?: string };
+    data: { returnedAt: Date; returnReceivedAt?: Date; notes?: string };
     include: Prisma.LoanInclude;
   };
   assetId: string | null;

@@ -230,6 +230,41 @@ def business_route(config: GatewayConfig) -> tuple[str, dict[str, str], str]:
     raise ValueError("business_runtime_unavailable")
 
 
+def attest_private_sharing(config: GatewayConfig, runtime: dict) -> dict:
+    """Called under the routing/lifecycle lock; only this gateway proves fencing."""
+    runtime = dict(runtime)
+    evidence = runtime.pop("privateSharingEvidence", None)
+    runtime.pop("privateSharing", None)
+    if os.environ.get("DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "") not in {"true", "1"}:
+        return runtime
+    try:
+        _, _, profile = business_route(config)
+        state = business_selection_state(config.active_model_state_path)
+        generation = state["businessGeneration"]
+        expected = {'generation': generation, 'weightsRevision': '878f5689-ablit-0bdc2036',
+            'runtimeIdentity': 'tensorfold-native:serve:8889:parallel4:thinking',
+            'promptCacheGiB': 0, 'learn': False, 'logDriver': 'none',
+            'requestResponseLogging': False, 'persistsConversations': False}
+        ranks = runtime['ranks']
+        if (profile != DEEPSEEK_PROFILE or runtime['modelProfileId'] != profile
+                or runtime['generation'] != generation
+                or type(runtime['selectionRevision']) is not int
+                or runtime['selectionRevision'] != state['selectionRevision']
+                or runtime['prepared'] is not True or runtime['failureReason'] is not None
+                or runtime['apiListenerClosed'] is not False
+                or len(ranks) != 2 or {r['rank'] for r in ranks} != {0, 1}
+                or any(r['generation'] != generation or r['running'] is not True
+                       or r['gpuReleased'] is not False for r in ranks)
+                or not isinstance(evidence, dict) or evidence != expected
+                or any(type(evidence[k]) is not type(v) for k, v in expected.items())):
+            return runtime
+        runtime['privateSharing'] = {**evidence, 'selectionRevision': state['selectionRevision'],
+                                     'generationFenced': True}
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        pass
+    return runtime
+
+
 def business_has_image(value) -> bool:
     messages = value.get("messages", [])
     return isinstance(messages, list) and any(
@@ -257,6 +292,69 @@ def business_response_alias(body: bytes) -> bytes:
     if isinstance(value, dict) and "model" in value:
         value["model"] = "system-prod-primary"
     return json.dumps(value, ensure_ascii=False).encode()
+
+
+def deepseek_json_request(payload: dict) -> tuple[dict, bool]:
+    guided = [key for key in payload if key.startswith("guided_")]
+    if "response_format" not in payload and not guided:
+        return payload, False
+    result = {key: value for key, value in payload.items() if key != "response_format" and key not in guided}
+    response_format = payload.get("response_format")
+    if isinstance(response_format, dict) and response_format.get("type") == "text" and not guided:
+        return result, False
+    schema = None
+    if isinstance(response_format, dict) and isinstance(response_format.get("json_schema"), dict):
+        schema = response_format["json_schema"].get("schema")
+    if schema is None:
+        schema = payload.get("guided_json")
+        if isinstance(schema, str):
+            try:
+                schema = json.loads(schema)
+            except ValueError:
+                schema = None
+    instruction = "Answer with exactly one JSON object, no code fences, no text before or after it."
+    if isinstance(schema, dict):
+        instruction += "\nJSON schema: " + json.dumps(schema, ensure_ascii=False)
+    messages = list(result.get("messages") or [])
+    first = messages[0] if messages else None
+    if isinstance(first, dict) and first.get("role") == "system" and isinstance(first.get("content"), (str, list)):
+        content = first["content"]
+        content = content + "\n\n" + instruction if isinstance(content, str) else content + [{"type": "text", "text": instruction}]
+        messages[0] = {**first, "content": content}
+    else:
+        messages.insert(0, {"role": "system", "content": instruction})
+    result["messages"] = messages
+    return result, True
+
+
+def deepseek_json_response(body: bytes) -> bytes:
+    try:
+        value = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return body
+    choices = value.get("choices", []) if isinstance(value, dict) else []
+    for choice in choices if isinstance(choices, list) else []:
+        message = choice.get("message") if isinstance(choice, dict) else None
+        if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+            continue
+        content = re.sub(r"<think>.*?</think>", "", message["content"], flags=re.DOTALL).strip()
+        content = re.sub(r"^```(?:json)?\s*\n?(.*?)\s*```$", r"\1", content, flags=re.DOTALL).strip()
+        try:
+            obj = json.loads(content)
+        except ValueError:
+            obj = None
+        if not isinstance(obj, dict):
+            decoder = json.JSONDecoder()
+            for match in re.finditer(r"\{", content):
+                try:
+                    obj, _ = decoder.raw_decode(content, match.start())
+                except ValueError:
+                    continue
+                if isinstance(obj, dict):
+                    break
+        if isinstance(obj, dict):
+            message["content"] = json.dumps(obj, ensure_ascii=False)
+    return business_response_alias(json.dumps(value, ensure_ascii=False).encode())
 
 
 def read_body(handler: BaseHTTPRequestHandler) -> bytes:
@@ -937,6 +1035,8 @@ def make_handler(
             )
 
         def do_GET(self) -> None:
+            if self._reject_unroutable_shared_request():
+                return
             if self.path == "/healthz":
                 self._send_text(200, "ok\n")
                 return
@@ -985,9 +1085,16 @@ def make_handler(
                     if status == 200:
                         try:
                             runtime = json.loads(body)["businessRuntime"]
+                            if os.environ.get("DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "") in {"true", "1"}:
+                                with business_state_lock(config.active_model_state_path, exclusive=False, blocking=False):
+                                    runtime = attest_private_sharing(config, runtime)
+                            else:
+                                runtime = dict(runtime)
+                                runtime.pop("privateSharingEvidence", None)
+                                runtime.pop("privateSharing", None)
                             resource = read_resource_state(config.resource_state_path)
                             self._send_json(200, {"ok": True, **(state_to_api(resource) if resource else {}), "businessRuntime": runtime})
-                        except (ValueError, KeyError, TypeError):
+                        except (OSError, ValueError, KeyError, TypeError):
                             self._send_json(503, {"ok": False, "code": "BUSINESS_RUNTIME_UNAVAILABLE"})
                     else:
                         self._send(status, body, content_type)
@@ -1082,6 +1189,8 @@ def make_handler(
             self._send_text(404, "not found")
 
         def do_POST(self) -> None:
+            if self._reject_unroutable_shared_request():
+                return
             body = read_body(self)
             if self.path in ("/system/model-storage-delete/preview", "/system/model-storage-delete/execute"):
                 if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
@@ -1505,12 +1614,34 @@ def make_handler(
                 return
             self._send_text(404, "not found")
 
+        def _reject_unroutable_shared_request(self) -> bool:
+            if (self.headers.get("X-Private-Shared-Runtime") is not None
+                    and (not self.path.startswith("/v1/") or not business_switch_enabled())):
+                self._send(409, b"", "application/json")
+                return True
+            return False
+
         def _business_v1(self, method: str, body: bytes) -> None:
+            shared = self.headers.get("X-Private-Shared-Runtime")
+            json_mode = False
             try:
                 # A lifecycle mutation waits for every normal/streaming request to
                 # finish; arrivals during that mutation fail closed immediately.
                 with business_state_lock(config.active_model_state_path, exclusive=False, blocking=False):
                     base, auth, profile = business_route(config)
+                    if shared is not None:
+                        state = business_selection_state(config.active_model_state_path)
+                        if (profile != DEEPSEEK_PROFILE or len(self.headers.get_all("X-Private-Shared-Runtime")) != 1
+                                or shared != f"{state['selectionRevision']}:{state['businessGeneration']}"):
+                            self._send(409, b"", "application/json")
+                            return
+                        status, snapshot, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
+                            {"X-Runtime-Control-Token": config.runtime_control_token})
+                        runtime = attest_private_sharing(config, json.loads(snapshot)['businessRuntime']) if status == 200 else {}
+                        proof = runtime.get('privateSharing', {})
+                        if shared != f"{proof.get('selectionRevision')}:{proof.get('generation')}":
+                            self._send(409, b"", "application/json")
+                            return
                     headers = {"Content-Type": "application/json", **auth}
                     if method == "POST":
                         try:
@@ -1528,6 +1659,9 @@ def make_handler(
                         body = json.dumps(payload, ensure_ascii=False).encode()
                         if profile == GLM_PROFILE:
                             body = inject_blue_chat_completions_defaults(self.path, body, "blue", config)
+                        elif profile == DEEPSEEK_PROFILE and self.path.rstrip("/").endswith("/chat/completions"):
+                            payload, json_mode = deepseek_json_request(payload)
+                            body = json.dumps(payload, ensure_ascii=False).encode()
                         if self.path.rstrip("/").endswith("/completions") and payload.get("stream") is True:
                             self._proxy_stream(base + self.path, body, headers, business=True)
                             return
@@ -1539,12 +1673,17 @@ def make_handler(
                                 raise ValueError("business_alias_unavailable")
                             response = json.dumps({"object": "list", "data": [m for m in models if m.get("id") == "system-prod-primary"]}).encode()
                         else:
-                            response = business_response_alias(response)
+                            response = deepseek_json_response(response) if json_mode else business_response_alias(response)
                     self._send(status, response, content_type)
             except Exception:
-                self._send_json(503, {"error": {"code": "business_runtime_unavailable"}})
+                if shared is not None:
+                    self._send(409, b"", "application/json")
+                else:
+                    self._send_json(503, {"error": {"code": "business_runtime_unavailable"}})
 
         def log_message(self, fmt: str, *args: object) -> None:
+            if getattr(self, "headers", {}).get("X-Private-Shared-Runtime") is not None:
+                return
             sys.stderr.write("[dgx-local-llm-gateway] " + (fmt % args) + "\n")
 
     return Handler

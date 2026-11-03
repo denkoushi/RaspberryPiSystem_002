@@ -148,6 +148,8 @@ describe('RiggingLoanService', () => {
       });
       expect(txLoanCreate!).toHaveBeenCalledWith({
         data: {
+          borrowedAt: expect.any(Date),
+          borrowReceivedAt: expect.any(Date),
           riggingGearId: 'rigging-123',
           employeeId: 'employee-123',
           clientId: 'client-123',
@@ -331,7 +333,7 @@ describe('RiggingLoanService', () => {
       });
       expect(txLoanUpdateMany!).toHaveBeenCalledWith({
         where: { id: 'loan-123', returnedAt: null, cancelledAt: null },
-        data: { returnedAt: expect.any(Date), notes: 'return note' },
+        data: { returnedAt: expect.any(Date), returnReceivedAt: expect.any(Date), notes: 'return note' },
       });
       expect(txGearUpdate!).toHaveBeenCalledWith({
         where: { id: 'rigging-123' },

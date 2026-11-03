@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -18,7 +19,7 @@ ENV = {
     'ABLIT_ID': 'drowzeys/keys-DeepSeek-V4.1-Flash-1017-Abliterated',
     'ABLIT_REVISION': '0bdc2036113c4fdda38ef6005b3cbc0bc0dfa0f0',
     'ABLIT_SIDECAR': 'exl3_wo_b_l10_35_mia29.safetensors',
-    'SERVED_NAME': 'system-prod-primary', 'API_KEY': '1',
+    'SERVED_NAME': 'system-prod-primary', 'API_KEY': '1', 'PARALLEL': '4', 'THINKING': '1',
     'API_KEY_FILE': ROOT + '/state/deepseek-v41/api-key', 'HEAD_ENGRAM_DIR': '', 'FOREGROUND': '0',
     'EAQ_V1_1': '0', 'MODEL_ID': 'Mia-AiLab/DeepSeek-V4.1-Flash-1017-EXL3-EAQ-v1-2.9-bpw',
     # Resolve the full immutable revision from the private prepared marker, never refs/main.
@@ -168,6 +169,75 @@ if [[ "$running" == true ]]; then started=$(docker inspect -f '{{.State.StartedA
 printf '%s\n' "$running" "$released" "$launcher" "$watchdog" "$closed" "$id" "$(cat "$state/generation")" "$started" "$(cat "$state/generation-started-at")"
 '''
 
+IMAGE_ENTRYPOINT = '/opt/nvidia/nvidia_entrypoint.sh'
+
+# Project only launch metadata, never Docker's environment or API-key contents.
+SHARING_INSPECT = r'''{"id":{{json .Id}},"image":{{json .Image}},"path":{{json .Path}},"args":{{json .Args}},"running":{{json .State.Running}},"startedAt":{{json .State.StartedAt}},"labels":{{json .Config.Labels}},"logDriver":{{json .HostConfig.LogConfig.Type}},"readOnly":{{json .HostConfig.ReadonlyRootfs}},"mounts":{{json .Mounts}},"tmpfs":{{json .HostConfig.Tmpfs}}}'''
+
+
+def sharing_evidence(generation: str, nodes: list, observations: list, prepared_image: str) -> dict | None:
+    """Fail closed on incomplete/live launch evidence; gateway adds its fence."""
+    try:
+        if (not re.fullmatch(r'sha256:[a-f0-9]{64}', prepared_image)
+                or len(observations) != 2 or any(node[0] != 'true' for node in nodes)):
+            return None
+        revisions = []
+        for rank, (node, observed) in enumerate(zip(nodes, observations)):
+            if (observed['id'] != node[5] or observed['running'] is not True
+                    or observed['image'] != prepared_image
+                    or observed['startedAt'] != node[7]
+                    or observed['labels']['business.generation'] != generation
+                    or observed['labels']['business.recipe-revision'] != REVISION
+                    or observed['logDriver'] != 'none' or observed['readOnly'] is not True
+                    or any(m['RW'] is not False and not (
+                        m['Type'] == 'tmpfs' and m['Destination'] == '/tmp') for m in observed['mounts'])
+                    or observed['tmpfs'] != {'/tmp': 'rw,noexec,nosuid,size=64m'}):
+                return None
+            argv = [observed['path'], *observed['args']]
+            # The pinned image runs its fixed NVIDIA entrypoint, which then execs the
+            # engine; Docker records that entrypoint as Path and the engine in Args.
+            if argv[0] == IMAGE_ENTRYPOINT:
+                argv = argv[1:]
+            if not argv or not all(isinstance(arg, str) for arg in argv) or any(arg.startswith('--learn') for arg in argv):
+                return None
+            # Require the pinned direct command, not a shell/entrypoint assertion.
+            if rank == 0:
+                if (argv[:2] != ['tensorfold-native', 'serve']
+                        or argv.count('--prompt-cache-gib') != 1
+                        or argv[argv.index('--prompt-cache-gib') + 1] != '0'
+                        or argv.count('--port') != 1 or argv[argv.index('--port') + 1] != '8889'
+                        or argv.count('--parallel') != 1 or argv[argv.index('--parallel') + 1] != '4'
+                        or argv.count('--thinking') != 1 or '--no-thinking' in argv
+                        or any(arg.startswith(('--prompt-cache-gib=', '--port=', '--parallel=', '--thinking=')) for arg in argv)):
+                    return None
+                model = argv[2]
+                head = argv
+            else:
+                if argv[0] != 'tf-dsv41-lanes' or argv[2:5] != ['/rank-cache', '1', '2']:
+                    return None
+                model = argv[1]
+                cache = next(m for m in observed['mounts'] if m['Destination'] == '/rank-cache')
+                if Path(cache['Source']).name != 'rank-cache-878f5689-ablit-0bdc2036':
+                    return None
+            match = re.fullmatch(r'/hf/tensorfold-dsv41/(878f5689-ablit-0bdc2036)/' +
+                                 ('model' if rank == 0 else 'checkpoint'), model)
+            if not match or not any(m['Destination'] == '/hf' for m in observed['mounts']):
+                return None
+            revisions.append(match[1])
+        if revisions[0] != revisions[1]:
+            return None
+        # No durable writable filesystem, no learning/prompt cache, and Docker
+        # discards the pinned engine's stdout/stderr (including response logs).
+        return {'generation': generation, 'weightsRevision': revisions[0],
+                'runtimeIdentity': ':'.join((head[0], head[1],
+                    head[head.index('--port') + 1], 'parallel' + head[head.index('--parallel') + 1],
+                    'thinking')),
+                'promptCacheGiB': 0, 'learn': False, 'logDriver': observations[0]['logDriver'],
+                'requestResponseLogging': False, 'persistsConversations': False}
+    except (KeyError, IndexError, TypeError, ValueError, StopIteration):
+        return None
+
+
 STOP_NODE = r'''
 set -euo pipefail
 name=$1; state=$2
@@ -224,7 +294,18 @@ worker() {
 }
 """ + BUSINESS_SHARED_SETUP)
 text = replace_once(text, '$HOME/.cache/dsv41-tensorfold', '/srv/dgx/system-prod/data/deepseek-v41/cache')
-text = replace_once(text, 'RUN_ARGS="', 'RUN_ARGS="--log-driver none ')
+text = replace_once(text, 'RUN_ARGS="',
+    'RUN_ARGS="--log-driver none '
+    '--label business.generation=$DGX_BUSINESS_GENERATION --label business.recipe-revision=$EXPECTED_REVISION ')
+text = replace_once(text, 'DATA=/hf/$DATA_SUB', """if [[ "$DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED" == 1 ]]; then
+  RUN_ARGS+=" --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m"
+fi
+DATA=/hf/$DATA_SUB""")
+text = replace_once(text, 'SERVE+=("$@")', """SERVE+=("$@")
+for arg in "${SERVE[@]}"; do
+  [[ "$arg" != --learn* ]] || { echo business_learning_forbidden >&2; exit 1; }
+done
+[[ "$DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED" != 1 ]] || SERVE+=(--prompt-cache-gib 0)""")
 # start mode, after our verified stop, cannot reach an internal restart/prepare.
 if len(sys.argv) > 1:
     Path(sys.argv[1]).write_text(text)
@@ -241,20 +322,40 @@ def check_prepared(*, runner=subprocess.run) -> None:
         raise RuntimeError('business_deepseek_unprepared') from error
 
 
-def runtime_status(generation: str, *, runner=subprocess.run) -> dict:
+def runtime_status(generation: str, *, runner=subprocess.run, sharing: bool = False) -> dict:
     script = kit_prefix() + '\n'
-    # The kit marker records the last preparation. Full cache/image inspection
-    # belongs to start/check, never status polling or stop verification.
+    # Full cache inspection belongs to start/check. Opt-in status additionally
+    # checks the prepared identity and live launch metadata without GPU work.
     script += 'prepared=false; [[ ! -s "$SHARED_PREPARED_MARKER" ]] || prepared=true; printf "%s\\n" "$prepared"\n'
     script += shlex.join(['bash', '-c', NODE_STATUS, 'bash', ENV['CONTAINER_NAME'],
                          ENV['STATE_DIR'], ENV['LOG_DIR'], '8889']) + '\n'
     # rank 1 is Spark 1, controlled by this repo from the rank 0 kit.
     script += 'worker 1 ' + shlex.quote(shlex.join(['bash', '-c', NODE_STATUS, 'bash',
         ENV['CONTAINER_NAME'], ENV['STATE_DIR'], ENV['LOG_DIR'], '8889'])) + '\n'
+    if sharing:
+        inspect = shlex.join(['docker', 'inspect', '-f', SHARING_INSPECT, ENV['CONTAINER_NAME']])
+        script += '(' + inspect + ") 2>/dev/null || printf '{}\\n'\n"
+        script += '(worker 1 ' + shlex.quote(inspect) + ") 2>/dev/null || printf '{}\\n'\n"
+        # Recheck the prepared identity against the immutable marker and resolve
+        # its image ID. Never prepare, pull, inspect keys, or read container env.
+        script += '(' + SHARED_SETUP + '\nshared_config && '
+        script += 'image_id=$(docker image inspect -f "{{.Id}}" "$IMAGE") && '
+        script += 'business_prepared check "$(prepared_state)" && '
+        script += 'test "$image_id" = "$(docker image inspect -f "{{.Id}}" "$IMAGE")" && '
+        script += 'printf "%s\\n" "$image_id") 2>/dev/null || printf "unknown\\n"\n'
     lines = remote(script, runner=runner).splitlines()
     if not lines or lines[0] not in {'true', 'false'}:
         raise RuntimeError('business_runtime_status_unavailable')
     prepared = lines.pop(0) == 'true'
+    observations = []
+    prepared_image = ''
+    if sharing and len(lines) == 21:
+        try:
+            observations = [json.loads(line) for line in lines[18:20]]
+            prepared_image = lines[20]
+        except ValueError:
+            pass
+        lines = lines[:18]
     if len(lines) != 18 or any(lines[i] != generation for i in (6, 15)):
         raise RuntimeError('business_runtime_generation_mismatch')
     nodes = [lines[:9], lines[9:18]]
@@ -265,7 +366,7 @@ def runtime_status(generation: str, *, runner=subprocess.run) -> dict:
             raise RuntimeError('business_runtime_generation_mismatch')
     if any(v not in {'true', 'false'} for node in nodes for v in node[:5]):
         raise RuntimeError('business_runtime_status_unavailable')
-    return {
+    result = {
         'generation': generation, 'prepared': prepared,
         'ranks': [{'rank': rank, 'generation': generation, 'running': node[0] == 'true',
                    'gpuReleased': node[1] == 'true'} for rank, node in enumerate(nodes)],
@@ -274,6 +375,10 @@ def runtime_status(generation: str, *, runner=subprocess.run) -> dict:
         'apiListenerClosed': all(n[4] == 'true' for n in nodes),
         'failureReason': None if prepared else 'business_deepseek_unprepared',
     }
+    evidence = sharing_evidence(generation, nodes, observations, prepared_image) if prepared else None
+    if evidence is not None:
+        result['privateSharingEvidence'] = evidence
+    return result
 
 
 def start(generation: str) -> None:
@@ -301,6 +406,9 @@ rm -f "$LOG_DIR/start.log.10"
 : > "$LOG_DIR/start.log"; chmod 600 "$LOG_DIR/start.log"
 
 '''
+    script += 'export DGX_BUSINESS_GENERATION=' + shlex.quote(generation) + '\n'
+    script += 'export DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED=' + (
+        '1' if os.environ.get('DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED', '') in {'true', '1'} else '0') + '\n'
     script += launch_patch('"$STATE_DIR/launch.sh"')
     script += 'printf "%s\\n" ' + shlex.quote(generation) + ' > "$STATE_DIR/generation"\ndate --iso-8601=ns > "$STATE_DIR/generation-started-at"\n'
     script += 'worker 1 ' + shlex.quote('umask 077; printf "%s\\n" ' + shlex.quote(generation) +
