@@ -213,9 +213,12 @@ def business_route(config: GatewayConfig) -> tuple[str, dict[str, str], str]:
     profile = state.get("modelProfileId") or state.get("activeProfileId")
     active = read_active_model_state(config.active_model_state_path)
     generation = state.get("businessGeneration")
+    legacy_glm = (not generation and state["selectedBusinessProfileId"] == GLM_PROFILE
+        and state["businessTransition"] == "idle" and state["selectionRevision"] == 0)
     if (active is None or active.backend != "blue" or active.served_alias != "system-prod-primary"
-            or profile != state["selectedBusinessProfileId"] or state["businessTransition"] != "ready"
-            or not isinstance(generation, str) or not generation):
+            or profile != state["selectedBusinessProfileId"]
+            or (not legacy_glm and (state["businessTransition"] != "ready"
+                or not isinstance(generation, str) or not generation))):
         raise ValueError("business_runtime_unavailable")
     if profile == GLM_PROFILE:
         return "http://127.0.0.1:38083", {}, profile
