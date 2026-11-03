@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../lib/errors.js';
 import { acknowledgeClientAlert, getClientAlertsDashboard } from '../client-alerts.service.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -22,6 +22,12 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('client-alerts.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('CLIENT_HEARTBEAT_STALE_MINUTES', undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
   });
 
   it('stale client / error log / db alert を集約する', async () => {
@@ -30,14 +36,14 @@ describe('client-alerts.service', () => {
       {
         clientId: 'client-stale',
         hostname: 'stale-host',
-        lastSeen: new Date(now - 13 * 60 * 60 * 1000),
-        updatedAt: new Date(now - 13 * 60 * 60 * 1000),
+        lastSeen: new Date(now - 11 * 60 * 1000),
+        updatedAt: new Date(now - 11 * 60 * 1000),
       },
       {
         clientId: 'client-fresh',
         hostname: 'fresh-host',
-        lastSeen: new Date(now - 10 * 60 * 1000),
-        updatedAt: new Date(now - 10 * 60 * 1000),
+        lastSeen: new Date(now - 9 * 60 * 1000),
+        updatedAt: new Date(now - 9 * 60 * 1000),
       },
     ] as never);
     vi.mocked(prisma.clientLog.findMany).mockResolvedValue([
@@ -63,6 +69,30 @@ describe('client-alerts.service', () => {
     expect(result.details.staleClientIds).toEqual(['client-stale']);
     expect(result.details.recentErrors).toHaveLength(1);
     expect(result.details.dbAlerts).toHaveLength(1);
+  });
+
+  it.each([
+    [undefined, ['client-11']],
+    ['20', []],
+    ['5', ['client-9', 'client-10', 'client-11']],
+  ])('stale threshold follows CLIENT_HEARTBEAT_STALE_MINUTES=%s', async (minutes, expected) => {
+    vi.stubEnv('CLIENT_HEARTBEAT_STALE_MINUTES', minutes);
+    vi.useFakeTimers();
+    const now = new Date('2026-11-03T00:00:00Z');
+    vi.setSystemTime(now);
+    vi.mocked(prisma.clientStatus.findMany).mockResolvedValue(
+      [9, 10, 11].map((silentMinutes) => ({
+        clientId: `client-${silentMinutes}`,
+        lastSeen: new Date(now.getTime() - silentMinutes * 60_000),
+      })) as never
+    );
+    vi.mocked(prisma.clientLog.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.alert.findMany).mockResolvedValue([]);
+
+    const result = await getClientAlertsDashboard('req-threshold');
+
+    expect(result.alerts.staleClients).toBe(expected.length);
+    expect(result.details.staleClientIds).toEqual(expected);
   });
 
   it('未存在アラートのacknowledgeは404を返す', async () => {

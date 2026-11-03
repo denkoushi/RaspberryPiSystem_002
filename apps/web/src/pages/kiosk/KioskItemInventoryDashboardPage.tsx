@@ -20,15 +20,11 @@ export function KioskItemInventoryDashboardPage() {
 
   return (
     <section className={`${invSurface} ${invSetupTargets}`} onClickCapture={accessPassword ? touchSetupPin : undefined} onPointerDownCapture={accessPassword ? touchSetupPin : undefined} onKeyDownCapture={accessPassword ? touchSetupPin : undefined}>
-      <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-4 border-b border-inv-line">
-        <h1 className="text-[22px] font-black tracking-[0.02em]">集計</h1>
+      <InventoryDashboardTab headerControls={<>
         {accessPassword && <><span className="rounded-md bg-inv-amber/[0.12] px-2 py-0.5 text-[11px] font-bold tracking-[0.08em] text-inv-amber">解除中</span>
         <button type="button" className={invButtonSmGhost} onClick={clearSetupPin}>ロック</button></>}
-        <Link to="/kiosk/inventory" className={`${invButtonSmGhost} ml-auto`}>在庫操作に戻る</Link>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col">
-        <InventoryDashboardTab accessPassword={accessPassword ?? undefined} onRequestUnlock={setPendingAction} pendingAction={pendingAction} onActionHandled={() => setPendingAction(null)} onEditItems={() => navigate('/kiosk/inventory/settings', { state: { tab: 'items' } })} />
-      </div>
+        <Link to="/kiosk/inventory" className={invButtonSmGhost}>在庫操作に戻る</Link>
+      </>} accessPassword={accessPassword ?? undefined} onRequestUnlock={setPendingAction} pendingAction={pendingAction} onActionHandled={() => setPendingAction(null)} onEditItems={() => navigate('/kiosk/inventory/settings', { state: { tab: 'items' } })} />
     </section>
   );
 }

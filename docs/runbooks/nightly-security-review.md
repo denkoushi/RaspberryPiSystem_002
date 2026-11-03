@@ -136,7 +136,7 @@ the completed bundle. Changes are no longer a nightly bundle input.
 
 One first-parent commit is one job, from the persisted cursor (exclusive) to deployed
 HEAD (inclusive). Each job contains complete, code-redacted unified diffs; excluded
-files, including tests, contribute only to `omittedFiles`. No byte budget truncates
+files, including tests and Ansible `vault.yml` secret files, contribute only to `omittedFiles`. No byte budget truncates
 files. The cursor advances only after all jobs in the range have been persisted.
 `security_review_changes_backfill` supplies additional exclusive-from/inclusive-to
 ranges. Repeated collection is safe: a SHA present anywhere in the queue is not

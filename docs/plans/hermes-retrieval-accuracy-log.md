@@ -976,3 +976,20 @@ Next, pending a product decision (what the kiosk shows when fewer verbatim recor
 Dropping the enrichment text from the gate alone removes one of the two records and leaves the row failing, so it is not a resolution by itself.
 
 Private files: `work/flywheel/real-2026-11-01.jsonl`, `runner-2026-11-01.log`, `questions-2026-11-01.jsonl`, `learned-queries.jsonl`.
+
+### 2026-11-03: night 30, two Sendai rows retired, the 異物付着 row fails the same way; the recent pool now admits verbatim records first (measurement and change)
+
+Night of 2026-11-02 (Pi 5 at 726739c8, 22:03–22:43 JST): generated 83, kept 77, shown 58, dropped 20, labelled 60, label pending 61, learned 4 proposed / rejected, `lossStages other_shown 15, not_in_pool 4`. Rows:
+
+- 「仙台工場にも同事例ありますか？」: ok for the third night (`lastOk 3`), retired from `regressions.jsonl`.
+- 「仙台工場に類例ある？」: `unsupported` (`no_verbatim_content`) for the third night, retired.
+- 「仙台の不適合二件」(real, filter): ok (filters, order, count).
+- 「異物付着の最近の不適合３件」: the same 3 ids in the same order as nights 28 and 29, `matchedCount 1`, `contentOk false`, `lastOk 0`. `regressions.jsonl` now holds only this row. The live plan was `semanticQuery "異物付着の最近の不適合３件"`, `contentSpan "異物付着 不適合"`, filter 起因部署 eq 三島工場管理部資材課, limit 3, hybrid with dense ok, 27 candidates, 30 judged.
+
+Decision (2026-11-03): option A from the night-29 entry, verbatim first. Two facts fixed the predicate. First, the flywheel runner receives the raw corpus from the API's refresh (`kickFlywheel`), without enrichment, so `checkFollowUpAnswer` folds body fields only. Second, the worker keeps summaries and tags out of the lexical corpus but passes enriched records to `execute`, so `recordPassage` on those records includes the summary; a verbatim test through `matchesSpecificToken` would admit a record whose AI summary alone says 異物付着 and the check would still reject it. On the Pi 5 snapshot (proxy, see night 29) the specific-token set itself moves with enrichment: without it 不適合 is the specific token and 異物付着 occurs in no body; with it 異物付着 is specific and no 資材課 record contains it whole. On the live corpus the check found exactly one.
+
+Change (this PR): in the recent-content path of `execute`, when the lexical index exists, the records that contain a specific content token whole in their body fields only (no enrichment text, quiet tokens ignored; new `matchesSpecificBodyToken`) form a verbatim set. When that set is not empty, `buildRecentContentPool` admits only those ids (lexical and dense), without the score floors; when it is empty, the bigram gate of #2462 applies unchanged. For this row the expected effect is one record shown (the verbatim one), the check passing, and the kiosk answering a request for 3 with 1; the requested-count shortfall stays in the receipt and is not shown (worker, `insufficient`). Risk accepted: a question whose content word appears whole in only one old record now shows that record alone instead of three near ones; the heldout gained/lost counts and `not_in_pool` are the watch items tonight.
+
+Not verifiable before tonight: the snapshot lacks the verbatim record, so no offline replay can show the row passing. Evidence expected on the night of 2026-11-03: `followUpCheck.ok true`, shown = expectedIds = the one record, `lastOk 1`.
+
+Private files: `work/flywheel/real-2026-11-02.jsonl`, `runner-2026-11-02.log`, `questions-2026-11-02.jsonl`.

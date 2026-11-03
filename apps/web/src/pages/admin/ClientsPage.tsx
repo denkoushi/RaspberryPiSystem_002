@@ -757,7 +757,7 @@ export function ClientsPage() {
                       !status ? 'bg-slate-500' : status.stale ? 'bg-red-600' : 'bg-emerald-600'
                     )}
                   >
-                    {!status ? '未報告' : status.stale ? '12時間超オフライン' : 'オンライン'}
+                    {!status ? '未報告' : status.stale ? 'オフライン' : 'オンライン'}
                   </span>
                 </div>
                 <p className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-slate-700">

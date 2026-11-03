@@ -1,3 +1,4 @@
+import { filterActivePlacements } from '../placement-completion.service.js';
 import { Prisma } from '@prisma/client';
 import {
   buildTokenGroupsForSearch,
@@ -17,6 +18,8 @@ const CURRENT_LIMIT = 30;
 const SCHEDULE_LIMIT = 30;
 
 type BranchStateSqlRow = {
+  slipKind: string | null;
+  scheduleSnapshot: unknown;
   id: string;
   manufacturingOrderBarcodeRaw: string;
   branchNo: number;
@@ -162,10 +165,12 @@ export async function suggestPartPlacementSearch(params: {
     : Prisma.sql`TRUE`;
   const machineBranchClause = machineFseibanFilter ? buildFseibanInClauseForBranchState(machineFseibanFilter) : Prisma.empty;
 
-  const currentRows = await prisma.$queryRaw<BranchStateSqlRow[]>`
+  const placementRows = await prisma.$queryRaw<BranchStateSqlRow[]>`
     SELECT
       "id",
       "manufacturingOrderBarcodeRaw",
+      "slip_kind" AS "slipKind",
+      "scheduleSnapshot",
       "branchNo",
       "shelfCodeRaw",
       "csvDashboardRowId",
@@ -176,8 +181,9 @@ export async function suggestPartPlacementSearch(params: {
     FROM "OrderPlacementBranchState"
     WHERE ${branchWhere}${machineBranchClause}
     ORDER BY "updatedAt" DESC
-    LIMIT ${CURRENT_LIMIT}
   `;
+
+  const currentRows = (await filterActivePlacements(placementRows)).slice(0, CURRENT_LIMIT);
 
   const excludedScheduleRowIds = currentRows
     .map((r) => r.csvDashboardRowId)
