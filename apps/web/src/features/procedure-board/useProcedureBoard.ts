@@ -158,7 +158,7 @@ function createSession(procedureId: string, refreshProposals: (proposalId?: stri
       if (!state.draft || state.forbidden || state.stopped) return;
       try {
         const next = change(state.draft);
-        if (JSON.stringify(next.layout) === JSON.stringify(state.draft)) return;
+        if (JSON.stringify(next.layout) === JSON.stringify(state.draft) && next.event.type !== 'page_moved') return;
         const id = next.event.payload.itemId;
         const material = boardItems(next.layout).find(entry => entry.item.itemId === id)?.item ?? boardItems(state.draft).find(entry => entry.item.itemId === id)?.item;
         const operationWork = material?.kind === 'material' && !['item_duplicated', 'text_created'].includes(next.event.type) && work?.materialId === material.materialId ? work : undefined;
@@ -168,7 +168,7 @@ function createSession(procedureId: string, refreshProposals: (proposalId?: stri
           (previous as Job & { mergeKey?: string }).mergeKey === mergeKey) {
           previous.change = change;
         } else jobs.push(Object.assign({ id: crypto.randomUUID(), change, work: operationWork }, { mergeKey }));
-        publish({ draft: next.layout }); schedule();
+        publish({ draft: next.layout, ...(['page_added', 'page_moved', 'page_removed'].includes(next.event.type) ? { suggestions: undefined, format: undefined } : {}) }); schedule();
       } catch { publish({ error: 'この場所には置けません' }); }
     },
     busy: (busy: boolean) => {
@@ -256,7 +256,7 @@ export function useProcedureBoard(procedureId: string) {
 export function formatPreview(layout: BoardLayout, format: FormatProposal | undefined): BoardLayout | undefined {
   if (format?.status !== 'ready' || !format.result) return;
   const items = boardItems(layout).map(entry => entry.item);
-  if (format.result.pages.length !== 3 || format.result.pages.some((page, index) => {
+  if (format.result.pages.length !== layout.pages.length || format.result.pages.some((page, index) => {
     const originals = boardItems({ ...layout, pages: [layout.pages[index]] }).map(entry => entry.item.itemId);
     const ids = page.rows.flatMap(row => row.cols.flatMap(col => col.itemIds));
     return page.page !== index + 1 || ids.length !== originals.length || new Set(ids).size !== ids.length || ids.some(id => !originals.includes(id));

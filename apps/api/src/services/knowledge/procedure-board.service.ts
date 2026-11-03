@@ -2,11 +2,11 @@ import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 
-import { layoutSchema, normalizeLayout, placeItem, targetSchema, type BoardItem, type BoardLayout } from './procedure-board-layout.js';
+import { MAX_PAGES, applyPageOperation, pageOrder, type PageOperation, layoutSchema, normalizeLayout, placeItem, targetSchema, type BoardItem, type BoardLayout } from './procedure-board-layout.js';
 import type { PrismaProcedureBoardRepository } from './prisma-procedure-board.repository.js';
 
 const identity = z.string().min(1).max(200);
-const position = z.object({ page: z.number().int().min(1).max(3), row: z.number().int().nonnegative(),
+const position = z.object({ page: z.number().int().min(1).max(MAX_PAGES), row: z.number().int().nonnegative(),
   col: z.number().int().min(0).max(2), index: z.number().int().nonnegative() }).strict();
 const work = { workId: z.string().uuid().optional(), activeMs: z.number().finite().min(0).max(86400000).optional() };
 const material = { materialId: identity, ...work };
@@ -16,6 +16,9 @@ const event = <T extends string, S extends z.ZodRawShape>(type: T, payload: S) =
   id: z.string().uuid(), type: z.literal(type), payload: z.object(payload).strict(),
 }).strict();
 export const boardEventSchema = z.discriminatedUnion('type', [
+  event('page_added', { page: z.number().int().min(1).max(MAX_PAGES) }),
+  event('page_moved', { from: z.number().int().min(1).max(MAX_PAGES), to: z.number().int().min(1).max(MAX_PAGES) }),
+  event('page_removed', { page: z.number().int().min(1).max(MAX_PAGES) }),
   event('placement_shown', suggestion),
   event('placement_accepted', { ...located, ...suggestion, to: position }),
   event('placement_dismissed', { ...suggestion, ...work }),
@@ -25,9 +28,9 @@ export const boardEventSchema = z.discriminatedUnion('type', [
   event('item_removed', located), event('text_edited', located),
   event('text_created', { itemId: z.string().uuid() }),
   event('item_duplicated', { itemId: z.string().uuid(), sourceItemId: z.string().uuid() }),
-  event('columns_resized', { page: z.number().int().min(1).max(3), row: z.number().int().nonnegative() }),
+  event('columns_resized', { page: z.number().int().min(1).max(MAX_PAGES), row: z.number().int().nonnegative() }),
   event('heading_accepted', { suggestionSetId: identity, proposalId: identity, itemId: z.string().uuid(), to: position }),
-  event('headings_migrated', { itemIds: z.array(z.string().uuid()).min(1).max(3) }),
+  event('headings_migrated', { itemIds: z.array(z.string().uuid()).min(1).max(MAX_PAGES) }),
   event('heading_dismissed', { suggestionSetId: identity, proposalId: identity }),
   event('conflict_selected', { suggestionSetId: identity, proposalId: identity, selectedMaterialId: identity.nullable() }),
   event('format_requested', { suggestionSetId: identity }), event('format_accepted', { suggestionSetId: identity }),
@@ -43,7 +46,7 @@ export const boardEventSchema = z.discriminatedUnion('type', [
 export type BoardEvent = z.infer<typeof boardEventSchema>;
 export const decisionsSchema = z.object({
   dismissedPlacements: z.array(z.object({ materialId: identity, materialFingerprint: identity }).strict()).max(600),
-  dismissedHeadings: z.array(z.object({ page: z.number().int().min(1).max(3), text: z.string().max(120) }).strict()).max(600),
+  dismissedHeadings: z.array(z.object({ page: z.number().int().min(1).max(MAX_PAGES), text: z.string().max(120) }).strict()).max(600),
   conflicts: z.array(z.object({ materialIds: z.tuple([identity, identity]), selectedMaterialId: identity.nullable() }).strict()
     .refine(value => value.materialIds[0] !== value.materialIds[1] && (value.selectedMaterialId === null || value.materialIds.includes(value.selectedMaterialId)))).max(600),
 }).strict();
@@ -63,8 +66,23 @@ export function boardConflict(currentVersion: number): never {
   throw new ApiError(409, '盤面が更新されています', { currentVersion }, 'PROCEDURE_BOARD_VERSION_CONFLICT');
 }
 
+export function isPageOperation(event: { type: string }): event is PageOperation {
+  return ['page_added', 'page_moved', 'page_removed'].includes(event.type);
+}
+export function remapPageDecisions(decisions: ReturnType<typeof emptyDecisions>, count: number, operation: PageOperation) {
+  const order = pageOrder(count, operation);
+  return decisionsSchema.parse({ ...decisions, dismissedHeadings: decisions.dismissedHeadings.flatMap(entry => {
+    const index = order.indexOf(entry.page);
+    return index < 0 ? [] : [{ ...entry, page: index + 1 }];
+  }) });
+}
+
 export function validateLayoutEvent(before: BoardLayout, after: BoardLayout, event: BoardEvent): void {
-  if (same(before, after)) invalidBoard();
+  if (isPageOperation(event)) {
+    try { if (same(applyPageOperation(before, event), after)) return; } catch { /* Invalid page operation. */ }
+    invalidBoard();
+  }
+  if (same(before, after) || before.pages.length !== after.pages.length) invalidBoard();
   const oldItems = boardItems(before); const newItems = boardItems(after);
   const payload = event.payload;
   const id = 'itemId' in payload ? payload.itemId : undefined;
