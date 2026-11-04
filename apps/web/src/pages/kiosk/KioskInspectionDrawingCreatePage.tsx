@@ -1576,7 +1576,7 @@ export function KioskInspectionDrawingCreatePage() {
               proposalMarkers={placement.proposals}
               selectedProposalId={placement.selectedProposalId}
               onSelectProposal={placement.selectProposal}
-              onProposalMove={placement.moveProposal}
+              onProposalMove={contentReadOnly ? undefined : placement.moveProposal}
               mode={mode === 'guidedTrial' ? 'test' : mode}
               zoom={zoom}
               fitGeneration={fitGeneration}
