@@ -20,32 +20,6 @@ import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-mea
 import { CallAutoSwitchLayout } from './features/webrtc/components/CallAutoSwitchLayout';
 import { AdminLayout } from './layouts/AdminLayout';
 import { KioskLayout } from './layouts/KioskLayout';
-import { BackupConfigHistoryPage } from './pages/admin/BackupConfigHistoryPage';
-import { BackupHistoryPage } from './pages/admin/BackupHistoryPage';
-import { BackupRestorePage } from './pages/admin/BackupRestorePage';
-import { BackupTargetsPage } from './pages/admin/BackupTargetsPage';
-import { ClientsPage } from './pages/admin/ClientsPage';
-import { CsvImportPage } from './pages/admin/CsvImportPage';
-import { DashboardPage } from './pages/admin/DashboardPage';
-import { DataBoardsPage } from './pages/admin/DataBoardsPage';
-import { DgxResourceAdminPage } from './pages/admin/DgxResourceAdminPage';
-import { GmailConfigPage } from './pages/admin/GmailConfigPage';
-import { KioskDocumentsAdminPage } from './pages/admin/KioskDocumentsAdminPage';
-import { KioskSettingsPage } from './pages/admin/KioskSettingsPage';
-import { LoanReportPage } from './pages/admin/LoanReportPage';
-import { LocalLlmAdminPage } from './pages/admin/LocalLlmAdminPage';
-import { MachineSignalAdminPage } from './pages/admin/MachineSignalAdminPage';
-import { PalletMachineIllustrationsPage } from './pages/admin/PalletMachineIllustrationsPage';
-import { PartMeasurementTemplatesPage } from './pages/admin/PartMeasurementTemplatesPage';
-import { PhotoGallerySeedPage } from './pages/admin/PhotoGallerySeedPage';
-import { PhotoLoanLabelReviewsPage } from './pages/admin/PhotoLoanLabelReviewsPage';
-import { PlacementPhotosPage } from './pages/admin/PlacementPhotosPage';
-import { ProductionScheduleSettingsPage } from './pages/admin/ProductionScheduleSettingsPage';
-import { RaspiInventoryPage } from './pages/admin/RaspiInventoryPage';
-import { SecurityPage } from './pages/admin/SecurityPage';
-import { SelfInspectionOutOfToleranceReviewsPage } from './pages/admin/SelfInspectionOutOfToleranceReviewsPage';
-import { SignageHubPage } from './pages/admin/SignageHubPage';
-import { WatchCameraPage } from './pages/admin/WatchCameraPage';
 import { KioskAssemblyCheckSheetPage } from './pages/kiosk/KioskAssemblyCheckSheetPage';
 import { KioskAssemblyCheckSheetsPage } from './pages/kiosk/KioskAssemblyCheckSheetsPage';
 import { KioskAssemblyHomePage } from './pages/kiosk/KioskAssemblyHomePage';
@@ -96,15 +70,112 @@ import { PurchaseOrderLookupPage } from './pages/kiosk/PurchaseOrderLookupPage';
 import { LoginPage } from './pages/LoginPage';
 import { SignageDisplayPage } from './pages/signage/SignageDisplayPage';
 import { SignageLiteDisplayPage } from './pages/signage/SignageLiteDisplayPage';
-import { AssemblyTorqueOverridePage } from './pages/tools/AssemblyTorqueOverridePage';
-import { HistoryPage } from './pages/tools/HistoryPage';
-import { InspectionItemsPage } from './pages/tools/InspectionItemsPage';
-import { InspectionRecordsPage } from './pages/tools/InspectionRecordsPage';
-import { MachinesPage } from './pages/tools/MachinesPage';
-import { MachinesUninspectedPage } from './pages/tools/MachinesUninspectedPage';
-import { MeasuringInstrumentGenresPage } from './pages/tools/MeasuringInstrumentGenresPage';
-import { MovedToKioskTagDeskPage } from './pages/tools/MovedToKioskTagDeskPage';
-import { TorqueWrenchesPage } from './pages/tools/TorqueWrenchesPage';
+
+const BackupConfigHistoryPage = lazy(() =>
+  import('./pages/admin/BackupConfigHistoryPage').then((module) => ({ default: module.BackupConfigHistoryPage }))
+);
+const BackupHistoryPage = lazy(() =>
+  import('./pages/admin/BackupHistoryPage').then((module) => ({ default: module.BackupHistoryPage }))
+);
+const BackupRestorePage = lazy(() =>
+  import('./pages/admin/BackupRestorePage').then((module) => ({ default: module.BackupRestorePage }))
+);
+const BackupTargetsPage = lazy(() =>
+  import('./pages/admin/BackupTargetsPage').then((module) => ({ default: module.BackupTargetsPage }))
+);
+const ClientsPage = lazy(() =>
+  import('./pages/admin/ClientsPage').then((module) => ({ default: module.ClientsPage }))
+);
+const CsvImportPage = lazy(() =>
+  import('./pages/admin/CsvImportPage').then((module) => ({ default: module.CsvImportPage }))
+);
+const DashboardPage = lazy(() =>
+  import('./pages/admin/DashboardPage').then((module) => ({ default: module.DashboardPage }))
+);
+const DataBoardsPage = lazy(() =>
+  import('./pages/admin/DataBoardsPage').then((module) => ({ default: module.DataBoardsPage }))
+);
+const DgxResourceAdminPage = lazy(() =>
+  import('./pages/admin/DgxResourceAdminPage').then((module) => ({ default: module.DgxResourceAdminPage }))
+);
+const GmailConfigPage = lazy(() =>
+  import('./pages/admin/GmailConfigPage').then((module) => ({ default: module.GmailConfigPage }))
+);
+const KioskDocumentsAdminPage = lazy(() =>
+  import('./pages/admin/KioskDocumentsAdminPage').then((module) => ({ default: module.KioskDocumentsAdminPage }))
+);
+const KioskSettingsPage = lazy(() =>
+  import('./pages/admin/KioskSettingsPage').then((module) => ({ default: module.KioskSettingsPage }))
+);
+const LoanReportPage = lazy(() =>
+  import('./pages/admin/LoanReportPage').then((module) => ({ default: module.LoanReportPage }))
+);
+const LocalLlmAdminPage = lazy(() =>
+  import('./pages/admin/LocalLlmAdminPage').then((module) => ({ default: module.LocalLlmAdminPage }))
+);
+const MachineSignalAdminPage = lazy(() =>
+  import('./pages/admin/MachineSignalAdminPage').then((module) => ({ default: module.MachineSignalAdminPage }))
+);
+const PalletMachineIllustrationsPage = lazy(() =>
+  import('./pages/admin/PalletMachineIllustrationsPage').then((module) => ({ default: module.PalletMachineIllustrationsPage }))
+);
+const PartMeasurementTemplatesPage = lazy(() =>
+  import('./pages/admin/PartMeasurementTemplatesPage').then((module) => ({ default: module.PartMeasurementTemplatesPage }))
+);
+const PhotoGallerySeedPage = lazy(() =>
+  import('./pages/admin/PhotoGallerySeedPage').then((module) => ({ default: module.PhotoGallerySeedPage }))
+);
+const PhotoLoanLabelReviewsPage = lazy(() =>
+  import('./pages/admin/PhotoLoanLabelReviewsPage').then((module) => ({ default: module.PhotoLoanLabelReviewsPage }))
+);
+const PlacementPhotosPage = lazy(() =>
+  import('./pages/admin/PlacementPhotosPage').then((module) => ({ default: module.PlacementPhotosPage }))
+);
+const ProductionScheduleSettingsPage = lazy(() =>
+  import('./pages/admin/ProductionScheduleSettingsPage').then((module) => ({ default: module.ProductionScheduleSettingsPage }))
+);
+const RaspiInventoryPage = lazy(() =>
+  import('./pages/admin/RaspiInventoryPage').then((module) => ({ default: module.RaspiInventoryPage }))
+);
+const SecurityPage = lazy(() =>
+  import('./pages/admin/SecurityPage').then((module) => ({ default: module.SecurityPage }))
+);
+const SelfInspectionOutOfToleranceReviewsPage = lazy(() =>
+  import('./pages/admin/SelfInspectionOutOfToleranceReviewsPage').then((module) => ({ default: module.SelfInspectionOutOfToleranceReviewsPage }))
+);
+const SignageHubPage = lazy(() =>
+  import('./pages/admin/SignageHubPage').then((module) => ({ default: module.SignageHubPage }))
+);
+const WatchCameraPage = lazy(() =>
+  import('./pages/admin/WatchCameraPage').then((module) => ({ default: module.WatchCameraPage }))
+);
+const AssemblyTorqueOverridePage = lazy(() =>
+  import('./pages/tools/AssemblyTorqueOverridePage').then((module) => ({ default: module.AssemblyTorqueOverridePage }))
+);
+const HistoryPage = lazy(() =>
+  import('./pages/tools/HistoryPage').then((module) => ({ default: module.HistoryPage }))
+);
+const InspectionItemsPage = lazy(() =>
+  import('./pages/tools/InspectionItemsPage').then((module) => ({ default: module.InspectionItemsPage }))
+);
+const InspectionRecordsPage = lazy(() =>
+  import('./pages/tools/InspectionRecordsPage').then((module) => ({ default: module.InspectionRecordsPage }))
+);
+const MachinesPage = lazy(() =>
+  import('./pages/tools/MachinesPage').then((module) => ({ default: module.MachinesPage }))
+);
+const MachinesUninspectedPage = lazy(() =>
+  import('./pages/tools/MachinesUninspectedPage').then((module) => ({ default: module.MachinesUninspectedPage }))
+);
+const MeasuringInstrumentGenresPage = lazy(() =>
+  import('./pages/tools/MeasuringInstrumentGenresPage').then((module) => ({ default: module.MeasuringInstrumentGenresPage }))
+);
+const MovedToKioskTagDeskPage = lazy(() =>
+  import('./pages/tools/MovedToKioskTagDeskPage').then((module) => ({ default: module.MovedToKioskTagDeskPage }))
+);
+const TorqueWrenchesPage = lazy(() =>
+  import('./pages/tools/TorqueWrenchesPage').then((module) => ({ default: module.TorqueWrenchesPage }))
+);
 
 const KioskInspectionDrawingCreatePreviewPage = lazy(() =>
   import('./pages/dev/KioskInspectionDrawingCreatePreviewPage').then((module) => ({
@@ -381,7 +452,7 @@ function App() {
         path="/preview"
         element={<AdminLayout />}
       >
-        <Route path="import" element={<CsvImportPage />} />
+        <Route path="import" element={lazyRouteElement(<CsvImportPage />)} />
       </Route>
       <Route
         path="/admin"
@@ -391,66 +462,66 @@ function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route index element={lazyRouteElement(<DashboardPage />)} />
         <Route path="tools">
-          <Route path="raspi-inventory" element={<RaspiInventoryPage />} />
-          <Route path="employees" element={<MovedToKioskTagDeskPage />} />
-          <Route path="dgx-resource" element={<DgxResourceAdminPage />} />
-          <Route path="items" element={<MovedToKioskTagDeskPage />} />
-          <Route path="unified" element={<MovedToKioskTagDeskPage />} />
-          <Route path="rigging-gears" element={<MovedToKioskTagDeskPage />} />
-          <Route path="inspection-items" element={<InspectionItemsPage />} />
-          <Route path="instrument-tags" element={<MovedToKioskTagDeskPage />} />
-          <Route path="inspection-records" element={<InspectionRecordsPage />} />
-          <Route path="measuring-instruments" element={<MovedToKioskTagDeskPage />} />
-          <Route path="torque-wrenches" element={<TorqueWrenchesPage />} />
-          <Route path="assembly-torque-override" element={<AssemblyTorqueOverridePage />} />
-          <Route path="measuring-instrument-genres" element={<MeasuringInstrumentGenresPage />} />
-          <Route path="part-measurement-templates" element={<PartMeasurementTemplatesPage />} />
-          <Route path="machines" element={<MachinesPage />} />
-          <Route path="machines-uninspected" element={<MachinesUninspectedPage />} />
-          <Route path="history" element={<HistoryPage />} />
+          <Route path="raspi-inventory" element={lazyRouteElement(<RaspiInventoryPage />)} />
+          <Route path="employees" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+          <Route path="dgx-resource" element={lazyRouteElement(<DgxResourceAdminPage />)} />
+          <Route path="items" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+          <Route path="unified" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+          <Route path="rigging-gears" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+          <Route path="inspection-items" element={lazyRouteElement(<InspectionItemsPage />)} />
+          <Route path="instrument-tags" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+          <Route path="inspection-records" element={lazyRouteElement(<InspectionRecordsPage />)} />
+          <Route path="measuring-instruments" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+          <Route path="torque-wrenches" element={lazyRouteElement(<TorqueWrenchesPage />)} />
+          <Route path="assembly-torque-override" element={lazyRouteElement(<AssemblyTorqueOverridePage />)} />
+          <Route path="measuring-instrument-genres" element={lazyRouteElement(<MeasuringInstrumentGenresPage />)} />
+          <Route path="part-measurement-templates" element={lazyRouteElement(<PartMeasurementTemplatesPage />)} />
+          <Route path="machines" element={lazyRouteElement(<MachinesPage />)} />
+          <Route path="machines-uninspected" element={lazyRouteElement(<MachinesUninspectedPage />)} />
+          <Route path="history" element={lazyRouteElement(<HistoryPage />)} />
         </Route>
-        <Route path="clients" element={<ClientsPage />} />
-        <Route path="kiosk-settings" element={<KioskSettingsPage />} />
-        <Route path="security" element={<SecurityPage />} />
-        <Route path="import" element={<CsvImportPage />} />
+        <Route path="clients" element={lazyRouteElement(<ClientsPage />)} />
+        <Route path="kiosk-settings" element={lazyRouteElement(<KioskSettingsPage />)} />
+        <Route path="security" element={lazyRouteElement(<SecurityPage />)} />
+        <Route path="import" element={lazyRouteElement(<CsvImportPage />)} />
         <Route path="backup">
-          <Route path="targets" element={<BackupTargetsPage />} />
-          <Route path="config-history" element={<BackupConfigHistoryPage />} />
-          <Route path="history" element={<BackupHistoryPage />} />
-          <Route path="restore" element={<BackupRestorePage />} />
+          <Route path="targets" element={lazyRouteElement(<BackupTargetsPage />)} />
+          <Route path="config-history" element={lazyRouteElement(<BackupConfigHistoryPage />)} />
+          <Route path="history" element={lazyRouteElement(<BackupHistoryPage />)} />
+          <Route path="restore" element={lazyRouteElement(<BackupRestorePage />)} />
         </Route>
         <Route path="imports">
           <Route path="schedule" element={<Navigate to="/admin/import" replace />} />
         </Route>
         {/* 旧 2 ページ（可視化・CSV ダッシュボード）はデータボードへ転送する */}
-        <Route path="data-boards" element={<DataBoardsPage />} />
+        <Route path="data-boards" element={lazyRouteElement(<DataBoardsPage />)} />
         <Route path="csv-dashboards" element={<Navigate to="/admin/data-boards?type=table" replace />} />
-        <Route path="production-schedule-settings" element={<ProductionScheduleSettingsPage />} />
+        <Route path="production-schedule-settings" element={lazyRouteElement(<ProductionScheduleSettingsPage />)} />
         <Route
           path="part-measurement/self-inspection-reviews"
-          element={<SelfInspectionOutOfToleranceReviewsPage />}
+          element={lazyRouteElement(<SelfInspectionOutOfToleranceReviewsPage />)}
         />
         <Route path="visualization-dashboards" element={<Navigate to="/admin/data-boards?type=graph" replace />} />
-        <Route path="pallet-machine-illustrations" element={<PalletMachineIllustrationsPage />} />
-        <Route path="machine-signal" element={<MachineSignalAdminPage />} />
+        <Route path="pallet-machine-illustrations" element={lazyRouteElement(<PalletMachineIllustrationsPage />)} />
+        <Route path="machine-signal" element={lazyRouteElement(<MachineSignalAdminPage />)} />
         <Route path="gmail">
-          <Route path="config" element={<GmailConfigPage />} />
+          <Route path="config" element={lazyRouteElement(<GmailConfigPage />)} />
         </Route>
         <Route path="reports">
-          <Route path="loan-report" element={<LoanReportPage />} />
+          <Route path="loan-report" element={lazyRouteElement(<LoanReportPage />)} />
         </Route>
-        <Route path="knowledge-position-ranks" element={<MovedToKioskTagDeskPage positionRanks />} />
-        <Route path="local-llm" element={<LocalLlmAdminPage />} />
+        <Route path="knowledge-position-ranks" element={lazyRouteElement(<MovedToKioskTagDeskPage positionRanks />)} />
+        <Route path="local-llm" element={lazyRouteElement(<LocalLlmAdminPage />)} />
         <Route path="dgx-resource" element={<Navigate to="/admin/tools/dgx-resource" replace />} />
-        <Route path="placement-photos" element={<PlacementPhotosPage />} />
-        <Route path="watch-camera" element={<WatchCameraPage />} />
-        <Route path="photo-loan-label-reviews" element={<PhotoLoanLabelReviewsPage />} />
-        <Route path="photo-gallery-seed" element={<PhotoGallerySeedPage />} />
-        <Route path="kiosk-documents" element={<KioskDocumentsAdminPage />} />
+        <Route path="placement-photos" element={lazyRouteElement(<PlacementPhotosPage />)} />
+        <Route path="watch-camera" element={lazyRouteElement(<WatchCameraPage />)} />
+        <Route path="photo-loan-label-reviews" element={lazyRouteElement(<PhotoLoanLabelReviewsPage />)} />
+        <Route path="photo-gallery-seed" element={lazyRouteElement(<PhotoGallerySeedPage />)} />
+        <Route path="kiosk-documents" element={lazyRouteElement(<KioskDocumentsAdminPage />)} />
         <Route path="signage">
-          <Route index element={<SignageHubPage />} />
+          <Route index element={lazyRouteElement(<SignageHubPage />)} />
           {/* 旧 4 ページの URL は 1 画面ハブへ転送する */}
           <Route path="schedules" element={<Navigate to="/admin/signage" replace />} />
           <Route path="preview" element={<Navigate to="/admin/signage" replace />} />
@@ -458,17 +529,17 @@ function App() {
           <Route path="emergency" element={<Navigate to="/admin/signage?panel=emergency" replace />} />
         </Route>
         {/* 後方互換性のため、既存パスも維持 */}
-        <Route path="employees" element={<MovedToKioskTagDeskPage />} />
-        <Route path="items" element={<MovedToKioskTagDeskPage />} />
-        <Route path="inspection-items" element={<InspectionItemsPage />} />
-        <Route path="instrument-tags" element={<MovedToKioskTagDeskPage />} />
-        <Route path="inspection-records" element={<InspectionRecordsPage />} />
-        <Route path="measuring-instruments" element={<MovedToKioskTagDeskPage />} />
-        <Route path="measuring-instrument-genres" element={<MeasuringInstrumentGenresPage />} />
-        <Route path="machines" element={<MachinesPage />} />
-        <Route path="machines-uninspected" element={<MachinesUninspectedPage />} />
-        <Route path="rigging-gears" element={<MovedToKioskTagDeskPage />} />
-        <Route path="history" element={<HistoryPage />} />
+        <Route path="employees" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+        <Route path="items" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+        <Route path="inspection-items" element={lazyRouteElement(<InspectionItemsPage />)} />
+        <Route path="instrument-tags" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+        <Route path="inspection-records" element={lazyRouteElement(<InspectionRecordsPage />)} />
+        <Route path="measuring-instruments" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+        <Route path="measuring-instrument-genres" element={lazyRouteElement(<MeasuringInstrumentGenresPage />)} />
+        <Route path="machines" element={lazyRouteElement(<MachinesPage />)} />
+        <Route path="machines-uninspected" element={lazyRouteElement(<MachinesUninspectedPage />)} />
+        <Route path="rigging-gears" element={lazyRouteElement(<MovedToKioskTagDeskPage />)} />
+        <Route path="history" element={lazyRouteElement(<HistoryPage />)} />
       </Route>
       <Route path="*" element={<Navigate to="/kiosk" replace />} />
       </Routes>

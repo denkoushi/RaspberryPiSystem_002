@@ -1,12 +1,17 @@
-import assemblyProcedureTemplateSopHtml from '../../generated/kiosk-sop/assembly-procedure-template/manual.html?raw';
-import inspectionDrawingSopHtml from '../../generated/kiosk-sop/inspection-drawing/manual.html?raw';
-
 import type { KioskSopManual, KioskSopManualId } from './types';
+
+function cachedHtml(load: () => Promise<{ default: string }>): () => Promise<string> {
+  let pending: Promise<string> | undefined;
+  return () => pending ??= load().then((module) => module.default).catch((error) => {
+    pending = undefined;
+    throw error;
+  });
+}
 
 const INSPECTION_DRAWING_MANUAL: KioskSopManual = Object.freeze({
   id: 'inspection-drawing',
   title: '検査図面 操作取説',
-  sourceHtml: inspectionDrawingSopHtml,
+  loadSourceHtml: cachedHtml(() => import('../../generated/kiosk-sop/inspection-drawing/manual.html?raw')),
   sheets: Object.freeze([
     { id: 'library-entry-search', label: '一覧・検索' },
     { id: 'library-visual-management', label: '図面管理' },
@@ -24,7 +29,7 @@ const INSPECTION_DRAWING_MANUAL: KioskSopManual = Object.freeze({
 const ASSEMBLY_PROCEDURE_TEMPLATE_MANUAL: KioskSopManual = Object.freeze({
   id: 'assembly-procedure-template',
   title: '組立 手順書・テンプレート取説',
-  sourceHtml: assemblyProcedureTemplateSopHtml,
+  loadSourceHtml: cachedHtml(() => import('../../generated/kiosk-sop/assembly-procedure-template/manual.html?raw')),
   sheets: Object.freeze([
     { id: 'assembly-overview', label: '管理画面と全体の流れ' },
     { id: 'assembly-file-register', label: 'ファイル登録・事前プレビュー' },

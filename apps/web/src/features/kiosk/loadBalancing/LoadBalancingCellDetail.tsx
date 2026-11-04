@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 
 import { LoadBalancingCapacityEditor } from './LoadBalancingCapacityEditor';
-import { LoadBalancingDailyChart } from './LoadBalancingDailyChart';
 import { formatHours, formatLoadBalancingMachineName, formatYearMonthSlash } from './loadBalancingFormat';
 import { LoadBalancingActionIcon } from './LoadBalancingIcons';
 import { LATE_BUCKET, type ScenarioAction, type TransferDestination, listCellRows } from './loadBalancingScenario';
@@ -10,6 +9,10 @@ import type {
   ProductionScheduleLoadBalancingWorkspaceDayResponse,
   ProductionScheduleLoadBalancingWorkspaceResource
 } from '../../../api/client';
+
+const LoadBalancingDailyChart = lazy(() =>
+  import('./LoadBalancingDailyChart').then((module) => ({ default: module.LoadBalancingDailyChart }))
+);
 
 type CellRow = ReturnType<typeof listCellRows>[number];
 
@@ -109,7 +112,9 @@ export function LoadBalancingCellDetail(props: Props) {
           {props.dayLoading && dailyDays.length === 0 ? (
             <div className="h-[170px] animate-pulse rounded bg-white/5" />
           ) : (
-            <LoadBalancingDailyChart days={dailyDays} capacityMinutesPerDay={props.day?.capacityMinutesPerDay ?? null} />
+            <Suspense fallback={<div className="h-[170px] w-full min-w-0" />}>
+              <LoadBalancingDailyChart days={dailyDays} capacityMinutesPerDay={props.day?.capacityMinutesPerDay ?? null} />
+            </Suspense>
           )}
         </div>
       ) : null}

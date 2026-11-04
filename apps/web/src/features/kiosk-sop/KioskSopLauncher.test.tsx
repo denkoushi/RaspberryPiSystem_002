@@ -1,14 +1,15 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   KIOSK_SOP_CLOSE_MESSAGE,
   KIOSK_SOP_FOCUS_CLOSE_MESSAGE
 } from './buildKioskSopSrcDoc';
+import { KioskSopDialog } from './KioskSopDialog';
 import { KioskSopLauncher } from './KioskSopLauncher';
 
 describe('KioskSopLauncher', () => {
-  it('opens an isolated dialog, ignores unrelated messages, and returns focus on close', () => {
+  it('opens an isolated dialog, ignores unrelated messages, and returns focus on close', async () => {
     render(<KioskSopLauncher manualId="inspection-drawing" initialSheetId="library-entry-search" />);
 
     const openButton = screen.getByRole('button', { name: 'この画面の操作手順を開く' });
@@ -19,7 +20,7 @@ describe('KioskSopLauncher', () => {
       name: '取説 — 検査図面 操作取説 — 一覧・検索'
     });
     const closeButton = screen.getByRole('button', { name: '閉じる' });
-    const frame = screen.getByTitle('検査図面 操作取説 — 一覧・検索');
+    const frame = await screen.findByTitle<HTMLIFrameElement>('検査図面 操作取説 — 一覧・検索');
 
     expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
     expect(frame).toHaveAttribute('referrerpolicy', 'no-referrer');
@@ -60,6 +61,22 @@ describe('KioskSopLauncher', () => {
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(openButton).toHaveFocus();
+  });
+
+  it('keeps the controls available while loading and ignores completion after closing', async () => {
+    let resolveHtml!: (html: string) => void;
+    const loadSourceHtml = vi.fn(() => new Promise<string>((resolve) => { resolveHtml = resolve; }));
+    const manual = { id: 'test', title: '取説', sheets: [{ id: 'test-sheet', label: '手順' }], loadSourceHtml };
+    const onClose = vi.fn();
+    const view = render(<KioskSopDialog isOpen={false} onClose={onClose} manual={manual} initialSheetId="test-sheet" />);
+    expect(loadSourceHtml).not.toHaveBeenCalled();
+    view.rerender(<KioskSopDialog isOpen onClose={onClose} manual={manual} initialSheetId="test-sheet" />);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '閉じる' })).toBeEnabled();
+    expect(screen.queryByTestId('kiosk-sop-frame')).not.toBeInTheDocument();
+    view.rerender(<KioskSopDialog isOpen={false} onClose={onClose} manual={manual} initialSheetId="test-sheet" />);
+    await act(async () => resolveHtml('<html><head></head><body data-sheet="test-sheet">手順</body></html>'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('closes with Escape while focus remains in the parent document', () => {
