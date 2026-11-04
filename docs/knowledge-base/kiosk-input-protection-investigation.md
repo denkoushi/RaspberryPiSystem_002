@@ -182,7 +182,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 ## 関連ファイル
 
 - `apps/web/src/components/kiosk/KioskHeader.tsx`: 入力フィールド削除・表示のみに変更
-- `apps/web/src/api/client.ts`: 起動時防御・自動復旧機能の実装
+- `apps/web/src/api/client.ts`: 起動時防御・自動復旧機能の実装（現行: `apps/web/src/api/http.ts`。`client.ts` は再エクスポート）
 - `apps/web/src/layouts/KioskLayout.tsx`: 表示/APIヘッダーを実際に利用するキーに統一
 - `apps/web/src/pages/kiosk/KioskBorrowPage.tsx`: localStorage使用削除
 - `apps/web/src/pages/kiosk/KioskPhotoBorrowPage.tsx`: localStorage使用削除
@@ -190,7 +190,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 - `apps/web/src/pages/kiosk/KioskInstrumentBorrowPage.tsx`: localStorage使用削除
 - `apps/web/src/pages/kiosk/KioskReturnPage.tsx`: localStorage使用削除
 - `apps/web/src/pages/kiosk/KioskCallPage.tsx`: localStorage使用削除
-- `apps/web/src/components/kiosk/KioskSupportModal.tsx`: localStorage使用削除
+- `apps/web/src/components/kiosk/KioskSupportModal.tsx`: localStorage使用削除（現行コードには存在しない）
 - `docs/guides/api-key-policy.md`: APIキーの方針ドキュメント
 
 ## 学んだこと

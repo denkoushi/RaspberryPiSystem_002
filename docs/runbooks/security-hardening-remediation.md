@@ -187,6 +187,6 @@ Preserve queue backups, verify NFC, barcode, torque and health again, and record
 
 1. Backup relevant secret/config/DB.
 2. Apply one item.
-3. Redeploy the affected layer only (`scripts/server/deploy.sh` or the client role).
+3. Redeploy only the affected host with the standard route (`scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit <host>`, then the same command without `--print-plan`).
 4. Verify kiosk borrow/return + admin login + the item-specific check above.
 5. Roll back if the flow breaks; record result in KB-393 Open Items.

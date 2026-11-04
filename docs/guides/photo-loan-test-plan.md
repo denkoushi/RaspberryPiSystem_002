@@ -48,7 +48,7 @@ update-frequency: medium
 ```bash
 # macでのテスト
 cd apps/api
-pnpm test src/routes/tools/loans/photo-borrow.test.ts
+pnpm test src/routes/__tests__/photo-borrow.integration.test.ts
 
 # CIでのテスト
 # .github/workflows/ci.ymlに追加
@@ -66,7 +66,7 @@ pnpm test src/routes/tools/loans/photo-borrow.test.ts
 ```bash
 # macでのテスト
 cd apps/api
-pnpm test src/routes/storage/photos.test.ts
+pnpm test src/routes/storage/__tests__/photos.test.ts
 ```
 
 #### 1.3 クライアント端末設定更新API（PUT `/clients/:id`）
@@ -195,12 +195,12 @@ pnpm test src/services/camera/camera.service.perf.test.ts
 
 **実装方法**:
 ```bash
-# 実機で実行
-cd /opt/RaspberryPiSystem_002
-./scripts/server/deploy.sh feature/photo-loan-camera
+# 標準デプロイ（deploy.sh は廃止。docs/guides/deployment.md 参照）
+scripts/update-all-clients.sh feature/photo-loan-camera infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
+scripts/update-all-clients.sh feature/photo-loan-camera infrastructure/ansible/inventory.yml --limit raspberrypi5
 
-# 動作確認
-curl http://localhost:8080/api/system/health
+# 動作確認（実機で実行）
+curl -k https://localhost/api/system/health
 curl http://localhost:4173/storage/thumbnails/2025/11/test_thumb.jpg
 ```
 

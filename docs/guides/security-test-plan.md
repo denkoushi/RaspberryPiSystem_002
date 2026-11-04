@@ -41,8 +41,8 @@
 
 6. **運用モード自動検出APIのテスト**
    - [ ] `/api/system/network-mode`エンドポイントが存在する
-   - [ ] インターネット接続ありの場合、`{ mode: "maintenance", status: "internet_connected" }`が返る（運用上はTailscale通常運用として扱う）
-   - [ ] インターネット接続なしの場合、`{ mode: "local", status: "local_network_only" }`が返る
+   - [ ] インターネット接続ありの場合、`{ detectedMode: "maintenance", status: "internet_connected" }`が返る（運用上はTailscale通常運用として扱う）
+   - [ ] インターネット接続なしの場合、`{ detectedMode: "local", status: "local_network_only" }`が返る
    - [ ] APIのレスポンス時間が適切（5秒以内）
 
 7. **管理画面での運用モード表示テスト**
@@ -75,8 +75,8 @@ ansible-playbook -i inventory.yml playbooks/ping.yml
 ansible-playbook -i inventory.yml playbooks/ping.yml
 
 # 7. 運用モード自動検出APIのテスト
-curl http://192.168.10.230:8080/api/system/network-mode
-# 期待: { mode: "local", status: "local_network_only" } または { mode: "maintenance", status: "internet_connected" }
+curl -k https://192.168.10.230/api/system/network-mode
+# 期待: { detectedMode: "local", status: "local_network_only", ... } または { detectedMode: "maintenance", status: "internet_connected", ... }
 
 # 8. 管理画面での運用モード表示テスト
 # ブラウザで管理画面を開き、ヘッダーまたはダッシュボードに運用モードが表示されることを確認
@@ -140,7 +140,7 @@ ssh raspi5-tailscale "cd /opt/RaspberryPiSystem_002 && git pull"
 
 ```bash
 # 1. バックアップ暗号化の確認
-ssh denkon5sd02@192.168.10.230 "cd /opt/RaspberryPiSystem_002 && ./scripts/backup.sh"
+ssh denkon5sd02@192.168.10.230 "cd /opt/RaspberryPiSystem_002 && ./scripts/server/backup-encrypted.sh"
 file /path/to/backup/backup-*.enc
 
 # 2. オフライン保存の確認
@@ -202,11 +202,10 @@ ssh denkon5sd02@192.168.10.230 "sudo fail2ban-client status"
    - [ ] Dockerイメージのスキャンが正常に動作する
    - [ ] 定期スキャンが設定されている
 
-3. **rkhunterの動作確認**
-   - [ ] rkhunterがインストールされている
-   - [ ] 初期データベースが作成されている
+3. **パッケージ整合性確認の動作確認**（rkhunterは廃止。KB-074参照）
+   - [ ] `/usr/local/bin/package-integrity-scan.sh` が配置されている
    - [ ] 定期スキャンが設定されている
-   - [ ] スキャンが正常に動作する
+   - [ ] スキャン結果が `/var/log/package-integrity/package-integrity-scan.log` に記録される
 
 #### テスト手順
 
@@ -219,9 +218,8 @@ sudo clamscan -r /opt/RaspberryPiSystem_002
 ssh denkon5sd02@192.168.10.230 "trivy --version"
 trivy image postgres:15-alpine
 
-# 3. rkhunterの動作確認
-ssh denkon5sd02@192.168.10.230 "sudo rkhunter --versioncheck"
-sudo rkhunter --check
+# 3. パッケージ整合性確認の動作確認
+ssh denkon5sd02@192.168.10.230 "sudo tail -n 50 /var/log/package-integrity/package-integrity-scan.log"
 ```
 
 ### Phase 6: 監視・アラート
@@ -237,7 +235,7 @@ sudo rkhunter --check
    - [ ] アラート通知が正しく設定されている
 
 3. **スキャン結果のログ確認**
-   - [ ] ClamAV、Trivy、rkhunterのスキャン結果がログに記録されている
+   - [ ] ClamAV、Trivy、パッケージ整合性確認のスキャン結果がログに記録されている
    - [ ] 異常検知時にアラート通知が送信される
 
 #### テスト手順
@@ -251,9 +249,9 @@ tail -f /var/log/fail2ban.log
 # 異常パターンをシミュレートして、アラート通知が送信されることを確認
 
 # 3. スキャン結果のログ確認
-tail -f /var/log/clamav/clamav.log
-tail -f /var/log/trivy/trivy.log
-tail -f /var/log/rkhunter/rkhunter.log
+tail -f /var/log/clamav/clamav-scan.log
+tail -f /var/log/trivy/trivy-scan.log
+tail -f /var/log/package-integrity/package-integrity-scan.log
 ```
 
 ## テスト実行チェックリスト

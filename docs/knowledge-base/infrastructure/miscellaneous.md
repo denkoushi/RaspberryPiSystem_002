@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - その他
 
 **カテゴリ**: インフラ関連 > その他  
-**件数**: 18件  
+**件数**: 24件  
 **索引**: [index.md](../index.md)
 
 その他のインフラ関連トラブルシューティング情報
@@ -39,8 +39,9 @@ update-frequency: medium
 **解決状況**: ✅ **解決済み**（2025-11-24）
 
 **関連ファイル**: 
-- `clients/nfc-agent/src/nfc_agent/queue.py`
-- `clients/nfc-agent/src/nfc_agent/agent.py`
+- `clients/nfc-agent/nfc_agent/queue_store.py`
+- `clients/nfc-agent/nfc_agent/main.py`
+- `clients/nfc-agent/nfc_agent/resend_worker.py`
 
 ---
 
@@ -514,7 +515,7 @@ update-frequency: medium
 
 ### [KB-070] 運用モード可視化（ネットワークモード自動検出API）
 
-**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../../plans/security-hardening-execplan.md)
 
 **事象**: 
 - 現在の運用モード（Tailscale/ローカル緊急）が分からない

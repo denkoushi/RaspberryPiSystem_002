@@ -88,6 +88,8 @@
 
 ### ⚠️ 改善が必要な点
 
+> 2026-02-09 追記および問題1-3（解消）のとおり、以下はすでに解消済み（評価時点の記録として残す）。
+
 1. **clientKey/clientIdの解決ロジック**: `useWebRTCSignaling.ts`の`resolveClientKey()`が`DEFAULT_CLIENT_KEY`をフォールバックとして使用していない
 2. **clientIdの初期化**: `clientId`の取得方法が不明確（localStorageに依存しているが、KB-225で無効化された）
 
@@ -101,6 +103,8 @@
 - デバッグログの残存は軽微な問題
 
 ## 推奨される対応
+
+> 2026-02-09 追記および問題1-3（解消）のとおり、優先度: 高 の 2 項目は対応済み（評価時点の記録として残す）。
 
 ### 優先度: 高
 
@@ -119,13 +123,13 @@
 
 ## 関連ドキュメント
 
-- [KB-132: WebRTCシグナリングルートのダブルプレフィックス問題](./api.md#kb-132)
-- [KB-136: useWebRTCフックのcleanup関数が早期実行される問題](./frontend.md#kb-136)
-- [KB-137: マイク未接続端末でのrecvonlyフォールバック](./frontend.md#kb-137)
-- [KB-138: ビデオ通話時のDOM要素へのsrcObjectバインディング問題](./frontend.md#kb-138)
-- [KB-139: WebSocket接続管理（重複接続防止）](./frontend.md#kb-139)
-- [KB-171: WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）](./frontend.md#kb-171)
-- [KB-225: キオスク入力フィールド保護ルールの実装と実機検証](./frontend.md#kb-225)
+- [KB-132: WebRTCシグナリングルートのダブルプレフィックス問題](./api.md#kb-132-webrtcシグナリングルートのダブルプレフィックス問題)
+- [KB-136: useWebRTCフックのcleanup関数が早期実行される問題](./frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題)
+- [KB-137: マイク未接続端末でのrecvonlyフォールバック](./frontend.md#kb-137-マイク未接続端末でのrecvonlyフォールバック実装)
+- [KB-138: ビデオ通話時のDOM要素へのsrcObjectバインディング問題](./frontend.md#kb-138-ビデオ通話時のdom要素へのsrcobjectバインディング問題)
+- [KB-139: WebSocket接続管理（重複接続防止）](./frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止)
+- [KB-171: WebRTCビデオ通話機能が動作しない（KioskCallPageでのclientKey/clientId未設定）](./frontend.md#kb-171-webrtcビデオ通話機能が動作しないkioskcallpageでのclientkeyclientid未設定)
+- [KB-225: キオスク入力フィールド保護ルールの実装と実機検証](./frontend.md#kb-225-キオスク入力フィールド保護ルールの実装と実機検証)
 - [WebRTCビデオ通話機能 実機検証手順](../guides/webrtc-verification.md)
 
 ## 結論

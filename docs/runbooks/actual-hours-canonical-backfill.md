@@ -32,9 +32,9 @@
 # MacからPi5へSSH（Tailscale IP）
 ssh denkon5sd02@100.106.158.2
 
-# APIコンテナ内でバックフィル実行（locationKey はデフォルト "default"）
+# 稼働中のblue/green APIスロット内でバックフィル実行（locationKey はデフォルト "default"）
 cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml exec api pnpm backfill:actual-hours:prod
+scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/backfill-actual-hours-canonical.js
 ```
 
 ### 3.2 locationKey を指定する場合
@@ -42,7 +42,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec api pnpm 
 Gmail CSV取込の `metadata.locationKey` で `default` 以外を設定している場合は、環境変数で指定する。
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -e ACTUAL_HOURS_LOCATION_KEY=your-location api pnpm backfill:actual-hours:prod
+scripts/server/run-in-active-api.sh env ACTUAL_HOURS_LOCATION_KEY=your-location node /app/apps/api/dist/scripts/backfill-actual-hours-canonical.js
 ```
 
 ### 3.3 期待される出力例
@@ -80,7 +80,7 @@ curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/act
 | 症状 | 想定原因 | 対処 |
 |------|----------|------|
 | `totalCanonicalRows: 0` のまま | Rawが空、または locationKey 不一致 | Rawの存在確認（`SELECT COUNT(*) FROM "ProductionScheduleActualHoursRaw"`）。locationKey を環境変数で指定 |
-| スクリプトが `Cannot find module` で失敗 | ビルド未実施またはパス誤り | `pnpm build` 後に再実行。コンテナ内は `dist/` を参照するため、`tsx` で直接実行する `pnpm backfill:actual-hours` が正しい |
+| スクリプトが `Cannot find module` で失敗 | ビルド未実施またはパス誤り | コンテナ内は `dist/` を参照するため、`scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/backfill-actual-hours-canonical.js` で実行する（本番イメージに tsx は含まれない）。`tsx` を使う `pnpm backfill:actual-hours` は、ソースのチェックアウトがある開発環境で使う |
 | 権限エラー | DB接続・Prisma設定 | `.env` の `DATABASE_URL` を確認。コンテナ内では `docker-compose.server.yml` の環境変数が適用される |
 
 ---

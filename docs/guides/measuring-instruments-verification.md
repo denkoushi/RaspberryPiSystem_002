@@ -17,9 +17,8 @@
    - ラズパイ5でAPI/Web/DBが起動していること
    - featureブランチの最新コードがデプロイされていること
      ```bash
-     # ラズパイ5で実行
-     cd /opt/RaspberryPiSystem_002
-     ./scripts/server/deploy.sh feature/measuring-instruments-requirements
+     # 操作端末のリポジトリで実行（反映は docs/guides/deployment.md の標準手順に従う）
+     ./scripts/update-all-clients.sh feature/measuring-instruments-requirements infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
      ```
    - シードデータが投入されていること（計測機器テストデータ含む）
      ```bash

@@ -32,7 +32,7 @@
 | Pi5 デプロイが `success` っぽく見えるのに `prisma migrate deploy` が `service "api" is not running` で落ちる | Pi5 の `PLAY RECAP` で `failed=1` になっていないか。`/opt/RaspberryPiSystem_002/logs/deploy/*.summary.json` の `totalHosts` / `failedHosts`、`docker compose ps -a` の `api` / `web` 状態、`docker inspect docker-api-1` の mount error を確認 | **2段の罠**がある。1) `part-measurement-drawings` の bind mount 先ディレクトリ未作成で `api` が `Created` のまま。2) `update-all-clients.sh` の recap 解析不備で **`failed=1` を success 扱い**し得た。修正後は summary が `PLAY RECAP` と一致し、rerun 前に `api/web` を `up -d` して自動復旧する |
 | Phase12 で **`deploy-status` が一時的に `isMaintenance:true`** と FAIL | 直後に `curl …/api/system/deploy-status -H "x-client-key: …"` で再確認。デプロイ直後・`deploy-status.json` 更新タイミングで **数秒〜数十秒** だけメンテ表示になりうる | **再実行**で `isMaintenance:false` に戻れば環境差ではなく一時状態。常時 true のときは Pi5 の `config/deploy-status.json` とクライアント解決（`statusClientId`）を確認（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)） |
 | Phase12 終盤 **`verify-services-real.sh` だけ**「Pi5に到達できません」 | `verify-phase12-real.sh` 本体は API/SSH で Pi5 に届いているのに、子スクリプトが **別途 ICMP** だけで判定している | **`verify-services-real.sh`** は ping 失敗時に **`GET …/api/system/health` が 200 相当なら Pi5 IP を確定**するフォールバックを持つ（2026-04-04 追補）。それでも失敗する場合は Tailscale/LAN の経路を確認 |
-| Mac で **`update-all-clients.sh` が「Another update… local lock」**で即終了 | 同一マシンから **`--detach --follow` を 2 プロセス並列**で起動した | **1 台ずつ順次**：前の `--follow` が **`Remote run finished`** になるまで待ってから次の `--limit`。ロックは `logs/.update-all-clients.local.lock`（`owner` に pid）。**同一 `RASPI_SERVER_HOST`（Pi5）ロック**とも重なるので、並列は避ける（[deployment.md](../guides/deployment.md)） |
+| Mac で **`update-all-clients.sh` が「Another update… local lock」**で即終了 | 同一マシンから **`--detach --follow` を 2 プロセス並列**で起動した | **1 台ずつ順次**：前の `--follow` が **`Remote run finished`** になるまで待ってから次の `--limit`。ロックは `logs/.update-all-clients.local.lock`（`owner` に pid）。**同一 `RASPI_SERVER_HOST`（Pi5）ロック**とも重なるので、並列は避ける（[deployment.md](../guides/deployment.md)）。※旧 wrapper（2026-08-08 以前）の挙動で、現行の標準 Ansible 経路には該当しない |
 | Mac で **`https://100.106.158.2/admin` がタイムアウト**（Tailscale アプリは Connected） | Mac: `tailscale status` に **`raspberrypi` / `100.106.158.2` が無い** · `tailscale ping 100.106.158.2` → **`no matching peer`** · Mac の `Self.Tags` が **空**（Pi5 は **`tag:server`**） | **Tailscale ACL**（`tag:admin` → `tag:server` の `tcp:443`）が効くため、Mac に **`tag:admin` を再付与**（[KB-278](./infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）· 暫定は LAN `https://192.168.10.230/admin` |
 
 ## Root cause（典型）
@@ -59,7 +59,7 @@
 - 新規品番投入時は **テンプレ先行登録** を運用ルールに含める。
 - 候補が複数のときは **製番・品名・機種** を画面上で確認してから選択する（誤選択はスナップショットに残る）。
 - 本番デプロイ後、`/opt/RaspberryPiSystem_002/storage/part-measurement-drawings/` がホストに存在し、バックアップ方針に **写真ストレージと同格で含める**（リストア時に図面も戻す）。
-- `update-all-clients.sh --detach --follow` の成否は **Pi5 の `PLAY RECAP` と `*.summary.json` の両方**で見る。`failed=0` / `unreachable=0` と `totalHosts>0` が一致しない場合は success 扱いにしない。
+- デプロイの成否は [deployment.md](../guides/deployment.md) に従い、`update-all-clients.sh --status RUN_ID` の systemd raw fields・journal・Ansible recap で判定する（旧 `--follow` と `*.summary.json` による判定は旧 wrapper 時代の記録）。`failed=0` / `unreachable=0` と `totalHosts>0` が一致しない場合は success 扱いにしない。
 - `prisma migrate deploy` が `service "api" is not running` なら、まず **`docker compose ps -a` で `Created` / mount error を確認**する。再実行前に `api/web` を `up -d` できる状態かを必ず見る。
 
 ## 検査図面 MVP（2026-05-30）
@@ -1198,7 +1198,7 @@ data-testid=inspection-drawing-create-header-band
 | 採番 | `apps/web/src/features/part-measurement/inspection-drawing/markerNumbering.ts` |
 | 名称候補 | `apps/web/src/features/part-measurement/inspection-drawing/inspectionDrawingMeasurementLabelOptions.ts` |
 | 自主検査候補値 | `apps/web/src/features/part-measurement/inspection-drawing/selfInspectionMeasurementValueOptions.ts` |
-| 測定点一覧 | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingPointSummaryStrip.tsx` |
+| 測定点一覧 | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingPointSummaryList.tsx`（旧 `InspectionDrawingPointSummaryStrip.tsx` は廃止） |
 | キオスク slot | `apps/web/src/features/part-measurement/selfInspectionEntrySlots.ts` |
 | 単体テスト | `apps/api/.../self-inspection-config.test.ts` · `apps/web/.../selfInspectionEntrySlots.test.ts` · `toleranceFields.test.ts` · `markerNumbering.test.ts` |
 
@@ -1437,7 +1437,7 @@ curl -sk "${BASE}/part-measurement/inspection-drawing/templates?limit=5" -H "x-c
 | **一覧ハブ** | PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) → **`main` `f0a2725c`**（squash） | `raspberrypi5` | `20260530-180728-7767` | `ef78f4dd`（デプロイ時） | `failed=0` | 42/1/0 | 専用 API・履歴 UI・約12min・Pi3 WARN スキップ可 |
 | 後続収束 | 2026-07-08 現行ロールアウト | Pi4×5 | 各端末 Run ID は [§丸数字設定改善](#検査図面-丸数字設定改善-2026-07-08) | **`04bb49fe`** | `failed=0` | **45/0/0** | 現行 bundle に一覧ハブ・検査図面タブを含む |
 
-**標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）。
+**当時のコマンド**（現行は [deployment.md](../guides/deployment.md#標準更新入口)。`RASPI_SERVER_HOST`・`--follow` は廃止）: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）。
 
 **CI**: MVP `26676840821` · 一覧ハブ `26679994903` **success**（push `ef78f4dd`）。
 
@@ -1488,7 +1488,7 @@ curl -sk "${BASE}/part-measurement/inspection-drawing/templates?limit=5" -H "x-c
 
 **CI**: **`26681207121`** success。
 
-**標準コマンド（Pi5・ブランチ時）**:
+**当時のコマンド（Pi5・ブランチ時。現行手順は [deployment.md](../guides/deployment.md#標準更新入口)）**:
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
@@ -1570,7 +1570,7 @@ overflow: visible のまま右へはみ出し
 | **Pi5 先行** | 同上（未マージ時） | `raspberrypi5` | `20260530-212035-5804` | `e19f9b07` | **failed=0** | Phase12 **42/1/0** · **実機目視 OK** |
 | Pi4×5（後続収束） | 2026-07-08 現行ロールアウト | 5 台 | 各端末 Run ID は [§丸数字設定改善](#検査図面-丸数字設定改善-2026-07-08) | **`04bb49fe`** | `failed=0` · 現行 bundle に overflow 修正を含む |
 
-**標準コマンド（Pi5・ブランチ時）**:
+**当時のコマンド（Pi5・ブランチ時。現行手順は [deployment.md](../guides/deployment.md#標準更新入口)）**:
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
@@ -1647,7 +1647,7 @@ pointerup + 10px しきい値 + pointercancel は中止
 | **Pi5 先行** | 同上（未マージ時） | `raspberrypi5` | `20260530-221723-1575` | `364aa184` | **failed=0** | Phase12 **42/1/0** · **実機目視 OK** |
 | Pi4×5（後続収束） | 2026-07-08 現行ロールアウト | 5 台 | 各端末 Run ID は [§丸数字設定改善](#検査図面-丸数字設定改善-2026-07-08) | **`04bb49fe`** | `failed=0` · 現行 bundle にキャンバスズームを含む |
 
-**標準コマンド（Pi5・ブランチ時）**:
+**当時のコマンド（Pi5・ブランチ時。現行手順は [deployment.md](../guides/deployment.md#標準更新入口)）**:
 
 ```bash
 export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"

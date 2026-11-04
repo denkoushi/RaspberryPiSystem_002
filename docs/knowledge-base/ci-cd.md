@@ -11,7 +11,7 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 19件
+**件数**: 22件
 **索引**: [index.md](./index.md)
 
 ---
@@ -108,6 +108,8 @@ update-frequency: high
 
 **発生日・反映**: 2026-04-27（Mac から `update-all-clients.sh` 実行時）
 
+> **現行**: `scripts/update-all-clients.sh` は `python3 scripts/deploy/standard-ansible-release.py` を exec するラッパーになった。`python3` が解決できない場合はデプロイ自体が起動せず即失敗する（以下は 2026-04 時点の旧シェル実装の記録）。
+
 **事象**:
 - 標準出力に **`./scripts/update-all-clients.sh: line 904: …/pyenv/shims/python3: No such file or directory`** のような行が出る
 - **リモートの Ansible デプロイ自体は exit 0** で完走し得る（**ローカル側**のパイプ処理で `python3` を解決できない）
@@ -121,7 +123,7 @@ update-frequency: high
 - デプロイ結果の正本は Pi5 の **`logs/deploy/ansible-update-*.exit`** / **`PLAY RECAP`** で確認する
 
 **関連**:
-- [deployment.md §2026-04-27](../archive/deployments/legacy-operator-guide-through-2026-07.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
+- [deployment.md §2026-04-27](../archive/deployments/2026-04.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
 - `scripts/update-all-clients.sh`（`python3` パイプ箇所）
 
 ---

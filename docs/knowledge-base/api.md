@@ -211,7 +211,7 @@
 
 **Prevention**:
 - 大容量CSV（5MB 超）の手動投入時は事前に分割を検討する
-- 手順は [actual-hours-canonical-backfill.md](../runbooks/actual-hours-canonical-backfill.md) の「7. 大容量CSVの手動投入（分割投入）」を参照
+- 手順は [actual-hours-canonical-backfill.md](../runbooks/actual-hours-canonical-backfill.md) の「[6. 大容量CSVの手動投入（分割投入）](../runbooks/actual-hours-canonical-backfill.md#6-大容量csvの手動投入分割投入)」を参照
 
 **参照**: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10)、[actual-hours-canonical-backfill.md](../runbooks/actual-hours-canonical-backfill.md)
 
@@ -3348,7 +3348,7 @@ app.put('/kiosk/production-schedule/search-state', async (request) => {
 - `docs/plans/production-schedule-kiosk-execplan.md`（進捗追記）
 
 **関連KB**:
-- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 検索状態同期機能の初期実装（location単位）
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdフィルタ加工順序割当検索状態同期and検索): 検索状態同期機能の初期実装（location単位）
 - [KB-210](./api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正): 検索状態共有機能の回帰修正
 
 ---
@@ -3413,7 +3413,7 @@ app.put('/kiosk/production-schedule/search-state', async (request) => {
 
 **関連KB**:
 - [KB-209](./api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化): 検索状態共有機能の初期実装（共有キー導入）
-- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 検索状態同期機能の初期実装（location単位）
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdフィルタ加工順序割当検索状態同期and検索): 検索状態同期機能の初期実装（location単位）
 
 ---
 
@@ -3573,7 +3573,7 @@ const saveNote = (rowId: string) => {
 - `apps/web/src/api/hooks.ts`（`useUpdateKioskProductionScheduleNote`フック追加）
 
 **関連KB**:
-- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 生産スケジュール機能の拡張（資源CDフィルタ・加工順序割当・検索状態同期）
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdフィルタ加工順序割当検索状態同期and検索): 生産スケジュール機能の拡張（資源CDフィルタ・加工順序割当・検索状態同期）
 
 ---
 
@@ -3844,7 +3844,7 @@ git push origin HEAD:gh-pages
 - `apps/api/src/services/visualization/data-sources/production-schedule/__tests__/production-schedule-data-source.test.ts`: 20件制限のテスト追加
 
 **関連KB**:
-- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdfilter加工順序割当検索状態同期and検索): 生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）
+- [KB-208](./api.md#kb-208-生産スケジュールapi拡張資源cdフィルタ加工順序割当検索状態同期and検索): 生産スケジュールAPI拡張（資源CDフィルタ・加工順序割当・検索状態同期・AND検索）
 - [KB-209](./api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化): 生産スケジュール検索状態の全キオスク間共有化
 - [KB-210](./api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正): 生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正
 - [KB-228](./infrastructure/signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一): 生産スケジュールサイネージデザイン修正
@@ -4710,8 +4710,8 @@ model ProductionScheduleProgress {
   - CSVの`progress`列の仕様（「完了」か「空」の2択）と、タイムスタンプ比較による優先順位判定は、業務要件を満たしている
 
 **関連KB**:
-- [KB-184](../frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能): 生産スケジュールキオスクページ実装（完了状態の保存方法が変更された）
-- [KB-268](../frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察): 今回の変更とKB-268の対策は衝突しない
+- [KB-184](./frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能): 生産スケジュールキオスクページ実装（完了状態の保存方法が変更された）
+- [KB-268](./frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察): 今回の変更とKB-268の対策は衝突しない
 - [KB-249](#kb-249-csvダッシュボードの日付パースでタイムゾーン変換の二重適用問題): CSV progress同期機能の実装時にタイムゾーン問題が再発し、`Date.UTC`を使用するように修正
 
 ---
@@ -4771,7 +4771,7 @@ model ProductionScheduleProgress {
 - ✅ API正常動作確認: `GET /api/system/health` → `200`、`status: degraded`はメモリ高負荷による既存の問題
 
 **運用上の推奨**:
-- `GMAIL_MAX_MESSAGES_PER_BATCH`環境変数でバッチサイズを調整可能（デフォルト30）
+- `GMAIL_MAX_MESSAGES_PER_BATCH`環境変数でバッチサイズを調整可能（デフォルト30は2026-02-22時点。現行: 既定10件、`GMAIL_BATCH_REQUEST_DELAY_MS`は既定2000ms。実効値は `adaptive-rate-controller.ts` が調整する）
 - 429エラーが発生した場合は、バッチサイズを減らすか、スケジュール間隔を広げることを検討
 - CSVヘッダーの不一致など、失敗原因を早めに修正することで、未読メールの蓄積を防ぐ
 
@@ -4848,7 +4848,7 @@ MIN(("CsvDashboardRow"."rowData"->>'FHINMEI')) FILTER (
 
 **関連KB**:
 - [KB-242](./api.md#kb-242-history-progressエンドポイント追加と製番進捗集計サービス): history-progressエンドポイントの追加（`machineName`追加の前段階）
-- [KB-282](../frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): フロントエンド側の実装
+- [KB-282](./frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): フロントエンド側の実装
 
 ---
 
@@ -4901,7 +4901,7 @@ WHERE (
 
 **関連KB**:
 - [KB-282](./api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加): history-progressエンドポイントにmachineName追加（MHのみ、SH追加の前段階）
-- [KB-285](../frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加): フロントエンド側のSH除外と機種名表示へのSH追加
+- [KB-285](./frontend.md#kb-285-生産スケジュールアイテム一覧からshアイテムも除外し機種名表示にsh追加): フロントエンド側のSH除外と機種名表示へのSH追加
 
 **解決状況**: ✅ **解決済み**（2026-03-02、実機検証完了）
 

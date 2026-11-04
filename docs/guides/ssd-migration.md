@@ -135,7 +135,7 @@ sudo apt install -y git
 # Node.jsとpnpmのセットアップ
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
-sudo npm install -g pnpm@10.34.6
+sudo npm install -g pnpm@12.16.1
 
 # PythonとPoetryのインストール（NFCエージェント用）
 sudo apt install -y python3 python3-pip
@@ -257,7 +257,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml ps
 
 ```bash
 # APIヘルスチェック
-curl http://localhost:8080/api/system/health
+curl -k https://localhost/api/system/health
 
 # データベースのレコード数を確認
 docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
@@ -271,7 +271,7 @@ ls -lh storage/thumbnails/*/ | tail -5
 
 ### ステップ11: ブラウザでの動作確認
 
-1. Raspberry Pi 4のブラウザで `http://<raspberry-pi-5-ip>:4173` にアクセス
+1. Raspberry Pi 4のブラウザで `https://<raspberry-pi-5-ip>/` にアクセス
 2. ログイン画面が表示されることを確認
 3. キオスク画面が正常に動作することを確認
 

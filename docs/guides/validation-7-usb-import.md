@@ -92,17 +92,17 @@ TO0004,ペンチ,,工具,工具庫C,AVAILABLE,
 # import_jobsテーブルの確認
 docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
   psql -U postgres -d borrow_return \
-  -c "SELECT id, file_name, status, created_at FROM import_jobs ORDER BY created_at DESC LIMIT 5;"
+  -c 'SELECT id, type, status, "createdAt" FROM "ImportJob" ORDER BY "createdAt" DESC LIMIT 5;'
 
 # 従業員テーブルの確認
 docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
   psql -U postgres -d borrow_return \
-  -c "SELECT employee_code, display_name, department FROM employees ORDER BY employee_code LIMIT 10;"
+  -c 'SELECT "employeeCode", "displayName", department FROM "Employee" ORDER BY "employeeCode" LIMIT 10;'
 
 # アイテムテーブルの確認
 docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
   psql -U postgres -d borrow_return \
-  -c "SELECT item_code, name, category FROM items ORDER BY item_code LIMIT 10;"
+  -c 'SELECT "itemCode", name, category FROM "Item" ORDER BY "itemCode" LIMIT 10;'
 ```
 
 ### ステップ6: 検証スクリプトの実行（オプション）

@@ -342,7 +342,7 @@ du -sh "$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
 2. `state.vscdb` 系を **削除せず退避**（`recovery-YYYYMMDD-HHMMSS` 等）
 3. Cursor 再起動 → 新しい小さな DB が生成される
 4. **ログインし直す**（ログイン状態は旧 DB 側にあった）
-5. リポジトリを開き直し、`git status` と `docs/EXEC_PLAN.md` で文脈を再確認
+5. リポジトリを開き直し、`git status` と `docs/AI_START_HERE.md` で文脈を再確認
 
 **失われうるもの**: 過去チャット・Agent/Composer セッション・最近開いた一覧。**残るもの**: 本リポジトリ・未コミット WIP・`settings.json`・拡張機能。
 

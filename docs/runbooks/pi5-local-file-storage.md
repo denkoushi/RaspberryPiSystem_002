@@ -33,8 +33,7 @@ API healthはホストパス、保存キー、ファイル名を外部へ返さ�
 ログで行う。
 
 ```bash
-docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml \
-  logs --since 1h api | grep -E 'File storage|FILE_STORAGE_'
+for c in bluegreen-api-blue-1 bluegreen-api-green-1; do docker logs --since 1h "$c" 2>&1; done | grep -E 'File storage|FILE_STORAGE_'
 ```
 
 ## 状態の意味

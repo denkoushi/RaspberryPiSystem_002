@@ -83,7 +83,7 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 - fingerprint自動計算が機能し、54/55件にfingerprintが設定されている
 - Phase1（file）Dispatcherは停止し、DB中心へ完全移行できていることを確認
 - Phase2完全移行（API/UIはDBのみ参照）を実装完了
-- 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) を参照
+- 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher--dedupe--retrybackoffの実機検証完了) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) を参照
 
 ### Phase2: DB取り込み（Alerts DB Ingest）
 
@@ -111,7 +111,7 @@ environment:
 - `POST /api/clients/alerts/:id/acknowledge` は **DBのみ更新**。ファイルは変更しない
 
 **注意事項**:
-- DB取り込み機能はデフォルトOFF（`ALERTS_DB_INGEST_ENABLED=true` で明示的に有効化）
+- DB取り込み機能はAPI単体の既定ではOFF。Ansible生成の `infrastructure/docker/.env` では既定で `ALERTS_DB_INGEST_ENABLED=true`・`ALERTS_DISPATCHER_MODE=db`・`ALERTS_DB_DISPATCHER_ENABLED=true`（`infrastructure/ansible/templates/docker.env.j2`）
 - Slack配送はPhase1（file→Slack）またはPhase2後続（DB→Slack）を選択
 - dedupe（重複抑制）はPhase2後続（DB→Slack）で有効化可能
 - **Phase2完全移行**: API/UIはDBのみ参照。ファイルは一次入力（Producer）→Ingest専用として機能
@@ -121,7 +121,7 @@ environment:
 - 空ファイル（0バイト）や壊れたJSONを`errors`ではなく`skipped`として扱う改善を実装し、ログノイズを削減
 - Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証も完了し、DB版Dispatcherが正常に動作することを確認
 - Phase2完全移行（API/UIはDBのみ参照）を実装完了
-- 詳細は [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) を参照
+- 詳細は [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher--dedupe--retrybackoffの実機検証完了) を参照
 
 ## 通知の種類
 
@@ -233,12 +233,12 @@ https://192.168.128.131/admin
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+TOKEN=$(curl -k -s -X POST https://192.168.128.131/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
 
 # アラート情報を取得
-curl -X GET http://192.168.128.131:8080/api/clients/alerts \
+curl -k -X GET https://192.168.128.131/api/clients/alerts \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 ```
 
@@ -246,7 +246,7 @@ curl -X GET http://192.168.128.131:8080/api/clients/alerts \
 
 ```bash
 # アラートIDを指定して確認済みにする
-curl -X POST http://192.168.128.131:8080/api/clients/alerts/20251201-103259/acknowledge \
+curl -k -X POST https://192.168.128.131/api/clients/alerts/20251201-103259/acknowledge \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -279,10 +279,9 @@ curl -X POST http://192.168.128.131:8080/api/clients/alerts/20251201-103259/ackn
 
 ```python
 import subprocess
-import sys
 
 subprocess.run([
-    sys.executable,
+    "bash",
     "scripts/generate-alert.sh",
     "python-alert",
     "Pythonスクリプトからのアラート",

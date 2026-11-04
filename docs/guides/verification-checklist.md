@@ -41,7 +41,7 @@
    ```
 
 2. **ブラウザでキオスク画面を開く**
-   - `http://<ラズパイ5のIP>:4173/kiosk` にアクセス
+   - `https://<ラズパイ5のIP>/kiosk` にアクセス
    - WebSocket接続が確立される
 
 3. **オフライン時の動作確認**
@@ -98,9 +98,9 @@ TO0002,メジャー,04C393C1330289,測定器具,工具庫B,AVAILABLE,
    - ヘッダー行を含める
 
 2. **管理画面で一括登録ページにアクセス**
-   - ブラウザで管理画面にログイン: `http://<ラズパイ5のIP>:4173/login`
+   - ブラウザで管理画面にログイン: `https://<ラズパイ5のIP>/login`
    - ユーザー名: `admin`、パスワード: `admin1234`
-   - 一括登録ページにアクセス: `http://<ラズパイ5のIP>:4173/admin/import`
+   - 一括登録ページにアクセス: `https://<ラズパイ5のIP>/admin/import`
 
 3. **CSVファイルをアップロード**
    - 従業員CSVを選択
@@ -176,7 +176,7 @@ BACKUP_FILE=$(ls -t /opt/backups/db_backup_*.sql.gz | head -1)
 
 ```bash
 # ラズパイ5で実行
-curl http://localhost:8080/api/system/health
+curl -k https://localhost/api/system/health
 
 # 期待される結果:
 # {
@@ -195,7 +195,7 @@ curl http://localhost:8080/api/system/health
 
 ```bash
 # ラズパイ5で実行
-curl http://localhost:8080/api/system/metrics
+curl -k https://localhost/api/system/metrics
 
 # 期待される結果:
 # Prometheus形式のメトリクスが返される
@@ -244,24 +244,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml start api
 
 #### 3.1 デプロイスクリプトの実行
 
-```bash
-# ラズパイ5で実行
-cd /opt/RaspberryPiSystem_002
-
-# 現在の状態を確認
-docker compose -f infrastructure/docker/docker-compose.server.yml ps
-
-# デプロイスクリプトを実行
-./scripts/server/deploy.sh
-
-# 期待される結果:
-# - Gitリポジトリが更新される
-# - 依存関係がインストールされる
-# - ビルドが成功する
-# - Dockerコンテナが再ビルド・再起動される
-# - データベースマイグレーションが実行される
-# - ヘルスチェックが成功する
-```
+`scripts/server/deploy.sh` は廃止済み。標準デプロイは `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` を使う（まず `--print-plan` で対象を確認し、実行時は `--limit PATTERN` か `--full-fleet` を付ける）。手順は [deployment.md](./deployment.md) を正本とする。
 
 #### 3.2 デプロイ後の動作確認
 
@@ -269,17 +252,17 @@ docker compose -f infrastructure/docker/docker-compose.server.yml ps
 # ラズパイ5で実行
 
 # APIヘルスチェック
-curl http://localhost:8080/api/health
+curl -k https://localhost/api/system/health
 
 # 認証テスト
-TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin1234"}' | \
   grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
 
 # APIリクエストテスト
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/tools/employees
+curl -k -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/tools/employees
 
 # 期待される結果:
 # - すべてのリクエストが成功する
@@ -397,7 +380,7 @@ cd apps/web && pnpm build && cd ../..
 
 **備考**: 
 - UID編集時のバグ（複数タグ問題）を修正し、手動編集が正常に反映されることを確認
-- 詳細は [knowledge-base/api.md#kb-118](./knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正) / [knowledge-base/frontend.md#kb-119](./knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理) を参照
+- 詳細は [knowledge-base/api.md#kb-118](../knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正) / [knowledge-base/frontend.md#kb-119](../knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理) を参照
 
 #### 6.4 吊具CSVインポート（新フィールド）
 
@@ -696,7 +679,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.15 サイネージ: 管理コンソール スケジュール一覧（無効レコード再編集・management API）**
 
-**確認ポイント**（[KB-322](../knowledge-base/infrastructure/signage.md#kb-322-管理コンソールサイネージスケジュール一覧無効レコードの再編集api分離)）:
+**確認ポイント**（[KB-322](../knowledge-base/infrastructure/signage.md#kb-322-管理コンソール-サイネージスケジュール一覧無効レコードの再編集api分離)）:
 
 - [x] （自動）`verify-phase12-real.sh` が **PASS**（回帰・既存 Phase12 観点・2026-04-01）
 - [x] 公開 `GET /api/signage/schedules`（キオスク）が **有効のみ** を返す（無効は一覧に出ない）（設計＋統合テストで担保）
@@ -748,7 +731,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **検証日時**: 2026-05-19（`verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**·`deploy-status` Pi4×4 **PASS**·`status-agent` Pi4×4 **PASS**·現場順位ボード **表示正常・体感速度維持**）
 **検証結果**: ☑ 成功（自動+現場） ☐ 失敗（エラー内容: _______________）
-**参照**: [KB-374 §Production 2026-05-19](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)
+**参照**: [KB-374 §Production 2026-05-19](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification2026-05-19--featleaderboard-continue-delta-safe)
 
 **6.6.19 キオスク リーダー順位ボード（製番検索・納期アシスト詳細・左2段スタック）**
 
@@ -971,7 +954,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **6.8.1 スケジュール作成（新フォーマット）**
 
 **検証手順**:
-1. CSVインポートスケジュールページ（`/admin/csv-import-schedule`）にアクセス
+1. 一括登録ページ（`/admin/import`）のCSVインポートスケジュール欄を開く
 2. 「新規作成」ボタンをクリック
 3. スケジュール名、cron式、プロバイダーを設定
 4. 「ターゲットを追加」ボタンで複数のターゲットを追加:
@@ -999,7 +982,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証手順**:
 1. 管理画面にログイン: `https://100.106.158.2/admin`
 2. 「一括登録」タブにアクセス: `https://100.106.158.2/admin/import`
-3. 「CSVインポートスケジュール」タブにアクセス: `https://100.106.158.2/admin/csv-import-schedule`
+3. 同じ `/admin/import` ページのCSVインポートスケジュール欄を開く
 4. 「新規作成」ボタンをクリック
 5. スケジュール名、cron式（例: 1分ごとに実行する`* * * * *`）、プロバイダーを`Gmail`に設定
 6. 「ターゲットを追加」ボタンでターゲットを追加:
@@ -1138,12 +1121,10 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 ### 監視スクリプトがエラーを報告する
 
-- APIが起動しているか確認: `curl http://localhost:8080/api/system/health`
+- APIが起動しているか確認: `curl -k https://localhost/api/system/health`
 - Dockerコンテナの状態を確認: `docker compose ps`
 - ログを確認: `tail -50 /var/log/system-monitor.log`
 
 ### デプロイスクリプトが失敗する
 
-- Gitリポジトリの状態を確認: `git status`
-- ビルドエラーを確認: `cd apps/api && pnpm build`
-- Dockerログを確認: `docker compose logs api`
+- [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) と [deployment.md](./deployment.md) を参照

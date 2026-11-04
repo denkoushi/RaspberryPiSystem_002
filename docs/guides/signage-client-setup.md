@@ -58,7 +58,7 @@ https://<サーバのホスト>/signage-lite?clientKey=client-key-factory-androi
 
 ### スケジュールの割当
 
-管理画面 **`/admin/signage/schedules`** で、対象スケジュールの **`targetClientKeys`** に当該 `apiKey` を含める（空は全端末向け）。詳細は [ADR-20260407](../decisions/ADR-20260407-signage-target-client-keys.md)。
+管理画面 **`/admin/signage`**（サイネージハブ）で、対象スケジュールの **`targetClientKeys`** に当該 `apiKey` を含める（空は全端末向け）。詳細は [ADR-20260407](../decisions/ADR-20260407-signage-target-client-keys.md)。
 
 ### TLS
 

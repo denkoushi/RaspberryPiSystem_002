@@ -152,7 +152,7 @@ category: knowledge-base
 
 ### 設定の正本（コード定数ではない）
 
-- **管理コンソール**: CSV インポートスケジュール（例: `/admin/csv-import-schedule`。ラベルは UI 版に従う）。
+- **管理コンソール**: CSV インポートスケジュール（例: `/admin/import`。ラベルは UI 版に従う）。
 - **Pi5 永続化**: **`config/backup.json` の `csvImports`**。更新は **`ImportScheduleAdminService`** 経由で **`backup.json` 保存 → `scheduler.reload()`**（[`import-schedule-admin.service.ts`](../../apps/api/src/services/imports/import-schedule-admin.service.ts)）。
 - **リポジトリのビルトイン（[`system-csv-import-schedule-builtin-rows.ts`](../../apps/api/src/services/imports/system-csv-import-schedule-builtin-rows.ts)）**: **システム予約 ID** の **ensure / 初期マージ**に使われるが、**`enabled` や cron の実効値は `backup.json` 側が優先**されうる。**`FKOJUNST_Status` メール取込はビルトイン上 `enabled: false` になり得る**一方、**本番では管理画面から有効化されている**のが普通にあり得る。**ソースの定数だけから「本番で無効」とは言えない**。
 

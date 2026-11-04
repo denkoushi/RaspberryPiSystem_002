@@ -34,12 +34,12 @@ sudo ufw status verbose
 ### 3) Dockerの公開（publish）状況
 
 ```bash
-docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps
+docker ps --format '{{.Names}}\t{{.Ports}}'
 ```
 
 期待:
-- `db` / `api` にホスト側publishが無い（`db`は`5432/tcp`のみ、`api`のPORTSが空）
-- `web` は `80/443` のみ公開
+- `bluegreen-gateway-1` だけが `80/443` を公開する
+- `bluegreen-api-{blue,green}-1`・`bluegreen-web-{blue,green}-1`・`docker-db-1` にホスト側publishが無い
 
 ### 4) security-monitorの稼働状況
 
@@ -82,7 +82,7 @@ systemctl list-timers --no-pager | grep security-monitor || true
 date -Is
 sudo ss -H -tulpen
 sudo ufw status verbose
-docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps
+docker ps --format '{{.Names}}\t{{.Ports}}'
 ```
 
 ## 参照

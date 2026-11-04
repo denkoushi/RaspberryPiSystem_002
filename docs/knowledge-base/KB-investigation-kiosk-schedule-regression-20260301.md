@@ -3,7 +3,7 @@
 **作成日**: 2026-03-01  
 **更新**: 2026-03-01（実機ログ解析で電源ボタン不具合の根本原因を確定、電源機能SOLIDリファクタ完了・電源操作遅延の原因特定を追記）  
 **手法**: 静的解析 → 実機ログ取得（Pi5 power-actions、raspi4-robodrill01 kiosk-launch.sh）  
-**関連**: [KB-investigation-kiosk-ime-and-power-regression.md](./KB-investigation-kiosk-ime-and-power-regression.md), [KB-237](./infrastructure/ansible-deployment.md#kb-237), [KB-276](./frontend.md#kb-276), [KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる), [power-function-solid-refactor-execplan.md](../plans/power-function-solid-refactor-execplan.md)
+**関連**: [KB-investigation-kiosk-ime-and-power-regression.md](./KB-investigation-kiosk-ime-and-power-regression.md), [KB-237](./infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題), [KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善), [KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる), [power-function-solid-refactor-execplan.md](../plans/power-function-solid-refactor-execplan.md)
 
 ---
 
@@ -101,11 +101,11 @@
 
 ## IME 診断スクリプト（2026-03-01 追加）
 
-デプロイ時に自動実行される診断タスクにより、IBus 状態がログに記録される。
+デプロイ時に自動実行される診断タスクにより、IBus 状態がログに記録される（2026-03-01 当時の記述。現行の標準ルート `release_kiosk` は kiosk ロールの main を実行しないため自動実行されない。診断は `docs/runbooks/kiosk-ime-diagnosis.md` の手動手順で行う）。
 
 - **スクリプト**: `scripts/kiosk/diagnose-ime.sh`
 - **Ansible タスク**: `infrastructure/ansible/roles/kiosk/tasks/diagnose-ime.yml`
-- **実行タイミング**: kiosk ロール適用時（`manage_kiosk_browser` が真のとき）
+- **実行タイミング**: kiosk ロール main 適用時（`manage_kiosk_browser` が真のとき）。現行の標準ルートでは実行されない
 - **手動実行**: `docs/runbooks/kiosk-ime-diagnosis.md` を参照
 
 ### 診断結果の記録（2026-03-01 / run_id: 20260301-153319-22948）

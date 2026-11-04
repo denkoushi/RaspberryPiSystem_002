@@ -225,8 +225,8 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ## 運用手順（本番・デプロイ後）
 
 1. Pi5 で API 再ビルド済み（上記デプロイで完了）
-2. `/admin/imports/schedule` で `csv-import-rigging-slings-inspection-powerapps` を **有効化**
-3. `/admin/visualization-dashboards` で吊具点検プリセット作成 → `/admin/signage/schedules` で visualization スロット割当
+2. `/admin/import` で `csv-import-rigging-slings-inspection-powerapps` を **有効化**
+3. `/admin/data-boards?type=graph` で吊具点検プリセット作成 → `/admin/signage` で visualization スロット割当
 4. Gmail 未読・件名一致・`control_num` 解決可否を確認（取込ログ / `RiggingInspectionRecord` 件数）
 
 ### 誤投影修復（A+B デプロイ後・1 回）
@@ -247,7 +247,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 
 | 症状 | 想定原因 | 確認・対処 |
 |------|----------|------------|
-| Gmail 取込が走らない | スケジュール **disabled 既定** | `/admin/imports/schedule` で有効化 |
+| Gmail 取込が走らない | スケジュール **disabled 既定** | `/admin/import` で有効化 |
 | 件名一致メールがあってもスキップ | `CsvDashboard.gmailSubjectPattern` 未設定 | ダッシュボード定義・seed を確認 |
 | CSV 行が投影されない | `control_num` が `RiggingGear` に未解決 | `managementNumber` / `idNum` マスタ整合 |
 | 同一日・同一人・同一管理番号が増えない | dedup 正常動作 | 意図どおり（更新は別経路） |

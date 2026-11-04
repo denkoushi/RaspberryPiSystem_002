@@ -687,7 +687,7 @@ pnpm --filter @raspi-system/web test -- src/features/kiosk/leaderOrderBoard
 
 ## 端末キャッシュ Phase 2 改訂（120s 同期・SWR 操作ロック）（2026-05-20 · `feat/kiosk-leaderboard-cache-120s-swr-lock`）
 
-**目的**: [端末キャッシュ Phase 2](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20) の **体感遅延・キャッシュ未効・再検証中の表示切替・操作可能に見える**問題を、**出力同値**のまま最小変更で抑える。**Web のみ**·**API 不変**。
+**目的**: [端末キャッシュ Phase 2](#端末キャッシュ-phase-2swr--書き込み同期2026-05-20) の **体感遅延・キャッシュ未効・再検証中の表示切替・操作可能に見える**問題を、**出力同値**のまま最小変更で抑える。**Web のみ**·**API 不変**。
 
 **設計 ADR**: [ADR-20260520 §Phase 2 改訂](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md#phase-2-改訂120s-同期-cadence-安定化2026-05-20)。
 
@@ -848,7 +848,7 @@ pnpm --filter @raspi-system/web build
 
 **目的**: 登録製番 OR 切替で **`paramsKey`（無 `q` 完走 board）を固定**し、**IDB 上の全件キャッシュ**をそのままクライアントで絞込表示する。裏で **同じ製番の `q` 付き GET + continue** で照合し、**不一致は常にサーバ正**（Phase 1/2 reconcile と同型）。**Web のみ**·**API 不変**·**ツールバー等の他 `q` は従来どおり API**。
 
-**ブランチ**: **`feat/kiosk-leaderboard-seiban-or-client-cache-filter`**·代表 **`a65c4600`**（`feat(kiosk): add leaderboard seiban OR client cache filter`）·build fix **`84751160`**（`fix(kiosk): make leaderboard seiban filter build-safe`）。**前提**: [端末キャッシュ Phase 2](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)（SWR + IDB persist）が各端末に入っていること。
+**ブランチ**: **`feat/kiosk-leaderboard-seiban-or-client-cache-filter`**·代表 **`a65c4600`**（`feat(kiosk): add leaderboard seiban OR client cache filter`）·build fix **`84751160`**（`fix(kiosk): make leaderboard seiban filter build-safe`）。**前提**: [端末キャッシュ Phase 2](#端末キャッシュ-phase-2swr--書き込み同期2026-05-20)（SWR + IDB persist）が各端末に入っていること。
 
 ### データフロー
 
@@ -1253,7 +1253,7 @@ pnpm --filter @raspi-system/web build
 1. DevTools Network で **`POST …/leaderboard-board/continue`** の body **`pageSize: 80`**（旧 bundle は **40**）。
 2. **continue 回数**が [§事前検証](#continue-chunk-8080-事前検証pi5-実データ--2026-05-20--実装前) の **rounds 40→80** 方向に減っている（例: stonebase **19→10**）。
 3. **全スロット行が揃った後**の **行 ID 列・`total`・装飾**が、単発 GET または旧 chunk 完了後と **同値**（出力不変）。
-4. **120s ポーリング**で行が一瞬減って戻らない（[§表示安定化](#web-表示安定化-refetch-時の追補巻き戻し防止-2026-05-19) 維持）。
+4. **120s ポーリング**で行が一瞬減って戻らない（[§表示安定化](#web-表示安定化-refetch-時の追補巻き戻し防止2026-05-19) 維持）。
 5. 必要ならキオスク **強制リロード**（`Cmd+Shift+R`）で旧 bundle を排除。
 
 ### Troubleshooting（本件）
@@ -1370,14 +1370,14 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 node scripts/test/benchmark-leaderboard-continue-
 - **本件（2026-05-19 · pageSize 80 系）**: **`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**（ブランチ **`feat/leaderboard-continue-delta-safe`**）·**`main`**: [PR #297](https://github.com/denkoushi/RaspberryPiSystem_002/pull/297) **squash** **`fae56edd`**。
 - **初回10/追補40（2026-05-19）**: **`1e214213`**（ブランチ **`feat/leaderboard-board-initial-10-continue-40`**）·Pi5 Detach **`20260519-125903-25635`**·**`main`**: [PR #298](https://github.com/denkoushi/RaspberryPiSystem_002/pull/298) **squash** **`5c2bceec`**·[§初回10/追補40](#第1段階-pagesize-初回10--追補40--continue-装飾分離2026-05-19--featleaderboard-board-initial-10-continue-40)。
 - **装飾後取り + append スコープ（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-deferred-decorations-fast-initial`**·tip **`08613580`**·**Pi5→Pi4×4 本番反映・現場 OK**·[§装飾後取り](#装飾後取り--初回80continue40--append-スコープ2026-05-19--featkiosk-leaderboard-deferred-decorations-fast-initial)·[deployment §装飾後取り](../archive/deployments/2026-05.md#kiosk-leaderboard-deferred-decorations-fast-initial-2026-05-19)。
-- **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
-- **端末キャッシュ Phase 2（2026-05-19 本番）**: **`c581c1e1`** / **`2300da83`**·**Pi5→Pi4×4**·[§Phase 2 SWR](#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)·[ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[deployment §Phase 2](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[PR #302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)。
+- **端末キャッシュ Phase 1（2026-05-19）**: ブランチ **`feat/kiosk-leaderboard-terminal-cache-phase1`**·**`072054f9`** / fix **`3ae93221`**·**Pi5 のみ本番**·Pi4 **未展開**·[§端末キャッシュ](#端末キャッシュ-phase-1indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)·[ADR-20260519](../decisions/ADR-20260519-leaderboard-terminal-cache-phase1.md)·[deployment §端末キャッシュ](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)。
+- **端末キャッシュ Phase 2（2026-05-19 本番）**: **`c581c1e1`** / **`2300da83`**·**Pi5→Pi4×4**·[§Phase 2 SWR](#端末キャッシュ-phase-2swr--書き込み同期2026-05-20)·[ADR-20260520](../decisions/ADR-20260520-leaderboard-terminal-cache-phase2-swr.md)·[deployment §Phase 2](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[PR #302](https://github.com/denkoushi/RaspberryPiSystem_002/pull/302)。
 - **端末キャッシュ Phase 2 改訂（120s 同期・SWR 操作ロック・2026-05-20）**: **`76e265f2`**·**Pi5 + StoneBase01 部分本番**·実機 **OK**·[§Phase 2 改訂](#端末キャッシュ-phase-2-改訂120s-同期swr-操作ロック2026-05-20--featkiosk-leaderboard-cache-120s-swr-lock)·[deployment §120s 改訂](../archive/deployments/2026-05.md#kiosk-leaderboard-cache-120s-swr-lock-2026-05-20)·CI **`26133411712`**。
 - **製番 OR クライアントキャッシュフィルタ（2026-05-20）**: **`a65c4600`** / **`84751160`**·**Pi5 + `raspi4-kensaku-stonebase01` 先行本番**·[§製番 OR クライアントキャッシュフィルタ](#製番-or-クライアントキャッシュフィルタ2026-05-20)·[deployment §製番 OR クライアントフィルタ](../archive/deployments/2026-05.md#kiosk-leaderboard-seiban-or-client-cache-filter-2026-05-20)。
 - **資源CDフッタチップ端末キャッシュ（2026-05-20）**: **`e24d5885`**·**Pi5→Pi4×4 本番・実機 OK**·[§資源CDフッタチップ端末キャッシュ](#資源cdフッタチップ端末キャッシュ永続化2026-05-20--fixkiosk-leaderboard-footer-chips-terminal-cache)·[deployment §フッタチップ](../archive/deployments/2026-05.md#kiosk-leaderboard-footer-chips-terminal-cache-2026-05-20)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 - **continue chunk 80/80（2026-05-21）**: **`a2a3c960`** / CI **`12c94486`**·**Pi5→Pi4×4 本番**·Detach **`20260521-083210-21952`** 他 4 台·CI **`26195283245` success**·[§continue 80/80 実装](#continue-chunk-8080-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-chunk-80-2026-05-21)。
 - **continue chunk 80/160（2026-05-21）**: **`4471a444`**·**PR [#315](https://github.com/denkoushi/RaspberryPiSystem_002/pull/315)**·**Pi5→Pi4×4 本番**·Detach **`20260521-203852-9936`** 他 4 台·CI **`26222962417` success**·[§continue 80/160 実装](#continue-chunk-80160-実装web-のみ--2026-05-21--本番反映済み)·[deployment §continue 80/160](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-chunk-160-2026-05-21)。
-- **shell 初回最適化 第1弾（2026-05-21 · API のみ · Pi5 本番・実機 OK）**: winner materialization **リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**·**`143c8814`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·CI **`26226698424` success**·Detach Pi5 **`20260521-221507-30100`**·[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み)。
+- **shell 初回最適化 第1弾（2026-05-21 · API のみ · Pi5 本番・実機 OK）**: winner materialization **リクエスト内 1 回共有**·**`hasMore=false` スロットは COUNT await 省略**·**`143c8814`**·**PR [#316](https://github.com/denkoushi/RaspberryPiSystem_002/pull/316)**·CI **`26226698424` success**·Detach Pi5 **`20260521-221507-30100`**·[§shell 第1弾](#shell-初回最適化-第1弾api-のみ--2026-05-21--本番反映済み)。
 - **shell 選定 SQL 第2弾（2026-05-22 · API のみ · Pi5 本番·**第2弾までで一旦停止**）**: SQL **共通化 + LATERAL JOIN**·prefix **manual LIMIT / expansion スキップ**·**`fc485fe3`**（PR [#317](https://github.com/denkoushi/RaspberryPiSystem_002/pull/317)）·Detach Pi5 **`20260522-081052-2796`**·[§shell 第2弾](#shell-選定-sql-第2弾api-のみ--2026-05-22--本番反映済み)·[§ロードマップ（保留）](#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22)。
 - 関連: [KB-369](./KB-369-leader-order-board-api-internal-latency.md)·[KB-380](./KB-380-kiosk-leaderboard-network-error-resilience.md)·[KB-297 §製番チップ](./KB-297-kiosk-due-management-workflow.md#leader-board-seiban-or-filter-2026-04-29)·[EXEC_PLAN.md](../../EXEC_PLAN.md)。
 
@@ -1447,7 +1447,7 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 
 ### 背景・目的
 
-[§shell 第1弾](#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み) で **winner 共有**と **hasMore=false COUNT 省略**を入れた後も、**hasMore スロット**では **manual / expansion / filler の 3 本 SELECT** と **相関サブクエリ（`processingOrder` / `globalRank`）** が **prefix 初回 shell の支配要因**だった。第2弾は **SQL 構造の共通化 + JOIN 化**と **prefix 向け manual LIMIT / expansion スキップ**で、**continue 経路と board 出力契約を変えず**初回 shell の DB 負荷を下げる。
+[§shell 第1弾](#shell-初回最適化-第1弾api-のみ--2026-05-21--本番反映済み) で **winner 共有**と **hasMore=false COUNT 省略**を入れた後も、**hasMore スロット**では **manual / expansion / filler の 3 本 SELECT** と **相関サブクエリ（`processingOrder` / `globalRank`）** が **prefix 初回 shell の支配要因**だった。第2弾は **SQL 構造の共通化 + JOIN 化**と **prefix 向け manual LIMIT / expansion スキップ**で、**continue 経路と board 出力契約を変えず**初回 shell の DB 負荷を下げる。
 
 ### 仕様（実装）
 
@@ -1468,7 +1468,7 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 
 ```bash
 pnpm --filter @raspi-system/api test -- leaderboard-shell-priority-fetch-policy
-pnpm --filter @raspi-system/api test -- leaderboard-shell-row-selection-compare
+pnpm --filter @raspi-system/api test -- leaderboard-row-selection.compare
 pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.test.ts -t "leaderboard"
 ```
 
@@ -1503,7 +1503,7 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 | --- | --- |
 | **初回 shell が遅いまま** | 第1弾 COUNT 省略が効く **completeInShell** スロットか確認·**hasMore** スロットは **選定 SQL + COUNT 並列**が支配 |
 | **ベンチ median だけ悪化** | **`runs>=2`** で **min/median 併記**·Pi5 **memory 90%+** 時の一過性 503 と相関調査（[EXEC_PLAN Next Steps](../../EXEC_PLAN.md)） |
-| **continue 順序ずれ** | continue は **`prefixLimit` なし** — `leaderboard-shell-row-selection-compare` と統合テストで **monolithic 同順**を固定 |
+| **continue 順序ずれ** | continue は **`prefixLimit` なし** — `leaderboard-row-selection.compare` と統合テストで **monolithic 同順**を固定 |
 | **Pi4 にデプロイしたが変わらない** | **意図どおり** — 変更は **Pi5 `api` のみ** |
 
 ### スコープ打ち切り（2026-05-22 · **第2弾までで一旦停止**）
@@ -1568,7 +1568,7 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 
 **検証**:
 
-- 既存 **`leaderboard-shell-row-selection-compare`** + 統合 **`leaderboard`** 18 件
+- 既存 **`leaderboard-row-selection.compare`** + 統合 **`leaderboard`** 18 件
 - Pi5 **`benchmark-leaderboard-board-shell.mjs`**（`runs>=3`·min/median 併記）
 - デプロイは **`raspberrypi5` のみ**（第1・2弾と同型）
 

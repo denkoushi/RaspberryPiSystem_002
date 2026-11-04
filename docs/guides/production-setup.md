@@ -63,7 +63,7 @@
 
 3. **証明書の信頼設定（各クライアント端末）**
 
-   Raspberry Pi 4（クライアント）のブラウザで証明書を信頼する必要があります。詳細は[クライアントデバイス統合アーキテクチャ](../architecture/client-device-integration.md)を参照してください。
+   Raspberry Pi 4（クライアント）のブラウザで証明書を信頼する必要があります。詳細は[クライアントデバイス統合アーキテクチャ](../architecture/overview.md#クライアントデバイス統合)を参照してください。
 
 ---
 
@@ -140,7 +140,7 @@
 ### 証明書の警告が表示される（自己署名証明書の場合）
 
 - 各クライアント端末で証明書を信頼する設定を行ってください
-- 詳細は[クライアントデバイス統合アーキテクチャ](../architecture/client-device-integration.md)を参照
+- 詳細は[クライアントデバイス統合アーキテクチャ](../architecture/overview.md#クライアントデバイス統合)を参照
 
 ### 証明書が取得できない（Let's Encryptの場合）
 
@@ -386,7 +386,7 @@ grep -q "\.env$" .gitignore && echo "OK" || echo "WARNING: .env not in .gitignor
 
 ## 関連ドキュメント
 
-- [クライアントデバイス統合アーキテクチャ](../architecture/client-device-integration.md) - デバイス統合パターンと拡張性
+- [クライアントデバイス統合アーキテクチャ](../architecture/overview.md#クライアントデバイス統合) - デバイス統合パターンと拡張性
 - [アーキテクチャ概要](../architecture/overview.md) - システム全体のアーキテクチャ
 - [デプロイメントガイド](./deployment.md) - デプロイ手順の詳細
 - [バックアップ・リストア手順](./backup-and-restore.md) - バックアップとリストアの詳細

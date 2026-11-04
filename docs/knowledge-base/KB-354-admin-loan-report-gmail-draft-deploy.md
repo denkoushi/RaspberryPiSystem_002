@@ -98,8 +98,8 @@ category: knowledge-base
 | 症状 | 切り分け |
 |------|-----------|
 | `update-all-clients.sh` が即 exit 2 | **未コミット／未追跡ファイル**で fail-fast。`git status` を確認し、**`git stash push -u`** またはコミットしてから再実行（[deployment.md](../guides/deployment.md)・[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）。 |
-| 下書き API が 403 / Gmail エラー | **OAuth スコープ**に `gmail.compose` が含まれるか、**接続済み Gmail アカウント**が有効かを確認（`backup.json` / 管理画面バックアップ設定）。 |
-| **送信** API が 403 / Gmail **`insufficientPermissions`** 等 | **`gmail.send`** がトークンに含まれていない。**OAuth 再認可**（バックアップ設定から Gmail 再接続）でスコープを更新。 |
+| 下書き API が 403 / Gmail エラー | **OAuth スコープ**に `gmail.compose` が含まれるか、**接続済み Gmail アカウント**が有効かを確認（保存先は `backup.json`、画面は管理コンソール Gmail 設定 `/admin/gmail/config`）。 |
+| **送信** API が 403 / Gmail **`insufficientPermissions`** 等 | **`gmail.send`** がトークンに含まれていない。**OAuth 再認可**（Gmail 設定 `/admin/gmail/config` から再認可）でスコープを更新。 |
 | 送信が **403**（ロール） | **送信は `ADMIN` のみ**。`MANAGER` 以下は下書きのみ。 |
 | プレビューが 401 | 管理コンソールと同じ **JWT**（またはロール付きセッション）で呼ぶ。匿名 curl では **401 正常**。 |
 | Vitest で `vi.mock` が先に評価されて失敗 | モック依存の定数は **`vi.hoisted`** で定義する（`loan-report-gmail-draft.service.test.ts` 参照）。 |

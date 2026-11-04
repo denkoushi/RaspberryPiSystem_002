@@ -64,12 +64,10 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 # プロジェクトディレクトリに移動
 cd /Users/tsudatakashi/RaspberryPiSystem_002
 
-# 環境変数を設定（Raspberry Pi 5へのSSH接続情報）
-export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
-
 # 一括更新スクリプトを実行（status-agentの設定も含まれる）
-# inventory指定が必須（誤デプロイ防止）
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+# inventory指定と対象指定（--limit または --full-fleet）が必須（誤デプロイ防止）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN
 ```
 
 **期待される出力:**

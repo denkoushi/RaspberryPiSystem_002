@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - フロントエンド関連
 
 **カテゴリ**: フロントエンド関連  
-**件数**: 58件  
+**件数**: 81件  
 **索引**: [index.md](./index.md)
 
 ---
@@ -899,7 +899,7 @@ try {
 - **401** は [KB-192](#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題)（JWT ヘッダ未付与）を疑う
 
 **References**:
-- `apps/web/src/pages/admin/SignagePreviewPage.tsx`
+- `apps/web/src/pages/admin/SignagePreviewPage.tsx`（当時。現行: `apps/web/src/features/admin/signage-hub/useSignageClientImage.ts`。`/admin/signage/preview` は `/admin/signage` へリダイレクト）
 - `apps/web/src/lib/signage/buildSignageCurrentImageUrl.ts`
 - `apps/web/src/lib/signageTargetClientDevices.ts`
 
@@ -2054,7 +2054,7 @@ https://100.106.158.2/kiosk/call?clientKey=client-key-mac-kiosk1&clientId=mac-ki
 - ✅ **キオスクページ実装**: `ProductionSchedulePage.tsx`を実装し、CSVダッシュボードのデータを表示
 - ✅ **完了ボタンのグレーアウト**: `progress='完了'`のアイテムを`opacity-50 grayscale`で視覚的にグレーアウト
 - ✅ **完了ボタンのトグル機能**: 完了ボタンを押すと`progress`が「完了」→空文字（未完了）にトグル
-- ✅ **完了状態の保存方法変更（2026-02-19）**: `ProductionScheduleProgress`テーブルを新設し、完了状態を`rowData`から分離（[KB-269](../api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避)参照）。APIレスポンスで`rowData.progress`を合成することで、フロントエンドの変更は不要
+- ✅ **完了状態の保存方法変更（2026-02-19）**: `ProductionScheduleProgress`テーブルを新設し、完了状態を`rowData`から分離（[KB-269](./api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避)参照）。APIレスポンスで`rowData.progress`を合成することで、フロントエンドの変更は不要
 - ✅ **完了ボタンの色変更**: 完了状態に応じて背景色を変更（未完了=赤、完了=グレー）
 - ✅ **チェックマーク位置調整**: 「✓」ボタンとテキストの重なりを解消（`pr-11`でパディング追加）
 - ✅ **FSEIBAN表示**: `FSEIBAN`の下3桁を表示（`seibanMasked`と併記）
@@ -2882,7 +2882,7 @@ const cancelNoteEdit = () => {
 - `apps/api/src/routes/kiosk.ts`（備考保存・削除エンドポイント実装）
 
 **関連KB**:
-- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索): 生産スケジュールUIの改良（資源CDフィルタ・加工順序割当・検索状態同期）
+- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdフィルタ加工順序割当検索状態同期and検索): 生産スケジュールUIの改良（資源CDフィルタ・加工順序割当・検索状態同期）
 - [KB-212](./api.md#kb-212-生産スケジュール行ごとの備考欄追加機能): API側の備考欄追加機能実装
 
 ---
@@ -4119,7 +4119,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 
 **関連KB**:
 - [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善): 登録製番削除ボタンの進捗連動UI改善（`history-progress`エンドポイントの追加）
-- [KB-282](../api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加): API側の`machineName`追加実装
+- [KB-282](./api.md#kb-282-生産スケジュールhistory-progressエンドポイントにmachinename追加): API側の`machineName`追加実装
 
 **解決状況**: ✅ **解決済み**（2026-02-28）
 
@@ -4185,7 +4185,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - **フォールバック戦略**: パース失敗時や`schemaVersion`不一致時は`DEFAULT_SEARCH_CONDITIONS`にフォールバックすることで、堅牢性を確保
 
 **関連KB**:
-- [KB-209](../api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化): 検索状態の全キオスク間共有化（historyは全端末共有、検索条件は端末別保存）
+- [KB-209](./api.md#kb-209-生産スケジュール検索状態の全キオスク間共有化): 検索状態の全キオスク間共有化（historyは全端末共有、検索条件は端末別保存）
 
 **解決状況**: ✅ **解決済み**（2026-02-28、実機検証完了）
 
@@ -4271,7 +4271,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 **関連KB**:
 - [KB-284](./frontend.md#kb-284-生産スケジュールアイテム一覧からmhアイテムを除外): MHアイテムの一覧除外（SH追加の前段階）
 - [KB-282](./frontend.md#kb-282-生産スケジュール登録製番ボタンの3段表示と機種名表示全角半角大文字化): 登録製番ボタンの3段表示と機種名表示（検索用製番ボタンに機種名を表示）
-- [KB-285](../api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加): API側の`machineName`取得にSH追加
+- [KB-285](./api.md#kb-285-生産スケジュールhistory-progressエンドポイントのmachinename取得にsh追加): API側の`machineName`取得にSH追加
 
 **解決状況**: ✅ **解決済み**（2026-03-02、実機検証完了）
 
@@ -4314,7 +4314,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 
 **関連KB**:
 - [KB-239](./frontend.md#kb-239-キオスクヘッダーのデザイン変更とモーダル表示位置問題の解決react-portal導入): モーダル表示位置問題と React Portal 導入
-- [KB-285](../infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる): 電源操作遅延の原因
+- [KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる): 電源操作遅延の原因
 
 **解決状況**: ✅ **解決済み**（2026-03-01、実機検証完了）
 
@@ -4402,7 +4402,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - 実機検証: APIヘルス、生産スケジュールresources/list API、ブラウザで資源CDボタンの優先並びを確認（登録製番選択時、検索結果に含まれる資源CDが左寄せ表示）
 
 **関連KB**:
-- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索): 資源CDフィルタ・加工順序割当
+- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdフィルタ加工順序割当検索状態同期and検索): 資源CDフィルタ・加工順序割当
 
 **解決状況**: ✅ **解決済み**（2026-03-06、デプロイ完了・実機検証完了）
 
@@ -4443,7 +4443,7 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 
 **関連KB**:
 - [KB-294](./frontend.md#kb-294-生産スケジュール資源cdボタン優先並び): 資源CDボタン優先並び
-- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdfilter加工順序割当検索状態同期and検索): 検索状態同期
+- [KB-208](./frontend.md#kb-208-生産スケジュールui改良資源cdフィルタ加工順序割当検索状態同期and検索): 検索状態同期
 
 **解決状況**: ✅ **実装完了・デプロイ完了・実機検証完了**（2026-03-06）
 

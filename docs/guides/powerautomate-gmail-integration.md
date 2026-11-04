@@ -79,7 +79,7 @@ employeeCode,displayName,nfcTagUid,department,contact,status
 - `nfcTagUid`: NFCタグUID
 - `department`: 部署名
 - `contact`: 連絡先
-- `status`: ステータス（`ACTIVE`, `INACTIVE`, `RETIRED`）
+- `status`: ステータス（`ACTIVE`, `INACTIVE`, `SUSPENDED`）
 
 **アイテムCSV形式**:
 ```csv
@@ -96,7 +96,7 @@ TO0002,レンチセット,TAG-TO002,工具,工具庫,AVAILABLE,メトリック�
 - `nfcTagUid`: NFCタグUID
 - `category`: カテゴリ
 - `storageLocation`: 保管場所
-- `status`: ステータス（`AVAILABLE`, `BORROWED`, `MAINTENANCE`, `RETIRED`）
+- `status`: ステータス（`AVAILABLE`, `IN_USE`, `MAINTENANCE`, `RETIRED`）
 - `notes`: 備考
 
 #### JPEGファイル

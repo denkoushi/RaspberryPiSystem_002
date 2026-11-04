@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 22件  
+**件数**: 27件  
 **索引**: [index.md](../index.md)
 
 セキュリティ対策と監視に関するトラブルシューティング情報
@@ -192,7 +192,7 @@ update-frequency: medium
 
 **⚠️ 更新（2026-01-30）**: 本KBの結論は [ADR-20260130-tailscale-primary-operations](../../decisions/ADR-20260130-tailscale-primary-operations.md) により**置き換え**られました。現在の正本は「Tailscale主（通常運用）、localは緊急時のみ」です。
 
-**EXEC_PLAN.md参照**: Phase 2（旧: メンテナンス時の安全化/Tailscale導入, 2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+**EXEC_PLAN.md参照**: Phase 2（旧: メンテナンス時の安全化/Tailscale導入, 2025-12-04）、[security-hardening-execplan.md](../../plans/security-hardening-execplan.md)
 
 **事象**: 
 - メンテナンス時にインターネット経由でAnsible実行・GitHubからpullする際、SSHポートをインターネットに公開する必要がある
@@ -326,7 +326,11 @@ update-frequency: medium
 - `infrastructure/ansible/templates/fail2ban.local.j2`
 - `infrastructure/ansible/templates/fail2ban-filter-caddy-http.conf.j2`
 - `infrastructure/docker/Caddyfile*`
-- `docs/plans/security-hardening-execplan.md`### [KB-074] Pi5のマルウェアスキャン自動化（ClamAV/Trivy/rkhunter）
+- `docs/plans/security-hardening-execplan.md`
+
+---
+
+### [KB-074] Pi5のマルウェアスキャン自動化（ClamAV/Trivy/rkhunter）
 
 **EXEC_PLAN.md参照**: Phase 5 マルウェア対策（2025-12-05）
 
@@ -383,7 +387,7 @@ update-frequency: medium
 **関連ファイル**: 
 - `infrastructure/ansible/roles/kiosk/tasks/security.yml`
 - `infrastructure/ansible/templates/clamav-scan.sh.j2`
-- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`（削除済み。rkhunterは撤去済みで、後継は `infrastructure/ansible/templates/package-integrity-scan.sh.j2`。KB-074参照）
 - `docs/security/requirements.md`
 - `docs/plans/security-hardening-execplan.md`
 
@@ -523,7 +527,7 @@ update-frequency: medium
 **関連ファイル**: 
 - `infrastructure/ansible/templates/clamav-scan.sh.j2`
 - `infrastructure/ansible/templates/trivy-scan.sh.j2`
-- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`（削除済み。rkhunterは撤去済みで、後継は `infrastructure/ansible/templates/package-integrity-scan.sh.j2`。KB-074参照）
 - `infrastructure/ansible/group_vars/all.yml`
 - `docs/security/requirements.md`
 - `docs/plans/security-hardening-execplan.md`
@@ -1036,10 +1040,12 @@ sudo systemctl restart kiosk-browser.service
 - **`main` + Ansible 標準デプロイ**で Pi5 と揃える（実績: [deployment.md §2026-06-03](../../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) の `raspberrypi4` 行）。
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
-  --limit raspberrypi4 --detach --follow
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi4
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4 --detach
+./scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
 ```
+
+（現行手順の正本: [deployment.md](../../guides/deployment.md)。旧記載の `--follow` と `RASPI_SERVER_HOST` は現行CLIにない）
 
 **本番再デプロイ実績（`raspberrypi4` · 2026-06-03）**:
 

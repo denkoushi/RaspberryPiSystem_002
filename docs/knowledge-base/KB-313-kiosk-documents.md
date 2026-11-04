@@ -101,7 +101,7 @@ DB に無い `pdf-pages` サブディレクトリ（UUID 形式）や `pdfs` 内
 
 ## 仕様（運用で押さえる点）
 
-- **キオスク URL**: `/kiosk/documents`。沉浸式レイアウト（上端ホバーでヘッダー表示）は [KB-311](./KB-311-kiosk-immersive-header-allowlist.md) の allowlist に含める。
+- **キオスク URL**: `/kiosk/documents`。画面高さ固定（メニューは全ルート共通の下辺ドック）は [KB-311](./KB-311-kiosk-immersive-header-allowlist.md) の allowlist に含める。
 - **認可**: 一覧・詳細は **登録端末の `x-client-key`** または **JWT（ADMIN / MANAGER / VIEWER）**。アップロード・Gmail 取り込み・PATCH/DELETE は **ADMIN / MANAGER**。
 - **管理画面（2026-04-08）**: `/admin/kiosk-documents` に **`kioskDocumentGmailIngest` の読み取り専用一覧**（`GET /api/backup/config`）を表示。CSV インポート画面の `csvImports` とは別設定。行の **「IDを手動実行欄に反映」** で既存の Gmail 手動取り込み（`POST /ingest-gmail`）のスケジュール ID 入力を補助。編集は引き続きバックアップ設定経由。
 - **キオスク一覧**: `enabled=true` の行のみ（無効化した文書は管理画面では見えるがキオスクでは出ない）。

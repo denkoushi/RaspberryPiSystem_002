@@ -89,5 +89,5 @@ fails closed. Do not remove a lock or force cleanup manually.
 ## References
 
 - [Pi5 Blue/Green runbook](../runbooks/pi5-blue-green-deploy.md)
-- [Deployment guide](../archive/deployments/legacy-operator-guide-through-2026-07.md#pi5-blue-green-phase3)
+- [Pi5 Blue/Green Phase 3 plan](../plans/pi5-blue-green-phase3.md)
 - [Rolling release plan](../plans/rolling-terminal-bluegreen-deploy.md)

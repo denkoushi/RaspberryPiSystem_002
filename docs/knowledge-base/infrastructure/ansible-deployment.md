@@ -20,6 +20,8 @@ update-frequency: medium
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
 
+> **注意（2026-11 点検）**: 本ファイルのコマンド・手順（`--follow` / `--job` / `--attach`、`RASPI_SERVER_HOST`、`deploy.yml` / `update-clients.yml` / `deploy-staged.yml` の直接実行、lock の手動削除、プロセス kill など）は各記録日時点のものです。現行手順は [deployment.md](../../guides/deployment.md) と [deploy-status-recovery.md](../../runbooks/deploy-status-recovery.md) だけを正本とします。
+
 ---
 
 <a id="kb-366-pi5-self-ssh-preflight-and-orphan-lock"></a>
@@ -70,7 +72,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - ローカル作業ツリーが dirty だと fail-fast で止まるため、**commit するか stash**してから再試行する（[KB-315](#kb-315-pi4-fjv-third-kiosk) と同系）。
 
 **References**:
-- `scripts/update-all-clients.sh`（`check_pi5_loopback_ssh_preflight` / `run_preflight_remotely` / `acquire_remote_lock` / EXIT trap）
+- `scripts/update-all-clients.sh`（`check_pi5_loopback_ssh_preflight` / `run_preflight_remotely` / `acquire_remote_lock` / EXIT trap）（当時。現行の `update-all-clients.sh` は `scripts/deploy/standard-ansible-release.py` の wrapper で、これらの関数・変数は廃止。排他は Pi5 の `logs/deploy/fleet-release-state.lock` に対する flock）
 - [deployment.md](../../guides/deployment.md)
 - [KB-365](../KB-365-dgx-resource-phase3-workload-orchestration.md)
 
@@ -108,14 +110,14 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **運用**:
 - **API/ストレージのみ**のため **Pi5 のみ**（`--limit raspberrypi5`）で足りる。キオスク Pi4 はサーバー経由で画像取得。
-- 標準手順: [deployment.md](../../guides/deployment.md) の `export RASPI_SERVER_HOST=...` と `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- 標準手順: [deployment.md](../../guides/deployment.md) の `export RASPI_SERVER_HOST=...` と `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（当時。現行は `--follow` と `RASPI_SERVER_HOST` を使わず、`--print-plan` で確認後に `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach` を実行し、`--status <runId>` で確認する）。
 
 **Verification（2026-04-14 本番）**:
 - **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260414-163839-30558`（`raspberrypi5`・`PLAY RECAP` **`failed=0` / `unreachable=0`**・`Summary success check: true`）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 25s）。
 
 **Troubleshooting**:
-- `prisma migrate deploy` が **`service "api" is not running`** のときは、まず Pi5 で `docker compose -f infrastructure/docker/docker-compose.server.yml ps -a` を確認し、**bind mount 先ディレクトリ未作成**や **`Created` で止まったコンテナ**を疑う（[deployment.md](../../guides/deployment.md)「新しい bind mount」知見）。
+- `prisma migrate deploy` が **`service "api" is not running`** のときは、まず Pi5 で `docker compose -f infrastructure/docker/docker-compose.server.yml ps -a` を確認し、**bind mount 先ディレクトリ未作成**や **`Created` で止まったコンテナ**を疑う（[旧デプロイ運用ガイド（アーカイブ）](../../archive/deployments/legacy-operator-guide-through-2026-07.md)「新しい bind mount」知見）。
 - コンテナ内だけに残っていたファイルが **既に失われている**場合、救出は効かない。必要なら **再アップロード**。
 
 **References**:
@@ -187,7 +189,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **Troubleshooting**:
 - Pi5 で `docs/` が無い、または `git status` が `docs` 大量削除: `inventory` で `raspberrypi5` が `server` グループに入っているか、`roles/common` の `when: "'server' not in group_names"` が効いているかを確認。手で `docs` を消した場合は `git checkout -- docs` 等で復元。
-- クライアントで現場から `less docs/...` したい: **Pi5 上の同パス**または GitHub の `docs/` を参照（[deployment.md](../../guides/deployment.md) の「`docs/` 配置ポリシー」）。
+- クライアントで現場から `less docs/...` したい: **Pi5 上の同パス**または GitHub の `docs/` を参照（[旧デプロイ運用ガイド（アーカイブ）](../../archive/deployments/legacy-operator-guide-through-2026-07.md#docs-配置ポリシーホスト別) の「`docs/` 配置ポリシー」）。
 
 **References**:
 - `infrastructure/ansible/roles/common/tasks/main.yml`
@@ -228,7 +230,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **Fix / 運用手順（要約）**:
 - **SSH 鍵**: Pi5 が LAN で届かないときは、[client-initial-setup.md](../../guides/client-initial-setup.md) のとおり **届く経路で `authorized_keys` に Pi5 の `id_ed25519.pub` を追記** → Tailscale → Pi5 から `ssh user@100.x`。
-- **Ansible**: Pi5 上で次のどちらか。
+- **Ansible**: Pi5 上で次のどちらか（当時の手順。`deploy-staged.yml` は削除済みで、現行の新規Pi4初回導入は [deployment.md](../../guides/deployment.md#空のpi4キオスクへの初回導入) の `--print-plan` 確認後に `scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --first-install` を使う）。
   - `cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_CONFIG="$PWD/ansible.cfg" ANSIBLE_REPO_VERSION=main ansible-playbook playbooks/deploy-staged.yml --limit raspi4-fjv60-80`
   - またはリポジトリ整合後に従来の `update-all-clients.sh` + `--limit raspi4-fjv60-80`（**ローカルはコミット済み**で実行）。
 - **Pi5 の作業ツリー**: 運用で一時的に `scp` 等でファイルを直置きした場合は、`main` 取り込み後に **`git checkout main && git pull --ff-only`** で揃えるか、変更を捨ててから pull（詳細は運用者判断）。
@@ -279,7 +281,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
   - `sudo systemctl enable --now docker`
 - その後、Pi5 で
   - `cd /opt/RaspberryPiSystem_002/infrastructure/ansible`
-  - `ANSIBLE_CONFIG="$PWD/ansible.cfg" ANSIBLE_REPO_VERSION=main ansible-playbook playbooks/deploy-staged.yml --limit raspi4-kensaku-stonebase01`
+  - `ANSIBLE_CONFIG="$PWD/ansible.cfg" ANSIBLE_REPO_VERSION=main ansible-playbook playbooks/deploy-staged.yml --limit raspi4-kensaku-stonebase01`（当時。現行は [deployment.md](../../guides/deployment.md#空のpi4キオスクへの初回導入) の `--first-install` を使う）
 - 実機確認:
   - `GET /api/system/deploy-status`（StoneBase client key）で `"isMaintenance": false`
   - `kiosk-browser.service` / `status-agent.timer` が `active`
@@ -684,7 +686,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 
 ### [KB-069] IPアドレス管理の変数化（Ansible group_vars/all.yml）
 
-**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../../plans/security-hardening-execplan.md)
 
 **事象**: 
 - IPアドレスが複数の設定ファイルに直接記述されている
@@ -3425,7 +3427,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 **参考情報**:
 - [KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則): トークプラザ別拠点構成の廃止
-- [docs/guides/deployment.md](../guides/deployment.md): デプロイ標準手順
+- [docs/guides/deployment.md](../../guides/deployment.md): デプロイ標準手順
 - 通常、Node.jsをインストールする際に追加される（`curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
 - この問題はNodeSource側の対応待ちであり、システムのNode.jsは既にインストール済みで動作しているため、緊急の対応は不要
 
@@ -3558,7 +3560,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pn
 
 **関連KB**:
 - [KB-200](./ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能): デタッチモードの実装
-- [KB-220](./ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される): デプロイ時のトラブルシューティング
+- [KB-220](./ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題-sha1が2026-02-01以降拒否される): デプロイ時のトラブルシューティング
 
 **再発防止**:
 - デプロイ実行前に変更内容を確認し、必要なデバイスのみをデプロイする
@@ -3689,7 +3691,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **関連KB**:
 - [KB-200](./ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能): デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能
-- [KB-226](./ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須): デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）
+- [KB-226](./ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上は--detach---follow必須): デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）
 
 **解決状況**: ✅ **解決済み**（2026-02-06）
 
@@ -4004,10 +4006,10 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 **JWT秘密鍵の用途と運用上の注意点**:
 - **用途**: 管理コンソール（`/admin`）やキオスク（`/kiosk`）のログイン認証で使用される「アクセストークン」（15分有効）と「リフレッシュトークン」（7日間有効）の署名に使用されます。トークンは改ざんできないよう秘密鍵で署名され、弱い値だと推測されやすくセキュリティリスクになります
 - **運用上の注意点**: デプロイ後は必ずヘルスチェックでAPIが正常起動していることを確認してください。JWT秘密鍵を変更した場合、既存のログインセッションは無効になりますが、通常は変更不要です（デプロイ時に自動で維持されます）。バックアップ対象に含まれているため、万が一失われた場合も復旧可能です
-- **詳細**: [デプロイメントガイド](../guides/deployment.md#本番セキュリティ設定2026-02-13追加) の「JWT秘密鍵の用途と仕組み」「運用上の注意点」セクションを参照してください
+- **詳細**: [旧デプロイ運用ガイド（アーカイブ）](../../archive/deployments/legacy-operator-guide-through-2026-07.md#本番セキュリティ設定2026-02-13追加) の「JWT秘密鍵の用途と仕組み」「運用上の注意点」セクションを参照してください
 
 **関連ファイル**:
-- `docs/guides/deployment.md`（JWT秘密鍵の注意点）
+- `docs/archive/deployments/legacy-operator-guide-through-2026-07.md`（JWT秘密鍵の注意点。旧ガイドのアーカイブ）
 - `infrastructure/docker/docker-compose.server.yml`（`env_file` の優先順位）
 - `infrastructure/ansible/templates/api.env.j2`
 - `infrastructure/ansible/templates/docker.env.j2`
@@ -4167,8 +4169,8 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - 両端末とも `failed=0`、`unreachable=0`、exit 0 で完了
 
 **Prevention**:
-- **直列化適用済み（2026-03-09、2026-07-16強化）**: `deploy-staged.yml` の全playとregistry向け共通playbookはliteral `serial: 1` を宣言する。CIがregistryの全terminal playbookでこれを検証し、inventory変数で並列度を緩められないため、Pi4を含む端末は常時1台ずつの直列実行となる
-- `server:kiosk` でハングした場合の復旧手順を Runbook に追加（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）
+- **直列化適用済み（2026-03-09、2026-07-16強化）**: `deploy-staged.yml` の全playとregistry向け共通playbookはliteral `serial: 1` を宣言する。CIがregistryの全terminal playbookでこれを検証し、inventory変数で並列度を緩められないため、Pi4を含む端末は常時1台ずつの直列実行となる（当時。現行は `deploy-staged.yml` が削除済みで、`deploy-release-standard.yml` の Pi4 play が `serial: [1, 5, "25%", "100%"]` の波で更新し、`--torque-cutover` 時のみ1台ずつ。[deployment.md](../../guides/deployment.md)）
+- `server:kiosk` でハングした場合の復旧手順を Runbook に追加（当時。現行の復旧は [deploy-status-recovery.md](../../runbooks/deploy-status-recovery.md#2-失敗後の再実行) を正本とする）
 - ハングが続く場合は、Pi4 を単体で `--limit raspberrypi4` / `--limit raspi4-robodrill01` により再デプロイする運用を推奨
 - 将来の検討: Ansible の `ansible_command_timeout` や SSH 接続の並列化設定の見直し
 

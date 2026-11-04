@@ -47,4 +47,4 @@ category: knowledge-base
 
 - [Runbook: dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)
 - [deployment.md](../guides/deployment.md)（2026-05-02 補足: DGX `sparkHost` フォールバック）
-- [api.md §KB-363](./api.md#kb-363-dgx-リソース-spark-ホスト状態の既定フォールバックadmin-local-llm-healthz)
+- [api.md §KB-363](./api.md#kb-363-dgx-リソース-sparkhost-の既定フォールバックadmin-local_llm_base_url-の-healthz)

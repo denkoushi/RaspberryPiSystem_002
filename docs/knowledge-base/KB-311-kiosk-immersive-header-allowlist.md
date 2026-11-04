@@ -79,8 +79,8 @@ category: knowledge-base
 
 | 種別 | パス |
 |------|------|
-| 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/photo`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule`, `/kiosk/documents`（要領書 PDF・[KB-313](./KB-313-kiosk-documents.md)） |
-| `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview`, `/kiosk/production-schedule/load-balancing`, `/kiosk/part-measurement`（部品測定）, `/kiosk/mobile-placement`, `/kiosk/purchase-order-lookup`, `/kiosk/assembly`, `/kiosk/pallet-visualization`（[KB-355](./api.md)） |
+| 完全一致（末尾 `/` 正規化後） | `/kiosk/tag`, `/kiosk/photo`, `/kiosk/instruments/borrow`, `/kiosk/rigging/borrow`, `/kiosk/production-schedule`, `/kiosk/documents`（要領書 PDF・[KB-313](./KB-313-kiosk-documents.md)）, `/kiosk/inventory`, `/kiosk/inventory/haizen`, `/kiosk/inventory/dashboard`, `/kiosk/tag-desk`, `/kiosk/machine-signal`、および `/kiosk/inventory/settings`（子パス含む） |
+| `startsWith` | `KIOSK_MANUAL_ORDER_PATH_PREFIX`（手動順番）, `/kiosk/production-schedule/progress-overview`, `/kiosk/production-schedule/load-balancing`, `/kiosk/part-measurement`（部品測定）, `/kiosk/mobile-placement`, `/kiosk/purchase-order-lookup`, `/kiosk/assembly`, `/kiosk/pallet-visualization`（[KB-355](./api.md)）, `KIOSK_LEADER_ORDER_BOARD_PATH_PREFIX`（`/kiosk/production-schedule/leader-order-board`）, `/kiosk/production-schedule/planning-board`, `/dev/kiosk-inspection-drawing`・`/dev/kiosk-assembly`（開発プレビュー） |
 
 定数 **`KIOSK_BORROW_IMMERSIVE_PATH_EXACT`** に持出系 4 パスを集約（`e9a860e1`）。
 

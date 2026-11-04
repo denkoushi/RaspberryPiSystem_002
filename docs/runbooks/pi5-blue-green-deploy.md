@@ -79,7 +79,7 @@ apply_and_mark() {
     --plan "${PLAN_FILE}"
   MARKER_TMP="$(mktemp /var/lib/raspi-release/.image-retention.last-success.tmp.XXXXXX)"
   trap 'rm -f -- "${MARKER_TMP}"' EXIT
-  printf '2026-09\n' >"${MARKER_TMP}"
+  TZ=Asia/Tokyo date +%Y-%m-%d >"${MARKER_TMP}"
   chown root:root "${MARKER_TMP}"
   chmod 0644 "${MARKER_TMP}"
   mv -f -- "${MARKER_TMP}" "${MARKER_FILE}"
@@ -91,7 +91,7 @@ run_retention_locked apply_and_mark
 
 planはDocker一覧と保持状態のsealed snapshotを含む。planとapplyの間にデプロイ、状態ファイル変更、Dockerイメージ変更などがあればapplyは `snapshot_changed` として拒否し、削除せず完了マーカーも更新しない。ロック競合またはsealed snapshot拒否後は、古いplanを再利用せず、ロック取得後にplanから取り直す。
 
-applyと9月完了マーカーの作成は同じ `run_retention_locked` サブシェル内で連続して実行する。applyが終了コード0で成功した場合だけ、完了マーカーをシェルのリダイレクトで直接上書きせず、同じディレクトリのroot所有一時ファイルから原子的に作成する。通常の自動経路では `docker-release-image-monthly.sh` がこの処理を行う。マーカーは `YYYY-MM-DD`（旧形式 `YYYY-MM` も可）と改行1つだけでなければならず、余分な行や改行欠落を作らない。apply失敗時はこの作成手順を実行せず、古いマーカーを残して翌日の自動再試行に任せる。
+applyと当日の完了マーカーの作成は同じ `run_retention_locked` サブシェル内で連続して実行する。applyが終了コード0で成功した場合だけ、完了マーカーをシェルのリダイレクトで直接上書きせず、同じディレクトリのroot所有一時ファイルから原子的に作成する。通常の自動経路では `docker-release-image-monthly.sh` がこの処理を行う。マーカーは `YYYY-MM-DD`（旧形式 `YYYY-MM` も可）と改行1つだけでなければならず、余分な行や改行欠落を作らない。apply失敗時はこの作成手順を実行せず、古いマーカーを残して翌日の自動再試行に任せる。
 
 `docker system prune`、`docker image prune -a`、volume prune、BuildKit以外の一括prune、または業務保存ディレクトリの削除は禁止する。通常の日次処理は固定allowlistの完全なイメージIDだけを個別に扱う。
 

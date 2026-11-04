@@ -299,7 +299,7 @@ category: knowledge-base
 
 ## shell 選定 SQL 最適化（2026-05-21–22 · **第2弾までで一旦停止**） {#shell-選定-sql-最適化-2026-05-21-22-第2弾までで一旦停止}
 
-**正本**: 詳細・ベンチ・ロードマップは [KB-374 §shell 第1/2弾](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み) および [KB-374 §ロードマップ（保留）](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22) に収束。
+**正本**: 詳細・ベンチ・ロードマップは [KB-374 §shell 第1/2弾](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾api-のみ--2026-05-21--本番反映済み) および [KB-374 §ロードマップ（保留）](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22) に収束。
 
 | 段階 | 要点 | 本番 |
 | --- | --- | --- |
@@ -308,7 +308,7 @@ category: knowledge-base
 
 **決定（2026-05-22）**: **第3弾以降は保留**（expansion budget LIMIT / EXPLAIN / Web view model 等）。初回 shell の残コストは **hasMore 並列 COUNT** + **manual 未充足時の unlimited expansion** が中心。**第3弾の期待効果は第1・2弾より低〜中（profile 依存）**。
 
-**再開時**: [`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs) で **スロット別 manual/expansion 計測** → [EXEC_PLAN §shell 保留](../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)。
+**再開時**: [`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs) で **スロット別 manual/expansion 計測** → [KB-374 §ロードマップ（保留）](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22)。
 
 ## 6-slot resource board split after residual fixes（2026-06-23 · PR #464） {#six-slot-resource-board-split-after-residual-fixes-2026-06-23--pr-464}
 
@@ -417,7 +417,7 @@ category: knowledge-base
 
 - **ブランチ**: **`feat/leaderboard-continue-delta-safe`**（**`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**）。
 - **要点**: board `continue` の **累積 `rows` 正本は不変**。任意 **`deltaRows`** はクライアント最適化のみ。体感改善の主因は **refetch 巻き戻し防止（Web）** と **`pageSize` 80 による continue 回数削減（Web）**。
-- **本番・検証の正本**: [KB-374 §Production 2026-05-19](./KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)·[deployment §deltaRows](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)。
+- **本番・検証の正本**: [KB-374 §Production 2026-05-19](./KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification2026-05-19--featleaderboard-continue-delta-safe)·[deployment §deltaRows](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)。
 
 ## Production deploy & verification（2026-05-18 · output-stable internal optimization）
 

@@ -24,8 +24,8 @@ update-frequency: medium
 - **前提**: `LOCAL_LLM_RUNTIME_MODE=on_demand` かつ warm ウィンドウが **有効**。
 - **時間帯**: IANA タイムゾーン（既定 `Asia/Tokyo`）で、**`START_HOUR`（含む）〜`END_HOUR`（含まない）** の間は「warm」。
   - 既定 **`7`〜`23`** → **07:00〜22:59** が warm、**23:00〜06:59** は従来どおり release で `/stop` 試行。
-- **適用範囲**: `admin_console_chat` / `photo_label` / `document_summary` はいずれも **同じ `HttpOnDemandLocalLlmRuntimeController` 経路**に **`shouldSuppressStop` が渡る**ため、同一ポリシーが効く。
-- **無効時**: `LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED=false`（既定）なら **従来通り** refCount=0 で停止試行。
+- **適用範囲（現行）**: `photo_label` / `business_hermes` / `security_review` / `document_summary` / `admin_console_chat` / `agent_container_task` は `LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES`（`apps/api/src/services/inference/runtime/local-llm-runtime-schedule.policy.ts`）に含まれ、warm 窓の設定に関係なく **常に** release 時の `/stop` を抑止する。warm 窓が効くのはこの一覧に無い用途のみで、現行の `LocalLlmRuntimeUseCase` には該当がない。
+- **無効時**: `LOCAL_LLM_RUNTIME_WARM_WINDOW_ENABLED=false`（既定）なら、上記一覧に無い用途のみ refCount=0 で停止試行する。
 
 ## 環境変数（API）
 
@@ -44,7 +44,7 @@ update-frequency: medium
 ## 観測
 
 - warm 内で release した場合、API ログに  
-  **`action: runtime_stop_suppressed`**（`[LocalLlmRuntimeControl] stop suppressed (schedule policy)`）が出る。
+  **`action: runtime_stop_suppressed`**（`[LocalLlmRuntimeControl] stop suppressed (use-case stop policy)`）が出る。
 
 ## References
 

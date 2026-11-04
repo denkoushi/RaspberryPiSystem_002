@@ -36,7 +36,7 @@
    ```
 
 2. **CSVインポートスケジュールを手動実行**
-   - 管理コンソール `/admin/imports/schedule` にアクセス
+   - 管理コンソール `/admin/import` にアクセス
    - `MeasuringInstrumentLoans` のスケジュールを選択
    - 「実行」ボタンをクリック
 
@@ -68,11 +68,11 @@
 **検証手順**:
 
 1. **CSVインポート実行**
-   - 管理コンソール `/admin/imports/schedule` で手動実行
+   - 管理コンソール `/admin/import` で手動実行
 
 2. **イベントテーブルの確認**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d raspberry_pi_system -c \"SELECT COUNT(*) as total_events, action, COUNT(DISTINCT \"managementNumber\") as unique_items FROM \"MeasuringInstrumentLoanEvent\" GROUP BY action ORDER BY action;\""
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d borrow_return -c \"SELECT COUNT(*) as total_events, action, COUNT(DISTINCT \"managementNumber\") as unique_items FROM \"MeasuringInstrumentLoanEvent\" GROUP BY action ORDER BY action;\""
    ```
    - 期待される結果:
      - `持ち出し` と `返却` の両方のイベントが存在する
@@ -80,7 +80,7 @@
 
 3. **イベント詳細の確認**
    ```bash
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d raspberry_pi_system -c \"SELECT \"managementNumber\", \"eventAt\", action, \"sourceMessageSubject\" FROM \"MeasuringInstrumentLoanEvent\" ORDER BY \"eventAt\" DESC LIMIT 10;\""
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d borrow_return -c \"SELECT \"managementNumber\", \"eventAt\", action, \"sourceMessageSubject\" FROM \"MeasuringInstrumentLoanEvent\" ORDER BY \"eventAt\" DESC LIMIT 10;\""
    ```
    - 期待される結果:
      - `eventAt` がUTC時刻として保存されている（`Z`付き）
@@ -108,7 +108,7 @@
 **検証手順**:
 
 1. **CSVインポート実行**
-   - 管理コンソール `/admin/imports/schedule` で手動実行
+   - 管理コンソール `/admin/import` で手動実行
    - CSVに以下のデータが含まれていることを確認:
      - `day`: 今日の日付（UTC `Z`付き）
      - `shiyou_henkyaku`: `持ち出し` と `返却` の両方
@@ -125,7 +125,7 @@
 3. **返却済みアイテムの非表示確認**
    ```bash
    # イベントテーブルで「今日」の持ち出しと返却を確認
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d raspberry_pi_system -c \"SELECT \"managementNumber\", \"eventAt\", action FROM \"MeasuringInstrumentLoanEvent\" WHERE \"eventAt\" >= CURRENT_DATE - INTERVAL '1 day' ORDER BY \"eventAt\" DESC;\""
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d borrow_return -c \"SELECT \"managementNumber\", \"eventAt\", action FROM \"MeasuringInstrumentLoanEvent\" WHERE \"eventAt\" >= CURRENT_DATE - INTERVAL '1 day' ORDER BY \"eventAt\" DESC;\""
    ```
    - 期待される結果:
      - 同じ `managementNumber` で「持ち出し」→「返却」の順にイベントがある場合、サイネージには表示されない
@@ -153,7 +153,7 @@
 **検証手順**:
 
 1. **スケジュール設定の確認**
-   - 管理コンソール `/admin/imports/schedule` で `MeasuringInstrumentLoans` のスケジュールを確認
+   - 管理コンソール `/admin/import` で `MeasuringInstrumentLoans` のスケジュールを確認
    - 実行間隔が10分に設定されていることを確認
 
 2. **Gmailに新しい未読メールを送信**
@@ -171,7 +171,7 @@
 4. **イベントテーブルの更新確認**
    ```bash
    # 最新のイベントが追加されていることを確認
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d raspberry_pi_system -c \"SELECT MAX(\"createdAt\") as latest_event FROM \"MeasuringInstrumentLoanEvent\";\""
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d borrow_return -c \"SELECT MAX(\"createdAt\") as latest_event FROM \"MeasuringInstrumentLoanEvent\";\""
    ```
 
 **期待される結果**:
@@ -193,7 +193,7 @@
 1. **テスト用データの準備**
    ```bash
    # 前々年のイベントを手動で作成（テスト用）
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d raspberry_pi_system -c \"INSERT INTO \"MeasuringInstrumentLoanEvent\" (id, \"managementNumber\", \"eventAt\", action, raw, \"createdAt\") VALUES (gen_random_uuid(), 'TEST-001', '2024-01-15T00:00:00Z', '持ち出し', '{}', NOW());\""
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d borrow_return -c \"INSERT INTO \"MeasuringInstrumentLoanEvent\" (id, \"managementNumber\", \"eventAt\", action, raw, \"createdAt\") VALUES (gen_random_uuid(), 'TEST-001', '2024-01-15T00:00:00Z', '持ち出し', '{}', NOW());\""
    ```
 
 2. **スケジュール設定の確認**
@@ -203,7 +203,7 @@
    ```
    - 期待されるログ:
      - `[CsvImportScheduler] Measuring instrument loan retention job registered`
-     - `schedule: '0 30 2 1 *'` （1月の2:30に実行）
+     - `schedule: '30 2 1 1 *'` （毎年1月1日 2:30 JST に実行）
 
 3. **手動実行（テスト用）**
    ```bash
@@ -215,11 +215,11 @@
 4. **削除結果の確認**
    ```bash
    # 前々年のイベントが削除されていることを確認
-   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d raspberry_pi_system -c \"SELECT COUNT(*) FROM \"MeasuringInstrumentLoanEvent\" WHERE \"eventAt\" >= '2024-01-01' AND \"eventAt\" < '2025-01-01';\""
+   ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml exec db psql -U postgres -d borrow_return -c \"SELECT COUNT(*) FROM \"MeasuringInstrumentLoanEvent\" WHERE \"eventAt\" >= '2024-01-01' AND \"eventAt\" < '2025-01-01';\""
    ```
 
 **期待される結果**:
-- ✅ 年次削除ジョブが1月中のみ実行される（スケジュール: `0 30 2 1 *`）
+- ✅ 年次削除ジョブが毎年1月1日 2:30 JST に実行される（スケジュール: `30 2 1 1 *`）
 - ✅ 前々年のイベントが削除される
 - ✅ 前年と当年のイベントは保持される
 

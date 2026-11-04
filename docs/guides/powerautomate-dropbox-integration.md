@@ -99,7 +99,7 @@ employeeCode,displayName,nfcTagUid,department,contact,status
 - `nfcTagUid`: NFCタグUID
 - `category`: カテゴリ
 - `storageLocation`: 保管場所
-- `status`: ステータス（`AVAILABLE`, `BORROWED`, `MAINTENANCE`など）
+- `status`: ステータス（`AVAILABLE`, `IN_USE`, `MAINTENANCE`, `RETIRED`）
 
 **CSV例**:
 ```csv

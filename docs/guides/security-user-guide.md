@@ -38,17 +38,17 @@
    - または `/admin/security` に直接アクセス
 
 3. **MFAを有効化**
-   - 「MFAセットアップ」セクションで「セットアップ開始」ボタンをクリック
-   - QRコードが表示されます
+   - 「MFA（多要素認証）設定」セクションで「セットアップ情報を生成」ボタンをクリック
+   - シークレットキーと otpauth URL が表示されます（QRコードは表示されません）
 
-4. **スマートフォンでQRコードを読み取る**
+4. **スマートフォンの認証アプリにシークレットキーを入力する**
    - Google Authenticator、Microsoft Authenticatorなどの認証アプリをインストール
-   - アプリでQRコードをスキャン
+   - アプリで「セットアップキーを入力」を選び、シークレットキーを手入力
    - 6桁のコードが表示されます
 
 5. **コードを入力して有効化**
-   - 表示された6桁のコードを入力
-   - 「有効化」ボタンをクリック
+   - 確認用パスワード（ログインパスワード）と、表示された6桁のコードを入力
+   - 「コードを確認して有効化」ボタンをクリック
    - **バックアップコードを必ず保存**してください（スマートフォンを紛失した場合に必要）
 
 6. **次回ログインから**
@@ -127,12 +127,11 @@
 sudo fail2ban-client status sshd
 ```
 
-#### 2. マルウェア検知（ClamAV/Trivy/rkhunter）
+#### 2. マルウェア検知（ClamAV/Trivy）
 
 **通知内容**:
 - 「ClamAVがウイルスを検知しました」
 - 「Trivyが脆弱性を検知しました」
-- 「rkhunterが異常を検知しました」
 
 **対応方法**:
 - **すぐにシステム管理者に連絡**してください
@@ -142,8 +141,8 @@ sudo fail2ban-client status sshd
 **確認方法**:
 ```bash
 # Pi5にSSH接続して確認（システム管理者向け）
-sudo cat /var/log/clamav/scan.log | grep FOUND
-sudo cat /var/log/trivy/scan.log | grep -E "HIGH|CRITICAL"
+sudo cat /var/log/clamav/clamav-scan.log | grep FOUND
+sudo cat /var/log/trivy/trivy-scan.log | grep -E "HIGH|CRITICAL"
 ```
 
 #### 3. ファイル整合性の異常

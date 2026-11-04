@@ -219,8 +219,9 @@ vault_api_local_llm_shared_token: "<Ubuntu の api-token>"
 反映:
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach
+./scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
 ```
 
 最小確認:
@@ -257,7 +258,7 @@ curl -k \
 
 ```bash
 cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api node -e "
+scripts/server/run-in-active-api.sh node -e "
 const b = process.env.LOCAL_LLM_BASE_URL;
 const t = process.env.LOCAL_LLM_SHARED_TOKEN;
 if (!b) { console.error('LOCAL_LLM_BASE_URL missing'); process.exit(1); }
@@ -281,7 +282,7 @@ fetch(new URL('/healthz', b), { headers: h })
 | API 生存 | `curl -sk https://<pi5-tailscale>/api/system/health` | `status` が `ok` または運用上の `degraded`（**`checks.database.status=ok`** なら DB 系切り分けは継続可） |
 | LocalLLM 境界 | `curl -sk -o /dev/null -w "%{http_code}\n" https://<pi5-tailscale>/api/system/local-llm/status` | **401**（`errorCode`: `AUTH_TOKEN_REQUIRED`） |
 | 管理 UI ルート | `curl -sk -o /dev/null -w "%{http_code}\n" https://<pi5-tailscale>/admin/local-llm` | **200**（SPA。ログイン後に `ADMIN`/`MANAGER` で操作） |
-| upstream `/healthz` | Pi5 上で本節「Pi5 実機スモーク」の `docker compose ... exec -T api node -e "..."` | **status 200** |
+| upstream `/healthz` | Pi5 上で本節「Pi5 実機スモーク」の `scripts/server/run-in-active-api.sh node -e "..."` | **status 200** |
 
 **トラブルシュート**: `401` 以外の失敗は [KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)（`LOCAL_LLM_*` の compose 経路）と共有トークン不一致を疑う。
 
@@ -313,7 +314,7 @@ curl -sk https://localhost/api/system/health
 
 ```bash
 cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+scripts/server/run-in-active-api.sh \
   node -e "const b=process.env.LOCAL_LLM_BASE_URL; const t=process.env.LOCAL_LLM_SHARED_TOKEN; const m=process.env.LOCAL_LLM_MODEL; console.log(JSON.stringify({hasBaseUrl:Boolean(b), hasToken:Boolean(t), model:m||null}, null, 2));"
 ```
 
@@ -431,8 +432,9 @@ Ubuntu 側の `X-LLM-Token`（ファイル `api-token`）と Pi5 API コンテ�
 - [deployment.md](../guides/deployment.md) に従い、**全クライアントではなく Pi5 のみ**に限定する。
 
   ```bash
-  export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
+  ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach
+  ./scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
   ```
 
   （ホストやスクリプトのパスは環境に合わせて読み替える。）

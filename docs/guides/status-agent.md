@@ -238,5 +238,5 @@ rm ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist
 ## 8. 参考
 
 - 詳細なファイル構成・コメント付き手順: `clients/status-agent/README.md`
-- API 側の受け皿: `apps/api/src/routes/clients.ts`
+- API 側の受け皿: `apps/api/src/routes/clients/core.ts`（`POST /api/clients/status`）
 - 管理画面の実装タスク: `docs/plans/production-deployment-phase2-execplan.md`

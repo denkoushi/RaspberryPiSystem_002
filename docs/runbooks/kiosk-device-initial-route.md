@@ -70,6 +70,7 @@ All selectable startup routes (existing IDs and paths remain valid):
 
 | ID | Label | Path |
 | --- | --- | --- |
+| `portal` | `ポータル` | `/kiosk/portal` |
 | `borrow_tag` | `2タグスキャン` | `/kiosk/tag` |
 | `borrow_photo` | `写真撮影持出` | `/kiosk/photo` |
 | `production_schedule` | `生産スケジュール` | `/kiosk/production-schedule` |
@@ -256,6 +257,8 @@ If this symptom recurs, inspect the rendered `持出` anchor first. It must be
 
 ### Pi5 API build OOM
 
+> 2026-07-06 時点の記録。`scripts/server/deploy.sh` と `--job --follow` は廃止済みで、lock の手動削除は禁止。現在の更新と復旧は [deployment.md](../guides/deployment.md) と [deploy-status-recovery.md](./deploy-status-recovery.md) に従う。
+
 The first Pi5 deploy attempt failed during API TypeScript build with Node heap
 exhaustion. The existing containers recovered through the deploy script.
 
@@ -266,6 +269,8 @@ NODE_OPTIONS=--max-old-space-size=3072 ./scripts/server/deploy.sh feat/kiosk-dev
 ```
 
 ### Pi4 deploy bootstrap lock
+
+> 2026-07-06 時点の記録。`scripts/server/deploy.sh` と `--job --follow` は廃止済みで、lock の手動削除は禁止。現在の更新と復旧は [deployment.md](../guides/deployment.md) と [deploy-status-recovery.md](./deploy-status-recovery.md) に従う。
 
 `./scripts/update-all-clients.sh ... --job --follow` failed before the playbook
 started and left a stale lock:

@@ -14,7 +14,7 @@ update-frequency: high
 # トラブルシューティングナレッジベース - Ansible/デプロイ性能（調査）
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ（性能）  
-**件数**: 1件  
+**件数**: 2件  
 **索引**: [index.md](../index.md)
 
 ---
@@ -377,8 +377,7 @@ update-frequency: high
 
 #### References
 - Playbook/Inventory
-  - `infrastructure/ansible/playbooks/deploy-staged.yml`
-  - `infrastructure/ansible/playbooks/update-clients.yml`
+  - `infrastructure/ansible/playbooks/deploy-release-standard.yml`（現行。旧 `deploy-staged.yml` / `update-clients.yml` は廃止済み）
   - `infrastructure/ansible/inventory.yml`
 - Script
   - `scripts/update-all-clients.sh`

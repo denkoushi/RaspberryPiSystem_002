@@ -58,8 +58,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 
 ## 再発防止
 
-- **恒久対策（2026-03-01 実装済み）**: server ロールの `power-actions` 作成タスクに `notify: restart api` を追加。Pi5 デプロイ時に `power-actions` が変更された場合、自動で API 再起動される。
-- **`--limit` で Pi4 のみデプロイした場合**: Pi5 の server ロールは実行されず、API 再起動も行われない。過去に `power-actions` が削除・再作成されていた場合、API は古いマウントを参照している可能性がある。その場合は本 Runbook の即時対処を実施する。
+- **2026-03-01 の対策（現行では無効）**: 当時は server ロールの `power-actions` 作成タスクに `notify: restart api` を付けていたが、現行の server ロールにこの notify と `restart api` handler はない。このタスクは `server_release_mode: full` のときだけ動き、標準リリース（`deploy-release-standard.yml`）は Pi5 で `release_pi5` だけを実行して server ロールを使わない。
 
 ## Pi5 power dispatcher の端末照合失敗（2026-08-04〜）
 

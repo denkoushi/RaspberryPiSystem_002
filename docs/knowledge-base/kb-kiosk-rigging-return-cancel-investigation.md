@@ -10,6 +10,8 @@ KB: キオスクからの吊具の持出し・返却の仕様と「使用中」�
 - **どこで**: キオスク（吊具の持出し・返却フロー）
 - **何が起きた**: 1件を返却したが、再度NFCタグをスキャンすると「使用中」アラートが出た。返却と取消の扱いが混在していないか確認が必要。
 
+> **現状（2026-11 時点のコード）**: 本調査の不整合は解消済み。既存貸出判定は `findActiveLoanForAsset`（`apps/api/src/services/loan/loan-transaction.helpers.ts`）と工具の `borrow()` で `cancelledAt: null` を含み、return/cancel は吊具・計測機器の status も AVAILABLE に戻す。以下は調査時点の記録。
+
 ## 把握した仕様（吊具の持出し・返却）
 
 ### キオスク側
@@ -102,7 +104,7 @@ KB: キオスクからの吊具の持出し・返却の仕様と「使用中」�
   `if (loan.itemId) { ... Item AVAILABLE }` のみ。riggingGearId / measuringInstrumentId は未処理。
 - 返却処理（Item のみ更新）: `apps/api/src/services/tools/loan.service.ts` 249–252 行付近  
   `if (loan.itemId) { ... Item AVAILABLE }` のみ。
-- キオスク返却・取消で呼ぶAPI: `apps/web/src/api/client.ts` 330–334 行（returnLoan → `/tools/loans/return`）、349–353 行（cancelLoan → `/tools/loans/cancel`）。
+- キオスク返却・取消で呼ぶAPI: `apps/web/src/api/domains/tools.ts` の `returnLoan`（→ `/tools/loans/return`）、`cancelLoan`（→ `/tools/loans/cancel`）。
 
 ## 2026-03-25 追記: 旧 active loan の Location 補正手段
 

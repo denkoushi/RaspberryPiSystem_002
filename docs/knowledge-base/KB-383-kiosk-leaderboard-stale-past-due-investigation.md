@@ -63,7 +63,7 @@ status: investigation-paused
 ### H3: 完了フィルタ・可視性で「見える件数」が増幅している
 
 - **検証**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) 初期 `completionFilter='incomplete'`、[`filterLeaderBoardRowsByCompletion.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/filterLeaderBoardRowsByCompletion.ts)。
-- **可視性**: [`fkojunst-production-schedule-list-visibility.policy.ts`](../../apps/api/src/services/production-schedule/completion/fkojunst-production-schedule-list-visibility.policy.ts) — **`S`/`R`/`C`/`X` のみ** 一覧母集団。
+- **可視性**: [`fkojunst-production-schedule-list-visibility.policy.ts`](../../apps/api/src/services/production-schedule/policies/fkojunst-production-schedule-list-visibility.policy.ts) — **`S`/`R`/`C`/`X` のみ** 一覧母集団。
 - **結果**: **CONFIRMED** — API 母集団上は期限切れ **55 件**（`fkmail` 可視）だが、**通常の初期 UI では `S/R` + 実効未完の 11 件が中心**（`C/X` + 完了 **44 件**は未完フィルタで除外）。
 
 ### H4: 生産日程 CSV の「期間外落ち」「差分消失完了」が未完 `S/R` を説明する

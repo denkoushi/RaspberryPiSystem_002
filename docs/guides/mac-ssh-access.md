@@ -201,9 +201,6 @@ scp raspi5:/opt/RaspberryPiSystem_002/logs/ansible-update-*.log ~/Downloads/
 ```bash
 # 単一コマンドの実行
 ssh raspi5 "systemctl status docker"
-
-# 複数コマンドの実行
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && git pull && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
 ```
 
 ---
@@ -264,11 +261,8 @@ git add .
 git commit -m "feat: 新機能の追加"
 git push origin feature/new-feature
 
-# 2. Raspberry Pi 5で最新コードを取得
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && git pull origin feature/new-feature"
-
-# 3. Dockerコンテナを再ビルド・再起動
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build api"
+# 2. 標準デプロイ経路で対象と順序を確認（反映は docs/guides/deployment.md の標準手順に従う。Pi5での git pull や個別コンテナ操作はしない）
+./scripts/update-all-clients.sh feature/new-feature infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
 ```
 
 ### 5.2 ログの確認
@@ -306,7 +300,7 @@ ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/do
 2. Raspberry Pi 5が起動しているか
 3. SSHサーバーが起動しているか
 4. ファイアウォール設定が正しいか
-5. **fail2banによるBanが発生していないか**（[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行)参照）
+5. **fail2banによるBanが発生していないか**（[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因-fail2banによるip-ban存在しないユーザーでの認証試行)参照）
 
 **解決方法:**
 ```bash

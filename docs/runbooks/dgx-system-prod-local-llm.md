@@ -126,7 +126,7 @@ privateの8888やComfyUIのGPU利用は停止条件に含めない。
 - `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**。あわせて **標準 Control Target 一覧（`targets[]`）**（`kind`・`capabilities`・`status`）。**後方互換**で同一判定根拠の **`services[]`** も返す。**運用者向け**に **`overview.operator`**（業務 VLM / 私用 Comfy / 実験ラボ / **Agent コンテナ** の要約・主要ガイド操作・注意プレビュー）と **`overview.modelProfiles`**（DGX 正本の業務復帰モデル allowlist・activeProfileId）を返す（表示の正本は引き続き `targets[]`。UI はコンソールを優先し、技術 ID は詳細欄へ）。
 - `GET /api/system/dgx-resource/events?limit=…` — UI 操作の直近履歴（プロセス内リングバッファ）
 - `POST /api/system/dgx-resource/actions` — **`EXECUTE_TARGET_ACTION`**（`targetId` + `action`: `start` | `stop`）が書き込みの正規経路。実行可否は **`GET …/overview` の `targets[].capabilities`** に従う（`system-prod-gateway` に加え、Pi5 で補助 URL を両方設定すると **`private-comfyui`**・**`experiment-lab`**・**`agent-container`** が起停可能）。互換のため **`LOCAL_LLM_START` / `LOCAL_LLM_STOP`** および **`SET_POLICY`**（任意 **`applyWorkloadChanges`**）も継続。
-- **`POST /api/system/stackchan/chat`** — StackChan 等の対話クライアント向け。**認可**: `ADMIN` / `MANAGER`（JWT）。**経路**: **`stackchan_chat`** 用途で **`withStackChanChatOnDemandRuntime`** → 上流は admin と同一の **`LOCAL_LLM_*` / admin provider**（`createLocalLlmGateway`）。既定で **詳説優先**の system プロンプトを付与し、`max_tokens` 既定 **1536**・`temperature` 既定 **0.35**（リクエストで上書き可）。**単一キュー**: `stackchan_chat` の優先度は **`admin_console_chat` と同じ agent 層**。**`/stop` 抑止**: `admin_console_chat` と同様に **keep-warm 方針**（`local-llm-runtime-schedule.policy.ts`）。実装: [`stackchan.ts`](../../apps/api/src/routes/system/stackchan.ts)·[`stackchan-chat-request.ts`](../../apps/api/src/services/system/stackchan-chat-request.ts)·[`local-llm-on-demand-runtime.ts`](../../apps/api/src/services/system/local-llm-on-demand-runtime.ts)。**実機検証（2026-05-10・記録）**: Pi5 のみ（**`--limit raspberrypi5`**）**Detach `20260510-134157-20990`**（**`ok=134` `changed=4` `failed=0`**）·**`verify-phase12-real.sh` 43/0/0**（約 **54s**）·未認証 POST **`401`**。**詳細**: [deployment.md §StackChan 本番](../archive/deployments/2026-05.md#stackchan-production-2026-05-10)·[KB-365 §StackChan](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-stackchan-pi5-api-chat)。
+- **`POST /api/system/stackchan/chat`（2026-10-17 削除）** — 業務 Pi5 の StackChan 会話 API と用途 `stackchan_chat` は PR #2095 で削除した（[code-health ExecPlan 段階9](../plans/code-health-refactor-execplan.md)）。2026-05-10 の本番反映記録は [deployment.md §StackChan 本番](../archive/deployments/2026-05.md#stackchan-production-2026-05-10)・[KB-365 §StackChan](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-stackchan-pi5-api-chat) に残る。
 
 **Control Targets（`overview.targets` の例）**:
 
@@ -155,7 +155,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 **メインAI 制御の直列化（Pi5 API）**: `on_demand` 時、**推論側の `/start`・`/stop`** と **DGX リソース UI 経由の `system-prod-gateway` 起停**は、同一プロセス内の **単一キュー**で直列化される（`local-llm-runtime-command-queue.ts` → `enqueueMainLocalLlmRuntimeControl`）。`private_ok` の **強制停止**も同じキューを通す。待機が長い場合は `main_llm_control_queue_wait` ログで把握可能。
 
-**用途別停止（Pi5 API）**: `photo_label` / `document_summary` / `admin_console_chat` / **`stackchan_chat`** / **`agent_container_task`** は **参照カウント 0 でも `/stop` を抑止**（メインAI・Agent コンテナ・StackChan 対話の warm 維持）。**warm 窓**（`LOCAL_LLM_RUNTIME_WARM_WINDOW_*`）は、将来追加される **上記以外の用途**向けの抑止に利用（現行型定義では主にこの 5 用途）。実装は `local-llm-runtime-schedule.policy.ts` の `shouldSuppressLocalLlmRuntimeStop`。Agent 経路のラッパーは `withAgentContainerTaskOnDemandRuntime`、StackChan 経路は `withStackChanChatOnDemandRuntime`（`local-llm-on-demand-runtime.ts`）。
+**用途別停止（Pi5 API）**: `photo_label` / `business_hermes` / `security_review` / `document_summary` / `admin_console_chat` / **`agent_container_task`** は **参照カウント 0 でも `/stop` を抑止**（メインAI・Agent コンテナの warm 維持。`stackchan_chat` は 2026-10-17 削除）。**warm 窓**（`LOCAL_LLM_RUNTIME_WARM_WINDOW_*`）は、将来追加される **上記以外の用途**向けの抑止に利用（現行は `LOCAL_LLM_ALWAYS_KEEP_WARM_USE_CASES` の 6 用途）。実装は `local-llm-runtime-schedule.policy.ts` の `shouldSuppressLocalLlmRuntimeStop`。Agent 経路のラッパーは `withAgentContainerTaskOnDemandRuntime`（`local-llm-on-demand-runtime.ts`）。
 
 ## Model profile capabilities と runtime ready（2026-05-29） {#model-profile-capabilities-runtime-ready}
 
@@ -231,6 +231,8 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 **任意の環境変数（Pi5 `apps/api`）**:
 
+> 2026-10-17 以降に API が読むのは `DGX_RESOURCE_METRICS_URL`・`DGX_RESOURCE_PROBE_TIMEOUT_MS`・`DGX_RESOURCE_EVENT_LOG_MAX`・`DGX_RESOURCE_AGENT_CONTAINER_*` だけ。ComfyUI・実験ラボ・補助 POST タイムアウト・埋め込み・Spark ホストの各変数は履歴（業務画面では使わない）。
+
 - `DGX_RESOURCE_METRICS_URL` — GPU/メモリKPI 用の GET JSON（Pi5 から到達可能な URL）。**未設定時**は admin LocalLLM base の **`GET /system/metrics`**（**`X-LLM-Token` 必須**）→ 続けて **`GET /v1/system/metrics`** を試行（詳細は **KB-365** の Phase 10 節）
 - `DGX_RESOURCE_COMFYUI_HEALTH_URL` — ComfyUI 等の GET が 200 なら running とみなす
 - **`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL` / `_STOP_URL` / （任意）`_CONTROL_TOKEN`** — Comfy を Pi5 API 経由で起停するための POST。本文 JSON `{ reason }`・ヘッダ `X-Runtime-Control-Token`（トークン設定時）。
@@ -245,7 +247,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 **運用コンソール（管理 UI）**: **2026-05-29** より KPI 帯は **上段＝メトリクス（`overview.kpis`）**、**下段＝実行時状態（`overview.runtimeSummary`：Active Model / Backend / Business Ready / Policy）** の二段構成。**モード切替の成否は Policy だけでなく Active Model・Backend・Unified Mem をセットで確認**（[KB-366 §KPI 帯 2026-05-29](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#管理画面-kpi-帯2026-05-29-再設計--overviewruntimesummary)）。「目的別ガイド」は Phase4 の **`PREVIEW_ORCHESTRATION_SCENARIO`（指紋取得）→確定後 `EXECUTE_ORCHESTRATION_SCENARIO`** をバックエンド契約として維持。**私用→業務** と **実験→業務** では DGX から取得した **モデルプロファイル**を選択し、同じ `modelProfileId` を preview/execute と DGX `/start` へ渡す。`planFingerprint` には `modelProfileId` も入るため、選択を変えた場合は stale 判定される。単発の保守 `EXECUTE_TARGET_ACTION` start にはモデル選択 UI を付けない。**Phase 7（2026-05-03）** ではフロントを **状態チップ一行 + 4 操作**に最小化し、**確認ダイアログ後にプレビュー→実行を連続**（プレビュー専用ボタンなし。**メイン画面にイベントログタイムラインは出さない**。履歴は **`GET …/events`** とサーバログ）。**Phase 8（2026-05-03）** ではさらに **`overview.kpis` を先頭の KPI ストリップ**へ戻し、読み込み完了後の **`h1「DGX リソース」`** と補助説明を消し、Spark / シナリオ / KPI の長文は **省略せず折り返し表示**に寄せた。**Phase 9** では **`EXECUTE_ORCHESTRATION_SCENARIO` 成功＝Strict Ready 達成まで**（業務復帰は `/v1/models` **+（`modelProfileId` 指定時）`activeProfileId` / `state.backend` 一致**、私用は Comfy ヘルス、実験は experiment ヘルス必須。待機は `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS` 等。失敗時は安全ロールバック方針。**KB-365 §Phase9** · **§Strict Ready profile 一致**）。**Phase 11（2026-05-04）** では進行中表示を **イベント由来判定 + `sessionStorage` pending** の二系統で維持し、タブ移動後の復帰でも `進行中:` を表示し続ける。**Stale（409）**時は内部的にプレビューを取り直してから実行する運用が前提。単発の起停は **`EXECUTE_TARGET_ACTION`**（**詳細・保守** の Control Targets）。**ガイドが途中停止**した場合は `scenarioExecute.completedStepOrders`・`overview.monitoring.lastScenarioFailure`・`/events` を参照（一部 POST 済みの可能性）。
 
-**実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（`dgx-resource.control-target.types.ts`・`dgx-resource.control-targets.builder.ts`・`dgx-resource.gateway-runtime.executor.ts`・`dgx-resource.aux-http-runtime.executor.ts`・`dgx-resource.policy-arbitrator.ts`・`dgx-resource.policy-profile.ts`・**`dgx-resource.operator-overview.ts`**・**`dgx-resource.workload-transition.ts`**）
+**実装参照**: `apps/web/src/features/admin/dgx-resource/*` / `apps/web/src/pages/admin/DgxResourceAdminPage.tsx` / `apps/api/src/routes/system/dgx-resource.ts` / `apps/api/src/services/system/dgx-resource/`（2026-10-17 以降: `dgx-resource.service.ts`・`dgx-resource.gateway-runtime.executor.ts`・`dgx-resource.model-profiles.ts`・`dgx-resource.model-storage-delete.ts`・`dgx-resource.probes.ts`・`dgx-resource.scenario-readiness.ts`・`dgx-resource.startup-fit.ts`・`dgx-resource.state-store.ts`。旧 control-target / policy / operator-overview 系は ADR-20261017 で削除）
 
 **DGX モデルプロファイル正本（業務復帰）**:
 
@@ -1063,7 +1065,7 @@ Ubuntu 現行構成との互換を優先し、DGX 側でも次を基本にする
 
 ## Pi5 側の推奨 env（Phase A: 段階切替）
 
-この runbook の **現在フェーズ** は「text 系を Spark へ寄せ、`photo_label` だけを Ubuntu fallback に残す」段階切替である。ただし、これは恒久構成ではない。**次の優先タスクは、現行 `Qwen3.5-35B` を `mmproj` 付きで単一 VLM endpoint 化すること**であり、Ubuntu はその実証が終わるまでの暫定 fallback として扱う。
+この節は 2026-04 前半の段階切替（text 系を Spark、`photo_label` を Ubuntu fallback）の記録である。2026-04-26 以降の本番は `dgx_primary` 単一 provider に一本化済み（[§Spark 一本化反映](#2026-04-26-spark-一本化反映)）で、Ubuntu fallback は使わない。
 
 ### LocalLLM gateway（管理 Chat / status / on-demand）
 

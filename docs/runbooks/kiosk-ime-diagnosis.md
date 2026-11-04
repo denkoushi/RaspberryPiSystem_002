@@ -26,8 +26,8 @@ category: runbooks
 
 標準のPi4経路は `scripts/update-all-clients.sh` から
 `standard-ansible-release.py`、`deploy-release-standard.yml`、`release_kiosk`へ進む。
-`release_kiosk`は `infrastructure/ansible/roles/kiosk` をimportしないため、
-このRunbookのIME診断タスクや `roles/kiosk/tasks/firefox-chrome.yml` のFirefox profile customizationを
+`release_kiosk` は `infrastructure/ansible/roles/kiosk` のうち `resolve-browser`・`package-integrity`・`clamav` と、`--first-install` 時だけ `ibus`（`ibus_owner_mode: single-owner` 固定）を `include_role` で使う。
+このRunbookのIME診断タスクや `roles/kiosk/tasks/firefox-chrome.yml` のFirefox profile customizationは含まないため、
 デプロイ時に自動実行しない。標準routeの実行結果にIME診断出力が含まれるとは判断しない。
 
 一方、inventoryの `kiosk_browser_engine` / `kiosk_browser_mode` は標準routeの入力である。

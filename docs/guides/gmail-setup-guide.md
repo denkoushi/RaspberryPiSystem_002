@@ -341,8 +341,8 @@ CSVダッシュボードや組立手順書取り込みで処理済みメール�
 
 Gmail APIのレート制限エラー（429）を回避するための環境変数：
 
-- `GMAIL_MAX_MESSAGES_PER_BATCH`（デフォルト: `50`）: 1回の処理で取得するメール数の上限
-- `GMAIL_BATCH_REQUEST_DELAY_MS`（デフォルト: `1000`）: バッチ処理時のリクエスト間隔（ミリ秒）
+- `GMAIL_MAX_MESSAGES_PER_BATCH`（デフォルト: `10`）: 1回の処理で取得するメール数の上限
+- `GMAIL_BATCH_REQUEST_DELAY_MS`（デフォルト: `2000`）: バッチ処理時のリクエスト間隔（ミリ秒）
 
 **推奨設定**:
 - 大量のメール（100件以上）を処理する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=50`、`GMAIL_BATCH_REQUEST_DELAY_MS=1000`
