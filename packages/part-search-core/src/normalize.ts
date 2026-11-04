@@ -65,10 +65,16 @@ const HIRAGANA_YOON_TO_KATAKANA: Record<string, string> = {
   ぢょ: 'ヂョ'
 };
 
+const HIRAGANA_YOON_ENTRIES: readonly (readonly [string, string])[] = Object.entries(
+  HIRAGANA_YOON_TO_KATAKANA
+).sort((a, b) => b[0].length - a[0].length);
+
+/** 拗音・小書き・ひらがな→カタカナの各段が触る範囲（U+3041–U+3096）。 */
+const HIRAGANA_RANGE = /[\u3041-\u3096]/;
+
 function replaceHiraganaYoonWithKatakana(s: string): string {
-  const entries = Object.entries(HIRAGANA_YOON_TO_KATAKANA).sort((a, b) => b[0].length - a[0].length);
   let out = s;
-  for (const [k, rep] of entries) {
+  for (const [k, rep] of HIRAGANA_YOON_ENTRIES) {
     out = out.split(k).join(rep);
   }
   return out;
@@ -150,9 +156,12 @@ export function katakanaToHiragana(s: string): string {
  */
 export function normalizePartSearchQuery(input: string): string {
   let s = input.normalize('NFKC').trim();
-  s = replaceHiraganaYoonWithKatakana(s);
-  s = mapSmallKanaToOrdinary(s);
-  s = hiraganaToKatakana(s);
+  // 次の3段はひらがな以外を変えないため、ひらがなが無ければ省略しても出力は同一。
+  if (HIRAGANA_RANGE.test(s)) {
+    s = replaceHiraganaYoonWithKatakana(s);
+    s = mapSmallKanaToOrdinary(s);
+    s = hiraganaToKatakana(s);
+  }
   s = mapSokuonToTsuForComparable(s);
   return foldPartSearchKana(s);
 }
