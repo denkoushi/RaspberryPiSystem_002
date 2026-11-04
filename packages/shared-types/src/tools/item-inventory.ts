@@ -4,6 +4,8 @@ export type InventoryCompartment = {
   id: string;
   labelNumber: number;
   stockQuantity: number;
+  reorderPoint: number | null;
+  reorderedAt: string | null;
   area: string;
   shelfNumber: number;
   drawerNumber: number;

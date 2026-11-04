@@ -1205,6 +1205,8 @@ model InventoryCompartment {
   inventoryItemId String
   stockQuantity   Int                    @default(0)
   lastIssuedAt    DateTime?
+  reorderPoint    Int?
+  reorderedAt     DateTime?
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   drawer          InventoryDrawer        @relation(fields: [drawerId], references: [id], onDelete: Cascade)

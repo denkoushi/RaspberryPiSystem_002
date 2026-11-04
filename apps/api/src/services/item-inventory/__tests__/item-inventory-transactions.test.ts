@@ -6,6 +6,8 @@ vi.mock('../item-inventory-machines.js', () => ({ assertMishimaMachine: vi.fn() 
 import { assertMishimaMachine } from '../item-inventory-machines.js';
 import { InventoryConflictError, InventoryInsufficientStockError } from '../item-inventory.errors.js';
 import {
+  setReorderPoint,
+  setOrdered,
   bindCompartment,
   cancelTransaction,
   correctStock,
@@ -17,13 +19,13 @@ import {
 
 type Tag = { id: string; uid: string; kind: 'ITEM' | 'QUANTITY' | 'RESTOCK'; compartmentId: string | null; quantity: number | null };
 
-function makeDb(options: { stock?: number; tags?: Tag[] } = {}) {
+function makeDb(options: { stock?: number; reorderPoint?: number | null; reorderedAt?: Date | null; tags?: Tag[] } = {}) {
   const tags = new Map<string, Tag>((options.tags ?? [
     { id: 't-item', uid: 'item-uid', kind: 'ITEM', compartmentId: 'comp-1', quantity: null },
     { id: 't-qty', uid: 'qty-uid', kind: 'QUANTITY', compartmentId: null, quantity: 5 },
     { id: 't-restock', uid: 'restock-uid', kind: 'RESTOCK', compartmentId: null, quantity: null },
   ]).map((t) => [t.uid, t]));
-  const state = { compartment: { id: 'comp-1', inventoryItemId: 'item-1', stockQuantity: options.stock ?? 10, lastIssuedAt: null as Date | null } };
+  const state = { compartment: { id: 'comp-1', inventoryItemId: 'item-1', stockQuantity: options.stock ?? 10, lastIssuedAt: null as Date | null, reorderPoint: options.reorderPoint ?? null, reorderedAt: options.reorderedAt ?? null } };
   const tx = {
     employee: { findFirst: vi.fn().mockResolvedValue(null) },
     item: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -245,7 +247,7 @@ describe('cancelTransaction', () => {
     expect(cancelled).toMatchObject({ action: 'CANCEL', delta: -5, beforeQuantity: 10, afterQuantity: 5, reversalOfId: 'tx-1', performedByUserId: 'admin' });
     expect(state.compartment.stockQuantity).toBe(5);
     // Restock cancellation must not touch lastIssuedAt.
-    expect(tx.inventoryCompartment.update).toHaveBeenCalledWith({ where: { id: 'comp-1' }, data: { stockQuantity: 5 } });
+    expect(tx.inventoryCompartment.update).toHaveBeenCalledWith({ where: { id: 'comp-1' }, data: { stockQuantity: 5, reorderedAt: null } });
   });
 
   it('refuses a transaction that is already reversed', async () => {
@@ -440,5 +442,98 @@ describe('replaceItemTag', () => {
     await expect(replaceItemTag(db as never, 'comp-1', 'Q', {})).rejects.toMatchObject({ statusCode: 409, message: 'このUIDは既に使用されています' });
     expect(tx.inventoryNfcTag.update).not.toHaveBeenCalled();
     expect(tx.inventoryNfcTag.create).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('reorder state on every stock path', () => {
+  const orderedAt = new Date('2026-11-04T00:00:00Z');
+
+  it.each(['touch restock', 'NFC restock', 'correction', 'cancel', 'offline replay', 'issue'] as const)('clears ordered above the threshold: %s', async (path) => {
+    const { db, tx, state } = makeDb({ stock: path === 'issue' ? 12 : 5, reorderPoint: 5, reorderedAt: orderedAt });
+    if (path === 'touch restock' || path === 'offline replay') await processTouchTransaction(db as never, { compartmentId: 'comp-1', quantity: 1, restock: true, idempotencyKey: 'offline-k1', actor: { clientId: 'c1' } });
+    if (path === 'NFC restock') await processTransaction(db as never, { itemTagUid: 'item-uid', quantityTagUid: 'qty-uid', restockTagUid: 'restock-uid', restock: true });
+    if (path === 'correction') await correctStock(db as never, 'comp-1', 6, {});
+    if (path === 'issue') await processTouchTransaction(db as never, { compartmentId: 'comp-1', quantity: 1 });
+    if (path === 'cancel') {
+      tx.inventoryTransaction.findUnique.mockResolvedValueOnce({ id: 't1', action: 'ISSUE', compartmentId: 'comp-1', inventoryItemId: 'item-1', delta: -1, afterQuantity: 5, clientId: 'c1', reversedBy: null });
+      tx.inventoryTransaction.findFirst.mockResolvedValueOnce({ id: 't1' });
+      await cancelTransaction(db as never, 't1', { clientId: 'c1' });
+    }
+    expect(state.compartment.stockQuantity).toBeGreaterThan(5);
+    expect(state.compartment.reorderedAt).toBeNull();
+    expect(tx.$queryRaw).toHaveBeenCalled();
+  });
+
+  it.each([4, 5])('keeps ordered at or below the threshold after a correction to %s', async quantity => {
+    const { db, state } = makeDb({ reorderPoint: 5, reorderedAt: orderedAt });
+    await correctStock(db as never, 'comp-1', quantity, {});
+    expect(state.compartment.reorderedAt).toEqual(orderedAt);
+  });
+
+  it('keeps ordered after issuing, restocking exactly to the threshold and cancelling a restock', async () => {
+    const { db, tx, state } = makeDb({ stock: 5, reorderPoint: 5, reorderedAt: orderedAt });
+    await processTouchTransaction(db as never, { compartmentId: 'comp-1', quantity: 1 });
+    await processTouchTransaction(db as never, { compartmentId: 'comp-1', quantity: 1, restock: true });
+    expect(state.compartment.reorderedAt).toEqual(orderedAt);
+    tx.inventoryTransaction.findUnique.mockResolvedValueOnce({ id: 't1', action: 'RESTOCK', compartmentId: 'comp-1', inventoryItemId: 'item-1', delta: 1, afterQuantity: 5, clientId: 'c1', reversedBy: null });
+    tx.inventoryTransaction.findFirst.mockResolvedValueOnce({ id: 't1' });
+    await cancelTransaction(db as never, 't1', { clientId: 'c1' });
+    expect(state.compartment).toMatchObject({ stockQuantity: 4, reorderedAt: orderedAt });
+  });
+
+  it.each([null, 4, 5, 6])('re-evaluates ordered after setting threshold %s', async reorderPoint => {
+    const { db, state } = makeDb({ stock: 5, reorderPoint: 5, reorderedAt: orderedAt });
+    await setReorderPoint(db as never, 'comp-1', reorderPoint);
+    expect(state.compartment.reorderPoint).toBe(reorderPoint);
+    expect(state.compartment.reorderedAt).toEqual(reorderPoint == null || reorderPoint < 5 ? null : orderedAt);
+  });
+
+  it.each([-1, 1.5, 2147483648])('rejects an invalid threshold %s', async point => {
+    const { db } = makeDb();
+    await expect(setReorderPoint(db as never, 'comp-1', point)).rejects.toMatchObject({ statusCode: 400 });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([null, 4])('refuses ordered ON without low stock, threshold %s', async reorderPoint => {
+    const { db, tx } = makeDb({ stock: 5, reorderPoint });
+    await expect(setOrdered(db as never, 'comp-1', true)).rejects.toMatchObject({ statusCode: 400 });
+    expect(tx.inventoryCompartment.update).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 4, 5])('sets a timestamp below or at the threshold, stock %s; repeated ON preserves it; OFF clears it', async stock => {
+    const { db, state } = makeDb({ stock, reorderPoint: 5 });
+    await setOrdered(db as never, 'comp-1', true);
+    const timestamp = state.compartment.reorderedAt;
+    expect(timestamp).toBeInstanceOf(Date);
+    await setOrdered(db as never, 'comp-1', true);
+    expect(state.compartment.reorderedAt).toEqual(timestamp);
+    await setOrdered(db as never, 'comp-1', false);
+    expect(state.compartment.reorderedAt).toBeNull();
+  });
+
+  it('allows zero as the threshold and OFF without a threshold', async () => {
+    const { db, state } = makeDb({ stock: 0 });
+    await setReorderPoint(db as never, 'comp-1', 0);
+    await setOrdered(db as never, 'comp-1', true);
+    expect(state.compartment.reorderedAt).toBeInstanceOf(Date);
+    await setReorderPoint(db as never, 'comp-1', null);
+    await setOrdered(db as never, 'comp-1', false);
+    expect(state.compartment.reorderedAt).toBeNull();
+  });
+
+  it('returns 404 for unknown compartments on either setting operation', async () => {
+    const { db } = makeDb();
+    await expect(setReorderPoint(db as never, 'missing', 0)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(setOrdered(db as never, 'missing', false)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('returns an offline retry without restocking twice or changing the new order state', async () => {
+    const { db, tx, state } = makeDb({ stock: 5, reorderPoint: 5, reorderedAt: orderedAt });
+    const prior = { id: 'prior', action: 'RESTOCK', afterQuantity: 5 };
+    tx.inventoryTransaction.findFirst.mockResolvedValueOnce(prior);
+    expect(await processTouchTransaction(db as never, { compartmentId: 'comp-1', quantity: 5, restock: true, idempotencyKey: 'offline-k1', actor: { clientId: 'c1' } })).toEqual({ transaction: prior, replayed: true });
+    expect(tx.inventoryCompartment.update).not.toHaveBeenCalled();
+    expect(state.compartment.reorderedAt).toEqual(orderedAt);
   });
 });

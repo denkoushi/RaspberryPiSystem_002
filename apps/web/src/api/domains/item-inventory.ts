@@ -43,6 +43,8 @@ export type InventoryCompartment = {
   id: string;
   labelNumber: number;
   stockQuantity: number;
+  reorderPoint: number | null;
+  reorderedAt: string | null;
   area: string;
   shelfNumber: number;
   drawerNumber: number;
@@ -136,6 +138,21 @@ export async function readInventoryPhotoRegion(input: InventoryPhotoSource & { p
   const { data } = await api.post<InventoryPhotoRegionResult>('/item-inventory/photos/read-region', input, {
     headers: inventorySettingsHeaders(accessPassword), timeout: 35000, signal,
   });
+  return data;
+}
+
+export async function setInventoryReorderPoint(id: string, reorderPoint: number | null, accessPassword?: string) {
+  const { data } = await api.put(`/item-inventory/compartments/${id}/reorder-point`, { reorderPoint }, { headers: inventorySettingsHeaders(accessPassword) });
+  return data;
+}
+
+export async function setInventoryOrdered(id: string, ordered: boolean, accessPassword?: string) {
+  const { data } = await api.put(`/item-inventory/compartments/${id}/ordered`, { ordered }, { headers: inventorySettingsHeaders(accessPassword) });
+  return data;
+}
+
+export async function restockInventoryCompartment(input: { id: string; quantity: number; idempotencyKey: string }, accessPassword?: string) {
+  const { data } = await api.post<{ transaction: InventoryMovementTransaction; replayed: boolean }>(`/item-inventory/compartments/${input.id}/restock`, { quantity: input.quantity, idempotencyKey: input.idempotencyKey }, { headers: inventorySettingsHeaders(accessPassword) });
   return data;
 }
 

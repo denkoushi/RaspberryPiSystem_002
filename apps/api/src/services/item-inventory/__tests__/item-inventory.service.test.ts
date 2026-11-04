@@ -71,6 +71,8 @@ describe('ItemInventoryService safety boundaries', () => {
       id: 'compartment-1',
       labelNumber: 42,
       stockQuantity: 4,
+      reorderPoint: 4,
+      reorderedAt: new Date('2026-11-04T00:00:00Z'),
       drawer: { id: 'drawer-1', shelfId: 'shelf-1', drawerNumber: 3, shelf: { area: item.area, shelfNumber: 2 } },
       itemTag: { uid: 'item-uid' },
       inventoryItem: item,
@@ -98,6 +100,8 @@ describe('ItemInventoryService safety boundaries', () => {
       compartments: [{
         id: compartment.id,
         labelNumber: 42,
+        reorderPoint: 4,
+        reorderedAt: '2026-11-04T00:00:00.000Z',
         area: item.area,
         shelfNumber: 2,
         drawerNumber: 3,
@@ -108,11 +112,11 @@ describe('ItemInventoryService safety boundaries', () => {
     await expect(service.listLocations()).resolves.toMatchObject([{
       drawers: [{
         shelf: { area: item.area, shelfNumber: 2 },
-        compartments: [{ id: compartment.id, labelNumber: 42, area: item.area, shelfNumber: 2, drawerNumber: 3, itemTagUid: 'item-uid' }],
+        compartments: [{ id: compartment.id, labelNumber: 42, reorderPoint: 4, reorderedAt: '2026-11-04T00:00:00.000Z', area: item.area, shelfNumber: 2, drawerNumber: 3, itemTagUid: 'item-uid' }],
       }],
     }]);
-    await expect(service.resolveTag('item-uid')).resolves.toMatchObject({ compartment: { labelNumber: 42 } });
-    await expect(service.listTags()).resolves.toMatchObject([{ compartment: { labelNumber: 42 } }]);
+    await expect(service.resolveTag('item-uid')).resolves.toMatchObject({ compartment: { labelNumber: 42, reorderPoint: 4, reorderedAt: '2026-11-04T00:00:00.000Z' } });
+    await expect(service.listTags()).resolves.toMatchObject([{ compartment: { labelNumber: 42, reorderPoint: 4, reorderedAt: '2026-11-04T00:00:00.000Z' } }]);
   });
 
   it('soft-deletes an item, releases only its item tags, and keeps transaction history attached', async () => {
@@ -555,7 +559,7 @@ describe('ItemInventoryService stock transactions', () => {
     const service = new ItemInventoryService(db as never);
     const issue = await service.processTransaction({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restock: false });
     expect(state.compartment.lastIssuedAt).toEqual(issue.transaction.createdAt);
-    expect(tx.inventoryCompartment.update).toHaveBeenCalledWith({ where: { id: 'compartment-1' }, data: { stockQuantity: 8, lastIssuedAt: issue.transaction.createdAt } });
+    expect(tx.inventoryCompartment.update).toHaveBeenCalledWith({ where: { id: 'compartment-1' }, data: { stockQuantity: 8, reorderedAt: null, lastIssuedAt: issue.transaction.createdAt } });
     expect(issue.transaction.details).toEqual({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restockTagUid: null });
     await service.processTransaction({ itemTagUid: 'item-uid', quantityTagUid: 'quantity-uid', restockTagUid: 'restock-uid', restock: true });
     await service.correctStock('compartment-1', 12, {});

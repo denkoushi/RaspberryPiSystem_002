@@ -26,7 +26,7 @@ function mountMovement(touch = false, restock = false) {
     setMessage: vi.fn(), setMessageKind: vi.fn(), setPanel: vi.fn(), selectTag: vi.fn(),
     setRestockMode: vi.fn(), setQuantityError: vi.fn(), setLastTransaction: vi.fn(),
     selectionVerificationRef: { current: null }, verificationGenerationRef: { current: 0 },
-    setRefreshingTag: vi.fn(), setCorrectionError: vi.fn(),
+    setRefreshingTag: vi.fn(),
     runOperation: vi.fn(async (operation: () => Promise<boolean>, onError: (error: unknown) => Promise<void> | void) => {
       try { return await operation(); } catch (error) { await onError(error); return false; }
     }),

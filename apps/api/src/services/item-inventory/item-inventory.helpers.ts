@@ -35,6 +35,8 @@ export function locationDto(compartment: {
   id: string;
   labelNumber: number;
   stockQuantity: number;
+  reorderPoint?: number | null;
+  reorderedAt?: Date | null;
   drawer: { drawerNumber: number; shelf: { area: string; shelfNumber: number } };
   itemTag: { uid: string } | null;
   inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; unit?: string | null; unitPrice?: number | null; maker?: string | null; toolName?: string | null; workMaterial?: string | null; toolSize?: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
@@ -43,6 +45,8 @@ export function locationDto(compartment: {
     id: compartment.id,
     labelNumber: compartment.labelNumber,
     stockQuantity: compartment.stockQuantity,
+    reorderPoint: compartment.reorderPoint ?? null,
+    reorderedAt: compartment.reorderedAt?.toISOString() ?? null,
     area: compartment.drawer.shelf.area,
     shelfNumber: compartment.drawer.shelf.shelfNumber,
     drawerNumber: compartment.drawer.drawerNumber,

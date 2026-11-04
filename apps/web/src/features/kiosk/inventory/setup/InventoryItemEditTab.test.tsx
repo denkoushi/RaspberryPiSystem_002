@@ -56,6 +56,7 @@ describe('InventoryItemEditTab', () => {
     vi.mocked(resolveInventoryTag).mockReset().mockResolvedValue(null);
     mutations = {
       replaceTag: mutation(), move: mutation(), bindCompartment: mutation(), deleteItemPhoto: mutation(), rotateItemPhoto: { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false }, reorderItemPhotos: mutation(), deleteItem: mutation(),
+      setReorderPoint: mutation(), setOrdered: mutation(), restock: mutation(),
       setItemUnit: mutation(), createUnit: mutation(), updateItemDetails: mutation(),
       renameToolFieldValue: mutation(), addToolFieldValue: mutation(), deleteToolFieldValue: mutation(),
     };
@@ -63,6 +64,77 @@ describe('InventoryItemEditTab', () => {
   });
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('saves and clears reorder points, restocks, and reports failures beside the drawer', async () => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+    const places = within(screen.getByRole('region', { name: '置き場所' }));
+    const input = places.getByLabelText('発注点');
+    const save = within(input.closest('form')!).getByRole('button', { name: '保存' });
+    fireEvent.change(input, { target: { value: '0' } });
+    await act(async () => { fireEvent.click(save); });
+    expect(mutations.setReorderPoint.mutateAsync).toHaveBeenCalledWith({ id: 'comp-1', reorderPoint: 0 });
+    fireEvent.change(input, { target: { value: '8' } });
+    await act(async () => { fireEvent.click(save); });
+    expect(mutations.setReorderPoint.mutateAsync).toHaveBeenLastCalledWith({ id: 'comp-1', reorderPoint: 8 });
+    const restockInput = places.getByLabelText('補充');
+    fireEvent.change(restockInput, { target: { value: '3' } });
+    await act(async () => { fireEvent.click(places.getByRole('button', { name: '補充' })); });
+    expect(mutations.restock.mutateAsync).toHaveBeenCalledWith({ id: 'comp-1', quantity: 3, idempotencyKey: expect.any(String) });
+    expect(restockInput).toHaveValue(null);
+    mutations.restock.mutateAsync.mockRejectedValueOnce(new Error('補充できませんでした'));
+    fireEvent.change(restockInput, { target: { value: '2' } });
+    await act(async () => { fireEvent.click(places.getByRole('button', { name: '補充' })); });
+    expect(places.getByRole('alert')).toHaveTextContent('補充できませんでした');
+    expect(restockInput).toHaveValue(2);
+    expect(screen.queryByRole('button', { name: '数が合わないときは直す' })).not.toBeInTheDocument();
+  });
+
+  it.each([null, 4, 5, 6])('allows ordered only at or below threshold %s and clears a saved threshold', async point => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    const first = data[0];
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...first, compartments: [{ ...first.compartments[0], reorderPoint: point, reorderedAt: point === 6 ? '2026-11-04T00:00:00Z' : null }] }] } as never);
+    try {
+      render(<InventoryItemEditTab accessPassword="2520" />);
+      fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+      const places = within(screen.getByRole('region', { name: '置き場所' }));
+      const ordered = places.getByRole('button', { name: '発注済み' });
+      expect(ordered).toHaveAttribute('aria-pressed', point === 6 ? 'true' : 'false');
+      expect(ordered).toHaveClass('!border-inv-blue', point === 6 ? '!bg-inv-blue' : '!bg-inv-blue/10');
+      if (point == null || point < 5) expect(ordered).toBeDisabled();
+      else {
+        expect(ordered).toBeEnabled();
+        await act(async () => { fireEvent.click(ordered); });
+        expect(mutations.setOrdered.mutateAsync).toHaveBeenCalledWith({ id: 'comp-1', ordered: point !== 6 });
+      }
+      if (point !== null) {
+        fireEvent.change(places.getByLabelText('発注点'), { target: { value: '' } });
+        await act(async () => { fireEvent.click(within(places.getByLabelText('発注点').closest('form')!).getByRole('button', { name: '保存' })); });
+        expect(mutations.setReorderPoint.mutateAsync).toHaveBeenCalledWith({ id: 'comp-1', reorderPoint: null });
+      }
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
+
+  it('stably prioritizes items with any low-stock compartment in all, department and shelf lists', () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const first = original().data![0];
+    const make = (id: string, shelfNumber: number, low: boolean, ordered: boolean) => ({ ...first, id, name: id, compartments: [{ ...first.compartments[0], id: `place-${id}`, area: '機械課 北', shelfNumber, reorderPoint: low ? 5 : null, reorderedAt: ordered ? '2026-11-04T00:00:00Z' : null }] });
+    const items = [make('ordinary-a', 1, false, false), make('low-a', 1, true, false), make('low-b', 2, true, true), make('ordinary-b', 2, false, false)];
+    // The first compartment can be healthy while another place needs a reorder.
+    items[2].compartments.unshift({ ...items[2].compartments[0], id: 'healthy', reorderPoint: null });
+    vi.mocked(useInventoryItems).mockReturnValue({ data: items } as never);
+    try {
+      render(<InventoryItemEditTab accessPassword="2520" />);
+      const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
+      const names = () => list.getAllByRole('button').map(button => items.find(item => button.textContent?.includes(item.name))?.name).filter(Boolean);
+      expect(names()).toEqual(['low-a', 'low-b', 'ordinary-a', 'ordinary-b']);
+      fireEvent.click(list.getByRole('button', { name: '機械課 4件' }));
+      expect(names()).toEqual(['low-a', 'low-b', 'ordinary-a', 'ordinary-b']);
+      fireEvent.click(list.getByRole('button', { name: '機械課 北・棚1 2件' }));
+      expect(names()).toEqual(['low-a', 'ordinary-a']);
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
 
   it('searches padded labels, highlights matches and selects shelves in the tree', () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
@@ -186,7 +258,7 @@ describe('InventoryItemEditTab', () => {
     expect(input).toHaveAttribute('max', '10000000');
     expect(screen.getByText('円 / 個')).toBeInTheDocument();
     fireEvent.change(input, { target: { value } });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存', exact: true })); });
+    await act(async () => { fireEvent.click(within(input.closest('form')!).getByRole('button', { name: '保存', exact: true })); });
     expect(mutations.updateItemDetails.mutateAsync).toHaveBeenCalledWith({ itemId: 'item-1', details: { unitPrice: expected } });
     vi.mocked(useInventoryItems).mockReturnValue(current);
   });

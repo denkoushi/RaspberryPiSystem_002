@@ -2,7 +2,7 @@ import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { rotateInventoryImportPhoto, rotateInventoryItemPhoto, deleteInventoryDrawer, deleteInventoryShelf, deleteInventoryTag, dismissInventoryImport, restoreInventoryImport, getInventoryImports, getInventoryImportMessages, getInventoryToolFieldValues, getInventoryToolFieldOptions, setInventoryImportMessageDismissed } from '../../../../api/client';
+import { setInventoryReorderPoint, setInventoryOrdered, restockInventoryCompartment, rotateInventoryImportPhoto, rotateInventoryItemPhoto, deleteInventoryDrawer, deleteInventoryShelf, deleteInventoryTag, dismissInventoryImport, restoreInventoryImport, getInventoryImports, getInventoryImportMessages, getInventoryToolFieldValues, getInventoryToolFieldOptions, setInventoryImportMessageDismissed } from '../../../../api/client';
 import { useInventoryImports, useInventoryImportMessages, useInventoryToolFieldValues, useInventoryToolFieldOptions, useInventoryMutations } from '../../../../api/hooks/item-inventory';
 
 import { captureSetupPinSession, clearSetupPin, readSetupPin, rememberSetupPin, sendSetupRequest } from './setupPinSession';
@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 
 vi.mock('../../../../api/client', async (original) => ({
   ...await original<typeof import('../../../../api/client')>(),
+  setInventoryReorderPoint: vi.fn(), setInventoryOrdered: vi.fn(), restockInventoryCompartment: vi.fn(),
   rotateInventoryImportPhoto: vi.fn(), rotateInventoryItemPhoto: vi.fn(),
   deleteInventoryDrawer: vi.fn(), deleteInventoryShelf: vi.fn(), deleteInventoryTag: vi.fn(),
   dismissInventoryImport: vi.fn(), restoreInventoryImport: vi.fn(),
@@ -20,6 +21,22 @@ vi.mock('../../../../api/client', async (original) => ({
 describe('inventory setup mutations', () => {
   beforeEach(() => { vi.resetAllMocks(); clearSetupPin(); rememberSetupPin('2520'); });
   afterEach(() => { onlineManager.setOnline(true); clearSetupPin(); vi.useRealTimers(); });
+  it('uses the setup PIN and refreshes item queries after reorder and restock writes', async () => {
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const { result } = renderHook(() => useInventoryMutations('2520', true), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    await act(async () => { await result.current.setReorderPoint.mutateAsync({ id: 'c1', reorderPoint: null }); });
+    expect(setInventoryReorderPoint).toHaveBeenCalledWith('c1', null, '2520');
+    await act(async () => { await result.current.setOrdered.mutateAsync({ id: 'c1', ordered: true }); });
+    expect(setInventoryOrdered).toHaveBeenCalledWith('c1', true, '2520');
+    const input = { id: 'c1', quantity: 2, idempotencyKey: 'restock-1' };
+    await act(async () => { await result.current.restock.mutateAsync(input); });
+    expect(restockInventoryCompartment).toHaveBeenCalledWith(input, '2520');
+    expect(invalidate.mock.calls.filter(([query]) => query?.queryKey?.[0] === 'inventory-items')).toHaveLength(3);
+  });
+
   it('caches and switches choices independently by scope', async () => {
     vi.mocked(getInventoryToolFieldOptions).mockImplementation(async scope => ({ maker: [scope] }) as never);
     vi.mocked(getInventoryToolFieldValues).mockImplementation(async (_pin, scope) => ({ maker: [{ value: scope, count: 1 }] }) as never);

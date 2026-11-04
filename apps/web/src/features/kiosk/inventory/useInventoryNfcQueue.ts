@@ -33,7 +33,7 @@ type Options = {
   setMessage: Dispatch<SetStateAction<string>>;
   setMessageKind: Dispatch<SetStateAction<'info' | 'success' | 'error'>>;
   mountedRef: MutableRefObject<boolean>;
-  setPanel: Dispatch<SetStateAction<'none' | 'correct' | 'quantity'>>;
+  setPanel: Dispatch<SetStateAction<'none' | 'quantity'>>;
   selectTag: (tag: InventoryTag | null) => void;
   setRestockMode: Dispatch<SetStateAction<boolean>>;
   setQuantityError: Dispatch<SetStateAction<string | null>>;
@@ -41,7 +41,6 @@ type Options = {
   selectionVerificationRef: MutableRefObject<Promise<boolean> | null>;
   verificationGenerationRef: MutableRefObject<number>;
   setRefreshingTag: Dispatch<SetStateAction<boolean>>;
-  setCorrectionError: Dispatch<SetStateAction<string | null>>;
   runOperation: (operation: () => Promise<boolean>, onError: (error: unknown) => Promise<void> | void) => Promise<void>;
   mutations: ReturnType<typeof useInventoryMutations>;
   completeMovement: (transaction: InventoryMovementTransaction, restock: boolean) => Promise<void>;
@@ -53,7 +52,7 @@ export function useInventoryNfcQueue({
   drainEventsRef, drainingRef, flowRef, eventQueueRef, queryClient,
   setMessage, setMessageKind, mountedRef, setPanel, selectTag,
   setRestockMode, setQuantityError, setLastTransaction, selectionVerificationRef,
-  verificationGenerationRef, setRefreshingTag, setCorrectionError,
+  verificationGenerationRef, setRefreshingTag,
   runOperation, mutations, completeMovement, handleTouchError,
 }: Options) {
   const outbox = useInventoryOfflineQueue(setMessage, setMessageKind);
@@ -133,7 +132,6 @@ export function useInventoryNfcQueue({
                   void queryClient.invalidateQueries({ queryKey: inventoryKeys.tagsAll });
                   setPanel('none');
                   setQuantityError(null);
-                  setCorrectionError(null);
                   if (!latest || latest.kind !== 'ITEM' || !latest.compartment) {
                     setMessage('タグの登録が変わりました');
                     setMessageKind('error');
