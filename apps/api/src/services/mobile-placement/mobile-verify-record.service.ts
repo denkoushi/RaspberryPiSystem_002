@@ -3,8 +3,9 @@ import { z } from 'zod';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../production-schedule/seiban-machine-display-names.service.js';
+
+import { productionScheduleProductNoMatchSql } from './production-schedule-product-no-match.js';
 
 const text = z.string().max(256);
 export const verifyRecordBodySchema = z.object({
@@ -61,10 +62,8 @@ export async function listMobileVerifyRecords(query: z.infer<typeof verifyRecord
   const orders = [...new Set(rows.map(row => row.transferOrderBarcodeRaw.trim()))];
   const links = rows.flatMap(row => row.clientRecordId ? [row.clientRecordId] : []);
   const [schedule, placements] = await Promise.all([
-    prisma.csvDashboardRow.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: orders.map(order => ({ rowData: { path: ['ProductNo'], equals: order } })) },
-      select: { rowData: true }, orderBy: { id: 'asc' }
-    }),
+    prisma.$queryRaw<{ rowData: Prisma.JsonValue }[]>`
+      SELECT "rowData" FROM "CsvDashboardRow" WHERE ${productionScheduleProductNoMatchSql(orders)} ORDER BY "id" ASC`,
     links.length ? prisma.orderPlacementEvent.findMany({
       where: { clientRecordId: { in: links } },
       select: { clientRecordId: true, clientDeviceId: true, shelfCodeRaw: true, branchNo: true }

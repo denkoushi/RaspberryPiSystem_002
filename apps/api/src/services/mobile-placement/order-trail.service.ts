@@ -3,6 +3,8 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constan
 import { resolveSeibanMachineDisplayNamesBatched } from '../production-schedule/seiban-machine-display-names.service.js';
 import { normalizePurchaseFhinCdForMatching } from '../purchase-order-lookup/purchase-fhincd-normalize.js';
 
+import { productionScheduleProductNoMatchSql } from './production-schedule-product-no-match.js';
+
 import type { MachinePalletEventActionType, Prisma } from '@prisma/client';
 
 export type HaizenOrderTrail = {
@@ -55,8 +57,10 @@ async function resourceNames(codes: string[]) {
 }
 
 async function readSchedule(order: string) {
-  const rows = await prisma.csvDashboardRow.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, rowData: { path: ['ProductNo'], equals: order } },
+  const ids = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "CsvDashboardRow" WHERE ${productionScheduleProductNoMatchSql([order])} ORDER BY "id" ASC LIMIT ${LIMIT}`;
+  const rows = !ids.length ? [] : await prisma.csvDashboardRow.findMany({
+    where: { id: { in: ids.map(row => row.id) } },
     select: { rowData: true, fkojunstMailStatus: { select: { statusCode: true } },
       fkojunstStatus: { select: { statusCode: true } }, productionScheduleProgress: { select: { isCompleted: true } } },
     orderBy: { id: 'asc' }, take: LIMIT

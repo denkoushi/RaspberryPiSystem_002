@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -6,7 +7,7 @@ import { resolveSeibanMachineDisplayNamesBatched } from '../../production-schedu
 import { listMobileVerifyRecords } from '../mobile-verify-record.service.js';
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
-  mobileSlipVerifyRecord: { findMany: vi.fn() }, csvDashboardRow: { findMany: vi.fn() }, orderPlacementEvent: { findMany: vi.fn() }
+  mobileSlipVerifyRecord: { findMany: vi.fn() }, $queryRaw: vi.fn(), orderPlacementEvent: { findMany: vi.fn() }
 } }));
 vi.mock('../../production-schedule/seiban-machine-display-names.service.js', () => ({ resolveSeibanMachineDisplayNamesBatched: vi.fn() }));
 const row = { id: 'verify', verifiedAt: new Date('2026-10-29T03:00:00Z'), clientDeviceId: 'phone', clientDevice: { name: 'スマホ' },
@@ -16,7 +17,7 @@ const row = { id: 'verify', verifiedAt: new Date('2026-10-29T03:00:00Z'), client
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(prisma.mobileSlipVerifyRecord.findMany).mockResolvedValue([row] as never);
-  vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([{ rowData: { ProductNo: '0002178005', FSEIBAN: 'FS1', FHINCD: 'P1', FHINMEI: '部品' } }] as never);
+  vi.mocked(prisma.$queryRaw).mockResolvedValue([{ rowData: { ProductNo: '0002178005', FSEIBAN: 'FS1', FHINCD: 'P1', FHINMEI: '部品' } }] as never);
   vi.mocked(prisma.orderPlacementEvent.findMany).mockResolvedValue([{ clientRecordId: 'placement', clientDeviceId: 'phone', shelfCodeRaw: '棚', branchNo: 2 }] as never);
   vi.mocked(resolveSeibanMachineDisplayNamesBatched).mockResolvedValue({ machineNames: { FS1: '機械' } });
 });
@@ -28,9 +29,12 @@ describe('listMobileVerifyRecords', () => {
       where: { verifiedAt: { gte: new Date(Date.now() - Number(days) * 86400000) } },
       include: { clientDevice: { select: { name: true } } }, orderBy: [{ verifiedAt: 'desc' }, { id: 'asc' }], take: 500
     });
-    expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [{ rowData: { path: ['ProductNo'], equals: '0002178005' } }]
-    } }));
+    const [strings, ...values] = vi.mocked(prisma.$queryRaw).mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    const query = Prisma.sql(strings, ...values);
+    expect(query.text).toContain(`"rowData"->>'ProductNo' = ANY($2::text[])`);
+    expect(query.text).toContain(`jsonb_typeof("rowData"->'ProductNo') = 'string'`);
+    expect(query.text).toMatch(/ORDER BY "id" ASC$/);
+    expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, ['0002178005']]);
     expect(prisma.orderPlacementEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { clientRecordId: { in: ['placement'] } } }));
     expect(records).toEqual([{ id: 'verify', verifiedAt: '2026-10-29T03:00:00.000Z', deviceName: 'スマホ', result: 'mismatch', reason: 'different_seiban',
       transfer: { orderNo: '0002178005', partNo: 'P1', fseiban: 'FS1' }, actual: { slipNo: null, partNo: 'RAW', fseiban: 'FS3' },
@@ -46,13 +50,23 @@ describe('listMobileVerifyRecords', () => {
     });
   });
   it('returns null fields when schedule and placement data are absent', async () => {
-    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
     vi.mocked(prisma.orderPlacementEvent.findMany).mockResolvedValue([]);
     expect((await listMobileVerifyRecords({ days: '7' }))[0]).toMatchObject({ transfer: { partNo: null, fseiban: null }, fhinmei: null, machineName: null, placedShelfCodeRaw: null, branchNo: null });
+  });
+  it('dedupes padded orders and keeps the first schedule row per order', async () => {
+    vi.mocked(prisma.mobileSlipVerifyRecord.findMany).mockResolvedValue([row, { ...row, id: 'padded', transferOrderBarcodeRaw: ' 0002178005 ' }] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([
+      { rowData: { ProductNo: '0002178005', FSEIBAN: 'FS1', FHINCD: 'P1', FHINMEI: '部品' } },
+      { rowData: { ProductNo: '0002178005', FSEIBAN: 'FS9', FHINCD: 'P9', FHINMEI: '後の行' } }
+    ] as never);
+    const records = await listMobileVerifyRecords({ days: '7' });
+    expect(vi.mocked(prisma.$queryRaw).mock.calls[0]?.slice(1)).toEqual([expect.objectContaining({ values: [PRODUCTION_SCHEDULE_DASHBOARD_ID, ['0002178005']] })]);
+    expect(records.map(record => [record.transfer.fseiban, record.fhinmei])).toEqual([['FS1', '部品'], ['FS1', '部品']]);
   });
   it('returns an empty list without enrichment queries', async () => {
     vi.mocked(prisma.mobileSlipVerifyRecord.findMany).mockResolvedValue([]);
     expect(await listMobileVerifyRecords({ days: '7' })).toEqual([]);
-    expect(prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 });

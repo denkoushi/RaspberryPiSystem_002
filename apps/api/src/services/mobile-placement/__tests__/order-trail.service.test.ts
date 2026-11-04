@@ -1,27 +1,53 @@
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../../production-schedule/seiban-machine-display-names.service.js';
 import { getHaizenOrderTrail } from '../order-trail.service.js';
 
-vi.mock('../../../lib/prisma.js', () => ({ prisma: Object.fromEntries([
+const modelNames = vi.hoisted(() => [
   'csvDashboardRow', 'productionScheduleResourceMaster', 'orderPlacementBranchState', 'haizenCurrentPlacement',
   'orderPlacementEvent', 'mobileSlipVerifyRecord', 'productionScheduleFkojunstMailStatus',
   'productionScheduleActualHoursCanonical', 'machinePalletEvent', 'haizenScanEvent', 'purchaseOrderLookupRow'
-].map(name => [name, { findMany: vi.fn() }])) }));
+] as const);
+vi.mock('../../../lib/prisma.js', () => ({ prisma: {
+  $queryRaw: vi.fn(), ...Object.fromEntries(modelNames.map(name => [name, { findMany: vi.fn() }]))
+} }));
+const models = () => modelNames.map(name => prisma[name]);
 vi.mock('../../production-schedule/seiban-machine-display-names.service.js', () => ({ resolveSeibanMachineDisplayNamesBatched: vi.fn() }));
 const order = '0002178005';
 const at = new Date('2026-10-28T15:30:00Z');
 const snapshot = { ProductNo: order, FSEIBAN: 'FS1', FHINCD: 'MD1(A)-002', FHINMEI: 'ブラケット', FKOJUN: '2', FSIGENCD: 'R1' };
 beforeEach(() => {
   vi.resetAllMocks();
-  for (const model of Object.values(prisma)) vi.mocked(model.findMany).mockResolvedValue([]);
+  for (const model of models()) vi.mocked(model.findMany).mockResolvedValue([] as never);
+  vi.mocked(prisma.$queryRaw).mockResolvedValue([{ id: 'row-1' }] as never);
   vi.mocked(resolveSeibanMachineDisplayNamesBatched).mockResolvedValue({ machineNames: { FS1: '機械' } });
 });
 
 describe('order trail', () => {
   it('returns null when no source knows the order', async () => {
     expect(await getHaizenOrderTrail(order)).toBeNull();
+  });
+  it('looks up schedule row ids by exact string ProductNo, then loads those rows in id order', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ id: 'row-1' }, { id: 'row-2' }] as never);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([{ rowData: snapshot }] as never);
+    await getHaizenOrderTrail(order);
+    const [strings, ...values] = vi.mocked(prisma.$queryRaw).mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    const query = Prisma.sql(strings, ...values);
+    expect(query.text).toContain(`"rowData"->>'ProductNo' = ANY($2::text[])`);
+    expect(query.text).toContain(`jsonb_typeof("rowData"->'ProductNo') = 'string'`);
+    expect(query.text).toMatch(/ORDER BY "id" ASC LIMIT \$3$/);
+    expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, [order], 200]);
+    expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['row-1', 'row-2'] } }, orderBy: { id: 'asc' }, take: 200
+    }));
+  });
+  it('skips loading schedule rows when no id matches', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
+    expect(await getHaizenOrderTrail(order)).toBeNull();
+    expect(prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
   });
   it('maps every step status with mail > status > progress precedence and numeric order, deduplicating steps', async () => {
     const states = [
@@ -82,8 +108,8 @@ describe('order trail', () => {
     expect(prisma.purchaseOrderLookupRow.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { seiban: 'FS1', purchasePartCodeMatchKey: 'MD1' } }));
     expect(prisma.productionScheduleActualHoursCanonical.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ lotNo: order, isExcluded: false }) }));
     expect(prisma.orderPlacementEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ include: expect.objectContaining({ mobileScanFrames: { where: { kind: 'placement_photo' }, select: { id: true }, take: 1 } }) }));
-    for (const model of Object.values(prisma)) {
-      for (const [query] of vi.mocked(model.findMany).mock.calls) expect(query).toHaveProperty('take', 200);
+    for (const model of models()) {
+      for (const [query] of vi.mocked(model.findMany).mock.calls as unknown[][]) expect(query).toHaveProperty('take', 200);
     }
   });
   it('keeps an event-only order and falls back to resource codes for every pallet action', async () => {

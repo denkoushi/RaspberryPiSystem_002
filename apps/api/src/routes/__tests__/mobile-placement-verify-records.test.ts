@@ -13,7 +13,7 @@ vi.mock('../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../kiosk/shared.js', () => ({ requireClientDevice: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
   mobileSlipVerifyRecord: { create: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
-  orderPlacementEvent: { findMany: vi.fn() }, csvDashboardRow: { findMany: vi.fn() }
+  orderPlacementEvent: { findMany: vi.fn() }, $queryRaw: vi.fn()
 } }));
 vi.mock('../../services/production-schedule/seiban-machine-display-names.service.js', () => ({ resolveSeibanMachineDisplayNamesBatched: vi.fn() }));
 
@@ -33,7 +33,7 @@ beforeEach(async () => {
   vi.mocked(prisma.mobileSlipVerifyRecord.create).mockResolvedValue({ id: 'record', ...body } as never);
   vi.mocked(prisma.mobileSlipVerifyRecord.updateMany).mockResolvedValue({ count: 0 });
   vi.mocked(prisma.mobileSlipVerifyRecord.findMany).mockResolvedValue([]);
-  vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([]);
+  vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
   vi.mocked(prisma.orderPlacementEvent.findMany).mockResolvedValue([]);
   vi.mocked(resolveSeibanMachineDisplayNamesBatched).mockResolvedValue({ machineNames: {} });
   app = Fastify();
