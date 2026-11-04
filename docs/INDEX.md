@@ -100,6 +100,7 @@
 
 - **Codex/Cursor agmsg連携**: Codex主導・Cursor実行役のローカル協調手順。**記録**: [Guide](./guides/agmsg-codex-cursor-collaboration.md)
 - **タスク用Git branch/worktreeライフサイクル（2026-08-21・実装中）**: mainの無関係なWIPやdivergenceで対象taskを止めず、merged taskだけを安全にcleanupする。**正本**: [ADR](./decisions/ADR-20260821-repository-task-lifecycle-automation.md) · [Operations Guide](./guides/git-task-lifecycle.md) · [ExecPlan](./plans/repository-task-lifecycle-automation-execplan.md)
+- **体感速度の監査と改善（2026-11・PR待ち）**: キオスク/管理/サイネージ/モバイルのボトルネックを機能別に計測し、初回JS 6.7MB→3.0MB・Caddy圧縮・納期管理/配膳照合/サイネージ描画を高速化。実機計測手順と残課題あり。**正本**: [Plan](./plans/perceived-performance-audit-202611.md)
 
 ### 最新アップデート（2026-07-17 · 組立トルクレンチ締付トレーサビリティ · ローカル実装済・実機parser待ち）
 
