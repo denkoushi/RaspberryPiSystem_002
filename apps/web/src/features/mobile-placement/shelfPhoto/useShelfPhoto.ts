@@ -9,7 +9,9 @@ function shelfPhotoQueryOptions(shelfCodeRaw: string, photoUpdatedAt?: string | 
   return {
     queryKey: ['mobile-placement', 'shelf-photo', shelfCodeRaw, photoUpdatedAt],
     queryFn: () => getMobilePlacementShelfPhoto(shelfCodeRaw, photoUpdatedAt!),
-    staleTime: Infinity
+    staleTime: Infinity,
+    // Same as the useQuery default; prefetchQuery would otherwise not retry background photos.
+    retry: 3
   };
 }
 

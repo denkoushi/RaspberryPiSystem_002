@@ -14,12 +14,12 @@ export async function resolveBorrowTagDestination(
   tagUid: string,
   { lookupInstrument, lookupRigging }: BorrowTagLookups
 ): Promise<BorrowTagDestination> {
-  const [instrument, rigging] = await Promise.allSettled([lookupInstrument(tagUid), lookupRigging(tagUid)]);
-  if (instrument.status === 'fulfilled' && instrument.value) {
+  const settle = (promise: Promise<unknown>) => promise.then(Boolean, () => false);
+  const instrumentFound = settle(lookupInstrument(tagUid));
+  const riggingFound = settle(lookupRigging(tagUid));
+  // 計測機器が見つかった時点で返し、吊具の照会完了は待たない。
+  if (await instrumentFound) {
     return 'MEASURING_INSTRUMENT';
   }
-  if (rigging.status === 'fulfilled' && rigging.value) {
-    return 'RIGGING_GEAR';
-  }
-  return null;
+  return (await riggingFound) ? 'RIGGING_GEAR' : null;
 }
