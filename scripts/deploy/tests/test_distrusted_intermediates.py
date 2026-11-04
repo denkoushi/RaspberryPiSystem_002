@@ -135,9 +135,15 @@ class DistrustedIntermediatesTests(unittest.TestCase):
                 if t.get("ansible.builtin.import_role") == {"name": "common", "tasks_from": "distrusted-intermediates"}
             )
             self.assertNotIn("when", task)
-            # Only the release-wave guards may run before it; they change nothing on the host.
+            # Release-wave guards may precede distrust; stopped hosts only clean preparation data.
             for guard in play["pre_tasks"][:index]:
-                self.assertTrue(set(guard) & {"ansible.builtin.fail", "ansible.builtin.set_fact"}, guard.get("name"))
+                if "block" in guard:
+                    self.assertEqual(guard["name"], "Stop before this wave when a kiosk in an earlier wave failed")
+                    self.assertIn("not (release_torque_cutover | default(false) | bool)", guard["when"])
+                    self.assertEqual(guard["block"][1]["ansible.builtin.include_role"],
+                                     {"name": "release_kiosk", "tasks_from": "cleanup"})
+                else:
+                    self.assertTrue(set(guard) & {"ansible.builtin.fail", "ansible.builtin.set_fact"}, guard.get("name"))
         common = yaml.safe_load((ANSIBLE / "roles/common/tasks/main.yml").read_text())
         include = next(t for t in common if t.get("ansible.builtin.import_tasks") == "distrusted-intermediates.yml")
         self.assertNotIn("when", include)

@@ -75,9 +75,9 @@ assert [play.get("hosts") for play in plays] == [
     "server", "kiosk", "kiosk", plays[10]["hosts"], "kiosk", "signage"
 ]
 assert "release_pi4_canary_host" in plays[10]["hosts"]
-assert "kensaku-stonebase01" in plays[10]["hosts"]
+assert "raspi4-kensaku-stonebase01" in plays[10]["hosts"]
 assert plays[8]["strategy"] == "free"
-assert plays[10]["strategy"] == "{{ 'linear' if (release_torque_cutover | default(false) | bool) else 'free' }}"
+assert plays[10]["strategy"] == "linear"
 assert "not (release_torque_cutover" in plays[8]["tasks"][0]["when"]
 assert [play.get("serial") for play in plays if "serial" in play] == [
     1,

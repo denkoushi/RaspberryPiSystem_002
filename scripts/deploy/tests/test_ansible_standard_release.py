@@ -1666,7 +1666,10 @@ esac
         self.assertEqual(prepare["strategy"], "free")
         self.assertIn("release_pi4_canary_host", wave["hosts"])
         self.assertIn("release_pi4_wave_hosts", wave["pre_tasks"][1]["vars"]["release_pi4_earlier_failures"])
-        self.assertEqual(wave["strategy"], "{{ 'linear' if (release_torque_cutover | default(false) | bool) else 'free' }}")
+        self.assertEqual(wave["strategy"], "linear")
+        default_canary = re.search(r"release_pi4_canary_host \| default\('([^']+)'\)", wave["hosts"]).group(1)
+        inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text(encoding="utf-8"))
+        self.assertIn(default_canary, inventory["all"]["children"]["clients"]["children"]["kiosk"]["hosts"])
 
         # Keep the real play boundaries, facts, rescue/always, aggregation and
         # gates; replace only remote mutation tasks with local observations.
@@ -1697,7 +1700,15 @@ esac
                         ]
                     else:
                         self.assertEqual(role["tasks_from"], "cleanup")
-                        task["ansible.builtin.debug"] = {"msg": "CLEAN {{ inventory_hostname }}"}
+                        task["block"] = [
+                            {"ansible.builtin.debug": {"msg": "CLEAN {{ inventory_hostname }}"}},
+                            {"ansible.builtin.fail": {"msg": "mock cleanup failure"},
+                             "when": "failure_kind == 'cleanup_failed'"},
+                        ]
+                if task.get("name") == "Clear the release marker after stopped wave cleanup":
+                    task["block"].append(
+                        {"ansible.builtin.fail": {"msg": "mock marker cleanup failure"},
+                         "when": "failure_kind == 'end_failed'"})
                 result.append(task)
             return result
 
@@ -1709,8 +1720,12 @@ esac
              "pre_tasks": [plays[-1]["pre_tasks"][0]],
              "tasks": [{"ansible.builtin.debug": {"msg": "PI3 SWITCH"}}]},
         ]
-        simulated[2].update(gather_facts=False, pre_tasks=wave["pre_tasks"][:2],
-                            tasks=[{"ansible.builtin.debug": {"msg": "SWITCH {{ inventory_hostname }}"}}],
+        simulated[2].update(gather_facts=False, pre_tasks=mocked(wave["pre_tasks"][:2]),
+                            tasks=[{"ansible.builtin.debug": {"msg": "SWITCH {{ inventory_hostname }}"}},
+                                   {"block": [{"ansible.builtin.fail": {"msg": "mock switch failure"},
+                                               "when": "inventory_hostname == failing and failure_kind in ['switch_failed', 'cleanup_failed', 'end_failed']"}],
+                                    "rescue": [{"ansible.builtin.fail": {"msg": "mock rescued switch failure"}}],
+                                    "always": [{"ansible.builtin.debug": {"msg": "CLEAR {{ inventory_hostname }}"}}]}],
                             post_tasks=[wave["post_tasks"][-1]])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1722,7 +1737,8 @@ esac
                 "        return dict(unreachable=True, msg='mock unreachable')\n")
             (root / "inventory.yml").write_text(yaml.safe_dump({"all": {"children": {
                 "kiosk": {"hosts": {name: {"ansible_connection": "local"} for name in
-                    ["kiosk-01", "kensaku-stonebase01", "kiosk-02", "kiosk-03"]}},
+                    ["kiosk-01", "raspi4-kensaku-stonebase01", "kiosk-02", "kiosk-03",
+                     "kiosk-04", "kiosk-05", "kiosk-06", "kiosk-07"]}},
                 "signage": {"hosts": {"signage-01": {"ansible_connection": "local"}}},
             }}}, sort_keys=False))
             (root / "playbook.yml").write_text(yaml.safe_dump(simulated, sort_keys=False))
@@ -1730,6 +1746,9 @@ esac
                      (False, "kiosk-02", "failed", None),
                      (False, "kiosk-02", "unreachable", None),
                      (False, "kiosk-02", "marker_unreachable", None),
+                     (False, "kiosk-02", "switch_failed", None),
+                     (False, "kiosk-02", "cleanup_failed", None),
+                     (False, "kiosk-02", "end_failed", None),
                      (True, "none", "failed", None),
                      (False, "none", "failed", "kiosk-01,kiosk-02")]
             for torque, failing, kind, limit in cases:
@@ -1742,18 +1761,26 @@ esac
                     run = subprocess.run(command, capture_output=True, text=True)
                     output = run.stdout + run.stderr
                     switches = re.findall(r'"msg": "SWITCH ([^"]+)"', output)
-                    if failing != "none":
+                    if kind in ("switch_failed", "cleanup_failed", "end_failed"):
+                        self.assertNotEqual(run.returncode, 0, output)
+                        self.assertEqual(switches, ["raspi4-kensaku-stonebase01"] +
+                                         [f"kiosk-{index:02d}" for index in range(1, 6)], output)
+                        for host in ("kiosk-06", "kiosk-07"):
+                            self.assertIn(f'"msg": "CLEAN {host}"', output)
+                        self.assertIn("Not started: an earlier Pi4 wave failed or was unreachable", output)
+                        self.assertNotIn('"msg": "PI3 SWITCH"', output)
+                    elif failing != "none":
                         self.assertNotEqual(run.returncode, 0, output)
                         self.assertEqual(switches, [], output)
                         self.assertNotIn('"msg": "PI3 SWITCH"', output)
-                        for host in ("kiosk-01", "kensaku-stonebase01", "kiosk-03"):
+                        for host in ("kiosk-01", "raspi4-kensaku-stonebase01", "kiosk-03"):
                             self.assertIn(f'"msg": "CLEAN {host}"', output)
                         self.assertIn("normal Pi4 preparation failed or was unreachable", output)
                     else:
                         self.assertEqual(run.returncode, 0, output)
-                        self.assertEqual(switches[0], "kiosk-01" if torque or limit else "kensaku-stonebase01")
+                        self.assertEqual(switches[0], "kiosk-01" if torque or limit else "raspi4-kensaku-stonebase01")
                         prepared = re.findall(r'"msg": "PREPARED ([^"]+)"', output)
-                        self.assertEqual(len(prepared), 0 if torque else (2 if limit else 4))
+                        self.assertEqual(len(prepared), 0 if torque else (2 if limit else 8))
                         if prepared:
                             self.assertLess(output.rindex('"msg": "PREPARED '), output.index('"msg": "SWITCH '))
 
@@ -1785,6 +1812,23 @@ esac
         self.assertEqual(finished["name"], "Mark this kiosk as finished for the Pi3 gate")
         self.assertEqual(pi3_gate["name"], "Stop before Pi3 when a Pi4 kiosk started but did not finish")
 
+        def mocked(tasks):
+            result = []
+            for original in tasks:
+                task = dict(original)
+                for key in ("block", "rescue", "always"):
+                    if key in task:
+                        task[key] = mocked(task[key])
+                if "ansible.builtin.import_tasks" in task:
+                    task.pop("ansible.builtin.import_tasks")
+                    task["ansible.builtin.debug"] = {"msg": "GUARD {{ inventory_hostname }}"}
+                if "ansible.builtin.include_role" in task:
+                    role = task.pop("ansible.builtin.include_role")
+                    self.assertEqual(role, {"name": "release_kiosk", "tasks_from": "cleanup"})
+                    task["ansible.builtin.debug"] = {"msg": "CLEAN {{ inventory_hostname }}"}
+                result.append(task)
+            return result
+
         def simulated(failing: str) -> list[dict[str, object]]:
             return [
                 {
@@ -1794,7 +1838,7 @@ esac
                     "serial": pi4["serial"],
                     "max_fail_percentage": pi4["max_fail_percentage"],
                     "order": "inventory",
-                    "pre_tasks": [started, gate],
+                    "pre_tasks": mocked([started, gate]),
                     "tasks": [
                         {
                             "block": [
@@ -1862,7 +1906,10 @@ esac
         # Wave 1 is kiosk-01; wave 2 (kiosk-02..06) finishes every lifecycle, including the failed host.
         for index in range(1, 7):
             self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
-        self.assertNotIn('"msg": "SWITCH kiosk-07"', output)
+        for index in range(7, 10):
+            self.assertIn(f'"msg": "CLEAN kiosk-{index:02d}"', output)
+        for index in range(7, 13):
+            self.assertNotIn(f'"msg": "SWITCH kiosk-{index:02d}"', output)
         self.assertIn("Not started: an earlier Pi4 wave failed or was unreachable on kiosk-03.", output)
         self.assertNotIn("kiosk-10", output)
         self.assertNotIn("PI3 SWITCH", output)

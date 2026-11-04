@@ -34,7 +34,8 @@
   - [x] (2026-11-04) バーコード(パレット可視化への追加・置換)。サーバーが受け付けるまでブラウザに残し、API は eventKey で重複を落とす。詳細は [パレットの計画](2026-11-04-kiosk-pallet-offline-queue.md)。#2517、main 7016618c、Pi5 反映 run 20261104-011303-8a890f。ユーザーがキオスクのパレット画面で追加と上書がいつもどおり反映されることを確かめた。
 - [ ] M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 にイメージの中継キャッシュを置く。
   - [x] (2026-11-02) Step 1: Pi4 の play を `serial: [1, 5, "25%", "100%"]` の波にし、前の波で失敗した端末があれば次の波の先頭で止め、最後の波で失敗したときは Pi3 の play の先頭で止める確認を入れた。トルク切り替えは `serial: 1` のまま。手元の12台の模擬でだけ確かめた。
-  - [x] (2026-11-04) Step 2: 通常経路の全選択 Pi4 を `strategy: free` で先に prepare し、全台成功後だけ切り替えの波へ進む。波も free とし、指定試験端末 `kensaku-stonebase01` を対象内なら先頭にする。失敗・到達不能時の回収と停止、Pi3 ゲート、トルク経路の維持をローカル模擬で検証した。実fleetでの保守画面待ち時間・全体時間は未測定。
+  - [x] (2026-11-04) Step 2: 通常経路の全選択 Pi4 を `strategy: free` で先に prepare し、全台成功後だけ切り替えの波へ進む。波は linear として `max_fail_percentage: 0` を有効に保ち、指定試験端末 `raspi4-kensaku-stonebase01` を対象内なら先頭にする。失敗・到達不能時の回収と停止、Pi3 ゲート、トルク経路の維持をローカル模擬で検証した。実fleetでの保守画面待ち時間・全体時間は未測定。
+  - [ ] Step 2 の残り: 切り替えの波で失敗すると playbook がその場で止まり、まだ切り替えていない後続波の端末に準備データ(候補イメージ、24時間で消える戻し用タグ、run ディレクトリ)が残る。戻し先は切り替え時に動いているイメージから作るので戻しには影響しない。デプロイの入口スクリプトで、失敗時にその run の準備データを対象端末から回収する。
   - [ ] Step 3: Pi5 にイメージの中継キャッシュ（pull-through cache）を置く。試験環境の複数台で波と停止を確認し、全体の時間を記録する。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
   - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
@@ -85,11 +86,11 @@
   Rationale: rescue だけでは他端末への切り替えを防げない。到達不能端末も集約に戻し、成功 fact がない場合は失敗とする。prepare 開始時点から Pi3 ゲートの未完了対象に含める。到達不能が続く端末の回収は実行できないため、復旧後の確認が必要。
   Date/Author: 2026-11-04 / Codex
 
-- Decision: M5 Step 2 C: 通常波は free、トルク波は従来の linear を選ぶ。serial と max_fail_percentage は維持し、forks は5のままにする。
-  Rationale: 端末別に予告・切り替え・health を進め、同じ task の全台完了待ちを除く。5から20への引き上げは Pi5・レジストリ負荷の実測がないため行わない。role 内に run_once や play 全体の集約参照はなく、localhost 委譲の予告・解除は端末ID別である。波間ゲートは失敗端末が記録した batch を見て同じ波を除外する。free は max_fail_percentage をサポートしないため、後続波の停止には明示ゲートを使う。
+- Decision: M5 Step 2 C: 通常波もトルク波も linear とし、prepare play だけ free を使う。serial と max_fail_percentage は維持し、forks は5のままにする。
+  Rationale: free は max_fail_percentage をサポートしないため、通常波は linear で未救済の失敗による停止を維持する。role の rescue/always を経た失敗は、失敗端末が記録した batch を見て同じ波を除外する明示ゲートで検出し、後続波の準備データを回収してから停止する。回収・マーカー解除が失敗しても always で停止し、切り替えない。
   Date/Author: 2026-11-04 / Codex
 
-- Decision: M5 Step 2 D: 通常波の hosts パターンで `release_pi4_canary_host`（既定 `kensaku-stonebase01`）を kiosk 群より先に指定する。
+- Decision: M5 Step 2 D: 通常波の hosts パターンで `release_pi4_canary_host`（既定 `raspi4-kensaku-stonebase01`）を kiosk 群より先に指定する。
   Rationale: Ansible はパターンの順序を保って重複を除き、その後 --limit を適用する。対象にあれば第1波に入り、不在なら残りの inventory 順になる。inventory 自体を並べ替えず、トルク経路は従来の kiosk パターンを維持する。
   Date/Author: 2026-11-04 / Codex
 
