@@ -101,7 +101,7 @@ ssh raspi5 "cat /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.
 
 1. **Macでコードを編集・コミット・プッシュ**
    ```bash
-   cd /Users/tsudatakashi/RaspberryPiSystem_002
+   cd /Users/<user>/RaspberryPiSystem_002
    git add .
    git commit -m "feat: 新機能の追加"
    git push origin feature/new-feature

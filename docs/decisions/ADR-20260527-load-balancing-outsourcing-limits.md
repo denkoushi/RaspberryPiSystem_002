@@ -1,14 +1,16 @@
 ---
 title: ADR-20260527 キオスク負荷調整・外注シミュ上限の単一正本
-status: accepted
+status: retired
 date: 2026-05-27
 ---
 
 # ADR-20260527: キオスク負荷調整・外注シミュ上限の単一正本
 
+> **状態: retired** — 外注シミュ（`outsourcing-*` API）と上限定数 `LOAD_BALANCING_OUTSOURCING_LIMITS`（`outsourcing-simulation.policy.ts`）はコードから撤去済みで、この ADR の上限は現行コードに対応しない。現行の負荷調整画面は [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md) を参照する。
+
 ## Status
 
-**accepted**（実装 **`cd42ebfe`** · Pi5 デプロイ **`20260527-191646-1476`**）
+**retired**（当初 accepted · 実装 **`cd42ebfe`** · Pi5 デプロイ **`20260527-191646-1476`**）
 
 ## Context
 

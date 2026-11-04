@@ -18,7 +18,7 @@
 1. **管理コンソールにログイン**
    - `https://100.106.158.2/admin` にアクセス
    - ユーザー名: `admin`
-   - パスワード: `admin1234`
+   - パスワード: `<password>`
 
 2. **バックアップ履歴ページを開く**
    - 「バックアップ」タブをクリック
@@ -145,7 +145,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 # 1. ログインしてトークンを取得
 TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. DropboxからCSVバックアップをリストア
 curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
@@ -164,7 +164,7 @@ curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
 # 1. ログインしてトークンを取得
 TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. Dropboxからデータベースバックアップをリストア
 curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \

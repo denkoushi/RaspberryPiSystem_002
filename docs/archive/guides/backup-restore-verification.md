@@ -138,7 +138,7 @@
 # 1. ログインしてトークンを取得
 TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. DropboxからCSVバックアップをリストア
 curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
@@ -157,7 +157,7 @@ curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
 # 1. ログインしてトークンを取得
 TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. Dropboxからデータベースバックアップをリストア
 curl -X POST https://100.106.158.2/api/backup/restore/from-dropbox \
