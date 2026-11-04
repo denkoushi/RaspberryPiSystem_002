@@ -28,7 +28,7 @@ vi.mock('../mobile-placement-order-placement.service.js', () => ({ registerOrder
 const device = { id: 'device', name: 'zero-shelf-01', location: '組立', haizenEdgeEnabled: true, haizenPresetShelfCodeRaw: ' A-1 ' };
 const input = {
   clientDeviceId: 'device', clientRecordId: '00000000-0000-4000-8000-000000000001',
-  scannedAt: '2026-10-27T10:00:00+09:00', orderNumber: ' 1234567890 ', branchNo: 0
+  scannedAt: new Date(Date.now() - 60_000).toISOString(), orderNumber: ' 1234567890 ', branchNo: 0
 };
 const result = { action: 'created', event: { id: 'event' }, branchState: { branchNo: 0, shelfCodeRaw: 'A-1' } };
 const purchase = { seiban: 'S', purchasePartCodeRaw: 'P', purchasePartName: '部品' };
