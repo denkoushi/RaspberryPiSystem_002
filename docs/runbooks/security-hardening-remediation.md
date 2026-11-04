@@ -15,7 +15,7 @@
 
 The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #948 → main `b1172baf`, 2026-07-02, real-device verify PASS 45/0/0). The items below are the remaining **Batch C** operator actions. They change secrets/config/runtime and **can break running kiosks if done carelessly**, so each is gated on explicit operator go-ahead and staged (change → verify → next). Do NOT run these automatically. Each item lists risk and a verification step.
 
-> **状態（2026-11-04 時点）**: 各項目の Status 行を正とする。C-10〜C-12 は完了済み（記録は KB-393 へ移設）。C-1・C-5・C-6 はコード上対応済みで、本番反映日は運用者の確認待ち。
+> **状態（2026-11-04 時点）**: 各項目の Status 行を正とする。C-10〜C-12 は完了済み（記録は KB-393 へ移設）。C-1・C-5・C-6 はコード上対応済みで、本番反映日は運用者の確認待ち。Status 行のない項目（C-2、C-7〜C-9）は現在の状態を本書では確認していない。
 
 > Safety: take a DB/config backup before secret rotation. Do one item at a time and verify the kiosk borrow/return flow after each.
 

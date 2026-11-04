@@ -63,7 +63,7 @@
 - **Loan**: 貸出情報（itemId, employeeId, borrowedAt, returnedAt, clientId）
 - **Transaction**: トランザクション履歴（loanId, action, actorEmployeeId, details）
 
-詳細は データベース定義（`apps/api/prisma/schema.prisma`） を参照してください。
+詳細はデータベース定義（`apps/api/prisma/schema.prisma`）を参照してください。
 
 ## サービス層
 
