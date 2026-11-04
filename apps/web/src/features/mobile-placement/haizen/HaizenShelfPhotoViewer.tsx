@@ -3,8 +3,9 @@ import { ShelfPhoto } from '../shelfPhoto/ShelfPhoto';
 import { haizenPhoneStyle, hp } from '../ui/haizenPhoneTokens';
 
 import type { RegisteredShelfEntryDto } from '../registeredShelves';
+import type { ReactNode } from 'react';
 
-export function HaizenShelfPhotoViewer({ shelf, onClose }: { shelf: RegisteredShelfEntryDto; onClose: () => void }) {
+export function HaizenShelfPhotoViewer({ shelf, onClose, children }: { shelf: RegisteredShelfEntryDto; onClose: () => void; children?: ReactNode }) {
   return <Dialog isOpen onClose={onClose} ariaLabel="棚の写真を拡大" overlayZIndex={70}
     className="!fixed !inset-0 !m-auto !flex !h-dvh !max-h-none !w-full !max-w-[480px] !flex-col !rounded-none !border-0 !bg-[#0d0f0e] !p-0 !text-[#f2f4f1]">
     <div style={haizenPhoneStyle} className="flex min-h-0 flex-1 flex-col">
@@ -15,6 +16,7 @@ export function HaizenShelfPhotoViewer({ shelf, onClose }: { shelf: RegisteredSh
       <button type="button" aria-label="写真を閉じる" onClick={onClose} className="min-h-0 w-full flex-1">
         <ShelfPhoto shelf={shelf} label={shelf.direction || shelf.displayLabel || '棚'} fit="contain" className="h-full w-full" />
       </button>
+      {children}
       <footer className={hp.dock}><button type="button" className={`${hp.primary} bg-[var(--hp-ink)]`} onClick={onClose}>閉じる</button></footer>
     </div>
   </Dialog>;

@@ -20,6 +20,18 @@ function mount(previousShelfCodes: string[] = [], selected = '') {
   return props;
 }
 describe('photo shelf picker', () => {
+  it('starts with all shelves and prioritizes target counts even when a previous shelf is known', () => {
+    render(<QueryClientProvider client={new QueryClient()}><HaizenShelfPhotoPicker
+      shelves={shelves} previousShelfCodes={['東-南-02']} selected=""
+      shelfCounts={{ 'DAD-3220 南': 2, '50013_540AP 西': 4 }}
+      loading={false} error={false} onRetry={vi.fn()} onSelect={vi.fn()} onClose={vi.fn()} onScan={vi.fn()} onMaster={vi.fn()} />
+    </QueryClientProvider>);
+    const tiles = screen.getAllByRole('button', { name: /^棚 / });
+    expect(tiles).toHaveLength(4);
+    expect(tiles[0]).toHaveAccessibleName('棚 50013_540AP 西');
+    expect(tiles[1]).toHaveAccessibleName('棚 DAD-3220 南');
+    expect(within(tiles[0]).getByLabelText('この製番 4件')).toBeInTheDocument();
+  });
   it('groups and filters previous shelves and machines, selects a shelf and shows no-photo placeholders', () => {
     const props = mount(['東-南-02']);
     expect(screen.getByRole('button', { name: '前回', exact: true })).toBeInTheDocument();
