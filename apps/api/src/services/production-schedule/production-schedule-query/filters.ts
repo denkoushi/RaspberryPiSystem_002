@@ -16,6 +16,8 @@ import {
   type ResourceCategoryPolicy
 } from '../policies/resource-category-policy.service.js';
 import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
+import { buildBoardDueDateExistsSql } from '../d-schedule-minutes/board-due.sql.js';
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import type { ProductionScheduleListParams } from './types.js';
 
 export type PreparedProductionScheduleDashboardFilters =
@@ -102,7 +104,8 @@ export async function prepareProductionScheduleDashboardFilters(
     resourceCategoryCondition,
     machineNameCondition,
     hasNoteOnly,
-    hasDueDateOnly
+    hasDueDateOnly,
+    dueSource: params.dueSource
   })} ${productNoCondition} ${planningScope}`;
   const leaderboardExpansionWhere = Prisma.sql`${buildQueryWhere({
     textConditions: [],
@@ -246,6 +249,7 @@ export const buildQueryWhere = (params: {
   machineNameCondition: Prisma.Sql;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
+  dueSource?: BoardDueSource;
 }): Prisma.Sql => {
   const {
     textConditions,
@@ -282,7 +286,7 @@ export const buildQueryWhere = (params: {
     )`;
   }
   if (hasDueDateOnly) {
-    const parentDueDateExists = Prisma.sql`"CsvDashboardRow"."id" IN (
+    const parentDueDateExists = params.dueSource !== 'scaw' ? buildBoardDueDateExistsSql() : Prisma.sql`"CsvDashboardRow"."id" IN (
       SELECT "csvDashboardRowId" FROM "ProductionScheduleRowNote"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND "dueDate" IS NOT NULL

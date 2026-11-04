@@ -145,7 +145,8 @@ export async function listLeaderboardShellProductionScheduleRows(
   });
   const expandedDisplayItems = filterProductionScheduleDisplayRowsByDueDate(
     expandedDisplayItemsRaw,
-    params.hasDueDateOnly
+    params.hasDueDateOnly,
+    params.dueSource
   );
 
   const orderedRowIds = expandedDisplayItems.map((row) => row.id);
@@ -476,7 +477,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     siteScopedGlobalRankLocation,
     leaderboardMaterializedBaseWhere
   });
-  const partialRows = filterProductionScheduleDisplayRowsByDueDate(partialRowsRaw, params.hasDueDateOnly);
+  const partialRows = filterProductionScheduleDisplayRowsByDueDate(partialRowsRaw, params.hasDueDateOnly, params.dueSource);
 
   const partiallyExcludedParentRowIds = await resolvePartiallyReturnedParentRowIdsForLegacyContinue({
     excludeDisplayItemIds,

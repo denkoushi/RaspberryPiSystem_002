@@ -48,6 +48,7 @@ let gmail: {
 let apply: ReturnType<typeof vi.fn>;
 let parse: ReturnType<typeof vi.fn>;
 let execution: CsvImportExecutionService;
+let ingestion: DScheduleMinutesGmailIngestionService;
 let alert: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
@@ -70,7 +71,7 @@ beforeEach(async () => {
     return run;
   });
   mocks.createNotice.mockImplementation(({ data }) => { mocks.notice = { ...data, id: 'notice-1', messages: [{ createdAt: new Date() }] }; return mocks.notice; });
-  const ingestion = new DScheduleMinutesGmailIngestionService({
+  ingestion = new DScheduleMinutesGmailIngestionService({
     gmailFactory: vi.fn().mockResolvedValue(gmail),
     db: { productionScheduleDScheduleMinutesImportRun: { findUnique: vi.fn(async ({ where }) => run?.gmailMessageId === where.gmailMessageId || run?.id === 'partial' ? run : null) } } as unknown as PrismaClient,
     parse, apply, saveOriginal: saveDScheduleMinutesOriginal, notify: deliverDScheduleMinutesNotice,
@@ -97,7 +98,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
       seibansRead: 6, dateChanged: 4, unchanged: 2, autoRegistered: 1, unregistered: 1, skipped: 1,
       warnings: [expect.objectContaining({ code: 'UNKNOWN_STAR' })],
     } } });
-    expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(expect.stringContaining('subject:"D社日程会議議事録" in:inbox is:unread -label:'), 3);
+    expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(expect.stringContaining('subject:"D社日程会議議事録" in:inbox is:unread -label:'), 10);
     expect(gmail.searchMessagesLimited.mock.calls[0][0]).toContain('from:synthetic@example.com');
     // trashMessage is the existing Gmail operation that adds rps_processed before moving to trash.
     expect(gmail.trashMessage).toHaveBeenCalledExactlyOnceWith('mail-1');
@@ -105,14 +106,14 @@ describe('D schedule Gmail intake and scheduler history', () => {
     expect(gmail.trashMessage.mock.invocationCallOrder[0]).toBeLessThan(gmail.markAsRead.mock.invocationCallOrder[0]!);
   });
 
-  it('keeps fatal workbooks unread, fails history and fires the existing failure alert without apply', async () => {
+  it('marks fatal workbooks read, fails history and fires the existing failure alert without apply', async () => {
     const fixture = buildWorkbook(); fixture.sheet.getCell(3, fixture.parts).value = 'missing';
     buffer = Buffer.from(await fixture.workbook.xlsx.writeBuffer());
     await expect(scheduler().runImport(row.id)).rejects.toThrow('読み取れません');
     expect(mocks.write).toHaveBeenCalledOnce(); expect(apply).not.toHaveBeenCalled();
     expect(mocks.histories[0]).toMatchObject({ status: 'FAILED', errorMessage: expect.stringContaining('読み取れません') });
     expect(alert).toHaveBeenCalledWith(expect.objectContaining({ scheduleId: row.id, historyId: '0' }));
-    expect(gmail.trashMessage).not.toHaveBeenCalled(); expect(gmail.markAsRead).not.toHaveBeenCalled();
+    expect(gmail.trashMessage).not.toHaveBeenCalled(); expect(gmail.markAsRead).toHaveBeenCalledExactlyOnceWith('mail-1');
     expect(mocks.createNotice).not.toHaveBeenCalled();
   });
 
@@ -127,7 +128,8 @@ describe('D schedule Gmail intake and scheduler history', () => {
     expect(apply).toHaveBeenCalledOnce();
     expect(apply.mock.calls[0][0].metadata.gmailMessageId).toBe('mail-1');
     expect(gmail.trashMessage).toHaveBeenCalledExactlyOnceWith('mail-1');
-    expect(gmail.markAsRead).toHaveBeenCalledExactlyOnceWith('mail-1');
+    expect(gmail.markAsRead).toHaveBeenCalledWith('fatal-mail');
+    expect(gmail.markAsRead).toHaveBeenCalledWith('mail-1');
     expect(mocks.histories[0]).toMatchObject({ status: 'FAILED', errorMessage: expect.stringContaining('fatal-mail:') });
     expect(mocks.histories[0].errorMessage).toContain(reason);
     expect(alert).toHaveBeenCalledOnce();
@@ -141,7 +143,68 @@ describe('D schedule Gmail intake and scheduler history', () => {
     });
     message.payload!.parts = [];
     await expect(execute()).rejects.toThrow(/fetch-failure: synthetic fetch failure.*mail-1: .*添付がありません/);
-    expect(gmail.markAsRead).not.toHaveBeenCalled(); expect(gmail.trashMessage).not.toHaveBeenCalled();
+    expect(gmail.markAsRead).toHaveBeenCalledExactlyOnceWith('mail-1'); expect(gmail.trashMessage).not.toHaveBeenCalled();
+  });
+
+  it('marks a non-matching subject read and skips it without processing or failure', async () => {
+    message.payload!.headers = [{ name: 'Subject', value: 'D社 日程 会議議事録' }];
+    const result = await ingestion.runOnce({ config, allowWait: false });
+    expect(result).toMatchObject({ processed: 0, runs: [] });
+    expect(gmail.markAsRead).toHaveBeenCalledExactlyOnceWith('mail-1');
+    expect(gmail.trashMessage).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+    expect(alert).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing attachment', 'fatal parse', 'invalid receivedAt'])('records %s once and excludes read mail from the next cycle', async (failure) => {
+    gmail.searchMessagesLimited.mockImplementation(async () => message.labelIds.includes('UNREAD') ? ['mail-1'] : []);
+    gmail.markAsRead.mockImplementation(async () => { message.labelIds = []; });
+    if (failure === 'missing attachment') message.payload!.parts = [];
+    if (failure === 'fatal parse') parse.mockResolvedValue({ ok: false, reason: 'invalid workbook', warnings: [] });
+    if (failure === 'invalid receivedAt') message.internalDateMs = 0;
+    await expect(scheduler().runImport(row.id)).rejects.toThrow('取込に失敗');
+    await scheduler().runImport(row.id);
+    expect(mocks.histories.map((history) => history.status)).toEqual(['FAILED', 'COMPLETED']);
+    expect(alert).toHaveBeenCalledOnce();
+    expect(gmail.getMessage).toHaveBeenCalledOnce();
+    expect(gmail.markAsRead).toHaveBeenCalledOnce();
+    expect(gmail.trashMessage).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it('surfaces permanent failures without the automatic retry turning them into an empty success', async () => {
+    message.payload!.parts = [];
+    gmail.searchMessagesLimited.mockImplementation(async () => message.labelIds.includes('UNREAD') ? ['mail-1'] : []);
+    gmail.markAsRead.mockImplementation(async () => { message.labelIds = []; });
+    await expect(execution.execute({ config, importSchedule: row })).rejects.toThrow('添付がありません');
+    expect(gmail.searchMessagesLimited).toHaveBeenCalledOnce();
+    await expect(execution.execute({ config, importSchedule: row })).resolves.toBeDefined();
+  });
+
+  it.each([true, false])('retains permanent failure when mixed-cycle retries succeed: %s', async (retrySucceeds) => {
+    const fatal = { ...message, id: 'fatal', payload: { headers: message.payload!.headers, parts: [] } };
+    const unread = new Set(['fatal', 'mail-1']);
+    gmail.searchMessagesLimited.mockImplementation(async () => [...unread]);
+    gmail.getMessage.mockImplementation(async (id: string) => id === 'fatal' ? fatal : message);
+    gmail.markAsRead.mockImplementation(async (id: string) => { unread.delete(id); });
+    if (retrySucceeds) apply.mockRejectedValueOnce(new Error('database unavailable'));
+    else apply.mockRejectedValue(new Error('database unavailable'));
+    await expect(execution.execute({ config, importSchedule: { ...row,
+      retryConfig: { maxRetries: 1, retryInterval: 0, exponentialBackoff: false }
+    } })).rejects.toThrow('fatal:');
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(gmail.getMessage.mock.calls.filter(([id]) => id === 'fatal')).toHaveLength(1);
+    expect(unread.size).toBe(retrySucceeds ? 0 : 1);
+  });
+
+  it('retries transient apply errors without marking the message read', async () => {
+    apply.mockRejectedValueOnce(new Error('database unavailable'));
+    await expect(execute()).rejects.toThrow('database unavailable');
+    expect(gmail.markAsRead).not.toHaveBeenCalled();
+    expect(gmail.trashMessage).not.toHaveBeenCalled();
+    await execute();
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(gmail.markAsRead).toHaveBeenCalledExactlyOnceWith('mail-1');
   });
 
   it('includes skipped stale registration in the per-run history summary', async () => {
@@ -166,7 +229,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
     message.payload!.parts = [{ filename, body: { attachmentId: 'wrong' } }];
     await expect(scheduler().runImport(row.id)).rejects.toThrow('日程会議議事録を含む.xlsx添付がありません');
     expect(mocks.histories[0].status).toBe('FAILED'); expect(alert).toHaveBeenCalledOnce();
-    expect(mocks.write).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled(); expect(gmail.markAsRead).not.toHaveBeenCalled();
+    expect(mocks.write).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled(); expect(gmail.markAsRead).toHaveBeenCalledExactlyOnceWith('mail-1');
   });
 
   it('does not reapply SUCCESS or duplicate a notice even after resolution / later retries', async () => {

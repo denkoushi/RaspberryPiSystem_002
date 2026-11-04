@@ -46,3 +46,20 @@ export function buildBoardDueDateSql(source: BoardDueSource = 'excel', splitDueD
       ELSE "excel_due"."partsCompleteDate" END`;
   return Prisma.sql`COALESCE(${splitDueDate}, ${parent})`;
 }
+
+/** Correlated predicate usable before the list query's due joins are present. */
+export function buildBoardDueDateExistsSql(): Prisma.Sql {
+  return Prisma.sql`EXISTS (
+    SELECT 1 FROM (SELECT 1) AS "due_seed"
+    LEFT JOIN "ProductionScheduleRowNote" AS "n"
+      ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
+      ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
+      AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
+        OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
+    ${BOARD_DUE_JOINS_SQL}
+    WHERE ${buildBoardDueDateSql()} IS NOT NULL
+  )`;
+}

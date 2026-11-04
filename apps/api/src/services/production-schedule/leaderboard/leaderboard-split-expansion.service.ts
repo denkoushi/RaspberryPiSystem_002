@@ -57,7 +57,7 @@ export async function expandLeaderboardParentRowsForResponse(params: {
     locationKey: params.locationKey,
     enabled: isProductionScheduleOrderSplitEnabled()
   });
-  return filterProductionScheduleDisplayRowsByDueDate(expanded, params.hasDueDateOnly === true);
+  return filterProductionScheduleDisplayRowsByDueDate(expanded, params.hasDueDateOnly === true, params.dueSource);
 }
 
 export async function expandLeaderboardParentRowIdsForSnapshot(params: {

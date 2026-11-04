@@ -68,7 +68,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   const memo = dueSource === 'excel' ? extras?.memo : null;
   const hasExtras = extras && ((dueSource === 'excel' && extras.outsourceMarks.length > 0) || extras.surfaceSendOutDates.length > 0);
   const isSignage = variant === 'signage';
-  const manual = isManualDueDateSet(row.dueDate);
+  const manual = isManualDueDateSet(row.dueDate) && row.displayDue?.slice(0, 10) === row.dueDate?.slice(0, 10);
   const dueLabel = formatDueDate(row.displayDue) || '—';
   const pres = presentLeaderOrderRow(row);
   const clusterTokens: LeaderOrderRowClusterToken[] = [

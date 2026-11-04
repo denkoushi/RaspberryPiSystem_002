@@ -1,4 +1,4 @@
-import { getDScheduleMinutesGmailIngestionService, type DScheduleMinutesCycleSummary, type DScheduleMinutesGmailIngestionService } from '../production-schedule/d-schedule-minutes/d-schedule-minutes-gmail-ingestion.service.js';
+import { DScheduleMinutesContentError, getDScheduleMinutesGmailIngestionService, type DScheduleMinutesCycleSummary, type DScheduleMinutesGmailIngestionService } from '../production-schedule/d-schedule-minutes/d-schedule-minutes-gmail-ingestion.service.js';
 import { createHash } from 'crypto';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialCycleSummary, type ProcedureMaterialGmailIngestionService } from '../assembly/procedure-material-gmail-ingestion.service.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
@@ -165,13 +165,21 @@ export class CsvImportExecutionService {
 
     // リトライロジックでインポートを実行
     let lastError: Error | undefined;
+    const minutesContentFailures: string[] = [];
     for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
       try {
-        return await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: false, manual: false });
+        const result = await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: false, manual: false });
+        // A retry can resolve transient failures after permanent bad mail has been marked read.
+        if (minutesContentFailures.length > 0) throw new DScheduleMinutesContentError(minutesContentFailures);
+        return result;
       } catch (error) {
         // 429クールダウンは「待つ/延期」すべき状態なので、ここで汎用Errorに包まず上位へ伝播させる
         if (error instanceof GmailRateLimitedDeferredError) {
           throw error;
+        }
+        if (error instanceof DScheduleMinutesContentError) {
+          if (error.retryableFailures.length === 0) throw error;
+          minutesContentFailures.push(...error.permanentFailures);
         }
         lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -196,6 +204,9 @@ export class CsvImportExecutionService {
     }
 
     // すべてのリトライが失敗した場合
+    if (minutesContentFailures.length > 0) {
+      throw new DScheduleMinutesContentError(minutesContentFailures, [lastError?.message ?? 'Import failed']);
+    }
     throw new Error(`CSV import failed after ${retryConfig.maxRetries + 1} attempts: ${lastError?.message}`);
   }
 

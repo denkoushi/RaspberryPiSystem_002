@@ -1,3 +1,5 @@
+import { resolveBoardDueFields } from '../d-schedule-minutes/resolve-board-due-fields.js';
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -784,10 +786,13 @@ export function sortExpandedProductionScheduleRowsByManualOrder(
 
 export function filterProductionScheduleDisplayRowsByDueDate(
   rows: ProductionScheduleRow[],
-  enabled: boolean
+  enabled: boolean,
+  dueSource: BoardDueSource = 'excel'
 ): ProductionScheduleRow[] {
   if (!enabled) return rows;
-  return rows.filter((row) => row.dueDate != null);
+  return rows.filter((row) => dueSource === 'scaw'
+    ? row.dueDate != null
+    : (row.boardDueDate !== undefined ? row.boardDueDate : resolveBoardDueFields(row, dueSource).boardDueDate) != null);
 }
 
 function resolveSplitProcessingOrder(

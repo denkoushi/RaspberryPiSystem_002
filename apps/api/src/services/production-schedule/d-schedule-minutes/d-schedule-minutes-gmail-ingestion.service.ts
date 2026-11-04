@@ -15,6 +15,12 @@ import { summarizeMinutes, type DScheduleMinutesMetrics, type DScheduleMinutesSu
 type GmailPort = Pick<GmailApiClient, 'searchMessagesLimited' | 'getMessage' | 'getAttachment' | 'trashMessage' | 'markAsRead'>;
 export type DScheduleMinutesCycleSummary = DScheduleMinutesSummary & { processed: number; runs: Array<DScheduleMinutesSummary & { gmailMessageId: string }> };
 
+export class DScheduleMinutesContentError extends Error {
+  constructor(readonly permanentFailures: string[], readonly retryableFailures: string[] = []) {
+    super(`D社日程会議議事録の取込に失敗しました: ${[...retryableFailures, ...permanentFailures].join('; ')}`);
+  }
+}
+
 export async function saveDScheduleMinutesOriginal(buffer: Buffer): Promise<string> {
   const sha256 = createHash('sha256').update(buffer).digest('hex');
   const key = `csv-dashboards/d-schedule-minutes/${sha256}.xlsx`;
@@ -50,8 +56,9 @@ export class DScheduleMinutesGmailIngestionService {
       const fromEmail = options.config.storage.options?.gmail?.fromEmail ?? options.config.storage.options?.fromEmail;
       const label = (process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim();
       const query = `subject:"${D_SCHEDULE_MINUTES_GMAIL_SUBJECT}" in:inbox is:unread -label:${label}${fromEmail ? ` from:${fromEmail}` : ''}`;
-      const ids = await gmail.searchMessagesLimited(query, 3);
+      const ids = await gmail.searchMessagesLimited(query, 10);
       const failures: string[] = [];
+      const permanentFailures: string[] = [];
       const candidates = [];
       for (const gmailMessageId of ids) {
         try {
@@ -62,20 +69,33 @@ export class DScheduleMinutesGmailIngestionService {
       }
       candidates.sort((a, b) => a.message.internalDateMs - b.message.internalDateMs);
       for (const { gmailMessageId, message } of candidates) {
+        let permanentContentFailure = false;
         try {
           let run = await this.deps.db.productionScheduleDScheduleMinutesImportRun.findUnique({ where: { gmailMessageId } });
           if (run?.status !== 'SUCCESS') {
             const subject = message.payload?.headers?.find((header) => header.name.toLowerCase() === 'subject')?.value ?? '';
             // Gmail's search tokenization is broader than the required literal substring.
-            if (!subject.includes(D_SCHEDULE_MINUTES_GMAIL_SUBJECT)) continue;
+            if (!subject.includes(D_SCHEDULE_MINUTES_GMAIL_SUBJECT)) {
+              await gmail.markAsRead(gmailMessageId);
+              continue;
+            }
             const attachment = collectGmailAttachments(message).find((item) => /\.xlsx$/i.test(item.filename) && item.filename.includes('日程会議議事録'));
-            if (!attachment) throw new Error(`日程会議議事録を含む.xlsx添付がありません`);
+            if (!attachment) {
+              permanentContentFailure = true;
+              throw new Error(`日程会議議事録を含む.xlsx添付がありません`);
+            }
             const buffer = await gmail.getAttachment(gmailMessageId, attachment.attachmentId);
             const originalFilePath = await this.deps.saveOriginal(buffer);
             const receivedAt = new Date(message.internalDateMs);
-            if (!Number.isFinite(receivedAt.getTime()) || message.internalDateMs <= 0) throw new Error(`メールの受信日時を取得できません`);
+            if (!Number.isFinite(receivedAt.getTime()) || message.internalDateMs <= 0) {
+              permanentContentFailure = true;
+              throw new Error(`メールの受信日時を取得できません`);
+            }
             const result = await this.deps.parse({ buffer, filename: attachment.filename, receivedAt });
-            if (!result.ok) throw new Error(`D社日程会議議事録を読み取れません: ${result.reason}`);
+            if (!result.ok) {
+              permanentContentFailure = true;
+              throw new Error(`D社日程会議議事録を読み取れません: ${result.reason}`);
+            }
             run = await this.deps.apply({ result, metadata: { gmailMessageId, subject, filename: attachment.filename, receivedAt, originalFilePath } });
           }
           const warnings = run.warnings as DScheduleMinutesWarning[];
@@ -90,9 +110,21 @@ export class DScheduleMinutesGmailIngestionService {
           summary.warnings.push(...warnings);
           summary.processed += 1;
         } catch (error) {
-          failures.push(`${gmailMessageId}: ${error instanceof Error ? error.message : String(error)}`);
+          const failure = `${gmailMessageId}: ${error instanceof Error ? error.message : String(error)}`;
+          if (permanentContentFailure) {
+            permanentFailures.push(failure);
+            try {
+              // Exclude permanent content failures from unread searches, preserving the original mail.
+              await gmail.markAsRead(gmailMessageId);
+            } catch (markError) {
+              failures.push(`${gmailMessageId}: ${markError instanceof Error ? markError.message : String(markError)}`);
+            }
+          } else {
+            failures.push(failure);
+          }
         }
       }
+      if (permanentFailures.length > 0) throw new DScheduleMinutesContentError(permanentFailures, failures);
       if (failures.length > 0) throw new Error(`D社日程会議議事録の取込に失敗しました: ${failures.join('; ')}`);
       return summary;
     } finally {
