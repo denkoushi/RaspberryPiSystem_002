@@ -591,7 +591,7 @@ export interface BackupConfig {
 - データベースで`storageProvider: dropbox`が正しく記録されていることを確認
 - UIで「Dropbox」と表示されることを確認
 
-**関連KB**: [KB-096](./knowledge-base/infrastructure/backup-restore.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
+**関連KB**: [KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
 
 **実機検証手順書**:
 - [バックアップリストア機能の実機検証手順](../archive/guides/backup-restore-verification.md)（タスク1）

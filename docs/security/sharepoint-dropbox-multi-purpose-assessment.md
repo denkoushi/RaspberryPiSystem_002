@@ -206,6 +206,6 @@ const inspectionImporter = new CsvImporter(
 ## 関連ドキュメント
 
 - [SharePoint → Dropbox → Pi5 データ連携スキームのセキュリティ評価](./sharepoint-dropbox-integration-assessment.md)
-- [CSVインポート機能](../api/imports.md)
+- [CSVインポート機能](../guides/csv-import-export.md)
 - [計測機器管理モジュール](../modules/measuring-instruments/README.md)
-- [吊具管理モジュール](../modules/rigging-gears/README.md)
+- 吊具管理モジュール（個別文書なし。`apps/api/src/routes/rigging/` を参照）

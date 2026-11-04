@@ -242,7 +242,7 @@ trivy image \
 **確認箇所**:
 - [apps/api/src/routes/auth.ts](../../apps/api/src/routes/auth.ts)
 - [apps/api/src/lib/auth.ts](../../apps/api/src/lib/auth.ts)
-- [apps/api/src/plugins/authorization.ts](../../apps/api/src/plugins/authorization.ts)
+- [apps/api/src/lib/auth.ts](../../apps/api/src/lib/auth.ts)（旧 `plugins/authorization.ts` から移動）
 - [apps/api/src/plugins/rate-limit.ts](../../apps/api/src/plugins/rate-limit.ts)
 - [apps/api/src/lib/mfa.ts](../../apps/api/src/lib/mfa.ts)
 
@@ -415,7 +415,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - [scripts/generate-alert.sh](../../scripts/generate-alert.sh)
 - [infrastructure/ansible/templates/clamav-scan.sh.j2](../../infrastructure/ansible/templates/clamav-scan.sh.j2)
 - [infrastructure/ansible/templates/trivy-scan.sh.j2](../../infrastructure/ansible/templates/trivy-scan.sh.j2)
-- [infrastructure/ansible/templates/rkhunter-scan.sh.j2](../../infrastructure/ansible/templates/rkhunter-scan.sh.j2)
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`（削除済み）
 
 **既存証跡**:
 - [phase9-10-specifications.md](./phase9-10-specifications.md): リアルタイム監視強化実装完了
@@ -610,7 +610,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 **確認箇所**:
 - [apps/api/src/routes/auth.ts](../../apps/api/src/routes/auth.ts)
 - [apps/api/src/lib/auth.ts](../../apps/api/src/lib/auth.ts)
-- [apps/api/src/plugins/authorization.ts](../../apps/api/src/plugins/authorization.ts)
+- [apps/api/src/lib/auth.ts](../../apps/api/src/lib/auth.ts)（旧 `plugins/authorization.ts` から移動）
 - [apps/api/src/plugins/rate-limit.ts](../../apps/api/src/plugins/rate-limit.ts)
 - [apps/api/src/lib/mfa.ts](../../apps/api/src/lib/mfa.ts)
 
@@ -740,7 +740,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
    # 手動スキャンを実行
    sudo /usr/local/bin/clamav-scan.sh
    sudo /usr/local/bin/trivy-scan.sh
-   sudo /usr/local/bin/rkhunter-scan.sh
+   # rkhunter-scan.sh は撤去済み（clamav と trivy のみ）
    
    # ログの確認
    tail -100 /var/log/clamav/clamav-scan.log
