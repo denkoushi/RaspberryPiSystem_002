@@ -65,6 +65,67 @@ describe('InventoryItemEditTab', () => {
 
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+  it('keeps units and price in the title row and lets the drawer list grow', () => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+    const row = screen.getByRole('heading', { name: '治具A', level: 2 }).parentElement!;
+    expect(within(row).getByRole('region', { name: '単位の設定' })).toBeInTheDocument();
+    expect(within(row).getByLabelText('単価')).toBeInTheDocument();
+    expect(within(row).getByText('RI-1')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'アイテムを削除' })).toBeInTheDocument();
+    expect(row.parentElement!.parentElement).toHaveClass('min-h-[280px]');
+    const input = screen.getByLabelText('発注点');
+    const drawer = input.closest('form')!.parentElement!.parentElement!;
+    expect(drawer.parentElement).not.toHaveClass('overflow-y-auto');
+    expect(input.closest('form')!.parentElement).toHaveClass('border-t');
+    expect(within(input.closest('form')!).getByRole('button', { name: '保存' })).toHaveClass('h-11', 'text-[15px]');
+  });
+
+  it.each([['発注点', 0], ['補充', 1]] as const)('steps %s without submitting and respects its lower bound', (label, min) => {
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    fireEvent.click(screen.getByRole('button', { name: /治具A/ }));
+    const input = screen.getByLabelText(label);
+    const form = within(input.closest('form')!);
+    const minus = form.getByRole('button', { name: '1減らす' });
+    const plus = form.getByRole('button', { name: '1増やす' });
+    fireEvent.click(minus);
+    expect(input).toHaveValue(null);
+    fireEvent.click(plus);
+    expect(input).toHaveValue(min);
+    fireEvent.click(minus);
+    expect(input).toHaveValue(min);
+    fireEvent.click(plus);
+    expect(input).toHaveValue(min + 1);
+    fireEvent.change(input, { target: { value: '7' } });
+    fireEvent.click(minus);
+    expect(input).toHaveValue(6);
+    fireEvent.click(plus);
+    expect(input).toHaveValue(7);
+    expect(mutations.setReorderPoint.mutateAsync).not.toHaveBeenCalled();
+    expect(mutations.restock.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { points: [null, null], ordered: [false, false], edge: null },
+    { points: [4, 4], ordered: [false, false], edge: null },
+    { points: [5, 6], ordered: [true, false], edge: 'border-inv-red' },
+    { points: [5, 6], ordered: [true, true], edge: 'border-inv-blue' },
+    { points: [5, null], ordered: [true, false], edge: 'border-inv-blue' },
+  ])('frames the item across all drawers: %j', ({ points, ordered, edge }) => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const data = original().data!;
+    const first = data[0];
+    vi.mocked(useInventoryItems).mockReturnValue({ data: [{ ...first, compartments: points.map((reorderPoint, i) => ({ ...first.compartments[0], id: `c-${i}`, reorderPoint, reorderedAt: ordered[i] ? '2026-11-01T00:00:00Z' : null })) }], isLoading: false } as never);
+    render(<InventoryItemEditTab accessPassword="2520" />);
+    const row = screen.getByRole('button', { name: /治具A/ });
+    if (edge) expect(row).toHaveClass('border-2', edge);
+    else expect(row).toHaveClass('border-b', 'border-inv-line');
+    fireEvent.click(row);
+    expect(row).toHaveClass('ring-inv-cyan', 'bg-inv-cyan/[0.12]');
+    if (edge) expect(row).toHaveClass('border-2', edge);
+    vi.mocked(useInventoryItems).mockImplementation(original);
+  });
+
   it('saves and clears reorder points, restocks, and reports failures beside the drawer', async () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
     fireEvent.click(screen.getByRole('button', { name: /治具A/ }));

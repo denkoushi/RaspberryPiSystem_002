@@ -1504,6 +1504,17 @@ describe('inventory machine picking', () => {
     vi.mocked(useInventoryMachines).mockReturnValue({ data: [machine], isLoading: false } as never);
     vi.mocked(useInventoryItems).mockReturnValue({ data: [], isLoading: false } as never);
   });
+  it('includes the management number in issue success when both names collide', async () => {
+    vi.mocked(useInventoryMachines).mockReturnValue({ data: [machine, { ...machine, id: 'm2', equipmentManagementNumber: 'M2' }], isLoading: false } as never);
+    const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE', machine: { id: machine.id, name: machine.name, shortName: machine.shortName } }) });
+    vi.mocked(useInventoryMutations).mockReturnValue({ touchTransaction: { mutateAsync: touch } } as never);
+    const scan = renderWithNfc();
+    await scan(itemTag);
+    fireEvent.click(screen.getByRole('button', { name: 'NHX4000 M1' }));
+    fireEvent.click(screen.getByRole('button', { name: '1個を払い出す' }));
+    await waitFor(() => expect(screen.getByText('払い出し −1 個・NHX4000 M1')).toBeInTheDocument());
+  });
+
   it.each([false, true])('issues from an optional department with selected machine=%s', async selected => {
     vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({ data: ['生産技術課'], isSuccess: true, isFetching: false } as never);
     const touch = vi.fn().mockResolvedValue({ transaction: historyEntry({ action: 'ISSUE' }) });

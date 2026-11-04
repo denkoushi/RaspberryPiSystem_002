@@ -10,6 +10,7 @@ import { compartmentLocationText, needsReorder, unitLabel } from '../inventoryDa
 import { ArrowLeftIcon, ArrowRightIcon, RotateRightIcon, CheckIcon, CloseIcon, SearchIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
   invSetupTargets,
+  invButton,
   invButtonDanger,
   invButtonGhost,
   invButtonPrimary,
@@ -47,6 +48,16 @@ type Panel =
 const DETAIL_LABEL = Object.fromEntries(TOOL_BOARD_COLUMNS.map((column) => [column.key, column.label])) as Record<InventoryOptionField, string>;
 const provisionalTag = 'shrink-0 rounded-[5px] bg-inv-amber/[0.12] px-1.5 text-[10.5px] font-bold tracking-[0.08em] text-inv-amber';
 const iconSm = `${invButtonSm} w-11 px-0`;
+
+function stepQuantity(button: HTMLButtonElement, name: string, delta: number) {
+  const input = button.form?.elements.namedItem(name) as HTMLInputElement | null;
+  if (!input || (input.value === '' && delta < 0)) return;
+  const min = Number(input.min);
+  const max = Number(input.max);
+  input.value = String(input.value === '' ? min : Math.min(max, Math.max(min, Number(input.value) + delta)));
+}
+const quantityField = `${invField} h-11 w-24 shrink-0 px-2 text-center font-bold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`;
+const stepButton = `${invButton} w-11 !px-0 !text-[22px]`;
 
 const tagTail = (uid: string | null) => uid ? `…${uid.slice(-5)}` : 'タグなし';
 const placeText = (place: InventoryCompartment) => `${place.area}・棚${place.shelfNumber}・引き出し${place.drawerNumber}`;
@@ -278,7 +289,9 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
               </div> : null}
               {rows.map(({ entry, place }) => {
                 const on = entry.id === item?.id;
-                return <button key={entry.id} type="button" aria-pressed={on} className={`grid h-[62px] shrink-0 grid-cols-[44px_minmax(0,1fr)] items-center gap-2.5 rounded-xl px-2 text-left ${on ? 'bg-inv-cyan/[0.12] ring-2 ring-inset ring-inv-cyan' : 'border-b border-inv-line hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
+                const low = entry.compartments.filter(needsReorder);
+                const edge = low.length ? (low.some(compartment => !compartment.reorderedAt) ? 'border-2 border-inv-red' : 'border-2 border-inv-blue') : on ? '' : 'border-b border-inv-line';
+                return <button key={entry.id} type="button" aria-pressed={on} className={`grid h-[62px] shrink-0 grid-cols-[44px_minmax(0,1fr)] items-center gap-2.5 rounded-xl px-2 text-left ${edge} ${on ? 'bg-inv-cyan/[0.12] ring-2 ring-inset ring-inv-cyan' : 'hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
                   {entry.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-11 w-11 rounded-[9px] object-cover" /> : <span className="h-11 w-11 rounded-[9px] bg-inv-s3" aria-hidden="true" />}
                   <span className="flex min-w-0 flex-col gap-1">
                     <span className="truncate text-[15px] font-bold">{highlight(entry.name, needle)}</span>
@@ -377,7 +390,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         {list}
 
         <div className="flex min-h-0 min-w-0 flex-col gap-3">
-        <div className="relative grid h-[280px] shrink-0 grid-cols-[236px_minmax(0,1fr)] gap-3">
+        <div className="relative grid min-h-[280px] shrink-0 grid-cols-[236px_minmax(0,1fr)] gap-3">
           <section className={`${invPanel} relative min-h-0 overflow-hidden`} aria-label="写真">
             {photo ? <button type="button" className="block h-full w-full" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto(photo.id)}>
               <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-cover" />
@@ -407,6 +420,23 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
             <div className="flex min-h-11 shrink-0 items-center gap-3">
               <h2 className="min-w-0 flex-1 truncate text-[22px] font-black">{item.name}</h2>
               {isProvisionalInventoryName(item.name) ? <span className={provisionalTag}>仮名</span> : null}
+              <section className="flex min-w-0 shrink-0 items-center gap-1.5 [&_h3]:whitespace-nowrap [&_[role=group]]:min-w-0 [&_[role=group]]:flex-nowrap [&_[role=group]]:overflow-x-auto [&_[role=group]>div:empty]:hidden" aria-label="単位の設定">
+                <h3 className={invEyebrow}>単位</h3>
+                <InventoryUnitPicker value={item.unit} accessPassword={accessPassword} disabled={mutations.setItemUnit.isPending} onChange={(unit) => { if (unit !== unitLabel(item)) void run(() => mutations.setItemUnit.mutateAsync({ itemId: item.id, unit }), `単位を「${unit}」にしました`, { kind: 'none' }, 'unit'); }} />
+                {localError('unit')}
+              </section>
+              <form key={`${item.id}:${item.unitPrice}`} className="flex min-w-0 shrink-0 items-center gap-1" onSubmit={(event) => {
+                event.preventDefault();
+                const input = event.currentTarget.elements.namedItem('unitPrice') as HTMLInputElement;
+                const unitPrice = input.value === '' ? null : Number(input.value);
+                if (unitPrice !== (item.unitPrice ?? null)) void run(() => mutations.updateItemDetails.mutateAsync({ itemId: item.id, details: { unitPrice } }), '単価を保存しました', { kind: 'none' }, 'price');
+              }}>
+                <label htmlFor="inventory-unit-price" className={`${invEyebrow} whitespace-nowrap`}>単価</label>
+                <input id="inventory-unit-price" name="unitPrice" type="number" inputMode="numeric" min="0" max="10000000" step="1" defaultValue={item.unitPrice ?? ''} placeholder="未設定" className={`${invField} h-11 w-28 shrink-0 px-2`} />
+                <span className="shrink-0 whitespace-nowrap text-xs text-inv-muted">円 / {unitLabel(item)}</span>
+                <button type="submit" className={invButtonSm} disabled={mutations.updateItemDetails.isPending}>保存</button>
+                {localError('price')}
+              </form>
               <span className="shrink-0 font-mono text-[13px] text-inv-faint">{item.itemCode}</span>
               <section className="shrink-0" aria-label="アイテムの削除">
                 {panel.kind === 'delete-item' ? (
@@ -424,67 +454,52 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
                 {panel.kind !== 'delete-item' ? localError('delete') : null}
               </section>
             </div>
-            <div className="flex min-w-0 shrink-0 items-center gap-2">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <section className="flex min-w-0 shrink-0 items-center gap-1.5 [&_h3]:whitespace-nowrap [&_[role=group]]:min-w-0 [&_[role=group]]:flex-nowrap [&_[role=group]]:overflow-x-auto [&_[role=group]>div:empty]:hidden" aria-label="単位の設定">
-                  <h3 className={invEyebrow}>単位</h3>
-                  <InventoryUnitPicker value={item.unit} accessPassword={accessPassword} disabled={mutations.setItemUnit.isPending} onChange={(unit) => { if (unit !== unitLabel(item)) void run(() => mutations.setItemUnit.mutateAsync({ itemId: item.id, unit }), `単位を「${unit}」にしました`, { kind: 'none' }, 'unit'); }} />
-                  {localError('unit')}
-                </section>
-                <form key={`${item.id}:${item.unitPrice}`} className="flex min-w-0 flex-1 items-center gap-1" onSubmit={(event) => {
-                  event.preventDefault();
-                  const input = event.currentTarget.elements.namedItem('unitPrice') as HTMLInputElement;
-                  const unitPrice = input.value === '' ? null : Number(input.value);
-                  if (unitPrice !== (item.unitPrice ?? null)) void run(() => mutations.updateItemDetails.mutateAsync({ itemId: item.id, details: { unitPrice } }), '単価を保存しました', { kind: 'none' }, 'price');
-                }}>
-                  <label htmlFor="inventory-unit-price" className={`${invEyebrow} whitespace-nowrap`}>単価</label>
-                  <input id="inventory-unit-price" name="unitPrice" type="number" inputMode="numeric" min="0" max="10000000" step="1" defaultValue={item.unitPrice ?? ''} placeholder="未設定" className={`${invField} h-11 w-28 shrink-0 px-2`} />
-                  <span className="shrink-0 whitespace-nowrap text-xs text-inv-muted">円 / {unitLabel(item)}</span>
-                  <button type="submit" className={invButtonSm} disabled={mutations.updateItemDetails.isPending}>保存</button>
-                  {localError('price')}
-                </form>
-              </div>
-            </div>
-            <section className="flex min-h-0 flex-1 flex-col gap-1" aria-label="置き場所">
+            <section className="flex flex-col gap-1" aria-label="置き場所">
               <div className="flex shrink-0 items-center gap-2">
                 <h3 className={`${invEyebrow} flex-1`}>置き場所</h3>
                 <button type="button" className={invButtonSmGhost} disabled={pending} onClick={() => setPanel({ kind: 'add-place', area: item.compartments[0]?.area ?? null, shelfId: null })}><PlusIcon />別の引き出しにも置く</button>
               </div>
               {item.compartments.length === 0 ? <p className="text-inv-faint">置き場所がありません</p> : null}
-              <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-                {item.compartments.map((compartment) => <div key={compartment.id} className={`flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 rounded-[10px] border px-2 py-2 ${swapped?.id === compartment.id ? 'flex-wrap border-inv-green/[0.55] bg-inv-green/10' : 'border-transparent bg-inv-s2'}`}>
-                  <PinIcon /><span className={invLabelNumber}>{formatInventoryLabelNumber(compartment.labelNumber)}</span><span className="min-w-0 flex-1 truncate font-bold">{compartment.area}{'　'}棚{compartment.shelfNumber}・引き出し{compartment.drawerNumber}</span>
-                  <span className="text-[13px] tabular-nums text-inv-faint">{compartment.stockQuantity}{unitLabel(item)}</span>
-                  <div className="flex basis-full items-center gap-2">
-                    <span className={`mr-auto shrink-0 whitespace-nowrap rounded-md border px-1.5 text-[12.5px] ${compartment.itemTagUid ? 'border-inv-line2 font-mono text-inv-muted' : 'border-inv-amber/45 text-inv-amber'}`} title={compartment.itemTagUid ?? undefined}>{compartment.itemTagUid ? `タグ ${tagTail(compartment.itemTagUid)}` : 'タグなし'}</span>
+              <div className="flex flex-col gap-1">
+                {item.compartments.map((compartment) => <div key={compartment.id} className={`flex shrink-0 flex-col gap-2 rounded-[10px] border px-2 py-2 ${swapped?.id === compartment.id ? 'border-inv-green/[0.55] bg-inv-green/10' : 'border-transparent bg-inv-s2'}`}>
+                  <div className="flex items-center gap-2">
+                    <PinIcon /><span className={invLabelNumber}>{formatInventoryLabelNumber(compartment.labelNumber)}</span><span className="min-w-0 flex-1 truncate font-bold">{compartment.area}{'　'}棚{compartment.shelfNumber}・引き出し{compartment.drawerNumber}</span>
+                    <span className="text-[13px] tabular-nums text-inv-faint">{compartment.stockQuantity}{unitLabel(item)}</span>
+                    <span className={`ml-3 shrink-0 whitespace-nowrap rounded-md border px-1.5 text-[12.5px] ${compartment.itemTagUid ? 'border-inv-line2 font-mono text-inv-muted' : 'border-inv-amber/45 text-inv-amber'}`} title={compartment.itemTagUid ?? undefined}>{compartment.itemTagUid ? `タグ ${tagTail(compartment.itemTagUid)}` : 'タグなし'}</span>
                     <button type="button" className={invButtonSmGhost} disabled={pending} onClick={() => { setError(null); setPanel({ kind: 'replace-tag', compartment }); }}>タグを交換</button>
                     <button type="button" className={invButtonSm} aria-label="別の引き出しへ移す" disabled={pending} onClick={() => setPanel({ kind: 'move', compartment })}>移す</button>
                   </div>
-                  <div className="flex basis-full flex-wrap items-center gap-2">
-                    <form key={`${compartment.id}:${compartment.reorderPoint}`} className="flex min-w-0 items-center gap-1" onSubmit={(event) => {
+                  <div className="flex items-center gap-3 border-t border-inv-line pt-2.5">
+                    <form key={`${compartment.id}:${compartment.reorderPoint}`} className="flex min-w-0 items-center gap-2" onSubmit={(event) => {
                       event.preventDefault();
                       const input = event.currentTarget.elements.namedItem('reorderPoint') as HTMLInputElement;
                       const reorderPoint = input.value === '' ? null : Number(input.value);
                       if (reorderPoint !== (compartment.reorderPoint ?? null)) void run(() => mutations.setReorderPoint.mutateAsync({ id: compartment.id, reorderPoint }), '発注点を保存しました', { kind: 'none' }, compartment.id);
                     }}>
-                      <label htmlFor={`reorder-point-${compartment.id}`} className={`${invEyebrow} whitespace-nowrap`}>発注点</label>
-                      <input id={`reorder-point-${compartment.id}`} name="reorderPoint" type="number" inputMode="numeric" min="0" max="2147483647" step="1" defaultValue={compartment.reorderPoint ?? ''} className={`${invField} h-11 w-24 shrink-0 px-2`} />
-                      <span className="shrink-0 text-xs text-inv-muted">{unitLabel(item)}</span>
-                      <button type="submit" className={invButtonSm} disabled={pending}>保存</button>
+                      <label htmlFor={`reorder-point-${compartment.id}`} className="whitespace-nowrap text-[15px] font-bold text-inv-muted">発注点</label>
+                      <button type="button" aria-label="1減らす" className={stepButton} disabled={pending} onClick={event => stepQuantity(event.currentTarget, 'reorderPoint', -1)}>−</button>
+                      <input id={`reorder-point-${compartment.id}`} name="reorderPoint" type="number" inputMode="numeric" min="0" max="2147483647" step="1" defaultValue={compartment.reorderPoint ?? ''} className={quantityField} />
+                      <button type="button" aria-label="1増やす" className={stepButton} disabled={pending} onClick={event => stepQuantity(event.currentTarget, 'reorderPoint', 1)}>＋</button>
+                      <span className="shrink-0 text-[15px] text-inv-muted">{unitLabel(item)}</span>
+                      <button type="submit" className={invButton} disabled={pending}>保存</button>
                     </form>
-                    <form className="flex min-w-0 items-center gap-1" onSubmit={(event) => {
+                    <span aria-hidden="true" className="h-8 w-px shrink-0 bg-inv-line" />
+                    <form className="flex min-w-0 items-center gap-2" onSubmit={(event) => {
                       event.preventDefault();
                       const form = event.currentTarget;
                       const input = form.elements.namedItem('quantity') as HTMLInputElement;
                       const quantity = Number(input.value);
                       void run(async () => { await mutations.restock.mutateAsync({ id: compartment.id, quantity, idempotencyKey: crypto.randomUUID() }); form.reset(); }, '補充しました', { kind: 'none' }, compartment.id);
                     }}>
-                      <label htmlFor={`restock-${compartment.id}`} className={`${invEyebrow} whitespace-nowrap`}>補充</label>
-                      <input id={`restock-${compartment.id}`} name="quantity" type="number" inputMode="numeric" min="1" max="999999" step="1" required className={`${invField} h-11 w-24 shrink-0 px-2`} />
-                      <span className="shrink-0 text-xs text-inv-muted">{unitLabel(item)}</span>
-                      <button type="submit" className={`${invButtonSm} !border-inv-green !bg-inv-green/10 !text-inv-green`} disabled={pending}>補充</button>
+                      <label htmlFor={`restock-${compartment.id}`} className="whitespace-nowrap text-[15px] font-bold text-inv-muted">補充</label>
+                      <button type="button" aria-label="1減らす" className={stepButton} disabled={pending} onClick={event => stepQuantity(event.currentTarget, 'quantity', -1)}>−</button>
+                      <input id={`restock-${compartment.id}`} name="quantity" type="number" inputMode="numeric" min="1" max="999999" step="1" required className={quantityField} />
+                      <button type="button" aria-label="1増やす" className={stepButton} disabled={pending} onClick={event => stepQuantity(event.currentTarget, 'quantity', 1)}>＋</button>
+                      <span className="shrink-0 text-[15px] text-inv-muted">{unitLabel(item)}</span>
+                      <button type="submit" className={`${invButton} !border-inv-green !bg-inv-green/10 !text-inv-green`} disabled={pending}>補充</button>
                     </form>
-                    <button type="button" aria-pressed={Boolean(compartment.reorderedAt)} className={`${invButtonSm} !border-inv-blue ${compartment.reorderedAt ? '!bg-inv-blue !text-inv-bg' : '!bg-inv-blue/10 !text-inv-blue'}`} disabled={pending || !needsReorder(compartment)} onClick={() => void run(() => mutations.setOrdered.mutateAsync({ id: compartment.id, ordered: !compartment.reorderedAt }), '発注済みを変更しました', { kind: 'none' }, compartment.id)}>発注済み</button>
+                    <span aria-hidden="true" className="h-8 w-px shrink-0 bg-inv-line" />
+                    <button type="button" aria-pressed={Boolean(compartment.reorderedAt)} className={`${invButton} !border-inv-blue ${compartment.reorderedAt ? '!bg-inv-blue !text-inv-bg' : '!bg-inv-blue/10 !text-inv-blue'}`} disabled={pending || !needsReorder(compartment)} onClick={() => void run(() => mutations.setOrdered.mutateAsync({ id: compartment.id, ordered: !compartment.reorderedAt }), '発注済みを変更しました', { kind: 'none' }, compartment.id)}>発注済み</button>
                     {localError(compartment.id)}
                   </div>
                   {swapped?.id === compartment.id ? <p role="status" className="flex basis-full flex-wrap items-center gap-2 py-1 pl-6 text-[13.5px] font-bold text-[#d7fbe9]">
