@@ -34,6 +34,8 @@ export function KioskPalletVisualizationPage() {
         ) : null}
       </div>
 
+      {ctrl.offlineMessage && <p role="status" className="shrink-0 text-sm text-amber-200">{ctrl.offlineMessage}</p>}
+
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row">
         <aside className="flex max-h-48 min-h-0 w-full shrink-0 flex-col gap-2 overflow-y-auto overscroll-y-contain rounded-lg bg-slate-900/80 p-2 lg:max-h-none lg:w-56">
           <p className="shrink-0 text-xs font-semibold text-white/60">加工機（資源CD順）</p>
@@ -68,6 +70,7 @@ export function KioskPalletVisualizationPage() {
 
               <PalletVizActionRow
                 busy={ctrl.busy}
+                hasPendingRequests={ctrl.hasPendingRequests}
                 canOperate={Boolean(ctrl.selectedMachineCd)}
                 canClearPallet={Boolean(ctrl.currentMachine)}
                 hasSelectedItem={Boolean(ctrl.selectedItemId)}

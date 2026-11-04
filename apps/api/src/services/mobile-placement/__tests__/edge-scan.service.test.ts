@@ -35,7 +35,7 @@ const purchase = { seiban: 'S', purchasePartCodeRaw: 'P', purchasePartName: '部
 let app: ReturnType<typeof Fastify>;
 
 beforeEach(async () => {
-  // scannedAt は受付時刻から8日以内だけ通るため、fixture の時刻に合わせて Date だけ固定する
+  // scannedAt は固定値で、API は8日より古いスキャンを拒否するため、現在時刻を入力に合わせて固定する。
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-27T10:05:00+09:00'));
   vi.resetAllMocks();

@@ -46,7 +46,7 @@
 
 ## Prevention
 
-- 回帰テスト: `plugins/__tests__/rate-limit.test.ts`、`lib/__tests__/log-url.test.ts`、`services/backup/__tests__/backup-ssh-policy.test.ts`、`routes/backup/__tests__/config-read.internal.test.ts`、`routes/tools/loans/__tests__/device-auth.test.ts`（delete）、`services/tools/__tests__/loan.service.test.ts`（performedByUserId）。
+- 回帰テスト: `plugins/__tests__/rate-limit-path-normalization.test.ts`、`lib/__tests__/log-url.test.ts`、`services/backup/__tests__/backup-ssh-policy.test.ts`、`routes/backup/__tests__/config-read.internal.test.ts`、`routes/tools/loans/__tests__/device-auth.test.ts`（delete）、`services/tools/__tests__/loan.service.test.ts`（performedByUserId）。
 
 ## Validation
 

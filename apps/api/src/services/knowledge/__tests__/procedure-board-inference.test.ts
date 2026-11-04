@@ -73,7 +73,7 @@ describe('Procedure board inference boundary', () => {
   });
   it('fails strict schemas, limits and malformed JSON without calling another provider', async () => {
     for (const raw of [ { ...result(), css: 'red' }, { ...result(), placements: [{ ...result().placements[0], text: '改変' }] },
-      ...(['placements', 'headings', 'gaps', 'conflicts'] as const).map((key, i) => ({ ...result(), [key]: Array([5, 4, 7, 11][i]).fill({}) })),
+      ...(['placements', 'headings', 'gaps', 'conflicts'] as const).map((key, i) => ({ ...result(), [key]: Array([5, 21, 7, 11][i]).fill({}) })),
       { ...result(), placements: [result().placements[0], result().placements[0]] } ]) {
       expect(() => validatePlacementResult(raw, input())).toThrow(ProcedureBoardModelOutputError);
     }
@@ -114,5 +114,24 @@ describe('Procedure board inference boundary', () => {
     for (const raw of bad) {
       expect(() => validateFormatResult(raw, source)).toThrow(ProcedureBoardModelOutputError);
     }
+  });
+});
+
+describe('variable-page inference', () => {
+  it.each([1, 20])('formats exactly the current %s pages and states the count in the prompt', async count => {
+    const source = input();
+    source.layout.pages = Array.from({ length: count }, (_, index) => ({ page: index + 1, heading: '', rows: [] }));
+    const response = { pages: source.layout.pages.map(({ page }) => ({ page, rows: [] })), styles: [] };
+    const complete = vi.fn().mockResolvedValue({ rawText: JSON.stringify(response), model: 'fake' });
+    expect(await new ProcedureBoardInference({ complete }).format(source, new AbortController().signal)).toEqual(response);
+    expect(complete.mock.calls[0][0].messages[0].content).toContain(`現在のページ数: ${count}`);
+    expect(applyFormatResult(response, source.layout)).toEqual(source.layout);
+    const wrong = { ...response, pages: count === 1 ? [...response.pages, { page: 2, rows: [] }] : response.pages.slice(0, -1) };
+    expect(() => applyFormatResult(wrong, source.layout)).toThrow(ProcedureBoardModelOutputError);
+  });
+  it('drops out-of-layout placements, headings and gaps without crashing', () => {
+    const source = input(); source.layout.pages = source.layout.pages.slice(0, 1);
+    const response = { ...result(), placements: [{ ...result().placements[0], page: 20 }], headings: [{ id: 'h', page: 20, text: '準備' }], gaps: [{ ...target, page: 20, id: 'g', text: '確認済みですか' }] };
+    expect(validatePlacementResult(response, source)).toEqual({ placements: [], headings: [], gaps: [], conflicts: [] });
   });
 });
