@@ -4,11 +4,11 @@ import { Link, useLocation } from 'react-router-dom';
 
 import { useDeleteHaizenPlacement, useHaizenOverview, useHaizenShelves } from '../../api/hooks/haizen-overview';
 import { matchesHaizenSearch, normalizeHaizenSearch, parseHaizenSpeech, searchKinds, timeSincePlaced } from '../../features/kiosk/haizen/haizenSearch';
+import { HaizenShelfDueGrid } from '../../features/kiosk/haizen/HaizenShelfDueGrid';
 import { HaizenShelfHoverCard } from '../../features/kiosk/haizen/HaizenShelfHoverCard';
-import { HaizenShelfMap } from '../../features/kiosk/haizen/HaizenShelfMap';
 import { HaizenShelfPhoto } from '../../features/kiosk/haizen/HaizenShelfPhoto';
 import { useHaizenVoiceSearch } from '../../features/kiosk/haizen/useHaizenVoiceSearch';
-import { GridIcon, ListIcon, MicIcon, PinIcon, TrailIcon, VerifyLogIcon } from '../../features/kiosk/inventory/InventoryIcons';
+import { ClockIcon, GridIcon, ListIcon, MicIcon, TrailIcon, VerifyLogIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { invButton, invButtonDanger, invButtonGhost, invCard, invPanel, invSurface, invTitle } from '../../features/kiosk/inventory/inventoryUi';
 import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
@@ -31,7 +31,7 @@ export function KioskHaizenPage() {
   const overview = useHaizenOverview();
   const master = useHaizenShelves();
   const [size, setSize] = useState<InventoryThumbnailSize>('medium');
-  const [viewMode, setViewMode] = useState<'card' | 'list' | 'map'>('card');
+  const [viewMode, setViewMode] = useState<'card' | 'list' | 'due'>('card');
   const [listOrder, setListOrder] = useState<'shelf' | 'newest'>('shelf');
   const location = useLocation();
   const [selectedCode, setSelectedCode] = useState<string | null>((location.state as { shelf?: string } | null)?.shelf ?? null);
@@ -125,7 +125,7 @@ export function KioskHaizenPage() {
   return <section className={`${invSurface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-inv-cyan`}>
     <div className="flex shrink-0 flex-nowrap items-center gap-2 whitespace-nowrap">
       <Link to="/kiosk/inventory" className={invButtonGhost}>‹ 在庫へ</Link>
-      {selected && viewMode !== 'map' ? <>
+      {selected && viewMode !== 'due' ? <>
         <button type="button" className={invButton} onClick={() => openShelf(null)}>{viewMode === 'list' ? '一覧へ' : '棚の一覧へ'}</button>
         <nav aria-label="棚の移動" className="flex gap-2">
           <button type="button" className={invButton} disabled={index <= 0} onClick={() => openShelf(visibleShelves[index - 1].shelfCodeRaw)}>‹ 前の棚</button>
@@ -143,14 +143,14 @@ export function KioskHaizenPage() {
         <button type="button" aria-label="全部消す" className={`${invButton} w-14 px-0 text-lg`} onClick={clearSearch}>C</button>
       </div>
       <button type="button" className={`${invButton} w-[124px] px-2`} disabled={unavailable || voice.status === 'processing'} onClick={() => { if (voice.status === 'recording') voice.stop(); else void voice.start(); }}>{voice.status === 'recording' ? '聞取終了' : voice.status === 'processing' ? '認識中…' : <><MicIcon />声で探す</>}</button>
-      {(!selected || viewMode === 'map') && <>
+      {(!selected || viewMode === 'due') && <>
         {viewMode === 'card' ? <div role="group" aria-label="写真の大きさ" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
           {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={size === value} className={`h-11 w-14 font-bold ${size === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => setSize(value)}>{label}</button>)}
         </div> : viewMode === 'list' ? <div role="group" aria-label="並べ方" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
           {([['shelf', '棚順'], ['newest', '新しい順']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={listOrder === value} className={`h-11 w-24 font-bold ${listOrder === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => setListOrder(value)}>{label}</button>)}
         </div> : null}
         <div role="group" aria-label="表示" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
-          {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon], ['map', '地図表示', PinIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-11 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => setViewMode(view)}><ViewIcon size={24} /></button>)}
+          {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon], ['due', '急ぎ表示', ClockIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-11 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => setViewMode(view)}><ViewIcon size={24} /></button>)}
         </div>
       </>}
       <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{updatedAt ? `${time(updatedAt)} 更新` : '読込中…'}</span>
@@ -166,7 +166,7 @@ export function KioskHaizenPage() {
       <span className="text-sm text-inv-muted">{searchKinds[query.kind]}</span><strong className="font-mono text-2xl text-inv-cyan">{query.kind === 'machineName' ? normalizeMachineName(query.text) : query.text}</strong><span>を含む {hits.length} 件 ・ {hitShelves.size} 棚</span><button type="button" className={`${invButton} ml-auto`} onClick={clearSearch}>やめる</button>
     </div>}
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pb-1">
-      {unavailable ? <p className="py-12 text-center text-inv-muted">{overview.isError || master.isError ? '配膳情報を取得できません' : '配膳情報を読み込んでいます…'}</p> : viewMode === 'map' ? <HaizenShelfMap shelves={visibleShelves} rows={query ? hits : rows} selectedCode={selectedCode} onSelect={openShelf} /> : selected ? <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+      {unavailable ? <p className="py-12 text-center text-inv-muted">{overview.isError || master.isError ? '配膳情報を取得できません' : '配膳情報を読み込んでいます…'}</p> : viewMode === 'due' ? <HaizenShelfDueGrid shelves={visibleShelves} rows={query ? hits : rows} selectedCode={selectedCode} onSelect={openShelf} /> : selected ? <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
         <div className={`${invPanel} overflow-hidden lg:sticky lg:top-0`}>
           <HaizenShelfPhoto key={selected.shelfCodeRaw} shelf={selected} />
           <div className="space-y-1 px-5 py-4"><h1 className="text-3xl font-black">{selected.displayLabel || selected.shelfCodeRaw}</h1>{selected.displayLabel === UNREGISTERED_SHELF_LABEL && <p className="font-mono text-lg text-inv-muted">{selected.shelfCodeRaw}</p>}</div>

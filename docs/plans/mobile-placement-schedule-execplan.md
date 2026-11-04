@@ -14,7 +14,7 @@ Operators can open 日程 from the phone menu, identify urgent manufacturing ord
 - [x] (2026-11-04) Complete focused and existing affected tests, Web full regression, package lint/type checks, and final diff review (full API suite and real device/browser checks not run).
 
 - [x] (2026-11-04) Add kiosk haizen overview Excel due/send-out dates in one ANY batch, including direct alias seibans, with a shared date-only reader.
-- [x] (2026-11-04) Add the kiosk 3×3 macro-zone map, earliest-due shelf colors, searchable shelf counts, and photo/details sorted by due date with nulls last.
+- [x] (2026-11-05) Add the kiosk due view: shelf tiles ordered and colored by their earliest due date, searchable shelf counts, and photo/details sorted by due date with nulls last.
 
 - [x] (2026-11-04) Validate kiosk map and API date contracts: 17 API tests, 103 Web files / 1,213 tests, and a final 22-test kiosk run after calendar-boundary and color-style checks; API/Web TypeScript checks and package lint pass.
 
@@ -46,7 +46,7 @@ The phone milestone is observable at `/kiosk/mobile-placement/schedule-seibans`.
 - Decision: Count only max-ProductNo winner rows (`buildMaxProductNoWinnerCondition`) and resolve machine names with `resolveSeibanMachineDisplayNamesBatched` (unregistered label shown as nothing). Rationale: reissued orders otherwise stay as phantom pending parts, and the boards use the same rules. Date: 2026-11-04.
 
 - Decision: Read aliases by their own stored fseiban in the overview batch and use their imported dates directly. Rationale: imported aliases already contain the same dates as their parent; no per-row parent query is needed. Date: 2026-11-04.
-- Decision: Use only the shared macro-zone catalog and structured shelf fallback for the kiosk map. Rationale: this view needs nine coarse zones and an Other section, without ZoneLayout or LayoutEntity. Date: 2026-11-04.
+- Decision: Drop the 3×3 macro-zone map and show a flat shelf grid ordered by earliest due date ("急ぎ表示"). Rationale: macro zones are no longer part of the shelf master workflow; production shelves have no zone and use place-name codes. Date: 2026-11-05.
 - Decision: Centralize inclusive urgency thresholds at 3 and 7 calendar days; compare against the kiosk local date and reuse inv-red/inv-amber tokens. Rationale: UTC midnight and DST must not shift the urgency boundary. Search filters map tiles and their detail rows; card/list behavior stays unchanged. Date: 2026-11-04.
 
 ## Surprises & Discoveries
