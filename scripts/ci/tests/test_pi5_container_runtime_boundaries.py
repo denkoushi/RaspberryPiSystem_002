@@ -183,5 +183,50 @@ class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
         self.assertIn("Restore the Docker environment", ADMIN_POLICY_MIGRATION)
 
 
+    def test_static_site_compresses_and_caches_only_hashed_assets(self):
+        # The static route alone compresses; the gateway passes encoding through.
+        static_route = re.compile(r"^  route @static_site \{\n(.*?)^  \}\n", re.MULTILINE | re.DOTALL)
+        hashed = (
+            "app-Cj2d4-S4.js",
+            "index-BCAX3J71.css",
+            "KioskInspectionDrawingLibraryPage-EsIeB4H-.js",
+            "inspectionDrawingVisualLibraryConstants-B_T-EBiO.js",
+            "ibm-plex-mono-latin-400-normal-CvHOgSBP.woff",
+            "ibm-plex-mono-latin-400-normal-DMJ8VG8y.woff2",
+        )
+        # public/assets files are copied without a content hash.
+        unhashed = sorted(p.name for p in (ROOT / "apps/web/public/assets").iterdir())
+        self.assertIn("rigging-inspection.png", unhashed)
+        unhashed += ["old-missing-chunk.js", "app-Cj2d4-S4.js.map", "index.html", "sw.js"]
+        for name, caddy in (
+            ("slot", SLOT_CADDY),
+            ("production", PRODUCTION_CADDY),
+            ("local", LOCAL_CADDY),
+        ):
+            with self.subTest(caddy=name):
+                match = static_route.search(caddy)
+                self.assertIsNotNone(match)
+                route = match.group(1)
+                self.assertEqual(caddy.count("encode "), 1)
+                self.assertIn("    encode zstd gzip\n    file_server\n", route)
+                self.assertIn(
+                    'header @hashed_assets Cache-Control "public, max-age=31536000, immutable"',
+                    route,
+                )
+                matcher = re.search(
+                    r"@hashed_assets \{\n\s+path_regexp (\S+)\n\s+file\n\s+\}", route
+                )
+                self.assertIsNotNone(matcher)
+                pattern = re.compile(matcher.group(1))
+                for asset in hashed:
+                    self.assertRegex(f"/assets/{asset}", pattern)
+                for asset in unhashed:
+                    self.assertIsNone(pattern.search(f"/assets/{asset}"), asset)
+                self.assertIn('header @document Cache-Control "no-store, no-cache, must-revalidate"', route)
+                self.assertIn('header @service_worker Cache-Control "no-cache"', route)
+        for caddy in (GATEWAY_CADDY, GATEWAY_HTTP_CADDY):
+            self.assertNotIn("encode", caddy)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -63,6 +63,16 @@
     @service_worker path /sw.js
     header @service_worker Cache-Control "no-cache"
 
+    # Viteのcontent hash付きbundleは同名で内容が変わらない。public/assets由来の
+    # hashなしファイルは既定の再検証のまま、存在しないchunkはキャッシュしない。
+    @hashed_assets {
+      path_regexp ^/assets/.+-[A-Za-z0-9_-]{8}\.(js|css|woff2?)$
+      file
+    }
+    header @hashed_assets Cache-Control "public, max-age=31536000, immutable"
+
+    # 静的ファイルだけ圧縮する。APIは自身のエンコードを維持する。
+    encode zstd gzip
     file_server
   }
 
