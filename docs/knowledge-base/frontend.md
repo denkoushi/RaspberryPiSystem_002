@@ -4361,13 +4361,13 @@ const toUserFacingError = useCallback((error: Error): { title: string; descripti
 - `infrastructure/ansible/roles/kiosk/tasks/ibus-process-owner.yml`: IBus起動責務の単一オーナー制御
 - `infrastructure/ansible/templates/ibus-process-owner.sh.j2`: 競合プロセス収束スクリプト
 - `infrastructure/ansible/roles/kiosk/tasks/ibus-settings.yml`: IBus設定適用の分離モジュール
-- `docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md`: 調査・診断結果記録
+- `docs/archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md`: 調査・診断結果記録
 - `docs/runbooks/kiosk-ime-diagnosis.md`: 診断 Runbook
 - `docs/plans/kiosk-ime-remark-field-execplan.md`: 実行計画
 
 **関連KB**:
 - [KB-276](./frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善): IBus 設定改善の過去履歴
-- [KB-investigation-kiosk-schedule-regression-20260301](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査ドキュメント
+- [KB-investigation-kiosk-schedule-regression-20260301](../archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査ドキュメント
 
 **解決状況**: ✅ **解決済み**（2026-03-02: 実機診断で競合起動を確認。inventory に IBus 単一オーナー化を追加しデプロイ。研削メインで日本語入力がスムーズにできることを実機確認）
 

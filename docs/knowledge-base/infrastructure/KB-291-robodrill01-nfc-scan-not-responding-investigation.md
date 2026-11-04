@@ -174,4 +174,4 @@ sudo scripts/client/setup-nfc-agent.sh
 - [hardware-nfc.md](./hardware-nfc.md)（本KBの要約）
 - [NFCリーダーのトラブルシューティング](../../troubleshooting/nfc-reader-issues.md)
 - [client-initial-setup.md](../../guides/client-initial-setup.md)
-- [auto-startup-status.md](../../guides/auto-startup-status.md)（Pi4 nfc-agent: 開発中は手動起動と記載）
+- [auto-startup-status.md](../../archive/guides/auto-startup-status.md)（Pi4 nfc-agent: 開発中は手動起動と記載）

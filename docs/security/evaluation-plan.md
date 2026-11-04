@@ -219,7 +219,7 @@ trivy image \
 
 **主要証跡の再確認**:
 - ポート露出削減・不要サービス停止・監視ノイズ低減: [port-security-verification-results.md](./port-security-verification-results.md)
-- ポートベースライン: [ports-baseline-20260118.md](../knowledge-base/infrastructure/ports-baseline-20260118.md)
+- ポートベースライン: [ports-baseline-20260118.md](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md)
 
 **評価項目**:
 - ポート公開状況（意図した露出のみか）
@@ -333,7 +333,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 **既存証跡**:
 - [port-security-verification-results.md](./port-security-verification-results.md): 期待ポート（22/80/443/5900）のみ外部露出、Docker内部ポート（5432/8080）は非公開
-- [ports-baseline-20260118.md](../knowledge-base/infrastructure/ports-baseline-20260118.md): ポートベースライン証跡
+- [ports-baseline-20260118.md](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md): ポートベースライン証跡
 
 #### Docker Compose設計
 
@@ -1046,7 +1046,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - [Phase 9/10 詳細仕様書](./phase9-10-specifications.md)
 - [インシデント対応手順](./incident-response.md)
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)
-- [ポートベースライン（2026-01-18）](../knowledge-base/infrastructure/ports-baseline-20260118.md)
+- [ポートベースライン（2026-01-18）](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md)
 
 ## 参照フレームワーク
 

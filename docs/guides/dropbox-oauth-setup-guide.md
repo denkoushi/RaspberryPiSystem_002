@@ -296,4 +296,4 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 
 - [Dropbox OAuth Guide](https://developers.dropbox.com/oauth-guide)
 - [Using OAuth 2.0 with offline access](https://dropbox.tech/developers/using-oauth-2.0-with-offline-access)
-- [Dropbox OAuth 2.0ポリシー適合性ガイド](./dropbox-oauth-policy-compliance.md)
+- [Dropbox OAuth 2.0ポリシー適合性ガイド](../archive/guides/dropbox-oauth-policy-compliance.md)

@@ -1138,7 +1138,7 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
 
 **関連KB**: [KB-107](../knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善)
 
-**詳細**: [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md)
+**詳細**: [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md)
 
 ### 容量不足時の自動回復（2026-03追加）
 
@@ -1156,6 +1156,6 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)
 - [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
 - [Dropbox OAuth設定ガイド](../guides/dropbox-oauth-setup-guide.md)
-- [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md)
-- [バックアップスクリプトとの整合性確認結果](../guides/backup-script-integration-verification.md)
-- [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md)
+- [バックアップリストア機能の実機検証結果](../archive/guides/backup-restore-verification-results.md)
+- [バックアップスクリプトとの整合性確認結果](../archive/guides/backup-script-integration-verification.md)
+- [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md)

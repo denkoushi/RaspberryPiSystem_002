@@ -226,7 +226,7 @@ update-frequency: medium
 - （データベースバックアップのパス問題解決のコミットハッシュを追加）
 
 **関連ドキュメント**:
-- [バックアップリストア機能の実機検証結果](../../guides/backup-restore-verification-results.md)
+- [バックアップリストア機能の実機検証結果](../../archive/guides/backup-restore-verification-results.md)
 
 ---
 
@@ -598,8 +598,8 @@ update-frequency: medium
 - ✅ 社員コードを4桁形式に変更後、バックアップとリストアが正常に動作することを確認
 
 **関連ドキュメント**:
-- [バックアップリストア機能の実機検証結果](../../guides/backup-restore-verification-results.md)
-- [バックアップリストア機能の実機検証実行手順](../../guides/backup-restore-verification-execution.md)
+- [バックアップリストア機能の実機検証結果](../../archive/guides/backup-restore-verification-results.md)
+- [バックアップリストア機能の実機検証実行手順](../../archive/guides/backup-restore-verification-execution.md)
 
 ---
 
@@ -647,7 +647,7 @@ update-frequency: medium
 - `apps/api/src/routes/backup.ts`（`/api/backup/internal`エンドポイント）
 
 **関連ドキュメント**:
-- [バックアップスクリプトとの整合性確認結果](../../guides/backup-script-integration-verification.md)
+- [バックアップスクリプトとの整合性確認結果](../../archive/guides/backup-script-integration-verification.md)
 - [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
@@ -686,7 +686,7 @@ update-frequency: medium
 - `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`（エラーハンドリング改善）
 
 **関連ドキュメント**:
-- [バックアップエラーハンドリング改善](../../guides/backup-error-handling-improvements.md)
+- [バックアップエラーハンドリング改善](../../archive/guides/backup-error-handling-improvements.md)
 - [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
@@ -734,7 +734,7 @@ update-frequency: medium
 
 **関連ドキュメント**:
 - [バックアップAPI](../../api/backup.md)（容量不足時の自動回復セクション）
-- [バックアップ実機検証ガイド](../../guides/backup-verification.md)
+- [バックアップ実機検証ガイド](../../archive/guides/backup-verification.md)
 
 **実機検証時のトラブルシューティング**（2026-03-05）:
 - **APIヘルスチェック**: Pi5ホストからは`http://localhost:8080`では接続できない。Caddyが443で待ち受けており、`curl -sk https://localhost/api/system/health` を使用する。
@@ -1742,8 +1742,8 @@ private buildPath(info: BackupTargetInfo, options?: BackupOptions): string {
 - KB-146: Gmail OAuthがDropboxトークンを上書きし、Dropboxバックアップが失敗する（トークン分離で恒久対策）
 
 **関連ドキュメント**:
-- [Dropboxバックアップ機能の状況調査レポート](../../guides/backup-dropbox-status-investigation.md)
-- [Dropboxバックアップ機能の状況調査結果](../../guides/backup-dropbox-status-investigation-results.md)
+- [Dropboxバックアップ機能の状況調査レポート](../../archive/guides/backup-dropbox-status-investigation.md)
+- [Dropboxバックアップ機能の状況調査結果](../../archive/guides/backup-dropbox-status-investigation-results.md)
 
 **再発防止策**:
 - ユーザー入力（label）をパスに埋め込む場合は、必ずサニタイズ処理を実施する

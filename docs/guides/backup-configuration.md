@@ -164,7 +164,7 @@ Dropboxにバックアップを保存する場合：
 - `options.accessToken`: Dropboxアクセストークン（必須）
 
 **Dropboxアクセストークンの取得方法**:
-詳細は [Dropbox連携セットアップガイド](./dropbox-setup-guide.md) を参照してください。
+詳細は [Dropbox連携セットアップガイド](../archive/guides/dropbox-setup-guide.md) を参照してください。
 
 ## バックアップ対象の設定
 
@@ -540,7 +540,7 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
 - レート制限エラーや一時的なネットワークエラーが発生した場合でも、自動的にリトライすることでバックアップ・リストアが成功する可能性が向上
 - ログ出力の改善により、リトライ時に詳細なログを出力することで、問題の特定が容易に
 
-詳細は [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください。
+詳細は [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md) を参照してください。
 
 ### 実際のファイルパス
 
@@ -794,14 +794,14 @@ curl https://<pi5_host>/api/backup \
 - 管理コンソールと`backup.sh`スクリプトの機能が整合性を保つ
 - 設定変更履歴は`/admin/backup/config-history`で確認できる（秘匿情報はredact済み）
 
-詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md) を参照してください。
+詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](../archive/guides/backup-target-management-verification.md) を参照してください。
 
 ## 関連ドキュメント
 
 - [バックアップ・リストア手順](./backup-and-restore.md): 従来のスクリプトベースのバックアップ手順
-- [Dropbox連携セットアップガイド](./dropbox-setup-guide.md): Dropboxアカウントとの連携手順
+- [Dropbox連携セットアップガイド](../archive/guides/dropbox-setup-guide.md): Dropboxアカウントとの連携手順
 - [モニタリングガイド](./monitoring.md): バックアップの監視方法
 - [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md): 管理コンソールからのバックアップ対象管理機能の実装計画
-- [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md): 実機検証手順
-- [バックアップスクリプトとの整合性確認結果](./backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
-- [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md): エラーハンドリング改善の詳細
+- [バックアップ対象管理UI実機検証手順](../archive/guides/backup-target-management-verification.md): 実機検証手順
+- [バックアップスクリプトとの整合性確認結果](../archive/guides/backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
+- [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md): エラーハンドリング改善の詳細

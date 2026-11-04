@@ -113,7 +113,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
   - ✅ TOOLS / PDF / SPLIT 全モードでカードレイアウト、PDFスライドの秒数表示、CPU/温度メトリクスを描画  
   - ⚠️ Pi3実機へのデプロイ＆レンダリング結果確認は未実施（次タスクで `/var/cache/signage/current.jpg` を取得して検証）
 - [ ] Pi4/Pi3の回帰試験（NFC持出・返却、写真撮影、サイネージPDF／TOOLS表示）と結果記録
-- [ ] 実機検証手順を `docs/guides/signage-test-plan.md` と新規キオスク検証ガイドに反映し、Knowledge Baseへ Lessons Learned を追記
+- [ ] 実機検証手順を `docs/archive/guides/signage-test-plan.md` と新規キオスク検証ガイドに反映し、Knowledge Baseへ Lessons Learned を追記
 - [x] (2025-12-05) SignageServiceのスケジュール判定を調査し、管理コンソールでSPLITを指定しても `/api/signage/content` が `contentType: "TOOLS"` のまま後退している原因を特定・修正  
   - ✅ 営業時間外（21:00以降）はどのスケジュールにも一致せず、デフォルトTOOLSへフォールバックしていた  
   - ✅ 対策として「時間帯から外れた場合でも、優先度の高いSPLITスケジュールへフォールバックする」ロジックを追加し、常に左右2ペインを維持
@@ -522,7 +522,7 @@ Raspberry Pi 5サーバーの運用環境において、以下のセキュリテ
    - `signage-lite.service` ログと `alerts/` を確認し、エラーや再起動ループが無いことを確認
 
 5. **ドキュメント・ナレッジ更新**
-   - `docs/guides/signage-test-plan.md` に新しい検証ケース／期待結果／証跡リンクを追加
+   - `docs/archive/guides/signage-test-plan.md` に新しい検証ケース／期待結果／証跡リンクを追加
    - Pi4向けのキオスク検証ガイド（新規ドキュメント）を作成し、NFC・カメラ・ネットワークチェックリストを整備
    - `docs/knowledge-base` へ今回の回帰対応とLessons Learnedを追記
 

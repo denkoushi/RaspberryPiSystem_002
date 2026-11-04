@@ -102,7 +102,7 @@ completed Pi5 Blue/Green monitoring and cleanup. StoneBase01 paused as the
 canary, proceeded only after explicit operator approval, and all remaining four
 Pi4 kiosks plus `raspberrypi3` signage completed successfully with no terminal
 left in maintenance. The incident and recovery evidence are recorded in
-[KB-400](../../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
+[KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
 
 `--auto-minimize` was not enabled for this release. Its production shadow
 evaluation and any default-on decision therefore remain open.

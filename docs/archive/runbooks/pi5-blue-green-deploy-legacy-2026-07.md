@@ -3,7 +3,7 @@ title: Pi5 single-host Blue/Green deployment runbook
 status: accepted
 scope: production Pi5 API, Web, and fixed Caddy gateway
 date: 2026-07-12
-source_of_truth: docs/runbooks/pi5-blue-green-deploy.md
+source_of_truth: docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md
 related_code: [scripts/deploy/pi5-blue-green.sh, scripts/deploy/pi5-phase3-legacy-guard.sh, infrastructure/docker/docker-compose.phase3.yml, infrastructure/docker/Caddyfile.gateway.template, infrastructure/ansible/templates/pi5-blue-green-reconcile.service.j2]
 related_docs: [../plans/pi5-blue-green-phase3.md, ../runbooks/pi5-minimal-downtime-deploy.md, ../guides/deployment.md]
 validation: shell safety lifecycle, Compose rendering, Caddy route checks, API scheduler fail-closed tests, and 2026-07-12 production candidate build/prepare/switch/five-minute monitor/cleanup acceptance
@@ -112,7 +112,7 @@ image, and scheduler checks. Any other cleanup error, or exhaustion of that boun
 fails closed and does not advance terminals. Do not work around a live coordinator
 by issuing a manual mutating command; after it has stopped, inspect `status` and
 follow the recovery path below. The incident and prevention record is
-[KB-400](../../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
+[KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
 
 If that coordinator has stopped after an exhausted retry, the next **Pi5-required
 standard rolling release** may recover only an exact expired two-slot handoff:

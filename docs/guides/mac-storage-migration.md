@@ -320,7 +320,7 @@ rclone sync /Volumes/SSD01/MacOffload/Cursor gdrive:Backups/MacStorage/Cursor --
 
 ## Cursor `state.vscdb` の破損・肥大化（2026-06-06 追記）
 
-外部SSDへ Cursor を逃がした運用中でも、**`User/globalStorage/state.vscdb`** が破損・肥大化すると Cursor が極端に重くなる。本リポジトリ開発端末で **2026-06-06 に復旧実績**あり。正本は [KB-388](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)。
+外部SSDへ Cursor を逃がした運用中でも、**`User/globalStorage/state.vscdb`** が破損・肥大化すると Cursor が極端に重くなる。本リポジトリ開発端末で **2026-06-06 に復旧実績**あり。正本は [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)。
 
 ### 症状の目安
 
@@ -350,7 +350,7 @@ du -sh "$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
 
 - 数日〜数週間、`state.vscdb` のサイズと `SQLITE_CORRUPT` を確認
 - 安定後に退避フォルダ（例: 76GB）を削除して容量回収
-- 再発時は [KB-388 §再発時の検討肢](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#prevention--再発監視)（状態DBのみ内蔵SSD・インデックス除外・[KB-212](../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除)）を検討
+- 再発時は [KB-388 §再発時の検討肢](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#prevention--再発監視)（状態DBのみ内蔵SSD・インデックス除外・[KB-212](../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除)）を検討
 
 **関連**: [KB-212](../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除)（チャットログの選択削除）· [development §Cursor復旧後](./development.md#cursor-状態db復旧後の-agent-作業2026-06-06)
 
@@ -376,7 +376,7 @@ du -sh "$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
 
 ### Cursorが極端に重い / `SQLITE_CORRUPT` が出る
 
-→ 上記 **[Cursor `state.vscdb` の破損・肥大化](#cursor-statevscdb-の破損肥大化2026-06-06-追記)** と [KB-388](../knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) を参照。プロジェクト本体ではなく Cursor 内部 DB の問題であることが多い。
+→ 上記 **[Cursor `state.vscdb` の破損・肥大化](#cursor-statevscdb-の破損肥大化2026-06-06-追記)** と [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) を参照。プロジェクト本体ではなく Cursor 内部 DB の問題であることが多い。
 
 ### Cursorが起動しない
 

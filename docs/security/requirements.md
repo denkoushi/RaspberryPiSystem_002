@@ -292,7 +292,7 @@
 - [セキュリティ強化 ExecPlan](../plans/security-hardening-execplan.md) - 実装計画の詳細
 - [Phase 9/10 詳細仕様書](./phase9-10-specifications.md) - Phase 9/10の詳細仕様（設定方法・動作仕様・API仕様・テスト方法）
 - [セキュリティ実装の妥当性評価](./implementation-assessment.md) - 実装評価と残タスク
-- [セキュリティ強化テスト計画](../guides/security-test-plan.md) - テスト計画の詳細
+- [セキュリティ強化テスト計画](../archive/guides/security-test-plan.md) - テスト計画の詳細
 - [ポートセキュリティ監査レポート](./port-security-audit.md) - **ポート公開状況の監査と修正内容**
 - [ポートセキュリティ修正後の動作確認手順](./port-security-verification.md) - **ポートマッピング削除後の動作確認手順**
 - [ポートセキュリティ修正後の実機検証結果](./port-security-verification-results.md) - **実機検証結果と評価**

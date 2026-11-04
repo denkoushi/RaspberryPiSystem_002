@@ -430,7 +430,7 @@ sudo systemctl restart signage-lite.service
 
 **概要（仕様）**:
 - **`layoutConfig.layout === 'SPLIT'`** かつペイン **`kind: 'loans'`** のとき、`SignageRenderer` のツール／貸出カードグリッドに **`splitCompact24`** を適用する（旧来の **`contentType: 'SPLIT'`** だけの経路とは別。表示確認は **`GET /api/signage/content`** の `layoutConfig` を正とする）。
-- **グリッド**: 最大 **4 列 × 6 行（24 件）**、25 件目以降はオーバーフロー集計。カード高さ（`COMPACT24_CARD_HEIGHT_PX`）は **2026-04-07 以降 164**（Playwright HTML のフッタクリップ対策。経緯・デプロイ実績は [KB-333](../KB-333-signage-compact24-footer-kiosk-cancel-readability.md)）。外枠寸法はコード上の `cardHeightPx` に追随。
+- **グリッド**: 最大 **4 列 × 6 行（24 件）**、25 件目以降はオーバーフロー集計。カード高さ（`COMPACT24_CARD_HEIGHT_PX`）は **2026-04-07 以降 164**（Playwright HTML のフッタクリップ対策。経緯・デプロイ実績は [KB-333](../../archive/knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md)）。外枠寸法はコード上の `cardHeightPx` に追随。
 - **テキスト**: 日付 **`MM/DD・HH:mm`**（1 行）。拠点／主要表示名は **最大 2 行**（はみ出しは省略・API 側の論理分割は `loan-card-text.ts` 等）。敬称は付けない。
 - **モジュール**: 契約定数は **`apps/api/src/services/signage/loan-card/loan-card-contracts.ts`**（列・行・カード高・行数上限など）。幾何・テキストは同ディレクトリの純関数＋ `signage.renderer.ts` の `SPLIT_COMPACT24_LOAN_GRID_BASE` で **DRY**。
 
@@ -766,7 +766,7 @@ sudo systemctl restart signage-lite.service
 - `apps/api/src/services/signage/signage.renderer.ts`
 - `apps/web/src/pages/signage/SignageDisplayPage.tsx`
 - `docs/plans/security-hardening-execplan.md`
-- `docs/guides/signage-test-plan.md`
+- `docs/archive/guides/signage-test-plan.md`
 - `docs/INDEX.md`（最新アップデート欄）
 
 ---
@@ -1224,7 +1224,7 @@ const textX = x + textAreaX;
 - `apps/api/src/services/signage/signage.service.ts`
 - `apps/api/src/services/signage/signage.renderer.ts`
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
-- `docs/guides/signage-layout-config-verification-results.md`
+- `docs/archive/guides/signage-layout-config-verification-results.md`
 - `apps/api/src/services/signage/signage-layout.types.ts`（型定義）
 - `apps/api/src/services/signage/signage.service.ts`（レガシー変換ロジック）
 - `apps/api/src/services/signage/signage.renderer.ts`（疎結合化されたレンダラー）

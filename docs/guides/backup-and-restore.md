@@ -406,7 +406,7 @@ PDFの扱い、実機検証結果、Dropbox容量の復旧履歴は [KB: バッ�
 - `backup.sh`スクリプトは設定ファイルの`targets`配列を参照してバックアップを実行する
 - 管理コンソールと`backup.sh`スクリプトの機能が整合性を保つ
 
-詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md) を参照してください。
+詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](../archive/guides/backup-target-management-verification.md) を参照してください。
 
 ## バックアップ手順
 
@@ -661,13 +661,13 @@ echo "画像バックアップのリストア完了"
 - リストア時には既存の写真ディレクトリとサムネイルディレクトリがバックアップされ、新しいデータで上書きされます
 - API経由のリストアでは、既存ディレクトリの自動バックアップが実行されます
 
-**実機検証手順**: Dropbox経由のリストア機能の実機検証手順は [バックアップリストア機能の実機検証手順](./backup-restore-verification.md) を参照してください。
+**実機検証手順**: Dropbox経由のリストア機能の実機検証手順は [バックアップリストア機能の実機検証手順](../archive/guides/backup-restore-verification.md) を参照してください。
 
 **エラーハンドリング**:
 - Dropbox APIのレート制限エラー（429）時は自動的にリトライされます（最大5回、指数バックオフ）
 - ネットワークエラー（タイムアウト、接続エラーなど）時も自動的にリトライされます
 - **証明書ピニング検証失敗（500エラー）**: Dropboxが証明書を更新した場合、証明書ピニング検証が失敗しバックアップが500エラーになることがあります。この場合は、`apps/api/scripts/get-dropbox-cert-fingerprint.ts`で新しい証明書フィンガープリントを取得し、`apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`に追加してください。詳細は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) を参照してください
-- 詳細は [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください
+- 詳細は [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md) を参照してください
 
 ### 5. Dockerボリュームのリストア
 
@@ -772,7 +772,7 @@ gunzip -c /opt/backups/db_backup_*.sql.gz | head -20
 - **バックアップの暗号化**: 機密情報を含むバックアップは暗号化することを推奨します
 - **リストア前の確認**: リストア前に現在のデータベースのバックアップを取得してください
 - **テストリストア**: 定期的にテストリストアを実行し、バックアップが正しく動作することを確認してください
-- **エラーハンドリング**: Dropbox APIのレート制限エラーやネットワークエラー時は自動的にリトライされます。証明書ピニング検証失敗（500エラー）の場合は、証明書フィンガープリントの更新が必要です。詳細は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) と [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください
+- **エラーハンドリング**: Dropbox APIのレート制限エラーやネットワークエラー時は自動的にリトライされます。証明書ピニング検証失敗（500エラー）の場合は、証明書フィンガープリントの更新が必要です。詳細は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) と [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md) を参照してください
 
 ---
 
@@ -780,8 +780,8 @@ gunzip -c /opt/backups/db_backup_*.sql.gz | head -20
 
 - [バックアップ設定ガイド](./backup-configuration.md): バックアップ設定ファイルの詳細
 - [バックアップAPI仕様](../api/backup.md): バックアップAPIの詳細仕様
-- [バックアップリストア機能の実機検証結果](./backup-restore-verification-results.md): 実機検証結果
-- [バックアップスクリプトとの整合性確認結果](./backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
-- [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md): エラーハンドリング改善の詳細
+- [バックアップリストア機能の実機検証結果](../archive/guides/backup-restore-verification-results.md): 実機検証結果
+- [バックアップスクリプトとの整合性確認結果](../archive/guides/backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
+- [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md): エラーハンドリング改善の詳細
 - [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md): 管理コンソールからのバックアップ対象管理機能の実装計画
 - [業務Pi5 Google Drive DR Runbook](../runbooks/google-drive-disaster-recovery.md): Google Drive暗号化スナップショット、隔離復元、全損復旧の正本

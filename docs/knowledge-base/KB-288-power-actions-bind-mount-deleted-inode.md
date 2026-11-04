@@ -2,7 +2,7 @@
 
 **作成日**: 2026-03-01  
 **状態**: ✅ 根本原因特定済み・恒久対策実装済み（2026-03-01）  
-**関連**: [KB-investigation-kiosk-ime-and-power-regression.md](./KB-investigation-kiosk-ime-and-power-regression.md)
+**関連**: [KB-investigation-kiosk-ime-and-power-regression.md](../archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md)
 
 ---
 

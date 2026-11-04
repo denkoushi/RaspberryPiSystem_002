@@ -439,7 +439,7 @@ update-frequency: medium
   - `sudo ufw status verbose`
 - Docker公開の有無を確認（`db`/`api`がホストへpublishされていないこと）:
   - `docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps`
-- ベースライン（証跡）: `docs/knowledge-base/infrastructure/ports-baseline-20260118.md`
+- ベースライン（証跡）: `docs/archive/knowledge-base/infrastructure/ports-baseline-20260118.md`
 
 **根本要因**:
 1. **`security-monitor.sh` が「ポート番号だけ」で判定**していたため、
@@ -500,7 +500,7 @@ update-frequency: medium
 - `infrastructure/ansible/playbooks/harden-server-ports.yml`
 - `docs/security/port-security-audit.md`
 - `docs/security/port-security-verification-results.md`
-- `docs/knowledge-base/infrastructure/ports-baseline-20260118.md`
+- `docs/archive/knowledge-base/infrastructure/ports-baseline-20260118.md`
 - `docs/runbooks/ports-unexpected-and-port-exposure.md`
 
 ---

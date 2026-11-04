@@ -290,7 +290,7 @@
 
 ### 最新アップデート（2026-06-06 · Mac Cursor `state.vscdb` 破損復旧 · **ドキュメント記録**）
 
-- **Cursor 状態DB復旧（開発端末）**: `state.vscdb` 約 42GB + backup 35GB · `SQLITE_CORRUPT` 大量 · **退避 76GB 後に新 DB 正常化**（integrity_check ok）· **プロジェクト/Git/WIP は無傷** · チャット/Agent 履歴は初期化。**外部SSD運用は継続**しサイズ監視。**記録**: [KB-388](./knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./guides/mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) · [development §Agent復旧後](./guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06) · [`EXEC_PLAN` §Cursor復旧](../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06) · [AGENTS.md §復旧後](../AGENTS.md#cursor-状態db復旧後2026-06-06)
+- **Cursor 状態DB復旧（開発端末）**: `state.vscdb` 約 42GB + backup 35GB · `SQLITE_CORRUPT` 大量 · **退避 76GB 後に新 DB 正常化**（integrity_check ok）· **プロジェクト/Git/WIP は無傷** · チャット/Agent 履歴は初期化。**外部SSD運用は継続**しサイズ監視。**記録**: [KB-388](./archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./guides/mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) · [development §Agent復旧後](./guides/development.md#cursor-状態db復旧後の-agent-作業2026-06-06) · [`EXEC_PLAN` §Cursor復旧](../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06) · [AGENTS.md §復旧後](../AGENTS.md#cursor-状態db復旧後2026-06-06)
 
 ### 最新アップデート（2026-06-06 · 私用 Pi5 Hermes `/daily` D6-pre · **実機検証完了**）
 
@@ -350,23 +350,23 @@
 
 ### 最新アップデート（2026-05-29 · DGX 業務モデル意図の Pi5 伝播 · **本番反映済**）
 
-- **業務復帰で選んだ modelProfileId を職場 Pi5 業務機能へ共有**: `BusinessProfileIntentStore` + `INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID`。photo_label / document_summary / admin_console_chat / stackchan_chat が同一 profile 意図を参照。`INFERENCE_RUNTIME_START_PROFILE_ENABLED` は既定 `false`（shadow 維持）。**ブランチ**: **`feat/dgx-business-profile-propagation`** · **`fd16b711`** / **`1edebd70`** · CI **`26618352572` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260529-141701-10018`**（**`failed=0`** · 約 **930s**）· DGX/Pi4/Pi3 **未実施** · Phase12 **43/0/0**（約 **30s**）· api **`business-profile-intent*.js`** · env **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`** · Web **「Pi5 業務意図」**。**記録**: [deployment §業務モデル意図](archive/deployments/2026-05.md#dgx-business-profile-intent-propagation-2026-05-29) · [KB-365 §本番](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-intent-propagation) · [Runbook §本番](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-29-business-profile-intent-propagation) · [KB-366 §2](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#2-写真ラベル要領書hermes-は別モデルか)
+- **業務復帰で選んだ modelProfileId を職場 Pi5 業務機能へ共有**: `BusinessProfileIntentStore` + `INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID`。photo_label / document_summary / admin_console_chat / stackchan_chat が同一 profile 意図を参照。`INFERENCE_RUNTIME_START_PROFILE_ENABLED` は既定 `false`（shadow 維持）。**ブランチ**: **`feat/dgx-business-profile-propagation`** · **`fd16b711`** / **`1edebd70`** · CI **`26618352572` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260529-141701-10018`**（**`failed=0`** · 約 **930s**）· DGX/Pi4/Pi3 **未実施** · Phase12 **43/0/0**（約 **30s**）· api **`business-profile-intent*.js`** · env **`INFERENCE_RUNTIME_START_PROFILE_ENABLED=false`** · Web **「Pi5 業務意図」**。**記録**: [deployment §業務モデル意図](archive/deployments/2026-05.md#dgx-business-profile-intent-propagation-2026-05-29) · [KB-365 §本番](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-business-profile-intent-propagation) · [Runbook §本番](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-29-business-profile-intent-propagation) · [KB-366 §2](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#2-写真ラベル要領書hermes-は別モデルか)
 
 ### 最新アップデート（2026-05-28 · DGX 業務復帰 Strict Ready profile 一致 · **本番反映済**）
 
-- **DGX 業務復帰 Strict Ready と model profile 一致**: 27B 選択なのに 35B が稼働したまま execute が success になる不具合を修正。**`/v1/models` に加え `activeProfileId` / `state.backend` 一致を Strict Ready 必須**。**ブランチ**: **`fix/dgx-strict-ready-profile-match`** · **`90ba94d9`** · CI **`26575185778` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260528-221349-13434`**（**`failed=0`** · 約 **932s**）· DGX/Pi4/Pi3 **未実施** · Phase12 **43/0/0**（約 **110s**）。**記録**: [deployment §Strict Ready profile](archive/deployments/2026-05.md#dgx-strict-ready-profile-match-2026-05-28) · [KB-365 §本番](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-strict-ready-profile-match) · [Runbook §本番](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-strict-ready-profile-match) · [KB-366 §KPI 不一致](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#dgx-strict-ready-model-profile-mismatch-2026-05-28)。
+- **DGX 業務復帰 Strict Ready と model profile 一致**: 27B 選択なのに 35B が稼働したまま execute が success になる不具合を修正。**`/v1/models` に加え `activeProfileId` / `state.backend` 一致を Strict Ready 必須**。**ブランチ**: **`fix/dgx-strict-ready-profile-match`** · **`90ba94d9`** · CI **`26575185778` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260528-221349-13434`**（**`failed=0`** · 約 **932s**）· DGX/Pi4/Pi3 **未実施** · Phase12 **43/0/0**（約 **110s**）。**記録**: [deployment §Strict Ready profile](archive/deployments/2026-05.md#dgx-strict-ready-profile-match-2026-05-28) · [KB-365 §本番](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-strict-ready-profile-match) · [Runbook §本番](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-strict-ready-profile-match) · [KB-366 §KPI 不一致](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#dgx-strict-ready-model-profile-mismatch-2026-05-28)。
 
 ### 最新アップデート（2026-05-28 · DGX activeProfileId null · Pi5 API 契約修正 · **本番反映済**）
 
-- **DGX activeProfileId null の Pi5 API 契約修正**: 業務復帰でモデル 2 件選べるのに **503 `DGX_MODEL_PROFILES_UNAVAILABLE`** となる不具合を修正。**`activeProfileId: null` でも allowlist 取得成功時は `overview.modelProfiles.status: ok`**。**ブランチ**: **`fix/dgx-active-profile-null-contract`** · **`f4ec13dc`** · CI **`26572037918` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260528-204344-14223`**（**`failed=0`** · 約 **903s**）· DGX/Pi4/Pi3 **未実施** · **検証**: Pi5 api **`status:ok` + assert 成功** · Phase12 **43/0/0**。**記録**: [deployment §activeProfileId null](archive/deployments/2026-05.md#dgx-active-profile-null-contract-2026-05-28) · [KB-365 §本番 activeProfileId null](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-active-profile-null-contract) · [Runbook §本番 activeProfileId null](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-activeprofileid-null-pi5-api)。
+- **DGX activeProfileId null の Pi5 API 契約修正**: 業務復帰でモデル 2 件選べるのに **503 `DGX_MODEL_PROFILES_UNAVAILABLE`** となる不具合を修正。**`activeProfileId: null` でも allowlist 取得成功時は `overview.modelProfiles.status: ok`**。**ブランチ**: **`fix/dgx-active-profile-null-contract`** · **`f4ec13dc`** · CI **`26572037918` success** · **本番**: **`raspberrypi5` のみ** Detach **`20260528-204344-14223`**（**`failed=0`** · 約 **903s**）· DGX/Pi4/Pi3 **未実施** · **検証**: Pi5 api **`status:ok` + assert 成功** · Phase12 **43/0/0**。**記録**: [deployment §activeProfileId null](archive/deployments/2026-05.md#dgx-active-profile-null-contract-2026-05-28) · [KB-365 §本番 activeProfileId null](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-active-profile-null-contract) · [Runbook §本番 activeProfileId null](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-activeprofileid-null-pi5-api)。
 
 ### 最新アップデート（2026-05-28 · DGX 27B model profile ストレージパス · **本番反映済**）
 
-- **DGX 27B `currentStorageLocation` 修正（UI でモデル 2 件選択）**: 業務復帰ドロップダウンが **1 件のみ**だった原因は 27B manifest の **`hub/` 欠落**（`status: unavailable`）。**DGX registry のみ `scp` 反映**·再起動不要。**ブランチ**: **`fix/dgx-model-profile-current-storage-path`**·**`ff5947c8`**·CI **`26569969639` success**·**本番**: **DGX Spark のみ**（Pi5/Pi4/Pi3 **未実施**）·**検証**: `GET /system/model-profiles` → **2 件とも `available`**。**記録**: [deployment §storage path](archive/deployments/2026-05.md#dgx-model-profile-storage-path-2026-05-28)·[KB-365 §本番 storage path](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[KB-366 §storage path](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)·[Runbook](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-27b-model-profile-storage-path)。
+- **DGX 27B `currentStorageLocation` 修正（UI でモデル 2 件選択）**: 業務復帰ドロップダウンが **1 件のみ**だった原因は 27B manifest の **`hub/` 欠落**（`status: unavailable`）。**DGX registry のみ `scp` 反映**·再起動不要。**ブランチ**: **`fix/dgx-model-profile-current-storage-path`**·**`ff5947c8`**·CI **`26569969639` success**·**本番**: **DGX Spark のみ**（Pi5/Pi4/Pi3 **未実施**）·**検証**: `GET /system/model-profiles` → **2 件とも `available`**。**記録**: [deployment §storage path](archive/deployments/2026-05.md#dgx-model-profile-storage-path-2026-05-28)·[KB-365 §本番 storage path](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-model-profile-storage-path)·[KB-366 §storage path](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-model-profile-storage-path)·[Runbook](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-27b-model-profile-storage-path)。
 
 ### 最新アップデート（2026-05-28 · DGX 業務復帰モデル選択 · **本番反映済**）
 
-- **DGX 業務復帰モデル選択**: 私用/実験→業務ガイドで `modelProfileId` を選択。DGX が allowlist と active state の正本（`/system/model-profiles` / `/system/model-profile`）、Pi5/Web は ID のみ。`planFingerprint` は ID 差分で変化。初期 profile は `business_qwen36_27b_nvfp4`（blue 推奨）と `business_qwen35_35b_gguf`（green）。**ブランチ**: **`feat/dgx-business-model-selection`**·**`91be7dcf`**·CI **`26566270315`**（`lint-build-unit` / `e2e-*` / `api-db-and-infra` **success** · `security-docker` **failure** — 本変更と無関係）·**本番**: **① `raspberrypi5` のみ** Detach **`20260528-184011-18178`**（**`failed=0`**·**`--follow` 約 1195s**）→ **② DGX Spark**（`scp` + PID 再起動·Ansible 対象外）·**Phase12 43/0/0**（約 **111s**）·DGX **`GET /system/model-profiles` → profiles 2**。**記録**: [deployment §2026-05-28](archive/deployments/2026-05.md#dgx-business-return-model-selection-2026-05-28)·[KB-365 §本番](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)·[KB-366](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-business-return-model-selection)·[Runbook](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-業務復帰モデル選択)·[`scripts/dgx-local-llm-system/README.md`](../scripts/dgx-local-llm-system/README.md)。
+- **DGX 業務復帰モデル選択**: 私用/実験→業務ガイドで `modelProfileId` を選択。DGX が allowlist と active state の正本（`/system/model-profiles` / `/system/model-profile`）、Pi5/Web は ID のみ。`planFingerprint` は ID 差分で変化。初期 profile は `business_qwen36_27b_nvfp4`（blue 推奨）と `business_qwen35_35b_gguf`（green）。**ブランチ**: **`feat/dgx-business-model-selection`**·**`91be7dcf`**·CI **`26566270315`**（`lint-build-unit` / `e2e-*` / `api-db-and-infra` **success** · `security-docker` **failure** — 本変更と無関係）·**本番**: **① `raspberrypi5` のみ** Detach **`20260528-184011-18178`**（**`failed=0`**·**`--follow` 約 1195s**）→ **② DGX Spark**（`scp` + PID 再起動·Ansible 対象外）·**Phase12 43/0/0**（約 **111s**）·DGX **`GET /system/model-profiles` → profiles 2**。**記録**: [deployment §2026-05-28](archive/deployments/2026-05.md#dgx-business-return-model-selection-2026-05-28)·[KB-365 §本番](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-28-dgx-business-return-model-selection)·[KB-366](./knowledge-base/KB-366-dgx-spark-operational-understanding.md#production-2026-05-28-dgx-business-return-model-selection)·[Runbook](./runbooks/dgx-system-prod-local-llm.md#本番反映2026-05-28-業務復帰モデル選択)·[`scripts/dgx-local-llm-system/README.md`](../scripts/dgx-local-llm-system/README.md)。
 
 ### 最新アップデート（2026-05-26 · キオスク完了判定の正常化 · **本番反映済**）
 
@@ -385,7 +385,7 @@
 
 ### 🆕 最新アップデート（2026-05-25 · DGXリソース `private_ok` 強制メモリ解放 · 本番反映済）
 
-- **DGXリソース `private_ok` 強化（Comfy 向けに業務 LLM を強制退避）·本番 Pi5→DGX 順次·実機 OK（自動）**: `private_ok` は **experiment-lab / agent-container 停止**に加え、**`system-prod-gateway` を `POST /stop-force`** で **blue keep-warm を上書き**。**通常 `/stop` と分離**。**ブランチ `feat/dgx-resource-strong-private-ok`**·代表 **`7fe1ca15`** / **`2d91d032`**·CI **`26386720859` success**·Detach Pi5 **`20260525-162034-25035`**（`failed=0`）·DGX **`control-server.py` + `gateway-server.py`（`/stop-force` 転送）**·`verify-phase12-real.sh` **43/0/0**（約 **68s**）。**知見**: **`38081/stop-force` は gateway 転送必須**（control-server のみでは 404）。**記録**: [deployment §2026-05-25](archive/deployments/2026-05.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·[KB-365 §本番](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-25-dgx-private-ok-stop-force)·[KB-366 運用理解](./knowledge-base/KB-366-dgx-spark-operational-understanding.md)·[Runbook](./runbooks/dgx-system-prod-local-llm.md)·[ADR-20260428](./decisions/ADR-20260428-dgx-active-backend-prod-default.md)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。
+- **DGXリソース `private_ok` 強化（Comfy 向けに業務 LLM を強制退避）·本番 Pi5→DGX 順次·実機 OK（自動）**: `private_ok` は **experiment-lab / agent-container 停止**に加え、**`system-prod-gateway` を `POST /stop-force`** で **blue keep-warm を上書き**。**通常 `/stop` と分離**。**ブランチ `feat/dgx-resource-strong-private-ok`**·代表 **`7fe1ca15`** / **`2d91d032`**·CI **`26386720859` success**·Detach Pi5 **`20260525-162034-25035`**（`failed=0`）·DGX **`control-server.py` + `gateway-server.py`（`/stop-force` 転送）**·`verify-phase12-real.sh` **43/0/0**（約 **68s**）。**知見**: **`38081/stop-force` は gateway 転送必須**（control-server のみでは 404）。**記録**: [deployment §2026-05-25](archive/deployments/2026-05.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·[KB-365 §本番](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-25-dgx-private-ok-stop-force)·[KB-366 運用理解](./knowledge-base/KB-366-dgx-spark-operational-understanding.md)·[Runbook](./runbooks/dgx-system-prod-local-llm.md)·[ADR-20260428](./decisions/ADR-20260428-dgx-active-backend-prod-default.md)·[`EXEC_PLAN.md`](../EXEC_PLAN.md)。
 
 ### 🆕 最新アップデート（2026-05-22 · 順位ボード・製番左縁全件無色）
 
@@ -465,13 +465,13 @@
 
 ### 🆕 最新アップデート（2026-05-10）
 
-- **DGX メインAI: Pi5 API 単一キュー・用途別停止抑止・実験優先時の gateway 自動停止除外（2026-05-10 本番済）**: 推論＋ `system-prod-gateway` 起停を **`enqueueMainLocalLlmRuntimeControl`** で直列化。業務/Agent用途は `release` でも `/stop` 抑止。**`SET_POLICY` 実験優先**の自動調停から **`system-prod-gateway` 停止を削除**（私用 Comfy のみ）。**本番**: ブランチ **`feature/dgx-single-queue-stop-policy`**（**`23bce3bf`**・**`4d658897`**）·**`raspberrypi5` のみ**·**Detach `20260510-114418-29512`**（`PLAY RECAP` **`ok=134` `changed=4` `failed=0`**）·**Phase12 `verify-phase12-real.sh` 43/0/0**（約 **130s**）。**記録**: [deployment §DGX 単一キュー](archive/deployments/2026-05.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)。**Runbook**: [dgx-system-prod-local-llm.md §管理コンソール](./runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)。**KB**: [KB-365 §2026-05-10 本番](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)·[§Pi5 メインAI（仕様項）](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#pi5-メインai-単一キュー用途別停止実験優先時の-gateway-除外2026-05)。**実装**: [`local-llm-runtime-command-queue.ts`](../apps/api/src/services/inference/runtime/local-llm-runtime-command-queue.ts)·[`local-llm-runtime-schedule.policy.ts`](../apps/api/src/services/inference/runtime/local-llm-runtime-schedule.policy.ts)·[`dgx-resource.policy-arbitrator.ts`](../apps/api/src/services/system/dgx-resource/dgx-resource.policy-arbitrator.ts)。
+- **DGX メインAI: Pi5 API 単一キュー・用途別停止抑止・実験優先時の gateway 自動停止除外（2026-05-10 本番済）**: 推論＋ `system-prod-gateway` 起停を **`enqueueMainLocalLlmRuntimeControl`** で直列化。業務/Agent用途は `release` でも `/stop` 抑止。**`SET_POLICY` 実験優先**の自動調停から **`system-prod-gateway` 停止を削除**（私用 Comfy のみ）。**本番**: ブランチ **`feature/dgx-single-queue-stop-policy`**（**`23bce3bf`**・**`4d658897`**）·**`raspberrypi5` のみ**·**Detach `20260510-114418-29512`**（`PLAY RECAP` **`ok=134` `changed=4` `failed=0`**）·**Phase12 `verify-phase12-real.sh` 43/0/0**（約 **130s**）。**記録**: [deployment §DGX 単一キュー](archive/deployments/2026-05.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)。**Runbook**: [dgx-system-prod-local-llm.md §管理コンソール](./runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)。**KB**: [KB-365 §2026-05-10 本番](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)·[§Pi5 メインAI（仕様項）](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#pi5-メインai-単一キュー用途別停止実験優先時の-gateway-除外2026-05)。**実装**: [`local-llm-runtime-command-queue.ts`](../apps/api/src/services/inference/runtime/local-llm-runtime-command-queue.ts)·[`local-llm-runtime-schedule.policy.ts`](../apps/api/src/services/inference/runtime/local-llm-runtime-schedule.policy.ts)·[`dgx-resource.policy-arbitrator.ts`](../apps/api/src/services/system/dgx-resource/dgx-resource.policy-arbitrator.ts)。
 
-- **DGX AgentContainer（Control Target `agent-container`・keep-warm・2026-05-10 本番済）**: Pi5 API に補助ランタイム **`agent-container`** を追加。**`agent_container_task`** は単一キューで **`business > agent`**、`release` でも **`/stop` 抑止**。ENV **`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_*`** / **`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL`**（未設定時は従来互換・start/stop は設定時のみ）。**本番**: **`raspberrypi5` のみ**·**Detach `20260510-125420-15123`**（`PLAY RECAP` **`ok=139` `changed=8` `failed=0`**）→ **DGX** `scp` **`gateway-server.py`**·**PID 終了後 `start-gateway-server.sh`**（先行 tip **`9fd37c0a`**・**`main` squash PR [#284](https://github.com/denkoushi/RaspberryPiSystem_002/pull/284) `14f105c1`**）。**Phase12**: **`verify-phase12-real.sh` 43/0/0**（約 **57s**）。**記録**: [deployment §AgentContainer](archive/deployments/2026-05.md#dgx-agent-container-control-target-2026-05-10)·[KB-365 §AgentContainer 本番](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-agent-container)·**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)·**gateway README**: [`README.md`](../scripts/dgx-local-llm-system/README.md)。
+- **DGX AgentContainer（Control Target `agent-container`・keep-warm・2026-05-10 本番済）**: Pi5 API に補助ランタイム **`agent-container`** を追加。**`agent_container_task`** は単一キューで **`business > agent`**、`release` でも **`/stop` 抑止**。ENV **`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_*`** / **`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL`**（未設定時は従来互換・start/stop は設定時のみ）。**本番**: **`raspberrypi5` のみ**·**Detach `20260510-125420-15123`**（`PLAY RECAP` **`ok=139` `changed=8` `failed=0`**）→ **DGX** `scp` **`gateway-server.py`**·**PID 終了後 `start-gateway-server.sh`**（先行 tip **`9fd37c0a`**・**`main` squash PR [#284](https://github.com/denkoushi/RaspberryPiSystem_002/pull/284) `14f105c1`**）。**Phase12**: **`verify-phase12-real.sh` 43/0/0**（約 **57s**）。**記録**: [deployment §AgentContainer](archive/deployments/2026-05.md#dgx-agent-container-control-target-2026-05-10)·[KB-365 §AgentContainer 本番](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-agent-container)·**Runbook**: [dgx-system-prod-local-llm.md](./runbooks/dgx-system-prod-local-llm.md)·**gateway README**: [`README.md`](../scripts/dgx-local-llm-system/README.md)。
 
-- **StackChan / Pi5 API 経由対話（`POST /api/system/stackchan/chat`・詳説既定・単一キュー `stackchan_chat`）**: DGX 直叩きではなく Pi5 API で **`ADMIN`/`MANAGER` JWT** 認可。**upstream / runtimeControl は admin と同一**（`LOCAL_LLM_*`）。**`/stop` 抑止**は admin と同系。**本番（2026-05-10）**: **`feat/stackchan-interactive-chat-api`**（tip **`81fe4d2a`**）·**`raspberrypi5` のみ**·**Detach `20260510-134157-20990`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）·**`verify-phase12-real.sh` 43/0/0**（約 **54s**）·**追加スモーク**: 未認証 POST が **`401`**。**記録**: [deployment §StackChan 本番](archive/deployments/2026-05.md#stackchan-production-2026-05-10)·[KB-365 §StackChan](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-stackchan-pi5-api-chat)·[dgx-system-prod-local-llm §管理コンソール](./runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)。**実装**: [`stackchan.ts`](../apps/api/src/routes/system/stackchan.ts)·[`stackchan-chat-request.ts`](../apps/api/src/services/system/stackchan-chat-request.ts)。
+- **StackChan / Pi5 API 経由対話（`POST /api/system/stackchan/chat`・詳説既定・単一キュー `stackchan_chat`）**: DGX 直叩きではなく Pi5 API で **`ADMIN`/`MANAGER` JWT** 認可。**upstream / runtimeControl は admin と同一**（`LOCAL_LLM_*`）。**`/stop` 抑止**は admin と同系。**本番（2026-05-10）**: **`feat/stackchan-interactive-chat-api`**（tip **`81fe4d2a`**）·**`raspberrypi5` のみ**·**Detach `20260510-134157-20990`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）·**`verify-phase12-real.sh` 43/0/0**（約 **54s**）·**追加スモーク**: 未認証 POST が **`401`**。**記録**: [deployment §StackChan 本番](archive/deployments/2026-05.md#stackchan-production-2026-05-10)·[KB-365 §StackChan](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-stackchan-pi5-api-chat)·[dgx-system-prod-local-llm §管理コンソール](./runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由)。**実装**: [`stackchan.ts`](../apps/api/src/routes/system/stackchan.ts)·[`stackchan-chat-request.ts`](../apps/api/src/services/system/stackchan-chat-request.ts)。
 
-- **StackChan 私用 Pi5 分離ワークフロー計画（会話反映・進捗管理）**: 業務用 Pi5（職場）と私用 Pi5（自宅）を分離し、**私用 Pi5 を自宅デバイス集約ポイント**にする方針を計画化。構成は **faster-whisper + Qwen3.6 on DGX Spark + VOICEVOX + Home Assistant + StackChan**。**2系統の正本**: stackchan-private-pi5-tailnet-workflow-plan.md §2系統（DGXSparkControlPlane `docs/private-history/plans/stackchan-private-pi5-tailnet-workflow-plan.md`）。**私用 bridge 実装**: `bridge_server.py`（DGXSparkControlPlane へ移動）・`stackchan_chat_core.py`（DGXSparkControlPlane へ移動）・`dgx_runtime_client.py`（DGXSparkControlPlane へ移動）·[KB-365 §私用境界](./knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10)。**標準デプロイ**: DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-stackchan-bridge-deploy.md`・`private-pi5-stackchan-bridge.yml`（DGXSparkControlPlane へ移動）・`deploy-private-pi5-stackchan-bridge.sh`（DGXSparkControlPlane へ移動）。**2026-05-10 late**: StackChan の旧 bridge IP `192.168.128.112` と private Pi5 DHCP `192.168.128.113` のズレを確認し、**compatibility alias を playbook 標準化**。フェーズ別チェックリストと Decision Log を含む。**計画全体**: DGXSparkControlPlane `docs/private-history/plans/stackchan-private-pi5-tailnet-workflow-plan.md`。
+- **StackChan 私用 Pi5 分離ワークフロー計画（会話反映・進捗管理）**: 業務用 Pi5（職場）と私用 Pi5（自宅）を分離し、**私用 Pi5 を自宅デバイス集約ポイント**にする方針を計画化。構成は **faster-whisper + Qwen3.6 on DGX Spark + VOICEVOX + Home Assistant + StackChan**。**2系統の正本**: stackchan-private-pi5-tailnet-workflow-plan.md §2系統（DGXSparkControlPlane `docs/private-history/plans/stackchan-private-pi5-tailnet-workflow-plan.md`）。**私用 bridge 実装**: `bridge_server.py`（DGXSparkControlPlane へ移動）・`stackchan_chat_core.py`（DGXSparkControlPlane へ移動）・`dgx_runtime_client.py`（DGXSparkControlPlane へ移動）·[KB-365 §私用境界](./archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#private-pi5-stackchan-bridge-boundary-2026-05-10)。**標準デプロイ**: DGXSparkControlPlane `docs/private-history/runbooks/private-pi5-stackchan-bridge-deploy.md`・`private-pi5-stackchan-bridge.yml`（DGXSparkControlPlane へ移動）・`deploy-private-pi5-stackchan-bridge.sh`（DGXSparkControlPlane へ移動）。**2026-05-10 late**: StackChan の旧 bridge IP `192.168.128.112` と private Pi5 DHCP `192.168.128.113` のズレを確認し、**compatibility alias を playbook 標準化**。フェーズ別チェックリストと Decision Log を含む。**計画全体**: DGXSparkControlPlane `docs/private-history/plans/stackchan-private-pi5-tailnet-workflow-plan.md`。
 
 - **StackChan 私用 Pi5 `utterance` 一括 API・ファーム overlay（2026-05-23・作業中断）**: ESP32 の STT/LLM 多段 HTTP を **`POST /api/stackchan/utterance`**（Pi5 で STT→LLM）に集約。**repo**: `stackchan_utterance_core.py`（DGXSparkControlPlane へ移動）・[`apply_chatgpt_private_bridge.py`](../scripts/stackchan-ai-stackchan-ex/apply_chatgpt_private_bridge.py)・[`apply_utterance_overlay.py`](../scripts/stackchan-ai-stackchan-ex/apply_utterance_overlay.py)・[`mac_usb_dev.sh`](../scripts/stackchan-ai-stackchan-ex/mac_usb_dev.sh)。**実機**: utterance ファーム書き込み後 **画面真っ黒・無音・USB 未認識**で E2E 未完了。**再開**: ハード復旧 → シリアル → Pi5 bridge → utterance スモーク。**KB**: KB-stackchan §2026-05-23（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-stackchan-community-firmware-supply-chain.md`）·text-only runbook §6.5（DGXSparkControlPlane `docs/private-history/runbooks/stackchan-community-text-only-e2e.md`）·計画 Decision Log（DGXSparkControlPlane `docs/private-history/plans/stackchan-private-pi5-tailnet-workflow-plan.md`）。
 
@@ -584,7 +584,7 @@
 
 - **FKOJUNST_Status 外部完了（2026-05-02履歴・現行は2026-05-08改訂）正本**: [KB-297 §外部完了](./knowledge-base/KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02) · [ADR-20260508](./decisions/ADR-20260508-fkojunst-status-sole-source.md) · [deployment](./guides/deployment.md) FKOJUNST_Status項。
 
-- **DGX `sparkHost` 既定フォールバック（admin `LOCAL_LLM_BASE_URL` `/healthz`）正本**: [KB-363](./knowledge-base/KB-363-dgx-resource-spark-status-fallback.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-02 `sparkHost`項。
+- **DGX `sparkHost` 既定フォールバック（admin `LOCAL_LLM_BASE_URL` `/healthz`）正本**: [KB-363](./archive/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md) · [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-02 `sparkHost`項。
 
 - **DGX リソース管理画面タイポ改善（`/admin/tools/dgx-resource`）履歴正本**: [DGX Runbook](./runbooks/dgx-system-prod-local-llm.md) · [deployment](./guides/deployment.md) 2026-05-02 管理UI可読性項。
 
@@ -756,7 +756,7 @@
 - **配膳スマホ V8 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) · [API](./api/mobile-placement.md)。
 - **配膳スマホ V7 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) · [API](./api/mobile-placement.md)。
 - **配膳スマホ V6 正本**: [mobile-placement runbook](./runbooks/mobile-placement-smartphone.md) · [KB-339](./knowledge-base/KB-339-mobile-placement-barcode-survey.md) · [API](./api/mobile-placement.md)。
-- **API OCR/VLM 境界整理 正本**: [KB-340](./knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) · [ADR-20260402](./decisions/ADR-20260402-inference-foundation-phase1.md) · [deployment](./guides/deployment.md)。
+- **API OCR/VLM 境界整理 正本**: [KB-340](./archive/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) · [ADR-20260402](./decisions/ADR-20260402-inference-foundation-phase1.md) · [deployment](./guides/deployment.md)。
 
 ### デザインプレビュー（静的 HTML）
 
@@ -865,12 +865,12 @@
 - **型落ち Android タブレット向け軽量サイネージ `/signage-lite`・JPEG ポーリング・`current-image` の `key` クエリと端末キー整合**: セットアップと URL 例は [signage-client-setup.md](./guides/signage-client-setup.md#android-signage-lite)（`clientKey` 登録・`targetClientKeys`）。
 - **サイネージ対象端末 管理UI 正本**: [ADR-20260407](./decisions/ADR-20260407-signage-target-client-keys.md) · [KB](./knowledge-base/infrastructure/signage.md) · [deployment](./guides/deployment.md) · [PR #89](https://github.com/denkoushi/RaspberryPiSystem_002/pull/89)。
 - **サイネージ端末別スケジュール 正本**: [ADR-20260407](./decisions/ADR-20260407-signage-target-client-keys.md) · [KB](./knowledge-base/infrastructure/signage.md) · [deployment](./guides/deployment.md)。
-- **サイネージ `splitCompact24` フッタ・取消視認性 正本**: [KB-333](./knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md) · [deployment](./guides/deployment.md)。
+- **サイネージ `splitCompact24` フッタ・取消視認性 正本**: [KB-333](./archive/knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md) · [deployment](./guides/deployment.md)。
 - **キオスク「集計」正本**: [KB-334](./knowledge-base/KB-334-kiosk-rigging-loan-analytics-deploy.md) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-04-06）
 
-- **キオスク持出一覧カード 面トークン 正本**: [KB-332](./knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md) · [deployment](./guides/deployment.md)。
+- **キオスク持出一覧カード 面トークン 正本**: [KB-332](./archive/knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md) · [deployment](./guides/deployment.md)。
 - **キオスク持出一覧 compact 表記 正本**: [KB-330](./knowledge-base/infrastructure/signage.md#kb-330-compact-kiosk-instrument-rigging-deploy) · [deployment](./guides/deployment.md)。
 
 ### 🆕 最新アップデート（2026-04-05）
@@ -965,7 +965,7 @@
 
 ### 🆕 最新アップデート（2026-03-25）
 
-- **工具貸出 active loan `clientId` 手動補正 API 正本**: [KB](./knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md#2026-03-25-追記-旧-active-loan-の-location-補正手段) · [deploy-status](./runbooks/deploy-status-recovery.md)。
+- **工具貸出 active loan `clientId` 手動補正 API 正本**: [KB](./archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md#2026-03-25-追記-旧-active-loan-の-location-補正手段) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 
 ### 🆕 最新アップデート（2026-03-24）
 
@@ -1079,7 +1079,7 @@
 
 ### 🆕 最新アップデート（2026-03-10）
 
-- **全端末共有優先順位（Mac対象ロケーション指定）正本**: [KB-297 §全端末共有優先順位](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全端末共有優先順位mac対象ロケーション指定デプロイ実機検証2026-03-10) · [Mac対象ロケーション移行](./runbooks/mac-target-location-migration.md) · [deploy-status](./runbooks/deploy-status-recovery.md)。
+- **全端末共有優先順位（Mac対象ロケーション指定）正本**: [KB-297 §全端末共有優先順位](./knowledge-base/KB-297-kiosk-due-management-workflow.md#全端末共有優先順位mac対象ロケーション指定デプロイ実機検証2026-03-10) · [Mac対象ロケーション移行](./archive/runbooks/mac-target-location-migration.md) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 - **生産スケジュール「全体順位」表示運用整合化 正本**: [KB-297 §全体順位 Phase 1](./knowledge-base/KB-297-kiosk-due-management-workflow.md#現場リーダー向け機能説明全体順位-phase-1)。
 - **納期管理 B第7段階（実績工数CSV連携 + 全体ランキング連携）正本**: [KB-297 §B第7段階](./knowledge-base/KB-297-kiosk-due-management-workflow.md#b第7段階実績工数csv連携--全体ランキング連携2026-03-10) · [actual-hours backfill](./runbooks/actual-hours-canonical-backfill.md) · [KB-301](./knowledge-base/api.md#kb-301-実績工数csv手動投入で-413-payload-too-large-になる) · [deploy-status](./runbooks/deploy-status-recovery.md)。
 
@@ -1124,13 +1124,13 @@
 
 - **RoboDrill01 NFC恒久対策 正本**: [KB-291](./knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) · [nfc-reader-issues](./troubleshooting/nfc-reader-issues.md)。
 
-- **Dropbox容量不足恒久対策 正本**: [KB-290](./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) · [backup-verification](./guides/backup-verification.md)。
+- **Dropbox容量不足恒久対策 正本**: [KB-290](./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行) · [backup-verification](./archive/guides/backup-verification.md)。
 
-- **同一ターゲット内削除限定（67c4de1）正本**: [backup-verification](./guides/backup-verification.md) · [KB-290](./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行)。
+- **同一ターゲット内削除限定（67c4de1）正本**: [backup-verification](./archive/guides/backup-verification.md) · [KB-290](./knowledge-base/infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行)。
 
 ### 🆕 最新アップデート（2026-03-02）
 
-- **研削メイン日本語入力スムーズ化 正本**: [KB-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) · [KB-investigation](./knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md)。
+- **研削メイン日本語入力スムーズ化 正本**: [KB-287](./knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) · [KB-investigation](./archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md)。
 
 - **Pi4 kensakuMain Firefox移行・Super+Shift+P 正本**: [KB-289](./knowledge-base/infrastructure/miscellaneous.md#kb-289-pi4-kensakumain-の-firefox-移行と-supershiftp-キーボードショートカット上辺メニューバー表示) · [kiosk-wifi-panel-shortcut](./runbooks/kiosk-wifi-panel-shortcut.md)。
 
@@ -1327,7 +1327,7 @@
 
 - **スケジュール自動実行バックアップ履歴 正本**: [KB-194](./knowledge-base/infrastructure/backup-restore.md#kb-194-スケジュール自動実行時にバックアップ履歴が記録されない問題) · [backup-and-restore](./guides/backup-and-restore.md)。
 
-- **Dropbox 409 パス不正 正本**: [KB-195](./knowledge-base/infrastructure/backup-restore.md#kb-195-dropbox-409-conflictエラーlabelサニタイズ未実施によるパス不正) · [investigation](./guides/backup-dropbox-status-investigation.md) · [results](./guides/backup-dropbox-status-investigation-results.md)。
+- **Dropbox 409 パス不正 正本**: [KB-195](./knowledge-base/infrastructure/backup-restore.md#kb-195-dropbox-409-conflictエラーlabelサニタイズ未実施によるパス不正) · [investigation](./archive/guides/backup-dropbox-status-investigation.md) · [results](./archive/guides/backup-dropbox-status-investigation-results.md)。
 
 - **管理コンソール サイネージプレビュー 正本**: [KB-192](./knowledge-base/frontend.md#kb-192-管理コンソールのサイネージプレビュー機能実装とjwt認証問題) · [modules/signage](./modules/signage/README.md)。
 
@@ -1383,7 +1383,7 @@
 - **Alerts Dispatcher Phase 1 正本**: [KB-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) · [local-alerts](./guides/local-alerts.md) · [alerts-platform-phase2](./plans/alerts-platform-phase2.md)。
 
 - **デプロイ安定化機能 正本**: [KB-172](./knowledge-base/infrastructure/ansible-deployment.md#kb-172-デプロイ安定化機能の実装プリフライトロックリソースガードリトライタイムアウト) · [deployment](archive/deployments/legacy-operator-guide-through-2026-07.md#デプロイ安定化機能2026-01-17実装) · [deploy-stability plan](./plans/deploy-stability-execplan.md)。
-- **Pi5 Blue/Greenデプロイ Phase 3（明示 opt-in・本番bootstrap待ち）**: [Runbook](./runbooks/pi5-blue-green-deploy.md) · [ExecPlan](./plans/pi5-blue-green-phase3.md)。
+- **Pi5 Blue/Greenデプロイ Phase 3（明示 opt-in・本番bootstrap待ち）**: [Runbook](./archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md) · [ExecPlan](./plans/pi5-blue-green-phase3.md)。
 - **最小停止デプロイ Milestone 1**: [端末別ローリング更新 ExecPlan](./plans/minimal-downtime-deployment-milestone1.md)。
 
 ### 🆕 最新アップデート（2026-01-16）
@@ -1422,11 +1422,11 @@
 
 - **Pi3サイネージ画像更新方式 正本**: [KB-152](./knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) · [signage-lite](./modules/signage/signage-lite.md)。
 
-- **CSVダッシュボード表示期間フィルタ検証 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./guides/csv-dashboard-verification.md)。
+- **CSVダッシュボード表示期間フィルタ検証 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./archive/guides/csv-dashboard-verification.md)。
 
-- **CSVダッシュボードCI修正・デプロイ 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./guides/csv-dashboard-verification.md)。
+- **CSVダッシュボードCI修正・デプロイ 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./archive/guides/csv-dashboard-verification.md)。
 
-- **CSVダッシュボード実機検証・修正 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./guides/csv-dashboard-verification.md)。
+- **CSVダッシュボード実機検証・修正 正本**: [KB-155](./knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了) · [csv-dashboard-verification](./archive/guides/csv-dashboard-verification.md)。
 
 ### 🆕 最新アップデート（2026-01-XX）
 
@@ -1446,7 +1446,7 @@
 
 - **backup.json破壊的上書き防止 正本**: [KB-151](./knowledge-base/infrastructure/backup-restore.md#kb-151-backupjsonの破壊的上書きを防ぐセーフガード実装)。
 
-- **サイネージレイアウト実機検証・UI改善 正本**: [KB-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) · [verification results](./guides/signage-layout-config-verification-results.md) · [signage module](./modules/signage/README.md)。
+- **サイネージレイアウト実機検証・UI改善 正本**: [KB-150](./knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了) · [verification results](./archive/guides/signage-layout-config-verification-results.md) · [signage module](./modules/signage/README.md)。
 
 ### 🆕 最新アップデート（2026-01-06）
 
@@ -1512,11 +1512,11 @@
 
 ### 🆕 最新アップデート（2025-12-29）
 
-- **バックアップエラーハンドリング改善 正本**: [error handling guide](./guides/backup-error-handling-improvements.md) · [KB-107](./knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善)。
+- **バックアップエラーハンドリング改善 正本**: [error handling guide](./archive/guides/backup-error-handling-improvements.md) · [KB-107](./knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善)。
 
-- **バックアップスクリプト整合性確認 正本**: [backup script integration](./guides/backup-script-integration-verification.md) · [KB-106](./knowledge-base/infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認)。
+- **バックアップスクリプト整合性確認 正本**: [backup script integration](./archive/guides/backup-script-integration-verification.md) · [KB-106](./knowledge-base/infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認)。
 
-- **画像バックアップ・items.csv実機検証 正本**: [backup restore verification](./guides/backup-restore-verification-results.md) · [backup target requirements](./requirements/backup-target-management-ui.md)。
+- **画像バックアップ・items.csv実機検証 正本**: [backup restore verification](./archive/guides/backup-restore-verification-results.md) · [backup target requirements](./requirements/backup-target-management-ui.md)。
 
 ### 🆕 最新アップデート（2025-12-19）
 
@@ -1528,17 +1528,17 @@
 
 ### 🆕 最新アップデート（2025-12-18）
 
-- **バックアップ対象管理UI 正本**: [backup target requirements](./requirements/backup-target-management-ui.md) · [verification](./guides/backup-target-management-verification.md) · [backup and restore](./guides/backup-and-restore.md) · [backup configuration](./guides/backup-configuration.md)。
+- **バックアップ対象管理UI 正本**: [backup target requirements](./requirements/backup-target-management-ui.md) · [verification](./archive/guides/backup-target-management-verification.md) · [backup and restore](./guides/backup-and-restore.md) · [backup configuration](./guides/backup-configuration.md)。
 
 - **標準セキュリティチェックリスト監査 正本**: [security checklist audit](./security/standard-security-checklist-audit.md)。
 
-- **ポートセキュリティ強化 正本**: [port security audit](./security/port-security-audit.md) · [verification results](./security/port-security-verification-results.md) · [KB-177](./knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) · [ports baseline](./knowledge-base/infrastructure/ports-baseline-20260118.md)。
+- **ポートセキュリティ強化 正本**: [port security audit](./security/port-security-audit.md) · [verification results](./security/port-security-verification-results.md) · [KB-177](./knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ) · [ports baseline](./archive/knowledge-base/infrastructure/ports-baseline-20260118.md)。
 
 ### 🆕 最新アップデート（2025-12-17）
 
 - **UI視認性向上カラーテーマ 正本**: [UI visibility requirements](./requirements/ui-visibility-color-theme.md) · [tools module](./modules/tools/README.md) · [measuring instruments UI](./modules/measuring-instruments/ui.md) · [signage module](./modules/signage/README.md)。
 
-- **Dropbox CSVインポート Phase 3完全検証 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [complete verification](./guides/phase3-complete-verification-summary.md) · [mandatory verification](./guides/phase3-mandatory-verification-results.md) · [error handling tests](./guides/phase3-error-handling-test-results.md) · [next tasks](./guides/phase3-next-tasks.md)。
+- **Dropbox CSVインポート Phase 3完全検証 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [complete verification](./archive/guides/phase3/phase3-complete-verification-summary.md) · [mandatory verification](./archive/guides/phase3/phase3-mandatory-verification-results.md) · [error handling tests](./archive/guides/phase3/phase3-error-handling-test-results.md) · [next tasks](./archive/guides/phase3/phase3-next-tasks.md)。
 
 ### 🆕 最新アップデート（2025-12-16）
 
@@ -1550,11 +1550,11 @@
 
 ### 🆕 最新アップデート（2025-12-15）
 
-- **Dropbox CSVインポート Phase 2実装 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [CSV import history migration](./guides/csv-import-history-migration.md)。
+- **Dropbox CSVインポート Phase 2実装 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [CSV import history migration](./archive/guides/csv-import-history-migration.md)。
 
 - **Dropbox CSVインポート Phase 1実装 正本**: [integration status](./analysis/dropbox-csv-integration-status.md) · [CI branch protection](./guides/ci-branch-protection.md)。
 
-- **Dropbox OAuth 2.0フロー・自動更新 正本**: [backup modularization plan](./plans/backup-modularization-execplan.md) · [setup guide](./guides/dropbox-oauth-setup-guide.md) · [verification checklist](./guides/dropbox-oauth-verification-checklist.md) · [KB-099](./knowledge-base/infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題)。
+- **Dropbox OAuth 2.0フロー・自動更新 正本**: [backup modularization plan](./plans/backup-modularization-execplan.md) · [setup guide](./guides/dropbox-oauth-setup-guide.md) · [verification checklist](./archive/guides/dropbox-oauth-verification-checklist.md) · [KB-099](./knowledge-base/infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題)。
 
 ### 🆕 最新アップデート（2025-12-14）
 
@@ -1593,14 +1593,14 @@
 - **持出一覧キオスクUI改善 正本**: [measuring instruments UI](./modules/measuring-instruments/ui.md) / [KB-314](./knowledge-base/KB-314-kiosk-loan-card-display-labels.md)。
 - **持出一覧カード: 返却・取消ボタン下段配置 正本**: [KB-323](./knowledge-base/KB-323-kiosk-return-card-button-layout.md)。
 
-- **計測機器持出エラー処理 正本**: [measuring instruments verification](./guides/measuring-instruments-verification.md#問題9-エラー時に持出登録ボタンが無限ループ動作する) / [measuring instruments UI](./modules/measuring-instruments/ui.md)。
+- **計測機器持出エラー処理 正本**: [measuring instruments verification](./archive/guides/measuring-instruments-verification.md#問題9-エラー時に持出登録ボタンが無限ループ動作する) / [measuring instruments UI](./modules/measuring-instruments/ui.md)。
 
 - **NFC/カメラ入力のスコープ分離 正本**: [NFC stream isolation plan](./plans/nfc-stream-isolation-plan.md) / [KB-091](./knowledge-base/frontend.md#kb-091-nfcカメラ入力のスコープ分離-別ページからのイベント横漏れ防止)。
 
-- **計測機器キオスク: ドロップダウン自動送信 正本**: [measuring instruments verification](./guides/measuring-instruments-verification.md#問題8-ドロップダウン選択時に氏名タグ自動送信されない) / [measuring instruments UI](./modules/measuring-instruments/ui.md)。
+- **計測機器キオスク: ドロップダウン自動送信 正本**: [measuring instruments verification](./archive/guides/measuring-instruments-verification.md#問題8-ドロップダウン選択時に氏名タグ自動送信されない) / [measuring instruments UI](./modules/measuring-instruments/ui.md)。
 
-- **計測機器キオスク: エラーメッセージ/リセット修正 正本**: [measuring instruments verification](./guides/measuring-instruments-verification.md#問題6-エラーメッセージが古いリセットが効かない)。
-- **計測機器キオスク実機検証トラブル対応 正本**: [measuring instruments verification](./guides/measuring-instruments-verification.md#問題5-キオスクブラウザ起動が空urlでカメラapiが動かない)。
+- **計測機器キオスク: エラーメッセージ/リセット修正 正本**: [measuring instruments verification](./archive/guides/measuring-instruments-verification.md#問題6-エラーメッセージが古いリセットが効かない)。
+- **計測機器キオスク実機検証トラブル対応 正本**: [measuring instruments verification](./archive/guides/measuring-instruments-verification.md#問題5-キオスクブラウザ起動が空urlでカメラapiが動かない)。
 
 - **計測機器管理システム Phase 1-3 正本**: [measuring instruments README](./modules/measuring-instruments/README.md) / [requirements](./requirements/measuring-instruments-requirements.md) / [UI](./modules/measuring-instruments/ui.md)。
 
@@ -1617,8 +1617,8 @@
 - **Phase 2.4 実機テスト完了**: クライアント状態可視化とデバッグ支援システムの実機テストを完了しました。Raspberry Pi 5上でstatus-agentを設定・実行し、systemd timerで1分ごとに自動実行されることを確認。管理画面で稼働状況カードが正しく表示され、CPU/メモリ/温度などのメトリクスが更新されることを確認。詳細は [plans/production-deployment-phase2-execplan.md](./plans/production-deployment-phase2-execplan.md) を参照してください。
 - **システム安定性向上の実装完了**: エラーハンドリングとログ出力の最適化を実装しました。エラーメッセージの詳細化、エラーログの構造化、ログレベルの環境変数制御、Dockerログローテーション設定を完了。詳細は [plans/stability-improvement-plan.md](./plans/stability-improvement-plan.md) を参照してください。ガイドドキュメント: [エラーハンドリングガイド](./guides/error-handling.md), [ログ出力ガイド](./guides/logging.md)
 - **サイネージ持出中アイテム表示の改善**: 借用日時を日本標準時（JST）で表示し、12時間超のアイテムを赤色で強調してリストの先頭に配置するように改善しました。アイテムコードのフォントサイズも日時と同じサイズに調整しました。
-- **Raspberry Pi 4再起動時のサービス起動ガイド**: [guides/raspberry-pi4-restart-commands.md](./guides/raspberry-pi4-restart-commands.md) を追加。開発中に自動起動を無効化している場合の手動起動手順、Docker Compose推奨方法、Poetry直接起動の問題点と改善案を記載しました。
-- **サイネージ自動レンダリングの安定化**: [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) と [guides/signage-test-plan.md](./guides/signage-test-plan.md) に、`SignageRenderScheduler` の自動実行・管理画面からの手動再レンダリング手順・`SIGNAGE_RENDER_DIR` の設定方法を追記しました。
+- **Raspberry Pi 4再起動時のサービス起動ガイド**: [guides/raspberry-pi4-restart-commands.md](./archive/guides/raspberry-pi4-restart-commands.md) を追加。開発中に自動起動を無効化している場合の手動起動手順、Docker Compose推奨方法、Poetry直接起動の問題点と改善案を記載しました。
+- **サイネージ自動レンダリングの安定化**: [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) と [guides/signage-test-plan.md](./archive/guides/signage-test-plan.md) に、`SignageRenderScheduler` の自動実行・管理画面からの手動再レンダリング手順・`SIGNAGE_RENDER_DIR` の設定方法を追記しました。
 - **PDFスライド & 工具サムネイル改善**: サイネージの分割表示で PDF スライドショーが必ずページ送りされるようになり、工具サムネイルは 4:3 のまま大型表示に統一されました。詳細は [knowledge-base/api.md](./knowledge-base/api.md#kb-051-サイネージのpdfスライドショーが切り替わらない) / [knowledge-base/api.md#kb-052-sharpのcompositeエラーimage-to-composite-must-have-same-dimensions-or-smaller) を参照してください。
 - **軽量クライアントTLS/Troubleshooting**: [modules/signage/signage-lite.md](./modules/signage/signage-lite.md) に自己署名証明書環境での `curl -k` 設定や初回キャッシュ待機ロジック、`setup-signage-lite.sh` の改善点を追加しました。
 - **CPU/温度モニタリング**: 画像レンダリング時に `/proc/stat` と `/sys/class/thermal` を取得し、サイネージヘッダー右上に `CPU xx% / Temp yy.y°C` を表示するようにしました。
@@ -1662,18 +1662,18 @@
 | 本番環境をセットアップしたい | [guides/production-setup.md](./guides/production-setup.md) |
 | バックアップ・リストアしたい | [guides/backup-and-restore.md](./guides/backup-and-restore.md) |
 | **バックアップ設定を変更したい** | **[guides/backup-configuration.md](./guides/backup-configuration.md)** |
-| **バックアップ対象を管理したい** | **[guides/backup-target-management-verification.md](./guides/backup-target-management-verification.md)** / **[requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md)** |
-| **バックアップ機能を実機検証したい** | **[guides/backup-target-management-verification.md](./guides/backup-target-management-verification.md)** |
+| **バックアップ対象を管理したい** | **[guides/backup-target-management-verification.md](./archive/guides/backup-target-management-verification.md)** / **[requirements/backup-target-management-ui.md](./requirements/backup-target-management-ui.md)** |
+| **バックアップ機能を実機検証したい** | **[guides/backup-target-management-verification.md](./archive/guides/backup-target-management-verification.md)** |
 | **外部連携（Dropbox/Gmail/Slack）の設定・運用を管理したい** | **[guides/external-integration-ledger.md](./guides/external-integration-ledger.md)** |
 | **Dropbox OAuth 2.0を設定したい** | **[guides/dropbox-oauth-setup-guide.md](./guides/dropbox-oauth-setup-guide.md)** |
-| **Dropbox OAuth 2.0を実機検証したい** | **[guides/dropbox-oauth-verification-checklist.md](./guides/dropbox-oauth-verification-checklist.md)** |
+| **Dropbox OAuth 2.0を実機検証したい** | **[guides/dropbox-oauth-verification-checklist.md](./archive/guides/dropbox-oauth-verification-checklist.md)** |
 | **Slack Webhookを設定したい** | **[guides/slack-webhook-setup.md](./guides/slack-webhook-setup.md)** |
 | **Gmail連携を設定したい** | **[guides/gmail-setup-guide.md](./guides/gmail-setup-guide.md)** |
 | **CI必須化とブランチ保護設定** | **[guides/ci-branch-protection.md](./guides/ci-branch-protection.md)** |
 | 監視・アラートを設定したい | [guides/monitoring.md](./guides/monitoring.md) |
-| デジタルサイネージ機能をデプロイしたい | [guides/signage-deployment.md](./guides/signage-deployment.md) |
+| デジタルサイネージ機能をデプロイしたい | [guides/signage-deployment.md](./archive/guides/signage-deployment.md) |
 | デジタルサイネージクライアント端末をセットアップしたい | [guides/signage-client-setup.md](./guides/signage-client-setup.md)（Chromiumモード / `setup-signage-lite.sh` 軽量モード） |
-| **サイネージレイアウト設定の実機検証を実施したい** | **[guides/signage-layout-config-verification.md](./guides/signage-layout-config-verification.md)** |
+| **サイネージレイアウト設定の実機検証を実施したい** | **[guides/signage-layout-config-verification.md](./archive/guides/signage-layout-config-verification.md)** |
 | クライアント端末を一括更新したい | [plans/production-deployment-management-plan.md](./plans/production-deployment-management-plan.md#phase-1-一括更新システムssh--ansible) |
 | Ansibleの堅牢化・安定化を実施したい | [plans/ansible-improvement-plan.md](./plans/ansible-improvement-plan.md) |
 | Ansibleで管理すべき設定ファイルを確認したい | [guides/ansible-managed-files.md](./guides/ansible-managed-files.md) |
@@ -1682,7 +1682,7 @@
 | git cleanの安全な使用方法を確認したい | [guides/git-clean-safety.md](./guides/git-clean-safety.md) |
 | クライアント状態監視のExecPlanを確認したい | [plans/production-deployment-phase2-execplan.md](./plans/production-deployment-phase2-execplan.md) |
 | Raspberry Pi クライアントにSSH鍵を配布したい | [guides/ssh-setup.md](./guides/ssh-setup.md) |
-| **Raspberry Pi 4 再起動時のサービス起動** | [guides/raspberry-pi4-restart-commands.md](./guides/raspberry-pi4-restart-commands.md) |
+| **Raspberry Pi 4 再起動時のサービス起動** | [guides/raspberry-pi4-restart-commands.md](./archive/guides/raspberry-pi4-restart-commands.md) |
 | Raspberry Pi status-agentを導入したい | [guides/status-agent.md](./guides/status-agent.md) |
 | **クライアント一括更新と監視のクイックスタート** | [guides/quick-start-deployment.md](./guides/quick-start-deployment.md) |
 | **ローカル環境対応の通知機能** | [guides/local-alerts.md](./guides/local-alerts.md) |
@@ -1691,27 +1691,27 @@
 || **MacからRaspberry Pi 5へのSSH接続** | [guides/mac-ssh-access.md](./guides/mac-ssh-access.md) |
 || **Ansible SSH接続アーキテクチャの説明** | [guides/ansible-ssh-architecture.md](./guides/ansible-ssh-architecture.md) |
 || **環境構築ガイド（ローカルネットワーク変更時）** | [guides/environment-setup.md](./guides/environment-setup.md) |
-|| **システム自動起動の現状と設定** | [guides/auto-startup-status.md](./guides/auto-startup-status.md) |
-|| **クライアント端末のstatus-agent設定（実機テスト用）** | [guides/setup-clients-status-agent.md](./guides/setup-clients-status-agent.md) |
+|| **システム自動起動の現状と設定** | [guides/auto-startup-status.md](./archive/guides/auto-startup-status.md) |
+|| **クライアント端末のstatus-agent設定（実機テスト用）** | [guides/setup-clients-status-agent.md](./archive/guides/setup-clients-status-agent.md) |
 
 ### 検証する
 
 | やりたいこと | ドキュメント |
 |-------------|-------------|
-| 計測機器キオスク実機検証 | [guides/measuring-instruments-verification.md](./guides/measuring-instruments-verification.md) |
+| 計測機器キオスク実機検証 | [guides/measuring-instruments-verification.md](./archive/guides/measuring-instruments-verification.md) |
 | 機能を検証したい | [guides/verification-checklist.md](./guides/verification-checklist.md) |
 | **CSVフォーマット仕様実装を検証したい** | **[guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31](./guides/verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)** |
 | **Gmail自動運用プロトコル フェーズ1の実機検証を実施したい** | **[guides/gmail-auto-protocol-phase1-verification.md](./guides/gmail-auto-protocol-phase1-verification.md)** |
 | USBインポートを検証したい | [guides/validation-7-usb-import.md](./guides/validation-7-usb-import.md) |
-| デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./guides/signage-test-plan.md) |
-| **CSVダッシュボード可視化機能を検証したい** | **[guides/csv-dashboard-verification.md](./guides/csv-dashboard-verification.md)** |
-| **計測機器持出返却イベント機能を検証したい** | **[guides/measuring-instrument-loan-events-verification.md](./guides/measuring-instrument-loan-events-verification.md)** |
-| システム安定性向上機能を検証したい | [guides/stability-improvement-test.md](./guides/stability-improvement-test.md) |
+| デジタルサイネージ機能を検証したい | [guides/signage-test-plan.md](./archive/guides/signage-test-plan.md) |
+| **CSVダッシュボード可視化機能を検証したい** | **[guides/csv-dashboard-verification.md](./archive/guides/csv-dashboard-verification.md)** |
+| **計測機器持出返却イベント機能を検証したい** | **[guides/measuring-instrument-loan-events-verification.md](./archive/guides/measuring-instrument-loan-events-verification.md)** |
+| システム安定性向上機能を検証したい | [guides/stability-improvement-test.md](./archive/guides/stability-improvement-test.md) |
 | セキュリティを検証したい | [security/validation-review.md](./security/validation-review.md) |
 | **セキュリティ要件を確認したい** | **[security/requirements.md](./security/requirements.md)** |
 | **セキュリティ強化の実装計画を確認したい** | **[plans/security-hardening-execplan.md](./plans/security-hardening-execplan.md)** |
 | **Phase 9/10 セキュリティ機能の詳細仕様を確認したい** | **[security/phase9-10-specifications.md](./security/phase9-10-specifications.md)** |
-| **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./guides/security-test-plan.md)** |
+| **セキュリティ強化のテスト計画を確認したい** | **[guides/security-test-plan.md](./archive/guides/security-test-plan.md)** |
 | **インシデント対応手順を確認したい** | **[security/incident-response.md](./security/incident-response.md)** |
 | **外部インシデント評価と追加対策** | **[security/implementation-assessment.md](./security/implementation-assessment.md)** |
 | **システム担当者向けセキュリティプレゼン資料** | **[presentations/security-measures-presentation.md](./presentations/security-measures-presentation.md)** |
@@ -1913,10 +1913,10 @@ APIの概要と詳細。
 | [monitoring.md](./guides/monitoring.md) | 監視・アラート |
 | [csv-import-export.md](./guides/csv-import-export.md) | CSVインポート・エクスポート |
 | [verification-checklist.md](./guides/verification-checklist.md) | 検証チェックリスト |
-| [photo-loan-test-plan.md](./guides/photo-loan-test-plan.md) | **写真撮影持出機能 テスト計画**（FR-009） |
+| [photo-loan-test-plan.md](./archive/guides/photo-loan-test-plan.md) | **写真撮影持出機能 テスト計画**（FR-009） |
 | [validation-7-usb-import.md](./guides/validation-7-usb-import.md) | USBインポート検証 |
-| [signage-test-plan.md](./guides/signage-test-plan.md) | **デジタルサイネージ機能 テスト計画** |
-| [signage-deployment.md](./guides/signage-deployment.md) | **デジタルサイネージ機能 デプロイメントガイド** |
+| [signage-test-plan.md](./archive/guides/signage-test-plan.md) | **デジタルサイネージ機能 テスト計画** |
+| [signage-deployment.md](./archive/guides/signage-deployment.md) | **デジタルサイネージ機能 デプロイメントガイド** |
 | [signage-client-setup.md](./guides/signage-client-setup.md) | **デジタルサイネージクライアント端末セットアップガイド** |
 | [production-schedule-signage.md](./guides/production-schedule-signage.md) | **生産スケジュール進捗サイネージ可視化ガイド** |
 | [ci-troubleshooting.md](./guides/ci-troubleshooting.md) | CI/CDトラブルシューティング |
@@ -1925,13 +1925,13 @@ APIの概要と詳細。
 || [client-initial-setup.md](./guides/client-initial-setup.md) | **新規クライアント端末の初期設定手順** |
 || [zero2w-tanaban-edge-setup.md](./runbooks/zero2w-tanaban-edge-setup.md) | **Zero 2 W 棚番エッジ（Tailscale・status-agent）** |
 || [mac-ssh-access.md](./guides/mac-ssh-access.md) | **MacからRaspberry Pi 5へのSSH接続ガイド** |
-|| [auto-startup-status.md](./guides/auto-startup-status.md) | **システム自動起動の現状と設定手順** |
-|| [ai-ssh-access.md](./guides/ai-ssh-access.md) | **AIアシスタントのSSHアクセスについて** |
-|| [setup-clients-status-agent.md](./guides/setup-clients-status-agent.md) | **クライアント端末のstatus-agent設定手順（実機テスト用）** |
+|| [auto-startup-status.md](./archive/guides/auto-startup-status.md) | **システム自動起動の現状と設定手順** |
+|| [ai-ssh-access.md](./archive/guides/ai-ssh-access.md) | **AIアシスタントのSSHアクセスについて** |
+|| [setup-clients-status-agent.md](./archive/guides/setup-clients-status-agent.md) | **クライアント端末のstatus-agent設定手順（実機テスト用）** |
 | [status-agent.md](./guides/status-agent.md) | Raspberry Pi クライアント状態送信エージェント |
 | [quick-start-deployment.md](./guides/quick-start-deployment.md) | **クライアント一括更新と監視のクイックスタート** |
 | [local-alerts.md](./guides/local-alerts.md) | **ローカル環境対応の通知機能ガイド** |
-| [local-alerts-verification.md](./guides/local-alerts-verification.md) | **ローカル環境対応の通知機能 実機検証手順** |
+| [local-alerts-verification.md](./archive/guides/local-alerts-verification.md) | **ローカル環境対応の通知機能 実機検証手順** |
 | [ssd-migration.md](./guides/ssd-migration.md) | **SDカードからSSDへの移行手順** |
 | [ansible-managed-files.md](./guides/ansible-managed-files.md) | **Ansibleで管理すべき設定ファイル一覧** |
 | [ansible-error-handling.md](./guides/ansible-error-handling.md) | **Ansibleエラーハンドリングガイド** |

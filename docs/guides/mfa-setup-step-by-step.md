@@ -165,6 +165,6 @@
 ## 次のステップ
 
 MFAのセットアップが完了したら、Slack通知設定に進んでください。
-[Slack通知設定ガイド](./slack-webhook-setup-step-by-step.md)を参照してください。
+[Slack通知設定ガイド](../archive/guides/slack-webhook-setup-step-by-step.md)を参照してください。
 
 **注意**: Slack通知設定は、ワークスペース設定から直接Incoming Webhookを作成する方法が推奨されます（アプリ作成フローではボットユーザーの設定が必要な場合があります）。

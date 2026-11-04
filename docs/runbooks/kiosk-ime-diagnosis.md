@@ -80,7 +80,7 @@ standard routeが `roles/kiosk` のIME診断・Firefox profile customizationを�
 
 ## 診断結果の記録
 
-診断結果を [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) の「診断結果の記録」セクションに記入する。
+診断結果を [KB-investigation-kiosk-schedule-regression-20260301.md](../archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) の「診断結果の記録」セクションに記入する。
 
 ## ブラウザengine選択の確認とrollback
 
@@ -102,7 +102,7 @@ health checksを再実行する。inventoryのengine選択を意図的に戻す�
 
 ## 関連ドキュメント
 
-- [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査対象の不具合と診断結果記録
+- [KB-investigation-kiosk-schedule-regression-20260301.md](../archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査対象の不具合と診断結果記録
 - [KB-412](../knowledge-base/KB-412-kiosk-firefox-focus-testmode-blocks-ime.md): IBus は正常なのに半角/全角が効かない場合（Firefox プロファイルの自動操作用設定、IME ログの取り方）
 - [frontend.md#KB-276](../knowledge-base/frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善): IBus 設定の過去履歴
 - [kiosk-ime-remark-field-execplan.md](../plans/kiosk-ime-remark-field-execplan.md): 実行計画

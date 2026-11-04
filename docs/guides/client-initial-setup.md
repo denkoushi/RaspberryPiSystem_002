@@ -403,7 +403,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | gre
    ```
 
 2. **自動起動の設定**: 本番環境では自動起動を有効化
-   - [Raspberry Pi 4再起動時のサービス起動ガイド](./raspberry-pi4-restart-commands.md)を参照
+   - [Raspberry Pi 4再起動時のサービス起動ガイド](../archive/guides/raspberry-pi4-restart-commands.md)を参照
 
 3. **監視の設定**: クライアント状態を定期的に確認
    - [運用マニュアル](./operation-manual.md)の「クライアント状態監視」セクションを参照

@@ -18,7 +18,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - `docs/knowledge-base/api.md#kb-185`: CSVダッシュボードのgmailSubjectPattern設定UI改善
 - `docs/knowledge-base/api.md#kb-186`: CsvImportSubjectPatternモデル追加による設計統一
 - `docs/guides/csv-import-export.md`: CSVインポート・エクスポート仕様
-- `docs/guides/csv-dashboard-verification.md`: CSVダッシュボード可視化機能の実機検証手順
+- `docs/archive/guides/csv-dashboard-verification.md`: CSVダッシュボード可視化機能の実機検証手順
 
 ### 既存実装
 
@@ -575,7 +575,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - `apps/api/src/services/signage/signage.service.ts`（サイネージサービス）
 
 **参考ドキュメント**:
-- [CSVダッシュボード可視化機能の実機検証手順](../guides/csv-dashboard-verification.md)
+- [CSVダッシュボード可視化機能の実機検証手順](../archive/guides/csv-dashboard-verification.md)
 - [KB-155: CSVダッシュボード可視化機能実装完了](../knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了)
 
 ### 次のタスク候補（運用・スケール）

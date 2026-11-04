@@ -317,7 +317,7 @@ SLACK_KIOSK_SUPPORT_WEBHOOK_URL=https://hooks.slack.com/services/...
 - [Gmail連携セットアップガイド](./gmail-setup-guide.md)
 - [Slack Incoming Webhook設定ガイド](./slack-webhook-setup.md)
 - [Dropbox OAuth設定ガイド](./dropbox-oauth-setup-guide.md)
-- [Dropbox連携セットアップガイド](./dropbox-setup-guide.md)
+- [Dropbox連携セットアップガイド](../archive/guides/dropbox-setup-guide.md)
 
 ### ナレッジベース
 

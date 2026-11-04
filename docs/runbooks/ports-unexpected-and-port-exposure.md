@@ -88,6 +88,6 @@ docker ps --format '{{.Names}}\t{{.Ports}}'
 ## 参照
 
 - KB（原因/対策/ハマりどころ）: [KB-177](../knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ)
-- ベースライン例: [ports-baseline-20260118](../knowledge-base/infrastructure/ports-baseline-20260118.md)
+- ベースライン例: [ports-baseline-20260118](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md)
 - セキュリティ監査: [port-security-audit](../security/port-security-audit.md)
 

@@ -18,7 +18,7 @@ validation:
 
 ## Context
 
-- Goal: make kiosk screens respond faster. All seven Pi4 kiosks run Firefox since 2026-03 (moved off Chromium 142 because Japanese input broke, see [KB-investigation-kiosk-ime-and-power-regression](./KB-investigation-kiosk-ime-and-power-regression.md)).
+- Goal: make kiosk screens respond faster. All seven Pi4 kiosks run Firefox since 2026-03 (moved off Chromium 142 because Japanese input broke, see [KB-investigation-kiosk-ime-and-power-regression](../archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md)).
 - 2026-10-02 isolated measurement on `raspi4-kensaku-stonebase01` (headless labwc + Xwayland, one first load and two reloads per condition, production Firefox running on the same Pi4), `/kiosk/production-schedule` until 「検索してください。」 appears:
 
 | Condition | First | Reload 1 | Reload 2 |

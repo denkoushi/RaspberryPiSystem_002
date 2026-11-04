@@ -344,11 +344,11 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 
 ### 実機検証
 
-実機検証手順は、[CSVダッシュボード可視化機能の実機検証手順](./csv-dashboard-verification.md)を参照してください。
+実機検証手順は、[CSVダッシュボード可視化機能の実機検証手順](../archive/guides/csv-dashboard-verification.md)を参照してください。
 
 ### 関連ドキュメント
 
-- [CSVダッシュボード可視化機能の実機検証手順](./csv-dashboard-verification.md)
+- [CSVダッシュボード可視化機能の実機検証手順](../archive/guides/csv-dashboard-verification.md)
 - [KB-184: 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能](../knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能)
 - [KB-185: CSVダッシュボードのgmailSubjectPattern設定UI改善](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善)
 - [KB-201: 生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)（FSEIBANバリデーション修正: `********`を許可）
@@ -903,7 +903,7 @@ GmailからCSVファイルを自動取得してインポートできます。Pow
 - `GET /api/imports/history/failed`: 失敗した履歴のみ取得
 - `GET /api/imports/history/:historyId`: 詳細履歴取得
 
-**詳細**: [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
+**詳細**: [CSVインポート履歴機能の有効化手順](../archive/guides/csv-import-history-migration.md)
 
 #### 429監視の手順（運用）
 
@@ -1076,7 +1076,7 @@ CSVフォーマット仕様実装の実機検証手順は、[検証チェック�
 
 - [デプロイメントガイド](./deployment.md)
 - [PowerAutomate → Dropbox → Pi5 CSV統合ガイド](./powerautomate-dropbox-integration.md)
-- [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
+- [CSVインポート履歴機能の有効化手順](../archive/guides/csv-import-history-migration.md)
 - [Dropbox CSV統合機能の現状分析](../analysis/dropbox-csv-integration-status.md)
 - [トラブルシューティングナレッジベース](../knowledge-base/database.md#kb-003-p2002エラーnfctaguidの重複が発生する)
 - [KB-253: 加工機CSVインポートのデフォルト列定義とDB設定不整合問題](../knowledge-base/api.md#kb-253-加工機csvインポートのデフォルト列定義とdb設定不整合問題)

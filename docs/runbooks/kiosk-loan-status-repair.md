@@ -136,4 +136,4 @@ WHERE id = '<ITEM_ID>' AND status = 'IN_USE';
 ## 参考
 
 - 取消混入と返却/取消の処理不整合についての調査結果:  
-  `docs/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md`
+  `docs/archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md`

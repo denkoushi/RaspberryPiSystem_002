@@ -184,7 +184,7 @@
 - **Control Targets / `EXECUTE_TARGET_ACTION`**: 実行可否は `overview.targets[].capabilities`。補助起停・モード自動調停は [KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md)・[ADR-20260502](../decisions/ADR-20260502-dgx-resource-control-targets.md)・[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md) を参照（旧本番のみ gateway 書込だった経緯あり）
 - **専用 sidecar を使う運用へ寄せたい**: `DGX_RESOURCE_SPARK_HOST_STATUS_URL` を明示し、ゲートウェイ `/healthz` と意味を分離する（Runbook の ENV 説明を正とする）
 
-**参照**: [KB-363（詳細）](./KB-363-dgx-resource-spark-status-fallback.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment.md](../guides/deployment.md)
+**参照**: [KB-363（詳細）](../archive/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md)·[dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md)·[deployment.md](../guides/deployment.md)
 
 ---
 

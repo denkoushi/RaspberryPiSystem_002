@@ -575,7 +575,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs db | grep
    ```
 
 3. **Dockerイメージ・コンテナのクリーンアップ**
-   Dockerの整理は `storage-maintenance.timer` に任せ、`docker system prune` やvolume pruneは実行しない（[Pi5 Docker旧リリースイメージ整理](../runbooks/pi5-blue-green-deploy.md#pi5-docker旧リリースイメージ整理)）。
+   Dockerの整理は `storage-maintenance.timer` に任せ、`docker system prune` やvolume pruneは実行しない（[Pi5 Docker旧リリースイメージ整理](../archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md#pi5-docker旧リリースイメージ整理)）。
    ```bash
    docker system df
    journalctl -u storage-maintenance.service -n 100 --no-pager
@@ -705,7 +705,7 @@ journalctl -u storage-maintenance.service -n 50
 2. **Docker Build Cache削除**: 月初（1日）のみ、`docker builder prune -a --force`を実行
 3. **使用量の記録**: 月次cache削除後に`docker system df`をログへ記録
 4. **失敗時のアラート生成**: メンテナンスが失敗した場合、`storage-maintenance-failed`アラートを生成
-5. **旧リリースイメージ整理**: 毎日、固定allowlistの未使用API/Web/release-setイメージだけを整理（詳細は [Pi5 Docker旧リリースイメージ整理](../runbooks/pi5-blue-green-deploy.md#pi5-docker旧リリースイメージ整理)）
+5. **旧リリースイメージ整理**: 毎日、固定allowlistの未使用API/Web/release-setイメージだけを整理（詳細は [Pi5 Docker旧リリースイメージ整理](../archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md#pi5-docker旧リリースイメージ整理)）
 
 業務ファイル、DB、稼働中container、稼働imageはこの自動処理の削除対象ではありません。詳細は [単一SSD保存Runbook](../runbooks/pi5-local-file-storage.md) と [KB-130](../knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) を参照してください。
 

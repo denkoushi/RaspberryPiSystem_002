@@ -143,7 +143,7 @@ classification authority beside Rolling V2.
 - The canary hold/explicit approval and full rolling release were confirmed in
   production at immutable SHA `5806ec78d877e4310f3098f375894e27cdbe409d` by
   run `20260713-015951-baab37`; the repaired Pi5 cleanup/recovery path was also
-  confirmed. See [KB-400](../../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
+  confirmed. See [KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
 - Production shadow evaluation of `--print-plan --auto-minimize` against
   operator judgment remains required before any default-on decision. This run
   did not exercise auto-minimize or prove same-SHA skip behavior.
@@ -153,4 +153,4 @@ classification authority beside Rolling V2.
 - Related: [ADR-20260712-rolling-terminal-release-orchestration](../../decisions/ADR-20260712-rolling-terminal-release-orchestration.md)
 - Plan: [rolling-terminal-bluegreen-deploy.md](../../plans/rolling-terminal-bluegreen-deploy.md)
 - Operator guide: [deployment.md](../../guides/deployment.md)
-- Pi5 Blue/Green runbook: [pi5-blue-green-deploy.md](../../runbooks/pi5-blue-green-deploy.md)
+- Pi5 Blue/Green runbook: [pi5-blue-green-deploy.md](../runbooks/pi5-standard-ansible-diagnosis-2026-08.md)
