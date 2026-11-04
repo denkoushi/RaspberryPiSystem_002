@@ -338,6 +338,8 @@ def deepseek_json_response(body: bytes) -> bytes:
         if not isinstance(message, dict) or not isinstance(message.get("content"), str):
             continue
         content = re.sub(r"<think>.*?</think>", "", message["content"], flags=re.DOTALL).strip()
+        content = re.sub(r"<think>.*$", "", content, flags=re.DOTALL)
+        content = re.sub(r"^.*?</think>", "", content, count=1, flags=re.DOTALL).strip()
         content = re.sub(r"^```(?:json)?\s*\n?(.*?)\s*```$", r"\1", content, flags=re.DOTALL).strip()
         try:
             obj = json.loads(content)
