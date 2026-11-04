@@ -223,6 +223,8 @@ cd /opt/RaspberryPiSystem_002
 
 設定ファイルが存在しない場合、ローカルバックアップのみ実行されます。
 
+**注意（`.env`の扱い）**: `backup.sh`はAPIが使えると、`.env`も`kind=file`でAPIへ送ろうとします。APIは`backup.json`に同じ`source`の有効なターゲットがある場合だけ実行し、その保存先は`backup.json`の`storage`設定に従います。2026-09-30以降の[現在方針](./backup-configuration.md#pi5本番の現在方針2026-09-30)では`.env`をDropboxへ送らないため、`.env`のターゲットを`backup.json`へ追加しないでください。この場合、手動実行時に`.env`のAPI経由バックアップ失敗が表示されますが、ローカルコピー（`/opt/backups/`）は残ります。
+
 ### 6. 定期実行
 
 定期バックアップはAPIのバックアップスケジューラーが`backup.json`の各ターゲットの`schedule`に従って実行します。`backup.sh`をcronやtimerへ登録する必要はありません（Ansibleも登録しません）。追加すると、スケジューラーのDB/Dropboxバックアップと重なり、Dropbox容量を圧迫するおそれがあります。
@@ -286,11 +288,7 @@ cp /opt/backups/api_env_20250101_020000.env /opt/RaspberryPiSystem_002/apps/api/
 1. 管理コンソールの「バックアップ」タブ → 「リストア」セクション
 2. 証明書ディレクトリのバックアップを選択
 3. 「リストア」ボタンをクリック
-4. リストア完了後、web（Caddy）を再起動
-
-```bash
-docker compose -f infrastructure/docker/docker-compose.server.yml restart web
-```
+4. リストア完了後の反映: 本番のTLS終端はbluegreen projectの`gateway`で、`docker-compose.server.yml`の`web`は稼働していないため`restart web`では反映されません。証明書を反映する正式手順はリポジトリで未確定のため、containerを手動で操作せず運用者に確認してください（[Gmail設定ガイド 0.3](./gmail-setup-guide.md#03-証明書の反映)と同じ扱い）。
 
 **手動でのリストア**:
 1. Dropboxから証明書バックアップファイル（`tar.gz`）をダウンロード
@@ -299,8 +297,9 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart web
 ```bash
 tar -xzf certs_backup_YYYYMMDD_HHMMSS.tar.gz -C /opt/RaspberryPiSystem_002/
 sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/certs
-docker compose -f infrastructure/docker/docker-compose.server.yml restart web
 ```
+
+展開後の反映手順は上と同じく未確定です（運用者に確認）。
 
 ### 4. 画像バックアップのリストア
 
@@ -383,7 +382,7 @@ docker run --rm \
   -v /opt/backups:/backup \
   alpine tar xzf /backup/volume_db-data-pg18_20250101_020000.tar.gz -C /data
 
-# Dockerコンテナを再起動
+# Dockerコンテナを再起動（DBは本番でも docker-compose.server.yml の db）
 docker compose -f infrastructure/docker/docker-compose.server.yml restart db
 ```
 
@@ -392,6 +391,8 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart db
 > この節は既存のローカル／Dropbox運用との互換情報です。業務Pi5の全損時にGoogle Driveの暗号化スナップショットを使う場合は、必ず [業務Pi5 Google Drive DR Runbook](../runbooks/google-drive-disaster-recovery.md) の「隔離復元」から開始してください。復元先にライブ領域を指定したり、検証前に既存のDBボリュームを削除したりしないでください。Google Drive DRのrunnerはライブ領域を自動上書きしません。
 >
 > 本番Pi5のAPIはblue/green構成（`docker-compose.phase3.yml`、`api-blue`/`api-green`）で、下記の`docker-compose.server.yml`の`api`を使う手順は本番には当てはまりません。マイグレーションと反映は [デプロイメントガイド](./deployment.md) の標準経路で行います。
+>
+> 本番Pi5では下記の`docker-compose.server.yml`の`down`／`up -d`を実行しないでください。このファイルには旧来の`api`／`web`定義が残っており、`web`は80/443番を使うため稼働中のbluegreen projectの`gateway`と競合します（[運用マニュアル](./operation-manual.md)と同じ扱い）。本番での全体リストア手順はGoogle Drive DR Runbookを使います。
 
 システム全体をリストアする場合：
 

@@ -319,6 +319,8 @@ Pi5本番で中核機能の環境再構築に必要な永続・一次ファイ�
 - `ansible fetch`モジュールでリモートファイルをPi5（サーバー）に取得
 - 取得したファイルをバックアップストレージ（ローカルまたはDropbox）に保存
 
+上の例の nfc-agent `.env` は書式の例です。2026-09-30以降は秘密情報のためDropboxへ送りません（[Pi5本番の現在方針](#pi5本番の現在方針2026-09-30)）。
+
 **前提条件**:
 - AnsibleがPi5（サーバー）にインストールされていること（Dockerコンテナ内にインストール済み）
 - 通常inventoryにクライアント端末が登録され、標準デプロイが資格情報を含まない `/etc/raspi-backup-ansible/inventory.yml` を生成済みであること
@@ -528,19 +530,6 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
       "source": "photo-storage",
       "schedule": "0 6 * * *",
       "enabled": true
-    },
-    {
-      "kind": "directory",
-      "source": "/app/host/certs",
-      "schedule": "0 4 * * 0",
-      "enabled": true,
-      "storage": {
-        "provider": "dropbox"
-      },
-      "retention": {
-        "days": 90,
-        "maxBackups": 10
-      }
     }
   ],
   "retention": {
@@ -574,14 +563,11 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
 
 ### 設定ファイルの編集
 
-設定ファイルを**手動で編集**した後は、以下いずれかで新しい設定を反映します（スケジュール実行も含めて更新されます）：
+設定ファイルを**手動で編集**した後は、次の方法で新しい設定を反映します（スケジュール実行も含めて更新されます）。
 
-```bash
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml restart api
-```
+Pi5本番のAPIはbluegreen project（`docker-compose.phase3.yml`の`api-blue`/`api-green`）で動いており、`docker-compose.server.yml`の`api`は稼働していないため、`restart api`では反映されません。稼働中のAPIスロットだけを再起動する手順はリポジトリで定義されていないため、下記のAPIエンドポイントまたは管理コンソールから反映します。APIの入れ替えが必要な場合は [デプロイメントガイド](./deployment.md) の標準経路に従います。
 
-または、APIエンドポイントから設定を更新することもできます（管理者権限が必要）。この方法では、設定保存後にバックアップスケジューラーが自動で再読み込みされます：
+APIエンドポイントから設定を更新します（管理者権限が必要）。この方法では、設定保存後にバックアップスケジューラーが自動で再読み込みされます：
 
 自己署名証明書の場合は `-k` を付ける。
 
@@ -651,7 +637,7 @@ curl https://<pi5_host>/api/backup \
 **対処**:
 - `enabled: true` が設定されているか確認
 - cron形式のスケジュールが正しいか確認
-- APIサーバーのログを確認（`docker compose -f infrastructure/docker/docker-compose.server.yml logs api`）
+- APIサーバーのログを確認（Pi5本番は稼働中スロットのcontainer。`cd /opt/RaspberryPiSystem_002 && docker logs --tail 200 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"`）
 
 ### Dropboxへのアップロードが失敗する
 

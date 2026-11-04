@@ -14,6 +14,12 @@ update-frequency: medium
 **件数**: 27件  
 **索引**: [index.md](../index.md)
 
+**個別KB（監査・是正）**:
+- [KB-393](../KB-393-security-hardening-audit-2026-07.md): セキュリティ堅牢化監査（2026-07）
+- [KB-415](../KB-415-ai-security-scan-2026-10.md): リポジトリ全体の AI セキュリティスキャンとアクセス制御修正（2026-10）
+- [KB-416](../KB-416-outside-intrusion-resilience-2026-10.md): 外部侵入による業務停止リスクの低減（2026-10）
+- [KB-417](../KB-417-security-audit-fixes-2026-10-10.md): 2026-10-10 監査の修正（ログ秘匿化・バックアップ経路・PIN カウンタ・依存更新）
+
 セキュリティ対策と監視に関するトラブルシューティング情報
 
 ---
@@ -438,7 +444,7 @@ update-frequency: medium
 - UFWの許可状況を確認:
   - `sudo ufw status verbose`
 - Docker公開の有無を確認（`db`/`api`がホストへpublishされていないこと）:
-  - `docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps`
+  - `docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps`（現行: API/Web は blue/green の `docker-compose.phase3.yml` で動くため、このコマンドで見えるのは `db` だけ）
 - ベースライン（証跡）: `docs/archive/knowledge-base/infrastructure/ports-baseline-20260118.md`
 
 **根本要因**:

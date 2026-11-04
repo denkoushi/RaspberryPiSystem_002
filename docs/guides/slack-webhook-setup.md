@@ -87,9 +87,9 @@ Webhook URL設定後、デプロイを実行します：
 ./scripts/generate-alert.sh kiosk-support-test "テスト: キオスクサポート" "テスト用メッセージ"
 ```
 
-### 4. 自動反映（Ansibleがapiを再作成）
+### 4. 自動反映（標準デプロイ）
 
-`.env`が更新された場合、Ansibleが`api`コンテナを`--force-recreate`で再作成し、環境変数を反映します。手動での再起動は不要です。
+Vaultの値は標準デプロイ（[deployment.md](./deployment.md)）で`.env`に書き込まれ、APIへ反映されます。Pi5本番のAPIはblue/green構成（`docker-compose.phase3.yml`の`api-blue`/`api-green`）のため、containerを手動で再起動しないでください。
 
 ## ホスト系セキュリティ通知（alert_webhook_url）
 
@@ -130,15 +130,16 @@ Webhook URL設定後、デプロイを実行します：
 ### 環境変数がコンテナに反映されているか確認（任意）
 
 ```bash
-# コンテナ内の環境変数を確認
-docker compose -f infrastructure/docker/docker-compose.server.yml exec api printenv | grep ALERTS
+# Pi5上で実行。稼働中のAPIスロットで、変数名だけを表示する（Webhook URLは表示しない）
+cd /opt/RaspberryPiSystem_002
+scripts/server/run-in-active-api.sh printenv | grep '^ALERTS_' | cut -d= -f1
 
 # 期待される出力:
-# ALERTS_DISPATCHER_ENABLED=true
-# ALERTS_SLACK_WEBHOOK_DEPLOY=https://hooks.slack.com/services/...
-# ALERTS_SLACK_WEBHOOK_OPS=https://hooks.slack.com/services/...
-# ALERTS_SLACK_WEBHOOK_SECURITY=https://hooks.slack.com/services/...
-# ALERTS_SLACK_WEBHOOK_SUPPORT=https://hooks.slack.com/services/...
+# ALERTS_DISPATCHER_ENABLED
+# ALERTS_SLACK_WEBHOOK_DEPLOY
+# ALERTS_SLACK_WEBHOOK_OPS
+# ALERTS_SLACK_WEBHOOK_SECURITY
+# ALERTS_SLACK_WEBHOOK_SUPPORT
 ```
 
 ### テスト通知の送信
@@ -154,6 +155,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec api print
 ### DBでアラート配信状態を確認
 
 ```bash
+# Pi5の /opt/RaspberryPiSystem_002 で実行（DBは本番でも docker-compose.server.yml の db）
 # Prismaの命名規則に注意（大文字 + ダブルクォート）
 docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
   psql -U postgres -d borrow_return \

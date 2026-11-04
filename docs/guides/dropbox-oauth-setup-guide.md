@@ -235,7 +235,7 @@ Vault の値は標準デプロイで `.env` に反映される。手順は [depl
 
 ### 設定ファイルへの書き込みエラー（EROFS: read-only file system）
 
-> 過去の記録（2025-12）。現行の `docker-compose.phase3.yml` は `config` を `:ro` なしでマウントしている。
+> 過去の記録（2025-12）。現行の `docker-compose.phase3.yml` は `config` を `:ro` なしでマウントしている。本番APIはblue/green構成のため、下記の `docker-compose.server.yml` を編集・`restart api` する手順は現行では使わない（反映は [deployment.md](./deployment.md) の標準経路）。
 
 - **エラーメッセージ**: `EROFS: read-only file system, open '/app/config/backup.json'`
 - **原因**: Docker Composeのconfigボリュームが読み取り専用（`:ro`）でマウントされている

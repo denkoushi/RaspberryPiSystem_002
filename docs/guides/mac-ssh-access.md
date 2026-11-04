@@ -159,16 +159,16 @@ ssh raspi5
 
 ### 3.2 Docker Compose操作
 
-本番の API は blue/green 構成（compose project `bluegreen`、`docker-compose.phase3.yml` の `api-blue` / `api-green`）で動く。
+本番の API は blue/green 構成（compose project `bluegreen`、`docker-compose.phase3.yml` の `api-blue` / `api-green`）で動く。`docker-compose.server.yml` で動いているのは `db` だけなので、APIのログは稼働中スロットのcontainer（`bluegreen-api-blue-1` または `bluegreen-api-green-1`）から読む。
 
 **Macのターミナルで実行:**
 
 ```bash
-# Dockerコンテナの状態確認
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml ps"
+# Dockerコンテナの状態確認（bluegreen と db の両方）
+ssh raspi5 "docker ps --format '{{.Names}}\t{{.Status}}'"
 
-# Dockerログの確認
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail=50"
+# 稼働中APIスロットのログ確認
+ssh raspi5 'cd /opt/RaspberryPiSystem_002 && docker logs --tail 50 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"'
 ```
 
 ### 3.3 ファイルのコピー（scp）
@@ -259,11 +259,11 @@ git push origin feature/new-feature
 **Macのターミナルで実行:**
 
 ```bash
-# APIログを確認
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail=100"
+# APIログを確認（稼働中スロット）
+ssh raspi5 'cd /opt/RaspberryPiSystem_002 && docker logs --tail 100 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"'
 
 # エラーログのみを確認
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -i error"
+ssh raspi5 'cd /opt/RaspberryPiSystem_002 && docker logs "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1" 2>&1 | grep -i error'
 ```
 
 ### 5.3 データベース操作
