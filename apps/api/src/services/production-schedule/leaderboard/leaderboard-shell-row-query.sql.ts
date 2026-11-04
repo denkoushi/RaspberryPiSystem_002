@@ -1,3 +1,4 @@
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -9,6 +10,7 @@ import {
 } from './leaderboard-shell-row-projection.sql.js';
 
 export type LeaderboardShellRowQuerySpec = {
+  dueSource?: BoardDueSource;
   rankJoins: LeaderboardShellRankJoinContext;
   whereSql: Prisma.Sql;
   orderBySql: Prisma.Sql;
@@ -19,7 +21,7 @@ export async function queryLeaderboardShellScheduleRows(
   spec: LeaderboardShellRowQuerySpec
 ): Promise<LeaderboardScheduleRowSql[]> {
   const { rankJoins, whereSql, orderBySql, limitSql = Prisma.empty } = spec;
-  const selectList = buildLeaderboardShellRowSelectList(rankJoins);
+  const selectList = buildLeaderboardShellRowSelectList(rankJoins, spec.dueSource);
   const fromJoins = buildLeaderboardShellRowFromJoins(rankJoins);
 
   const raw = await prisma.$queryRaw<LeaderboardScheduleRowSql[]>`

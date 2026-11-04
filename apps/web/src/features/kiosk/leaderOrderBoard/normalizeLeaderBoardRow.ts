@@ -39,7 +39,7 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     row.plannedEndDate != null && String(row.plannedEndDate).trim().length > 0
       ? String(row.plannedEndDate).trim()
       : null;
-  const displayDue = resolveDisplayDueDate(dueDate, plannedEnd);
+  const displayDue = row.boardDueDate !== undefined ? row.boardDueDate : resolveDisplayDueDate(dueDate, plannedEnd);
 
   const plannedQuantity =
     typeof row.plannedQuantity === 'number' && Number.isFinite(row.plannedQuantity)

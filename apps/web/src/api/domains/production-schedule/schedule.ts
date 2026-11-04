@@ -19,6 +19,7 @@ export interface ProductionScheduleRow {
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
+  boardDueDate?: string | null;
   plannedQuantity?: number | null;
   plannedStartDate?: string | null;
   plannedEndDate?: string | null;

@@ -62,6 +62,9 @@ export type LeaderBoardLeftToolStackProps = {
   onMoveRegisteredSeibanToRank: (fseiban: string, targetRank1Based: number) => void;
   /** 背景同期中など、製番検索・登録を明示的に無効化 */
   interactionLocked?: boolean;
+  /** SCAW の日程を表示（既定はエクセルの日程） */
+  scawEnabled?: boolean;
+  onToggleScawMode?: () => void;
   /** ガント表示（所要量比例の行高） */
   ganttEnabled: boolean;
   onToggleGanttMode: () => void;
@@ -104,6 +107,7 @@ export function LeaderBoardLeftToolStack({
   registeredSeibansForDisplay,
   onMoveRegisteredSeibanToRank,
   interactionLocked = false,
+  scawEnabled = false, onToggleScawMode,
   ganttEnabled,
   onToggleGanttMode,
   splitFeatureStatus
@@ -434,6 +438,8 @@ export function LeaderBoardLeftToolStack({
           >
             {ganttEnabled ? 'ガントON' : 'ガントOFF'}
           </button>
+          <button type="button" onClick={onToggleScawMode} aria-pressed={scawEnabled}
+            className={clsx('rounded-md border px-2 font-semibold', scawEnabled ? 'border-sky-400 bg-sky-500 text-white hover:bg-sky-600' : kioskButtonSecondaryClassName)}>SCAW</button>
         </div>
         {selectedResourceCategory ? (
           <p className={clsx('shrink-0', kioskMetaTextClassName)}>検索: {selectedResourceCategory}</p>

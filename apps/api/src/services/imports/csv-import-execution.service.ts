@@ -1,3 +1,4 @@
+import { getDScheduleMinutesGmailIngestionService, type DScheduleMinutesCycleSummary, type DScheduleMinutesGmailIngestionService } from '../production-schedule/d-schedule-minutes/d-schedule-minutes-gmail-ingestion.service.js';
 import { createHash } from 'crypto';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialCycleSummary, type ProcedureMaterialGmailIngestionService } from '../assembly/procedure-material-gmail-ingestion.service.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
@@ -17,7 +18,7 @@ import type {
   ItemInventoryCycleSummary,
   ItemInventoryGmailIngestionService,
 } from '../item-inventory/item-inventory-gmail-ingestion.service.js';
-import { ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS, MACHINE_SIGNAL_GMAIL_SUBJECT, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
+import { D_SCHEDULE_MINUTES_GMAIL_SUBJECT, ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS, MACHINE_SIGNAL_GMAIL_SUBJECT, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
 import {
   getMachineSignalGmailIngestionService,
   type MachineSignalGmailCycleSummary,
@@ -49,6 +50,7 @@ export type CsvImportExecutionSummary = {
   };
   procedureMaterialGmail?: ProcedureMaterialCycleSummary;
   itemInventoryGmail?: ItemInventoryCycleSummary;
+  dScheduleMinutesGmail?: DScheduleMinutesCycleSummary;
   machineSignalGmail?: MachineSignalGmailCycleSummary;
 };
 
@@ -94,6 +96,7 @@ type CsvImportExecutionDeps = {
   createCsvImportConfigService: () => CsvImportConfigService;
   createProcedureMaterialGmailIngestionService: () => Pick<ProcedureMaterialGmailIngestionService, 'runOnce'>;
   createItemInventoryGmailIngestionService: () => ItemInventoryGmailIngestionService;
+  createDScheduleMinutesGmailIngestionService: () => Pick<DScheduleMinutesGmailIngestionService, 'runOnce'>;
   createMachineSignalGmailIngestionService: () => Pick<MachineSignalGmailIngestionService, 'runOnce'>;
   processCsvImportFromTargets: ProcessCsvImportFromTargetsFn;
   logger: LoggerLike;
@@ -122,6 +125,7 @@ export class CsvImportExecutionService {
       createCsvImportConfigService: () => new CsvImportConfigService(),
       createProcedureMaterialGmailIngestionService: getProcedureMaterialGmailIngestionService,
       createItemInventoryGmailIngestionService: () => getItemInventoryServices().ingestion,
+      createDScheduleMinutesGmailIngestionService: getDScheduleMinutesGmailIngestionService,
       createMachineSignalGmailIngestionService: getMachineSignalGmailIngestionService,
       processCsvImportFromTargets,
       logger,
@@ -258,7 +262,7 @@ export class CsvImportExecutionService {
         target.type === 'csvDashboards' ||
         target.type === 'itemInventoryGmail' ||
         target.type === 'machineSignalGmail' ||
-        target.type === 'procedureMaterialGmail'
+        target.type === 'procedureMaterialGmail' || target.type === 'dScheduleMinutesGmail'
       ) {
         filteredTargets.push(target);
         continue;
@@ -293,7 +297,7 @@ export class CsvImportExecutionService {
         t.type !== 'productionActualHours' &&
         t.type !== 'itemInventoryGmail' &&
         t.type !== 'machineSignalGmail' &&
-        t.type !== 'procedureMaterialGmail'
+        t.type !== 'procedureMaterialGmail' && t.type !== 'dScheduleMinutesGmail'
     );
 
     if (itemInventoryTargets.length > 0 && provider !== 'gmail') {
@@ -311,7 +315,7 @@ export class CsvImportExecutionService {
     // CSV storage provider, or pass the special target to the CSV parser, when
     // this schedule contains only the inventory intake target.
     const storageProvider = targets.some(
-      (target) => target.type !== 'itemInventoryGmail' && target.type !== 'machineSignalGmail' && target.type !== 'procedureMaterialGmail'
+      (target) => target.type !== 'itemInventoryGmail' && target.type !== 'machineSignalGmail' && target.type !== 'procedureMaterialGmail' && target.type !== 'dScheduleMinutesGmail'
     )
       ? await this.deps.storageProviderFactory.createFromConfig(
         {
@@ -383,6 +387,14 @@ export class CsvImportExecutionService {
         config,
         allowWait: opts.gmailAllowWait,
       });
+    }
+
+    let minutesResult: DScheduleMinutesCycleSummary | undefined;
+    const minutesTargets = targets.filter((target) => target.type === 'dScheduleMinutesGmail');
+    if (minutesTargets.length > 0) {
+      if (provider !== 'gmail') throw new Error('dScheduleMinutesGmail requires Gmail storage provider');
+      if (minutesTargets.some((target) => target.source !== D_SCHEDULE_MINUTES_GMAIL_SUBJECT)) throw new Error('D社日程会議議事録の件名条件が不正です');
+      minutesResult = await this.deps.createDScheduleMinutesGmailIngestionService().runOnce({ config, allowWait: opts.gmailAllowWait });
     }
 
     // CSVファイルをダウンロード
@@ -508,6 +520,7 @@ export class CsvImportExecutionService {
         productionActualHours: productionActualHoursResult,
         ...(itemInventoryResult ? { itemInventoryGmail: itemInventoryResult } : {}),
         ...(procedureMaterialResult ? { procedureMaterialGmail: procedureMaterialResult } : {}),
+        ...(minutesResult ? { dScheduleMinutesGmail: minutesResult } : {}),
         ...(machineSignalResult ? { machineSignalGmail: machineSignalResult } : {}),
       };
     }
@@ -518,6 +531,7 @@ export class CsvImportExecutionService {
       productionActualHours: productionActualHoursResult,
       ...(itemInventoryResult ? { itemInventoryGmail: itemInventoryResult } : {}),
       ...(procedureMaterialResult ? { procedureMaterialGmail: procedureMaterialResult } : {}),
+      ...(minutesResult ? { dScheduleMinutesGmail: minutesResult } : {}),
       ...(machineSignalResult ? { machineSignalGmail: machineSignalResult } : {}),
     };
   }

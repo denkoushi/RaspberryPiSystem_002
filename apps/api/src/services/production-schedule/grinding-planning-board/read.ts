@@ -1,3 +1,4 @@
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardLoadResponse, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
@@ -17,7 +18,7 @@ import { readOverrides, readPlanningResourceCandidates, readPlanningSource, read
 import { MAX_REUSABLE_PLANNING_PAYLOADS, REUSABLE_PLANNING_PAYLOAD_TTL_MS, boardRevision, fallbackPlanningSnapshotStore, getOrCreateState, isPlanningSnapshotPayload, isPlanningStateAlignedWithGeneration, readPlanningSnapshotGenerationDetails, readPlanningSnapshotGenerationToken, reusablePlanningPayloads, stateOrder } from './state.js';
 
 
-async function projectCurrentBoard(params: { client: DbClient; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; state: PlanningState; selectedFseibans?: ReadonlySet<string>; machineNames?: ReadonlyMap<string, string | null>; source?: PlanningSource }): Promise<{ allItems: GrindingPlanningBoardItem[]; items: GrindingPlanningBoardItem[]; load: GrindingPlanningBoardLoad[]; unknownRequiredMinutesCount: number; progress: ReturnType<typeof projectGrindingPlanningBoard>['progress']; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; sourceRows: WinnerRow[]; details: Map<string, RowDetail> }> {
+async function projectCurrentBoard(params: { dueSource?: BoardDueSource; client: DbClient; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; state: PlanningState; selectedFseibans?: ReadonlySet<string>; machineNames?: ReadonlyMap<string, string | null>; source?: PlanningSource }): Promise<{ allItems: GrindingPlanningBoardItem[]; items: GrindingPlanningBoardItem[]; load: GrindingPlanningBoardLoad[]; unknownRequiredMinutesCount: number; progress: ReturnType<typeof projectGrindingPlanningBoard>['progress']; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; sourceRows: WinnerRow[]; details: Map<string, RowDetail> }> {
   const source = params.source ?? await readPlanningSource({
     siteKey: params.siteKey,
     category: params.category,
@@ -32,11 +33,11 @@ async function projectCurrentBoard(params: { client: DbClient; siteKey: string; 
   }).map((row) => row.id);
   const splitIds = displayRowIds.flatMap((rowId) => details.get(rowId)?.orderSplits.map((split) => split.id) ?? []);
   const ranks = await readRanks(params.client, displayRowIds, splitIds, params.siteKey);
-  const projection = projectGrindingPlanningBoard({ rows, details, ranks, overrides, progressRows: source.progressRows, splitEnabled: isProductionScheduleOrderSplitEnabled(), category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
+  const projection = projectGrindingPlanningBoard({ dueSource: params.dueSource, rows, details, ranks, overrides, progressRows: source.progressRows, splitEnabled: isProductionScheduleOrderSplitEnabled(), category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
   return { allItems: projection.allItems, items: projection.items, load: projection.load, unknownRequiredMinutesCount: projection.unknownRequiredMinutesCount, progress: projection.progress, policy, overrides, sourceRows: rows, details };
 }
 
-type PlanningPayloadRequest = { siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore };
+type PlanningPayloadRequest = { dueSource?: BoardDueSource; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore };
 type PlanningPayloadBuild = { orderedIds: readonly string[]; payload: PlanningSnapshotPayload; generationToken: string };
 const inFlightPlanningPayloads = new WeakMap<LeaderboardShellSnapshotStore, Map<string, Promise<PlanningPayloadBuild>>>();
 
@@ -55,14 +56,14 @@ async function preparePlanningPayload(params: PlanningPayloadRequest, perf: Retu
   const selected = requested ? order.filter((value) => requested.has(value)) : order;
   const completionFilter = params.completionFilter ?? 'all';
   const includeLoad = params.includeLoad !== false;
-  const filterFingerprint = JSON.stringify({ siteKey: params.siteKey, category: params.category, view: params.view, fseibans: selected, completionFilter, includeLoad });
+  const filterFingerprint = JSON.stringify({ dueSource: params.dueSource ?? 'excel', siteKey: params.siteKey, category: params.category, view: params.view, fseibans: selected, completionFilter, includeLoad });
   const store = params.snapshotStore ?? fallbackPlanningSnapshotStore;
   let reusablePayloads = reusablePlanningPayloads.get(store);
   if (!reusablePayloads) {
     reusablePayloads = new Map();
     reusablePlanningPayloads.set(store, reusablePayloads);
   }
-  const request: ReusablePlanningPayload['request'] = { category: params.category, view: params.view, requestedFseibans, completionFilter, includeLoad };
+  const request: ReusablePlanningPayload['request'] = { dueSource: params.dueSource ?? 'excel', category: params.category, view: params.view, requestedFseibans, completionFilter, includeLoad };
   return { params, perf, stateForRead, generationBeforeRead, order, selected, completionFilter, includeLoad, filterFingerprint, store, reusablePayloads, request };
 }
 
@@ -88,7 +89,7 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
     leaderboardGenerationToken: generationBeforeRead.leaderboardGenerationToken
   }));
   const names = await perf.measure('machineNames', () => resolveSeibanMachineDisplayNamesBatched(order));
-  const projection = await perf.measure('projection', () => projectCurrentBoard({ client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source }));
+  const projection = await perf.measure('projection', () => projectCurrentBoard({ dueSource: params.dueSource, client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source }));
   const filtered = completionFilter === 'complete' ? projection.items.filter((item) => item.isCompleted) : completionFilter === 'incomplete' ? projection.items.filter((item) => !item.isCompleted) : projection.items;
   const loadSummary = includeLoad ? await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
     client: prisma,
@@ -248,7 +249,7 @@ async function findPlacementByProductNo(items: readonly GrindingPlanningBoardIte
   return placements;
 }
 
-export async function getGrindingPlanningBoard(params: { siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
+export async function getGrindingPlanningBoard(params: { dueSource?: BoardDueSource; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
   if ((params.cursor ?? 0) > 0 && !params.snapshotId) throw new ApiError(400, '続きの cursor には snapshotId が必要です', undefined, 'INVALID_PLANNING_BOARD_CURSOR');
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board');
   const context = await preparePlanningPayload(params, perf);

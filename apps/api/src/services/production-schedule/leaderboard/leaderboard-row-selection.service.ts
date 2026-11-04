@@ -64,6 +64,7 @@ export function buildLeaderboardShellListWhereSql(params: {
 }
 
 async function buildLeaderboardShellPriorityContext(params: {
+  dueSource?: 'excel' | 'scaw';
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
@@ -115,9 +116,10 @@ async function buildLeaderboardShellPriorityContext(params: {
   });
 
   const manualRowsRaw = await queryLeaderboardShellScheduleRows({
+    dueSource: params.dueSource,
     rankJoins,
     whereSql: manualWhere,
-    orderBySql: buildLeaderboardShellManualOrderBy(rankJoins),
+    orderBySql: buildLeaderboardShellManualOrderBy(rankJoins, params.dueSource),
     limitSql: manualLimitSql
   });
 
@@ -158,9 +160,10 @@ async function buildLeaderboardShellPriorityContext(params: {
         AND ${seibanCondition}`;
 
     const expansionRows = await queryLeaderboardShellScheduleRows({
+      dueSource: params.dueSource,
       rankJoins,
       whereSql: expansionWhereSql,
-      orderBySql: buildLeaderboardShellFillerOrderBy()
+      orderBySql: buildLeaderboardShellFillerOrderBy(params.dueSource)
     });
 
     for (const r of expansionRows) {
@@ -175,6 +178,7 @@ async function buildLeaderboardShellPriorityContext(params: {
 }
 
 async function queryLeaderboardShellFillerRows(params: {
+  dueSource?: 'excel' | 'scaw';
   commonWhere: Prisma.Sql;
   rankJoins: ReturnType<typeof buildLeaderboardShellRankJoinContext>;
   pSorted: LeaderboardScheduleRowSql[];
@@ -210,9 +214,10 @@ async function queryLeaderboardShellFillerRows(params: {
       ${additionalExcludeSql}`;
 
   return queryLeaderboardShellScheduleRows({
+    dueSource: params.dueSource,
     rankJoins,
     whereSql: fillerWhere,
-    orderBySql: buildLeaderboardShellFillerOrderBy(),
+    orderBySql: buildLeaderboardShellFillerOrderBy(params.dueSource),
     limitSql: takeLimitSql
   });
 }
@@ -303,6 +308,7 @@ export function mergeLeaderboardShellPriorityAndFillerUpTo(
  * 順位ボード shell 初回: 先頭 N 件だけグローバル順の正しい prefix として返す（全件マージ完了は保証しない）。
  */
 export async function fetchLeaderboardShellMergedPrefixRows(params: {
+  dueSource?: 'excel' | 'scaw';
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
@@ -329,6 +335,7 @@ export async function fetchLeaderboardShellMergedPrefixRows(params: {
     }
 
     const fillerProbe = await queryLeaderboardShellFillerRows({
+      dueSource: params.dueSource,
       commonWhere: ctx.commonWhere,
       rankJoins: ctx.rankJoins,
       pSorted: ctx.pSorted,
@@ -341,6 +348,7 @@ export async function fetchLeaderboardShellMergedPrefixRows(params: {
   }
 
   const { rows, mergeFullyCompleted } = await takeLeaderboardShellMergedRowsAfterExclude({
+    dueSource: params.dueSource,
     commonWhere: ctx.commonWhere,
     rankJoins: ctx.rankJoins,
     pSorted: ctx.pSorted,
@@ -355,6 +363,7 @@ export async function fetchLeaderboardShellMergedPrefixRows(params: {
  * （フィラーは単一クエリで全件。段階取得の hot path では使わない）
  */
 export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
+  dueSource?: 'excel' | 'scaw';
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
@@ -367,6 +376,7 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
 }): Promise<LeaderboardScheduleRowSql[]> {
   const ctx = await buildLeaderboardShellPriorityContext(params);
   const fillerRows = await queryLeaderboardShellFillerRows({
+    dueSource: params.dueSource,
     commonWhere: ctx.commonWhere,
     rankJoins: ctx.rankJoins,
     pSorted: ctx.pSorted
@@ -380,6 +390,7 @@ export async function fetchFullLeaderboardShellMergedOrderedRows(params: {
  * 1 呼び出しあたりのフィラー読み込み行数に上限があり、上限到達時は mergeFullyCompleted=false になる。
  */
 export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
+  dueSource?: 'excel' | 'scaw';
   commonWhere: Prisma.Sql;
   rankJoins: ReturnType<typeof buildLeaderboardShellRankJoinContext>;
   pSorted: LeaderboardScheduleRowSql[];
@@ -428,6 +439,7 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
     }
 
     const batch = await queryLeaderboardShellFillerRows({
+      dueSource: params.dueSource,
       commonWhere,
       rankJoins,
       pSorted,
@@ -534,6 +546,7 @@ export async function takeLeaderboardShellMergedRowsAfterExclude(params: {
  * `leaderboard-shell` 続き取得: 既に返却済み id を除外し chunkSize 件を返す。
  */
 export async function fetchLeaderboardShellRowsContinuationChunk(params: {
+  dueSource?: 'excel' | 'scaw';
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
@@ -549,6 +562,7 @@ export async function fetchLeaderboardShellRowsContinuationChunk(params: {
   const ctx = await buildLeaderboardShellPriorityContext(params);
   const exclude = new Set(params.excludeRowIds.map((id) => id.trim()).filter((id) => id.length > 0));
   return takeLeaderboardShellMergedRowsAfterExclude({
+    dueSource: params.dueSource,
     commonWhere: ctx.commonWhere,
     rankJoins: ctx.rankJoins,
     pSorted: ctx.pSorted,
@@ -594,6 +608,7 @@ export async function fetchLeaderboardPlanningScopedParentRowIds(params: {
  * - `pageSize` 未満のときはフィラーとマージしたグローバル順で先頭 `pageSize` 件を返す。
  */
 export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params: {
+  dueSource?: 'excel' | 'scaw';
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   queryWhere: Prisma.Sql;
   expansionWhere: Prisma.Sql;
@@ -614,6 +629,7 @@ export async function fetchLeaderboardScheduleRowsWithSeibanAwarePriority(params
   }
 
   const { rows } = await takeLeaderboardShellMergedRowsAfterExclude({
+    dueSource: params.dueSource,
     commonWhere,
     rankJoins,
     pSorted,
@@ -666,7 +682,7 @@ export function compareLeaderboardFetchedRows(
 }
 
 function dueTime(row: LeaderboardScheduleRowSql): number | null {
-  const d = row.dueDate;
+  const d = row.boardDueDate ?? row.dueDate;
   if (d) return new Date(d).getTime();
   const e = row.plannedEndDate;
   if (e) return new Date(e).getTime();

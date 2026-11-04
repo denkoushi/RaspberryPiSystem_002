@@ -326,6 +326,7 @@ function countLeaderboardBoardShellResourceTotal(
 ): Promise<number> {
   return countProductionScheduleDashboardVisibleRowsFromListFilters(
     {
+      dueSource: listParamsBase.dueSource,
       queryText: listParamsBase.queryText,
       productNos: listParamsBase.productNos,
       machineName: listParamsBase.machineName,
@@ -757,6 +758,7 @@ export async function continueLeaderboardCompositeBoard(
           async () =>
             listLeaderboardShellContinuationProductionScheduleRows(
               {
+                dueSource: params.listParamsBase.dueSource,
                 queryText: params.listParamsBase.queryText,
                 productNos: params.listParamsBase.productNos,
                 machineName: params.listParamsBase.machineName,
@@ -799,6 +801,7 @@ export async function continueLeaderboardCompositeBoard(
     const snap = deps.snapshotStore.get(snapshotId);
     if (!snap) return true;
     const expectedFingerprint = buildLeaderboardShellFilterFingerprint({
+      dueSource: params.listParamsBase.dueSource,
       locationKey: params.listParamsBase.locationKey,
       siteKey: params.listParamsBase.siteKey,
       queryText: params.listParamsBase.queryText ?? '',

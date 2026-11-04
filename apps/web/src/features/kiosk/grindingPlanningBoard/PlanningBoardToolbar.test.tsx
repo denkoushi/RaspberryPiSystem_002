@@ -12,6 +12,21 @@ const props = (): PlanningBoardToolbarProps => ({
   onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
+  it.each([false, true])('places SCAW after the Gantt group, toggles and hides it during comparison (gantt=%s)', (ganttEnabled) => {
+    const onToggleScawMode = vi.fn();
+    const values = { ...props(), ganttEnabled, onToggleScawMode };
+    const { rerender } = render(<PlanningBoardToolbar {...values} />);
+    const button = screen.getByRole('button', { name: 'SCAW' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button.previousElementSibling).toContainElement(screen.getByRole('button', { name: 'ガント', exact: true }));
+    fireEvent.click(button);
+    expect(onToggleScawMode).toHaveBeenCalledOnce();
+    rerender(<PlanningBoardToolbar {...values} scawEnabled />);
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    const metrics = { lateCount: 2, waitMinutes: 120 };
+    rerender(<PlanningBoardToolbar {...values} orderPreview={{ before: metrics, after: metrics }} />);
+    expect(screen.queryByRole('button', { name: 'SCAW' })).not.toBeInTheDocument();
+  });
   it('reserves the same toolbar height across Gantt and focus controls', () => {
     const values = props();
     const { container, rerender } = render(<PlanningBoardToolbar {...values} />);
@@ -27,7 +42,7 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(scan.querySelector('svg')).toBeInTheDocument();
     const gantt = screen.getByRole('button', { name: 'ガント', exact: true });
     expect(gantt.parentElement).not.toContainElement(scan);
-    if (ganttEnabled) expect(scan.previousElementSibling?.lastElementChild).toBe(screen.getByRole('button', { name: '製番ごとに色分け' }));
+    if (ganttEnabled) expect(scan.previousElementSibling?.previousElementSibling?.lastElementChild).toBe(screen.getByRole('button', { name: '製番ごとに色分け' }));
   });
   it.each([false, true])('shows the large-screen toggle at the far right with gantt=%s', (ganttEnabled) => {
     const onToggleLargeScreen = vi.fn();

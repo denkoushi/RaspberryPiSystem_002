@@ -15,6 +15,11 @@ export type LeaderboardScheduleRowSql = {
   note: string | null;
   processingType: string | null;
   dueDate: Date | null;
+  /** Resolved board due; the original manual dueDate remains unchanged. */
+  boardDueDate?: Date | null;
+  manualUpdatedAt?: Date | null;
+  excelDueDate?: Date | null;
+  excelChangedAt?: Date | null;
   plannedQuantity: number | null;
   plannedStartDate: Date | null;
   plannedEndDate: Date | null;

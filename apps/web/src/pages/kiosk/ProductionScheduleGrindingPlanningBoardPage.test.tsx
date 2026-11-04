@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => ({
   order: vi.fn()
 }));
 
+vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => ({ data: { rows: [] } }) }));
+
 vi.mock('../../api/hooks', () => ({
   useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
   useSetKioskProductionScheduleRowCompletion: () => useMutation({ mutationFn: (args: { rowId: string; intent: 'complete' | 'incomplete' }) => mocks.completion(args) }),
@@ -177,8 +179,17 @@ function scanOrder(raw: string) {
 }
 
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
+  it('reads Excel by default and switches the board query to SCAW and back', () => {
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'excel' }), expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: 'SCAW' }));
+    expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'scaw' }), expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: 'SCAW' }));
+    expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'excel' }), expect.anything());
+  });
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
+    localStorage.removeItem('kiosk-planning-board-scaw-mode');
     localStorage.removeItem('kiosk-planning-board-gantt-scale');
     localStorage.removeItem('kiosk-planning-board-gantt-mode');
     localStorage.removeItem(LARGE_SCREEN_STORAGE_KEY);
@@ -1281,8 +1292,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     await waitFor(() => expect(screen.getByLabelText('CAND-FAILを登録候補に選択')).not.toBeChecked());
   });
 
-  it('登録済み49件で候補を2件選んでも上限超過を送信しない', () => {
-    const manyRegistered = Array.from({ length: 49 }, (_, index) => `REGISTERED-${index + 1}`);
+  it('登録済み99件で候補を2件選んでも上限超過を送信しない', () => {
+    const manyRegistered = Array.from({ length: 99 }, (_, index) => `REGISTERED-${index + 1}`);
     const board = fixture();
     mocks.snapshot.mockReturnValue({
       data: { ...board, registeredFseibans: manyRegistered, seibanOrder: manyRegistered, items: [] },
@@ -1315,7 +1326,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(registerButton).toBeDisabled();
     fireEvent.click(registerButton);
     expect(mocks.order).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('登録上限50件を超えるため');
+    expect(screen.getByRole('alert')).toHaveTextContent('登録上限100件を超えるため');
   });
 
   it('資源CD表示は資源名を見出しに表示し、部品情報を上下2段にする', () => {
@@ -2136,7 +2147,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     const rows = within(within(drawer).getByRole('list', { name: '登録製番' })).getAllByRole('listitem');
     expect(rows.map((row) => row.textContent?.slice(0, 9))).toEqual(['1✓26-1041', '2✓26-1042']);
-    expect(within(drawer).getByText('2/50')).toBeInTheDocument();
+    expect(within(drawer).getByText('2/100')).toBeInTheDocument();
     expect(within(drawer).getByRole('button', { name: '製番26-1041を上へ' })).toBeDisabled();
     expect(within(drawer).getByRole('button', { name: '製番26-1041を下へ' })).not.toBeDisabled();
     expect(within(drawer).getByRole('button', { name: '製番26-1042を上へ' })).not.toBeDisabled();

@@ -14,6 +14,7 @@ export const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01'
 export const PRODUCTION_SCHEDULE_COMPLETION_FILTER_VALUES = ['all', 'complete', 'incomplete'] as const;
 
 export const productionScheduleQuerySchema = z.object({
+  dueSource: z.enum(['excel', 'scaw']).default('excel'),
   productNo: z.string().min(1).max(100).optional(),
   q: z.string().min(1).max(200).optional(),
   productNos: z.string().min(1).max(4000).optional(),
@@ -60,6 +61,7 @@ export const productionScheduleLeaderboardPhasedQuerySchema = productionSchedule
 
 /** 順位ボード shell 続き取得の共通フィールド（単一資源 continue / 集約 continue で再利用） */
 export const productionScheduleLeaderboardShellContinuationFieldsSchema = z.object({
+  dueSource: z.enum(['excel', 'scaw']).default('excel'),
   /** shell 応答で返却された snapshot。付与時は continue が軽量経路になる。 */
   snapshotId: z.string().guid().optional(),
   /**

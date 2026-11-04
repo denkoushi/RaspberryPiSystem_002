@@ -1,3 +1,4 @@
+import { resolveBoardDueFields } from '../d-schedule-minutes/resolve-board-due-fields.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from '../leaderboard/leaderboard-shell-hydrate.service.js';
@@ -34,6 +35,10 @@ function mapHydratedSqlRowToProductionScheduleRow(row: LeaderboardScheduleRowSql
     note: row.note,
     processingType: row.processingType,
     dueDate: row.dueDate,
+    boardDueDate: row.boardDueDate,
+    manualUpdatedAt: row.manualUpdatedAt,
+    excelDueDate: row.excelDueDate,
+    excelChangedAt: row.excelChangedAt,
     plannedQuantity: row.plannedQuantity,
     plannedStartDate: row.plannedStartDate,
     plannedEndDate: row.plannedEndDate,
@@ -42,12 +47,13 @@ function mapHydratedSqlRowToProductionScheduleRow(row: LeaderboardScheduleRowSql
 }
 
 export async function expandLeaderboardParentRowsForResponse(params: {
+  dueSource?: 'excel' | 'scaw';
   rows: ProductionScheduleRow[];
   locationKey: string;
   hasDueDateOnly?: boolean;
 }): Promise<ProductionScheduleRow[]> {
   const expanded = await expandProductionScheduleRowsForOrderSplits({
-    rows: params.rows,
+    rows: params.rows.map((row) => resolveBoardDueFields(row, params.dueSource)),
     locationKey: params.locationKey,
     enabled: isProductionScheduleOrderSplitEnabled()
   });
@@ -55,6 +61,7 @@ export async function expandLeaderboardParentRowsForResponse(params: {
 }
 
 export async function expandLeaderboardParentRowIdsForSnapshot(params: {
+  dueSource?: 'excel' | 'scaw';
   parentRows: ProductionScheduleRow[];
   locationKey: string;
   hasDueDateOnly?: boolean;
@@ -62,6 +69,7 @@ export async function expandLeaderboardParentRowIdsForSnapshot(params: {
   if (params.hasDueDateOnly) {
     const expanded = await expandLeaderboardParentRowsForResponse({
       rows: params.parentRows,
+      dueSource: params.dueSource,
       locationKey: params.locationKey,
       hasDueDateOnly: true
     });
@@ -80,6 +88,7 @@ export async function expandLeaderboardParentRowIdsForSnapshot(params: {
 }
 
 export async function fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds(params: {
+  dueSource?: 'excel' | 'scaw';
   orderedDisplayItemIds: readonly DisplayItemId[];
   locationKey: string;
   siteScopedGlobalRankLocation: string;
@@ -103,7 +112,7 @@ export async function fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemId
     canonicalSourceSiteKey: params.canonicalSourceSiteKey
   });
 
-  const parentProductionRows = hydratedParentRows.map(mapHydratedSqlRowToProductionScheduleRow);
+  const parentProductionRows = hydratedParentRows.map((row) => resolveBoardDueFields(mapHydratedSqlRowToProductionScheduleRow(row), params.dueSource));
 
   return hydrateDisplayItemsFromParentRows({
     orderedDisplayItemIds: params.orderedDisplayItemIds,
@@ -224,6 +233,7 @@ export async function resolvePartiallyReturnedParentRowIdsForLegacyContinue(para
  * snapshot なし continue: 一部だけ返却済みの親行から、残りの display item を hydrate する。
  */
 export async function fetchPartiallyReturnedDisplayItemsForLegacyContinue(params: {
+  dueSource?: 'excel' | 'scaw';
   excludeDisplayItemIds: readonly DisplayItemId[];
   locationKey: string;
   siteScopedGlobalRankLocation: string;
@@ -262,6 +272,7 @@ export async function fetchPartiallyReturnedDisplayItemsForLegacyContinue(params
   }
 
   return fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
+    dueSource: params.dueSource,
     orderedDisplayItemIds: remainingDisplayIds,
     locationKey: params.locationKey,
     siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,

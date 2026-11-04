@@ -1,3 +1,4 @@
+import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL } from '../d-schedule-minutes/board-due.sql.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { prisma } from '../../../lib/prisma.js';
@@ -66,6 +67,7 @@ function planningDetailToRowDetail(row: LeaderboardScheduleRowSql): RowDetail {
   if (!detail) {
     return {
       updatedAt,
+      manualUpdatedAt: row.manualUpdatedAt, excelDueDate: row.excelDueDate, excelChangedAt: row.excelChangedAt,
       rowNotes: [{ dueDate: row.dueDate }],
       orderSupplements: [{ plannedQuantity: row.plannedQuantity, plannedEndDate: row.plannedEndDate }],
       productionScheduleProgress: { isCompleted: false, updatedAt: updatedAt ?? new Date(0) },
@@ -75,6 +77,7 @@ function planningDetailToRowDetail(row: LeaderboardScheduleRowSql): RowDetail {
   }
   return {
     updatedAt,
+    manualUpdatedAt: row.manualUpdatedAt, excelDueDate: row.excelDueDate, excelChangedAt: row.excelChangedAt,
     rowNotes: [{ dueDate: dateValue(detail.dueDate) }],
     orderSupplements: [{ plannedQuantity: detail.plannedQuantity, plannedEndDate: dateValue(detail.plannedEndDate) }],
     productionScheduleProgress: { isCompleted: Boolean(detail.isCompleted), updatedAt: dateValue(detail.progressUpdatedAt) ?? new Date(0) },
@@ -267,7 +270,18 @@ export async function readRowDetails(client: DbClient, rowIds: readonly string[]
         orderSplits: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { id: true, splitQuantity: true, dueDate: true, updatedAt: true }, orderBy: { splitNo: 'asc' } }
       }
     });
-    for (const detail of rows) details.set(detail.id, detail as RowDetail);
+    const dueInputs = await client.$queryRaw<Array<{ id: string; manualUpdatedAt: Date | null; excelDueDate: Date | null; excelChangedAt: Date | null }>>`
+      SELECT "CsvDashboardRow"."id", ${BOARD_MANUAL_UPDATED_AT_SQL} AS "manualUpdatedAt",
+        "excel_due"."partsCompleteDate" AS "excelDueDate", "excel_due"."excelChangedAt" AS "excelChangedAt"
+      FROM "CsvDashboardRow"
+      LEFT JOIN "ProductionScheduleRowNote" AS "n" ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      ${BOARD_DUE_JOINS_SQL}
+      WHERE "CsvDashboardRow"."id" = ANY(${chunk}::text[])
+        AND "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    `;
+    const byId = new Map(dueInputs.map((row) => [row.id, row]));
+    for (const detail of rows) details.set(detail.id, { ...detail, ...byId.get(detail.id) } as RowDetail);
   }
   return details;
 }

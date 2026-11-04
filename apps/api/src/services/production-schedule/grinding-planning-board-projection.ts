@@ -1,3 +1,4 @@
+import { resolveBoardDueDate, type BoardDueSource } from './d-schedule-minutes/resolve-board-due-date.js';
 import { createHash } from 'node:crypto';
 
 import type { Prisma } from '@prisma/client';
@@ -24,6 +25,9 @@ export type GrindingPlanningBoardProjectionRow = {
 };
 
 export type GrindingPlanningBoardProjectionRowDetail = {
+  manualUpdatedAt?: Date | null;
+  excelDueDate?: Date | null;
+  excelChangedAt?: Date | null;
   updatedAt: Date | null;
   rowNotes: ReadonlyArray<{ dueDate: Date | null }>;
   orderSupplements: ReadonlyArray<{
@@ -84,6 +88,7 @@ export type GrindingPlanningBoardProgressProjection = {
 };
 
 export type GrindingPlanningBoardProjectionInput = {
+  dueSource?: BoardDueSource;
   rows: readonly GrindingPlanningBoardProjectionRow[];
   details: ReadonlyMap<string, GrindingPlanningBoardProjectionRowDetail>;
   ranks: GrindingPlanningBoardProjectionRanks;
@@ -146,12 +151,16 @@ export function resolveGrindingPlanningBoardItemDueDate(params: {
   override?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
   parentOverride?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
 }): string | null {
-  if (params.override?.overrideDueDate != null) return ymd(params.override.overrideDueDate);
-  if (params.splitDueDate != null) return ymd(params.splitDueDate);
-  return resolveGrindingPlanningBoardParentDueDate({
-    originalParentDueDate: params.originalParentDueDate,
-    plannedEndDate: params.plannedEndDate,
-    override: params.parentOverride
+  return resolveBoardDueDate({
+    source: 'scaw',
+    itemOverride: ymd(params.override?.overrideDueDate),
+    splitDueDate: ymd(params.splitDueDate),
+    manualDueDate: resolveGrindingPlanningBoardParentDueDate({
+      originalParentDueDate: params.originalParentDueDate,
+      plannedEndDate: params.plannedEndDate,
+      override: params.parentOverride
+    }),
+    manualUpdatedAt: null, excelDueDate: null, excelChangedAt: null, scawPlannedEndDate: null
   });
 }
 
@@ -464,7 +473,13 @@ function buildItems(
           );
       const requiredMinutes = displayFields.machineRequiredMinutes ?? null;
       const requiredMinutesKnown = requiredMinutes != null;
-      const originalParentDueDate = detail.rowNotes[0]?.dueDate ?? detail.orderSupplements[0]?.plannedEndDate ?? null;
+      const parentDue = resolveBoardDueDate({
+        source: params.dueSource ?? 'excel', itemOverride: null, splitDueDate: null,
+        manualDueDate: ymd(detail.rowNotes[0]?.dueDate), manualUpdatedAt: detail.manualUpdatedAt ?? null,
+        excelDueDate: ymd(detail.excelDueDate), excelChangedAt: detail.excelChangedAt ?? null,
+        scawPlannedEndDate: ymd(detail.orderSupplements[0]?.plannedEndDate)
+      });
+      const originalParentDueDate = parentDue ? new Date(`${parentDue}T00:00:00.000Z`) : null;
       const originalDueDate = ymd(split?.dueDate) ?? ymd(originalParentDueDate);
       const effectiveDueDate = resolveGrindingPlanningBoardItemDueDate({
         splitDueDate: split?.dueDate ?? null,

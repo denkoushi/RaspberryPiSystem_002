@@ -6,6 +6,8 @@ import { fetchFkojunstStatusMailGenerationRevision } from '../fkojunst-status-ma
 
 type SnapshotMainAndAuxGenerationRow = {
   rowsRevision: bigint | null;
+  excelDueUpdatedAt?: Date | null;
+  excelDueCount?: bigint;
   orderAssignmentUpdatedAt: Date | null;
   orderSplitCount: bigint;
   orderSplitUpdatedAt: Date | null;
@@ -44,6 +46,10 @@ export type LeaderboardShellSnapshotGenerationTokenDetails = {
 async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerationRow[]> {
   return prisma.$queryRaw<SnapshotMainAndAuxGenerationRow[]>(Prisma.sql`
     SELECT
+      (SELECT MAX("updatedAt") FROM "ProductionScheduleDScheduleMinutes"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "excelDueUpdatedAt",
+      (SELECT COUNT(*)::bigint FROM "ProductionScheduleDScheduleMinutes"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "excelDueCount",
       (SELECT "revision"
        FROM "CsvDashboardRawRevision"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsRevision",
@@ -119,6 +125,10 @@ function buildLeaderboardShellSnapshotGenerationToken(params: {
   }
   return JSON.stringify({
     rowsRevision: String(row.rowsRevision),
+    ...(row.excelDueUpdatedAt || row.excelDueCount ? {
+      excelDueUpdatedAt: normalizeDate(row.excelDueUpdatedAt),
+      excelDueCount: String(row.excelDueCount ?? 0n)
+    } : {}),
     fkojunstStatusMailRowsRevision,
     orderAssignmentUpdatedAt: normalizeDate(row?.orderAssignmentUpdatedAt),
     orderSplitCount: String(row?.orderSplitCount ?? 0n),

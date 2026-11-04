@@ -30,6 +30,10 @@ function mapLeaderboardSqlRowToProductionScheduleRow(row: LeaderboardScheduleRow
     note: row.note,
     processingType: row.processingType,
     dueDate: row.dueDate,
+    boardDueDate: row.boardDueDate,
+    manualUpdatedAt: row.manualUpdatedAt,
+    excelDueDate: row.excelDueDate,
+    excelChangedAt: row.excelChangedAt,
     plannedQuantity: row.plannedQuantity,
     plannedStartDate: row.plannedStartDate,
     plannedEndDate: row.plannedEndDate,
@@ -125,6 +129,7 @@ function buildDisplayItemPrefixGapManualAssignmentExistsSql(params: {
 }
 
 async function findManualLeaderboardParentRowIdsForGapQuery(params: {
+  dueSource?: 'excel' | 'scaw';
   locationKey: string;
   siteScopedGlobalRankLocation: string;
   excludeParentRowIds: ReadonlySet<string>;
@@ -144,6 +149,7 @@ async function findManualLeaderboardParentRowIdsForGapQuery(params: {
     siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation
   });
   const rows = await queryLeaderboardShellScheduleRows({
+    dueSource: params.dueSource,
     rankJoins,
     whereSql: PrismaNamespace.sql`${params.leaderboardShellListWhere}
       AND ${buildDisplayItemPrefixGapManualAssignmentExistsSql({
@@ -151,13 +157,14 @@ async function findManualLeaderboardParentRowIdsForGapQuery(params: {
         gapQuery: params.gapQuery
       })}
       ${excludeSql}`,
-    orderBySql: buildLeaderboardShellManualOrderBy(rankJoins)
+    orderBySql: buildLeaderboardShellManualOrderBy(rankJoins, params.dueSource)
   });
 
   return rows.map((row) => row.id);
 }
 
 async function findMissingManualParentRowIdsForDisplayItemPrefix(params: {
+  dueSource?: 'excel' | 'scaw';
   expandedDisplayItems: ProductionScheduleRow[];
   pageSize: number;
   locationKey: string;
@@ -179,6 +186,7 @@ async function findMissingManualParentRowIdsForDisplayItemPrefix(params: {
   const candidateIds = new Set<string>();
   for (const gapQuery of gapQueries) {
     const ids = await findManualLeaderboardParentRowIdsForGapQuery({
+      dueSource: params.dueSource,
       locationKey: params.locationKey,
       siteScopedGlobalRankLocation: params.siteScopedGlobalRankLocation,
       excludeParentRowIds: params.excludeParentRowIds,
@@ -216,6 +224,7 @@ export type LeaderboardShellDisplayItemPrefixResult = {
  * split 無効時: 入力 prefix をそのまま展開するだけ。
  */
 export async function resolveLeaderboardShellDisplayItemPrefix(params: {
+  dueSource?: 'excel' | 'scaw';
   mergedPrefixInitial: LeaderboardScheduleRowSql[];
   mergeFullyCompletedInitial: boolean;
   pageSize: number;
@@ -232,6 +241,7 @@ export async function resolveLeaderboardShellDisplayItemPrefix(params: {
 
   if (!isProductionScheduleOrderSplitEnabled()) {
     const expandedDisplayItems = await expandLeaderboardParentRowsForResponse({
+      dueSource: params.dueSource,
       rows: mergedPrefix.map(mapLeaderboardSqlRowToProductionScheduleRow),
       locationKey: params.locationKey
     });
@@ -242,11 +252,13 @@ export async function resolveLeaderboardShellDisplayItemPrefix(params: {
 
   for (let round = 0; round < MAX_DISPLAY_ITEM_PREFIX_GAP_ITERATIONS; round++) {
     const expandedDisplayItems = await expandLeaderboardParentRowsForResponse({
+      dueSource: params.dueSource,
       rows: mergedPrefix.map(mapLeaderboardSqlRowToProductionScheduleRow),
       locationKey: params.locationKey
     });
 
     const missingParentIds = await findMissingManualParentRowIdsForDisplayItemPrefix({
+      dueSource: params.dueSource,
       expandedDisplayItems,
       pageSize: params.pageSize,
       locationKey: params.locationKey,
@@ -282,6 +294,7 @@ export async function resolveLeaderboardShellDisplayItemPrefix(params: {
   }
 
   const expandedDisplayItems = await expandLeaderboardParentRowsForResponse({
+    dueSource: params.dueSource,
     rows: mergedPrefix.map(mapLeaderboardSqlRowToProductionScheduleRow),
     locationKey: params.locationKey
   });

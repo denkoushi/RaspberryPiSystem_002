@@ -848,6 +848,7 @@ function buildSplitDisplayProductionScheduleRow(params: {
     splitQuantity: split.splitQuantity,
     isSplit: true,
     dueDate: split.dueDate ?? parent.dueDate,
+    ...(parent.boardDueDate !== undefined ? { boardDueDate: split.dueDate ?? parent.boardDueDate } : {}),
     plannedStartDate: split.plannedStartDate ?? parent.plannedStartDate,
     plannedEndDate: split.plannedEndDate ?? parent.plannedEndDate,
     processingOrder

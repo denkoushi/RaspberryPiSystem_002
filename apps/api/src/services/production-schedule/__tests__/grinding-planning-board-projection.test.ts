@@ -344,3 +344,28 @@ describe('grinding-planning-board-projection', () => {
     expect(result.unknownRequiredMinutesCount).toBe(1);
   });
 });
+
+describe('D schedule due source in the grinding projection', () => {
+  it('uses changed Excel dates by default, newer manual dates, and exact legacy dates in scaw mode', () => {
+    const value = detail({ excelDueDate: new Date('2026-11-10Z'), excelChangedAt: new Date('2026-11-04Z'), manualUpdatedAt: new Date('2026-11-03Z') });
+    const input = baseParams({ details: new Map([['row-1', value]]) });
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-10');
+    expect(projectGrindingPlanningBoard({ ...input, dueSource: 'scaw' }).items[0]?.effectiveDueDate).toBe('2026-09-10');
+    value.manualUpdatedAt = new Date('2026-11-05Z');
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-09-10');
+  });
+
+  it('keeps item overrides and split dates ahead of Excel', () => {
+    const updatedAt = new Date('2026-11-04Z');
+    const input = baseParams({ details: new Map([['row-1', detail({ excelDueDate: new Date('2026-11-10Z'), excelChangedAt: updatedAt,
+      orderSplits: [{ id: 'd-test-split', splitQuantity: 1, dueDate: new Date('2026-11-06Z'), updatedAt }] })]]) });
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-06');
+    input.overrides.set('split:d-test-split', { overrideResourceCd: null, overrideDueDate: new Date('2026-11-07Z'), alternateRank: null, version: 1 });
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-07');
+  });
+
+  it('produces identical responses for both sources when Excel has no stored rows', () => {
+    const input = baseParams();
+    expect(projectGrindingPlanningBoard({ ...input, dueSource: 'excel' })).toEqual(projectGrindingPlanningBoard({ ...input, dueSource: 'scaw' }));
+  });
+});
