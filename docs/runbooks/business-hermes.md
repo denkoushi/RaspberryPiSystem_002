@@ -14,7 +14,7 @@ Hermes本体と業務APIは内部Docker networkだけで接続し、Hermesにhos
 
 DGXの起動・ready待ち・leaseは既存APIの`photo_label` provider runtimeを`business_hermes`用途で共有します。業務用途のreleaseでは既存stop抑止ポリシーを使うため、通常の案内ごとにDGXを停止しません。初回cold startや他用途の解放直後の待ち時間をゼロにはせず、専用prewarm loopやPrivate Pi5のkeep-warm timerは業務サービスへ持ち込みません。
 
-初回cold startや他用途の解放後の予熱は、DGX Control PlaneのLease対応中央keep-warm (`dgx-control-keep-warm.timer`) の責務です。中央runnerはDGX側Arbiterのmaintenance LeaseでPrivate Leaseや業務要求を確認し、競合時は延期、状態不明時はfail-closedにします。中央設定・有効状態は `/Users/tsudatakashi/DGXSparkControlPlane` の管理範囲であり、このリポジトリのAPI起動時処理から直接開始しません。中央の既定profile IDと業務APIのmodel alias (`system-prod-primary`) の対応、および実機timerの有効状態は実機受入時に確認します。
+初回cold startや他用途の解放後の予熱は、DGX Control PlaneのLease対応中央keep-warm (`dgx-control-keep-warm.timer`) の責務です。中央runnerはDGX側Arbiterのmaintenance LeaseでPrivate Leaseや業務要求を確認し、競合時は延期、状態不明時はfail-closedにします。中央設定・有効状態は `denkoushi/DGXSparkControlPlane` リポジトリ の管理範囲であり、このリポジトリのAPI起動時処理から直接開始しません。中央の既定profile IDと業務APIのmodel alias (`system-prod-primary`) の対応、および実機timerの有効状態は実機受入時に確認します。
 
 ## 有効化
 
@@ -49,11 +49,7 @@ vault_business_hermes_chat_mcp_api_key: <業務MCP専用API key>
 # vault_business_hermes_chat_mcp_url: http://api:3000/api/internal/business-hermes/mcp
 ```
 
-設定反映後の起動対象は、既存ガイドと別profileです。
-
-```bash
-docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.phase3.yml --profile business-hermes-chat up -d business-hermes-chat-egress business-hermes-chat
-```
+相談チャットは既存ガイドと別 profile（`business-hermes-chat`）で、標準 release（下記「相談用Hermesの標準リリース手順」）が起動する。手動で Compose を起動しない。
 
 このprofileを指定しない通常のCompose起動では相談チャットは起動しません。MCP接続は業務Hermes内部ネットワーク上のAPIだけに向け、DGX推論は専用egress sidecarの許可済み `/v1/chat/completions` 経路を通します。既存ガイド用サービスのprofile、設定、volumeはそのままです。
 
@@ -107,7 +103,7 @@ fresh releaseの開始時には既存の業務Hermesコンテナ状態を取得�
 
 対話姿勢はSOUL、項目の意味・正式な根拠はContext、調査方法はSkillで管理する。
 API側は構造化応答・案件保存・認証・根拠カードを担う。model.max_tokensは
-回答と案件状態の途中切れを避けるため1600。画像能力の合成probeは成功したが、
+回答と案件状態の途中切れを避けるため当初1600とした（現行テンプレートは4000）。画像能力の合成probeは成功したが、
 業務チャットは付随本文と写真カードを利用し、画像の視覚的読取りは行わない。
 応答速度の最適化は利用者の実機体感後に判断する。
 
@@ -120,7 +116,7 @@ API側は構造化応答・案件保存・認証・根拠カードを担う。mo
 型の版、セッション隔離、検証と未達条件の詳細は[質問の型と先読みの実行計画](../plans/hermes-question-prefetch.md)を正本とする。
 
 相談用SOULは `business-consultation` Skillをテンプレート展開時に含む。
-APIのtoolsetはbusiness_apiのみ、`agent.max_turns=2`。上限時の要約が別途呼ばれるためLLM総呼出し２回の保証ではない。
+APIのtoolsetはbusiness_apiのみ、`agent.max_turns` は試用時2、現行テンプレートは12。試用時も、上限時の要約が別途呼ばれるためLLM総呼出し２回の保証ではなかった。
 `questionRecipe.speculative=true` では未選択でも候補の用件を実行し、結果の採否はアプリが決める。
 通常は根拠のある短い本文で回答し、不足時は条件を確認する。Skillの改善は試用結果の評価後にレビューして反映する。
 候補表示・利用者の選択待ち・選択後の回答完了・全体の時間を分けて記録し、先読みだけで10秒達成とはしない。

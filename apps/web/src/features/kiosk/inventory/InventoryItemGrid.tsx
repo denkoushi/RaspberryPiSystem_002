@@ -3,7 +3,7 @@ import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useStat
 
 import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryImportSummary } from '../../../api/client';
 
-import { issuedLabel, unitLabel } from './inventoryDailyFlow';
+import { issuedLabel, needsReorder, unitLabel } from './inventoryDailyFlow';
 import { InventoryHoverCard } from './InventoryHoverCard';
 import { LockIcon, PinIcon } from './InventoryIcons';
 import { detailLabels, invLabelNumber } from './inventoryUi';
@@ -13,7 +13,7 @@ export { detailLabels } from './inventoryUi';
 export type InventoryThumbnailSize = 'small' | 'medium' | 'large';
 export type InventoryViewMode = 'card' | 'list';
 const listColumns = 'grid grid-cols-[56px_80px_minmax(0,1.5fr)_minmax(0,1.5fr)_130px_minmax(0,1fr)_120px_110px_minmax(0,1fr)_190px_84px_84px] items-center gap-3.5 pl-1 pr-3';
-const listRow = `${listColumns} min-h-16 shrink-0 rounded-[10px] border bg-inv-s1 py-1 text-left text-inv-text focus:outline-none`;
+const listRow = `${listColumns} min-h-16 shrink-0 rounded-[10px] bg-inv-s1 py-1 text-left text-inv-text focus:outline-none`;
 const sizes = {
   small: { columns: 'grid-cols-9', photo: 'h-[110px]', fields: ['model'] },
   medium: { columns: 'grid-cols-6', photo: 'h-[190px]', fields: ['model', 'maker', 'toolSize'] },
@@ -21,9 +21,10 @@ const sizes = {
 } as const;
 const collator = new Intl.Collator('ja');
 
-/** Lowest stock first; ties go most recently issued first, then never-issued drawers in name order. */
+/** Reorder-needed drawers first; each group uses stock, latest issue and name order. */
 export function sortByLowStock(compartments: InventoryCompartment[]): InventoryCompartment[] {
   return [...compartments].sort((a, b) => {
+    if (needsReorder(a) !== needsReorder(b)) return needsReorder(a) ? -1 : 1;
     if (a.stockQuantity !== b.stockQuantity) return a.stockQuantity - b.stockQuantity;
     const at = a.lastIssuedAt ? Date.parse(a.lastIssuedAt) : null;
     const bt = b.lastIssuedAt ? Date.parse(b.lastIssuedAt) : null;
@@ -32,6 +33,11 @@ export function sortByLowStock(compartments: InventoryCompartment[]): InventoryC
     if (at === null && bt !== null) return 1;
     return collator.compare(a.item.name, b.item.name) || a.shelfNumber - b.shelfNumber || a.drawerNumber - b.drawerNumber;
   });
+}
+
+function stockBorder(compartment: InventoryCompartment) {
+  if (needsReorder(compartment)) return compartment.reorderedAt ? 'border-2 border-inv-blue' : 'border-2 border-inv-red';
+  return 'border border-inv-line hover:border-inv-cyan focus-visible:border-inv-cyan';
 }
 
 type InventoryItemGridProps = {
@@ -94,7 +100,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
     const rect = element.getBoundingClientRect();
     tooltipTimer.current = setTimeout(() => { setHoverPhotoIndex(0); setTooltip({ compartment, rect, element }); }, 150);
   };
-  const hoverClass = (id: string) => `transition-[transform,opacity,box-shadow] duration-150 motion-reduce:transition-none ${tooltip?.compartment.id === id ? '-translate-y-0.5 ring-2 ring-inv-cyan shadow-xl' : tooltip ? 'opacity-[.55]' : ''}`;
+  const hoverClass = (compartment: InventoryCompartment) => `transition-[transform,opacity,box-shadow] duration-150 motion-reduce:transition-none ${tooltip?.compartment.id === compartment.id ? `-translate-y-0.5 shadow-xl ${needsReorder(compartment) ? '' : 'ring-2 ring-inv-cyan'}` : tooltip ? 'opacity-[.55]' : ''}`;
   const config = sizes[size];
   const sorted = useMemo(() => sortByLowStock(compartments), [compartments]);
   if (sorted.length === 0 && pending.length === 0) return <p className="text-inv-muted">登録済みのアイテムはまだありません</p>;
@@ -124,7 +130,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
             onPointerLeave={hideTooltip}
             onFocus={event => { if (event.target.matches(':focus-visible')) showTooltip(compartment, event.currentTarget); }}
             onBlur={hideTooltip}
-            className={`${listRow} border-inv-line hover:border-inv-cyan focus-visible:border-inv-cyan ${hoverClass(compartment.id)}`} onClick={() => onPick(compartment)}>
+            className={`${listRow} ${stockBorder(compartment)} ${hoverClass(compartment)}`} onClick={() => onPick(compartment)}>
             <span className="block h-14 w-14 overflow-hidden rounded-lg bg-inv-s3">
               {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
             </span>
@@ -163,13 +169,13 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
         const photo = photos[photoIndex];
         const empty = compartment.stockQuantity === 0;
         return (
-          <div key={compartment.id} className={`relative min-w-0 rounded-[14px] ${hoverClass(compartment.id)}`}
+          <div key={compartment.id} className={`relative min-w-0 rounded-[14px] ${hoverClass(compartment)}`}
             onPointerEnter={event => { if (event.pointerType !== 'touch' && (window.matchMedia?.('(hover: hover)').matches ?? true)) showTooltip(compartment, event.currentTarget); }}
             onPointerLeave={hideTooltip}
             onFocus={event => { if (event.target.matches(':focus-visible')) showTooltip(compartment, event.currentTarget); }}
             onBlur={hideTooltip}
           >
-          <button type="button" aria-describedby={tooltip?.compartment.id === compartment.id ? tooltipId : undefined} className="flex h-full w-full flex-col overflow-hidden rounded-[14px] border border-inv-line bg-inv-s1 text-left text-inv-text hover:border-inv-cyan focus:outline-none focus-visible:border-inv-cyan" onClick={() => onPick(compartment)}>
+          <button type="button" aria-describedby={tooltip?.compartment.id === compartment.id ? tooltipId : undefined} className={`flex h-full w-full flex-col overflow-hidden rounded-[14px] ${stockBorder(compartment)} bg-inv-s1 text-left text-inv-text focus:outline-none`} onClick={() => onPick(compartment)}>
             <span className={`relative block ${config.photo} w-full shrink-0 bg-inv-s3`}>
               {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
               <span className="absolute inset-x-1.5 top-1.5 flex items-start gap-1.5">

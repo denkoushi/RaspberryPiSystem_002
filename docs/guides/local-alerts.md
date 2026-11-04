@@ -83,7 +83,7 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 - fingerprint自動計算が機能し、54/55件にfingerprintが設定されている
 - Phase1（file）Dispatcherは停止し、DB中心へ完全移行できていることを確認
 - Phase2完全移行（API/UIはDBのみ参照）を実装完了
-- 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) を参照
+- 詳細は [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher--dedupe--retrybackoffの実機検証完了) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-175`](../knowledge-base/infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) / [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) を参照
 
 ### Phase2: DB取り込み（Alerts DB Ingest）
 
@@ -91,7 +91,7 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 
 **有効化方法**:
 
-`docker-compose.server.yml` または環境変数で以下を設定：
+Pi5本番では `ALERTS_DB_INGEST_ENABLED` はAnsibleの `docker.env.j2` が `infrastructure/docker/.env` に書き込み、既定は `true`（変数 `alerts_db_ingest_enabled`）。値を変える場合はAnsible変数で設定し、標準デプロイ（[deployment.md](./deployment.md)）で反映する。`ALERTS_DB_INGEST_INTERVAL_SECONDS` / `ALERTS_DB_INGEST_LIMIT` はテンプレートに無く、本番はAPIの既定値（60秒 / 50件）で動く。`docker-compose.server.yml` の `api` は本番では稼働していない。下記は環境変数の意味：
 
 ```yaml
 environment:
@@ -111,7 +111,7 @@ environment:
 - `POST /api/clients/alerts/:id/acknowledge` は **DBのみ更新**。ファイルは変更しない
 
 **注意事項**:
-- DB取り込み機能はデフォルトOFF（`ALERTS_DB_INGEST_ENABLED=true` で明示的に有効化）
+- DB取り込み機能はAPI単体の既定ではOFF。Ansible生成の `infrastructure/docker/.env` では既定で `ALERTS_DB_INGEST_ENABLED=true`・`ALERTS_DISPATCHER_MODE=db`・`ALERTS_DB_DISPATCHER_ENABLED=true`（`infrastructure/ansible/templates/docker.env.j2`）
 - Slack配送はPhase1（file→Slack）またはPhase2後続（DB→Slack）を選択
 - dedupe（重複抑制）はPhase2後続（DB→Slack）で有効化可能
 - **Phase2完全移行**: API/UIはDBのみ参照。ファイルは一次入力（Producer）→Ingest専用として機能
@@ -121,7 +121,7 @@ environment:
 - 空ファイル（0バイト）や壊れたJSONを`errors`ではなく`skipped`として扱う改善を実装し、ログノイズを削減
 - Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証も完了し、DB版Dispatcherが正常に動作することを確認
 - Phase2完全移行（API/UIはDBのみ参照）を実装完了
-- 詳細は [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher-dedupe-retrybackoffの実機検証完了) を参照
+- 詳細は [`docs/plans/alerts-platform-phase2.md`](../plans/alerts-platform-phase2.md#phase2完全移行db中心運用) / [`docs/knowledge-base/infrastructure/ansible-deployment.md#kb-174`](../knowledge-base/infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher--dedupe--retrybackoffの実機検証完了) を参照
 
 ## 通知の種類
 
@@ -233,12 +233,12 @@ https://192.168.128.131/admin
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+TOKEN=$(curl -k -s -X POST https://192.168.128.131/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # アラート情報を取得
-curl -X GET http://192.168.128.131:8080/api/clients/alerts \
+curl -k -X GET https://192.168.128.131/api/clients/alerts \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 ```
 
@@ -246,7 +246,7 @@ curl -X GET http://192.168.128.131:8080/api/clients/alerts \
 
 ```bash
 # アラートIDを指定して確認済みにする
-curl -X POST http://192.168.128.131:8080/api/clients/alerts/20251201-103259/acknowledge \
+curl -k -X POST https://192.168.128.131/api/clients/alerts/20251201-103259/acknowledge \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -254,16 +254,11 @@ curl -X POST http://192.168.128.131:8080/api/clients/alerts/20251201-103259/ackn
 
 ### Ansible更新失敗時
 
-`scripts/update-all-clients.sh`が失敗した場合、自動的にアラートファイルが生成されます：
+現行の標準デプロイ経路（`scripts/update-all-clients.sh` → `scripts/deploy/standard-ansible-release.py`）は、失敗時に `alerts/alert-*.json` を生成しない。更新を伴う実行には `--limit PATTERN` または `--full-fleet` が必須で、手順は [deployment.md](./deployment.md) を正本とする。
 
 ```bash
-# 更新スクリプトを実行
-# inventory指定が必須（誤デプロイ防止）
-# 第2工場（既存）
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
-
-# 失敗した場合、自動的にアラートファイルが生成される
-# alerts/alert-YYYYMMDD-HHMMSS.json
+# 対象と順序の確認（更新は行わない）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
 ```
 
 ### カスタムアラートの生成
@@ -279,10 +274,9 @@ curl -X POST http://192.168.128.131:8080/api/clients/alerts/20251201-103259/ackn
 
 ```python
 import subprocess
-import sys
 
 subprocess.run([
-    sys.executable,
+    "bash",
     "scripts/generate-alert.sh",
     "python-alert",
     "Pythonスクリプトからのアラート",
@@ -351,7 +345,7 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
    # 認証トークンを取得
    TOKEN=$(curl -k -s -X POST https://100.106.158.2/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+     -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
    
    # APIレスポンスを確認（dbAlertsが0でないことを確認）
    curl -k -s "https://100.106.158.2/api/clients/alerts" \
@@ -369,7 +363,8 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
 
 4. **APIサーバーのログ確認**:
    ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | tail -50
+   # Pi5の /opt/RaspberryPiSystem_002 で実行（本番APIはblue/greenの稼働中スロット）
+   docker logs --tail 50 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"
    ```
 
 5. **デバッグ手法（UI表示の問題を調査する場合）**:
@@ -383,7 +378,8 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
 
 1. **APIサーバーの確認**:
    ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | tail -50
+   # Pi5の /opt/RaspberryPiSystem_002 で実行（本番APIはblue/greenの稼働中スロット）
+   docker logs --tail 50 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"
    ```
 
 2. **アラートディレクトリの確認**:

@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { UserRole } from '@prisma/client';
 
 import { authorizeRoles } from './auth.js';
+import { normalizeClientKey } from './client-key.js';
 import { ApiError } from './errors.js';
 import { prisma } from './prisma.js';
 
@@ -15,7 +16,10 @@ export async function authorizeKioskClientKeyOrJwtRoles(
 ): Promise<void> {
   const headerKey = request.headers['x-client-key'];
   if (headerKey) {
-    const key = typeof headerKey === 'string' ? headerKey : headerKey[0];
+    const key = normalizeClientKey(headerKey);
+    if (!key) {
+      throw new ApiError(401, 'クライアント API キーが不正です', undefined, 'INVALID_CLIENT_KEY');
+    }
     const client = await prisma.clientDevice.findUnique({
       where: { apiKey: key },
     });

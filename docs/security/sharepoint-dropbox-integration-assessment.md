@@ -425,4 +425,4 @@ async function fetchCsvWithRetry(url: string, maxRetries = 3): Promise<Buffer> {
 
 - [セキュリティ要件定義](./requirements.md)
 - [Phase 9/10 詳細仕様書](./phase9-10-specifications.md)
-- [CSVインポート機能](../api/imports.md)
+- [CSVインポート機能](../guides/csv-import-export.md)

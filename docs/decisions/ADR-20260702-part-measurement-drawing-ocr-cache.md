@@ -58,11 +58,11 @@ DGX Spark was considered as an OCR worker, but v3 intentionally keeps OCR on the
   - `82b8abdd` `fix: narrow OCR raw line suppression`
 - Main API code:
   - `apps/api/src/services/ocr/image-ocr-runtime.ts`
-  - `apps/api/src/services/ocr/tesseract-js-image-ocr.adapter.ts`
+  - `apps/api/src/services/ocr/tesseract-js-image-ocr.adapter.ts`（現行: `apps/api/src/services/ocr/adapters/tesseract-js-image-ocr.adapter.ts`）
   - `apps/api/src/services/part-measurement/part-measurement-drawing-ocr.service.ts`
   - `apps/api/src/services/part-measurement/part-measurement-drawing-ocr-engine.ts`
   - `apps/api/src/services/part-measurement/part-measurement-drawing-ocr-ranking.ts`
-  - `apps/api/src/services/part-measurement/part-measurement-drawing-ocr-scheduler.ts`
+  - `apps/api/src/services/part-measurement/part-measurement-drawing-ocr.scheduler.ts`
   - `apps/api/src/bootstrap/start-post-listen-schedulers.ts`
   - `apps/api/src/routes/part-measurement/index.ts`
 - Current production OCR engine: `tesseract.js` in the Raspberry Pi 5 API container. LLM and DGX Spark are not used for v3 OCR.

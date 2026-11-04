@@ -56,15 +56,15 @@
 
 | 層 | 役割 | パス |
 | --- | --- | --- |
-| 定数・Feature flag | `MAX_AGE_MS`・`VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED` | [`leaderboardBoardCacheConstants.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheConstants.ts) |
-| キャッシュキー | `siteKey` + `paramsKey`（`\u0001` 結合） | [`leaderboardBoardCacheKey.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheKey.ts) |
-| レコード | 完走 snapshot の serialize/parse・指紋 | [`leaderboardBoardCacheRecord.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheRecord.ts) |
-| 表示ポリシー | いつ IDB を画面に出すか | [`leaderboardBoardCacheDisplayPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheDisplayPolicy.ts) |
-| 照合 | 不一致 → サーバ正・`delete` | [`leaderboardBoardCacheReconcilePolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheReconcilePolicy.ts) |
-| 永続化 port / IDB | `idb` ^8.0.3 | [`leaderboardBoardCacheStore.port.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheStore.port.ts)·[`indexedDbLeaderboardBoardCacheStore.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/indexedDbLeaderboardBoardCacheStore.ts) |
-| Hook | load/save/purge・`networkSyncToken` で reconcile 直後 put 抑止 | [`useLeaderboardBoardTerminalCache.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts) |
-| 統合 | composite hook から `displayBoard` / `cacheSyncWarning` | [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) |
-| UI 警告 | 通信失敗時バナー | [`ProductionScheduleLeaderOrderBoardPage.tsx`](../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) |
+| 定数・Feature flag | `MAX_AGE_MS`・`VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED` | [`leaderboardBoardCacheConstants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheConstants.ts) |
+| キャッシュキー | `siteKey` + `paramsKey`（`\u0001` 結合） | [`leaderboardBoardCacheKey.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheKey.ts) |
+| レコード | 完走 snapshot の serialize/parse・指紋 | [`leaderboardBoardCacheRecord.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheRecord.ts) |
+| 表示ポリシー | いつ IDB を画面に出すか | [`leaderboardBoardCacheDisplayPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheDisplayPolicy.ts) |
+| 照合 | 不一致 → サーバ正・`delete` | [`leaderboardBoardCacheReconcilePolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheReconcilePolicy.ts) |
+| 永続化 port / IDB | `idb` ^8.0.3 | [`leaderboardBoardCacheStore.port.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheStore.port.ts)·[`indexedDbLeaderboardBoardCacheStore.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/indexedDbLeaderboardBoardCacheStore.ts) |
+| Hook | load/save/purge・`networkSyncToken` で reconcile 直後 put 抑止 | [`useLeaderboardBoardTerminalCache.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts) |
+| 統合 | composite hook から `displayBoard` / `cacheSyncWarning` | [`useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx`](../../apps/web/src/features/kiosk/leaderOrderBoard/useCompositeLeaderboardPhasedScheduleWithAutoAppend.tsx) |
+| UI 警告 | 通信失敗時バナー | [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) |
 
 **`paramsKey` の正本**: `boardQueryParams != null ? JSON.stringify(boardQueryParams) : ''`（`scheduleEnabled=false` 時は **空文字** — 下記 Post-deploy fix 参照）。
 
@@ -74,7 +74,7 @@
 - **代表コミット**: **`072054f9`**（機能）· **`3ae93221`**（真っ白画面 fix）
 - **CI（機能）**: run **`26093399804`** **success**（`072054f9`）
 - **対象**: **`raspberrypi5` のみ**（**Web のみ**·API 変更なし·**Pi4×4 は未反映** — 端末キャッシュ効果を Pi4 実機で得るには **Pi4 順次デプロイ + キオスク再読込**が必要）
-- **標準コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
+- **当時のコマンド（2026-05-19 時点。現行手順は [deployment.md](../guides/deployment.md)）**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/kiosk-leaderboard-terminal-cache-phase1 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）
 - **Detach Run ID**:
   - 初回 **`20260519-203723-29020`**（`072054f9`·**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**）
   - fix 再デプロイ **`20260519-205437-31528`**（`3ae93221`·同上 **`failed=0`**）
@@ -96,6 +96,6 @@
 ## References
 
 - 実装: `apps/web/src/features/kiosk/leaderOrderBoard/cache/`
-- 運用・TS: [KB-374 §端末キャッシュ Phase 1](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-1-indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)
+- 運用・TS: [KB-374 §端末キャッシュ Phase 1](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-1indexeddb--裏同期2026-05-19--featkiosk-leaderboard-terminal-cache-phase1)
 - デプロイ: [deployment.md §端末キャッシュ](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase1-2026-05-19)
 - 背景: [KB-374](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md)

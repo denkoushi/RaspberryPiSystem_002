@@ -81,21 +81,26 @@ Prometheus形式のテキストを返します。
 
 ### 使用例
 
+API の 8080 はホストに公開されていない（本番 API は blue/green の `api-blue` / `api-green`）。gateway（443）経由で取得する。
+
 ```bash
-# メトリクスを取得
-curl http://localhost:8080/api/system/metrics
+# メトリクスを取得（Pi5 上で実行）
+curl -ksS https://localhost/api/system/metrics
 
 # Prometheusでスクレイプする場合
 # prometheus.ymlに以下を追加:
 #   - job_name: 'raspberry-pi-system'
+#     scheme: https
 #     static_configs:
-#       - targets: ['localhost:8080']
+#       - targets: ['<Pi5>:443']
 #     metrics_path: '/api/system/metrics'
 ```
 
 ## 監視スクリプト
 
 `scripts/server/monitor.sh`を使用してシステム全体を監視できます。
+
+**注意**: 現行の `monitor.sh` は API ヘルスチェックに `http://localhost:8080/api` を使う。8080 はホストへ公開されていないため、API ヘルスチェックは `ERROR: API health check failed` として記録される。API は `curl -ksS https://localhost/api/system/health` で確認する。
 
 ### 使用方法
 
@@ -123,15 +128,7 @@ curl http://localhost:8080/api/system/metrics
 
 ### アラート通知
 
-`ALERT_EMAIL`環境変数を設定すると、エラー発生時にメール通知が送信されます。
-
-```bash
-# 環境変数を設定
-export ALERT_EMAIL="admin@example.com"
-
-# 監視スクリプトを実行
-/opt/RaspberryPiSystem_002/scripts/server/monitor.sh
-```
+`monitor.sh` は冒頭で `ALERT_EMAIL=""` を代入するため、`ALERT_EMAIL` 環境変数を設定しても空に上書きされ、メール通知は送信されない。通知するには、スクリプト内の `ALERT_EMAIL` の値を変更する必要がある（本番への変更は PR 経由で行う）。
 
 ## 外部監視ツールとの連携
 
@@ -144,7 +141,8 @@ Prometheusを使用してメトリクスを収集する場合：
 scrape_configs:
   - job_name: 'raspberry-pi-system'
     static_configs:
-      - targets: ['raspberry-pi-5:8080']
+      - targets: ['raspberry-pi-5:443']
+    scheme: https
     metrics_path: '/api/system/metrics'
     scrape_interval: 30s
 ```
@@ -166,21 +164,21 @@ HTTPチェックプラグインを使用して`/api/system/health`エンドポ�
 
 ```bash
 # Nagios例
-check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
+check_http -H raspberry-pi-5 -S -p 443 -u /api/system/health -e "200"
 ```
 
 ## トラブルシューティング
 
 ### APIヘルスチェックが失敗する
 
-1. Dockerコンテナが稼働しているか確認：
+1. Dockerコンテナが稼働しているか確認（本番のAPI/Web/gatewayはbluegreen project、DBは `docker-compose.server.yml` の `db`）：
    ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml ps
+   docker ps --format '{{.Names}}\t{{.Status}}'
    ```
 
-2. APIログを確認：
+2. APIログを確認（Pi5の /opt/RaspberryPiSystem_002 で、稼働中スロットのcontainerを読む）：
    ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml logs api
+   docker logs --tail 200 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"
    ```
 
 3. データベース接続を確認：
@@ -204,8 +202,8 @@ check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
 
 2. 手動で各チェックを実行：
    ```bash
-   curl http://localhost:8080/api/system/health
-   docker compose -f infrastructure/docker/docker-compose.server.yml ps
+   curl -ksS https://localhost/api/system/health
+   docker ps --format '{{.Names}}\t{{.Status}}'
    df -h /
    free -h
    ```
@@ -237,7 +235,7 @@ check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
 3. **アラート閾値の調整**: 環境に応じてディスク使用量やメモリ使用量の閾値を調整
 4. **外部監視ツールの活用**: PrometheusやGrafanaを使用して可視化
 5. **バックアップとの連携**: 監視スクリプトとバックアップスクリプトを連携させて、異常検知時に自動バックアップを実行
-6. **ストレージメンテナンスの自動化**: `storage-maintenance.service`（systemd timer）で毎日自動実行され、signage履歴を削除する。月次未完了時は、対象を限定したPi5旧リリースイメージ整理も実行する（詳細は [Pi5標準Ansible診断Runbook](../runbooks/pi5-blue-green-deploy.md#pi5-docker旧リリースイメージ整理)）。月初のBuild Cache整理は従来どおり維持する
+6. **ストレージメンテナンスの自動化**: `storage-maintenance.service`（systemd timer）で毎日自動実行され、signage履歴を削除する。月次未完了時は、対象を限定したPi5旧リリースイメージ整理も実行する（詳細は [Pi5単一SSD・業務ファイル保存Runbook](../runbooks/pi5-local-file-storage.md#pi5-docker旧リリースイメージ整理)）。月初のBuild Cache整理は従来どおり維持する
 7. **Pi4のストレージメンテナンス**: `pi4-storage-maintenance.timer` が毎日3時30分（電源断時は次回起動後）に `/usr/local/sbin/pi4-storage-maintenance.sh` を実行する。稼働中のイメージと、リポジトリごとに直前1つ（端末で最後にタグ付けされた順）のリリースイメージ、24時間以内にタグ付けされたrollbackイメージだけを残し、他の旧リリースイメージ・古いrollbackタグ・旧ローカルビルドイメージ・Build Cache・aptキャッシュを削除する。Chromiumキオスクでは未使用のFirefox本体とプロファイルも削除する。ユニットとスクリプトは標準リリース（`release_kiosk`）で配布される。削除対象だけを確認するには `sudo PI4_STORAGE_DRY_RUN=1 /usr/local/sbin/pi4-storage-maintenance.sh`、実行結果は `journalctl -u pi4-storage-maintenance.service` で確認する
 
 ## キオスク画面エラーの記録と調査

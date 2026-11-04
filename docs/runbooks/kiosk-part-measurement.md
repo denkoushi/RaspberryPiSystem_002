@@ -1,5 +1,7 @@
 # キオスク: 部品測定記録（part-measurement）
 
+> **この Runbook の範囲**: 現行の操作・確認・復旧手順だけを載せる。仕様と経緯の正本は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)、日付付きの本番反映記録は [docs/archive/deployments/](../archive/deployments/) にある。デプロイは [deployment guide](../guides/deployment.md) に従い、本文の旧コマンド例（`--detach --follow` など）は使わない。
+
 ## 自主検査セッション（NFCゲート・下書き・確定 · 2026-07-10）
 
 正本: [KB-320 §NFCゲート](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfcゲート-下書き自動保存-2026-07-10) · [ADR](../decisions/ADR-20260710-self-inspection-draft-confirmed.md)
@@ -47,13 +49,14 @@
 本番実行はPi5への対象コード反映後、`sessaku-01`の入力を止め、以下のdry-run結果を現状と照合してから行う。通常のSQL更新で代用しない。
 
 ```bash
+# Pi5の /opt/RaspberryPiSystem_002 で、稼働中のAPIスロット内で実行する
 # dry-run（既定・DB更新なし）
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
-  pnpm correct:self-inspection-md004121632-021-single:prod
+scripts/server/run-in-active-api.sh \
+  node /app/apps/api/dist/scripts/correct-self-inspection-md004121632-021-single.js
 
 # dry-run結果と読み取り専用SQLを確認後だけ実行
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
-  pnpm correct:self-inspection-md004121632-021-single:prod -- \
+scripts/server/run-in-active-api.sh \
+  node /app/apps/api/dist/scripts/correct-self-inspection-md004121632-021-single.js \
   --execute --confirm=MD004121632/021
 ```
 
@@ -155,84 +158,13 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 6. **実機**: Pi5 キオスク Chrome でプレビュー表示 **OK（2026-06-14）**。印刷ダイアログ/PDF/実プリンタは **未確認**。
 7. **未実装**: QR スキャン照合、正式 DB 帳票 ID、OCR 読取。
 
-#### 本番反映実績（2026-06-14 · 帳票 HTML 初回 + Pi5 限定公開）
-
-| 段階 | ブランチ | Git HEAD | 備考 |
-|------|----------|----------|------|
-| 初回（Pi5+Pi4×4 · 導線 DEV ゲート） | `feat/inspection-drawing-print-html` → **`main`** (#437) | **`062552ef`** / docs **`1d7bcd10`** | 帳票 UI 同梱、本番導線は非表示 |
-| Pi5 限定公開 | **`feat/inspection-drawing-print-pi5-validation`** | **`eaa06f11`** | 本番 ON · 一覧 **帳票** 配線 · Pi5 のみデプロイ |
-
-| ホスト | Detach Run ID | PLAY RECAP | 備考 |
-|--------|---------------|------------|------|
-| `raspberrypi5`（初回） | **`20260614-203743-25068`** | `failed=0` | web **`index-n3V3qAev.js`** |
-| Pi4×4（初回） | 各 Run ID 同上節 | `failed=0` | 帳票導線なし（DEV ゲート） |
-| `raspberrypi5`（限定公開） | **`20260614-211555-683`** | `failed=0` | web **`index-rLFSPUXR.js`** · 本番 **帳票** 表示 |
-| `raspberrypi5`（レイアウト改善） | **`20260615-085134-18726`** | `failed=0` | web **`index-o9Q5wgI_.js`** · Git **`7c628dcd`** |
-
-**実機検証（2026-06-15 · Pi5 · レイアウト改善デプロイ後）**
-
-| 確認項目 | 結果 |
-|----------|------|
-| 帳票ルート HTTP | **`200`**（`…/templates/310b30ae-…/print`） |
-| バンドル | **`index-o9Q5wgI_.js`**（`inspection-print-sheet-header` · `inspection-print-record-table` · `4.5mm` マーカー） |
-| 実テンプレ | **`310b30ae-…`** · 14点 · **2ページ（図面1 + 記録欄1）**（改善前は4ページ） |
-| P1 | ヘッダ1行化 · 丸数字縮小 · 図面表示 · **印刷プレビュー** 有効 |
-| P2 | 表形式（`No/測定点/規格/測定値`）· 14行1ページ · `first_last` 時は **最初/最終** 列 |
-| Phase12 | **PASS 43 / WARN 0 / FAIL 0**（デプロイ直後） |
-
-**仕様メモ（次回 AI 再開用）**
-
-- ブランチ/HEAD: **`feat/inspection-drawing-report-layout`** · **`7c628dcd`**
-- ViewModel: `buildInspectionDrawingPrintViewModel` · `buildInspectionDrawingPrintRecordEntrySlots`（`single` / `first_last` / `fixed_count` / `full`）
-- 記録欄: **14点/ページ** · 測定値列 **最大6列/ページ** · 表幅は `getInspectionDrawingPrintRecordTableWidthMm`
-- P1: マーカー **4.5mm** · 図面エリア高さ **184mm**
-- 印刷ルート: `KioskLayout` **外** · `clientKey` ページ側初期化
-- legacy 公差: **「合格範囲 lower〜upper」**。通常行は `基準 10 / -0.05〜+0.05`（正公差は `+` 付き）。
-- 帳票 ID（暫定）: `PRINT-<templateId短>-v<版>-<日時>`（DB 未保存）
-
-**未完了**
-
-1. 印刷ダイアログ / PDF 保存 / 実プリンタ A4 横（Pi5 → Pi4）
-2. QR ペイロード / 正式 DB 帳票 ID / OCR（別 Plan）
-3. Pi4×4 への限定公開デプロイ（Pi5 実機 OK 後）
-
-**Pi5 デプロイ（標準）**
-
-```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh feat/inspection-drawing-report-layout \
-  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
-# マージ後は第2引数 main。Pi4 は Pi5 OK 後に 1 台ずつ --limit 変更
-```
-
-**トラブルシュート（検証時のみ）**
-
-| 事象 | 対処 |
-|------|------|
-| Mac から Pi5 HTTPS が `chrome-error` | Pi5 は自己署名証明書。SSH トンネル `-L 18443:127.0.0.1:443` + `curl -sk`、または現場キオスクで確認 |
-| `127.0.0.1:8080` で API 不通 | web は **80/443**（Caddy）。API は `/api/...` プロキシ経由 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 検査図面 · 流用導線（2026-06-05） {#検査図面-流用導線-2026-06-05}
 
 正本: [KB-320 §流用導線強化](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [deployment §2026-06-05](../archive/deployments/2026-06.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · 代表 **`6c7da8c7`**
 
-同一図面を **別工程・別資源** へ展開する手順（`品番 × 工程 × 資源CD = 1テンプレ` を維持）。
-
-| 導線 | 操作 | 備考 |
-|------|------|------|
-| **既存図面の再利用** | 新規作成画面 → 図面ボタン → **既存から選択** または **新規アップロード** | `visualSource` が単一真実源。`pickExisting` 時は `visualTemplateId` のみで保存可。検索は **API `q` + `limit=80`**（400ms debounce） |
-| **テンプレ雛形から新規** | 一覧の有効版カード → **雛形として新規** | `?sourceTemplateId=` で詳細再取得。履歴版は不可。無効 ID / 消失時は blank form 復帰 |
-| **改版（既存キー）** | 一覧 → **編集** → 保存 | 新規作成ではなく `revise` |
-
-**キー衝突ガード（新規作成全体）**
-
-- UI: `same_as_source` / `active_exists`（`GET …/templates/active-exists`）→ **保存ボタン無効** + 案内。
-- FIHNCD は **trim + 大文字化 + case-insensitive 照合**（`abc` と `ABC` は同一キー）。
-- API: `failIfActiveExists: true` で **409**。本番 THREE_KEY は **lineage advisory lock** で同時作成を直列化。
-
-**orphan visual 回収**
-
-- アップロード後にテンプレ保存が失敗した場合、`POST visual-templates` 応答の **`cleanupToken`** で `DELETE`（`X-Visual-Cleanup-Token` ヘッダ必須）。
+仕様（導線・キー衝突ガード・orphan visual 回収）は [KB-320 §流用導線強化](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) を正とする。
 
 #### 手動確認（Pi5 キオスク）
 
@@ -242,29 +174,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 4. 図面切替時、測定点がある場合は確認ダイアログ。キャンセルで元状態維持。
 5. （任意）管理画面で visual 作成 → テンプレ保存を意図的に失敗 → `cleanupToken` 回収。
 
-#### 本番反映実績（2026-06-05 · Pi5 先行）
-
-| 項目 | 内容 |
-|------|------|
-| Pi5 Detach Run ID | **`20260605-191525-16964`** |
-| Git HEAD | **`6c7da8c7`** |
-| PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
-| Phase12 | **43/0/0** |
-| Pi5 キオスク目視 | **未記録**（手動 1–5 を実施） |
-| Pi4×5（現行） | 2026-07-08 丸数字設定改善ロールアウトで全台 HEAD **`04bb49fe`** へ収束。Phase12 **45/0/0** |
-
-**API スモーク（Tailscale）**
-
-```bash
-BASE="https://100.106.158.2/api"
-KEY="client-key-raspberrypi4-kiosk1"
-
-curl -sk -H "x-client-key: ${KEY}" \
-  "${BASE}/part-measurement/visual-templates?q=test&limit=5"
-
-curl -sk -H "x-client-key: ${KEY}" \
-  "${BASE}/part-measurement/templates/active-exists?fhincd=NONEXIST&processGroup=cutting&resourceCd=RES-TEST"
-```
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 #### トラブルシュート
 
@@ -357,53 +267,13 @@ docker rm -f <temporary-container-name>
 - **運用**: API コンテナに `poppler-utils`（`pdftoppm`）必須。Arial 依存 PDF は文字欠けの可能性（`fonts-noto-cjk` のみ）。
 - **実機確認（Pi）**: preview / save / storage GET が kiosk `client-key` で通ること · `pdftoppm` 有無 · フォント欠け · preview の semaphore / queue 上限（同時 PDF/TIFF 連打で 503 にならない運用）
 
-#### 本番反映実績（2026-06-02 · Pi5 先行）
-
-| 項目 | 内容 |
-|------|------|
-| ブランチ | `feat/inspection-drawing-pdf-import` → **`main` マージ後** Pi4 順次 |
-| Pi5 Detach Run ID | **`20260602-190538-1780`** |
-| Git HEAD | **`8307c995`** |
-| PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
-| Phase12 | **41 PASS / WARN 1 / FAIL 1**（`raspberrypi4` SSH タイムアウトは既知） |
-| Pi5 キオスク目視 | **OK**（PDF プレビュー表示 · 保存 · 再読込座標一致 · 変換中保存不可） |
-| Pi4×5（現行） | 2026-07-08 丸数字設定改善ロールアウトで全台 HEAD **`04bb49fe`** へ収束。Phase12 **45/0/0** |
-
-**preview API 自動確認（Tailscale · 2026-06-02）**:
-
-```bash
-BASE="https://100.106.158.2/api"
-KEY="client-key-raspberrypi4-kiosk1"
-
-# 未認証 → 401
-curl -sk -o /dev/null -w "%{http_code}\n" -X POST "${BASE}/part-measurement/drawings/preview"
-
-# 最小 PDF → 200 image/jpeg（Mac 上で /tmp/test-drawing.pdf を用意してから）
-curl -sk -D - -o /tmp/preview-out.jpg \
-  -H "x-client-key: ${KEY}" \
-  -F "file=@/tmp/test-drawing.pdf;type=application/pdf" \
-  "${BASE}/part-measurement/drawings/preview"
-# 期待: HTTP 200 · Content-Type: image/jpeg · Cache-Control: no-store
-```
-
-**レビュー・実装知見（後続向け）**:
-
-| 事象 | 対処 |
-|------|------|
-| PDF 変換失敗後に保存ボタンがずっと無効 | `usePartMeasurementDrawingLocalPreview` で失敗時 `setHasPendingLocalSelection(false)` · CreatePage で `previewError` 時に pending ref リセット（`8307c995`） |
-| ファイル差し替え連打で古い preview が勝つ | 成功パスでも `controller.signal.aborted` を確認してから state 更新 |
-| unmount 後の setState 警告 | `previewUrlRef` + `replaceLocalPreviewUrl` で cleanup |
-| 編集画面で新 PDF が失敗 | **既存図面 Blob を維持**しエラーメッセージのみ（`inspectionDrawingTemplateImageDisplay` の local-first 契約） |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ## 検査図面 UI/UX（符号付き公差・2026-06-03） {#検査図面-uiux-符号付き公差-デプロイ-2026-06-03}
 
 正本: [KB-320 §UI/UX](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-uiux-符号付き公差-2026-06-03) · [deployment.md §UI/UX](../archive/deployments/2026-06.md#kiosk-inspection-drawing-signed-tolerance-uiux-2026-06-03) · **`6e436cfc`** · **`main` マージ** · CI **`26867660917`**
 
-### デプロイ（Web のみ · 先行実績）
-
-1. **`main`**（またはマージ前は `feat/inspection-drawing-signed-tolerance-uiux`）を Pi5 に `./scripts/update-all-clients.sh main … --limit raspberrypi5 --detach --follow`。
-2. 目視 OK 後、必要 Pi4 を `--limit` 1 台ずつ（実績: **`raspberrypi5`** `20260603-154307-28721` · **`raspi4-kensaku-stonebase01`** `20260603-154818-15503`）。
-3. Pi4 はキオスク **強制リロード**（§6.6.4）後、[§実機確認ポイント（拡張）](#実機確認ポイント拡張) の 2–4 を実施。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ## 検査図面 名称・公差種別設定（2026-07-06） {#検査図面-名称-公差種別設定-2026-07-06}
 
@@ -433,17 +303,7 @@ curl -sS -H "x-client-key: <kiosk-client-key>" \
 
 `PATCH` はキオスクキーだけでは 401/403。管理者またはマネージャー JWT が必要。
 
-### 本番反映実績
-
-| 項目 | 内容 |
-|------|------|
-| 反映対象 | Pi5 + Pi4×5 + Pi3 |
-| Detach Run ID | **`20260706-082903-1300`** |
-| PLAY RECAP | 全 7 ホスト `failed=0` / `unreachable=0` |
-| Pi5 | Docker rebuild/restart、Prisma migrate/status、API health recover OK |
-| Pi4×5 | `kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart OK |
-| Pi3 | lightdm 復旧後 `signage-lite.service is active` |
-| 実機自動検証 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0** |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-07](../archive/deployments/2026-07.md#キオスク部品測定自主検査-反映記録2026-07runbook-から移設) へ移設した。
 
 ## 検査図面 公差入力 実機フィードバック対応（2026-07-06） {#検査図面-公差入力-実機フィードバック-2026-07-06}
 
@@ -459,41 +319,13 @@ curl -sS -H "x-client-key: <kiosk-client-key>" \
 6. 基準値・上限公差・下限公差の文字が黒で、背景と同化せず読めること。
 7. 候補外の手入力値（例: `0.026`）が入力欄に保持され、保存できること。
 
-### 本番反映実績
-
-| 項目 | 内容 |
-|------|------|
-| 反映対象 | Pi5 + Pi4×5 + Pi3 |
-| Detach Run ID | **`20260706-100018-28681`** |
-| PLAY RECAP | 全 7 ホスト `failed=0` / `unreachable=0` |
-| Pi5 | Docker compose rebuild/restart、Prisma migrate/status、API health recover OK |
-| Pi4×5 | `kiosk-browser.service` / `status-agent.service` / `status-agent.timer` restart OK |
-| Pi3 | lightdm 復旧後 `signage-lite.service is active` |
-| 実機自動検証 | `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0** |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-07](../archive/deployments/2026-07.md#キオスク部品測定自主検査-反映記録2026-07runbook-から移設) へ移設した。
 
 ## 検査図面 測定点位置微調整（十字ボタン · 2026-06-05） {#検査図面-測定点位置微調整-十字ボタン-2026-06-05}
 
 正本: [KB-320 §十字ボタン](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-測定点位置微調整-十字ボタン-2026-06-05) · [ExecPlan](../plans/inspection-drawing-point-nudge-execplan.md) · [deployment §2026-06-05](../archive/deployments/2026-06.md#kiosk-inspection-drawing-point-nudge-2026-06-05) · ブランチ **`feat/inspection-drawing-point-nudge`** · **`da9d2675`** · CI **`26996602603`** · **Web のみ**
 
-### デプロイ（Web のみ · Pi5 + Pi4×5 反映済 · 2026-07-08 現行 UI）
-
-1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-2. historical: `./scripts/update-all-clients.sh feat/inspection-drawing-point-nudge infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-3. 2026-07-08 現行 UI は `feature/assembly-lot-serial-workflow` / **`04bb49fe`** で Pi5 + Pi4×5 へ反映済み。追加反映時は同じく `--limit <host>` で 1 台ずつ。
-4. 各 Pi4 **強制リロード**（§6.6.4）。`kiosk-browser` 再起動のみで足りることもあるが、旧 bundle 残存時は必須。
-
-| ホスト | Detach Run ID | 実機 |
-|--------|---------------|------|
-| `raspberrypi5` | **`20260605-141538-27072`** | web 再ビルド · **`da9d2675`** |
-| `raspi4-kensaku-stonebase01` | **`20260605-142229-22757`** | **実機 OK** |
-| `raspberrypi5`（現行 UI） | **`20260708-103842-32504`** | **`04bb49fe`** · ユーザー実機検証OK |
-| `raspi4-kensaku-stonebase01`（現行 UI） | **`20260708-104449-7203`** | **`04bb49fe`** |
-| `raspberrypi4`（現行 UI） | **`20260708-110444-28905`** | **`04bb49fe`** |
-| `raspi4-robodrill01`（現行 UI） | **`20260708-110943-19113`** | **`04bb49fe`** |
-| `raspi4-fjv60-80`（現行 UI） | **`20260708-111331-2379`** | **`04bb49fe`** |
-| `raspi4-sessaku-01`（現行 UI） | **`20260708-111719-728`** | **`04bb49fe`** |
-
-2026-07-08 現行 UI 反映後の Phase12 は **PASS 45 / WARN 0 / FAIL 0**。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-07](../archive/deployments/2026-07.md#キオスク部品測定自主検査-反映記録2026-07runbook-から移設) へ移設した。
 
 ### 手動確認（作成/改版）
 
@@ -513,20 +345,7 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 
 正本: [KB-320 §フラット band](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版ヘッダー-フラット-band-2026-06-04) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · [deployment §2026-06-04](../archive/deployments/2026-06.md#kiosk-inspection-drawing-create-header-flat-layout-2026-06-04) · ブランチ **`fix/inspection-drawing-create-header-flat-layout`** · **`d96da485`** · CI **`26917349311`**
 
-### デプロイ（Web のみ · 完了）
-
-1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-2. `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-3. Pi5 OK 後、Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
-4. 各 Pi4 **強制リロード**（§6.6.4）。
-
-| ホスト | Detach Run ID | 実機 |
-|--------|---------------|------|
-| `raspberrypi5` | **`20260604-074525-7036`** | web 再ビルド · HEAD **`d96da485`** |
-| `raspi4-kensaku-stonebase01` | **`20260604-075147-21404`** | **実機 OK** |
-| `raspberrypi4` | **`20260604-080658-2223`** | `kiosk-browser` 再起動 |
-| `raspi4-robodrill01` | **`20260604-081126-19736`** | 同上 |
-| `raspi4-fjv60-80` | **`20260604-081502-25798`** | 同上 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 実機確認ポイント
 
@@ -546,14 +365,7 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 
 正本: [KB-320 §作成レイアウト](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-作成改版レイアウト-2026-06-03) · [KB-320 §戻り先](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-戻り先ナビ-2026-06-03) · [ExecPlan](../plans/inspection-drawing-create-layout-and-return-nav.md) · [deployment §2026-06-03](../archive/deployments/2026-06.md#kiosk-inspection-drawing-create-layout-return-nav-2026-06-03) · ブランチ **`fix/inspection-drawing-return-navigation-review`** · **`5274f1ee`** · CI **`26883229358`**
 
-### デプロイ（Web のみ）
-
-1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-2. **`main` マージ後**（またはマージ前はブランチ名）: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-3. Pi5 目視 OK 後、Pi4 を 1 台ずつ `--limit` 変更（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
-4. 各 Pi4 でキオスク **強制リロード**（§6.6.4）。
-
-**Pi5 実績**: Detach **`20260603-211122-29648`** · HEAD **`5274f1ee`** · `failed=0`。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 実機確認ポイント
 
@@ -577,14 +389,7 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 
 正本: [KB-320 §仕様拡張 本番](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03) · [deployment.md §2026-06-03](../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) · ブランチ **`feat/inspection-drawing-count-and-tolerance`** · **`2f3979ce`**
 
-### デプロイ
-
-1. **push 済み**の `feat/inspection-drawing-count-and-tolerance`（または **`main` マージ後**は `main`）を用意する。
-2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`（LAN のみのとき `denkon5sd02@192.168.10.230`）。
-3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-4. Pi5 で **管理画面**・**キオスク検査図面/自主検査**を目視確認。
-5. **Pi4×4** を `--limit` 1 台ずつ同コマンドで順次（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
-6. 各 Pi4 でキオスク **強制リロード**（§6.6.4）後、下記「実機確認ポイント（拡張）」を実施。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 実機確認ポイント（拡張）
 
@@ -598,25 +403,14 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 
 | 症状 | 確認 |
 |------|------|
-| Mac で `https://100.106.158.2/admin` が開けない | Mac に **`tag:admin`** があるか · [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) |
+| Mac で `https://100.106.158.2/admin` が開けない | Mac に **`tag:admin`** があるか · [KB-442](../knowledge-base/infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) |
 | `migrate deploy` が `FIXED_COUNT` で失敗 | 2 段 migration が揃っているか（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)） |
 | キオスクだけ旧仕様 | Pi5 `web` ref · Pi4 強制リロード |
 | 順位ボード **検** → 自主検査で図面だけ空白 | [KB-320 §図面空白](../knowledge-base/KB-320-kiosk-part-measurement.md#self-inspection-session-drawing-blank-2026-06-03) · [§図面空白 Runbook](#自主検査セッション図面空白-2026-06-03) — API/storage **200** なら **`web` レイアウト**（`9f3f0bac` 以降）· Pi4 は **強制リロード** |
-| Pi4 画面真っ白 · TS `curl` 000 · LAN 200 | [KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) — `tailscaled` 再起動 · `tag:kiosk --reset` · `kiosk-launch.sh` を `100.106.158.2` に戻す |
+| Pi4 画面真っ白 · TS `curl` 000 · LAN 200 | [KB-443](../knowledge-base/infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) — `tailscaled` 再起動 · `tag:kiosk --reset` · `kiosk-launch.sh` を `100.106.158.2` に戻す |
 | Pi4 `_appRef` が古い | Pi4 で `git pull` しない · `update-all-clients.sh main --limit raspberrypi4`（実績 **`20260603-115435-29435`**） |
-| Mac admin 不通 | [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
+| Mac admin 不通 | [KB-442](../knowledge-base/infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
 | 検査図面作成で **図面が小さい**（旧 UI） | `pointListSlot` + 2行ヘッダー — **作成/改版は 2026-06-03 改善済**（[§作成レイアウト](#検査図面-作成-layout-return-nav-2026-06-03)）· Pi5 ≥ **`5274f1ee`** + 強制リロード |
-
-### Pi4 再デプロイ（研削メイン · TS 復旧後 · 2026-06-03）
-
-```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
-  --limit raspberrypi4 --detach --follow
-```
-
-- **前提**: Pi4 で `tailscale ping 100.106.158.2` 成功 · `curl` キオスク URL が **200**
-- **確認**: `git -C /opt/RaspberryPiSystem_002 rev-parse --short HEAD` が Pi5 と一致 · Firefox URL の `_appRef` が同 SHA
 
 ---
 
@@ -631,13 +425,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - 表示フェーズ: `missing` / `loading` / `error` / `canvas`（`selfInspectionSessionDrawingPanelState.ts`）。
 - API/DB 変更なし。図面バイナリは既存 `usePartMeasurementDrawingBlobUrl`。
 
-### デプロイ（標準）
-
-1. **push 済み**の `fix/self-inspection-session-drawing-display`（**`main` マージ後**は `main`）。
-2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-3. **Pi5**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-4. 必要な **Pi4** を 1 台ずつ `--limit`（実績: **`raspi4-kensaku-stonebase01`** · Detach **`20260603-132523-31144`**）。
-5. 各 Pi4 でキオスク **強制リロード**後、下記「実機確認」を実施。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 実機確認
 
@@ -659,22 +447,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 正本: [KB-320 §ボタン活性](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション操作ボタン活性-2026-06-04) · [deployment §ボタン活性](../archive/deployments/2026-06.md#kiosk-self-inspection-session-button-actions-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-button-actions`** · **`4f44dbb9`** · **Web のみ**
 
-### デプロイ（標準）
-
-1. **`main` マージ後**は第2引数 **`main`**（マージ前は `feat/kiosk-self-inspection-button-actions`）。
-2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-4. Pi5 で Phase12 `./scripts/deploy/verify-phase12-real.sh`（任意だが推奨）と、必要なら `docker exec docker-web-1` でバンドルに **`自主検査を完了`** を確認。
-5. Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
-6. 各 Pi4 **強制リロード**（§6.6.4）後、下記「手動確認」を実施。
-
-| ホスト | Detach Run ID | Git HEAD | 備考 |
-|--------|---------------|----------|------|
-| `raspberrypi5` | **`20260604-205746-21197`** | **`4f44dbb9`** | `failed=0` · **web** 再ビルド |
-| `raspberrypi4` | **`20260604-210423-13676`** | **`4f44dbb9`** | `kiosk-browser` 再起動 |
-| `raspi4-robodrill01` | **`20260604-210915-5507`** | **`4f44dbb9`** | 同上 |
-| `raspi4-fjv60-80` | **`20260604-211304-30742`** | **`4f44dbb9`** | 同上 |
-| `raspi4-kensaku-stonebase01` | **`20260604-211651-9374`** | **`4f44dbb9`** | 同上 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 手動確認（Pi4/Pi5）
 
@@ -687,38 +460,13 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 7. 全点 OK だが未保存のとき **再開** は保存促しメッセージ、保存済みで全点 OK のときは「未完了の測定点はありません」となること。
 8. **最終**（`first_last`）入力件タップで図面が真っ黒にならず、1 回で表示・guided 再開できること。
 
-### 単体テスト
-
-```bash
-cd apps/web && pnpm exec vitest run \
-  src/features/part-measurement/__tests__/selfInspectionSessionActionState.test.ts \
-  src/features/part-measurement/__tests__/selfInspectionEntrySlots.test.ts
-```
-
 ---
 
 ## 自主検査・セッション ボタンUI統一 + 操作誘導（2026-06-05） {#自主検査-セッション-ボタンui統一-2026-06-05}
 
 正本: [KB-320 §ボタンUI](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ボタンui統一-2026-06-05) · [deployment §ボタンUI](../archive/deployments/2026-06.md#kiosk-self-inspection-session-button-ui-2026-06-05) · [要件](../design-previews/kiosk-self-inspection-session-buttons-requirements.md) · ブランチ **`feat/kiosk-self-inspection-button-ui`** → **`main` マージ** · **`f2b374f5`** / **`ffdaebda`** · **Web のみ**
 
-### デプロイ（標準）
-
-1. **`main` マージ後**は第2引数 **`main`**（マージ前は `feat/kiosk-self-inspection-button-ui`）。
-2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-4. Pi5 で Phase12 `./scripts/deploy/verify-phase12-real.sh`（推奨）と、必要なら:
-
-```bash
-ssh denkon5sd02@100.106.158.2 'docker exec docker-web-1 sh -c "grep -l ring-sky-400 /srv/site/assets/*.js"'
-```
-
-5. Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
-6. 各 Pi4 **強制リロード**（§6.6.4）後、下記「手動確認」を実施。
-
-| ホスト | Detach Run ID | Git HEAD | 備考 |
-|--------|---------------|----------|------|
-| `raspberrypi5` | **`20260605-105452-27065`** | **`ffdaebda`** | `failed=0` · **web** 再ビルド · **Pi5 目視 OK** |
-| Pi4×5（後続収束） | 2026-07-08 現行ロールアウト | **`04bb49fe`** | Phase12 **45/0/0** · 丸数字設定改善ロールアウトで現行 UI へ収束 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 手動確認（Pi4/Pi5）
 
@@ -730,14 +478,6 @@ ssh denkon5sd02@100.106.158.2 'docker exec docker-web-1 sh -c "grep -l ring-sky-
 6. **再開**・入力件チップ・ズームに **青外枠なし**。
 7. 青外枠の有無でボタンサイズやヘッダー詰まりが変わらないこと。
 8. §ボタン活性の運用フロー（保存 → manual → 件切替 → 再開 → guided → 完了）が維持されること。
-
-### 単体テスト
-
-```bash
-cd apps/web && pnpm exec vitest run \
-  src/features/part-measurement/__tests__/selfInspectionKioskTheme.test.ts \
-  src/features/part-measurement/__tests__/SelfInspectionKioskButton.test.tsx
-```
 
 ### トラブルシュート
 
@@ -762,27 +502,7 @@ cd apps/web && pnpm exec vitest run \
 - **タブ順**: 全端末共通 `KioskHeaderTabOrderConfig`（`scopeKey=shared`）。管理 **`/admin/kiosk-settings`**。キオスクは `GET /api/kiosk/config` の `navTabOrder`。サイネージ・管理・問い合わせ・電源は固定。
 - **共有型**: `packages/shared-types/src/kiosk/kiosk-header-tab-order.ts`（`normalizeKioskHeaderTabOrder`）。
 
-### デプロイ（標準）
-
-1. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-2. 第2引数 **`feat/kiosk-self-inspection-wip-and-tab-order`**（`main` マージ後は **`main`**）。
-3. **Pi5 先行** → Phase12 `./scripts/deploy/verify-phase12-real.sh` → **Pi4×4 を 1 台ずつ** `--limit`（`raspi4-kensaku-stonebase01` 先行推奨）。
-4. Pi3 / Zero2W: **対象外**（`skipping: no hosts matched`）。
-
-| ホスト | Detach Run ID | Git HEAD | PLAY RECAP | 備考 |
-|--------|---------------|----------|------------|------|
-| `raspberrypi5` | **`20260610-123720-3368`** | **`c9b265a9`** | `ok=134` `failed=0` | `api`/`web` 再ビルド · migration 2 件 |
-| `raspi4-kensaku-stonebase01` | **`20260610-130117-16010`** | **`c9b265a9`** | `ok=129` `failed=0` | `kiosk-browser` 再起動 |
-| `raspberrypi4` | **`20260610-130513-7469`** | **`c9b265a9`** | `ok=122` `failed=0` | 同上 |
-| `raspi4-robodrill01` | **`20260610-130935-4602`** | **`c9b265a9`** | `ok=122` `failed=0` | 同上 |
-| `raspi4-fjv60-80` | **`20260610-131258-29570`** | **`c9b265a9`** | `ok=122` `failed=0` | 同上 |
-
-### 検証結果（2026-06-10）
-
-| 区分 | 結果 |
-|------|------|
-| **自動（Pi5）** | Phase12 **`PASS 43 / WARN 0 / FAIL 0`**（Pi5 デプロイ後）。`GET /api/system/health` **200**。`GET /api/kiosk/config` + `x-client-key` → `navTabOrder[0]=borrow`（18 件）。`GET …/sessions?status=in_progress` + `x-client-key` のみ → **200**、`listLimit=200`。Web バンドル **`index-DX2G38-K.js`** に `nav-tab-order` を確認。 |
-| **手動（キオスク）** | 下記 1–4 は **現場目視未記録**（API/デプロイは完了）。 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 手動確認（Pi4/Pi5）
 
@@ -809,36 +529,7 @@ cd apps/web && pnpm exec vitest run \
 
 正本: [KB-320 §右ペイン入力改善](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション右ペイン入力改善-2026-06-09) · ブランチ **`feat/kiosk-self-inspection-right-pane-inputs`** · 代表 **`58062ba7`** · CI **`27199280343`** · **Web のみ**
 
-### デプロイ（標準）
-
-1. 第2引数 **`feat/kiosk-self-inspection-right-pane-inputs`**（`main` マージ後は **`main`**）。
-2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-4. Pi5 で `./scripts/deploy/verify-phase12-real.sh`（推奨）と、必要なら:
-
-```bash
-ssh denkon5sd02@100.106.158.2 'docker exec docker-web-1 sh -c "grep -l data-self-inspection-point-summary-list /srv/site/assets/*.js"'
-```
-
-5. Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
-6. 各 Pi4 はデプロイ時 **`kiosk-browser` 再起動**で Pi5 SPA を再取得（旧 bundle 残存時は **強制リロード** §6.6.4）。
-
-| ホスト | Detach Run ID | Git HEAD | 備考 |
-|--------|---------------|----------|------|
-| `raspberrypi5` | **`20260609-193442-8328`** | **`58062ba7`** | `failed=0` · **web** 再ビルド · バンドル **`index-cpu1LH6r.js`** |
-| `raspberrypi4` | **`20260609-194132-22526`** | **`58062ba7`** | `failed=0` · `kiosk-browser` 再起動 |
-| `raspi4-robodrill01` | **`20260609-194647-22669`** | **`58062ba7`** | `failed=0` · `kiosk-browser` 再起動 |
-| `raspi4-fjv60-80` | **`20260609-195030-8659`** | **`58062ba7`** | `failed=0` · `kiosk-browser` 再起動 |
-| `raspi4-kensaku-stonebase01` | **`20260609-195427-22010`** | **`58062ba7`** | `failed=0` · `kiosk-browser` 再起動 |
-
-**本番反映（2026-06-09）**: 上記 5 台すべて **`failed=0`**。Phase12 全台完了後 **`PASS 43 / WARN 0 / FAIL 0`**（約 **55s**）。
-
-### 検証結果（2026-06-09）
-
-| 区分 | 結果 |
-|------|------|
-| **自動** | Pi5 バンドルに `data-self-inspection-point-summary-list` · `min-h-8`（`actionCompact`）を確認。Phase12 **43/0/0**（Pi5 単独・全台完了後の 2 回）。全 Pi4 `deploy-status` / `status-agent` **PASS**。 |
-| **手動（キオスク）** | 下記 1–7 は **現場目視未記録**。旧 UI 疑い時は Pi5 HEAD **`58062ba7` 以降** と Pi4 **強制リロード**（§6.6.4）を先に確認。 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 仕様・知見（再開用）
 
@@ -862,29 +553,13 @@ ssh denkon5sd02@100.106.158.2 'docker exec docker-web-1 sh -c "grep -l data-self
 6. **手入力欄フォーカス中に一覧をタップ**しても、意図しないガイド進行が起きないこと。
 7. §ボタン活性・§ガイド polish の既存フロー（保存 → 件切替 → 再開 → 完了）が維持されること。
 
-### 単体テスト
-
-```bash
-cd apps/web && pnpm exec vitest run \
-  src/features/part-measurement/inspection-drawing/__tests__/measurementPointInputStatus.test.ts \
-  src/features/part-measurement/inspection-drawing/__tests__/InspectionDrawingValuePanel.test.tsx \
-  src/features/part-measurement/inspection-drawing/__tests__/InspectionDrawingPointSummaryList.test.tsx \
-  src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.test.ts \
-  src/features/part-measurement/__tests__/selfInspectionKioskTheme.test.ts \
-  src/features/part-measurement/__tests__/SelfInspectionKioskButton.test.tsx
-```
-
 ---
 
 ## 自主検査・寸法百分台入力 + 公差外レビュー（2026-06-26） {#自主検査-寸法百分台入力-公差外レビュー-2026-06-26}
 
 正本: [KB-320 §寸法百分台入力・公差外レビュー](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-寸法百分台入力-公差外レビュー-2026-06-26)。対象は順位ボード **検** → `/kiosk/part-measurement/self-inspection/sessions/:sessionId`。
 
-### デプロイ注意
-
-1. API + Web + Prisma migration を同時に反映する。
-2. `prisma migrate deploy` 後に API を再起動し、`SelfInspectionMeasurementValue.reviewStatus`、`SelfInspectionSession.recordApprovalRequiredAt`、`SelfInspectionSession.recordApprovalWorkflowStartedAt`、`SelfInspectionRecordApproval` が存在することを確認する。
-3. Web 反映後、Pi4 は `kiosk-browser` 再起動または強制リロードで Pi5 配信 SPA を取り直す。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 手動確認（Pi4/Pi5）
 
@@ -906,20 +581,6 @@ cd apps/web && pnpm exec vitest run \
 16. 順位ボード・自主検査一覧・機種別ボードで、承認前は **承認待ち**、承認後は **完了** 表示になること。
 17. legacy 確認として、`recordApprovalWorkflowStartedAt=null` の既存セッションだけは管理 `/admin/part-measurement/self-inspection-reviews` の ADMIN/MANAGER 承認で従来どおり完了できること。
 
-### 単体・結合テスト
-
-```bash
-cd apps/web && pnpm exec vitest run \
-  src/features/part-measurement/inspection-drawing/__tests__/selfInspectionDimensionValueInput.test.ts \
-  src/features/part-measurement/inspection-drawing/__tests__/selfInspectionMeasurementValueOptions.test.ts \
-  src/features/part-measurement/__tests__/selfInspectionGuidedFocus.test.ts \
-  src/features/part-measurement/__tests__/selfInspectionSessionActionState.test.ts \
-  src/features/part-measurement/__tests__/mergeSelfInspectionSessionAfterEntrySave.test.ts
-
-cd apps/api && pnpm exec vitest run \
-  src/routes/__tests__/part-measurement.integration.test.ts
-```
-
 ### トラブルシュート
 
 | 症状 | 確認 | 対処 |
@@ -932,69 +593,7 @@ cd apps/api && pnpm exec vitest run \
 | 承認後も完了しない | required slot が全部保存済みか · 測定者登録欠落がないか · 計測機器の使用前点検必須 ON 時は使用前点検欠落がないか · pending 公差外が承認更新されたか | 未保存/未点検 entry を再保存/点検し、API ログと `SelfInspectionRecordApproval` を確認 |
 | 管理画面で新方式セッションを承認できない | `recordApprovalWorkflowStartedAt != null` か | 正常。測定値保存後にキオスク「検査記録確認」で ACTIVE 社員 NFC 承認する |
 
-### 検査記録確認・保存済み表示/再認証/6列表示 本番反映（2026-06-30） {#検査記録確認-保存済み表示-再認証-6列表示-2026-06-30}
-
-次回 AI 再開用の最小メモ。詳細正本はこの Runbook 節に限定し、同じ内容を `EXEC_PLAN.md` や index へ展開しない。
-
-| 項目 | 内容 |
-|------|------|
-| ブランチ / commit | `feat/kiosk-record-approval-saved-only-gate` / `1753202d357e8d39fbd0f20de048d8b707d03534` |
-| 目的 | 検査記録確認を画面単位で再認証、測定値保存済みセッションだけを一覧表示、移動票スキャン後候補を最大6列表示 |
-| DB境界 | `recordApprovalWorkflowStartedAt` は新方式 workflow 開始、`recordApprovalRequiredAt` は測定値保存後の承認対象化に分離 |
-| 表示対象 | `recordApprovalRequiredAt IS NOT NULL` の session のみ。開いただけ、リセット直後、使用前点検だけの session は表示しない |
-| 入場認証 | `POST /api/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password`。有効な `x-client-key` と `2520` が必要。通過状態は画面表示中の React state のみ |
-| UI | 直 URL でも `2520` を要求。別画面へ移動して戻ると再要求。一覧/詳細に更新日時・入力者・保存日時を表示。移動票スキャン候補は `xl:grid-cols-6` |
-| 既存実データ | `0003886408` / `0003864550` の資源 `589` は `recordApprovalWorkflowStartedAt` あり、`recordApprovalRequiredAt=null`、測定値 0 件のため新仕様では非表示 |
-
-検証結果:
-
-- ローカル: 一時 Postgres Docker に migration 適用、API 結合テスト、Web vitest、API/Web build、`git diff --check` が成功。一時コンテナは削除済み。
-- CI: GitHub Actions run `28434322354` は `lint-build-unit`、`api-db-and-infra`、`e2e-smoke`、`security-docker`、`e2e-tests` が success。
-- デプロイ: Run ID `20260630-184239-466`。Pi5 / Pi4 各端末 / Pi3 の Ansible PLAY RECAP は `failed=0`、summary success は `true`。Pi5 は branch `feat/kiosk-record-approval-saved-only-gate`、HEAD `1753202d357e8d39fbd0f20de048d8b707d03534`。
-- 実機自動検証: `./scripts/deploy/verify-phase12-real.sh` は `PASS: 45 / WARN: 0 / FAIL: 0`。
-- 実機API: `2520` と有効 client key は 200、client key なしは 401。`record-approvals?state=active` / `input_incomplete` / `registration_incomplete` は全て 0 件。
-- 実機DB: 新列と index 作成済み。測定値なしで active 承認対象になる session 数は 0。現行行数が少ないため一覧 `EXPLAIN` は Seq Scan だが条件は `recordApprovalRequiredAt IS NOT NULL`。
-- 実機Web: Playwright で直 URL 入場時と別画面遷移後の再入場時に prompt が2回出ることを確認。配信済み bundle `index-BHndB6E-.js` に `xl:grid-cols-6`、再認証文言、更新/入力者表示文言が含まれる。
-
-未完了・次回確認:
-
-- ACTIVE 社員 NFC による本番の最終承認フローは、対象 session が 0 件であり本番DBを不要に変更しないため未実施。実データで測定値保存済み session ができたら、検査記録確認 → `2520` → ACTIVE 社員 NFC → 承認して完了 → `SelfInspectionRecordApproval` と `completedAt` を確認する。
-- `pnpm audit` の high severity は 2026-07-01 の follow-up で解消済み。残る low/moderate は [§公差オフセット表示・CI/Audit/E2E](#公差オフセット表示-ciaudit-e2e-本番反映-2026-07-01) を参照。
-
-### 公差オフセット表示・CI/Audit/E2E 本番反映（2026-07-01） {#公差オフセット表示-ciaudit-e2e-本番反映-2026-07-01}
-
-次回 AI 再開用の最小メモ。詳細仕様は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md) の「2026-07-01 公差オフセット表示・測定値選択 UI 変更」を正本とし、本節は release / validation / open items だけを扱う。
-
-| 項目 | 内容 |
-|------|------|
-| 機能 PR | #937 `feat(web): update inspection tolerance display` · merge `f3c78df6527766cd78c13f99af321fc2261e4a77` |
-| CI follow-up | #938 `ci: update actions for Node 24 runtime` · merge `ae19dcc9cca2bd8a9d5350ebdf7ca6adf029eaa5` |
-| audit follow-up | #939 `chore: resolve high pnpm audit findings` · merge `880a645f5f085a634fba9817df250bb5a1433a70` |
-| E2E follow-up | #940 `test: add inspection tolerance display e2e` · merge `de5ad3a265bb9997921676c8e8f1c482ec178503` |
-| 契約 | API / Prisma / migration / wire shape は変更なし。Web 表示と GitHub Actions / lockfile / E2E のみ |
-| 仕様要点 | 通常行は `基準 10 / -0.05〜+0.05`、legacy は `合格範囲 lower〜upper`。自主検査 select は `測定値選択`、select 内ヒント option なし |
-
-知見:
-
-- `pnpm/action-setup@v5` は `package.json` の `packageManager: pnpm@10.34.6` を読むため、workflow 側で `with.version` を同時指定しない。
-- `pnpm audit --audit-level=high` は #939 後に pass。残存 audit は **low 2 / moderate 10** で、high blocker はなし。
-- #940 の Playwright E2E は self-inspection session route を API mock で固定し、`測定値選択`、空 option、旧 `0.1候補` / `候補から選択` / `候補（刻み...` の不在を確認する。
-
-検証結果:
-
-- PR #937-#940 はそれぞれ CI green 後に merge 済み。
-- ローカル E2E 再確認: `PLAYWRIGHT_HTML_OPEN=never pnpm exec playwright test e2e/self-inspection-measurement-select-regression.spec.ts --project=chromium` → **1 passed**。
-- 本番 deploy: `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --follow`、Run ID **`20260701-151214-24087`**、remote summary success **true**、全 host `failed=0` / `unreachable=0`。
-- Pi5: `prisma migrate deploy` / `prisma migrate status` / API health OK。今回 main 差分は Dockerfile なしのため Docker rebuild **false**。
-- Pi4 kiosk: `raspberrypi4` / `raspi4-robodrill01` / `raspi4-fjv60-80` / `raspi4-kensaku-stonebase01` / `raspi4-sessaku-01` の `kiosk-browser`、`status-agent`、IME 診断 OK。
-- Pi3 signage: `signage-lite.service` active、lightdm 復旧 OK。
-- 実機自動検証: `./scripts/deploy/verify-phase12-real.sh` → **PASS 45 / WARN 0 / FAIL 0**。
-- 公差表示・測定値選択 UI の現場実機目視は 2026-07-01 に OK 確認済み（KB-320 記録）。
-
-未完了・次回確認:
-
-- 機能 / CI / deploy / Phase12 の必須残作業なし。
-- セキュリティ依存更新を続ける場合は、残存 low/moderate audit を別タスクで評価する。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-07](../archive/deployments/2026-07.md#キオスク部品測定自主検査-反映記録2026-07runbook-から移設) へ移設した。
 
 ---
 
@@ -1021,38 +620,7 @@ cd apps/api && pnpm exec vitest run \
 7. **`xl` 未満**（図面下に右ペイン縦積み）でも NFC 2列・一覧2列・保存/完了が崩れないこと。
 8. **検査図面 作成/改版** の測定点一覧が **1列のまま** であること。
 
-### 単体テスト
-
-```bash
-cd apps/web && pnpm exec vitest run \
-  src/features/part-measurement/inspection-drawing/__tests__/inspectionDrawingPointSummaryList.test.tsx \
-  src/features/part-measurement/__tests__/selfInspectionKioskTheme.test.ts \
-  src/features/part-measurement/__tests__/SelfInspectionKioskButton.test.tsx \
-  src/features/part-measurement/__tests__/SelfInspectionSessionHeader.test.tsx \
-  src/features/part-measurement/__tests__/SelfInspectionNfcRegistrationPanel.test.tsx
-```
-
-### デプロイ・検証（2026-06-10）
-
-**デプロイ**（`update-all-clients.sh feat/self-inspection-right-pane-polish … --detach --follow` · 1 台ずつ）:
-
-| ホスト | Detach Run ID | Git HEAD | 備考 |
-|--------|---------------|----------|------|
-| `raspberrypi5` | **`20260610-093704-25991`** | **`146c2438`** | `failed=0` · **web** 再ビルド · バンドル **`index-nLIbNtAD.js`** |
-| `raspberrypi4` | **`20260610-100053-25389`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
-| `raspi4-robodrill01` | **`20260610-100533-13402`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
-| `raspi4-fjv60-80` | **`20260610-100857-19721`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
-| `raspi4-kensaku-stonebase01` | **`20260610-101227-17851`** | **`146c2438`** | `failed=0` · `kiosk-browser` 再起動 |
-
-**自動検証**（Pi5 経由 · 2026-06-10 10:16 JST 頃）:
-
-- `./scripts/deploy/verify-phase12-real.sh` — **PASS 43 / WARN 0 / FAIL 0**（全台デプロイ後）
-- Web バンドル `/srv/site/assets/index-nLIbNtAD.js` に `min-h-6 px-4 py-0 text-[15px] leading-none` · `ring-cyan-300` を確認
-- Pi4 全 4 台: `kiosk-browser.service` **active** · HEAD **`146c2438`**
-- deploy-status / status-agent 全 Pi4 **PASS**
-- CI **`27244381856`** **success**（`146c2438` push 後）
-
-**未完了（現場目視推奨）**: 上記「手動確認」1–8（NFC 2列 · 一覧2列選択強調 · 保存/完了薄型 · カメラ OFF inactive · 作成/改版1列維持）は **1 台以上の Pi4** でオペレータ確認推奨。自動検証は API/デプロイ/サービス/バンドル契約まで。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ---
 
@@ -1060,27 +628,7 @@ cd apps/web && pnpm exec vitest run \
 
 正本: [KB-320 §NFC・手元カメラ](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfc-登録-手元カメラ実験-2026-06-09) · ブランチ **`feat/self-inspection-nfc-camera-experiment`** · **API migration + Web** · コミット **`7f2581ae`**
 
-### デプロイ・検証（2026-06-09）
-
-**デプロイ**（`update-all-clients.sh feat/self-inspection-nfc-camera-experiment … --detach --follow` · 1 台ずつ）:
-
-| ホスト | 結果 | HEAD | 備考 |
-|--------|------|------|------|
-| `raspberrypi5` | OK | `7f2581ae` | Docker rebuild · API/Web 再起動 |
-| `raspberrypi4` | OK | `7f2581ae` | `kiosk-browser` 再起動 |
-| `raspi4-robodrill01` | OK | `7f2581ae` | 同上 |
-| `raspi4-fjv60-80` | OK | `7f2581ae` | 同上 |
-| `raspi4-kensaku-stonebase01` | OK | `7f2581ae` | 同上 |
-
-**自動検証**（Pi5 経由 · 2026-06-09 23:36 JST 頃）:
-
-- `./scripts/deploy/verify-phase12-real.sh` — **PASS 43 / WARN 0 / FAIL 0**
-- DB `SelfInspectionLotEntry` に機器 snapshot 列 4 件（`measuringInstrumentId` 他）— migration 適用済み
-- `POST …/self-inspection/nfc-tags/resolve` + `x-client-key` → `200`（未知 UID は `{"result":{"kind":"unknown"}}`）
-- Web バンドル `/srv/site/assets/index-*.js` に `手元カメラ` 文字列を確認
-- Pi4 全 4 台: `kiosk-browser.service` **active** · HEAD **`7f2581ae`**（Ansible 経由）
-
-**未完了（現場タグ要）**: 下記「手動確認」1–7（実タグ NFC スキャン · 手元カメラ DevTools 計測ログ）は **1 台以上の Pi4** でオペレータ確認推奨。自動検証は API/デプロイ/サービス/バンドルまで。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 概要
 
@@ -1098,37 +646,13 @@ cd apps/web && pnpm exec vitest run \
 6. **手元カメラ ON** で 10 秒ごとに DevTools/console に `[self-inspection workbench camera experiment]` ログ（`getUserMedia ms` / `capture ms` / `blob size`）が出ること。
 7. OFF / タブ非表示 / 画面離脱で **stream が残留しない**こと（Pi4 負荷 — 常時プレビュー禁止の継続）。
 
-### 単体テスト
-
-```bash
-cd apps/api && pnpm exec vitest run \
-  src/services/part-measurement/__tests__/self-inspection-nfc-tag-resolve.test.ts
-
-cd apps/web && pnpm exec vitest run \
-  src/features/part-measurement/__tests__/selfInspectionEntryRegistration.test.ts \
-  src/features/part-measurement/__tests__/selfInspectionSessionActionState.test.ts \
-  src/features/part-measurement/__tests__/useSelfInspectionWorkbenchCameraExperiment.test.ts
-```
-
 ---
 
 ## 自主検査・ガイド polish（倍率 2.0）（2026-06-04） {#自主検査-ガイド-polish-倍率2-0-2026-06-04}
 
 正本: [KB-320 §ガイド polish](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-ガイド-polish-倍率2-0-2026-06-04) · [deployment §polish](../archive/deployments/2026-06.md#kiosk-self-inspection-guided-zoom-2-polish-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-polish`** → **`main` マージ** · **`fb10f0e0`** · **Web のみ**
 
-### デプロイ（標準）
-
-1. **`main` マージ後**は第2引数 **`main`**（マージ前は `feat/kiosk-self-inspection-guided-polish`）。
-2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-4. Pi5 目視 OK 後、Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
-5. 各 Pi4 **強制リロード**（§6.6.4）後、下記「手動確認」を実施。
-
-| ホスト | Detach Run ID | Git HEAD | 備考 |
-|--------|---------------|----------|------|
-| `raspberrypi5` | **`20260604-191118-31485`** | **`fb10f0e0`** | `failed=0` · **web** 再ビルド · **Pi5 目視 OK** |
-| `raspberrypi5`（polish 初回） | **`20260604-181929-755`** | **`c90647ac`** | `failed=0` · 保存後 manual 等（倍率は当時 1.5 のまま） |
-| Pi4×5（後続収束） | 2026-07-08 現行ロールアウト | **`04bb49fe`** | Phase12 **45/0/0** · 現行 UI へ収束 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 手動確認（Pi4/Pi5）
 
@@ -1148,38 +672,13 @@ cd apps/web && pnpm exec vitest run \
 
 **注**: 検査図面 **ガイド試行** の倍率（1.5 固定）は対象外。
 
-### 単体テスト
-
-```bash
-cd apps/web && pnpm exec vitest run \
-  src/features/part-measurement/__tests__/selfInspectionGuidedFocus.test.ts \
-  src/features/part-measurement/__tests__/useSelfInspectionGuidedFocus.test.ts \
-  src/features/part-measurement/__tests__/selfInspectionSessionActionState.test.ts \
-  src/features/part-measurement/__tests__/selfInspectionEntrySlots.test.ts \
-  src/features/part-measurement/inspection-drawing/inspectionDrawingZoom.test.ts \
-  src/features/part-measurement/inspection-drawing/inspectionDrawingMarkerStyles.test.ts \
-  src/features/part-measurement/inspection-drawing/inspectionDrawingCanvasLayout.test.ts \
-  src/features/part-measurement/inspection-drawing/inspectionDrawingKioskUi.test.ts
-```
-
 ---
 
 ## 自主検査・ガイド付きフォーカス（2026-06-04 · 初回） {#自主検査-ガイド付きフォーカス-2026-06-04}
 
 正本: [KB-320 §ガイドフォーカス](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-セッション-ガイド付きフォーカス-2026-06-04) · [deployment §2026-06-04](../archive/deployments/2026-06.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04) · ブランチ **`feat/kiosk-self-inspection-guided-focus`** · **`main` マージ** · **`32c4858f`** / 同梱デプロイ **`f16cb7ca`** · **Web のみ**
 
-### デプロイ（標準）
-
-1. **push 済み**の `feat/kiosk-self-inspection-guided-focus`（**`main` マージ後**は第2引数 **`main`**）。
-2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-3. **Pi5 先行**: `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-4. Pi5 目視 OK 後、Pi4 を 1 台ずつ `--limit`（`raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01`）。
-5. 各 Pi4 **強制リロード**（§6.6.4）後、手動確認を実施。
-
-| ホスト | Detach Run ID | Git HEAD | 備考 |
-|--------|---------------|----------|------|
-| `raspberrypi5` | **`20260604-155553-5452`** | **`f16cb7ca`** | `failed=0` · **web** 再ビルド（reset 同梱） |
-| Pi4×5（後続収束） | 2026-07-08 現行ロールアウト | **`04bb49fe`** | Phase12 **45/0/0** · 現行 UI へ収束 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 手動確認（Pi4/Pi5 · 初回は 1.5 倍）
 
@@ -1199,16 +698,7 @@ cd apps/web && pnpm exec vitest run \
 
 正本: [KB-320 §フルリセット・ガイド試行](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) · [deployment §2026-06-04](../archive/deployments/2026-06.md#kiosk-self-inspection-guided-focus-reset-trial-2026-06-04) · **`f16cb7ca`** · migration **`20260604120000_self_inspection_session_reset_audit`** · CI **`26935485926`**
 
-### デプロイ（API + Web + migration）
-
-1. ブランチを Pi5 に反映（**`main` マージ後**は `main`）。
-2. `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
-3. `./scripts/update-all-clients.sh <ref> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
-4. ログで **`Run prisma migrate deploy`** が success · **`SelfInspectionSessionResetAuditLog`** 作成を確認。
-5. `./scripts/deploy/verify-phase12-real.sh` — 期待 **43/0/0**。
-6. Pi5 実機 OK 後、Pi4 を 1 台ずつ `--limit` + **強制リロード**。
-
-**Pi5 実績（2026-06-04）**: Detach **`20260604-155553-5452`** · HEAD **`f16cb7ca`** · `failed=0` · migrations **104 件 up to date** · web バンドルに `guidedTrial` / `confirmDestructiveReset` 確認済。
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### フルリセット（セッション画面のみ）
 
@@ -1251,61 +741,15 @@ cd apps/web && pnpm exec vitest run \
 | ガイド試行が進まない（DEV） | プレビューに `useInspectionDrawingGuidedTrial` 未配線 — [KB-320 §レビュー知見](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) |
 | Pi4 のみ旧 UI | `git pull` しない · Ansible + **強制リロード** |
 
-### 単体テスト（ローカル）
-
-```bash
-cd apps/api && pnpm exec vitest run src/services/part-measurement/__tests__/self-inspection-reset-preflight.test.ts
-cd apps/web && pnpm exec vitest run \
-  src/features/part-measurement/inspection-drawing/__tests__/inspectionDrawingGuidedTrial.test.ts \
-  src/features/part-measurement/__tests__/selfInspectionGuidedFocus.test.ts
-```
-
-**integration（API）**: 一時 DB は `pgvector/pgvector:pg16` · `part-measurement.integration.test.ts` の reset ケース。
-
 ---
 
 ## 自主検査 MVP（2026-06-01）
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。
 
-### キオスクナビ
-
-| ヘッダータブ | 遷移先（既定） | アクティブになるパス |
-|--------------|----------------|----------------------|
-| **自主検査** | `/kiosk/part-measurement/self-inspection` | `/kiosk/part-measurement/self-inspection/*` |
-
-- **一覧**: `/kiosk/part-measurement/self-inspection`
-  - 生産スケジュール行をもとに、**図面ありの `THREE_KEY` テンプレ**だけを対象表示。
-  - 同じ行に対応する既存セッションがあれば **再開**、なければ **開始**。
-  - 一覧カードは既存の2つの`<tr>`（上段 **43.3px**、下段 **51px**、カード高 **94.3px**）内に収める。
-    ペイン／表示領域の外枠と1表／2表の配分を変えず、上段は製番・機種名・品名・状態を一行で表示する。
-    製番・品名は白色21px、機種名は15.75px、製番と機種名の間隔は1ch、状態は品名側の右端とする。
-    状態の補足説明は表示しない。
-  - 下段は白色の2行metaとし、1行目は製造order値・資源CD値・資源名値（資源のタイトルは表示しない）、
-    2行目は **更新**・**進捗**・**作業者** とする。長文はnowrap／ellipsisで省略し、`title`と`aria-label`で全文を確認できるようにする。
-    資源名が不明な場合だけCDを主表示する。
-- **入力画面**: `/kiosk/part-measurement/self-inspection/start` または `/kiosk/part-measurement/self-inspection/sessions/:sessionId`
-  - 図面キャンバスと測定値パネルは既存検査図面 UI を再利用。
-  - 画像は **`usePartMeasurementDrawingBlobUrl`** で Blob 化し、`x-client-key` 付きで取得する。
-- **順位ボード導線**:
-  - 各行で図面ありなら **「検」** ボタンを表示。
-  - 状態色は **白=未開始 / 黄=入力中 / 青=完了**。
-  - ボタンは `/self-inspection/start?...` の query を持ち、同じ業務キーで resolve-or-create する。
-
-### テンプレ設定
-
-- 管理画面 `/admin/tools/part-measurement-templates` に以下を追加:
-  - `selfInspectionMode`: `全数` / `抜き取り1個` / `最初と最後` / `指定数`（API: `full` / `single` / `first_last` / `fixed_count`）
-  - `selfInspectionFixedCount`: `指定数` 時のみ必須（`1 <= 件数 <= 指示数`）。`sample` は API 互換エイリアス
-- 一覧/詳細 DTO にも同値を返す。
-- 検査図面一覧 API `GET /api/part-measurement/inspection-drawing/templates` でも要約 DTO に返すため、キオスク一覧と将来の導線で再利用できる。
-
 ### データ構造
 
-- `SelfInspectionSession`
-  - 1 つの生産対象コンテキストに対する自主検査作業単位。
-  - 一意キーは `productNo + processGroup + resourceCd + scheduleRowId` の `sessionBusinessKey`（日程行単位。改版でテンプレ ID が変わっても同一セッション）。`resolve-or-create` は `scheduleRowId` と `fseiban` 必須。
-  - **マイグレーション `20260601120000_self_inspection_session_business_key_v2`**: 旧キー（templateId 含む）から新キーへ移行する。同一日程行の重複セッションは **エントリ数最多 → 未完了優先 → 更新日時が新しい** 順で 1 件を残し、空の重複は削除、非衝突の `entryIndex` のみ勝者へ移す。移行後も重複にエントリが残る場合は **マイグレーションが例外で停止**（手動統合が必要）。
+画面導線・テンプレ設定・データ構造の仕様は [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01) を正とする。
 
 #### 業務キー移行の事前確認（本番・ステージング）
 
@@ -1480,7 +924,7 @@ HAVING COUNT(*) > 1;
 
 ## 自主検査レイアウト最適化の手動確認（2026-07-31）
 
-正本: [KB-320 §一覧／測定入力レイアウト契約](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-一覧測定入力レイアウト契約-2026-07-31)。APIとDB契約は不変であり、確認対象はキオスクWeb表示である。
+正本: [KB-320 §一覧／測定入力レイアウト契約](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査--一覧測定入力レイアウト契約2026-07-312026-08-21改定)。APIとDB契約は不変であり、確認対象はキオスクWeb表示である。
 
 ### 自主検査一覧
 

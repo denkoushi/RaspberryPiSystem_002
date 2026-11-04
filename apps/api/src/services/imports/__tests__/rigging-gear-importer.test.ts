@@ -58,22 +58,26 @@ describe('RiggingGearCsvImporter.parse', () => {
     });
   });
 
-  it('silently drops full-width digits to null rather than rejecting the row', async () => {
+  it('reads full-width digits as numbers', async () => {
     const [row] = await importer().parse(csv(`${HEADER}\nスリング,RG-001,,５,２.５,１５００,,,,\n`));
-    // NOTE: possible bug: full-width numbers (common in Japanese Excel exports) are lost without any error.
-    expect(row.usableYears).toBeNull();
-    expect(row.maxLoadTon).toBeNull();
-    expect(row.lengthMm).toBeNull();
+    expect(row.usableYears).toBe(5);
+    expect(row.maxLoadTon).toBe(2.5);
+    expect(row.lengthMm).toBe(1500);
   });
 
-  it('truncates thousands separators, decimals and unit suffixes via parseInt/parseFloat', async () => {
+  it('drops thousands separators, but still truncates decimals and unit suffixes via parseInt/parseFloat', async () => {
     const [row] = await importer().parse(csv(`${HEADER}\nスリング,RG-001,,3.9,2.5t,"1,500",50mm,-6,,\n`));
-    // NOTE: possible bug: "1,500" becomes 1 (not 1500) and negative sizes are accepted.
+    expect(row.lengthMm).toBe(1500);
+    // Unchanged on purpose: decimals, unit suffixes and negative values keep parseInt/parseFloat behaviour.
     expect(row.usableYears).toBe(3);
     expect(row.maxLoadTon).toBe(2.5);
-    expect(row.lengthMm).toBe(1);
     expect(row.widthMm).toBe(50);
     expect(row.thicknessMm).toBe(-6);
+  });
+
+  it('reads a full-width thousands separator too', async () => {
+    const [row] = await importer().parse(csv(`${HEADER}\nスリング,RG-001,,,"１，２００.５",,,,,\n`));
+    expect(row.maxLoadTon).toBe(1200.5);
   });
 
   it('turns an unparseable startedAt into null', async () => {
@@ -139,7 +143,7 @@ describe('RiggingGearCsvImporter.import', () => {
       },
     });
     const blankData = mocks.riggingGear.create.mock.calls[1][0].data;
-    expect(blankData).toMatchObject({ name: 'ワイヤ', managementNumber: 'RG-002', status: 'AVAILABLE', storageLocation: '', department: '' });
+    expect(blankData).toMatchObject({ name: 'ワイヤ', managementNumber: 'RG-002', status: 'AVAILABLE', storageLocation: null, department: null });
     for (const key of ['idNum', 'startedAt', 'usableYears', 'maxLoadTon', 'lengthMm', 'widthMm', 'thicknessMm']) {
       expect(blankData[key]).toBeUndefined();
     }
@@ -157,14 +161,13 @@ describe('RiggingGearCsvImporter.import', () => {
     expect(mocks.riggingGear.create).not.toHaveBeenCalled();
   });
 
-  it('re-updates an otherwise unchanged row whenever startedAt is present', async () => {
+  it('does not update an otherwise unchanged row just because startedAt is present', async () => {
     mocks.riggingGear.findUnique.mockResolvedValue({
       id: 'rg-1', managementNumber: 'RG-001', name: 'スリング', status: 'AVAILABLE', startedAt: new Date('2024-04-01T00:00:00.000Z'),
     });
     const summary = await importer().import([{ ...baseRow, startedAt: new Date('2024-04-01T00:00:00.000Z') }], false);
-    // NOTE: possible bug: buildUpdateDiff compares with Object.is, so equal Date instances always count as changed.
-    expect(summary.updated).toBe(1);
-    expect(mocks.riggingGear.update.mock.calls[0][0].data).toEqual({ startedAt: new Date('2024-04-01T00:00:00.000Z') });
+    expect(summary.updated).toBe(0);
+    expect(mocks.riggingGear.update).not.toHaveBeenCalled();
   });
 
   it('updates only the changed numeric and status fields, from CSV values', async () => {
@@ -188,12 +191,9 @@ describe('RiggingGearCsvImporter.import', () => {
       id: 'rg-1', managementNumber: 'RG-001', name: 'スリング', status: 'AVAILABLE', lengthMm: 1000,
     });
     const summary = await importer().import([{ ...baseRow, lengthMm: null }], false);
-    // null -> undefined in updateData, and undefined is dropped from the diff only if the existing value is undefined;
-    // here the existing value is 1000, so the diff carries lengthMm: undefined (Prisma treats undefined as "no change").
-    expect(summary.updated).toBe(1);
-    const data = mocks.riggingGear.update.mock.calls[0][0].data;
-    expect(Object.keys(data)).toEqual(['lengthMm']);
-    expect(data.lengthMm).toBeUndefined();
+    // A blank cell becomes undefined in updateData, which means "leave as is", so nothing is written.
+    expect(summary.updated).toBe(0);
+    expect(mocks.riggingGear.update).not.toHaveBeenCalled();
   });
 
   it('rejects a UID already bound to a machine NFC tag with 409 before touching gear', async () => {
@@ -233,27 +233,35 @@ describe('RiggingGearCsvImporter.import', () => {
     expect(mocks.riggingGearTag.create).not.toHaveBeenCalled();
   });
 
-  it('writes a blank storageLocation as an empty string (not null) on update', async () => {
+  it('clears storageLocation to null when its cell is blank on update', async () => {
     mocks.riggingGear.findUnique.mockResolvedValue({
       id: 'rg-1', managementNumber: 'RG-001', name: 'スリング', status: 'AVAILABLE', storageLocation: '倉庫', department: '製造',
     });
     const rows = await importer().parse(csv('name,managementNumber,storageLocation,department\nスリング,RG-001,,製造\n'));
+    expect(rows[0]).toMatchObject({ storageLocation: null, department: '製造' });
     const summary = await importer().import(rows, false);
     expect(summary.updated).toBe(1);
     expect(mocks.riggingGear.update).toHaveBeenCalledWith({
       where: { managementNumber: 'RG-001' },
-      data: expect.objectContaining({ storageLocation: '' }),
+      data: { storageLocation: null },
     });
-    expect(mocks.riggingGear.update.mock.calls[0][0].data).not.toHaveProperty('department');
   });
 
-  it('rejects updating with a UID owned by another gear', async () => {
-    mocks.riggingGear.findUnique.mockResolvedValue({ id: 'rg-1', managementNumber: 'RG-001', name: 'スリング', status: 'AVAILABLE' });
+  it('leaves storageLocation and department untouched when the columns are absent', async () => {
+    const [row] = await importer().parse(csv('name,managementNumber\nスリング,RG-001\n'));
+    expect(row.storageLocation).toBeUndefined();
+    expect(row.department).toBeUndefined();
+  });
+
+  it('rejects updating with a UID owned by another gear and names the tag owner', async () => {
+    mocks.riggingGear.findUnique
+      .mockResolvedValueOnce({ id: 'rg-1', managementNumber: 'RG-001', name: 'スリング', status: 'AVAILABLE' }) // record being updated
+      .mockResolvedValueOnce({ id: 'rg-other', managementNumber: 'RG-999' }); // tag owner
     mocks.riggingGearTag.findFirst.mockResolvedValue({ riggingGearId: 'rg-other', rfidTagUid: 'E3' });
     const error = await importer().import([{ ...baseRow, rfidTagUid: 'E3' }], false).catch((e: unknown) => e);
     expect((error as ApiError).statusCode).toBe(400);
-    // NOTE: possible bug: the message names RG-001 (the row being updated), not the gear that owns the tag.
-    expect((error as ApiError).message).toBe('rfidTagUid="E3"は既に他の吊具（managementNumber: RG-001）で使用されています。');
+    expect(mocks.riggingGear.findUnique).toHaveBeenLastCalledWith({ where: { id: 'rg-other' } });
+    expect((error as ApiError).message).toBe('rfidTagUid="E3"は既に他の吊具（managementNumber: RG-999）で使用されています。');
     expect(mocks.riggingGearTag.deleteMany).not.toHaveBeenCalled();
   });
 

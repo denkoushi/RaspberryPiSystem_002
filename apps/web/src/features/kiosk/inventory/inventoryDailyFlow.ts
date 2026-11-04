@@ -1,5 +1,9 @@
 import type { InventoryCompartment, InventoryItem, InventoryTag } from '../../../api/client';
 
+export function needsReorder(compartment: { stockQuantity: number; reorderPoint?: number | null }): boolean {
+  return compartment.reorderPoint != null && compartment.stockQuantity <= compartment.reorderPoint;
+}
+
 const ACTION_LABELS: Record<string, string> = {
   ISSUE: '持ち出し',
   RESTOCK: '補充',

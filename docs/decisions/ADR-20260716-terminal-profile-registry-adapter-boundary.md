@@ -1,17 +1,15 @@
 ---
 id: ADR-20260716-terminal-profile-registry-adapter-boundary
 title: Terminal profile registry and executable adapter boundary
-status: accepted
+status: superseded
+superseded_by: ../guides/deployment.md
 date: 2026-07-16
-source_of_truth: true
+source_of_truth: false
 scope: SSH/Ansible/systemd/Git/status-agent Linux and Raspberry Pi terminals
 related_code:
   - scripts/deploy/terminal-profile-registry.json
   - scripts/deploy/terminal_profile_registry.py
-  - scripts/deploy/rolling_release/terminal_adapters.py
-  - scripts/deploy/rolling_release/terminal_preflight.py
   - scripts/deploy/terminal-runtime-manifest.py
-  - scripts/deploy/terminal_profile_contracts.py
   - scripts/ci/ansible_template_contracts.py
   - scripts/ci/run-deploy-contracts-local.sh
 related_docs:
@@ -19,11 +17,11 @@ related_docs:
   - ../guides/deployment.md
   - ../plans/terminal-profile-registry-execplan.md
 validation: registry-driven CI, isolated fault injection, static inventories, and read-only production plans
-open_items:
-  - Prove the first future product profile during its normal approved canary rollout.
 ---
 
 # ADR-20260716: Terminal profile registry and executable adapter boundary
+
+> **状態: superseded** — 2026-08-08 の標準 Ansible route で adapter 境界・coordinator・`canaryHold`・`--approve` は廃止された。現行の `terminal-profile-registry.json` は profile の `id` だけを持つ。手順は [deployment guide](../guides/deployment.md)、変更影響の宣言は [ADR-20260810](./ADR-20260810-risk-based-deploy-impact-contract.md) を参照する。
 
 ## Status
 

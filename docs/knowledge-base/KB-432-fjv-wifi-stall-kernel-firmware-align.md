@@ -22,7 +22,7 @@
 | firmware-brcm80211（Wi-Fi） | 20241210 | 20250410+rpt1 |
 | raspi-firmware（起動） | 1.20250915 | 1.20260521 |
 
-- FJV には更新待ちが489件あった。週1回の OS 安全更新（[KB-425 OS 安全更新](./KB-425-os-security-weekly-update.md)）は、設計どおり `linux-image*`、`raspi-firmware`、`firmware-*` を除外する。このため、カーネルとファームウェアは手動で上げない限り古いまま残る。
+- FJV には更新待ちが489件あった。週1回の OS 安全更新（[KB-438 OS 安全更新](./KB-438-os-security-weekly-update.md)）は、設計どおり `linux-image*`、`raspi-firmware`、`firmware-*` を除外する。このため、カーネルとファームウェアは手動で上げない限り古いまま残る。
 - 原因は、古い Wi-Fi ドライバーとファームウェアが固まり、その後に再接続できなくなったことと見ている。10/23 のログが無いため確定はしていない。
 
 ## Fix

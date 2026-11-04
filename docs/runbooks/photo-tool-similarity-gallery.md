@@ -37,9 +37,9 @@
 **埋め込みバックエンドを変えたとき（例: Ubuntu の `/embed` から DGX の `/embed` へ移管、`PHOTO_TOOL_EMBEDDING_URL` / `PHOTO_TOOL_EMBEDDING_MODEL_ID` / `PHOTO_TOOL_SIMILARITY_PIPELINE_VERSION` の変更）**は、DB に残るベクトルは**旧空間のまま**となる。類似検索・assist の距離閾値が意味を失うため、**必ず本節の backfill を再実行**する。`pnpm backfill:photo-tool-gallery:prod` 実行時、先頭ログに `fingerprint=urlHost=... modelId=... dim=... pipeline=...` が出る（秘密は含まない）ので、変更前後の運用メモと突き合わせできる。
 
 ```bash
-# Pi5 上の API コンテナ内（推奨）
-docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api \
-  pnpm backfill:photo-tool-gallery:prod
+# Pi5 上で稼働中の API スロット内（推奨）
+cd /opt/RaspberryPiSystem_002
+scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/backfill-photo-tool-similarity-gallery.js
 ```
 
 オプション:

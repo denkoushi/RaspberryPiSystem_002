@@ -378,7 +378,7 @@
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
-- 実装（現品票画像 OCR・V12）: `apps/api/src/services/mobile-placement/actual-slip-image-ocr.service.ts`・`apps/api/src/services/mobile-placement/genpyo-slip/`
+- 実装（現品票画像 OCR・V12）: `apps/api/src/services/mobile-placement/genpyo-slip/`（`actual-slip-image-ocr.service.ts` と固定ROIのサーバ写真OCRは 2026-11-02 #2481 で削除）
 - 実装（棚番登録 UI・V13）: `apps/web/src/features/mobile-placement/components/shelf-register/`
 - 実装（部品配膳・照合）: `apps/api/src/services/mobile-placement/mobile-placement-slip-match.ts` ほか
 - 実装（分配枝・V14）: `apps/api/src/services/mobile-placement/order-placement-branch.service.ts`・`apps/api/src/services/mobile-placement/mobile-placement-order-placement.service.ts`・マイグレーション `20260412120000_order_placement_branch_state`
@@ -386,5 +386,5 @@
 - 実装（部品検索最終・V17）: 同上 + `part-search-normalize.ts`（SQL 用 `escapeForIlike` のみ）・キオスク `part-search/*`（`partSearchPalettePruner.ts` 等）・**CI/Docker**（`part-search-core` ビルド）
 - 実装（部品検索 V19・機種名 AND）: `part-search-machine-name-fseibans.service.ts`・`part-search.service.ts`（`machineName`）・`part-search-core`（正規化・ILIKE バリアント）
 - 実装（部品検索 V20・促音 comparable・機種名のみ suggest）: `part-search-field-comparable-sql.ts`・`part-search.service.ts`・`part-search-core`（`PART_SEARCH_SOKUON_COMPARABLE_REPLACEMENTS`）・`useMobilePlacementPartSearch.ts` / `apps/web/src/api/client.ts`
-- 実装（部品検索 V21・UI モジュール化）: `apps/web/src/features/mobile-placement/part-search/PartSearchHeaderToolbar.tsx`・`PartSearchQueryInputs.tsx`・`PartSearchResultsSection.tsx`・`partSearchUiTokens.ts`・`useMobilePlacementPartSearch.ts`・`KioskMobileShelfRegisterPage.smoke.test.tsx`
+- 実装（部品検索 V21・UI モジュール化）: `apps/web/src/features/mobile-placement/part-search/PartSearchHeaderToolbar.tsx`・`PartSearchQueryInputs.tsx`・`PartSearchResultsSection.tsx`・`partSearchUiTokens.ts`・`useMobilePlacementPartSearch.ts`・`KioskMobileShelfRegisterPage.smoke.test.tsx`（V21 当時の構成。現行は `apps/web/src/pages/kiosk/MobilePlacementPartSearchPage.tsx` と `apps/web/src/features/mobile-placement/part-search/onehand/`）
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

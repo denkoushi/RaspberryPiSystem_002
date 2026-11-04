@@ -3,7 +3,7 @@ title: git cleanの安全な使用方法
 tags: [Git, 安全運用, Ansible]
 audience: [開発者, 運用者]
 last-verified: 2025-12-01
-related: [ansible-hardening-stabilization-plan.md, ansible-managed-files.md]
+related: [ansible-managed-files.md]
 category: guides
 update-frequency: medium
 ---
@@ -128,17 +128,15 @@ logs/
 
 **対処方法**:
 1. バックアップから復旧（`scripts/ansible-backup-configs.sh`でバックアップを取得している場合）
-2. Ansibleプレイブックで再デプロイ（`manage-system-configs.yml`など）
+2. 標準経路で再デプロイ（`ansible-playbook` を直接実行しない。手順は [デプロイメントガイド](./deployment.md)、復旧は [deploy-status-recovery Runbook](../runbooks/deploy-status-recovery.md) を正とする）
 
 **実装例**:
 ```bash
-# 標準routeのread-only planを再確認
+# 標準routeのread-only planを確認してから、同じ exact --limit で実行
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
   --print-plan --limit PATTERN
-
-# または、Ansibleで再デプロイ
-ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/manage-system-configs.yml
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+  --limit PATTERN
 ```
 
 ### 2. 保護対象ディレクトリが削除された場合
@@ -178,7 +176,6 @@ git clean -fd
 
 ## 関連ドキュメント
 
-- [Ansible堅牢化・安定化計画](../plans/ansible-hardening-stabilization-plan.md)
 - [Ansibleで管理すべき設定ファイル一覧](./ansible-managed-files.md)
 - [Ansibleベストプラクティス](./ansible-best-practices.md)
 

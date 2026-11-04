@@ -9,13 +9,9 @@
   - `apps/api/src/routes/kiosk/assembly-record-approval-auth.ts`
   - `apps/web/src/pages/kiosk/KioskAssemblyRecordApprovalPage.tsx`
   - `apps/web/src/features/assembly/KioskDocumentPageImage.tsx`
-  - `apps/web/src/features/assembly/AssemblyWipPane.tsx`
-  - `apps/web/src/features/assembly/AssemblyCompletedPane.tsx`
-  - `apps/web/src/features/assembly/AssemblyLotPane.tsx`
-  - `apps/web/src/features/assembly/AssemblyItemCard.tsx`
-  - `apps/web/src/features/assembly/AssemblyItemPane.tsx`
-  - `apps/web/src/features/assembly/assemblyHomeItemPresentation.ts`
-  - `apps/web/src/features/assembly/assemblyRowExpansion.ts`
+  - `apps/web/src/features/assembly/AssemblyHomeBoard.tsx`
+  - `apps/web/src/features/assembly/assemblyHomeBoardPresentation.ts`
+  - `apps/web/src/features/assembly/AssemblyLotRegisterRail.tsx`
   - `apps/web/src/features/assembly/assemblySessionPresentation.ts`
   - `apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx`
 - related_docs: `docs/decisions/ADR-20260707-assembly-procedure-order-library-scope.md`, `docs/knowledge-base/KB-320-kiosk-part-measurement.md`, `docs/plans/kiosk-assembly-home-table-layout.md`, `docs/plans/kiosk-assembly-home-dense-3col.md`, `docs/plans/kiosk-assembly-home-unit-cards.md`, `docs/design-previews/kiosk-assembly-home-table-layout-preview.html`, `docs/design-previews/kiosk-assembly-home-table-dense-3col-preview.html`, `docs/design-previews/kiosk-assembly-home-unit-cards-preview.html`

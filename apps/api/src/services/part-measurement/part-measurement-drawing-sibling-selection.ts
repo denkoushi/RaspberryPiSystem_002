@@ -24,6 +24,10 @@ export type DrawingSiblingSelection = {
 
 type Drawing = { id: string; name: string; drawingImageRelativePath: string };
 
+// A text-only business model cannot judge shapes; wait for a vision profile instead of spending the 3 attempts.
+const isDeferred = (error: unknown) => error instanceof InferenceDeferredError ||
+  (error instanceof Error && error.message.includes('lacks vision runtime capability'));
+
 // One production selection attempt. Only image reads/inference are performed; no database access.
 export async function selectDrawingSiblings(
   target: Drawing, candidates: Drawing[], attempts: number, deps = drawingSiblingSelectionDeps
@@ -37,7 +41,7 @@ export async function selectDrawingSiblings(
       .jpeg({ quality: 85 }).toBuffer()
   });
   const failed = (error: unknown): DrawingSiblingSelection => ({
-    ...result, siblings: [], status: error instanceof InferenceDeferredError || attempts < 3 ? 'PENDING' : 'NO_MATCH',
+    ...result, siblings: [], status: isDeferred(error) || attempts < 3 ? 'PENDING' : 'NO_MATCH',
     lastError: (error instanceof Error ? error.message : String(error)).slice(0, 2000)
   });
   let targetImage;
@@ -56,7 +60,7 @@ export async function selectDrawingSiblings(
       completed++;
       if (shapeSimilarity >= SIBLING_SHAPE_THRESHOLD) result.siblings.push({ visualTemplateId: candidate.id, confidence: shapeSimilarity });
     } catch (error) {
-      if (error instanceof InferenceDeferredError) return failed(error);
+      if (isDeferred(error)) return failed(error);
       result.lastError = (error instanceof Error ? error.message : String(error)).slice(0, 2000);
     }
   }

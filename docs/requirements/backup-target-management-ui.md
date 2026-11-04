@@ -434,7 +434,7 @@ export interface BackupConfig {
 
 - ✅ 統合テスト実装（`apps/api/src/routes/__tests__/backup.integration.test.ts`）
 - ✅ E2Eテスト実装（`e2e/admin.spec.ts`）
-- ✅ 実機検証手順ドキュメント作成（`docs/guides/backup-target-management-verification.md`）
+- ✅ 実機検証手順ドキュメント作成（`docs/archive/guides/backup-target-management-verification.md`）
 
 ### Phase 8: バックアップ対象ごとのストレージプロバイダー指定機能 ✅ 完了（2025-12-28）
 
@@ -591,12 +591,12 @@ export interface BackupConfig {
 - データベースで`storageProvider: dropbox`が正しく記録されていることを確認
 - UIで「Dropbox」と表示されることを確認
 
-**関連KB**: [KB-096](./knowledge-base/infrastructure/backup-restore.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
+**関連KB**: [KB-096](../knowledge-base/infrastructure/backup-restore.md#kb-096-dropboxバックアップ履歴未記録問題refreshtokenからaccesstoken自動取得機能)
 
 **実機検証手順書**:
-- [バックアップリストア機能の実機検証手順](../guides/backup-restore-verification.md)（タスク1）
-- [backup.shスクリプトとの整合性確認手順](../guides/backup-script-integration-verification.md)（タスク2）
-- [Dropbox連携の追加検証手順](../guides/dropbox-integration-verification.md)（タスク3）
+- [バックアップリストア機能の実機検証手順](../archive/guides/backup-restore-verification.md)（タスク1）
+- [backup.shスクリプトとの整合性確認手順](../archive/guides/backup-script-integration-verification.md)（タスク2）
+- [Dropbox連携の追加検証手順](../archive/guides/dropbox-integration-verification.md)（タスク3）
 
 **実機検証結果**: ✅ 完了（2025-12-29）
 - CSVリストア機能: ✅ 成功（データ形式修正後は正常動作）
@@ -611,7 +611,7 @@ export interface BackupConfig {
 - バックアップスクリプトとの整合性確認: ✅ 完了（`/api/backup/internal`エンドポイントの動作確認、整合性確認完了）
 - Dropboxストレージプロバイダーのエラーハンドリング改善: ✅ 完了（ネットワークエラー時のリトライ機能、レート制限対応）
 - バックアップAPI仕様ドキュメント更新: ✅ 完了（トラブルシューティングセクション追加）
-- 詳細は [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md) / [バックアップスクリプトとの整合性確認結果](../guides/backup-script-integration-verification.md) / [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md) / [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) / [KB-098](../knowledge-base/infrastructure/backup-restore.md#kb-098-csvリストア時のバリデーションエラー問題) / [KB-105](../knowledge-base/infrastructure/backup-restore.md#kb-105-dropboxリストアui改善バックアップパス手動入力からドロップダウン選択へ) / [KB-106](../knowledge-base/infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認) / [KB-107](../knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善) を参照。
+- 詳細は [バックアップリストア機能の実機検証結果](../archive/guides/backup-restore-verification-results.md) / [バックアップスクリプトとの整合性確認結果](../archive/guides/backup-script-integration-verification.md) / [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md) / [KB-097](../knowledge-base/infrastructure/backup-restore.md#kb-097-csvリストア時のtargetsource拡張子削除修正とデータベースバックアップのパス問題) / [KB-098](../knowledge-base/infrastructure/backup-restore.md#kb-098-csvリストア時のバリデーションエラー問題) / [KB-105](../knowledge-base/infrastructure/backup-restore.md#kb-105-dropboxリストアui改善バックアップパス手動入力からドロップダウン選択へ) / [KB-106](../knowledge-base/infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認) / [KB-107](../knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善) を参照。
 
 ### Phase 5: 画像バックアップリストア処理追加 ✅ 完了（2025-12-19）
 

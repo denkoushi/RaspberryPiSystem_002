@@ -11,10 +11,12 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - サイネージ関連
 
 **カテゴリ**: インフラ関連 > サイネージ関連  
-**件数**: 31件  
+**件数**: 39件  
 **索引**: [index.md](../index.md)
 
 デジタルサイネージ機能に関するトラブルシューティング情報
+
+> **注記（2026-11）**: 管理UIは `/admin/signage`（サイネージハブ）へ統合済み（旧 `/admin/signage/schedules`・`/admin/signage/preview` は `/admin/signage` へリダイレクト、`/admin/signage-preview` のルートは無い）。日付付き記録にある `RASPI_SERVER_HOST`・`--follow`・「Pi3 サイネージ専用手順」は旧 `update-all-clients.sh` 時代の記述で、現行の標準経路では該当しない。現行手順は [deployment.md](../../guides/deployment.md) を正本とする。
 
 **設計（端末別スケジュール）**: [ADR-20260407](../../decisions/ADR-20260407-signage-target-client-keys.md) — `SignageSchedule.targetClientKeys`（空=全端末）、`GET /api/signage/content` の `x-client-key` / `clientKey`、レンダ JPEG は `apiKey` 毎に `SIGNAGE_RENDER_DIR` 下へ保存。
 
@@ -69,7 +71,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 同一 `SignageRenderer.renderCurrentContent()` 呼び出し内では ViewModel を端末×設定キーで共有し、
 当該 render バッチ内の重複 DB 走査を抑える（render 間の TTL キャッシュはなし）。
 **代表**: `apps/api/src/services/part-measurement/self-inspection-machine-board.service.ts` ·
-`apps/api/src/services/signage/self-inspection-machine-board/` · 管理 `/admin/signage/schedules`。
+`apps/api/src/services/signage/self-inspection-machine-board/` · 管理 `/admin/signage`（サイネージハブ）。
 
 **本番デプロイ（2026-06-09 · auto 選定拡張 · ブランチ `feat/signage-self-inspection-machine-board-auto-target`）**:
 
@@ -186,7 +188,7 @@ sudo systemctl restart signage-lite.service
 | 上記 + Expired | Tailscale 再認証 or Disable key expiry |
 | 画像古い | `signage-lite-update.timer` · Pi5 `current-image` |
 
-**関連 KB**: [KB-384](../infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)（Pi4 キオスク・TS 失効同型）· [KB-385](../infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)（Pi5 NeedsLogin / node key expired）· [KB-236](#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ)（xset・feh ループ）
+**関連 KB**: [KB-443](../infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)（Pi4 キオスク・TS 失効同型）· [KB-385](../infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)（Pi5 NeedsLogin / node key expired）· [KB-236](#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ)（xset・feh ループ）
 
 **References**: [Runbook: pi3-signage-tailscale-recovery](../../runbooks/pi3-signage-tailscale-recovery.md) · [deployment.md §ラズパイ3](../../archive/deployments/legacy-operator-guide-through-2026-07.md#ラズパイ3サイネージの更新) · [tailscale-policy.md §Key expiry](../../security/tailscale-policy.md#key-expiry-常時稼働端末) · `scripts/ops/recover-pi3-signage-remote.sh`
 
@@ -335,7 +337,7 @@ sudo systemctl restart signage-lite.service
 - **2026-05-21 コンパクト＋未完のみ（`feat/signage-leader-order-cards-compact-incomplete`）**: カード内 **工順・顧客名を非表示**、**機種名10文字上限**（`LEADER_ORDER_SIGNAGE_MACHINE_NAME_MAX_CHARS`）、metrics/tokens で **コンパクト化**。**表示行は未完のみ**（`filterLeaderBoardRowsIncompleteForSignage`・完了行は従来の薄表示から **完全非表示**へ）。フッタチップ解決は **全行**入力のまま（表示行のみフィルタ）。
 - **2026-05-21 5列×2段・最大/既定10（`feat/signage-leader-order-cards-5x2-grid-10`）**: `layout-contracts.ts` で **5×2・容量10**。Zod・管理 `SignageSchedulesPage` の **max/既定10**。**既存 `cardsPerPage: 8` 保存スケジュールは8枚のまま**（空き2枠）。カード幅は列数に応じて自動縮小（フォント・行内容は不変）。
 - **2026-05-21 ヘッダ加工機名・全文1行（`a2f9a2c5`）**: 5×2 本番後の **`…` 省略回帰**を修正。旧 **`computeLeaderOrderHeaderTruncation` + `truncateChars`** を廃止し、**加工機名は全文・1行**（折り返し禁止）。**現場目視 OK**。
-- **2026-05-22 手動順位付き行の背景ハイライト（`feat/kiosk-leader-board-manual-order-row-highlight`）**: **`processingOrder != null` かつ未完**の行ブロックのみ **`rgba(71, 85, 105, 0.82)`**（**サイネージ SVG のみ継続**·キオスク Web は [§行内順位ピッカー](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22) へ pivot）。`leader-board-pure.ts` の **`hasManualOrder`** → `leader-order-cards-svg-schedule-row.ts`。
+- **2026-05-22 手動順位付き行の背景ハイライト（`feat/kiosk-leader-board-manual-order-row-highlight`）**: **`processingOrder != null` かつ未完**の行ブロックのみ **`rgba(71, 85, 105, 0.82)`**（**サイネージ SVG のみ継続**·キオスク Web は [§行内順位ピッカー](../KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22) へ pivot）。`leader-board-pure.ts` の **`hasManualOrder`** → `leader-order-cards-svg-schedule-row.ts`。
 
 **代表ファイル**:
 - `apps/api/src/services/signage/signage.renderer.ts`（分岐 `kiosk_leader_order_cards`）
@@ -430,7 +432,7 @@ sudo systemctl restart signage-lite.service
 
 **概要（仕様）**:
 - **`layoutConfig.layout === 'SPLIT'`** かつペイン **`kind: 'loans'`** のとき、`SignageRenderer` のツール／貸出カードグリッドに **`splitCompact24`** を適用する（旧来の **`contentType: 'SPLIT'`** だけの経路とは別。表示確認は **`GET /api/signage/content`** の `layoutConfig` を正とする）。
-- **グリッド**: 最大 **4 列 × 6 行（24 件）**、25 件目以降はオーバーフロー集計。カード高さ（`COMPACT24_CARD_HEIGHT_PX`）は **2026-04-07 以降 164**（Playwright HTML のフッタクリップ対策。経緯・デプロイ実績は [KB-333](../KB-333-signage-compact24-footer-kiosk-cancel-readability.md)）。外枠寸法はコード上の `cardHeightPx` に追随。
+- **グリッド**: 最大 **4 列 × 6 行（24 件）**、25 件目以降はオーバーフロー集計。カード高さ（`COMPACT24_CARD_HEIGHT_PX`）は **2026-04-07 以降 164**（Playwright HTML のフッタクリップ対策。経緯・デプロイ実績は [KB-333](../../archive/knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md)）。外枠寸法はコード上の `cardHeightPx` に追随。
 - **テキスト**: 日付 **`MM/DD・HH:mm`**（1 行）。拠点／主要表示名は **最大 2 行**（はみ出しは省略・API 側の論理分割は `loan-card-text.ts` 等）。敬称は付けない。
 - **モジュール**: 契約定数は **`apps/api/src/services/signage/loan-card/loan-card-contracts.ts`**（列・行・カード高・行数上限など）。幾何・テキストは同ディレクトリの純関数＋ `signage.renderer.ts` の `SPLIT_COMPACT24_LOAN_GRID_BASE` で **DRY**。
 
@@ -482,7 +484,7 @@ sudo systemctl restart signage-lite.service
 - **設計判断の要約**: [ADR-20260405](../../decisions/ADR-20260405-signage-loan-grid-render-engine.md)。
 
 **恒久配線（本番）**:
-- 正本は **`infrastructure/docker/.env`**（Ansible の `docker.env.j2` から生成）。`apps/api/.env` だけでは **compose が読まない**パターンは [KB-318](../ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env) と同型。
+- 正本は **`infrastructure/docker/.env`**（Ansible の `docker.env.j2` から生成）。`apps/api/.env` だけでは **compose が読まない**パターンは [KB-318](./ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env) と同型。
 - リポジトリ側: `infrastructure/ansible/templates/docker.env.j2` に `SIGNAGE_LOAN_GRID_ENGINE` / `SIGNAGE_PLAYWRIGHT_DEVICE_SCALE_FACTOR` 等、`inventory.yml` の Pi5 例で `api_signage_loan_grid_engine: "playwright_html"`。
 - [deployment.md](../../guides/deployment.md) に「コードのみでは不十分・env 必須」の注記あり。
 
@@ -543,7 +545,7 @@ sudo systemctl restart signage-lite.service
 - （**自動回帰の完全体**は `./scripts/deploy/verify-phase12-real.sh`。本セッションでは上記スモークを実施。）
 
 **知見・トラブルシューティング**:
-- **`RASPI_SERVER_HOST is required`**: デタッチ起動に限らず、**`--status <run_id>`** でも同じ。`export RASPI_SERVER_HOST=100.106.158.2` または `denkon5sd02@100.106.158.2`（[KB-238](../ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+- **`RASPI_SERVER_HOST is required`**（旧 `update-all-clients.sh` 時代の事象。現行の standard-ansible-release 経路では該当しない）: デタッチ起動に限らず、**`--status <run_id>`** でも同じ。`export RASPI_SERVER_HOST=100.106.158.2` または `<user>@100.106.158.2`（[KB-238](./ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
 - Pi3 は **単独デプロイ**・完了まで **数分〜十数分**あり得る。`--status` で `success` / `exitCode: 0` を確認してから次へ。
 
 **関連ファイル（代表）**:
@@ -567,7 +569,7 @@ sudo systemctl restart signage-lite.service
 
 **デプロイ（本番・対象 1 台のみ）**:
 - 指示どおり **`raspi4-kensaku-stonebase01`（StoneBase01）のみ**。[deployment.md](../../guides/deployment.md) の `update-all-clients.sh`、**`export RASPI_SERVER_HOST`**（`--status` でも必須）、**`--limit raspi4-kensaku-stonebase01`**（複数台時は **1 台ずつ順番**）。**Detach Run ID**: **`20260406-194743-26315`**（`state: success`・`exitCode: 0`）。
-- **Pi3 は今回対象外**（別回は [deployment.md](../../guides/deployment.md) の **Pi3 サイネージ専用手順**に従う）。
+- **Pi3 は今回対象外**（別回は [deployment.md](../../guides/deployment.md) の **Pi3 サイネージ専用手順**に従う）（現行: Pi3 も標準経路で更新し、専用手順の節は無い）。
 
 **知見（デプロイ正本の切り分け）**:
 - **Pi4 キオスク**更新は、当該端末の **`kiosk-browser` 用 Web バンドル**が主目的。
@@ -578,7 +580,7 @@ sudo systemctl restart signage-lite.service
 - **自動回帰の完全体**: `./scripts/deploy/verify-phase12-real.sh`（本件は StoneBase のみ先行のため未実行。`main` 反映後のフルデプロイ時に合わせて推奨）。
 
 **トラブルシューティング**:
-- **`RASPI_SERVER_HOST is required`**: `--status` でも同様（[KB-330](#kb-330-compact-kiosk-instrument-rigging-deploy)・[KB-238](../ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+- **`RASPI_SERVER_HOST is required`**（旧 `update-all-clients.sh` 時代の事象。現行の standard-ansible-release 経路では該当しない）: `--status` でも同様（[KB-330](#kb-330-compact-kiosk-instrument-rigging-deploy)・[KB-238](./ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
 
 **解決状況**: ✅ **StoneBase01 のみ本番デプロイ・実機 systemd スモーク・ナレッジ記録**（2026-04-06）。**`main` マージ**後は GitHub Actions を確認。
 
@@ -713,7 +715,8 @@ sudo systemctl restart signage-lite.service
 
 ---
 
-### [KB-236] 可視化データソースで再レンダリング失敗が断続発生する（dataSource timeout 5000ms）
+<a id="kb-236-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms"></a>
+### [KB-441] 可視化データソースで再レンダリング失敗が断続発生する（dataSource timeout 5000ms）
 
 **事象**:
 - 管理コンソールで可視化ダッシュボードを更新後、`再レンダリング失敗` ダイアログが出る
@@ -766,7 +769,7 @@ sudo systemctl restart signage-lite.service
 - `apps/api/src/services/signage/signage.renderer.ts`
 - `apps/web/src/pages/signage/SignageDisplayPage.tsx`
 - `docs/plans/security-hardening-execplan.md`
-- `docs/guides/signage-test-plan.md`
+- `docs/archive/guides/signage-test-plan.md`
 - `docs/INDEX.md`（最新アップデート欄）
 
 ---
@@ -973,6 +976,9 @@ const textX = x + textAreaX;
 5. **ドキュメント参照の徹底**: デプロイ前に必ずドキュメントを参照し、標準手順を確認する
 
 **標準プロセス**（KB-089で更新）:
+
+> **注意（現行手順ではない）**: 以下は2025-12時点の履歴手順。`playbooks/deploy.yml` は削除済みで、Pi3 を個別 SSH・playbook・旧 deploy script・process kill で操作しない。現行は [deployment.md](../../guides/deployment.md) の `update-all-clients.sh` 標準経路に従う。
+
 1. **デプロイ前の準備**:
    ```bash
    # Pi3サイネージサービスを停止・無効化（自動再起動を防止）
@@ -1118,6 +1124,9 @@ const textX = x + textAreaX;
 - ✅ **プロセスの完全停止**: 再実行前に`pkill -9 ansible; pkill -9 -f deploy-all`で全プロセスをkill
 
 **標準プロセス**（KB-086を更新）:
+
+> **注意（現行手順ではない）**: 以下は2025-12時点の履歴手順。`playbooks/deploy.yml` は削除済みで、Pi3 を個別 SSH・playbook・旧 deploy script・process kill で操作しない。現行は [deployment.md](../../guides/deployment.md) の `update-all-clients.sh` 標準経路に従う。
+
 1. **デプロイ前の準備**:
    ```bash
    # Pi3サイネージサービスを停止・無効化（自動再起動を防止）
@@ -1154,7 +1163,7 @@ const textX = x + textAreaX;
 1. **自動再起動の防止**: `systemctl stop`だけでは不十分。`systemctl disable`で自動再起動を防止する必要がある
 2. **十分な待機時間**: Pi3デプロイは10-15分かかる可能性がある。プロセスをkillせずに完了を待つ
 3. **標準手順の徹底**: KB-086/KB-089の標準手順を必ず実行する。特にPi3デプロイ時は`systemctl disable`を忘れない
-4. **注意**: `systemctl disable`だけでは不十分な場合がある。`systemctl mask --runtime`も必要（[KB-097](#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+4. **注意**: `systemctl disable`だけでは不十分な場合がある。`systemctl mask --runtime`も必要（KB-097 参照。KB-097 の本文は未記録で、番号は backup-restore.md の別件と衝突している。`systemctl mask` の記録は [KB-066](./ansible-deployment.md#kb-066-ラズパイ3でのansibleデプロイ失敗サイネージ稼働中のリソース不足自動再起動401エラー) にある）
 
 **解決状況**: ✅ **解決済み**（2025-12-07）
 
@@ -1163,7 +1172,7 @@ const textX = x + textAreaX;
 - `docs/guides/deployment.md`（標準プロセスの更新）
 - `docs/knowledge-base/infrastructure.md`（KB-086更新、KB-089追加）
 
-**注意**: KB-089の対策（`systemctl disable`）だけでは不十分な場合があります。`systemctl mask --runtime`も必要です（[KB-097](#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
+**注意**: KB-089の対策（`systemctl disable`）だけでは不十分な場合があります。`systemctl mask --runtime`も必要です（KB-097 参照。KB-097 の本文は未記録で、番号は backup-restore.md の別件と衝突している。`systemctl mask` の記録は [KB-066](./ansible-deployment.md#kb-066-ラズパイ3でのansibleデプロイ失敗サイネージ稼働中のリソース不足自動再起動401エラー) にある）。
 
 ---
 
@@ -1218,7 +1227,7 @@ const textX = x + textAreaX;
 - `apps/api/src/services/signage/signage.service.ts`
 - `apps/api/src/services/signage/signage.renderer.ts`
 - `apps/web/src/pages/admin/SignageSchedulesPage.tsx`
-- `docs/guides/signage-layout-config-verification-results.md`
+- `docs/archive/guides/signage-layout-config-verification-results.md`
 - `apps/api/src/services/signage/signage-layout.types.ts`（型定義）
 - `apps/api/src/services/signage/signage.service.ts`（レガシー変換ロジック）
 - `apps/api/src/services/signage/signage.renderer.ts`（疎結合化されたレンダラー）
@@ -2111,7 +2120,7 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 **Follow-up（観測契約追加, 2026-03-06）**:
 - ✅ **CONFIRMED**: `signage-render-scheduler` の状態を metrics へ公開（`worker_pid` / `skip_total` / `last_duration` / `running`）
 - ✅ **CONFIRMED**: 自動再起動ロジックは未導入のまま維持し、運用判断のための観測のみ追加（非破壊方針）
-- ✅ **CONFIRMED**: Pi5 1台カナリアデプロイ完了（`--limit server`）。`getTelemetrySnapshot()` 経由で metrics に `signage_render_*` を出力。運用手順は [operation-manual.md](../guides/operation-manual.md) の「低レイヤー観測（Pi5カナリア）」を参照
+- ✅ **CONFIRMED**: Pi5 1台カナリアデプロイ完了（`--limit server`）。`getTelemetrySnapshot()` 経由で metrics に `signage_render_*` を出力。運用手順は [operation-manual.md](../../guides/operation-manual.md#低レイヤー観測pi5カナリア) の「低レイヤー観測（Pi5カナリア）」を参照
 - 🔄 **LIKELY**: worker 側高負荷の早期検知は `skip_total` と eventLoop 指標の併読で改善する見込み
 - ⚪ **INCONCLUSIVE**: 長時間連続稼働（24h超）でのメモリ上振れ再発率は追加観測が必要
 
@@ -2120,7 +2129,7 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 - `apps/api/src/services/visualization/visualization.service.ts`
 
 **関連KB**:
-- [KB-236](./signage.md#kb-236-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms): 可視化データソースの性能最適化
+- [KB-441](./signage.md#kb-441-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms): 可視化データソースの性能最適化
 
 ---
 
@@ -2191,7 +2200,7 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 - `apps/api/scripts/design-preview.ts`（デザインプレビュー用タイトル修正）
 
 **関連KB**:
-- [KB-274](./signage.md#kb-274-計測機器持出状況サイネージコンテンツの実装とcsvイベント連携): 計測機器持出状況サイネージコンテンツの実装
+- KB-444（計測機器持出状況サイネージコンテンツの実装）: 本文は未記録
 
 ---
 

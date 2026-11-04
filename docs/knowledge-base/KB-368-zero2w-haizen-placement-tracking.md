@@ -35,8 +35,8 @@ category: knowledge-base
 
 ## キオスク（Android 向け配膳 Web）
 
-- **`/kiosk/mobile-placement`** は **既存の照合・棚選択・製造 order 登録**を優先する。**Zero2W 配膳一覧**は別画面 **`/kiosk/mobile-placement/zero2w-status`**（ボタン **「棚番配膳一覧（Zero2W）」**）。
-- Top 上辺の **「Zero2W担当棚」** から **`/kiosk/mobile-placement/zero2w-assignment`** へ遷移し、**`haizenEdgeEnabled` の端末**に **棚マスタの登録済み構造化棚**を割り当てる。
+- **`/kiosk/mobile-placement`** は **既存の照合・棚選択・製造 order 登録**を優先する。**Zero2W 配膳一覧**は別画面 **`/kiosk/mobile-placement/zero2w-status`**（配膳ハブのタイル **「Zero2W 配膳」**）。
+- **`haizenEdgeEnabled` の端末**の担当棚は、**棚マスタ `/kiosk/mobile-placement/shelf-master`** の「Zero2W 担当棚」で **登録済み構造化棚**に割り当てる（旧 `/kiosk/mobile-placement/zero2w-assignment` は棚マスタへリダイレクト）。
 - メイン画面と一覧画面では **選択棚は共有しない**（一覧は既定で全棚の最新数十件。必要なら画面内更新や製造 order で確認）。
 
 ## エッジエージェント

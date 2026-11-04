@@ -61,7 +61,7 @@ This phase does not rotate a secret, connect to production, change a database sc
   Date/Author: 2026-08-03 / Codex
 
 - Decision: Keep all credentials in tests synthetic and supplied through explicit test-only environment variables.
-  Rationale: CI must not rely on `admin1234`, repository inventory values, local vault files, or any production secret.
+  Rationale: CI must not rely on the seed default admin password, repository inventory values, local vault files, or any production secret.
   Date/Author: 2026-08-03 / Codex
 
 - Decision: Report only the path, variable name, and classification from secret structure checks.
@@ -110,7 +110,7 @@ Finally add a Python standard-library structure test for production configuratio
 
 ## Concrete Steps
 
-Run commands from `/Users/tsudatakashi/RaspberryPiSystem_002` with Node 20 first in `PATH`:
+Run commands from the repository root with Node 20 first in `PATH`:
 
     export PATH=/opt/homebrew/opt/node@20/bin:$PATH
     node --version

@@ -57,13 +57,13 @@ update-frequency: medium
 **実際の動作**:
 ```bash
 # Macのターミナルで実行
-export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
-# inventory指定が必須（誤デプロイ防止）
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+# まず計画を確認し、承認後に同じ --limit で実行
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit PATTERN
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN
 
 # 内部的な動作:
-# 1. Mac → Pi5にSSH接続
-# 2. Pi5上で ansible-playbook を実行
+# 1. wrapper が inventory の deploy_executor_host / ansible_user / ansible_port で Pi5 executor を解決し、Pi5にSSH接続
+# 2. Pi5上の systemd unit で deploy-release-standard.yml を実行（--limit / --full-fleet の無い実行は拒否）
 # 3. Pi5 → Pi3/4にSSH接続（Ansible経由）
 # 4. Pi3/4で更新を実行
 ```
@@ -94,6 +94,8 @@ export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
 - MacからPi5にSSH接続できること
 - Pi5からPi3/4にパスワード認証でSSH接続できること（初回設定時）
 
+`<pi4_ip>` / `<pi3_ip>` は `infrastructure/ansible/group_vars/all.yml` の `network_mode` に応じた `local_network` / `tailscale_network` の値を使う。
+
 ### 手順1: Pi5からPi3/4へのSSH鍵設定
 
 **Pi5に接続して実行**:
@@ -102,11 +104,11 @@ export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
 ssh denkon5sd02@192.168.10.230
 
 # Pi5上で実行: Pi4に公開鍵を追加
-ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@192.168.10.223
+ssh-copy-id -i ~/.ssh/id_ed25519.pub tools03@<pi4_ip>
 # パスワード入力が必要（初回のみ）
 
 # Pi5上で実行: Pi3に公開鍵を追加
-ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@192.168.10.109
+ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@<pi3_ip>
 # パスワード入力が必要（初回のみ）
 ```
 
@@ -116,7 +118,7 @@ ssh-copy-id -i ~/.ssh/id_ed25519.pub signageras3@192.168.10.109
 cat ~/.ssh/id_ed25519.pub
 
 # Pi4に接続して公開鍵を追加
-ssh tools03@192.168.10.223
+ssh tools03@<pi4_ip>
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
@@ -124,7 +126,7 @@ chmod 600 ~/.ssh/authorized_keys
 exit
 
 # Pi3に接続して公開鍵を追加
-ssh signageras3@192.168.10.109
+ssh signageras3@<pi3_ip>
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
@@ -140,16 +142,15 @@ exit
 ssh denkon5sd02@192.168.10.230
 
 # Pi5上で実行: Pi4への接続テスト
-ssh -o StrictHostKeyChecking=no tools03@192.168.10.223 "echo 'Pi4接続成功' && hostname"
+ssh -o StrictHostKeyChecking=no tools03@<pi4_ip> "echo 'Pi4接続成功' && hostname"
 
 # Pi5上で実行: Pi3への接続テスト
-ssh -o StrictHostKeyChecking=no signageras3@192.168.10.109 "echo 'Pi3接続成功' && hostname"
+ssh -o StrictHostKeyChecking=no signageras3@<pi3_ip> "echo 'Pi3接続成功' && hostname"
 ```
 
 **Ansible接続テスト**:
 ```bash
 # Macのターミナルで実行
-export RASPI_SERVER_HOST="denkon5sd02@192.168.10.230"
 ssh denkon5sd02@192.168.10.230 "cd /opt/RaspberryPiSystem_002 && ansible all -i infrastructure/ansible/inventory.yml -m ping"
 ```
 
@@ -247,15 +248,7 @@ Ansible Playbookで`hosts: "{{ client_host }}"`のように直接ホストを指
 
 ### Dockerコンテナ内からのSSH接続
 
-Dockerコンテナ内からSSH接続する場合は、SSH鍵をマウントする必要があります：
-
-```yaml
-# docker-compose.server.yml
-volumes:
-  - /home/denkon5sd02/.ssh:/root/.ssh:ro
-```
-
-これにより、Dockerコンテナ内からPi4へのSSH接続が可能になります。
+api コンテナは運用ユーザーの `~/.ssh` をマウントしない。端末バックアップ専用の鍵 `${BACKUP_SSH_PRIVATE_KEY_HOST_PATH}` を `/run/secrets/backup-ssh/id_ed25519` に、固定 `known_hosts` を `${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH}` から `/run/secrets/backup-ssh/known_hosts` に read-only で bind する（本番の `infrastructure/docker/docker-compose.phase3.yml` の `api-blue` / `api-green`、および `docker-compose.server.yml` の `api` の volumes）。
 
 **注意**: クライアント端末バックアップ機能の実装時に、AnsibleとTailscaleの連携で問題が発生しました。詳細は [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
 

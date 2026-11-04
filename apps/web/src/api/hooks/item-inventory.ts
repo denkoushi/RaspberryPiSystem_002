@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 
 import { captureSetupPinSession, sendSetupRequest } from '../../features/kiosk/inventory/setup/setupPinSession';
 import {
+  setInventoryReorderPoint, setInventoryOrdered, restockInventoryCompartment,
   getInventoryDashboard, getInventoryValueVariants, mergeInventoryValueVariants, dismissInventoryValueVariants,
   addInventoryToolFieldValue,
   cancelInventoryTransaction,
@@ -128,6 +129,7 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
       compartments: item.compartments.map((compartment) => compartment.id === transaction.compartmentId ? {
         ...compartment,
         stockQuantity: transaction.afterQuantity,
+        reorderedAt: compartment.reorderPoint == null || transaction.afterQuantity > compartment.reorderPoint ? null : compartment.reorderedAt,
         ...(transaction.action === 'ISSUE' ? { lastIssuedAt: transaction.createdAt } : {}),
       } : compartment),
     })));
@@ -235,6 +237,9 @@ export function useInventoryMutations(accessPassword?: string, setup = false) {
       invalidateStock();
     } }),
     correction: useMutation({ mutationFn: (input: Parameters<typeof correctInventoryStock>[0]) => send(() => correctInventoryStock(input, accessPassword)), onSuccess: updateStock }),
+    setReorderPoint: useMutation({ mutationFn: ({ id, reorderPoint }: { id: string; reorderPoint: number | null }) => send(() => setInventoryReorderPoint(id, reorderPoint, accessPassword)), onSuccess: invalidate }),
+    setOrdered: useMutation({ mutationFn: ({ id, ordered }: { id: string; ordered: boolean }) => send(() => setInventoryOrdered(id, ordered, accessPassword)), onSuccess: invalidate }),
+    restock: useMutation({ mutationFn: (input: Parameters<typeof restockInventoryCompartment>[0]) => send(() => restockInventoryCompartment(input, accessPassword)), onSuccess: invalidate }),
     move: useMutation({ mutationFn: ({ id, drawerId }: { id: string; drawerId: string }) => send(() => moveInventoryCompartment(id, drawerId, accessPassword)), onSuccess: invalidate }),
     addToolFieldValue: useMutation({
       mutationFn: ({ field, value, scope = 'default' }: { scope?: InventoryToolScope; field: InventoryOptionField; value: string }) => send(() => addInventoryToolFieldValue(field, value, accessPassword, scope)),

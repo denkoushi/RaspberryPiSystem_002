@@ -76,6 +76,103 @@ From `docs/_meta/document-inventory.json` before adding this ledger:
 | `docs/guides/verification-checklist.md` | 1,147 | 76 | 80 | 1 long line; mixed common and feature checks. |
 | `EXEC_PLAN.md` | 4,658 | 42 | 749 | 327 long lines; corruption flags present. |
 
+## 2026-11 Docs Drift Audit Archive
+
+Docs that were finished one-off records, superseded procedures, or duplicates
+were moved out of the active path. Inbound relative links were rewritten to the
+new location (`EXEC_PLAN.md` was not edited, so its links to these paths are
+historical). Docs kept in place with a status note are not listed here.
+
+| old_path | target_canonical | action | preservation |
+|----------|------------------|--------|--------------|
+| `docs/guides/backup-dropbox-status-investigation.md` | `docs/knowledge-base/infrastructure/backup-restore.md` | archive | Body moved to `docs/archive/guides/backup-dropbox-status-investigation.md`. |
+| `docs/guides/backup-dropbox-status-investigation-results.md` | `docs/knowledge-base/infrastructure/backup-restore.md` | archive | Body moved to `docs/archive/guides/backup-dropbox-status-investigation-results.md`. |
+| `docs/guides/backup-error-handling-improvements.md` | `docs/knowledge-base/infrastructure/backup-restore.md#kb-107-dropboxストレージプロバイダーのエラーハンドリング改善` | archive | Body moved to `docs/archive/guides/backup-error-handling-improvements.md`. |
+| `docs/guides/backup-restore-verification-results.md` | `docs/knowledge-base/infrastructure/backup-restore.md` | archive | Body moved to `docs/archive/guides/backup-restore-verification-results.md`. |
+| `docs/guides/backup-restore-verification-execution.md` | `docs/guides/backup-verification-checklist.md` | archive | Body moved to `docs/archive/guides/backup-restore-verification-execution.md`. |
+| `docs/guides/backup-restore-verification.md` | `docs/guides/backup-verification-checklist.md` | archive | Body moved to `docs/archive/guides/backup-restore-verification.md`. |
+| `docs/guides/backup-verification-results.md` | `docs/guides/backup-verification-checklist.md` | archive | Body moved to `docs/archive/guides/backup-verification-results.md`. |
+| `docs/guides/backup-script-integration-verification.md` | `docs/knowledge-base/infrastructure/backup-restore.md#kb-106-バックアップスクリプトとの整合性確認` | archive | Body moved to `docs/archive/guides/backup-script-integration-verification.md`. |
+| `docs/guides/backup-schedule-history-mismatch-analysis.md` | `docs/knowledge-base/infrastructure/backup-restore.md#kb-194-スケジュール自動実行時にバックアップ履歴が記録されない問題` | archive | Body moved to `docs/archive/guides/backup-schedule-history-mismatch-analysis.md`. |
+| `docs/guides/backup-target-management-verification.md` | `docs/guides/backup-configuration.md` | archive | Body moved to `docs/archive/guides/backup-target-management-verification.md`. |
+| `docs/guides/backup-verification.md` | `docs/guides/backup-verification-checklist.md` | archive | Body moved to `docs/archive/guides/backup-verification.md`. Still-valid facts merged into the canonical doc first. |
+| `docs/guides/csv-dashboard-verification.md` | `docs/guides/csv-import-export.md` | archive | Body moved to `docs/archive/guides/csv-dashboard-verification.md`. |
+| `docs/guides/csv-import-history-migration.md` | `docs/guides/csv-import-export.md` | archive | Body moved to `docs/archive/guides/csv-import-history-migration.md`. |
+| `docs/guides/dropbox-token-solution.md` | `docs/guides/dropbox-oauth-setup-guide.md` | archive | Body moved to `docs/archive/guides/dropbox-token-solution.md`. |
+| `docs/guides/dropbox-refresh-token-implementation.md` | `docs/guides/dropbox-oauth-setup-guide.md` | archive | Body moved to `docs/archive/guides/dropbox-refresh-token-implementation.md`. |
+| `docs/guides/dropbox-token-setup-pi5.md` | `docs/guides/dropbox-oauth-setup-guide.md` | archive | Body moved to `docs/archive/guides/dropbox-token-setup-pi5.md`. |
+| `docs/guides/dropbox-oauth-policy-compliance.md` | `docs/guides/dropbox-oauth-setup-guide.md` | archive | Body moved to `docs/archive/guides/dropbox-oauth-policy-compliance.md`. |
+| `docs/guides/dropbox-oauth-policy-compliance-corrected.md` | `docs/guides/dropbox-oauth-setup-guide.md` | archive | Body moved to `docs/archive/guides/dropbox-oauth-policy-compliance-corrected.md`. |
+| `docs/guides/dropbox-oauth-verification-checklist.md` | `docs/guides/dropbox-oauth-setup-guide.md` | archive | Body moved to `docs/archive/guides/dropbox-oauth-verification-checklist.md`. |
+| `docs/guides/dropbox-integration-verification.md` | `docs/guides/external-integration-ledger.md` | archive | Body moved to `docs/archive/guides/dropbox-integration-verification.md`. |
+| `docs/guides/gmail-auto-protocol-phase1-verification.md` | `docs/plans/gmail-auto-protocol-progress.md` | redirect | Body moved to `docs/archive/guides/gmail-auto-protocol-phase1-verification.md`. Old path kept as a pointer stub. |
+| `docs/guides/dropbox-setup-guide.md` | `docs/guides/dropbox-oauth-setup-guide.md` | archive | Body moved to `docs/archive/guides/dropbox-setup-guide.md`. Still-valid facts merged into the canonical doc first. |
+| `docs/guides/local-alerts-verification.md` | `docs/guides/local-alerts.md` | archive | Body moved to `docs/archive/guides/local-alerts-verification.md`. |
+| `docs/guides/measuring-instruments-verification.md` | `docs/knowledge-base/KB-314-kiosk-loan-card-display-labels.md` | archive | Body moved to `docs/archive/guides/measuring-instruments-verification.md`. |
+| `docs/guides/measuring-instrument-loan-events-verification.md` | `docs/knowledge-base/KB-344-unified-loan-analytics.md` | archive | Body moved to `docs/archive/guides/measuring-instrument-loan-events-verification.md`. |
+| `docs/guides/slack-webhook-setup-step-by-step.md` | `docs/guides/slack-webhook-setup.md` | archive | Body moved to `docs/archive/guides/slack-webhook-setup-step-by-step.md`. Still-valid facts merged into the canonical doc first. |
+| `docs/guides/phase3-schedule-run-and-auto-backup-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-schedule-run-and-auto-backup-test-results.md`. |
+| `docs/guides/ui-visibility-color-theme-deployment-results.md` | `docs/requirements/ui-visibility-color-theme.md` | archive | Body moved to `docs/archive/guides/ui-visibility-color-theme-deployment-results.md`. |
+| `docs/guides/phase3-authentication-clarification.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-authentication-clarification.md`. |
+| `docs/guides/phase3-browser-console-verification.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-browser-console-verification.md`. |
+| `docs/guides/phase3-complete-verification-summary.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-complete-verification-summary.md`. |
+| `docs/guides/phase3-dropbox-token-refresh-fix.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-dropbox-token-refresh-fix.md`. |
+| `docs/guides/phase3-error-handling-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-error-handling-test-results.md`. |
+| `docs/guides/phase3-mandatory-verification-execution.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-mandatory-verification-execution.md`. |
+| `docs/guides/phase3-mandatory-verification-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-mandatory-verification-results.md`. |
+| `docs/guides/phase3-mandatory-verification-step-by-step.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-mandatory-verification-step-by-step.md`. |
+| `docs/guides/phase3-mandatory-verification-steps.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-mandatory-verification-steps.md`. |
+| `docs/guides/phase3-manual-verification-current-step.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-manual-verification-current-step.md`. |
+| `docs/guides/phase3-manual-verification-steps.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-manual-verification-steps.md`. |
+| `docs/guides/phase3-next-steps.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-next-steps.md`. |
+| `docs/guides/phase3-next-tasks.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-next-tasks.md`. |
+| `docs/guides/phase3-production-readiness-assessment.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-production-readiness-assessment.md`. |
+| `docs/guides/phase3-production-usage-clarification.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-production-usage-clarification.md`. |
+| `docs/guides/phase3-real-device-verification-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-real-device-verification-results.md`. |
+| `docs/guides/phase3-real-device-verification-status.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-real-device-verification-status.md`. |
+| `docs/guides/phase3-real-device-verification-steps.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-real-device-verification-steps.md`. |
+| `docs/guides/phase3-schedule-crud-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-schedule-crud-test-results.md`. |
+| `docs/guides/phase3-token-refresh-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-token-refresh-test-results.md`. |
+| `docs/guides/phase3-verification-checklist.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-verification-checklist.md`. |
+| `docs/guides/phase3-verification-clarification.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-verification-clarification.md`. |
+| `docs/guides/phase3-verification-complete-summary.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-verification-complete-summary.md`. |
+| `docs/guides/auto-startup-status.md` | `docs/guides/client-initial-setup.md` | archive | Body moved to `docs/archive/guides/auto-startup-status.md`. |
+| `docs/guides/ai-ssh-access.md` | `AGENTS.md` | archive | Body moved to `docs/archive/guides/ai-ssh-access.md`. Still-valid facts merged into the canonical doc first. |
+| `docs/guides/ansible-error-handling.md` | `docs/runbooks/deploy-status-recovery.md` | redirect | Body moved to `docs/archive/guides/ansible-error-handling.md`. Old path kept as a pointer stub. |
+| `docs/guides/phase2-real-device-verification.md` | `docs/guides/csv-import-export.md` | archive | Body moved to `docs/archive/guides/phase2-real-device-verification.md`. |
+| `docs/guides/photo-loan-test-plan.md` | `docs/guides/verification-checklist.md` | archive | Body moved to `docs/archive/guides/photo-loan-test-plan.md`. |
+| `docs/guides/pi3-deployment-verification.md` | `docs/guides/deployment.md` | archive | Body moved to `docs/archive/guides/pi3-deployment-verification.md`. |
+| `docs/guides/raspberry-pi4-restart-commands.md` | `docs/guides/client-initial-setup.md` | archive | Body moved to `docs/archive/guides/raspberry-pi4-restart-commands.md`. |
+| `docs/guides/signage-deployment.md` | `docs/guides/deployment.md` | archive | Body moved to `docs/archive/guides/signage-deployment.md`. |
+| `docs/guides/signage-layout-config-verification.md` | `docs/knowledge-base/infrastructure/signage.md` | archive | Body moved to `docs/archive/guides/signage-layout-config-verification.md`. |
+| `docs/guides/signage-layout-config-verification-results.md` | `docs/knowledge-base/infrastructure/signage.md` | archive | Body moved to `docs/archive/guides/signage-layout-config-verification-results.md`. |
+| `docs/guides/signage-test-plan.md` | `docs/guides/verification-checklist.md` | archive | Body moved to `docs/archive/guides/signage-test-plan.md`. |
+| `docs/guides/setup-clients-status-agent.md` | `docs/guides/client-initial-setup.md` | archive | Body moved to `docs/archive/guides/setup-clients-status-agent.md`. |
+| `docs/guides/ui-visibility-color-theme-remaining-tasks.md` | `docs/requirements/ui-visibility-color-theme.md` | archive | Body moved to `docs/archive/guides/ui-visibility-color-theme-remaining-tasks.md`. |
+| `docs/guides/ui-visibility-color-theme-real-device-verification.md` | `docs/requirements/ui-visibility-color-theme.md` | archive | Body moved to `docs/archive/guides/ui-visibility-color-theme-real-device-verification.md`. |
+| `docs/guides/stability-improvement-test.md` | `docs/plans/stability-improvement-plan.md` | archive | Body moved to `docs/archive/guides/stability-improvement-test.md`. |
+| `docs/guides/validation-7-usb-import.md` | `docs/guides/verification-checklist.md` | redirect | Body moved to `docs/archive/guides/validation-7-usb-import.md`. Old path kept as a pointer stub. |
+| `docs/guides/ssh-setup.md` | `docs/guides/client-initial-setup.md` | redirect | Body moved to `docs/archive/guides/ssh-setup.md`. Old path kept as a pointer stub. |
+| `docs/guides/security-test-plan.md` | `docs/plans/security-hardening-execplan.md` | archive | Body moved to `docs/archive/guides/security-test-plan.md`. |
+| `docs/knowledge-base/troubleshooting-knowledge.md` | `docs/knowledge-base/index.md` | redirect | Pointer only; no body kept. Old path kept as a pointer stub. |
+| `docs/knowledge-base/kiosk-video-call-health-check.md` | `docs/guides/webrtc-verification.md` | archive | Body moved to `docs/archive/knowledge-base/kiosk-video-call-health-check.md`. |
+| `docs/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md` | `docs/runbooks/kiosk-loan-status-repair.md` | archive | Body moved to `docs/archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md`. Still-valid facts merged into the canonical doc first. |
+| `docs/knowledge-base/infrastructure/ports-baseline-20260118.md` | `docs/runbooks/ports-unexpected-and-port-exposure.md` | archive | Body moved to `docs/archive/knowledge-base/infrastructure/ports-baseline-20260118.md`. |
+| `docs/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md` | `docs/decisions/ADR-20260402-inference-foundation-phase1.md` | archive | Body moved to `docs/archive/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md`. |
+| `docs/knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md` | `docs/knowledge-base/KB-323-kiosk-return-card-button-layout.md` | archive | Body moved to `docs/archive/knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md`. Still-valid facts merged into the canonical doc first. |
+| `docs/knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md` | `docs/knowledge-base/infrastructure/signage.md` | archive | Body moved to `docs/archive/knowledge-base/KB-333-signage-compact24-footer-kiosk-cancel-readability.md`. |
+| `docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md` | `docs/runbooks/dgx-system-prod-local-llm.md` | redirect | Body moved to `docs/archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md`. Old path kept as a pointer stub. |
+| `docs/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md` | `docs/runbooks/dgx-system-prod-local-llm.md` | archive | Body moved to `docs/archive/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md`. |
+| `docs/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md` | `docs/guides/mac-storage-migration.md` | archive | Body moved to `docs/archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md`. Still-valid facts merged into the canonical doc first. |
+| `docs/knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md` | `docs/runbooks/deploy-status-recovery.md` | archive | Body moved to `docs/archive/knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md`. |
+| `docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md` | `docs/runbooks/kiosk-ime-diagnosis.md` | archive | Body moved to `docs/archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md`. |
+| `docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md` | `docs/runbooks/kiosk-power-operation-recovery.md` | archive | Body moved to `docs/archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md`. |
+| `docs/runbooks/mac-target-location-migration.md` | `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | archive | Body moved to `docs/archive/runbooks/mac-target-location-migration.md`. |
+| `docs/runbooks/pi5-minimal-downtime-deploy.md` | `docs/guides/deployment.md` | archive | Body moved to `docs/archive/runbooks/pi5-minimal-downtime-deploy.md`. |
+| `docs/runbooks/zero2w-tanaban-edge-setup.md` | `docs/runbooks/zero-edge-agent.md` | redirect | Body moved to `docs/archive/runbooks/zero2w-tanaban-edge-setup.md`. Old path kept as a pointer stub. |
+| `docs/runbooks/pi5-blue-green-deploy.md` | `docs/runbooks/deploy-status-recovery.md` | archive | Body moved to `docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md`. Still-valid facts merged into the canonical doc first. |
+| `docs/runbooks/local-llm-tailscale-sidecar.md` | `docs/runbooks/dgx-system-prod-local-llm.md` | redirect | Body moved to `docs/archive/runbooks/local-llm-tailscale-sidecar.md`. Old path kept as a pointer stub. |
+
 ## Next Step
 
 PR442 should continue `docs/INDEX.md` thinning for another domain, or create the

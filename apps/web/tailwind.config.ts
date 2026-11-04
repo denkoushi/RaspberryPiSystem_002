@@ -23,6 +23,7 @@ export default {
           green: '#35d895',
           'green-ink': '#03281a',
           red: '#ff6e6e',
+          blue: '#4f8cff',
           violet: '#a99bff',
           'violet-dark': '#7f68d8',
           rose: '#ff8fa8',

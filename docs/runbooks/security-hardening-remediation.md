@@ -9,11 +9,13 @@
 | scope | Operator-side remediation of audit findings that require secret rotation, config change, or Pi redeploy |
 | date | 2026-07-02 |
 | source_of_truth | this file |
-| related_docs | [KB-393](../knowledge-base/KB-393-security-hardening-audit-2026-07.md), [deployment.md](../guides/deployment.md), [api-key-policy.md](../guides/api-key-policy.md) |
+| related_docs | [KB-393](../knowledge-base/KB-393-security-hardening-audit-2026-07.md), [KB-415](../knowledge-base/KB-415-ai-security-scan-2026-10.md), [KB-416](../knowledge-base/KB-416-outside-intrusion-resilience-2026-10.md), [KB-417](../knowledge-base/KB-417-security-audit-fixes-2026-10-10.md), [deployment.md](../guides/deployment.md), [api-key-policy.md](../guides/api-key-policy.md) |
 
 ## When to use
 
-The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #948 → main `b1172baf`, 2026-07-02, real-device verify PASS 45/0/0). The items below are the remaining **Batch C** operator actions. They change secrets/config/runtime and **can break running kiosks if done carelessly**, so each is gated on explicit operator go-ahead and staged (change → verify → next). Do NOT run these automatically. Each item lists risk and a verification step. All items C-1..C-9 are **not yet started**.
+The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #948 → main `b1172baf`, 2026-07-02, real-device verify PASS 45/0/0). The items below are the remaining **Batch C** operator actions. They change secrets/config/runtime and **can break running kiosks if done carelessly**, so each is gated on explicit operator go-ahead and staged (change → verify → next). Do NOT run these automatically. Each item lists risk and a verification step.
+
+> **状態（2026-11-04 時点）**: 各項目の Status 行を正とする。C-10〜C-12 は完了済み（記録は KB-393 へ移設）。C-1・C-5・C-6 はコード上対応済みで、本番反映日は運用者の確認待ち。Status 行のない項目（C-2、C-7〜C-9）は現在の状態を本書では確認していない。
 
 > Safety: take a DB/config backup before secret rotation. Do one item at a time and verify the kiosk borrow/return flow after each.
 
@@ -22,6 +24,7 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - File: `infrastructure/docker/docker-compose.server.yml` (mount `~/.ssh:/root/.ssh:ro`).
 - Action: remove the mount; if backup needs SSH, use a dedicated least-privilege deploy key on a narrow path, or move backup transport off SSH.
 - Risk: backup/Ansible-from-container features break if they relied on the key. Verify backup job after change.
+- Status (2026-11-04): code side done. `docker-compose.server.yml` no longer mounts the whole `~/.ssh`; it binds only the backup-only key `/run/secrets/backup-ssh/id_ed25519` (and its `known_hosts`) read-only. The production API runs as the blue/green `api-blue`/`api-green` services in `docker-compose.phase3.yml`, which bind the same backup-only key; `docker-compose.server.yml` is used in production only for `db` and volume definitions. Production rollout date: to be confirmed by the operator.
 
 ## C-2. PostgreSQL password (Critical)
 
@@ -38,17 +41,17 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 
 ## C-3. NFC agent reboot/poweroff + bind address (Critical)
 
-- Status: code correction implemented locally; hosted CI, merge, and production rollout remain.
+- Status: code correction is on main (`REST_HOST` defaults to `127.0.0.1`; `main.py` has no flush/reboot/poweroff routes). Production rollout date: to be confirmed by the operator.
 - Files: `clients/nfc-agent/nfc_agent/main.py`, `config.py`, `resend_worker.py`, `infrastructure/ansible/templates/nfc-agent.env.j2`.
 - Correction: bind REST/WebSocket to `127.0.0.1`; remove unused flush, reboot, and poweroff routes; compile the kiosk Web bundle with the audited local-only NFC contract; delete queued events only after successful browser delivery.
 - Remaining hardening: replacing the existing privileged container/device access is outside this change and still needs a separately staged design.
 - Verify: status and WebSocket are loopback-only; removed routes return 404; browser readiness proves `readerConnected=true` and `queueSize=0` twice; a physical NFC scan drives the kiosk after separately approved rollout.
 - Source of truth: [KB-403](../knowledge-base/KB-403-production-config-contract-and-nfc-health.md) and [ADR-20260729](../decisions/ADR-20260729-fail-closed-production-config-and-terminal-health.md).
 
-## C-4. Predictable client keys / admin1234 (High)
+## C-4. Predictable client keys / default admin password (High)
 
-- Files: `apps/api/prisma/seed.ts` (`admin`/`admin1234`, `client-*-key`), `apps/web/src/lib/client-key/config.ts` (fallback key), `infrastructure/ansible/inventory.yml` (plaintext keys), `scripts/register-clients.sh` (default admin pw), `docs/guides/api-key-policy.md` (real keys in docs).
-- Action: per-device high-entropy `x-client-key` stored in vault and rotated; make `VITE_DEFAULT_CLIENT_KEY` required in production web build; production seed must not create `admin1234` (force first-run random + change); scrub real keys from docs.
+- Files: `apps/api/prisma/seed.ts` (`admin` / seed default password, `client-*-key`), `apps/web/src/lib/client-key/config.ts` (fallback key), `infrastructure/ansible/inventory.yml` (plaintext keys), `scripts/register-clients.sh` (default admin pw), `docs/guides/api-key-policy.md` (real keys in docs).
+- Action: per-device high-entropy `x-client-key` stored in vault and rotated; make `VITE_DEFAULT_CLIENT_KEY` required in production web build; production seed must not create the fixed default admin password (force first-run random + change); scrub real keys from docs.
 - Risk: rotating a client key breaks that kiosk until its config/URL is updated. Rotate one device at a time.
 - Status (2026-10-06): every production device row has a per-device random credential; evidence and remaining closeout items are in [security-client-key-rotation-phase-b.md](../plans/security-client-key-rotation-phase-b.md).
 - Verify: old key returns 401; new key works on the target kiosk.
@@ -60,12 +63,14 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Action: after a password is configured, remove the `if (!config) return { success: password === '2520' }` fallback so no hardcoded PIN remains. Rate limiting is already applied (KB-393).
 - Risk: removing the fallback before a password is configured locks operators out of due-management / self-inspection approval. Configure first, then remove.
 - Verify: `2520` no longer succeeds; the configured PIN does.
+- Status (2026-11-04): code side done. The `2520` fallback is gone from production code under `apps/api/src` (test helpers only); `verifyDueManagementAccessPassword` returns `{ success: false }` when no config exists. Production rollout date: to be confirmed by the operator.
 
 ## C-6. Container de-root & hardening (High)
 
-- Files: `Dockerfile.api`, `Dockerfile.web`, `docker-compose.server.yml`.
+- Files: `Dockerfile.api`, `Dockerfile.web`, `docker-compose.server.yml`, `docker-compose.phase3.yml` (production blue/green API/Web).
 - Action: add non-root `USER`; `cap_drop: ALL` + minimal caps; `security_opt: [no-new-privileges:true]`; read-only rootfs with tmpfs/volumes for writable paths; slim the API image (remove Ansible/Playwright if not needed at runtime).
 - Risk: file-permission/writable-path breakage. Test in staging compose before Pi.
+- Status (2026-11-04): code side done. `Dockerfile.api` uses `USER node`, `Dockerfile.web` uses `USER caddy`, and the compose services set `read_only: true`, `cap_drop: [ALL]` and `no-new-privileges:true`. Production rollout date: to be confirmed by the operator.
 
 ## C-7. Admin IP allowlist on local TLS (High)
 
@@ -98,29 +103,9 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Action: accept keys via header only (drop `?key=`/`?clientKey=` in signage/webrtc + kiosk URL); require auth (or localhost) on `/system/metrics` and internal backup health.
 - Risk: signage/webrtc/kiosk bootstrapping may rely on the query param — migrate to header/localStorage first.
 
-## C-10. TalkPlaza vault files tracked in plaintext (Critical)
+## C-10〜C-12（完了済み）
 
-- Finding (2026-10-12 security audit; the full report is kept in the private DGXSparkControlPlane repository under `docs/security/`): the three former TalkPlaza host vault files were committed **unencrypted** to the public repository from `0fd82a2f` (2026-01-14). They held seven API JWT and per-device client-key values. Slack/Dropbox entries were empty. The leaked values remain readable in git history and must never be reused.
-- Repository fix (branch `fix/talkplaza-vault-encrypt-rotate`): regenerate every value and encrypt the three files with `ansible-vault`; add `vault.yml.example` placeholders; remove the seven TalkPlaza `allowedPlaintext` entries from `security/production-secret-baseline.json` so CI fails closed if a plaintext vault reappears.
-- Status (2026-10-12): repository fix merged to main as #1935 (`7e289e51`); no dedicated TalkPlaza hardware was built, so the leaked values were never installed on any device or registered in the production database. Update (2026-10-30): the separate-site configuration was retired; see the [KB-159 decision](../knowledge-base/infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則).
-
-## C-11. MFA re-enrollment with only an access token / pre-MFA refresh tokens (High)
-
-- Finding (2026-10-12 security audit, private report): `POST /api/auth/mfa/activate` replaced the TOTP secret and backup codes with nothing but a valid access token, so a stolen access token could take over MFA on an admin account. `POST /api/auth/refresh` also upgraded refresh tokens minted before MFA was enabled into MFA-passed sessions without ever presenting a code.
-- Repository fix: #1938 (merged main `39465206`). `activateMfa` now requires the login password and, when MFA is already enabled, a current TOTP code or backup code (error code `MFA_REAUTH_REQUIRED`). `refresh()` rejects a refresh token whose payload lacks `mfaEnabled` once the user has MFA enabled. The admin Security page collects the extra fields. No migration.
-- Status (2026-10-12): **deployed to Pi5** with the standard release of main `e86016dc` (run `20261012-031115-d47fd4`, systemd active/exited/success, recap failed=0 rescued=0, health 200). Rollback reference: previous Pi5 SHA `9f7aa316`.
-- Production verification (2026-10-12): confirmed by the operator on the Pi5 admin UI after the release above. Admin login works, and the
-  MFA setup screen asks for the login password before activation. Result: OK. No further action for this item.
-- Operator-visible changes: the MFA setup form asks for the password (and the current code on re-enrollment); admins who set up MFA before this release and still hold an old refresh token must log in again once. Access tokens issued before activation stay valid until they expire (15 min), which is accepted.
-- Verify: `pnpm --filter @raspi-system/api exec vitest run src/routes/__tests__/admin-mfa-enforcement.test.ts`; on the device, re-enrollment without the current code returns 401 `MFA_REAUTH_REQUIRED`.
-
-## C-12. Gmail HTML attachments rendered to PDF with JavaScript and network enabled (High)
-
-- Finding (2026-10-12 security audit, private report): the kiosk-documents Playwright adapter rendered untrusted mail HTML with scripts enabled and no request interception, so anyone who can mail the ingestion mailbox could make the API container fetch arbitrary URLs (SSRF toward the Docker network, the Pi, Tailscale peers).
-- Repository fix: #1937 (merged main `02aa9bb0`). The browser context is created with `javaScriptEnabled: false` and every request is aborted via `context.route('**/*', ...)` before `setContent`; inline content and `data:` URLs still render. The shared Chromium launch flags (`--no-sandbox`) are tracked separately under C-6.
-- Status (2026-10-12): **deployed to Pi5** in the same release as C-11 (main `e86016dc`, run `20261012-031115-d47fd4`).
-- Operator-visible changes: remote images, external CSS/fonts and scripts in mail HTML no longer appear in the generated PDF.
-- Verify: `pnpm --filter @raspi-system/api exec vitest run src/services/kiosk-documents` (the real-Chromium integration test runs in CI).
+完了記録は [KB-393 の「Batch C 完了記録（runbook から移設）」](../knowledge-base/KB-393-security-hardening-audit-2026-07.md#batch-c-完了記録runbook-から移設) へ移した。
 
 ## C-13. Pi4 agent least-privilege mode (client_agents_hardened)
 
@@ -187,6 +172,6 @@ Preserve queue backups, verify NFC, barcode, torque and health again, and record
 
 1. Backup relevant secret/config/DB.
 2. Apply one item.
-3. Redeploy the affected layer only (`scripts/server/deploy.sh` or the client role).
+3. Redeploy only the affected host with the standard route (`scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit <host>`, then the same command without `--print-plan`).
 4. Verify kiosk borrow/return + admin login + the item-specific check above.
 5. Roll back if the flow breaks; record result in KB-393 Open Items.

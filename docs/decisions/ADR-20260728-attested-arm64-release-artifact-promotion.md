@@ -9,8 +9,9 @@ related_code:
   - .github/workflows/ci.yml
   - scripts/deploy/release_build_contract.py
   - scripts/deploy/release_artifact_contract.py
-  - scripts/deploy/pi5_artifact_promoter.py
-  - scripts/deploy/pi5-image-deploy.sh
+  - scripts/deploy/controller_gh_verifier.py
+  - scripts/deploy/standard-ansible-release.py
+  - infrastructure/ansible/roles/release_pi5
 related_docs:
   - ../plans/deploy-workflow-artifact-promotion-execplan.md
   - ../plans/deploy-artifact-timeout-canary-handoff-execplan.md

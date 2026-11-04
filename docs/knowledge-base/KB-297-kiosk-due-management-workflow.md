@@ -1,5 +1,5 @@
 ---
-title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
+title: "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装"
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
 last-verified: 2026-06-30
@@ -14,6 +14,8 @@ category: knowledge-base
 ---
 
 # KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
+
+> 注記: 各節の「手順」「本番デプロイ」に書かれたコマンド・フラグ（`RASPI_SERVER_HOST`、`--follow`、`--attach`、1台ずつの `--limit` など）は当時の記録です。現行のデプロイは [デプロイメントガイド](../guides/deployment.md)、復旧は [deploy-status-recovery Runbook](../runbooks/deploy-status-recovery.md) を正とします。
 
 ## Context
 
@@ -708,7 +710,7 @@ category: knowledge-base
 - **Troubleshooting**:
   - **ESLint import/order**: `ProductionScheduleManualOrderPage.tsx` 等で import 順エラー → `eslint --fix` または deployment.md の import グループ規則に合わせる。
   - **型エラー（製番検索モーダル）**: `ProductionOrderSearchModal` は `useProductionOrderSearch` の戻り値（`productNoInput` 等）と props を一致させる（古い prop 名はビルド失敗）。
-  - **Phase12 と overview**: device-scope v2 時は無印 `manual-order-overview` が 400 になるのは仕様。スクリプトが `global-rank` から `siteKey` を導出できているか確認（[KB-302](./ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗) — ping 失敗時は手動 curl 代替）。
+  - **Phase12 と overview**: device-scope v2 時は無印 `manual-order-overview` が 400 になるのは仕様。スクリプトが `global-rank` から `siteKey` を導出できているか確認（[KB-302](./ci-cd.md#kb-302-location-scope-resolver-のブランド型-ci-ビルド失敗と-verify-phase12-real-の-ping-失敗) — ping 失敗時は手動 curl 代替）。
   - **`rows[]` が curl で見えない**: `resources` が空のときは `rows[]` も返らない。本番データで手動順の行が存在する端末・サイトで再確認する。
 - **main マージ**: ドキュメント反映後、PR 経由で `main` へ統合（運用標準）。
 
@@ -1110,7 +1112,7 @@ category: knowledge-base
 - **実機検証**:
   - `verify-phase12-real.sh` は先頭の `ping` 判定で「Pi5に到達できません」と停止（ICMP ブロック環境）。runbook の curl/ssh 項目を手動実行して代替検証。
   - APIヘルス ok、deploy-status 両Pi4 false、キオスクAPI・納期管理API群 200、global-rank/actual-hours/stats、fallback 0件、PUT auto-generate 200、Pi3/Pi4 サービス active。
-- **トラブルシューティング**: [KB-302](./ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)
+- **トラブルシューティング**: [KB-302](./ci-cd.md#kb-302-location-scope-resolver-のブランド型-ci-ビルド失敗と-verify-phase12-real-の-ping-失敗)
 
 ## Location Scope Phase9（compat呼び出し棚卸し・公開面縮小、2026-03-15）
 
@@ -1390,7 +1392,7 @@ category: knowledge-base
 - **根因**: フォールバックフラグが無効のまま、かつ `shared-global-rank` に特徴量が存在しなかった。
 - **対処**:
   1. `infrastructure/ansible/inventory.yml` に `actual_hours_shared_fallback_enabled: "true"` を追加（server グループ）
-  2. `shared-global-rank` へ kensakuMain の特徴量を SQL でバックフィル（[actual-hours-canonical-backfill.md](../runbooks/actual-hours-canonical-backfill.md#shared-global-rank-へのバックフィル) 参照）
+  2. `shared-global-rank` へ kensakuMain の特徴量を SQL でバックフィル（[actual-hours-canonical-backfill.md](../runbooks/actual-hours-canonical-backfill.md#7-shared-global-rank-へのバックフィル) 参照）
 - **再発防止**: 新規 location 追加時は `shared-global-rank` へのバックフィル手順を実行する。fallback 有効化後は `false` に戻すだけで従来挙動へ即時切替可能。
 
 ## P2-3 Web Split デプロイ・実機検証（2026-03-13）
@@ -1934,7 +1936,7 @@ category: knowledge-base
 ## References
 
 - [ci-troubleshooting.md](../guides/ci-troubleshooting.md)（8.5. ユニットテストで Prisma モデル未モック）— A修正実装時の CI 初回失敗（KB-298）対策
-- [KB-298](../knowledge-base/ci-cd.md#kb-298-ユニットテストでprismaモデル未モックtyperror-cannot-read-properties-of-undefined-reading-findmany): ユニットテストで Prisma モデル未モック
+- [KB-298](../knowledge-base/ci-cd.md#kb-298-ユニットテストでprismaモデル未モックtypeerror-cannot-read-properties-of-undefined-reading-findmany): ユニットテストで Prisma モデル未モック
 - `apps/api/prisma/schema.prisma`
 - `apps/api/src/services/production-schedule/due-management-query.service.ts`
 - `apps/api/src/services/production-schedule/due-management-command.service.ts`
@@ -2001,7 +2003,7 @@ category: knowledge-base
 - **事象**: 初回プッシュ後、CIの`Build API`で `tsc -p tsconfig.build.json` が失敗
 - **エラー**: `due-management-learning-event.repository.ts` で `Record<string, unknown> | null` が Prisma の `InputJsonValue` / `NullableJsonNullValueInput` に代入できない
 - **原因**: Prisma の JSON カラムでは、`null` を明示するには `Prisma.JsonNull` を指定する必要がある。`Record<string, unknown>` は `Prisma.InputJsonValue` へのキャストが必要
-- **対策**: [KB-299](./ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗) を参照
+- **対策**: [KB-299](./ci-cd.md#kb-299-prisma-jsonカラムへの-recordstring-unknown-や-null-の代入でciビルド失敗) を参照
 - **再発防止**: 新規 JSON カラムへの書き込みには、既存 `signage.service.ts` の `toPrismaLayoutConfig` パターン（`null` → `Prisma.JsonNull`、オブジェクト → `as Prisma.InputJsonValue`）を参照する
 
 ### 知見（B第5段階）
@@ -2226,7 +2228,7 @@ category: knowledge-base
 
 ### 全端末共有優先順位（Mac対象ロケーション指定）デプロイ・実機検証（2026-03-10）
 
-- **実装概要**: `global-rank` API に `targetLocation` / `rankingScope`（`globalShared` / `locationScoped` / `localTemporary`）を拡張。`ProductionScheduleGlobalRankTemporaryOverride` テーブルを追加。Mac から対象拠点を明示指定可能。移行手順は [mac-target-location-migration.md](../runbooks/mac-target-location-migration.md) を参照。
+- **実装概要**: `global-rank` API に `targetLocation` / `rankingScope`（`globalShared` / `locationScoped` / `localTemporary`）を拡張。`ProductionScheduleGlobalRankTemporaryOverride` テーブルを追加。Mac から対象拠点を明示指定可能。移行手順は [mac-target-location-migration.md](../archive/runbooks/mac-target-location-migration.md) を参照。
 - **デプロイ**: Pi5 → raspberrypi4 → raspi4-robodrill01 の順に `--limit` で1台ずつ実行（Run ID `20260310-193632-10428` / `20260310-194407-20877` / `20260310-195055-32546`）。ブランチ `feat/due-mgmt-actual-hours-pipeline`。
 - **実機検証結果**:
   - APIヘルス: 200 OK / `status: ok`
@@ -2236,7 +2238,7 @@ category: knowledge-base
   - マイグレーション: 46件適用済み、未適用なし
   - Pi4サービス: 両端末で kiosk-browser.service / status-agent.timer が active
   - Pi3 signage: offline のためスキップ（deploy-status-recovery.md に準拠）
-- **2回目デプロイ（feature flag 本番制御経路）**: `VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` を web.env.j2 / Dockerfile.web / docker-compose.server.yml に追加（既定 `true`）。Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260310-205506-28891` / `20260310-205946-5022` / `20260310-210522-15455`）。実機検証: APIヘルス、deploy-status、納期管理API、global-rank targetLocation/rankingScope、Pi4サービス稼働を確認。feature flag の無効化は inventory / host_vars で `web_kiosk_target_location_selector_enabled: false` を指定可能（[mac-target-location-migration.md](../runbooks/mac-target-location-migration.md) 参照）。
+- **2回目デプロイ（feature flag 本番制御経路）**: `VITE_KIOSK_TARGET_LOCATION_SELECTOR_ENABLED` を web.env.j2 / Dockerfile.web / docker-compose.server.yml に追加（既定 `true`）。Pi5 → raspberrypi4 → raspi4-robodrill01 の順に1台ずつ実行（Run ID `20260310-205506-28891` / `20260310-205946-5022` / `20260310-210522-15455`）。実機検証: APIヘルス、deploy-status、納期管理API、global-rank targetLocation/rankingScope、Pi4サービス稼働を確認。feature flag の無効化は inventory / host_vars で `web_kiosk_target_location_selector_enabled: false` を指定可能（[mac-target-location-migration.md](../archive/runbooks/mac-target-location-migration.md) 参照）。
 
 ### 全体順位表示拡張と実績工数列追加・デプロイ・実機検証（2026-03-11）
 
@@ -2577,6 +2579,12 @@ category: knowledge-base
   - **アクセントが付かない**: **製番が空／無効でないか**確認。**2026-05-22 以降**: **全件表示（OR フィルタ OFF）では左縁なしが仕様** — 色が欲しい場合は **登録製番チップを押して OR フィルタ ON**（[§全件無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)）。**2026-05-02〜2026-05-21**: クエリ空でも製番行に付く（旧仕様）。旧 SPA の場合は **強制リロード**と Pi5 **`web`** / Pi4 **`kiosk-browser`** 更新を確認。
   - **納期アシストが横に伸びない / 進捗列が無い**: 古い SPA を疑う → Pi5 `web` と各 Pi4 **`kiosk-browser`** 再起動ログ・`/opt/RaspberryPiSystem_002` の **ブランチ**を確認。**デプロイ前 fail-fast**: [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
 
+### Leader order board: 製番左縁アクセント常時化・進捗一覧の資源CD集約チップ帯（2026-05-02） {#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02}
+
+- **変更（当時の記録）**: `seibanAccentPalette.ts` で登録製番フィルタが空でも、有効製番に製番ハッシュ由来の左縁アクセント（`% 8`）を付けた（製番ブランクのみ無色）。進捗一覧の製番カードには、`collectAggregatedProgressOverviewResourceProcesses.ts` で資源CDごとに集約したチップ帯を追加した。Web のみ。
+- **後続**: 全件表示の配色は [2026-05-20 で 24 色へ拡張](#leader-order-board-seiban-accent-palette-24-2026-05-20)し、[2026-05-22 で全件表示は無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)へ変更した。
+- **記録**: デプロイ実績は [deployments 2026-05](../archive/deployments/2026-05.md) の「補足（2026-05-02: キオスク順位ボード製番左縁アクセント（フィルタ空でも安定色）／進捗一覧製番カードの資源CD集約チップ帯）」節。
+
 ### Leader order board: 製番左縁アクセント 24 色（全件表示のハッシュ配色拡張）（2026-05-20） {#leader-order-board-seiban-accent-palette-24-2026-05-20}
 
 - **Context（調査起点）**: 現場観測では **登録製番 OR フィルタ ON（同時 ~5 件）** では **同一製番が資源 CD スロット横断で同色**に見え、識別性は十分。**OR フィルタ OFF（全件表示）** では製番数に対し **8 色しか使われず**、**色被り**と **amber/orange・cyan/sky** 等の **近似色** により左縁だけでは製番を追いにくい。**バグではなく配色設計の限界**（[2026-05-02 常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) 時点の `% 8` ハッシュ仕様）。**スロット横断同色**のロジック自体は [`resolveSeibanAccentRowClass`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) が **`fseiban` 単位**で決定しており **変更不要**。
@@ -2740,7 +2748,7 @@ category: knowledge-base
 - **仕様（現行・要約）**:
   - **API**: キオスク生産スケジュール一覧の **`responseProfile=leaderboard`** 応答に **`leaderboardFooterChipsByPartKey`** を付与。**集約**は [`leaderboard-part-footer-processes.service.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.ts)・キー規約 [`leaderboard-part-footer-chip-key.ts`](../../apps/api/src/services/production-schedule/leaderboard/leaderboard-part-footer-chip-key.ts)。組み込み経路 [`production-schedule-query.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-query.service.ts)。
   - **Web**: [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) が **`leaderboardFooterChipsByPartKey`** を [`collectLeaderBoardFooterResourceChips`](../../apps/web/src/features/kiosk/leaderOrderBoard/collectLeaderBoardFooterResourceChips.ts) に渡し **`partKey → chips` の `ReadonlyMap`** を構築。**順位ボード文脈では `useKioskProductionScheduleProgressOverview` を取得しない**。キャッシュ運用 [`kioskProductionScheduleListCache.ts`](../../apps/web/src/features/kiosk/productionSchedule/cache/kioskProductionScheduleListCache.ts)。
-  - **完了ミューテーション後**: [`hooks.ts`](../../apps/web/src/api/hooks.ts) **`useCompleteKioskProductionScheduleRow`** が **`history-progress` と `progress-overview`** も **`invalidateQueries`** — 一覧以外の進捗画面との **即時整合**を維持。
+  - **完了ミューテーション後**: [`schedule.ts`](../../apps/web/src/api/hooks/production-schedule/schedule.ts) **`useSetKioskProductionScheduleRowCompletion`** が **`history-progress` と `progress-overview`** も **`invalidateQueries`** — 一覧以外の進捗画面との **即時整合**を維持。
   - **Prisma**: 変更なし。
 - **デプロイ・実機検証（2026-05-02）**:
   - **ブランチ**: `feat/kiosk-leaderboard-footer-contract`（代表コミット **`a1be93a4`**。**`main` マージ後**は squash マージコミットを正とする）。
@@ -2881,7 +2889,7 @@ category: knowledge-base
 - **知見**: **アンカーが画面左寄り**のとき **`translateX(-100%)` だけ**ではパネル左が負座標になり得る。**右端そろえ優先**を数式でクランプすると **再利用可能**（生産スケジュールの Portal と共有）。
 - **トラブルシューティング**:
   - **まだ左が欠ける**: **`web` コミット**・キャッシュ・§6.6.4。**`clampToViewport` が意図せず false** になっていないか。
-  - **フィルタdropdown の位置が変** → [deployment.md](../guides/deployment.md) の **「広い登録製番ドロップダウン」** 追記どおり **`clampToViewport={false}`** を検討。
+  - **フィルタdropdown の位置が変** → [deployment 2026-05 アーカイブ](../archive/deployments/2026-05.md) の 2026-05-05 左ペイン幅節の **「広い登録製番ドロップダウン」** 追記どおり **`clampToViewport={false}`** を検討。
 
 ### Leader order board: leaderboard `pageSize` server cap + remove debug ingest（2026-05-02） {#leader-order-board-leaderboard-pagesize-server-cap-2026-05-02}
 
@@ -2892,8 +2900,8 @@ category: knowledge-base
   - **Web**: [`constants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) の **`leaderOrderBoardQueryPageSize`** 調整（新バンドル側の要求を抑える）に加え、**サーバ側で旧クライアントを吸収**。
   - **計測撤去**: 開発用の **`127.0.0.1:7426` ingest `fetch`** と `#region agent log` を **本番経路から除去**（[KB-354 §D](../knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md) と同趣旨）。
 - **検証（Pi5）**: `pageSize=1240` リクエストでも応答 **`rows` が 900 に抑えられ**、応答バイト数が **約 1.1MB → 約 0.82MB** に減ることを確認。ウォーム時の **curl 総時間**も **旧平均より改善**（同一条件 8 本の簡易平均）。
-- **実施記録（2026-05-02）**: PR **[#236](https://github.com/denkoushi/RaspberryPiSystem_002/pull/236)**（`0865cc56`）。Pi5 に **`./scripts/deploy/update-all-clients.sh --limit raspberrypi5`**（Detach **`20260502-175955-7198`**）。**`verify-phase12-real.sh`** → **PASS 43 / WARN 0 / FAIL 0**（約 **141s**）。
-- **デプロイ**: [deployment.md](../guides/deployment.md) の **「`leaderboard` `pageSize` サーバ上限制御」** 補足を参照。**`main` 取込後** `update-all-clients.sh`・**Pi5 のみ**で可（全クライアントは **旧バンドルが残る Pi4** まで含めて段階展開してもよい）。
+- **実施記録（2026-05-02）**: PR **[#236](https://github.com/denkoushi/RaspberryPiSystem_002/pull/236)**（`0865cc56`）。Pi5 に **`./scripts/deploy/update-all-clients.sh --limit raspberrypi5`**（現行パス: `scripts/update-all-clients.sh`）（Detach **`20260502-175955-7198`**）。**`verify-phase12-real.sh`** → **PASS 43 / WARN 0 / FAIL 0**（約 **141s**）。
+- **デプロイ**: [deployment 2026-05 アーカイブ](../archive/deployments/2026-05.md) の **「`leaderboard` `pageSize` サーバ上限制御」** 補足を参照。**`main` 取込後** `update-all-clients.sh`・**Pi5 のみ**で可（全クライアントは **旧バンドルが残る Pi4** まで含めて段階展開してもよい）。
 
 ### Leader order board: `leaderboard` 一覧取得と手動順位・製番展開の整合（2026-05-05） {#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05}
 
@@ -3135,7 +3143,7 @@ category: knowledge-base
   - **ProductNo が見えなくなった**: 順位ボード子行では仕様どおり非表示。必要なら生産スケジュール本体一覧で確認する。
   - **工順が見切れる**: 上段は幅競合のため `truncate` 許容。ホバーで `title` 全文。
   - **左の登録チップがまだ低い窓のまま／子行が旧レイアウト**: **未反映 Pi4**・Pi5 **web イメージ**・ブランチ取り違えを疑う。`deploy-status`（各 `x-client-key`）と **`verify-phase12-real.sh`** で全体が健康なことを確認したうえ、[デプロイ・実機検証（2026-04-01）](#デプロイ実機検証2026-04-01) の **バンドル `curl` 手順**で `leader-order-board` が新バンドルに含まれるかを見る。
-  - **Phase12 のみ失敗・Pi5 ping 失敗**: [KB-302](./ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)（Tailscale 遅延時の ICMP）。`verify-phase12-real.sh` の **再試行**後に再実行。
+  - **Phase12 のみ失敗・Pi5 ping 失敗**: [KB-302](./ci-cd.md#kb-302-location-scope-resolver-のブランド型-ci-ビルド失敗と-verify-phase12-real-の-ping-失敗)（Tailscale 遅延時の ICMP）。`verify-phase12-real.sh` の **再試行**後に再実行。
 - **手動（任意・Pi4 / VNC）**: 長い製番・登録チップが多い状態で、左パネルが **下方まで伸びる**こと、子行が **上段＝工順・中段＝製番行・下段＝品名**になっていることを目視。
 
 ### デプロイ・実機検証（2026-04-01）
@@ -3206,7 +3214,7 @@ category: knowledge-base
   - **備考を保存しても戻る / 428**: `search-state` の **ETag** 不整合。**他端末の同時更新**またはタブ多重を疑い、再フェッチ後に再試行。
   - **`seiban-machine-names` が 401**: **`x-client-key`** が実デバイスに紐づいていない（ダミー不可）。
   - **機種名が相変わらず空**: `fetchSeibanProgressRows` 側に当該製番の MH/SH が無い、または ERP データ空。**データ・同期**を先に確認（UI は補完のみ）。
-  - **Phase12 のみ失敗・「Pi5に到達できません」**: [KB-302](./ci-cd.md#kb-302-location-scope-resolverのブランド型ciビルド失敗とverify-phase12-realのping失敗)（ICMP 偶発）。最新 `verify-phase12-real.sh` の **ping 再試行**、`curl`/SSH が通るなら再実行。
+  - **Phase12 のみ失敗・「Pi5に到達できません」**: [KB-302](./ci-cd.md#kb-302-location-scope-resolver-のブランド型-ci-ビルド失敗と-verify-phase12-real-の-ping-失敗)（ICMP 偶発）。最新 `verify-phase12-real.sh` の **ping 再試行**、`curl`/SSH が通るなら再実行。
 
 ### 順位ボード 納期アシスト UI（左2段スタック・モーダル z-index、2026-04-02 追補）
 
@@ -3227,7 +3235,7 @@ category: knowledge-base
 
 ### トラブルシューティング
 
-- **デプロイが Pi5 で止まる / ローカルだけ未 push エラー**: `update-all-clients.sh` の fail-fast（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）、リモートロック二重起動（deployment.md 2026-03-29 追記）を参照。
+- **デプロイが Pi5 で止まる / ローカルだけ未 push エラー**: `update-all-clients.sh` の fail-fast（[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）、リモートロック二重起動（[旧運用ガイド 2026-03-29 追記](../archive/deployments/legacy-operator-guide-through-2026-07.md)、現行の復旧は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）を参照。
 - **キオスクに新画面が出ない**: Pi5 のみ更新して Pi4 を更新していない、またはブラウザキャッシュ。**5 台すべて**順次更新後、kiosk-browser 再起動済みか Ansible ログの `kiosk-browser.service` を確認。
 - **順位ドロップダウンが選べない / 空**: 当該資源で **既に他行が 1〜10 を占有**していると、空き番＋現行値以外は選べない（生産スケジュールと同じ `order-usage` ルール）。**完了行**は順位変更を無効化。**占有行が画面に無い**場合は [§A+α 自動解放（2026-05-20）](#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20) を参照（次回 FKOJUNST/本体 CSV 同期で解放）。
 - **機種名がまだ空**: スケジュールと `history-progress` の両方に製番が無い、またはどちらも機種名フィールドが空。**データ側**の MH/SH 行・進捗同期を疑う（本 UI は補完のみ）。

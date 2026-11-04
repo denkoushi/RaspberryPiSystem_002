@@ -5,6 +5,40 @@ import { TRANSACTION_INCLUDE, positiveInteger, nonNegativeInteger, assertNfcUidA
 import { InventoryInsufficientStockError, InventoryConflictError } from './item-inventory.errors.js';
 import type { InventoryActor } from './item-inventory.errors.js';
 
+/** Re-evaluate on every stock or threshold change, inside the same locked transaction. */
+export function reorderStateAfterChange(stockQuantity: number, reorderPoint: number | null | undefined) {
+  return reorderPoint == null || stockQuantity > reorderPoint ? { reorderedAt: null } : {};
+}
+
+export async function setReorderPoint(db: PrismaClient, compartmentId: string, reorderPoint: number | null) {
+  if (reorderPoint !== null) {
+    nonNegativeInteger(reorderPoint, '発注点');
+    if (reorderPoint > 2147483647) throw new ApiError(400, '発注点が大きすぎます');
+  }
+  return runSerializable(db, async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${compartmentId} FOR UPDATE`);
+    const compartment = await tx.inventoryCompartment.findUnique({ where: { id: compartmentId } });
+    if (!compartment) throw new ApiError(404, '在庫区画が見つかりません');
+    return tx.inventoryCompartment.update({ where: { id: compartmentId }, data: {
+      reorderPoint, ...reorderStateAfterChange(compartment.stockQuantity, reorderPoint),
+    } });
+  });
+}
+
+export async function setOrdered(db: PrismaClient, compartmentId: string, ordered: boolean) {
+  return runSerializable(db, async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${compartmentId} FOR UPDATE`);
+    const compartment = await tx.inventoryCompartment.findUnique({ where: { id: compartmentId } });
+    if (!compartment) throw new ApiError(404, '在庫区画が見つかりません');
+    if (ordered && (compartment.reorderPoint == null || compartment.stockQuantity > compartment.reorderPoint)) {
+      throw new ApiError(400, '在庫が発注点以下のときだけ発注済みにできます');
+    }
+    return tx.inventoryCompartment.update({ where: { id: compartmentId }, data: {
+      reorderedAt: ordered ? compartment.reorderedAt ?? new Date() : null,
+    } });
+  });
+}
+
 export async function bindCompartment(db: PrismaClient, input: {
   itemId: string;
   shelfId: string;
@@ -138,7 +172,7 @@ export async function processStockTransaction(
       const createdAt = new Date();
       const updated = await tx.inventoryCompartment.update({
         where: { id: compartment.id },
-        data: { stockQuantity: afterQuantity, ...(input.restock ? {} : { lastIssuedAt: createdAt }) },
+        data: { stockQuantity: afterQuantity, ...reorderStateAfterChange(afterQuantity, compartment.reorderPoint), ...(input.restock ? {} : { lastIssuedAt: createdAt }) },
       });
       const transaction = await tx.inventoryTransaction.create({
         include: TRANSACTION_INCLUDE,
@@ -193,7 +227,7 @@ export async function cancelTransaction(db: PrismaClient, id: string, actor: Inv
       : undefined;
     await tx.inventoryCompartment.update({
       where: { id: compartment.id },
-      data: { stockQuantity: afterQuantity, ...(lastIssue === undefined ? {} : { lastIssuedAt: lastIssue?.createdAt ?? null }) },
+      data: { stockQuantity: afterQuantity, ...reorderStateAfterChange(afterQuantity, compartment.reorderPoint), ...(lastIssue === undefined ? {} : { lastIssuedAt: lastIssue?.createdAt ?? null }) },
     });
     return tx.inventoryTransaction.create({
       include: TRANSACTION_INCLUDE,
@@ -232,7 +266,7 @@ export async function correctStock(
       throw new InventoryConflictError('在庫が変わりました。もう一度数えてください');
     }
     const delta = desiredQuantity - compartment.stockQuantity;
-    await tx.inventoryCompartment.update({ where: { id: compartmentId }, data: { stockQuantity: desiredQuantity } });
+    await tx.inventoryCompartment.update({ where: { id: compartmentId }, data: { stockQuantity: desiredQuantity, ...reorderStateAfterChange(desiredQuantity, compartment.reorderPoint) } });
     return tx.inventoryTransaction.create({
       data: {
         action: InventoryTransactionAction.CORRECTION,
@@ -281,12 +315,19 @@ export async function replaceItemTag(db: PrismaClient, compartmentId: string, ui
       where: { uid: cleanUid },
       include: { compartment: { include: { inventoryItem: true, drawer: { include: { shelf: true } } } } },
     });
-    if (existing && existing.compartmentId !== compartmentId) {
+    // 解放済みのアイテムタグ（区画なし）は、bindCompartment と同じく再利用できる。
+    const isReleasedItemTag = existing?.kind === InventoryNfcTagKind.ITEM && !existing.compartmentId;
+    if (existing && existing.compartmentId !== compartmentId && !isReleasedItemTag) {
       const used = existing.compartment;
       throw new ApiError(409, 'このUIDは既に使用されています', used ? { usedBy: {
         itemName: used.inventoryItem.name, area: used.drawer.shelf.area,
         shelfNumber: used.drawer.shelf.shelfNumber, drawerNumber: used.drawer.drawerNumber,
       } } : undefined);
+    }
+    if (isReleasedItemTag) {
+      // 同じ解放済みタグを2台が同時に付け直しても、先に取った区画からタグを奪わない。
+      const claimed = await tx.inventoryNfcTag.updateMany({ where: { id: existing.id, compartmentId: null }, data: { compartmentId } });
+      if (claimed.count === 0) throw new ApiError(409, 'このUIDは既に使用されています');
     }
     if (compartment.itemTag && compartment.itemTag.uid !== cleanUid) {
       await tx.inventoryNfcTag.update({ where: { id: compartment.itemTag.id }, data: { compartmentId: null } });

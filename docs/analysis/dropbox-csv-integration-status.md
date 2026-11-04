@@ -2,7 +2,7 @@
 
 最終更新: 2025-12-17（Phase 3実装完了、管理画面UI実装完了、実機検証完了、トークンリフレッシュ修正完了、必須検証完了、エラーハンドリングテスト完了、ベストプラクティス実装完了）
 
-> **本番運用可否評価**: ✅ **本番運用可能**。必須検証（実際のデータファイルを使用したエンドツーエンドテスト、エラーハンドリングの確認）を完了。詳細は [phase3-production-readiness-assessment.md](../guides/phase3-production-readiness-assessment.md) と [phase3-mandatory-verification-results.md](../guides/phase3-mandatory-verification-results.md) を参照。
+> **本番運用可否評価**: ✅ **本番運用可能**。必須検証（実際のデータファイルを使用したエンドツーエンドテスト、エラーハンドリングの確認）を完了。詳細は [phase3-production-readiness-assessment.md](../archive/guides/phase3/phase3-production-readiness-assessment.md) と [phase3-mandatory-verification-results.md](../archive/guides/phase3/phase3-mandatory-verification-results.md) を参照。
 
 ## 概要
 
@@ -271,7 +271,7 @@
   - バックアップ失敗時のエラーハンドリング: ✅ 正常動作（履歴に記録される）
   - リストア失敗時のエラーハンドリング: ✅ 正常動作（存在しないパス、整合性検証失敗）
   - **修正完了**: バックアップ履歴の記録機能を追加（`executeAutoBackup`で`BackupHistoryService`を使用）、リストアAPIのパス処理を改善（`basePath`が含まれている場合、自動的に削除）
-  - 詳細は [phase3-mandatory-verification-results.md](../guides/phase3-mandatory-verification-results.md) / [phase3-error-handling-test-results.md](../guides/phase3-error-handling-test-results.md) / [phase3-complete-verification-summary.md](../guides/phase3-complete-verification-summary.md) を参照
+  - 詳細は [phase3-mandatory-verification-results.md](../archive/guides/phase3/phase3-mandatory-verification-results.md) / [phase3-error-handling-test-results.md](../archive/guides/phase3/phase3-error-handling-test-results.md) / [phase3-complete-verification-summary.md](../archive/guides/phase3/phase3-complete-verification-summary.md) を参照
 - ⏳ 本番運用への移行準備（長期運用テスト、監視・アラート設定、運用ドキュメント作成）
 - ⏳ E2Eテストの追加（フロントエンドとバックエンドを統合したE2Eテスト）
 
@@ -1080,12 +1080,12 @@
   - ✅ CRUD操作テスト完了（スケジュール作成・編集・削除）
   - ✅ スケジュール実行テスト完了（トークンリフレッシュ動作確認）
   - ✅ Dropboxトークンリフレッシュ修正完了（`refreshToken`の未渡しを修正）
-  - 詳細: [phase3-verification-checklist.md](../guides/phase3-verification-checklist.md)
-  - 実機検証結果: [phase3-complete-verification-summary.md](../guides/phase3-complete-verification-summary.md)
-  - 必須検証結果: [phase3-mandatory-verification-results.md](../guides/phase3-mandatory-verification-results.md)
-  - エラーハンドリングテスト結果: [phase3-error-handling-test-results.md](../guides/phase3-error-handling-test-results.md)
-  - 本番運用可否評価: [phase3-production-readiness-assessment.md](../guides/phase3-production-readiness-assessment.md)
-  - トークンリフレッシュ修正: [phase3-dropbox-token-refresh-fix.md](../guides/phase3-dropbox-token-refresh-fix.md)
+  - 詳細: [phase3-verification-checklist.md](../archive/guides/phase3/phase3-verification-checklist.md)
+  - 実機検証結果: [phase3-complete-verification-summary.md](../archive/guides/phase3/phase3-complete-verification-summary.md)
+  - 必須検証結果: [phase3-mandatory-verification-results.md](../archive/guides/phase3/phase3-mandatory-verification-results.md)
+  - エラーハンドリングテスト結果: [phase3-error-handling-test-results.md](../archive/guides/phase3/phase3-error-handling-test-results.md)
+  - 本番運用可否評価: [phase3-production-readiness-assessment.md](../archive/guides/phase3/phase3-production-readiness-assessment.md)
+  - トークンリフレッシュ修正: [phase3-dropbox-token-refresh-fix.md](../archive/guides/phase3/phase3-dropbox-token-refresh-fix.md)
 
 ## CI/CD必須化の実装計画
 

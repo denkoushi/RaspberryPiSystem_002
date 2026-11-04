@@ -1,9 +1,9 @@
 import { Fragment, useRef, useState } from 'react';
 
 import { saveInventoryMachineOrder, type InventoryMachine } from '../../../api/client';
-import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { PinIcon } from './InventoryIcons';
+import { inventoryMachineLabel } from './inventoryMachineLabel';
 import { messageFromError } from './inventoryPageModel';
 import { invEyebrow } from './inventoryUi';
 
@@ -23,7 +23,7 @@ export function InventoryMachinePicker({ machines, selectedId, editing, onEditin
     setOrderSource(machinesKey);
     setOrder(null);
   }
-  const [ghost, setGhost] = useState<{ name: string; width: number; x: number; y: number; dx: number; dy: number } | null>(null);
+  const [ghost, setGhost] = useState<{ name: string; number?: string; width: number; x: number; y: number; dx: number; dy: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const drag = useRef<{ id: string; before: InventoryMachine[]; order: InventoryMachine[] } | null>(null);
@@ -46,7 +46,7 @@ export function InventoryMachinePicker({ machines, selectedId, editing, onEditin
       <p className={invEyebrow}>使う加工機</p>
       <button type="button" aria-label="並び順を変える" aria-pressed={editing} disabled={disabled || saving || dragId !== null} onClick={() => onEditing(!editing)} className={`flex h-11 w-11 items-center justify-center rounded-xl border ${editing ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-transparent text-inv-muted'}`}><PinIcon size={20} /></button>
     </div>
-    <div role="group" aria-label="使う加工機" className={`grid min-h-0 flex-1 auto-rows-[56px] grid-cols-3 content-start gap-2 overflow-y-auto overscroll-contain rounded-xl ${nudge ? 'outline outline-2 outline-offset-[-2px] outline-inv-amber' : ''}`}
+    <div role="group" aria-label="使う加工機" className={`grid min-h-0 flex-1 ${editing ? 'auto-rows-[56px] gap-2' : 'auto-rows-[44px] gap-1.5'} grid-cols-3 content-start overflow-y-auto overscroll-contain rounded-xl ${nudge ? 'outline outline-2 outline-offset-[-2px] outline-inv-amber' : ''}`}
       onPointerMove={event => {
         const current = drag.current;
         if (!current) return;
@@ -60,21 +60,23 @@ export function InventoryMachinePicker({ machines, selectedId, editing, onEditin
         current.order = next;
         setOrder(next);
       }} onPointerUp={() => void finish()} onPointerCancel={() => void finish(true)} onLostPointerCapture={() => void finish(true)}>
-      {shown.map(machine => <button key={machine.id} type="button" data-machine-id={machine.id} aria-pressed={!editing && selectedId === machine.id} disabled={disabled || saving}
+      {shown.map(machine => {
+        const label = inventoryMachineLabel(machine, machines);
+        return <button key={machine.id} type="button" data-machine-id={machine.id} aria-pressed={!editing && selectedId === machine.id} disabled={disabled || saving}
         onPointerDown={event => {
           if (!editing || disabled || saving || !event.isPrimary || event.button !== 0) return;
           event.preventDefault();
           event.currentTarget.parentElement!.setPointerCapture(event.pointerId);
           const rect = event.currentTarget.getBoundingClientRect();
-          setGhost({ name: normalizeMachineName(machine.shortName || machine.name), width: rect.width, x: rect.left, y: rect.top, dx: event.clientX - rect.left, dy: event.clientY - rect.top });
+          setGhost({ ...label, width: rect.width, x: rect.left, y: rect.top, dx: event.clientX - rect.left, dy: event.clientY - rect.top });
           drag.current = { id: machine.id, before: shown, order: shown };
           setDragId(machine.id);
         }}
         onClick={() => { if (!editing) onSelect(machine.id); }}
-        className={`flex h-14 min-w-0 items-center justify-center rounded-xl border-[1.5px] px-1.5 text-center text-base font-extrabold leading-tight ${editing ? 'touch-none select-none cursor-grab border-dashed border-inv-cyan bg-inv-s1' : selectedId === machine.id ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-inv-s2'} ${dragId === machine.id ? 'opacity-40' : ''}`}>
-        <span className="line-clamp-2">{machineNameWords(normalizeMachineName(machine.shortName || machine.name))}</span>
-      </button>)}
+        className={`flex min-w-0 items-center justify-center border-[1.5px] px-1.5 text-center font-extrabold ${editing ? 'h-14 rounded-xl text-base leading-tight' : 'h-11 rounded-[10px] text-[15px] leading-[1.1]'} ${editing ? 'touch-none select-none cursor-grab border-dashed border-inv-cyan bg-inv-s1' : selectedId === machine.id ? 'border-inv-cyan bg-inv-cyan text-inv-cyan-ink' : 'border-inv-line2 bg-inv-s2'} ${dragId === machine.id ? 'opacity-40' : ''}`}>
+        <span className="line-clamp-2">{machineNameWords(label.name)}{label.number ? <> <span className={`inline-block text-xs ${!editing && selectedId === machine.id ? 'text-inv-cyan-ink' : 'text-inv-muted'}`}>{label.number}</span></> : null}</span>
+      </button>; })}
     </div>
-    {ghost ? <div aria-hidden="true" className="pointer-events-none fixed z-50 flex h-14 items-center justify-center rounded-xl border-[1.5px] border-inv-cyan bg-inv-s3 px-1.5 text-center text-base font-extrabold leading-tight text-inv-text shadow-xl" style={{ width: ghost.width, left: ghost.x, top: ghost.y }}><span className="line-clamp-2">{machineNameWords(ghost.name)}</span></div> : null}
+    {ghost ? <div aria-hidden="true" className="pointer-events-none fixed z-50 flex h-14 items-center justify-center rounded-xl border-[1.5px] border-inv-cyan bg-inv-s3 px-1.5 text-center text-base font-extrabold leading-tight text-inv-text shadow-xl" style={{ width: ghost.width, left: ghost.x, top: ghost.y }}><span className="line-clamp-2">{machineNameWords(ghost.name)}{ghost.number ? <> <span className="inline-block text-xs text-inv-muted">{ghost.number}</span></> : null}</span></div> : null}
   </div>;
 }

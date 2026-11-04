@@ -30,7 +30,7 @@ GitHub Actions artifact
 |---|---|---|---|---|
 | `scripts/update-all-clients.sh` | 引数を変更せず目的別launcherへexec | operator argv | process置換 | 10行以下、strict exec contract |
 | `scripts/deploy/standard-ansible-release.py` | parser、SHA/CI公開値解決、Ansible argv、既存systemd primitiveへの送信 | Git、inventory、GHCR、Ansible、SSH/systemd | Pi5 unit起動またはread-only plan/status | parser、target guard、argv、plan、detach/status、global flock contract |
-| `playbooks/deploy-release-standard.yml` | Pi5→Pi4→Pi3の順、group、`serial: 1`を宣言 | inventory、exact SHA、profile変数 | 選択hostのrole起動 | syntax、list-hosts、順序contract |
+| `playbooks/deploy-release-standard.yml` | Pi5→Pi4→Pi3の順、groupを宣言。server・signageは`serial: 1`、kioskは`[1, 5, '25%', '100%']`の波（torque cutover時は`serial: 1`） | inventory、exact SHA、profile変数 | 選択hostのrole起動 | syntax、list-hosts、順序contract |
 | `roles/release_pi5/defaults/main.yml` | Pi5の安定pathと時間budgetの既定値 | なし | 変数だけ、副作用なし | YAML/Jinja parse |
 | `roles/release_pi5/tasks/main.yml` | prepare→switch→health→rescue rollback→cleanup | 同roleのtask files | block/rescueの結果 | Ansible構造contract |
 | `roles/release_pi5/tasks/prepare.yml` | image、資源、migration ledger、slot identityを直接確認 | Docker、expand-only migration | inactive slot facts | role structure and migration contract |
@@ -75,7 +75,7 @@ Pi4/Pi3の`prepare.yml`をさらに細分化しない理由は、それぞれが
 
 - The public entrypoint is `scripts/update-all-clients.sh`; it execs `scripts/deploy/standard-ansible-release.py`.
 - The launcher owns target SHA, inventory, explicit host scope, systemd invocation, read-only plan, and status.
-- `deploy-release-standard.yml` is the only release playbook for the standard route and preserves server, kiosk, signage order with `serial: 1`.
+- `deploy-release-standard.yml` is the only release playbook for the standard route and preserves server, kiosk, signage order. Server and signage use `serial: 1`; kiosk uses the canary waves `[1, 5, '25%', '100%']` (`serial: 1` during torque cutover).
 - `release_pi5`, `release_kiosk`, and `release_signage` own their own prepare, switch, health, rollback, and cleanup semantics.
 - Pi3/Pi4 shared agent, systemd, artifact, and CI modules remain separate from the Pi5 role.
 - `fleet-release-state.lock`, `read_only_ansible_context.py`, and `safe_diagnostics.py` remain protected shared assets.

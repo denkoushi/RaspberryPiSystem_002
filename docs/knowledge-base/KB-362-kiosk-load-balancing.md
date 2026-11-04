@@ -3,9 +3,13 @@ title: KB-362 キオスク負荷調整（山崩し支援）画面
 tags: [kiosk, production-schedule, load-balancing, machine-monthly-load]
 audience: [開発者, 運用者]
 last-verified: 2026-07-07
+status: historical
+superseded_by: ../guides/kiosk-production-schedule-load-balancing.md
 ---
 
 # KB-362: キオスク負荷調整（山崩し支援）画面
+
+> **履歴（2026-11）**: 2026-09-30 以降、負荷調整は1画面（`GET /kiosk/production-schedule/load-balancing/workspace`）に統合され、3タブと旧 API（overview / suggestions / outsourcing-* / machine-monthly-load / start-date-leveling）は削除されました。本書の3タブ・旧 API・2026-05 の UI 調整の節は履歴です。現行仕様の正本は [ガイド §現行画面](../guides/kiosk-production-schedule-load-balancing.md#現行画面2026-09-30--1画面タブなし) です。生産システムとの突合は [KB-437（負荷調整×生産システム突合）](./KB-437-load-balancing-production-system-reconciliation.md) を正本とします。
 
 ## Context
 
@@ -43,9 +47,9 @@ last-verified: 2026-07-07
 
 **重要**: タブごとに「月」「負荷の載せ方」が異なる。混同すると集計が合わない。
 
-**生産システムとの関係**: 生産の積み上げグラフは **`FSIGENSHOYOYMD`（資源所要量）** 軸。キオスクは **着手日・納期** 軸。**数値一致は要件にしない**（2026-05-27 突合）。→ [KB-363](./KB-363-load-balancing-production-system-reconciliation.md) / [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
+**生産システムとの関係**: 生産の積み上げグラフは **`FSIGENSHOYOYMD`（資源所要量）** 軸。キオスクは **着手日・納期** 軸。**数値一致は要件にしない**（2026-05-27 突合）。→ [KB-437](./KB-437-load-balancing-production-system-reconciliation.md) / [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
 
-2026-07-07 より、資源CD俯瞰・機種別月次タブに非一致注記（`LoadBalancingProductionSystemNote`、`data-testid="load-balancing-production-system-note"`）を常時表示する（KB-363 未実施タスクの UI 明示に対応）。
+2026-07-07 より、資源CD俯瞰・機種別月次タブに非一致注記（`LoadBalancingProductionSystemNote`、`data-testid="load-balancing-production-system-note"`）を常時表示する（KB-437 未実施タスクの UI 明示に対応）。
 
 ## APIレイテンシ改善（2026-07-07 · winner 実体化）
 
@@ -76,7 +80,7 @@ last-verified: 2026-07-07
 | `outsourcing-plan`（POST） | — | 2.6s |
 | `suggestions`（POST） | — | 1.6s |
 
-## 機種別月次負荷 — 仕様（実装正本）
+## 機種別月次負荷 — 仕様（旧画面・履歴）
 
 ### 集計対象
 
@@ -111,7 +115,7 @@ last-verified: 2026-07-07
 | Web タブ | `LoadBalancingMachineMonthlyTab.tsx` |
 | ページシェル | `ProductionScheduleLoadBalancingPage.tsx`（タブ + Mac 代理） |
 
-## 着手日・平準化 — 仕様（実装正本）
+## 着手日・平準化 — 仕様（旧画面・履歴）
 
 ### 集計対象
 
@@ -130,7 +134,7 @@ last-verified: 2026-07-07
 
 - `GET/PUT /production-schedule-settings/load-balancing/work-calendars`
 
-## 資源CD俯瞰・外注候補シミュ — 仕様（実装正本）
+## 資源CD俯瞰・外注候補シミュ — 仕様（旧画面・履歴）
 
 ### 用語
 
@@ -514,7 +518,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 資源CD | `dy: +10` · 表示名 `dy: +28`（**同一原点**）· **実機 NG（CD/表示名重なり）** |
 | 下余白 | **96** |
 
-**→ 現行契約は [§現行 d0263cce](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--d0263cce)**
+**→ 現行契約は [§現行 da995573](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--da995573)**
 
 ## Production deploy（実績 2026-05-28 · 棒グラフX軸表示名を軸下へ · Pi5 のみ · 初版・CD 重なりあり）
 
@@ -589,7 +593,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 表示名 | **`rotationDeg: +90`** · `dy: 12` |
 | 下余白 | **76** |
 
-**→ 現行契約は [§現行 cb339bfa](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--cb339bfa)**
+**→ 現行契約は [§現行 da995573](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--da995573)**
 
 ## Production deploy（実績 2026-05-28 · 棒グラフX軸縦書き · Pi5 のみ · 初版・実機 NG）
 
@@ -1270,7 +1274,7 @@ curl -sk -X POST "${BASE}/api/kiosk/production-schedule/load-balancing/outsourci
 ## References
 
 - [ADR-20260527: 外注上限の単一正本](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)
-- [KB-363: 生産システム突合（2026-05-27）](./KB-363-load-balancing-production-system-reconciliation.md)
+- [KB-437: 生産システム突合（2026-05-27）](./KB-437-load-balancing-production-system-reconciliation.md)
 - [運用ガイド: kiosk-production-schedule-load-balancing.md](../guides/kiosk-production-schedule-load-balancing.md)
 - [deployment.md §集計修正 2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
 - [deployment.md §表示維持 2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)

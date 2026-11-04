@@ -250,7 +250,7 @@ private data for investigation; removing it requires separate approval.
 
 ## JPCERT/CC 注意喚起の毎時取り込み
 
-実装・検証記録: [JPCERT advisory investigation](../plans/jpcert-advisory-investigation.md)。
+実装: [`scripts/server/jpcert-advisories/fetch.py`](../../scripts/server/jpcert-advisories/fetch.py)、[`infrastructure/ansible/roles/server/tasks/jpcert-advisories.yml`](../../infrastructure/ansible/roles/server/tasks/jpcert-advisories.yml)。
 
 Pi5 の `jpcert-advisories-fetch.timer` が毎時（最大10分のランダム遅延、
 Persistent catch-up）RSS `https://www.jpcert.or.jp/rss/jpcert.rdf` を取得する。

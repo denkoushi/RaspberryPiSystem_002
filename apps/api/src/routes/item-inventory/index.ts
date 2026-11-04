@@ -470,6 +470,25 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { result };
   });
 
+  app.put('/item-inventory/compartments/:id/reorder-point', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = compartmentParams.parse(request.params);
+    const { reorderPoint } = z.object({ reorderPoint: z.number().int().min(0).max(2147483647).nullable() }).parse(request.body ?? {});
+    return { compartment: await services.inventory.setReorderPoint(id, reorderPoint) };
+  });
+
+  app.put('/item-inventory/compartments/:id/ordered', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = compartmentParams.parse(request.params);
+    const { ordered } = z.object({ ordered: z.boolean() }).parse(request.body ?? {});
+    return { compartment: await services.inventory.setOrdered(id, ordered) };
+  });
+
+  app.post('/item-inventory/compartments/:id/restock', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = compartmentParams.parse(request.params);
+    const body = z.object({ quantity: z.number().int().min(1).max(999999), idempotencyKey: z.string().trim().min(1).max(200).optional() }).parse(request.body ?? {});
+    const result = await services.inventory.processTouchTransaction({ ...body, compartmentId: id, restock: true, actor: await actor(request) });
+    return { ...result, transaction: { ...result.transaction, createdAt: result.transaction.createdAt.toISOString() } };
+  });
+
   app.put('/item-inventory/compartments/:id/location', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
     const { id } = compartmentParams.parse(request.params);
     const body = z.object({ drawerId: z.string().guid() }).parse(request.body ?? {});

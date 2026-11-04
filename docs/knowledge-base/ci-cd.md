@@ -11,7 +11,7 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 19件
+**件数**: 22件
 **索引**: [index.md](./index.md)
 
 ---
@@ -39,9 +39,10 @@ update-frequency: high
 - ローカル手順は `setup-env.ts` 冒頭を参照。base DB の接続 URL を渡す。別の同時 Vitest 実行と同じ DB / scratch prefix を共有しない。
 - 検証: 専用 Postgres（port 55432）で migrate、4 worker DB を作成し、full suite を `--maxWorkers=4` で実行して成功（2 回実行。945 passed / 19 skipped、約 271–322s）。`tsc --noEmit -p tsconfig.json` の TS6059 5件は既存。
 
+<a id="kb-451-route-integration-shared-fixture-postgres-test-local"></a>
 <a id="kb-396-route-integration-shared-fixture-postgres-test-local"></a>
 
-### [KB-396] route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失
+### [KB-451] route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失
 
 **発生日・反映**: 2026-07-05（main `d669dc53`、CI `28723350855` success、deploy `20260705-102444-13837` success）
 
@@ -68,9 +69,10 @@ update-frequency: high
 
 ---
 
+<a id="kb-450-import-replaceexisting-full-suite-flake"></a>
 <a id="kb-395-import-replaceexisting-full-suite-flake"></a>
 
-### [KB-395] API import `replaceExisting=true` 統合テストが full suite でだけ flake する
+### [KB-450] API import `replaceExisting=true` 統合テストが full suite でだけ flake する
 
 **発生日・反映**: 2026-07-05（main `d5c26eb1`、CI `28720917749` success）
 
@@ -108,6 +110,8 @@ update-frequency: high
 
 ### [KB-358] `api-db-and-infra` の Wait for PostgreSQL が flake する（`borrow_return` 等）
 
+> **旧ジョブ名**（現行: `api-db-and-infra` は [ci.yml](../../.github/workflows/ci.yml) にない。`Wait for PostgreSQL` は `api` / `db-infra` / `e2e-smoke` / `e2e-tests` の各ジョブにある）
+
 **発生日・反映**: 2026-04-27（PR [#203](https://github.com/denkoushi/RaspberryPiSystem_002/pull/203) 向け CI・run 例 `24990946449`）
 
 **事象**:
@@ -131,6 +135,8 @@ update-frequency: high
 
 **発生日・反映**: 2026-04-27（Mac から `update-all-clients.sh` 実行時）
 
+> **現行**: `scripts/update-all-clients.sh` は `python3 scripts/deploy/standard-ansible-release.py` を exec するラッパーになった。`python3` が解決できない場合はデプロイ自体が起動せず即失敗する（以下は 2026-04 時点の旧シェル実装の記録）。
+
 **事象**:
 - 標準出力に **`./scripts/update-all-clients.sh: line 904: …/pyenv/shims/python3: No such file or directory`** のような行が出る
 - **リモートの Ansible デプロイ自体は exit 0** で完走し得る（**ローカル側**のパイプ処理で `python3` を解決できない）
@@ -144,12 +150,14 @@ update-frequency: high
 - デプロイ結果の正本は Pi5 の **`logs/deploy/ansible-update-*.exit`** / **`PLAY RECAP`** で確認する
 
 **関連**:
-- [deployment.md §2026-04-27](../archive/deployments/legacy-operator-guide-through-2026-07.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
+- [deployment.md §2026-04-27](../archive/deployments/2026-04.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
 - `scripts/update-all-clients.sh`（`python3` パイプ箇所）
 
 ---
 
 ### [KB-353] GitHub Actions のジョブ分割と composite action による CI 高速化（2026-04-18）
+
+> **旧ジョブ名**（現行: `lint-build-unit` / `api-db-and-infra` / `security-docker` / `docker-build` は [ci.yml](../../.github/workflows/ci.yml) にない。主なジョブは `workspace-quality` / `api` / `api-coverage` / `web` / `db-infra` / `docker-security` / `e2e-smoke` / `e2e-tests`。pnpm audit は `scripts/ci/run-pnpm-bulk-audit.mjs`）
 
 **発生日・反映**: 2026-04-18（ブランチ `feat/ci-speed-quality-improvement`・コミット `5f4ac44d` 前後）
 
@@ -499,7 +507,8 @@ update-frequency: high
 
 ---
 
-### [KB-026] Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題
+<a id="kb-026-jinja2テンプレートでのbash構文エスケープとset--euo-pipefail環境での早期終了問題"></a>
+### [KB-439] Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題
 
 **EXEC_PLAN.md参照**: Phase 10 (リアルタイム監視強化)
 

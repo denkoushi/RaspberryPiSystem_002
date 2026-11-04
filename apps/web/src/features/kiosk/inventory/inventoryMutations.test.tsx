@@ -76,3 +76,13 @@ it('fetches the tag table at startup, on existing invalidation and every five mi
     expect(getInventoryTags).toHaveBeenCalledTimes(3);
   } finally { hook.unmount(); client.clear(); vi.useRealTimers(); }
 });
+
+
+it.each([['ISSUE', 4, true], ['RESTOCK', 5, true], ['RESTOCK', 6, false], ['CORRECTION', 6, false]] as const)('keeps cache order state aligned with %s to %s', async (action, afterQuantity, ordered) => {
+  const timestamp = '2026-11-04T00:00:00Z';
+  vi.mocked(processInventoryTouchTransaction).mockResolvedValue({ transaction: { ...transaction, action, afterQuantity }, replayed: false } as never);
+  const { client, hook, items } = setup();
+  client.setQueryData(['inventory-items'], [{ ...items[0], compartments: [{ ...items[0].compartments[0], reorderPoint: 5, reorderedAt: timestamp }] }]);
+  await act(async () => { await hook.result.current.touchTransaction.mutateAsync({ compartmentId: 'c1', quantity: 1 }); });
+  expect(client.getQueryData<InventoryItem[]>(['inventory-items'])![0].compartments[0].reorderedAt).toBe(ordered ? timestamp : null);
+});

@@ -22,6 +22,8 @@ Auth model recap (evidence-based): the web frontend attaches `x-client-key` on *
 
 ## Findings (by severity)
 
+> 2026-07 監査時点の判定（現行: OPEN 項目の最新状態は [Runbook](../runbooks/security-hardening-remediation.md) 各項目の Status 行を正とする）。
+
 ### Critical
 1. **Path traversal in photo/PDF storage** — `PhotoStorage.readPhoto`/`readThumbnailBuffer` and `pdf-pages` built file paths from URL input with no `..` containment. **FIXED** (Batch A).
 2. **Unauthenticated loan delete** — `DELETE /api/tools/loans/:id` executed with no JWT/role check. **FIXED** (Batch B).
@@ -33,7 +35,7 @@ Auth model recap (evidence-based): the web frontend attaches `x-client-key` on *
 6. **client-key gives blanket access to all photos/PDFs** (no per-resource ACL / IDOR). **OPEN** (needs signed-URL or ownership model; design change).
 7. **`clientId` / `performedByUserId` spoofing** on return/cancel — audit actor could be forged. **FIXED** (Batch B: `performedByUserId` now taken only from `request.user`).
 8. **`?clientId=` bypassed auth on `GET /loans/active`**. **FIXED** (Batch B).
-9. **Predictable client keys / `admin1234`** in seed, inventory, web fallback. **OPEN** (Batch C, rotation + deploy).
+9. **Predictable client keys / the seed default admin password** in seed, inventory, web fallback. **OPEN** (Batch C, rotation + deploy).
 10. **Kiosk PIN `2520` hardcoded fallback + no rate limit**. **PARTIALLY FIXED**: rate limit added (Batch A/C); legacy `2520` fallback removal is an operator action (needs a configured password first) — see Runbook.
 
 ### Medium (selected)
@@ -98,6 +100,34 @@ Design goal: legitimate kiosk (client-key) and admin (JWT) flows keep working; o
 - Codexレビューで履歴の `details.itemSnapshot.nfcTagUid` / `employeeSnapshot.nfcTagUid` が残ることを確認した。認証済み履歴readerへNFC識別子が返る経路であり、同じHTTP境界の修正としてdetails自体も表示用allowlistへ変更した。snapshotのID/code/name、資産のmanagementNumber、note/reason、photo、端末再割当、使用前点検のsourceは維持し、未知のnested fieldも除外する。DB内の監査snapshotは変更しない。
 - 合成unitの追加検査は修正前に2件失敗して再現した。DB統合でもADMIN/VIEWERの履歴レスポンスからNFC値・フィールドを除外し、借用・返却・取消後の表示名を維持する検査を追加した。修正後の最終commitに対するhosted CIとレビュー完了をmerge前の証拠とする。
 - 追加の非required `CodeQL` checkは既存alert #1 (`js/insufficient-password-hash`) を報告した。同じ位置・同じflowは既存main `d2549924` にもopenで存在する（初検出2026-04-21）。SHA256は `signage-render-storage.ts:20` の端末別cache filename生成に使われ、パスワード認証用の保存/照合ではない。処理・filename互換を変えず、alertのdismiss、source suppression、required check/rulesの変更は行っていない。この追加checkを成功と報告しない。
+
+## Batch C 完了記録（runbook から移設）
+
+[security-hardening-remediation Runbook](../runbooks/security-hardening-remediation.md) から完了済みの C-10〜C-12 を移した（2026-11-04）。
+
+### C-10. TalkPlaza vault files tracked in plaintext (Critical)
+
+- Finding (2026-10-12 security audit; the full report is kept in the private DGXSparkControlPlane repository under `docs/security/`): the three former TalkPlaza host vault files were committed **unencrypted** to the public repository from `0fd82a2f` (2026-01-14). They held seven API JWT and per-device client-key values. Slack/Dropbox entries were empty. The leaked values remain readable in git history and must never be reused.
+- Repository fix (branch `fix/talkplaza-vault-encrypt-rotate`): regenerate every value and encrypt the three files with `ansible-vault`; add `vault.yml.example` placeholders; remove the seven TalkPlaza `allowedPlaintext` entries from `security/production-secret-baseline.json` so CI fails closed if a plaintext vault reappears.
+- Status (2026-10-12): repository fix merged to main as #1935 (`7e289e51`); no dedicated TalkPlaza hardware was built, so the leaked values were never installed on any device or registered in the production database. Update (2026-10-30): the separate-site configuration was retired; see the [KB-159 decision](./infrastructure/ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則).
+
+### C-11. MFA re-enrollment with only an access token / pre-MFA refresh tokens (High)
+
+- Finding (2026-10-12 security audit, private report): `POST /api/auth/mfa/activate` replaced the TOTP secret and backup codes with nothing but a valid access token, so a stolen access token could take over MFA on an admin account. `POST /api/auth/refresh` also upgraded refresh tokens minted before MFA was enabled into MFA-passed sessions without ever presenting a code.
+- Repository fix: #1938 (merged main `39465206`). `activateMfa` now requires the login password and, when MFA is already enabled, a current TOTP code or backup code (error code `MFA_REAUTH_REQUIRED`). `refresh()` rejects a refresh token whose payload lacks `mfaEnabled` once the user has MFA enabled. The admin Security page collects the extra fields. No migration.
+- Status (2026-10-12): **deployed to Pi5** with the standard release of main `e86016dc` (run `20261012-031115-d47fd4`, systemd active/exited/success, recap failed=0 rescued=0, health 200). Rollback reference: previous Pi5 SHA `9f7aa316`.
+- Production verification (2026-10-12): confirmed by the operator on the Pi5 admin UI after the release above. Admin login works, and the
+  MFA setup screen asks for the login password before activation. Result: OK. No further action for this item.
+- Operator-visible changes: the MFA setup form asks for the password (and the current code on re-enrollment); admins who set up MFA before this release and still hold an old refresh token must log in again once. Access tokens issued before activation stay valid until they expire (15 min), which is accepted.
+- Verify: `pnpm --filter @raspi-system/api exec vitest run src/routes/__tests__/admin-mfa-enforcement.test.ts`; on the device, re-enrollment without the current code returns 401 `MFA_REAUTH_REQUIRED`.
+
+### C-12. Gmail HTML attachments rendered to PDF with JavaScript and network enabled (High)
+
+- Finding (2026-10-12 security audit, private report): the kiosk-documents Playwright adapter rendered untrusted mail HTML with scripts enabled and no request interception, so anyone who can mail the ingestion mailbox could make the API container fetch arbitrary URLs (SSRF toward the Docker network, the Pi, Tailscale peers).
+- Repository fix: #1937 (merged main `02aa9bb0`). The browser context is created with `javaScriptEnabled: false` and every request is aborted via `context.route('**/*', ...)` before `setContent`; inline content and `data:` URLs still render. The shared Chromium launch flags (`--no-sandbox`) are tracked separately under C-6.
+- Status (2026-10-12): **deployed to Pi5** in the same release as C-11 (main `e86016dc`, run `20261012-031115-d47fd4`).
+- Operator-visible changes: remote images, external CSS/fonts and scripts in mail HTML no longer appear in the generated PDF.
+- Verify: `pnpm --filter @raspi-system/api exec vitest run src/services/kiosk-documents` (the real-Chromium integration test runs in CI).
 
 ## Open Items
 

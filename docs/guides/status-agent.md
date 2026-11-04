@@ -3,6 +3,8 @@
 Raspberry Pi クライアントが 1 分間隔で `/api/clients/status` にメトリクスを送信するための常駐エージェントです。  
 CPU / メモリ / ディスク / 温度 / 稼働時間を計測し、`x-client-key` で Fastify API に報告します。
 
+> **適用範囲**: 本番の Pi4/Pi3 は標準 route（`release_kiosk` / `release_signage`）が status-agent・timer・`/etc/raspi-status-agent.conf` を配置する（[deployment.md](./deployment.md)）。§2〜4 の手動手順は開発端末と macOS 用で、本番端末の初回導入には使わない（[client-initial-setup.md](./client-initial-setup.md)）。
+
 ---
 
 ## 1. 前提条件
@@ -11,7 +13,7 @@ CPU / メモリ / ディスク / 温度 / 稼働時間を計測し、`x-client-k
 | --- | --- |
 | OS | Raspberry Pi OS (Debian 系。Python3 がプリインストール) |
 | 依存ツール | 追加パッケージ不要（標準ライブラリのみ） |
-| 配置先 | `/opt/RaspberryPiSystem_002/clients/status-agent` |
+| 配置先 | Pi4（`release_kiosk`）: `/usr/local/lib/raspi-status-agent/status-agent.py`／Pi3（`release_signage`）: `/usr/local/bin/raspi-signage-status-agent.pyz`／開発端末: リポジトリの `clients/status-agent` |
 | 設定ファイル | `/etc/raspi-status-agent.conf` |
 | 認証 | `clientDevice.apiKey` と同じ `x-client-key` |
 
@@ -238,5 +240,5 @@ rm ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist
 ## 8. 参考
 
 - 詳細なファイル構成・コメント付き手順: `clients/status-agent/README.md`
-- API 側の受け皿: `apps/api/src/routes/clients.ts`
+- API 側の受け皿: `apps/api/src/routes/clients/core.ts`（`POST /api/clients/status`）
 - 管理画面の実装タスク: `docs/plans/production-deployment-phase2-execplan.md`

@@ -37,11 +37,24 @@ describe('parseJstDate', () => {
     expect(parseJstDate(value)).toBeNull();
   });
 
-  it('rolls over out-of-range components instead of rejecting them', () => {
-    // NOTE: possible bug: month 13 / day 32 / hour 25 are accepted via Date.UTC overflow rather than rejected.
-    expect(parseJstDate('2026/13/1')?.toISOString()).toBe('2026-12-31T15:00:00.000Z');
-    expect(parseJstDate('2026/2/30')?.toISOString()).toBe('2026-03-01T15:00:00.000Z');
-    expect(parseJstDate('2026/1/1 25:00')?.toISOString()).toBe('2026-01-01T16:00:00.000Z');
+  it.each([
+    ['month 13', '2026/13/1'],
+    ['month 0', '2026/0/10'],
+    ['Feb 30', '2026/2/30'],
+    ['Feb 29 in a non-leap year', '2026/2/29'],
+    ['day 0', '2026/1/0'],
+    ['day 32', '2026/1/32'],
+    ['hour 24', '2026/1/1 24:00'],
+    ['hour 25', '2026/1/1 25:00'],
+    ['minute 60', '2026/1/1 10:60'],
+  ])('returns null for out-of-range %s instead of rolling over', (_label, value) => {
+    expect(parseJstDate(value)).toBeNull();
+  });
+
+  it('accepts the last valid day and time of each range', () => {
+    expect(parseJstDate('2028/2/29')?.toISOString()).toBe('2028-02-28T15:00:00.000Z');
+    expect(parseJstDate('2026/12/31 23:59')?.toISOString()).toBe('2026-12-31T14:59:00.000Z');
+    expect(parseJstDate('2026/4/30 0:00')?.toISOString()).toBe('2026-04-29T15:00:00.000Z');
   });
 });
 
@@ -55,6 +68,7 @@ describe('resolveUpdatedAt', () => {
   it.each([
     ['missing updatedAt', { other: 'x' }],
     ['unparseable updatedAt', { updatedAt: 'yesterday' }],
+    ['out-of-range updatedAt', { updatedAt: '2026/2/30 10:00' }],
     ['null rowData', null],
     ['array rowData', ['2026/4/1']],
     ['string rowData', '2026/4/1'],

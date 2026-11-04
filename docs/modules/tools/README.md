@@ -63,7 +63,7 @@
 - **Loan**: 貸出情報（itemId, employeeId, borrowedAt, returnedAt, clientId）
 - **Transaction**: トランザクション履歴（loanId, action, actorEmployeeId, details）
 
-詳細は [データベース設計](../../architecture/database.md#tools-module) を参照してください。
+詳細はデータベース定義（`apps/api/prisma/schema.prisma`）を参照してください。
 
 ## サービス層
 
@@ -273,7 +273,7 @@ GROUP BY l.id;
 
 **実装状況**: Phase 1-8完了（2025-12-17）。統合一覧ページ、アイテム一覧ページ、キオスク持出・返却画面、管理コンソール全ページ、工具管理全ページに提案3カラーパレットを適用完了。コントラスト比約21:1（WCAG AAA準拠）を達成。
 
-詳細は [UI視認性向上カラーテーマ要件定義](../../requirements/ui-visibility-color-theme.md) / [残タスク洗い出し](../../guides/ui-visibility-color-theme-remaining-tasks.md) を参照してください。
+詳細は [UI視認性向上カラーテーマ要件定義](../../requirements/ui-visibility-color-theme.md) / [残タスク洗い出し](../../archive/guides/ui-visibility-color-theme-remaining-tasks.md) を参照してください。
 
 ## 関連ドキュメント
 
@@ -282,6 +282,6 @@ GROUP BY l.id;
 - [運用・保守ガイド](./operations.md) - 運用・保守の詳細手順
 - [写真撮影持出機能](./photo-loan.md) - 写真撮影持出機能のモジュール仕様
 - [UI視認性向上カラーテーマ要件定義](../../requirements/ui-visibility-color-theme.md) - カラーテーマ要件の詳細
-- [EXEC_PLAN.md](../../EXEC_PLAN.md) - 全体の進捗とマイルストーン
+- [EXEC_PLAN.md](../../../EXEC_PLAN.md) - 全体の進捗とマイルストーン
 - [キオスク工具スキャン重複＆黒画像対策 ExecPlan](../../plans/tool-management-debug-execplan.md) - 既知の問題の詳細調査・対策計画
 - [アーキテクチャ概要](../../architecture/overview.md) - システム全体のアーキテクチャ

@@ -45,6 +45,26 @@ scripts/server/run-in-active-api.sh \
   node /app/apps/api/dist/scripts/verify-backups.js --mode=quarterly --max-age-days=110 --max-download-mb=50
 ```
 
+### 手動バックアップの実行（必要時）
+
+Pi5ホストで稼働中APIスロット内のloopbackから内部CLIを呼びます。`backup.json`で有効な`kind`/`source`完全一致のターゲットだけ実行できます。
+
+```bash
+cd /opt/RaspberryPiSystem_002
+scripts/server/run-in-active-api.sh \
+  node /app/host/apps/api/scripts/backup-internal-cli.mjs --kind csv --source employees --label manual-verify
+```
+
+管理者トークンでの実行は[バックアップ設定ガイド](./backup-configuration.md#手動バックアップの実行)を参照してください。
+
+### 設定ヘルスチェック
+
+設定の衝突・欠落は、管理コンソールのバックアップ設定の健全性表示、または次のAPIで事前に確認します（`apps/api/src/routes/backup/config-read.ts`）。
+
+```bash
+curl -sk https://localhost/api/backup/config/health -H "Authorization: Bearer <管理者トークン>"
+```
+
 ## 月次検証（毎月1回）
 
 ### 1. バックアップ履歴の確認（管理コンソール）
@@ -80,22 +100,16 @@ gunzip -t /opt/backups/db_backup_*.sql.gz
 ### 2. 証明書ファイルのリストアテスト
 
 - [ ] 証明書バックアップ（`tar.gz`）を展開
-- [ ] Caddyを再起動しHTTPS接続が成功する
+- [ ] 隔離環境で証明書を配置し、HTTPS接続が成功する
 
-```bash
-tar -xzf certs_backup_YYYYMMDD_HHMMSS.tar.gz -C /opt/RaspberryPiSystem_002/
-docker compose -f infrastructure/docker/docker-compose.server.yml restart caddy
-```
+本番の入口は blue/green project（`docker-compose.phase3.yml`）の`gateway`で、`docker-compose.server.yml`に`caddy`サービスはありません。本番Pi5のcontainerを手で再起動せず、復元確認は[Pi5 復旧訓練 Runbook](../runbooks/pi5-restore-drill.md)の隔離環境で行います。
 
 ### 3. 環境変数ファイルのリストアテスト
 
-- [ ] `.env`を復元してAPI再起動
+- [ ] 隔離環境で`.env`を復元してAPIを起動
 - [ ] ヘルスチェックが成功する
 
-```bash
-cp /opt/backups/api_env_YYYYMMDD_HHMMSS.env /opt/RaspberryPiSystem_002/apps/api/.env
-docker compose -f infrastructure/docker/docker-compose.server.yml restart api
-```
+本番APIは`api-blue`/`api-green`の稼働スロットで、`docker-compose.server.yml`の`api`は本番では動いていません。本番の`.env`はAnsibleが生成するため手で上書き・再起動せず、復元確認は[Pi5 復旧訓練 Runbook](../runbooks/pi5-restore-drill.md)の隔離環境で行います。
 
 ## 実施記録
 

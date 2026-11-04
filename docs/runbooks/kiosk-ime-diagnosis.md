@@ -1,10 +1,10 @@
 ---
-title: Runbook: キオスク備考欄 日本語入力不具合の診断
+title: "Runbook: キオスク備考欄 日本語入力不具合の診断"
 tags: [運用, キオスク, IME, IBus, 備考欄, 診断, runbook]
 audience: [運用者, 開発者]
 last-verified: 2026-03-01
 related:
-  - ../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md
+  - ../archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md
   - ../knowledge-base/frontend.md#kb-276
   - ../plans/kiosk-ime-remark-field-execplan.md
 category: runbooks
@@ -26,8 +26,8 @@ category: runbooks
 
 標準のPi4経路は `scripts/update-all-clients.sh` から
 `standard-ansible-release.py`、`deploy-release-standard.yml`、`release_kiosk`へ進む。
-`release_kiosk`は `infrastructure/ansible/roles/kiosk` をimportしないため、
-このRunbookのIME診断タスクや `roles/kiosk/tasks/firefox-chrome.yml` のFirefox profile customizationを
+`release_kiosk` は `infrastructure/ansible/roles/kiosk` のうち `resolve-browser`・`package-integrity`・`clamav` と、`--first-install` 時だけ `ibus`（`ibus_owner_mode: single-owner` 固定）を `include_role` で使う。
+このRunbookのIME診断タスクや `roles/kiosk/tasks/firefox-chrome.yml` のFirefox profile customizationは含まないため、
 デプロイ時に自動実行しない。標準routeの実行結果にIME診断出力が含まれるとは判断しない。
 
 一方、inventoryの `kiosk_browser_engine` / `kiosk_browser_mode` は標準routeの入力である。
@@ -80,7 +80,7 @@ standard routeが `roles/kiosk` のIME診断・Firefox profile customizationを�
 
 ## 診断結果の記録
 
-診断結果を [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) の「診断結果の記録」セクションに記入する。
+診断結果は `frontend.md`（集約ファイル。追記しない）ではなく、[KB テンプレート](../knowledge-base/_template.md) に従って新しい個別ファイル `docs/knowledge-base/KB-xxx-*.md` を作り、[KB 索引](../knowledge-base/index.md) に登録する。過去の経緯は [KB-287](../knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) を参照する。
 
 ## ブラウザengine選択の確認とrollback
 
@@ -102,7 +102,7 @@ health checksを再実行する。inventoryのengine選択を意図的に戻す�
 
 ## 関連ドキュメント
 
-- [KB-investigation-kiosk-schedule-regression-20260301.md](../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査対象の不具合と診断結果記録
+- [KB-investigation-kiosk-schedule-regression-20260301.md](../archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md): 調査対象の不具合と診断結果記録
 - [KB-412](../knowledge-base/KB-412-kiosk-firefox-focus-testmode-blocks-ime.md): IBus は正常なのに半角/全角が効かない場合（Firefox プロファイルの自動操作用設定、IME ログの取り方）
 - [frontend.md#KB-276](../knowledge-base/frontend.md#kb-276-pi4キオスクの日本語入力モード切替問題とibus設定改善): IBus 設定の過去履歴
 - [kiosk-ime-remark-field-execplan.md](../plans/kiosk-ime-remark-field-execplan.md): 実行計画

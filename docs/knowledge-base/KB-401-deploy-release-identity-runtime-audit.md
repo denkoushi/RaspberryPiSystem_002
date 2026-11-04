@@ -1,15 +1,12 @@
 ---
 id: KB-401
 title: Deploy release identity, activation, and runtime audit
-status: investigation-complete-implementation-go-live-no-go
+status: historical
+superseded_by: ../guides/deployment.md
 scope: standard Pi5, Kiosk, Signage, SSH Ansible, and experimental StoneBase Local Ansible release route
 date: 2026-07-21
-source_of_truth: true
+source_of_truth: false
 related_code:
-  - scripts/deploy/rolling_release/coordinator.py
-  - scripts/deploy/rolling_release/policy.py
-  - scripts/deploy/rolling_release/terminal_adapters.py
-  - scripts/deploy/rolling_release/route_contract.py
   - scripts/deploy/terminal-profile-registry.json
   - apps/web/src/layouts/KioskLayout.tsx
 related_docs:
@@ -18,13 +15,12 @@ related_docs:
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
   - ../plans/deploy-speed-phase-b-execplan.md
 validation: offline source audit, immutable Git range classification, 747 deploy Python tests, aggregate deploy contracts, 13 Kiosk ACK tests, pure typed-claim state model, and approved Pi5 plus StoneBase read-only evidence receipt f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
-open_items:
-  - implement the accepted typed-claim architecture through the staged ExecPlan
-  - keep every live retry and Local execution blocked until the offline acceptance gate passes
-  - request separate approval for the first Pi5 plus StoneBase canary only after that gate
+open_items: []
 ---
 
 # KB-401: Deploy release identity, activation, and runtime audit
+
+> **履歴（2026-11）**: この監査が対象とした rolling_release coordinator・terminal adapter・policy は削除済みで、2026-08-08 以降のデプロイは標準 Ansible route に置き換わりました。Go / No-Go は 2026-07-21 時点の判断です。現行手順は [deployment guide](../guides/deployment.md) を参照してください。
 
 ## Executive conclusion
 
@@ -346,7 +342,7 @@ authority. The manifest records the corrected command for future use.
 
 ## Go / No-Go decision
 
-Current split decision:
+Current split decision（2026-07-21 時点）:
 
 - **Go**: implement the accepted typed-claim/activation architecture offline in
   the dedicated staged ExecPlan.

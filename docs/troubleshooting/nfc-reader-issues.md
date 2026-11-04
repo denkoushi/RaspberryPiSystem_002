@@ -2,10 +2,10 @@
 
 ## 標準デプロイ後の確認順序（2026-03-05追加）
 
-`update-all-clients.sh` でデプロイした場合、nfc-agent は client role により自動で設定配布・起動されます。スキャンが反応しない場合は、以下を順に確認してください。
+`update-all-clients.sh` でデプロイした場合、nfc-agent は標準リリース（`release_kiosk` role）が配布したimageで起動します。稼働中のcontainerは compose project `docker`、compose ファイル `/etc/raspi-release/client-compose.yml`（root所有）で管理され、container名は `docker-nfc-agent-1` です。`infrastructure/docker/docker-compose.client.yml` で `up` / `down` / `--build` すると、標準リリースのimageではなくローカルビルドに置き換わるため行わないでください。設定やimageを直す場合は標準デプロイ（[deployment.md](../guides/deployment.md)）を再実行します。スキャンが反応しない場合は、以下を順に確認してください。
 
 1. **NFCエージェントのステータス**: `curl http://localhost:7071/api/agent/status`
-2. **Docker コンテナ**: `docker compose -f infrastructure/docker/docker-compose.client.yml ps`
+2. **Docker コンテナ**: `docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | grep -- '-agent-'`
 3. **pcscd**: `sudo systemctl status pcscd`
 4. **リーダー認識**: `pcsc_scan`（root または一般ユーザーで実行）
 
@@ -44,9 +44,10 @@ systemctl status nfc-agent
 NFCエージェントが起動していない場合、以下で手動起動してください：
 
 ```bash
-# Docker Compose で起動（推奨、標準デプロイと同じ方式）
-cd /opt/RaspberryPiSystem_002
-sudo scripts/client/setup-nfc-agent.sh
+# 標準デプロイ済みの端末: 既存containerを再起動する（設定・imageは変えない）
+docker restart docker-nfc-agent-1
+# containerが無い・設定が古い場合は、標準デプロイ（docs/guides/deployment.md）を再実行する。
+# scripts/client/setup-nfc-agent.sh は docker-compose.client.yml でローカルビルドするため、標準デプロイ済みの端末では使わない
 
 # または Poetry で直接起動（開発・診断用）
 cd /opt/RaspberryPiSystem_002/clients/nfc-agent
@@ -149,8 +150,7 @@ sudo apt install -y pcscd pcsc-tools
 sudo systemctl enable pcscd
 sudo systemctl start pcscd
 # pcscd 起動後、nfc-agent を再起動（起動時に pcscd ソケットを参照するため）
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.client.yml restart nfc-agent
+docker restart docker-nfc-agent-1
 ```
 
 #### 原因3: NFCリーダーが認識されていない
@@ -177,14 +177,7 @@ sudo systemctl restart pcscd
 #### 原因5: Webアプリのビルドが古い
 
 **解決方法**:
-```bash
-cd /opt/RaspberryPiSystem_002
-git pull origin main
-cd apps/web
-pnpm build
-# Dockerを使用している場合
-docker compose -f infrastructure/docker/docker-compose.client.yml up -d --build
-```
+キオスクのWebアプリはPi5から配信されます（`kiosk_url` は `server_base_url` の `/kiosk`）。Pi4上で `git pull` やビルドはしません。Pi5を標準デプロイ（[deployment.md](../guides/deployment.md)）で更新し、キオスク画面を再読込します。
 
 #### 原因6: Dockerコンテナ内からpcscdにアクセスできない
 
@@ -195,33 +188,22 @@ docker compose -f infrastructure/docker/docker-compose.client.yml up -d --build
 
 **原因**:
 - Dockerコンテナ内からホストの`pcscd`デーモンにアクセスするには、`/run/pcscd/pcscd.comm`ソケットファイルへのアクセスが必要
-- `docker-compose.client.yml`に`/run/pcscd`のマウントが設定されていない
+- 稼働中のcompose（`/etc/raspi-release/client-compose.yml`、テンプレートは `infrastructure/ansible/roles/release_kiosk/templates/client-compose.yml.j2`）に`/run/pcscd`のマウントが設定されていない
 
 **解決方法**:
 
 ```bash
-# 1. docker-compose.client.ymlを確認
-cat /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.client.yml
+# 1. 稼働中containerのマウントを確認（/run/pcscd が含まれていること）
+docker inspect --format '{{json .Mounts}}' docker-nfc-agent-1
 
-# 2. /run/pcscdのマウントが設定されているか確認
-# 以下のような設定が必要:
-# volumes:
-#   - /run/pcscd:/run/pcscd:ro
+# 2. 含まれていない場合、Pi4上でcomposeファイルを手編集しない。
+#    テンプレート（client-compose.yml.j2）の修正をPRで行い、標準デプロイで反映する
 
-# 3. 設定されていない場合、docker-compose.client.ymlを編集
-cd /opt/RaspberryPiSystem_002
-# volumesセクションに以下を追加:
-#   - /run/pcscd:/run/pcscd:ro
-
-# 4. コンテナを再作成
-docker compose -f infrastructure/docker/docker-compose.client.yml down nfc-agent
-docker compose -f infrastructure/docker/docker-compose.client.yml up -d nfc-agent
-
-# 5. コンテナ内からpcscdにアクセスできるか確認
+# 3. コンテナ内からpcscdにアクセスできるか確認
 docker exec docker-nfc-agent-1 ls -la /run/pcscd/
 # pcscd.comm が表示されればOK
 
-# 6. コンテナ内からリーダーが認識されるか確認
+# 4. コンテナ内からリーダーが認識されるか確認
 docker exec docker-nfc-agent-1 python -c "from smartcard.System import readers; print(list(readers()))"
 # ['SONY FeliCa RC-S300/S (1469193) 00 00'] が表示されればOK
 ```
@@ -295,7 +277,7 @@ sudo lsof -i :7071
 sudo pkill -9 -f nfc_agent
 
 # 3. Dockerコンテナを再起動
-docker compose -f infrastructure/docker/docker-compose.client.yml restart nfc-agent
+docker restart docker-nfc-agent-1
 ```
 
 ### デバッグ用コマンド
@@ -303,8 +285,8 @@ docker compose -f infrastructure/docker/docker-compose.client.yml restart nfc-ag
 #### NFCエージェントのログ確認
 
 ```bash
-# NFCエージェントのログを確認（実行中の場合）
-journalctl -u nfc-agent -f
+# NFCエージェントのログを確認（標準デプロイ済みの端末はDocker container）
+docker logs -f docker-nfc-agent-1
 
 # または、直接実行してログを確認
 cd /opt/RaspberryPiSystem_002/clients/nfc-agent

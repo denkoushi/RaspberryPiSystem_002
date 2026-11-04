@@ -25,12 +25,9 @@
    - 「OAuth 2」セクションを確認
    - 「Redirect URIs」に以下を追加：
      ```
-     http://<RaspberryPi5のIP>:8080/api/backup/oauth/callback
+     https://<Pi5のホスト名>/api/backup/oauth/callback
      ```
-     または、HTTPSを使用している場合：
-     ```
-     https://<RaspberryPi5のドメイン>/api/backup/oauth/callback
-     ```
+   - API の 8080 番はホストに公開されていない（Caddy の 443 経由だけ）。Redirect URI は `/api/backup/oauth/authorize` を呼んだときの `Host` から組み立てられるため、Step 4 で使うホスト名と同じものを登録する
 
 3. **App KeyとApp Secretをメモ**
    - 「App key」と「App secret」をコピーして保存
@@ -93,20 +90,7 @@
 
 ### Step 3: 環境変数の設定
 
-1. **`.env`ファイルを編集**
-   ```bash
-   cd /opt/RaspberryPiSystem_002/infrastructure/docker
-   nano .env
-   ```
-
-2. **環境変数を追加**
-   ```bash
-   DROPBOX_APP_KEY=your-app-key-here
-   DROPBOX_APP_SECRET=your-app-secret-here
-   DROPBOX_REFRESH_TOKEN=
-   ```
-
-   **注意**: この時点では`DROPBOX_REFRESH_TOKEN`は空にしておきます。次のステップで取得します。
+Pi5 の `infrastructure/docker/.env` は Ansible の `docker.env.j2` で再生成されるため、直接編集しない。`DROPBOX_APP_KEY` / `DROPBOX_APP_SECRET` / `DROPBOX_REFRESH_TOKEN` は Ansible Vault の `vault_dropbox_app_key` / `vault_dropbox_app_secret` / `vault_dropbox_refresh_token` に設定する（[外部連携運用台帳](./external-integration-ledger.md#dropbox連携)）。この時点ではリフレッシュトークンは未設定でよい。
 
 ### Step 4: OAuth 2.0フローでリフレッシュトークンを取得
 
@@ -115,7 +99,7 @@
 1. **認証URLを取得**
    ```bash
    # Macのターミナルから実行
-   curl -X GET "http://100.106.158.2:8080/api/backup/oauth/authorize" \
+   curl -X GET "https://<Pi5のホスト名>/api/backup/oauth/authorize" \
      -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>"
    ```
 
@@ -134,13 +118,13 @@
 
 3. **認証コードを取得**
    - リダイレクト後のURLから`code`パラメータを取得
-   - 例: `http://100.106.158.2:8080/api/backup/oauth/callback?code=abc123...&state=...`
+   - 例: `https://<Pi5のホスト名>/api/backup/oauth/callback?code=abc123...&state=...`
 
 4. **コールバックエンドポイントにアクセス**
    - ブラウザでリダイレクトURLにアクセス（自動的にリダイレクトされる）
    - または、手動でコールバックURLにアクセス：
      ```bash
-     curl -X GET "http://100.106.158.2:8080/api/backup/oauth/callback?code=<AUTHORIZATION_CODE>&state=<STATE>" \
+     curl -X GET "https://<Pi5のホスト名>/api/backup/oauth/callback?code=<AUTHORIZATION_CODE>&state=<STATE>" \
        -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>"
      ```
 
@@ -156,7 +140,7 @@
    ```bash
    # Macのターミナルから実行
    APP_KEY="your-app-key"
-   REDIRECT_URI="http://100.106.158.2:8080/api/backup/oauth/callback"
+   REDIRECT_URI="https://<Pi5のホスト名>/api/backup/oauth/callback"
    
    echo "https://www.dropbox.com/oauth2/authorize?client_id=${APP_KEY}&response_type=code&token_access_type=offline&redirect_uri=${REDIRECT_URI}"
    ```
@@ -171,7 +155,7 @@
    CODE="<AUTHORIZATION_CODE>"
    APP_KEY="your-app-key"
    APP_SECRET="your-app-secret"
-   REDIRECT_URI="http://100.106.158.2:8080/api/backup/oauth/callback"
+   REDIRECT_URI="https://<Pi5のホスト名>/api/backup/oauth/callback"
    
    curl -X POST "https://api.dropbox.com/oauth2/token" \
      -d "code=${CODE}" \
@@ -191,34 +175,24 @@
    }
    ```
 
-5. **環境変数に設定**
-   ```bash
-   # Raspberry Pi 5で実行
-   cd /opt/RaspberryPiSystem_002/infrastructure/docker
-   nano .env
-   
-   # DROPBOX_REFRESH_TOKENを設定
-   DROPBOX_REFRESH_TOKEN=your-refresh-token-here
-   ```
+5. **Ansible Vault に設定**
+   - 取得したリフレッシュトークンを `vault_dropbox_refresh_token` に設定する（Step 3 と同じ）
 
-### Step 5: APIコンテナの再起動
+### Step 5: 設定の反映
 
-```bash
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml restart api
-```
+標準デプロイ（[deployment.md](./deployment.md)）は Pi5 の既存の `.env` をそのまま使い、Vault の値から作り直さない。`.env` を作り直すのは `infrastructure/ansible/roles/server` の `docker.env.j2` だけで、標準デプロイはこの role を実行しない。Vault を更新しただけでは新しい値は API に届かないため、server role を流す専用 playbook を Mac の main checkout から `--check --diff` で確かめてから実行するか、運用者に反映方法を確認する。コンテナを個別に再起動しない。
 
 ### Step 6: 動作確認
 
 1. **設定ファイルの読み込み確認**
    ```bash
-   curl -X GET "http://100.106.158.2:8080/api/backup/config" \
+   curl -X GET "https://<Pi5のホスト名>/api/backup/config" \
      -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>"
    ```
 
 2. **手動バックアップの実行**
    ```bash
-   curl -X POST "http://100.106.158.2:8080/api/backup" \
+   curl -X POST "https://<Pi5のホスト名>/api/backup" \
      -H "Authorization: Bearer <ADMIN_ACCESS_TOKEN>" \
      -H "Content-Type: application/json" \
      -d '{
@@ -229,7 +203,8 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 
 3. **ログを確認**
    ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep Dropbox
+   # 稼働中のスロットは bluegreen-api-blue-1 / bluegreen-api-green-1 のどちらか
+   for c in bluegreen-api-blue-1 bluegreen-api-green-1; do docker logs "$c" 2>&1 | grep Dropbox; done
    ```
 
 ## トラブルシューティング
@@ -237,7 +212,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 ### 認証URLが生成できない
 
 - **原因**: App KeyまたはApp Secretが設定されていない
-- **解決策**: `.env`ファイルと`backup.json`を確認
+- **解決策**: Ansible Vault の Dropbox 変数と`backup.json`を確認
 
 ### 認証コードの交換に失敗する
 
@@ -260,6 +235,8 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 
 ### 設定ファイルへの書き込みエラー（EROFS: read-only file system）
 
+> 過去の記録（2025-12）。現行の `docker-compose.phase3.yml` は `config` を `:ro` なしでマウントしている。本番APIはblue/green構成のため、下記の `docker-compose.server.yml` を編集・`restart api` する手順は現行では使わない（反映は [deployment.md](./deployment.md) の標準経路）。
+
 - **エラーメッセージ**: `EROFS: read-only file system, open '/app/config/backup.json'`
 - **原因**: Docker Composeのconfigボリュームが読み取り専用（`:ro`）でマウントされている
 - **解決策**: 
@@ -276,7 +253,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
      ```bash
      docker compose -f infrastructure/docker/docker-compose.server.yml restart api
      ```
-- **参考**: [KB-099](../knowledge-base/infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題)
+- **参考**: [バックアップ機能のモジュール化・Dropbox統合 ExecPlan](../plans/backup-modularization-execplan.md#2025-12-15-1201-oauth-20実機検証完了)
 
 ## セキュリティに関する注意事項
 
@@ -292,8 +269,19 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
    - リフレッシュトークンが有効であることを定期的に確認
    - エラーログを監視
 
+## 付録: 開発用 Dropbox 統合テスト（実API）
+
+`apps/api/src/services/backup/__tests__/dropbox-storage.integration.test.ts` は実際の Dropbox API を使う。`DROPBOX_ACCESS_TOKEN` と `DROPBOX_ENABLE_LIVE_TEST=1` の両方がある場合だけ実行され、それ以外（CI を含む）は skip される。
+
+```bash
+cd apps/api
+DROPBOX_ENABLE_LIVE_TEST=1 DROPBOX_ACCESS_TOKEN=<開発用アクセストークン> pnpm exec vitest run src/services/backup/__tests__/dropbox-storage.integration.test.ts
+```
+
+トークンは `.env` へ書かずシェル変数で渡し、コミットしない。成功時は upload/download、list、BackupService 経由の backup/restore の3テストが通る。
+
 ## 参考資料
 
 - [Dropbox OAuth Guide](https://developers.dropbox.com/oauth-guide)
 - [Using OAuth 2.0 with offline access](https://dropbox.tech/developers/using-oauth-2.0-with-offline-access)
-- [Dropbox OAuth 2.0ポリシー適合性ガイド](./dropbox-oauth-policy-compliance.md)
+- [Dropbox OAuth 2.0ポリシー適合性ガイド](../archive/guides/dropbox-oauth-policy-compliance.md)

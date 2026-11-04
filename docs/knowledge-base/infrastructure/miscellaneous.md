@@ -11,7 +11,7 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - その他
 
 **カテゴリ**: インフラ関連 > その他  
-**件数**: 18件  
+**件数**: 24件  
 **索引**: [index.md](../index.md)
 
 その他のインフラ関連トラブルシューティング情報
@@ -39,8 +39,9 @@ update-frequency: medium
 **解決状況**: ✅ **解決済み**（2025-11-24）
 
 **関連ファイル**: 
-- `clients/nfc-agent/src/nfc_agent/queue.py`
-- `clients/nfc-agent/src/nfc_agent/agent.py`
+- `clients/nfc-agent/nfc_agent/queue_store.py`
+- `clients/nfc-agent/nfc_agent/main.py`
+- `clients/nfc-agent/nfc_agent/resend_worker.py`
 
 ---
 
@@ -514,7 +515,7 @@ update-frequency: medium
 
 ### [KB-070] 運用モード可視化（ネットワークモード自動検出API）
 
-**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../../plans/security-hardening-execplan.md)
 
 **事象**: 
 - 現在の運用モード（Tailscale/ローカル緊急）が分からない
@@ -1139,7 +1140,7 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 - 安定後に退避フォルダ削除で容量回収
 - 再発時は状態DBのみ内蔵SSD・インデックス除外・KB-212 整理を検討
 
-**詳細（正本）**: [KB-388-cursor-state-db-corruption-external-ssd-recovery.md](../KB-388-cursor-state-db-corruption-external-ssd-recovery.md)
+**詳細（正本）**: [KB-388-cursor-state-db-corruption-external-ssd-recovery.md](../../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)
 
 **関連**: KB-212（チャットログの選択削除）· [mac-storage-migration](../../guides/mac-storage-migration.md)
 
@@ -1149,7 +1150,7 @@ python3 ~/RaspberryPiSystem_002/clients/status-agent/status-agent-macos.py
 
 **発生日**: 2026-01-28
 
-**関連（2026-06-06）**: DB 破損・全体復旧は [KB-388](../KB-388-cursor-state-db-corruption-external-ssd-recovery.md)。KB-212 は **履歴の選択削除**、KB-388 は **破損DBの退避と再生成**。
+**関連（2026-06-06）**: DB 破損・全体復旧は [KB-388](../../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)。KB-212 は **履歴の選択削除**、KB-388 は **破損DBの退避と再生成**。
 
 **事象**: 
 - Cursorのチャットログが約27GBと非常に大きくなり、ストレージを圧迫している
