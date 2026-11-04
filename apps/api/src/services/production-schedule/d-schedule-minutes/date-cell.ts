@@ -11,15 +11,22 @@ export function calendarDate(year: number, month: number, day: number): string |
     ? date.toISOString().slice(0, 10) : null;
 }
 
-export function nearestDate(month: number, day: number, meetingDate: string, onAmbiguous?: () => void): string | null {
+export function inferDate(month: number, day: number, meetingDate: string, onAmbiguous?: () => void): string | null {
   const year = Number(meetingDate.slice(0, 4));
-  const candidates = [year - 1, year, year + 1]
+  const reference = new Date(meetingDate);
+  const edge = (months: number) => Date.UTC(year, reference.getUTCMonth() + months,
+    Math.min(reference.getUTCDate(), new Date(Date.UTC(year, reference.getUTCMonth() + months + 1, 0)).getUTCDate()));
+  const lower = edge(-4);
+  const upper = edge(8);
+  const date = [year - 1, year, year + 1]
     .map((candidate) => calendarDate(candidate, month, day))
-    .filter((date): date is string => date !== null)
-    .sort((a, b) => Math.abs(Date.parse(a) - Date.parse(meetingDate)) - Math.abs(Date.parse(b) - Date.parse(meetingDate)));
-  if (candidates.length > 1 && Math.abs(Math.abs(Date.parse(candidates[1]) - Date.parse(meetingDate))
-    - Math.abs(Date.parse(candidates[0]) - Date.parse(meetingDate))) <= 30 * 86400000) onAmbiguous?.();
-  return candidates[0] ?? null;
+    .find((candidate) => candidate !== null && Date.parse(candidate) >= lower && Date.parse(candidate) < upper);
+  if (!date) return null;
+  if (Math.min(Date.parse(date) - lower, upper - Date.parse(date)) <= 15 * 86400000) {
+    onAmbiguous?.();
+    return null;
+  }
+  return date;
 }
 
 export function plausibleDate(date: string, meetingDate: string): boolean {
@@ -37,7 +44,7 @@ export function formulaWithoutResult(cell: ExcelJS.Cell): boolean {
     && (cell.master.result === undefined || cell.master.result === null));
 }
 
-export function readDate(cell: ExcelJS.Cell, meetingDate: string, date1904: boolean | undefined, onAmbiguous?: () => void): {
+export function readDate(cell: ExcelJS.Cell, meetingDate: string, date1904: boolean | undefined, onAmbiguous?: () => void, strict = false): {
   date: string | null; marks: string[]; memo: string | null; invalid: boolean;
 } {
   let value = cell.master.value;
@@ -47,7 +54,7 @@ export function readDate(cell: ExcelJS.Cell, meetingDate: string, date1904: bool
   const checked = (date: string | null) => date && plausibleDate(date, meetingDate)
     ? { ...empty, date } : { ...empty, invalid: true };
   if (!text || text === '無し' || text === '-') return empty;
-  if (/※|発注/.test(text)) return { ...empty, memo: text };
+  if (!strict && /※|発注/.test(text)) return { ...empty, memo: text };
   if (value instanceof Date) {
     return checked(Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : null);
   }
@@ -59,10 +66,14 @@ export function readDate(cell: ExcelJS.Cell, meetingDate: string, date1904: bool
     const date = new Date(epoch + (days - (!date1904 && days > 60 ? 1 : 0)) * 86400000);
     return checked(Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : null);
   }
-  const match = text.match(/^(?:[^\d/]*?)?(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})(?:\s*\(([A-Z]+)\))?$/);
+  const match = text.match(strict
+    ? /^(?:確定\s*)?(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})(?:\s*\(([A-Z]+)\))?$/
+    : /^(?:[^\d/]*?)?(?:(\d{4})\/)?(\d{1,2})\/(\d{1,2})(?:\s*\(([A-Z]+)\))?$/);
   if (!match) return { ...empty, invalid: true };
+  let ambiguous = false;
   const date = match[1] ? calendarDate(Number(match[1]), Number(match[2]), Number(match[3]))
-    : nearestDate(Number(match[2]), Number(match[3]), meetingDate, onAmbiguous);
+    : inferDate(Number(match[2]), Number(match[3]), meetingDate, () => { ambiguous = true; onAmbiguous?.(); });
+  if (ambiguous) return empty;
   const result = checked(date);
   return { ...result, marks: result.date ? [...(match[4] ?? '')] : [] };
 }

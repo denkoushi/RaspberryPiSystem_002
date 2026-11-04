@@ -22,7 +22,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
     csvDashboardRow: { findFirst: ({ where }: { where: { rowData: { equals: string } } }) =>
       mocks.rawRows.find((row) => row.rowData.FSEIBAN === where.rowData.equals) },
     productionScheduleDScheduleMinutesImportRun: {
-      findUnique: () => null, create: () => mocks.run,
+      findUnique: () => null, findFirst: () => null, create: () => mocks.run,
       update: ({ data }: { data: object }) => Object.assign(mocks.run, data)
     },
     productionScheduleDScheduleMinutes: { findUnique: () => null, upsert: vi.fn() },
@@ -138,6 +138,24 @@ describe('D schedule automatic registration', () => {
     await register([block('KEEP')]);
     expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'KEEP']);
     expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B', 'STALE', 'KEEP']);
+    expect(mocks.history).toEqual(['MANUAL-H', 'KEEP']);
+    expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual(['KEEP']);
+  });
+
+  it.each(['BLOCK_SHAPE', 'DUPLICATE_SEIBAN', 'UNREADABLE_ALIAS', 'FORMULA_NO_RESULT'])('retains warning-only ownership for %s until truly absent without adding warning-only keys', async (code) => {
+    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['SKIPPED'], B: ['SKIPPED'] }, searchHistory: ['SKIPPED'] } };
+    mocks.boards.A.seibanOrder.push('SKIPPED'); mocks.boards.B.seibanOrder.push('SKIPPED'); mocks.history.push('SKIPPED');
+    mocks.run.warnings = ['SKIPPED', 'NEW-SKIPPED', null].map((seiban) => ({ code, seiban, cell: 'B8', rawText: null }));
+    await register([block('KEEP')]);
+    for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).toContain('SKIPPED');
+    expect(mocks.history).toEqual(['MANUAL-H', 'SKIPPED', 'KEEP']);
+    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: ['SKIPPED', 'KEEP'], B: ['SKIPPED', 'KEEP'] }, searchHistory: ['SKIPPED', 'KEEP'] });
+    for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).not.toContain('NEW-SKIPPED');
+
+    mocks.previous = { autoRegisteredSeibans: structuredClone(mocks.run.autoRegisteredSeibans) };
+    mocks.run = { ...mocks.run, status: 'APPLIED', warnings: [], autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
+    await register([block('KEEP')]);
+    for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).not.toContain('SKIPPED');
     expect(mocks.history).toEqual(['MANUAL-H', 'KEEP']);
     expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual(['KEEP']);
   });

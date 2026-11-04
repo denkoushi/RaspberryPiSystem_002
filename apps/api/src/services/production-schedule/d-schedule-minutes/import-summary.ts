@@ -21,7 +21,8 @@ export type DScheduleMinutesSummary = {
 };
 
 export function summarizeMinutes(metrics: DScheduleMinutesMetrics | undefined, warnings: DScheduleMinutesWarning[], autoRegistrationSkipped?: 'STALE_FILE'): DScheduleMinutesSummary {
-  const skippedCodes = new Set(['UNREADABLE_DATE', 'INVALID_SEIBAN', 'UNKNOWN_STAR', 'FORMULA_NO_RESULT', 'MERGED_ACROSS_BLOCKS', 'BLOCK_SHAPE', 'STALE_FILE']);
+  // LARGE_DUE_CHANGE is written successfully, so it remains a warning without a skipped count.
+  const skippedCodes = new Set(['UNREADABLE_DATE', 'INVALID_SEIBAN', 'UNKNOWN_STAR', 'FORMULA_NO_RESULT', 'MERGED_ACROSS_BLOCKS', 'BLOCK_SHAPE', 'STALE_FILE', 'DUPLICATE_SEIBAN', 'MERGED_ACROSS_HEADERS', 'UNREADABLE_ALIAS', 'AMBIGUOUS_YEAR']);
   return {
     seibansRead: metrics?.seibansRead ?? 0, dateChanged: metrics?.dateChanged ?? 0, unchanged: metrics?.unchanged ?? 0,
     autoRegistered: metrics?.registeredSeibans.length ?? 0, unregistered: metrics?.unregisteredSeibans.length ?? 0,

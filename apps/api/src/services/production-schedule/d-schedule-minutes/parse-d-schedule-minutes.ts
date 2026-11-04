@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 
-import { calendarDate, cellText, formulaWithoutResult, nearestDate, normalize, plausibleDate, readDate } from './date-cell.js';
+import { calendarDate, cellText, formulaWithoutResult, inferDate, normalize, readDate } from './date-cell.js';
 
 export type DScheduleMinutesBlock = {
   seiban: string;
@@ -26,7 +26,7 @@ const headerLabel = (text: string): string | null => {
   if (headers.has(compact)) return compact;
   return compact.startsWith('MEMO') ? 'MEMO' : null;
 };
-const hidden = (item: ExcelJS.Row | ExcelJS.Column): boolean => Boolean(item.hidden || ((item.outlineLevel ?? 0) > 0 && item.collapsed));
+const hidden = (item: ExcelJS.Row | ExcelJS.Column): boolean => Boolean(item.hidden);
 
 export async function parseDScheduleMinutesXlsx(input: {
   buffer: Buffer; filename: string; receivedAt: Date | null;
@@ -49,7 +49,8 @@ export async function parseDScheduleMinutesXlsx(input: {
     warnings.push({ code: 'FILENAME_DATE_MISMATCH', seiban: null, cell: null, rawText: null });
   }
   const seibanText = (cell: ExcelJS.Cell) => normalize(cellText(cell)).toUpperCase();
-  const seibanPattern = /^([A-Z0-9]{8})(?:\s*\(([A-Z0-9]{8})\))?$/;
+  const seibanPattern = /^([A-Z0-9]{8})(?=$|[\s(/])(.*)$/s;
+  const aliasPattern = /^\s*\(([A-Z0-9]{8})\)$/;
   const shapeValid = (sheet: ExcelJS.Worksheet, row: number, col: number) => {
     const key = seibanText(sheet.getCell(row, col));
     return seibanPattern.test(key) && [0, 1, 2, 3].every((offset) => {
@@ -61,8 +62,9 @@ export async function parseDScheduleMinutesXlsx(input: {
     });
   };
   const sheetName = (candidate: ExcelJS.Worksheet) => normalize(candidate.name).replace(/\s+/g, '');
-  const exact = workbook.worksheets.filter((candidate) => sheetName(candidate) === '日程表');
-  const candidates = exact.length ? exact : workbook.worksheets.filter((candidate) => sheetName(candidate).includes('日程表'));
+  const visibleSheets = workbook.worksheets.filter((candidate) => candidate.state === 'visible');
+  const exact = visibleSheets.filter((candidate) => sheetName(candidate) === '日程表');
+  const candidates = exact.length ? exact : visibleSheets.filter((candidate) => sheetName(candidate).includes('日程表'));
   const validBlockCount = (candidate: ExcelJS.Worksheet) => {
     let col = 0;
     for (let row = 1; row <= Math.min(30, candidate.rowCount) && !col; row++) {
@@ -72,11 +74,13 @@ export async function parseDScheduleMinutesXlsx(input: {
     if (col) for (let row = 1; row <= candidate.rowCount; row++) if (shapeValid(candidate, row, col)) count++;
     return count;
   };
-  const sheet = [...candidates].sort((a, b) => validBlockCount(b) - validBlockCount(a))[0] ?? workbook.worksheets[0];
+  const sheet = [...candidates].sort((a, b) => validBlockCount(b) - validBlockCount(a))[0] ?? visibleSheets[0];
   if (candidates.length > 1) warnings.push({ code: 'MULTIPLE_SCHEDULE_SHEETS', seiban: null, cell: null, rawText: null });
   if (!sheet) return fatal('MISSING_HEADERS');
   const columns = new Map<string, number>();
   const headerRows = new Map<string, number>();
+  const requiredHeaders = new Map<string, Set<string>>();
+  const headerColumns = new Set<number>();
   let dayRow = 0;
   let bestCount = 0;
   for (let row = 1; row <= Math.min(30, sheet.rowCount); row++) {
@@ -84,12 +88,21 @@ export async function parseDScheduleMinutesXlsx(input: {
     sheet.getRow(row).eachCell((cell, column) => {
       const text = normalize(cellText(cell));
       const label = headerLabel(text);
+      if (label) headerColumns.add(Number(cell.master.col));
       // The 製番 key column (B) is hidden in the real sheets; only its value cells identify blocks.
       const visible = label === '製番' || (!hidden(sheet.getRow(row)) && !hidden(sheet.getColumn(column)));
+      if (label && ['製番', '部品完成'].includes(label)) {
+        const cells = requiredHeaders.get(label) ?? new Set<string>();
+        cells.add(cell.master.address);
+        requiredHeaders.set(label, cells);
+      }
       if (label && visible && !columns.has(label)) { columns.set(label, column); headerRows.set(label, Number(cell.master.row)); }
       if (/^(?:[1-9]|[12]\d|3[01])$/.test(text)) count++;
     });
     if (count > bestCount) { bestCount = count; dayRow = row; }
+  }
+  for (const [label, cells] of requiredHeaders) {
+    if (cells.size > 1) return fatal(`DUPLICATE_REQUIRED_HEADER: ${label} (${[...cells].join(', ')})`);
   }
   if (!columns.has('製番') || !columns.has('部品完成')) return fatal('MISSING_HEADERS');
   const warn = (code: string, seiban: string | null, cell: ExcelJS.Cell): void => {
@@ -113,10 +126,13 @@ export async function parseDScheduleMinutesXlsx(input: {
       if (Number(day) < previousDay && month === previousMonth) return fatal('UNDETERMINABLE_CALENDAR');
       previousDay = Number(day);
       previousMonth = month;
-      const date = month === null ? null : nearestDate(month, Number(day), meetingDate, () => warn('AMBIGUOUS_YEAR', null, sheet.getCell(dayRow, col)));
-      if (!date) return fatal('UNDETERMINABLE_CALENDAR');
-      if (!plausibleDate(date, meetingDate)) warn('UNREADABLE_DATE', null, sheet.getCell(dayRow, col));
-      calendar.set(col, plausibleDate(date, meetingDate) ? date : null);
+      let ambiguous = false;
+      const date = month === null ? null : inferDate(month, Number(day), meetingDate, () => {
+        ambiguous = true;
+        warn('AMBIGUOUS_YEAR', null, sheet.getCell(dayRow, col));
+      });
+      if (!date && !ambiguous) return fatal('UNDETERMINABLE_CALENDAR');
+      calendar.set(col, date);
     }
   }
   if (!calendar.size) return fatal('UNDETERMINABLE_CALENDAR');
@@ -135,10 +151,20 @@ export async function parseDScheduleMinutesXlsx(input: {
   for (let row = 1; row <= sheet.rowCount; row++) {
     if (shapeValid(sheet, row, seibanColumn)) { firstValidBlock = row; break; }
   }
+  const coveredRows = new Set<number>();
   for (let row = 1; row <= sheet.rowCount; row++) {
-    if (normalize(cellText(sheet.getCell(row, 1))) !== '1') continue;
-    if (!safeCell(row, 1, row, null)) continue;
     const seibanCell = sheet.getCell(row, seibanColumn);
+    if (normalize(cellText(sheet.getCell(row, 1))) !== '1') {
+      const match = seibanText(seibanCell).match(seibanPattern);
+      if (match && !coveredRows.has(row) && !hidden(sheet.getRow(row))) {
+        warn('BLOCK_SHAPE', match[1], seibanCell);
+        for (let offset = 0; offset < 4; offset++) coveredRows.add(row + offset);
+      }
+      continue;
+    }
+    const containingBlock = blocks.find((block) => row > block.sourceRow && row < block.sourceRow + 4);
+    for (let offset = 0; offset < 4; offset++) coveredRows.add(row + offset);
+    if (!safeCell(row, 1, row, null)) continue;
     if (!safeCell(row, seibanColumn, row, null)) continue;
     if (row >= firstValidBlock && !hidden(sheet.getRow(row)) && formulaWithoutResult(seibanCell)) {
       warn('FORMULA_NO_RESULT', null, seibanCell);
@@ -162,8 +188,17 @@ export async function parseDScheduleMinutesXlsx(input: {
         }
       }
     }
+    // A repeated row-1 inside a block is another due-date claim for the same key.
+    // Compare it during deduplication, but never read its shifted four-row range.
+    if (containingBlock && containingBlock.seiban === match[1]) {
+      invalidShapes.add(row);
+    } else if (![0, 1, 2, 3].every((offset) => seibanText(sheet.getCell(row + offset, seibanColumn)) === seibanText(seibanCell))) {
+      continue;
+    }
+    const alias = match[2].match(aliasPattern);
+    if (match[2] && !alias) warn('UNREADABLE_ALIAS', match[1], seibanCell);
     const partsCell = safeCell(row, columns.get('部品完成')!, row, match[1]);
-    blocks.push({ seiban: match[1], aliasSeibans: match[2] ? [match[2]] : [], partsCompleteDate: null,
+    blocks.push({ seiban: match[1], aliasSeibans: alias ? [alias[1]] : [], partsCompleteDate: null,
       outsourceMarks: [], surfaceSendOutDates: [], memo: null, sourceRow: row,
       rawPartsCompleteText: hidden(sheet.getRow(row)) || hidden(sheet.getColumn(columns.get('部品完成')!)) || !partsCell ? null : cellText(partsCell) || null });
   }
@@ -175,7 +210,7 @@ export async function parseDScheduleMinutesXlsx(input: {
     if (!col) continue;
     const stack = [...headerRows].filter(([other]) => columns.get(other) === col).map(([, row]) => row);
     if (new Set(stack).size > 1) {
-      offsets.set(label, label === '部品完成' ? 0 : headerRows.get(label)! - Math.min(...stack));
+      offsets.set(label, headerRows.get(label)! - Math.min(...stack));
       continue;
     }
     const scores = [0, 1, 2, 3].map((offset) => visibleBlocks.reduce((sum, block) => {
@@ -191,17 +226,31 @@ export async function parseDScheduleMinutesXlsx(input: {
     const memos: string[] = [];
     {
       for (const [label, offset] of offsets) {
-        if (offset > 3 || (invalidShapes.has(block.sourceRow) && label !== '部品完成')) continue;
+        if (invalidShapes.has(block.sourceRow) && label !== '部品完成') continue;
         const col = columns.get(label)!;
         const row = block.sourceRow + offset;
+        if (offset > 3) {
+          warn('BLOCK_SHAPE', block.seiban, sheet.getCell(block.sourceRow, col));
+          continue;
+        }
         if (hidden(sheet.getRow(row)) || hidden(sheet.getColumn(col))) continue;
         const cell = safeCell(row, col, block.sourceRow, block.seiban);
         if (!cell) continue;
+        if (label === '部品完成') {
+          block.rawPartsCompleteText = cellText(cell) || null;
+          if ([...headerColumns].some((column) => column !== col
+            && sheet.getCell(row, column).master.address === cell.master.address)
+            || [...offsets].some(([other, otherOffset]) => other !== label && columns.get(other) === col
+              && sheet.getCell(block.sourceRow + otherOffset, col).master.address === cell.master.address)) {
+            warn('MERGED_ACROSS_HEADERS', block.seiban, cell);
+            continue;
+          }
+        }
         if (row >= firstValidBlock && formulaWithoutResult(cell)) {
           warn('FORMULA_NO_RESULT', block.seiban, cell);
           continue;
         }
-        const parsed = readDate(cell, meetingDate, workbook.properties.date1904, () => warn('AMBIGUOUS_YEAR', block.seiban, cell));
+        const parsed = readDate(cell, meetingDate, workbook.properties.date1904, () => warn('AMBIGUOUS_YEAR', block.seiban, cell), label === '部品完成');
         if (parsed.invalid) warn('UNREADABLE_DATE', block.seiban, cell);
         if (parsed.memo) memos.push(parsed.memo);
         block.outsourceMarks.push(...parsed.marks);
@@ -214,8 +263,9 @@ export async function parseDScheduleMinutesXlsx(input: {
         if (text) memos.push(text);
       }
     }
-    // A hidden history row inside a visible block still contributes ★ by business decision.
+    // Calendar columns may be hidden; hidden rows never contribute stars.
     for (let offset = 0; !invalidShapes.has(block.sourceRow) && offset < 4; offset++) {
+      if (hidden(sheet.getRow(block.sourceRow + offset))) continue;
       for (const [col, date] of calendar) {
         const cell = safeCell(block.sourceRow + offset, col, block.sourceRow, block.seiban);
         if (!cell) continue;
@@ -227,14 +277,37 @@ export async function parseDScheduleMinutesXlsx(input: {
         }
         if (!text.startsWith('★')) continue;
         // 最終処理出 is the older spelling of 最終処理品 (May 2026 sheets).
-        const star = text.match(/^(★LSLH(?:最終処理品|最終処理出|処理出))(.*)$/s);
-        if (star && date) block.surfaceSendOutDates.push({ date, label: star[1], note: star[2].trim() || null });
+        const star = text.match(/^(★ *L *S *L *H *(?:最 *終 *処 *理 *(?:品|出)|処 *理 *出))(.*)$/s);
+        if (!star) warn('UNKNOWN_STAR', block.seiban, cell);
+        if (star && date) block.surfaceSendOutDates.push({ date, label: star[1].replace(/ /g, ''), note: star[2].trim() || null });
       }
     }
     block.outsourceMarks = [...new Set(block.outsourceMarks)];
     block.memo = [...new Set(memos)].join('\n') || null;
   }
   if (visibleBlocks.filter((block) => block.partsCompleteDate).length / visibleBlocks.length < 0.8) return fatal('INSUFFICIENT_PARTS_COMPLETE_DATES');
-  // Hidden block starts are excluded; calendar columns and interior rows may be hidden.
-  return { ok: true, meetingDate, blocks: visibleBlocks, warnings };
+  const claims = new Map<string, DScheduleMinutesBlock[]>();
+  for (const block of visibleBlocks) {
+    for (const seiban of new Set([block.seiban, ...block.aliasSeibans])) {
+      const entries = claims.get(seiban) ?? [];
+      entries.push(block);
+      claims.set(seiban, entries);
+    }
+  }
+  const accepted = new Set<string>();
+  for (const [seiban, entries] of claims) {
+    const dates = new Set(entries.map((block) => JSON.stringify([block.partsCompleteDate,
+      [...new Set(block.surfaceSendOutDates.map((star) => star.date))].sort()])));
+    if (dates.size > 1) {
+      for (const block of entries) warn('DUPLICATE_SEIBAN', seiban, sheet.getCell(block.sourceRow, seibanColumn));
+    } else accepted.add(seiban);
+  }
+  const uniqueBlocks: DScheduleMinutesBlock[] = [];
+  for (const block of visibleBlocks) {
+    const keys = [...new Set([block.seiban, ...block.aliasSeibans])].filter((seiban) => accepted.delete(seiban));
+    if (!keys.length) continue;
+    // A conflicting main key must not suppress an independently safe alias (or vice versa).
+    uniqueBlocks.push({ ...block, seiban: keys[0], aliasSeibans: keys.slice(1) });
+  }
+  return { ok: true, meetingDate, blocks: uniqueBlocks, warnings };
 }

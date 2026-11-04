@@ -102,6 +102,14 @@
 
 ## Decision Log
 
+- Decision: 解析でブロックを飛ばしても、その回の警告に製番が残っていれば自動登録の解除対象にしない。既存の所有権は次回へ引き継ぎ、警告だけの製番は新規登録しない。
+  Rationale: 読取不能とファイルからの削除を区別し、本当に不在となった回にだけ自動登録を解除する（Task A）。
+  Date/Author: 2026-11-04 / Codex
+
+- Decision: apply の advisory lock・同一メール判定の後、書込前に会議日が今回より古い最新 SUCCESS と比較する。主・別名の一意製番数が前回の 0.5 未満、または既存と新規の読取可能な部品完成日を10件以上比較して絶対差60日以上の割合が0.3超なら全体を取り消す。初回は比較しない。単発の大幅変更は保存して `LARGE_DUE_CHANGE` をフローティングチャットへ通知し、スキップ件数には含めない。不在製番の保存値は維持する。
+  Rationale: ファイル異常による大量変更を防ぎ、比較失敗は専用エラーから Gmail の恒久コンテンツエラーへ変換する。メールは既読にし、既存の失敗アラートを使う（Task B）。閾値は `D_SCHEDULE_MINUTES_MIN_SEIBAN_RATIO`（既定0.5）、`D_SCHEDULE_MINUTES_LARGE_CHANGE_DAYS`（60）、`D_SCHEDULE_MINUTES_MAX_LARGE_CHANGE_RATIO`（0.3）、`D_SCHEDULE_MINUTES_MIN_COMPARED`（10）で設定でき、テストでは apply の任意 `thresholds` 引数で上書きする。
+  Date/Author: 2026-11-04 / Codex
+
 - Decision: Milestone 4 の追加情報は `GET /kiosk/production-schedule/d-schedule-minutes` の専用キオスク読取APIで返す。既存ボードと同じ端末認証を通し、ボードと同じ固定 `PRODUCTION_SCHEDULE_DASHBOARD_ID` に属する最新行を製番順に取得する。応答は `{ rows: [{ fseiban, outsourceMarks, surfaceSendOutDates: [{ date, note }], memo }] }`、ページングなし、`Cache-Control: no-store` とする。
   Rationale: 既存のボード応答・snapshot・ETag を変更せず、両画面で共有する追加情報だけを30秒間隔で読み直す。解析器が除外した「戻」は復元しない。納期ソースは各ボードの既存パラメーターキーへ加え、順位ボードの端末キャッシュと continue も同じソースで分離する。
   Date/Author: 2026-11-04 / Codex
