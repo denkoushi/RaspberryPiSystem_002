@@ -18,6 +18,8 @@ export type DrawingPlacementProposal = DrawingPlacementRow & {
   sortOrder: number;
   markerXRatio: number | null;
   markerYRatio: number | null;
+  anchorXRatio: number | null;
+  anchorYRatio: number | null;
   dimensionText: string | null;
 };
 
@@ -40,7 +42,11 @@ export async function getInspectionDrawingPlacementProposals(visualTemplateId: s
 
 export async function postInspectionDrawingPlacementDecisions(
   visualTemplateId: string,
-  body: { approvedIds?: string[]; rejectedIds?: string[] },
+  body: {
+    approvedIds?: string[];
+    rejectedIds?: string[];
+    approvedPositions?: Array<{ id: string; xRatio: number; yRatio: number }>;
+  },
   clientKey?: string
 ) {
   const { data } = await api.post<{ updated: number }>(

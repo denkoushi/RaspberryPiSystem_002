@@ -282,6 +282,12 @@ Milestone 1 の検証（作業ディレクトリ `apps/api`）:
 
 Prisma generate と両パッケージの上記型検査は成功。API の `tsc --noEmit -p .` は既存設定が rootDir 外の seed / scripts / vitest.config を含むため TS6059。本番用設定で補足した。API 全体は 374 成功・6 失敗・1 skipped（67 ファイル中 3 失敗）。失敗は全て localhost:5432 の DB に接続できない既存テスト。配置 proposals の Postgres 統合テストは更新したが実行せず、CI に残す。DGX / JEV の実通信も実行しない。最終の追加検証は兄弟判定サービス 17 件、配置 route 18 件、複数画像推論と既存動画処理 30 件が成功。Web は hook 9 件・page 13 件・API 通信 2 件が成功。変更 TS/TSX 22 ファイルの eslint はエラー 0、最終の API 本番設定と Web の型検査は再度成功。
 
+### 2026-10-29 の変更: AI案のドラッグと採用位置の記録
+
+- 点線の案は確定丸数字と同じ処理でドラッグでき、動かした位置で採用される（test モードでは動かない）。
+- 保存後の decisions に任意の `approvedPositions: [{id, xRatio, yRatio}]` を足した。保存時点の確定丸数字の位置を送り、保存前に消した案は採用扱いにしない。旧形式の `approvedIds` だけでも通る。
+- 採用行に `decidedMarkerXRatio/YRatio` を保存し、AI の元位置 `markerXRatio/YRatio` は残す（migration `20261029120000_drawing_placement_decided_marker_position`）。人が正解とした位置を後の学習に使うため。
+
 ### Milestone 5 経路 A の受入（2026-10-20、ローカル）
 
 - API: `GET …/visual-templates/:id/placement-proposals` は `{ status: ready|map-pending|no-sibling, sourceDrawingName, proposals, unplaced }`。`POST …/placement-proposals/decisions` は `{ approvedIds?, rejectedIds? }`（各最大 200）で、書き込み権限（allowWriteKiosk）が要る。元項目の基準値が無い・丸数字の座標が無い項目は転記元にしない。

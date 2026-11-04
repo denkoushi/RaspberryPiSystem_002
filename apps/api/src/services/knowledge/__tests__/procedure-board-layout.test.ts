@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
-import { emptyLayout, layoutSchema, normalizeLayout, placeItem, type BoardItem } from '../procedure-board-layout.js';
-import { validateLayoutEvent } from '../procedure-board.service.js';
+import { MAX_PAGES, applyPageOperation, emptyLayout, layoutSchema, normalizeLayout, placeItem, type BoardItem } from '../procedure-board-layout.js';
+import { boardEventSchema, emptyDecisions, remapPageDecisions, validateLayoutEvent } from '../procedure-board.service.js';
 
 const text = (): BoardItem => ({ itemId: randomUUID(), kind: 'text', textKind: 'body', text: '確認', origin: 'human', style: 'body' });
 const material = (): Extract<BoardItem, { kind: 'material' }> => ({ itemId: randomUUID(), kind: 'material', materialId: 'mat-1', origin: 'human', style: 'figure' });
@@ -58,5 +58,46 @@ describe('Procedure board layout', () => {
     expect(() => validateLayoutEvent(before, after, { id: randomUUID(), type: 'item_moved', payload: { itemId: item.itemId, from: target, to: target } })).toThrow();
     const other = placeItem(after, text(), { ...target, row: 1 });
     expect(() => validateLayoutEvent(before, other, { id: randomUUID(), type: 'text_created', payload: { itemId: item.itemId } })).toThrow();
+  });
+});
+
+describe('page event validation', () => {
+  it('verifies exact add/move/remove transforms including contents and empty pages', () => {
+    let before = placeItem(emptyLayout(), text(), { ...target, page: 2 });
+    for (const operation of [
+      { type: 'page_added', payload: { page: 2 } }, { type: 'page_moved', payload: { from: 3, to: 1 } },
+      { type: 'page_removed', payload: { page: 1 } },
+    ] as const) {
+      const event = boardEventSchema.parse({ ...operation, id: randomUUID() });
+      const after = applyPageOperation(before, operation);
+      expect(() => validateLayoutEvent(before, after, event)).not.toThrow();
+      const tampered = placeItem(after, text(), target);
+      expect(() => validateLayoutEvent(before, tampered, event)).toThrow();
+      expect(() => validateLayoutEvent(before, before, event)).toThrow();
+      before = after;
+    }
+    const after = applyPageOperation(before, { type: 'page_removed', payload: { page: 1 } });
+    expect(() => validateLayoutEvent(before, after, { id: randomUUID(), type: 'text_edited', payload: { itemId: randomUUID() } })).toThrow();
+    for (const payload of [{ page: 0 }, { page: 21 }, { page: 1.5 }, { page: 1, extra: true }]) {
+      for (const type of ['page_added', 'page_removed']) expect(boardEventSchema.safeParse({ id: randomUUID(), type, payload }).success).toBe(false);
+    }
+    expect(boardEventSchema.safeParse({ id: randomUUID(), type: 'page_moved', payload: { from: 1, to: 21 } }).success).toBe(false);
+    expect(boardEventSchema.safeParse({ id: randomUUID(), type: 'headings_migrated', payload: { itemIds: Array.from({ length: MAX_PAGES }, () => randomUUID()) } }).success).toBe(true);
+    expect(boardEventSchema.safeParse({ id: randomUUID(), type: 'columns_resized', payload: { page: 20, row: 0 } }).success).toBe(true);
+  });
+  it('records moves between identical empty pages to invalidate old coordinates', () => {
+    const before = emptyLayout();
+    expect(() => validateLayoutEvent(before, before, { id: randomUUID(), type: 'page_moved', payload: { from: 1, to: 3 } })).not.toThrow();
+    expect(() => validateLayoutEvent(before, before, { id: randomUUID(), type: 'page_moved', payload: { from: 1, to: 1 } })).toThrow();
+  });
+  it('renumbers dismissed headings and drops deleted-page decisions only', () => {
+    const decisions = { ...emptyDecisions(), dismissedHeadings: [1, 2, 3].map(page => ({ page, text: `見出し${page}` })) };
+    const added = remapPageDecisions(decisions, 3, { type: 'page_added', payload: { page: 2 } });
+    expect(added.dismissedHeadings.map(entry => entry.page)).toEqual([1, 3, 4]);
+    const moved = remapPageDecisions(added, 4, { type: 'page_moved', payload: { from: 4, to: 1 } });
+    expect(moved.dismissedHeadings.map(entry => entry.page)).toEqual([2, 4, 1]);
+    const removed = remapPageDecisions(moved, 4, { type: 'page_removed', payload: { page: 2 } });
+    expect(removed.dismissedHeadings).toEqual([{ page: 3, text: '見出し2' }, { page: 1, text: '見出し3' }]);
+    expect(decisions.dismissedHeadings.map(entry => entry.page)).toEqual([1, 2, 3]);
   });
 });

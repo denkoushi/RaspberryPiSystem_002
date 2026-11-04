@@ -60,45 +60,50 @@ export function InspectionDrawingProposalPanel({ placement, confirmedCount, disa
           <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto p-1" aria-label={tab === 'proposals' ? 'AI案' : '未配置'}>
             {tab === 'proposals' ? proposals.map((row) => (
               <li key={row.id} className={clsx(
-                'flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 p-2',
+                'flex flex-col gap-1 rounded-lg border border-slate-600 bg-slate-800 p-2',
                 placement.selectedProposalId === row.id && 'ring-2 ring-blue-400'
               )}>
-                <button
-                  type="button"
-                  className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left"
-                  aria-label={`AI案 ${row.markerNo} ${row.measurementLabel} を選択`}
-                  onClick={() => placement.selectProposal(row.id)}
-                >
-                  <span className={circleClass}>{row.markerNo}</span>
-                  <span className="min-w-0">
-                    <span className="block font-bold">{row.measurementLabel} {row.dimensionText || formatNominal(row)}</span>
-                    <span className="block truncate text-sm text-slate-200" title={placement.sourceDrawingName ?? undefined}>
-                      {row.lowerLimit ?? '—'}〜{row.upperLimit ?? '—'}・元 {placement.sourceDrawingName ?? '—'}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left"
+                    aria-label={`AI案 ${row.markerNo} ${row.measurementLabel} を選択`}
+                    onClick={() => placement.selectProposal(row.id)}
+                  >
+                    <span className={circleClass}>{row.markerNo}</span>
+                    <span className="min-w-0 font-bold break-all [overflow-wrap:anywhere]">
+                      <span className="block">{row.measurementLabel}</span>
+                      <span className="block">{row.dimensionText || formatNominal(row)}</span>
                     </span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  aria-label={`AI案 ${row.markerNo} を却下`}
-                  disabled={disabled}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-slate-500 text-slate-100 disabled:opacity-50"
-                  onClick={() => placement.reject(row)}
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path d="m6 6 12 12M18 6 6 18" />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  aria-label={`AI案 ${row.markerNo} を承認`}
-                  disabled={disabled}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white disabled:opacity-50"
-                  onClick={() => placement.approve(row)}
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2}>
-                    <path d="m5 12 4 4L19 6" />
-                  </svg>
-                </button>
+                  </button>
+                  <div className="flex shrink-0 gap-1.5">
+                    <button
+                      type="button"
+                      aria-label={`AI案 ${row.markerNo} を却下`}
+                      disabled={disabled}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-500 text-slate-100 disabled:opacity-50"
+                      onClick={() => placement.reject(row)}
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path d="m6 6 12 12M18 6 6 18" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`AI案 ${row.markerNo} を承認`}
+                      disabled={disabled}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white disabled:opacity-50"
+                      onClick={() => placement.approve(row)}
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path d="m5 12 4 4L19 6" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <p className="pl-11 text-sm text-slate-200 break-all [overflow-wrap:anywhere]">
+                  {row.lowerLimit ?? '—'}〜{row.upperLimit ?? '—'}
+                </p>
               </li>
             )) : unplaced.map((row) => (
               <li key={row.id} className="flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 p-2">

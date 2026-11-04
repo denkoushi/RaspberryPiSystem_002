@@ -28,7 +28,7 @@ vi.mock('./InspectionDrawingPointSidebar', () => ({
 
 const placement: ComponentProps<typeof InspectionDrawingCreateSidebar>['placement'] = {
   proposals: [], unplaced: [], sourceDrawingName: null, selectedProposalId: null, armedId: null,
-  tab: 'proposals', setTab: vi.fn(), selectProposal: vi.fn(), approve: vi.fn(),
+  tab: 'proposals', setTab: vi.fn(), selectProposal: vi.fn(), moveProposal: vi.fn(), approve: vi.fn(),
   approveAll: vi.fn(), reject: vi.fn(), arm: vi.fn(), placeArmed: vi.fn(), flushApprovals: vi.fn()
 };
 
