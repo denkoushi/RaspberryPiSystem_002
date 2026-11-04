@@ -1,12 +1,19 @@
-import assemblyProcedureTemplateSopHtml from '../../generated/kiosk-sop/assembly-procedure-template/manual.html?raw';
-import inspectionDrawingSopHtml from '../../generated/kiosk-sop/inspection-drawing/manual.html?raw';
+import { kioskPreload } from '../kiosk/kioskLazyPreload';
 
 import type { KioskSopManual, KioskSopManualId } from './types';
+
+// The generated manuals embed base64 screenshots (~3 MB), so they stay out of the
+// entry chunk: fetched on first open, or warmed by the kiosk idle preloader.
+function lazySourceHtml(importer: () => Promise<{ default: string }>) {
+  let sourceHtml: string | undefined;
+  const loadSourceHtml = kioskPreload(() => importer().then((module) => (sourceHtml = module.default)));
+  return { loadSourceHtml, peekSourceHtml: () => sourceHtml };
+}
 
 const INSPECTION_DRAWING_MANUAL: KioskSopManual = Object.freeze({
   id: 'inspection-drawing',
   title: '検査図面 操作取説',
-  sourceHtml: inspectionDrawingSopHtml,
+  ...lazySourceHtml(() => import('../../generated/kiosk-sop/inspection-drawing/manual.html?raw')),
   sheets: Object.freeze([
     { id: 'library-entry-search', label: '一覧・検索' },
     { id: 'library-visual-management', label: '図面管理' },
@@ -24,7 +31,7 @@ const INSPECTION_DRAWING_MANUAL: KioskSopManual = Object.freeze({
 const ASSEMBLY_PROCEDURE_TEMPLATE_MANUAL: KioskSopManual = Object.freeze({
   id: 'assembly-procedure-template',
   title: '組立 手順書・テンプレート取説',
-  sourceHtml: assemblyProcedureTemplateSopHtml,
+  ...lazySourceHtml(() => import('../../generated/kiosk-sop/assembly-procedure-template/manual.html?raw')),
   sheets: Object.freeze([
     { id: 'assembly-overview', label: '管理画面と全体の流れ' },
     { id: 'assembly-file-register', label: 'ファイル登録・事前プレビュー' },

@@ -89,4 +89,25 @@ describe('kiosk registered lazy preloading', () => {
     cancel();
     expect(cancelIdle).toHaveBeenCalledWith(7);
   });
+
+  it('warms registered resources after every route chunk and shares their cached result', async () => {
+    const preloader = createKioskLazyPreloader();
+    const calls: string[] = [];
+    let attempts = 0;
+    const resource = vi.fn(async () => {
+      calls.push('resource');
+      attempts += 1;
+      if (attempts === 1) throw new Error('missing chunk');
+      return 'html';
+    });
+    const loadResource = preloader.preload(resource);
+    preloader.lazy(async () => { calls.push('route'); return { default: () => null }; });
+    const stop = preloader.start('/kiosk/tag', false, scheduleKioskPreload);
+    await vi.runAllTimersAsync();
+    expect(calls).toEqual(['route', 'resource']);
+    await expect(loadResource()).resolves.toBe('html');
+    await expect(loadResource()).resolves.toBe('html');
+    expect(resource).toHaveBeenCalledTimes(2);
+    stop();
+  });
 });

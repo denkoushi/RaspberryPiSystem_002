@@ -24,10 +24,23 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
   const initialIndex = Math.max(0, manual.sheets.findIndex(({ id }) => id === initialSheetId));
   const [sheetIndex, setSheetIndex] = useState(initialIndex);
   const sheet = manual.sheets[sheetIndex] ?? manual.sheets[0];
+  const [, setLoadedManualId] = useState<string>();
+  const [loadError, setLoadError] = useState<{ error: unknown }>();
+  const sourceHtml = isOpen ? manual.peekSourceHtml() : undefined;
   const srcDoc = useMemo(
-    () => buildKioskSopSrcDoc(manual.sourceHtml, sheet.id),
-    [manual.sourceHtml, sheet.id]
+    () => (sourceHtml === undefined ? undefined : buildKioskSopSrcDoc(sourceHtml, sheet.id)),
+    [sourceHtml, sheet.id]
   );
+
+  useEffect(() => {
+    if (!isOpen || sourceHtml !== undefined) return;
+    let cancelled = false;
+    manual.loadSourceHtml().then(
+      () => { if (!cancelled) setLoadedManualId(manual.id); },
+      (error: unknown) => { if (!cancelled) setLoadError({ error }); }
+    );
+    return () => { cancelled = true; };
+  }, [isOpen, manual, sourceHtml]);
 
   useEffect(() => {
     if (isOpen) setSheetIndex(initialIndex);
@@ -50,6 +63,9 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [isOpen, onClose]);
+
+  // Same failure path as a kioskLazy route chunk: let the app error boundary recover.
+  if (isOpen && loadError) throw loadError.error;
 
   return (
     <Dialog
@@ -101,17 +117,24 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-900">
         {/* A new browsing context per sheet: re-navigating one srcdoc iframe
             intermittently loses the frame in Firefox automation. */}
-        <iframe
-          key={sheet.id}
-          ref={frameRef}
-          title={`${manual.title} — ${sheet.label}`}
-          data-testid="kiosk-sop-frame"
-          className="h-full w-full border-0 bg-slate-950"
-          sandbox="allow-scripts"
-          referrerPolicy="no-referrer"
-          srcDoc={srcDoc}
-          tabIndex={0}
-        />
+        {srcDoc === undefined ? (
+          <span
+            role="status"
+            className="block h-12 w-12 animate-spin rounded-full border-4 border-white/25 border-t-white"
+          />
+        ) : (
+          <iframe
+            key={sheet.id}
+            ref={frameRef}
+            title={`${manual.title} — ${sheet.label}`}
+            data-testid="kiosk-sop-frame"
+            className="h-full w-full border-0 bg-slate-950"
+            sandbox="allow-scripts"
+            referrerPolicy="no-referrer"
+            srcDoc={srcDoc}
+            tabIndex={0}
+          />
+        )}
       </div>
     </Dialog>
   );

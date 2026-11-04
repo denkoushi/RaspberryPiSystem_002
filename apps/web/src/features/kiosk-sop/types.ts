@@ -6,7 +6,10 @@ export type KioskSopSheetDescriptor = Readonly<{
 export type KioskSopManual = Readonly<{
   id: string;
   title: string;
-  sourceHtml: string;
+  /** Resolves the generated manual HTML; shared and cached across callers. */
+  loadSourceHtml: () => Promise<string>;
+  /** The manual HTML once loaded, otherwise undefined. */
+  peekSourceHtml: () => string | undefined;
   sheets: readonly KioskSopSheetDescriptor[];
 }>;
 

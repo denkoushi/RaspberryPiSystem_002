@@ -8,7 +8,10 @@ export type KioskPreloadScheduler = (callback: () => void, delayMs: number) => (
 
 export function createKioskLazyPreloader() {
   const loaders: Array<() => Promise<unknown>> = [];
+  // Non-component resources (e.g. large help content) warm only after every route chunk.
+  const backgroundLoaders: Array<() => Promise<unknown>> = [];
   let index = 0;
+  let backgroundIndex = 0;
   let started = false;
   let active = false;
   let inFlight = false;
@@ -16,12 +19,12 @@ export function createKioskLazyPreloader() {
   let schedule: KioskPreloadScheduler;
 
   const enqueue = (delayMs: number) => {
-    if (!active || inFlight || index >= loaders.length) return;
+    if (!active || inFlight || (index >= loaders.length && backgroundIndex >= backgroundLoaders.length)) return;
     cancelScheduled = schedule(() => {
       cancelScheduled = undefined;
       if (!active) return;
       started = true;
-      const loader = loaders[index++];
+      const loader = index < loaders.length ? loaders[index++] : backgroundLoaders[backgroundIndex++];
       inFlight = true;
       void (async () => {
         try { await loader(); } catch { /* Speculative loading must stay silent. */ }
@@ -33,19 +36,26 @@ export function createKioskLazyPreloader() {
     }, delayMs);
   };
 
+  const cached = <T>(loader: () => Promise<T>) => {
+    let promise: Promise<T> | undefined;
+    // Successful/in-flight imports are shared with the user-initiated load. A
+    // speculative failure must not poison a later user-initiated load.
+    return () => (promise ??= loader().catch((error: unknown) => { promise = undefined; throw error; }));
+  };
+
   return {
     // Match React.lazy's component constraint while retaining each component's props.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     lazy<T extends ComponentType<any>>(loader: () => Promise<{ default: T }>) {
-      let promise: Promise<{ default: T }> | undefined;
-      const load = () => {
-        // Successful/in-flight imports are shared with React.lazy. A speculative
-        // failure must not poison a later user-initiated lazy render.
-        promise ??= loader().catch((error: unknown) => { promise = undefined; throw error; });
-        return promise;
-      };
+      const load = cached(loader);
       loaders.push(load);
       return lazy(load);
+    },
+    /** Registers a non-component import, warmed after route chunks; returns its shared cached loader. */
+    preload<T>(loader: () => Promise<T>): () => Promise<T> {
+      const load = cached(loader);
+      backgroundLoaders.push(load);
+      return load;
     },
     start(pathname: string, isDevelopment: boolean, scheduler: KioskPreloadScheduler): () => void {
       if (isDevelopment || !isKioskPath(pathname) || active) return () => {};
@@ -63,4 +73,5 @@ export function createKioskLazyPreloader() {
 
 const kioskPreloader = createKioskLazyPreloader();
 export const kioskLazy = kioskPreloader.lazy;
+export const kioskPreload = kioskPreloader.preload;
 export const startKioskLazyPreload = kioskPreloader.start;
