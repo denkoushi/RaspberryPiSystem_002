@@ -17,4 +17,5 @@ export const toolsQueryKeys = {
   transactions: (page: number, filters?: Parameters<typeof getTransactions>[1]) =>
     ['transactions', page, filters] as const,
   unifiedItems: (params?: Parameters<typeof getUnifiedItems>[0]) => ['unified-items', params] as const,
+  unifiedTagTypeMap: ['unified-items', 'tag-type-map'] as const,
 };

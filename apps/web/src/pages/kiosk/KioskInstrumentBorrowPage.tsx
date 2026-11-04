@@ -82,6 +82,10 @@ export function KioskInstrumentBorrowPage() {
   const isActiveRoute = useMatch('/kiosk/instruments/borrow');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastNfcEventKeyRef = useRef<string | null>(null);
+  // URLクエリ/NFCで受け取ったタグUID（完全なUID）はデバウンスせず即時に照会する（キーボード入力は従来通り500ms）
+  const immediateTagLookupRef = useRef<string | null>(null);
+  // 直近に照会済みの「タグUID→計測機器ID」。解決結果による再実行で同じ照会を繰り返さないために使う
+  const lastResolvedTagRef = useRef<{ tagUid: string; instrumentId: string } | null>(null);
 
   const hasInstrument = selectedInstrumentId || instrumentTagUid.trim();
 
@@ -111,6 +115,7 @@ export function KioskInstrumentBorrowPage() {
     // URLクエリに tagUid があれば初期セット（持出タブからの誘導用）
     const initialTag = searchParams.get('tagUid');
     if (initialTag) {
+      immediateTagLookupRef.current = initialTag;
       setInstrumentTagUid(initialTag);
     }
     // 一度だけ評価
@@ -126,7 +131,9 @@ export function KioskInstrumentBorrowPage() {
 
   useEffect(() => {
     const searchInstrumentByTag = async () => {
+      immediateTagLookupRef.current = null;
       if (!instrumentTagUid || instrumentTagUid.trim().length === 0) {
+        lastResolvedTagRef.current = null;
         setResolvedInstrumentTagUid('');
         if (instrumentSource !== 'select') {
           setSelectedInstrumentId('');
@@ -135,7 +142,19 @@ export function KioskInstrumentBorrowPage() {
       }
       try {
         setResolvedInstrumentTagUid(instrumentTagUid.trim());
+        const lastResolved = lastResolvedTagRef.current;
+        if (
+          selectedInstrumentId &&
+          lastResolved?.tagUid === instrumentTagUid.trim() &&
+          lastResolved.instrumentId === selectedInstrumentId
+        ) {
+          // 照会済みのタグで、選択も照会結果と一致している（照会結果の反映による再実行）
+          return;
+        }
         const instrument = await getMeasuringInstrumentByTagUid(instrumentTagUid.trim());
+        if (instrument) {
+          lastResolvedTagRef.current = { tagUid: instrumentTagUid.trim(), instrumentId: instrument.id };
+        }
         if (instrument && instrument.id !== selectedInstrumentId) {
           setSelectedInstrumentId(instrument.id);
           if (!instrumentSource) {
@@ -152,8 +171,9 @@ export function KioskInstrumentBorrowPage() {
       }
     };
 
-    // デバウンス: 500ms後に検索
-    const timeoutId = setTimeout(searchInstrumentByTag, 500);
+    // デバウンス: キーボード入力は500ms後に検索。URL/NFCの完全なUIDは即時に検索
+    const delayMs = immediateTagLookupRef.current === instrumentTagUid ? 0 : 500;
+    const timeoutId = setTimeout(searchInstrumentByTag, delayMs);
     return () => clearTimeout(timeoutId);
   }, [instrumentTagUid, selectedInstrumentId, instrumentSource]);
 
@@ -482,6 +502,7 @@ export function KioskInstrumentBorrowPage() {
 
     // 1枚目のスキャンは計測機器タグとみなす（ただし最初に選択したソースを尊重）
     if (isFirstScan) {
+      immediateTagLookupRef.current = nfcEvent.uid;
       setInstrumentTagUid(nfcEvent.uid);
       setResolvedInstrumentTagUid(nfcEvent.uid);
       setInstrumentSource('tag');
@@ -505,6 +526,8 @@ export function KioskInstrumentBorrowPage() {
   }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, hasInstrument, handleSubmit, instrumentSource, resolvedClientId, resolvedClientKey]);
 
   const resetForm = () => {
+    immediateTagLookupRef.current = null;
+    lastResolvedTagRef.current = null;
     setSelectedInstrumentId('');
     setInstrumentSource(null);
     setInstrumentTagUid('');

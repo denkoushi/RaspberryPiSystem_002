@@ -1,17 +1,16 @@
 import { useMachine } from '@xstate/react';
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useMatch, useNavigate } from 'react-router-dom';
 
 import {
   getResolvedClientKey,
   getMeasuringInstrumentByTagUid,
   getRiggingGearByTagUid,
-  getUnifiedItems,
   postClientLogs
 } from '../../api/client';
 import { useActiveLoans, useKioskConfig } from '../../api/hooks';
-import { useKioskBorrowMutation } from '../../api/hooks/tools';
+import { useKioskBorrowMutation, useUnifiedTagTypeMap } from '../../api/hooks/tools';
 import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
 import {
@@ -23,6 +22,7 @@ import {
   kioskSuccessPanelClassName,
 } from '../../features/kiosk/kioskTheme';
 import { useLoanOfflineQueue } from '../../features/kiosk/loan/offline/useLoanOfflineQueue';
+import { resolveBorrowTagDestination } from '../../features/kiosk/loan/resolveBorrowTagDestination';
 import { PalletVizEmbeddedPanel } from '../../features/kiosk/pallet-visualization';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
@@ -49,31 +49,8 @@ export function KioskBorrowPage() {
   const isActiveRoute = useMatch('/kiosk/tag');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const lastEventKeyRef = useRef<string | null>(null);
-  const [tagTypeMap, setTagTypeMap] = useState<
-    Record<string, 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR'>
-  >({});
-
-  // タグの種別マップを取得（工具/計測機器の判定を高速化）
-  useEffect(() => {
-    let cancelled = false;
-    getUnifiedItems({ category: 'ALL' })
-      .then((items) => {
-        if (cancelled) return;
-        const map: Record<string, 'TOOL' | 'MEASURING_INSTRUMENT' | 'RIGGING_GEAR'> = {};
-        items.forEach((item) => {
-          if (item.nfcTagUid) {
-            map[item.nfcTagUid] = item.type;
-          }
-        });
-        setTagTypeMap(map);
-      })
-      .catch(() => {
-        // マップ取得に失敗しても致命的ではないため握りつぶす
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // タグの種別マップ（工具/計測機器の判定を高速化）。再マウント時は共有キャッシュを再利用する
+  const tagTypeMap = useUnifiedTagTypeMap();
 
   useEffect(() => {
     if (state.value !== 'submitting' || submittingRef.current) {
@@ -248,29 +225,21 @@ export function KioskBorrowPage() {
         return;
       }
 
-      try {
-        // APIで計測機器タグなら計測機器持出ページへ遷移（タグUIDをクエリで渡す）
-        // 計測機器タグ判定
-        const instrument = await getMeasuringInstrumentByTagUid(nfcEvent.uid);
-        if (instrument) {
-          navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
-          lastEventKeyRef.current = eventKey;
-          return;
-        }
-      } catch {
-        // 計測機器なし → 続行
+      // APIで計測機器タグ/吊具タグなら専用持出ページへ遷移（タグUIDをクエリで渡す）
+      // 計測機器を優先し、404や他のエラーは工具フローを継続
+      const destination = await resolveBorrowTagDestination(nfcEvent.uid, {
+        lookupInstrument: getMeasuringInstrumentByTagUid,
+        lookupRigging: getRiggingGearByTagUid
+      });
+      if (destination === 'MEASURING_INSTRUMENT') {
+        navigate(`/kiosk/instruments/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+        lastEventKeyRef.current = eventKey;
+        return;
       }
-
-      // 吊具タグ判定
-      try {
-        const rigging = await getRiggingGearByTagUid(nfcEvent.uid);
-        if (rigging) {
-          navigate(`/kiosk/rigging/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
-          lastEventKeyRef.current = eventKey;
-          return;
-        }
-      } catch {
-        // 404や他のエラーは工具フローを継続
+      if (destination === 'RIGGING_GEAR') {
+        navigate(`/kiosk/rigging/borrow?tagUid=${encodeURIComponent(nfcEvent.uid)}`);
+        lastEventKeyRef.current = eventKey;
+        return;
       }
 
       // 任意順序で処理する: まだitemが未設定ならITEMとして、itemが既にあればEMPLOYEEとして送信

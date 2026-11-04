@@ -36,6 +36,7 @@ import {
   type PhotoBorrowPayload,
   type PhotoLabelReviewQuality,
   getUnifiedItems,
+  type UnifiedItem,
   type UnifiedListParams
 } from '../client';
 import { toolsQueryKeys } from '../queryKeys/tools';
@@ -280,6 +281,36 @@ export function useUnifiedItems(params?: UnifiedListParams) {
     queryFn: () => getUnifiedItems(params),
     placeholderData: (previous) => previous
   });
+}
+
+export type UnifiedTagTypeMap = Readonly<Record<string, UnifiedItem['type']>>;
+
+const UNIFIED_TAG_TYPE_MAP_STALE_TIME_MS = 5 * 60 * 1000;
+const EMPTY_UNIFIED_TAG_TYPE_MAP: UnifiedTagTypeMap = Object.freeze({});
+
+export function buildUnifiedTagTypeMap(items: readonly UnifiedItem[]): UnifiedTagTypeMap {
+  const map: Record<string, UnifiedItem['type']> = {};
+  items.forEach((item) => {
+    if (item.nfcTagUid) {
+      map[item.nfcTagUid] = item.type;
+    }
+  });
+  return map;
+}
+
+/**
+ * キオスク持出画面のタグ種別マップ（工具/計測機器/吊具の判定の高速化用）。
+ * 画面の再マウントでも全件取得をやり直さないよう共有キャッシュする。
+ * 取得失敗時は空マップのまま（未登録扱いで by-tag API にフォールバック）。
+ */
+export function useUnifiedTagTypeMap(): UnifiedTagTypeMap {
+  const { data } = useQuery({
+    queryKey: toolsQueryKeys.unifiedTagTypeMap,
+    queryFn: async () => buildUnifiedTagTypeMap(await getUnifiedItems({ category: 'ALL' })),
+    staleTime: UNIFIED_TAG_TYPE_MAP_STALE_TIME_MS,
+    retry: false
+  });
+  return data ?? EMPTY_UNIFIED_TAG_TYPE_MAP;
 }
 
 // 吊具
