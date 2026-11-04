@@ -212,7 +212,7 @@ export class LoanService {
       {
         loanId: input.loanId,
         clientId: resolvedClientId,
-        performedByUserId: performedByUserId ?? input.performedByUserId,
+        performedByUserId,
       },
       'Return request started',
     );
@@ -241,7 +241,8 @@ export class LoanService {
       throw new ApiError(400, 'この貸出記録に関連する従業員が見つかりません');
     }
 
-    const finalPerformedByUserId = performedByUserId ?? input.performedByUserId;
+    // 実施者は認証済みユーザーからのみ決める。本文の performedByUserId は後方互換で受理するが記録には使わない
+    const finalPerformedByUserId = performedByUserId;
     const itemSnapshot = loan.item
       ? {
           id: loan.item.id,

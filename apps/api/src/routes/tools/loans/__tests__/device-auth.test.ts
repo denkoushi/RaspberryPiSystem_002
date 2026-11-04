@@ -9,6 +9,7 @@ import { LoanService } from '../../../../services/tools/loan.service.js';
 import { registerActiveLoansRoute } from '../active.js';
 import { registerBorrowRoute } from '../borrow.js';
 import { registerLoanCancelRoute } from '../cancel.js';
+import { registerLoanDeleteRoute } from '../delete.js';
 import { registerPhotoBorrowRoute } from '../photo-borrow.js';
 import { registerReturnRoute } from '../return.js';
 
@@ -44,6 +45,7 @@ describe('貸出ルートのデバイス認証', () => {
       vi.spyOn(loanService, method).mockResolvedValue({ id: loanId, clientId } as never);
     }
     vi.spyOn(loanService, 'findActive').mockResolvedValue([]);
+    vi.spyOn(loanService, 'delete').mockResolvedValue(undefined as never);
     app = Fastify();
     registerErrorHandler(app);
     registerBorrowRoute(app, loanService);
@@ -51,6 +53,7 @@ describe('貸出ルートのデバイス認証', () => {
     registerActiveLoansRoute(app, loanService);
     registerReturnRoute(app, loanService);
     registerLoanCancelRoute(app, loanService);
+    registerLoanDeleteRoute(app, loanService);
   });
 
   afterEach(async () => { await app.close(); });
@@ -179,5 +182,24 @@ describe('貸出ルートのデバイス認証', () => {
       ...(route ? { payload: { ...route.payload, clientId } } : {}),
     });
     expect(response.statusCode).toBe(401);
+  });
+  it('deleteは正しい端末キーだけでは401を返す', async () => {
+    const response = await app.inject({ method: 'DELETE', url: `/${loanId}`, headers: { 'x-client-key': clientKey } });
+    expect(response.statusCode).toBe(401);
+    expect(loanService.delete).not.toHaveBeenCalled();
+  });
+
+  it('deleteはVIEWERのJWTを403にし、ADMIN/MANAGERだけ許可する', async () => {
+    const viewer = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
+    const viewerResponse = await app.inject({ method: 'DELETE', url: `/${loanId}`, headers: { authorization: `Bearer ${viewer}` } });
+    expect(viewerResponse.statusCode).toBe(403);
+    for (const role of ['ADMIN', 'MANAGER'] as const) {
+      const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role } as User);
+      const response = await app.inject({
+        method: 'DELETE', url: `/${loanId}`, headers: { authorization: `Bearer ${token}`, 'x-client-key': clientKey },
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    expect(loanService.delete).toHaveBeenCalledTimes(2);
   });
 });
