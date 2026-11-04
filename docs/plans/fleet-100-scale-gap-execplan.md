@@ -34,7 +34,8 @@
   - [x] (2026-11-04) バーコード(パレット可視化への追加・置換)。サーバーが受け付けるまでブラウザに残し、API は eventKey で重複を落とす。詳細は [パレットの計画](2026-11-04-kiosk-pallet-offline-queue.md)。#2517、main 7016618c、Pi5 反映 run 20261104-011303-8a890f。ユーザーがキオスクのパレット画面で追加と上書がいつもどおり反映されることを確かめた。
 - [ ] M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 にイメージの中継キャッシュを置く。
   - [x] (2026-11-02) Step 1: Pi4 の play を `serial: [1, 5, "25%", "100%"]` の波にし、前の波で失敗した端末があれば次の波の先頭で止め、最後の波で失敗したときは Pi3 の play の先頭で止める確認を入れた。トルク切り替えは `serial: 1` のまま。手元の12台の模擬でだけ確かめた。
-  - [ ] Step 2: 全対象の取得(prepare)を切り替えの前に並列で済ませる。Step 3: Pi5 にイメージの中継キャッシュ。試験環境の複数台で波と停止を確かめ、全体の時間を記録する。あわせて、`forks = 5` と波の中の足並みにより、25台・69台の波では予告を受けた端末が長く保守画面で待つことを解く(forks を波に合わせるか、予告を切り離す)。最初の1台を試験端末に決める方法も決める(今は inventory の並び順の先頭)。
+  - [x] (2026-11-04) Step 2: 通常経路の全選択 Pi4 を `strategy: free` で先に prepare し、全台成功後だけ切り替えの波へ進む。波も free とし、指定試験端末 `kensaku-stonebase01` を対象内なら先頭にする。失敗・到達不能時の回収と停止、Pi3 ゲート、トルク経路の維持をローカル模擬で検証した。実fleetでの保守画面待ち時間・全体時間は未測定。
+  - [ ] Step 3: Pi5 にイメージの中継キャッシュ（pull-through cache）を置く。試験環境の複数台で波と停止を確認し、全体の時間を記録する。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
   - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
   - [ ] Step 2: rpi-image-gen で共通 OS イメージを作る。
@@ -47,6 +48,13 @@
 
 
 ## Surprises & Discoveries
+
+- Observation: M5 Step 2 の検証はローカル模擬のみ。到達不能端末のデータは回収できず、prepare 全台成功後に切り替えの波で停止した場合は未着手の後続端末に事前取得した候補・run データが残り得る。実fleetでの時間と復旧時の残存データ確認は未実施。
+  Evidence: `release_kiosk` の always cleanup は、その role に進んだ端末だけで実行される。今回追加した全台 cleanup は共有 prepare の失敗時を対象とする。
+
+- Observation: M5 Step 2 のローカル検証は、標準 release テスト97件（57.6秒）、最終変更後のprepare境界・role再利用テスト2件（5.2秒）、証明書契約6件、deploy safety契約、syntax-check、`git diff --check` が成功した。
+  Evidence: 秘密情報を参照しない一時 `ANSIBLE_CONFIG=/tmp/m5-ansible.cfg`（roles_path はこのworktree、local_tmp/remote_tmp は /tmp）を用いた。実行コマンドは `ANSIBLE_CONFIG=/tmp/m5-ansible.cfg ANSIBLE_LOCAL_TEMP=/tmp/m5-ansible-local ANSIBLE_REMOTE_TEMP=/tmp/m5-ansible-remote python3 scripts/deploy/tests/test_ansible_standard_release.py`、`ANSIBLE_CONFIG=/tmp/m5-ansible.cfg python3 scripts/deploy/tests/test_distrusted_intermediates.py`、`bash scripts/deploy/tests/test-deploy-safety-contracts.sh`、`ANSIBLE_CONFIG=/tmp/m5-ansible.cfg ansible-playbook -i 'localhost,' infrastructure/ansible/playbooks/deploy-release-standard.yml --syntax-check`。syntax-check は最小inventoryのため server/kiosk/signage 不在の警告のみ。実機接続は行っていない。
+
 
 
 - Observation: Pi4 の更新役割の失敗は rescue で戻したあと失敗として終わるため、`serial` を段階の指定にすると `max_fail_percentage: 0` が次の波を止めない。`serial: 1` では「波の全台が失敗」の扱いで止まっていたので、今まで表に出ていなかった。
@@ -68,6 +76,23 @@
 
 
 ## Decision Log
+
+- Decision: M5 Step 2 A: 通常更新は全選択 Pi4 の prepare を独立した free play で先行させ、成功した端末の非永続 fact で role 内の再取得を省略する。初回導入は既存 role の経路を維持する。
+  Rationale: 取得中は表示を維持し、切り替えの波へ取得時間を持ち込まない。OS 更新除外マーカーとホスト事前設定は prepare にも適用する。トルクの PREPARED 経路は変更しない。
+  Date/Author: 2026-11-04 / Codex
+
+- Decision: M5 Step 2 B: free play 完了後、選択全台の成功 fact を linear play で集約する。失敗・到達不能があれば、到達可能な端末で既存 cleanup を実行して全台の切り替えを停止する。
+  Rationale: rescue だけでは他端末への切り替えを防げない。到達不能端末も集約に戻し、成功 fact がない場合は失敗とする。prepare 開始時点から Pi3 ゲートの未完了対象に含める。到達不能が続く端末の回収は実行できないため、復旧後の確認が必要。
+  Date/Author: 2026-11-04 / Codex
+
+- Decision: M5 Step 2 C: 通常波は free、トルク波は従来の linear を選ぶ。serial と max_fail_percentage は維持し、forks は5のままにする。
+  Rationale: 端末別に予告・切り替え・health を進め、同じ task の全台完了待ちを除く。5から20への引き上げは Pi5・レジストリ負荷の実測がないため行わない。role 内に run_once や play 全体の集約参照はなく、localhost 委譲の予告・解除は端末ID別である。波間ゲートは失敗端末が記録した batch を見て同じ波を除外する。free は max_fail_percentage をサポートしないため、後続波の停止には明示ゲートを使う。
+  Date/Author: 2026-11-04 / Codex
+
+- Decision: M5 Step 2 D: 通常波の hosts パターンで `release_pi4_canary_host`（既定 `kensaku-stonebase01`）を kiosk 群より先に指定する。
+  Rationale: Ansible はパターンの順序を保って重複を除き、その後 --limit を適用する。対象にあれば第1波に入り、不在なら残りの inventory 順になる。inventory 自体を並べ替えず、トルク経路は従来の kiosk パターンを維持する。
+  Date/Author: 2026-11-04 / Codex
+
 
 
 - Decision: M5 step 1 は Pi4 の play の先頭に「前の波で失敗した端末があれば止める」確認を置き、`max_fail_percentage: 0` は残す。

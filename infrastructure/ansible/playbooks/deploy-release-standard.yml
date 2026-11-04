@@ -212,10 +212,104 @@
   roles:
     - role: release_pi5
 
-- name: Update Pi4 kiosks in canary waves
+- name: Prepare every selected normal Pi4 before switching waves
   hosts: kiosk
   gather_facts: false
   become: true
+  strategy: free
+  tags:
+    - pi4
+  tasks:
+    - name: Stage normal Pi4 candidates under the OS update guard
+      when: not (release_torque_cutover | default(false) | bool) and not (release_kiosk_first_install | default(false) | bool)
+      block:
+        - name: Initialize the normal preparation boundary for the Pi3 gate
+          ansible.builtin.set_fact:
+            release_pi4_started: true
+            release_pi4_prepare_targets: "{{ ansible_play_hosts_all }}"
+            release_pi4_prepared_this_run: false
+            release_pi4_prepare_completed: false
+
+        - name: Prepare under the release marker
+          block:
+            - name: Mark the release and wait for an in-flight OS updater
+              ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+            - name: Apply host certificate distrust before preparation
+              ansible.builtin.import_role:
+                name: common
+                tasks_from: distrusted-intermediates
+            - name: Disable MPTCP before preparation
+              ansible.builtin.import_role:
+                name: common
+                tasks_from: disable-mptcp
+            - name: Prepare the normal Pi4 candidate
+              ansible.builtin.include_role:
+                name: release_kiosk
+                tasks_from: prepare
+            - name: Record completed candidate preparation
+              ansible.builtin.set_fact:
+                release_pi4_prepare_completed: true
+          rescue:
+            - name: Preserve preparation failure for the shared gate
+              ansible.builtin.set_fact:
+                release_pi4_prepared_this_run: false
+          always:
+            - name: Clear the release marker after preparation
+              ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
+
+        - name: Record successful preparation including marker cleanup in this invocation
+          ansible.builtin.set_fact:
+            release_pi4_prepared_this_run: true
+          when: release_pi4_prepare_completed | bool
+
+- name: Require every normal Pi4 candidate before switching any kiosk
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  tags:
+    - pi4
+  tasks:
+    # Restore unreachable targets to the gate; absence of a success fact fails closed.
+    - name: Restore unreachable preparation targets for cleanup and aggregation
+      ansible.builtin.meta: clear_host_errors
+      when: not (release_torque_cutover | default(false) | bool) and not (release_kiosk_first_install | default(false) | bool)
+
+    - name: Aggregate the normal preparation boundary
+      when: not (release_torque_cutover | default(false) | bool) and not (release_kiosk_first_install | default(false) | bool)
+      block:
+        - name: Check every selected target after the free preparation play ended
+          ansible.builtin.set_fact:
+            release_pi4_all_prepared: >-
+              {{ (release_pi4_prepare_targets | map('extract', hostvars)
+                  | selectattr('release_pi4_prepared_this_run', 'defined')
+                  | selectattr('release_pi4_prepared_this_run', 'equalto', true)
+                  | list | length) == (release_pi4_prepare_targets | length) }}
+
+        - name: Clean candidates on every reachable target after shared preparation failure
+          when: not (release_pi4_all_prepared | bool)
+          ignore_unreachable: true
+          block:
+            - name: Mark the release while cleaning failed preparation
+              ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+            - name: Remove run-scoped Pi4 preparation data before stopping
+              ansible.builtin.include_role:
+                name: release_kiosk
+                tasks_from: cleanup
+          always:
+            - name: Clear the release marker after shared preparation failure
+              ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
+
+        - name: Stop all kiosks and Pi3 after shared preparation failure
+          ansible.builtin.fail:
+            msg: "Not started: normal Pi4 preparation failed or was unreachable; candidates were cleaned on reachable targets."
+          when: not (release_pi4_all_prepared | bool)
+
+- name: Update Pi4 kiosks in canary waves
+  # Pattern order preserves the remaining inventory order and --limit selection.
+  hosts: "{{ 'kiosk' if (release_torque_cutover | default(false) | bool) else (([release_pi4_canary_host | default('kensaku-stonebase01')] | intersect(groups['kiosk'] | default([]))) + ['kiosk']) }}"
+  gather_facts: false
+  become: true
+  strategy: "{{ 'linear' if (release_torque_cutover | default(false) | bool) else 'free' }}"
   # Normal releases widen 1 -> 5 -> 25% -> rest. Torque cutover stays one at a time.
   serial: "{{ [1] if (release_torque_cutover | default(false) | bool) else [1, 5, '25%', '100%'] }}"
   max_fail_percentage: "{{ 100 if (release_torque_cutover | default(false) | bool) else 0 }}"
@@ -226,18 +320,25 @@
     - name: Mark this kiosk as started for the Pi3 gate
       ansible.builtin.set_fact:
         release_pi4_started: true
+        release_pi4_wave_hosts: "{{ ansible_play_batch }}"
 
     # A failure inside the role's rescue/always path does not trip
     # max_fail_percentage across serial batches, so stop the next wave here
     # before any of its kiosks are touched.
     - name: Stop before this wave when a kiosk in an earlier wave failed
+      vars:
+        release_pi4_earlier_failures: >-
+          {{ ansible_play_hosts_all | difference(ansible_play_hosts)
+             | map('extract', hostvars)
+             | rejectattr('release_pi4_wave_hosts', 'contains', inventory_hostname)
+             | map(attribute='inventory_hostname') | list }}
       ansible.builtin.fail:
         msg: >-
           Not started: an earlier Pi4 wave failed or was unreachable on
-          {{ ansible_play_hosts_all | difference(ansible_play_hosts) | join(', ') }}.
+          {{ release_pi4_earlier_failures | join(', ') }}.
       when:
         - not (release_torque_cutover | default(false) | bool)
-        - (ansible_play_hosts_all | difference(ansible_play_hosts)) | length > 0
+        - release_pi4_earlier_failures | length > 0
 
     - name: Apply host certificate distrust before the kiosk release
       ansible.builtin.import_role:

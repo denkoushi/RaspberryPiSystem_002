@@ -124,8 +124,11 @@ class DistrustedIntermediatesTests(unittest.TestCase):
     def test_standard_profiles_and_common_run_without_full_mode_gate(self) -> None:
         plays = yaml.safe_load((ANSIBLE / "playbooks/deploy-release-standard.yml").read_text())
         for tag, hosts in (("pi5", "server"), ("pi4", "kiosk"), ("pi3", "signage")):
-            play = next(play for play in plays if tag in play["tags"])
-            self.assertEqual(play["hosts"], hosts)
+            play = next(play for play in plays if tag in play["tags"] and play.get("roles"))
+            if tag == "pi4":
+                self.assertIn("release_pi4_canary_host", play["hosts"])
+            else:
+                self.assertEqual(play["hosts"], hosts)
             index, task = next(
                 (i, t)
                 for i, t in enumerate(play["pre_tasks"])
