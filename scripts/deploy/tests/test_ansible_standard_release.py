@@ -1763,7 +1763,10 @@ esac
                     switches = re.findall(r'"msg": "SWITCH ([^"]+)"', output)
                     if kind in ("switch_failed", "cleanup_failed", "end_failed"):
                         self.assertNotEqual(run.returncode, 0, output)
-                        self.assertEqual(switches, ["raspi4-kensaku-stonebase01"] +
+                        # The canary batch comes first; hosts inside the 5-host batch run in
+                        # parallel forks, so Ansible does not guarantee their output order.
+                        self.assertEqual(switches[:1], ["raspi4-kensaku-stonebase01"], output)
+                        self.assertEqual(sorted(switches[1:]),
                                          [f"kiosk-{index:02d}" for index in range(1, 6)], output)
                         for host in ("kiosk-06", "kiosk-07"):
                             self.assertIn(f'"msg": "CLEAN {host}"', output)
