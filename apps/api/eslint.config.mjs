@@ -38,11 +38,8 @@ export default tseslint.config(
     languageOptions: {
       globals: { ...globals.node, ...globals.es2022 },
       sourceType: 'module',
-      parser: tseslint.parser,
-      parserOptions: {
-        project: './tsconfig.eslint.json',
-        tsconfigRootDir: import.meta.dirname
-      }
+      // No enabled rule needs type information, so parse without a TS program.
+      parser: tseslint.parser
     },
     plugins: { 'unused-imports': unusedImports },
     linterOptions: { reportUnusedDisableDirectives: 'off' },

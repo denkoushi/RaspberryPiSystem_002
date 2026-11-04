@@ -42,10 +42,9 @@ export default tseslint.config(
       globals: { ...globals.browser, ...globals.es2022 },
       sourceType: 'module',
       parser: tseslint.parser,
+      // No enabled rule needs type information, so parse without a TS program.
       parserOptions: {
-        project: ['./tsconfig.json', './tsconfig.test.json'],
-        ecmaFeatures: { jsx: true },
-        tsconfigRootDir: import.meta.dirname
+        ecmaFeatures: { jsx: true }
       }
     },
     settings: { react: { version: 'detect' } },

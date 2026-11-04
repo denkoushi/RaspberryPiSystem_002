@@ -59,7 +59,7 @@ Path(sys.argv[1]).write_text(
     f"""services:
   nfc-agent:
     image: {sys.argv[2]}
-    command: [\"/bin/sh\", \"-c\", \"trap 'exit 0' TERM INT; while :; do sleep 60; done\"]
+    command: [\"/bin/sh\", \"-c\", \"trap 'exit 0' TERM INT; while :; do sleep 60 & wait; done\"]
     working_dir: /work
     environment:
       AUDIT_VALUE: stable

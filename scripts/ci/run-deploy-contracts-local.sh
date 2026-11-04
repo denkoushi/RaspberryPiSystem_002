@@ -79,7 +79,16 @@ bash -n scripts/server/deploy-detached.sh
 bash scripts/deploy/tests/test-single-deploy-entrypoint.sh
 bash scripts/deploy/tests/test-terminal-runtime-manifest-docker.sh
 bash scripts/deploy/tests/test-web-static-routing.sh
-python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
+# The deploy unit tests are independent (tempfile dirs, port 0), so CI runs
+# them in parallel with pytest-xdist. Local runs without it keep the serial
+# unittest runner over the same test_*.py modules.
+if python3 -c 'import pytest, xdist' >/dev/null 2>&1; then
+  echo "[deploy-contract] deploy unit tests via pytest-xdist"
+  python3 -m pytest -q -p no:cacheprovider -n auto -rs scripts/deploy/tests
+else
+  echo "[deploy-contract] deploy unit tests via serial unittest (pytest-xdist not installed)"
+  python3 -m unittest discover -s scripts/deploy/tests -p 'test_*.py'
+fi
 bash scripts/server/tests/test_storage_maintenance_retention.sh
 bash scripts/client/tests/test_pi4_storage_maintenance.sh
 python3 scripts/deploy/tests/test-client-agent-lifecycle-selection.py

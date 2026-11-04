@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint src",
+    "lint": "eslint src --concurrency auto",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage --coverage.provider=v8"
   },

@@ -50,6 +50,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Classification needs full commit/tree history for merge-base and
+          # name-status diffs, not historical file contents.
+          filter: blob:none
 
       - name: Classify changes
         id: classify
@@ -446,7 +449,7 @@ jobs:
       - name: Install Ansible
         run: |
           set -euo pipefail
-          python3 -m pip install --user ansible-core
+          python3 -m pip install --user ansible-core pytest==9.2.0 pytest-xdist==3.8.0
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           command -v ansible-playbook
 

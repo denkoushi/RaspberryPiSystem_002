@@ -16,6 +16,7 @@
 - shared-typesも lint 対象 (`pnpm -r lint` で `packages/shared-types` を含む)
 - dist/生成物は lint 対象外（`ignorePatterns: ['dist/**']`）
 - 厳格化（`recommended-type-checked`, securityルール）は影響範囲を見て段階導入する
+- API/Web の lint は型情報を使うルールを有効化していないため `parserOptions.project` を使わず、`eslint --concurrency auto` で並列実行する。型情報が必要なルールを導入する場合は `parserOptions.project` を戻し、並列度とメモリ使用量を再計測する
 
 ### import/order 運用メモ
 - グループ順: builtin → external → internal（`@raspi-system/**`など） → parent/sibling → object → type
