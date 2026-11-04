@@ -925,6 +925,7 @@ update-frequency: medium
 ---
 
 <a id="kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落"></a>
+<a id="kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落"></a>
 
 ### [KB-442] Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落）
 
@@ -977,6 +978,7 @@ update-frequency: medium
 ---
 
 <a id="kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期"></a>
+<a id="kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期"></a>
 
 ### [KB-443] Pi4 キオスク非表示（Tailscale 再認証後の netmap 未同期・LAN 暫定迂回）
 

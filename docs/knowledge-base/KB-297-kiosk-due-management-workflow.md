@@ -1,5 +1,5 @@
 ---
-title: KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
+title: "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装"
 tags: [production-schedule, kiosk, due-management, priority]
 audience: [開発者, 運用者]
 last-verified: 2026-06-30

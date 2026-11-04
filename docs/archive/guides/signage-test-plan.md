@@ -3,7 +3,7 @@ title: デジタルサイネージ機能 テスト計画
 tags: [テスト, デジタルサイネージ, サイネージ]
 audience: [開発者, テスター, QA]
 last-verified: 2025-11-28
-related: [../modules/signage/README.md, verification-checklist.md]
+related: [../../modules/signage/README.md, ../../guides/verification-checklist.md]
 category: guides
 update-frequency: medium
 ---

@@ -1,11 +1,12 @@
 ---
 title: Rolling terminal deployment with Pi5 Blue/Green
-status: accepted
+status: superseded
 scope: Pi5 API/Web and Pi4 kiosk / Pi3 signage release orchestration
 date: 2026-07-12
-source_of_truth: docs/plans/rolling-terminal-bluegreen-deploy.md
+source_of_truth: docs/plans/deployment-foundation-refactor-execplan.md
+superseded_by: docs/plans/deployment-foundation-refactor-execplan.md
 related_code: [scripts/deploy/rolling-release.py, scripts/deploy/deploy-status-state.py, scripts/deploy/pi5-candidate-build.sh, scripts/deploy/classify-deploy-impact.py]
-related_docs: [../runbooks/pi5-blue-green-deploy.md, ../guides/deployment.md, ../decisions/ADR-20260712-rolling-terminal-release-orchestration.md, ../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md]
+related_docs: [../runbooks/pi5-blue-green-deploy-legacy-2026-07.md, ../../guides/deployment.md, ../../decisions/ADR-20260712-rolling-terminal-release-orchestration.md, ../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md]
 validation: isolated PostgreSQL, unit tests, shell tests, CI, 2026-07-12 production rolling-terminal and Pi5 Blue/Green acceptance, and 2026-07-13 full rolling release with Pi5 cleanup recovery and operator-approved canary hold; --auto-minimize production shadow evaluation remains open
 open_items:
   - production shadow evaluation of --auto-minimize

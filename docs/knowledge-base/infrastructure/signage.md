@@ -715,6 +715,7 @@ sudo systemctl restart signage-lite.service
 
 ---
 
+<a id="kb-236-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms"></a>
 ### [KB-441] 可視化データソースで再レンダリング失敗が断続発生する（dataSource timeout 5000ms）
 
 **事象**:

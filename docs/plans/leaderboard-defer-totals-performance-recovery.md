@@ -42,11 +42,11 @@ validation: >-
   2026-06-29 post-deploy comparison showed +人 metadata POST about 3.0-3.5s for 80 displayed ids, faster than the old includeLabor full-board refetch class at about 4.9-6.5s
 open_items:
   - If the physical browser still appears busy, distinguish three states: initial shell load, 5-minute board refresh, and `+人` labor metadata refresh. Only the first two should show 「一覧を更新中です。」.
-  - `resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck.
+  - "`resourceShell` can still be multi-second on large resources; do not add API/index work until browser/client-perf logs show API shell is again the bottleneck."
   - Kiosk browsers must hard reload to pick up the deployed Web bundle; already-open SPA tabs can keep old banner/refetch/labor-overlay behavior until reload.
   - For further `+人` speed work, profile `leaderboardPerf=1` events (`labor-metadata-start/end/error`) plus server `endpoint="laborMetadata"` phases. Current production metadata POST cost is about 3.0-3.5s for 80 displayed ids; do not reintroduce a full board refetch to solve this.
   - Actual DOM reflection after `labor-metadata-end` is not yet quantified on the physical browser. Measure it before optimizing API internals further if operators still report delay.
-  - `raspi4-sessaku-01` was updated successfully by deploy runs `20260628-222904` and `20260628-231744`; it is no longer the known old-commit outlier from the completionFilter deploy.
+  - "`raspi4-sessaku-01` was updated successfully by deploy runs `20260628-222904` and `20260628-231744`; it is no longer the known old-commit outlier from the completionFilter deploy."
 ---
 
 # Plan: Leaderboard deferTotals Performance Recovery

@@ -339,6 +339,7 @@ update-frequency: high
 ---
 
 <a id="kb-449-api-docker-build-cache-and-health-wait"></a>
+<a id="kb-389-api-docker-build-cache-and-health-wait"></a>
 
 ### [KB-449] API Docker build cache and health wait (2026-06-17)
 

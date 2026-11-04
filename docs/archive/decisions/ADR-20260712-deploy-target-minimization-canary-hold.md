@@ -1,9 +1,10 @@
 ---
 id: ADR-20260712-deploy-target-minimization-canary-hold
 title: Deploy target minimization, canary hold, and Pi5 Blue/Green idempotent skip
-status: accepted
+status: superseded
 date: 2026-07-12
-source_of_truth: true
+source_of_truth: docs/plans/deployment-foundation-refactor-execplan.md
+superseded_by: docs/plans/deployment-foundation-refactor-execplan.md
 related_docs:
   - ../../decisions/ADR-20260712-rolling-terminal-release-orchestration.md
   - ../plans/rolling-terminal-bluegreen-deploy.md

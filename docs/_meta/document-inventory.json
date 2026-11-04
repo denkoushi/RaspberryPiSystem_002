@@ -16,16 +16,16 @@
   },
   "summary": {
     "documentCount": 782,
-    "totalLines": 186539,
-    "totalBytes": 15520411,
-    "withFrontmatter": 361,
-    "withStatus": 176,
+    "totalLines": 186530,
+    "totalBytes": 15519276,
+    "withFrontmatter": 362,
+    "withStatus": 177,
     "sourceOfTruthDeclared": 116,
     "execPlanReferences": 59,
     "questionMarkCorruptionDocuments": 2,
     "replacementCharacterDocuments": 1,
     "longLineDocuments": 46,
-    "localLinkCount": 5733,
+    "localLinkCount": 5737,
     "brokenLocalLinkCount": 60,
     "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
@@ -5775,7 +5775,7 @@
     {
       "path": "docs/INDEX.md",
       "lineCount": 2098,
-      "byteSize": 360484,
+      "byteSize": 360460,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -6564,11 +6564,6 @@
         {
           "href": "./archive/runbooks/mac-target-location-migration.md",
           "targetPath": "docs/archive/runbooks/mac-target-location-migration.md",
-          "exists": true
-        },
-        {
-          "href": "./archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
-          "targetPath": "docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
           "exists": true
         },
         {
@@ -11346,8 +11341,8 @@
     },
     {
       "path": "docs/_meta/document-migration-ledger.md",
-      "lineCount": 181,
-      "byteSize": 26948,
+      "lineCount": 179,
+      "byteSize": 26511,
       "hasFrontmatter": true,
       "title": "Document Migration Ledger",
       "status": "active",
@@ -11969,12 +11964,12 @@
     },
     {
       "path": "docs/archive/decisions/ADR-20260712-deploy-target-minimization-canary-hold.md",
-      "lineCount": 156,
-      "byteSize": 7693,
+      "lineCount": 157,
+      "byteSize": 7843,
       "hasFrontmatter": true,
       "title": "Deploy target minimization, canary hold, and Pi5 Blue/Green idempotent skip",
-      "status": "accepted",
-      "source_of_truth": "true",
+      "status": "superseded",
+      "source_of_truth": "docs/plans/deployment-foundation-refactor-execplan.md",
       "localLinks": [
         {
           "href": "../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md",
@@ -11982,8 +11977,8 @@
           "exists": true
         },
         {
-          "href": "../runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
-          "targetPath": "docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
+          "href": "../runbooks/pi5-blue-green-deploy-legacy-2026-07.md",
+          "targetPath": "docs/archive/runbooks/pi5-blue-green-deploy-legacy-2026-07.md",
           "exists": true
         },
         {
@@ -14024,7 +14019,7 @@
     {
       "path": "docs/archive/deployments/legacy-operator-guide-through-2026-07.md",
       "lineCount": 1600,
-      "byteSize": 106929,
+      "byteSize": 106907,
       "hasFrontmatter": true,
       "title": "旧デプロイ運用ガイド（2026-07以前）",
       "status": "historical",
@@ -14355,7 +14350,7 @@
     {
       "path": "docs/archive/guides/ai-ssh-access.md",
       "lineCount": 187,
-      "byteSize": 6157,
+      "byteSize": 6183,
       "hasFrontmatter": true,
       "title": "AIアシスタントのSSHアクセスについて",
       "status": null,
@@ -14427,7 +14422,7 @@
     {
       "path": "docs/archive/guides/auto-startup-status.md",
       "lineCount": 323,
-      "byteSize": 7899,
+      "byteSize": 7802,
       "hasFrontmatter": true,
       "title": "システム自動起動の現状と設定手順",
       "status": null,
@@ -14488,8 +14483,8 @@
     },
     {
       "path": "docs/archive/guides/backup-dropbox-status-investigation.md",
-      "lineCount": 247,
-      "byteSize": 9452,
+      "lineCount": 248,
+      "byteSize": 9549,
       "hasFrontmatter": false,
       "title": "Dropboxバックアップ機能の状況調査レポート",
       "status": null,
@@ -14627,8 +14622,8 @@
     },
     {
       "path": "docs/archive/guides/backup-restore-verification.md",
-      "lineCount": 232,
-      "byteSize": 10469,
+      "lineCount": 233,
+      "byteSize": 10508,
       "hasFrontmatter": false,
       "title": "バックアップリストア機能の実機検証手順",
       "status": null,
@@ -14710,8 +14705,8 @@
     },
     {
       "path": "docs/archive/guides/backup-target-management-verification.md",
-      "lineCount": 325,
-      "byteSize": 12217,
+      "lineCount": 327,
+      "byteSize": 12185,
       "hasFrontmatter": false,
       "title": "バックアップ対象管理UI実機検証手順",
       "status": null,
@@ -14756,8 +14751,8 @@
     },
     {
       "path": "docs/archive/guides/backup-verification.md",
-      "lineCount": 258,
-      "byteSize": 9975,
+      "lineCount": 262,
+      "byteSize": 10716,
       "hasFrontmatter": true,
       "title": "バックアップ機能実機検証ガイド",
       "status": null,
@@ -15028,7 +15023,7 @@
     {
       "path": "docs/archive/guides/local-alerts-verification.md",
       "lineCount": 241,
-      "byteSize": 7667,
+      "byteSize": 7693,
       "hasFrontmatter": true,
       "title": "ローカル環境対応の通知機能 実機検証手順",
       "status": null,
@@ -15068,13 +15063,18 @@
     },
     {
       "path": "docs/archive/guides/measuring-instruments-verification.md",
-      "lineCount": 366,
-      "byteSize": 19577,
+      "lineCount": 368,
+      "byteSize": 19617,
       "hasFrontmatter": false,
       "title": "計測機器管理システム 実機検証手順",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
         {
           "href": "../../guides/verification-checklist.md",
           "targetPath": "docs/guides/verification-checklist.md",
@@ -15574,13 +15574,18 @@
     },
     {
       "path": "docs/archive/guides/photo-loan-test-plan.md",
-      "lineCount": 353,
-      "byteSize": 13071,
+      "lineCount": 355,
+      "byteSize": 13067,
       "hasFrontmatter": true,
       "title": "写真撮影持出機能 テスト計画",
       "status": null,
       "source_of_truth": null,
       "localLinks": [
+        {
+          "href": "../../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
+          "exists": true
+        },
         {
           "href": "../../guides/verification-checklist.md",
           "targetPath": "docs/guides/verification-checklist.md",
@@ -15606,7 +15611,7 @@
     {
       "path": "docs/archive/guides/pi3-deployment-verification.md",
       "lineCount": 189,
-      "byteSize": 8461,
+      "byteSize": 8474,
       "hasFrontmatter": true,
       "title": "Pi3デプロイ検証手順",
       "status": null,
@@ -15651,8 +15656,8 @@
     },
     {
       "path": "docs/archive/guides/security-test-plan.md",
-      "lineCount": 280,
-      "byteSize": 10866,
+      "lineCount": 284,
+      "byteSize": 10973,
       "hasFrontmatter": false,
       "title": "セキュリティ強化テスト計画",
       "status": null,
@@ -15677,8 +15682,8 @@
     },
     {
       "path": "docs/archive/guides/setup-clients-status-agent.md",
-      "lineCount": 234,
-      "byteSize": 7219,
+      "lineCount": 238,
+      "byteSize": 7395,
       "hasFrontmatter": true,
       "title": "クライアント端末のstatus-agent設定手順（実機テスト用）",
       "status": null,
@@ -15687,6 +15692,11 @@
         {
           "href": "../../guides/client-initial-setup.md",
           "targetPath": "docs/guides/client-initial-setup.md",
+          "exists": true
+        },
+        {
+          "href": "../../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
         {
@@ -15709,7 +15719,7 @@
     {
       "path": "docs/archive/guides/signage-deployment.md",
       "lineCount": 145,
-      "byteSize": 4534,
+      "byteSize": 4550,
       "hasFrontmatter": true,
       "title": "デジタルサイネージ機能 デプロイメントガイド",
       "status": null,
@@ -15802,7 +15812,7 @@
     {
       "path": "docs/archive/guides/signage-test-plan.md",
       "lineCount": 364,
-      "byteSize": 12236,
+      "byteSize": 12252,
       "hasFrontmatter": true,
       "title": "デジタルサイネージ機能 テスト計画",
       "status": null,
@@ -16136,7 +16146,7 @@
     {
       "path": "docs/archive/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md",
       "lineCount": 68,
-      "byteSize": 4747,
+      "byteSize": 4805,
       "hasFrontmatter": true,
       "title": "KB-340 API OCR/VLM 境界整理リファクタ（本番デプロイ・実機検証）",
       "status": null,
@@ -16449,7 +16459,7 @@
     {
       "path": "docs/archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md",
       "lineCount": 189,
-      "byteSize": 10410,
+      "byteSize": 10489,
       "hasFrontmatter": false,
       "title": "KB-388: Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06）",
       "status": null,
@@ -16509,16 +16519,16 @@
     },
     {
       "path": "docs/archive/knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md",
-      "lineCount": 93,
-      "byteSize": 4275,
+      "lineCount": 94,
+      "byteSize": 4385,
       "hasFrontmatter": true,
       "title": "Pi5 Blue/Green cleanup and monitor lock handoff",
-      "status": "active",
-      "source_of_truth": "true",
+      "status": "historical",
+      "source_of_truth": "docs/runbooks/deploy-status-recovery.md",
       "localLinks": [
         {
-          "href": "../runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
-          "targetPath": "docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
+          "href": "../runbooks/pi5-blue-green-deploy-legacy-2026-07.md",
+          "targetPath": "docs/archive/runbooks/pi5-blue-green-deploy-legacy-2026-07.md",
           "exists": true
         },
         {
@@ -16541,7 +16551,7 @@
     {
       "path": "docs/archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md",
       "lineCount": 203,
-      "byteSize": 13010,
+      "byteSize": 13034,
       "hasFrontmatter": false,
       "title": "KB調査: キオスク備考欄の日本語入力モード切替・電源ボタンの同時不具合",
       "status": null,
@@ -16587,7 +16597,7 @@
     {
       "path": "docs/archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md",
       "lineCount": 235,
-      "byteSize": 15595,
+      "byteSize": 15600,
       "hasFrontmatter": false,
       "title": "KB調査: キオスク生産スケジュールの不具合（静的解析＋実機ログ解析）",
       "status": null,
@@ -16643,7 +16653,7 @@
     {
       "path": "docs/archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md",
       "lineCount": 169,
-      "byteSize": 13003,
+      "byteSize": 13097,
       "hasFrontmatter": false,
       "title": "KB: キオスク吊具 持出し返却・取消と「使用中」判定の調査報告",
       "status": null,
@@ -16724,12 +16734,12 @@
     },
     {
       "path": "docs/archive/plans/rolling-terminal-bluegreen-deploy.md",
-      "lineCount": 119,
-      "byteSize": 6996,
+      "lineCount": 120,
+      "byteSize": 7094,
       "hasFrontmatter": true,
       "title": "Rolling terminal deployment with Pi5 Blue/Green",
-      "status": "accepted",
-      "source_of_truth": "docs/plans/rolling-terminal-bluegreen-deploy.md",
+      "status": "superseded",
+      "source_of_truth": "docs/plans/deployment-foundation-refactor-execplan.md",
       "localLinks": [
         {
           "href": "../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md",
@@ -16846,7 +16856,7 @@
     {
       "path": "docs/archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md",
       "lineCount": 396,
-      "byteSize": 31057,
+      "byteSize": 31054,
       "hasFrontmatter": true,
       "title": "DGX system-prod LocalLLM 移行履歴（2026-04〜06）",
       "status": "historical",
@@ -16887,7 +16897,7 @@
     {
       "path": "docs/archive/runbooks/local-llm-tailscale-sidecar.md",
       "lineCount": 534,
-      "byteSize": 32304,
+      "byteSize": 32327,
       "hasFrontmatter": true,
       "title": "Runbook: Ubuntu LocalLLM を Tailscale sidecar で分離運用する",
       "status": null,
@@ -16982,12 +16992,12 @@
     },
     {
       "path": "docs/archive/runbooks/pi5-blue-green-deploy-legacy-2026-07.md",
-      "lineCount": 131,
-      "byteSize": 12996,
+      "lineCount": 132,
+      "byteSize": 13025,
       "hasFrontmatter": true,
       "title": "Pi5 single-host Blue/Green deployment runbook",
-      "status": "accepted",
-      "source_of_truth": "docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
+      "status": "superseded",
+      "source_of_truth": "docs/runbooks/deploy-status-recovery.md",
       "localLinks": [
         {
           "href": "../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md",
@@ -16995,7 +17005,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 0,
+      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17004,20 +17014,20 @@
     {
       "path": "docs/archive/runbooks/pi5-minimal-downtime-deploy.md",
       "lineCount": 14,
-      "byteSize": 815,
+      "byteSize": 834,
       "hasFrontmatter": true,
       "title": "Pi5標準Ansible移行ノート",
       "status": "superseded",
       "source_of_truth": "docs/guides/deployment.md",
       "localLinks": [
         {
-          "href": "./pi5-standard-ansible-diagnosis-2026-08.md",
-          "targetPath": "docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
+          "href": "../../guides/deployment.md",
+          "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
         {
-          "href": "../../guides/deployment.md",
-          "targetPath": "docs/guides/deployment.md",
+          "href": "../../runbooks/deploy-status-recovery.md",
+          "targetPath": "docs/runbooks/deploy-status-recovery.md",
           "exists": true
         }
       ],
@@ -17029,14 +17039,25 @@
     },
     {
       "path": "docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
-      "lineCount": 108,
-      "byteSize": 7658,
+      "lineCount": 55,
+      "byteSize": 2968,
       "hasFrontmatter": true,
       "title": "Pi5標準Ansible診断Runbook",
-      "status": "active",
-      "source_of_truth": "docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md",
-      "localLinks": [],
-      "inboundCount": 4,
+      "status": "historical",
+      "source_of_truth": "docs/runbooks/deploy-status-recovery.md",
+      "localLinks": [
+        {
+          "href": "../../runbooks/deploy-status-recovery.md",
+          "targetPath": "docs/runbooks/deploy-status-recovery.md",
+          "exists": true
+        },
+        {
+          "href": "../../runbooks/pi5-local-file-storage.md#pi5-docker旧リリースイメージ整理",
+          "targetPath": "docs/runbooks/pi5-local-file-storage.md",
+          "exists": true
+        }
+      ],
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -17136,7 +17157,7 @@
     {
       "path": "docs/decisions/003-camera-module.md",
       "lineCount": 141,
-      "byteSize": 5084,
+      "byteSize": 5120,
       "hasFrontmatter": true,
       "title": "ADR 003: カメラ機能のモジュール化",
       "status": null,
@@ -19187,7 +19208,7 @@
     {
       "path": "docs/decisions/ADR-20260722-assembly-torque-wrench-connection-lease.md",
       "lineCount": 59,
-      "byteSize": 6492,
+      "byteSize": 6494,
       "hasFrontmatter": true,
       "title": "ADR-20260722: Fleet-Wide Torque Wrench Connection Lease",
       "status": "accepted",
@@ -19346,7 +19367,7 @@
     {
       "path": "docs/decisions/ADR-20260726-deploy-readiness-policy-engine.md",
       "lineCount": 99,
-      "byteSize": 5264,
+      "byteSize": 5342,
       "hasFrontmatter": true,
       "title": "Data-driven release-readiness policy and sealed admission",
       "status": "superseded",
@@ -20763,7 +20784,7 @@
     {
       "path": "docs/guides/ansible-ssh-architecture.md",
       "lineCount": 262,
-      "byteSize": 10121,
+      "byteSize": 10206,
       "hasFrontmatter": true,
       "title": "Ansible SSH接続アーキテクチャの説明",
       "status": null,
@@ -21102,7 +21123,7 @@
     {
       "path": "docs/guides/backup-verification-checklist.md",
       "lineCount": 122,
-      "byteSize": 4903,
+      "byteSize": 4914,
       "hasFrontmatter": false,
       "title": "バックアップ検証チェックリスト",
       "status": null,
@@ -21534,7 +21555,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 243,
+      "inboundCount": 246,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22067,7 +22088,7 @@
     {
       "path": "docs/guides/lint.md",
       "lineCount": 46,
-      "byteSize": 2907,
+      "byteSize": 2923,
       "hasFrontmatter": false,
       "title": "Lint 運用ガイド",
       "status": null,
@@ -22149,7 +22170,7 @@
     {
       "path": "docs/guides/logging.md",
       "lineCount": 294,
-      "byteSize": 8926,
+      "byteSize": 9010,
       "hasFrontmatter": false,
       "title": "ログ出力ガイド",
       "status": null,
@@ -22339,7 +22360,7 @@
     {
       "path": "docs/guides/operation-manual.md",
       "lineCount": 790,
-      "byteSize": 28217,
+      "byteSize": 28161,
       "hasFrontmatter": true,
       "title": "運用マニュアル",
       "status": null,
@@ -22942,7 +22963,7 @@
     {
       "path": "docs/guides/verification-checklist.md",
       "lineCount": 1141,
-      "byteSize": 98924,
+      "byteSize": 98918,
       "hasFrontmatter": false,
       "title": "検証チェックリスト",
       "status": null,
@@ -24393,7 +24414,7 @@
     {
       "path": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
       "lineCount": 3241,
-      "byteSize": 446351,
+      "byteSize": 446353,
       "hasFrontmatter": true,
       "title": "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装",
       "status": null,
@@ -25115,7 +25136,7 @@
     {
       "path": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
       "lineCount": 1951,
-      "byteSize": 217705,
+      "byteSize": 217700,
       "hasFrontmatter": false,
       "title": "KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）",
       "status": null,
@@ -26168,11 +26189,11 @@
     },
     {
       "path": "docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md",
-      "lineCount": 6,
-      "byteSize": 738,
-      "hasFrontmatter": false,
-      "title": "KB-365: DGXリソース Phase3・補助ランタイム起停・ワークロード自動調停（廃止）",
-      "status": null,
+      "lineCount": 14,
+      "byteSize": 1074,
+      "hasFrontmatter": true,
+      "title": "KB-365 DGXリソース Phase3・補助ランタイム起停・ワークロード自動調停（廃止）",
+      "status": "redirect",
       "source_of_truth": null,
       "localLinks": [
         {
@@ -26955,7 +26976,7 @@
     {
       "path": "docs/knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md",
       "lineCount": 121,
-      "byteSize": 13963,
+      "byteSize": 14001,
       "hasFrontmatter": true,
       "title": "KB-375 順位ボード・生産日程の完了整合（明示完了API・CSV同期・実効完了）",
       "status": null,
@@ -26982,7 +27003,7 @@
           "exists": true
         },
         {
-          "href": "../guides/verification-checklist.md#66-管理コンソールui確認",
+          "href": "../guides/verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01",
           "targetPath": "docs/guides/verification-checklist.md",
           "exists": true
         },
@@ -28544,8 +28565,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-437-load-balancing-production-system-reconciliation.md",
-      "lineCount": 222,
-      "byteSize": 13264,
+      "lineCount": 223,
+      "byteSize": 13389,
       "hasFrontmatter": true,
       "title": "KB-437 キオスク負荷調整と生産システムの集計突合（2026-05-27）",
       "status": null,
@@ -28605,8 +28626,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-438-os-security-weekly-update.md",
-      "lineCount": 91,
-      "byteSize": 10888,
+      "lineCount": 92,
+      "byteSize": 10974,
       "hasFrontmatter": false,
       "title": "KB-438: 業務ラズパイの OS 安全更新を週1回夜間に入れる",
       "status": null,
@@ -28635,8 +28656,8 @@
     },
     {
       "path": "docs/knowledge-base/api.md",
-      "lineCount": 4920,
-      "byteSize": 363204,
+      "lineCount": 4921,
+      "byteSize": 363303,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - API関連",
       "status": null,
@@ -28951,8 +28972,8 @@
     },
     {
       "path": "docs/knowledge-base/ci-cd.md",
-      "lineCount": 860,
-      "byteSize": 60858,
+      "lineCount": 863,
+      "byteSize": 61117,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - CI/CD関連",
       "status": null,
@@ -32202,7 +32223,7 @@
     {
       "path": "docs/knowledge-base/infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md",
       "lineCount": 177,
-      "byteSize": 9572,
+      "byteSize": 9574,
       "hasFrontmatter": true,
       "title": "KB-291: ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告",
       "status": null,
@@ -32242,8 +32263,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/ansible-deployment-performance.md",
-      "lineCount": 395,
-      "byteSize": 24176,
+      "lineCount": 396,
+      "byteSize": 24235,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - Ansible/デプロイ性能（調査）",
       "status": null,
@@ -32288,8 +32309,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/ansible-deployment.md",
-      "lineCount": 4297,
-      "byteSize": 279825,
+      "lineCount": 4301,
+      "byteSize": 280115,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - Ansible/デプロイ関連",
       "status": null,
@@ -32708,8 +32729,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/security.md",
-      "lineCount": 1342,
-      "byteSize": 86589,
+      "lineCount": 1344,
+      "byteSize": 86771,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - セキュリティ関連",
       "status": null,
@@ -32824,8 +32845,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/signage.md",
-      "lineCount": 2214,
-      "byteSize": 191667,
+      "lineCount": 2215,
+      "byteSize": 191786,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - サイネージ関連",
       "status": null,
@@ -33365,7 +33386,7 @@
     {
       "path": "docs/modules/signage/README.md",
       "lineCount": 647,
-      "byteSize": 42860,
+      "byteSize": 42869,
       "hasFrontmatter": false,
       "title": "デジタルサイネージモジュール",
       "status": null,
@@ -33387,7 +33408,7 @@
           "exists": true
         },
         {
-          "href": "../../guides/deployment.md#デプロイ前の準備必須",
+          "href": "../../guides/deployment.md#実行前確認",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -33497,7 +33518,7 @@
     {
       "path": "docs/modules/tools/README.md",
       "lineCount": 287,
-      "byteSize": 13395,
+      "byteSize": 13393,
       "hasFrontmatter": false,
       "title": "工具管理モジュール",
       "status": null,
@@ -34333,7 +34354,7 @@
     {
       "path": "docs/plans/ci-security-baseline-execplan.md",
       "lineCount": 162,
-      "byteSize": 16955,
+      "byteSize": 16931,
       "hasFrontmatter": false,
       "title": "Establish CI and security regression guardrails",
       "status": null,
@@ -34566,7 +34587,7 @@
     {
       "path": "docs/plans/deployment-foundation-refactor-execplan.md",
       "lineCount": 921,
-      "byteSize": 156057,
+      "byteSize": 156058,
       "hasFrontmatter": true,
       "title": "Refactor the deployment foundation through eight gated pull requests",
       "status": "in-progress",
@@ -36940,7 +36961,7 @@
     {
       "path": "docs/plans/leaderboard-defer-totals-performance-recovery.md",
       "lineCount": 839,
-      "byteSize": 72246,
+      "byteSize": 72250,
       "hasFrontmatter": true,
       "title": "Plan: Leaderboard deferTotals Performance Recovery",
       "status": "labor_metadata_overlay_verified",
@@ -37912,7 +37933,7 @@
     {
       "path": "docs/plans/production-schedule-kiosk-execplan.md",
       "lineCount": 639,
-      "byteSize": 67686,
+      "byteSize": 67680,
       "hasFrontmatter": false,
       "title": "生産スケジュールキオスクページ実装 ExecPlan",
       "status": null,
@@ -38044,7 +38065,7 @@
           "exists": true
         },
         {
-          "href": "../knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同",
+          "href": "../knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題-旧別拠点用と標準inventoryの混同",
           "targetPath": "docs/knowledge-base/infrastructure/ansible-deployment.md",
           "exists": true
         },
@@ -39339,8 +39360,8 @@
     },
     {
       "path": "docs/runbooks/assembly-overlay-staging-hardware-acceptance.md",
-      "lineCount": 588,
-      "byteSize": 41044,
+      "lineCount": 587,
+      "byteSize": 40956,
       "hasFrontmatter": true,
       "title": "組立手順書 Overlay staging 受入・性能計測 Runbook",
       "status": "active",
@@ -39422,7 +39443,7 @@
     {
       "path": "docs/runbooks/business-hermes.md",
       "lineCount": 136,
-      "byteSize": 15498,
+      "byteSize": 15504,
       "hasFrontmatter": false,
       "title": "業務Hermesの独立運用",
       "status": null,
@@ -39475,7 +39496,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 53,
+      "inboundCount": 55,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -39635,7 +39656,7 @@
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
       "lineCount": 1118,
-      "byteSize": 129696,
+      "byteSize": 129725,
       "hasFrontmatter": true,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -40044,7 +40065,7 @@
     {
       "path": "docs/runbooks/kiosk-device-initial-route.md",
       "lineCount": 176,
-      "byteSize": 8619,
+      "byteSize": 8621,
       "hasFrontmatter": true,
       "title": "Runbook: Kiosk Device Initial Route",
       "status": "active",
@@ -40191,7 +40212,7 @@
     {
       "path": "docs/runbooks/kiosk-ime-diagnosis.md",
       "lineCount": 108,
-      "byteSize": 6515,
+      "byteSize": 6517,
       "hasFrontmatter": true,
       "title": "Runbook: キオスク備考欄 日本語入力不具合の診断",
       "status": null,
@@ -40674,7 +40695,7 @@
     {
       "path": "docs/runbooks/kiosk-power-operation-recovery.md",
       "lineCount": 104,
-      "byteSize": 7709,
+      "byteSize": 7711,
       "hasFrontmatter": true,
       "title": "Runbook: 電源操作・連打防止オーバーレイ不具合の復旧",
       "status": null,
@@ -41299,14 +41320,14 @@
     },
     {
       "path": "docs/runbooks/pi5-local-file-storage.md",
-      "lineCount": 168,
-      "byteSize": 10390,
+      "lineCount": 169,
+      "byteSize": 10504,
       "hasFrontmatter": true,
       "title": "Pi5単一SSD・業務ファイル保存Runbook",
       "status": "active",
       "source_of_truth": "docs/runbooks/pi5-local-file-storage.md",
       "localLinks": [],
-      "inboundCount": 5,
+      "inboundCount": 6,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -41469,7 +41490,7 @@
     {
       "path": "docs/runbooks/security-hardening-remediation.md",
       "lineCount": 177,
-      "byteSize": 15665,
+      "byteSize": 15768,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
@@ -41663,7 +41684,7 @@
     {
       "path": "docs/security/evaluation-plan.md",
       "lineCount": 1057,
-      "byteSize": 48065,
+      "byteSize": 48130,
       "hasFrontmatter": false,
       "title": "セキュリティ評価計画書",
       "status": null,
@@ -42528,7 +42549,7 @@
     {
       "path": "docs/security/port-security-audit.md",
       "lineCount": 283,
-      "byteSize": 11464,
+      "byteSize": 11566,
       "hasFrontmatter": false,
       "title": "ポートセキュリティ監査レポート",
       "status": null,
@@ -42702,7 +42723,7 @@
     {
       "path": "docs/security/requirements.md",
       "lineCount": 301,
-      "byteSize": 16955,
+      "byteSize": 16982,
       "hasFrontmatter": false,
       "title": "セキュリティ要件定義",
       "status": null,

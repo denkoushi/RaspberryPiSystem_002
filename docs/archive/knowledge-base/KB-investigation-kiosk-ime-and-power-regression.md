@@ -43,10 +43,10 @@
 - 電源操作は `POST /kiosk/power` に `x-client-key` でリクエスト
 - `KioskHeader.tsx` は `postKioskPower({ action })` を呼び、**clientKey を明示渡していない**
 - `api.defaults.headers.common['x-client-key']` は `setClientKeyHeader(getResolvedClientKey())` で設定
-- `resolveClientKey()` は localStorage が空なら `DEFAULT_CLIENT_KEY` = `<default-client-key>` を返す
-- **raspi4-robodrill01 の正しいキーは `<robodrill01-client-key>`**
+- `resolveClientKey()` は localStorage が空なら `DEFAULT_CLIENT_KEY` = `<client-key-raspberrypi4>` を返す
+- **raspi4-robodrill01 の正しいキーは `<client-key-raspi4-robodrill01>`**
 - Web アプリは Pi5 でビルドされ、全キオスクで同一バンドルを配信（`VITE_DEFAULT_CLIENT_KEY` はビルド時に固定）
-- そのため raspi4-robodrill01 では `<default-client-key>` が送信され、pi5-power-dispatcher は **raspberrypi4**（kensakuMain）を対象にする
+- そのため raspi4-robodrill01 では `<client-key-raspberrypi4>` が送信され、pi5-power-dispatcher は **raspberrypi4**（kensakuMain）を対象にする
 - raspberrypi4 がオフラインまたは別端末の場合、Ansible 接続失敗で電源操作が実行されない
 
 **検証手順**:
@@ -189,7 +189,7 @@ cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-
 2. **Network タブ**で `POST /kiosk/power` のステータスコード・レスポンスを確認
 3. **Pi5 ログ**: `journalctl -u pi5-power-dispatcher.service -n 30`、`ls -la /opt/RaspberryPiSystem_002/power-actions/`
 4. **マウント確認**: `docker compose exec api cat /proc/self/mountinfo | grep power-actions` で `//deleted` の有無を確認
-5. **clientKey 確認**: 画面上部の「APIキー」表示が `<robodrill01-client-key>` であることを確認
+5. **clientKey 確認**: 画面上部の「APIキー」表示が `<client-key-raspi4-robodrill01>` であることを確認
 
 **ロールバック**（電源を優先する場合）: inventory で `kiosk_browser_engine: chromium` に戻す。
 

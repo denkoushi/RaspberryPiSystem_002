@@ -3,7 +3,7 @@ title: Pi3デプロイ検証手順
 tags: [デプロイ, 検証, ラズパイ3]
 audience: [運用者, 開発者]
 last-verified: 2026-01-16
-related: [deployment.md]
+related: [../../guides/deployment.md]
 category: guides
 update-frequency: medium
 ---

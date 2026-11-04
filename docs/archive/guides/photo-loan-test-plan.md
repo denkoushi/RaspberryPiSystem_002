@@ -195,14 +195,16 @@ pnpm test src/services/camera/camera.service.perf.test.ts
 
 **実装方法**:
 ```bash
-# 標準デプロイ（deploy.sh は廃止。docs/guides/deployment.md 参照）
-scripts/update-all-clients.sh feature/photo-loan-camera infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
-scripts/update-all-clients.sh feature/photo-loan-camera infrastructure/ansible/inventory.yml --limit raspberrypi5
+# 実機で実行
+cd /opt/RaspberryPiSystem_002
+./scripts/server/deploy.sh feature/photo-loan-camera
 
-# 動作確認（実機で実行）
-curl -k https://localhost/api/system/health
+# 動作確認
+curl http://localhost:8080/api/system/health
 curl http://localhost:4173/storage/thumbnails/2025/11/test_thumb.jpg
 ```
+
+（現行: `deploy.sh` は廃止。`scripts/update-all-clients.sh` の標準手順で反映し、health は `curl -k https://localhost/api/system/health`。[デプロイメントガイド](../../guides/deployment.md)）
 
 #### 5.2 Raspberry Pi 4での動作確認
 

@@ -3,7 +3,7 @@ title: デジタルサイネージ機能 デプロイメントガイド
 tags: [デプロイ, デジタルサイネージ, ラズパイ5]
 audience: [運用者, 開発者]
 last-verified: 2025-11-28
-related: [../modules/signage/README.md, deployment.md]
+related: [../../modules/signage/README.md, ../../guides/deployment.md]
 category: guides
 update-frequency: medium
 ---

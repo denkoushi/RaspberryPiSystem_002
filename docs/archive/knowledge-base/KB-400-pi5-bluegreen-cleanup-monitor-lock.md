@@ -1,16 +1,17 @@
 ---
 id: KB-400
 title: Pi5 Blue/Green cleanup and monitor lock handoff
-status: active
+status: historical
 scope: Pi5 Phase 3 Blue/Green release coordination
 date: 2026-07-13
-source_of_truth: true
+source_of_truth: docs/runbooks/deploy-status-recovery.md
+superseded_by: docs/runbooks/deploy-status-recovery.md
 related_code:
   - scripts/deploy/pi5-blue-green.sh
   - scripts/deploy/rolling-release.py
 related_docs:
-  - ../runbooks/pi5-blue-green-deploy.md
-  - ../guides/deployment.md
+  - ../runbooks/pi5-blue-green-deploy-legacy-2026-07.md
+  - ../../guides/deployment.md
   - ../plans/rolling-terminal-bluegreen-deploy.md
 validation: focused shell and rolling-release tests; PR #995/#996 CI; 2026-07-13 approved production confirmation of expired-handoff recovery, bounded cleanup handoff, and complete terminal rollout
 open_items: []
@@ -88,6 +89,6 @@ fails closed. Do not remove a lock or force cleanup manually.
 
 ## References
 
-- [Pi5 Blue/Green runbook](../runbooks/pi5-standard-ansible-diagnosis-2026-08.md)
+- [Pi5 Blue/Green runbook](../runbooks/pi5-blue-green-deploy-legacy-2026-07.md)
 - [Pi5 Blue/Green Phase 3 plan](../../plans/pi5-blue-green-phase3.md)
 - [Rolling release plan](../../plans/rolling-terminal-bluegreen-deploy.md)

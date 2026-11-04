@@ -17,9 +17,11 @@
    - ラズパイ5でAPI/Web/DBが起動していること
    - featureブランチの最新コードがデプロイされていること
      ```bash
-     # 操作端末のリポジトリで実行（反映は docs/guides/deployment.md の標準手順に従う）
-     ./scripts/update-all-clients.sh feature/measuring-instruments-requirements infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
+     # ラズパイ5で実行
+     cd /opt/RaspberryPiSystem_002
+     ./scripts/server/deploy.sh feature/measuring-instruments-requirements
      ```
+     （現行: `deploy.sh` は廃止。`scripts/update-all-clients.sh` の標準手順で反映する。[デプロイメントガイド](../../guides/deployment.md)）
    - シードデータが投入されていること（計測機器テストデータ含む）
      ```bash
      # ラズパイ5で実行（デプロイ後）
@@ -177,7 +179,7 @@
 **対処法**:
 - 管理画面で計測機器を確認
 - APIログを確認: `docker logs docker-api-1 | grep measuring-instruments`
-- client-key認証が正しく動作しているか確認: `curl -H 'x-client-key: client-key-raspberrypi4-kiosk1' http://<Pi5のIP>:8080/api/measuring-instruments`
+- client-key認証が正しく動作しているか確認: `curl -H 'x-client-key: <client-key-raspberrypi4>' http://<Pi5のIP>:8080/api/measuring-instruments`
 - ブラウザをリロード
 - キオスクブラウザサービスを再起動: `sudo systemctl restart kiosk-browser.service`
 

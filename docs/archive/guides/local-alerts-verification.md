@@ -3,7 +3,7 @@ title: ローカル環境対応の通知機能 実機検証手順
 tags: [通知, アラート, 実機検証]
 audience: [運用者, 開発者]
 last-verified: 2025-12-01
-related: [local-alerts.md, quick-start-deployment.md]
+related: [../../guides/local-alerts.md, ../../guides/quick-start-deployment.md]
 category: guides
 update-frequency: low
 ---

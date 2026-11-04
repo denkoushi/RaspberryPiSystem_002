@@ -6,7 +6,6 @@ last_verified: 2026-08-22
 source_of_truth: docs/runbooks/assembly-overlay-staging-hardware-acceptance.md
 related_docs:
   - ../guides/deployment.md
-  - ../archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md
   - ./deploy-status-recovery.md
   - ../../scripts/perf/measure-kiosk-perf.mjs
   - ../../scripts/perf/measure-kiosk-documents-api.mjs

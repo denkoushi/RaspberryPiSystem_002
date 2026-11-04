@@ -3,7 +3,7 @@ title: KB-340 API OCR/VLM 境界整理リファクタ（本番デプロイ・実
 tags: [api, ocr, vlm, inference, deploy]
 audience: [開発者, 運用者]
 last-verified: 2026-04-11
-related: [ADR-20260402-inference-foundation-phase1.md, KB-313-kiosk-documents.md, KB-319-photo-loan-vlm-tool-label.md]
+related: [../../decisions/ADR-20260402-inference-foundation-phase1.md, ../../knowledge-base/KB-313-kiosk-documents.md, ../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md]
 category: knowledge-base
 ---
 

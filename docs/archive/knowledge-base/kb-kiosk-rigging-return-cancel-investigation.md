@@ -104,7 +104,7 @@ KB: キオスクからの吊具の持出し・返却の仕様と「使用中」�
   `if (loan.itemId) { ... Item AVAILABLE }` のみ。riggingGearId / measuringInstrumentId は未処理。
 - 返却処理（Item のみ更新）: `apps/api/src/services/tools/loan.service.ts` 249–252 行付近  
   `if (loan.itemId) { ... Item AVAILABLE }` のみ。
-- キオスク返却・取消で呼ぶAPI: `apps/web/src/api/domains/tools.ts` の `returnLoan`（→ `/tools/loans/return`）、`cancelLoan`（→ `/tools/loans/cancel`）。
+- キオスク返却・取消で呼ぶAPI: `apps/web/src/api/client.ts` 330–334 行（returnLoan → `/tools/loans/return`）、349–353 行（cancelLoan → `/tools/loans/cancel`）。（現行: `apps/web/src/api/domains/tools.ts` の `returnLoan` / `cancelLoan`）
 
 ## 2026-03-25 追記: 旧 active loan の Location 補正手段
 

@@ -12,16 +12,16 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Metric | Count |
 |--------|------:|
 | Documents | 782 |
-| Total lines | 186539 |
-| Total bytes | 15520411 |
-| With frontmatter | 361 |
-| With status | 176 |
+| Total lines | 186530 |
+| Total bytes | 15519276 |
+| With frontmatter | 362 |
+| With status | 177 |
 | source_of_truth declared | 116 |
 | References to EXEC_PLAN.md | 59 |
 | Question-mark corruption documents | 2 |
 | Replacement-character documents | 1 |
 | Long-line documents | 46 |
-| Local links | 5733 |
+| Local links | 5737 |
 | Broken local links | 60 |
 | Documents over 1,000 lines | 28 |
 | Documents over 3,000 lines | 6 |
@@ -31,20 +31,20 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Path | Lines | Bytes |
 |------|------:|------:|
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
-| `docs/knowledge-base/api.md` | 4920 | 363204 |
+| `docs/knowledge-base/api.md` | 4921 | 363303 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
 | `docs/knowledge-base/frontend.md` | 4657 | 281313 |
-| `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4297 | 279825 |
-| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3241 | 446351 |
+| `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4301 | 280115 |
+| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3241 | 446353 |
 | `docs/archive/deployments/2026-05.md` | 2571 | 498771 |
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128123 |
-| `docs/knowledge-base/infrastructure/signage.md` | 2214 | 191667 |
+| `docs/knowledge-base/infrastructure/signage.md` | 2215 | 191786 |
 | `docs/knowledge-base/infrastructure/backup-restore.md` | 2203 | 139196 |
-| `docs/INDEX.md` | 2098 | 360484 |
-| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217705 |
+| `docs/INDEX.md` | 2098 | 360460 |
+| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217700 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153448 |
-| `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 106929 |
-| `docs/knowledge-base/infrastructure/security.md` | 1342 | 86589 |
+| `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 106907 |
+| `docs/knowledge-base/infrastructure/security.md` | 1344 | 86771 |
 
 ## EXEC_PLAN References
 

@@ -25,6 +25,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 ---
 
 <a id="kb-448-pi5-self-ssh-preflight-and-orphan-lock"></a>
+<a id="kb-366-pi5-self-ssh-preflight-and-orphan-lock"></a>
 
 ### [KB-448] `update-all-clients.sh` の Pi5 preflight が self-SSH で失敗し orphan lock が残る
 
@@ -161,6 +162,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 ---
 
 <a id="kb-446-docs-placement-policy-by-host-role"></a>
+<a id="kb-319-docs-placement-policy-by-host-role"></a>
 
 ### [KB-446] `docs/` 配置ポリシー整理（Pi5保持 / Pi4・Pi3削除）
 
@@ -2969,6 +2971,7 @@ ensure_local_repo_ready_for_deploy() {
 
 ---
 
+<a id="kb-217-デプロイプロセスのコード変更検知とdocker再ビルド確実化"></a>
 ### [KB-445] デプロイプロセスのコード変更検知とDocker再ビルド確実化
 
 **発生日**: 2026-01-31  
@@ -3071,6 +3074,7 @@ ensure_local_repo_ready_for_deploy() {
 
 ---
 
+<a id="kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない"></a>
 ### [KB-440] Docker build時のtsbuildinfo問題（インクリメンタルビルドでdistが生成されない）
 
 **発生日**: 2026-01-31  

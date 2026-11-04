@@ -3,7 +3,7 @@ title: バックアップ機能実機検証ガイド
 tags: [検証, バックアップ, 実機テスト]
 audience: [運用者, 開発者]
 last-verified: 2026-02-08
-related: [backup-configuration.md, backup-and-restore.md]
+related: [../../guides/backup-configuration.md, ../../guides/backup-and-restore.md]
 category: guides
 update-frequency: medium
 ---
@@ -51,14 +51,16 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | gre
 
 **期待結果**: 
 - `[BackupScheduler] Scheduler started` が表示される
-- backup.json の有効なターゲット数ぶん `[BackupScheduler] Scheduled task registered` が出力される
+- 4つのタスク（database, csv-employees, csv-items, image-photo-storage）が登録されている（現行: backup.json の有効なターゲット数ぶん `[BackupScheduler] Scheduled task registered` が出る）
 
 ### 3. バックアップ設定の確認
 
+（現行: Pi5 では `docker compose ... exec -T api` の代わりに `scripts/server/run-in-active-api.sh` で稼働中APIスロット内を確認し、設定は `/app/config/backup.json`）
+
 ```bash
 # 設定ファイルの存在確認
-scripts/server/run-in-active-api.sh \
-  cat /app/config/backup.json 2>/dev/null || \
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+  cat /opt/RaspberryPiSystem_002/config/backup.json 2>/dev/null || \
   echo "Config file does not exist (using default)"
 ```
 
@@ -80,11 +82,13 @@ curl -sk https://localhost/api/backup/config/health \
 **方法A: 内部エンドポイント（認証不要、Pi5ホストからのみ）**
 
 ```bash
-# Pi5ホストで実行。稼働中APIスロット内のloopbackから呼ぶ（backup.jsonで有効なkind/source完全一致ターゲットのみ）
-cd /opt/RaspberryPiSystem_002
-scripts/server/run-in-active-api.sh \
-  node /app/host/apps/api/scripts/backup-internal-cli.mjs --kind csv --source employees --label manual-verify
+# Pi5ホストにSSH接続した状態で実行。localhost/172.x からのみ許可。
+curl -sk -X POST https://localhost/api/backup/internal \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"csv","source":"employees","metadata":{"label":"manual-verify"}}'
 ```
+
+（現行: 内部エンドポイントは loopback のみ許可。`scripts/server/run-in-active-api.sh node /app/host/apps/api/scripts/backup-internal-cli.mjs --kind csv --source employees` を使う）
 
 **方法B: 管理者トークンを使用**
 
@@ -119,11 +123,11 @@ curl -sk https://localhost/api/backup \
 
 ```bash
 # バックアップディレクトリの確認
-scripts/server/run-in-active-api.sh \
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
   ls -la /opt/backups/
 
 # 特定のバックアップファイルの確認
-scripts/server/run-in-active-api.sh \
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
   ls -lah /opt/backups/csv/*/
 ```
 
@@ -146,7 +150,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | \
 
 **期待結果**: 
 - スケジュールされた時間にバックアップが実行される
-- ログに `[BackupScheduler] Scheduled backup completed` が表示される
+- ログに `[BackupScheduler] Backup executed successfully` が表示される（現行: `[BackupScheduler] Scheduled backup completed`）
 
 ### 7. Dropbox連携の確認（オプション）
 
@@ -154,8 +158,8 @@ Dropbox連携が設定されている場合：
 
 ```bash
 # 設定ファイルでDropboxプロバイダーが設定されているか確認
-scripts/server/run-in-active-api.sh \
-  cat /app/config/backup.json | grep -i dropbox
+docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+  cat /opt/RaspberryPiSystem_002/config/backup.json | grep -i dropbox
 
 # バックアップ実行後、Dropboxにファイルがアップロードされているか確認
 # （Dropboxアカウントで確認）

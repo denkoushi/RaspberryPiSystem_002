@@ -114,7 +114,7 @@ SQLITE_CORRUPT: database disk image is malformed
 - **ログイン状態**（再ログインが必要）
 - 最近開いたプロジェクト一覧・一部 UI 状態
 
-**対策**: 重要な決定・手順は **`docs/`（KB / ADR / Runbook / Plan）** に残す。チャット履歴に依存しない運用（[AGENTS.md](../../../AGENTS.md) · [01-core-docs-and-knowledge](../../../.cursor/rules/01-core-docs-and-knowledge.mdc)）。
+**対策**: 重要な決定・手順は **`docs/`（KB / Runbook / EXEC_PLAN）** に残す（現行: KB / ADR / Runbook / Plan のいずれか1つを正本とし、`EXEC_PLAN.md` へは追記しない）。チャット履歴に依存しない運用（[AGENTS.md](../../../AGENTS.md) · [01-core-docs-and-knowledge](../../../.cursor/rules/01-core-docs-and-knowledge.mdc)）。
 
 ## Prevention / 再発監視
 
@@ -154,7 +154,7 @@ SQLITE_CORRUPT: database disk image is malformed
 | **未コミット変更は WIP · 破棄しない** | Hermes Discord command sync 等がローカルに残存 |
 | **本番デプロイ・Pi 実機操作は明示依頼までしない** | [00-core-safety](../../../.cursor/rules/00-core-safety.mdc) |
 | **秘密情報・トークンを探したり表示しない** | セキュリティ |
-| 作業開始前に **`AGENTS.md`** と **`.cursor/rules/00-core-safety.mdc`** を読み、その他は必要な正本だけ読む（`EXEC_PLAN.md`・`docs/INDEX.md` は rg で該当行のみ） | 文脈の再構築 |
+| 作業開始前に **`AGENTS.md` · `.cursor/rules/` · `docs/INDEX.md` · `EXEC_PLAN.md`** を読む（現行: `AGENTS.md` と `00-core-safety.mdc` の後は必要な正本だけ読む） | 文脈の再構築 |
 
 ### 推奨プロンプト（新規 Agent セッション用）
 
@@ -178,7 +178,7 @@ Cursor 復旧直後に **未コミット** だった Hermes Discord command sync
 | `discord_command_sync.py` 等 | Discord global `/daily` Ansible 同期 |
 | KB / Runbook / ExecPlan | D6-pre 合格・deploy 収束の記録 |
 
-**復旧後の教訓**: チャット履歴がなくても **ローカル WIP + `docs/`** で文脈を再構築できる。重要な進捗は KB / ADR / Runbook / Plan のいずれかへ昇格する（[01-core-docs-and-knowledge](../../../.cursor/rules/01-core-docs-and-knowledge.mdc)）。
+**復旧後の教訓**: チャット履歴がなくても **ローカル WIP + `docs/`** で文脈を再構築できる。重要な進捗は KB/EXEC_PLAN へ昇格する（[01-core-docs-and-knowledge](../../../.cursor/rules/01-core-docs-and-knowledge.mdc)）。
 
 ## References
 

@@ -89,10 +89,11 @@ Dockerコマンドは1回300秒で打ち切る。2026-10-22は03:00のClamAV検�
 
 整理対象のallowlistは固定されている。対象はAPIリポジトリ（`ghcr.io/denkoushi/raspisys-api`、旧ローカル `raspi-system-api` / `docker-api`）、Webリポジトリ（`ghcr.io/denkoushi/raspisys-web`、旧ローカル `raspi-system-web` / `docker-web`）、および `ghcr.io/denkoushi/raspisys-release-set` の未使用イメージだけである。現行・直前版、稼働コンテナが参照するイメージ、24時間未満のイメージは保持する。DB、gateway、Postgres、Pi3、BuildKit内部、volume、業務ファイルは対象外である。
 
-手動確認でも、planとapplyの各操作ごとにfleetデプロイ共通ロックとイメージ整理ロックを非ブロッキング取得する。root shellで次を実行し、どちらかのロックが使用中なら終了コード75で中断する。
+手動確認でも、planとapplyの各操作ごとにfleetデプロイ共通ロックとイメージ整理ロックを非ブロッキング取得する。root shellでPi5のデプロイ用checkout（`/opt/RaspberryPiSystem_002`）へ移動してから次を実行し、どちらかのロックが使用中なら終了コード75で中断する。
 
 ```bash
 set -euo pipefail
+cd /opt/RaspberryPiSystem_002
 FLEET_LOCK=/opt/RaspberryPiSystem_002/logs/deploy/fleet-release-state.lock
 MAINTENANCE_LOCK=/var/lib/raspi-release/image-retention-maintenance.lock
 STATE_FILE=/var/lib/raspi-release/image-retention.json

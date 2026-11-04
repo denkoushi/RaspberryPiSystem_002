@@ -3,7 +3,7 @@ title: AIアシスタントのSSHアクセスについて
 tags: [AI, SSH, 開発環境, セキュリティ]
 audience: [AIアシスタント, 開発者]
 last-verified: 2025-12-01
-related: [mac-ssh-access.md, development.md]
+related: [../../guides/mac-ssh-access.md, ../../guides/development.md]
 category: guides
 update-frequency: low
 ---

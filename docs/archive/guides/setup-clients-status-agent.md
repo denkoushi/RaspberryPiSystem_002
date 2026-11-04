@@ -3,7 +3,7 @@ title: クライアント端末のstatus-agent設定手順（実機テスト用�
 tags: [status-agent, 実機テスト, 設定手順]
 audience: [運用者, 開発者]
 last-verified: 2025-12-01
-related: [client-initial-setup.md, status-agent.md]
+related: [../../guides/client-initial-setup.md, ../../guides/status-agent.md]
 category: guides
 update-frequency: medium
 ---
@@ -52,7 +52,7 @@ cd /Users/<user>/RaspberryPiSystem_002
 
 **エラーが出た場合:**
 - APIサーバーが起動しているか確認: `curl http://192.168.128.131:8080/api/system/health`
-- ログイン情報が正しいか確認（デフォルト: `<user>` / `<password>`）
+- ログイン情報が正しいか確認（デフォルト: `admin` / `<password>`）
 
 ---
 
@@ -64,11 +64,15 @@ cd /Users/<user>/RaspberryPiSystem_002
 # プロジェクトディレクトリに移動
 cd /Users/<user>/RaspberryPiSystem_002
 
+# 環境変数を設定（Raspberry Pi 5へのSSH接続情報）
+export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
+
 # 一括更新スクリプトを実行（status-agentの設定も含まれる）
-# inventory指定と対象指定（--limit または --full-fleet）が必須（誤デプロイ防止）
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN
+# inventory指定が必須（誤デプロイ防止）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
 ```
+
+（現行: `--print-plan` で対象を確認し、mutation には `--limit PATTERN` または `--full-fleet` が必須。[デプロイメントガイド](../../guides/deployment.md)）
 
 **期待される出力:**
 - Gitリポジトリの更新
@@ -165,7 +169,7 @@ https://192.168.128.131/admin/clients
    ```bash
    curl -X POST http://192.168.128.131:8080/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"<user>","password":"<password>"}'
+     -d '{"username":"admin","password":"<password>"}'
    ```
 
 ### Ansibleプレイブックの実行に失敗する場合
@@ -218,7 +222,7 @@ https://192.168.128.131/admin/clients
    # Macから実行
    TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"<user>","password":"<password>"}' | jq -r '.accessToken')
+     -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
    
    curl -X GET http://192.168.128.131:8080/api/clients/status \
      -H "Authorization: Bearer $TOKEN" | jq '.'

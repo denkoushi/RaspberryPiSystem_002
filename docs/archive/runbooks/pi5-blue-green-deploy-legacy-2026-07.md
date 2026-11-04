@@ -1,11 +1,12 @@
 ---
 title: Pi5 single-host Blue/Green deployment runbook
-status: accepted
+status: superseded
 scope: production Pi5 API, Web, and fixed Caddy gateway
 date: 2026-07-12
-source_of_truth: docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md
+source_of_truth: docs/runbooks/deploy-status-recovery.md
+superseded_by: docs/runbooks/deploy-status-recovery.md
 related_code: [scripts/deploy/pi5-blue-green.sh, scripts/deploy/pi5-phase3-legacy-guard.sh, infrastructure/docker/docker-compose.phase3.yml, infrastructure/docker/Caddyfile.gateway.template, infrastructure/ansible/templates/pi5-blue-green-reconcile.service.j2]
-related_docs: [../plans/pi5-blue-green-phase3.md, ../runbooks/pi5-minimal-downtime-deploy.md, ../guides/deployment.md]
+related_docs: [../../plans/pi5-blue-green-phase3.md, ./pi5-minimal-downtime-deploy.md, ../../guides/deployment.md]
 validation: shell safety lifecycle, Compose rendering, Caddy route checks, API scheduler fail-closed tests, and 2026-07-12 production candidate build/prepare/switch/five-minute monitor/cleanup acceptance
 open_items: []
 ---
