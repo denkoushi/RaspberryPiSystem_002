@@ -35,6 +35,9 @@ const purchase = { seiban: 'S', purchasePartCodeRaw: 'P', purchasePartName: '部
 let app: ReturnType<typeof Fastify>;
 
 beforeEach(async () => {
+  // scannedAt は受付時刻から8日以内だけ通るため、fixture の時刻に合わせて Date だけ固定する
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-27T10:05:00+09:00'));
   vi.resetAllMocks();
   vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
   vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(device as never);
@@ -50,7 +53,7 @@ beforeEach(async () => {
   });
   await registerMobilePlacementRoutes(app);
 });
-afterEach(async () => { await app.close(); vi.restoreAllMocks(); });
+afterEach(async () => { await app.close(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 function post(payload: Record<string, unknown> = input) {
   return app.inject({ method: 'POST', url: '/mobile-placement/edge-scans', headers: { 'x-client-key': 'test-key' }, payload });
