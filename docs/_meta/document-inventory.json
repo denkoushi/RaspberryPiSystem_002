@@ -17,7 +17,7 @@
   "summary": {
     "documentCount": 782,
     "totalLines": 186539,
-    "totalBytes": 15519437,
+    "totalBytes": 15520411,
     "withFrontmatter": 361,
     "withStatus": 176,
     "sourceOfTruthDeclared": 116,
@@ -21629,7 +21629,7 @@
     {
       "path": "docs/guides/dropbox-oauth-setup-guide.md",
       "lineCount": 287,
-      "byteSize": 10710,
+      "byteSize": 11135,
       "hasFrontmatter": false,
       "title": "Dropbox OAuth 2.0セットアップガイド",
       "status": null,
@@ -22737,7 +22737,7 @@
     {
       "path": "docs/guides/slack-webhook-setup.md",
       "lineCount": 214,
-      "byteSize": 10768,
+      "byteSize": 11315,
       "hasFrontmatter": false,
       "title": "Slack Webhook URL設定手順",
       "status": null,
@@ -39340,7 +39340,7 @@
     {
       "path": "docs/runbooks/assembly-overlay-staging-hardware-acceptance.md",
       "lineCount": 588,
-      "byteSize": 41042,
+      "byteSize": 41044,
       "hasFrontmatter": true,
       "title": "組立手順書 Overlay staging 受入・性能計測 Runbook",
       "status": "active",
