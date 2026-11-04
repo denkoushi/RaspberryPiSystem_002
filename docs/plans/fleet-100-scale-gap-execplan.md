@@ -22,6 +22,8 @@
 - [x] (2026-11-01) 7点の現状をリポジトリから調査した(Codex `gpt-6.1-sol` / `medium` の読み取り専用調査と、主な根拠行の手元での確認)。本番機には接続していない。
 - [x] (2026-11-01) 本書を書いた。
 - [ ] M0: 本番の読み取り専用の実測(DR タイマーの有効状態と最新スナップショットの日時、直近の標準更新の1台あたり所要時間、Pi3 と Zero 2W の常時メモリ)。親セッション経由でユーザーの許可を得てから行う。
+  - [x] (2026-11-05) ユーザーの許可を得て、Pi5 と Pi3 を読み取りだけで計測した。結果は Surprises & Discoveries に記録した。
+  - [ ] Zero 2W の常時メモリ。zero2w-tanaban01 は Tailscale で5日前から offline のため未計測。
 - [ ] M1: 中心サーバーの復旧訓練で今の復旧時間を測り、許容停止時間をユーザーと決める。
   - [x] (2026-11-02) Step 1: 復旧訓練の手順と記録表 [Pi5 復旧訓練 Runbook](../runbooks/pi5-restore-drill.md) を作成した。切り替えはしない訓練。
   - [ ] Step 2: 予備の Pi5 か SSD で訓練を1回行い、時間を記録する(実機。ユーザーの作業)。
@@ -49,6 +51,12 @@
 
 
 ## Surprises & Discoveries
+
+- Observation: M0 の実測(2026-11-05、読み取りだけ)。Pi5 の Google Drive の写しのタイマー `raspi-google-drive-dr.timer` は enabled で、直近は 2026-11-04 23:00〜23:05 JST に Result=success(snapshot `bbf99283…`、約2.7GB)。次回は 2026-11-05 23:00。Pi5 のメモリは total 8062MB・available 3476MB だが、swap 2047MB をほぼ使い切っている(2046MB)。Pi3(raspberrypi3)は total 416MB・available 128MB、swap 415MB 中 207MB を使用。Zero 2W(zero2w-tanaban01)と Zero W(zero1w-camera01)は Tailscale で offline のため測れなかった。
+  Evidence: Pi5 で `systemctl list-timers`・`systemctl show`・`journalctl -u raspi-google-drive-dr.service`・`free -m`、Pi5 経由で Pi3 の `free -m`、Pi5 の `tailscale status`。
+
+- Observation: M5 Step 2 の実fleetの所要時間(run 20261104-055000-ab89cd、merge 309f9183、全11台 failed=0)。run 全体は約1時間8分。Pi4 7台の並列準備は約16分(14:56:33〜15:12:56)、canary の raspi4-kensaku-stonebase01 の切り替えは約6分(15:12:57〜15:19:03)、残り6台の切り替えは2つの波で約31分(15:19:03〜15:49:54)。1台あたりの切り替えは約5分。最初の run 20261104-045519-54c9a7 は、role の `import_tasks: prepare.yml` が準備済み端末でスキップされ register を上書きしたため切り替えで止まり、#2531 で `include_tasks` に直した。
+  Evidence: 進捗追跡セッションが読んだ run のログと recap。
 
 - Observation: M5 Step 2 の検証はローカル模擬のみ。到達不能端末のデータは回収できず、prepare 全台成功後に切り替えの波で停止した場合は未着手の後続端末に事前取得した候補・run データが残り得る。実fleetでの時間と復旧時の残存データ確認は未実施。
   Evidence: `release_kiosk` の always cleanup は、その role に進んだ端末だけで実行される。今回追加した全台 cleanup は共有 prepare の失敗時を対象とする。
