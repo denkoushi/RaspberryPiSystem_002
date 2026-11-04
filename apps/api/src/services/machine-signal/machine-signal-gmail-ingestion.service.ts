@@ -13,6 +13,8 @@ import {
 /** 1回の実行で処理するメール数。1通あたり添付の数だけ Gmail を呼ぶので小さく保つ。 */
 export const MACHINE_SIGNAL_GMAIL_BATCH_LIMIT = 3;
 export const MACHINE_SIGNAL_GMAIL_QUERY = `subject:"${MACHINE_SIGNAL_GMAIL_SUBJECT}" in:inbox is:unread`;
+/** 月初に同じ件名で届く月報。使わないので読まずに捨てる。 */
+const MONTHLY_SUMMARY_FILE = /^MonthlySummary_/i;
 
 export type MachineSignalGmailPort = {
   searchMessagesLimited: (query: string, maxResults: number) => Promise<string[]>;
@@ -27,6 +29,8 @@ export type MachineSignalGmailCycleSummary = {
   processed: number;
   /** 以前に1件も読めなかったメール。繰り返し処理しないよう飛ばした数 */
   skipped: number;
+  /** 月報だけのメール。取り込まずにゴミ箱へ移した数 */
+  discarded: number;
   runs: SignalReportImportSummary[];
 };
 
@@ -55,7 +59,7 @@ export class MachineSignalGmailIngestionService {
   ) {}
 
   async runOnce(options: { config: BackupConfig; allowWait: boolean }): Promise<MachineSignalGmailCycleSummary> {
-    const summary: MachineSignalGmailCycleSummary = { scanned: 0, processed: 0, skipped: 0, runs: [] };
+    const summary: MachineSignalGmailCycleSummary = { scanned: 0, processed: 0, skipped: 0, discarded: 0, runs: [] };
     if (this.running) return summary;
     this.running = true;
     try {
@@ -74,9 +78,15 @@ export class MachineSignalGmailIngestionService {
         }
 
         const message = await gmail.getMessage(messageId);
-        const attachments = collectGmailAttachments(message).filter(
+        const csvAttachments = collectGmailAttachments(message).filter(
           (attachment) => !attachment.isInline && attachment.filename.toLowerCase().endsWith('.csv')
         );
+        const attachments = csvAttachments.filter((attachment) => !MONTHLY_SUMMARY_FILE.test(attachment.filename));
+        if (attachments.length === 0 && csvAttachments.length > 0) {
+          await this.disposeMessage(gmail, messageId);
+          summary.discarded += 1;
+          continue;
+        }
         const files: SignalReportFile[] = [];
         for (const attachment of attachments) {
           // 共有の Gmail 利用枠を守るため、添付は1つずつ順に取る。
@@ -93,17 +103,21 @@ export class MachineSignalGmailIngestionService {
           logger?.warn({ messageId, fileCount: run.fileCount }, '[MachineSignalGmail] No report could be imported');
           continue;
         }
-        // 移動失敗時は未読のまま残し、次回の未読検索で再試行する。
-        await gmail.trashMessage(messageId);
-        try {
-          await gmail.markAsRead(messageId);
-        } catch (error) {
-          logger?.warn({ err: error, messageId }, '[MachineSignalGmail] Failed to mark trashed message as read');
-        }
+        await this.disposeMessage(gmail, messageId);
       }
       return summary;
     } finally {
       this.running = false;
+    }
+  }
+
+  private async disposeMessage(gmail: MachineSignalGmailPort, messageId: string): Promise<void> {
+    // 移動失敗時は未読のまま残し、次回の未読検索で再試行する。
+    await gmail.trashMessage(messageId);
+    try {
+      await gmail.markAsRead(messageId);
+    } catch (error) {
+      logger?.warn({ err: error, messageId }, '[MachineSignalGmail] Failed to mark trashed message as read');
     }
   }
 }

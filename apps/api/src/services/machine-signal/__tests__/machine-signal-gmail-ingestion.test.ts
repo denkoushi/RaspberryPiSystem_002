@@ -123,6 +123,35 @@ describe('MachineSignalGmailIngestionService', () => {
     expect(gmail.trashMessage).not.toHaveBeenCalled();
   });
 
+  it('trashes a monthly-summary-only mail without downloading or importing it', async () => {
+    const { gmail, importFiles, service } = setup({
+      messages: [message('m1', ['MonthlySummary_Signal1_202611.csv', 'MonthlySummary_Signal2_202611.csv'])],
+    });
+
+    const summary = await service.runOnce({ config, allowWait: false });
+
+    expect(gmail.getAttachment).not.toHaveBeenCalled();
+    expect(importFiles).not.toHaveBeenCalled();
+    expect(gmail.trashMessage).toHaveBeenCalledWith('m1');
+    expect(gmail.markAsRead).toHaveBeenCalledWith('m1');
+    expect(summary).toMatchObject({ processed: 0, discarded: 1 });
+  });
+
+  it('imports only the daily reports when monthly summaries are attached too', async () => {
+    const { gmail, importFiles, service } = setup({
+      messages: [message('m1', ['MonthlySummary_Signal1_202611.csv', 'DailySummary_Signal1_20261101.csv'])],
+    });
+
+    await service.runOnce({ config, allowWait: false });
+
+    expect(gmail.getAttachment).toHaveBeenCalledTimes(1);
+    expect(importFiles).toHaveBeenCalledWith(
+      [{ fileName: 'DailySummary_Signal1_20261101.csv', content: Buffer.from('m1-att-1') }],
+      { source: 'GMAIL', gmailMessageId: 'm1' }
+    );
+    expect(gmail.trashMessage).toHaveBeenCalledWith('m1');
+  });
+
   it('does not download a mail again on schedule after it failed once', async () => {
     const { gmail, importFiles, service } = setup({ messages: [message('m1', ['other.csv'])], failedMessageIds: ['m1'] });
 
