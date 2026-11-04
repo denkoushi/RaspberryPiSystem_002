@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
+import { authorizeRoles } from '../../../lib/auth.js';
 import { redactHeadersForLog } from '../../../lib/log-headers.js';
 import { LoanService } from '../../../services/tools/loan.service.js';
-import { requireLoanClientOrJwt } from './require-loan-auth.js';
 import { loanParamsSchema } from './schemas.js';
 
 export function registerLoanDeleteRoute(app: FastifyInstance, loanService: LoanService): void {
@@ -11,7 +11,8 @@ export function registerLoanDeleteRoute(app: FastifyInstance, loanService: LoanS
     app.log.info({ params: request.params, headers: sanitizedHeaders }, 'Loan delete request received');
     try {
       const params = loanParamsSchema.parse(request.params);
-      await requireLoanClientOrJwt(request, reply, loanService, ['ADMIN', 'MANAGER']);
+      // 貸出記録の物理削除は管理操作のため、キオスクの x-client-key では許可せず JWT ロールを必須とする
+      await authorizeRoles('ADMIN', 'MANAGER')(request, reply);
       await loanService.delete(params.id);
       app.log.info({ loanId: params.id }, 'Loan deleted');
       return { success: true };
