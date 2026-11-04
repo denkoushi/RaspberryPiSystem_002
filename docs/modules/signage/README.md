@@ -82,7 +82,7 @@
 - **実装方式**: 既存 `visualization` スロットを再利用（専用スロットは追加しない）
 - **データソース**: `uninspected_machines`（`MachineService.findUninspected` を再利用）
 - **レンダラー**: `uninspected_machines`（KPI: 稼働中/点検済み/未点検 + 一覧表示）
-- **KPIとカードの基準（2026-04-29）**: 「点検済み」「未点検」は **正常/異常のカウント有無**で集計し、**青/赤カード**の意味と一致させる（`used`＝CSV行ありは並び等の互換用）。[KB-360](../../knowledge-base/api.md#kb-360-加工機点検状況のkpiをカード配色基準と統一正常異常件数)
+- **KPIとカードの基準（2026-04-29）**: 「点検済み」「未点検」は **正常/異常のカウント有無**で集計し、**青/赤カード**の意味と一致させる（`used`＝CSV行ありは並び等の互換用）。[KB-447](../../knowledge-base/api.md#kb-447-加工機点検状況のkpiをカード配色基準と統一正常異常件数)
 - **必須設定**: `dataSourceConfig.csvDashboardId`（UUID）
 - **表示範囲**: FULL/SPLITの両レイアウトで表示可能（SPLITでは左右いずれの `visualization` スロットでも可）
 - **0件時表示**: 「未点検加工機はありません」
@@ -577,7 +577,7 @@ model SignageEmergency {
 - **Phase 3完了**（2025-12-17）: サイネージレンダラー（`signage.renderer.ts`）に提案3カラーパレットを適用完了。工具、計測機器、吊具のカードにアイコン（🔧、📏、⚙️）を追加し、フォントサイズとボーダーを改善。コントラスト比約21:1（WCAG AAA準拠）を達成。
 - **Phase 9完了**（2025-12-18）: 管理画面のPDF管理エリア（`SignagePdfManager.tsx`）を白背景対応に修正完了。サイネージタブ（`/admin/signage/schedules`）とクライアント端末タブ（`/admin/clients`）のPDF管理エリアで、form要素、input要素、select要素、テーブルヘッダー・行の境界線と文字色を改善し、白背景のCard内で視認性を向上。
 
-詳細は [UI視認性向上カラーテーマ要件定義](../requirements/ui-visibility-color-theme.md) / [残タスク洗い出し](../guides/ui-visibility-color-theme-remaining-tasks.md) を参照してください。
+詳細は [UI視認性向上カラーテーマ要件定義](../../requirements/ui-visibility-color-theme.md) / [残タスク洗い出し](../../archive/guides/ui-visibility-color-theme-remaining-tasks.md) を参照してください。
 
 ## Pi3クライアントの安定化施策（2026-01-08実装完了）
 
@@ -616,10 +616,10 @@ model SignageEmergency {
 
 ### デプロイ時の注意事項
 
-- **Ansibleロールのテンプレート配置**: `signage`ロールのテンプレートファイルは`infrastructure/ansible/roles/signage/templates/`に配置する必要があります。`infrastructure/ansible/templates/`にのみ配置していると、デプロイ時にテンプレートファイルが見つからず失敗します（[KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足)参照）
-- **デプロイ標準手順の遵守**: Pi3デプロイ時は、必ずデプロイ前の準備（サービス停止・無効化・マスク）を実行してください（[デプロイガイド](../guides/deployment.md#デプロイ前の準備必須)参照）
+- **Ansibleロールのテンプレート配置**: `signage`ロールのテンプレートファイルは`infrastructure/ansible/roles/signage/templates/`に配置する必要があります。`infrastructure/ansible/templates/`にのみ配置していると、デプロイ時にテンプレートファイルが見つからず失敗します（[KB-153](../../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足)参照）
+- **デプロイ標準手順の遵守**: Pi3も標準のローリング更新（`scripts/update-all-clients.sh`）で更新し、端末を個別のSSHやplaybookで操作しないでください（[デプロイガイド](../../guides/deployment.md#実行前確認)参照）
 
-詳細は [signage-lite.md](./signage-lite.md) / [デプロイガイド](../guides/deployment.md) / [KB-152](../knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) / [KB-153](../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) を参照してください。
+詳細は [signage-lite.md](./signage-lite.md) / [デプロイガイド](../../guides/deployment.md) / [KB-152](../../knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) / [KB-153](../../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) を参照してください。
 
 ## 残タスク（後日実装予定）
 
@@ -639,9 +639,9 @@ model SignageEmergency {
 
 ## 関連ドキュメント
 
-- [システム要件定義](../requirements/system-requirements.md)
-- [UI視認性向上カラーテーマ要件定義](../requirements/ui-visibility-color-theme.md) - カラーテーマ要件の詳細
-- [アーキテクチャ概要](../architecture/overview.md)
-- [開発ガイド](../guides/development.md)
+- [システム要件定義](../../requirements/system-requirements.md)
+- [UI視認性向上カラーテーマ要件定義](../../requirements/ui-visibility-color-theme.md) - カラーテーマ要件の詳細
+- [アーキテクチャ概要](../../architecture/overview.md)
+- [開発ガイド](../../guides/development.md)
 - [signage-lite.md](./signage-lite.md) - Pi3軽量サイネージの詳細仕様と安定化施策
 

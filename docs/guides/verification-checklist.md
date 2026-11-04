@@ -6,6 +6,8 @@
 
 本ドキュメントでは、運用・保守性の向上機能のラズパイでの検証手順を説明します。
 
+> 各節の「回帰（自動）」にある `./scripts/deploy/verify-phase12-real.sh` 全体は global-rank auto-generate 等の POST/PUT を含む。非破壊確認として無条件に実行せず、[deployment.md の共有application smoke](./deployment.md#共有application-smoke) の制約に従い、明示された GET/service-only 部分だけを使う。各節の PASS 件数は当時の実施記録である。
+
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
@@ -41,7 +43,7 @@
    ```
 
 2. **ブラウザでキオスク画面を開く**
-   - `http://<ラズパイ5のIP>:4173/kiosk` にアクセス
+   - `https://<ラズパイ5のIP>/kiosk` にアクセス
    - WebSocket接続が確立される
 
 3. **オフライン時の動作確認**
@@ -74,11 +76,13 @@
 
 **CSVファイル形式**:
 
+`<nfc-uid-N>` は検証に使う NFC タグの UID（14 文字の 16 進数）に置き換える。
+
 従業員CSV (`employees.csv`):
 ```csv
 employeeCode,lastName,firstName,nfcTagUid,department,contact,status
-0001,山田,太郎,04C362E1330289,製造部,090-1234-5678,ACTIVE
-0002,佐藤,花子,04B34411340289,品質管理部,090-2345-6789,ACTIVE
+0001,山田,太郎,<nfc-uid-1>,製造部,090-1234-5678,ACTIVE
+0002,佐藤,花子,<nfc-uid-2>,品質管理部,090-2345-6789,ACTIVE
 ```
 
 **注意**: `displayName`（氏名）は`lastName + firstName`で自動生成されます。CSVには含めません。
@@ -86,8 +90,8 @@ employeeCode,lastName,firstName,nfcTagUid,department,contact,status
 アイテムCSV (`items.csv`):
 ```csv
 itemCode,name,nfcTagUid,category,storageLocation,status,notes
-TO0001,ドライバーセット,04DE8366BC2A81,工具,工具庫A,AVAILABLE,常用工具
-TO0002,メジャー,04C393C1330289,測定器具,工具庫B,AVAILABLE,
+TO0001,ドライバーセット,<nfc-uid-3>,工具,工具庫A,AVAILABLE,常用工具
+TO0002,メジャー,<nfc-uid-4>,測定器具,工具庫B,AVAILABLE,
 ```
 
 **検証手順**:
@@ -98,9 +102,9 @@ TO0002,メジャー,04C393C1330289,測定器具,工具庫B,AVAILABLE,
    - ヘッダー行を含める
 
 2. **管理画面で一括登録ページにアクセス**
-   - ブラウザで管理画面にログイン: `http://<ラズパイ5のIP>:4173/login`
-   - ユーザー名: `admin`、パスワード: `admin1234`
-   - 一括登録ページにアクセス: `http://<ラズパイ5のIP>:4173/admin/import`
+   - ブラウザで管理画面にログイン: `https://<ラズパイ5のIP>/login`
+   - ユーザー名: `admin`、パスワード: 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更）
+   - 一括登録ページにアクセス: `https://<ラズパイ5のIP>/admin/import`
 
 3. **CSVファイルをアップロード**
    - 従業員CSVを選択
@@ -176,7 +180,7 @@ BACKUP_FILE=$(ls -t /opt/backups/db_backup_*.sql.gz | head -1)
 
 ```bash
 # ラズパイ5で実行
-curl http://localhost:8080/api/system/health
+curl -k https://localhost/api/system/health
 
 # 期待される結果:
 # {
@@ -195,7 +199,7 @@ curl http://localhost:8080/api/system/health
 
 ```bash
 # ラズパイ5で実行
-curl http://localhost:8080/api/system/metrics
+curl -k https://localhost/api/system/metrics
 
 # 期待される結果:
 # Prometheus形式のメトリクスが返される
@@ -226,6 +230,8 @@ tail -20 /var/log/system-monitor.log
 
 #### 2.4 異常状態の検証
 
+> 当時の手順（現行: 本番 API は `docker-compose.phase3.yml` の blue/green 稼働スロットで動き、`docker-compose.server.yml` の `api` は使われないため、下記コマンドは使えない。本番 API を止めて監視を確かめる異常系検証の手順はリポジトリに未定義で、実施はオーナー判断とする）。
+
 ```bash
 # ラズパイ5で実行
 
@@ -244,24 +250,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml start api
 
 #### 3.1 デプロイスクリプトの実行
 
-```bash
-# ラズパイ5で実行
-cd /opt/RaspberryPiSystem_002
-
-# 現在の状態を確認
-docker compose -f infrastructure/docker/docker-compose.server.yml ps
-
-# デプロイスクリプトを実行
-./scripts/server/deploy.sh
-
-# 期待される結果:
-# - Gitリポジトリが更新される
-# - 依存関係がインストールされる
-# - ビルドが成功する
-# - Dockerコンテナが再ビルド・再起動される
-# - データベースマイグレーションが実行される
-# - ヘルスチェックが成功する
-```
+`scripts/server/deploy.sh` は廃止済み。標準デプロイは `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` を使う（まず `--print-plan` で対象を確認し、実行時は `--limit PATTERN` か `--full-fleet` を付ける）。手順は [deployment.md](./deployment.md) を正本とする。
 
 #### 3.2 デプロイ後の動作確認
 
@@ -269,17 +258,17 @@ docker compose -f infrastructure/docker/docker-compose.server.yml ps
 # ラズパイ5で実行
 
 # APIヘルスチェック
-curl http://localhost:8080/api/health
+curl -k https://localhost/api/system/health
 
 # 認証テスト
-TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | \
+  -d '{"username":"admin","password":"<password>"}' | \
   grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
 
 # APIリクエストテスト
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/api/tools/employees
+curl -k -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/tools/employees
 
 # 期待される結果:
 # - すべてのリクエストが成功する
@@ -300,7 +289,7 @@ GitHubリポジトリのActionsタブで以下を確認：
 
 ```bash
 # Macで実行（オプション）
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd /Users/<user>/RaspberryPiSystem_002
 
 # 依存関係のインストール
 pnpm install
@@ -342,9 +331,9 @@ cd apps/web && pnpm build && cd ../..
    - 以下のCSVファイルを作成（UTF-8エンコーディング）:
    ```csv
    employeeCode,lastName,firstName,department,nfcTagUid,status
-   9999,山田,太郎,製造部,04C362E1330289,ACTIVE
+   9999,山田,太郎,製造部,<nfc-uid-1>,ACTIVE
    9998,佐藤,花子,品質管理部,,ACTIVE
-   9997,鈴木,一郎,製造部,04DE8366BC2A81,INACTIVE
+   9997,鈴木,一郎,製造部,<nfc-uid-3>,INACTIVE
    ```
 
 2. **管理画面でCSVインポート**
@@ -388,7 +377,7 @@ cd apps/web && pnpm build && cd ../..
 **確認ポイント**:
 - [x] インポートが成功するか
 - [x] `department`フィールドが正しく保存されているか
-- [x] 管理画面の計測機器一覧（`/admin/tools/measuring-instruments`）で`department`が表示されるか
+- [x] 管理画面の計測機器一覧（`/admin/tools/measuring-instruments`）で`department`が表示されるか（現行: 一覧はキオスク `/kiosk/tag-desk`）
 - [x] 編集画面で`department`が表示・編集できるか
 - [x] UIDの手動編集が反映されるか（キーボードで入力した値が保存後に表示されるか）
 
@@ -397,7 +386,7 @@ cd apps/web && pnpm build && cd ../..
 
 **備考**: 
 - UID編集時のバグ（複数タグ問題）を修正し、手動編集が正常に反映されることを確認
-- 詳細は [knowledge-base/api.md#kb-118](./knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正) / [knowledge-base/frontend.md#kb-119](./knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理) を参照
+- 詳細は [knowledge-base/api.md#kb-118](../knowledge-base/api.md#kb-118-計測機器uid編集時の複数タグ問題の修正) / [knowledge-base/frontend.md#kb-119](../knowledge-base/frontend.md#kb-119-計測機器uid編集時の手動編集フラグ管理) を参照
 
 #### 6.4 吊具CSVインポート（新フィールド）
 
@@ -407,8 +396,8 @@ cd apps/web && pnpm build && cd ../..
    - 以下のCSVファイルを作成（UTF-8エンコーディング）。任意列 **`idNum`（旧番号）** を含めてもよい（ヘッダー候補: `idNum`, `ID_num`, `旧番号`。詳細は [csv-import-export.md](./csv-import-export.md)）:
    ```csv
    managementNumber,name,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid,idNum
-   RG-TEST-001,テスト吊具1,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,テスト用,04C362E1330289,101
-   RG-TEST-002,テスト吊具2,工具庫B,品質管理部,2021-06-01,5,5,3000,80,15,AVAILABLE,,04DE8366BC2A81,
+   RG-TEST-001,テスト吊具1,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,テスト用,<nfc-uid-1>,101
+   RG-TEST-002,テスト吊具2,工具庫B,品質管理部,2021-06-01,5,5,3000,80,15,AVAILABLE,,<nfc-uid-3>,
    ```
 
 2. **管理画面でCSVインポート（UI経由）**
@@ -469,6 +458,8 @@ cd apps/web && pnpm build && cd ../..
 **検証結果**: ☐ 成功 ☐ 失敗（エラー内容: _______________）
 
 #### 6.6 管理コンソールUI確認
+
+> 6.6.1〜6.6.3 は過去の実施記録。`/admin/tools/employees`・`/admin/tools/measuring-instruments`・`/admin/tools/rigging-gears` は現在「タグ管理」への案内だけを表示し、登録・編集はキオスクの `/kiosk/tag-desk` で行う。再検証は `/kiosk/tag-desk` で行う。
 
 **6.6.1 従業員管理画面（`/admin/tools/employees`）**
 
@@ -574,7 +565,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 **検証日時**: 2026-03-29（401・`verify-phase12-real.sh` **PASS 34/0/0** を Mac / Tailscale で確認／**埋め込み配線ブランチ**は Pi5 のみ `update-all-clients.sh --limit raspberrypi5` で反映後も同スクリプトで再確認／UI・候補中身は vault で埋め込み ON 後）
 **検証結果**: ☑ 成功（認可・Phase12 回帰） ☐ 失敗（エラー内容: _______________）
 
-**手動（埋め込み ON 時）**: Pi5 デプロイ後、`docker compose ... exec api printenv` で `PHOTO_TOOL_EMBEDDING_*` を確認。既存 GOOD のギャラリー再投入は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) のバックフィル手順。
+**手動（埋め込み ON 時）**: Pi5 デプロイ後、`/opt/RaspberryPiSystem_002` で `scripts/server/run-in-active-api.sh printenv PHOTO_TOOL_EMBEDDING_ENABLED PHOTO_TOOL_EMBEDDING_URL PHOTO_TOOL_EMBEDDING_MODEL_ID` を実行し、稼働スロットの値を確認する（`PHOTO_TOOL_EMBEDDING_API_KEY` は表示しない）。既存 GOOD のギャラリー再投入は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) のバックフィル手順。
 
 **6.6.8 写真持出 VLM・GOOD 類似シャドー補助（任意・ログ）**
 
@@ -636,18 +627,20 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 
 **6.6.11 推論基盤フェーズ1（複数プロバイダ・text/vision・要領書オプトイン）**
 
-**確認ポイント**（[ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)、[KB-313](../knowledge-base/KB-313-kiosk-documents.md)、[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)、[KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)）:
+**確認ポイント**（[ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md)、[KB-313](../knowledge-base/KB-313-kiosk-documents.md)、[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)、[KB-340](../archive/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)）:
 
 - [ ] Pi5 のみ変更を載せる場合は [deployment.md](./deployment.md) に従い `update-all-clients.sh` + **`--limit raspberrypi5`**（Pi3 はリソース専用手順のみ別途）
 - [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-03-30 実測 **PASS 37 / WARN 0 / FAIL 0**・約 95s）
 - [ ] 要領書 LLM 要約を本番で **ON** にする場合のみ `KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED=true` と推論プロバイダ設定を確認（OFF のままなら推論ログは出ないことが仕様）
 - [ ] （任意）API ログで写真ラベル経路の `component: inference`・`useCase: photo_label` を確認（本文は出ない）
-- [ ] （2026-04-11 追記）OCR/VLM **境界整理のみ**（挙動互換）を全台に載せる場合は [KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) の順序（Pi5→Pi4×4→Pi3）と Detach Run ID 例を参照
+- [ ] （2026-04-11 追記）OCR/VLM **境界整理のみ**（挙動互換）を全台に載せる場合は [KB-340](../archive/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) の順序（Pi5→Pi4×4→Pi3）と Detach Run ID 例を参照
 
-**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 37 / WARN 0 / FAIL 0**・Mac / Tailscale・Pi5 に `feat/inference-foundation-phase1` 反映後）／**2026-04-11**（`feat/ocr-vlm-boundary-refactor`・**PASS 43 / WARN 0 / FAIL 0**・Pi5→Pi4×4→Pi3 順次・[KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)）
+**検証日時**: 2026-03-30（`verify-phase12-real.sh` **PASS 37 / WARN 0 / FAIL 0**・Mac / Tailscale・Pi5 に `feat/inference-foundation-phase1` 反映後）／**2026-04-11**（`feat/ocr-vlm-boundary-refactor`・**PASS 43 / WARN 0 / FAIL 0**・Pi5→Pi4×4→Pi3 順次・[KB-340](../archive/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 **6.6.12 LocalLLM オンデマンド起停（Pi5→Ubuntu HTTP・任意運用）**
+
+> 2026-03〜04 の Ubuntu 時代の確認項目（現行: Ubuntu PC は 2026-04-26 に退役し、LocalLLM は DGX Spark。DGX の確認は [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md) を参照）。
 
 **確認ポイント**（[ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)、[local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)、[KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)、[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）:
 
@@ -666,7 +659,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 
 - [ ] 管理画面でスケジュールに **`kiosk_progress_overview`** を追加する場合、**`deviceScopeKey` がキオスク表示と一致**していること（必須）。**`seibanPerPage` は 1〜8**（9 以上は cap・4列×2段 JPEG の都合）。
 - [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-04-01 基準 **PASS 39 / WARN 0 / FAIL 0**。**secure operator environmentで事前設定した `PI3_SIGNAGE_CLIENT_KEY` → `GET /api/signage/current-image` 200** と **未認証 `POST …/photo-gallery-seed` → 401** を含む）。
-- [ ] Pi3 へ載せる変更は [deployment.md](./deployment.md) の **ラズパイ3（サイネージ）** に従い **`--limit raspberrypi3`**・**`--detach --follow`**・**単一起動**（多重 `update-all-clients.sh` 禁止）。
+- [ ] Pi3 へ載せる変更は [deployment.md](./deployment.md) の標準更新に従い **`--limit raspberrypi3`**・**`--detach`**（確認は `--status RUN_ID`）・**単一起動**（多重 `update-all-clients.sh` 禁止）。
 - [ ] （任意・現場）FULL スロット表示時に **ページ送り**・**製番が scheduled のみ**であることの目視。
 
 **検証日時**: 2026-03-31（`verify-phase12-real.sh` **PASS 38 / WARN 0 / FAIL 0**・Mac / Tailscale・`feature/kiosk-progress-overview-two-row-grid` を Pi5→Pi4×4→Pi3 順次反映後）。初回スロット導入時: 2026-04-01（`feature/signage-kiosk-progress-overview`）。**2026-04-01**: スクリプトに `photo-gallery-seed` **401** を追加後の基準は **PASS 39 / WARN 0 / FAIL 0**。
@@ -696,7 +689,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **6.6.15 サイネージ: 管理コンソール スケジュール一覧（無効レコード再編集・management API）**
 
-**確認ポイント**（[KB-322](../knowledge-base/infrastructure/signage.md#kb-322-管理コンソールサイネージスケジュール一覧無効レコードの再編集api分離)）:
+**確認ポイント**（[KB-322](../knowledge-base/infrastructure/signage.md#kb-322-管理コンソール-サイネージスケジュール一覧無効レコードの再編集api分離)）:
 
 - [x] （自動）`verify-phase12-real.sh` が **PASS**（回帰・既存 Phase12 観点・2026-04-01）
 - [x] 公開 `GET /api/signage/schedules`（キオスク）が **有効のみ** を返す（無効は一覧に出ない）（設計＋統合テストで担保）
@@ -748,7 +741,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **検証日時**: 2026-05-19（`verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**·`deploy-status` Pi4×4 **PASS**·`status-agent` Pi4×4 **PASS**·現場順位ボード **表示正常・体感速度維持**）
 **検証結果**: ☑ 成功（自動+現場） ☐ 失敗（エラー内容: _______________）
-**参照**: [KB-374 §Production 2026-05-19](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)
+**参照**: [KB-374 §Production 2026-05-19](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification2026-05-19--featleaderboard-continue-delta-safe)
 
 **6.6.19 キオスク リーダー順位ボード（製番検索・納期アシスト詳細・左2段スタック）**
 
@@ -795,7 +788,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-04-03（上記スクリプト **PASS 41 / WARN 0 / FAIL 0**・`main` に `refactor(api): extract loan grid HTML chrome and layout tokens` 反映後、inventory 6 台を `--limit` 順次・`--foreground` でデプロイ済み・Mac / Tailscale・約 **59s**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
-**6.6.24 キオスク リーダー順位ボード（資源内順位割当 A+α 自動解放）** {#kiosk-leaderboard-order-assignment-auto-release-verification-2026-05-20}
+<a id="kiosk-leaderboard-order-assignment-auto-release-verification-2026-05-20"></a>**6.6.24 キオスク リーダー順位ボード（資源内順位割当 A+α 自動解放）**
 
 **確認ポイント**（[KB-297 §A+α](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)·[deployment §A+α](../archive/deployments/2026-05.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)）:
 
@@ -807,7 +800,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **トラブルシュート**: 反映直後も飛び番 → 同期未実行・Pi5 ref 確認。CI 失敗（reconcile DI）→ **`643e4f4b`** 参照。
 
-**6.6.23 キオスク リーダー順位ボード（製番左縁アクセント 24 色）** {#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20}
+<a id="kiosk-leaderboard-seiban-accent-24-verification-2026-05-20"></a>**6.6.23 キオスク リーダー順位ボード（製番左縁アクセント 24 色）**
 
 **（2026-05-22 以降）**: 全件表示の左縁着色は **撤回**。**現行チェックは [§6.6.28](#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22) を正**とする。本節は **2026-05-20〜2026-05-21 の履歴**。
 
@@ -823,7 +816,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-20（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260520-141147-19965`** ほか 4 本·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.31 キオスク リーダー順位ボード（`+人` 人工数表示回復・8H/10H 切替・表示速度維持）** {#kiosk-leaderboard-labor-toggle-display-recovery-2026-06-24}
+<a id="kiosk-leaderboard-labor-toggle-display-recovery-2026-06-24"></a>**6.6.31 キオスク リーダー順位ボード（`+人` 人工数表示回復・8H/10H 切替・表示速度維持）**
 
 **現仕様の読み方**: 最終受理状態は `5171e44e` 系の復旧後。`f978c15e` は却下済み Gantt 回帰の履歴であり、現在値と履歴語の整理は [KB-392](../knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md) を参照。
 
@@ -843,7 +836,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-06-24（最終受理 commit **`5171e44e`** · all-host deploy **`20260624-175322-20365`** · Phase12 **PASS 43 / WARN 0 / FAIL 0**）
 **検証結果**: `a882ac81` で累積境界 Gantt へ復旧、`cca420ac` で人工数 metadata overlay を保持、`5171e44e` で同期表示 layout を安定化。`f978c15e` の deploy/CI/Phase12 成功は却下済み履歴として扱う。
 
-**6.6.30 キオスク リーダー順位ボード（資源カード行 — 強調レイアウト）** {#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05}
+<a id="kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05"></a>**6.6.30 キオスク リーダー順位ボード（資源カード行 — 強調レイアウト）**
 
 **確認ポイント**（[KB-297 §カード行強調](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05)·[deployment §2026-06-05](../archive/deployments/2026-06.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05)）:
 
@@ -862,7 +855,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-06-18（自動 **43/0/0**·**Pi5+Pi4×4**·Pi5 バンドル `title:N.partNameLine` 確認）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視·ホバー全文） ☐ 失敗（エラー内容: _______________）
 
-**6.6.29 キオスク リーダー順位ボード（完了後フッタ工程チップ装飾の再同期）** {#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01}
+<a id="kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01"></a>**6.6.29 キオスク リーダー順位ボード（完了後フッタ工程チップ装飾の再同期）**
 
 **確認ポイント**（[KB-375 §2026-06-01](../knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)·[KB-374 §装飾 stale](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[deployment §2026-06-01](../archive/deployments/2026-06.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)）:
 
@@ -877,7 +870,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-06-01（自動 **43/0/0**·**`raspberrypi5` のみ**·Detach **`20260601-210522-21919`**·**Pi3/Pi4 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.28 キオスク リーダー順位ボード（製番左縁 — 全件無色・OR フィルタ時のみ色分け）** {#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22}
+<a id="kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22"></a>**6.6.28 キオスク リーダー順位ボード（製番左縁 — 全件無色・OR フィルタ時のみ色分け）**
 
 **確認ポイント**（[KB-297 §全件無色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §2026-05-22 全件無色](../archive/deployments/2026-05.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)）:
 
@@ -893,7 +886,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-22（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260522-211412-3634`** ほか 4 本·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.25 キオスク リーダー順位ボード（資源CDスロット「順位」ボタン・製番順評価 ON 時）** {#kiosk-leaderboard-slot-auto-rank-verification-2026-05-22}
+<a id="kiosk-leaderboard-slot-auto-rank-verification-2026-05-22"></a>**6.6.25 キオスク リーダー順位ボード（資源CDスロット「順位」ボタン・製番順評価 ON 時）**
 
 **確認ポイント**（[KB-297 §スロット順位](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](../archive/deployments/2026-05.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)）:
 
@@ -909,14 +902,14 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-22（自動 **43/0/0**·**`raspberrypi5` のみ**·Detach **`20260522-183756-28111`**·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.26 キオスク リーダー順位ボード（手動順位 — サイネージ SVG 行背景 / キオスク履歴）** {#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22}
+<a id="kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22"></a>**6.6.26 キオスク リーダー順位ボード（手動順位 — サイネージ SVG 行背景 / キオスク履歴）**
 
 **確認ポイント**（[KB-297 §手動順位行](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335 §手動順位行](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)）:
 
 - [ ] **サイネージ（手動）**: `kiosk_leader_order_cards` で **順位付き未完行**の行ブロック背景 **`rgba(71, 85, 105, 0.82)` 相当**（Pi5 **`api`**·`3acf4c5a` 以降）。
 - [ ] **キオスク（履歴・行背景案）**: **`949eea9c` 以降は行背景ハイライトなし** — 現行確認は **§6.6.27** を正とする。
 
-**6.6.27 キオスク リーダー順位ボード（行内順位ピッカー · 製番順位 UI 統一）** {#kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22}
+<a id="kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22"></a>**6.6.27 キオスク リーダー順位ボード（行内順位ピッカー · 製番順位 UI 統一）**
 
 **確認ポイント**（[KB-297 §行内順位ピッカー](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[deployment §行内順位](../archive/deployments/2026-05.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)）:
 
@@ -971,7 +964,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **6.8.1 スケジュール作成（新フォーマット）**
 
 **検証手順**:
-1. CSVインポートスケジュールページ（`/admin/csv-import-schedule`）にアクセス
+1. 一括登録ページ（`/admin/import`）のCSVインポートスケジュール欄を開く
 2. 「新規作成」ボタンをクリック
 3. スケジュール名、cron式、プロバイダーを設定
 4. 「ターゲットを追加」ボタンで複数のターゲットを追加:
@@ -999,7 +992,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証手順**:
 1. 管理画面にログイン: `https://100.106.158.2/admin`
 2. 「一括登録」タブにアクセス: `https://100.106.158.2/admin/import`
-3. 「CSVインポートスケジュール」タブにアクセス: `https://100.106.158.2/admin/csv-import-schedule`
+3. 同じ `/admin/import` ページのCSVインポートスケジュール欄を開く
 4. 「新規作成」ボタンをクリック
 5. スケジュール名、cron式（例: 1分ごとに実行する`* * * * *`）、プロバイダーを`Gmail`に設定
 6. 「ターゲットを追加」ボタンでターゲットを追加:
@@ -1008,8 +1001,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 7. 「既存データをクリアしてから取り込み」にチェックを入れるか選択
 8. 保存
 9. スケジュール実行を待つ（cron式による）
-10. インポート履歴（`/admin/import-history`）で、Gmailからのインポートジョブが`COMPLETED`になっていることを確認
-11. インポートされたデータが管理画面の各一覧（例: 計測機器一覧）に正しく反映されていることを確認
+10. `GET /api/imports/history`（管理者JWT）で、Gmailからのインポートジョブの `status` が `COMPLETED` になっていることを確認（Webに履歴一覧画面はない）
+11. インポートされたデータがキオスクの「タグ管理」（`/kiosk/tag-desk`）の各一覧（例: 計測機器）に正しく反映されていることを確認
 
 **確認ポイント**:
 - [x] スケジュールが正しく保存されるか
@@ -1049,8 +1042,9 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 2. Pi5側の環境変数を確認:
    ```bash
    ssh denkon5sd02@100.106.158.2
-   cd /opt/RaspberryPiSystem_002/infrastructure/docker
-   docker compose -f docker-compose.server.yml exec api env | grep SLACK_KIOSK_SUPPORT_WEBHOOK_URL
+   cd /opt/RaspberryPiSystem_002
+   # Webhook URL は秘密情報なので値を表示せず、設定の有無だけを確認する
+   scripts/server/run-in-active-api.sh sh -c 'test -n "$SLACK_KIOSK_SUPPORT_WEBHOOK_URL" && echo set || echo unset'
    ```
 3. キオスク画面にアクセス: `https://100.106.158.2/kiosk`
 4. ヘッダーの「お問い合わせ」ボタンをクリック
@@ -1134,16 +1128,14 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 ### バックアップが失敗する
 
 - バックアップディレクトリの権限を確認: `ls -ld /opt/backups`
-- Dockerコンテナが起動しているか確認: `docker compose ps`
+- Dockerコンテナが起動しているか確認: `docker ps`（API/Web は blue/green の `bluegreen-*`、DB は `docker-compose.server.yml` の `db`）
 
 ### 監視スクリプトがエラーを報告する
 
-- APIが起動しているか確認: `curl http://localhost:8080/api/system/health`
-- Dockerコンテナの状態を確認: `docker compose ps`
+- APIが起動しているか確認: `curl -k https://localhost/api/system/health`
+- Dockerコンテナの状態を確認: `docker ps`（同上）
 - ログを確認: `tail -50 /var/log/system-monitor.log`
 
 ### デプロイスクリプトが失敗する
 
-- Gitリポジトリの状態を確認: `git status`
-- ビルドエラーを確認: `cd apps/api && pnpm build`
-- Dockerログを確認: `docker compose logs api`
+- [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) と [deployment.md](./deployment.md) を参照

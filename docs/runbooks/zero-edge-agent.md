@@ -7,6 +7,15 @@ Pi Zero W / Zero 2 WにPython 3.9以上のRaspberry Pi OS、SSH、ネットワ�
 棚の割り当ては、キオスクの「棚マスタ」→「写真」→ 棚を開く →「Zero2W」で端末を選び「確定」→「保存する」で行います（1 つの棚に付く端末は 1 台で、別の端末に割り当てると前の端末は外れます）。
 heartbeatのclientIdも同じ端末の`ClientStatus`として登録されるようサーバー側の端末設定を揃えます。
 
+先にPi5からZeroへSSHできる状態を作ります。
+
+1. ZeroでTailscaleに参加し、ACLに合わせてタグを付けます（Zero 2 Wは[tailscale-policy.md](../security/tailscale-policy.md)の`tag:signage`系）。
+2. 標準OpenSSHの鍵認証を使うため、Zeroで`sudo tailscale set --ssh=false`を実行します。
+3. Zeroで`tailscale ip -4`の100.xを控え、inventoryの`ansible_host`に書きます。
+4. Pi5の鍵をZeroの`authorized_keys`に載せます（[client-initial-setup.md](../guides/client-initial-setup.md#step-2-ssh鍵認証の設定) Step 2相当）。
+5. SSH経路はMac → Pi5 → Zeroです。MacからZeroへ直接SSHするとACLでタイムアウトし得ます。
+6. Pi5から`ssh -o BatchMode=yes <user>@<100.x> 'echo OK'`で到達を確認します。
+
 端末の一覧は、Pi5 の `/opt/RaspberryPiSystem_002/infrastructure/ansible/inventory-zero-edge-hosts.yml`
 （git 管理外、権限 0600）に書きます。共通の `inventory-zero-edge.yml` はグループと変数だけを持ち、端末を書きません。
 標準 fleet 用の `inventory.yml` には入れません（`scripts/deploy/standard-ansible-release.py` が server/kiosk/signage 以外の端末を拒否するため）。

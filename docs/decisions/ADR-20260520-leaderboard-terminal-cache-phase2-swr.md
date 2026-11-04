@@ -75,13 +75,13 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 | 層 | パス |
 | --- | --- |
-| SWR 表示 | [`leaderboardBoardSwrDisplayPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSwrDisplayPolicy.ts) |
-| 同期タイミング | [`leaderboardBoardCacheSyncPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheSyncPolicy.ts) |
-| 操作ロック | [`leaderboardBoardInteractionLockPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy.ts) |
-| 内容指紋 | [`leaderboardBoardCachePersistPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePersistPolicy.ts) |
-| mutation patch | [`leaderboardBoardCachePatchPolicy.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePatchPolicy.ts) |
-| hook | [`useLeaderboardBoardTerminalCache.ts`](../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts) |
-| 書き込み橋 | [`productionScheduleWriteSuccessListeners.ts`](../apps/web/src/features/kiosk/productionSchedule/productionScheduleWriteSuccessListeners.ts) · [`buildLeaderboardBoardCacheWriteSuccessListeners`](../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardCacheMutationBridge.ts) |
+| SWR 表示 | [`leaderboardBoardSwrDisplayPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardSwrDisplayPolicy.ts) |
+| 同期タイミング | [`leaderboardBoardCacheSyncPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheSyncPolicy.ts) |
+| 操作ロック | [`leaderboardBoardInteractionLockPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy.ts) |
+| 内容指紋 | [`leaderboardBoardCachePersistPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePersistPolicy.ts) |
+| mutation patch | [`leaderboardBoardCachePatchPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCachePatchPolicy.ts) |
+| hook | [`useLeaderboardBoardTerminalCache.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardTerminalCache.ts) |
+| 書き込み橋 | [`productionScheduleWriteSuccessListeners.ts`](../../apps/web/src/features/kiosk/productionSchedule/productionScheduleWriteSuccessListeners.ts) · [`buildLeaderboardBoardCacheWriteSuccessListeners`](../../apps/web/src/features/kiosk/leaderOrderBoard/useLeaderboardBoardCacheMutationBridge.ts) |
 
 ## デプロイ（本番反映済み・2026-05-19）
 
@@ -101,7 +101,7 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 **知見**: Phase 1 は **Pi5 のみ**だったため、Pi4×4 は **Phase 1 + Phase 2 を同時に初反映**（IDB は端末ローカル）。**初回アクセスは IDB 空**のため体感改善は **continue 完走後の 2 回目以降**で評価する（Phase 1 と同型）。
 
-**手順正本**: [deployment.md §端末キャッシュ Phase 2](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)。
+**手順正本**: [deployment.md §端末キャッシュ Phase 2](../archive/deployments/2026-05.md#kiosk-leaderboard-terminal-cache-phase2-swr-2026-05-19)·[KB-374 §Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2swr--書き込み同期2026-05-20)。
 
 ## 操作即表示との両立（2026-05-20 · `feat/kiosk-leaderboard-mutation-instant-display`）
 
@@ -140,5 +140,5 @@ Phase 1 は cold start の bootstrap のみが主効果で、製番 OR 切替や
 
 ## References
 
-- [KB-374 §端末キャッシュ Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2-swr--書き込み同期2026-05-20)
+- [KB-374 §端末キャッシュ Phase 2](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#端末キャッシュ-phase-2swr--書き込み同期2026-05-20)
 - [RFC 5861 stale-while-revalidate](https://httpwg.org/specs/rfc5861.html)

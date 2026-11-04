@@ -18,7 +18,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - `docs/knowledge-base/api.md#kb-185`: CSVダッシュボードのgmailSubjectPattern設定UI改善
 - `docs/knowledge-base/api.md#kb-186`: CsvImportSubjectPatternモデル追加による設計統一
 - `docs/guides/csv-import-export.md`: CSVインポート・エクスポート仕様
-- `docs/guides/csv-dashboard-verification.md`: CSVダッシュボード可視化機能の実機検証手順
+- `docs/archive/guides/csv-dashboard-verification.md`: CSVダッシュボード可視化機能の実機検証手順
 
 ### 既存実装
 
@@ -91,7 +91,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - [x] (2026-01-28) **資源CD単独検索の無効化**: 資源CD単独では検索されないように変更（登録製番単独・AND検索は維持）。資源CD単独だと対象アイテムが多すぎてPi4で動作が緩慢になる問題を解決。実機検証で正常に動作することを確認。詳細は [KB-205](../knowledge-base/api.md#kb-205-生産スケジュール画面のパフォーマンス最適化と検索機能改善api側) を参照。
 - [x] (2026-01-28) **検索登録製番の端末間共有ができなくなっていた問題の修正・仕様確定・実機検証完了**: KB-209で実装された検索状態共有が`search-history`（端末別）に変更され端末間共有ができなくなっていた問題を修正。**仕様確定**: `search-state`は**history専用**で端末間共有。ローカル削除は`hiddenHistory`で管理。割当済み資源CDは製番未入力でも単独検索可。CI成功、デプロイ成功、実機検証完了。詳細は [KB-210](../knowledge-base/api.md#kb-210-生産スケジュール検索登録製番の端末間共有ができなくなっていた問題の修正) を参照。
 
-- [x] (2026-02-01) **納期日機能のUI改善完了・デプロイ成功・実機検証完了**: 生産スケジュールの納期日機能にカスタムカレンダーUIを実装し、操作性を大幅に改善。**UI改善内容**: カスタムカレンダーグリッド実装（`<input type="date">`から置き換え）、今日/明日/明後日ボタン追加、日付選択時の自動確定（OKボタン不要）、月ナビゲーション（前月/次月）、今日の日付の強調表示、既に設定済みの納期日の月を初期表示。**技術的修正**: React Hooksのルール違反修正（`useMemo`/`useState`/`useEffect`をearly returnの前に移動）。**デプロイ時の混乱と解決**: inventory-talkplaza.ymlとinventory.ymlの混同により、DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗。標準手順（Tailscale IP経由）に戻し、`inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイ成功。Webコンテナを明示的に再ビルドして変更を反映。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5で`failed=0`、デプロイ成功。**実機検証結果**: 納期日機能のUI改善が正常に動作することを確認（カレンダー表示、日付選択、今日/明日/明後日ボタン、自動確定、月ナビゲーション）。詳細は [KB-221](../knowledge-base/frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) / [KB-222](../knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同) を参照。
+- [x] (2026-02-01) **納期日機能のUI改善完了・デプロイ成功・実機検証完了**: 生産スケジュールの納期日機能にカスタムカレンダーUIを実装し、操作性を大幅に改善。**UI改善内容**: カスタムカレンダーグリッド実装（`<input type="date">`から置き換え）、今日/明日/明後日ボタン追加、日付選択時の自動確定（OKボタン不要）、月ナビゲーション（前月/次月）、今日の日付の強調表示、既に設定済みの納期日の月を初期表示。**技術的修正**: React Hooksのルール違反修正（`useMemo`/`useState`/`useEffect`をearly returnの前に移動）。**デプロイ時の混乱と解決**: inventory-talkplaza.ymlとinventory.ymlの混同により、DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗。標準手順（Tailscale IP経由）に戻し、`inventory.yml`の`raspberrypi5`に対してTailscale IP（`100.106.158.2`）経由でデプロイ成功。Webコンテナを明示的に再ビルドして変更を反映。**CI実行**: 全ジョブ（lint-and-test, e2e-smoke, docker-build, e2e-tests）成功。**デプロイ結果**: Pi5で`failed=0`、デプロイ成功。**実機検証結果**: 納期日機能のUI改善が正常に動作することを確認（カレンダー表示、日付選択、今日/明日/明後日ボタン、自動確定、月ナビゲーション）。詳細は [KB-221](../knowledge-base/frontend.md#kb-221-生産スケジュール納期日機能のui改善カスタムカレンダーui実装) / [KB-222](../knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題-旧別拠点用と標準inventoryの混同) を参照。
 
 - [x] (2026-02-10) **登録製番削除ボタンの進捗連動UI改善・デプロイ成功・キオスク動作検証OK**: 登録製番ボタン右上の×削除ボタンを進捗で白（100%完了）/グレー白縁（未完了）に切替える機能を実装。**実装内容**: APIに`SeibanProgressService`を新設し、`GET /kiosk/production-schedule/history-progress`を追加。`ProductionScheduleDataSource`を共通サービス利用へ切替。Webに`useProductionScheduleHistoryProgress`フックを追加。**デプロイ**: Pi5＋Pi4でデプロイ成功（Run ID: 20260210-080354-23118）。**キオスク動作検証**: 登録製番の進捗表示と削除ボタンの色切替が正常に動作。詳細は [KB-242](../knowledge-base/frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善) / [KB-242](../knowledge-base/api.md#kb-242-history-progressエンドポイント追加と製番進捗集計サービス) を参照。
 
@@ -368,7 +368,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 
 **関連ファイル**: `scripts/update-all-clients.sh`, `infrastructure/ansible/inventory.yml`, `infrastructure/ansible/inventory-talkplaza.yml`
 
-**詳細**: [KB-222](../knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題inventory-talkplazaymlとinventoryymlの混同)
+**詳細**: [KB-222](../knowledge-base/infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題-旧別拠点用と標準inventoryの混同)
 
 ## Decision Log
 
@@ -575,7 +575,7 @@ PowerAppsの生産スケジュールUIを参考に、Gmail経由で取得したC
 - `apps/api/src/services/signage/signage.service.ts`（サイネージサービス）
 
 **参考ドキュメント**:
-- [CSVダッシュボード可視化機能の実機検証手順](../guides/csv-dashboard-verification.md)
+- [CSVダッシュボード可視化機能の実機検証手順](../archive/guides/csv-dashboard-verification.md)
 - [KB-155: CSVダッシュボード可視化機能実装完了](../knowledge-base/infrastructure/signage.md#kb-155-csvダッシュボード可視化機能実装完了)
 
 ### 次のタスク候補（運用・スケール）

@@ -65,8 +65,11 @@ vault_slack_kiosk_support_webhook_url: "https://hooks.slack.com/services/..."  #
 Webhook URL設定後、デプロイを実行します：
 
 ```bash
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5
 ```
+
+手順の正本は [deployment.md](./deployment.md) です。
 
 デプロイ後、各routeKeyのテストアラートを生成して、正しいチャンネルに着弾することを確認します：
 
@@ -84,9 +87,17 @@ Webhook URL設定後、デプロイを実行します：
 ./scripts/generate-alert.sh kiosk-support-test "テスト: キオスクサポート" "テスト用メッセージ"
 ```
 
-### 4. 自動反映（Ansibleがapiを再作成）
+### 4. 自動反映（標準デプロイ）
 
-`.env`が更新された場合、Ansibleが`api`コンテナを`--force-recreate`で再作成し、環境変数を反映します。手動での再起動は不要です。
+標準デプロイ（[deployment.md](./deployment.md)）は Pi5 の既存の`.env`をそのまま使い、Vaultの値から作り直しません。`.env`を作り直すのは`infrastructure/ansible/roles/server`の`docker.env.j2`だけで、標準デプロイはこの role を実行しません。Vault を更新したら、server role を流す専用 playbook を Mac の main checkout から`--check --diff`で確かめてから実行するか、運用者に反映方法を確認してください。Pi5本番のAPIはblue/green構成（`docker-compose.phase3.yml`の`api-blue`/`api-green`）のため、containerを手動で再起動しないでください。
+
+## ホスト系セキュリティ通知（alert_webhook_url）
+
+アラートディスパッチャの4系統（`ALERTS_SLACK_WEBHOOK_*`）とは別に、Pi5 のホスト側スクリプト `security-monitor.sh`（`infrastructure/ansible/templates/security-monitor.sh.j2`）と Trivy イメージスキャンの cron（`infrastructure/ansible/roles/server/tasks/malware.yml` → `trivy-image-scan.sh`）は、Ansible 変数 `alert_webhook_url` へ直接通知します（タイムアウトは `alert_webhook_timeout_seconds`、既定5秒）。
+
+- 既定値は `group_vars/all.yml` と `group_vars/staging.yml` で空文字（通知しない）
+- Pi5 上で git 管理ファイルを直接編集せず、Ansible 変数として設定する。配布は `roles/server/tasks/monitoring.yml` と `malware.yml` で、どちらも `server_release_mode == 'full'` のときだけ動く。標準デプロイ（`release_pi5`）では反映されないため、反映方法は運用者に確認する
+- 値を Vault 管理にするかは運用者の確認が必要
 
 ## トラブルシューティング
 
@@ -107,42 +118,28 @@ Webhook URL設定後、デプロイを実行します：
 
 **原因と対策**:
 
-1. **Ansibleテンプレートの既存値保持パターン**
-   - `docker.env.j2`は既存の`.env`から値を抽出し、新しい変数が未設定の場合は既存値を優先
-   - 対策: 明示的に変数を渡すか、既存の`.env`を削除してから再デプロイ
-
-2. **リモートリポジトリの同期遅延**
-   - Pi5上のリポジトリが最新のテンプレートを反映していない
-   - 対策: Pi5で`git pull`を実行
-
-3. **ファイル権限問題**
-   - `vault.yml`がroot所有に変更されている場合、`git pull`が失敗する
-   - 対策:
-   ```bash
-   sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/*/vault.yml
-   git pull origin main
-   ```
-
-4. **Webhook URLの未設定**
+1. **Webhook URLの未設定**
    - `ALERTS_DISPATCHER_ENABLED=true` の場合、4系統のWebhook URLが空だと検証で失敗
    - 対策: Vaultで4系統すべてを設定してから再デプロイ
 
-5. **手動でのJinja2レンダリング（最終手段）**
-   - Ansibleの複雑なロジックをバイパスしたい場合、Pythonで直接テンプレートをレンダリング
-   - 詳細は [KB-176](../knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照
+2. **その他の失敗**
+   - Pi5 上での `git pull`、`vault.yml` の権限変更、`.env` の削除、テンプレートの手動レンダリングは行わない
+   - 標準経路（[deployment.md](./deployment.md)）で再実行し、止まった場合は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) に従う
+   - 過去の事例は [KB-176](../knowledge-base/infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) を参照
 
 ### 環境変数がコンテナに反映されているか確認（任意）
 
 ```bash
-# コンテナ内の環境変数を確認
-docker compose -f infrastructure/docker/docker-compose.server.yml exec api printenv | grep ALERTS
+# Pi5上で実行。稼働中のAPIスロットで、変数名だけを表示する（Webhook URLは表示しない）
+cd /opt/RaspberryPiSystem_002
+scripts/server/run-in-active-api.sh printenv | grep '^ALERTS_' | cut -d= -f1
 
 # 期待される出力:
-# ALERTS_DISPATCHER_ENABLED=true
-# ALERTS_SLACK_WEBHOOK_DEPLOY=https://hooks.slack.com/services/...
-# ALERTS_SLACK_WEBHOOK_OPS=https://hooks.slack.com/services/...
-# ALERTS_SLACK_WEBHOOK_SECURITY=https://hooks.slack.com/services/...
-# ALERTS_SLACK_WEBHOOK_SUPPORT=https://hooks.slack.com/services/...
+# ALERTS_DISPATCHER_ENABLED
+# ALERTS_SLACK_WEBHOOK_DEPLOY
+# ALERTS_SLACK_WEBHOOK_OPS
+# ALERTS_SLACK_WEBHOOK_SECURITY
+# ALERTS_SLACK_WEBHOOK_SUPPORT
 ```
 
 ### テスト通知の送信
@@ -158,6 +155,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec api print
 ### DBでアラート配信状態を確認
 
 ```bash
+# Pi5の /opt/RaspberryPiSystem_002 で実行（DBは本番でも docker-compose.server.yml の db）
 # Prismaの命名規則に注意（大文字 + ダブルクォート）
 docker compose -f infrastructure/docker/docker-compose.server.yml exec -T db \
   psql -U postgres -d borrow_return \

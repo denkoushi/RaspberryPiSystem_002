@@ -219,7 +219,7 @@ trivy image \
 
 **主要証跡の再確認**:
 - ポート露出削減・不要サービス停止・監視ノイズ低減: [port-security-verification-results.md](./port-security-verification-results.md)
-- ポートベースライン: [ports-baseline-20260118.md](../knowledge-base/infrastructure/ports-baseline-20260118.md)
+- ポートベースライン: [ports-baseline-20260118.md](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md)
 
 **評価項目**:
 - ポート公開状況（意図した露出のみか）
@@ -242,7 +242,7 @@ trivy image \
 **確認箇所**:
 - [apps/api/src/routes/auth.ts](../../apps/api/src/routes/auth.ts)
 - [apps/api/src/lib/auth.ts](../../apps/api/src/lib/auth.ts)
-- [apps/api/src/plugins/authorization.ts](../../apps/api/src/plugins/authorization.ts)
+- [apps/api/src/lib/auth.ts](../../apps/api/src/lib/auth.ts)（旧 `plugins/authorization.ts` から移動）
 - [apps/api/src/plugins/rate-limit.ts](../../apps/api/src/plugins/rate-limit.ts)
 - [apps/api/src/lib/mfa.ts](../../apps/api/src/lib/mfa.ts)
 
@@ -333,7 +333,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 
 **既存証跡**:
 - [port-security-verification-results.md](./port-security-verification-results.md): 期待ポート（22/80/443/5900）のみ外部露出、Docker内部ポート（5432/8080）は非公開
-- [ports-baseline-20260118.md](../knowledge-base/infrastructure/ports-baseline-20260118.md): ポートベースライン証跡
+- [ports-baseline-20260118.md](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md): ポートベースライン証跡
 
 #### Docker Compose設計
 
@@ -415,7 +415,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - [scripts/generate-alert.sh](../../scripts/generate-alert.sh)
 - [infrastructure/ansible/templates/clamav-scan.sh.j2](../../infrastructure/ansible/templates/clamav-scan.sh.j2)
 - [infrastructure/ansible/templates/trivy-scan.sh.j2](../../infrastructure/ansible/templates/trivy-scan.sh.j2)
-- [infrastructure/ansible/templates/rkhunter-scan.sh.j2](../../infrastructure/ansible/templates/rkhunter-scan.sh.j2)
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`（削除済み）
 
 **既存証跡**:
 - [phase9-10-specifications.md](./phase9-10-specifications.md): リアルタイム監視強化実装完了
@@ -532,7 +532,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
    # ログインしてトークンを取得
    curl -X POST https://<pi5-ip>/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin1234","totpCode":"123456"}'
+     -d '{"username":"admin","password":"<password>","totpCode":"123456"}'
    ```
 
 2. **ZAPスキャンの実行**:
@@ -610,7 +610,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 **確認箇所**:
 - [apps/api/src/routes/auth.ts](../../apps/api/src/routes/auth.ts)
 - [apps/api/src/lib/auth.ts](../../apps/api/src/lib/auth.ts)
-- [apps/api/src/plugins/authorization.ts](../../apps/api/src/plugins/authorization.ts)
+- [apps/api/src/lib/auth.ts](../../apps/api/src/lib/auth.ts)（旧 `plugins/authorization.ts` から移動）
 - [apps/api/src/plugins/rate-limit.ts](../../apps/api/src/plugins/rate-limit.ts)
 - [apps/api/src/lib/mfa.ts](../../apps/api/src/lib/mfa.ts)
 
@@ -740,12 +740,12 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
    # 手動スキャンを実行
    sudo /usr/local/bin/clamav-scan.sh
    sudo /usr/local/bin/trivy-scan.sh
-   sudo /usr/local/bin/rkhunter-scan.sh
+   sudo /usr/local/bin/package-integrity-scan.sh  # rkhunter-scan.sh の後継（rkhunter は撤去済み）
    
    # ログの確認
    tail -100 /var/log/clamav/clamav-scan.log
    tail -100 /var/log/trivy/trivy-scan.log
-   tail -100 /var/log/rkhunter/rkhunter.log
+   tail -100 /var/log/package-integrity/package-integrity-scan.log
    
    # アラートファイルの確認
    ls -lt /opt/RaspberryPiSystem_002/alerts/ | head -5
@@ -1046,7 +1046,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
 - [Phase 9/10 詳細仕様書](./phase9-10-specifications.md)
 - [インシデント対応手順](./incident-response.md)
 - [バックアップ・リストア手順](../guides/backup-and-restore.md)
-- [ポートベースライン（2026-01-18）](../knowledge-base/infrastructure/ports-baseline-20260118.md)
+- [ポートベースライン（2026-01-18）](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md)
 
 ## 参照フレームワーク
 

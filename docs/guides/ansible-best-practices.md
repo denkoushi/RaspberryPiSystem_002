@@ -3,7 +3,7 @@ title: Ansibleベストプラクティス
 tags: [Ansible, ベストプラクティス, 運用]
 audience: [開発者, 運用者]
 last-verified: 2025-12-01
-related: [ansible-hardening-stabilization-plan.md, ansible-managed-files.md, ansible-error-handling.md]
+related: [../plans/ansible-improvement-plan.md, ansible-managed-files.md, ansible-error-handling.md]
 category: guides
 update-frequency: medium
 ---
@@ -29,9 +29,11 @@ update-frequency: medium
 
 **実装**:
 - システム設定ファイル（`/etc/`配下）は`manage-system-configs.yml`で管理
-- アプリケーション設定ファイル（`.env`など）は`manage-app-configs.yml`で管理（将来実装予定）
+- アプリケーション設定ファイル（`.env`など）は`manage-app-configs.yml`で管理
 
 ### 2. `git clean`の安全な使用
+
+> 過去の方針（現行: `infrastructure/ansible` に `git clean` を実行するtaskはない。[ansible-managed-files.md](./ansible-managed-files.md) を参照）。以下は当時の実装例。
 
 **原則**: `git clean`を実行する前に、保護が必要なディレクトリを明示的に除外する
 
@@ -66,7 +68,7 @@ update-frequency: medium
 **使用方法**:
 ```bash
 # リモートホストでバックアップを取得
-./scripts/ansible-backup-configs.sh tools03@192.168.128.102
+./scripts/ansible-backup-configs.sh tools03@<pi4_ip>
 ```
 
 ### 4. ロールバック機能の実装
@@ -74,14 +76,9 @@ update-frequency: medium
 **原則**: エラー時に自動的にロールバックできる仕組みを用意する
 
 **実装**:
-- `release_pi5`、`release_kiosk`、`release_signage` roleのrescueでロールバックを実行
-- 最新のバックアップから設定ファイルを復旧
-
-**使用方法**:
-```bash
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
-  --print-plan --limit PATTERN
-```
+- `release_pi5`、`release_kiosk`、`release_signage` roleのrescueが失敗時に自動でロールバックを実行する（手動操作は不要）
+- 事前確認は `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit PATTERN`（read-only の計画表示で、ロールバックはしない）
+- 失敗後の確認と復旧は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) に従う
 
 ### 5. エラーハンドリングの徹底
 
@@ -189,6 +186,8 @@ handlers:
 
 ## 運用のベストプラクティス
 
+本番（`infrastructure/ansible/inventory.yml`）への反映は `scripts/update-all-clients.sh` の標準経路だけを使い、個別playbookを本番へ直接実行しない（[デプロイメントガイド](./deployment.md)、[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md#禁止事項)）。以下の `ansible-playbook` 直接実行例は、playbook開発時の一般例である。
+
 ### 1. デプロイ前のリソース確保（重要）
 
 **原則**: リソース制約のある環境（特にPi3）では、デプロイ前に不要なサービスを停止する
@@ -198,30 +197,7 @@ handlers:
 - サイネージサービスが動作していると、デプロイ時の`systemd`モジュール実行時にメモリ不足でハングする可能性がある
 - `apt`パッケージマネージャーの実行時にもリソースを消費する
 
-**実装手順**:
-```bash
-# 1. サイネージサービスを停止（Pi3の場合）
-ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
-
-# 2. メモリ使用状況を確認（120MB以上空きがあることを確認）
-ssh signageras3@<pi3_ip> 'free -m'
-
-# 3. 既存のAnsibleプロセスをkill（重複実行防止）
-ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
-
-# 4. デプロイ実行
-cd /opt/RaspberryPiSystem_002
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3
-
-# 5. デプロイ完了後、サービスを再起動
-ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
-```
-
-**注意事項**:
-- デプロイ前に必ずサービスを停止する（約束を守る）
-- メモリ使用状況を確認し、十分な空き容量を確保する
-- デプロイ前に既存のAnsibleプロセスをkillし、重複実行を防止する
-- デプロイ完了後、サービスを再起動する
+Pi3のサイネージ関連unit（`signage-lite.service`、`signage-lite-update.timer` など）の停止と復帰は、標準routeの `release_signage` role が prepare と switch/rollback で行う。手動の `systemctl stop` や `pkill` はしない。重複実行は標準CLIのlockで防ぐ。手順は [deployment.md](./deployment.md) を参照。
 
 **関連ナレッジ**: [KB-086](../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)
 
@@ -231,6 +207,8 @@ ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite
 1. `--check`モードで実行して変更内容を確認
 2. `--diff`オプションで差分を確認
 3. 問題がなければ実際に実行
+
+本番では、代わりに read-only の `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit PATTERN` で対象とtaskを確認する。
 
 **実装例**:
 ```bash
@@ -246,6 +224,7 @@ ansible-playbook -i inventory.yml playbook.yml
 **推奨事項**:
 - プレイブック実行時にログを記録
 - エラー発生時の原因特定に役立つ
+- 本番の標準経路では、`scripts/update-all-clients.sh --status RUN_ID` でsystemd unitとjournalを読む
 
 **実装例**:
 ```bash
@@ -268,13 +247,14 @@ all:
     server:
       hosts:
         raspberrypi5:
-          ansible_host: 192.168.128.131
+          ansible_host: "{{ server_ip }}"
     clients:
       hosts:
         raspberrypi4:
-          ansible_host: 192.168.128.102
+          ansible_host: "{{ kiosk_ip }}"
           status_agent_client_id: raspberrypi4-kiosk1
 ```
+IPは `group_vars/all.yml` の `network_mode` と `local_network` / `tailscale_network` で解決する。
 
 ### 4. テストの実施
 
@@ -287,8 +267,8 @@ all:
 # テスト環境で実行
 ansible-playbook -i inventory-test.yml playbook.yml
 
-# 実機検証
-ansible-playbook -i inventory.yml playbook.yml --check --diff
+# 本番対象の確認（read-only）
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit PATTERN
 ```
 
 ## トラブルシューティング
@@ -344,10 +324,9 @@ src: /opt/RaspberryPiSystem_002/infrastructure/ansible/templates/template.j2
 
 ## 関連ドキュメント
 
-- [Ansible堅牢化・安定化計画](../plans/ansible-hardening-stabilization-plan.md)
+- [Ansible安定性・堅牢化・柔軟性向上計画](../plans/ansible-improvement-plan.md)
 - [Ansibleで管理すべき設定ファイル一覧](./ansible-managed-files.md)
 - [Ansibleエラーハンドリングガイド](./ansible-error-handling.md)
-- [Ansible関連の進捗と残タスク](../plans/ansible-progress-summary.md)
 
 ## 更新履歴
 

@@ -11,8 +11,14 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - セキュリティ関連
 
 **カテゴリ**: インフラ関連 > セキュリティ関連  
-**件数**: 22件  
+**件数**: 27件  
 **索引**: [index.md](../index.md)
+
+**個別KB（監査・是正）**:
+- [KB-393](../KB-393-security-hardening-audit-2026-07.md): セキュリティ堅牢化監査（2026-07）
+- [KB-415](../KB-415-ai-security-scan-2026-10.md): リポジトリ全体の AI セキュリティスキャンとアクセス制御修正（2026-10）
+- [KB-416](../KB-416-outside-intrusion-resilience-2026-10.md): 外部侵入による業務停止リスクの低減（2026-10）
+- [KB-417](../KB-417-security-audit-fixes-2026-10-10.md): 2026-10-10 監査の修正（ログ秘匿化・バックアップ経路・PIN カウンタ・依存更新）
 
 セキュリティ対策と監視に関するトラブルシューティング情報
 
@@ -192,7 +198,7 @@ update-frequency: medium
 
 **⚠️ 更新（2026-01-30）**: 本KBの結論は [ADR-20260130-tailscale-primary-operations](../../decisions/ADR-20260130-tailscale-primary-operations.md) により**置き換え**られました。現在の正本は「Tailscale主（通常運用）、localは緊急時のみ」です。
 
-**EXEC_PLAN.md参照**: Phase 2（旧: メンテナンス時の安全化/Tailscale導入, 2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+**EXEC_PLAN.md参照**: Phase 2（旧: メンテナンス時の安全化/Tailscale導入, 2025-12-04）、[security-hardening-execplan.md](../../plans/security-hardening-execplan.md)
 
 **事象**: 
 - メンテナンス時にインターネット経由でAnsible実行・GitHubからpullする際、SSHポートをインターネットに公開する必要がある
@@ -326,7 +332,11 @@ update-frequency: medium
 - `infrastructure/ansible/templates/fail2ban.local.j2`
 - `infrastructure/ansible/templates/fail2ban-filter-caddy-http.conf.j2`
 - `infrastructure/docker/Caddyfile*`
-- `docs/plans/security-hardening-execplan.md`### [KB-074] Pi5のマルウェアスキャン自動化（ClamAV/Trivy/rkhunter）
+- `docs/plans/security-hardening-execplan.md`
+
+---
+
+### [KB-074] Pi5のマルウェアスキャン自動化（ClamAV/Trivy/rkhunter）
 
 **EXEC_PLAN.md参照**: Phase 5 マルウェア対策（2025-12-05）
 
@@ -383,7 +393,7 @@ update-frequency: medium
 **関連ファイル**: 
 - `infrastructure/ansible/roles/kiosk/tasks/security.yml`
 - `infrastructure/ansible/templates/clamav-scan.sh.j2`
-- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`（削除済み。rkhunterは撤去済みで、後継は `infrastructure/ansible/templates/package-integrity-scan.sh.j2`。KB-074参照）
 - `docs/security/requirements.md`
 - `docs/plans/security-hardening-execplan.md`
 
@@ -434,8 +444,8 @@ update-frequency: medium
 - UFWの許可状況を確認:
   - `sudo ufw status verbose`
 - Docker公開の有無を確認（`db`/`api`がホストへpublishされていないこと）:
-  - `docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps`
-- ベースライン（証跡）: `docs/knowledge-base/infrastructure/ports-baseline-20260118.md`
+  - `docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml ps`（現行: API/Web は blue/green の `docker-compose.phase3.yml` で動くため、このコマンドで見えるのは `db` だけ）
+- ベースライン（証跡）: `docs/archive/knowledge-base/infrastructure/ports-baseline-20260118.md`
 
 **根本要因**:
 1. **`security-monitor.sh` が「ポート番号だけ」で判定**していたため、
@@ -496,7 +506,7 @@ update-frequency: medium
 - `infrastructure/ansible/playbooks/harden-server-ports.yml`
 - `docs/security/port-security-audit.md`
 - `docs/security/port-security-verification-results.md`
-- `docs/knowledge-base/infrastructure/ports-baseline-20260118.md`
+- `docs/archive/knowledge-base/infrastructure/ports-baseline-20260118.md`
 - `docs/runbooks/ports-unexpected-and-port-exposure.md`
 
 ---
@@ -523,7 +533,7 @@ update-frequency: medium
 **関連ファイル**: 
 - `infrastructure/ansible/templates/clamav-scan.sh.j2`
 - `infrastructure/ansible/templates/trivy-scan.sh.j2`
-- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`
+- `infrastructure/ansible/templates/rkhunter-scan.sh.j2`（削除済み。rkhunterは撤去済みで、後継は `infrastructure/ansible/templates/package-integrity-scan.sh.j2`。KB-074参照）
 - `infrastructure/ansible/group_vars/all.yml`
 - `docs/security/requirements.md`
 - `docs/plans/security-hardening-execplan.md`
@@ -914,7 +924,10 @@ update-frequency: medium
 
 ---
 
-### [KB-278] Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落） {#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落}
+<a id="kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落"></a>
+<a id="kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落"></a>
+
+### [KB-442] Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落）
 
 **発生日**: 2026-06-03（本番デプロイ後の Mac 運用確認）
 
@@ -964,7 +977,10 @@ update-frequency: medium
 
 ---
 
-### [KB-384] Pi4 キオスク非表示（Tailscale 再認証後の netmap 未同期・LAN 暫定迂回） {#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期}
+<a id="kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期"></a>
+<a id="kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期"></a>
+
+### [KB-443] Pi4 キオスク非表示（Tailscale 再認証後の netmap 未同期・LAN 暫定迂回）
 
 **発生日**: 2026-06-03（仕様拡張本番後 · **研削メイン `raspberrypi4`**）
 
@@ -973,7 +989,7 @@ update-frequency: medium
 - キオスク端末: inventory **`raspberrypi4`** · LAN **`192.168.10.224`**（`tools03`）· Tailscale **`100.74.144.79`**（DNS **`raspberrypi-1`** · `tag:kiosk`）
 - Pi5 API/Web: **`100.106.158.2`**（`tag:server`）
 - `/usr/local/bin/kiosk-launch.sh` の正本 URL は **`https://100.106.158.2/kiosk?clientKey=client-key-raspberrypi4-kiosk1`**（Ansible テンプレ `kiosk-launch.sh.j2` と同型）
-- 同一日に Mac **`tag:admin` 欠落**（[KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）と Pi5 **`NeedsLogin` / node key expired**（下記 [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）も発生 — 切り分けを混同しないこと
+- 同一日に Mac **`tag:admin` 欠落**（[KB-442](#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）と Pi5 **`NeedsLogin` / node key expired**（下記 [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）も発生 — 切り分けを混同しないこと
 
 **Symptoms**:
 
@@ -1036,10 +1052,12 @@ sudo systemctl restart kiosk-browser.service
 - **`main` + Ansible 標準デプロイ**で Pi5 と揃える（実績: [deployment.md §2026-06-03](../../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) の `raspberrypi4` 行）。
 
 ```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
-  --limit raspberrypi4 --detach --follow
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi4
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi4 --detach
+./scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
 ```
+
+（現行手順の正本: [deployment.md](../../guides/deployment.md)。旧記載の `--follow` と `RASPI_SERVER_HOST` は現行CLIにない）
 
 **本番再デプロイ実績（`raspberrypi4` · 2026-06-03）**:
 
@@ -1061,7 +1079,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 **References**:
 
-- [KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)（Mac 管理画面）
+- [KB-442](#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)（Mac 管理画面）
 - [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)（Pi5）
 - [KB-320 §仕様拡張 本番](../KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)
 - [Runbook §仕様拡張](../../runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03)
@@ -1069,9 +1087,11 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 
 ---
 
-### [KB-385] Pi5 Tailscale `NeedsLogin` と node key 失効 {#kb-385-pi5-tailscale-needslogin-と-node-key-失効}
+<a id="kb-385-pi5-tailscale-needslogin-と-node-key-失効"></a>
 
-**発生日**: 2026-06-03（KB-278 対応後の Mac 管理画面再確認）
+### [KB-385] Pi5 Tailscale `NeedsLogin` と node key 失効
+
+**発生日**: 2026-06-03（KB-442 対応後の Mac 管理画面再確認）
 
 **Context**: Pi5 **`raspberrypi`** · **`100.106.158.2`** · 正しい advertise タグは **`tag:server`**（`tag:kiosk` ではない）
 
@@ -1090,13 +1110,15 @@ sudo tailscale up --advertise-tags=tag:server
 tailscale status | head -3
 ```
 
-**Prevention**: Pi5 の Tailscale 状態をデプロイ前チェックに含める。Pi4 復旧手順（[KB-384](#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）と **タグ取り違え**を混同しない。
+**Prevention**: Pi5 の Tailscale 状態をデプロイ前チェックに含める。Pi4 復旧手順（[KB-443](#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）と **タグ取り違え**を混同しない。
 
-**References**: [mac-ssh-access.md §admin 不通](../../guides/mac-ssh-access.md#tailscale-接続済みなのに-https1001061582admin-が開けない場合2026-06-03) · [KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)
+**References**: [mac-ssh-access.md §admin 不通](../../guides/mac-ssh-access.md#tailscale-接続済みなのに-https1001061582admin-が開けない場合2026-06-03) · [KB-442](#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)
 
 ---
 
-### [KB-387] 常時稼働端末の Tailscale Key expiry 無効化（全端末 Disable key expiry） {#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry}
+<a id="kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry"></a>
+
+### [KB-387] 常時稼働端末の Tailscale Key expiry 無効化（全端末 Disable key expiry）
 
 **発生日**: 2026-06-04（Pi3 サイネージ障害の恒久対策）
 
@@ -1109,7 +1131,7 @@ tailscale status | head -3
 - **良い**: 定期 Expired によるサイネージ／キオスク／リモート運用の突然停止を抑制
 - **注意**: 端末紛失・侵害時は自動ローテーションに頼れない → ACL（`tag:*`）・端末削除で無効化
 
-**関連**: [KB-386 サイネージ詳細](./signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [tailscale-policy.md §Key expiry](../../security/tailscale-policy.md#key-expiry-常時稼働端末) · [KB-384](#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) · [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)
+**関連**: [KB-386 サイネージ詳細](./signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [tailscale-policy.md §Key expiry](../../security/tailscale-policy.md#key-expiry-常時稼働端末) · [KB-443](#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) · [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)
 
 **解決状況**: ✅ **運用決定・適用済み**（2026-06-04）
 
@@ -1208,6 +1230,7 @@ tailscale status | head -3
 - `DRY_RUN=1`での事前確認を徹底する
 - 新規端末追加時は固定キーを使用する（例: `raspi4-robodrill01`の`client-key-raspi4-robodrill01-kiosk1`）
 - 既存端末（`raspberrypi3`, `raspberrypi4`, `raspberrypi5`）はvaultで管理されているが、`register-clients.sh`はスキップされ、`status-agent`がheartbeatで自動登録している
+- （現行: `register-clients.sh` は Pi5 上で `REGISTER_CLIENT_HOST` を指定すると `ansible.cfg` の Vault 設定で変数を解決して登録する（`DRY_RUN=1` でも Vault は解決する）ため、Phase 1 相当は実装済み。Phase 3 の `deploy.yml` は現存しない。手順は [client-initial-setup.md](../../guides/client-initial-setup.md) を参照）
 
 **関連ファイル**:
 - `scripts/register-clients.sh`

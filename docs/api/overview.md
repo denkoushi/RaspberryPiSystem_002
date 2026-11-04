@@ -141,7 +141,7 @@ APIは以下の形式でエラーを返します：
 各エンドポイントの詳細については、以下のドキュメントを参照してください：
 
 - [認証API](./auth.md)
-- [ツール管理API](./tools.md)
-- [キオスクAPI](./kiosk.md)
+- ツール管理API（個別文書なし。`apps/api/src/routes/tools/` を参照）
+- キオスクAPI（個別文書なし。`apps/api/src/routes/kiosk/` を参照）
 - [バックアップAPI](./backup.md)
 

@@ -63,7 +63,7 @@
 
 3. **証明書の信頼設定（各クライアント端末）**
 
-   Raspberry Pi 4（クライアント）のブラウザで証明書を信頼する必要があります。詳細は[クライアントデバイス統合アーキテクチャ](../architecture/client-device-integration.md)を参照してください。
+   Raspberry Pi 4（クライアント）のブラウザで証明書を信頼する必要があります。詳細は[クライアントデバイス統合アーキテクチャ](../architecture/overview.md#クライアントデバイス統合)を参照してください。
 
 ---
 
@@ -140,7 +140,7 @@
 ### 証明書の警告が表示される（自己署名証明書の場合）
 
 - 各クライアント端末で証明書を信頼する設定を行ってください
-- 詳細は[クライアントデバイス統合アーキテクチャ](../architecture/client-device-integration.md)を参照
+- 詳細は[クライアントデバイス統合アーキテクチャ](../architecture/overview.md#クライアントデバイス統合)を参照
 
 ### 証明書が取得できない（Let's Encryptの場合）
 
@@ -252,23 +252,15 @@ hostname -I
 # tailscale_network.raspberrypi5_ip をTailscale IPアドレスに更新（Tailscaleを使用する場合）
 ```
 
-#### ステップ7: 依存関係のインストールとビルド
+`network_mode`とIPの切り替えは[環境構築ガイド](./environment-setup.md) Step 3を正本とする。
 
-```bash
-cd /opt/RaspberryPiSystem_002
-pnpm install
-cd packages/shared-types && pnpm build && cd ../..
-cd apps/api && pnpm prisma generate && cd ../..
-```
+#### ステップ7: 標準デプロイで起動
 
-#### ステップ8: Docker Composeの起動
+Pi5上で`pnpm install`、`prisma generate`、`docker compose ... up -d`を直接実行しません。
+運用端末のcheckoutから[デプロイメントガイド](./deployment.md)の`--print-plan`で対象を確認し、
+`--limit raspberrypi5`で反映します。
 
-```bash
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d
-```
-
-#### ステップ9: データベースのリストア（既存データがある場合）
+#### ステップ8: データベースのリストア（既存データがある場合）
 
 ```bash
 # バックアップファイルからリストア
@@ -276,7 +268,7 @@ cd /opt/RaspberryPiSystem_002
 ./scripts/server/restore.sh /opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz
 ```
 
-#### ステップ10: 動作確認
+#### ステップ9: 動作確認
 
 ```bash
 # ヘルスチェック
@@ -318,11 +310,7 @@ grep -q "\.env$" .gitignore && echo "OK" || echo "WARNING: .env not in .gitignor
 
 1. **変更を記録**: 変更内容をメモ（パスワードマネージャーなど）
 2. **バックアップを実行**: `./scripts/server/backup.sh`でバックアップ
-3. **Docker Composeを再起動**: 環境変数の変更を反映
-   ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml down
-   docker compose -f infrastructure/docker/docker-compose.server.yml up -d
-   ```
+3. **標準デプロイで反映**: Composeの`down`/`up`を直接実行せず、[デプロイメントガイド](./deployment.md)の`--print-plan` → `--limit raspberrypi5`で反映する
 
 ### デバイス固有設定の管理
 
@@ -386,7 +374,7 @@ grep -q "\.env$" .gitignore && echo "OK" || echo "WARNING: .env not in .gitignor
 
 ## 関連ドキュメント
 
-- [クライアントデバイス統合アーキテクチャ](../architecture/client-device-integration.md) - デバイス統合パターンと拡張性
+- [クライアントデバイス統合アーキテクチャ](../architecture/overview.md#クライアントデバイス統合) - デバイス統合パターンと拡張性
 - [アーキテクチャ概要](../architecture/overview.md) - システム全体のアーキテクチャ
 - [デプロイメントガイド](./deployment.md) - デプロイ手順の詳細
 - [バックアップ・リストア手順](./backup-and-restore.md) - バックアップとリストアの詳細

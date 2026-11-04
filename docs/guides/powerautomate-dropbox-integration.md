@@ -3,7 +3,7 @@ title: PowerAutomate → Dropbox → Pi5 CSV統合ガイド
 tags: [PowerAutomate, Dropbox, CSV, 統合, 外部システム]
 audience: [運用者, 開発者, 外部システム担当者]
 last-verified: 2025-12-16
-related: [dropbox-csv-integration-status.md, sharepoint-dropbox-integration-assessment.md]
+related: [../analysis/dropbox-csv-integration-status.md, ../security/sharepoint-dropbox-integration-assessment.md]
 category: guides
 update-frequency: low
 ---
@@ -30,21 +30,16 @@ Raspberry Pi 5（CSVインポート）
 
 ### 1. ファイル命名規則
 
-**必須**: ファイル名に日付を含める形式を使用してください。
+**必須**: Pi5側の`backup.json`に設定したパスと同じ固定ファイル名で、毎回上書きしてください。Pi5は設定したパスをそのまま読み、ファイル名中の日付（`YYYYMMDD`など）を置き換えません。
 
 #### 従業員CSV
-- **形式**: `employees-YYYYMMDD.csv`
-- **例**: `employees-20251216.csv`
-- **説明**: `employees-`プレフィックス + 日付（YYYYMMDD形式）+ `.csv`拡張子
+- **例**: `employees.csv`
 
 #### アイテムCSV
-- **形式**: `items-YYYYMMDD.csv`
-- **例**: `items-20251216.csv`
-- **説明**: `items-`プレフィックス + 日付（YYYYMMDD形式）+ `.csv`拡張子
+- **例**: `items.csv`
 
 **注意事項**:
 - ファイル名は大文字小文字を区別します（小文字推奨）
-- 日付は実行日（UTC+9、JST）を使用してください
 - ファイル名に特殊文字（`..`, `//`, `/`など）を含めないでください
 
 ### 2. Dropbox格納フォルダ構造
@@ -52,16 +47,14 @@ Raspberry Pi 5（CSVインポート）
 **推奨フォルダ構造**:
 ```
 /backups/csv/
-  ├── employees-20251216.csv
-  ├── employees-20251215.csv
-  ├── items-20251216.csv
-  └── items-20251215.csv
+  ├── employees.csv
+  └── items.csv
 ```
 
 **フォルダパス**:
 - **ベースパス**: `/backups/csv/`
-- **従業員CSV**: `/backups/csv/employees-YYYYMMDD.csv`
-- **アイテムCSV**: `/backups/csv/items-YYYYMMDD.csv`
+- **従業員CSV**: `/backups/csv/employees.csv`
+- **アイテムCSV**: `/backups/csv/items.csv`
 
 **注意事項**:
 - フォルダパスは絶対パス（`/`で始まる）を使用してください
@@ -99,7 +92,7 @@ employeeCode,displayName,nfcTagUid,department,contact,status
 - `nfcTagUid`: NFCタグUID
 - `category`: カテゴリ
 - `storageLocation`: 保管場所
-- `status`: ステータス（`AVAILABLE`, `BORROWED`, `MAINTENANCE`など）
+- `status`: ステータス（`AVAILABLE`, `IN_USE`, `MAINTENANCE`, `RETIRED`）
 
 **CSV例**:
 ```csv
@@ -182,8 +175,9 @@ TO0002,ハンマー,04D4E5F6A7B8C9,工具,工具庫,AVAILABLE
       "id": "daily-employees-import",
       "name": "毎日の従業員CSVインポート",
       "schedule": "0 2 * * *",
-      "timezone": "Asia/Tokyo",
-      "employeesPath": "/backups/csv/employees-YYYYMMDD.csv",
+      "targets": [
+        { "type": "employees", "source": "/backups/csv/employees.csv" }
+      ],
       "replaceExisting": false,
       "enabled": true
     },
@@ -191,8 +185,9 @@ TO0002,ハンマー,04D4E5F6A7B8C9,工具,工具庫,AVAILABLE
       "id": "daily-items-import",
       "name": "毎日のアイテムCSVインポート",
       "schedule": "0 2 * * *",
-      "timezone": "Asia/Tokyo",
-      "itemsPath": "/backups/csv/items-YYYYMMDD.csv",
+      "targets": [
+        { "type": "items", "source": "/backups/csv/items.csv" }
+      ],
       "replaceExisting": false,
       "enabled": true
     }
@@ -203,15 +198,14 @@ TO0002,ハンマー,04D4E5F6A7B8C9,工具,工具庫,AVAILABLE
 **設定項目の説明**:
 - `id`: スケジュールの一意ID
 - `name`: スケジュールの名前（管理用）
-- `schedule`: cron形式のスケジュール（例: `0 2 * * *` = 毎日午前2時）
-- `timezone`: タイムゾーン（`Asia/Tokyo`固定）
-- `employeesPath`: 従業員CSVのDropboxパス（`YYYYMMDD`は実行日の日付に置換）
-- `itemsPath`: アイテムCSVのDropboxパス（`YYYYMMDD`は実行日の日付に置換）
+- `schedule`: cron形式のスケジュール（例: `0 2 * * *` = 毎日午前2時。タイムゾーンは`Asia/Tokyo`固定で、設定項目はない）
+- `targets`: 取込対象の配列。`type`（`employees`/`items`など）と`source`（Dropboxパス。そのまま使われる）を指定
+- `employeesPath`/`itemsPath`: 旧形式。後方互換のため読み込み時に`targets`へ変換される
 - `replaceExisting`: 既存データを置き換えるか（`true`/`false`）
 - `enabled`: スケジュールを有効にするか（`true`/`false`）
 
 **注意事項**:
-- `YYYYMMDD`は実行日の日付（JST）に自動的に置換されます
+- パス中の`YYYYMMDD`などは置換されません（固定パスへ上書きする運用）
 - PowerAutomate側の実行タイミングとPi5側のスケジュール実行タイミングを調整してください
 
 ## トラブルシューティング
@@ -222,7 +216,7 @@ TO0002,ハンマー,04D4E5F6A7B8C9,工具,工具庫,AVAILABLE
 
 **原因**:
 - PowerAutomate側でファイルがアップロードされていない
-- ファイル名が間違っている（日付形式が異なるなど）
+- ファイル名が間違っている（`backup.json`の`source`と異なるなど）
 - Dropboxパスが間違っている
 
 **対処法**:

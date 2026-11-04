@@ -11,7 +11,7 @@ update-frequency: medium
 # Pi4 キオスクの予備機差し替え手順
 
 目標は、故障端末を予備へ替えて確認を終えるまで30分以内。以下の時間は作業枠の目安で、実測値ではない。超過したら原因と実際の時間を残す。共通 OS イメージはまだ使わない。
-根拠: [fleet-100-scale-gap-execplan.md:165–169](../plans/fleet-100-scale-gap-execplan.md#L165)。
+根拠: [fleet-100-scale-gap-execplan.md「5番 端末の使い捨て化」](../plans/fleet-100-scale-gap-execplan.md#5番-端末の使い捨て化照合項目2)。
 
 ## 先に守ること
 
@@ -23,10 +23,10 @@ update-frequency: medium
 
 ## 前もって用意するもの
 
-- 予備の Pi4 を数台と、交換用 SD カードを用意する。カードは旧カードと同容量が安全。Pi5 の USB カードリーダーか、SSD 起動の Pi5 の空き SD スロットを使う。根拠: [fleet-100-scale-gap-execplan.md:169](../plans/fleet-100-scale-gap-execplan.md#L169)、[pi4-sd-card-backup.md:43](./pi4-sd-card-backup.md#L43)。
-- 予備機・空カード・使用禁止カードを分け、ラベルを用意する。予備の保管場所と担当者を事前に決め、下欄へ記入する。保管場所の既定はない。根拠: [pi4-sd-card-backup.md:45,60](./pi4-sd-card-backup.md#L45)、[fleet-100-scale-gap-execplan.md:169](../plans/fleet-100-scale-gap-execplan.md#L169)。
+- 予備の Pi4 を数台と、交換用 SD カードを用意する。カードは旧カードと同容量が安全。Pi5 の USB カードリーダーか、SSD 起動の Pi5 の空き SD スロットを使う。根拠: [fleet-100-scale-gap-execplan.md「5番 端末の使い捨て化」](../plans/fleet-100-scale-gap-execplan.md#5番-端末の使い捨て化照合項目2)、[pi4-sd-card-backup.md:43](./pi4-sd-card-backup.md#L43)。
+- 予備機・空カード・使用禁止カードを分け、ラベルを用意する。予備の保管場所と担当者を事前に決め、下欄へ記入する。保管場所の既定はない。根拠: [pi4-sd-card-backup.md:45,60](./pi4-sd-card-backup.md#L45)、[fleet-100-scale-gap-execplan.md「5番 端末の使い捨て化」](../plans/fleet-100-scale-gap-execplan.md#5番-端末の使い捨て化照合項目2)。
 - Pi5 SSD に対象ホストの最新の週次バックアップがあることを確認する。週次タイマーは導入だけでは有効にならない。バックアップ対象外の端末もある。確認・有効化は既存手順に従う。根拠: [pi4-sd-card-backup.md:24–39](./pi4-sd-card-backup.md#L24)。
-- 対象の inventory ホスト名、設置場所、status-agent の clientId、接続先を控える。ホスト名と clientId は別の値。接続先はネットワーク設定から解決する。例は `raspi4-kensaku-02` と `raspi4-kensaku-02-kiosk1`。秘密値は記録しない。根拠: [infrastructure/ansible/inventory.yml:481–491](../../infrastructure/ansible/inventory.yml#L481)、[同:320–329](../../infrastructure/ansible/inventory.yml#L320)。
+- 対象の inventory ホスト名、設置場所、status-agent の clientId、接続先を控える。ホスト名と clientId は別の値。接続先はネットワーク設定から解決する。例は `raspi4-kensaku-02` と `raspi4-kensaku-02-kiosk1`。秘密値は記録しない。根拠: [infrastructure/ansible/inventory.yml:482–492](../../infrastructure/ansible/inventory.yml#L482)、[同:320–329](../../infrastructure/ansible/inventory.yml#L320)。
 - C 用の鍵交換は管理者が準備する。対象 UUID、配布する新しい鍵、承認済みの release と成果物を揃える。鍵の値を現場の記録へ書かない。DB 交換前に1台分の配布が開始できることを確認する。根拠: [security-client-key-rotation-phase-b.md:99–110,143–158](../plans/security-client-key-rotation-phase-b.md#L99)。
 
 ```text
@@ -66,7 +66,7 @@ update-frequency: medium
 根拠: [ADR-20260930-pi4-sd-card-backup.md:30](../decisions/ADR-20260930-pi4-sd-card-backup.md#L30)、[pi4-sd-card-backup.md:55,60](./pi4-sd-card-backup.md#L55)。
 
 1. **停止・回収（3分）**。旧本体の電源を外す。正常なカードを抜く。旧本体には使用禁止ラベルを付ける。開始時刻と対象ホストを記録する。根拠: [pi4-sd-card-backup.md:45,60](./pi4-sd-card-backup.md#L45)。
-2. **カードと機器を移す（5分）**。同じカードを予備本体へ挿す。画面、NFC リーダー等の機器を移す。接続は手動。Bluetooth のトルクレンチ等は自動化の対象外。根拠: [pi4-sd-card-backup.md:55,60](./pi4-sd-card-backup.md#L55)、[fleet-100-scale-gap-execplan.md:165](../plans/fleet-100-scale-gap-execplan.md#L165)。
+2. **カードと機器を移す（5分）**。同じカードを予備本体へ挿す。画面、NFC リーダー等の機器を移す。接続は手動。Bluetooth のトルクレンチ等は自動化の対象外。根拠: [pi4-sd-card-backup.md:55,60](./pi4-sd-card-backup.md#L55)、[fleet-100-scale-gap-execplan.md「5番 端末の使い捨て化」](../plans/fleet-100-scale-gap-execplan.md#5番-端末の使い捨て化照合項目2)。
 3. **起動・識別確認（5分）**。予備本体を起動する。カード上の既存の識別で戻ることを確認する。旧本体を同じ識別のカードで再起動しない。カードも疑わしければ C へ切り替える。根拠: [pi4-sd-card-backup.md:45–55](./pi4-sd-card-backup.md#L45)。
 4. **更新・成功確認（17分）**。「共通の成功確認」を行う。本体交換で変わった接続や周辺機器の問題も記録する。根拠: [pi4-sd-card-backup.md:56–60](./pi4-sd-card-backup.md#L56)。
 
@@ -107,7 +107,7 @@ update-frequency: medium
 ## 訓練
 
 1. **準備（5分、計測外）**。30分ほど止められるキオスクと予備カードを選ぶ。原本カードは変更せず別に保管する。旧機と交換先を同時に起動しない。根拠: [pi4-sd-card-backup.md:58–60](./pi4-sd-card-backup.md#L58)。
-2. **実施（30分目標、ここから計測）**。開始時刻を書き、A・B・C の対象手順を実機で行う。共通の成功確認まで測る。C は鍵交換とノード切り替えの管理者作業も含める。未文書化の手順を推測して試さない。根拠: [pi4-sd-card-backup.md:60](./pi4-sd-card-backup.md#L60)、[fleet-100-scale-gap-execplan.md:169](../plans/fleet-100-scale-gap-execplan.md#L169)。
+2. **実施（30分目標、ここから計測）**。開始時刻を書き、A・B・C の対象手順を実機で行う。共通の成功確認まで測る。C は鍵交換とノード切り替えの管理者作業も含める。未文書化の手順を推測して試さない。根拠: [pi4-sd-card-backup.md:60](./pi4-sd-card-backup.md#L60)、[fleet-100-scale-gap-execplan.md「5番 端末の使い捨て化」](../plans/fleet-100-scale-gap-execplan.md#5番-端末の使い捨て化照合項目2)。
 3. **後片付け（5分目安、別記録）**。A の復元訓練では交換先を停止して原本カードへ戻し、復元カードは消去してから再利用する。消去コマンドは参照元にないため手動作業とする。B はカード1枚だけを扱う。C の鍵交換後は原本カードも旧鍵のままなので、そのまま戻さない。C の訓練後の復帰は未整備事項として記録する。根拠: [pi4-sd-card-backup.md:60](./pi4-sd-card-backup.md#L60)、[security-client-key-rotation-phase-b.md:162–164](../plans/security-client-key-rotation-phase-b.md#L162)。
 
 記録を M6 の実機訓練の証拠として残す。秘密値は書かない。
@@ -131,7 +131,7 @@ C: 旧鍵拒否／新鍵成功／旧ノード再参加防止の確認：
 
 ## 足りないもの
 
-- 本体交換専用の検証済み手順と実測がない。30分は目標。バックアップ対象外や最新の写しがない端末は、この復元経路を使えない。[fleet-100-scale-gap-execplan.md:165–169](../plans/fleet-100-scale-gap-execplan.md#L165)、[pi4-sd-card-backup.md:24](./pi4-sd-card-backup.md#L24)。
+- 本体交換専用の検証済み手順と実測がない。30分は目標。バックアップ対象外や最新の写しがない端末は、この復元経路を使えない。[fleet-100-scale-gap-execplan.md「5番 端末の使い捨て化」](../plans/fleet-100-scale-gap-execplan.md#5番-端末の使い捨て化照合項目2)、[pi4-sd-card-backup.md:24](./pi4-sd-card-backup.md#L24)。
 - C の旧 Tailscale ノード失効・削除、復元状態の切り離し、新ノードの登録、旧機が再参加できないことの確認をまとめた手順がない。再認証例だけでは満たさない。SSH 鍵も復元される。回収不能な旧機について、同じ識別で動けないことを保証できない間は C を完了扱いにしない。[pi4-sd-card-backup.md:55](./pi4-sd-card-backup.md#L55)、[ADR:30](../decisions/ADR-20260930-pi4-sd-card-backup.md#L30)、[security.md:1005–1018](../knowledge-base/infrastructure/security.md#L1005)。
 - 鍵の生成・安全な受け渡し・鍵管理の更新・レビュー・CI は現場だけでは終わらない。C の事前準備と管理者の作業枠が必要。旧鍵を復活させずに失敗から戻す手順と、C の訓練後の復帰手順も必要。[security-client-key-rotation-phase-b.md:143–164](../plans/security-client-key-rotation-phase-b.md#L143)。
-- 予備の具体的な保管場所、必要台数、接続機器の現場別一覧は未確定。共通イメージ、初回起動の登録、実機の30分測定は M6 の残りとして扱う。[fleet-100-scale-gap-execplan.md:165–169](../plans/fleet-100-scale-gap-execplan.md#L165)。
+- 予備の具体的な保管場所、必要台数、接続機器の現場別一覧は未確定。共通イメージ、初回起動の登録、実機の30分測定は M6 の残りとして扱う。[fleet-100-scale-gap-execplan.md「5番 端末の使い捨て化」](../plans/fleet-100-scale-gap-execplan.md#5番-端末の使い捨て化照合項目2)。

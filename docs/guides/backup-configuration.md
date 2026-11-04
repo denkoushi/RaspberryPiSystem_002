@@ -164,7 +164,7 @@ Dropboxにバックアップを保存する場合：
 - `options.accessToken`: Dropboxアクセストークン（必須）
 
 **Dropboxアクセストークンの取得方法**:
-詳細は [Dropbox連携セットアップガイド](./dropbox-setup-guide.md) を参照してください。
+詳細は [Dropbox連携セットアップガイド](../archive/guides/dropbox-setup-guide.md) を参照してください。
 
 ## バックアップ対象の設定
 
@@ -319,6 +319,8 @@ Pi5本番で中核機能の環境再構築に必要な永続・一次ファイ�
 - `ansible fetch`モジュールでリモートファイルをPi5（サーバー）に取得
 - 取得したファイルをバックアップストレージ（ローカルまたはDropbox）に保存
 
+上の例の nfc-agent `.env` は書式の例です。2026-09-30以降は秘密情報のためDropboxへ送りません（[Pi5本番の現在方針](#pi5本番の現在方針2026-09-30)）。
+
 **前提条件**:
 - AnsibleがPi5（サーバー）にインストールされていること（Dockerコンテナ内にインストール済み）
 - 通常inventoryにクライアント端末が登録され、標準デプロイが資格情報を含まない `/etc/raspi-backup-ansible/inventory.yml` を生成済みであること
@@ -375,93 +377,11 @@ Pi5本番で中核機能の環境再構築に必要な永続・一次ファイ�
 - `schedule`: cron形式のスケジュール
 - `enabled`: `true` で有効化
 
-#### 証明書ディレクトリのバックアップ（推奨）
+<a id="証明書ディレクトリのバックアップ推奨"></a>
 
-Pi5の証明書ディレクトリ（`/opt/RaspberryPiSystem_002/certs/`）をバックアップする場合は、APIコンテナから参照可能なパス（`/app/host/certs`）を指定します。
+#### 証明書ディレクトリのバックアップ（旧方針・2026-09-30廃止）
 
-```json
-{
-  "kind": "directory",
-  "source": "/app/host/certs",
-  "schedule": "0 4 * * 0",
-  "enabled": true,
-  "storage": {
-    "provider": "dropbox"
-  },
-  "retention": {
-    "days": 90,
-    "maxBackups": 10
-  }
-}
-```
-
-**証明書ディレクトリのバックアップターゲット追加方法**:
-
-証明書ディレクトリのバックアップターゲットを追加するには、以下のいずれかの方法を使用できます：
-
-**方法1: Node.jsスクリプトを使用（推奨）**
-
-Pi5上で以下のコマンドを実行：
-
-```bash
-cd /opt/RaspberryPiSystem_002
-# Dockerコンテナ内で実行
-docker compose -f infrastructure/docker/docker-compose.server.yml exec api node /app/scripts/server/add-cert-backup-target.mjs
-```
-
-スクリプトは自動的に`backup.json`に証明書ディレクトリのバックアップターゲットを追加します。
-
-**方法2: Ansible Playbookを使用**
-
-Macから実行：
-
-```bash
-cd infrastructure/ansible
-ansible-playbook -i inventory.yml playbooks/add-cert-backup-target.yml
-```
-
-**方法3: 管理コンソールから手動追加**
-
-1. 管理コンソールの「バックアップ」タブにアクセス
-2. 「バックアップ対象を追加」ボタンをクリック
-3. 以下の設定を入力：
-   - **種類**: `directory`
-   - **ソース**: `/app/host/certs`
-   - **スケジュール**: `0 4 * * 0`（週次、日曜日4時）
-   - **ストレージプロバイダー**: `dropbox`
-   - **保持期間**: 90日
-   - **最大保持数**: 10件
-4. 「追加」ボタンをクリック
-
-**追加後の確認**:
-
-追加後、以下の手順で動作確認を行ってください：
-
-1. **設定の確認**:
-   ```bash
-   # Pi5上で実行
-   cat /opt/RaspberryPiSystem_002/config/backup.json | jq '.targets[] | select(.source == "/app/host/certs")'
-   ```
-
-2. **手動バックアップの実行**:
-   - 管理コンソールの「バックアップ」タブから手動実行
-   - または、API経由で実行（JWTトークンが必要）：
-     ```bash
-     curl -k -X POST https://localhost/api/backup \
-       -H "Content-Type: application/json" \
-       -H "Authorization: Bearer <your-token>" \
-       -d '{"kind": "directory", "source": "/app/host/certs"}'
-     ```
-
-3. **バックアップ履歴の確認**:
-   - 管理コンソールの「バックアップ履歴」タブで確認
-   - Dropbox上にバックアップファイルが作成されていることを確認
-```
-
-**ポイント**:
-- `/app/host/certs` はホスト側の `/opt/RaspberryPiSystem_002/certs` をマウントしたパスです。
-- 証明書は変更頻度が低いため週次バックアップで十分です。
-- 紛失時の影響が大きいため、保持期間は長めを推奨します。
+2026-09-30 以降、証明書（`/app/host/certs`）は Dropbox のバックアップ対象にしない（[Pi5本番の現在方針](#pi5本番の現在方針2026-09-30)）。証明書は Google Drive の暗号化DR（[ADR-20260820](../decisions/ADR-20260820-google-drive-disaster-recovery.md)）で保護する。推奨カタログにも証明書は無い。`scripts/server/add-cert-backup-target.mjs` と `infrastructure/ansible/playbooks/add-cert-backup-target.yml` は Dropbox 宛てのターゲットを追加する旧手順のため使わない。
 
 ## スケジュール設定（cron形式）
 
@@ -540,7 +460,7 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
 - レート制限エラーや一時的なネットワークエラーが発生した場合でも、自動的にリトライすることでバックアップ・リストアが成功する可能性が向上
 - ログ出力の改善により、リトライ時に詳細なログを出力することで、問題の特定が容易に
 
-詳細は [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md) を参照してください。
+詳細は [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md) を参照してください。
 
 ### 実際のファイルパス
 
@@ -610,19 +530,6 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
       "source": "photo-storage",
       "schedule": "0 6 * * *",
       "enabled": true
-    },
-    {
-      "kind": "directory",
-      "source": "/app/host/certs",
-      "schedule": "0 4 * * 0",
-      "enabled": true,
-      "storage": {
-        "provider": "dropbox"
-      },
-      "retention": {
-        "days": 90,
-        "maxBackups": 10
-      }
     }
   ],
   "retention": {
@@ -650,23 +557,22 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
 
 4. 設定ファイルの権限を設定:
    ```bash
-   sudo chown root:root /opt/RaspberryPiSystem_002/config/backup.json
+   sudo chown "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}" /opt/RaspberryPiSystem_002/config/backup.json  # APIの実行ユーザー（通常は運用ユーザー）
    sudo chmod 600 /opt/RaspberryPiSystem_002/config/backup.json
    ```
 
 ### 設定ファイルの編集
 
-設定ファイルを**手動で編集**した後は、以下いずれかで新しい設定を反映します（スケジュール実行も含めて更新されます）：
+設定ファイルを**手動で編集**した後は、次の方法で新しい設定を反映します（スケジュール実行も含めて更新されます）。
+
+Pi5本番のAPIはbluegreen project（`docker-compose.phase3.yml`の`api-blue`/`api-green`）で動いており、`docker-compose.server.yml`の`api`は稼働していないため、`restart api`では反映されません。稼働中のAPIスロットだけを再起動する手順はリポジトリで定義されていないため、下記のAPIエンドポイントまたは管理コンソールから反映します。APIの入れ替えが必要な場合は [デプロイメントガイド](./deployment.md) の標準経路に従います。
+
+APIエンドポイントから設定を更新します（管理者権限が必要）。この方法では、設定保存後にバックアップスケジューラーが自動で再読み込みされます：
+
+自己署名証明書の場合は `-k` を付ける。
 
 ```bash
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml restart api
-```
-
-または、APIエンドポイントから設定を更新することもできます（管理者権限が必要）。この方法では、設定保存後にバックアップスケジューラーが自動で再読み込みされます：
-
-```bash
-curl -X PUT http://localhost:8080/api/backup/config \
+curl -X PUT https://<pi5_host>/api/backup/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d @backup.json
@@ -679,14 +585,14 @@ curl -X PUT http://localhost:8080/api/backup/config \
 ### 設定の取得
 
 ```bash
-curl http://localhost:8080/api/backup/config \
+curl https://<pi5_host>/api/backup/config \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
 ### 設定の更新
 
 ```bash
-curl -X PUT http://localhost:8080/api/backup/config \
+curl -X PUT https://<pi5_host>/api/backup/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d @backup.json
@@ -695,7 +601,7 @@ curl -X PUT http://localhost:8080/api/backup/config \
 ### 手動バックアップの実行
 
 ```bash
-curl -X POST http://localhost:8080/api/backup \
+curl -X POST https://<pi5_host>/api/backup \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d '{
@@ -710,7 +616,7 @@ curl -X POST http://localhost:8080/api/backup \
 ### バックアップ一覧の取得
 
 ```bash
-curl http://localhost:8080/api/backup \
+curl https://<pi5_host>/api/backup \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
@@ -731,7 +637,7 @@ curl http://localhost:8080/api/backup \
 **対処**:
 - `enabled: true` が設定されているか確認
 - cron形式のスケジュールが正しいか確認
-- APIサーバーのログを確認（`docker logs api`）
+- APIサーバーのログを確認（Pi5本番は稼働中スロットのcontainer。`cd /opt/RaspberryPiSystem_002 && docker logs --tail 200 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"`）
 
 ### Dropboxへのアップロードが失敗する
 
@@ -792,14 +698,14 @@ curl http://localhost:8080/api/backup \
 - 管理コンソールと`backup.sh`スクリプトの機能が整合性を保つ
 - 設定変更履歴は`/admin/backup/config-history`で確認できる（秘匿情報はredact済み）
 
-詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md) を参照してください。
+詳細は [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md) と [バックアップ対象管理UI実機検証手順](../archive/guides/backup-target-management-verification.md) を参照してください。
 
 ## 関連ドキュメント
 
 - [バックアップ・リストア手順](./backup-and-restore.md): 従来のスクリプトベースのバックアップ手順
-- [Dropbox連携セットアップガイド](./dropbox-setup-guide.md): Dropboxアカウントとの連携手順
+- [Dropbox連携セットアップガイド](../archive/guides/dropbox-setup-guide.md): Dropboxアカウントとの連携手順
 - [モニタリングガイド](./monitoring.md): バックアップの監視方法
 - [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md): 管理コンソールからのバックアップ対象管理機能の実装計画
-- [バックアップ対象管理UI実機検証手順](./backup-target-management-verification.md): 実機検証手順
-- [バックアップスクリプトとの整合性確認結果](./backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
-- [バックアップエラーハンドリング改善](./backup-error-handling-improvements.md): エラーハンドリング改善の詳細
+- [バックアップ対象管理UI実機検証手順](../archive/guides/backup-target-management-verification.md): 実機検証手順
+- [バックアップスクリプトとの整合性確認結果](../archive/guides/backup-script-integration-verification.md): バックアップスクリプトとの整合性確認結果
+- [バックアップエラーハンドリング改善](../archive/guides/backup-error-handling-improvements.md): エラーハンドリング改善の詳細

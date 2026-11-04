@@ -12,7 +12,7 @@ update-frequency: high
 
 ## `api-db-and-infra` の「Wait for PostgreSQL」で失敗する（`borrow_return` 等・フレーク）
 
-**症状**: ジョブ `api-db-and-infra` 内の **`Wait for PostgreSQL`**（`scripts/ci/wait-for-postgres.sh`）が失敗し、ログに **参照先 DB 名**（例: `borrow_return`）が**存在しない**旨が出る。
+**症状**: ジョブ `api` または `db-infra`（旧 `api-db-and-infra`）内の **`Wait for PostgreSQL`**（`scripts/ci/wait-for-postgres.sh`）が失敗し、ログに **参照先 DB 名**（例: `borrow_return`）が**存在しない**旨が出る。
 
 **切り分け**: アプリ改修と**無関係**な一次失敗のとき、GitHub Actions ランナー上の **PostgreSQL コンテナ初期化／マイグレーション順**の一時的な不整合（**フレーク**）として扱う。
 
@@ -317,9 +317,11 @@ TypeError: Cannot read properties of undefined (reading 'findMany')
 
 **参照パターン**: `apps/api/src/services/signage/signage.service.ts` の `toPrismaLayoutConfig` メソッド
 
-**詳細**: [KB-299](../knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)
+**詳細**: [KB-299](../knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへの-recordstring-unknown-や-null-の代入でciビルド失敗)
 
 ### 11. `test:coverage` が `TypeError: minimatch is not a function` で失敗する（`test-exclude@6.0.0` と `minimatch@10.x` の非互換）
+
+> **過去の記録**（現行: `apps/api` の coverage provider は `v8`（`package.json` の `test:coverage` と `vitest.config.ts`）。overrides は root `package.json` ではなく `pnpm-workspace.yaml` にあり、`glob: 10.5.0` / `minimatch: 10.2.3` 等で、`test-exclude` の override はない）
 
 **症状**: CIの`Run API tests`ステップで、すべてのテストファイル（90件）が失敗し、以下のエラーが表示される:
 ```
@@ -348,9 +350,9 @@ TypeError: minimatch is not a function
 
 **参考**: 2026-02-19に発生し、`test-exclude@7.0.1`へのoverride追加で解決。CI成功（Run ID `22163832946`）、デプロイ成功、実機検証で正常表示を確認。詳細は [knowledge-base/ci-cd.md#kb-270](../knowledge-base/ci-cd.md#kb-270-ciのvitest-coverageでtest-excludeとminimatchの非互換エラー) を参照。
 
-### 9. 性能テストの失敗（`Run API performance tests`）
+### 9. 性能テストの失敗（`Run API tests (coverage shard)` 内の `performance.test.ts`）
 
-**症状**: `Run API performance tests` ステップでテストが失敗し、CIが停止
+**症状**: `Run API tests (coverage shard)` ステップで `performance.test.ts` が失敗し、CIが停止
 
 **エラーメッセージ例**:
 ```
@@ -390,6 +392,8 @@ Error: Response time 2100ms exceeds threshold 1800ms
 
 ### 10. `test:coverage` が `ERR_INVALID_ARG_TYPE` で失敗する（`test-exclude` / `glob` 競合）
 
+> **過去の記録**（現行: `apps/api` の coverage provider は `v8`（`package.json` の `test:coverage` と `vitest.config.ts`）。overrides は root `package.json` ではなく `pnpm-workspace.yaml` にあり、`glob: 10.5.0` / `minimatch: 10.2.3` 等で、`test-exclude` の override はない）
+
 **症状**: ローカルで `pnpm --filter @raspi-system/api test:coverage` を実行すると、`test-exclude` 読み込み時に以下で停止する。
 
 ```text
@@ -402,14 +406,14 @@ TypeError [ERR_INVALID_ARG_TYPE]: The "original" argument must be of type functi
 - `apps/api` の coverage provider が `istanbul` 指定になっているか
 - `apps/api` で Prisma Client が生成済みか（未生成だと別エラーを誘発）
 
-**対処法（本リポジトリの確定手順）**:
+**対処法（当時の手順）**:
 1. `apps/api/package.json` の `test:coverage` を `--coverage.provider=istanbul` 付きで実行
 2. root `package.json` の `pnpm.overrides` に `test-exclude>glob: 7.2.3` を維持
 3. `pnpm install --no-frozen-lockfile` 後に `pnpm prisma generate` を実行
 4. 再度 `pnpm --filter @raspi-system/api test:coverage -- <target>` で確認
 
 **注意**:
-- `test-exclude>glob` を外すと同エラーが再発するため、現時点では維持が必要
+- `test-exclude>glob` を外すと同エラーが再発するため、当時は維持が必要とした
 - 依存を大きく更新するB2フェーズを実施する場合は、再度この項目の検証を行う
 
 ## ログの見方
@@ -432,6 +436,6 @@ Step: <ステップ名>
 
 ## 関連ドキュメント
 
-- [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md#kb-005-ciテストが失敗する)
+- [トラブルシューティングナレッジベース](../knowledge-base/ci-cd.md#kb-005-ciテストが失敗する)
 - [開発ガイド](./development.md)
 - [デプロイメントガイド](./deployment.md)

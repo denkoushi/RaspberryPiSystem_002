@@ -23,7 +23,7 @@ update-frequency: medium
 - **`release_kiosk`**: Pi4のprepare、switch、health、失敗時rollback
 - **`release_signage`**: Pi3のprepare、switch、health、失敗時rollback
 
-`common`、`server`、`client`、`kiosk`、`signage` は標準playbookが直接実行するroleではありません。
+`server`、`client`、`kiosk`、`signage` は標準playbookが直接実行するroleではありません。`common` は各playの pre_tasks で `tasks_from: distrusted-intermediates` と `disable-mptcp` だけを import します。
 それらの既存callerを修正する場合は、標準routeの実行対象だと仮定せず、実際のcallerと受入契約を先に確認します。
 
 ## ロール構造の理解
@@ -49,13 +49,13 @@ infrastructure/ansible/
 
 ### ロールの実行順序
 
-`playbooks/deploy-release-standard.yml`はhost profileごとにserial 1で次の3 playを実行します。
+`playbooks/deploy-release-standard.yml`はPi5とPi3をserial 1、Pi4をcanary wave（`serial: [1, 5, "25%", "100%"]`、`--torque-cutover`時は1台ずつ）で、次のroleを実行します。torque cutover時は`release_torque_cutover`のplayが加わります。
 
 1. **`release_pi5`**: Pi5のprepare → switch → health。失敗時はroleのrollback境界を確認する。
 2. **`release_kiosk`**: Pi4のprepare → switch → health。失敗時はroleのrollback境界を確認する。
 3. **`release_signage`**: Pi3のprepare → switch → health。失敗時はroleのrollback境界を確認する。
 
-標準playbookに `common`、`server`、`client`、`kiosk`、`signage` をimportする前提や、
+標準playbookに `server`、`client`、`kiosk`、`signage` をimportする前提や（`common` は上記 tasks_from のみ）、
 それらへ新しいroleを直接追加する前提は置きません。
 
 ## 新規ロールの追加手順（標準routeへの追加ではない）

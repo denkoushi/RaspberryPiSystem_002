@@ -38,7 +38,7 @@ This KB is the compact source for how to read the current leaderboard specificat
 
 | Term | How to read it now |
 |------|--------------------|
-| `120秒` / `120s` | Historical terminal-cache cadence from 2026-05-19/20. Current regular board freshness is 300 seconds. Some old docs and one code comment still say 120秒; use the current constants above. |
+| `120秒` / `120s` | Historical terminal-cache cadence from 2026-05-19/20. Current regular board freshness is 300 seconds. Some old docs still say 120秒; use the current constants above. |
 | `pageSize 80` / `初回 shell 80` | Historical shell size. Current initial shell is 50; continue remains 160. |
 | `f978c15e` | Deployed but rejected visual contract for Gantt total-work ruler stretch. Final accepted recovery is `a882ac81` + `cca420ac` + `5171e44e`. |
 | `カード単位 phased fetch` | Historical 2026-05-07 behavior. After ADR-20260508, aggregate `leaderboard-board` is the main multi-slot path. |
@@ -46,7 +46,7 @@ This KB is the compact source for how to read the current leaderboard specificat
 
 ## Known Documentation Drift
 
-- [`leaderboardBoardCacheSyncPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheSyncPolicy.ts) still has a comment that says "120秒ポーリング". The implementation reads current constants elsewhere; treat the comment as stale until a code-comment cleanup is explicitly requested.
+- [`leaderboardBoardCacheSyncPolicy.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/cache/leaderboardBoardCacheSyncPolicy.ts): the former "120秒ポーリング" comment was corrected to the 300-second wording on 2026-06-24 (see Validation).
 - `deployment.md`, `verification-checklist.md`, ADR-20260519, ADR-20260520, KB-374, KB-375, and KB-297 contain historical sections that remain useful as incident/deploy records. They are not current spec unless they link back here or to the current plans listed above.
 
 ## Prevention Checklist

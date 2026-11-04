@@ -40,7 +40,7 @@
 - **関連ファイル**:
   - `scripts/kiosk/diagnose-ime.sh`: IME 診断スクリプト
   - `infrastructure/ansible/roles/kiosk/tasks/diagnose-ime.yml`: 診断 Ansible タスク
-  - `docs/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md`: 診断結果記録セクション
+  - `docs/archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md`: 診断結果記録セクション
   - `docs/runbooks/kiosk-ime-diagnosis.md`: 診断 Runbook
 
 ## Next Steps

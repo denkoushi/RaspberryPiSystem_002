@@ -226,7 +226,7 @@ update-frequency: medium
 - （データベースバックアップのパス問題解決のコミットハッシュを追加）
 
 **関連ドキュメント**:
-- [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md)
+- [バックアップリストア機能の実機検証結果](../../archive/guides/backup-restore-verification-results.md)
 
 ---
 
@@ -395,9 +395,9 @@ update-frequency: medium
 - `infrastructure/ansible/group_vars/all.yml`
 
 **関連ドキュメント**:
-- [Ansible SSH接続アーキテクチャの説明](../guides/ansible-ssh-architecture.md)
-- [バックアップ設定ガイド](../guides/backup-configuration.md)
-- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
+- [Ansible SSH接続アーキテクチャの説明](../../guides/ansible-ssh-architecture.md)
+- [バックアップ設定ガイド](../../guides/backup-configuration.md)
+- [バックアップ対象管理UI実装計画](../../requirements/backup-target-management-ui.md)
 
 ---
 
@@ -470,8 +470,8 @@ update-frequency: medium
 - `e2e/admin.spec.ts`
 
 **関連ドキュメント**: 
-- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [バックアップ対象管理UI実装計画](../../requirements/backup-target-management-ui.md)
+- [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
 
@@ -546,8 +546,8 @@ update-frequency: medium
 - `apps/web/src/pages/admin/BackupTargetsPage.tsx`
 
 **関連ドキュメント**: 
-- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [バックアップ対象管理UI実装計画](../../requirements/backup-target-management-ui.md)
+- [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
 
@@ -598,8 +598,8 @@ update-frequency: medium
 - ✅ 社員コードを4桁形式に変更後、バックアップとリストアが正常に動作することを確認
 
 **関連ドキュメント**:
-- [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md)
-- [バックアップリストア機能の実機検証実行手順](../guides/backup-restore-verification-execution.md)
+- [バックアップリストア機能の実機検証結果](../../archive/guides/backup-restore-verification-results.md)
+- [バックアップリストア機能の実機検証実行手順](../../archive/guides/backup-restore-verification-execution.md)
 
 ---
 
@@ -647,8 +647,8 @@ update-frequency: medium
 - `apps/api/src/routes/backup.ts`（`/api/backup/internal`エンドポイント）
 
 **関連ドキュメント**:
-- [バックアップスクリプトとの整合性確認結果](../guides/backup-script-integration-verification.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [バックアップスクリプトとの整合性確認結果](../../archive/guides/backup-script-integration-verification.md)
+- [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
 
@@ -686,8 +686,8 @@ update-frequency: medium
 - `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`（エラーハンドリング改善）
 
 **関連ドキュメント**:
-- [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [バックアップエラーハンドリング改善](../../archive/guides/backup-error-handling-improvements.md)
+- [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
 
@@ -733,8 +733,8 @@ update-frequency: medium
 - `apps/api/src/services/backup/targets/database-backup.target.ts`（一時ファイル経路）
 
 **関連ドキュメント**:
-- [バックアップAPI](../api/backup.md)（容量不足時の自動回復セクション）
-- [バックアップ実機検証ガイド](../guides/backup-verification.md)
+- [バックアップAPI](../../api/backup.md)（容量不足時の自動回復セクション）
+- [バックアップ実機検証ガイド](../../archive/guides/backup-verification.md)
 
 **実機検証時のトラブルシューティング**（2026-03-05）:
 - **APIヘルスチェック**: Pi5ホストからは`http://localhost:8080`では接続できない。Caddyが443で待ち受けており、`curl -sk https://localhost/api/system/health` を使用する。
@@ -785,8 +785,8 @@ update-frequency: medium
 - `docs/guides/gmail-setup-guide.md`（Gmail連携セットアップガイド）
 
 **関連ドキュメント**:
-- [Gmail連携セットアップガイド](../guides/gmail-setup-guide.md)
-- [Gmailデータ取得機能実装計画](../plans/gmail-data-acquisition-execplan.md)
+- [Gmail連携セットアップガイド](../../guides/gmail-setup-guide.md)
+- [Gmailデータ取得機能実装計画](../../plans/gmail-data-acquisition-execplan.md)
 
 ---
 
@@ -1317,7 +1317,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 - KB-163により`backup.json`が削除され、Gmail設定とDropboxバックアップ対象リストが失われた
 - Dropboxには過去のバックアップが保存されていたため、そこから復元する必要があった
 
-**復元手順**:
+**復元手順**（2026-01 当時の記録。現行の手順は [backup-and-restore.md](../../guides/backup-and-restore.md) を参照。管理コンソールのバックアップ画面にファイルのダウンロード機能はなく、取得は Dropbox API または Dropbox Web UI で行う。リポジトリのルートに compose ファイルはないため、下記の `docker compose restart api` はそのままでは動かない。2026-09-30以降、`backup.json` はDropboxに保存されないため、この手順で取り出せるのは2026-09-30より前の世代だけ。現行の世代はGoogle Drive DRで保護される）:
 1. **Dropbox APIを使用してバックアップファイルを検索**:
    - 管理コンソールのバックアップタブから、最新の`backup.json`バックアップを特定
    - または、Dropbox APIを使用してバックアップファイルを検索
@@ -1370,7 +1370,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 - KB-163により`backup.json`が削除され、Gmail設定（`clientId`, `clientSecret`, `redirectUri`）が失われた
 - Dropboxバックアップから`backup.json`を復元したが、Gmail設定は含まれていなかった
 
-**復元手順**:
+**復元手順**（2026-01 当時の記録。現行の手順は [backup-and-restore.md](../../guides/backup-and-restore.md) を参照。下記の `docker compose restart api` は compose ファイルの指定がなく、そのままでは動かない）:
 1. **client_secret.jsonファイルを取得**:
    - Google Cloud ConsoleからGmail APIの認証情報をダウンロード
    - `client_secret.json`ファイルを取得
@@ -1381,7 +1381,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
      "storage": {
        "options": {
          "gmail": {
-           "clientId": "993241073118-xxx.apps.googleusercontent.com",
+           "clientId": "<CLIENT_ID>.apps.googleusercontent.com",
            "clientSecret": "GOCSPX-xxx",
            "redirectUri": "https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback"
          }
@@ -1396,7 +1396,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
    ```
 
 4. **OAuth認証を実行**:
-   - 管理コンソールの「バックアップ」タブ → 「Gmail設定」セクション
+   - 管理コンソールの「システム」→「Gmail設定」（`/admin/gmail/config`）
    - 「OAuth認証」ボタンをクリック
    - Googleアカウントでログインして認証を完了
    - 認証後、`accessToken`と`refreshToken`が`backup.json`に自動保存される
@@ -1531,7 +1531,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 
 **関連ファイル**:
 - `/opt/RaspberryPiSystem_002/config/backup.json`（設定ファイル）
-- `apps/api/src/routes/backup/health.ts`（ヘルスチェック機能）
+- `apps/api/src/routes/backup/config-read.ts`（ヘルスチェックエンドポイント `/backup/config/health`。判定ロジックは `apps/api/src/services/backup/backup-config.loader.ts` の `checkHealth()`）
 
 **関連ナレッジ**:
 - KB-148: backup.jsonの衝突・ドリフト検出の自動化（新構造の導入）
@@ -1742,8 +1742,8 @@ private buildPath(info: BackupTargetInfo, options?: BackupOptions): string {
 - KB-146: Gmail OAuthがDropboxトークンを上書きし、Dropboxバックアップが失敗する（トークン分離で恒久対策）
 
 **関連ドキュメント**:
-- [Dropboxバックアップ機能の状況調査レポート](../guides/backup-dropbox-status-investigation.md)
-- [Dropboxバックアップ機能の状況調査結果](../guides/backup-dropbox-status-investigation-results.md)
+- [Dropboxバックアップ機能の状況調査レポート](../../archive/guides/backup-dropbox-status-investigation.md)
+- [Dropboxバックアップ機能の状況調査結果](../../archive/guides/backup-dropbox-status-investigation-results.md)
 
 **再発防止策**:
 - ユーザー入力（label）をパスに埋め込む場合は、必ずサニタイズ処理を実施する
@@ -2034,6 +2034,8 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 ---
 
 ## KB-200: 証明書ディレクトリのバックアップターゲット追加スクリプト作成とDockerコンテナ内実行時の注意点
+
+（現行: 2026-09-30以降、証明書はDropboxのバックアップ対象にしないため、下記のスクリプトとPlaybookは使わない（[バックアップ設定ガイド](../../guides/backup-configuration.md#pi5本番の現在方針2026-09-30)）。本番APIはblue/green構成で`docker-compose.server.yml`の`api`は稼働していないため、稼働中スロットでのコマンド実行は`scripts/server/run-in-active-api.sh <command>`を使う。）
 
 **問題**: 証明書ディレクトリ（`/app/host/certs`）のバックアップターゲットを追加する際、Dockerコンテナ内でスクリプトを実行する必要があるが、ファイルパスの扱いや実行方法に注意が必要だった。
 

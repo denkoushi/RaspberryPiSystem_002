@@ -80,6 +80,6 @@
 
 ## 関連ドキュメント
 - KB-026, KB-027: `docs/knowledge-base/frontend.md`
-- PHOTOテスト計画: `docs/guides/photo-loan-test-plan.md`
+- PHOTOテスト計画: `docs/archive/guides/photo-loan-test-plan.md`
 - UI仕様: `docs/modules/measuring-instruments/ui.md`, `docs/modules/tools/photo-loan.md`
-- 計測機器検証ガイド: `docs/guides/measuring-instruments-verification.md`
+- 計測機器検証ガイド: `docs/archive/guides/measuring-instruments-verification.md`

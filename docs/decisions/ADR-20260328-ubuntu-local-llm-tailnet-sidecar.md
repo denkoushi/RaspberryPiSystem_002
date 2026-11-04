@@ -1,5 +1,7 @@
 Title: ADR-20260328: Ubuntu LocalLLM を Tailscale sidecar + `tag:llm` で分離公開する
-Status: accepted
+Status: superseded
+Superseded By: [dgx-system-prod-local-llm-history-2026-04-06.md §2026-04-26 Ubuntu PC 停止後の最終確認](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#2026-04-26-ubuntu-pc-停止後の最終確認)（部分 superseded: ホストは DGX Spark に置換。`tag:llm` と `tag:server -> tag:llm: tcp:38081` の ACL 方針は DGX が引き継ぐ）
+Notice: 2026-04-26 に Ubuntu PC は退役し、本番の LocalLLM は DGX Spark に移った。以下は Ubuntu PC 時代の決定記録。
 Context:
   - Ubuntu PC は日常的な実験用途にも使っており、ホストOS全体を tailnet へ参加させたくない。
   - 既存の LocalLLM は `~/llama.cpp` を手動起動し、`--host 0.0.0.0 --port 8081` で LAN に待ち受けていた。

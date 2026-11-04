@@ -1,9 +1,10 @@
 ---
 id: ADR-20260721-deploy-release-identity-and-activation
 title: Typed release claims and separate activation targets
-status: accepted-offline-implementation-live-rollout-blocked
+status: superseded
+superseded_by: ../guides/deployment.md
 date: 2026-07-21
-source_of_truth: true
+source_of_truth: false
 scope: Pi5 and registered terminal-profile rolling release planning, verification, persistence, and rollback
 related_code:
   - scripts/deploy/rolling_release/planner.py
@@ -17,12 +18,11 @@ related_docs:
   - ../plans/deploy-release-identity-architecture-execplan.md
   - ../plans/deploy-release-identity-readonly-evidence-manifest.md
 validation: current-source audit, pure typed-claim scenario model, complete current offline deploy contracts, and approved read-only incident evidence sha256:f591a727363aeb972ecdd4b388f2ea7aa5b4881ca94445aac57c42da3238d7b8
-open_items:
-  - implement the decision through the staged offline ExecPlan
-  - retain the live rollout block until all migration and fault gates pass
 ---
 
 # ADR-20260721: Typed release claims and separate activation targets
+
+> **状態: superseded** — `related_code` の rolling_release planner/policy/coordinator/fleet_state/route_contract は 2026-08-08 の標準 Ansible route への移行で存在しなくなり、本 ADR の offline implementation と live rollout block は現行経路に適用しない。現行のリリース同一性は公開署名済み release-set と `release_pi5`・`release_kiosk`・`release_signage` role の検証で扱う（[deployment guide](../guides/deployment.md)）。
 
 ## Status
 

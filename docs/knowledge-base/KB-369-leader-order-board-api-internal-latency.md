@@ -8,6 +8,8 @@ category: knowledge-base
 
 # KB-369: キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）
 
+> 本文の本番反映記録にある `export RASPI_SERVER_HOST=…`、`--detach --follow`、`Git: changed` は当時の経路（現行: [deployment.md](../guides/deployment.md) の標準経路、復旧は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）。
+
 ## Context
 
 本 KB は **「順位ボード遅延」に関する技術ナレッジの収束先**として機能する。単一エンドポイント内の SQL 最適化（COUNT 並列・winner materialization）に加え、**段階取得**・**資源カード単位 phased**・**snapshot + cursor** など、**プロトコルとクライアント構造**の変更も同一ファイルに時系列で記録する。2026-05-08 追補の **board 集約 API（`leaderboard-board` / `leaderboard-board/continue`）** は、**多資源スロット画面でブラウザが資源カードごとに `leaderboard-shell` 等を fan-out していた負荷**を、**サーバ側でスロット順にオーケストレーションして応答を束ねる**アプローチであり、意思決定の正本は [ADR-20260508](../decisions/ADR-20260508-leaderboard-board-aggregate-api.md)。**`leaderboard-board/continue` の `cursor` 契約と HTTP 400** は [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) に分離記録する。**2026-05-18 追補**: **`continue` 応答の任意 `deltaRows`（dual payload）** と Web 側の **ID 整合検証つきマージ**の要点も [KB-374 · Dual payload](./KB-374-leaderboard-board-continue-cursor-contract.md#dual-payload-deltarows-2026-05-18) に収束させる。**2026-06-23 追補**: process-change residual の広い `FKOJUNST_Status` raw mail 読みを sync/backfill 時の永続 evidence へ移し、表示時は residual key index で summary を解決する。詳細ログと実測は [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を正本とする。
@@ -230,7 +232,7 @@ category: knowledge-base
 - **Detach Run ID**（`ansible-update-`）: **`20260507-163719-11899`**（Pi5）/ **`20260507-164825-22626`**（`raspberrypi4`）/ **`20260507-165243-2819`**（`raspi4-robodrill01`）/ **`20260507-165602-24775`**（`raspi4-fjv60-80`）/ **`20260507-165951-8928`**（`raspi4-kensaku-stonebase01`）。いずれも **`PLAY RECAP` `failed=0` / `unreachable=0`**・リモート **`exit` `0`**。
 - **広域自動検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **30s** 規模・Tailscale）。
 - **トラブルシュート**:
-  - **デプロイスクリプトが未コミット変更で止まる** → 無関係差分は **`git stash`**（本番とは別ブランチ／別意図の変更を混ぜない）。
+  - **デプロイスクリプトが未コミット変更で止まる** → 無関係差分は **`git stash`**（本番とは別ブランチ／別意図の変更を混ぜない）。（現行: WIP を stash せず、[deployment.md の実行前確認](../guides/deployment.md#実行前確認) どおり Deploy 専用の clean worktree から実行する）
   - **`snapshotExpired` が妙に多い** → **API が複数プロセスのとき snapshot はプロセスローカル**（振り分けで continue が別インスタンスに当たると失効やフォールバックが増えうる）。**ADR [ADR-20260507](../decisions/ADR-20260507-leaderboard-shell-snapshot.md)** の注意と **`LEADERBOARD_SHELL_SNAPSHOT_TTL_MS`** を確認。
   - **Web ビルドで型エラー（shell ログが `total` を参照）** → 契約上 shell に **`total` が無い**場合はデバッグログを **`hasSnapshotId` 等**へ（`apps/web/src/api/client.ts`）。
 
@@ -275,7 +277,7 @@ category: knowledge-base
 - **API 計測（補助）**: `GET …/leaderboard-board?q=A&boardResourceCds=1,2&pageSize=160&responseProfile=leaderboard`（`x-client-key: client-key-raspberrypi4-kiosk1`）は **HTTP 200 / 5.43s・6.01s**（2 回）。この時の payload は **rows 0 件**で、重負荷データ条件の代表計測ではない。
 - **トラブルシュート**:
   - **deploy-status が `isMaintenance:true` のまま** → 連続デプロイ中/直後は残留しうる。全対象ホスト完了後に再検証、または Pi5 `config/deploy-status.json` を確認。
-  - **デプロイスクリプトの fail-fast（ローカル差分）** → `git stash push -u` で作業ツリーをクリーン化してから再実行。
+  - **デプロイスクリプトの fail-fast（ローカル差分）** → `git stash push -u` で作業ツリーをクリーン化してから再実行。（現行: WIP を stash せず、[deployment.md の実行前確認](../guides/deployment.md#実行前確認) どおり Deploy 専用の clean worktree から実行する）
   - **性能判断が不安定** → 空データ計測のみで「改善」と断定しない。運用相当データで再計測する。
 
 ## Open work（board 集約 API・2026-05-08 時点）
@@ -299,7 +301,7 @@ category: knowledge-base
 
 ## shell 選定 SQL 最適化（2026-05-21–22 · **第2弾までで一旦停止**） {#shell-選定-sql-最適化-2026-05-21-22-第2弾までで一旦停止}
 
-**正本**: 詳細・ベンチ・ロードマップは [KB-374 §shell 第1/2弾](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾-api-のみ--2026-05-21--本番反映済み) および [KB-374 §ロードマップ（保留）](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22) に収束。
+**正本**: 詳細・ベンチ・ロードマップは [KB-374 §shell 第1/2弾](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-初回最適化-第1弾api-のみ--2026-05-21--本番反映済み) および [KB-374 §ロードマップ（保留）](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22) に収束。
 
 | 段階 | 要点 | 本番 |
 | --- | --- | --- |
@@ -308,7 +310,7 @@ category: knowledge-base
 
 **決定（2026-05-22）**: **第3弾以降は保留**（expansion budget LIMIT / EXPLAIN / Web view model 等）。初回 shell の残コストは **hasMore 並列 COUNT** + **manual 未充足時の unlimited expansion** が中心。**第3弾の期待効果は第1・2弾より低〜中（profile 依存）**。
 
-**再開時**: [`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs) で **スロット別 manual/expansion 計測** → [EXEC_PLAN §shell 保留](../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)。
+**再開時**: [`benchmark-leaderboard-board-shell.mjs`](../../scripts/test/benchmark-leaderboard-board-shell.mjs) で **スロット別 manual/expansion 計測** → [KB-374 §ロードマップ（保留）](./KB-374-leaderboard-board-continue-cursor-contract.md#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22)。
 
 ## 6-slot resource board split after residual fixes（2026-06-23 · PR #464） {#six-slot-resource-board-split-after-residual-fixes-2026-06-23--pr-464}
 
@@ -364,7 +366,7 @@ category: knowledge-base
 
 ## Troubleshooting
 
-- **まだ遅い／反映されない**: Pi5 の **`api` コンテナ**が当該コミット以降か（detach ログの **`Git: changed`**・リモート `git log -1`）。**Mac 側 `--follow` が途中で途切れても**、**`PLAY RECAP` / `summary.json` / `*.exit`** を正本とする（[deployment.md](../guides/deployment.md) の detach 運用どおり）。
+- **まだ遅い／反映されない**: Pi5 の稼働 API（blue/green の稼働スロット）が当該コミット以降かを、`scripts/update-all-clients.sh --status RUN_ID` の対象 SHA と `release_pi5` の結果で確認する（[deploy-status-recovery.md §3](../runbooks/deploy-status-recovery.md#3-復旧できたことを確認する)）。
 - **キオスク側の挙動（COUNT 並列化のみ）**: 当該リリースは **API のみ**。ブラウザは **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
 - **段階取得（API+Web）**: 初回のみ **複数 GET/POST**。挙動が古いときは Pi5 **`api` と `web` の両方**を確認し、同上 **強制リロード**。`bf9dea17` 以降は旧 bundle が `includeLabor=false` を送らなくても API default false で first usable 速度は救済する。`+人` ON の正確な人工数表示は bundle **`index-CtusrliU.js`** 以降が必要。`e98de7ce` 以降、通常の board refresh は 5 分間隔で、`+人` の labor refresh は内部 fetch だけ行い既存行を保ったまま global sync banner を出さない。2026-06-24 recovery bundle 以降は、既存行を保ったまま fresh labor metadata を overlay するため、minute label と 8H バーも更新される。Gantt ruler stretch bundle 以降は、行カード高さは重くせず 8H/10H 縦バーだけ logical required minutes で伸びる。**装飾欠落の切り分け**は上記 **hydrate raw SQL** 知見と Network 順序を参照。
 
@@ -417,7 +419,7 @@ category: knowledge-base
 
 - **ブランチ**: **`feat/leaderboard-continue-delta-safe`**（**`371a1ce2`** / **`f627dcb0`** / **`f6a220e0`**）。
 - **要点**: board `continue` の **累積 `rows` 正本は不変**。任意 **`deltaRows`** はクライアント最適化のみ。体感改善の主因は **refetch 巻き戻し防止（Web）** と **`pageSize` 80 による continue 回数削減（Web）**。
-- **本番・検証の正本**: [KB-374 §Production 2026-05-19](./KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification-2026-05-19--featleaderboard-continue-delta-safe)·[deployment §deltaRows](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)。
+- **本番・検証の正本**: [KB-374 §Production 2026-05-19](./KB-374-leaderboard-board-continue-cursor-contract.md#production-deploy--verification2026-05-19--featleaderboard-continue-delta-safe)·[deployment §deltaRows](../archive/deployments/2026-05.md#kiosk-leaderboard-continue-deltarows-dual-payload-2026-05-18)。
 
 ## Production deploy & verification（2026-05-18 · output-stable internal optimization）
 

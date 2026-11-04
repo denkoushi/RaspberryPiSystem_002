@@ -39,7 +39,14 @@ enough evidence for a safe independent decision.
 ## Decision
 
 Use `python3 -m scripts.git_lifecycle.cli` as the standard entrypoint for
-`start`, `audit`, and `finish`.
+`start`, `audit`, `finish`, and `finish-merged`.
+
+Update (current CLI): before creating a worktree, `start` also cleans
+merged-clean task worktrees directly under the task root, using the same
+per-target safety checks as `finish` (disable with `--no-merged-cleanup`; a
+cleanup failure is reported as a warning and creation continues).
+`finish-merged` runs the same cleanup manually. Details:
+`.cursor/rules/20-git-workflow.mdc`.
 
 `start` fetches `origin` and requires the exact fetched `origin/main` before it
 creates a task worktree. It never cleans, resets, stashes, or checks out main.

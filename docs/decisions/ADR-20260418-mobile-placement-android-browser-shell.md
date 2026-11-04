@@ -1,6 +1,7 @@
 # ADR-20260418: 配膳スマホの Android ブラウザ殻（キオスク）方針
 
-**Status**: accepted  
+**Status**: superseded  
+**Superseded By**: [配膳スマホの製番かざし読み取り（Android 薄型アプリ）ExecPlan](../plans/android-haizen-shell-ocr-execplan.md)（「Chrome 継続・専用殻は将来オプション」の決定は、`apps/android-haizen-shell/` の WebView 薄型アプリ採用に置き換わった。以下は当時の決定記録）  
 **Context**:
 - 配膳スマホは **Android 1 台 + ブラウザ** で `/kiosk/mobile-placement*` を運用している（Runbook 前提は **Chrome**）。
 - 運用上の不安は主に **一般ブラウザ由来の UI**（アドレスバー・検索 UI・タブ・誤操作で画面が隠れる等）と、**オペレーターへの端末受け渡し時の誤タップ**である。

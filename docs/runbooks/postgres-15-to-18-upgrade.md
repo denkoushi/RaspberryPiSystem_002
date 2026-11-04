@@ -1,11 +1,13 @@
 ---
 id: postgres-15-to-18-upgrade
 title: PostgreSQL 15→18 移行・切戻しRunbook
-status: active
+status: completed
 last_verified: 2026-10-30
 ---
 
 # PostgreSQL 15→18 移行・切戻しRunbook
+
+> **状態（2026-10-30 移行完了）**: 本番の PostgreSQL 15→18 移行と、2026-10-31 の DR スナップショット・Google Drive 復元検証は完了した。本書は切戻しと旧 `db-data` 後片付けの参照用であり、新しい移行には使わない。旧 `db-data` の削除は 2026-11-13 以降にユーザーの明示承認を得て別作業で行う（[更新計画](../plans/software-support-upgrade-execplan.md)）。
 
 ## 目的
 

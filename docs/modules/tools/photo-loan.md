@@ -125,8 +125,8 @@ model ClientDevice {
 
 - 写真持出 VLM ラベル付与は **Pi5 API 内部の定期ジョブ**として実行する
 - LocalLLM への接続は既存の `LOCAL_LLM_*` 設定を再利用する
-- **任意（シャドー）**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` かつ `PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき、GOOD ギャラリー類似が厳しめ条件を満たすケースだけ **2 回目の VLM 呼び出し**を行いログ比較する。保存される `photoToolDisplayName` は **従来の 1 回目の結果のまま**（[ADR-20260331](../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）
-- **バックフィル**: 埋め込みを後から有効化したとき、既存 GOOD 済み Loan をギャラリーへ再投入する `pnpm backfill:photo-tool-gallery`（本番コンテナは `backfill:photo-tool-gallery:prod`）。手順は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md)
+- **任意（シャドー）**: `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=true` かつ `PHOTO_TOOL_EMBEDDING_ENABLED=true` のとき、GOOD ギャラリー類似が厳しめ条件を満たすケースだけ **2 回目の VLM 呼び出し**を行いログ比較する。保存される `photoToolDisplayName` は **従来の 1 回目の結果のまま**（[ADR-20260331](../../decisions/ADR-20260331-photo-tool-label-good-assist-shadow.md)）
+- **バックフィル**: 埋め込みを後から有効化したとき、既存 GOOD 済み Loan をギャラリーへ再投入する `pnpm backfill:photo-tool-gallery`（本番コンテナは `backfill:photo-tool-gallery:prod`）。手順は [photo-tool-similarity-gallery.md](../../runbooks/photo-tool-similarity-gallery.md)
 
 ### 写真配信
 
@@ -278,14 +278,14 @@ apps/web/src/
 
 ## テスト計画
 
-詳細なテスト計画は [写真撮影持出機能 テスト計画](../../guides/photo-loan-test-plan.md) を参照してください。
+詳細なテスト計画は [写真撮影持出機能 テスト計画](../../archive/guides/photo-loan-test-plan.md) を参照してください。
 
 ## 関連ドキュメント
 
 - [システム要件定義](../../requirements/system-requirements.md): FR-009（写真撮影持出機能）
 - [ADR 003: カメラ機能のモジュール化](../../decisions/003-camera-module.md)
 - [工具管理モジュール](./README.md): モジュール全体の概要
-- [写真撮影持出機能 テスト計画](../../guides/photo-loan-test-plan.md): 詳細なテスト計画
+- [写真撮影持出機能 テスト計画](../../archive/guides/photo-loan-test-plan.md): 詳細なテスト計画
 - [検証チェックリスト](../../guides/verification-checklist.md): Validation 9（写真撮影持出）
 - [KB-319](../../knowledge-base/KB-319-photo-loan-vlm-tool-label.md): 写真持出 VLM ラベルの運用・実機確認
 - [LocalLLM Runbook](../../runbooks/local-llm-tailscale-sidecar.md): LocalLLM 側の疎通確認・運用

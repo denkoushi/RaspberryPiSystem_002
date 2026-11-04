@@ -44,7 +44,7 @@ The approved visual mockup is the Design canvas "キオスク在庫画面モッ�
   Evidence: run `20260926-112811-48762d` journal: `13617380d..ec2996352 main -> origin/main`, then `status=1/FAILURE` three seconds after start; Pi5 health ok with an unchanged uptime.
 
 - Observation: The kiosk has a touch panel and no physical keyboard. The shared on-screen keyboard only types A to Z and 0 to 9, so it cannot enter Japanese item names.
-  Evidence: `apps/web/src/components/kiosk/KioskKeyboardModal.tsx` defines `NUMBER_KEYS` and `LETTER_ROWS` only. `docs/knowledge-base/frontend.md` records that touch-panel kiosks lack a keyboard. Some Pi4 kiosks do run IBus and mozc for Japanese input (`docs/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md`), but that needs a keyboard.
+  Evidence: `apps/web/src/components/kiosk/KioskKeyboardModal.tsx` defines `NUMBER_KEYS` and `LETTER_ROWS` only. `docs/knowledge-base/frontend.md` records that touch-panel kiosks lack a keyboard. Some Pi4 kiosks do run IBus and mozc for Japanese input (`docs/archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md`), but that needs a keyboard.
 - Observation (correction, 2026-09-28): The user confirmed that the Pi4 kiosks and the Mac both have a physical keyboard (21.5-inch 1920×1080 monitors). The earlier "no keyboard" reading came from a knowledge-base note about touch panels. Touch-only flows stay, but typing on the kiosk (unit names, area names) is acceptable.
   Evidence: user statement on 2026-09-28.
 - Observation: Every setup and correction endpoint currently requires the 4-digit password header `x-kiosk-access-password`. Only transactions and the terminal's own last cancel work without it.

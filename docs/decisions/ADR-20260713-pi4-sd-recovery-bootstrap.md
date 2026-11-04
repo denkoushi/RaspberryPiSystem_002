@@ -1,7 +1,8 @@
 ---
 id: ADR-20260713-pi4-sd-recovery-bootstrap
 title: Pi4 SD recovery through a verified dynamic LAN bootstrap endpoint
-status: accepted
+status: superseded
+superseded_by: ./ADR-20260930-pi4-sd-card-backup.md
 date: 2026-08-01
 source_of_truth: true
 scope: explicitly enabled standard Pi4 kiosk recovery after SD-card replacement
@@ -13,16 +14,15 @@ related_code:
   - infrastructure/ansible/playbooks/resolve-pi4-recovery-contract.yml
   - infrastructure/ansible/playbooks/recover-pi4.yml
 related_docs:
-  - ../runbooks/pi4-sd-recovery.md
+  - ../runbooks/pi4-sd-card-backup.md
   - ../plans/pi4-sd-recovery-dynamic-bootstrap-execplan.md
   - ../guides/client-initial-setup.md
 validation: dynamic endpoint, SSH identity, resolver, Fleet State, Ansible, and isolated regression tests; physical blank-SD drill pending
-open_items:
-  - Deploy the exact merged SHA to Pi5 after approval.
-  - Execute and record one blank-Pi4 acceptance drill.
 ---
 
 # ADR-20260713: Pi4 SD recovery through a verified dynamic LAN bootstrap endpoint
+
+> **状態: superseded** — 実装（`scripts/deploy/recover-pi4.py`、`scripts/deploy/recovery/`、recover 系 playbook、runbook）は 2026-08-08 の `f02c4be3` で、物理ドリル未実施のまま削除された。現行の Pi4 SD 交換は [ADR-20260930](./ADR-20260930-pi4-sd-card-backup.md) と [Pi4 SDカードバックアップ Runbook](../runbooks/pi4-sd-card-backup.md) を参照する。
 
 ## Status
 

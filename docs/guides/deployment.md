@@ -28,7 +28,11 @@ scripts/update-all-clients.sh <branch> <inventory> --limit PATTERN [--detach]
 scripts/update-all-clients.sh <branch> <inventory> --full-fleet [--detach]
 scripts/update-all-clients.sh <branch> <inventory> --print-plan [--limit PATTERN]
 scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
+scripts/update-all-clients.sh <branch> <inventory> --limit HOST[:HOST...] --first-install [--print-plan | --detach]
+scripts/update-all-clients.sh <branch> <inventory> --limit PATTERN --skip-kiosk-notice [--detach]
 ```
+
+`--first-install` は[空のPi4キオスクへの初回導入](#空のpi4キオスクへの初回導入)、`--skip-kiosk-notice` は[Pi4 キオスクの更新予告](#pi4-キオスクの更新予告)を省く緊急時だけに使う。
 
 トルクレンチ所有権契約をAPI/Webと既設agentへ同時に切り替える場合だけ、次の限定モードを使う。現在の本番対象は、torque設定が完成しているStoneBaseとAssembly-01の2台に限る。
 

@@ -67,5 +67,5 @@
 ## References
 
 - 調査と修正案の図: https://claude.ai/artifact/NjZStwL6gQeJfdFtNz93SB（非公開ページ）
-- [KB-323](./KB-323-kiosk-return-card-button-layout.md)、[KB-332](./KB-332-kiosk-active-loan-card-modern-surface.md)
+- [KB-323](./KB-323-kiosk-return-card-button-layout.md)、[KB-332](../archive/knowledge-base/KB-332-kiosk-active-loan-card-modern-surface.md)
 - `.cursor/rules/33-frontend-ui-quality.mdc`

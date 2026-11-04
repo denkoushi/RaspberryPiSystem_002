@@ -322,7 +322,7 @@ Raspberry Pi NFC 工場持出返却システムの要件定義書。システム
 ## 関連ドキュメント
 
 - [EXEC_PLAN.md](../../EXEC_PLAN.md): 全体の進捗管理
-- [CSVインポート・エクスポート仕様](./csv-import-export.md): CSV形式の詳細仕様
+- [CSVインポート・エクスポート仕様](../guides/csv-import-export.md): CSV形式の詳細仕様
 - [検証チェックリスト](../guides/verification-checklist.md): 検証手順の詳細
 - [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md): 問題解決のナレッジベース
 

@@ -51,6 +51,7 @@ journalで `Fail the release after verified empty rollback` と、元の失敗�
 
 - 全対象roleが正常終了し、failed/unreachableが0である。
 - Pi5は `release_pi5` のmigration、API/Web health、rollback結果が整合している。
+- Pi5は対象SHAと `release_pi5` へ渡されたimage identity（`release_pi5_api_image` / `release_pi5_web_image`）が一致している。
 - Pi4は `release_kiosk` のenabled agent healthとservice確認が成功している。
 - Pi3は `release_signage` のartifact SHA、atomic activation、service healthが成功している。
 - 共有application smokeが必要な場合だけ `scripts/deploy/verify-phase12-real.sh` を実行する。

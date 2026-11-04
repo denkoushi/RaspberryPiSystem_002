@@ -4,6 +4,8 @@ Status: superseded
 
 Superseded By: [ADR-20260712: Rolling terminal release orchestration](ADR-20260712-rolling-terminal-release-orchestration.md)
 
+> **注記**: `deploy-status.json` の `kioskByClient` は現行も使われている。現行の読み方と表示解除は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)、デプロイ手順は [deployment.md](../guides/deployment.md) を正とする。References の `.cursor/plans/per-client-maintenance-cutover_*.plan.md` はリポジトリに存在しない。
+
 ## Context
 
 - 従来: 1つのグローバルフラグ `kioskMaintenance` で全キオスクがメンテナンス表示になる。
