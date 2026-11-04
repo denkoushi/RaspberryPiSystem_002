@@ -1425,6 +1425,8 @@ esac
                 "server",
                 "kiosk",
                 "kiosk",
+                pi4["hosts"],
+                "kiosk",
                 "signage",
             ],
         )
@@ -1433,12 +1435,14 @@ esac
         self.assertEqual(plays[3]["connection"], "local")
         self.assertEqual(plays[6]["connection"], "local")
         self.assertEqual(plays[7]["connection"], "local")
-        self.assertIn("torque-cutover", plays[9]["tags"])
+        self.assertIn("torque-cutover", plays[11]["tags"])
 
     def test_torque_cutover_is_quiesce_pi5_stage_then_resume(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
         self.assertEqual(
-            [play["name"] for play in plays[:10]],
+            [play["name"] for play in plays if play["name"] not in (
+                "Prepare every selected normal Pi4 before switching waves",
+                "Require every normal Pi4 candidate before switching any kiosk")][:10],
             [
                 "Stage Pi5 release images before torque ownership is quiesced",
                 "Stage every selected torque kiosk while current services remain unchanged",
@@ -1476,7 +1480,7 @@ esac
         self.assertIn("release_torque_all_agents_ready", quiesce)
         self.assertIn("release_torque_all_browsers_ready", quiesce)
         self.assertGreaterEqual(quiesce.count("default(false)"), 6)
-        self.assertTrue(plays[9]["ignore_unreachable"])
+        self.assertTrue(plays[11]["ignore_unreachable"])
         self.assertIn("selfOwnedToken", quiesce)
         self.assertIn("torque-bluetooth-guard.service", quiesce)
         self.assertNotIn("nfc-agent", quiesce)
@@ -1656,6 +1660,192 @@ esac
         self.assertIn("AGGREGATE=False host=kiosk-c", output)
         self.assertNotIn('"msg": "BROWSER_START_MUST_NOT_APPEAR"', output)
 
+    def test_pi4_preparation_barrier_and_canary_with_local_mock(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
+        prepare, aggregate, wave = plays[8:11]
+        self.assertEqual(prepare["strategy"], "free")
+        self.assertIn("release_pi4_canary_host", wave["hosts"])
+        self.assertIn("release_pi4_wave_hosts", wave["pre_tasks"][1]["vars"]["release_pi4_earlier_failures"])
+        self.assertEqual(wave["strategy"], "linear")
+        default_canary = re.search(r"release_pi4_canary_host \| default\('([^']+)'\)", wave["hosts"]).group(1)
+        inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text(encoding="utf-8"))
+        self.assertIn(default_canary, inventory["all"]["children"]["clients"]["children"]["kiosk"]["hosts"])
+
+        # Keep the real play boundaries, facts, rescue/always, aggregation and
+        # gates; replace only remote mutation tasks with local observations.
+        def mocked(tasks):
+            result = []
+            for original in tasks:
+                task = dict(original)
+                for key in ("block", "rescue", "always"):
+                    if key in task:
+                        task[key] = mocked(task[key])
+                if "ansible.builtin.import_tasks" in task or "ansible.builtin.import_role" in task:
+                    task.pop("ansible.builtin.import_tasks", None)
+                    task.pop("ansible.builtin.import_role", None)
+                    task["block"] = [
+                        {"mock_unreachable": {},
+                         "when": "inventory_hostname == failing and failure_kind == 'marker_unreachable'"},
+                        {"ansible.builtin.debug": {"msg": "GUARD {{ inventory_hostname }}"}},
+                    ] if "Clear the release marker after preparation" == task.get("name") else [
+                        {"ansible.builtin.debug": {"msg": "GUARD {{ inventory_hostname }}"}}]
+                role = task.pop("ansible.builtin.include_role", None)
+                if role:
+                    if role["tasks_from"] == "prepare":
+                        task["block"] = [
+                            {"mock_unreachable": {}, "when": "inventory_hostname == failing and failure_kind == 'unreachable'"},
+                            {"ansible.builtin.fail": {"msg": "mock preparation failure"},
+                             "when": "inventory_hostname == failing and failure_kind == 'failed'"},
+                            {"ansible.builtin.debug": {"msg": "PREPARED {{ inventory_hostname }}"}},
+                        ]
+                    else:
+                        self.assertEqual(role["tasks_from"], "cleanup")
+                        task["block"] = [
+                            {"ansible.builtin.debug": {"msg": "CLEAN {{ inventory_hostname }}"}},
+                            {"ansible.builtin.fail": {"msg": "mock cleanup failure"},
+                             "when": "failure_kind == 'cleanup_failed'"},
+                        ]
+                if task.get("name") == "Clear the release marker after stopped wave cleanup":
+                    task["block"].append(
+                        {"ansible.builtin.fail": {"msg": "mock marker cleanup failure"},
+                         "when": "failure_kind == 'end_failed'"})
+                result.append(task)
+            return result
+
+        simulated = [
+            {**prepare, "become": False, "tasks": mocked(prepare["tasks"])},
+            {**aggregate, "become": False, "tasks": mocked(aggregate["tasks"])},
+            {key: wave[key] for key in ("hosts", "strategy", "serial", "max_fail_percentage", "order")},
+            {"hosts": "signage", "gather_facts": False,
+             "pre_tasks": [plays[-1]["pre_tasks"][0]],
+             "tasks": [{"ansible.builtin.debug": {"msg": "PI3 SWITCH"}}]},
+        ]
+        simulated[2].update(gather_facts=False, pre_tasks=mocked(wave["pre_tasks"][:2]),
+                            tasks=[{"ansible.builtin.debug": {"msg": "SWITCH {{ inventory_hostname }}"}},
+                                   {"block": [{"ansible.builtin.fail": {"msg": "mock switch failure"},
+                                               "when": "inventory_hostname == failing and failure_kind in ['switch_failed', 'cleanup_failed', 'end_failed']"}],
+                                    "rescue": [{"ansible.builtin.fail": {"msg": "mock rescued switch failure"}}],
+                                    "always": [{"ansible.builtin.debug": {"msg": "CLEAR {{ inventory_hostname }}"}}]}],
+                            post_tasks=[wave["post_tasks"][-1]])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "action_plugins").mkdir()
+            (root / "action_plugins/mock_unreachable.py").write_text(
+                "from ansible.plugins.action import ActionBase\n"
+                "class ActionModule(ActionBase):\n"
+                "    def run(self, tmp=None, task_vars=None):\n"
+                "        return dict(unreachable=True, msg='mock unreachable')\n")
+            (root / "inventory.yml").write_text(yaml.safe_dump({"all": {"children": {
+                "kiosk": {"hosts": {name: {"ansible_connection": "local"} for name in
+                    ["kiosk-01", "raspi4-kensaku-stonebase01", "kiosk-02", "kiosk-03",
+                     "kiosk-04", "kiosk-05", "kiosk-06", "kiosk-07"]}},
+                "signage": {"hosts": {"signage-01": {"ansible_connection": "local"}}},
+            }}}, sort_keys=False))
+            (root / "playbook.yml").write_text(yaml.safe_dump(simulated, sort_keys=False))
+            cases = [(False, "none", "failed", None),
+                     (False, "kiosk-02", "failed", None),
+                     (False, "kiosk-02", "unreachable", None),
+                     (False, "kiosk-02", "marker_unreachable", None),
+                     (False, "kiosk-02", "switch_failed", None),
+                     (False, "kiosk-02", "cleanup_failed", None),
+                     (False, "kiosk-02", "end_failed", None),
+                     (True, "none", "failed", None),
+                     (False, "none", "failed", "kiosk-01,kiosk-02")]
+            for torque, failing, kind, limit in cases:
+                with self.subTest(torque=torque, failing=failing, kind=kind, limit=limit):
+                    command = ["ansible-playbook", "-i", str(root / "inventory.yml"),
+                               str(root / "playbook.yml"), "-e", json.dumps({
+                                   "release_torque_cutover": torque, "failing": failing, "failure_kind": kind})]
+                    if limit:
+                        command += ["--limit", limit]
+                    run = subprocess.run(command, capture_output=True, text=True)
+                    output = run.stdout + run.stderr
+                    switches = re.findall(r'"msg": "SWITCH ([^"]+)"', output)
+                    if kind in ("switch_failed", "cleanup_failed", "end_failed"):
+                        self.assertNotEqual(run.returncode, 0, output)
+                        self.assertEqual(switches, ["raspi4-kensaku-stonebase01"] +
+                                         [f"kiosk-{index:02d}" for index in range(1, 6)], output)
+                        for host in ("kiosk-06", "kiosk-07"):
+                            self.assertIn(f'"msg": "CLEAN {host}"', output)
+                        self.assertIn("Not started: an earlier Pi4 wave failed or was unreachable", output)
+                        self.assertNotIn('"msg": "PI3 SWITCH"', output)
+                    elif failing != "none":
+                        self.assertNotEqual(run.returncode, 0, output)
+                        self.assertEqual(switches, [], output)
+                        self.assertNotIn('"msg": "PI3 SWITCH"', output)
+                        for host in ("kiosk-01", "raspi4-kensaku-stonebase01", "kiosk-03"):
+                            self.assertIn(f'"msg": "CLEAN {host}"', output)
+                        self.assertIn("normal Pi4 preparation failed or was unreachable", output)
+                    else:
+                        self.assertEqual(run.returncode, 0, output)
+                        self.assertEqual(switches[0], "kiosk-01" if torque or limit else "raspi4-kensaku-stonebase01")
+                        prepared = re.findall(r'"msg": "PREPARED ([^"]+)"', output)
+                        self.assertEqual(len(prepared), 0 if torque else (2 if limit else 8))
+                        if prepared:
+                            self.assertLess(output.rindex('"msg": "PREPARED '), output.index('"msg": "SWITCH '))
+
+    def test_pi4_role_reuses_only_successful_normal_preparation(self) -> None:
+        main = release_main_body((ANSIBLE / "roles/release_kiosk/tasks/main.yml").read_text())[0]
+        condition = main["block"][0]["when"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        evaluate = environment.compile_expression(condition)
+        self.assertTrue(evaluate())  # Other callers / first-install retain preparation.
+        self.assertFalse(evaluate(release_pi4_prepared_this_run=True))
+        self.assertTrue(evaluate(release_pi4_prepared_this_run=False))
+        self.assertTrue(evaluate(release_torque_cutover=True, release_pi4_prepared_this_run=True))
+        self.assertFalse(evaluate(release_torque_cutover=True, release_kiosk_prepared=True))
+        source = role_text("release_kiosk")
+        self.assertNotIn("run_once:", source)
+        self.assertNotIn("ansible_play_hosts", source)
+        self.assertNotIn("ansible_play_batch", source)
+
+    def test_skipped_wave_preparation_keeps_registers_from_the_prepare_play(self) -> None:
+        main = release_main_body((ANSIBLE / "roles/release_kiosk/tasks/main.yml").read_text())[0]
+        reuse = dict(main["block"][0])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tasks = root / "roles/release_kiosk/tasks"
+            tasks.mkdir(parents=True)
+            (tasks / "prepare.yml").write_text(textwrap.dedent("""\
+                - name: Register a value later used by switch
+                  ansible.builtin.command: echo 1000
+                  register: release_kiosk_user_gid
+                  changed_when: false
+                """), encoding="utf-8")
+            switch = {"name": "Use the prepared register", "ansible.builtin.debug": {"msg": "GID={{ release_kiosk_user_gid.stdout }}"}}
+            (tasks / "main.yml").write_text(yaml.safe_dump([reuse, switch]), encoding="utf-8")
+            (root / "inventory.yml").write_text("kiosk:\n  hosts:\n    kiosk-a:\n      ansible_connection: local\n", encoding="utf-8")
+            playbook = root / "playbook.yml"
+            playbook.write_text(textwrap.dedent("""\
+                - hosts: kiosk
+                  gather_facts: false
+                  tags: [pi4]
+                  tasks:
+                    - ansible.builtin.include_role:
+                        name: release_kiosk
+                        tasks_from: prepare
+                    - ansible.builtin.set_fact:
+                        release_pi4_prepared_this_run: true
+                - hosts: kiosk
+                  gather_facts: false
+                  tags: [pi4]
+                  roles:
+                    - role: release_kiosk
+                """), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", "-i", str(root / "inventory.yml"), str(playbook), "--tags", "pi4"],
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "ANSIBLE_ROLES_PATH": str(root / "roles")},
+            )
+
+        # A skipped import_tasks re-registers every inner result as skipped (no stdout).
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertIn('"msg": "GID=1000"', output)
+
     def test_pi4_waves_stop_before_the_next_wave_after_a_rescued_failure(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
         pi4 = next(play for play in plays if play.get("roles") == [{"role": "release_kiosk"}])
@@ -1668,15 +1858,33 @@ esac
         self.assertEqual(finished["name"], "Mark this kiosk as finished for the Pi3 gate")
         self.assertEqual(pi3_gate["name"], "Stop before Pi3 when a Pi4 kiosk started but did not finish")
 
+        def mocked(tasks):
+            result = []
+            for original in tasks:
+                task = dict(original)
+                for key in ("block", "rescue", "always"):
+                    if key in task:
+                        task[key] = mocked(task[key])
+                if "ansible.builtin.import_tasks" in task:
+                    task.pop("ansible.builtin.import_tasks")
+                    task["ansible.builtin.debug"] = {"msg": "GUARD {{ inventory_hostname }}"}
+                if "ansible.builtin.include_role" in task:
+                    role = task.pop("ansible.builtin.include_role")
+                    self.assertEqual(role, {"name": "release_kiosk", "tasks_from": "cleanup"})
+                    task["ansible.builtin.debug"] = {"msg": "CLEAN {{ inventory_hostname }}"}
+                result.append(task)
+            return result
+
         def simulated(failing: str) -> list[dict[str, object]]:
             return [
                 {
                     "hosts": "kiosk",
                     "gather_facts": False,
+                    "strategy": pi4["strategy"],
                     "serial": pi4["serial"],
                     "max_fail_percentage": pi4["max_fail_percentage"],
                     "order": "inventory",
-                    "pre_tasks": [started, gate],
+                    "pre_tasks": mocked([started, gate]),
                     "tasks": [
                         {
                             "block": [
@@ -1744,7 +1952,10 @@ esac
         # Wave 1 is kiosk-01; wave 2 (kiosk-02..06) finishes every lifecycle, including the failed host.
         for index in range(1, 7):
             self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
-        self.assertNotIn('"msg": "SWITCH kiosk-07"', output)
+        for index in range(7, 10):
+            self.assertIn(f'"msg": "CLEAN kiosk-{index:02d}"', output)
+        for index in range(7, 13):
+            self.assertNotIn(f'"msg": "SWITCH kiosk-{index:02d}"', output)
         self.assertIn("Not started: an earlier Pi4 wave failed or was unreachable on kiosk-03.", output)
         self.assertNotIn("kiosk-10", output)
         self.assertNotIn("PI3 SWITCH", output)
@@ -1775,7 +1986,7 @@ esac
     def test_pi4_notice_contract_and_policy_constants(self) -> None:
         role = ANSIBLE / 'roles/release_kiosk'
         main = release_main_body((role / 'tasks/main.yml').read_text())[0]
-        imports = [task.get('ansible.builtin.import_tasks') for task in main['block']]
+        imports = [task.get('ansible.builtin.import_tasks', task.get('ansible.builtin.include_tasks')) for task in main['block']]
         notice_index = imports.index('notice.yml')
         self.assertGreater(notice_index, imports.index('prepare.yml'))
         self.assertLess(notice_index, next(i for i, task in enumerate(main['block']) if 'block' in task))
@@ -1812,8 +2023,9 @@ esac
             with self.subTest(role=role):
                 self.assertEqual(len(main), 1)
                 outer = main[0]
+                prepare_key = "include_tasks" if role == "release_kiosk" else "import_tasks"
                 self.assertEqual(
-                    outer["block"][0]["ansible.builtin.import_tasks"],
+                    outer["block"][0][f"ansible.builtin.{prepare_key}"],
                     "prepare.yml",
                 )
                 if role == "release_kiosk":

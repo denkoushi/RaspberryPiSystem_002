@@ -1,3 +1,4 @@
+import { workerPath } from '../../../test/setup-env.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -11,7 +12,7 @@ import type {
   StoredAssemblyProcedureAsset,
 } from '../../assembly-procedure-assets/assembly-procedure-asset-storage.port.js';
 
-const TEST_STORAGE_DIR = '/tmp/test-assembly-procedure-draft-import';
+const TEST_STORAGE_DIR = workerPath('/tmp/test-assembly-procedure-draft-import');
 const ORIGINAL_PHOTO_STORAGE_DIR = process.env.PHOTO_STORAGE_DIR;
 
 describe('AssemblyProcedureDraftImportService', () => {

@@ -131,6 +131,28 @@ class OSUpdateUnitTests(unittest.TestCase):
         self.assertIn("(ansible_failed_result.msg | default('unknown') | string)[:300]", message)
         self.assertNotIn('always', policy)
 
+    def assert_shared_pi4_guard(self, source):
+        # The shared Pi4 preparation and its failure cleanup take the marker
+        # before the first mutation and always clear it. A preparation failure,
+        # including a marker lock timeout, is only recorded so the aggregate
+        # play stops every kiosk before any switch.
+        def nested(items):
+            for item in items:
+                if any(key in item for key in ('block', 'rescue', 'always')):
+                    if item.get('block') and item['block'][0].get('ansible.builtin.import_tasks') == START:
+                        yield item
+                    for key in ('block', 'rescue', 'always'):
+                        yield from nested(item.get(key, []))
+        guards = list(nested(source))
+        self.assertEqual(len(guards), 1)
+        guard = guards[0]
+        self.assertGreater(len(guard['block']), 1)
+        self.assertEqual(guard['always'][0]['ansible.builtin.import_tasks'], END)
+        self.assertNotIn('when', guard['always'][0])
+        for task in guard.get('rescue', []):
+            self.assertEqual(set(task), {'name', 'ansible.builtin.set_fact'})
+            self.assertFalse(task['ansible.builtin.set_fact']['release_pi4_prepared_this_run'])
+
     def assert_guard(self, source):
         self.assertEqual(len(source), 1)
         guard = source[0]
@@ -145,13 +167,19 @@ class OSUpdateUnitTests(unittest.TestCase):
         for role in ('release_pi5', 'release_kiosk', 'release_signage'):
             with self.subTest(role=role):
                 self.assert_guard(tasks(f'roles/{role}/tasks/main.yml'))
-        # PREPARED, QUIESCED and FINALIZE bypass main; cover their rescue too.
+        # PREPARED, QUIESCED, FINALIZE and the shared Pi4 preparation bypass
+        # main; cover their rescue too.
         plays = tasks('playbooks/deploy-release-standard.yml')
         guarded = [play for play in plays if 'tasks' in play]
-        self.assertEqual(len(guarded), 8)
+        self.assertEqual(len(guarded), 10)
+        shared = {'Prepare every selected normal Pi4 before switching waves',
+                  'Require every normal Pi4 candidate before switching any kiosk'}
         for play in guarded:
             with self.subTest(play=play['name']):
-                self.assert_guard(play['tasks'])
+                if play['name'] in shared:
+                    self.assert_shared_pi4_guard(play['tasks'])
+                else:
+                    self.assert_guard(play['tasks'])
         start = tasks('tasks/os-security-update-release-start.yml')
         self.assertEqual(start[0]['ansible.builtin.file']['mode'], '0755')
         marker = start[1]['ansible.builtin.copy']
