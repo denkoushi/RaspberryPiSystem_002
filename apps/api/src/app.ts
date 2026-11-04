@@ -24,11 +24,12 @@ import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
 import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
 import { prisma } from './lib/prisma.js';
+import { serializeRequestForLog } from './lib/log-url.js';
 import { ensureProcedureManualProcesses } from './services/assembly/procedure-manual-reference-data.js';
 import { enableSiteDirectoryFailClosed, ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: env.LOG_LEVEL } });
+  const app = Fastify({ logger: { level: env.LOG_LEVEL, serializers: { req: serializeRequestForLog } } });
   registerErrorHandler(app);
   registerRequestLogger(app);
   // Declare the expected scheduler before listen so startup cannot appear ready.

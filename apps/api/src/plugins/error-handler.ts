@@ -21,6 +21,7 @@ import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { env } from '../config/env.js';
 import { ApiError, DomainHttpError } from '../lib/errors.js';
+import { redactUrlForLog } from '../lib/log-url.js';
 import { resolveErrorLogDevice } from '../services/clients/error-log-device.service.js';
 
 type ErrorResponse = {
@@ -196,7 +197,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     };
     const requestId = request.id;
     const method = request.method;
-    const url = request.url;
+    const url = redactUrlForLog(request.url) ?? '';
     const userAgent = request.headers['user-agent'];
     const userId = request.user?.id;
     const normalizedError = toError(error);

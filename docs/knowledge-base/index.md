@@ -20,6 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
+| 2026-11 セキュリティ点検（レート制限回避・端末キー漏れ・バックアップAnsible注入） | [KB-437](./KB-437-security-audit-2026-11-api-hardening.md) | 1件 | 2026-11-04: 分野別点検と反証で確定17件。小さな修正を適用、trustProxy・バックアップ設定の秘密値・端末location変更などは要判断で未修正 |
 | Power BI クエリの15MB制限による生産日程CSV欠落 | [KB-435](./KB-435-powerbi-query-15mb-csv-truncation.md) | 1件 | 2026-11-02: MSZ追加後に応答上限で後半の製番が欠落し照合が未登録。期間分割で取込復旧、日次化と現場の再スキャンは未完了 |
 | キオスクの音声入出力の検討（個人スマホ・Bluetooth・USB） | [KB-434](./KB-434-kiosk-voice-io-options.md) | 1件 | 2026-10-31: 個人スマホ+一回限りQRは可能だがWi-Fi分離が厄介で見送り。Bluetoothは不可。各Pi4にUSBスピーカーフォンの方向 |
 | Tailscale 経由で管理画面が Forbidden になる件と Pi5 の SNAT 停止 | [KB-433](./KB-433-pi5-tailscale-snat-admin-forbidden.md) | 1件 | 2026-10-31: tailnet の接続元が Docker bridge のアドレスに書き換えられ /admin が 403。Pi5 の Tailscale SNAT を止め、標準リリースにも追加 |

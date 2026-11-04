@@ -260,7 +260,7 @@ describe('procedure-material Gmail packet', () => {
     await expect(normalizePhotoForStorage(buffer, 'image/png')).rejects.toThrow('縮小しても 1 MB に収まりません');
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([photoPart()]), client: { getAttachment: async () => buffer } });
     expect(packet).toMatchObject({ photos: [], skippedAttachments: 1, warnings: ['photo.png: 縮小しても 1 MB に収まりません'] });
-  });
+  }, 90_000); // ノイズ PNG の減色を 3 回行う CPU 負荷の高いテスト。CI の 4 worker 並列では 30 秒を超える
   it.each(['application/pdf', 'application/octet-stream', 'binary/octet-stream', undefined])('collects PDF bytes with MIME %j without rendering', async (mimeType) => {
     const attachmentClient = { getAttachment: vi.fn().mockResolvedValue(pdf) };
     const packet = await resolveProcedureMaterialGmailPacket({ message: message([pdfPart({ mimeType })]), client: attachmentClient });

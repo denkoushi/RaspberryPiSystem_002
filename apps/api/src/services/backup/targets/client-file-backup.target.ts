@@ -8,8 +8,9 @@ import type { BackupTargetInfo } from '../backup-types.js';
 import { ApiError } from '../../../lib/errors.js';
 import {
   assertBackupSshAuthorityAvailable,
-  assertRemoteBackupPathAllowed,
   buildBackupSshAnsibleArgs,
+  buildClientBackupExtraVarsArgs,
+  parseClientBackupSource,
   resolveBackupSshPaths,
 } from '../backup-ssh-policy.js';
 
@@ -18,7 +19,7 @@ const execFileAsync = promisify(execFile);
 /**
  * クライアント端末のファイルをAnsible経由でバックアップするターゲット
  * 
- * source形式: "hostname:/path/to/file" または "hostname:/path/to/file:dest_name"
+ * source形式: "hostname:/path/to/file"
  * 例: "raspberrypi4:/opt/RaspberryPiSystem_002/clients/nfc-agent/.env"
  */
 export class ClientFileBackupTarget implements BackupTarget {
@@ -28,15 +29,10 @@ export class ClientFileBackupTarget implements BackupTarget {
   private readonly ansiblePlaybookPath: string;
 
   constructor(source: string, ansibleInventoryPath?: string, ansiblePlaybookPath?: string) {
-    // source形式をパース: "hostname:/path/to/file" または "hostname:/path/to/file:dest_name"
-    const parts = source.split(':');
-    if (parts.length < 2) {
-      throw new ApiError(400, `Invalid client file source format: ${source}. Expected format: "hostname:/path/to/file"`);
-    }
-
-    this.clientHost = parts[0];
-    this.remotePath = parts.slice(1).join(':'); // パスに:が含まれる可能性があるため、最初の:以降を結合
-    assertRemoteBackupPathAllowed(this.remotePath);
+    // source形式をパース: "hostname:/path/to/file"（Ansible extra vars へ渡すため許可文字だけ受け付ける）
+    const parsed = parseClientBackupSource(source, 'hostname:/path/to/file');
+    this.clientHost = parsed.clientHost;
+    this.remotePath = parsed.remotePath;
 
     // APIには資格情報を含まないバックアップ専用Ansible境界だけをマウントする。
     const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || '/app/backup-ansible';
@@ -78,9 +74,11 @@ export class ClientFileBackupTarget implements BackupTarget {
           '-i', ansibleInventoryPath,
           ansiblePlaybookPath,
           ...buildBackupSshAnsibleArgs(backupSshPaths),
-          '-e', `client_host=${this.clientHost}`,
-          '-e', `client_file_path=${this.remotePath}`,
-          '-e', `backup_destination=${backupDestination}`
+          ...buildClientBackupExtraVarsArgs({
+            client_host: this.clientHost,
+            client_file_path: this.remotePath,
+            backup_destination: backupDestination,
+          })
         ],
         {
           cwd: path.dirname(ansibleInventoryPath),

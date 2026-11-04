@@ -54,10 +54,41 @@ export function buildBackupSshAnsibleArgs(paths: BackupSshPaths): string[] {
     '-o GlobalKnownHostsFile=/dev/null',
   ].join(' ');
 
+  // key=value 形式の -e は Ansible が空白で分割するため、JSON で1変数として渡す
   return [
     '--private-key', paths.privateKeyPath,
-    '-e', `ansible_ssh_common_args=${sshOptions}`,
+    '-e', JSON.stringify({ ansible_ssh_common_args: sshOptions }),
   ];
+}
+
+// Ansible の extra vars は Jinja として評価されるため、ホスト名とパスは許可文字だけに限定する
+const CLIENT_BACKUP_HOST_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+const CLIENT_BACKUP_PATH_PATTERN = /^\/[A-Za-z0-9._/@+-]*$/;
+
+export type ClientBackupSource = {
+  clientHost: string;
+  remotePath: string;
+};
+
+export function parseClientBackupSource(source: string, expectedFormat: string): ClientBackupSource {
+  const separatorIndex = source.indexOf(':');
+  if (separatorIndex <= 0) {
+    throw new ApiError(400, `Invalid client backup source format. Expected format: "${expectedFormat}"`);
+  }
+  const clientHost = source.slice(0, separatorIndex);
+  const remotePath = source.slice(separatorIndex + 1);
+  if (!CLIENT_BACKUP_HOST_PATTERN.test(clientHost)) {
+    throw new ApiError(400, 'Client backup host may contain only letters, digits, ".", "_" and "-"');
+  }
+  if (!CLIENT_BACKUP_PATH_PATTERN.test(remotePath)) {
+    throw new ApiError(400, 'Client backup path must be absolute and may contain only letters, digits, and "._/@+-"');
+  }
+  assertRemoteBackupPathAllowed(remotePath);
+  return { clientHost, remotePath };
+}
+
+export function buildClientBackupExtraVarsArgs(vars: Record<string, string>): string[] {
+  return ['-e', JSON.stringify(vars)];
 }
 
 export function assertRemoteBackupPathAllowed(remotePath: string): void {

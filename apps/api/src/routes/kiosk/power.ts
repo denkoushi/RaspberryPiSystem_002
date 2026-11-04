@@ -32,7 +32,9 @@ export async function registerKioskPowerRoute(
     const body = powerActionSchema.parse(request.body);
     const requestedAt = new Date().toISOString();
     const safeTimestamp = requestedAt.replace(/[:.]/g, '-');
-    const filename = `${safeTimestamp}-${clientKey}.json`;
+    // ファイル名は processed/・failed/ やログ名に残るため、端末の認証キーではなく端末IDを使う
+    const safeNamePart = (value: string) => value.replace(/[^A-Za-z0-9_-]/g, '_');
+    const filename = `${safeTimestamp}-${safeNamePart(clientDevice.id)}-${safeNamePart(String(request.id))}.json`;
 
     // ディレクトリが存在しない場合は作成（ボリュームマウントされている場合は既に存在する）
     try {

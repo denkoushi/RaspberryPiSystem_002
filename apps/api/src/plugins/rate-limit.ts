@@ -28,6 +28,21 @@ const skipPrefixes = [
   '/api/storage'
 ];
 
+/**
+ * レート制限用のパス正規化。
+ * ルータはパーセントエンコードを復号してから照合するため、生のURLをキーにすると
+ * `/api/auth/logi%6E` のような別表記ごとに別カウンタになり制限を回避できる。
+ * クエリを除き、ルータと同じく1回だけ復号した値をキーとスキップ判定に使う。
+ */
+export const normalizeRateLimitPath = (url: string): string => {
+  const path = url.split('?')[0] ?? '';
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+};
+
 // パスがスキップ対象かどうかを判定
 const shouldSkip = (path: string): boolean => {
   return skipPrefixes.some((prefix) => path.startsWith(prefix));
@@ -40,7 +55,7 @@ export const registerRateLimit = fp(async (app: FastifyInstance) => {
     timeWindow: '1 minute',
     // URL+IPをキーにしてエンドポイント別にカウント
     keyGenerator: (request: FastifyRequest) => {
-      const baseUrl = request.url.split('?')[0];
+      const baseUrl = normalizeRateLimitPath(request.url);
       if (baseUrl.startsWith('/api/kiosk')) {
         const clientKey = normalizeClientKey(request.headers['x-client-key']);
         return `${request.ip}:${baseUrl}:${clientKey ?? 'anonymous'}`;
@@ -49,8 +64,7 @@ export const registerRateLimit = fp(async (app: FastifyInstance) => {
     },
     // 特定パスをスキップ
     allowList: (request: FastifyRequest) => {
-      const path = request.url.split('?')[0];
-      return shouldSkip(path);
+      return shouldSkip(normalizeRateLimitPath(request.url));
     },
     // 429エラー時のレスポンス
     errorResponseBuilder: (_request, context) => ({

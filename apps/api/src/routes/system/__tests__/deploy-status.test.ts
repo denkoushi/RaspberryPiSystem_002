@@ -1,3 +1,4 @@
+import { workerPath } from '../../../test/setup-env.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -8,7 +9,7 @@ process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borr
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
-const TEST_CONFIG_DIR = join(process.cwd(), 'test-config');
+const TEST_CONFIG_DIR = workerPath(join(process.cwd(), 'test-config'));
 const TEST_DEPLOY_STATUS_FILE = join(TEST_CONFIG_DIR, 'deploy-status.json');
 const TEST_CLIENT_KEY = 'test-only-deploy-status-api-key';
 const TEST_OTHER_CLIENT_KEY = 'test-only-deploy-status-other-api-key';

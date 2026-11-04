@@ -16,6 +16,29 @@ update-frequency: high
 
 ---
 
+### Web CI shards / ESLint external cycle traversal (2026-11-04)
+
+- `web` は 3 shard の coverage + blob を出力し、Web build は shard 1 だけで実行する。blob artifact の保持は 1 日。
+- `web-coverage` は 3 blob が揃うことを確認し、`apps/web` で Vitest の既定 `vite.config.ts` を読み、coverage を統合して既存閾値（statements 61 / branches 58 / functions 55 / lines 63）を適用する。`COVERAGE_ENFORCE_THRESHOLDS=false` は shard 専用で、ローカルの既定は閾値有効。
+- `ci-required` は同じ `WEB_SELECTED` で `web` と `web-coverage` の両方を検証し、未選択なら両方の skip を要求する。
+- Web / API ESLint の `import/no-cycle` は `ignoreExternal: true` で外部 package の探索を省く。workspace package の bare import 経由の循環も対象外になるため、`packages/` から `apps/` への逆依存を作らない。今回の検索では逆参照なし。Web / API 内の一時 2-file cycle（拡張子なし import）は新旧設定とも 2 件検出し、fixture は削除済み。API の `.js` 付き specifier の循環は新旧設定とも検出されない（既存の制約）。
+- 検証: CI 構造・集約・関連 release の 58 tests と YAML parse が成功。ローカルで 3 shard（各 226 files、約 60s）と `--merge-reports` による統合（678 files / 5,949 tests、閾値有効）が成功。
+- lint 時間（単独実行）: Web 87s → 61s、API 72s → 49s。
+
+### API Vitest worker DB / storage isolation (2026-11-04)
+
+- `api` の各 shard は `API_TEST_DB_PER_WORKER=1` と CLI の `--fileParallelism=true --maxWorkers=4` を併用する。既定のローカル実行は直列のまま。
+- `apps/api/src/test/setup-env.ts` が import 前に DB 名だけへ `_w<poolId>` を付与する。URL の認証情報、host、port、query は維持する。保存先・設定ファイルと固定 fixture パスも同じ opt-in で分離する。
+- インストール済み Vitest 4.1.11 は既定で `forks` / `isolate: true`。`Pool.setMaxWorkers` が ID を `1..maxWorkers` で作成し、`getWorkerId` / `freeWorkerId` で再利用する。増加し続ける `VITEST_WORKER_ID` は使用しない。
+- migrate deploy 直後、API / test 接続が始まる前に `bash scripts/ci/prepare-api-test-databases.sh <container> 4` を実行する。`postgres` DB から残存 migration 接続を終了し、`borrow_return_w1..w4` を drop / template copy する。専用の使い捨てテストコンテナだけに使う。
+- scratch 分離対象: `FILE_STORAGE_ROOT`、`PHOTO_STORAGE_DIR`、`PDF_STORAGE_DIR`、`CSV_DASHBOARD_STORAGE_DIR`、`SIGNAGE_RENDER_DIR`、`PDF_PAGES_DIR`、`ALERTS_DIR`、`BACKUP_STORAGE_DIR`、`BACKUP_CONFIG_PATH`。
+- テストによる上書き対象: Gmail procedure import / draft import の固定 `/tmp`、deploy-status の `test-config`、imports-schedule の `.test-config`。これらも worker suffix を付ける。
+- その他の書込みは `mkdtemp`、固有の timestamp / random 名、worker 分離された storage 配下、または mock。Hermes guide の repo 内 fixture も `mkdtemp`。canvas preview の明示出力は単一ファイルのみが使用し、CI は未設定。HTTP listen は `0` による動的ポート。固定 `/tmp` の PDF パス等は DB metadata / mock 引数で、実際の共有書込みではない。
+- advisory lock は PostgreSQL の DB ごとの名前空間。scheduler の session lock も同様。`vector` / `pg_trgm` は DB ごとの extension で template に含まれる。LISTEN / NOTIFY、role 変更、cluster 設定変更は検出されなかった。
+- `TEST_DATABASE_URL` を別途要求する既存の opt-in suite は CI で未設定のまま。due-scope の既存 exact URL guard も変更しない。worker 分離は通常の `DATABASE_URL` が対象であり、別途指定した共有 `TEST_DATABASE_URL` の並列利用を保証しない。
+- ローカル手順は `setup-env.ts` 冒頭を参照。base DB の接続 URL を渡す。別の同時 Vitest 実行と同じ DB / scratch prefix を共有しない。
+- 検証: 専用 Postgres（port 55432）で migrate、4 worker DB を作成し、full suite を `--maxWorkers=4` で実行して成功（2 回実行。945 passed / 19 skipped、約 271–322s）。`tsc --noEmit -p tsconfig.json` の TS6059 5件は既存。
+
 <a id="kb-451-route-integration-shared-fixture-postgres-test-local"></a>
 <a id="kb-396-route-integration-shared-fixture-postgres-test-local"></a>
 

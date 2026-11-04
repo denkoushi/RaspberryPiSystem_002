@@ -40,7 +40,8 @@ class DisableMptcpTests(unittest.TestCase):
                 release_plays = [
                     play
                     for play in plays
-                    if play["hosts"] == host_group and play.get("roles")
+                    # The Pi4 wave pattern is templated to put the canary first.
+                    if host_group in play["hosts"] and play.get("roles")
                 ]
                 self.assertTrue(release_plays)
                 for play in release_plays:
