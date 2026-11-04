@@ -8,6 +8,7 @@ export type PalletVizActionRowDensity = 'default' | 'compact';
 
 export type PalletVizActionRowProps = {
   busy: boolean;
+  hasPendingRequests?: boolean;
   canOperate: boolean;
   canClearPallet?: boolean;
   hasSelectedItem: boolean;
@@ -27,6 +28,7 @@ const COMPACT_BTN =
  */
 export function PalletVizActionRow({
   busy,
+  hasPendingRequests = false,
   canOperate,
   canClearPallet = true,
   hasSelectedItem,
@@ -69,7 +71,7 @@ export function PalletVizActionRow({
         <Button
           type="button"
           variant="ghostOnDark"
-          disabled={busy || !hasSelectedItem}
+          disabled={busy || hasPendingRequests || !hasSelectedItem}
           onClick={onDelete}
           className={clsx(compact && COMPACT_BTN)}
         >
@@ -82,7 +84,7 @@ export function PalletVizActionRow({
             compact && COMPACT_BTN,
             '!text-red-300 hover:!text-red-200 hover:bg-white/10'
           )}
-          disabled={busy || !canClearPallet}
+          disabled={busy || hasPendingRequests || !canClearPallet}
           onClick={onClearPallet}
         >
           {palletVizCopy.actions.clearPallet}

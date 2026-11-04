@@ -7,6 +7,9 @@ import { kioskWebNavigation } from '../features/kiosk/kioskWebActivation';
 
 import { KioskLayout } from './KioskLayout';
 
+const palletReplay = vi.hoisted(() => ({ hook: vi.fn() }));
+vi.mock('../features/kiosk/pallet-visualization/offline/usePalletOutboxReplay', () => ({ usePalletOutboxReplay: palletReplay.hook }));
+
 const replay = vi.hoisted(() => ({ flush: vi.fn(), onSent: vi.fn(), offSent: vi.fn(), invalidateQueries: vi.fn() }));
 vi.mock('../features/kiosk/inventory/offline/inventoryOutboxRunner', () => ({ inventoryOutboxRunner: () => replay }));
 vi.mock('@tanstack/react-query', async importOriginal => ({
@@ -77,6 +80,7 @@ describe('KioskLayout deploy status handling', () => {
   });
 
   beforeEach(() => {
+    palletReplay.hook.mockClear();
     replay.flush.mockReset().mockResolvedValue(undefined);
     replay.onSent.mockReset().mockReturnValue(replay.offSent);
     replay.offSent.mockReset();
@@ -455,4 +459,13 @@ it('keeps the portal header visible at the top without a dock handle', () => {
   expect(screen.queryByRole('button', { name: 'メニューを開く' })).not.toBeInTheDocument();
   expect(screen.getByRole('main')).toHaveClass('overflow-hidden');
   revealMode.real = false;
+});
+
+describe('pallet replay integration', () => {
+  it('starts replay even before server status opens kiosk content', () => {
+    deployStatus = undefined;
+    render(<MemoryRouter><KioskLayout /></MemoryRouter>);
+    expect(palletReplay.hook).toHaveBeenCalled();
+    expect(screen.queryByText('normal-kiosk-content')).not.toBeInTheDocument();
+  });
 });

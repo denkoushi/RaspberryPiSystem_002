@@ -7,14 +7,13 @@ import {
   deleteKioskPalletVisualizationItem,
   getKioskPalletVisualizationBoard,
   getResolvedClientKey,
-  postKioskPalletVisualizationItem,
-  postKioskPalletVisualizationItemReplace,
   type PalletVisualizationItemDto,
 } from '../../../api/client';
 import { palletVisualizationQueryKeys } from '../../../api/queryKeys/palletVisualization';
 import { useKeyboardWedgeScan } from '../../barcode-scan/useKeyboardWedgeScan';
 import { useSerialBarcodeStream } from '../../barcode-scan/useSerialBarcodeStream';
 
+import { usePalletOfflineQueue } from './offline/usePalletOfflineQueue';
 import { PALLET_VIZ_SELECTED_MACHINE_LS_KEY } from './palletVisualizationStorage';
 import { mapPalletVisualizationDtoToListItem } from './palletVizListItemMapping';
 
@@ -64,6 +63,7 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
   const enableKeyboardWedge = options?.enableKeyboardWedge !== false;
   const enableSerialBarcodeStream = options?.enableSerialBarcodeStream !== false;
   const queryClient = useQueryClient();
+  const offline = usePalletOfflineQueue();
 
   const boardQuery = useQuery({
     queryKey: palletVisualizationQueryKeys.kioskBoard(clientKey),
@@ -132,14 +132,10 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
 
   const addMutation = useMutation({
     mutationFn: (input: { barcode: string; palletNoOverride?: number }) =>
-      postKioskPalletVisualizationItem(
-        {
-          machineCd: selectedCd,
-          palletNo: input.palletNoOverride ?? palletNo,
-          manufacturingOrderBarcodeRaw: input.barcode,
-        },
-        clientKey
-      ),
+      offline.submit({
+        route: 'add', machineCd: selectedCd, palletNo: input.palletNoOverride ?? palletNo, clientKey,
+        body: { machineCd: selectedCd, palletNo: input.palletNoOverride ?? palletNo, manufacturingOrderBarcodeRaw: input.barcode },
+      }),
     onSuccess: () => {
       void invalidateBoard();
     },
@@ -147,7 +143,7 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
 
   const replaceMutation = useMutation({
     mutationFn: ({ itemId, barcode }: { itemId: string; barcode: string }) =>
-      postKioskPalletVisualizationItemReplace(itemId, { manufacturingOrderBarcodeRaw: barcode }, clientKey),
+      offline.submit({ route: 'replace', machineCd: selectedCd, palletNo, clientKey, itemId, body: { manufacturingOrderBarcodeRaw: barcode } }),
     onSuccess: () => {
       setSelectedItemId(null);
       void invalidateBoard();
@@ -223,13 +219,15 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
     setSelectedItemId((prev) => (prev === id ? null : id));
   }, []);
 
+  const hasPendingRequests = offline.records.some(record => record.status === 'pending' && record.machineCd === selectedCd && record.palletNo === palletNo);
+
   const deleteSelectedItem = useCallback(() => {
-    if (selectedItemId) deleteMutation.mutate(selectedItemId);
-  }, [selectedItemId, deleteMutation]);
+    if (!hasPendingRequests && selectedItemId) deleteMutation.mutate(selectedItemId);
+  }, [selectedItemId, deleteMutation, hasPendingRequests]);
 
   const clearCurrentPallet = useCallback(() => {
-    clearMutation.mutate();
-  }, [clearMutation]);
+    if (!hasPendingRequests) clearMutation.mutate();
+  }, [clearMutation, hasPendingRequests]);
 
   const mutationError =
     resolveMutationError(addMutation.error) ??
@@ -238,6 +236,8 @@ export function usePalletVisualizationController(options?: UsePalletVisualizatio
 
   return {
     clientKey,
+    hasPendingRequests,
+    offlineMessage: offline.message,
     boardQuery,
     machines,
     selectedMachineCd: selectedCd,

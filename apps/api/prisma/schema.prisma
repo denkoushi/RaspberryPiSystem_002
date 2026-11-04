@@ -673,6 +673,9 @@ model MachinePalletItem {
 /// パレット可視化イベントログ
 model MachinePalletEvent {
   id                           String                       @id @default(uuid())
+  eventKey                     String?                      @db.Uuid
+  eventFingerprint             String?                      @db.Char(64)
+  readAt                       DateTime?                    @db.Timestamptz(3)
   clientDeviceId               String?
   actionType                   MachinePalletEventActionType
   /// 資源CD（API 上は machineCd）
@@ -686,6 +689,7 @@ model MachinePalletEvent {
 
   clientDevice ClientDevice? @relation(fields: [clientDeviceId], references: [id], onDelete: SetNull)
 
+  @@unique([clientDeviceId, eventKey], map: "MachinePalletEvent_event_key_uidx")
   @@index([clientDeviceId, createdAt], map: "MachinePalletEvent_idx_device_time")
   @@index([resourceCd, createdAt], map: "MachinePalletEvent_idx_resource_time")
 }
