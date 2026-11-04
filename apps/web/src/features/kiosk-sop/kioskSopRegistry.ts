@@ -1,3 +1,4 @@
+import { isVitestRun } from '../../config/productionBuildConfig';
 import assemblyManualUrl from '../../generated/kiosk-sop/assembly-procedure-template/manual.html?url';
 import inspectionDrawingManualUrl from '../../generated/kiosk-sop/inspection-drawing/manual.html?url';
 import { registerKioskPreload } from '../kiosk/kioskLazyPreload';
@@ -12,7 +13,7 @@ async function fetchHtml(url: string): Promise<string> {
 
 // The Vite dev server injects its client scripts into fetched HTML, so dev keeps the raw module import.
 // Vitest also defines import.meta.hot, so tests exercise the fetch path used in production.
-const useRawImport = import.meta.hot !== undefined && import.meta.env.MODE !== 'test';
+const useRawImport = import.meta.hot !== undefined && !isVitestRun;
 function cachedHtml(load: () => Promise<string>): () => Promise<string> {
   let pending: Promise<string> | undefined;
   return () => pending ??= load().catch((error) => {
