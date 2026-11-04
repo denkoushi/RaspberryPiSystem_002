@@ -29,7 +29,7 @@ update-frequency: medium
 
 **実装**:
 - システム設定ファイル（`/etc/`配下）は`manage-system-configs.yml`で管理
-- アプリケーション設定ファイル（`.env`など）は`manage-app-configs.yml`で管理（将来実装予定）
+- アプリケーション設定ファイル（`.env`など）は`manage-app-configs.yml`で管理
 
 ### 2. `git clean`の安全な使用
 
@@ -66,7 +66,7 @@ update-frequency: medium
 **使用方法**:
 ```bash
 # リモートホストでバックアップを取得
-./scripts/ansible-backup-configs.sh tools03@192.168.128.102
+./scripts/ansible-backup-configs.sh tools03@<pi4_ip>
 ```
 
 ### 4. ロールバック機能の実装
@@ -198,30 +198,7 @@ handlers:
 - サイネージサービスが動作していると、デプロイ時の`systemd`モジュール実行時にメモリ不足でハングする可能性がある
 - `apt`パッケージマネージャーの実行時にもリソースを消費する
 
-**実装手順**:
-```bash
-# 1. サイネージサービスを停止（Pi3の場合）
-ssh signageras3@<pi3_ip> 'sudo systemctl stop signage-lite.service signage-lite-update.timer'
-
-# 2. メモリ使用状況を確認（120MB以上空きがあることを確認）
-ssh signageras3@<pi3_ip> 'free -m'
-
-# 3. 既存のAnsibleプロセスをkill（重複実行防止）
-ssh denkon5sd02@<pi5_ip> 'pkill -9 -f ansible-playbook; pkill -9 -f AnsiballZ'
-
-# 4. デプロイ実行
-cd /opt/RaspberryPiSystem_002
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi3
-
-# 5. デプロイ完了後、サービスを再起動
-ssh signageras3@<pi3_ip> 'sudo systemctl start signage-lite.service signage-lite-update.timer'
-```
-
-**注意事項**:
-- デプロイ前に必ずサービスを停止する（約束を守る）
-- メモリ使用状況を確認し、十分な空き容量を確保する
-- デプロイ前に既存のAnsibleプロセスをkillし、重複実行を防止する
-- デプロイ完了後、サービスを再起動する
+Pi3のサイネージ関連unit（`signage-lite.service`、`signage-lite-update.timer` など）の停止と復帰は、標準routeの `release_signage` role が prepare と switch/rollback で行う。手動の `systemctl stop` や `pkill` はしない。重複実行は標準CLIのlockで防ぐ。手順は [deployment.md](./deployment.md) を参照。
 
 **関連ナレッジ**: [KB-086](../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)
 
@@ -268,13 +245,14 @@ all:
     server:
       hosts:
         raspberrypi5:
-          ansible_host: 192.168.128.131
+          ansible_host: "{{ server_ip }}"
     clients:
       hosts:
         raspberrypi4:
-          ansible_host: 192.168.128.102
+          ansible_host: "{{ kiosk_ip }}"
           status_agent_client_id: raspberrypi4-kiosk1
 ```
+IPは `group_vars/all.yml` の `network_mode` と `local_network` / `tailscale_network` で解決する。
 
 ### 4. テストの実施
 

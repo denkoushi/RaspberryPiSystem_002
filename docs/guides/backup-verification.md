@@ -51,14 +51,14 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | gre
 
 **期待結果**: 
 - `[BackupScheduler] Scheduler started` が表示される
-- 4つのタスク（database, csv-employees, csv-items, image-photo-storage）が登録されている
+- backup.json の有効なターゲット数ぶん `[BackupScheduler] Scheduled task registered` が出力される
 
 ### 3. バックアップ設定の確認
 
 ```bash
 # 設定ファイルの存在確認
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
-  cat /opt/RaspberryPiSystem_002/config/backup.json 2>/dev/null || \
+scripts/server/run-in-active-api.sh \
+  cat /app/config/backup.json 2>/dev/null || \
   echo "Config file does not exist (using default)"
 ```
 
@@ -80,10 +80,10 @@ curl -sk https://localhost/api/backup/config/health \
 **方法A: 内部エンドポイント（認証不要、Pi5ホストからのみ）**
 
 ```bash
-# Pi5ホストにSSH接続した状態で実行。localhost/172.x からのみ許可。
-curl -sk -X POST https://localhost/api/backup/internal \
-  -H "Content-Type: application/json" \
-  -d '{"kind":"csv","source":"employees","metadata":{"label":"manual-verify"}}'
+# Pi5ホストで実行。稼働中APIスロット内のloopbackから呼ぶ（backup.jsonで有効なkind/source完全一致ターゲットのみ）
+cd /opt/RaspberryPiSystem_002
+scripts/server/run-in-active-api.sh \
+  node /app/host/apps/api/scripts/backup-internal-cli.mjs --kind csv --source employees --label manual-verify
 ```
 
 **方法B: 管理者トークンを使用**
@@ -119,11 +119,11 @@ curl -sk https://localhost/api/backup \
 
 ```bash
 # バックアップディレクトリの確認
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+scripts/server/run-in-active-api.sh \
   ls -la /opt/backups/
 
 # 特定のバックアップファイルの確認
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
+scripts/server/run-in-active-api.sh \
   ls -lah /opt/backups/csv/*/
 ```
 
@@ -146,7 +146,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | \
 
 **期待結果**: 
 - スケジュールされた時間にバックアップが実行される
-- ログに `[BackupScheduler] Backup executed successfully` が表示される
+- ログに `[BackupScheduler] Scheduled backup completed` が表示される
 
 ### 7. Dropbox連携の確認（オプション）
 
@@ -154,8 +154,8 @@ Dropbox連携が設定されている場合：
 
 ```bash
 # 設定ファイルでDropboxプロバイダーが設定されているか確認
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
-  cat /opt/RaspberryPiSystem_002/config/backup.json | grep -i dropbox
+scripts/server/run-in-active-api.sh \
+  cat /app/config/backup.json | grep -i dropbox
 
 # バックアップ実行後、Dropboxにファイルがアップロードされているか確認
 # （Dropboxアカウントで確認）

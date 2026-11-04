@@ -303,7 +303,7 @@ ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infr
 curl -k -H "Authorization: Bearer <JWT_TOKEN>" https://100.106.158.2/api/gmail/config
 
 # CSVインポートスケジュール確認
-curl -k -H "Authorization: Bearer <JWT_TOKEN>" https://100.106.158.2/api/imports/schedules
+curl -k -H "Authorization: Bearer <JWT_TOKEN>" https://100.106.158.2/api/imports/schedule
 ```
 
 ## 関連ドキュメント

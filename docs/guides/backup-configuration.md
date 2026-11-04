@@ -650,7 +650,7 @@ Dropboxストレージプロバイダーには、以下のエラーハンドリ�
 
 4. 設定ファイルの権限を設定:
    ```bash
-   sudo chown root:root /opt/RaspberryPiSystem_002/config/backup.json
+   sudo chown "${API_RUNTIME_UID:-1000}:${API_RUNTIME_GID:-1000}" /opt/RaspberryPiSystem_002/config/backup.json  # APIの実行ユーザー（通常は運用ユーザー）
    sudo chmod 600 /opt/RaspberryPiSystem_002/config/backup.json
    ```
 
@@ -665,8 +665,10 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 
 または、APIエンドポイントから設定を更新することもできます（管理者権限が必要）。この方法では、設定保存後にバックアップスケジューラーが自動で再読み込みされます：
 
+自己署名証明書の場合は `-k` を付ける。
+
 ```bash
-curl -X PUT http://localhost:8080/api/backup/config \
+curl -X PUT https://<pi5_host>/api/backup/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d @backup.json
@@ -679,14 +681,14 @@ curl -X PUT http://localhost:8080/api/backup/config \
 ### 設定の取得
 
 ```bash
-curl http://localhost:8080/api/backup/config \
+curl https://<pi5_host>/api/backup/config \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
 ### 設定の更新
 
 ```bash
-curl -X PUT http://localhost:8080/api/backup/config \
+curl -X PUT https://<pi5_host>/api/backup/config \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d @backup.json
@@ -695,7 +697,7 @@ curl -X PUT http://localhost:8080/api/backup/config \
 ### 手動バックアップの実行
 
 ```bash
-curl -X POST http://localhost:8080/api/backup \
+curl -X POST https://<pi5_host>/api/backup \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
   -d '{
@@ -710,7 +712,7 @@ curl -X POST http://localhost:8080/api/backup \
 ### バックアップ一覧の取得
 
 ```bash
-curl http://localhost:8080/api/backup \
+curl https://<pi5_host>/api/backup \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN"
 ```
 
@@ -731,7 +733,7 @@ curl http://localhost:8080/api/backup \
 **対処**:
 - `enabled: true` が設定されているか確認
 - cron形式のスケジュールが正しいか確認
-- APIサーバーのログを確認（`docker logs api`）
+- APIサーバーのログを確認（`docker compose -f infrastructure/docker/docker-compose.server.yml logs api`）
 
 ### Dropboxへのアップロードが失敗する
 

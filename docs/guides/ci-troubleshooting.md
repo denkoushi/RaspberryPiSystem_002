@@ -12,7 +12,7 @@ update-frequency: high
 
 ## `api-db-and-infra` の「Wait for PostgreSQL」で失敗する（`borrow_return` 等・フレーク）
 
-**症状**: ジョブ `api-db-and-infra` 内の **`Wait for PostgreSQL`**（`scripts/ci/wait-for-postgres.sh`）が失敗し、ログに **参照先 DB 名**（例: `borrow_return`）が**存在しない**旨が出る。
+**症状**: ジョブ `api` または `db-infra`（旧 `api-db-and-infra`）内の **`Wait for PostgreSQL`**（`scripts/ci/wait-for-postgres.sh`）が失敗し、ログに **参照先 DB 名**（例: `borrow_return`）が**存在しない**旨が出る。
 
 **切り分け**: アプリ改修と**無関係**な一次失敗のとき、GitHub Actions ランナー上の **PostgreSQL コンテナ初期化／マイグレーション順**の一時的な不整合（**フレーク**）として扱う。
 
@@ -317,7 +317,7 @@ TypeError: Cannot read properties of undefined (reading 'findMany')
 
 **参照パターン**: `apps/api/src/services/signage/signage.service.ts` の `toPrismaLayoutConfig` メソッド
 
-**詳細**: [KB-299](../knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへのrecordstring-unknown-やnullの代入でciビルド失敗)
+**詳細**: [KB-299](../knowledge-base/ci-cd.md#kb-299-prisma-jsonカラムへの-recordstring-unknown-や-null-の代入でciビルド失敗)
 
 ### 11. `test:coverage` が `TypeError: minimatch is not a function` で失敗する（`test-exclude@6.0.0` と `minimatch@10.x` の非互換）
 
@@ -348,9 +348,9 @@ TypeError: minimatch is not a function
 
 **参考**: 2026-02-19に発生し、`test-exclude@7.0.1`へのoverride追加で解決。CI成功（Run ID `22163832946`）、デプロイ成功、実機検証で正常表示を確認。詳細は [knowledge-base/ci-cd.md#kb-270](../knowledge-base/ci-cd.md#kb-270-ciのvitest-coverageでtest-excludeとminimatchの非互換エラー) を参照。
 
-### 9. 性能テストの失敗（`Run API performance tests`）
+### 9. 性能テストの失敗（`Run API tests (coverage shard)` 内の `performance.test.ts`）
 
-**症状**: `Run API performance tests` ステップでテストが失敗し、CIが停止
+**症状**: `Run API tests (coverage shard)` ステップで `performance.test.ts` が失敗し、CIが停止
 
 **エラーメッセージ例**:
 ```
@@ -432,6 +432,6 @@ Step: <ステップ名>
 
 ## 関連ドキュメント
 
-- [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md#kb-005-ciテストが失敗する)
+- [トラブルシューティングナレッジベース](../knowledge-base/ci-cd.md#kb-005-ciテストが失敗する)
 - [開発ガイド](./development.md)
 - [デプロイメントガイド](./deployment.md)

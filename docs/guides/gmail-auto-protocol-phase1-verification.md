@@ -51,7 +51,7 @@ cat /opt/RaspberryPiSystem_002/config/backup.json | jq '.csvImports[] | select(.
 ```
 
 または、管理画面から確認:
-- `https://100.106.158.2/admin/csv-import-schedule`
+- `https://100.106.158.2/admin/import`
 
 **確認ポイント**:
 - [x] Gmailプロバイダーの`csvDashboards`スケジュールが存在する（3件確認）
@@ -312,6 +312,6 @@ curl -H "Authorization: Bearer <token>" http://localhost:3000/api/imports/histor
 
 ## 関連ドキュメント
 
-- [Gmail自動運用プロトコル実装計画](../../.cursor/plans/gmail-auto-protocol-plan_e8cbbcb6.plan.md)
+- [Gmail自動運用プロトコル 解決策1〜4 進捗](../plans/gmail-auto-protocol-progress.md)
 - [Gmail設定ガイド](./gmail-setup-guide.md)
 - [CSVインポート・エクスポート仕様](./csv-import-export.md)

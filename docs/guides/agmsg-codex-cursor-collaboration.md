@@ -100,8 +100,8 @@ cursor-agent status
 
 If Cursor does not react, confirm that the Cursor agent is logged in, the repository folder is open, and both agents are using the same team and identity names.
 
-## Active Feature Context
+## First Feature Context (historical)
 
-The first feature using this collaboration mode is `feat/production-schedule-split-orders`.
+The first feature that used this collaboration mode was `feat/production-schedule-split-orders` (plan status: implemented).
 
 The implementation source of truth remains [production-schedule-split-orders.md](../plans/production-schedule-split-orders.md). Use this agmsg guide only for agent coordination.

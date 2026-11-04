@@ -20,7 +20,7 @@ update-frequency: medium
 
 | 端末 | 自動起動設定 | 状態 | 備考 |
 |------|------------|------|------|
-| **Raspberry Pi 5（サーバー）** | Docker Compose: `restart: unless-stopped` | ✅ 自動起動 | 再起動後も自動的にコンテナが起動 |
+| **Raspberry Pi 5（サーバー）** | Docker Compose: db: `unless-stopped`、api/web: `always` | ✅ 自動起動 | 再起動後も自動的にコンテナが起動 |
 | **Raspberry Pi 4（クライアント）** | 手動起動 | ⚠️ 手動 | 開発中のため自動起動を無効化 |
 | **Raspberry Pi 3（クライアント）** | systemdサービス: `signage-lite.service` | ✅ 自動起動 | サイネージ表示が自動起動 |
 
@@ -38,9 +38,9 @@ services:
   db:
     restart: unless-stopped  # ✅ 自動起動設定済み
   api:
-    restart: unless-stopped  # ✅ 自動起動設定済み
+    restart: always  # ✅ 自動起動設定済み
   web:
-    restart: unless-stopped  # ✅ 自動起動設定済み
+    restart: always  # ✅ 自動起動設定済み
 ```
 
 **動作確認:**
@@ -70,8 +70,8 @@ cat infrastructure/docker/docker-compose.server.yml | grep restart
 **期待される出力:**
 ```
 restart: unless-stopped
-restart: unless-stopped
-restart: unless-stopped
+restart: always
+restart: always
 ```
 
 ---
@@ -195,7 +195,7 @@ systemctl is-enabled signage-lite.service
 
 | 端末 | サービス | 自動起動 | 設定方法 |
 |------|---------|---------|---------|
-| **Raspberry Pi 5** | Docker Compose（db/api/web） | ✅ 有効 | `restart: unless-stopped` |
+| **Raspberry Pi 5** | Docker Compose（db/api/web） | ✅ 有効 | db: `restart: unless-stopped`、api/web: `restart: always` |
 | **Raspberry Pi 4** | Docker Compose（nfc-agent） | ⚠️ 無効 | 開発中のため手動起動 |
 | **Raspberry Pi 4** | systemd（kiosk-browser） | ⚠️ 無効 | 開発中のため手動起動 |
 | **Raspberry Pi 4** | systemd（status-agent） | ✅ 有効 | `systemctl enable` |

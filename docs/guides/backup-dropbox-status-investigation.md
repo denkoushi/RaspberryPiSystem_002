@@ -95,10 +95,9 @@
 
 ### バックアップスケジューラーの起動
 
-**起動タイミング**: APIサーバー起動時（`apps/api/src/main.ts`）
+**起動タイミング**: APIサーバーのlisten後（`apps/api/src/bootstrap/start-post-listen-schedulers.ts`）
 ```typescript
-const backupScheduler = getBackupScheduler();
-await backupScheduler.start();
+await getBackupScheduler().start();
 ```
 
 **起動条件**:

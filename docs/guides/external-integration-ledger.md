@@ -93,7 +93,7 @@ vault_dropbox_refresh_token: "..."  # Dropbox Refresh Token（OAuth取得後）
 
 - **アクセストークン**: OAuthで取得、`backup.json`に保存
 - **リフレッシュトークン**: OAuthで取得、Ansible Vaultと`backup.json`の両方に保存
-- **自動リフレッシュ**: Dropbox SDKには自動リフレッシュ機能がないため、401エラー時に手動リフレッシュが必要
+- **自動リフレッシュ**: `DropboxStorageProvider` が401/`expired_access_token`時にリフレッシュトークンでアクセストークンを自動更新して再試行する
 - **手動リフレッシュ**: `POST /api/backup/oauth/refresh` エンドポイントを使用
 
 ### トラブルシューティング
@@ -236,7 +236,7 @@ SLACK_KIOSK_SUPPORT_WEBHOOK_URL=https://hooks.slack.com/services/...
 - **新構造（推奨）**: `options.dropbox.*` / `options.gmail.*`
 - **旧構造（後方互換）**: フラットなキーも読み取り可能（書き込みは新構造へ自動移行）
 
-詳細は [KB-147](./knowledge-base/infrastructure/backup-restore.md#kb-147-backupjsonのprovider別名前空間化構造的再発防止策) を参照。
+詳細は [KB-147](../knowledge-base/infrastructure/backup-restore.md#kb-147-backupjsonのprovider別名前空間化構造的再発防止策) を参照。
 
 ### 3. OAuth認証の再実行
 
@@ -245,7 +245,7 @@ SLACK_KIOSK_SUPPORT_WEBHOOK_URL=https://hooks.slack.com/services/...
 - エラー時のみ手動リフレッシュ（`POST /api/gmail/oauth/refresh`）
 
 **Dropbox**:
-- 401エラー（`expired_access_token`）時に手動リフレッシュが必要
+- 401エラー（`expired_access_token`）時は自動リフレッシュされる。自動更新が失敗した場合のみ手動リフレッシュ
 - リフレッシュエンドポイント: `POST /api/backup/oauth/refresh`
 
 ### 4. ネットワーク環境の変更
@@ -254,7 +254,7 @@ SLACK_KIOSK_SUPPORT_WEBHOOK_URL=https://hooks.slack.com/services/...
 - Ansibleで`.env`再生成が実行される場合、**Ansible Vaultで管理されていない設定は消失**する
 - 事前にAnsible Vaultに設定を移行しておくこと
 
-詳細は [KB-142](./knowledge-base/infrastructure/ansible-deployment.md#kb-142-ansibleでenv再生成時にslack-webhook-urlが消失する問題と恒久対策) を参照。
+詳細は [KB-142](../knowledge-base/infrastructure/ansible-deployment.md#kb-142-ansibleでenv再生成時に環境変数が消失する問題slack-webhook-url) を参照。
 
 ---
 
@@ -279,7 +279,7 @@ SLACK_KIOSK_SUPPORT_WEBHOOK_URL=https://hooks.slack.com/services/...
 2. **健全性チェック**: JSONパース可能性と必須設定の存在をチェック
 3. **上書き防止**: 既存の`backup.json`は上書きしない（存在する場合はそのまま維持）
 
-詳細は [KB-143](./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策) / [KB-145](./knowledge-base/infrastructure/ansible-deployment.md#kb-145-gmail設定の恒久対策backupjson存在保証と健全性チェック) を参照。
+詳細は [KB-143](../knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策) / [KB-145](../knowledge-base/infrastructure/ansible-deployment.md#kb-145-backupjson新規作成時にgmail設定が消失する問題と健全性チェック追加) を参照。
 
 ---
 
@@ -298,7 +298,7 @@ SLACK_KIOSK_SUPPORT_WEBHOOK_URL=https://hooks.slack.com/services/...
 
 **自動更新**: 1分ごとに自動更新（React Queryの`refetchInterval`）
 
-詳細は [KB-148](./knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装) を参照。
+詳細は [KB-148](../knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装) を参照。
 
 ### 監視項目
 
@@ -321,16 +321,16 @@ SLACK_KIOSK_SUPPORT_WEBHOOK_URL=https://hooks.slack.com/services/...
 
 ### ナレッジベース
 
-- [KB-142: Slack Webhook URLの恒久対策](./knowledge-base/infrastructure/ansible-deployment.md#kb-142-ansibleでenv再生成時にslack-webhook-urlが消失する問題と恒久対策)
-- [KB-143: Dropbox設定の恒久対策](./knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策)
-- [KB-145: Gmail設定の恒久対策](./knowledge-base/infrastructure/ansible-deployment.md#kb-145-gmail設定の恒久対策backupjson存在保証と健全性チェック)
-- [KB-146: Gmail OAuthがDropboxトークンを上書きする問題](./knowledge-base/infrastructure/backup-restore.md#kb-146-gmail-oauthがdropboxトークンを上書きしdropboxバックアップが失敗するトークン分離で恒久対策)
-- [KB-147: backup.jsonのprovider別名前空間化](./knowledge-base/infrastructure/backup-restore.md#kb-147-backupjsonのprovider別名前空間化構造的再発防止策)
-- [KB-148: バックアップ設定の衝突・ドリフト検出の自動化](./knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装)
+- [KB-142: Slack Webhook URLの恒久対策](../knowledge-base/infrastructure/ansible-deployment.md#kb-142-ansibleでenv再生成時に環境変数が消失する問題slack-webhook-url)
+- [KB-143: Dropbox設定の恒久対策](../knowledge-base/infrastructure/ansible-deployment.md#kb-143-ansibleでenv再生成時にdropbox設定が消失する問題と恒久対策)
+- [KB-145: Gmail設定の恒久対策](../knowledge-base/infrastructure/ansible-deployment.md#kb-145-backupjson新規作成時にgmail設定が消失する問題と健全性チェック追加)
+- [KB-146: Gmail OAuthがDropboxトークンを上書きする問題](../knowledge-base/infrastructure/backup-restore.md#kb-146-gmail-oauthがdropboxトークンを上書きしdropboxバックアップが失敗するトークン分離で恒久対策)
+- [KB-147: backup.jsonのprovider別名前空間化](../knowledge-base/infrastructure/backup-restore.md#kb-147-backupjsonのprovider別名前空間化構造的再発防止策)
+- [KB-148: バックアップ設定の衝突・ドリフト検出の自動化](../knowledge-base/infrastructure/backup-restore.md#kb-148-バックアップ設定の衝突ドリフト検出の自動化p1実装)
 
 ### APIドキュメント
 
-- [バックアップAPI](./api/backup.md)
+- [バックアップAPI](../api/backup.md)
 
 ### デプロイメントガイド
 

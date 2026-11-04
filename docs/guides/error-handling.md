@@ -38,19 +38,20 @@
 |------------|--------------|------|
 | `AUTH_TOKEN_REQUIRED` | 401 | 認証トークンが提供されていない |
 | `AUTH_TOKEN_INVALID` | 401 | 認証トークンが無効または期限切れ |
-| `PERMISSION_DENIED` | 403 | 操作権限が不足している |
+| `AUTH_INSUFFICIENT_PERMISSIONS` | 403 | 操作権限が不足している |
 
 ### バリデーションエラー
 
 | エラーコード | HTTPステータス | 説明 |
 |------------|--------------|------|
 | `VALIDATION_ERROR` | 400 | リクエスト形式が不正（Zodバリデーションエラー） |
+| `SCHEMA_VALIDATION_ERROR` | 400 | リクエスト形式が不正（Fastifyスキーマ検証エラー） |
 
 ### データベースエラー（Prisma）
 
 | エラーコード | HTTPステータス | 説明 |
 |------------|--------------|------|
-| `P2002` | 409 | 一意制約違反（重複エラー） |
+| `P2002` | 400 | 一意制約違反（重複エラー） |
 | `P2003` | 400 | 外部キー制約違反（参照エラー） |
 | `P2025` | 404 | レコードが見つからない |
 
@@ -58,7 +59,7 @@
 
 | エラーコード | HTTPステータス | 説明 |
 |------------|--------------|------|
-| `INTERNAL_SERVER_ERROR` | 500 | 予期しないサーバーエラー |
+| `UNHANDLED_ERROR` | 500 | 予期しないサーバーエラー（statusCode を持つエラーは `HTTP_<status>`） |
 
 ## エラーレスポンス例
 
@@ -100,7 +101,7 @@
 
 ```json
 {
-  "message": "従業員コード '0001' は既に使用されています",
+  "message": "ユニーク制約違反: EmployeeのemployeeCodeが既に存在します。",
   "errorCode": "P2002",
   "requestId": "req-ghi789",
   "timestamp": "2025-11-30T10:38:20.369Z",
@@ -109,6 +110,8 @@
   }
 }
 ```
+
+本番環境（NODE_ENV=production）では `message` は「ユニーク制約違反のため、操作できません。」のみとなり、`errorCode` と `details` は返らない。
 
 ### Prismaエラー（P2003: 外部キー制約違反）
 
@@ -180,7 +183,7 @@ throw new ApiError(400, '無効なリクエストです', { field: 'employeeCode
 1. **ZodError**: バリデーションエラーとして処理（`errorCode: VALIDATION_ERROR`）
 2. **PrismaClientKnownRequestError**: Prismaエラーコードに基づいて詳細メッセージを生成
 3. **ApiError**: カスタムエラーとして処理（指定された`errorCode`を使用）
-4. **その他のエラー**: 予期しないエラーとして処理（`errorCode: INTERNAL_SERVER_ERROR`）
+4. **その他のエラー**: 予期しないエラーとして処理（`errorCode: UNHANDLED_ERROR`、statusCode を持つ場合は `HTTP_<status>`）
 
 ## トラブルシューティング
 

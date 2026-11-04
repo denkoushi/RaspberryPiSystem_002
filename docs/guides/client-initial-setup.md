@@ -336,13 +336,14 @@ https://192.168.128.131/admin/clients
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+# 事前に ADMIN_USERNAME と ADMIN_PASSWORD を export しておく
+TOKEN=$(curl -sk -X POST https://192.168.128.131/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d "$(jq -cn --arg username "$ADMIN_USERNAME" --arg password "$ADMIN_PASSWORD" '{username: $username, password: $password}')" | jq -r '.accessToken')
 
 # クライアント状態を取得
-curl -X GET http://192.168.128.131:8080/api/clients/status \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | select(.clientId == "raspberrypi4-kiosk1")'
+curl -sk https://192.168.128.131/api/clients/status \
+  -H "Authorization: Bearer $TOKEN" | jq '.clients[] | select(.clientId == "raspberrypi4-kiosk1")'
 ```
 
 **期待される結果:**

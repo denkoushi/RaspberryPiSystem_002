@@ -30,7 +30,7 @@ Google Drive DRの実装は既存のTypeScriptバックアップAPI、UI、Prism
 ### 必須バックアップ（失うと復旧困難）
 
 1. **PostgreSQLデータベース**: すべてのデータ（従業員、アイテム、貸出履歴、トランザクション等）
-   - **場所**: Dockerボリューム `db-data`（ただし、Google Drive DRでは生volumeをコピーしない）
+   - **場所**: Dockerボリューム `db-data-pg18`（旧 `db-data` は legacy read-only。ただし、Google Drive DRでは生volumeをコピーしない）
    - **バックアップ方法**: 日常の個別復元は`scripts/server/backup.sh`、全損DRは`pg_dump -Fc --no-owner --no-acl`による専用スナップショット
    - **頻度**: 日次（推奨）
    - **保存先**: `/opt/backups/`
@@ -77,7 +77,7 @@ Google Drive DRの実装は既存のTypeScriptバックアップAPI、UI、Prism
 | **環境変数ファイル** | `apps/api/.env`, `apps/web/.env`, `infrastructure/docker/.env` | ✅ **必須** | `.env.example`をコピーして作成、バックアップスクリプトで自動バックアップ |
 | **証明書ファイル** | `/opt/RaspberryPiSystem_002/certs/` | ✅ **必須** | `backup.json`で自動バックアップ設定可能（`kind=directory`, `source=/app/host/certs`） |
 | **IPアドレス設定** | `infrastructure/ansible/group_vars/all.yml` | ⚠️ **推奨** | Ansible変数で管理、リポジトリに含まれる（デバイスごとに異なる値） |
-| **データベース** | Dockerボリューム `db-data` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
+| **データベース** | Dockerボリューム `db-data-pg18` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
 | **復旧必須の永続ファイル** | `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `measuring-instrument-genres`, `pallet-machine-illustrations` | ✅ **必須** | `backup.json`の`directory`ターゲット + バックアップスクリプトで自動バックアップ |
 | **写真ファイル** | `/opt/RaspberryPiSystem_002/storage/photos`（`thumbnails`は派生物） | ⚠️ **Dropboxは容量次第／Google Drive DRは一次写真を含む** | Dropboxでは本番無効化し得る。全損DRはGoogle Driveスナップショットを使用 |
 
@@ -467,12 +467,14 @@ tar -czf "${BACKUP_DIR}/certs_backup_${DATE}.tar.gz" -C /opt/RaspberryPiSystem_0
 
 ### 4. Dockerボリュームのバックアップ
 
+通常は pg_dump によるバックアップを優先する。
+
 ```bash
 # Dockerボリュームのバックアップ
 docker run --rm \
-  -v docker_db-data:/data \
+  -v docker_db-data-pg18:/data \
   -v "${BACKUP_DIR}":/backup \
-  alpine tar czf /backup/volume_db-data_${DATE}.tar.gz -C /data .
+  alpine tar czf /backup/volume_db-data-pg18_${DATE}.tar.gz -C /data .
 ```
 
 ### 5. 自動バックアップスクリプト
@@ -579,10 +581,10 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart api
 1. 管理コンソールの「バックアップ」タブ → 「リストア」セクション
 2. 証明書ディレクトリのバックアップを選択
 3. 「リストア」ボタンをクリック
-4. リストア完了後、Caddyを再起動
+4. リストア完了後、web（Caddy）を再起動
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.server.yml restart caddy
+docker compose -f infrastructure/docker/docker-compose.server.yml restart web
 ```
 
 **手動でのリストア**:
@@ -592,7 +594,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml restart caddy
 ```bash
 tar -xzf certs_backup_YYYYMMDD_HHMMSS.tar.gz -C /opt/RaspberryPiSystem_002/
 sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/certs
-docker compose -f infrastructure/docker/docker-compose.server.yml restart caddy
+docker compose -f infrastructure/docker/docker-compose.server.yml restart web
 ```
 
 ### 4. 画像バックアップのリストア
@@ -672,9 +674,9 @@ echo "画像バックアップのリストア完了"
 ```bash
 # Dockerボリュームをリストア
 docker run --rm \
-  -v docker_db-data:/data \
+  -v docker_db-data-pg18:/data \
   -v /opt/backups:/backup \
-  alpine tar xzf /backup/volume_db-data_20250101_020000.tar.gz -C /data
+  alpine tar xzf /backup/volume_db-data-pg18_20250101_020000.tar.gz -C /data
 
 # Dockerコンテナを再起動
 docker compose -f infrastructure/docker/docker-compose.server.yml restart db
@@ -692,13 +694,13 @@ cd /opt/RaspberryPiSystem_002
 docker compose -f infrastructure/docker/docker-compose.server.yml down
 
 # 2. 既存のボリュームを削除（注意：データが失われます）
-docker volume rm docker_db-data
+docker volume rm docker_db-data-pg18
 
 # 3. ボリュームをリストア
 docker run --rm \
-  -v docker_db-data:/data \
+  -v docker_db-data-pg18:/data \
   -v /opt/backups:/backup \
-  alpine tar xzf /backup/volume_db-data_20250101_020000.tar.gz -C /data
+  alpine tar xzf /backup/volume_db-data-pg18_20250101_020000.tar.gz -C /data
 
 # 4. 環境変数ファイルをリストア
 cp /opt/backups/api_env_20250101_020000.env /opt/RaspberryPiSystem_002/apps/api/.env

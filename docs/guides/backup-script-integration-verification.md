@@ -22,9 +22,9 @@
 #### 1. `/api/backup/internal`エンドポイント
 
 - **エンドポイント**: `POST /api/backup/internal`
-- **アクセス制限**: localhostからのアクセスのみ許可（`127.0.0.1`、`::1`、`172.*`）
+- **アクセス制限**: localhostからのアクセスのみ許可（`127.0.0.1`、`::1`、`172.*`）（現行: loopback `127.0.0.0/8`・`::1` のみ。`172.*` は不可）
 - **レート制限**: 無効化（`config: { rateLimit: false }`）
-- **機能**: 通常の`/api/backup`エンドポイントと同じ機能を提供
+- **機能**: 通常の`/api/backup`エンドポイントと同じ機能を提供（現行: `backup.json` で有効な kind/source 完全一致ターゲットのみ実行し、それ以外は403。`backup.sh` は稼働中APIスロット内で `apps/api/scripts/backup-internal-cli.mjs` を実行する）
 - **用途**: バックアップスクリプト（`scripts/server/backup.sh`）から呼び出される
 
 #### 2. バックアップスクリプトの動作

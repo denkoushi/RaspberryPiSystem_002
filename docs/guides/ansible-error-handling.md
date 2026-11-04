@@ -31,7 +31,6 @@ Ansibleプレイブックは、実行結果を詳細に記録します：
 `scripts/update-all-clients.sh`は以下の機能を提供します：
 
 - **エラーコードの返却**: 失敗時は適切なエラーコードを返却
-- **サマリーファイルの生成**: JSON形式で実行結果を保存
 - **失敗ホストの一覧**: 失敗したホストを特定可能
 
 ## 使用方法
@@ -39,35 +38,12 @@ Ansibleプレイブックは、実行結果を詳細に記録します：
 ### 更新スクリプトの実行
 
 ```bash
-# Macから実行
-export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
-# inventory指定が必須（誤デプロイ防止）
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit PATTERN
+# 承認後
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN --detach
+scripts/update-all-clients.sh --status RUN_ID --inventory infrastructure/ansible/inventory.yml
 ```
-
-**実行結果の確認:**
-
-```
-[INFO] Deployment Summary:
-{
-  "timestamp": "20251201-103259",
-  "logFile": "logs/ansible-update-20251201-103259.log",
-  "totalHosts": 2,
-  "failedHosts": [],
-  "unreachableHosts": [],
-  "success": true
-}
-```
-
-### 更新ステータスの確認
-
-```bash
-# 最新のログからステータスを確認
-./scripts/check-update-status.sh
-
-# 特定のログファイルを指定
-./scripts/check-update-status.sh ansible-update-20251201-103259.log
-```
+全fleetは明示的な `--full-fleet` だけを使う。判定方法は [deployment.md](./deployment.md) を参照。
 
 ## エラーパターンと対応
 
@@ -86,7 +62,7 @@ raspberrypi4 | UNREACHABLE! => {"msg": "Failed to connect to the host via ssh"}
 **対応**:
 1. SSH接続を確認:
    ```bash
-   ssh tools03@192.168.128.102
+   ssh tools03@<pi4_ip>
    ```
 
 2. インベントリファイルを確認:
@@ -112,18 +88,8 @@ raspberrypi3 | FAILED! => {"msg": "Failed to update git repository"}
 - ディスク容量不足
 
 **対応**:
-1. クライアントに直接接続して確認:
-   ```bash
-   ssh signageras3@192.168.128.152
-   cd /opt/RaspberryPiSystem_002
-   git status
-   ```
-
-2. 手動でGitリポジトリを更新:
-   ```bash
-   git fetch origin
-   git reset --hard origin/main
-   ```
+1. 標準 route の `scripts/update-all-clients.sh --status RUN_ID` の journal で失敗箇所を確認する。
+2. 復旧は [デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md) に従う。Pi3 は完成 tar を受け取る方式で、端末上の Git checkout を手で更新しない。
 
 3. ディスク容量を確認:
    ```bash
@@ -153,26 +119,6 @@ raspberrypi3 | FAILED! => {"msg": "Could not find the requested service"}
    ```
 
 3. 存在しないサービスは`ignore_errors: true`でスキップされる（正常動作）
-
-## ログファイルの確認
-
-### ログファイルの場所
-
-- **Mac**: `logs/ansible-update-YYYYMMDD-HHMMSS.log`
-- **サマリーファイル**: `logs/ansible-update-YYYYMMDD-HHMMSS.summary.json`
-
-### ログファイルの検索
-
-```bash
-# エラーのみを抽出
-grep -E "FAILED|UNREACHABLE|ERROR" logs/ansible-update-*.log
-
-# 特定のホストのログを抽出
-grep "raspberrypi3" logs/ansible-update-*.log
-
-# 最新のログファイルを確認
-ls -lt logs/ansible-update-*.log | head -1
-```
 
 ## ベストプラクティス
 

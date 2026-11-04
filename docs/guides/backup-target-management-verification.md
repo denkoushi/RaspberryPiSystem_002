@@ -216,9 +216,8 @@
    - 追加した対象のバックアップファイルが作成されていることを確認
 
 **期待される結果**:
-- ✅ `backup.sh`スクリプトが新しい対象を認識する
-- ✅ API経由でバックアップが実行される
-- ✅ バックアップファイルが作成される
+- ✅ `backup.sh` は固定対象（DB・.env・photo-storage・csv employees/items・/app/storage 配下の固定ディレクトリ）のみ処理し、追加した対象は処理しない
+- ✅ 追加した対象は API のバックアップスケジューラー（または管理コンソールの「実行」）で実行され、バックアップファイルが作成される
 
 #### 6.2 管理コンソールで無効化した対象がbackup.shでスキップされる
 
@@ -238,7 +237,7 @@
    - スクリプトの出力に該当対象のバックアップが実行されていないことを確認
 
 **期待される結果**:
-- ✅ 無効化された対象が`backup.sh`でスキップされる
+- ✅ 無効化された対象が`backup.sh`でスキップされる（backup.json で無効化を確認してスキップするのは image photo-storage と /app/storage 配下の固定ディレクトリのみ。.env・csv を無効化した場合は internal API が403を返し「失敗」と表示される）
 - ✅ 有効な対象のみがバックアップされる
 
 ### 7. Dropbox連携確認（オプション）
@@ -316,7 +315,7 @@
 - `backup.sh`スクリプトがAPI経由でバックアップを実行しているか確認（スクリプトの出力を確認）
 
 **対処**:
-- APIが利用可能か確認: `curl -f http://localhost:8080/api/system/health`
+- APIが利用可能か確認: `curl -sk https://localhost/api/system/health`
 - APIサーバーを再起動: `docker compose restart api`
 
 ## 関連ドキュメント

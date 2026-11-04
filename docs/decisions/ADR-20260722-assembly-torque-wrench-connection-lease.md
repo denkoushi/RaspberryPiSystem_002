@@ -51,6 +51,7 @@ Validate with real-PostgreSQL acquisition races, agent/guard failure tests, UI s
 
 - Supersedes: none. This extends `ADR-20260717-assembly-torque-wrench-traceability.md`.
 - Superseded by: `ADR-20260723-assembly-torque-cross-work-id-confirmation-reuse.md` supersedes only the start-origin-client authorization and session-local confirmation boundaries. Lease generation, takeover, guard, and activation decisions remain accepted.
+- Superseded in part by: [ADR-20260818](./ADR-20260818-torque-wrench-global-ownership.md) supersedes only the assembly-only ownership and browser-control portions. The central lease, generation fencing, guard, and explicit physical takeover decisions remain accepted.
 
 ## Local Notes JA
 

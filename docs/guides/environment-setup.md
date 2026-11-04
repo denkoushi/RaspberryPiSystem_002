@@ -232,21 +232,13 @@ raspberrypi3 | SUCCESS => {
 ```bash
 # Macのターミナルで実行
 cd /Users/tsudatakashi/RaspberryPiSystem_002
-# Tailscale経由の場合（標準）
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-# ローカルネットワークの場合（緊急時のみ）: export RASPI_SERVER_HOST="denkon5sd02@<pi5のIP>"
 # inventory指定が必須（誤デプロイ防止）
 # 第2工場（既存）
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit PATTERN
 ```
 
 **期待される結果**:
-```
-PLAY RECAP *********************************************************************
-raspberrypi5               : ok=XX    changed=X    unreachable=0    failed=0
-raspberrypi4               : ok=XX    changed=X    unreachable=0    failed=0
-raspberrypi3                : ok=XX    changed=X    unreachable=0    failed=0
-```
+`--print-plan` のJSONで対象hostと実行順を確認する。実行は [デプロイメントガイド](./deployment.md) の標準順序（`--limit PATTERN` または `--full-fleet` が必須）に従う。
 
 ## よくある問題と解決方法
 

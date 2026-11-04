@@ -75,7 +75,7 @@ curl http://localhost:7071/api/agent/status | jq
 
 ```bash
 # ラズパイ5で実行
-curl http://localhost:8080/api/system/health | jq
+curl -ksS https://localhost/api/system/health | jq
 
 # 期待される出力:
 # {
@@ -97,7 +97,7 @@ curl http://localhost:8080/api/system/health | jq
 
 ```bash
 # ラズパイ5で実行
-curl http://localhost:8080/api/system/metrics | grep -E "loans_active_total|employees_active_total|items_active_total"
+curl -ksS https://localhost/api/system/metrics | grep -E "loans_active_total|employees_active_total|items_active_total"
 
 # 期待される出力:
 # loans_active_total 0
@@ -113,7 +113,7 @@ curl http://localhost:8080/api/system/metrics | grep -E "loans_active_total|empl
 
 ```bash
 # ラズパイ5で実行
-curl -s http://localhost:8080/api/system/health | jq '{
+curl -ksS https://localhost/api/system/health | jq '{
   status,
   database: .checks.database.status,
   memory: .checks.memory,
@@ -132,7 +132,7 @@ curl -s http://localhost:8080/api/system/health | jq '{
 
 ```bash
 # ラズパイ5で実行
-curl -s http://localhost:8080/api/system/metrics | \
+curl -ksS https://localhost/api/system/metrics | \
   grep -E "nodejs_event_loop_delay_milliseconds|nodejs_event_loop_utilization_ratio|signage_render_"
 ```
 
@@ -224,27 +224,20 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs --tail=50
 # プロジェクトディレクトリに移動
 cd /Users/tsudatakashi/RaspberryPiSystem_002
 
-# 環境変数を設定
-export RASPI_SERVER_HOST="denkon5sd02@192.168.128.131"
+# 計画を確認（read-only）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
 
-# 一括更新スクリプトを実行（inventory指定が必須）
-# 第2工場（既存）
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
+# 全クライアントを更新（対象を明示する。Pi5 executorはinventoryから解決される）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --full-fleet
 ```
 
 **実行結果の確認:**
 
-- `ok=7`: 全タスクが成功
-- `changed=1`: 更新があった（Gitリポジトリの更新、サービスの再起動など）
-- `failed=0`: エラーなし
-
-**ログファイルの確認:**
-
 ```bash
-# 最新のログファイルを確認
-ls -lt logs/ansible-update-*.log | head -1
-cat logs/ansible-update-YYYYMMDD-HHMMSS.log
+./scripts/update-all-clients.sh --status RUN_ID
 ```
+
+`--status RUN_ID` で標準Ansibleの結果（recap、health、rollback）を確認し、失敗時は [デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md) に従う。
 
 ### 特定のクライアントのみ更新
 
@@ -288,7 +281,7 @@ https://192.168.128.131/admin/clients
 **表示内容:**
 
 - **クライアント稼働状況カード**: CPU、メモリ、ディスク、温度、最終確認時刻
-- **12時間超オフライン**: 12時間以上更新がないクライアントは赤背景で表示
+- **オフライン**: 既定10分（`CLIENT_HEARTBEAT_STALE_MINUTES`）以上更新がないクライアントは赤で表示
 - **クライアント最新ログ**: 各クライアントの最新ログを表示
 
 ### クライアントログの検索
@@ -296,8 +289,10 @@ https://192.168.128.131/admin/clients
 **ブラウザでアクセス:**
 
 ```
-https://192.168.128.131/admin/clients/logs
+https://192.168.128.131/admin/clients
 ```
+
+（『ログ』タブ）
 
 **フィルタリング:**
 
@@ -311,16 +306,16 @@ https://192.168.128.131/admin/clients/logs
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
+TOKEN=$(curl -ksS -X POST https://192.168.128.131/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
 
 # クライアント状態を取得
-curl -X GET http://192.168.128.131:8080/api/clients/status \
+curl -ksS -X GET https://192.168.128.131/api/clients/status \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 
 # クライアントログを取得
-curl -X GET "http://192.168.128.131:8080/api/clients/logs?clientId=raspberrypi5-server&limit=10" \
+curl -ksS -X GET "https://192.168.128.131/api/clients/logs?clientId=raspberrypi5-server&limit=10" \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 ```
 
@@ -342,7 +337,7 @@ journalctl -u status-agent.service -n 20 --no-pager
 ### 監視の推奨頻度
 
 - **日常的な確認**: 1日1回（管理画面で確認）
-- **異常検知**: 12時間以上更新がないクライアントを確認
+- **異常検知**: オフライン表示（既定10分以上更新なし）のクライアントを確認
 - **ログ確認**: エラーが発生した場合に確認
 
 詳細は [status-agentガイド](./status-agent.md) を参照してください。
@@ -385,7 +380,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs db | grep
 #### 問題1: APIが応答しない
 
 **症状**: 
-- `curl http://localhost:8080/api/system/health`がタイムアウト
+- `curl -ksS https://localhost/api/system/health`がタイムアウト
 - Web UIが表示されない
 
 **対応手順**:
@@ -439,7 +434,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs db | grep
 4. **再起動しても解決しない場合**: データベースボリュームの確認
    ```bash
    docker volume ls | grep db-data
-   docker volume inspect docker_db-data
+   docker volume inspect docker_db-data-pg18
    ```
 
 **関連ナレッジ**: [KB-003](../knowledge-base/database.md#kb-003-p2002エラーnfctaguidの重複が発生する)
@@ -513,10 +508,9 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs db | grep
    ansible all -i infrastructure/ansible/inventory.yml -m ping
    ```
 
-4. **ログファイルの確認**
+4. **実行結果の確認**
    ```bash
-   # Macで確認
-   cat logs/ansible-update-YYYYMMDD-HHMMSS.log
+   ./scripts/update-all-clients.sh --status RUN_ID
    ```
 
 **関連ナレッジ**: [KB-058](../knowledge-base/infrastructure/ansible-deployment.md#kb-058-ansible接続設定でraspberry-pi-34への接続に失敗する問題ユーザー名ssh鍵サービス存在確認)
@@ -581,9 +575,10 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs db | grep
    ```
 
 3. **Dockerイメージ・コンテナのクリーンアップ**
+   Dockerの整理は `storage-maintenance.timer` に任せ、`docker system prune` やvolume pruneは実行しない（[Pi5 Docker旧リリースイメージ整理](../runbooks/pi5-blue-green-deploy.md#pi5-docker旧リリースイメージ整理)）。
    ```bash
-   # 使用していないDockerリソースを削除
-   docker system prune -a --volumes
+   docker system df
+   journalctl -u storage-maintenance.service -n 100 --no-pager
    ```
 
 4. **ログファイルのクリーンアップ**
@@ -669,25 +664,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
 
 #### 1. システム更新
 
-```bash
-# ラズパイ5で実行
-cd /opt/RaspberryPiSystem_002
-
-# 最新のコードを取得
-git fetch origin
-git pull origin main
-
-# 依存関係の更新
-pnpm install
-
-# Dockerイメージの再ビルド
-docker compose -f infrastructure/docker/docker-compose.server.yml build --pull
-
-# コンテナの再起動
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate
-```
-
-**注意**: 本番環境では、メンテナンス時間を設けて実施してください。
+通常の更新は [デプロイ・クイックスタート](./quick-start-deployment.md) に従い、`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan` で計画を確認してから、`--limit PATTERN` または `--full-fleet` を付けて実行する。Pi5上での git pull、pnpm install、docker compose build/up は行わない。
 
 #### 2. 古いバックアップの整理
 
@@ -728,6 +705,7 @@ journalctl -u storage-maintenance.service -n 50
 2. **Docker Build Cache削除**: 月初（1日）のみ、`docker builder prune -a --force`を実行
 3. **使用量の記録**: 月次cache削除後に`docker system df`をログへ記録
 4. **失敗時のアラート生成**: メンテナンスが失敗した場合、`storage-maintenance-failed`アラートを生成
+5. **旧リリースイメージ整理**: 毎日、固定allowlistの未使用API/Web/release-setイメージだけを整理（詳細は [Pi5 Docker旧リリースイメージ整理](../runbooks/pi5-blue-green-deploy.md#pi5-docker旧リリースイメージ整理)）
 
 業務ファイル、DB、稼働中container、稼働imageはこの自動処理の削除対象ではありません。詳細は [単一SSD保存Runbook](../runbooks/pi5-local-file-storage.md) と [KB-130](../knowledge-base/infrastructure/miscellaneous.md#kb-130-pi5のストレージ使用量が異常に高い問題docker-build-cacheとsignage-rendered履歴画像の削除) を参照してください。
 
@@ -803,7 +781,7 @@ ls -lt /opt/backups/ | head -5
 
 # バックアップから復旧（最新のバックアップファイルを指定）
 BACKUP_FILE="/opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz"
-./scripts/server/restore.sh
+./scripts/server/restore.sh "$BACKUP_FILE"
 ```
 
 詳細は [バックアップ・リストア手順](./backup-and-restore.md) を参照してください。
