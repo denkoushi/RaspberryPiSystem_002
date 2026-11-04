@@ -147,7 +147,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 #### 前提（安全・秘密）
 
 - **実行者**: Pi5 に SSH できる管理者のみ。**JWT を発行したり `Authorization` ヘッダを扱うコマンドをログに残さない**（手順書にトークンを貼り付けない）。
-- **作業ディレクトリ（本番例）**: `/opt/RaspberryPiSystem_002`（デプロイ手順の標準）。[deployment.md](./deployment.md) の **`docker compose -f infrastructure/docker/docker-compose.server.yml`** と整合させる。
+- **作業ディレクトリ（本番例）**: `/opt/RaspberryPiSystem_002`（デプロイ手順の標準）。本番 API は blue/green の稼働スロットで動くため、`api` コンテナ内の作業は `scripts/server/run-in-active-api.sh <command>` を使う（`docker-compose.server.yml` の `api` は使われない）。
 - **DB / JWT**: ホストの Node やローカル Prisma から `DATABASE_URL` のホスト名 **`db`** に届かないことがある。**JWT 発行・Prisma・API への `curl` は原則 `api` コンテナ内**（または同等に DB に到達できる環境）で行う。
 
 #### A. 通常ルート（ブラウザで足りる場合）
@@ -212,7 +212,7 @@ pnpm --filter @raspi-system/api backfill:order-supplement-planned-end-date
 #### E. 期待挙動・検証
 
 - Gmail 側は **未読**メールが対象。処理成功後、実装どおり **既読化・ゴミ箱移動** 等の後処理が走る（詳細は Gmail 取込サービス実装を参照）。
-- **ログ**: `docker compose -f infrastructure/docker/docker-compose.server.yml logs api` で該当スケジュール・取込エラーを確認。
+- **ログ**: `/opt/RaspberryPiSystem_002` で `docker logs --tail 200 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"` を実行し、稼働 API スロットのログで該当スケジュール・取込エラーを確認。
 - **DB**: 対象 `CsvDashboard` の行が増えたか、関連テーブル（例: `ProductionScheduleOrderSupplement`）に照合が入ったかを Prisma / SQL で確認。
 - **キオスク API**: `GET /api/kiosk/production-schedule` の **`x-client-key` は `ClientDevice.apiKey` の実値**（キオスク端末に割り当てられたキー）。ダミー文字列では 401 になる。
 

@@ -230,6 +230,8 @@ tail -20 /var/log/system-monitor.log
 
 #### 2.4 異常状態の検証
 
+> 当時の手順（現行: 本番 API は `docker-compose.phase3.yml` の blue/green 稼働スロットで動き、`docker-compose.server.yml` の `api` は使われないため、下記コマンドは使えない。本番 API を止めて監視を確かめる異常系検証の手順はリポジトリに未定義で、実施はオーナー判断とする）。
+
 ```bash
 # ラズパイ5で実行
 
@@ -563,7 +565,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" "https://<Pi5>/api/tools/loans/0000000
 **検証日時**: 2026-03-29（401・`verify-phase12-real.sh` **PASS 34/0/0** を Mac / Tailscale で確認／**埋め込み配線ブランチ**は Pi5 のみ `update-all-clients.sh --limit raspberrypi5` で反映後も同スクリプトで再確認／UI・候補中身は vault で埋め込み ON 後）
 **検証結果**: ☑ 成功（認可・Phase12 回帰） ☐ 失敗（エラー内容: _______________）
 
-**手動（埋め込み ON 時）**: Pi5 デプロイ後、`docker compose ... exec api printenv` で `PHOTO_TOOL_EMBEDDING_*` を確認。既存 GOOD のギャラリー再投入は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) のバックフィル手順。
+**手動（埋め込み ON 時）**: Pi5 デプロイ後、`/opt/RaspberryPiSystem_002` で `scripts/server/run-in-active-api.sh printenv PHOTO_TOOL_EMBEDDING_ENABLED PHOTO_TOOL_EMBEDDING_URL PHOTO_TOOL_EMBEDDING_MODEL_ID` を実行し、稼働スロットの値を確認する（`PHOTO_TOOL_EMBEDDING_API_KEY` は表示しない）。既存 GOOD のギャラリー再投入は [photo-tool-similarity-gallery.md](../runbooks/photo-tool-similarity-gallery.md) のバックフィル手順。
 
 **6.6.8 写真持出 VLM・GOOD 類似シャドー補助（任意・ログ）**
 
@@ -637,6 +639,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
 **6.6.12 LocalLLM オンデマンド起停（Pi5→Ubuntu HTTP・任意運用）**
+
+> 2026-03〜04 の Ubuntu 時代の確認項目（現行: Ubuntu PC は 2026-04-26 に退役し、LocalLLM は DGX Spark。DGX の確認は [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md) を参照）。
 
 **確認ポイント**（[ADR-20260403](../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md)、[local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)、[KB-318](../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env)、[KB-319](../knowledge-base/KB-319-photo-loan-vlm-tool-label.md)）:
 
@@ -1038,8 +1042,9 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 2. Pi5側の環境変数を確認:
    ```bash
    ssh denkon5sd02@100.106.158.2
-   cd /opt/RaspberryPiSystem_002/infrastructure/docker
-   docker compose -f docker-compose.server.yml exec api env | grep SLACK_KIOSK_SUPPORT_WEBHOOK_URL
+   cd /opt/RaspberryPiSystem_002
+   # Webhook URL は秘密情報なので値を表示せず、設定の有無だけを確認する
+   scripts/server/run-in-active-api.sh sh -c 'test -n "$SLACK_KIOSK_SUPPORT_WEBHOOK_URL" && echo set || echo unset'
    ```
 3. キオスク画面にアクセス: `https://100.106.158.2/kiosk`
 4. ヘッダーの「お問い合わせ」ボタンをクリック
@@ -1123,12 +1128,12 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 ### バックアップが失敗する
 
 - バックアップディレクトリの権限を確認: `ls -ld /opt/backups`
-- Dockerコンテナが起動しているか確認: `docker compose ps`
+- Dockerコンテナが起動しているか確認: `docker ps`（API/Web は blue/green の `bluegreen-*`、DB は `docker-compose.server.yml` の `db`）
 
 ### 監視スクリプトがエラーを報告する
 
 - APIが起動しているか確認: `curl -k https://localhost/api/system/health`
-- Dockerコンテナの状態を確認: `docker compose ps`
+- Dockerコンテナの状態を確認: `docker ps`（同上）
 - ログを確認: `tail -50 /var/log/system-monitor.log`
 
 ### デプロイスクリプトが失敗する
