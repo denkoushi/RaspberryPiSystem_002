@@ -97,6 +97,7 @@ export function InspectionDrawingCanvas({
   const appliedFocusRequestIdRef = useRef<number | null>(null);
   const suppressScrollNotifyRef = useRef(false);
   const pendingPlaceRef = useRef<PendingPlacePointer | null>(null);
+  const [draggingProposalId, setDraggingProposalId] = useState<string | null>(null);
   const pendingMarkerDragRef = useRef<PendingMarkerDrag | null>(null);
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const zoomedLayout = useZoomedCanvasLayout(viewportRef, naturalSize, zoom);
@@ -229,6 +230,7 @@ export function InspectionDrawingCanvas({
         drag.markerElement.style.left = drag.originalStyleLeft;
         drag.markerElement.style.top = drag.originalStyleTop;
       }
+      if (drag.kind === 'proposal') setDraggingProposalId(null);
       pendingMarkerDragRef.current = null;
       const viewport = viewportRef.current;
       if (viewport?.hasPointerCapture?.(pointerId)) {
@@ -285,7 +287,7 @@ export function InspectionDrawingCanvas({
     markerElement: HTMLElement | null
   ) => {
     e.stopPropagation();
-    if (mode === 'test' || !(kind === 'point' ? onPointChange : onProposalMove)) return;
+    if (e.button !== 0 || mode === 'test' || !(kind === 'point' ? onPointChange : onProposalMove)) return;
     const viewport = viewportRef.current;
     if (!viewport || !markerElement) return;
     pendingMarkerDragRef.current = {
@@ -316,6 +318,7 @@ export function InspectionDrawingCanvas({
       return true;
     }
     drag.dragging = true;
+    if (drag.kind === 'proposal') setDraggingProposalId(drag.markerId);
     const ratios = ratiosAtClientClamped(e.clientX, e.clientY);
     if (ratios) {
       drag.pendingRatios = ratios;
@@ -339,7 +342,7 @@ export function InspectionDrawingCanvas({
       applyMarkerDragStyle(drag, ratios);
     }
     const onMove = drag.kind === 'point' ? onPointChange : onProposalMove;
-    restoreMarkerDrag(e.pointerId, false);
+    restoreMarkerDrag(e.pointerId, drag.kind === 'proposal');
     if (shouldChange && ratios) {
       onMove?.(drag.markerId, ratios);
       e.preventDefault();
@@ -490,33 +493,47 @@ export function InspectionDrawingCanvas({
               layout={zoomedLayout}
             />
           ) : null}
-          {image ? proposalMarkers?.map((proposal) => (
-            <button
-              key={proposal.id}
-              type="button"
-              aria-label={`AI案 ${proposal.markerNo} ${proposal.measurementLabel}`}
-              aria-pressed={selectedProposalId === proposal.id}
-              className={clsx(
-                'absolute z-20 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-dashed border-[#d97706] bg-amber-100 font-bold text-amber-900',
-                selectedProposalId === proposal.id && 'ring-4 ring-blue-500',
-                mode !== 'test' && onProposalMove && 'touch-none cursor-move'
-              )}
-              style={{
-                left: image.offsetX + proposal.markerXRatio * image.width,
-                top: image.offsetY + proposal.markerYRatio * image.height
-              }}
-              onPointerDown={(event) => {
-                onSelectProposal?.(proposal.id);
-                handleMarkerPointerDown(event, 'proposal', proposal.id, event.currentTarget);
-              }}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (event.detail === 0) onSelectProposal?.(proposal.id);
-              }}
-            >
-              {proposal.markerNo}
-            </button>
-          )) : null}
+          {image ? proposalMarkers?.map((proposal) => {
+            const hasAnchor = proposal.anchorXRatio != null && proposal.anchorYRatio != null;
+            const anchorX = image.offsetX + (hasAnchor ? proposal.anchorXRatio! : proposal.markerXRatio) * image.width;
+            const anchorY = image.offsetY + (hasAnchor ? proposal.anchorYRatio! : proposal.markerYRatio) * image.height;
+            const insetX = Math.min(22, image.width / 2);
+            const insetY = Math.min(22, image.height / 2);
+            const left = Math.max(image.offsetX + insetX, Math.min(image.offsetX + image.width - insetX, anchorX + 34));
+            const top = Math.max(image.offsetY + insetY, Math.min(image.offsetY + image.height - insetY, anchorY - 34));
+            return (
+              <div key={proposal.id}>
+                <svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={zoomedLayout.contentWidth} height={zoomedLayout.contentHeight}>
+                  {draggingProposalId !== proposal.id ? (
+                    <line x1={anchorX} y1={anchorY} x2={left} y2={top} stroke="#d97706" strokeWidth={2} strokeDasharray="5 3" />
+                  ) : null}
+                </svg>
+                <div className="absolute z-20 -translate-x-1/2 -translate-y-1/2" style={{ left, top }}>
+                  <button
+                    type="button"
+                    aria-label={`AI案 ${proposal.markerNo} ${proposal.measurementLabel}`}
+                    aria-pressed={selectedProposalId === proposal.id}
+                    className={clsx(
+                      'flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-dashed border-[#d97706] bg-amber-100 font-bold text-amber-900',
+                      mode !== 'test' && onProposalMove && 'touch-none cursor-move',
+                      selectedProposalId === proposal.id && 'ring-4 ring-blue-500'
+                    )}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      onSelectProposal?.(proposal.id);
+                      handleMarkerPointerDown(event, 'proposal', proposal.id, event.currentTarget.parentElement);
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (event.detail === 0) onSelectProposal?.(proposal.id);
+                    }}
+                  >
+                    {proposal.markerNo}
+                  </button>
+                </div>
+              </div>
+            );
+          }) : null}
           {image
             ? points.map((pt) => {
                 const status = resolveMeasurementPointInputStatus(pt);

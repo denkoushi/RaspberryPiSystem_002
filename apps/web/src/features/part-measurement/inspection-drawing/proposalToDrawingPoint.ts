@@ -1,15 +1,19 @@
 import { nextAvailableMarkerNo, templateItemToDrawingPoint } from './markerNumbering';
 
 import type { InspectionDrawingPoint } from './types';
-import type { DrawingPlacementProposal, DrawingPlacementRow } from '../../../api/domains/part-measurement-placement';
+import type { DrawingPlacementProposal, DrawingPlacementRow, DrawingPlacementUnplaced } from '../../../api/domains/part-measurement-placement';
 
 export function proposalToDrawingPoint(
-  row: DrawingPlacementRow,
+  row: DrawingPlacementProposal | DrawingPlacementUnplaced,
   points: InspectionDrawingPoint[],
   xRatio: number,
   yRatio: number
 ): InspectionDrawingPoint {
   const markerNo = nextAvailableMarkerNo(points);
+  const proposal = 'reason' in row ? null : row;
+  const hasAnchor = proposal?.anchorXRatio != null && proposal.anchorYRatio != null;
+  const anchorX = hasAnchor ? proposal.anchorXRatio! : xRatio;
+  const anchorY = hasAnchor ? proposal.anchorYRatio! : yRatio;
   return templateItemToDrawingPoint({
     ...row,
     id: crypto.randomUUID(),
@@ -22,8 +26,10 @@ export function proposalToDrawingPoint(
     nominalValue: String(row.nominalValue),
     lowerLimit: row.lowerLimit === null ? null : String(row.lowerLimit),
     upperLimit: row.upperLimit === null ? null : String(row.upperLimit),
-    markerXRatio: String(xRatio),
-    markerYRatio: String(yRatio)
+    markerXRatio: String(proposal ? Math.min(1, anchorX + 0.03) : xRatio),
+    markerYRatio: String(proposal ? Math.max(0, anchorY - 0.03) : yRatio),
+    calloutTipXRatio: proposal ? String(anchorX) : null,
+    calloutTipYRatio: proposal ? String(anchorY) : null
   });
 }
 

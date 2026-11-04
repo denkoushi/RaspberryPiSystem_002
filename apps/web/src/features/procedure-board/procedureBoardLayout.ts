@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const MAX_PAGES = 20;
+
 export const styleSchema = z.enum(['heading', 'subheading', 'body', 'caution', 'key-number', 'figure']);
 const itemSchema = z.discriminatedUnion('kind', [
   z.object({ itemId: z.string().uuid(), kind: z.literal('material'), materialId: z.string().min(1),
@@ -11,8 +13,8 @@ const rowSchema = z.object({ cols: z.array(z.object({ items: z.array(itemSchema)
   w: z.array(z.number().finite().positive()).max(3) }).strict()
   .refine(row => row.cols.length === row.w.length, 'Column widths must match columns');
 export const layoutSchema = z.object({ formatVersion: z.literal(1), pages: z.array(z.object({
-  page: z.number().int().min(1).max(3), heading: z.string().max(120), rows: z.array(rowSchema).max(200),
-}).strict()).length(3) }).strict().superRefine((layout, ctx) => {
+  page: z.number().int().min(1).max(MAX_PAGES), heading: z.string().max(120), rows: z.array(rowSchema).max(200),
+}).strict()).min(1).max(MAX_PAGES) }).strict().superRefine((layout, ctx) => {
   const ids = layout.pages.flatMap(page => page.rows.flatMap(row => row.cols.flatMap(col => col.items.map(item => item.itemId))));
   if (layout.pages.some((page, index) => page.page !== index + 1) || ids.length > 600 || new Set(ids).size !== ids.length) {
     ctx.addIssue({ code: 'custom', message: 'Invalid page order or item identities/count' });
@@ -28,7 +30,7 @@ export const layoutSchema = z.object({ formatVersion: z.literal(1), pages: z.arr
 });
 export type BoardLayout = z.infer<typeof layoutSchema>;
 export type BoardItem = z.infer<typeof itemSchema>;
-export const targetSchema = z.object({ page: z.number().int().min(1).max(3), row: z.number().int().nonnegative(),
+export const targetSchema = z.object({ page: z.number().int().min(1).max(MAX_PAGES), row: z.number().int().nonnegative(),
   col: z.number().int().nonnegative(), index: z.number().int().nonnegative(), mode: z.enum(['row', 'col', 'in']) }).strict();
 export type BoardTarget = z.infer<typeof targetSchema>;
 export const emptyLayout = (): BoardLayout => ({ formatVersion: 1, pages: [1, 2, 3].map(page => ({ page, heading: '', rows: [] })) });
@@ -54,6 +56,7 @@ export function placeItem(input: BoardLayout, item: BoardItem, rawTarget: BoardT
   const normalized = normalizeLayout(layout);
   const page = normalized.pages[target.page - 1];
   const invalid = () => { throw new Error('Invalid placement target'); };
+  if (!page) return invalid();
   if (target.mode === 'row') {
     if (target.row > page.rows.length || target.col !== 0 || target.index !== 0) invalid();
     page.rows.splice(target.row, 0, { cols: [{ items: [item] }], w: [1] });
@@ -75,6 +78,35 @@ export function placeItem(input: BoardLayout, item: BoardItem, rawTarget: BoardT
     }
   }
   return normalizeLayout(normalized);
+}
+
+export type PageOperation =
+  | { type: 'page_added'; payload: { page: number } }
+  | { type: 'page_moved'; payload: { from: number; to: number } }
+  | { type: 'page_removed'; payload: { page: number } };
+
+/** Old page numbers in their new order; null denotes the inserted empty page. */
+export function pageOrder(count: number, operation: PageOperation): (number | null)[] {
+  const order: (number | null)[] = Array.from({ length: count }, (_, index) => index + 1);
+  const valid = (page: number, max = count) => Number.isInteger(page) && page >= 1 && page <= max;
+  if (operation.type === 'page_added') {
+    if (count >= MAX_PAGES || !valid(operation.payload.page, count + 1)) throw new Error('Invalid page addition');
+    order.splice(operation.payload.page - 1, 0, null);
+  } else if (operation.type === 'page_removed') {
+    if (count <= 1 || !valid(operation.payload.page)) throw new Error('Invalid page removal');
+    order.splice(operation.payload.page - 1, 1);
+  } else {
+    const { from, to } = operation.payload;
+    if (!valid(from) || !valid(to) || from === to) throw new Error('Invalid page move');
+    order.splice(to - 1, 0, order.splice(from - 1, 1)[0]);
+  }
+  return order;
+}
+
+export function applyPageOperation(input: BoardLayout, operation: PageOperation): BoardLayout {
+  const layout = layoutSchema.parse(input);
+  return layoutSchema.parse({ ...layout, pages: pageOrder(layout.pages.length, operation).map((old, index) =>
+    old === null ? { page: index + 1, heading: '', rows: [] } : { ...layout.pages[old - 1], page: index + 1 }) });
 }
 
 export const boardItems = (layout: BoardLayout) => layout.pages.flatMap(page => page.rows.flatMap((row, r) =>

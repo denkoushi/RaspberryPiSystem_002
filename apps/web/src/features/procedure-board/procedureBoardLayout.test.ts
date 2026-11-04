@@ -57,3 +57,38 @@ describe('web / API layout contract', () => {
     expect(() => server.placeItem(three, text(), { ...target, col: 3, mode: 'col' })).toThrow();
   });
 });
+
+describe('variable page contract', () => {
+  it.each([0, 1, 3, 20, 21])('accepts 1..20 sequential pages (%s)', count => {
+    const layout = { formatVersion: 1, pages: Array.from({ length: count }, (_, index) => ({ page: index + 1, heading: '', rows: [] })) };
+    for (const schema of [web.layoutSchema, server.layoutSchema]) expect(schema.safeParse(layout).success).toBe(count >= 1 && count <= 20);
+    if (count > 0) {
+      layout.pages[count - 1].page += 1;
+      for (const schema of [web.layoutSchema, server.layoutSchema]) expect(schema.safeParse(layout).success).toBe(false);
+    }
+  });
+  it('matches add/move/remove, retains page contents and rejects boundaries', () => {
+    let client = web.placeItem(web.emptyLayout(), text(), { ...target, page: 2 }); let api = client;
+    const original = client.pages[1].rows;
+    const operations: web.PageOperation[] = [
+      { type: 'page_added', payload: { page: 2 } }, { type: 'page_moved', payload: { from: 3, to: 1 } },
+      { type: 'page_removed', payload: { page: 2 } },
+    ];
+    for (const operation of operations) {
+      client = web.applyPageOperation(client, operation); api = server.applyPageOperation(api, operation);
+      expect(client).toEqual(api); expect(client.pages.map(page => page.page)).toEqual(client.pages.map((_, index) => index + 1));
+    }
+    expect(client.pages[0].rows).toEqual(original);
+    expect(web.applyPageOperation(client, { type: 'page_removed', payload: { page: 1 } }).pages.every(page => !page.rows.length)).toBe(true);
+    for (const implementation of [web, server]) {
+      const single = { ...client, pages: [client.pages[0]] };
+      expect(() => implementation.applyPageOperation(single, { type: 'page_removed', payload: { page: 1 } })).toThrow();
+      expect(() => implementation.applyPageOperation(client, { type: 'page_moved', payload: { from: 1, to: 4 } })).toThrow();
+      expect(() => implementation.applyPageOperation(client, { type: 'page_moved', payload: { from: 1, to: 1 } })).toThrow();
+      let full = client;
+      while (full.pages.length < 20) full = implementation.applyPageOperation(full, { type: 'page_added', payload: { page: 1 } });
+      expect(() => implementation.applyPageOperation(full, { type: 'page_added', payload: { page: 1 } })).toThrow();
+      expect(() => implementation.placeItem(single, text(), { ...target, page: 2 })).toThrow('Invalid placement target');
+    }
+  });
+});

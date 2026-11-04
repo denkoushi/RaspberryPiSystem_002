@@ -10,6 +10,15 @@ import { KioskMobilePalletVisualizationPage } from './KioskMobilePalletVisualiza
 import { KioskPalletVisualizationPage } from './KioskPalletVisualizationPage';
 
 import type { BarcodeScanModalProps } from '../../features/barcode-scan/BarcodeScanModal';
+import type { PalletQueueRecord } from '../../features/kiosk/pallet-visualization/offline/palletOfflineQueueStore';
+
+const outbox = vi.hoisted(() => ({ records: [] as PalletQueueRecord[] }));
+vi.mock('../../features/kiosk/pallet-visualization/offline/palletOfflineQueueStore', () => ({ palletOfflineQueueStore: {
+  prune: async () => {},
+  list: async () => [...outbox.records],
+  add: async (request: PalletQueueRecord) => { outbox.records.push({ ...request, eventKey: request.body.eventKey, readAt: request.body.readAt, sequence: 1, status: 'pending' }); },
+  remove: async (key: string) => { outbox.records = outbox.records.filter(record => record.eventKey !== key); },
+} }));
 
 const scanProps = vi.hoisted(() => vi.fn());
 vi.mock('../../api/client', () => ({
@@ -42,7 +51,7 @@ function mount(desktop = false) {
   return render(<QueryClientProvider client={client}><MemoryRouter>{desktop ? <KioskPalletVisualizationPage /> : <KioskMobilePalletVisualizationPage />}</MemoryRouter></QueryClientProvider>);
 }
 beforeEach(() => {
-  vi.clearAllMocks(); localStorage.clear();
+  vi.clearAllMocks(); localStorage.clear(); outbox.records = [];
   vi.mocked(api.getKioskPalletVisualizationBoard).mockResolvedValue(board);
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -81,12 +90,12 @@ describe('phone pallet route', () => {
     fireEvent.click(screen.getByRole('button', { name: '読んで No.1 に載せる' }));
     expect(scanProps).toHaveBeenLastCalledWith(expect.objectContaining({ ...KIOSK_STANDARD_BARCODE_SCAN_SESSION, formats: BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE }));
     fireEvent.click(screen.getByRole('button', { name: '読取成功' }));
-    await waitFor(() => expect(api.postKioskPalletVisualizationItem).toHaveBeenCalledWith({ machineCd: 'M1', palletNo: 1, manufacturingOrderBarcodeRaw: '1234567890' }, 'test'));
+    await waitFor(() => expect(api.postKioskPalletVisualizationItem).toHaveBeenCalledWith(expect.objectContaining({ machineCd: 'M1', palletNo: 1, manufacturingOrderBarcodeRaw: '1234567890', eventKey: expect.any(String), readAt: expect.any(String) }), 'test'));
     await waitFor(() => expect(screen.getByRole('button', { name: /取付板/ })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /取付板/ }));
     fireEvent.click(screen.getByRole('button', { name: '入れ替え' }));
     fireEvent.click(screen.getByRole('button', { name: '読取成功' }));
-    await waitFor(() => expect(api.postKioskPalletVisualizationItemReplace).toHaveBeenCalledWith('item1', { manufacturingOrderBarcodeRaw: '1234567890' }, 'test'));
+    await waitFor(() => expect(api.postKioskPalletVisualizationItemReplace).toHaveBeenCalledWith('item1', expect.objectContaining({ manufacturingOrderBarcodeRaw: '1234567890', eventKey: expect.any(String), readAt: expect.any(String) }), 'test'));
     await waitFor(() => expect(screen.getByRole('button', { name: /取付板/ })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: /取付板/ }));
     fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
@@ -113,4 +122,13 @@ describe('phone pallet route', () => {
     expect(screen.queryByRole('heading', { name: 'パレット', exact: true })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '全部外す' })).not.toBeInTheDocument();
   });
+  it('shows persisted pending requests even when the desktop board cannot load', async () => {
+    outbox.records.push({ route: 'add', machineCd: 'M1', palletNo: 1, sequence: 1, status: 'pending',
+      eventKey: 'key', readAt: new Date().toISOString(),
+      body: { machineCd: 'M1', palletNo: 1, manufacturingOrderBarcodeRaw: 'ORDER', eventKey: 'key', readAt: new Date().toISOString() } });
+    vi.mocked(api.getKioskPalletVisualizationBoard).mockRejectedValueOnce(new Error('offline'));
+    mount(true);
+    expect(await screen.findByRole('status')).toHaveTextContent('未送信 1 件');
+  });
+
 });

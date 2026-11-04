@@ -6,7 +6,7 @@ import { ApiError } from '../../lib/errors.js';
 
 import { knowledgeSourceSchema } from './knowledge-source.js';
 import { emptyLayout, layoutSchema, placeItem, type BoardLayout } from './procedure-board-layout.js';
-import { boardConflict, boardItems, decisionsSchema, emptyDecisions, invalidBoard, same, validateLayoutEvent, suggestionStale, type PlacementDecision, type FormatDecision, type BoardEvent } from './procedure-board.service.js';
+import { isPageOperation, remapPageDecisions, boardConflict, boardItems, decisionsSchema, emptyDecisions, invalidBoard, same, validateLayoutEvent, suggestionStale, type PlacementDecision, type FormatDecision, type BoardEvent } from './procedure-board.service.js';
 import { applyFormatResult, boardAiKindSchema, boardAiStateSchema, validateFormatResult, validatePlacementResult, type BoardAiInput } from './procedure-board-inference.js';
 import { cumulativeStats, weeklyMetrics, type RecordedBoardEvent } from './procedure-board-metrics.js';
 
@@ -154,6 +154,7 @@ export class PrismaProcedureBoardRepository {
       validateLayoutEvent(layoutSchema.parse(board.layout), layout, event);
       const changed = await tx.knowledgeProcedureBoard.updateMany({ where: { id: board.id, version: expectedVersion }, data: {
         layout: asJson(layout), version: { increment: 1 }, lastRequestedClientDeviceId: clientDeviceId,
+        ...(isPageOperation(event) ? { decisions: asJson(remapPageDecisions(decisionsSchema.parse(board.decisions), layoutSchema.parse(board.layout).pages.length, event)) } : {}),
       } });
       if (changed.count !== 1) boardConflict((await this.board(tx, procedureId)).version);
       await this.insertEvent(tx, board, clientDeviceId, expectedVersion + 1, event, hash);
@@ -286,10 +287,13 @@ export class PrismaProcedureBoardRepository {
       this.db.knowledgeProcedureBoardAi.findUnique({ where: { boardId_kind_requestKey: { boardId: board.id, kind: 'placement', requestKey: String(board.version) } } }),
       this.db.knowledgeProcedureBoardAi.findFirst({ where: { boardId: board.id, kind: 'placement', boardVersion: { lt: board.version }, result: { not: Prisma.DbNull } }, orderBy: { boardVersion: 'desc' } }),
     ]);
+    // Page numbers in older proposals are wrong once pages were added, moved or removed after them.
+    const renumbered = previous && await this.db.knowledgeProcedureBoardEvent.findFirst({ where: { boardId: board.id,
+      type: { in: ['page_added', 'page_moved', 'page_removed'] }, boardVersion: { gt: previous.boardVersion } }, select: { id: true } });
     const input = this.snapshot(board, await this.materialsOf(this.db, procedureId));
     const view = (job: KnowledgeProcedureBoardAi, stale: boolean) => ({ id: job.id, boardVersion: job.boardVersion, ...(stale ? { stale: true } : {}), ...validatePlacementResult(job.result, input) });
     return { boardVersion: board.version, status: current ? boardAiStateSchema.parse(current.state) : 'pending',
-      current: current?.state === 'ready' ? view(current, false) : null, previous: previous ? view(previous, true) : null,
+      current: current?.state === 'ready' ? view(current, false) : null, previous: previous && !renumbered ? view(previous, true) : null,
       pollAfterMs: current?.state === 'deferred' ? 10000 : 5000 };
   }
   async formatProposal(procedureId: string, id: string, clientDeviceId: string) {

@@ -9,7 +9,7 @@ const proposal: DrawingPlacementProposal = {
   id: 'proposal-1', sortOrder: 0, measurementLabel: '内径', measurementPoint: '内径（裏面）',
   nominalValue: 56, lowerLimit: 55.98, upperLimit: 56.03, decimalPlaces: 3,
   depthMode: 'measured', valueKind: 'numeric', markerXRatio: 0.3, markerYRatio: 0.4,
-  dimensionText: 'Φ56 h7'
+  anchorXRatio: null, anchorYRatio: null, dimensionText: 'Φ56 h7'
 };
 
 describe('proposalToDrawingPoint', () => {
@@ -27,7 +27,8 @@ describe('proposalToDrawingPoint', () => {
       nominalValue: '56',
       lowerLimit: row.lowerLimit === null ? null : String(row.lowerLimit),
       upperLimit: row.upperLimit === null ? null : String(row.upperLimit),
-      markerXRatio: '0.3', markerYRatio: '0.4'
+      markerXRatio: String(0.3 + 0.03), markerYRatio: String(0.4 - 0.03),
+      calloutTipXRatio: '0.3', calloutTipYRatio: '0.4'
     });
     expect(point).toEqual({ ...saved, id: point.id });
     expect(point.id).not.toBe(proposal.id);
