@@ -289,7 +289,7 @@ GitHubリポジトリのActionsタブで以下を確認：
 
 ```bash
 # Macで実行（オプション）
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd /Users/<user>/RaspberryPiSystem_002
 
 # 依存関係のインストール
 pnpm install
