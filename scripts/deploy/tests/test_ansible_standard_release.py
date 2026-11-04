@@ -1800,6 +1800,52 @@ esac
         self.assertNotIn("ansible_play_hosts", source)
         self.assertNotIn("ansible_play_batch", source)
 
+    def test_skipped_wave_preparation_keeps_registers_from_the_prepare_play(self) -> None:
+        main = release_main_body((ANSIBLE / "roles/release_kiosk/tasks/main.yml").read_text())[0]
+        reuse = dict(main["block"][0])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tasks = root / "roles/release_kiosk/tasks"
+            tasks.mkdir(parents=True)
+            (tasks / "prepare.yml").write_text(textwrap.dedent("""\
+                - name: Register a value later used by switch
+                  ansible.builtin.command: echo 1000
+                  register: release_kiosk_user_gid
+                  changed_when: false
+                """), encoding="utf-8")
+            switch = {"name": "Use the prepared register", "ansible.builtin.debug": {"msg": "GID={{ release_kiosk_user_gid.stdout }}"}}
+            (tasks / "main.yml").write_text(yaml.safe_dump([reuse, switch]), encoding="utf-8")
+            (root / "inventory.yml").write_text("kiosk:\n  hosts:\n    kiosk-a:\n      ansible_connection: local\n", encoding="utf-8")
+            playbook = root / "playbook.yml"
+            playbook.write_text(textwrap.dedent("""\
+                - hosts: kiosk
+                  gather_facts: false
+                  tags: [pi4]
+                  tasks:
+                    - ansible.builtin.include_role:
+                        name: release_kiosk
+                        tasks_from: prepare
+                    - ansible.builtin.set_fact:
+                        release_pi4_prepared_this_run: true
+                - hosts: kiosk
+                  gather_facts: false
+                  tags: [pi4]
+                  roles:
+                    - role: release_kiosk
+                """), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", "-i", str(root / "inventory.yml"), str(playbook), "--tags", "pi4"],
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "ANSIBLE_ROLES_PATH": str(root / "roles")},
+            )
+
+        # A skipped import_tasks re-registers every inner result as skipped (no stdout).
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertIn('"msg": "GID=1000"', output)
+
     def test_pi4_waves_stop_before_the_next_wave_after_a_rescued_failure(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
         pi4 = next(play for play in plays if play.get("roles") == [{"role": "release_kiosk"}])
@@ -1940,7 +1986,7 @@ esac
     def test_pi4_notice_contract_and_policy_constants(self) -> None:
         role = ANSIBLE / 'roles/release_kiosk'
         main = release_main_body((role / 'tasks/main.yml').read_text())[0]
-        imports = [task.get('ansible.builtin.import_tasks') for task in main['block']]
+        imports = [task.get('ansible.builtin.import_tasks', task.get('ansible.builtin.include_tasks')) for task in main['block']]
         notice_index = imports.index('notice.yml')
         self.assertGreater(notice_index, imports.index('prepare.yml'))
         self.assertLess(notice_index, next(i for i, task in enumerate(main['block']) if 'block' in task))
@@ -1977,8 +2023,9 @@ esac
             with self.subTest(role=role):
                 self.assertEqual(len(main), 1)
                 outer = main[0]
+                prepare_key = "include_tasks" if role == "release_kiosk" else "import_tasks"
                 self.assertEqual(
-                    outer["block"][0]["ansible.builtin.import_tasks"],
+                    outer["block"][0][f"ansible.builtin.{prepare_key}"],
                     "prepare.yml",
                 )
                 if role == "release_kiosk":
