@@ -24,7 +24,6 @@ import {
   invPanel,
   invLabelNumber,
   invSeg,
-  invSuccess,
 } from '../inventoryUi';
 
 import { InventoryUnitPicker } from './InventoryUnitPicker';
@@ -102,6 +101,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const [scanPending, setScanPending] = useState(false);
   const scanBusy = useRef(false);
   const [done, setDone] = useState<string | null>(null);
+  useEffect(() => { if (!done) return; const timer = setTimeout(() => setDone(null), 2500); return () => clearTimeout(timer); }, [done]);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [department, setDepartment] = useState<string | null>(null);
   const [selectedShelf, setSelectedShelf] = useState<{ area: string; shelfNumber: number } | null>(null);
@@ -241,12 +241,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   }
   const orderedGroups = [...groups].sort(([a], [b]) => a.localeCompare(b, 'ja', { numeric: true }));
   const sortedGroups = [true, false].flatMap(priority => orderedGroups.map(([key, rows]) => [key, rows.filter(({ entry }) => entry.compartments.some(needsReorder) === priority)] as const).filter(([, rows]) => rows.length > 0));
-  const banner = (
-    <div className="flex h-12 shrink-0 items-center gap-3 overflow-hidden">
-        {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
-
-    </div>
-  );
+  const banner = <p role="status" className={`pointer-events-none absolute bottom-3 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-xl border px-5 py-3 text-base font-bold shadow-lg border-inv-green bg-inv-s3 text-[#d7fbe9]`}>{done}</p>;
   const localError = (target: string) => error && errorAt === target ? <p role="alert" className="text-sm text-[#ffd0d0]">{error}</p> : null;
   const list = (
     <nav className="grid min-h-0 grid-rows-[48px_minmax(0,1fr)] gap-2" aria-label="アイテム一覧">
@@ -313,7 +308,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
 
   if (!item) {
     return (
-      <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-4`}
+      <div className={`${invSetupTargets} relative flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-4`}
         onFocusCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(true); }}
         onBlurCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(false); }}
       >
@@ -381,7 +376,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const photo = item.photos[index];
 
   return (
-    <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-4`}
+    <div className={`${invSetupTargets} relative flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-4`}
         onFocusCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(true); }}
         onBlurCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(false); }}
       >
