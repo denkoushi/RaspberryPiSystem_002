@@ -15,6 +15,7 @@ import { buildMaxProductNoWinnerCondition } from '../../services/production-sche
 import { computeLeaderboardShellFillerBudget } from '../../services/production-schedule/leaderboard/leaderboard-shell-filler-budget.js';
 import { reconcileStaleProductionScheduleOrderAssignments } from '../../services/production-schedule/order-assignment/order-assignment-reconciliation.service.js';
 import * as productionScheduleQueryService from '../../services/production-schedule/production-schedule-query.service.js';
+import { todayJstYmd } from '../../services/production-schedule/grinding-planning-board-seiban-candidates.service.js';
 import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -2897,9 +2898,10 @@ describe('Kiosk Production Schedule API', () => {
   });
 
   it('returns due-management triage zones from shared history', async () => {
+    // サーバーは今日をJSTの暦日で数えるため、UTCの日付だとJST 0〜9時に1日ずれる。
     const currentDate = new Date();
-    const today = currentDate.toISOString().slice(0, 10);
-    const after7days = new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const today = todayJstYmd(currentDate);
+    const after7days = todayJstYmd(new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000));
 
     const stateGetRes = await app.inject({
       method: 'GET',
