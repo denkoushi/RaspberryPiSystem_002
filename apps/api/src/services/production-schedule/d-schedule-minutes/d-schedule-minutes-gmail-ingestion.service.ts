@@ -9,7 +9,7 @@ import { getFileStorageRuntime } from '../../file-storage/file-storage-runtime.j
 import { FileStorageAlreadyExistsError } from '../../file-storage/file-storage-errors.js';
 import { deliverDScheduleMinutesNotice } from '../../kiosk-inquiry/system-notice-sources.js';
 import { parseDScheduleMinutesXlsx, type DScheduleMinutesWarning } from './parse-d-schedule-minutes.js';
-import { applyDScheduleMinutes } from './apply-d-schedule-minutes.service.js';
+import { applyDScheduleMinutes, DScheduleMinutesComparisonError } from './apply-d-schedule-minutes.service.js';
 import { summarizeMinutes, type DScheduleMinutesMetrics, type DScheduleMinutesSummary } from './import-summary.js';
 
 type GmailPort = Pick<GmailApiClient, 'searchMessagesLimited' | 'getMessage' | 'getAttachment' | 'trashMessage' | 'markAsRead'>;
@@ -111,7 +111,7 @@ export class DScheduleMinutesGmailIngestionService {
           summary.processed += 1;
         } catch (error) {
           const failure = `${gmailMessageId}: ${error instanceof Error ? error.message : String(error)}`;
-          if (permanentContentFailure) {
+          if (permanentContentFailure || error instanceof DScheduleMinutesComparisonError) {
             permanentFailures.push(failure);
             try {
               // Exclude permanent content failures from unread searches, preserving the original mail.

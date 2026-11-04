@@ -41,6 +41,8 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
     const warnings = run.warnings as DScheduleMinutesWarning[];
     const unavailable = new Set(warnings.filter((warning) => warning.code === 'NOT_IN_SCHEDULE').map((warning) => warning.seiban));
     const all = new Set(input.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]));
+    // A skipped block still proves presence, but only readable blocks can be added below.
+    for (const warning of warnings) if (warning.seiban !== null) all.add(warning.seiban);
     const eligible = [...input.blocks].sort((a, b) =>
       (a.partsCompleteDate ?? '9999-12-31').localeCompare(b.partsCompleteDate ?? '9999-12-31')
     ).flatMap((block) => [block.seiban, ...block.aliasSeibans]).filter((seiban) => !unavailable.has(seiban));

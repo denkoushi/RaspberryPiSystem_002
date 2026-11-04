@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 export const ingestTuningEnvShape = {
+  D_SCHEDULE_MINUTES_MIN_SEIBAN_RATIO: z.coerce.number().min(0).max(1).default(0.5),
+  D_SCHEDULE_MINUTES_LARGE_CHANGE_DAYS: z.coerce.number().int().min(1).max(3650).default(60),
+  D_SCHEDULE_MINUTES_MAX_LARGE_CHANGE_RATIO: z.coerce.number().min(0).max(1).default(0.3),
+  D_SCHEDULE_MINUTES_MIN_COMPARED: z.coerce.number().int().min(1).max(100000).default(10),
   GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.enum(['true', 'false']).default('true')

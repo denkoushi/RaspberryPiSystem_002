@@ -11,7 +11,6 @@ export function buildWorkbook(layout: 'May' | 'Oct' = 'May') {
   sheet.getCell(1, 55).value = new Date('1999-01-01T00:00:00Z'); // stale BC1
   sheet.getCell(3, 2).value = ' 製番 ';
   sheet.getColumn(2).hidden = true;
-  sheet.getCell(5, 10).value = '製番'; // duplicate visible header must not replace B
   sheet.getCell(3, parts + 2).value = '組立\n納期';
   sheet.getCell(3, parts - 2).value = '最終\n部品完';
   sheet.getCell(3, parts).value = '部品完成';

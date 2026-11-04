@@ -84,7 +84,10 @@ export async function deliverFileAlertNotice(type: string | undefined, timestamp
 }
 
 const minutesWarningExplanations: Record<string, string> = {
+  LARGE_DUE_CHANGE: '部品完成日が大きく変わりました',
   STALE_FILE: 'より新しい議事録の内容を残しました',
+  DUPLICATE_SEIBAN: '同じ製番の日付が重複して一致しません',
+  MERGED_ACROSS_HEADERS: '別の見出し列にまたがる結合セルです', UNREADABLE_ALIAS: '別名の製番を判別できません',
   UNREADABLE_DATE: '日付として読めません', INVALID_SEIBAN: '製番の形式が不正です',
   UNKNOWN_STAR: '処理出しの記号を判別できません', NOT_IN_SCHEDULE: '生産日程にありません',
   MANUAL_DUE_EXISTS_FIRST_TIME: '手入力の納期が登録されています', REGISTRATION_LIMIT: '登録製番の上限を超えました',

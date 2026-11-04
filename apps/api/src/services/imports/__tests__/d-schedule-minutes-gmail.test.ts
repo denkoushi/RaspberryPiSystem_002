@@ -8,7 +8,8 @@ import { ImportAlertService } from '../import-alert.service.js';
 import { ensureProductionScheduleCsvImportSchedules } from '../fkojunst-import-schedule.ensure.js';
 import { buildDefaultDScheduleMinutesImportSchedule, D_SCHEDULE_MINUTES_SCHEDULE_ID, resolveSystemCsvImportDefaultBuilder } from '../system-csv-import-schedule-builtin-rows.js';
 import { buildWorkbook } from '../../production-schedule/d-schedule-minutes/__fixtures__/workbook.js';
-import { DScheduleMinutesGmailIngestionService, saveDScheduleMinutesOriginal } from '../../production-schedule/d-schedule-minutes/d-schedule-minutes-gmail-ingestion.service.js';
+import { DScheduleMinutesContentError, DScheduleMinutesGmailIngestionService, saveDScheduleMinutesOriginal } from '../../production-schedule/d-schedule-minutes/d-schedule-minutes-gmail-ingestion.service.js';
+import { DScheduleMinutesComparisonError } from '../../production-schedule/d-schedule-minutes/apply-d-schedule-minutes.service.js';
 import { parseDScheduleMinutesXlsx } from '../../production-schedule/d-schedule-minutes/parse-d-schedule-minutes.js';
 import { deliverDScheduleMinutesNotice } from '../../kiosk-inquiry/system-notice-sources.js';
 import type { GmailMessage } from '../../backup/gmail-api-client.js';
@@ -115,6 +116,36 @@ describe('D schedule Gmail intake and scheduler history', () => {
     expect(alert).toHaveBeenCalledWith(expect.objectContaining({ scheduleId: row.id, historyId: '0' }));
     expect(gmail.trashMessage).not.toHaveBeenCalled(); expect(gmail.markAsRead).toHaveBeenCalledExactlyOnceWith('mail-1');
     expect(mocks.createNotice).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    '前回より製番が大きく減りました: 前回120件, 今回40件',
+    '60日以上変わった製番が多すぎます: 25/50件'
+  ])('treats comparison failure as permanent content failure: %s', async (reason) => {
+    apply.mockRejectedValue(new DScheduleMinutesComparisonError(reason));
+    await expect(ingestion.runOnce({ config, allowWait: false })).rejects.toMatchObject({
+      permanentFailures: [`mail-1: ${reason}`], retryableFailures: []
+    });
+    await expect(ingestion.runOnce({ config, allowWait: false })).rejects.toBeInstanceOf(DScheduleMinutesContentError);
+    expect(gmail.markAsRead).toHaveBeenCalledWith('mail-1');
+    expect(gmail.trashMessage).not.toHaveBeenCalled();
+    expect(mocks.createNotice).not.toHaveBeenCalled();
+    vi.clearAllMocks();
+    await expect(scheduler().runImport(row.id)).rejects.toThrow(reason);
+    expect(mocks.histories[0]).toMatchObject({ status: 'FAILED', errorMessage: expect.stringContaining(reason) });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(gmail.markAsRead).toHaveBeenCalledExactlyOnceWith('mail-1');
+    expect(gmail.searchMessagesLimited).toHaveBeenCalledOnce();
+  });
+
+  it('includes LARGE_DUE_CHANGE in floating notice and summary warnings without skipped counts', async () => {
+    const warning = { code: 'LARGE_DUE_CHANGE', seiban: 'AB1C2345', cell: 'B8', rawText: '2026-10-30→2027-01-15' };
+    parse.mockResolvedValue({ ok: true, meetingDate: '2026-10-30', blocks: [], warnings: [warning] });
+    await scheduler().runImport(row.id);
+    expect(mocks.histories[0]).toMatchObject({ summary: { dScheduleMinutesGmail: {
+      skipped: 0, warnings: [warning], runs: [expect.objectContaining({ skipped: 0, warnings: [warning] })]
+    } } });
+    expect(mocks.createNotice.mock.calls[0][0].data.messages.create.body).toContain('製番 AB1C2345 / B8 / 「2026-10-30→2027-01-15」: 部品完成日が大きく変わりました');
   });
 
   it.each(['missing attachment', 'fatal parse'])('continues past %s, finalizes good mail, and fails history with the fatal ID', async (failure) => {
@@ -260,6 +291,15 @@ describe('D schedule Gmail intake and scheduler history', () => {
     expect(data).toMatchObject({ kind: 'SYSTEM_NOTICE', noticeKey: 'd-schedule-minutes:warning-mail', receiverUnread: true });
     expect(data.messages.create.body).toContain('製番 AB1C2345 / N23 / 「4月末 確認」: 日付として読めません');
     expect(data.messages.create.body).toContain('ほか5件'); expect(data.messages.create.body).not.toContain('N43');
+  });
+
+  it.each([
+    ['DUPLICATE_SEIBAN', '同じ製番の日付が重複して一致しません'],
+    ['MERGED_ACROSS_HEADERS', '別の見出し列にまたがる結合セルです'],
+    ['UNREADABLE_ALIAS', '別名の製番を判別できません']
+  ])('shows the existing notice explanation for %s', async (code, explanation) => {
+    await deliverDScheduleMinutesNotice('warning-mail', [{ code, seiban: 'AB1C2345', cell: 'N10', rawText: 'synthetic' }]);
+    expect(mocks.createNotice.mock.calls[0][0].data.messages.create.body).toContain(explanation);
   });
 
   it('registers the hourly builtin additively and preserves edited settings on repeat ensure', () => {

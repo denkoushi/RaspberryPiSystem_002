@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formulaWithoutResult } from './date-cell.js';
+import { formulaWithoutResult, inferDate } from './date-cell.js';
 import { buildWorkbook } from './__fixtures__/workbook.js';
 import { parseDScheduleMinutesXlsx } from './parse-d-schedule-minutes.js';
 
@@ -43,7 +43,6 @@ describe('parseDScheduleMinutesXlsx', () => {
   it.each(['製番', '部品完成'])('fails when required header %s is missing', async (label) => {
     const fixture = buildWorkbook();
     fixture.sheet.getCell(3, label === '製番' ? 2 : fixture.parts).value = null;
-    if (label === '製番') fixture.sheet.getCell(5, 10).value = null;
     expect(await parse(fixture)).toMatchObject({ ok: false, reason: 'MISSING_HEADERS' });
   });
 
@@ -74,7 +73,7 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(await parse(fixture)).toMatchObject({ ok: false, reason: 'INSUFFICIENT_PARTS_COMPLETE_DATES' });
   });
 
-  it.each(['20261220', '20260105'])('resolves month/day to the nearest year around %s', async (date) => {
+  it.each(['20261220', '20260105'])('resolves month/day within the reference window around %s', async (date) => {
     const fixture = buildWorkbook();
     fixture.sheet.getCell(fixture.start, fixture.parts).value = date === '20261220' ? '1/10' : '12/25';
     const result = success(await parse(fixture, `${date} D社日程会議議事録.xlsx`));
@@ -119,7 +118,7 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(result.blocks[3].memo).toBe('発注 4/30\n架空メモ');
   });
 
-  it('skips hidden/filter-excluded blocks and collapsed outline blocks', async () => {
+  it('skips hidden/filter-excluded blocks and reads visible grouped rows', async () => {
     const fixture = buildWorkbook();
     fixture.sheet.autoFilter = 'A7:BC29';
     fixture.sheet.getRow(fixture.start + 4).hidden = true; // persisted filter exclusion
@@ -127,7 +126,7 @@ describe('parseDScheduleMinutesXlsx', () => {
     fixture.sheet.getRow(fixture.start + 8).outlineLevel = 1;
     fixture.sheet.getCell(fixture.start + 1, 23).value = '★LSLH処理出';
     const result = success(await parse(fixture));
-    expect(result.blocks.map((block) => block.seiban)).toEqual(['AB1C2345', 'AB1C2348', 'AB1C2349']);
+    expect(result.blocks.map((block) => block.seiban)).toEqual(['AB1C2345', 'AB1C2347', 'AB1C2348', 'AB1C2349']);
     expect(result.blocks[0].surfaceSendOutDates).toContainEqual({ date: '2026-05-02', label: '★LSLH処理出', note: null });
   });
 
@@ -137,7 +136,7 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(await parse(fixture)).toMatchObject({ ok: false, reason: 'UNDETERMINABLE_CALENDAR' });
   });
 
-  it('ignores collapsed columns and hidden-row blocks but reads hidden calendar columns on visible rows', async () => {
+  it('reads visible grouped columns and hidden calendar columns but skips hidden rows', async () => {
     const fixture = buildWorkbook();
     fixture.sheet.properties.outlineLevelCol = 1;
     fixture.sheet.getColumn(fixture.parts - 1).outlineLevel = 1;
@@ -146,7 +145,7 @@ describe('parseDScheduleMinutesXlsx', () => {
     fixture.sheet.getCell(fixture.start + 4, 22).value = '★LSLH処理出';
     const result = success(await parse(fixture));
     expect(result.blocks[0].memo).toBe('架空メモ');
-    expect(result.warnings.map((warning) => warning.code)).toEqual(['UNKNOWN_STAR']);
+    expect(result.warnings.map((warning) => warning.code)).toEqual(['UNREADABLE_DATE', 'UNKNOWN_STAR']);
     expect(result.blocks.map((block) => block.seiban)).toEqual(['AB1C2345', 'AB1C2347', 'AB1C2348', 'AB1C2349']);
     expect(result.blocks[0].surfaceSendOutDates).toContainEqual({ date: '2026-05-01', label: '★LSLH処理出', note: '(CT以外)' });
   });
@@ -198,7 +197,7 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(result.warnings.some((warning) => warning.code === 'MERGED_ACROSS_BLOCKS')).toBe(false);
   });
 
-  it.each(['number', 'seiban', 'short', 'long'])('keeps only unambiguous first-row values for a malformed %s block', async (kind) => {
+  it.each(['number', 'seiban', 'short', 'long'])('skips inconsistent seibans and keeps only unambiguous values for a malformed %s block', async (kind) => {
     const fixture = buildWorkbook();
     if (kind === 'number') fixture.sheet.getCell(fixture.start + 2, 1).value = 4;
     if (kind === 'seiban') fixture.sheet.getCell(fixture.start + 2, 2).value = 'ZZZZ9999';
@@ -206,7 +205,8 @@ describe('parseDScheduleMinutesXlsx', () => {
     if (kind === 'long') fixture.sheet.spliceRows(fixture.start + 2, 0, []);
     const result = success(await parse(fixture));
     expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'BLOCK_SHAPE', seiban: 'AB1C2345' }));
-    expect(result.blocks[0]).toMatchObject({ partsCompleteDate: '2026-04-30', surfaceSendOutDates: [], outsourceMarks: [], memo: '架空メモ' });
+    if (kind === 'number') expect(result.blocks[0]).toMatchObject({ partsCompleteDate: '2026-04-30', surfaceSendOutDates: [], outsourceMarks: [], memo: '架空メモ' });
+    else expect(result.blocks.some((block) => block.sourceRow === fixture.start)).toBe(false);
   });
 
   it('does not keep a row-1 date when its identifying row is invalid', async () => {
@@ -300,7 +300,7 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(result.blocks[0].surfaceSendOutDates).toHaveLength(1);
   });
 
-  it.each(['※要調整', '※架空担当', 'ＬＳＬＨ完', '※note', '☆LSLH処理出 戻', '※LSLH処理品 戻', '★未知'])('silently ignores calendar note %s', async (value) => {
+  it.each(['※要調整', '※架空担当', 'ＬＳＬＨ完', '※note', '☆LSLH処理出 戻', '※LSLH処理品 戻'])('silently ignores calendar note %s', async (value) => {
     const fixture = buildWorkbook();
     fixture.sheet.getCell(fixture.start, 22).value = value;
     const result = success(await parse(fixture));
@@ -314,19 +314,228 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(success(await parse(fixture)).blocks[0]).toMatchObject({ seiban: 'AB1C2345', aliasSeibans: ['AB1C1111'] });
   });
 
-  it('warns about ambiguous years while retaining the nearest date', async () => {
+  it.each(['hidden', 'veryHidden'] as const)('excludes %s schedule sheets even with an exact name and more valid blocks', async (state) => {
     const fixture = buildWorkbook();
-    fixture.sheet.getCell(fixture.start, fixture.parts).value = '11/2';
+    const decoy = fixture.workbook.addWorksheet('日程表', { state });
+    fixture.sheet.eachRow((row, r) => row.eachCell((cell, c) => { decoy.getCell(r, c).value = cell.value; }));
+    for (let offset = 0; offset < 4; offset++) {
+      decoy.getCell(30 + offset, 1).value = offset + 1;
+      decoy.getCell(30 + offset, 2).value = 'ZZZZ9999';
+    }
     const result = success(await parse(fixture));
-    expect(result.blocks[0].partsCompleteDate).toBe('2026-11-02');
+    expect(result.blocks).toHaveLength(5);
+    expect(result.blocks[0].partsCompleteDate).toBe('2026-04-30');
+    expect(result.warnings.some((warning) => warning.code === 'MULTIPLE_SCHEDULE_SHEETS')).toBe(false);
+    fixture.sheet.state = state;
+    expect(await parse(fixture)).toMatchObject({ ok: false, reason: 'MISSING_HEADERS' });
+  });
+
+  it.each(['製番', '部品完成'])('fails clearly on duplicate required header %s', async (label) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(3, 20).value = label;
+    expect(await parse(fixture)).toMatchObject({ ok: false, reason: expect.stringContaining(`DUPLICATE_REQUIRED_HEADER: ${label}`) });
+  });
+
+  it.each([-1, 1])('rejects a parts date merged horizontally across header offset %s', async (offset) => {
+    const fixture = buildWorkbook();
+    const left = Math.min(fixture.parts, fixture.parts + offset);
+    const right = Math.max(fixture.parts, fixture.parts + offset);
+    fixture.sheet.getCell(fixture.start, left).value = '4/30';
+    fixture.sheet.mergeCells(fixture.start, left, fixture.start, right);
+    const result = success(await parse(fixture));
+    expect(result.blocks[0].partsCompleteDate).toBeNull();
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'MERGED_ACROSS_HEADERS', seiban: 'AB1C2345' }));
+  });
+
+  it.each(['取消 4/30', '※4/30', '4/30 発注済', '4/30(木)', '4/30→5/10', '要確認4/30'])('warns and skips decorated due date %s', async (value) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, fixture.parts).value = value;
+    const result = success(await parse(fixture));
+    expect(result.blocks[0].partsCompleteDate).toBeNull();
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'UNREADABLE_DATE', cell: 'N10', rawText: value }));
+  });
+
+  it.each([0, 1, 2, 3])('skips the whole block when seiban differs on row offset %s', async (offset) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start + offset, 2).value = 'ZZZZ9999';
+    const result = success(await parse(fixture));
+    expect(result.blocks).toHaveLength(4);
+    expect(result.blocks.some((block) => block.seiban === 'ZZZZ9999' || block.seiban === 'AB1C2345')).toBe(false);
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'BLOCK_SHAPE', cell: 'B10' }));
+  });
+
+  it.each(['blank', 'missing-first'])('warns and skips a block with %s A sequence', async (kind) => {
+    const fixture = buildWorkbook();
+    for (let offset = 0; offset < (kind === 'blank' ? 4 : 1); offset++) fixture.sheet.getCell(fixture.start + offset, 1).value = null;
+    const result = success(await parse(fixture));
+    expect(result.blocks).toHaveLength(4);
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'BLOCK_SHAPE', seiban: 'AB1C2345' }));
+  });
+
+  it.each(['main', 'alias', 'history'])('rejects conflicting dates for a duplicate %s seiban', async (kind) => {
+    const fixture = buildWorkbook();
+    if (kind === 'history') {
+      fixture.sheet.getCell(fixture.start + 1, 1).value = 1;
+      fixture.sheet.getCell(fixture.start + 2, 1).value = 2;
+      fixture.sheet.getCell(fixture.start + 3, 1).value = 3;
+      fixture.sheet.getCell(fixture.start + 1, fixture.parts).value = '2/2';
+    } else {
+      for (let offset = 0; offset < 4; offset++) fixture.sheet.getCell(fixture.start + offset, 2).value = kind === 'main' ? 'AB1C2346' : 'AB1C2345(AB1C2346)';
+    }
+    const result = success(await parse(fixture));
+    const conflict = kind === 'history' ? 'AB1C2345' : 'AB1C2346';
+    expect(result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans])).not.toContain(conflict);
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'DUPLICATE_SEIBAN', seiban: conflict }));
+    if (kind === 'alias') expect(result.blocks[0].seiban).toBe('AB1C2345');
+  });
+
+  it.each(['main', 'alias', 'history'])('writes identical dates once for a duplicate %s seiban', async (kind) => {
+    const fixture = buildWorkbook();
+    if (kind === 'history') {
+      fixture.sheet.getCell(fixture.start + 1, 1).value = 1;
+      fixture.sheet.getCell(fixture.start + 2, 1).value = 2;
+      fixture.sheet.getCell(fixture.start + 3, 1).value = 3;
+      fixture.sheet.getCell(fixture.start + 1, fixture.parts).value = '4/30';
+    } else {
+      for (let offset = 0; offset < 4; offset++) fixture.sheet.getCell(fixture.start + 4 + offset, 2).value = kind === 'main' ? 'AB1C2345' : 'AB1C1111';
+      fixture.sheet.getCell(fixture.start + 4, fixture.parts).value = '4/30';
+      fixture.sheet.getCell(fixture.start + 4, 22).value = '★LSLH処理出';
+      fixture.sheet.getCell(fixture.start + 7, 52).value = '★LSLH最終処理出';
+    }
+    const result = success(await parse(fixture));
+    const duplicate = kind === 'alias' ? 'AB1C1111' : 'AB1C2345';
+    expect(result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]).filter((seiban) => seiban === duplicate)).toHaveLength(1);
+    expect(result.warnings.some((warning) => warning.code === 'DUPLICATE_SEIBAN')).toBe(false);
+  });
+
+  it.each(['★ LSLH処理出', '★LSLH 処理出', '★　ＬＳＬＨ　処理出'])('normalizes label spaces in %s while preserving note spaces', async (label) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, 22).value = `${label} (CT 以外)`;
+    const result = success(await parse(fixture));
+    expect(result.blocks[0].surfaceSendOutDates[0]).toEqual({ date: '2026-05-01', label: '★LSLH処理出', note: '(CT 以外)' });
+  });
+
+  it.each(['★未知', '★LSLH最終処理', '★', '★別処理'])('warns on unknown star %s', async (value) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, 22).value = value;
+    const result = success(await parse(fixture));
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'UNKNOWN_STAR', cell: 'V10' }));
+  });
+
+  it('does not read stars or warn about unknown stars on hidden rows', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getRow(fixture.start + 3).hidden = true;
+    fixture.sheet.getRow(fixture.start + 2).hidden = true;
+    const result = success(await parse(fixture));
+    expect(result.blocks[0].surfaceSendOutDates).toEqual([{ date: '2026-05-01', label: '★LSLH処理出', note: '(CT以外)' }]);
+    expect(result.warnings.some((warning) => warning.code === 'UNKNOWN_STAR')).toBe(false);
+  });
+
+  it.each([
+    ['20260515', '12/10', '2026-12-10'],
+    ['20261220', '7/15', '2027-07-15'],
+    ['20261220', '11/30', '2026-11-30'],
+    ['20261220', '1/10', '2027-01-10']
+  ])('infers due year using the reference window for %s and %s', async (reference, value, expected) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, fixture.parts).value = value;
+    expect(success(await parse(fixture, `${reference}.xlsx`)).blocks[0].partsCompleteDate).toBe(expected);
+    expect(success(await parse(fixture, 'minutes.xlsx', new Date(`${reference.slice(0, 4)}-${reference.slice(4, 6)}-${reference.slice(6, 8)}T00:00:00Z`))).blocks[0].partsCompleteDate).toBe(expected);
+  });
+
+  it.each(['1/15', '1/30', '12/31', '1/14'])('warns and drops inferred due date %s within 15 days of either window edge', async (value) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, fixture.parts).value = value;
+    const result = success(await parse(fixture));
+    expect(result.blocks[0].partsCompleteDate).toBeNull();
     expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'AMBIGUOUS_YEAR', cell: 'N10' }));
   });
 
-  it('reads a star on a hidden interior row of a visible block', async () => {
+  it.each(['1/31', '12/30'])('accepts inferred due date %s outside the 15-day edge margin', async (value) => {
     const fixture = buildWorkbook();
-    fixture.sheet.getRow(fixture.start + 3).hidden = true;
+    fixture.sheet.getCell(fixture.start, fixture.parts).value = value;
     const result = success(await parse(fixture));
-    expect(result.blocks[0].surfaceSendOutDates).toContainEqual({ date: '2026-05-31', label: '★LSLH最終処理出', note: null });
+    expect(result.blocks[0].partsCompleteDate).not.toBeNull();
+    expect(result.warnings.some((warning) => warning.code === 'AMBIGUOUS_YEAR' && warning.cell === 'N10')).toBe(false);
+  });
+
+  it('warns and skips star dates near a year-window edge without failing the calendar', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, fixture.parts).value = '2026/4/30';
+    fixture.sheet.getCell(fixture.start + 16, fixture.parts).value = '2026/4/30';
+    const result = success(await parse(fixture, '20260915.xlsx'));
+    expect(result.blocks[0].surfaceSendOutDates).toEqual([{ date: '2026-05-31', label: '★LSLH最終処理出', note: null }]);
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'AMBIGUOUS_YEAR', cell: 'V5' }));
+  });
+
+  it('infers star years across December to January', async () => {
+    const fixture = buildWorkbook('Oct');
+    fixture.sheet.getCell(3, 22).value = '12月';
+    fixture.sheet.getCell(3, 53).value = '1月';
+    const result = success(await parse(fixture, '20261220.xlsx'));
+    expect(result.blocks[0].surfaceSendOutDates.map((star) => star.date)).toEqual(['2026-12-01', '2027-01-01']);
+  });
+
+  it('reads parts completion under a stacked header using its physical row offset', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(3, fixture.parts - 1).value = null;
+    fixture.sheet.getCell(3, fixture.parts).value = '出図';
+    fixture.sheet.getCell(5, fixture.parts).value = '部品完成';
+    for (let index = 0; index < 5; index++) {
+      fixture.sheet.getCell(fixture.start + index * 4, fixture.parts).value = '3/1';
+      fixture.sheet.getCell(fixture.start + index * 4 + 2, fixture.parts).value = '6/1';
+    }
+    const result = success(await parse(fixture));
+    expect(result.blocks.map((block) => block.partsCompleteDate)).toEqual(Array(5).fill('2026-06-01'));
+    expect(result.blocks[0].rawPartsCompleteText).toBe('6/1');
+  });
+
+  it('rejects a parts cell vertically merged with the upper stacked header value', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(3, fixture.parts - 1).value = null;
+    fixture.sheet.getCell(3, fixture.parts).value = '出図';
+    fixture.sheet.getCell(5, fixture.parts).value = '部品完成';
+    for (let index = 0; index < 5; index++) fixture.sheet.getCell(fixture.start + index * 4 + 2, fixture.parts).value = '6/1';
+    fixture.sheet.mergeCells(fixture.start, fixture.parts, fixture.start + 2, fixture.parts);
+    const result = success(await parse(fixture));
+    expect(result.blocks[0].partsCompleteDate).toBeNull();
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'MERGED_ACROSS_HEADERS', cell: 'N12' }));
+  });
+
+  it('warns without reading the upper value when a stacked parts offset exceeds the block', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(3, fixture.parts - 1).value = null;
+    fixture.sheet.getCell(3, fixture.parts).value = '出図';
+    fixture.sheet.getCell(7, fixture.parts).value = '部品完成';
+    const result = await parse(fixture);
+    expect(result).toMatchObject({ ok: false, reason: 'INSUFFICIENT_PARTS_COMPLETE_DATES' });
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'BLOCK_SHAPE', cell: 'N10' }));
+  });
+
+  it('rejects duplicate seibans with identical due dates but conflicting star dates', async () => {
+    const fixture = buildWorkbook();
+    for (let offset = 0; offset < 4; offset++) fixture.sheet.getCell(fixture.start + 4 + offset, 2).value = 'AB1C2345';
+    fixture.sheet.getCell(fixture.start + 4, fixture.parts).value = '4/30';
+    fixture.sheet.getCell(fixture.start + 4, 23).value = '★LSLH処理出';
+    const result = success(await parse(fixture));
+    expect(result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans])).not.toContain('AB1C2345');
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'DUPLICATE_SEIBAN', seiban: 'AB1C2345' }));
+  });
+
+  it('clamps month-end window edges before applying the 15-day margin', () => {
+    const ambiguous = () => { throw new Error('Unexpected ambiguous date'); };
+    expect(inferDate(3, 16, '2026-06-30', ambiguous)).toBe('2026-03-16');
+    const warn = { count: 0 };
+    expect(inferDate(3, 15, '2026-06-30', () => warn.count++)).toBeNull();
+    expect(warn.count).toBe(1);
+  });
+
+  it.each(['BA1S9340（BA1S7332 改）', 'BA1S9340(旧BA1S7332)', 'BA1S9340/BA1S7332', 'BA1S9340(BA1S733)'])('imports the main key and warns on unreadable alias %s', async (value) => {
+    const fixture = buildWorkbook();
+    for (let offset = 0; offset < 4; offset++) fixture.sheet.getCell(fixture.start + offset, 2).value = value;
+    const result = success(await parse(fixture));
+    expect(result.blocks[0]).toMatchObject({ seiban: 'BA1S9340', aliasSeibans: [], partsCompleteDate: '2026-04-30' });
+    expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'UNREADABLE_ALIAS', seiban: 'BA1S9340', cell: 'B10' }));
   });
 
   it('returns a fatal result for invalid xlsx bytes', async () => {
