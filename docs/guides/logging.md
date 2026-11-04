@@ -33,7 +33,7 @@ export LOG_LEVEL=warn
 
 #### Docker Composeで設定
 
-`infrastructure/docker/docker-compose.server.yml`で設定します。
+開発・ローカルの`infrastructure/docker/docker-compose.server.yml`では次のように設定できます。Pi5本番のAPIは`docker-compose.phase3.yml`（project `bluegreen`）で動き、`LOG_LEVEL`は設定されていないため、APIの既定値（`NODE_ENV=production`で`warn`）になります。本番の変更はPRと標準デプロイ（[deployment.md](./deployment.md)）で行います。
 
 ```yaml
 services:
@@ -121,7 +121,7 @@ Docker環境では、ログローテーションが自動的に設定されて�
 
 ### 設定内容
 
-`infrastructure/docker/docker-compose.server.yml`で以下の設定が行われています。
+Pi5本番（`infrastructure/docker/docker-compose.phase3.yml`）では、共通の`x-default-logging`（`json-file`、`max-size: "10m"`、`max-file: "3"`、圧縮なし）を各serviceに適用しています（`business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache`は除く）。DBを動かす`docker-compose.server.yml`の`db`には`logging`の指定がなく、Dockerの既定設定になります。下記は`docker-compose.server.yml`の旧来の`api`/`web`定義で、本番では使われていません。
 
 ```yaml
 services:
@@ -145,7 +145,7 @@ services:
 
 - **最大サイズ**: 10MB（1ファイルあたり）
 - **保持ファイル数**: 3ファイル（合計30MB）
-- **圧縮**: 有効（古いログファイルは自動的に圧縮される）
+- **圧縮**: 本番（phase3）は無効。`docker-compose.server.yml`の旧来定義だけが`compress: "true"`
 
 ### ログファイルの場所
 
@@ -275,7 +275,7 @@ scripts/server/run-in-active-api.sh env | grep LOG_LEVEL
 **原因**: ログローテーションが設定されていない、または設定が不適切です。
 
 **解決方法**:
-- `docker-compose.server.yml`でログローテーション設定を確認
+- 本番は`docker-compose.phase3.yml`の`x-default-logging`を確認（稼働中containerの実設定は`docker inspect --format '{{json .HostConfig.LogConfig}}' <container>`）
 - `max-size`と`max-file`を適切に設定
 
 ### ログの検索が困難

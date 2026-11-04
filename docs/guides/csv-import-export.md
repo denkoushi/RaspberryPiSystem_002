@@ -417,7 +417,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 |------|------|------|-----|
 | `department` | 文字列 | 所属部署 | `製造部` |
 | `positionName`（別名: `職位`） | 文字列 | 人事データの職位名。列なしは既存値を保持、空欄は削除 | `主任` |
-| `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
+| `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `<nfc-uid>`（実在タグの UID に置き換える） |
 | `status` | 文字列 | ステータス（`ACTIVE` / `INACTIVE` / `SUSPENDED`、未指定時は`ACTIVE`） | `ACTIVE` |
 
 **注意**: `displayName`（氏名）は`lastName + firstName`で自動生成されます。CSVには含めません。
@@ -426,9 +426,9 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 
 ```csv
 employeeCode,lastName,firstName,department,nfcTagUid,status
-0001,山田,太郎,製造部,04C362E1330289,ACTIVE
+0001,山田,太郎,製造部,<nfc-uid-1>,ACTIVE
 0002,佐藤,花子,品質管理部,,ACTIVE
-0003,鈴木,一郎,製造部,04DE8366BC2A81,INACTIVE
+0003,鈴木,一郎,製造部,<nfc-uid-3>,INACTIVE
 ```
 
 #### バリデーションルール
@@ -453,7 +453,7 @@ employeeCode,lastName,firstName,department,nfcTagUid,status
 
 | 列名 | 形式 | 説明 | 例 |
 |------|------|------|-----|
-| `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04DE8366BC2A81` |
+| `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `<nfc-uid>`（実在タグの UID に置き換える） |
 | `category` | 文字列 | カテゴリ | `工具` |
 | `storageLocation` | 文字列 | 保管場所 | `工具庫A` |
 | `status` | 文字列 | ステータス（`AVAILABLE` / `IN_USE` / `MAINTENANCE` / `RETIRED`） | `AVAILABLE` |
@@ -463,9 +463,9 @@ employeeCode,lastName,firstName,department,nfcTagUid,status
 
 ```csv
 itemCode,name,nfcTagUid,category,storageLocation,status,notes
-TO0001,ドライバー No.1,04DE8366BC2A81,工具,工具庫A,AVAILABLE,
+TO0001,ドライバー No.1,<nfc-uid-3>,工具,工具庫A,AVAILABLE,
 TO0002,レンチセット,,工具,工具庫B,AVAILABLE,定期点検必要
-TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
+TO0003,ハンマー,<nfc-uid-1>,工具,工具庫A,IN_USE,
 ```
 
 #### バリデーションルール
@@ -494,15 +494,15 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
 | `measurementRange` | 文字列 | 測定範囲 | `0-100mm` |
 | `calibrationExpiryDate` | 日付（YYYY-MM-DD） | 校正期限 | `2025-12-31` |
 | `status` | 文字列 | ステータス（`AVAILABLE` / `IN_USE` / `MAINTENANCE` / `RETIRED`、未指定時は`AVAILABLE`） | `AVAILABLE` |
-| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
+| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `<nfc-uid>`（実在タグの UID に置き換える） |
 
 #### CSV例
 
 ```csv
 managementNumber,name,storageLocation,department,measurementRange,calibrationExpiryDate,status,rfidTagUid
-MI-001,てこ式ダイヤルゲージ,工具庫A,品質管理部,0-100mm,2025-12-31,AVAILABLE,04C362E1330289
+MI-001,てこ式ダイヤルゲージ,工具庫A,品質管理部,0-100mm,2025-12-31,AVAILABLE,<nfc-uid-1>
 MI-002,ノギス,工具庫B,品質管理部,0-150mm,2025-06-30,AVAILABLE,
-MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE,04DE8366BC2A81
+MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE,<nfc-uid-3>
 ```
 
 #### バリデーションルール
@@ -537,15 +537,15 @@ MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE
 | `thicknessMm` | 数値 | 厚さ（mm） | `20` |
 | `status` | 文字列 | ステータス（`AVAILABLE` / `IN_USE` / `MAINTENANCE` / `RETIRED`、未指定時は`AVAILABLE`） | `AVAILABLE` |
 | `notes` | 文字列 | 備考 | `定期点検必要` |
-| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
+| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `<nfc-uid>`（実在タグの UID に置き換える） |
 
 #### CSV例
 
 ```csv
 managementNumber,name,idNum,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid
-RG-001,ワイヤーロープ 10t,101,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,,04C362E1330289
+RG-001,ワイヤーロープ 10t,101,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,,<nfc-uid-1>
 RG-002,チェーンブロック 5t,,工具庫B,製造部,2019-06-01,15,5,3000,80,15,AVAILABLE,定期点検必要,
-RG-003,スリングベルト 3t,305,工具庫A,製造部,2021-03-15,8,3,2000,50,10,IN_USE,,04DE8366BC2A81
+RG-003,スリングベルト 3t,305,工具庫A,製造部,2021-03-15,8,3,2000,50,10,IN_USE,,<nfc-uid-3>
 ```
 
 #### バリデーションルール

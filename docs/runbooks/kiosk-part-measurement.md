@@ -49,13 +49,14 @@
 本番実行はPi5への対象コード反映後、`sessaku-01`の入力を止め、以下のdry-run結果を現状と照合してから行う。通常のSQL更新で代用しない。
 
 ```bash
+# Pi5の /opt/RaspberryPiSystem_002 で、稼働中のAPIスロット内で実行する
 # dry-run（既定・DB更新なし）
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
-  pnpm correct:self-inspection-md004121632-021-single:prod
+scripts/server/run-in-active-api.sh \
+  node /app/apps/api/dist/scripts/correct-self-inspection-md004121632-021-single.js
 
 # dry-run結果と読み取り専用SQLを確認後だけ実行
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
-  pnpm correct:self-inspection-md004121632-021-single:prod -- \
+scripts/server/run-in-active-api.sh \
+  node /app/apps/api/dist/scripts/correct-self-inspection-md004121632-021-single.js \
   --execute --confirm=MD004121632/021
 ```
 

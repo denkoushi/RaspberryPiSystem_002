@@ -96,8 +96,9 @@
 
 ```bash
 cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api which ndlocr-lite
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api ndlocr-lite --help >/dev/null
+# 稼働中のAPIスロット（blue/green）内で実行する
+scripts/server/run-in-active-api.sh sh -c 'command -v ndlocr-lite'
+scripts/server/run-in-active-api.sh ndlocr-lite --help >/dev/null
 ```
 
 上記が失敗する場合、API イメージが古い可能性が高い。最新イメージで再デプロイ後に再確認する。**補足**: `ndlocr-lite --help` 実行時、stderr に ONNX Runtime の GPU device discovery 警告が出ることがある。**終了コード 0** ならコンテナ CPU 推論運用上は問題にしない（[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）。

@@ -76,11 +76,13 @@
 
 **CSVファイル形式**:
 
+`<nfc-uid-N>` は検証に使う NFC タグの UID（14 文字の 16 進数）に置き換える。
+
 従業員CSV (`employees.csv`):
 ```csv
 employeeCode,lastName,firstName,nfcTagUid,department,contact,status
-0001,山田,太郎,04C362E1330289,製造部,090-1234-5678,ACTIVE
-0002,佐藤,花子,04B34411340289,品質管理部,090-2345-6789,ACTIVE
+0001,山田,太郎,<nfc-uid-1>,製造部,090-1234-5678,ACTIVE
+0002,佐藤,花子,<nfc-uid-2>,品質管理部,090-2345-6789,ACTIVE
 ```
 
 **注意**: `displayName`（氏名）は`lastName + firstName`で自動生成されます。CSVには含めません。
@@ -88,8 +90,8 @@ employeeCode,lastName,firstName,nfcTagUid,department,contact,status
 アイテムCSV (`items.csv`):
 ```csv
 itemCode,name,nfcTagUid,category,storageLocation,status,notes
-TO0001,ドライバーセット,04DE8366BC2A81,工具,工具庫A,AVAILABLE,常用工具
-TO0002,メジャー,04C393C1330289,測定器具,工具庫B,AVAILABLE,
+TO0001,ドライバーセット,<nfc-uid-3>,工具,工具庫A,AVAILABLE,常用工具
+TO0002,メジャー,<nfc-uid-4>,測定器具,工具庫B,AVAILABLE,
 ```
 
 **検証手順**:
@@ -327,9 +329,9 @@ cd apps/web && pnpm build && cd ../..
    - 以下のCSVファイルを作成（UTF-8エンコーディング）:
    ```csv
    employeeCode,lastName,firstName,department,nfcTagUid,status
-   9999,山田,太郎,製造部,04C362E1330289,ACTIVE
+   9999,山田,太郎,製造部,<nfc-uid-1>,ACTIVE
    9998,佐藤,花子,品質管理部,,ACTIVE
-   9997,鈴木,一郎,製造部,04DE8366BC2A81,INACTIVE
+   9997,鈴木,一郎,製造部,<nfc-uid-3>,INACTIVE
    ```
 
 2. **管理画面でCSVインポート**
@@ -392,8 +394,8 @@ cd apps/web && pnpm build && cd ../..
    - 以下のCSVファイルを作成（UTF-8エンコーディング）。任意列 **`idNum`（旧番号）** を含めてもよい（ヘッダー候補: `idNum`, `ID_num`, `旧番号`。詳細は [csv-import-export.md](./csv-import-export.md)）:
    ```csv
    managementNumber,name,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid,idNum
-   RG-TEST-001,テスト吊具1,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,テスト用,04C362E1330289,101
-   RG-TEST-002,テスト吊具2,工具庫B,品質管理部,2021-06-01,5,5,3000,80,15,AVAILABLE,,04DE8366BC2A81,
+   RG-TEST-001,テスト吊具1,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,テスト用,<nfc-uid-1>,101
+   RG-TEST-002,テスト吊具2,工具庫B,品質管理部,2021-06-01,5,5,3000,80,15,AVAILABLE,,<nfc-uid-3>,
    ```
 
 2. **管理画面でCSVインポート（UI経由）**
@@ -782,7 +784,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-04-03（上記スクリプト **PASS 41 / WARN 0 / FAIL 0**・`main` に `refactor(api): extract loan grid HTML chrome and layout tokens` 反映後、inventory 6 台を `--limit` 順次・`--foreground` でデプロイ済み・Mac / Tailscale・約 **59s**）
 **検証結果**: ☑ 成功（自動） ☐ 失敗（エラー内容: _______________）
 
-**6.6.24 キオスク リーダー順位ボード（資源内順位割当 A+α 自動解放）** {#kiosk-leaderboard-order-assignment-auto-release-verification-2026-05-20}
+<a id="kiosk-leaderboard-order-assignment-auto-release-verification-2026-05-20"></a>**6.6.24 キオスク リーダー順位ボード（資源内順位割当 A+α 自動解放）**
 
 **確認ポイント**（[KB-297 §A+α](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-order-assignment-auto-release-a-alpha-2026-05-20)·[deployment §A+α](../archive/deployments/2026-05.md#kiosk-leaderboard-order-assignment-auto-release-a-alpha-2026-05-20)）:
 
@@ -794,7 +796,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 
 **トラブルシュート**: 反映直後も飛び番 → 同期未実行・Pi5 ref 確認。CI 失敗（reconcile DI）→ **`643e4f4b`** 参照。
 
-**6.6.23 キオスク リーダー順位ボード（製番左縁アクセント 24 色）** {#kiosk-leaderboard-seiban-accent-24-verification-2026-05-20}
+<a id="kiosk-leaderboard-seiban-accent-24-verification-2026-05-20"></a>**6.6.23 キオスク リーダー順位ボード（製番左縁アクセント 24 色）**
 
 **（2026-05-22 以降）**: 全件表示の左縁着色は **撤回**。**現行チェックは [§6.6.28](#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22) を正**とする。本節は **2026-05-20〜2026-05-21 の履歴**。
 
@@ -810,7 +812,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-20（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260520-141147-19965`** ほか 4 本·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.31 キオスク リーダー順位ボード（`+人` 人工数表示回復・8H/10H 切替・表示速度維持）** {#kiosk-leaderboard-labor-toggle-display-recovery-2026-06-24}
+<a id="kiosk-leaderboard-labor-toggle-display-recovery-2026-06-24"></a>**6.6.31 キオスク リーダー順位ボード（`+人` 人工数表示回復・8H/10H 切替・表示速度維持）**
 
 **現仕様の読み方**: 最終受理状態は `5171e44e` 系の復旧後。`f978c15e` は却下済み Gantt 回帰の履歴であり、現在値と履歴語の整理は [KB-392](../knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md) を参照。
 
@@ -830,7 +832,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-06-24（最終受理 commit **`5171e44e`** · all-host deploy **`20260624-175322-20365`** · Phase12 **PASS 43 / WARN 0 / FAIL 0**）
 **検証結果**: `a882ac81` で累積境界 Gantt へ復旧、`cca420ac` で人工数 metadata overlay を保持、`5171e44e` で同期表示 layout を安定化。`f978c15e` の deploy/CI/Phase12 成功は却下済み履歴として扱う。
 
-**6.6.30 キオスク リーダー順位ボード（資源カード行 — 強調レイアウト）** {#kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05}
+<a id="kiosk-leaderboard-card-row-emphasis-layout-verification-2026-06-05"></a>**6.6.30 キオスク リーダー順位ボード（資源カード行 — 強調レイアウト）**
 
 **確認ポイント**（[KB-297 §カード行強調](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-card-row-emphasis-layout-2026-06-05)·[deployment §2026-06-05](../archive/deployments/2026-06.md#kiosk-leaderboard-card-row-emphasis-layout-2026-06-05)）:
 
@@ -849,7 +851,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-06-18（自動 **43/0/0**·**Pi5+Pi4×4**·Pi5 バンドル `title:N.partNameLine` 確認）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視·ホバー全文） ☐ 失敗（エラー内容: _______________）
 
-**6.6.29 キオスク リーダー順位ボード（完了後フッタ工程チップ装飾の再同期）** {#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01}
+<a id="kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01"></a>**6.6.29 キオスク リーダー順位ボード（完了後フッタ工程チップ装飾の再同期）**
 
 **確認ポイント**（[KB-375 §2026-06-01](../knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md#production-2026-06-01-completion-decoration-resync)·[KB-374 §装飾 stale](../knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[deployment §2026-06-01](../archive/deployments/2026-06.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)）:
 
@@ -864,7 +866,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-06-01（自動 **43/0/0**·**`raspberrypi5` のみ**·Detach **`20260601-210522-21919`**·**Pi3/Pi4 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.28 キオスク リーダー順位ボード（製番左縁 — 全件無色・OR フィルタ時のみ色分け）** {#kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22}
+<a id="kiosk-leaderboard-seiban-accent-no-color-all-items-verification-2026-05-22"></a>**6.6.28 キオスク リーダー順位ボード（製番左縁 — 全件無色・OR フィルタ時のみ色分け）**
 
 **確認ポイント**（[KB-297 §全件無色](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)·[deployment §2026-05-22 全件無色](../archive/deployments/2026-05.md#kiosk-leaderboard-seiban-accent-no-color-all-items-2026-05-22)）:
 
@@ -880,7 +882,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-22（自動 **43/0/0**·Pi5→Pi4×4 **`--limit` 順次**·Detach **`20260522-211412-3634`** ほか 4 本·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.25 キオスク リーダー順位ボード（資源CDスロット「順位」ボタン・製番順評価 ON 時）** {#kiosk-leaderboard-slot-auto-rank-verification-2026-05-22}
+<a id="kiosk-leaderboard-slot-auto-rank-verification-2026-05-22"></a>**6.6.25 キオスク リーダー順位ボード（資源CDスロット「順位」ボタン・製番順評価 ON 時）**
 
 **確認ポイント**（[KB-297 §スロット順位](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-slot-auto-rank-2026-05-22)·[deployment §2026-05-22](../archive/deployments/2026-05.md#kiosk-leaderboard-slot-auto-rank-2026-05-22)）:
 
@@ -896,14 +898,14 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **検証日時**: 2026-05-22（自動 **43/0/0**·**`raspberrypi5` のみ**·Detach **`20260522-183756-28111`**·**Pi3 除外**）
 **検証結果**: ☑ 成功（自動） ☐ 成功（現場目視） ☐ 失敗（エラー内容: _______________）
 
-**6.6.26 キオスク リーダー順位ボード（手動順位 — サイネージ SVG 行背景 / キオスク履歴）** {#kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22}
+<a id="kiosk-leaderboard-manual-order-row-highlight-verification-2026-05-22"></a>**6.6.26 キオスク リーダー順位ボード（手動順位 — サイネージ SVG 行背景 / キオスク履歴）**
 
 **確認ポイント**（[KB-297 §手動順位行](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-manual-order-row-highlight-2026-05-22)·[KB-335 §手動順位行](../knowledge-base/infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg)）:
 
 - [ ] **サイネージ（手動）**: `kiosk_leader_order_cards` で **順位付き未完行**の行ブロック背景 **`rgba(71, 85, 105, 0.82)` 相当**（Pi5 **`api`**·`3acf4c5a` 以降）。
 - [ ] **キオスク（履歴・行背景案）**: **`949eea9c` 以降は行背景ハイライトなし** — 現行確認は **§6.6.27** を正とする。
 
-**6.6.27 キオスク リーダー順位ボード（行内順位ピッカー · 製番順位 UI 統一）** {#kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22}
+<a id="kiosk-leaderboard-row-order-rank-picker-verification-2026-05-22"></a>**6.6.27 キオスク リーダー順位ボード（行内順位ピッカー · 製番順位 UI 統一）**
 
 **確認ポイント**（[KB-297 §行内順位ピッカー](../knowledge-base/KB-297-kiosk-due-management-workflow.md#leader-order-board-row-order-rank-picker-2026-05-22)·[deployment §行内順位](../archive/deployments/2026-05.md#kiosk-leaderboard-row-order-rank-picker-2026-05-22)）:
 

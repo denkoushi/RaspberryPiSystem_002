@@ -204,7 +204,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
 
 ### 設定ファイルが削除された場合
 
-1. **標準経路で再適用**: `--print-plan` の list-tasks で該当ファイルを扱うtaskがあるかを確認し、ある場合は明示承認後に `scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN` で再適用する（[デプロイ・クイックスタート](./quick-start-deployment.md)）。標準routeが扱わないファイルでも、個別playbookを直接実行せず運用者の判断を仰ぐ。
+1. **標準経路で再適用**: `--print-plan` の list-tasks で該当ファイルを扱うtaskがあるかを確認し、ある場合は明示承認後に `scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN` で再適用する（[デプロイ・クイックスタート](./quick-start-deployment.md)）。標準routeが扱わないファイル（例: polkit ルールは `release_kiosk` の初回導入時だけ配置）の復旧手順と、`manage-system-configs.yml` などの個別playbookを例外的に実行できる条件は [デプロイメントガイド](./deployment.md) に未定義である。個別playbookを直接実行せず、オーナーの判断を仰ぐ。
 
 2. **失敗した場合**: `scripts/update-all-clients.sh --status RUN_ID` で結果を確認し、[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md) に従う。
 

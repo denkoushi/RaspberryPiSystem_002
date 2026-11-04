@@ -80,7 +80,7 @@ standard routeが `roles/kiosk` のIME診断・Firefox profile customizationを�
 
 ## 診断結果の記録
 
-診断結果を [KB-287](../knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) に記入する。
+診断結果は `frontend.md`（集約ファイル。追記しない）ではなく、[KB テンプレート](../knowledge-base/_template.md) に従って新しい個別ファイル `docs/knowledge-base/KB-xxx-*.md` を作り、[KB 索引](../knowledge-base/index.md) に登録する。過去の経緯は [KB-287](../knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) を参照する。
 
 ## ブラウザengine選択の確認とrollback
 

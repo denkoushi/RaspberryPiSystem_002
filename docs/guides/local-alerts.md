@@ -91,7 +91,7 @@ Slackに通知したい場合は、APIコンテナに以下を設定します（
 
 **有効化方法**:
 
-`docker-compose.server.yml` または環境変数で以下を設定：
+Pi5本番では `ALERTS_DB_INGEST_ENABLED` はAnsibleの `docker.env.j2` が `infrastructure/docker/.env` に書き込み、既定は `true`（変数 `alerts_db_ingest_enabled`）。値を変える場合はAnsible変数で設定し、標準デプロイ（[deployment.md](./deployment.md)）で反映する。`ALERTS_DB_INGEST_INTERVAL_SECONDS` / `ALERTS_DB_INGEST_LIMIT` はテンプレートに無く、本番はAPIの既定値（60秒 / 50件）で動く。`docker-compose.server.yml` の `api` は本番では稼働していない。下記は環境変数の意味：
 
 ```yaml
 environment:
@@ -363,7 +363,8 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
 
 4. **APIサーバーのログ確認**:
    ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | tail -50
+   # Pi5の /opt/RaspberryPiSystem_002 で実行（本番APIはblue/greenの稼働中スロット）
+   docker logs --tail 50 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"
    ```
 
 5. **デバッグ手法（UI表示の問題を調査する場合）**:
@@ -377,7 +378,8 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
 
 1. **APIサーバーの確認**:
    ```bash
-   docker compose -f infrastructure/docker/docker-compose.server.yml logs api | tail -50
+   # Pi5の /opt/RaspberryPiSystem_002 で実行（本番APIはblue/greenの稼働中スロット）
+   docker logs --tail 50 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"
    ```
 
 2. **アラートディレクトリの確認**:

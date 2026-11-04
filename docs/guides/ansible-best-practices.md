@@ -33,6 +33,8 @@ update-frequency: medium
 
 ### 2. `git clean`の安全な使用
 
+> 過去の方針（現行: `infrastructure/ansible` に `git clean` を実行するtaskはない。[ansible-managed-files.md](./ansible-managed-files.md) を参照）。以下は当時の実装例。
+
 **原則**: `git clean`を実行する前に、保護が必要なディレクトリを明示的に除外する
 
 **保護対象ディレクトリ**:
@@ -184,6 +186,8 @@ handlers:
 
 ## 運用のベストプラクティス
 
+本番（`infrastructure/ansible/inventory.yml`）への反映は `scripts/update-all-clients.sh` の標準経路だけを使い、個別playbookを本番へ直接実行しない（[デプロイメントガイド](./deployment.md)、[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md#禁止事項)）。以下の `ansible-playbook` 直接実行例は、playbook開発時の一般例である。
+
 ### 1. デプロイ前のリソース確保（重要）
 
 **原則**: リソース制約のある環境（特にPi3）では、デプロイ前に不要なサービスを停止する
@@ -204,6 +208,8 @@ Pi3のサイネージ関連unit（`signage-lite.service`、`signage-lite-update.
 2. `--diff`オプションで差分を確認
 3. 問題がなければ実際に実行
 
+本番では、代わりに read-only の `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit PATTERN` で対象とtaskを確認する。
+
 **実装例**:
 ```bash
 # ドライランで確認
@@ -218,6 +224,7 @@ ansible-playbook -i inventory.yml playbook.yml
 **推奨事項**:
 - プレイブック実行時にログを記録
 - エラー発生時の原因特定に役立つ
+- 本番の標準経路では、`scripts/update-all-clients.sh --status RUN_ID` でsystemd unitとjournalを読む
 
 **実装例**:
 ```bash
@@ -260,8 +267,8 @@ IPは `group_vars/all.yml` の `network_mode` と `local_network` / `tailscale_n
 # テスト環境で実行
 ansible-playbook -i inventory-test.yml playbook.yml
 
-# 実機検証
-ansible-playbook -i inventory.yml playbook.yml --check --diff
+# 本番対象の確認（read-only）
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit PATTERN
 ```
 
 ## トラブルシューティング
