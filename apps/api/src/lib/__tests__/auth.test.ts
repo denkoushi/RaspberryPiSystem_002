@@ -194,12 +194,29 @@ describe('authenticate', () => {
     expect(error.code).toBe('AUTH_TOKEN_INVALID');
   });
 
-  it('does not verify the Authorization scheme (any first word is accepted)', async () => {
-    // NOTE: possible bug: the scheme is ignored; "Basic <jwt>" authenticates the same as "Bearer <jwt>".
+  it.each([
+    ['Basic scheme', (t: string) => `Basic ${t}`],
+    ['Token scheme', (t: string) => `Token ${t}`],
+    ['extra segment', (t: string) => `Bearer ${t} extra`],
+    ['double space', (t: string) => `Bearer  ${t}`]
+  ])('rejects a valid token sent with a non-Bearer header shape (%s)', async (_label, build) => {
     const token = signAccessToken(makeUser({ role: 'VIEWER' }));
-    const request = makeRequest(`Basic ${token}`);
-    await authenticate(request, makeReply());
-    expect(request.user?.role).toBe('VIEWER');
+    const reply = makeReply();
+    const request = makeRequest(build(token));
+    const error = await captureError(authenticate(request, reply));
+    expect(error.statusCode).toBe(401);
+    expect(error.code).toBe('AUTH_TOKEN_INVALID');
+    expect(reply.code).toHaveBeenCalledWith(401);
+    expect(request.user).toBeUndefined();
+  });
+
+  it('accepts the Bearer scheme case-insensitively', async () => {
+    const token = signAccessToken(makeUser({ role: 'VIEWER' }));
+    for (const scheme of ['bearer', 'BEARER']) {
+      const request = makeRequest(`${scheme} ${token}`);
+      await authenticate(request, makeReply());
+      expect(request.user?.role).toBe('VIEWER');
+    }
   });
 
   describe('when ADMIN_MFA_REQUIRED is on', () => {
