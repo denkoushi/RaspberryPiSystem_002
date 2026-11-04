@@ -75,7 +75,7 @@ M1 では次も合わせて直す。(a) 前段しぼり `prefilterDrawingSibling
 
 M2 意味で写す。`transferItems` の候補選びを業務LLM による対応づけに置き換える。入力は、元図面（人の丸数字入り）、写し先図面に DimensionMap の各寸法へ D 番号を赤で描いた画像、丸数字一覧（工程、項目、値）、D 番号一覧。出力は `{"items":[{"n":1,"role":"上面図 全幅","target":"D3"}]}`（置けないときは `target: null`）。丸数字は選んだ寸法の位置に置き、値は写し先の寸法から読む（「深」を含む項目は深さの値）。公差は元の上下の幅を保つ。機能フラグで旧方式に戻せるようにする。
 
-M2 では次も合わせて直す。(a) 提案行の値は今 `ensureRun` が写し元の項目から書いているため、`PlacementTransferResult` とサービスの行生成も写し先の値を持つよう変える。既存項目との重複判定 `placementItemAlreadyExists`（名前＋値）も写し先の値で判定する。(b) `PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION` を新しい版にし、旧版のランと混ざらないようにする（旧方式へ戻すときは旧版キーのランが使われる）。(c) 失敗時: タイムアウト（現行 115 秒）や壊れた JSON は全件 UNPLACED のランとして保存し、毎晩同じ図面を呼び続けない。再試行は版が変わったときだけ。maxTokens は応答時間に収まる値を試験で決める。(d) 管理画面は見本方式（`INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED`）の案があると写し方式の案を隠す。見本方式は使わないため、この優先分岐と見本方式の夜間処理を外し、フラグを無効のままにする（本番 inventory の値を先に確かめる）。
+M2 では次も合わせて直す。(a) 提案行の値は今 `ensureRun` が写し元の項目から書いているため、`PlacementTransferResult` とサービスの行生成も写し先の値を持つよう変える。既存項目との重複判定 `placementItemAlreadyExists`（名前＋値）も写し先の値で判定する。(b) `PART_MEASUREMENT_DRAWING_PLACEMENT_VERSION` を新しい版にし、旧版のランと混ざらないようにする（旧方式へ戻すときは旧版キーのランが使われる）。(c) 失敗時: タイムアウト（現行 115 秒）や壊れた JSON は全件 UNPLACED のランとして保存し、毎晩同じ図面を呼び続けない。旧失敗ランの1回限りの再試行は Idempotence and Recovery に従う。maxTokens は応答時間に収まる値を試験で決める。(d) 管理画面は見本方式（`INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED`）の案があると写し方式の案を隠す。見本方式は使わないため、この優先分岐と見本方式の夜間処理を外し、フラグを無効のままにする（本番 inventory の値を先に確かめる）。
 
 M3 チェック（プログラム）。業務LLM の答えに対し、次を機械的にはじいて UNPLACED（人が付ける）にする: かっこ付きの参考寸法、同じ寸法への重複（幾何公差の枠を除く）、幾何公差の項目なのに枠でない寸法、深さの項目に径の寸法、粗さ記号や注記の文字。判定は DimensionMap の種類と文字列から行う。
 
@@ -104,6 +104,12 @@ M5 閉じた輪。最初の作業は DB 変更: 提案の状態は今 PROPOSED/A
 - 各 M で API の対象テストと lint が通る。
 
 ## Idempotence and Recovery
+
+2026-11-05: 意味写しは丸数字を最大8個ずつに分けて順番に呼ぶ。各塊の画像と一覧は1から採番し、結果は元順で結合して全体の重複判定を1回行う。写し先画像と D 番号一覧は共通。115秒の時間切れは呼び出し単位で判定し、短い unavailable と deferred は再送出する。途中の失敗でも部分成功は保存せず、全件 UNPLACED の `semantic-failed-chunked` を保存する。
+
+旧 `semantic-failed` で decidedAt のある proposal がないランだけ、夜間 backfill の対象に戻す。推論後、proposal をロックして決定状態を再確認し、削除と新規作成を同一トランザクションで行う。決定済み、`semantic-failed-chunked`、キオスクの `allowInference=false` は既存ランを維持する。スキーマ・placementVersion は変更しない。
+
+ローカル検証: 指定の placement Vitest は5ファイル・265テスト成功（約3秒）、変更TS 4ファイルの ESLint 成功（約2秒）。既存worktreeの依存関係を利用。本番の再作成・deploy は未実施。
 
 各 M は機能フラグで旧動作に戻せる。お手本と決まりは版付きで前の版に戻せる。試験は本番 DB に書かない（提案ランも作らない）。
 

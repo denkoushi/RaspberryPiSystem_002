@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { z } from 'zod';
 
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
+import { InferenceUnavailableError } from '../inference/ports/multi-image-vision-completion.port.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { candidateValue, resolveWantedDimensionKind, suggestTolerances } from './part-measurement-drawing-dimension-map-candidates.js';
 import { semanticPlacementRejections } from './part-measurement-drawing-placement-semantic-checks.js';
@@ -63,6 +64,14 @@ const round2 = (value: number) => Math.round(value * 100) / 100;
 
 // DGX caps a call at 120s; stay just under it.
 export const SEMANTIC_PLACEMENT_TIMEOUT_MS = 115_000;
+export const SEMANTIC_PLACEMENT_CHUNK_SIZE = 8;
+
+export class SemanticPlacementTimeoutError extends Error {
+  constructor(cause: InferenceUnavailableError) {
+    super('Semantic placement call timed out', { cause });
+    this.name = 'SemanticPlacementTimeoutError';
+  }
+}
 
 export async function transferItemsSemantically(input: {
   sourceDrawingPath: string;
@@ -73,50 +82,66 @@ export async function transferItemsSemantically(input: {
   existingItems: PlacementExistingItem[];
 }, deps = drawingPlacementSemanticDeps): Promise<PlacementTransferResult[]> {
   const source = await deps.readDrawing(input.sourceDrawingPath);
-  const sourceImage = await annotatedImage(source.buffer, input.sourceItems.map((item) => ({
-    xRatio: item.markerXRatio, yRatio: item.markerYRatio
-  })), true);
   const target = await deps.readDrawing(input.targetDrawingPath);
   const targetImage = await annotatedImage(target.buffer, input.targetMap.dimensions, false);
-  const sourceDimensions = input.sourceItems.map((item) => sourceItemDimension(input.sourceMap, item));
-  const { rawText } = await deps.vision().completeMany({
-    images: [
-      { label: 'source', mimeType: 'image/jpeg', imageBytes: sourceImage },
-      { label: 'target', mimeType: 'image/jpeg', imageBytes: targetImage }
-    ],
-    background: true, jsonOutput: true, timeoutMs: SEMANTIC_PLACEMENT_TIMEOUT_MS, temperature: 0, maxTokens: 6000,
-    userText: `${INSTRUCTIONS}\n丸数字一覧:\n${JSON.stringify(input.sourceItems.map((item, i) => ({
-      n: i + 1, measurementLabel: item.measurementLabel, nominalValue: item.nominalValue,
-      lowerLimit: item.lowerLimit, upperLimit: item.upperLimit,
-      sourceText: sourceDimensions[i]?.text ?? null, sourceKind: sourceDimensions[i]?.kind ?? null,
-      x: round2(item.markerXRatio), y: round2(item.markerYRatio)
-    })))}\nD 番号一覧:\n${JSON.stringify(input.targetMap.dimensions.map((dimension, i) => ({
-      target: `D${i + 1}`, text: dimension.text, kind: dimension.kind,
-      x: round2(dimension.xRatio), y: round2(dimension.yRatio)
-    })))}`
-  });
-  // GLM sometimes drops items or overruns the role length; keep what it answered instead of failing the run.
-  const text = rawText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  const response = z.object({ items: z.array(z.unknown()) }).parse(JSON.parse(text));
-  const entrySchema = z.object({
-    n: z.number().int().min(1).max(input.sourceItems.length),
-    role: z.string().transform((role) => role.slice(0, 15)).catch(''),
-    target: z.string().regex(/^D[1-9]\d*$/)
-      .refine((target) => Number(target.slice(1)) <= input.targetMap.dimensions.length).nullable().catch(null)
-  });
-  const byNumber = new Map<number, z.infer<typeof entrySchema>>();
-  for (const raw of response.items) {
-    const entry = entrySchema.safeParse(raw);
-    if (!entry.success || byNumber.has(entry.data.n)) continue;
-    byNumber.set(entry.data.n, entry.data);
+  const assignments: (Parameters<typeof semanticPlacementRejections>[0][number] & { role: string })[] = [];
+  for (let offset = 0; offset < input.sourceItems.length; offset += SEMANTIC_PLACEMENT_CHUNK_SIZE) {
+    const chunk = input.sourceItems.slice(offset, offset + SEMANTIC_PLACEMENT_CHUNK_SIZE);
+    // Each chunk has its own image and local numbering; the target image is shared.
+    // eslint-disable-next-line no-await-in-loop
+    const sourceImage = await annotatedImage(source.buffer, chunk.map((item) => ({
+      xRatio: item.markerXRatio, yRatio: item.markerYRatio
+    })), true);
+    const sourceDimensions = chunk.map((item) => sourceItemDimension(input.sourceMap, item));
+    const startedAt = Date.now();
+    let rawText: string;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      ({ rawText } = await deps.vision().completeMany({
+        images: [
+          { label: 'source', mimeType: 'image/jpeg', imageBytes: sourceImage },
+          { label: 'target', mimeType: 'image/jpeg', imageBytes: targetImage }
+        ],
+        background: true, jsonOutput: true, timeoutMs: SEMANTIC_PLACEMENT_TIMEOUT_MS, temperature: 0, maxTokens: 6000,
+        userText: `${INSTRUCTIONS}\n丸数字一覧:\n${JSON.stringify(chunk.map((item, i) => ({
+          n: i + 1, measurementLabel: item.measurementLabel, nominalValue: item.nominalValue,
+          lowerLimit: item.lowerLimit, upperLimit: item.upperLimit,
+          sourceText: sourceDimensions[i]?.text ?? null, sourceKind: sourceDimensions[i]?.kind ?? null,
+          x: round2(item.markerXRatio), y: round2(item.markerYRatio)
+        })))}\nD 番号一覧:\n${JSON.stringify(input.targetMap.dimensions.map((dimension, i) => ({
+          target: `D${i + 1}`, text: dimension.text, kind: dimension.kind,
+          x: round2(dimension.xRatio), y: round2(dimension.yRatio)
+        })))}`
+      }));
+    } catch (error) {
+      if (error instanceof InferenceUnavailableError && Date.now() - startedAt >= SEMANTIC_PLACEMENT_TIMEOUT_MS - 1_000) {
+        throw new SemanticPlacementTimeoutError(error);
+      }
+      throw error;
+    }
+    // GLM sometimes drops items or overruns the role length; keep what it answered instead of failing the run.
+    const text = rawText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    const response = z.object({ items: z.array(z.unknown()) }).parse(JSON.parse(text));
+    const entrySchema = z.object({
+      n: z.number().int().min(1).max(chunk.length),
+      role: z.string().transform((role) => role.slice(0, 15)).catch(''),
+      target: z.string().regex(/^D[1-9]\d*$/)
+        .refine((target) => Number(target.slice(1)) <= input.targetMap.dimensions.length).nullable().catch(null)
+    });
+    const byNumber = new Map<number, z.infer<typeof entrySchema>>();
+    for (const raw of response.items) {
+      const entry = entrySchema.safeParse(raw);
+      if (!entry.success || byNumber.has(entry.data.n)) continue;
+      byNumber.set(entry.data.n, entry.data);
+    }
+    assignments.push(...chunk.map((item, i) => {
+      const entry = byNumber.get(i + 1) ?? { n: i + 1, role: '', target: null };
+      return {
+        measurementLabel: item.measurementLabel, depthMode: item.depthMode, valueKind: item.valueKind, ...entry,
+        dimension: entry.target ? input.targetMap.dimensions[Number(entry.target.slice(1)) - 1] : null
+      };
+    }));
   }
-  const assignments = input.sourceItems.map((item, i) => {
-    const entry = byNumber.get(i + 1) ?? { n: i + 1, role: '', target: null };
-    return {
-      measurementLabel: item.measurementLabel, depthMode: item.depthMode, valueKind: item.valueKind, ...entry,
-      dimension: entry.target ? input.targetMap.dimensions[Number(entry.target.slice(1)) - 1] : null
-    };
-  });
   const rejections = semanticPlacementRejections(assignments);
   return unplacedSemanticItems(input.sourceItems).flatMap((result, i) => {
     const { item } = result;
