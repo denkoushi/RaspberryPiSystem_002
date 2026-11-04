@@ -11,7 +11,7 @@ import { KioskHaizenPage } from './KioskHaizenPage';
 vi.mock('../../api/domains/mobile-placement', () => ({ deleteHaizenCurrentPlacement: vi.fn(), deleteOrderPlacementBranch: vi.fn(), getHaizenOverview: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn() }));
 vi.mock('../../features/mobile-placement/shelfPhoto/useShelfPhoto', () => ({ useShelfPhoto: () => ({ url: undefined, isError: false }) }));
 vi.mock('../../features/voice/voiceTranscription', () => ({ startVoiceTranscription: vi.fn(), disposeVoiceSession: vi.fn() }));
-const base = { source: 'branch' as const, manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: 'ブラケット', machineName: 'ＲＶ－１２Ａ' };
+const base = { dueDate: null, sendOutDate: null, source: 'branch' as const, manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: 'ブラケット', machineName: 'ＲＶ－１２Ａ' };
 const rows = [
   { ...base, id: '1', shelfCodeRaw: '西-北-01', branchNo: 1, updatedAt: '2026-10-21T01:00:00Z' },
   { ...base, id: '2', shelfCodeRaw: '西-北-02', branchNo: 2, updatedAt: '2026-10-22T01:00:00Z' },
@@ -30,9 +30,61 @@ beforeEach(() => {
   vi.mocked(getHaizenOverview).mockResolvedValue({ rows, truncated: false });
   vi.mocked(getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [3, 2, 1].map(index => ({ shelfCodeRaw: `西-北-0${index}`, displayLabel: `棚名${index}`, isStructured: true })) });
 });
-afterEach(() => { cleanup(); client.clear(); });
+afterEach(() => { cleanup(); client.clear(); vi.useRealTimers(); });
 
 describe('KioskHaizenPage', () => {
+  it('maps shelves to catalog zones and others, sorts details by due date, and applies search', async () => {
+    vi.mocked(getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [
+      { shelfCodeRaw: 'A', displayLabel: '棚A', isStructured: true, macroZoneId: 'nw' },
+      { shelfCodeRaw: 'B', displayLabel: '棚B', isStructured: true, areaId: 'east', lineId: 'south' },
+      { shelfCodeRaw: 'C', displayLabel: '棚C', isStructured: false }
+    ] });
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [
+      { ...rows[0], shelfCodeRaw: 'A', dueDate: null, fhinmei: '日付なし' },
+      { ...rows[1], shelfCodeRaw: 'A', dueDate: '2026-11-10', fhinmei: '後の部品' },
+      { ...rows[2], shelfCodeRaw: 'A', dueDate: '2026-11-07', fhinmei: '先の部品' }
+    ], truncated: false });
+    mount(); await screen.findByText('棚A');
+    const toggle = screen.getByRole('button', { name: '地図表示' });
+    expect(toggle).toHaveAttribute('title', '地図表示');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('region')).toHaveLength(10);
+    fireEvent.click(within(screen.getByRole('region', { name: '西·北' })).getByRole('button', { name: '棚A 3' }));
+    expect(within(screen.getByRole('region', { name: '東·南' })).getByRole('button', { name: '棚B 0' })).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'その他' })).getByRole('button', { name: '棚C 0' })).toBeInTheDocument();
+    const detail = screen.getByRole('complementary');
+    expect(within(detail).getByText('写真なし')).toBeInTheDocument();
+    expect(within(detail).getAllByRole('article').map(item => item.textContent)).toEqual([
+      expect.stringContaining('先の部品2026-11-07'), expect.stringContaining('後の部品2026-11-10'), expect.stringContaining('日付なし')
+    ]);
+    await search('UNIQUE');
+    expect(screen.getByRole('button', { name: '棚A 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '棚B 0' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('complementary')).getAllByRole('article')).toHaveLength(1);
+  });
+  it('colors each shelf by its earliest local-calendar due date at inclusive 3/7 day boundaries', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 4, 0, 30));
+    const today = new Date();
+    const date = (offset: number) => {
+      const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+      return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    };
+    const offsets = [-1, 0, 3, 4, 7, 8, null];
+    vi.mocked(getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: offsets.map((_, i) => ({ shelfCodeRaw: `S${i}`, isStructured: true, macroZoneId: 'c' })) });
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: offsets.flatMap((offset, i) => [
+      { ...rows[0], id: `r${i}`, shelfCodeRaw: `S${i}`, dueDate: offset === null ? null : date(offset) },
+      { ...rows[1], id: `s${i}`, shelfCodeRaw: `S${i}`, dueDate: offset === null ? null : date(20) }
+    ]), truncated: false });
+    mount(); await screen.findByText('S0');
+    fireEvent.click(screen.getByRole('button', { name: '地図表示' }));
+    offsets.forEach((offset, i) => {
+      const tile = screen.getByRole('button', { name: `S${i} 2` });
+      if (offset === null) expect(tile).not.toHaveClass('bg-inv-red/20', 'bg-inv-amber/20', 'bg-inv-s3');
+      else expect(tile).toHaveClass(offset <= 3 ? 'bg-inv-red/20' : offset <= 7 ? 'bg-inv-amber/20' : 'bg-inv-s3');
+    });
+  });
   it('switches between card size controls and the list with sorting controls', async () => {
     mount(); await screen.findByText('棚名1');
     const cardButton = screen.getByRole('button', { name: 'カード表示' });

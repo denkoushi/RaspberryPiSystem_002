@@ -13,6 +13,13 @@ Operators can open 日程 from the phone menu, identify urgent manufacturing ord
 - [x] (2026-11-04) Implement list/detail screens, target navigation, shelf prioritization, and transfer-only continuation of previously verified parts.
 - [x] (2026-11-04) Complete focused and existing affected tests, Web full regression, package lint/type checks, and final diff review (full API suite and real device/browser checks not run).
 
+- [x] (2026-11-04) Add kiosk haizen overview Excel due/send-out dates in one ANY batch, including direct alias seibans, with a shared date-only reader.
+- [x] (2026-11-04) Add the kiosk 3×3 macro-zone map, earliest-due shelf colors, searchable shelf counts, and photo/details sorted by due date with nulls last.
+
+- [x] (2026-11-04) Validate kiosk map and API date contracts: 17 API tests, 103 Web files / 1,213 tests, and a final 22-test kiosk run after calendar-boundary and color-style checks; API/Web TypeScript checks and package lint pass.
+
+Kiosk validation evidence: `pnpm --filter @raspi-system/api exec vitest run src/services/mobile-placement/__tests__/haizen-overview.service.test.ts src/services/mobile-placement/__tests__/schedule-seiban-status.service.test.ts` passed 17 tests (0.5 seconds). `pnpm --filter @raspi-system/web exec vitest run src/pages/kiosk src/features/mobile-placement` passed 103 files / 1,213 tests (66 seconds); the final focused `KioskHaizenPage.test.tsx` run passed 22 tests (7 seconds). The requested API `tsc --noEmit -p tsconfig.build.json`, Web `tsc --noEmit -p .`, and both package lint commands passed (roughly one to three minutes each). The first Web lint overlapped a map source edit and reported invalid JSX property slices; stable-source focused lint and the single package retry passed. Existing Web tests logged external-network errors without test failures. No browser/device session or git mutation was performed; the initial worktree was clean.
+
 ## Context and Orientation
 
 `apps/api/src/routes/mobile-placement/index.ts` registers the existing device-authorized API. The new `schedule-seibans.ts` route delegates to `apps/api/src/services/mobile-placement/schedule-seiban-status.service.ts`. `ProductionScheduleDScheduleMinutes` contains the imported manufacturing-order dates and aliases. `CsvDashboardRow` contains individual process rows; a part is identified by ProductNo, and all of its process rows must be complete before the part is complete.
@@ -37,6 +44,10 @@ The phone milestone is observable at `/kiosk/mobile-placement/schedule-seibans`.
 - Decision: Treat an Excel alias as belonging to its parent verification target. Rationale: the same detail aggregates both sets of parts. Date: 2026-11-04.
 - Decision: For an already verified target part, a new transfer scan matching its ProductNo can reuse that persisted verified state. Rationale: no fabricated slip inputs, additional verification API, or replacement of the existing recorder is needed. Date: 2026-11-04.
 - Decision: Count only max-ProductNo winner rows (`buildMaxProductNoWinnerCondition`) and resolve machine names with `resolveSeibanMachineDisplayNamesBatched` (unregistered label shown as nothing). Rationale: reissued orders otherwise stay as phantom pending parts, and the boards use the same rules. Date: 2026-11-04.
+
+- Decision: Read aliases by their own stored fseiban in the overview batch and use their imported dates directly. Rationale: imported aliases already contain the same dates as their parent; no per-row parent query is needed. Date: 2026-11-04.
+- Decision: Use only the shared macro-zone catalog and structured shelf fallback for the kiosk map. Rationale: this view needs nine coarse zones and an Other section, without ZoneLayout or LayoutEntity. Date: 2026-11-04.
+- Decision: Centralize inclusive urgency thresholds at 3 and 7 calendar days; compare against the kiosk local date and reuse inv-red/inv-amber tokens. Rationale: UTC midnight and DST must not shift the urgency boundary. Search filters map tiles and their detail rows; card/list behavior stays unchanged. Date: 2026-11-04.
 
 ## Surprises & Discoveries
 

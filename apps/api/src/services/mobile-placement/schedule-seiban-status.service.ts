@@ -9,6 +9,7 @@ import { isMissingSeibanMachineName } from '../production-schedule/seiban-machin
 import { normalizePurchaseFhinCdForMatching } from '../purchase-order-lookup/purchase-fhincd-normalize.js';
 
 import { normalizeSlipToken } from './mobile-placement-slip-match.js';
+import { readScheduleDates } from './schedule-dates.js';
 
 export type SchedulePartState = 'done' | 'shelf' | 'verified' | 'pending';
 export type ScheduleSeibanPart = {
@@ -114,9 +115,8 @@ async function aggregateScheduleSeibans(requestedFseiban?: string): Promise<Sche
       return { productNo: part.productNo, fhincd: part.fhincd ?? '', fhinmei: part.fhinmei ?? '', state,
         ...(shelf ? { shelfCodeRaw: shelf.shelfCodeRaw, shelfLabel: labels.get(shelf.shelfCodeRaw) ?? shelf.shelfCodeRaw } : {}) };
     });
-    const dates = Array.isArray(row.surfaceSendOutDates) ? row.surfaceSendOutDates.map(value => textField(value, 'date')).filter(date => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort() : [];
-    return { fseiban: row.fseiban, aliasFseibans: aliases.get(row.fseiban) ?? [], partsCompleteDate: row.partsCompleteDate?.toISOString().slice(0, 10) ?? null,
-      sendOutDate: dates[0] ?? null, outsourceMarks: row.outsourceMarks, memo: row.memo,
+    return { fseiban: row.fseiban, aliasFseibans: aliases.get(row.fseiban) ?? [], ...readScheduleDates(row),
+      outsourceMarks: row.outsourceMarks, memo: row.memo,
       machineName: isMissingSeibanMachineName(machineNames[row.fseiban]) ? null : machineNames[row.fseiban] ?? null, counts, parts: resultParts };
   });
 }

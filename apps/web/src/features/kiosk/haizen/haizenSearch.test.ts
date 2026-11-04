@@ -4,7 +4,7 @@ import { matchesHaizenSearch, normalizeHaizenSearch, parseHaizenSpeech, timeSinc
 
 import type { HaizenOverviewRow } from '../../../api/domains/mobile-placement';
 
-const rows: HaizenOverviewRow[] = [{ source: 'branch', id: '1', branchNo: 1, shelfCodeRaw: '西-北-01', manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: '部品', machineName: 'ＲＶ－１２Ａ', updatedAt: '2026-10-22T00:00:00Z' }];
+const rows: HaizenOverviewRow[] = [{ dueDate: null, sendOutDate: null, source: 'branch', id: '1', branchNo: 1, shelfCodeRaw: '西-北-01', manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: '部品', machineName: 'ＲＶ－１２Ａ', updatedAt: '2026-10-22T00:00:00Z' }];
 
 describe('haizen search', () => {
   it('normalizes case, full-width, hyphens and whitespace', () => {
