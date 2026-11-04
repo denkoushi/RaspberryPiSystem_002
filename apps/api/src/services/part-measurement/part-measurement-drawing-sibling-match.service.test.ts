@@ -96,6 +96,16 @@ describe('drawing sibling match', () => {
     expect(db.partMeasurementDrawingSiblingMatch.upsert).toHaveBeenLastCalledWith(expect.objectContaining({ update: { attempts: { increment: 1 } } }));
   });
 
+  it('keeps a text-only business model PENDING beyond three attempts', async () => {
+    completeMany.mockRejectedValue(new Error(
+      'LocalLlmRuntimeControl: active profile lacks vision runtime capability for photo_label (visionReadyReason=unknown)'
+    ));
+    for (let i = 0; i < 4; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      expect(await service.match('target')).toMatchObject({ status: 'PENDING', siblings: [], lastError: expect.stringContaining('lacks vision') });
+    }
+  });
+
   it.each(['error', 'invalid'])('retries %s then persists NO_MATCH without using matching names', async (mode) => {
     if (mode === 'error') completeMany.mockRejectedValue(new Error('timeout'));
     else completeMany.mockResolvedValue({ rawText: '{}' });
