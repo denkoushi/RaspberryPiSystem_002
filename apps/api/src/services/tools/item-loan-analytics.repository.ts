@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Prisma, type Prisma as PrismaTypes } from '@prisma/client';
 import { PHOTO_LOAN_CARD_PRIMARY_LABEL } from '@raspi-system/shared-types';
 import { prisma } from '../../lib/prisma.js';
+import { monthOffsetsValuesSql } from '../../lib/month-offsets-values-sql.js';
 import type {
   IItemLoanAnalyticsRepository,
   ItemLoanAnalyticsAggregate,
@@ -80,7 +81,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
 
   async loadAggregate(input: ItemLoanAnalyticsQueryInput): Promise<ItemLoanAnalyticsAggregate> {
     const tzSql = timeZoneSql(input.timeZone);
-    const monthOffset = input.monthlyMonths - 1;
+    const monthOffsetsSql = monthOffsetsValuesSql(input.monthlyMonths, 'o');
     const labelSql = toolLabelMatchSql(input.toolLabelFilter);
 
     const loanIdsForPrisma =
@@ -105,14 +106,10 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
       WITH anchor AS (
         SELECT date_trunc('month', (${input.periodTo}::timestamptz AT TIME ZONE ${tzSql}))::date AS cur_month_start
       ),
-      bounds AS (
-        SELECT (cur_month_start - (${monthOffset} * interval '1 month'))::date AS first_month,
-               cur_month_start AS last_month
-        FROM anchor
-      ),
       month_starts AS (
-        SELECT generate_series(first_month, last_month, interval '1 month')::date AS month_start
-        FROM bounds
+        SELECT (a.cur_month_start - (o.n * interval '1 month'))::date AS month_start
+        FROM anchor a
+        CROSS JOIN ${monthOffsetsSql}
       ),
       borrows AS (
         SELECT date_trunc('month', (l."borrowedAt" AT TIME ZONE ${tzSql}))::date AS m,
@@ -187,7 +184,7 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
           WHERE ${PHOTO_LOAN_WHERE}
           ${labelSql}
         )
-        SELECT d.tool_label,
+        SELECT lb.tool_label,
                COALESCE(
                  SUM(
                    CASE
@@ -208,10 +205,9 @@ export class ItemLoanAnalyticsRepository implements IItemLoanAnalyticsRepository
                  ),
                  0
                )::bigint AS period_return_count
-        FROM (SELECT DISTINCT tool_label FROM labeled) d
-        LEFT JOIN labeled lb ON lb.tool_label = d.tool_label
-        GROUP BY d.tool_label
-        ORDER BY d.tool_label ASC;
+        FROM labeled lb
+        GROUP BY lb.tool_label
+        ORDER BY lb.tool_label ASC;
       `,
       this.db.$queryRaw<
         Array<{

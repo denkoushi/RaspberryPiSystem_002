@@ -1,5 +1,6 @@
 import { Prisma, RiggingStatus } from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
+import { monthOffsetsValuesSql } from '../../../lib/month-offsets-values-sql.js';
 import type {
   IRiggingLoanAnalyticsRepository,
   RiggingLoanAnalyticsAggregate,
@@ -23,7 +24,7 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
 
   async loadAggregate(input: RiggingLoanAnalyticsQueryInput): Promise<RiggingLoanAnalyticsAggregate> {
     const tzSql = timeZoneSql(input.timeZone);
-    const monthOffset = input.monthlyMonths - 1;
+    const monthOffsetsSql = monthOffsetsValuesSql(input.monthlyMonths, 'o');
     const gearMonthlyFilter = input.riggingGearId
       ? Prisma.sql`AND l."riggingGearId" = ${input.riggingGearId}::uuid`
       : Prisma.sql`AND l."riggingGearId" IS NOT NULL`;
@@ -34,14 +35,10 @@ export class RiggingLoanAnalyticsRepository implements IRiggingLoanAnalyticsRepo
       WITH anchor AS (
         SELECT date_trunc('month', (${input.periodTo}::timestamptz AT TIME ZONE ${tzSql}))::date AS cur_month_start
       ),
-      bounds AS (
-        SELECT (cur_month_start - (${monthOffset} * interval '1 month'))::date AS first_month,
-               cur_month_start AS last_month
-        FROM anchor
-      ),
       month_starts AS (
-        SELECT generate_series(first_month, last_month, interval '1 month')::date AS month_start
-        FROM bounds
+        SELECT (a.cur_month_start - (o.n * interval '1 month'))::date AS month_start
+        FROM anchor a
+        CROSS JOIN ${monthOffsetsSql}
       ),
       borrows AS (
         SELECT date_trunc('month', (l."borrowedAt" AT TIME ZONE ${tzSql}))::date AS m,
