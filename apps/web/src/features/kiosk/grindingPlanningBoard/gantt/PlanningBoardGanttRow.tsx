@@ -7,6 +7,7 @@ import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton'
 import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
+import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -171,6 +172,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
         {row.bars.some((bar) => bar.due == null) && <span className="text-slate-400">納期なし</span>}
       </div>
       <div className="relative shrink-0 overflow-hidden" style={{ width }}>
+        <PlanningBoardGanttSendOutStars bars={row.bars} start={start} dayWidth={dayWidth} />
         {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-7 h-px bg-slate-500" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
         {row.bars.filter((bar) => bar.end != null).map((bar) => (
           <PlanningBoardGanttBar key={bar.item.itemId} bar={bar} start={start} dayWidth={dayWidth} today={today}

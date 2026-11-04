@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { memo, useEffect, useMemo, useRef } from 'react';
 
+import { DScheduleMinutesChips, useDScheduleMinutesExtras } from '../productionSchedule/DScheduleMinutesContext';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
@@ -90,6 +91,7 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardSeibanPaneProps) {
+  const { extras, dueSource } = useDScheduleMinutesExtras(fseiban);
   const paneRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (highlighted && isOpen) paneRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
@@ -130,7 +132,8 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
             <strong className="shrink-0 font-mono text-sm text-white">{fseiban}</strong>
             <span className="min-w-0 truncate text-xs text-slate-300">{displayMachineName || '機種名未登録'}</span>
           </span>
-          <span className="mt-1 block text-[11px] text-slate-400">{formatDate(nearestDue)}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400"><span>{formatDate(nearestDue)}</span>{extras && <DScheduleMinutesChips extras={extras} dueSource={dueSource} />}</span>
+          {dueSource === 'excel' && extras?.memo && <span className="mt-0.5 block truncate text-[10px] text-slate-400">{extras.memo}</span>}
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
           <button

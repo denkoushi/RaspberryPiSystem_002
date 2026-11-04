@@ -2,7 +2,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-
 import {
   useKioskProductionScheduleResources,
   useSetKioskProductionScheduleRowCompletion,
@@ -33,12 +32,14 @@ import {
   resolveGrindingPlanningBoardResource,
   sortGrindingPlanningBoardItems
 } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+import { usePersistedPlanningBoardScawMode } from '../../features/kiosk/grindingPlanningBoard/usePersistedPlanningBoardScawMode';
 import { usePlanningBoardDueActions } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions';
 import { usePlanningBoardLargeScreen } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 import { usePlanningBoardNotices } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardNotices';
 import { usePlanningBoardPageGantt } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt';
 import { usePlanningBoardPageItems } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageItems';
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
+import { DScheduleMinutesProvider } from '../../features/kiosk/productionSchedule/DScheduleMinutesContext';
 import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChangesGuard';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 
@@ -120,10 +121,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const registeredServerFseibansRef = useRef<Set<string> | null>(null);
   const boardSiteKeyRef = useRef<string | null>(null);
 
+  const { scawEnabled, toggleScawMode } = usePersistedPlanningBoardScawMode();
+  const dueSource: 'excel' | 'scaw' = scawEnabled ? 'scaw' : 'excel';
   const queryClient = useQueryClient();
   const { mutateAsync: setCompletionAsync } = useSetKioskProductionScheduleRowCompletion();
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
-    { category, view, completionFilter: status },
+    { category, view, completionFilter: status, dueSource },
     { refetchIntervalMs: editorOpen || orderPreview ? false : undefined }
   );
   const loadQuery = useKioskGrindingPlanningBoardLoad(category);
@@ -661,10 +664,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     ? selectedVisibleItems.filter((item) => item.fseiban === focusedFseiban)
     : selectedVisibleItems;
   return (
-    <PlanningBoardProcessChipsContext.Provider value={chipsByPart}>
+    <DScheduleMinutesProvider dueSource={dueSource}><PlanningBoardProcessChipsContext.Provider value={chipsByPart}>
     <PlanningBoardPlacementContext.Provider value={placementByPart}>
     <main className="relative min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
-      <PlanningBoardToolbar
+      <PlanningBoardToolbar scawEnabled={scawEnabled} onToggleScawMode={toggleScawMode}
         largeScreen={largeScreen} onToggleLargeScreen={() => changeLargeScreen(!largeScreen)}
         colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
         onOrderScan={handleOrderScan} focusedSeiban={focusedSeiban} onClearSeibanFocus={() => setFocusedSeiban(null)}
@@ -803,6 +806,6 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       />
     </main>
     </PlanningBoardPlacementContext.Provider>
-    </PlanningBoardProcessChipsContext.Provider>
+    </PlanningBoardProcessChipsContext.Provider></DScheduleMinutesProvider>
   );
 }

@@ -1,3 +1,4 @@
+import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { isAxiosError } from 'axios';
 
 import type { FeedbackKind } from './planningBoardPageModel';
@@ -37,8 +38,8 @@ export function createPlanningBoardSeibanActions({
 }: Options) {
   const persistOrder = (nextOrder: string[], onAccepted?: () => void, onRejected?: () => void): Promise<boolean> => {
     if (!data || !scopeReady || writeBlocked || allocation === 'original') return Promise.resolve(false);
-    if (nextOrder.length > 50) {
-      setOrderRegistrationError('登録上限50件を超えるため保存できません。選択を減らしてください。');
+    if (nextOrder.length > KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX) {
+      setOrderRegistrationError(`登録上限${KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX}件を超えるため保存できません。選択を減らしてください。`);
       return Promise.resolve(false);
     }
     setOrderRegistrationError(null);

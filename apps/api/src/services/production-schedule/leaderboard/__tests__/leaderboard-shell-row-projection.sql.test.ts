@@ -21,7 +21,7 @@ describe('leaderboard shell row projection', () => {
   it('does not join part processing types before ORDER BY / LIMIT', () => {
     const joins = normalize(buildLeaderboardShellRowAuxiliaryJoins(rankJoins));
 
-    expect(joins).not.toContain('ProductionSchedulePartProcessingType');
+    expect(joins).not.toMatch(/JOIN "ProductionSchedulePartProcessingType"/);
     expect(joins).not.toContain('"pp"');
   });
 

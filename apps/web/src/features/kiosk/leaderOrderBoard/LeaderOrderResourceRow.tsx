@@ -7,6 +7,7 @@ import {
   KioskResourceProcessChips,
   type KioskResourceProgressProcessChip
 } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
+import { DScheduleMinutesChips, useDScheduleMinutesExtras } from '../productionSchedule/DScheduleMinutesContext';
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
@@ -63,8 +64,11 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   splitFeatureEnabled = false,
   footerResourceChips = []
 }: LeaderOrderResourceRowProps) {
+  const { extras, dueSource } = useDScheduleMinutesExtras(row.seibanJoinKey || row.fseiban);
+  const memo = dueSource === 'excel' ? extras?.memo : null;
+  const hasExtras = extras && ((dueSource === 'excel' && extras.outsourceMarks.length > 0) || extras.surfaceSendOutDates.length > 0);
   const isSignage = variant === 'signage';
-  const manual = isManualDueDateSet(row.dueDate);
+  const manual = isManualDueDateSet(row.dueDate) && row.displayDue?.slice(0, 10) === row.dueDate?.slice(0, 10);
   const dueLabel = formatDueDate(row.displayDue) || '—';
   const pres = presentLeaderOrderRow(row);
   const clusterTokens: LeaderOrderRowClusterToken[] = [
@@ -82,7 +86,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
     }
   ];
   const hasClusterTail = clusterTokens.length > 0;
-  const hasCustomer = pres.customerLine.length > 0;
+  const hasCustomer = pres.customerLine.length > 0 || Boolean(memo);
   const hasClusterCustomerRow = hasClusterTail || hasCustomer;
   const hasPart = pres.partNameLine.length > 0;
   const hasFseiban = pres.fseibanLine.length > 0;
@@ -219,6 +223,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
           </button>
         )}
       </div>
+      {hasExtras && <div className="mt-0.5 flex flex-wrap justify-end gap-1.5 text-[13px]"><DScheduleMinutesChips extras={extras} dueSource={dueSource} large /></div>}
       {hasClusterCustomerRow ? (
         <div className="flex w-full items-baseline gap-1.5">
           {hasClusterTail ? (
@@ -227,7 +232,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             </div>
           ) : null}
           {hasCustomer ? (
-            <div className="min-w-0 flex-1 truncate text-[11px] text-white/70">{pres.customerLine}</div>
+            <div className="min-w-0 flex-1 truncate text-[11px] text-white/70">{pres.customerLine}{memo && <span className="ml-2 text-amber-200/80">{memo}</span>}</div>
           ) : null}
         </div>
       ) : null}

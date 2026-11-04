@@ -1,4 +1,4 @@
-import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
+import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX as REGISTERED_SEIBAN_MAX, extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
 import { useSingleFlight } from '../../../hooks/useSingleFlight';
@@ -8,7 +8,6 @@ import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister
 
 import type { GrindingPlanningBoardSeibanCandidate } from '@raspi-system/shared-types';
 
-const REGISTERED_SEIBAN_MAX = 50;
 const UNSET_MACHINE_NAME = '未設定';
 const LETTER_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const LIST_ICON_CLASS = 'grid h-11 w-11 place-items-center text-base text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-25 disabled:hover:bg-transparent';
@@ -349,7 +348,7 @@ export function PlanningBoardSeibanDrawer({
                   </button>
                 </div>
                 {selectedWouldExceedLimit ? (
-                  <p className="mt-1 text-[10px] text-amber-200" role="alert">登録上限50件を超えるため登録できません。選択を減らしてください。</p>
+                  <p className="mt-1 text-[10px] text-amber-200" role="alert">登録上限{REGISTERED_SEIBAN_MAX}件を超えるため登録できません。選択を減らしてください。</p>
                 ) : null}
               </div>
             ) : null}

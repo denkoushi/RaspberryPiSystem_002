@@ -52,7 +52,9 @@ import { usePersistedLeaderBoardCapacityMode } from '../../features/kiosk/leader
 import { usePersistedLeaderBoardDeviceScope } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardDeviceScope';
 import { usePersistedLeaderBoardGanttMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardGanttMode';
 import { usePersistedLeaderBoardLaborMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardLaborMode';
+import { usePersistedLeaderBoardScawMode } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardScawMode';
 import { usePersistedLeaderBoardSeibanEval } from '../../features/kiosk/leaderOrderBoard/usePersistedLeaderBoardSeibanEval';
+import { DScheduleMinutesProvider } from '../../features/kiosk/productionSchedule/DScheduleMinutesContext';
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
@@ -159,6 +161,8 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     slotCount
   );
 
+  const { scawEnabled, toggleScawMode } = usePersistedLeaderBoardScawMode(siteKey, activeDeviceScopeKey);
+  const dueSource: 'excel' | 'scaw' = scawEnabled ? 'scaw' : 'excel';
   const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('incomplete');
 
   const leaderboardPhasedBase = useMemo(() => {
@@ -167,6 +171,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     void _omitQ;
     return {
       ...rest,
+      dueSource,
       pageSize: LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE,
       allowResourceOnly: true,
       includeLabor: false,
@@ -175,7 +180,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         ? { targetDeviceScopeKey: activeDeviceScopeKey.trim() }
         : {})
     };
-  }, [activeDeviceScopeKey, baseQueryParams, completionFilter, macManualOrderV2]);
+  }, [activeDeviceScopeKey, baseQueryParams, completionFilter, macManualOrderV2, dueSource]);
 
   const laborMetadataResourceCds = useMemo(() => {
     const seen = new Set<string>();
@@ -611,6 +616,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     scheduleEnabled && !scheduleQuery.isLoading && !scheduleQuery.isError;
 
   return (
+    <DScheduleMinutesProvider dueSource={dueSource}>
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-slate-900 text-white">
       <div className="pointer-events-none fixed inset-y-0 left-0 z-50 flex">
         <LeaderBoardLeftToolStack
@@ -644,6 +650,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           onMoveRegisteredSeibanToRank={moveRegisteredSeibanToRank}
           ganttEnabled={ganttEnabled}
           onToggleGanttMode={toggleGanttMode}
+          scawEnabled={scawEnabled} onToggleScawMode={toggleScawMode}
           splitFeatureStatus={splitFeatureStatus}
         />
       </div>
@@ -790,5 +797,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         overlayZIndex={KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK}
       />
     </div>
+    </DScheduleMinutesProvider>
   );
 }

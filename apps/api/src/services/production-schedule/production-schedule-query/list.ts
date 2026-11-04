@@ -105,6 +105,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
 
   if (isLeaderboardProfile) {
     const leaderboardRowsPromise = fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
+      dueSource: params.dueSource,
       leaderboardMaterializedBaseWhere: leaderboardMaterializedBaseWhere!,
       queryWhere,
       expansionWhere: leaderboardExpansionWhere,
@@ -117,6 +118,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
     }).then(async (rawRows) =>
       expandLeaderboardParentRowsForResponse({
+        dueSource: params.dueSource,
         rows: rawRows.map(
           (r): ProductionScheduleRow => ({
             ...r,

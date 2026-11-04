@@ -2114,6 +2114,48 @@ model KioskProductionScheduleSearchState {
   @@index([csvDashboardId])
 }
 
+/// D社日程会議議事録の取り込み。既存の手入力納期へは書き戻さない。
+model ProductionScheduleDScheduleMinutesImportRun {
+  id                    String   @id @default(uuid())
+  gmailMessageId        String   @unique
+  subject               String
+  filename              String
+  meetingDate           DateTime @db.Date
+  receivedAt            DateTime
+  originalFilePath      String?
+  status                String   @db.VarChar(20)
+  warnings              Json
+  /// 自動登録の所有権を拠点別・共有履歴別に保持する。
+  autoRegisteredSeibans Json
+  createdAt             DateTime @default(now())
+  latestValues          ProductionScheduleDScheduleMinutes[]
+
+  @@index([status, createdAt], map: "PSDScheduleRun_status_created_idx")
+}
+
+model ProductionScheduleDScheduleMinutes {
+  id                       String    @id @default(uuid())
+  csvDashboardId           String
+  fseiban                  String    @db.VarChar(20)
+  partsCompleteDate        DateTime? @db.Date
+  excelChangedAt           DateTime
+  outsourceMarks           String[]
+  surfaceSendOutDates      Json
+  memo                     String?
+  rawPartsCompleteText     String?
+  sourceRunId              String
+  sourceRow                Int
+  isAlias                  Boolean   @default(false)
+  aliasOf                  String?   @db.VarChar(20)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  sourceRun ProductionScheduleDScheduleMinutesImportRun @relation(fields: [sourceRunId], references: [id], onDelete: Restrict, map: "PSDScheduleMinutes_run_fkey")
+
+  @@unique([csvDashboardId, fseiban], map: "PSDScheduleMinutes_dashboard_seiban_key")
+  @@index([sourceRunId], map: "PSDScheduleMinutes_run_idx")
+}
+
 model ProductionScheduleSeibanDueDate {
   id             String   @id @default(uuid())
   csvDashboardId String

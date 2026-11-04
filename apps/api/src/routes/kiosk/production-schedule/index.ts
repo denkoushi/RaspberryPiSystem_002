@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 
+import { registerProductionScheduleDScheduleMinutesRoute } from './d-schedule-minutes.js';
 import { registerProductionScheduleLeaderboardPhasedReadRoutes } from './leaderboard-phased-read.js';
 import { registerProductionScheduleListRoute } from './list.js';
 import { registerProductionScheduleResourcesRoute } from './resources.js';
@@ -40,6 +41,7 @@ export async function registerProductionScheduleRoutes(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
+  await registerProductionScheduleDScheduleMinutesRoute(app, deps);
   await registerProductionScheduleListRoute(app, deps);
   await registerProductionScheduleLeaderboardPhasedReadRoutes(app, deps);
   await registerProductionScheduleResourcesRoute(app, deps);

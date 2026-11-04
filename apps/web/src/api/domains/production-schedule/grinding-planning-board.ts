@@ -37,6 +37,7 @@ export async function getKioskGrindingPlanningBoardProcessChips(body: GrindingPl
 }
 
 export type KioskGrindingPlanningBoardQuery = {
+  dueSource?: 'excel' | 'scaw';
   category: GrindingPlanningBoardCategory;
   view: GrindingPlanningBoardView;
   fseibans?: readonly string[];
@@ -49,6 +50,7 @@ export type KioskGrindingPlanningBoardQuery = {
 export async function getKioskGrindingPlanningBoard(params: KioskGrindingPlanningBoardQuery) {
   const { data } = await api.get<GrindingPlanningBoardResponse>('/kiosk/production-schedule/grinding-planning-board', {
     params: {
+      ...(params.dueSource == null ? {} : { dueSource: params.dueSource }),
       category: params.category,
       view: params.view,
       includeLoad: false,

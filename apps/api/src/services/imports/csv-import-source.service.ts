@@ -56,7 +56,7 @@ export class CsvImportSourceService {
     const { target, provider, storageProvider, patternCache, logger } = params;
 
     // NOTE: csvDashboards は別ルートで処理する（ここでは扱わない）
-    if (target.type === 'csvDashboards' || target.type === 'itemInventoryGmail' || target.type === 'machineSignalGmail' || target.type === 'procedureMaterialGmail') {
+    if (target.type === 'csvDashboards' || target.type === 'itemInventoryGmail' || target.type === 'machineSignalGmail' || target.type === 'procedureMaterialGmail' || target.type === 'dScheduleMinutesGmail') {
       throw new Error('CsvImportSourceService.downloadMasterCsv does not support csvDashboards target');
     }
 

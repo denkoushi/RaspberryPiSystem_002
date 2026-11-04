@@ -7,6 +7,11 @@ vi.mock('../http', () => ({ api: { get, post } }));
 import { getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
+  it.each(['excel', 'scaw'] as const)('sends dueSource=%s on all snapshot pages', async (dueSource) => {
+    get.mockResolvedValue({ data: { items: [], sourceRevision: 'r', nextCursor: null } });
+    await getKioskGrindingPlanningBoardSnapshot({ category: 'grinding', view: 'seiban', dueSource });
+    expect(get).toHaveBeenCalledWith('/kiosk/production-schedule/grinding-planning-board', expect.objectContaining({ params: expect.objectContaining({ dueSource }) }));
+  });
   beforeEach(() => { get.mockReset(); post.mockReset(); });
 
   it('chunks chip requests at 1000 parts and merges their maps', async () => {

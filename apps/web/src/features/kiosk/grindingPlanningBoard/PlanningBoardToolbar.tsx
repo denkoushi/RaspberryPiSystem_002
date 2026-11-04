@@ -73,6 +73,8 @@ export type PlanningBoardToolbarProps = {
   onClearSeibanFocus?: () => void;
   largeScreen?: boolean;
   onToggleLargeScreen?: () => void;
+  scawEnabled?: boolean;
+  onToggleScawMode?: () => void;
   ganttEnabled?: boolean;
   onToggleGantt?: () => void;
   colorBySeiban?: boolean;
@@ -122,6 +124,7 @@ const formatWait = (minutes: number) => `${Math.floor(minutes / 60)}時間${Stri
 export function PlanningBoardToolbar({
   onOrderScan, focusedSeiban = null, onClearSeibanFocus,
   largeScreen = false, onToggleLargeScreen,
+  scawEnabled = false, onToggleScawMode,
   ganttEnabled = false,
   onToggleGantt,
   colorBySeiban = false, onToggleColorBySeiban,
@@ -248,6 +251,8 @@ export function PlanningBoardToolbar({
           </button>
         </>}
       </div>}
+      {!orderPreview && <button type="button" aria-pressed={scawEnabled} onClick={onToggleScawMode}
+        className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-[11px] font-bold', scawEnabled ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>SCAW</button>}
       {onOrderScan && <PlanningBoardOrderScan onScan={onOrderScan} />}
       {!ganttEnabled && focusedSeiban && <div className="flex shrink-0 items-center gap-1 rounded-md border border-slate-600 pl-2 text-sm">
         <span>製番 {focusedSeiban}</span>

@@ -476,3 +476,24 @@ describe('grinding planning board pins route', () => {
     } finally { await app.close(); }
   });
 });
+
+describe('grinding planning board due source query', () => {
+  afterEach(() => vi.clearAllMocks());
+  it.each([['', 'excel'], ['&dueSource=excel', 'excel'], ['&dueSource=scaw', 'scaw']])('passes a validated source for %s', async (suffix, source) => {
+    mocks.get.mockResolvedValue({ items: [] });
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'GET', url: `/kiosk/production-schedule/grinding-planning-board?category=all&view=seiban${suffix}` });
+      expect(response.statusCode).toBe(200);
+      expect(mocks.get).toHaveBeenCalledWith(expect.objectContaining({ dueSource: source }));
+    } finally { await app.close(); }
+  });
+  it('rejects an unknown source', async () => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board?dueSource=other' });
+      expect(response.statusCode).toBe(400);
+      expect(mocks.get).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+});

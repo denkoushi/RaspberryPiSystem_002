@@ -20,6 +20,7 @@ export type ReusablePlanningPayload = {
   expiresAtMs: number;
   lastUsedAtMs: number;
   request: {
+    dueSource?: 'excel' | 'scaw';
     category: GrindingPlanningBoardCategory;
     view: GrindingPlanningBoardView;
     requestedFseibans?: string[];

@@ -59,9 +59,9 @@ describe('normalizeKioskProductionScheduleSearchHistory', () => {
     const items = Array.from({ length: KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX + 5 }, (_, i) => `S${i}`);
     const withDuplicates = ['S0', ...items];
     const result = normalizeKioskProductionScheduleSearchHistory(withDuplicates);
-    expect(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX).toBe(50);
-    expect(result).toHaveLength(50);
+    expect(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX).toBe(100);
+    expect(result).toHaveLength(100);
     expect(result[0]).toBe('S0');
-    expect(result[49]).toBe('S49');
+    expect(result[99]).toBe('S99');
   });
 });

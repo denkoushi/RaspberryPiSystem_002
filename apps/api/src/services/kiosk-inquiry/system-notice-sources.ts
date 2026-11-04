@@ -82,3 +82,27 @@ export async function deliverFileAlertNotice(type: string | undefined, timestamp
     logger.warn({ err, type }, '[SystemNotice] File alert notice failed');
   }
 }
+
+const minutesWarningExplanations: Record<string, string> = {
+  STALE_FILE: 'より新しい議事録の内容を残しました',
+  UNREADABLE_DATE: '日付として読めません', INVALID_SEIBAN: '製番の形式が不正です',
+  UNKNOWN_STAR: '処理出しの記号を判別できません', NOT_IN_SCHEDULE: '生産日程にありません',
+  MANUAL_DUE_EXISTS_FIRST_TIME: '手入力の納期が登録されています', REGISTRATION_LIMIT: '登録製番の上限を超えました',
+  FILENAME_DATE_MISMATCH: 'ファイル名の日付と受信日が離れています', MULTIPLE_SCHEDULE_SHEETS: '日程表の候補が複数あります',
+  AMBIGUOUS_YEAR: '日付の年を一意に決められません', MERGED_ACROSS_BLOCKS: '製番をまたぐ結合セルです',
+  FORMULA_NO_RESULT: '数式の計算結果がありません', BLOCK_SHAPE: '製番の4行構成が想定と異なります',
+};
+
+export async function deliverDScheduleMinutesNotice(
+  messageId: string,
+  warnings: import('../production-schedule/d-schedule-minutes/parse-d-schedule-minutes.js').DScheduleMinutesWarning[]
+): Promise<void> {
+  if (warnings.length === 0) return;
+  const compact = (value: string | null) => (value ?? '—').replace(/\s+/g, ' ').slice(0, 120);
+  const body = [
+    `D社日程会議議事録の取込で確認が必要な箇所が${warnings.length}件あります。`,
+    ...warnings.slice(0, 20).map((warning) => `製番 ${compact(warning.seiban)} / ${compact(warning.cell)} / 「${compact(warning.rawText)}」: ${minutesWarningExplanations[warning.code] ?? '内容を確認してください'}`),
+    ...(warnings.length > 20 ? [`ほか${warnings.length - 20}件（取込履歴で確認できます）。`] : []),
+  ].join('\n');
+  await deliverSystemNotice({ key: `d-schedule-minutes:${messageId}`, title: 'D社日程会議議事録の確認', body, state: 'open', once: true });
+}

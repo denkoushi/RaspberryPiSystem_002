@@ -8,6 +8,26 @@ import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
 const noop = vi.fn();
 
 describe('LeaderOrderResourceRow', () => {
+  it.each([
+    ['2026-11-12', false],
+    ['2026-11-08', true]
+  ] as const)('styles displayed due %s as manual only when it matches the manual date', (displayDue, manual) => {
+    render(
+      <LeaderOrderResourceRow
+        resourceCd="305"
+        row={mkLeaderBoardRow({ dueDate: '2026-11-08T00:00:00.000Z', displayDue })}
+        orderUsageNumbers={undefined}
+        onOrderChange={noop}
+        onCompleteRow={noop}
+        completePending={false}
+        orderPending={false}
+      />
+    );
+    const due = screen.getByTitle(manual ? '手動納期（タップで変更）' : '表示納期（タップで変更）');
+    expect(due.classList.contains('text-amber-200')).toBe(manual);
+    expect(due.classList.contains('text-sky-300/90')).toBe(!manual);
+  });
+
   it('renders part code, quantity, fkojun, and required minutes on the cluster row', () => {
     const row = mkLeaderBoardRow({
       id: 'row-cluster',

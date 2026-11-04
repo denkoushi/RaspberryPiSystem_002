@@ -116,6 +116,7 @@ export async function listLeaderboardShellProductionScheduleRows(
   });
 
   const { mergedPrefix: mergedPrefixInitial, mergeFullyCompleted } = await fetchLeaderboardShellMergedPrefixRows({
+    dueSource: params.dueSource,
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
@@ -131,6 +132,7 @@ export async function listLeaderboardShellProductionScheduleRows(
   const selectionStable = generationBeforeSelection === generationAfterSelection;
 
   const { mergedPrefix, expandedDisplayItems: expandedDisplayItemsRaw } = await resolveLeaderboardShellDisplayItemPrefix({
+    dueSource: params.dueSource,
     mergedPrefixInitial,
     mergeFullyCompletedInitial: mergeFullyCompleted,
     pageSize,
@@ -143,7 +145,8 @@ export async function listLeaderboardShellProductionScheduleRows(
   });
   const expandedDisplayItems = filterProductionScheduleDisplayRowsByDueDate(
     expandedDisplayItemsRaw,
-    params.hasDueDateOnly
+    params.hasDueDateOnly,
+    params.dueSource
   );
 
   const orderedRowIds = expandedDisplayItems.map((row) => row.id);
@@ -169,6 +172,10 @@ export async function listLeaderboardShellProductionScheduleRows(
         note: row.note,
         processingType: row.processingType,
         dueDate: row.dueDate,
+        boardDueDate: row.boardDueDate,
+        manualUpdatedAt: row.manualUpdatedAt,
+        excelDueDate: row.excelDueDate,
+        excelChangedAt: row.excelChangedAt,
         plannedQuantity: row.plannedQuantity,
         plannedStartDate: row.plannedStartDate,
         plannedEndDate: row.plannedEndDate
@@ -188,6 +195,10 @@ export async function listLeaderboardShellProductionScheduleRows(
         note: row.note,
         processingType: row.processingType,
         dueDate: row.dueDate,
+        boardDueDate: row.boardDueDate,
+        manualUpdatedAt: row.manualUpdatedAt,
+        excelDueDate: row.excelDueDate,
+        excelChangedAt: row.excelChangedAt,
         plannedQuantity: row.plannedQuantity,
         plannedStartDate: row.plannedStartDate,
         plannedEndDate: row.plannedEndDate
@@ -197,6 +208,7 @@ export async function listLeaderboardShellProductionScheduleRows(
   }
 
   const filterFingerprint = buildLeaderboardShellFilterFingerprint({
+    dueSource: params.dueSource,
     locationKey,
     siteKey: params.siteKey,
     queryText: params.queryText,
@@ -267,6 +279,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   }
 
   const filterFingerprint = buildLeaderboardShellFilterFingerprint({
+    dueSource: params.dueSource,
     locationKey,
     siteKey: params.siteKey,
     queryText: params.queryText,
@@ -316,6 +329,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
           live.orderedRowIds
         );
         const { rows: chunkRows, mergeFullyCompleted } = await fetchLeaderboardShellRowsContinuationChunk({
+          dueSource: params.dueSource,
           leaderboardMaterializedBaseWhere,
           queryWhere,
           expansionWhere: leaderboardExpansionWhere,
@@ -329,6 +343,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
           processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
         });
         const appendedDisplayIds = await expandLeaderboardParentRowIdsForSnapshot({
+          dueSource: params.dueSource,
           parentRows: chunkRows.map((r): ProductionScheduleRow => ({
             ...r,
             actualPerPieceMinutes: null,
@@ -416,6 +431,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
       }
 
       const leaderboardRows = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
+        dueSource: params.dueSource,
         orderedDisplayItemIds: sliceIds,
         locationKey,
         siteScopedGlobalRankLocation,
@@ -455,12 +471,13 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   });
 
   const partialRowsRaw = await fetchPartiallyReturnedDisplayItemsForLegacyContinue({
+    dueSource: params.dueSource,
     excludeDisplayItemIds,
     locationKey,
     siteScopedGlobalRankLocation,
     leaderboardMaterializedBaseWhere
   });
-  const partialRows = filterProductionScheduleDisplayRowsByDueDate(partialRowsRaw, params.hasDueDateOnly);
+  const partialRows = filterProductionScheduleDisplayRowsByDueDate(partialRowsRaw, params.hasDueDateOnly, params.dueSource);
 
   const partiallyExcludedParentRowIds = await resolvePartiallyReturnedParentRowIdsForLegacyContinue({
     excludeDisplayItemIds,
@@ -468,6 +485,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   });
 
   const leaderboardResult = await fetchLeaderboardShellRowsContinuationChunk({
+    dueSource: params.dueSource,
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
@@ -482,6 +500,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   });
 
   const newExpandedRows: ProductionScheduleRow[] = await expandLeaderboardParentRowsForResponse({
+    dueSource: params.dueSource,
     rows: leaderboardResult.rows.map((r) => ({
       ...r,
       actualPerPieceMinutes: null,

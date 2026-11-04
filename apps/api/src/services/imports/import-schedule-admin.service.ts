@@ -16,6 +16,7 @@ import { RIGGING_SLINGS_INSPECTION_CSV_IMPORT_SCHEDULE_ID } from './slings-inspe
 import { PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID } from './procedure-material-import-schedule.policy.js';
 import { ITEM_INVENTORY_GMAIL_CSV_IMPORT_SCHEDULE_ID } from './item-inventory-import-schedule.policy.js';
 import { MACHINE_SIGNAL_GMAIL_CSV_IMPORT_SCHEDULE_ID } from './machine-signal-import-schedule.policy.js';
+import { D_SCHEDULE_MINUTES_SCHEDULE_ID } from './system-csv-import-schedule-builtin-rows.js';
 import { normalizeSystemCsvImportRowForPersistence } from './system-csv-import-schedule-invariants.js';
 import { assertCsvGmailSubjectPatternAllowed } from '../gmail/gmail-subject-reservation.policy.js';
 
@@ -91,7 +92,7 @@ export class ImportScheduleAdminService {
     for (const target of schedule.targets ?? []) {
       // csvDashboards targets store a dashboard UUID, not a Gmail subject.
       // machineSignalGmail は予約済みの件名そのものを使う専用の取り込みなので、予約チェックの対象外。
-      if (target.type !== 'csvDashboards' && target.type !== 'machineSignalGmail' && target.type !== 'procedureMaterialGmail') {
+      if (target.type !== 'csvDashboards' && target.type !== 'machineSignalGmail' && target.type !== 'procedureMaterialGmail' && target.type !== 'dScheduleMinutesGmail') {
         assertCsvGmailSubjectPatternAllowed(target.source);
       }
     }
@@ -195,6 +196,7 @@ export class ImportScheduleAdminService {
 
   async deleteSchedule(scheduleId: string): Promise<void> {
     if (
+      scheduleId === D_SCHEDULE_MINUTES_SCHEDULE_ID ||
       scheduleId === FKOJUNST_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID ||
       scheduleId === SEIBAN_MACHINE_NAME_SUPPLEMENT_CSV_IMPORT_SCHEDULE_ID ||

@@ -12,12 +12,16 @@ import {
   ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS,
   PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS,
   MACHINE_SIGNAL_GMAIL_SUBJECT,
+  D_SCHEDULE_MINUTES_GMAIL_SUBJECT,
 } from '../../services/gmail/gmail-subject-reservation.policy.js';
 
 const csvImportTargetSchema = z.object({
-  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours', 'itemInventoryGmail', 'machineSignalGmail', 'procedureMaterialGmail']),
+  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours', 'itemInventoryGmail', 'machineSignalGmail', 'procedureMaterialGmail', 'dScheduleMinutesGmail']),
   source: z.string().min(1, 'sourceは必須です'),
 }).superRefine((target, ctx) => {
+  if (target.type === 'dScheduleMinutesGmail' && target.source !== D_SCHEDULE_MINUTES_GMAIL_SUBJECT) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['source'], message: `件名は${D_SCHEDULE_MINUTES_GMAIL_SUBJECT}で固定です` });
+  }
   if (target.type === 'itemInventoryGmail' && target.source !== ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0]) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

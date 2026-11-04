@@ -12,6 +12,7 @@ import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipS
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
+import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
@@ -153,6 +154,7 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
     </div>
     <div ref={track} data-gantt-track className="relative shrink-0 overflow-hidden" style={{ width }}>
+      <PlanningBoardGanttSendOutStars bars={row.bars} start={start} dayWidth={dayWidth} />
       {hours < 24 && Array.from({ length: end - start }, (_, i) => <div key={i} className="pointer-events-none">
         {offHours.map((gap, index) => <span key={index} className="absolute inset-y-0 bg-slate-950/55"
           style={{ left: (i + gap.start) * dayWidth, width: (gap.end - gap.start) * dayWidth }} />)}

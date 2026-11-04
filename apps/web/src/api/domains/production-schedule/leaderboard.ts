@@ -36,6 +36,7 @@ export type ProductionScheduleLeaderboardDecorationsResponse = {
 };
 
 export type KioskProductionScheduleLeaderboardPhasedQueryParams = {
+  dueSource?: 'excel' | 'scaw';
   productNo?: string;
   q?: string;
   productNos?: string;

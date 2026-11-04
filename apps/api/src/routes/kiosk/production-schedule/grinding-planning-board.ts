@@ -1,3 +1,4 @@
+import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -28,6 +29,7 @@ import {
 import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shared.js';
 
 const querySchema = z.object({
+  dueSource: z.enum(['excel', 'scaw']).default('excel'),
   view: z.enum(['seiban', 'resource']).default('seiban'),
   category: grindingPlanningBoardCategorySchema,
   includeLoad: z.enum(['true', 'false']).default('true').transform((value) => value === 'true'),
@@ -116,7 +118,7 @@ const resourceOrderBulkBodySchema = z.object({
 
 const orderBodySchema = z.object({
   sourceRevision: sourceRevisionSchema,
-  fseibans: z.array(z.string().min(1).max(100)).max(50)
+  fseibans: z.array(z.string().min(1).max(100)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX)
 });
 
 const resourceCapacityBodySchema = z.object({
@@ -180,6 +182,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const query = querySchema.parse(request.query);
     return getGrindingPlanningBoard({
+      dueSource: query.dueSource,
       siteKey: scope.siteKey,
       category: query.category,
       view: query.view,
