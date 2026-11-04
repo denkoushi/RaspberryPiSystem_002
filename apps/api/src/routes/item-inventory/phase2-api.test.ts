@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { inventory, requireClientDeviceMock, verifyPasswordMock } = vi.hoisted(() => ({
   inventory: {
     setImportMessageDismissed: vi.fn(), replaceItemTag: vi.fn(), listToolFieldOptions: vi.fn(), listToolFieldValues: vi.fn(), addToolFieldValue: vi.fn(), renameToolFieldValue: vi.fn(), deleteToolFieldValue: vi.fn(), toolValueVariants: vi.fn(), mergeToolValueVariants: vi.fn(),
+    setReorderPoint: vi.fn(), setOrdered: vi.fn(),
     processTransaction: vi.fn(), cancelTransaction: vi.fn(),
     processTouchTransaction: vi.fn(), deleteDrawer: vi.fn(), deleteShelf: vi.fn(), deleteTag: vi.fn(), dismissImport: vi.fn(), restoreImport: vi.fn(),
   },
@@ -222,5 +223,69 @@ describe('inventory phase 2 API contracts', () => {
     const conflict = await request(method, url, { ...clientHeaders, 'x-kiosk-access-password': '1234' });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json().errorCode).toBe('INVENTORY_CONFLICT');
+  });
+});
+
+
+describe('inventory reorder and setup restock API', () => {
+  const headers = { ...clientHeaders, 'x-kiosk-access-password': '1234' };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireClientDeviceMock.mockImplementation(async (key: string) => {
+      if (key !== 'kiosk-key') throw new ApiError(401, '無効な端末');
+      return { clientDevice: { id: 'terminal-1' } };
+    });
+    verifyPasswordMock.mockReset().mockResolvedValue({ success: true });
+    inventory.setReorderPoint.mockReset().mockResolvedValue({ id, reorderPoint: 5, reorderedAt: null });
+    inventory.setOrdered.mockReset().mockResolvedValue({ id, reorderedAt: new Date('2026-11-04T00:00:00Z') });
+    inventory.processTouchTransaction.mockReset().mockResolvedValue({ transaction, replayed: false });
+  });
+
+  const writes = [
+    { method: 'PUT' as const, path: 'reorder-point', body: { reorderPoint: 5 }, fn: inventory.setReorderPoint },
+    { method: 'PUT' as const, path: 'ordered', body: { ordered: true }, fn: inventory.setOrdered },
+    { method: 'POST' as const, path: 'restock', body: { quantity: 3 }, fn: inventory.processTouchTransaction },
+  ];
+  it.each(writes)('requires setup authorization for $path', async ({ method, path, body, fn }) => {
+    const url = `/item-inventory/compartments/${id}/${path}`;
+    expect((await request(method, url, clientHeaders, body)).statusCode).toBe(401);
+    expect(fn).not.toHaveBeenCalled();
+    verifyPasswordMock.mockResolvedValueOnce({ success: false });
+    expect((await request(method, url, headers, body)).statusCode).toBe(403);
+    expect(fn).not.toHaveBeenCalled();
+    expect((await request(method, url, headers, body)).statusCode).toBe(200);
+    expect(fn).toHaveBeenCalledOnce();
+  });
+
+  it.each([null, 0, 5])('sets or clears a threshold %s', async reorderPoint => {
+    expect((await request('PUT', `/item-inventory/compartments/${id}/reorder-point`, headers, { reorderPoint })).statusCode).toBe(200);
+    expect(inventory.setReorderPoint).toHaveBeenCalledWith(id, reorderPoint);
+  });
+  it.each([-1, 0.5, 2147483648, '5', undefined])('rejects invalid thresholds %s', async reorderPoint => {
+    expect((await request('PUT', `/item-inventory/compartments/${id}/reorder-point`, headers, { reorderPoint })).statusCode).toBe(400);
+    expect(inventory.setReorderPoint).not.toHaveBeenCalled();
+  });
+  it.each([true, false])('passes ordered %s to the service', async ordered => {
+    const response = await request('PUT', `/item-inventory/compartments/${id}/ordered`, headers, { ordered });
+    expect(response.statusCode).toBe(200);
+    expect(inventory.setOrdered).toHaveBeenCalledWith(id, ordered);
+    expect(response.json().compartment.reorderedAt).toBe('2026-11-04T00:00:00.000Z');
+  });
+  it('returns 4xx when stock is above the threshold and rejects non-booleans', async () => {
+    inventory.setOrdered.mockRejectedValueOnce(new ApiError(400, '在庫が発注点以下のときだけ発注済みにできます'));
+    expect((await request('PUT', `/item-inventory/compartments/${id}/ordered`, headers, { ordered: true })).statusCode).toBe(400);
+    inventory.setOrdered.mockClear();
+    expect((await request('PUT', `/item-inventory/compartments/${id}/ordered`, headers, { ordered: 'true' })).statusCode).toBe(400);
+    expect(inventory.setOrdered).not.toHaveBeenCalled();
+  });
+  it('restocks through the existing transaction path with the kiosk actor and idempotency key', async () => {
+    const response = await request('POST', `/item-inventory/compartments/${id}/restock`, headers, { quantity: 7, idempotencyKey: 'restock-1' });
+    expect(response.statusCode).toBe(200);
+    expect(inventory.processTouchTransaction).toHaveBeenCalledWith({ compartmentId: id, quantity: 7, restock: true, idempotencyKey: 'restock-1', actor: { clientId: 'terminal-1', performedByUserId: null } });
+    expect(response.json()).toMatchObject({ replayed: false, transaction: { id, createdAt: transaction.createdAt.toISOString() } });
+  });
+  it.each([0, -1, 0.5, 1000000])('rejects invalid restock quantity %s', async quantity => {
+    expect((await request('POST', `/item-inventory/compartments/${id}/restock`, headers, { quantity })).statusCode).toBe(400);
+    expect(inventory.processTouchTransaction).not.toHaveBeenCalled();
   });
 });

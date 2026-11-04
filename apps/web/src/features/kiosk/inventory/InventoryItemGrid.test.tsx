@@ -430,3 +430,31 @@ describe('InventoryItemGrid', () => {
   });
 
 });
+
+it.each(['card', 'list'] as const)('prioritizes low-stock compartments with red/blue borders in %s view', view => {
+  vi.useFakeTimers();
+  const make = (id: string, stock: number, point: number | null, ordered: boolean) => ({ ...drawer(id, id, null), stockQuantity: stock, reorderPoint: point, reorderedAt: ordered ? '2026-11-04T00:00:00Z' : null });
+  const entries = [make('unset', 0, null, false), make('above', 3, 2, true), make('red', 5, 5, false), make('blue', 4, 5, true), make('zero', 0, 0, false)];
+  const { rerender } = render(<InventoryItemGrid compartments={entries} view={view} onPick={vi.fn()} />);
+  const rows = screen.getAllByRole('button');
+  expect(rows.map(row => entries.find(entry => row.textContent?.includes(entry.item.name))?.id)).toEqual(['zero', 'blue', 'red', 'unset', 'above']);
+  for (const name of ['red', 'zero', 'blue']) {
+    const row = screen.getByRole('button', { name: new RegExp(name) });
+    expect(row).toHaveClass('border-2', name === 'blue' ? 'border-inv-blue' : 'border-inv-red');
+    expect(row).not.toHaveClass('hover:border-inv-cyan');
+    fireEvent.pointerEnter(view === 'list' ? row : row.parentElement!);
+    act(() => vi.advanceTimersByTime(150));
+    expect(view === 'list' ? row : row.parentElement).not.toHaveClass('ring-inv-cyan');
+    fireEvent.pointerLeave(view === 'list' ? row : row.parentElement!);
+  }
+  for (const name of ['unset', 'above']) expect(screen.getByRole('button', { name: new RegExp(name) })).toHaveClass('border-inv-line', 'hover:border-inv-cyan');
+  rerender(<InventoryItemGrid compartments={entries.map(entry => ({ ...entry, stockQuantity: 10 }))} view={view} onPick={vi.fn()} />);
+  expect(screen.getByRole('button', { name: /blue/ })).not.toHaveClass('border-inv-blue');
+  vi.useRealTimers();
+});
+
+it('preserves the low-stock tiebreakers within both threshold groups', () => {
+  const entries = [drawer('a', 'A', null), drawer('b', 'B', '2026-11-03T00:00:00Z'), drawer('c', 'C', '2026-11-04T00:00:00Z')];
+  const low = entries.map(entry => ({ ...entry, id: `low-${entry.id}`, reorderPoint: 3 }));
+  expect(sortByLowStock([...entries, ...low]).map(entry => entry.id)).toEqual(['low-c', 'low-b', 'low-a', 'c', 'b', 'a']);
+});

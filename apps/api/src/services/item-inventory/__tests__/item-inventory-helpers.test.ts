@@ -90,6 +90,8 @@ describe('locationDto', () => {
       id: 'c1',
       labelNumber: 12,
       stockQuantity: 3,
+      reorderPoint: null,
+      reorderedAt: null,
       area: 'A-1',
       shelfNumber: 2,
       drawerNumber: 4,

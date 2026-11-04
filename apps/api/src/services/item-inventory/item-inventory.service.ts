@@ -9,7 +9,7 @@ import { resolveTag, resolveCompartmentByLabelNumber, listTags, listLocations, l
 import { rotateImportPhoto, rotateInventoryItemPhoto, deleteImportPhoto, reorderImportPhotos, deleteInventoryItemPhoto, reorderInventoryItemPhotos } from './item-inventory-photos.js';
 import { listToolFieldOptions, listToolFieldValues, addToolFieldValue, renameToolFieldValue, deleteToolFieldValue, toolValueVariants, mergeToolValueVariants, dismissToolValueVariants } from './item-inventory-tool-fields.js';
 import { registerImport } from './item-inventory-import-registration.js';
-import { bindCompartment, processTransaction, processTouchTransaction, processStockTransaction, cancelTransaction, correctStock, moveLocation, replaceItemTag } from './item-inventory-transactions.js';
+import { setReorderPoint, setOrdered, bindCompartment, processTransaction, processTouchTransaction, processStockTransaction, cancelTransaction, correctStock, moveLocation, replaceItemTag } from './item-inventory-transactions.js';
 
 export { INVENTORY_TOOL_FIELDS, INVENTORY_OPTION_FIELDS } from './item-inventory.fields.js';
 export type { InventoryToolField, InventoryOptionField } from './item-inventory.fields.js';
@@ -22,6 +22,10 @@ export class ItemInventoryService {
   private async assertNfcUidAvailable(uid: string, db: PrismaClient | Prisma.TransactionClient): Promise<void> { return assertNfcUidAvailable(uid, db); }
 
   private async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> { return runSerializable(this.db, work); }
+
+  async setReorderPoint(id: string, reorderPoint: number | null) { return setReorderPoint(this.db, id, reorderPoint); }
+
+  async setOrdered(id: string, ordered: boolean) { return setOrdered(this.db, id, ordered); }
 
   async resolveTag(uid: string) { return resolveTag(this.db, uid); }
 
