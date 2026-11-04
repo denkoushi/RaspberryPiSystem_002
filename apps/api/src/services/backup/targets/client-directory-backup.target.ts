@@ -8,8 +8,9 @@ import type { BackupTargetInfo } from '../backup-types.js';
 import { ApiError } from '../../../lib/errors.js';
 import {
   assertBackupSshAuthorityAvailable,
-  assertRemoteBackupPathAllowed,
   buildBackupSshAnsibleArgs,
+  buildClientBackupExtraVarsArgs,
+  parseClientBackupSource,
   resolveBackupSshPaths,
 } from '../backup-ssh-policy.js';
 
@@ -28,14 +29,9 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
   private readonly ansiblePlaybookPath: string;
 
   constructor(source: string, ansibleInventoryPath?: string, ansiblePlaybookPath?: string) {
-    const parts = source.split(':');
-    if (parts.length < 2) {
-      throw new ApiError(400, `Invalid client directory source format: ${source}. Expected format: "hostname:/path/to/directory"`);
-    }
-
-    this.clientHost = parts[0];
-    this.remoteDirPath = parts.slice(1).join(':');
-    assertRemoteBackupPathAllowed(this.remoteDirPath);
+    const parsed = parseClientBackupSource(source, 'hostname:/path/to/directory');
+    this.clientHost = parsed.clientHost;
+    this.remoteDirPath = parsed.remotePath;
 
     const ansibleBasePath = process.env.ANSIBLE_BASE_PATH || '/app/backup-ansible';
 
@@ -72,9 +68,11 @@ export class ClientDirectoryBackupTarget implements BackupTarget {
           '-i', ansibleInventoryPath,
           ansiblePlaybookPath,
           ...buildBackupSshAnsibleArgs(backupSshPaths),
-          '-e', `client_host=${this.clientHost}`,
-          '-e', `client_dir_path=${this.remoteDirPath}`,
-          '-e', `backup_destination=${backupDestination}`
+          ...buildClientBackupExtraVarsArgs({
+            client_host: this.clientHost,
+            client_dir_path: this.remoteDirPath,
+            backup_destination: backupDestination,
+          })
         ],
         {
           cwd: path.dirname(ansibleInventoryPath),
