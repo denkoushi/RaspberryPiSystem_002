@@ -51,6 +51,7 @@ class CiSecurityBaselineContracts(unittest.TestCase):
         self.assertIn("COVERAGE_ENFORCE_THRESHOLDS", api)
         for fragment in ("statements: 61", "branches: 58", "functions: 55", "lines: 63"):
             self.assertIn(fragment, web)
+        self.assertIn("process.env.COVERAGE_ENFORCE_THRESHOLDS !== 'false'", web)
 
     def test_dependabot_covers_selected_ecosystems(self) -> None:
         dependabot = self.read(".github/dependabot.yml")
