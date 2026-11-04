@@ -35,6 +35,7 @@ function makeDb(options: { stock?: number; tags?: Tag[] } = {}) {
       findUnique: vi.fn(async ({ where }: { where: { uid: string } }) => tags.get(where.uid) ?? null),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Partial<Tag> }) => ({ ...[...tags.values()].find((t) => t.id === where.id), ...data })),
       create: vi.fn(async ({ data }: { data: Partial<Tag> }) => ({ id: 'new-tag', ...data })),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     inventoryItem: { findUnique: vi.fn() },
     inventoryDrawer: { findUnique: vi.fn() },
@@ -420,6 +421,16 @@ describe('replaceItemTag', () => {
     expect(tx.inventoryTransaction.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       action: 'TAG_REPLACEMENT', details: { previousUid: 'OLD', uid: 'FREE' },
     }) });
+  });
+
+  it('refuses a released ITEM tag that another compartment claimed first', async () => {
+    const { db, tx } = makeDb({ tags: [{ id: 't-free', uid: 'FREE', kind: 'ITEM', compartmentId: null, quantity: null }] });
+    tx.inventoryCompartment.findUnique.mockResolvedValueOnce({ id: 'comp-1', inventoryItemId: 'item-1', stockQuantity: 4, itemTag: { id: 't-old', uid: 'OLD' } });
+    tx.inventoryNfcTag.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(replaceItemTag(db as never, 'comp-1', 'FREE', {})).rejects.toMatchObject({ statusCode: 409, message: 'このUIDは既に使用されています' });
+    expect(tx.inventoryNfcTag.updateMany).toHaveBeenCalledWith({ where: { id: 't-free', compartmentId: null }, data: { compartmentId: 'comp-1' } });
+    expect(tx.inventoryNfcTag.update).not.toHaveBeenCalled();
+    expect(tx.inventoryTransaction.create).not.toHaveBeenCalled();
   });
 
   it.each(['QUANTITY', 'RESTOCK'])('still refuses an unbound %s tag with 409', async (kind) => {

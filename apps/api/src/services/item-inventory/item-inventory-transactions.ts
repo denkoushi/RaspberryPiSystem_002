@@ -290,6 +290,11 @@ export async function replaceItemTag(db: PrismaClient, compartmentId: string, ui
         shelfNumber: used.drawer.shelf.shelfNumber, drawerNumber: used.drawer.drawerNumber,
       } } : undefined);
     }
+    if (isReleasedItemTag) {
+      // 同じ解放済みタグを2台が同時に付け直しても、先に取った区画からタグを奪わない。
+      const claimed = await tx.inventoryNfcTag.updateMany({ where: { id: existing.id, compartmentId: null }, data: { compartmentId } });
+      if (claimed.count === 0) throw new ApiError(409, 'このUIDは既に使用されています');
+    }
     if (compartment.itemTag && compartment.itemTag.uid !== cleanUid) {
       await tx.inventoryNfcTag.update({ where: { id: compartment.itemTag.id }, data: { compartmentId: null } });
     }
