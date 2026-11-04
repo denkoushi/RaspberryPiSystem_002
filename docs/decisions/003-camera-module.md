@@ -1,5 +1,5 @@
 ---
-title: ADR 003: カメラ機能のモジュール化
+title: "ADR 003: カメラ機能のモジュール化"
 tags: [設計決定, カメラ, モジュール化, 拡張性]
 audience: [開発者, アーキテクト]
 last-verified: 2025-11-27
@@ -31,7 +31,7 @@ services/camera/
   ├── drivers/
   │   ├── index.ts               # ドライバーインターフェース
   │   ├── camera-driver.interface.ts  # CameraDriver インターフェース
-  │   ├── raspberry-pi-camera.driver.ts  # Raspberry Pi Camera Module 実装（未実装・選択時は例外）
+  │   ├── raspberry-pi-camera.driver.ts  # Raspberry Pi Camera Module 実装（ファイル未作成・選択時は camera.service.ts が例外）
   │   ├── usb-camera.driver.ts   # USBカメラ実装
   │   └── mock-camera.driver.ts  # モック実装（テスト用）
   （設定は services/camera/ 配下ではなく apps/api/src/config/camera.config.ts。zod で環境変数を読み込む）

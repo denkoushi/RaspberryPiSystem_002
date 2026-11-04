@@ -16,7 +16,7 @@ update-frequency: high
 
 # Runbook: DGX Spark system-prod LocalLLM 段階切替
 
-> **現行の節**: 業務 GLM / DeepSeek 切替、私用 Pi5 `stackchan-bridge` との区別、管理コンソール（2026-10-17 以降は [ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md) が正本）、`/dev/shm` の週次掃除、GB10 性能パラメータ、GLM-5.3-Flash 切替、Nemotron 3.5 段階導入。2026-04〜06 の移行判断ログ、Phase A/B の段階切替、Ubuntu への rollback は履歴であり、現行手順ではない（[履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md)）。本文の「本番反映（…）」記録にある `export RASPI_SERVER_HOST=…` と `--detach --follow` は当時のコマンドで、現行の入口では使えない。Pi5 のデプロイは [deployment guide](../guides/deployment.md)、復旧は [deploy-status-recovery.md](./deploy-status-recovery.md) に従う。
+> **現行の節**: 業務 GLM / DeepSeek 切替、私用 Pi5 `stackchan-bridge` との区別、管理コンソール（2026-10-17 以降は [ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md) が正本）、`/dev/shm` の週次掃除、GB10 性能パラメータ、GLM-5.3-Flash 切替、Nemotron 3.5 段階導入。2026-04〜06 の移行判断ログ、Phase A/B の段階切替、Ubuntu への rollback は履歴であり、現行手順ではない（[履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md)）。本文の「本番反映（…）」記録にある `export RASPI_SERVER_HOST=…` と `--follow` は当時のコマンドで、現行の入口では使えない（`--detach` は現行も使える）。Pi5 のデプロイは [deployment guide](../guides/deployment.md)、復旧は [deploy-status-recovery.md](./deploy-status-recovery.md) に従う。
 
 ## 目的
 

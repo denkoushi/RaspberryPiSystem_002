@@ -33,7 +33,7 @@ export LOG_LEVEL=warn
 
 #### Docker Composeで設定
 
-開発・ローカルの`infrastructure/docker/docker-compose.server.yml`では次のように設定できます。Pi5本番のAPIは`docker-compose.phase3.yml`（project `bluegreen`）で動き、`LOG_LEVEL`は設定されていないため、APIの既定値（`NODE_ENV=production`で`warn`）になります。本番の変更はPRと標準デプロイ（[deployment.md](./deployment.md)）で行います。
+開発・ローカルの`infrastructure/docker/docker-compose.server.yml`では次のように設定できます。Pi5本番のAPIは`docker-compose.phase3.yml`（project `bluegreen`）で動き、`api-blue`/`api-green`は`env_file`の先頭で`apps/api/.env.example`を読み込むため、`LOG_LEVEL=info`になります（後続のcompose環境ファイルに`LOG_LEVEL`は含まれない）。本番の変更はPRと標準デプロイ（[deployment.md](./deployment.md)）で行います。
 
 ```yaml
 services:

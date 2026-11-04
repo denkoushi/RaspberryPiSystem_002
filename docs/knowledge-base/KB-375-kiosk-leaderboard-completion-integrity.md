@@ -107,7 +107,7 @@ update-frequency: medium
   - **行だけ完了・チップ未完** → 装飾後取り bundle 未反映 / **`fe31aa99` 未デプロイ** / 強制リロード。
   - **ポーリングごとに decorations POST が数十件** → **代表行 1 件/partKey** 未適用の旧 JS。
   - **他端末完了が即反映されない** → **120s キャッシュ SLA**（仕様）·本 Fix は **自端末の stale 検出**が主目的。
-- **記録**: [deployment.md §2026-06-01](../archive/deployments/2026-06.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)·[KB-374 §装飾 stale](./KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[verification-checklist §6.6.29](../guides/verification-checklist.md#66-管理コンソールui確認)
+- **記録**: [deployment.md §2026-06-01](../archive/deployments/2026-06.md#kiosk-leaderboard-completion-decoration-resync-2026-06-01)·[KB-374 §装飾 stale](./KB-374-leaderboard-board-continue-cursor-contract.md#完了後フッタ工程チップ装飾の再同期2026-06-01--fixkiosk-leaderboard-completion-decoration-resync)·[verification-checklist §6.6.29](../guides/verification-checklist.md#kiosk-leaderboard-completion-decoration-resync-verification-2026-06-01)
 
 ## References
 

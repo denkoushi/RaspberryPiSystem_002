@@ -545,7 +545,7 @@ sudo systemctl restart signage-lite.service
 - （**自動回帰の完全体**は `./scripts/deploy/verify-phase12-real.sh`。本セッションでは上記スモークを実施。）
 
 **知見・トラブルシューティング**:
-- **`RASPI_SERVER_HOST is required`**（旧 `update-all-clients.sh` 時代の事象。現行の standard-ansible-release 経路では該当しない）: デタッチ起動に限らず、**`--status <run_id>`** でも同じ。`export RASPI_SERVER_HOST=100.106.158.2` または `denkon5sd02@100.106.158.2`（[KB-238](./ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+- **`RASPI_SERVER_HOST is required`**（旧 `update-all-clients.sh` 時代の事象。現行の standard-ansible-release 経路では該当しない）: デタッチ起動に限らず、**`--status <run_id>`** でも同じ。`export RASPI_SERVER_HOST=100.106.158.2` または `<user>@100.106.158.2`（[KB-238](./ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
 - Pi3 は **単独デプロイ**・完了まで **数分〜十数分**あり得る。`--status` で `success` / `exitCode: 0` を確認してから次へ。
 
 **関連ファイル（代表）**:

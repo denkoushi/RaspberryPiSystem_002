@@ -100,13 +100,13 @@ gunzip -t /opt/backups/db_backup_*.sql.gz
 ### 2. 証明書ファイルのリストアテスト
 
 - [ ] 証明書バックアップ（`tar.gz`）を展開
-- [ ] gatewayを再起動しHTTPS接続が成功する
+- [ ] 隔離環境で証明書を配置し、HTTPS接続が成功する
 
 本番の入口は blue/green project（`docker-compose.phase3.yml`）の`gateway`で、`docker-compose.server.yml`に`caddy`サービスはありません。本番Pi5のcontainerを手で再起動せず、復元確認は[Pi5 復旧訓練 Runbook](../runbooks/pi5-restore-drill.md)の隔離環境で行います。
 
 ### 3. 環境変数ファイルのリストアテスト
 
-- [ ] `.env`を復元して稼働APIスロットを再起動
+- [ ] 隔離環境で`.env`を復元してAPIを起動
 - [ ] ヘルスチェックが成功する
 
 本番APIは`api-blue`/`api-green`の稼働スロットで、`docker-compose.server.yml`の`api`は本番では動いていません。本番の`.env`はAnsibleが生成するため手で上書き・再起動せず、復元確認は[Pi5 復旧訓練 Runbook](../runbooks/pi5-restore-drill.md)の隔離環境で行います。

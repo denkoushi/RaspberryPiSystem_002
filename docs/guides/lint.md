@@ -14,7 +14,7 @@
 - 既存指摘は解消済み（`--max-warnings=0`で通過）
 - importルール強化: `import/no-cycle` を有効化（API/Web/shared-types）。`import/order` は Web/shared-types のみ有効（API は off）
 - shared-typesも lint 対象 (`pnpm -r lint` で `packages/shared-types` を含む)
-- dist/生成物は lint 対象外（flat config `eslint.config.mjs` 先頭の全体 `ignores` で除外。API/shared-types は `dist/**`、全パッケージで `**/*.{js,cjs,mjs}`）
+- dist/生成物は lint 対象外（各パッケージの flat config `eslint.config.mjs` の全体 `ignores` で除外。API/shared-types は `dist/**`、全パッケージで `**/*.{js,cjs,mjs}`）
 - 厳格化（`recommended-type-checked`, securityルール）は影響範囲を見て段階導入する
 
 ### import/order 運用メモ

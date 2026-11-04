@@ -199,11 +199,11 @@ docker inspect --format '{{json .Mounts}}' docker-nfc-agent-1
 # 2. 含まれていない場合、Pi4上でcomposeファイルを手編集しない。
 #    テンプレート（client-compose.yml.j2）の修正をPRで行い、標準デプロイで反映する
 
-# 5. コンテナ内からpcscdにアクセスできるか確認
+# 3. コンテナ内からpcscdにアクセスできるか確認
 docker exec docker-nfc-agent-1 ls -la /run/pcscd/
 # pcscd.comm が表示されればOK
 
-# 6. コンテナ内からリーダーが認識されるか確認
+# 4. コンテナ内からリーダーが認識されるか確認
 docker exec docker-nfc-agent-1 python -c "from smartcard.System import readers; print(list(readers()))"
 # ['SONY FeliCa RC-S300/S (1469193) 00 00'] が表示されればOK
 ```

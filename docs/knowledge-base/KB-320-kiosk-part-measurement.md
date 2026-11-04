@@ -1437,7 +1437,7 @@ curl -sk "${BASE}/part-measurement/inspection-drawing/templates?limit=5" -H "x-c
 | **一覧ハブ** | PR [#374](https://github.com/denkoushi/RaspberryPiSystem_002/pull/374) → **`main` `f0a2725c`**（squash） | `raspberrypi5` | `20260530-180728-7767` | `ef78f4dd`（デプロイ時） | `failed=0` | 42/1/0 | 専用 API・履歴 UI・約12min・Pi3 WARN スキップ可 |
 | 後続収束 | 2026-07-08 現行ロールアウト | Pi4×5 | 各端末 Run ID は [§丸数字設定改善](#検査図面-丸数字設定改善-2026-07-08) | **`04bb49fe`** | `failed=0` | **45/0/0** | 現行 bundle に一覧ハブ・検査図面タブを含む |
 
-**当時のコマンド**（現行は [deployment.md](../guides/deployment.md#標準更新入口)。`RASPI_SERVER_HOST`・`--follow` は廃止）: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）。
+**当時のコマンド**（現行は [deployment.md](../guides/deployment.md#標準更新入口)。`RASPI_SERVER_HOST`・`--follow` は廃止）: `export RASPI_SERVER_HOST="<user>@100.106.158.2"` · `./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --detach --follow`（**1 台ずつ**）。
 
 **CI**: MVP `26676840821` · 一覧ハブ `26679994903` **success**（push `ef78f4dd`）。
 

@@ -1,5 +1,5 @@
 ---
-title: Runbook: 電源操作・連打防止オーバーレイ不具合の復旧
+title: "Runbook: 電源操作・連打防止オーバーレイ不具合の復旧"
 tags: [運用, キオスク, 電源, power-actions, 復旧, runbook]
 audience: [運用者, 開発者]
 last-verified: 2026-03-05

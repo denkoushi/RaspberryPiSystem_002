@@ -1,5 +1,5 @@
 ---
-title: Runbook: キオスク備考欄 日本語入力不具合の診断
+title: "Runbook: キオスク備考欄 日本語入力不具合の診断"
 tags: [運用, キオスク, IME, IBus, 備考欄, 診断, runbook]
 audience: [運用者, 開発者]
 last-verified: 2026-03-01

@@ -19,7 +19,7 @@ validation: static registry contracts, pure policy fixtures, complete deploy con
 
 # ADR-20260726: Data-driven release-readiness policy and sealed admission
 
-> **状態: superseded** — `related_code` の `readiness-gates.json`、`rolling_release/readiness_policy.py`・`application.py`・`coordinator.py` は、2026-08-08 の標準 Ansible route への移行で rolling_release 基盤とともに存在しなくなった。現行の対象確認と preflight は [deployment guide](../guides/deployment.md)（`standard-ansible-release.py`、`deploy-release-standard.yml`、`--print-plan`）を正とする。
+> **状態: superseded** — `related_code` の `readiness-gates.json`、`rolling_release/readiness_policy.py`・`application.py`・`coordinator.py` は、2026-08-08 の標準 Ansible route への移行で存在しなくなった（`scripts/deploy/rolling_release/` には `route_preflight.py` などの補助モジュールだけが残る）。現行の対象確認と preflight は [deployment guide](../guides/deployment.md)（`standard-ansible-release.py`、`deploy-release-standard.yml`、`--print-plan`）を正とする。
 
 ## Status
 

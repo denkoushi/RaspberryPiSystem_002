@@ -1,16 +1,16 @@
 ---
-title: Runbook: Ubuntu LocalLLM を Tailscale sidecar で分離運用する
+title: "Runbook: Ubuntu LocalLLM を Tailscale sidecar で分離運用する"
 tags: [運用, LocalLLM, Tailscale, llama.cpp, Docker, Ubuntu]
 audience: [運用者, 開発者]
 last-verified: 2026-04-01
 related:
-  - ../security/tailscale-policy.md
-  - ../security/system-inventory.md
-  - ../knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する
-  - ../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env
-  - ../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md
-  - ../decisions/ADR-20260329-local-llm-pi5-api-operations.md
-  - ../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md
+  - ../../security/tailscale-policy.md
+  - ../../security/system-inventory.md
+  - ../../knowledge-base/infrastructure/security.md#kb-317-ubuntu-localllm-を-tailscale-sidecar--tagllm-で分離公開する
+  - ../../knowledge-base/infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env
+  - ../../decisions/ADR-20260328-ubuntu-local-llm-tailnet-sidecar.md
+  - ../../decisions/ADR-20260329-local-llm-pi5-api-operations.md
+  - ../../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md
 category: runbooks
 update-frequency: medium
 ---

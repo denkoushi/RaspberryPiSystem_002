@@ -248,7 +248,7 @@ Ansible Playbookで`hosts: "{{ client_host }}"`のように直接ホストを指
 
 ### Dockerコンテナ内からのSSH接続
 
-api コンテナは運用ユーザーの `~/.ssh` をマウントしない。端末バックアップ専用の鍵 `${BACKUP_SSH_PRIVATE_KEY_HOST_PATH}` を `/run/secrets/backup-ssh/id_ed25519` に、固定 `known_hosts` を `${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH}` から `/run/secrets/backup-ssh/known_hosts` に read-only で bind する（`infrastructure/docker/docker-compose.server.yml` の api.volumes）。
+api コンテナは運用ユーザーの `~/.ssh` をマウントしない。端末バックアップ専用の鍵 `${BACKUP_SSH_PRIVATE_KEY_HOST_PATH}` を `/run/secrets/backup-ssh/id_ed25519` に、固定 `known_hosts` を `${BACKUP_SSH_KNOWN_HOSTS_HOST_PATH}` から `/run/secrets/backup-ssh/known_hosts` に read-only で bind する（本番の `infrastructure/docker/docker-compose.phase3.yml` の `api-blue` / `api-green`、および `docker-compose.server.yml` の `api` の volumes）。
 
 **注意**: クライアント端末バックアップ機能の実装時に、AnsibleとTailscaleの連携で問題が発生しました。詳細は [KB-102](../knowledge-base/infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) を参照してください。
 

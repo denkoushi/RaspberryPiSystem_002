@@ -365,7 +365,7 @@ Ansible は `templates/api.env.j2` / `templates/docker.env.j2` で上記変数�
 - **ブランチ**: **`feat/dgx-business-model-selection`**（**`main` マージ後は `origin/main` HEAD** をデプロイ引数の正本とする）。
 - **代表コミット**: **`91be7dcf`**（`feat(dgx): select business return model profiles`）。
 - **CI**: **`26566270315`** — `lint-build-unit` / `e2e-smoke` / `e2e-tests` / `api-db-and-infra` **success** · `security-docker` **failure**（Caddy Trivy·本変更と無関係）。
-- **ホスト順序**: **① `raspberrypi5` のみ**（Ansible `--limit raspberrypi5`）→ **② DGX Spark**（**`<user>@<pi5-tailscale-ip>`**·**`scp` + PID 再起動**）。Pi4／Pi3 **no hosts matched**·**Pi3 専用手順未実施**。
+- **ホスト順序**: **① `raspberrypi5` のみ**（Ansible `--limit raspberrypi5`）→ **② DGX Spark**（**`<user>@<dgx-tailscale-ip>`**·**`scp` + PID 再起動**）。Pi4／Pi3 **no hosts matched**·**Pi3 専用手順未実施**。
 - **Pi5 Detach**: **`20260528-184011-18178`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**·リモート exit **`0`**·ローカル **`--follow` 約 1195s**）。
 - **DGX 配置（`/srv/dgx/system-prod/bin/`）**: `control-server.py`·`gateway-server.py`·`model_profiles.py`·`active_model_state.py`。**registry 例**: `business_qwen36_27b_nvfp4`·`business_qwen35_35b_gguf` の `manifest.json` を **`/srv/dgx/shared-models/registry/<id>/`** へ。
 - **DGX 再起動**: `control-server.pid` / `gateway-server.pid` の PID を **`kill`** → PID ファイル削除 → **`start-control-server.sh`** / **`start-gateway-server.sh`**。

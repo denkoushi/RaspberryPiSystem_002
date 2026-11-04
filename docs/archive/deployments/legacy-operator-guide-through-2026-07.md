@@ -644,7 +644,7 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sleep 5 && free -
 
 ```bash
 # Macのターミナルで実行
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd /path/to/RaspberryPiSystem_002
 
 # 環境変数を設定（Pi5のTailscale IPを指定）
 # 注意: ローカルIPはネットワーク環境によって変動するため、Tailscale IPを使用
@@ -1564,7 +1564,7 @@ tailscale_network:
 
 ```bash
 # 構文チェック
-cd /Users/tsudatakashi/RaspberryPiSystem_002/infrastructure/ansible
+cd /path/to/RaspberryPiSystem_002/infrastructure/ansible
 ansible-playbook --syntax-check playbooks/deploy.yml -i inventory.yml
 
 # 接続テスト

@@ -110,7 +110,7 @@ Finally add a Python standard-library structure test for production configuratio
 
 ## Concrete Steps
 
-Run commands from `/Users/tsudatakashi/RaspberryPiSystem_002` with Node 20 first in `PATH`:
+Run commands from the repository root with Node 20 first in `PATH`:
 
     export PATH=/opt/homebrew/opt/node@20/bin:$PATH
     node --version

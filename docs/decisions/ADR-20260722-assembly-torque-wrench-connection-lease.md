@@ -1,5 +1,5 @@
 ---
-title: ADR-20260722: Fleet-Wide Torque Wrench Connection Lease
+title: "ADR-20260722: Fleet-Wide Torque Wrench Connection Lease"
 status: accepted
 date: 2026-07-22
 scope: shared CEM3-BTLA connection ownership across Pi4 assembly terminals

@@ -5,10 +5,10 @@ status: accepted
 date: 2026-07-12
 source_of_truth: true
 related_docs:
-  - ./ADR-20260712-rolling-terminal-release-orchestration.md
+  - ../../decisions/ADR-20260712-rolling-terminal-release-orchestration.md
   - ../plans/rolling-terminal-bluegreen-deploy.md
-  - ../guides/deployment.md
-  - ../runbooks/pi5-blue-green-deploy.md
+  - ../../guides/deployment.md
+  - ../runbooks/pi5-blue-green-deploy-legacy-2026-07.md
 related_code:
   - scripts/update-all-clients.sh
   - scripts/deploy/rolling-release.py
@@ -153,4 +153,4 @@ classification authority beside Rolling V2.
 - Related: [ADR-20260712-rolling-terminal-release-orchestration](../../decisions/ADR-20260712-rolling-terminal-release-orchestration.md)
 - Plan: [rolling-terminal-bluegreen-deploy.md](../../plans/rolling-terminal-bluegreen-deploy.md)
 - Operator guide: [deployment.md](../../guides/deployment.md)
-- Pi5 Blue/Green runbook: [pi5-blue-green-deploy.md](../runbooks/pi5-standard-ansible-diagnosis-2026-08.md)
+- Pi5 Blue/Green runbook: [pi5-blue-green-deploy.md](../runbooks/pi5-blue-green-deploy-legacy-2026-07.md)

@@ -617,7 +617,7 @@ model SignageEmergency {
 ### デプロイ時の注意事項
 
 - **Ansibleロールのテンプレート配置**: `signage`ロールのテンプレートファイルは`infrastructure/ansible/roles/signage/templates/`に配置する必要があります。`infrastructure/ansible/templates/`にのみ配置していると、デプロイ時にテンプレートファイルが見つからず失敗します（[KB-153](../../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足)参照）
-- **デプロイ標準手順の遵守**: Pi3デプロイ時は、必ずデプロイ前の準備（サービス停止・無効化・マスク）を実行してください（[デプロイガイド](../../guides/deployment.md#デプロイ前の準備必須)参照）
+- **デプロイ標準手順の遵守**: Pi3も標準のローリング更新（`scripts/update-all-clients.sh`）で更新し、端末を個別のSSHやplaybookで操作しないでください（[デプロイガイド](../../guides/deployment.md)参照）
 
 詳細は [signage-lite.md](./signage-lite.md) / [デプロイガイド](../../guides/deployment.md) / [KB-152](../../knowledge-base/infrastructure/signage.md#kb-152-サイネージページ表示漏れ調査と修正) / [KB-153](../../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足) を参照してください。
 

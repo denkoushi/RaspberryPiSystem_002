@@ -161,7 +161,7 @@ docker compose --project-name raspisys-staging \
 ```bash
 # 管理Mac。SHA、inventory、Vault、exact limitを記録してからhost configだけを適用する。
 export STAGING_RELEASE_SHA='<approved-40-hex-sha>'
-export ANSIBLE_VAULT_PASSWORD_FILE='/Users/tsudatakashi/RaspberryPiSystem_002/infrastructure/ansible/.vault-pass'
+export ANSIBLE_VAULT_PASSWORD_FILE='/path/to/RaspberryPiSystem_002/infrastructure/ansible/.vault-pass'
 ANSIBLE_REPO_VERSION="$STAGING_RELEASE_SHA" ansible-playbook \
   -i infrastructure/ansible/inventory-staging.yml \
   infrastructure/ansible/playbooks/server-config-release.yml \
@@ -217,7 +217,7 @@ Vault値は秘密本文を記録せず、既存標準 `.vault-pass` 経路でsta
 ```bash
 set +x
 umask 077
-export STANDARD_VAULT_PASS='/Users/tsudatakashi/RaspberryPiSystem_002/infrastructure/ansible/.vault-pass'
+export STANDARD_VAULT_PASS='/path/to/RaspberryPiSystem_002/infrastructure/ansible/.vault-pass'
 test -f "$STANDARD_VAULT_PASS"
 
 # exampleを参照し、ansible-vault管理のeditorへ直接入力する。

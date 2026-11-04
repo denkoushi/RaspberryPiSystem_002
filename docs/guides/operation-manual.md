@@ -221,7 +221,7 @@ docker logs --tail=50 bluegreen-web-blue-1
 
 ```bash
 # プロジェクトディレクトリに移動
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd /path/to/RaspberryPiSystem_002
 
 # 計画を確認（read-only）
 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan
@@ -692,7 +692,7 @@ journalctl -u storage-maintenance.service -n 50
 # ラズパイ5で実行
 # Dockerログの確認（API/Webは bluegreen-*、DBは docker-db-1）
 docker logs --since 30d bluegreen-api-blue-1 2>&1 | wc -l
-docker compose -f infrastructure/docker/docker-compose.server.yml logs --since 30d db | wc -l
+docker logs --since 30d docker-db-1 2>&1 | wc -l
 ```
 
 ### 四半期メンテナンス

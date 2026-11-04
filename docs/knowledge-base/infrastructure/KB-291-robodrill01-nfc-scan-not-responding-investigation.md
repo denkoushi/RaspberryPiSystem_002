@@ -1,5 +1,5 @@
 ---
-title: KB-291: ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告
+title: "KB-291: ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告"
 tags: [NFC, Pi4, ロボドリル01, raspi4-robodrill01, 機能調査]
 audience: [開発者, 運用者]
 last-verified: 2026-03-05

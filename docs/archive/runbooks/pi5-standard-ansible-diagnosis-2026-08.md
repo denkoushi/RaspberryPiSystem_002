@@ -5,9 +5,9 @@ scope: standard Ansible Pi5 API and Web release diagnosis
 last_verified: 2026-08-08
 source_of_truth: docs/archive/runbooks/pi5-standard-ansible-diagnosis-2026-08.md
 related_docs:
-  - ../guides/deployment.md
-  - ./deploy-status-recovery.md
-  - ../architecture/deployment-modules.md
+  - ../../guides/deployment.md
+  - ../../runbooks/deploy-status-recovery.md
+  - ../../architecture/deployment-modules.md
 ---
 
 # Pi5標準Ansible診断Runbook

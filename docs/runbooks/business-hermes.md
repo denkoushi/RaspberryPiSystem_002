@@ -14,7 +14,7 @@ Hermes本体と業務APIは内部Docker networkだけで接続し、Hermesにhos
 
 DGXの起動・ready待ち・leaseは既存APIの`photo_label` provider runtimeを`business_hermes`用途で共有します。業務用途のreleaseでは既存stop抑止ポリシーを使うため、通常の案内ごとにDGXを停止しません。初回cold startや他用途の解放直後の待ち時間をゼロにはせず、専用prewarm loopやPrivate Pi5のkeep-warm timerは業務サービスへ持ち込みません。
 
-初回cold startや他用途の解放後の予熱は、DGX Control PlaneのLease対応中央keep-warm (`dgx-control-keep-warm.timer`) の責務です。中央runnerはDGX側Arbiterのmaintenance LeaseでPrivate Leaseや業務要求を確認し、競合時は延期、状態不明時はfail-closedにします。中央設定・有効状態は `/Users/tsudatakashi/DGXSparkControlPlane` の管理範囲であり、このリポジトリのAPI起動時処理から直接開始しません。中央の既定profile IDと業務APIのmodel alias (`system-prod-primary`) の対応、および実機timerの有効状態は実機受入時に確認します。
+初回cold startや他用途の解放後の予熱は、DGX Control PlaneのLease対応中央keep-warm (`dgx-control-keep-warm.timer`) の責務です。中央runnerはDGX側Arbiterのmaintenance LeaseでPrivate Leaseや業務要求を確認し、競合時は延期、状態不明時はfail-closedにします。中央設定・有効状態は `denkoushi/DGXSparkControlPlane` リポジトリ の管理範囲であり、このリポジトリのAPI起動時処理から直接開始しません。中央の既定profile IDと業務APIのmodel alias (`system-prod-primary`) の対応、および実機timerの有効状態は実機受入時に確認します。
 
 ## 有効化
 

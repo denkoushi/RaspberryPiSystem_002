@@ -53,7 +53,7 @@
 | **power-actions ログ件数** | `<client-key-raspberrypi4>`: 26件 / `<client-key-raspi4-robodrill01>`: 5件 |
 | **2/28 10:40 UTC の失敗ログ** | `<client-key-raspberrypi4>` で poweroff 要求 → Ansible が raspberrypi4 (<pi4-tailscale-ip>) をターゲット → `ssh: connect to host <pi4-tailscale-ip> port 22: Connection timed out` → **UNREACHABLE** |
 | **2/28 10:44 UTC 以降** | `<client-key-raspi4-robodrill01>` で reboot/poweroff → `changed: [raspi4-robodrill01]` → **成功** |
-| **raspi4-robodrill01 の kiosk-launch.sh** | `--app="https://100.106.158.2/kiosk?clientKey=<client-key-raspi4-robodrill01>"` で正しく設定されていることを確認 |
+| **raspi4-robodrill01 の kiosk-launch.sh** | `--app="https://<pi5-tailscale-ip>/kiosk?clientKey=<client-key-raspi4-robodrill01>"` で正しく設定されていることを確認 |
 
 **根本原因（確定）**: raspi4-robodrill01 から誤って `<client-key-raspberrypi4>` が送信され、dispatcher がシャットダウン中の raspberrypi4（kensakumaster）をターゲットにして SSH タイムアウト → 電源操作が実行されない。
 
