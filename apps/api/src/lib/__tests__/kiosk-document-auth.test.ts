@@ -66,14 +66,19 @@ describe('authorizeKioskClientKeyOrJwtRoles', () => {
     expect(error.code).toBe('INVALID_CLIENT_KEY');
   });
 
-  it('does not unwrap a JSON-quoted client key, unlike normalizeClientKey', async () => {
-    // NOTE: possible bug: other kiosk routes accept '"valid-key"' via normalizeClientKey,
-    // but this guard looks up the raw header and rejects it.
+  it('unwraps a JSON-quoted client key like the other kiosk routes (normalizeClientKey)', async () => {
+    const request = makeRequest({ 'x-client-key': '"valid-key"' });
+    await expect(authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN'])).resolves.toBeUndefined();
+    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { apiKey: 'valid-key' } });
+  });
+
+  it('rejects a repeated header whose first value is not a string without a lookup', async () => {
     const error = await captureError(
-      authorizeKioskClientKeyOrJwtRoles(makeRequest({ 'x-client-key': '"valid-key"' }), reply, ['ADMIN'])
+      authorizeKioskClientKeyOrJwtRoles(makeRequest({ 'x-client-key': [123, 'valid-key'] }), reply, ['ADMIN'])
     );
+    expect(error.statusCode).toBe(401);
     expect(error.code).toBe('INVALID_CLIENT_KEY');
-    expect(mocks.findUnique).toHaveBeenCalledWith({ where: { apiKey: '"valid-key"' } });
+    expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 
   it('falls back to JWT role check when no client key is sent', async () => {

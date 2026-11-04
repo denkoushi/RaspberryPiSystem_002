@@ -17,9 +17,11 @@ describe('extractFseiban', () => {
     expect(extractFseiban('製 番 BD1SX009')).toBe('BD1SX009');
   });
 
-  it('does not read full-width letters (only digits are normalized)', () => {
-    // NOTE: possible gap: OCR output with full-width Latin letters yields no fseiban.
-    expect(extractFseiban('製　番：ＢＤ１ＳＸ００９')).toBeNull();
+  it('reads full-width Latin letters as half-width', () => {
+    expect(extractFseiban('製　番：ＢＤ１ＳＸ００９')).toBe('BD1SX009');
+    expect(extractFseiban('製番：ｂｄ１ｓｘ００９')).toBe('BD1SX009');
+    // The unlabeled fallback also accepts a full-width upper-case token.
+    expect(extractFseiban('ラベルなし ＣＡ１ＱＡＳ０９ 以上')).toBe('CA1QAS09');
   });
 
   it('requires 6 to 14 alphanumerics after the label', () => {

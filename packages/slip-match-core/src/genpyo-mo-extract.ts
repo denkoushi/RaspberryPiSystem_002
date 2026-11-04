@@ -13,9 +13,9 @@ export type ParsedActualSlipIdentifiers = {
 const MANUFACTURING_ORDER_LABEL =
   /(?:製\s*造\s*(?:オ\s*ー\s*ダ|オーダ)|製\s*造\s*order)/iu;
 
-/** ラベル直後〜120非数字以内の10桁（製造order本体） */
+/** ラベル直後〜120非数字以内の10桁（製造order本体）。11桁以上の数字列の先頭10桁は拾わない */
 const TEN_DIGITS_AFTER_MANUFACTURING_ORDER_LABEL =
-  /(?:製\s*造\s*(?:オ\s*ー\s*ダ|オーダ)|製\s*造\s*order)[^\d]{0,120}([0-9OoIl|]{10})/iu;
+  /(?:製\s*造\s*(?:オ\s*ー\s*ダ|オーダ)|製\s*造\s*order)[^\d]{0,120}([0-9OoIl|]{10})(?!\d)/iu;
 
 /** 注文番号ラベル */
 const ORDER_NUMBER_LABEL = /注\s*文\s*番\s*号/iu;
@@ -88,7 +88,7 @@ type TenDigitMatch = { digits: string; idx: number };
 
 function collectTenDigitMatches(n: string): TenDigitMatch[] {
   const out: TenDigitMatch[] = [];
-  for (const m of n.matchAll(/(\d{10})/g)) {
+  for (const m of n.matchAll(/(?<!\d)(\d{10})(?!\d)/g)) {
     if (m.index !== undefined) {
       out.push({ digits: m[1], idx: m.index });
     }
@@ -175,7 +175,7 @@ export function parseManufacturingOrder10Extraction(text: string): {
   const lines = n.split(/\r?\n/).map((l) => l.trim());
   for (const line of lines) {
     if (MANUFACTURING_ORDER_LABEL.test(line)) {
-      const m = line.match(/([0-9OoIl|]{10})/);
+      const m = line.match(/(?<!\d)([0-9OoIl|]{10})(?!\d)/);
       if (m) {
         const normalizedLineToken = normalizeLooseDigitToken(m[1]);
         if (/^\d{10}$/.test(normalizedLineToken)) {

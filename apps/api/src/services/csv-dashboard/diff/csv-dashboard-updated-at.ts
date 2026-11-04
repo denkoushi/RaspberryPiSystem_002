@@ -21,6 +21,15 @@ export const parseJstDate = (value: unknown): Date | null => {
   const dayNum = parseInt(day, 10);
   const hourNum = parseInt(hour, 10);
   const minuteNum = parseInt(minute, 10);
+  // Date.UTC は範囲外の値(13月、2月30日、25時など)を繰り上げてしまうため、ここで拒否する。
+  const daysInMonth = new Date(Date.UTC(yearNum, monthNum + 1, 0)).getUTCDate();
+  if (
+    monthNum < 0 || monthNum > 11 ||
+    dayNum < 1 || dayNum > daysInMonth ||
+    hourNum > 23 || minuteNum > 59
+  ) {
+    return null;
+  }
   // 入力値を常に JST (UTC+9) として解釈し、実行環境のローカルTZ依存を排除する。
   const utcDate = new Date(Date.UTC(yearNum, monthNum, dayNum, hourNum - 9, minuteNum, 0, 0));
   if (isNaN(utcDate.getTime())) {

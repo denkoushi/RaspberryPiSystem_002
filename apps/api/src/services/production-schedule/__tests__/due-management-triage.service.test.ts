@@ -199,7 +199,7 @@ describe('listDueManagementTriage', () => {
     expect(second.zones.caution.map((i) => i.fseiban)).toEqual(['DATED', 'NODUE']);
   });
 
-  it('computes daysUntilDue by UTC calendar day (overdue becomes negative)', async () => {
+  it('computes daysUntilDue by calendar day (overdue becomes negative)', async () => {
     mocks.listSummaries.mockResolvedValue([summary('OVER'), summary('TODAY')]);
     mocks.listDueDates.mockResolvedValue(
       new Map([
@@ -219,20 +219,44 @@ describe('listDueManagementTriage', () => {
     expect(byId.get('TODAY')?.reasons.map((r) => r.code)).toEqual(['DUE_DATE_TODAY']);
   });
 
-  it('uses UTC (not JST) day boundary in the JST early morning', async () => {
-    // 2026-11-05 08:00 JST == 2026-11-04 23:00 UTC
-    vi.setSystemTime(new Date('2026-11-04T23:00:00.000Z'));
-    mocks.listSummaries.mockResolvedValue([summary('DUE-JST-TODAY')]);
-    mocks.listDueDates.mockResolvedValue(new Map([['DUE-JST-TODAY', d('2026-11-05')]]));
+  it.each([
+    // 2026-11-05 00:30 JST == 2026-11-04 15:30 UTC (UTC date is still the previous day)
+    ['00:30 JST', '2026-11-04T15:30:00.000Z'],
+    // 2026-11-05 09:30 JST == 2026-11-05 00:30 UTC
+    ['09:30 JST', '2026-11-05T00:30:00.000Z']
+  ])('counts days by the JST calendar day at %s', async (_label, nowIso) => {
+    vi.setSystemTime(new Date(nowIso));
+    mocks.listSummaries.mockResolvedValue([summary('DUE-TODAY'), summary('DUE-TOMORROW'), summary('DUE-YESTERDAY')]);
+    mocks.listDueDates.mockResolvedValue(
+      new Map([
+        ['DUE-TODAY', d('2026-11-05')],
+        ['DUE-TOMORROW', d('2026-11-06')],
+        ['DUE-YESTERDAY', d('2026-11-04')]
+      ])
+    );
     const result = await listDueManagementTriage({
       locationScope: {},
-      targetFseibans: ['DUE-JST-TODAY'],
+      targetFseibans: ['DUE-TODAY', 'DUE-TOMORROW', 'DUE-YESTERDAY'],
       selectedFseibans: []
     });
-    const [item] = result.zones.danger;
-    // NOTE: possible bug: in JST this item is due "today" (2026-11-05), but the service
-    // computes daysUntilDue from the UTC date (2026-11-04) and reports "tomorrow" between 00:00-09:00 JST.
-    expect(item.daysUntilDue).toBe(1);
-    expect(item.reasons.map((r) => r.code)).toEqual(['DUE_DATE_TOMORROW']);
+    const byId = new Map(result.zones.danger.map((i) => [i.fseiban, i]));
+    expect(byId.get('DUE-TODAY')?.daysUntilDue).toBe(0);
+    expect(byId.get('DUE-TODAY')?.reasons.map((r) => r.code)).toEqual(['DUE_DATE_TODAY']);
+    expect(byId.get('DUE-TOMORROW')?.daysUntilDue).toBe(1);
+    expect(byId.get('DUE-TOMORROW')?.reasons.map((r) => r.code)).toEqual(['DUE_DATE_TOMORROW']);
+    expect(byId.get('DUE-YESTERDAY')?.daysUntilDue).toBe(-1);
+    expect(byId.get('DUE-YESTERDAY')?.reasons.map((r) => r.code)).toEqual(['DUE_DATE_OVERDUE']);
+  });
+
+  it('switches the day at 00:00 JST, not 00:00 UTC', async () => {
+    mocks.listSummaries.mockResolvedValue([summary('DUE')]);
+    mocks.listDueDates.mockResolvedValue(new Map([['DUE', d('2026-11-05')]]));
+    const run = () => listDueManagementTriage({ locationScope: {}, targetFseibans: ['DUE'], selectedFseibans: [] });
+    // 2026-11-04 23:59:59 JST
+    vi.setSystemTime(new Date('2026-11-04T14:59:59.000Z'));
+    expect((await run()).zones.danger[0]?.daysUntilDue).toBe(1);
+    // 2026-11-05 00:00:00 JST
+    vi.setSystemTime(new Date('2026-11-04T15:00:00.000Z'));
+    expect((await run()).zones.danger[0]?.daysUntilDue).toBe(0);
   });
 });

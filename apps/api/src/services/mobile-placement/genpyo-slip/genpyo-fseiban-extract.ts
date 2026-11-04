@@ -5,7 +5,8 @@
 import { normalizeDigitsFullWidthToHalfWidth } from './genpyo-field-normalize.js';
 
 export function extractFseiban(text: string): string | null {
-  const n = normalizeDigitsFullWidthToHalfWidth(text).replace(/\u3000/g, ' ');
+  // NFKC で全角英数字・全角コロンも半角へ寄せる（OCR が全角英字を返しても製番を拾う）。
+  const n = normalizeDigitsFullWidthToHalfWidth(text.normalize('NFKC')).replace(/\u3000/g, ' ');
 
   const labeled = n.match(/(?:製番|製\s*番)\s*[:：]?\s*([A-Za-z0-9]{6,14})/u);
   if (labeled) {

@@ -77,9 +77,8 @@ describe('PurchaseOrderLookupSyncService.syncFromFkobainoDashboard', () => {
     expect(values[0]).not.toContain('older');
     expect(values[0]).toContain('A'); // FKOBAIST upper-cased
     expect(readFile).toHaveBeenCalledWith('/data/fkobaino.csv', 'utf-8');
-    // NOTE: possible bug: inserted/upserted count parsed CSV rows (3), including the collapsed
-    // duplicate and rows the DB skipped, while skippedStale is computed from deduplicated rows (2 - 2 = 0).
-    expect(result).toEqual({ scanned: 3, inserted: 3, upserted: 3, skippedStale: 0 });
+    // The collapsed duplicate is not counted: upserted + skippedStale equals the deduplicated row count (2).
+    expect(result).toEqual({ scanned: 3, inserted: 2, upserted: 2, skippedStale: 0 });
   });
 
   it('reports rows the database did not write as skippedStale', async () => {
@@ -90,7 +89,7 @@ describe('PurchaseOrderLookupSyncService.syncFromFkobainoDashboard', () => {
     ]) as never);
     vi.mocked(prisma.$executeRaw).mockResolvedValue(1 as never);
     const result = await new PurchaseOrderLookupSyncService().syncFromFkobainoDashboard({ ingestRunId: 'run-1' });
-    expect(result.skippedStale).toBe(2);
+    expect(result).toEqual({ scanned: 3, inserted: 1, upserted: 1, skippedStale: 2 });
   });
 
   it('writes in chunks of 500 rows', async () => {
@@ -101,7 +100,7 @@ describe('PurchaseOrderLookupSyncService.syncFromFkobainoDashboard', () => {
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
     expect(executedChunks()[1]).toContain('5000000500');
     expect(executedChunks()[1]).not.toContain('5000000499');
-    expect(result).toMatchObject({ scanned: 501, skippedStale: 0 });
+    expect(result).toEqual({ scanned: 501, inserted: 501, upserted: 501, skippedStale: 0 });
   });
 });
 

@@ -78,9 +78,13 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
   if (!header) {
     throw new ApiError(401, '認証トークンが必要です', undefined, 'AUTH_TOKEN_REQUIRED');
   }
-  const [, token] = header.split(' ');
+  const parts = header.split(' ');
+  const token = parts.length === 2 && parts[0].toLowerCase() === 'bearer' ? parts[1] : undefined;
   let payload: JwtPayload;
   try {
+    if (!token) {
+      throw new Error('Authorization scheme must be Bearer');
+    }
     payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
     if (
       typeof payload.sub !== 'string' || !payload.sub ||
