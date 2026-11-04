@@ -180,7 +180,7 @@ Pi5 の `infrastructure/docker/.env` は Ansible の `docker.env.j2` で再生�
 
 ### Step 5: 設定の反映
 
-Vault の値は標準デプロイで `.env` に反映される。手順は [deployment.md](./deployment.md) に従い、コンテナを個別に再起動しない。
+標準デプロイ（[deployment.md](./deployment.md)）は Pi5 の既存の `.env` をそのまま使い、Vault の値から作り直さない。`.env` を作り直すのは `infrastructure/ansible/roles/server` の `docker.env.j2` だけで、標準デプロイはこの role を実行しない。Vault を更新しただけでは新しい値は API に届かないため、server role を流す専用 playbook を Mac の main checkout から `--check --diff` で確かめてから実行するか、運用者に反映方法を確認する。コンテナを個別に再起動しない。
 
 ### Step 6: 動作確認
 

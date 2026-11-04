@@ -89,14 +89,14 @@ Webhook URL設定後、デプロイを実行します：
 
 ### 4. 自動反映（標準デプロイ）
 
-Vaultの値は標準デプロイ（[deployment.md](./deployment.md)）で`.env`に書き込まれ、APIへ反映されます。Pi5本番のAPIはblue/green構成（`docker-compose.phase3.yml`の`api-blue`/`api-green`）のため、containerを手動で再起動しないでください。
+標準デプロイ（[deployment.md](./deployment.md)）は Pi5 の既存の`.env`をそのまま使い、Vaultの値から作り直しません。`.env`を作り直すのは`infrastructure/ansible/roles/server`の`docker.env.j2`だけで、標準デプロイはこの role を実行しません。Vault を更新したら、server role を流す専用 playbook を Mac の main checkout から`--check --diff`で確かめてから実行するか、運用者に反映方法を確認してください。Pi5本番のAPIはblue/green構成（`docker-compose.phase3.yml`の`api-blue`/`api-green`）のため、containerを手動で再起動しないでください。
 
 ## ホスト系セキュリティ通知（alert_webhook_url）
 
 アラートディスパッチャの4系統（`ALERTS_SLACK_WEBHOOK_*`）とは別に、Pi5 のホスト側スクリプト `security-monitor.sh`（`infrastructure/ansible/templates/security-monitor.sh.j2`）と Trivy イメージスキャンの cron（`infrastructure/ansible/roles/server/tasks/malware.yml` → `trivy-image-scan.sh`）は、Ansible 変数 `alert_webhook_url` へ直接通知します（タイムアウトは `alert_webhook_timeout_seconds`、既定5秒）。
 
 - 既定値は `group_vars/all.yml` と `group_vars/staging.yml` で空文字（通知しない）
-- Pi5 上で git 管理ファイルを直接編集せず、Ansible 変数として設定して標準デプロイ（`--print-plan` → `--limit raspberrypi5`）で反映する
+- Pi5 上で git 管理ファイルを直接編集せず、Ansible 変数として設定する。配布は `roles/server/tasks/monitoring.yml` と `malware.yml` で、どちらも `server_release_mode == 'full'` のときだけ動く。標準デプロイ（`release_pi5`）では反映されないため、反映方法は運用者に確認する
 - 値を Vault 管理にするかは運用者の確認が必要
 
 ## トラブルシューティング
