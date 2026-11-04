@@ -19,6 +19,7 @@ function emptySession(visualTemplateId: string | null, processGroup: PartMeasure
     visualTemplateId, processGroup,
     dismissed: [] as string[],
     pending: {} as Record<string, string>,
+    positions: {} as Record<string, { xRatio: number; yRatio: number }>,
     selectedId: null as string | null,
     armedId: null as string | null,
     tab: 'proposals' as DrawingProposalTab
@@ -58,7 +59,10 @@ export function useInspectionDrawingPlacementProposals({
   const visible = <T extends { id: string }>(rows: T[]) =>
     rows.filter((row) => !current.dismissed.includes(row.id));
   const proposals = numberPlacementProposals(
-    filterExistingPlacementRows(visible(data?.proposals ?? []), points), points
+    filterExistingPlacementRows(visible(data?.proposals ?? []).map((row) => {
+      const position = current.positions[row.id];
+      return position ? { ...row, markerXRatio: position.xRatio, markerYRatio: position.yRatio } : row;
+    }), points), points
   );
   const unplaced = filterExistingPlacementRows(visible(data?.unplaced ?? []), points);
 
@@ -68,6 +72,10 @@ export function useInspectionDrawingPlacementProposals({
     onSelectPoint(null);
     setSession({ ...current, selectedId: id, tab: 'proposals', armedId: null });
   };
+  const moveProposal = (id: string, position: { xRatio: number; yRatio: number }) => {
+    if (!enabled || !proposals.some((proposal) => proposal.id === id)) return;
+    setSession({ ...current, positions: { ...current.positions, [id]: position } });
+  };
   const approveRows = (rows: DrawingPlacementProposal[]) => {
     const next = [...points];
     const pending = { ...current.pending };
@@ -75,7 +83,10 @@ export function useInspectionDrawingPlacementProposals({
     for (const row of rows) {
       if (!proposals.some((proposal) => proposal.id === row.id)) continue;
       if (row.markerXRatio === null || row.markerYRatio === null) continue;
-      const point = proposalToDrawingPoint(row, next, row.markerXRatio, row.markerYRatio);
+      const position = current.positions[row.id];
+      const point = proposalToDrawingPoint(
+        row, next, position?.xRatio ?? row.markerXRatio, position?.yRatio ?? row.markerYRatio
+      );
       next.push(point);
       pending[row.id] = point.id;
       dismissed.push(row.id);
@@ -108,21 +119,24 @@ export function useInspectionDrawingPlacementProposals({
   };
   // Only call after the template save succeeds, using the exact points sent to that save.
   const flushApprovals = (savedPoints: InspectionDrawingPoint[]) => {
-    const approvedIds = Object.entries(current.pending)
-      .filter(([, pointId]) => savedPoints.some((point) => point.id === pointId))
-      .map(([id]) => id);
+    // Approved points deleted before save are not approvals.
+    const approvedPositions = Object.entries(current.pending).flatMap(([id, pointId]) => {
+      const point = savedPoints.find((candidate) => candidate.id === pointId);
+      return point ? [{ id, xRatio: point.xRatio, yRatio: point.yRatio }] : [];
+    });
+    const approvedIds = approvedPositions.map(({ id }) => id);
     setSession((previous) => previous.visualTemplateId === visualTemplateId && previous.processGroup === processGroup
       ? { ...previous, pending: {} }
       : previous);
     if (!visualTemplateId || !approvedIds.length) return;
-    void postInspectionDrawingPlacementDecisions(visualTemplateId, { approvedIds }, clientKey)
+    void postInspectionDrawingPlacementDecisions(visualTemplateId, { approvedIds, approvedPositions }, clientKey)
       .catch((error: unknown) => console.warn('AI案の承認記録に失敗しました。', error));
   };
 
   return {
     proposals, unplaced, sourceDrawingName: data?.sourceDrawingName ?? null,
     selectedProposalId: current.selectedId, armedId: current.armedId, tab: current.tab,
-    setTab, selectProposal, approve: (row: DrawingPlacementProposal) => approveRows([row]),
+    setTab, selectProposal, moveProposal, approve: (row: DrawingPlacementProposal) => approveRows([row]),
     approveAll: () => approveRows(proposals), reject, arm, placeArmed, flushApprovals
   };
 }

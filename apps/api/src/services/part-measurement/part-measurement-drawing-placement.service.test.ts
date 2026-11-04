@@ -261,6 +261,47 @@ describe('listForEditor', () => {
 });
 
 describe('recordDecisions', () => {
+  it('stores final positions only for newly approved rows and preserves original AI positions', async () => {
+    const rows = [
+      { id: 'approve', visualTemplateId: 'target', status: 'PROPOSED' },
+      { id: 'legacy', visualTemplateId: 'target', status: 'PROPOSED' },
+      { id: 'reject', visualTemplateId: 'target', status: 'PROPOSED' },
+      { id: 'other', visualTemplateId: 'other', status: 'PROPOSED' },
+      { id: 'unplaced', visualTemplateId: 'target', status: 'UNPLACED' },
+      { id: 'decided', visualTemplateId: 'target', status: 'APPROVED' },
+      { id: 'position-only', visualTemplateId: 'target', status: 'PROPOSED' }
+    ].map((row) => ({ ...row, markerXRatio: 0.2, markerYRatio: 0.3,
+      decidedMarkerXRatio: null, decidedMarkerYRatio: null, decidedAt: null }));
+    db.partMeasurementDrawingPlacementProposal.updateMany.mockImplementation(async ({ where, data }) => {
+      const selected = rows.filter((row) => row.visualTemplateId === where.visualTemplateId &&
+        row.status === where.status && where.id.in.includes(row.id));
+      selected.forEach((row) => Object.assign(row, data));
+      return { count: selected.length };
+    });
+    const input = {
+      approvedIds: ['approve', 'legacy', 'other', 'unplaced', 'decided'],
+      rejectedIds: ['approve', 'reject'],
+      approvedPositions: ['approve', 'reject', 'other', 'unplaced', 'decided', 'position-only']
+        .map((id) => ({ id, xRatio: 0.8, yRatio: 0.9 }))
+    };
+    expect(await service.recordDecisions('target', input)).toEqual({ updated: 3 });
+    expect(rows[0]).toMatchObject({ status: 'APPROVED', decidedMarkerXRatio: 0.8, decidedMarkerYRatio: 0.9 });
+    expect(rows[0].decidedAt).toBeInstanceOf(Date);
+    for (const row of rows) {
+      expect(row).toMatchObject({ markerXRatio: 0.2, markerYRatio: 0.3 });
+    }
+    for (const row of rows.slice(1)) {
+      expect(row).toMatchObject({ decidedMarkerXRatio: null, decidedMarkerYRatio: null });
+    }
+    expect(rows.map((row) => row.status)).toEqual([
+      'APPROVED', 'APPROVED', 'REJECTED', 'PROPOSED', 'UNPLACED', 'APPROVED', 'PROPOSED'
+    ]);
+    expect(await service.recordDecisions('target', {
+      ...input, approvedPositions: [{ id: 'approve', xRatio: 0.1, yRatio: 0.1 }]
+    })).toEqual({ updated: 0 });
+    expect(rows[0]).toMatchObject({ decidedMarkerXRatio: 0.8, decidedMarkerYRatio: 0.9 });
+  });
+
   it('scopes decisions, preserves decided rows, and is idempotent (approval wins overlaps)', async () => {
     const rows = [
       { id: 'approve', visualTemplateId: 'target', status: 'PROPOSED', decidedAt: null },

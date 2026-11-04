@@ -88,13 +88,13 @@ describe('useInspectionDrawingPlacementProposals', () => {
     expect(postInspectionDrawingPlacementDecisions).not.toHaveBeenCalled();
     await act(async () => { finishSave(); await saving; });
     expect(postInspectionDrawingPlacementDecisions).toHaveBeenCalledWith(
-      'visual-1', { approvedIds: [first.id] }, 'kiosk-key'
+      'visual-1', { approvedIds: [first.id], approvedPositions: [{ id: first.id, xRatio: 0.3, yRatio: 0.4 }] }, 'kiosk-key'
     );
     await act(() => result.current.save());
     expect(postInspectionDrawingPlacementDecisions).toHaveBeenCalledTimes(1);
   });
 
-  it('approves all in order, selects the last point, and excludes deleted approved points at save', async () => {
+  it('approves all in order, selects the last point, and skips deleted approved points at save', async () => {
     const { result, onSelectPoint } = setup();
     await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
     act(() => result.current.placement.approveAll());
@@ -104,8 +104,38 @@ describe('useInspectionDrawingPlacementProposals', () => {
     act(() => result.current.setPoints((points) => points.slice(1)));
     await act(() => result.current.save());
     expect(postInspectionDrawingPlacementDecisions).toHaveBeenCalledWith(
-      'visual-1', { approvedIds: ['proposal-2'] }, 'kiosk-key'
+      'visual-1', { approvedIds: ['proposal-2'], approvedPositions: [{ id: 'proposal-2', xRatio: 0.3, yRatio: 0.4 }] }, 'kiosk-key'
     );
+  });
+
+  it.each(['single', 'all'])('uses moved proposal positions for %s approval and sends final saved point positions', async (kind) => {
+    const { result } = setup();
+    await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
+    act(() => result.current.placement.moveProposal(first.id, { xRatio: 0.6, yRatio: 0.7 }));
+    expect(result.current.placement.proposals[0]).toMatchObject({ markerXRatio: 0.6, markerYRatio: 0.7 });
+    expect(result.current.placement.proposals[1]).toMatchObject({ markerXRatio: 0.3, markerYRatio: 0.4 });
+    expect(first).toMatchObject({ markerXRatio: 0.3, markerYRatio: 0.4 });
+    act(() => kind === 'single' ? result.current.placement.approve(first) : result.current.placement.approveAll());
+    expect(result.current.points[0]).toMatchObject({ xRatio: 0.6, yRatio: 0.7 });
+    act(() => result.current.setPoints((points) => points.map((point, index) =>
+      index === 0 ? { ...point, xRatio: 0.8, yRatio: 0.9 } : point)));
+    await act(() => result.current.save());
+    expect(postInspectionDrawingPlacementDecisions).toHaveBeenCalledWith('visual-1', {
+      approvedIds: kind === 'single' ? [first.id] : [first.id, 'proposal-2'],
+      approvedPositions: [
+        { id: first.id, xRatio: 0.8, yRatio: 0.9 },
+        ...(kind === 'all' ? [{ id: 'proposal-2', xRatio: 0.3, yRatio: 0.4 }] : [])
+      ]
+    }, 'kiosk-key');
+  });
+
+  it('resets moved positions when the drawing changes', async () => {
+    const { result, rerender } = setup();
+    await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
+    act(() => result.current.placement.moveProposal(first.id, { xRatio: 0.8, yRatio: 0.9 }));
+    rerender({ id: 'visual-2', editable: true, processGroup: 'cutting' });
+    await waitFor(() => expect(result.current.placement.proposals).toHaveLength(2));
+    expect(result.current.placement.proposals[0]).toMatchObject({ markerXRatio: 0.3, markerYRatio: 0.4 });
   });
 
   it('rejects immediately and does not let a failed decision affect the UI or save', async () => {
