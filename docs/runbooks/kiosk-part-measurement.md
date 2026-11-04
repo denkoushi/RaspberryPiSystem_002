@@ -163,23 +163,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 
 正本: [KB-320 §流用導線強化](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) · [deployment §2026-06-05](../archive/deployments/2026-06.md#kiosk-inspection-drawing-reuse-flow-2026-06-05) · ブランチ **`feat/kiosk-inspection-drawing-reuse-flow`** · 代表 **`6c7da8c7`**
 
-同一図面を **別工程・別資源** へ展開する手順（`品番 × 工程 × 資源CD = 1テンプレ` を維持）。
-
-| 導線 | 操作 | 備考 |
-|------|------|------|
-| **既存図面の再利用** | 新規作成画面 → 図面ボタン → **既存から選択** または **新規アップロード** | `visualSource` が単一真実源。`pickExisting` 時は `visualTemplateId` のみで保存可。検索は **API `q` + `limit=80`**（400ms debounce） |
-| **テンプレ雛形から新規** | 一覧の有効版カード → **雛形として新規** | `?sourceTemplateId=` で詳細再取得。履歴版は不可。無効 ID / 消失時は blank form 復帰 |
-| **改版（既存キー）** | 一覧 → **編集** → 保存 | 新規作成ではなく `revise` |
-
-**キー衝突ガード（新規作成全体）**
-
-- UI: `same_as_source` / `active_exists`（`GET …/templates/active-exists`）→ **保存ボタン無効** + 案内。
-- FIHNCD は **trim + 大文字化 + case-insensitive 照合**（`abc` と `ABC` は同一キー）。
-- API: `failIfActiveExists: true` で **409**。本番 THREE_KEY は **lineage advisory lock** で同時作成を直列化。
-
-**orphan visual 回収**
-
-- アップロード後にテンプレ保存が失敗した場合、`POST visual-templates` 応答の **`cleanupToken`** で `DELETE`（`X-Visual-Cleanup-Token` ヘッダ必須）。
+仕様（導線・キー衝突ガード・orphan visual 回収）は [KB-320 §流用導線強化](../knowledge-base/KB-320-kiosk-part-measurement.md#検査図面-流用導線-2026-06-05) を正とする。
 
 #### 手動確認（Pi5 キオスク）
 
@@ -762,44 +746,9 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 
 詳細・背景: [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01)。
 
-### キオスクナビ
-
-| ヘッダータブ | 遷移先（既定） | アクティブになるパス |
-|--------------|----------------|----------------------|
-| **自主検査** | `/kiosk/part-measurement/self-inspection` | `/kiosk/part-measurement/self-inspection/*` |
-
-- **一覧**: `/kiosk/part-measurement/self-inspection`
-  - 生産スケジュール行をもとに、**図面ありの `THREE_KEY` テンプレ**だけを対象表示。
-  - 同じ行に対応する既存セッションがあれば **再開**、なければ **開始**。
-  - 一覧カードは既存の2つの`<tr>`（上段 **43.3px**、下段 **51px**、カード高 **94.3px**）内に収める。
-    ペイン／表示領域の外枠と1表／2表の配分を変えず、上段は製番・機種名・品名・状態を一行で表示する。
-    製番・品名は白色21px、機種名は15.75px、製番と機種名の間隔は1ch、状態は品名側の右端とする。
-    状態の補足説明は表示しない。
-  - 下段は白色の2行metaとし、1行目は製造order値・資源CD値・資源名値（資源のタイトルは表示しない）、
-    2行目は **更新**・**進捗**・**作業者** とする。長文はnowrap／ellipsisで省略し、`title`と`aria-label`で全文を確認できるようにする。
-    資源名が不明な場合だけCDを主表示する。
-- **入力画面**: `/kiosk/part-measurement/self-inspection/start` または `/kiosk/part-measurement/self-inspection/sessions/:sessionId`
-  - 図面キャンバスと測定値パネルは既存検査図面 UI を再利用。
-  - 画像は **`usePartMeasurementDrawingBlobUrl`** で Blob 化し、`x-client-key` 付きで取得する。
-- **順位ボード導線**:
-  - 各行で図面ありなら **「検」** ボタンを表示。
-  - 状態色は **白=未開始 / 黄=入力中 / 青=完了**。
-  - ボタンは `/self-inspection/start?...` の query を持ち、同じ業務キーで resolve-or-create する。
-
-### テンプレ設定
-
-- 管理画面 `/admin/tools/part-measurement-templates` に以下を追加:
-  - `selfInspectionMode`: `全数` / `抜き取り1個` / `最初と最後` / `指定数`（API: `full` / `single` / `first_last` / `fixed_count`）
-  - `selfInspectionFixedCount`: `指定数` 時のみ必須（`1 <= 件数 <= 指示数`）。`sample` は API 互換エイリアス
-- 一覧/詳細 DTO にも同値を返す。
-- 検査図面一覧 API `GET /api/part-measurement/inspection-drawing/templates` でも要約 DTO に返すため、キオスク一覧と将来の導線で再利用できる。
-
 ### データ構造
 
-- `SelfInspectionSession`
-  - 1 つの生産対象コンテキストに対する自主検査作業単位。
-  - 一意キーは `productNo + processGroup + resourceCd + scheduleRowId` の `sessionBusinessKey`（日程行単位。改版でテンプレ ID が変わっても同一セッション）。`resolve-or-create` は `scheduleRowId` と `fseiban` 必須。
-  - **マイグレーション `20260601120000_self_inspection_session_business_key_v2`**: 旧キー（templateId 含む）から新キーへ移行する。同一日程行の重複セッションは **エントリ数最多 → 未完了優先 → 更新日時が新しい** 順で 1 件を残し、空の重複は削除、非衝突の `entryIndex` のみ勝者へ移す。移行後も重複にエントリが残る場合は **マイグレーションが例外で停止**（手動統合が必要）。
+画面導線・テンプレ設定・データ構造の仕様は [KB-320 §自主検査 MVP](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-mvp-2026-06-01) を正とする。
 
 #### 業務キー移行の事前確認（本番・ステージング）
 
