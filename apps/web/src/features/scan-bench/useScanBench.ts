@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getBarcodeDetector } from '../barcode-scan/barcodeDetector';
 import { BARCODE_READER_OPTIONS_KIOSK_DEFAULT } from '../barcode-scan/readerOptionPresets';
-import { createBrowserMultiFormatReader } from '../barcode-scan/zxingVideoReader';
+import { createBrowserMultiFormatReader, loadZxingLibrary } from '../barcode-scan/zxingVideoReader';
 
 import { NATIVE_FORMATS, supportsRequiredFormats, toNativeFormat, ZXING_FORMATS } from './helpers';
 import { useBenchCamera } from './useBenchCamera';
@@ -92,7 +92,7 @@ export function useScanBench() {
     cancelRef.current = cleanup;
     if (engine === 'zxing') {
       void (async () => {
-        const { ChecksumException, FormatException, NotFoundException } = await import('@zxing/library');
+        const { ChecksumException, FormatException, NotFoundException } = await loadZxingLibrary();
         const loadedReader = await createBrowserMultiFormatReader(ZXING_FORMATS, BARCODE_READER_OPTIONS_KIOSK_DEFAULT);
         if (!active) return;
         reader = loadedReader;

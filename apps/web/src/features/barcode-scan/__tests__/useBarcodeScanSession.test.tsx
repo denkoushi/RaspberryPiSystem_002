@@ -58,6 +58,19 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('barcode session engine', () => {
+  it('reports reader loading failure separately and retries on the next session', async () => {
+    vi.mocked(createBrowserMultiFormatReader).mockRejectedValueOnce(new Error('chunk failed'));
+    const first = session();
+    await waitFor(() => expect(first.result.current.cameraError).toBe('バーコード読取機能を読み込めません'));
+    expect(getCameraStream).not.toHaveBeenCalled();
+    first.unmount();
+    const next = session();
+    await waitFor(() => expect(decodeFromStream).toHaveBeenCalled());
+    expect(next.result.current.cameraError).toBeNull();
+    expect(createBrowserMultiFormatReader).toHaveBeenCalledTimes(2);
+    next.unmount();
+  });
+
   it('uses native 720p and confirms only after stable reads', async () => {
     let nextFrame: FrameRequestCallback | undefined;
     vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { nextFrame = callback; return 1; }));

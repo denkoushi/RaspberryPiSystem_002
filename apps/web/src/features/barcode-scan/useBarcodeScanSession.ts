@@ -181,10 +181,13 @@ export function useBarcodeScanSession({
     };
 
     void (async () => {
+      let loadingReader = false;
       try {
         const detector = engine === 'auto-native' ? await createNativeBarcodeDetector(formats) : null;
         if (isDisposed()) return;
+        loadingReader = !detector;
         const reader = detector ? null : await createBrowserMultiFormatReader(formats, readerOptions);
+        loadingReader = false;
         if (isDisposed()) {
           reader?.reset();
           return;
@@ -248,7 +251,7 @@ export function useBarcodeScanSession({
         disposedRef.current = true;
         stopAcquiredStream();
         teardownReader();
-        setCameraError('カメラを使えません');
+        setCameraError(loadingReader ? 'バーコード読取機能を読み込めません' : 'カメラを使えません');
       }
     })();
 

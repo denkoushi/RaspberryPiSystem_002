@@ -36,7 +36,7 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
     let cancelled = false;
     void manual.loadSourceHtml().then((html) => {
       if (!cancelled) setLoaded({ manual, html });
-    }).catch(() => { /* Keep the dialog controls available if loading fails; reopening retries. */ });
+    }).catch(() => { /* Keep controls available; the failed fetch is discarded so reopening fetches again. */ });
     return () => { cancelled = true; };
   }, [isOpen, manual]);
 

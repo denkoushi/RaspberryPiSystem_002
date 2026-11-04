@@ -1,8 +1,21 @@
+import assemblyManualUrl from '../../generated/kiosk-sop/assembly-procedure-template/manual.html?url';
+import inspectionDrawingManualUrl from '../../generated/kiosk-sop/inspection-drawing/manual.html?url';
+import { registerKioskPreload } from '../kiosk/kioskLazyPreload';
+
 import type { KioskSopManual, KioskSopManualId } from './types';
 
-function cachedHtml(load: () => Promise<{ default: string }>): () => Promise<string> {
+async function fetchHtml(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Manual request failed: ${response.status}`);
+  return response.text();
+}
+
+// The Vite dev server injects its client scripts into fetched HTML, so dev keeps the raw module import.
+// Vitest also defines import.meta.hot, so tests exercise the fetch path used in production.
+const useRawImport = import.meta.hot !== undefined && import.meta.env.MODE !== 'test';
+function cachedHtml(load: () => Promise<string>): () => Promise<string> {
   let pending: Promise<string> | undefined;
-  return () => pending ??= load().then((module) => module.default).catch((error) => {
+  return () => pending ??= load().catch((error) => {
     pending = undefined;
     throw error;
   });
@@ -11,7 +24,9 @@ function cachedHtml(load: () => Promise<{ default: string }>): () => Promise<str
 const INSPECTION_DRAWING_MANUAL: KioskSopManual = Object.freeze({
   id: 'inspection-drawing',
   title: '検査図面 操作取説',
-  loadSourceHtml: cachedHtml(() => import('../../generated/kiosk-sop/inspection-drawing/manual.html?raw')),
+  loadSourceHtml: cachedHtml(useRawImport
+    ? () => import('../../generated/kiosk-sop/inspection-drawing/manual.html?raw').then((module) => module.default)
+    : () => fetchHtml(inspectionDrawingManualUrl)),
   sheets: Object.freeze([
     { id: 'library-entry-search', label: '一覧・検索' },
     { id: 'library-visual-management', label: '図面管理' },
@@ -29,7 +44,9 @@ const INSPECTION_DRAWING_MANUAL: KioskSopManual = Object.freeze({
 const ASSEMBLY_PROCEDURE_TEMPLATE_MANUAL: KioskSopManual = Object.freeze({
   id: 'assembly-procedure-template',
   title: '組立 手順書・テンプレート取説',
-  loadSourceHtml: cachedHtml(() => import('../../generated/kiosk-sop/assembly-procedure-template/manual.html?raw')),
+  loadSourceHtml: cachedHtml(useRawImport
+    ? () => import('../../generated/kiosk-sop/assembly-procedure-template/manual.html?raw').then((module) => module.default)
+    : () => fetchHtml(assemblyManualUrl)),
   sheets: Object.freeze([
     { id: 'assembly-overview', label: '管理画面と全体の流れ' },
     { id: 'assembly-file-register', label: 'ファイル登録・事前プレビュー' },
@@ -50,3 +67,5 @@ const MANUALS: Readonly<Record<KioskSopManualId, KioskSopManual>> = Object.freez
 export function getKioskSopManual(manualId: KioskSopManualId): KioskSopManual {
   return MANUALS[manualId];
 }
+
+Object.values(MANUALS).forEach((manual) => registerKioskPreload(manual.loadSourceHtml));

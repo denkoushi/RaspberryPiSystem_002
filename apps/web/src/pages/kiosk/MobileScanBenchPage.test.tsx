@@ -10,7 +10,8 @@ import { MobileScanBenchPage } from './MobileScanBenchPage';
 import type { NativeBarcode } from '../../features/scan-bench/barcodeDetector';
 
 const zxing = vi.hoisted(() => ({ decodeContinuously: vi.fn(), stopContinuousDecode: vi.fn() }));
-vi.mock('../../features/barcode-scan/zxingVideoReader', () => ({ createBrowserMultiFormatReader: () => zxing }));
+vi.mock('../../features/barcode-scan/zxingVideoReader', () => ({ createBrowserMultiFormatReader: async () => zxing,
+  loadZxingLibrary: () => import('@zxing/library') }));
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 

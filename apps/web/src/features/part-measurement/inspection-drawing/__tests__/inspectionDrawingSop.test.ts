@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { mockKioskSopFetch } from '../../../../test/mockKioskSopFetch';
 import { getKioskSopManual } from '../../../kiosk-sop/kioskSopRegistry';
 import { INSPECTION_DRAWING_SOP_BY_SCREEN } from '../inspectionDrawingSop';
+
+mockKioskSopFetch();
 
 describe('INSPECTION_DRAWING_SOP_BY_SCREEN', () => {
   it('maps the library and template revision to their canonical sheets', async () => {

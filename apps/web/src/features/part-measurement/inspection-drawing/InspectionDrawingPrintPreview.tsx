@@ -1,6 +1,8 @@
 import BarcodeFormat from '@zxing/library/esm/core/BarcodeFormat';
 import { useEffect, useMemo, useState } from 'react';
 
+import { loadZxingLibrary } from '../../barcode-scan/zxingVideoReader';
+
 import {
   INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM,
   INSPECTION_DRAWING_PRINT_DRAWING_AREA_WIDTH_MM,
@@ -524,13 +526,16 @@ export function InspectionDrawingPrintPreview({
 }: InspectionDrawingPrintPreviewProps) {
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const hasNaturalSize = naturalSize.w > 0 && naturalSize.h > 0;
+  const [qrLoadError, setQrLoadError] = useState(false);
   const [qrWriter, setQrWriter] = useState<QRCodeWriter | null>(null);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const { QRCodeWriter } = await import('@zxing/library');
+      const { QRCodeWriter } = await loadZxingLibrary();
       if (!cancelled) setQrWriter(new QRCodeWriter());
-    })();
+    })().catch(() => {
+      if (!cancelled) setQrLoadError(true);
+    });
     return () => { cancelled = true; };
   }, []);
   const printReady = hasNaturalSize && qrWriter !== null;
@@ -583,11 +588,13 @@ export function InspectionDrawingPrintPreview({
               onClick={() => window.print()}
               className="rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {printReady ? '印刷プレビュー' : '図面読込中…'}
+              {qrLoadError ? '読み込みエラー' : printReady ? '印刷プレビュー' : '図面読込中…'}
             </button>
           </div>
         </div>
       ) : null}
+
+      {qrLoadError && <p role="alert" className="mb-4 text-sm text-red-700">QRコード生成機能を読み込めません</p>}
 
       <img
         src={imageUrl}

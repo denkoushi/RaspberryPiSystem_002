@@ -1,14 +1,46 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { mockKioskSopFetch } from '../../test/mockKioskSopFetch';
+
 import {
   KIOSK_SOP_CLOSE_MESSAGE,
   KIOSK_SOP_FOCUS_CLOSE_MESSAGE
 } from './buildKioskSopSrcDoc';
 import { KioskSopDialog } from './KioskSopDialog';
 import { KioskSopLauncher } from './KioskSopLauncher';
+import { getKioskSopManual } from './kioskSopRegistry';
+
+mockKioskSopFetch();
 
 describe('KioskSopLauncher', () => {
+  it('preloads on mount and retries a failed fetch when reopened', async () => {
+    // Use the other manual so its shared cache starts empty in this test.
+    let rejectFetch!: (error: Error) => void;
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((_resolve, reject) => { rejectFetch = reject; }));
+    render(<KioskSopLauncher manualId="assembly-procedure-template" initialSheetId="assembly-overview" />);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const open = screen.getByRole('button', { name: 'この画面の操作手順を開く' });
+    fireEvent.click(open);
+    await act(async () => { rejectFetch(new Error('offline')); });
+    expect(screen.queryByTestId('kiosk-sop-frame')).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A non-OK response must also be discarded, even if it contains HTML.
+    fetchMock.mockResolvedValueOnce(new Response('not found', { status: 404 }));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    fireEvent.click(open);
+    await act(async () => {});
+    expect(screen.queryByTestId('kiosk-sop-frame')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    fireEvent.click(open);
+    const frame = await screen.findByTitle('組立 手順書・テンプレート取説 — 管理画面と全体の流れ');
+    expect(frame.getAttribute('srcdoc')).toContain('assembly-overview');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    await getKioskSopManual('assembly-procedure-template').loadSourceHtml();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('opens an isolated dialog, ignores unrelated messages, and returns focus on close', async () => {
     render(<KioskSopLauncher manualId="inspection-drawing" initialSheetId="library-entry-search" />);
 
