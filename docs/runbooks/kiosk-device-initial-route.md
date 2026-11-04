@@ -19,16 +19,14 @@ scope: Per-device kiosk startup route configuration and verification
 date: 2026-07-06
 source_of_truth: true
 validation: local tests, temporary pgvector Postgres migration, CI, Pi5 deploy, Pi4 kiosk deploy, Phase12
-open_items: tab filtering by process, common top screen, optional main-branch redeploy after merge
+open_items: tab filtering by process, common top screen
 ---
 
 # Runbook: Kiosk Device Initial Route
 
 ## Summary
 
-This runbook is the canonical handoff for the kiosk per-device startup route work.
-It records the implemented v1 behavior, verification results, deployment state, and
-known operational notes needed by the next AI agent.
+> 端末ごとのキオスク起動先の現行仕様（Current Spec、Route IDs）と設定・確認手順（Operational Checks）を載せる。2026-07-06 の実装時の検証・反映記録は [docs/archive/deployments/2026-07.md](../archive/deployments/2026-07.md) へ移した。
 
 ## Current Spec
 
@@ -114,90 +112,7 @@ All selectable startup routes (existing IDs and paths remain valid):
 - Kiosk header tab order and bottom-edge hover behavior were intentionally not changed.
 - Process-specific tab restriction and a common top screen were intentionally not included in v1.
 
-## Validation Results
-
-Local validation completed on branch `feat/kiosk-device-initial-route` before merge:
-
-- `pnpm --filter @raspi-system/shared-types build` passed.
-- `pnpm --filter @raspi-system/api build` passed.
-- `pnpm --filter @raspi-system/web test` passed:
-  254 test files, 1272 tests.
-- `pnpm --filter @raspi-system/web build` passed.
-- Focused web redirect tests passed, including:
-  explicit route priority, subpath no-op, legacy last-path restore, invalid fallback.
-- API integration tests passed for:
-  client save/read/clear/reject, kiosk config fallback, `assembly`, and
-  `leader_order_board`.
-- Temporary `pgvector/pgvector:pg16` Postgres was used for DB validation.
-  Existing DBs and existing containers were not modified.
-- `prisma migrate deploy` and `prisma generate` passed against the temporary DB.
-- `EXPLAIN (ANALYZE, BUFFERS)` for `ClientDevice.apiKey` lookup used the existing
-  unique index `ClientDevice_apiKey_key`.
-- Temporary container, volume, and network were removed after validation.
-
-CI:
-
-- Commit `d78377ee` passed GitHub Actions run `28770698340`.
-- Follow-up regression fix commit `cbe78dab` passed GitHub Actions run
-  `28775139271`, including `lint-build-unit`, `api-db-and-infra`,
-  `security-docker`, `e2e-smoke`, and `e2e-tests`.
-
-## Deployment State
-
-Pi5 validation deploy:
-
-- Deployed commit: `d78377ee`.
-- Branch at deploy time: `feat/kiosk-device-initial-route`.
-- API and DB containers were healthy after deploy.
-- API health returned `status: ok`.
-
-Pi4 kiosk deploy:
-
-- Deployed commit: `d78377ee`.
-- Run ID: `20260706-151824-18843`.
-- Summary path on Pi5:
-  `/opt/RaspberryPiSystem_002/logs/deploy/ansible-update-20260706-151824-18843.summary.json`.
-- Result: `totalHosts: 5`, `failedHosts: []`, `unreachableHosts: []`, `success: true`.
-- Verified hosts:
-  `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`,
-  `raspi4-kensaku-stonebase01`, `raspi4-sessaku-01`.
-- Each verified host reported:
-  `REV=d78377ee`, kiosk service active, status-agent timer active, and Firefox
-  launched with `_appRef=d78377ee`.
-
-Follow-up deploy for header `持出` tab redirect regression:
-
-- Deployed commit: `cbe78dab`.
-- Branch at deploy time: `fix/kiosk-borrow-tab-direct-route`.
-- Pi5 deploy run: `20260706-164538-3734`; result `failed=0`,
-  `unreachable=0`, API health `status: ok`.
-- StoneBase deploy run: `20260706-165104-32318`; result `failed=0`,
-  `unreachable=0`.
-- Remaining Pi4 deploy run: `20260706-174215-29814`; targets:
-  `raspberrypi4`, `raspi4-robodrill01`, `raspi4-fjv60-80`,
-  `raspi4-sessaku-01`; result `failed=0`, `unreachable=0`.
-- Final automatic real-device verification:
-  `./scripts/deploy/verify-phase12-real.sh` -> `PASS 45 / WARN 0 / FAIL 0`.
-- All Pi4 kiosks were checked from Pi5 and reported `REV=cbe78dab`,
-  `kiosk-browser.service=active`, `status-agent.timer=active`, and Firefox
-  `_appRef=cbe78dab`.
-- StoneBase screen capture confirmed the configured `組立` startup screen
-  rendered as `組立トルク管理`.
-- Production Playwright regression check with the StoneBase client context:
-  `/kiosk/assembly` -> click `持出` -> `/kiosk/photo`; it did not return to
-  `/kiosk/assembly`.
-- Operator real-device check: OK.
-
-Kiosk-side start page setting (dock home button), 2026-10-09:
-
-- Merged commits: `90ce0fcc` (#1892, button, API and route IDs) and
-  `44f2d09f` (#1893, borrow tab mark follows the button).
-- Pi5 deploy runs: `20261009-051634-682d18` and `20261009-054049-5fa538`;
-  each result `failed=0`, `unreachable=0`, API errors 0, `/`, `/admin`,
-  `/kiosk` and `/api/system/health` returned 200.
-- Pi4 and Pi3 were not deployed; no agent or launcher change.
-- Rollback targets: `90ce0fcc`, then `e4817ec9`.
-- Operator real-device check: OK.
+Validation Results、Deployment State、2026-07-06 のトラブル記録（Pi5 API build OOM、Pi4 deploy bootstrap lock、Ansible ad-hoc verification quoting）は [docs/archive/deployments/2026-07.md](../archive/deployments/2026-07.md#2026-07-06-キオスク端末別起動先kiosk-device-initial-route) へ移した。
 
 ## Operational Checks
 
@@ -255,44 +170,7 @@ Fix:
 If this symptom recurs, inspect the rendered `持出` anchor first. It must be
 `/kiosk/tag` or `/kiosk/photo`, never `/kiosk`.
 
-### Pi5 API build OOM
-
-> 2026-07-06 時点の記録。`scripts/server/deploy.sh` と `--job --follow` は廃止済みで、lock の手動削除は禁止。現在の更新と復旧は [deployment.md](../guides/deployment.md) と [deploy-status-recovery.md](./deploy-status-recovery.md) に従う。
-
-The first Pi5 deploy attempt failed during API TypeScript build with Node heap
-exhaustion. The existing containers recovered through the deploy script.
-
-Workaround used successfully:
-
-```bash
-NODE_OPTIONS=--max-old-space-size=3072 ./scripts/server/deploy.sh feat/kiosk-device-initial-route
-```
-
-### Pi4 deploy bootstrap lock
-
-> 2026-07-06 時点の記録。`scripts/server/deploy.sh` と `--job --follow` は廃止済みで、lock の手動削除は禁止。現在の更新と復旧は [deployment.md](../guides/deployment.md) と [deploy-status-recovery.md](./deploy-status-recovery.md) に従う。
-
-`./scripts/update-all-clients.sh ... --job --follow` failed before the playbook
-started and left a stale lock:
-
-```text
-/opt/RaspberryPiSystem_002/logs/.update-all-clients.lock
-```
-
-Before removing this lock, verify there is no active Ansible or systemd deploy
-job. After that, removing the stale lock and rerunning the normal detach/follow
-path succeeded.
-
-### Ansible ad-hoc verification quoting
-
-When verifying remote service state, escape remote shell substitutions so they
-do not expand on Pi5 before reaching each kiosk host. The first unescaped check
-reported a false `KIOSK=inactive`; the corrected escaped command showed all
-kiosk services active.
-
 ## Open Items
 
-- Optional: redeploy Pi5 and Pi4 kiosks from `main` after PR merge so the remote
-  branch label matches `main`. Behavior is already present at commit `cbe78dab`.
 - Future phase: process-specific tab visibility or a common top screen. These
   were explicitly out of scope for v1.

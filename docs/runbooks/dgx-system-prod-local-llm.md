@@ -1,27 +1,26 @@
 ---
-
-## title: Runbook: DGX Spark system-prod LocalLLM 段階切替
-
+title: "Runbook: DGX Spark system-prod LocalLLM 段階切替"
 tags: [運用, DGX Spark, LocalLLM, llama.cpp, Tailscale, on_demand]
 audience: [運用者, 開発者]
 last-verified: 2026-05-10
 related:
-
-- ./local-llm-tailscale-sidecar.md
-- ../plans/dgx-spark-local-llm-migration-execplan.md
-- ../decisions/ADR-20260329-local-llm-pi5-api-operations.md
-- ../decisions/ADR-20260402-inference-foundation-phase1.md
-- ../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md
-- ../decisions/ADR-20260502-dgx-resource-control-targets.md
+  - ./local-llm-tailscale-sidecar.md
+  - ../plans/dgx-spark-local-llm-migration-execplan.md
+  - ../decisions/ADR-20260329-local-llm-pi5-api-operations.md
+  - ../decisions/ADR-20260402-inference-foundation-phase1.md
+  - ../decisions/ADR-20260403-on-demand-local-llm-runtime-control.md
+  - ../decisions/ADR-20260502-dgx-resource-control-targets.md
 category: runbooks
 update-frequency: high
+---
 
 # Runbook: DGX Spark system-prod LocalLLM 段階切替
 
+> **現行の節**: 業務 GLM / DeepSeek 切替、私用 Pi5 `stackchan-bridge` との区別、管理コンソール（2026-10-17 以降は [ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md) が正本）、`/dev/shm` の週次掃除、GB10 性能パラメータ、GLM-5.3-Flash 切替、Nemotron 3.5 段階導入。2026-04〜06 の移行判断ログ、Phase A/B の段階切替、Ubuntu への rollback は履歴であり、現行手順ではない（[履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md)）。本文の「本番反映（…）」記録にある `export RASPI_SERVER_HOST=…` と `--detach --follow` は当時のコマンドで、現行の入口では使えない。Pi5 のデプロイは [deployment guide](../guides/deployment.md)、復旧は [deploy-status-recovery.md](./deploy-status-recovery.md) に従う。
+
 ## 目的
 
-- Ubuntu PC 上の現行 LocalLLM を、DGX Spark の `system-prod` へ安全に置き換える
-- ただし写真持出 VLM を壊さないため、**途中経路として text 先行の段階切替も取れる**ようにしておく
+- DGX Spark の `system-prod` を、Pi5 API が使う業務 LocalLLM（写真持出 VLM・要領書要約・管理 Chat など）として運用する
 - Pi5 API が期待する `/healthz`、`/v1/chat/completions`、`/start`、`/stop` の運用形を維持する
 
 ## 業務 GLM / DeepSeek 切替（既定 off）
@@ -125,23 +124,8 @@ privateの8888やComfyUIのGPU利用は停止条件に含めない。
 
 - `GET /api/system/dgx-resource/overview` — ゲートウェイ `/healthz` と `GET /v1/models` に基づく推論バックエンド状態、任意のメトリクス/ComfyUI/埋め込み疎通、**任意の Spark ホスト簡易疎通（`sparkHost`）**。あわせて **標準 Control Target 一覧（`targets[]`）**（`kind`・`capabilities`・`status`）。**後方互換**で同一判定根拠の **`services[]`** も返す。**運用者向け**に **`overview.operator`**（業務 VLM / 私用 Comfy / 実験ラボ / **Agent コンテナ** の要約・主要ガイド操作・注意プレビュー）と **`overview.modelProfiles`**（DGX 正本の業務復帰モデル allowlist・activeProfileId）を返す（表示の正本は引き続き `targets[]`。UI はコンソールを優先し、技術 ID は詳細欄へ）。
 - `GET /api/system/dgx-resource/events?limit=…` — UI 操作の直近履歴（プロセス内リングバッファ）
-- `POST /api/system/dgx-resource/actions` — **`EXECUTE_TARGET_ACTION`**（`targetId` + `action`: `start` | `stop`）が書き込みの正規経路。実行可否は **`GET …/overview` の `targets[].capabilities`** に従う（`system-prod-gateway` に加え、Pi5 で補助 URL を両方設定すると **`private-comfyui`**・**`experiment-lab`**・**`agent-container`** が起停可能）。互換のため **`LOCAL_LLM_START` / `LOCAL_LLM_STOP`** および **`SET_POLICY`**（任意 **`applyWorkloadChanges`**）も継続。
+- `POST /api/system/dgx-resource/actions` — 受け付ける `type` は `RETURN_TO_BUSINESS`（`modelProfileId` 指定）/ `STOP_BUSINESS_LLM` / `PREVIEW_MODEL_STORAGE_DELETE` / `EXECUTE_MODEL_STORAGE_DELETE` の 4 種だけ（`apps/api/src/routes/system/dgx-resource.ts`）。
 - **`POST /api/system/stackchan/chat`（2026-10-17 削除）** — 業務 Pi5 の StackChan 会話 API と用途 `stackchan_chat` は PR #2095 で削除した（[code-health ExecPlan 段階9](../plans/code-health-refactor-execplan.md)）。2026-05-10 の本番反映記録は [deployment.md §StackChan 本番](../archive/deployments/2026-05.md#stackchan-production-2026-05-10)・[KB-365 §StackChan](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-stackchan-pi5-api-chat) に残る。
-
-**Control Targets（`overview.targets` の例）**:
-
-| `targetId` | 種別 | 書き込み（capabilities 次第） |
-| --- | --- | --- |
-| `system-prod-gateway` | gateway | `start` / `stop`（`on_demand` かつ `LOCAL_LLM_RUNTIME_CONTROL_*` 設定時） |
-| `system-prod-inference` | http_probe | 読取のみ |
-| `system-prod-embedding` | http_probe | 読取のみ |
-| `private-comfyui` | http_probe | 既定は読取のみ。**`DGX_RESOURCE_PRIVATE_COMFYUI_RUNTIME_START_URL` / `STOP_URL` が両方**なら `start`/`stop`（POST。**DGX 側 hook** が Pi5/Tailscale から到達可能であること） |
-| `experiment-lab` | http_probe | **`DGX_RESOURCE_EXPERIMENT_LAB_RUNTIME_*` が両方**なら `start`/`stop`。状態は任意の **`DGX_RESOURCE_EXPERIMENT_LAB_HEALTH_URL`**（GET）で監視可 |
-| `agent-container` | http_probe | **`DGX_RESOURCE_AGENT_CONTAINER_RUNTIME_*` が両方**なら `start`/`stop`（DGX gateway の **`/agent-container/start|stop`** と対応）。状態は任意の **`DGX_RESOURCE_AGENT_CONTAINER_HEALTH_URL`**（GET）。ランタイム確保は **`agent_container_task`** 用途（オンデマンド時・設定済みのとき）で **`/start`→簡易 GET ready** |
-| `spark-host` | http_probe | 読取のみ |
-| `metrics-kpi` | metrics_source | 読取のみ（KPI JSON） |
-
-capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した場合は **`DGX_TARGET_ACTION_NOT_SUPPORTED`**。
 
 **運用プロファイル（`SET_POLICY` / `policy.mode`）**:
 
@@ -149,9 +133,9 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - `private_ok`（**私用OK**）— ComfyUI 等の私用ワークロード向けに **業務 LLM を退避**し、Spark メモリを空ける。
 - `experiment_first`（**実験優先**）— lab/実験コンテナ検証寄り。**業務 Inference との競合は人手で確認**してください。
 
-**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / **agent-container** / Comfy に対して **停止 POST を順に試行**。**私用OKへ切替える前に**は、設定済みなら **experiment-lab と agent-container の停止**に加え、**`system-prod-gateway` へ keep_warm を上書きする強制停止**を試行する。**実験優先へ切替える前に**（設定済みなら）**私用 Comfy の停止 POST のみ**。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
+**ワークロード自動調停（`SET_POLICY`・`applyWorkloadChanges: true`）**: UI のチェック有効時、**業務優先へ切替える前に**設定済みの experiment-lab / **agent-container** / Comfy に対して **停止 POST を順に試行**。**私用OKへ切替える前に**は、設定済みなら **experiment-lab と agent-container の停止**に加え、**`system-prod-gateway` へ keep_warm を上書きする強制停止**を試行する。**実験優先へ切替える前に**（設定済みなら）**私用 Comfy の停止 POST のみ**。失敗した時点で API がエラーとなり **`policy.mode` は更新されない**（処理順序により一部 POST は済んでいる可能性あり。**DGX 側 hook はべき等に近い設計を推奨**）。競合関連は [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)・[KB-365](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。
 
-**運用理解（Spark・メモリ・KPI・日常手順の正本）**: 業務/私用でメモリ KPI がどう変わるか、写真ラベル・要領書・Hermes が **同一 27B（`system-prod-primary`）を共有**する理由、**green（35B）/ blue（27B）の同時フルロードをしない**設計、**KPI の `Unified Mem`（実測）と vLLM `--gpu-memory-utilization`（上限枠）の違い**、管理 UI の **「切替時にワークロード自動調整」**（**詳細・保守** 内）と **運用ガイド 4 操作**（チェック不要）の使い分けは **[KB-366](../knowledge-base/KB-366-dgx-spark-operational-understanding.md)** に集約。**現場の推奨**: 日常は画面上部の **運用ガイド「業務→私用」** を使う。保守パネルの **「私用OK」だけ** では **チェック OFF だと強制停止が走らない**（確認ダイアログは出るが `applyWorkloadChanges` が false のため）。
+**運用理解（Spark・メモリ・KPI・日常手順の正本）**: 業務/私用でメモリ KPI がどう変わるか、写真ラベル・要領書・Hermes が **同一 27B（`system-prod-primary`）を共有**する理由、**green（35B）/ blue（27B）の同時フルロードをしない**設計、**KPI の `Unified Mem`（実測）と vLLM `--gpu-memory-utilization`（上限枠）の違い**、管理 UI の **「切替時にワークロード自動調整」**（**詳細・保守** 内）と **運用ガイド 4 操作**（チェック不要）の使い分けは **[KB-366](../knowledge-base/KB-366-dgx-spark-operational-understanding.md)** に集約。**現場の推奨（2026-10-17 以前の手順・履歴。現行画面に運用ガイドは無い）**: 日常は画面上部の **運用ガイド「業務→私用」** を使う。保守パネルの **「私用OK」だけ** では **チェック OFF だと強制停止が走らない**（確認ダイアログは出るが `applyWorkloadChanges` が false のため）。
 
 **メインAI 制御の直列化（Pi5 API）**: `on_demand` 時、**推論側の `/start`・`/stop`** と **DGX リソース UI 経由の `system-prod-gateway` 起停**は、同一プロセス内の **単一キュー**で直列化される（`local-llm-runtime-command-queue.ts` → `enqueueMainLocalLlmRuntimeControl`）。`private_ok` の **強制停止**も同じキューを通す。待機が長い場合は `main_llm_control_queue_wait` ログで把握可能。
 
@@ -219,7 +203,8 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s**）。Pi5 から `POST …/stop-force` → **`backendSource: model_profile_state`**（検証スモーク。**blue 停止後は業務 LLM の再 start が必要**）。
 - **正本**: [deployment.md §2026-05-29](../archive/deployments/2026-05.md#dgx-runtime-state-alignment-2026-05-29) · [KB-365 §2026-05-29](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-29-dgx-runtime-state-alignment) · [KB-366 §KPI 帯](../knowledge-base/KB-366-dgx-spark-operational-understanding.md#管理画面-kpi-帯2026-05-29-再設計--overviewruntimesummary)
 
-**本番反映（2026-05-25・`private_ok` 強制メモリ解放・Pi5→DGX 順次・各 1 台）**: **① Pi5 のみ** — `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-strong-private-ok infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260525-162034-25035`**·`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 938s**。**② DGX** — **`scp scripts/dgx-local-llm-system/control-server.py ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/control-server.py`** → **`control-server.pid` の PID を `kill` → `rm -f` PID ファイル → `bash /srv/dgx/system-prod/bin/start-control-server.sh`**。**③ DGX gateway（必須）** — Pi5 は **`http://100.118.82.72:38081/stop-force`** を叩く。**gateway が `/stop-force` を転送しないと 404** となるため、**`scp scripts/dgx-local-llm-system/gateway-server.py`** → **`gateway-server.pid` 同手順で `start-gateway-server.sh`**。**検証例**: `curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:38081/stop-force -H 'X-Runtime-Control-Token: …'` → **403/200**（トークン次第）·**404 は転送未反映**。**実機** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 68s**）。**正本**: [deployment.md §2026-05-25](../archive/deployments/2026-05.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·[KB-365 §2026-05-25](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-25-dgx-private-ok-stop-force)。**現場手動（推奨）**: 管理 **`/admin/tools/dgx-resource`** で **私用OK** + **ワークロード自動調停 ON** → 確認ダイアログの **業務 LLM 強制退避** 文言 → 実行後 **DGX `system-prod-trtllm` 停止**または **GPU/統一メモリ空き**を確認（[KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。
+**本番反映（2026-05-25・`private_ok` 強制メモリ解放・Pi5→DGX 順次・各 1 台）**: **① Pi5 のみ** — `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-strong-private-ok infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260525-162034-25035`**·`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 938s**。**② DGX** — **`scp scripts/dgx-local-llm-system/control-server.py ubudgxkoushi@100.118.82.72:/srv/dgx/system-prod/bin/control-server.py`** → **`control-server.pid` の PID を `kill` → `rm -f` PID ファイル → `bash /srv/dgx/system-prod/bin/start-control-server.sh`**。**③ DGX gateway（必須）** — Pi5 は **`http://100.118.82.72:38081/stop-force`** を叩く。**gateway が `/stop-force` を転送しないと 404** となるため、**`scp scripts/dgx-local-llm-system/gateway-server.py`** → **`gateway-server.pid` 同手順で `start-gateway-server.sh`**。
+**検証例**: `curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:38081/stop-force -H 'X-Runtime-Control-Token: …'` → **403/200**（トークン次第）·**404 は転送未反映**。**実機** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 68s**）。**正本**: [deployment.md §2026-05-25](../archive/deployments/2026-05.md#dgx-resource-private-ok-strong-stop-force-2026-05-25)·[KB-365 §2026-05-25](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-25-dgx-private-ok-stop-force)。**現場手動（2026-10-17 以前の手順・履歴）**: 管理 **`/admin/tools/dgx-resource`** で **私用OK** + **ワークロード自動調停 ON** → 確認ダイアログの **業務 LLM 強制退避** 文言 → 実行後 **DGX `system-prod-trtllm` 停止**または **GPU/統一メモリ空き**を確認（[KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)）。
 
 **本番反映（2026-05-10・メインAI 単一キュー・調停から gateway 自動停止除外・Pi5 API のみ）**: ブランチ **`feature/dgx-single-queue-stop-policy`**（**`23bce3bf`**·**`4d658897`**）を **`raspberrypi5` のみ**へ反映（**`--limit raspberrypi5`・1 台**）。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（**`main` マージ後は第2引数 `main`**）。**Detach `20260510-114418-29512`**·`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**·**`--follow` 約 559s**。**実機** `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**。Pi4/Pi3 は play **no hosts matched**・**Pi3 専用手順不要**）。**正本**: [deployment.md §2026-05-10](../archive/deployments/2026-05.md#dgx-main-llm-single-queue-stop-policy-2026-05-10)·[KB-365 §本番反映（2026-05-10）](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#production-2026-05-10-dgx-main-llm-single-queue)。**トラブルシュート**: 挙動が旧（推論と UI 起停が交叉・実験優先で gateway が止まる）→ Pi5 **`api` Docker イメージ**の ref と **Detach `Git: changed`** を確認。
 
@@ -289,8 +274,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 - **GGUF**: `/srv/dgx/shared-models/llm/gguf/Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf`（期待サイズ **43605014656** バイト）
 - **DGX bin（業務復帰除外の必須条件）**: [`model_profiles.py`](../../scripts/dgx-local-llm-system/model_profiles.py) を **`/srv/dgx/system-prod/bin/`** へ **`scp`** し **control + gateway 再起動**。manifest だけでは `GET /system/model-profiles` に **`businessOrchestrationEligible`** が出ず、Pi5 は未送信を **eligible=true** と解釈する（混在デプロイで業務復帰ドロップダウンに uncensored が載る）
 - **反映後の確認例**（DGX）: `curl -sS -H "X-LLM-Token: …" http://127.0.0.1:38081/system/model-profiles` の `profiles[]` で `id==qwen36_35b_uncensored` の **`businessOrchestrationEligible` が `false`**
-- **Pi5 管理 UI**: `/admin/tools/dgx-resource` の **「モデルプロファイル起動」** にボタン **`qwen36_35b_uncensored`**。業務復帰シナリオは通さず **`POST /api/system/dgx-resource/actions`** の **`START_MODEL_PROFILE`** のみ（Strict Ready なし）。
-- **業務復帰ドロップダウン**: `businessOrchestrationEligible !== false` かつ `available` の profile のみ（`qwen36_35b_uncensored` は **`businessOrchestrationEligible: false`** のため **出ない**）。私用起動は **`START_MODEL_PROFILE`** 固定ボタンのみ。
+- **業務復帰ドロップダウン**: `businessOrchestrationEligible !== false` かつ `available` の profile のみ（`qwen36_35b_uncensored` は **`businessOrchestrationEligible: false`** のため **出ない**）。
 - **ExecPlan**: [dgx-uncensored-profile-button.md](../plans/dgx-uncensored-profile-button.md)
 
 **本番反映（2026-05-29 · `qwen36_35b_uncensored` + Pi5 固定ボタン · Pi5→DGX 順次）** {#本番反映2026-05-29-dgx-uncensored-profile-button}
@@ -424,22 +408,24 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 **本番反映（2026-05-03・Phase5・運用者コンソール `overview.operator`・ワークロード遷移分離・API+Web）**: ブランチ **`feat/dgx-resource-operator-console`**（代表 **`e88d9206`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-operator-console infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-115446-2532`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（ローカル `--follow` 完了まで **約 826s**）。Pi4／Pi3 は **no hosts matched**（**Pi3 個体へは本変更の Ansible を当てない**）。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **97s**）。**仕様**: `/admin/tools/dgx-resource` は **運用者コンソールを主軸**、技術 ID の Control Targets は折りたたみ詳細。`overview.operator` は **`targets[]` と整合する運用者向け要約**（起停可否の契約は引き続き `targets[]`）。**`scenarioExecute.outcomeKind`** で成功／部分失敗／noop を区別可能。**ADR**: [ADR-20260503](../decisions/ADR-20260503-dgx-resource-operator-console.md)。**KB**: [KB-365 §Phase5](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-5-本番反映記録)。**トラブルシュート**: コンソールが旧のまま → **`api`/`web` の同一ブランチ**・[verification-checklist.md](../guides/verification-checklist.md) §6.6.4 **強制リロード**。
 
-**本番反映（2026-05-03・Phase8・KPI 先頭・説明削減・全文可読・Web のみ）**: ブランチ **`feat/dgx-resource-dashboard-ui-phase8`**（代表 **`89f65a7c`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-dashboard-ui-phase8 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-181600-946`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（ローカル `--follow` 完了まで **約 666s**）。Pi4／Pi3 は **no hosts matched**。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **118s**）。**仕様**: 先頭に **KPI ストリップ**、説明文と絵文字を削除、`Spark` / シナリオ文言は **折り返し表示**。**知見**: Pi5 の標準デプロイ preflight は **Pi5→Pi5 self-SSH** を使うため、**`~/.ssh/id_ed25519.pub` が `authorized_keys` に無いと `Permission denied (publickey)`** で止まる。失敗時に **`runner=bootstrap` / `runPid=null`** の lock だけ残ることがあり、その場合は **実行中プロセスと deploy artifact が無いことを確認してから** lock を退避削除して再試行する。**KB**: [KB-365 §Phase8](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-8kpi-先頭説明削減全文可読web-のみ本番反映)·[Ansible/デプロイ KB](../knowledge-base/infrastructure/ansible-deployment.md)。
+**本番反映（2026-05-03・Phase8・KPI 先頭・説明削減・全文可読・Web のみ）**: ブランチ **`feat/dgx-resource-dashboard-ui-phase8`**（代表 **`89f65a7c`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-dashboard-ui-phase8 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-181600-946`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（ローカル `--follow` 完了まで **約 666s**）。Pi4／Pi3 は **no hosts matched**。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **118s**）。**仕様**: 先頭に **KPI ストリップ**、説明文と絵文字を削除、`Spark` / シナリオ文言は **折り返し表示**。**知見**: Pi5 の標準デプロイ preflight は **Pi5→Pi5 self-SSH** を使うため、**`~/.ssh/id_ed25519.pub` が `authorized_keys` に無いと `Permission denied (publickey)`** で止まる。
+失敗時に **`runner=bootstrap` / `runPid=null`** の lock だけ残ることがあり、（現行: lock や run 情報を手で編集・削除せず [deploy-status-recovery.md](./deploy-status-recovery.md) に従う）。**KB**: [KB-365 §Phase8](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-8kpi-先頭説明削減全文可読web-のみ本番反映)·[Ansible/デプロイ KB](../knowledge-base/infrastructure/ansible-deployment.md)。
 
 **本番反映（2026-05-03・Phase9・Orchestration Strict Ready・安全ロールバック・API+Web）**: ブランチ **`feat/dgx-resource-ready-guarantee`**（代表 **`8cbc6f38`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-ready-guarantee infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-194121-32704`**・`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（ローカル `--follow` 完了まで **約 684s**）。Pi4／Pi3 は **no hosts matched**（Pi3 は専用手順対象外で本変更の Ansible 適用にも含めない）。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **89s**）。**仕様**: **`EXECUTE_ORCHESTRATION_SCENARIO` が成功になるのは Strict Ready 達成後**。**タイムアウト時**はモード復帰＋補助ワークロードのロールバック試行。**知見**: Phase12 はシナリオ Ready を直接叩かない。**トラブルシュート**: Ready タイムアウト → **`LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS`** と **`apps/api/src/config/env.ts` の上限**を整合させて調整。**KB**: [KB-365 §Phase9](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-9orchestration-strict-readyapi--web)·[deployment.md](../guides/deployment.md) Phase9 項。
 
-**本番反映（2026-05-03・KPI メトリクス・`GET /system/metrics`・API + DGX gateway）**: **① Pi5 のみ** Ansible（**`--limit raspberrypi5`**）→ **② DGX** へ **`scripts/dgx-local-llm-system/gateway-server.py`** を **`/srv/dgx/system-prod/bin/gateway-server.py`** に配置しゲートウェイを再起動（**順序付き**。Pi4／Pi3 は **対象外**）。Pi5: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-kpi-metrics-fallback infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-211051-8713`**・`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**（ローカル `--follow` 約 **702s**）。**仕様**: **`DGX_RESOURCE_METRICS_URL` 未設定**時、Pi5 API は **`GET /system/metrics`**（**`X-LLM-Token` 必須**）→ **`/v1/system/metrics`** の順で KPI を取得。gateway は **`nvidia-smi`** と **`free -b`** フォールバック。**知見**: **API と gateway は同じ反映窗口で揃える**。**DGX 再起動（実績）**: **`sudo systemctl restart dgx-llm-gateway`** は運用ユーザーに **sudo が無く未実行**。当該ホストでは **`dgx-llm-gateway` が inactive** で **`start-gateway-server.sh`** 常駐のため、**既存 `gateway-server.py` を終了**してから **`/srv/dgx/system-prod/bin/start-gateway-server.sh`** を実行。**systemd へ統一する場合**は下記 **`install-systemd-units.sh`** 節。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**KB**: [KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)（Phase 10）·[deployment.md](../guides/deployment.md)（2026-05-03 KPI メトリクス項）。
+**本番反映（2026-05-03・KPI メトリクス・`GET /system/metrics`・API + DGX gateway）**: **① Pi5 のみ** Ansible（**`--limit raspberrypi5`**）→ **② DGX** へ **`scripts/dgx-local-llm-system/gateway-server.py`** を **`/srv/dgx/system-prod/bin/gateway-server.py`** に配置しゲートウェイを再起動（**順序付き**。Pi4／Pi3 は **対象外**）。Pi5: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-kpi-metrics-fallback infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-211051-8713`**・`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**（ローカル `--follow` 約 **702s**）。**仕様**: **`DGX_RESOURCE_METRICS_URL` 未設定**時、Pi5 API は **`GET /system/metrics`**（**`X-LLM-Token` 必須**）→ **`/v1/system/metrics`** の順で KPI を取得。gateway は **`nvidia-smi`** と **`free -b`** フォールバック。**知見**: **API と gateway は同じ反映窗口で揃える**。**DGX 再起動（実績）**: **`sudo systemctl restart dgx-llm-gateway`** は運用ユーザーに **sudo が無く未実行**。
+当該ホストでは **`dgx-llm-gateway` が inactive** で **`start-gateway-server.sh`** 常駐のため、**既存 `gateway-server.py` を終了**してから **`/srv/dgx/system-prod/bin/start-gateway-server.sh`** を実行。**systemd へ統一する場合**は下記 **`install-systemd-units.sh`** 節。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**KB**: [KB-365](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)（Phase 10）·[deployment.md](../guides/deployment.md)（2026-05-03 KPI メトリクス項）。
 
 **本番反映（2026-05-04・Phase11・進行中表示持続化・API+Web+DGX gateway）**: **① `raspberrypi5` のみ**（`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`）→ **② DGX** へ repo の **`gateway-server.py`** を **`scp`**。**Detach `20260504-113918-744`**・`PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`**・exit **`0`**（`--follow` 約 **702s**）。**`main`** 代表 **`5d96b59b`**（[PR #246](https://github.com/denkoushi/RaspberryPiSystem_002/pull/246)）。Pi4／Pi3 **対象外**。**DGX 再起動**: **`sudo systemctl restart dgx-llm-gateway`** は **sudo 非対話不可**のため **`/srv/dgx/system-prod/bin/start-gateway-server.sh`**。**トラブルシュート**: 広い **`pkill -f`** は **SSH コマンドラインを巻き込み得る** → **`start-gateway-server.sh`** で **`healthz` 200** まで復旧。**実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **109s**）。**KB**: [KB-365 §Phase11](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-11進行中表示の持続化長時間切替の運用解釈web--runbook)·[deployment.md](../guides/deployment.md)（2026-05-04 項）。
 
 **本番反映（2026-05-06・`control-server` 単一アクティブ運用ガード・DGX のみ）**: **対象は DGX のみ**（Pi5／Pi4／Pi3 **Ansible 不要**）。repo の **`control-server.py`**・**`dgx_llm_single_active_guard.py`**（**同一ディレクトリに必ず同梱**）・**`stop-llama-server.sh`**・**`stop-trtllm-server.sh`** を **`scp`** で **`/srv/dgx/system-prod/bin/`**（例: `ubudgxkoushi@100.118.82.72`）。**`runtime_stop_policy.py` は既存が `/srv/dgx/system-prod/bin/` にあれば追加 `scp` は不要**（`control-server.py` が import）。**再起動**: **`start-control-server.sh` は既存 PID が生きていると新コードを読まず終了する**ため、**`/srv/dgx/system-prod/logs/control-server.pid` の PID を `kill`（必要なら `kill -9`）して PID ファイルを消したうえで** **`bash /srv/dgx/system-prod/bin/start-control-server.sh`**。**ゲートウェイは本変更の範囲では再起動しない**。**検証**: 本文「単一アクティブ運用ガード」節・「切替後の 4 点チェック」節のコマンド。**実績（2026-05-06）**: **`ACTIVE_LLM_BACKEND=blue`** で **`38081/healthz` 200**・**`/v1/models` に `system-prod-primary`**・**`39090` 401**・**`38082` 非 listen**・**`llama-server` プロセス無し**。**KB**: [KB-365 §Phase12](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#phase-12-dgx-control-server-single-active-guard-2026-05-06)·[deployment.md](../guides/deployment.md)（2026-05-06 DGX control-server 項）。
 
-**本番反映（2026-05-03・Phase3・補助起停 + `SET_POLICY.applyWorkloadChanges`・API+Web）**: ブランチ **`feat/dgx-resource-policy-orchestration-phase3`**（代表 **`a44b9f78`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-policy-orchestration-phase3 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-094340-23537`**・`PLAY RECAP`: **`ok=135` `changed=8` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 597s**）。Pi4／Pi3 は **no hosts matched**。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `EXECUTE_TARGET_ACTION` は **`targets[].capabilities` に応じて** **`system-prod-gateway`** に加え、補助 URL 設定済みなら **`private-comfyui`**・**`experiment-lab`** も起停可能。**ワークロード調停**: [KB-365](../knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**ナレッジ**: カード直下に **`EXECUTE_TARGET_ACTION` 失敗**を表示して操作文脈を維持（Web）。
+**本番反映（2026-05-03・Phase3・補助起停 + `SET_POLICY.applyWorkloadChanges`・API+Web）**: ブランチ **`feat/dgx-resource-policy-orchestration-phase3`**（代表 **`a44b9f78`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-policy-orchestration-phase3 infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-094340-23537`**・`PLAY RECAP`: **`ok=135` `changed=8` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 597s**）。Pi4／Pi3 は **no hosts matched**。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `EXECUTE_TARGET_ACTION` は **`targets[].capabilities` に応じて** **`system-prod-gateway`** に加え、補助 URL 設定済みなら **`private-comfyui`**・**`experiment-lab`** も起停可能。**ワークロード調停**: [KB-365](../archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md)。**ナレッジ**: カード直下に **`EXECUTE_TARGET_ACTION` 失敗**を表示して操作文脈を維持（Web）。
 
 **本番反映（2026-05-03・Control Targets 本番・API+Web・旧仕様：gateway のみ書込）**: ブランチ **`feat/dgx-resource-standard-control-targets`**（**`1e24d169`**）を **`raspberrypi5` のみ**へ反映。`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/dgx-resource-standard-control-targets infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。Detach **`20260503-082132-17926`**・`PLAY RECAP`: **`ok=130` `changed=4` `failed=0` / `unreachable=0`**・リモート exit **`0`**（所要 **約 610s**）。実機 `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**仕様**: `overview.targets[]`・**`EXECUTE_TARGET_ACTION`** が書き込みの正規経路（**`system-prod-gateway`** のみ）。**知見**: `targets` 欠落の旧 API 応答でも UI が落ちないよう **optional フォールバック**を維持。**トラブルシュート**: 管理画面の Control Targets が旧のまま → **`web` 再ビルド**と **強制リロード**（[verification-checklist.md](../guides/verification-checklist.md) §6.6.4）。
 
 **本番反映（2026-05-02・Phase2）**: `feat/dgx-resource-profile-and-spark-visibility-clean`（`09b2423e`）を **`raspberrypi5` のみ**へ反映。`./scripts/update-all-clients.sh feat/dgx-resource-profile-and-spark-visibility-clean infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`、Detach **`20260502-190642-27778`**、`PLAY RECAP`: **`ok=130 changed=4 unreachable=0 failed=0`**。実機 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。  
-**運用知見（2026-05-02）**: `--follow` が停止して見えるケースでは `status.json` が stale のままでも、遠隔ログの **`PLAY RECAP failed=0`** と `summary.json` を優先して完了判定してよい。  
+**運用知見（2026-05-02・当時の `--follow`。現行は `--status RUN_ID` で確認する）**: `--follow` が停止して見えるケースでは `status.json` が stale のままでも、遠隔ログの **`PLAY RECAP failed=0`** と `summary.json` を優先して完了判定してよい。  
 
 **本番反映（2026-05-02・API: `sparkHost` 既定 `/healthz` フォールバック + Ansible `DGX_RESOURCE_*` 出力）**: `fix/dgx-resource-admin-readable-typography`（**`6c6888d6`**）を **`raspberrypi5` のみ**へ反映。[PR #238](https://github.com/denkoushi/RaspberryPiSystem_002/pull/238)。Detach **`20260502-203857-20230`**、`PLAY RECAP`: **`failed=0` / `unreachable=0`**（runner exit **`0`**）。実機 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。**運用メモ**: `--follow` ログに **`Connection closed by … port 22`** が一度出ても、**再作成・再起動タイミングの一時切断**があり得る。**正本は `PLAY RECAP` / `summary.json`**。**ナレッジ**: [KB-363](../archive/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md)。
 
@@ -447,228 +433,9 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 **本番反映（2026-05-01・Phase1）**: 管理 UI は **Pi5 の `api` + `web` 再デプロイ**で配信される。**対象は `raspberrypi5` のみ**（Pi3 は専用手順・必須対象外）。標準: [deployment.md](../guides/deployment.md) 補足（2026-05-01 DGX リソース管理コンソール）。**実機**: `./scripts/deploy/verify-phase12-real.sh` が **PASS 43 / WARN 0 / FAIL 0**。**運用メモ**: **`LOCAL_LLM_STOP`** は **`LOCAL_LLM_RUNTIME_STOP_REQUEST_TIMEOUT_MS`**（開始用 `…_START…` とは別）で制御する。
 
-## 現時点の判断（2026-04-26）
+> 履歴は [移行履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#現時点の判断2026-04-26) へ移設した（「現時点の判断（2026-04-26）」ほか）。
 
-- DGX Spark / GB10 では `llama.cpp + GGUF` が安定して起動する
-- 実測済みモデルは `Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf`
-- Pi5 管理 Chat の既定は `enableThinking=false`、`maxTokens=512` なので、DGX 側も **thinking 無効前提**で合わせる
-- `photo_label` の current payload は、**まず現行 `Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf` に `mmproj` を足して同じ endpoint で受けられるか**を最優先で確認する
-- すでに行った text 先行の段階切替は **移行保険**であり、最終形ではない
-- DGX 実機には `node` が無いため、最初の localhost smoke は **Python 版** `control-server.py` / `gateway-server.py` を使う
-
-### 2026-04-26 時点の到達点
-
-- `mmproj-F16.gguf` を DGX `Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf` と同じディレクトリへ配置した
-- `system-prod-primary` を `mmproj` 付きで起動し、`scripts/dgx-local-llm-system/probe-photo-label-vlm.py` による current payload の direct probe は **200** で成功した
-- 応答例: `穴あけドリル`
-- さらに Pi5 API コンテナ内の one-off synthetic で、`photo_label -> dgx_primary` を仮設定した `ensureReady('photo_label') -> vision.complete() -> release('photo_label')` は成功した
-- 連続 3 回の synthetic でも `runtime_ready` / `inference` / `runtime_stopped` はすべて成功した
-
-要するに、**Spark 単一 endpoint で `photo_label` current payload を受ける技術経路は確認済み**であり、残る主タスクは **代表画像セット品質**、**ジョブ統合**、**最終切替** である。
-
-### 2026-04-26 代表画像 5 件の初回比較
-
-- Pi5 API コンテナ内で、**人レビュー `GOOD` 済みの最近 5 件**を read-only で再評価した
-- DGX `system-prod-primary` も Ubuntu fallback も **5/5 件で 200 / 非空応答**だった
-- 初回の比較結果は次のとおり
-  - `マーカーペン -> マーカー`: 近似
-  - `マスキングテープ -> 養生テープ`: 近似。Ubuntu は `黄色いテープ`
-  - `取手付ヤスリ -> ノミ`: 明確な誤判定。Ubuntu も `彫刻刀`
-  - `デジタルデプスノギス -> デジタルノギス`: 近似
-  - `ホールテスト -> デジタルマイクロメータ`: 明確な誤判定。Ubuntu も `マイクロメータ`
-- 現時点の判断として、**DGX は Ubuntu 現行より明確に悪化していない**が、**5 件中 2 件は明確ミス**のため、そのまま Spark 一本化を決める段階ではない
-- 次は、件数を増やした品質比較と `PhotoToolLabelScheduler` 経由の claim / release / DB 保存確認を続ける
-
-### 2026-04-26 `PhotoToolLabelScheduler` 統合確認
-
-- live の pending は 0 件だったため、既存 `GOOD` 画像を参照する **一時 Loan** を 1 件だけ作成して検証した
-- Pi5 API コンテナ内で `photo_label` の provider を一時的に DGX `system-prod-primary` へ向け、`PhotoToolLabelScheduler.runOnce()` を実行した
-- 実測:
-  - `runtime_ready`: 約 `7.2s`
-  - 1 回目 inference: 約 `4.5s`
-  - シャドー補助 inference: 約 `1.6s`
-  - 保存結果: `photoToolDisplayName = マーカーペン`
-  - provenance: `ASSIST_ACTIVE_CONVERGED`
-  - `photoToolLabelClaimedAt` は `null` に戻り、`runtime_stopped` まで成功
-- 1 回目応答は `マーカー` だったが、既存 GOOD 類似補助と active gate により `マーカーペン` へ収束して保存できた
-- 検証後、その一時 Loan は削除済み
-
-要するに、**Spark 単一 endpoint は scheduler 経由でも claim / inference / assist / DB 保存 / release まで成立した**。
-
-### 2026-04-26 Spark 一本化反映
-
-- Pi5 の `infrastructure/ansible/inventory.yml` を **DGX 単一 provider (`dgx_primary`)** 構成へ更新した
-- Pi5 上で `manage-app-configs.yml` を実行し、`apps/api/.env` と `infrastructure/docker/.env` の `**LOCAL_LLM_*` / `INFERENCE_*` をともに DGX `system-prod-primary`** に揃えた
-- API コンテナ内の router でも
-  - `photo_label -> dgx_primary`
-  - `document_summary -> dgx_primary`
-  - 管理 Chat / status 用 `LOCAL_LLM_BASE_URL -> http://100.118.82.72:38081`
-  を確認した
-- Spark 一本化反映後に `./scripts/deploy/verify-phase12-real.sh` を再実行し、**PASS 43 / WARN 0 / FAIL 0** を確認した
-
-したがって、**Pi5 の本番構成は `admin chat` / `document_summary` / `photo_label` ともに DGX Spark `system-prod-primary` へ一本化済み**である。
-
-### 2026-04-26 代表画像 10 件の実運用相当評価
-
-- 人レビュー `GOOD` 済みの最近データから **期待ラベル重複なし 10 件**を選び、**一時 Loan を作成して `PhotoToolLabelingService` を通す**形で read-only 評価した
-- 結果は **exact match 2 / 10**
-  - 一致: `マスキングテープ`, `デジタルノギス`
-  - 近似: `マーカーペン -> マーカー`, `デジタルデプスノギス -> デジタルノギス`, `金属棒 -> 金属定規`
-  - 明確ミス: `取手付ヤスリ -> ノミ`, `ホールテスト -> デジタルマイクロメータ`, `栓ゲージ -> レンチ`, `ねじゲージ -> 六角棒スパナ`, `てこ式ダイヤルゲージ -> マイクロメーター`
-- provenance は **すべて `FIRST_PASS_VLM`** で、今回の 10 件では GOOD 類似補助による補正保存は入らなかった
-
-この結果から、**構造面の一本化は完了したが、品質面では特にゲージ・測定器系に改善余地が大きい**と判断できる。
-
-### 2026-04-26 runtime control token drift
-
-- Spark 一本化後の追加評価で、`ensureReady('photo_label')` が `**/start -> 403 forbidden`** になる事象を検出した
-- 切り分けの結果、Pi5 側の `LOCAL_LLM_SHARED_TOKEN` / `LOCAL_LLM_RUNTIME_CONTROL_TOKEN` が DGX `system-prod` 実 secret とずれていた
-- DGX 側の `api-token` / `runtime-control-token` に合わせて Pi5 `vault.yml` を更新し、`manage-app-configs.yml` を再実行したところ、`/start` は **200** に復帰した
-- 以後の代表画像 10 件評価では、各件で `runtime_ready` / inference / `runtime_stopped` まで成功した
-
-要するに、**DGX 一本化後の on-demand 制御では secret drift 監視が重要**である。
-
-### 2026-04-26 active assist OFF の影響
-
-- Pi5 API 本番 env を確認したところ、
-  - `PHOTO_TOOL_EMBEDDING_ENABLED=true`
-  - `PHOTO_TOOL_LABEL_ASSIST_SHADOW_ENABLED=false`
-  - `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_ENABLED=false`
-  だった
-- つまり、類似ギャラリーは使えるが、**収束 canonical を `photoToolDisplayName` に保存しうる active assist は無効**である
-- 同じ代表画像 10 件を read-only で再評価すると、**5/10 件**は active を有効にすれば gate 通過で保存候補になり、うち **4/10 件**は期待ラベルと一致した
-  - `マーカーペン`（rowCount `10`）
-  - `取手付ヤスリ`（rowCount `5`）
-  - `ホールテスト`（rowCount `23`）
-  - `栓ゲージ`（rowCount `27`）
-- 一方で `ねじゲージ` は active を有効にしても `棒ヤスリ` へ収束しており、別途改善が必要
-- `マスキングテープ` は収束 canonical は正しいが rowCount `4` のため、現行 gate (`minGalleryRows=5`) ではまだ保存採用されない
-
-したがって、**品質課題の一部はモデル限界ではなく、active assist が OFF であることによる取りこぼし**である。
-
-### 2026-04-26 active assist 本番有効化
-
-- Pi5 `vault.yml` に `vault_photo_tool_label_assist_active_enabled: "true"` と `vault_photo_tool_label_assist_active_min_gallery_rows: "5"` を追加し、`manage-app-configs.yml` を再実行して反映した
-- 同じ代表画像 10 件を read-only で再評価した結果、
-  - **exact match 5 / 10**（有効化前は **2 / 10**）
-  - provenance は `**ASSIST_ACTIVE_CONVERGED` 5 件 / `FIRST_PASS_VLM` 5 件**
-  まで改善した
-- 代表的な改善:
-  - `マーカーペン`
-  - `取手付ヤスリ`
-  - `ホールテスト`
-  - `栓ゲージ`
-  - `デジタルノギス`
-- なお未改善の主例は `ねじゲージ`、`金属棒`、`てこ式ダイヤルゲージ` で、これは active assist だけでは救えていない
-- 反映後に `./scripts/deploy/verify-phase12-real.sh` を再実行し、**PASS 43 / WARN 0 / FAIL 0** を確認した
-
-要するに、**active assist は本番有効化しても回帰なく、品質改善の寄与が確認できた**。
-
-### 2026-04-26 hard case の切り分け
-
-- active assist ON 後も残った主例 `ねじゲージ` / `金属棒` / `てこ式ダイヤルゲージ` について、Pi5 本番 API コンテナ内で `PhotoToolLabelAssistService.evaluateForShadow()` と gallery 近傍を直接確認した
-- 現在の主要条件は次のとおり
-  - `PHOTO_TOOL_LABEL_ASSIST_MAX_COSINE_DISTANCE=0.14`
-  - `PHOTO_TOOL_LABEL_ASSIST_CONVERGENCE_TOP_K=2`
-  - `PHOTO_TOOL_LABEL_ASSIST_ACTIVE_MIN_GALLERY_ROWS=5`
-- 切り分け結果:
-  - `ねじゲージ`: expected row count **1**。assist 自体は発火するが、収束 canonical が `**棒ヤスリ`**。gallery 側の教師不足と embedding 近傍の偏りが主因
-  - `金属棒`: expected row count **2**。assist 自体は発火するが、収束 canonical が `**Tレンチ`**。正解ラベルは近傍に出るが top を取れない
-  - `てこ式ダイヤルゲージ`: expected row count **23**。正解近傍は十分あるが、top 近傍に `棒ヤスリ` が混ざり `**labels_not_converged`** で落ちる
-- つまり、残課題は一括ではなく
-  - **gallery 行数を増やす系** (`ねじゲージ` / `金属棒`)
-  - **収束条件または prompt/embedding を見直す系** (`てこ式ダイヤルゲージ`)
-  に分かれている
-
-### 2026-04-26 ここで一区切りとする判断
-
-- 現時点では、`photo_label` の**生の初期判定精度をこれ以上追い込むこと**は優先しない
-- 本件の主戦略は、VLM 単体の正答率向上ではなく、**active assist + 人レビュー済み gallery の蓄積**によって実運用精度を上げることに置く
-- すでに次は成立済み:
-  - DGX `system-prod-primary` の**単一 endpoint** で text + image を処理できる
-  - Pi5 本番は **DGX 一本化**できている
-  - `active assist` 本番有効化で **exact match 2/10 -> 5/10** の改善を確認済み
-  - `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**
-- したがって、本件は**構造・運用の成立確認まで完了した段階でいったん区切り**、残る hard case は**将来課題**として扱う
-- 将来の改善軸は次の 2 本に限定して保持する
-  - 人レビュー `GOOD` gallery の継続蓄積
-  - 必要になった時点での `Qwen3.6` 系または assist 条件の見直し
-
-### 2026-04-26 `/embed` も DGX へ移管
-
-- Ubuntu 退役前の最後の live 依存は `PHOTO_TOOL_EMBEDDING_URL=http://100.107.223.92:38081/embed` だった
-- DGX `system-prod` に `/embed` 経路を追加し、
-  - 外部入口: `http://100.118.82.72:38081/embed`
-  - 内部 backend: `127.0.0.1:38100`
-  の構成で **Pi5 API の既存契約** (`POST { jpegBase64, modelId } -> { embedding, modelId }`) を受けられるようにした
-- embedding backend は `lmsysorg/sglang:latest` container 内で `openai/clip-vit-base-patch32` を使う。現時点では **GB10 + 当該 image の CUDA capability 警告を避けるため `EMBEDDING_DEVICE=cpu`** を既定とする
-- Pi5 `vault.yml` / `infrastructure/docker/.env` / `apps/api/.env` の `PHOTO_TOOL_EMBEDDING_URL` は **DGX `100.118.82.72`** へ更新済みで、Pi5 API コンテナ内の direct probe でも `**status=200` / `dim=512**` を確認した
-- DGX `/embed` 移管後は、既存 `photo_tool_similarity_gallery` が **Ubuntu 側 embedding 空間**のまま残るため、`**pnpm backfill:photo-tool-gallery:prod` の再実行を前提**とする
-- 移管後も `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0** だった
-
-したがって、**Ubuntu PC を残す理由は `/embed` 依存としては解消**した。残る確認点は、DGX embedding で再投入した gallery を使う運用観測のみである。
-
-### 2026-04-26 Ubuntu PC 停止後の最終確認
-
-- Ubuntu PC を**通常手順で停止**したあと、Pi5 / DGX 側で再確認した
-- 停止後の確認結果:
-  - `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**
-  - Pi5 の `LOCAL_LLM_BASE_URL` は `**http://100.118.82.72:38081`**
-  - Pi5 の `PHOTO_TOOL_EMBEDDING_URL` は `**http://100.118.82.72:38081/embed`**
-  - Pi5 から DGX への direct smoke で
-    - `POST /start` -> **200**
-    - `POST /v1/chat/completions` -> **200**
-    - `POST /embed` -> **200 / dim=512**
-    - `POST /stop` -> **200**
-  - 旧 Ubuntu endpoint `http://100.107.223.92:38081/healthz` は **timeout** し、停止状態を確認できた
-- また、DGX `/embed` へ切り替えた後の gallery 再投入 `pnpm backfill:photo-tool-gallery:prod` は `**loansSeen: 331, succeeded: 331, failed: 0`** で完了した
-
-したがって、**Ubuntu PC を停止した状態でも、本システム用 LocalLLM は DGX Spark 単独で正常動作している**。この時点で、Ubuntu PC の退役判断は成立したと扱ってよい。
-
-### 2026-04-26 DGX 再起動で見えた起動常駐の穴と修正
-
-- その後 DGX Spark 自体を再起動したところ、`llama-server` の on-demand 起動自体は問題なかったが、`**control-server.py` と `gateway-server.py` が自動復帰していない**ことを確認した
-- 症状:
-  - `./scripts/deploy/verify-phase12-real.sh` は通る一方、Pi5 からの LocalLLM 直 smoke では `**Connection refused`** が出た
-  - DGX 側では `127.0.0.1:38100` の embedding backend は listen していたが、`39090` と `38081` は不在だった
-- 原因:
-  - これまでの DGX 構成は **手動起動前提**で、`control-server.py` / `gateway-server.py` の**再起動時自動復帰**を持っていなかった
-  - DGX ユーザー `ubudgxkoushi` には `sudo` がなく、`loginctl enable-linger` も使っていないため、systemd 常駐化を前提にしない最小策が必要だった
-- 対処:
-  - `start-control-server.sh` と `start-gateway-server.sh` を追加し、token file を読んで PID 管理付きで常駐起動できるようにした
-  - DGX ユーザー `crontab` に
-    - `@reboot /srv/dgx/system-prod/bin/start-control-server.sh`
-    - `@reboot /srv/dgx/system-prod/bin/start-gateway-server.sh`
-    - `@reboot /srv/dgx/system-prod/bin/start-embedding-server.sh`
-    を登録した
-- 修正後確認:
-  - DGX 側で `39090` / `38081` / `38100` の listen を確認
-  - Pi5 -> DGX の `POST /start` -> `GET /v1/models` ready -> `POST /v1/chat/completions` -> `POST /embed` -> `POST /stop` は成功
-  - `./scripts/deploy/verify-phase12-real.sh` も再度 **PASS 43 / WARN 0 / FAIL 0**
-
-したがって、**現在の DGX 単独運用は復旧済み**であり、今後の再起動は `@reboot` 登録済みの起動ラッパーで吸収する方針とする。
-
-### 2026-04-26 DGX 再起動 2 回目で `@reboot` 実効確認
-
-- `@reboot` 登録後に、DGX Spark を**もう一度再起動**して確認した
-- 再起動後の DGX 側状態:
-  - `0.0.0.0:38081` (`gateway-server.py`) が listen
-  - `127.0.0.1:39090` (`control-server.py`) が listen
-  - `127.0.0.1:38100` (`embedding-server`) が listen
-  - `crontab -l` には
-    - `@reboot /srv/dgx/system-prod/bin/start-control-server.sh`
-    - `@reboot /srv/dgx/system-prod/bin/start-gateway-server.sh`
-    - `@reboot /srv/dgx/system-prod/bin/start-embedding-server.sh`
-    が残っていた
-- Pi5 -> DGX の再確認結果:
-  - `POST /start` -> **200**
-  - `GET /v1/models` は `**503 Loading model` を数回返した後に `200 ready`**
-  - `POST /v1/chat/completions` -> **200**
-  - `POST /embed` -> **200 / dim=512**
-  - `POST /stop` -> **200**
-- その後の `./scripts/deploy/verify-phase12-real.sh` も再度 **PASS 43 / WARN 0 / FAIL 0** だった
-
-したがって、`**@reboot` による自動復帰は実機で確認済み**であり、DGX Spark 単独運用は**再起動耐性まで含めて成立**したと扱ってよい。
+## backend 常駐と Blue/Green 差し替え
 
 ### systemd への移行（推奨・`@reboot` の代替）
 
@@ -682,19 +449,7 @@ capabilities に起停が無いターゲットへ `EXECUTE_TARGET_ACTION` した
 
 詳細は [`scripts/dgx-local-llm-system/README.md`](../../scripts/dgx-local-llm-system/README.md) の systemd 節を参照。
 
-### 本番既定 backend の判断ログ（2026-04-28）
-
-- **方針（ADR）**: リポジトリ上の **本番既定**は **`ACTIVE_LLM_BACKEND=green`**（`llama.cpp` + `mmproj` の `system-prod-primary`）を正とする（[ADR-20260428](../decisions/ADR-20260428-dgx-active-backend-prod-default.md)）。
-- **実機の確認**: **DGX 実機が green か blue かは設定次第**。ドキュメントより **`POST /start` の JSON `backend`** と **`GET /v1/models` の `root`**（例: `sakamakismile/Qwen3.6-27B-NVFP4`）を **正**とする。
-- **理由（方針で green を正とする要約）**: blue（`vLLM` + NVFP4）は疎通・VLM プローブまで到達済みだが、**cold start が ~12 分規模**になり得ること、**GPU/メモリ占有**、VLM/画像経路のトラブルシュートを、**SLA として一括で締める前に**材料として残したい。
-- **blue を本番方針の既定にする場合**: 上記を運用で受容した判断を **ADR** と本 Runbook に追記してから切り替える。
-- **Pi5 側の耐性**: `photo_label` 向けに、画像ロード/デコード・大きさ由来など **条件付き 400** に限り **JPEG の再エンコードで最大 1 回再試行**する実装を API に入れた（[`RoutedVisionCompletionAdapter`](../../apps/api/src/services/inference/adapters/routed-vision-completion.adapter.ts) / `vision-vlm-fallback.util.ts`）。**400 の根本原因を消すものではない**ため、DGX `docker logs` との併用が前提。
-
-### 当初運用方針との対応関係（要約）
-
-- **ホストを汚さない / 用途ごとにコンテナ**: 推論・埋め込み等の実体は **コンテナ**に置き、重みは **`/srv/dgx/shared-models` 等へ bind mount** する前提（ホストへの手作業 CUDA 導入は前提にしない）。
-- **データ混在防止**: `system-prod` は **ディレクトリ・`secrets`・Docker network** を用途別に分離する。ただし **GPU/CPU/統一メモリは物理共有**であり、別コンテナの負荷は性能面で相互に影響し得る（通信分離と同義ではない）。
-- **単一 alias・差し替え容易**: 外部は **`38081` + `system-prod-primary` を固定**し、モデル差し替えは DGX 側（green/blue 切替・起動コマンド）で完結させる。
+> 履歴は [移行履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#本番既定-backend-の判断ログ2026-04-28) へ移設した（「本番既定 backend の判断ログ（2026-04-28）」ほか）。
 
 ### Blue/Green backend での安全な差し替え
 
@@ -815,33 +570,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - DFlash を後から足す場合は、drafter mount と `--attention-backend flash_attn` / `--speculative-config ...` を追加する
 - `Qwen3.6-27B-NVFP4` は dense 27B なので、MoE の `Qwen3.6-35B-A3B` より速度期待は控えめに見る
 
-### 2026-04-26 DGX 上の不要物を整理
-
-- DGX Spark の本番稼働確認後、**その時点で未使用と確認できた試験残骸だけ**を削除した
-- 削除したもの:
-  - 未使用 Docker image
-    - `nvcr.io/nvidia/vllm:26.02-py3`
-    - `nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04`
-  - 試験用 GGUF
-    - `/srv/dgx/shared-models/llm/gguf/qwen2.5-0.5b-instruct-q4_k_m-00001-of-00001.gguf`
-  - 実験 build
-    - `/srv/dgx/lab-experiments/data/llama-cpp/llama.cpp/build`
-  - 旧 Hugging Face cache
-    - `/srv/dgx/shared-models/cache/huggingface/models--Qwen--Qwen2.5-1.5B-Instruct`
-    - `/srv/dgx/shared-models/cache/huggingface/models--Qwen--Qwen2.5-Math-1.5B-Instruct`
-- 削除後確認:
-  - DGX 空き容量は `738GB -> 764GB`
-  - `http://127.0.0.1:38081/healthz` は `ok`
-  - `http://127.0.0.1:38100/healthz` は `ok`
-  - `39090` は認証なし probe で `401` を返し、control server の生存を確認できた
-- 現時点で **削除しないもの**:
-  - `/srv/dgx/shared-models/llm/gguf/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf`
-  - `/srv/dgx/shared-models/llm/gguf/mmproj-F16.gguf`
-  - `/srv/dgx/system-prod/data/hf-cache/` 配下の `openai/clip-vit-base-patch32`
-  - 実行中 container `system-prod-embedding` が使う `lmsysorg/sglang:latest`
-  - 現行 `llama-server` 実行バイナリを含む `/srv/dgx/lab-experiments/data/llama-cpp/llama.cpp/build-sm121`
-
-したがって、**今回の不要物整理は本番サービスを維持したまま実施済み**であり、以後は「現行 runtime / embedding backend が参照していないこと」を確認できたものだけを削除対象にする。
+> 履歴は [移行履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#2026-04-26-dgx-上の不要物を整理) へ移設した（「2026-04-26 DGX 上の不要物を整理」ほか）。
 
 ## コンテナ隔離・ホスト汚染・他コンテナとの関係（2026-04-26 追補）
 
@@ -850,7 +579,6 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - **他コンテナと混信ゼロ**の意味では、**同一物理 DGX** では **GPU / 統一メモリ / CPU** を**共有**する。別コンテナの負荷や巨大モデル起動は、**リソース上は相互に影響**し得る。ネットワーク分離（別 bridge）や port 分離は**通信上の衝突**を避けるが、**演算リソースの排他**までは保証しない。
 - blue（vLLM）起動例で `--ipc host` を付与する場合、**IPC 名前空間がホストと共有**される。これは性能目的の**意図的なトレード**であり、**仮想マシン相当の厳密分離**ではない。必要なら Runbook / launcher の `BLUE_EXTRA_DOCKER_ARGS` を見直す。
 - **混信（データの混入）**の観点では、**Pi5 用 token / 業務データ path を他用途の Compose に mount しない**こと、**別 tailnet 入口**（ACL で Pi5 から `llm:38081` のみ、等）を維持することが主な防御策である。
-
 
 ## `/dev/shm` の残骸と週次掃除（2026-10-12）
 
@@ -948,32 +676,7 @@ WantedBy=timers.target
 - **Pi5 API が起動に失敗（Zod）**: `LOCAL_LLM_RUNTIME_READY_TIMEOUT_MS` を inventory で伸ばす場合、**`apps/api/src/config/env.ts` の `max` 以下**でないと API コンテナが起動しない。repo 側の上限拡大と**セット**で反映する。
 - **upstream `400` + 画像（VLM）**: **応答 body** で大まかに分類できる。**(1) 画像デコード失敗**系（例: `Failed to load image: cannot identify image file`）は **bytes / MIME / 破損**を疑う。**(2) コンテキスト超過**系（例: `Input length … exceeds … maximum context length`）は **プロンプト＋画像トークンが長すぎる**可能性。切り分け: payload（base64 / URL）の最小再現、**DGX 上**または **Pi5 から到達する同一 URL** で `probe-photo-label-vlm.py`、**`docker logs`**（vLLM `system-prod-trtllm` 等）。**到達経路**: 開発端末から DGX 入口 **直接 HTTP** は **timeout** になり得る → **Pi5 へ SSH** し **`127.0.0.1:38081`** へ **ローカルポートフォワード**（トンネル）で当てると切り分けしやすい。**観測（2026-04-28）**: Pi5 **保存済み**画像 **531 件**を一括プローブした例では **全件 200**（ストレージ母集団では 400 が出ない観測）。Pi5 側 `local-llm-proxy` の `reasoning` フォールバックは**本文空**対策であり、**400 自体**は解消しない。
 
-### 2026-04-27 Pi5 本番：repo 差分の「正規 + 手元同期」で収束した例
-
-- **状況**: Pi5 の checkout が `main` より古いと、`/opt/.../infrastructure/ansible` だけ `manage-app-configs` しても **生成 `.env` が意図どおりに上がらない**（Zod 上限や `api_local_llm_runtime_ready_timeout_ms` の反映遅れ）ことがある。
-- **手順（実施済み）**:
-  1. 開発端末のリポジトリから、少なくとも **`apps/api/src/`** と **Ansible**（`inventory.yml`、`playbooks/manage-app-configs.yml`、`templates/api.env.j2`、`templates/docker.env.j2`）を Pi5 の同パスへ `rsync` 等で同期
-  2. Pi5 上で `cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ansible-playbook -i inventory.yml playbooks/manage-app-configs.yml --limit raspberrypi5`（**PLAY RECAP `failed=0`** を確認）
-  3. `infrastructure/docker` で `docker compose -f docker-compose.server.yml build api` のあと `up -d --force-recreate api`（**実行中の API が新イメージ**になるよう再作成）
-- **検証**: 開発端末で `./scripts/deploy/verify-phase12-real.sh` → 実測 **`PASS 42 / WARN 1 / FAIL 0`**（WARN は `auto-tuning scheduler` ログ 0 件。スクリプトは `PUT auto-generate=200` を代替合格とする）。
-- **恒久化**: 上記の「手元同期」は**例外**。リモートを **`main` に追従**（`update-all-clients` 等）してから、同じ playbook だけで再現できる状態に戻すのが望ましい。
-
-### 2026-04-27 DGX 本番: `runtime_stop_policy` 同梱の `control-server.py` 反映と到達経路
-
-- **目的**: repo の `scripts/dgx-local-llm-system/`（`control-server.py` + **`runtime_stop_policy.py` 同梱必須**）を DGX の `/srv/dgx/system-prod/bin/` に揃え、`BLUE_LLM_RUNTIME_STOP_MODE` / 互換 `BLUE_LLM_RUNTIME_KEEP_WARM` による **blue `/stop` 方針**を本番で有効にする。
-- **Tailscale / SSH**: 既定 ACL では **Pi5 → DGX の `38081` は通るが `22` は通らない**ことが多い（`38081` のみ許可のため）。ホストへ直接配置する場合は **一時 grant**（`tag:server` → `tag:llm`, `tcp:22`）→ 作業後 **grants から除去**。[tailscale-policy.md](../security/tailscale-policy.md)・[KB-357](../knowledge-base/infrastructure/security.md)。
-- **到達経路の例**: `tag:admin`（Mac）から DGX tailnet IP への直 **HTTP は ACL で届かない**ことが多い → **Pi5 経由**の疎通確認、または **工場 LAN**（例: `192.168.128.156`）と **登録済み SSH 鍵**（LAN と tailnet で同じ公開鍵を `authorized_keys` に載せる必要あり）。
-- **疎通時の注意（blue / vLLM）**: cold start 中は **`127.0.0.1:38083`** および gateway 経由の **`/v1/models`** が **502** や **connection reset** になり得る。`docker logs`（`system-prod-trtllm` 等）で **重み load・`torch.compile`・autotune** 完了まで待つ。最小チャット検証では **`chat_template_kwargs: { "enable_thinking": false }`** を付けないと **`message.content` が空**になりやすい。
-- **gateway 既定注入（2026-05-24・私用 Pi5 Hermes）**: `ACTIVE_LLM_BACKEND=blue` のとき、`gateway-server.py` の **`inject_blue_chat_completions_defaults`** が **`POST /v1/chat/completions`** 本文に **`enable_thinking: false`** を付与（クライアントが省略した場合）。Hermes は `request_overrides` を毎ターン空で上書きするため **Pi5 config だけでは不足**し得る。**記録**: DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-discord-e2e-and-latency.md`。
-- **`keep_warm`**: `BLUE_LLM_RUNTIME_STOP_MODE=keep_warm`（または互換 `BLUE_LLM_RUNTIME_KEEP_WARM=true`）かつ active backend が blue のとき、**`POST /stop` 後も** trtllm コンテナと **`/v1/models` が生存**する挙動を確認できる（本番ではリソース方針に合わせ ADR のとおり）。
-
-### 2026-05-03 blue vLLM と ComfyUI の GPU 競合（502・inference-backend WARN）
-
-- **起きうること**: 同一 DGX 上で **私用 ComfyUI**（例: `dgx-private-comfyui`）が GPU メモリを占有していると、blue（`system-prod-trtllm`）が **`ValueError: Free memory on device cuda:0 … is less than desired GPU memory utilization`** で**即死**し、**gateway 先が listen しない** → Pi5 経由の **502**（本文に **`Connection refused`**）、管理 UI の **`inference-backend` WARN** が**更新周期どおりにポーリングしても直らない**（裏側が変わっていないため）。
-- **cold start との見分け**: ログに上記 **`ValueError`** が出るなら **GPU 不足が第一候補**。cold start のみなら **重みロード／compile／autotune** の進行ログが主で、**`nvidia-smi` に ComfyUI 等の大きな占有**が典型。
-- **復旧の例（業務優先時）**: ComfyUI コンテナを停止して VRAM を空け、**`POST /start`** をやり直す → cold start 経過後 **`127.0.0.1:38083` / gateway `/v1/models` が 200** まで確認。**私用で ComfyUI を再開する場合は blue と再衝突しうる**（プロファイル `private_ok` vs `business_first` の意味と整合）。
-- **切り分けのコツ**: Pi5 **API コンテナ内**に `curl` が無いことがある → **ホストの `python3`** で `.env` の **`LOCAL_LLM_SHARED_TOKEN`** を読み **`X-LLM-Token`** 付きで gateway を叩く、または **DGX SSH** で `docker logs` / `nvidia-smi` を見る。
-- **記録**: [KB-364](../knowledge-base/KB-364-dgx-blue-vllm-comfyui-gpu-contention.md)。
+> 履歴は [移行履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#2026-04-27-pi5-本番repo-差分の正規--手元同期で収束した例) へ移設した（「2026-04-27 Pi5 本番：repo 差分の「正規 + 手元同期」で収束した例」ほか）。
 
 ## 推奨ポートと役割
 
@@ -1001,30 +704,7 @@ Ubuntu 現行構成との互換を優先し、DGX 側でも次を基本にする
 - Pi5 側は alias を固定し、モデル差し替えは DGX 側だけで完結させる
 - その後、必要になった時点で `Qwen3.6` 系へ **1 対 1 で置き換える**
 
-## 段階切替の基本方針（暫定 fallback）
-
-### Phase A: text 系のみ DGX へ切替
-
-- `LOCAL_LLM`_* は DGX を向ける
-- `INFERENCE_DOCUMENT_SUMMARY`_* は DGX を向ける
-- `INFERENCE_PHOTO_LABEL`_* は Ubuntu を向ける
-
-これにより:
-
-- 管理コンソール Chat は DGX
-- 要領書 text 要約は DGX
-- 写真持出 VLM ラベルは Ubuntu
-
-という **ハイブリッド運用**が可能になる。
-
-### Phase B: 現行 `Qwen3.5-35B` を VLM 化して photo_label も DGX へ
-
-以下が確認できたら `photo_label` も DGX へ寄せる。
-
-- 画像付き `/v1/chat/completions` が通る
-- `photo_label` の代表ケースで空応答や 4xx/5xx がない
-- on-demand 起動直後でも readiness が安定する
-- 可能なら **同じ `system-prod-primary` alias** のまま text / image を両方処理できる
+> 履歴は [移行履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#段階切替の基本方針暫定-fallback) へ移設した（「段階切替の基本方針（暫定 fallback）」ほか）。
 
 ## DGX 側の推奨ディレクトリ
 
@@ -1065,7 +745,7 @@ Ubuntu 現行構成との互換を優先し、DGX 側でも次を基本にする
 
 ## Pi5 側の推奨 env（Phase A: 段階切替）
 
-この節は 2026-04 前半の段階切替（text 系を Spark、`photo_label` を Ubuntu fallback）の記録である。2026-04-26 以降の本番は `dgx_primary` 単一 provider に一本化済み（[§Spark 一本化反映](#2026-04-26-spark-一本化反映)）で、Ubuntu fallback は使わない。
+この節は 2026-04 前半の段階切替（text 系を Spark、`photo_label` を Ubuntu fallback）の記録である。2026-04-26 以降の本番は `dgx_primary` 単一 provider に一本化済み（[§Spark 一本化反映](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#2026-04-26-spark-一本化反映)）で、Ubuntu fallback は使わない。
 
 ### LocalLLM gateway（管理 Chat / status / on-demand）
 
@@ -1145,6 +825,8 @@ inference_photo_label_provider_id: "dgx_primary"
 inference_photo_label_model: "system-prod-primary"
 ```
 
+共有トークンの入れ替え: DGX の `/srv/dgx/system-prod/secrets/api-token`（`X-LLM-Token`）と Pi5 の `vault_api_local_llm_shared_token`（API の `LOCAL_LLM_SHARED_TOKEN`）は常に同じ値にする。新しい値は十分長い乱数（例 `openssl rand -hex 32`）で作り、平文をチャット・Issue に貼らない。Pi5 側は vault を更新し、標準経路で Pi5 だけ（`--limit raspberrypi5`）を反映して、`/api/system/local-llm/status` と chat で確認する。401 や `health.ok=false` のときは両方の値の一致を確認する。
+
 `blue`（`vLLM` + NVFP4）を on-demand で使う場合、cold start が 10 分超になるケースがある。`api_local_llm_runtime_ready_timeout_ms` は `900000` 以上を推奨する。
 
 さらに、検証フェーズでは DGX `control-server.env` で **blue の停止ポリシー**を指定できる（推奨: `BLUE_LLM_RUNTIME_STOP_MODE`）。`keep_warm` または `always_on` のとき、active backend が blue なら `/stop` は no-op 化し、**実ランタイムを落とさない**（`on_demand` では従来どおり `BLUE_LLM_RUNTIME_STOP_CMD` を実行）。**互換**: `BLUE_LLM_RUNTIME_STOP_MODE` 未使用時は `BLUE_LLM_RUNTIME_KEEP_WARM=true` で同等の `keep_warm` 相当。詳細: `scripts/dgx-local-llm-system/runtime_stop_policy.py`、ADR: [ADR-20260427-blue-llm-runtime-stop-policy.md](../decisions/ADR-20260427-blue-llm-runtime-stop-policy.md)。
@@ -1170,15 +852,7 @@ secret は少なくとも次を vault で持つ。
 
 2026-04-25 時点の実値に寄せるなら、`<dgx-tailnet-ip>` は `100.118.82.72`。
 
-## 2026-04-25 の実反映メモ
-
-標準の `update-all-clients.sh` は **未commit/未push 変更があると fail-fast** するため、この時点の Pi5 反映は **例外経路**で実施した。
-
-1. Pi5 の `infrastructure/docker/.env` を `.env.before-dgx-local-llm-<timestamp>` へ退避
-2. `LOCAL_LLM_`* と `INFERENCE_`* を DGX text / Ubuntu VLM の段階切替値へ更新
-3. `docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api`
-
-この例外経路は **rollback しやすい一方で Ansible 生成物とドリフトしうる**。恒久運用にする前に、repository 側の変更を commit / push し、Pi5 を Ansible 正規経路へ収束させる。
+> 履歴は [移行履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#2026-04-25-の実反映メモ) へ移設した（「2026-04-25 の実反映メモ」ほか）。
 
 ## 重要な注意
 
@@ -1189,48 +863,7 @@ secret は少なくとも次を vault で持つ。
 - Ubuntu fallback は **暫定運用**であり、Spark が `photo_label` まで担えると確認できたら、Ubuntu 前提の token / runtimeControl / rollback は縮退対象になる
 - rollback は、Pi5 の `LOCAL_LLM_BASE_URL` と `LOCAL_LLM_RUNTIME_CONTROL`_* を Ubuntu 側へ戻せばよい形にしておく
 
-## localhost smoke 実績（2026-04-25）
-
-DGX 上で次を配置し、tailnet 参加前に localhost だけで経路確認済み。
-
-- `127.0.0.1:39090`: `control-server.py`
-- `127.0.0.1:38082`: `llama-server`
-- `127.0.0.1:38081`: `gateway-server.py`
-
-確認済み項目:
-
-- `GET /healthz` → `ok`
-- `POST /start` → `{"ok": true, "action": "start"}`
-- `GET /v1/models` → `system-prod-primary`
-- `POST /v1/chat/completions` → `疎通確認 OK`
-- `POST /stop` → `{"ok": true, "action": "stop"}`
-
-chat 実測の一例:
-
-- `time_total=0.372736`
-- `prompt_tokens=28`
-- `completion_tokens=5`
-- `enable_thinking=false`
-
-## tailnet 実績（2026-04-25）
-
-- node 名: `dgx-local-llm-system`
-- tailnet IPv4: `100.118.82.72`
-- tag: `tag:llm`
-
-確認済み項目:
-
-- Pi5 (`tag:server`) → `GET /healthz` は `ok`
-- Pi5 (`tag:server`) → `POST /start` は `{"ok": true, "action": "start"}`
-- Pi5 (`tag:server`) → `GET /v1/models` は `system-prod-primary`
-- Pi5 (`tag:server`) → `POST /v1/chat/completions` は `Pi5 疎通 OK`
-- Pi5 (`tag:server`) → `POST /stop` は `{"ok": true, "action": "stop"}`
-
-補足:
-
-- 運用 Mac (`tag:admin`) からの直 curl は timeout だったが、これは [tailscale-policy.md](../security/tailscale-policy.md) の allowlist（`tag:server -> tag:llm: tcp:38081` のみ許可）どおりで想定内
-- 現在の tailnet 公開入口は Python の `gateway-server.py` を `0.0.0.0:38081` で待たせている
-- `POST /start` の直後は `v1/models` が未準備のことがあるので、Pi5 側では既存の readiness 待ちを前提にする
+> 履歴は [移行履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#localhost-smoke-実績2026-04-25) へ移設した（「localhost smoke 実績（2026-04-25）」ほか）。
 
 ## 最小確認
 
@@ -1339,22 +972,7 @@ NODE
 - `INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID` も `dgx_primary` になっていること
 - API ログで `component: inference` / `useCase: photo_label` の `providerId` を確認すること
 
-## rollback
-
-1. Pi5 の `LOCAL_LLM_BASE_URL`、`LOCAL_LLM_RUNTIME_CONTROL_`* を Ubuntu 側へ戻す
-2. `INFERENCE_DOCUMENT_SUMMARY_PROVIDER_ID` も Ubuntu 側へ戻す
-3. `INFERENCE_PHOTO_LABEL_PROVIDER_ID` は変更しないか、必要に応じて Ubuntu を維持する
-4. Pi5 `api` コンテナを再作成し、`/api/system/local-llm/status` と代表 chat を確認する
-5. 例外経路で反映していた場合は、Pi5 上の `.env.before-dgx-local-llm-<timestamp>` を `infrastructure/docker/.env` へ戻してから `api` を再作成する
-
-## 次にやること
-
-1. 本件はひとまずここで区切り、`photo_label` の初期判定精度を追加で追い込む作業は開始しない
-2. 通常運用の中で、人レビュー `GOOD` gallery を継続蓄積する
-3. DGX 一本化後の運用観測として、API ログの `component: inference` / `useCase: photo_label` と `component: localLlmRuntimeControl` を数回分 spot check する
-4. Ubuntu fallback の rollback 手順と token 依存を縮退し、退役判断の条件を明文化する
-5. `ねじゲージ` / `金属棒` / `てこ式ダイヤルゲージ` などの hard case は、困りごととして再浮上した時点で将来課題として再開する
-6. 最後に必要になった時点で、同じ alias / 同じ入口のまま `Qwen3.6` 系へ置き換えるかを判断する
+> 履歴は [移行履歴 archive](../archive/runbooks/dgx-system-prod-local-llm-history-2026-04-06.md#rollback) へ移設した（「rollback」ほか）。
 
 ## DGX 実機適用とロールバック（GB10 性能パラメータ · 2026-07-05）
 

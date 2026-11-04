@@ -50,7 +50,7 @@ update-frequency: medium
 ### Pi5 API（`infrastructure/docker/.env` / Ansible `docker.env.j2`）
 
 - `LOCAL_LLM_RUNTIME_MODE=on_demand`
-- `LOCAL_LLM_RUNTIME_CONTROL_START_URL` … **`LOCAL_LLM_BASE_URL` と同じ tailnet nginx** に載せた **`/start`** のフル URL（例: `http://100.107.223.92:38081/start`）。本文は JSON、ヘッダ `X-Runtime-Control-Token` 必須。
+- `LOCAL_LLM_RUNTIME_CONTROL_START_URL` … **`LOCAL_LLM_BASE_URL` と同じ tailnet nginx** に載せた **`/start`** のフル URL（例: `http://<ubuntu-tailscale-ip>:38081/start`）。本文は JSON、ヘッダ `X-Runtime-Control-Token` 必須。
 - `LOCAL_LLM_RUNTIME_CONTROL_STOP_URL` … 同上（stop）
 - `LOCAL_LLM_RUNTIME_CONTROL_TOKEN` … Ubuntu の `LLM_RUNTIME_CONTROL_TOKEN` と一致（未設定時は `LOCAL_LLM_SHARED_TOKEN` を流用可）
 - `LOCAL_LLM_RUNTIME_HEALTH_BASE_URL` … 省略時は `LOCAL_LLM_BASE_URL`（`/healthz` 待ちに使用）
@@ -68,16 +68,16 @@ update-frequency: medium
 [
   {
     "id": "ubuntu_vlm",
-    "baseUrl": "http://100.107.223.92:38081",
+    "baseUrl": "http://<ubuntu-tailscale-ip>:38081",
     "sharedToken": "<ubuntu-api-token>",
     "defaultModel": "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
     "timeoutMs": 60000,
     "runtimeControl": {
       "mode": "on_demand",
-      "startUrl": "http://100.107.223.92:38081/start",
-      "stopUrl": "http://100.107.223.92:38081/stop",
+      "startUrl": "http://<ubuntu-tailscale-ip>:38081/start",
+      "stopUrl": "http://<ubuntu-tailscale-ip>:38081/stop",
       "controlToken": "<ubuntu-runtime-control-token>",
-      "healthBaseUrl": "http://100.107.223.92:38081"
+      "healthBaseUrl": "http://<ubuntu-tailscale-ip>:38081"
     }
   }
 ]
@@ -105,7 +105,7 @@ update-frequency: medium
 ## 現在の構成（2026-03-28）
 
 - ノード名: `ubuntu-local-llm-system`
-- Tailscale IP: `100.107.223.92`
+- Tailscale IP: `<ubuntu-tailscale-ip>`
 - Tailscale タグ: `tag:llm`
 - ACL: `tag:server -> tag:llm: tcp:38081`（推論 `/v1/*`・埋め込み `/embed`・オンデマンド `/start` `/stop` を同じ tailnet nginx で受ける）
 - 外部入口: `nginx` が `38081`
@@ -191,7 +191,7 @@ sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker 
 - Pi5 API の返り値:
   - upstream の生JSONをそのまま返さず、`model` / `content` / `finishReason` / `usage` に正規化した DTO を返す
 - Pi5 API 側の環境変数:
-  - `LOCAL_LLM_BASE_URL=http://100.107.223.92:38081`
+  - `LOCAL_LLM_BASE_URL=http://<ubuntu-tailscale-ip>:38081`
   - `LOCAL_LLM_SHARED_TOKEN=<Ubuntu の api-token>`
   - `LOCAL_LLM_MODEL=Qwen_Qwen3.5-9B-Q4_K_M.gguf`
   - `LOCAL_LLM_TIMEOUT_MS=60000`
@@ -275,7 +275,7 @@ fetch(new URL('/healthz', b), { headers: h })
 
 ### 実機検証メモ（管理 UI 反映後・2026-03-28）
 
-次は **認証トークンなし**＋ **Tailscale 経由（例: `https://100.106.158.2`）** で実施した記録である（**秘密はログに貼らない**）。
+次は **認証トークンなし**＋ **Tailscale 経由（例: `https://<pi5-tailscale-ip>`）** で実施した記録である（**秘密はログに貼らない**）。
 
 | 確認 | コマンド例 | 期待 |
 |------|------------|------|
@@ -508,8 +508,8 @@ sudo -u localllm bash -lc 'cd /home/localllm/local-llm-system/compose && docker 
 
 ### Pi5 から `/start` `/stop` が timeout する
 
-- **症状**: Ubuntu ホスト側では `curl http://127.0.0.1:39091/start` が通るのに、Pi5 から `http://100.107.223.92:39091/start` が timeout する。
-- **原因**: `100.107.223.92` は Ubuntu ホストではなく **`local-llm-system` の `tailscale + nginx` sidecar** 側 IP。ホスト nginx の `39091` は tailnet へ露出しておらず、Pi5 は到達できない。
+- **症状**: Ubuntu ホスト側では `curl http://127.0.0.1:39091/start` が通るのに、Pi5 から `http://<ubuntu-tailscale-ip>:39091/start` が timeout する。
+- **原因**: `<ubuntu-tailscale-ip>` は Ubuntu ホストではなく **`local-llm-system` の `tailscale + nginx` sidecar** 側 IP。ホスト nginx の `39091` は tailnet へ露出しておらず、Pi5 は到達できない。
 - **対処**: Pi5 の `LOCAL_LLM_RUNTIME_CONTROL_START_URL` / `STOP_URL` は **`LOCAL_LLM_BASE_URL` と同じ `38081`** に合わせ、`local-llm-system` の nginx に `/start` `/stop` を追加する。
 
 ### `compose-nginx-1` が `unknown "llm_runtime_control_token" variable` で再起動ループする

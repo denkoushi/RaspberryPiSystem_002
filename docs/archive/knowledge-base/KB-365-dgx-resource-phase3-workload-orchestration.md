@@ -23,7 +23,7 @@ category: knowledge-base
 - **ブランチ**: **`feature/dgx-single-queue-stop-policy`**（**`main` マージ後は `origin/main` HEAD** をデプロイ引数の正本とする）。
 - **代表コミット**: **`23bce3bf`**（`fix(api): serialize DGX runtime control`）·**`4d658897`**（`test(api): align local-llm on_demand route expectations`・CI **run `25617712720` success**）。
 - **ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`・1 台**）。Pi4／Pi3 play **`skipping: no hosts matched`**（**Pi3 専用手順は対象外・未実施で正**）。
-- **標準**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **標準**: `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"`·`./scripts/update-all-clients.sh feature/dgx-single-queue-stop-policy infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
 - **Detach Run ID**: **`20260510-114418-29512`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 559s**·**`Git: changed`**·**Docker compose 再起動 `changed`**·**`Run prisma migrate deploy` / `prisma migrate status` `ok`**）。
 - **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 130s**・Tailscale **`100.106.158.2`**）。**`deploy-status`（Pi4×4）** PASS / **`auto-tuning scheduler` ログ** 件数=1。
 - **仕様確定（本番で有効化された挙動）**:
@@ -41,7 +41,7 @@ category: knowledge-base
 
 - **ブランチ（先行反映時）**: **`feat/stackchan-interactive-chat-api`**。**代表コミット（記録時点の tip）**: **`81fe4d2a`**（`feat(api): add StackChan chat API`）。**`main` squash マージ後**は **`origin/main` HEAD** をデプロイ引数の正本とする。
 - **ホスト**: **`raspberrypi5` のみ**（**`--limit raspberrypi5`**）。Pi4／Pi3 play **`skipping: no hosts matched`**。**Pi3**: playbook **未適用**（リソース僅少・**専用手順はこの変更では実行しない**）。
-- **標準**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh feat/stackchan-interactive-chat-api infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- **標準**: `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"`·`./scripts/update-all-clients.sh feat/stackchan-interactive-chat-api infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
 - **Detach Run ID**: **`20260510-134157-20990`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 650s**·**`Git: changed`**·**Docker compose 再起動 `changed`**·**`prisma migrate deploy` / `status` `ok`**）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 54s**・Tailscale **Pi5 `100.106.158.2`**）。
 - **実機（追加スモーク）**: **未認証** `POST https://100.106.158.2/api/system/stackchan/chat` → **HTTP `401`**（ルート登録と認可ゲートの確認。**運用 JWT はログに残さない**）。
@@ -71,7 +71,7 @@ category: knowledge-base
 - **ブランチ（先行反映時）**: **`feat/agent-container-control-target`**（実装 tip **`9fd37c0a`**）。**`main` squash（PR [#284](https://github.com/denkoushi/RaspberryPiSystem_002/pull/284)）**: **`14f105c1`**。**デプロイ ref の正本**は **`origin/main` HEAD**（本項記録時点では **`14f105c1`** と一致）。
 - **ホスト（順序固定・Ansible スコープ外は SSH のみ）**:
   - **① `raspberrypi5` のみ** — `./scripts/update-all-clients.sh … --limit raspberrypi5 --detach --follow`
-  - **② DGX（Tailscale 例 `100.118.82.72`・ユーザー `ubudgxkoushi`）** — **`scp`** で **`gateway-server.py`** を **`/srv/dgx/system-prod/bin/`** へ配置し **ゲートウェイ再起動**（詳細は [deployment.md §AgentContainer](../deployments/2026-05.md#dgx-agent-container-control-target-2026-05-10)）。
+  - **② DGX（Tailscale 例 `<dgx-tailscale-ip>`・ユーザー `<user>`）** — **`scp`** で **`gateway-server.py`** を **`/srv/dgx/system-prod/bin/`** へ配置し **ゲートウェイ再起動**（詳細は [deployment.md §AgentContainer](../deployments/2026-05.md#dgx-agent-container-control-target-2026-05-10)）。
   - **Pi4／Pi3** — 本変更の **`update-all-clients.sh`** では **`skipping: no hosts matched`**。**Pi3** は **個体への playbook 適用なし**（Phase12 で **services 疎通のみ**）。
 - **Detach Run ID（Pi5）**: **`20260510-125420-15123`**（**`PLAY RECAP` `ok=139` `changed=8` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 669s**·**`Git: changed`**·**Docker / api・web 再作成あり**·**`prisma migrate deploy` / `status` ok**）。
 - **実機検証**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（本記録 **約 57s**・Pi5 **`100.106.158.2`**）。
@@ -95,7 +95,7 @@ category: knowledge-base
 - **代表コミット**: **`7fe1ca15`**（DGX `control-server` + Pi5 planner/UI）·**`2d91d032`**（`stop_force` を公開契約から分離・CI **`26386720859` success**）·**gateway 転送**（本番窗口で `gateway-server.py` に **`/stop-force` プロキシ**を追加）。
 - **ホスト（順序固定）**:
   - **① `raspberrypi5` のみ** — `./scripts/update-all-clients.sh … --limit raspberrypi5 --detach --follow`
-  - **② DGX（`100.118.82.72` / `ubudgxkoushi`）** — **`control-server.py`** の **`scp` + PID ガード再起動** → 続けて **`gateway-server.py`**（**`/stop-force` 404 回避のため同窗口で必須**）
+  - **② DGX（`<dgx-tailscale-ip>` / `<user>`）** — **`control-server.py`** の **`scp` + PID ガード再起動** → 続けて **`gateway-server.py`**（**`/stop-force` 404 回避のため同窗口で必須**）
   - **Pi4／Pi3** — play **`skipping: no hosts matched`**（**Pi3 専用手順は未実施で正**）
 - **Detach Run ID（Pi5）**: **`20260525-162034-25035`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0` / `unreachable=0`**·リモート **`exit` `0`**·ローカル **`--follow` 約 938s**·**`Git: changed`**·**Docker compose 再起動 `changed`**）。
 - **実機**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（**約 68s**・Tailscale **`100.106.158.2`**）。
@@ -293,7 +293,7 @@ Ansible は `templates/api.env.j2` / `templates/docker.env.j2` で上記変数�
 - **DGX `control-server.py`**: `POST /stop-force` は **`read_active_model_state()` の `backend` を優先**（無ければ `ACTIVE_LLM_BACKEND`）。応答 JSON に **`backendSource`**（`model_profile_state` | `env_fallback`）を付与。
 - **確認（Mac / CI）**: API `dgx-resource.runtime-summary` テスト · Web KPI/runtime モデルテスト · `scripts/dgx-local-llm-system/tests/test_control_server.py`（state 優先 stop-force）。
 - **本番反映（2026-05-29 · Pi5→DGX 順次・各 1 台）**:
-  - **① Pi5 のみ** — `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` · `./scripts/update-all-clients.sh feat/dgx-runtime-state-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach `20260529-093340-9025`** · `PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート exit **`0`** · **`--follow` 約 865s**。Pi4/Pi3 は **`skipping: no hosts matched`**（**Pi3 専用手順不要**）。
+  - **① Pi5 のみ** — `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"` · `./scripts/update-all-clients.sh feat/dgx-runtime-state-alignment infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。**Detach `20260529-093340-9025`** · `PLAY RECAP`: **`ok=134` `changed=4` `failed=0` / `unreachable=0`** · リモート exit **`0`** · **`--follow` 約 865s**。Pi4/Pi3 は **`skipping: no hosts matched`**（**Pi3 専用手順不要**）。
   - **② DGX** — **`scp scripts/dgx-local-llm-system/control-server.py`** → **`/srv/dgx/system-prod/bin/control-server.py`** → **`control-server.pid` の PID を `kill` → `rm -f` PID ファイル → **`bash /srv/dgx/system-prod/bin/start-control-server.sh`**（**gateway は本差分で未更新** — 既存 gateway が `/stop-force` を転送済みである前提）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **33s** · Tailscale **`100.106.158.2`**）。
 - **実機（機能）**:
@@ -365,7 +365,7 @@ Ansible は `templates/api.env.j2` / `templates/docker.env.j2` で上記変数�
 - **ブランチ**: **`feat/dgx-business-model-selection`**（**`main` マージ後は `origin/main` HEAD** をデプロイ引数の正本とする）。
 - **代表コミット**: **`91be7dcf`**（`feat(dgx): select business return model profiles`）。
 - **CI**: **`26566270315`** — `lint-build-unit` / `e2e-smoke` / `e2e-tests` / `api-db-and-infra` **success** · `security-docker` **failure**（Caddy Trivy·本変更と無関係）。
-- **ホスト順序**: **① `raspberrypi5` のみ**（Ansible `--limit raspberrypi5`）→ **② DGX Spark**（**`ubudgxkoushi@100.118.82.72`**·**`scp` + PID 再起動**）。Pi4／Pi3 **no hosts matched**·**Pi3 専用手順未実施**。
+- **ホスト順序**: **① `raspberrypi5` のみ**（Ansible `--limit raspberrypi5`）→ **② DGX Spark**（**`<user>@<pi5-tailscale-ip>`**·**`scp` + PID 再起動**）。Pi4／Pi3 **no hosts matched**·**Pi3 専用手順未実施**。
 - **Pi5 Detach**: **`20260528-184011-18178`**（**`PLAY RECAP` `ok=134` `changed=4` `failed=0`**·リモート exit **`0`**·ローカル **`--follow` 約 1195s**）。
 - **DGX 配置（`/srv/dgx/system-prod/bin/`）**: `control-server.py`·`gateway-server.py`·`model_profiles.py`·`active_model_state.py`。**registry 例**: `business_qwen36_27b_nvfp4`·`business_qwen35_35b_gguf` の `manifest.json` を **`/srv/dgx/shared-models/registry/<id>/`** へ。
 - **DGX 再起動**: `control-server.pid` / `gateway-server.pid` の PID を **`kill`** → PID ファイル削除 → **`start-control-server.sh`** / **`start-gateway-server.sh`**。
@@ -509,7 +509,7 @@ Ansible は `templates/api.env.j2` / `templates/docker.env.j2` で上記変数�
 | 症状 | 典型原因 | 確認・対処 |
 | --- | --- | --- |
 | **UI が旧のまま** | Pi5 の `web` が旧コミット / SPA キャッシュ | Pi5 の deploy SHA とブラウザの **強制リロード**（[verification-checklist.md](../../guides/verification-checklist.md) §6.6.4） |
-| `update-all-clients.sh` の preflight で **`raspberrypi5 | UNREACHABLE! Permission denied (publickey)`** | **Pi5 自身の公開鍵が Pi5 の `authorized_keys` に無い**ため、Pi5→Pi5 self-SSH が失敗 | Pi5 で **`ssh -o BatchMode=yes denkon5sd02@100.106.158.2`** を確認し、必要なら **`~/.ssh/id_ed25519.pub`** を `authorized_keys` に追加 |
+| `update-all-clients.sh` の preflight で **`raspberrypi5 | UNREACHABLE! Permission denied (publickey)`** | **Pi5 自身の公開鍵が Pi5 の `authorized_keys` に無い**ため、Pi5→Pi5 self-SSH が失敗 | Pi5 で **`ssh -o BatchMode=yes <user>@<pi5-tailscale-ip>`** を確認し、必要なら **`~/.ssh/id_ed25519.pub`** を `authorized_keys` に追加 |
 | lock 取得で **`LOCKED: age=... timeout=2400s`** のまま進まない | preflight 失敗などで **`runner=bootstrap` / `runPid=null`** の lock が残存 | deploy artifact / 実行中プロセスが無いことを確認してから **lock を退避・削除**し再試行（詳細は [Ansible/デプロイ KB](../../knowledge-base/infrastructure/ansible-deployment.md)） |
 
 ## Phase 9（Orchestration Strict Ready）（API + Web）
