@@ -40,7 +40,7 @@ describe('transferItems', () => {
   it('places a single candidate with the fallback offset, preserving absolute limits and fields', async () => {
     const [result] = await transferItems(input());
     expect(result).toMatchObject({
-      status: 'PROPOSED', markerXRatio: 0.52, markerYRatio: 0.48,
+      status: 'PROPOSED', nominalValue: 10, lowerLimit: 9.5, upperLimit: 10.5, markerXRatio: 0.52, markerYRatio: 0.48,
       dimension: { text: '10', xRatio: 0.5, yRatio: 0.5, kind: 'len' },
       item: { sortOrder: 2, nominalValue: 10, lowerLimit: 9.5, upperLimit: 10.5, depthMode: 'MEASURED', valueKind: 'NUMERIC' }
     });
