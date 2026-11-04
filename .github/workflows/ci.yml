@@ -151,9 +151,10 @@ jobs:
       fail-fast: false
       matrix:
         # Every event runs three shards; api-coverage merges them and enforces thresholds.
+        # Build API runs on 2/3, the shard without the serial CPU-bound files (see vitest.config.ts).
         include:
-          - { shard: "1/3", shard_id: "1-of-3", build: true }
-          - { shard: "2/3", shard_id: "2-of-3", build: false }
+          - { shard: "1/3", shard_id: "1-of-3", build: false }
+          - { shard: "2/3", shard_id: "2-of-3", build: true }
           - { shard: "3/3", shard_id: "3-of-3", build: false }
     steps:
       - name: Checkout code
@@ -208,7 +209,7 @@ jobs:
           cd apps/api
           docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
           BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) \
-            pnpm test:coverage --shard=${{ matrix.shard }} --fileParallelism=true --maxWorkers=1 \
+            pnpm test:coverage --shard=${{ matrix.shard }} --fileParallelism=true --maxWorkers=4 \
               --reporter=default --reporter=blob \
               --outputFile.blob=vitest-blob/blob-${{ matrix.shard_id }}.json
         env:
@@ -216,6 +217,8 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/borrow_return
           WORK_INSTRUCTION_INTEGRATION: 'true'
           GRINDING_PLANNING_DUE_SCOPE_CI: '1'
+          # worker ごとに borrow_return_w<N> を複製し、DB と保存先を分けてファイル並列で実行する
+          API_TEST_PER_WORKER_DB: '1'
           JWT_ACCESS_SECRET: test-access-secret-1234567890
           JWT_REFRESH_SECRET: test-refresh-secret-1234567890
           CAMERA_TYPE: mock

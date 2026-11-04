@@ -157,6 +157,9 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("Run API tests (coverage shard)", api)
         self.assertIn("pnpm test:coverage --shard=${{ matrix.shard }}", api)
         self.assertIn("--reporter=blob", api)
+        # File parallelism is only safe because each worker gets its own cloned database.
+        self.assertIn("--fileParallelism=true --maxWorkers=4", api)
+        self.assertIn("API_TEST_PER_WORKER_DB: '1'", api)
         self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'false'", api)
         self.assertIn("if-no-files-found: error", api)
 
