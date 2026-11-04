@@ -4,7 +4,7 @@ import { prisma } from '../../../lib/prisma.js';
 import type { BackupConfig } from '../../backup/backup-config.js';
 import { collectGmailAttachments, type GmailApiClient } from '../../backup/gmail-api-client.js';
 import { resolveGmailApiClientFromBackupConfig } from '../../gmail/gmail-api-client.factory.js';
-import { D_SCHEDULE_MINUTES_GMAIL_SUBJECT } from '../../gmail/gmail-subject-reservation.policy.js';
+import { ASSEMBLY_PROCEDURE_GMAIL_SUBJECT, MACHINE_SIGNAL_GMAIL_SUBJECT, isWorkInstructionGmailSubject, isItemInventoryGmailSubject, isProcedureMaterialGmailSubject } from '../../gmail/gmail-subject-reservation.policy.js';
 import { getFileStorageRuntime } from '../../file-storage/file-storage-runtime.js';
 import { FileStorageAlreadyExistsError } from '../../file-storage/file-storage-errors.js';
 import { deliverDScheduleMinutesNotice } from '../../kiosk-inquiry/system-notice-sources.js';
@@ -55,7 +55,7 @@ export class DScheduleMinutesGmailIngestionService {
       const gmail = await this.deps.gmailFactory({ ...options.config, storage: { ...options.config.storage, provider: 'gmail' } }, { allowWait: options.allowWait });
       const fromEmail = options.config.storage.options?.gmail?.fromEmail ?? options.config.storage.options?.fromEmail;
       const label = (process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim();
-      const query = `subject:"${D_SCHEDULE_MINUTES_GMAIL_SUBJECT}" in:inbox is:unread -label:${label}${fromEmail ? ` from:${fromEmail}` : ''}`;
+      const query = `in:inbox is:unread -label:${label} filename:xlsx newer_than:60d${fromEmail ? ` from:${fromEmail}` : ''}`;
       const ids = await gmail.searchMessagesLimited(query, 10);
       const failures: string[] = [];
       const permanentFailures: string[] = [];
@@ -71,32 +71,33 @@ export class DScheduleMinutesGmailIngestionService {
       for (const { gmailMessageId, message } of candidates) {
         let permanentContentFailure = false;
         try {
+          const subject = message.payload?.headers?.find((header) => header.name.toLowerCase() === 'subject')?.value ?? '';
+          if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject)
+            || isProcedureMaterialGmailSubject(subject) || subject.includes(ASSEMBLY_PROCEDURE_GMAIL_SUBJECT)
+            || subject.includes(MACHINE_SIGNAL_GMAIL_SUBJECT)) continue;
           let run = await this.deps.db.productionScheduleDScheduleMinutesImportRun.findUnique({ where: { gmailMessageId } });
           if (run?.status !== 'SUCCESS') {
-            const subject = message.payload?.headers?.find((header) => header.name.toLowerCase() === 'subject')?.value ?? '';
-            // Gmail's search tokenization is broader than the required literal substring.
-            if (!subject.includes(D_SCHEDULE_MINUTES_GMAIL_SUBJECT)) {
-              await gmail.markAsRead(gmailMessageId);
-              continue;
-            }
-            const attachment = collectGmailAttachments(message).find((item) => /\.xlsx$/i.test(item.filename) && item.filename.includes('日程会議議事録'));
-            if (!attachment) {
-              permanentContentFailure = true;
-              throw new Error(`日程会議議事録を含む.xlsx添付がありません`);
-            }
-            const buffer = await gmail.getAttachment(gmailMessageId, attachment.attachmentId);
-            const originalFilePath = await this.deps.saveOriginal(buffer);
             const receivedAt = new Date(message.internalDateMs);
-            if (!Number.isFinite(receivedAt.getTime()) || message.internalDateMs <= 0) {
-              permanentContentFailure = true;
-              throw new Error(`メールの受信日時を取得できません`);
+            let applied = false;
+            for (const attachment of collectGmailAttachments(message).filter((item) => /\.xlsx$/i.test(item.filename))) {
+              const buffer = await gmail.getAttachment(gmailMessageId, attachment.attachmentId);
+              const result = await this.deps.parse({ buffer, filename: attachment.filename, receivedAt, subject });
+              if (!result.ok && ['MISSING_HEADERS', 'INVALID_XLSX'].includes(result.reason)) continue;
+              const originalFilePath = await this.deps.saveOriginal(buffer);
+              if (!Number.isFinite(receivedAt.getTime()) || message.internalDateMs <= 0) {
+                permanentContentFailure = true;
+                throw new Error(`メールの受信日時を取得できません`);
+              }
+              if (!result.ok) {
+                permanentContentFailure = true;
+                throw new Error(`D社日程会議議事録を読み取れません: ${result.reason}`);
+              }
+              run = await this.deps.apply({ result, metadata: { gmailMessageId, subject, filename: attachment.filename, receivedAt, originalFilePath } });
+              applied = true;
+              break;
             }
-            const result = await this.deps.parse({ buffer, filename: attachment.filename, receivedAt });
-            if (!result.ok) {
-              permanentContentFailure = true;
-              throw new Error(`D社日程会議議事録を読み取れません: ${result.reason}`);
-            }
-            run = await this.deps.apply({ result, metadata: { gmailMessageId, subject, filename: attachment.filename, receivedAt, originalFilePath } });
+            // No attachment had the minutes layout: leave the mail untouched for its owner.
+            if (!applied || !run) continue;
           }
           const warnings = run.warnings as DScheduleMinutesWarning[];
           await this.deps.notify(gmailMessageId, warnings);
