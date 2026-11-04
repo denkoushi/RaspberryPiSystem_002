@@ -39,7 +39,7 @@ update-frequency: medium
 ```yaml
 nfc_agent_api_base_url: "{{ api_base_url }}"
 nfc_agent_client_id: "raspi4-robodrill01-kiosk1"
-nfc_agent_client_secret: "client-key-raspi4-robodrill01-kiosk1"
+nfc_agent_client_secret: "<redacted>"
 ```
 
 ### 1.2 NFCエージェント .env のデプロイ
