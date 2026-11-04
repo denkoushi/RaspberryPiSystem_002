@@ -111,7 +111,7 @@ historical). Docs kept in place with a status note are not listed here.
 | `docs/guides/measuring-instruments-verification.md` | `docs/knowledge-base/KB-314-kiosk-loan-card-display-labels.md` | archive | Body moved to `docs/archive/guides/measuring-instruments-verification.md`. |
 | `docs/guides/measuring-instrument-loan-events-verification.md` | `docs/knowledge-base/KB-344-unified-loan-analytics.md` | archive | Body moved to `docs/archive/guides/measuring-instrument-loan-events-verification.md`. |
 | `docs/guides/slack-webhook-setup-step-by-step.md` | `docs/guides/slack-webhook-setup.md` | archive | Body moved to `docs/archive/guides/slack-webhook-setup-step-by-step.md`. Still-valid facts merged into the canonical doc first. |
-| `docs/guides/phase3-schedule-run-and-auto-backup-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3-schedule-run-and-auto-backup-test-results.md`. |
+| `docs/guides/phase3-schedule-run-and-auto-backup-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-schedule-run-and-auto-backup-test-results.md`. |
 | `docs/guides/ui-visibility-color-theme-deployment-results.md` | `docs/requirements/ui-visibility-color-theme.md` | archive | Body moved to `docs/archive/guides/ui-visibility-color-theme-deployment-results.md`. |
 | `docs/guides/phase3-authentication-clarification.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-authentication-clarification.md`. |
 | `docs/guides/phase3-browser-console-verification.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-browser-console-verification.md`. |
@@ -132,7 +132,6 @@ historical). Docs kept in place with a status note are not listed here.
 | `docs/guides/phase3-real-device-verification-status.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-real-device-verification-status.md`. |
 | `docs/guides/phase3-real-device-verification-steps.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-real-device-verification-steps.md`. |
 | `docs/guides/phase3-schedule-crud-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-schedule-crud-test-results.md`. |
-| `docs/guides/phase3-schedule-run-and-auto-backup-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-schedule-run-and-auto-backup-test-results.md`. |
 | `docs/guides/phase3-token-refresh-test-results.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-token-refresh-test-results.md`. |
 | `docs/guides/phase3-verification-checklist.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-verification-checklist.md`. |
 | `docs/guides/phase3-verification-clarification.md` | `docs/analysis/dropbox-csv-integration-status.md` | archive | Body moved to `docs/archive/guides/phase3/phase3-verification-clarification.md`. |
@@ -149,7 +148,6 @@ historical). Docs kept in place with a status note are not listed here.
 | `docs/guides/signage-layout-config-verification-results.md` | `docs/knowledge-base/infrastructure/signage.md` | archive | Body moved to `docs/archive/guides/signage-layout-config-verification-results.md`. |
 | `docs/guides/signage-test-plan.md` | `docs/guides/verification-checklist.md` | archive | Body moved to `docs/archive/guides/signage-test-plan.md`. |
 | `docs/guides/setup-clients-status-agent.md` | `docs/guides/client-initial-setup.md` | archive | Body moved to `docs/archive/guides/setup-clients-status-agent.md`. |
-| `docs/guides/ui-visibility-color-theme-deployment-results.md` | `docs/requirements/ui-visibility-color-theme.md` | archive | Body moved to `docs/archive/guides/ui-visibility-color-theme-deployment-results.md`. |
 | `docs/guides/ui-visibility-color-theme-remaining-tasks.md` | `docs/requirements/ui-visibility-color-theme.md` | archive | Body moved to `docs/archive/guides/ui-visibility-color-theme-remaining-tasks.md`. |
 | `docs/guides/ui-visibility-color-theme-real-device-verification.md` | `docs/requirements/ui-visibility-color-theme.md` | archive | Body moved to `docs/archive/guides/ui-visibility-color-theme-real-device-verification.md`. |
 | `docs/guides/stability-improvement-test.md` | `docs/plans/stability-improvement-plan.md` | archive | Body moved to `docs/archive/guides/stability-improvement-test.md`. |
