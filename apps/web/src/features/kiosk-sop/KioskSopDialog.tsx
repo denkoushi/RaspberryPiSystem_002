@@ -25,7 +25,6 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
   const [sheetIndex, setSheetIndex] = useState(initialIndex);
   const sheet = manual.sheets[sheetIndex] ?? manual.sheets[0];
   const [, setLoadedManualId] = useState<string>();
-  const [loadError, setLoadError] = useState<{ error: unknown }>();
   const sourceHtml = isOpen ? manual.peekSourceHtml() : undefined;
   const srcDoc = useMemo(
     () => (sourceHtml === undefined ? undefined : buildKioskSopSrcDoc(sourceHtml, sheet.id)),
@@ -35,9 +34,10 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
   useEffect(() => {
     if (!isOpen || sourceHtml !== undefined) return;
     let cancelled = false;
+    // A failed load keeps the spinner; the cached loader retries on the next open.
     manual.loadSourceHtml().then(
       () => { if (!cancelled) setLoadedManualId(manual.id); },
-      (error: unknown) => { if (!cancelled) setLoadError({ error }); }
+      () => undefined
     );
     return () => { cancelled = true; };
   }, [isOpen, manual, sourceHtml]);
@@ -63,9 +63,6 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [isOpen, onClose]);
-
-  // Same failure path as a kioskLazy route chunk: let the app error boundary recover.
-  if (isOpen && loadError) throw loadError.error;
 
   return (
     <Dialog
