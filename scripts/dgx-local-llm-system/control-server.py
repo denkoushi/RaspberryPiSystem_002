@@ -354,8 +354,8 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
                 request = urllib.request.Request(base + "/v1/chat/completions", data=json.dumps(body).encode(), headers={**headers, "Content-Type": "application/json"})
                 with urllib.request.urlopen(request, timeout=30) as response:
                     message = json.load(response)["choices"][0]["message"]
-                # DeepSeek can spend the short probe budget on reasoning_content alone.
-                if not any(isinstance(message.get(k), str) and message[k].strip() for k in ("content", "reasoning_content")):
+                # The short probe budget can be spent on reasoning alone (vLLM names it reasoning or reasoning_content).
+                if not any(isinstance(message.get(k), str) and message[k].strip() for k in ("content", "reasoning_content", "reasoning")):
                     raise ValueError("empty inference probe")
                 if profile.id == DEEPSEEK_PROFILE:
                     status = runtime_status(identity[2])
