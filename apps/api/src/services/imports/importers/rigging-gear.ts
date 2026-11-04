@@ -11,6 +11,19 @@ import { CsvRowMapper } from '../csv-row-mapper.js';
 
 const { RiggingStatus } = pkg;
 
+// 全角数字と桁区切りのカンマを取り除いてから数値として読む（例: '１,５００' → '1500'）。
+function normalizeNumericCell(val: string): string {
+  return val.normalize('NFKC').replace(/,/g, '').trim();
+}
+
+// 空欄は null、列自体が無いときは undefined（更新しない）のままにする。
+function blankToNull(val: string | null | undefined): string | null | undefined {
+  if (val === undefined) return undefined;
+  if (val === null) return null;
+  const trimmed = val.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
 // CSV用スキーマ（日付・数値は文字列として扱う）
 const riggingGearCsvSchema = z.object({
   name: z.string().min(1, '名称は必須です'),
@@ -19,8 +32,8 @@ const riggingGearCsvSchema = z.object({
     if (!val || val.trim() === '') return null;
     return val.trim();
   }),
-  storageLocation: z.string().optional().nullable(),
-  department: z.string().optional().nullable(),
+  storageLocation: z.string().optional().nullable().transform(blankToNull),
+  department: z.string().optional().nullable().transform(blankToNull),
   startedAt: z.string().optional().nullable().transform((val) => {
     if (!val || val.trim() === '') return null;
     const date = new Date(val);
@@ -28,27 +41,27 @@ const riggingGearCsvSchema = z.object({
   }),
   usableYears: z.string().optional().nullable().transform((val) => {
     if (!val || val.trim() === '') return null;
-    const num = parseInt(val, 10);
+    const num = parseInt(normalizeNumericCell(val), 10);
     return isNaN(num) ? null : num;
   }),
   maxLoadTon: z.string().optional().nullable().transform((val) => {
     if (!val || val.trim() === '') return null;
-    const num = parseFloat(val);
+    const num = parseFloat(normalizeNumericCell(val));
     return isNaN(num) ? null : num;
   }),
   lengthMm: z.string().optional().nullable().transform((val) => {
     if (!val || val.trim() === '') return null;
-    const num = parseInt(val, 10);
+    const num = parseInt(normalizeNumericCell(val), 10);
     return isNaN(num) ? null : num;
   }),
   widthMm: z.string().optional().nullable().transform((val) => {
     if (!val || val.trim() === '') return null;
-    const num = parseInt(val, 10);
+    const num = parseInt(normalizeNumericCell(val), 10);
     return isNaN(num) ? null : num;
   }),
   thicknessMm: z.string().optional().nullable().transform((val) => {
     if (!val || val.trim() === '') return null;
-    const num = parseInt(val, 10);
+    const num = parseInt(normalizeNumericCell(val), 10);
     return isNaN(num) ? null : num;
   }),
   status: z.string().optional().transform((val) => {
@@ -216,11 +229,14 @@ export class RiggingGearCsvImporter implements CsvImporter {
                 where: { rfidTagUid: tagUid }
               });
               if (existingTag && existingTag.riggingGearId !== existing.id) {
-                const errorMessage = `rfidTagUid="${tagUid}"は既に他の吊具（managementNumber: ${existing.managementNumber}）で使用されています。`;
+                const tagOwner = await tx.riggingGear.findUnique({
+                  where: { id: existingTag.riggingGearId }
+                });
+                const errorMessage = `rfidTagUid="${tagUid}"は既に他の吊具（managementNumber: ${tagOwner?.managementNumber || '不明'}）で使用されています。`;
                 logger?.error({
                   rfidTagUid: tagUid,
                   currentManagementNumber: row.managementNumber,
-                  existingManagementNumber: existing.managementNumber
+                  existingManagementNumber: tagOwner?.managementNumber
                 }, '[RiggingGearCsvImporter] rfidTagUidの重複エラー');
                 throw new ApiError(400, errorMessage);
               }

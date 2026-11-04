@@ -409,17 +409,25 @@ describe('replaceItemTag', () => {
     expect(tx.inventoryNfcTag.create).not.toHaveBeenCalled();
   });
 
-  it('refuses an unbound (released) ITEM tag with 409 and no usedBy details', async () => {
-    // NOTE: possible bug: bindCompartment reuses an ITEM tag released by item deletion
-    // (compartmentId null), but replaceItemTag treats any existing tag whose compartmentId
-    // differs from the target (including null) as "already used", so a released tag can
-    // never be attached through tag replacement.
+  it('reuses a released ITEM tag (no compartment) like bindCompartment does', async () => {
+    const { db, tx } = makeDb({ tags: [{ id: 't-free', uid: 'FREE', kind: 'ITEM', compartmentId: null, quantity: null }] });
+    tx.inventoryCompartment.findUnique.mockResolvedValueOnce({ id: 'comp-1', inventoryItemId: 'item-1', stockQuantity: 4, itemTag: { id: 't-old', uid: 'OLD' } });
+    const tag = await replaceItemTag(db as never, 'comp-1', 'FREE', { clientId: 'c1' });
+    expect(tx.inventoryNfcTag.update).toHaveBeenNthCalledWith(1, { where: { id: 't-old' }, data: { compartmentId: null } });
+    expect(tx.inventoryNfcTag.update).toHaveBeenNthCalledWith(2, { where: { id: 't-free' }, data: { kind: 'ITEM', compartmentId: 'comp-1' } });
+    expect(tx.inventoryNfcTag.create).not.toHaveBeenCalled();
+    expect(tag).toMatchObject({ id: 't-free', uid: 'FREE', kind: 'ITEM', compartmentId: 'comp-1' });
+    expect(tx.inventoryTransaction.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      action: 'TAG_REPLACEMENT', details: { previousUid: 'OLD', uid: 'FREE' },
+    }) });
+  });
+
+  it.each(['QUANTITY', 'RESTOCK'])('still refuses an unbound %s tag with 409', async (kind) => {
     const { db, tx } = makeDb();
     tx.inventoryCompartment.findUnique.mockResolvedValueOnce({ id: 'comp-1', inventoryItemId: 'item-1', stockQuantity: 4, itemTag: null });
-    tx.inventoryNfcTag.findUnique.mockResolvedValueOnce({ id: 't-free', uid: 'FREE', kind: 'ITEM', compartmentId: null, compartment: null });
-    const error = await replaceItemTag(db as never, 'comp-1', 'FREE', {}).catch((e: unknown) => e);
-    expect(error).toMatchObject({ statusCode: 409, message: 'このUIDは既に使用されています' });
-    expect((error as { details?: unknown }).details).toBeUndefined();
+    tx.inventoryNfcTag.findUnique.mockResolvedValueOnce({ id: 't-q', uid: 'Q', kind, compartmentId: null, compartment: null });
+    await expect(replaceItemTag(db as never, 'comp-1', 'Q', {})).rejects.toMatchObject({ statusCode: 409, message: 'このUIDは既に使用されています' });
     expect(tx.inventoryNfcTag.update).not.toHaveBeenCalled();
+    expect(tx.inventoryNfcTag.create).not.toHaveBeenCalled();
   });
 });

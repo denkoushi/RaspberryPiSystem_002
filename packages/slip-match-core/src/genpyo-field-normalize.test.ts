@@ -67,10 +67,19 @@ describe('parseManufacturingOrder10Extraction sources', () => {
     expect(extractManufacturingOrder10('X 3333333333 Y 4444444444')).toBe('3333333333');
   });
 
-  it('extracts the first 10 digits of a longer digit run', () => {
-    // NOTE: possible bug: no digit-boundary check, so an 11+ digit number yields its 10-digit prefix.
-    expect(extractManufacturingOrder10('伝票 12345678901')).toBe('1234567890');
-    expect(extractManufacturingOrder10('製造オーダ 12345678901')).toBe('1234567890');
+  it('does not take the 10-digit prefix of a longer digit run', () => {
+    expect(extractManufacturingOrder10('伝票 12345678901')).toBeNull();
+    expect(extractManufacturingOrder10('製造オーダ 12345678901')).toBeNull();
+    expect(extractManufacturingOrder10('製造オーダ\n12345678901')).toBeNull();
+    // A run of exactly 10 digits next to non-digit text is still extracted.
+    expect(extractManufacturingOrder10('製造オーダ No1234567890枝番')).toBe('1234567890');
+    expect(extractManufacturingOrder10('伝票 A1234567890B')).toBe('1234567890');
+  });
+
+  it('picks the standalone 10-digit run instead of a longer neighbouring number', () => {
+    expect(extractManufacturingOrder10('伝票 12345678901 / 9876543210')).toBe('9876543210');
+    // Whitespace between digit runs is collapsed first, so merged runs longer than 10 digits are rejected.
+    expect(extractManufacturingOrder10('12345678901 9876543210')).toBeNull();
   });
 });
 
@@ -106,11 +115,12 @@ describe('snapNativeSlip', () => {
     });
   });
 
-  it('keeps the raw first token as fseiban when snapping is ambiguous', () => {
+  it('normalizes the first token as fseiban when snapping is ambiguous, keeping fseibanRaw as read', () => {
     const result = snapNativeSlip([' be1n9320 '], '', ['BE1N9321', 'BE1N9327']);
     expect(result.fseibanMatch).toBe('ambiguous');
     expect(result.fseibanCandidates).toEqual(['BE1N9321', 'BE1N9327']);
-    expect(result.fseiban).toBe(' be1n9320 ');
+    expect(result.fseiban).toBe('BE1N9320');
+    expect(result.fseibanRaw).toBe(' be1n9320 ');
     expect(result.manufacturingOrder10).toBeNull();
     expect(result.ocrPreviewSafe).toBe('be1n9320');
   });

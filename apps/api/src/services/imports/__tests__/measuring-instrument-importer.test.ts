@@ -141,16 +141,17 @@ describe('MeasuringInstrumentCsvImporter.import', () => {
     expect(mocks.measuringInstrument.create).not.toHaveBeenCalled();
   });
 
-  it('rejects updating with a tag owned by another instrument', async () => {
-    mocks.measuringInstrument.findUnique.mockResolvedValue({ id: 'mi-1', managementNumber: 'MI-001', name: 'A', status: 'AVAILABLE' });
+  it('rejects updating with a tag owned by another instrument and names the tag owner', async () => {
+    mocks.measuringInstrument.findUnique
+      .mockResolvedValueOnce({ id: 'mi-1', managementNumber: 'MI-001', name: 'A', status: 'AVAILABLE' }) // record being updated
+      .mockResolvedValueOnce({ id: 'mi-other', managementNumber: 'MI-999' }); // tag owner
     mocks.measuringInstrumentTag.findUnique.mockResolvedValue({ measuringInstrumentId: 'mi-other', rfidTagUid: 'E2' });
     const error = await importer()
       .import([{ name: 'A', managementNumber: 'MI-001', rfidTagUid: 'E2', status: 'AVAILABLE', calibrationExpiryDate: null }], false)
       .catch((e: unknown) => e);
     expect((error as ApiError).statusCode).toBe(400);
-    // NOTE: possible bug: the message names the instrument being updated (MI-001), not the tag owner (mi-other),
-    // so operators are pointed at the wrong record.
-    expect((error as ApiError).message).toBe('rfidTagUid="E2"は既に他の計測機器（managementNumber: MI-001）で使用されています。');
+    expect(mocks.measuringInstrument.findUnique).toHaveBeenLastCalledWith({ where: { id: 'mi-other' } });
+    expect((error as ApiError).message).toBe('rfidTagUid="E2"は既に他の計測機器（managementNumber: MI-999）で使用されています。');
     expect(mocks.measuringInstrument.update).not.toHaveBeenCalled();
   });
 
@@ -174,7 +175,7 @@ describe('MeasuringInstrumentCsvImporter.import', () => {
     });
   });
 
-  it('reports an update when DB optional fields are null and the CSV omits them', async () => {
+  it('does not report an update when DB optional fields are null and the CSV omits them', async () => {
     mocks.measuringInstrument.findUnique.mockResolvedValue({
       id: 'mi-1', managementNumber: 'MI-001', name: 'A', storageLocation: null, department: null,
       measurementRange: null, calibrationExpiryDate: null, status: 'AVAILABLE',
@@ -183,16 +184,11 @@ describe('MeasuringInstrumentCsvImporter.import', () => {
       [{ name: 'A', managementNumber: 'MI-001', status: 'AVAILABLE', calibrationExpiryDate: null }],
       false,
     );
-    // NOTE: possible bug: `?? undefined` vs DB null is never Object.is-equal, so an identical re-import
-    // counts as updated and issues an update whose fields are all undefined (a no-op write in Prisma).
-    expect(summary.updated).toBe(1);
-    expect(mocks.measuringInstrument.update).toHaveBeenCalledWith({
-      where: { managementNumber: 'MI-001' },
-      data: { storageLocation: undefined, department: undefined, measurementRange: undefined, calibrationExpiryDate: undefined },
-    });
+    expect(summary.updated).toBe(0);
+    expect(mocks.measuringInstrument.update).not.toHaveBeenCalled();
   });
 
-  it('counts an unchanged calibration date as an update because Date objects are compared by identity', async () => {
+  it('does not count an unchanged calibration date as an update', async () => {
     mocks.measuringInstrument.findUnique.mockResolvedValue({
       id: 'mi-1', managementNumber: 'MI-001', name: 'A', calibrationExpiryDate: new Date('2026-03-31T00:00:00Z'), status: 'AVAILABLE',
     });
@@ -200,12 +196,22 @@ describe('MeasuringInstrumentCsvImporter.import', () => {
       [{ name: 'A', managementNumber: 'MI-001', status: 'AVAILABLE', calibrationExpiryDate: new Date('2026-03-31T00:00:00Z') }],
       false,
     );
-    // NOTE: possible bug: buildUpdateDiff uses Object.is, so equal dates always look changed
-    // and re-imports of identical CSVs inflate `updated` and issue no-op writes.
+    expect(summary.updated).toBe(0);
+    expect(mocks.measuringInstrument.update).not.toHaveBeenCalled();
+  });
+
+  it('updates only the calibration date when it actually changes', async () => {
+    mocks.measuringInstrument.findUnique.mockResolvedValue({
+      id: 'mi-1', managementNumber: 'MI-001', name: 'A', calibrationExpiryDate: new Date('2026-03-31T00:00:00Z'), status: 'AVAILABLE',
+    });
+    const summary = await importer().import(
+      [{ name: 'A', managementNumber: 'MI-001', status: 'AVAILABLE', calibrationExpiryDate: new Date('2027-03-31T00:00:00Z') }],
+      false,
+    );
     expect(summary.updated).toBe(1);
     expect(mocks.measuringInstrument.update).toHaveBeenCalledWith({
       where: { managementNumber: 'MI-001' },
-      data: { calibrationExpiryDate: new Date('2026-03-31T00:00:00Z') },
+      data: { calibrationExpiryDate: new Date('2027-03-31T00:00:00Z') },
     });
   });
 

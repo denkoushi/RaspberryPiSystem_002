@@ -16,11 +16,17 @@ describe('buildUpdateDiff', () => {
     expect(buildUpdateDiff({ id: 'x', name: 'A' }, { name: 'A' })).toEqual({ data: {}, hasChanges: false });
   });
 
-  it('treats null -> "" and null -> undefined as changes', () => {
-    const diff = buildUpdateDiff<Record<string, unknown>>({ a: null, b: null }, { a: '', b: undefined });
+  it('treats null -> "" as a change but skips undefined (Prisma means "leave as is")', () => {
+    const diff = buildUpdateDiff<Record<string, unknown>>({ a: null, b: null, c: 'x' }, { a: '', b: undefined, c: undefined });
     expect(diff.hasChanges).toBe(true);
-    expect(diff.data).toEqual({ a: '', b: undefined });
-    expect(Object.keys(diff.data)).toEqual(['a', 'b']);
+    expect(diff.data).toEqual({ a: '' });
+    expect(Object.keys(diff.data)).toEqual(['a']);
+  });
+
+  it('treats null and undefined on the existing side as the same empty value', () => {
+    expect(buildUpdateDiff<Record<string, unknown>>({ a: null }, { a: null }).hasChanges).toBe(false);
+    expect(buildUpdateDiff<Record<string, unknown>>({}, { a: null }).hasChanges).toBe(false);
+    expect(buildUpdateDiff<Record<string, unknown>>({ a: 'x' }, { a: null })).toEqual({ data: { a: null }, hasChanges: true });
   });
 
   it('treats an absent existing key as matching an explicit undefined', () => {
@@ -32,13 +38,14 @@ describe('buildUpdateDiff', () => {
     expect(buildUpdateDiff({ v: 0 }, { v: -0 }).hasChanges).toBe(true);
   });
 
-  it('compares Date values by identity, so equal timestamps still count as a change', () => {
+  it('compares Date values by timestamp, so re-importing the same date is not a change', () => {
     const existing = new Date('2026-01-01T00:00:00Z');
     expect(buildUpdateDiff({ d: existing }, { d: existing }).hasChanges).toBe(false);
-    // NOTE: possible bug: importers pass freshly parsed Date objects, so re-importing the same date is always a "change".
-    expect(buildUpdateDiff({ d: existing }, { d: new Date('2026-01-01T00:00:00Z') })).toEqual({
-      data: { d: new Date('2026-01-01T00:00:00Z') },
+    expect(buildUpdateDiff({ d: existing }, { d: new Date('2026-01-01T00:00:00Z') }).hasChanges).toBe(false);
+    expect(buildUpdateDiff({ d: existing }, { d: new Date('2026-01-01T00:00:00.001Z') })).toEqual({
+      data: { d: new Date('2026-01-01T00:00:00.001Z') },
       hasChanges: true,
     });
+    expect(buildUpdateDiff<Record<string, unknown>>({ d: null }, { d: existing })).toEqual({ data: { d: existing }, hasChanges: true });
   });
 });
