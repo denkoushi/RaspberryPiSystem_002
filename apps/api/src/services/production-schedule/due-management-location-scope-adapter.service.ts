@@ -4,6 +4,7 @@ import {
   getDueManagementSeibanDetail,
   listDueManagementSummaries,
   type DueManagementSeibanDetail,
+  type ListDueManagementSummariesOptions,
   type DueManagementSummaryItem
 } from './due-management-query.service.js';
 
@@ -52,10 +53,11 @@ export const toDueManagementScopeFromContext = (context: DueManagementScopeConte
 export const resolveDueManagementStorageLocationKey = (scope: DueManagementScope): string => scope.deviceScopeKey;
 
 export async function listDueManagementSummariesWithScope(
-  locationScope: DueManagementLocationScopeInput
+  locationScope: DueManagementLocationScopeInput,
+  options?: ListDueManagementSummariesOptions
 ): Promise<DueManagementSummaryItem[]> {
   const scope = resolveDueManagementLocationScope(locationScope);
-  return listDueManagementSummaries(resolveDueManagementStorageLocationKey(scope));
+  return listDueManagementSummaries(resolveDueManagementStorageLocationKey(scope), options);
 }
 
 export async function getDueManagementSeibanDetailWithScope(params: {

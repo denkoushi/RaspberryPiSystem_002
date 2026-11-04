@@ -24,14 +24,18 @@ export async function listEarliestEffectiveDueDateBySeiban(
       ? Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(targets)})`
       : Prisma.empty;
 
+  // RowNote は csvDashboardRowId で一意なので、LEFT JOIN + MIN と同値のスカラーサブクエリにする。
+  // JOIN だと勝者行の行数見積もりが外れたとき Nested Loop + Materialize（行数×メモ数）になり秒単位で遅くなる。
   const rows = await prisma.$queryRaw<EffectiveDueDateRow[]>(Prisma.sql`
     SELECT
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
-      MIN("n"."dueDate") AS "minDueDate"
+      MIN((
+        SELECT "n"."dueDate"
+        FROM "ProductionScheduleRowNote" AS "n"
+        WHERE "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+          AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      )) AS "minDueDate"
     FROM "CsvDashboardRow"
-    LEFT JOIN "ProductionScheduleRowNote" AS "n"
-      ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-      AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
       AND NULLIF(TRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') IS NOT NULL

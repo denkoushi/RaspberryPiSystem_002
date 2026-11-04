@@ -101,8 +101,13 @@ export async function listDueManagementTriage(params: {
       .map((value) => value.trim())
       .filter((value) => value.length > 0)
   );
-  const summaryRows = await listDueManagementSummariesWithScope(locationScope);
-  const effectiveDueDateMap = await listEarliestEffectiveDueDateBySeiban(summaryRows.map((row) => row.fseiban));
+  if (targetSet.size === 0) {
+    return { zones: { danger: [], caution: [], safe: [] } };
+  }
+  // 値はすべて製番単位で閉じているので、全製番を集計してから絞るのではなく対象製番だけを集計する。
+  const targetFseibans = Array.from(targetSet);
+  const summaryRows = await listDueManagementSummariesWithScope(locationScope, { fseibans: targetFseibans });
+  const effectiveDueDateMap = await listEarliestEffectiveDueDateBySeiban(targetFseibans);
   const filteredRows = summaryRows
     .filter((row) => targetSet.has(row.fseiban))
     .map((row) => ({

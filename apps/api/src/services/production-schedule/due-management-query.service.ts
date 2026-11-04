@@ -29,6 +29,18 @@ type SeibanSummaryRaw = {
   machineName: string | null;
 };
 
+/** GROUPING(FHINCD, FSIGENCD) が両方集約済み (= 0b11) の行が製番サマリ */
+const SEIBAN_SUMMARY_GROUPING_LEVEL = 3;
+
+type SeibanSummaryGroupedRaw = SeibanSummaryRaw & {
+  groupingLevel: number;
+  fhincd: string | null;
+  resourceCd: string | null;
+  openRowCount: bigint;
+};
+
+type SeibanCoverageGroupRaw = Pick<SeibanSummaryGroupedRaw, 'fseiban' | 'fhincd' | 'resourceCd' | 'openRowCount'>;
+
 type SeibanRowRaw = {
   id: string;
   fseiban: string;
@@ -102,10 +114,35 @@ const parseRequiredMinutes = (raw: string): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export async function listDueManagementSummaries(locationKey: string): Promise<DueManagementSummaryItem[]> {
-  const summaryRows = await prisma.$queryRaw<SeibanSummaryRaw[]>`
+export type ListDueManagementSummariesOptions = {
+  /**
+   * 指定時はこの製番（完全一致）だけを集計する。未指定なら全製番。
+   * 各値は製番単位で閉じているため、全件集計後に絞り込んだ結果と同じになる。
+   */
+  fseibans?: readonly string[];
+};
+
+export async function listDueManagementSummaries(
+  locationKey: string,
+  options: ListDueManagementSummariesOptions = {}
+): Promise<DueManagementSummaryItem[]> {
+  const scopedFseibans = options.fseibans ? Array.from(new Set(options.fseibans)) : null;
+  if (scopedFseibans && scopedFseibans.length === 0) {
+    return [];
+  }
+  const fseibanScopeFilter = scopedFseibans
+    ? Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') IN (${Prisma.join(scopedFseibans)})`
+    : Prisma.empty;
+
+  // 勝者行の走査は重いので1回にまとめる。
+  // GROUPING SETS の (FSEIBAN) 集合が製番サマリ、(FSEIBAN, FHINCD, FSIGENCD) 集合が実績カバレッジ用の
+  // 未完了行数（FPROGRESS <> '完了' は行単位の FILTER でカバレッジにだけ効かせる）。
+  const groupedRows = await prisma.$queryRaw<SeibanSummaryGroupedRaw[]>(Prisma.sql`
     SELECT
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
+      GROUPING(("CsvDashboardRow"."rowData"->>'FHINCD'), ("CsvDashboardRow"."rowData"->>'FSIGENCD'))::int AS "groupingLevel",
+      ("CsvDashboardRow"."rowData"->>'FHINCD') AS "fhincd",
+      ("CsvDashboardRow"."rowData"->>'FSIGENCD') AS "resourceCd",
       COUNT(DISTINCT ("CsvDashboardRow"."rowData"->>'FHINCD'))::bigint AS "partsCount",
       COUNT(*)::bigint AS "processCount",
       SUM(
@@ -122,14 +159,34 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
           )
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') IS NOT NULL
           AND ("CsvDashboardRow"."rowData"->>'FHINMEI') <> ''
-      ) AS "machineName"
+      ) AS "machineName",
+      COUNT(*) FILTER (
+        WHERE COALESCE("CsvDashboardRow"."rowData"->>'FPROGRESS', '') <> '完了'
+      )::bigint AS "openRowCount"
     FROM "CsvDashboardRow"
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
       AND NULLIF(TRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') IS NOT NULL
-    GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN')
+      ${fseibanScopeFilter}
+    GROUP BY GROUPING SETS (
+      (("CsvDashboardRow"."rowData"->>'FSEIBAN')),
+      (
+        ("CsvDashboardRow"."rowData"->>'FSEIBAN'),
+        ("CsvDashboardRow"."rowData"->>'FHINCD'),
+        ("CsvDashboardRow"."rowData"->>'FSIGENCD')
+      )
+    )
     ORDER BY ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC
-  `;
+  `);
+  const summaryRows: SeibanSummaryRaw[] = [];
+  const coverageRows: SeibanCoverageGroupRaw[] = [];
+  for (const row of groupedRows) {
+    if (row.groupingLevel === SEIBAN_SUMMARY_GROUPING_LEVEL) {
+      summaryRows.push(row);
+    } else if (Number(row.openRowCount) > 0) {
+      coverageRows.push(row);
+    }
+  }
 
   const supplementMachineNames = await findSupplementMachineNamesForMissing(
     summaryRows.map((row) => [row.fseiban, row.machineName] as const)
@@ -137,7 +194,8 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
 
   const dueDateRows = await prisma.productionScheduleSeibanDueDate.findMany({
     where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      ...(scopedFseibans ? { fseiban: { in: scopedFseibans } } : {})
     },
     select: {
       fseiban: true,
@@ -148,39 +206,28 @@ export async function listDueManagementSummaries(locationKey: string): Promise<D
 
   const actualSignalMap = new Map<string, { estimatedMinutes: number; coverageRatio: number }>();
   if (summaryRows.length > 0) {
-    const fseibanList = Prisma.join(summaryRows.map((row) => Prisma.sql`${row.fseiban}`));
-    const rows = await prisma.$queryRaw<
-      Array<{ fseiban: string; fhincd: string | null; resourceCd: string | null }>
-    >(Prisma.sql`
-      SELECT
-        "rowData"->>'FSEIBAN' AS "fseiban",
-        "rowData"->>'FHINCD' AS "fhincd",
-        "rowData"->>'FSIGENCD' AS "resourceCd"
-      FROM "CsvDashboardRow"
-      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-        AND "rowData"->>'FSEIBAN' IN (${fseibanList})
-        AND COALESCE("rowData"->>'FPROGRESS', '') <> '完了'
-    `);
     const actualHoursReadContext = await loadActualHoursReadContext({
       locationKey,
-      resourceCds: rows.map((row) => row.resourceCd?.trim() ?? '').filter((resourceCd) => resourceCd.length > 0)
+      resourceCds: coverageRows
+        .map((row) => row.resourceCd?.trim() ?? '')
+        .filter((resourceCd) => resourceCd.length > 0)
     });
     const aggregateMap = new Map<string, { totalRows: number; matchedRows: number }>();
-    for (const row of rows) {
+    for (const row of coverageRows) {
       const fseiban = row.fseiban?.trim();
       if (!fseiban) continue;
       const current = aggregateMap.get(fseiban) ?? {
         totalRows: 0,
         matchedRows: 0
       };
-      current.totalRows += 1;
+      const openRowCount = Number(row.openRowCount);
+      current.totalRows += openRowCount;
       const fhincd = row.fhincd?.trim() ?? '';
       const resourceCd = row.resourceCd?.trim() ?? '';
       if (fhincd && resourceCd) {
         const resolved = actualHoursReadContext.resolver.resolve({ fhincd, resourceCd });
         if (resolved.perPieceMinutes !== null) {
-          current.matchedRows += 1;
+          current.matchedRows += openRowCount;
         }
       }
       aggregateMap.set(fseiban, current);
