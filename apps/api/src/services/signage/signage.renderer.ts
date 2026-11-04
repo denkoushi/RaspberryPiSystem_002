@@ -186,10 +186,14 @@ export class SignageRenderer {
       logger.info({ location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename }, 'Legacy global signage image saved');
     } else {
       let clientKeysRendered = 0;
+      // Many devices usually receive the same payload, so render each distinct
+      // payload once per cycle. Failed renders are not kept, which lets the next
+      // device with the same payload retry independently as before.
+      const renderedByContent = new Map<string, Promise<Buffer>>();
       for (const clientKey of clientKeys) {
         try {
           const content = await this.signageService.getContent({ clientKey });
-          const buffer = await this.renderContent(content);
+          const buffer = await this.renderContentOncePerCycle(content, renderedByContent);
           const result = await SignageRenderStorage.saveRenderedImageForClient(buffer, clientKey);
           lastFilename = result.filename;
           clientKeysRendered += 1;
@@ -223,6 +227,27 @@ export class SignageRenderer {
       filename: lastFilename,
       clientKeysRendered: clientKeys.length,
     };
+  }
+
+  private async renderContentOncePerCycle(
+    content: SignageContentResponse,
+    renderedByContent: Map<string, Promise<Buffer>>,
+  ): Promise<Buffer> {
+    const key = JSON.stringify(content);
+    const cached = renderedByContent.get(key);
+    if (cached) {
+      return await cached;
+    }
+    const pending = this.renderContent(content);
+    renderedByContent.set(key, pending);
+    try {
+      return await pending;
+    } catch (error) {
+      if (renderedByContent.get(key) === pending) {
+        renderedByContent.delete(key);
+      }
+      throw error;
+    }
   }
 
   /**
