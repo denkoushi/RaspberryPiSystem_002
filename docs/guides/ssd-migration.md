@@ -10,7 +10,7 @@ update-frequency: medium
 
 # SDカードからSSDへの移行手順
 
-最終更新: 2026-06-27（Private Pi5 Hermes preflight checklist 追記）
+最終更新: 2026-11-04（再構築手順を復旧Runbookへの参照に置換）
 
 ## 概要
 
@@ -105,153 +105,15 @@ SSDが `/dev/sda` または `/dev/nvme0n1` として表示されることを確�
 2. **SSDから起動するように設定**
    - Raspberry Pi 5のブートローダーを更新（必要に応じて）
 
-### ステップ3: システムのセットアップ
+### ステップ3〜9: システムの再構築とデータの復元
 
-1. **SSDから起動してSSH接続**
+以前のこの節の手動手順（Docker/Node/Poetryの手動導入、`.env.example` のコピー、ホストからの `docker compose up -d db` と `pnpm prisma migrate deploy`、`docker-compose.server.yml` での全コンテナ起動）は、現行構成では成り立たない。DBの起動には Ansible が配置する `POSTGRES_SUPERUSER_PASSWORD_FILE` が必須で、DBの5432もホストへ公開されていない。API/Webは標準releaseが bluegreen project として起動する。
 
-```bash
-# MacからSSH接続
-ssh denkon5sd02@<raspberry-pi-5-ip>
-```
+SSDから起動した後の再構築とデータ復元は、次の正本に従う。
 
-2. **システムの更新**
-
-```bash
-sudo apt update
-sudo apt upgrade -y
-```
-
-3. **必要なパッケージのインストール**
-
-```bash
-# DockerとDocker Composeのインストール
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-
-# Gitのインストール
-sudo apt install -y git
-
-# Node.jsとpnpmのセットアップ
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-sudo apt install -y nodejs
-sudo npm install -g pnpm@12.16.1
-
-# PythonとPoetryのインストール（NFCエージェント用）
-sudo apt install -y python3 python3-pip
-curl -sSL https://install.python-poetry.org | python3 -
-```
-
-4. **ログアウトして再ログイン**（Dockerグループの変更を反映）
-
-```bash
-exit
-# 再度SSH接続
-```
-
-### ステップ4: リポジトリのクローン
-
-```bash
-# リポジトリをクローン
-cd /opt
-sudo git clone https://github.com/denkoushi/RaspberryPiSystem_002.git
-sudo chown -R $USER:$USER RaspberryPiSystem_002
-cd RaspberryPiSystem_002
-```
-
-### ステップ5: 環境変数ファイルの設定
-
-```bash
-# API環境変数ファイルの作成
-cp apps/api/.env.example apps/api/.env
-nano apps/api/.env
-# 必要な値を設定（JWT_SECRET、DATABASE_URL等）
-
-# Web環境変数ファイルの作成（必要に応じて）
-cp apps/web/.env.example apps/web/.env
-nano apps/web/.env
-# 必要な値を設定
-
-# NFCエージェント環境変数ファイルの作成（必要に応じて）
-cp clients/nfc-agent/.env.example clients/nfc-agent/.env
-nano clients/nfc-agent/.env
-# 必要な値を設定
-```
-
-**または、バックアップから環境変数ファイルを復元：**
-
-```bash
-# バックアップディレクトリを作成
-mkdir -p /opt/backups
-
-# バックアップファイルをSDカードからコピー（または別の方法で転送）
-# 例: SDカードがまだマウントされている場合
-# sudo mount /dev/mmcblk0p2 /mnt
-# cp /mnt/opt/backups/api_env_YYYYMMDD_HHMMSS.env /opt/backups/
-# sudo umount /mnt
-
-# 環境変数ファイルを復元
-cp /opt/backups/api_env_YYYYMMDD_HHMMSS.env apps/api/.env
-```
-
-### ステップ6: 依存関係のインストール
-
-```bash
-# package.json で指定された pnpm のインストール
-npm install -g "$(node -p "require('./package.json').packageManager")"
-
-# 依存関係のインストール
-pnpm install
-
-# NFCエージェントの依存関係のインストール
-cd clients/nfc-agent
-poetry install
-cd ../..
-```
-
-### ステップ7: データベースのセットアップ
-
-```bash
-# Docker Composeでデータベースを起動
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d db
-
-# データベースが起動するまで待機
-sleep 10
-
-# Prismaマイグレーションの実行
-cd apps/api
-pnpm prisma migrate deploy
-```
-
-### ステップ8: データのリストア
-
-```bash
-# バックアップファイルをSSDにコピー（SDカードから、または別の方法で転送）
-# 例: SDカードがまだマウントされている場合
-# sudo mount /dev/mmcblk0p2 /mnt
-# cp /mnt/opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz /opt/backups/
-# cp /mnt/opt/backups/photos_backup_YYYYMMDD_HHMMSS.tar.gz /opt/backups/
-# sudo umount /mnt
-
-# データベースのリストア
-cd /opt/RaspberryPiSystem_002
-./scripts/server/restore.sh /opt/backups/db_backup_YYYYMMDD_HHMMSS.sql.gz
-# プロンプトで "yes" と入力
-
-# 写真ディレクトリのリストア
-mkdir -p storage/photos storage/thumbnails
-tar -xzf /opt/backups/photos_backup_YYYYMMDD_HHMMSS.tar.gz -C storage/
-```
-
-### ステップ9: Dockerコンテナの起動
-
-```bash
-# すべてのコンテナを起動
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d
-
-# コンテナの状態を確認
-docker compose -f infrastructure/docker/docker-compose.server.yml ps
-```
+- [Google Drive 全損復旧手順](../runbooks/google-drive-disaster-recovery.md#total-loss-recovery-procedure)（OS・Ansible前提、同じSHAとrelease設定の適用、隔離復元確認後のDB・ファイル復元）
+- [Pi5 復旧訓練 Runbook](../runbooks/pi5-restore-drill.md)（同じ手順を訓練機で確認する場合）
+- アプリの更新・反映は [デプロイ・クイックスタート](./quick-start-deployment.md) の標準経路だけを使う
 
 ### ステップ10: 動作確認
 
@@ -287,39 +149,21 @@ sudo dmesg | tail -20
 sudo lsblk | grep nvme
 ```
 
-### データベースのリストアが失敗する場合
+### データベースのリストアやコンテナ起動が失敗する場合
 
 ```bash
-# データベースコンテナのログを確認
+# データベースコンテナのログを確認（読み取り専用）
 docker compose -f infrastructure/docker/docker-compose.server.yml logs db
 
-# データベースを再作成
-docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
-  psql -U postgres -c "DROP DATABASE IF EXISTS borrow_return;"
-docker compose -f infrastructure/docker/docker-compose.server.yml exec db \
-  psql -U postgres -c "CREATE DATABASE borrow_return;"
+# API/Web/gateway の状態を確認（読み取り専用）
+docker ps -a --format '{{.Names}}\t{{.Status}}'
 ```
 
-### Dockerコンテナが起動しない場合
-
-```bash
-# コンテナのログを確認
-docker compose -f infrastructure/docker/docker-compose.server.yml logs
-
-# コンテナを再ビルド
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build
-```
+DBの再作成やコンテナの手動再ビルドは行わない。隔離ディレクトリを残したまま [全損復旧手順](../runbooks/google-drive-disaster-recovery.md#total-loss-recovery-procedure) の診断へ戻り、標準releaseの失敗は [デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md) に従う。
 
 ## 再起動後の手順
 
-開発中は手動でコンテナを起動することを推奨します（問題発生時の原因特定が容易なため）。
-
-```bash
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d
-```
-
-本番環境では、systemdサービスとして自動起動を設定することを推奨します。
+コンテナは restart policy により自動で起動する。手動で `docker compose up -d` しない。再起動後は「ステップ10: 動作確認」の health と `docker ps` で状態を確認する。
 
 ## 移行後の確認事項
 

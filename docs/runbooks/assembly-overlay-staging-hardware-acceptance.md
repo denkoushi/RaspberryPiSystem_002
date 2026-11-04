@@ -16,7 +16,7 @@ related_docs:
 
 このRunbookは、組立手順書（`AssemblyProcedureDocument`）の編集・公開と、公開済み手順書のキオスク表示について、Pi4/Pi5固有の性能を任意の実機受入で確認するための正本である。Mac/Docker、実文書、実PostgreSQL、Playwright、SOPによる一次受入は完了済みであり、専用端末の新規調達は要求しない。実機受入を行える場合だけ、専用stagingまたは通常導入時の承認済みcanaryで本書を使う。
 
-> **今回の作業では実行禁止:** deploy、rollback、SSH、Docker操作、DB操作、実機への接続、productionへの接続は行わない。今回実施できるのは、ローカルのinventory境界・構文・契約検証と、この手順書の整備だけである。
+> **実行ゲート:** deploy、rollback、SSH、Docker操作、DB操作、実機への接続、productionへの接続は、別途承認された場合のみ実行する。作成時の作業範囲は末尾の [履歴](#履歴) を参照。
 
 ## 0. 境界と前提
 
@@ -118,10 +118,10 @@ plan JSONの次を、CI artifact manifestと二人以上の承認者が照合す
 | rollback | `release_pi5` / `release_kiosk` のrole内rescue rollbackとhealth確認がplan/CI証跡にある |
 | approval | operator、approver、plan hash、SHA、artifact digest、target、時刻を記録 |
 
-現状の `staging_deploy_enabled: false`、placeholder host、未解決private varsのままplanを通そうとしない。別途承認された場合の実行コマンドは次の形だが、**今回の作業では実行しない**。
+現状の `staging_deploy_enabled: false`、placeholder host、未解決private varsのままplanを通そうとしない。別途承認された場合の実行コマンドは次の形で、**承認前には実行しない**。
 
 ```bash
-# 承認後の別作業でのみ実行。今回禁止。
+# 別途承認された場合のみ実行する。
 scripts/update-all-clients.sh <approved-branch> "$STAGING_INVENTORY" \
   --limit "$STAGING_LIMIT" --detach
 
@@ -527,7 +527,7 @@ awk '/^VmRSS:|^VmHWM:/{print}' "/proc/${API_PID}/status"
 受入後にstagingを直前のreleaseへ戻す必要がある場合も、手動でslot、file、container、DBを戻さない。対象を直前の承認済みSHAへ固定し、canonical wrapperで新しいread-only planを作ってから、別の明示承認を得て限定実行する。既存release中の異常は `release_pi5` / `release_kiosk` のrescue rollbackが先に自動実行され、そのrunの `--status` とrole結果を一次証拠にする。
 
 ```bash
-# 受入終了後にrollbackが必要な場合の承認前plan。今回の作業では実行しない。
+# 受入終了後にrollbackが必要な場合の承認前plan。
 scripts/update-all-clients.sh <approved-previous-branch> "$STAGING_INVENTORY" \
   --print-plan --limit "$STAGING_LIMIT" \
   | tee "$EVIDENCE_DIR/post-acceptance-rollback-plan.json"
@@ -581,4 +581,8 @@ PERF_CLIENT_KEY="$STAGING_CLIENT_KEY" \
 node scripts/perf/measure-kiosk-documents-api.mjs "$EVIDENCE_DIR/kiosk-documents-api.json"
 ```
 
-今回の作業ではstaging URLがなく、上記fixture/seed/実機計測は未実行である。これは専用端末の調達要求や一次受入の失敗ではなく、実機固有性能だけの繰越項目である。通常導入時の承認済みcanaryまたは既存の専用stagingで実行する際は、readonly表示から開始し、temporary Docker、DB、asset directoryを専用namespaceで作成して、終了時に同じrun IDのcleanup receiptを残す。
+2026-08-22時点ではstaging URLがなく、上記fixture/seed/実機計測は未実行である。これは専用端末の調達要求や一次受入の失敗ではなく、実機固有性能だけの繰越項目である。通常導入時の承認済みcanaryまたは既存の専用stagingで実行する際は、readonly表示から開始し、temporary Docker、DB、asset directoryを専用namespaceで作成して、終了時に同じrun IDのcleanup receiptを残す。
+
+## 履歴
+
+- 2026-08-22（作成時）: 作成作業では deploy、rollback、SSH、Docker操作、DB操作、実機・productionへの接続を行わず、ローカルのinventory境界・構文・契約検証と、この手順書の整備だけを実施した。

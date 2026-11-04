@@ -96,7 +96,7 @@
   ```bash
   TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
     -H 'Content-Type: application/json' \
-    -d '{"username":"admin","password":"admin1234"}' | \
+    -d '{"username":"admin","password":"<password>"}' | \
     python3 -c 'import sys, json; d=json.load(sys.stdin); print(d.get("accessToken", ""))')
   ```
 - [ ] 認証URLを取得

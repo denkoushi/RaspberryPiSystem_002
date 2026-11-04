@@ -28,7 +28,7 @@ category: knowledge-base
 - **手順の正**: [deployment.md](../../guides/deployment.md)
 - **対象ホスト（順次・1 台ずつ）**: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01` → `raspi4-fjv60-80` → `raspi4-kensaku-stonebase01` → **`raspberrypi3`（最後・単独・Pi3 リソース制約に従う）**
 - **コマンド例**:
-  - `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`
+  - `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"`
   - `./scripts/update-all-clients.sh feat/ocr-vlm-boundary-refactor infrastructure/ansible/inventory.yml --limit "<host>" --detach --follow`
 - **Detach Run ID（Pi5 上のログ接頭辞・2026-04-11 実施）**:
   - Pi5: `ansible-update-20260411-155343-23597`

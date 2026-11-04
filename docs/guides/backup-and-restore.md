@@ -10,6 +10,8 @@ update-frequency: medium
 
 # バックアップ・リストア手順
 
+> 役割: 本書はバックアップ全体方針・責務分担・リストア手順の正本です。`backup.json` の設定仕様と、Dropbox対象の現行方針（2026-09-30: 秘密情報はDropbox対象外）は [バックアップ設定ガイド](./backup-configuration.md#pi5本番の現在方針2026-09-30) を正本とします。
+
 最終更新: 2026-08-20（DropboxとGoogle Driveの責務分担、Pi4資格情報の扱い、業務Pi5全損DRを反映）
 
 ## 概要
@@ -18,10 +20,10 @@ update-frequency: medium
 
 ## バックアップ責務の分担
 
-- **Dropbox**: 日常の個別ファイル・個別データの復元を担当します。既存のバックアップAPIと`backup.json`の契約は変更しません。
+- **Dropbox**: 日常の個別ファイル・個別データの復元を担当します。既存のバックアップAPIと`backup.json`の契約は変更しません。`.env`、`backup.json`、証明書、端末の秘密情報はDropboxの対象外です（2026-09-30、[現在方針](./backup-configuration.md#pi5本番の現在方針2026-09-30)）。
 - **Google Drive**: 業務Pi5の全損復旧（SSDまたはPi5交換）を担当します。暗号化resticスナップショットの準備、容量確認、隔離先への復元検証は [業務Pi5 Google Drive DR Runbook](../runbooks/google-drive-disaster-recovery.md) を正本とします。ライブ領域への自動復元は行いません。
-- **Pi4**: 今回のGoogle Driveスナップショットには含めません。Pi4の故障時は新品OSと標準Ansible再構成を基本とします。現行`main`にはPi4専用一括復旧コマンドはなく、旧コマンド・playbook・Runbookは2026-08-08の`f02c4be3`で削除されています。
-- **認証情報**: 新しいSDやPiへ古いSSH鍵・Tailscale identity/stateを自動復元しません。必要な認証は交換先で明示的に再発行・再設定します。
+- **Pi4**: 業務Pi5のGoogle Driveスナップショットには含めません。Pi4のSDカード全体は、Pi5が週1回Pi5のSSDへ保存し、Google Driveへ複製します（[Pi4 SDカード Runbook](../runbooks/pi4-sd-card-backup.md)、[ADR-20260930](../decisions/ADR-20260930-pi4-sd-card-backup.md)）。
+- **認証情報**: 新しいSDやPiへ古いSSH鍵・Tailscale identity/stateを自動復元しません。必要な認証は交換先で明示的に再発行・再設定します。例外は、同じPi4キオスクのSDカードを差し替えるときに、そのキオスク自身のPi4 SDバックアップを書き戻す場合だけです（旧カードは使用停止。[ADR-20260930](../decisions/ADR-20260930-pi4-sd-card-backup.md)）。
 
 Google Drive DRの実装は既存のTypeScriptバックアップAPI、UI、Prisma schema/migration、通常Dropbox設定とは独立した専用レーンです。完全な対象・除外・検証手順は上記Runbookを参照してください。
 
@@ -37,16 +39,13 @@ Google Drive DRの実装は既存のTypeScriptバックアップAPI、UI、Prism
 
 2. **環境変数ファイル**: `.env`ファイル（JWTシークレット、データベース接続情報等）
    - **場所**: `apps/api/.env`, `apps/web/.env`, `infrastructure/docker/.env`
-   - **バックアップ方法**: `scripts/server/backup.sh`で自動バックアップ
-   - **頻度**: 変更時（自動バックアップスクリプトに含まれる）
-   - **保存先**: `/opt/backups/`
+   - **バックアップ方法**: Google Drive DRの暗号化スナップショット（[Runbook](../runbooks/google-drive-disaster-recovery.md#snapshot-coverage)）。`scripts/server/backup.sh`を手動実行した場合は`/opt/backups/`へローカルコピーも残る
+   - **Dropbox**: 対象外（2026-09-30、[現在方針](./backup-configuration.md#pi5本番の現在方針2026-09-30))
 
 3. **証明書ファイル**
    - **場所**: `/opt/RaspberryPiSystem_002/certs/`（コンテナ内パス: `/app/host/certs`）
-   - **バックアップ方法**: `backup.json`で自動バックアップ設定可能（`kind=directory`, `source=/app/host/certs`）
-   - **頻度**: 週次（推奨: `schedule="0 4 * * 0"`）
-   - **保存先**: Dropbox（推奨）またはローカルストレージ
-   - **追加方法**: [バックアップ設定ガイド](./backup-configuration.md#証明書ディレクトリのバックアップ推奨) を参照
+   - **バックアップ方法**: Google Drive DRの暗号化スナップショット（[Runbook](../runbooks/google-drive-disaster-recovery.md#snapshot-coverage)）
+   - **Dropbox**: 対象外（2026-09-30、[現在方針](./backup-configuration.md#pi5本番の現在方針2026-09-30))
 
 4. **復旧必須の永続ファイル**
    - **場所**: `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `/opt/RaspberryPiSystem_002/storage/measuring-instrument-genres`, `/opt/RaspberryPiSystem_002/storage/pallet-machine-illustrations`
@@ -74,8 +73,8 @@ Google Drive DRの実装は既存のTypeScriptバックアップAPI、UI、Prism
 
 | 情報の種類 | 場所 | バックアップ | 管理方法 |
 |-----------|------|------------|---------|
-| **環境変数ファイル** | `apps/api/.env`, `apps/web/.env`, `infrastructure/docker/.env` | ✅ **必須** | `.env.example`をコピーして作成、バックアップスクリプトで自動バックアップ |
-| **証明書ファイル** | `/opt/RaspberryPiSystem_002/certs/` | ✅ **必須** | `backup.json`で自動バックアップ設定可能（`kind=directory`, `source=/app/host/certs`） |
+| **環境変数ファイル** | `apps/api/.env`, `apps/web/.env`, `infrastructure/docker/.env` | ✅ **必須** | `.env.example`をコピーして作成。Google Drive DRで保護（Dropbox対象外） |
+| **証明書ファイル** | `/opt/RaspberryPiSystem_002/certs/` | ✅ **必須** | Google Drive DRで保護（Dropbox対象外） |
 | **IPアドレス設定** | `infrastructure/ansible/group_vars/all.yml` | ⚠️ **推奨** | Ansible変数で管理、リポジトリに含まれる（デバイスごとに異なる値） |
 | **データベース** | Dockerボリューム `db-data-pg18` | ✅ **必須** | バックアップスクリプトで自動バックアップ |
 | **復旧必須の永続ファイル** | `/opt/RaspberryPiSystem_002/storage/part-measurement-drawings`, `measuring-instrument-genres`, `pallet-machine-illustrations` | ✅ **必須** | `backup.json`の`directory`ターゲット + バックアップスクリプトで自動バックアップ |
@@ -85,13 +84,13 @@ Google Drive DRの実装は既存のTypeScriptバックアップAPI、UI、Prism
 
 | 情報の種類 | 場所 | バックアップ | 管理方法 |
 |-----------|------|------------|---------|
-| **NFCエージェント設定** | `clients/nfc-agent/.env` | ✅ **推奨** | Pi5の`backup.json`に`client-file`ターゲットを登録し、Ansible経由でDropboxへ保存 |
+| **NFCエージェント設定** | `clients/nfc-agent/.env` | ⚠️ **Dropbox対象外** | 秘密情報のためDropboxへ送らない。Pi4 SDバックアップで保護し、通常はAnsibleで再構成 |
 | **運用ユーザーSSH設定** | `/home/<ユーザー>/.ssh` | ❌ **バックアップ禁止** | コードのSSH authority policyにより`client-file`/`client-directory`の対象にできない。交換先で新しい鍵を明示設定 |
-| **Tailscale状態** | `/var/lib/tailscale` | ⚠️ **調査・過去資料用のみ** | 保存され得ても、新SDや新Piへ自動復元しない。交換先で新しいidentityを明示的に発行・設定 |
-| **status-agent設定** | `/etc/raspi-status-agent.conf` | ✅ **推奨** | Pi5の`backup.json`に`client-file`ターゲットを登録 |
+| **Tailscale状態** | `/var/lib/tailscale` | ⚠️ **Dropbox対象外** | 新SDや新Piへ自動復元しない。交換先で新しいidentityを明示的に発行・設定（同じキオスクのSD差し替えだけはPi4 SDバックアップから戻す） |
+| **status-agent設定** | `/etc/raspi-status-agent.conf` | ⚠️ **Dropbox対象外** | 秘密情報のためDropboxへ送らない。Pi4 SDバックアップで保護し、通常はAnsibleで再構成 |
 | **NFCリーダー設定** | システム設定 | ❌ 不要 | ハードウェア設定、再設定可能 |
 
-**本番登録対象端末**: `raspi4-assembly-01` を含むPi4キオスク6台。各対象は日次（`0 2 * * *`）、Dropbox、保持14日・最大4世代で運用します。クライアント端末のファイルは物理的に別マシン上に存在するため、Ansibleを使用してPi5へ取得してからバックアップします。
+**旧方針（2026-09-30廃止）**: Pi4キオスクの上記ファイルを`client-file`ターゲットで日次Dropboxへ保存していました。現在はDropboxの推奨対象外です（[現在方針](./backup-configuration.md#pi5本番の現在方針2026-09-30)）。`client-file`/`client-directory`の仕組み自体は残っており、クライアント端末のファイルはAnsibleでPi5へ取得してからバックアップします。
 
 PDFの扱い、実機検証結果、Dropbox容量の復旧履歴は [KB: バックアップ・リストア関連](../knowledge-base/infrastructure/backup-restore.md#backup-restore-20260712) を正本とします。
 

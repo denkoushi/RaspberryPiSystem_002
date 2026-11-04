@@ -1,5 +1,7 @@
 # キオスク: 部品測定記録（part-measurement）
 
+> **この Runbook の範囲**: 現行の操作・確認・復旧手順だけを載せる。仕様と経緯の正本は [KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md)、日付付きの本番反映記録は [docs/archive/deployments/](../archive/deployments/) にある。デプロイは [deployment guide](../guides/deployment.md) に従い、本文の旧コマンド例（`--detach --follow` など）は使わない。
+
 ## 自主検査セッション（NFCゲート・下書き・確定 · 2026-07-10）
 
 正本: [KB-320 §NFCゲート](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-nfcゲート-下書き自動保存-2026-07-10) · [ADR](../decisions/ADR-20260710-self-inspection-draft-confirmed.md)
@@ -538,8 +540,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 | Mac admin 不通 | [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
 | 検査図面作成で **図面が小さい**（旧 UI） | `pointListSlot` + 2行ヘッダー — **作成/改版は 2026-06-03 改善済**（[§作成レイアウト](#検査図面-作成-layout-return-nav-2026-06-03)）· Pi5 ≥ **`5274f1ee`** + 強制リロード |
 
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
-
 ---
 
 ## 自主検査セッション図面空白（2026-06-03） {#自主検査セッション図面空白-2026-06-03}
@@ -588,8 +588,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 7. 全点 OK だが未保存のとき **再開** は保存促しメッセージ、保存済みで全点 OK のときは「未完了の測定点はありません」となること。
 8. **最終**（`first_last`）入力件タップで図面が真っ黒にならず、1 回で表示・guided 再開できること。
 
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
-
 ---
 
 ## 自主検査・セッション ボタンUI統一 + 操作誘導（2026-06-05） {#自主検査-セッション-ボタンui統一-2026-06-05}
@@ -608,8 +606,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 6. **再開**・入力件チップ・ズームに **青外枠なし**。
 7. 青外枠の有無でボタンサイズやヘッダー詰まりが変わらないこと。
 8. §ボタン活性の運用フロー（保存 → manual → 件切替 → 再開 → guided → 完了）が維持されること。
-
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### トラブルシュート
 
@@ -685,8 +681,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 6. **手入力欄フォーカス中に一覧をタップ**しても、意図しないガイド進行が起きないこと。
 7. §ボタン活性・§ガイド polish の既存フロー（保存 → 件切替 → 再開 → 完了）が維持されること。
 
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
-
 ---
 
 ## 自主検査・寸法百分台入力 + 公差外レビュー（2026-06-26） {#自主検査-寸法百分台入力-公差外レビュー-2026-06-26}
@@ -715,8 +709,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 16. 順位ボード・自主検査一覧・機種別ボードで、承認前は **承認待ち**、承認後は **完了** 表示になること。
 17. legacy 確認として、`recordApprovalWorkflowStartedAt=null` の既存セッションだけは管理 `/admin/part-measurement/self-inspection-reviews` の ADMIN/MANAGER 承認で従来どおり完了できること。
 
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
-
 ### トラブルシュート
 
 | 症状 | 確認 | 対処 |
@@ -728,8 +720,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 | 承認ボタンが押せない | 一覧状態が `承認可能` か · 承認者 NFC が ACTIVE 社員として解決済みか | 入力漏れ/点検不足を詳細で確認し、社員タグを再スキャン |
 | 承認後も完了しない | required slot が全部保存済みか · 測定者登録欠落がないか · 計測機器の使用前点検必須 ON 時は使用前点検欠落がないか · pending 公差外が承認更新されたか | 未保存/未点検 entry を再保存/点検し、API ログと `SelfInspectionRecordApproval` を確認 |
 | 管理画面で新方式セッションを承認できない | `recordApprovalWorkflowStartedAt != null` か | 正常。測定値保存後にキオスク「検査記録確認」で ACTIVE 社員 NFC 承認する |
-
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 > 本番反映・テスト記録は [デプロイ実績 archive 2026-07](../archive/deployments/2026-07.md#キオスク部品測定自主検査-反映記録2026-07runbook-から移設) へ移設した。
 
@@ -784,8 +774,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 6. **手元カメラ ON** で 10 秒ごとに DevTools/console に `[self-inspection workbench camera experiment]` ログ（`getUserMedia ms` / `capture ms` / `blob size`）が出ること。
 7. OFF / タブ非表示 / 画面離脱で **stream が残留しない**こと（Pi4 負荷 — 常時プレビュー禁止の継続）。
 
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
-
 ---
 
 ## 自主検査・ガイド polish（倍率 2.0）（2026-06-04） {#自主検査-ガイド-polish-倍率2-0-2026-06-04}
@@ -811,8 +799,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 13. **再開** は手動モードかつ未完了測定点があるときだけ押せる（ガイド中はグレーアウト）。
 
 **注**: 検査図面 **ガイド試行** の倍率（1.5 固定）は対象外。
-
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ---
 
@@ -882,8 +868,6 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 | migrate 失敗 | Pi5 ログの `prisma migrate deploy` · `20260604120000` の適用有無 |
 | ガイド試行が進まない（DEV） | プレビューに `useInspectionDrawingGuidedTrial` 未配線 — [KB-320 §レビュー知見](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-フルリセット-ガイド試行-2026-06-04) |
 | Pi4 のみ旧 UI | `git pull` しない · Ansible + **強制リロード** |
-
-> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ---
 
