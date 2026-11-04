@@ -157,62 +157,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api \
 6. **実機**: Pi5 キオスク Chrome でプレビュー表示 **OK（2026-06-14）**。印刷ダイアログ/PDF/実プリンタは **未確認**。
 7. **未実装**: QR スキャン照合、正式 DB 帳票 ID、OCR 読取。
 
-#### 本番反映実績（2026-06-14 · 帳票 HTML 初回 + Pi5 限定公開）
-
-| 段階 | ブランチ | Git HEAD | 備考 |
-|------|----------|----------|------|
-| 初回（Pi5+Pi4×4 · 導線 DEV ゲート） | `feat/inspection-drawing-print-html` → **`main`** (#437) | **`062552ef`** / docs **`1d7bcd10`** | 帳票 UI 同梱、本番導線は非表示 |
-| Pi5 限定公開 | **`feat/inspection-drawing-print-pi5-validation`** | **`eaa06f11`** | 本番 ON · 一覧 **帳票** 配線 · Pi5 のみデプロイ |
-
-| ホスト | Detach Run ID | PLAY RECAP | 備考 |
-|--------|---------------|------------|------|
-| `raspberrypi5`（初回） | **`20260614-203743-25068`** | `failed=0` | web **`index-n3V3qAev.js`** |
-| Pi4×4（初回） | 各 Run ID 同上節 | `failed=0` | 帳票導線なし（DEV ゲート） |
-| `raspberrypi5`（限定公開） | **`20260614-211555-683`** | `failed=0` | web **`index-rLFSPUXR.js`** · 本番 **帳票** 表示 |
-| `raspberrypi5`（レイアウト改善） | **`20260615-085134-18726`** | `failed=0` | web **`index-o9Q5wgI_.js`** · Git **`7c628dcd`** |
-
-**実機検証（2026-06-15 · Pi5 · レイアウト改善デプロイ後）**
-
-| 確認項目 | 結果 |
-|----------|------|
-| 帳票ルート HTTP | **`200`**（`…/templates/310b30ae-…/print`） |
-| バンドル | **`index-o9Q5wgI_.js`**（`inspection-print-sheet-header` · `inspection-print-record-table` · `4.5mm` マーカー） |
-| 実テンプレ | **`310b30ae-…`** · 14点 · **2ページ（図面1 + 記録欄1）**（改善前は4ページ） |
-| P1 | ヘッダ1行化 · 丸数字縮小 · 図面表示 · **印刷プレビュー** 有効 |
-| P2 | 表形式（`No/測定点/規格/測定値`）· 14行1ページ · `first_last` 時は **最初/最終** 列 |
-| Phase12 | **PASS 43 / WARN 0 / FAIL 0**（デプロイ直後） |
-
-**仕様メモ（次回 AI 再開用）**
-
-- ブランチ/HEAD: **`feat/inspection-drawing-report-layout`** · **`7c628dcd`**
-- ViewModel: `buildInspectionDrawingPrintViewModel` · `buildInspectionDrawingPrintRecordEntrySlots`（`single` / `first_last` / `fixed_count` / `full`）
-- 記録欄: **14点/ページ** · 測定値列 **最大6列/ページ** · 表幅は `getInspectionDrawingPrintRecordTableWidthMm`
-- P1: マーカー **4.5mm** · 図面エリア高さ **184mm**
-- 印刷ルート: `KioskLayout` **外** · `clientKey` ページ側初期化
-- legacy 公差: **「合格範囲 lower〜upper」**。通常行は `基準 10 / -0.05〜+0.05`（正公差は `+` 付き）。
-- 帳票 ID（暫定）: `PRINT-<templateId短>-v<版>-<日時>`（DB 未保存）
-
-**未完了**
-
-1. 印刷ダイアログ / PDF 保存 / 実プリンタ A4 横（Pi5 → Pi4）
-2. QR ペイロード / 正式 DB 帳票 ID / OCR（別 Plan）
-3. Pi4×4 への限定公開デプロイ（Pi5 実機 OK 後）
-
-**Pi5 デプロイ（標準）**
-
-```bash
-export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
-./scripts/update-all-clients.sh feat/inspection-drawing-report-layout \
-  infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow
-# マージ後は第2引数 main。Pi4 は Pi5 OK 後に 1 台ずつ --limit 変更
-```
-
-**トラブルシュート（検証時のみ）**
-
-| 事象 | 対処 |
-|------|------|
-| Mac から Pi5 HTTPS が `chrome-error` | Pi5 は自己署名証明書。SSH トンネル `-L 18443:127.0.0.1:443` + `curl -sk`、または現場キオスクで確認 |
-| `127.0.0.1:8080` で API 不通 | web は **80/443**（Caddy）。API は `/api/...` プロキシ経由 |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ### 検査図面 · 流用導線（2026-06-05） {#検査図面-流用導線-2026-06-05}
 
@@ -244,29 +189,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 4. 図面切替時、測定点がある場合は確認ダイアログ。キャンセルで元状態維持。
 5. （任意）管理画面で visual 作成 → テンプレ保存を意図的に失敗 → `cleanupToken` 回収。
 
-#### 本番反映実績（2026-06-05 · Pi5 先行）
-
-| 項目 | 内容 |
-|------|------|
-| Pi5 Detach Run ID | **`20260605-191525-16964`** |
-| Git HEAD | **`6c7da8c7`** |
-| PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
-| Phase12 | **43/0/0** |
-| Pi5 キオスク目視 | **未記録**（手動 1–5 を実施） |
-| Pi4×5（現行） | 2026-07-08 丸数字設定改善ロールアウトで全台 HEAD **`04bb49fe`** へ収束。Phase12 **45/0/0** |
-
-**API スモーク（Tailscale）**
-
-```bash
-BASE="https://100.106.158.2/api"
-KEY="client-key-raspberrypi4-kiosk1"
-
-curl -sk -H "x-client-key: ${KEY}" \
-  "${BASE}/part-measurement/visual-templates?q=test&limit=5"
-
-curl -sk -H "x-client-key: ${KEY}" \
-  "${BASE}/part-measurement/templates/active-exists?fhincd=NONEXIST&processGroup=cutting&resourceCd=RES-TEST"
-```
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 #### トラブルシュート
 
@@ -359,43 +282,7 @@ docker rm -f <temporary-container-name>
 - **運用**: API コンテナに `poppler-utils`（`pdftoppm`）必須。Arial 依存 PDF は文字欠けの可能性（`fonts-noto-cjk` のみ）。
 - **実機確認（Pi）**: preview / save / storage GET が kiosk `client-key` で通ること · `pdftoppm` 有無 · フォント欠け · preview の semaphore / queue 上限（同時 PDF/TIFF 連打で 503 にならない運用）
 
-#### 本番反映実績（2026-06-02 · Pi5 先行）
-
-| 項目 | 内容 |
-|------|------|
-| ブランチ | `feat/inspection-drawing-pdf-import` → **`main` マージ後** Pi4 順次 |
-| Pi5 Detach Run ID | **`20260602-190538-1780`** |
-| Git HEAD | **`8307c995`** |
-| PLAY RECAP | `failed=0` · Docker `api`/`web` 再起動 |
-| Phase12 | **41 PASS / WARN 1 / FAIL 1**（`raspberrypi4` SSH タイムアウトは既知） |
-| Pi5 キオスク目視 | **OK**（PDF プレビュー表示 · 保存 · 再読込座標一致 · 変換中保存不可） |
-| Pi4×5（現行） | 2026-07-08 丸数字設定改善ロールアウトで全台 HEAD **`04bb49fe`** へ収束。Phase12 **45/0/0** |
-
-**preview API 自動確認（Tailscale · 2026-06-02）**:
-
-```bash
-BASE="https://100.106.158.2/api"
-KEY="client-key-raspberrypi4-kiosk1"
-
-# 未認証 → 401
-curl -sk -o /dev/null -w "%{http_code}\n" -X POST "${BASE}/part-measurement/drawings/preview"
-
-# 最小 PDF → 200 image/jpeg（Mac 上で /tmp/test-drawing.pdf を用意してから）
-curl -sk -D - -o /tmp/preview-out.jpg \
-  -H "x-client-key: ${KEY}" \
-  -F "file=@/tmp/test-drawing.pdf;type=application/pdf" \
-  "${BASE}/part-measurement/drawings/preview"
-# 期待: HTTP 200 · Content-Type: image/jpeg · Cache-Control: no-store
-```
-
-**レビュー・実装知見（後続向け）**:
-
-| 事象 | 対処 |
-|------|------|
-| PDF 変換失敗後に保存ボタンがずっと無効 | `usePartMeasurementDrawingLocalPreview` で失敗時 `setHasPendingLocalSelection(false)` · CreatePage で `previewError` 時に pending ref リセット（`8307c995`） |
-| ファイル差し替え連打で古い preview が勝つ | 成功パスでも `controller.signal.aborted` を確認してから state 更新 |
-| unmount 後の setState 警告 | `previewUrlRef` + `replaceLocalPreviewUrl` で cleanup |
-| 編集画面で新 PDF が失敗 | **既存図面 Blob を維持**しエラーメッセージのみ（`inspectionDrawingTemplateImageDisplay` の local-first 契約） |
+> 本番反映・テスト記録は [デプロイ実績 archive 2026-06](../archive/deployments/2026-06.md#キオスク部品測定自主検査-反映記録2026-06runbook-から移設) へ移設した。
 
 ## 検査図面 UI/UX（符号付き公差・2026-06-03） {#検査図面-uiux-符号付き公差-デプロイ-2026-06-03}
 
