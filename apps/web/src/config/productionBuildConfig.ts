@@ -115,3 +115,5 @@ export const readProductionBuildConfig = (
   releaseSha: env.VITE_RELEASE_SHA || undefined,
   wsBaseUrl: env.VITE_WS_BASE_URL ?? defaults.VITE_WS_BASE_URL
 });
+
+export const isVitestRun = import.meta.env.MODE === 'test';

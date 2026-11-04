@@ -34,6 +34,10 @@ export function createKioskLazyPreloader() {
   };
 
   return {
+    register(loader: () => Promise<unknown>) {
+      loaders.push(loader);
+      if (active && !cancelScheduled) enqueue(KIOSK_PRELOAD_GAP_MS);
+    },
     // Match React.lazy's component constraint while retaining each component's props.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     lazy<T extends ComponentType<any>>(loader: () => Promise<{ default: T }>) {
@@ -64,3 +68,5 @@ export function createKioskLazyPreloader() {
 const kioskPreloader = createKioskLazyPreloader();
 export const kioskLazy = kioskPreloader.lazy;
 export const startKioskLazyPreload = kioskPreloader.start;
+
+export const registerKioskPreload = kioskPreloader.register;

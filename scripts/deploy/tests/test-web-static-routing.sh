@@ -130,6 +130,32 @@ docker run --detach --rm \
   "$CADDY_IMAGE" >/dev/null
 slot_admin_status="$(wait_for_status "http://127.0.0.1:$(published_port)/admin/signage")"
 [[ "$slot_admin_status" == 200 ]] || fail "private Web slot returned HTTP $slot_admin_status for /admin"
+
+slot_url="http://127.0.0.1:$(published_port)"
+asset_path="$(sed -nE 's#.*src="(/assets/[^\"]+\.js)".*#\1#p' "$DIST_DIR/index.html" | head -n 1)"
+[[ -n "$asset_path" ]] || fail 'could not find a built JavaScript asset in index.html'
+curl --silent --show-error --fail --dump-header "$TEMP_DIR/slot-asset.headers" \
+  --output /dev/null --header 'Accept-Encoding: gzip' "$slot_url$asset_path"
+grep -Eiq '^Cache-Control:[[:space:]]*public, max-age=31536000, immutable' "$TEMP_DIR/slot-asset.headers" \
+  || fail 'slot hashed JavaScript asset did not enable immutable caching'
+grep -Eiq '^Content-Encoding:[[:space:]]*gzip' "$TEMP_DIR/slot-asset.headers" \
+  || fail 'slot JavaScript asset was not gzip encoded'
+curl --silent --show-error --fail --dump-header "$TEMP_DIR/slot-document.headers" \
+  --output /dev/null "$slot_url/kiosk/part-measurement/inspection"
+grep -Eiq '^Cache-Control:.*no-store' "$TEMP_DIR/slot-document.headers" \
+  || fail 'slot SPA document did not disable HTML caching'
+curl --silent --show-error --fail --dump-header "$TEMP_DIR/slot-unhashed.headers" \
+  --output /dev/null "$slot_url/assets/rigging-inspection.png"
+if grep -Eiq '^Cache-Control:.*immutable' "$TEMP_DIR/slot-unhashed.headers"; then
+  fail 'slot enabled immutable caching for an unhashed asset'
+fi
+missing_hashed_status="$(curl --silent --show-error \
+  --dump-header "$TEMP_DIR/slot-missing-hashed.headers" \
+  --output /dev/null --write-out '%{http_code}' "$slot_url/assets/missing-AbCdEf12.js")"
+[[ "$missing_hashed_status" == 404 ]] || fail "missing hashed asset returned HTTP $missing_hashed_status"
+if grep -Eiq '^Cache-Control:.*immutable' "$TEMP_DIR/slot-missing-hashed.headers"; then
+  fail 'slot enabled immutable caching for a missing hashed asset'
+fi
 docker rm -f "$CONTAINER_NAME" >/dev/null
 
 docker run --detach --rm \

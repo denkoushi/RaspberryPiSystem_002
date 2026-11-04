@@ -51,13 +51,26 @@ beforeEach(() => {
   detect.mockResolvedValue([{ rawValue: '1234567890', format: 'code_128' }]);
   getUserMedia.mockResolvedValue(stream);
   vi.mocked(getCameraStream).mockResolvedValue(stream);
-  vi.mocked(createBrowserMultiFormatReader).mockReturnValue({
+  vi.mocked(createBrowserMultiFormatReader).mockResolvedValue({
     decodeFromStream, stopContinuousDecode: vi.fn(), reset: vi.fn()
-  } as unknown as ReturnType<typeof createBrowserMultiFormatReader>);
+  } as unknown as Awaited<ReturnType<typeof createBrowserMultiFormatReader>>);
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('barcode session engine', () => {
+  it('reports reader loading failure separately and retries on the next session', async () => {
+    vi.mocked(createBrowserMultiFormatReader).mockRejectedValueOnce(new Error('chunk failed'));
+    const first = session();
+    await waitFor(() => expect(first.result.current.cameraError).toBe('バーコード読取機能を読み込めません'));
+    expect(getCameraStream).not.toHaveBeenCalled();
+    first.unmount();
+    const next = session();
+    await waitFor(() => expect(decodeFromStream).toHaveBeenCalled());
+    expect(next.result.current.cameraError).toBeNull();
+    expect(createBrowserMultiFormatReader).toHaveBeenCalledTimes(2);
+    next.unmount();
+  });
+
   it('uses native 720p and confirms only after stable reads', async () => {
     let nextFrame: FrameRequestCallback | undefined;
     vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { nextFrame = callback; return 1; }));
@@ -93,6 +106,19 @@ describe('barcode session engine', () => {
     await waitFor(() => expect(decodeFromStream).toHaveBeenCalled());
     expect(supported).not.toHaveBeenCalled();
     expect(getCameraStream).toHaveBeenCalledWith();
+    unmount();
+  });
+  it('does not start the camera after cancelling a pending reader load', async () => {
+    let resolveReader!: (reader: Awaited<ReturnType<typeof createBrowserMultiFormatReader>>) => void;
+    const reset = vi.fn();
+    vi.mocked(createBrowserMultiFormatReader).mockReturnValue(new Promise((resolve) => { resolveReader = resolve; }));
+    const { result, unmount } = session();
+    await waitFor(() => expect(createBrowserMultiFormatReader).toHaveBeenCalled());
+    act(() => result.current.requestCancel());
+    await act(async () => resolveReader({ reset } as unknown as Awaited<ReturnType<typeof createBrowserMultiFormatReader>>));
+    expect(getCameraStream).not.toHaveBeenCalled();
+    expect(decodeFromStream).not.toHaveBeenCalled();
+    expect(reset).toHaveBeenCalledOnce();
     unmount();
   });
   it('ignores an in-flight detection after cancellation', async () => {

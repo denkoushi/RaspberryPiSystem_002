@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { KioskSopButton } from './KioskSopButton';
 import { KioskSopDialog } from './KioskSopDialog';
@@ -15,6 +15,10 @@ type Props = {
 export function KioskSopLauncher({ manualId, initialSheetId, className }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const manual = getKioskSopManual(manualId);
+
+  useEffect(() => {
+    void manual.loadSourceHtml().catch(() => { /* Speculative loading stays silent. */ });
+  }, [manual]);
 
   return (
     <>

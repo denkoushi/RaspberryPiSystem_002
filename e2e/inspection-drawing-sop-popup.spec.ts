@@ -103,6 +103,9 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     await installLibraryApiMocks(page);
+    const manualLoaded = page.waitForResponse((response) =>
+      /\/manual(-[^/]+)?\.html$/.test(new URL(response.url()).pathname) && response.ok()
+    );
     await page.goto('/kiosk/part-measurement/inspection', { waitUntil: 'domcontentloaded' });
     await expect(page.getByText('図面71-A61').first()).toBeVisible();
 
@@ -124,6 +127,7 @@ for (const viewport of [
       if (request.frame().parentFrame()) iframeRequests.push(request.url());
     });
 
+    await (await manualLoaded).finished();
     await context.setOffline(true);
     try {
       await openButton.click();

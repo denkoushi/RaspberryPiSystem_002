@@ -19,7 +19,7 @@ describe('kiosk registered lazy preloading', () => {
     });
     const First = preloader.lazy(first);
     const failure = vi.fn(async () => { calls.push('failed'); throw new Error('missing chunk'); });
-    preloader.lazy(failure);
+    preloader.register(failure);
     const third = vi.fn(async () => { calls.push('third'); return { default: () => null }; });
     preloader.lazy(third);
     const cancel = preloader.start('/kiosk/tag', false, scheduleKioskPreload);

@@ -1,4 +1,4 @@
-import { BarcodeFormat } from '@zxing/library';
+import BarcodeFormat from '@zxing/library/esm/core/BarcodeFormat';
 
 import { BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL_CORE } from '../barcode-scan/formatPresets';
 

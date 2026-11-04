@@ -24,10 +24,21 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
   const initialIndex = Math.max(0, manual.sheets.findIndex(({ id }) => id === initialSheetId));
   const [sheetIndex, setSheetIndex] = useState(initialIndex);
   const sheet = manual.sheets[sheetIndex] ?? manual.sheets[0];
+  const [loaded, setLoaded] = useState<{ manual: KioskSopManual; html: string } | null>(null);
+  const sourceHtml = loaded?.manual === manual ? loaded.html : null;
   const srcDoc = useMemo(
-    () => buildKioskSopSrcDoc(manual.sourceHtml, sheet.id),
-    [manual.sourceHtml, sheet.id]
+    () => sourceHtml === null ? undefined : buildKioskSopSrcDoc(sourceHtml, sheet.id),
+    [sourceHtml, sheet.id]
   );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void manual.loadSourceHtml().then((html) => {
+      if (!cancelled) setLoaded({ manual, html });
+    }).catch(() => { /* Keep controls available; the failed fetch is discarded so reopening fetches again. */ });
+    return () => { cancelled = true; };
+  }, [isOpen, manual]);
 
   useEffect(() => {
     if (isOpen) setSheetIndex(initialIndex);
@@ -101,7 +112,7 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
       <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-slate-900">
         {/* A new browsing context per sheet: re-navigating one srcdoc iframe
             intermittently loses the frame in Firefox automation. */}
-        <iframe
+        {srcDoc !== undefined && <iframe
           key={sheet.id}
           ref={frameRef}
           title={`${manual.title} — ${sheet.label}`}
@@ -111,7 +122,7 @@ export function KioskSopDialog({ isOpen, onClose, manual, initialSheetId }: Prop
           referrerPolicy="no-referrer"
           srcDoc={srcDoc}
           tabIndex={0}
-        />
+        />}
       </div>
     </Dialog>
   );
