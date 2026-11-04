@@ -21,6 +21,7 @@ import {
 } from '../../features/kiosk/inventory/inventoryDailyFlow';
 import { BackIcon, ChartIcon, GridIcon, ListIcon, LockIcon, PinIcon, UndoIcon } from '../../features/kiosk/inventory/InventoryIcons';
 import { detailLabels, InventoryItemGrid, type InventoryThumbnailSize, type InventoryViewMode } from '../../features/kiosk/inventory/InventoryItemGrid';
+import { inventoryMachineLabel } from '../../features/kiosk/inventory/inventoryMachineLabel';
 import { InventoryMachinePicker } from '../../features/kiosk/inventory/InventoryMachinePicker';
 import {
   defaultAreasKey,
@@ -51,7 +52,6 @@ import {
 } from '../../features/kiosk/inventory/inventoryUi';
 import { NfcPrompt } from '../../features/kiosk/inventory/NfcPrompt';
 import { useInventoryNfcQueue } from '../../features/kiosk/inventory/useInventoryNfcQueue';
-import { normalizeMachineName } from '../../features/kiosk/productionSchedule/machineName';
 
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
@@ -263,7 +263,10 @@ export function KioskItemInventoryPage() {
     setResultTransaction(transaction);
     setLastTransactionUnit(unit);
     setMessage(restock ? `補充しました（${transaction.delta}${unit}）` : `払い出しました（${Math.abs(transaction.delta)}${unit}）`);
-    if (!restock && transaction.machine) setMessage(`払い出し −${Math.abs(transaction.delta)} ${unit}・${normalizeMachineName(transaction.machine.shortName || transaction.machine.name)}`);
+    if (!restock && transaction.machine) {
+      const label = inventoryMachineLabel(transaction.machine, machines);
+      setMessage(`払い出し −${Math.abs(transaction.delta)} ${unit}・${label.name}${label.number ? ` ${label.number}` : ''}`);
+    }
     selectMachine(null);
     setMessageKind('success');
     setQuantityError(null);
