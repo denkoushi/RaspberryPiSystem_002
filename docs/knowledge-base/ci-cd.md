@@ -846,9 +846,11 @@ update-frequency: high
 - ✅ 診断を残す: `playwright.kiosk-sop.config.ts` を `trace: 'retain-on-failure'`、`actionTimeout: 15_000` にし、`run-kiosk-sop-artifact-contract.sh` の `--output` を diagnostics フォルダへ向けて、既存のアーティファクトに画面写真・`error-context.md`・`trace.zip` が入るようにした
 
 - ✅ 2026-11-03: 本番キオスクは全台 Chromium のため、`playwright.kiosk-sop.config.ts` から firefox の project を外した
+- ✅ 2026-11-04: firefox を外した後も config の `workers: 1` / `fullyParallel: false` が残り、`--workers=2` を渡しても 1 worker で 9 件を直列に流していた（約 190 秒、うち引出線 3 件で約 140 秒）。dev server で流す CI 経路だけ `fullyParallel` と `workers: 2` にし、worker 起動前に `scripts/kiosk-sop/playwright-dev-server-warmup.mjs`（globalSetup）で対象画面を 1 回開いて Vite の初回変換を済ませる。`KIOSK_SOP_BASE_URL` を使う本番バンドル検証は従来どおり 1 worker。あわせて `kiosk-sop` ジョブの checkout を shallow にした（履歴は使わない）。ローカル 4 vCPU の同条件比較で Playwright 段は 188 秒から 148 秒、引出線 1 件は並列時 54〜60 秒（上限 120 秒は据え置き、retries 0 のまま）。生成物の PNG・HTML は変更前と同一で、`scripts/kiosk-sop/**` は監視対象なので manifest の `sourceSha256` だけ `pnpm kiosk-sop:source-refresh` で更新した
 
 **再発防止**:
 - 取説の iframe を同じ要素のまま `srcDoc` で切り替える形に戻さない
 - kiosk-sop の失敗は、アーティファクトの `playwright-test-results/**/trace.zip` で最後に OPEN のままの呼び出しを見る
+- 並列化後に引出線テストが 120 秒に近づいたら、上限を上げず worker 数か配分を見直す
 
 **関連**: [KioskSopDialog.tsx](../../apps/web/src/features/kiosk-sop/KioskSopDialog.tsx)、[playwright.kiosk-sop.config.ts](../../playwright.kiosk-sop.config.ts)

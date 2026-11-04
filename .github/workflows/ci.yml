@@ -1286,10 +1286,9 @@ jobs:
     if: ${{ github.event_name != 'push' && needs.change-classification.outputs.kiosk_sop == 'true' }}
     runs-on: ubuntu-24.04
     steps:
+      # Shallow: the kiosk-sop scripts read only the working tree, not history.
       - name: Checkout code
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
       # Fails in seconds on a stale manifest digest, before the Docker build and generation.
       - name: Check committed source digests

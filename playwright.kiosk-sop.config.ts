@@ -6,10 +6,14 @@ const localBaseURL = 'http://127.0.0.1:4173';
 export default defineConfig({
   testDir: './e2e',
   testMatch: 'inspection-drawing-sop-popup.spec.ts',
-  fullyParallel: false,
+  // Every test sets up its own page, mocks and viewport, so the local dev-server run
+  // (CI kiosk-sop job) spreads them over 2 workers. The production-bundle check
+  // (KIOSK_SOP_BASE_URL) stays serial on the deploy host.
+  fullyParallel: !externalBaseURL,
   forbidOnly: true,
   retries: 0,
-  workers: 1,
+  workers: externalBaseURL ? 1 : 2,
+  globalSetup: externalBaseURL ? undefined : './scripts/kiosk-sop/playwright-dev-server-warmup.mjs',
   reporter: 'line',
   use: {
     baseURL: externalBaseURL ?? localBaseURL,
