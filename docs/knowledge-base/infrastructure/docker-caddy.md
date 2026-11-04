@@ -362,3 +362,19 @@ handle @api {
 - `infrastructure/docker/Caddyfile.local`
 
 ---
+
+### Web 初期 JavaScript とハッシュ付き静的資産の配信（2026-11-04）
+
+**事象**: 全画面が読む `app-*.js` に取説 HTML、ZXing、recharts、管理画面が入り、Pi4 の起動・再読込が遅い。配信用 Caddy に圧縮とハッシュ付き資産の長期キャッシュがなかった。
+
+**対策**:
+- `kioskSopRegistry.ts` は開いた取説だけを動的 import し、Promise を共有する。読み込み中も既存ダイアログの操作部を維持し、完了後に iframe を表示する。
+- ZXing はスキャン・印刷時に動的 import する。enum だけの利用は本体 ESM が再公開する `esm/core/BarcodeFormat` を参照する。Vitest の本体は CJS なので、テストでは ESM のオブジェクト同一性と CJS の値一致を別々に確認する。
+- 日別負荷グラフと admin/tools ページを既存の Suspense パターンで遅延読み込みする。キオスク・サイネージのルート構造は維持する。
+- `Caddyfile.slot.template`、`Caddyfile.local.template`、`Caddyfile.production` に `encode zstd gzip` を設定する。既存の `Content-Encoding` がある応答は [Caddy の encode 実装](https://github.com/caddyserver/caddy/blob/master/modules/caddyhttp/encode/encode.go) が再圧縮を避ける。
+- `/assets/` 内の末尾が `-<8文字ハッシュ>.(js|css|woff|woff2)` のファイルだけを一年間 immutable とする。HTML の no-store、`sw.js` の no-cache は維持する。
+
+**検証**:
+- `pnpm --filter web exec tsc -b`、`pnpm --filter web lint`、対象 Vitest（11 ファイル・61 件）、`pnpm --filter web exec vite build` が成功。初期 app は 2,273.90 kB（Vite の gzip 表示 636.41 kB）。初期の静的依存にも取説・ZXing 本体・日別負荷グラフは含まれない。
+- `scripts/deploy/tests/test-web-static-routing.sh` に slot の immutable、gzip、HTML no-store、ハッシュ無し PNG の除外検査を追加。`bash -n` は成功。HTTP 実行検査はローカルの Docker ソケット権限により未完了。
+- 生成済み取説、API、Ansible、開発用 Caddyfile、gateway は変更していない。実機での速度測定・デプロイは未実施。
