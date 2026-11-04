@@ -59,6 +59,7 @@ export function PalletVizEmbeddedPanel({ className }: PalletVizEmbeddedPanelProp
         <PalletVizActionRow
           density="compact"
           busy={ctrl.busy}
+          hasPendingRequests={ctrl.hasPendingRequests}
           canOperate={Boolean(ctrl.selectedMachineCd)}
           canClearPallet={Boolean(ctrl.currentMachine)}
           hasSelectedItem={Boolean(ctrl.selectedItemId)}
@@ -106,6 +107,7 @@ export function PalletVizEmbeddedPanel({ className }: PalletVizEmbeddedPanelProp
           <p className="shrink-0 text-xs text-white/60">加工機データがありません</p>
         )}
 
+        {ctrl.offlineMessage && <p role="status" className="text-sm text-amber-200">{ctrl.offlineMessage}</p>}
         {ctrl.mutationError ? (
           <p className="shrink-0 text-xs text-red-300">{ctrl.mutationError}</p>
         ) : null}
