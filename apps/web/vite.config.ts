@@ -10,12 +10,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json'],
-      thresholds: {
+      thresholds: process.env.COVERAGE_ENFORCE_THRESHOLDS !== 'false' ? {
         statements: 61,
         branches: 58,
         functions: 55,
         lines: 63,
-      },
+      } : undefined,
     },
   },
   server: {

@@ -111,6 +111,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "api",
             "api-coverage",
             "web",
+            "web-coverage",
             "db-infra",
             "deploy-contract",
             "container-runtime-rehearsal",
@@ -169,6 +170,38 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("--merge-reports=vitest-blob --coverage", coverage)
         self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'true'", coverage)
 
+    def test_web_shards_and_enforces_thresholds_on_merged_coverage(self) -> None:
+        web = job_block(CI, "web")
+        for shard in ("1/3", "2/3", "3/3"):
+            self.assertIn(f'shard: "{shard}"', web)
+        self.assertIn("fail-fast: false", web)
+        self.assertEqual(web.count("build: true"), 1)
+        self.assertIn('shard: "1/3", shard_id: "1-of-3", build: true', web)
+        self.assertIn("pnpm --filter @raspi-system/web test:coverage --shard=${{ matrix.shard }}", web)
+        self.assertIn("--reporter=default --reporter=blob", web)
+        self.assertIn("--outputFile.blob=vitest-blob/blob-${{ matrix.shard_id }}.json", web)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'false'", web)
+        self.assertIn("if-no-files-found: error", web)
+        self.assertIn("retention-days: 1", web)
+        self.assertEqual(web.count("name: Build Web"), 1)
+        self.assertIn("name: Build Web\n        if: matrix.build", web)
+
+        coverage = job_block(CI, "web-coverage")
+        self.assertIn("needs: [change-classification, web]", coverage)
+        web_if = next(line for line in web.splitlines() if line.startswith("    if:"))
+        self.assertIn(web_if, coverage)
+        self.assertIn("pattern: web-blob-*", coverage)
+        self.assertIn("merge-multiple: true", coverage)
+        self.assertIn("working-directory: apps/web", coverage)
+        self.assertIn("test \"$(find vitest-blob -name 'blob-*.json' | wc -l)\" -eq 3", coverage)
+        self.assertIn("pnpm exec vitest run --merge-reports=vitest-blob --coverage --coverage.provider=v8", coverage)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'true'", coverage)
+        self.assertIn("path: apps/web/coverage/", coverage)
+        aggregate = job_block(CI, "ci-required")
+        self.assertIn("WEB_COVERAGE_RESULT: ${{ needs['web-coverage'].result }}", aggregate)
+        self.assertIn('"web=$WEB_SELECTED:$WEB_RESULT"', aggregate)
+        self.assertIn('"web-coverage=$WEB_SELECTED:$WEB_COVERAGE_RESULT"', aggregate)
+
     def test_e2e_is_sharded_and_reports_retried_passes(self) -> None:
         e2e = job_block(CI, "e2e-tests")
         for shard in ("1/3", "2/3", "3/3"):
@@ -198,6 +231,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "api",
             "api-coverage",
             "web",
+            "web-coverage",
             "db-infra",
             "deploy-contract",
             "container-runtime-rehearsal",

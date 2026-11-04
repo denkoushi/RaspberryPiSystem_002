@@ -1,3 +1,4 @@
+import { workerPath } from '../../test/setup-env.js';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 
@@ -21,7 +22,7 @@ vi.mock('../../services/assembly/index.js', async (importOriginal) => {
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 process.env.JWT_ACCESS_SECRET ??= 'test-access-secret-1234567890';
 process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
-process.env.PHOTO_STORAGE_DIR = '/tmp/test-assembly-procedure-gmail-import';
+process.env.PHOTO_STORAGE_DIR = workerPath('/tmp/test-assembly-procedure-gmail-import');
 
 import { buildServer } from '../../app.js';
 import { ApiError } from '../../lib/errors.js';

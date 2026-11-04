@@ -1,3 +1,4 @@
+import { workerPath } from '../../test/setup-env.js';
 // 環境変数をモジュール読み込み前に設定（BackupConfigLoaderが静的プロパティで読み取るため）
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -5,7 +6,7 @@ import * as fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const testConfigDir = path.join(__dirname, '../../../.test-config');
+const testConfigDir = workerPath(path.join(__dirname, '../../../.test-config'));
 const testConfigPath = path.join(testConfigDir, 'backup.json');
 
 // モジュール読み込み前に環境変数を設定

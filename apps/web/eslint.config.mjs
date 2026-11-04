@@ -76,7 +76,7 @@ export default tseslint.config(
           alphabetize: { order: 'asc', caseInsensitive: true }
         }
       ],
-      'import/no-cycle': 'error',
+      'import/no-cycle': ['error', { ignoreExternal: true }],
       'import/no-restricted-paths': [
         'error',
         {
