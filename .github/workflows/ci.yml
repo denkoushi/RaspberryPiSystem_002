@@ -482,34 +482,47 @@ jobs:
       # Reuse the layer cache that docker-security writes for the same Dockerfiles.
       # docker-security proves provenance-only build args keep filesystem layers,
       # so the cached layers are the same ones a clean build would produce.
-      - name: Build native production API image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: infrastructure/docker/Dockerfile.api
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: raspi-runtime-audit-api:${{ github.sha }}
-          build-args: |
-            BUILD_COMMIT=${{ github.sha }}
-            BUILD_CONFIG_HASH=production-path-audit
-          cache-from: type=gha,scope=api
+      # One bake run builds both images concurrently and fails if either fails.
+      - name: Write native production image bake definition
+        run: |
+          cat > "$RUNNER_TEMP/runtime-rehearsal.docker-bake.hcl" <<'HCL'
+          variable "GITHUB_SHA" {}
+          group "default" {
+            targets = ["api", "web"]
+          }
+          target "api" {
+            context = "."
+            dockerfile = "infrastructure/docker/Dockerfile.api"
+            platforms = ["linux/amd64"]
+            tags = ["raspi-runtime-audit-api:${GITHUB_SHA}"]
+            args = {
+              BUILD_COMMIT = "${GITHUB_SHA}"
+              BUILD_CONFIG_HASH = "production-path-audit"
+            }
+            cache-from = ["type=gha,scope=api"]
+          }
+          target "web" {
+            context = "."
+            dockerfile = "infrastructure/docker/Dockerfile.web"
+            platforms = ["linux/amd64"]
+            tags = ["raspi-runtime-audit-web:${GITHUB_SHA}"]
+            args = {
+              BUILD_COMMIT = "${GITHUB_SHA}"
+              BUILD_CONFIG_HASH = "production-path-audit"
+              VITE_RELEASE_SHA = "${GITHUB_SHA}"
+            }
+            cache-from = ["type=gha,scope=web"]
+          }
+          HCL
 
-      - name: Build native production Web image
-        uses: docker/build-push-action@v7
+      - name: Build native production API and Web images
+        uses: docker/bake-action@v7
         with:
-          context: .
-          file: infrastructure/docker/Dockerfile.web
-          platforms: linux/amd64
+          source: .
+          files: ${{ runner.temp }}/runtime-rehearsal.docker-bake.hcl
+          targets: default
           push: false
           load: true
-          tags: raspi-runtime-audit-web:${{ github.sha }}
-          build-args: |
-            BUILD_COMMIT=${{ github.sha }}
-            BUILD_CONFIG_HASH=production-path-audit
-            VITE_RELEASE_SHA=${{ github.sha }}
-          cache-from: type=gha,scope=web
 
       - name: Run isolated native runtime rehearsal
         env:

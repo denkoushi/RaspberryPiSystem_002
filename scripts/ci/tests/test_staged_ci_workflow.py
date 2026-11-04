@@ -186,9 +186,26 @@ class StagedCiWorkflowTests(unittest.TestCase):
 
     def test_candidate_runtime_rehearsal_reuses_docker_security_layer_cache(self) -> None:
         rehearsal = job_block(CI, "container-runtime-rehearsal")
-        self.assertIn("cache-from: type=gha,scope=api", rehearsal)
-        self.assertIn("cache-from: type=gha,scope=web", rehearsal)
-        self.assertNotIn("cache-to:", rehearsal)
+        self.assertIn('cache-from = ["type=gha,scope=api"]', rehearsal)
+        self.assertIn('cache-from = ["type=gha,scope=web"]', rehearsal)
+        self.assertNotIn("cache-to", rehearsal)
+
+    def test_candidate_runtime_rehearsal_builds_both_images_in_one_bake(self) -> None:
+        rehearsal = job_block(CI, "container-runtime-rehearsal")
+        self.assertIn("uses: docker/bake-action@v7", rehearsal)
+        self.assertIn('targets = ["api", "web"]', rehearsal)
+        self.assertIn("load: true", rehearsal)
+        self.assertIn("push: false", rehearsal)
+        self.assertNotIn("docker/build-push-action", rehearsal)
+        for line in (
+            'dockerfile = "infrastructure/docker/Dockerfile.api"',
+            'dockerfile = "infrastructure/docker/Dockerfile.web"',
+            'tags = ["raspi-runtime-audit-api:${GITHUB_SHA}"]',
+            'tags = ["raspi-runtime-audit-web:${GITHUB_SHA}"]',
+            'BUILD_CONFIG_HASH = "production-path-audit"',
+            'VITE_RELEASE_SHA = "${GITHUB_SHA}"',
+        ):
+            self.assertIn(line, rehearsal)
         docker = job_block(CI, "docker-security")
         self.assertIn("cache-to: type=gha,mode=max,scope=${{ matrix.image }}", docker)
 
