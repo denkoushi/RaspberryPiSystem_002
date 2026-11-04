@@ -191,8 +191,10 @@ describe('normalizePhotoForStorage', () => {
     const image = await sharp({ create: { width: PHOTO_RESIZE_STEPS[0], height: 2, channels: 3, background: 'blue' } }).png().toBuffer();
     const buffer = Buffer.concat([image, Buffer.alloc(PROCEDURE_MATERIAL_STORED_PHOTO_MAX_BYTES - image.length)]);
     const normalized = await normalizePhotoForStorage(buffer, 'image/png');
-    expect(normalized).toEqual({ buffer, width: PHOTO_RESIZE_STEPS[0], height: 2 });
-    expect(normalized.buffer).toBe(buffer);
+    // 1 MiB の Buffer を toEqual で深く比較すると数秒かかるため、同一参照（toBe）で検証する。
+    const { buffer: returned, ...dimensions } = normalized;
+    expect(returned).toBe(buffer);
+    expect(dimensions).toEqual({ width: PHOTO_RESIZE_STEPS[0], height: 2 });
   });
   it.each(['png', 'jpeg', 'webp'] as const)('bounds the long side while retaining %s format', async (format) => {
     const buffer = await sharp({ create: { width: 3600, height: 1800, channels: 3, background: 'blue' } }).toFormat(format).toBuffer();

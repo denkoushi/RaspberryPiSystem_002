@@ -342,6 +342,8 @@ describe('HermesSearchTrialService retrieval switch', () => {
       }) }],
     }));
     const procedures = procedureRepository();
+    // 1 秒周期の再読み込みを実時間で待たず、周期タイマーだけを偽装して 1 周期進める。
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const service = new HermesSearchTrialService({ ...v2Settings(), loadRecords: undefined, procedures, refreshSec: 1 });
     try {
       await service.scope();
@@ -353,10 +355,11 @@ describe('HermesSearchTrialService retrieval switch', () => {
       ]);
       expect(procedures.getPublished.mock.calls).toEqual([['p1'], ['removed'], ['draft'], ['changed']]);
       procedures.listPublished.mockResolvedValue([]);
+      await vi.advanceTimersByTimeAsync(1000);
       await vi.waitFor(() => expect(gate.corpus).toHaveLength(2), { timeout: 2500 });
       expect(gate.corpus[1]?.mode).toBe('full');
       expect(gate.corpus[1]?.records).toHaveLength(2);
-    } finally { service.close(); }
+    } finally { service.close(); vi.useRealTimers(); }
   });
 
   it('registers only opted-in training readers and shares the reader factory per corpus refresh', async () => {
@@ -828,27 +831,36 @@ describe('HermesSearchTrialService retrieval switch', () => {
       ],
     ];
     let calls = 0;
-    const service = new HermesSearchTrialService(v2Settings({
-      refreshSec: 1,
-      loadRecords: async () => {
-        const page = loads[Math.min(calls, loads.length - 1)];
-        calls += 1;
-        if (calls === 3) throw new Error('synthetic refresh failure');
-        return page;
-      },
-    }));
-    await service.scope();
-    await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
-    expect(gate.corpus[0]?.mode).toBe('full');
-    expect(gate.corpus[0]?.records).toHaveLength(1);
-    await vi.waitFor(() => expect(gate.corpus).toHaveLength(2), { timeout: 2500 });
-    expect(gate.corpus[1]?.mode).toBe('incremental');
-    expect(gate.corpus[1]?.records).toHaveLength(2);
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await vi.waitFor(() => expect(warn).toHaveBeenCalled(), { timeout: 2500 });
-    expect(String(warn.mock.calls.at(-1)?.[0])).toContain('count=2');
-    expect(gate.corpus).toHaveLength(2);
-    warn.mockRestore();
-    service.close();
+    // 1 秒周期の再読み込みを実時間で待たず、周期タイマーだけを偽装して 1 周期ずつ進める。
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const service = new HermesSearchTrialService(v2Settings({
+        refreshSec: 1,
+        loadRecords: async () => {
+          const page = loads[Math.min(calls, loads.length - 1)];
+          calls += 1;
+          if (calls === 3) throw new Error('synthetic refresh failure');
+          return page;
+        },
+      }));
+      await service.scope();
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(1));
+      expect(gate.corpus[0]?.mode).toBe('full');
+      expect(gate.corpus[0]?.records).toHaveLength(1);
+      expect(gate.corpus).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.waitFor(() => expect(gate.corpus).toHaveLength(2), { timeout: 2500 });
+      expect(gate.corpus[1]?.mode).toBe('incremental');
+      expect(gate.corpus[1]?.records).toHaveLength(2);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.waitFor(() => expect(warn).toHaveBeenCalled(), { timeout: 2500 });
+      expect(String(warn.mock.calls.at(-1)?.[0])).toContain('count=2');
+      expect(gate.corpus).toHaveLength(2);
+      warn.mockRestore();
+      service.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

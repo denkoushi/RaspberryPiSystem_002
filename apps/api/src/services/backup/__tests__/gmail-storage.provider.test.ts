@@ -12,6 +12,12 @@ vi.mock('../gmail-api-client.js', () => {
   };
 });
 
+// メッセージ間の待機（既定 2000ms）を実時間で待たずに、要求された待機値を検証する。
+const stubInterRequestSleep = (provider: GmailStorageProvider) =>
+  vi
+    .spyOn(provider as unknown as { sleep: (ms: number) => Promise<void> }, 'sleep')
+    .mockResolvedValue(undefined);
+
 describe('GmailStorageProvider', () => {
   let oauth2Client: OAuth2Client;
   let mockGmailApiClient: any;
@@ -455,7 +461,11 @@ describe('GmailStorageProvider', () => {
         filename: 'file.csv'
       });
 
+      const sleepSpy = stubInterRequestSleep(provider);
+
       const result = await provider.downloadAllWithMetadata('CSV Import');
+
+      expect(sleepSpy.mock.calls).toEqual([[2000]]);
 
       expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledWith(
         expect.stringContaining('subject:"CSV Import"'),
@@ -572,7 +582,11 @@ describe('GmailStorageProvider', () => {
       mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment2);
       mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment3);
 
+      const sleepSpy = stubInterRequestSleep(provider);
+
       const result = await provider.downloadAllBySubjectPatterns(['Pattern1', 'Pattern2']);
+
+      expect(sleepSpy.mock.calls).toEqual([[2000], [2000]]);
 
       // OR条件で1回だけsearchMessagesLimitedが呼ばれることを確認
       expect(mockGmailApiClient.searchMessagesLimited).toHaveBeenCalledTimes(1);
@@ -746,8 +760,11 @@ describe('GmailStorageProvider', () => {
       mockGmailApiClient.getMessage.mockResolvedValueOnce(mockMessage2);
       mockGmailApiClient.getFirstAttachment.mockResolvedValueOnce(mockAttachment1);
 
+      const sleepSpy = stubInterRequestSleep(provider);
+
       const result = await provider.downloadAllBySubjectPatterns(['Pattern1']);
 
+      expect(sleepSpy.mock.calls).toEqual([[2000]]);
       // マッチしないメッセージはスキップされる
       expect(result.Pattern1).toHaveLength(1);
       expect(result.Pattern1[0].messageId).toBe('msg1');
@@ -776,7 +793,10 @@ describe('GmailStorageProvider', () => {
         .mockResolvedValueOnce({ buffer: Buffer.from('old'), filename: 'old.csv' })
         .mockResolvedValueOnce({ buffer: Buffer.from('new'), filename: 'new.csv' });
 
+      const sleepSpy = stubInterRequestSleep(provider);
+
       const result = await provider.downloadAllBySubjectPatterns(['scawSTFUTEKIGO']);
+      expect(sleepSpy.mock.calls).toEqual([[2000]]);
       expect(result.scawSTFUTEKIGO.map((item) => item.messageId)).toEqual(['old', 'new']);
       expect(result.scawSTFUTEKIGO.map((item) => item.receivedAt?.getTime())).toEqual([1_000, 2_000]);
     });

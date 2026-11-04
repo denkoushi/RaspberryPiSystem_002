@@ -77,7 +77,12 @@ describe('backup encryption', () => {
       const encrypted = await fs.readFile(destination);
 
       expect(encrypted.length).toBe(plain.length + BACKUP_ENCRYPTION_OVERHEAD_BYTES);
-      expect(decryptBackupIfEncrypted(key, encrypted)).toEqual(plain);
+      // 3 MiB の Buffer を toEqual で比較すると要素ごとの深い比較で 10 秒以上かかるため、
+      // 長さとバイト列の完全一致を Buffer#equals で検証する（同じ性質の検証）。
+      const decrypted = decryptBackupIfEncrypted(key, encrypted);
+      expect(Buffer.isBuffer(decrypted)).toBe(true);
+      expect(decrypted.length).toBe(plain.length);
+      expect(decrypted.equals(plain)).toBe(true);
     });
 
     it('encrypts before handing a file to the inner provider and removes the temporary copy', async () => {
