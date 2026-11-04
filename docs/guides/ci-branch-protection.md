@@ -16,7 +16,7 @@
 
 PRでは、`repo-policy`、`workspace-quality`、`api`、`web`、`db-infra`、`deploy-contract`、`client`、`e2e-smoke`、`e2e-tests`、`docker-security`から必要なものをmerge-baseで分類して並列実行します。`merge_group`、`workflow_dispatch`、毎日02:30 JSTのscheduleはfull review suiteです。docsとroot Markdownだけの変更は`repo-policy`だけで、固定`codeql` jobは成功したまま解析処理を省略します。Docker securityはAPI/Webを個別選択します。`apps/web`の変更はE2Eも選びます（unit testファイルと生成済みSOPだけの変更を除く）。Webだけの変更でE2Eを省いていた間に、壊れたspecがmainへ2回入ったためです（2026-10-02、#1632と#1620）。`scripts/hermes-search`はAPIイメージだけの入力として扱い、API test、API image scan、release pairを選びます。
 
-基準SHA欠落、ゼロSHA、非ancestor、未知path、rename、copy、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。API testは全eventでcoverage付き3 shardに分けて実行し、`api-coverage`がshardのblobを合算してcoverage閾値を判定します。`e2e-tests`は3 shardで実行し、retryで通ったflaky testをwarningとstep summaryに出します。CodeQLはJavaScript/TypeScriptとPythonを解析し、Pythonファイルの変更でも解析します。`push main`はGitHub eventの`before -> head`で配布成果物だけを選択し、PRで成功済みのsource test、CodeQL解析、Gitleaks scanを繰り返しません。判断の正本は[ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)です。
+基準SHA欠落、ゼロSHA、非ancestor、未知path、rename、copy、delete、workflow、action、CI classifier変更はfail-closedでfull suiteになります。API testは全eventでcoverage付き3 shardに分けて実行し、`api-coverage`がshardのblobを合算してcoverage閾値を判定します。Web testも同様にcoverage付き3 shardで実行し、`web-coverage`が合算して閾値を判定します。Web buildは1 shardだけで実行します。`e2e-tests`は3 shardで実行し、retryで通ったflaky testをwarningとstep summaryに出します。CodeQLはJavaScript/TypeScriptとPythonを解析し、Pythonファイルの変更でも解析します。`push main`はGitHub eventの`before -> head`で配布成果物だけを選択し、PRで成功済みのsource test、CodeQL解析、Gitleaks scanを繰り返しません。判断の正本は[ADR-20260728](../decisions/ADR-20260728-change-aware-main-ci-and-server-web-ownership.md)です。
 
 ### PR Deploy影響表（4段階品質ゲート）
 
@@ -80,6 +80,7 @@ testは状態を共有せず、必要なdataを自身で用意し、終了時に
 
 ## 更新履歴
 
+- 2026-11-04: Web testを3 shard＋`web-coverage`合算判定に変更し、Web buildを1 shardだけで実行
 - 2026-09-29: API testを全eventで3 shard＋`api-coverage`合算判定に、E2Eを2 shardに変更。flaky E2Eの可視化とCodeQLのPython解析を追加
 - 2026-08-13: PRをsource validation、mainを正確な配布成果物のbuild/scan/sign/publishへ分離し、無条件retryを廃止
 - 2026-07-28: exact main SHAのnative ARM64 API/Web pair、digest scan、attested release setを追加

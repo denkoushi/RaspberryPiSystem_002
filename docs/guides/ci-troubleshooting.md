@@ -49,7 +49,7 @@ CI は複数ジョブに分割されている。失敗時は **どのジョブ�
 |----------|------|
 | `repo-policy` | classifierとworkflow契約。docs-only PRではこのjobだけを実行 |
 | `workspace-quality` | lint・共有package build/test・pnpm audit |
-| `api` / `api-coverage` / `web` | 対象applicationのtestとbuild。APIは全eventでcoverage付き3 shard、`api-coverage`が合算して閾値判定 |
+| `api` / `api-coverage` / `web` / `web-coverage` | 対象applicationのtestとbuild。API/Webは全eventでcoverage付き3 shard、`api-coverage`/`web-coverage`が合算して閾値判定 |
 | `db-infra` | Prisma migration、backup/restore、monitoring |
 | `deploy-contract` / `client` | deploy・inventory・Ansible・端末agentの隔離契約 |
 | `docker-security` | Trivy（fs + image）とBuildx image build |

@@ -1,6 +1,16 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// CI shards set COVERAGE_ENFORCE_THRESHOLDS=false; web-coverage enforces these floors on the merged result.
+const coverageThresholds = process.env.COVERAGE_ENFORCE_THRESHOLDS === 'false'
+  ? undefined
+  : {
+      statements: 61,
+      branches: 58,
+      functions: 55,
+      lines: 63,
+    };
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -10,12 +20,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json'],
-      thresholds: {
-        statements: 61,
-        branches: 58,
-        functions: 55,
-        lines: 63,
-      },
+      thresholds: coverageThresholds,
     },
   },
   server: {

@@ -111,6 +111,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "api",
             "api-coverage",
             "web",
+            "web-coverage",
             "db-infra",
             "deploy-contract",
             "container-runtime-rehearsal",
@@ -172,6 +173,32 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("--merge-reports=vitest-blob --coverage", coverage)
         self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'true'", coverage)
 
+    def test_web_shards_and_enforces_thresholds_on_merged_coverage(self) -> None:
+        web = job_block(CI, "web")
+        for shard in ("1/3", "2/3", "3/3"):
+            self.assertIn(f'shard: "{shard}"', web)
+        self.assertIn(
+            "pnpm --filter @raspi-system/web test:coverage --shard=${{ matrix.shard }}",
+            web,
+        )
+        self.assertIn("--reporter=blob", web)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'false'", web)
+        self.assertIn("if-no-files-found: error", web)
+        self.assertEqual(web.count("build: true"), 1)
+        self.assertIn("if: matrix.build\n        run: pnpm --filter @raspi-system/web build", web)
+
+        coverage = job_block(CI, "web-coverage")
+        self.assertIn("needs: [change-classification, web]", coverage)
+        self.assertIn("github.event_name != 'push'", coverage)
+        self.assertIn("needs.change-classification.outputs.web == 'true'", coverage)
+        self.assertIn("pattern: web-blob-*", coverage)
+        self.assertIn("-eq 3", coverage)
+        self.assertIn("--merge-reports=vitest-blob --coverage", coverage)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'true'", coverage)
+
+        config = (ROOT / "apps/web/vite.config.ts").read_text(encoding="utf-8")
+        self.assertIn("process.env.COVERAGE_ENFORCE_THRESHOLDS === 'false'", config)
+
     def test_e2e_is_sharded_and_reports_retried_passes(self) -> None:
         e2e = job_block(CI, "e2e-tests")
         for shard in ("1/3", "2/3", "3/3"):
@@ -218,6 +245,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "api",
             "api-coverage",
             "web",
+            "web-coverage",
             "db-infra",
             "deploy-contract",
             "container-runtime-rehearsal",
@@ -237,6 +265,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("scripts/ci/validate_required_results.py", aggregate)
         self.assertIn('"api=$API_SELECTED:$API_RESULT"', aggregate)
         self.assertIn('"api-coverage=$API_SELECTED:$API_COVERAGE_RESULT"', aggregate)
+        self.assertIn('"web-coverage=$WEB_SELECTED:$WEB_COVERAGE_RESULT"', aggregate)
         self.assertIn(
             '"pi4-agent-image-contract=$PI4_AGENT_SELECTED:$PI4_AGENT_IMAGE_RESULT"',
             aggregate,

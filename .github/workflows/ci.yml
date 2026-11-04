@@ -281,10 +281,18 @@ jobs:
           retention-days: 7
 
   web:
-    name: web
+    name: web (${{ matrix.shard }})
     needs: change-classification
     if: ${{ github.event_name != 'push' && needs.change-classification.outputs.web == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Three coverage shards; web-coverage merges them and enforces thresholds. Shard 1 also builds.
+        include:
+          - { shard: "1/3", shard_id: "1-of-3", build: true }
+          - { shard: "2/3", shard_id: "2-of-3", build: false }
+          - { shard: "3/3", shard_id: "3-of-3", build: false }
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -300,11 +308,52 @@ jobs:
           pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
-      - name: Run Web tests with coverage floor
-        run: pnpm --filter @raspi-system/web test:coverage
+      - name: Run Web tests (coverage shard)
+        run: |
+          pnpm --filter @raspi-system/web test:coverage --shard=${{ matrix.shard }} \
+            --reporter=default --reporter=blob \
+            --outputFile.blob=vitest-blob/blob-${{ matrix.shard_id }}.json
+        env:
+          COVERAGE_ENFORCE_THRESHOLDS: 'false'
+
+      - name: Upload Web test blob
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-blob-${{ matrix.shard_id }}
+          path: apps/web/vitest-blob/
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build Web
+        if: matrix.build
         run: pnpm --filter @raspi-system/web build
+
+  web-coverage:
+    name: web-coverage
+    needs: [change-classification, web]
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
+
+      - name: Download Web test blobs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: web-blob-*
+          path: apps/web/vitest-blob
+          merge-multiple: true
+
+      - name: Merge shard coverage and enforce thresholds
+        working-directory: apps/web
+        env:
+          COVERAGE_ENFORCE_THRESHOLDS: 'true'
+        run: |
+          test "$(find vitest-blob -name 'blob-*.json' | wc -l)" -eq 3
+          pnpm exec vitest run --merge-reports=vitest-blob --coverage --coverage.provider=v8
 
   db-infra:
     name: db-infra
@@ -1403,6 +1452,7 @@ jobs:
       - api
       - api-coverage
       - web
+      - web-coverage
       - db-infra
       - deploy-contract
       - container-runtime-rehearsal
@@ -1437,6 +1487,7 @@ jobs:
           API_COVERAGE_RESULT: ${{ needs['api-coverage'].result }}
           WEB_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.web == 'true' }}
           WEB_RESULT: ${{ needs.web.result }}
+          WEB_COVERAGE_RESULT: ${{ needs['web-coverage'].result }}
           DB_INFRA_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.db_infra == 'true' }}
           DB_INFRA_RESULT: ${{ needs['db-infra'].result }}
           DEPLOY_CONTRACT_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.deploy_contract == 'true' }}
@@ -1471,6 +1522,7 @@ jobs:
             "api=$API_SELECTED:$API_RESULT" \
             "api-coverage=$API_SELECTED:$API_COVERAGE_RESULT" \
             "web=$WEB_SELECTED:$WEB_RESULT" \
+            "web-coverage=$WEB_SELECTED:$WEB_COVERAGE_RESULT" \
             "db-infra=$DB_INFRA_SELECTED:$DB_INFRA_RESULT" \
             "deploy-contract=$DEPLOY_CONTRACT_SELECTED:$DEPLOY_CONTRACT_RESULT" \
             "container-runtime-rehearsal=$CONTAINER_RUNTIME_REHEARSAL_SELECTED:$CONTAINER_RUNTIME_REHEARSAL_RESULT" \
