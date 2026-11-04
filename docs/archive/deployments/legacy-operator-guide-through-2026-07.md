@@ -121,7 +121,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   - `scripts/update-all-clients.sh` で`local`を使う場合は `ALLOW_LOCAL_EMERGENCY=1` を明示
 - **WebRTC通話（同一LAN限定）**: 通話を工場LAN内のみに限定したい場合、通話実施中だけ `network_mode=local` に切り替えて運用します（工場LAN限定）。通話が終わったら `network_mode=tailscale` に戻してください。
 - ローカルIPは環境で変動するため、実際に`hostname -I`等で取得した値で`group_vars/all.yml`を書き換えること
-- **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`tailscale`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（[KB-094](../../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）
+- **重要**: Ansibleがリポジトリを更新する際に`git reset --hard`を実行するため、`group_vars/all.yml`の`network_mode`設定がデフォルト値（`tailscale`）に戻る可能性があります。デプロイ前だけでなく、ヘルスチェック実行前にも必ず設定を再確認すること（KB-094（本文欠落）参照）
 
 詳細は [環境構築ガイド](../../guides/environment-setup.md) を参照してください。
 
@@ -179,7 +179,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   # 修正が必要な場合
   ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/node_modules /opt/RaspberryPiSystem_002/packages/*/node_modules"
   ```
-- [ ] **Git権限の確認**: `.git`ディレクトリが`denkon5sd02`所有であることを確認（デタッチ実行に必要、[KB-219](../../knowledge-base/infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題gitディレクトリがroot所有でデタッチ実行が失敗)参照）
+- [ ] **Git権限の確認**: `.git`ディレクトリが`denkon5sd02`所有であることを確認（デタッチ実行に必要、[KB-219](../../knowledge-base/infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題-gitディレクトリがroot所有でデタッチ実行が失敗)参照）
   ```bash
   # Pi5上で実行（root所有を検出）
   ssh denkon5sd02@raspberrypi.local "ls -ld /opt/RaspberryPiSystem_002/.git"
@@ -193,13 +193,13 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && ansible raspberr
   # 対象パスが判明したら chown（例）
   ssh denkon5sd02@raspberrypi.local "sudo chown -R denkon5sd02:denkon5sd02 /opt/RaspberryPiSystem_002/apps/api/src/services/signage/loan-card"
   ```
-- [ ] **SSH接続の確認**: MacからPi5へのSSH接続が正常に動作することを確認（fail2ban Banの確認、[KB-218](../../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行)参照）
+- [ ] **SSH接続の確認**: MacからPi5へのSSH接続が正常に動作することを確認（fail2ban Banの確認、[KB-218](../../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因-fail2banによるip-ban存在しないユーザーでの認証試行)参照）
   ```bash
   # Macから実行（接続テスト）
   ssh denkon5sd02@100.106.158.2 "echo 'SSH接続成功'"
   # 接続できない場合、fail2ban Banの可能性があるため、RealVNC経由でPi5にアクセスしてBanを解除
   ```
-- [ ] **aptリポジトリの確認**: NodeSourceリポジトリが存在する場合、GPG署名キー問題の可能性があるため確認（[KB-220](../../knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される)参照）
+- [ ] **aptリポジトリの確認**: NodeSourceリポジトリが存在する場合、GPG署名キー問題の可能性があるため確認（[KB-220](../../knowledge-base/infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題-sha1が2026-02-01以降拒否される)参照）
   ```bash
   # Pi5上で実行（NodeSourceリポジトリの存在確認）
   ls -la /etc/apt/sources.list.d/nodesource.list 2>/dev/null || echo "NodeSourceリポジトリは存在しません"
@@ -299,7 +299,7 @@ nano apps/api/.env
 
 **重要**: UI変更を行った場合は、デプロイ前にCursor内のブラウザで検証することで、デプロイ時間を短縮し、効率的にUI確認ができます。
 
-詳細な手順は [開発ガイド](../../guides/development.md#ui検証デプロイ前推奨) を参照してください。
+詳細な手順は [開発ガイド](../../guides/development.md) を参照してください。
 
 **簡易手順**:
 1. ローカルでデータベースとAPIサーバー、Webアプリケーションを起動
@@ -384,7 +384,7 @@ tail -n 5 /opt/RaspberryPiSystem_002/logs/ansible-history.jsonl
 **重要（反映漏れ防止）**:
 - Ansible標準経路では、**コード更新があった場合に `api/web` を `--force-recreate --build` で再作成**します。
 - これが「デプロイ成功＝変更が反映済み」の前提条件です。ビルドが重い場合は完了まで待機し、ログ/ステータスで確認してください。
-- **Web bundleデプロイ修正（2026-02-03）**: `scripts/update-all-clients.sh`が`git pull`前後でHEADを比較し、変更があれば`force_docker_rebuild`フラグを設定します。これにより、Ansibleの`repo_changed`判定だけでは検出できないコード更新時でも、確実にDockerコンテナが再ビルドされます（[KB-227](../../knowledge-base/infrastructure/ansible-deployment.md#kb-227-web-bundleデプロイ修正コード更新時のdocker再ビルド確実化)参照）。
+- **Web bundleデプロイ修正（2026-02-03）**: `scripts/update-all-clients.sh`が`git pull`前後でHEADを比較し、変更があれば`force_docker_rebuild`フラグを設定します。これにより、Ansibleの`repo_changed`判定だけでは検出できないコード更新時でも、確実にDockerコンテナが再ビルドされます（[KB-227](../../knowledge-base/infrastructure/ansible-deployment.md#kb-227-web-bundleデプロイ修正-コード更新時のdocker再ビルド確実化)参照）。
 
 **deploy.shの改善機能（2026-01-24実装）**:
 - **サービスダウン状態の回避**: `docker compose down`を削除し、`build`→`up --force-recreate`に変更。ビルド完了後にコンテナを再作成することで、`down`成功後に`up`が失敗してもサービスダウン状態を回避します（[KB-193](../../knowledge-base/infrastructure/ansible-deployment.md#kb-193-デプロイ標準手順のタイムアウトコンテナ未起動問題の徹底調査結果)参照）
@@ -401,7 +401,7 @@ tail -n 5 /opt/RaspberryPiSystem_002/logs/ansible-history.jsonl
 
 **方針**:
 - リポジトリルートの `.dockerignore` により、`node_modules/`, `logs/`, `storage/`, `alerts/`, `certs/`, `docs/` など **ビルド不要なディレクトリを除外**します。
-- **重要**: `**/tsconfig.tsbuildinfo` と `**/*.tsbuildinfo` も除外します（[KB-218](../../knowledge-base/infrastructure/ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない)参照）。
+- **重要**: `**/tsconfig.tsbuildinfo` と `**/*.tsbuildinfo` も除外します（[KB-440](../../knowledge-base/infrastructure/ansible-deployment.md#kb-440-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない)参照）。
   - TypeScriptのインクリメンタルビルド情報（`tsbuildinfo`）がDockerにコピーされると、`tsc`が「変更なし」と判断してビルドをスキップし、`dist`が生成されない問題が発生します。
   - Docker内では常に新しいビルドを実行するため、`tsbuildinfo`を除外する必要があります。
 - これにより **Pi5上のDocker buildが安定・短縮** します。
@@ -454,7 +454,7 @@ curl http://localhost:8080/api/system/health
 - `VITE_API_BASE_URL`は相対パス（`/api`）に設定されているため、再起動後もIPアドレスが変わっても問題ありません。
 - `VITE_AGENT_WS_URL`は環境変数ファイル（`.env`）で管理できるため、IPアドレスが変わった場合は`.env`ファイルを更新してからWebコンテナを再ビルドしてください。
 - **Pi5のstatus-agent設定**: Pi5サーバー側のstatus-agent設定はAnsibleで管理されています（[KB-129](../../knowledge-base/infrastructure/ansible-deployment.md#kb-129-pi5サーバー側のstatus-agent設定ファイルが古い設定のまま)参照）。`inventory.yml`の`status_agent_*`変数と`host_vars/raspberrypi5/vault.yml`の`vault_status_agent_client_key`が設定されていれば、Ansible実行時に自動的に設定ファイルが更新されます。
-- **環境変数の空文字問題**: `docker-compose.server.yml`で`${VAR:-}`構文を使用する場合、環境変数が未設定でも空文字が注入されるため、Zodバリデーションで`z.preprocess`を使用して空文字を`undefined`に変換する必要があります（[KB-131](../../knowledge-base/api.md#kb-131-apiコンテナがslack-webhook-url環境変数の空文字で再起動ループする問題)参照）。APIコンテナが再起動ループに陥る場合は、環境変数のバリデーションエラーを確認してください。
+- **環境変数の空文字問題**: `docker-compose.server.yml`で`${VAR:-}`構文を使用する場合、環境変数が未設定でも空文字が注入されるため、Zodバリデーションで`z.preprocess`を使用して空文字を`undefined`に変換する必要があります（[KB-131](../../knowledge-base/api.md#kb-131-apiコンテナがslack_kiosk_support_webhook_url環境変数の空文字で再起動ループする問題)参照）。APIコンテナが再起動ループに陥る場合は、環境変数のバリデーションエラーを確認してください。
 - **Prisma Client再生成の注意**: データベースマイグレーション適用後、APIコンテナ内でPrisma Clientを再生成する必要がある場合があります。マイグレーションが適用されても、コンテナ内のPrisma Clientが古いスキーマを参照している場合は、以下のコマンドで再生成してください（[KB-150](../../knowledge-base/infrastructure/signage.md#kb-150-サイネージレイアウトとコンテンツの疎結合化実装完了)参照）:
   ```bash
   # APIコンテナ内でPrisma Clientを再生成
@@ -466,7 +466,7 @@ curl http://localhost:8080/api/system/health
 
 ## ラズパイ4（クライアント/NFCエージェント）の更新
 
-**重要**: Pi4デプロイ時にファイルが見つからないエラーや権限エラーが発生する場合は、[KB-095](../../knowledge-base/infrastructure/backup-restore.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)を参照してください。
+**重要**: Pi4デプロイ時にファイルが見つからないエラーや権限エラーが発生する場合は、KB-095（本文欠落）を参照してください。
 
 **重要（2026-01-03更新）**:
 - Pi4の`status-agent`は`https://<Pi5>/api`経由でAPIにアクセスします（Caddy経由）
@@ -483,7 +483,7 @@ curl http://localhost:8080/api/system/health
   - 詳細は [ADR-20260306](../../decisions/ADR-20260306-deploy-status-per-client-maintenance.md) / [KB-183](../../knowledge-base/infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) を参照
 
 **重要（2026-02-07更新 · 2026-07-12 注記）**:
-- 下記の `--limit` 段階例は **Rolling V2 以前の手動段階展開**の記録である。通常更新は [標準更新入口](#標準更新入口ローリング端末別メンテナンス)（一台ずつ + カナリア・ホールド）を使う。Pi4全台の並行デプロイは標準経路ではない。
+- 下記の `--limit` 段階例は **Rolling V2 以前の手動段階展開**の記録である。通常更新は [標準更新入口](../../guides/deployment.md#標準更新入口)（一台ずつ + カナリア・ホールド）を使う。Pi4全台の並行デプロイは標準経路ではない。
 - inventoryに `kiosk` / `signage` / `kiosk_canary` / `signage_canary` グループがある点は現行も有効（`kiosk_canary` は `raspi4-kensaku-stonebase01`）。
 - `scripts/update-all-clients.sh` のデプロイ後ヘルスチェックは `--limit` に追従します。
 
@@ -631,7 +631,7 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sleep 5 && free -
 
 **重要**:
 - プレフライトチェックにより、デプロイは**手順遵守に依存せず**、自動的に安全な状態で実行されます
-- Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（[KB-096](../../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- Pi3デプロイは10-15分以上かかる可能性があります。リポジトリが大幅に遅れている場合や、メモリ不足の場合はさらに時間がかかります（KB-096（本文欠落）参照）
 - **Ansibleロールのテンプレート配置**: `signage`ロールのテンプレートファイルは`infrastructure/ansible/roles/signage/templates/`に配置する必要があります。`infrastructure/ansible/templates/`にのみ配置していると、デプロイ時にテンプレートファイルが見つからず失敗します（[KB-153](../../knowledge-base/infrastructure/ansible-deployment.md#kb-153-pi3デプロイ失敗signageロールのテンプレートディレクトリ不足)参照）
 
 ### Ansibleを使用したデプロイ（推奨）
@@ -639,8 +639,8 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'sleep 5 && free -
 #### Macから全クライアントを一括更新
 
 **⚠️ デプロイ前の必須チェック**:
-1. [ネットワークモード設定の確認](#ネットワーク環境の確認デプロイ前必須)（最重要）
-2. [デプロイ前チェックリスト](#デプロイ前チェック)の確認
+1. [ネットワークモード設定の確認](#-ネットワーク環境の確認デプロイ前必須)（最重要）
+2. [デプロイ前チェックリスト](#デプロイ前チェックリスト)の確認
 
 ```bash
 # Macのターミナルで実行
@@ -728,7 +728,7 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "raspi4-kensaku-stonebase01" --detach --follow
 ```
 
-詳細は [KB-226](../../knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須) を参照。
+詳細は [KB-226](../../knowledge-base/infrastructure/ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上は--detach---follow必須) を参照。
 
 ```bash
 # 第2工場: デタッチ実行（デフォルトでデタッチ）
@@ -946,15 +946,15 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ls -lh /run/signa
 - デプロイ前のプレフライトチェックで、Ansibleが自動的にサービスを停止・無効化・ランタイムマスクします（[KB-086](../../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題)、[KB-089](../../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング)参照）
 
 **トラブルシューティング**:
-- **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（[KB-096](../../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約)参照）
+- **デプロイがハングする**: サイネージサービスが停止・無効化されているか確認。メモリ使用状況を確認（120MB以上空きが必要）。Pi3デプロイは10-15分かかる可能性があるため、プロセスをkillせずに完了を待つ（KB-096（本文欠落）参照）
 - **複数のAnsibleプロセスが実行されている**: 全てのプロセスをkillしてから再実行
 - **デプロイが失敗する**: ログを確認（`logs/deploy/deploy-*.jsonl`）
-- **Pi4でファイルが見つからないエラー**: リポジトリが古い、または権限問題の可能性があります（[KB-095](../../knowledge-base/infrastructure/backup-restore.md#kb-095-pi4デプロイ時のファイルが見つからないエラーと権限問題)参照）
+- **Pi4でファイルが見つからないエラー**: リポジトリが古い、または権限問題の可能性があります（KB-095（本文欠落）参照）
 
 **関連ナレッジ**:
 - [KB-086](../../knowledge-base/infrastructure/signage.md#kb-086-pi3サイネージデプロイ時のsystemdタスクハング問題): Pi3デプロイ時のsystemdタスクハング問題
 - [KB-089](../../knowledge-base/infrastructure/signage.md#kb-089-pi3デプロイ時のサイネージサービス自動再起動によるメモリ不足ハング): サイネージサービス自動再起動によるメモリ不足ハング
-- [KB-096](../../knowledge-base/infrastructure/backup-restore.md#kb-096-pi3デプロイに時間がかかる問題リポジトリの遅れメモリ制約): Pi3デプロイに時間がかかる問題
+- KB-096（本文欠落）: Pi3デプロイに時間がかかる問題
 
 ## デプロイ方法（詳細）
 
@@ -1036,7 +1036,7 @@ cd apps/web && pnpm build && cd ../..
 
 ## ラズパイ5のIPアドレス確認と設定
 
-**⚠️ 注意**: このセクションは、`group_vars/all.yml`の`network_mode`設定を使用しない場合の手動設定方法です。通常は、[ネットワークモード設定](#ネットワーク環境の確認デプロイ前必須)を使用することを推奨します。
+**⚠️ 注意**: このセクションは、`group_vars/all.yml`の`network_mode`設定を使用しない場合の手動設定方法です。通常は、[ネットワークモード設定](#-ネットワーク環境の確認デプロイ前必須)を使用することを推奨します。
 
 再起動後はIPアドレスが変わる可能性があるため、以下の手順で確認・更新してください。
 
@@ -1237,8 +1237,8 @@ NETWORK_MODE=tailscale \
    ```
    - `network_mode: "local"` → オフィスネットワーク用
    - `network_mode: "tailscale"` → 自宅ネットワーク/リモートアクセス用
-   - **現在のネットワーク環境に応じて設定を変更**（[ネットワークモード設定](#ネットワーク環境の確認デプロイ前必須)を参照）
-   - **重要**: Ansibleがリポジトリを更新する際に設定がデフォルト値に戻る可能性があります（[KB-094](../../knowledge-base/infrastructure/backup-restore.md#kb-094-ansibleデプロイ時のgroup_varsallymlのnetwork_mode設定がリポジトリ更新で失われる問題)参照）。デプロイ後のヘルスチェック前にも再確認すること。
+   - **現在のネットワーク環境に応じて設定を変更**（[ネットワークモード設定](#-ネットワーク環境の確認デプロイ前必須)を参照）
+   - **重要**: Ansibleがリポジトリを更新する際に設定がデフォルト値に戻る可能性があります（KB-094（本文欠落）参照）。デプロイ後のヘルスチェック前にも再確認すること。
 
 2. **Pi5への接続確認**
    ```bash
@@ -1343,7 +1343,7 @@ NETWORK_MODE=tailscale \
    # 画像が更新されていることを確認
    ssh denkon5sd02@100.106.158.2 'ssh signageras3@100.105.224.86 "ls -lh /run/signage/current.jpg"'
    ```
-   - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（[KB-097](../../knowledge-base/infrastructure/backup-restore.md#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+   - **重要**: デプロイ完了後は、Ansibleが自動的に`signage-lite.service`と`signage-lite-update.timer`を再有効化・再起動します。手動で`systemctl enable`や`systemctl start`を実行する必要はありません（KB-097（本文欠落）参照）
 
 ### Tailscale IP一覧
 

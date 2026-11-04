@@ -225,7 +225,7 @@ Webアプリケーションは`http://localhost:5173`で起動します。
    
    # 6. Cursor内のブラウザで確認
    # Cursorのブラウザ機能を使用して http://localhost:5173 にアクセス
-   # ログイン（admin / admin1234）してUI変更を確認
+   # ログイン（`admin` / 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更））してUI変更を確認
    ```
    
    **メリット**:

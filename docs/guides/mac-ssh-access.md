@@ -311,7 +311,7 @@ ssh -v denkon5sd02@192.168.10.230
 
 **原因（典型）**:
 
-- 運用 Mac の **`tag:admin` が外れている**（Pi5 は `tag:server`）。ACL で `tag:admin` → `tag:server` の `tcp:443` のみ許可されているため、タグなし Mac から Pi5 に届かない（[KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）。
+- 運用 Mac の **`tag:admin` が外れている**（Pi5 は `tag:server`）。ACL で `tag:admin` → `tag:server` の `tcp:443` のみ許可されているため、タグなし Mac から Pi5 に届かない（[KB-442](../knowledge-base/infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）。
 
 **確認**:
 
@@ -340,7 +340,7 @@ sudo tailscale up --advertise-tags=tag:server
 # 表示 URL を Tailscale 管理画面で承認
 ```
 
-**注意**: Pi4 キオスク復旧は **`tag:kiosk`**（[KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）。Pi5 に `tag:kiosk` を付けない。
+**注意**: Pi4 キオスク復旧は **`tag:kiosk`**（[KB-443](../knowledge-base/infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）。Pi5 に `tag:kiosk` を付けない。
 
 **参照**: [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)
 

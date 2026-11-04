@@ -235,7 +235,7 @@ https://192.168.128.131/admin
 # ログインしてトークンを取得
 TOKEN=$(curl -k -s -X POST https://192.168.128.131/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # アラート情報を取得
 curl -k -X GET https://192.168.128.131/api/clients/alerts \
@@ -345,7 +345,7 @@ cat alerts/alert-YYYYMMDD-HHMMSS.json | jq '.'
    # 認証トークンを取得
    TOKEN=$(curl -k -s -X POST https://100.106.158.2/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+     -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
    
    # APIレスポンスを確認（dbAlertsが0でないことを確認）
    curl -k -s "https://100.106.158.2/api/clients/alerts" \

@@ -35,7 +35,7 @@ Auth model recap (evidence-based): the web frontend attaches `x-client-key` on *
 6. **client-key gives blanket access to all photos/PDFs** (no per-resource ACL / IDOR). **OPEN** (needs signed-URL or ownership model; design change).
 7. **`clientId` / `performedByUserId` spoofing** on return/cancel — audit actor could be forged. **FIXED** (Batch B: `performedByUserId` now taken only from `request.user`).
 8. **`?clientId=` bypassed auth on `GET /loans/active`**. **FIXED** (Batch B).
-9. **Predictable client keys / `admin1234`** in seed, inventory, web fallback. **OPEN** (Batch C, rotation + deploy).
+9. **Predictable client keys / the seed default admin password** in seed, inventory, web fallback. **OPEN** (Batch C, rotation + deploy).
 10. **Kiosk PIN `2520` hardcoded fallback + no rate limit**. **PARTIALLY FIXED**: rate limit added (Batch A/C); legacy `2520` fallback removal is an operator action (needs a configured password first) — see Runbook.
 
 ### Medium (selected)

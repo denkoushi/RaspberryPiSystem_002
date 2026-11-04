@@ -157,7 +157,7 @@ UFWで遮断されていても LISTEN している限り、攻撃面・監視ノ
 
 **現状**:
 - PostgreSQL: `postgres/postgres`
-- 管理ユーザー: `admin/admin1234`（シードデータ）
+- 管理ユーザー: `admin` / 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更）（シードデータ）
 
 **推奨対策**:
 1. **本番環境では強力なパスワードに変更**

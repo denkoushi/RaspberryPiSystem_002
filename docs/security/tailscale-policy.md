@@ -323,7 +323,7 @@ Tailscale の **Key expiry** はセキュリティ機能であり、端末ごと
 **本番影響（2026-06-04 実例）**:
 
 - **`tag:signage`（Pi3）**: 失効中は Pi5 の `current-image` に届かず、**デスクトップのみ**表示（[KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)）
-- **`tag:kiosk`（Pi4）**: キオスク URL（`https://100.106.158.2/kiosk`）が開けない（[KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）
+- **`tag:kiosk`（Pi4）**: キオスク URL（`https://100.106.158.2/kiosk`）が開けない（[KB-443](../knowledge-base/infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）
 - **`tag:server`（Pi5）**: `NeedsLogin` / node key expired（[KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）
 
 **運用方針（2026-06-04 決定）**:

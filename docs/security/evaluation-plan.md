@@ -532,7 +532,7 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
    # ログインしてトークンを取得
    curl -X POST https://<pi5-ip>/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin1234","totpCode":"123456"}'
+     -d '{"username":"admin","password":"<password>","totpCode":"123456"}'
    ```
 
 2. **ZAPスキャンの実行**:

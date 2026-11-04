@@ -103,7 +103,7 @@ TO0002,メジャー,<nfc-uid-4>,測定器具,工具庫B,AVAILABLE,
 
 2. **管理画面で一括登録ページにアクセス**
    - ブラウザで管理画面にログイン: `https://<ラズパイ5のIP>/login`
-   - ユーザー名: `admin`、パスワード: `admin1234`
+   - ユーザー名: `admin`、パスワード: 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更）
    - 一括登録ページにアクセス: `https://<ラズパイ5のIP>/admin/import`
 
 3. **CSVファイルをアップロード**
@@ -263,7 +263,7 @@ curl -k https://localhost/api/system/health
 # 認証テスト
 TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | \
+  -d '{"username":"admin","password":"<password>"}' | \
   grep -o '"accessToken":"[^"]*' | cut -d'"' -f4)
 
 # APIリクエストテスト

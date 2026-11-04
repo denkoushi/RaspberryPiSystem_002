@@ -924,11 +924,9 @@ update-frequency: medium
 
 ---
 
-<a id="kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落"></a>
+<a id="kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落"></a>
 
-### [KB-278] Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落）
-
-> **注記**: KB-278 は本書の「クライアント端末管理の重複登録（inventory未解決テンプレキー混入）」（2026-02-28）にも使われており、番号が重複している。
+### [KB-442] Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落）
 
 **発生日**: 2026-06-03（本番デプロイ後の Mac 運用確認）
 
@@ -978,11 +976,9 @@ update-frequency: medium
 
 ---
 
-<a id="kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期"></a>
+<a id="kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期"></a>
 
-### [KB-384] Pi4 キオスク非表示（Tailscale 再認証後の netmap 未同期・LAN 暫定迂回）
-
-> **注記**: KB-384 は [KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md](../KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md)（順位ボード）にも使われており、番号が重複している。
+### [KB-443] Pi4 キオスク非表示（Tailscale 再認証後の netmap 未同期・LAN 暫定迂回）
 
 **発生日**: 2026-06-03（仕様拡張本番後 · **研削メイン `raspberrypi4`**）
 
@@ -991,7 +987,7 @@ update-frequency: medium
 - キオスク端末: inventory **`raspberrypi4`** · LAN **`192.168.10.224`**（`tools03`）· Tailscale **`100.74.144.79`**（DNS **`raspberrypi-1`** · `tag:kiosk`）
 - Pi5 API/Web: **`100.106.158.2`**（`tag:server`）
 - `/usr/local/bin/kiosk-launch.sh` の正本 URL は **`https://100.106.158.2/kiosk?clientKey=client-key-raspberrypi4-kiosk1`**（Ansible テンプレ `kiosk-launch.sh.j2` と同型）
-- 同一日に Mac **`tag:admin` 欠落**（[KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）と Pi5 **`NeedsLogin` / node key expired**（下記 [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）も発生 — 切り分けを混同しないこと
+- 同一日に Mac **`tag:admin` 欠落**（[KB-442](#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）と Pi5 **`NeedsLogin` / node key expired**（下記 [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）も発生 — 切り分けを混同しないこと
 
 **Symptoms**:
 
@@ -1081,7 +1077,7 @@ sudo systemctl restart kiosk-browser.service
 
 **References**:
 
-- [KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)（Mac 管理画面）
+- [KB-442](#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)（Mac 管理画面）
 - [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)（Pi5）
 - [KB-320 §仕様拡張 本番](../KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)
 - [Runbook §仕様拡張](../../runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03)
@@ -1093,7 +1089,7 @@ sudo systemctl restart kiosk-browser.service
 
 ### [KB-385] Pi5 Tailscale `NeedsLogin` と node key 失効
 
-**発生日**: 2026-06-03（KB-278 対応後の Mac 管理画面再確認）
+**発生日**: 2026-06-03（KB-442 対応後の Mac 管理画面再確認）
 
 **Context**: Pi5 **`raspberrypi`** · **`100.106.158.2`** · 正しい advertise タグは **`tag:server`**（`tag:kiosk` ではない）
 
@@ -1112,9 +1108,9 @@ sudo tailscale up --advertise-tags=tag:server
 tailscale status | head -3
 ```
 
-**Prevention**: Pi5 の Tailscale 状態をデプロイ前チェックに含める。Pi4 復旧手順（[KB-384](#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）と **タグ取り違え**を混同しない。
+**Prevention**: Pi5 の Tailscale 状態をデプロイ前チェックに含める。Pi4 復旧手順（[KB-443](#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）と **タグ取り違え**を混同しない。
 
-**References**: [mac-ssh-access.md §admin 不通](../../guides/mac-ssh-access.md#tailscale-接続済みなのに-https1001061582admin-が開けない場合2026-06-03) · [KB-278](#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)
+**References**: [mac-ssh-access.md §admin 不通](../../guides/mac-ssh-access.md#tailscale-接続済みなのに-https1001061582admin-が開けない場合2026-06-03) · [KB-442](#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)
 
 ---
 
@@ -1133,7 +1129,7 @@ tailscale status | head -3
 - **良い**: 定期 Expired によるサイネージ／キオスク／リモート運用の突然停止を抑制
 - **注意**: 端末紛失・侵害時は自動ローテーションに頼れない → ACL（`tag:*`）・端末削除で無効化
 
-**関連**: [KB-386 サイネージ詳細](./signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [tailscale-policy.md §Key expiry](../../security/tailscale-policy.md#key-expiry-常時稼働端末) · [KB-384](#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) · [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)
+**関連**: [KB-386 サイネージ詳細](./signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路) · [tailscale-policy.md §Key expiry](../../security/tailscale-policy.md#key-expiry-常時稼働端末) · [KB-443](#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) · [KB-385](#kb-385-pi5-tailscale-needslogin-と-node-key-失効)
 
 **解決状況**: ✅ **運用決定・適用済み**（2026-06-04）
 
@@ -1174,8 +1170,6 @@ tailscale status | head -3
 ---
 
 ### [KB-278] クライアント端末管理の重複登録（inventory未解決テンプレキー混入）
-
-> **注記**: KB-278 は本書の「Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落）」（2026-06-03）にも使われており、番号が重複している。
 
 **発生日**: 2026-02-28
 

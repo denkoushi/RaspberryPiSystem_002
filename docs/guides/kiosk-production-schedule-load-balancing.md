@@ -246,7 +246,7 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 
 **設計判断**: 山崩し・平準化の正本軸は **着手日** とする。`FSIGENSHOYOYMD` には合わせない。
 
-- 詳細・数値表: [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)
+- 詳細・数値表: [KB-437](../knowledge-base/KB-437-load-balancing-production-system-reconciliation.md)
 - 分析: [production-load-balancing-reconciliation-with-production-system-20260527.md](../analysis/production-load-balancing-reconciliation-with-production-system-20260527.md)
 - ADR: [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
 
@@ -257,7 +257,7 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 | 着手日タブ工数 | **`FSIGENSHOYORYO` 行総分のみ**（`× plannedQuantity` 廃止） |
 | 母集団 | **`buildLoadBalancingRowEligibilityWhereSql`** — 俯瞰・機種別・着手日で統一（C/X 除外・S/R/O/P・実効未完了・`fkmail` 同期済み） |
 | 生産 H との関係 | **数値一致は要件にしない**（[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)） |
-| 詳細 | [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md) |
+| 詳細 | [KB-437](../knowledge-base/KB-437-load-balancing-production-system-reconciliation.md) |
 
 **2026-05-27 `shared` 能力フォールバック**（`37a7b6d4`）:
 
@@ -302,6 +302,6 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 
 - 手動順番・Mac 代理: [KB-297](../knowledge-base/KB-297-kiosk-due-management-workflow.md)
 - 生産スケジュール設定 UI: `/admin/production-schedule-settings`
-- 生産システム突合: [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)
+- 生産システム突合: [KB-437](../knowledge-base/KB-437-load-balancing-production-system-reconciliation.md)
 - 外注上限 ADR: [ADR-20260527](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)
 - ナレッジ正本: [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)

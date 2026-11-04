@@ -59,7 +59,7 @@ failure is an optional future drill, not an outstanding acceptance requirement.
 
 Decision authority:
 [ADR-20260712-deploy-target-minimization-canary-hold](../../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md).
-Operator steps: [deployment.md](../../guides/deployment.md#標準更新入口ローリング端末別メンテナンス).
+Operator steps: [deployment.md](../../guides/deployment.md#標準更新入口).
 
 Rolling V2 additions on the same entry point
 (`scripts/update-all-clients.sh` → `scripts/deploy/rolling-release.py`):

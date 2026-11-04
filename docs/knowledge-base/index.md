@@ -27,7 +27,7 @@ update-frequency: high
 | アラートinboxの不正JSON・無通知スキップと保持期間 | [KB-431](./KB-431-alerts-inbox-silent-skips-and-retention.md) | 1件 | 2026-10-30: 約1万件の未配送、warn化・DB照合付き日次清掃・logrotate除外。旧ファイルはPi5に保管しSlack再送なし。 |
 | Pi5 Wi-Fi no-secrets 自動再接続 | [KB-430](./KB-430-pi5-wifi-no-secrets-reconnect.md) | 1件 | 2026-10-30 ルーター再起動後の切断継続・Gmail CSV取りこぼしと再接続タイマー。 |
 | 生産スケジュール（負荷調整・山崩し支援） | [KB-362-kiosk-load-balancing.md](./KB-362-kiosk-load-balancing.md) | 1件 | 3タブ·外注契約整合 **`cd42ebfe`**·Pi5 **`20260527-191646-1476`**·[ADR 外注上限](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)·[ガイド](../guides/kiosk-production-schedule-load-balancing.md) |
-| 負荷調整×生産システム突合 | [KB-363-load-balancing-production-system-reconciliation.md](./KB-363-load-balancing-production-system-reconciliation.md) | 1件 | **FSIGENSHOYOYMD** vs 着手日·集計修正 **実装済**（PR #350）·検算 `reconcile-033-may-patterns.mjs` |
+| 負荷調整×生産システム突合 | [KB-437-load-balancing-production-system-reconciliation.md](./KB-437-load-balancing-production-system-reconciliation.md) | 1件 | **FSIGENSHOYOYMD** vs 着手日·集計修正 **実装済**（PR #350）·検算 `reconcile-033-may-patterns.mjs` |
 | Pi5 Blue/Green cleanup / monitor lock handoff | [KB-400](../archive/knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md) | 1件 | **2026-07-13** cleanup handoff lock-conflict。最大30秒のcleanup専用再試行・manual mutation禁止・本番確認済み。 |
 | Deploy release identity / activation / runtime audit | [KB-401](./KB-401-deploy-release-identity-runtime-audit.md) | 1件 | **2026-07-21** stale browser原因をapproved read-only evidenceで確認。typed-claim再設計はoffline実装Go、実機retry・Local実行はNo-Go。 |
 | 組立V3承認版のfeature branch上書き回帰 | [KB-402](./KB-402-assembly-approved-uiux-feature-branch-overwrite.md) | 1件 | **2026-07-27** 承認版をmain未統合のままfeature branchから配備し、後続main配備で旧UIへ戻った。承認SHAを履歴マージし、main-only配備と祖先確認を必須化。 |
@@ -85,7 +85,7 @@ update-frequency: high
 | 手順書の「整える」に組立の現場の知識を持たせる | [KB-420](./KB-420-procedure-tidy-site-context.md) | 1件 | 2026-10-14: 既存の組立作業標準書21枚から現場の理解（製品の成り立ち・部品の役目・作業の意味・決まり）をまとめ、業務LLMの指示文へ要約を差し込み |
 | 手動順番で「編集」後の一覧が重い（機種名の引き方） | [KB-422](./KB-422-kiosk-manual-order-edit-slow-machine-name.md) | 1件 | 2026-10-20: 一覧APIの約2秒は機種名の付与。進捗集計の流用をやめ機種名だけ引く SQL にして約0.05秒、結果は本番で同一 |
 | CSV取込の「届かない」「中身が変わらない」をフローティングChatで知らせる | [KB-423](./KB-423-csv-feed-freshness-notice.md) | 1件 | 2026-10-21: Power BI レポートの自動更新停止で部品納期個数CSVが9/17から同じ中身。全CSV取込を1時間ごとに見張り、届かない・新しい行が増えないとき通知し、直れば復旧しました |
-| 業務ラズパイの OS 安全更新を週1回夜間に入れる | [KB-425](./KB-425-os-security-weekly-update.md) | 1件 | 2026-10-22: RPi の +rpt 版で unattended-upgrades が効かないため自前で選別。Docker・カーネル・ファームウェアは除外、自動再起動なし、本番反映と排他、失敗と溜まりをフローティングChatへ。まず1台だけ実際に入れる |
+| 業務ラズパイの OS 安全更新を週1回夜間に入れる | [KB-438](./KB-438-os-security-weekly-update.md) | 1件 | 2026-10-22: RPi の +rpt 版で unattended-upgrades が効かないため自前で選別。Docker・カーネル・ファームウェアは除外、自動再起動なし、本番反映と排他、失敗と溜まりをフローティングChatへ。まず1台だけ実際に入れる |
 | kensakuMain で動画を開くと画面が止まって震えた（OS更新で解消） | [KB-421](./KB-421-kensakumain-video-freeze-os-upgrade.md) | 1件 | 2026-10-16: 画面が古い2枚を交互に表示し閉じるも反映されない。kensakuMainだけlabwc 0.8.4。OS全体を最新にして再起動し、動画の表示と閉じるを確認 |
 | キオスク在庫（毎日のNFC画面と準備画面の分離） | [KB-409](./KB-409-kiosk-inventory-daily-and-setup-screens.md) | 1件 | 2026-09-26: 在庫操作でパスワードなし修正・置き場所選択、在庫の準備はテンキー解除とタブ化。デプロイ中のmainマージ禁止の教訓 |
 | キオスク順位ボード（左ツールスタック背景不透明化リグレッション） | [KB-396](./KB-396-leader-board-left-panel-opacity-regression.md) | 1件 | **`0c57d5a0`**·`kioskPanelClassName` 半透明リグレッション修正·実機未確認 |
@@ -137,12 +137,12 @@ update-frequency: high
 | DGXリソース Phase3–11（補助起停〜複合シナリオ／運用コンソール／目的別4操作／post-policy・最小 UI・gateway／Strict Ready／進行中表示持続化・業務復帰モデル選択） | [KB-365-dgx-resource-phase3-workload-orchestration.md](./KB-365-dgx-resource-phase3-workload-orchestration.md) | 1件 | 詳細はリンク先を参照。 |
 | フロントエンド関連 | [frontend.md](./frontend.md) | 80件 | 詳細はリンク先を参照。 |
 | データベース関連 | [database.md](./database.md) | 3件 | P2002エラー、削除機能、シードデータ |
-| CI/CD関連 | [ci-cd.md](./ci-cd.md) | 20件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit）、test-excludeとminimatchの非互換エラー、Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される、ユニットテストでPrismaモデル未モック（KB-298）、Prisma JSONカラムへのRecord/null代入でCIビルド失敗（KB-299）、location-scope-resolverブランド型CIビルド失敗・verify-phase12 ping失敗（KB-302）、Caddy依存CVEsでTrivy image web失敗（KB-307）、trivy-action タグ参照解決失敗（KB-310）、Trivy image api の Pillow CVE-2026-40192（KB-342）、GitHub Actions ジョブ分割・composite action・CI 高速化（KB-353）、**`api-db-and-infra` Wait for PostgreSQL フレーク（KB-358）**、**Mac `python3`/`pyenv` 経路と `update-all-clients` 警告（KB-359）**、**import `replaceExisting` full suite flake（KB-395）**、**route統合テストfixture/`postgres-test-local`消失（KB-396）**、**kiosk-sop firefox E2E が取説の「次へ」後に停止（KB-436）** |
+| CI/CD関連 | [ci-cd.md](./ci-cd.md) | 20件 | CIテスト失敗、E2Eテスト、バックアップ/リストア、依存監査（pnpm audit）、test-excludeとminimatchの非互換エラー、Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される、ユニットテストでPrismaモデル未モック（KB-298）、Prisma JSONカラムへのRecord/null代入でCIビルド失敗（KB-299）、location-scope-resolverブランド型CIビルド失敗・verify-phase12 ping失敗（KB-302）、Caddy依存CVEsでTrivy image web失敗（KB-307）、trivy-action タグ参照解決失敗（KB-310）、Trivy image api の Pillow CVE-2026-40192（KB-342）、GitHub Actions ジョブ分割・composite action・CI 高速化（KB-353）、**`api-db-and-infra` Wait for PostgreSQL フレーク（KB-358）**、**Mac `python3`/`pyenv` 経路と `update-all-clients` 警告（KB-359）**、**import `replaceExisting` full suite flake（KB-450）**、**route統合テストfixture/`postgres-test-local`消失（KB-451）**、**kiosk-sop firefox E2E が取説の「次へ」後に停止（KB-436）** |
 | インフラ関連 | [infrastructure.md](./infrastructure.md) | 77件（サブカテゴリ別に分割） | 詳細はリンク先を参照。 |
 | ├─ Docker/Caddy関連 | [infrastructure/docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシ、WebSocketプロキシ設定 |
 | ├─ バックアップ・リストア関連 | [infrastructure/backup-restore.md](./infrastructure/backup-restore.md) | 32件 | 詳細はリンク先を参照。 |
 | ├─ Ansible/デプロイ関連 | [infrastructure/ansible-deployment.md](./infrastructure/ansible-deployment.md) | 51件 | 詳細はリンク先を参照。 |
-| ├─ Ansible/デプロイ性能（調査） | [infrastructure/ansible-deployment-performance.md](./infrastructure/ansible-deployment-performance.md) | 2件 | デプロイ性能の調査（段階展開: カナリア→ロールアウト、Pi4並行/Pi3単独、重複タスク排除、Tailscale/pnpmの実態差分の是正、計測導線）、**API Docker build cache + health wait（KB-389）** |
+| ├─ Ansible/デプロイ性能（調査） | [infrastructure/ansible-deployment-performance.md](./infrastructure/ansible-deployment-performance.md) | 2件 | デプロイ性能の調査（段階展開: カナリア→ロールアウト、Pi4並行/Pi3単独、重複タスク排除、Tailscale/pnpmの実態差分の是正、計測導線）、**API Docker build cache + health wait（KB-449）** |
 | ├─ セキュリティ関連 | [infrastructure/security.md](./infrastructure/security.md) | 23件 | セキュリティ対策と監視、Tailscale ACL grants形式でのポート指定エラー、Tailscaleハードニング段階導入完了（横移動面削減）、NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止）、Tailscale経由でのVNC接続問題（ACL設定不足）、クライアント端末管理の重複登録（inventory未解決テンプレキー混入）、Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出）、Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む）、**GitHub メンテナ衛生（ForceMemo/GlassWorm 対策手順・KB-309）**、**Ubuntu LocalLLM の Tailscale sidecar 分離公開（KB-317）**、**DGX `tag:llm` へのファイル反映と SSH 経路（KB-357）** |
 | ├─ サイネージ関連 | [infrastructure/signage.md](./infrastructure/signage.md) | 31件 | 詳細はリンク先を参照。 |
 | ├─ NFC/ハードウェア関連 | [infrastructure/hardware-nfc.md](./infrastructure/hardware-nfc.md), [KB-291](./infrastructure/KB-291-robodrill01-nfc-scan-not-responding-investigation.md) | 4件 | NFCリーダーとハードウェア、RoboDrill01 NFC恒久対策 |
@@ -218,6 +218,7 @@ update-frequency: high
 | [KB-255](./api.md#kb-255-apikiosk-と-apiclients-のルート分割サービス層抽出互換維持での実機検証) | `/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証） | ✅ 解決済み |
 | [KB-256](./api.md#kb-256-加工機点検状況サイネージの集計一致と2列表示最適化未点検は終端) | 加工機点検状況サイネージの集計一致と2列表示最適化（未点検は終端） | ✅ 解決済み |
 | [KB-347](./api.md#kb-347-サイネージ可視化の業務日切替jst-翌900自動表示のみ) | サイネージ可視化の業務日切替（JST 翌9:00・自動表示のみ）＋**2026-04-17 追補**（暦日窓・前日スナップショット上限・未使用非異常・6 台順次デプロイ） | ✅ 実装済み（コード） |
+| [KB-447](./api.md#kb-447-加工機点検状況のkpiをカード配色基準と統一正常異常件数) | 加工機点検状況のKPIをカード配色基準と統一（正常/異常件数） | — |
 | [KB-257](./api.md#kb-257-backupimportsルート分割と実行ロジックのサービス層移設) | backup/importsルート分割と実行ロジックのサービス層移設 | ✅ 解決済み |
 | [KB-258](./api.md#kb-258-コード品質改善フェーズ2ratchet-型安全化lint抑制削減契約型拡張) | コード品質改善フェーズ2（Ratchet）〜フェーズ4第五弾（5本実装）+ B対応（coverage安定化と`test-exclude>glob`維持判断） | ✅ 解決済み |
 | [KB-262](./api.md#kb-262-加工機点検状況サイネージのカードレイアウト変更と背景色改善) | 加工機点検状況サイネージのカードレイアウト変更と背景色改善 | ✅ 解決済み |
@@ -243,6 +244,7 @@ update-frequency: high
 | [KB-024](./ci-cd.md#kb-024-ciテストアーキテクチャの設計不足) | CI/テストアーキテクチャの設計不足 | 🔄 進行中 |
 | [KB-025](./ci-cd.md#kb-025-e2eスモークkioskがナビゲーション不可視で失敗する) | E2Eスモーク（kiosk）がナビゲーション不可視で失敗する | ✅ 解決済み |
 | [KB-026](./ci-cd.md#kb-026-cursor内の編集ツールが大きなyamlファイルで失敗する) | Cursor内の編集ツールが大きなYAMLファイルで失敗する | ✅ 解決済み |
+| [KB-439](./ci-cd.md#kb-439-jinja2テンプレートでのbash構文エスケープとset--euo-pipefail環境での早期終了問題) | Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題 | ✅ 解決済み |
 | [KB-270](./ci-cd.md#kb-270-ciのvitest-coverageでtest-excludeとminimatchの非互換エラー) | CIのvitest coverageでtest-excludeとminimatchの非互換エラー | ✅ 解決済み |
 | [KB-279](./ci-cd.md#kb-279-trivy脆弱性スキャンでminimatchのcve-2026-2790327904が検出される) | Trivy脆弱性スキャンでminimatchのCVE-2026-27903/27904が検出される | ✅ 解決済み |
 | [KB-298](./ci-cd.md#kb-298-ユニットテストでprismaモデル未モックtypeerror-cannot-read-properties-of-undefined-reading-findmany) | ユニットテストでPrismaモデル未モック（TypeError: findMany） | ✅ 解決済み |
@@ -254,8 +256,8 @@ update-frequency: high
 | [KB-353](./ci-cd.md#kb-353-github-actions-のジョブ分割と-composite-action-による-ci-高速化2026-04-18) | GitHub Actions のジョブ分割と composite action による CI 高速化（2026-04-18） | ✅ 解決済み |
 | [KB-358](./ci-cd.md#kb-358-api-db-and-infra-の-wait-for-postgresql-が-flake-するborrow_return-等) | `api-db-and-infra` の Wait for PostgreSQL が flake する（`borrow_return` 等） | 🔄 運用回避（再実行） |
 | [KB-359](./ci-cd.md#kb-359-開発端末の-python3-パス不良update-all-clients-の非致命警告) | 開発端末の `python3` パス不良（`update-all-clients` の非致命警告） | 🔄 進行中（環境依存） |
-| [KB-395](./ci-cd.md#kb-395-import-replaceexisting-full-suite-flake) | API import `replaceExisting=true` 統合テストが full suite でだけ flake する | ✅ 解決済み |
-| [KB-396](./ci-cd.md#kb-396-route-integration-shared-fixture-postgres-test-local) | route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失 | ✅ 解決済み |
+| [KB-450](./ci-cd.md#kb-450-import-replaceexisting-full-suite-flake) | API import `replaceExisting=true` 統合テストが full suite でだけ flake する | ✅ 解決済み |
+| [KB-451](./ci-cd.md#kb-451-route-integration-shared-fixture-postgres-test-local) | route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失 | ✅ 解決済み |
 | [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 
 ### フロントエンド関連
@@ -399,8 +401,8 @@ update-frequency: high
 | [KB-265](./infrastructure/security.md#kb-265-tailscaleハードニング段階導入完了横移動面削減) | Tailscaleハードニング段階導入完了（横移動面削減） | ✅ 解決済み（2026-02-17） |
 | [KB-266](./infrastructure/security.md#kb-266-nfcストリーム端末分離の実装完了acl維持横漏れ防止) | NFCストリーム端末分離の実装完了（ACL維持・横漏れ防止） | ✅ 解決済み（2026-02-18） |
 | [KB-277](./infrastructure/security.md#kb-277-tailscale経由でのvnc接続問題acl設定不足) | Tailscale経由でのVNC接続問題（ACL設定不足） | ✅ 解決済み（2026-02-28） |
-| [KB-278](./infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) | Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落） | ✅ 解決済み（2026-06-03） |
-| [KB-384](./infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) | Pi4 キオスク非表示（TS 再認証後 netmap 未同期・LAN 暫定迂回・`raspberrypi4` 再デプロイ） | ✅ 解決済み（2026-06-03） |
+| [KB-442](./infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) | Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落） | ✅ 解決済み（2026-06-03） |
+| [KB-443](./infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) | Pi4 キオスク非表示（TS 再認証後 netmap 未同期・LAN 暫定迂回・`raspberrypi4` 再デプロイ） | ✅ 解決済み（2026-06-03） |
 | [KB-385](./infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) | Pi5 Tailscale `NeedsLogin` / node key 失効（`tag:server` で再ログイン） | ✅ 解決済み（2026-06-03） |
 | [KB-387](./infrastructure/security.md#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry) | 常時稼働端末の Tailscale **Disable key expiry** 全端末適用（運用決定） | ✅ 適用済み（2026-06-04） |
 | [KB-278](./infrastructure/security.md#kb-278-クライアント端末管理の重複登録inventory未解決テンプレキー混入) | クライアント端末管理の重複登録（inventory未解決テンプレキー混入） | ✅ 解決済み（2026-02-28） |
@@ -410,13 +412,14 @@ update-frequency: high
 | [KB-357](./infrastructure/security.md) | DGX（`tag:llm`）への制御層ファイル反映と Tailscale / SSH 経路 | ✅ 記録（2026-04-27） |
 | [KB-318](./infrastructure/ansible-deployment.md#kb-318-pi5-local-llm-via-docker-env) | Pi5 LocalLLM: API コンテナへは `docker.env` 経由（`apps/api/.env` のみでは届かない） | ✅ 解決済み（2026-03-28） |
 | [KB-356](./infrastructure/ansible-deployment.md#kb-356-local-llm--inference_providers_json-の整合検証とデプロイ時-assert) | Local LLM / `INFERENCE_PROVIDERS_JSON` の整合検証とデプロイ時 assert（token・on_demand URL・embedding 必須） | ✅ 解決済み（2026-04-26） |
+| [KB-448](./infrastructure/ansible-deployment.md#kb-448-pi5-self-ssh-preflight-and-orphan-lock) | `update-all-clients.sh` の Pi5 preflight が self-SSH で失敗し orphan lock が残る | ✅ 復旧済み |
 | [KB-363](../archive/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md) | DGX リソース `sparkHost` の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）と Pi5 本番反映記録 | ✅ 記録（2026-05-02） |
 | [KB-364](./KB-364-dgx-blue-vllm-comfyui-gpu-contention.md) | DGX blue vLLM と私用 ComfyUI の GPU 競合（502・`inference-backend` WARN） | ✅ 記録（2026-05-03） |
 | KB-378（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md`） | DGX Spark private ComfyUI（Mac と SSH とトンネル・標準順序・切り分け） | ✅ 記録（2026-05-17） |
 | KB-379（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md`） | DGX Spark private ComfyUI（FLUX.2 Klein 9B 移行・workflow・NVFP4） | ✅ 記録（2026-06-14 Phase 2 BFS head swap 完了） |
 | [KB-365](./KB-365-dgx-resource-phase3-workload-orchestration.md) | DGXリソース Phase3–11（§Phase11 **`5d96b59b`**・本番 Detach **`20260504-113918-744`**・Pi5→DGX／§Phase10 **`47a17096`**／§Phase9 **`8cbc6f38`** ほか） | ✅ 記録（2026-05-04） |
 | [KB-367](./KB-367-zero2w-tanaban-edge-tailscale-ansible.md) | Zero 2 W 棚番エッジ（Tailscale SSH 経路・Ansible・`git` 未導入・status-agent TLS 自己署名・`curl` JSON） | ✅ 記録（2026-05-04） |
-| [KB-319](./infrastructure/ansible-deployment.md#kb-319-docs-placement-policy-by-host-role) | `docs/` 配置: Pi5（server）保持・Pi4/Pi3 削除・`git status` の `D docs/...` はクライアントで仕様 | ✅ 解決済み（2026-03-28） |
+| [KB-446](./infrastructure/ansible-deployment.md#kb-446-docs-placement-policy-by-host-role) | `docs/` 配置: Pi5（server）保持・Pi4/Pi3 削除・`git status` の `D docs/...` はクライアントで仕様 | ✅ 解決済み（2026-03-28） |
 | [KB-280](./infrastructure/security.md#kb-280-pi4追加時のkiosk-browserservice起動エラーchromium-browserコマンド未検出) | Pi4追加時のkiosk-browser.service起動エラー（chromium-browserコマンド未検出） | ✅ 解決済み（2026-02-28） |
 | [KB-281](./infrastructure/security.md#kb-281-pi4-kiosk-browser対策のansible恒久化と実機デプロイ検証到達不可端末の切り分け含む) | Pi4 kiosk-browser対策のAnsible恒久化と実機デプロイ検証（到達不可端末の切り分け含む） | ✅ 解決済み（2026-02-28） |
 | [KB-080](./infrastructure/signage.md#kb-080-pi4キオスクがtailscale-url固定でレイアウトが旧状態のままになる) | Pi4キオスクがTailscale URL固定で旧レイアウトのままになる | 🔄 進行中 |
@@ -440,6 +443,7 @@ update-frequency: high
 | [KB-193](./infrastructure/signage.md#kb-193-csvダッシュボードの列幅計算改善フォントサイズ反映全行考慮列名考慮) | CSVダッシュボードの列幅計算改善（フォントサイズ反映・全行考慮・列名考慮） | ✅ 解決済み |
 | [KB-228](./infrastructure/signage.md#kb-228-生産スケジュールサイネージデザイン修正タイトルkpi配置パディング統一) | 生産スケジュールサイネージデザイン修正（タイトル・KPI配置・パディング統一） | ✅ 解決済み |
 | [KB-231](./infrastructure/signage.md#kb-231-生産スケジュールサイネージアイテム高さの最適化20件表示対応) | 生産スケジュールサイネージアイテム高さの最適化（20件表示対応・履歴上限50件は2026-03-31追記） | ✅ 解決済み |
+| [KB-441](./infrastructure/signage.md#kb-441-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms) | 可視化データソースで再レンダリング失敗が断続発生する（dataSource timeout 5000ms） | — |
 | [KB-321](./infrastructure/signage.md#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) | キオスク進捗一覧フルスロット（`kiosk_progress_overview`）のサイネージ表示・デプロイ・Phase12 実機検証・4列×2段レイアウト | ✅ 解決済み（2026-04-01 初回・2026-03-31 2段化本番反映） |
 | [KB-335](./infrastructure/signage.md#kb-335-キオスク順位ボード資源cdカードkiosk_leader_order_cardsサイネージ-jpeg) | キオスク順位ボード・資源CDカード（`kiosk_leader_order_cards`）JPEG・**ヘッダ加工機名全文1行**・5列×2段・max10・コンパクト＋未完・納期 Date 正規化 | ✅ 解決済み（2026-05-21・Pi5 のみ・現場目視 OK） |
 | [KB-337](./infrastructure/signage.md#kb-337-android-signage-lite-401-chrome) | Android 軽量 `/signage-lite`・`current-image` **401**（未登録 `apiKey`・`heartbeat`）と **Chrome サイトデータ／キャッシュ** によるページのみ不整合 | ✅ 解決手順確定（2026-04-08・実機） |
@@ -453,7 +457,7 @@ update-frequency: high
 | [KB-269](./infrastructure/signage.md#kb-269-サイネージ自動レンダリングをworker化してapiイベントループ詰まりを隔離) | サイネージ自動レンダリングをworker化してAPIイベントループ詰まりを隔離 | 🔄 継続観察 |
 | [KB-233](./infrastructure/ansible-deployment.md#kb-233-デプロイ時のsudoパスワード問題ansible_connection-localでもmac側から実行される場合) | デプロイ時のsudoパスワード問題（ansible_connection: localでもMac側から実行される場合） | ✅ 解決済み |
 | [KB-234](./infrastructure/ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策) | Ansibleデプロイが遅い（段階展開/重複タスク/計測欠如の整理と暫定対策） | 🔄 進行中 |
-| [KB-389](./infrastructure/ansible-deployment-performance.md#kb-389-api-docker-build-cache-and-health-wait) | API Docker build cache and health wait（2026-06-17） | ✅ Pi5 反映済（`990c369a`·`failed=0`·Phase12 43/0/0） |
+| [KB-449](./infrastructure/ansible-deployment-performance.md#kb-449-api-docker-build-cache-and-health-wait) | API Docker build cache and health wait（2026-06-17） | ✅ Pi5 反映済（`990c369a`·`failed=0`·Phase12 43/0/0） |
 | [KB-235](./infrastructure/ansible-deployment.md#kb-235-docker-build最適化変更ファイルに基づくbuild判定) | Docker build最適化（変更ファイルに基づくbuild判定） | ✅ 解決済み |
 | [KB-237](./infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題) | Pi4キオスクの再起動/シャットダウンボタンが機能しない問題 | ✅ 解決済み |
 | [KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) | 電源操作（再起動/シャットダウン）のボタン押下から発動まで約20秒かかる | ✅ 原因特定済み（2026-03-01） |
@@ -503,8 +507,9 @@ update-frequency: high
 | [KB-212](./infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除) | Cursorチャットログの安全な削除手順（1週間より前のログ削除） | ✅ 手順確立済み |
 | [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 | [KB-216](./infrastructure/ansible-deployment.md#kb-216-pi3デプロイ時のpost_tasksでunreachable1が発生するがサービスは正常動作している) | Pi3デプロイ時のpost_tasksでunreachable=1が発生するがサービスは正常動作している | ✅ 調査完了・対応不要 |
-| [KB-217](./infrastructure/ansible-deployment.md#kb-217-デプロイプロセスのコード変更検知とdocker再ビルド確実化) | デプロイプロセスのコード変更検知とDocker再ビルド確実化 | ✅ 解決済み |
+| [KB-445](./infrastructure/ansible-deployment.md#kb-445-デプロイプロセスのコード変更検知とdocker再ビルド確実化) | デプロイプロセスのコード変更検知とDocker再ビルド確実化 | ✅ 解決済み |
 | [KB-218](./infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因-fail2banによるip-ban存在しないユーザーでの認証試行) | SSH接続失敗の原因: fail2banによるIP Ban（存在しないユーザーでの認証試行） | ✅ 解決済み |
+| [KB-440](./infrastructure/ansible-deployment.md#kb-440-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない) | Docker build時のtsbuildinfo問題（インクリメンタルビルドでdistが生成されない） | ✅ 解決済み |
 | [KB-219](./infrastructure/ansible-deployment.md#kb-219-pi5のgit権限問題-gitディレクトリがroot所有でデタッチ実行が失敗) | Pi5のGit権限問題: `.git`ディレクトリがroot所有でデタッチ実行が失敗 | ✅ 解決済み |
 | [KB-220](./infrastructure/ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題-sha1が2026-02-01以降拒否される) | NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される | ✅ 解決済み |
 | [KB-222](./infrastructure/ansible-deployment.md#kb-222-デプロイ時のinventory混同問題-旧別拠点用と標準inventoryの混同) | デプロイ時のinventory混同問題: 旧別拠点用と標準inventoryの混同 | ✅ 解決済み |
@@ -563,7 +568,7 @@ update-frequency: high
 
 ## 📅 更新履歴
 
-- 2026-07-05（SOLID リファクタ第6弾 · route Prisma import 完全解消 · 本番反映済）: [Plan](../plans/solid-refactor-phase6-execplan-202607.md) · [deployment.md](../archive/deployments/2026-07.md#solid-refactor-phase6-2026-07-05) · [KB-396](./ci-cd.md#kb-396-route-integration-shared-fixture-postgres-test-local) — main **`d669dc53`** · CI **`28723350855` success** · Deploy **`20260705-102444-13837`** · Phase12 **45/0/0**。
+- 2026-07-05（SOLID リファクタ第6弾 · route Prisma import 完全解消 · 本番反映済）: [Plan](../plans/solid-refactor-phase6-execplan-202607.md) · [deployment.md](../archive/deployments/2026-07.md#solid-refactor-phase6-2026-07-05) · [KB-451](./ci-cd.md#kb-451-route-integration-shared-fixture-postgres-test-local) — main **`d669dc53`** · CI **`28723350855` success** · Deploy **`20260705-102444-13837`** · Phase12 **45/0/0**。
 - 2026-06-18（キオスク順位ボード·DB `/dev/shm`·**Pi5 本番反映済**）: [KB-374 §shared memory](./KB-374-leaderboard-board-continue-cursor-contract.md#non-zod-http-400-postgresql-shared-memory-exhaustion) — **`49dc9473`** · Detach **`20260618-141405-17366`** · Phase12 **43/0/0** · **`db` 再作成後 `/dev/shm=512M`**。
 - 2026-06-18（キオスク順位ボード·DB `/dev/shm` 64MB→512MB·Compose のみ）: [KB-374 §shared memory](./KB-374-leaderboard-board-continue-cursor-contract.md#non-zod-http-400-postgresql-shared-memory-exhaustion) — ブランチ **`fix/db-shm-leaderboard-400`**·**Pi5 `db` 再作成は別承認**。
 - 2026-06-16（キオスク順位ボード·装飾後取り POST バッチ分割·Web·Pi5→Pi4×4 本番）: [KB-374 §装飾バッチ](./KB-374-leaderboard-board-continue-cursor-contract.md#装飾後取り-post-バッチ分割2026-06-16--featleaderboard-decoration-batches) — **`0d627bc8`**·CI **`27586608774`**·Detach **`20260616-115101-15796`** 他 4 台·Phase12 **43/0/0**·**Pi3/Zero2W 除外**。
@@ -683,8 +688,8 @@ update-frequency: high
 - 2026-01-28: KB-213を追加（セキュリティ評価の実機検証（2026-01-28））→ 2026-01-28に検証完了（ポート露出・fail2ban・security-monitorは正常動作を確認、バックアップ/復元・USBオフライン運用は再実施が必要）
 - 2026-01-28: KB-214を追加（ルーターのデフォルト設定によるポート露出評価の誤解解消）→ 2026-01-28に評価修正完了（IODATA UD-LTA/UEのデフォルト設定を確認し、「外部露出」ではなく「ローカルネットワーク内での待受」と表現を修正）
 - 2026-01-29: KB-215を追加（Gmail OAuthリフレッシュトークンの7日間制限問題）→ Google Cloud Consoleでアプリが未検証状態のため7日でトークン失効。GitHub Pagesでプライバシーポリシーを公開し、Googleへ検証リクエスト中
-- 2026-01-31: KB-217を追加（デプロイプロセスのコード変更検知とDocker再ビルド確実化）→ 2026-01-31に実装完了・CI成功・デプロイ成功・実機検証完了（コード変更検知とDocker再ビルドが正常に動作、サイネージ可視化ダッシュボード機能も統合）
-- 2026-01-31: KB-218を追加（Docker build時のtsbuildinfo問題）→ 2026-01-31に解決完了・CI成功・デプロイ成功・実機検証完了（`.dockerignore`に`tsbuildinfo`除外を追加し、Docker内で常に新しいビルドが実行されるように修正）
+- 2026-01-31: KB-445を追加（デプロイプロセスのコード変更検知とDocker再ビルド確実化）→ 2026-01-31に実装完了・CI成功・デプロイ成功・実機検証完了（コード変更検知とDocker再ビルドが正常に動作、サイネージ可視化ダッシュボード機能も統合）
+- 2026-01-31: KB-440を追加（Docker build時のtsbuildinfo問題）→ 2026-01-31に解決完了・CI成功・デプロイ成功・実機検証完了（`.dockerignore`に`tsbuildinfo`除外を追加し、Docker内で常に新しいビルドが実行されるように修正）
 - 2026-01-31: KB-218を追加（SSH接続失敗の原因: fail2banによるIP Ban（存在しないユーザーでの認証試行））→ 2026-01-31に解決完了（誤ったユーザー名`tsudatakashi`での認証試行によりfail2banがBan、RealVNC経由でBan解除）、KB-219を追加（Pi5のGit権限問題: `.git`ディレクトリがroot所有でデタッチ実行が失敗）→ 2026-01-31に解決完了（Ansibleの`become: true`により`.git`がroot所有に、所有権を`denkon5sd02`に修正）、KB-183を更新（Pi4メンテナンス画面の修正: `--limit raspberrypi4`以外でも表示されるように改善）
 - 2026-02-01: KB-226を更新（デプロイ方針の見直し: リモート実行のデフォルトデタッチ化実装）→ 2026-02-01に実装完了・デプロイ成功・実機検証完了（リモート実行時に自動的にデタッチモードで実行されること、`--foreground`オプションで前景実行可能なこと、`--attach`/`--status`でログ追尾・状態確認が正常に動作することを確認）
 - 2026-02-01: KB-220を追加（NodeSourceリポジトリのGPG署名キー問題: SHA1が2026-02-01以降拒否される）→ 2026-02-01に解決完了（Debianセキュリティポリシーの変更によりSHA1が拒否され、NodeSourceリポジトリを削除してデプロイ成功）
@@ -717,7 +722,7 @@ update-frequency: high
 - 2026-02-11: KB-255を追加（`/api/kiosk` と `/api/clients` のルート分割・サービス層抽出（互換維持での実機検証））→ 2026-02-11に実装完了・CI成功・デプロイ成功・実機検証完了（`kiosk`/`clients` のモジュール分割とサービス層抽出、GitHub CI全ジョブ通過、Pi5限定デプロイ成功（runId: `20260211-220347-19394`）、主要導線の実機API検証で200系と認可ガードを確認）
 - 2026-02-18: KB-267を追加（吊具持出画面に吊具情報表示を追加）→ 2026-02-18に実装完了・CI成功・デプロイ完了・実機検証完了（吊具持出画面に遷移したとき、吊具タグのUIDだけが表示されていた問題を解決し、吊具マスタから取得した詳細情報（名称、管理番号、保管場所、荷重、寸法）を点検見本の右側余白に表示する機能を実装。`riggingTagUid`が設定された時点で`getRiggingGearByTagUid()`を呼び出し、吊具情報をstateに保持。貸出登録時の存在チェックで、既に取得済みの`riggingGear`をref経由で再利用し、API二重呼び出しを回避。CI成功（Run ID `22126971043`）、Pi5とPi4でデプロイ成功（runId `20260218-140619-15371`）、実機検証で正常動作を確認）
 - 2026-02-19: KB-270を追加（CIのvitest coverageでtest-excludeとminimatchの非互換エラー）→ 2026-02-19に解決完了・CI成功・デプロイ完了・実機検証完了（`test-exclude@6.0.0`が`minimatch@10.x`と非互換でCIが失敗する問題を、`test-exclude@7.0.1`へのoverride追加で解決。`.gitignore`に`.cursor/debug-*.log`と`.cursor/tmp/`を追加。CI成功（Run ID `22163832946`）、Pi5でデプロイ成功、実機検証で正常表示を確認）
-- 2026-02-25: KB-274を追加（計測機器持出状況サイネージコンテンツの実装とCSVイベント連携）→ 2026-02-25に実装完了・CI成功・デプロイ完了・実機検証完了（計測機器の持出状況をサイネージで可視化する機能を実装。「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示。`Employee`テーブルに`section`フィールドを追加し、CSVインポートと従業員編集画面に`section`フィールドを統合。データソースを`Loan`テーブルから`MeasuringInstrumentLoanEvent`テーブル（CSV由来イベント）へ修正。名前正規化とアクティブローン判定ロジックを実装。実機検証で従業員カード表示・計測機器数表示・計測機器名称表示が正常動作することを確認）
+- 2026-02-25: KB-444を追加（計測機器持出状況サイネージコンテンツの実装とCSVイベント連携）→ 2026-02-25に実装完了・CI成功・デプロイ完了・実機検証完了（計測機器の持出状況をサイネージで可視化する機能を実装。「加工担当部署」の従業員ごとに、本日使用中の計測機器数と名称を表示。`Employee`テーブルに`section`フィールドを追加し、CSVインポートと従業員編集画面に`section`フィールドを統合。データソースを`Loan`テーブルから`MeasuringInstrumentLoanEvent`テーブル（CSV由来イベント）へ修正。名前正規化とアクティブローン判定ロジックを実装。実機検証で従業員カード表示・計測機器数表示・計測機器名称表示が正常動作することを確認）
 - 2026-02-25: KB-275を追加（加工機点検状況サイネージのレイアウト調整）→ 2026-02-25に実装完了・CI成功・デプロイ完了・実機検証完了（タイトルから「（日時集約）」を削除する処理を強化（正規表現で全角・半角・スペースのバリエーションに対応）、加工機名称の表示幅を拡大（左側60%→70%、パディング8px→4px）、KPIパネルの日付以外のタイトルフォントサイズを30%縮小、デザインプレビュー用タイトルから「(pane)」を削除。実機検証でタイトル表示・加工機名称表示・KPIパネル表示が正常動作することを確認）
 - 2026-02-26: KB-276を追加（Pi4キオスクの日本語入力モード切替問題とIBus設定改善）→ 2026-02-26に実装完了・CI成功・デプロイ成功・実機検証完了（IBusパネルUIの二重起動を防止（`--replace --single`追加）、IBusエンジン設定のリトライロジック追加、IBus切替トリガーに全角/半角キーを追加。キー入力ごとに出現する「ibus-...」ウィンドウを完全に抑制し、全角/半角キーとCtrl+Spaceの両方で日本語入力モードに切り替わることを確認。Pi4でデプロイ成功（Run ID: 20260226-171548-20196）、スムーズな日本語入力が可能になったことを確認）
 - 2026-02-28: KB-277を追加（Tailscale経由でのVNC接続問題（ACL設定不足））→ 2026-02-28に解決完了・実機検証完了（MacからPi5のVNCポート（5900）に接続できない問題を解決。原因はTailscaleのACLで`tag:admin` → `tag:server`の`tcp:5900`が許可されていなかったこと。Tailscale管理画面の「Access controls」で`grants`配列に`tcp:5900`を追加。wayvnc設定を`address=0.0.0.0`に変更（IPv4/IPv6両方で待ち受け）。`nc -zv 100.106.158.2 5900`が成功し、RealVNC Viewerで接続可能になったことを確認。mac-ssh-access.mdにTailscale ACL設定の説明を追加、port-security-audit.mdにTailscale経由のVNC接続について追記）
@@ -781,7 +786,7 @@ update-frequency: high
 - 2026-06-03（**検査図面 UI/UX 符号付き公差**·**`main` マージ**·**Pi5+stonebase 先行デプロイ**）: [KB-320 §UI/UX](./KB-320-kiosk-part-measurement.md#検査図面-uiux-符号付き公差-2026-06-03)·[ExecPlan](../plans/inspection-drawing-signed-tolerance-uiux.md)·[deployment §UI/UX](../archive/deployments/2026-06.md#kiosk-inspection-drawing-signed-tolerance-uiux-2026-06-03)·**`6e436cfc`** · CI **`26867660917`** · 作成/改版レイアウトは上記項。
 - 2026-06-03（**順位ボード「検」→ 自主検査 図面空白修正**·Web のみ·Pi5+stonebase 実機 OK）: [KB-320 §図面空白](./KB-320-kiosk-part-measurement.md#self-inspection-session-drawing-blank-2026-06-03)·[deployment §図面空白](../archive/deployments/2026-06.md#kiosk-self-inspection-session-drawing-blank-2026-06-03)·[Runbook §図面空白](../runbooks/kiosk-part-measurement.md#自主検査セッション図面空白-2026-06-03)·**`9f3f0bac`**·Detach Pi5 **`20260603-131923-13993`** / stonebase **`20260603-132523-31144`**·CI **`26863128347`**。
 - 2026-06-04（**Pi3 サイネージ非表示・Tailscale Key expiry**）: 現場 **デスクトップのみ**・`raspberrypi-2` **Expired**·Pi5 `current-image` **200**·オフィス移設で tailnet 復旧·現場戻し後表示 OK·**Disable key expiry 全端末**。[KB-386](./infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)·[KB-387](./infrastructure/security.md#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry)·[Runbook](../runbooks/pi3-signage-tailscale-recovery.md)·[deployment §2026-06-04](../archive/deployments/legacy-operator-guide-through-2026-07.md#pi3-signage-tailscale-key-expiry-2026-06-04)·`scripts/ops/recover-pi3-signage-remote.sh`。
-- 2026-06-03（**部品測定 仕様拡張 運用復旧**・Pi4 TS/netmap・`raspberrypi4` 再デプロイ）: [KB-384](./infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)·[KB-385](./infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)·[KB-320 §運用障害](./KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)·[deployment §2026-06-03](../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)·[Runbook §2026-06-03](../runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03)。**Detach `raspberrypi4`**: **`20260603-115435-29435`**（HEAD **`b787c273`**·`Git: changed`·現場 OK）。**知見**: TS 承認だけでは Pi4 **`InMagicSock: false`** のまま·**`tag:kiosk --reset`** 必須·Pi4 **`git pull` 禁止**（Ansible で同期）。
+- 2026-06-03（**部品測定 仕様拡張 運用復旧**・Pi4 TS/netmap・`raspberrypi4` 再デプロイ）: [KB-443](./infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)·[KB-385](./infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)·[KB-320 §運用障害](./KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)·[deployment §2026-06-03](../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03)·[Runbook §2026-06-03](../runbooks/kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-2026-06-03)。**Detach `raspberrypi4`**: **`20260603-115435-29435`**（HEAD **`b787c273`**·`Git: changed`·現場 OK）。**知見**: TS 承認だけでは Pi4 **`InMagicSock: false`** のまま·**`tag:kiosk --reset`** 必須·Pi4 **`git pull` 禁止**（Ansible で同期）。
 - 2026-05-09（**FKOJUNST_Status 完了行（`C`/`X`）の一覧再表示**・順位ボード完了グレーアウト・**API+Web**・**Pi5→Pi4×4 本番**）: [deployment.md §2026-05-09](../archive/deployments/2026-05.md#kiosk-leaderboard-fkojunst-cx-visible-2026-05-09)。詳細はリンク先を参照。
 - 2026-05-08（**FKOJUNST_Status 唯一正本**・一覧 **`S`/`R` 可視 + 2026-05-09 に `C`/`X` 再表示**・メール完了 **`C`/`X` のみ**・キー消失メール完了撤去・**Pi5 のみ本番**）: [ADR-20260508-fkojunst](../decisions/ADR-20260508-fkojunst-status-sole-source.md)。詳細はリンク先を参照。
 - 2026-05-05（**FKOJUNST_Status 外部完了＝dedupe キー消失差分**・スナップショット履歴）: [KB-297 §外部完了](./KB-297-kiosk-due-management-workflow.md#fkojunst-status-external-completion-b-2026-05-02)。詳細はリンク先を参照。

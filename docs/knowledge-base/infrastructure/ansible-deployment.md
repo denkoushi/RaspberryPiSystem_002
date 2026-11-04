@@ -24,9 +24,9 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 ---
 
-<a id="kb-366-pi5-self-ssh-preflight-and-orphan-lock"></a>
+<a id="kb-448-pi5-self-ssh-preflight-and-orphan-lock"></a>
 
-### [KB-366] `update-all-clients.sh` の Pi5 preflight が self-SSH で失敗し orphan lock が残る
+### [KB-448] `update-all-clients.sh` の Pi5 preflight が self-SSH で失敗し orphan lock が残る
 
 **記録日**: 2026-05-03  
 **Status**: ✅ 復旧済み・Pi5 本番デプロイ / 実機検証済み
@@ -50,7 +50,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - Pi5 の **`~/.ssh/authorized_keys`** をバックアップし、**`~/.ssh/id_ed25519.pub`** を追記。
 - 権限を **`~/.ssh 700`**、**`authorized_keys 600`** に再設定。
 - orphan lock は **実行中プロセス・deploy artifact 不在**を確認したうえで、バックアップを取ってから削除。
-- **恒久（再発防止）**: **server** ロール [`ssh-loopback-authorized.yml`](../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml) が上記 **`authorized_keys` 冪等管理**を行う。`update-all-clients.sh` は **preflight 前**に **self-SSH チェック**を行い、**preflight 失敗時はリモート bootstrap lock を EXIT トラップで返却**する。次回ロック取得時は **`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`（既定 180s）** で **status artifact 無しの bootstrap lock** を掃除し得る。
+- **恒久（再発防止）**: **server** ロール [`ssh-loopback-authorized.yml`](../../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml) が上記 **`authorized_keys` 冪等管理**を行う。`update-all-clients.sh` は **preflight 前**に **self-SSH チェック**を行い、**preflight 失敗時はリモート bootstrap lock を EXIT トラップで返却**する。次回ロック取得時は **`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`（既定 180s）** で **status artifact 無しの bootstrap lock** を掃除し得る。
 
 **Verification（2026-05-03 本番・当初障害復旧時）**:
 - self-SSH: `ssh -o BatchMode=yes denkon5sd02@100.106.158.2 "echo SELF_OK"` → **成功**
@@ -68,7 +68,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - lock を手で消す前に、**`runPid` が無い / 対応する deploy artifact が無い / `ps -ef` に `ansible-playbook` や `ansible … -m ping` が無い**ことを確認する。
 
 **Prevention**:
-- 本番での再発防止は **Ansible server ロール**（[`ssh-loopback-authorized.yml`](../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml)）と **`update-all-clients.sh` の self-SSH 事前チェック／lock EXIT 解放／orphan bootstrap 掃除**に任せる。
+- 本番での再発防止は **Ansible server ロール**（[`ssh-loopback-authorized.yml`](../../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml)）と **`update-all-clients.sh` の self-SSH 事前チェック／lock EXIT 解放／orphan bootstrap 掃除**に任せる。
 - ローカル作業ツリーが dirty だと fail-fast で止まるため、**commit するか stash**してから再試行する（[KB-315](#kb-315-pi4-fjv-third-kiosk) と同系）。
 
 **References**:
@@ -160,9 +160,9 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 ---
 
-<a id="kb-319-docs-placement-policy-by-host-role"></a>
+<a id="kb-446-docs-placement-policy-by-host-role"></a>
 
-### [KB-319] `docs/` 配置ポリシー整理（Pi5保持 / Pi4・Pi3削除）
+### [KB-446] `docs/` 配置ポリシー整理（Pi5保持 / Pi4・Pi3削除）
 
 **記録日**: 2026-03-28  
 **Status**: ✅ 方針確定・Ansible 反映済み・本番実機検証済み（2026-03-28）
@@ -2969,7 +2969,7 @@ ensure_local_repo_ready_for_deploy() {
 
 ---
 
-### [KB-217] デプロイプロセスのコード変更検知とDocker再ビルド確実化
+### [KB-445] デプロイプロセスのコード変更検知とDocker再ビルド確実化
 
 **発生日**: 2026-01-31  
 **Status**: ✅ 解決済み（2026-01-31）
@@ -3071,7 +3071,7 @@ ensure_local_repo_ready_for_deploy() {
 
 ---
 
-### [KB-218] Docker build時のtsbuildinfo問題（インクリメンタルビルドでdistが生成されない）
+### [KB-440] Docker build時のtsbuildinfo問題（インクリメンタルビルドでdistが生成されない）
 
 **発生日**: 2026-01-31  
 **Status**: ✅ 解決済み（2026-01-31）
@@ -3626,7 +3626,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **関連KB**:
 - [KB-211](../api.md#kb-211-生産スケジュール検索登録製番の削除追加が巻き戻る競合問題cas導入): 競合制御の実装（ETag/If-Match）
-- [KB-218](./ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
+- [KB-440](./ansible-deployment.md#kb-440-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
 
 **再発防止**:
 - コード更新時は必ずDockerコンテナが再ビルドされることを確認する
@@ -3750,7 +3750,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **関連KB**:
 - [KB-234](./ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策): デプロイ性能の調査と暫定対策
-- [KB-218](./ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
+- [KB-440](./ansible-deployment.md#kb-440-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
 
 **解決状況**: ✅ **解決済み**（2026-02-07）
 

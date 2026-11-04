@@ -16,9 +16,9 @@ update-frequency: high
 
 ---
 
-<a id="kb-396-route-integration-shared-fixture-postgres-test-local"></a>
+<a id="kb-451-route-integration-shared-fixture-postgres-test-local"></a>
 
-### [KB-396] route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失
+### [KB-451] route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失
 
 **発生日・反映**: 2026-07-05（main `d669dc53`、CI `28723350855` success、deploy `20260705-102444-13837` success）
 
@@ -45,9 +45,9 @@ update-frequency: high
 
 ---
 
-<a id="kb-395-import-replaceexisting-full-suite-flake"></a>
+<a id="kb-450-import-replaceexisting-full-suite-flake"></a>
 
-### [KB-395] API import `replaceExisting=true` 統合テストが full suite でだけ flake する
+### [KB-450] API import `replaceExisting=true` 統合テストが full suite でだけ flake する
 
 **発生日・反映**: 2026-07-05（main `d5c26eb1`、CI `28720917749` success）
 
@@ -482,9 +482,7 @@ update-frequency: high
 
 ---
 
-### [KB-026] Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題
-
-> **注記**: KB-026 は採番が重複している。[索引](./index.md) の ci-cd.md の KB-026 は [Cursor内の編集ツールの件](#kb-026-cursor内の編集ツールが大きなyamlファイルで失敗する) を指し、本節は索引にない。
+### [KB-439] Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題
 
 **EXEC_PLAN.md参照**: Phase 10 (リアルタイム監視強化)
 

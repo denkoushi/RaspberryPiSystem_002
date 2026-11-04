@@ -137,4 +137,4 @@ docker compose logs -f api | grep CsvImportScheduler
 ## 関連ドキュメント
 
 - [Dropbox CSV統合の現状分析](../../analysis/dropbox-csv-integration-status.md)
-- [Prismaマイグレーションガイド](./prisma-migrations.md)（作成予定）
+- Prismaマイグレーションガイド（作成予定）

@@ -1047,7 +1047,7 @@ Tailscale経由でリモートアクセスし、全検証項目を確認:
 
 **現在のデプロイ方法**:
 - **サーバー側**: `scripts/server/deploy.sh` → [デプロイメントガイド](../../archive/deployments/legacy-operator-guide-through-2026-07.md#方法1-デプロイスクリプトを使用推奨)
-- **クライアント側**: `ansible-playbook infrastructure/ansible/playbooks/deploy.yml` → [Ansible Playbook](../../../infrastructure/ansible/playbooks/deploy.yml)
+- **クライアント側**: `ansible-playbook infrastructure/ansible/playbooks/deploy.yml` → Ansible Playbook（旧 `infrastructure/ansible/playbooks/deploy.yml`、現存しない）
 
 **本モジュールの位置づけ**:
 - 既存のデプロイスクリプトを**置き換える**のではなく、**統合・拡張**する
@@ -1146,7 +1146,7 @@ infrastructure/ansible/
 - [KB-085: サイネージTOOLS左ペインを3列化](../../knowledge-base/infrastructure/signage.md#kb-085-サイネージtools左ペインを3列化右ペインの更新文言削除)
 
 **EXEC_PLAN.mdとの連動**:
-- [Phase 8: サイネージ／キオスク回帰対応](../../../EXEC_PLAN.md#phase-8-デジタルサイネージ軽量モード進行中)
+- [Phase 8: サイネージ／キオスク回帰対応](../../../EXEC_PLAN.md)
 - [セキュリティ強化計画 Phase 7完了](../../plans/security-hardening-execplan.md)
 
 ---
@@ -2501,7 +2501,7 @@ docker system prune -a --volumes
 ### 18.1 既存ドキュメント
 
 - **[デプロイメントガイド](../../guides/deployment.md)**: 現在のデプロイ手順（サーバー側・クライアント側）
-- **[Ansible Playbook](../../../infrastructure/ansible/playbooks/deploy.yml)**: クライアント側デプロイの実装
+- **Ansible Playbook（旧 `infrastructure/ansible/playbooks/deploy.yml`、現存しない）**: クライアント側デプロイの実装
 - **[検証チェックリスト](../../guides/verification-checklist.md)**: デプロイ後の検証項目
 - **[インフラ関連ナレッジベース](../../knowledge-base/infrastructure.md)**: KB-080〜085（サイネージ・キオスク問題）
 

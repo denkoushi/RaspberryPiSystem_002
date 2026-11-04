@@ -403,13 +403,13 @@ DEV: `/dev/kiosk-inspection-drawing-create`（本番と同一コンポーネン�
 
 | 症状 | 確認 |
 |------|------|
-| Mac で `https://100.106.158.2/admin` が開けない | Mac に **`tag:admin`** があるか · [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) |
+| Mac で `https://100.106.158.2/admin` が開けない | Mac に **`tag:admin`** があるか · [KB-442](../knowledge-base/infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) |
 | `migrate deploy` が `FIXED_COUNT` で失敗 | 2 段 migration が揃っているか（[KB-320](../knowledge-base/KB-320-kiosk-part-measurement.md#自主検査-検査図面-仕様拡張-本番-2026-06-03)） |
 | キオスクだけ旧仕様 | Pi5 `web` ref · Pi4 強制リロード |
 | 順位ボード **検** → 自主検査で図面だけ空白 | [KB-320 §図面空白](../knowledge-base/KB-320-kiosk-part-measurement.md#self-inspection-session-drawing-blank-2026-06-03) · [§図面空白 Runbook](#自主検査セッション図面空白-2026-06-03) — API/storage **200** なら **`web` レイアウト**（`9f3f0bac` 以降）· Pi4 は **強制リロード** |
-| Pi4 画面真っ白 · TS `curl` 000 · LAN 200 | [KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) — `tailscaled` 再起動 · `tag:kiosk --reset` · `kiosk-launch.sh` を `100.106.158.2` に戻す |
+| Pi4 画面真っ白 · TS `curl` 000 · LAN 200 | [KB-443](../knowledge-base/infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期) — `tailscaled` 再起動 · `tag:kiosk --reset` · `kiosk-launch.sh` を `100.106.158.2` に戻す |
 | Pi4 `_appRef` が古い | Pi4 で `git pull` しない · `update-all-clients.sh main --limit raspberrypi4`（実績 **`20260603-115435-29435`**） |
-| Mac admin 不通 | [KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
+| Mac admin 不通 | [KB-442](../knowledge-base/infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落) · Pi5 [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効) |
 | 検査図面作成で **図面が小さい**（旧 UI） | `pointListSlot` + 2行ヘッダー — **作成/改版は 2026-06-03 改善済**（[§作成レイアウト](#検査図面-作成-layout-return-nav-2026-06-03)）· Pi5 ≥ **`5274f1ee`** + 強制リロード |
 
 ---

@@ -188,7 +188,7 @@ sudo systemctl restart signage-lite.service
 | 上記 + Expired | Tailscale 再認証 or Disable key expiry |
 | 画像古い | `signage-lite-update.timer` · Pi5 `current-image` |
 
-**関連 KB**: [KB-384](../infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)（Pi4 キオスク・TS 失効同型）· [KB-385](../infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)（Pi5 NeedsLogin / node key expired）· [KB-236](#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ)（xset・feh ループ）
+**関連 KB**: [KB-443](../infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)（Pi4 キオスク・TS 失効同型）· [KB-385](../infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)（Pi5 NeedsLogin / node key expired）· [KB-236](#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ)（xset・feh ループ）
 
 **References**: [Runbook: pi3-signage-tailscale-recovery](../../runbooks/pi3-signage-tailscale-recovery.md) · [deployment.md §ラズパイ3](../../archive/deployments/legacy-operator-guide-through-2026-07.md#ラズパイ3サイネージの更新) · [tailscale-policy.md §Key expiry](../../security/tailscale-policy.md#key-expiry-常時稼働端末) · `scripts/ops/recover-pi3-signage-remote.sh`
 
@@ -715,9 +715,7 @@ sudo systemctl restart signage-lite.service
 
 ---
 
-### [KB-236] 可視化データソースで再レンダリング失敗が断続発生する（dataSource timeout 5000ms）
-
-> **注記**: KB-236 の番号は、本書の「Pi3 signage-lite.serviceのxsetエラー」と重複している（[index.md](../index.md) は xset 版を KB-236 として記録）。
+### [KB-441] 可視化データソースで再レンダリング失敗が断続発生する（dataSource timeout 5000ms）
 
 **事象**:
 - 管理コンソールで可視化ダッシュボードを更新後、`再レンダリング失敗` ダイアログが出る
@@ -2130,7 +2128,7 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 - `apps/api/src/services/visualization/visualization.service.ts`
 
 **関連KB**:
-- [KB-236](./signage.md#kb-236-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms): 可視化データソースの性能最適化
+- [KB-441](./signage.md#kb-441-可視化データソースで再レンダリング失敗が断続発生するdatasource-timeout-5000ms): 可視化データソースの性能最適化
 
 ---
 
@@ -2201,7 +2199,7 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 - `apps/api/scripts/design-preview.ts`（デザインプレビュー用タイトル修正）
 
 **関連KB**:
-- KB-274（計測機器持出状況サイネージコンテンツの実装）: 本文は未記録。本書の KB-274 は render-worker の別件で、番号が衝突している
+- KB-444（計測機器持出状況サイネージコンテンツの実装）: 本文は未記録
 
 ---
 

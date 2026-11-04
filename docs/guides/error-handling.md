@@ -225,7 +225,7 @@ curl -X POST http://localhost:8080/api/tools/employees \
 # 新しいトークンを取得
 TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 ```
 
 #### 2. バリデーションエラーが発生する

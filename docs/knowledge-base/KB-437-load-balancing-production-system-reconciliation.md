@@ -1,13 +1,11 @@
 ---
-title: KB-363 キオスク負荷調整と生産システムの集計突合（2026-05-27）
+title: KB-437 キオスク負荷調整と生産システムの集計突合（2026-05-27）
 tags: [kiosk, production-schedule, load-balancing, reconciliation, FSIGENSHOYORYO, FSIGENSHOYOYMD]
 audience: [開発者, 運用者, 設計者]
 last-verified: 2026-05-27
 ---
 
-# KB-363: キオスク負荷調整 × 生産システム — データ源・用語・突合結果
-
-> **番号の注記**: KB-363 は archive の [DGX `sparkHost` フォールバックの記録](../archive/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md) と番号が重複している。番号だけでなくファイル名で参照する。
+# KB-437: キオスク負荷調整 × 生産システム — データ源・用語・突合結果
 
 ## Context
 

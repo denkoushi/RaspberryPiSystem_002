@@ -33,7 +33,7 @@
 | Phase12 で **`deploy-status` が一時的に `isMaintenance:true`** と FAIL | 直後に `curl …/api/system/deploy-status -H "x-client-key: …"` で再確認。デプロイ直後・`deploy-status.json` 更新タイミングで **数秒〜数十秒** だけメンテ表示になりうる | **再実行**で `isMaintenance:false` に戻れば環境差ではなく一時状態。常時 true のときは Pi5 の `config/deploy-status.json` とクライアント解決（`statusClientId`）を確認（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)） |
 | Phase12 終盤 **`verify-services-real.sh` だけ**「Pi5に到達できません」 | `verify-phase12-real.sh` 本体は API/SSH で Pi5 に届いているのに、子スクリプトが **別途 ICMP** だけで判定している | **`verify-services-real.sh`** は ping 失敗時に **`GET …/api/system/health` が 200 相当なら Pi5 IP を確定**するフォールバックを持つ（2026-04-04 追補）。それでも失敗する場合は Tailscale/LAN の経路を確認 |
 | Mac で **`update-all-clients.sh` が「Another update… local lock」**で即終了 | 同一マシンから **`--detach --follow` を 2 プロセス並列**で起動した | **1 台ずつ順次**：前の `--follow` が **`Remote run finished`** になるまで待ってから次の `--limit`。ロックは `logs/.update-all-clients.local.lock`（`owner` に pid）。**同一 `RASPI_SERVER_HOST`（Pi5）ロック**とも重なるので、並列は避ける（[deployment.md](../guides/deployment.md)）。※旧 wrapper（2026-08-08 以前）の挙動で、現行の標準 Ansible 経路には該当しない |
-| Mac で **`https://100.106.158.2/admin` がタイムアウト**（Tailscale アプリは Connected） | Mac: `tailscale status` に **`raspberrypi` / `100.106.158.2` が無い** · `tailscale ping 100.106.158.2` → **`no matching peer`** · Mac の `Self.Tags` が **空**（Pi5 は **`tag:server`**） | **Tailscale ACL**（`tag:admin` → `tag:server` の `tcp:443`）が効くため、Mac に **`tag:admin` を再付与**（[KB-278](./infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）· 暫定は LAN `https://192.168.10.230/admin` |
+| Mac で **`https://100.106.158.2/admin` がタイムアウト**（Tailscale アプリは Connected） | Mac: `tailscale status` に **`raspberrypi` / `100.106.158.2` が無い** · `tailscale ping 100.106.158.2` → **`no matching peer`** · Mac の `Self.Tags` が **空**（Pi5 は **`tag:server`**） | **Tailscale ACL**（`tag:admin` → `tag:server` の `tcp:443`）が効くため、Mac に **`tag:admin` を再付与**（[KB-442](./infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）· 暫定は LAN `https://192.168.10.230/admin` |
 
 ## Root cause（典型）
 
@@ -799,7 +799,7 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 | 変更種別 | **API + Web + Prisma**（Pi5: `api`/`web` 再ビルド + `prisma migrate deploy`）· Pi4: **`kiosk-browser` 再起動** + Pi5 SPA 反映 |
 | Pi5 Detach | **`20260603-074547-17661`** · `failed=0` · HEAD **`2f3979ce`** · migrations **103 件・up to date** |
 | Pi4 代表 Detach | **`raspi4-kensaku-stonebase01`**: **`20260603-075813-27911`** · `failed=0` |
-| Pi4 研削メイン再同期 | **`raspberrypi4`**: **`20260603-115435-29435`** · HEAD **`b787c273`** · TS 障害復旧後（[KB-384](./infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)） |
+| Pi4 研削メイン再同期 | **`raspberrypi4`**: **`20260603-115435-29435`** · HEAD **`b787c273`** · TS 障害復旧後（[KB-443](./infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)） |
 | 本番実機 | **Pi5 + Pi4×4 全台 OK**（管理テンプレ 4 モード · キオスク検査図面 公差/採番 · 自主検査 入力 slot ラベル） |
 | 参照デプロイ手順 | [deployment.md §2026-06-03](../archive/deployments/2026-06.md#kiosk-self-inspection-four-modes-and-tolerance-2026-06-03) |
 
@@ -807,9 +807,9 @@ Runbook: [§フルリセット・ガイド試行](../runbooks/kiosk-part-measure
 
 | 時系列 | 事象 | 対処 |
 |--------|------|------|
-| 1 | Mac `https://100.106.158.2/admin` 不通 | **`tag:admin` 再付与**（[KB-278](./infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)） |
+| 1 | Mac `https://100.106.158.2/admin` 不通 | **`tag:admin` 再付与**（[KB-442](./infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)） |
 | 2 | 続けて Pi5 **`NeedsLogin` / node key expired** | Pi5: `sudo tailscale up --advertise-tags=tag:server` + 承認（[KB-385](./infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)） |
-| 3 | 研削メイン Pi4 **キオスク非表示** · TS `curl` **000** · LAN **200** | Pi4 TS 再ログイン承認後も **netmap 未同期** → `tailscaled` 再起動 + **`tag:kiosk --reset`** · 暫定 **LAN URL** → TS URL へ戻し（[KB-384](./infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)） |
+| 3 | 研削メイン Pi4 **キオスク非表示** · TS `curl` **000** · LAN **200** | Pi4 TS 再ログイン承認後も **netmap 未同期** → `tailscaled` 再起動 + **`tag:kiosk --reset`** · 暫定 **LAN URL** → TS URL へ戻し（[KB-443](./infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)） |
 | 4 | Pi4 リポジトリ **`_appRef=cd503aa4`（古い）** | **`update-all-clients.sh main --limit raspberrypi4`** → **`b787c273`** · 現場 **正常化 OK** |
 
 **知見**: Tailscale **ブラウザ承認だけ**では Pi4 の `InMagicSock` / Pi5 peer 表示が揃わないことがある。**`--reset` 付き `tailscale up`** が必要。Pi5 に **`tag:kiosk` で up する誤操作**は避ける（正は **`tag:server`**）。

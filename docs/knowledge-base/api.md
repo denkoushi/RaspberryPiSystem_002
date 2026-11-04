@@ -353,7 +353,7 @@
   - **ヘルスチェック**: `GET /api/system/health` → `200` (`status: ok`), `GET /api/backup/config/health/internal` → `200` (`{"status":"healthy","issues":[]}`)
   - **DB整合性**: `pnpm prisma migrate status` → `Database schema is up to date!`（32 migrations）、必須テーブル `MeasuringInstrumentLoanEvent` 存在確認 → `true`
   - **業務エンドポイント疎通**: `GET /api/tools/loans/active`（`x-client-key`付き）→ `200`, `GET /api/signage/content` → `200`（コンテンツJSON取得）
-  - **認証フロー**: `POST /api/auth/login`（`admin/admin1234`）→ `200`（アクセストークン発行成功）、`POST /api/auth/refresh` → `200`（新しいアクセストークン発行成功）
+  - **認証フロー**: `POST /api/auth/login`（`admin` / 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更））→ `200`（アクセストークン発行成功）、`POST /api/auth/refresh` → `200`（新しいアクセストークン発行成功）
   - **認証付き管理API（読み取り系）**: `GET /api/backup`, `/api/backup/history`, `/api/backup/history/:id`, `/api/backup/config`, `/api/backup/config/templates`, `/api/backup/config/health`, `/api/imports/history`, `/api/imports/history/failed`, `/api/imports/history/:id`, `/api/imports/schedule`, `/api/csv-dashboards`, `/api/auth/role-audit` すべて `200` で正常応答
   - **非認証アクセスの防御確認**: `backup/imports/csv-dashboards` の管理系エンドポイントは未認証で `401` を返却（想定どおり）
   - **ログ健全性**: 直近15分のAPIログで重大障害系（FATAL/Prisma障害）は未検出、検証時の未認証アクセスに起因する `401` ログのみ確認（正常挙動）
@@ -613,7 +613,7 @@
 
 ---
 
-### [KB-360] 加工機点検状況のKPIをカード配色基準と統一（正常/異常件数）
+### [KB-447] 加工機点検状況のKPIをカード配色基準と統一（正常/異常件数）
 
 **日付**: 2026-04-29
 

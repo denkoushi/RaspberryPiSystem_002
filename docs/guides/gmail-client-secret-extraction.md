@@ -13,7 +13,7 @@ Google Cloud ConsoleでOAuth 2.0クライアントIDを作成した後、Client 
 1. **JSONファイルをダウンロード**
    - Google Cloud Consoleの認証情報作成完了画面で「ダウンロード」ボタンをクリック
    - または、認証情報ページでOAuth 2.0クライアントIDの右側にある「ダウンロード」アイコンをクリック
-   - JSONファイルがダウンロードされます（例: `client_secret_993241073118-xxxxx.apps.googleusercontent.com.json`）
+   - JSONファイルがダウンロードされます（例: `client_secret_<CLIENT_ID>.apps.googleusercontent.com.json`）
 
 2. **JSONファイルを開く**
    - Macの「テキストエディット」や「VS Code」などで開く

@@ -305,7 +305,7 @@ https://192.168.128.131/admin/clients
 # ログインしてトークンを取得
 TOKEN=$(curl -ksS -X POST https://192.168.128.131/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # クライアント状態を取得
 curl -ksS -X GET https://192.168.128.131/api/clients/status \

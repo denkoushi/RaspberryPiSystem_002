@@ -286,5 +286,5 @@
 ## 関連ドキュメント
 
 - [CSVインポート・エクスポート仕様](../../guides/csv-import-export.md)
-- [計測機器持出返却: イベント履歴＋Gmail全件取り込み ExecPlan](../../.cursor/plans/measuring-instrument-events-retention_02349d3d.plan.md)
+- 計測機器持出返却: イベント履歴＋Gmail全件取り込み ExecPlan（`.cursor/plans/` の計画。リポジトリに未収録）
 - [生産スケジュールキオスクページ実装 ExecPlan](../../plans/production-schedule-kiosk-execplan.md)

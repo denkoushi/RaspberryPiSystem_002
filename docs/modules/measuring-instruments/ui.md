@@ -114,7 +114,7 @@
   - `useNfcStream`フックに`enabled`フラグと`enabledAt`タイムスタンプを追加
   - 各ページで`useMatch`を使用し、アクティブページのみNFC購読を有効化
   - 遷移前のイベントは`timestamp < enabledAt`でフィルタリング
-  - 詳細: [plans/nfc-stream-isolation-plan.md](../../plans/nfc-stream-isolation-plan.md)、[KB-066](../../knowledge-base/frontend.md#kb-066-nfcカメラ入力のスコープ分離-別ページからのイベント横漏れ防止)
+  - 詳細: [plans/nfc-stream-isolation-plan.md](../../plans/nfc-stream-isolation-plan.md)、[KB-091](../../knowledge-base/frontend.md#kb-091-nfcカメラ入力のスコープ分離-別ページからのイベント横漏れ防止)
 - **返却機能**: ✅ **統合完了**（2025-12-11）。専用タブを削除し、持出画面の持出一覧から返却可能に:
   - `/kiosk`（持出画面）の持出一覧で工具・計測機器の両方を表示・返却可能
   - 計測機器は「管理番号＋名称」を2行表示し、背景色を藍系に変更して工具と識別
