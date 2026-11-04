@@ -1,5 +1,5 @@
 ---
-title: Runbook: Kiosk Device Initial Route
+title: "Runbook: Kiosk Device Initial Route"
 tags: [kiosk, client-device, initial-route, deployment, validation]
 audience: [ai-agent, developer, operator]
 last-verified: 2026-07-06

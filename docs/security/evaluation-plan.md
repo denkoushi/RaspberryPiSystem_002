@@ -740,12 +740,12 @@ docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compos
    # 手動スキャンを実行
    sudo /usr/local/bin/clamav-scan.sh
    sudo /usr/local/bin/trivy-scan.sh
-   # rkhunter-scan.sh は撤去済み（clamav と trivy のみ）
+   sudo /usr/local/bin/package-integrity-scan.sh  # rkhunter-scan.sh の後継（rkhunter は撤去済み）
    
    # ログの確認
    tail -100 /var/log/clamav/clamav-scan.log
    tail -100 /var/log/trivy/trivy-scan.log
-   tail -100 /var/log/rkhunter/rkhunter.log
+   tail -100 /var/log/package-integrity/package-integrity-scan.log
    
    # アラートファイルの確認
    ls -lt /opt/RaspberryPiSystem_002/alerts/ | head -5

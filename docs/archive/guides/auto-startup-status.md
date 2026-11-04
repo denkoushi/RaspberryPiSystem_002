@@ -3,7 +3,7 @@ title: システム自動起動の現状と設定手順
 tags: [自動起動, systemd, Docker Compose, 起動設定]
 audience: [運用者, 開発者]
 last-verified: 2025-12-01
-related: [raspberry-pi4-restart-commands.md, operation-manual.md]
+related: [raspberry-pi4-restart-commands.md, ../../guides/operation-manual.md]
 category: guides
 update-frequency: medium
 ---

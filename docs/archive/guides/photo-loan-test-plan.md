@@ -3,7 +3,7 @@ title: 写真撮影持出機能 テスト計画
 tags: [テスト, 写真撮影持出, FR-009, Validation 9]
 audience: [開発者, テスター, QA]
 last-verified: 2025-11-27
-related: [../requirements/system-requirements.md, verification-checklist.md]
+related: [../../requirements/system-requirements.md, ../../guides/verification-checklist.md]
 category: guides
 update-frequency: medium
 ---
