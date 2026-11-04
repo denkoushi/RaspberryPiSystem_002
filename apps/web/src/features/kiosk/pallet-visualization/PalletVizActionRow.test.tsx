@@ -62,4 +62,13 @@ describe('PalletVizActionRow', () => {
     expect(screen.getByRole('button', { name: '選択削除' })).toBeVisible();
     expect(screen.getByRole('button', { name: '全削除' })).toBeVisible();
   });
+  it('未送信があるパレットでは削除・全削除だけを無効にする', () => {
+    render(<PalletVizActionRow busy={false} canOperate canClearPallet hasSelectedItem hasPendingRequests
+      onAdd={vi.fn()} onOverwrite={vi.fn()} onDelete={vi.fn()} onClearPallet={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '選択削除' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '全削除' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '追加' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '上書' })).toBeEnabled();
+  });
+
 });

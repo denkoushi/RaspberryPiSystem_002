@@ -1,12 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
-import { commandAddPalletItem } from '../pallet-visualization-command.service.js';
+import { commandAddPalletItem, commandReplacePalletItem } from '../pallet-visualization-command.service.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 
 const RESOURCE_CD = 'PLOCK';
 const PRODUCT_NO = 'PALLET-LOCK-ORDER';
+let clientId: string;
+let rowId: string;
 
 async function cleanup(): Promise<void> {
   await prisma.machinePalletEvent.deleteMany({ where: { resourceCd: RESOURCE_CD } });
@@ -34,14 +37,6 @@ describe('pallet command concurrency', () => {
       },
       update: {},
     });
-  });
-
-  afterAll(async () => {
-    await cleanup();
-    await prisma.$disconnect();
-  });
-
-  it('同一パレットへの同時追加でdisplayOrderが重複しない', async () => {
     const [client, row] = await Promise.all([
       prisma.clientDevice.create({ data: { name: 'Pallet lock test', apiKey: 'pallet-lock-test-key' } }),
       prisma.csvDashboardRow.create({
@@ -68,8 +63,18 @@ describe('pallet command concurrency', () => {
       },
     });
 
+    clientId = client.id;
+    rowId = row.id;
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await prisma.$disconnect();
+  });
+
+  it('同一パレットへの同時追加でdisplayOrderが重複しない', async () => {
     await Promise.all(Array.from({ length: 8 }, () => commandAddPalletItem({
-      clientDeviceId: client.id,
+      clientDeviceId: clientId,
       machineCd: RESOURCE_CD,
       palletNo: 1,
       manufacturingOrderBarcodeRaw: PRODUCT_NO,
@@ -81,9 +86,27 @@ describe('pallet command concurrency', () => {
     });
     expect(items.map((item) => item.displayOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(new Set(items.map((item) => item.displayOrder)).size).toBe(8);
-    expect(items.every((item) => item.csvDashboardRowId === row.id)).toBe(true);
+    expect(items.every((item) => item.csvDashboardRowId === rowId)).toBe(true);
     expect(await prisma.machinePalletEvent.count({
       where: { resourceCd: RESOURCE_CD, palletNo: 1, actionType: 'SET_ITEM' },
     })).toBe(8);
   });
+  it('deduplicates concurrent add/replace, conflicts on changed bodies, and replays deleted targets', async () => {
+    const input = { clientDeviceId: clientId, machineCd: RESOURCE_CD, palletNo: 2,
+      manufacturingOrderBarcodeRaw: PRODUCT_NO, eventKey: randomUUID(), readAt: new Date() };
+    const results = await Promise.all(Array.from({ length: 4 }, () => commandAddPalletItem(input)));
+    expect(results.every(result => result.id === results[0].id)).toBe(true);
+    expect(await commandAddPalletItem(input)).toEqual(results[0]);
+    expect(await prisma.machinePalletItem.count({ where: { resourceCd: RESOURCE_CD, palletNo: 2 } })).toBe(1);
+    await expect(commandAddPalletItem({ ...input, manufacturingOrderBarcodeRaw: 'DIFFERENT' })).rejects.toMatchObject({ statusCode: 409 });
+    const replacement = { clientDeviceId: clientId, itemId: results[0].id,
+      manufacturingOrderBarcodeRaw: PRODUCT_NO, eventKey: randomUUID(), readAt: new Date() };
+    expect(await Promise.all([commandReplacePalletItem(replacement), commandReplacePalletItem(replacement)])).toEqual([results[0], results[0]]);
+    await expect(commandReplacePalletItem({ ...replacement, itemId: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+    await prisma.machinePalletItem.delete({ where: { id: results[0].id } });
+    expect(await commandAddPalletItem(input)).toEqual(results[0]);
+    expect(await commandReplacePalletItem(replacement)).toEqual(results[0]);
+    expect(await prisma.machinePalletEvent.count({ where: { clientDeviceId: clientId, eventKey: { in: [input.eventKey, replacement.eventKey] } } })).toBe(2);
+  });
+
 });

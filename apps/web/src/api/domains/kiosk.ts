@@ -219,7 +219,7 @@ export async function getKioskPalletVisualizationHistory(
 }
 
 export async function postKioskPalletVisualizationItem(
-  payload: { machineCd: string; palletNo: number; manufacturingOrderBarcodeRaw: string },
+  payload: { machineCd: string; palletNo: number; manufacturingOrderBarcodeRaw: string; eventKey?: string; readAt?: string },
   clientKey?: string
 ) {
   const { data } = await api.post<{ id: string }>('/kiosk/pallet-visualization/items', payload, {
@@ -230,7 +230,7 @@ export async function postKioskPalletVisualizationItem(
 
 export async function postKioskPalletVisualizationItemReplace(
   itemId: string,
-  payload: { manufacturingOrderBarcodeRaw: string },
+  payload: { manufacturingOrderBarcodeRaw: string; eventKey?: string; readAt?: string },
   clientKey?: string
 ) {
   const { data } = await api.post<{ id: string }>(
