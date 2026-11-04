@@ -149,6 +149,13 @@ curl --silent --show-error --fail --dump-header "$TEMP_DIR/slot-unhashed.headers
 if grep -Eiq '^Cache-Control:.*immutable' "$TEMP_DIR/slot-unhashed.headers"; then
   fail 'slot enabled immutable caching for an unhashed asset'
 fi
+missing_hashed_status="$(curl --silent --show-error \
+  --dump-header "$TEMP_DIR/slot-missing-hashed.headers" \
+  --output /dev/null --write-out '%{http_code}' "$slot_url/assets/missing-AbCdEf12.js")"
+[[ "$missing_hashed_status" == 404 ]] || fail "missing hashed asset returned HTTP $missing_hashed_status"
+if grep -Eiq '^Cache-Control:.*immutable' "$TEMP_DIR/slot-missing-hashed.headers"; then
+  fail 'slot enabled immutable caching for a missing hashed asset'
+fi
 docker rm -f "$CONTAINER_NAME" >/dev/null
 
 docker run --detach --rm \

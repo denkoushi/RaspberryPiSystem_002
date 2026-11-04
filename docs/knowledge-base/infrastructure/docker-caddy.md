@@ -368,13 +368,15 @@ handle @api {
 **事象**: 全画面が読む `app-*.js` に取説 HTML、ZXing、recharts、管理画面が入り、Pi4 の起動・再読込が遅い。配信用 Caddy に圧縮とハッシュ付き資産の長期キャッシュがなかった。
 
 **対策**:
-- `kioskSopRegistry.ts` は開いた取説だけを動的 import し、Promise を共有する。読み込み中も既存ダイアログの操作部を維持し、完了後に iframe を表示する。
-- ZXing はスキャン・印刷時に動的 import する。enum だけの利用は本体 ESM が再公開する `esm/core/BarcodeFormat` を参照する。Vitest の本体は CJS なので、テストでは ESM のオブジェクト同一性と CJS の値一致を別々に確認する。
+- `kioskSopRegistry.ts` は取説 HTML を静的な `?url` 参照から fetch し、成功した Promise を共有する。HTTP エラー・通信失敗はキャッシュから捨て、ダイアログを開き直すと再取得する。ボタン mount 時とキオスクの空き時間に先読みし、取得済みの取説はオフラインでも表示する。読み込み中も既存ダイアログの操作部を維持する。
+- ZXing は共通の `loadZxingLibrary` で動的 import し、キオスクの空き時間にも先読みする。失敗した Promise は破棄する（ブラウザの失敗済みモジュール記録までは解除できない）。スキャンではカメラ失敗と区別し、印刷では待機表示をエラー表示へ切り替える。enum だけの利用は本体 ESM が再公開する `esm/core/BarcodeFormat` を参照する。Vitest の本体は CJS なので、テストでは ESM のオブジェクト同一性と CJS の値一致を別々に確認する。
 - 日別負荷グラフと admin/tools ページを既存の Suspense パターンで遅延読み込みする。キオスク・サイネージのルート構造は維持する。
 - `Caddyfile.slot.template`、`Caddyfile.local.template`、`Caddyfile.production` に `encode zstd gzip` を設定する。既存の `Content-Encoding` がある応答は [Caddy の encode 実装](https://github.com/caddyserver/caddy/blob/master/modules/caddyhttp/encode/encode.go) が再圧縮を避ける。
-- `/assets/` 内の末尾が `-<8文字ハッシュ>.(js|css|woff|woff2)` のファイルだけを一年間 immutable とする。HTML の no-store、`sw.js` の no-cache は維持する。
+- `/assets/` 内の末尾が `-<8文字ハッシュ>.(js|css|woff|woff2)` の実在ファイルだけを `file` matcher で確認し、一年間 immutable とする。存在しないハッシュ風のパスは 404 とし、immutable を付けない。HTML の no-store、`sw.js` の no-cache は維持する。
 
 **検証**:
 - `pnpm --filter web exec tsc -b`、`pnpm --filter web lint`、対象 Vitest（11 ファイル・61 件）、`pnpm --filter web exec vite build` が成功。初期 app は 2,273.90 kB（Vite の gzip 表示 636.41 kB）。初期の静的依存にも取説・ZXing 本体・日別負荷グラフは含まれない。
 - `scripts/deploy/tests/test-web-static-routing.sh` に slot の immutable、gzip、HTML no-store、ハッシュ無し PNG の除外検査を追加。`bash -n` は成功。HTTP 実行検査はローカルの Docker ソケット権限により未完了。
+- 遅延読み込み修正後: `tsc -b`、`pnpm --filter web lint`（警告 0）、`vite build` は成功。app は 2,274,089 bytes、取説は `assets/manual-B8mOb33C.html` と `assets/manual-iJeN45oL.html` に出力された。指定 Vitest は 311 ファイル中 310 成功、2,802 件中 2,801 成功。組立テンプレートのマーカー inspector 検査でボタン取得に失敗したが、同検査の単独実行は 4 条件すべて成功。取説の通信失敗・404 後の再取得、ZXing 失敗の区別と次回再試行、印刷の読込失敗表示は成功した。
+- E2E は HTML response の body 取得完了をオフライン化前に待つよう修正。実行は preview 待受の `EPERM` と Playwright 対応 Chromium 不足で未確認。Caddy HTTP 検査も Docker ソケット権限により未確認。追加した missing hash 404 / immutable 除外検査の `bash -n` は成功。
 - 生成済み取説、API、Ansible、開発用 Caddyfile、gateway は変更していない。実機での速度測定・デプロイは未実施。
