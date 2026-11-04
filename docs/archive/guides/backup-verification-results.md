@@ -88,10 +88,10 @@ Authorization: Bearer <token>
 **ファイル内容確認**:
 ```csv
 employeeCode,displayName,nfcTagUid,department,contact,status
-1179,萱沼涼太,04C393C1330289,加工担当部署,,ACTIVE
-1190,遠藤亜生,04B34411340289,加工担当部署,,ACTIVE
-6666,山田 太郎,04C362E1330289,加工,,ACTIVE
-8888,佐藤 花子,04131705340289,組立,,ACTIVE
+<employee-code>,<name>,<nfc-uid>,加工担当部署,,ACTIVE
+<employee-code>,<name>,<nfc-uid>,加工担当部署,,ACTIVE
+<employee-code>,<name>,<nfc-uid>,加工,,ACTIVE
+<employee-code>,<name>,<nfc-uid>,組立,,ACTIVE
 ```
 
 **ファイルパス（改善後）**: `/opt/backups/csv/2025-12-15T00-42-04-953Z/employees.csv`
@@ -229,10 +229,10 @@ Authorization: Bearer <token>
 **ファイル内容確認**:
 ```csv
 employeeCode,displayName,nfcTagUid,department,contact,status
-1179,萱沼涼太,04C393C1330289,加工担当部署,,ACTIVE
-1190,遠藤亜生,04B34411340289,加工担当部署,,ACTIVE
-6666,山田 太郎,04C362E1330289,加工,,ACTIVE
-8888,佐藤 花子,04131705340289,組立,,ACTIVE
+<employee-code>,<name>,<nfc-uid>,加工担当部署,,ACTIVE
+<employee-code>,<name>,<nfc-uid>,加工担当部署,,ACTIVE
+<employee-code>,<name>,<nfc-uid>,加工,,ACTIVE
+<employee-code>,<name>,<nfc-uid>,組立,,ACTIVE
 ```
 
 **知見**:

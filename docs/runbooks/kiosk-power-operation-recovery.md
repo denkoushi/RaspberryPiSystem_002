@@ -5,7 +5,7 @@ audience: [運用者, 開発者]
 last-verified: 2026-03-05
 related:
   - ../knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md
-  - ../knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md
+  - ../archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md
   - ../knowledge-base/infrastructure/ansible-deployment.md#kb-237
 category: runbooks
 ---
@@ -35,26 +35,24 @@ category: runbooks
 Pi5 に SSH 接続し、以下を実行して原因を特定する。
 
 ```bash
-# 1. API コンテナ内の power-actions マウント状態を確認
-ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infrastructure/docker/docker-compose.server.yml exec -T api cat /proc/self/mountinfo | grep power-actions"
+# 1. 稼働中の API スロット（api-blue / api-green）内の power-actions マウント状態を確認
+ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && scripts/server/run-in-active-api.sh cat /proc/self/mountinfo" | grep power-actions
 ```
+
+本番の API は `docker-compose.phase3.yml` の blue/green スロットで動き、`docker-compose.server.yml` の `api` サービスは使われていない。
 
 **判定**:
 - `.../power-actions//deleted` が含まれる → KB-288 の対象。即時対処を実施する。
 - `.../power-actions` のみ（`//deleted` なし）→ 別原因（例: クライアント側の clientKey、KB-237 参照）。
 
-## 即時対処（Pi5 で API コンテナ再起動）
+## 即時対処
 
-```bash
-# Pi5 に SSH 接続して実行
-ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate api"
-```
+API コンテナを `docker compose up -d --force-recreate` などで個別に再作成しない（[deploy-status-recovery.md](./deploy-status-recovery.md) の禁止事項）。Pi5 の再リリースは [deployment.md](../guides/deployment.md) の標準ローリング更新で行い、失敗や中断時は deploy-status-recovery.md に従う。
 
 **実行後**:
-- 数秒待機し、API が正常起動することを確認
 - キオスクで電源ボタンを押し、電源操作が正常に機能することを実機確認
 
-**実機検証結果（2026-03-05）**: 研削メイン（raspberrypi4）・raspi4-robodrill01 とも電源操作・連打防止オーバーレイが正常動作することを確認済み。
+**実機検証結果（2026-03-05、当時は `docker-compose.server.yml` の `api` を force-recreate して確認。現行: 上記の標準経路）**: 研削メイン（raspberrypi4）・raspi4-robodrill01 とも電源操作・連打防止オーバーレイが正常動作することを確認済み。
 
 ## 再発防止
 
@@ -101,5 +99,6 @@ ansible-playbook -i inventory.yml playbooks/prepare-pi5-power-dispatcher.yml \
 ## 関連 KB
 
 - [KB-288](../knowledge-base/KB-288-power-actions-bind-mount-deleted-inode.md): power-actions バインドマウントの削除済み inode 参照
+- [KB調査: キオスク備考欄の日本語入力モード切替・電源ボタンの同時不具合](../archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md)（アーカイブ）
 - [KB-237](../knowledge-base/infrastructure/ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題): 電源操作の Jinja2/systemd/所有権問題
 - [KB-285](../knowledge-base/infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる): 電源操作遅延の仕様

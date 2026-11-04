@@ -9,11 +9,13 @@
 | scope | Operator-side remediation of audit findings that require secret rotation, config change, or Pi redeploy |
 | date | 2026-07-02 |
 | source_of_truth | this file |
-| related_docs | [KB-393](../knowledge-base/KB-393-security-hardening-audit-2026-07.md), [deployment.md](../guides/deployment.md), [api-key-policy.md](../guides/api-key-policy.md) |
+| related_docs | [KB-393](../knowledge-base/KB-393-security-hardening-audit-2026-07.md), [KB-415](../knowledge-base/KB-415-ai-security-scan-2026-10.md), [KB-416](../knowledge-base/KB-416-outside-intrusion-resilience-2026-10.md), [KB-417](../knowledge-base/KB-417-security-audit-fixes-2026-10-10.md), [deployment.md](../guides/deployment.md), [api-key-policy.md](../guides/api-key-policy.md) |
 
 ## When to use
 
-The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #948 → main `b1172baf`, 2026-07-02, real-device verify PASS 45/0/0). The items below are the remaining **Batch C** operator actions. They change secrets/config/runtime and **can break running kiosks if done carelessly**, so each is gated on explicit operator go-ahead and staged (change → verify → next). Do NOT run these automatically. Each item lists risk and a verification step. All items C-1..C-9 are **not yet started**.
+The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #948 → main `b1172baf`, 2026-07-02, real-device verify PASS 45/0/0). The items below are the remaining **Batch C** operator actions. They change secrets/config/runtime and **can break running kiosks if done carelessly**, so each is gated on explicit operator go-ahead and staged (change → verify → next). Do NOT run these automatically. Each item lists risk and a verification step.
+
+> **状態（2026-11-04 時点）**: 各項目の Status 行を正とする。C-10〜C-12 は完了済み（各節の Status 参照）。C-1・C-5・C-6 はコード上対応済みで、本番反映日は運用者の確認待ち。
 
 > Safety: take a DB/config backup before secret rotation. Do one item at a time and verify the kiosk borrow/return flow after each.
 
@@ -22,6 +24,7 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - File: `infrastructure/docker/docker-compose.server.yml` (mount `~/.ssh:/root/.ssh:ro`).
 - Action: remove the mount; if backup needs SSH, use a dedicated least-privilege deploy key on a narrow path, or move backup transport off SSH.
 - Risk: backup/Ansible-from-container features break if they relied on the key. Verify backup job after change.
+- Status (2026-11-04): code side done. `docker-compose.server.yml` no longer mounts the whole `~/.ssh`; it binds only the backup-only key `/run/secrets/backup-ssh/id_ed25519` (and its `known_hosts`) read-only. Production rollout date: to be confirmed by the operator.
 
 ## C-2. PostgreSQL password (Critical)
 
@@ -38,7 +41,7 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 
 ## C-3. NFC agent reboot/poweroff + bind address (Critical)
 
-- Status: code correction implemented locally; hosted CI, merge, and production rollout remain.
+- Status: code correction is on main (`REST_HOST` defaults to `127.0.0.1`; `main.py` has no flush/reboot/poweroff routes). Production rollout date: to be confirmed by the operator.
 - Files: `clients/nfc-agent/nfc_agent/main.py`, `config.py`, `resend_worker.py`, `infrastructure/ansible/templates/nfc-agent.env.j2`.
 - Correction: bind REST/WebSocket to `127.0.0.1`; remove unused flush, reboot, and poweroff routes; compile the kiosk Web bundle with the audited local-only NFC contract; delete queued events only after successful browser delivery.
 - Remaining hardening: replacing the existing privileged container/device access is outside this change and still needs a separately staged design.
@@ -60,12 +63,14 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Action: after a password is configured, remove the `if (!config) return { success: password === '2520' }` fallback so no hardcoded PIN remains. Rate limiting is already applied (KB-393).
 - Risk: removing the fallback before a password is configured locks operators out of due-management / self-inspection approval. Configure first, then remove.
 - Verify: `2520` no longer succeeds; the configured PIN does.
+- Status (2026-11-04): code side done. The `2520` fallback is gone from production code under `apps/api/src` (test helpers only); `verifyDueManagementAccessPassword` returns `{ success: false }` when no config exists. Production rollout date: to be confirmed by the operator.
 
 ## C-6. Container de-root & hardening (High)
 
 - Files: `Dockerfile.api`, `Dockerfile.web`, `docker-compose.server.yml`.
 - Action: add non-root `USER`; `cap_drop: ALL` + minimal caps; `security_opt: [no-new-privileges:true]`; read-only rootfs with tmpfs/volumes for writable paths; slim the API image (remove Ansible/Playwright if not needed at runtime).
 - Risk: file-permission/writable-path breakage. Test in staging compose before Pi.
+- Status (2026-11-04): code side done. `Dockerfile.api` uses `USER node`, `Dockerfile.web` uses `USER caddy`, and the compose services set `read_only: true`, `cap_drop: [ALL]` and `no-new-privileges:true`. Production rollout date: to be confirmed by the operator.
 
 ## C-7. Admin IP allowlist on local TLS (High)
 

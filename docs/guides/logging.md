@@ -158,23 +158,29 @@ Dockerのログファイルは以下の場所に保存されます。
 
 ## ログの確認方法
 
-### Docker Composeでログを確認
+### Dockerでログを確認
+
+Pi5 本番の API は `docker-compose.phase3.yml`（project `bluegreen`）の blue/green スロットで動く。`docker-compose.server.yml` の `api` サービスは本番では使われていないため、稼働中スロットのコンテナ（`bluegreen-api-blue-1` または `bluegreen-api-green-1`）のログを見る。
 
 ```bash
+# 稼働中のAPIコンテナ名を確認
+docker ps --format '{{.Names}}' | grep -E '^bluegreen-api-(blue|green)-1$'
+API=bluegreen-api-green-1  # 上で表示されたコンテナ名
+
 # APIコンテナのログを確認（最新50行）
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 50
+docker logs "$API" --tail 50
 
 # リアルタイムでログを確認（フォロー）
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api -f
+docker logs "$API" -f
 
 # 特定の時間範囲のログを確認
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --since 1h
+docker logs "$API" --since 1h
 
 # エラーログのみをフィルタリング
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | grep -i error
+docker logs "$API" --tail 100 2>&1 | grep -i error
 
 # 警告ログ以上をフィルタリング
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | grep -E '"level":(40|50)'
+docker logs "$API" --tail 100 2>&1 | grep -E '"level":(40|50)'
 ```
 
 ### ログの構造化出力
@@ -183,13 +189,13 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tai
 
 ```bash
 # JSON形式で整形して表示
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 10 | jq
+docker logs "$API" --tail 10 2>&1 | jq
 
 # 特定のフィールドのみを抽出
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | jq 'select(.level >= 40) | {time, level, errorCode, requestId, url}'
+docker logs "$API" --tail 100 2>&1 | jq 'select(.level >= 40) | {time, level, errorCode, requestId, url}'
 
 # エラーコードでフィルタリング
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | jq 'select(.errorCode == "VALIDATION_ERROR")'
+docker logs "$API" --tail 100 2>&1 | jq 'select(.errorCode == "VALIDATION_ERROR")'
 ```
 
 ## ログ出力のベストプラクティス
@@ -258,13 +264,11 @@ logger.error({
 
 **解決方法**:
 ```bash
-# ログレベルを確認
-docker compose -f infrastructure/docker/docker-compose.server.yml exec api env | grep LOG_LEVEL
-
-# ログレベルを下げる（debugに設定）
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build api
-# .envファイルでLOG_LEVEL=debugを設定
+# ログレベルを確認（Pi5 の /opt/RaspberryPiSystem_002 で、稼働中スロット内で実行）
+scripts/server/run-in-active-api.sh env | grep LOG_LEVEL
 ```
+
+本番のログレベル変更は Pi5 上のファイル編集やコンテナの個別再作成ではなく、PR と標準デプロイ（[deployment.md](./deployment.md)）で行う。
 
 ### ログファイルが大きくなりすぎる
 

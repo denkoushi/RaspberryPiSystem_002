@@ -4,7 +4,7 @@ tags: [運用, キオスク, 貸出, 取消, データ修復, runbook]
 audience: [運用者, 開発者]
 last-verified: 2026-01-29
 related:
-  - ../knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md
+  - ../archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md
   - ../modules/tools/operations.md
 category: runbooks
 ---
@@ -133,7 +133,17 @@ WHERE id = '<ITEM_ID>' AND status = 'IN_USE';
 - **再度** 手順2・3のSELECTを実行して、`status` が `AVAILABLE` になったことを確認。
 - 可能ならキオスクで再スキャンして「貸出中」エラーが出ないことを確認。
 
+## 旧 active loan の端末（clientId）補正
+
+修正前に作られた active loan は `Loan.clientId` が null のままで、キオスク返却一覧の「端末場所」（`loan.client?.location`）が `-` になる。
+
+- **API**: `PUT /api/tools/loans/:id/client`、本文 `{ "clientId": "<ClientDevice の UUID>" }`
+- **権限**: ADMIN / MANAGER の JWT（キオスクの `x-client-key` では呼べない）
+- **振る舞い**: `Loan.clientId` を更新し、同 loan の BORROW 履歴で `clientId` が null の行を補完し、ADJUST 履歴（`reason: MANUAL_CLIENT_ASSIGNMENT`）を1件追加する。
+- **応答**: 返却済み・取消済みの loan は 400、loan またはクライアントが無いと 404、別の `clientId` が入っていると 409（上書き禁止）、同じ `clientId` なら変更なし。
+- **実装**: `apps/api/src/services/tools/loan-client-assignment.service.ts`、`apps/api/src/routes/tools/loans/assign-client.ts`
+
 ## 参考
 
-- 取消混入と返却/取消の処理不整合についての調査結果:  
-  `docs/archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md`
+- 取消混入と返却/取消の処理不整合についての調査結果: [kb-kiosk-rigging-return-cancel-investigation.md](../archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md)
+  - 現状: 調査時の不整合は修正済み。既存貸出の判定は `findActiveLoanForAsset` が `cancelledAt: null` を含む。

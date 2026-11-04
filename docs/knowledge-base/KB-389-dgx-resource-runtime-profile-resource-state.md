@@ -24,6 +24,8 @@ related_docs:
 
 # KB-389: DGX resource runtimeProfile and shared resourceState
 
+> Pi5 の管理画面と API の記述（`runtimeSummary`、`scenarioExecute`、切替シナリオ、`buildDgxResourceDashboardViewModel()`、`DgxResourceStatusHeader` / `DgxResourceStatusBoard` / `DgxResourcePreflightPanel`、詳細タブ）は 2026-06-07〜06-15 時点の旧 UI と旧契約の記録で、現行コードでは置き換わっている。現行の画面と API は [ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md) と [Runbook §管理コンソール: DGX リソース](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由) を正本とする。
+
 ## Context
 
 Branch `feat/dgx-resource-runtime-profile` adds **per-model `runtimeProfile`** (vLLM / llama.cpp budgets) and **DGX shared `resourceState`** (logical owner: business / private / experiment). Cursor deployed to DGX Spark and Pi5; real-machine validation completed on 2026-06-07.
@@ -65,7 +67,7 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - Path: `/srv/dgx/system-prod/state/dgx-resource-state.json`
 - `owner`: `business` | `private` | `experiment` | `unknown`
 - `status`: `preparing` | `released` (see Open Items — `ready` not written yet)
-- Pi5 admin shows **`DGX 所有`** via `overview.runtimeSummary.resourceOwnerLabelJa`
+- Pi5 admin shows **`DGX 所有`** via `overview.runtimeSummary.resourceOwnerLabelJa`（当時の記録。現行の overview に `runtimeSummary` はない）
 - Strict Ready / business readiness still uses Pi5 orchestration + `/v1/models`; resourceState is **display and cross-workload lease hint**, not a KPI.
 
 ### Business DeepSeek private-sharing attestation (local implementation · 2026-11-03)
@@ -80,6 +82,8 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 
 ### Async business-return UX (Pi5 only · 2026-06-07)
 
+（当時の記録。現行の actions は `RETURN_TO_BUSINESS` / `STOP_BUSINESS_LLM` / `PREVIEW_MODEL_STORAGE_DELETE` / `EXECUTE_MODEL_STORAGE_DELETE` だけ）
+
 - Scenarios: **`private_to_business`** / **`experiment_to_business`** only.
 - After workload steps and DGX `POST /start` with `modelProfileId`, API sets **`deferReadiness: true`** and returns **`scenarioExecute.outcomeKind: in_progress`** instead of blocking on Strict Ready.
 - UI pending clears when **`runtimeSummary.businessReady === true`** and **`runtimeSummary.resourceOwner === 'business'`** (overview polling + `sessionStorage` restore on remount).
@@ -87,6 +91,8 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - DGX code unchanged for this UX fix.
 
 ### Modern dashboard UI (Pi5 Web only · 2026-06-07)
+
+（当時の記録。現行の画面は `DgxResourceDashboard.tsx` と `DgxResourceStatusPanel.tsx` で構成され、下記の view model とコンポーネントはない）
 
 - **Scope**: Web presentation only. API / DGX contracts unchanged.
 - **View model**: `buildDgxResourceDashboardViewModel()` in `dgxResourceDashboardViewModel.ts` maps `overview` → header pills, 4-tile status row, detail rows. UI components consume the view model; they do not re-derive owner/ready/memory labels inline.
@@ -103,6 +109,8 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - Runtime budget shown when selecting business-return profile (e.g. `vLLM memory budget 65%`).
 
 ### Admin preflight metrics (2026-06-15)
+
+（Web の記述は当時の記録。`DgxResourceStatusBoard` / `DgxResourcePreflightPanel` は現行コードにない）
 
 - DGX gateway `/system/metrics` returns optional detail fields from `nvidia-smi`: `gpuTemperatureC`, `gpuPowerDrawW`, `gpuPowerLimitW`, `gpuClockSmMhz`, `gpuClockGraphicsMhz`, `gpuClockMemoryMhz`, `gpuPstate`, `gpuClocksThrottleReason`, `gpuName`, `driverVersion`.
 - Pi5 API passes these through `overview.kpis` (`dgx-resource.probes.ts` accepts camelCase and legacy snake_case keys).

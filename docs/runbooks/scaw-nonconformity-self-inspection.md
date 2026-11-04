@@ -26,26 +26,6 @@ Do not run `pnpm test:postgres:start`, `scripts/test/start-postgres.sh`, `script
 
 The existing safe wrapper `scripts/test/work-instructions-validation.sh` is reusable here. It creates a unique labelled container and volume, publishes only a dynamic `127.0.0.1` port, captures container/volume/network inventories, and removes only its own container/volume in an EXIT/INT/TERM cleanup path. It intentionally does not create a network: the database is reached through the loopback port on Docker's default bridge, so no existing network is modified. If a future check needs container-to-container traffic, it must create and remove a uniquely labelled network instead. The wrapper verifies `TEMP_RESOURCE_REMAINING=0` and reports inventory changes. The feature does not need another Docker helper.
 
-## Branch and worktree lifecycle
-
-Run lifecycle commands from the repository root before implementation or after a merge. The approved branch is `feat/scaw-nonconformity-self-inspection`.
-
-    cd /Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--scaw-nonconformity-self-inspection
-    python3 -m scripts.git_lifecycle.cli audit --json
-
-For a new task, the lifecycle entry point is:
-
-    python3 -m scripts.git_lifecycle.cli start --branch feat/scaw-nonconformity-self-inspection
-
-Use the exact worktree path printed by `start`. Do not create a second linked worktree or edit `main` directly. Push, PR, merge, and deployment are separate approvals.
-
-After an approved PR is merged, use the exact path and PR number:
-
-    python3 -m scripts.git_lifecycle.cli finish --worktree <exact-worktree-path> --pr <number>
-    python3 -m scripts.git_lifecycle.cli audit --json
-
-Record the PR, merge SHA, target cleanup result, `main_sync`, and protected unrelated worktrees in the ExecPlan. A clean feature branch is not evidence of main integration or production rollout.
-
 ## Isolated PostgreSQL validation
 
 Run the following from the repository root. The wrapper owns the database lifecycle. Its child command inherits an isolated `DATABASE_URL`; do not override that variable inside the command.

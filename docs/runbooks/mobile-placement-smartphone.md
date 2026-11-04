@@ -154,7 +154,7 @@ curl -sk "https://<Pi5>/api/mobile-placement/haizen-current?shelfCode=%E8%A5%BF-
 ### Zero 2 W 配膳追跡（キオスク表示）
 
 - **`/kiosk/mobile-placement`** は **棚選択・製造 order 登録を優先**。**Zero2W の現在値一覧**は **`/kiosk/mobile-placement/zero2w-status`**（ボタン **「棚番配膳一覧（Zero2W）」**。既定ではメインの選択棚とはフィルタ共有しない・15s ポーリング）。
-- Top 上辺の **「Zero2W担当棚」** から **`/kiosk/mobile-placement/zero2w-assignment`** へ遷移し、**`haizenEdgeEnabled` の端末を選ぶ → 棚番を選ぶ → 保存** で担当棚を設定する。
+- 担当棚は **`/kiosk/mobile-placement/shelf-master`** の「写真」→ 棚を開く →「Zero2W」で **`haizenEdgeEnabled` の端末を選ぶ → 確定 → 保存する** で設定する（[zero-edge-agent.md](./zero-edge-agent.md)）。旧 `/kiosk/mobile-placement/zero2w-assignment` は `shelf-master` へリダイレクトする。
 - 専用ページは **棚マスタの登録済み構造化棚**だけを候補にし、一覧・設定対象端末は **`ClientDevice.haizenEdgeEnabled === true`** のみ（**旧データはマイグレーションで `zero2w` 文字列一致をバックフィル**。新規端末は **管理画面「クライアント端末管理」の Zero2W配膳列**または **`PUT /api/clients/:id`**）。
 - **本番反映（記録・2026-05-04）**: Pi5 **`raspberrypi5` のみ** `update-all-clients.sh`。**Detach Run ID** **`20260504-183939-27983`**。広域自動検証 `./scripts/deploy/verify-phase12-real.sh` は **PASS 43 / WARN 0 / FAIL 0**。**Pi3 への Ansible は当該デプロイで未実行**（**no hosts matched**）。詳細は [deployment.md](../guides/deployment.md) evening 項・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)。
 - **詳細**: [api/mobile-placement.md](../api/mobile-placement.md)・[KB-368](../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md)・エージェント [clients/haizen-agent/README.md](../../clients/haizen-agent/README.md)。
@@ -187,6 +187,8 @@ Android Chrome でアプリとして入れるには、警告の出ない証明�
 - Caddy 側で SNI ごとに証明書を切り替える案は、古い版へ戻すデプロイが通らなくなるため採らなかった
 
 ## 3. 業務フロー（V2・既定）
+
+> 下記の「画像OCR」と `/kiosk/mobile-placement/shelf-register`（`西-北-02` 形式）は当時の記録。現行の写真読取は冒頭のとおり Android ML Kit だけで、新規棚は `/kiosk/mobile-placement/shelf-master` の「棚を追加」で `加工機名 方角` 形式で登録する（旧 `shelf-register` は `shelf-master` へリダイレクトする）。
 
 **単一画面 `/kiosk/mobile-placement`**
 

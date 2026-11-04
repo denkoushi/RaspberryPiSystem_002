@@ -146,7 +146,7 @@
    # 1. ログインしてトークンを取得
    TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
      -H 'Content-Type: application/json' \
-     -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+     -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
    # 2. トークンをリフレッシュ
    curl -X POST https://100.106.158.2/api/backup/oauth/refresh \
@@ -217,7 +217,7 @@
 # 1. ログインしてトークンを取得
 TOKEN=$(curl -s -k -X POST https://100.106.158.2/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # 2. バックアップを実行（多重バックアップ設定が有効な対象）
 curl -X POST https://100.106.158.2/api/backup \

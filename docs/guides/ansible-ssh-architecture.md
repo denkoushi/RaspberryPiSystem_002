@@ -62,8 +62,8 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-
 scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN
 
 # 内部的な動作:
-# 1. Mac → Pi5にSSH接続
-# 2. Pi5上で ansible-playbook を実行
+# 1. wrapper が inventory の deploy_executor_host / ansible_user / ansible_port で Pi5 executor を解決し、Pi5にSSH接続
+# 2. Pi5上の systemd unit で deploy-release-standard.yml を実行（--limit / --full-fleet の無い実行は拒否）
 # 3. Pi5 → Pi3/4にSSH接続（Ansible経由）
 # 4. Pi3/4で更新を実行
 ```

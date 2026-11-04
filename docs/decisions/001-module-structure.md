@@ -33,6 +33,8 @@ routes/tools/
 
 ### サービス層構造
 
+（計画した構造。実施されていない。現行の `apps/api/src/services/tools/` は `employee.service.ts`・`loan.service.ts`・`item.service.ts` などが直下にフラットに並び、サブディレクトリは `photo-tool-label/` だけ）
+
 ```
 services/tools/
   ├── employees/
@@ -67,7 +69,7 @@ services/tools/
 
 ## 実装完了
 
-- **toolsモジュール**: 全リソース（employees, items, loans, transactions）を機能ごとのサブディレクトリ構造に分割完了
+- **toolsモジュール**: ルート層の全リソース（employees, items, loans, transactions）を機能ごとのサブディレクトリ構造に分割完了。サービス層のサブディレクトリ化は未実施
 - **バリデーションスキーマ**: 各サブディレクトリの`schemas.ts`に分離完了
 - **後方互換性**: 既存のAPIパスは維持され、クライアントへの影響なし
 

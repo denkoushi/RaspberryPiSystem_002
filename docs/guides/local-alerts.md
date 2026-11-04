@@ -254,16 +254,11 @@ curl -k -X POST https://192.168.128.131/api/clients/alerts/20251201-103259/ackno
 
 ### Ansible更新失敗時
 
-`scripts/update-all-clients.sh`が失敗した場合、自動的にアラートファイルが生成されます：
+現行の標準デプロイ経路（`scripts/update-all-clients.sh` → `scripts/deploy/standard-ansible-release.py`）は、失敗時に `alerts/alert-*.json` を生成しない。更新を伴う実行には `--limit PATTERN` または `--full-fleet` が必須で、手順は [deployment.md](./deployment.md) を正本とする。
 
 ```bash
-# 更新スクリプトを実行
-# inventory指定が必須（誤デプロイ防止）
-# 第2工場（既存）
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
-
-# 失敗した場合、自動的にアラートファイルが生成される
-# alerts/alert-YYYYMMDD-HHMMSS.json
+# 対象と順序の確認（更新は行わない）
+./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
 ```
 
 ### カスタムアラートの生成

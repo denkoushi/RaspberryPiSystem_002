@@ -320,7 +320,7 @@ rclone sync /Volumes/SSD01/MacOffload/Cursor gdrive:Backups/MacStorage/Cursor --
 
 ## Cursor `state.vscdb` の破損・肥大化（2026-06-06 追記）
 
-外部SSDへ Cursor を逃がした運用中でも、**`User/globalStorage/state.vscdb`** が破損・肥大化すると Cursor が極端に重くなる。本リポジトリ開発端末で **2026-06-06 に復旧実績**あり。正本は [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)。
+外部SSDへ Cursor を逃がした運用中でも、**`User/globalStorage/state.vscdb`** が破損・肥大化すると Cursor が極端に重くなる。本リポジトリ開発端末で **2026-06-06 に復旧実績**あり。当時の記録は [KB-388（archive）](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md)。
 
 ### 症状の目安
 
@@ -350,7 +350,17 @@ du -sh "$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
 
 - 数日〜数週間、`state.vscdb` のサイズと `SQLITE_CORRUPT` を確認
 - 安定後に退避フォルダ（例: 76GB）を削除して容量回収
-- 再発時は [KB-388 §再発時の検討肢](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#prevention--再発監視)（状態DBのみ内蔵SSD・インデックス除外・[KB-212](../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除)）を検討
+- 再発時は次を検討する:
+
+| 対策 | 内容 |
+|------|------|
+| 折衷配置 | **状態DBだけ内蔵SSD**、大容量データは外部SSD |
+| インデックス除外 | `node_modules` · `.git` · `dist` · `build` · `.next` · `.venv` · `coverage` · 大きなログ |
+| 履歴の定期整理 | 不要な Agent/Composer/チャット履歴（[KB-212](../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除) 参照） |
+| 外部SSD安定性 | スリープ無効・接続確認・作業前のマウント確認 |
+| 同時起動の抑制 | Chrome + Cursor + Codex 同時起動時の負荷を意識 |
+
+**運用決定（2026-06-06）**: 当面は外部SSD運用を続ける。主因は外部SSDそのものより、破損して肥大した DB と見られる。
 
 **関連**: [KB-212](../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除)（チャットログの選択削除）· [development §Cursor復旧後](./development.md#cursor-状態db復旧後の-agent-作業2026-06-06)
 

@@ -3,9 +3,13 @@ title: KB-362 キオスク負荷調整（山崩し支援）画面
 tags: [kiosk, production-schedule, load-balancing, machine-monthly-load]
 audience: [開発者, 運用者]
 last-verified: 2026-07-07
+status: historical
+superseded_by: ../guides/kiosk-production-schedule-load-balancing.md
 ---
 
 # KB-362: キオスク負荷調整（山崩し支援）画面
+
+> **履歴（2026-11）**: 2026-09-30 以降、負荷調整は1画面（`GET /kiosk/production-schedule/load-balancing/workspace`）に統合され、3タブと旧 API（overview / suggestions / outsourcing-* / machine-monthly-load / start-date-leveling）は削除されました。本書の3タブ・旧 API・2026-05 の UI 調整の節は履歴です。現行仕様の正本は [ガイド §現行画面](../guides/kiosk-production-schedule-load-balancing.md#現行画面2026-09-30--1画面タブなし) です。生産システムとの突合は [KB-363（負荷調整×生産システム突合）](./KB-363-load-balancing-production-system-reconciliation.md) を正本とします。
 
 ## Context
 
@@ -76,7 +80,7 @@ last-verified: 2026-07-07
 | `outsourcing-plan`（POST） | — | 2.6s |
 | `suggestions`（POST） | — | 1.6s |
 
-## 機種別月次負荷 — 仕様（実装正本）
+## 機種別月次負荷 — 仕様（旧画面・履歴）
 
 ### 集計対象
 
@@ -111,7 +115,7 @@ last-verified: 2026-07-07
 | Web タブ | `LoadBalancingMachineMonthlyTab.tsx` |
 | ページシェル | `ProductionScheduleLoadBalancingPage.tsx`（タブ + Mac 代理） |
 
-## 着手日・平準化 — 仕様（実装正本）
+## 着手日・平準化 — 仕様（旧画面・履歴）
 
 ### 集計対象
 
@@ -130,7 +134,7 @@ last-verified: 2026-07-07
 
 - `GET/PUT /production-schedule-settings/load-balancing/work-calendars`
 
-## 資源CD俯瞰・外注候補シミュ — 仕様（実装正本）
+## 資源CD俯瞰・外注候補シミュ — 仕様（旧画面・履歴）
 
 ### 用語
 

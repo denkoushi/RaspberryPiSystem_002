@@ -23,15 +23,15 @@
    ```csv
    # employees.csv
    employeeCode,displayName,nfcTagUid,department,contact,status
-   TEST001,テスト従業員1,04C362E1330289,テスト部,090-1234-5678,ACTIVE
-   TEST002,テスト従業員2,04B34411340289,テスト部,090-2345-6789,ACTIVE
+   TEST001,テスト従業員1,<nfc-uid>,テスト部,090-1234-5678,ACTIVE
+   TEST002,テスト従業員2,<nfc-uid>,テスト部,090-2345-6789,ACTIVE
    ```
 
    ```csv
    # items.csv
    itemCode,name,nfcTagUid,category,storageLocation,status,notes
-   TEST001,テスト工具1,04DE8366BC2A81,工具,テスト庫A,AVAILABLE,テスト用
-   TEST002,テスト工具2,04C393C1330289,工具,テスト庫B,AVAILABLE,テスト用
+   TEST001,テスト工具1,<nfc-uid>,工具,テスト庫A,AVAILABLE,テスト用
+   TEST002,テスト工具2,<nfc-uid>,工具,テスト庫B,AVAILABLE,テスト用
    ```
 
 3. **Dropboxにアップロード**

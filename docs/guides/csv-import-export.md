@@ -19,8 +19,8 @@
 
 **実装アーキテクチャ**:
 - ✅ **CSV Import Scalingプラン完了（2025-12-29）**: CSVインポート機能をレジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。新しいデータタイプの追加が容易になり、コードの重複を削減。スケジュール設定を`targets`配列形式に拡張し、複数のデータタイプを1つのスケジュールで処理可能に。後方互換性を確保（旧`employeesPath`/`itemsPath`形式もサポート）。Gmail件名パターンを管理コンソールから編集できる機能を実装し、設定ファイル（`backup.json`）に保存されるように変更。
-  - プランファイル: `.cursor/plans/csv_import_scaling_ccfbf0e7.plan.md`（全To-do完了済み）
-  - 詳細: [docs/knowledge-base/frontend.md#kb-112](./knowledge-base/frontend.md#kb-112-csvインポート構造改善と計測機器吊具対応) / [docs/knowledge-base/frontend.md#kb-113](./knowledge-base/frontend.md#kb-113-gmail件名パターンの管理コンソール編集機能) / [docs/knowledge-base/api.md#kb-114](../knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) / [docs/knowledge-base/api.md#kb-115](../knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理)
+  - プランファイル: `csv_import_scaling_ccfbf0e7.plan.md`（全To-do完了済み。リポジトリには未収録）
+  - 詳細: [docs/knowledge-base/api.md#kb-114](../knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) / [docs/knowledge-base/api.md#kb-115](../knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理)
 
 また、トランザクション履歴をCSV形式でエクスポートできます。
 

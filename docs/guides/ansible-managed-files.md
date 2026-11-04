@@ -3,7 +3,7 @@ title: Ansibleで管理すべき設定ファイル一覧
 tags: [Ansible, 設定管理, システム設定]
 audience: [開発者, 運用者]
 last-verified: 2025-12-01
-related: [ansible-hardening-stabilization-plan.md, ansible-error-handling.md]
+related: [../plans/ansible-improvement-plan.md, ansible-error-handling.md]
 category: guides
 update-frequency: high
 ---
@@ -165,6 +165,8 @@ polkit.addRule(function(action, subject) {
 
 ## 保護が必要なディレクトリ（`git clean`除外対象）
 
+**過去の方針**: 現行の `infrastructure/ansible` には `git clean` を実行するtaskはない。`common` role は端末リポジトリがcleanであることを検証してから immutable release へ fetch/reset する。以下は当時の除外方針の記録で、詳細は [git clean安全ガイド](./git-clean-safety.md) を参照する。
+
 ### 現在の除外対象
 
 - `storage/` - ユーザーアップロードファイル（写真、PDFなど）
@@ -191,36 +193,24 @@ systemctl list-unit-files | grep -E 'status-agent|kiosk-browser|signage-lite'
 
 ### Ansibleでの管理状況確認
 
+`manage-system-configs.yml` などの個別playbookは標準route（`deploy-release-standard.yml`）の外にあり、本番へ直接実行しない（[デプロイメントガイド](./deployment.md)、[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md#禁止事項)）。対象と処理の確認は read-only plan で行う。
+
 ```bash
-# プレイブックの実行（ドライラン）
-ansible-playbook -i infrastructure/ansible/inventory.yml \
-  infrastructure/ansible/playbooks/manage-system-configs.yml \
-  --check --diff
+scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
+  --print-plan --limit PATTERN
 ```
 
 ## トラブルシューティング
 
 ### 設定ファイルが削除された場合
 
-1. **Ansibleで自動復旧**:
-   ```bash
-   ansible-playbook -i infrastructure/ansible/inventory.yml \
-     infrastructure/ansible/playbooks/manage-system-configs.yml
-   ```
+1. **標準経路で再適用**: `--print-plan` の list-tasks で該当ファイルを扱うtaskがあるかを確認し、ある場合は明示承認後に `scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit PATTERN` で再適用する（[デプロイ・クイックスタート](./quick-start-deployment.md)）。標準routeが扱わないファイルでも、個別playbookを直接実行せず運用者の判断を仰ぐ。
 
-2. **バックアップから復旧**:
-   ```bash
-   scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
-     --print-plan --limit PATTERN
-   ```
+2. **失敗した場合**: `scripts/update-all-clients.sh --status RUN_ID` で結果を確認し、[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md) に従う。
 
 ### 設定ファイルが更新されない場合
 
-1. **プレイブックの実行**:
-   ```bash
-   ansible-playbook -i infrastructure/ansible/inventory.yml \
-     infrastructure/ansible/playbooks/manage-system-configs.yml
-   ```
+1. **標準経路で再適用**: 上記「設定ファイルが削除された場合」と同じく `scripts/update-all-clients.sh` の `--print-plan` と `--limit PATTERN` を使う。
 
 2. **手動で確認**:
    ```bash
@@ -230,10 +220,11 @@ ansible-playbook -i infrastructure/ansible/inventory.yml \
 
 ## 関連ドキュメント
 
-- [Ansible堅牢化・安定化計画](../plans/ansible-hardening-stabilization-plan.md)
+- [Ansible改善計画](../plans/ansible-improvement-plan.md)
 - [Ansibleエラーハンドリングガイド](./ansible-error-handling.md)
 - [トラブルシューティングナレッジベース](../knowledge-base/infrastructure.md)
 
 ## 更新履歴
 
 - 2025-12-01: 初版作成
+- 2026-11-04: 個別playbookの直接実行を標準routeへの参照に置換し、`git clean` 除外対象を過去の方針として注記

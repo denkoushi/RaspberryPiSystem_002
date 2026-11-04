@@ -7,6 +7,8 @@ last-verified: 2026-05-27
 
 # KB-363: キオスク負荷調整 × 生産システム — データ源・用語・突合結果
 
+> **番号の注記**: KB-363 は archive の [DGX `sparkHost` フォールバックの記録](../archive/knowledge-base/KB-363-dgx-resource-spark-status-fallback.md) と番号が重複している。番号だけでなくファイル名で参照する。
+
 ## Context
 
 キオスク **負荷調整**（`/kiosk/production-schedule/load-balancing`）の月次負荷が、生産システムの「負荷残」「負荷消費」と一致しない、という現場・検証上の問いに対し、**2026-05〜05-27** に Pi5 本番 DB・生産 CSV・スクリーンショット・コード正本で突合した記録。

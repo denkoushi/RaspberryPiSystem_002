@@ -69,7 +69,9 @@
 - **俯瞰のみ全面適用**。機種別月次・着手日は今後 `loadBalancingUiClasses` を横展開可能
 - **デプロイ**: **Pi5 のみ**。本番 **`da995573`**（[KB-362 §overview 棒グラフ](../knowledge-base/KB-362-kiosk-load-balancing.md#production-deploy実績-2026-05-28--overview-棒グラフレイアウト最適化--pi5-のみ)）
 
-## 集計ポリシー（サーバ実装に準拠）
+## 集計ポリシー（旧3タブ画面・〜2026-09-29）
+
+現行の集計は [§現行画面](#現行画面2026-09-30--1画面タブなし) を正とする。下の負荷専用 eligibility と `MH%` / `SH%` 除外は、現行 `workspace` も同じ行クエリ（`listStartDateLevelingQueryRows`）で適用している。
 
 - **月次キー**: 受注補足 `ProductionScheduleOrderSupplement.plannedEndDate` の暦月（UTC 月初〜翌月未満）。
 - **対象行（資源CD俯瞰・外注・社内移管）**: winner 行かつ **負荷専用 eligibility**（`fkmail` 必須・**S/R/O/P**・**C/X 除外**・実効未完了）。工数は **`FSIGENSHOYORYO` 合計**（`× plannedQuantity` しない）。
@@ -279,9 +281,7 @@ Prisma モデル（能力・ルール・2026-04-30 マイグレーション）: 
 
 | 症状 | 確認 |
 |------|------|
-| 自動選定が無反応 | device scope · 超過資源 0 · Pi5 HEAD **`cd42ebfe`** · DevTools で plan 後の **400** |
 | 能力がすべて `—` | `*Resolved` 未デプロイ or 能力未登録 — [KB-362 §shared](../knowledge-base/KB-362-kiosk-load-balancing.md#能力設定と-shared--sitekey2026-05-27) |
-| 全タブが重い | 月次/平準化 API の初回クエリ — 自動選定だけの問題ではない |
 | Pi4 だけ旧 UI | Pi4 未デプロイ or キャッシュ — [verification-checklist §6.6.4](verification-checklist.md) |
 
 詳細表: [KB-362 §Troubleshooting](../knowledge-base/KB-362-kiosk-load-balancing.md#troubleshooting)

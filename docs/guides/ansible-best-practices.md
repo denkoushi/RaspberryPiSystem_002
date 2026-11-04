@@ -3,7 +3,7 @@ title: Ansibleベストプラクティス
 tags: [Ansible, ベストプラクティス, 運用]
 audience: [開発者, 運用者]
 last-verified: 2025-12-01
-related: [ansible-hardening-stabilization-plan.md, ansible-managed-files.md, ansible-error-handling.md]
+related: [../plans/ansible-improvement-plan.md, ansible-managed-files.md, ansible-error-handling.md]
 category: guides
 update-frequency: medium
 ---
@@ -74,14 +74,9 @@ update-frequency: medium
 **原則**: エラー時に自動的にロールバックできる仕組みを用意する
 
 **実装**:
-- `release_pi5`、`release_kiosk`、`release_signage` roleのrescueでロールバックを実行
-- 最新のバックアップから設定ファイルを復旧
-
-**使用方法**:
-```bash
-scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml \
-  --print-plan --limit PATTERN
-```
+- `release_pi5`、`release_kiosk`、`release_signage` roleのrescueが失敗時に自動でロールバックを実行する（手動操作は不要）
+- 事前確認は `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit PATTERN`（read-only の計画表示で、ロールバックはしない）
+- 失敗後の確認と復旧は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) に従う
 
 ### 5. エラーハンドリングの徹底
 
@@ -322,10 +317,9 @@ src: /opt/RaspberryPiSystem_002/infrastructure/ansible/templates/template.j2
 
 ## 関連ドキュメント
 
-- [Ansible堅牢化・安定化計画](../plans/ansible-hardening-stabilization-plan.md)
+- [Ansible安定性・堅牢化・柔軟性向上計画](../plans/ansible-improvement-plan.md)
 - [Ansibleで管理すべき設定ファイル一覧](./ansible-managed-files.md)
 - [Ansibleエラーハンドリングガイド](./ansible-error-handling.md)
-- [Ansible関連の進捗と残タスク](../plans/ansible-progress-summary.md)
 
 ## 更新履歴
 

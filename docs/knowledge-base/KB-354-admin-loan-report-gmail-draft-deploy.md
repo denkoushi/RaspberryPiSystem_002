@@ -59,7 +59,7 @@ category: knowledge-base
 - **手順**: [deployment.md](../guides/deployment.md) どおり・`./scripts/update-all-clients.sh fix/loan-report-real-metrics-wide-preview infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
 - **Detach Run ID**: **`20260418-204637-27968`**（**`failed=0` / `unreachable=0`**・exit `0`）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 42 / WARN 1 / FAIL 0**（約 **62s**・fjv60-80 SSH WARN はベースライン同型）。
-- **デプロイ前（Mac）**: **未追跡のプレビュー HTML** 等があると `update-all-clients.sh` が fail-fast → **`git stash push -u`**（本記録では実施済み）。
+- **デプロイ前（Mac）**: **未追跡のプレビュー HTML** 等があると `update-all-clients.sh` が fail-fast → **`git stash push -u`**（本記録では実施済み）。（現行: wrapper にローカル dirty 判定は無く、stash は勧めない。[deployment.md](../guides/deployment.md) を正とする）
 - **CI**: Run **`24603756892`** success（コード変更 push 時。docs 追記コミットでは再実行確認を推奨）。
 - **PR**: [#168](https://github.com/denkoushi/RaspberryPiSystem_002/pull/168)
 
@@ -97,7 +97,7 @@ category: knowledge-base
 
 | 症状 | 切り分け |
 |------|-----------|
-| `update-all-clients.sh` が即 exit 2 | **未コミット／未追跡ファイル**で fail-fast。`git status` を確認し、**`git stash push -u`** またはコミットしてから再実行（[deployment.md](../guides/deployment.md)・[KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)）。 |
+| `update-all-clients.sh` が即 exit 2 | 引数・前提の誤り（UsageError）。例: ローカル HEAD が対象 branch のリモート SHA と一致しない。現行 wrapper にローカル作業ツリーの dirty 判定と `--follow` 引数は無い。WIP を stash せず、手順は [deployment.md](../guides/deployment.md) を正とする。 |
 | 下書き API が 403 / Gmail エラー | **OAuth スコープ**に `gmail.compose` が含まれるか、**接続済み Gmail アカウント**が有効かを確認（保存先は `backup.json`、画面は管理コンソール Gmail 設定 `/admin/gmail/config`）。 |
 | **送信** API が 403 / Gmail **`insufficientPermissions`** 等 | **`gmail.send`** がトークンに含まれていない。**OAuth 再認可**（Gmail 設定 `/admin/gmail/config` から再認可）でスコープを更新。 |
 | 送信が **403**（ロール） | **送信は `ADMIN` のみ**。`MANAGER` 以下は下書きのみ。 |

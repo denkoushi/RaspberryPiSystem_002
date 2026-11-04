@@ -4,35 +4,11 @@
 
 要領書 PDF の手動登録、Gmail からの取り込み、キオスク表示の確認と復旧手順を記録する。
 
-## 本番デプロイ（HTML 取り込みを含む API 変更時）
+> 仕様と環境変数の正本は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。この Runbook は登録・取込・再処理・確認・トラブル対応の手順だけを載せる。デプロイは [deployment guide](../guides/deployment.md) に従う。
 
-- **DB マイグレーション**: `gmailLogicalKey` / `gmailInternalDateMs` を追加するマイグレーション（例: `20260408100000_kiosk_document_gmail_logical_key`）を **本番 DB に適用**してから API を起動する（既存 Gmail 行は移行 SQL で論理キー付与・重複時は古い行を `enabled=false` でキー解除）。
-- **運用確認（2026-04-08）**: Gmail 要領書 **同名添付の上書き**（`gmailLogicalKey`・`messages.get` `internalDate` 比較）・Prisma `20260408100000_kiosk_document_gmail_logical_key`・ブランチ `feat/kiosk-gmail-logical-key-upsert`・**Pi5 のみ** `--limit raspberrypi5`。**Detach Run ID**: `20260408-215226-25074`（**`PLAY RECAP` `failed=0` / `unreachable=0`**・リモートログ basename: `ansible-update-20260408-215226-25074`・Mac 側フォロー完走まで **約 22 分**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh`（`RASPI_SERVER_HOST` 設定済み）→ **PASS 43 / WARN 0 / FAIL 0**（約 **114s**）。**手順**: [deployment.md](../guides/deployment.md)・`export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`・`./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（本記録時点の検証ブランチは feature。`main` マージ後はブランチを `main` に読み替え）。
-- **実機データ確認（2026-04-08 JST 夜〜09・Pi5 本番 DB / API ストレージ）**: 運用で **同一 HTML を別メール**から再送した事例。タイトル **`SD000032603_研削_OP-01`**。**有効行**（例: id `eecbd587-cdca-45c3-b178-c5073569f0c0`）に **`gmailLogicalKey`**=`sd000032603_研削_op-01.html`、**`gmailInternalDateMs`**=`1775654906000`（**2026-04-08 22:28:26 JST** 相当）、**`gmailMessageId`** が **新メール側**（先頭 `19d6d47e…`）へ更新、**`updatedAt`** **2026-04-08 17:30:26 UTC** 前後。**別行**（例: id `35e6594f-…`・旧メール）は **`enabled=false`**・論理キーなし・別 **`gmailMessageId`**（`19d6c661…`）。**ページ画像**は API コンテナ内 `/app/storage/pdf-pages/{文書UUID}/…-1.jpg` が **2026-04-08 13:30 UTC** 前後に更新され、**ピクセル 1490×2108**（180dpi 相当）を確認（`docker cp` + ホストで JPEG SOF 読取の例: [KB-313](../knowledge-base/KB-313-kiosk-documents.md)）。
-- **トラブルシュート（上書きが動かないように見える）**: API は **`internalDate` が取得できない／0 のメール**では **既存行を上書きしない**（誤上書き防止）。運用では `getMessageInternalDateMs` が **0 を返していないか**（Gmail API 応答・レート制限）をログで確認する。**ローカル DB で全マイグレーションを試す**ときは **pgvector 同梱 Postgres**が必要（素の `postgres:16` だと `extension "vector" is not available`）。例: `pgvector/pgvector:pg16`（本リポジトリの検証知見と同型）。
-- **影響ホスト**: API コンテナは **Pi5（`raspberrypi5`）のみ**更新すればよい（キオスク UI は既存の PDF 表示経路のまま。[deployment.md §標準経路の責務](../guides/deployment.md#標準経路の責務)）。
-- **標準コマンド例**（Pi5 のみ。詳細は [deployment.md](../guides/deployment.md)）:
+## 本番反映記録
 
-```bash
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --detach --limit raspberrypi5
-./scripts/update-all-clients.sh --status <RUN_ID> --inventory infrastructure/ansible/inventory.yml
-```
-
-## 本番デプロイ（キオスク **要領書ビューア**・`apps/web` のみ・Pi5 配信）
-
-- **運用確認（2026-04-09）**: キオスク `/kiosk/documents` の **縦スクロール安定化**（`useKioskDocumentNearVisibleRows`・`KioskDocumentViewerPageRow`・`kioskDocumentViewerVisibility.ts`）。ブランチ **`fix/kiosk-documents-viewer-scroll-stability`**。**Pi5 のみ** `--limit raspberrypi5`・Detach **`20260409-185355-5342`**（**`PLAY RECAP` `failed=0`**・所要 **約 7 分**）。**Phase12**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 **120s**）。**Pi4 Ansible は不要**（SPA は Pi5 の `web` コンテナから配信。[deployment.md §標準経路の責務](../guides/deployment.md#標準経路の責務)）。CI は web イメージ Trivy 向け **`.trivyignore`（CVE-2026-39883）** を含む。**手動（推奨）**: 各 Pi4 Firefox で長文書をスクロールし、**ガタつき・行高の跳ね**が改善しているか目視。詳細は [KB-313](../knowledge-base/KB-313-kiosk-documents.md)。
-
-## 本番デプロイ（要領書**管理画面**のみ・`apps/web` のみの変更時）
-
-- **影響ホスト**: 管理コンソールの Web バンドルは **Pi5（`raspberrypi5`）** に載るため、通常は **Pi5 のみ**で足りる（[deployment.md §標準経路の責務](../guides/deployment.md#標準経路の責務)）。
-- **運用確認（2026-04-08）**: 要領書 **PDF→JPEG 既定**を **180 DPI / 品質 88** に引き上げ（ブランチ `feat/kiosk-document-pdf-render-defaults-180dpi`・**Pi5 のみ** `--limit raspberrypi5`）。Detach Run ID: `20260408-201253-19203`（`failed=0`）。Phase12: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。既存 JPEG キャッシュは自動では張り替わらない（要領書再登録 or `pdf-pages` 削除が必要な場合あり・[KB-313](../knowledge-base/KB-313-kiosk-documents.md)）。
-- **運用確認（2026-04-08）**: 要領書 **ページ画像配信ルート**を、変換側と同じ保存先に統一（ブランチ `fix/kiosk-pdf-pages-route-storage-path`・**Pi5 のみ** `--limit raspberrypi5`）。Detach Run ID: `20260408-204640-13669`（`failed=0`）。Phase12: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。対象 HTML 要領書 `SD000032603_研削_OP-01` は、配信 URL が **HTTP 200** に復帰し、再生成 JPEG は **`1490 x 2108`** を確認。
-- **運用確認（2026-04-08）**: `feat/kiosk-doc-gmail-schedules-list` を **`--limit raspberrypi5`** で反映。Ansible サマリ例: `ansible-update-20260408-185957-2678`（`failed=0`）。Phase12: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。
-- **ブラウザ確認**: `/admin/kiosk-documents` の **要領書Gmailスケジュール一覧**と **手動取り込み**の **ID 反映**ボタン。
-
-- **デプロイ失敗（Pi5 で `git` が `unable to unlink` / `pull` 中止）**: 一部パスが **root 所有**になっている典型。 [deployment.md](../guides/deployment.md) の **「ワークツリー権限」**・[KB-325](../knowledge-base/infrastructure/signage.md#kb-325-split-compact24-loan-cards-pi5-git) を参照し **`chown`** のうえ、運用で許容できる場合は **`git reset --hard origin/<branch>`** と **`git clean -fd`** でリポジトリをリモートと一致させてから **再デプロイ**（**`git clean` は未追跡ファイルを削除**する。ホスト専用の未バックアップ作業物がある場合は事前に退避）。
-- **実機スモーク**: `./scripts/deploy/verify-phase12-real.sh`（**キオスク要領書 API** を含む）。**2026-04-08**: 匿名 **サイネージ**が **`contentType: TOOLS`** の時間帯は **`layoutConfig` 無しで正常**（スクリプトで分岐済み）。**同日（Pi5 のみ・運用指示）**: サマリ `ansible-update-20260408-154206-25754`・Phase12 **PASS 42 / WARN 1 / FAIL 0**。**同日（Web のみ・Gmail スケジュール一覧 UI）**: サマリ `ansible-update-20260408-185957-2678`・Phase12 **PASS 43 / WARN 0 / FAIL 0**。
+2026-04-08〜09 の本番反映記録は [デプロイ実績 archive 2026-04](../archive/deployments/2026-04.md#キオスク要領書-本番反映記録2026-04-0809runbook-から移設) へ移設した。
 
 ## 手動アップロード
 
@@ -114,7 +90,7 @@
 - **既定は無効**。`KIOSK_DOCUMENT_SUMMARY_INFERENCE_ENABLED=true` かつ推論プロバイダが解決できるとき、OCR 完了後に **OpenAI 互換 `/v1/chat/completions`（テキスト）** で `summaryCandidate1` を生成し、2〜3 は従来の機械スニペットで補完する。
 - 推論失敗・タイムアウト時は **機械スニペットのみ**にフォールバックし、**OCR 完了や DB 更新は継続**する（推論は補助）。
 - 複数推論先・モデルは `INFERENCE_PROVIDERS_JSON` と用途別 env で指定する。詳細は [ADR-20260402](../decisions/ADR-20260402-inference-foundation-phase1.md) と [KB-313](../knowledge-base/KB-313-kiosk-documents.md) の環境変数表。
-- **`LOCAL_LLM_RUNTIME_MODE=on_demand` 時**: 推論前に Pi5 が Ubuntu 側で `llama-server` を起動する。**ログ**に `upstream_http_403` が出たら **推論トークンと Ubuntu `api-token` の整合**、[local-llm-tailscale-sidecar.md](./local-llm-tailscale-sidecar.md) の **on_demand / 503** 節を参照。
+- **`LOCAL_LLM_RUNTIME_MODE=on_demand` 時**: 推論前に Pi5 が DGX Spark 側の runtime を起動する。**ログ**に `upstream_http_403` が出たら **DGX 側の `api-token` と Pi5 の `vault_api_local_llm_shared_token` の整合**を確認する（[dgx-system-prod-local-llm.md](./dgx-system-prod-local-llm.md)）。
 
 ### OCR ヘルスチェック（デプロイ直後）
 

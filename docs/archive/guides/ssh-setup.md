@@ -73,7 +73,7 @@ ssh pi@pi-kiosk-01 "mkdir -p ~/.ssh && cat /tmp/raspi-clients.pub >> ~/.ssh/auth
 
 ```
 ## 2025-12-02
-- 実施者: 山田
+- 実施者: <name>
 - 秘密鍵の保存先: /root/.ssh/raspi-clients
 - 対象ホスト:
   - pi-kiosk-01 (192.168.0.30)

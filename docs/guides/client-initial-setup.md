@@ -224,14 +224,7 @@ ssh <ユーザー名>@<IPアドレス>
 
 ### 3.2 インベントリファイルへの追加
 
-**Raspberry Pi 5（サーバー）で実行:**
-
-```bash
-cd /opt/RaspberryPiSystem_002
-
-# インベントリファイルを編集
-nano infrastructure/ansible/inventory.yml
-```
+管理側リポジトリの feature branch で `infrastructure/ansible/inventory.yml` に追加し、PR と CI を通す。Pi5 上のファイルは直接編集しない。
 
 **追加内容:**
 
@@ -364,6 +357,8 @@ curl -sk https://192.168.128.131/api/clients/status \
 
 **解決方法:**
 - [SSH鍵ベース運用ガイド](./ssh-setup.md)を参照
+- `ssh: Could not resolve hostname`: ホスト名が解決できない。`/etc/hosts` に追記するか、IPアドレス（通常は Tailscale IP）で接続する
+- SSHは通るがAnsibleで失敗する: 接続ユーザーの sudo 権限と `ansible.cfg` の `become` 設定を確認する
 
 ### status-agentが動作しない場合
 
@@ -387,8 +382,8 @@ curl -sk https://192.168.128.131/api/clients/status \
 # クライアント端末でstatus-agentのログを確認
 journalctl -u status-agent.service -n 50
 
-# サーバー側でAPIログを確認
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep "clients/status"
+# サーバー側でAPIログを確認（本番APIは bluegreen の api-blue / api-green）
+for c in bluegreen-api-blue-1 bluegreen-api-green-1; do docker logs --since 1h "$c" 2>&1; done | grep "clients/status"
 ```
 
 ---

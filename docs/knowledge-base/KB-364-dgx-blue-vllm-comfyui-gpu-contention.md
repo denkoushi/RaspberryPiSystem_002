@@ -14,7 +14,7 @@ category: knowledge-base
 
 ## Symptoms
 
-- 管理コンソール `/admin/tools/dgx-resource` の **`inference-backend`**（`GET /v1/models` ベース）が **WARN** のまま、しばらく **自動更新（約 5s）しても改善しない**
+- 管理コンソール `/admin/tools/dgx-resource` の **`inference-backend`**（`GET /v1/models` ベース）が **WARN** のまま、しばらく **自動更新（約 8s、`POLL_MS.dgxResourceDashboardPrimary`）しても改善しない**
 - Pi5 経由 gateway で **認証付き `GET /v1/models`** が **502**。本文に **`bad gateway`** かつ **`[Errno 111] Connection refused`** 等（**upstream が listen していない**）
 - DGX 上で `system-prod-trtllm` のログに **`ValueError: Free memory on device cuda:0 … is less than desired GPU memory utilization`**（**空き VRAM が blue の既定利用率に足りない**）
 
@@ -28,13 +28,13 @@ category: knowledge-base
 
 ## Fix（運用）
 
-1. **業務優先（`business_first` 等）で blue を復旧したい**: 私用 ComfyUI を止めるか、VRAM を空ける（例: **`docker stop dgx-private-comfyui`** — コンテナ名は環境により異なる。**復旧後に私用で再度起動する場合は、再び blue と衝突しうる**）
+1. **blue を復旧したい**: DGX 上で私用 ComfyUI を止めるか、VRAM を空ける（例: **`docker stop dgx-private-comfyui`** — コンテナ名は環境により異なる。**復旧後に私用で再度起動する場合は、再び blue と衝突しうる**）。その後、管理画面 `/admin/tools/dgx-resource` でモデルを選び業務復帰（`RETURN_TO_BUSINESS`）する
 2. **`POST /start`（runtime 制御）** を再実行し、ログで **listen 復帰**と **`GET /v1/models` → 200**（`system-prod-primary` 等）を確認
 3. **cold start のみ**の場合は、**`torch.compile` / autotune 完了**まで待つ（Runbook の既知節）
 
 ## Prevention
 
-- 運用プロファイル **`private_ok`** は **ComfyUI 等との競合を許容**する一方、**`business_first`** では **業務 blue との同時フル稼働は期待しない**（UI・Runbook の説明と整合）
+- 運用プロファイル **`private_ok`** は **ComfyUI 等との競合を許容**する一方、**`business_first`** では **業務 blue との同時フル稼働は期待しない**（UI・Runbook の説明と整合）（現行: Pi5 側に `business_first` / `private_ok` のポリシー切替は無く、管理画面の操作は業務復帰 `RETURN_TO_BUSINESS` と業務 LLM 停止 `STOP_BUSINESS_LLM`）
 - 管理 UI の WARN は **裏側が変わらない限り「待つ」だけでは直らない**（ポーリング間隔は UI 側の更新周期に依存）
 - **FLUX.2 Klein 9B 私用生成時**: `system-prod-trtllm`（VLLM::EngineCore）が **約57GB** 占有していると Comfy が遅化しうる（2026-05-25 実測）。Comfy 優先時は `docker stop system-prod-trtllm`、業務復帰時は `docker start`（KB-379（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-379-dgx-private-comfyui-nvfp4-migration-and-workflow-tuning.md`））
 

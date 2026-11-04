@@ -85,7 +85,7 @@ ssh denkon5sd02@100.106.158.2 "docker compose -f /opt/RaspberryPiSystem_002/infr
 
 ```bash
 # ログインしてトークンを取得
-TOKEN=$(ssh denkon5sd02@100.106.158.2 "curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"admin1234\"}' | python3 -c 'import sys, json; d=json.load(sys.stdin); print(d.get(\"accessToken\", \"\"))'")
+TOKEN=$(ssh denkon5sd02@100.106.158.2 "curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"<password>\"}' | python3 -c 'import sys, json; d=json.load(sys.stdin); print(d.get(\"accessToken\", \"\"))'")
 
 # Dropboxストレージプロバイダーでバックアップを実行
 ssh denkon5sd02@100.106.158.2 "curl -s -X POST http://localhost:8080/api/backup -H 'Content-Type: application/json' -H \"Authorization: Bearer $TOKEN\" -d '{\"kind\":\"csv\",\"source\":\"employees\",\"storage\":{\"provider\":\"dropbox\"}}' | python3 -m json.tool"

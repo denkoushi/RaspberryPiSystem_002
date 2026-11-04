@@ -325,7 +325,7 @@ update-frequency: high
 - 事前疎通チェックは、Pi5がブランチ更新する前のinventoryを参照するため、**新規追加したgroup（例: `kiosk_canary`）が見えない警告**が出得る（デプロイ本体は更新後inventoryで実行されるため致命ではない）。
 - **ロールアウト時の注意**: `--limit "server:kiosk:!kiosk_canary"`でPi4が0台になる場合がある（カナリアのPi4のみがkioskグループに含まれている場合）。実際にはserver（Pi5）のみのデプロイになる可能性がある。
 
-**運用（推奨コマンド例）**:
+**運用（推奨コマンド例）**（2026-02当時の記録。現行は [デプロイメントガイド](../../guides/deployment.md) の標準ローリング（`--print-plan` の後に exact `--limit` または `--full-fleet`、Pi4は自動の serial 波）を使う）:
 - カナリア: `--limit "server:kiosk_canary"`
 - ロールアウト: `--limit "server:kiosk:!kiosk_canary"`
 - Pi3単独: `--limit "server:signage"`
@@ -334,7 +334,7 @@ update-frequency: high
 - **Pi3 signage xsetエラーハンドリング修正**: `signage-display.sh`の`xset`コマンドが`set -euo pipefail`により失敗時にスクリプト全体が即座に終了する問題を修正。`xset`コマンドに`|| true`を追加してエラーで終了しないように変更。**学んだこと**: `set -euo pipefail`を使用する場合、必須でないコマンドには`|| true`を追加してエラーで終了しないようにする。デプロイ時のサービス再起動失敗は、修正前のスクリプトが実行された可能性があるため、次回の再起動時に修正の効果を確認する必要がある。詳細は [KB-236: Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ](./signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) を参照。
 
 **追加知見（2026-02-08）**:
-- **Pi3デプロイ時のサービス再起動成功を確認**: xsetエラーハンドリング修正後のデプロイ（runId: `20260208-082138-11782`）で、サービス再起動が正常に完了することを確認。**確認内容**: Pi3標準手順（preflightチェック）に従ってデプロイを実行し、preflightチェック（サービス停止、lightdm停止、メモリチェック）が正しく実行された。サービス再起動は`Result=success`で完了し、xsetエラーが発生しても警告ログが出力され、サービスが継続することを確認。**学んだこと**: Pi3デプロイ時は`--limit "server:signage"`を使用する必要がある（Pi5とPi3の両方をデプロイ）。preflightチェックは自動実行されるが、デプロイ実行時に標準手順を遵守することが重要。詳細は [KB-236: Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ](./signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) を参照。
+- **Pi3デプロイ時のサービス再起動成功を確認**: xsetエラーハンドリング修正後のデプロイ（runId: `20260208-082138-11782`）で、サービス再起動が正常に完了することを確認。**確認内容**: Pi3標準手順（preflightチェック）に従ってデプロイを実行し、preflightチェック（サービス停止、lightdm停止、メモリチェック）が正しく実行された。サービス再起動は`Result=success`で完了し、xsetエラーが発生しても警告ログが出力され、サービスが継続することを確認。**学んだこと**: Pi3デプロイ時は`--limit "server:signage"`を使用する必要がある（Pi5とPi3の両方をデプロイ）。（当時の記録。現行は [デプロイメントガイド](../../guides/deployment.md) を正とする）preflightチェックは自動実行されるが、デプロイ実行時に標準手順を遵守することが重要。詳細は [KB-236: Pi3 signage-lite.serviceのxsetエラーによる起動失敗と再起動ループ](./signage.md#kb-236-pi3-signage-liteserviceのxsetエラーによる起動失敗と再起動ループ) を参照。
 
 ---
 

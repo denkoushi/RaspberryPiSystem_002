@@ -60,10 +60,12 @@ scripts/server/run-in-active-api.sh env ACTUAL_HOURS_LOCATION_KEY=your-location 
 
 バックフィル完了後、以下で件数整合を確認する。
 
+stats API は `totalCanonicalRows`・`totalFeatureKeys`・`topFeatures` を、`x-client-key` の端末の `deviceScopeKey`（例: `第2工場 - kensakuMain`）を location として絞り込む（`totalRawRows` だけは location で絞らない）。そのため、バックフィルした locationKey と同じ `deviceScopeKey` を持つ端末の client-key を使う。既定の `default` でバックフィルした結果は、端末の client-key の stats では 0 と出ることがある。検証端末の location に合わせる場合は、3.2 の `ACTUAL_HOURS_LOCATION_KEY` にその値を指定してバックフィルする。
+
 ```bash
-# x-client-key は任意のキオスク用 client-key で可
+# x-client-key はバックフィルした locationKey と同じ deviceScopeKey を持つ端末の client-key
 curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/actual-hours/stats" \
-  -H "x-client-key: client-key-raspberrypi4-kiosk1"
+  -H "x-client-key: <client-key>"
 ```
 
 期待値の例:
@@ -79,7 +81,7 @@ curl -sk "https://100.106.158.2/api/kiosk/production-schedule/due-management/act
 
 | 症状 | 想定原因 | 対処 |
 |------|----------|------|
-| `totalCanonicalRows: 0` のまま | Rawが空、または locationKey 不一致 | Rawの存在確認（`SELECT COUNT(*) FROM "ProductionScheduleActualHoursRaw"`）。locationKey を環境変数で指定 |
+| `totalCanonicalRows: 0` のまま | Rawが空、または locationKey と検証端末の `deviceScopeKey` の不一致 | Rawの存在確認（`SELECT COUNT(*) FROM "ProductionScheduleActualHoursRaw"`）。locationKey を環境変数で指定 |
 | スクリプトが `Cannot find module` で失敗 | ビルド未実施またはパス誤り | コンテナ内は `dist/` を参照するため、`scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/backfill-actual-hours-canonical.js` で実行する（本番イメージに tsx は含まれない）。`tsx` を使う `pnpm backfill:actual-hours` は、ソースのチェックアウトがある開発環境で使う |
 | 権限エラー | DB接続・Prisma設定 | `.env` の `DATABASE_URL` を確認。コンテナ内では `docker-compose.server.yml` の環境変数が適用される |
 

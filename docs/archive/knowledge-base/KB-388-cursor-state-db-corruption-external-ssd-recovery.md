@@ -71,7 +71,7 @@ SQLITE_CORRUPT: database disk image is malformed
 2. 退避スクリプト実行（Codex 側で作成済み）:
 
    ```text
-   /Users/tsudatakashi/Documents/Codex/2026-06-06/mac-chrome-cursor-codex-cursor/outputs/cursor_state_db_recovery.command
+   /Users/<user>/Documents/Codex/2026-06-06/mac-chrome-cursor-codex-cursor/outputs/cursor_state_db_recovery.command
    ```
 
 3. 退避対象（`User/globalStorage/` 配下）:
@@ -102,7 +102,7 @@ SQLITE_CORRUPT: database disk image is malformed
 
 ### 残る（本プロジェクト開発に必要）
 
-- ローカルリポジトリ（`/Users/tsudatakashi/RaspberryPiSystem_002`）
+- ローカルリポジトリ（`/Users/<user>/RaspberryPiSystem_002`）
 - ソースコード・`docs/`・Git 履歴
 - **未コミット変更（WIP）** — 破棄しない
 - `settings.json` 等の通常設定・拡張機能・`workspaceStorage`
@@ -182,7 +182,7 @@ Cursor 復旧直後に **未コミット** だった Hermes Discord command sync
 
 ## References
 
-- 復旧記録（Codex 出力）: `/Users/tsudatakashi/Documents/Codex/2026-06-06/mac-chrome-cursor-codex-cursor/outputs/cursor_recovery_summary_20260606.md`
+- 復旧記録（Codex 出力）: `/Users/<user>/Documents/Codex/2026-06-06/mac-chrome-cursor-codex-cursor/outputs/cursor_recovery_summary_20260606.md`
 - 退避スクリプト: `…/outputs/cursor_state_db_recovery.command`
 - [mac-storage-migration](../../guides/mac-storage-migration.md)
 - [KB-212](../../knowledge-base/infrastructure/miscellaneous.md#kb-212-cursorチャットログの安全な削除手順1週間より前のログ削除)

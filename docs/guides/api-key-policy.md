@@ -18,6 +18,8 @@ update-frequency: low
 
 ## 現在のAPIキー構成
 
+> 2025-12 時点の履歴。現行は各キオスクの status agent・NFC agent・torque agent・ブラウザ起動URLが `host_vars/<host>/vault.yml` の端末ごとの credential を共有する（[security-client-key-rotation-phase-b](../plans/security-client-key-rotation-phase-b.md)）。
+
 | APIキー | クライアントID | 用途 | 初期表示モード |
 |---------|---------------|------|--------------|
 | `client-demo-key` | `5c88681a-1f1c-4c7f-a5c7-fbfc0a7387a2` | デモ・開発用 | `TAG` (2タグスキャン) |
@@ -65,6 +67,8 @@ const loans = await loanService.findActive({ clientId: filterClientId });
 ```
 
 ### 2. APIキーの用途
+
+> 2025-12 時点の履歴（現行は上記「現在のAPIキー構成」の注記を参照）。
 
 | APIキー | 用途 | 説明 |
 |---------|------|------|
@@ -131,12 +135,11 @@ const loansQuery = useActiveLoans(undefined, resolvedClientKey);
 
 ## 今後の改善案
 
-1. **APIキーの統一**: すべてのキオスクで`client-demo-key`を使用し、設定（`defaultMode`など）は別の方法で管理する
-2. **カメラAPIの権限管理**: ブラウザのカメラAPIの権限をより明確に管理する
-3. **フィルタリングオプション**: 管理画面などで、特定のclientIdでフィルタリングするオプションを追加する
+1. **カメラAPIの権限管理**: ブラウザのカメラAPIの権限をより明確に管理する
+2. **フィルタリングオプション**: 管理画面などで、特定のclientIdでフィルタリングするオプションを追加する
 
 ## 関連ドキュメント
 
 - [API仕様書](../modules/tools/api.md)
 - [認証API](../api/auth.md)
-- [キオスク設定ガイド](./kiosk-setup.md)
+- [新規クライアント端末の初期設定手順](./client-initial-setup.md)

@@ -30,32 +30,32 @@
 | 段階 | 内容 |
 |------|------|
 | 1 | raspi4-robodrill01（稼働中）で電源ボタンを押す |
-| 2 | `x-client-key` に `client-key-raspberrypi4-kiosk1` が送信される（DEFAULT にフォールバック） |
+| 2 | `x-client-key` に `<client-key-raspberrypi4>` が送信される（DEFAULT にフォールバック） |
 | 3 | pi5-power-dispatcher は clientKey でホストを特定 → **raspberrypi4**（kensakuMain）が対象 |
 | 4 | raspberrypi4（kensakumaster）は**シャットダウン中**で SSH 不可 |
 | 5 | Ansible 接続失敗 → 電源操作が実行されない |
 
-**要因の本質**: raspi4-robodrill01 から送られる clientKey が `client-key-raspberrypi4-kiosk1` になっており、dispatcher がシャットダウン中の raspberrypi4 を対象にしてしまう。
+**要因の本質**: raspi4-robodrill01 から送られる clientKey が `<client-key-raspberrypi4>` になっており、dispatcher がシャットダウン中の raspberrypi4 を対象にしてしまう。
 
 ### なぜ clientKey が誤るか（要検証）
 
-- **inventory の設定**: raspi4-robodrill01 の kiosk_url は `?clientKey=client-key-raspi4-robodrill01-kiosk1` 付与済み。静的解析では正しい。
+- **inventory の設定**: raspi4-robodrill01 の kiosk_url は `?clientKey=<client-key-raspi4-robodrill01>` 付与済み。静的解析では正しい。
 - **考えられる原因**:
   1. **kiosk_url が raspi4-robodrill01 に正しくデプロイされていない**（`--limit raspberrypi4` のみでデプロイ、raspi4-robodrill01 が未適用など）
   2. **初回ロード時の URL に clientKey が含まれていない**（ブックマークやリダイレクトでクエリが落ちている等）
-  3. **localStorage に古い client-key-raspberrypi4-kiosk1 が残っている**（過去の運用で上書きされた）
+  3. **localStorage に古い <client-key-raspberrypi4> が残っている**（過去の運用で上書きされた）
   4. **「同じ仕様」運用で全 Pi4 に raspberrypi4 用の kiosk_url を意図的に配っている**（要確認）
 
 ### 実機ログ解析による確定（2026-03-01）
 
 | 証拠 | 内容 |
 |------|------|
-| **power-actions ログ件数** | `client-key-raspberrypi4-kiosk1`: 26件 / `client-key-raspi4-robodrill01-kiosk1`: 5件 |
-| **2/28 10:40 UTC の失敗ログ** | `client-key-raspberrypi4-kiosk1` で poweroff 要求 → Ansible が raspberrypi4 (100.74.144.79) をターゲット → `ssh: connect to host 100.74.144.79 port 22: Connection timed out` → **UNREACHABLE** |
-| **2/28 10:44 UTC 以降** | `client-key-raspi4-robodrill01-kiosk1` で reboot/poweroff → `changed: [raspi4-robodrill01]` → **成功** |
-| **raspi4-robodrill01 の kiosk-launch.sh** | `--app="https://100.106.158.2/kiosk?clientKey=client-key-raspi4-robodrill01-kiosk1"` で正しく設定されていることを確認 |
+| **power-actions ログ件数** | `<client-key-raspberrypi4>`: 26件 / `<client-key-raspi4-robodrill01>`: 5件 |
+| **2/28 10:40 UTC の失敗ログ** | `<client-key-raspberrypi4>` で poweroff 要求 → Ansible が raspberrypi4 (<pi4-tailscale-ip>) をターゲット → `ssh: connect to host <pi4-tailscale-ip> port 22: Connection timed out` → **UNREACHABLE** |
+| **2/28 10:44 UTC 以降** | `<client-key-raspi4-robodrill01>` で reboot/poweroff → `changed: [raspi4-robodrill01]` → **成功** |
+| **raspi4-robodrill01 の kiosk-launch.sh** | `--app="https://100.106.158.2/kiosk?clientKey=<client-key-raspi4-robodrill01>"` で正しく設定されていることを確認 |
 
-**根本原因（確定）**: raspi4-robodrill01 から誤って `client-key-raspberrypi4-kiosk1` が送信され、dispatcher がシャットダウン中の raspberrypi4（kensakumaster）をターゲットにして SSH タイムアウト → 電源操作が実行されない。
+**根本原因（確定）**: raspi4-robodrill01 から誤って `<client-key-raspberrypi4>` が送信され、dispatcher がシャットダウン中の raspberrypi4（kensakumaster）をターゲットにして SSH タイムアウト → 電源操作が実行されない。
 
 **なぜ誤った clientKey が送られたか**: 2/28 10:40 時点では、raspi4-robodrill01 の kiosk_url が古い（raspberrypi4 用）か、localStorage に古い値が残っていた可能性。10:44 以降は正しい clientKey で動作しているが、切り替わった直接要因（再起動・再読込・設定反映タイミングなど）はログのみでは断定不能。
 
@@ -88,7 +88,7 @@
 | **電源機能SOLIDリファクタ（2026-03-01）** | ClientKeyResolver モジュール（`apps/web/src/lib/client-key/`）を新設。`resolveClientKeyForPower` で電源専用の clientKey 解決を実施。未解決時はアラート表示し実行しない。複数キオスク環境での誤ターゲット問題を恒久対策。 |
 | **電源操作遅延** | ボタン押下から発動まで約20秒（poweroff）/約85秒（reboot）かかる。多段構成（API→dispatcher→Ansible→SSH）に起因。KB-285 に詳細。連打防止画面の追加を検討（[power-function-solid-refactor-execplan.md](../../plans/power-function-solid-refactor-execplan.md) の Next Steps）。 |
 | **再発防止** | デプロイ時に `--limit` で raspi4-robodrill01 を必ず含める。`update-all-clients.sh` で全 kiosk ホストを対象にするか、`--limit kiosk` で両方の Pi4 に適用する。 |
-| **確認方法** | `ssh denkon5sd02@100.106.158.2 'ssh tools04@100.123.1.113 "grep -E \"app=|clientKey\" /usr/local/bin/kiosk-launch.sh"'` で clientKey が `client-key-raspi4-robodrill01-kiosk1` であることを確認。 |
+| **確認方法** | `ssh <user>@<pi5-tailscale-ip> 'ssh <user>@<pi4-tailscale-ip> "grep -E \"app=|clientKey\" /usr/local/bin/kiosk-launch.sh"'` で clientKey が `<client-key-raspi4-robodrill01>` であることを確認。 |
 
 ### 日本語入力
 

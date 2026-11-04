@@ -6,6 +6,8 @@
 
 本ドキュメントでは、運用・保守性の向上機能のラズパイでの検証手順を説明します。
 
+> 各節の「回帰（自動）」にある `./scripts/deploy/verify-phase12-real.sh` 全体は global-rank auto-generate 等の POST/PUT を含む。非破壊確認として無条件に実行せず、[deployment.md の共有application smoke](./deployment.md#共有application-smoke) の制約に従い、明示された GET/service-only 部分だけを使う。各節の PASS 件数は当時の実施記録である。
+
 ## 検証環境
 
 - **Raspberry Pi 5**: サーバー（API/DB/Web UI）
@@ -371,7 +373,7 @@ cd apps/web && pnpm build && cd ../..
 **確認ポイント**:
 - [x] インポートが成功するか
 - [x] `department`フィールドが正しく保存されているか
-- [x] 管理画面の計測機器一覧（`/admin/tools/measuring-instruments`）で`department`が表示されるか
+- [x] 管理画面の計測機器一覧（`/admin/tools/measuring-instruments`）で`department`が表示されるか（現行: 一覧はキオスク `/kiosk/tag-desk`）
 - [x] 編集画面で`department`が表示・編集できるか
 - [x] UIDの手動編集が反映されるか（キーボードで入力した値が保存後に表示されるか）
 
@@ -452,6 +454,8 @@ cd apps/web && pnpm build && cd ../..
 **検証結果**: ☐ 成功 ☐ 失敗（エラー内容: _______________）
 
 #### 6.6 管理コンソールUI確認
+
+> 6.6.1〜6.6.3 は過去の実施記録。`/admin/tools/employees`・`/admin/tools/measuring-instruments`・`/admin/tools/rigging-gears` は現在「タグ管理」への案内だけを表示し、登録・編集はキオスクの `/kiosk/tag-desk` で行う。再検証は `/kiosk/tag-desk` で行う。
 
 **6.6.1 従業員管理画面（`/admin/tools/employees`）**
 
@@ -649,7 +653,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/part-measur
 
 - [ ] 管理画面でスケジュールに **`kiosk_progress_overview`** を追加する場合、**`deviceScopeKey` がキオスク表示と一致**していること（必須）。**`seibanPerPage` は 1〜8**（9 以上は cap・4列×2段 JPEG の都合）。
 - [ ] `./scripts/deploy/verify-phase12-real.sh` が **FAIL 0**（2026-04-01 基準 **PASS 39 / WARN 0 / FAIL 0**。**secure operator environmentで事前設定した `PI3_SIGNAGE_CLIENT_KEY` → `GET /api/signage/current-image` 200** と **未認証 `POST …/photo-gallery-seed` → 401** を含む）。
-- [ ] Pi3 へ載せる変更は [deployment.md](./deployment.md) の **ラズパイ3（サイネージ）** に従い **`--limit raspberrypi3`**・**`--detach --follow`**・**単一起動**（多重 `update-all-clients.sh` 禁止）。
+- [ ] Pi3 へ載せる変更は [deployment.md](./deployment.md) の標準更新に従い **`--limit raspberrypi3`**・**`--detach`**（確認は `--status RUN_ID`）・**単一起動**（多重 `update-all-clients.sh` 禁止）。
 - [ ] （任意・現場）FULL スロット表示時に **ページ送り**・**製番が scheduled のみ**であることの目視。
 
 **検証日時**: 2026-03-31（`verify-phase12-real.sh` **PASS 38 / WARN 0 / FAIL 0**・Mac / Tailscale・`feature/kiosk-progress-overview-two-row-grid` を Pi5→Pi4×4→Pi3 順次反映後）。初回スロット導入時: 2026-04-01（`feature/signage-kiosk-progress-overview`）。**2026-04-01**: スクリプトに `photo-gallery-seed` **401** を追加後の基準は **PASS 39 / WARN 0 / FAIL 0**。
@@ -991,8 +995,8 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 7. 「既存データをクリアしてから取り込み」にチェックを入れるか選択
 8. 保存
 9. スケジュール実行を待つ（cron式による）
-10. インポート履歴（`/admin/import-history`）で、Gmailからのインポートジョブが`COMPLETED`になっていることを確認
-11. インポートされたデータが管理画面の各一覧（例: 計測機器一覧）に正しく反映されていることを確認
+10. `GET /api/imports/history`（管理者JWT）で、Gmailからのインポートジョブの `status` が `COMPLETED` になっていることを確認（Webに履歴一覧画面はない）
+11. インポートされたデータがキオスクの「タグ管理」（`/kiosk/tag-desk`）の各一覧（例: 計測機器）に正しく反映されていることを確認
 
 **確認ポイント**:
 - [x] スケジュールが正しく保存されるか

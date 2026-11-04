@@ -1523,7 +1523,7 @@ pnpm --filter @raspi-system/api test -- kiosk-production-schedule.integration.te
 - **stonebase median やや悪化**·**robodrill median run 間分散** — 残コストは **manual 未充足時の unlimited expansion**·**hasMore スロット並列 COUNT**·**Pi5 負荷分散** が混在し、**第3弾単体の ROI が第1・2弾より低い**（詳細は下記 §ロードマップ）。
 - **出力同値・実機 OK** が第2弾時点で確認済み — **追加最適化は計測前提の再開**とし、別優先タスクへリソースを回す。
 
-**再開時の入口**: 本節 §ロードマップ·[EXEC_PLAN §shell 保留](../../EXEC_PLAN.md#キオスク順位ボード--shell-選定-sql-第3弾以降保留2026-05-22--後日参照)·[deployment §shell 第2弾](../archive/deployments/2026-05.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)。
+**再開時の入口**: [本節 §ロードマップ](#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22)·[deployment §shell 第2弾](../archive/deployments/2026-05.md#kiosk-leaderboard-shell-sql-phase2-2026-05-22)。
 
 ### ロードマップ（第3弾以降 · **保留 · 後日参照**） {#shell-選定-sql-第3弾以降-ロードマップ-保留-2026-05-22}
 

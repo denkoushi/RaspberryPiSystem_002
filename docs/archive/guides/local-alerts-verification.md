@@ -25,7 +25,7 @@ update-frequency: low
 
 ```bash
 # Macで実行
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd /Users/<user>/RaspberryPiSystem_002
 git push origin feature/production-deployment-management
 ```
 
@@ -92,7 +92,7 @@ https://192.168.128.131/admin
 # Raspberry Pi 5で実行
 TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+  -d '{"username":"admin","password":"<password>"}' | jq -r '.accessToken')
 
 # アラート情報を取得
 curl -X GET http://localhost:8080/api/clients/alerts \
@@ -142,7 +142,7 @@ curl -X GET http://localhost:8080/api/clients/alerts \
 
 ```bash
 # Macで実行
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd /Users/<user>/RaspberryPiSystem_002
 
 # 一時的にinventory.ymlを無効な設定に変更（テスト後は元に戻す）
 cp infrastructure/ansible/inventory.yml infrastructure/ansible/inventory.yml.backup

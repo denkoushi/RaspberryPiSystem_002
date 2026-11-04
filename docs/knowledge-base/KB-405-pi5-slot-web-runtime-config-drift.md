@@ -1,27 +1,24 @@
 ---
 id: KB-405
 title: Pi5 slot Web runtime configuration path drift
-status: active
+status: historical
 scope: standard Pi5 Blue/Green candidate preparation
 date: 2026-08-04
-source_of_truth: true
+source_of_truth: false
 related_code:
   - infrastructure/docker/Dockerfile.web
-  - scripts/deploy/lib/pi5-blue-green/runtime.sh
   - scripts/ci/rehearse-release-runtime.sh
 related_docs:
   - ../plans/standard-release-production-path-audit-execplan.md
   - ../guides/deployment.md
   - ../runbooks/deploy-status-recovery.md
 validation: behavioral controller contract, historical-fault mutation, exact-image isolated runtime rehearsal, and full deploy contracts
-open_items:
-  - pass the complete local audit from the beginning
-  - pass review and required hosted CI
-  - pass the exact-main ARM64 five-sample rehearsal
-  - obtain separate approval before a new standard production run
+open_items: []
 ---
 
 # KB-405: Pi5 slot Web runtime configuration path drift
+
+> **履歴（2026-11）**: Blue/Green controller（`scripts/deploy/lib/pi5-blue-green/runtime.sh`）は削除済みです。Web image が `SLOT_CADDY_CONFIG_FILE` を公開する契約（`infrastructure/docker/Dockerfile.web`）と、`scripts/ci/rehearse-release-runtime.sh` によるその検証は今も残っています。現行手順は [deployment guide](../guides/deployment.md) と [deploy-status-recovery](../runbooks/deploy-status-recovery.md) を参照してください。
 
 ## Context
 

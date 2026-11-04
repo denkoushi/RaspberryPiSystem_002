@@ -73,7 +73,7 @@ Dropboxは2024年以降、**長期アクセストークン（無期限）の新�
 
 1. **`.env`ファイルを編集**
    ```bash
-   cd /Users/tsudatakashi/RaspberryPiSystem_002/apps/api
+   cd /Users/<user>/RaspberryPiSystem_002/apps/api
    # .envファイルが存在しない場合は作成
    echo "DROPBOX_ACCESS_TOKEN=sl.あなたのトークン" >> .env
    ```
@@ -93,7 +93,7 @@ pnpm test -- dropbox-storage.integration.test
 ### Step 4: テストを実行
 
 ```bash
-cd /Users/tsudatakashi/RaspberryPiSystem_002/apps/api
+cd /Users/<user>/RaspberryPiSystem_002/apps/api
 pnpm test -- dropbox-storage.integration.test --run
 ```
 

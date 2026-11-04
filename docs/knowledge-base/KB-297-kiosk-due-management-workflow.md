@@ -15,6 +15,8 @@ category: knowledge-base
 
 # KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装
 
+> 注記: 各節の「手順」「本番デプロイ」に書かれたコマンド・フラグ（`RASPI_SERVER_HOST`、`--follow`、`--attach`、1台ずつの `--limit` など）は当時の記録です。現行のデプロイは [デプロイメントガイド](../guides/deployment.md)、復旧は [deploy-status-recovery Runbook](../runbooks/deploy-status-recovery.md) を正とします。
+
 ## Context
 
 - 生産スケジュールで「行単位の納期設定」だけでは、現場リーダーが製番単位で全体調整しづらい
@@ -2577,6 +2579,12 @@ category: knowledge-base
   - **アクセントが付かない**: **製番が空／無効でないか**確認。**2026-05-22 以降**: **全件表示（OR フィルタ OFF）では左縁なしが仕様** — 色が欲しい場合は **登録製番チップを押して OR フィルタ ON**（[§全件無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)）。**2026-05-02〜2026-05-21**: クエリ空でも製番行に付く（旧仕様）。旧 SPA の場合は **強制リロード**と Pi5 **`web`** / Pi4 **`kiosk-browser`** 更新を確認。
   - **納期アシストが横に伸びない / 進捗列が無い**: 古い SPA を疑う → Pi5 `web` と各 Pi4 **`kiosk-browser`** 再起動ログ・`/opt/RaspberryPiSystem_002` の **ブランチ**を確認。**デプロイ前 fail-fast**: [KB-200](./infrastructure/ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能)。
 
+### Leader order board: 製番左縁アクセント常時化・進捗一覧の資源CD集約チップ帯（2026-05-02） {#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02}
+
+- **変更（当時の記録）**: `seibanAccentPalette.ts` で登録製番フィルタが空でも、有効製番に製番ハッシュ由来の左縁アクセント（`% 8`）を付けた（製番ブランクのみ無色）。進捗一覧の製番カードには、`collectAggregatedProgressOverviewResourceProcesses.ts` で資源CDごとに集約したチップ帯を追加した。Web のみ。
+- **後続**: 全件表示の配色は [2026-05-20 で 24 色へ拡張](#leader-order-board-seiban-accent-palette-24-2026-05-20)し、[2026-05-22 で全件表示は無色](#leader-order-board-seiban-accent-no-color-all-items-2026-05-22)へ変更した。
+- **記録**: デプロイ実績は [deployments 2026-05](../archive/deployments/2026-05.md) の「補足（2026-05-02: キオスク順位ボード製番左縁アクセント（フィルタ空でも安定色）／進捗一覧製番カードの資源CD集約チップ帯）」節。
+
 ### Leader order board: 製番左縁アクセント 24 色（全件表示のハッシュ配色拡張）（2026-05-20） {#leader-order-board-seiban-accent-palette-24-2026-05-20}
 
 - **Context（調査起点）**: 現場観測では **登録製番 OR フィルタ ON（同時 ~5 件）** では **同一製番が資源 CD スロット横断で同色**に見え、識別性は十分。**OR フィルタ OFF（全件表示）** では製番数に対し **8 色しか使われず**、**色被り**と **amber/orange・cyan/sky** 等の **近似色** により左縁だけでは製番を追いにくい。**バグではなく配色設計の限界**（[2026-05-02 常時化](#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) 時点の `% 8` ハッシュ仕様）。**スロット横断同色**のロジック自体は [`resolveSeibanAccentRowClass`](../../apps/web/src/features/kiosk/leaderOrderBoard/seibanAccentPalette.ts) が **`fseiban` 単位**で決定しており **変更不要**。
@@ -2892,7 +2900,7 @@ category: knowledge-base
   - **Web**: [`constants.ts`](../../apps/web/src/features/kiosk/leaderOrderBoard/constants.ts) の **`leaderOrderBoardQueryPageSize`** 調整（新バンドル側の要求を抑える）に加え、**サーバ側で旧クライアントを吸収**。
   - **計測撤去**: 開発用の **`127.0.0.1:7426` ingest `fetch`** と `#region agent log` を **本番経路から除去**（[KB-354 §D](../knowledge-base/KB-354-admin-loan-report-gmail-draft-deploy.md) と同趣旨）。
 - **検証（Pi5）**: `pageSize=1240` リクエストでも応答 **`rows` が 900 に抑えられ**、応答バイト数が **約 1.1MB → 約 0.82MB** に減ることを確認。ウォーム時の **curl 総時間**も **旧平均より改善**（同一条件 8 本の簡易平均）。
-- **実施記録（2026-05-02）**: PR **[#236](https://github.com/denkoushi/RaspberryPiSystem_002/pull/236)**（`0865cc56`）。Pi5 に **`./scripts/deploy/update-all-clients.sh --limit raspberrypi5`**（Detach **`20260502-175955-7198`**）。**`verify-phase12-real.sh`** → **PASS 43 / WARN 0 / FAIL 0**（約 **141s**）。
+- **実施記録（2026-05-02）**: PR **[#236](https://github.com/denkoushi/RaspberryPiSystem_002/pull/236)**（`0865cc56`）。Pi5 に **`./scripts/deploy/update-all-clients.sh --limit raspberrypi5`**（現行パス: `scripts/update-all-clients.sh`）（Detach **`20260502-175955-7198`**）。**`verify-phase12-real.sh`** → **PASS 43 / WARN 0 / FAIL 0**（約 **141s**）。
 - **デプロイ**: [deployment 2026-05 アーカイブ](../archive/deployments/2026-05.md) の **「`leaderboard` `pageSize` サーバ上限制御」** 補足を参照。**`main` 取込後** `update-all-clients.sh`・**Pi5 のみ**で可（全クライアントは **旧バンドルが残る Pi4** まで含めて段階展開してもよい）。
 
 ### Leader order board: `leaderboard` 一覧取得と手動順位・製番展開の整合（2026-05-05） {#leader-order-board-leaderboard-fetch-manual-priority-2026-05-05}

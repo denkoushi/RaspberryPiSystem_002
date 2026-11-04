@@ -27,12 +27,12 @@
 - **Pi4（Pi5 hop SSH）**: 次の片側コマンドを **そのまま**実行する（`BASE='ssh …'` のように分割すると **`command not found: ssh`** になり得る）。
 
 ```bash
-ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new denkon5sd02@100.106.158.2 \
-  'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new tools03@100.74.144.79 \
+ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new <user>@100.106.158.2 \
+  'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new <user>@100.74.144.79 \
   "systemctl is-active kiosk-browser.service status-agent.timer"'
 ```
 
-- 対象 Pi4 例: `tools03@100.74.144.79`、`tools04@100.123.1.113`、`raspi4-fjv60-80@100.100.229.95`、`raspi4-kensaku-stonebase01@100.101.113.95`。期待値: いずれも **`active` / `active`**。
+- 対象 Pi4 例: `<user>@100.74.144.79`、`<user>@100.123.1.113`、`<user>@100.100.229.95`、`<user>@100.101.113.95`。期待値: いずれも **`active` / `active`**。
 
 ## トラブルシューティング
 

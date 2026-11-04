@@ -23,19 +23,19 @@
 
 ```csv
 employeeCode,displayName,nfcTagUid,department,contact,status
-0001,山田太郎,04C362E1330289,製造部,内線1234,ACTIVE
-0002,佐藤花子,04B34411340289,品質管理部,内線5678,ACTIVE
-0003,鈴木一郎,04DE8366BC2A81,製造部,内線9012,ACTIVE
-0004,田中次郎,,総務部,内線3456,INACTIVE
+0001,<name>,<nfc-uid>,製造部,内線1234,ACTIVE
+0002,<name>,<nfc-uid>,品質管理部,内線5678,ACTIVE
+0003,<name>,<nfc-uid>,製造部,内線9012,ACTIVE
+0004,<name>,,総務部,内線3456,INACTIVE
 ```
 
 ### items.csv
 
 ```csv
 itemCode,name,nfcTagUid,category,storageLocation,status,notes
-TO0001,ドライバーセット,04C362E1330289,工具,工具庫A,AVAILABLE,常用工具
-TO0002,メジャー,04C393C1330289,測定器具,工具庫B,AVAILABLE,
-TO0003,ハンマー,04DE8366BC2A81,工具,工具庫A,AVAILABLE,大型工具
+TO0001,ドライバーセット,<nfc-uid>,工具,工具庫A,AVAILABLE,常用工具
+TO0002,メジャー,<nfc-uid>,測定器具,工具庫B,AVAILABLE,
+TO0003,ハンマー,<nfc-uid>,工具,工具庫A,AVAILABLE,大型工具
 TO0004,ペンチ,,工具,工具庫C,AVAILABLE,
 ```
 
@@ -55,7 +55,7 @@ TO0004,ペンチ,,工具,工具庫C,AVAILABLE,
 
 2. ログイン情報を入力:
    - ユーザー名: `admin`
-   - パスワード: `admin1234`
+   - パスワード: `<password>`
 
 3. 一括登録ページにアクセス:
    ```

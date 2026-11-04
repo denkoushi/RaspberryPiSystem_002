@@ -134,7 +134,7 @@ KB: キオスクからの吊具の持出し・返却の仕様と「使用中」�
 
 - **ブランチ**: `feat/resolve-clientid-rigging-instrument-borrow`（`main` マージ前提で運用）
 - **対象ホスト**（Pi3 除外・[deployment.md](../../guides/deployment.md) の1台ずつ順番）: `raspberrypi5` → `raspberrypi4` → `raspi4-robodrill01`
-- **手順**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"` のうえ `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "<host>" --detach --follow` を各ホストで実行
+- **手順**: `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"` のうえ `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit "<host>" --detach --follow` を各ホストで実行
 
 ### 実機検証（自動）
 
@@ -146,7 +146,7 @@ KB: キオスクからの吊具の持出し・返却の仕様と「使用中」�
 
 - **認可**: `ADMIN` / `MANAGER` の JWT が必須（キオスクの `x-client-key` だけでは呼べない）
 - **例**（アクティブ貸出 ID と Client の UUID を置き換え）:
-  - `curl -sk -X PUT "https://100.106.158.2/api/tools/loans/<loanId>/client" -H "Authorization: Bearer <admin_or_manager_jwt>" -H "Content-Type: application/json" -d '{"clientId":"<client-uuid>"}'`
+  - `curl -sk -X PUT "https://<pi5-tailscale-ip>/api/tools/loans/<loanId>/client" -H "Authorization: Bearer <admin_or_manager_jwt>" -H "Content-Type: application/json" -d '{"clientId":"<client-uuid>"}'`
 - **期待**: 200 で `Loan.clientId` 更新。既に別クライアントが紐付いている場合は **409**。
 
 ### トラブルシューティング

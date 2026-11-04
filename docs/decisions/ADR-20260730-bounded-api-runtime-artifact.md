@@ -8,7 +8,8 @@ scope: API Docker runtime boundary, exact OCI size budget, and Pi5 promotion tim
 related_code:
   - infrastructure/docker/Dockerfile.api
   - scripts/ci/validate_release_image_budget.py
-  - scripts/deploy/pi5_artifact_promoter.py
+  - infrastructure/ansible/roles/release_pi5
+  - scripts/deploy/standard-ansible-release.py
   - .github/workflows/ci.yml
 related_docs:
   - ../plans/api-image-runtime-boundary-execplan.md

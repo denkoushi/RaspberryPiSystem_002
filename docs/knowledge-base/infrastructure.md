@@ -10,25 +10,24 @@ update-frequency: medium
 
 # トラブルシューティングナレッジベース - インフラ関連
 
-**カテゴリ**: インフラ関連  
-**件数**: 200件（サブカテゴリ別に分割）  
-**索引**: [index.md](./index.md)
+> **索引のみ**: インフラ関連 KB の本文は下表のサブカテゴリファイルにあります。件数は [index.md](./index.md) を正とします。
 
-> **重要**: このファイルは索引ファイルです。各KBは機能別にサブカテゴリファイルに分割されています。
+**カテゴリ**: インフラ関連  
+**索引**: [index.md](./index.md)
 
 ## 📁 サブカテゴリ別ファイル
 
 インフラ関連のKBは以下のサブカテゴリに分割されています：
 
-| サブカテゴリ | ファイル | 件数 | 説明 |
-|------------|---------|------|------|
-| **Docker/Caddy関連** | [docker-caddy.md](./infrastructure/docker-caddy.md) | 9件 | Docker ComposeとCaddyリバースプロキシに関するトラブルシューティング情報 |
-| **バックアップ・リストア関連** | [backup-restore.md](./infrastructure/backup-restore.md) | 35件 | バックアップとリストア機能に関するトラブルシューティング情報 |
-| **Ansible/デプロイ関連** | [ansible-deployment.md](./infrastructure/ansible-deployment.md) | 62件 | Ansibleとデプロイメントに関するトラブルシューティング情報 |
-| **セキュリティ関連** | [security.md](./infrastructure/security.md) | 27件 | セキュリティ対策と監視に関するトラブルシューティング情報 |
-| **サイネージ関連** | [signage.md](./infrastructure/signage.md) | 39件 | デジタルサイネージ機能に関するトラブルシューティング情報（**`splitCompact24`・KB-325** 含む） |
-| **NFC/ハードウェア関連** | [hardware-nfc.md](./infrastructure/hardware-nfc.md) | 4件 | NFCリーダーとハードウェアに関するトラブルシューティング情報 |
-| **その他** | [miscellaneous.md](./infrastructure/miscellaneous.md) | 24件 | その他のインフラ関連トラブルシューティング情報 |
+| サブカテゴリ | ファイル | 説明 |
+|------------|---------|------|
+| **Docker/Caddy関連** | [docker-caddy.md](./infrastructure/docker-caddy.md) | Docker ComposeとCaddyリバースプロキシに関するトラブルシューティング情報 |
+| **バックアップ・リストア関連** | [backup-restore.md](./infrastructure/backup-restore.md) | バックアップとリストア機能に関するトラブルシューティング情報 |
+| **Ansible/デプロイ関連** | [ansible-deployment.md](./infrastructure/ansible-deployment.md) | Ansibleとデプロイメントに関するトラブルシューティング情報 |
+| **セキュリティ関連** | [security.md](./infrastructure/security.md) | セキュリティ対策と監視に関するトラブルシューティング情報 |
+| **サイネージ関連** | [signage.md](./infrastructure/signage.md) | デジタルサイネージ機能に関するトラブルシューティング情報（**`splitCompact24`・KB-325** 含む） |
+| **NFC/ハードウェア関連** | [hardware-nfc.md](./infrastructure/hardware-nfc.md) | NFCリーダーとハードウェアに関するトラブルシューティング情報 |
+| **その他** | [miscellaneous.md](./infrastructure/miscellaneous.md) | その他のインフラ関連トラブルシューティング情報 |
 
 ## 📋 課題を探す
 

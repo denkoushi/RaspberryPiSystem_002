@@ -1317,7 +1317,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 - KB-163により`backup.json`が削除され、Gmail設定とDropboxバックアップ対象リストが失われた
 - Dropboxには過去のバックアップが保存されていたため、そこから復元する必要があった
 
-**復元手順**:
+**復元手順**（2026-01 当時の記録。現行の手順は [backup-and-restore.md](../../guides/backup-and-restore.md) を参照。管理コンソールのバックアップ画面にファイルのダウンロード機能はなく、取得は Dropbox API または Dropbox Web UI で行う。リポジトリのルートに compose ファイルはないため、下記の `docker compose restart api` はそのままでは動かない）:
 1. **Dropbox APIを使用してバックアップファイルを検索**:
    - 管理コンソールのバックアップタブから、最新の`backup.json`バックアップを特定
    - または、Dropbox APIを使用してバックアップファイルを検索
@@ -1370,7 +1370,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 - KB-163により`backup.json`が削除され、Gmail設定（`clientId`, `clientSecret`, `redirectUri`）が失われた
 - Dropboxバックアップから`backup.json`を復元したが、Gmail設定は含まれていなかった
 
-**復元手順**:
+**復元手順**（2026-01 当時の記録。現行の手順は [backup-and-restore.md](../../guides/backup-and-restore.md) を参照。下記の `docker compose restart api` は compose ファイルの指定がなく、そのままでは動かない）:
 1. **client_secret.jsonファイルを取得**:
    - Google Cloud ConsoleからGmail APIの認証情報をダウンロード
    - `client_secret.json`ファイルを取得

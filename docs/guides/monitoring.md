@@ -81,21 +81,26 @@ Prometheus形式のテキストを返します。
 
 ### 使用例
 
+API の 8080 はホストに公開されていない（本番 API は blue/green の `api-blue` / `api-green`）。gateway（443）経由で取得する。
+
 ```bash
-# メトリクスを取得
-curl http://localhost:8080/api/system/metrics
+# メトリクスを取得（Pi5 上で実行）
+curl -ksS https://localhost/api/system/metrics
 
 # Prometheusでスクレイプする場合
 # prometheus.ymlに以下を追加:
 #   - job_name: 'raspberry-pi-system'
+#     scheme: https
 #     static_configs:
-#       - targets: ['localhost:8080']
+#       - targets: ['<Pi5>:443']
 #     metrics_path: '/api/system/metrics'
 ```
 
 ## 監視スクリプト
 
 `scripts/server/monitor.sh`を使用してシステム全体を監視できます。
+
+**注意**: 現行の `monitor.sh` は API ヘルスチェックに `http://localhost:8080/api` を使う。8080 はホストへ公開されていないため、API ヘルスチェックは `ERROR: API health check failed` として記録される。API は `curl -ksS https://localhost/api/system/health` で確認する。
 
 ### 使用方法
 
@@ -123,15 +128,7 @@ curl http://localhost:8080/api/system/metrics
 
 ### アラート通知
 
-`ALERT_EMAIL`環境変数を設定すると、エラー発生時にメール通知が送信されます。
-
-```bash
-# 環境変数を設定
-export ALERT_EMAIL="admin@example.com"
-
-# 監視スクリプトを実行
-/opt/RaspberryPiSystem_002/scripts/server/monitor.sh
-```
+`monitor.sh` は冒頭で `ALERT_EMAIL=""` を代入するため、`ALERT_EMAIL` 環境変数を設定しても空に上書きされ、メール通知は送信されない。通知するには、スクリプト内の `ALERT_EMAIL` の値を変更する必要がある（本番への変更は PR 経由で行う）。
 
 ## 外部監視ツールとの連携
 
@@ -144,7 +141,8 @@ Prometheusを使用してメトリクスを収集する場合：
 scrape_configs:
   - job_name: 'raspberry-pi-system'
     static_configs:
-      - targets: ['raspberry-pi-5:8080']
+      - targets: ['raspberry-pi-5:443']
+    scheme: https
     metrics_path: '/api/system/metrics'
     scrape_interval: 30s
 ```
@@ -166,7 +164,7 @@ HTTPチェックプラグインを使用して`/api/system/health`エンドポ�
 
 ```bash
 # Nagios例
-check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
+check_http -H raspberry-pi-5 -S -p 443 -u /api/system/health -e "200"
 ```
 
 ## トラブルシューティング
@@ -204,7 +202,7 @@ check_http -H raspberry-pi-5 -p 8080 -u /api/system/health -e "200"
 
 2. 手動で各チェックを実行：
    ```bash
-   curl http://localhost:8080/api/system/health
+   curl -ksS https://localhost/api/system/health
    docker compose -f infrastructure/docker/docker-compose.server.yml ps
    df -h /
    free -h

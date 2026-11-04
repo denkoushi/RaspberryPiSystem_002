@@ -93,7 +93,7 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit 
 grep -E "TASK|PLAY RECAP|failed|unreachable" /tmp/pi3-deploy.log | tail -20
 
 # デバッグログを確認（Mac上）
-cat /Users/tsudatakashi/RaspberryPiSystem_002/.cursor/debug.log | jq -r '.message' | sort | uniq -c
+cat /Users/<user>/RaspberryPiSystem_002/.cursor/debug.log | jq -r '.message' | sort | uniq -c
 ```
 
 **期待結果**:
@@ -167,7 +167,7 @@ ssh denkon5sd02@100.106.158.2 "ssh signageras3@100.105.224.86 'ps aux | grep -E 
 **症状**: デプロイログの最後のタスクが特定のタスクで止まっている
 
 **対応**:
-1. デバッグログを確認: `cat /Users/tsudatakashi/RaspberryPiSystem_002/.cursor/debug.log | jq -r '.message' | sort | uniq -c`
+1. デバッグログを確認: `cat /Users/<user>/RaspberryPiSystem_002/.cursor/debug.log | jq -r '.message' | sort | uniq -c`
 2. 最後に記録されたメッセージを確認し、停止位置を特定
 3. Pi3上で該当サービスの状態を確認
 4. 必要に応じて、手動でサービスを再起動してからデプロイを再実行

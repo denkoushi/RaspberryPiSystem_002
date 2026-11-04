@@ -170,7 +170,7 @@ Raspberry Pi 4を再起動した後、APIキーとIDがランダムな文字列�
 
 **原因**: Webコンテナが再ビルドされていない（古いビルドが動いている）
 
-**解決策**:
+**解決策**（当時の手動復旧記録。現行では非推奨。現行は [deployment.md](../guides/deployment.md) の標準デプロイを再実行する）:
 ```bash
 ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml build --no-cache web && docker compose -f infrastructure/docker/docker-compose.server.yml up -d web"
 ```

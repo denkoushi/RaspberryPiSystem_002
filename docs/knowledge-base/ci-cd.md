@@ -85,6 +85,8 @@ update-frequency: high
 
 ### [KB-358] `api-db-and-infra` の Wait for PostgreSQL が flake する（`borrow_return` 等）
 
+> **旧ジョブ名**（現行: `api-db-and-infra` は [ci.yml](../../.github/workflows/ci.yml) にない。`Wait for PostgreSQL` は `api` / `db-infra` / `e2e-smoke` / `e2e-tests` の各ジョブにある）
+
 **発生日・反映**: 2026-04-27（PR [#203](https://github.com/denkoushi/RaspberryPiSystem_002/pull/203) 向け CI・run 例 `24990946449`）
 
 **事象**:
@@ -129,6 +131,8 @@ update-frequency: high
 ---
 
 ### [KB-353] GitHub Actions のジョブ分割と composite action による CI 高速化（2026-04-18）
+
+> **旧ジョブ名**（現行: `lint-build-unit` / `api-db-and-infra` / `security-docker` / `docker-build` は [ci.yml](../../.github/workflows/ci.yml) にない。主なジョブは `workspace-quality` / `api` / `api-coverage` / `web` / `db-infra` / `docker-security` / `e2e-smoke` / `e2e-tests`。pnpm audit は `scripts/ci/run-pnpm-bulk-audit.mjs`）
 
 **発生日・反映**: 2026-04-18（ブランチ `feat/ci-speed-quality-improvement`・コミット `5f4ac44d` 前後）
 
@@ -479,6 +483,8 @@ update-frequency: high
 ---
 
 ### [KB-026] Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題
+
+> **注記**: KB-026 は採番が重複している。[索引](./index.md) の ci-cd.md の KB-026 は [Cursor内の編集ツールの件](#kb-026-cursor内の編集ツールが大きなyamlファイルで失敗する) を指し、本節は索引にない。
 
 **EXEC_PLAN.md参照**: Phase 10 (リアルタイム監視強化)
 

@@ -96,7 +96,7 @@ update-frequency: high
 | `FKOJUNST_Status` の `C` が `fkmail` に現れない（キー空間不一致）・照合方針 ADR | [KB-373](./KB-373-fkojunst-status-c-key-domain-mismatch.md) / [ADR-20260509](../decisions/ADR-20260509-fkojunst-status-completion-matching-policy.md) | 1件 | **全面改稿（2026-05-09）**: 調査時系列・仮説ログ・`801` 偏重・`FKOTEICD`/`FSIGENCD` 重複極小・選択資源 `C=12` の重複否定を記録。結論は **実装不具合より上流キー空間差**。方針は **厳密3キー/trim+upper/両取込再計算/`FUPDTEDT` 最新優先/未マッチ `C` 無視**。 |
 | FKOJUNST_Status メール・winner 解決（bind 上限 / 長時間化 / 外部完了 timeout） | [KB-372](./KB-372-fkojunst-mail-winner-triple-postgres-bind-chunk.md) | 1件 | **巨大 `IN` bind 超過**→**repeated scan 長時間化**→**external completion timeout** を **winner 1-pass + tx timeout 延長**で解消（**`b6bb449a`**・Pi5 のみ本番、**2026-05-09 main 再検証 PASS 42 / WARN 1 / FAIL 0**） |
 | 生産スケジュール・実効完了（手動 + FKOJUNST_Status） | [KB-370-production-schedule-external-completion-triple-source.md](./KB-370-production-schedule-external-completion-triple-source.md) | 1件 | **現行（2026-05-26）**: 実効完了は **手動完了** OR **FKOJUNST_Status `C`/`X`**。**生産日程CSV差分消失による完了は廃止**（[ADR-20260526](../decisions/ADR-20260526-production-schedule-completion-status-only.md)）。`externallyCompletedFromScheduleCsvDisappeared` は互換列として残すが、既存 true は migration で false へ収束し、新規取込では完了に寄与しない。**歴史**: 2026-05-09〜25 はメール完了以外×±3ヶ月母集団と現 winner の差分、2026-05-17 以降は2CSV 3キー交差を用いたが、Status `R`/欠落期間でも現場残存行がグレーになり得るため廃止。 |
-| キオスク貸出（調査報告） | [kb-kiosk-rigging-return-cancel-investigation.md](../archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md) | 1件 | 吊具持出し・返却の仕様と「使用中」判定／取消混在調査／**`Loan.clientId` 手動補正 API**（`PUT /api/tools/loans/:id/client`）・本番デプロイ・Phase12 検証・TS（2026-03-25 追記） |
+| キオスク貸出（調査報告） | [kb-kiosk-rigging-return-cancel-investigation.md](../archive/knowledge-base/kb-kiosk-rigging-return-cancel-investigation.md) | 1件 | 吊具持出し・返却の仕様と「使用中」判定／取消混在調査／**`Loan.clientId` 手動補正 API**（`PUT /api/tools/loans/:id/client`、正本: [runbook](../runbooks/kiosk-loan-status-repair.md#旧-active-loan-の端末clientid補正)）・本番デプロイ・Phase12 検証・TS（2026-03-25 追記） |
 | キオスクIME・電源 | [KB-investigation-kiosk-ime-and-power-regression.md](../archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md) | 6件 | 詳細はリンク先を参照。 |
 | API関連 | [api.md](./api.md) | 68件 | 詳細はリンク先を参照。 |
 | API関連（Gmail 429調査） | [KB-217-gmail-api-429-early-retry.md](./KB-217-gmail-api-429-early-retry.md) | 1件 | Gmail API 429エラー - クールダウン解除直後の再発 |
@@ -171,8 +171,7 @@ update-frequency: high
 | [KB-052](./api.md#kb-052-sharpのcompositeエラーimage-to-composite-must-have-same-dimensions-or-smaller) | sharpのcompositeエラー（Image to composite must have same dimensions or smaller） | ✅ 解決済み |
 | [KB-054](./api.md#kb-054-サイネージ工具表示で日本語が文字化けする問題) | サイネージ工具表示で日本語が文字化けする問題 | ✅ 解決済み |
 | [KB-055](./api.md#kb-055-サイネージpdfがトリミングされて表示される) | サイネージPDFがトリミングされて表示される | ✅ 解決済み |
-| [KB-090](./api.md#kb-090-キオスクから計測機器一覧を取得できない問題client-key認証追加) | キオスクから計測機器一覧を取得できない問題（client-key認証追加） | ✅ 解決済み |
-| [KB-090](./api.md#kb-090-キオスクから計測機器一覧を取得できない問題client-key認証追加) | キオスクから計測機器一覧を取得できない問題（client-key認証追加） | ✅ 解決済み |
+| KB-090（本文欠落） | キオスクから計測機器一覧を取得できない問題（client-key認証追加） | ✅ 解決済み |
 | [KB-094](./api.md#kb-094-サイネージ左ペインで計測機器と工具を視覚的に識別できない) | サイネージ左ペインで計測機器と工具を視覚的に識別できない | ✅ 解決済み |
 | [KB-114](./api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) | CSVインポート構造改善（レジストリ・ファクトリパターン） | ✅ 解決済み |
 | [KB-115](./api.md#kb-115-gmail件名パターンの設定ファイル管理) | Gmail件名パターンの設定ファイル管理 | ✅ 解決済み |
@@ -278,8 +277,7 @@ update-frequency: high
 | [KB-043](./frontend.md#kb-043-kioskredirectがadminパスでも動作してしまい管理画面にアクセスできない問題) | KioskRedirectが/adminパスでも動作してしまい、管理画面にアクセスできない問題 | ✅ 解決済み |
 | [KB-045](./frontend.md#kb-045-分割表示でpdfがスライドしない問題) | 分割表示でPDFがスライドしない問題 | ✅ 解決済み |
 | [KB-046](./frontend.md#kb-046-サイネージのサムネイルアスペクト比がおかしい問題) | サイネージのサムネイルアスペクト比がおかしい問題 | ✅ 解決済み |
-| [KB-091](./frontend.md#kb-091-キオスク持出フローの改善選択-or-タグuid点検項目なしでも送信) | キオスク持出フローの改善（選択 or タグUID、点検項目なしでも送信） | ✅ 解決済み |
-| [KB-091](./frontend.md#kb-091-キオスク持出フローの改善選択-or-タグuid点検項目なしでも送信) | キオスク持出フローの改善（選択 or タグUID、点検項目なしでも送信） | ✅ 解決済み |
+| KB-091（本文欠落・KB-091 は別項目と番号重複） | キオスク持出フローの改善（選択 or タグUID、点検項目なしでも送信） | ✅ 解決済み |
 | [KB-095](./frontend.md#kb-095-計測機器タグスキャン時の自動遷移機能) | 計測機器タグスキャン時の自動遷移機能 | ✅ 解決済み |
 | [KB-096](./frontend.md#kb-096-クライアントログ取得のベストプラクティスpostclientlogsへの統一) | クライアントログ取得のベストプラクティス（postClientLogsへの統一） | ✅ 解決済み |
 | [KB-109](./frontend.md#kb-109-csvインポートスケジュールページのui統一バックアップペインと同じui) | CSVインポートスケジュールページのUI統一（バックアップペインと同じUI） | ✅ 解決済み |
@@ -310,7 +308,7 @@ update-frequency: high
 | [KB-242](./frontend.md#kb-242-生産スケジュール登録製番削除ボタンの進捗連動ui改善) | 生産スケジュール登録製番削除ボタンの進捗連動UI改善 | ✅ 解決済み |
 | [KB-243](./frontend.md#kb-243-webrtcビデオ通話の映像不安定問題とエラーダイアログ改善) | WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善 | ✅ 解決済み |
 | [KB-244](./frontend.md#kb-244-pi4キオスクの備考欄に日本語入力状態インジケーターを追加) | Pi4キオスクの備考欄に日本語入力状態インジケーターを追加 | ✅ 解決済み |
-| [KB-245](./infrastructure/ansible-deployment.md#kb-245-pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とibus設定の永続化) | Pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とIBus設定の永続化 | ✅ 解決済み |
+| KB-245（本文欠落） | Pi4のみのデプロイ時もメンテナンスフラグを自動クリアする修正とIBus設定の永続化 | ✅ 解決済み |
 | [KB-247](./frontend.md#kb-247-生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化) | 生産スケジュール登録製番削除ボタンの応答性問題とポーリング間隔最適化 | ✅ 解決済み |
 | [KB-268](./frontend.md#kb-268-生産スケジュールキオスク操作で間欠的に数秒待つ継続観察) | 生産スケジュールキオスク操作で間欠的に数秒待つ（継続観察） | 🔄 継続観察 |
 | [KB-269](./api.md#kb-269-生産スケジュールprogress別テーブル化csv取り込み時の上書きリスク回避) | 生産スケジュールprogress別テーブル化（CSV取り込み時の上書きリスク回避） | ✅ 解決済み |
@@ -461,7 +459,7 @@ update-frequency: high
 | [KB-285](./infrastructure/ansible-deployment.md#kb-285-電源操作再起動シャットダウンのボタン押下から発動まで約20秒かかる) | 電源操作（再起動/シャットダウン）のボタン押下から発動まで約20秒かかる | ✅ 原因特定済み（2026-03-01） |
 | [KB-300](./infrastructure/ansible-deployment.md#kb-300-pi4デプロイ時のキオスクフェーズハングserverkiosk-並列実行時) | Pi4デプロイ時のキオスクフェーズハング（server:kiosk 並列実行時） | ✅ 解決済み（2026-03-09） |
 | [KB-238](./infrastructure/ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加) | update-all-clients.shでraspberrypi5対象時にRASPI_SERVER_HOST必須チェックを追加 | ✅ 解決済み |
-| [KB-099](./infrastructure/backup-restore.md#kb-099-dropbox-oauth-20実装時のdocker-compose設定ファイルボリュームの読み書き権限問題) | Dropbox OAuth 2.0実装時のDocker Compose設定ファイルボリュームの読み書き権限問題 | ✅ 解決済み |
+| KB-099（本文欠落） | Dropbox OAuth 2.0実装時のDocker Compose設定ファイルボリュームの読み書き権限問題 | ✅ 解決済み |
 | [KB-100](./infrastructure/ansible-deployment.md#kb-100-ciテストが失敗してもマージが進んでしまう問題再発) | CIテストが失敗してもマージが進んでしまう問題（再発） | ⚠️ 部分解決 |
 | [KB-101](./infrastructure/ansible-deployment.md#kb-101-pi5へのssh接続不可問題の原因と解決) | Pi5へのSSH接続不可問題の原因と解決 | ✅ 解決済み |
 | [KB-102](./infrastructure/backup-restore.md#kb-102-ansibleによるクライアント端末バックアップ機能実装時のansibleとtailscale連携問題) | Ansibleによるクライアント端末バックアップ機能実装時のAnsibleとTailscale連携問題 | ✅ 解決済み |
@@ -490,9 +488,9 @@ update-frequency: high
 | [KB-174](./infrastructure/ansible-deployment.md#kb-174-alerts-platform-phase2後続実装db版dispatcher--dedupe--retrybackoffの実機検証完了) | Alerts Platform Phase2後続実装（DB版Dispatcher + dedupe + retry/backoff）の実機検証完了 | ✅ 解決済み |
 | [KB-175](./infrastructure/ansible-deployment.md#kb-175-alerts-platform-phase2完全移行db中心運用の実機検証完了) | Alerts Platform Phase2完全移行（DB中心運用）の実機検証完了 | ✅ 解決済み |
 | [KB-176](./infrastructure/ansible-deployment.md#kb-176-slack通知チャンネル分離のデプロイトラブルシューティング環境変数反映問題) | Slack通知チャンネル分離のデプロイトラブルシューティング（環境変数反映問題） | ✅ 解決済み |
-| [KB-179](./infrastructure/backup-restore.md#kb-179-dropbox証明書ピニング問題api-dropboxapi-comの新しい証明書フィンガープリント追加) | Dropbox証明書ピニング問題（api.dropboxapi.comの新しい証明書フィンガープリント追加） | ✅ 解決済み |
-| [KB-180](./infrastructure/backup-restore.md#kb-180-バックアップ対象の追加pi5pi4pi3の環境設定ファイル) | バックアップ対象の追加（Pi5/Pi4/Pi3の環境設定ファイル） | ✅ 解決済み |
-| [KB-181](./infrastructure/backup-restore.md#kb-181-ui表示問題の修正dropbox設定の新構造対応) | UI表示問題の修正（Dropbox設定の新構造対応） | ✅ 解決済み |
+| KB-179（本文欠落） | Dropbox証明書ピニング問題（api.dropboxapi.comの新しい証明書フィンガープリント追加） | ✅ 解決済み |
+| KB-180（本文欠落） | バックアップ対象の追加（Pi5/Pi4/Pi3の環境設定ファイル） | ✅ 解決済み |
+| KB-181（本文欠落） | UI表示問題の修正（Dropbox設定の新構造対応） | ✅ 解決済み |
 | [KB-182](./infrastructure/ansible-deployment.md#kb-182-pi4デプロイ検証結果デプロイ安定化機能の動作確認) | Pi4デプロイ検証結果（デプロイ安定化機能の動作確認） | ✅ 検証完了 |
 | [KB-183](./infrastructure/ansible-deployment.md#kb-183-pi4デプロイ時のキオスクメンテナンス画面表示機能の実装) | Pi4デプロイ時のキオスクメンテナンス画面表示機能の実装 | ✅ 実装完了 |
 | [KB-191](./infrastructure/ansible-deployment.md#kb-191-デプロイは成功したのにdbが古いテーブル不存在) | デプロイは成功したのにDBが古い（テーブル不存在） | ✅ 解決済み |
@@ -816,7 +814,7 @@ update-frequency: high
 - 2026-05-02（順位ボード **`leaderboard` の `pageSize` API 上限制御**・計測 ingest 除去・**Pi5**）: [KB-297 §ページサイズ上限制御](./KB-297-kiosk-due-management-workflow.md#leader-order-board-leaderboard-pagesize-server-cap-2026-05-02) — **`0865cc56`**（[PR #236](https://github.com/denkoushi/RaspberryPiSystem_002/pull/236)）+ **`e4605dcb`**（記録追記）·Detach **`20260502-175955-7198`**·**Phase12 PASS 43/0/0**（約 **141s**）。[deployment.md](../guides/deployment.md) の **pageSize 上限制御**補足·`EXEC_PLAN.md` Progress。**切り分け**: Caddy `access.log` の `uri` に **`pageSize=1240` 級**が混在するか。
 - 2026-05-02（順位ボード **progress-overview 部品行キーで資源チップ結合／進捗一覧 `part.processes` 復元**・API+Web）: [KB-297 §結合粒度](./KB-297-kiosk-due-management-workflow.md#leader-order-board-resource-chips-part-key-overview-join-2026-05-02) — **`fix/leaderboard-resource-chips-join-and-scope`**・**`44aea2d9`**・**Pi5→Pi4×4 `--limit` 順次**・Detach **`20260502-125430-31676` / `20260502-130426-1173` / `20260502-131032-13145` / `20260502-131507-16128` / `20260502-132009-12509`**・**Phase12 PASS 43/0/0**（約 **152s**）。**Pi3 除外**。**トラブルシュート**: 手元 `git fetch`/ネット未許可で `update-all-clients.sh` が失敗し得る → 到達確認のうえ再実行。**`main`**: [PR #233](https://github.com/denkoushi/RaspberryPiSystem_002/pull/233) squash（**`6045b202`**）・CI **`25243785120`** success。[deployment.md](../guides/deployment.md)·`EXEC_PLAN.md` Progress を整合。
 - 2026-05-02（キオスク順位ボード **各行下辺・製番単位の資源進捗チップ帯**）: [KB-297 §行下辺チップ](./KB-297-kiosk-due-management-workflow.md#leader-order-board-row-footer-resource-chips-2026-05-02) — **`fix/leaderboard-row-footer-resource-chips`**・**`16911165`**・**Pi5→Pi4×4 `--limit` 順次**・Detach **`20260502-105130-11663` / `20260502-105758-25070` / `20260502-110434-28709` / `20260502-110923-18185` / `20260502-111424-3838`**・**Phase12 PASS 43/0/0**（約 **130s**）。**Pi3 除外**（Web のみ）。[deployment.md](../guides/deployment.md)·`EXEC_PLAN.md` Progress を整合。
-- 2026-05-02（キオスク順位ボード **製番左縁アクセント常時（フィルタ空でも／ブランク除く）**・進捗一覧 **製番カード資源CD集約チップ帯**）: [KB-297 §2026-05-02](./KB-297-kiosk-due-management-workflow.md#leader-order-board-seiban-accent-always-progress-resource-strip-2026-05-02) — **`feat/kiosk-seiban-accent-and-progress-resource-strip`**・**`924a2ff4`**・**Pi5→Pi4×4 `--limit` 順次**・Detach **`20260502-094331-28033` … `20260502-100443-16279`**・**Phase12 PASS 43/0/0**（約 **114s**）。**Pi3 除外**。[deployment.md](../guides/deployment.md)·`EXEC_PLAN.md` Progress／Next Steps を整合。
+- 2026-05-02（キオスク順位ボード **製番左縁アクセント常時（フィルタ空でも／ブランク除く）**・進捗一覧 **製番カード資源CD集約チップ帯**）: [KB-297 §2026-05-02](./KB-297-kiosk-due-management-workflow.md) — **`feat/kiosk-seiban-accent-and-progress-resource-strip`**・**`924a2ff4`**・**Pi5→Pi4×4 `--limit` 順次**・Detach **`20260502-094331-28033` … `20260502-100443-16279`**・**Phase12 PASS 43/0/0**（約 **114s**）。**Pi3 除外**。[deployment.md](../guides/deployment.md)·`EXEC_PLAN.md` Progress／Next Steps を整合。
 - 2026-05-01（**生産日程・三島研削** `ProductionSchedule_Mishima_Grinding`・**上流 CSV に実日付なし**の仕様確認）: [KB-297 §三島研削](./KB-297-kiosk-due-management-workflow.md#mishima-grinding-csv-no-date-2026-05-01) — **実装・デプロイなし**（**ドキュメント追記のみ**）。固定 `CsvDashboard` **`3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01`**。手動取込 run 例 **`a1f180aa-9aba-4e3a-87c4-92ea0a83d26a`** で **必須キー・`FSIGENSHOYORYO` 数値は整合**・**`registeredAt`/`updatedAt` は CSV 空**→**`occurredAt` フォールバックは期待どおり**。[csv-import-export.md](../guides/csv-import-export.md)·`docs/INDEX.md`·`EXEC_PLAN.md` Progress を整合。
 - 2026-05-01（Gmail CSV・**PowerAutomate 日時互換**・`FKOJUNST_Status` / 一般 `CsvDashboard`）: [KB-297 §PowerAutomate 日時互換](./KB-297-kiosk-due-management-workflow.md#powerautomate-csv-datetime-compat-2026-05-01) — **`fix/csv-datetime-compat-powerautomate`**・**`a9ce2f1b`**・**`raspberrypi5` のみ**・Detach **`20260501-141453-4379`**・**Phase12 PASS 43/0/0**（約 **26s**）。**Pi4/Pi3 不要**（API のみ）。CI Run **`25202971192`** success。[deployment.md](../guides/deployment.md)·[csv-import-export.md](../guides/csv-import-export.md)·`docs/INDEX.md`·`EXEC_PLAN.md` Progress を整合。**`main`**: [PR #227](https://github.com/denkoushi/RaspberryPiSystem_002/pull/227) squash（**`df914a90`**）。
 - 2026-05-06（生産日程・部品納期個数·補助 **`P2002` Pi5 本番）: [deployment.md](../guides/deployment.md)（2026-05-06 部品納期個数補助項）— **`raspberrypi5` のみ**・`main`・Detach **`20260505-223440-27566`**・**Phase12** **43/0/0**（約 **61s**）。[KB-328 §P2002](./KB-328-production-schedule-supplement-key-mismatch-investigation.md#order-supplement-sync-p2002-csv-dashboard-row-id)·`EXEC_PLAN.md` Progress / Next Steps 整合。

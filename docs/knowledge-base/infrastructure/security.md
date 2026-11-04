@@ -918,7 +918,11 @@ update-frequency: medium
 
 ---
 
-### [KB-278] Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落） {#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落}
+<a id="kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落"></a>
+
+### [KB-278] Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落）
+
+> **注記**: KB-278 は本書の「クライアント端末管理の重複登録（inventory未解決テンプレキー混入）」（2026-02-28）にも使われており、番号が重複している。
 
 **発生日**: 2026-06-03（本番デプロイ後の Mac 運用確認）
 
@@ -968,7 +972,11 @@ update-frequency: medium
 
 ---
 
-### [KB-384] Pi4 キオスク非表示（Tailscale 再認証後の netmap 未同期・LAN 暫定迂回） {#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期}
+<a id="kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期"></a>
+
+### [KB-384] Pi4 キオスク非表示（Tailscale 再認証後の netmap 未同期・LAN 暫定迂回）
+
+> **注記**: KB-384 は [KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md](../KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md)（順位ボード）にも使われており、番号が重複している。
 
 **発生日**: 2026-06-03（仕様拡張本番後 · **研削メイン `raspberrypi4`**）
 
@@ -1075,7 +1083,9 @@ sudo systemctl restart kiosk-browser.service
 
 ---
 
-### [KB-385] Pi5 Tailscale `NeedsLogin` と node key 失効 {#kb-385-pi5-tailscale-needslogin-と-node-key-失効}
+<a id="kb-385-pi5-tailscale-needslogin-と-node-key-失効"></a>
+
+### [KB-385] Pi5 Tailscale `NeedsLogin` と node key 失効
 
 **発生日**: 2026-06-03（KB-278 対応後の Mac 管理画面再確認）
 
@@ -1102,7 +1112,9 @@ tailscale status | head -3
 
 ---
 
-### [KB-387] 常時稼働端末の Tailscale Key expiry 無効化（全端末 Disable key expiry） {#kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry}
+<a id="kb-387-常時稼働端末の-tailscale-key-expiry-無効化全端末-disable-key-expiry"></a>
+
+### [KB-387] 常時稼働端末の Tailscale Key expiry 無効化（全端末 Disable key expiry）
 
 **発生日**: 2026-06-04（Pi3 サイネージ障害の恒久対策）
 
@@ -1156,6 +1168,8 @@ tailscale status | head -3
 ---
 
 ### [KB-278] クライアント端末管理の重複登録（inventory未解決テンプレキー混入）
+
+> **注記**: KB-278 は本書の「Tailscale経由で HTTPS/admin にアクセスできない（`tag:admin` 欠落）」（2026-06-03）にも使われており、番号が重複している。
 
 **発生日**: 2026-02-28
 
@@ -1214,6 +1228,7 @@ tailscale status | head -3
 - `DRY_RUN=1`での事前確認を徹底する
 - 新規端末追加時は固定キーを使用する（例: `raspi4-robodrill01`の`client-key-raspi4-robodrill01-kiosk1`）
 - 既存端末（`raspberrypi3`, `raspberrypi4`, `raspberrypi5`）はvaultで管理されているが、`register-clients.sh`はスキップされ、`status-agent`がheartbeatで自動登録している
+- （現行: `register-clients.sh` は Pi5 上で `REGISTER_CLIENT_HOST` を指定すると `ansible.cfg` の Vault 設定で変数を解決して登録する（`DRY_RUN=1` でも Vault は解決する）ため、Phase 1 相当は実装済み。Phase 3 の `deploy.yml` は現存しない。手順は [client-initial-setup.md](../../guides/client-initial-setup.md) を参照）
 
 **関連ファイル**:
 - `scripts/register-clients.sh`

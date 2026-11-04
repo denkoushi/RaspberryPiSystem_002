@@ -13,14 +13,14 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 51件  
+**件数**: 59件（見出し60。KB-218 は2見出し）  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
 
-> **注意（2026-11 点検）**: 本ファイルのコマンド・手順（`--follow` / `--job` / `--attach`、`RASPI_SERVER_HOST`、`deploy.yml` / `update-clients.yml` / `deploy-staged.yml` の直接実行、lock の手動削除、プロセス kill など）は各記録日時点のものです。現行手順は [deployment.md](../../guides/deployment.md) と [deploy-status-recovery.md](../../runbooks/deploy-status-recovery.md) だけを正本とします。
+> **注意（2026-11 点検・追補）**: 本ファイルの KB は各記録日時点の旧デプロイ経路（bash 版 `update-all-clients.sh`、JSON ロック、`deploy.yml` / `update-clients.yml` / `deploy-staged.yml`）を前提とした履歴です。手順の正本は [deployment.md](../../guides/deployment.md)、[quick-start-deployment.md](../../guides/quick-start-deployment.md)、[deploy-status-recovery.md](../../runbooks/deploy-status-recovery.md) です。新しい KB は本ファイルに追記せず、個別ファイルで作成します。
 
 ---
 
@@ -156,7 +156,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **References**:
 - 実装: `apps/api/src/services/inference/config/local-llm-env-alignment.ts`、`inference-providers-json.schema.ts`、`infrastructure/ansible/playbooks/manage-app-configs.yml`
-- デプロイ記録: [deployment.md](../../guides/deployment.md) 冒頭（2026-04-26 補足）
+- デプロイ記録: 旧 deployment.md 冒頭の 2026-04-26 補足（現在は削除済み。本 KB の Verification を参照）
 
 ---
 
@@ -176,7 +176,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - **Pi4（`kiosk`）/Pi3（`signage`）**: `docs/` は削除する（実行専用端末）。
 
 **Implementation**:
-- `infrastructure/ansible/roles/common/tasks/main.yml` の `docs` 削除タスクに `when: "'server' not in group_names"` を追加し、`server` ホストのみ削除対象から除外した。
+- `infrastructure/ansible/roles/common/tasks/main.yml` の `docs` 削除タスクに `when: "'server' not in group_names"` を追加し、`server` ホストのみ削除対象から除外した。（現行: `roles/common/tasks/` に `docs` 削除タスクは存在しない。以下の Verification / Troubleshooting は当時の記録）
 
 **Operational notes**:
 - クライアント端末で `docs/...` 参照が必要な場合は、Pi5 上の同パスまたは GitHub リポジトリを参照する。
@@ -562,7 +562,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
   2. **polkit設定ファイルのAnsible管理化**: `infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2`を作成し、`update-clients.yml`に統合
   3. **バックアップ機能の実装**: `scripts/ansible-backup-configs.sh`を作成し、設定ファイルのバックアップを自動化
   4. **ロールバック機能の実装**: `infrastructure/ansible/playbooks/rollback.yml`を作成し、設定ファイルの自動復旧を可能に
-  5. **ドキュメント化**: `docs/plans/ansible-hardening-stabilization-plan.md`と`docs/guides/ansible-managed-files.md`を作成し、管理方針を明確化
+  5. **ドキュメント化**: `docs/plans/ansible-hardening-stabilization-plan.md`（削除済み）と`docs/guides/ansible-managed-files.md`を作成し、管理方針を明確化
 
 **学んだこと**: 
 - **`git clean`のリスク**: `.gitignore`に含まれていないファイルは削除されるため、保護が必要なディレクトリは明示的に除外する必要がある
@@ -578,7 +578,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 - `infrastructure/ansible/playbooks/manage-system-configs.yml`（システム設定ファイル管理プレイブック）
 - `infrastructure/ansible/playbooks/rollback.yml`（ロールバックプレイブック）
 - `scripts/ansible-backup-configs.sh`（設定ファイルバックアップスクリプト）
-- `docs/plans/ansible-hardening-stabilization-plan.md`（Ansible堅牢化・安定化計画）
+- `docs/plans/ansible-hardening-stabilization-plan.md`（Ansible堅牢化・安定化計画。削除済み）
 - `docs/guides/ansible-managed-files.md`（Ansibleで管理すべき設定ファイル一覧）
 
 ---
@@ -633,7 +633,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 - `infrastructure/ansible/templates/nfc-agent.env.j2`（NFCエージェント環境変数テンプレート）
 - `infrastructure/ansible/templates/docker.env.j2`（Docker Compose環境変数テンプレート）
 - `infrastructure/ansible/inventory.yml`（環境変数の変数定義）
-- `docs/plans/ansible-config-files-management-plan.md`（実装計画）
+- `docs/plans/ansible-config-files-management-plan.md`（実装計画。削除済み。管理方針の現行正本は [ansible-managed-files.md](../../guides/ansible-managed-files.md)）
 
 ---
 

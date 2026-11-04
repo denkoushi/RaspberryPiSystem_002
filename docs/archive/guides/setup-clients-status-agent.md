@@ -31,7 +31,7 @@ update-frequency: medium
 
 ```bash
 # プロジェクトディレクトリに移動
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd /Users/<user>/RaspberryPiSystem_002
 
 # クライアントデバイスを登録
 ./scripts/register-clients.sh
@@ -52,7 +52,7 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 
 **エラーが出た場合:**
 - APIサーバーが起動しているか確認: `curl http://192.168.128.131:8080/api/system/health`
-- ログイン情報が正しいか確認（デフォルト: `admin` / `admin1234`）
+- ログイン情報が正しいか確認（デフォルト: `<user>` / `<password>`）
 
 ---
 
@@ -62,7 +62,7 @@ cd /Users/tsudatakashi/RaspberryPiSystem_002
 
 ```bash
 # プロジェクトディレクトリに移動
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd /Users/<user>/RaspberryPiSystem_002
 
 # 一括更新スクリプトを実行（status-agentの設定も含まれる）
 # inventory指定と対象指定（--limit または --full-fleet）が必須（誤デプロイ防止）
@@ -165,7 +165,7 @@ https://192.168.128.131/admin/clients
    ```bash
    curl -X POST http://192.168.128.131:8080/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin1234"}'
+     -d '{"username":"<user>","password":"<password>"}'
    ```
 
 ### Ansibleプレイブックの実行に失敗する場合
@@ -218,7 +218,7 @@ https://192.168.128.131/admin/clients
    # Macから実行
    TOKEN=$(curl -s -X POST http://192.168.128.131:8080/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"admin1234"}' | jq -r '.accessToken')
+     -d '{"username":"<user>","password":"<password>"}' | jq -r '.accessToken')
    
    curl -X GET http://192.168.128.131:8080/api/clients/status \
      -H "Authorization: Bearer $TOKEN" | jq '.'

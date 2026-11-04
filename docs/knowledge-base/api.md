@@ -124,6 +124,8 @@
 
 ### [KB-365] DGXリソース Phase3・補助起停・`SET_POLICY.applyWorkloadChanges`
 
+> **過去の記録**（現行: この経路は撤去済み。`POST /api/system/dgx-resource/actions` の type は `RETURN_TO_BUSINESS` / `STOP_BUSINESS_LLM` / `PREVIEW_MODEL_STORAGE_DELETE` / `EXECUTE_MODEL_STORAGE_DELETE` の4種だけで、`SET_POLICY`・`EXECUTE_TARGET_ACTION`・`overview.optionalProbes`・`targets[].capabilities` は API にない）
+
 **日付**: 2026-05-03
 
 **Context**:
@@ -148,6 +150,8 @@
 ---
 
 ### [KB-363] DGX リソース `sparkHost` の既定フォールバック（admin `LOCAL_LLM_BASE_URL` の `/healthz`）
+
+> **過去の記録**（現行: この経路は撤去済み。`POST /api/system/dgx-resource/actions` の type は `RETURN_TO_BUSINESS` / `STOP_BUSINESS_LLM` / `PREVIEW_MODEL_STORAGE_DELETE` / `EXECUTE_MODEL_STORAGE_DELETE` の4種だけで、`overview.sparkHost`・`/healthz` フォールバック・`EXECUTE_TARGET_ACTION` は API にない。`DGX_RESOURCE_SPARK_HOST_STATUS_URL` は Ansible テンプレートが出力するが API コードは読まない）
 
 **日付**: 2026-05-02
 
@@ -4403,7 +4407,7 @@ CREATE INDEX IF NOT EXISTS "csv_dashboard_row_winner_lookup_global_idx"
 - sleep(): 指定時間待機
 ```
 
-**環境変数の設定方法**:
+**環境変数の設定方法**（2026-02時点の記録。現行: コード既定値は10件/2000ms。`infrastructure/docker/.env` はAnsibleがテンプレートから描画するため手動追記は次の標準デプロイで上書きされ、テンプレートに`GMAIL_*`の配線はない。Pi5上で直接編集せず、変更はPRで行う）:
 ```bash
 # Pi5にSSH接続して、環境変数を設定
 cd /opt/RaspberryPiSystem_002/infrastructure/docker
@@ -4414,7 +4418,7 @@ echo "GMAIL_BATCH_REQUEST_DELAY_MS=1000" >> .env
 docker compose -f docker-compose.server.yml restart api
 ```
 
-**推奨設定**:
+**推奨設定**（2026-02時点の記録）:
 - 大量のメール（100件以上）を処理する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=50`、`GMAIL_BATCH_REQUEST_DELAY_MS=1000`
 - レート制限エラーが頻発する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=30`、`GMAIL_BATCH_REQUEST_DELAY_MS=1500`
 

@@ -20,7 +20,7 @@ update-frequency: medium
 
 Cursor の `state.vscdb` 破損・肥大化により **チャット/Agent 履歴が失われた場合**でも、**ローカルリポジトリ・`docs/`・Git・未コミット WIP は残る**。Agent はチャット履歴に依存せず、リポジトリ内ドキュメントから文脈を再構築する。
 
-**正本**: [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) · [mac-storage-migration §state.vscdb](./mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記)
+**正本**: [mac-storage-migration §state.vscdb](./mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記)
 
 **履歴参照**: [`EXEC_PLAN` §Cursor復旧](../../EXEC_PLAN.md#cursor-state-db-recovery-2026-06-06) は legacy historical log としてのみ参照する。
 
@@ -38,7 +38,7 @@ Cursor の `state.vscdb` 破損・肥大化により **チャット/Agent 履歴
 1. `git status` / `git log -5` でブランチと未コミット WIP を確認
 2. [docs/AI_START_HERE.md](../AI_START_HERE.md) の開始順で、該当する `.cursor/rules/` を確認
 3. 作業内容に対応する KB / Runbook / ADR / Plan を参照し、現在正本を確認
-4. WIP があれば [KB-388 §WIP](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md#本リポジトリ固有の-wip2026-06-06-時点--解消) と該当 KB（例: daily pilot（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-daily-pilot.md`））を参照
+4. WIP があれば [mac-storage-migration §state.vscdb](./mac-storage-migration.md#cursor-statevscdb-の破損肥大化2026-06-06-追記) と該当 KB（例: daily pilot（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-private-pi5-hermes-daily-pilot.md`））を参照
 5. ユーザーが依頼するまで **コード変更・デプロイは保留**
 
 ### Mac 開発環境（外部SSD）
@@ -497,23 +497,7 @@ pnpm dev
 
 ### リモートデバッグ（MacからRaspberry Pi 5へ）
 
-**MacからRaspberry Pi 5にSSH接続してデバッグ:**
-
-```bash
-# SSH接続
-ssh raspi5  # または ssh denkon5sd02@192.168.128.131
-
-# Dockerログの確認
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail=100
-
-# Git操作
-git pull origin main
-git status
-
-# コンテナの再起動
-docker compose -f infrastructure/docker/docker-compose.server.yml restart api
-```
+本番 Pi5 上で `git pull`・`docker compose restart` などの手動操作は行わない。更新は [deployment.md](./deployment.md) の `scripts/update-all-clients.sh`、失敗・停止時の確認と復旧は [deploy-status-recovery.md](../runbooks/deploy-status-recovery.md) に従う。
 
 詳細は [MacからRaspberry Pi 5へのSSH接続ガイド](./mac-ssh-access.md) を参照してください。
 

@@ -4,7 +4,7 @@ tags: [運用, キオスク, IME, IBus, 備考欄, 診断, runbook]
 audience: [運用者, 開発者]
 last-verified: 2026-03-01
 related:
-  - ../knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md
+  - ../archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md
   - ../knowledge-base/frontend.md#kb-276
   - ../plans/kiosk-ime-remark-field-execplan.md
 category: runbooks
@@ -80,7 +80,7 @@ standard routeが `roles/kiosk` のIME診断・Firefox profile customizationを�
 
 ## 診断結果の記録
 
-診断結果を [KB-investigation-kiosk-schedule-regression-20260301.md](../archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md) の「診断結果の記録」セクションに記入する。
+診断結果を [KB-287](../knowledge-base/frontend.md#kb-287-キオスク備考欄の日本語入力不具合ibus-ui-ウィンドウ出現で入力不安定) に記入する。
 
 ## ブラウザengine選択の確認とrollback
 

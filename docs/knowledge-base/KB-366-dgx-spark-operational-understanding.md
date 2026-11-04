@@ -8,6 +8,8 @@ category: knowledge-base
 
 # KB-366: DGX Spark 運用理解（メモリ・モデル・モード切替・KPI）
 
+> **注意（2026-11）**: 2026-10-17 以降、業務画面から運用モード・切替シナリオ・私用ワークロードの起停は削除されました（[ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md)）。本書の画面操作の記述は履歴で、個人用の起停は DGXSparkControlPlane 側の責務です。メモリとモデルの解説（§1〜§5、§8）は今も有効です。
+
 ## Context
 
 2026-05-25 に **`private_ok` 強制停止（`stop-force`）** の本番反映と、その前後の運用確認・議論で整理した **「Spark 上で何が動いているか」** の正本。DGX リソース画面の見方、メモリ KPI の意味、27B/35B の関係、Comfy との両立可否を、後から読んでも迷わないよう **FAQ 形式**で集約する。
@@ -62,7 +64,7 @@ category: knowledge-base
 | 写真ラベル（`photo_label`） | 職場 Pi5 → DGX gateway `38081` |
 | 要領書要約（`document_summary`） | 同上 |
 | 管理チャット（`admin_console_chat`） | 同上 |
-| StackChan 職場 API（`stackchan_chat`） | 同上 |
+| StackChan 職場 API（`stackchan_chat`）（履歴: 現行コードにこの用途は無い） | 同上 |
 | **Hermes（私用 Pi5）** | 私用 Pi5 → **同じ DGX gateway**（別マシンだが **同じ `system-prod-primary` エイリアス**） |
 
 inventory 上の正本: `inference_*_provider_id: dgx_primary`・モデル名 **`system-prod-primary`**（[Runbook](../runbooks/dgx-system-prod-local-llm.md)）。
@@ -120,6 +122,8 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 
 ### 管理画面 KPI 帯（2026-05-29 再設計 · `overview.runtimeSummary`） {#管理画面-kpi-帯2026-05-29-再設計--overviewruntimesummary}
 
+> **履歴**: `overview.runtimeSummary`（Policy / Business Ready / Pi5 業務意図）は現行の画面と API に無い（[ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md)）。
+
 - **上段（純メトリクス）**: `GPU Util` / `Unified Mem` / `Free Mem` のみ（`overview.kpis`）。**8 秒ポーリング**のスナップショット。
 - **下段（実行時状態）**: `overview.runtimeSummary` — **`Active Model`**（`activeProfileId` / 表示名）· **`Backend`**（green/blue）· **`Business Ready`**（`/v1/models` 到達のヒント）· **`Policy`**（Pi5 `policyMode`）。
 - **切替判断**: **Policy ラベルだけ**で「業務 LLM が載った/外れた」とは限らない。**Active Model + Backend + Unified Mem** をセットで見る（35B green は **20 GiB 台**のまま業務稼働し得る · 27B blue は **80〜100 GiB 台**になりやすい）。
@@ -143,33 +147,9 @@ docker ps --format '{{.Names}}' | grep -E 'system-prod|trtllm|llama'
 
 ---
 
-## 6. 管理画面: 「ワークロード自動調整」チェックと切替手順
+## §6・§7（削除: 旧画面の操作手順）
 
-### チェック項目の正しい名前と場所
-
-- 文言: **「切替時にワークロード自動調整」**（`DgxResourceProfilePanel`）。
-- 場所: `/admin/tools/dgx-resource` を下へスクロール → 折りたたみ **「詳細・保守（通常は不要）」** → **「運用モード（保守・手動切替）」** 内。
-- **画面上部の運用ガイド（4 つの大きい操作）にはこのチェックは無い。**
-
-### いつチェックが要るか
-
-| 操作 | チェック |
-|------|----------|
-| **運用ガイドの「業務→私用」等**（`EXECUTE_ORCHESTRATION_SCENARIO`） | **不要**（API 側で `applyWorkloadChanges: true` 相当） |
-| **保守パネルの「私用OK」ボタンのみ** | **要る**（チェック OFF だと **モード表示だけ変わり、停止 POST が走らない**） |
-
-**API の事実**: `planWorkloadAdjustmentsBeforePolicyChange` は **`applyWorkloadChanges: false` なら空配列**（停止なし）。`private_ok` の確認ダイアログは **チェック無しでも出る**が、**実停止はチェック ON 時のみ**（`dgx-resource.policy-arbitrator.ts` + `SET_POLICY` body）。
-
-**現場確認の推奨**: **運用ガイドの「業務→私用」**で実行（チェック不要）。保守の「私用OK」だけ使う場合は **チェック ON**。
-
----
-
-## 7. 手動確認の最短手順（現場）
-
-1. `/admin/tools/dgx-resource` を開く。
-2. **運用ガイド**から **業務→私用**（または同等シナリオ）を選び、確認→実行。
-3. KPI で **Unified Mem が大きく下がる**こと、必要なら DGX で `docker ps` に **`system-prod-trtllm` が無い**ことを確認。
-4. Comfy を使う場合は **別途** Mac SSH トンネル等（KB-378（DGXSparkControlPlane `docs/private-history/knowledge-base/KB-378-dgx-private-comfyui-mac-ssh-access.md`））。**`private_ok` は Mac の `127.0.0.1:8188` 経路を変えない。**
+2026-10-17 に該当 UI（`DgxResourceProfilePanel`、運用ガイド、`applyWorkloadChanges`）は削除済み。現行の業務復帰・停止は [ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md) と [dgx-system-prod-local-llm.md](../runbooks/dgx-system-prod-local-llm.md) を参照。
 
 ---
 

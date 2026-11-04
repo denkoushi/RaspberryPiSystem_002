@@ -32,7 +32,7 @@ category: knowledge-base
 
 - **対象ホスト**: **`raspberrypi5` のみ**（`--limit raspberrypi5`）
 - **ブランチ**: `fix/dgx-resource-admin-readable-typography`
-- **コマンド**: `export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
+- **コマンド**: `export RASPI_SERVER_HOST="<user>@<pi5-tailscale-ip>"`·`./scripts/update-all-clients.sh fix/dgx-resource-admin-readable-typography infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`
 - **Detach Run ID**（`ansible-update-` 接頭辞）: **`20260502-203857-20230`**
 - **`PLAY RECAP`**: **`failed=0` / `unreachable=0`**（リモート runner **exit `0`**）
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**

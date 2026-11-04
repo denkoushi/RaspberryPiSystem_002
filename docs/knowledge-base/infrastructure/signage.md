@@ -16,6 +16,8 @@ update-frequency: medium
 
 デジタルサイネージ機能に関するトラブルシューティング情報
 
+> **注記（2026-11）**: 管理UIは `/admin/signage`（サイネージハブ）へ統合済み（旧 `/admin/signage/schedules`・`/admin/signage/preview` は `/admin/signage` へリダイレクト、`/admin/signage-preview` のルートは無い）。日付付き記録にある `RASPI_SERVER_HOST`・`--follow`・「Pi3 サイネージ専用手順」は旧 `update-all-clients.sh` 時代の記述で、現行の標準経路では該当しない。現行手順は [deployment.md](../../guides/deployment.md) を正本とする。
+
 **設計（端末別スケジュール）**: [ADR-20260407](../../decisions/ADR-20260407-signage-target-client-keys.md) — `SignageSchedule.targetClientKeys`（空=全端末）、`GET /api/signage/content` の `x-client-key` / `clientKey`、レンダ JPEG は `apiKey` 毎に `SIGNAGE_RENDER_DIR` 下へ保存。
 
 **本番デプロイ（2026-04-07・ブランチ `feat/signage-target-client-keys`）**: [deployment.md](../../guides/deployment.md) どおり **Pi5 → Pi4×4 → Pi3 単独**・`RASPI_SERVER_HOST`・**`--detach --follow`**・**各 `--limit` は 1 台ずつ**（`update-all-clients.sh` の並列起動禁止）。**Detach Run ID**: `20260407-141922-13387`（`raspberrypi5`）→ `20260407-142729-31574`（`raspberrypi4`）→ `20260407-143132-2359`（`raspi4-robodrill01`）→ `20260407-143438-18999`（`raspi4-fjv60-80`）→ `20260407-144334-4685`（`raspi4-kensaku-stonebase01`）→ `20260407-144650-13245`（`raspberrypi3`）、各 **`PLAY RECAP failed=0`**。**Pi3**: メモリ確保で lightdm 停止→復旧のため、プレフライト直後は **`signage-lite` が一時 `exit-code`** になり得る；playbook 後段で **lightdm 復旧後に active** で完走するのが通常（下記 [KB-321](#kb-321-キオスク進捗一覧スロットkiosk_progress_overviewのサイネージ表示デプロイ実機検証) と同型）。**CI**: ブランチ push の GitHub Actions **success**。**実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**。**知見（開発）**: `SIGNAGE_RENDER_DIR` は実行時解決に寄せないと、開発機が本番固定パスへ `mkdir` しようとして **EACCES** になり得る（ADR・統合テスト修正と同趣旨）。
@@ -69,7 +71,7 @@ eligible のみ集約、**表示優先度ソート後**に **2000** 件 cap
 同一 `SignageRenderer.renderCurrentContent()` 呼び出し内では ViewModel を端末×設定キーで共有し、
 当該 render バッチ内の重複 DB 走査を抑える（render 間の TTL キャッシュはなし）。
 **代表**: `apps/api/src/services/part-measurement/self-inspection-machine-board.service.ts` ·
-`apps/api/src/services/signage/self-inspection-machine-board/` · 管理 `/admin/signage/schedules`。
+`apps/api/src/services/signage/self-inspection-machine-board/` · 管理 `/admin/signage`（サイネージハブ）。
 
 **本番デプロイ（2026-06-09 · auto 選定拡張 · ブランチ `feat/signage-self-inspection-machine-board-auto-target`）**:
 
@@ -543,7 +545,7 @@ sudo systemctl restart signage-lite.service
 - （**自動回帰の完全体**は `./scripts/deploy/verify-phase12-real.sh`。本セッションでは上記スモークを実施。）
 
 **知見・トラブルシューティング**:
-- **`RASPI_SERVER_HOST is required`**: デタッチ起動に限らず、**`--status <run_id>`** でも同じ。`export RASPI_SERVER_HOST=100.106.158.2` または `denkon5sd02@100.106.158.2`（[KB-238](./ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+- **`RASPI_SERVER_HOST is required`**（旧 `update-all-clients.sh` 時代の事象。現行の standard-ansible-release 経路では該当しない）: デタッチ起動に限らず、**`--status <run_id>`** でも同じ。`export RASPI_SERVER_HOST=100.106.158.2` または `denkon5sd02@100.106.158.2`（[KB-238](./ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
 - Pi3 は **単独デプロイ**・完了まで **数分〜十数分**あり得る。`--status` で `success` / `exitCode: 0` を確認してから次へ。
 
 **関連ファイル（代表）**:
@@ -567,7 +569,7 @@ sudo systemctl restart signage-lite.service
 
 **デプロイ（本番・対象 1 台のみ）**:
 - 指示どおり **`raspi4-kensaku-stonebase01`（StoneBase01）のみ**。[deployment.md](../../guides/deployment.md) の `update-all-clients.sh`、**`export RASPI_SERVER_HOST`**（`--status` でも必須）、**`--limit raspi4-kensaku-stonebase01`**（複数台時は **1 台ずつ順番**）。**Detach Run ID**: **`20260406-194743-26315`**（`state: success`・`exitCode: 0`）。
-- **Pi3 は今回対象外**（別回は [deployment.md](../../guides/deployment.md) の **Pi3 サイネージ専用手順**に従う）。
+- **Pi3 は今回対象外**（別回は [deployment.md](../../guides/deployment.md) の **Pi3 サイネージ専用手順**に従う）（現行: Pi3 も標準経路で更新し、専用手順の節は無い）。
 
 **知見（デプロイ正本の切り分け）**:
 - **Pi4 キオスク**更新は、当該端末の **`kiosk-browser` 用 Web バンドル**が主目的。
@@ -578,7 +580,7 @@ sudo systemctl restart signage-lite.service
 - **自動回帰の完全体**: `./scripts/deploy/verify-phase12-real.sh`（本件は StoneBase のみ先行のため未実行。`main` 反映後のフルデプロイ時に合わせて推奨）。
 
 **トラブルシューティング**:
-- **`RASPI_SERVER_HOST is required`**: `--status` でも同様（[KB-330](#kb-330-compact-kiosk-instrument-rigging-deploy)・[KB-238](./ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
+- **`RASPI_SERVER_HOST is required`**（旧 `update-all-clients.sh` 時代の事象。現行の standard-ansible-release 経路では該当しない）: `--status` でも同様（[KB-330](#kb-330-compact-kiosk-instrument-rigging-deploy)・[KB-238](./ansible-deployment.md#kb-238-update-all-clientsshでraspberrypi5対象時にraspi_server_host必須チェックを追加)）。
 
 **解決状況**: ✅ **StoneBase01 のみ本番デプロイ・実機 systemd スモーク・ナレッジ記録**（2026-04-06）。**`main` マージ**後は GitHub Actions を確認。
 
@@ -714,6 +716,8 @@ sudo systemctl restart signage-lite.service
 ---
 
 ### [KB-236] 可視化データソースで再レンダリング失敗が断続発生する（dataSource timeout 5000ms）
+
+> **注記**: KB-236 の番号は、本書の「Pi3 signage-lite.serviceのxsetエラー」と重複している（[index.md](../index.md) は xset 版を KB-236 として記録）。
 
 **事象**:
 - 管理コンソールで可視化ダッシュボードを更新後、`再レンダリング失敗` ダイアログが出る
@@ -1160,7 +1164,7 @@ const textX = x + textAreaX;
 1. **自動再起動の防止**: `systemctl stop`だけでは不十分。`systemctl disable`で自動再起動を防止する必要がある
 2. **十分な待機時間**: Pi3デプロイは10-15分かかる可能性がある。プロセスをkillせずに完了を待つ
 3. **標準手順の徹底**: KB-086/KB-089の標準手順を必ず実行する。特にPi3デプロイ時は`systemctl disable`を忘れない
-4. **注意**: `systemctl disable`だけでは不十分な場合がある。`systemctl mask --runtime`も必要（[KB-097](#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）
+4. **注意**: `systemctl disable`だけでは不十分な場合がある。`systemctl mask --runtime`も必要（KB-097 参照。KB-097 の本文は未記録で、番号は backup-restore.md の別件と衝突している。`systemctl mask` の記録は [KB-066](./ansible-deployment.md#kb-066-ラズパイ3でのansibleデプロイ失敗サイネージ稼働中のリソース不足自動再起動401エラー) にある）
 
 **解決状況**: ✅ **解決済み**（2025-12-07）
 
@@ -1169,7 +1173,7 @@ const textX = x + textAreaX;
 - `docs/guides/deployment.md`（標準プロセスの更新）
 - `docs/knowledge-base/infrastructure.md`（KB-086更新、KB-089追加）
 
-**注意**: KB-089の対策（`systemctl disable`）だけでは不十分な場合があります。`systemctl mask --runtime`も必要です（[KB-097](#kb-097-pi3デプロイ時のsignage-liteサービス自動再起動の完全防止systemctl-maskの必要性)参照）。
+**注意**: KB-089の対策（`systemctl disable`）だけでは不十分な場合があります。`systemctl mask --runtime`も必要です（KB-097 参照。KB-097 の本文は未記録で、番号は backup-restore.md の別件と衝突している。`systemctl mask` の記録は [KB-066](./ansible-deployment.md#kb-066-ラズパイ3でのansibleデプロイ失敗サイネージ稼働中のリソース不足自動再起動401エラー) にある）。
 
 ---
 
@@ -2197,7 +2201,7 @@ xset s noblank || echo "$(date): WARNING: xset s noblank failed, continuing..."
 - `apps/api/scripts/design-preview.ts`（デザインプレビュー用タイトル修正）
 
 **関連KB**:
-- [KB-274](./signage.md#kb-274-計測機器持出状況サイネージコンテンツの実装とcsvイベント連携): 計測機器持出状況サイネージコンテンツの実装
+- KB-274（計測機器持出状況サイネージコンテンツの実装）: 本文は未記録。本書の KB-274 は render-worker の別件で、番号が衝突している
 
 ---
 

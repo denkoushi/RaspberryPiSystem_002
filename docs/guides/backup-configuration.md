@@ -375,93 +375,11 @@ Pi5本番で中核機能の環境再構築に必要な永続・一次ファイ�
 - `schedule`: cron形式のスケジュール
 - `enabled`: `true` で有効化
 
-#### 証明書ディレクトリのバックアップ（推奨）
+<a id="証明書ディレクトリのバックアップ推奨"></a>
 
-Pi5の証明書ディレクトリ（`/opt/RaspberryPiSystem_002/certs/`）をバックアップする場合は、APIコンテナから参照可能なパス（`/app/host/certs`）を指定します。
+#### 証明書ディレクトリのバックアップ（旧方針・2026-09-30廃止）
 
-```json
-{
-  "kind": "directory",
-  "source": "/app/host/certs",
-  "schedule": "0 4 * * 0",
-  "enabled": true,
-  "storage": {
-    "provider": "dropbox"
-  },
-  "retention": {
-    "days": 90,
-    "maxBackups": 10
-  }
-}
-```
-
-**証明書ディレクトリのバックアップターゲット追加方法**:
-
-証明書ディレクトリのバックアップターゲットを追加するには、以下のいずれかの方法を使用できます：
-
-**方法1: Node.jsスクリプトを使用（推奨）**
-
-Pi5上で以下のコマンドを実行：
-
-```bash
-cd /opt/RaspberryPiSystem_002
-# Dockerコンテナ内で実行
-docker compose -f infrastructure/docker/docker-compose.server.yml exec api node /app/scripts/server/add-cert-backup-target.mjs
-```
-
-スクリプトは自動的に`backup.json`に証明書ディレクトリのバックアップターゲットを追加します。
-
-**方法2: Ansible Playbookを使用**
-
-Macから実行：
-
-```bash
-cd infrastructure/ansible
-ansible-playbook -i inventory.yml playbooks/add-cert-backup-target.yml
-```
-
-**方法3: 管理コンソールから手動追加**
-
-1. 管理コンソールの「バックアップ」タブにアクセス
-2. 「バックアップ対象を追加」ボタンをクリック
-3. 以下の設定を入力：
-   - **種類**: `directory`
-   - **ソース**: `/app/host/certs`
-   - **スケジュール**: `0 4 * * 0`（週次、日曜日4時）
-   - **ストレージプロバイダー**: `dropbox`
-   - **保持期間**: 90日
-   - **最大保持数**: 10件
-4. 「追加」ボタンをクリック
-
-**追加後の確認**:
-
-追加後、以下の手順で動作確認を行ってください：
-
-1. **設定の確認**:
-   ```bash
-   # Pi5上で実行
-   cat /opt/RaspberryPiSystem_002/config/backup.json | jq '.targets[] | select(.source == "/app/host/certs")'
-   ```
-
-2. **手動バックアップの実行**:
-   - 管理コンソールの「バックアップ」タブから手動実行
-   - または、API経由で実行（JWTトークンが必要）：
-     ```bash
-     curl -k -X POST https://localhost/api/backup \
-       -H "Content-Type: application/json" \
-       -H "Authorization: Bearer <your-token>" \
-       -d '{"kind": "directory", "source": "/app/host/certs"}'
-     ```
-
-3. **バックアップ履歴の確認**:
-   - 管理コンソールの「バックアップ履歴」タブで確認
-   - Dropbox上にバックアップファイルが作成されていることを確認
-```
-
-**ポイント**:
-- `/app/host/certs` はホスト側の `/opt/RaspberryPiSystem_002/certs` をマウントしたパスです。
-- 証明書は変更頻度が低いため週次バックアップで十分です。
-- 紛失時の影響が大きいため、保持期間は長めを推奨します。
+2026-09-30 以降、証明書（`/app/host/certs`）は Dropbox のバックアップ対象にしない（[Pi5本番の現在方針](#pi5本番の現在方針2026-09-30)）。証明書は Google Drive の暗号化DR（[ADR-20260820](../decisions/ADR-20260820-google-drive-disaster-recovery.md)）で保護する。推奨カタログにも証明書は無い。`scripts/server/add-cert-backup-target.mjs` と `infrastructure/ansible/playbooks/add-cert-backup-target.yml` は Dropbox 宛てのターゲットを追加する旧手順のため使わない。
 
 ## スケジュール設定（cron形式）
 

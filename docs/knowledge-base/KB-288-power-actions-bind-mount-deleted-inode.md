@@ -79,7 +79,7 @@ API コンテナを再起動することで、現在の `power-actions` ディ�
 ## Prevention
 
 - 電源操作不具合時は、`mountinfo` で `//deleted` の有無を確認する
-- 恒久対策により、server ロール実行時（Pi5 デプロイ時）は `power-actions` 変更があれば自動で API 再起動される
+- 恒久対策により、server ロール実行時は `power-actions` 変更があれば自動で API 再起動される（現行: 標準デプロイ `update-all-clients.sh` → `deploy-release-standard.yml` は Pi5 で `release_pi5` ロールを使い、server ロールを通らない。server ロールを使うのは `server-config-release.yml` や `prepare-pi5-*.yml` 等。標準デプロイ時にこの handler が働くとは限らないため、`//deleted` 発生時は [kiosk-power-operation-recovery.md](../runbooks/kiosk-power-operation-recovery.md) で確認する）
 
 ---
 
