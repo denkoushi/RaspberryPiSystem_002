@@ -8,7 +8,7 @@
     - name: Prepare, switch, and finalize one Pi4 kiosk release
       block:
         - name: Prepare the Pi4 candidate while the kiosk remains visible
-          ansible.builtin.import_tasks: prepare.yml
+          ansible.builtin.include_tasks: prepare.yml
           when: >-
             (not (release_torque_cutover | default(false) | bool)
              and not (release_pi4_prepared_this_run | default(false) | bool))
