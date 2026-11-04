@@ -16,7 +16,7 @@ last_verified: 2026-08-18
 このfoundationで固定した境界は次のとおりである。
 
 - Pi5: 稼働中にCI image、資源、migrationをAnsibleが直接確認し、`release_pi5` roleのslot lifecycleと5回の連続health sampleを利用する。
-- Pi4: exact `--limit`のhostを`serial: [1, 5, "25%", "100%"]`の波（1台、5台、約25%、残り）で、image pull完了後に`--no-build`で変更serviceだけを切り替える。ある波で1台でも失敗すると、その波の他hostは自分の更新を終え、次の波のhostには触れずに止まる。最後の波で失敗したときはPi3（signage）に進まずに止まる。最初の1台はinventoryの並び順で先頭のkioskで、試験端末を選ぶ仕組みではない。トルク切り替え（`--torque-cutover`）は従来どおり一台ずつ。他hostは停止しない。
+- Pi4: exact `--limit`のhostを`serial: [1, 5, "25%", "100%"]`の波（1台、5台、約25%、残り）で、image pull完了後に`--no-build`で変更serviceだけを切り替える。ある波で1台でも失敗すると、その波の他hostは自分の更新を終え、後続波のhostは準備データを回収し、切り替えずに止まる。最後の波で失敗したときはPi3（signage）に進まずに止まる。最初の1台は指定試験端末 `raspi4-kensaku-stonebase01` が対象ならその端末、それ以外はinventory順で選ぶ。トルク切り替え（`--torque-cutover`）は従来どおり一台ずつ。他hostは停止しない。
 - Pi3: controllerから完成tarを転送し、端末で代表SHA-256を一度確認する。固定allowlistを検証してrun-scoped tempへ展開・read-only化後、digest名へatomic renameする。端末固有値はimmutable release外のenv/drop-inに置き、Pi3からGit、GHCR、外部HTTPへ接続しない。
 
 ### 標準更新入口
@@ -128,7 +128,7 @@ scripts/update-all-clients.sh
 ```
 
 - `standard-ansible-release.py` は対象SHA、inventory、対象host、systemd実行単位を解決する。
-- `deploy-release-standard.yml` は server、kiosk、signage の順序を宣言する。server と signage は `serial: 1`、kiosk は上記の波（トルク切り替え時は `serial: 1`）。`ansible.cfg` の `forks = 5` のため、大きな波でも同時に動くのは5台まで。波の中は各taskで足並みをそろえるので、5台を超える波では先に予告を受けたkioskが後続の5台分の予告を待つ。
+- `deploy-release-standard.yml` は Pi5 更新後、通常の Pi4 全選択端末を `strategy: free`（最大 forks=5 の task 並列）で先に prepare し、全台成功後だけ切り替えの波へ進む。失敗・到達不能なら到達可能な端末の候補と run データを回収し、Pi4 の切り替えと Pi3 を停止する。到達不能端末の未回収データは復旧後に確認する。波は linear を維持し、`max_fail_percentage: 0` による停止を有効にする。通常波の第1台は `release_pi4_canary_host`（既定 `raspi4-kensaku-stonebase01`）が選択対象ならその端末、それ以外は inventory 順。前の波の失敗は明示ゲートで後続波の準備データを回収して止める。トルク経路は既存の PREPARED 集約・linear・`serial: 1`、初回導入は role 内の prepare を維持する。実fleetでの時間計測は未実施。
 - `release_pi5` はPi5のimage、migration、health、slot切替、失敗時rollbackをAnsible role内で確認する。
 - `release_kiosk` はPi4のimage/configと有効agentのhealthを端末ごとに確認する。
 - `release_signage` はPi3の検証済み配布artifactをatomicにstageし、端末側のGitや外部HTTP取得を行わない。

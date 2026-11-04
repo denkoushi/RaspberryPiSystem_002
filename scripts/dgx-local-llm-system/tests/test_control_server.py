@@ -1001,6 +1001,24 @@ class BusinessSwitchContractTests(unittest.TestCase):
             real_monitor(config, identity, profile)
         self.assertEqual(self.state_value()['businessTransition'], 'ready')
 
+    def test_monitor_accepts_glm_probe_answered_only_in_reasoning(self):
+        from unittest.mock import patch
+        real_monitor = self.monitor.temp_original
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        self.request(modelProfileId='business_glm53_flash_fp4_tp2', reason='business-model-selection')
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        self.assertEqual(profile.id, 'business_glm53_flash_fp4_tp2')
+        replies = [{'data': [{'id': 'system-prod-primary'}]},
+                   {'choices': [{'message': {'role': 'assistant', 'content': None, 'reasoning': 'The user'}}]}]
+        class Reply:
+            def __init__(self, value): self.value = value
+            def __enter__(self): return io.BytesIO(json.dumps(self.value).encode())
+            def __exit__(self, *args): return False
+        with patch.object(self.module.urllib.request, 'urlopen', side_effect=lambda *a, **k: Reply(replies.pop(0))), \
+             patch.object(self.module.time, 'sleep', side_effect=AssertionError('probe retried')):
+            real_monitor(config, identity, profile)
+        self.assertEqual(self.state_value()['businessTransition'], 'ready')
+
     def test_start_defensively_fails_loading_when_monitor_died(self):
         self.request(modelProfileId=self.deep, reason='business-model-selection')
         previous = self.state_value()

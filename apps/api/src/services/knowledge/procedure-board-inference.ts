@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 
 import type { KnowledgeSource } from './knowledge-source.js';
-import { layoutSchema, normalizeLayout, styleSchema, targetSchema, type BoardLayout } from './procedure-board-layout.js';
+import { MAX_PAGES, layoutSchema, normalizeLayout, styleSchema, targetSchema, type BoardLayout } from './procedure-board-layout.js';
 import type { emptyDecisions } from './procedure-board.service.js';
 
 export class ProcedureBoardModelOutputError extends Error {
@@ -28,11 +28,11 @@ export type BoardAiInput = {
   decisions: ReturnType<typeof emptyDecisions>;
 };
 const id = z.string().min(1).max(200);
-const page = z.number().int().min(1).max(3);
+const page = z.number().int().min(1).max(MAX_PAGES);
 const placementSchema = z.object({ id, materialId: id, ...targetSchema.shape }).strict();
 const placementResultSchema = z.object({
   placements: z.array(placementSchema).max(4),
-  headings: z.array(z.object({ id, page, text: z.string().trim().min(1).max(120) }).strict()).max(3),
+  headings: z.array(z.object({ id, page, text: z.string().trim().min(1).max(120) }).strict()).max(MAX_PAGES),
   gaps: z.array(z.object({ id, ...targetSchema.shape, text: z.string().trim().min(1).max(120) }).strict()).max(6),
   conflicts: z.array(z.object({ id, materialIds: z.tuple([id, id]),
     quotes: z.tuple([z.string().min(1).max(2000), z.string().min(1).max(2000)]) }).strict()).max(10),
@@ -45,7 +45,7 @@ const formatResultSchema = z.object({
   pages: z.array(z.object({ page, rows: z.array(z.object({
     cols: z.array(z.object({ itemIds: z.array(z.string().uuid()).min(1).max(200) }).strict()).min(1).max(3),
     w: z.array(z.number().finite().positive()).min(1).max(3),
-  }).strict().refine(row => row.w.length === row.cols.length)).max(200) }).strict()).length(3),
+  }).strict().refine(row => row.w.length === row.cols.length)).max(200) }).strict()).min(1).max(MAX_PAGES),
   styles: z.array(z.object({ itemId: z.string().uuid(), style: styleSchema }).strict()).max(600),
 }).strict();
 export type FormatResult = z.infer<typeof formatResultSchema>;
@@ -76,7 +76,7 @@ export function validatePlacementResult(raw: unknown, input: BoardAiInput): Plac
       || input.decisions.dismissedPlacements.some(entry => entry.materialId === material.materialId && entry.materialFingerprint === material.materialFingerprint)) return false;
     seen.add(proposal.materialId); return true;
   });
-  result.headings = result.headings.filter(proposal => !input.layout.pages[proposal.page - 1].heading && groundedNumbers(proposal.text)
+  result.headings = result.headings.filter(proposal => input.layout.pages[proposal.page - 1] !== undefined && !input.layout.pages[proposal.page - 1].heading && groundedNumbers(proposal.text)
     && !input.decisions.dismissedHeadings.some(entry => entry.page === proposal.page && entry.text === proposal.text));
   // Only an unconfirmed question may describe a gap; never promote a generated instruction to a fact.
   result.gaps = result.gaps.filter(proposal => groundedNumbers(proposal.text) && /(?:ですか|ますか|でしょうか|[?？])$/.test(proposal.text)
@@ -89,6 +89,7 @@ export function validatePlacementResult(raw: unknown, input: BoardAiInput): Plac
 /** Rebuild from original items, so the model cannot supply or overwrite content. */
 export function applyFormatResult(raw: unknown, layout: BoardLayout): BoardLayout {
   const result = parseModelOutput(() => formatResultSchema.parse(raw));
+  if (result.pages.length !== layout.pages.length) throw new ProcedureBoardModelOutputError('INVALID_FORMAT_PAGES');
   const all = items(layout);
   const styleIds = result.styles.map(entry => entry.itemId);
   if (new Set(styleIds).size !== styleIds.length || styleIds.some(id => !all.some(item => item.itemId === id))) throw new ProcedureBoardModelOutputError('INVALID_FORMAT_ITEMS');
@@ -119,11 +120,12 @@ const SUGGEST = COMMON + '\n' + [
   '未配置素材の置き場所だけを提案します。各座標は入力layout基準。mode=rowは行挿入(col=index=0)、colは列挿入(最大3列,index=0)、inは列内挿入です。',
   '見出しが空のページだけ短い見出しを提案。抜けは未確認の問いだけ。素材の数値を推測・補完しません。食い違いは選択せず双方のsource.textから正確にquoteします。',
   'JSONだけ: {"placements":[{"id":"p1","materialId":"...","page":1,"row":0,"col":0,"index":0,"mode":"row"}],"headings":[{"id":"h1","page":1,"text":"準備"}],"gaps":[{"id":"g1","page":1,"row":0,"col":0,"index":0,"mode":"row","text":"確認済みですか"}],"conflicts":[{"id":"c1","materialIds":["a","b"],"quotes":["原文a","原文b"]}]}',
-  'placements/headings/gaps/conflictsは最大4/3/6/10件。該当なしは空配列。idは全提案内で一意。',
+  'placements/headings/gaps/conflictsは最大4/20/6/10件。該当なしは空配列。idは全提案内で一意。',
 ].join('\n');
 const FORMAT = COMMON + '\n' + [
   '同じページ内の全itemIdを一度ずつ使い、段組みとstyleだけを提案。内容や見出しを出力しません。列は1〜3、幅は合計1で各15%以上。',
-  'JSONだけ: {"pages":[{"page":1,"rows":[{"cols":[{"itemIds":["..."]}],"w":[1]}]},{"page":2,"rows":[]},{"page":3,"rows":[]}],"styles":[{"itemId":"...","style":"body"}]}',
+  '現在の入力layout.pagesと同じ数のページを、pageを1から順に出力します。空ページも省略しません。',
+  'JSONの各ページの形: {"page":1,"rows":[{"cols":[{"itemIds":["..."]}],"w":[1]}]}。全体は{"pages":[各ページ],"styles":[{"itemId":"...","style":"body"}]}。',
   '許可style: heading/subheading/body/caution/key-number/figure。CSSや色指定は禁止。',
 ].join('\n');
 
@@ -144,6 +146,6 @@ export class ProcedureBoardInference implements ProcedureBoardInferencePort {
     return validatePlacementResult(await this.complete(SUGGEST, input, signal), input);
   }
   async format(input: BoardAiInput, signal: AbortSignal): Promise<FormatResult> {
-    return validateFormatResult(await this.complete(FORMAT, input, signal), input);
+    return validateFormatResult(await this.complete(`${FORMAT}\n現在のページ数: ${input.layout.pages.length}。pagesは必ず${input.layout.pages.length}件。`, input, signal), input);
   }
 }

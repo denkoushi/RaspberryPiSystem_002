@@ -72,8 +72,13 @@ for path in (server_defaults_path, server_handlers_path, manage_app_path, common
 plays = yaml.safe_load(standard_path.read_text(encoding="utf-8")) or []
 assert [play.get("hosts") for play in plays] == [
     "server", "kiosk", "kiosk", "server", "kiosk", "kiosk", "server",
-    "server", "kiosk", "kiosk", "signage"
+    "server", "kiosk", "kiosk", plays[10]["hosts"], "kiosk", "signage"
 ]
+assert "release_pi4_canary_host" in plays[10]["hosts"]
+assert "raspi4-kensaku-stonebase01" in plays[10]["hosts"]
+assert plays[8]["strategy"] == "free"
+assert plays[10]["strategy"] == "linear"
+assert "not (release_torque_cutover" in plays[8]["tasks"][0]["when"]
 assert [play.get("serial") for play in plays if "serial" in play] == [
     1,
     "{{ [1] if (release_torque_cutover | default(false) | bool) else [1, 5, '25%', '100%'] }}",
