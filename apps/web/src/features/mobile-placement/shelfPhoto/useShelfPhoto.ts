@@ -1,21 +1,35 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { getMobilePlacementShelfPhoto } from '../../../api/client';
 
-export function useShelfPhoto(shelfCodeRaw: string, photoUpdatedAt?: string | null) {
-  const query = useQuery({
+import { enqueueBackgroundShelfPhoto } from './shelfPhotoPriority';
+
+function shelfPhotoQueryOptions(shelfCodeRaw: string, photoUpdatedAt?: string | null) {
+  return {
     queryKey: ['mobile-placement', 'shelf-photo', shelfCodeRaw, photoUpdatedAt],
     queryFn: () => getMobilePlacementShelfPhoto(shelfCodeRaw, photoUpdatedAt!),
-    enabled: Boolean(photoUpdatedAt),
     staleTime: Infinity
+  };
+}
+
+/** `active: false` defers the fetch to the idle background queue and skips the object URL until the tile becomes active. */
+export function useShelfPhoto(shelfCodeRaw: string, photoUpdatedAt?: string | null, active = true) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    ...shelfPhotoQueryOptions(shelfCodeRaw, photoUpdatedAt),
+    enabled: Boolean(photoUpdatedAt) && active
   });
+  useEffect(() => {
+    if (active || !photoUpdatedAt) return;
+    return enqueueBackgroundShelfPhoto(() => queryClient.prefetchQuery(shelfPhotoQueryOptions(shelfCodeRaw, photoUpdatedAt)));
+  }, [active, queryClient, shelfCodeRaw, photoUpdatedAt]);
   const [image, setImage] = useState<{ blob: Blob; url: string } | null>(null);
   useEffect(() => {
-    if (!query.data) return;
+    if (!active || !query.data) return;
     const url = URL.createObjectURL(query.data);
     setImage({ blob: query.data, url });
     return () => URL.revokeObjectURL(url);
-  }, [query.data]);
-  return { url: image?.blob === query.data ? image?.url : undefined, isError: query.isError, refetch: query.refetch };
+  }, [query.data, active]);
+  return { url: active && image?.blob === query.data ? image?.url : undefined, isError: query.isError, refetch: query.refetch };
 }
