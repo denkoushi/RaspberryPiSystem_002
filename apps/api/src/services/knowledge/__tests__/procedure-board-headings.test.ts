@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PrismaProcedureBoardRepository } from '../prisma-procedure-board.repository.js';
 import { validatePlacementResult } from '../procedure-board-inference.js';
-import { emptyLayout, placeItem, type BoardLayout } from '../procedure-board-layout.js';
+import { applyPageOperation, emptyLayout, placeItem, type BoardLayout } from '../procedure-board-layout.js';
 import { cumulativeStats } from '../procedure-board-metrics.js';
 import { boardEventSchema, emptyDecisions, validateLayoutEvent } from '../procedure-board.service.js';
 
@@ -20,15 +20,20 @@ function fixture(layout = emptyLayout()) {
     $queryRaw: vi.fn().mockResolvedValue([]),
     knowledgeProcedureBoard: {
       findUnique: vi.fn(async () => board),
+      updateMany: vi.fn(async ({ data }: { data: { layout: BoardLayout; decisions?: ReturnType<typeof emptyDecisions>; version: { increment: number } } }) => {
+        board = { ...board, ...data, version: board.version + data.version.increment }; return { count: 1 };
+      }),
       update: vi.fn(async ({ data }: { data: Partial<Omit<typeof board, 'version'>> & { version?: { increment: number } } }) => {
         const { version, ...rest } = data;
         board = { ...board, ...rest, version: board.version + (version?.increment ?? 0) }; return board;
       }),
     },
-    knowledgeProcedureMaterial: { findMany: vi.fn().mockResolvedValue([]) },
+    knowledgeProcedureMaterial: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
     knowledgeProcedureBoardEvent: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => events.find(event => event.id === where.id) ?? null),
       create: vi.fn(async ({ data }: { data: typeof events[number] }) => { events.push(data); return data; }),
+      findFirst: vi.fn(async ({ where }: { where: { type: { in: string[] }; boardVersion: { gt: number } } }) =>
+        events.find(event => where.type.in.includes(event.type) && event.boardVersion > where.boardVersion.gt) ?? null),
     },
     knowledgeProcedureBoardAi: {
       updateMany: vi.fn(), upsert: vi.fn(), findFirst: vi.fn(async () => job), findUnique: vi.fn(async () => job),
@@ -100,5 +105,32 @@ describe('Procedure board heading cards', () => {
     expect(() => validateLayoutEvent(saved.layout, removed, { id: randomUUID(), type: 'item_removed', payload: { itemId: title.itemId } })).not.toThrow();
     edited.pages[0].heading = '不正な見出し変更';
     expect(() => validateLayoutEvent(saved.layout, edited, { id: randomUUID(), type: 'text_edited', payload: { itemId: title.itemId } })).toThrow();
+  });
+});
+
+describe('page saves and stale suggestions', () => {
+  it('persists page decisions and events under CAS, rejects replayed old coordinates', async () => {
+    const f = fixture();
+    f.current().decisions.dismissedHeadings = [{ page: 1, text: '準備' }, { page: 3, text: '仕上げ' }];
+    for (const operation of [
+      { type: 'page_added', payload: { page: 2 } }, { type: 'page_moved', payload: { from: 4, to: 1 } },
+      { type: 'page_removed', payload: { page: 2 } },
+    ] as const) {
+      const before = f.current();
+      const saved = await f.repository.save('procedure', 'client', before.version, applyPageOperation(before.layout, operation), { ...operation, id: randomUUID() });
+      expect(saved.version).toBe(before.version + 1);
+      expect(f.events.at(-1)).toMatchObject({ ...operation, boardVersion: saved.version });
+    }
+    expect(f.current().decisions.dismissedHeadings).toEqual([{ page: 1, text: '仕上げ' }]);
+    const current = f.current();
+    await expect(f.repository.save('procedure', 'client', 1, applyPageOperation(current.layout, { type: 'page_added', payload: { page: 2 } }),
+      { id: randomUUID(), type: 'page_added', payload: { page: 2 } })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(f.repository.decidePlacement('procedure', 'client', 'suggestions', { expectedVersion: current.version, eventId: randomUUID(), proposalId: 'h', action: 'accept', itemId: randomUUID() })).rejects.toMatchObject({ code: 'PROCEDURE_BOARD_SUGGESTION_STALE' });
+    // The old result remains in storage but must never be returned under new page numbers.
+    f.job.state = 'pending';
+    const suggestions = await f.repository.suggestions('procedure', 'client');
+    expect(suggestions).toMatchObject({ boardVersion: current.version, current: null, previous: null });
+    f.events.splice(0); // Without a later page change, the older result is still shown as stale.
+    expect(await f.repository.suggestions('procedure', 'client')).toMatchObject({ previous: { stale: true } });
   });
 });

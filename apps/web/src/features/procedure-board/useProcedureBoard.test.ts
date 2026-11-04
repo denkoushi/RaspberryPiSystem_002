@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { procedureBoardApi } from './procedureBoardApi';
-import { emptyLayout, placeItem } from './procedureBoardLayout';
+import { applyPageOperation, emptyLayout, placeItem } from './procedureBoardLayout';
 import { formatPreview, useProcedureBoard } from './useProcedureBoard';
 
 import type { BoardResponse, FormatProposal, Suggestions } from './procedureBoardApi';
@@ -237,5 +237,29 @@ describe('display and work records', () => {
     }, 'width:1:0'); });
     await waitFor(() => expect(procedureBoardApi.save).toHaveBeenCalledOnce());
     expect(vi.mocked(procedureBoardApi.save).mock.calls[0][2].pages[0].rows[0].w).toEqual([.7, 1 - .7]); hook.unmount();
+  });
+});
+
+describe('page operations in the save queue', () => {
+  it('saves identical empty-page moves and clears page-numbered proposals', async () => {
+    const hook = mount(); await waitFor(() => expect(hook.result.current.suggestions).toBeDefined());
+    act(() => hook.result.current.session.change(layout => {
+      const event = { type: 'page_moved' as const, payload: { from: 1, to: 3 } };
+      return { layout: applyPageOperation(layout, event), event };
+    }));
+    expect(hook.result.current.suggestions).toBeUndefined();
+    await waitFor(() => expect(procedureBoardApi.save).toHaveBeenCalledOnce());
+    expect(vi.mocked(procedureBoardApi.save).mock.calls[0]).toMatchObject({ 1: 1, 3: { type: 'page_moved', payload: { from: 1, to: 3 } } });
+    expect(hook.result.current.board?.version).toBe(2);
+    await act(async () => hook.result.current.session.receive(suggestions()));
+    expect(hook.result.current.suggestions).toBeUndefined(); hook.unmount();
+  });
+  it.each([1, 20])('previews formatting with exactly %s pages', count => {
+    const layout = emptyLayout(); layout.pages = Array.from({ length: count }, (_, index) => ({ page: index + 1, heading: '', rows: [] }));
+    const proposal: FormatProposal = { proposalId: 'format', boardVersion: 1, status: 'ready', pollAfterMs: 5000,
+      result: { pages: layout.pages.map(({ page }) => ({ page, rows: [] })), styles: [] } };
+    expect(formatPreview(layout, proposal)).toEqual(layout);
+    proposal.result!.pages = count === 1 ? [...proposal.result!.pages, { page: 2, rows: [] }] : proposal.result!.pages.slice(0, -1);
+    expect(formatPreview(layout, proposal)).toBeUndefined();
   });
 });
