@@ -5,10 +5,10 @@ import { PlacementLocationBadge } from '../../../../components/kiosk/PlacementLo
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
 import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
-import { pageZoom } from '../pageZoom';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
-import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
+import { findForwardDrop } from './planningBoardForwardDrop';
+import { forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
@@ -105,24 +105,8 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
   }, [onDragPreview]);
   useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, pinMode, onDragPreview]);
   const findDrop = (clientX: number, clientY: number, pending: Drag): Drop | null => {
-    const source = pending.bar;
-    const board = track.current?.closest('[data-testid="planning-board-gantt"]');
-    const lane = (document.elementsFromPoint?.(clientX, clientY) ?? [])
-      .map((element) => element.closest<HTMLElement>('[data-gantt-lane]')).find((element) => element && board?.contains(element));
-    const targetResource = lane?.dataset.resourceCode;
-    if (!targetResource || !pending.allowed?.has(targetResource)) return null;
-    const targetLane = lanes.current.find((candidate) => candidate.resource === targetResource);
-    const targetTrack = lane.querySelector<HTMLElement>('[data-gantt-track]');
-    if (!targetLane || !targetTrack) return null;
-    const x = (clientX - targetTrack.getBoundingClientRect().left) / pageZoom();
-    const centre = (bar: GanttBar) => (bar.start! - start) * dayWidth +
-      (bar.unknown ? 70 : Math.max(2, ((bar.segments?.[0]?.end ?? bar.end!) - bar.start!) * dayWidth - 2)) / 2;
-    const others = targetLane.bars.filter((bar) => bar.item.itemId !== source.item.itemId).sort((a, b) => centre(a) - centre(b));
-    if (!others.length) return targetResource === source.resource ? null : { resource: targetResource, bar: null, placement: 'after', left: 0 };
-    const target = others.find((bar) => x < centre(bar));
-    const bar = target ?? others[others.length - 1]!;
-    if (targetResource === source.resource && !canReorderForwardBars(source, bar)) return null;
-    return { resource: targetResource, bar, placement: target ? 'before' : 'after', left: ((target ? bar.start! : bar.end!) - start) * dayWidth };
+    return findForwardDrop(clientX, clientY, pending.bar, pending.allowed,
+      track.current?.closest('[data-testid="planning-board-gantt"]'), lanes.current, start, dayWidth);
   };
   const move = (event: PointerEvent<HTMLButtonElement>) => {
     const pending = drag.current;

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
@@ -29,7 +29,7 @@ const item = (itemId: string, resource: string): GrindingPlanningBoardItem => ({
   isCompleted: false, progress: { completed: 0, total: 1, quantityKnown: true }
 });
 
-it('skips acknowledged rows with fresh equal contexts and uses the latest callback and item revisions', () => {
+it('skips acknowledged rows with fresh equal contexts and uses the latest callback and item revisions', async () => {
   const items = [item('a', '305'), item('b', '306')];
   const props = { scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
     onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
@@ -46,6 +46,14 @@ it('skips acknowledged rows with fresh equal contexts and uses the latest callba
   const newToggle = vi.fn();
   const { rerender } = render(draw(items, oldToggle));
   renders.length = 0;
+  const viewport = screen.getByLabelText('ガントの日付と工程');
+  await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+  renders.length = 0;
+  viewport.scrollLeft = 1000;
+  fireEvent.scroll(viewport);
+  fireEvent.scroll(viewport);
+  await act(async () => { await new Promise<void>((resolve) => requestAnimationFrame(() => resolve())); });
+  expect(renders).toEqual([]);
   const saved = items.map((item) => ({ ...item, version: 2, itemRevision: 'r2' }));
   rerender(draw(saved, newToggle));
   expect(renders).toEqual([]);
