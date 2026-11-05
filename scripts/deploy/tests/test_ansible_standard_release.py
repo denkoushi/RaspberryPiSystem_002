@@ -994,6 +994,38 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             self.assertNotIn("--ignore-certificate-errors-spki-list", unpinned)
             self.assertNotIn("--user-data-dir", unpinned)
 
+    def test_pi4_image_pull_time_is_reported_per_host(self) -> None:
+        import yaml
+        from jinja2 import Environment
+
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(encoding="utf-8")
+        )
+        names = [task.get("name") for task in prepare]
+        pull_index = names.index("Pull enabled Pi4 images while the normal kiosk remains active")
+        self.assertEqual(names[pull_index + 1], "Report Pi4 image pull time")
+        report = prepare[pull_index + 1]
+        self.assertNotIn("when", report)
+        message = report["ansible.builtin.debug"]["msg"]
+        render = Environment().from_string(message).render
+        line = render(
+            inventory_hostname="raspi4-example",
+            release_kiosk_pull={
+                "results": [
+                    {"item": "nfc-agent", "start": "2026-11-05 10:00:00.1", "end": "2026-11-05 10:01:00.1", "delta": "0:01:00.000000", "attempts": 2, "changed": True},
+                    {"item": "barcode-agent", "start": "2026-11-05 10:01:00.2", "end": "2026-11-05 10:01:05.2", "delta": "0:00:05.000000", "changed": False},
+                ]
+            },
+        )
+        self.assertIn("pull-timing host=raspi4-example", line)
+        self.assertIn("first_start=2026-11-05 10:00:00.1", line)
+        self.assertIn("last_end=2026-11-05 10:01:05.2", line)
+        self.assertIn("nfc-agent=0:01:00.000000/attempts=2/changed=True", line)
+        self.assertIn("barcode-agent=0:00:05.000000/attempts=1/changed=False", line)
+        empty = render(inventory_hostname="raspi4-example", release_kiosk_pull={"results": [], "skipped": True})
+        self.assertIn("first_start=na", empty)
+        self.assertIn("last_end=na", empty)
+
     def test_pi4_image_pull_retries_and_cleanup_targets_the_candidate(self) -> None:
         import yaml
 

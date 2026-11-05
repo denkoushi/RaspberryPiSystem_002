@@ -39,6 +39,7 @@
   - [x] (2026-11-04) Step 2: 通常経路の全選択 Pi4 を `strategy: free` で先に prepare し、全台成功後だけ切り替えの波へ進む。波は linear として `max_fail_percentage: 0` を有効に保ち、指定試験端末 `raspi4-kensaku-stonebase01` を対象内なら先頭にする。失敗・到達不能時の回収と停止、Pi3 ゲート、トルク経路の維持をローカル模擬で検証した。実fleetでの保守画面待ち時間・全体時間は未測定。
   - [x] (2026-11-05) Step 2 の残り: 切り替えの波で失敗すると playbook がその場で止まり、後続波の端末に準備データが残っていた。prepare で `prepared.json`(このrunで新規取得した候補、戻し用タグ、backup)を、切り替え開始時に `switch-attempted` を run ディレクトリへ書く。Ansible が非ゼロで終わったら入口スクリプトが同じ inventory・limit・run ID で `release-pi4-failure-cleanup.yml` を1回流し、`switch-attempted` のない端末だけ回収する。切り替えを始めた端末は復旧用に残す。トルク経路は対象外。ローカル模擬で検証、実fleetでは未実施。
   - [ ] Step 3: Pi5 にイメージの中継キャッシュ（pull-through cache）を置く。試験環境の複数台で波と停止を確認し、全体の時間を記録する。
+    - (2026-11-05) ユーザー決定により、中継キャッシュは先に置かず取得時間を測る。Pi4 の準備で端末ごとの `pull-timing` 行をデプロイのログに出すようにした。測り方と導入を提案する基準は Decision Log。複数台の試験は試験用 Pi4 を増やさず、次の通常デプロイの第1波で代え、波の順と停止の動きをここに記録する。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
   - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
   - [ ] Step 2: rpi-image-gen で共通 OS イメージを作る。
