@@ -276,7 +276,9 @@
       pull-timing host={{ inventory_hostname }}
       first_start={{ (release_kiosk_pull.results | default([]) | first | default({})).start | default('na') }}
       last_end={{ (release_kiosk_pull.results | default([]) | last | default({})).end | default('na') }}
-      {% for result in release_kiosk_pull.results | default([]) %}{{ result.item }}={{ result.delta | default('na') }}/attempts={{ result.attempts | default(1) }}/changed={{ result.changed | default(false) }} {% endfor %}
+      {% for result in release_kiosk_pull.results | default([]) %}
+      {{ result.item }}={{ result.delta | default('na') }}/attempts={{ result.attempts | default(1) }}/changed={{ result.changed | default(false) }}
+      {% endfor %}
 
 - name: Inspect exact local Pi4 candidate identities
   ansible.builtin.command:
