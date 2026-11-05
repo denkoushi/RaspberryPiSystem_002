@@ -158,6 +158,25 @@ class ClassifyChangesTests(unittest.TestCase):
                 self.assertTrue(result["runtimeRehearsal"])
                 self.assertEqual(result["pi4AgentMatrix"], [])
 
+    def test_kiosk_operation_guide_is_an_api_image_input_not_docs_only(self) -> None:
+        # Dockerfile.api copies docs/kiosk-operation-guide and Hermes reads it at
+        # run time, so a guide-only change must not be treated as image-free.
+        for path in (
+            "docs/kiosk-operation-guide/README.md",
+            "docs/kiosk-operation-guide/pages/rigging.md",
+        ):
+            with self.subTest(path=path):
+                result = self.classify(Change("M", path))
+                self.assertEqual(
+                    self.selected(result), {"repo_policy", "api", "docker_security"}
+                )
+                self.assertFalse(result["fullSuite"])
+                self.assertEqual(result["failClosedReasons"], [])
+                self.assertTrue(result["dockerApi"])
+                self.assertFalse(result["dockerWeb"])
+                self.assertTrue(result["releasePair"])
+                self.assertTrue(result["runtimeRehearsal"])
+
     def test_weekly_os_update_paths_select_deploy_contract_without_app_images(self) -> None:
         for path in (
             "scripts/os-security-update/raspi-os-security-update.py",

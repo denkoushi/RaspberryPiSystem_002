@@ -111,6 +111,19 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
                 args, "a" * 40, "test-run", "infrastructure/ansible/inventory.yml", ("pi5",), "pi",
                 hermes_environment={"PI5_GATEWAY_RECREATE": "yes"})
 
+    def test_pi5_image_sha_is_separate_from_checkout_identity(self):
+        role = ANSIBLE / "roles/release_pi5"
+        defaults = yaml.safe_load((role / "defaults/main.yml").read_text())
+        self.assertEqual(defaults["release_pi5_image_sha"], "{{ release_sha }}")
+        prepare = (role / "tasks/prepare.yml").read_text()
+        self.assertIn("release_sha is match", prepare)
+        for component in ("api", "web"):
+            self.assertIn(f"release_pi5_image_sha in release_pi5_{component}_image", prepare)
+        retention = (role / "tasks/retention-state.yml").read_text()
+        self.assertNotIn("== release_sha", retention)
+        self.assertEqual(retention.count('releaseSha: "{{ release_pi5_image_sha }}"'), 2)
+        self.assertIn("release_pi5_image_sha in release_pi5_answer_cache_image", (role / "tasks/business-hermes-answer-cache.yml").read_text())
+
     def test_gateway_recreate_main_forwards_and_records_request(self) -> None:
         main = STANDARD_RELEASE["main"]
         for value in ("", "false", "true"):
@@ -120,6 +133,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
                     replacements = {
                         "inventory_path": mock.Mock(return_value=(Path("inventory.yml"), "inventory.yml")),
                         "resolve_sha": mock.Mock(return_value="a" * 40),
+                        "resolve_release_artifact_sha": mock.Mock(return_value=("a" * 40, None)),
                         "inventory_document": mock.Mock(return_value={}),
                         "selected_profiles": mock.Mock(return_value=(("pi5", ("raspberrypi5",)),)),
                         "server_release_root": mock.Mock(return_value=Path("/opt/release")),

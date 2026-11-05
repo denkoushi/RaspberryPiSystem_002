@@ -163,6 +163,9 @@ def is_pi4_kiosk_release_file(path: str) -> bool:
 POLICY_PATHS = frozenset({".gitleaksignore"})
 WEB_UNIT_TEST_FILE = re.compile(r"\.test\.[cm]?[jt]sx?$")
 HERMES_SEARCH_PREFIX = "scripts/hermes-search"
+# Dockerfile.api copies this guide into the API image, and Hermes reads it at
+# run time, so it is an image input even though it lives under docs/.
+KIOSK_OPERATION_GUIDE_PREFIX = "docs/kiosk-operation-guide"
 PI4_AGENT_NON_BUILD_GLOBAL_PATHS = frozenset(
     {
         "package.json",
@@ -355,6 +358,8 @@ def _base_categories_for_path(path: str) -> frozenset[str] | None:
     if normalized.startswith("scripts/test/verify-signage"):
         return frozenset({"repo_policy"})
 
+    if _has_prefix(normalized, KIOSK_OPERATION_GUIDE_PREFIX):
+        return frozenset({"repo_policy", "api", "docker_security"})
     if normalized == "docs/design-previews/kiosk-inspection-drawing-edit-existing-sop.html":
         return frozenset({"repo_policy", "kiosk_sop"})
     if normalized == ".github/BRANCH_PROTECTION_SETUP.md" or _has_prefix(
@@ -539,8 +544,10 @@ def docker_images_for_path(path: str) -> frozenset[str]:
         and PurePosixPath(normalized).name.startswith("Caddyfile")
     ):
         return frozenset({"web"})
-    if normalized == "infrastructure/docker/Dockerfile.api" or _has_prefix(
-        normalized, HERMES_SEARCH_PREFIX
+    if (
+        normalized == "infrastructure/docker/Dockerfile.api"
+        or _has_prefix(normalized, HERMES_SEARCH_PREFIX)
+        or _has_prefix(normalized, KIOSK_OPERATION_GUIDE_PREFIX)
     ):
         return frozenset({"api"})
     if _has_prefix(normalized, "infrastructure/docker") or normalized in GLOBAL_PATHS:
@@ -593,6 +600,7 @@ def release_pair_for_path(path: str) -> bool:
             "scripts",
             "infrastructure/ansible",
             "infrastructure/docker",
+            KIOSK_OPERATION_GUIDE_PREFIX,
         )
     ):
         return True
