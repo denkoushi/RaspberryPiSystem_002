@@ -46,4 +46,23 @@ describe('parent-only shell pagination', () => {
     expect(mocks.continuation.mock.calls[0][0].excludeRowIds).toEqual([parentA.id]);
     expect(mocks.legacy).not.toHaveBeenCalled();
   });
+
+  it('recalculates snapshot continuation board due dates using the requested SCAW source', async () => {
+    const scawDueDate = new Date('2026-11-20T00:00:00.000Z');
+    const excelDueDate = new Date('2026-11-25T00:00:00.000Z');
+    mocks.prefix.mockResolvedValue({ mergedPrefix: [parentA], mergeFullyCompleted: false });
+    mocks.continuation.mockResolvedValue({ rows: [parentB], mergeFullyCompleted: true });
+    mocks.hydrate.mockResolvedValue([{ ...parentB, plannedEndDate: scawDueDate,
+      excelDueDate, boardDueDate: excelDueDate }]);
+    const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const options = { snapshotStore, leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` };
+    const scawParams = { ...params, dueSource: 'scaw' as const };
+    const shell = await listLeaderboardShellProductionScheduleRows(scawParams, options);
+    const next = await listLeaderboardShellContinuationProductionScheduleRows({ ...scawParams, chunkSize: 1,
+      cursor: shell.nextCursor, snapshotId: shell.snapshotId }, options);
+
+    expect(next.rows).toHaveLength(1);
+    expect(next.rows[0]).toMatchObject({ id: parentB.id, boardDueDate: scawDueDate, excelDueDate });
+    expect(mocks.hydrate).toHaveBeenLastCalledWith(expect.objectContaining({ orderedRowIds: [parentB.id] }));
+  });
 });

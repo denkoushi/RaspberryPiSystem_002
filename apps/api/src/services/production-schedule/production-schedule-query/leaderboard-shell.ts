@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
+import { resolveBoardDueFields } from '../d-schedule-minutes/resolve-board-due-fields.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
 } from '../constants.js';
@@ -395,7 +396,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
       });
 
       const rows: ProductionScheduleRow[] = leaderboardRows.map((r) => ({
-        ...r,
+        ...resolveBoardDueFields(r, params.dueSource),
         actualPerPieceMinutes: null,
         customerName: null
       }));
