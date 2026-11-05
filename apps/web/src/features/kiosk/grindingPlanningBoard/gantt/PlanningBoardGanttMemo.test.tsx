@@ -25,7 +25,7 @@ const item = (itemId: string, resource: string): GrindingPlanningBoardItem => ({
   itemId, kind: 'row', itemRevision: 'r1', version: 1, sourceRowId: itemId,
   fseiban: '26-1001', fhincd: itemId, fhinmei: itemId, machineName: '機種', productNo: itemId, processOrder: '10',
   originalResourceCd: resource, effectiveResourceCd: null, originalDueDate: '2026-11-10', effectiveDueDate: null,
-  originalRank: 1, alternateRank: 1, plannedQuantity: 1, requiredMinutes: 60, requiredMinutesKnown: true,
+  originalRank: 1, alternateRank: 1, plannedQuantity: 1, requiredMinutes: 60, lslhSurface: false, requiredMinutesKnown: true,
   isCompleted: false, progress: { completed: 0, total: 1, quantityKnown: true }
 });
 

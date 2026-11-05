@@ -12,7 +12,7 @@ const item = (id: string, rank: number, due: string | null, extra: Partial<Grind
   itemId: id, kind: 'row', itemRevision: id, version: 0, sourceRowId: id,
   fseiban: 'S', fhincd: id, fhinmei: id, machineName: null, productNo: '1', processOrder: '10',
   originalResourceCd: '305', effectiveResourceCd: null, originalDueDate: due, effectiveDueDate: null,
-  originalRank: null, alternateRank: rank, plannedQuantity: 1, requiredMinutes: 480, requiredMinutesKnown: true,
+  originalRank: null, alternateRank: rank, plannedQuantity: 1, requiredMinutes: 480, lslhSurface: false, requiredMinutesKnown: true,
   isCompleted: false, progress: { completed: 0, total: 1, quantityKnown: true }, ...extra
 });
 const options = (items: GrindingPlanningBoardItem[]): GanttLayoutOptions => ({ items, allocation: 'alternate', view: 'resource',

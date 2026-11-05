@@ -8,6 +8,7 @@ import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
+import { PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars } from './planningBoardLateStars';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -155,6 +156,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   row, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, ...interaction
 }: PlanningBoardGanttRowProps) {
   const chipsByPart = usePlanningBoardProcessChips();
+  const lateStars = usePlanningBoardLateStars(row.bars, dateToDay(today));
   // One chip strip per part, under that part's last bar on this row.
   const lastBarByPart = new Map<string, GanttBar>();
   for (const bar of row.bars) {
@@ -168,7 +170,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
       <div className={clsx('sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-slate-700 bg-slate-900 px-2 text-xs', row.flagged && 'border-l-2 border-l-rose-400')}
         style={{ width: GANTT_LABEL_WIDTH }}>
         {row.flagged && <span className="text-rose-300" aria-label="工程の重なり">⚠</span>}
-        <span className="min-w-0 flex-1 truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small></span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small><PlanningBoardLateStarDates dates={lateStars.dates} /></span>
         {row.bars.some((bar) => bar.due == null) && <span className="text-slate-400">納期なし</span>}
       </div>
       <div className="relative shrink-0 overflow-hidden" style={{ width }}>
@@ -178,6 +180,9 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
           <PlanningBoardGanttBar key={bar.item.itemId} bar={bar} start={start} dayWidth={dayWidth} today={today}
             selected={selectedItemIds.has(bar.item.itemId)} sibling={resourceView && selectedParts.has(bar.partKey)}
             dimmed={resourceView && selectedParts.size > 0 && !selectedParts.has(bar.partKey)} {...interaction} />
+        ))}
+        {row.bars.filter((bar) => bar.end != null && lateStars.itemIds.has(bar.item.itemId)).map((bar) => (
+          <PlanningBoardLateStar key={`late:${bar.item.itemId}`} left={(bar.end! - start) * dayWidth - (bar.unknown ? 72 : Math.max(5, (bar.end! - bar.start!) * dayWidth))} top={26} />
         ))}
         {[...lastBarByPart.values()].map((bar) => {
           const chips = chipsByPart.get(bar.partKey);

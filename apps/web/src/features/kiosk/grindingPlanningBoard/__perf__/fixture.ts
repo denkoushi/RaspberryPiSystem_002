@@ -15,7 +15,7 @@ export function productionFixture(count = 1500, resourceCount = 20) {
       originalDueDate: `2026-11-${String(6 + (part * 13 + i % 3) % 23).padStart(2, '0')}`,
       effectiveDueDate: i % 11 === 0 ? '2026-11-09' : null,
       originalRank: i + 1, alternateRank: i + 1, plannedQuantity: i % 17 === 0 ? 2 : 5,
-      requiredMinutes: 30 + i % 6 * 45, requiredMinutesKnown: true, isCompleted: false,
+      requiredMinutes: 30 + i % 6 * 45, lslhSurface: false, requiredMinutesKnown: true, isCompleted: false,
       progress: { completed: 0, total: 5, quantityKnown: true },
       specialDue: i % 29 === 0 ? { kind: i % 2 ? 'overnight' : 'today',
         expiresAt: i % 2 ? '2026-11-06T08:00:00+09:00' : '2026-11-05T17:00:00+09:00' } : null

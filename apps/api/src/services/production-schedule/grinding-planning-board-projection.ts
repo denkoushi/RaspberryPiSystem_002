@@ -554,6 +554,7 @@ function buildItems(
         requiredMinutes,
         requiredMinutesKnown,
         isCompleted: rowCompleted,
+        lslhSurface: false,
         completionSource,
         progress: {
           completed: itemProgress.completed,
