@@ -325,13 +325,13 @@
     # A failure inside the role's rescue/always path does not trip
     # max_fail_percentage across serial batches, so stop the next wave here
     # before any of its kiosks are switched, cleaning their prepared data first.
+    # Hosts that failed in an earlier play never set release_pi4_wave_hosts, so
+    # exclude this batch by name instead of reading the failed hosts' facts.
     - name: Stop before this wave when a kiosk in an earlier wave failed
       vars:
         release_pi4_earlier_failures: >-
           {{ ansible_play_hosts_all | difference(ansible_play_hosts)
-             | map('extract', hostvars)
-             | rejectattr('release_pi4_wave_hosts', 'contains', inventory_hostname)
-             | map(attribute='inventory_hostname') | list }}
+             | difference(ansible_play_batch) | list }}
       when:
         - not (release_torque_cutover | default(false) | bool)
         - release_pi4_earlier_failures | length > 0

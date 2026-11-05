@@ -62,6 +62,9 @@
 - Observation: M5 Step 2 の実fleetの所要時間(run 20261104-055000-ab89cd、merge 309f9183、全11台 failed=0)。run 全体は約1時間8分。Pi4 7台の並列準備は約16分(14:56:33〜15:12:56)、canary の raspi4-kensaku-stonebase01 の切り替えは約6分(15:12:57〜15:19:03)、残り6台の切り替えは2つの波で約31分(15:19:03〜15:49:54)。1台あたりの切り替えは約5分。最初の run 20261104-045519-54c9a7 は、role の `import_tasks: prepare.yml` が準備済み端末でスキップされ register を上書きしたため切り替えで止まり、#2531 で `include_tasks` に直した。
   Evidence: 進捗追跡セッションが読んだ run のログと recap。
 
+- Observation: run 20261105-013816-5a9d90(#2546、b0949237)で、10:45 に raspi4-kensaku-stonebase01 への SSH が時間切れになり Pi4 の準備が通らなかった。どの Pi4 も切り替えず、入口スクリプトの回収は全台 ok。ただし準備の段階で届かなくなった stonebase01 だけが切り替えの波の play に入り、最初の波の確認(`release_pi4_earlier_failures`)が、前の play で落ちた端末の `release_pi4_wave_hosts` を読もうとして `HostVarsVars has no attribute` で落ちた。前の play で落ちた端末はこの値を持たない。今の波の端末を名前(`ansible_play_batch`)で除く式に直し、前の play で落ちた端末も「前の波の失敗」として止まるようにした。ローカルの ansible-playbook で、直す前の失敗と直した後の止まり方を再現した。
+  Evidence: 進捗追跡セッションの報告、`deploy-release-standard.yml` の波の確認、ローカルの3台模擬。
+
 - Observation: M5 Step 2 の検証はローカル模擬のみ。到達不能端末のデータは回収できず、prepare 全台成功後に切り替えの波で停止した場合は未着手の後続端末に事前取得した候補・run データが残り得る。実fleetでの時間と復旧時の残存データ確認は未実施。
   Evidence: `release_kiosk` の always cleanup は、その role に進んだ端末だけで実行される。今回追加した全台 cleanup は共有 prepare の失敗時を対象とする。
 
