@@ -14,6 +14,7 @@ import { ganttResourceLabel } from './ganttResourceLabel';
 import { chainBarElement, PlanningBoardChainLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
+import { PlanningBoardForwardLaterQueue } from './PlanningBoardForwardLaterQueue';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
 import { dayLabel, dayToDate, jstDay, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
@@ -435,6 +436,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 </div>}
               </div>
             </div>}
+            <div className="relative">
             {forward ? group.rows.map((row) => {
               return <PlanningBoardForwardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
@@ -450,7 +452,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             }) : group.rows.map((row) => <PlanningBoardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
               completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
+            {forward && group.resource && <div data-later-queue-host={`column-${dragLanes.findIndex((lane) => lane.resource === group.resource)}`}
+              className="pointer-events-none absolute inset-0 flex items-stretch justify-end" />}
+            </div>
+            {forward && group.resource && <div data-later-queue-host={`tray-${dragLanes.findIndex((lane) => lane.resource === group.resource)}`} />}
           </div>)}
+          {forward && <PlanningBoardForwardLaterQueue viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth}
+            labelWidth={labelWidth} viewportWidth={viewportWidth} disabled={interaction.disabled || interaction.dragDisabled || Boolean(interaction.pinMode) || !interaction.resourceView}
+            onDragPreview={setDragPreview} {...rowActions} />}
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
