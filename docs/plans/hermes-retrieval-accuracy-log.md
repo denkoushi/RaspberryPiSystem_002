@@ -993,3 +993,19 @@ Change (this PR): in the recent-content path of `execute`, when the lexical inde
 Not verifiable before tonight: the snapshot lacks the verbatim record, so no offline replay can show the row passing. Evidence expected on the night of 2026-11-03: `followUpCheck.ok true`, shown = expectedIds = the one record, `lastOk 1`.
 
 Private files: `work/flywheel/real-2026-11-02.jsonl`, `runner-2026-11-02.log`, `questions-2026-11-02.jsonl`.
+
+### 2026-11-05: nights 31 and 32, the 異物付着 row passes on both nights with the verbatim-first pool (measurement)
+
+Night of 2026-11-03 (first night with #2508 on the Pi 5, merged 98949e09 and deployed 20261103-103308 before 21:00 JST; the runner's first live row 22:19 JST, completed 22:30 JST): generated 83, kept 79, shown 56, dropped 21, labelled 60, label pending 71, learned 5 proposed / active (held-out n 55, gained 1 / lost 0; real n 1, 0 / 0), `lossStages other_shown 16, not_in_pool 7`, synthetic filter questions 10 of 10 correct.
+
+Night of 2026-11-04 (Pi 5 unchanged; `dgx not ready reason=timeout` at 22:05 JST, budget reached 22:33 JST): generated 80, kept 73, shown 57, dropped 20, labelled 60, label pending 41, learned 2 proposed / rejected (held-out n 54, gained 0 / lost 1; real n 1, 0 / 0), `lossStages other_shown 12, not_in_pool 3`, one ask-back on 起因部署, synthetic filter questions 10 of 10 correct.
+
+The regression row, both nights:
+
+- 「異物付着の最近の不適合３件」: `followUpCheck.ok true` (`scopeOk`, `filtersOk`, `contentOk` all true), `matchedCount 1`, shown = expectedIds = the one verbatim record, `followUpAction add`, rewrite 「起因部署が三島工場管理部資材課」・「異物付着 不適合」の記録, `questionVersion planner-questions-2026-10-28a`. `lastOk` 1 after night 31, 2 after night 32. This is exactly the evidence the night-30 entry asked for: the verbatim set was not empty, so the pool admitted that record alone and the two near records of nights 28 to 30 were not shown. The row stays in `regressions.jsonl` until its third ok night, then retires like the Sendai rows.
+
+Recall outside the row: `not_in_pool` 7 then 3 (4 on night 30, 3 on night 29), `other_shown` 16 then 12 (15 on night 30), live relevant-shown 56 of 79 (71%) then 57 of 73 (78%) against 58 of 77 (75%) on night 30. Night 31 is a shade below night 30 on both counts and night 32 is above it, which is within the usual night-to-night spread (nights 24 to 29 ranged 76% to 88%); no recall loss attributable to the verbatim-first pool on either night. The held-out check accepted 5 learned queries on night 31 (gained 1, lost 0) and rejected 2 on night 32 (gained 0, lost 1), the same pattern as before the change.
+
+Open caveat carried from the night-30 entry, still unobserved: the pool takes its content tokens from `semanticQuery` and the check from `contentSpan`, so a planner rewrite that separates them could make the pool and the check disagree again; nothing in these two nights exercised that. The dense-only path still has no verbatim gate (production is hybrid, so not reached).
+
+Private files: `work/flywheel/real-2026-11-03.jsonl`, `real-2026-11-04.jsonl`, `runner-2026-11-03.log`, `runner-2026-11-04.log`, `questions-2026-11-03.jsonl`, `questions-2026-11-04.jsonl`, `regressions.jsonl`, `learned-queries.jsonl`.

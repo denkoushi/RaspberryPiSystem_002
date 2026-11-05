@@ -34,6 +34,16 @@ This KB is the compact source for how to read the current leaderboard specificat
 | Split orders | Split UI is enabled only when Web build flag, API deployment flag, and runtime pilot gate are all effective. Badge labels include `分割 Web OFF`, `分割 API OFF`, `分割 検証OFF`, and `分割 検証ON`. | [split orders plan](../plans/production-schedule-split-orders.md), [`ProductionScheduleLeaderOrderBoardPage.tsx`](../../apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx) |
 | Inspection workflow | Row button `検` opens the chooser `検査方法を選択`; choices are `デジタル入力` and `帳票紙印刷`, with `plannedQuantity` passed to print URLs when valid. | [KB-390](./KB-390-kiosk-leaderboard-inspection-workflow.md) |
 
+### Arrival filter (着), 2026-11-05
+
+Both 製番ボード and 順位ボード default to the terminal-local 着 filter ON. The server returns optional additive `arrived` metadata; the leader decoration also carries the existing planning `specialDue`. See [`process-arrival.service.ts`](../../apps/api/src/services/production-schedule/process-arrival.service.ts).
+
+A process has arrived when every strictly smaller numeric FKOJUN of the same FSEIBAN + FHINCD is effectively completed (manual OR external, using the resource-chip completion SQL). Excluded resources, including the default `10` and `MSZ`, never block it. The first process always arrives; material purchase arrival is irrelevant. Existing shelf placement also grants arrival. Split items use their source process. The existing unassigned-seiban identity retains ProductNo isolation.
+
+The filter hides only incomplete, explicitly non-arrived rows without special due; completed and 朝まで/今日中 rows stay visible. Filtering preserves stored rank numbers. Lists, Gantt layouts/counts and planning order proposals use the filtered rows. Drag retains the original full-pane splice behavior, including hidden rows. Bulk 納期順/並べ替え computes the visible order, then fills the visible slots of the full resource order while hidden rows keep their index positions. Bulk requests include that full order to avoid duplicate ranks; undo restores the exact previous full order. Arrival process queries use chunks of at most 300 part keys; footer queries cannot be substituted because their ordinary-part identity also includes ProductNo.
+
+Local validation: arrival service tests cover cross-category predecessors, excluded resources, external completion SQL, placement and splits. API orchestration and route tests verify metadata and scoped writes. Web tests cover both toggles and persistence, filtering/rank gaps, Gantt, late counts, auto order/apply and undo. No database schema change or production deployment is part of this change.
+
 ## Historical Terms To Treat Carefully
 
 | Term | How to read it now |

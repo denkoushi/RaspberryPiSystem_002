@@ -16,6 +16,12 @@ import * as listCountService from '../production-schedule-list-count.service.js'
 import { buildLeaderboardMaterialArrivalByPartKeyForScheduleRows } from '../leaderboard/leaderboard-part-material-arrival.service.js';
 import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 
+vi.mock('../process-arrival.service.js', () => ({
+  enrichRowsWithProcessArrival: vi.fn(async (rows) => rows.map((row: { id: string }) => ({
+    ...row, arrived: true, specialDue: null
+  })))
+}));
+
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     $queryRaw: vi.fn(),

@@ -4,6 +4,10 @@ export function needsReorder(compartment: { stockQuantity: number; reorderPoint?
   return compartment.reorderPoint != null && compartment.stockQuantity <= compartment.reorderPoint;
 }
 
+export function needsOrdering(compartment: { stockQuantity: number; reorderPoint?: number | null; reorderedAt?: string | null }): boolean {
+  return needsReorder(compartment) && !compartment.reorderedAt;
+}
+
 const ACTION_LABELS: Record<string, string> = {
   ISSUE: '持ち出し',
   RESTOCK: '補充',

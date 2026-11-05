@@ -73,6 +73,8 @@ export type PlanningBoardToolbarProps = {
   onClearSeibanFocus?: () => void;
   largeScreen?: boolean;
   onToggleLargeScreen?: () => void;
+  arrivalFilterEnabled?: boolean;
+  onToggleArrivalFilter?: () => void;
   scawEnabled?: boolean;
   onToggleScawMode?: () => void;
   ganttEnabled?: boolean;
@@ -125,6 +127,7 @@ export function PlanningBoardToolbar({
   onOrderScan, focusedSeiban = null, onClearSeibanFocus,
   largeScreen = false, onToggleLargeScreen,
   scawEnabled = false, onToggleScawMode,
+  arrivalFilterEnabled = true, onToggleArrivalFilter,
   ganttEnabled = false,
   onToggleGantt,
   colorBySeiban = false, onToggleColorBySeiban,
@@ -211,6 +214,9 @@ export function PlanningBoardToolbar({
           切削
         </SegmentButton>
       </SegmentGroup>
+      <button type="button" aria-label="前工程が済んだものだけ表示" aria-pressed={arrivalFilterEnabled}
+        onClick={onToggleArrivalFilter} disabled={Boolean(orderPreview)}
+        className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-base font-bold', arrivalFilterEnabled ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>着</button>
       <SegmentGroup ariaLabel="表示単位">
         <SegmentButton disabled={Boolean(orderPreview)} pressed={view === 'seiban'} onClick={() => onViewChange('seiban')}>
           製番

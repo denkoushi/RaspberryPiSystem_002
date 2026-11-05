@@ -93,6 +93,8 @@ describe('leaderboardBoardCacheRecord', () => {
   it('Map 装飾の serialize/deserialize 往復', () => {
     const acc = createEmptyAccumulatedLeaderboardDecorations();
     acc.rowDecorationsById.set('r1', {
+      arrived: false,
+      specialDue: { kind: 'overnight', expiresAt: '2026-11-06T00:00:00Z' },
       resolvedMachineName: 'M',
       customerName: 'C',
       hasSelfInspectionDrawing: true,
@@ -109,6 +111,8 @@ describe('leaderboardBoardCacheRecord', () => {
     expect(back.leaderboardMaterialArrivalByPartKey).toEqual({ 'part-1': 'ordered' });
     expect(back.leaderboardMaterialArrivalBasisByPartKey).toEqual({ 'part-1': 'part' });
     expect(back.rowDecorationsById.get('r1')).toEqual({
+      arrived: false,
+      specialDue: { kind: 'overnight', expiresAt: '2026-11-06T00:00:00Z' },
       resolvedMachineName: 'M',
       customerName: 'C',
       hasSelfInspectionDrawing: true,

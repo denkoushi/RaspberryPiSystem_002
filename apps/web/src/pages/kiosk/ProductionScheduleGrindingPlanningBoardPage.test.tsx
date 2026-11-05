@@ -122,6 +122,7 @@ function fixture() {
     requiredMinutes: 20,
     requiredMinutesKnown: true,
     isCompleted: completed,
+    arrived: true,
     progress: { completed: completed ? 1 : 0, total: 1, quantityKnown: false }
   });
   return {
@@ -190,6 +191,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   beforeEach(() => {
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     localStorage.removeItem('kiosk-planning-board-scaw-mode');
+    localStorage.removeItem('kiosk-planning-board-arrival-filter');
     localStorage.removeItem('kiosk-planning-board-gantt-scale');
     localStorage.removeItem('kiosk-planning-board-gantt-mode');
     localStorage.removeItem(LARGE_SCREEN_STORAGE_KEY);
@@ -244,6 +246,78 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it.each(['grinding', 'cutting'] as const)('filters incomplete %s rows in list and gantt, retains special due/completed rows and original ranks', (category) => {
+    const data = fixture();
+    data.category = category as typeof data.category;
+    data.resourceCategories['305'] = category;
+    data.items.forEach((item, index) => { item.alternateRank = index + 1; item.arrived = false; });
+    data.items[0]!.arrived = true;
+    data.items[2]!.specialDue = { kind: 'today', expiresAt: '2026-12-01T00:00:00Z' };
+    data.items[3]!.isCompleted = true;
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    if (category === 'cutting') {
+      fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
+      fireEvent.click(screen.getByRole('button', { name: '研削', exact: true }));
+    }
+    expect(screen.getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-gantt-bar-c')).toBeInTheDocument();
+    openListView();
+    expect(screen.queryByTestId('planning-board-item-b')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '部品aの個別指定' })).toHaveTextContent('1');
+    expect(within(screen.getByTestId('planning-board-item-c')).getByRole('button', { name: '部品cの個別指定' })).toHaveTextContent('3');
+    expect(screen.getByLabelText('今日中のアイテム件数')).toHaveTextContent('1件');
+    fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+    expect(screen.getByTestId('planning-board-item-d')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-item-b')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '完了', exact: true }));
+    expect(screen.getByTestId('planning-board-item-d')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '未完', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '前工程が済んだものだけ表示' }));
+    expect(screen.getByTestId('planning-board-item-b')).toBeInTheDocument();
+  });
+
+  it.each(['納期順に並べる', '並べ替え'])('%s preserves hidden rank slots without duplicates and undo restores the full order', async (action) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-15T00:00:00Z'));
+    const data = fixture();
+    data.items.forEach((item, index) => {
+      item.alternateRank = index + 1;
+      item.originalDueDate = ['2026-10-20', '2026-10-10', '2026-10-18', '2026-10-16'][index]!;
+    });
+    data.items[1]!.arrived = false;
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    mocks.resourceOrderBulk.mockImplementation(async (payload) => ({ sourceRevision: data.sourceRevision,
+      items: payload.items.map((request: { itemId: string; overrideVersion: number }, index: number) => ({
+        ...data.items.find((item) => item.itemId === request.itemId), alternateRank: index + 1,
+        version: request.overrideVersion + 1, itemRevision: `saved-${request.itemId}`
+      })) }));
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('button', { name: '遅れなし', exact: true })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: action }));
+    if (action === '並べ替え') fireEvent.click(screen.getByRole('button', { name: '適用', exact: true }));
+    await waitFor(() => expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(1));
+    expect(mocks.resourceOrderBulk.mock.calls[0]![0].items.map((item: { itemId: string }) => item.itemId)).toEqual(['d', 'b', 'c', 'a']);
+    await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeEnabled());
+    openListView();
+    fireEvent.click(screen.getByRole('button', { name: '前工程が済んだものだけ表示' }));
+    const ranks = () => ['a', 'b', 'c', 'd'].map((id) => within(screen.getByTestId(`planning-board-item-${id}`))
+      .getByRole('button', { name: `部品${id}の個別指定` }).textContent);
+    expect(ranks()).toEqual(['4', '2', '3', '1']);
+    expect(new Set(ranks()).size).toBe(4);
+    fireEvent.click(screen.getByRole('button', { name: '前工程が済んだものだけ表示' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+    await waitFor(() => expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(2));
+    expect(mocks.resourceOrderBulk.mock.calls[1]![0].items.map((item: { itemId: string }) => item.itemId)).toEqual(['a', 'b', 'c', 'd']);
+    fireEvent.click(screen.getByRole('button', { name: '前工程が済んだものだけ表示' }));
+    expect(screen.getByRole('button', { name: '遅れ 1', exact: true })).toBeInTheDocument();
+    openListView();
+    await waitFor(() => expect(ranks()).toEqual(['1', '2', '3', '4']));
+    expect(new Set(ranks()).size).toBe(4);
   });
 
   it('keeps previous rows mounted and locked while the completion filter is loading', () => {
@@ -1083,18 +1157,53 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(savedUnload.defaultPrevented).toBe(false);
   });
 
+  it.each([true, false])('drag retains full-pane behavior and unique ranks with arrival filter %s', async (arrivalEnabled) => {
+    localStorage.setItem('kiosk-planning-board-arrival-filter', JSON.stringify({ schemaVersion: 1, enabled: arrivalEnabled }));
+    const data = fixture();
+    data.items.forEach((item, index) => { item.alternateRank = index + 1; });
+    data.items[1]!.arrived = false;
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    let reply: ((value: unknown) => void) | undefined;
+    mocks.resourceOrder.mockImplementation(() => new Promise((resolve) => { reply = resolve; }));
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+    const source = within(screen.getByTestId('planning-board-item-d')).getByRole('button', { name: '資源CD 305を変更' });
+    const pane = source.closest('[data-planning-board-resource-pane]')!;
+    const target = screen.getByTestId('planning-board-item-c');
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({ top: 100, bottom: 140, height: 40 } as DOMRect);
+    fireEvent.pointerDown(source, { pointerId: 22, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(pane, { pointerId: 22, clientX: 10, clientY: 21 });
+    fireEvent.pointerUp(pane, { pointerId: 22, clientX: 10, clientY: 110 });
+    expect(mocks.resourceOrder.mock.calls[0]![0]).toMatchObject({ itemId: 'd', targetItemId: 'c', placement: 'before' });
+    expect(mocks.resourceOrder.mock.calls[0]![0]).not.toHaveProperty('visibleItemIds');
+    if (arrivalEnabled) fireEvent.click(screen.getByRole('button', { name: '前工程が済んだものだけ表示' }));
+    const ranks = () => ['a', 'b', 'c', 'd'].map((id) => within(screen.getByTestId(`planning-board-item-${id}`))
+      .getByRole('button', { name: `部品${id}の個別指定` }).textContent);
+    expect(ranks()).toEqual(['1', '2', '4', '3']);
+    expect(new Set(ranks()).size).toBe(4);
+    reply?.({ sourceRevision: data.sourceRevision, items: ['a', 'b', 'd', 'c'].map((id, index) => ({
+      ...data.items.find((item) => item.itemId === id)!, alternateRank: index + 1, version: 3, itemRevision: `saved-${id}`
+    })) });
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('順序を保存しました'));
+    expect(ranks()).toEqual(['1', '2', '4', '3']);
+    expect(new Set(ranks()).size).toBe(4);
+  });
+
   it('資源CD内の並べ替えを即時表示し、保存失敗時に元の順序へ戻す', async () => {
     let rejectResourceOrder: ((error: Error) => void) | undefined;
     mocks.resourceOrder.mockImplementation(() => new Promise((_resolve, reject) => {
       rejectResourceOrder = reject;
     }));
+    const data = fixture(); data.items[1]!.arrived = false;
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
 
     const resourceView = screen.getByTestId('planning-board-resource-view');
     const rowIds = () => [...resourceView.querySelectorAll<HTMLElement>('tbody tr')]
       .map((row) => row.dataset.planningBoardItemId);
-    expect(rowIds()).toEqual(['a', 'b', 'c', 'd']);
+    expect(rowIds()).toEqual(['a', 'c', 'd']);
     const source = within(screen.getByTestId('planning-board-item-d')).getByRole('button', { name: '資源CD 305を変更' });
     const pane = source.closest('[data-planning-board-resource-pane]')!;
     const targetRow = screen.getByTestId('planning-board-item-a');
@@ -1108,16 +1217,15 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.pointerMove(pane, { pointerId: 21, clientX: 10, clientY: 21 });
     fireEvent.pointerUp(pane, { pointerId: 21, clientX: 10, clientY: 110 });
 
-    expect(rowIds()).toEqual(['d', 'a', 'b', 'c']);
+    expect(rowIds()).toEqual(['d', 'a', 'c']);
     expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '部品aの個別指定' })).not.toBeDisabled();
-    await waitFor(() => expect(mocks.resourceOrder).toHaveBeenCalledWith(expect.objectContaining({
-      itemId: 'd',
-      targetItemId: 'a',
-      placement: 'before'
-    })));
+    await waitFor(() => expect(mocks.resourceOrder.mock.calls[0]?.[0]).toMatchObject({
+      itemId: 'd', targetItemId: 'a', placement: 'before'
+    }));
 
+    expect(mocks.resourceOrder.mock.calls[0]![0]).not.toHaveProperty('visibleItemIds');
     rejectResourceOrder?.(new Error('save failed'));
-    await waitFor(() => expect(rowIds()).toEqual(['a', 'b', 'c', 'd']));
+    await waitFor(() => expect(rowIds()).toEqual(['a', 'c', 'd']));
     expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
   });
 

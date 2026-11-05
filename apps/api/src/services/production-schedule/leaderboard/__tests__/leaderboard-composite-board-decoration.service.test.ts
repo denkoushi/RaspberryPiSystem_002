@@ -13,6 +13,10 @@ import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from '../leaderbo
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../../production-schedule-customer-name-enrichment.service.js';
 
+vi.mock('../../process-arrival.service.js', () => ({
+  enrichRowsWithProcessArrival: vi.fn(async (rows) => rows.map((row: { id: string }) => ({ ...row, arrived: false, specialDue: null })))
+}));
+
 vi.mock('../../production-schedule-query.service.js', () => ({
   decorateLeaderboardShellRowsForKiosk: vi.fn(),
   decorateLeaderboardShellRowsForKioskFromHydratedRows: vi.fn()
@@ -63,7 +67,7 @@ describe('decorateLeaderboardCompositeBoardShell', () => {
     const merged = [lightRow('a'), lightRow('b')];
     vi.mocked(decorateLeaderboardShellRowsForKiosk).mockResolvedValue({
       rowDecorations: [
-        { id: 'a', resolvedMachineName: 'M-a', customerName: 'C-a' },
+        { id: 'a', arrived: false, specialDue: { kind: 'today', expiresAt: '2026-11-06T00:00:00Z' }, resolvedMachineName: 'M-a', customerName: 'C-a' },
         { id: 'b', resolvedMachineName: null, customerName: null }
       ],
       leaderboardFooterChipsByPartKey: { 'k\0a': [] },
@@ -83,6 +87,7 @@ describe('decorateLeaderboardCompositeBoardShell', () => {
     });
     expect(result.rowsWithDeco[0]?.resolvedMachineName).toBe('M-a');
     expect(result.rowsWithDeco[0]?.customerName).toBe('C-a');
+    expect(result.rowsWithDeco[0]).toMatchObject({ arrived: false, specialDue: { kind: 'today' } });
     expect(result.leaderboardFooterChipsByPartKey).toEqual({ 'k\0a': [] });
     expect(result.leaderboardMaterialArrivalByPartKey).toEqual({ 'k\0a': 'ordered' });
     expect(result.leaderboardMaterialArrivalBasisByPartKey).toEqual({ 'k\0a': 'part' });
@@ -112,7 +117,7 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
     const incremental = [lightRow('i1')];
 
     vi.mocked(decorateLeaderboardShellRowsForKioskFromHydratedRows).mockResolvedValue({
-      rowDecorations: [{ id: 'i1', resolvedMachineName: 'M-i1', customerName: 'C-i1' }],
+      rowDecorations: [{ id: 'i1', arrived: true, resolvedMachineName: 'M-i1', customerName: 'C-i1' }],
       leaderboardFooterChipsByPartKey: {}
     });
 
@@ -143,6 +148,8 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
     expect(result.rowsWithDeco.find((r) => r.id === 'i1')?.resolvedMachineName).toBe('M-i1');
     expect(result.rowsWithDeco.find((r) => r.id === 'p1')?.resolvedMachineName).toBe('M-p1');
     expect(result.deltaRowsWithDeco).toHaveLength(1);
+    expect(result.rowsWithDeco.find((r) => r.id === 'p1')?.arrived).toBe(false);
+    expect(result.deltaRowsWithDeco?.[0]?.arrived).toBe(true);
   });
 
   it('canAttachDelta が false のとき累積全行を一括装飾する', async () => {
