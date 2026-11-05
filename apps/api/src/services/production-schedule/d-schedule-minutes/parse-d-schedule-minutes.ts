@@ -115,7 +115,18 @@ export async function parseDScheduleMinutesXlsx(input: {
     if (count > bestCount) { bestCount = count; dayRow = row; }
   }
   for (const [label, cells] of requiredHeaders) {
-    if (cells.size > 1) return fatal(`DUPLICATE_REQUIRED_HEADER: ${label} (${[...cells].join(', ')})`);
+    if (cells.size <= 1) continue;
+    if (label === '製番') {
+      // Real sheets also label a visible stacked display column (仕様/製番/Ｈ番号) as 製番; the key column is the one holding 4-row blocks.
+      const keyHeaders = [...cells].map((address) => sheet.getCell(address))
+        .filter((header) => Array.from({ length: sheet.rowCount }, (_, index) => index + 1).some((row) => shapeValid(sheet, row, Number(header.col))));
+      if (keyHeaders.length === 1) {
+        columns.set(label, Number(keyHeaders[0].col));
+        headerRows.set(label, Number(keyHeaders[0].row));
+        continue;
+      }
+    }
+    return fatal(`DUPLICATE_REQUIRED_HEADER: ${label} (${[...cells].join(', ')})`);
   }
   if (!columns.has('製番') || !columns.has('部品完成')) return fatal('MISSING_HEADERS');
   const warn = (code: string, seiban: string | null, cell: ExcelJS.Cell): void => {
