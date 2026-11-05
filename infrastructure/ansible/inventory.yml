@@ -514,7 +514,6 @@ all:
               nfc_agent_client_id: "raspi4-kensaku-02-kiosk1"
               nfc_agent_client_secret: "{{ vault_raspi4_kensaku_02_nfc_agent_client_secret }}"
             raspi4-assembly-02:
-              os_security_update_mode: apply
               # Assembly-02 キオスク（Pi4 8台目）
               ansible_host: "{{ current_network.raspi4_assembly_02_ip | default(local_network.raspi4_assembly_02_ip) }}"
               ansible_user: raspi4-assembly-02

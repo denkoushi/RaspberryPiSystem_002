@@ -51,7 +51,7 @@ class OSUpdateUnitTests(unittest.TestCase):
                              'Nice=10', 'IOSchedulingClass=idle', 'TimeoutStartSec=2h'):
                     self.assertIn(line, service.splitlines())
                 config = json.loads(self.render('raspi-os-security-update.conf', variables))
-                self.assertEqual(config['mode'], 'dry-run')
+                self.assertEqual(config['mode'], 'apply')
                 self.assertEqual(config['browserUnit'], browser)
                 self.assertEqual(config['blacklist'], self.variables['os_security_update_package_blacklist'])
                 self.assertEqual(config['allowlist'], ['^chromium', '^rpi-chromium-mods$'])
@@ -62,23 +62,23 @@ class OSUpdateUnitTests(unittest.TestCase):
                 self.assertEqual(config['lockPath'], '/run/lock/raspi-os-security-update.lock')
                 self.assertEqual(config['stateDir'], '/var/lib/raspi-os-security-update')
 
-    def test_every_host_is_enabled_and_only_the_canary_applies(self):
+    def test_every_host_is_enabled_and_applies(self):
         self.assertTrue(self.variables['os_security_update_enabled'])
-        self.assertEqual(self.variables['os_security_update_mode'], 'dry-run')
+        self.assertEqual(self.variables['os_security_update_mode'], 'apply')
         self.assertNotIn('unattended_upgrades_enabled', self.variables)
-        apply_hosts = []
+        dry_run_hosts = []
 
         def visit(group):
             for name, variables in group.get('hosts', {}).items():
                 variables = variables or {}
                 self.assertNotIn('unattended_upgrades_enabled', variables)
-                if variables.get('os_security_update_mode', self.variables['os_security_update_mode']) == 'apply':
-                    apply_hosts.append(name)
+                if variables.get('os_security_update_mode', self.variables['os_security_update_mode']) != 'apply':
+                    dry_run_hosts.append(name)
             for child in group.get('children', {}).values():
                 visit(child)
 
         visit(tasks('inventory.yml')['all'])
-        self.assertEqual(apply_hosts, ['raspi4-assembly-02'])
+        self.assertEqual(dry_run_hosts, [])
 
     def test_shared_policy_import_is_nonfatal_and_post_health_in_every_role(self):
         for role, entry in [('release_pi5', 'main'), ('release_kiosk', 'main'), ('release_signage', 'health')]:
