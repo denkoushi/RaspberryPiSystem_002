@@ -21,10 +21,10 @@ it('preserves complete layouts across production-size rank cycles and explicit l
   const digests = Object.fromEntries(Object.entries(variants).map(([name, options]) => [name,
     createHash('sha256').update(JSON.stringify(buildForwardPlanningBoardGanttLayout(options))).digest('hex')]));
   expect(digests).toEqual({
-    "resource": "19b035ba2343f59f851367c8f4dec7f7dc35ee088abfdd1ebda1f79b3d077c2a",
-    "seiban": "5a08642628fa40d2a9c2217b01176c83b440fecb8a79905e58bb0d347f484dab",
-    "explicit": "95f1186639225fbf3b5ea842d57f15de68502856f267dfff4926e5ce2fb7db2e",
-    "mixed": "7164ccc1dacca9ba3d224ee9d65bbfe40570c77594d556044fc3bfbdf6bf0bc1",
-    "incomplete": "3decb019e1d3f891e53ba62393b0f7e2463305404cdbcacd77d0070553b79f0d"
+    "resource": "c9374fe0d814963147bad4e57caec086b5f32376f00f0507b821e5ce4d950c39",
+    "seiban": "cd6068a9745a4753070b315397e3b1b5a4b3d272a7b763875c4fa554a1a0e06f",
+    "explicit": "ca2c93e32ad84b5f9677dd7bd811343233b5baf198eedcce76e791580e301577",
+    "mixed": "bf63825571de06a01f1f7b557c3d6e0a3b475e57de4509ce19cbc26042d213eb",
+    "incomplete": "f4c6b5b1c1e8b3b4dbc73bd77cf122bd0f84b472d074914b77f05e2a5d6b4be8"
   });
 });

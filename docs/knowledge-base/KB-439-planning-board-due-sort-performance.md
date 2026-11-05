@@ -123,3 +123,28 @@ pnpm --filter @raspi-system/shared-types --filter @raspi-system/part-search-core
 
 Pi 4上のlayout/paintを含む計測と背景帯の画素比較は未実施。
 今回は仮想化、保存キューのバッチAPI、描画と因果のない改善は追加していない。
+
+## Arrival Filter And Forward Gap Filling Follow-up
+
+「着」ONでもガントには表示対象製番の全未完了工程を積み、未到着の棒を
+`opacity-50`で表示する。工程チェーンの白枠は維持する。一覧、遅れ件数、
+「納期順」「並べ替え」「↶ 戻す」は到着判定の対象を維持し、未到着品の順位枠を保持する。
+並べ替えプレビューと遅れ・待ちの評価は全工程を積んだ同じ前向きレイアウトを使い、
+集計対象から未到着品を除く。
+
+資源の先頭工程の前工程が配置済みで、その終了が資源cursorより後なら、
+後続からcursorで開始できる最も順位の早い工程を先に配置する。
+前工程のない工程、または配置済み前工程がcursorまでに終了した工程だけが候補になる。
+候補がなければ従来の待ちと点線を残す。保存順位は変更せず、資源cursorと前工程終了の
+両方を満たしてから待ち工程を配置する。前工程未配置時と循環時のfallbackは維持する。
+
+`heads`の先頭indexと既存memo・描画共有は維持し、後続探索は前工程待ちの場合に限定した。
+`layoutParity.perf.tsx`の5条件は空き詰めによる開始・終了・待ち区間の変更に合わせて更新した。
+上記の既存性能測定値はこの仕様変更前の値である。
+
+Follow-up validation: `cd apps/web && pnpm exec vitest run src/features/kiosk src/pages/kiosk`
+は262 files / 2520 tests passed（163.07秒）。`pnpm exec tsc --noEmit -p .`、変更した
+12 TS/TSXファイルへのESLint、`git diff --check`も成功した。`layoutParity`は更新後の期待値で成功。
+追加の`dueSort`性能計測は、既存ハーネスに`QueryClientProvider`がなく、
+`PlanningBoardGanttView`の`useMachineSignalResourceUptime`で停止したため未完了。
+計測ハーネスのこの不備は別件とし、性能値は更新していない。実ブラウザ・Pi実機検証は未実施。

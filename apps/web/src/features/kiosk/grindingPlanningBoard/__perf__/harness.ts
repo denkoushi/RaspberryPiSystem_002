@@ -22,7 +22,7 @@ export function useDueSortHarness(fixture: ReturnType<typeof productionFixture>,
   const [history, setHistory] = useState<ResourceOrderHistory[]>([]);
   const historyId = useRef(0);
   const page = usePlanningBoardPageGantt({
-    focusedFseiban: null, sortedItemsBySeiban: emptyGroups, view: 'resource', visibleItems: queue.items,
+    focusedFseiban: null, sortedItemsBySeiban: emptyGroups, view: 'resource', visibleItems: queue.items, ganttItems: queue.items, arrivalFilterEnabled: false,
     nowMs: fixture.options.now!.getTime(), ganttEnabled: true, allocation: 'alternate', category: 'grinding',
     data: undefined, registeredFseibans: fixture.seibans, bulkReady: true, rankMutationReady: true, writeBlocked: false,
     writeQueue: queue, orderPreview: null, resourceOrderHistory: history, historyScope: 'perf:grinding', currentItemsRef,

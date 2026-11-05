@@ -248,7 +248,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it.each(['grinding', 'cutting'] as const)('filters incomplete %s rows in list and gantt, retains special due/completed rows and original ranks', (category) => {
+  it.each(['grinding', 'cutting'] as const)('dims unarrived %s bars, filters only list rows and retains special due/completed rows and ranks', (category) => {
     const data = fixture();
     data.category = category as typeof data.category;
     data.resourceCategories['305'] = category;
@@ -263,7 +263,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(screen.getByRole('button', { name: '研削', exact: true }));
     }
     expect(screen.getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
-    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50');
+    expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('opacity-50');
     expect(screen.getByTestId('planning-gantt-bar-c')).toBeInTheDocument();
     openListView();
     expect(screen.queryByTestId('planning-board-item-b')).not.toBeInTheDocument();
@@ -278,6 +279,19 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '未完', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '前工程が済んだものだけ表示' }));
     expect(screen.getByTestId('planning-board-item-b')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+    expect(screen.getByTestId('planning-gantt-bar-b')).not.toHaveClass('opacity-50');
+  });
+
+  it('keeps unarrived processes in the focused chain with white outlines', () => {
+    const data = fixture();
+    data.items[1] = { ...data.items[1]!, fseiban: data.items[0]!.fseiban, fhincd: data.items[0]!.fhincd,
+      processOrder: '20', arrived: false };
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50', 'outline-white');
+    expect(screen.getByTestId('planning-gantt-chain-badge-b')).toHaveTextContent('2');
   });
 
   it.each(['納期順に並べる', '並べ替え'])('%s preserves hidden rank slots without duplicates and undo restores the full order', async (action) => {
@@ -298,7 +312,11 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.getByRole('button', { name: '遅れなし', exact: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: action }));
-    if (action === '並べ替え') fireEvent.click(screen.getByRole('button', { name: '適用', exact: true }));
+    if (action === '並べ替え') {
+      expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50');
+      expect(screen.getByRole('status', { name: '並べ替えの比較' })).toHaveTextContent('遅れ 0 → 0');
+      fireEvent.click(screen.getByRole('button', { name: '適用', exact: true }));
+    }
     await waitFor(() => expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(1));
     expect(mocks.resourceOrderBulk.mock.calls[0]![0].items.map((item: { itemId: string }) => item.itemId)).toEqual(['d', 'b', 'c', 'a']);
     await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeEnabled());
