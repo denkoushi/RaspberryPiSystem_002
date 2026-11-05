@@ -87,6 +87,23 @@ update-frequency: medium
 4. **Pi5 で client key を交換（準備済みで3分枠）**。旧機の隔離と新ノードの到達を確認してから、管理者が実施する。新しい値は既存の鍵管理・レビュー・CI・配布の手順で用意する。DB バックアップを取る。旧値と新値を表示せず環境変数へ渡す。Pi5 で既存スクリプトのヘッダーに従い dry-run の件数を確認し、本実行する。対象はホスト名や clientId ではなく `ClientDevice` の UUID。DB が先、対象1台の標準更新が後。根拠: [rotate-client-key.sh:2–12](../../scripts/security/rotate-client-key.sh#L2)、[security-client-key-rotation-phase-b.md:99–110,143–158](../plans/security-client-key-rotation-phase-b.md#L99)。Phase A の調査だけでは鍵は変わらない: [phase-a.md:98–104](../plans/security-client-key-rotation-phase-a.md#L98)。
 5. **新しい鍵を配布・確認（9分枠）**。「共通の成功確認」を行う。旧キーの kiosk API 要求が HTTP 401、新キーで通常操作が成功、管理画面の端末行が1件であることを管理者が確認する。値を記録しない。旧機は再起動しない。根拠: [security-client-key-rotation-phase-b.md:154–158](../plans/security-client-key-rotation-phase-b.md#L154)。失敗時に旧鍵へ戻す通常の復旧手順は、旧機の鍵も再び有効にする。隔離を保証できなければ適用せず停止する。通常の復旧手順の参照元: [同:162–164](../plans/security-client-key-rotation-phase-b.md#L162)。
 
+## 共通イメージから新しい端末を用意する(試行前)
+
+この経路は実機未検証。既存カードの復元とは分け、新しい空の端末で試す。旧機の識別や鍵を引き継がない。
+
+1. [共通イメージの README](../../infrastructure/image/rpi-image-gen/README.md) に従い、arm64 ホストで Pi5 の SSH 公開鍵を渡してビルドし、新しい SD へ書き込む。
+2. boot パーティション直下の `pi4-bootstrap.json` に hostname と一回限りの Tailscale auth key を入れる。鍵は `tag:kiosk` を許可し、非再利用・短い有効期限にする。Ethernet をつないで起動する（Wi-Fi 設定は対象外）。
+3. 入力ファイルの削除、`/var/lib/pi4-first-boot/done`、Tailscale の Running と新しいノードの参加、hostname を確認する。Pi5 から公開鍵 SSH / sudo、Desktop Autologin と labwc の起動を確かめる。鍵の値は記録しない。
+4. inventory に対象ホストと `ansible_user: kiosk`、接続先、必要な端末設定を追加する。管理者が既存の安全な手順で認証情報を用意し、Pi5 の Ansible ディレクトリで `REGISTER_CLIENT_HOST=HOST DRY_RUN=1 ../../scripts/register-clients.sh` を確認後、`REGISTER_CLIENT_HOST=HOST ../../scripts/register-clients.sh` で登録する（[初回導入](../guides/deployment.md#空のpi4キオスクへの初回導入)）。
+5. 成功済み CI の配布対象を確定し、明示承認された対象1台だけ標準経路で初回導入する。`HOST` は exact ホスト名、`<branch>` は承認済みの配布対象へ置き換え、plan の対象と SHA を照合する。
+
+   ```bash
+   scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --print-plan --limit HOST --first-install
+   scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit HOST --first-install
+   ```
+
+status-agent と業務用 unit はこの導入で Ansible が設置する。返された runId の status、recap、health、rollback 結果と、下記「共通の成功確認」の画面・NFC・heartbeat を確認し、実測時間を残す。
+
 ## 共通の成功確認
 
 1. **対象1台の標準更新を行う**。管理者が成功済み CI の対象 SHA と成果物を確定する。以下は既存の書式。`PATTERN` は対象の exact ホスト名1つへ、`<branch>` は承認済みの配布対象へ置き換える。plan の対象・SHA・成果物を照合する。C では DB 交換前にも配布可能なことを確認する。鍵を含む Pi4 ファイルが配布対象外なら進めない。根拠: [deployment.md:93–113](../guides/deployment.md#L93)、[security-client-key-rotation-phase-b.md:104–106,131](../plans/security-client-key-rotation-phase-b.md#L104)。
