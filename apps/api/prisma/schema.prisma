@@ -5550,6 +5550,7 @@ model MachineSignalSensor {
   signalNo           Int      @id
   /// 日報1行目の機械名（最後に取り込んだ値）
   sourceMachineName  String   @db.VarChar(200)
+  resourceCd         String?
   displayName        String?  @db.VarChar(200)
   site               String?  @db.VarChar(80)
   /// MACHINE | ROBOT | LINE | OTHER

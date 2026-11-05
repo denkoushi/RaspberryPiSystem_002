@@ -151,6 +151,39 @@ export async function getMachineSignalTrend(input: {
   return summaries.map(toTrendPoint);
 }
 
+export async function getMachineSignalResourceUptime(input: { days: number }) {
+  const latest = await prisma.machineSignalDailyReport.findFirst({
+    orderBy: { reportDate: 'desc' }, select: { reportDate: true },
+  });
+  const resources: Array<{ resourceCd: string; signalNo: number; averageRunSeconds: number; recordDays: number }> = [];
+  if (!latest) return { endDate: null, days: input.days, resources };
+  const endDate = toDateKey(latest.reportDate);
+  const [settings, allSensors] = await Promise.all([getMachineSignalSettings(), listMachineSignalSensors()]);
+  const byResource = new Map<string, MachineSignalSensorDto>();
+  for (const sensor of [...allSensors].sort((a, b) => a.signalNo - b.signalNo)) {
+    if (sensor.resourceCd && !byResource.has(sensor.resourceCd)) byResource.set(sensor.resourceCd, sensor);
+  }
+  if (!byResource.size) return { endDate, days: input.days, resources };
+  const summaries = await loadSignalDaySummaries({
+    sensors: [...byResource.values()], thresholds: settings.thresholds,
+    from: toDateKey(new Date(latest.reportDate.getTime() - (input.days - 1) * DAY_MS)), to: endDate,
+  });
+  const totals = new Map<number, { runSeconds: number; recordDays: number }>();
+  for (const summary of summaries) {
+    if (!summary.hasRecord) continue;
+    const total = totals.get(summary.signalNo) ?? { runSeconds: 0, recordDays: 0 };
+    total.runSeconds += summary.runSeconds;
+    total.recordDays += 1;
+    totals.set(summary.signalNo, total);
+  }
+  for (const [resourceCd, sensor] of byResource) {
+    const total = totals.get(sensor.signalNo);
+    if (total) resources.push({ resourceCd, signalNo: sensor.signalNo,
+      averageRunSeconds: Math.round(total.runSeconds / total.recordDays), recordDays: total.recordDays });
+  }
+  return { endDate, days: input.days, resources };
+}
+
 export type MachineSignalLampPattern = {
   /** 赤黄緑のコード3桁（0=不問, 1=消灯, 2=点灯, 4=点滅） */
   pattern: string;

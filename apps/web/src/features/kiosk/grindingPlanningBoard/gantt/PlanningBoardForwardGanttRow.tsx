@@ -161,7 +161,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     }), CHIP_STRIP_FIT);
   }, [row.bars, chipsByPart, placementByPart, start, dayWidth]);
   return <div className="flex border-b border-slate-600" style={{ minHeight: 76 + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
-    <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-center gap-1 border-r border-slate-700 bg-slate-900 px-2 py-1 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
+    <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-evenly border-r border-slate-700 bg-slate-900 px-2 py-0.5 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
     </div>
     <div ref={track} data-gantt-track className="relative shrink-0 overflow-hidden" style={{ width }}>
