@@ -30,6 +30,21 @@ const mk = (
 });
 
 describe('buildLeaderBoardViewModel', () => {
+  it('filters arrivals for the shared list/gantt model, keeps special due and completed rows, and preserves rank gaps', () => {
+    const rows = [
+      { ...mk('a', '305', 'S1', 1, ''), arrived: true },
+      { ...mk('hidden', '305', 'S2', 2, ''), arrived: false },
+      { ...mk('special', '305', 'S3', 3, ''), arrived: false, specialDue: { kind: 'overnight' as const, expiresAt: '2026-11-06T00:00:00Z' } },
+      { ...mk('done', '305', 'S4', 4, '完了'), arrived: false }
+    ];
+    const grouped = buildLeaderBoardGroupedRows(rows, undefined);
+    const visible = buildLeaderBoardSortedGrouped(grouped, 'all', { kind: 'default' }, true).get('305')!;
+    expect(visible.map((row) => [row.id, row.processingOrder])).toEqual([['a', 1], ['special', 3], ['done', 4]]);
+    expect(buildLeaderBoardSortedGrouped(grouped, 'complete', { kind: 'default' }, true).get('305')?.map((row) => row.id)).toEqual(['done']);
+    expect(buildLeaderBoardSortedGrouped(grouped, 'incomplete', { kind: 'default' }, true).get('305')?.map((row) => row.id)).toEqual(['a', 'special']);
+    expect(buildLeaderBoardSortedGrouped(grouped, 'all', { kind: 'default' }, false).get('305')).toHaveLength(4);
+  });
+
   it('groups by resource and places manual processingOrder before null', () => {
     const rows = [
       mk('a', 'R1', 'S1', null, '', '2026-03-01'),

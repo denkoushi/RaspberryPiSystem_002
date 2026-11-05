@@ -1,10 +1,12 @@
 import { api } from '../../http';
 
 import type { SelfInspectionStatus } from '../../../features/part-measurement/types';
-import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardSpecialDue, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 export interface ProductionScheduleRow {
   id: string;
+  arrived?: boolean;
+  specialDue?: GrindingPlanningBoardSpecialDue | null;
   /** `ProductionScheduleProgressOverviewSeibanItem.seibanJoinKey` と突合する専用キー。 */
   seibanJoinKey?: string | null;
   occurredAt: string;

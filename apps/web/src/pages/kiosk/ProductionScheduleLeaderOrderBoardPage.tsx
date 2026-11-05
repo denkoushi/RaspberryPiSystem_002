@@ -58,6 +58,7 @@ import { DScheduleMinutesProvider } from '../../features/kiosk/productionSchedul
 import { useMutationFeedback } from '../../features/kiosk/productionSchedule/useMutationFeedback';
 import { useProductionScheduleQueryParams } from '../../features/kiosk/productionSchedule/useProductionScheduleQueryParams';
 import { useProductionScheduleSearchConditionsWithStorageKey } from '../../features/kiosk/productionSchedule/useProductionScheduleSearchConditions';
+import { usePersistedArrivalFilter } from '../../features/kiosk/usePersistedArrivalFilter';
 import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK } from '../../hooks/kioskRevealUi';
 import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
@@ -161,6 +162,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     slotCount
   );
 
+  const { arrivalFilterEnabled, toggleArrivalFilter } = usePersistedArrivalFilter(`kiosk-leader-order-board-arrival-filter:${siteKey}\0${activeDeviceScopeKey}`);
   const { scawEnabled, toggleScawMode } = usePersistedLeaderBoardScawMode(siteKey, activeDeviceScopeKey);
   const dueSource: 'excel' | 'scaw' = scawEnabled ? 'scaw' : 'excel';
   const [completionFilter, setCompletionFilter] = useState<LeaderOrderCompletionFilter>('incomplete');
@@ -436,9 +438,10 @@ export function ProductionScheduleLeaderOrderBoardPage() {
       buildLeaderBoardSortedGrouped(
         grouped,
         completionFilter,
-        seibanEvalEnabled ? { kind: 'seibanEval', seibanRank: seibanEvalRankMap } : { kind: 'default' }
+        seibanEvalEnabled ? { kind: 'seibanEval', seibanRank: seibanEvalRankMap } : { kind: 'default' },
+        arrivalFilterEnabled
       ),
-    [grouped, completionFilter, seibanEvalEnabled, seibanEvalRankMap]
+    [grouped, completionFilter, seibanEvalEnabled, seibanEvalRankMap, arrivalFilterEnabled]
   );
 
   const displayGrouped = useMemo(
@@ -650,6 +653,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           onMoveRegisteredSeibanToRank={moveRegisteredSeibanToRank}
           ganttEnabled={ganttEnabled}
           onToggleGanttMode={toggleGanttMode}
+          arrivalFilterEnabled={arrivalFilterEnabled} onToggleArrivalFilter={toggleArrivalFilter}
           scawEnabled={scawEnabled} onToggleScawMode={toggleScawMode}
           splitFeatureStatus={splitFeatureStatus}
         />

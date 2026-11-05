@@ -7,10 +7,11 @@ import {
   decorateLeaderboardShellRowsForKioskFromHydratedRows,
   type LeaderboardShellPhasedReadResult
 } from '../production-schedule-query.service.js';
+import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
-import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardSpecialDue, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 import { prisma } from '../../../lib/prisma.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
@@ -22,6 +23,8 @@ type LightShellRow = LeaderboardShellPhasedReadResult['rows'][number];
 
 type RowDecoration = {
   id: string;
+  arrived?: boolean;
+  specialDue?: GrindingPlanningBoardSpecialDue | null;
   resolvedMachineName: string | null;
   customerName: string | null;
 };
@@ -35,6 +38,8 @@ function applyRowDecorationsToLightRows(
     return d
       ? {
           ...r,
+          arrived: d.arrived,
+          specialDue: d.specialDue,
           resolvedMachineName: d.resolvedMachineName ?? r.resolvedMachineName,
           customerName: d.customerName
         }
@@ -141,10 +146,13 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
       customerName: null as string | null
     }));
     const withMachine = await enrichProductionScheduleRowsWithResolvedMachineName(lightPrefix);
-    const withCustomer = await enrichProductionScheduleRowsWithCustomerName(withMachine);
+    const withCustomer = await enrichRowsWithProcessArrival(await enrichProductionScheduleRowsWithCustomerName(withMachine),
+      { siteKey: params.siteKey, locationKey: params.locationKey, includeSpecialDue: true });
     for (const r of withCustomer) {
       decoMap.set(r.id, {
         id: r.id,
+        arrived: r.arrived,
+        specialDue: r.specialDue,
         resolvedMachineName: r.resolvedMachineName ?? null,
         customerName: r.customerName ?? null
       });

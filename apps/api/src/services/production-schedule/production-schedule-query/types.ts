@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import {
+  type GrindingPlanningBoardSpecialDue,
   type MaterialArrivalBasis,
   type MaterialArrivalStatus,
   type ProductionScheduleResourceCategory
@@ -21,6 +22,8 @@ export type ProductionScheduleSelfInspectionStatus =
 
 export type ProductionScheduleRow = {
   id: string;
+  arrived?: boolean;
+  specialDue?: GrindingPlanningBoardSpecialDue | null;
   /** 生産日程一覧と progress-overview を製番単位で突合するための専用キー。 */
   seibanJoinKey: string | null;
   occurredAt: Date;

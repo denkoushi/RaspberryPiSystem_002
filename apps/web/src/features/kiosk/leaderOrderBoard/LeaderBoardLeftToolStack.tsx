@@ -62,6 +62,8 @@ export type LeaderBoardLeftToolStackProps = {
   onMoveRegisteredSeibanToRank: (fseiban: string, targetRank1Based: number) => void;
   /** 背景同期中など、製番検索・登録を明示的に無効化 */
   interactionLocked?: boolean;
+  arrivalFilterEnabled?: boolean;
+  onToggleArrivalFilter?: () => void;
   /** SCAW の日程を表示（既定はエクセルの日程） */
   scawEnabled?: boolean;
   onToggleScawMode?: () => void;
@@ -108,6 +110,7 @@ export function LeaderBoardLeftToolStack({
   onMoveRegisteredSeibanToRank,
   interactionLocked = false,
   scawEnabled = false, onToggleScawMode,
+  arrivalFilterEnabled = true, onToggleArrivalFilter,
   ganttEnabled,
   onToggleGanttMode,
   splitFeatureStatus
@@ -440,6 +443,8 @@ export function LeaderBoardLeftToolStack({
           </button>
           <button type="button" onClick={onToggleScawMode} aria-pressed={scawEnabled}
             className={clsx('rounded-md border px-2 font-semibold', scawEnabled ? 'border-sky-400 bg-sky-500 text-white hover:bg-sky-600' : kioskButtonSecondaryClassName)}>SCAW</button>
+          <button type="button" onClick={onToggleArrivalFilter} aria-pressed={arrivalFilterEnabled} aria-label="前工程が済んだものだけ表示"
+            className={clsx('rounded-md border px-2 font-semibold', arrivalFilterEnabled ? 'border-sky-400 bg-sky-500 text-white hover:bg-sky-600' : kioskButtonSecondaryClassName)}>着</button>
         </div>
         {selectedResourceCategory ? (
           <p className={clsx('shrink-0', kioskMetaTextClassName)}>検索: {selectedResourceCategory}</p>

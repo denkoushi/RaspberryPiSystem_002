@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { planningBoardAutoOrder, planningBoardLaneOrder, planningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import { buildForwardPlanningBoardGanttLayout, planningBoardVisibleBars } from './gantt/planningBoardGanttLayout';
 import { usePlanningBoardGantt } from './gantt/usePlanningBoardGantt';
+import { mergeVisibleResourceOrder } from './mergeVisibleResourceOrder';
 import { applyOptimisticOverride, EMPTY_ORDER, todayJst } from './planningBoardPageModel';
 import { compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 
@@ -87,7 +88,7 @@ export function usePlanningBoardPageGantt({
     : gantt.layout, [orderPreview, gantt.scale, gantt.layout]);
   const lastResourceOrder = resourceOrderHistory.filter((entry) => entry.scope === historyScope).at(-1);
   const enqueueResourceOrder = (snapshot: ResourceOrderSnapshot, label: string, onSaved: () => void, preview?: OrderPreview, onFailed?: () => void,
-    sourceItems = preview?.options.items ?? currentItemsRef.current) => {
+    sourceItems = currentItemsRef.current) => {
     const items = snapshot.itemIds.map((id) => sourceItems.find((item) => item.itemId === id));
     if (!items.length || items.length > 500 || items.some((item) => !item || item.isCompleted ||
       (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || hasPendingSeiban(item.fseiban, true))) return false;
@@ -159,7 +160,8 @@ export function usePlanningBoardPageGantt({
       });
       if (sorted.every((item, index) => item.itemId === visible[index]!.itemId)) continue;
       const before = snapshotResourceOrder(resourceCd);
-      if (!enqueueResourceOrder({ resourceCd, itemIds: sorted.map((item) => item.itemId) }, '納期順', () => rememberResourceOrder(id, before))) {
+      const itemIds = mergeVisibleResourceOrder(before.itemIds, sorted.map((item) => item.itemId));
+      if (!enqueueResourceOrder({ resourceCd, itemIds }, '納期順', () => rememberResourceOrder(id, before))) {
         notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error');
       }
     }
@@ -187,8 +189,9 @@ export function usePlanningBoardPageGantt({
     const id = ++resourceOrderHistoryId.current;
     let remaining = changed.length;
     for (const resourceCd of changed) {
-      const before = { resourceCd, itemIds: preview.current[resourceCd]! };
-      if (!enqueueResourceOrder({ resourceCd, itemIds: preview.proposal[resourceCd]! }, '並べ替え', () => {
+      const before = snapshotResourceOrder(resourceCd);
+      const itemIds = mergeVisibleResourceOrder(before.itemIds, preview.proposal[resourceCd]!);
+      if (!enqueueResourceOrder({ resourceCd, itemIds }, '並べ替え', () => {
         rememberResourceOrder(id, before);
         if (--remaining === 0) setOrderPreview(null);
       }, preview, () => setOrderPreview(null))) {

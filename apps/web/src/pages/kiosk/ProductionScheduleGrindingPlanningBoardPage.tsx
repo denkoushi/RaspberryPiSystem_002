@@ -39,7 +39,9 @@ import { usePlanningBoardNotices } from '../../features/kiosk/grindingPlanningBo
 import { usePlanningBoardPageGantt } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt';
 import { usePlanningBoardPageItems } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageItems';
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
+import { isVisibleByArrival } from '../../features/kiosk/isVisibleByArrival';
 import { DScheduleMinutesProvider } from '../../features/kiosk/productionSchedule/DScheduleMinutesContext';
+import { usePersistedArrivalFilter } from '../../features/kiosk/usePersistedArrivalFilter';
 import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChangesGuard';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 
@@ -47,12 +49,8 @@ import type { CompletionOverlay, OrderPreview, ResourceOrderSnapshot, ResourceOr
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
 import type { PlanningBoardDisplayItem } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import type {
-  GrindingPlanningBoardCategory,
-  GrindingPlanningBoardItem,
-  GrindingPlanningBoardOverrideItemRequest,
-  GrindingPlanningBoardResourceOrderPlacement,
-  GrindingPlanningBoardDueRequest,
-  GrindingPlanningBoardSpecialDueKind
+  GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest,
+  GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardDueRequest, GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
 export function ProductionScheduleGrindingPlanningBoardPage() {
@@ -121,6 +119,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const registeredServerFseibansRef = useRef<Set<string> | null>(null);
   const boardSiteKeyRef = useRef<string | null>(null);
 
+  const { arrivalFilterEnabled, toggleArrivalFilter } = usePersistedArrivalFilter('kiosk-planning-board-arrival-filter');
   const { scawEnabled, toggleScawMode } = usePersistedPlanningBoardScawMode();
   const dueSource: 'excel' | 'scaw' = scawEnabled ? 'scaw' : 'excel';
   const queryClient = useQueryClient();
@@ -240,13 +239,14 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       return { ...item, isCompleted: overlay.isCompleted, completionSource: overlay.completionSource };
     }).filter((item) => boardQuery.isPlaceholderData || status === 'all' || item.isCompleted === (status === 'complete'));
   }, [queuedItems, completionOverlay, data?.siteKey, category, status, boardQuery.isPlaceholderData]);
+  const arrivalItems = useMemo(() => displayItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [displayItems, arrivalFilterEnabled]);
 
-  const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(displayItems), [displayItems]);
+  const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(arrivalItems), [arrivalItems]);
   const chipsQuery = useKioskGrindingPlanningBoardProcessChips(chipParts);
   const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(
-    displayItems, chipsQuery.isError ? undefined : chipsQuery.data?.chipsByPartKey
-  ), [displayItems, chipsQuery.isError, chipsQuery.data]);
-  const placementByPart = useMemo(() => buildPlanningBoardPlacementByPart(displayItems), [displayItems]);
+    arrivalItems, chipsQuery.isError ? undefined : chipsQuery.data?.chipsByPartKey
+  ), [arrivalItems, chipsQuery.isError, chipsQuery.data]);
+  const placementByPart = useMemo(() => buildPlanningBoardPlacementByPart(arrivalItems), [arrivalItems]);
 
   useEffect(() => {
     if (!data || boardQuery.isPlaceholderData) return;
@@ -334,7 +334,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [registeredFseibans]);
 
   const { itemsBySeiban, sortedItemsBySeiban, machineNames, visibleItems, specialDueCounts, selectedItemIds, selectedVisibleItems } = usePlanningBoardPageItems({
-    displayItems, registeredFseibans, view, allocation, data, activeFseibans, selectedItemIdsByCategory, category
+    displayItems: arrivalItems, registeredFseibans, view, allocation, data, activeFseibans, selectedItemIdsByCategory, category
   });
   const editorItems = editorSnapshot?.items ?? [];
   const resourceDragDisabled = writeBlocked;
@@ -532,7 +532,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       due: { kind: 'date', date } }], '納期');
   }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, writeBlocked]);
 
-  const historyScope = `${data?.siteKey ?? ''}:${category}`;
+  const historyScope = `${data?.siteKey ?? ''}:${category}:${arrivalFilterEnabled}`;
   const rememberResourceOrder = useCallback((id: number, snapshot: ResourceOrderSnapshot) => {
     setResourceOrderHistory((history) => {
       const previous = history.find((entry) => entry.id === id);
@@ -667,7 +667,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     <DScheduleMinutesProvider dueSource={dueSource}><PlanningBoardProcessChipsContext.Provider value={chipsByPart}>
     <PlanningBoardPlacementContext.Provider value={placementByPart}>
     <main className="relative min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
-      <PlanningBoardToolbar scawEnabled={scawEnabled} onToggleScawMode={toggleScawMode}
+      <PlanningBoardToolbar arrivalFilterEnabled={arrivalFilterEnabled} onToggleArrivalFilter={toggleArrivalFilter} scawEnabled={scawEnabled} onToggleScawMode={toggleScawMode}
         largeScreen={largeScreen} onToggleLargeScreen={() => changeLargeScreen(!largeScreen)}
         colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
         onOrderScan={handleOrderScan} focusedSeiban={focusedSeiban} onClearSeibanFocus={() => setFocusedSeiban(null)}

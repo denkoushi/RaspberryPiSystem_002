@@ -85,6 +85,8 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     /** 既定は機械所要量のみ（slot の `+人` で上書き） */
     requiredMinutes: machineRequiredMinutes,
     isCompleted: isRowCompleted(data),
+    arrived: row.arrived,
+    specialDue: row.specialDue,
     note,
     hasSelfInspectionDrawing: Boolean((row as ProductionScheduleRow & { hasSelfInspectionDrawing?: boolean }).hasSelfInspectionDrawing),
     selfInspectionTemplateId:

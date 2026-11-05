@@ -119,6 +119,7 @@ export interface GrindingPlanningBoardItem {
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
   isCompleted: boolean;
+  arrived?: boolean;
   completionSource?: 'manual' | 'import' | null;
   progress: { completed: number; total: number; quantityKnown: boolean };
   /** 材料の購買行が無い部品は null / 省略 */
