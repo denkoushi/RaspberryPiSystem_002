@@ -1845,7 +1845,20 @@ esac
         prepare, aggregate, wave = plays[8:11]
         self.assertEqual(prepare["strategy"], "free")
         self.assertIn("release_pi4_canary_host", wave["hosts"])
-        self.assertIn("release_pi4_wave_hosts", wave["pre_tasks"][1]["vars"]["release_pi4_earlier_failures"])
+        earlier = wave["pre_tasks"][1]["vars"]["release_pi4_earlier_failures"]
+        self.assertNotIn("hostvars", earlier)
+        environment = Environment()
+        environment.filters["difference"] = lambda left, right: [item for item in left if item not in right]
+        render = environment.from_string(earlier).render
+        # Hosts failed before this play (no wave facts) still stop the wave.
+        self.assertEqual(
+            render(ansible_play_hosts_all=["canary", "a", "b"], ansible_play_hosts=["canary"], ansible_play_batch=["canary"]).strip(),
+            "['a', 'b']",
+        )
+        self.assertEqual(
+            render(ansible_play_hosts_all=["canary", "a"], ansible_play_hosts=["canary", "a"], ansible_play_batch=["canary"]).strip(),
+            "[]",
+        )
         self.assertEqual(wave["strategy"], "linear")
         default_canary = re.search(r"release_pi4_canary_host \| default\('([^']+)'\)", wave["hosts"]).group(1)
         inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text(encoding="utf-8"))
