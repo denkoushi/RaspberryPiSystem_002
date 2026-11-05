@@ -565,6 +565,22 @@ def ansible_argv(
     return command
 
 
+def pi4_failure_cleanup_argv(
+    inventory: str, limit: str, profiles: tuple[str, ...], run_id: str,
+    *, torque_cutover: bool = False,
+) -> list[str] | None:
+    if torque_cutover or "pi4" not in profiles:
+        return None
+    command = [
+        "ansible-playbook", "-i", inventory,
+        str(ANSIBLE / "playbooks/release-pi4-failure-cleanup.yml"),
+        "--extra-vars", json.dumps({"release_run_id": run_id}),
+    ]
+    if limit:
+        command.extend(["--limit", limit])
+    return command
+
+
 PLAN_IMAGE_REGISTRY = "ghcr.io"
 
 
@@ -1398,14 +1414,28 @@ def execute_standard_route(args: argparse.Namespace) -> int:
             flush=True,
         )
     command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
-    return execute_ansible_with_cleanup(command, args.run_id)
+    return execute_ansible_with_cleanup(
+        command, args.run_id,
+        failure_cleanup_command=pi4_failure_cleanup_argv(
+            relative, effective_limit, profiles, args.run_id, torque_cutover=torque_cutover,
+        ),
+    )
 
 
-def execute_ansible_with_cleanup(command: list[str], run_id: str) -> int:
+def execute_ansible_with_cleanup(
+    command: list[str], run_id: str, *, failure_cleanup_command: list[str] | None = None,
+) -> int:
     # Detached units remain active/exited on success, so ExecStopPost alone
     # would leave unreachable kiosks in maintenance until the unit is stopped.
     try:
         result = subprocess.run(command, env=ansible_environment())
+        if result.returncode != 0 and failure_cleanup_command is not None:
+            try:
+                subprocess.run(
+                    failure_cleanup_command, env=ansible_environment(), check=True, timeout=2400,
+                )
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"WARNING: Pi4 failure cleanup failed: {error}", file=sys.stderr, flush=True)
         return result.returncode if result.returncode >= 0 else 128 - result.returncode
     finally:
         try:
