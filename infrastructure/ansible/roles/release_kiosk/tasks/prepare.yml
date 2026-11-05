@@ -268,6 +268,18 @@
     'Downloaded newer image' in release_kiosk_pull.stdout
     or 'Pull complete' in release_kiosk_pull.stdout
 
+# One log line per Pi4 so a normal deploy measures pull time (fleet-100 M5 Step 3).
+# delta is the last attempt only; attempts shows whether retries happened.
+- name: Report Pi4 image pull time
+  ansible.builtin.debug:
+    msg: >-
+      pull-timing host={{ inventory_hostname }}
+      first_start={{ (release_kiosk_pull.results | default([]) | first | default({})).start | default('na') }}
+      last_end={{ (release_kiosk_pull.results | default([]) | last | default({})).end | default('na') }}
+      {% for result in release_kiosk_pull.results | default([]) %}
+      {{ result.item }}={{ result.delta | default('na') }}/attempts={{ result.attempts | default(1) }}/changed={{ result.changed | default(false) }}
+      {% endfor %}
+
 - name: Inspect exact local Pi4 candidate identities
   ansible.builtin.command:
     argv: [docker, image, inspect, --format, "{{ '{{.Id}}|{{.Os}}|{{.Architecture}}|{{json .RepoDigests}}' }}", "{{ release_kiosk_candidate_images[item] }}"]
