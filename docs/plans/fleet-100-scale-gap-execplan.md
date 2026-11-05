@@ -42,8 +42,10 @@
   - [x] (2026-11-02) Step 1: Pi4 の play を `serial: [1, 5, "25%", "100%"]` の波にし、前の波で失敗した端末があれば次の波の先頭で止め、最後の波で失敗したときは Pi3 の play の先頭で止める確認を入れた。トルク切り替えは `serial: 1` のまま。手元の12台の模擬でだけ確かめた。
   - [x] (2026-11-04) Step 2: 通常経路の全選択 Pi4 を `strategy: free` で先に prepare し、全台成功後だけ切り替えの波へ進む。波は linear として `max_fail_percentage: 0` を有効に保ち、指定試験端末 `raspi4-kensaku-stonebase01` を対象内なら先頭にする。失敗・到達不能時の回収と停止、Pi3 ゲート、トルク経路の維持をローカル模擬で検証した。実fleetでの保守画面待ち時間・全体時間は未測定。
   - [x] (2026-11-05) Step 2 の残り: 切り替えの波で失敗すると playbook がその場で止まり、後続波の端末に準備データが残っていた。prepare で `prepared.json`(このrunで新規取得した候補、戻し用タグ、backup)を、切り替え開始時に `switch-attempted` を run ディレクトリへ書く。Ansible が非ゼロで終わったら入口スクリプトが同じ inventory・limit・run ID で `release-pi4-failure-cleanup.yml` を1回流し、`switch-attempted` のない端末だけ回収する。切り替えを始めた端末は復旧用に残す。トルク経路は対象外。ローカル模擬で検証、実fleetでは未実施。
-  - [ ] Step 3: Pi5 にイメージの中継キャッシュ（pull-through cache）を置く。試験環境の複数台で波と停止を確認し、全体の時間を記録する。
+  - [x] (2026-11-05) Step 3: Pi5 にイメージの中継キャッシュ（pull-through cache）を置くかを、取得時間を測って決める。試験環境の複数台で波と停止を確認し、全体の時間を記録する。初回の計測では基準に当たらず、中継キャッシュは置かない(下の記録)。
     - (2026-11-05) ユーザー決定により、中継キャッシュは先に置かず取得時間を測る。Pi4 の準備で端末ごとの `pull-timing` 行をデプロイのログに出すようにした。測り方と導入を提案する基準は Decision Log。複数台の試験は試験用 Pi4 を増やさず、次の通常デプロイの第1波で代え、波の順と停止の動きをここに記録する。
+    - (2026-11-05) 初回の計測。run 20261105-042237-4f1b4d(main ce78c9bf、全台、failed=0)。Pi4 8台すべてが新しいイメージを取得し(changed=True)、`attempts` はすべて1。端末ごとの取得時間(`last_end − first_start`)は raspberrypi4 11秒、raspi4-robodrill01 12秒、raspi4-fjv60-80 12秒、raspi4-sessaku-01 16秒、raspi4-kensaku-stonebase01 51秒(nfc・barcode・torque の3つ)、raspi4-kensaku-02 14秒、raspi4-assembly-01 12秒(nfc・torque)、raspi4-assembly-02 9秒。最も遅い端末は51秒で、基準の10分を大きく下回り、再試行もないので中継キャッシュは提案しない。Pi4 の準備の play 全体は 13:29:12〜13:42:36 の約13分で、取得より他の準備の手順が長い。
+    - (2026-11-05) 第1波の記録。同じ run で、波の順は 第1波 raspi4-kensaku-stonebase01(13:42:39〜13:48:40)、第2波 raspberrypi4・raspi4-robodrill01・raspi4-fjv60-80・raspi4-sessaku-01・raspi4-assembly-01(〜13:55:14)、第3波 raspi4-kensaku-02・raspi4-assembly-02(〜14:15:49)。失敗がなかったので各波の先頭の「前の波の失敗で止まる」確認はすべて飛ばされ、そのまま進んだ。第3波だけ、元のファイル所有者の記録と配置の手順が各約3分かかり(他の波は約40秒)、波全体で約20分になった。止まる動きは、直前の run 20261105-013816-5a9d90 で、準備の段階で stonebase01 に届かず、どの Pi4 も切り替えずに止まったこと(後片付けは全台 ok、波の確認の式の不具合は #2552 で修正)で確かめた。
 - [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
   - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
   - [ ] Step 2: rpi-image-gen で共通 OS イメージを作る。(2026-11-05) 設定と layer を `infrastructure/image/rpi-image-gen/` に置いた(Pi4・trixie、共通ユーザー `kiosk`、Desktop 自動ログイン、Docker、Tailscale)。status-agent とアプリは入れず、`--first-install` で Ansible が入れる。arm64 ホストでの実ビルドと実機起動は未実施。
@@ -52,6 +54,7 @@
 - [ ] M7: 端末側の Docker ログの上限と、SD カード保護の試行。
   - [x] (2026-11-02) Step 1: Pi5 phase3・migration、kiosk template、client Compose に json-file 10m × 3 の上限を実装。状態を持つ `business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache` は追加再作成を避けるため除外。
   - [ ] 本番適用と `docker inspect` 確認（gateway は標準更新で再作成しないため別途適用が必要）、高耐久 SD・USB SSD・読み取り専用ルートの試行。
+    - (2026-11-05) Pi5 の `docker inspect`(読み取りだけ)。api・web・2つの egress は json-file 10m × 3 が効いている。gateway(2026-07-12 作成)と `docker-db-1`(2026-10-30 作成)は作り直されておらず、上限なしのまま。ログは gateway 11MB、db 876KB で、Pi5 のディスクは 11% 使用のため急ぎではない。状態を持つ Hermes の3つは設計どおり上限なし。gateway と db への適用は、作り直しで止まる時間が出るので、別に日を決めて行う。Pi4 の確認は今回できていない。
 - [x] M8: 2026-11-02 機種ごとの役割と資源の表を `docs/runbooks/device-model-roles.md` に残した。
 
 
