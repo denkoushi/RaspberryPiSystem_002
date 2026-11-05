@@ -60,6 +60,9 @@
 
 ## Surprises & Discoveries
 
+- Observation: M7 gateway の任意再作成 run `20261105-085755-ac74f4` は、稼働中の user が空(root)、bluegreen bind が rw である差を検知し、再作成前に停止した。2026-07-12 の旧 web イメージ `raspi-system-web:0daaf114…` は setcap 付き Caddy で、commit `de6030e9` の強化設定との組み合わせに起動リスクがある。任意再作成だけ commit 後の稼働 web の digest 参照を使い、旧 user/bluegreen rw の差だけ許容するようローカル修正した。ホスト権限と新イメージでの隔離 validate を再作成前に、User を再作成後に確認する。本番再実行は未実施。`docker-db-1` は作り直さず、上限なし・未適用のまま。
+  Evidence: `release_pi5/tasks/gateway-recreate.yml` と標準 release の静的テスト。通常 run の gateway discovery は変更しない。
+
 - Observation: M0 の実測(2026-11-05、読み取りだけ)。Pi5 の Google Drive の写しのタイマー `raspi-google-drive-dr.timer` は enabled で、直近は 2026-11-04 23:00〜23:05 JST に Result=success(snapshot `bbf99283…`、約2.7GB)。次回は 2026-11-05 23:00。Pi5 のメモリは total 8062MB・available 3476MB だが、swap 2047MB をほぼ使い切っている(2046MB)。Pi3(raspberrypi3)は total 416MB・available 128MB、swap 415MB 中 207MB を使用。Zero W(zero1w-camera01)は Tailscale で offline のため測れなかった。Zero 2W(zero2w-tanaban01)は試作端末で本番運用の許可が出ていないため、本番の計測対象に含めない。
   Evidence: Pi5 で `systemctl list-timers`・`systemctl show`・`journalctl -u raspi-google-drive-dr.service`・`free -m`、Pi5 経由で Pi3 の `free -m`、Pi5 の `tailscale status`。
 

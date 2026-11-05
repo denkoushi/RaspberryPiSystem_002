@@ -168,6 +168,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         code = task["ansible.builtin.command"]["argv"][2]
         service = {"image": "caddy:fixture", "user": "1000:1000",
                    "volumes": [{"type": "bind", "source": "/logs", "target": "/var/log/caddy"},
+                               {"type": "bind", "source": "/certs", "target": "/srv/certs", "read_only": True},
                                {"type": "bind", "source": "/config", "target": "/srv/bluegreen", "read_only": True},
                                {"type": "tmpfs", "target": "/tmp"}],
                    "ports": [{"published": str(port), "target": port} for port in (80, 443)],
@@ -177,31 +178,50 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         running = {"Config": {"Image": "caddy:fixture", "User": "1000:1000"},
                    "Mounts": [{"Type": "bind", "Source": "/config", "Destination": "/srv/bluegreen", "RW": False},
                               {"Type": "bind", "Source": "/logs", "Destination": "/var/log/caddy", "RW": True},
+                              {"Type": "bind", "Source": "/certs", "Destination": "/srv/certs", "RW": False},
                               {"Type": "tmpfs", "Destination": "/tmp"}],
                    "HostConfig": {"PortBindings": {f"{port}/tcp": [{"HostPort": str(port), "HostIp": ""}]
                                                    for port in (80, 443)}, "LogConfig": {"Type": "old"}},
                    "NetworkSettings": {"Networks": {"fixture_pi5": {}, "fixture_business-hermes": {}}}}
         compose = ["docker", "compose", "--env-file", "/fixture-env"]
 
-        def check(current):
-            with mock.patch.object(sys, "argv", ["-c", json.dumps(compose), "fixture-id"]), mock.patch.object(
-                subprocess, "check_output", side_effect=[json.dumps(planned), json.dumps([current])]
+        web = {"Config": {"Image": "caddy:fixture"}, "Image": "sha256:web", "State": {"Running": True}}
+
+        def check(current, committed=None, image_id="sha256:web"):
+            with mock.patch.object(sys, "argv", ["-c", json.dumps(compose), "fixture-id", "web-id"]), mock.patch.object(
+                subprocess, "check_output", side_effect=[json.dumps(planned), json.dumps([current]),
+                                                 json.dumps([committed or web]), json.dumps([{"Id": image_id}])]
             ) as command:
                 exec(compile(code, "gateway-comparison", "exec"), {})
             self.assertEqual(command.call_args_list, [
                 mock.call(compose + ["config", "--format", "json", "gateway"], text=True),
-                mock.call(["docker", "inspect", "fixture-id"], text=True)])
+                mock.call(["docker", "inspect", "fixture-id"], text=True),
+                mock.call(["docker", "inspect", "web-id"], text=True),
+                mock.call(["docker", "image", "inspect", "caddy:fixture"], text=True)])
 
         check(running)  # Ordering, default read_only, tmpfs and logging do not cause drift.
+        legacy = json.loads(json.dumps(running))
+        legacy["Config"].update(User="", Image="old:web")
+        legacy["Mounts"][0]["RW"] = True
+        check(legacy)
+        for mutate_web, image_id, label in (
+            ({"Config": {"Image": "other:web"}}, "sha256:web", "committed web image"),
+            ({"Image": "sha256:other"}, "sha256:web", "committed web image ID"),
+            ({"State": {"Running": False}}, "sha256:web", "committed web running"),
+        ):
+            committed = dict(web, **mutate_web)
+            with self.assertRaisesRegex(SystemExit, label):
+                check(running, committed, image_id)
         changes = (
             ("bind mounts", lambda r: r["Mounts"][0].update(Source="/different-config")),
             ("bind mounts", lambda r: r["Mounts"][1].update(Source="/different-logs")),
             ("bind mounts", lambda r: r["Mounts"][0].update(Destination="/different-target")),
-            ("bind mounts", lambda r: r["Mounts"][0].update(RW=True)),
+            ("bind mounts", lambda r: r["Mounts"][2].update(RW=True)),
+            ("bind mounts", lambda r: r["Mounts"][2].update(Source="/other-certs")),
+            ("bind mounts", lambda r: r["Mounts"][1].update(RW=False)),
             ("published ports", lambda r: r["HostConfig"]["PortBindings"]["80/tcp"][0].update(HostPort="8080")),
             ("published ports", lambda r: r["HostConfig"]["PortBindings"]["443/tcp"][0].update(HostIp="127.0.0.1")),
             ("user", lambda r: r["Config"].update(User="0:0")),
-            ("image", lambda r: r["Config"].update(Image="caddy:other")),
             ("networks", lambda r: r["NetworkSettings"]["Networks"].pop("fixture_business-hermes")),
         )
         for label, mutate in changes:
@@ -217,7 +237,81 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as failure:
             check(current)
         self.assertIn("user: planned=", str(failure.exception))
-        self.assertIn("image: planned=", str(failure.exception))
+        self.assertNotIn("image: planned=", str(failure.exception))
+
+    def test_gateway_recreate_uses_committed_web_and_preflights_hardened_image(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/gateway-recreate.yml").read_text())[0]["block"]
+        inspect = next(t for t in tasks if t.get("register") == "release_pi5_gateway_web_identity")
+        self.assertEqual(inspect["ansible.builtin.command"]["argv"][-1], "{{ release_pi5_web_id }}")
+        immutable = next(t for t in tasks if t["name"] == "Require an immutable committed running web image")
+        pattern = immutable["ansible.builtin.assert"]["that"][0].split("match('")[1].split("')")[0]
+        reference = "registry/web:release@sha256:" + "a" * 64
+        self.assertRegex(reference + "|sha256:" + "b" * 64 + "|true", pattern)
+        for invalid in ("web:tag|sha256:" + "b" * 64 + "|true", reference + "|sha256:" + "b" * 64 + "|false"):
+            self.assertIsNone(re.match(pattern, invalid))
+        select = next(t for t in tasks if t["name"].startswith("Select the committed web image"))
+        self.assertIn("combine({'PI5_GATEWAY_IMAGE': release_pi5_gateway_web_identity.stdout.split('|')[0]})",
+                      select["ansible.builtin.set_fact"]["release_pi5_gateway_compose_environment"])
+        preflight = next(t for t in tasks if t["name"].startswith("Check host permissions"))
+        recreate = next(t for t in tasks if "--force-recreate" in str(t.get("ansible.builtin.command", {})))
+        self.assertLess(tasks.index(preflight), tasks.index(recreate) - 1)
+        code = preflight["ansible.builtin.command"]["argv"][2]
+        service = {"image": reference, "user": "1000:1000", "tmpfs": ["/tmp:rw", "/config:rw", "/data:rw"],
+                   "volumes": [{"type": "bind", "source": source, "target": target} for source, target in
+                               (("/fixture/config", "/srv/bluegreen"), ("/fixture/certs", "/srv/certs"),
+                                ("/fixture/logs", "/var/log/caddy"))]}
+        with mock.patch.object(sys, "argv", ["-c", json.dumps(service)]), mock.patch.object(subprocess, "check_call") as call:
+            exec(compile(code, "gateway-preflight", "exec"), {})
+        permissions, validate = [c.args[0] for c in call.call_args_list]
+        self.assertEqual(permissions[3:], ["1000", "1000", "/fixture/certs", "/fixture/logs"])
+        # Exercise the permission script without accessing real certs or changing our UID.
+        for access_results, is_file, is_dir, succeeds in (
+            ([True, True, True], True, True, True),
+            ([False], True, True, False),
+            ([True, False], True, True, False),
+            ([True, True, False], True, True, False),
+            ([], False, True, False),
+            ([True, True], True, False, False),
+        ):
+            with mock.patch.object(sys, "argv", ["-c"] + permissions[3:]), \
+                    mock.patch.object(os, "setgroups", create=True) as groups, \
+                    mock.patch.object(os, "setgid") as gid, mock.patch.object(os, "setuid") as uid, \
+                    mock.patch.object(os.path, "isfile", return_value=is_file), \
+                    mock.patch.object(os.path, "isdir", return_value=is_dir), \
+                    mock.patch.object(os, "access", side_effect=access_results) as access:
+                if succeeds:
+                    exec(permissions[2], {})
+                    self.assertEqual(access.call_args_list, [
+                        mock.call("/fixture/certs/cert.pem", os.R_OK),
+                        mock.call("/fixture/certs/key.pem", os.R_OK),
+                        mock.call("/fixture/logs", os.R_OK | os.W_OK | os.X_OK)])
+                else:
+                    with self.assertRaisesRegex(SystemExit, "Gateway was NOT recreated"):
+                        exec(permissions[2], {})
+                groups.assert_called_once_with([])
+                gid.assert_called_once_with(1000)
+                uid.assert_called_once_with(1000)
+        self.assertEqual(validate[:15], ["docker", "run", "--rm", "--pull", "never", "--network", "none",
+                                       "--user", "1000:1000", "--read-only", "--cap-drop", "ALL",
+                                       "--security-opt", "no-new-privileges:true", "--tmpfs"])
+        for tmpfs in service["tmpfs"]:
+            self.assertIn(tmpfs, validate)
+        for mount in ("type=bind,src=/fixture/config,dst=/srv/bluegreen,readonly",
+                      "type=bind,src=/fixture/certs,dst=/srv/certs,readonly"):
+            self.assertIn(mount, validate)
+        self.assertEqual(validate[-5:], [reference, "caddy", "validate", "--config", "/srv/bluegreen/Caddyfile"])
+        for failure_at in (0, 1):
+            with mock.patch.object(sys, "argv", ["-c", json.dumps(service)]), mock.patch.object(
+                subprocess, "check_call", side_effect=([None] * failure_at + [subprocess.CalledProcessError(1, "fixture")])
+            ) as call:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    exec(compile(code, "gateway-preflight", "exec"), {})
+                self.assertEqual(call.call_count, failure_at + 1)
+        user = next(t for t in tasks if t.get("register") == "release_pi5_recreated_gateway_user")
+        self.assertIn(".Config.User", str(user))
+        assertions = next(t["ansible.builtin.assert"]["that"] for t in tasks
+                          if t["name"].startswith("Require the recreated gateway running"))
+        self.assertIn("release_pi5_recreated_gateway_user.stdout | trim == (release_pi5_gateway_plan.stdout | from_json).user", assertions)
 
     def test_gateway_recreate_validates_then_replaces_and_checks(self) -> None:
         root = ANSIBLE / "roles/release_pi5/tasks"
@@ -231,7 +325,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertLess(1, tasks.index(compare))
         self.assertLess(tasks.index(compare), index)
         self.assertFalse(compare["changed_when"])
-        self.assertEqual(compare["environment"], "{{ release_pi5_compose_environment }}")
+        self.assertEqual(compare["environment"], "{{ release_pi5_gateway_compose_environment }}")
         self.assertFalse(tasks[0]["ansible.builtin.set_fact"]["release_pi5_gateway_recreate_started"])
         self.assertTrue(tasks[index - 1]["ansible.builtin.set_fact"]["release_pi5_gateway_recreate_started"])
         message = yaml.safe_load(text)[0]["rescue"][0]["ansible.builtin.fail"]["msg"]
@@ -247,7 +341,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             self.assertIn("fixture differences", rendered)
         self.assertIn("'--no-deps'", recreate["ansible.builtin.command"]["argv"])
         self.assertIn("'--pull', 'never'", recreate["ansible.builtin.command"]["argv"])
-        self.assertEqual(recreate["environment"], "{{ release_pi5_compose_environment }}")
+        self.assertEqual(recreate["environment"], compare["environment"])
         self.assertIn("['ps', '-a', '-q', 'gateway']", tasks[index + 1]["ansible.builtin.command"]["argv"])
         self.assertIn("release_pi5_gateway_id", tasks[index + 3]["ansible.builtin.set_fact"])
         self.assertIn(".State.Running", text)
@@ -3972,6 +4066,8 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                 expected_environment = (
                     "{{ release_pi5_compose_environment | default({}) }}"
                     if path_name == "cleanup.yml"
+                    else "{{ release_pi5_gateway_compose_environment }}"
+                    if path_name == "gateway-recreate.yml"
                     else "{{ release_pi5_compose_environment }}"
                 )
                 self.assertEqual(

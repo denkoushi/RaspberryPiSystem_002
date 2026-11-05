@@ -10,6 +10,23 @@
         argv: [docker, exec, "{{ release_pi5_gateway_id }}", caddy, validate, --config, /srv/bluegreen/Caddyfile]
       changed_when: false
 
+    # web_id is the committed slot for fresh, interrupted and settled releases.
+    - name: Inspect the committed running web image reference
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{.Config.Image}}|{{.Image}}|{{.State.Running}}' }}", "{{ release_pi5_web_id }}"]
+      register: release_pi5_gateway_web_identity
+      changed_when: false
+
+    - name: Require an immutable committed running web image
+      ansible.builtin.assert:
+        that:
+          - release_pi5_gateway_web_identity.stdout is match('^.+@sha256:[0-9a-f]{64}\|sha256:[0-9a-f]{64}\|true$')
+        fail_msg: Gateway recreation requires the committed running web image with a digest reference.
+
+    - name: Select the committed web image only for gateway recreation
+      ansible.builtin.set_fact:
+        release_pi5_gateway_compose_environment: "{{ release_pi5_compose_environment | combine({'PI5_GATEWAY_IMAGE': release_pi5_gateway_web_identity.stdout.split('|')[0]}) }}"
+
     - name: Compare the planned gateway with the running container before recreation
       ansible.builtin.command:
         argv:
@@ -24,6 +41,10 @@
                 json.loads(sys.argv[1]) + ['config', '--format', 'json', 'gateway'], text=True))
             running, = json.loads(subprocess.check_output(
                 ['docker', 'inspect', sys.argv[2]], text=True))
+            web, = json.loads(subprocess.check_output(
+                ['docker', 'inspect', sys.argv[3]], text=True))
+            image, = json.loads(subprocess.check_output(
+                ['docker', 'image', 'inspect', planned['services']['gateway']['image']], text=True))
             service = planned['services']['gateway']
             differences = []
 
@@ -35,7 +56,9 @@
                 (v['source'], v['target'], v.get('read_only', False))
                 for v in service.get('volumes', []) if v['type'] == 'bind'
             }), sorted({
-                (v['Source'], v['Destination'], not v['RW'])
+                (v['Source'], v['Destination'],
+                 True if v['Destination'] == '/srv/bluegreen' and v['RW']
+                 else not v['RW'])
                 for v in running['Mounts'] if v['Type'] == 'bind'
             }))
             # HostConfig preserves the configured host address, without the
@@ -50,33 +73,84 @@
                 for target, bindings in running['HostConfig']['PortBindings'].items()
                 for p in (bindings or [])
             }))
-            compare('user', str(service.get('user', '')), running['Config']['User'])
-            compare('image', service['image'], running['Config']['Image'])
+            if running['Config']['User'] != '':
+                compare('user', str(service.get('user', '')), running['Config']['User'])
+            compare('committed web image', service['image'], web['Config']['Image'])
+            compare('committed web image ID', image['Id'], web['Image'])
+            compare('committed web running', True, web['State']['Running'])
             compare('networks', sorted({
                 planned['networks'][name]['name'] for name in service['networks']
             }), sorted(running['NetworkSettings']['Networks']))
             if differences:
                 sys.exit('Gateway was NOT recreated; configuration differences:\n' +
                          '\n'.join(differences))
+            print(json.dumps(service))
           - "{{ release_pi5_compose_argv | to_json }}"
           - "{{ release_pi5_gateway_id }}"
-      environment: "{{ release_pi5_compose_environment }}"
+          - "{{ release_pi5_web_id }}"
+      register: release_pi5_gateway_plan
+      environment: "{{ release_pi5_gateway_compose_environment }}"
+      changed_when: false
+
+    - name: Check host permissions and validate Caddy with the planned hardened image
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json
+            import subprocess
+            import sys
+
+            service = json.loads(sys.argv[1])
+            uid, gid = map(int, service['user'].split(':'))
+            binds = {v['target']: v['source'] for v in service['volumes'] if v['type'] == 'bind'}
+            # Drop all supplementary groups and the root identity. Check actual
+            # access (including parent traversal and ACLs), without reading keys.
+            permissions = """
+            import os, sys
+            os.setgroups([])
+            os.setgid(int(sys.argv[2]))
+            os.setuid(int(sys.argv[1]))
+            certs, logs = sys.argv[3:]
+            for path in (certs + '/cert.pem', certs + '/key.pem'):
+                if not os.path.isfile(path) or not os.access(path, os.R_OK):
+                    sys.exit('Gateway was NOT recreated; certificate is not readable: ' + path)
+            if not os.path.isdir(logs) or not os.access(logs, os.R_OK | os.W_OK | os.X_OK):
+                sys.exit('Gateway was NOT recreated; Caddy log directory is not accessible: ' + logs)
+            """
+            import textwrap
+            subprocess.check_call([sys.executable, '-c', textwrap.dedent(permissions),
+                                   str(uid), str(gid), binds['/srv/certs'], binds['/var/log/caddy']])
+            command = ['docker', 'run', '--rm', '--pull', 'never', '--network', 'none',
+                       '--user', service['user'], '--read-only', '--cap-drop', 'ALL',
+                       '--security-opt', 'no-new-privileges:true']
+            for tmpfs in service['tmpfs']:
+                command += ['--tmpfs', tmpfs]
+            for target in ('/srv/bluegreen', '/srv/certs'):
+                command += ['--mount', 'type=bind,src=' + binds[target] + ',dst=' + target + ',readonly']
+            # Caddy opens file log outputs while provisioning; mount them like the real gateway.
+            command += ['--mount', 'type=bind,src=' + binds['/var/log/caddy'] + ',dst=/var/log/caddy']
+            command += [service['image'], 'caddy', 'validate', '--config', '/srv/bluegreen/Caddyfile']
+            subprocess.check_call(command)
+          - "{{ release_pi5_gateway_plan.stdout }}"
+      environment: "{{ release_pi5_gateway_compose_environment }}"
       changed_when: false
 
     - name: Record that gateway recreation is starting
       ansible.builtin.set_fact:
         release_pi5_gateway_recreate_started: true
 
-    - name: Recreate only the gateway with its existing image and current Compose definition
+    - name: Recreate only the gateway with the committed web image and current Compose definition
       ansible.builtin.command:
         argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'gateway'] }}"
-      environment: "{{ release_pi5_compose_environment }}"
+      environment: "{{ release_pi5_gateway_compose_environment }}"
       changed_when: true
 
     - name: Resolve the recreated Pi5 gateway container ID
       ansible.builtin.command:
         argv: "{{ release_pi5_compose_argv + ['ps', '-a', '-q', 'gateway'] }}"
-      environment: "{{ release_pi5_compose_environment }}"
+      environment: "{{ release_pi5_gateway_compose_environment }}"
       register: release_pi5_recreated_gateway
       changed_when: false
 
@@ -97,6 +171,12 @@
       register: release_pi5_recreated_gateway_running
       changed_when: false
 
+    - name: Inspect the recreated gateway user
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{.Config.User}}' }}", "{{ release_pi5_gateway_id }}"]
+      register: release_pi5_recreated_gateway_user
+      changed_when: false
+
     - name: Inspect the recreated gateway log limits
       ansible.builtin.command:
         argv: [docker, inspect, --format, "{{ '{{json .HostConfig.LogConfig}}' }}", "{{ release_pi5_gateway_id }}"]
@@ -113,6 +193,7 @@
       ansible.builtin.assert:
         that:
           - release_pi5_recreated_gateway_running.stdout | trim == 'true'
+          - release_pi5_recreated_gateway_user.stdout | trim == (release_pi5_gateway_plan.stdout | from_json).user
           - (release_pi5_recreated_gateway_logging.stdout | from_json).Type == 'json-file'
           - (release_pi5_recreated_gateway_logging.stdout | from_json).Config['max-size'] == '10m'
           - (release_pi5_recreated_gateway_logging.stdout | from_json).Config['max-file'] == '3'
