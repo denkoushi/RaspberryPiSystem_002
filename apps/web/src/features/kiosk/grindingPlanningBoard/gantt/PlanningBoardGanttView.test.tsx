@@ -514,13 +514,14 @@ describe('forward PlanningBoardGanttView', () => {
     }
     return values;
   }
-  it('shows +N and two mini cards, toggles the tray and updates on scroll', async () => {
+  it('shows a slim edge without counts or cards, toggles the tray and updates on scroll', async () => {
     const values = laterProps();
     render(<PlanningBoardGanttView {...values} />);
     const column = screen.getByRole('button', { name: '305の先の待ち' });
-    expect(column).toHaveTextContent('+2');
+    expect(column).toHaveTextContent('');
     expect(column).toHaveClass('sticky', 'right-0');
-    expect(within(column).getAllByTestId(/planning-forward-later-mini-/)).toHaveLength(2);
+    expect(column.style.width).toBe('14px');
+    expect(within(column).queryAllByTestId(/planning-forward-later-/)).toHaveLength(0);
     fireEvent.click(column);
     const tray = screen.getByRole('region', { name: '305の先の待ち一覧' });
     expect(tray).toHaveClass('sticky', 'left-0', 'overflow-x-auto');
@@ -532,11 +533,11 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.scroll(viewport);
     await waitFor(() => expect(screen.queryByRole('button', { name: '305の先の待ち' })).toBeNull());
   });
-  it.each([[false, 'before'], [true, 'before'], [false, 'after']] as const)('drags a later card into the track (mini=%s, %s)', (mini, placement) => {
+  it.each(['before', 'after'] as const)('drags a later card into the track (%s)', (placement) => {
     const values = laterProps();
     render(<PlanningBoardGanttView {...values} />);
-    if (!mini) fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
-    const card = screen.getByTestId(`planning-forward-later-${mini ? 'mini' : 'card'}-b`);
+    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
+    const card = screen.getByTestId('planning-forward-later-card-b');
     const capture = vi.fn();
     card.setPointerCapture = capture;
     fireEvent.pointerDown(card, { clientX: 100, clientY: 100, button: 0 });
@@ -606,15 +607,6 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
     fireEvent.pointerUp(card, { clientX: 0, clientY: 120 });
     expect(values.onResourceReorder).not.toHaveBeenCalled();
-  });
-  it('lets touch drag a mini card sideways', () => {
-    const values = laterProps();
-    render(<PlanningBoardGanttView {...values} />);
-    const card = screen.getByTestId('planning-forward-later-mini-b');
-    fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 100, clientY: 20, button: 0 });
-    fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 0, clientY: 20 });
-    fireEvent.pointerUp(card, { pointerType: 'touch', clientX: 0, clientY: 20 });
-    expect(values.onResourceReorder).toHaveBeenCalledOnce();
   });
   it('starts touch dragging only after 8px vertically', () => {
     const values = laterProps();
