@@ -150,6 +150,7 @@ export type MachineSignalSettings = {
 };
 
 export type MachineSignalSensorInput = {
+  resourceCd: string | null;
   displayName: string | null;
   site: string | null;
   kind: MachineSignalSensorKind;
@@ -301,4 +302,15 @@ export async function getMachineSignalReportDates(): Promise<string[]> {
 export async function getMachineSignalWorsening(params: { date: string; site?: string }): Promise<MachineSignalWorsening[]> {
   const { data } = await api.get<{ worsening: MachineSignalWorsening[] }>('/machine-signal/worsening', { params });
   return data.worsening;
+}
+
+export type MachineSignalResourceUptime = {
+  endDate: string | null;
+  days: number;
+  resources: Array<{ resourceCd: string; signalNo: number; averageRunSeconds: number; recordDays: number }>;
+};
+
+export async function getMachineSignalResourceUptime(days = 30): Promise<MachineSignalResourceUptime> {
+  const { data } = await api.get<MachineSignalResourceUptime>('/machine-signal/resource-uptime', { params: { days } });
+  return data;
 }

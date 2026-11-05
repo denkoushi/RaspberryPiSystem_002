@@ -11,6 +11,9 @@ import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './Pl
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
+const uptimeQuery = vi.hoisted(() => vi.fn((): { data: { resources: Array<{ resourceCd: string; averageRunSeconds: number }> } | undefined } => ({ data: undefined })));
+vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: uptimeQuery }));
+
 // Exercise the controlled view with the same state ownership as the page.
 const PlanningBoardGanttView = forwardRef<import('./PlanningBoardGanttView').PlanningBoardGanttHandle,
   Omit<React.ComponentPropsWithoutRef<typeof ControlledPlanningBoardGanttView>, 'focusedSeiban' | 'onFocusedSeibanChange'>>(
@@ -47,6 +50,7 @@ function props(items: GrindingPlanningBoardItem[] = [item()]) {
 }
 describe('PlanningBoardGanttView', () => {
   beforeEach(() => {
+    uptimeQuery.mockReturnValue({ data: undefined });
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => {
       const lane = document.querySelector('[data-gantt-lane-resource="305"]');
@@ -54,6 +58,29 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it('shows a normalized resource monthly average only in forward, without changing lane height', () => {
+    uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: ' ３０５ ', averageRunSeconds: 28080 }] } });
+    const values = props();
+    const layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
+    const { rerender } = render(<PlanningBoardGanttView {...values} layout={layout} />);
+    const average = screen.getByTitle('直近30日の1日あたり稼働時間の平均');
+    expect(average).toHaveTextContent('月平均7.8h');
+    const lane = screen.getByTestId(`planning-forward-lane-${layout.groups[0]!.rows[0]!.key}`);
+    expect(lane).toHaveStyle({ minHeight: '76px' });
+    expect(average.parentElement).toHaveClass('justify-evenly', 'py-0.5');
+    expect(average.parentElement).not.toHaveClass('gap-1');
+    rerender(<PlanningBoardGanttView {...values} />);
+    expect(screen.queryByText('月平均')).toBeNull();
+    expect(uptimeQuery).toHaveBeenLastCalledWith(false);
+    uptimeQuery.mockReturnValue({ data: { resources: [] } });
+    rerender(<PlanningBoardGanttView {...values} layout={layout} />);
+    expect(screen.queryByText('月平均')).toBeNull();
+    uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: '305', averageRunSeconds: 0 }] } });
+    rerender(<PlanningBoardGanttView {...values} layout={layout} />);
+    expect(screen.getByText('0.0h')).toBeInTheDocument();
+  });
+
   it.each([false, true])('shows placement before forward process chips and falls back to material (chips=%s)', async (withChips) => {
     const placement = { shelves: [
       { shelfCodeRaw: 'A', label: '棚A', placedAt: '2026-10-24T06:20:00Z' },

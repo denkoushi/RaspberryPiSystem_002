@@ -186,6 +186,7 @@ export function SingleSensorEditor({
 }) {
   const update = useUpdateMachineSignalSensor();
   const [displayName, setDisplayName] = useState(sensor.displayName ?? '');
+  const [resourceCd, setResourceCd] = useState(sensor.resourceCd ?? '');
   const [site, setSite] = useState(sensor.site ?? '');
   const [kind, setKind] = useState(sensor.kind);
   const [hidden, setHidden] = useState(sensor.hidden);
@@ -203,6 +204,7 @@ export function SingleSensorEditor({
       signalNo: sensor.signalNo,
       input: {
         displayName: displayName.trim() || null,
+        resourceCd: resourceCd.trim() || null,
         site: site.trim() || null,
         kind,
         hidden,
@@ -258,6 +260,8 @@ export function SingleSensorEditor({
           placeholder={sensor.sourceMachineName}
           onChange={(event) => setDisplayName(event.target.value)}
         />
+        <label htmlFor="msa-resource-cd">資源CD</label>
+        <input id="msa-resource-cd" className="in w" value={resourceCd} onChange={(event) => setResourceCd(event.target.value)} />
         <SiteField sites={sites} value={site || null} onChange={setSite} />
         <span className="l">種別</span>
         <Segmented label="種別" options={KINDS.map((value) => ({ value, label: SENSOR_KIND_LABELS[value] }))} value={kind} onChange={setKind} />

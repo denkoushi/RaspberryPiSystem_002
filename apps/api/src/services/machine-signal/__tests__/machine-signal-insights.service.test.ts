@@ -14,7 +14,7 @@ vi.mock('../machine-signal-day-summary.cache.js', () => ({ loadSignalDaySummarie
 
 import { buildSignalDaySummary } from '../machine-signal-insights.aggregate.js';
 import {
-  getMachineSignalDay, getMachineSignalRange, getMachineSignalTrend, getMachineSignalWorsening,
+  getMachineSignalResourceUptime, getMachineSignalDay, getMachineSignalRange, getMachineSignalTrend, getMachineSignalWorsening,
   listMachineSignalReportDates, listMachineSignalSensorsForAdmin, MACHINE_SIGNAL_RANGE_MAX_DAYS,
 } from '../machine-signal-insights.service.js';
 import type { MachineSignalSensorDto } from '../machine-signal-settings.service.js';
@@ -22,7 +22,7 @@ import { DEFAULT_SIGNAL_THRESHOLDS } from '../signal-metrics.js';
 
 const date = (key: string) => new Date(`${key}T00:00:00.000Z`);
 const sensor = (signalNo = 1, patch: Partial<MachineSignalSensorDto> = {}): MachineSignalSensorDto => ({
-  signalNo, sourceMachineName: '機械', displayName: null, site: '第1工場', kind: 'MACHINE', hidden: false,
+  signalNo, resourceCd: null, sourceMachineName: '機械', displayName: null, site: '第1工場', kind: 'MACHINE', hidden: false,
   categoryOverrides: {}, plannedStartMinute: null, plannedEndMinute: null, runningKw: null, idleKw: null, ...patch,
 });
 const sensors = [sensor(), sensor(2, { hidden: true }), sensor(3, { site: '第2工場' }), sensor(4, { site: null })];
@@ -189,5 +189,43 @@ describe('listMachineSignalReportDates', () => {
     expect(await listMachineSignalReportDates()).toEqual(['2026-09-01', '2026-10-01']);
     expect(mocks.groupBy).toHaveBeenCalledExactlyOnceWith({ by: ['reportDate'] });
     expect(mocks.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('getMachineSignalResourceUptime', () => {
+  it('returns no resources when there are no reports', async () => {
+    mocks.findFirst.mockResolvedValue(null);
+    expect(await getMachineSignalResourceUptime({ days: 30 })).toEqual({ endDate: null, days: 30, resources: [] });
+    expect(mocks.summaries).not.toHaveBeenCalled();
+  });
+  it('averages recorded days including zero, rounds seconds, and chooses the smallest signalNo even when hidden', async () => {
+    mocks.findFirst.mockResolvedValue({ reportDate: date('2026-11-05') });
+    const chosen = sensor(2, { resourceCd: '021', hidden: true });
+    const empty = sensor(4, { resourceCd: '305' });
+    const stopped = sensor(5, { resourceCd: '581' });
+    mocks.sensors.mockResolvedValue([sensor(3, { resourceCd: '021' }), empty, sensor(), chosen, stopped]);
+    const summary = (signalNo: number, hasRecord: boolean, runSeconds: number) => ({ signalNo, hasRecord, runSeconds });
+    mocks.summaries.mockResolvedValue([
+      summary(2, true, 101), summary(2, true, 0), summary(2, false, 1000),
+      summary(4, false, 0), summary(5, true, 0),
+    ]);
+    expect(await getMachineSignalResourceUptime({ days: 30 })).toEqual({ endDate: '2026-11-05', days: 30, resources: [
+      { resourceCd: '021', signalNo: 2, averageRunSeconds: 51, recordDays: 2 },
+      { resourceCd: '581', signalNo: 5, averageRunSeconds: 0, recordDays: 1 },
+    ] });
+    expect(mocks.findFirst).toHaveBeenCalledWith({ orderBy: { reportDate: 'desc' }, select: { reportDate: true } });
+    expect(mocks.summaries).toHaveBeenCalledWith({ sensors: [chosen, empty, stopped], thresholds: DEFAULT_SIGNAL_THRESHOLDS,
+      from: '2026-10-07', to: '2026-11-05' });
+  });
+  it.each([1, 92])('uses an inclusive %i-day window', async (days) => {
+    mocks.findFirst.mockResolvedValue({ reportDate: date('2026-11-05') });
+    mocks.sensors.mockResolvedValue([sensor(1, { resourceCd: '305' })]);
+    await getMachineSignalResourceUptime({ days });
+    expect(mocks.summaries.mock.calls[0][0]).toMatchObject({ from: days === 1 ? '2026-11-05' : '2026-08-06', to: '2026-11-05' });
+  });
+  it('skips summaries when no sensors have resource codes', async () => {
+    mocks.findFirst.mockResolvedValue({ reportDate: date('2026-11-05') });
+    expect(await getMachineSignalResourceUptime({ days: 30 })).toEqual({ endDate: '2026-11-05', days: 30, resources: [] });
+    expect(mocks.summaries).not.toHaveBeenCalled();
   });
 });

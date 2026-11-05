@@ -9,6 +9,8 @@ import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { ComponentProps } from 'react';
 
+vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
+
 const renders = vi.hoisted(() => [] as string[]);
 vi.mock('./PlanningBoardForwardGanttRow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./PlanningBoardForwardGanttRow')>();

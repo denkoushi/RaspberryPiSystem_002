@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useMachineSignalResourceUptime } from '../../../../api/hooks/machine-signal';
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { pageZoom } from '../pageZoom';
 import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
@@ -79,6 +80,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingRowIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
 }, ref) {
+  const uptime = useMachineSignalResourceUptime(currentLayout.mode === 'forward');
+  const uptimeByResource = useMemo(() => new Map(uptime.data?.resources.map((entry) =>
+    [normalizeMachineName(entry.resourceCd), entry.averageRunSeconds])), [uptime.data]);
   const incomingChips = usePlanningBoardProcessChips();
   const incomingPlacements = usePlanningBoardPlacementByPart();
   const previousDetails = useRef({ chips: incomingChips, placements: incomingPlacements });
@@ -342,7 +346,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     disabled={resource === '未設定' || dailyHoursByResource[resource] === 24 || capacityPending || interaction.disabled}
     onClick={() => onBreaksChange?.(resource, !runsThroughBreaks?.has(resource))}>休憩</button>, [runsThroughBreaks, dailyHoursByResource, capacityPending, interaction.disabled, onBreaksChange]);
   const resourceLabel = useCallback((resource: string, label: string) => <>
-    {laneHandle(resource, ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource]), 'min-h-7 font-bold')}
+    {laneHandle(resource, ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource]), 'min-h-5 font-bold')}
     <div className="flex gap-1" role="group" aria-label={`${resource}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
         className={clsx('h-7 w-8 shrink-0 rounded border px-0 font-mono text-[13px] font-bold leading-none',
@@ -352,7 +356,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         onClick={() => onCapacityChange(resource, hours)}>{hours}H</button>)}
       {breaksButton(resource)}
     </div>
-  </>, [laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, onCapacityChange, breaksButton]);
+    {uptimeByResource.has(normalizeMachineName(resource)) && <div className="flex h-4 items-center gap-1.5 whitespace-nowrap leading-4" title="直近30日の1日あたり稼働時間の平均">
+      <span className="text-[12px] font-bold text-slate-300">月平均</span>
+      <span className="font-mono text-[15px] font-bold tabular-nums text-emerald-300">{(uptimeByResource.get(normalizeMachineName(resource))! / 3600).toFixed(1)}h</span>
+    </div>}
+  </>, [laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, onCapacityChange, breaksButton, uptimeByResource]);
   const previousLabels = useRef<{ render: typeof resourceLabel; labels: Map<string, { text: string; node: React.ReactNode }> } | null>(null);
   const resourceLabels = useMemo(() => new Map(layout.groups.filter((group) => group.resource).map((group) => {
     const old = previousLabels.current?.render === resourceLabel ? previousLabels.current.labels.get(group.resource!) : undefined;
