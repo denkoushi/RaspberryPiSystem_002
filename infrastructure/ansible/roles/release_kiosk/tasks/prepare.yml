@@ -514,6 +514,26 @@
         + ([{'src': release_kiosk_stage_dir ~ '/torque-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/torque-agent/.env', 'mode': '0600'}] if 'torque-agent' in release_kiosk_services else [])
       }}
 
+- name: Persist this run's prepared Pi4 cleanup manifest
+  ansible.builtin.copy:
+    dest: "{{ release_kiosk_run_dir }}/prepared.json"
+    content: >-
+      {{ {
+        'candidate_images': release_kiosk_pull.results | default([])
+          | selectattr('rc', 'defined') | selectattr('rc', 'equalto', 0)
+          | selectattr('changed', 'equalto', true) | map(attribute='item')
+          | map('extract', release_kiosk_candidate_images) | list,
+        'rollback_images': release_kiosk_captured_services | default([])
+          | map('extract', release_kiosk_rollback_images) | list,
+        'backup_files': release_kiosk_install.results | default([])
+          | selectattr('changed', 'equalto', true)
+          | selectattr('backup_file', 'defined') | map(attribute='backup_file') | list
+      } | to_json }}
+    owner: root
+    group: root
+    mode: '0600'
+  when: not (release_torque_cutover | default(false) | bool)
+
 - name: Seal this run's prepared kiosk identity
   ansible.builtin.set_fact:
     release_kiosk_prepared: true

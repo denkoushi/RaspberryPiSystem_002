@@ -1,4 +1,13 @@
 ---
+- name: Persist the Pi4 switch boundary before mutation
+  ansible.builtin.copy:
+    dest: "{{ release_kiosk_run_dir }}/switch-attempted"
+    content: "{{ release_run_id }}\n"
+    owner: root
+    group: root
+    mode: '0600'
+  when: not (release_torque_cutover | default(false) | bool)
+
 - name: Create stable Pi4 release directories
   ansible.builtin.file:
     path: "{{ item }}"

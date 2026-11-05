@@ -134,6 +134,8 @@ scripts/update-all-clients.sh
 - `standard-ansible-release.py` は対象SHA、inventory、対象host、systemd実行単位を解決する。
 - `deploy-release-standard.yml` は Pi5 更新後、通常の Pi4 全選択端末を `strategy: free`（最大 forks=5 の task 並列）で先に prepare し、全台成功後だけ切り替えの波へ進む。失敗・到達不能なら到達可能な端末の候補と run データを回収し、Pi4 の切り替えと Pi3 を停止する。到達不能端末の未回収データは復旧後に確認する。波は linear を維持し、`max_fail_percentage: 0` による停止を有効にする。通常波の第1台は `release_pi4_canary_host`（既定 `raspi4-kensaku-stonebase01`）が選択対象ならその端末、それ以外は inventory 順。前の波の失敗は明示ゲートで後続波の準備データを回収して止める。トルク経路は既存の PREPARED 集約・linear・`serial: 1`、初回導入は role 内の prepare を維持する。実fleetでの時間計測は未実施。
 - `release_pi5` はPi5のimage、migration、health、slot切替、失敗時rollbackをAnsible role内で確認する。
+通常Pi4リリースのAnsibleが非ゼロで終了した場合、entry scriptは同じinventory・実効limit・run IDで一度だけ後処理を実行する（上限40分）。`prepared.json` があり `switch-attempted` がない端末だけ、このrunのrollback tag、新規pull候補、backup、run directoryを回収する。切り替え開始済み端末の復旧証跡は保持し、後処理の失敗はWARNINGとして元の終了コードを維持する。entry script自体がsignalで終了した場合は後処理が実行されないことがあり、到達不能端末とあわせて復旧後に残存データを確認する。
+
 - `release_kiosk` はPi4のimage/configと有効agentのhealthを端末ごとに確認する。
 - `release_signage` はPi3の検証済み配布artifactをatomicにstageし、端末側のGitや外部HTTP取得を行わない。
 

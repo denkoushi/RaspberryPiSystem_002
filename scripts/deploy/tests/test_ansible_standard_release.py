@@ -2026,6 +2026,131 @@ esac
         self.assertEqual(result.returncode, 0, output)
         self.assertIn('"msg": "GID=1000"', output)
 
+    def test_pi4_unrescued_first_wave_failure_cold_cleanup(self) -> None:
+        prepare_tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text())
+        manifest = next(task for task in prepare_tasks if task["name"] == "Persist this run's prepared Pi4 cleanup manifest")
+        switch_tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text())
+        marker = switch_tasks[0]
+        self.assertIn("switch-attempted", marker["ansible.builtin.copy"]["dest"])
+        pi4 = next(play for play in yaml.safe_load(PLAYBOOK) if play.get("roles") == [{"role": "release_kiosk"}])
+        cleanup = yaml.safe_load((ANSIBLE / "playbooks/release-pi4-failure-cleanup.yml").read_text())[0]
+        # Keep all cleanup actions; replace only the OS updater guards, as in the wave mock.
+        block = next(task for task in cleanup["tasks"] if "block" in task)
+        self.assertIn("os-security-update-release-end.yml", block["always"][0]["ansible.builtin.import_tasks"])
+        for tasks in (block["block"], block["always"]):
+            for task in tasks:
+                if "ansible.builtin.import_tasks" in task:
+                    task.pop("ansible.builtin.import_tasks")
+                    task["ansible.builtin.debug"] = {"msg": "GUARD {{ inventory_hostname }}"}
+        for task in (manifest, marker):
+            task["ansible.builtin.copy"].pop("owner")
+            task["ansible.builtin.copy"].pop("group")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_id = "cold-wave-001"
+            run_root = root / "runs"
+            images = root / "images"
+            images.mkdir()
+            (root / "bin").mkdir()
+            docker = root / "bin/docker"
+            docker.write_text(
+                f"#!{sys.executable}\n"
+                "import pathlib, sys\n"
+                "assert sys.argv[1:3] == ['image', 'rm'] and len(sys.argv) == 4\n"
+                f"image = pathlib.Path({str(images)!r}) / sys.argv[3].replace(':', '_')\n"
+                "image.unlink()\n"
+            )
+            docker.chmod(0o755)
+            hosts = [f"kiosk-{index:02d}" for index in range(1, 8)]
+            (root / "inventory.yml").write_text(yaml.safe_dump({"all": {"children": {
+                "kiosk": {"hosts": {host: {"ansible_connection": "local", "ansible_python_interpreter": sys.executable}
+                                     for host in hosts + ["no-data"]}}
+            }}}))
+            for host in hosts:
+                run_dir = run_root / run_id / host
+                run_dir.mkdir(parents=True)
+                (root / f"{host}.backup").write_text("backup")
+                for ref in (f"rollback:{host}", f"candidate:{host}", f"existing:{host}", f"failed:{host}"):
+                    (images / ref.replace(":", "_")).touch()
+            variables = {
+                "release_run_id": run_id,
+                "release_kiosk_run_root": str(run_root),
+                "release_kiosk_run_dir": "{{ release_kiosk_run_root }}/{{ release_run_id }}/{{ inventory_hostname }}",
+                "release_kiosk_candidate_images": {"new": "candidate:{{ inventory_hostname }}", "existing": "existing:{{ inventory_hostname }}", "failed": "failed:{{ inventory_hostname }}"},
+                "release_kiosk_pull": {"results": [{"item": "new", "rc": 0, "changed": True}, {"item": "existing", "rc": 0, "changed": False}, {"item": "failed", "rc": 1, "changed": True}]},
+                "release_kiosk_captured_services": ["old"],
+                "release_kiosk_rollback_images": {"old": "rollback:{{ inventory_hostname }}"},
+                "release_kiosk_install": {"results": [{"changed": True, "backup_file": str(root / "{{ inventory_hostname }}.backup")}, {"changed": False, "backup_file": str(root / "untouched.backup")}]},
+            }
+            (root / "untouched.backup").touch()
+            simulated = [
+                {"hosts": "kiosk:!no-data", "gather_facts": False, "become": False, "vars": variables, "tasks": [manifest]},
+                {"hosts": "kiosk", "gather_facts": False, "become": False, "vars": variables,
+                 **{key: pi4[key] for key in ("strategy", "serial", "max_fail_percentage", "order")},
+                 "tasks": [marker, {"ansible.builtin.fail": {"msg": "unrescued first wave failure"}}]},
+            ]
+            (root / "wave.yml").write_text(yaml.safe_dump(simulated))
+            failed = subprocess.run(["ansible-playbook", "-i", str(root / "inventory.yml"), str(root / "wave.yml")], capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0, failed.stdout + failed.stderr)
+            self.assertIn("unrescued first wave failure", failed.stdout)
+            for host in hosts:
+                self.assertTrue((run_root / run_id / host / "prepared.json").exists())
+                self.assertEqual((run_root / run_id / host / "switch-attempted").exists(), host == hosts[0])
+            cleanup.update(become=False, vars=variables, environment={"PATH": f"{root / 'bin'}:{os.environ['PATH']}"})
+            (root / "cleanup.yml").write_text(yaml.safe_dump([cleanup]))
+            cleaned = subprocess.run(["ansible-playbook", "-i", str(root / "inventory.yml"), str(root / "cleanup.yml")], capture_output=True, text=True)
+            self.assertEqual(cleaned.returncode, 0, cleaned.stdout + cleaned.stderr)
+            self.assertIn("kiosk-01: skipped-switched", cleaned.stdout)
+            self.assertIn("no-data: no-data", cleaned.stdout)
+            for host in hosts:
+                preserved = host == hosts[0]
+                self.assertEqual((run_root / run_id / host).exists(), preserved)
+                self.assertEqual((root / f"{host}.backup").exists(), preserved)
+                for kind in ("rollback", "candidate"):
+                    self.assertEqual((images / f"{kind}_{host}").exists(), preserved)
+                for kind in ("existing", "failed"):
+                    self.assertTrue((images / f"{kind}_{host}").exists())
+            self.assertTrue((root / "untouched.backup").exists())
+
+    def test_entry_pi4_failure_cleanup_preserves_result_and_scope(self) -> None:
+        build = STANDARD_RELEASE["pi4_failure_cleanup_argv"]
+        execute = STANDARD_RELEASE["execute_ansible_with_cleanup"]
+        inventory, limit, run_id = "inventory.yml", "kiosk-a:kiosk-b", "cold-wave-001"
+        for profiles, torque, returncode, cleanup_outcome in (
+            (("pi4",), False, 2, subprocess.CompletedProcess([], 0)),
+            (("pi5", "pi4"), False, 7, subprocess.CalledProcessError(3, "cleanup")),
+            (("pi4",), False, 2, subprocess.TimeoutExpired("cleanup", 2400)),
+            (("pi4",), False, 0, None),
+            (("pi5", "pi4"), True, 2, None),
+            (("pi3",), False, 2, None),
+        ):
+            with self.subTest(profiles=profiles, torque=torque, returncode=returncode, cleanup=cleanup_outcome):
+                command = STANDARD_RELEASE["ansible_argv"](inventory, limit, profiles, {"release_run_id": run_id}, torque_cutover=torque)
+                cleanup_command = build(inventory, limit, profiles, run_id, torque_cutover=torque)
+                outcomes = [subprocess.CompletedProcess(command, returncode)]
+                if cleanup_outcome is not None:
+                    outcomes.append(cleanup_outcome)
+                outcomes.append(subprocess.CompletedProcess([], 0))
+                with mock.patch("subprocess.run", side_effect=outcomes) as run, mock.patch("sys.stderr") as errors:
+                    self.assertEqual(execute(command, run_id, failure_cleanup_command=cleanup_command), returncode)
+                self.assertEqual(run.call_count, 3 if cleanup_outcome is not None else 2)
+                self.assertEqual(run.call_args_list[-1].args[0][-3:], ["remove-run", "--run-id", run_id])
+                if cleanup_outcome is not None:
+                    call = run.call_args_list[1]
+                    argv = call.args[0]
+                    self.assertEqual(argv[argv.index("-i") + 1], inventory)
+                    self.assertEqual(argv[argv.index("--limit") + 1], limit)
+                    self.assertEqual(json.loads(argv[argv.index("--extra-vars") + 1]), {"release_run_id": run_id})
+                    self.assertEqual(argv[3], str(ANSIBLE / "playbooks/release-pi4-failure-cleanup.yml"))
+                    self.assertEqual(call.kwargs["env"], run.call_args_list[0].kwargs["env"])
+                    self.assertGreater(call.kwargs["timeout"], 0)
+                    if isinstance(cleanup_outcome, Exception):
+                        self.assertIn("WARNING", "".join(str(call) for call in errors.write.call_args_list))
+                elif returncode != 0:
+                    self.assertIsNone(cleanup_command)
+        self.assertNotIn("--limit", build(inventory, "", ("pi4",), run_id))
+
     def test_pi4_waves_stop_before_the_next_wave_after_a_rescued_failure(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
         pi4 = next(play for play in plays if play.get("roles") == [{"role": "release_kiosk"}])
