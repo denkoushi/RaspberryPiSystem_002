@@ -7,6 +7,7 @@ import {
 } from '../load-balancing-workspace-source-cache.js';
 
 const key = buildLoadBalancingWorkspaceSourceKey({
+  dueSource: 'excel',
   siteKey: '第2工場',
   deviceScopeKey: 'kiosk-1',
   fromMonth: '2026-09',
@@ -61,6 +62,7 @@ describe('readLoadBalancingWorkspaceSourceWithCache', () => {
     expect(first.source).toBe(second.source);
 
     const otherKey = buildLoadBalancingWorkspaceSourceKey({
+      dueSource: 'excel',
       siteKey: '第2工場',
       deviceScopeKey: 'kiosk-1',
       fromMonth: '2026-10',
@@ -79,5 +81,16 @@ describe('readLoadBalancingWorkspaceSourceWithCache', () => {
     const retried = await readLoadBalancingWorkspaceSourceWithCache({ key, generationToken: 'g1', load });
 
     expect(retried.source.machineNames.S1).toBe('ok');
+  });
+
+  it('does not reuse sources across due sources', async () => {
+    const params = { siteKey: 'site', deviceScopeKey: 'device', fromMonth: '2026-09', toMonth: '2027-02', today: '2026-09-30' };
+    const excelKey = buildLoadBalancingWorkspaceSourceKey({ ...params, dueSource: 'excel' });
+    const scawKey = buildLoadBalancingWorkspaceSourceKey({ ...params, dueSource: 'scaw' });
+    expect(excelKey).not.toBe(scawKey);
+    await readLoadBalancingWorkspaceSourceWithCache({ key: excelKey, generationToken: 'g1', load: async () => source('excel') });
+    const result = await readLoadBalancingWorkspaceSourceWithCache({ key: scawKey, generationToken: 'g1', load: async () => source('scaw') });
+    expect(result.cacheHit).toBe(false);
+    expect(result.source.machineNames.S1).toBe('scaw');
   });
 });

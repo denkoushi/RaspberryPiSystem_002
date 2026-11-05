@@ -355,20 +355,20 @@ describe('productionScheduleQueryKeys', () => {
   });
 
   it('preserves loadBalancingWorkspace values and arity', () => {
-    expect(productionScheduleQueryKeys.loadBalancingWorkspace({ fromMonth: '2026-10', toMonth: '2026-11', targetDeviceScopeKey: 'device-1' })).toEqual(
-      ['kiosk-production-schedule-load-balancing-workspace', { fromMonth: '2026-10', toMonth: '2026-11', targetDeviceScopeKey: 'device-1' }]
+    expect(productionScheduleQueryKeys.loadBalancingWorkspace({ dueSource: 'excel', fromMonth: '2026-10', toMonth: '2026-11', targetDeviceScopeKey: 'device-1' })).toEqual(
+      ['kiosk-production-schedule-load-balancing-workspace', { dueSource: 'excel', fromMonth: '2026-10', toMonth: '2026-11', targetDeviceScopeKey: 'device-1' }]
     );
-    expect(productionScheduleQueryKeys.loadBalancingWorkspace({ fromMonth: '', toMonth: '' })).toEqual(
-      ['kiosk-production-schedule-load-balancing-workspace', { fromMonth: '', toMonth: '' }]
+    expect(productionScheduleQueryKeys.loadBalancingWorkspace({ dueSource: 'excel', fromMonth: '', toMonth: '' })).toEqual(
+      ['kiosk-production-schedule-load-balancing-workspace', { dueSource: 'excel', fromMonth: '', toMonth: '' }]
     );
   });
 
   it('preserves loadBalancingWorkspaceDay values and arity', () => {
-    expect(productionScheduleQueryKeys.loadBalancingWorkspaceDay({ month: '2026-10', resourceCd: 'resource-1', fromMonth: '2026-09', toMonth: '2026-11', targetDeviceScopeKey: 'device-1' })).toEqual(
-      ['kiosk-production-schedule-load-balancing-workspace-day', { month: '2026-10', resourceCd: 'resource-1', fromMonth: '2026-09', toMonth: '2026-11', targetDeviceScopeKey: 'device-1' }]
+    expect(productionScheduleQueryKeys.loadBalancingWorkspaceDay({ dueSource: 'excel', month: '2026-10', resourceCd: 'resource-1', fromMonth: '2026-09', toMonth: '2026-11', targetDeviceScopeKey: 'device-1' })).toEqual(
+      ['kiosk-production-schedule-load-balancing-workspace-day', { dueSource: 'excel', month: '2026-10', resourceCd: 'resource-1', fromMonth: '2026-09', toMonth: '2026-11', targetDeviceScopeKey: 'device-1' }]
     );
-    expect(productionScheduleQueryKeys.loadBalancingWorkspaceDay({ month: '', resourceCd: '' })).toEqual(
-      ['kiosk-production-schedule-load-balancing-workspace-day', { month: '', resourceCd: '' }]
+    expect(productionScheduleQueryKeys.loadBalancingWorkspaceDay({ dueSource: 'excel', month: '', resourceCd: '' })).toEqual(
+      ['kiosk-production-schedule-load-balancing-workspace-day', { dueSource: 'excel', month: '', resourceCd: '' }]
     );
   });
 
@@ -406,5 +406,14 @@ describe('productionScheduleQueryKeys', () => {
     expect(productionScheduleQueryKeys.resourceCodeMappings('')).toEqual(
       ['production-schedule-resource-code-mappings', '']
     );
+  });
+
+  it('separates workspace and day caches by due source', () => {
+    const range = { fromMonth: '2026-10', toMonth: '2026-11' };
+    expect(productionScheduleQueryKeys.loadBalancingWorkspace({ ...range, dueSource: 'excel' }))
+      .not.toEqual(productionScheduleQueryKeys.loadBalancingWorkspace({ ...range, dueSource: 'scaw' }));
+    const day = { ...range, month: '2026-10', resourceCd: '033' };
+    expect(productionScheduleQueryKeys.loadBalancingWorkspaceDay({ ...day, dueSource: 'excel' }))
+      .not.toEqual(productionScheduleQueryKeys.loadBalancingWorkspaceDay({ ...day, dueSource: 'scaw' }));
   });
 });

@@ -1,5 +1,6 @@
 import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../constants.js';
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { createGrindingPlanningBoardPerformance } from '../grinding-planning-board-performance.js';
 import { readGrindingPlanningBoardSnapshotGenerationToken } from '../leaderboard/leaderboard-shell-snapshot-generation.js';
 import { resolveSeibanMachineDisplayNamesForWinnerRows } from '../seiban-machine-display-names.service.js';
@@ -52,6 +53,7 @@ export function resolveLoadBalancingToday(now: Date = new Date()): Date {
 async function readWorkspaceSource(params: {
   siteKey: string;
   deviceScopeKey: string;
+  dueSource: BoardDueSource;
   range: ReturnType<typeof parseYearMonthRangeInclusive>;
   today: Date;
   perf: Performance;
@@ -61,6 +63,7 @@ async function readWorkspaceSource(params: {
     key: buildLoadBalancingWorkspaceSourceKey({
       siteKey: params.siteKey,
       deviceScopeKey: params.deviceScopeKey,
+      dueSource: params.dueSource,
       fromMonth: params.range.fromMonth,
       toMonth: params.range.toMonth,
       today: formatUtcDateKey(params.today)
@@ -72,6 +75,7 @@ async function readWorkspaceSource(params: {
         listStartDateLevelingQueryRows({
           siteKey: params.siteKey,
           deviceScopeKey: params.deviceScopeKey,
+          dueSource: params.dueSource,
           rangeStart: params.range.rangeStart,
           rangeEndExclusive: params.range.rangeEndExclusive,
           includeOverdueBefore: params.today,
@@ -90,6 +94,7 @@ async function readWorkspaceSource(params: {
 export async function getProductionScheduleLoadBalancingWorkspace(params: {
   siteKeyInput: string;
   deviceScopeKey: string;
+  dueSource: BoardDueSource;
   fromMonth: string;
   toMonth: string;
   now?: Date;
@@ -104,7 +109,7 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
   const today = resolveLoadBalancingToday(params.now);
 
   const [{ source, cacheHit }, baseCap, monthlyCap, classes, calendars, rules] = await Promise.all([
-    readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, range, today, perf }),
+    readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource, range, today, perf }),
     listLoadBalancingCapacityBaseResolved(siteKey),
     listLoadBalancingMonthlyCapacityRangeResolved({
       siteKeyInput: siteKey,
@@ -151,6 +156,7 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
 export async function getProductionScheduleLoadBalancingWorkspaceDay(params: {
   siteKeyInput: string;
   deviceScopeKey: string;
+  dueSource: BoardDueSource;
   month: string;
   resourceCd: string;
   /** 画面の表示範囲。渡されて month を含むとき、ワークスペースと同じ保存済み元データを使う */
@@ -171,7 +177,7 @@ export async function getProductionScheduleLoadBalancingWorkspaceDay(params: {
 
   const readRows = async () => {
     if (viewRange) {
-      const { source } = await readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, range: viewRange, today, perf });
+      const { source } = await readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource, range: viewRange, today, perf });
       return source.queryRows;
     }
     const winnerRowIds = await perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds());
@@ -179,6 +185,7 @@ export async function getProductionScheduleLoadBalancingWorkspaceDay(params: {
       listStartDateLevelingQueryRows({
         siteKey,
         deviceScopeKey: params.deviceScopeKey,
+        dueSource: params.dueSource,
         rangeStart: monthRange.rangeStart,
         rangeEndExclusive: monthRange.rangeEndExclusive,
         resourceCdFilter: resourceCd,

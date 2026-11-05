@@ -8,15 +8,17 @@ import {
   getProductionScheduleLoadBalancingWorkspaceDay
 } from '../../../services/production-schedule/load-balancing/load-balancing-workspace.service.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
-import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
+import { productionScheduleQuerySchema, toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
 
 const workspaceQuerySchema = z.object({
+  dueSource: productionScheduleQuerySchema.shape.dueSource,
   fromMonth: z.string().regex(/^\d{4}-\d{2}$/),
   toMonth: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });
 
 const workspaceDayQuerySchema = z.object({
+  dueSource: productionScheduleQuerySchema.shape.dueSource,
   month: z.string().regex(/^\d{4}-\d{2}$/),
   resourceCd: z.string().trim().min(1).max(20),
   fromMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
@@ -59,6 +61,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
     try {
       return await getProductionScheduleLoadBalancingWorkspace({
+        dueSource: query.dueSource,
         siteKeyInput: resolvedSiteKey,
         deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
         fromMonth: query.fromMonth,
@@ -83,6 +86,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
     try {
       return await getProductionScheduleLoadBalancingWorkspaceDay({
+        dueSource: query.dueSource,
         siteKeyInput: resolvedSiteKey,
         deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
         month: query.month,
