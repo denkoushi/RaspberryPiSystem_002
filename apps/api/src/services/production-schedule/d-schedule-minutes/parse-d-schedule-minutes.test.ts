@@ -354,10 +354,28 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(await parse(fixture)).toMatchObject({ ok: false, reason: 'MISSING_HEADERS' });
   });
 
-  it.each(['製番', '部品完成'])('fails clearly on duplicate required header %s', async (label) => {
+  it('fails clearly on duplicate required header 部品完成', async () => {
     const fixture = buildWorkbook();
-    fixture.sheet.getCell(3, 20).value = label;
-    expect(await parse(fixture)).toMatchObject({ ok: false, reason: expect.stringContaining(`DUPLICATE_REQUIRED_HEADER: ${label}`) });
+    fixture.sheet.getCell(3, 20).value = '部品完成';
+    expect(await parse(fixture)).toMatchObject({ ok: false, reason: expect.stringContaining('DUPLICATE_REQUIRED_HEADER: 部品完成') });
+  });
+
+  it('fails clearly when two 製番 columns both hold 4-row blocks', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(3, 20).value = '製番';
+    for (let row = 1; row <= fixture.sheet.rowCount; row++) fixture.sheet.getCell(row, 20).value = fixture.sheet.getCell(row, 2).value;
+    fixture.sheet.getCell(3, 20).value = '製番';
+    expect(await parse(fixture)).toMatchObject({ ok: false, reason: expect.stringContaining('DUPLICATE_REQUIRED_HEADER: 製番') });
+  });
+
+  it('uses the block key column when a visible stacked display column is also labelled 製番', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(4, 20).value = '仕様';
+    fixture.sheet.getCell(5, 20).value = '製番';
+    for (let index = 0; index < 5; index++) fixture.sheet.getCell(fixture.start + index * 4 + 1, 20).value = `AB1C234${5 + index}`;
+    const result = success(await parse(fixture));
+    expect(result.blocks).toHaveLength(5);
+    expect(result.blocks[0].partsCompleteDate).toBe('2026-04-30');
   });
 
   it.each([-1, 1])('rejects a parts date merged horizontally across header offset %s', async (offset) => {
