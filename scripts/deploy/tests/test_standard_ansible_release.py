@@ -114,6 +114,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             ("not found", "D\0docs/a.md\0", ("pi5",), {}, parent),
             ("not found", "R100\0docs/a.md\0docs/b.md\0", ("pi5",), {}, parent),
             ("not found", "M\0infrastructure/ansible/inventory.yml\0", ("pi5",), {}, parent),
+            ("not found", "M\0docs/kiosk-operation-guide/README.md\0", ("pi5",), {}, parent),
         ]
         for error, diff, profiles, flags, expected in cases:
             with self.subTest(error=error, diff=diff, profiles=profiles, flags=flags):
