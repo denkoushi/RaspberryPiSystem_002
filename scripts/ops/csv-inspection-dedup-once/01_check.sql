@@ -42,6 +42,7 @@ SELECT
   + (SELECT count(*) FROM "ProductionScheduleFkojunstStatus" t JOIN "CsvDashboardRow" r ON r.id = t."csvDashboardRowId" WHERE r."csvDashboardId" = :'dashboard_id')
   + (SELECT count(*) FROM "ProductionScheduleFkojunstMailStatus" t JOIN "CsvDashboardRow" r ON r.id = t."csvDashboardRowId" WHERE r."csvDashboardId" = :'dashboard_id')
   + (SELECT count(*) FROM "ProductionScheduleExternalCompletion" t JOIN "CsvDashboardRow" r ON r.id = t."csvDashboardRowId" WHERE r."csvDashboardId" = :'dashboard_id')
+  + (SELECT count(*) FROM "ProductionScheduleOrderSplit" t JOIN "CsvDashboardRow" r ON r.id = t."parentCsvDashboardRowId" WHERE r."csvDashboardId" = :'dashboard_id')
   AS referencing_rows;
 
 -- 表と索引の大きさ、外部キーの数（9 であること。増えていたら上の確認を足す）。
