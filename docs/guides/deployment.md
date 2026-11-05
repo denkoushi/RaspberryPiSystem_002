@@ -176,6 +176,16 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --full-f
 
 目安は、`--print-plan`が数分、detach開始が1分未満、実行本体が対象host数とartifact pull/health待ちに応じて数分から数十分である。固定時間で打ち切らず、返却されたrunの`--status`が終端状態になるまで確認する。
 
+### Pi5 gatewayの一度限りの再作成
+
+既存gatewayへ現在のCompose定義（json-fileログ上限10m × 3）を適用する場合は、対象Pi5だけをexact patternで指定し、次の標準更新を一度だけ実行する。既定はOFF（未指定・空文字・`false`）で、`true` / `false` / 空文字以外は拒否する。
+
+```bash
+PI5_GATEWAY_RECREATE=true scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit <pi5 exact pattern>
+```
+
+commitとcleanupの成功後に、同じgatewayイメージと確定済みCaddyfileで再作成する。APIへのアクセスが数秒間停止するため、営業時間外に実施する。完了後はフラグを外し、常設の環境変数にしない。再作成前のCaddyfile検証に失敗した場合は再作成しない。さらに、現在のCompose補間結果と稼働中gatewayのbind mount（source・target・read_only）、公開ポート、user、image、ネットワークを比較し、差異があれば一覧を表示して再作成前に停止する。失敗メッセージは再作成の未実行と実行開始後を区別する。再作成後の稼働・ログ上限・ネットワーク・API確認の失敗はplayを失敗にし、自動rollbackは行わない。staging inventoryも同じroleとフラグを使用する。
+
 ### 停止条件と完了条件
 
 次のいずれかに該当したら、Deployを開始・再起動せずに停止する。

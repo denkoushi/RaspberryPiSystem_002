@@ -2,6 +2,7 @@
 - name: Validate the isolated Pi5 candidate inputs
   ansible.builtin.assert:
     that:
+      - lookup('ansible.builtin.env', 'PI5_GATEWAY_RECREATE') in ['', 'true', 'false']
       - release_sha is match('^[0-9a-f]{40}$')
       - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
       - release_sha in release_pi5_api_image

@@ -66,6 +66,11 @@
         - name: Remove only safely retired Pi5 containers and run files
           ansible.builtin.import_tasks: cleanup.yml
 
+    # Commit and cleanup must finish before replacing the ID used by rollback.
+    - name: Recreate the stable Pi5 gateway only when explicitly requested
+      ansible.builtin.import_tasks: gateway-recreate.yml
+      when: lookup('ansible.builtin.env', 'PI5_GATEWAY_RECREATE') == 'true'
+
     - name: Keep the Pi5 system journal across reboots
       ansible.builtin.import_tasks: host-journald.yml
 
