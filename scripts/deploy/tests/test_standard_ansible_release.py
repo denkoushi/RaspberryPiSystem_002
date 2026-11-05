@@ -70,6 +70,129 @@ def torque_capable_host(serial: str = "702902S") -> dict[str, object]:
 
 
 class StandardAnsibleReleaseTests(unittest.TestCase):
+    def test_release_artifact_resolution_and_plan(self):
+        parent = "b" * 40
+        selection = (("pi5", ("raspberrypi5",)),)
+        for fallback in (False, True):
+            with self.subTest(fallback=fallback):
+                calls = []
+                def fake_run(command, **kwargs):
+                    calls.append(command)
+                    if command[:3] == ["docker", "manifest", "inspect"]:
+                        absent = fallback and SHA in command[-1]
+                        return subprocess.CompletedProcess(command, int(absent), "", "MANIFEST UNKNOWN" if absent else "")
+                    if command[:2] == ["git", "rev-list"]:
+                        return completed(command, SHA + "\n" + parent + "\n")
+                    if command[:2] == ["git", "diff"]:
+                        return completed(command, "M\0docs/guide.md\0")
+                    return completed(command)
+                args = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--print-plan", "--limit", "raspberrypi5"])
+                with mock.patch.object(MODULE, "config_hash", side_effect=lambda sha, inventory: sha), mock.patch.object(MODULE, "run", side_effect=fake_run):
+                    artifact, info = MODULE.resolve_release_artifact_sha(SHA, Path("inventory.yml"), ("pi5",))
+                    args.release_artifact_sha, args.release_artifact_fallback = artifact, info
+                    document = MODULE.plan(args, SHA, Path("inventory.yml"), MODULE.DEFAULT_INVENTORY, selection)
+                self.assertEqual(artifact, parent if fallback else SHA)
+                self.assertEqual(document["releaseSha"], SHA)
+                self.assertEqual(document["releaseArtifactSha"], artifact)
+                self.assertEqual("releaseArtifactFallback" in document, fallback)
+                self.assertTrue(all(artifact in ref for ref in document["executionOrder"][0]["images"]))
+                self.assertIn("--release-artifact-sha " + artifact, MODULE.remote_script(args, SHA, RUN_ID, MODULE.DEFAULT_INVENTORY, ("pi5",)))
+                if fallback:
+                    self.assertEqual(info, {"reason": f"head {SHA} has no signed release set; changes since {parent} are image-free (docs only)", "candidatesChecked": 1, "changedPaths": ["docs/guide.md"]})
+                else:
+                    self.assertFalse(any(command[:2] == ["git", "rev-list"] for command in calls))
+
+    def test_release_artifact_resolution_refuses_unsafe_or_missing_candidates(self):
+        parent = "b" * 40
+        cases = [
+            ("unauthorized", "M\0docs/a.md\0", ("pi5",), {}, "unauthorized"),
+            ("not found", "M\0apps/api/src/a.ts\0", ("pi5",), {}, parent),
+            ("manifest unknown", "M\0docs/a.md\0", ("pi5",), {}, "cap 20"),
+            ("not found", "M\0docs/a.md\0", ("pi5", "pi4"), {}, "Pi5-only"),
+            ("not found", "M\0docs/a.md\0", ("pi5",), {"torque_cutover": True}, "Pi5-only"),
+            ("not found", "M\0docs/a.md\0", ("pi5",), {"first_install": True}, "Pi5-only"),
+            ("not found", "D\0docs/a.md\0", ("pi5",), {}, parent),
+            ("not found", "R100\0docs/a.md\0docs/b.md\0", ("pi5",), {}, parent),
+            ("not found", "M\0infrastructure/ansible/inventory.yml\0", ("pi5",), {}, parent),
+        ]
+        for error, diff, profiles, flags, expected in cases:
+            with self.subTest(error=error, diff=diff, profiles=profiles, flags=flags):
+                def fake_run(command, **kwargs):
+                    if command[0] == "docker":
+                        return subprocess.CompletedProcess(command, 1, "", error)
+                    if command[1] == "rev-list":
+                        return completed(command, SHA + "\n" + parent)
+                    return completed(command, diff)
+                with mock.patch.object(MODULE, "config_hash", return_value="c" * 64), mock.patch.object(MODULE, "run", side_effect=fake_run) as runner:
+                    with self.assertRaisesRegex(RuntimeError, expected):
+                        MODULE.resolve_release_artifact_sha(SHA, Path("inventory.yml"), profiles, **flags)
+                if error == "unauthorized":
+                    self.assertEqual(runner.call_count, 1)
+
+    def test_internal_artifact_sha_requires_sealed_full_identity(self):
+        base = ["main", MODULE.DEFAULT_INVENTORY, "--limit", "raspberrypi5"]
+        for argv in (base + ["--release-artifact-sha", SHA], base + ["--execute-standard-route", "--sha", SHA, "--run-id", RUN_ID, "--profiles", "pi5", "--release-artifact-sha", "abc"], base + ["--execute-standard-route", "--sha", SHA, "--run-id", RUN_ID, "--profiles", "pi5", "--release-artifact-sha", ""]):
+            with self.assertRaises(MODULE.UsageError):
+                MODULE.parse_arguments(argv)
+        args = MODULE.parse_arguments(base + ["--execute-standard-route", "--sha", SHA, "--run-id", RUN_ID, "--profiles", "pi5"])
+        self.assertEqual(args.release_artifact_sha, SHA)
+
+    def test_pi3_only_plan_does_not_require_a_release_set(self):
+        args = MODULE.parse_arguments(["main", MODULE.DEFAULT_INVENTORY, "--print-plan", "--limit", "raspberrypi3"])
+        selection = (("pi3", ("raspberrypi3",)),)
+        with mock.patch.object(MODULE, "parse_arguments", return_value=args), mock.patch.object(
+            MODULE, "inventory_path", return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY)
+        ), mock.patch.object(MODULE, "resolve_sha", return_value=SHA), mock.patch.object(
+            MODULE, "inventory_document", return_value={}
+        ), mock.patch.object(MODULE, "selected_profiles", return_value=selection), mock.patch.object(
+            MODULE, "validate_first_install_selection"
+        ), mock.patch.object(MODULE, "server_release_root", return_value=Path("/opt/release")), mock.patch.object(
+            MODULE, "hermes_trial_configuration", return_value=(None, {})
+        ), mock.patch.object(MODULE, "answer_cache_configuration", return_value=(None, {})), mock.patch.object(
+            MODULE, "resolve_release_artifact_sha"
+        ) as resolve, mock.patch.object(MODULE, "release_set_artifacts") as artifacts, mock.patch.object(
+            MODULE, "plan", return_value={"releaseSha": SHA, "executionOrder": []}
+        ), mock.patch.object(MODULE, "unpublished_plan_images", return_value=[]), redirect_stdout(io.StringIO()):
+            self.assertEqual(MODULE.main([]), 0)
+        resolve.assert_not_called()
+        artifacts.assert_not_called()
+        self.assertEqual(args.release_artifact_sha, SHA)
+
+    def test_remote_verifies_artifact_before_mutation_and_passes_image_identity(self):
+        parent = "b" * 40
+        args = argparse.Namespace(inventory=MODULE.DEFAULT_INVENTORY, sha=SHA, release_artifact_sha=parent, run_id=RUN_ID, profiles="pi5", limit="raspberrypi5")
+        inventory = {"server": {"hosts": ["raspberrypi5"]}, "_meta": {"hostvars": {"raspberrypi5": {"business_hermes_answer_cache_enabled": True}}}}
+        selection = (("pi5", ("raspberrypi5",)),)
+        for mode in ("not-ancestor", "api-diff", "valid", "fetch"):
+            with self.subTest(mode=mode):
+                def fake_run(command, **kwargs):
+                    if command[:2] == ["git", "rev-parse"]:
+                        return completed(command, SHA)
+                    if command[:2] == ["git", "cat-file"]:
+                        return completed(command, returncode=int(mode == "fetch"))
+                    if command[:2] == ["git", "merge-base"]:
+                        return completed(command, returncode=int(mode == "not-ancestor"))
+                    if command[:2] == ["git", "diff"]:
+                        return completed(command, "M\0" + ("apps/api/src/a.ts" if mode == "api-diff" else "docs/a.md") + "\0")
+                    return completed(command)
+                with mock.patch.object(MODULE, "inventory_path", return_value=(Path("inventory.yml"), MODULE.DEFAULT_INVENTORY)), mock.patch.object(MODULE, "inventory_document", return_value=inventory), mock.patch.object(MODULE, "run", side_effect=fake_run) as runner, mock.patch.object(MODULE, "preflight_optional_hosts", return_value=(selection, ())), mock.patch.object(MODULE, "release_set_artifacts", return_value=MODULE.ReleaseArtifacts("api:" + parent, "web:" + parent, None, None, ())) as artifacts, mock.patch.object(MODULE, "_exact_repo_digest", return_value="cache@sha256:" + "c" * 64), mock.patch.object(MODULE, "verify_component_attestation") as verify, mock.patch.object(MODULE, "execute_ansible_with_cleanup", return_value=0) as execute, redirect_stdout(io.StringIO()):
+                    if mode in ("valid", "fetch"):
+                        self.assertEqual(MODULE.execute_standard_route(args), 0)
+                        command = execute.call_args.args[0]
+                        variables = json.loads(command[command.index("--extra-vars") + 1])
+                        self.assertEqual(variables["release_sha"], SHA)
+                        self.assertEqual(variables["release_pi5_image_sha"], parent)
+                        self.assertIn(parent, variables["release_pi5_answer_cache_image"])
+                        verify.assert_called_once_with("cache@sha256:" + "c" * 64, parent)
+                        artifacts.assert_called_once_with(parent, Path("inventory.yml"), require_torque=False)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "not an ancestor|not image-free"):
+                            MODULE.execute_standard_route(args)
+                        execute.assert_not_called()
+                        artifacts.assert_not_called()
+                fetches = [call.args[0] for call in runner.call_args_list if call.args[0][:2] == ["git", "fetch"]]
+                self.assertEqual(fetches, [["git", "fetch", "--no-tags", "origin", parent]] if mode == "fetch" else [])
+
     def test_first_install_rejects_unbounded_or_pattern_scope_before_backend(self) -> None:
         for options in (
             ["--full-fleet"], [], ["--limit", "pi4-*"], ["--limit", "kiosk:&all"],
@@ -1301,7 +1424,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             "kiosk": {"hosts": ["pi4-a"]},
             "_meta": {"hostvars": {"pi4-a": {}}},
         }
-        with mock.patch.object(MODULE, "resolve_sha", return_value=SHA), mock.patch.object(
+        with mock.patch.object(MODULE, "resolve_release_artifact_sha", return_value=(SHA, None)), mock.patch.object(MODULE, "resolve_sha", return_value=SHA), mock.patch.object(
             MODULE,
             "inventory_path",
             return_value=(Path("infrastructure/ansible/inventory.yml"), MODULE.DEFAULT_INVENTORY),
@@ -1363,6 +1486,8 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
             return completed(command)
 
         with mock.patch.object(
+            MODULE, "resolve_release_artifact_sha", return_value=(SHA, None)
+        ), mock.patch.object(
             MODULE, "resolve_sha", return_value=SHA
         ), mock.patch.object(
             MODULE,
@@ -1692,7 +1817,7 @@ class StandardAnsibleReleaseTests(unittest.TestCase):
 
         with mock.patch.object(MODULE, "parse_arguments", return_value=args), mock.patch.object(
             MODULE, "inventory_path", return_value=(Path("inventory.yml"), relative)
-        ), mock.patch.object(MODULE, "resolve_sha", return_value=SHA), mock.patch.object(
+        ), mock.patch.object(MODULE, "resolve_release_artifact_sha", return_value=(SHA, None)), mock.patch.object(MODULE, "resolve_sha", return_value=SHA), mock.patch.object(
             MODULE, "inventory_document", side_effect=[complete, selected]
         ), mock.patch.object(MODULE, "new_run_id", return_value=RUN_ID), mock.patch.object(
             MODULE, "run", side_effect=fake_run

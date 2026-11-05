@@ -1,5 +1,6 @@
 ---
 release_sha: ""
+release_pi5_image_sha: "{{ release_sha }}"
 release_run_id: ""
 release_pi5_api_image: ""
 release_pi5_web_image: ""

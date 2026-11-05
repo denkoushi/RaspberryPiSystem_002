@@ -39,6 +39,10 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --print-
 
 planの対象hostとroleを確認し、明示承認後にcanonical entrypointから新しいrunを開始する。途中taskだけの再開、個別hostへの直接Ansible、SSH先のcheckoutは行わない。
 
+### docs-only headでrelease setがない場合
+
+Pi5のみの通常更新では、headのrelease setが`manifest unknown` / `not found`ならfirst-parentを最大20コミット（headを含む）確認し、累積差分がimage-freeである最寄りのrelease setを使う。planの`releaseSha`はcheckoutするhead、`releaseArtifactSha`は署名検証するimageのSHAであり、fallback時は`releaseArtifactFallback`に理由・候補数・変更pathを表示する。remoteでも祖先関係と累積差分を再検証する。認証・通信エラー、image入力に影響する差分、候補不足は停止する。Pi4/Pi3を含む選択、torque cutover、first-installではfallbackしない。
+
 ### Pi4初回導入の失敗後
 
 登録確認のpreflightが失敗した場合は、まだ初期導入を開始していないためempty rollbackは実行しない。API接続とinventoryの資格情報を確認し、[Pi5での端末登録手順](../guides/deployment.md#空のpi4キオスクへの初回導入) をDRY_RUNから実施する。登録確認は `GET /api/kiosk/sites`（登録済み200、未登録401）で、`lastSeenAt` やstatusを更新しない。
@@ -51,7 +55,7 @@ journalで `Fail the release after verified empty rollback` と、元の失敗�
 
 - 全対象roleが正常終了し、failed/unreachableが0である。
 - Pi5は `release_pi5` のmigration、API/Web health、rollback結果が整合している。
-- Pi5は対象SHAと `release_pi5` へ渡されたimage identity（`release_pi5_api_image` / `release_pi5_web_image`）が一致している。
+- Pi5はcheckoutが`releaseSha`、image identity（`release_pi5_api_image` / `release_pi5_web_image`）と保持記録が`releaseArtifactSha`（`release_pi5_image_sha`）に一致している。
 - Pi4は `release_kiosk` のenabled agent healthとservice確認が成功している。
 - Pi3は `release_signage` のartifact SHA、atomic activation、service healthが成功している。
 - 共有application smokeが必要な場合だけ `scripts/deploy/verify-phase12-real.sh` を実行する。
