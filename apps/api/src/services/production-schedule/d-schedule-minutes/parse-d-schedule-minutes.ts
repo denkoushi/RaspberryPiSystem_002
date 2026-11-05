@@ -29,14 +29,27 @@ const headerLabel = (text: string): string | null => {
 const hidden = (item: ExcelJS.Row | ExcelJS.Column): boolean => Boolean(item.hidden);
 
 export async function parseDScheduleMinutesXlsx(input: {
-  buffer: Buffer; filename: string; receivedAt: Date | null;
+  buffer: Buffer; filename: string; receivedAt: Date | null; subject?: string;
 }): Promise<DScheduleMinutesParseResult> {
   const warnings: DScheduleMinutesWarning[] = [];
   const fatal = (reason: string): DScheduleMinutesParseResult => ({ ok: false, reason, warnings });
-  const filenameMatch = normalize(input.filename).match(/^(\d{4})(\d{2})(\d{2})/);
-  const filenameDate = filenameMatch && calendarDate(Number(filenameMatch[1]), Number(filenameMatch[2]), Number(filenameMatch[3]));
-  const meetingDate = filenameDate
-    || (input.receivedAt && Number.isFinite(input.receivedAt.getTime()) ? input.receivedAt.toISOString().slice(0, 10) : null);
+  const filenameDate = [...normalize(input.filename).matchAll(/(?<!\d)(\d{4})(\d{2})(\d{2})(?!\d)/g)]
+    .map((match) => calendarDate(Number(match[1]), Number(match[2]), Number(match[3])))
+    .find((date) => date !== null);
+  const receivedAt = input.receivedAt && Number.isFinite(input.receivedAt.getTime()) ? input.receivedAt : null;
+  let subjectDate: string | undefined;
+  if (!filenameDate && receivedAt) {
+    const match = normalize(input.subject ?? '').match(/(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/])/);
+    if (match) {
+      const year = receivedAt.getUTCFullYear();
+      subjectDate = [year - 1, year, year + 1]
+        .map((candidate) => calendarDate(candidate, Number(match[1]), Number(match[2])))
+        .filter((date): date is string => date !== null)
+        .sort((a, b) => Math.abs(Date.parse(a) - receivedAt.getTime()) - Math.abs(Date.parse(b) - receivedAt.getTime()))[0];
+    }
+  }
+  const extractedDate = filenameDate || subjectDate;
+  const meetingDate = extractedDate || receivedAt?.toISOString().slice(0, 10);
   if (!meetingDate) return fatal('NO_BASE_DATE');
   const workbook = new ExcelJS.Workbook();
   try {
@@ -44,8 +57,8 @@ export async function parseDScheduleMinutesXlsx(input: {
   } catch {
     return fatal('INVALID_XLSX');
   }
-  if (filenameDate && input.receivedAt && Number.isFinite(input.receivedAt.getTime())
-    && Math.abs(Date.parse(meetingDate) - input.receivedAt.getTime()) > 45 * 86400000) {
+  if (extractedDate && receivedAt
+    && Math.abs(Date.parse(meetingDate) - receivedAt.getTime()) > 45 * 86400000) {
     warnings.push({ code: 'FILENAME_DATE_MISMATCH', seiban: null, cell: null, rawText: null });
   }
   const seibanText = (cell: ExcelJS.Cell) => normalize(cellText(cell)).toUpperCase();

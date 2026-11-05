@@ -4,8 +4,8 @@ import { formulaWithoutResult, inferDate } from './date-cell.js';
 import { buildWorkbook } from './__fixtures__/workbook.js';
 import { parseDScheduleMinutesXlsx } from './parse-d-schedule-minutes.js';
 
-async function parse(fixture = buildWorkbook(), filename = '20260515 D社日程会議議事録.xlsx', receivedAt: Date | null = null) {
-  return parseDScheduleMinutesXlsx({ buffer: Buffer.from(await fixture.workbook.xlsx.writeBuffer()), filename, receivedAt });
+async function parse(fixture = buildWorkbook(), filename = '20260515 D社日程会議議事録.xlsx', receivedAt: Date | null = null, subject?: string) {
+  return parseDScheduleMinutesXlsx({ buffer: Buffer.from(await fixture.workbook.xlsx.writeBuffer()), filename, receivedAt, subject });
 }
 
 function success(result: Awaited<ReturnType<typeof parse>>) {
@@ -84,6 +84,30 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(success(await parse(buildWorkbook(), 'minutes.xlsx', new Date('2026-05-15T00:00:00Z'))).meetingDate).toBe('2026-05-15');
     expect(success(await parse(buildWorkbook(), '20260230 minutes.xlsx', new Date('2026-05-15T00:00:00Z'))).meetingDate).toBe('2026-05-15');
     expect(await parse(buildWorkbook(), 'minutes.xlsx')).toMatchObject({ ok: false, reason: 'NO_BASE_DATE' });
+  });
+
+  it.each(['議事録_20261030_確定.xlsx', '20260230_議事録_20261030.xlsx'])('uses a valid YYYYMMDD anywhere in %s before subject/receipt', async (filename) => {
+    const result = success(await parse(buildWorkbook('Oct'), filename, new Date('2026-11-01Z'), '日程会議議事録 11/1'));
+    expect(result.meetingDate).toBe('2026-10-30');
+  });
+
+  it.each(['日程会議議事録 10/30', '日程会議議事録　１０／３０'])('uses the normalized subject date: %s', async (subject) => {
+    expect(success(await parse(buildWorkbook('Oct'), '議事録.xlsx', new Date('2026-11-01Z'), subject)).meetingDate).toBe('2026-10-30');
+  });
+
+  it.each([
+    ['2027-01-03Z', '12/27', '2026-12-27'],
+    ['2026-12-30Z', '1/3', '2027-01-03'],
+    ['2026-10-30Z', '2/30', '2026-10-30']
+  ])('resolves subject %s / %s to the nearest valid date or receipt', async (receivedAt, subject, expected) => {
+    expect(success(await parse(buildWorkbook('Oct'), '議事録.xlsx', new Date(receivedAt), subject)).meetingDate).toBe(expected);
+  });
+
+  it.each([45, 46])('warns for subject/receipt differences only over 45 days (%s)', async (days) => {
+    const receivedAt = new Date(Date.parse('2026-05-15Z') + days * 86400000);
+    const result = success(await parse(buildWorkbook(), '議事録.xlsx', receivedAt, '議事録 5/15'));
+    expect(result.meetingDate).toBe('2026-05-15');
+    expect(result.warnings.some((warning) => warning.code === 'FILENAME_DATE_MISMATCH')).toBe(days > 45);
   });
 
   it.each(['missing', 'invalid'])('fails on %s calendar month labels', async (kind) => {
