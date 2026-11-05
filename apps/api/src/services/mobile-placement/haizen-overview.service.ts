@@ -1,6 +1,9 @@
-import { filterActivePlacements } from './placement-completion.service.js';
 import { prisma } from '../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../production-schedule/seiban-machine-display-names.service.js';
+
+import { filterActivePlacements } from './placement-completion.service.js';
+import { readScheduleDates } from './schedule-dates.js';
 
 import type { Prisma } from '@prisma/client';
 
@@ -39,8 +42,17 @@ export async function listHaizenOverview() {
     updatedAt: updatedAt.toISOString()
   }));
   const { machineNames } = await resolveSeibanMachineDisplayNamesBatched(rows.flatMap(row => row.fseiban ? [row.fseiban] : []));
+  const seibans = [...new Set(rows.flatMap(row => row.fseiban ? [row.fseiban] : []))];
+  const schedules = seibans.length ? await prisma.$queryRaw<{ fseiban: string; partsCompleteDate: Date | null; surfaceSendOutDates: Prisma.JsonValue }[]>`
+    SELECT "fseiban", "partsCompleteDate", "surfaceSendOutDates"
+    FROM "ProductionScheduleDScheduleMinutes"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "fseiban" = ANY(${seibans}::text[])
+  ` : [];
+  const dates = new Map(schedules.map(row => [row.fseiban, readScheduleDates(row)]));
   return {
-    rows: rows.map(row => ({ ...row, machineName: row.fseiban ? machineNames[row.fseiban] ?? null : null })),
+    rows: rows.map(row => ({ ...row, machineName: row.fseiban ? machineNames[row.fseiban] ?? null : null,
+      dueDate: (row.fseiban ? dates.get(row.fseiban)?.partsCompleteDate : null) ?? null,
+      sendOutDate: (row.fseiban ? dates.get(row.fseiban)?.sendOutDate : null) ?? null })),
     truncated: placements.length > HAIZEN_OVERVIEW_LIMIT
   };
 }

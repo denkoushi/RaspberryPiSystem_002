@@ -14,6 +14,7 @@ import { registerMobileScanFrameRoutes } from './scan-frames.js';
 import { registerMobileVerifyRecordRoutes } from './verify-records.js';
 import { registerOrderTrailRoutes } from './order-trail.js';
 import { registerMobilePlacementScheduleRoute } from './schedule-list.js';
+import { registerMobilePlacementScheduleSeibansRoutes } from './schedule-seibans.js';
 import { registerPlacement, resolveItemByBarcode } from '../../services/mobile-placement/mobile-placement.service.js';
 import { registerOrderPlacement } from '../../services/mobile-placement/mobile-placement-order-placement.service.js';
 import { registerEdgeScan } from '../../services/mobile-placement/edge-scan.service.js';
@@ -188,6 +189,7 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   };
 
   await registerMobilePlacementScheduleRoute(app, kioskDeps);
+  await registerMobilePlacementScheduleSeibansRoutes(app, kioskDeps);
   await registerMobileScanFrameRoutes(app);
   await registerMobileVerifyRecordRoutes(app);
   await registerOrderTrailRoutes(app);

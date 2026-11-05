@@ -68,7 +68,25 @@ describe('haizen overview', () => {
     expect(result.rows).toHaveLength(HAIZEN_OVERVIEW_LIMIT);
     expect(result.rows.every(row => row.id.startsWith('active-'))).toBe(true);
     expect(result.truncated).toBe(false);
-    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(2);
+  });
+  it('batches Excel dates once by snapshot seiban, including aliases and missing rows', async () => {
+    const seibans = ['BA1S2320', '(BA1S2320)', 'MISSING'];
+    mocks.findMany.mockResolvedValue(seibans.map((fseiban, id) => ({ ...row, id: String(id), scheduleSnapshot: { FSEIBAN: fseiban } })));
+    mocks.queryRaw.mockImplementation(async (sql: TemplateStringsArray) => sql.join('').includes('ProductionScheduleDScheduleMinutes') ? [
+      { fseiban: seibans[0], partsCompleteDate: new Date('2026-11-07T00:00:00Z'), surfaceSendOutDates: [{ date: '2026-11-10', label: '★', note: '' }, { date: '2026-11-08', label: '', note: '' }, { date: 'invalid' }] },
+      { fseiban: seibans[1], isAlias: true, aliasOf: seibans[0], partsCompleteDate: new Date('2026-11-07T00:00:00Z'), surfaceSendOutDates: [{ date: '2026-11-08', label: '', note: '' }] }
+    ] : []);
+    const result = await listHaizenOverview();
+    expect(result.rows.map(({ dueDate, sendOutDate }) => ({ dueDate, sendOutDate }))).toEqual([
+      { dueDate: '2026-11-07', sendOutDate: '2026-11-08' },
+      { dueDate: '2026-11-07', sendOutDate: '2026-11-08' },
+      { dueDate: null, sendOutDate: null }
+    ]);
+    const calls = mocks.queryRaw.mock.calls.filter(([sql]) => sql.join('').includes('ProductionScheduleDScheduleMinutes'));
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].join('')).toContain('ANY(');
+    expect(calls[0].at(-1)).toEqual(seibans);
   });
   it('handles no current branches', async () => {
     mocks.findMany.mockResolvedValue([]);

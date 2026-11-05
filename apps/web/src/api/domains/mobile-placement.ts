@@ -399,6 +399,8 @@ export async function deleteHaizenCurrentPlacement(id: string) {
 
 /** Current Android and Zero2W placements; identify rows by source and id together. */
 export type HaizenOverviewRow = {
+  dueDate: string | null;
+  sendOutDate: string | null;
   id: string;
   source: 'branch' | 'zero2w';
   shelfCodeRaw: string;

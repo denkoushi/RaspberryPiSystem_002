@@ -14,6 +14,8 @@ import { kioskLazy } from './features/kiosk/kioskLazyPreload';
 import { KioskScreenWatchHost } from './features/kiosk/screen-watch/KioskScreenWatchHost';
 import { useKioskSeamlessWebUpdate } from './features/kiosk/useKioskSeamlessWebUpdate';
 import { registerMobileAppShell } from './features/mobile-app-shell/registerMobileAppShell';
+import { HaizenScheduleDetail } from './features/mobile-placement/haizen/HaizenScheduleDetail';
+import { HaizenScheduleList } from './features/mobile-placement/haizen/HaizenScheduleList';
 import { PlacementDeleteSyncJob } from './features/mobile-placement/part-search/offline/PlacementDeleteSyncJob';
 import { MobileSyncProvider } from './features/mobile-placement/sync/MobileSyncProvider';
 import { INSPECTION_DRAWING_PRINT_PRODUCTION_ENABLED } from './features/part-measurement/inspection-drawing/inspectionDrawingPrintConstants';
@@ -314,6 +316,8 @@ function App() {
             <Route path="/kiosk/inventory/haizen/verify-history" element={<KioskHaizenVerifyHistoryPage />} />
             <Route path="/kiosk/inventory/haizen/trail" element={<KioskHaizenTrailPage />} />
             <Route path="/kiosk/mobile-placement" element={<MobilePlacementPage />} />
+            <Route path="/kiosk/mobile-placement/schedule-seibans" element={<HaizenScheduleList />} />
+            <Route path="/kiosk/mobile-placement/schedule-seibans/:fseiban" element={<HaizenScheduleDetail />} />
             <Route path="/kiosk/mobile-placement/part-search" element={<MobilePlacementPartSearchPage />} />
             <Route path="/kiosk/mobile-placement/shelf-master" element={<KioskMobileShelfMasterPage />} />
             <Route path="/kiosk/mobile-placement/shelf-register" element={<Navigate to="/kiosk/mobile-placement/shelf-master" replace />} />

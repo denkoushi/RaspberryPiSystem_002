@@ -31,7 +31,7 @@ export function KioskHaizenPage() {
   const master = useHaizenShelves();
   const [size, setSize] = useState<InventoryThumbnailSize>('medium');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
-  const [listOrder, setListOrder] = useState<'shelf' | 'newest'>('shelf');
+  const [listOrder, setListOrder] = useState<'shelf' | 'newest' | 'due'>('shelf');
   const location = useLocation();
   const [selectedCode, setSelectedCode] = useState<string | null>((location.state as { shelf?: string } | null)?.shelf ?? null);
   const [search, setSearch] = useState<HaizenSearch>({ kind: 'fseiban', text: '' });
@@ -85,9 +85,12 @@ export function KioskHaizenPage() {
   const hitIds = new Set(hits.map(row => `${row.source}:${row.id}`));
   const hitShelves = new Set(hits.map(row => row.shelfCodeRaw));
   const visibleShelves = shelves.filter(shelf => !query || hitShelves.has(shelf.shelfCodeRaw));
+  const newest = (a: HaizenOverviewRow, b: HaizenOverviewRow) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt) || a.id.localeCompare(b.id);
   const listRows = (listOrder === 'shelf'
     ? shelves.flatMap(shelf => grouped.byShelf.get(shelf.shelfCodeRaw) ?? [])
-    : [...rows].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt) || a.id.localeCompare(b.id))
+    : listOrder === 'due'
+      ? [...rows].sort((a, b) => a.dueDate === b.dueDate ? newest(a, b) : !a.dueDate ? 1 : !b.dueDate ? -1 : a.dueDate.localeCompare(b.dueDate))
+      : [...rows].sort(newest)
   ).filter(row => !query || hitIds.has(`${row.source}:${row.id}`));
   const selected = shelves.find(shelf => shelf.shelfCodeRaw === selectedCode);
   const items = selected ? grouped.byShelf.get(selected.shelfCodeRaw) ?? [] : [];
@@ -146,7 +149,7 @@ export function KioskHaizenPage() {
         {viewMode === 'card' ? <div role="group" aria-label="写真の大きさ" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
           {([['small', '小'], ['medium', '中'], ['large', '大']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={size === value} className={`h-11 w-14 font-bold ${size === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => setSize(value)}>{label}</button>)}
         </div> : <div role="group" aria-label="並べ方" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
-          {([['shelf', '棚順'], ['newest', '新しい順']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={listOrder === value} className={`h-11 w-24 font-bold ${listOrder === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => setListOrder(value)}>{label}</button>)}
+          {([['shelf', '棚順'], ['newest', '新しい順'], ['due', '納期順']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={listOrder === value} className={`h-11 w-24 font-bold ${listOrder === value ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted'}`} onClick={() => setListOrder(value)}>{label}</button>)}
         </div>}
         <div role="group" aria-label="表示" className="inline-flex shrink-0 overflow-hidden rounded-xl border border-inv-line2">
           {([['card', 'カード表示', GridIcon], ['list', 'リスト表示', ListIcon]] as const).map(([view, label, ViewIcon]) => <button key={view} type="button" aria-label={label} title={label} aria-pressed={viewMode === view} className={`flex h-11 min-w-14 items-center justify-center px-4 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-inv-cyan ${viewMode === view ? 'bg-inv-cyan text-inv-cyan-ink' : 'text-inv-muted hover:bg-inv-s2'}`} onClick={() => setViewMode(view)}><ViewIcon size={24} /></button>)}
@@ -195,7 +198,7 @@ export function KioskHaizenPage() {
       </div> : visibleShelves.length === 0 ? <p className="py-12 text-center text-inv-muted">{query ? '一致する部品はどの棚にもありません' : '登録済みの棚はありません'}</p> : viewMode === 'list' ? listRows.length === 0 ? <p className="py-12 text-center text-inv-muted">どの棚にも何も置かれていません</p> : <div className={`${invPanel} max-h-full overflow-x-auto`}>
         <table aria-label="配膳の一覧" className="w-full min-w-[1100px] border-collapse text-left tabular-nums">
           <thead className="sticky top-0 z-10 bg-inv-s2 text-[15px] text-inv-muted">
-            <tr>{['棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '置いた日時', '足取り'].map(label => <th key={label} scope="col" className={`whitespace-nowrap px-3.5 py-3 ${label === '置いた日時' ? 'text-right' : ''}`}>{label}</th>)}</tr>
+            <tr>{['棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '納期', '置いた日時', '足取り'].map(label => <th key={label} scope="col" className={`whitespace-nowrap px-3.5 py-3 ${label === '置いた日時' ? 'text-right' : ''}`}>{label}</th>)}</tr>
           </thead>
           <tbody>{listRows.map((row, rowIndex) => {
             const shelf = shelves.find(entry => entry.shelfCodeRaw === row.shelfCodeRaw);
@@ -208,6 +211,7 @@ export function KioskHaizenPage() {
               </td>
               <td className={`px-3.5 py-3 text-[22px] font-black ${query ? 'text-inv-cyan' : ''}`}>{row.fhinmei || '品名未登録'}</td>
               {([['fseiban', row.fseiban], ['fhincd', row.fhincd], ['machineName', normalizeMachineName(row.machineName)], ['order', row.manufacturingOrderBarcodeRaw], ['branch', row.branchNo === null ? '—' : row.branchNo === 0 ? 'なし' : String(row.branchNo)]] as const).map(([kind, value]) => <td key={kind} className="px-3.5 py-3 font-mono text-[19px] font-bold">{query?.kind === kind ? <mark className="rounded bg-inv-cyan px-1 text-inv-cyan-ink">{value || '—'}</mark> : value || '—'}</td>)}
+              <td className="whitespace-nowrap px-3.5 py-3 font-mono text-[19px] font-bold">{row.dueDate ? <time dateTime={row.dueDate}>{row.dueDate}</time> : '—'}</td>
               <td className="whitespace-nowrap px-3.5 py-3 text-right text-sm text-inv-muted"><strong className="text-2xl text-inv-text">{timeSincePlaced(row.updatedAt, now)}</strong><br /><time dateTime={row.updatedAt}>{placedTime(row.updatedAt)}</time></td>
               <td className="px-3.5 py-3"><Link className={`${invButtonGhost} h-9 px-3 text-[13px]`} to={`/kiosk/inventory/haizen/trail?order=${encodeURIComponent(row.manufacturingOrderBarcodeRaw)}`} onClick={event => event.stopPropagation()}><TrailIcon />足取り</Link></td>
             </tr>;

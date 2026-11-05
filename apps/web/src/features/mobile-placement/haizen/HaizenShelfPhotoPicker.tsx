@@ -15,12 +15,13 @@ import type { RegisteredShelfEntryDto } from '../registeredShelves';
 let speechActive = false;
 
 type ShelfPhotoListProps = {
+  shelfCounts?: Record<string, number>;
   shelves: RegisteredShelfEntryDto[]; previousShelfCodes: string[]; selected: string;
   loading: boolean; error: boolean; onRetry: () => void; onSelect: (code: string) => void;
 };
 
 /** Machine chips and the scrollable photo grid; shared by the full-screen picker and the 配膳 tab. */
-export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, loading, error, onRetry, onSelect, compact = false, onView, disabled = false, onExpand, onScan, children, renderHeader }: ShelfPhotoListProps & {
+export function HaizenShelfPhotoList({ shelfCounts, shelves, previousShelfCodes, selected, loading, error, onRetry, onSelect, compact = false, onView, disabled = false, onExpand, onScan, children, renderHeader }: ShelfPhotoListProps & {
   onScan?: () => void; compact?: boolean; onView?: (shelf: RegisteredShelfEntryDto) => void;
   /** Dims the grid until the 移動票 is read. */ disabled?: boolean;
   /** Shows a button that opens the full-screen picker. */ onExpand?: () => void;
@@ -28,7 +29,7 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
   renderHeader?: (speechButton: ReactNode) => ReactNode;
 }) {
   const [viewer, setViewer] = useState<RegisteredShelfEntryDto | null>(null);
-  const [filter, setFilter] = useState(previousShelfCodes.length && (!selected || previousShelfCodes.includes(selected)) ? 'previous' : 'all');
+  const [filter, setFilter] = useState(!shelfCounts && previousShelfCodes.length && (!selected || previousShelfCodes.includes(selected)) ? 'previous' : 'all');
   const [speechAvailable] = useState(isHaizenSpeechAvailable);
   const [listening, setListening] = useState(false);
   const listeningRef = useRef(false);
@@ -86,9 +87,10 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
   const filtered = speechFilter ? shelves.filter((s) => speechFilter.codes.includes(s.shelfCodeRaw)) : (compact ? shelves : filter === 'previous'
     ? previousShelfCodes.flatMap((code) => shelves.filter((s) => s.shelfCodeRaw === code))
     : shelves.filter((s) => filter === 'all' || `machine:${s.machineName}` === filter));
+  const ordered = shelfCounts ? [...filtered].sort((a, b) => (shelfCounts[b.shelfCodeRaw] ?? 0) - (shelfCounts[a.shelfCodeRaw] ?? 0)) : filtered;
   const groups = new Map<string | null, RegisteredShelfEntryDto[]>();
-  for (const shelf of filtered) {
-    const name = shelf.machineName ?? null;
+  for (const shelf of ordered) {
+    const name = shelfCounts ? null : shelf.machineName ?? null;
     const group = groups.get(name) ?? [];
     group.push(shelf);
     groups.set(name, group);
@@ -119,7 +121,7 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
     {loading ? <p className={hp.empty}>読込中…</p> : error ? <div role="alert" className={hp.empty}>棚を取得できませんでした <button className={hp.mini} onClick={onRetry}>再試行</button></div>
       : <div ref={grid} aria-disabled={disabled || undefined} className={`grid min-h-0 flex-1 auto-rows-max content-start gap-2 overflow-y-auto ${disabled ? 'pointer-events-none opacity-35' : ''} ${compact ? 'grid-cols-2 pb-2' : `grid-cols-2 ${pad} ${hp.hermesBottomPadding}`}`}>
         {[...groups].map(([machineName, group]) => <Fragment key={machineName === null ? 'other' : `machine:${machineName}`}>
-          {!compact && <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? `col-span-3 ${speechAvailable ? 'pr-24' : 'pr-10'}` : 'col-span-2'}`}>
+          {!compact && !shelfCounts && <h3 className={`flex items-baseline gap-2 pt-2 text-base font-bold ${compact ? `col-span-3 ${speechAvailable ? 'pr-24' : 'pr-10'}` : 'col-span-2'}`}>
             {machineName ?? 'その他'}<small className={`text-xs ${hp.muted}`}>{group.length}棚</small>
           </h3>}
           {group.map((s) => <button key={s.shelfCodeRaw} type="button" aria-label={`棚 ${[s.machineName, s.direction, s.displayLabel].filter(Boolean).join(' ') || '写真'}`} aria-pressed={selected === s.shelfCodeRaw} disabled={disabled}
@@ -132,6 +134,7 @@ export function HaizenShelfPhotoList({ shelves, previousShelfCodes, selected, lo
             </span>}
           </span>
           {s.shelfCodeRaw === previousShelfCodes[0] && <span className="absolute left-1.5 top-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-[11px] font-black text-[var(--hp-bg)]">前回</span>}
+          {!!shelfCounts?.[s.shelfCodeRaw] && <span aria-label={`この製番 ${shelfCounts[s.shelfCodeRaw]}件`} className="absolute right-1.5 bottom-1.5 rounded-md bg-[var(--hp-shelf)] px-1.5 py-0.5 text-sm font-black text-[var(--hp-bg)]">{shelfCounts[s.shelfCodeRaw]}</span>}
           {compact && selected === s.shelfCodeRaw && <span aria-hidden className="absolute right-1.5 top-1.5 grid h-[30px] w-[30px] place-items-center rounded-full bg-[var(--hp-shelf)] text-xl font-black text-[var(--hp-bg)]">✓</span>}
           {!compact && <span className={`block pt-1.5 ${compact ? 'px-1.5 pb-1.5' : 'px-2 pb-2'}`}><span className={`block truncate text-xs ${hp.muted}`}>{s.displayLabel || '　'}</span></span>}
         </button>)}
