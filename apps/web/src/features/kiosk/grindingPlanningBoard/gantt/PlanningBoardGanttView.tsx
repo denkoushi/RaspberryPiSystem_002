@@ -53,6 +53,7 @@ type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPe
 export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void };
 const EMPTY_SEIBAN_ORDER: readonly string[] = [];
 const EMPTY_CHAIN: GanttBar[] = [];
+const EMPTY_SELECTION: ReadonlySet<string> = new Set<string>();
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const GANTT_BOTTOM_GAP = 10;
 // With a 2- or 4-day span a day is wide enough to show where the hours fall.
@@ -81,8 +82,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
 }, ref) {
   const uptime = useMachineSignalResourceUptime(currentLayout.mode === 'forward');
-  const uptimeByResource = useMemo(() => new Map(uptime.data?.resources.map((entry) =>
-    [normalizeMachineName(entry.resourceCd), entry.averageRunSeconds])), [uptime.data]);
+  const previousUptime = useRef<ReadonlyMap<string, number>>(new Map());
+  const uptimeByResource = useMemo(() => {
+    const next = new Map(uptime.data?.resources.map((entry) =>
+      [normalizeMachineName(entry.resourceCd), entry.averageRunSeconds]));
+    const previous = previousUptime.current;
+    return next.size === previous.size && [...next].every(([key, value]) => previous.has(key) && Object.is(previous.get(key), value))
+      ? previous : next;
+  }, [uptime.data]);
+  useLayoutEffect(() => { previousUptime.current = uptimeByResource; }, [uptimeByResource]);
   const incomingChips = usePlanningBoardProcessChips();
   const incomingPlacements = usePlanningBoardPlacementByPart();
   const previousDetails = useRef({ chips: incomingChips, placements: incomingPlacements });
@@ -124,6 +132,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     groups: [...sourceLayout.groups].sort((a, b) => (a.category === 'cutting' ? 1 : 0) - (b.category === 'cutting' ? 1 : 0)
       || laneOrder.order.indexOf(a.resource!) - laneOrder.order.indexOf(b.resource!)) },
   [sourceLayout, laneResources, laneOrder.order]);
+  const previousRowSelections = useRef(new Map<string, ReadonlySet<string>>());
+  const rowSelections = useMemo(() => new Map(layout.groups.flatMap((group) => group.rows.map((row) => {
+    const next = new Set(row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.item.itemId));
+    const previous = previousRowSelections.current.get(row.key);
+    const selected = next.size === 0 ? EMPTY_SELECTION
+      : previous && next.size === previous.size && [...next].every((id) => previous.has(id)) ? previous : next;
+    return [row.key, selected] as const;
+  }))), [layout, interaction.selectedItemIds]);
+  useLayoutEffect(() => { previousRowSelections.current = rowSelections; }, [rowSelections]);
   const { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onKeyDown } = laneOrder;
   const laneHandle = useCallback((resource: string, text: string, className: string) => <button type="button" title={text}
     className={clsx('touch-none select-none truncate text-left focus-visible:outline focus-visible:outline-emerald-300', className)}
@@ -423,9 +440,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
-                selectedItemIds={interaction.selectedItemIds} disabled={interaction.disabled} dragDisabled={interaction.dragDisabled}
+                selectedItemIds={rowSelections.get(row.key) ?? EMPTY_SELECTION} disabled={interaction.disabled} dragDisabled={interaction.dragDisabled}
                 pinMode={interaction.pinMode} resourceView={interaction.resourceView} {...rowActions}
-                lanes={latestDragLanes} resource={group.resource ?? undefined} preview={dragPreview} onDragPreview={setDragPreview}
+                lanes={latestDragLanes}
+                draggedItemId={dragPreview && row.bars.some((bar) => bar.item.itemId === dragPreview.bar.item.itemId) ? dragPreview.bar.item.itemId : null}
+                insertionLeft={dragPreview?.drop && dragPreview.drop.resource === group.resource ? dragPreview.drop.left : null} onDragPreview={setDragPreview}
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabels.get(group.resource)?.node : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
