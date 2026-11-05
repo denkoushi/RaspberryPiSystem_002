@@ -32,6 +32,7 @@
   # APIプロキシ（通常HTTP）。WebSocketはCaddyが自動的にUpgradeを処理するため、
   # ここでUpgradeヘッダーを強制注入しない（通常HTTPが壊れるため）。
   reverse_proxy @api api:8080 {
+    header_up X-Forwarded-For {remote_host}
     transport http {
       versions 1.1
     }
@@ -47,7 +48,9 @@
   # 公開URLは維持しつつ、APIでSHA-256整合性を確認して配信する。
   handle /storage/thumbnails/* {
     uri replace /storage/thumbnails/ /api/storage/thumbnails/
-    reverse_proxy api:8080
+    reverse_proxy api:8080 {
+      header_up X-Forwarded-For {remote_host}
+    }
   }
 
   @static_site {

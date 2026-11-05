@@ -1,3 +1,4 @@
+import { trustImmediateProxy } from '../../../lib/trust-proxy.js';
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -64,7 +65,7 @@ describe('POST /api/backup/internal', () => {
     });
     mocks.cleanup.mockResolvedValue(undefined);
 
-    app = Fastify();
+    app = Fastify({ trustProxy: trustImmediateProxy });
     registerErrorHandler(app);
     await app.register(async (instance) => {
       await registerBackupExecutionRoutes(instance);
@@ -96,6 +97,17 @@ describe('POST /api/backup/internal', () => {
       expect(mocks.execute).not.toHaveBeenCalled();
     }
   );
+
+  it('rejects a spoofed loopback forwarded header before backup work', async () => {
+    const response = await app.inject({
+      method: 'POST', url: '/api/backup/internal', remoteAddress: '172.18.0.2',
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+      payload: { kind: 'csv', source: 'employees' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(mocks.loadConfig).not.toHaveBeenCalled();
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
 
   it.each(['127.0.0.1', '::1', '::ffff:127.0.0.1'])(
     'accepts loopback socket peer %s',

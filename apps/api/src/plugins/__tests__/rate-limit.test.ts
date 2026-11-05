@@ -1,3 +1,4 @@
+import { trustImmediateProxy } from '../../lib/trust-proxy.js';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,7 +25,7 @@ beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(BASE_TIME);
 
-  app = Fastify();
+  app = Fastify({ trustProxy: trustImmediateProxy });
   await app.register(registerRateLimit);
   const ok = async () => ({ ok: true });
   app.get('/api/tools/items', ok);
@@ -54,6 +55,17 @@ async function hit(url: string, times: number, headers: Record<string, string> =
 }
 
 describe('registerRateLimit', () => {
+  it('separates real login limits by forwarded IP behind the same Caddy peer', async () => {
+    const payload = { username: 'admin', password: 'password123' };
+    const first = { 'x-forwarded-for': '192.0.2.10' };
+    const codes = await hit('/api/auth/login', 10, first, 'POST', payload);
+    expect(codes).toEqual(Array(10).fill(200));
+    expect((await hit('/api/auth/login', 1, first, 'POST', payload))).toEqual([429]);
+    expect((await hit('/api/auth/login', 1, { 'x-forwarded-for': '192.0.2.11' }, 'POST', payload))).toEqual([200]);
+    // An attacker-controlled earlier value cannot create a new bucket.
+    expect((await hit('/api/auth/login', 1, { 'x-forwarded-for': '198.51.100.99, 192.0.2.10' }, 'POST', payload))).toEqual([429]);
+  });
+
   it('allows 120 requests per minute per endpoint and IP, then returns 429', async () => {
     const codes = await hit('/api/admin/thing', 120);
     expect(codes.every((c) => c === 200)).toBe(true);

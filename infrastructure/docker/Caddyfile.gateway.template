@@ -24,6 +24,7 @@
     respond @internal_deploy_readiness 404
     respond @admin_protect "Forbidden" 403
     reverse_proxy @api __BLUE_GREEN_API_UPSTREAM__ {
+      header_up X-Forwarded-For {remote_host}
       transport http {
         versions 1.1
       }
