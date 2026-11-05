@@ -137,6 +137,8 @@ function configurePersistence(): void {
   mocks.projectGrindingPlanningBoard.mockReturnValue({
     allItems: [{
       productNo: '1',
+      fhincd: 'PART-A',
+      lslhSurface: false,
       itemId: 'row:item-a',
       itemRevision: 'item-revision-a',
       version: 0,
@@ -150,6 +152,8 @@ function configurePersistence(): void {
     }],
     items: [{
       productNo: '1',
+      fhincd: 'PART-A',
+      lslhSurface: false,
       itemId: 'row:item-a',
       itemRevision: 'item-revision-a',
       version: 0,
@@ -194,6 +198,34 @@ function configurePersistence(): void {
 }
 
 describe('grinding planning board service orchestration', () => {
+  it('batches code-based and manual LSLH identification for all response items', async () => {
+    const base = mocks.projectGrindingPlanningBoard().items[0];
+    mocks.projectGrindingPlanningBoard.mockReturnValue({
+      allItems: [], items: [
+        { ...base, itemId: 'code', productNo: 'CODE', fhincd: 'PAINT' },
+        { ...base, itemId: 'manual', productNo: 'MANUAL', fhincd: 'LSLH-PART' },
+        { ...base, itemId: 'other', productNo: 'OTHER', fhincd: 'OTHER-PART' }
+      ], load: [], unknownRequiredMinutesCount: 0, progress: { bySeiban: new Map() }
+    });
+    const query = mocks.prisma.$queryRaw.getMockImplementation()!;
+    mocks.prisma.$queryRaw.mockImplementation(async (sql: unknown) => {
+      if (JSON.stringify(sql).includes('FSEZONO')) return [
+        { productNo: 'CODE', fhincd: null }, { productNo: null, fhincd: 'LSLH-PART' }
+      ];
+      return query(sql);
+    });
+    const result = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
+    expect(result.items.map(({ itemId, lslhSurface }) => [itemId, lslhSurface])).toEqual([
+      ['code', true], ['manual', true], ['other', false]
+    ]);
+    const calls = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('FSEZONO'));
+    expect(calls).toHaveLength(1);
+    const sql = JSON.stringify(calls[0]);
+    for (const value of ['1143016000', '1143016002', 'CODE', 'MANUAL', 'OTHER', 'LSLH-PART', 'b7c8d9e0-f1a2-4b3c-9d4e-5f6a7b8c9d0e']) expect(sql).toContain(value);
+    expect(sql).toContain('processingType');
+    expect(sql).not.toContain('FKOJUNST');
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     clearLeaderboardMaterializedWinnerCacheForTests();
@@ -413,7 +445,8 @@ describe('grinding planning board service orchestration', () => {
     expect(next).toEqual({ ...first, snapshotId: expect.any(String) });
     expect(next.snapshotId).not.toBe(first.snapshotId);
     expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
-    expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(mocks.prisma.$queryRaw.mock.calls[0])).toContain('FSEZONO');
     expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
   });
 
@@ -476,7 +509,8 @@ describe('grinding planning board service orchestration', () => {
           expect(response.load).toEqual([]);
           expect(planningSource.readPlanningSource).not.toHaveBeenCalled();
           expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
-          expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+          expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+          expect(JSON.stringify(mocks.prisma.$queryRaw.mock.calls[0])).toContain('FSEZONO');
         }
         changeGeneration();
         await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'grinding' });
@@ -511,7 +545,8 @@ describe('grinding planning board service orchestration', () => {
       expect(planningSource.readPlanningSource).not.toHaveBeenCalled();
       expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
       expect(mocks.prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
-      expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(mocks.prisma.$queryRaw.mock.calls[0])).toContain('FSEZONO');
       const freshStore = createStore();
       const cold = await getGrindingPlanningBoard({ ...params, snapshotStore: freshStore });
       expect(cached.payload).toEqual(freshStore.get(cold.snapshotId!)!.payload);
@@ -785,7 +820,8 @@ describe('grinding planning board service orchestration', () => {
       expect(continued.items).toEqual([{ ...items[1], arrived: true }]);
       expect(continued.nextCursor).toBeNull();
       expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
-      expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(2);
+      for (const call of mocks.prisma.$queryRaw.mock.calls) expect(JSON.stringify(call)).toContain('FSEZONO');
       expect(mocks.prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
       expect(mocks.findMaterialArrivalStatusByPart).toHaveBeenCalledTimes(3);
     });

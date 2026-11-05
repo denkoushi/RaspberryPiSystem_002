@@ -120,7 +120,7 @@ function fixture() {
     specialDue: null as null | { kind: 'today'; expiresAt: string },
     plannedQuantity: 5,
     requiredMinutes: 20,
-    requiredMinutesKnown: true,
+    lslhSurface: false, requiredMinutesKnown: true,
     isCompleted: completed,
     arrived: true,
     progress: { completed: completed ? 1 : 0, total: 1, quantityKnown: false }

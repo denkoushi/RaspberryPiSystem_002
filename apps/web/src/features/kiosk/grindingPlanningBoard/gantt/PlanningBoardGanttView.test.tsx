@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DScheduleMinutesContext } from '../../productionSchedule/DScheduleMinutesContext';
 import { buildPlanningBoardPlacementByPart } from '../planningBoardProcessChipData';
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
@@ -36,7 +37,7 @@ const item = (overrides: Partial<GrindingPlanningBoardItem> = {}): GrindingPlann
   itemId: 'a', kind: 'row', itemRevision: 'r1', version: 1, sourceRowId: 'a',
   fseiban: '26-1001', fhincd: 'P1', fhinmei: '部品', machineName: '機種', productNo: '1', processOrder: '10',
   originalResourceCd: '305', effectiveResourceCd: null, originalDueDate: '2026-10-16', effectiveDueDate: null,
-  originalRank: null, alternateRank: null, plannedQuantity: 1, requiredMinutes: 480, requiredMinutesKnown: true,
+  originalRank: null, alternateRank: null, plannedQuantity: 1, requiredMinutes: 480, lslhSurface: false, requiredMinutesKnown: true,
   isCompleted: false, progress: { completed: 0, total: 1, quantityKnown: true }, ...overrides
 });
 function props(items: GrindingPlanningBoardItem[] = [item()]) {
@@ -58,6 +59,39 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it.each(['backward', 'forward'] as const)('keeps overdue LSLH stars until completion in %s mode', (mode) => {
+    const items = [item({ lslhSurface: true, requiredMinutes: 1 }),
+      item({ itemId: 'b', processOrder: '20', lslhSurface: true }),
+      item({ itemId: 'paint', fhincd: 'P3', fseiban: 'PAINT' }),
+      item({ itemId: 'current', fhincd: 'P4', fseiban: 'CURRENT', lslhSurface: true })];
+    const extras = (fseiban: string, dates: string[]) => ({ fseiban, outsourceMarks: [], memo: null,
+      surfaceSendOutDates: dates.map((date) => ({ date, note: null })) });
+    const rows = new Map([
+      ['26-1001', extras('26-1001', ['2026-10-13', '2026-10-11', '2026-10-13', '2026-10-14', '2026-10-15'])],
+      ['PAINT', extras('PAINT', ['2026-10-10'])],
+      ['CURRENT', extras('CURRENT', ['2026-10-14', '2026-10-15'])]
+    ]);
+    const draw = (visible: GrindingPlanningBoardItem[]) => <DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
+      <PlanningBoardGanttView {...props(visible)} layout={buildPlanningBoardGanttLayout({ items: visible, mode,
+        allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'], dailyHoursByResource: {},
+        today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 })} />
+    </DScheduleMinutesContext.Provider>;
+    const { rerender } = render(draw(items));
+    const stars = screen.getAllByTestId('planning-gantt-late-star');
+    expect(stars).toHaveLength(2);
+    for (const star of stars) {
+      expect(star.closest('button')).toBeNull();
+      expect(star).toHaveClass('pointer-events-none', 'text-violet-300');
+      expect(star.style.textShadow).not.toBe('');
+    }
+    const dateLists = screen.getAllByTestId('planning-gantt-late-star-dates');
+    expect(dateLists).toHaveLength(mode === 'backward' ? 2 : 1);
+    for (const badges of dateLists) expect([...badges.children].map((badge) => badge.textContent?.trim())).toEqual(['★10/11', '★10/13']);
+    rerender(draw(items.map((entry) => ({ ...entry, isCompleted: true }))));
+    expect(screen.queryByTestId('planning-gantt-late-star')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-late-star-dates')).toBeNull();
+  });
+
   it('shows a normalized resource monthly average only in forward, without changing lane height', () => {
     uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: ' ３０５ ', averageRunSeconds: 28080 }] } });
     const values = props();

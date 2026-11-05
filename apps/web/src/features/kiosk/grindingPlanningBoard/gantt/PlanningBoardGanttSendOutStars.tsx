@@ -10,7 +10,7 @@ import type { GanttBar } from './planningBoardGanttLayout';
 export function PlanningBoardGanttSendOutStars({ bars, start, dayWidth }: { bars: readonly GanttBar[]; start: number; dayWidth: number }) {
   const { rows } = useContext(DScheduleMinutesContext);
   const days = new Set<number>();
-  for (const fseiban of new Set(bars.map((bar) => bar.item.fseiban))) {
+  for (const fseiban of new Set(bars.filter((bar) => bar.item.lslhSurface).map((bar) => bar.item.fseiban))) {
     for (const { date } of rows.get(fseiban)?.surfaceSendOutDates ?? []) days.add(dateToDay(date));
   }
   return <>{[...days].map((day) => <span key={day} data-testid="planning-gantt-send-out-star"
