@@ -408,9 +408,9 @@ trivy:
     hour: "4"
     weekday: "0"
 
-# Weekly OS security updates; stage 1 reports fleet-wide, with one apply canary.
+# Weekly OS security updates; stage 2 applies fleet-wide (KB-438).
 os_security_update_enabled: true
-os_security_update_mode: dry-run
+os_security_update_mode: apply
 os_security_update_package_blacklist:
   - '^docker-ce$'
   - '^docker-ce-cli$'

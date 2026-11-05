@@ -65,6 +65,8 @@ systemd timer（`raspi-os-security-update.timer`、Persistent=true、FixedRandom
 1. 今回: 全台 `os_security_update_mode: dry-run`、`raspi4-assembly-02` だけ `apply`（inventory.yml のホスト変数）。dry-run は選別と模擬実行だけ行い、結果を残す。
 2. 1〜2週見て問題なければ、`group_vars/all.yml` の `os_security_update_mode` を `apply` に変えて反映する。必要なら kiosk → signage → Pi5 の順にグループ単位で広げる。
 
+2026-11-05: 段階2へ進めた。`raspi4-assembly-02` は 10/23 から2週間、11/01 に chromium を `155.0.8059.79` から `156.0.8078.73` へ入れてブラウザを再起動し、問題がなかった。JPCERT の注意喚起「Google Chrome に複数の脆弱性」(週報 wr261105 #11)を受け、`group_vars/all.yml` を `apply` にして全台（Pi5、Pi4、Pi3）で入れるようにし、assembly-02 のホスト変数は外した。昼間に画面を止めないため手動の `--force` は使わず、11/08（日）の夜間の実行で入れる。Pi5 では chromium 以外の安全更新（imagemagick、libheif、vlc、libunbound など）も同じ回に入る。
+
 一斉に時刻をずらすだけの案より、1台で実際に入れて確かめてから広げる方が、壊れたときの影響を1台に留められるのでこちらを選んだ。
 
 ## どこを見るか
