@@ -211,7 +211,9 @@ export function forwardPlanningBoardPredecessors(items: readonly GrindingPlannin
   const parts = new Map<string, GrindingPlanningBoardItem[]>();
   for (const item of items) {
     const key = planningBoardPartKey(item);
-    parts.set(key, [...(parts.get(key) ?? []), item]);
+    const chain = parts.get(key);
+    if (chain) chain.push(item);
+    else parts.set(key, [item]);
   }
   const predecessors = new Map<string, string>();
   for (const chain of parts.values()) {
@@ -230,7 +232,9 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   const lanes = new Map<string, GrindingPlanningBoardItem[]>();
   for (const item of sorted) {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
-    lanes.set(resource, [...(lanes.get(resource) ?? []), item]);
+    const queue = lanes.get(resource);
+    if (queue) queue.push(item);
+    else lanes.set(resource, [item]);
   }
   for (const [resource, queue] of lanes) {
     const order = options.laneOrder?.[resource];
@@ -238,6 +242,7 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     const ranks = new Map(order.map((id, index) => [id, index]));
     queue.sort((a, b) => (ranks.get(a.itemId) ?? Infinity) - (ranks.get(b.itemId) ?? Infinity));
   }
+  const heads = new Map<string, number>();
   const scheduled = new Map<string, GanttBar>();
   const cursors = new Map<string, number>();
   const place = (item: GrindingPlanningBoardItem, resource: string) => {
@@ -256,28 +261,45 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
       ...(ready > cursor + 1e-10 ? { waitFrom: cursor, predecessorEnd: ready } : {}) });
     cursors.set(resource, timing.end);
   };
-  // Resolve resource heads only after their predecessors. Each pass removes work, so it is bounded.
+  // Resolve resource heads only after their predecessors. Each pass schedules work, so it is bounded.
   while (scheduled.size < sorted.length) {
     let progressed = false;
     for (const [resource, queue] of lanes) {
-      while (queue.length) {
-        const item = queue[0]!;
-        const predecessor = predecessors.get(item.itemId);
-        if (predecessor && !scheduled.has(predecessor)) break;
-        place(item, resource); queue.shift(); progressed = true;
+      let head = heads.get(resource) ?? 0;
+      while (head < queue.length) {
+        const item = queue[head]!;
+        if (!scheduled.has(item.itemId)) {
+          const predecessor = predecessors.get(item.itemId);
+          if (predecessor && !scheduled.has(predecessor)) break;
+          place(item, resource); progressed = true;
+        }
+        head++;
       }
+      heads.set(resource, head);
     }
     if (!progressed) {
       // Conflicting ranks can put a successor ahead of its own predecessor (also across resources).
       // Explicit preview orders retain their slots in a cycle; legacy layouts prefer process precedence.
-      const remaining = [...lanes.entries()].flatMap(([resource, queue]) => queue.map((item) => ({ resource, item })));
-      const candidate = remaining.find(({ resource, item }) => !options.laneOrder?.[resource] &&
-        (!predecessors.has(item.itemId) || scheduled.has(predecessors.get(item.itemId)!)))
-        ?? remaining.find(({ resource, item }) => options.laneOrder?.[resource] && lanes.get(resource)![0] === item);
+      let candidate: { resource: string; item: GrindingPlanningBoardItem } | undefined;
+      let explicitHead: typeof candidate;
+      for (const [resource, queue] of lanes) {
+        for (let index = heads.get(resource) ?? 0; index < queue.length; index++) {
+          const item = queue[index]!;
+          if (scheduled.has(item.itemId)) continue;
+          if (options.laneOrder?.[resource]) {
+            explicitHead ??= { resource, item };
+            break;
+          }
+          if (!predecessors.has(item.itemId) || scheduled.has(predecessors.get(item.itemId)!)) {
+            candidate = { resource, item };
+            break;
+          }
+        }
+        if (candidate) break;
+      }
+      candidate ??= explicitHead;
       if (!candidate) break;
       place(candidate.item, candidate.resource);
-      const queue = lanes.get(candidate.resource)!;
-      queue.splice(queue.indexOf(candidate.item), 1);
     }
   }
   const bars = options.laneOrder ? [...scheduled.values()] : sorted.map((item) => scheduled.get(item.itemId)!);

@@ -82,6 +82,7 @@ update-frequency: high
 | キオスク日本語入力不可（Firefoxプロファイルに自動操作用設定が残留） | [KB-412](./KB-412-kiosk-firefox-focus-testmode-blocks-ime.md) | 1件 | 2026-10-01: StoneBase01で半角/全角が効かない。`focusmanager.testmode=true`が`prefs.js`に残りIBusへキーが渡らない。ランチャーで起動前に除去 |
 | キオスク製番ボード（資源CD表示×切削の更新ループ） | [KB-411](./KB-411-planning-board-resource-view-update-loop.md) | 1件 | 2026-10-01: 資源CD表示で切削に切り替えるとReact #185でエラー画面。高さ計測のeffect依存を数値に変更 |
 | キオスク製番ボード（再表示が毎回作り直しで遅い） | [KB-418](./KB-418-planning-board-warm-reuse.md) | 1件 | 2026-10-13: 世代が同じ間は結果を保持（#1897 #1902 #1904 #1909）。7分後の再表示 3.5s→0.35s、/load 8s→0.3s |
+| キオスク製番ボード（納期順のフロント処理が遅い） | [KB-439](./KB-439-planning-board-due-sort-performance.md) | 1件 | 2026-11-05: 本番規模の合成計測、Map化・前詰め配置・休憩帯の再利用。初回DOM更新の負荷は残る |
 | キオスクのボタン配置を操作の順番に合わせる（要領書の「作る」ほか） | [KB-419](./KB-419-kiosk-operation-flow-button-placement.md) | 1件 | 2026-10-13: 条件を選ぶ場所の近くに置く・危険な操作は離して確認を挟む・確認は やめる左／実行右。12画面の変更一覧とフローティングChatの位置記憶 |
 | 手順書の「整える」に組立の現場の知識を持たせる | [KB-420](./KB-420-procedure-tidy-site-context.md) | 1件 | 2026-10-14: 既存の組立作業標準書21枚から現場の理解（製品の成り立ち・部品の役目・作業の意味・決まり）をまとめ、業務LLMの指示文へ要約を差し込み |
 | 手動順番で「編集」後の一覧が重い（機種名の引き方） | [KB-422](./KB-422-kiosk-manual-order-edit-slow-machine-name.md) | 1件 | 2026-10-20: 一覧APIの約2秒は機種名の付与。進捗集計の流用をやめ機種名だけ引く SQL にして約0.05秒、結果は本番で同一 |
