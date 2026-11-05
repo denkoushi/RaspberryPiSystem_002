@@ -84,6 +84,8 @@
             if differences:
                 sys.exit('Gateway was NOT recreated; configuration differences:\n' +
                          '\n'.join(differences))
+            service['resolved_networks'] = sorted(
+                planned['networks'][name]['name'] for name in service['networks'])
             print(json.dumps(service))
           - "{{ release_pi5_compose_argv | to_json }}"
           - "{{ release_pi5_gateway_id }}"
@@ -197,7 +199,7 @@
           - (release_pi5_recreated_gateway_logging.stdout | from_json).Type == 'json-file'
           - (release_pi5_recreated_gateway_logging.stdout | from_json).Config['max-size'] == '10m'
           - (release_pi5_recreated_gateway_logging.stdout | from_json).Config['max-file'] == '3'
-          - (release_pi5_compose_project ~ '_pi5') in (release_pi5_recreated_gateway_networks.stdout | from_json)
+          - (release_pi5_recreated_gateway_networks.stdout | from_json | list | sort) == (release_pi5_gateway_plan.stdout | from_json).resolved_networks
           - (release_pi5_compose_project ~ '_business-hermes') in (release_pi5_recreated_gateway_networks.stdout | from_json)
         fail_msg: Recreated Pi5 gateway must be running with json-file limits 10m x 3 and both pi5 and business-hermes networks.
 

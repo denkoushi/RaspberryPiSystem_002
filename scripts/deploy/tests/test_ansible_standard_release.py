@@ -312,6 +312,9 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         assertions = next(t["ansible.builtin.assert"]["that"] for t in tasks
                           if t["name"].startswith("Require the recreated gateway running"))
         self.assertIn("release_pi5_recreated_gateway_user.stdout | trim == (release_pi5_gateway_plan.stdout | from_json).user", assertions)
+        self.assertIn(
+            "(release_pi5_recreated_gateway_networks.stdout | from_json | list | sort) == (release_pi5_gateway_plan.stdout | from_json).resolved_networks",
+            assertions)
 
     def test_gateway_recreate_validates_then_replaces_and_checks(self) -> None:
         root = ANSIBLE / "roles/release_pi5/tasks"
@@ -347,7 +350,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn(".State.Running", text)
         self.assertNotIn(".State.Health", text)
         self.assertIn(".HostConfig.LogConfig", text)
-        for required in ("json-file", "max-size", "10m", "max-file", "'3'", "'_pi5'", "'_business-hermes'"):
+        for required in ("json-file", "max-size", "10m", "max-file", "'3'", ").resolved_networks", "'_business-hermes'"):
             self.assertIn(required, text)
         self.assertNotRegex(text, r"network[ ,]+connect")
         health = yaml.safe_load((root / "health-sample.yml").read_text())[0]["ansible.builtin.uri"]
