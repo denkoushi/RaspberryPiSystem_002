@@ -796,6 +796,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(bar).toHaveClass('touch-pan-y');
     expect(screen.getByTestId('planning-gantt-drag-ghost')).toHaveTextContent('305 移動する部品');
     expect(within(lane).getByTestId('planning-gantt-insertion')).toHaveStyle({ left: target.style.left });
+    expect(screen.getAllByTestId('planning-gantt-insertion')).toHaveLength(1);
+    expect(bar.closest('[data-gantt-lane]')).not.toContainElement(screen.getByTestId('planning-gantt-insertion'));
     fireEvent.pointerMove(bar, { clientX: x, clientY: y + 1 });
     expect(canMoveResource).toHaveBeenCalledTimes(2);
     fireEvent.pointerUp(bar, { clientX: x, clientY: y });
