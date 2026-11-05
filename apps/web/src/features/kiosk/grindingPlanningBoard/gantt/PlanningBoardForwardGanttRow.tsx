@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { PlacementLocationBadge } from '../../../../components/kiosk/PlacementLocationBadge';
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
@@ -17,6 +17,7 @@ import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
 
 import type { PlanningBoardPlacementByPart, PlanningBoardProcessChipsByPart } from '../planningBoardProcessChips';
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
+import type { GanttWindow } from './usePlanningBoardGanttWindow';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, ReactNode } from 'react';
 
@@ -27,6 +28,8 @@ export type ForwardDragPreview = { bar: GanttBar; x: number; y: number; allowed:
 type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
   row: GanttRow;
+  window?: GanttWindow;
+  registerRow?: (key: string, element: HTMLDivElement | null) => void;
   chipsByPart: PlanningBoardProcessChipsByPart;
   placementByPart: PlanningBoardPlacementByPart;
   seibanColors?: ReadonlyMap<string, string>;
@@ -62,9 +65,11 @@ type Props = {
   onFocusChain: (bar: GanttBar) => void;
 };
 
-export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ row, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, label, start, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, label, start, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
   lanes, draggedItemId, insertionLeft, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
+  const rowRef = useCallback((element: HTMLDivElement | null) => registerRow?.(row.key, element), [registerRow, row.key]);
+  const [heldItemId, setHeldItemId] = useState<string | null>(null);
   const lateStars = usePlanningBoardLateStars(row.bars, Math.floor(now));
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -97,15 +102,16 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     cancelLongPress();
     const pending = drag.current;
     drag.current = null;
+    setHeldItemId(null);
     onDragPreview(null);
     if (pending?.element.hasPointerCapture?.(pending.pointerId)) pending.element.releasePointerCapture(pending.pointerId);
   };
   useEffect(() => {
-    const cancel = () => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; onDragPreview(null); } };
-    window.addEventListener('blur', cancel);
-    return () => { cancel(); window.removeEventListener('blur', cancel); };
+    const cancel = () => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } };
+    globalThis.window.addEventListener('blur', cancel);
+    return () => { cancel(); globalThis.window.removeEventListener('blur', cancel); };
   }, [onDragPreview]);
-  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, pinMode, onDragPreview]);
+  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, pinMode, onDragPreview]);
   const findDrop = (clientX: number, clientY: number, pending: Drag): Drop | null => {
     return findForwardDrop(clientX, clientY, pending.bar, pending.allowed,
       track.current?.closest('[data-testid="planning-board-gantt"]'), lanes.current, start, dayWidth);
@@ -146,17 +152,25 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
       return { bar, chips, placement, badgeWidth: planningBoardBadgeWidth(placement), left: (bar.start - start) * dayWidth };
     }), CHIP_STRIP_FIT);
   }, [row.bars, chipsByPart, placementByPart, start, dayWidth]);
-  return <div className="flex border-b border-slate-600" style={{ minHeight: 76 + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
+  const visibleBars = useMemo(() => row.bars.filter((bar) => {
+    // A selected bar's due mark sits on its due day, which can be on screen while the bar itself is not.
+    if (!window || bar.item.itemId === heldItemId || bar.item.itemId === draggedItemId || selectedItemIds.has(bar.item.itemId)) return true;
+    const segments = bar.unknown ? [{ start: bar.start!, end: bar.start! + 70 / dayWidth }] : bar.segments ?? [];
+    return segments.some((segment) => (segment.start - start) * dayWidth <= window.right
+      && (segment.end - start) * dayWidth >= window.left);
+  }), [row.bars, window, heldItemId, draggedItemId, selectedItemIds, start, dayWidth]);
+  const visibleIds = new Set(visibleBars.map((bar) => bar.item.itemId));
+  return <div ref={rowRef} className="flex border-b border-slate-600" style={{ minHeight: 76 + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
     <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-evenly border-r border-slate-700 bg-slate-900 px-2 py-0.5 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
       <PlanningBoardLateStarDates dates={lateStars.dates} />
     </div>
     <div ref={track} data-gantt-track className="relative shrink-0 overflow-hidden" style={{ width }}>
-      <PlanningBoardGanttSendOutStars bars={row.bars} start={start} dayWidth={dayWidth} />
+      <PlanningBoardGanttSendOutStars bars={row.bars} window={window} start={start} dayWidth={dayWidth} />
       {calendarBands}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
-      {chipLayout.strips.map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
+      {chipLayout.strips.filter(({ bar }) => visibleIds.has(bar.item.itemId)).map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
         className="pointer-events-none absolute flex flex-nowrap gap-0.5" style={{ left, top: 76 + line * CHIP_LINE_HEIGHT }}>
         {placement && <span className="inline-flex shrink-0" style={{ width: badgeWidth }}>
           <PlacementLocationBadge placement={placement} />
@@ -169,7 +183,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
           <span className="pointer-events-auto rounded border border-slate-500 px-1 py-0.5 text-[10px] leading-none text-slate-200">{moreChipLabel(hidden.length)}</span>
         </IconActionTooltip>}
       </div>)}
-      {row.bars.map((bar) => {
+      {visibleBars.map((bar) => {
         const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
         const selected = selectedItemIds.has(bar.item.itemId);
         const inChain = focusedPartKey === bar.partKey;
@@ -200,6 +214,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               onPointerDown={(event) => {
                 onCloseQueue();
                 if (disabled || bar.item.isCompleted || event.button !== 0 || event.isPrimary === false || drag.current) return;
+                setHeldItemId(bar.item.itemId);
                 suppressClick.current = false;
                 drag.current = { bar, x: event.clientX, y: event.clientY, tapCancelled: false, longPressed: false, selected, pointerId: event.pointerId, element: event.currentTarget, moved: false };
                 if (!pinMode) longPressTimer.current = setTimeout(() => {

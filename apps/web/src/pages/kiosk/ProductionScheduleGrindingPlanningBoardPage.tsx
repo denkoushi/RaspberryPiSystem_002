@@ -38,6 +38,7 @@ import { usePlanningBoardLargeScreen } from '../../features/kiosk/grindingPlanni
 import { usePlanningBoardNotices } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardNotices';
 import { usePlanningBoardPageGantt } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt';
 import { usePlanningBoardPageItems } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageItems';
+import { usePlanningBoardQueryData } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardQueryData';
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import { isVisibleByArrival } from '../../features/kiosk/isVisibleByArrival';
 import { DScheduleMinutesProvider } from '../../features/kiosk/productionSchedule/DScheduleMinutesContext';
@@ -188,7 +189,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     notify('保存できませんでした。時間をおいて再試行してください。', 'error');
   }, [notify]);
 
-  const data = boardQuery.data;
+  const data = usePlanningBoardQueryData(boardQuery.data);
   const scopeReady = boardQuery.scopeReady;
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady || Boolean(orderPreview);
@@ -243,9 +244,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(arrivalItems), [arrivalItems]);
   const chipsQuery = useKioskGrindingPlanningBoardProcessChips(chipParts);
-  const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(
-    arrivalItems, chipsQuery.isError ? undefined : chipsQuery.data?.chipsByPartKey
-  ), [arrivalItems, chipsQuery.isError, chipsQuery.data]);
+  const chipData = usePlanningBoardQueryData(chipsQuery.data);
+  const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(arrivalItems, chipsQuery.isError ? undefined : chipData?.chipsByPartKey), [arrivalItems, chipsQuery.isError, chipData]);
   const placementByPart = useMemo(() => buildPlanningBoardPlacementByPart(arrivalItems), [arrivalItems]);
 
   useEffect(() => {
