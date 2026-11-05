@@ -66,6 +66,19 @@ describe('client-telemetry.service', () => {
     );
   });
 
+  it('links a status-only report to the device authenticated by its client key', async () => {
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1' } as never);
+    vi.mocked(prisma.clientStatus.upsert).mockResolvedValue({ id: 'status-1' } as never);
+    await upsertClientStatus({ clientKey: 'registered-key', requestId: 'req-status-only', metrics: {
+      clientId: 'raspi4-status-only', hostname: 'pi4', ipAddress: '192.0.2.1',
+      cpuUsage: 0, memoryUsage: 0, diskUsage: 0
+    } });
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith({
+      where: { apiKey: 'registered-key' },
+      data: { statusClientId: 'raspi4-status-only', lastSeenAt: expect.any(Date) }
+    });
+  });
+
   it('touchClientHeartbeat は既存キーの lastSeen / location を更新する', async () => {
     vi.mocked(prisma.clientDevice.update).mockResolvedValue({
       id: 'device-1',

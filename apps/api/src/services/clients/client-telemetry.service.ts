@@ -144,6 +144,7 @@ async function resolveRegisteredSiteKeyForNewDevice(location: string | undefined
 
 export async function registerClientDeviceAdmin(params: {
   apiKey: string;
+  statusClientId?: string;
   name: string;
   location?: string | null;
 }) {
@@ -153,10 +154,12 @@ export async function registerClientDeviceAdmin(params: {
   const device = await prisma.clientDevice.upsert({
     where: { apiKey: params.apiKey },
     update: {
+      ...(params.statusClientId !== undefined ? { statusClientId: params.statusClientId } : {}),
       location,
       lastSeenAt: now,
     },
     create: {
+      ...(params.statusClientId !== undefined ? { statusClientId: params.statusClientId } : {}),
       name: params.name,
       location,
       siteKey: siteKeyForNewDevice,
@@ -219,6 +222,7 @@ export async function listClientDevices() {
 
 export async function updateClientDevice(params: {
   id: string;
+  statusClientId?: string;
   name?: string;
   defaultMode?: 'PHOTO' | 'TAG' | null;
   kioskInitialRoute?: string | null;
@@ -232,6 +236,7 @@ export async function updateClientDevice(params: {
     const updated = await prisma.clientDevice.update({
       where: { id: params.id },
       data: {
+        ...(params.statusClientId !== undefined ? { statusClientId: params.statusClientId } : {}),
         name: params.name ?? undefined,
         defaultMode: params.defaultMode ?? undefined,
         ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),

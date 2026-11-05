@@ -150,6 +150,7 @@ else:
         self.assertIn("[SUCCESS]", result.stdout)
         self.assertEqual(json.loads((self.root / "payload.json").read_text()), {
             "name": "pi4-new", "apiKey": self.key, "location": self.location,
+            "statusClientId": "pi4-new-kiosk1",
         })
 
     def test_inline_vault_value_is_resolved(self) -> None:

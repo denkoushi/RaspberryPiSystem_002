@@ -4,9 +4,17 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
 import { ApiError } from '../../lib/errors.js';
 
+// deploy-status の識別子検証と同じ制約。空白を自動補正せず、不正な値を拒否する。
+const statusClientIdSchema = z.string().min(1).max(255).refine((value) =>
+  value === value.trim() && !Array.from(value).some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 0x1f || code === 0x7f;
+  }), 'Invalid statusClientId');
+
 /** 管理者 POST /clients 用（inventory / register-clients.sh） */
 export const registerClientBodySchema = z.object({
   apiKey: z.string().min(8),
+  statusClientId: statusClientIdSchema.optional(),
   name: z.string().min(1),
   location: z.string().optional().nullable(),
 });
@@ -67,6 +75,7 @@ const clientDisplayNameSchema = z
   .refine((value) => value.length > 0, 'name is required');
 
 export const updateClientSchema = z.object({
+  statusClientId: statusClientIdSchema.optional(),
   name: clientDisplayNameSchema.optional(),
   defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable(),
   kioskInitialRoute: z.enum(KIOSK_INITIAL_ROUTE_IDS).optional().nullable(),
