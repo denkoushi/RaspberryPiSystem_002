@@ -121,12 +121,14 @@ export function usePlanningBoardWriteQueue(options: Options) {
               item: (original) => current.confirmed.get(original.itemId)?.item ?? original });
             if (!mounted.current || current !== state.current) return;
             if (result.sourceRevision) current.sourceRevision = result.sourceRevision;
+            const latestById = new Map(latest.current.items.map((item) => [item.itemId, item]));
+            const requestById = requestItems === latest.current.items ? latestById : new Map(requestItems.map((item) => [item.itemId, item]));
             for (const item of result.items ?? []) {
               const previous = current.confirmed.get(item.itemId);
-              const base = latest.current.items.find((candidate) => candidate.itemId === item.itemId);
+              const base = latestById.get(item.itemId);
               const stale = new Set(previous?.stale);
               if (previous) stale.add(previous.item.itemRevision);
-              const requestItem = requestItems.find((candidate) => candidate.itemId === item.itemId);
+              const requestItem = requestById.get(item.itemId);
               if (requestItem) stale.add(requestItem.itemRevision);
               current.confirmed.set(item.itemId, { item: base ? savedFields(base, item) : item, stale });
             }

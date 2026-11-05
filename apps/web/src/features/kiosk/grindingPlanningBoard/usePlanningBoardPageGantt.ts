@@ -89,7 +89,8 @@ export function usePlanningBoardPageGantt({
   const lastResourceOrder = resourceOrderHistory.filter((entry) => entry.scope === historyScope).at(-1);
   const enqueueResourceOrder = (snapshot: ResourceOrderSnapshot, label: string, onSaved: () => void, preview?: OrderPreview, onFailed?: () => void,
     sourceItems = currentItemsRef.current) => {
-    const items = snapshot.itemIds.map((id) => sourceItems.find((item) => item.itemId === id));
+    const sourceById = new Map(sourceItems.map((item) => [item.itemId, item]));
+    const items = snapshot.itemIds.map((id) => sourceById.get(id));
     if (!items.length || items.length > 500 || items.some((item) => !item || item.isCompleted ||
       (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || hasPendingSeiban(item.fseiban, true))) return false;
     const members = items as GrindingPlanningBoardItem[];
@@ -149,10 +150,16 @@ export function usePlanningBoardPageGantt({
   const sortResourceOrdersByDue = () => {
     if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled) return;
     const id = ++resourceOrderHistoryId.current;
-    const resources = [...new Set(ganttItems.filter((item) => !item.isCompleted).map((item) => resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定'))];
-    for (const resourceCd of resources) {
-      const visible = sortGrindingPlanningBoardItems(ganttItems.filter((item) => !item.isCompleted &&
-        (resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定') === resourceCd), registeredFseibans, 'resource', allocation);
+    const itemsByResource = new Map<string, GrindingPlanningBoardItem[]>();
+    for (const item of ganttItems) {
+      if (item.isCompleted) continue;
+      const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
+      const members = itemsByResource.get(resource);
+      if (members) members.push(item);
+      else itemsByResource.set(resource, [item]);
+    }
+    for (const [resourceCd, members] of itemsByResource) {
+      const visible = sortGrindingPlanningBoardItems(members, registeredFseibans, 'resource', allocation);
       const sorted = [...visible].sort((a, b) => {
         if (a.specialDue || b.specialDue) return a.specialDue ? b.specialDue ? 0 : -1 : 1;
         return (resolveGrindingPlanningBoardDueDate(a, allocation) ?? '9999-12-31').localeCompare(resolveGrindingPlanningBoardDueDate(b, allocation) ?? '9999-12-31') ||

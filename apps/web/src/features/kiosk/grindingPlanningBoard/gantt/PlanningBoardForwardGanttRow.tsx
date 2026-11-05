@@ -1,12 +1,11 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 
 import { PlacementLocationBadge } from '../../../../components/kiosk/PlacementLocationBadge';
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
 import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
 import { pageZoom } from '../pageZoom';
-import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
 import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
@@ -15,6 +14,7 @@ import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
 
+import type { PlanningBoardPlacementByPart, PlanningBoardProcessChipsByPart } from '../planningBoardProcessChips';
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, ReactNode } from 'react';
@@ -26,6 +26,8 @@ export type ForwardDragPreview = { bar: GanttBar; x: number; y: number; allowed:
 type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
   row: GanttRow;
+  chipsByPart: PlanningBoardProcessChipsByPart;
+  placementByPart: PlanningBoardPlacementByPart;
   seibanColors?: ReadonlyMap<string, string>;
   focusedSeiban?: string | null;
   label?: ReactNode;
@@ -48,7 +50,7 @@ type Props = {
   onResourceReorder?: ForwardReorder;
   onResourceMove?: ForwardMove;
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
-  lanes: readonly { resource: string; bars: GanttBar[] }[];
+  lanes: { readonly current: readonly { resource: string; bars: GanttBar[] }[] };
   resource?: string;
   preview: ForwardDragPreview | null;
   onDragPreview: (preview: ForwardDragPreview | null) => void;
@@ -59,7 +61,7 @@ type Props = {
   onFocusChain: (bar: GanttBar) => void;
 };
 
-export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban = null, label, start, end, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ row, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, label, start, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
   lanes, resource, preview, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const track = useRef<HTMLDivElement>(null);
@@ -78,6 +80,17 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
     const periods = workingPeriods(hours);
     return [{ start: 0, end: periods[0]!.start }, { start: periods[periods.length - 1]!.end, end: 1 }];
   }, [hours]);
+  // Repeat each gap from its original left edge. Each hatch tile restarts at the same phase as the old daily span.
+  const calendarBands = useMemo(() => hours < 24 && <>
+    {offHours.map((gap, index) => <span key={index} data-gantt-decoration="offHourBands" className="pointer-events-none absolute inset-y-0"
+      style={{ left: gap.start * dayWidth, width: width - gap.start * dayWidth,
+        backgroundImage: `repeating-linear-gradient(to right, rgb(2 6 23 / 0.55) 0 ${(gap.end - gap.start) * dayWidth}px, transparent ${(gap.end - gap.start) * dayWidth}px ${dayWidth}px)` }} />)}
+    {breaks.map((gap, index) => <span key={`break-${index}`} data-testid="planning-gantt-break" className="pointer-events-none absolute inset-y-0 opacity-80"
+      style={{ left: gap.start * dayWidth, width: width - gap.start * dayWidth,
+        background: 'repeating-linear-gradient(135deg, rgb(51 65 85) 0 4px, transparent 4px 8px)',
+        backgroundSize: `${dayWidth}px 100%`,
+        maskImage: `repeating-linear-gradient(to right, black 0 ${(gap.end - gap.start) * dayWidth}px, transparent ${(gap.end - gap.start) * dayWidth}px ${dayWidth}px)` }} />)}
+  </>, [hours, width, offHours, breaks, dayWidth]);
   const clear = () => {
     cancelLongPress();
     const pending = drag.current;
@@ -98,7 +111,7 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
       .map((element) => element.closest<HTMLElement>('[data-gantt-lane]')).find((element) => element && board?.contains(element));
     const targetResource = lane?.dataset.resourceCode;
     if (!targetResource || !pending.allowed?.has(targetResource)) return null;
-    const targetLane = lanes.find((candidate) => candidate.resource === targetResource);
+    const targetLane = lanes.current.find((candidate) => candidate.resource === targetResource);
     const targetTrack = lane.querySelector<HTMLElement>('[data-gantt-track]');
     if (!targetLane || !targetTrack) return null;
     const x = (clientX - targetTrack.getBoundingClientRect().left) / pageZoom();
@@ -127,12 +140,10 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
     }
     if (!pending.moved && distance >= 8) { pending.moved = true; onCloseQueue(); }
     if (pending.moved && !disabled && !dragDisabled && !pinMode && resourceView) {
-      pending.allowed ??= new Set(lanes.filter((lane) => lane.resource === pending.bar.resource || canMoveResource?.(pending.bar.item, lane.resource)).map((lane) => lane.resource));
+      pending.allowed ??= new Set(lanes.current.filter((lane) => lane.resource === pending.bar.resource || canMoveResource?.(pending.bar.item, lane.resource)).map((lane) => lane.resource));
       onDragPreview({ bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: findDrop(event.clientX, event.clientY, pending) });
     }
   };
-  const chipsByPart = usePlanningBoardProcessChips();
-  const placementByPart = usePlanningBoardPlacementByPart();
   // One chip strip per part under its first bar: completed chips fold into 「済N」, at most two lines, and what still does not fit becomes 「+N」.
   const chipLayout = useMemo(() => {
     const barStart = (bar: GanttBar) => bar.unknown ? bar.start : bar.segments?.[0]?.start;
@@ -155,13 +166,7 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
     </div>
     <div ref={track} data-gantt-track className="relative shrink-0 overflow-hidden" style={{ width }}>
       <PlanningBoardGanttSendOutStars bars={row.bars} start={start} dayWidth={dayWidth} />
-      {hours < 24 && Array.from({ length: end - start }, (_, i) => <div key={i} className="pointer-events-none">
-        {offHours.map((gap, index) => <span key={index} className="absolute inset-y-0 bg-slate-950/55"
-          style={{ left: (i + gap.start) * dayWidth, width: (gap.end - gap.start) * dayWidth }} />)}
-        {breaks.map((gap, index) => <span key={`break-${index}`} data-testid="planning-gantt-break" className="pointer-events-none absolute inset-y-0 opacity-80"
-          style={{ left: (i + gap.start) * dayWidth, width: (gap.end - gap.start) * dayWidth,
-            background: 'repeating-linear-gradient(135deg, rgb(51 65 85) 0 4px, transparent 4px 8px)' }} />)}
-      </div>)}
+      {calendarBands}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
       {chipLayout.strips.map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
@@ -252,4 +257,4 @@ export function PlanningBoardForwardGanttRow({ row, seibanColors, focusedSeiban 
       {preview?.drop && preview.drop.resource === resource && <span data-testid="planning-gantt-insertion" className="pointer-events-none absolute inset-y-2 z-10 w-0.5 bg-emerald-300" style={{ left: preview.drop.left }} />}
     </div>
   </div>;
-}
+});

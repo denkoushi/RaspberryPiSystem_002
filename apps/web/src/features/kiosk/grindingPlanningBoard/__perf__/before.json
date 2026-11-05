@@ -1,0 +1,449 @@
+{
+  "environment": {
+    "node": "v24.3.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M3",
+    "dom": "jsdom (no browser layout/paint)",
+    "samples": 3,
+    "discardedWarmups": 1
+  },
+  "fixture": {
+    "seibans": 80,
+    "items": 1500,
+    "resources": 20,
+    "splits": 89,
+    "specialDue": 52
+  },
+  "layoutMedianMs": 12.542874999999867,
+  "medians": {
+    "handlerMs": 9.599957999999788,
+    "firstDisplayMs": 25.01616600000034,
+    "acknowledgementsMs": 298.3489579999996,
+    "viewMountMs": 1306.048334000001,
+    "viewUpdateMs": 796.6388330000009,
+    "viewAcknowledgementMs": 437.47020800000064
+  },
+  "samples": [
+    {
+      "handlerMs": 9.93316700000014,
+      "firstDisplayMs": 32.101040999999896,
+      "initial": {
+        "stateUpdates": 20,
+        "queueUpdates": 20,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          }
+        ],
+        "applyMs": 1.0577450000009776,
+        "layoutMs": 20.687582999999904
+      },
+      "acknowledgementsMs": 313.6193750000002,
+      "all": {
+        "stateUpdates": 61,
+        "queueUpdates": 41,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          },
+          {
+            "stateUpdates": 22,
+            "queueUpdates": 21,
+            "layouts": 2
+          },
+          {
+            "stateUpdates": 24,
+            "queueUpdates": 22,
+            "layouts": 3
+          },
+          {
+            "stateUpdates": 26,
+            "queueUpdates": 23,
+            "layouts": 4
+          },
+          {
+            "stateUpdates": 28,
+            "queueUpdates": 24,
+            "layouts": 5
+          },
+          {
+            "stateUpdates": 30,
+            "queueUpdates": 25,
+            "layouts": 6
+          },
+          {
+            "stateUpdates": 32,
+            "queueUpdates": 26,
+            "layouts": 7
+          },
+          {
+            "stateUpdates": 34,
+            "queueUpdates": 27,
+            "layouts": 8
+          },
+          {
+            "stateUpdates": 36,
+            "queueUpdates": 28,
+            "layouts": 9
+          },
+          {
+            "stateUpdates": 38,
+            "queueUpdates": 29,
+            "layouts": 10
+          },
+          {
+            "stateUpdates": 40,
+            "queueUpdates": 30,
+            "layouts": 11
+          },
+          {
+            "stateUpdates": 42,
+            "queueUpdates": 31,
+            "layouts": 12
+          },
+          {
+            "stateUpdates": 44,
+            "queueUpdates": 32,
+            "layouts": 13
+          },
+          {
+            "stateUpdates": 46,
+            "queueUpdates": 33,
+            "layouts": 14
+          },
+          {
+            "stateUpdates": 48,
+            "queueUpdates": 34,
+            "layouts": 15
+          },
+          {
+            "stateUpdates": 50,
+            "queueUpdates": 35,
+            "layouts": 16
+          },
+          {
+            "stateUpdates": 52,
+            "queueUpdates": 36,
+            "layouts": 17
+          },
+          {
+            "stateUpdates": 54,
+            "queueUpdates": 37,
+            "layouts": 18
+          },
+          {
+            "stateUpdates": 56,
+            "queueUpdates": 38,
+            "layouts": 19
+          },
+          {
+            "stateUpdates": 58,
+            "queueUpdates": 39,
+            "layouts": 20
+          },
+          {
+            "stateUpdates": 61,
+            "queueUpdates": 41,
+            "layouts": 21
+          }
+        ],
+        "applyCalls": 210,
+        "applyMs": 9.123200999997607,
+        "layoutMs": 292.7482469999986,
+        "layouts": 21
+      },
+      "viewMountMs": 1317.7285420000007,
+      "viewUpdateMs": 789.5710419999996,
+      "viewAcknowledgementMs": 380.22158300000046,
+      "daysBefore": 242,
+      "daysAfter": 377,
+      "nodes": 67788,
+      "segments": 3207
+    },
+    {
+      "handlerMs": 9.599957999999788,
+      "firstDisplayMs": 25.01616600000034,
+      "initial": {
+        "stateUpdates": 20,
+        "queueUpdates": 20,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          }
+        ],
+        "applyMs": 0.8808769999977812,
+        "layoutMs": 14.076584000000366
+      },
+      "acknowledgementsMs": 298.3489579999996,
+      "all": {
+        "stateUpdates": 61,
+        "queueUpdates": 41,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          },
+          {
+            "stateUpdates": 22,
+            "queueUpdates": 21,
+            "layouts": 2
+          },
+          {
+            "stateUpdates": 24,
+            "queueUpdates": 22,
+            "layouts": 3
+          },
+          {
+            "stateUpdates": 26,
+            "queueUpdates": 23,
+            "layouts": 4
+          },
+          {
+            "stateUpdates": 28,
+            "queueUpdates": 24,
+            "layouts": 5
+          },
+          {
+            "stateUpdates": 30,
+            "queueUpdates": 25,
+            "layouts": 6
+          },
+          {
+            "stateUpdates": 32,
+            "queueUpdates": 26,
+            "layouts": 7
+          },
+          {
+            "stateUpdates": 34,
+            "queueUpdates": 27,
+            "layouts": 8
+          },
+          {
+            "stateUpdates": 36,
+            "queueUpdates": 28,
+            "layouts": 9
+          },
+          {
+            "stateUpdates": 38,
+            "queueUpdates": 29,
+            "layouts": 10
+          },
+          {
+            "stateUpdates": 40,
+            "queueUpdates": 30,
+            "layouts": 11
+          },
+          {
+            "stateUpdates": 42,
+            "queueUpdates": 31,
+            "layouts": 12
+          },
+          {
+            "stateUpdates": 44,
+            "queueUpdates": 32,
+            "layouts": 13
+          },
+          {
+            "stateUpdates": 46,
+            "queueUpdates": 33,
+            "layouts": 14
+          },
+          {
+            "stateUpdates": 48,
+            "queueUpdates": 34,
+            "layouts": 15
+          },
+          {
+            "stateUpdates": 50,
+            "queueUpdates": 35,
+            "layouts": 16
+          },
+          {
+            "stateUpdates": 52,
+            "queueUpdates": 36,
+            "layouts": 17
+          },
+          {
+            "stateUpdates": 54,
+            "queueUpdates": 37,
+            "layouts": 18
+          },
+          {
+            "stateUpdates": 56,
+            "queueUpdates": 38,
+            "layouts": 19
+          },
+          {
+            "stateUpdates": 58,
+            "queueUpdates": 39,
+            "layouts": 20
+          },
+          {
+            "stateUpdates": 61,
+            "queueUpdates": 41,
+            "layouts": 21
+          }
+        ],
+        "applyCalls": 210,
+        "applyMs": 8.822327000004407,
+        "layoutMs": 270.55175000000054,
+        "layouts": 21
+      },
+      "viewMountMs": 1271.2850420000004,
+      "viewUpdateMs": 842.3423750000002,
+      "viewAcknowledgementMs": 452.9775000000009,
+      "daysBefore": 242,
+      "daysAfter": 377,
+      "nodes": 67788,
+      "segments": 3207
+    },
+    {
+      "handlerMs": 9.436041999999361,
+      "firstDisplayMs": 21.962666999999783,
+      "initial": {
+        "stateUpdates": 20,
+        "queueUpdates": 20,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          }
+        ],
+        "applyMs": 0.8239999999950669,
+        "layoutMs": 11.365209000001414
+      },
+      "acknowledgementsMs": 291.86824999999953,
+      "all": {
+        "stateUpdates": 61,
+        "queueUpdates": 41,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          },
+          {
+            "stateUpdates": 22,
+            "queueUpdates": 21,
+            "layouts": 2
+          },
+          {
+            "stateUpdates": 24,
+            "queueUpdates": 22,
+            "layouts": 3
+          },
+          {
+            "stateUpdates": 26,
+            "queueUpdates": 23,
+            "layouts": 4
+          },
+          {
+            "stateUpdates": 28,
+            "queueUpdates": 24,
+            "layouts": 5
+          },
+          {
+            "stateUpdates": 30,
+            "queueUpdates": 25,
+            "layouts": 6
+          },
+          {
+            "stateUpdates": 32,
+            "queueUpdates": 26,
+            "layouts": 7
+          },
+          {
+            "stateUpdates": 34,
+            "queueUpdates": 27,
+            "layouts": 8
+          },
+          {
+            "stateUpdates": 36,
+            "queueUpdates": 28,
+            "layouts": 9
+          },
+          {
+            "stateUpdates": 38,
+            "queueUpdates": 29,
+            "layouts": 10
+          },
+          {
+            "stateUpdates": 40,
+            "queueUpdates": 30,
+            "layouts": 11
+          },
+          {
+            "stateUpdates": 42,
+            "queueUpdates": 31,
+            "layouts": 12
+          },
+          {
+            "stateUpdates": 44,
+            "queueUpdates": 32,
+            "layouts": 13
+          },
+          {
+            "stateUpdates": 46,
+            "queueUpdates": 33,
+            "layouts": 14
+          },
+          {
+            "stateUpdates": 48,
+            "queueUpdates": 34,
+            "layouts": 15
+          },
+          {
+            "stateUpdates": 50,
+            "queueUpdates": 35,
+            "layouts": 16
+          },
+          {
+            "stateUpdates": 52,
+            "queueUpdates": 36,
+            "layouts": 17
+          },
+          {
+            "stateUpdates": 54,
+            "queueUpdates": 37,
+            "layouts": 18
+          },
+          {
+            "stateUpdates": 56,
+            "queueUpdates": 38,
+            "layouts": 19
+          },
+          {
+            "stateUpdates": 58,
+            "queueUpdates": 39,
+            "layouts": 20
+          },
+          {
+            "stateUpdates": 61,
+            "queueUpdates": 41,
+            "layouts": 21
+          }
+        ],
+        "applyCalls": 210,
+        "applyMs": 8.564382999997179,
+        "layoutMs": 262.88654300000417,
+        "layouts": 21
+      },
+      "viewMountMs": 1306.048334000001,
+      "viewUpdateMs": 796.6388330000009,
+      "viewAcknowledgementMs": 437.47020800000064,
+      "daysBefore": 242,
+      "daysAfter": 377,
+      "nodes": 67788,
+      "segments": 3207
+    }
+  ]
+}

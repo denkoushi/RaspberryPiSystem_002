@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { pageZoom } from '../pageZoom';
+import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
 import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 
@@ -15,6 +16,7 @@ import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
 import { dayLabel, dayToDate, jstDay, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
+import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
@@ -48,6 +50,8 @@ type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPe
   preferenceScope?: string;
 };
 export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void };
+const EMPTY_SEIBAN_ORDER: readonly string[] = [];
+const EMPTY_CHAIN: GanttBar[] = [];
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const GANTT_BOTTOM_GAP = 10;
 // With a 2- or 4-day span a day is wide enough to show where the hours fall.
@@ -71,13 +75,44 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 }
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
-  layout: sourceLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
+  layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingRowIds,
-  colorBySeiban = false, seibanOrder = [], preferenceScope = 'default', ...interaction
+  colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
 }, ref) {
+  const incomingChips = usePlanningBoardProcessChips();
+  const incomingPlacements = usePlanningBoardPlacementByPart();
+  const previousDetails = useRef({ chips: incomingChips, placements: incomingPlacements });
+  // Drag previews re-render this view on every pointer move; compare contents only when a context map changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- previousDetails is a ref read only to keep the prior identity.
+  const chipsByPart = useMemo(() => JSON.stringify([...incomingChips]) === JSON.stringify([...previousDetails.current.chips]) ? previousDetails.current.chips : incomingChips, [incomingChips]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- previousDetails is a ref read only to keep the prior identity.
+  const placementByPart = useMemo(() => JSON.stringify([...incomingPlacements]) === JSON.stringify([...previousDetails.current.placements])
+    ? previousDetails.current.placements : incomingPlacements, [incomingPlacements]);
+  useLayoutEffect(() => { previousDetails.current = { chips: chipsByPart, placements: placementByPart }; }, [chipsByPart, placementByPart]);
+  const previousLayout = useRef<GanttLayout | null>(null);
+  const sourceLayout = useMemo(() => currentLayout.mode === 'forward' ? sharePlanningBoardGanttLayout(previousLayout.current, currentLayout) : currentLayout, [currentLayout]);
+  useLayoutEffect(() => { previousLayout.current = sourceLayout; }, [sourceLayout]);
+  // Stable row handlers must still see current callbacks and acknowledgement revisions.
+  const currentBars = useMemo(() => new Map(currentLayout.groups.flatMap((group) => group.rows.flatMap((row) =>
+    row.bars.map((bar) => [bar.item.itemId, bar] as const)))), [currentLayout]);
+  const latest = useRef({ interaction, currentBars });
+  useLayoutEffect(() => { latest.current = { interaction, currentBars }; });
+  const rowActions = useMemo(() => {
+    const item = (original: GrindingPlanningBoardItem) => latest.current.currentBars.get(original.itemId)?.item ?? original;
+    return {
+      onToggleItem: (original: GrindingPlanningBoardItem, selected: boolean) => latest.current.interaction.onToggleItem(item(original), selected),
+      onTogglePin: (original: GrindingPlanningBoardItem) => latest.current.interaction.onTogglePin?.(item(original)),
+      onResourceReorder: ((original, target, placement) => latest.current.interaction.onResourceReorder?.(item(original), item(target), placement)) as ForwardReorder,
+      onResourceMove: ((original, resource, target, placement) => latest.current.interaction.onResourceMove?.(item(original), resource, target && item(target), placement)) as ForwardMove,
+      canMoveResource: (original: GrindingPlanningBoardItem, resource: string) => latest.current.interaction.canMoveResource?.(item(original), resource) ?? false
+    };
+  }, []);
   // Dragging a machine name up or down reorders the lanes; the order is kept on this kiosk only.
-  const laneResources = useMemo(() => sourceLayout.groups.every((group) => group.resource)
-    ? sourceLayout.groups.map((group) => group.resource!) : [], [sourceLayout]);
+  const nextResources = sourceLayout.groups.every((group) => group.resource) ? sourceLayout.groups.map((group) => group.resource!) : [];
+  const previousResources = useRef(nextResources);
+  const laneResources = nextResources.length === previousResources.current.length && nextResources.every((resource, index) => resource === previousResources.current[index])
+    ? previousResources.current : nextResources;
+  useLayoutEffect(() => { previousResources.current = laneResources; }, [laneResources]);
   const laneAt = useCallback((x: number, y: number) => laneAtPoint(x, y, new Set(laneResources)), [laneResources]);
   const laneOrder = usePlanningBoardPaneOrder(laneResources, preferenceScope, laneAt, Boolean(interaction.disabled), { startOnMove: true });
   const layout = useMemo(() => laneResources.length < 2 ? sourceLayout : { ...sourceLayout,
@@ -85,13 +120,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     groups: [...sourceLayout.groups].sort((a, b) => (a.category === 'cutting' ? 1 : 0) - (b.category === 'cutting' ? 1 : 0)
       || laneOrder.order.indexOf(a.resource!) - laneOrder.order.indexOf(b.resource!)) },
   [sourceLayout, laneResources, laneOrder.order]);
-  const laneHandle = (resource: string, text: string, className: string) => <button type="button" title={text}
+  const { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onKeyDown } = laneOrder;
+  const laneHandle = useCallback((resource: string, text: string, className: string) => <button type="button" title={text}
     className={clsx('touch-none select-none truncate text-left focus-visible:outline focus-visible:outline-emerald-300', className)}
     disabled={interaction.disabled} aria-label={`資源CD ${resource}の行を並べ替え`}
     aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" onContextMenu={(event) => event.preventDefault()}
-    onPointerDown={(event) => laneOrder.onPointerDown(event, resource)} onPointerMove={laneOrder.onPointerMove}
-    onPointerUp={laneOrder.onPointerUp} onPointerCancel={laneOrder.onPointerCancel} onLostPointerCapture={laneOrder.onPointerCancel}
-    onKeyDown={(event) => laneOrder.onKeyDown(event, resource)}>{text}</button>;
+    onPointerDown={(event) => onPointerDown(event, resource)} onPointerMove={onPointerMove}
+    onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} onLostPointerCapture={onPointerCancel}
+    onKeyDown={(event) => onKeyDown(event, resource)}>{text}</button>, [interaction.disabled, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onKeyDown]);
   const [completionTargetId, setCompletionTargetId] = useState<string | null>(null);
   useEffect(() => {
     if (completionTargetId && !planningBoardVisibleBars(layout).some((bar) => bar.item.itemId === completionTargetId)) setCompletionTargetId(null);
@@ -100,7 +136,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     setCompletionTargetId((current) => current === itemId ? null : itemId);
   }, []);
   const forward = layout.mode === 'forward';
-  const seibanColors = useMemo(() => {
+  const incomingColors = useMemo(() => {
     if (!colorBySeiban) return undefined;
     const seibans = [...new Set(planningBoardVisibleBars(layout).map((bar) => bar.item.fseiban))];
     // The legend follows the left pane's seiban priority; seibans outside it keep their first-seen order at the end.
@@ -108,6 +144,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     seibans.sort((a, b) => rank(a) - rank(b));
     return new Map(seibans.map((seiban) => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
   }, [colorBySeiban, layout, seibanOrder]);
+  const previousColors = useRef(incomingColors);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- previousColors is a ref read only to keep the prior identity.
+  const seibanColors = useMemo(() => JSON.stringify([...(incomingColors ?? [])]) === JSON.stringify([...(previousColors.current ?? [])]) && Boolean(incomingColors) === Boolean(previousColors.current)
+    ? previousColors.current : incomingColors, [incomingColors]);
+  useLayoutEffect(() => { previousColors.current = seibanColors; }, [seibanColors]);
   useEffect(() => {
     if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
   }, [focusedSeiban, seibanColors, setFocusedSeiban]);
@@ -124,6 +165,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const [dragPreview, setDragPreview] = useState<ForwardDragPreview | null>(null);
   const dragLanes = useMemo(() => layout.groups.flatMap((group) => group.resource
     ? [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars) }] : []), [layout]);
+  const latestDragLanes = useRef(dragLanes);
+  useLayoutEffect(() => { latestDragLanes.current = dragLanes; }, [dragLanes]);
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const pan = useRef<HTMLDivElement | null>(null);
@@ -158,9 +201,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const content = useRef<HTMLDivElement>(null);
   const [focusedPartKey, setFocusedPartKey] = useState<string | null>(null);
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
-  const chain = useMemo(() => forward ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
+  const chain = useMemo(() => forward && focusedPartKey ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
     .filter((bar) => bar.partKey === focusedPartKey)
-    .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || a.item.itemId.localeCompare(b.item.itemId)) : [], [forward, layout, focusedPartKey]);
+    .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || a.item.itemId.localeCompare(b.item.itemId)) : EMPTY_CHAIN, [forward, layout, focusedPartKey]);
   const chainPositions = useMemo(() => new Map(chain.map((bar, index) => [bar.item.itemId, index + 1])), [chain]);
   const showChain = chain.length > 0 && !interaction.pinMode;
   useEffect(() => {
@@ -177,10 +220,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [showChain]);
   const bottomInset = showChain ? chainStripHeight : 0;
-  const focusChain = (bar: GanttBar) => {
-    setFocusedPartKey(focusedPartKey === bar.partKey ? null : bar.partKey);
+  const focusChain = useCallback((bar: GanttBar) => {
+    setFocusedPartKey((current) => current === bar.partKey ? null : bar.partKey);
     setCurrentItemId(null);
-  };
+  }, []);
+  const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
+    if (!showChain) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
+  }, [showChain]);
+  const leaveQueue = useCallback(() => queuePopover.current?.hideSoon(), []);
+  const closeQueue = useCallback(() => queuePopover.current?.close(), []);
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const flaggedIndex = useRef(-1);
@@ -252,6 +300,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const weekday = new Date(day * 86_400_000).getUTCDay();
     return { day, weekday, weekend: weekday === 0 || weekday === 6 };
   }), [layout.end, layout.start]);
+  const dateHeadings = useMemo(() => days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
+              style={{ width: dayWidth }} title={dayToDate(day)}>
+              {dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}
+              {showHours && hourTicks.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
+            </div>), [days, dayWidth, layout.today, showHours, hourTicks]);
   const selectedParts = useMemo(() => new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) =>
     row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.partKey)
   ))), [interaction.selectedItemIds, layout]);
@@ -282,13 +335,13 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       .reduce<GanttBar | undefined>((earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
     if (first) scrollToBar(first);
   };
-  const breaksButton = (resource: string) => <button type="button"
+  const breaksButton = useCallback((resource: string) => <button type="button"
     className={clsx('h-7 w-9 shrink-0 whitespace-nowrap rounded border px-0 text-[13px] font-bold leading-none disabled:opacity-40',
       !runsThroughBreaks?.has(resource) ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
     aria-pressed={!runsThroughBreaks?.has(resource)}
     disabled={resource === '未設定' || dailyHoursByResource[resource] === 24 || capacityPending || interaction.disabled}
-    onClick={() => onBreaksChange?.(resource, !runsThroughBreaks?.has(resource))}>休憩</button>;
-  const resourceLabel = (resource: string, label: string) => <>
+    onClick={() => onBreaksChange?.(resource, !runsThroughBreaks?.has(resource))}>休憩</button>, [runsThroughBreaks, dailyHoursByResource, capacityPending, interaction.disabled, onBreaksChange]);
+  const resourceLabel = useCallback((resource: string, label: string) => <>
     {laneHandle(resource, ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource]), 'min-h-7 font-bold')}
     <div className="flex gap-1" role="group" aria-label={`${resource}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
@@ -299,7 +352,13 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         onClick={() => onCapacityChange(resource, hours)}>{hours}H</button>)}
       {breaksButton(resource)}
     </div>
-  </>;
+  </>, [laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, onCapacityChange, breaksButton]);
+  const previousLabels = useRef<{ render: typeof resourceLabel; labels: Map<string, { text: string; node: React.ReactNode }> } | null>(null);
+  const resourceLabels = useMemo(() => new Map(layout.groups.filter((group) => group.resource).map((group) => {
+    const old = previousLabels.current?.render === resourceLabel ? previousLabels.current.labels.get(group.resource!) : undefined;
+    return [group.resource!, old?.text === group.label ? old : { text: group.label, node: resourceLabel(group.resource!, group.label) }];
+  })), [layout.groups, resourceLabel]);
+  useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
   return (
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
@@ -315,11 +374,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 className="grid h-8 w-16 place-items-center rounded-md border border-slate-500 bg-slate-900 pb-0.5 text-2xl font-bold leading-none text-slate-100 active:bg-sky-400 active:text-slate-950"
                 onClick={() => nudge(direction)}>{mark}</button>)}
             </div>
-            {days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
-              style={{ width: dayWidth }} title={dayToDate(day)}>
-              {dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}
-              {showHours && hourTicks.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
-            </div>)}
+            {dateHeadings}
           </div>
           {/* The forward chart draws no vertical grid so the brighter row lines carry the eye from the machine name to its bars. */}
           {!forward && days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', weekend && 'bg-slate-950/50')}
@@ -356,15 +411,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               </div>
             </div>}
             {forward ? group.rows.map((row) => {
-              return <PlanningBoardForwardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
-                onShowQueue={(bar, anchor) => { if (!showChain) queuePopover.current?.show(bar, anchor); }}
-                onLeaveQueue={() => queuePopover.current?.hideSoon()} onCloseQueue={() => queuePopover.current?.close()}
+              return <PlanningBoardForwardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+                onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
-                {...interaction}
-                lanes={dragLanes} resource={group.resource ?? undefined} preview={dragPreview} onDragPreview={setDragPreview}
+                selectedItemIds={interaction.selectedItemIds} disabled={interaction.disabled} dragDisabled={interaction.dragDisabled}
+                pinMode={interaction.pinMode} resourceView={interaction.resourceView} {...rowActions}
+                lanes={latestDragLanes} resource={group.resource ?? undefined} preview={dragPreview} onDragPreview={setDragPreview}
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
-                label={group.resource ? resourceLabel(group.resource, group.label) : undefined} />;
+                label={group.resource ? resourceLabels.get(group.resource)?.node : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
               completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
@@ -384,7 +439,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         {focusedSeiban !== null && <button type="button" onClick={() => setFocusedSeiban(null)}
           className="min-h-[44px] rounded bg-slate-800 px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">すべて表示</button>}
       </div>}
-      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={layout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
+      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed z-[100] rounded border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
         style={{ left: dragPreview.x / pageZoom() + 12, top: dragPreview.y / pageZoom() + 12 }}>

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildPlanningBoardPlacementByPart } from '../planningBoardProcessChipData';
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
-import { buildPlanningBoardGanttLayout, planningBoardPartKey } from './planningBoardGanttLayout';
+import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 
@@ -505,7 +505,7 @@ describe('forward PlanningBoardGanttView', () => {
     const values = forwardProps();
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
     const bands = screen.getAllByTestId('planning-gantt-break');
-    expect(bands.length).toBe((values.layout.end - values.layout.start) * 3);
+    expect(bands).toHaveLength(3);
     for (const band of bands) {
       expect(band.closest('[data-testid="planning-forward-lane-305"]')).not.toBeNull();
       expect(band.style.background).toContain('repeating-linear-gradient');
@@ -1004,9 +1004,45 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.queryByTestId('planning-gantt-bar-a')).not.toBeInTheDocument();
     expect(screen.getByLabelText('ガントの日付と工程').scrollLeft).toBe(0);
   });
+  it.each([8, 10, 24].flatMap(hours => [true, false].flatMap(pauses => [1, 2, 4, 14, 56].map(scale => ({ hours, pauses, scale })))))
+    ('keeps every repeated band at the former daily left/width/top ($hours H, pauses=$pauses, scale=$scale)', ({ hours, pauses, scale }) => {
+      const values = forwardProps();
+      const { container } = render(<PlanningBoardGanttView {...values} scale={scale} dailyHoursByResource={{ '305': hours as 8 | 10 | 24 }}
+        runsThroughBreaks={new Set(pauses ? [] : ['305'])} />);
+      const shades = [...container.querySelectorAll<HTMLElement>('[data-gantt-decoration="offHourBands"]')];
+      const breaks = screen.queryAllByTestId('planning-gantt-break');
+      if (hours === 24) { expect(shades).toHaveLength(0); expect(breaks).toHaveLength(0); return; }
+      const periods = workingPeriods(hours);
+      const gaps = [{ start: 0, end: periods[0]!.start }, { start: periods[periods.length - 1]!.end, end: 1 },
+        ...(pauses ? periods.slice(1).map((period, index) => ({ start: periods[index]!.end, end: period.start })) : [])];
+      const dayWidth = (1120 - 168) / (scale === 1 ? 0.25 : scale);
+      const days = values.layout.end - values.layout.start;
+      const bands = [...shades, ...breaks];
+      expect(bands).toHaveLength(gaps.length);
+      bands.forEach((band, index) => {
+        const gap = gaps[index]!;
+        const gradient = index < 2 ? band.style.backgroundImage : band.style.maskImage;
+        const stops = [...gradient.matchAll(/([\d.]+)px/g)].map(match => Number(match[1]));
+        expect(stops).toHaveLength(3);
+        expect(stops[0]).toBeCloseTo((gap.end - gap.start) * dayWidth, 7);
+        expect(stops[1]).toBeCloseTo(stops[0]!, 7);
+        expect(stops[2]).toBeCloseTo(dayWidth, 7);
+        expect(band).toHaveClass('absolute', 'inset-y-0', 'pointer-events-none');
+        expect(parseFloat(band.style.width) + parseFloat(band.style.left)).toBeCloseTo(days * dayWidth, 7);
+        for (let day = 0; day < days; day++) {
+          // The previous implementation positioned each span independently with these expressions.
+          expect(parseFloat(band.style.left) + day * stops[2]!).toBeCloseTo((day + gap.start) * dayWidth, 7);
+          expect(stops[0]).toBeCloseTo((gap.end - gap.start) * dayWidth, 7);
+        }
+        if (index >= 2) {
+          expect(band.style.backgroundSize).toBe(`${dayWidth}px 100%`);
+          expect(band).toHaveClass('opacity-80');
+        } else expect(gradient).toContain('rgb(2 6 23 / 0.55)');
+      });
+    });
   it('preserves off-hours shading and wraps the name to two lines and details to three', () => {
     render(<PlanningBoardGanttView {...forwardProps([item({ requiredMinutes: 480 })])} scale={1} />);
-    const shades = Array.from(screen.getByTestId('planning-forward-lane-305').querySelectorAll('.bg-slate-950\\/55'));
+    const shades = Array.from(screen.getByTestId('planning-forward-lane-305').querySelectorAll('[data-gantt-decoration="offHourBands"]'));
     const days = new Set(shades.map(shade => shade.parentElement));
     expect(days.size).toBeGreaterThan(0);
     expect(shades).toHaveLength(days.size * 2);
