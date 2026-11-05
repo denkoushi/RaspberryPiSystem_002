@@ -72,10 +72,10 @@ class Pi5RetentionStateContractTests(unittest.TestCase):
             for component in section.values():
                 self.assertEqual(set(component), {"reference", "imageId", "releaseSha"})
         self.assertEqual(
-            document["current"]["api"]["releaseSha"], "{{ release_sha }}"
+            document["current"]["api"]["releaseSha"], "{{ release_pi5_image_sha }}"
         )
         self.assertEqual(
-            document["current"]["web"]["releaseSha"], "{{ release_sha }}"
+            document["current"]["web"]["releaseSha"], "{{ release_pi5_image_sha }}"
         )
 
         write = next(
@@ -201,13 +201,13 @@ class Pi5RetentionStateContractTests(unittest.TestCase):
             == "Detect a same-release Pi5 state eligible to preserve its previous generation"
         )
         self.assertIn(
-            "release_pi5_retention_existing_state.current.api.releaseSha == release_sha",
+            "release_pi5_retention_existing_state.current.api.releaseSha == release_pi5_image_sha",
             preserve["ansible.builtin.set_fact"][
                 "release_pi5_retention_preserve_previous"
             ],
         )
         self.assertIn(
-            "release_pi5_retention_existing_state.current.web.releaseSha == release_sha",
+            "release_pi5_retention_existing_state.current.web.releaseSha == release_pi5_image_sha",
             preserve["ansible.builtin.set_fact"][
                 "release_pi5_retention_preserve_previous"
             ],
