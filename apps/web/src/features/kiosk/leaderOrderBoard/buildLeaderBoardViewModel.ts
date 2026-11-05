@@ -1,3 +1,5 @@
+import { isVisibleByArrival } from '../isVisibleByArrival';
+
 import { filterLeaderBoardRowsByCompletion, type LeaderOrderCompletionFilter } from './filterLeaderBoardRowsByCompletion';
 import {
   buildSeibanMachineNameMapFromProgressBySeiban
@@ -61,11 +63,12 @@ export type LeaderBoardRowSortContext =
 export function buildLeaderBoardSortedGrouped(
   grouped: Map<string, LeaderBoardRow[]>,
   completionFilter: LeaderOrderCompletionFilter,
-  sortContext: LeaderBoardRowSortContext = { kind: 'default' }
+  sortContext: LeaderBoardRowSortContext = { kind: 'default' },
+  arrivalFilterEnabled = false
 ): Map<string, LeaderBoardRow[]> {
   const m = new Map<string, LeaderBoardRow[]>();
   grouped.forEach((list, cd) => {
-    const filtered = filterLeaderBoardRowsByCompletion(list, completionFilter);
+    const filtered = filterLeaderBoardRowsByCompletion(list, completionFilter).filter((row) => isVisibleByArrival(row, arrivalFilterEnabled));
     const sorted =
       sortContext.kind === 'seibanEval'
         ? sortLeaderBoardRowsForSeibanEvalDisplay(filtered, sortContext.seibanRank)

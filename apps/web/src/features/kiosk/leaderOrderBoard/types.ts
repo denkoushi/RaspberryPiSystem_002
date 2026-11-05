@@ -1,5 +1,5 @@
 import type { SelfInspectionStatus } from '../../part-measurement/types';
-import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardSpecialDue, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 export type LeaderBoardRow = {
   id: string;
@@ -25,6 +25,8 @@ export type LeaderBoardRow = {
   processingOrder: number | null;
   /** `rowData.progress === '完了'` と API 完了フラグの同期表示 */
   isCompleted: boolean;
+  arrived?: boolean;
+  specialDue?: GrindingPlanningBoardSpecialDue | null;
   /** slot `+人` 適用後の表示用分数（分）。ガント行高・所要時間表示。 */
   requiredMinutes: number;
   /** 機械行 FSIGENSHOYORYO（分）。不変。 */

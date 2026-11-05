@@ -1,3 +1,4 @@
+import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardLoadResponse, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
@@ -307,11 +308,17 @@ export async function getGrindingPlanningBoard(params: { dueSource?: BoardDueSou
   const materialArrivalByPart = await perf.measure('materialArrival', () => findMaterialArrivalStatusByPart(page));
   // 配膳先も随時変わるため、保存済みの projection を変更せず応答にだけ付ける。
   const placementByProductNo = await perf.measure('placement', () => findPlacementByProductNo(page));
+  const arrivalRows = await perf.measure('processArrival', () => enrichRowsWithProcessArrival(page.map((item) => ({
+    id: item.itemId, sourceRowId: item.sourceRowId,
+    rowData: { FSEIBAN: item.fseiban, FHINCD: item.fhincd, ProductNo: item.productNo, FKOJUN: item.processOrder }
+  })), { siteKey: params.siteKey, locationKey: params.siteKey, placedProductNos: new Set(placementByProductNo.keys()) }));
+  const arrivalById = new Map(arrivalRows.map((row) => [row.id, row.arrived]));
   const pageWithMaterialArrival = page.map((item) => {
     const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
     const placement = placementByProductNo.get(item.productNo.trim());
     return {
       ...item,
+      arrived: arrivalById.get(item.itemId) ?? true,
       ...(arrival ? { materialArrivalStatus: arrival.status,
         ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {}) } : {}),
       ...(placement ? { placement } : {})
