@@ -105,7 +105,11 @@ export class BackupConfigLoader {
   /**
    * 設定ファイルを読み込む
    */
-  static async load(): Promise<BackupConfig> {
+  static async loadRaw(): Promise<BackupConfig> {
+    return this.load(false);
+  }
+
+  static async load(resolveEnvironment = true): Promise<BackupConfig> {
     const configPath = process.env.BACKUP_CONFIG_PATH || this.configPath || '/app/config/backup.json';
     // envが変わった場合（テスト等）に追従できるように、都度反映
     this.configPath = configPath;
@@ -154,7 +158,7 @@ export class BackupConfigLoader {
       };
 
       // storage.options全体を再帰的に解決（ネスト対応）
-      if (configJson.storage?.options) {
+      if (resolveEnvironment && configJson.storage?.options) {
         configJson.storage.options = resolveEnvVarsRecursive(configJson.storage.options, 'storage.options') as typeof configJson.storage.options;
       }
       
@@ -345,7 +349,24 @@ export class BackupConfigLoader {
       
       // 設定を検証
       const validatedConfig = BackupConfigSchema.parse(config);
-      const prunedConfig = this.pruneLegacyKeysOnSave(validatedConfig);
+      // 旧キーの正規化も同じ条件で行い、移行先の名前空間でも参照を保持する。
+      const existing = await this.loadRaw();
+      const preserveReferences = (incoming: unknown, previous: unknown): unknown => {
+        if (typeof previous === 'string' && previous.startsWith('${') && previous.endsWith('}')) {
+          const envValue = process.env[previous.slice(2, -1)];
+          if (envValue && incoming === envValue) return previous;
+        }
+        if (Array.isArray(incoming)) {
+          return incoming.map((value, index) => preserveReferences(value, Array.isArray(previous) ? previous[index] : undefined));
+        }
+        if (incoming && typeof incoming === 'object') {
+          const prior = previous && typeof previous === 'object' ? previous as Record<string, unknown> : {};
+          return Object.fromEntries(Object.entries(incoming).map(([key, value]) => [key, preserveReferences(value, prior[key])]));
+        }
+        return incoming;
+      };
+      const preservedConfig = BackupConfigSchema.parse(preserveReferences(validatedConfig, existing));
+      const prunedConfig = this.pruneLegacyKeysOnSave(preservedConfig);
       
       // JSONファイルとして保存（atomic write）
       // NOTE: 直接writeFileすると、同時readでJSONが壊れた状態を読んでしまい、load()がフォールバック→保存で上書き、が起き得る。

@@ -363,6 +363,7 @@ export interface BackupTarget {
   metadata?: Record<string, unknown>;
 }
 
+/** GETの秘密値は設定済みなら[REDACTED]。PUTでは伏字/未指定を保持し、空文字で削除する。 */
 export interface BackupConfig {
   storage: {
     provider: 'local' | 'dropbox' | 'gmail';
@@ -433,6 +434,7 @@ export async function getBackupConfig(): Promise<BackupConfig> {
   return data;
 }
 
+// 伏字を置換せず送ることで、変更していない秘密値と環境変数参照を保持する。
 export async function updateBackupConfig(config: BackupConfig): Promise<{ success: boolean }> {
   const { data } = await api.put<{ success: boolean }>('/backup/config', config);
   return data;

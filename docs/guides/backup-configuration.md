@@ -584,6 +584,8 @@ curl -X PUT https://<pi5_host>/api/backup/config \
 
 ### 設定の取得
 
+秘密値は `[REDACTED]` で返却されます。PUTでは伏字・未指定を既存値で補完し、空文字は削除、新しい値は更新として扱います。全保存経路で、既存の `${VAR}` と同じ環境変数展開値を受け取った項目は参照文字列を保持します。
+
 ```bash
 curl https://<pi5_host>/api/backup/config \
   -H "Authorization: Bearer YOUR_ADMIN_TOKEN"

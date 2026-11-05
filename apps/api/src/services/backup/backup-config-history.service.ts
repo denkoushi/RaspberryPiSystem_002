@@ -13,34 +13,40 @@ const REDACTED = '[REDACTED]';
 
 const redactValue = (value?: string) => (value ? REDACTED : value);
 
+const SECRET_GROUPS = [
+  { namespace: 'dropbox', keys: ['accessToken', 'refreshToken', 'appSecret'] },
+  { namespace: 'gmail', keys: ['accessToken', 'refreshToken', 'clientSecret'] },
+  { namespace: undefined, keys: ['accessToken', 'refreshToken', 'appSecret', 'clientSecret', 'gmailAccessToken', 'gmailRefreshToken'] },
+] as const;
+
 export const redactBackupConfig = (config: BackupConfig): BackupConfig => {
   const redacted = JSON.parse(JSON.stringify(config)) as BackupConfig;
-  const options = redacted.storage.options as Record<string, unknown> | undefined;
-  if (!options) return redacted;
-
-  const dropbox = (options.dropbox as Record<string, unknown> | undefined) ?? undefined;
-  if (dropbox) {
-    dropbox.accessToken = redactValue(dropbox.accessToken as string | undefined);
-    dropbox.refreshToken = redactValue(dropbox.refreshToken as string | undefined);
-    dropbox.appSecret = redactValue(dropbox.appSecret as string | undefined);
+  const options = redacted.storage.options;
+  for (const { namespace, keys } of SECRET_GROUPS) {
+    const group = (namespace ? options?.[namespace] : options) as Record<string, unknown> | undefined;
+    if (!group) continue;
+    for (const key of keys) group[key] = redactValue(group[key] as string | undefined);
   }
-
-  const gmail = (options.gmail as Record<string, unknown> | undefined) ?? undefined;
-  if (gmail) {
-    gmail.accessToken = redactValue(gmail.accessToken as string | undefined);
-    gmail.refreshToken = redactValue(gmail.refreshToken as string | undefined);
-    gmail.clientSecret = redactValue(gmail.clientSecret as string | undefined);
-  }
-
-  // 旧キー（後方互換）
-  options.accessToken = redactValue(options.accessToken as string | undefined);
-  options.refreshToken = redactValue(options.refreshToken as string | undefined);
-  options.appSecret = redactValue(options.appSecret as string | undefined);
-  options.clientSecret = redactValue(options.clientSecret as string | undefined);
-  options.gmailAccessToken = redactValue(options.gmailAccessToken as string | undefined);
-  options.gmailRefreshToken = redactValue(options.gmailRefreshToken as string | undefined);
-
   return redacted;
+};
+
+/** PUTの未変更の秘密値を、環境変数展開前の設定から補完する。空文字は明示的な削除。 */
+export const restoreBackupConfigSecrets = (config: BackupConfig, existing: BackupConfig): void => {
+  const options = config.storage.options ??= {};
+  for (const { namespace, keys } of SECRET_GROUPS) {
+    const previous = (namespace ? existing.storage.options?.[namespace] : existing.storage.options) as Record<string, unknown> | undefined;
+    // 本文に無い名前空間は、秘密値だけの半端な形にせず前の設定をまるごと残す。
+    if (namespace && !options[namespace]) {
+      if (previous) options[namespace] = structuredClone(previous);
+      continue;
+    }
+    const group = (namespace ? options[namespace] : options) as Record<string, unknown>;
+    for (const key of keys) {
+      if (group[key] === REDACTED || group[key] === undefined) {
+        group[key] = previous?.[key];
+      }
+    }
+  }
 };
 
 export class BackupConfigHistoryService {

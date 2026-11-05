@@ -55,12 +55,15 @@
 
 ## Open Items
 
-判断や大きめの変更が必要なもの（確定済み）:
+対応済み（PR 作成済み、マージとデプロイは別途）:
+
+- `apps/api/src/app.ts` に `trustProxy` が無い件: Caddy の1段だけを信頼し、API 宛ての全 Caddy で X-Forwarded-For を上書き（PR #2543）。
+- `GET /backup/config` が秘密値を平文で返す件: 伏字で返し、PUT では伏字・未指定の値を既存値で補う。省略された設定欄は前の設定をまるごと残し、`${VAR}` 参照は保存時に保つ（`fix/backup-config-redact` の PR）。
+
+判断待ち（業務への影響をユーザーに確認中）:
 
 | 場所 | 影響 | 直し方の案 |
 | --- | --- | --- |
-| `apps/api/src/app.ts`（`trustProxy` なし） | 本番は Caddy 経由のため全クライアントが同じ IP。ログイン 10回/分の制限を誰かが使い切ると管理者全員がログイン不可。PIN 失敗カウンタの IP 部分も機能しない | `trustProxy` を Caddy の1段だけに限定して設定し、Caddy 側で X-Forwarded-For を上書き。全 IP 依存処理に影響するため Blue/Green 構成で検証 |
-| `routes/backup/config-read.ts` `GET /backup/config` | Dropbox/Gmail の app secret・refresh token を平文でブラウザへ返す（env 参照も展開後の値）。UI 保存で展開値が `backup.json` に書き戻る | `redactBackupConfig` 済みの値を返し、PUT は伏字・未指定の秘密値を既存値で補完。Web の型とフォームも変更 |
 | `routes/clients/core.ts` heartbeat の `location` | 端末が自分の location（スコープキー）を変更でき、他端末やサイトの割当範囲を乗っ取れる | heartbeat から location を外す（初回のみ受理）か、管理者 PUT でのみ変更可能にする |
 | `routes/clients/core.ts` status の `clientId` | 任意端末が他端末の `statusClientId` を名乗り、状態・最終確認時刻を上書きできる | 初回バインド後は不一致を 409、`statusClientId` に一意制約（既存重複の確認と再バインド手段が必要） |
 | `routes/kiosk/production-schedule/due-management-global-rank.ts` | 代理権限のない端末でも任意の `targetLocation` の全体ランクを読み書きできる | 他ルートと同じく `canProxyTargetLocation` でない場合は actorLocation 以外を 403（意図確認が必要） |

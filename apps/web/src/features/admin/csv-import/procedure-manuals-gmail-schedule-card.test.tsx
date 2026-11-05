@@ -13,7 +13,7 @@ vi.mock('../../../api/client', () => ({ ingestProcedureMaterialsGmail: mocks.ing
 const other = { id: 'other', enabled: true, schedule: '0 10 * * *', targets: [{ type: 'csvDashboards', source: 'dashboard' }] };
 const materialRow = { id: 'procedure-material-gmail', enabled: false, schedule: '*/5 * * * *', targets: [{ type: 'procedureMaterialGmail', source: '[Procedure-material]' }] };
 
-const initialConfig = { storage: { provider: 'local' }, targets: [], csvImports: [{ ...other, schedule: '0 1 * * *' }], procedureMaterialGmailIngest: { enabled: false, subjectTokens: ['[Procedure-material]'], fromEmail: 'sender@example.com', allowedSenderDomains: ['thkintechs.co.jp'] } };
+const initialConfig = { storage: { provider: 'local', options: { dropbox: { appSecret: '[REDACTED]', refreshToken: '[REDACTED]', accessToken: '[REDACTED]' }, gmail: { clientSecret: '[REDACTED]', refreshToken: '[REDACTED]', accessToken: '[REDACTED]' } } }, targets: [], csvImports: [{ ...other, schedule: '0 1 * * *' }], procedureMaterialGmailIngest: { enabled: false, subjectTokens: ['[Procedure-material]'], fromEmail: 'sender@example.com', allowedSenderDomains: ['thkintechs.co.jp'] } };
 let currentConfig = initialConfig;
 
 function renderCard() {
@@ -73,6 +73,8 @@ describe('procedure-manuals Gmail schedule card', () => {
     fireEvent.click(screen.getByRole('button', { name: '追加' }));
     expect(await screen.findByText('保存しました')).toBeInTheDocument();
     expect(mocks.saveConfig).toHaveBeenCalledOnce();
+    expect(mocks.saveConfig.mock.calls[0]?.[0].storage.options).toEqual(initialConfig.storage.options);
+    expect(screen.queryByDisplayValue('[REDACTED]')).not.toBeInTheDocument();
     expect(mocks.saveConfig.mock.calls[0]?.[0]).toEqual({
       ...initialConfig, csvImports: [{ ...other, schedule: '0 2 * * *' }],
       procedureMaterialGmailIngest: { ...initialConfig.procedureMaterialGmailIngest, allowedSenderDomains: ['thkintechs.co.jp', 'example.com'] },

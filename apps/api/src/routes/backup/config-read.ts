@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { isLoopbackAddress } from '../../lib/loopback-address.js';
+import { redactBackupConfig } from '../../services/backup/backup-config-history.service.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { getBackupTargetTemplates } from '../../services/backup/backup-target-templates.js';
 
@@ -14,7 +15,7 @@ export async function registerBackupConfigReadRoutes(app: FastifyInstance): Prom
     preHandler: [mustBeAdmin],
   }, async (_request, reply) => {
     const config = await BackupConfigLoader.load();
-    return reply.status(200).send(config);
+    return reply.status(200).send(redactBackupConfig(config));
   });
 
   // 設定の健全性チェック（衝突・ドリフト検出）

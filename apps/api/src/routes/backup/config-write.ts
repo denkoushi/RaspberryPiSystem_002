@@ -5,7 +5,7 @@ import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import type { BackupConfig } from '../../services/backup/backup-config.js';
-import { BackupConfigHistoryService, redactBackupConfig } from '../../services/backup/backup-config-history.service.js';
+import { BackupConfigHistoryService, redactBackupConfig, restoreBackupConfigSecrets } from '../../services/backup/backup-config-history.service.js';
 import { getBackupTargetTemplates } from '../../services/backup/backup-target-templates.js';
 import {
   addBackupTargetBodySchema,
@@ -78,6 +78,7 @@ export async function registerBackupConfigWriteRoutes(app: FastifyInstance): Pro
   }, async (request, reply) => {
     const beforeConfig = await BackupConfigLoader.load();
     const config = backupConfigBodySchema.parse(request.body) as BackupConfig;
+    restoreBackupConfigSecrets(config, await BackupConfigLoader.loadRaw());
     await BackupConfigLoader.save(config);
     // スケジューラーを再読み込み（設定変更を即時反映）
     await reloadBackupRelatedSchedulers();
