@@ -55,10 +55,14 @@
   - [x] (2026-11-02) Step 1: Pi5 phase3・migration、kiosk template、client Compose に json-file 10m × 3 の上限を実装。状態を持つ `business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache` は追加再作成を避けるため除外。
   - [ ] 本番適用と `docker inspect` 確認（gateway は標準更新で再作成しないため別途適用が必要）、高耐久 SD・USB SSD・読み取り専用ルートの試行。
     - (2026-11-05) Pi5 の `docker inspect`(読み取りだけ)。api・web・2つの egress は json-file 10m × 3 が効いている。gateway(2026-07-12 作成)と `docker-db-1`(2026-10-30 作成)は作り直されておらず、上限なしのまま。ログは gateway 11MB、db 876KB で、Pi5 のディスクは 11% 使用のため急ぎではない。状態を持つ Hermes の3つは設計どおり上限なし。gateway と db への適用は、作り直しで止まる時間が出るので、別に日を決めて行う。Pi4 の確認は今回できていない。
+    - (2026-11-05) gateway は #2565(merge `4595b1d1`)の後、任意再作成 run `20261105-110808-40099e` で作り直した(Result=success、failed=0、rescued=0、Pi5 だけ、フラグはその実行だけ)。`docker inspect` で、image が `raspisys-web:4595b1d1…@sha256:8d183e3c…`、User `1000:1000`、読み取り専用ルート、json-file 10m × 3、ネットワーク `docker_default` と `bluegreen_business-hermes`、Running を確認した。`/api/system/health` は 200。`docker-db-1` は作り直さず、上限なし・未適用のまま。
 - [x] M8: 2026-11-02 機種ごとの役割と資源の表を `docs/runbooks/device-model-roles.md` に残した。
 
 
 ## Surprises & Discoveries
+
+- Observation: M7 gateway の任意再作成 run `20261105-085755-ac74f4` は、稼働中の user が空(root)、bluegreen bind が rw である差を検知し、再作成前に停止した。2026-07-12 の旧 web イメージ `raspi-system-web:0daaf114…` は setcap 付き Caddy で、commit `de6030e9` の強化設定との組み合わせに起動リスクがある。任意再作成だけ commit 後の稼働 web の digest 参照を使い、旧 user/bluegreen rw の差だけ許容するようローカル修正した。ホスト権限と新イメージでの隔離 validate を再作成前に、User を再作成後に確認する。#2565 で修正し、run `20261105-110808-40099e` で本番の再作成に成功した(作り直し後のネットワーク確認が外部名 `docker_default` を見ていなかった問題も同 PR で修正)。`docker-db-1` は作り直さず、上限なし・未適用のまま。
+  Evidence: `release_pi5/tasks/gateway-recreate.yml` と標準 release の静的テスト。通常 run の gateway discovery は変更しない。
 
 - Observation: M0 の実測(2026-11-05、読み取りだけ)。Pi5 の Google Drive の写しのタイマー `raspi-google-drive-dr.timer` は enabled で、直近は 2026-11-04 23:00〜23:05 JST に Result=success(snapshot `bbf99283…`、約2.7GB)。次回は 2026-11-05 23:00。Pi5 のメモリは total 8062MB・available 3476MB だが、swap 2047MB をほぼ使い切っている(2046MB)。Pi3(raspberrypi3)は total 416MB・available 128MB、swap 415MB 中 207MB を使用。Zero W(zero1w-camera01)は Tailscale で offline のため測れなかった。Zero 2W(zero2w-tanaban01)は試作端末で本番運用の許可が出ていないため、本番の計測対象に含めない。
   Evidence: Pi5 で `systemctl list-timers`・`systemctl show`・`journalctl -u raspi-google-drive-dr.service`・`free -m`、Pi5 経由で Pi3 の `free -m`、Pi5 の `tailscale status`。
