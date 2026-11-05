@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   readDrawing: vi.fn(),
   prisma: {
     partMeasurementDrawingSiblingMatch: { findUnique: vi.fn() },
-    partMeasurementDrawingPlacementRun: { findUnique: vi.fn(), create: vi.fn() },
+    partMeasurementDrawingPlacementRun: { findUnique: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
     partMeasurementDrawingPlacementProposal: { updateMany: vi.fn() },
     partMeasurementVisualTemplate: { findUnique: vi.fn(), findMany: vi.fn() },
     partMeasurementTemplate: { findMany: vi.fn() },
@@ -79,6 +79,7 @@ beforeEach(async () => {
   db.partMeasurementTemplateItem.findMany.mockResolvedValue([]);
   db.$transaction.mockImplementation(async (callback) => callback(db));
   db.partMeasurementDrawingPlacementRun.create.mockResolvedValue(run());
+  db.partMeasurementDrawingPlacementRun.deleteMany.mockResolvedValue({ count: 1 });
 });
 
 describe('ensureRun', () => {
@@ -360,6 +361,8 @@ describe('backfill', () => {
     const sql = db.$queryRaw.mock.calls[1][0].join('');
     expect(sql).toContain('r."drawingImageFingerprint" = m."drawingImageFingerprint"');
     expect(sql).toContain('|| p."processGroup"::text');
+    expect(sql).toContain(`r."rankingMethod" <> 'semantic-failed' OR EXISTS`);
+    expect(sql).toContain('proposal."runId" = r."id" AND proposal."decidedAt" IS NOT NULL');
   });
 });
 
@@ -370,6 +373,66 @@ describe('semantic placement', () => {
     mocks.maps.getCompletedPayload.mockImplementation(async (id) => id === 'target' ? {
       ...payload, dimensions: [{ ...payload.dimensions[0], text: '20', nominal: 20 }]
     } : null);
+  });
+
+  it('rebuilds an undecided legacy failure through backfill in one transaction', async () => {
+    const old = run({ rankingMethod: 'semantic-failed', proposals: [{ ...proposal(), decidedAt: null }] });
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(old);
+    db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'target', processGroup: 'CUTTING' }]);
+    expect(await service.backfill(1)).toMatchObject({ ready: 1, failed: 0 });
+    expect(db.$transaction).toHaveBeenCalledOnce();
+    expect(db.partMeasurementDrawingPlacementRun.deleteMany).toHaveBeenCalledWith({ where: {
+      id: old.id, rankingMethod: 'semantic-failed', proposals: { none: { decidedAt: { not: null } } }
+    } });
+    expect(db.partMeasurementDrawingPlacementRun.create).toHaveBeenCalledOnce();
+    expect(db.partMeasurementDrawingPlacementRun.deleteMany.mock.invocationCallOrder[0])
+      .toBeLessThan(db.partMeasurementDrawingPlacementRun.create.mock.invocationCallOrder[0]);
+  });
+
+  it.each([
+    { rankingMethod: 'semantic-failed', decidedAt: new Date(), allowInference: true },
+    { rankingMethod: 'semantic-failed-chunked', decidedAt: null, allowInference: true },
+    { rankingMethod: 'semantic-failed', decidedAt: null, allowInference: false }
+  ])('keeps a cached run with %j', async ({ rankingMethod, decidedAt, allowInference }) => {
+    const old = run({ rankingMethod, proposals: [{ ...proposal(), decidedAt }] });
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(old);
+    expect((await service.ensureRun('target', { processGroup: 'CUTTING', allowInference })).run).toBe(old);
+    expect(db.$transaction).not.toHaveBeenCalled();
+    expect(mocks.vision.completeMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps a decision made while inference was running', async () => {
+    const old = run({ rankingMethod: 'semantic-failed', proposals: [{ ...proposal(), decidedAt: null }] });
+    const decided = run({ ...old, proposals: [{ ...proposal(), decidedAt: new Date() }] });
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValueOnce(old).mockResolvedValueOnce(decided);
+    db.partMeasurementDrawingPlacementRun.deleteMany.mockResolvedValue({ count: 0 });
+    expect((await service.ensureRun('target', { processGroup: 'CUTTING' })).run).toBe(decided);
+    expect(db.partMeasurementDrawingPlacementRun.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the winner of a concurrent legacy replacement on P2002', async () => {
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValueOnce(run({ rankingMethod: 'semantic-failed', proposals: [] }))
+      .mockResolvedValueOnce(run({ id: 'winner' }));
+    db.partMeasurementDrawingPlacementRun.create.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('duplicate', { code: 'P2002', clientVersion: '5' }));
+    expect((await service.ensureRun('target', { processGroup: 'CUTTING' })).run?.id).toBe('winner');
+  });
+
+  it('rethrows a short unavailable call after earlier chunks took more than the timeout', async () => {
+    db.partMeasurementTemplate.findMany.mockResolvedValue([{
+      id: 'template', visualTemplateId: 'source', isActive: true, updatedAt: new Date(),
+      items: Array.from({ length: 17 }, (_, i) => ({ ...sourceItem(), id: `item-${i}` }))
+    }]);
+    const unavailable = new InferenceUnavailableError();
+    mocks.vision.completeMany.mockResolvedValueOnce({ rawText: '{"items":[]}' })
+      .mockResolvedValueOnce({ rawText: '{"items":[]}' }).mockRejectedValueOnce(unavailable);
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(70_000).mockReturnValue(140_000);
+    try {
+      await expect(service.ensureRun('target', { processGroup: 'CUTTING' })).rejects.toBe(unavailable);
+    } finally {
+      now.mockRestore();
+    }
+    expect(mocks.vision.completeMany).toHaveBeenCalledTimes(3);
+    expect(db.$transaction).not.toHaveBeenCalled();
   });
 
   it('persists target values and general-tolerance limits atomically, without calling JEV', async () => {
@@ -428,7 +491,7 @@ describe('semantic placement', () => {
     if (failure === 'image') mocks.readDrawing.mockRejectedValue(new Error('image unavailable'));
     await service.ensureRun('target', { processGroup: 'CUTTING' });
     const data = db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data;
-    expect(data).toMatchObject({ placementVersion: 'semantic-v1:CUTTING', rankingMethod: 'semantic-failed', proposalCount: 0, unplacedCount: 2 });
+    expect(data).toMatchObject({ placementVersion: 'semantic-v1:CUTTING', rankingMethod: 'semantic-failed-chunked', proposalCount: 0, unplacedCount: 2 });
     expect(data.proposals.create).toHaveLength(2);
     expect(data.proposals.create.every((row: { status: string; markerXRatio: number | null; markerYRatio: number | null }) => row.status === 'UNPLACED' && row.markerXRatio === null && row.markerYRatio === null)).toBe(true);
     expect(mocks.warn).toHaveBeenCalledWith(expect.objectContaining({ visualTemplateId: 'target' }), 'drawing semantic placement failed');
@@ -453,7 +516,7 @@ describe('semantic placement', () => {
     mocks.vision.completeMany.mockRejectedValue(new InferenceUnavailableError());
     await service.ensureRun('target', { processGroup: 'CUTTING' });
     now.mockRestore();
-    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ rankingMethod: 'semantic-failed', proposalCount: 0 });
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ rankingMethod: 'semantic-failed-chunked', proposalCount: 0 });
   });
 
   it('persists M3 rejections and preserves the explanation in candidates', async () => {

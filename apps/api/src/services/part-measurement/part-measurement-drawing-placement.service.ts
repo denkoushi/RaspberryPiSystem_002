@@ -21,7 +21,7 @@ import {
   type PlacementTransferResult
 } from './part-measurement-drawing-placement-transfer.js';
 
-import { SEMANTIC_PLACEMENT_TIMEOUT_MS, transferItemsSemantically, unplacedSemanticItems } from './part-measurement-drawing-placement-semantic.js';
+import { transferItemsSemantically, unplacedSemanticItems } from './part-measurement-drawing-placement-semantic.js';
 
 import { siblingMatchesSchema, SIBLING_MATCH_VERSION } from './part-measurement-drawing-sibling-match.js';
 import { PartMeasurementDrawingSiblingMatchService } from './part-measurement-drawing-sibling-match.service.js';
@@ -132,7 +132,9 @@ export class PartMeasurementDrawingPlacementService {
     };
     const where = { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: key };
     const existingRun = await prisma.partMeasurementDrawingPlacementRun.findUnique({ where, include: runInclude });
-    if (existingRun) return runResult(existingRun);
+    const retryLegacyFailure = semantic && options.allowInference !== false && existingRun?.rankingMethod === 'semantic-failed'
+      && existingRun.proposals.every((proposal) => proposal.decidedAt === null);
+    if (existingRun && !retryLegacyFailure) return runResult(existingRun);
     const target = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id: visualTemplateId } });
     if (!target) throw new ApiError(404, '図面テンプレートが見つかりません。');
     const siblings = match.status === 'MATCHED' ? siblingMatchesSchema.parse(match.siblings) : [];
@@ -175,14 +177,12 @@ export class PartMeasurementDrawingPlacementService {
         rankingMethod = reorder ? 'jev' : 'position';
         return transferItems({ targetMap, sourceMap, sourceItems: source.template.items, existingItems, reorder: reorder ?? undefined });
       };
-      const startedAt = Date.now();
       try {
         transfers = await transfer();
       } catch (error) {
         // A call that ran out its whole timeout would time out again every night, so store it as failed instead of retrying.
-        const timedOut = Date.now() - startedAt >= SEMANTIC_PLACEMENT_TIMEOUT_MS - 1_000;
-        if (!semantic || error instanceof InferenceDeferredError || (error instanceof InferenceUnavailableError && !timedOut)) throw error;
-        rankingMethod = 'semantic-failed';
+        if (!semantic || error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError) throw error;
+        rankingMethod = 'semantic-failed-chunked';
         transfers = unplacedSemanticItems(source.template.items);
         log.warn({ err: error, visualTemplateId, sourceVisualTemplateId: source.sibling.id }, 'drawing semantic placement failed');
       }
@@ -190,38 +190,53 @@ export class PartMeasurementDrawingPlacementService {
     const originalItems = new Map(templates.flatMap((template) => template.items).map((item) => [item.id, item]));
     try {
       // Nested creation is one transaction, including the unique run key and all its proposals.
-      const run = await prisma.$transaction((tx) => tx.partMeasurementDrawingPlacementRun.create({
-        data: {
-          ...key,
-          sourceVisualTemplateId: source?.sibling.id ?? null,
-          sourceTemplateId: source?.template.id ?? null,
-          rankingMethod,
-          proposalCount: transfers.filter((entry) => entry.status === 'PROPOSED').length,
-          unplacedCount: transfers.filter((entry) => entry.status === 'UNPLACED').length,
-          proposals: { create: transfers.map((entry) => {
-            const original = originalItems.get(entry.item.id)!;
-            return {
-              visualTemplateId,
-              sourceItemId: entry.item.id,
-              status: entry.status,
-              sortOrder: entry.item.sortOrder,
-              measurementLabel: entry.item.measurementLabel,
-              measurementPoint: original.measurementPoint,
-              decimalPlaces: original.decimalPlaces,
-              nominalValue: semantic ? entry.nominalValue : original.nominalValue!,
-              lowerLimit: semantic ? entry.lowerLimit : original.lowerLimit,
-              upperLimit: semantic ? entry.upperLimit : original.upperLimit,
-              depthMode: entry.item.depthMode,
-              valueKind: entry.item.valueKind,
-              markerXRatio: entry.markerXRatio,
-              markerYRatio: entry.markerYRatio,
-              dimension: entry.dimension ?? Prisma.DbNull,
-              candidates: entry.candidates
-            };
-          }) }
-        },
-        include: runInclude
-      }));
+      const run = await prisma.$transaction(async (tx) => {
+        if (retryLegacyFailure) {
+          // Lock proposals before rechecking so a concurrent decision cannot be deleted.
+          await tx.$queryRaw`SELECT "id" FROM "PartMeasurementDrawingPlacementProposal"
+            WHERE "runId" = ${existingRun!.id} FOR UPDATE`;
+          // Recheck decisions atomically: a decision or a concurrent replacement must keep its run.
+          const deleted = await tx.partMeasurementDrawingPlacementRun.deleteMany({ where: {
+            id: existingRun!.id, rankingMethod: 'semantic-failed', proposals: { none: { decidedAt: { not: null } } }
+          } });
+          if (deleted.count === 0) {
+            const current = await tx.partMeasurementDrawingPlacementRun.findUnique({ where, include: runInclude });
+            if (current) return current;
+          }
+        }
+        return tx.partMeasurementDrawingPlacementRun.create({
+          data: {
+            ...key,
+            sourceVisualTemplateId: source?.sibling.id ?? null,
+            sourceTemplateId: source?.template.id ?? null,
+            rankingMethod,
+            proposalCount: transfers.filter((entry) => entry.status === 'PROPOSED').length,
+            unplacedCount: transfers.filter((entry) => entry.status === 'UNPLACED').length,
+            proposals: { create: transfers.map((entry) => {
+              const original = originalItems.get(entry.item.id)!;
+              return {
+                visualTemplateId,
+                sourceItemId: entry.item.id,
+                status: entry.status,
+                sortOrder: entry.item.sortOrder,
+                measurementLabel: entry.item.measurementLabel,
+                measurementPoint: original.measurementPoint,
+                decimalPlaces: original.decimalPlaces,
+                nominalValue: semantic ? entry.nominalValue : original.nominalValue!,
+                lowerLimit: semantic ? entry.lowerLimit : original.lowerLimit,
+                upperLimit: semantic ? entry.upperLimit : original.upperLimit,
+                depthMode: entry.item.depthMode,
+                valueKind: entry.item.valueKind,
+                markerXRatio: entry.markerXRatio,
+                markerYRatio: entry.markerYRatio,
+                dimension: entry.dimension ?? Prisma.DbNull,
+                candidates: entry.candidates
+              };
+            }) }
+          },
+          include: runInclude
+        });
+      });
       return runResult(run);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -364,6 +379,10 @@ export class PartMeasurementDrawingPlacementService {
           AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
           AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
           AND r."placementVersion" = (${`${currentPlacementVersion()}:`}::text || p."processGroup"::text)
+          AND (r."rankingMethod" <> 'semantic-failed' OR EXISTS (
+            SELECT 1 FROM "PartMeasurementDrawingPlacementProposal" proposal
+            WHERE proposal."runId" = r."id" AND proposal."decidedAt" IS NOT NULL
+          ))
       )
       ORDER BY m."createdAt" ASC, m."id" ASC, p."processGroup" ASC LIMIT ${batchLimit}
     `;

@@ -7,7 +7,7 @@ vi.mock('../../lib/part-measurement-drawing-storage.js', () => ({ PartMeasuremen
 
 import type { PartMeasurementDrawingDimension } from './part-measurement-drawing-dimension-map-payload.js';
 import type { PlacementSourceItem } from './part-measurement-drawing-placement-transfer.js';
-import { transferItemsSemantically } from './part-measurement-drawing-placement-semantic.js';
+import { SEMANTIC_PLACEMENT_CHUNK_SIZE, transferItemsSemantically } from './part-measurement-drawing-placement-semantic.js';
 
 const item: PlacementSourceItem = {
   id: 'item', sortOrder: 1, measurementLabel: '長さ', nominalValue: 10, lowerLimit: 9.5, upperLimit: 10.8,
@@ -37,6 +37,57 @@ beforeEach(async () => {
 });
 
 describe('transferItemsSemantically', () => {
+  it('transfers 20 items sequentially in chunks of 8, 8 and 4 with local numbering', async () => {
+    const sourceItems = Array.from({ length: 20 }, (_, i) => ({
+      ...item, id: `item-${i}`, measurementLabel: `長さ${i}`, markerXRatio: (i + 1) / 22
+    }));
+    let active = false;
+    completeMany.mockImplementation(async (request) => {
+      expect(active).toBe(false);
+      active = true;
+      const entries = JSON.parse(request.userText.split('丸数字一覧:\n')[1].split('\nD 番号一覧:')[0]);
+      await Promise.resolve();
+      active = false;
+      return response(entries.map((entry: { n: number; measurementLabel: string }) => ({
+        n: entry.n, role: entry.measurementLabel, target: `D${Number(entry.measurementLabel.slice(2)) + 1}`
+      })).reverse());
+    });
+    const results = await transferItemsSemantically({ ...input(), sourceItems,
+      targetMap: map(sourceItems.map((_, i) => dim({ nominal: i + 20, text: String(i + 20) }))) }, deps);
+    expect(SEMANTIC_PLACEMENT_CHUNK_SIZE).toBe(8);
+    expect(completeMany).toHaveBeenCalledTimes(3);
+    const requests = completeMany.mock.calls.map(([request]) => request);
+    expect(requests.map((request) => JSON.parse(request.userText.split('丸数字一覧:\n')[1].split('\nD 番号一覧:')[0])
+      .map((entry: { n: number }) => entry.n))).toEqual([
+      [1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4]
+    ]);
+    expect(requests[1].images[0].imageBytes.equals(requests[0].images[0].imageBytes)).toBe(false);
+    for (const request of requests) {
+      expect(request.images[1].imageBytes).toBe(requests[0].images[1].imageBytes);
+      expect(request.userText.split('D 番号一覧:')[1]).toBe(requests[0].userText.split('D 番号一覧:')[1]);
+    }
+    expect(results.map((result) => result.item.id)).toEqual(sourceItems.map((source) => source.id));
+    expect(results.map((result) => result.nominalValue)).toEqual(sourceItems.map((_, i) => i + 20));
+    expect(results.every((result) => result.status === 'PROPOSED')).toBe(true);
+  });
+
+  it('throws the second chunk failure without returning partial results or calling the third', async () => {
+    const failure = new Error('second chunk failed');
+    completeMany.mockResolvedValueOnce(response()).mockRejectedValueOnce(failure);
+    await expect(transferItemsSemantically({ ...input(),
+      sourceItems: Array.from({ length: 20 }, (_, i) => ({ ...item, id: `item-${i}` }))
+    }, deps)).rejects.toBe(failure);
+    expect(completeMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects duplicate target dimensions across chunks', async () => {
+    const results = await transferItemsSemantically({ ...input(),
+      sourceItems: Array.from({ length: 9 }, (_, i) => ({ ...item, id: `item-${i}` }))
+    }, deps);
+    expect(results[0].status).toBe('PROPOSED');
+    expect(results[8]).toMatchObject({ status: 'UNPLACED', candidates: [{ rejectionReason: 'duplicate-dimension' }] });
+  });
+
   it('sends annotated JPEGs and semantic instructions with bounded inference settings', async () => {
     await transferItemsSemantically(input(), deps);
     expect(readDrawing.mock.calls).toEqual([['source'], ['target']]);
