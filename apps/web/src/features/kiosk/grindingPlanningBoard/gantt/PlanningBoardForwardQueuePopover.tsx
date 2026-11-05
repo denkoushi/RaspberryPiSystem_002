@@ -6,7 +6,7 @@ import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { pageZoom } from '../pageZoom';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
-import { canReorderForwardBars, forwardQueueWindow } from './planningBoardForwardQueue';
+import { canReorderForwardBars, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -129,6 +129,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
         <strong className="my-0.5 block truncate text-sm" title={bar.item.fhinmei || bar.item.fhincd}>{bar.item.fhinmei || bar.item.fhincd}</strong>
         <div className="truncate text-slate-400">{bar.item.fhincd}</div>
         <div className="truncate text-slate-400">{normalizeMachineName(bar.item.machineName)}</div>
+        <div className="truncate text-slate-400">{forwardStartLabel(bar)}</div>
         {drop?.bar.item.itemId === bar.item.itemId && <span data-testid="planning-forward-queue-insertion"
           className={clsx('pointer-events-none absolute inset-y-0 w-0.5 bg-white', drop.placement === 'before' ? '-left-1.5' : '-right-1')} />}
       </div>)}

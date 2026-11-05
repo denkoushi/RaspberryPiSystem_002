@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canReorderForwardBars, forwardItemDetails, forwardQueueWindow } from './planningBoardForwardQueue';
+import { canReorderForwardBars, forwardItemDetails, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
 import { dateToDay } from './planningBoardGanttLayout';
 
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -46,6 +46,15 @@ describe('forward queue helpers', () => {
     expect(forwardItemDetails(item({ fseiban: '', fhincd: '', plannedQuantity: 0, machineName: null }))).toBe('0個');
     expect(forwardItemDetails(item({ machineName: 'ｐｓｇ６３　ａ' }))).toBe('26-1001 · P1 · 1個 · PSG63 A');
   });
+  it('formats the start with weekday and uses the first segment of a bar split by breaks', () => {
+    const friday = dateToDay('2026-11-06');
+    expect(forwardStartLabel(bar('a', friday + (8 * 60 + 30) / 1440))).toBe('11/06(金) 08:30');
+    expect(forwardStartLabel(bar('b', friday + 0.9, { segments: [{ start: friday + 1 + 13 / 24, end: friday + 1.6 }, { start: friday + 1.7, end: friday + 1.8 }] })))
+      .toBe('11/07(土) 13:00');
+    expect(forwardStartLabel(bar('c', friday + (9 * 60 + 15) / 1440 - 1e-9))).toBe('11/06(金) 09:15');
+    expect(forwardStartLabel(bar('d', null as unknown as number))).toBeNull();
+  });
+
   it('allows only different unfinished jobs of the same resource and special-due band', () => {
     const source = bar('source');
     expect(canReorderForwardBars(source, bar('target'))).toBe(true);

@@ -1152,9 +1152,12 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     replies[1](response(['c', 'd', 'a', 'b'], 4));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('順序を保存しました'));
     expect(order()).toEqual(['c', 'd', 'a', 'b']);
-    const savedUnload = new Event('beforeunload', { cancelable: true });
-    window.dispatchEvent(savedUnload);
-    expect(savedUnload.defaultPrevented).toBe(false);
+    // The unsaved-changes guard is released in an effect after the status renders.
+    await waitFor(() => {
+      const savedUnload = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(savedUnload);
+      expect(savedUnload.defaultPrevented).toBe(false);
+    });
   });
 
   it.each([true, false])('drag retains full-pane behavior and unique ranks with arrival filter %s', async (arrivalEnabled) => {
