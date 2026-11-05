@@ -1224,6 +1224,7 @@ def release_set_artifacts(
 ) -> ReleaseArtifacts:
     # main CI publishes a release set only when the commit changes image inputs
     # (release_pair in scripts/ci/classify_changes.py); a docs-only head has none.
+    # To ship an earlier merge after a docs-only head, merge a change to image inputs.
     build_hash = config_hash(sha, inventory)
     tag_suffix = "-torque-v2" if require_torque else ""
     reference = (
