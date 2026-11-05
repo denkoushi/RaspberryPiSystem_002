@@ -1,0 +1,71 @@
+# METABEGIN
+# X-Env-Layer-Name: pi4-kiosk-base
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Category: app
+# X-Env-Layer-Desc: Common Pi4 kiosk OS with one-use first boot commissioning
+# X-Env-Layer-Requires: device-user-admin,systemd-net-min,systemd-timesyncd
+# X-Env-VarPrefix: pi4kiosk
+# METAEND
+---
+mmdebstrap:
+  packages:
+    - lightdm
+    - lightdm-gtk-greeter
+    - labwc
+    - chromium
+    - dconf-cli
+    - x11-xserver-utils
+    - xwayland
+    - dbus-user-session
+    - policykit-1
+    - curl
+    - ca-certificates
+    - openssl
+    - docker.io
+    - docker-compose
+    - python3
+    - openssh-server
+    - sudo
+    - locales
+    - tzdata
+  customize-hooks:
+    - |
+      set -eu
+      install -d "$1/usr/share/keyrings" "$1/etc/apt/sources.list.d"
+      curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg -o "$1/usr/share/keyrings/tailscale-archive-keyring.gpg"
+      curl -fsSL https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list -o "$1/etc/apt/sources.list.d/tailscale.list"
+      chroot "$1" apt-get update
+      chroot "$1" env DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale
+    - |
+      set -eu
+      install -D -m 0755 pi4-first-boot.py "$1/usr/local/sbin/pi4-first-boot.py"
+      install -D -m 0644 pi4-first-boot.service "$1/etc/systemd/system/pi4-first-boot.service"
+      install -d "$1/etc/lightdm/lightdm.conf.d" "$1/etc/sudoers.d" "$1/etc/polkit-1/rules.d"
+      printf '[Seat:*]\nautologin-user=kiosk\nautologin-user-timeout=0\nuser-session=labwc\nautologin-session=labwc\n' > "$1/etc/lightdm/lightdm.conf.d/90-kiosk.conf"
+      install -d "$1/usr/share/wayland-sessions" "$1/etc/xdg/labwc"
+      printf '[Desktop Entry]\nName=labwc\nExec=labwc\nType=Application\nDesktopNames=labwc\n' > "$1/usr/share/wayland-sessions/labwc.desktop"
+      # Start Xwayland eagerly so first-install can check X0 before Chromium runs.
+      printf '<labwc_config><core><xwaylandPersistence>yes</xwaylandPersistence></core></labwc_config>\n' > "$1/etc/xdg/labwc/rc.xml"
+      printf 'xset -dpms\nxset s off\n' > "$1/etc/xdg/labwc/autostart"
+      chroot "$1" install -d -o kiosk -g kiosk /home/kiosk/.config
+      test -s "$1/home/kiosk/.ssh/authorized_keys"
+      printf 'kiosk ALL=(ALL:ALL) NOPASSWD: ALL\n' > "$1/etc/sudoers.d/90-kiosk"
+      chmod 0440 "$1/etc/sudoers.d/90-kiosk"
+      chroot "$1" visudo -cf /etc/sudoers.d/90-kiosk
+      printf 'en_US.UTF-8 UTF-8\nja_JP.UTF-8 UTF-8\n' > "$1/etc/locale.gen"
+      chroot "$1" locale-gen
+      printf 'LANG=ja_JP.UTF-8\n' > "$1/etc/default/locale"
+      ln -snf /usr/share/zoneinfo/Asia/Tokyo "$1/etc/localtime"
+      printf 'Asia/Tokyo\n' > "$1/etc/timezone"
+      # Removed host keys must be regenerated before the first SSH listener starts.
+      install -d "$1/etc/systemd/system/ssh.service.d"
+      printf '[Service]\nExecStartPre=/usr/bin/ssh-keygen -A\n' > "$1/etc/systemd/system/ssh.service.d/10-host-keys.conf"
+      chroot "$1" systemctl set-default graphical.target
+    - $BDEBSTRAP_HOOKS/enable-units "$1" lightdm docker ssh tailscaled pi4-first-boot
+    - |
+      set -eu
+      # Only build-root identity artifacts are removed; never run against a live Pi.
+      rm -f "$1"/etc/ssh/ssh_host_* "$1/etc/machine-id" "$1/var/lib/dbus/machine-id"
+      test ! -e "$1/var/lib/tailscale/tailscaled.state"
+      test ! -e "$1/opt/RaspberryPiSystem_002"
+      test ! -e "$1/etc/systemd/system/status-agent.service"

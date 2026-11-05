@@ -1,0 +1,4 @@
+{
+  "hostname": "raspi4-example-01",
+  "tailscale_auth_key": "tskey-auth-EXAMPLE"
+}
