@@ -96,6 +96,9 @@ function workspace(): ProductionScheduleLoadBalancingWorkspaceResponse {
 
 describe('ProductionScheduleLoadBalancingPage', () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    mockUseWorkspace.mockClear();
+    mockUseWorkspaceDay.mockClear();
     vi.setSystemTime(new Date('2026-09-30T12:00:00+09:00'));
     mockIsMacEnvironment.mockReturnValue(false);
     mockUseSiteDevices.mockReturnValue({ data: { deviceScopeKeys: [] } });
@@ -121,7 +124,7 @@ describe('ProductionScheduleLoadBalancingPage', () => {
   it('requests six months from the current month and shows the KPIs without counting unset capacity as over', () => {
     render(<ProductionScheduleLoadBalancingPage />);
 
-    expect(mockUseWorkspace).toHaveBeenCalledWith({ fromMonth: '2026-09', toMonth: '2027-02' }, { enabled: true });
+    expect(mockUseWorkspace).toHaveBeenCalledWith({ fromMonth: '2026-09', toMonth: '2027-02', dueSource: 'excel' }, { enabled: true });
     // 033 だけ超過（110H / 100H）。能力未設定の 091 は超過に数えない
     expect(screen.getByText('超過資源').nextSibling).toHaveTextContent('1');
     expect(screen.getByText('超過計').nextSibling).toHaveTextContent('10');
@@ -200,5 +203,20 @@ describe('ProductionScheduleLoadBalancingPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /未配分/ }));
     expect(screen.getByTestId('load-balancing-unallocated')).toHaveTextContent('着手日なし');
+  });
+
+  it('switches both reads to SCAW, exposes pressed state and persists across mounts', () => {
+    const { unmount } = render(<ProductionScheduleLoadBalancingPage />);
+    const button = screen.getByRole('button', { name: 'SCAW' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(mockUseWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'scaw' }), { enabled: true });
+    expect(mockUseWorkspaceDay).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'scaw' }), { enabled: true });
+    unmount();
+    render(<ProductionScheduleLoadBalancingPage />);
+    expect(screen.getByRole('button', { name: 'SCAW' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'SCAW' }));
+    expect(mockUseWorkspace).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'excel' }), { enabled: true });
   });
 });

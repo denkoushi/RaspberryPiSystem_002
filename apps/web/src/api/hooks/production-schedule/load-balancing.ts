@@ -118,7 +118,7 @@ export function useUpdateProductionScheduleLoadBalancingWorkCalendars() {
 }
 
 export function useKioskProductionScheduleLoadBalancingWorkspace(
-  params: { fromMonth: string; toMonth: string; targetDeviceScopeKey?: string },
+  params: { dueSource: 'excel' | 'scaw'; fromMonth: string; toMonth: string; targetDeviceScopeKey?: string },
   options?: { enabled?: boolean }
 ) {
   return useQuery({
@@ -131,7 +131,7 @@ export function useKioskProductionScheduleLoadBalancingWorkspace(
 }
 
 export function useKioskProductionScheduleLoadBalancingWorkspaceDay(
-  params: { month: string; resourceCd: string; fromMonth?: string; toMonth?: string; targetDeviceScopeKey?: string },
+  params: { dueSource: 'excel' | 'scaw'; month: string; resourceCd: string; fromMonth?: string; toMonth?: string; targetDeviceScopeKey?: string },
   options?: { enabled?: boolean }
 ) {
   return useQuery({
