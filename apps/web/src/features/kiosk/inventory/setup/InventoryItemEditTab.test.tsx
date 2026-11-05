@@ -197,6 +197,20 @@ describe('InventoryItemEditTab', () => {
     } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
   });
 
+  it('places red items before blue items even when the blue shelf comes first', () => {
+    const original = vi.mocked(useInventoryItems).getMockImplementation()!;
+    const first = original().data![0];
+    const items = [true, false].map((ordered, i) => ({ ...first, id: `item-${i}`, name: ordered ? 'blue' : 'red', compartments: [{ ...first.compartments[0], id: `place-${i}`, shelfNumber: i + 1, reorderPoint: 5, reorderedAt: ordered ? '2026-11-04T00:00:00Z' : null }] }));
+    vi.mocked(useInventoryItems).mockReturnValue({ data: items } as never);
+    try {
+      render(<InventoryItemEditTab accessPassword="2520" />);
+      const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
+      expect(list.getAllByRole('button', { name: /red|blue/ }).map(button => button.textContent)).toEqual([
+        expect.stringContaining('red'), expect.stringContaining('blue'),
+      ]);
+    } finally { vi.mocked(useInventoryItems).mockImplementation(original); }
+  });
+
   it('searches padded labels, highlights matches and selects shelves in the tree', () => {
     render(<InventoryItemEditTab accessPassword="2520" />);
     const list = within(screen.getByRole('navigation', { name: 'アイテム一覧' }));
