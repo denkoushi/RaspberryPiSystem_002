@@ -1,3 +1,4 @@
+import { listHaizenUnplacedParts } from '../../services/mobile-placement/schedule-seiban-status.service.js';
 import { listHaizenOverview } from '../../services/mobile-placement/haizen-overview.service.js';
 import { extractManufacturingOrder10 } from '../../services/mobile-placement/genpyo-slip/genpyo-mo-extract.js';
 import { buildActualSlipOcrPreviewSafe } from '../../services/mobile-placement/actual-slip-ocr-preview.js';
@@ -314,6 +315,11 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
   app.get('/mobile-placement/haizen-overview', { config: { rateLimit: false } }, async (request) => {
     await requireClientDevice(request.headers['x-client-key']);
     return listHaizenOverview();
+  });
+
+  app.get('/mobile-placement/haizen-overview/unplaced-parts', { config: { rateLimit: false } }, async (request) => {
+    await requireClientDevice(request.headers['x-client-key']);
+    return listHaizenUnplacedParts();
   });
 
   /**

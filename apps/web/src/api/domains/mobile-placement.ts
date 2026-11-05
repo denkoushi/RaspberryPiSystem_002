@@ -399,6 +399,7 @@ export async function deleteHaizenCurrentPlacement(id: string) {
 
 /** Current Android and Zero2W placements; identify rows by source and id together. */
 export type HaizenOverviewRow = {
+  verified: boolean;
   dueDate: string | null;
   sendOutDate: string | null;
   id: string;
@@ -415,5 +416,20 @@ export type HaizenOverviewRow = {
 
 export async function getHaizenOverview() {
   const { data } = await api.get<{ rows: HaizenOverviewRow[]; truncated: boolean }>('/mobile-placement/haizen-overview');
+  return data;
+}
+
+export type HaizenUnplacedPart = {
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  verified: boolean;
+  machineName: string | null;
+  dueDate: string | null;
+};
+
+export async function getHaizenUnplacedParts() {
+  const { data } = await api.get<HaizenUnplacedPart[]>('/mobile-placement/haizen-overview/unplaced-parts');
   return data;
 }
