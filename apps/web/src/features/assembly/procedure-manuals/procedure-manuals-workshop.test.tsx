@@ -380,7 +380,8 @@ describe('procedure-manuals workshop', () => {
     const view = show();
     const first = await screen.findByRole('row', { name: '公開手順' });
     const second = screen.getByRole('row', { name: '画面外手順' });
-    expect(observers).toHaveLength(2);
+    // 行の描画で findBy は解決するが、IntersectionObserver はその後の effect で作られる。
+    await waitFor(() => expect(observers).toHaveLength(2));
     expect(options).toEqual([{ rootMargin: '200px' }, { rootMargin: '200px' }]);
     expect(observers[0].observe).toHaveBeenCalledWith(within(first).getAllByRole('cell')[0].firstChild);
     act(() => observers.forEach(observer => observer.notify(false)));

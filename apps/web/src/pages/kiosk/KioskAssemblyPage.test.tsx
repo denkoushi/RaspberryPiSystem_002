@@ -218,8 +218,14 @@ describe('KioskAssemblyPage thumbnail references', () => {
     });
     const view = renderPage();
     await screen.findByText('手順書0');
-    act(() => callbacks.forEach(callback => callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)));
-    await waitFor(() => expect(screen.getAllByRole('img', { name: '1ページ目' })).toHaveLength(documents.length), { timeout: 5_000 });
+    // findBy は一覧が DOM に出た時点で解決するが、各サムネイルの IntersectionObserver は
+    // その後の effect で作られる。負荷が高いと一部しか作られていない時点で通知してしまい、
+    // 残りの画像が出ないまま時間切れになるため、全件の監視が始まってから通知する。
+    await waitFor(() => expect(callbacks).toHaveLength(documents.length));
+    await act(async () => {
+      callbacks.forEach(callback => callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+    });
+    await waitFor(() => expect(screen.getAllByRole('img', { name: '1ページ目' })).toHaveLength(documents.length));
     expect(revokeObjectURL).not.toHaveBeenCalled();
     return { view, callbacks, disconnect, revokeObjectURL, apiGet };
   }
