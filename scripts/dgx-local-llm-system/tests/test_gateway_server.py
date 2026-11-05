@@ -1233,6 +1233,17 @@ class BusinessRoutingContractTests(unittest.TestCase):
             else:
                 self.assertEqual(choice['message']['content'], contents[index])
 
+    def test_deepseek_json_response_strips_incomplete_think_blocks(self):
+        encoded = json.dumps({'answer': 2})
+        unclosed = '<think>maybe answer {"draft": 1} then'
+        for content, expected in ((unclosed, unclosed),
+                ('reasoning</think>\n' + encoded, encoded),
+                ('maybe answer {"draft": 1} then</think>\n' + encoded, encoded)):
+            with self.subTest(content=content):
+                raw = json.dumps({'model': 'internal', 'choices': [{'message': {'content': content}}]}).encode()
+                result = json.loads(self.module.deepseek_json_response(raw))
+                self.assertEqual(result['choices'][0]['message']['content'], expected)
+
     def test_deepseek_json_invalid_response_body_and_errors_are_unchanged(self):
         for status, raw in ((200, b'{broken'), (200, b'\xff'), (400, b'upstream error')):
             with self.subTest(status=status, raw=raw):
