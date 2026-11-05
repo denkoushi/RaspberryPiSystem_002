@@ -852,10 +852,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     })).toEqual(versionsBeforeNoop);
   });
 
-  it('reorders moved split children consecutively without changing another resource', async () => {
-    const previousSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-    vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
-    try {
+  it('reorders a parent with legacy records without changing another resource', async () => {
       const fixture = await createFixture();
       await addRows(fixture, [
         { fseiban: `${fixture.prefix}-A`, resourceCd: '305' },
@@ -863,10 +860,10 @@ describeIntegration('grinding planning board service real Postgres integration',
         { fseiban: `${fixture.prefix}-OTHER`, resourceCd: '581' }
       ]);
       const initial = await boardFor(fixture, { view: 'resource' });
-      const split = boardItem(initial, (item) => item.kind === 'split');
+      const split = boardItem(initial, (item) => item.fseiban.endsWith('-SPLIT'));
       await updateItem(fixture, split, { resourceCd: '305' }, initial.sourceRevision);
       const ready = await boardFor(fixture, { view: 'resource' });
-      const source = boardItem(ready, (item) => item.kind === 'split');
+      const source = boardItem(ready, (item) => item.fseiban.endsWith('-SPLIT'));
       const target = boardItem(ready, (item) => item.fseiban.endsWith('-A'));
       const reorder = (item: GrindingPlanningBoardItem, anchor: GrindingPlanningBoardItem) => service().updateGrindingPlanningBoardResourceOrder({
         siteKey: fixture.siteKey, sourceRevision: ready.sourceRevision,
@@ -881,10 +878,6 @@ describeIntegration('grinding planning board service real Postgres integration',
       await expect(reorder(source, target)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
       const other = boardItem(ready, (item) => item.fseiban.endsWith('-OTHER'));
       expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey, itemKey: other.itemId } })).toBe(0);
-    } finally {
-      if (previousSplitFlag === undefined) delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-      else vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', previousSplitFlag);
-    }
   });
 
   it('persists dense resource ranks beyond ten and rejects stale or completed order targets atomically', async () => {
@@ -1079,7 +1072,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: separateFixture.siteKey } })).toBe(2);
   });
 
-  it('keeps an override on a same-logical-key winner, rejects deleted splits, and does not inherit parent overrides', async () => {
+  it('keeps an override on a same-logical-key winner and ignores legacy record changes', async () => {
     const fixture = await createFixture();
     const [oldRow] = await addRows(fixture, [{ fseiban: `${fixture.prefix}-WINNER`, fhincd: 'PART-W', processOrder: '1', productNo: '1' }]);
     const first = await boardFor(fixture);
@@ -1099,30 +1092,28 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(boardItem(afterOldWinnerDelete, (item) => item.fseiban === `${fixture.prefix}-WINNER`)).toMatchObject({ sourceRowId: newRow, itemId: oldItem.itemId, effectiveResourceCd: '581' });
 
     const splitFixture = await createFixture();
-    const [parentRow] = await addRows(splitFixture, [{ fseiban: `${splitFixture.prefix}-SPLIT`, splitQuantity: 2 }]);
-    const previousSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-    vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
-    try {
-      const withSplit = await boardFor(splitFixture);
-      const parent = boardItem(withSplit, (item) => item.sourceRowId === parentRow);
-      expect(parent.kind).toBe('split');
-      expect(parent.effectiveResourceCd).toBe(parent.originalResourceCd);
-      await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withSplit.sourceRevision)).resolves.toBeDefined();
-
-      vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'false');
-      const splitOff = await boardFor(splitFixture);
-      const parentWhenOff = boardItem(splitOff, (item) => item.sourceRowId === parentRow);
-      expect(parentWhenOff.kind).toBe('row');
-      expect(parentWhenOff.effectiveResourceCd).toBe(parentWhenOff.originalResourceCd);
-
-      vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
-      const splitId = splitFixture.splitIds[0]!;
-      await db().productionScheduleOrderSplit.delete({ where: { id: splitId } });
-      await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withSplit.sourceRevision)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
-    } finally {
-      if (previousSplitFlag === undefined) vi.unstubAllEnvs();
-      else vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', previousSplitFlag);
-    }
+    const [parentRow] = await addRows(splitFixture, [{ fseiban: `${splitFixture.prefix}-SPLIT`, splitQuantity: 2, requiredMinutes: '100', rank: 4 }]);
+    const splitId = splitFixture.splitIds[0]!;
+    await db().productionScheduleOrderSplitAssignment.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, splitId,
+      siteKey: splitFixture.siteKey, location: splitFixture.siteKey, resourceCd: '305', orderNumber: 1
+    } });
+    const withLegacy = await boardFor(splitFixture);
+    const parent = boardItem(withLegacy, (item) => item.sourceRowId === parentRow);
+    expect(withLegacy.items).toHaveLength(1);
+    expect(parent).toMatchObject({ kind: 'row', plannedQuantity: 5, requiredMinutes: 100, originalRank: 4 });
+    await db().productionScheduleGrindingPlanningBoardOverride.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: splitFixture.siteKey,
+      itemKey: `split:${splitId}`, overrideResourceCd: '581', alternateRank: 1
+    } });
+    const beforeLegacyUpdate = await boardFor(splitFixture);
+    expect(beforeLegacyUpdate.items).toEqual(withLegacy.items);
+    await db().productionScheduleOrderSplit.update({ where: { id: splitId }, data: { splitQuantity: 99 } });
+    const afterLegacyUpdate = await boardFor(splitFixture);
+    expect(afterLegacyUpdate.items).toEqual(withLegacy.items);
+    expect(afterLegacyUpdate.snapshotId).toBe(beforeLegacyUpdate.snapshotId);
+    await db().productionScheduleOrderSplit.delete({ where: { id: splitId } });
+    await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withLegacy.sourceRevision)).resolves.toBeDefined();
   });
 
   it('lists due-window seiban candidates with canonical due precedence and effective completion', async () => {

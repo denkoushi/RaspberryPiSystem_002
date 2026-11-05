@@ -3,15 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 import { buildQueryWhere } from '../filters.js';
 import { buildBoardDueDateExistsSql } from '../../d-schedule-minutes/board-due.sql.js';
-import { filterProductionScheduleDisplayRowsByDueDate } from '../../order-split/production-schedule-order-split.service.js';
-import type { ProductionScheduleRow } from '../types.js';
-
-const date = new Date('2026-11-12T00:00:00.000Z');
-const row = (id: string, fields: Partial<ProductionScheduleRow> = {}): ProductionScheduleRow => ({
-  id, seibanJoinKey: id, occurredAt: date, updatedAt: date, rowData: {}, processingOrder: null,
-  globalRank: null, actualPerPieceMinutes: null, note: null, processingType: null, dueDate: null,
-  plannedQuantity: null, plannedStartDate: null, plannedEndDate: null, customerName: null, ...fields
-});
 
 describe('hasDueDateOnly', () => {
   it('uses resolved board due by default and retains manual-only SCAW filtering', () => {
@@ -29,19 +20,11 @@ describe('hasDueDateOnly', () => {
     expect(buildQueryWhere({ ...params, hasDueDateOnly: false }).sql).not.toContain('partsCompleteDate');
   });
 
-  it('keeps Excel-only parents, inherited split dues, explicit split dues, and manual dues', () => {
-    const rows = [
-      row('excel', { excelDueDate: date }),
-      row('inherited-split', { isSplit: true, boardDueDate: date }),
-      row('explicit-split', { isSplit: true, dueDate: date, boardDueDate: date }),
-      row('manual', { dueDate: date }),
-      row('scaw-fallback', { plannedEndDate: date }),
-      row('none')
-    ];
-    expect(filterProductionScheduleDisplayRowsByDueDate(rows, true).map((r) => r.id))
-      .toEqual(['excel', 'inherited-split', 'explicit-split', 'manual', 'scaw-fallback']);
-    expect(filterProductionScheduleDisplayRowsByDueDate(rows, true, 'scaw').map((r) => r.id))
-      .toEqual(['explicit-split', 'manual']);
-    expect(filterProductionScheduleDisplayRowsByDueDate(rows, false)).toBe(rows);
+  it('filters parent dates only without reading legacy quantity or date records', () => {
+    const sql = buildQueryWhere({ textConditions: [], resourceConditions: [],
+      resourceCategoryCondition: Prisma.empty, machineNameCondition: Prisma.empty,
+      hasNoteOnly: false, hasDueDateOnly: true }).sql;
+    expect(sql).not.toContain('parentCsvDashboardRowId');
+    expect(sql).toContain('ProductionScheduleDScheduleMinutes');
   });
 });

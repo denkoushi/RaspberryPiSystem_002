@@ -30,10 +30,6 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
       {
         rowsRevision: 10n,
         orderAssignmentUpdatedAt: null,
-        orderSplitCount: 0n,
-        orderSplitUpdatedAt: null,
-        orderSplitAssignmentCount: 0n,
-        orderSplitAssignmentUpdatedAt: null,
         globalRowRankUpdatedAt: null,
         rowNoteUpdatedAt: null,
         progressCount: 0n,
@@ -56,13 +52,13 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     });
     const token = JSON.parse(details.generationToken) as Record<string, unknown>;
 
+    expect(token.payloadVersion).toBe(2);
     expect(details.fkojunstStatusMailRowsRevision).toBe('materialized-revision-B');
     expect(token.fkojunstStatusMailRowsRevision).toBe('materialized-revision-B');
     expect(token.rowsRevision).toBe('10');
     expect(Object.keys(token)).toEqual([
-      'rowsRevision', 'fkojunstStatusMailRowsRevision', 'orderAssignmentUpdatedAt',
-      'orderSplitCount', 'orderSplitUpdatedAt', 'orderSplitAssignmentCount',
-      'orderSplitAssignmentUpdatedAt', 'globalRowRankUpdatedAt', 'rowNoteUpdatedAt',
+      'payloadVersion', 'rowsRevision', 'fkojunstStatusMailRowsRevision', 'orderAssignmentUpdatedAt',
+      'globalRowRankUpdatedAt', 'rowNoteUpdatedAt',
       'progressCount', 'progressUpdatedAt', 'externalCompletionCount', 'externalCompletionUpdatedAt',
       'fkstUpdatedAt', 'fkmailUpdatedAt', 'orderSupplementCount', 'orderSupplementUpdatedAt',
       'seibanDueDateUpdatedAt', 'seibanProcessingDueDateUpdatedAt',
@@ -74,43 +70,20 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('includes split row/assignment counts so deletions invalidate cached snapshots', async () => {
-    vi.mocked(prisma.$queryRaw)
-      .mockResolvedValueOnce([
-        {
-          rowsRevision: 1n,
-          orderAssignmentUpdatedAt: null,
-          orderSplitCount: 2n,
-          orderSplitUpdatedAt: new Date('2026-06-19T00:01:00.000Z'),
-          orderSplitAssignmentCount: 3n,
-          orderSplitAssignmentUpdatedAt: new Date('2026-06-19T00:01:00.000Z'),
-          globalRowRankUpdatedAt: null,
-          rowNoteUpdatedAt: null,
-          progressCount: 0n,
-          progressUpdatedAt: null,
-          externalCompletionCount: 0n,
-          externalCompletionUpdatedAt: null,
-          fkstUpdatedAt: null,
-          fkmailUpdatedAt: null,
-          orderSupplementCount: 0n,
-          orderSupplementUpdatedAt: null,
-          seibanDueDateUpdatedAt: null,
-          seibanProcessingDueDateUpdatedAt: null,
-          resourceCategoryUpdatedAt: null,
-          resourceCodeMappingUpdatedAt: null
-        }
-      ] as never)
-      .mockResolvedValueOnce([{ revision: 9214n }] as never);
-
-    const details = await readLeaderboardShellSnapshotGenerationTokenDetails();
-    const token = JSON.parse(details.generationToken) as Record<string, unknown>;
-
-    expect(token.orderSplitCount).toBe('2');
-    expect(token.orderSplitAssignmentCount).toBe('3');
-    expect(token.orderSplitUpdatedAt).toBe('2026-06-19T00:01:00.000Z');
-    expect(details.fkojunstStatusMailRowsRevision).toBe('9214');
-    expect(token.fkojunstStatusMailRowsRevision).toBe('9214');
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+  it('ignores updates to retained legacy rows and assignments in snapshot generation', async () => {
+    const row = { rowsRevision: 1n, orderSplitCount: 2n, orderSplitAssignmentCount: 3n,
+      orderSplitUpdatedAt: new Date('2026-06-19'), orderSplitAssignmentUpdatedAt: new Date('2026-06-19') };
+    vi.mocked(prisma.$queryRaw).mockReset();
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([row] as never).mockResolvedValueOnce([
+      { ...row, orderSplitCount: 4n, orderSplitAssignmentCount: 5n,
+        orderSplitUpdatedAt: new Date('2026-11-05'), orderSplitAssignmentUpdatedAt: new Date('2026-11-05') }
+    ] as never);
+    const options = { fkojunstStatusMailRowsRevision: '9214' };
+    const before = await readLeaderboardShellSnapshotGenerationTokenDetails(options);
+    const after = await readLeaderboardShellSnapshotGenerationTokenDetails(options);
+    expect(after.generationToken).toBe(before.generationToken);
+    const sql = vi.mocked(prisma.$queryRaw).mock.calls[0][0] as { sql: string };
+    expect(sql.sql).not.toContain('ProductionScheduleOrderSplit');
   });
 
   it.each([
@@ -150,10 +123,6 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
     const row = {
       rowsRevision: 1n,
       orderAssignmentUpdatedAt: null,
-      orderSplitCount: 0n,
-      orderSplitUpdatedAt: null,
-      orderSplitAssignmentCount: 0n,
-      orderSplitAssignmentUpdatedAt: null,
       globalRowRankUpdatedAt: null,
       rowNoteUpdatedAt: null,
       progressCount: 0n,
@@ -208,10 +177,6 @@ describe('resolveLeaderboardShellSnapshotGenerationToken', () => {
       .mockResolvedValueOnce([{
         rowsRevision: 1n,
         orderAssignmentUpdatedAt: null,
-        orderSplitCount: 0n,
-        orderSplitUpdatedAt: null,
-        orderSplitAssignmentCount: 0n,
-        orderSplitAssignmentUpdatedAt: null,
         globalRowRankUpdatedAt: null,
         rowNoteUpdatedAt: null,
         progressCount: 0n,

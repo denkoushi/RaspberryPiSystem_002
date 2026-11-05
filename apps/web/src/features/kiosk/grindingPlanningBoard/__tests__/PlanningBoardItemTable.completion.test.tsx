@@ -32,11 +32,11 @@ const item = (itemId: string, partial: Partial<GrindingPlanningBoardItem> = {}):
 });
 
 describe('PlanningBoardItemTable completion', () => {
-  const items = [item('row'), item('done', { isCompleted: true, completionSource: 'manual' }), item('split', { kind: 'split' })];
+  const items = [item('row'), item('done', { isCompleted: true, completionSource: 'manual' })];
   const props = { items, allocation: 'alternate' as const, selectedItemIds: new Set<string>(),
     onToggleItem: vi.fn(), onResourceClick: vi.fn(), tableLabel: '工程' };
 
-  it('shows completion only for rows and keeps completed items enabled for undo', () => {
+  it('shows parent completion and keeps completed items enabled for undo', () => {
     const onCompleteToggle = vi.fn();
     const onSpecialDueClick = vi.fn();
     render(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} specialDueMode="today" onSpecialDueClick={onSpecialDueClick} />);
@@ -50,7 +50,6 @@ describe('PlanningBoardItemTable completion', () => {
     expect(completed).toHaveClass('border-slate-400');
     fireEvent.click(completed);
     expect(onCompleteToggle).toHaveBeenLastCalledWith(items[1], 'incomplete');
-    expect(within(screen.getByTestId('planning-board-item-split')).queryByText('✓')).not.toBeInTheDocument();
     expect(onSpecialDueClick).not.toHaveBeenCalled();
     expect(props.onToggleItem).not.toHaveBeenCalled();
     expect(screen.getByRole('table').querySelectorAll('col')).toHaveLength(5);

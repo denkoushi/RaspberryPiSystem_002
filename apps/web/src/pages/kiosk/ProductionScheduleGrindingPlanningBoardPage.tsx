@@ -353,7 +353,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [category, scopeReady]);
   const toggleCompletion = useCallback(async (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => {
     const currentItem = currentItemsRef.current.find((candidate) => candidate.sourceRowId === item.sourceRowId) ?? item;
-    if (interactionLocked || !data || item.kind !== 'row' || currentItem.completionSource === 'import' ||
+    if (interactionLocked || !data || currentItem.completionSource === 'import' ||
       completionPendingRef.current.has(item.sourceRowId)) return;
     completionPendingRef.current.add(item.sourceRowId);
     setCompletionPendingRowIds(new Set(completionPendingRef.current));

@@ -86,7 +86,7 @@ export interface GrindingPlanningBoardSpecialDue {
   expiresAt: string;
 }
 
-export type GrindingPlanningBoardItemKind = 'row' | 'split';
+export type GrindingPlanningBoardItemKind = 'row';
 
 /**
  * 材料（鋳物・鋼材など）の入荷状況。購買CSV `FKOBAIST` 由来。

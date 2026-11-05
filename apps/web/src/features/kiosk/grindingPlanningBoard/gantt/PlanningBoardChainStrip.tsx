@@ -37,7 +37,7 @@ export function PlanningBoardChainStrip({ ref, bottom, bars, resourceNameMap, cu
         <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-slate-800 font-mono font-bold text-white">{index + 1}</span>
         <strong>工順{bar.item.processOrder} · {ganttResourceLabel(normalizeMachineName(bar.resource), resourceNameMap[bar.resource])}</strong>
       </button>
-      {onCompleteToggle && bar.item.kind === 'row' && <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
+      {onCompleteToggle && <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
         disabled={disabled || completionPendingRowIds?.has(bar.item.sourceRowId)} />}
     </Fragment>)}
     <button type="button" aria-label="工程のつながりを閉じる" className="min-h-11 shrink-0 rounded border border-slate-700 px-3 text-xs" onClick={onClose}>× 閉じる</button>

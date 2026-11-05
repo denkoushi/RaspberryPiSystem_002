@@ -244,9 +244,9 @@ describeIntegration('grinding planning board lightweight load summary integratio
     { name: 'NULL order retains the product residual', fseiban: null, productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 0 },
     { name: 'NULL order and NULL product retain the product residual', fseiban: null, productNo: null, overrideProductNo: '', split: false, resources: ['G-02'], movedCount: 0 },
     { name: 'empty order matches without a product', fseiban: '', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 1 },
-    { name: 'split match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02'], movedCount: 1 },
+    { name: 'split match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02'], movedCount: 0 },
     { name: 'two matching row overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02', 'G-02'], movedCount: 2 },
-    { name: 'two matching split overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02', 'G-02'], movedCount: 2 },
+    { name: 'two matching split overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02', 'G-02'], movedCount: 0 },
     { name: 'NULL resource falls back to original', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: [null], movedCount: 0 },
     { name: 'NULL split resource falls back to original', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: [null], movedCount: 0 },
     { name: 'NULL resource preserves duplicate matches', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: [null, 'G-02'], movedCount: 1 }
@@ -283,7 +283,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
       ...spec.resources.map((overrideResourceCd) => ({
         itemKey: spec.split ? splitItemKey : rowItemKey, overrideResourceCd
       })),
-      { itemKey: spec.split ? rowItemKey : splitItemKey, overrideResourceCd: 'G-99' }
+      { itemKey: spec.split ? rowItemKey : splitItemKey, overrideResourceCd: spec.split ? null : 'G-99' }
     ];
     const client = {
       async $queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T> {
@@ -292,11 +292,11 @@ describeIntegration('grinding planning board lightweight load summary integratio
       }
     };
     const summary = await summaryReader()({
-      client, siteKey, category: 'grinding', splitEnabled: true,
+      client, siteKey, category: 'grinding',
       leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ${created.id}`,
       isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
     });
-    const itemCount = spec.resources.length;
+    const itemCount = spec.split ? 1 : spec.resources.length;
     expect(summary.load.find((entry) => entry.resourceCd === 'G-01')).toMatchObject({
       originalItemCount: itemCount, originalRequiredMinutes: 10 * itemCount,
       alternateItemCount: itemCount - spec.movedCount, alternateRequiredMinutes: 10 * (itemCount - spec.movedCount)
@@ -327,7 +327,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
       data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey,
         itemKey: buildGrindingPlanningBoardRowItemId(first.rowData), overrideResourceCd: 'G-02' }
     });
-    const params = { client: db(), siteKey, category: 'grinding' as const, splitEnabled: false,
+    const params = { client: db(), siteKey, category: 'grinding' as const,
       isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) =>
         category === 'grinding' && resourceCd.startsWith('G-') };
     const aggregate = await summaryReader()({ ...params,
@@ -400,7 +400,6 @@ describeIntegration('grinding planning board lightweight load summary integratio
       client: db(),
       siteKey: fixture.siteKey,
       category: 'grinding' as const,
-      splitEnabled: true,
       isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => category === 'grinding' && resourceCd.startsWith('G-')
     };
     const summary = await summaryReader()({
@@ -418,7 +417,6 @@ describeIntegration('grinding planning board lightweight load summary integratio
 
     const summaryWithoutSplits = await summaryReader()({
       ...summaryParams,
-      splitEnabled: false,
       leaderboardMaterializedBaseWhere: buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
         PRODUCTION_SCHEDULE_DASHBOARD_ID,
         fixture.rowIds
@@ -426,15 +424,13 @@ describeIntegration('grinding planning board lightweight load summary integratio
     });
     const fallbackSummaryWithoutSplits = await summaryReader()({
       ...summaryParams,
-      splitEnabled: false,
       winnerRowIds: fixture.rowIds
     });
     expect(summaryWithoutSplits).toEqual(fallbackSummaryWithoutSplits);
     const full = projectGrindingPlanningBoard({
       ...projectionInput(fixture),
-      ranks: { rows: new Map(), splits: new Map() },
+      ranks: { rows: new Map() },
       category: 'grinding',
-      splitEnabled: true,
       seibanOrder: fixture.rows.map((row) => String(row.data.FSEIBAN)),
       isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
     });
@@ -442,18 +438,18 @@ describeIntegration('grinding planning board lightweight load summary integratio
     expect(summary.load).toEqual(full.load);
     expect(summary.unknownRequiredMinutesCount).toBe(full.unknownRequiredMinutesCount);
     expect(summary.load.find((entry) => entry.resourceCd === 'G-01')).toMatchObject({
-      originalItemCount: 10,
+      originalItemCount: 9,
       alternateItemCount: 6,
-      originalRequiredMinutes: 213,
-      alternateRequiredMinutes: 61
+      originalRequiredMinutes: 224,
+      alternateRequiredMinutes: 112
     });
     expect(summary.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({
       originalItemCount: 1,
-      alternateItemCount: 4,
+      alternateItemCount: 3,
       originalRequiredMinutes: 40,
-      alternateRequiredMinutes: 192
+      alternateRequiredMinutes: 152
     });
-    expect(summary.unknownRequiredMinutesCount).toBe(4);
+    expect(summary.unknownRequiredMinutesCount).toBe(3);
   });
 
   it('keeps global load rows outside the registered winner ids', async () => {
@@ -480,7 +476,6 @@ describeIntegration('grinding planning board lightweight load summary integratio
       client: db(),
       siteKey: fixture.siteKey,
       category: 'grinding',
-      splitEnabled: true,
       leaderboardMaterializedBaseWhere: Prisma.sql`
         "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       `,
@@ -566,7 +561,6 @@ describeIntegration('grinding planning board lightweight load summary integratio
       client: db(),
       siteKey,
       category: 'grinding' as const,
-      splitEnabled: true,
       isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => category === 'grinding' && resourceCd.startsWith('G-')
     };
     const materializedWhere = buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(

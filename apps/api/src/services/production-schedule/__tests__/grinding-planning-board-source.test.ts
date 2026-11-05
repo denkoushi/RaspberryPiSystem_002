@@ -93,7 +93,7 @@ describe('planning source bounded winner scope', () => {
     expect([...source.details.keys()]).toEqual(['c', 'd']);
     expect(source.details.get('c')).toMatchObject({
       updatedAt, rowNotes: [{ dueDate: new Date('2026-09-20') }],
-      orderSupplements: [{ plannedQuantity: 5, plannedEndDate: null }], orderSplits: []
+      orderSupplements: [{ plannedQuantity: 5, plannedEndDate: null }]
     });
     expect(source.progressRows).toEqual(candidates.filter((r) => winnerIds.includes(r.id)).map((r) => ({
       rowId: r.id, fseiban: r.rowData.FSEIBAN, productNo: r.rowData.ProductNo, fhincd: r.rowData.FHINCD,

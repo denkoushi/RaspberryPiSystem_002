@@ -1,20 +1,45 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { prisma } from '../../../lib/prisma.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
 } from '../constants.js';
-import { ProductionScheduleOrderSupplementSyncService } from '../order-supplement-sync.service.js';
 
-process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ?? '';
+const databaseName = (() => {
+  try {
+    return new URL(testDatabaseUrl).pathname.replace(/^\//, '').split('?')[0] ?? '';
+  } catch {
+    return '';
+  }
+})();
+const hasDedicatedDatabase = Boolean(testDatabaseUrl) && !['borrow_return', 'postgres', 'template1'].includes(databaseName);
+const originalDatabaseUrl = process.env.DATABASE_URL;
+type PrismaClient = import('@prisma/client').PrismaClient;
+type SupplementService = typeof import('../order-supplement-sync.service.js');
+let dbClient: PrismaClient | undefined;
+let supplementService: SupplementService | undefined;
+if (hasDedicatedDatabase) {
+  process.env.DATABASE_URL = testDatabaseUrl;
+  ({ prisma: dbClient } = await import('../../../lib/prisma.js'));
+  supplementService = await import('../order-supplement-sync.service.js');
+}
+const describeIntegration = hasDedicatedDatabase ? describe : describe.skip;
+function db(): PrismaClient {
+  if (!dbClient) throw new Error('TEST_DATABASE_URL must point to a dedicated database');
+  return dbClient;
+}
+function service(): InstanceType<SupplementService['ProductionScheduleOrderSupplementSyncService']> {
+  if (!supplementService) throw new Error('TEST_DATABASE_URL must point to a dedicated database');
+  return new supplementService.ProductionScheduleOrderSupplementSyncService();
+}
 
 const MAIN_DASHBOARD_ID = PRODUCTION_SCHEDULE_DASHBOARD_ID;
 const SUPPLEMENT_DASHBOARD_ID = PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID;
 const DATA_HASH_PREFIX = 'order-supplement-split-sync';
 
 async function cleanupFixtures(): Promise<void> {
-  const rows = await prisma.csvDashboardRow.findMany({
+  const rows = await db().csvDashboardRow.findMany({
     where: {
       dataHash: { startsWith: DATA_HASH_PREFIX },
     },
@@ -23,33 +48,33 @@ async function cleanupFixtures(): Promise<void> {
   const rowIds = rows.map((row) => row.id);
   if (rowIds.length === 0) return;
 
-  await prisma.productionScheduleOrderSplitAssignment.deleteMany({
+  await db().productionScheduleOrderSplitAssignment.deleteMany({
     where: {
       split: {
         parentCsvDashboardRowId: { in: rowIds },
       },
     },
   });
-  await prisma.productionScheduleOrderSplit.deleteMany({
+  await db().productionScheduleOrderSplit.deleteMany({
     where: {
       parentCsvDashboardRowId: { in: rowIds },
     },
   });
-  await prisma.productionScheduleOrderSupplement.deleteMany({
+  await db().productionScheduleOrderSupplement.deleteMany({
     where: {
       csvDashboardRowId: { in: rowIds },
     },
   });
-  await prisma.csvDashboardRow.deleteMany({
+  await db().csvDashboardRow.deleteMany({
     where: {
       id: { in: rowIds },
     },
   });
 }
 
-describe('order-supplement-sync.service (integration)', () => {
+describeIntegration('order-supplement-sync.service (integration)', () => {
   beforeAll(async () => {
-    await prisma.csvDashboard.upsert({
+    await db().csvDashboard.upsert({
       where: { id: MAIN_DASHBOARD_ID },
       update: {},
       create: {
@@ -64,7 +89,7 @@ describe('order-supplement-sync.service (integration)', () => {
         enabled: true,
       },
     });
-    await prisma.csvDashboard.upsert({
+    await db().csvDashboard.upsert({
       where: { id: SUPPLEMENT_DASHBOARD_ID },
       update: {},
       create: {
@@ -87,11 +112,13 @@ describe('order-supplement-sync.service (integration)', () => {
 
   afterAll(async () => {
     await cleanupFixtures();
-    await prisma.$disconnect();
+    await dbClient?.$disconnect();
+    if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
-  it('plannedQuantity 変更時に split 数量合計を同じ transaction で再配分する', async () => {
-    const parent = await prisma.csvDashboardRow.create({
+  it('旧片が残っていても親の plannedQuantity のみ更新する', async () => {
+    const parent = await db().csvDashboardRow.create({
       data: {
         csvDashboardId: MAIN_DASHBOARD_ID,
         occurredAt: new Date('2026-06-20T00:00:00.000Z'),
@@ -106,7 +133,7 @@ describe('order-supplement-sync.service (integration)', () => {
       },
       select: { id: true },
     });
-    await prisma.csvDashboardRow.create({
+    await db().csvDashboardRow.create({
       data: {
         csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
         occurredAt: new Date('2026-06-20T00:00:00.000Z'),
@@ -119,7 +146,7 @@ describe('order-supplement-sync.service (integration)', () => {
         },
       },
     });
-    await prisma.productionScheduleOrderSupplement.create({
+    await db().productionScheduleOrderSupplement.create({
       data: {
         csvDashboardId: MAIN_DASHBOARD_ID,
         csvDashboardRowId: parent.id,
@@ -130,7 +157,7 @@ describe('order-supplement-sync.service (integration)', () => {
         plannedQuantity: 5,
       },
     });
-    await prisma.productionScheduleOrderSplit.createMany({
+    await db().productionScheduleOrderSplit.createMany({
       data: [
         {
           csvDashboardId: MAIN_DASHBOARD_ID,
@@ -147,25 +174,25 @@ describe('order-supplement-sync.service (integration)', () => {
       ],
     });
 
-    const result = await new ProductionScheduleOrderSupplementSyncService().syncFromSupplementDashboard();
+    const result = await service().syncFromSupplementDashboard();
 
     expect(result.upserted).toBeGreaterThanOrEqual(1);
-    const supplement = await prisma.productionScheduleOrderSupplement.findUnique({
+    const supplement = await db().productionScheduleOrderSupplement.findUnique({
       where: { csvDashboardRowId: parent.id },
       select: { plannedQuantity: true },
     });
-    const splits = await prisma.productionScheduleOrderSplit.findMany({
+    const splits = await db().productionScheduleOrderSplit.findMany({
       where: { parentCsvDashboardRowId: parent.id },
       orderBy: { splitNo: 'asc' },
       select: { splitQuantity: true },
     });
     expect(supplement?.plannedQuantity).toBe(10);
-    expect(splits.map((split) => split.splitQuantity)).toEqual([4, 6]);
-    expect(splits.reduce((sum, split) => sum + split.splitQuantity, 0)).toBe(10);
+    expect(splits.map((split) => split.splitQuantity)).toEqual([2, 3]);
+    expect(splits.reduce((sum, split) => sum + split.splitQuantity, 0)).toBe(5);
   });
 
   it('既存行ありで補助CSVの plannedQuantity が空なら既存数量と split を維持する', async () => {
-    const parent = await prisma.csvDashboardRow.create({
+    const parent = await db().csvDashboardRow.create({
       data: {
         csvDashboardId: MAIN_DASHBOARD_ID,
         occurredAt: new Date('2026-06-20T00:00:00.000Z'),
@@ -180,7 +207,7 @@ describe('order-supplement-sync.service (integration)', () => {
       },
       select: { id: true },
     });
-    await prisma.csvDashboardRow.create({
+    await db().csvDashboardRow.create({
       data: {
         csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
         occurredAt: new Date('2026-06-20T00:00:00.000Z'),
@@ -193,7 +220,7 @@ describe('order-supplement-sync.service (integration)', () => {
         },
       },
     });
-    await prisma.productionScheduleOrderSupplement.create({
+    await db().productionScheduleOrderSupplement.create({
       data: {
         csvDashboardId: MAIN_DASHBOARD_ID,
         csvDashboardRowId: parent.id,
@@ -204,7 +231,7 @@ describe('order-supplement-sync.service (integration)', () => {
         plannedQuantity: 5,
       },
     });
-    await prisma.productionScheduleOrderSplit.createMany({
+    await db().productionScheduleOrderSplit.createMany({
       data: [
         {
           csvDashboardId: MAIN_DASHBOARD_ID,
@@ -221,14 +248,14 @@ describe('order-supplement-sync.service (integration)', () => {
       ],
     });
 
-    const result = await new ProductionScheduleOrderSupplementSyncService().syncFromSupplementDashboard();
+    const result = await service().syncFromSupplementDashboard();
 
     expect(result.upserted).toBeGreaterThanOrEqual(1);
-    const supplement = await prisma.productionScheduleOrderSupplement.findUnique({
+    const supplement = await db().productionScheduleOrderSupplement.findUnique({
       where: { csvDashboardRowId: parent.id },
       select: { plannedQuantity: true },
     });
-    const splits = await prisma.productionScheduleOrderSplit.findMany({
+    const splits = await db().productionScheduleOrderSplit.findMany({
       where: { parentCsvDashboardRowId: parent.id },
       orderBy: { splitNo: 'asc' },
       select: { splitQuantity: true },
@@ -244,7 +271,7 @@ describe('order-supplement-sync.service (integration)', () => {
         { suffix: 'low', productNo: '1000000001' },
         { suffix: 'high', productNo: '1000000002' },
       ].map(({ suffix, productNo }) =>
-        prisma.csvDashboardRow.create({
+        db().csvDashboardRow.create({
           data: {
             csvDashboardId: MAIN_DASHBOARD_ID,
             occurredAt: new Date('2026-06-20T00:00:00.000Z'),
@@ -262,7 +289,7 @@ describe('order-supplement-sync.service (integration)', () => {
       )
     );
 
-    await prisma.csvDashboardRow.createMany({
+    await db().csvDashboardRow.createMany({
       data: [
         {
           csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
@@ -289,8 +316,8 @@ describe('order-supplement-sync.service (integration)', () => {
       ],
     });
 
-    const result = await new ProductionScheduleOrderSupplementSyncService().syncFromSupplementDashboard();
-    const supplements = await prisma.productionScheduleOrderSupplement.findMany({
+    const result = await service().syncFromSupplementDashboard();
+    const supplements = await db().productionScheduleOrderSupplement.findMany({
       where: {
         csvDashboardRowId: { in: mainRows.map((row) => row.id) },
       },
@@ -319,7 +346,7 @@ describe('order-supplement-sync.service (integration)', () => {
   });
 
   it('1年超のsource行は未照合だけ削除し、現行日程に残る長期案件は保持する', async () => {
-    await prisma.csvDashboardRow.create({
+    await db().csvDashboardRow.create({
       data: {
         csvDashboardId: MAIN_DASHBOARD_ID,
         occurredAt: new Date('2026-07-20T00:00:00.000Z'),
@@ -338,7 +365,7 @@ describe('order-supplement-sync.service (integration)', () => {
         { suffix: 'current', productNo: '1000000010' },
         { suffix: 'unmatched', productNo: '1000000011' },
       ].map(({ suffix, productNo }) =>
-        prisma.csvDashboardRow.create({
+        db().csvDashboardRow.create({
           data: {
             csvDashboardId: SUPPLEMENT_DASHBOARD_ID,
             occurredAt: new Date('2026-07-20T00:00:00.000Z'),
@@ -357,9 +384,9 @@ describe('order-supplement-sync.service (integration)', () => {
       )
     );
 
-    await new ProductionScheduleOrderSupplementSyncService().syncFromSupplementDashboard();
+    await service().syncFromSupplementDashboard();
 
-    const retainedRows = await prisma.csvDashboardRow.findMany({
+    const retainedRows = await db().csvDashboardRow.findMany({
       where: { id: { in: sourceRows.map((row) => row.id) } },
       select: { id: true },
     });

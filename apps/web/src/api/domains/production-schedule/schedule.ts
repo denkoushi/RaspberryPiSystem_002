@@ -44,12 +44,6 @@ export interface ProductionScheduleRow {
   /** キオスク順位ボード: 工程変更残骸疑い（通常グリッドには含めない） */
   processChangeResidualSuspected?: boolean;
   processChangeResidualEvidence?: ProcessChangeResidualEvidence;
-  /** display item 契約: 親 CsvDashboardRow.id */
-  sourceRowId?: string;
-  splitId?: string | null;
-  splitNo?: number | null;
-  splitQuantity?: number | null;
-  isSplit?: boolean;
 }
 
 export type ProcessChangeResidualEvidenceSide = {

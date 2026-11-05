@@ -15,7 +15,7 @@ import type { GrindingPlanningBoardSpecialDue, MaterialArrivalBasis, MaterialArr
 
 import { prisma } from '../../../lib/prisma.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from './leaderboard-split-expansion.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from './leaderboard-part-footer-processes.service.js';
 import { buildLeaderboardMaterialArrivalByPartKeyForScheduleRows } from './leaderboard-part-material-arrival.service.js';
 
@@ -133,8 +133,8 @@ export async function decorateLeaderboardCompositeBoardContinue(params: {
     const siteScoped =
       params.siteKey?.trim().length ? params.siteKey.trim() : params.locationKey;
 
-    const prefixHydrated = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
-      orderedDisplayItemIds: prefixIds,
+    const prefixHydrated = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+      orderedRowIds: prefixIds,
       locationKey: params.locationKey,
       siteScopedGlobalRankLocation: siteScoped,
       leaderboardMaterializedBaseWhere

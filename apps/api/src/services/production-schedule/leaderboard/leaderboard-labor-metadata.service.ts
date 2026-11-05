@@ -9,7 +9,7 @@ import {
   type ProcessChangeResidualStrongEvidenceMaterializationTelemetryEvent
 } from './leaderboard-process-change-residual.materialization.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from './leaderboard-shell-snapshot-generation.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from './leaderboard-split-expansion.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from './leaderboard-shell-hydrate.service.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
 
 import type {
@@ -212,12 +212,12 @@ export async function fetchLeaderboardBoardLaborMetadata(
       phase: 'hydrateRows'
     },
     () =>
-      fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
-        orderedDisplayItemIds: orderedRowIds,
+      fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+        orderedRowIds,
         locationKey: params.locationKey,
         siteScopedGlobalRankLocation,
         leaderboardMaterializedBaseWhere
-      }),
+      }).then((rows) => rows.map((row) => ({ ...row, actualPerPieceMinutes: null, customerName: null }))),
     (rows) => ({
       rowCount: rows.length
     })

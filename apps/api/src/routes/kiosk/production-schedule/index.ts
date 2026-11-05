@@ -32,7 +32,6 @@ import { registerProductionScheduleManualOrderResourceAssignmentsRoute } from '.
 import { registerProductionScheduleProcessingTypeOptionsRoute } from './processing-type-options.js';
 import { registerProductionScheduleProgressOverviewRoute } from './progress-overview.js';
 import { registerProductionScheduleLoadBalancingRoutes } from './load-balancing.js';
-import { registerProductionScheduleOrderSplitRoutes } from './order-split.js';
 import { registerProductionScheduleGrindingPlanningBoardRoute } from './grinding-planning-board.js';
 import { registerProductionScheduleGrindingPlanningBoardSeibanCandidatesRoute } from './grinding-planning-board-seiban-candidates.js';
 import type { KioskRouteDeps } from './shared.js';
@@ -52,7 +51,6 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleDueDateRoute(app, deps);
   await registerProductionScheduleProcessingRoute(app, deps);
   await registerProductionScheduleOrderRoute(app, deps);
-  await registerProductionScheduleOrderSplitRoutes(app, deps);
   await registerProductionScheduleGrindingPlanningBoardRoute(app, deps);
   await registerProductionScheduleGrindingPlanningBoardSeibanCandidatesRoute(app, deps);
   await registerProductionScheduleSearchStateRoute(app, deps);

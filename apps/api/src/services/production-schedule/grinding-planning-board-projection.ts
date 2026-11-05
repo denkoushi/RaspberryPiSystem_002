@@ -14,7 +14,6 @@ import {
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
   isUnassignedProductionSeiban,
 } from './row-resolver/constants.js';
-import { applySplitQuantityToProductionScheduleRowDisplayFields } from './order-split/split-display-required-minutes.js';
 
 export type GrindingPlanningBoardRowData = Prisma.JsonValue | Record<string, unknown>;
 
@@ -36,12 +35,6 @@ export type GrindingPlanningBoardProjectionRowDetail = {
   }>;
   productionScheduleProgress: { isCompleted: boolean; updatedAt: Date } | null;
   productionScheduleExternalCompletion: { isExternallyCompleted: boolean; updatedAt: Date } | null;
-  orderSplits: ReadonlyArray<{
-    id: string;
-    splitQuantity: number;
-    dueDate: Date | null;
-    updatedAt: Date;
-  }>;
 };
 
 export type GrindingPlanningBoardProjectionRank = {
@@ -51,7 +44,6 @@ export type GrindingPlanningBoardProjectionRank = {
 
 export type GrindingPlanningBoardProjectionRanks = {
   rows: ReadonlyMap<string, GrindingPlanningBoardProjectionRank>;
-  splits: ReadonlyMap<string, GrindingPlanningBoardProjectionRank>;
 };
 
 export type GrindingPlanningBoardProjectionOverride = {
@@ -95,8 +87,6 @@ export type GrindingPlanningBoardProjectionInput = {
   overrides: ReadonlyMap<string, GrindingPlanningBoardProjectionOverride>;
   /** All logical source process rows, before category/completion filtering. */
   progressRows?: readonly GrindingPlanningBoardProgressRow[];
-  /** Backend passes false when the order-split feature is disabled. */
-  splitEnabled?: boolean;
   category: GrindingPlanningBoardCategory;
   view?: GrindingPlanningBoardView;
   allocation?: 'original' | 'alternate';
@@ -116,8 +106,6 @@ export type GrindingPlanningBoardProjectionResult = {
   unknownRequiredMinutesCount: number;
   progress: GrindingPlanningBoardProgressProjection;
 };
-
-const SPLIT_PREFIX = 'split:';
 
 function rowValue(data: GrindingPlanningBoardRowData, key: string): string {
   const value = asRowData(data)[key];
@@ -142,26 +130,6 @@ export function resolveGrindingPlanningBoardParentDueDate(params: {
   if (params.override?.overrideDueDate != null) return ymd(params.override.overrideDueDate);
   if (params.override?.dueDateCleared === true) return ymd(params.plannedEndDate);
   return ymd(params.originalParentDueDate);
-}
-
-export function resolveGrindingPlanningBoardItemDueDate(params: {
-  splitDueDate: Date | null;
-  originalParentDueDate: Date | null;
-  plannedEndDate: Date | null;
-  override?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
-  parentOverride?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
-}): string | null {
-  return resolveBoardDueDate({
-    source: 'scaw',
-    itemOverride: ymd(params.override?.overrideDueDate),
-    splitDueDate: ymd(params.splitDueDate),
-    manualDueDate: resolveGrindingPlanningBoardParentDueDate({
-      originalParentDueDate: params.originalParentDueDate,
-      plannedEndDate: params.plannedEndDate,
-      override: params.parentOverride
-    }),
-    manualUpdatedAt: null, excelDueDate: null, excelChangedAt: null, scawPlannedEndDate: null
-  });
 }
 
 function parseRequiredMinutes(data: GrindingPlanningBoardRowData): number | null {
@@ -448,120 +416,93 @@ function buildItems(
     const completionSource = detail.productionScheduleExternalCompletion?.isExternallyCompleted
       ? 'import' : detail.productionScheduleProgress?.isCompleted ? 'manual' : null;
     const rowItemId = buildGrindingPlanningBoardRowItemId(data);
-    const parentOverride = params.overrides.get(rowItemId);
-    const splits = params.splitEnabled === false
-      ? [null]
-      : detail.orderSplits.length > 0
-        ? detail.orderSplits
-        : [null];
+    const itemId = rowItemId;
+    const override = params.overrides.get(itemId);
+    const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? originalResourceCd);
 
-    for (const split of splits) {
-      const itemId = split == null ? rowItemId : `${SPLIT_PREFIX}${split.id}`;
-      const override = params.overrides.get(itemId);
-      const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? originalResourceCd);
-
-      const displayFields = split == null
-        ? { plannedQuantity: sourceQuantity, machineRequiredMinutes: sourceMinutes ?? undefined }
-        : applySplitQuantityToProductionScheduleRowDisplayFields(
-            {
-              plannedQuantity: sourceQuantity,
-              machineRequiredMinutes: sourceMinutes ?? undefined,
-              laborRequiredMinutes: undefined,
-              rowData: data as Prisma.JsonValue
-            },
-            split.splitQuantity
-          );
-      const requiredMinutes = displayFields.machineRequiredMinutes ?? null;
-      const requiredMinutesKnown = requiredMinutes != null;
-      const parentDue = resolveBoardDueDate({
-        source: params.dueSource ?? 'excel', itemOverride: null, splitDueDate: null,
-        manualDueDate: ymd(detail.rowNotes[0]?.dueDate), manualUpdatedAt: detail.manualUpdatedAt ?? null,
-        excelDueDate: ymd(detail.excelDueDate), excelChangedAt: detail.excelChangedAt ?? null,
-        scawPlannedEndDate: ymd(detail.orderSupplements[0]?.plannedEndDate)
-      });
-      const originalParentDueDate = parentDue ? new Date(`${parentDue}T00:00:00.000Z`) : null;
-      const originalDueDate = ymd(split?.dueDate) ?? ymd(originalParentDueDate);
-      const effectiveDueDate = resolveGrindingPlanningBoardItemDueDate({
-        splitDueDate: split?.dueDate ?? null,
-        originalParentDueDate,
-        plannedEndDate: detail.orderSupplements[0]?.plannedEndDate ?? null,
-        override,
-        parentOverride
-      });
-      const rankRow = split == null ? params.ranks.rows.get(row.id) : params.ranks.splits.get(split.id);
-      const originalRank =
-        rankRow != null && normalizeResourceCd(rankRow.resourceCd) === originalResourceCd
-          ? rankRow.orderNumber
-          : null;
-      const itemProgress = progressForItem(
-        {
-          fseiban,
-          productNo: rowValue(data, 'ProductNo'),
-          fhincd: rowValue(data, 'FHINCD'),
-          isCompleted: rowCompleted
-        },
-        progress
-      );
-      const revisionInput = {
-        rowId: row.id,
-        rowUpdatedAt: row.updatedAt?.toISOString() ?? null,
-        detailUpdatedAt: detail.updatedAt?.toISOString() ?? null,
-        logicalKey: buildGrindingPlanningBoardLogicalKey(data),
-        splitId: split?.id ?? null,
-        splitUpdatedAt: split?.updatedAt.toISOString() ?? null,
-        splitQuantity: split?.splitQuantity ?? null,
-        originalResourceCd,
-        originalDueDate,
-        sourceMinutes,
-        rowCompleted,
-        completionSource,
-        sourceQuantity,
-        overrideVersion: override?.version ?? 0,
-        overrideResourceCd: override?.overrideResourceCd ?? null,
-        overrideDueDate: ymd(override?.overrideDueDate),
-        dueDateCleared: override?.dueDateCleared ?? null,
-        inheritedParentOverrideVersion: parentOverride?.version ?? 0,
-        inheritedParentOverrideDueDate: ymd(parentOverride?.overrideDueDate),
-        inheritedParentOverrideDueDateCleared: parentOverride?.dueDateCleared ?? null,
-        effectiveDueDate,
-        alternateRank: override?.alternateRank ?? null,
-        orderPinned: override?.orderPinned ?? false,
-        specialDueKind: override?.specialDueKind ?? null,
-        specialDueExpiresAt: override?.specialDueExpiresAt?.toISOString() ?? null,
-        originalRank
-      };
-      items.push({
-        itemId,
-        kind: split == null ? 'row' : 'split',
-        itemRevision: createItemRevision(revisionInput),
-        version: override?.version ?? 0,
-        sourceRowId: row.id,
+    const displayFields = { plannedQuantity: sourceQuantity, machineRequiredMinutes: sourceMinutes ?? undefined };
+    const requiredMinutes = displayFields.machineRequiredMinutes ?? null;
+    const requiredMinutesKnown = requiredMinutes != null;
+    const parentDue = resolveBoardDueDate({
+      source: params.dueSource ?? 'excel', itemOverride: null,
+      manualDueDate: ymd(detail.rowNotes[0]?.dueDate), manualUpdatedAt: detail.manualUpdatedAt ?? null,
+      excelDueDate: ymd(detail.excelDueDate), excelChangedAt: detail.excelChangedAt ?? null,
+      scawPlannedEndDate: ymd(detail.orderSupplements[0]?.plannedEndDate)
+    });
+    const originalParentDueDate = parentDue ? new Date(`${parentDue}T00:00:00.000Z`) : null;
+    const originalDueDate = ymd(originalParentDueDate);
+    const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
+      originalParentDueDate,
+      plannedEndDate: detail.orderSupplements[0]?.plannedEndDate ?? null,
+      override
+    });
+    const rankRow = params.ranks.rows.get(row.id);
+    const originalRank =
+      rankRow != null && normalizeResourceCd(rankRow.resourceCd) === originalResourceCd
+        ? rankRow.orderNumber
+        : null;
+    const itemProgress = progressForItem(
+      {
         fseiban,
-        fhincd: rowValue(data, 'FHINCD'),
-        fhinmei: rowValue(data, 'FHINMEI') || null,
-        machineName: params.machineNameBySeiban?.get(fseiban) ?? null,
         productNo: rowValue(data, 'ProductNo'),
-        processOrder: rowValue(data, 'FKOJUN'),
-        originalResourceCd,
-        effectiveResourceCd,
-        originalDueDate,
-        effectiveDueDate,
-        originalRank,
-        alternateRank: override?.alternateRank ?? null,
-        orderPinned: override?.orderPinned ?? false,
-        specialDue: specialDueForOverride(override),
-        plannedQuantity: displayFields.plannedQuantity ?? null,
-        requiredMinutes,
-        requiredMinutesKnown,
-        isCompleted: rowCompleted,
-        completionSource,
-        progress: {
-          completed: itemProgress.completed,
-          total: itemProgress.total,
-          quantityKnown: false
-        }
-      });
-    }
+        fhincd: rowValue(data, 'FHINCD'),
+        isCompleted: rowCompleted
+      },
+      progress
+    );
+    const revisionInput = {
+      rowId: row.id,
+      rowUpdatedAt: row.updatedAt?.toISOString() ?? null,
+      detailUpdatedAt: detail.updatedAt?.toISOString() ?? null,
+      logicalKey: buildGrindingPlanningBoardLogicalKey(data),
+      originalResourceCd,
+      originalDueDate,
+      sourceMinutes,
+      rowCompleted,
+      completionSource,
+      sourceQuantity,
+      overrideVersion: override?.version ?? 0,
+      overrideResourceCd: override?.overrideResourceCd ?? null,
+      overrideDueDate: ymd(override?.overrideDueDate),
+      dueDateCleared: override?.dueDateCleared ?? null,
+      effectiveDueDate,
+      alternateRank: override?.alternateRank ?? null,
+      orderPinned: override?.orderPinned ?? false,
+      specialDueKind: override?.specialDueKind ?? null,
+      specialDueExpiresAt: override?.specialDueExpiresAt?.toISOString() ?? null,
+      originalRank
+    };
+    items.push({
+      itemId,
+      kind: 'row',
+      itemRevision: createItemRevision(revisionInput),
+      version: override?.version ?? 0,
+      sourceRowId: row.id,
+      fseiban,
+      fhincd: rowValue(data, 'FHINCD'),
+      fhinmei: rowValue(data, 'FHINMEI') || null,
+      machineName: params.machineNameBySeiban?.get(fseiban) ?? null,
+      productNo: rowValue(data, 'ProductNo'),
+      processOrder: rowValue(data, 'FKOJUN'),
+      originalResourceCd,
+      effectiveResourceCd,
+      originalDueDate,
+      effectiveDueDate,
+      originalRank,
+      alternateRank: override?.alternateRank ?? null,
+      orderPinned: override?.orderPinned ?? false,
+      specialDue: specialDueForOverride(override),
+      plannedQuantity: displayFields.plannedQuantity ?? null,
+      requiredMinutes,
+      requiredMinutesKnown,
+      isCompleted: rowCompleted,
+      completionSource,
+      progress: {
+        completed: itemProgress.completed,
+        total: itemProgress.total,
+        quantityKnown: false
+      }
+    });
   }
   return items;
 }

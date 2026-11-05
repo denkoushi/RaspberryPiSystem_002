@@ -15,7 +15,7 @@ const props: LeaderBoardLeftToolStackProps = {
   searchConditions: { showGrindingResources: true, showCuttingResources: false }, toggleGrinding: noop, toggleCutting: noop,
   completionFilter: 'incomplete', setCompletionFilter: noop, selectedResourceCategory: undefined, activeResourceCds: [], slotCount: 1, setSlotModalOpen: noop,
   selectedResourceCd: null, listIncomplete: false, isSeibanListPanelOpen: false, onToggleSeibanListPanel: noop, seibanEvalEnabled: false, onToggleSeibanEval: noop,
-  registeredSeibansForDisplay: [], onMoveRegisteredSeibanToRank: noop, ganttEnabled: false, onToggleGanttMode: noop, splitFeatureStatus: { label: '', className: '' }
+  registeredSeibansForDisplay: [], onMoveRegisteredSeibanToRank: noop, ganttEnabled: false, onToggleGanttMode: noop
 };
 function Harness() {
   const { scawEnabled, toggleScawMode } = usePersistedLeaderBoardScawMode('site', 'device');

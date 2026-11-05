@@ -12,9 +12,8 @@ import { sharedScheduleFieldsRepository } from './shared-schedule-fields.reposit
 import {
   acquireUnifiedOrderSlotLockInTransaction,
   assertUnifiedOrderSlotAvailableInTransaction
-} from './order-split/production-schedule-unified-order-slot.service.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
-import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
+} from './order-assignment/production-schedule-unified-order-slot.service.js';
+import { acquireProductionScheduleParentRowLockInTransaction } from './order-assignment/production-schedule-parent-row-lock.service.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
 const isValidProcessingType = async (locationKey: string, processingType: string): Promise<boolean> => {
@@ -508,45 +507,6 @@ export async function upsertProductionScheduleOrder(params: {
       },
       select: { orderNumber: true, resourceCd: true }
     });
-    const splitCount = await tx.productionScheduleOrderSplit.count({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        parentCsvDashboardRowId: row.id
-      }
-    });
-    if (splitCount > 0) {
-      if (isProductionScheduleOrderSplitEnabled()) {
-        throw new ApiError(
-          400,
-          '分割済みの行は親行の手動順番を設定できません',
-          undefined,
-          'PARENT_ORDER_NOT_ALLOWED_FOR_SPLIT_ROW'
-        );
-      }
-
-      if (isSiteCanonicalLocation) {
-        await tx.productionScheduleOrderSplitAssignment.deleteMany({
-          where: {
-            split: {
-              csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-              parentCsvDashboardRowId: row.id
-            },
-            siteKey,
-            location: { not: locationKey }
-          }
-        });
-      }
-      await tx.productionScheduleOrderSplitAssignment.deleteMany({
-        where: {
-          split: {
-            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-            parentCsvDashboardRowId: row.id
-          },
-          location: locationKey
-        }
-      });
-    }
-
     await acquireUnifiedOrderSlotLockInTransaction(tx, {
       locationKey,
       resourceCd,

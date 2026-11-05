@@ -11,7 +11,6 @@ import { buildGrindingPlanningBoardLogicalKey as buildProjectionLogicalKey, buil
 export const DEFAULT_PAGE_SIZE = 160;
 export const MAX_PAGE_SIZE = 640;
 export const MAX_ALTERNATE_RANK = 2_147_483_647;
-export const SPLIT_PREFIX = 'split:';
 export type ReusablePlanningPayload = {
   siteKey: string;
   generationToken: string;
@@ -41,14 +40,6 @@ export type RankRow = {
   siteKey: string;
   location: string;
 };
-export type SplitRankRow = {
-  splitId: string;
-  resourceCd: string;
-  orderNumber: number;
-  updatedAt: Date;
-  siteKey: string;
-  location: string;
-};
 export type PlanningState = {
   id: string;
   version: number;
@@ -69,12 +60,8 @@ export type CurrentProjection = {
   details: Map<string, RowDetail>;
   ranks: GrindingPlanningBoardProjectionRanks;
   progressRows: GrindingPlanningBoardProgressRow[];
-  splitEnabled: boolean;
   policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>;
-  sourceRowIds: Map<string, string>;
   masterResourceCds: Set<string>;
-  parentEffectiveDueBySourceRow: Map<string, string | null>;
-  splitOriginalDueByItemId: Map<string, string | null>;
 };
 
 export function asRowData(value: unknown): RowData {

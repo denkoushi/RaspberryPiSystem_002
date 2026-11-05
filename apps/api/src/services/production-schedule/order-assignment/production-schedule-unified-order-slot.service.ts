@@ -8,7 +8,6 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 
 export type UnifiedOrderSlotExclusions = {
   excludeParentRowId?: string;
-  excludeSplitId?: string;
 };
 
 export type UnifiedOrderSlotKey = {
@@ -58,14 +57,6 @@ function hashOrderSlotAdvisoryLock(params: {
   return digest.readBigInt64BE(0);
 }
 
-/** usage 集計と同じ scope: `location = locationKey OR siteKey = locationKey`（実装は index 向けに分離 lookup）。 */
-export function buildUnifiedOrderSlotScopeWhere(
-  locationKey: string
-): Array<{ location: string } | { siteKey: string }> {
-  const trimmed = locationKey.trim();
-  return [{ location: trimmed }, { siteKey: trimmed }];
-}
-
 async function hasParentOrderSlotConflictInTransaction(
   tx: Prisma.TransactionClient,
   params: {
@@ -108,46 +99,6 @@ async function hasParentOrderSlotConflictInTransaction(
   return siteFallbackConflict != null;
 }
 
-async function hasSplitOrderSlotConflictInTransaction(
-  tx: Prisma.TransactionClient,
-  params: {
-    locationKey: string;
-    resourceCd: string;
-    orderNumber: number;
-    excludeSplitId?: string;
-  }
-): Promise<boolean> {
-  const locationKey = params.locationKey.trim();
-  const resourceCd = params.resourceCd.trim();
-  const excludeSplitId = params.excludeSplitId ? { splitId: { not: params.excludeSplitId } } : {};
-
-  const exactLocationConflict = await tx.productionScheduleOrderSplitAssignment.findFirst({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      location: locationKey,
-      resourceCd,
-      orderNumber: params.orderNumber,
-      ...excludeSplitId
-    },
-    select: { id: true }
-  });
-  if (exactLocationConflict) {
-    return true;
-  }
-
-  const siteFallbackConflict = await tx.productionScheduleOrderSplitAssignment.findFirst({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      siteKey: locationKey,
-      resourceCd,
-      orderNumber: params.orderNumber,
-      ...excludeSplitId
-    },
-    select: { id: true }
-  });
-  return siteFallbackConflict != null;
-}
-
 /** device 書き込み時は site fallback と直列化するため site lock も取る。 */
 export function resolveUnifiedOrderSlotLockScopeKeys(locationKey: string): string[] {
   const trimmed = locationKey.trim();
@@ -158,10 +109,7 @@ export function resolveUnifiedOrderSlotLockScopeKeys(locationKey: string): strin
   return [trimmed, siteKey].sort((a, b) => a.localeCompare(b));
 }
 
-/**
- * 親行 assignment と分割片 assignment が同一 (location, resourceCd, orderNumber) を
- * 取らないよう、スロット単位の advisory lock 下で両テーブルを検証する。
- */
+/** 親行の順位スロットを advisory lock 下で検証する。 */
 export async function assertUnifiedOrderSlotAvailableInTransaction(
   tx: Prisma.TransactionClient,
   params: {
@@ -178,17 +126,6 @@ export async function assertUnifiedOrderSlotAvailableInTransaction(
       resourceCd,
       orderNumber: params.orderNumber,
       excludeParentRowId: params.excludeParentRowId
-    })
-  ) {
-    throw new ApiError(409, 'この番号は既に使用されています', undefined, 'ORDER_NUMBER_CONFLICT');
-  }
-
-  if (
-    await hasSplitOrderSlotConflictInTransaction(tx, {
-      locationKey: params.locationKey,
-      resourceCd,
-      orderNumber: params.orderNumber,
-      excludeSplitId: params.excludeSplitId
     })
   ) {
     throw new ApiError(409, 'この番号は既に使用されています', undefined, 'ORDER_NUMBER_CONFLICT');

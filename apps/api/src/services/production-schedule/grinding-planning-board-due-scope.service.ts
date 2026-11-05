@@ -17,13 +17,12 @@ import { presentDueManagementSeibanDetail, type PartEffectiveDueDate, type Prese
 import { isValidDueDateText, listSeibanRowIdsForWriteback } from './due-date-writeback.service.js';
 import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
 import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
+import { acquireProductionScheduleParentRowLockInTransaction } from './order-assignment/production-schedule-parent-row-lock.service.js';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 type RowData = Record<string, unknown>;
 type TargetRow = { id: string; rowData: Prisma.JsonValue; updatedAt: Date | null };
 type ScopeRow = ProductionScheduleGrindingPlanningBoardDueScope;
-type TargetSplit = { id: string; parentCsvDashboardRowId: string; dueDate: Date | null; updatedAt: Date };
 type OriginalProcessingRow = { processingType: string; dueDate: Date; updatedAt: Date };
 type TargetMetadata = { rowId: string; dueDate: Date | null; processingType: string | null; noteUpdatedAt: Date | null; plannedEndDate: Date | null; supplementUpdatedAt: Date | null; completed: boolean; progressUpdatedAt: Date | null; externalCompleted: boolean; externalUpdatedAt: Date | null };
 type TargetBaseDue = { dueDate: Date | null; plannedEndDate: Date | null };
@@ -75,17 +74,7 @@ async function readScopeRows(client: DbClient, siteKey: string, fseiban: string)
 }
 
 async function readTargetOverrideRows(client: DbClient, siteKey: string, rows: readonly TargetRow[]): Promise<ProductionScheduleGrindingPlanningBoardOverride[]> {
-  const rowIds = rows.map((row) => row.id);
-  const splits = rowIds.length === 0
-    ? []
-    : await client.productionScheduleOrderSplit.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: { in: rowIds } },
-      select: { id: true }
-    });
-  const itemKeys = [
-    ...rows.map((row) => buildGrindingPlanningBoardRowItemId(asRowData(row.rowData))),
-    ...splits.map((split) => `split:${split.id}`)
-  ];
+  const itemKeys = rows.map((row) => buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)));
   if (itemKeys.length === 0) return [];
   return client.productionScheduleGrindingPlanningBoardOverride.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: { in: itemKeys } },
@@ -99,7 +88,6 @@ function buildScopeRevision(params: {
   scopes: readonly ScopeRow[];
   overrides: readonly ProductionScheduleGrindingPlanningBoardOverride[];
   rows: readonly TargetRow[];
-  splits: readonly TargetSplit[];
   originalProcessing: readonly OriginalProcessingRow[];
   originalSeiban: { dueDate: Date | null; updatedAt: Date } | null;
   processingMappings: readonly ProcessingMapping[];
@@ -112,7 +100,6 @@ function buildScopeRevision(params: {
     scopes: params.scopes.map((row) => ({ scopeKey: row.scopeKey, version: row.version, dueDate: dateText(row.dueDate) })),
     overrides: params.overrides.map((row) => ({ itemKey: row.itemKey, version: row.version })),
     rows: params.rows.map((row) => ({ id: row.id, updatedAt: row.updatedAt?.toISOString() ?? '', data: row.rowData })),
-    splits: [...params.splits].sort((left, right) => left.id.localeCompare(right.id)).map((split) => ({ id: split.id, parentId: split.parentCsvDashboardRowId, updatedAt: split.updatedAt.toISOString(), dueDate: dateText(split.dueDate) })),
     metadata: params.metadata.map((row) => ({ ...row, noteUpdatedAt: row.noteUpdatedAt?.toISOString() ?? '', supplementUpdatedAt: row.supplementUpdatedAt?.toISOString() ?? '', progressUpdatedAt: row.progressUpdatedAt?.toISOString() ?? '', externalUpdatedAt: row.externalUpdatedAt?.toISOString() ?? '', dueDate: dateText(row.dueDate), plannedEndDate: dateText(row.plannedEndDate) })),
     originalProcessing: [...params.originalProcessing].sort((a, b) => a.processingType.localeCompare(b.processingType)).map((row) => ({ processingType: row.processingType, dueDate: dateText(row.dueDate), updatedAt: row.updatedAt.toISOString() })),
     originalSeiban: params.originalSeiban == null ? null : { dueDate: dateText(params.originalSeiban.dueDate), updatedAt: params.originalSeiban.updatedAt.toISOString() },
@@ -121,7 +108,7 @@ function buildScopeRevision(params: {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
-async function readSnapshotParts(params: { client: DbClient; siteKey: string; fseiban: string; sourceGenerationToken?: string }): Promise<{ sourceGenerationToken: string; scopeRevision: string; scopes: ScopeRow[]; overrides: ProductionScheduleGrindingPlanningBoardOverride[]; rows: TargetRow[]; splits: TargetSplit[]; baseDueByRowId: Map<string, TargetBaseDue>; originalProcessing: Map<string, Date>; originalSeiban: { dueDate: Date | null; updatedAt: Date } | null }> {
+async function readSnapshotParts(params: { client: DbClient; siteKey: string; fseiban: string; sourceGenerationToken?: string }): Promise<{ sourceGenerationToken: string; scopeRevision: string; scopes: ScopeRow[]; overrides: ProductionScheduleGrindingPlanningBoardOverride[]; rows: TargetRow[]; baseDueByRowId: Map<string, TargetBaseDue>; originalProcessing: Map<string, Date>; originalSeiban: { dueDate: Date | null; updatedAt: Date } | null }> {
   const sourceGenerationToken = params.sourceGenerationToken ?? await readLeaderboardShellSnapshotGenerationToken();
   const [state, scopes, rows, originalProcessing, originalSeiban] = await Promise.all([
     params.client.productionScheduleGrindingPlanningBoardState.findUnique({
@@ -133,11 +120,6 @@ async function readSnapshotParts(params: { client: DbClient; siteKey: string; fs
     params.client.productionScheduleSeibanProcessingDueDate.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: params.fseiban }, select: { processingType: true, dueDate: true, updatedAt: true } }),
     params.client.productionScheduleSeibanDueDate.findUnique({ where: { csvDashboardId_fseiban: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: params.fseiban } }, select: { dueDate: true, updatedAt: true } })
   ]);
-  const splits = await params.client.productionScheduleOrderSplit.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: { in: rows.map((row) => row.id) } },
-    select: { id: true, parentCsvDashboardRowId: true, dueDate: true, updatedAt: true },
-    orderBy: { id: 'asc' }
-  });
   const [notes, supplements, progress, external, processingMappings] = await Promise.all([
     params.client.productionScheduleRowNote.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: rows.map((row) => row.id) } }, select: { csvDashboardRowId: true, dueDate: true, processingType: true, updatedAt: true } }),
     params.client.productionScheduleOrderSupplement.findMany({ where: { csvDashboardRowId: { in: rows.map((row) => row.id) } }, select: { csvDashboardRowId: true, plannedEndDate: true, updatedAt: true } }),
@@ -164,11 +146,10 @@ async function readSnapshotParts(params: { client: DbClient; siteKey: string; fs
   const overrides = await readTargetOverrideRows(params.client, params.siteKey, rows);
   return {
     sourceGenerationToken,
-    scopeRevision: buildScopeRevision({ sourceGenerationToken, state, scopes, overrides, rows, splits, originalProcessing, originalSeiban, processingMappings, metadata }),
+    scopeRevision: buildScopeRevision({ sourceGenerationToken, state, scopes, overrides, rows, originalProcessing, originalSeiban, processingMappings, metadata }),
     scopes,
     overrides,
     rows,
-    splits,
     baseDueByRowId: new Map(metadata.map((row) => [row.rowId, { dueDate: row.dueDate, plannedEndDate: row.plannedEndDate }])),
     originalProcessing: new Map(originalProcessing.map((row) => [row.processingType, row.dueDate] as const)),
     originalSeiban
@@ -304,10 +285,9 @@ type TargetWrite = { itemKey: string; nextDueDate?: Date | null; dueDateCleared?
 async function readWriteTargets(params: { client: Prisma.TransactionClient; siteKey: string; fseiban: string; scope: GrindingPlanningBoardDueScope; dueDate: Date | null; scopesAfter: readonly ScopeRow[]; originalProcessing: ReadonlyMap<string, Date>; originalSeibanDue: Date | null }): Promise<TargetWrite[]> {
   const rows = await readTargetRows(params.client, params.fseiban);
   const rowIds = rows.map((row) => row.id);
-  const [notes, processingTypes, splits, supplements] = await Promise.all([
+  const [notes, processingTypes, supplements] = await Promise.all([
     params.client.productionScheduleRowNote.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: rowIds } }, select: { csvDashboardRowId: true, dueDate: true, processingType: true } }),
     params.client.productionSchedulePartProcessingType.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fhincd: { in: rows.map((row) => rowValue(asRowData(row.rowData), 'FHINCD')) } }, select: { fhincd: true, processingType: true } }),
-    params.client.productionScheduleOrderSplit.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: { in: rowIds } }, select: { id: true, parentCsvDashboardRowId: true, dueDate: true } }),
     params.client.productionScheduleOrderSupplement.findMany({ where: { csvDashboardRowId: { in: rowIds } }, select: { csvDashboardRowId: true, plannedEndDate: true } })
   ]);
   const overrides = await readTargetOverrideRows(params.client, params.siteKey, rows);
@@ -332,7 +312,7 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
       // exists, the original processing due remains protected.
       if (params.dueDate == null) {
         // Clearing removes the planning parent override. The effective date
-        // then comes from the original row/split projection.
+        // then comes from the original row projection.
         return null;
       }
       if (processingType && planning?.dueDate != null) {
@@ -360,21 +340,6 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
       : nextParentDate ?? base;
     const changed = before?.getTime() !== after?.getTime();
     writes.push({ itemKey: key, nextDueDate: processingClearFallsBackToCsv ? null : nextParentDate, dueDateCleared: processingClearFallsBackToCsv ? true : params.scope.kind === 'processing' || params.scope.kind === 'seiban' ? false : current?.dueDateCleared ?? null, resetRank: changed });
-    for (const split of splits.filter((candidate) => candidate.parentCsvDashboardRowId === row.id)) {
-      const splitKey = `split:${split.id}`;
-      const splitOverride = overrideMap.get(splitKey);
-      if (split.dueDate != null || splitOverride?.overrideDueDate != null) continue;
-      const inheritedBefore = current?.dueDateCleared === true
-        ? supplementMap.get(row.id)?.plannedEndDate ?? null
-        : current?.overrideDueDate ?? base;
-      // Keep the split override absent: projection inherits the parent item
-      // value. Only its rank is invalidated when the inherited effective due
-      // changes.
-      const inheritedAfter = processingClearFallsBackToCsv
-        ? supplementMap.get(row.id)?.plannedEndDate ?? null
-        : nextParentDate ?? base;
-      writes.push({ itemKey: splitKey, resetRank: inheritedBefore?.getTime() !== inheritedAfter?.getTime() });
-    }
   }
   if (params.scope.kind === 'processing' && !matchedProcessing) {
     throw new ApiError(404, '指定された製番内に対象の表面処理が見つかりません', undefined, 'PROCESSING_TYPE_NOT_FOUND');

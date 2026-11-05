@@ -5,7 +5,6 @@ import {
   getResourceCategoryPolicy,
   isProductionScheduleGrindingResourceCd
 } from '../../production-schedule/policies/resource-category-policy.service.js';
-import { SPLIT_DISPLAY_ITEM_ID_PREFIX } from '../../production-schedule/order-split/leaderboard-display-item-id.js';
 import { resolveProductionSchedulePlannedQuantity } from '../../production-schedule/self-inspection-schedule-eligibility.js';
 import { partMeasurementTemplateFullInclude } from '../part-measurement-template-include.js';
 import { tryResolveExpectedEntryCount } from '../self-inspection-config.js';
@@ -364,16 +363,11 @@ export async function buildLeaderboardDecorations(
     await ensureSelfInspectionTemplatesForRows(activeCache, rows);
     await ensureSelfInspectionSessionsInCache(
       activeCache,
-      rows
-        .map((row) => row.id)
-        .filter((id) => !id.startsWith(SPLIT_DISPLAY_ITEM_ID_PREFIX))
+      rows.map((row) => row.id)
     );
   }
 
   return rows.map((row) => {
-    if (row.id.startsWith(SPLIT_DISPLAY_ITEM_ID_PREFIX)) {
-      return emptyLeaderboardSelfInspectionDecoration(row.id);
-    }
     if (activeCache.invalidatedScheduleRowIds.has(row.id)) {
       return emptyLeaderboardSelfInspectionDecoration(row.id);
     }

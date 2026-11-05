@@ -10,13 +10,13 @@ import { resolveBoardDueDate, type BoardDueSource } from './resolve-board-due-da
 const local = /^postgresql:\/\/[^@]+@(?:localhost|127\.0\.0\.1):5432\/borrow_return(?:\?|$)/.test(process.env.DATABASE_URL ?? '');
 const date = (day: string | null) => day ? new Date(`${day}T00:00:00.000Z`) : null;
 const fixtures = [
-  { id: 'manual-newer', manual: '2026-11-08', manualAt: '2026-11-04', excel: '2026-11-12', excelAt: '2026-11-03', scaw: '2026-11-30', split: null },
-  { id: 'excel-newer', manual: '2026-11-01', manualAt: '2026-11-02', excel: '2026-11-06', excelAt: '2026-11-03', scaw: '2026-11-30', split: null },
-  { id: 'no-excel-manual', manual: '2026-11-08', manualAt: '2026-11-04', excel: null, excelAt: '2026-11-03', scaw: '2026-11-30', split: null },
-  { id: 'only-scaw', manual: null, manualAt: null, excel: null, excelAt: null, scaw: '2026-11-10', split: null },
-  { id: 'split', manual: '2026-11-15', manualAt: '2026-11-05', excel: '2026-11-20', excelAt: '2026-11-06', scaw: '2026-11-30', split: '2026-11-04' },
-  { id: 'tie-excel', manual: '2026-11-13', manualAt: '2026-11-03', excel: '2026-11-09', excelAt: '2026-11-03', scaw: null, split: null },
-  { id: 'none', manual: null, manualAt: null, excel: null, excelAt: null, scaw: null, split: null }
+  { id: 'manual-newer', manual: '2026-11-08', manualAt: '2026-11-04', excel: '2026-11-12', excelAt: '2026-11-03', scaw: '2026-11-30' },
+  { id: 'excel-newer', manual: '2026-11-01', manualAt: '2026-11-02', excel: '2026-11-06', excelAt: '2026-11-03', scaw: '2026-11-30' },
+  { id: 'no-excel-manual', manual: '2026-11-08', manualAt: '2026-11-04', excel: null, excelAt: '2026-11-03', scaw: '2026-11-30' },
+  { id: 'only-scaw', manual: null, manualAt: null, excel: null, excelAt: null, scaw: '2026-11-10' },
+  { id: 'excel-priority', manual: '2026-11-15', manualAt: '2026-11-05', excel: '2026-11-20', excelAt: '2026-11-06', scaw: '2026-11-30' },
+  { id: 'tie-excel', manual: '2026-11-13', manualAt: '2026-11-03', excel: '2026-11-09', excelAt: '2026-11-03', scaw: null },
+  { id: 'none', manual: null, manualAt: null, excel: null, excelAt: null, scaw: null }
 ];
 
 describe('manual due SQL reuse', () => {
@@ -35,12 +35,12 @@ describe('manual due SQL reuse', () => {
 
 describe.skipIf(!local)('resolved board due SQL on PostgreSQL', () => {
   for (const source of ['excel', 'scaw'] as BoardDueSource[]) {
-    it(`${source}: SQL sorting and values match the pure resolver, including split`, async () => {
+    it(`${source}: SQL sorting and values match the pure resolver, for parent rows`, async () => {
       const values = fixtures.map((f) => Prisma.sql`(${f.id}, ${date(f.manual)}::date, ${date(f.manualAt)}::timestamp,
-        ${date(f.excel)}::date, ${date(f.excelAt)}::timestamp, ${date(f.scaw)}::date, ${date(f.split)}::date)`);
-      const expression = buildBoardDueDateSql(source, Prisma.sql`"fixture"."split"`);
+        ${date(f.excel)}::date, ${date(f.excelAt)}::timestamp, ${date(f.scaw)}::date)`);
+      const expression = buildBoardDueDateSql(source);
       const rows = await prisma.$queryRaw<Array<{ id: string; due: Date | null }>>(Prisma.sql`
-        WITH "fixture"("id", "manual", "manualAt", "excel", "excelAt", "scaw", "split") AS (VALUES ${Prisma.join(values)}),
+        WITH "fixture"("id", "manual", "manualAt", "excel", "excelAt", "scaw") AS (VALUES ${Prisma.join(values)}),
         "ProductionScheduleDScheduleMinutes" AS (
           SELECT ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AS "csvDashboardId", 'D-TEST-' || "id" AS "fseiban",
             "excel" AS "partsCompleteDate", "excelAt" AS "excelChangedAt" FROM "fixture"
@@ -57,7 +57,7 @@ describe.skipIf(!local)('resolved board due SQL on PostgreSQL', () => {
         ORDER BY ${expression} ASC NULLS LAST, "fixture"."id"
       `);
       const expected = fixtures.map((f) => ({ id: f.id, due: resolveBoardDueDate({ source, itemOverride: null,
-        splitDueDate: f.split, manualDueDate: f.manual, manualUpdatedAt: date(f.manualAt), excelDueDate: f.excel,
+        manualDueDate: f.manual, manualUpdatedAt: date(f.manualAt), excelDueDate: f.excel,
         excelChangedAt: date(f.excelAt), scawPlannedEndDate: f.scaw }) }))
         .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999') || a.id.localeCompare(b.id));
       expect(rows.map((row) => ({ id: row.id, due: row.due?.toISOString().slice(0, 10) ?? null }))).toEqual(expected);

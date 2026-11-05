@@ -8,7 +8,7 @@ import {
   decorateLeaderboardShellRowsForKiosk,
   decorateLeaderboardShellRowsForKioskFromHydratedRows
 } from '../../production-schedule-query.service.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from '../leaderboard-split-expansion.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from '../leaderboard-shell-hydrate.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from '../leaderboard-part-footer-processes.service.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../../production-schedule-customer-name-enrichment.service.js';
@@ -22,8 +22,8 @@ vi.mock('../../production-schedule-query.service.js', () => ({
   decorateLeaderboardShellRowsForKioskFromHydratedRows: vi.fn()
 }));
 
-vi.mock('../leaderboard-split-expansion.service.js', () => ({
-  fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds: vi.fn()
+vi.mock('../leaderboard-shell-hydrate.service.js', () => ({
+  fetchLeaderboardScheduleHydratedRowsOrderedByIds: vi.fn()
 }));
 
 vi.mock('../leaderboard-part-footer-processes.service.js', () => ({
@@ -121,7 +121,7 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
       leaderboardFooterChipsByPartKey: {}
     });
 
-    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).mockResolvedValue([
+    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByIds).mockResolvedValue([
       { id: 'p1', rowData: { ProductNo: 'p1' }, actualPerPieceMinutes: null, customerName: null },
       { id: 'p2', rowData: { ProductNo: 'p2' }, actualPerPieceMinutes: null, customerName: null }
     ] as never);
@@ -138,8 +138,8 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
     expect(decorateLeaderboardShellRowsForKioskFromHydratedRows).toHaveBeenCalledWith(
       expect.objectContaining({ hydratedRows: incremental })
     );
-    expect(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).toHaveBeenCalledWith(
-      expect.objectContaining({ orderedDisplayItemIds: ['p1', 'p2'] })
+    expect(fetchLeaderboardScheduleHydratedRowsOrderedByIds).toHaveBeenCalledWith(
+      expect.objectContaining({ orderedRowIds: ['p1', 'p2'] })
     );
     expect(buildLeaderboardFooterChipsByPartKeyForScheduleRows).toHaveBeenCalledWith(
       expect.objectContaining({ rows: merged })
@@ -173,7 +173,7 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
     expect(decorateLeaderboardShellRowsForKioskFromHydratedRows).toHaveBeenCalledWith(
       expect.objectContaining({ hydratedRows: merged })
     );
-    expect(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).not.toHaveBeenCalled();
+    expect(fetchLeaderboardScheduleHydratedRowsOrderedByIds).not.toHaveBeenCalled();
     expect(buildLeaderboardFooterChipsByPartKeyForScheduleRows).not.toHaveBeenCalled();
   });
 });

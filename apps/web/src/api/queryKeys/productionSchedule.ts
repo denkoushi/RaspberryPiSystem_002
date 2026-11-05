@@ -110,7 +110,5 @@ export const productionScheduleQueryKeys = {
     ['production-schedule-due-management-access-password-settings', location] as const,
   processingTypeOptions: (location: string) => ['production-schedule-processing-type-options', location] as const,
   resourceCodeMappings: (location: string) => ['production-schedule-resource-code-mappings', location] as const,
-  orderSplitPilotSettingsAll: ['production-schedule-order-split-pilot-settings'] as const,
-  orderSplitStatusAll: ['kiosk-production-schedule-order-split-status'] as const,
   dueManagementSeibanDetailAll: ['kiosk-production-schedule-due-management-seiban-detail'] as const,
 };

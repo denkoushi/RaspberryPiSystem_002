@@ -22,6 +22,9 @@
 - [x] (2026-11-05 JST) PR ごとの安全境界、Prisma 定義案、API、競合・同期規則、検証案を本書に記録した。
 - [ ] 実装前の保留事項を解決する。段取り時間の値と設定粒度、未採番製番の対象範囲を確定する。
 - [ ] PR1 相当の旧分割撤去を実装し、対象検証を行う。
+- [x] (2026-11-05 JST) PR1 の旧分割コード・画面・API・フラグ・実行時 SQL を撤去し、親専用の順位ロック・繰り上げを移設した。Prisma 定義・migration と PR2/PR3 は未変更。
+- [ ] (2026-11-05 JST) PR1 DB 検証は専用 TEST_DATABASE_URL 未提供のため未実行（指定 integration 54件 skip）。指定 API 71件・web 114件・配置契約11件は成功、追加の既存 DB 依存自己検査2件と順位再調整 integration の setup は環境起因で失敗した。
+- [x] (2026-11-05 JST) shared-types build、API/web lint・tsc、git diff --check は成功。旧フラグ参照0件、実行コードの旧分割参照0件（Prisma・migration・無視を証明するテスト fixture のみ残存）。
 - [ ] PR2 相当の保存・API・投影・完了・取り込み同期を実装し、独立デプロイの互換性を検証する。
 - [ ] PR3 相当の製番ボード画面と前向きガントを実装し、数量5→2+3の業務シナリオを検証する。
 - [ ] integrationPending: 各 PR の作成、push 済み SHA、checks、main の merge SHA と CI、稼働確認は、その段階の明示依頼後に別々に記録する。現在は全て未実施。
@@ -94,6 +97,10 @@
 - Decision: 保留: 未採番 `********` を新しい片の対象にするか。暫定的に既存未採番表示は維持し、新規分割だけ409で拒否する。
   Rationale: 既存は ProductNo を足すがユーザー確定キーは4列。複数の未採番指示を誤結合しないため、確認前に仕様を拡張しない。通常製番の実装は進行可能。
   Date/Author: 2026-11-05 / 調査担当、保留。
+
+- Decision: PR1 は親専用の advisory lock・順位競合検証を `order-assignment/` に移し、世代 token の payloadVersion と製番 payloadFormat を2へ更新する。旧片と `split:` override は読み書きせず、Prisma の旧4モデル・relation・migration 履歴は保持する。
+  Rationale: 親の409・繰り上げ・場所 fallback を維持し、撤去前の片入り snapshot は既存 stale 応答で再取得させる。補助同期は旧片を変更せず通常の winner へ追従する。補助同期の integration も他の製番テストと同じ専用 TEST_DATABASE_URL 判定を使い、未指定時は DB 検証未実行とする。
+  Date/Author: 2026-11-05 / PR1 実装担当。
 
 ## Outcomes & Retrospective
 

@@ -39,7 +39,7 @@ export function buildProcessArrivalByRowId(rows: readonly ArrivalRow[], processe
   }));
 }
 
-/** Read every process of each part, across grinding/cutting and completion filters. Split rows use their source data. */
+/** Read every process of each part, across grinding/cutting and completion filters. */
 export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: readonly T[], params: {
   siteKey?: string; locationKey: string; includeSpecialDue?: boolean; placedProductNos?: ReadonlySet<string>;
 }): Promise<Array<T & { arrived: boolean; specialDue?: GrindingPlanningBoardSpecialDue | null }>> {
@@ -94,7 +94,7 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
   }) : [];
   const arrival = buildProcessArrivalByRowId(rows, processes,
     (cd) => isProductionScheduleExcludedCuttingResourceCd(cd, policy), params.placedProductNos ?? new Set(placements.map((p) => p.manufacturingOrderBarcodeRaw)));
-  const itemKey = (row: T) => row.id.startsWith('split:') ? row.id : buildGrindingPlanningBoardRowItemId(row.rowData as Record<string, unknown>);
+  const itemKey = (row: T) => buildGrindingPlanningBoardRowItemId(row.rowData as Record<string, unknown>);
   const overrides = params.includeSpecialDue ? await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey ?? params.locationKey, itemKey: { in: rows.map(itemKey) } }
   }) : [];
