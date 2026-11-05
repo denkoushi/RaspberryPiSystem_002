@@ -232,6 +232,13 @@ def inventory_path(value: str) -> tuple[Path, str]:
     return resolved, resolved.relative_to(ROOT).as_posix()
 
 
+def gateway_recreate_environment() -> dict[str, str]:
+    value = os.environ.get("PI5_GATEWAY_RECREATE", "")
+    if value not in {"", "true", "false"}:
+        raise UsageError("PI5_GATEWAY_RECREATE must be true, false, or empty")
+    return {"PI5_GATEWAY_RECREATE": value}
+
+
 def ansible_environment() -> dict[str, str]:
     environment = os.environ.copy()
     environment["ANSIBLE_CONFIG"] = str(ANSIBLE / "ansible.cfg")
@@ -1048,7 +1055,7 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
     else:
         command.append("--wait")
     for key, value in (hermes_environment or {}).items():
-        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_JEV_ENABLED",
+        if key not in {"PI5_GATEWAY_RECREATE", "HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_JEV_ENABLED",
                        "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
                        "HERMES_RETRIEVAL_V2_ENABLED",
                        "HERMES_RETRIEVAL_SOURCES",
@@ -1067,6 +1074,8 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
                        "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE",
                        "HERMES_ANSWER_CACHE_ARTIFACT"}:
             raise UsageError("unsupported Hermes release environment")
+        if key == "PI5_GATEWAY_RECREATE" and value not in {"", "true", "false"}:
+            raise UsageError("PI5_GATEWAY_RECREATE must be true, false, or empty")
         command.append(f"--setenv={key}={value}")
     command.extend(["--", "/bin/bash", "-lc", remote_script(args, sha, run_id, relative, profiles, remote_root)])
     return command
@@ -1320,6 +1329,7 @@ def signage_identity(sha: str) -> tuple[str, str]:
 
 
 def execute_standard_route(args: argparse.Namespace) -> int:
+    gateway_recreate_environment()
     torque_cutover = bool(getattr(args, "torque_cutover", False))
     inventory, relative = inventory_path(args.inventory)
     if run(["git", "rev-parse", "HEAD"]).stdout.strip() != args.sha:
@@ -1436,6 +1446,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return execute_standard_route(args)
     if args.status:
         return status(args)
+    gateway_environment = gateway_recreate_environment()
     reject_unforwarded_hermes_flags(args)
     inventory, relative = inventory_path(args.inventory)
     sha = resolve_sha(args.branch)
@@ -1451,6 +1462,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         hermes_source, hermes_environment = hermes_trial_configuration(args, selection, remote_root, run_id)
     cache_source, cache_environment = answer_cache_configuration(args, selection, remote_root, run_id)
     hermes_environment.update(cache_environment)
+    hermes_environment.update(gateway_environment)
     if getattr(args, "torque_cutover", False):
         validate_torque_cutover_selection(selected, selection)
     if args.print_plan:
@@ -1479,6 +1491,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if plan_agent_services
                 else "skipped: this release set names no Pi4 agent, so the launcher, browser unit and status-agent files are not updated"
             )
+        document["pi5GatewayRecreate"] = {"requested": gateway_environment["PI5_GATEWAY_RECREATE"] == "true"}
         if 'HERMES_SEARCH_TRIAL_ENABLED' in hermes_environment:
             document["hermesSearchTrial"] = {"enabled": hermes_environment["HERMES_SEARCH_TRIAL_ENABLED"] == "true",
                 "staging": ("four checksum-verified private files on Pi5 SSD; real current records are classified incrementally"
@@ -1520,7 +1533,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user, remote_root,
         hermes_environment=hermes_environment)), check=False)
     status_command = shlex.join(["scripts/update-all-clients.sh", "--status", run_id, "--inventory", relative])
-    print(json.dumps({"runId": run_id, "unit": unit_name(run_id), "detached": args.detach, "statusCommand": status_command}))
+    print(json.dumps({"runId": run_id, "unit": unit_name(run_id), "detached": args.detach, "statusCommand": status_command,
+                      "pi5GatewayRecreate": {"requested": gateway_environment["PI5_GATEWAY_RECREATE"] == "true"}}))
     if result.stdout:
         print(result.stdout, end="")
     if result.stderr:

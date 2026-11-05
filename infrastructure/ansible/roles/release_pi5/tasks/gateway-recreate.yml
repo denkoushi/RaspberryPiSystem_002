@@ -1,0 +1,144 @@
+---
+- name: Recreate and verify the committed Pi5 gateway outside API rollback
+  block:
+    - name: Initialize gateway recreation state
+      ansible.builtin.set_fact:
+        release_pi5_gateway_recreate_started: false
+
+    - name: Validate the canonical Caddyfile before replacing the gateway
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ release_pi5_gateway_id }}", caddy, validate, --config, /srv/bluegreen/Caddyfile]
+      changed_when: false
+
+    - name: Compare the planned gateway with the running container before recreation
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json
+            import subprocess
+            import sys
+
+            planned = json.loads(subprocess.check_output(
+                json.loads(sys.argv[1]) + ['config', '--format', 'json', 'gateway'], text=True))
+            running, = json.loads(subprocess.check_output(
+                ['docker', 'inspect', sys.argv[2]], text=True))
+            service = planned['services']['gateway']
+            differences = []
+
+            def compare(label, desired, current):
+                if desired != current:
+                    differences.append(f"{label}: planned={desired!r}, running={current!r}")
+
+            compare('bind mounts', sorted({
+                (v['source'], v['target'], v.get('read_only', False))
+                for v in service.get('volumes', []) if v['type'] == 'bind'
+            }), sorted({
+                (v['Source'], v['Destination'], not v['RW'])
+                for v in running['Mounts'] if v['Type'] == 'bind'
+            }))
+            # HostConfig preserves the configured host address, without the
+            # extra IPv4/IPv6 bindings expanded by the Docker network driver.
+            compare('published ports', sorted({
+                (str(p['published']), str(p['target']), p.get('protocol', 'tcp'),
+                 p.get('host_ip') or '0.0.0.0')
+                for p in service.get('ports', [])
+            }), sorted({
+                (p['HostPort'], target.split('/')[0], target.split('/')[1],
+                 p.get('HostIp') or '0.0.0.0')
+                for target, bindings in running['HostConfig']['PortBindings'].items()
+                for p in (bindings or [])
+            }))
+            compare('user', str(service.get('user', '')), running['Config']['User'])
+            compare('image', service['image'], running['Config']['Image'])
+            compare('networks', sorted({
+                planned['networks'][name]['name'] for name in service['networks']
+            }), sorted(running['NetworkSettings']['Networks']))
+            if differences:
+                sys.exit('Gateway was NOT recreated; configuration differences:\n' +
+                         '\n'.join(differences))
+          - "{{ release_pi5_compose_argv | to_json }}"
+          - "{{ release_pi5_gateway_id }}"
+      environment: "{{ release_pi5_compose_environment }}"
+      changed_when: false
+
+    - name: Record that gateway recreation is starting
+      ansible.builtin.set_fact:
+        release_pi5_gateway_recreate_started: true
+
+    - name: Recreate only the gateway with its existing image and current Compose definition
+      ansible.builtin.command:
+        argv: "{{ release_pi5_compose_argv + ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', release_pi5_compose_wait_seconds | string, 'gateway'] }}"
+      environment: "{{ release_pi5_compose_environment }}"
+      changed_when: true
+
+    - name: Resolve the recreated Pi5 gateway container ID
+      ansible.builtin.command:
+        argv: "{{ release_pi5_compose_argv + ['ps', '-a', '-q', 'gateway'] }}"
+      environment: "{{ release_pi5_compose_environment }}"
+      register: release_pi5_recreated_gateway
+      changed_when: false
+
+    - name: Require exactly one recreated gateway identity
+      ansible.builtin.assert:
+        that:
+          - release_pi5_recreated_gateway.stdout | trim is match('^[0-9a-f]{12,64}$')
+        fail_msg: Pi5 gateway recreation did not yield exactly one container ID.
+
+    - name: Refresh the Pi5 gateway identity after recreation
+      ansible.builtin.set_fact:
+        release_pi5_gateway_id: "{{ release_pi5_recreated_gateway.stdout | trim }}"
+
+    # The gateway has no Compose healthcheck; inspect running state directly.
+    - name: Inspect the recreated gateway running state
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ release_pi5_gateway_id }}"]
+      register: release_pi5_recreated_gateway_running
+      changed_when: false
+
+    - name: Inspect the recreated gateway log limits
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{json .HostConfig.LogConfig}}' }}", "{{ release_pi5_gateway_id }}"]
+      register: release_pi5_recreated_gateway_logging
+      changed_when: false
+
+    - name: Inspect the recreated gateway native network membership
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{json .NetworkSettings.Networks}}' }}", "{{ release_pi5_gateway_id }}"]
+      register: release_pi5_recreated_gateway_networks
+      changed_when: false
+
+    - name: Require the recreated gateway running state log limits and both bridges
+      ansible.builtin.assert:
+        that:
+          - release_pi5_recreated_gateway_running.stdout | trim == 'true'
+          - (release_pi5_recreated_gateway_logging.stdout | from_json).Type == 'json-file'
+          - (release_pi5_recreated_gateway_logging.stdout | from_json).Config['max-size'] == '10m'
+          - (release_pi5_recreated_gateway_logging.stdout | from_json).Config['max-file'] == '3'
+          - (release_pi5_compose_project ~ '_pi5') in (release_pi5_recreated_gateway_networks.stdout | from_json)
+          - (release_pi5_compose_project ~ '_business-hermes') in (release_pi5_recreated_gateway_networks.stdout | from_json)
+        fail_msg: Recreated Pi5 gateway must be running with json-file limits 10m x 3 and both pi5 and business-hermes networks.
+
+    - name: Verify the API through the recreated Pi5 gateway
+      ansible.builtin.uri:
+        url: "{{ release_pi5_api_health_url }}"
+        validate_certs: "{{ release_pi5_validate_certs }}"
+        status_code: 200
+        timeout: 10
+      register: release_pi5_recreated_gateway_api
+      retries: 5
+      delay: 2
+      until: release_pi5_recreated_gateway_api is succeeded
+  rescue:
+    - name: Report gateway recreation failure without rolling back the committed API
+      ansible.builtin.fail:
+        msg: >-
+          Pi5 gateway recreation or verification failed at {{ ansible_failed_task.name }}.
+          {{ 'Gateway recreation was attempted; the gateway may have been recreated.'
+             if release_pi5_gateway_recreate_started | default(false) | bool
+             else 'Gateway was NOT recreated.' }}
+          {{ ansible_failed_result.msg | default('') }}
+          {{ ansible_failed_result.stderr | default('') }}
+          The API release is already committed; no automatic rollback was attempted.
+          Inspect the gateway running state, canonical Caddyfile, log limits, networks and API health before retrying.

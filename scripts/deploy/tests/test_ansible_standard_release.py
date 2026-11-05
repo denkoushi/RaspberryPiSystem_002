@@ -88,6 +88,186 @@ def release_main_body(source):
 
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_gateway_recreate_flag_validation_and_forwarding(self) -> None:
+        for value in ("", "true", "false", "TRUE", "1", "yes", " true"):
+            with self.subTest(value=value), mock.patch.dict(os.environ, {"PI5_GATEWAY_RECREATE": value}, clear=True):
+                if value in {"", "true", "false"}:
+                    self.assertEqual(STANDARD_RELEASE["gateway_recreate_environment"](), {"PI5_GATEWAY_RECREATE": value})
+                else:
+                    with self.assertRaisesRegex(STANDARD_RELEASE["UsageError"], "PI5_GATEWAY_RECREATE"):
+                        STANDARD_RELEASE["gateway_recreate_environment"]()
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(STANDARD_RELEASE["gateway_recreate_environment"](), {"PI5_GATEWAY_RECREATE": ""})
+        args = SimpleNamespace(detach=False, limit="raspberrypi5", branch="test", full_fleet=False,
+                               torque_cutover=False, first_install=False, skip_kiosk_notice=False,
+                               hermes_search_trial_maintenance=None)
+        for value in ("", "false", "true"):
+            command = STANDARD_RELEASE["systemd_argv"](
+                args, "a" * 40, "test-run", "infrastructure/ansible/inventory.yml", ("pi5",), "pi",
+                hermes_environment={"PI5_GATEWAY_RECREATE": value})
+            self.assertIn("--setenv=PI5_GATEWAY_RECREATE=" + value, command)
+        with self.assertRaisesRegex(STANDARD_RELEASE["UsageError"], "PI5_GATEWAY_RECREATE"):
+            STANDARD_RELEASE["systemd_argv"](
+                args, "a" * 40, "test-run", "infrastructure/ansible/inventory.yml", ("pi5",), "pi",
+                hermes_environment={"PI5_GATEWAY_RECREATE": "yes"})
+
+    def test_gateway_recreate_main_forwards_and_records_request(self) -> None:
+        main = STANDARD_RELEASE["main"]
+        for value in ("", "false", "true"):
+            for preview in (False, True):
+                with self.subTest(value=value, preview=preview):
+                    launcher = mock.Mock(return_value=["mock-systemd-run"])
+                    replacements = {
+                        "inventory_path": mock.Mock(return_value=(Path("inventory.yml"), "inventory.yml")),
+                        "resolve_sha": mock.Mock(return_value="a" * 40),
+                        "inventory_document": mock.Mock(return_value={}),
+                        "selected_profiles": mock.Mock(return_value=(("pi5", ("raspberrypi5",)),)),
+                        "server_release_root": mock.Mock(return_value=Path("/opt/release")),
+                        "hermes_trial_maintenance_configuration": mock.Mock(return_value={}),
+                        "hermes_trial_configuration": mock.Mock(return_value=(None, {})),
+                        "answer_cache_configuration": mock.Mock(return_value=(None, {})),
+                        "release_set_artifacts": mock.Mock(return_value=SimpleNamespace(agent_services=())),
+                        "plan": mock.Mock(return_value={}),
+                        "unpublished_plan_images": mock.Mock(return_value=[]),
+                        "server_connection": mock.Mock(return_value=("server", "pi", 22)),
+                        "systemd_argv": launcher,
+                        "run": mock.Mock(return_value=SimpleNamespace(returncode=0, stdout="", stderr="")),
+                    }
+                    with mock.patch.dict(os.environ, {"PI5_GATEWAY_RECREATE": value}, clear=True), \
+                         mock.patch.dict(main.__globals__, replacements), mock.patch("builtins.print") as output:
+                        argv = ["test", "inventory.yml", "--limit", "raspberrypi5"]
+                        if preview:
+                            argv.append("--print-plan")
+                        self.assertEqual(main(argv), 0)
+                    document = json.loads(output.call_args_list[0].args[0])
+                    self.assertEqual(document["pi5GatewayRecreate"], {"requested": value == "true"})
+                    if not preview:
+                        self.assertEqual(launcher.call_args.kwargs["hermes_environment"]["PI5_GATEWAY_RECREATE"], value)
+
+    def test_gateway_recreate_is_opt_in_after_commit_and_cleanup(self) -> None:
+        root = ANSIBLE / "roles/release_pi5/tasks"
+        main = release_main_body((root / "main.yml").read_text())
+        lifecycle = main[0]
+        self.assertEqual(lifecycle["block"][-1]["ansible.builtin.import_tasks"], "commit.yml")
+        self.assertEqual(lifecycle["always"][-1]["ansible.builtin.import_tasks"], "cleanup.yml")
+        recreate = main[1]
+        self.assertEqual(recreate["ansible.builtin.import_tasks"], "gateway-recreate.yml")
+        self.assertEqual(recreate["when"], "lookup('ansible.builtin.env', 'PI5_GATEWAY_RECREATE') == 'true'")
+        for value in ("", "false", "true"):
+            expression = Environment().compile_expression(recreate["when"])
+            self.assertEqual(expression(lookup=lambda *_: value), value == "true")
+        self.assertNotIn("release_pi5_gateway_id", (root / "cleanup.yml").read_text())
+        for task in main[2:]:
+            self.assertNotIn("release_pi5_gateway_id", str(task))
+            if "ansible.builtin.import_tasks" in task:
+                self.assertNotIn("release_pi5_gateway_id", (root / task["ansible.builtin.import_tasks"]).read_text())
+
+    def test_gateway_recreate_comparison_rejects_configuration_drift(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/gateway-recreate.yml").read_text())[0]["block"]
+        task = next(task for task in tasks if task["name"].startswith("Compare the planned gateway"))
+        code = task["ansible.builtin.command"]["argv"][2]
+        service = {"image": "caddy:fixture", "user": "1000:1000",
+                   "volumes": [{"type": "bind", "source": "/logs", "target": "/var/log/caddy"},
+                               {"type": "bind", "source": "/config", "target": "/srv/bluegreen", "read_only": True},
+                               {"type": "tmpfs", "target": "/tmp"}],
+                   "ports": [{"published": str(port), "target": port} for port in (80, 443)],
+                   "networks": {"pi5": {}, "business-hermes": {}}}
+        planned = {"services": {"gateway": service}, "networks": {
+            name: {"name": "fixture_" + name} for name in service["networks"]}}
+        running = {"Config": {"Image": "caddy:fixture", "User": "1000:1000"},
+                   "Mounts": [{"Type": "bind", "Source": "/config", "Destination": "/srv/bluegreen", "RW": False},
+                              {"Type": "bind", "Source": "/logs", "Destination": "/var/log/caddy", "RW": True},
+                              {"Type": "tmpfs", "Destination": "/tmp"}],
+                   "HostConfig": {"PortBindings": {f"{port}/tcp": [{"HostPort": str(port), "HostIp": ""}]
+                                                   for port in (80, 443)}, "LogConfig": {"Type": "old"}},
+                   "NetworkSettings": {"Networks": {"fixture_pi5": {}, "fixture_business-hermes": {}}}}
+        compose = ["docker", "compose", "--env-file", "/fixture-env"]
+
+        def check(current):
+            with mock.patch.object(sys, "argv", ["-c", json.dumps(compose), "fixture-id"]), mock.patch.object(
+                subprocess, "check_output", side_effect=[json.dumps(planned), json.dumps([current])]
+            ) as command:
+                exec(compile(code, "gateway-comparison", "exec"), {})
+            self.assertEqual(command.call_args_list, [
+                mock.call(compose + ["config", "--format", "json", "gateway"], text=True),
+                mock.call(["docker", "inspect", "fixture-id"], text=True)])
+
+        check(running)  # Ordering, default read_only, tmpfs and logging do not cause drift.
+        changes = (
+            ("bind mounts", lambda r: r["Mounts"][0].update(Source="/different-config")),
+            ("bind mounts", lambda r: r["Mounts"][1].update(Source="/different-logs")),
+            ("bind mounts", lambda r: r["Mounts"][0].update(Destination="/different-target")),
+            ("bind mounts", lambda r: r["Mounts"][0].update(RW=True)),
+            ("published ports", lambda r: r["HostConfig"]["PortBindings"]["80/tcp"][0].update(HostPort="8080")),
+            ("published ports", lambda r: r["HostConfig"]["PortBindings"]["443/tcp"][0].update(HostIp="127.0.0.1")),
+            ("user", lambda r: r["Config"].update(User="0:0")),
+            ("image", lambda r: r["Config"].update(Image="caddy:other")),
+            ("networks", lambda r: r["NetworkSettings"]["Networks"].pop("fixture_business-hermes")),
+        )
+        for label, mutate in changes:
+            with self.subTest(difference=label):
+                current = json.loads(json.dumps(running))
+                mutate(current)
+                with self.assertRaises(SystemExit) as failure:
+                    check(current)
+                self.assertIn("Gateway was NOT recreated", str(failure.exception))
+                self.assertIn(label + ": planned=", str(failure.exception))
+        current = json.loads(json.dumps(running))
+        current["Config"].update(User="0:0", Image="caddy:other")
+        with self.assertRaises(SystemExit) as failure:
+            check(current)
+        self.assertIn("user: planned=", str(failure.exception))
+        self.assertIn("image: planned=", str(failure.exception))
+
+    def test_gateway_recreate_validates_then_replaces_and_checks(self) -> None:
+        root = ANSIBLE / "roles/release_pi5/tasks"
+        text = (root / "gateway-recreate.yml").read_text()
+        tasks = yaml.safe_load(text)[0]["block"]
+        self.assertEqual(tasks[1]["ansible.builtin.command"]["argv"][-4:],
+                         ["caddy", "validate", "--config", "/srv/bluegreen/Caddyfile"])
+        compare = next(task for task in tasks if task["name"].startswith("Compare the planned gateway"))
+        recreate = next(task for task in tasks if "--force-recreate" in str(task.get("ansible.builtin.command", {})))
+        index = tasks.index(recreate)
+        self.assertLess(1, tasks.index(compare))
+        self.assertLess(tasks.index(compare), index)
+        self.assertFalse(compare["changed_when"])
+        self.assertEqual(compare["environment"], "{{ release_pi5_compose_environment }}")
+        self.assertFalse(tasks[0]["ansible.builtin.set_fact"]["release_pi5_gateway_recreate_started"])
+        self.assertTrue(tasks[index - 1]["ansible.builtin.set_fact"]["release_pi5_gateway_recreate_started"])
+        message = yaml.safe_load(text)[0]["rescue"][0]["ansible.builtin.fail"]["msg"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        for started, expected in ((False, "Gateway was NOT recreated."),
+                                  (True, "Gateway recreation was attempted; the gateway may have been recreated.")):
+            rendered = environment.from_string(message).render(
+                release_pi5_gateway_recreate_started=started,
+                ansible_failed_task={"name": "fixture"},
+                ansible_failed_result={"msg": "non-zero return code", "stderr": "fixture differences"})
+            self.assertIn(expected, rendered)
+            self.assertIn("fixture differences", rendered)
+        self.assertIn("'--no-deps'", recreate["ansible.builtin.command"]["argv"])
+        self.assertIn("'--pull', 'never'", recreate["ansible.builtin.command"]["argv"])
+        self.assertEqual(recreate["environment"], "{{ release_pi5_compose_environment }}")
+        self.assertIn("['ps', '-a', '-q', 'gateway']", tasks[index + 1]["ansible.builtin.command"]["argv"])
+        self.assertIn("release_pi5_gateway_id", tasks[index + 3]["ansible.builtin.set_fact"])
+        self.assertIn(".State.Running", text)
+        self.assertNotIn(".State.Health", text)
+        self.assertIn(".HostConfig.LogConfig", text)
+        for required in ("json-file", "max-size", "10m", "max-file", "'3'", "'_pi5'", "'_business-hermes'"):
+            self.assertIn(required, text)
+        self.assertNotRegex(text, r"network[ ,]+connect")
+        health = yaml.safe_load((root / "health-sample.yml").read_text())[0]["ansible.builtin.uri"]
+        self.assertEqual(tasks[-1]["ansible.builtin.uri"], health)
+        start = yaml.safe_load((root / "business-hermes-chat-start.yml").read_text())
+        connect = next(task for task in start if task.get("register") == "release_pi5_chat_gateway_connect")
+        expression = connect["when"].replace(" | from_json", "")
+        self.assertFalse(Environment().compile_expression(expression)(
+            release_pi5_compose_project="bluegreen",
+            release_pi5_chat_gateway_networks={"stdout": {"bluegreen_pi5": {}, "bluegreen_business-hermes": {}}}))
+        rollback = yaml.safe_load((root / "business-hermes-chat-rollback.yml").read_text())
+        disconnect = next(task for task in rollback if task["name"] == "Undo only this release gateway bridge attachment")
+        self.assertEqual(disconnect["when"], "release_pi5_chat_gateway_connected | default(false) | bool")
+
     def test_kiosk_network_configuration_runs_after_normal_switch_boundary(self) -> None:
         root = ANSIBLE / "roles/release_kiosk/tasks"
         main = release_main_body((root / "main.yml").read_text())[0]["block"]
