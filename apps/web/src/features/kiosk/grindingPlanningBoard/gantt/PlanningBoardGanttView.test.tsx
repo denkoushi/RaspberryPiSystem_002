@@ -320,8 +320,18 @@ describe('PlanningBoardGanttView', () => {
     const viewport = screen.getByLabelText('ガントの日付と工程');
     const rect = (left: number, top: number, width: number) => ({ left, top, right: left + width, bottom: top + 40, width, height: 40 } as DOMRect);
     vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(rect(0, 100, 1000));
-    vi.spyOn(screen.getByTestId(`planning-gantt-bar-${earliest}`), 'getBoundingClientRect').mockReturnValue(rect(3000, 400, 80));
-    vi.spyOn(screen.getByTestId(`planning-gantt-bar-${later}`), 'getBoundingClientRect').mockReturnValue(rect(5000, 200, 80));
+    const rowOf = (id: string) => {
+      const button = screen.getByTestId(`planning-gantt-bar-${id}`);
+      return mode === 'forward' ? button.closest('[data-gantt-track]')!.parentElement! : button.parentElement!.parentElement!;
+    };
+    vi.spyOn(rowOf(earliest), 'getBoundingClientRect').mockReturnValue(rect(0, mode === 'forward' ? 397 : 394, 1000));
+    // Bar geometry comes from layout even when its DOM reports no geometry.
+    const firstButton = screen.getByTestId(`planning-gantt-bar-${earliest}`);
+    const labelWidth = mode === 'forward' ? 168 : 320;
+    const barLeft = parseFloat(firstButton.style.left);
+    const barWidth = parseFloat(firstButton.style.width);
+    vi.spyOn(firstButton, 'getBoundingClientRect').mockImplementation(() => { throw new Error('bar DOM must not be measured'); });
+    expect(screen.getByTestId(`planning-gantt-bar-${later}`)).toBeInTheDocument();
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     const chip = within(screen.getByRole('group', { name: '製番の色分け凡例' })).getByRole('button', { name: '26-1001' });
@@ -329,7 +339,7 @@ describe('PlanningBoardGanttView', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'true');
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo.mock.calls[0]![0]).toMatchObject({ top: 264, behavior: 'smooth' });
-    expect(scrollTo.mock.calls[0]![0].left).toBeGreaterThan(2000);
+    expect(scrollTo.mock.calls[0]![0].left).toBeCloseTo(Math.max(0, Math.min(barLeft + barWidth / 2 - (1120 - labelWidth) / 2, barLeft - 16)));
     // Pressing the same chip again only clears the spotlight.
     fireEvent.click(chip);
     expect(chip).toHaveAttribute('aria-pressed', 'false');
@@ -815,7 +825,7 @@ describe('forward PlanningBoardGanttView', () => {
     const viewport = screen.getByLabelText('ガントの日付と工程');
     const content = viewport.firstElementChild as HTMLElement;
     const rect = (left: number, top: number, width: number, height: number) => ({ left, top, right: left + width, bottom: top + height, width, height } as DOMRect);
-    vi.spyOn(content, 'getBoundingClientRect').mockReturnValue(rect(10, 50, 3000, 500));
+    vi.spyOn(content, 'getBoundingClientRect').mockImplementation(() => rect(10, 50 - viewport.scrollTop, 3000, 500));
     const viewportBounds = rect(10, 120, 1120, 500);
     vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(viewportBounds);
     const bottomGap = 10; // GANTT_BOTTOM_GAP
@@ -823,33 +833,43 @@ describe('forward PlanningBoardGanttView', () => {
     act(() => { window.dispatchEvent(new Event('resize')); });
     expect(viewport).toHaveStyle({ height: expectedHeight });
     const segments = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)).find(bar => bar.item.itemId === 'a')!.segments!;
-    const last = screen.getByTestId(`planning-gantt-bar-a-segment-${segments.length - 1}`);
-    vi.spyOn(last, 'getBoundingClientRect').mockReturnValue(rect(500, 100, 80, 70));
-    const measureNext = vi.spyOn(screen.getByTestId('planning-gantt-bar-b'), 'getBoundingClientRect').mockReturnValue(rect(700, 300, 40, 70));
+    const dayWidth = (1120 - 168) / 2;
+    segments[segments.length - 1] = { start: values.layout.start + 322 / dayWidth, end: values.layout.start + 404 / dayWidth };
+    const nextBar = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)).find(bar => bar.item.itemId === 'b')!;
+    nextBar.segments = [{ start: values.layout.start + 522 / dayWidth, end: values.layout.start + 564 / dayWidth }];
+    vi.spyOn(screen.getByTestId('planning-gantt-bar-a').closest('[data-gantt-track]')!.parentElement!, 'getBoundingClientRect')
+      .mockImplementation(() => rect(0, 97 - viewport.scrollTop, 1000, 100));
+    vi.spyOn(screen.getByTestId('planning-gantt-bar-b').closest('[data-gantt-track]')!.parentElement!, 'getBoundingClientRect')
+      .mockImplementation(() => rect(0, 297 - viewport.scrollTop, 1000, 100));
     tap(screen.getByTestId('planning-gantt-bar-a'));
     expect(viewport).toHaveStyle({ height: expectedHeight });
     const path = screen.getByTestId('planning-gantt-chain-link');
-    expect(path).toHaveAttribute('d', 'M 570 85 C 630 85, 630 285, 690 285');
+    const expectPath = (pixelsPerDay: number) => {
+      const x1 = 168 + (segments.at(-1)!.end - values.layout.start) * pixelsPerDay - 2;
+      const x2 = 168 + (nextBar.segments![0]!.start - values.layout.start) * pixelsPerDay;
+      const bend = Math.max(24, Math.abs(x2 - x1) / 2);
+      expect(path).toHaveAttribute('d', `M ${x1} 85 C ${x1 + bend} 85, ${x2 - bend} 285, ${x2} 285`);
+      expect(screen.getByTestId('planning-gantt-chain-links').querySelector('circle')).toHaveAttribute('cx', String(x2));
+    };
+    expectPath(dayWidth);
     expect(path).toHaveAttribute('stroke-dasharray', '6 4');
     expect(path).toHaveAttribute('stroke-width', '2.5');
-    expect(screen.getByTestId('planning-gantt-chain-links').querySelector('circle')).toHaveAttribute('cx', '690');
+
     const step = within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /工順20/ });
     fireEvent.click(step);
     expect(step).toHaveAttribute('aria-current', 'step');
     expect(step).toHaveClass('ring-white');
-    expect(viewport.scrollLeft).toBe(66);
+    expect(viewport.scrollLeft).toBeCloseTo(66);
     expect(viewport.scrollTop).toBe(144);
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     fireEvent.click(step);
-    expect(scrollTo).toHaveBeenCalledWith({ left: 132, top: 288, behavior: 'smooth' });
-    measureNext.mockReturnValue(rect(800, 300, 40, 70));
+    expect(scrollTo).toHaveBeenCalledWith({ left: expect.closeTo(66), top: 144, behavior: 'smooth' });
     rerender(<PlanningBoardGanttView {...values} scale={4} />);
-    expect(path).toHaveAttribute('d', 'M 570 85 C 680 85, 680 285, 790 285');
-    measureNext.mockReturnValue(rect(900, 300, 40, 70));
+    expectPath((1120 - 168) / 4);
     Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 1000 });
     fireEvent(window, new Event('resize'));
-    expect(path).toHaveAttribute('d', 'M 570 85 C 730 85, 730 285, 890 285');
+    expectPath((1000 - 168) / 4);
     fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
     expect(viewport).toHaveStyle({ height: expectedHeight });
   });
@@ -891,12 +911,12 @@ describe('forward PlanningBoardGanttView', () => {
     // In a short viewport the usual 36px top offset would leave the bar under the strip.
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 });
     vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 100, left: 0 } as DOMRect);
-    vi.spyOn(screen.getByTestId('planning-gantt-bar-b'), 'getBoundingClientRect')
-      .mockReturnValue({ top: 400, bottom: 500, left: 700, width: 40 } as DOMRect);
+    vi.spyOn(screen.getByTestId('planning-gantt-bar-b').closest('[data-gantt-track]')!.parentElement!, 'getBoundingClientRect')
+      .mockReturnValue({ top: 397 } as DOMRect);
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     fireEvent.click(within(strip).getByRole('button', { name: /工順20/ }));
-    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 500 - 100 - 200 + 96, behavior: 'smooth' }));
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 470 - 100 - 200 + 96, behavior: 'smooth' }));
     const heightBeforeClose = viewport.style.height;
     fireEvent.click(within(strip).getByRole('button', { name: '工程のつながりを閉じる' }));
     expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();

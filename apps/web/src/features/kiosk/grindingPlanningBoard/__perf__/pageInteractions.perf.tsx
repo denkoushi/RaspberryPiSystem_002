@@ -172,6 +172,17 @@ it('measures real page interactions with the production fixture (one warmup, thr
       capabilities.sendOutStars = !!view.container.querySelector('[data-testid="planning-gantt-send-out-star"]');
       capabilities.monthlyUptime = view.container.textContent!.includes('月平均');
       capabilities.processChips = view.container.textContent!.includes('済');
+      if (process.env.PLANNING_BOARD_PAGE_PERF_DOM && iteration === 1) {
+        const counts: Record<string, number> = {};
+        const gantt = view.container.querySelector('[data-testid="planning-board-gantt"]')!;
+        for (const node of gantt.querySelectorAll('*')) {
+          let owner: Element | null = node; let label = '';
+          while (owner && owner !== gantt && !label) { label = owner.getAttribute('data-testid')?.replace(/-[^-]*\d[^-]*$/, '-#') ?? ''; owner = owner.parentElement; }
+          const key = `${label || '(none)'} > ${node.tagName.toLowerCase()}`; counts[key] = (counts[key] ?? 0) + 1;
+        }
+        process.stdout.write(`DOM gantt=${gantt.querySelectorAll('*').length} body=${document.body.querySelectorAll('*').length}\n`);
+        for (const [key, value] of Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 40)) process.stdout.write(`DOM ${value} ${key}\n`);
+      }
       await measure('gantt_off', () => click('ガント'));
       await measure('gantt_on', () => click('ガント'));
       // Real left lane label: pointer click without movement must not reorder lanes.
