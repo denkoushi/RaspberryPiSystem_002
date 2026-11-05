@@ -23,6 +23,7 @@ vi.mock('../../../lib/prisma.js', () => {
   };
   return {
     prisma: {
+      clientDevice: { findMany: vi.fn() },
       clientStatus: { findMany: vi.fn() },
       alert: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn() },
       $transaction: vi.fn(async (fn: (client: typeof tx) => Promise<unknown>) => fn(tx)),
@@ -86,8 +87,116 @@ describe('client-heartbeat-alert-policy', () => {
 describe('runHeartbeatCheck', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([]);
     vi.mocked(prisma.alert.findFirst).mockResolvedValue(null);
     vi.mocked(prisma.alert.findMany).mockResolvedValue([]);
+  });
+
+  const clientId = 'raspi4-expected-kiosk1';
+  function ledger(anchor: Date, id: string | null = clientId) {
+    vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([
+      { statusClientId: id, createdAt: anchor }
+    ] as never);
+    vi.mocked(prisma.clientStatus.findMany).mockResolvedValue([]);
+  }
+
+  it.each([9, 10, 11])('alerts a never-reported device only after the threshold (%i minutes)', async (minutes) => {
+    const anchor = minutesAgo(minutes);
+    ledger(anchor);
+    await runHeartbeatCheck(NOW, config);
+    expect(createdAlerts()).toHaveLength(minutes > 10 ? 1 : 0);
+    if (minutes > 10) {
+      expect(createdAlerts()[0]).toMatchObject({
+        fingerprint: staleAlertFingerprint(clientId, anchor),
+        details: { clientId, lastSeen: anchor.toISOString(), neverReported: true }
+      });
+      expect(createdAlerts()[0].message).toContain('登録後一度も');
+    }
+  });
+
+  it('uses a stable registration fingerprint across ticks without duplicating alerts', async () => {
+    const anchor = minutesAgo(11);
+    ledger(anchor);
+    await runHeartbeatCheck(NOW, config);
+    vi.mocked(prisma.alert.findFirst).mockResolvedValue({ id: 'existing' } as never);
+    await runHeartbeatCheck(new Date(NOW.getTime() + 60_000), config);
+    expect(createdAlerts()).toHaveLength(1);
+    expect(vi.mocked(prisma.alert.findFirst).mock.calls.map(([args]) => args.where)).toEqual([
+      { fingerprint: staleAlertFingerprint(clientId, anchor) },
+      { fingerprint: staleAlertFingerprint(clientId, anchor) }
+    ]);
+  });
+
+  it.each([AlertDeliveryStatus.SENT, AlertDeliveryStatus.PENDING])('recovers on the first report (%s)', async (deliveryStatus) => {
+    const anchor = minutesAgo(30);
+    ledger(anchor);
+    vi.mocked(prisma.clientStatus.findMany).mockResolvedValue([{ clientId, lastSeen: NOW }] as never);
+    vi.mocked(prisma.alert.findMany).mockResolvedValue([{
+      id: 'never-reported', fingerprint: staleAlertFingerprint(clientId, anchor),
+      details: { clientId, lastSeen: anchor.toISOString(), neverReported: true },
+      deliveries: [{ status: deliveryStatus }]
+    }] as never);
+    await runHeartbeatCheck(NOW, config);
+    expect(prisma.alert.update).toHaveBeenCalledWith({
+      where: { id: 'never-reported' }, data: { acknowledged: true, acknowledgedAt: NOW }
+    });
+    expect(createdAlerts()).toHaveLength(deliveryStatus === AlertDeliveryStatus.SENT ? 1 : 0);
+    if (deliveryStatus === AlertDeliveryStatus.SENT) {
+      expect(createdAlerts()[0]).toMatchObject({ type: 'client-heartbeat-recovered' });
+    }
+  });
+
+  it('keeps ledger statuses older than seven days and processes each client once', async () => {
+    const lastSeen = minutesAgo(8 * 24 * 60);
+    ledger(minutesAgo(10 * 24 * 60));
+    vi.mocked(prisma.clientStatus.findMany).mockResolvedValue([{ clientId, lastSeen }] as never);
+    await runHeartbeatCheck(NOW, config);
+    expect(createdAlerts()).toHaveLength(1);
+    expect(createdAlerts()[0]).toMatchObject({
+      fingerprint: staleAlertFingerprint(clientId, lastSeen),
+      details: { clientId, lastSeen: lastSeen.toISOString() }
+    });
+    expect(createdAlerts()[0].details).not.toHaveProperty('neverReported');
+    expect(prisma.clientDevice.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.clientStatus.findMany).toHaveBeenCalledExactlyOnceWith({
+      where: { OR: [
+        { lastSeen: { gte: new Date(NOW.getTime() - config.forgetAfterMs) } },
+        { clientId: { in: [clientId] } }
+      ] }, select: { clientId: true, lastSeen: true }
+    });
+    vi.mocked(prisma.alert.findFirst).mockResolvedValue({ id: 'existing' } as never);
+    await runHeartbeatCheck(new Date(NOW.getTime() + 60_000), config);
+    expect(createdAlerts()).toHaveLength(1);
+  });
+
+  it('recovers a ledger outage even when its first report is older than seven days', async () => {
+    const anchor = minutesAgo(10 * 24 * 60);
+    const lastSeen = minutesAgo(8 * 24 * 60);
+    ledger(anchor);
+    vi.mocked(prisma.clientStatus.findMany).mockResolvedValue([{ clientId, lastSeen }] as never);
+    vi.mocked(prisma.alert.findFirst).mockResolvedValue({ id: 'current-outage' } as never);
+    vi.mocked(prisma.alert.findMany).mockResolvedValue([{
+      id: 'never-reported', fingerprint: staleAlertFingerprint(clientId, anchor),
+      details: { clientId, lastSeen: anchor.toISOString(), neverReported: true },
+      deliveries: [{ status: AlertDeliveryStatus.SENT }]
+    }] as never);
+    await runHeartbeatCheck(NOW, config);
+    expect(prisma.alert.update).toHaveBeenCalledTimes(1);
+    expect(createdAlerts()[0]).toMatchObject({ type: 'client-heartbeat-recovered' });
+  });
+
+  it.each(['zero2w-tanaban01-edge1', null])('ignores ledger devices with statusClientId=%s', async (id) => {
+    ledger(minutesAgo(30), id);
+    await runHeartbeatCheck(NOW, config);
+    expect(createdAlerts()).toHaveLength(0);
+    expect(prisma.alert.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('honors deploy windows for never-reported ledger devices', async () => {
+    ledger(minutesAgo(30));
+    vi.mocked(deployWindowEndedAt).mockResolvedValueOnce(new Date(NOW.getTime() + 60_000));
+    await runHeartbeatCheck(NOW, config);
+    expect(createdAlerts()).toHaveLength(0);
   });
 
   it('skips a stale client during deploy and alerts on the same outage after grace', async () => {

@@ -9,7 +9,7 @@ import {
   HEARTBEAT_RECOVERED_ALERT_TYPE,
   HEARTBEAT_STALE_ALERT_TYPE,
   isMonitoredClient,
-  isStale,
+  neverReportedAlertMessage,
   loadHeartbeatAlertConfig,
   recoveredAlertFingerprint,
   recoveredAlertMessage,
@@ -71,15 +71,37 @@ async function enqueueSlackAlert(alert: NewAlert): Promise<void> {
  */
 export async function runHeartbeatCheck(now: Date, config: HeartbeatAlertConfig): Promise<void> {
   await refreshKioskDeployWindows(now);
+  const devices = await prisma.clientDevice.findMany({
+    where: { statusClientId: { not: null } },
+    select: { statusClientId: true, createdAt: true }
+  });
+  const expected = new Map<string, Date>();
+  for (const device of devices) {
+    if (device.statusClientId && isMonitoredClient(device.statusClientId, config)) {
+      const anchor = expected.get(device.statusClientId);
+      if (!anchor || device.createdAt < anchor) expected.set(device.statusClientId, device.createdAt);
+    }
+  }
   const statuses = await prisma.clientStatus.findMany({
-    where: { lastSeen: { gte: new Date(now.getTime() - config.forgetAfterMs) } },
+    where: { OR: [
+      { lastSeen: { gte: new Date(now.getTime() - config.forgetAfterMs) } },
+      { clientId: { in: [...expected.keys()] } }
+    ] },
     select: { clientId: true, lastSeen: true }
   });
-  const monitored = statuses.filter((status) => isMonitoredClient(status.clientId, config));
-  const lastSeenByClient = new Map(monitored.map((status) => [status.clientId, status.lastSeen]));
+  const monitored = new Map(statuses
+    .filter((status) => isMonitoredClient(status.clientId, config))
+    .map((status) => [status.clientId, { ...status, neverReported: false }]));
+  for (const [clientId, createdAt] of expected) {
+    if (!monitored.has(clientId)) {
+      monitored.set(clientId, { clientId, lastSeen: createdAt, neverReported: true });
+    }
+  }
+  const lastSeenByClient = new Map([...monitored.values()].map((status) => [status.clientId, status.lastSeen]));
 
-  for (const status of monitored) {
-    if (!isStale(status, now, config)) continue;
+  for (const status of monitored.values()) {
+    const silentMs = now.getTime() - status.lastSeen.getTime();
+    if (silentMs <= config.staleAfterMs || (!expected.has(status.clientId) && silentMs > config.forgetAfterMs)) continue;
     const deployWindowEnd = await deployWindowEndedAt(status.clientId, now);
     if (deployWindowEnd && now.getTime() < deployWindowEnd.getTime()) continue;
     const fingerprint = staleAlertFingerprint(status.clientId, status.lastSeen);
@@ -88,8 +110,12 @@ export async function runHeartbeatCheck(now: Date, config: HeartbeatAlertConfig)
     await enqueueSlackAlert({
       type: HEARTBEAT_STALE_ALERT_TYPE,
       severity: AlertSeverity.WARNING,
-      message: staleAlertMessage(status, now),
-      details: { clientId: status.clientId, lastSeen: status.lastSeen.toISOString() },
+      message: status.neverReported ? neverReportedAlertMessage(status, now) : staleAlertMessage(status, now),
+      details: {
+        clientId: status.clientId,
+        lastSeen: status.lastSeen.toISOString(),
+        ...(status.neverReported ? { neverReported: true } : {})
+      },
       fingerprint,
       timestamp: now
     });

@@ -49,6 +49,7 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
     const body = updateClientSchema.parse(request.body);
     const client = await updateClientDevice({
       id,
+      statusClientId: body.statusClientId,
       name: body.name,
       defaultMode: body.defaultMode ?? undefined,
       kioskInitialRoute: body.kioskInitialRoute,
