@@ -6,7 +6,7 @@ import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryCompartment, 
 import { useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
 import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { KioskDigitTenkey } from '../../KioskDigitTenkey';
-import { compartmentLocationText, needsReorder, unitLabel } from '../inventoryDailyFlow';
+import { compartmentLocationText, needsOrdering, needsReorder, unitLabel } from '../inventoryDailyFlow';
 import { ArrowLeftIcon, ArrowRightIcon, RotateRightIcon, CheckIcon, CloseIcon, SearchIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
   invSetupTargets,
@@ -240,7 +240,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
   const orderedGroups = [...groups].sort(([a], [b]) => a.localeCompare(b, 'ja', { numeric: true }));
-  const sortedGroups = [true, false].flatMap(priority => orderedGroups.map(([key, rows]) => [key, rows.filter(({ entry }) => entry.compartments.some(needsReorder) === priority)] as const).filter(([, rows]) => rows.length > 0));
+  const sortedGroups = [0, 1, 2].flatMap(priority => orderedGroups.map(([key, rows]) => [key, rows.filter(({ entry }) => (entry.compartments.some(needsOrdering) ? 0 : entry.compartments.some(needsReorder) ? 1 : 2) === priority)] as const).filter(([, rows]) => rows.length > 0));
   const banner = <p role="status" className={`pointer-events-none absolute bottom-3 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-xl border px-5 py-3 text-base font-bold shadow-lg border-inv-green bg-inv-s3 text-[#d7fbe9]`}>{done}</p>;
   const localError = (target: string) => error && errorAt === target ? <p role="alert" className="text-sm text-[#ffd0d0]">{error}</p> : null;
   const list = (
@@ -260,12 +260,12 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
             const count = base.filter(({ place }) => splitArea(place?.area ?? '').machine === machine).length;
             return <div key={machine} className="contents">
               <button type="button" aria-label={`${machine} ${count}件`} aria-pressed={department === machine && !selectedShelf} className={`${nodeClass(department === machine && !selectedShelf, count, machine)} mt-2 font-black`} onClick={() => { setDepartment(machine); setSelectedShelf(null); }}>
-                <span className="flex min-w-0 items-center gap-1"><span className={`h-2 w-2 shrink-0 rounded-sm ${machine === '生産技術課' ? 'bg-inv-violet' : 'bg-inv-cyan'}`} aria-hidden="true" /><span className="truncate">{machine}</span></span><span className="text-xs font-normal tabular-nums text-inv-faint">{count}</span>
+                <span className="flex min-w-0 items-center gap-1"><span className={`h-2 w-2 shrink-0 rounded-sm ${machine === '生産技術課' ? 'bg-inv-violet' : 'bg-inv-cyan'}`} aria-hidden="true" /><span className="break-words [overflow-wrap:anywhere] leading-tight">{machine}</span></span><span className="text-xs font-normal tabular-nums text-inv-faint">{count}</span>
               </button>
               {shelfNodes.filter(place => splitArea(place.area).machine === machine).map(shelf => {
                 const count = base.filter(({ place }) => place && shelfKey(place) === shelfKey(shelf)).length;
                 const on = selectedShelf !== null && shelfKey(selectedShelf) === shelfKey(shelf);
-                return <button key={shelfKey(shelf)} type="button" aria-label={`${shelf.area}・棚${shelf.shelfNumber} ${count}件`} aria-pressed={on} className={`${nodeClass(on, count, machine)} pl-[23px] font-bold before:absolute before:bottom-0 before:left-[11px] before:top-0 before:w-px before:bg-inv-line`} onClick={() => { setDepartment(machine); setSelectedShelf(shelf); }}><span className="truncate">{shelfTitle(shelf)}</span><span className="text-xs font-normal tabular-nums text-inv-faint">{count}</span></button>;
+                return <button key={shelfKey(shelf)} type="button" aria-label={`${shelf.area}・棚${shelf.shelfNumber} ${count}件`} aria-pressed={on} className={`${nodeClass(on, count, machine)} pl-[23px] font-bold before:absolute before:bottom-0 before:left-[11px] before:top-0 before:w-px before:bg-inv-line`} onClick={() => { setDepartment(machine); setSelectedShelf(shelf); }}><span className="break-words [overflow-wrap:anywhere] leading-tight">{shelfTitle(shelf)}</span><span className="text-xs font-normal tabular-nums text-inv-faint">{count}</span></button>;
               })}
             </div>;
           })}
@@ -285,14 +285,14 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
               {rows.map(({ entry, place }) => {
                 const on = entry.id === item?.id;
                 const low = entry.compartments.filter(needsReorder);
-                const edge = low.length ? (low.some(compartment => !compartment.reorderedAt) ? 'border-2 border-inv-red' : 'border-2 border-inv-blue') : on ? '' : 'border-b border-inv-line';
+                const edge = low.length ? (entry.compartments.some(needsOrdering) ? 'border-2 border-inv-red' : 'border-2 border-inv-blue') : on ? '' : 'border-b border-inv-line';
                 return <button key={entry.id} type="button" aria-pressed={on} className={`grid h-[62px] shrink-0 grid-cols-[44px_minmax(0,1fr)] items-center gap-2.5 rounded-xl px-2 text-left ${edge} ${on ? 'bg-inv-cyan/[0.12] ring-2 ring-inset ring-inv-cyan' : 'hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
                   {entry.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-11 w-11 rounded-[9px] object-cover" /> : <span className="h-11 w-11 rounded-[9px] bg-inv-s3" aria-hidden="true" />}
                   <span className="flex min-w-0 flex-col gap-1">
                     <span className="truncate text-[15px] font-bold">{highlight(entry.name, needle)}</span>
                     <span className="flex min-w-0 items-center gap-2">
                       {place ? <span className={invLabelNumber}>{highlight(formatInventoryLabelNumber(place.labelNumber), needle)}</span> : null}
-                      {isProvisionalInventoryName(entry.name) ? <span className={provisionalTag}>仮名</span> : <span className="truncate text-xs tabular-nums text-inv-faint">{place ? `引き出し${place.drawerNumber} ・ ${place.stockQuantity}${unitLabel(entry)}` : '置き場所なし'}</span>}
+                      {isProvisionalInventoryName(entry.name) ? <span className={provisionalTag}>仮名</span> : <span className="truncate text-xs tabular-nums text-inv-text">{place ? `引き出し${place.drawerNumber} ・ ${place.stockQuantity}${unitLabel(entry)}` : '置き場所なし'}</span>}
                     </span>
                   </span>
                 </button>;

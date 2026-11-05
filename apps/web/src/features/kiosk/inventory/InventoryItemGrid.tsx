@@ -3,7 +3,7 @@ import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useStat
 
 import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryImportSummary } from '../../../api/client';
 
-import { issuedLabel, needsReorder, unitLabel } from './inventoryDailyFlow';
+import { issuedLabel, needsOrdering, needsReorder, unitLabel } from './inventoryDailyFlow';
 import { InventoryHoverCard } from './InventoryHoverCard';
 import { LockIcon, PinIcon } from './InventoryIcons';
 import { detailLabels, invLabelNumber } from './inventoryUi';
@@ -21,9 +21,10 @@ const sizes = {
 } as const;
 const collator = new Intl.Collator('ja');
 
-/** Reorder-needed drawers first; each group uses stock, latest issue and name order. */
+/** Unordered low-stock drawers first, then ordered low-stock drawers; each group uses stock, latest issue and name order. */
 export function sortByLowStock(compartments: InventoryCompartment[]): InventoryCompartment[] {
   return [...compartments].sort((a, b) => {
+    if (needsOrdering(a) !== needsOrdering(b)) return needsOrdering(a) ? -1 : 1;
     if (needsReorder(a) !== needsReorder(b)) return needsReorder(a) ? -1 : 1;
     if (a.stockQuantity !== b.stockQuantity) return a.stockQuantity - b.stockQuantity;
     const at = a.lastIssuedAt ? Date.parse(a.lastIssuedAt) : null;
@@ -36,7 +37,8 @@ export function sortByLowStock(compartments: InventoryCompartment[]): InventoryC
 }
 
 function stockBorder(compartment: InventoryCompartment) {
-  if (needsReorder(compartment)) return compartment.reorderedAt ? 'border-2 border-inv-blue' : 'border-2 border-inv-red';
+  if (needsOrdering(compartment)) return 'border-4 border-inv-red';
+  if (needsReorder(compartment)) return 'border-2 border-inv-blue';
   return 'border border-inv-line hover:border-inv-cyan focus-visible:border-inv-cyan';
 }
 
