@@ -43,7 +43,7 @@
   - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
   - [ ] Step 2: rpi-image-gen で共通 OS イメージを作る。(2026-11-05) 設定と layer を `infrastructure/image/rpi-image-gen/` に置いた(Pi4・trixie、共通ユーザー `kiosk`、Desktop 自動ログイン、Docker、Tailscale)。status-agent とアプリは入れず、`--first-install` で Ansible が入れる。arm64 ホストでの実ビルドと実機起動は未実施。
   - [ ] Step 3: 初回起動の登録を整える。(2026-11-05) 初回起動スクリプト `pi4-first-boot.py` を作った。boot パーティションの `pi4-bootstrap.json` からホスト名と一回限りの Tailscale 鍵を読み、ホスト名を設定して `tag:kiosk` で参加し、参加を確かめてから鍵のファイルを消す。偽コマンドの単体テスト11件は合格。端末の登録(`register-clients.sh`)と初回導入は今までどおり手動で、手順は [予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) に書いた。実機での確認は未実施。
-  - [ ] Step 4: 実機で差し替え訓練を行い、30分以内か測る。
+  - [ ] Step 4: 実機で差し替え訓練を行い、30分以内か測る。機材の持ち主の作業(2026-11-05 ユーザー決定)。共通イメージの書き込み、起動確認(鍵のファイルが消える、Tailscale に参加する、Pi5 から SSH できる、自動ログインで画面が出る)、`--first-install` での導入、差し替えの所要時間の記録を行う。手順は [予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) の「共通イメージから新しい端末を用意する(試行前)」。
 - [ ] M7: 端末側の Docker ログの上限と、SD カード保護の試行。
   - [x] (2026-11-02) Step 1: Pi5 phase3・migration、kiosk template、client Compose に json-file 10m × 3 の上限を実装。状態を持つ `business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache` は追加再作成を避けるため除外。
   - [ ] 本番適用と `docker inspect` 確認（gateway は標準更新で再作成しないため別途適用が必要）、高耐久 SD・USB SSD・読み取り専用ルートの試行。
