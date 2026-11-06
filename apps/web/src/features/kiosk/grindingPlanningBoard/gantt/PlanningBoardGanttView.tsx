@@ -92,7 +92,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const previousUptime = useRef<ReadonlyMap<string, number>>(new Map());
   const uptimeByResource = useMemo(() => {
     const next = new Map(uptime.data?.resources.map((entry) =>
-      [normalizeMachineName(entry.resourceCd), entry.averageRunSeconds]));
+      [normalizeMachineName(entry.resourceCd), entry.medianRunSeconds]));
     const previous = previousUptime.current;
     return next.size === previous.size && [...next].every(([key, value]) => previous.has(key) && Object.is(previous.get(key), value))
       ? previous : next;
@@ -421,7 +421,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         onClick={() => onCapacityChange(resource, hours)}>{hours}H</button>)}
       {breaksButton(resource)}
     </div>
-    {uptimeByResource.has(normalizeMachineName(resource)) && <div className="flex h-4 items-center gap-1.5 whitespace-nowrap leading-4" title="直近30日の1日あたり稼働時間の平均">
+    {uptimeByResource.has(normalizeMachineName(resource)) && <div className="flex h-4 items-center gap-1.5 whitespace-nowrap leading-4" title="稼働した日の1日あたり稼働時間の中央値">
       <span className="text-[12px] font-bold text-slate-300">月平均</span>
       <span className="font-mono text-[15px] font-bold tabular-nums text-emerald-300">{(uptimeByResource.get(normalizeMachineName(resource))! / 3600).toFixed(1)}h</span>
     </div>}

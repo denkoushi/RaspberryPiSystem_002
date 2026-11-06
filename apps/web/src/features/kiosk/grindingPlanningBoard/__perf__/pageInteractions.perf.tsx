@@ -141,7 +141,7 @@ it('measures real page interactions with the production fixture (one warmup, thr
       network.stores.chips.data = { chipsByPartKey };
       network.stores.minutes.data = { rows: fixture.seibans.map((fseiban, i) => ({ fseiban, outsourceMarks: [], memo: null,
         surfaceSendOutDates: i % 3 === 0 ? [{ date: '2026-11-06', note: null }, { date: '2026-11-10', note: null }] : [] })) };
-      network.stores.uptime.data = { resources: fixture.resources.map((resourceCd, i) => ({ resourceCd, averageRunSeconds: 20000 + i * 100 })) };
+      network.stores.uptime.data = { resources: fixture.resources.map((resourceCd, i) => ({ resourceCd, medianRunSeconds: 20000 + i * 100 })) };
       network.stores.capacity.data = { dailyHoursByResource: Object.fromEntries(fixture.resources.map(cd => [cd, 8])), runsThroughBreaksResources: [] };
       network.stores.resources.data = { resourceNameMap: Object.fromEntries(fixture.resources.map(cd => [cd, [`機械${cd}`]])) };
       network.stores.load.data = { load: [], unknownRequiredMinutesCount: 0 };
