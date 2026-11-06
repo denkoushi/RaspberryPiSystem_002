@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { LSLH_SURFACE_PROCESS_CODES, PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
+import { isMachineSectionAssigned } from '../d-schedule-minutes/machine-section-assignee.js';
 import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardLoadResponse, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
@@ -364,6 +365,12 @@ export async function getGrindingPlanningBoard(params: { dueSource?: BoardDueSou
       ...(placement ? { placement } : {})
     };
   });
+  const minutes = await prisma.productionScheduleDScheduleMinutes.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: order } },
+    select: { fseiban: true, assignees: true, assigneesKnown: true }
+  });
+  const nonMachine = new Set(minutes.filter((row) => row.assigneesKnown && !isMachineSectionAssigned(row.assignees)).map((row) => row.fseiban));
+  const excelNonMachineFseibans = order.filter((fseiban) => nonMachine.has(fseiban));
   perf.flush({ snapshotReused: Boolean(params.snapshotId), itemCount: orderedItems.length, fseibanCount: selected.length });
   return {
     siteKey: params.siteKey,
@@ -372,6 +379,7 @@ export async function getGrindingPlanningBoard(params: { dueSource?: BoardDueSou
     sourceRevision: boardRevision(stateForRead),
     boardVersion: stateForRead.version,
     registeredFseibans: order,
+    excelNonMachineFseibans,
     seibanOrder: selected,
     resources: payload.resources,
     resourceCategories: payload.resourceCategories,

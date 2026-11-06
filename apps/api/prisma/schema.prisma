@@ -2154,6 +2154,8 @@ model ProductionScheduleDScheduleMinutes {
   fseiban                  String    @db.VarChar(20)
   partsCompleteDate        DateTime? @db.Date
   excelChangedAt           DateTime
+  assignees                String[]  @default([])
+  assigneesKnown           Boolean   @default(false)
   outsourceMarks           String[]
   surfaceSendOutDates      Json
   memo                     String?

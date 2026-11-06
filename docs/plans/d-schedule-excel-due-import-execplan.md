@@ -288,6 +288,11 @@
 
 ## Outcomes & Retrospective
 
+2026-11-06: 担当列の4行（形が不正なブロックは先頭行だけ）を正規化・重複除去して保存し、非表示列・行と結合セルの従属セルは読まない。`assigneesKnown` は読み取り可能な担当列の有無を表し、既存行・列欠落・非表示列は不明として従来の初期チェックを維持する。担当が既知で「機械課」を含まない製番だけ、製番ボードの初期表示と再取得時の新規登録で未チェックにする。空欄は既知なら未チェック、全製番の自動登録・ユーザーの選択・手動追加時のチェックは維持する。判定はリクエストごとに取得し、ボードのスナップショットには保存しない。DDLは手書きmigrationを追加し、DBへの適用は未実施。
+
+同変更のローカル検証: Prisma Client生成、shared-types build（型検査）、API/Web型検査、3パッケージのlintは成功。dotenv読込を無効化した一時Vitest設定でAPI対象6ファイルは282 passed / 7 skipped（17.37秒）、Webページは107 passed（21.82秒）。APIのDB実接続テストはローカルDB接続失敗で未検証のため、再実行では当該7件を明示除外した。最初の型検査・APIテストで不足していたワークスペース依存の生成物は各パッケージのbuildで準備した。gitコマンド・commit・push・本番反映は実施していない。
+
+
 マイルストーン 3 をローカル実装した。新規の Gmail 取込サービスと集計型、組み込み行の追加・専用targetの設定/API/CSV経路の分岐、既存 apply/auto-register の集計、SYSTEM_NOTICE の一度限りの通知と本文、新規合成テストを追加した。既存WIPは保持し、パーサー、SeibanDueDate / ProcessingDueDate / RowNote の書込みは変更していない。
 
 `apps/api` から `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/borrow_return pnpm exec vitest run src/services/production-schedule/d-schedule-minutes src/services/imports src/services/kiosk-inquiry/__tests__/system-notice.service.test.ts src/services/kiosk-inquiry/__tests__/system-notice-sources.test.ts src/services/gmail/__tests__/gmail-subject-reservation.policy.test.ts src/routes/__tests__/imports-schedule.integration.test.ts` は 41 files / 473 tests passed、skipなし（33.32秒）。先行の対象3ファイルは21 tests passed。その後、登録集計の途中再開テストを加えて上記全範囲で成功した。`pnpm exec tsc -p tsconfig.build.json --noEmit` は exit 0 / 0 errors。変更した19個のTypeScriptファイルを対象とする `pnpm exec eslint` は0 errors、重複importの2 warningsを整理後、該当2ファイルの再検査は警告も0件。初回の型検査で新規件名定数の重複importを検出し、同じ原因の新規テスト失敗とともに修正した。実Gmail・外部サービス・実顧客ファイルは使用せず、新規DDLも実行していない。commit / push / PR / merge / deploy とマイルストーン4〜5は未実施。

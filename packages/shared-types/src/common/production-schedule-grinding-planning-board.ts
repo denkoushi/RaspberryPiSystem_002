@@ -155,6 +155,7 @@ export interface GrindingPlanningBoardResponse {
   sourceRevision: string;
   boardVersion: number;
   registeredFseibans: string[];
+  excelNonMachineFseibans?: string[];
   seibanOrder: string[];
   resources: string[];
   resourceCategories?: Record<string, 'grinding' | 'cutting'>;

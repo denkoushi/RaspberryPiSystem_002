@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
     $queryRaw: vi.fn(),
     $transaction: vi.fn(),
     csvDashboardRow: { findMany: vi.fn() },
+    productionScheduleDScheduleMinutes: { findMany: vi.fn() },
     orderPlacementBranchState: { findMany: vi.fn() },
     mobilePlacementShelf: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardState: {
@@ -233,6 +234,7 @@ describe('grinding planning board service orchestration', () => {
     vi.clearAllMocks();
     clearLeaderboardMaterializedWinnerCacheForTests();
     configurePersistence();
+    mocks.prisma.productionScheduleDScheduleMinutes.findMany.mockResolvedValue([]);
     mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map());
     mocks.prisma.orderPlacementBranchState.findMany.mockResolvedValue([]);
     mocks.prisma.mobilePlacementShelf.findMany.mockResolvedValue([]);
@@ -262,6 +264,25 @@ describe('grinding planning board service orchestration', () => {
       vi.useRealTimers();
       vi.mocked(enrichRowsWithProcessArrival).mockImplementation(async (rows) => rows.map((row) => ({ ...row, arrived: true })));
     }
+  });
+
+  it.each([
+    [true, ['資材課'], ['ORDER-A']],
+    [true, [], ['ORDER-A']],
+    [true, ['機械課・資材課'], []],
+    [true, ['設計機械課'], []],
+    [false, [], []]
+  ])('reads assignees on every response: known=%s values=%j', async (assigneesKnown, assignees, expected) => {
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'resource' as const };
+    const first = await getGrindingPlanningBoard(params);
+    expect(first.excelNonMachineFseibans).toEqual([]);
+    mocks.prisma.productionScheduleDScheduleMinutes.findMany.mockResolvedValue([{ fseiban: 'ORDER-A', assigneesKnown, assignees }]);
+    const next = await getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId });
+    expect(next.excelNonMachineFseibans).toEqual(expected);
+    expect(mocks.prisma.productionScheduleDScheduleMinutes.findMany).toHaveBeenLastCalledWith({
+      where: { csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', fseiban: { in: ['ORDER-A'] } },
+      select: { fseiban: true, assignees: true, assigneesKnown: true }
+    });
   });
 
   it('adds current process arrival to responses without mutating the saved projection', async () => {
@@ -1181,6 +1202,7 @@ describe('bulk grinding resource order service', () => {
     vi.clearAllMocks();
     clearLeaderboardMaterializedWinnerCacheForTests();
     configurePersistence();
+    mocks.prisma.productionScheduleDScheduleMinutes.findMany.mockResolvedValue([]);
     const second = { ...mocks.sourceRow, id: 'source-row-2', rowData: { ...mocks.sourceRow.rowData, FHINCD: 'PART-B' } };
     const rows = [mocks.sourceRow, second];
     items = rows.map((row) => ({ itemId: mocks.buildGrindingPlanningBoardRowItemId(row.rowData), itemRevision: `revision-${row.id}`,
