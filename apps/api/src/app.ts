@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { trustImmediateProxy } from './lib/trust-proxy.js';
 import compress from '@fastify/compress';
 import multipart from '@fastify/multipart';
 import cors from '@fastify/cors';
@@ -29,7 +30,7 @@ import { ensureProcedureManualProcesses } from './services/assembly/procedure-ma
 import { enableSiteDirectoryFailClosed, ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: env.LOG_LEVEL, serializers: { req: serializeRequestForLog } } });
+  const app = Fastify({ trustProxy: trustImmediateProxy, logger: { level: env.LOG_LEVEL, serializers: { req: serializeRequestForLog } } });
   registerErrorHandler(app);
   registerRequestLogger(app);
   // Declare the expected scheduler before listen so startup cannot appear ready.

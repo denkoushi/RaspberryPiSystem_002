@@ -15,6 +15,7 @@
     path /api/* /ws/*
   }
   reverse_proxy @api ${SLOT_API_UPSTREAM} {
+    header_up X-Forwarded-For {remote_host}
     transport http {
       versions 1.1
     }
@@ -22,7 +23,9 @@
 
   handle /storage/thumbnails/* {
     uri replace /storage/thumbnails/ /api/storage/thumbnails/
-    reverse_proxy ${SLOT_API_UPSTREAM}
+    reverse_proxy ${SLOT_API_UPSTREAM} {
+      header_up X-Forwarded-For {remote_host}
+    }
   }
 
   @static_site {
