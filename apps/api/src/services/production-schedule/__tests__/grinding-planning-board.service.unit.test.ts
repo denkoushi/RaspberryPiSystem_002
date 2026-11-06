@@ -235,6 +235,20 @@ describe('grinding planning board service orchestration', () => {
   });
 
 
+  it('derives unchecked seibans for legacy boards and returns persisted checks instead when saved', async () => {
+    mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue({ ...mocks.state, uncheckedFseibans: null });
+    mocks.prisma.productionScheduleDScheduleMinutes.findMany.mockResolvedValue([
+      { fseiban: 'ORDER-A', assigneesKnown: true, assignees: ['組立課'] },
+      { fseiban: 'ABSENT', assigneesKnown: true, assignees: [] }
+    ]);
+    const legacy = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'seiban' });
+    expect(legacy.uncheckedFseibans).toEqual(['ORDER-A']);
+    mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue({ ...mocks.state, uncheckedFseibans: [] });
+    const saved = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'seiban' });
+    expect(saved.uncheckedFseibans).toEqual([]);
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardState.update).not.toHaveBeenCalled();
+  });
+
   it('reads shared same-day arrivals on warm snapshots and ignores them at JST midnight', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
@@ -1148,6 +1162,7 @@ describe('grinding planning board service orchestration', () => {
     });
     const transactionClient = {
       $queryRaw: mocks.prisma.$queryRaw,
+      productionScheduleDScheduleMinutes: mocks.prisma.productionScheduleDScheduleMinutes,
       productionScheduleGrindingPlanningBoardState: {
         update: mocks.prisma.productionScheduleGrindingPlanningBoardState.update
       }
@@ -1171,6 +1186,7 @@ describe('grinding planning board service orchestration', () => {
   it('rejects an outdated board revision before writing the seiban order', async () => {
     const transactionClient = {
       $queryRaw: mocks.prisma.$queryRaw,
+      productionScheduleDScheduleMinutes: mocks.prisma.productionScheduleDScheduleMinutes,
       productionScheduleGrindingPlanningBoardState: {
         update: mocks.prisma.productionScheduleGrindingPlanningBoardState.update
       }

@@ -1987,6 +1987,7 @@ model ProductionScheduleGrindingPlanningBoardState {
   siteKey        String   @db.VarChar(100)
   version        Int      @default(1)
   seibanOrder    Json
+  uncheckedFseibans Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

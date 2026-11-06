@@ -26,6 +26,7 @@ import {
   updateKioskGrindingPlanningBoardResourceOrder,
   updateKioskGrindingPlanningBoardResourceOrderBulk,
   updateKioskGrindingPlanningBoardSeibanOrder,
+  updateKioskGrindingPlanningBoardSeibanChecks,
   type KioskGrindingPlanningBoardQuery,
   updateKioskGrindingPlanningBoardDueScope
 } from '../../client';
@@ -44,6 +45,7 @@ import type {
   GrindingPlanningBoardPinsRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
+  GrindingPlanningBoardSeibanChecksRequest,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueScopeRequest
@@ -412,6 +414,17 @@ export function useUpdateKioskGrindingPlanningBoardSeibanOrder(options?: { inval
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardSeibanOrderRequest) => updateKioskGrindingPlanningBoardSeibanOrder(payload),
+    onSuccess: () => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardSeibanChecks(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardSeibanChecksRequest) => updateKioskGrindingPlanningBoardSeibanChecks(payload),
     onSuccess: () => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
