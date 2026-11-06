@@ -611,6 +611,20 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.scroll(viewport);
     await waitFor(() => expect(screen.queryByRole('button', { name: '305の先の待ち' })).toBeNull());
   });
+  it('keeps the hover queue closed while a later tray is open', () => {
+    render(<PlanningBoardGanttView {...laterProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    const column = screen.getByRole('button', { name: '305の先の待ち' });
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+    fireEvent.click(column);
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    fireEvent.click(column);
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+  });
   it.each(['before', 'after'] as const)('drags a later card into the track (%s)', (placement) => {
     const values = laterProps();
     render(<PlanningBoardGanttView {...values} />);
@@ -1339,14 +1353,18 @@ describe('forward PlanningBoardGanttView', () => {
     const popover = screen.getByRole('region', { name: '305 研削盤 の次にやる順' });
     const cards = within(popover).getAllByTestId(/planning-forward-queue-card-/);
     expect(cards).toHaveLength(8);
-    expect(cards[0]).toHaveTextContent('26-1001 · 10分 · 1個');
-    expect(cards[7]).toHaveTextContent('26-1001 · 10分 · 1個');
+    expect(cards[0]).toHaveTextContent('26-1001 · 10分');
+    expect(cards[0]).not.toHaveTextContent('10分 · 1個');
+    expect(within(cards[0]!).getByText('P3 · 1個')).toBeInTheDocument();
+    expect(within(cards[7]!).getByText('P10 · 1個')).toBeInTheDocument();
     expect(cards[2]).toHaveClass('outline-amber-400', 'border-rose-400');
     expect(cards[0]).not.toHaveClass('outline-amber-400');
     expect(cards[2]).toHaveTextContent('P5');
     expect(cards[0]).not.toHaveTextContent('4.');
     expect(cards[2]).not.toHaveTextContent('〜');
     expect(cards[2]).toHaveTextContent('機種');
+    expect(cards[2]).toHaveTextContent(/開始 \d{2}\/\d{2}\(.\) \d{2}:\d{2}/);
+    expect(within(cards[2]!).getByText('納期 10/13(火)')).toHaveClass('text-rose-300');
     expect(popover).not.toHaveTextContent('遅れ見込み');
     expect(popover.parentElement).toBe(document.body);
   });

@@ -29,15 +29,21 @@ type Props = {
   onResourceReorder: ForwardReorder;
   onResourceMove: ForwardMove;
   canMoveResource: (item: GrindingPlanningBoardItem, resource: string) => boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 type Drag = { bar: GanttBar; x: number; y: number; pointerId: number; element: HTMLDivElement;
   moved: boolean; allowed: ReadonlySet<string> };
 
 // Scroll state lives here: neither the view nor its memoized rows subscribe to it.
 export function PlanningBoardForwardLaterQueue({ viewport, lanes, start, dayWidth, labelWidth, viewportWidth,
-  disabled, onDragPreview, onResourceReorder, onResourceMove, canMoveResource }: Props) {
+  disabled, onDragPreview, onResourceReorder, onResourceMove, canMoveResource, onOpenChange }: Props) {
   const [right, setRight] = useState(start);
   const [open, setOpen] = useState<string | null>(null);
+  const isOpen = open !== null;
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+    return () => { if (isOpen) onOpenChange?.(false); };
+  }, [isOpen, onOpenChange]);
   const [hosts, setHosts] = useState<HTMLElement[]>([]);
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canReorderForwardBars, forwardItemDetails, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
+import { canReorderForwardBars, forwardItemDetails, forwardDueLabel, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
 import { buildForwardPlanningBoardGanttLayout, dateToDay } from './planningBoardGanttLayout';
 
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -91,6 +91,8 @@ describe('forward queue helpers', () => {
       .toBe('11/07(土) 13:00');
     expect(forwardStartLabel(bar('c', friday + (9 * 60 + 15) / 1440 - 1e-9))).toBe('11/06(金) 09:15');
     expect(forwardStartLabel(bar('d', null as unknown as number))).toBeNull();
+    expect(forwardDueLabel('2026-11-09')).toBe('11/09(月)');
+    expect(forwardDueLabel(null)).toBeNull();
   });
 
   it('allows only different unfinished jobs of the same resource and special-due band', () => {
