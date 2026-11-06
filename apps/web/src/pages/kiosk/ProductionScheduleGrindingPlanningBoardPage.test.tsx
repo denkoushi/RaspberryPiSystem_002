@@ -797,6 +797,42 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(mocks.overrides).not.toHaveBeenCalled();
   });
 
+  it.each(['conflict', 'failed recovery'])('keeps explicit refresh available after dismissing %s feedback', async (scenario) => {
+    const data = fixture();
+    data.items[0]!.originalDueDate = '2026-10-20';
+    data.items[1]!.originalDueDate = '2026-10-17';
+    data.items[2]!.originalDueDate = '2026-10-18';
+    data.items[3]!.originalDueDate = '2026-10-16';
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    mocks.resourceOrderBulk.mockRejectedValueOnce(scenario === 'conflict'
+      ? { isAxiosError: true, response: { status: 409 } }
+      : new Error('save failed'));
+    mocks.refetch.mockResolvedValueOnce(scenario === 'conflict' ? { data } : { isError: true });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '納期順に並べる' }));
+    await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: '最新状態を取得' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: '通知を閉じる' }));
+    expect(screen.getByText('表示中のデータが更新されています。最新状態を取得してください。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '通知を閉じる' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '最新状態を取得' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '納期順に並べる' })).toBeDisabled();
+    expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(1);
+
+    mocks.refetch.mockResolvedValueOnce({ isError: true });
+    fireEvent.click(screen.getByRole('button', { name: '最新状態を取得' }));
+    await waitFor(() => expect(screen.getByText('最新状態を取得できませんでした。再試行してください。')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '最新状態を取得' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '納期順に並べる' })).toBeDisabled();
+
+    mocks.refetch.mockResolvedValueOnce({ data });
+    fireEvent.click(screen.getByRole('button', { name: '最新状態を取得' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '納期順に並べる' })).toBeEnabled());
+    expect(mocks.refetch).toHaveBeenCalledTimes(3);
+    expect(screen.queryByRole('button', { name: '最新状態を取得' })).not.toBeInTheDocument();
+    expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['納期順に並べる', '並べ替え'])('%s saves through the queue and undoes with acknowledged revisions', async (action) => {
     const data = fixture();
     data.items[0]!.originalDueDate = '2026-10-20';
