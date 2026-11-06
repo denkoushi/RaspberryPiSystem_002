@@ -1,5 +1,6 @@
 import { GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 
+import { isVisibleByArrival } from '../../isVisibleByArrival';
 import {
   compareProcessOrder,
   sortPlanningBoardResources,
@@ -44,10 +45,11 @@ export type GanttBar = {
   waitFrom?: number;
   predecessorEnd?: number;
   lateDays?: number;
+  arrivalPending?: boolean;
 };
 export type GanttRow = { key: string; label: string; detail: string; bars: GanttBar[]; flagged: boolean; connectors: { start: number; end: number }[] };
 export type GanttGroup = { key: string; label: string; resource: string | null; category?: 'grinding' | 'cutting'; rows: GanttRow[] };
-export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number; mode?: 'forward' | 'backward'; now?: number; lateCount?: number; completedOnly?: boolean };
+export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number; mode?: 'forward' | 'backward'; now?: number; lateCount?: number; completedOnly?: boolean; forwardQueue?: GanttBar[] };
 // Shared by the legend and movement-slip lookup: placeholders without a drawn bar are excluded.
 export function planningBoardVisibleBars(layout: GanttLayout): GanttBar[] {
   return layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars
@@ -69,13 +71,14 @@ export type GanttLayoutOptions = {
   mode?: 'forward' | 'backward';
   now?: Date;
   laneOrder?: Record<string, string[]>;
+  arrivalFilterEnabled?: boolean;
 };
 
 export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): GanttLayout {
   if (options.mode === 'forward') return buildForwardPlanningBoardGanttLayout(options);
   const { items, allocation, view, seibanOrder, resources, dailyHoursByResource, scale } = options;
   const today = dateToDay(options.today);
-  const sorted = sortGrindingPlanningBoardItems(items, seibanOrder, view, allocation);
+  const sorted = sortGrindingPlanningBoardItems(items.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled))), seibanOrder, view, allocation);
   const parts = new Map<string, GanttBar[]>();
   const bars = sorted.map((item): GanttBar => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
@@ -271,6 +274,25 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
         if (!scheduled.has(item.itemId)) {
           const predecessor = predecessors.get(item.itemId);
           if (predecessor && !scheduled.has(predecessor)) break;
+          const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
+          const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, !options.runsThroughBreaks?.has(resource));
+          const predecessorBar = predecessor ? scheduled.get(predecessor) : undefined;
+          if (predecessorBar && predecessorBar.end! > cursor + 1e-10) {
+            let filler: GrindingPlanningBoardItem | undefined;
+            for (let index = head + 1; index < queue.length; index++) {
+              const candidate = queue[index]!;
+              if (scheduled.has(candidate.itemId)) continue;
+              const previous = predecessors.get(candidate.itemId);
+              if (!previous || (scheduled.has(previous) && scheduled.get(previous)!.end! <= cursor + 1e-10)) {
+                filler = candidate;
+                break;
+              }
+            }
+            if (filler) {
+              place(filler, resource); progressed = true;
+              continue;
+            }
+          }
           place(item, resource); progressed = true;
         }
         head++;
@@ -302,7 +324,13 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
       place(candidate.item, candidate.resource);
     }
   }
-  const bars = options.laneOrder ? [...scheduled.values()] : sorted.map((item) => scheduled.get(item.itemId)!);
+  const allBars = options.laneOrder ? [...scheduled.values()] : sorted.map((item) => scheduled.get(item.itemId)!);
+  const bars = allBars.filter((bar) => isVisibleByArrival(bar.item, Boolean(options.arrivalFilterEnabled)));
+  // Preserve saved slots for hidden items; only arrived items get start-time ordering in the popover.
+  const forwardQueue = options.arrivalFilterEnabled ? sorted.map((item) => {
+    const bar = scheduled.get(item.itemId)!;
+    return isVisibleByArrival(item, true) ? bar : { ...bar, arrivalPending: true };
+  }) : undefined;
   const row = (key: string, label: string, detail: string, members: GanttBar[]): GanttRow => ({
     key, label, detail, bars: members, flagged: false,
     connectors: members.filter((bar) => bar.waitFrom != null).map((bar) => ({ start: bar.waitFrom!, end: bar.start! }))
@@ -314,12 +342,13 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
       rows: [row(resource, resource, '', bars.filter((bar) => bar.resource === resource))]
     }))
     : [...new Set([...seibanOrder, ...sorted.map((item) => item.fseiban)])].flatMap((seiban) => {
-      const chains = [...parts.entries()].filter(([, chain]) => chain[0]?.fseiban === seiban);
+      const chains = [...parts.entries()].map(([key, chain]) => [key, chain.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)))] as const)
+        .filter(([, chain]) => chain[0]?.fseiban === seiban);
       return chains.length ? [{ key: seiban, label: `${seiban} ${chains[0]![1][0]!.machineName ?? ''}`, resource: null,
         rows: chains.map(([key, chain]) => row(key, chain[0]!.fhinmei || chain[0]!.fhincd,
           `${chain[0]!.fhincd} · ${chain.length}工程`, chain.map((item) => scheduled.get(item.itemId)!))) }] : [];
     });
-  return { groups, start: today, today, now, mode: 'forward', overlapCount: 0,
+  return { groups, start: today, today, now, mode: 'forward', overlapCount: 0, forwardQueue,
     end: Math.min(today + 400, Math.max(today + scale + 2, ...bars.map((bar) => Math.ceil(bar.end!) + 1))),
     lateCount: bars.filter((bar) => bar.tone === 'late').length,
     completedOnly: options.items.length > 0 && sorted.length === 0 };

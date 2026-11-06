@@ -3,6 +3,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constan
 import { resolveSeibanMachineDisplayNamesBatched } from '../production-schedule/seiban-machine-display-names.service.js';
 
 import { filterActivePlacements } from './placement-completion.service.js';
+import { normalizeSlipToken } from './mobile-placement-slip-match.js';
 import { readScheduleDates } from './schedule-dates.js';
 
 import type { Prisma } from '@prisma/client';
@@ -34,8 +35,22 @@ export async function listHaizenOverview() {
     ...branches.map(row => ({ ...row, source: 'branch' as const })),
     ...zero2w.map(row => ({ ...row, source: 'zero2w' as const, branchNo: null, slipKind: undefined }))
   ])).sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || a.id.localeCompare(b.id) || a.source.localeCompare(b.source));
-  const rows = placements.slice(0, HAIZEN_OVERVIEW_LIMIT).map(({ scheduleSnapshot, updatedAt, id, source, branchNo, shelfCodeRaw, manufacturingOrderBarcodeRaw }) => ({
+  const visiblePlacements = placements.slice(0, HAIZEN_OVERVIEW_LIMIT);
+  const manufacturingOrders = [...new Set(visiblePlacements.filter(row => row.slipKind !== 'purchase_order').map(row => normalizeSlipToken(row.manufacturingOrderBarcodeRaw)))];
+  const purchaseOrders = [...new Set(visiblePlacements.filter(row => row.slipKind === 'purchase_order').map(row => normalizeSlipToken(row.manufacturingOrderBarcodeRaw)))];
+  // Transfer is the manufacturing order; actual is the scanned purchase order.
+  const records = visiblePlacements.length ? await prisma.$queryRaw<{ transferOrderBarcodeRaw: string; actualOrderBarcodeRaw: string }[]>`
+    SELECT "transferOrderBarcodeRaw", "actualOrderBarcodeRaw" FROM "mobile_slip_verify_records"
+    WHERE outcome = 'match' AND (
+      btrim(replace("transferOrderBarcodeRaw", chr(12288), ' '), E' \\t\\n\\r\\f\\013') = ANY(${manufacturingOrders}::text[])
+      OR btrim(replace("actualOrderBarcodeRaw", chr(12288), ' '), E' \\t\\n\\r\\f\\013') = ANY(${purchaseOrders}::text[])
+    )
+  ` : [];
+  const verifiedManufacturing = new Set(records.map(row => normalizeSlipToken(row.transferOrderBarcodeRaw)));
+  const verifiedPurchases = new Set(records.map(row => normalizeSlipToken(row.actualOrderBarcodeRaw)));
+  const rows = visiblePlacements.map(({ slipKind, scheduleSnapshot, updatedAt, id, source, branchNo, shelfCodeRaw, manufacturingOrderBarcodeRaw }) => ({
     id, source, branchNo, shelfCodeRaw, manufacturingOrderBarcodeRaw,
+    verified: (slipKind === 'purchase_order' ? verifiedPurchases : verifiedManufacturing).has(normalizeSlipToken(manufacturingOrderBarcodeRaw)),
     fseiban: snapshotText(scheduleSnapshot, 'FSEIBAN'),
     fhincd: snapshotText(scheduleSnapshot, 'FHINCD'),
     fhinmei: snapshotText(scheduleSnapshot, 'FHINMEI'),

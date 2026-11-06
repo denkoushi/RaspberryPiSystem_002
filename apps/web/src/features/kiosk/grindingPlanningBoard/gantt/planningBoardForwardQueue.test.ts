@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canReorderForwardBars, forwardItemDetails, forwardQueueWindow } from './planningBoardForwardQueue';
+import { canReorderForwardBars, forwardItemDetails, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
 import { dateToDay } from './planningBoardGanttLayout';
 
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -10,7 +10,7 @@ const item = (overrides: Partial<GrindingPlanningBoardItem> = {}): GrindingPlann
   itemId: 'a', kind: 'row', itemRevision: 'r1', version: 1, sourceRowId: 'a',
   fseiban: '26-1001', fhincd: 'P1', fhinmei: '部品', machineName: '機種', productNo: '1', processOrder: '10',
   originalResourceCd: '305', effectiveResourceCd: null, originalDueDate: '2026-10-16', effectiveDueDate: null,
-  originalRank: null, alternateRank: null, plannedQuantity: 1, requiredMinutes: 480, requiredMinutesKnown: true,
+  originalRank: null, alternateRank: null, plannedQuantity: 1, requiredMinutes: 480, lslhSurface: false, requiredMinutesKnown: true,
   isCompleted: false, progress: { completed: 0, total: 1, quantityKnown: true }, ...overrides
 });
 const today = dateToDay('2026-10-14');
@@ -46,6 +46,25 @@ describe('forward queue helpers', () => {
     expect(forwardItemDetails(item({ fseiban: '', fhincd: '', plannedQuantity: 0, machineName: null }))).toBe('0個');
     expect(forwardItemDetails(item({ machineName: 'ｐｓｇ６３　ａ' }))).toBe('26-1001 · P1 · 1個 · PSG63 A');
   });
+  it('inserts unarrived jobs at saved slots while keeping arrived jobs in start order', () => {
+    const first = bar('first', today);
+    const later = bar('later', today + 1);
+    const hidden = bar('hidden', today, { arrivalPending: true, item: item({ itemId: 'hidden', arrived: false }) });
+    const board = { ...layout([first, later]), forwardQueue: [later, hidden, first] };
+    expect(forwardQueueWindow(board, later).map(({ bar }) => bar.item.itemId)).toEqual(['first', 'hidden', 'later']);
+    expect(canReorderForwardBars(first, hidden)).toBe(false);
+    expect(canReorderForwardBars(hidden, first)).toBe(false);
+  });
+
+  it('formats the start with weekday and uses the first segment of a bar split by breaks', () => {
+    const friday = dateToDay('2026-11-06');
+    expect(forwardStartLabel(bar('a', friday + (8 * 60 + 30) / 1440))).toBe('11/06(金) 08:30');
+    expect(forwardStartLabel(bar('b', friday + 0.9, { segments: [{ start: friday + 1 + 13 / 24, end: friday + 1.6 }, { start: friday + 1.7, end: friday + 1.8 }] })))
+      .toBe('11/07(土) 13:00');
+    expect(forwardStartLabel(bar('c', friday + (9 * 60 + 15) / 1440 - 1e-9))).toBe('11/06(金) 09:15');
+    expect(forwardStartLabel(bar('d', null as unknown as number))).toBeNull();
+  });
+
   it('allows only different unfinished jobs of the same resource and special-due band', () => {
     const source = bar('source');
     expect(canReorderForwardBars(source, bar('target'))).toBe(true);

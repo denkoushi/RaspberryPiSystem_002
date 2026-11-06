@@ -1,3 +1,4 @@
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import type { StartDateLevelingQueryRow } from './start-date-leveling.types.js';
 
 /**
@@ -30,11 +31,12 @@ const inflight = new Map<string, Inflight>();
 export function buildLoadBalancingWorkspaceSourceKey(params: {
   siteKey: string;
   deviceScopeKey: string;
+  dueSource: BoardDueSource;
   fromMonth: string;
   toMonth: string;
   today: string;
 }): string {
-  return JSON.stringify([params.siteKey, params.deviceScopeKey, params.fromMonth, params.toMonth, params.today]);
+  return JSON.stringify([params.siteKey, params.deviceScopeKey, params.fromMonth, params.toMonth, params.today, params.dueSource]);
 }
 
 /** 同じ key・同じ世代なら保存済みを返し、同時の読み込みは 1 回にまとめる */

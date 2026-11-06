@@ -12,7 +12,7 @@ const item = (id: string, rank: number, due: string | null, extra: Partial<Grind
   itemId: id, kind: 'row', itemRevision: id, version: 0, sourceRowId: id,
   fseiban: 'S', fhincd: id, fhinmei: id, machineName: null, productNo: '1', processOrder: '10',
   originalResourceCd: '305', effectiveResourceCd: null, originalDueDate: due, effectiveDueDate: null,
-  originalRank: null, alternateRank: rank, plannedQuantity: 1, requiredMinutes: 480, requiredMinutesKnown: true,
+  originalRank: null, alternateRank: rank, plannedQuantity: 1, requiredMinutes: 480, lslhSurface: false, requiredMinutesKnown: true,
   isCompleted: false, progress: { completed: 0, total: 1, quantityKnown: true }, ...extra
 });
 const options = (items: GrindingPlanningBoardItem[]): GanttLayoutOptions => ({ items, allocation: 'alternate', view: 'resource',
@@ -74,6 +74,22 @@ describe('planningBoardAutoOrder', () => {
     const next = all.find((bar) => bar.item.itemId === 'next')!;
     expect(next.start!).toBeGreaterThanOrEqual(first.end!);
     expect(planningBoardOrderMetrics(layout).waitMinutes).toBe(1380);
+  });
+  it('counts only arrived work while scheduling all work with the same forward layout', () => {
+    const input = { ...options([
+      item('pre', 1, '2026-10-20', { originalResourceCd: '584', fhincd: 'part', requiredMinutes: 120 }),
+      item('hidden', 1, '2026-10-13', { arrived: false, fhincd: 'part', processOrder: '20', requiredMinutes: 30 }),
+      item('ready', 2, '2026-10-20', { requiredMinutes: 30 })
+    ]), arrivalFilterEnabled: true };
+    const layout = buildForwardPlanningBoardGanttLayout(input);
+    expect(bars(layout)).toHaveLength(2);
+    expect(bars(layout).find((bar) => bar.item.itemId === 'hidden')).toBeUndefined();
+    expect(layout.forwardQueue?.find((bar) => bar.item.itemId === 'hidden')).toMatchObject({ arrivalPending: true });
+    expect(planningBoardOrderMetrics(layout)).toEqual({ lateCount: 0, waitMinutes: 0 });
+    expect(layout.lateCount).toBe(0);
+    const unfiltered = buildForwardPlanningBoardGanttLayout({ ...input, arrivalFilterEnabled: false });
+    expect(planningBoardOrderMetrics(unfiltered)).toEqual({ lateCount: 1, waitMinutes: 100 });
+    expect(bars(layout).map((bar) => bar.segments)).toEqual(bars(unfiltered).filter((bar) => bar.item.arrived !== false).map((bar) => bar.segments));
   });
   it('preserves current order for ties and reserves pins even when they deadlock precedence', () => {
     const input = options([item('successor', 1, null, { fhincd: 'part', processOrder: '20' }),

@@ -1,13 +1,15 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
 import { useKioskDScheduleMinutes, type DScheduleMinutesExtras } from '../../../api/hooks/production-schedule/d-schedule-minutes';
+import { usePlanningBoardQueryData } from '../grindingPlanningBoard/usePlanningBoardQueryData';
 
 export type BoardDueSource = 'excel' | 'scaw';
 export const DScheduleMinutesContext = createContext<{ dueSource: BoardDueSource; rows: ReadonlyMap<string, DScheduleMinutesExtras> }>({ dueSource: 'excel', rows: new Map() });
 
 export function DScheduleMinutesProvider({ dueSource, children }: { dueSource: BoardDueSource; children: ReactNode }) {
   const query = useKioskDScheduleMinutes();
-  const value = useMemo(() => ({ dueSource, rows: new Map(query.data?.rows.map((row) => [row.fseiban, row])) }), [dueSource, query.data]);
+  const rows = usePlanningBoardQueryData(query.data?.rows);
+  const value = useMemo(() => ({ dueSource, rows: new Map(rows?.map((row) => [row.fseiban, row])) }), [dueSource, rows]);
   return <DScheduleMinutesContext.Provider value={value}>{children}</DScheduleMinutesContext.Provider>;
 }
 

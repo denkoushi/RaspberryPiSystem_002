@@ -119,7 +119,9 @@ export interface GrindingPlanningBoardItem {
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
   isCompleted: boolean;
+  lslhSurface: boolean;
   arrived?: boolean;
+  manualArrivalDate?: string | null;
   completionSource?: 'manual' | 'import' | null;
   progress: { completed: number; total: number; quantityKnown: boolean };
   /** 材料の購買行が無い部品は null / 省略 */
@@ -153,6 +155,7 @@ export interface GrindingPlanningBoardResponse {
   sourceRevision: string;
   boardVersion: number;
   registeredFseibans: string[];
+  excelNonMachineFseibans?: string[];
   seibanOrder: string[];
   resources: string[];
   resourceCategories?: Record<string, 'grinding' | 'cutting'>;
@@ -270,4 +273,15 @@ export interface GrindingPlanningBoardResourceCapacityRequest {
   resourceCd: string;
   dailyHours?: GrindingPlanningBoardResourceDailyHours;
   runsThroughBreaks?: boolean;
+}
+
+export interface GrindingPlanningBoardArrivalRequest {
+  itemId: string;
+  itemRevision: string;
+  overrideVersion?: number;
+}
+
+export interface GrindingPlanningBoardArrivalResponse {
+  itemId: string;
+  manualArrivalDate: string | null;
 }

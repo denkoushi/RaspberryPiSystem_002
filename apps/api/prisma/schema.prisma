@@ -1535,6 +1535,7 @@ model CsvDashboard {
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
+  grindingPlanningBoardArrivals ProductionScheduleGrindingPlanningBoardArrival[]
 
   @@index([enabled])
   @@index([gmailScheduleId])
@@ -2009,6 +2010,20 @@ model ProductionScheduleGrindingPlanningBoardResourceCapacity {
   @@unique([csvDashboardId, siteKey, resourceCd], map: "PSGrindingPlanningCapacity_dashboard_site_resource_key")
 }
 
+/// 製番ボードの当日着。arrivalDateはJST暦日で、当日の応答にだけ適用する。
+model ProductionScheduleGrindingPlanningBoardArrival {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  itemKey        String   @db.VarChar(1000)
+  arrivalDate    DateTime @db.Date
+  createdAt      DateTime @default(now())
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningArrival_dashboard_fkey")
+
+  @@unique([csvDashboardId, siteKey, arrivalDate, itemKey], map: "PSGrindingPlanningArrival_dashboard_site_date_item_key")
+}
+
 /// 研削順位ボードの行/分割片 override。元CSV・元順位は保存せず、常に正本から再解決する。
 model ProductionScheduleGrindingPlanningBoardOverride {
   id                  String    @id @default(uuid())
@@ -2139,6 +2154,8 @@ model ProductionScheduleDScheduleMinutes {
   fseiban                  String    @db.VarChar(20)
   partsCompleteDate        DateTime? @db.Date
   excelChangedAt           DateTime
+  assignees                String[]  @default([])
+  assigneesKnown           Boolean   @default(false)
   outsourceMarks           String[]
   surfaceSendOutDates      Json
   memo                     String?

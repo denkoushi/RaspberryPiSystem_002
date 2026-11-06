@@ -144,8 +144,8 @@
   ansible.builtin.set_fact:
     release_pi5_retention_preserve_previous: >-
       {{
-        release_pi5_retention_existing_state.current.api.releaseSha == release_sha
-        and release_pi5_retention_existing_state.current.web.releaseSha == release_sha
+        release_pi5_retention_existing_state.current.api.releaseSha == release_pi5_image_sha
+        and release_pi5_retention_existing_state.current.web.releaseSha == release_pi5_image_sha
       }}
   when: release_pi5_retention_state_stat.stat.exists | default(false) | bool
 
@@ -154,10 +154,10 @@
     that:
       - release_pi5_retention_existing_state.current.api.reference == release_pi5_active_api_identity.split('|')[0]
       - release_pi5_retention_existing_state.current.api.imageId == release_pi5_active_api_identity.split('|')[1]
-      - release_pi5_retention_existing_state.current.api.releaseSha == release_sha
+      - release_pi5_retention_existing_state.current.api.releaseSha == release_pi5_image_sha
       - release_pi5_retention_existing_state.current.web.reference == release_pi5_active_web_identity.split('|')[0]
       - release_pi5_retention_existing_state.current.web.imageId == release_pi5_active_web_identity.split('|')[1]
-      - release_pi5_retention_existing_state.current.web.releaseSha == release_sha
+      - release_pi5_retention_existing_state.current.web.releaseSha == release_pi5_image_sha
     fail_msg: Existing same-release Pi5 retention state does not match the canonical pre-switch API/Web identities.
   when: release_pi5_retention_preserve_previous | bool
 
@@ -234,11 +234,11 @@
         api:
           reference: "{{ release_pi5_retention_current_identity.results[0].stdout.split('|')[0] }}"
           imageId: "{{ release_pi5_retention_current_identity.results[0].stdout.split('|')[1] }}"
-          releaseSha: "{{ release_sha }}"
+          releaseSha: "{{ release_pi5_image_sha }}"
         web:
           reference: "{{ release_pi5_retention_current_identity.results[1].stdout.split('|')[0] }}"
           imageId: "{{ release_pi5_retention_current_identity.results[1].stdout.split('|')[1] }}"
-          releaseSha: "{{ release_sha }}"
+          releaseSha: "{{ release_pi5_image_sha }}"
       previous:
         api:
           reference: "{{ release_pi5_retention_previous_api_reference }}"

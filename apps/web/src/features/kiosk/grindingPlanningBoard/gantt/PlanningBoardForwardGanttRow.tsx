@@ -1,21 +1,23 @@
 import clsx from 'clsx';
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { PlacementLocationBadge } from '../../../../components/kiosk/PlacementLocationBadge';
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
 import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
-import { pageZoom } from '../pageZoom';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
-import { canReorderForwardBars, forwardItemDetails } from './planningBoardForwardQueue';
+import { findForwardDrop } from './planningBoardForwardDrop';
+import { forwardItemDetails } from './planningBoardForwardQueue';
 import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
+import { PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars } from './planningBoardLateStars';
 import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
 
 import type { PlanningBoardPlacementByPart, PlanningBoardProcessChipsByPart } from '../planningBoardProcessChips';
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
+import type { GanttWindow } from './usePlanningBoardGanttWindow';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, ReactNode } from 'react';
 
@@ -26,6 +28,8 @@ export type ForwardDragPreview = { bar: GanttBar; x: number; y: number; allowed:
 type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
   row: GanttRow;
+  window?: GanttWindow;
+  registerRow?: (key: string, element: HTMLDivElement | null) => void;
   chipsByPart: PlanningBoardProcessChipsByPart;
   placementByPart: PlanningBoardPlacementByPart;
   seibanColors?: ReadonlyMap<string, string>;
@@ -51,8 +55,8 @@ type Props = {
   onResourceMove?: ForwardMove;
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
   lanes: { readonly current: readonly { resource: string; bars: GanttBar[] }[] };
-  resource?: string;
-  preview: ForwardDragPreview | null;
+  draggedItemId: string | null;
+  insertionLeft: number | null;
   onDragPreview: (preview: ForwardDragPreview | null) => void;
   pinMode?: boolean;
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
@@ -61,9 +65,12 @@ type Props = {
   onFocusChain: (bar: GanttBar) => void;
 };
 
-export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ row, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, label, start, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, label, start, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
-  lanes, resource, preview, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
+  lanes, draggedItemId, insertionLeft, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
+  const rowRef = useCallback((element: HTMLDivElement | null) => registerRow?.(row.key, element), [registerRow, row.key]);
+  const [heldItemId, setHeldItemId] = useState<string | null>(null);
+  const lateStars = usePlanningBoardLateStars(row.bars, Math.floor(now));
   const track = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -95,34 +102,19 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     cancelLongPress();
     const pending = drag.current;
     drag.current = null;
+    setHeldItemId(null);
     onDragPreview(null);
     if (pending?.element.hasPointerCapture?.(pending.pointerId)) pending.element.releasePointerCapture(pending.pointerId);
   };
   useEffect(() => {
-    const cancel = () => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; onDragPreview(null); } };
-    window.addEventListener('blur', cancel);
-    return () => { cancel(); window.removeEventListener('blur', cancel); };
+    const cancel = () => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } };
+    globalThis.window.addEventListener('blur', cancel);
+    return () => { cancel(); globalThis.window.removeEventListener('blur', cancel); };
   }, [onDragPreview]);
-  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, pinMode, onDragPreview]);
+  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, pinMode, onDragPreview]);
   const findDrop = (clientX: number, clientY: number, pending: Drag): Drop | null => {
-    const source = pending.bar;
-    const board = track.current?.closest('[data-testid="planning-board-gantt"]');
-    const lane = (document.elementsFromPoint?.(clientX, clientY) ?? [])
-      .map((element) => element.closest<HTMLElement>('[data-gantt-lane]')).find((element) => element && board?.contains(element));
-    const targetResource = lane?.dataset.resourceCode;
-    if (!targetResource || !pending.allowed?.has(targetResource)) return null;
-    const targetLane = lanes.current.find((candidate) => candidate.resource === targetResource);
-    const targetTrack = lane.querySelector<HTMLElement>('[data-gantt-track]');
-    if (!targetLane || !targetTrack) return null;
-    const x = (clientX - targetTrack.getBoundingClientRect().left) / pageZoom();
-    const centre = (bar: GanttBar) => (bar.start! - start) * dayWidth +
-      (bar.unknown ? 70 : Math.max(2, ((bar.segments?.[0]?.end ?? bar.end!) - bar.start!) * dayWidth - 2)) / 2;
-    const others = targetLane.bars.filter((bar) => bar.item.itemId !== source.item.itemId).sort((a, b) => centre(a) - centre(b));
-    if (!others.length) return targetResource === source.resource ? null : { resource: targetResource, bar: null, placement: 'after', left: 0 };
-    const target = others.find((bar) => x < centre(bar));
-    const bar = target ?? others[others.length - 1]!;
-    if (targetResource === source.resource && !canReorderForwardBars(source, bar)) return null;
-    return { resource: targetResource, bar, placement: target ? 'before' : 'after', left: ((target ? bar.start! : bar.end!) - start) * dayWidth };
+    return findForwardDrop(clientX, clientY, pending.bar, pending.allowed,
+      track.current?.closest('[data-testid="planning-board-gantt"]'), lanes.current, start, dayWidth);
   };
   const move = (event: PointerEvent<HTMLButtonElement>) => {
     const pending = drag.current;
@@ -160,16 +152,25 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
       return { bar, chips, placement, badgeWidth: planningBoardBadgeWidth(placement), left: (bar.start - start) * dayWidth };
     }), CHIP_STRIP_FIT);
   }, [row.bars, chipsByPart, placementByPart, start, dayWidth]);
-  return <div className="flex border-b border-slate-600" style={{ minHeight: 76 + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
+  const visibleBars = useMemo(() => row.bars.filter((bar) => {
+    // A selected bar's due mark sits on its due day, which can be on screen while the bar itself is not.
+    if (!window || bar.item.itemId === heldItemId || bar.item.itemId === draggedItemId || selectedItemIds.has(bar.item.itemId)) return true;
+    const segments = bar.unknown ? [{ start: bar.start!, end: bar.start! + 70 / dayWidth }] : bar.segments ?? [];
+    return segments.some((segment) => (segment.start - start) * dayWidth <= window.right
+      && (segment.end - start) * dayWidth >= window.left);
+  }), [row.bars, window, heldItemId, draggedItemId, selectedItemIds, start, dayWidth]);
+  const visibleIds = new Set(visibleBars.map((bar) => bar.item.itemId));
+  return <div ref={rowRef} className="flex border-b border-slate-600" style={{ minHeight: 76 + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
     <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-evenly border-r border-slate-700 bg-slate-900 px-2 py-0.5 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
+      <PlanningBoardLateStarDates dates={lateStars.dates} />
     </div>
     <div ref={track} data-gantt-track className="relative shrink-0 overflow-hidden" style={{ width }}>
-      <PlanningBoardGanttSendOutStars bars={row.bars} start={start} dayWidth={dayWidth} />
+      <PlanningBoardGanttSendOutStars bars={row.bars} window={window} start={start} dayWidth={dayWidth} />
       {calendarBands}
       <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />
       {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
-      {chipLayout.strips.map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
+      {chipLayout.strips.filter(({ bar }) => visibleIds.has(bar.item.itemId)).map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
         className="pointer-events-none absolute flex flex-nowrap gap-0.5" style={{ left, top: 76 + line * CHIP_LINE_HEIGHT }}>
         {placement && <span className="inline-flex shrink-0" style={{ width: badgeWidth }}>
           <PlacementLocationBadge placement={placement} />
@@ -182,7 +183,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
           <span className="pointer-events-auto rounded border border-slate-500 px-1 py-0.5 text-[10px] leading-none text-slate-200">{moreChipLabel(hidden.length)}</span>
         </IconActionTooltip>}
       </div>)}
-      {row.bars.map((bar) => {
+      {visibleBars.map((bar) => {
         const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
         const selected = selectedItemIds.has(bar.item.itemId);
         const inChain = focusedPartKey === bar.partKey;
@@ -201,18 +202,19 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
                 inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
-                focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain && 'opacity-30',
+                focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ boxShadow: bar.item.orderPinned ? `${focusedSeiban === bar.item.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
-                opacity: preview?.bar.item.itemId === bar.item.itemId ? 0.3 : undefined,
-                outline: preview?.bar.item.itemId === bar.item.itemId ? '3px solid rgb(251 191 36)' : undefined,
-                outlineOffset: preview?.bar.item.itemId === bar.item.itemId ? -3 : undefined,
-                zIndex: preview?.bar.item.itemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
+                opacity: draggedItemId === bar.item.itemId ? 0.3 : undefined,
+                outline: draggedItemId === bar.item.itemId ? '3px solid rgb(251 191 36)' : undefined,
+                outlineOffset: draggedItemId === bar.item.itemId ? -3 : undefined,
+                zIndex: draggedItemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
               onPointerEnter={(event) => { if (event.pointerType === 'mouse' && !drag.current) onShowQueue(bar, event.currentTarget); }}
               onPointerLeave={(event) => { if (event.pointerType === 'mouse') onLeaveQueue(); }}
               onPointerDown={(event) => {
                 onCloseQueue();
                 if (disabled || bar.item.isCompleted || event.button !== 0 || event.isPrimary === false || drag.current) return;
+                setHeldItemId(bar.item.itemId);
                 suppressClick.current = false;
                 drag.current = { bar, x: event.clientX, y: event.clientY, tapCancelled: false, longPressed: false, selected, pointerId: event.pointerId, element: event.currentTarget, moved: false };
                 if (!pinMode) longPressTimer.current = setTimeout(() => {
@@ -250,11 +252,12 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 </span> : null}
             </button>;
           })}
+          {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={56} />}
           {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-0 -translate-x-1/2 text-xs leading-none text-rose-400"
             style={{ left: Math.max(0, (dateToDay(bar.due) + 1 - start) * dayWidth) }}>▲</span>}
         </div>;
       })}
-      {preview?.drop && preview.drop.resource === resource && <span data-testid="planning-gantt-insertion" className="pointer-events-none absolute inset-y-2 z-10 w-0.5 bg-emerald-300" style={{ left: preview.drop.left }} />}
+      {insertionLeft !== null && <span data-testid="planning-gantt-insertion" className="pointer-events-none absolute inset-y-2 z-10 w-0.5 bg-emerald-300" style={{ left: insertionLeft }} />}
     </div>
   </div>;
 });

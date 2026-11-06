@@ -27,6 +27,9 @@ type Props = {
   toggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   toggleCompletion: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => Promise<void>;
   completionPendingRowIds: ReadonlySet<string>;
+  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
+  arrivalPending?: boolean;
+  arrivalError?: boolean;
   moveDueByDrag: (item: GrindingPlanningBoardItem, date: string) => void;
   reorderResourceByDrag: (item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
   moveResourceInGantt: (item: GrindingPlanningBoardItem, targetResource: string, targetItem: GrindingPlanningBoardItem | null, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
@@ -62,7 +65,7 @@ type Props = {
 export function PlanningBoardPageView({
   data, ganttEnabled, focusedSeiban, setFocusedSeiban, colorBySeiban, registeredFseibans, gantt, ganttLayout,
   view, orderPreview, category, resourcesQuery, pinMode, togglePin, selectedItemIds, toggleItem,
-  toggleCompletion, completionPendingRowIds, moveDueByDrag, reorderResourceByDrag, moveResourceInGantt,
+  toggleCompletion, completionPendingRowIds, onArrivalChange, arrivalPending, arrivalError, moveDueByDrag, reorderResourceByDrag, moveResourceInGantt,
   canMoveResource, interactionLocked, writeQueue, allocation, writeBlocked, rankMutationReady,
   focusedFseiban, focusItems, machineNames, returnFromFocus, toggleFocusAll, openEditorForItem,
   changeRank, rankDisabled, bulkReady, activeFseibans, itemsBySeiban, paneActionsBySeiban,
@@ -77,6 +80,7 @@ export function PlanningBoardPageView({
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
           runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
+          onArrivalChange={onArrivalChange} arrivalPending={arrivalPending} arrivalError={arrivalError}
           pinMode={gantt.mode === 'forward' && view === 'resource' && pinMode} onTogglePin={togglePin}
           selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingRowIds={completionPendingRowIds} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
           onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
