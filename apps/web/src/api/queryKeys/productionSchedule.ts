@@ -69,8 +69,8 @@ export const productionScheduleQueryKeys = {
   grindingPlanningBoard: (params?: Parameters<typeof getKioskGrindingPlanningBoard>[0]) =>
     ['kiosk-grinding-planning-board', params] as const,
   grindingPlanningBoardLoadAll: ['kiosk-grinding-planning-board', 'load'] as const,
-  grindingPlanningBoardLoad: (category: Parameters<typeof getKioskGrindingPlanningBoardLoad>[0], includePieces?: boolean) =>
-    ['kiosk-grinding-planning-board', 'load', category, ...(includePieces == null ? [] : [includePieces])] as const,
+  grindingPlanningBoardLoad: (category: Parameters<typeof getKioskGrindingPlanningBoardLoad>[0]) =>
+    ['kiosk-grinding-planning-board', 'load', category] as const,
   grindingPlanningBoardSnapshot: (params?: Parameters<typeof getKioskGrindingPlanningBoardSnapshot>[0]) =>
     ['kiosk-grinding-planning-board', 'snapshot', params] as const,
   grindingPlanningBoardSeibanCandidates: (params?: Parameters<typeof getKioskGrindingPlanningBoardSeibanCandidates>[0]) =>

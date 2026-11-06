@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardItemTable } from '../PlanningBoardItemTable';
+import { PlanningBoardPiecesContext } from '../PlanningBoardPiecePopover';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
@@ -55,6 +56,66 @@ describe('PlanningBoardItemTable completion', () => {
     expect(screen.getByRole('table').querySelectorAll('col')).toHaveLength(5);
   });
 
+  it.each(['td', 'tr'])('blocks special-due clicks falling through locked controls to %s without replacing the row', (target) => {
+    const onSpecialDueClick = vi.fn();
+    const table = <PlanningBoardItemTable {...props} onCompleteToggle={vi.fn()} specialDueMode="today" onSpecialDueClick={onSpecialDueClick} />;
+    const page = render(<div data-planning-board-pieces-writing="false">{table}</div>);
+    const row = screen.getByTestId('planning-board-item-row');
+    const completionCell = within(row).getByRole('button', { name: '完了にする' }).closest('td')!;
+    fireEvent.click(target === 'td' ? completionCell : row);
+    expect(onSpecialDueClick).toHaveBeenCalledTimes(1); onSpecialDueClick.mockClear();
+    page.rerender(<div data-planning-board-pieces-writing="true">{table}</div>);
+    expect(screen.getByTestId('planning-board-item-row')).toBe(row);
+    fireEvent.click(target === 'td' ? completionCell : row);
+    expect(onSpecialDueClick).not.toHaveBeenCalled();
+    page.rerender(<div data-planning-board-pieces-writing="false">{table}</div>);
+    fireEvent.click(target === 'td' ? completionCell : row);
+    expect(onSpecialDueClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps completion and warning display scoped to each item ID', () => {
+    const siblings = [item('piece:a', { kind: 'piece', sourceRowId: 'parent', quantityWarning: 'INVALID_PLANNED_QUANTITY' }),
+      item('piece:b', { kind: 'piece', sourceRowId: 'parent' })];
+    const onCompleteToggle = vi.fn();
+    render(<PlanningBoardItemTable {...props} items={siblings} onCompleteToggle={onCompleteToggle} completionPendingItemIds={new Set(['piece:a'])} />);
+    const a = screen.getByTestId('planning-board-item-piece:a');
+    expect(a).toHaveClass('!outline-red-500');
+    expect(within(a).getByRole('button', { name: '完了にする' })).toBeDisabled();
+    fireEvent.click(within(screen.getByTestId('planning-board-item-piece:b')).getByRole('button', { name: '完了にする' }));
+    expect(onCompleteToggle).toHaveBeenCalledWith(siblings[1], 'complete');
+  });
+
+  it('limits pending quantity controls to their own parent instead of every row', () => {
+    const rows = [item('parent'), item('other'), item('piece:b', { kind: 'piece', parentItemId: 'parent', pieceId: 'b', parentPlannedQuantity: 5 })];
+    const actions = { enabled: true, createEnabled: true, isCutting: () => true, selectedItemsByParent: new Map(),
+      subscribeBlocking: () => () => {}, getBlocking: () => ({ blocked: false, message: '保存中…', isError: false }),
+      completionPendingParentIds: new Set(['parent']), onSplit: vi.fn(), onMerge: vi.fn() };
+    render(<PlanningBoardPiecesContext.Provider value={actions}><PlanningBoardItemTable {...props} items={rows}
+      completionPendingItemIds={new Set(['parent', 'piece:a'])} /></PlanningBoardPiecesContext.Provider>);
+    expect(within(screen.getByTestId('planning-board-item-parent')).getByRole('button', { name: /の数量/ })).toBeDisabled();
+    expect(within(screen.getByTestId('planning-board-item-piece:b')).getByRole('button', { name: /の数量/ })).toBeDisabled();
+    expect(within(screen.getByTestId('planning-board-item-other')).getByRole('button', { name: /の数量/ })).toBeEnabled();
+  });
+
+  it('lets a plain quantity click reach the special-due row action', () => {
+    const onSpecialDueClick = vi.fn();
+    render(<PlanningBoardItemTable {...props} showRank specialDueMode="today" onSpecialDueClick={onSpecialDueClick} />);
+    fireEvent.click(within(screen.getByTestId('planning-board-item-row')).getByText('2個 · 120分'));
+    expect(onSpecialDueClick).toHaveBeenCalledExactlyOnceWith(items[0]);
+    expect(screen.queryByRole('button', { name: /の数量/ })).not.toBeInTheDocument();
+  });
+
+  it('preserves special-due quantity clicks with the creation gate enabled and zero pieces', () => {
+    const onSpecialDueClick = vi.fn();
+    const actions = { enabled: true, createEnabled: true, isCutting: () => true,
+      subscribeBlocking: () => () => {}, getBlocking: () => ({ blocked: false, message: '保存中…', isError: false }),
+      selectedItemsByParent: new Map(), onSplit: vi.fn(), onMerge: vi.fn() };
+    render(<PlanningBoardPiecesContext.Provider value={actions}><PlanningBoardItemTable {...props}
+      specialDueMode="today" onSpecialDueClick={onSpecialDueClick} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.queryByRole('button', { name: /の数量/ })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId('planning-board-item-row')).getByText('2個'));
+    expect(onSpecialDueClick).toHaveBeenCalledExactlyOnceWith(items[0]);
+  });
   it('renders imported completion as a disabled sky badge', () => {
     const onCompleteToggle = vi.fn();
     render(<PlanningBoardItemTable {...props} items={[item('imported', { isCompleted: true, completionSource: 'import' })]}
@@ -76,7 +137,7 @@ describe('PlanningBoardItemTable completion', () => {
     const onCompleteToggle = vi.fn();
     rerender(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} />);
     expect(screen.getByRole('button', { name: '未完了に戻す' })).toBeEnabled();
-    rerender(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} completionPendingRowIds={new Set(['done'])} />);
+    rerender(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} completionPendingItemIds={new Set(['done'])} />);
     expect(screen.getByRole('button', { name: '未完了に戻す' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '完了にする' })).toBeEnabled();
     rerender(<PlanningBoardItemTable {...props} onCompleteToggle={onCompleteToggle} disabled />);

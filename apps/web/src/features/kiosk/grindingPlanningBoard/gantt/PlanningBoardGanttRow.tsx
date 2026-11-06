@@ -25,7 +25,7 @@ export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f
 
 type InteractionProps = {
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPendingItemIds?: ReadonlySet<string>;
   completionTargetId?: string | null;
   onCompletionTarget?: (itemId: string) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
@@ -48,7 +48,7 @@ type BarProps = InteractionProps & {
 type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: number; frame: number | null; element: HTMLButtonElement };
 
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
-  bar, onHeldItem, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingRowIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
+  bar, onHeldItem, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingItemIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -100,7 +100,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       aria-pressed={selected}
       disabled={disabled}
       title={`工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
-      className="absolute top-1.5 min-h-11 min-w-11 touch-pan-y select-none rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+      className={clsx("absolute top-1.5 min-h-11 min-w-11 touch-pan-y select-none rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300", bar.item.quantityWarning && "outline outline-2 -outline-offset-2 outline-red-500")}
       style={{ left: (bar.end! - start) * dayWidth - Math.max(44, width), width: Math.max(44, width), zIndex: selected ? 4 : 2 }}
       onPointerDown={(event) => {
         if (event.button !== 0 || event.isPrimary === false || pending.current || bar.item.isCompleted) return;
@@ -141,7 +141,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     {onCompleteToggle && completionTargetId === bar.item.itemId && <PlanningBoardCompletionButton
       item={bar.item} onToggle={onCompleteToggle} className="absolute top-0 z-10"
       style={{ left: (bar.end! - start) * dayWidth - 28 }}
-      disabled={disabled || completionPendingRowIds?.has(bar.item.sourceRowId)} />}
+      disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
     </>
   );
 });

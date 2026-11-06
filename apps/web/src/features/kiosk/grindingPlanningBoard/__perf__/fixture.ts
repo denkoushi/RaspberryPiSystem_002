@@ -26,3 +26,28 @@ export function productionFixture(count = 1500, resourceCount = 20) {
     now: new Date('2026-11-05T08:00:00+09:00'), scale: 1, mode: 'forward' };
   return { items, seibans, resources, options };
 }
+
+// Keep productionFixture unchanged for comparisons with previous measurements.
+export function productionPiecesFixture() {
+  const fixture = productionFixture();
+  let parents = 0;
+  const items = fixture.items.flatMap((item, index) => {
+    if (parents >= 100 || Number(item.originalResourceCd) < 310 || item.plannedQuantity !== 5) return [item];
+    const quantities = parents++ % 2 === 0 ? [2, 3] : [1, 2, 2];
+    return quantities.map((quantity, position) => {
+      const pieceId = perfPieceId(index * 3 + position);
+      return { ...item, itemId: `piece:${pieceId}`, kind: 'piece' as const, pieceId,
+        parentItemId: item.itemId, piecePosition: position + 1, pieceSetVersion: 1,
+        itemRevision: `piece-revision-${index}-${position}`, version: 1,
+        quantity, plannedQuantity: quantity, parentPlannedQuantity: item.plannedQuantity,
+        requiredMinutes: item.requiredMinutes! * quantity / item.plannedQuantity,
+        quantityWarning: null, manualIsCompleted: false, completionSource: null };
+    });
+  });
+  return { ...fixture, items, options: { ...fixture.options, items },
+    pieceCapabilities: { createEnabled: true, includePieces: true } };
+}
+
+export function perfPieceId(index: number) {
+  return `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+}

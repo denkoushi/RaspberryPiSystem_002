@@ -559,7 +559,7 @@ describe('grinding planning board service orchestration', () => {
           mocks.prisma.$queryRaw.mockClear();
           const response = await getGrindingPlanningBoard({
             siteKey: 'site-a', category, view: 'resource', completionFilter: 'incomplete',
-            includeLoad: false, snapshotStore
+            includeLoad: false, includePieces: true, snapshotStore
           });
           await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category });
           expect(response.items).toHaveLength(1);

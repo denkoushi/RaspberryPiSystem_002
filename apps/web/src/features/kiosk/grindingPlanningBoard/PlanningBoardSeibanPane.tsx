@@ -26,7 +26,7 @@ export type PlanningBoardSeibanPaneProps = {
   onToggleAll: (selected: boolean) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPendingItemIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
@@ -60,7 +60,7 @@ function arePanePropsEqual(
     previous.onToggleAll === next.onToggleAll &&
     previous.onToggleItem === next.onToggleItem &&
     previous.onCompleteToggle === next.onCompleteToggle &&
-    previous.completionPendingRowIds === next.completionPendingRowIds &&
+    previous.completionPendingItemIds === next.completionPendingItemIds &&
     previous.onResourceClick === next.onResourceClick &&
     previous.onRankChange === next.onRankChange &&
     previous.disabled === next.disabled &&
@@ -84,7 +84,7 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   onToggleAll,
   onToggleItem,
   onCompleteToggle,
-  completionPendingRowIds,
+  completionPendingItemIds,
   onResourceClick,
   onRankChange,
   disabled = false,
@@ -167,11 +167,12 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
           selectedItemIds={selectedItemIds}
           onToggleItem={onToggleItem}
           onCompleteToggle={onCompleteToggle}
-          completionPendingRowIds={completionPendingRowIds}
+          completionPendingItemIds={completionPendingItemIds}
           onResourceClick={onResourceClick}
           onRankChange={onRankChange}
           disabled={disabled}
           rankDisabled={rankDisabled}
+          bulkDisabled={bulkDisabled}
           showColumnHeaders={false}
           tableLabel={`${fseiban}の工程アイテム`}
         />

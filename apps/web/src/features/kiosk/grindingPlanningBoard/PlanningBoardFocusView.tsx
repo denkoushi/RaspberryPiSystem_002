@@ -20,7 +20,7 @@ export type PlanningBoardFocusViewProps = {
   onToggleAll: (selected: boolean) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPendingItemIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
@@ -38,7 +38,7 @@ export function PlanningBoardFocusView({
   onToggleAll,
   onToggleItem,
   onCompleteToggle,
-  completionPendingRowIds,
+  completionPendingItemIds,
   onResourceClick,
   onRankChange,
   disabled = false,
@@ -103,11 +103,12 @@ export function PlanningBoardFocusView({
             selectedItemIds={selectedItemIds}
             onToggleItem={onToggleItem}
             onCompleteToggle={onCompleteToggle}
-            completionPendingRowIds={completionPendingRowIds}
+            completionPendingItemIds={completionPendingItemIds}
             onResourceClick={onResourceClick}
             onRankChange={onRankChange}
             disabled={disabled}
             rankDisabled={rankDisabled}
+            bulkDisabled={bulkDisabled}
             showRank
             showColumnHeaders={false}
             tableLabel={`${fseiban}集中表示 ${index + 1}`}

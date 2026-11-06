@@ -71,9 +71,9 @@ export async function getKioskGrindingPlanningBoard(params: KioskGrindingPlannin
   return data;
 }
 
-export async function getKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory, includePieces?: boolean) {
+export async function getKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
   const { data } = await api.get<GrindingPlanningBoardLoadResponse>('/kiosk/production-schedule/grinding-planning-board/load', {
-    params: { category, ...(includePieces == null ? {} : { includePieces }) }
+    params: { category }
   });
   return data;
 }

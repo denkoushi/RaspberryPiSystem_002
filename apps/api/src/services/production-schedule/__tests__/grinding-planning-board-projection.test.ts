@@ -1,3 +1,5 @@
+import { encodeSessakuPieceKey, sessakuPieceKeyFromRow, type SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
+
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { describe, expect, it } from 'vitest';
 
@@ -53,6 +55,21 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 });
 
 describe('grinding-planning-board-projection', () => {
+  it('keeps proportional piece minutes unrounded and treats zero or null parents as unknown', () => {
+    const updatedAt = new Date('2026-11-06');
+    const source = sourceRow({ FSIGENSHOYORYO: '1' });
+    const key = sessakuPieceKeyFromRow(source.rowData);
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 1, nextPosition: 3,
+      plannedQuantity: 3, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: [1, 2].map((quantity, index) => ({ id: `piece-${index}`, pieceSetId: 'set', position: index + 1,
+        quantity, isCompleted: false, completedAt: null, createdAt: updatedAt, updatedAt })) };
+    const project = (minutes: string) => projectGrindingPlanningBoard(baseParams({ rows: [{ ...source, rowData: { ...source.rowData as object, FSIGENSHOYORYO: minutes } }],
+      includePieces: true, pieceSets: new Map([[encodeSessakuPieceKey(key), set]]) })).items;
+    const items = project('1');
+    expect(items.map((item) => item.requiredMinutes)).toEqual([1 / 3, 2 / 3]);
+    expect(items.reduce((sum, item) => sum + item.requiredMinutes!, 0)).toBe(1);
+    for (const minutes of ['0', '']) expect(project(minutes).map((item) => [item.requiredMinutes, item.requiredMinutesKnown])).toEqual([[null, false], [null, false]]);
+  });
   it.each([
     [false, false, null], [true, false, 'manual'], [false, true, 'import'], [true, true, 'import']
   ] as const)('projects manual=%s external=%s as %s for parent rows even with legacy records', (manual, external, completionSource) => {

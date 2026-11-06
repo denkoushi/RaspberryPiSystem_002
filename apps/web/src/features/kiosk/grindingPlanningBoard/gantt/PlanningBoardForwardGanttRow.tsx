@@ -5,6 +5,7 @@ import { PlacementLocationBadge } from '../../../../components/kiosk/PlacementLo
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
 import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
+import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
 import { findForwardDrop } from './planningBoardForwardDrop';
@@ -205,6 +206,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
                 focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
                 draggedItemId === bar.item.itemId && '[&>*]:opacity-30',
+                bar.item.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ boxShadow: bar.item.orderPinned ? `${focusedSeiban === bar.item.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : undefined,
@@ -251,7 +253,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
               {bar.unknown ? '所要不明' : segmentWidth >= 48
                 ? <span className="block break-all px-1"><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
-                  <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : `${bar.item.requiredMinutes}分`}</small>
+                  <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>
                 </span> : null}
             </button>;
           })}

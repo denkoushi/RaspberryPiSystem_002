@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { buildLeaderBoardPartResourceProcessKey } from '../../../leaderOrderBoard/buildLeaderBoardPartResourceProcessKey';
-import { productionFixture } from '../fixture';
+import { productionFixture, productionPiecesFixture } from '../fixture';
+import { pieceSnapshot } from '../pieceSnapshots';
 
 const fixture = productionFixture();
 const stores = Object.fromEntries(['board', 'chips', 'minutes', 'uptime', 'capacity', 'resources', 'load', 'candidates', 'detail'].map(key => [key, { data: undefined, listeners: new Set() }]));
@@ -22,9 +23,11 @@ stores.load.data = { load: [], unknownRequiredMinutesCount: 0 };
 stores.candidates.data = { today: '2026-11-05', candidates: [], completionFilter: 'incomplete' };
 stores.detail.data = undefined;
 
+let nextBoard;
 const refresh = keys => {
   for (const key of keys) {
-    stores[key].data = structuredClone(stores[key].data);
+    stores[key].data = structuredClone(key === 'board' && nextBoard ? nextBoard : stores[key].data);
+    if (key === 'board') nextBoard = undefined;
     stores[key].listeners.forEach(listener => listener());
   }
 };
@@ -43,7 +46,15 @@ const swapPaged = async (generation, delayMs = 300) => {
   }
   return sizes.length;
 };
-window.perfHarness = { refresh, swapPaged, mutations: [], listenerCounts: () => Object.fromEntries(Object.entries(stores).map(([key, store]) => [key, store.listeners.size])) };
+const enablePieces = () => {
+  const fixture = productionPiecesFixture();
+  stores.board.data = { ...stores.board.data, snapshotId: 'pieces-initial', boardVersion: 1,
+    items: fixture.items.map((item, index) => ({ ...item, arrived: index % 4 !== 0, orderPinned: false })),
+    pieceCapabilities: fixture.pieceCapabilities };
+  stores.board.listeners.forEach(listener => listener());
+  return stores.board.data.items.find(item => item.kind === 'piece' && item.plannedQuantity === 3).itemId;
+};
+window.perfHarness = { refresh, swapPaged, enablePieces, board: () => stores.board.data, mutations: [], listenerCounts: () => Object.fromEntries(Object.entries(stores).map(([key, store]) => [key, store.listeners.size])) };
 function useStore(key) {
   const store = stores[key];
   const data = useSyncExternalStore(listener => { store.listeners.add(listener); return () => store.listeners.delete(listener); }, () => store.data);
@@ -75,3 +86,14 @@ export const useUpdateKioskGrindingPlanningBoardRank = mutation;
 export const useUpdateKioskGrindingPlanningBoardResourceOrder = mutation;
 export const useUpdateKioskGrindingPlanningBoardResourceOrderBulk = mutation;
 export const useUpdateKioskGrindingPlanningBoardSeibanOrder = mutation;
+
+const pieceMutation = operation => ({ mutateAsync: async payload => {
+  const { snapshot, response } = pieceSnapshot(stores.board.data, operation, payload);
+  window.perfHarness.mutations.push({ operation, payload });
+  nextBoard = snapshot;
+  return response;
+}, isPending: false, isError: false });
+const pieceMutations = { split: pieceMutation('split'), merge: pieceMutation('merge'), completion: pieceMutation('completion') };
+export const useKioskSessakuPieceMutations = () => pieceMutations;
+
+export const useUpdateKioskGrindingPlanningBoardArrival = mutation;

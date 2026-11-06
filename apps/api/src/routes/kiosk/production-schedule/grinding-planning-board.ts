@@ -222,8 +222,9 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
   app.get('/kiosk/production-schedule/grinding-planning-board/load', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
+    // Older clients may send includePieces; load always includes pieces, so accept and ignore it.
     const query = z.object({ category: grindingPlanningBoardCategorySchema, includePieces: z.enum(['true', 'false']).optional().transform((value) => value === 'true') }).parse(request.query);
-    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category, ...(query.includePieces ? { includePieces: true } : {}) });
+    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category });
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-detail', { config: { rateLimit: false } }, async (request) => {
