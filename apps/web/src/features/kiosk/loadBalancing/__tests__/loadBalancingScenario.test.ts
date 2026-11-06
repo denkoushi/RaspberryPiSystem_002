@@ -8,6 +8,7 @@ import {
   nextBucket,
   readLoad,
   sumOverMinutes,
+  summarizeScenarioActions,
   type ScenarioAction
 } from '../loadBalancingScenario';
 
@@ -160,5 +161,20 @@ describe('autoLevelCell', () => {
   it('does nothing for a resource without capacity', () => {
     const rows = [row('a', '091', [{ bucket: '2026-10', minutes: 700 }])];
     expect(autoLevelCell({ rows, actions: [], months, resources, rules, resourceCd: '091', bucket: '2026-10' })).toEqual([]);
+  });
+});
+
+describe('summarizeScenarioActions', () => {
+  it('counts actions and preserves whole-row versus deferred-bucket minutes', () => {
+    const rows = [{ rowId: 'r1', totalMinutes: 600, allocations: [{ bucket: '2026-11', minutes: 200 }, { bucket: '2026-12', minutes: 400 }] }] as Parameters<typeof summarizeScenarioActions>[0];
+    expect(summarizeScenarioActions(rows, [])).toEqual([
+      { type: 'outsource', count: 0, minutes: 0 }, { type: 'transfer', count: 0, minutes: 0 }, { type: 'defer', count: 0, minutes: 0 }
+    ]);
+    expect(summarizeScenarioActions(rows, [
+      { type: 'outsource', rowId: 'r1' }, { type: 'transfer', rowId: 'r1', toResourceCd: '002', efficiencyRatio: 0.5 },
+      { type: 'defer', rowId: 'r1', fromBucket: '2026-11' }, { type: 'defer', rowId: 'missing', fromBucket: '2026-11' }
+    ])).toEqual([
+      { type: 'outsource', count: 1, minutes: 600 }, { type: 'transfer', count: 1, minutes: 600 }, { type: 'defer', count: 2, minutes: 200 }
+    ]);
   });
 });

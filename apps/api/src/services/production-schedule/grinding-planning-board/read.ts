@@ -18,7 +18,7 @@ import { readGrindingPlanningBoardLoadSummary } from '../grinding-planning-board
 import { resolveSeibanMachineDisplayNamesBatched } from '../seiban-machine-display-names.service.js';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, planningBoardArrivalDate, asRowData, isCategoryResource, progressMapToRecord, type DbClient, type PlanningSnapshotPayload, type PlanningSource, type PlanningState, type ReusablePlanningPayload, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
 import { readOverrides, readPlanningResourceCandidates, readPlanningSource, readRanks } from './source.js';
-import { MAX_REUSABLE_PLANNING_PAYLOADS, REUSABLE_PLANNING_PAYLOAD_TTL_MS, boardRevision, fallbackPlanningSnapshotStore, getOrCreateState, isPlanningSnapshotPayload, isPlanningStateAlignedWithGeneration, readPlanningSnapshotGenerationDetails, readPlanningSnapshotGenerationToken, reusablePlanningPayloads, stateOrder } from './state.js';
+import { MAX_REUSABLE_PLANNING_PAYLOADS, REUSABLE_PLANNING_PAYLOAD_TTL_MS, boardRevision, fallbackPlanningSnapshotStore, getOrCreateState, isPlanningSnapshotPayload, isPlanningStateAlignedWithGeneration, readPlanningSnapshotGenerationDetails, readPlanningSnapshotGenerationToken, reusablePlanningPayloads, stateUncheckedFseibans, stateOrder } from './state.js';
 
 
 async function projectCurrentBoard(params: { includePieces?: boolean; dueSource?: BoardDueSource; client: DbClient; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; state: PlanningState; selectedFseibans?: ReadonlySet<string>; machineNames?: ReadonlyMap<string, string | null>; source?: PlanningSource }): Promise<{ allItems: GrindingPlanningBoardItem[]; items: GrindingPlanningBoardItem[]; load: GrindingPlanningBoardLoad[]; unknownRequiredMinutesCount: number; progress: ReturnType<typeof projectGrindingPlanningBoard>['progress']; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; sourceRows: WinnerRow[]; details: Map<string, RowDetail> }> {
@@ -379,6 +379,7 @@ export async function getGrindingPlanningBoard(params: { includePieces?: boolean
     boardVersion: stateForRead.version,
     registeredFseibans: order,
     excelNonMachineFseibans,
+    uncheckedFseibans: stateUncheckedFseibans(stateForRead, excelNonMachineFseibans),
     seibanOrder: selected,
     resources: payload.resources,
     resourceCategories: payload.resourceCategories,

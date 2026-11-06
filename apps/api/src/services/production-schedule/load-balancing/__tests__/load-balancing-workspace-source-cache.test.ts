@@ -41,12 +41,36 @@ describe('readLoadBalancingWorkspaceSourceWithCache', () => {
 
     await readLoadBalancingWorkspaceSourceWithCache({ key, generationToken: 'g1', load, now });
     const changed = await readLoadBalancingWorkspaceSourceWithCache({ key, generationToken: 'g2', load, now });
-    clock = 5 * 60 * 1000 + 1;
+    clock = 30 * 60 * 1000;
     const expired = await readLoadBalancingWorkspaceSourceWithCache({ key, generationToken: 'g2', load, now });
 
     expect(changed.source.machineNames.S1).toBe('b');
     expect(expired.source.machineNames.S1).toBe('c');
     expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps an unchanged generation past five minutes, with a fixed thirty-minute bound', async () => {
+    let clock = 0;
+    const load = vi.fn().mockResolvedValue(source('same'));
+    const read = () => readLoadBalancingWorkspaceSourceWithCache({ key, generationToken: 'g1', load, now: () => clock });
+    await read();
+    clock = 5 * 60 * 1000 + 1;
+    expect((await read()).cacheHit).toBe(true);
+    clock = 30 * 60 * 1000 - 1;
+    expect((await read()).cacheHit).toBe(true);
+    clock += 1;
+    expect((await read()).cacheHit).toBe(false);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('evicts the least recently used source after sixteen entries', async () => {
+    const load = vi.fn().mockResolvedValue(source('bounded'));
+    const read = (key: string) => readLoadBalancingWorkspaceSourceWithCache({ key, generationToken: 'g1', load });
+    for (let i = 0; i < 16; i += 1) await read(String(i));
+    await read('0');
+    await read('16');
+    expect((await read('0')).cacheHit).toBe(true);
+    expect((await read('1')).cacheHit).toBe(false);
   });
 
   it('shares one load between concurrent requests and keeps other keys separate', async () => {

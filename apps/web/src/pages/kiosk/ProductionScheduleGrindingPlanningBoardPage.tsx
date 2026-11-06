@@ -16,7 +16,8 @@ import {
   useUpdateKioskGrindingPlanningBoardRank,
   useUpdateKioskGrindingPlanningBoardResourceOrder,
   useUpdateKioskGrindingPlanningBoardResourceOrderBulk,
-  useUpdateKioskGrindingPlanningBoardSeibanOrder
+  useUpdateKioskGrindingPlanningBoardSeibanOrder,
+  useUpdateKioskGrindingPlanningBoardSeibanChecks
 } from '../../api/hooks';
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import { createPlanningBoardSeibanActions } from '../../features/kiosk/grindingPlanningBoard/createPlanningBoardSeibanActions';
@@ -81,10 +82,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [focusedFseiban, setFocusedFseiban] = useState<string | null>(null);
   const [openFseibans, setOpenFseibans] = useState<ReadonlySet<string>>(new Set());
-  const [activeFseibans, setActiveFseibans] = useState<ReadonlySet<string>>(new Set());
   const [showCompletedCandidates, setShowCompletedCandidates] = useState(false);
   const [selectedItemIdsByCategory, setSelectedItemIdsByCategory] = useState<Record<string, ReadonlySet<string>>>({});
-  const [activeInitialized, setActiveInitialized] = useState(false);
   const [openInitialized, setOpenInitialized] = useState(false);
   const dueDetailIdentityRef = useRef<string | null>(null);
   const [editorSnapshot, setEditorSnapshot] = useState<{
@@ -144,6 +143,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder({ invalidateOnSuccess: false });
   const { mutateAsync: updateResourceOrderBulkAsync } = useUpdateKioskGrindingPlanningBoardResourceOrderBulk({ invalidateOnSuccess: false });
   const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder({ invalidateOnSuccess: false });
+  const updateChecks = useUpdateKioskGrindingPlanningBoardSeibanChecks({ invalidateOnSuccess: false });
 
   const notify = useCallback((message: string, kind: FeedbackKind) => {
     feedbackRevisionRef.current += 1;
@@ -210,6 +210,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     scope: `${rankScopeKey}:${allocation}`,
     items: data?.items ?? EMPTY_ITEMS,
     order: data?.registeredFseibans ?? EMPTY_ORDER,
+    uncheckedFseibans: data?.uncheckedFseibans ?? data?.excelNonMachineFseibans ?? EMPTY_ORDER,
     sourceRevision,
     refresh: async () => {
       const [result] = await Promise.all([
@@ -228,6 +229,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     onError: handleError
   });
   const { enqueue: enqueueWrite, items: queuedItems, order: registeredFseibans, hasPendingSeiban, acceptRefreshedState } = writeQueue;
+  const activeFseibans = useMemo(() => new Set(registeredFseibans.filter((fseiban) => !writeQueue.uncheckedFseibans.includes(fseiban))), [registeredFseibans, writeQueue.uncheckedFseibans]);
   const onCompleted = useCallback((item: GrindingPlanningBoardItem) => {
     setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => {
       const next = new Set(ids); next.delete(item.itemId); return [key, next];
@@ -289,31 +291,25 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const siteChanged = boardSiteKeyRef.current != null && boardSiteKeyRef.current !== data.siteKey;
     const previous = registeredServerFseibansRef.current;
     boardSiteKeyRef.current = data.siteKey;
-    if (!activeInitialized || siteChanged) {
-      setActiveFseibans(new Set(data.seibanOrder.filter((value) => !(data.excelNonMachineFseibans ?? []).includes(value))));
-      setActiveInitialized(true);
-    }
     if (!openInitialized || siteChanged) {
       setOpenFseibans(new Set(data.seibanOrder.length ? data.seibanOrder : data.registeredFseibans));
       setOpenInitialized(true);
     }
     if (!writeQueue.pending) {
-      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value) && !(data.excelNonMachineFseibans ?? []).includes(value));
+      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value));
       if (added.length) {
-        setActiveFseibans((current) => new Set([...current, ...added]));
         setOpenFseibans((current) => new Set([...current, ...added]));
       }
       registeredServerFseibansRef.current = new Set(data.registeredFseibans);
     }
-  }, [activeInitialized, boardQuery.isPlaceholderData, data, openInitialized, writeQueue.pending]);
+  }, [boardQuery.isPlaceholderData, data, openInitialized, writeQueue.pending]);
 
   useEffect(() => {
     const registered = new Set(registeredFseibans);
     const prune = (current: ReadonlySet<string>) => [...current].every((value) => registered.has(value))
       ? current : new Set([...current].filter((value) => registered.has(value)));
-    setActiveFseibans(prune);
-    setOpenFseibans(prune);
-    setDueDetailTargetFseiban((current) => current && registered.has(current) ? current : null);
+    const keepRegistered = (current: string | null) => current && registered.has(current) ? current : null;
+    setDueDetailTargetFseiban(keepRegistered); setDueDetailFseiban(keepRegistered); setOpenFseibans(prune);
   }, [registeredFseibans]);
 
   const { itemsBySeiban, sortedItemsBySeiban, machineNames, visibleItems, specialDueCounts, selectedItemIds, selectedVisibleItems } = usePlanningBoardPageItems({
@@ -611,11 +607,19 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     });
   }, [allocation, data, enqueueWrite, rankMutationReady, updateRankAsync, writeBlocked, hasPendingSeiban]);
 
-  const { refreshAfterOrderConflict, removeSeiban, addSeibans, addSeiban, moveSeiban } = createPlanningBoardSeibanActions({
+  const persistChecks = (uncheckedFseibans: string[]) => {
+    if (!data || interactionLocked || writeBlocked) return;
+    enqueueWrite({ label: '製番チェック', itemIds: [], seibans: [], order: true,
+      apply: (display) => ({ ...display, uncheckedFseibans }),
+      save: (context) => updateChecks.mutateAsync({ sourceRevision: context.sourceRevision, uncheckedFseibans }),
+      onFailed: (error) => setOrderConflict(isAxiosError(error) && error.response?.status === 409)
+    });
+  };
+
+  const { refreshAfterOrderConflict, addSeibans, addSeiban, moveSeiban } = createPlanningBoardSeibanActions({
     data, scopeReady, writeBlocked, allocation, setOrderRegistrationError, enqueueWrite,
     registeredFseibans, updateOrder, setOrderConflict, notify, boardQuery, setRankConflict,
-    acceptRefreshedState, activeFseibans, openFseibans, setActiveFseibans, setOpenFseibans,
-    setDueDetailTargetFseiban, setDueDetailFseiban
+    acceptRefreshedState, setOpenFseibans
   });
 
   const {
@@ -758,19 +762,16 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         onRefreshOrder={orderConflict ? () => void refreshAfterOrderConflict() : undefined}
         onRegister={allocation === 'original' || !scopeReady ? async () => false : addSeiban}
         onRegisterMany={allocation === 'original' || !scopeReady ? async () => false : addSeibans}
-        onRemove={allocation === 'original' || !scopeReady ? () => undefined : removeSeiban}
         onToggle={(fseiban) => {
           if (interactionLocked) return;
           setDueDetailTargetFseiban(fseiban);
-          setActiveFseibans((current) => {
-            const next = new Set(current);
-            if (next.has(fseiban)) next.delete(fseiban); else next.add(fseiban);
-            return next;
-          });
+          persistChecks(activeFseibans.has(fseiban)
+            ? [...writeQueue.uncheckedFseibans, fseiban]
+            : writeQueue.uncheckedFseibans.filter((value) => value !== fseiban));
         }}
         onClear={() => {
           if (!interactionLocked) {
-            setActiveFseibans(new Set());
+            persistChecks(registeredFseibans);
             setDueDetailTargetFseiban(null);
           }
         }}

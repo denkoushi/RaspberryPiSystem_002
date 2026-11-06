@@ -1,3 +1,4 @@
+import { pruneCompletedGrindingPlanningBoardSeibans } from '../production-schedule/grinding-planning-board/completion.js';
 import { markProductionScheduleResourceCdsCacheStale } from '../production-schedule/production-schedule-query/resources.js';
 import { logger } from '../../lib/logger.js';
 import {
@@ -108,6 +109,12 @@ export class CsvDashboardPostIngestService {
     if (params.dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
       markProductionScheduleResourceCdsCacheStale();
       const externalCompletionSync = await this.externalCompletionSyncService.syncFromCurrentStatusMailDashboard();
+      try {
+        await pruneCompletedGrindingPlanningBoardSeibans();
+      } catch (error) {
+        // Pruning is housekeeping; it must not fail the schedule ingest.
+        logger.error({ err: error, dashboardId: params.dashboardId }, '[CsvDashboardPostIngestService] planning board completion prune failed');
+      }
       logger.info(
         { dashboardId: params.dashboardId, ingestSource: params.ingestSource, syncResult: externalCompletionSync },
         '[CsvDashboardPostIngestService] external completion sync completed after production schedule ingest'

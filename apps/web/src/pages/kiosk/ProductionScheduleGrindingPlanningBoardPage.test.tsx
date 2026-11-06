@@ -47,6 +47,7 @@ const mocks = vi.hoisted(() => ({
   rank: vi.fn(),
   resourceOrder: vi.fn(),
   resourceOrderBulk: vi.fn(),
+  checks: vi.fn(),
   order: vi.fn()
 }));
 
@@ -114,6 +115,7 @@ vi.mock('../../api/hooks', () => ({
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
   useUpdateKioskGrindingPlanningBoardResourceOrderBulk: () => ({ mutateAsync: mocks.resourceOrderBulk, isPending: false }),
   useUpdateKioskGrindingPlanningBoardResourceOrder: () => ({ mutateAsync: mocks.resourceOrder, isPending: false }),
+  useUpdateKioskGrindingPlanningBoardSeibanChecks: () => ({ mutateAsync: mocks.checks, isPending: false }),
   useUpdateKioskGrindingPlanningBoardSeibanOrder: () => ({ mutateAsync: mocks.order, isPending: false })
 }));
 
@@ -1188,17 +1190,16 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
   });
 
-  it('excludes newly registered Excel non-machine seibans on refetch and preserves user choices', () => {
-    let current = { ...fixture(), excelNonMachineFseibans: [] as string[] };
+  it('reflects shared saved checks and newly registered seibans on refetch', () => {
+    let current = { ...fixture(), uncheckedFseibans: [] as string[] };
     mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, refetch: mocks.refetch }));
     const view = renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
-    fireEvent.click(within(screen.getByRole('dialog', { name: '製番登録' })).getByRole('button', { name: /^26-1042 / }));
     current = {
       ...current,
       registeredFseibans: [...current.registeredFseibans, '26-1043', '26-1044'],
       seibanOrder: [...current.seibanOrder, '26-1043', '26-1044'],
-      excelNonMachineFseibans: ['26-1041', '26-1043'],
+      uncheckedFseibans: ['26-1042', '26-1043'],
       items: [...current.items, ...['26-1043', '26-1044'].map((fseiban) => ({
         ...current.items[0]!, fseiban, itemId: fseiban, sourceRowId: fseiban
       }))]
@@ -1208,6 +1209,35 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
     expect(screen.queryByTestId('planning-board-seiban-26-1043')).not.toBeInTheDocument();
     expect(screen.getByTestId('planning-board-seiban-26-1044')).toBeInTheDocument();
+  });
+
+  it('persists optimistic toggles and clear-all through the write queue, with no remove control', async () => {
+    let finish!: (result: { sourceRevision: string; uncheckedFseibans: string[] }) => void;
+    mocks.checks.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    expect(within(drawer).queryByRole('button', { name: /登録を解除/ })).not.toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    expect(mocks.checks).toHaveBeenCalledWith({ sourceRevision: 'board-1', uncheckedFseibans: ['26-1042'] });
+    fireEvent.click(within(drawer).getByRole('button', { name: '全て解除' }));
+    expect(mocks.checks).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ sourceRevision: 'checks-2', uncheckedFseibans: ['26-1042'] }));
+    expect(mocks.checks).toHaveBeenLastCalledWith({ sourceRevision: 'checks-2', uncheckedFseibans: ['26-1041', '26-1042'] });
+    expect(mocks.order).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a conflicting check write and offers the existing refresh flow', async () => {
+    const error = { isAxiosError: true, response: { status: 409 } };
+    mocks.checks.mockRejectedValueOnce(error);
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+    await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+    expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
+    expect(mocks.checks).toHaveBeenCalledTimes(1);
   });
 
   it('reads Excel by default and switches the board query to SCAW and back', () => {
@@ -1246,6 +1276,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.resourceOrderBulk.mockReset();
     mocks.pins.mockReset();
     mocks.order.mockReset();
+    mocks.checks.mockReset();
+    mocks.checks.mockImplementation(async ({ uncheckedFseibans }) => ({ sourceRevision: 'board-checks', uncheckedFseibans }));
     mocks.refetch.mockResolvedValue({ data: fixture() });
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
     mocks.overrides.mockResolvedValue({ sourceRevision: 'board-2' });
@@ -2273,7 +2305,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '製番26-1041の明細を開く' })).toBeInTheDocument();
   });
 
-  it('新規登録はactive/openへ追加し、既存の閉じた・除外した状態を変えず、再登録は新規として扱う', () => {
+  it('新規登録はactive/openへ追加し、既存の閉じた・除外した状態を変えず、再登録は新規として扱う', async () => {
     let current = fixture();
     const view = renderSeibanBoard();
 
@@ -2281,6 +2313,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '切削', exact: true })).toBeEnabled());
 
     const newItem = {
       ...current.items[0]!,
@@ -2294,6 +2328,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     current = {
       ...current,
       sourceRevision: 'board-2',
+      uncheckedFseibans: ['26-1042'],
       registeredFseibans: ['26-1041', '26-1042', '26-1043'],
       seibanOrder: ['26-1041', '26-1042', '26-1043'],
       items: [...current.items, newItem]
@@ -2308,6 +2343,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const reopenedDrawer = screen.getByRole('dialog', { name: '製番登録' });
     fireEvent.click(within(reopenedDrawer).getByRole('button', { name: /^26-1043 / }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '切削', exact: true })).toBeEnabled());
     current = {
       ...current,
       sourceRevision: 'board-3',
@@ -3455,7 +3491,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     expect(within(drawer).getByRole('button', { name: '製番26-1041を上へ' })).toBeDisabled();
-    expect(within(drawer).getByRole('button', { name: '製番26-1041の登録を解除' })).toBeDisabled();
+    expect(within(drawer).queryByRole('button', { name: /登録を解除/ })).not.toBeInTheDocument();
     expect(within(drawer).getByRole('button', { name: '登録' })).toBeDisabled();
   });
 

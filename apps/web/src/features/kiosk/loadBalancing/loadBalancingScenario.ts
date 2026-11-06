@@ -80,10 +80,13 @@ export function buildLoadMatrix(
   const byRow = indexActions(actions);
   const matrix: LoadMatrix = new Map();
   for (const row of rows) {
-    for (const placed of placeRow(row, byRow.get(row.rowId), months)) {
-      const perResource = matrix.get(placed.resourceCd) ?? new Map<string, number>();
+    const action = byRow.get(row.rowId);
+    const allocations = action ? placeRow(row, action, months) : row.allocations;
+    const resourceCd = action?.type === 'transfer' ? action.toResourceCd : row.resourceCd;
+    for (const placed of allocations) {
+      const perResource = matrix.get(resourceCd) ?? new Map<string, number>();
       perResource.set(placed.bucket, (perResource.get(placed.bucket) ?? 0) + placed.minutes);
-      matrix.set(placed.resourceCd, perResource);
+      matrix.set(resourceCd, perResource);
     }
   }
   return matrix;
@@ -276,5 +279,27 @@ function rowFitsEveryMonth(
       readLoad(matrix, destination.resourceCd, allocation.bucket) + allocation.minutes / destination.efficiencyRatio <=
       capacity
     );
+  });
+}
+
+/** 試算バー用。操作のない初回表示では行索引を作らない。 */
+export function summarizeScenarioActions(
+  rows: ProductionScheduleLoadBalancingWorkspaceRow[],
+  actions: ScenarioAction[]
+) {
+  const rowsById = actions.length > 0 ? new Map(rows.map((row) => [row.rowId, row])) : null;
+  return (['outsource', 'transfer', 'defer'] as const).map((type) => {
+    const ofType = actions.filter((action) => action.type === type);
+    return {
+      type,
+      count: ofType.length,
+      minutes: ofType.reduce((sum, action) => {
+        const row = rowsById?.get(action.rowId);
+        if (!row) return sum;
+        return sum + (action.type === 'defer'
+          ? row.allocations.find((allocation) => allocation.bucket === action.fromBucket)?.minutes ?? 0
+          : row.totalMinutes);
+      }, 0)
+    };
   });
 }

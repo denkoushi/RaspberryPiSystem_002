@@ -1,3 +1,4 @@
+import { isMachineSectionAssigned } from '../d-schedule-minutes/machine-section-assignee.js';
 import { readSessakuPieceGeneration } from '../sessaku-pieces/piece-key.js';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -20,6 +21,20 @@ export const reusablePlanningPayloads = new WeakMap<LeaderboardShellSnapshotStor
 
 export function stateOrder(state: { seibanOrder: Prisma.JsonValue }): string[] {
   return Array.isArray(state.seibanOrder) ? uniqueFseibans(state.seibanOrder.filter((value): value is string => typeof value === 'string')) : [];
+}
+
+export function stateUncheckedFseibans(state: PlanningState, legacyUnchecked: readonly string[] = []): string[] {
+  const unchecked = new Set(Array.isArray(state.uncheckedFseibans) ? state.uncheckedFseibans : legacyUnchecked);
+  return stateOrder(state).filter((fseiban) => unchecked.has(fseiban));
+}
+
+export async function readStateUncheckedFseibans(state: PlanningState, client: DbClient): Promise<string[]> {
+  if (state.uncheckedFseibans != null) return stateUncheckedFseibans(state);
+  const minutes = await client.productionScheduleDScheduleMinutes.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: stateOrder(state) } },
+    select: { fseiban: true, assignees: true, assigneesKnown: true }
+  });
+  return stateUncheckedFseibans(state, minutes.filter((row) => row.assigneesKnown && !isMachineSectionAssigned(row.assignees)).map((row) => row.fseiban));
 }
 
 function orderHash(order: readonly string[]): string { return createHash('sha256').update(JSON.stringify(order)).digest('hex'); }
@@ -141,7 +156,7 @@ export async function ensurePlanningBoardState(siteKey: string): Promise<void> {
 
 export async function lockState(client: Prisma.TransactionClient, siteKey: string): Promise<PlanningState> {
   const rows = await client.$queryRaw<PlanningState[]>`
-    SELECT "id", "version", "seibanOrder" FROM "ProductionScheduleGrindingPlanningBoardState"
+    SELECT "id", "version", "seibanOrder", "uncheckedFseibans" FROM "ProductionScheduleGrindingPlanningBoardState"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${siteKey} FOR UPDATE
   `;
   if (!rows[0]) throw new ApiError(409, 'ボード状態が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');

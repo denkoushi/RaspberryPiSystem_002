@@ -10,9 +10,10 @@ const mocks = vi.hoisted(() => ({
   run: { id: 'current', status: 'APPLIED', warnings: [] as unknown[], autoRegisteredSeibans: { planningBoards: {} as Record<string, string[]>, searchHistory: [] as string[], metrics: undefined as DScheduleMinutesMetrics | undefined } },
   newer: false,
   previous: null as null | { autoRegisteredSeibans: { planningBoards: Record<string, string[]>; searchHistory: string[] } },
-  boards: {} as Record<string, { id: string; seibanOrder: string[]; version: number }>,
+  boards: {} as Record<string, { id: string; seibanOrder: string[]; uncheckedFseibans?: string[]; version: number }>,
   history: [] as string[],
   historyVersion: 1, sites: ['A', 'B'],
+  minutes: [] as { fseiban: string; assigneesKnown: boolean; assignees: string[] }[],
   readWinners: vi.fn(), rawRows: [] as { rowData: { FSEIBAN: string } }[],
   writeBoard: vi.fn(), writeHistory: vi.fn(), readBoard: vi.fn(), readHistory: vi.fn()
 }));
@@ -33,6 +34,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
     findFirst: ({ where }: { where: { meetingDate?: unknown } }) => where.meetingDate ? (mocks.newer ? { id: 'newer' } : null) : mocks.previous,
     update: ({ data }: { data: object }) => Object.assign(mocks.run, data)
   },
+  productionScheduleDScheduleMinutes: { findMany: () => mocks.minutes },
   site: { findMany: () => mocks.sites.map((key) => ({ key })) },
   productionScheduleGrindingPlanningBoardState: { findMany: () => Object.keys(mocks.boards).map((siteKey) => ({ siteKey })) }
 } }));
@@ -55,12 +57,14 @@ const register = (blocks: DScheduleMinutesBlock[]) => autoRegisterDScheduleMinut
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.run = { id: 'current', status: 'APPLIED', warnings: [], autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
-  mocks.newer = false; mocks.previous = null; mocks.rawRows = []; mocks.readWinners.mockResolvedValue([]);
+  mocks.minutes = []; mocks.newer = false; mocks.previous = null; mocks.rawRows = []; mocks.readWinners.mockResolvedValue([]);
   mocks.boards = { A: { id: 'A', seibanOrder: ['MANUAL-A'], version: 1 }, B: { id: 'B', seibanOrder: ['MANUAL-B'], version: 1 } };
   mocks.history = ['MANUAL-H']; mocks.historyVersion = 1; mocks.sites = ['A', 'B'];
   mocks.readBoard.mockImplementation((key: string) => mocks.boards[key]);
   mocks.readHistory.mockImplementation(() => ({ state: { history: mocks.history }, etag: String(mocks.historyVersion) }));
-  mocks.writeBoard.mockImplementation(({ siteKey, fseibans }: { siteKey: string; fseibans: string[] }) => {
+  mocks.writeBoard.mockImplementation(({ siteKey, fseibans, newUncheckedFseibans = [] }: { siteKey: string; fseibans: string[]; newUncheckedFseibans?: string[] }) => {
+    const board = mocks.boards[siteKey];
+    board.uncheckedFseibans = [...board.uncheckedFseibans ?? [], ...newUncheckedFseibans.filter((fseiban) => !board.seibanOrder.includes(fseiban))];
     mocks.boards[siteKey].seibanOrder = fseibans; mocks.boards[siteKey].version++;
   });
   mocks.writeHistory.mockImplementation(({ incomingHistory }: { incomingHistory: string[] }) => { mocks.history = incomingHistory; mocks.historyVersion++; });
@@ -89,6 +93,21 @@ describe('D schedule automatic registration', () => {
     expect(run.autoRegisteredSeibans).toEqual({ planningBoards: { A: ['MAIN', 'ALIAS'], B: ['MAIN', 'ALIAS'] }, searchHistory: ['MAIN', 'ALIAS'], metrics: { seibansRead: 3, dateChanged: 3, unchanged: 0, registeredSeibans: ['MAIN', 'ALIAS'], unregisteredSeibans: [] } });
   });
 
+  it('unchecks only new known non-machine seibans, retaining both existing check states', async () => {
+    mocks.boards.A.seibanOrder.push('CHECKED', 'UNCHECKED');
+    mocks.boards.A.uncheckedFseibans = ['UNCHECKED'];
+    mocks.minutes = [
+      { fseiban: 'CHECKED', assigneesKnown: true, assignees: ['組立課'] },
+      { fseiban: 'UNCHECKED', assigneesKnown: true, assignees: ['機械課'] },
+      { fseiban: 'NEW-NON-MACHINE', assigneesKnown: true, assignees: ['組立課'] },
+      { fseiban: 'NEW-MACHINE', assigneesKnown: true, assignees: ['機械課'] },
+      { fseiban: 'UNKNOWN', assigneesKnown: false, assignees: [] }
+    ];
+    await register(mocks.minutes.map((row) => block(row.fseiban)));
+    expect(mocks.boards.A.uncheckedFseibans).toEqual(['UNCHECKED', 'NEW-NON-MACHINE']);
+    expect(mocks.boards.B.uncheckedFseibans).toEqual(['CHECKED', 'NEW-NON-MACHINE']);
+  });
+
   it('skips registration for an older file, records why, and retains successful ownership', async () => {
     mocks.newer = true;
     mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['NEWER'] }, searchHistory: ['NEWER'] } };
@@ -115,7 +134,7 @@ describe('D schedule automatic registration', () => {
     });
     await expect(register([block('MAIN')])).rejects.toThrow('destination unavailable');
     expect(mocks.run.status).toBe('APPLIED');
-    expect(mocks.run.autoRegisteredSeibans.metrics).toMatchObject({ registeredSeibans: ['MAIN'], unregisteredSeibans: ['STALE'] });
+    expect(mocks.run.autoRegisteredSeibans.metrics).toMatchObject({ registeredSeibans: ['MAIN'], unregisteredSeibans: [] });
     await register([block('MAIN')]);
     expect(mocks.run.status).toBe('SUCCESS');
     expect(mocks.run.autoRegisteredSeibans.metrics).toEqual({ seibansRead: 1, dateChanged: 1, unchanged: 0, registeredSeibans: ['MAIN'], unregisteredSeibans: ['STALE'] });
@@ -130,13 +149,14 @@ describe('D schedule automatic registration', () => {
     expect(mocks.run.autoRegisteredSeibans).toEqual({ planningBoards: { A: ['MAIN', 'ALIAS'], B: ['MAIN', 'ALIAS'] }, searchHistory: ['MAIN', 'ALIAS'] });
   });
 
-  it('removes stale auto entries while preserving manual registrations independently per destination', async () => {
+  it('retains absent auto entries on planning boards while reconciling shared history', async () => {
     mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['STALE', 'KEEP'], B: ['KEEP'] }, searchHistory: ['STALE', 'KEEP'] } };
     mocks.boards.A.seibanOrder.push('STALE', 'KEEP');
     mocks.boards.B.seibanOrder.push('STALE', 'KEEP'); // STALE was manual at B.
     mocks.history.push('STALE', 'KEEP');
     await register([block('KEEP')]);
-    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'KEEP']);
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'STALE', 'KEEP']);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['STALE', 'KEEP']);
     expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B', 'STALE', 'KEEP']);
     expect(mocks.history).toEqual(['MANUAL-H', 'KEEP']);
     expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual(['KEEP']);
@@ -155,7 +175,7 @@ describe('D schedule automatic registration', () => {
     mocks.previous = { autoRegisteredSeibans: structuredClone(mocks.run.autoRegisteredSeibans) };
     mocks.run = { ...mocks.run, status: 'APPLIED', warnings: [], autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
     await register([block('KEEP')]);
-    for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).not.toContain('SKIPPED');
+    for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).toContain('SKIPPED');
     expect(mocks.history).toEqual(['MANUAL-H', 'KEEP']);
     expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual(['KEEP']);
   });
@@ -168,8 +188,8 @@ describe('D schedule automatic registration', () => {
       return mocks.boards[key];
     });
     await register([block('MAIN')]);
-    expect(mocks.boards.NEW.seibanOrder).toEqual(['MANUAL-H', 'MAIN']);
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.NEW).toEqual(['MAIN']);
+    expect(mocks.boards.NEW.seibanOrder).toEqual(['MANUAL-H', 'STALE', 'MAIN']);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.NEW).toEqual(['STALE', 'MAIN']);
   });
 
   it('is a no-op on replay, also across a new message with unchanged entries', async () => {
