@@ -260,3 +260,35 @@ Web型検査、APIの`tsconfig.build.json`による型検査が成功。`layoutP
 APIの指定`tsc --noEmit -p .`は既存のrootDir/include不整合（TS6059）で未完了。
 既存の性能測定値はこの仕様変更前の値である。localhost:5432に応答がなくDBテスト・migration適用は未実施。
 実ブラウザ・Pi実機検証も未実施。
+
+## 2026-11-06 研削↔切削の切り替えが遅い(サーバーの着判定)
+
+kensaku-stonebase01(版 4b355ada)で、研削と切削を切り替えたときにガントが変わるまでが遅かった。ふだんの操作は #2576 で十分。
+
+### 計測方法
+
+- 手元: `__perf__/browser/run.mjs` に `SWITCH=1`(別の品目の組を 160件→640件ずつ流し込む)と `PROFILE=1`(CPU プロファイル)を足した。CPU 14倍絞りで、描き直しは1回 0.6〜0.9秒、3回に分けて届く切り替えで約1.6秒。
+- Pi5: API(blue コンテナ)の3時間分のログから `grindingPlanningBoardPerformance` の内訳を集計した。
+
+### 原因
+
+応答時間の9割以上が `processArrival`(各部品が前の工程から届いているかの判定、`process-arrival.service.ts`)だった。中央値で、最初のページ(約420件・160件返し)が約2秒、続きのページ(640件)が研削3.4秒・切削9.2秒・両方(約1,010件)16〜27秒。
+
+部品を300件ずつ `(BTRIM(FSEIBAN)=… AND BTRIM(FHINCD)=…) OR …` でつないで問い合わせており、`BTRIM` の式に合う索引が無いため、区切りのたびに生産日程の全行を読み、行ごとに300個の OR を評価していた。640件の続きは3回読み直す。
+
+研削→切削は一度「両方」を経るため、一番大きい「両方」の続き(27秒)が、研削を外した後も Pi5 で動き続けていた。
+
+### 変更
+
+部品の一覧を `unnest(text[], text[], text[])` で渡し、`EXISTS` で突き合わせる(Hash Semi Join)。1回の呼び出しで1回だけ読む。勝ち行の選び方(DISTINCT ON、並び順、完了の判定)は変えていない。未割当製番以外は ProductNo に NULL を渡し、ProductNo を条件にしない。DB の構造(索引)は変えていない。
+
+### 結果
+
+- 手元の Postgres(8万行、640件): 3.3秒(3回) → 16ms(1回)、返る行数は同じ(1,920行)。
+- 実 DB の統合テスト `process-arrival.service.integration.test.ts`(6件)は、`TEST_DATABASE_URL` を専用 DB に向けたときだけ動く。CI では他の統合テストと同じく飛ばされる。
+- Pi5 での確認は、反映後に同じログの `processArrival` の ms を見る。
+
+### 残り
+
+- 索引 `("csvDashboardId", BTRIM(FSEIBAN), BTRIM(FHINCD))` を足せば全行読みも無くなるが、マイグレーションと書き込みロックが要るので、反映後の数字を見て決める。
+- 画面側で古いカテゴリの取得を中断しても、Pi5 の処理は止まらないため入れていない。
