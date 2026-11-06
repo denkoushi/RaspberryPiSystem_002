@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { trustImmediateProxy } from './lib/trust-proxy.js';
 import compress from '@fastify/compress';
 import multipart from '@fastify/multipart';
 import cors from '@fastify/cors';
@@ -19,7 +20,6 @@ import { SignageRenderer } from './services/signage/signage.renderer.js';
 import { SignageService } from './services/signage/index.js';
 import { getSignageWebCaptureService } from './services/signage/web-capture/signage-web-capture.service.js';
 import { probePlaywrightChromiumAvailability } from './services/signage/loan-grid/playwright/playwright-chromium-availability.js';
-import { refreshProductionScheduleOrderSplitPilotGateCache } from './services/production-schedule/order-split/production-schedule-order-split-feature.js';
 import { isCandidateValidationMode } from './bootstrap/candidate-validation.js';
 import { createSchedulerRuntimeState } from './bootstrap/scheduler-runtime-state.js';
 import { createDeployReadinessObservability } from './services/system/deploy-readiness-observability.js';
@@ -29,7 +29,7 @@ import { ensureProcedureManualProcesses } from './services/assembly/procedure-ma
 import { enableSiteDirectoryFailClosed, ensureSiteDirectoryFresh, refreshSiteDirectory } from './lib/site-directory.js';
 
 export async function buildServer(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: env.LOG_LEVEL, serializers: { req: serializeRequestForLog } } });
+  const app = Fastify({ trustProxy: trustImmediateProxy, logger: { level: env.LOG_LEVEL, serializers: { req: serializeRequestForLog } } });
   registerErrorHandler(app);
   registerRequestLogger(app);
   // Declare the expected scheduler before listen so startup cannot appear ready.
@@ -115,18 +115,6 @@ export async function buildServer(): Promise<FastifyInstance> {
   initializeVisualizationModules();
   app.log.info('CSV importers initialized');
 
-  if (env.NODE_ENV !== 'test') {
-    try {
-      const splitPilotStatus = await refreshProductionScheduleOrderSplitPilotGateCache();
-      app.log.info(splitPilotStatus, 'Production schedule order split pilot gate initialized');
-    } catch (err) {
-      app.log.warn(
-        { err },
-        'Production schedule order split pilot gate could not be loaded; keeping runtime gate OFF'
-      );
-    }
-  }
-  
   // 端末の明示拠点の対応表（docs/plans/explicit-site-scope-execplan.md）。
   // 読み込むまでは拠点の解決だけを 503 で止める（拠点を使わない処理・ヘルスチェックは止めない）。
   enableSiteDirectoryFailClosed();

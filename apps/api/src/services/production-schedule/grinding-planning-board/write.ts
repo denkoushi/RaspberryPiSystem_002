@@ -5,13 +5,12 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getResourceCategoryPolicy, isProductionScheduleGrindingResourceCd, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from '../order-split/production-schedule-parent-row-lock.service.js';
-import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, resolveGrindingPlanningBoardParentDueDate, sortGrindingPlanningBoardProjectionItems, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
+import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
+import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, sortGrindingPlanningBoardProjectionItems, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
 import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from '../load-balancing/load-balancing-settings.service.js';
 import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balancing/work-calendar-policy.js';
 import { isGrindingPlanningBoardSpecialDueKind, resolveGrindingPlanningBoardSpecialDueExpiresAt } from '../grinding-planning-board-special-due.js';
-import { MAX_ALTERNATE_RANK, SPLIT_PREFIX, planningBoardArrivalDate, asRowData, buildGrindingPlanningBoardLogicalKey, decodeRowItemId, isCategoryResource, logicalKeyFseiban, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
+import { MAX_ALTERNATE_RANK, planningBoardArrivalDate, asRowData, buildGrindingPlanningBoardLogicalKey, decodeRowItemId, isCategoryResource, logicalKeyFseiban, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
 import { readMasterResourceCds, readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds, readWinnerRowsByLogicalKeyFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, stateOrder } from './state.js';
 
@@ -19,7 +18,6 @@ import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCrea
 async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<string, string>> {
   const logicalKeyByItem = new Map<string, string>();
   for (const itemId of itemIds) {
-    if (itemId.startsWith(SPLIT_PREFIX)) continue;
     const logicalKey = decodeRowItemId(itemId);
     if (logicalKey == null) throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
     logicalKeyByItem.set(itemId, logicalKey);
@@ -27,15 +25,8 @@ async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<strin
   // The logical key starts with the raw FSEIBAN, so saves read only the edited seibans instead of every winner row.
   const rows = await readWinnerRowsByLogicalKeyFseibans(prisma, [...logicalKeyByItem.values()].map(logicalKeyFseiban));
   const byLogicalKey = new Map(rows.map((row) => [buildGrindingPlanningBoardLogicalKey(asRowData(row.rowData)), row.id]));
-  const splitIds = itemIds.filter((itemId) => itemId.startsWith(SPLIT_PREFIX)).map((itemId) => itemId.slice(SPLIT_PREFIX.length));
-  const splits = splitIds.length === 0 ? [] : await prisma.productionScheduleOrderSplit.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, id: { in: splitIds } }, select: { id: true, parentCsvDashboardRowId: true } });
   const sourceByItem = new Map<string, string>();
   for (const itemId of itemIds) {
-    if (itemId.startsWith(SPLIT_PREFIX)) {
-      const split = splits.find((candidate) => `split:${candidate.id}` === itemId);
-      if (split) sourceByItem.set(itemId, split.parentCsvDashboardRowId);
-      continue;
-    }
     const sourceRowId = byLogicalKey.get(logicalKeyByItem.get(itemId) ?? '');
     if (sourceRowId) sourceByItem.set(itemId, sourceRowId);
   }
@@ -47,11 +38,7 @@ async function resolveCurrentProjectionInTransaction(params: { client: Prisma.Tr
   const state = params.preloaded?.state ?? await readState(params.client, params.siteKey);
   const rows = params.preloaded?.rows ?? await readWinnerRowsByIds(params.client, params.sourceRowIds);
   const details = await readRowDetails(params.client, rows.map((row) => row.id));
-  const splitIds = rows.flatMap((row) => details.get(row.id)?.orderSplits.map((split) => split.id) ?? []);
-  const ranks = await readRanks(params.client, rows.map((row) => row.id), splitIds, params.siteKey);
-  // Include parent overrides when a split item inherits its parent's due date.
-  // The scope writer invalidates the inherited split rank while leaving the
-  // split override absent, so projection must see both keys together.
+  const ranks = await readRanks(params.client, rows.map((row) => row.id), params.siteKey);
   const parentItemIds = rows.map((row) => buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)));
   const overrides = params.preloaded?.overrides ?? await readOverrides(
     params.client,
@@ -68,31 +55,17 @@ async function resolveCurrentProjectionInTransaction(params: { client: Prisma.Tr
     if (fhincd.startsWith('MH') || fhincd.startsWith('SH') || (resourceCd != null && params.policy.cuttingExcludedResourceCds.includes(resourceCd))) return [];
     return [{ rowId: row.id, fseiban: valueAsString(data, 'FSEIBAN'), productNo: valueAsString(data, 'ProductNo'), fhincd: valueAsString(data, 'FHINCD'), isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) }];
   });
-  const splitEnabled = isProductionScheduleOrderSplitEnabled();
-  const common = { rows, details, ranks, overrides, progressRows, splitEnabled, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
+  const common = { rows, details, ranks, overrides, progressRows, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
   const grinding = projectGrindingPlanningBoard({ ...common, category: 'grinding' });
   const cutting = projectGrindingPlanningBoard({ ...common, category: 'cutting' });
   const byItemId = new Map<string, GrindingPlanningBoardItem>();
   for (const item of [...grinding.allItems, ...cutting.allItems]) byItemId.set(item.itemId, item);
-  const parentEffectiveDueBySourceRow = new Map<string, string | null>();
-  const splitOriginalDueByItemId = new Map<string, string | null>();
-  for (const row of rows) {
-    const detail = details.get(row.id);
-    if (!detail) continue;
-    const parentItemId = buildGrindingPlanningBoardRowItemId(asRowData(row.rowData));
-    parentEffectiveDueBySourceRow.set(row.id, resolveGrindingPlanningBoardParentDueDate({
-      originalParentDueDate: detail.rowNotes[0]?.dueDate ?? detail.orderSupplements[0]?.plannedEndDate ?? null,
-      plannedEndDate: detail.orderSupplements[0]?.plannedEndDate ?? null,
-      override: overrides.get(parentItemId)
-    }));
-    for (const split of detail.orderSplits) splitOriginalDueByItemId.set(`${SPLIT_PREFIX}${split.id}`, ymd(split.dueDate));
-  }
   for (const itemId of params.itemIds) {
     const item = byItemId.get(itemId);
     if (!item) throw new ApiError(409, '対象アイテムが消滅または工程区分が変わりました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
     if (!params.sourceRowIds.includes(item.sourceRowId)) throw new ApiError(409, 'CSVの勝者行が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
   }
-  return { state, byItemId, overrides, rows, details, ranks, progressRows, splitEnabled, policy: params.policy, sourceRowIds: new Map(), masterResourceCds, parentEffectiveDueBySourceRow, splitOriginalDueByItemId };
+  return { state, byItemId, overrides, rows, details, ranks, progressRows, policy: params.policy, masterResourceCds };
 }
 
 function assertItemRevision(expected: string, item: GrindingPlanningBoardItem, expectedVersion?: number): void {
@@ -191,12 +164,7 @@ async function applyOverridesInTransaction(params: { client: Prisma.TransactionC
     const resourceChanged = request.resourceCd !== undefined && (nextOverrideResource ?? item.originalResourceCd) !== item.effectiveResourceCd;
     const effectiveDueAfterOverride = nextOverrideDue != null
       ? ymd(nextOverrideDue)
-      : item.kind === 'split'
-        ? current.splitOriginalDueByItemId.get(item.itemId)
-          ?? (current.parentEffectiveDueBySourceRow.has(item.sourceRowId)
-            ? current.parentEffectiveDueBySourceRow.get(item.sourceRowId) ?? null
-            : item.originalDueDate)
-        : item.originalDueDate;
+      : item.originalDueDate;
     const dueChanged = request.due !== undefined && effectiveDueAfterOverride !== item.effectiveDueDate;
     desired.push({ request, currentOverride, next: { orderPinned: request.orderPinned, overrideResourceCd: nextOverrideResource, overrideDueDate: nextOverrideDue, dueDateCleared: nextDueDateCleared, alternateRank: request.alternateRank !== undefined ? request.alternateRank : resourceChanged || dueChanged ? null : currentOverride?.alternateRank ?? null, specialDueKind: nextSpecialDueKind, specialDueExpiresAt: nextSpecialDueExpiresAt } });
   }
@@ -215,7 +183,6 @@ function projectCurrentItems(current: CurrentProjection, overrides: ReadonlyMap<
     ranks: current.ranks,
     overrides,
     progressRows: current.progressRows,
-    splitEnabled: current.splitEnabled,
     seibanOrder: stateOrder(current.state),
     isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, current.policy)
   };
@@ -233,7 +200,6 @@ function projectCurrentItem(current: CurrentProjection, overrides: ReadonlyMap<s
     ranks: current.ranks,
     overrides,
     progressRows: current.progressRows,
-    splitEnabled: current.splitEnabled,
     seibanOrder: stateOrder(current.state),
     isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, current.policy)
   };
@@ -321,17 +287,7 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
       const registeredRows = winnerRows.filter((row) => registeredFseibans.has(valueAsString(asRowData(row.rowData), 'FSEIBAN')));
       const allOverrides = await readOverrides(client, params.siteKey);
       // Select the resource's parents before hydrating details or calculating progress.
-      // Split resource overrides can move children independently of their parent.
-      const splits = await client.productionScheduleOrderSplit.findMany({
-        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: { in: registeredRows.map((row) => row.id) } },
-        select: { id: true, parentCsvDashboardRowId: true }
-      });
       const parentByItem = new Map(registeredRows.map((row) => [buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)), row]));
-      const rowById = new Map(registeredRows.map((row) => [row.id, row]));
-      for (const split of splits) {
-        const parent = rowById.get(split.parentCsvDashboardRowId);
-        if (parent) parentByItem.set(`${SPLIT_PREFIX}${split.id}`, parent);
-      }
       const sourceParent = parentByItem.get(params.itemId);
       const targetParent = parentByItem.get(params.targetItemId);
       if (!sourceParent || !targetParent) throw new ApiError(409, '対象アイテムが消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');

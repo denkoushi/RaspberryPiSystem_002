@@ -6,11 +6,8 @@ import {
   useUpdateKioskProductionScheduleNote,
   useUpdateKioskProductionScheduleOrder,
   useUpdateKioskProductionScheduleProcessing,
-  useUpdateKioskProductionScheduleSplitDueDate,
-  useUpdateKioskProductionScheduleSplitOrder,
   type KioskProductionScheduleOrderCachePolicy
 } from '../../../api/hooks';
-import { resolveSplitIdFromDisplayItemId } from '../leaderOrderBoard/displayItemId';
 
 import type { ProductionScheduleWriteSuccessListeners } from './productionScheduleWriteSuccessListeners';
 import type { KioskProductionScheduleCompletionIntent } from '../../../api/client';
@@ -68,20 +65,16 @@ export const useProductionScheduleMutations = ({
   writeSuccessListenersRef.current = writeSuccessListeners;
   const completeMutation = useSetKioskProductionScheduleRowCompletion();
   const orderMutation = useUpdateKioskProductionScheduleOrder();
-  const splitOrderMutation = useUpdateKioskProductionScheduleSplitOrder();
   const processingMutation = useUpdateKioskProductionScheduleProcessing();
   const noteMutation = useUpdateKioskProductionScheduleNote();
   const dueDateMutation = useUpdateKioskProductionScheduleDueDate();
-  const splitDueDateMutation = useUpdateKioskProductionScheduleSplitDueDate();
 
   const isWriting =
     completeMutation.isPending ||
     orderMutation.isPending ||
-    splitOrderMutation.isPending ||
     processingMutation.isPending ||
     noteMutation.isPending ||
     dueDateMutation.isPending ||
-    splitDueDateMutation.isPending ||
     isSearchStateWriting;
 
   const [isWriteCooldown, setIsWriteCooldown] = useState(false);
@@ -126,26 +119,23 @@ export const useProductionScheduleMutations = ({
   const pending = useMemo(
     () => ({
       completePending: completeMutation.isPending,
-      orderPending: orderMutation.isPending || splitOrderMutation.isPending,
+      orderPending: orderMutation.isPending,
       processingPending: processingMutation.isPending,
       notePending: noteMutation.isPending,
-      dueDatePending: dueDateMutation.isPending || splitDueDateMutation.isPending
+      dueDatePending: dueDateMutation.isPending
     }),
     [
       completeMutation.isPending,
       dueDateMutation.isPending,
       noteMutation.isPending,
       orderMutation.isPending,
-      processingMutation.isPending,
-      splitDueDateMutation.isPending,
-      splitOrderMutation.isPending
+      processingMutation.isPending
     ]
   );
 
   const updateOrder = useCallback(
     ({ rowId, resourceCd, nextValue }: UpdateOrderParams) => {
       const orderNumber = nextValue.length > 0 ? Number(nextValue) : null;
-      const splitId = resolveSplitIdFromDisplayItemId(rowId);
       const payload = {
         resourceCd,
         orderNumber,
@@ -153,25 +143,6 @@ export const useProductionScheduleMutations = ({
           ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
           : {})
       };
-
-      if (splitId) {
-        splitOrderMutation.mutate(
-          {
-            splitId,
-            payload,
-            cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
-          },
-          {
-            onSuccess: (data) => {
-              writeSuccessListenersRef.current?.onOrderSuccess?.({
-                rowId,
-                orderNumber: data.orderNumber ?? null
-              });
-            }
-          }
-        );
-        return;
-      }
 
       orderMutation.mutate(
         {
@@ -191,7 +162,6 @@ export const useProductionScheduleMutations = ({
     },
     [
       orderMutation,
-      splitOrderMutation,
       productionScheduleOrderCachePolicy,
       productionScheduleTargetDeviceScopeKey
     ]
@@ -199,7 +169,6 @@ export const useProductionScheduleMutations = ({
 
   const updateOrderAsync = useCallback(
     async ({ rowId, resourceCd, orderNumber }: UpdateOrderAsyncParams) => {
-      const splitId = resolveSplitIdFromDisplayItemId(rowId);
       const payload = {
         resourceCd,
         orderNumber,
@@ -207,19 +176,6 @@ export const useProductionScheduleMutations = ({
           ? { targetDeviceScopeKey: productionScheduleTargetDeviceScopeKey }
           : {})
       };
-
-      if (splitId) {
-        const data = await splitOrderMutation.mutateAsync({
-          splitId,
-          payload,
-          cachePolicy: productionScheduleOrderCachePolicy ?? 'default'
-        });
-        writeSuccessListenersRef.current?.onOrderSuccess?.({
-          rowId,
-          orderNumber: data.orderNumber ?? null
-        });
-        return;
-      }
 
       const data = await orderMutation.mutateAsync({
         rowId,
@@ -233,7 +189,6 @@ export const useProductionScheduleMutations = ({
     },
     [
       orderMutation,
-      splitOrderMutation,
       productionScheduleOrderCachePolicy,
       productionScheduleTargetDeviceScopeKey
     ]
@@ -268,24 +223,6 @@ export const useProductionScheduleMutations = ({
 
   const commitDueDate = useCallback(
     ({ rowId, dueDate, onSettled }: CommitDueDateParams) => {
-      const splitId = resolveSplitIdFromDisplayItemId(rowId);
-      if (splitId) {
-        if (splitDueDateMutation.isPending) return;
-        splitDueDateMutation.mutate(
-          { splitId, dueDate },
-          {
-            onSuccess: (data) => {
-              writeSuccessListenersRef.current?.onDueDateSuccess?.({
-                rowId,
-                dueDate: data.dueDate ?? null
-              });
-            },
-            onSettled
-          }
-        );
-        return;
-      }
-
       if (dueDateMutation.isPending) return;
       dueDateMutation.mutate(
         { rowId, dueDate, cachePolicy: productionScheduleOrderCachePolicy ?? 'default' },
@@ -300,7 +237,7 @@ export const useProductionScheduleMutations = ({
         }
       );
     },
-    [dueDateMutation, productionScheduleOrderCachePolicy, splitDueDateMutation]
+    [dueDateMutation, productionScheduleOrderCachePolicy]
   );
 
   const completeRow = useCallback(
@@ -322,12 +259,9 @@ export const useProductionScheduleMutations = ({
     isWriting,
     isWriteCooldown,
     pauseRefetch,
-    orderError:
-      (orderMutation.isError ? orderMutation.error : null) ??
-      (splitOrderMutation.isError ? splitOrderMutation.error : null),
+    orderError: orderMutation.isError ? orderMutation.error : null,
     resetOrderError: () => {
       orderMutation.reset();
-      splitOrderMutation.reset();
     },
     updateOrder,
     updateOrderAsync,

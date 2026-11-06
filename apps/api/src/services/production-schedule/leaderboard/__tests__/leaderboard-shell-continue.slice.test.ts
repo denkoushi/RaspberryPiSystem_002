@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isLeaderboardShellSnapshotStaleForContinue,
   sliceLeaderboardSnapshotIdsByCursor,
   sliceLeaderboardSnapshotIdsByExcludePrefix
 } from '../leaderboard-shell-continue.slice.js';
@@ -38,4 +39,15 @@ describe('leaderboard-shell-continue.slice', () => {
     });
     expect(sliceLeaderboardSnapshotIdsByExcludePrefix(ids, ['x'], 2)).toEqual({ kind: 'expired' });
   });
+  it('expires a predeployment snapshot containing legacy display ids', () => {
+    const oldToken = JSON.stringify({ rowsRevision: '1' });
+    const currentToken = JSON.stringify({ payloadVersion: 2, rowsRevision: '1' });
+    const snap = { orderedRowIds: ['split:legacy-id'], generationToken: oldToken,
+      filterFingerprint: 'same', locationKey: 'site', siteKey: 'site' };
+    expect(isLeaderboardShellSnapshotStaleForContinue({
+      snap: snap as never, filterFingerprint: 'same', locationKey: 'site', siteKey: 'site',
+      currentGenerationToken: currentToken
+    })).toBe('generation');
+  });
+
 });

@@ -9,8 +9,8 @@ import {
 import type { LeaderboardPartFooterProcessItem } from '../leaderboard/leaderboard-part-footer-processes.service.js';
 import { buildLeaderboardMaterialArrivalByPartKeyForScheduleRows } from '../leaderboard/leaderboard-part-material-arrival.service.js';
 import {
-  fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds,
-} from '../leaderboard/leaderboard-split-expansion.service.js';
+  fetchLeaderboardScheduleHydratedRowsOrderedByIds,
+} from '../leaderboard/leaderboard-shell-hydrate.service.js';
 import { normalizeLeaderboardDisplayRowIdScope } from '../leaderboard/leaderboard-display-row-scope.js';
 import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import {
@@ -119,8 +119,8 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
   const leaderboardMaterializedBaseWhere =
     await resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma);
 
-  const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
-    orderedDisplayItemIds: preferredDisplayRowIds,
+  const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+    orderedRowIds: preferredDisplayRowIds,
     locationKey,
     siteScopedGlobalRankLocation: siteKey?.trim().length ? siteKey.trim() : locationKey,
     leaderboardMaterializedBaseWhere

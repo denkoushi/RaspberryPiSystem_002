@@ -45,7 +45,6 @@ const hasExplicitCiDatabase = hasExplicitCiOptIn &&
   testDatabaseUrl === 'postgresql://postgres:postgres@localhost:5432/borrow_return';
 const hasDedicatedDatabase = hasLocalDedicatedDatabase || hasExplicitCiDatabase;
 const originalDatabaseUrl = process.env.DATABASE_URL;
-const originalSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
 
 type PrismaClient = import('@prisma/client').PrismaClient;
 type FastifyInstance = import('fastify').FastifyInstance;
@@ -57,7 +56,6 @@ let app: FastifyInstance | undefined;
 
 if (hasDedicatedDatabase) {
   process.env.DATABASE_URL = testDatabaseUrl;
-  process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'true';
   ({ prisma: dbClient } = await import('../../../lib/prisma.js'));
 }
 
@@ -507,8 +505,6 @@ describeIntegration('grinding planning board due scope API and writeback integra
     await dbClient?.$disconnect();
     if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = originalDatabaseUrl;
-    if (originalSplitFlag === undefined) delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-    else process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = originalSplitFlag;
   });
 
   it('updates every raw winner regardless of category/completion filters, keeps original tables unchanged, and isolates sites', async () => {
@@ -700,7 +696,6 @@ describeIntegration('grinding planning board due scope API and writeback integra
       splits: [{ dueDate: null, rank: 6, alternateRank: 5 }]
     }]);
     const unsetDevice = unsetFixture.devices[0]!;
-    const unsetSplitId = unsetFixture.splitIds[0]!;
     expect((await db().productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: unsetRowId }, select: { plannedEndDate: true } })).plannedEndDate).toBeNull();
     const unsetSource = await captureSource(unsetFixture);
     const unsetInitial = await getDueDetail(unsetDevice, unsetFixture.fseiban);
@@ -711,62 +706,35 @@ describeIntegration('grinding planning board due scope API and writeback integra
     const unsetBoard = await getMainBoard(unsetDevice);
     expect(partFor(unsetCleared.alternate, `${unsetFixture.prefix}-CSV-UNSET`).effectiveDueDate).toBeNull();
     expect(itemFor(unsetBoard, (item) => item.sourceRowId === unsetRowId).effectiveDueDate).toBeNull();
-    const unsetSplit = itemFor(unsetBoard, (item) => item.itemId === `split:${unsetSplitId}`);
+    const unsetSplit = itemFor(unsetBoard, (item) => item.sourceRowId === unsetRowId);
     expect(unsetSplit.effectiveDueDate).toBeNull();
     await putPlanningRank(unsetDevice, unsetBoard, unsetSplit, 5);
     const unsetRankedBoard = await getMainBoard(unsetDevice);
-    expect(itemFor(unsetRankedBoard, (item) => item.itemId === `split:${unsetSplitId}`)).toMatchObject({ effectiveDueDate: null, alternateRank: 5 });
-    await putPlanningOverride(unsetDevice, unsetRankedBoard, itemFor(unsetRankedBoard, (item) => item.itemId === `split:${unsetSplitId}`), { kind: 'restore' });
+    expect(itemFor(unsetRankedBoard, (item) => item.sourceRowId === unsetRowId)).toMatchObject({ effectiveDueDate: null, alternateRank: 5 });
+    await putPlanningOverride(unsetDevice, unsetRankedBoard, itemFor(unsetRankedBoard, (item) => item.sourceRowId === unsetRowId), { kind: 'restore' });
     const unsetRestoredBoard = await getMainBoard(unsetDevice);
-    expect(itemFor(unsetRestoredBoard, (item) => item.itemId === `split:${unsetSplitId}`)).toMatchObject({ effectiveDueDate: null, alternateRank: 5 });
+    expect(itemFor(unsetRestoredBoard, (item) => item.sourceRowId === unsetRowId)).toMatchObject({ effectiveDueDate: null, alternateRank: 5 });
     expect(await captureSource(unsetFixture)).toEqual(unsetSource);
   });
 
-  it('keeps explicit split due and override while inherited split follows the parent through two changes', async () => {
+  it('changes only the parent due and rank while ignoring all legacy dates and overrides', async () => {
     const fixture = await createFixture();
-    const [rowId] = await addRows(fixture, [{ fseiban: fixture.fseiban, fhincd: `${fixture.prefix}-SPLIT`, productNo: '1', resourceCd: '305', processOrder: '1', dueDate: '2026-09-20', rank: 3, alternateRank: 3, splits: [{ dueDate: '2026-09-21', rank: 4, alternateRank: 4 }, { dueDate: null, rank: 6, alternateRank: 7, overrideDueDate: '2026-09-23' }, { dueDate: null, rank: 5, alternateRank: 5 }] }]);
-    const explicitDueSplitId = fixture.splitIds[0]!;
-    const explicitOverrideSplitId = fixture.splitIds[1]!;
-    const inheritedSplitId = fixture.splitIds[2]!;
+    const [rowId] = await addRows(fixture, [{ fseiban: fixture.fseiban, fhincd: `${fixture.prefix}-LEGACY`, productNo: '1', resourceCd: '305', processOrder: '1', dueDate: '2026-09-20', rank: 3, alternateRank: 3, splits: [{ dueDate: '2026-09-21', rank: 4, alternateRank: 4 }, { dueDate: null, rank: 6, alternateRank: 7, overrideDueDate: '2026-09-23' }] }]);
     const device = fixture.devices[0]!;
-    const initialBoard = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    const explicitDueSplit = itemFor(initialBoard, (item) => item.itemId === `split:${explicitDueSplitId}`);
-    const explicitOverrideSplit = itemFor(initialBoard, (item) => item.itemId === `split:${explicitOverrideSplitId}`);
-    const inheritedSplit = itemFor(initialBoard, (item) => item.itemId === `split:${inheritedSplitId}`);
-    expect((await db().productionScheduleOrderSplitAssignment.findUnique({ where: { splitId_location: { splitId: explicitDueSplitId, location: device.siteKey } }, select: { orderNumber: true } }))?.orderNumber).toBe(4);
-    expect((await db().productionScheduleOrderSplitAssignment.findUnique({ where: { splitId_location: { splitId: inheritedSplitId, location: device.siteKey } }, select: { orderNumber: true } }))?.orderNumber).toBe(5);
-
-    const initial = await getDueDetail(device, fixture.fseiban);
-    await putDueScope(device, fixture.fseiban, initial, { kind: 'seiban' }, '2026-09-20');
-    const sameDateBoard = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    expect(itemFor(sameDateBoard, (item) => item.itemId === inheritedSplit.itemId).effectiveDueDate).toBe('2026-09-20');
-    expect(itemFor(sameDateBoard, (item) => item.itemId === inheritedSplit.itemId).alternateRank).toBe(5);
-
-    const changedFromSameDate = await getDueDetail(device, fixture.fseiban);
-    await putDueScope(device, fixture.fseiban, changedFromSameDate, { kind: 'seiban' }, '2026-09-25');
-    const firstBoard = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    expect(itemFor(firstBoard, (item) => item.itemId === explicitDueSplit.itemId).effectiveDueDate).toBe('2026-09-21');
-    expect(itemFor(firstBoard, (item) => item.itemId === explicitDueSplit.itemId).alternateRank).toBe(4);
-    expect(itemFor(firstBoard, (item) => item.itemId === explicitOverrideSplit.itemId).effectiveDueDate).toBe('2026-09-23');
-    expect(itemFor(firstBoard, (item) => item.itemId === explicitOverrideSplit.itemId).alternateRank).toBe(7);
-    expect(itemFor(firstBoard, (item) => item.itemId === inheritedSplit.itemId).effectiveDueDate).toBe('2026-09-25');
-    expect(itemFor(firstBoard, (item) => item.itemId === inheritedSplit.itemId).alternateRank).toBeNull();
-    const parentData = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: rowId }, select: { rowData: true } });
-    const parentOverride = await db().productionScheduleGrindingPlanningBoardOverride.findUnique({ where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: device.siteKey, itemKey: buildGrindingPlanningBoardRowItemId(parentData.rowData as Record<string, unknown>) } }, select: { overrideDueDate: true, alternateRank: true } });
-    expect(parentOverride).toMatchObject({ overrideDueDate: date('2026-09-25'), alternateRank: null });
-
-    const second = await getDueDetail(device, fixture.fseiban);
-    await putDueScope(device, fixture.fseiban, second, { kind: 'seiban' }, '2026-09-26');
-    const secondBoard = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    expect(itemFor(secondBoard, (item) => item.itemId === inheritedSplit.itemId).effectiveDueDate).toBe('2026-09-26');
-    expect(itemFor(secondBoard, (item) => item.itemId === explicitDueSplit.itemId).effectiveDueDate).toBe('2026-09-21');
-    expect(itemFor(secondBoard, (item) => item.itemId === explicitOverrideSplit.itemId).effectiveDueDate).toBe('2026-09-23');
-
-    const restoreSnapshot = await getDueDetail(device, fixture.fseiban);
-    await putDueScope(device, fixture.fseiban, restoreSnapshot, { kind: 'seiban' }, '');
-    const restoredBoard = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    expect(itemFor(restoredBoard, (item) => item.itemId === inheritedSplit.itemId).effectiveDueDate).toBe('2026-09-20');
-    expect(itemFor(restoredBoard, (item) => item.itemId === inheritedSplit.itemId).alternateRank).toBeNull();
+    const legacyBefore = await db().productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: device.siteKey, itemKey: { startsWith: 'split:' } }, orderBy: { itemKey: 'asc' } });
+    const initialBoard = await getMainBoard(device);
+    expect(initialBoard.items).toHaveLength(1);
+    const parent = itemFor(initialBoard, (item) => item.sourceRowId === rowId);
+    expect(parent).toMatchObject({ kind: 'row', effectiveDueDate: '2026-09-20', alternateRank: 3 });
+    await putDueScope(device, fixture.fseiban, await getDueDetail(device, fixture.fseiban), { kind: 'seiban' }, '2026-09-20');
+    expect(itemFor(await getMainBoard(device), (item) => item.sourceRowId === rowId).alternateRank).toBe(3);
+    for (const due of ['2026-09-25', '2026-09-26', '']) {
+      await putDueScope(device, fixture.fseiban, await getDueDetail(device, fixture.fseiban), { kind: 'seiban' }, due);
+      const board = await getMainBoard(device);
+      expect(board.items).toHaveLength(1);
+      expect(itemFor(board, (item) => item.sourceRowId === rowId)).toMatchObject({ effectiveDueDate: due || '2026-09-20', alternateRank: null });
+    }
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: device.siteKey, itemKey: { startsWith: 'split:' } }, orderBy: { itemKey: 'asc' } })).toEqual(legacyBefore);
   });
 
   it('preserves rank for same effective due dates, including plannedEndDate, and clears it only on an effective change', async () => {
@@ -793,63 +761,22 @@ describeIntegration('grinding planning board due scope API and writeback integra
     expect(itemFor(changedBoard, (item) => item.itemId === ordinaryItem.itemId).alternateRank).toBeNull();
   });
 
-  it('restores inherited and explicit split overrides without clearing rank when effective due remains equal, and rejects a stale split rank write', async () => {
+  it('restores parent overrides without clearing an unchanged rank and rejects stale parent writes with legacy records', async () => {
     const fixture = await createFixture();
-    await addRows(fixture, [{
-      fseiban: fixture.fseiban,
-      fhincd: `${fixture.prefix}-RESTORE-SPLIT`,
-      productNo: '1',
-      resourceCd: '305',
-      processOrder: '1',
-      dueDate: '2026-09-20',
-      splits: [
-        { dueDate: null, rank: 6, alternateRank: 5 },
-        { dueDate: null, rank: 7, alternateRank: 5, overrideDueDate: '2026-09-25' }
-      ]
-    }]);
+    const [rowId] = await addRows(fixture, [{ fseiban: fixture.fseiban, fhincd: `${fixture.prefix}-RESTORE`, productNo: '1', resourceCd: '305', processOrder: '1', dueDate: '2026-09-20', alternateRank: 5, splits: [{ dueDate: null, rank: 6, alternateRank: 5, overrideDueDate: '2026-09-25' }] }]);
     const device = fixture.devices[0]!;
-    const initialDue = await getDueDetail(device, fixture.fseiban);
-    await putDueScope(device, fixture.fseiban, initialDue, { kind: 'seiban' }, '2026-09-25');
-
-    const inheritedSplitId = fixture.splitIds[0]!;
-    const explicitSplitId = fixture.splitIds[1]!;
-    const inheritedItemKey = `split:${inheritedSplitId}`;
-    await db().productionScheduleGrindingPlanningBoardOverride.update({
-      where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: device.siteKey, itemKey: inheritedItemKey } },
-      data: { alternateRank: 5 }
-    });
-
-    let board = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    let inherited = itemFor(board, (item) => item.itemId === inheritedItemKey);
-    let explicit = itemFor(board, (item) => item.itemId === `split:${explicitSplitId}`);
-    expect(inherited.effectiveDueDate).toBe('2026-09-25');
-    expect(inherited.alternateRank).toBe(5);
-    expect(explicit.effectiveDueDate).toBe('2026-09-25');
-    expect(explicit.alternateRank).toBe(5);
-
-    await putPlanningOverride(device, board, inherited, { kind: 'restore' });
-    board = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    inherited = itemFor(board, (item) => item.itemId === inheritedItemKey);
-    expect(inherited.effectiveDueDate).toBe('2026-09-25');
-    expect(inherited.alternateRank).toBe(5);
-
-    await putPlanningOverride(device, board, explicit, { kind: 'restore' });
-    board = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    explicit = itemFor(board, (item) => item.itemId === `split:${explicitSplitId}`);
-    expect(explicit.effectiveDueDate).toBe('2026-09-25');
-    expect(explicit.alternateRank).toBe(5);
-    expect((await db().productionScheduleGrindingPlanningBoardOverride.findUnique({ where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: device.siteKey, itemKey: explicit.itemId } }, select: { overrideDueDate: true } }))?.overrideDueDate).toBeNull();
-
-    const staleBoard = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    const staleInherited = itemFor(staleBoard, (item) => item.itemId === inheritedItemKey);
-    const changedDueSnapshot = await getDueDetail(device, fixture.fseiban);
-    await putDueScope(device, fixture.fseiban, changedDueSnapshot, { kind: 'seiban' }, '2026-09-26');
-    await putPlanningRankExpectConflict(device, staleBoard, staleInherited, 5);
-    const changedBoard = await getMainBoard(device, 'category=grinding&view=seiban&completionFilter=all&pageSize=160');
-    expect(itemFor(changedBoard, (item) => item.itemId === inheritedItemKey).effectiveDueDate).toBe('2026-09-26');
+    const initialBoard = await getMainBoard(device);
+    const parent = itemFor(initialBoard, (item) => item.sourceRowId === rowId);
+    await putPlanningOverride(device, initialBoard, parent, { kind: 'restore' });
+    const restoredBoard = await getMainBoard(device);
+    const restored = itemFor(restoredBoard, (item) => item.sourceRowId === rowId);
+    expect(restored).toMatchObject({ effectiveDueDate: '2026-09-20', alternateRank: 5 });
+    await putDueScope(device, fixture.fseiban, await getDueDetail(device, fixture.fseiban), { kind: 'seiban' }, '2026-09-26');
+    await putPlanningRankExpectConflict(device, restoredBoard, restored, 5);
+    expect(itemFor(await getMainBoard(device), (item) => item.sourceRowId === rowId)).toMatchObject({ effectiveDueDate: '2026-09-26', alternateRank: null });
   });
 
-  it('returns 409 and leaves no partial writes for stale target, source row, added split, and deleted split snapshots', async () => {
+  it('returns 409 and leaves no partial writes for stale target and source snapshots, while legacy insertion and deletion do not invalidate snapshots', async () => {
     const staleFixture = await createFixture();
     await addRows(staleFixture, [{ fseiban: staleFixture.fseiban, fhincd: `${staleFixture.prefix}-STALE`, productNo: '1', resourceCd: '305', processOrder: '1', dueDate: '2026-09-20' }]);
     const staleDevice = staleFixture.devices[0]!;
@@ -918,9 +845,9 @@ describeIntegration('grinding planning board due scope API and writeback integra
     const addedSnapshot = await getDueDetail(addedDevice, addedFixture.fseiban);
     const addedSplit = await db().productionScheduleOrderSplit.create({ data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: addedRow, splitNo: 1, splitQuantity: 1 }, select: { id: true } });
     addedFixture.splitIds.push(addedSplit.id);
-    await putDueScopeExpectConflict(addedDevice, addedFixture.fseiban, addedSnapshot, { kind: 'seiban' }, '2026-09-25');
-    expect(await db().productionScheduleGrindingPlanningBoardDueScope.count({ where: { siteKey: addedDevice.siteKey, fseiban: addedFixture.fseiban } })).toBe(0);
-    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: addedDevice.siteKey } })).toBe(0);
+    await putDueScope(addedDevice, addedFixture.fseiban, addedSnapshot, { kind: 'seiban' }, '2026-09-25');
+    expect(await db().productionScheduleGrindingPlanningBoardDueScope.count({ where: { siteKey: addedDevice.siteKey, fseiban: addedFixture.fseiban } })).toBe(1);
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: addedDevice.siteKey } })).toBe(1);
 
     const deletedFixture = await createFixture();
     const [deletedRow] = await addRows(deletedFixture, [{ fseiban: deletedFixture.fseiban, fhincd: `${deletedFixture.prefix}-DELETE`, productNo: '1', resourceCd: '305', processOrder: '1', dueDate: '2026-09-20', splits: [{}] }]);
@@ -928,9 +855,9 @@ describeIntegration('grinding planning board due scope API and writeback integra
     const deletedSnapshot = await getDueDetail(deletedDevice, deletedFixture.fseiban);
     const deletedSplitId = deletedFixture.splitIds[0]!;
     await db().productionScheduleOrderSplit.delete({ where: { id: deletedSplitId } });
-    await putDueScopeExpectConflict(deletedDevice, deletedFixture.fseiban, deletedSnapshot, { kind: 'seiban' }, '2026-09-25');
-    expect(await db().productionScheduleGrindingPlanningBoardDueScope.count({ where: { siteKey: deletedDevice.siteKey, fseiban: deletedFixture.fseiban } })).toBe(0);
-    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: deletedDevice.siteKey } })).toBe(0);
+    await putDueScope(deletedDevice, deletedFixture.fseiban, deletedSnapshot, { kind: 'seiban' }, '2026-09-25');
+    expect(await db().productionScheduleGrindingPlanningBoardDueScope.count({ where: { siteKey: deletedDevice.siteKey, fseiban: deletedFixture.fseiban } })).toBe(1);
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: deletedDevice.siteKey } })).toBe(1);
     expect(deletedRow).toBeTruthy();
   });
 });

@@ -7,7 +7,7 @@ export function productionFixture(count = 1500, resourceCount = 20) {
   const items: GrindingPlanningBoardItem[] = Array.from({ length: count }, (_, i) => {
     const part = Math.floor(i / 3);
     return {
-      itemId: `item-${String(i).padStart(4, '0')}`, kind: i % 17 === 0 ? 'split' : 'row',
+      itemId: `item-${String(i).padStart(4, '0')}`, kind: 'row',
       itemRevision: `revision-${i}`, version: 1, sourceRowId: `row-${i}`,
       fseiban: seibans[part % seibans.length]!, fhincd: `part-${part}`, fhinmei: `部品${part}`,
       machineName: '合成機種', productNo: `${part}`, processOrder: `${(i % 3 + 1) * 10}`,

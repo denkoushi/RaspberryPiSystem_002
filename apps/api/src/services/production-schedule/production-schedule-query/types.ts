@@ -59,13 +59,6 @@ export type ProductionScheduleRow = {
   machineRequiredMinutes?: number;
   /** 順位ボード: 同一 ProductNo + FKOJUN の FSIGENCD=10 人工数（分）。 */
   laborRequiredMinutes?: number;
-  /** display item 契約: 親 CsvDashboardRow.id（未分割・分割共通） */
-  sourceRowId?: string;
-  /** 分割片 ID。未分割時は null */
-  splitId?: string | null;
-  splitNo?: number | null;
-  splitQuantity?: number | null;
-  isSplit?: boolean;
 };
 
 export type ProductionScheduleListParams = {

@@ -30,9 +30,7 @@ const mocks = vi.hoisted(() => {
     },
     productionScheduleGrindingPlanningBoardArrival: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), aggregate: vi.fn(), upsert: vi.fn() },
-    productionScheduleOrderSplit: { findMany: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
-    productionScheduleOrderSplitAssignment: { findMany: vi.fn() },
     productionScheduleResourceMaster: { findMany: vi.fn(), aggregate: vi.fn() },
     productionScheduleSeibanMachineNameSupplement: { aggregate: vi.fn() }
   };
@@ -46,7 +44,6 @@ const mocks = vi.hoisted(() => {
     isProductionScheduleGrindingResourceCd: vi.fn(),
     isProductionScheduleCuttingResourceCd: vi.fn(),
     normalizeProductionScheduleResourceCd: vi.fn(),
-    isProductionScheduleOrderSplitEnabled: vi.fn(),
     acquireParentRowLock: vi.fn(),
     resolveSeibanMachineDisplayNamesBatched: vi.fn(),
     projectGrindingPlanningBoard: vi.fn(),
@@ -73,10 +70,7 @@ vi.mock('../policies/resource-category-policy.service.js', () => ({
   isProductionScheduleCuttingResourceCd: mocks.isProductionScheduleCuttingResourceCd,
   normalizeProductionScheduleResourceCd: mocks.normalizeProductionScheduleResourceCd
 }));
-vi.mock('../order-split/production-schedule-order-split-feature.js', () => ({
-  isProductionScheduleOrderSplitEnabled: mocks.isProductionScheduleOrderSplitEnabled
-}));
-vi.mock('../order-split/production-schedule-parent-row-lock.service.js', () => ({
+vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', () => ({
   acquireProductionScheduleParentRowLockInTransaction: mocks.acquireParentRowLock
 }));
 vi.mock('../seiban-machine-display-names.service.js', () => ({
@@ -123,7 +117,6 @@ function configurePersistence(): void {
     orderSupplements: [{ plannedQuantity: 1, plannedEndDate: new Date('2026-09-20T00:00:00.000Z') }],
     productionScheduleProgress: { isCompleted: false, updatedAt: sourceRow.updatedAt },
     productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: sourceRow.updatedAt },
-    orderSplits: []
   };
   mocks.getResourceCategoryPolicy.mockResolvedValue({ grindingResourceCds: ['305'], cuttingExcludedResourceCds: [], cuttingResourceCds: [] });
   mocks.filterProductionScheduleResourceCdsByCategoryWithPolicy.mockImplementation((values: string[]) => values);
@@ -133,7 +126,6 @@ function configurePersistence(): void {
     const normalized = String(value ?? '').trim();
     return normalized || null;
   });
-  mocks.isProductionScheduleOrderSplitEnabled.mockReturnValue(false);
   mocks.resolveSeibanMachineDisplayNamesBatched.mockResolvedValue({ machineNames: { 'ORDER-A': 'Machine A' } });
   mocks.buildGrindingPlanningBoardLogicalKey.mockImplementation((data: Record<string, unknown>) => JSON.stringify([data.FSEIBAN, data.FHINCD, data.FSIGENCD, data.FKOJUN]));
   mocks.buildGrindingPlanningBoardRowItemId.mockImplementation((data: Record<string, unknown>) => `row:${Buffer.from(JSON.stringify([data.FSEIBAN, data.FHINCD, data.FSIGENCD, data.FKOJUN])).toString('base64url')}`);
@@ -177,9 +169,7 @@ function configurePersistence(): void {
   prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardArrival.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
-  prisma.productionScheduleOrderSplit.findMany.mockResolvedValue([]);
   prisma.productionScheduleOrderAssignment.findMany.mockResolvedValue([]);
-  prisma.productionScheduleOrderSplitAssignment.findMany.mockResolvedValue([]);
   prisma.productionScheduleResourceMaster.findMany.mockResolvedValue([{ resourceCd: '305' }, { resourceCd: '581' }]);
   prisma.productionScheduleResourceMaster.aggregate.mockResolvedValue({ _count: { _all: 2 }, _max: { updatedAt: new Date(databaseGeneration) } });
   prisma.productionScheduleSeibanMachineNameSupplement.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
@@ -776,7 +766,7 @@ describe('grinding planning board service orchestration', () => {
     expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['csv', 'state', 'override', 'resource', 'machine-name', 'split-gate'])('rebuilds without a supplied ID after %s changes', async (change) => {
+  it.each(['csv', 'state', 'override', 'resource', 'machine-name'])('rebuilds without a supplied ID after %s changes', async (change) => {
     const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
     const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, snapshotStore };
     const first = await getGrindingPlanningBoard(params);
@@ -786,7 +776,6 @@ describe('grinding planning board service orchestration', () => {
     if (change === 'override') mocks.prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue(revision);
     if (change === 'resource') mocks.prisma.productionScheduleResourceMaster.aggregate.mockResolvedValue(revision);
     if (change === 'machine-name') mocks.prisma.productionScheduleSeibanMachineNameSupplement.aggregate.mockResolvedValue(revision);
-    if (change === 'split-gate') mocks.isProductionScheduleOrderSplitEnabled.mockReturnValue(true);
     const projection = mocks.projectGrindingPlanningBoard.mock.results[0]!.value;
     mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection, items: projection.items.map((item: object) => ({ ...item, itemRevision: 'changed' })) });
     const next = await getGrindingPlanningBoard(params);
@@ -1112,7 +1101,6 @@ describe('grinding planning board service orchestration', () => {
         orderSupplements: [{ plannedQuantity: 1, plannedEndDate: new Date('2026-09-20T00:00:00.000Z') }],
         productionScheduleProgress: { isCompleted: false, updatedAt: mocks.sourceRow.updatedAt },
         productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: mocks.sourceRow.updatedAt },
-        orderSplits: []
       }));
     });
     mocks.prisma.productionScheduleOrderAssignment.findMany.mockImplementation(async (args: { where: { csvDashboardRowId: { in: string[] } } }) => {
@@ -1212,7 +1200,7 @@ describe('bulk grinding resource order service', () => {
       return query.includes('ProductionScheduleGrindingPlanningBoardState') ? [mocks.state] : rows;
     });
     mocks.prisma.csvDashboardRow.findMany.mockResolvedValue(rows.map((row) => ({ id: row.id, updatedAt: row.updatedAt,
-      rowNotes: [], orderSupplements: [], orderSplits: [], productionScheduleProgress: null, productionScheduleExternalCompletion: null })));
+      rowNotes: [], orderSupplements: [], productionScheduleProgress: null, productionScheduleExternalCompletion: null })));
     mocks.prisma.$transaction.mockImplementation(async (callback: (client: typeof mocks.prisma) => Promise<unknown>) => callback(mocks.prisma));
     mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert.mockImplementation(async ({ create }) => ({ ...create, version: 1 }));
     mocks.projectGrindingPlanningBoard.mockImplementation(({ overrides }: { overrides: Map<string, { alternateRank: number; version: number; orderPinned?: boolean }> }) => ({
@@ -1255,7 +1243,7 @@ describe('bulk grinding resource order service', () => {
   });
 
   it('drag reorders the full pane without duplicate ranks and keeps a hidden leading row in place', async () => {
-    const hidden = { ...items[0]!, itemId: 'split:hidden', alternateRank: 1, productNo: '1', processOrder: '5', arrived: false };
+    const hidden = { ...items[0]!, itemId: 'hidden-parent', alternateRank: 1, productNo: '1', processOrder: '5', arrived: false };
     items = items.map((item, index) => ({ ...item, alternateRank: index + 2, productNo: '1', processOrder: String(index * 10 + 10) }));
     const [target, source] = items;
     items.push(hidden);

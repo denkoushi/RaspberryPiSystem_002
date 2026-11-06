@@ -122,10 +122,6 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         self.assertIn("VITE_API_BASE_URL=/api", rendered)
         self.assertIn("VITE_AGENT_WS_MODE=local", rendered)
         self.assertIn("VITE_KIOSK_SOP_POPUP_ENABLED=true", rendered)
-        self.assertIn(
-            "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false",
-            rendered,
-        )
 
     def test_every_repository_template_parses(self) -> None:
         templates = discover_templates(ANSIBLE_ROOT)
@@ -147,7 +143,6 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             web_api_base_url="/api",
             web_kiosk_due_mgmt_layout_v2_enabled="true",
             web_kiosk_leaderboard_defer_residual_summary_enabled="false",
-            web_kiosk_production_schedule_order_split_enabled="false",
             web_kiosk_sop_popup_enabled="true",
             web_kiosk_target_location_selector_enabled="true",
             release_build_contract_sha=sha,

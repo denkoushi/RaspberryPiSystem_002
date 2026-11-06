@@ -5,7 +5,6 @@ import {
   buildGrindingPlanningBoardLogicalKey,
   buildGrindingPlanningBoardRowItemId,
   projectGrindingPlanningBoard,
-  resolveGrindingPlanningBoardItemDueDate,
   resolveGrindingPlanningBoardParentDueDate,
   sortGrindingPlanningBoardProjectionItems,
   type GrindingPlanningBoardProjectionOverride,
@@ -31,20 +30,19 @@ const sourceRow = (
   }
 });
 
-const detail = (overrides: Partial<GrindingPlanningBoardProjectionRowDetail> = {}): GrindingPlanningBoardProjectionRowDetail => ({
+const detail = (overrides: Partial<GrindingPlanningBoardProjectionRowDetail> & { orderSplits?: unknown[] } = {}): GrindingPlanningBoardProjectionRowDetail => ({
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
   rowNotes: [{ dueDate: new Date('2026-09-10T00:00:00.000Z') }],
   orderSupplements: [{ plannedQuantity: 3, plannedEndDate: null }],
   productionScheduleProgress: { isCompleted: false, updatedAt: new Date('2026-09-01T00:00:00.000Z') },
   productionScheduleExternalCompletion: null,
-  orderSplits: [],
   ...overrides
 });
 
 const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanningBoard>[0]> = {}) => ({
   rows: [sourceRow()],
   details: new Map([['row-1', detail()]]),
-  ranks: { rows: new Map(), splits: new Map() },
+  ranks: { rows: new Map() },
   overrides: new Map<string, GrindingPlanningBoardProjectionOverride>(),
   category: 'grinding' as const,
   seibanOrder: ['S-001'],
@@ -57,7 +55,7 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 describe('grinding-planning-board-projection', () => {
   it.each([
     [false, false, null], [true, false, 'manual'], [false, true, 'import'], [true, true, 'import']
-  ] as const)('projects manual=%s external=%s as %s for rows and splits', (manual, external, completionSource) => {
+  ] as const)('projects manual=%s external=%s as %s for parent rows even with legacy records', (manual, external, completionSource) => {
     const updatedAt = new Date('2026-09-01');
     const sourceDetail = detail({
       productionScheduleProgress: { isCompleted: manual, updatedAt },
@@ -67,12 +65,12 @@ describe('grinding-planning-board-projection', () => {
       details: new Map([['row-1', value]])
     })).items;
     expect(project(sourceDetail)[0]).toMatchObject({ kind: 'row', isCompleted: manual || external, completionSource });
-    const splits = project({ ...sourceDetail, orderSplits: [
+    const splits = project({ ...sourceDetail, ...{ orderSplits: [
       { id: 'split-1', splitQuantity: 1, dueDate: null, updatedAt },
       { id: 'split-2', splitQuantity: 2, dueDate: null, updatedAt }
-    ] });
-    expect(splits).toHaveLength(2);
-    for (const split of splits) expect(split).toMatchObject({ kind: 'split', isCompleted: manual || external, completionSource });
+    ] } });
+    expect(splits).toHaveLength(1);
+    for (const split of splits) expect(split).toMatchObject({ kind: 'row', isCompleted: manual || external, completionSource });
   });
 
   it('changes the item revision when manual completion becomes import completion', () => {
@@ -96,7 +94,7 @@ describe('grinding-planning-board-projection', () => {
       effectiveDueDate: original.effectiveDueDate, originalRank: original.originalRank, alternateRank: original.alternateRank });
     expect(pinned.itemRevision).not.toBe(original.itemRevision);
   });
-  it('distinguishes CSV fallback clears from explicit original restores and keeps direct split dates first', () => {
+  it('distinguishes CSV fallback clears from explicit original restores and restores parent dates', () => {
     const originalParentDueDate = new Date('2026-09-21T00:00:00.000Z');
     const plannedEndDate = new Date('2026-09-30T00:00:00.000Z');
     expect(resolveGrindingPlanningBoardParentDueDate({
@@ -109,19 +107,17 @@ describe('grinding-planning-board-projection', () => {
       plannedEndDate,
       override: { overrideDueDate: null, dueDateCleared: false }
     })).toBe('2026-09-21');
-    expect(resolveGrindingPlanningBoardItemDueDate({
-      splitDueDate: new Date('2026-09-22T00:00:00.000Z'),
+    expect(resolveGrindingPlanningBoardParentDueDate({
       originalParentDueDate,
       plannedEndDate,
-      parentOverride: { overrideDueDate: null, dueDateCleared: true }
-    })).toBe('2026-09-22');
+      override: { overrideDueDate: null, dueDateCleared: true }
+    })).toBe('2026-09-30');
   });
 
   it('uses the exact logical key and the resolved machine/rank maps', () => {
     const params = baseParams({
       ranks: {
         rows: new Map([['row-1', { resourceCd: 'G-01', orderNumber: 4 }]]),
-        splits: new Map()
       }
     });
     const result = projectGrindingPlanningBoard(params);
@@ -229,13 +225,13 @@ describe('grinding-planning-board-projection', () => {
     ]);
   });
 
-  it('inherits a parent due override into unspecialized split items and rounds split minutes', () => {
+  it('ignores legacy records and applies parent resource, due and rank with full quantity/time', () => {
     const splitDetail = detail({
       orderSplits: [
         { id: 'split-1', splitQuantity: 1, dueDate: null, updatedAt: new Date('2026-09-01T00:00:00.000Z') },
         { id: 'split-2', splitQuantity: 2, dueDate: null, updatedAt: new Date('2026-09-01T00:00:00.000Z') }
       ],
-      orderSupplements: [{ plannedQuantity: 3, plannedEndDate: null }]
+      orderSupplements: [{ plannedQuantity: 5, plannedEndDate: null }]
     });
     const parentOverride: GrindingPlanningBoardProjectionOverride = {
       overrideResourceCd: 'G-02',
@@ -249,12 +245,13 @@ describe('grinding-planning-board-projection', () => {
         overrides: new Map([[buildGrindingPlanningBoardRowItemId(sourceRow().rowData), parentOverride]])
       })
     );
-    expect(result.items.map((item) => item.itemId)).toEqual(['split:split-1', 'split:split-2']);
-    expect(result.items.map((item) => item.effectiveResourceCd)).toEqual(['G-01', 'G-01']);
-    expect(result.items.map((item) => item.originalDueDate)).toEqual(['2026-09-10', '2026-09-10']);
-    expect(result.items.map((item) => item.effectiveDueDate)).toEqual(['2026-09-20', '2026-09-20']);
-    expect(result.items.map((item) => item.alternateRank)).toEqual([null, null]);
-    expect(result.items.map((item) => item.requiredMinutes)).toEqual([33, 67]);
+    expect(result.items.map((item) => item.itemId)).toEqual([buildGrindingPlanningBoardRowItemId(sourceRow().rowData)]);
+    expect(result.items[0]?.plannedQuantity).toBe(5);
+    expect(result.items.map((item) => item.effectiveResourceCd)).toEqual(['G-02']);
+    expect(result.items.map((item) => item.originalDueDate)).toEqual(['2026-09-10']);
+    expect(result.items.map((item) => item.effectiveDueDate)).toEqual(['2026-09-20']);
+    expect(result.items.map((item) => item.alternateRank)).toEqual([1]);
+    expect(result.items.map((item) => item.requiredMinutes)).toEqual([100]);
   });
 
   it('keeps a source-category item visible when its effective resource is supplied by the caller', () => {
@@ -291,7 +288,6 @@ describe('grinding-planning-board-projection', () => {
       })
     );
     expect(result.items.map((item) => item.progress)).toEqual([
-      { completed: 1, total: 3, quantityKnown: false },
       { completed: 1, total: 3, quantityKnown: false }
     ]);
     expect(result.progress.bySeiban.get('S-001')).toEqual({ completed: 1, total: 3 });
@@ -355,12 +351,14 @@ describe('D schedule due source in the grinding projection', () => {
     expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-09-10');
   });
 
-  it('keeps item overrides and split dates ahead of Excel', () => {
+  it('ignores legacy dates and overrides while preserving parent overrides ahead of Excel', () => {
     const updatedAt = new Date('2026-11-04Z');
     const input = baseParams({ details: new Map([['row-1', detail({ excelDueDate: new Date('2026-11-10Z'), excelChangedAt: updatedAt,
       orderSplits: [{ id: 'd-test-split', splitQuantity: 1, dueDate: new Date('2026-11-06Z'), updatedAt }] })]]) });
-    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-06');
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-10');
     input.overrides.set('split:d-test-split', { overrideResourceCd: null, overrideDueDate: new Date('2026-11-07Z'), alternateRank: null, version: 1 });
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-10');
+    input.overrides.set(buildGrindingPlanningBoardRowItemId(sourceRow().rowData), { overrideResourceCd: null, overrideDueDate: new Date('2026-11-07Z'), alternateRank: null, version: 1 });
     expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-07');
   });
 

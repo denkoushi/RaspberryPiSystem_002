@@ -20,7 +20,6 @@ import {
 } from './leaderboard-shell-priority-fetch-policy.js';
 import { buildLeaderboardShellRankJoinContext } from './leaderboard-shell-rank-join.sql.js';
 import { buildLeaderboardShellManualPriorityWhereSql } from './leaderboard-shell-manual-where.sql.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 import {
   buildLeaderboardShellFillerOrderBy,
   buildLeaderboardShellManualOrderBy,
@@ -111,8 +110,7 @@ async function buildLeaderboardShellPriorityContext(params: {
 
   const manualWhere = buildLeaderboardShellManualPriorityWhereSql({
     commonWhere,
-    locationKey,
-    splitEnabled: isProductionScheduleOrderSplitEnabled()
+    locationKey
   });
 
   const manualRowsRaw = await queryLeaderboardShellScheduleRows({

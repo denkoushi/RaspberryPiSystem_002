@@ -33,11 +33,5 @@ export type LeaderboardScheduleRowSql = {
     plannedEndDate: Date | null;
     isCompleted: boolean;
     isExternallyCompleted: boolean;
-    splits: Array<{
-      id: string;
-      splitQuantity: number;
-      dueDate: Date | null;
-      updatedAt: Date;
-    }>;
   };
 };

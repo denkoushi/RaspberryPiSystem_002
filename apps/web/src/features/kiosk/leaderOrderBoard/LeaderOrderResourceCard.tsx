@@ -49,8 +49,6 @@ type Props = {
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
   onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
-  onOpenSplitModal?: (row: LeaderBoardRow) => void;
-  splitFeatureEnabled?: boolean;
   /** 製番 OR フィルタ選択時のみ行左縁に識別色（全件表示時は無色） */
   activeSeibanFilters?: readonly string[];
   footerResourceChipsByPartKey: ReadonlyMap<string, readonly KioskResourceProgressProcessChip[]>;
@@ -86,8 +84,6 @@ function LeaderOrderResourceCardInner({
   onOpenNote,
   notePending,
   onOpenInspectionWorkflow,
-  onOpenSplitModal,
-  splitFeatureEnabled = false,
   activeSeibanFilters,
   footerResourceChipsByPartKey,
   seibanEvalEnabled = false,
@@ -197,8 +193,6 @@ function LeaderOrderResourceCardInner({
       onOpenNote={onOpenNote}
       notePending={notePending}
       onOpenInspectionWorkflow={onOpenInspectionWorkflow}
-      onOpenSplitModal={onOpenSplitModal}
-      splitFeatureEnabled={splitFeatureEnabled}
       footerResourceChips={footerChips}
     />
   );

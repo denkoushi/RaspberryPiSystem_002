@@ -6,7 +6,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { issueSelfInspectionPaperReport } from '../../api/client';
 import {
   useKioskProductionScheduleHistoryProgress,
-  useKioskProductionScheduleOrderSplitStatus,
   useKioskProductionScheduleOrderUsage,
   useKioskProductionScheduleResources
 } from '../../api/hooks';
@@ -23,17 +22,12 @@ import {
 } from '../../features/kiosk/leaderOrderBoard/cache/leaderboardBoardInteractionLockPolicy';
 import { LEADER_ORDER_BOARD_SHELL_INITIAL_PAGE_SIZE } from '../../features/kiosk/leaderOrderBoard/constants';
 import { deriveVisibleSeibanEntries } from '../../features/kiosk/leaderOrderBoard/deriveVisibleSeibanEntries';
-import {
-  KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED,
-  resolveSourceRowIdFromLeaderBoardRow
-} from '../../features/kiosk/leaderOrderBoard/displayItemId';
 import { filterLeaderBoardSlotResourceCds } from '../../features/kiosk/leaderOrderBoard/isLeaderBoardExcludedResourceSlotCd';
 import { LeaderBoardGrid } from '../../features/kiosk/leaderOrderBoard/LeaderBoardGrid';
 import { LeaderBoardInspectionWorkflowModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardInspectionWorkflowModal';
 import { LeaderBoardLeftToolStack } from '../../features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack';
 import { LeaderBoardResourceSlotPickerModal } from '../../features/kiosk/leaderOrderBoard/LeaderBoardResourceSlotPickerModal';
 import { LeaderBoardSeibanListPanel } from '../../features/kiosk/leaderOrderBoard/LeaderBoardSeibanListPanel';
-import { LeaderOrderSplitModal } from '../../features/kiosk/leaderOrderBoard/LeaderOrderSplitModal';
 import {
   LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS,
   LEADER_BOARD_ORDER_USAGE_REFETCH_MS,
@@ -330,22 +324,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     pauseRefetch: writePause,
     refetchIntervalMs: LEADER_BOARD_HISTORY_PROGRESS_REFETCH_MS
   });
-  const orderSplitStatusQuery = useKioskProductionScheduleOrderSplitStatus();
-  const orderSplitStatus = orderSplitStatusQuery.data;
-  const splitFeatureEffectiveEnabled =
-    KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED && orderSplitStatus?.effectiveEnabled === true;
-  const splitFeatureStatus = !KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED
-    ? { label: '分割 Web OFF', className: 'border-slate-500 bg-slate-800 text-slate-200' }
-    : orderSplitStatusQuery.isLoading
-      ? { label: '分割 確認中', className: 'border-cyan-500/40 bg-cyan-950/70 text-cyan-100' }
-      : orderSplitStatusQuery.isError
-        ? { label: '分割 状態不明', className: 'border-rose-400/60 bg-rose-950/70 text-rose-100' }
-        : !orderSplitStatus?.deploymentEnabled
-          ? { label: '分割 API OFF', className: 'border-slate-500 bg-slate-800 text-slate-200' }
-          : splitFeatureEffectiveEnabled
-            ? { label: '分割 検証ON', className: 'border-emerald-400/60 bg-emerald-950/70 text-emerald-100' }
-            : { label: '分割 検証OFF', className: 'border-amber-400/60 bg-amber-950/70 text-amber-100' };
-
   const boardSyncStatusMessage = isBoardDataSyncStatusVisible
     ? LEADERBOARD_BACKGROUND_SYNC_STATUS_MESSAGE
     : isDecorationSyncing
@@ -468,7 +446,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const [slotModalOpen, setSlotModalOpen] = useState(false);
   const [isSeibanListPanelOpen, setIsSeibanListPanelOpen] = useState(false);
   const [inspectionWorkflowRow, setInspectionWorkflowRow] = useState<LeaderBoardRow | null>(null);
-  const [splitModalRow, setSplitModalRow] = useState<LeaderBoardRow | null>(null);
   /** 備考モーダル対象行の製番（製番登録ボタン用） */
   const [noteModalTargetFseiban, setNoteModalTargetFseiban] = useState<string | null>(null);
 
@@ -524,20 +501,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     setInspectionWorkflowRow(row);
   }, []);
 
-  const handleOpenSplitModal = useCallback((row: LeaderBoardRow) => {
-    setSplitModalRow({
-      ...row,
-      id: resolveSourceRowIdFromLeaderBoardRow(row),
-      sourceRowId: resolveSourceRowIdFromLeaderBoardRow(row),
-      isSplit: false
-    });
-  }, []);
-
-  const handleSplitSaved = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
-    void invalidateRelatedQueries();
-  }, [invalidateRelatedQueries, queryClient]);
-
   const handleOpenInspectionDigitalInput = useCallback(
     (row: LeaderBoardRow, selectedResourceCd: string) => {
       const path = row.selfInspectionEntryPath?.trim();
@@ -568,7 +531,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         const paper = await issueSelfInspectionPaperReport({
           templateId,
           productNo: row.productNo,
-          scheduleRowId: resolveSourceRowIdFromLeaderBoardRow(row),
+          scheduleRowId: row.id,
           fseiban: row.fseiban,
           fhincd: row.fhincd,
           fhinmei: row.fhinmei,
@@ -655,7 +618,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
           onToggleGanttMode={toggleGanttMode}
           arrivalFilterEnabled={arrivalFilterEnabled} onToggleArrivalFilter={toggleArrivalFilter}
           scawEnabled={scawEnabled} onToggleScawMode={toggleScawMode}
-          splitFeatureStatus={splitFeatureStatus}
         />
       </div>
 
@@ -717,8 +679,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
               onOpenNote={handleOpenRowNote}
               notePending={notePending}
               onOpenInspectionWorkflow={handleOpenInspectionWorkflow}
-              onOpenSplitModal={handleOpenSplitModal}
-              splitFeatureEnabled={splitFeatureEffectiveEnabled}
               interactionLocked={isInteractionLocked}
               footerResourceChipsByPartKey={footerResourceChipsByPartKey}
               seibanEvalEnabled={seibanEvalEnabled}
@@ -758,13 +718,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
         onClose={() => setInspectionWorkflowRow(null)}
         onOpenDigitalInput={handleOpenInspectionDigitalInput}
         onOpenPaperPrint={handleOpenInspectionPaperPrint}
-      />
-      <LeaderOrderSplitModal
-        open={splitModalRow != null}
-        row={splitModalRow}
-        targetDeviceScopeKey={targetDeviceScopeKey}
-        onClose={() => setSplitModalRow(null)}
-        onSaved={handleSplitSaved}
       />
       <KioskNoteModal
         isOpen={isNoteModalOpen} pending={notePending}

@@ -24,13 +24,13 @@ vi.mock('../shared-schedule-fields.repository.js', () => ({
   },
 }));
 
-vi.mock('../order-split/production-schedule-unified-order-slot.service.js', () => ({
+vi.mock('../order-assignment/production-schedule-unified-order-slot.service.js', () => ({
   acquireUnifiedOrderSlotLockInTransaction: vi.fn(),
   acquireUnifiedOrderSlotLocksInTransaction: vi.fn(),
   assertUnifiedOrderSlotAvailableInTransaction: vi.fn(),
 }));
 
-vi.mock('../order-split/production-schedule-parent-row-lock.service.js', () => ({
+vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', () => ({
   acquireProductionScheduleParentRowLockInTransaction: vi.fn(),
 }));
 
@@ -204,76 +204,18 @@ describe('production-schedule-command.service', () => {
     );
   });
 
-  it('split feature enabled では分割済み行の親行手動順番設定を拒否する', async () => {
-    const previousFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-    process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'true';
+  it('旧片が残っていても親の手動順番を保存し、旧 assignment は変更しない', async () => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
-      id: 'row-split-parent',
-      rowData: { FSIGENCD: 'R01' }
+      id: 'row-parent', rowData: { FSIGENCD: 'R01' }
     } as never);
     vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null as never);
-    vi.mocked(prisma.productionScheduleOrderSplit.count).mockResolvedValue(1 as never);
-
-    try {
-      await expect(
-        upsertProductionScheduleOrder({
-          rowId: 'row-split-parent',
-          locationKey: 'kiosk-1',
-          resourceCd: 'R01',
-          orderNumber: 2
-        })
-      ).rejects.toMatchObject({
-        statusCode: 400,
-        code: 'PARENT_ORDER_NOT_ALLOWED_FOR_SPLIT_ROW'
-      } satisfies Partial<ApiError>);
-    } finally {
-      if (previousFlag == null) {
-        delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-      } else {
-        process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = previousFlag;
-      }
-    }
-
-    expect(prisma.productionScheduleOrderAssignment.upsert).not.toHaveBeenCalled();
-  });
-
-  it('split feature disabled では同一親scopeのsplit順番を畳んで親行手動順番を保存する', async () => {
-    const previousFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-    process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'false';
-    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
-      id: 'row-split-parent-off',
-      rowData: { FSIGENCD: 'R01' }
-    } as never);
-    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null as never);
-    vi.mocked(prisma.productionScheduleOrderSplit.count).mockResolvedValue(1 as never);
+    vi.mocked(prisma.productionScheduleOrderSplit.count).mockResolvedValue(2 as never);
     vi.mocked(prisma.productionScheduleOrderAssignment.upsert).mockResolvedValue({} as never);
-
-    try {
-      const result = await upsertProductionScheduleOrder({
-        rowId: 'row-split-parent-off',
-        locationKey: 'kiosk-1',
-        resourceCd: 'R01',
-        orderNumber: 2
-      });
-
-      expect(result).toEqual({ success: true, orderNumber: 2 });
-    } finally {
-      if (previousFlag == null) {
-        delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-      } else {
-        process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = previousFlag;
-      }
-    }
-
-    expect(prisma.productionScheduleOrderSplitAssignment.deleteMany).toHaveBeenCalledWith({
-      where: {
-        split: {
-          csvDashboardId: expect.any(String),
-          parentCsvDashboardRowId: 'row-split-parent-off'
-        },
-        location: 'kiosk-1'
-      }
-    });
+    await expect(upsertProductionScheduleOrder({
+      rowId: 'row-parent', locationKey: 'kiosk-1', resourceCd: 'R01', orderNumber: 2
+    })).resolves.toEqual({ success: true, orderNumber: 2 });
+    expect(prisma.productionScheduleOrderSplit.count).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplitAssignment.deleteMany).not.toHaveBeenCalled();
     expect(prisma.productionScheduleOrderAssignment.upsert).toHaveBeenCalled();
   });
 

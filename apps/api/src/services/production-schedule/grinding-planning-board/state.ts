@@ -6,7 +6,6 @@ import type { LeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-s
 import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-shell-snapshot.store.js';
 import { readGrindingPlanningBoardSnapshotGenerationToken } from '../leaderboard/leaderboard-shell-snapshot-generation.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } from '../constants.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 import { type DbClient, type PlanningSnapshotGenerationDetails, type PlanningSnapshotPayload, type PlanningState, type ReusablePlanningPayload, uniqueFseibans } from './shared.js';
 
 const PLANNING_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
@@ -85,7 +84,7 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       select: { version: true, updatedAt: true }
     }),
     prisma.productionScheduleGrindingPlanningBoardOverride.aggregate({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: { startsWith: 'row:' } },
       _count: { _all: true },
       _max: { updatedAt: true }
     }),
@@ -112,7 +111,7 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       resourceUpdatedAt: resources._max.updatedAt?.toISOString() ?? '',
       machineNameCount: machineNames._count._all,
       machineNameUpdatedAt: machineNames._max.updatedAt?.toISOString() ?? '',
-      splitEnabled: isProductionScheduleOrderSplitEnabled()
+      payloadFormat: 2
     }),
     leaderboardGenerationToken: leaderboardGeneration,
     boardVersion,

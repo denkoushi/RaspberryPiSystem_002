@@ -159,7 +159,7 @@ it('measures production-size due sort, real queue commits/layouts and jsdom view
   const summary = {
     environment: { node: process.version, platform: process.platform, arch: process.arch, cpu: cpus()[0]?.model,
       dom: 'jsdom (no browser layout/paint)', samples: 3, discardedWarmups: 1 },
-    fixture: { seibans: 80, items: 1500, resources: 20, splits: fixture.items.filter((item) => item.kind === 'split').length,
+    fixture: { seibans: 80, items: 1500, resources: 20,
       specialDue: fixture.items.filter((item) => item.specialDue).length },
     layoutMedianMs: median(layoutSamples),
     medians: Object.fromEntries(['handlerMs', 'firstDisplayMs', 'acknowledgementsMs', 'viewMountMs', 'viewUpdateMs', 'viewAcknowledgementMs'].map((key) =>

@@ -21,19 +21,6 @@ export async function getProductionScheduleOrderUsage(
           ','
         )})`
       : Prisma.empty;
-  const splitAssignmentUnion = Prisma.sql`
-      UNION ALL
-      SELECT
-        "resourceCd",
-        "orderNumber"
-      FROM "ProductionScheduleOrderSplitAssignment"
-      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND (
-          "location" = ${locationKey}
-          OR "siteKey" = ${locationKey}
-        )
-        ${resourceCdFilter}
-    `;
 
   const usageRows = await prisma.$queryRaw<Array<{ resourceCd: string; orderNumbers: number[] }>>`
     WITH scoped AS (
@@ -47,7 +34,6 @@ export async function getProductionScheduleOrderUsage(
           OR "siteKey" = ${locationKey}
         )
         ${resourceCdFilter}
-      ${splitAssignmentUnion}
     )
     SELECT
       "resourceCd" AS "resourceCd",

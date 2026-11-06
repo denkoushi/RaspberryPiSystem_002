@@ -4,12 +4,10 @@ import {
   useClients,
   useImportProductionScheduleResourceCodeMappingsFromCsv,
   useProductionScheduleDueManagementAccessPasswordSettings,
-  useProductionScheduleOrderSplitPilotSettings,
   useProductionScheduleProcessingTypeOptions,
   useProductionScheduleResourceCodeMappings,
   useProductionScheduleResourceCategorySettings,
   useUpdateProductionScheduleDueManagementAccessPassword,
-  useUpdateProductionScheduleOrderSplitPilotSettings,
   useUpdateProductionScheduleProcessingTypeOptions,
   useUpdateProductionScheduleResourceCodeMappings,
   useUpdateProductionScheduleResourceCategorySettings
@@ -17,14 +15,11 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
-import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 
 import { ProductionScheduleLoadBalancingSettingsSection } from './ProductionScheduleLoadBalancingSettingsSection';
 
 const DEFAULT_LOCATION = 'shared';
 const LOCATION_SEGMENT_DELIMITER = ' - ';
-const WEB_ORDER_SPLIT_DEPLOYMENT_ENABLED =
-  readProductionBuildConfig().productionScheduleOrderSplitEnabled;
 
 const parseResourceCds = (value: string): string[] => {
   const unique = new Set<string>();
@@ -52,10 +47,8 @@ export function ProductionScheduleSettingsPage() {
   const processingTypeOptionsQuery = useProductionScheduleProcessingTypeOptions(location);
   const resourceCodeMappingsQuery = useProductionScheduleResourceCodeMappings(location);
   const dueManagementAccessPasswordSettingsQuery = useProductionScheduleDueManagementAccessPasswordSettings(DEFAULT_LOCATION);
-  const orderSplitPilotSettingsQuery = useProductionScheduleOrderSplitPilotSettings();
   const updateSettingsMutation = useUpdateProductionScheduleResourceCategorySettings();
   const updateDueManagementAccessPasswordMutation = useUpdateProductionScheduleDueManagementAccessPassword();
-  const updateOrderSplitPilotSettingsMutation = useUpdateProductionScheduleOrderSplitPilotSettings();
   const updateProcessingTypeOptionsMutation = useUpdateProductionScheduleProcessingTypeOptions();
   const updateResourceCodeMappingsMutation = useUpdateProductionScheduleResourceCodeMappings();
   const importResourceCodeMappingsMutation = useImportProductionScheduleResourceCodeMappingsFromCsv();
@@ -79,7 +72,6 @@ export function ProductionScheduleSettingsPage() {
     skippedUnknownResourceCds: string[];
   } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [orderSplitPilotMessage, setOrderSplitPilotMessage] = useState<string | null>(null);
 
   const locationOptions = useMemo(() => {
     const unique = new Set<string>([DEFAULT_LOCATION]);
@@ -114,15 +106,6 @@ export function ProductionScheduleSettingsPage() {
 
   const parsedResourceCds = useMemo(() => parseResourceCds(cuttingExcludedInput), [cuttingExcludedInput]);
   const selectedSiteScope = useMemo(() => toSiteScopeLabel(location), [location]);
-  const orderSplitPilotSettings = orderSplitPilotSettingsQuery.data;
-  const orderSplitPilotStatus = !WEB_ORDER_SPLIT_DEPLOYMENT_ENABLED
-    ? { label: 'Web OFF', className: 'bg-slate-200 text-slate-700' }
-    : !orderSplitPilotSettings?.deploymentEnabled
-      ? { label: 'API OFF', className: 'bg-slate-200 text-slate-700' }
-      : orderSplitPilotSettings.effectiveEnabled
-        ? { label: '検証ON', className: 'bg-emerald-100 text-emerald-800' }
-        : { label: '検証OFF', className: 'bg-amber-100 text-amber-800' };
-
   const handleSave = async () => {
     setMessage(null);
     await updateSettingsMutation.mutateAsync({
@@ -189,59 +172,8 @@ export function ProductionScheduleSettingsPage() {
     setMessage('納期管理アクセスパスワードを保存しました');
   };
 
-  const handleToggleOrderSplitPilot = async (enabled: boolean) => {
-    setOrderSplitPilotMessage(null);
-    await updateOrderSplitPilotSettingsMutation.mutateAsync({ enabled });
-    setOrderSplitPilotMessage(enabled ? '分割検証をONにしました' : '分割検証をOFFにしました');
-  };
-
   return (
     <div className="space-y-6">
-      <Card title="生産指示分割 検証スイッチ">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className={`rounded px-3 py-1 text-sm font-bold ${orderSplitPilotStatus.className}`}>
-              {orderSplitPilotStatus.label}
-            </span>
-            <span className="text-xs font-semibold text-slate-600">
-              API flag: {orderSplitPilotSettings?.deploymentEnabled ? 'ON' : 'OFF'} / Web flag:{' '}
-              {WEB_ORDER_SPLIT_DEPLOYMENT_ENABLED ? 'ON' : 'OFF'} / 画面スイッチ:{' '}
-              {orderSplitPilotSettings?.runtimeEnabled ? 'ON' : 'OFF'}
-            </span>
-          </div>
-          <p className="text-xs font-semibold text-slate-700">
-            API/WebのデプロイflagがONの時だけ、このスイッチで順位ボードの分割表示・分割操作を検証ONにできます。
-            どちらかがOFFの場合は安全側で無効です。
-          </p>
-          <label className="inline-flex items-center gap-3 rounded-md border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800">
-            <input
-              type="checkbox"
-              className="h-5 w-5"
-              checked={orderSplitPilotSettings?.runtimeEnabled ?? false}
-              disabled={
-                orderSplitPilotSettingsQuery.isLoading ||
-                updateOrderSplitPilotSettingsMutation.isPending ||
-                !WEB_ORDER_SPLIT_DEPLOYMENT_ENABLED ||
-                !orderSplitPilotSettings?.deploymentEnabled
-              }
-              onChange={(event) => void handleToggleOrderSplitPilot(event.target.checked)}
-            />
-            分割検証を有効にする
-          </label>
-          {orderSplitPilotSettings?.updatedAt ? (
-            <p className="text-xs text-slate-600">
-              最終更新: {new Date(orderSplitPilotSettings.updatedAt).toLocaleString()} / 更新者:{' '}
-              {orderSplitPilotSettings.updatedBy ?? '不明'}
-            </p>
-          ) : null}
-          {orderSplitPilotSettingsQuery.isError ? (
-            <p className="text-xs font-semibold text-rose-600">分割検証スイッチの取得に失敗しました。</p>
-          ) : null}
-          {orderSplitPilotMessage ? (
-            <p className="text-xs font-semibold text-emerald-700">{orderSplitPilotMessage}</p>
-          ) : null}
-        </div>
-      </Card>
       <Card title="生産スケジュール設定（切削除外リスト）">
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">

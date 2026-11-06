@@ -16,7 +16,7 @@ const props: LeaderBoardLeftToolStackProps = {
   completionFilter: 'incomplete', setCompletionFilter: noop, selectedResourceCategory: 'grinding', activeResourceCds: [], slotCount: 1,
   setSlotModalOpen: noop, selectedResourceCd: null, listIncomplete: false, isSeibanListPanelOpen: false, onToggleSeibanListPanel: noop,
   seibanEvalEnabled: false, onToggleSeibanEval: noop, registeredSeibansForDisplay: [], onMoveRegisteredSeibanToRank: noop,
-  ganttEnabled: true, onToggleGanttMode: noop, splitFeatureStatus: { label: '', className: '' }
+  ganttEnabled: true, onToggleGanttMode: noop
 };
 function Tools() {
   const { arrivalFilterEnabled, toggleArrivalFilter } = usePersistedArrivalFilter('leader:site\0terminal');

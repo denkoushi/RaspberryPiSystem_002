@@ -43,28 +43,17 @@ describe('resolveLeaderboardFooterPreferredRowIds', () => {
     ).toEqual([parentA, parentB]);
   });
 
-  it('maps split display item ids to parent row ids for SQL winner preference', () => {
-    const parentId = '11111111-1111-4111-8111-111111111111';
-    const splitId = '22222222-2222-4222-8222-222222222222';
-    expect(
-      resolveLeaderboardFooterPreferredRowIds({
-        rows: [{ id: `split:${splitId}`, sourceRowId: parentId }],
-        preferredDisplayRowIds: [`split:${splitId}`]
-      })
-    ).toEqual([parentId]);
-  });
-
   it('falls back to parent row ids derived from rows when preferred omitted', () => {
     const parentId = '11111111-1111-4111-8111-111111111111';
-    expect(
-      resolveLeaderboardFooterPreferredRowIds({
-        rows: [{ id: `split:22222222-2222-4222-8222-222222222222`, sourceRowId: parentId }]
-      })
-    ).toEqual([parentId]);
     expect(
       resolveLeaderboardFooterPreferredRowIds({
         rows: [{ id: `  ${parentId} ` }, { id: '' }, { id: parentId }]
       })
     ).toEqual([parentId]);
   });
+  it('retains parent preference order across multiple rows of the same part', () => {
+    expect(resolveLeaderboardFooterPreferredRowIds({ rows: [{ id: parentA }, { id: parentB }],
+      preferredDisplayRowIds: [parentB, parentA, parentB] })).toEqual([parentB, parentA]);
+  });
+
 });

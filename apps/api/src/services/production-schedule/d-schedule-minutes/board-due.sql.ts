@@ -35,7 +35,7 @@ export const BOARD_DUE_JOINS_SQL = Prisma.sql`
 `;
 
 /** SQL counterpart of resolveBoardDueDate, after the authority/Excel joins. */
-export function buildBoardDueDateSql(source: BoardDueSource = 'excel', splitDueDate: Prisma.Sql = Prisma.sql`NULL::date`): Prisma.Sql {
+export function buildBoardDueDateSql(source: BoardDueSource = 'excel'): Prisma.Sql {
   const parent = source === 'scaw'
     ? Prisma.sql`COALESCE("n"."dueDate", "supplement"."plannedEndDate")`
     : Prisma.sql`CASE
@@ -44,7 +44,7 @@ export function buildBoardDueDateSql(source: BoardDueSource = 'excel', splitDueD
         AND ("excel_due"."excelChangedAt" IS NULL OR (${BOARD_MANUAL_UPDATED_AT_SQL}) > "excel_due"."excelChangedAt")
         THEN "n"."dueDate"
       ELSE "excel_due"."partsCompleteDate" END`;
-  return Prisma.sql`COALESCE(${splitDueDate}, ${parent})`;
+  return parent;
 }
 
 /** Correlated predicate usable before the list query's due joins are present. */

@@ -8,7 +8,7 @@ export function resolveBoardDueFields<T extends {
   plannedEndDate: Date | null;
 }>(row: T, source: BoardDueSource = 'excel'): T & { boardDueDate: Date | null } {
   const due = resolveBoardDueDate({
-    source, itemOverride: null, splitDueDate: null,
+    source, itemOverride: null,
     manualDueDate: row.dueDate?.toISOString().slice(0, 10) ?? null,
     manualUpdatedAt: row.manualUpdatedAt ?? null,
     excelDueDate: row.excelDueDate?.toISOString().slice(0, 10) ?? null,
