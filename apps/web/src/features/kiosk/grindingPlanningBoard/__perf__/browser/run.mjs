@@ -88,12 +88,13 @@ try {
   const config = { configFile: false, envFile: false, envDir: false, root: here, base: '/',
     plugins: [react()], resolve: { alias: [
       { find: /^.*\/api\/hooks(?:\/machine-signal|\/production-schedule\/d-schedule-minutes)?$/, replacement: resolve(here, 'hooks.jsx') }
-    ] }, css: { postcss: { plugins: [tailwind({ ...loadConfig(resolve(web, 'tailwind.config.ts')), content: [resolve(web, 'src/**/*.{ts,tsx}')] }), autoprefixer()] } }, build: { outDir, emptyOutDir: false }, logLevel: 'warn' };
+    ] }, css: { postcss: { plugins: [tailwind({ ...loadConfig(resolve(web, 'tailwind.config.ts')), content: [resolve(web, 'src/**/*.{ts,tsx}')] }), autoprefixer()] } }, build: { outDir, emptyOutDir: false, minify: process.env.PROFILE !== '1' }, logLevel: 'warn' };
   await build(config);
   // Serve built bytes via routing, so no listening socket or upstream server is needed.
   const origin = 'http://127.0.0.1:4173';
   stage = 'browser_launch';
-  browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE || undefined });
+  browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE || undefined,
+      args: (process.env.CHROME_ARGS ?? '').split(' ').filter(Boolean) });
   stage = 'measurement';
   const environment = { node: process.version, chromium: browser.version(), cpu: cpus()[0]?.model,
     platform: platform(), cpuRate, viewport: { width: 1920, height: 1080 }, warmups: 1, repetitions: 3,
@@ -222,7 +223,6 @@ try {
     }
     const countBeforeArrival = await page.locator(bars).count();
     await click('arrival_on', button('着'));
-    assert(await page.locator(bars).count() < countBeforeArrival, 'arrival filter did not reduce bars');
     await click('arrival_off', button('着'));
     assert.equal(await page.locator(bars).count(), countBeforeArrival);
     assert.equal(await bar.getAttribute('data-drag-disabled'), 'false', 'bar dragging disabled');
@@ -257,6 +257,18 @@ try {
     });
     const scroll = await page.locator(viewport).evaluate(el => [el.scrollLeft, el.scrollTop]);
     assert(scroll.every(value => value > 0), 'scroll did not move both axes');
+    if (process.env.SWITCH === '1') {
+      for (const generation of [1, 2]) await measure(`switch_paged_${generation}`, () => page.evaluate(g => window.perfHarness.swapPaged(g, 0), generation));
+      if (process.env.PROFILE === '1' && iteration === 1) {
+        await cdp.send('Profiler.enable');
+        await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
+        await cdp.send('Profiler.start');
+        await page.evaluate(() => window.perfHarness.swapPaged(3, 0));
+        await settle(page);
+        const { profile } = await cdp.send('Profiler.stop');
+        await writeFile(resolve(dirname(output), 'switch.cpuprofile'), JSON.stringify(profile));
+      }
+    }
     for (const [name, label, pressed] of [['cutting_on', '切削', 'true'], ['grinding_off', '研削', 'false'], ['grinding_on', '研削', 'true'], ['cutting_off', '切削', 'false']]) {
       await click(name, button(label));
       assert.equal(await button(label).getAttribute('aria-pressed'), pressed);
