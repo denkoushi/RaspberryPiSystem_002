@@ -309,7 +309,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const previous = registeredServerFseibansRef.current;
     boardSiteKeyRef.current = data.siteKey;
     if (!activeInitialized || siteChanged) {
-      setActiveFseibans(new Set(data.seibanOrder));
+      setActiveFseibans(new Set(data.seibanOrder.filter((value) => !(data.excelNonMachineFseibans ?? []).includes(value))));
       setActiveInitialized(true);
     }
     if (!openInitialized || siteChanged) {
@@ -317,7 +317,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setOpenInitialized(true);
     }
     if (!writeQueue.pending) {
-      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value));
+      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value) && !(data.excelNonMachineFseibans ?? []).includes(value));
       if (added.length) {
         setActiveFseibans((current) => new Set([...current, ...added]));
         setOpenFseibans((current) => new Set([...current, ...added]));

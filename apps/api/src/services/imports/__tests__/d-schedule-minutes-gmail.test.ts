@@ -160,7 +160,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
 
   it('includes LARGE_DUE_CHANGE in floating notice and summary warnings without skipped counts', async () => {
     const warning = { code: 'LARGE_DUE_CHANGE', seiban: 'AB1C2345', cell: 'B8', rawText: '2026-10-30→2027-01-15' };
-    parse.mockResolvedValue({ ok: true, meetingDate: '2026-10-30', blocks: [], warnings: [warning] });
+    parse.mockResolvedValue({ ok: true, assigneeColumnFound: true, meetingDate: '2026-10-30', blocks: [], warnings: [warning] });
     await scheduler().runImport(row.id);
     expect(mocks.histories[0]).toMatchObject({ summary: { dScheduleMinutesGmail: {
       skipped: 0, warnings: [warning], runs: [expect.objectContaining({ skipped: 0, warnings: [warning] })]
