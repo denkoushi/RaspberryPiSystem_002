@@ -1335,6 +1335,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(cards[0]).not.toHaveTextContent('4.');
     expect(cards[2]).not.toHaveTextContent('〜');
     expect(cards[2]).toHaveTextContent('機種');
+    expect(cards[2]).toHaveTextContent(/開始 \d{2}\/\d{2}\(.\) \d{2}:\d{2}/);
+    expect(within(cards[2]!).getByText('納期 10/13(火)')).toHaveClass('text-rose-300');
     expect(popover).not.toHaveTextContent('遅れ見込み');
     expect(popover.parentElement).toBe(document.body);
   });

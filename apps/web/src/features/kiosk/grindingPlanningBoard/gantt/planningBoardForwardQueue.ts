@@ -33,6 +33,14 @@ export function forwardStartLabel(bar: GanttBar): string | null {
   return `${pad2(date.getUTCMonth() + 1)}/${pad2(date.getUTCDate())}(${WEEKDAYS[date.getUTCDay()]}) ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
 }
 
+// Due dates are plain YYYY-MM-DD calendar days.
+export function forwardDueLabel(due: string | null): string | null {
+  const match = due && /^(\d{4})-(\d{2})-(\d{2})$/.exec(due);
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return `${match[2]}/${match[3]}(${WEEKDAYS[date.getUTCDay()]})`;
+}
+
 export function canReorderForwardBars(source: GanttBar, target: GanttBar): boolean {
   return source.item.itemId !== target.item.itemId && source.resource === target.resource &&
     !source.arrivalPending && !target.arrivalPending && !source.item.isCompleted && !target.item.isCompleted &&

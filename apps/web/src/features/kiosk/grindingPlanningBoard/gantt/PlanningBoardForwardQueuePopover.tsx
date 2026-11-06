@@ -6,7 +6,7 @@ import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { pageZoom } from '../pageZoom';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
-import { canReorderForwardBars, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
+import { canReorderForwardBars, forwardDueLabel, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -132,11 +132,12 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
         <strong className="my-0.5 block truncate text-sm" title={bar.item.fhinmei || bar.item.fhincd}>{bar.item.fhinmei || bar.item.fhincd}</strong>
         <div className="truncate text-slate-400">{bar.item.fhincd}</div>
         <div className="truncate text-slate-400">{normalizeMachineName(bar.item.machineName)}</div>
+        {!bar.arrivalPending && forwardStartLabel(bar) && <div className="truncate text-slate-400">開始 {forwardStartLabel(bar)}</div>}
+        {bar.due && <div className={clsx('truncate', !bar.arrivalPending && bar.tone === 'late' ? 'text-rose-300' : 'text-slate-400')}>納期 {forwardDueLabel(bar.due)}</div>}
         {bar.arrivalPending ? (
           <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
             disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(bar.item, true)}>着</button>
         ) : <>
-          <div className="truncate text-slate-400">{forwardStartLabel(bar)}</div>
           {bar.item.manualArrivalDate && <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
             disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(bar.item, false)}>取り消し</button>}
         </>}
