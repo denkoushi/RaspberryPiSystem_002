@@ -5,8 +5,8 @@
       - lookup('ansible.builtin.env', 'PI5_GATEWAY_RECREATE') in ['', 'true', 'false']
       - release_sha is match('^[0-9a-f]{40}$')
       - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
-      - release_sha in release_pi5_api_image
-      - release_sha in release_pi5_web_image
+      - release_pi5_image_sha in release_pi5_api_image
+      - release_pi5_image_sha in release_pi5_web_image
       - release_pi5_api_image != release_pi5_web_image
       - release_pi5_health_sample_count | int >= 3
       - release_pi5_health_sample_count | int <= 5

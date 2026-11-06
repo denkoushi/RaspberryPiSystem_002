@@ -37,19 +37,21 @@ const MAX_OFFSET = 6;
 
 export function useLoadBalancingWorkspaceState({
   scopeParams,
-  scopeEnabled
+  scopeEnabled,
+  dueSource
 }: {
   scopeParams: { targetDeviceScopeKey?: string };
   scopeEnabled: boolean;
+  dueSource: 'excel' | 'scaw';
 }) {
   const thisMonth = useMemo(() => currentYearMonth(), []);
   const [offset, setOffset] = useState(0);
   const fromMonth = addMonths(thisMonth, offset);
   const toMonth = addMonths(fromMonth, SPAN_MONTHS - 1);
-  const scenarioKey = `${fromMonth}|${scopeParams.targetDeviceScopeKey ?? ''}`;
+  const scenarioKey = `${dueSource}|${fromMonth}|${scopeParams.targetDeviceScopeKey ?? ''}`;
 
   const query = useKioskProductionScheduleLoadBalancingWorkspace(
-    { fromMonth, toMonth, ...scopeParams },
+    { fromMonth, toMonth, dueSource, ...scopeParams },
     { enabled: scopeEnabled }
   );
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: !scopeEnabled });
@@ -90,6 +92,7 @@ type WorkspaceViewProps = {
   panel: 'cell' | 'unallocated';
   onClosePanel: () => void;
   scopeParams: { targetDeviceScopeKey?: string };
+  dueSource: 'excel' | 'scaw';
 };
 
 export function computeWorkspaceSummary(
@@ -133,7 +136,8 @@ export function LoadBalancingWorkspaceView({
   highlightUnset,
   panel,
   onClosePanel,
-  scopeParams
+  scopeParams,
+  dueSource
 }: WorkspaceViewProps) {
   const buckets = useMemo(() => [LATE_BUCKET, ...data.months], [data.months]);
   const { baseMatrix, matrix, before, after } = useMemo(() => computeWorkspaceSummary(data, actions), [data, actions]);
@@ -184,6 +188,7 @@ export function LoadBalancingWorkspaceView({
   const dayEnabled = Boolean(effectiveSelected && effectiveSelected.bucket !== LATE_BUCKET);
   const dayQuery = useKioskProductionScheduleLoadBalancingWorkspaceDay(
     {
+      dueSource,
       month: effectiveSelected?.bucket ?? data.months[0]!,
       resourceCd: effectiveSelected?.resourceCd ?? '',
       fromMonth: data.fromMonth,

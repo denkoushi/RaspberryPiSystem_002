@@ -11,6 +11,16 @@ superseded_by: ../guides/kiosk-production-schedule-load-balancing.md
 
 > **履歴（2026-11）**: 2026-09-30 以降、負荷調整は1画面（`GET /kiosk/production-schedule/load-balancing/workspace`）に統合され、3タブと旧 API（overview / suggestions / outsourcing-* / machine-monthly-load / start-date-leveling）は削除されました。本書の3タブ・旧 API・2026-05 の UI 調整の節は履歴です。現行仕様の正本は [ガイド §現行画面](../guides/kiosk-production-schedule-load-balancing.md#現行画面2026-09-30--1画面タブなし) です。生産システムとの突合は [KB-437（負荷調整×生産システム突合）](./KB-437-load-balancing-production-system-reconciliation.md) を正本とします。
 
+## Due Source Contract (2026-11-05)
+
+現行1画面の納期選択は既定 Excel、ヘッダーの **SCAW** で切り替える。
+一覧・日別 API の `dueSource: excel | scaw` は共通ボード納期 SQL を使い、期間判定・遅れ判定・並び順も同じ納期を参照する。
+分割納期は指定せず `NULL::date` のままとする。Excel 更新を含む世代トークンは維持し、サーバー元データキャッシュと Web query key は納期ソース別に分ける。
+
+選択は `kiosk-load-balancing-scaw-mode` の localStorage（`schemaVersion: 1`）へ保存する。
+通常キオスクは端末ローカル、Mac 代理表示はサイト・対象端末ごとに保存する。
+試算の状態キーにもソースを含め、異なるソースの試算を混在させない。SQL の本番呼び出し元は負荷調整ワークスペース・日別取得のみ。
+
 ## Context
 
 キオスク **負荷調整**（`/kiosk/production-schedule/load-balancing`）は、生産日程の未完了工程を資源CD単位で可視化し、山崩し（負荷移管）候補を提示する機能である。

@@ -100,11 +100,11 @@ export const productionScheduleQueryKeys = {
   loadBalancingMonthlyCapacity: (location: string, yearMonth: string) =>
     ['production-schedule-load-balancing-monthly-capacity', location, yearMonth] as const,
   loadBalancingWorkspaceAll: ['kiosk-production-schedule-load-balancing-workspace'] as const,
-  loadBalancingWorkspace: (params: Parameters<typeof getKioskProductionScheduleLoadBalancingWorkspace>[0]) =>
-    ['kiosk-production-schedule-load-balancing-workspace', params] as const,
+  loadBalancingWorkspace: ({ dueSource, ...params }: Parameters<typeof getKioskProductionScheduleLoadBalancingWorkspace>[0]) =>
+    ['kiosk-production-schedule-load-balancing-workspace', { ...params, dueSource }] as const,
   loadBalancingWorkspaceDayAll: ['kiosk-production-schedule-load-balancing-workspace-day'] as const,
-  loadBalancingWorkspaceDay: (params: Parameters<typeof getKioskProductionScheduleLoadBalancingWorkspaceDay>[0]) =>
-    ['kiosk-production-schedule-load-balancing-workspace-day', params] as const,
+  loadBalancingWorkspaceDay: ({ dueSource, ...params }: Parameters<typeof getKioskProductionScheduleLoadBalancingWorkspaceDay>[0]) =>
+    ['kiosk-production-schedule-load-balancing-workspace-day', { ...params, dueSource }] as const,
   resourceCategorySettings: (location: string) => ['production-schedule-resource-category-settings', location] as const,
   dueManagementAccessPasswordSettings: (location: string) =>
     ['production-schedule-due-management-access-password-settings', location] as const,

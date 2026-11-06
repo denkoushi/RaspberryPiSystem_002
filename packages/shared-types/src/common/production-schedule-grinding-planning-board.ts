@@ -119,6 +119,7 @@ export interface GrindingPlanningBoardItem {
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
   isCompleted: boolean;
+  lslhSurface: boolean;
   arrived?: boolean;
   completionSource?: 'manual' | 'import' | null;
   progress: { completed: number; total: number; quantityKnown: boolean };

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../../lib/prisma.js';
+import { buildBoardDueDateSql } from '../../d-schedule-minutes/board-due.sql.js';
 import { listStartDateLevelingQueryRows } from '../start-date-leveling-query.service.js';
 import { captureTaggedTemplateQuerySql } from './prisma-query-sql-test-utils.js';
 
@@ -26,6 +27,7 @@ describe('listStartDateLevelingQueryRows', () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
 
     await listStartDateLevelingQueryRows({
+      dueSource: 'scaw',
       siteKey: '第2工場',
       deviceScopeKey: 'mac',
       rangeStart: new Date('2026-05-01T00:00:00.000Z'),
@@ -78,6 +80,7 @@ describe('listStartDateLevelingQueryRows', () => {
     ] as never);
 
     const rows = await listStartDateLevelingQueryRows({
+      dueSource: 'scaw',
       siteKey: '第2工場',
       deviceScopeKey: 'mac',
       rangeStart: new Date('2026-05-01T00:00:00.000Z'),
@@ -88,5 +91,26 @@ describe('listStartDateLevelingQueryRows', () => {
     expect(rows.map((r) => r.rowId).sort()).toEqual(['complete', 'missing-due', 'missing-start']);
     expect(rows.find((r) => r.rowId === 'missing-start')?.plannedStartDate).toBeNull();
     expect(rows.find((r) => r.rowId === 'missing-due')?.effectiveDueDate).toBeNull();
+  });
+
+  it.each(['excel', 'scaw'] as const)('uses the %s board due in SELECT, ORDER BY and window predicates', async (dueSource) => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([]);
+    await listStartDateLevelingQueryRows({
+      siteKey: '第2工場', deviceScopeKey: 'mac', dueSource,
+      rangeStart: new Date('2026-05-01Z'),
+      rangeEndExclusive: new Date('2026-06-01Z'),
+      includeOverdueBefore: new Date('2026-05-10Z'),
+      winnerRowIds: ['winner']
+    });
+    const sql = captureTaggedTemplateQuerySql();
+    const due = buildBoardDueDateSql(dueSource).sql.toLowerCase();
+    expect(sql).toContain(due + ' as "effectiveduedate"');
+    expect(sql).toContain(due + ' asc nulls last');
+    expect(sql).toContain(due + ' is null');
+    expect(sql).toContain(due + ' <');
+    expect(sql).toContain(due + ' >=');
+    expect(sql).toContain('as "excel_due"');
+    expect(sql).toContain('as "manual_seiban_due"');
+    expect(sql).toContain('as "manual_due_at"');
   });
 });

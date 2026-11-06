@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+import { LSLH_SURFACE_PROCESS_CODES, PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
@@ -224,6 +226,34 @@ export function scheduleGrindingPlanningBoardRewarm(params: { siteKey: string; s
   return pending.promise;
 }
 
+// Literal values so the planner can use csv_dashboard_row_fkojunst_lslh_surface_idx (partial index).
+const LSLH_SURFACE_INDEX_PREDICATE = Prisma.raw(
+  `r."csvDashboardId" = '${PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID}'`
+  + ` AND r."rowData"->>'FKOTEICD' IN (${LSLH_SURFACE_PROCESS_CODES.map((code) => `'${code}'`).join(', ')})`
+);
+
+async function findLslhSurface(items: readonly GrindingPlanningBoardItem[]) {
+  if (!items.length) return { productNos: new Set<string>(), fhincds: new Set<string>() };
+  const productNos = [...new Set(items.map((item) => item.productNo.trim()).filter(Boolean))];
+  const fhincds = [...new Set(items.map((item) => item.fhincd))];
+  const matches = await prisma.$queryRaw<Array<{ productNo: string | null; fhincd: string | null }>>(Prisma.sql`
+    SELECT DISTINCT BTRIM(r."rowData"->>'FSEZONO') AS "productNo", NULL::text AS "fhincd"
+    FROM "CsvDashboardRow" r
+    WHERE ${LSLH_SURFACE_INDEX_PREDICATE}
+      AND BTRIM(r."rowData"->>'FSEZONO') IN (${Prisma.join(productNos.length ? productNos : [''])})
+    UNION ALL
+    SELECT NULL::text AS "productNo", p."fhincd"
+    FROM "ProductionSchedulePartProcessingType" p
+    WHERE p."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND p."processingType" = 'LSLH'
+      AND p."fhincd" IN (${Prisma.join(fhincds)})
+  `);
+  return {
+    productNos: new Set(matches.flatMap((row) => row.productNo == null ? [] : [row.productNo])),
+    fhincds: new Set(matches.flatMap((row) => row.fhincd == null ? [] : [row.fhincd]))
+  };
+}
+
 async function findPlacementByProductNo(items: readonly GrindingPlanningBoardItem[]) {
   const productNos = [...new Set(items.map((item) => item.productNo.trim()).filter(Boolean))];
   const placements = new Map<string, NonNullable<GrindingPlanningBoardItem['placement']>>();
@@ -313,11 +343,13 @@ export async function getGrindingPlanningBoard(params: { dueSource?: BoardDueSou
     rowData: { FSEIBAN: item.fseiban, FHINCD: item.fhincd, ProductNo: item.productNo, FKOJUN: item.processOrder }
   })), { siteKey: params.siteKey, locationKey: params.siteKey, placedProductNos: new Set(placementByProductNo.keys()) }));
   const arrivalById = new Map(arrivalRows.map((row) => [row.id, row.arrived]));
+  const lslhSurface = await perf.measure('lslhSurface', () => findLslhSurface(page));
   const pageWithMaterialArrival = page.map((item) => {
     const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
     const placement = placementByProductNo.get(item.productNo.trim());
     return {
       ...item,
+      lslhSurface: lslhSurface.productNos.has(item.productNo.trim()) || lslhSurface.fhincds.has(item.fhincd),
       arrived: arrivalById.get(item.itemId) ?? true,
       ...(arrival ? { materialArrivalStatus: arrival.status,
         ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {}) } : {}),

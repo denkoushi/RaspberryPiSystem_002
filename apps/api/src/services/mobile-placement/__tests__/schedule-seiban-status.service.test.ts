@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ findMany: vi.fn(), query: vi.fn(), machineNames: vi.fn() }));
 vi.mock('../../production-schedule/seiban-machine-display-names.service.js', () => ({ resolveSeibanMachineDisplayNamesBatched: mocks.machineNames }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { productionScheduleDScheduleMinutes: { findMany: mocks.findMany }, $queryRaw: mocks.query } }));
-import { getScheduleSeiban, listScheduleSeibans } from '../schedule-seiban-status.service.js';
+import { getScheduleSeiban, listHaizenUnplacedParts, listScheduleSeibans } from '../schedule-seiban-status.service.js';
 
 const schedule = (fseiban: string, extra = {}) => ({ fseiban, isAlias: false, aliasOf: null, partsCompleteDate: new Date('2026-11-05'),
   surfaceSendOutDates: [{ date: '2026-11-04' }, { date: '2026-11-02' }], outsourceMarks: ['X', 'Y'], memo: 'memo', ...extra });
@@ -35,6 +35,16 @@ describe('schedule seiban status', () => {
     expect(sql.values).toContainEqual(['BA1', 'BA2']);
     expect(sql.text).toContain('LIMIT 1');
     expect(mocks.machineNames).toHaveBeenCalledWith(['BA1']);
+  });
+  it('returns only unplaced unfinished parts under their parent seiban, including aliases and null dates', async () => {
+    mocks.findMany.mockResolvedValue([schedule('BA1'), schedule('ALIAS', { isAlias: true, aliasOf: 'BA1' }), schedule('BA3', { partsCompleteDate: null })]);
+    batch([part('done', { completed: true }), part('shelf'), part('verified', { fseiban: 'ALIAS' }), part('pending'), part('undated', { fseiban: 'BA3' })],
+      [{ transferOrderBarcodeRaw: ' verified　' }], [placement('shelf', 'S1')]);
+    expect(await listHaizenUnplacedParts()).toEqual([
+      { fseiban: 'BA1', productNo: 'verified', fhincd: 'MD1-001', fhinmei: '部品', verified: true, machineName: '機種', dueDate: '2026-11-05' },
+      { fseiban: 'BA1', productNo: 'pending', fhincd: 'MD1-001', fhinmei: '部品', verified: false, machineName: '機種', dueDate: '2026-11-05' },
+      { fseiban: 'BA3', productNo: 'undated', fhincd: 'MD1-001', fhinmei: '部品', verified: false, machineName: null, dueDate: null }
+    ]);
   });
   it('excludes all completed and zero-part seibans, with null dates ordered last by the database', async () => {
     mocks.findMany.mockResolvedValue([schedule('BA1'), schedule('BA2'), schedule('BA3', { partsCompleteDate: null }), schedule('BA4')]);

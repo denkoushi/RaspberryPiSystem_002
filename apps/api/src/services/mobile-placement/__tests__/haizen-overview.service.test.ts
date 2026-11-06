@@ -63,12 +63,12 @@ describe('haizen overview', () => {
       ...Array.from({ length: HAIZEN_OVERVIEW_LIMIT }, (_, id) => ({ ...row, id: `done-${id}`, manufacturingOrderBarcodeRaw: 'done' })),
       ...Array.from({ length: HAIZEN_OVERVIEW_LIMIT }, (_, id) => ({ ...row, id: `active-${id}` })),
     ]);
-    mocks.queryRaw.mockResolvedValue([{ productNo: 'done' }]);
+    mocks.queryRaw.mockImplementation(async (sql: TemplateStringsArray) => sql.join('').includes('mobile_slip_verify_records') ? [] : [{ productNo: 'done' }]);
     const result = await listHaizenOverview();
     expect(result.rows).toHaveLength(HAIZEN_OVERVIEW_LIMIT);
     expect(result.rows.every(row => row.id.startsWith('active-'))).toBe(true);
     expect(result.truncated).toBe(false);
-    expect(mocks.queryRaw).toHaveBeenCalledTimes(2);
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(3);
   });
   it('batches Excel dates once by snapshot seiban, including aliases and missing rows', async () => {
     const seibans = ['BA1S2320', '(BA1S2320)', 'MISSING'];
@@ -87,6 +87,21 @@ describe('haizen overview', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0][0].join('')).toContain('ANY(');
     expect(calls[0].at(-1)).toEqual(seibans);
+  });
+  it('batches normalized manufacturing and purchase verification using the correct record sides', async () => {
+    mocks.findMany.mockResolvedValue([
+      { ...row, manufacturingOrderBarcodeRaw: '　123 \t' },
+      { ...row, id: 'purchase', slipKind: 'purchase_order', manufacturingOrderBarcodeRaw: '　4501238876 ' },
+      { ...row, id: 'unverified', manufacturingOrderBarcodeRaw: '4501238876' }
+    ]);
+    mocks.queryRaw.mockImplementation(async (sql: TemplateStringsArray) => sql.join('').includes('mobile_slip_verify_records')
+      ? [{ transferOrderBarcodeRaw: ' 123　', actualOrderBarcodeRaw: ' 4501238876　' }] : []);
+    const result = await listHaizenOverview();
+    expect(result.rows.map(row => [row.id, row.verified])).toEqual([['branch-1', true], ['purchase', true], ['unverified', false]]);
+    const calls = mocks.queryRaw.mock.calls.filter(([sql]) => sql.join('').includes('mobile_slip_verify_records'));
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].join('')).toContain("outcome = 'match'");
+    expect(calls[0].slice(1)).toEqual([['123', '4501238876'], ['4501238876']]);
   });
   it('handles no current branches', async () => {
     mocks.findMany.mockResolvedValue([]);

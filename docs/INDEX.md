@@ -954,6 +954,7 @@
 
 - **Raspberry Pi UX 改善（ベースライン採取の方法論・ブランチ `improve/pi-ux-phase-c`）**: [raspberry-pi-ux-baseline-methodology.md](./investigation/raspberry-pi-ux-baseline-methodology.md) — 起動・操作遅延・ポーリング負荷の計測観点と手順テンプレ。
 - **生産日程 `FSIGENSHOYORYO`（所要・総分）分析**: [analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md](./analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md) — current snapshot の分布、資源別偏り、外れ値、納期 coverage、帯算出への使い方を整理。再実行 SQL 付き。
+- **表面処理（LSLH / カニゼン / 塗装）を工程コードで見分ける**: [analysis/surface-treatment-process-codes-20261105.md](./analysis/surface-treatment-process-codes-20261105.md) — `FKOTEICD` と手入力登録の突き合わせ。LSLH の2コードは意味未確認。再実行 SQL 付き。
 - **手動順番ワークフロー・全体ランキング・所要データの議論まとめ**: [analysis/manual-order-workflow-and-ranking-discussion-summary-20260324.md](./analysis/manual-order-workflow-and-ranking-discussion-summary-20260324.md) — 手動順番画面のUI改善案、帯分けの位置づけ、`FSIGENSHOYORYO` 評価、個数/実績工数突合の意義を横断的に整理。
 - **生産日程 補助CSV（部品納期個数）連携の実装方針と反映**: [KB-297](./knowledge-base/KB-297-kiosk-due-management-workflow.md#部品納期個数csvの補助反映2026-04-01) — 件名 `部品納期個数` を別CSVダッシュボードで取得し、`FKOJUN + FSIGENCD + ProductNo` で winner 行へ照合。`plannedQuantity` / `plannedStartDate` / `plannedEndDate` を補助テーブルで保持し、既存 winner ルールは据え置き。
 - **生産日程 本体CSVと補助CSVのキーずれ・上流工程変更・運用トラブルシュート（2026-04 調査）**: [KB-328](./knowledge-base/KB-328-production-schedule-supplement-key-mismatch-investigation.md) — 補助 `unmatched`、本体 `FHINCD` ヘッダ不一致、winner と `ProductNo` の更新タイミング、管理画面の二重ファイル入力、上流（切削クエリの資源CD欠落等）とのギャップ、将来の無効フラグ／非表示案の**判断材料**。

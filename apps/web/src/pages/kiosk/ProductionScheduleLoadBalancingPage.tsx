@@ -9,11 +9,18 @@ import {
   computeWorkspaceSummary,
   useLoadBalancingWorkspaceState
 } from '../../features/kiosk/loadBalancing/LoadBalancingWorkspace';
+import { usePersistedLoadBalancingScawMode } from '../../features/kiosk/loadBalancing/usePersistedLoadBalancingScawMode';
 import { useProductionScheduleMacDeviceScope } from '../../features/kiosk/loadBalancing/useProductionScheduleMacDeviceScope';
 
 export function ProductionScheduleLoadBalancingPage() {
   const macScope = useProductionScheduleMacDeviceScope();
+  const { scawEnabled, toggleScawMode } = usePersistedLoadBalancingScawMode(
+    macScope.macManualOrderV2 ? macScope.macTargetSite : '',
+    macScope.macManualOrderV2 ? macScope.macTargetDevice : ''
+  );
+  const dueSource: 'excel' | 'scaw' = scawEnabled ? 'scaw' : 'excel';
   const state = useLoadBalancingWorkspaceState({
+    dueSource,
     scopeParams: macScope.scopeParams,
     scopeEnabled: macScope.scopeEnabled
   });
@@ -52,7 +59,7 @@ export function ProductionScheduleLoadBalancingPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col gap-2 p-2 text-[15px] leading-snug text-white">
-      <LoadBalancingPageHeader macProxy={macProxy}>
+      <LoadBalancingPageHeader macProxy={macProxy} scawEnabled={scawEnabled} onToggleScawMode={toggleScawMode}>
         <LoadBalancingHeaderControls
           fromMonth={state.fromMonth}
           toMonth={state.toMonth}
@@ -94,6 +101,7 @@ export function ProductionScheduleLoadBalancingPage() {
           highlightUnset={highlightUnset}
           panel={panel}
           onClosePanel={() => setPanel('cell')}
+          dueSource={dueSource}
           scopeParams={macScope.scopeParams}
         />
       ) : state.query.isFetching ? (

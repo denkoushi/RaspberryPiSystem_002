@@ -196,6 +196,7 @@ export async function updateProductionScheduleLoadBalancingWorkCalendars(payload
 }
 
 export async function getKioskProductionScheduleLoadBalancingWorkspace(params: {
+  dueSource: 'excel' | 'scaw';
   fromMonth: string;
   toMonth: string;
   targetDeviceScopeKey?: string;
@@ -208,6 +209,7 @@ export async function getKioskProductionScheduleLoadBalancingWorkspace(params: {
 }
 
 export async function getKioskProductionScheduleLoadBalancingWorkspaceDay(params: {
+  dueSource: 'excel' | 'scaw';
   month: string;
   resourceCd: string;
   fromMonth?: string;

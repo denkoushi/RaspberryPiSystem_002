@@ -3,6 +3,9 @@ import { act, fireEvent, render as renderComponent, screen, waitFor, within } fr
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
+import * as chipStrips from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardChipStrips';
+import * as ganttLayout from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout';
+import * as chipData from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChipData';
 import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { LARGE_SCREEN_STORAGE_KEY } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 
@@ -25,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   load: vi.fn(),
   processChips: vi.fn(),
+  minutes: vi.fn(),
   refetch: vi.fn(),
   overrides: vi.fn(),
   pins: vi.fn(),
@@ -37,7 +41,7 @@ const mocks = vi.hoisted(() => ({
   order: vi.fn()
 }));
 
-vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => ({ data: { rows: [] } }) }));
+vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => mocks.minutes() }));
 
 vi.mock('../../api/hooks', () => ({
   useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
@@ -120,7 +124,7 @@ function fixture() {
     specialDue: null as null | { kind: 'today'; expiresAt: string },
     plannedQuantity: 5,
     requiredMinutes: 20,
-    requiredMinutesKnown: true,
+    lslhSurface: false, requiredMinutesKnown: true,
     isCompleted: completed,
     arrived: true,
     progress: { completed: completed ? 1 : 0, total: 1, quantityKnown: false }
@@ -200,6 +204,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.capacity.mockReset();
     mocks.capacity.mockReturnValue({ data: undefined, isLoading: true });
     mocks.snapshot.mockReset();
+    mocks.minutes.mockReturnValue({ data: { rows: [] } });
     mocks.processChips.mockReset();
     mocks.processChips.mockReturnValue({ data: undefined, isError: false });
     mocks.load.mockReset();
@@ -358,6 +363,46 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
     expect(screen.getByTestId('planning-board-item-a').closest('[data-resource-scroll]')).toBe(scroll);
     expect(scroll.scrollTop).toBe(120);
+  });
+
+  it('skips layout and chip calculations for equal board/chips/minutes refetches and updates changed payloads', () => {
+    const strips = vi.spyOn(chipStrips, 'layoutChipStrips');
+    const layouts = vi.spyOn(ganttLayout, 'buildPlanningBoardGanttLayout');
+    const chips = vi.spyOn(chipData, 'buildPlanningBoardProcessChipsByPart');
+    let board = fixture();
+    let processChips = { chipsByPartKey: { ['26-1041\0PRODUCT-a\0PART-a']: [{ rowId: 'chip-a', resourceCd: '305', isCompleted: false }] } };
+    let minutes = { rows: [{ fseiban: '26-1041', outsourceMarks: ['A'], memo: null, surfaceSendOutDates: [{ date: '2026-09-11', note: null }] }] };
+    mocks.snapshot.mockImplementation(() => ({ data: board, isLoading: false, isError: false, refetch: mocks.refetch }));
+    mocks.processChips.mockImplementation(() => ({ data: processChips, isError: false }));
+    mocks.minutes.mockImplementation(() => ({ data: minutes }));
+    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).toHaveBeenCalled();
+    expect(chips).toHaveBeenCalled();
+    layouts.mockClear(); chips.mockClear(); strips.mockClear();
+    board = structuredClone(board);
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).not.toHaveBeenCalled(); expect(chips).not.toHaveBeenCalled(); expect(strips).not.toHaveBeenCalled();
+    processChips = structuredClone(processChips);
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).not.toHaveBeenCalled(); expect(chips).not.toHaveBeenCalled(); expect(strips).not.toHaveBeenCalled();
+    minutes = structuredClone(minutes);
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).not.toHaveBeenCalled(); expect(chips).not.toHaveBeenCalled(); expect(strips).not.toHaveBeenCalled();
+    board = { ...board, items: board.items.map((item, i) => i ? item : { ...item, requiredMinutes: item.requiredMinutes + 1 }) };
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).toHaveBeenCalled(); expect(chips).toHaveBeenCalled(); expect(strips).toHaveBeenCalled();
+    layouts.mockClear(); chips.mockClear(); strips.mockClear();
+    processChips = { chipsByPartKey: { ...processChips.chipsByPartKey,
+      ['26-1041\0PRODUCT-a\0PART-a']: [{ rowId: 'chip-a', resourceCd: 'CHANGED', isCompleted: false }] } };
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(chips).toHaveBeenCalledTimes(1);
+    expect(strips).toHaveBeenCalled();
+    expect(chips.mock.calls[0]![1]).toBe(processChips.chipsByPartKey);
+    expect(layouts).not.toHaveBeenCalled();
+    layouts.mockClear(); chips.mockClear();
+    board = { ...board, items: [...board.items].reverse() };
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).toHaveBeenCalled(); expect(chips).toHaveBeenCalled(); expect(strips).toHaveBeenCalled();
   });
 
   it('provides loaded part chips and hides them after a chip fetch error without breaking the board', () => {
@@ -1170,9 +1215,12 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     replies[1](response(['c', 'd', 'a', 'b'], 4));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('順序を保存しました'));
     expect(order()).toEqual(['c', 'd', 'a', 'b']);
-    const savedUnload = new Event('beforeunload', { cancelable: true });
-    window.dispatchEvent(savedUnload);
-    expect(savedUnload.defaultPrevented).toBe(false);
+    // The unsaved-changes guard is released in an effect after the status renders.
+    await waitFor(() => {
+      const savedUnload = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(savedUnload);
+      expect(savedUnload.defaultPrevented).toBe(false);
+    });
   });
 
   it.each([true, false])('drag retains full-pane behavior and unique ranks with arrival filter %s', async (arrivalEnabled) => {

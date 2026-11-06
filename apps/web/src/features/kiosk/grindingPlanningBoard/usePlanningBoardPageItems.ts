@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 
 import { sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 
@@ -56,13 +56,17 @@ export function usePlanningBoardPageItems({
     }
     return counts;
   }, [visibleItems]);
+  const previousSelection = useRef<ReadonlySet<string>>(new Set<string>());
   const selectedItemIds = useMemo(
     () => {
       const selectedItemIdsForCategory = selectedItemIdsByCategory[category] ?? new Set<string>();
-      return new Set(visibleItems.filter((item) => !item.isCompleted && selectedItemIdsForCategory.has(item.itemId)).map((item) => item.itemId));
+      const next = new Set(visibleItems.filter((item) => !item.isCompleted && selectedItemIdsForCategory.has(item.itemId)).map((item) => item.itemId));
+      const previous = previousSelection.current;
+      return next.size === previous.size && [...next].every((id) => previous.has(id)) ? previous : next;
     },
     [category, selectedItemIdsByCategory, visibleItems]
   );
+  useLayoutEffect(() => { previousSelection.current = selectedItemIds; }, [selectedItemIds]);
   const selectedVisibleItems = useMemo(
     () => visibleItems.filter((item) => !item.isCompleted && selectedItemIds.has(item.itemId)),
     [selectedItemIds, visibleItems]

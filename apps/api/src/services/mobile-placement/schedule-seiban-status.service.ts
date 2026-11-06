@@ -129,3 +129,11 @@ export async function listScheduleSeibans(): Promise<{ seibans: ScheduleSeibanSu
 export async function getScheduleSeiban(fseiban: string): Promise<ScheduleSeibanDetail | null> {
   return (await aggregateScheduleSeibans(fseiban))[0] ?? null;
 }
+
+/** Unfinished Excel parts without a shelf, using the same alias and status aggregation as mobile. */
+export async function listHaizenUnplacedParts() {
+  return (await aggregateScheduleSeibans()).flatMap(group => group.parts
+    .filter(part => part.state === 'verified' || part.state === 'pending')
+    .map(part => ({ fseiban: group.fseiban, productNo: part.productNo, fhincd: part.fhincd, fhinmei: part.fhinmei,
+      verified: part.state === 'verified', machineName: group.machineName, dueDate: group.partsCompleteDate })));
+}
