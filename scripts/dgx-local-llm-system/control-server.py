@@ -62,6 +62,7 @@ from model_profiles import (  # noqa: E402
 )
 from profile_launcher import launcher_env_for_profile  # noqa: E402
 from resource_state import infer_owner_from_profile, state_to_api, write_resource_state  # noqa: E402
+from business_diagnostics import log_business_failure  # noqa: E402
 from vision_readiness import assess_runtime_readiness  # noqa: E402
 from runtime_stop_policy import (  # noqa: E402
     BlueStopMode,
@@ -330,12 +331,14 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
     from business_tensorfold import runtime_status
     deadline = time.monotonic() + 1200
     failure = "business_readiness_timeout"
+    last_error = TimeoutError(failure)
     base = "http://192.168.100.11:8889" if profile.id == DEEPSEEK_PROFILE else "http://127.0.0.1:38083"
     headers = {}
     if profile.id == DEEPSEEK_PROFILE:
         key = os.environ.get("BUSINESS_DEEPSEEK_UPSTREAM_API_KEY", "").strip()
         if not key:
             failure = "business_upstream_key_missing"
+            last_error = RuntimeError(failure)
             deadline = 0
         headers["Authorization"] = "Bearer " + key
     while time.monotonic() < deadline:
@@ -366,14 +369,24 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
                 if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
                     state["businessTransition"] = "ready"
                     replace_active_payload(config.active_model_state_path, state)
+                    write_resource_state_best_effort(config, owner="business", status="ready",
+                        action="start", reason=None, profile=profile, backend=profile.backend,
+                        guarantee_level="post_only")
             return
-        except Exception:
+        except Exception as exc:
+            last_error = exc
             time.sleep(5)
     with business_state_lock(config.active_model_state_path):
         state = business_selection_state(config.active_model_state_path)
         if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
             state.update(businessTransition="failed", businessFailureReason=failure)
             replace_active_payload(config.active_model_state_path, state)
+            write_resource_state_best_effort(config, owner="business", status="failed",
+                action="start", reason=failure, profile=profile, backend=profile.backend,
+                guarantee_level="post_only")
+            log_business_failure("readiness", profile.id, identity[2], last_error,
+                secrets=(config.token,), detail=(str(last_error)
+                    if not isinstance(last_error, subprocess.SubprocessError) else ""))
 
 
 _business_monitors: dict[str, tuple[tuple, threading.Thread]] = {}
@@ -564,7 +577,8 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     command = resolve_command(config, self.path[1:], backend)
                     try:
                         command_runner(command, stop_env)
-                    except Exception:
+                    except Exception as exc:
+                        log_business_failure(self.path[1:], state.get("modelProfileId"), state.get("businessGeneration"), exc, secrets=(config.token,))
                         state.update(businessTransition="failed", businessFailureReason="business_runtime_stop_unverified")
                         replace_active_payload(config.active_model_state_path, state)
                         self._send_json(503, {"ok": False, "code": "business_runtime_stop_unverified"})
@@ -624,7 +638,8 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     write_resource_state_best_effort(config, owner=infer_owner_from_profile(profile, reason),
                         status="preparing", action="start", reason=reason, profile=profile,
                         backend=profile.backend, guarantee_level="post_only")
-                except Exception:
+                except Exception as exc:
+                    log_business_failure("start", profile.id, state.get("businessGeneration"), exc, secrets=(config.token,))
                     state = business_selection_state(config.active_model_state_path)
                     state.update(businessTransition="failed", businessFailureReason="business_runtime_start_failed")
                     replace_active_payload(config.active_model_state_path, state)

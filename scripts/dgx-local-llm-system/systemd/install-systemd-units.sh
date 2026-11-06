@@ -17,8 +17,8 @@ if [[ ! -d "${SYSTEM_PROD_DIR}" ]]; then
   exit 1
 fi
 
-RUN_USER="${DGX_LLM_RUN_USER:-$(stat -f '%Su' "${SYSTEM_PROD_DIR}")}"
-RUN_GROUP="${DGX_LLM_RUN_GROUP:-$(stat -f '%Sg' "${SYSTEM_PROD_DIR}")}"
+RUN_USER="${DGX_LLM_RUN_USER:-$(stat -c '%U' "${SYSTEM_PROD_DIR}")}"
+RUN_GROUP="${DGX_LLM_RUN_GROUP:-$(stat -c '%G' "${SYSTEM_PROD_DIR}")}"
 
 if ! id "${RUN_USER}" >/dev/null 2>&1; then
   echo "run user not found: ${RUN_USER}" >&2

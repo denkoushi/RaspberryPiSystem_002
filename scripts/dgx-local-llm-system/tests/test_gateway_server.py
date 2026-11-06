@@ -180,6 +180,23 @@ class GlmThinkingDefaultsTests(unittest.TestCase):
 
 
 class GatewayServerTests(unittest.TestCase):
+    def test_metrics_timeouts_skip_fallback_queries(self):
+        module = load_module()
+        timeout = module.subprocess.TimeoutExpired('metrics', 10)
+        for preceding, count in (([], 1), ([Mock(returncode=1)], 2),
+                ([Mock(returncode=0, stdout='44, 32768, 131072'),
+                  Mock(returncode=0, stdout='MemTotal: 134217728')], 3),
+                ([Mock(returncode=0, stdout='44, 32768, 131072'),
+                  Mock(returncode=0, stdout='MemTotal: 134217728'), Mock(returncode=1)], 4)):
+            with self.subTest(count=count), patch.object(module.subprocess, 'run', side_effect=[*preceding, timeout]) as run:
+                self.assertEqual(module.collect_gpu_metrics(), (False, None))
+                self.assertEqual(run.call_count, count)
+                self.assertTrue(all(call.kwargs['timeout'] == 10 for call in run.call_args_list))
+        with patch.object(module.subprocess, 'run', side_effect=timeout) as run:
+            self.assertFalse(module.is_container_running('container'))
+            run.assert_called_once()
+            self.assertEqual(run.call_args.kwargs['timeout'], 10)
+
     def test_collect_gpu_metrics_includes_detail_fields(self):
         module = load_module()
 
@@ -190,7 +207,7 @@ class GatewayServerTests(unittest.TestCase):
 
         calls: list[str] = []
 
-        def run_impl(args, capture_output: bool, text: bool, check: bool):
+        def run_impl(args, capture_output: bool, text: bool, check: bool, timeout=10):
             command = args[-1]
             calls.append(command)
             if "--query-gpu=" in command:
@@ -247,7 +264,7 @@ class GatewayServerTests(unittest.TestCase):
 
         calls: list[str] = []
 
-        def run_impl(args, capture_output: bool, text: bool, check: bool):
+        def run_impl(args, capture_output: bool, text: bool, check: bool, timeout=10):
             command = args[-1]
             calls.append(command)
             if "temperature.gpu" in command:
@@ -974,7 +991,6 @@ class PrivateComfyWorkerTests(unittest.TestCase):
         self.module.run_local_command = self.local
         self.module.run_worker_command = self.worker
         self.module.write_gateway_resource_state_best_effort = Mock(return_value=None)
-        self.module.emit_agent_debug_log = Mock()
 
     def request(self, action, config=None):
         config = config or replace(self.config, private_comfy_worker_ssh_target="user@spark2.example")
@@ -1313,8 +1329,7 @@ class BusinessRoutingContractTests(unittest.TestCase):
 
     def test_matching_shared_header_passes_with_fixed_route_fresh_proof_and_no_body_logs(self):
         with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}), \
-                patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs, \
-                patch.object(self.module, 'emit_agent_debug_log') as debug:
+                patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs:
             for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
                 self.assertEqual(self.request(method, path, shared='3:generation-3',
                     payload={'messages': [{'role': 'user', 'content': 'private-body-sentinel'}]})[0], 200)
@@ -1322,7 +1337,7 @@ class BusinessRoutingContractTests(unittest.TestCase):
                 self.assertEqual(self.calls[-1][1], 'http://192.168.100.11:8889' + path)
                 self.assertNotIn('X-Private-Shared-Runtime', self.calls[-1][3])
             self.assertEqual(logs.getvalue(), '')
-            debug.assert_not_called()
+            self.assertFalse(hasattr(self.module, 'emit_agent_debug_log'))
 
     def test_shared_status_attestation_publishes_only_complete_current_ready_proof(self):
         def snapshot():
@@ -1556,3 +1571,23 @@ class BusinessRoutingContractTests(unittest.TestCase):
                 status, body = self.request(payload={'stream': True})
             self.assertEqual(status, 200)
             self.assertEqual(body, raw)
+
+
+    def test_business_exception_logs_identity_without_request_or_credentials(self):
+        def fail(*args):
+            raise RuntimeError('request-body-secret business-only-key')
+        self.handler = self.module.make_handler(self.config, fail)
+        for shared, expected in ((None, 503), ('3:generation-3', 409)):
+            output = io.StringIO()
+            with patch('sys.stderr', output):
+                status, body = self.request(shared=shared, payload={'messages': [{'content': 'request-body-secret'}]})
+            self.assertEqual(status, expected)
+            line = next(line for line in output.getvalue().splitlines() if line.startswith('{'))
+            record = json.loads(line)
+            self.assertEqual(record['profileId'], self.value['selectedBusinessProfileId'])
+            self.assertEqual(record['generation'], 'generation-3')
+            self.assertEqual(record['exceptionType'], 'RuntimeError')
+            for secret in ('request-body-secret', 'business-only-key', 'client-key', 'control-key'):
+                self.assertNotIn(secret, output.getvalue())
+            if expected == 503:
+                self.assertEqual(json.loads(body)['error']['code'], 'business_runtime_unavailable')
