@@ -7,7 +7,7 @@ function hashParentRowIdForAdvisoryLock(parentCsvDashboardRowId: string): bigint
   return digest.readBigInt64BE(0);
 }
 
-/** 親行単位の split / 親 order 更新を直列化する transaction-scoped advisory lock。 */
+/** 親行単位の order 更新を直列化する transaction-scoped advisory lock。 */
 export async function acquireProductionScheduleParentRowLockInTransaction(
   tx: Prisma.TransactionClient,
   parentCsvDashboardRowId: string

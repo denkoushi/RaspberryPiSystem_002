@@ -83,20 +83,7 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
         'plannedQuantity', "supplement"."plannedQuantity",
         'plannedEndDate', "supplement"."plannedEndDate",
         'isCompleted', COALESCE("p"."isCompleted", FALSE),
-        'isExternallyCompleted', COALESCE("ext"."isExternallyCompleted", FALSE),
-        'splits', COALESCE((
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'id', "split"."id",
-              'splitQuantity', "split"."splitQuantity",
-              'dueDate', "split"."dueDate",
-              'updatedAt', "split"."updatedAt"
-            ) ORDER BY "split"."splitNo"
-          )
-          FROM "ProductionScheduleOrderSplit" AS "split"
-          WHERE "split"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND "split"."parentCsvDashboardRowId" = "CsvDashboardRow"."id"
-        ), '[]'::jsonb)
+        'isExternallyCompleted', COALESCE("ext"."isExternallyCompleted", FALSE)
       ) AS "planningDetail"`
     : Prisma.empty;
 

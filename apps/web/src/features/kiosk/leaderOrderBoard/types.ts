@@ -44,10 +44,4 @@ export type LeaderBoardRow = {
   /** 材料の入荷状況。材料の購買行が無い部品は null */
   materialArrivalStatus: MaterialArrivalStatus | null;
   materialArrivalBasis?: MaterialArrivalBasis | null;
-  /** display item 契約 */
-  sourceRowId: string;
-  splitId: string | null;
-  splitNo: number | null;
-  splitQuantity: number | null;
-  isSplit: boolean;
 };

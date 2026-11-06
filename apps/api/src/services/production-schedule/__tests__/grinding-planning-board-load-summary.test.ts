@@ -62,22 +62,20 @@ describe('grinding-planning-board-load-summary', () => {
     });
   });
 
-  it('counts split items once and suppresses the unsplit parent', () => {
+  it('counts a logical parent once even if the source repeats it', () => {
     const result = buildGrindingPlanningBoardLoadSummary([
       row('row:source-1', { requiredMinutes: 100 }),
-      row('split:1', { itemId: 'split:1', kind: 'split', requiredMinutes: 33 }),
-      row('split:2', { itemId: 'split:2', kind: 'split', requiredMinutes: 67 }),
-      row('split:2-duplicate', { itemId: 'split:2', kind: 'split', requiredMinutes: 67 })
+      row('row:source-1', { requiredMinutes: 100 })
     ]);
 
     expect(result.load).toEqual([
       {
         resourceCd: 'G-01',
-        originalItemCount: 2,
-        alternateItemCount: 2,
+        originalItemCount: 1,
+        alternateItemCount: 1,
         originalRequiredMinutes: 100,
         alternateRequiredMinutes: 100,
-        unfinishedItemCount: 2,
+        unfinishedItemCount: 1,
         requiredMinutes: 100,
         unknownItemCount: 0,
         originalUnknownItemCount: 0,
@@ -126,7 +124,6 @@ describe('grinding-planning-board-load-summary', () => {
       client: { $queryRaw: queryRaw } as never,
       siteKey: 'site-a',
       category: 'grinding',
-      splitEnabled: true,
       leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
       isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
     });
@@ -175,7 +172,7 @@ describe('materialized load aggregate cache', () => {
     const measure = vi.fn<(phase: string) => void>();
     const params = {
       client: { $queryRaw: queryRaw } as never,
-      siteKey: 'site-a', category: 'grinding' as const, splitEnabled: true,
+      siteKey: 'site-a', category: 'grinding' as const,
       leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ANY(${['row-2', 'row-1']}::text[])`,
       isResourceInCategory: (cd: string, category: GrindingPlanningBoardCategory) => cd.startsWith(category === 'grinding' ? 'G-' : 'C-'),
       cache: { generationToken: 'generation-1', readGenerationToken, performance: {
@@ -221,13 +218,12 @@ describe('materialized load aggregate cache', () => {
     expect(aggregateCalls()).toBe(3);
   });
 
-  it('isolates sites, split flags and base predicates', async () => {
+  it('isolates sites and base predicates', async () => {
     const { params, aggregateCalls } = setup();
     await readGrindingPlanningBoardLoadSummary(params);
     await readGrindingPlanningBoardLoadSummary({ ...params, siteKey: 'site-b' });
-    await readGrindingPlanningBoardLoadSummary({ ...params, splitEnabled: false });
     await readGrindingPlanningBoardLoadSummary({ ...params, leaderboardMaterializedBaseWhere: Prisma.sql`FALSE` });
-    expect(aggregateCalls()).toBe(4);
+    expect(aggregateCalls()).toBe(3);
   });
 
   it('removes a failed shared promise and allows a subsequent retry', async () => {

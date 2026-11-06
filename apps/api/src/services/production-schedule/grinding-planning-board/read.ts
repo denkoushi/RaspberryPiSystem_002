@@ -12,7 +12,6 @@ import { createGrindingPlanningBoardPerformance } from '../grinding-planning-boa
 import type { LeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-shell-snapshot.store.js';
 import { findMaterialArrivalStatusByPart, materialArrivalLookupKey } from '../../purchase-order-lookup/material-arrival-status.service.js';
 import { getResourceCategoryPolicy, isProductionScheduleGrindingResourceCd } from '../policies/resource-category-policy.service.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 import { projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
 import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { readGrindingPlanningBoardLoadSummary } from '../grinding-planning-board-load-summary.js';
@@ -35,9 +34,8 @@ async function projectCurrentBoard(params: { dueSource?: BoardDueSource; client:
     if (!params.selectedFseibans) return true;
     return params.selectedFseibans.has(valueAsString(asRowData(row.rowData), 'FSEIBAN'));
   }).map((row) => row.id);
-  const splitIds = displayRowIds.flatMap((rowId) => details.get(rowId)?.orderSplits.map((split) => split.id) ?? []);
-  const ranks = await readRanks(params.client, displayRowIds, splitIds, params.siteKey);
-  const projection = projectGrindingPlanningBoard({ dueSource: params.dueSource, rows, details, ranks, overrides, progressRows: source.progressRows, splitEnabled: isProductionScheduleOrderSplitEnabled(), category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
+  const ranks = await readRanks(params.client, displayRowIds, params.siteKey);
+  const projection = projectGrindingPlanningBoard({ dueSource: params.dueSource, rows, details, ranks, overrides, progressRows: source.progressRows, category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
   return { allItems: projection.allItems, items: projection.items, load: projection.load, unknownRequiredMinutesCount: projection.unknownRequiredMinutesCount, progress: projection.progress, policy, overrides, sourceRows: rows, details };
 }
 
@@ -100,7 +98,6 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
     leaderboardMaterializedBaseWhere: source.baseWhere,
     siteKey: params.siteKey,
     category: params.category,
-    splitEnabled: isProductionScheduleOrderSplitEnabled(),
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy),
     cache: {
       generationToken: generationBeforeRead.generationToken,
@@ -410,7 +407,6 @@ export async function getGrindingPlanningBoardLoad(params: {
     leaderboardMaterializedBaseWhere: baseWhere,
     siteKey: params.siteKey,
     category: params.category,
-    splitEnabled: isProductionScheduleOrderSplitEnabled(),
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy),
     cache: {
       generationToken: generationBefore,

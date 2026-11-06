@@ -138,7 +138,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
-    {onCompleteToggle && completionTargetId === bar.item.itemId && bar.item.kind === 'row' && <PlanningBoardCompletionButton
+    {onCompleteToggle && completionTargetId === bar.item.itemId && <PlanningBoardCompletionButton
       item={bar.item} onToggle={onCompleteToggle} className="absolute top-0 z-10"
       style={{ left: (bar.end! - start) * dayWidth - 28 }}
       disabled={disabled || completionPendingRowIds?.has(bar.item.sourceRowId)} />}

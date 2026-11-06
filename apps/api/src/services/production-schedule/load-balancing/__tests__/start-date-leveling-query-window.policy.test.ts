@@ -12,7 +12,7 @@ describe('buildStartDateLevelingQueryWindowWhereSql', () => {
     }).sql.toLowerCase();
 
     expect(sql).toContain('"supplement"."plannedstartdate" is null');
-    expect(sql).toContain('coalesce(null::date, coalesce("n"."duedate", "supplement"."plannedenddate")) is null');
+    expect(sql).toContain('coalesce("n"."duedate", "supplement"."plannedenddate") is null');
     expect(sql).toContain('"supplement"."plannedstartdate" <');
     expect(sql).toContain('>=');
   });
@@ -29,7 +29,7 @@ describe('buildStartDateLevelingQueryWindowWhereSql', () => {
     });
     const without = buildStartDateLevelingQueryWindowWhereSql(range);
 
-    expect(withOverdue.sql).toContain('OR COALESCE(NULL::date, COALESCE("n"."dueDate", "supplement"."plannedEndDate")) <');
+    expect(withOverdue.sql).toContain('OR COALESCE("n"."dueDate", "supplement"."plannedEndDate") <');
     expect(withOverdue.values).toContainEqual(new Date('2026-09-30T00:00:00.000Z'));
     expect(without.values).toHaveLength(2);
   });

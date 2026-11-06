@@ -182,8 +182,6 @@ all:
           part_measurement_drawing_ocr_rapidocr_weak_score: "0.12"
           # 実績基準時間: actor locationに特徴量が無い場合はshared-global-rankへフォールバック
           actual_hours_shared_fallback_enabled: "true"
-          # 順位ボードの生産指示分割（Step 1 pilotまではfalse。API/Webで値を揃える）
-          kiosk_production_schedule_order_split_enabled: "false"
           # Docker Compose環境変数はgroup_vars/all.ymlで定義済み
           # status-agent設定
           status_agent_client_id: raspberrypi5-server

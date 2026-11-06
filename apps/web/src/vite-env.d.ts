@@ -17,7 +17,6 @@ interface ImportMetaEnv {
   readonly VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED?: string;
   readonly VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR?: string;
   readonly VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED?: string;
-  readonly VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED?: string;
   /** Immutable lowercase Git SHA compiled into a release Web bundle. */
   readonly VITE_RELEASE_SHA?: string;
   /** Draft kiosk SOP popup. Production defaults to disabled until copy sign-off. */

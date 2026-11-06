@@ -145,16 +145,17 @@ describe('production-schedule route shared helpers', () => {
     ).toBe(true);
   });
 
-  it('productionScheduleLeaderboardLaborMetadataBodySchema は UUID / split UUID と target scope を受け付ける', () => {
+  it('productionScheduleLeaderboardLaborMetadataBodySchema は 親 UUID と target scope を受け付け、旧片 ID を拒否する', () => {
     const uuid = '550e8400-e29b-41d4-a716-446655440000';
     const splitUuid = 'split:550e8400-e29b-41d4-a716-446655440001';
 
     const parsed = productionScheduleLeaderboardLaborMetadataBodySchema.parse({
-      rowIds: [uuid, splitUuid],
+      rowIds: [uuid],
       targetDeviceScopeKey: 'site-a - mac'
     });
 
-    expect(parsed.rowIds).toEqual([uuid, splitUuid]);
+    expect(parsed.rowIds).toEqual([uuid]);
+    expect(() => productionScheduleLeaderboardLaborMetadataBodySchema.parse({ rowIds: [splitUuid] })).toThrow();
     expect(parsed.targetDeviceScopeKey).toBe('site-a - mac');
   });
 

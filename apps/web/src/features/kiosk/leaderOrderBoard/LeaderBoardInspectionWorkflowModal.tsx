@@ -3,8 +3,6 @@ import {
   type SelfInspectionWorkflowTarget
 } from '../../part-measurement/SelfInspectionWorkflowModal';
 
-import { resolveSourceRowIdFromLeaderBoardRow } from './displayItemId';
-
 import type { LeaderBoardRow } from './types';
 
 type Props = {
@@ -17,7 +15,7 @@ type Props = {
 function toWorkflowTarget(row: LeaderBoardRow): SelfInspectionWorkflowTarget {
   return {
     productNo: row.productNo,
-    scheduleRowId: resolveSourceRowIdFromLeaderBoardRow(row),
+    scheduleRowId: row.id,
     resourceCd: row.resourceCd,
     fseiban: row.fseiban,
     fhincd: row.fhincd,

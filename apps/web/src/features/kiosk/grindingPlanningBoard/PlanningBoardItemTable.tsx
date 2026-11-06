@@ -309,8 +309,8 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
         </div>
       </td>
       {onCompleteToggle && <td className="px-1 align-middle">
-        {item.kind === 'row' && <PlanningBoardCompletionButton item={item} onToggle={onCompleteToggle}
-          disabled={disabled || completionPendingRowIds?.has(item.sourceRowId)} />}
+        <PlanningBoardCompletionButton item={item} onToggle={onCompleteToggle}
+          disabled={disabled || completionPendingRowIds?.has(item.sourceRowId)} />
       </td>}
     </tr>
   );

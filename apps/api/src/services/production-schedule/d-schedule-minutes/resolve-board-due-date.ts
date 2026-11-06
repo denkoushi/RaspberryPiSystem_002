@@ -3,7 +3,6 @@ export type BoardDueSource = 'excel' | 'scaw';
 export function resolveBoardDueDate(input: {
   source: BoardDueSource;
   itemOverride: string | null;
-  splitDueDate: string | null;
   manualDueDate: string | null;
   manualUpdatedAt: Date | null;
   excelDueDate: string | null;
@@ -11,7 +10,6 @@ export function resolveBoardDueDate(input: {
   scawPlannedEndDate: string | null;
 }): string | null {
   if (input.itemOverride !== null) return input.itemOverride;
-  if (input.splitDueDate !== null) return input.splitDueDate;
   if (input.source === 'scaw' || input.excelDueDate === null) {
     return input.manualDueDate ?? input.scawPlannedEndDate;
   }

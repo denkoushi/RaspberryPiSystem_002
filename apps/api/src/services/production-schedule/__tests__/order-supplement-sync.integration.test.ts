@@ -90,7 +90,7 @@ describe('order-supplement-sync.service (integration)', () => {
     await prisma.$disconnect();
   });
 
-  it('plannedQuantity 変更時に split 数量合計を同じ transaction で再配分する', async () => {
+  it('旧片が残っていても親の plannedQuantity のみ更新する', async () => {
     const parent = await prisma.csvDashboardRow.create({
       data: {
         csvDashboardId: MAIN_DASHBOARD_ID,
@@ -160,8 +160,8 @@ describe('order-supplement-sync.service (integration)', () => {
       select: { splitQuantity: true },
     });
     expect(supplement?.plannedQuantity).toBe(10);
-    expect(splits.map((split) => split.splitQuantity)).toEqual([4, 6]);
-    expect(splits.reduce((sum, split) => sum + split.splitQuantity, 0)).toBe(10);
+    expect(splits.map((split) => split.splitQuantity)).toEqual([2, 3]);
+    expect(splits.reduce((sum, split) => sum + split.splitQuantity, 0)).toBe(5);
   });
 
   it('既存行ありで補助CSVの plannedQuantity が空なら既存数量と split を維持する', async () => {

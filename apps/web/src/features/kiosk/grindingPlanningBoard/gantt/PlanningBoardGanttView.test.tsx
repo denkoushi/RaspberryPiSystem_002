@@ -168,8 +168,8 @@ describe('PlanningBoardGanttView', () => {
     expect(screen.queryByTestId('planning-gantt-chips-b')).toBeNull();
   });
 
-  it('completes a forward chain step with a sibling button and hides split completion', () => {
-    const items = [item(), item({ itemId: 'split', kind: 'split', processOrder: '20' })];
+  it('completes each parent forward chain step with a sibling button', () => {
+    const items = [item(), item({ itemId: 'b', processOrder: '20' })];
     const values = props(items);
     const onCompleteToggle = vi.fn();
     const layout = buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource',
@@ -177,10 +177,13 @@ describe('PlanningBoardGanttView', () => {
     render(<PlanningBoardGanttView {...values} layout={layout} onCompleteToggle={onCompleteToggle} />);
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
     const strip = screen.getByTestId('planning-gantt-chain-strip');
-    const button = within(strip).getByRole('button', { name: '完了にする' });
+    const buttons = within(strip).getAllByRole('button', { name: '完了にする' });
+    const button = buttons[0];
     expect(button.parentElement?.closest('button')).toBeNull();
     fireEvent.click(button);
     expect(onCompleteToggle).toHaveBeenCalledWith(items[0], 'complete');
+    fireEvent.click(buttons[1]);
+    expect(onCompleteToggle).toHaveBeenLastCalledWith(items[1], 'complete');
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
 
@@ -230,12 +233,14 @@ describe('PlanningBoardGanttView', () => {
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
 
-  it('hides backward split completion and disables the target while pending or locked', () => {
-    const values = props([item(), item({ itemId: 'split', kind: 'split' })]);
+  it('completes another parent and disables the target while pending or locked', () => {
+    const parents = [item(), item({ itemId: 'b' })];
+    const values = props(parents);
     const onCompleteToggle = vi.fn();
     const { rerender } = render(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
-    fireEvent.click(screen.getByTestId('planning-gantt-bar-split'));
-    expect(screen.queryByRole('button', { name: '完了にする' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-b'));
+    fireEvent.click(screen.getByRole('button', { name: '完了にする' }));
+    expect(onCompleteToggle).toHaveBeenCalledWith(parents[1], 'complete');
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
     rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} completionPendingRowIds={new Set(['a'])} />);
     expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();

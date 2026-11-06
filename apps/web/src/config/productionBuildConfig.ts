@@ -39,7 +39,6 @@ export interface ProductionBuildConfig {
   leaderboardTerminalCacheEnabled: boolean;
   leaderboardTerminalCachePhase2Swr: boolean;
   manualOrderDeviceScopeV2Enabled: boolean;
-  productionScheduleOrderSplitEnabled: boolean;
   sopPopupEnabled: boolean;
   targetLocationSelectorEnabled: boolean;
   releaseSha?: string;
@@ -99,10 +98,6 @@ export const readProductionBuildConfig = (
   manualOrderDeviceScopeV2Enabled: booleanValue(
     env.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED,
     generatedBoolean(defaults.VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED)
-  ),
-  productionScheduleOrderSplitEnabled: booleanValue(
-    env.VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED,
-    generatedBoolean(defaults.VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED)
   ),
   sopPopupEnabled: booleanValue(
     env.VITE_KIOSK_SOP_POPUP_ENABLED,

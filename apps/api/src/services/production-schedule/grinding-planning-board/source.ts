@@ -15,7 +15,7 @@ import { isSendaiResourceGroupCd } from '../resource-master.service.js';
 import { type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
 import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
-import { asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type SplitRankRow, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
+import { asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
 
 
 export async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]): Promise<WinnerRow[]> {
@@ -71,8 +71,7 @@ function planningDetailToRowDetail(row: LeaderboardScheduleRowSql): RowDetail {
       rowNotes: [{ dueDate: row.dueDate }],
       orderSupplements: [{ plannedQuantity: row.plannedQuantity, plannedEndDate: row.plannedEndDate }],
       productionScheduleProgress: { isCompleted: false, updatedAt: updatedAt ?? new Date(0) },
-      productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: updatedAt ?? new Date(0) },
-      orderSplits: []
+      productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: updatedAt ?? new Date(0) }
     };
   }
   return {
@@ -82,11 +81,6 @@ function planningDetailToRowDetail(row: LeaderboardScheduleRowSql): RowDetail {
     orderSupplements: [{ plannedQuantity: detail.plannedQuantity, plannedEndDate: dateValue(detail.plannedEndDate) }],
     productionScheduleProgress: { isCompleted: Boolean(detail.isCompleted), updatedAt: dateValue(detail.progressUpdatedAt) ?? new Date(0) },
     productionScheduleExternalCompletion: { isExternallyCompleted: Boolean(detail.isExternallyCompleted), updatedAt: dateValue(detail.externalUpdatedAt) ?? new Date(0) },
-    orderSplits: detail.splits.flatMap((split) => {
-      const splitUpdatedAt = dateValue(split.updatedAt);
-      if (!splitUpdatedAt) return [];
-      return [{ id: split.id, splitQuantity: split.splitQuantity, dueDate: dateValue(split.dueDate), updatedAt: splitUpdatedAt }];
-    })
   };
 }
 
@@ -266,8 +260,7 @@ export async function readRowDetails(client: DbClient, rowIds: readonly string[]
         rowNotes: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, orderBy: { updatedAt: 'desc' }, take: 1, select: { dueDate: true } },
         orderSupplements: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { plannedQuantity: true, plannedEndDate: true } },
         productionScheduleProgress: { select: { isCompleted: true, updatedAt: true } },
-        productionScheduleExternalCompletion: { select: { isExternallyCompleted: true, updatedAt: true } },
-        orderSplits: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { id: true, splitQuantity: true, dueDate: true, updatedAt: true }, orderBy: { splitNo: 'asc' } }
+        productionScheduleExternalCompletion: { select: { isExternallyCompleted: true, updatedAt: true } }
       }
     });
     const dueInputs = await client.$queryRaw<Array<{ id: string; manualUpdatedAt: Date | null; excelDueDate: Date | null; excelChangedAt: Date | null }>>`
@@ -286,19 +279,12 @@ export async function readRowDetails(client: DbClient, rowIds: readonly string[]
   return details;
 }
 
-export async function readRanks(client: DbClient, rowIds: readonly string[], splitIds: readonly string[], siteKey: string): Promise<GrindingPlanningBoardProjectionRanks> {
+export async function readRanks(client: DbClient, rowIds: readonly string[], siteKey: string): Promise<GrindingPlanningBoardProjectionRanks> {
   const rows: RankRow[] = [];
   for (const chunk of chunkLeaderboardRowIdsForHydrate([...new Set(rowIds)])) {
     rows.push(...await client.productionScheduleOrderAssignment.findMany({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: chunk }, OR: [{ siteKey }, { location: siteKey }] },
       select: { csvDashboardRowId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }
-    }));
-  }
-  const splits: SplitRankRow[] = [];
-  for (const chunk of chunkLeaderboardRowIdsForHydrate([...new Set(splitIds)])) {
-    splits.push(...await client.productionScheduleOrderSplitAssignment.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, splitId: { in: chunk }, OR: [{ siteKey }, { location: siteKey }] },
-      select: { splitId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }
     }));
   }
   const preferred = (candidate: { location: string; updatedAt: Date }, current: { location: string; updatedAt: Date }) => {
@@ -308,9 +294,7 @@ export async function readRanks(client: DbClient, rowIds: readonly string[], spl
   };
   const rowMap = new Map<string, RankRow>();
   for (const row of rows) { const current = rowMap.get(row.csvDashboardRowId); if (!current || preferred(row, current)) rowMap.set(row.csvDashboardRowId, row); }
-  const splitMap = new Map<string, SplitRankRow>();
-  for (const row of splits) { const current = splitMap.get(row.splitId); if (!current || preferred(row, current)) splitMap.set(row.splitId, row); }
-  return { rows: rowMap, splits: splitMap };
+  return { rows: rowMap };
 }
 
 export async function readOverrides(client: DbClient, siteKey: string, itemKeys?: readonly string[]): Promise<Map<string, ProductionScheduleGrindingPlanningBoardOverride>> {
@@ -318,7 +302,7 @@ export async function readOverrides(client: DbClient, siteKey: string, itemKeys?
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
       siteKey,
-      ...(itemKeys == null ? {} : { itemKey: { in: [...new Set(itemKeys)] } })
+      itemKey: itemKeys == null ? { startsWith: 'row:' } : { in: [...new Set(itemKeys)] }
     }
   });
   return new Map(rows.map((row) => [row.itemKey, row]));

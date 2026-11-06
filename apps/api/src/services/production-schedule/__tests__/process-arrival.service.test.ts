@@ -10,10 +10,11 @@ vi.mock('../policies/resource-category-policy.service.js', () => ({
   isProductionScheduleExcludedCuttingResourceCd: (cd: string) => ['10', 'MSZ'].includes(cd)
 }));
 
+import { buildGrindingPlanningBoardRowItemId } from '../grinding-planning-board-projection.js';
 import { buildProcessArrivalByRowId, enrichRowsWithProcessArrival, type ArrivalProcess } from '../process-arrival.service.js';
 
 const row = (id: string, processOrder: string, productNo = '100') => ({
-  id, sourceRowId: id.startsWith('split:') ? 'grinding-b' : id,
+  id, sourceRowId: id,
   rowData: { FSEIBAN: 'ORDER', FHINCD: 'PART', ProductNo: productNo, FKOJUN: processOrder, FSIGENCD: '305' }
 });
 const process = (processOrder: string, resourceCd: string, isCompleted = false): ArrivalProcess => ({
@@ -57,12 +58,12 @@ describe('process arrival', () => {
     expect(buildProcessArrivalByRowId([source], [{ ...process('10', '305'), fseiban: '********' }], excluded).get('b')).toBe(true);
   });
 
-  it('treats shelf placement as arrived and splits inherit the source process result', async () => {
+  it('keeps the parent waiting until its earlier process completes or shelf placement exists', async () => {
     mocks.query.mockResolvedValue([process('10', '001')]);
-    const rows = [row('grinding-b', '30'), row('split:one', '30'), row('split:two', '30')];
-    expect((await enrichRowsWithProcessArrival(rows, { locationKey: 'site' })).map((r) => r.arrived)).toEqual([false, false, false]);
+    const rows = [row('grinding-b', '30')];
+    expect((await enrichRowsWithProcessArrival(rows, { locationKey: 'site' })).map((r) => r.arrived)).toEqual([false]);
     mocks.placements.mockResolvedValue([{ manufacturingOrderBarcodeRaw: '100' }]);
-    expect((await enrichRowsWithProcessArrival(rows, { locationKey: 'site' })).map((r) => r.arrived)).toEqual([true, true, true]);
+    expect((await enrichRowsWithProcessArrival(rows, { locationKey: 'site' })).map((r) => r.arrived)).toEqual([true]);
   });
 
   it('uses the chip effective completion SQL, so external completion counts', async () => {
@@ -95,11 +96,21 @@ describe('process arrival', () => {
       typeof value === 'string' && value.startsWith('row-')).length)).toEqual([300, 300, 1]);
   });
 
-  it('attaches leader special due from the same row/split override keys as the planning board', async () => {
+  it('attaches parent special due and ignores a leftover old override', async () => {
     mocks.query.mockResolvedValue([process('10', '001')]);
-    mocks.overrides.mockResolvedValue([{ itemKey: 'split:one', specialDueKind: 'overnight', specialDueExpiresAt: new Date('2026-11-06T00:00:00Z') }]);
-    const result = await enrichRowsWithProcessArrival([row('split:one', '30')], { siteKey: 'site', locationKey: 'terminal', includeSpecialDue: true });
-    expect(result[0]).toMatchObject({ arrived: false, specialDue: { kind: 'overnight', expiresAt: '2026-11-06T00:00:00.000Z' } });
-    expect(mocks.overrides).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ siteKey: 'site', itemKey: { in: ['split:one'] } }) }));
+    const parent = row('parent', '30');
+    const itemKey = buildGrindingPlanningBoardRowItemId(parent.rowData);
+    mocks.overrides.mockResolvedValue([
+      { itemKey: 'split:one', specialDueKind: 'overnight', specialDueExpiresAt: new Date('2026-11-06T00:00:00Z') }
+    ]);
+    const scope = { siteKey: 'site', locationKey: 'terminal', includeSpecialDue: true };
+    expect((await enrichRowsWithProcessArrival([parent], scope))[0]).toMatchObject({ arrived: false, specialDue: null });
+    expect(mocks.overrides).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ siteKey: 'site', itemKey: { in: [itemKey] } }) }));
+    mocks.overrides.mockResolvedValue([
+      { itemKey, specialDueKind: 'overnight', specialDueExpiresAt: new Date('2026-11-06T00:00:00Z') }
+    ]);
+    expect((await enrichRowsWithProcessArrival([parent], scope))[0]).toMatchObject({
+      arrived: false, specialDue: { kind: 'overnight', expiresAt: '2026-11-06T00:00:00.000Z' }
+    });
   });
 });

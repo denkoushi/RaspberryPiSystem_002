@@ -8,8 +8,7 @@ const testState = vi.hoisted(() => ({
   scheduleRows: [] as Array<Record<string, unknown>>,
   scheduleFetchCount: 0,
   usageFetchCount: 0,
-  updateOrder: vi.fn(),
-  updateSplitOrder: vi.fn()
+  updateOrder: vi.fn()
 }));
 
 const idleMutation = vi.hoisted(
@@ -58,7 +57,6 @@ vi.mock('../../api/client', async () => {
     getKioskProductionScheduleHistoryProgress: async () => ({ progressBySeiban: {} }),
     getKioskProductionScheduleOrderSearchCandidates: async () => ({ orders: [], partNameOptions: [] }),
     updateKioskProductionScheduleOrder: (...args: unknown[]) => testState.updateOrder(...args),
-    updateKioskProductionScheduleSplitOrder: (...args: unknown[]) => testState.updateSplitOrder(...args),
     setKioskProductionScheduleSearchState: async () => ({
       state: { history: [] },
       updatedAt: '2026-09-10T00:00:00Z',
@@ -78,8 +76,7 @@ vi.mock('../../api/hooks', async () => {
     useSetKioskProductionScheduleRowCompletion: idleMutation,
     useUpdateKioskProductionScheduleProcessing: idleMutation,
     useUpdateKioskProductionScheduleNote: idleMutation,
-    useUpdateKioskProductionScheduleDueDate: idleMutation,
-    useUpdateKioskProductionScheduleSplitDueDate: idleMutation
+    useUpdateKioskProductionScheduleDueDate: idleMutation
   };
 });
 
@@ -235,7 +232,6 @@ describe('ProductionSchedulePage processing-order selection', () => {
     testState.scheduleFetchCount = 0;
     testState.usageFetchCount = 0;
     testState.updateOrder.mockReset();
-    testState.updateSplitOrder.mockReset();
   });
 
   it('並び替えを保存完了前に反映し、保存失敗時は元に戻す', async () => {
@@ -272,13 +268,13 @@ describe('ProductionSchedulePage processing-order selection', () => {
     });
   });
 
-  it('split:* 行も保存完了前に並び替え、対象行IDを分割APIへ渡す', async () => {
+  it('未割当の親行を保存完了前に並び替え、親行IDを渡す', async () => {
     testState.scheduleRows = [
-      scheduleRow('split:split-1', '101', null),
+      scheduleRow('parent-1', '101', null),
       scheduleRow('row-2', '202', 2)
     ];
     let resolveRequest: ((value: { success: true; orderNumber: number | null }) => void) | undefined;
-    testState.updateSplitOrder.mockImplementation(
+    testState.updateOrder.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveRequest = resolve;
@@ -288,14 +284,14 @@ describe('ProductionSchedulePage processing-order selection', () => {
     renderPage();
 
     await waitFor(() => expect(within(bodyRows()[0]).getByText('202')).toBeInTheDocument());
-    const splitRow = bodyRows().find((row) => row.textContent?.includes('101'));
-    const orderSelect = splitRow?.querySelector('select.h-7.w-16');
+    const parentRow = bodyRows().find((row) => row.textContent?.includes('101'));
+    const orderSelect = parentRow?.querySelector('select.h-7.w-16');
     expect(orderSelect).not.toBeNull();
 
     fireEvent.change(orderSelect as HTMLSelectElement, { target: { value: '1' } });
 
     await waitFor(() => {
-      expect(testState.updateSplitOrder).toHaveBeenCalledWith('split-1', {
+      expect(testState.updateOrder).toHaveBeenCalledWith('parent-1', {
         resourceCd: 'R1',
         orderNumber: 1
       });
@@ -311,13 +307,13 @@ describe('ProductionSchedulePage processing-order selection', () => {
     });
   });
 
-  it('split:* 行は保存失敗時に元の表示順へ戻す', async () => {
+  it('未割当の親行は保存失敗時に元の表示順へ戻す', async () => {
     testState.scheduleRows = [
-      scheduleRow('split:split-1', '101', null),
+      scheduleRow('parent-1', '101', null),
       scheduleRow('row-2', '202', 2)
     ];
     let rejectRequest: ((error: Error) => void) | undefined;
-    testState.updateSplitOrder.mockImplementation(
+    testState.updateOrder.mockImplementation(
       () =>
         new Promise((_resolve, reject) => {
           rejectRequest = reject;
@@ -327,8 +323,8 @@ describe('ProductionSchedulePage processing-order selection', () => {
     renderPage();
 
     await waitFor(() => expect(within(bodyRows()[0]).getByText('202')).toBeInTheDocument());
-    const splitRow = bodyRows().find((row) => row.textContent?.includes('101'));
-    const orderSelect = splitRow?.querySelector('select.h-7.w-16');
+    const parentRow = bodyRows().find((row) => row.textContent?.includes('101'));
+    const orderSelect = parentRow?.querySelector('select.h-7.w-16');
     expect(orderSelect).not.toBeNull();
 
     fireEvent.change(orderSelect as HTMLSelectElement, { target: { value: '1' } });
