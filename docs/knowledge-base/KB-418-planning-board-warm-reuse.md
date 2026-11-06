@@ -73,6 +73,15 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 
 `CsvDashboardRawRevision.revision` for the production schedule dashboard moved from 0 (2026-10-09) to 150563 (2026-10-12 22:09), so CSV imports advance the token.
 
+## Client Snapshot Replacement (2026-11-06)
+
+- Symptom: the 5-minute planning-board refresh replaced the completed list with the first 160 items while cursor pages were pending, temporarily removing later Gantt bars.
+- Fix: `useKioskGrindingPlanningBoardProgressive` keeps the completed snapshot for the same `paramsKey` and buffers the replacement pages locally. Only the final page publishes the replacement. Initial loading and scope changes still publish each page; a first page without a cursor replaces immediately.
+- Readiness follows the displayed snapshot: background replacement keeps `hasStableData`, `scopeReady` and `isComplete` true and `isAppending` false. The page's rank readiness conditions stay satisfied without showing 「一覧を追加取得中…」.
+- Cursor failures, including exhausted STALE 409 retries, retain the completed display and readiness, and use the existing `appendError` notice. Initial partial-load failures remain incomplete. A manual `refetch()` reports replacement failure through `isError`.
+- `refetch()` now waits for the replacement to be published and rendered, including STALE retries. Write-queue refresh and conflict recovery therefore cannot acknowledge only the first page or prematurely clear confirmed writes. The existing item and order overlays retain acknowledged changes and pass the confirmed source revision to the next save; the write queue and page need no changes.
+- Validation: progressive-hook tests passed (22 tests, about 3 seconds), including polling, explicit refetch, invalidation, multiple deferred pages, initial/scope progressive loading, STALE retry exhaustion and a connected write-queue check for saved fields, confirmed order and source revision. Planning-board feature/page tests passed (30 files, 435 tests, about 12 seconds). Web `tsc --noEmit` passed after rebuilding the existing shared-types output, which was stale locally. No API code, page sizes or polling intervals changed.
+
 ## Prevention
 
 - Unit tests cover reuse across the 5-minute store lifetime, token change, the 12-hour limit and LRU eviction (`grinding-planning-board.service.unit.test.ts`); delete-only token changes are covered in `leaderboard-shell-snapshot-generation` tests.

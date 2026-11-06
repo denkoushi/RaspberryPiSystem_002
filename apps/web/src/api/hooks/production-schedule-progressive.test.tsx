@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
+
 import {
   useUpdateKioskGrindingPlanningBoardArrival,
   useKioskGrindingPlanningBoardProgressive,
@@ -72,6 +74,12 @@ function response(items: GrindingPlanningBoardItem[], nextCursor: string | null,
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 function wrapper(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   function QueryClientWrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -109,11 +117,11 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     await waitFor(() => expect(hook.result.current.load.data?.unknownRequiredMinutesCount).toBe(1));
     expect(mocks.getLoad).toHaveBeenCalledTimes(1);
     mocks.getBoard.mockResolvedValue(response([item('1')], null, { snapshotId: 'snapshot-2', loadDeferred: true }));
-    await act(async () => { await hook.result.current.board.refetch(); });
+    await hook.result.current.board.refetch();
     await waitFor(() => expect(hook.result.current.board.data?.snapshotId).toBe('snapshot-2'));
     expect(mocks.getLoad).toHaveBeenCalledTimes(1);
     mocks.getBoard.mockResolvedValue(response([item('1')], null, { snapshotId: 'snapshot-3', sourceRevision: 'revision-2', loadDeferred: true }));
-    await act(async () => { await hook.result.current.board.refetch(); });
+    await hook.result.current.board.refetch();
     await waitFor(() => expect(hook.result.current.load.data?.unknownRequiredMinutesCount).toBe(2));
     expect(mocks.getLoad).toHaveBeenCalledTimes(2);
     const beforeMutation = mocks.getLoad.mock.calls.length;
@@ -147,6 +155,186 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     expect(mocks.getBoard).toHaveBeenCalledTimes(3);
     expect(mocks.getBoard.mock.calls[0][0].pageSize ?? 160).toBe(160);
     expect(mocks.getBoard.mock.calls.slice(1).map(([params]) => params.pageSize)).toEqual([640, 640]);
+  });
+
+  it.each(['refetch', 'invalidate'])('%s中は前の全件とready状態を保持し、最後に一度だけ差し替える', async (trigger) => {
+    const second = deferred<GrindingPlanningBoardResponse>();
+    const third = deferred<GrindingPlanningBoardResponse>();
+    const old = response([item('1')], '160');
+    const fresh = { snapshotId: 'snapshot-2', sourceRevision: 'revision-2' };
+    mocks.getBoard.mockResolvedValueOnce(old)
+      .mockResolvedValueOnce(response([item('2')], null))
+      .mockResolvedValueOnce(response([item('3')], '160', fresh))
+      .mockReturnValueOnce(second.promise).mockReturnValueOnce(third.promise);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const displays: (GrindingPlanningBoardResponse | undefined)[] = [];
+    const hook = renderHook(() => {
+      const board = useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' });
+      displays.push(board.data);
+      return board;
+    }, { wrapper: wrapper(client) });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    const previous = hook.result.current.data;
+    let finished = false;
+    const refresh = trigger === 'refetch'
+      ? hook.result.current.refetch().then((result) => { finished = true; return result; })
+      : client.invalidateQueries({ queryKey: ['kiosk-grinding-planning-board'] });
+    await waitFor(() => expect(mocks.getBoard).toHaveBeenCalledTimes(4));
+    const expectPrevious = () => {
+      expect(hook.result.current.data).toBe(previous);
+      expect(hook.result.current.isComplete).toBe(true);
+      expect(hook.result.current.scopeReady).toBe(true);
+      expect(hook.result.current.hasStableData).toBe(true);
+      expect(hook.result.current.isAppending).toBe(false);
+      expect(hook.result.current.isPlaceholderData).toBe(false);
+      expect(hook.result.current.isLoading).toBe(false);
+      expect(hook.result.current.isError).toBe(false);
+    };
+    expectPrevious();
+    expect(finished).toBe(false);
+    await act(async () => { second.resolve(response([item('4')], '800', fresh)); });
+    await waitFor(() => expect(mocks.getBoard).toHaveBeenCalledTimes(5));
+    expectPrevious();
+    await act(async () => { third.resolve(response([item('5')], null, fresh)); });
+    await waitFor(() => expect(hook.result.current.data?.snapshotId).toBe('snapshot-2'));
+    const result = await refresh;
+    if (trigger === 'refetch') expect(result).toMatchObject({ isError: false, data: { items: [item('3'), item('4'), item('5')] } });
+    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['3', '4', '5']);
+    expect(hook.result.current.isComplete).toBe(true);
+    expect(displays.filter((data) => data?.snapshotId === 'snapshot-2').every((data) => data?.items.length === 3)).toBe(true);
+  });
+
+  it('定期再取得でも新しい全件がそろうまで表示を維持する', async () => {
+    const tail = deferred<GrindingPlanningBoardResponse>();
+    const fresh = { snapshotId: 'snapshot-2', sourceRevision: 'revision-2' };
+    mocks.getBoard.mockResolvedValueOnce(response([item('1')], '160'))
+      .mockResolvedValueOnce(response([item('2')], null))
+      .mockResolvedValueOnce(response([item('3')], '160', fresh)).mockReturnValueOnce(tail.promise);
+    const hook = renderHook(({ interval }: { interval: number | false }) =>
+      useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' }, { refetchIntervalMs: interval }),
+    { initialProps: { interval: false }, wrapper: wrapper() });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    const previous = hook.result.current.data;
+    vi.useFakeTimers();
+    try {
+      hook.rerender({ interval: 300000 });
+      await act(async () => { await vi.advanceTimersByTimeAsync(300000); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+      expect(mocks.getBoard).toHaveBeenCalledTimes(4);
+      expect(hook.result.current.data).toBe(previous);
+      expect(hook.result.current.scopeReady).toBe(true);
+      expect(hook.result.current.isComplete).toBe(true);
+      expect(hook.result.current.isAppending).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+    await act(async () => { tail.resolve(response([item('4')], null, fresh)); });
+    await waitFor(() => expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['3', '4']));
+    hook.unmount();
+  });
+
+  it.each([false, true])('全件再取得のSTALE再試行でも前の全件を保持する（上限到達=%s）', async (exhausted) => {
+    const staleError = { isAxiosError: true, response: { status: 409, data: { errorCode: 'STALE_PLANNING_BOARD_SNAPSHOT' } } };
+    const tail = deferred<GrindingPlanningBoardResponse>();
+    mocks.getBoard.mockResolvedValueOnce(response([item('1')], '160'))
+      .mockResolvedValueOnce(response([item('2')], null));
+    const hook = renderHook(() => useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' }), { wrapper: wrapper() });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    const previous = hook.result.current.data;
+    let firstPages = 0;
+    mocks.getBoard.mockImplementation((params: { cursor?: number; snapshotId?: string }) => {
+      if (params.cursor != null) {
+        if (exhausted || firstPages < 3) return Promise.reject(staleError);
+        return tail.promise;
+      }
+      firstPages += 1;
+      return Promise.resolve(response([item('3')], '160', { snapshotId: `new-${firstPages}`, sourceRevision: 'revision-2' }));
+    });
+    const refresh = hook.result.current.refetch();
+    await waitFor(() => expect(firstPages).toBe(3));
+    expect(hook.result.current.data).toBe(previous);
+    expect(hook.result.current.isComplete).toBe(true);
+    expect(hook.result.current.scopeReady).toBe(true);
+    expect(hook.result.current.isAppending).toBe(false);
+    if (exhausted) {
+      await waitFor(() => expect(hook.result.current.appendError).toBeTruthy());
+      expect(await refresh).toMatchObject({ isError: true, data: previous });
+      expect(hook.result.current.hasStableData).toBe(true);
+      expect(hook.result.current.isError).toBe(false);
+    } else {
+      expect(hook.result.current.appendError).toBeNull();
+      await act(async () => { tail.resolve(response([item('4')], null, { snapshotId: 'new-3', sourceRevision: 'revision-2' })); });
+      expect(await refresh).toMatchObject({ isError: false });
+      await waitFor(() => expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['3', '4']));
+    }
+    expect(firstPages).toBe(3);
+  });
+
+  it('paramsKey切替では新しい先頭ページを先に出して追補する', async () => {
+    const tail = deferred<GrindingPlanningBoardResponse>();
+    mocks.getBoard.mockResolvedValueOnce(response([item('1')], '160'))
+      .mockResolvedValueOnce(response([item('2')], null))
+      .mockResolvedValueOnce(response([item('3')], '160', { snapshotId: 'snapshot-2' }))
+      .mockReturnValueOnce(tail.promise);
+    const hook = renderHook(({ completionFilter }: { completionFilter: 'all' | 'incomplete' }) =>
+      useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban', completionFilter }),
+    { initialProps: { completionFilter: 'incomplete' }, wrapper: wrapper() });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    hook.rerender({ completionFilter: 'all' });
+    await waitFor(() => expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['3']));
+    expect(hook.result.current.scopeReady).toBe(true);
+    expect(hook.result.current.isComplete).toBe(false);
+    expect(hook.result.current.isAppending).toBe(true);
+    await act(async () => { tail.resolve(response([item('4')], null, { snapshotId: 'snapshot-2' })); });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['3', '4']);
+  });
+
+  it('保存後は全件差し替えまで確定済みの値と順番を保持し、次の保存へrevisionを渡す', async () => {
+    const tail = deferred<GrindingPlanningBoardResponse>();
+    const first = item('1');
+    const saved = { ...first, itemRevision: 'saved-1', alternateRank: 2 };
+    const fresh = { snapshotId: 'snapshot-2', sourceRevision: 'revision-2', registeredFseibans: ['b', 'a'] };
+    mocks.getBoard.mockResolvedValueOnce(response([first], '160', { registeredFseibans: ['a', 'b'] }))
+      .mockResolvedValueOnce(response([item('2')], null))
+      .mockResolvedValueOnce(response([saved], '160', fresh)).mockReturnValueOnce(tail.promise);
+    let refreshed = false;
+    const hook = renderHook(() => {
+      const board = useKioskGrindingPlanningBoardProgressive({ category: 'grinding', view: 'seiban' });
+      const queue = usePlanningBoardWriteQueue({ scope: 'grinding', items: board.data?.items ?? [],
+        order: board.data?.registeredFseibans ?? [], sourceRevision: board.data?.sourceRevision ?? '',
+        refresh: async () => { const result = await board.refetch(); refreshed = true; return result; },
+        onStart: vi.fn(), onSuccess: vi.fn(), onError: vi.fn() });
+      return { board, queue };
+    }, { wrapper: wrapper() });
+    await waitFor(() => expect(hook.result.current.board.isComplete).toBe(true));
+    await act(async () => {
+      hook.result.current.queue.enqueue({ label: '保存', itemIds: ['1'], seibans: [], order: true,
+        apply: (display) => ({ ...display, order: ['b', 'a'] }),
+        save: async () => ({ items: [saved], order: ['b', 'a'], sourceRevision: 'revision-2' }) });
+    });
+    await waitFor(() => expect(mocks.getBoard).toHaveBeenCalledTimes(4));
+    expect(refreshed).toBe(false);
+    expect(hook.result.current.queue.items[0]).toMatchObject(saved);
+    expect(hook.result.current.queue.order).toEqual(['b', 'a']);
+    const nextGate = deferred<void>();
+    const nextSave = vi.fn(async (context: { sourceRevision: string }) => {
+      expect(context.sourceRevision).toBe('revision-2');
+      return {};
+    });
+    await act(async () => {
+      // Hold the next save open until reconciliation to avoid another batch refresh.
+      hook.result.current.queue.enqueue({ label: '次の保存', itemIds: [], seibans: [], apply: (display) => display,
+        save: async (context) => { await nextSave(context); await nextGate.promise; return {}; } });
+    });
+    expect(nextSave).toHaveBeenCalledTimes(1);
+    await act(async () => { tail.resolve(response([item('2')], null, fresh)); });
+    await waitFor(() => expect(refreshed).toBe(true));
+    expect(hook.result.current.board.data?.snapshotId).toBe('snapshot-2');
+    expect(hook.result.current.queue.items[0]).toMatchObject(saved);
+    expect(hook.result.current.queue.order).toEqual(['b', 'a']);
+    hook.unmount();
+    nextGate.resolve();
   });
 
   it('追補の重複cursor/itemとscope不一致を表示データへ混ぜない', async () => {
@@ -250,7 +438,7 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
       await waitFor(() => expect(hook.result.current.appendError).toBeTruthy());
     } else {
       await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
-      await act(async () => { await hook.result.current.refetch(); });
+      await hook.result.current.refetch();
       await waitFor(() => expect(firstPageCount).toBe(6));
       await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
       expect(hook.result.current.appendError).toBeNull();
