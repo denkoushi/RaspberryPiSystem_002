@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ queryRaw: vi.fn() }));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.queryRaw } }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.queryRaw, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) } } }));
 vi.mock('../production-schedule-query/filters.js', () => ({
   prepareProductionScheduleDashboardFilters: vi.fn(async (params: { planningFseibans: string[]; resourceCategory?: string }) => ({
     kind: 'ready',

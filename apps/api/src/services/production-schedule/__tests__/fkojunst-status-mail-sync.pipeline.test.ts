@@ -1,3 +1,5 @@
+import { replaceAllWinnerExternalCompletionStatesFromMailSync } from '../external-completion/fkojunst-external-completion-sync.repository.js';
+vi.mock('../external-completion/fkojunst-external-completion-sync.repository.js', () => ({ replaceAllWinnerExternalCompletionStatesFromMailSync: vi.fn().mockResolvedValue(undefined) }));
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -331,6 +333,7 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
   it('replaces process-change residual evidence inside mail replacement transaction', async () => {
     const sourceRowsRevision = '42';
     const tx = {
+      productionScheduleSessakuPieceSet: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
       $executeRaw: vi.fn().mockResolvedValue(0),
       $queryRaw: vi.fn().mockResolvedValue([{ revision: 42n }]),
       productionScheduleProcessChangeResidualEvidence: {
@@ -391,4 +394,17 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
       data: [evidenceInput]
     });
   });
+  it.each([false, true])('publishes external completion once inside the mail tx only for live sets: %s', async (hasPieces) => {
+    vi.mocked(replaceAllWinnerExternalCompletionStatesFromMailSync).mockClear();
+    const tx = { $executeRaw: vi.fn(), productionScheduleSessakuPieceSet: { findFirst: vi.fn().mockResolvedValue(hasPieces ? { id: 'set' } : null) },
+      productionScheduleFkojunstMailStatus: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) } };
+    const client = { $transaction: vi.fn(async (fn: (arg: typeof tx) => Promise<unknown>) => fn(tx)) };
+    const result = await runFkojunstMailReplacementTransaction(client as never, { scanned: 1, normalized: 1, matched: 0, unmatched: 1,
+      skippedInvalidStatus: 0, skippedUnparseableDate: 0, createInputs: [] });
+    expect(replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledTimes(hasPieces ? 1 : 0);
+    expect(result.externalCompletionSynced).toBe(hasPieces ? true : undefined);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1); // the original mail critical lock
+    if (hasPieces) expect(replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(tx, true);
+  });
+
 });

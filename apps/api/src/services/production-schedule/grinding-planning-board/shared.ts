@@ -1,3 +1,4 @@
+import type { SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
@@ -25,6 +26,7 @@ export type ReusablePlanningPayload = {
     requestedFseibans?: string[];
     completionFilter: 'all' | 'complete' | 'incomplete';
     includeLoad: boolean;
+    includePieces?: boolean;
   };
 };
 
@@ -59,6 +61,7 @@ export type CurrentProjection = {
   rows: WinnerRow[];
   details: Map<string, RowDetail>;
   ranks: GrindingPlanningBoardProjectionRanks;
+  pieceSets?: Map<string, SessakuPieceSet>;
   progressRows: GrindingPlanningBoardProgressRow[];
   policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>;
   masterResourceCds: Set<string>;
@@ -176,6 +179,7 @@ export type PlanningSource = {
   generationToken: string;
   rows: WinnerRow[];
   details: Map<string, RowDetail>;
+  pieceSets?: Map<string, SessakuPieceSet>;
   progressRows: GrindingPlanningBoardProgressRow[];
 };
 

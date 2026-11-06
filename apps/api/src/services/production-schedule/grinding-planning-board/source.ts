@@ -1,3 +1,4 @@
+import { readSessakuPieceSets } from '../sessaku-pieces/piece-key.js';
 import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL } from '../d-schedule-minutes/board-due.sql.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
@@ -220,6 +221,7 @@ export async function readPlanningSource(params: {
     generationToken,
     rows: identityRows.map((row) => ({ id: row.id, rowData: row.rowData, updatedAt: row.updatedAt })),
     details,
+    pieceSets: await readSessakuPieceSets(prisma, identityRows),
     progressRows: buildPlanningProgressRows(progressRowsWithDetails, progressDetails, progressPolicy.cuttingExcludedResourceCds)
   };
 }
@@ -302,7 +304,8 @@ export async function readOverrides(client: DbClient, siteKey: string, itemKeys?
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
       siteKey,
-      itemKey: itemKeys == null ? { startsWith: 'row:' } : { in: [...new Set(itemKeys)] }
+      itemKey: itemKeys == null ? undefined : { in: [...new Set(itemKeys)] },
+      ...(itemKeys == null ? { OR: [{ itemKey: { startsWith: 'row:' } }, { itemKey: { startsWith: 'piece:' } }] } : {})
     }
   });
   return new Map(rows.map((row) => [row.itemKey, row]));

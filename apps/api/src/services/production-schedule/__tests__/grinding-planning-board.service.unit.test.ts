@@ -1,3 +1,4 @@
+vi.mock('../sessaku-pieces/piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../sessaku-pieces/piece-key.js')>(), readSessakuPieceGeneration: vi.fn().mockResolvedValue({ count: '0', version: '0' }) }));
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { createHash } from 'node:crypto';
 
@@ -18,6 +19,8 @@ const mocks = vi.hoisted(() => {
   const state = { id: 'state-1', version: 0, seibanOrder: ['ORDER-A'] };
   const prisma = {
     $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
+    productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
     $transaction: vi.fn(),
     csvDashboardRow: { findMany: vi.fn() },
     productionScheduleDScheduleMinutes: { findMany: vi.fn() },
@@ -165,6 +168,7 @@ function configurePersistence(): void {
     progress: { bySeiban: new Map([['ORDER-A', { completed: 0, total: 1 }]]) }
   });
   prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue(state);
+  prisma.productionScheduleSessakuPieceSet.findMany.mockResolvedValue([]);
   prisma.csvDashboardRow.findMany.mockResolvedValue([details]);
   prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardArrival.findMany.mockResolvedValue([]);
@@ -177,7 +181,7 @@ function configurePersistence(): void {
   prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
     const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
     if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [state];
-    if (query.includes('ProductionScheduleGrindingPlanningBoardOverride')) return [];
+    if (query.includes('ProductionScheduleGrindingPlanningBoardOverride') && !query.includes('effectiveItems')) return [];
     if (query.includes('effectiveItems')) return [{
       originalResourceCd: '305',
       effectiveResourceCd: '305',
@@ -1080,7 +1084,7 @@ describe('grinding planning board service orchestration', () => {
     mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
       const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
       if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [mocks.state];
-      if (query.includes('ProductionScheduleGrindingPlanningBoardOverride')) return [];
+      if (query.includes('ProductionScheduleGrindingPlanningBoardOverride') && !query.includes('effectiveItems')) return [];
       if (query.includes('effectiveItems')) return [{
         originalResourceCd: '305',
         effectiveResourceCd: '305',
@@ -1132,7 +1136,7 @@ describe('grinding planning board service orchestration', () => {
     mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
       const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
       if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [mocks.state];
-      if (query.includes('ProductionScheduleGrindingPlanningBoardOverride')) return [];
+      if (query.includes('ProductionScheduleGrindingPlanningBoardOverride') && !query.includes('effectiveItems')) return [];
       if (query.includes('effectiveItems')) return [{
         originalResourceCd: '305',
         effectiveResourceCd: '305',
@@ -1253,6 +1257,11 @@ describe('bulk grinding resource order service', () => {
     expect(result.items.map((item) => item.itemId)).toEqual([hidden.itemId, source!.itemId, target!.itemId]);
     expect(result.items.map((item) => item.alternateRank)).toEqual([1, 2, 3]);
     expect(new Set(result.items.map((item) => item.alternateRank)).size).toBe(3);
+    expect(mocks.prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { isolationLevel: 'RepeatableRead', timeout: 30000, maxWait: 15000 });
+    const winnerQueries = mocks.prisma.$queryRaw.mock.calls.filter(([query]) => JSON.stringify(query).includes('rowData'));
+    expect(winnerQueries).toHaveLength(2); // registered winners + candidate projection, as on main
+
     expect(result.items.find((item) => item.itemId === hidden.itemId)?.alternateRank).toBe(hidden.alternateRank);
     expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert.mock.calls.map(([args]) => args.create.itemKey))
       .toEqual([hidden.itemId, source!.itemId, target!.itemId]);
@@ -1267,7 +1276,7 @@ describe('bulk grinding resource order service', () => {
       create: expect.objectContaining({ orderPinned: true, overrideResourceCd: null, overrideDueDate: null, dueDateCleared: null, alternateRank: null, specialDueKind: null, specialDueExpiresAt: null }),
       update: expect.objectContaining({ orderPinned: true, version: { increment: 1 } })
     });
-    expect(mocks.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'RepeatableRead' });
+    expect(mocks.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'RepeatableRead', timeout: 30000, maxWait: 15000 });
   });
   it('does not create an override for an already unpinned item', async () => {
     await updateGrindingPlanningBoardPins({ ...request(), pinned: false });
@@ -1297,10 +1306,10 @@ describe('bulk grinding resource order service', () => {
     await expect(updateGrindingPlanningBoardPins(payload)).rejects.toMatchObject({ statusCode: failure === 'duplicate' ? 400 : 409 });
     expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).not.toHaveBeenCalled();
   });
-  it('assigns all ranks in one RepeatableRead transaction and returns ordered revisions', async () => {
+  it('assigns ordinary row ranks in one legacy RepeatableRead transaction and returns ordered revisions', async () => {
     const payload = request();
     const result = await updateGrindingPlanningBoardResourceOrderBulk(payload);
-    expect(mocks.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'RepeatableRead' });
+    expect(mocks.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'RepeatableRead', timeout: 30000, maxWait: 15000 });
     expect(result.sourceRevision).toBe(revision);
     expect(result.items.map((item) => item.itemId)).toEqual(payload.items.map((item) => item.itemId));
     expect(result.items.map((item) => item.alternateRank)).toEqual([1, 2]);

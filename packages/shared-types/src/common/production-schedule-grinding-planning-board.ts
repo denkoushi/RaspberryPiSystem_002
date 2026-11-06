@@ -86,7 +86,7 @@ export interface GrindingPlanningBoardSpecialDue {
   expiresAt: string;
 }
 
-export type GrindingPlanningBoardItemKind = 'row';
+export type GrindingPlanningBoardItemKind = 'row' | 'piece';
 
 /**
  * 材料（鋳物・鋼材など）の入荷状況。購買CSV `FKOBAIST` 由来。
@@ -101,6 +101,14 @@ export interface GrindingPlanningBoardItem {
   itemRevision: string;
   version: number;
   sourceRowId: string;
+  parentItemId?: string;
+  pieceId?: string;
+  piecePosition?: number;
+  pieceSetVersion?: number;
+  quantity?: number;
+  parentPlannedQuantity?: number | null;
+  quantityWarning?: SessakuPieceQuantityWarning | null;
+  manualIsCompleted?: boolean;
   fseiban: string;
   fhincd: string;
   fhinmei: string | null;
@@ -149,6 +157,7 @@ export interface GrindingPlanningBoardLoadResponse {
 }
 
 export interface GrindingPlanningBoardResponse {
+  pieceCapabilities?: { createEnabled: boolean; includePieces: boolean };
   siteKey: string;
   category: GrindingPlanningBoardCategory;
   view: GrindingPlanningBoardView;
@@ -284,4 +293,32 @@ export interface GrindingPlanningBoardArrivalRequest {
 export interface GrindingPlanningBoardArrivalResponse {
   itemId: string;
   manualArrivalDate: string | null;
+}
+
+export type SessakuPieceQuantityWarning = 'COMPLETED_QUANTITY_EXCEEDS_PLAN' | 'INVALID_PLANNED_QUANTITY';
+export interface SessakuPiecesSplitRequest {
+  parentItemId: string;
+  targetPieceId?: string;
+  quantities: number[];
+  expectedPieceSetVersion: number;
+  itemRevision: string;
+}
+export interface SessakuPiecesMergeRequest {
+  parentItemId: string;
+  pieceIds: string[];
+  expectedPieceSetVersion: number;
+  itemRevisions: Record<string, string>;
+}
+export interface SessakuPieceCompletionRequest {
+  intent: 'complete' | 'incomplete';
+  expectedPieceSetVersion: number;
+  itemRevision: string;
+}
+export interface SessakuPiecesMutationResponse {
+  parentItemId: string;
+  pieceSetVersion: number;
+  quantityWarning: SessakuPieceQuantityWarning | null;
+  pieces: GrindingPlanningBoardItem[];
+  parentIsCompleted: boolean;
+  sourceRowId: string;
 }

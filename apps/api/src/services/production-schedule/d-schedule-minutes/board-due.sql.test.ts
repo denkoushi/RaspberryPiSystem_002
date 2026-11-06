@@ -7,7 +7,7 @@ import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL, buildBoardDueDateSql 
 import { resolveBoardDueDate, type BoardDueSource } from './resolve-board-due-date.js';
 
 // This task's explicitly authorized local test database; no production connection is accepted.
-const local = /^postgresql:\/\/[^@]+@(?:localhost|127\.0\.0\.1):5432\/borrow_return(?:\?|$)/.test(process.env.DATABASE_URL ?? '');
+const local = /^postgresql:\/\/[^@]+@(?:localhost|127\.0\.0\.1):5432\/borrow_return(?:\?|$)/.test(process.env.DATABASE_URL ?? '') || (process.env.TEST_DATABASE_URL === 'postgresql://postgres:postgres@127.0.0.1:55432/sessaku_test' && process.env.DATABASE_URL === process.env.TEST_DATABASE_URL);
 const date = (day: string | null) => day ? new Date(`${day}T00:00:00.000Z`) : null;
 const fixtures = [
   { id: 'manual-newer', manual: '2026-11-08', manualAt: '2026-11-04', excel: '2026-11-12', excelAt: '2026-11-03', scaw: '2026-11-30' },

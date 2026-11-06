@@ -1,3 +1,4 @@
+import { registerSessakuPiecesRoutes } from './sessaku-pieces.js';
 import type { FastifyInstance } from 'fastify';
 
 import { registerProductionScheduleDScheduleMinutesRoute } from './d-schedule-minutes.js';
@@ -52,6 +53,7 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleProcessingRoute(app, deps);
   await registerProductionScheduleOrderRoute(app, deps);
   await registerProductionScheduleGrindingPlanningBoardRoute(app, deps);
+  await registerSessakuPiecesRoutes(app, deps);
   await registerProductionScheduleGrindingPlanningBoardSeibanCandidatesRoute(app, deps);
   await registerProductionScheduleSearchStateRoute(app, deps);
   await registerProductionScheduleHistoryProgressRoute(app, deps);

@@ -36,6 +36,8 @@ vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', ()
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    $queryRaw: vi.fn(),
+    productionScheduleSessakuPieceSet: { findUnique: vi.fn().mockResolvedValue(null) },
     csvDashboardRow: {
       findFirst: vi.fn(),
     },
@@ -219,7 +221,7 @@ describe('production-schedule-command.service', () => {
     expect(prisma.productionScheduleOrderAssignment.upsert).toHaveBeenCalled();
   });
 
-  it('intent=complete が既に完了なら unchanged で tx を叩かない', async () => {
+  it('片なしで intent=complete が既に完了なら従来どおり tx なしで unchanged を返す', async () => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
       id: 'row-done',
       rowData: { FSEIBAN: 'S1', progress: '' },
@@ -238,6 +240,8 @@ describe('production-schedule-command.service', () => {
     expect(result.unchanged).toBe(true);
     expect(result.rowData.progress).toBe('完了');
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleProgress.findUnique).toHaveBeenCalledTimes(1);
   });
 
   it('upsertProductionScheduleDueDate invalidates self-inspection machine board schedule row cache', async () => {
@@ -256,4 +260,17 @@ describe('production-schedule-command.service', () => {
 
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
+  it.each([null, { id: 'empty', pieces: [] }])('ordinary/tombstone completion preserves the original read and write order: %j', async (set) => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: { FSEIBAN: 'A' } } as never);
+    vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mockResolvedValueOnce(set as never);
+    vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({ isCompleted: false } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null);
+    await completeProductionScheduleRow({ rowId: 'row', locationKey: 'site' });
+    expect(prisma.productionScheduleProgress.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { timeout: 30000, maxWait: 15000 });
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
 });

@@ -33,6 +33,7 @@ const querySchema = z.object({
   dueSource: z.enum(['excel', 'scaw']).default('excel'),
   view: z.enum(['seiban', 'resource']).default('seiban'),
   category: grindingPlanningBoardCategorySchema,
+  includePieces: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
   includeLoad: z.enum(['true', 'false']).default('true').transform((value) => value === 'true'),
   fseibans: z.string().max(4000).optional(),
   cursor: z.coerce.number().int().min(0).optional(),
@@ -199,6 +200,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
       pageSize: query.pageSize,
       completionFilter: query.completionFilter,
       includeLoad: query.includeLoad,
+      ...(query.includePieces ? { includePieces: true } : {}),
       snapshotStore: deps.leaderboardShellSnapshotStore
     });
   });
@@ -219,8 +221,8 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
   app.get('/kiosk/production-schedule/grinding-planning-board/load', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
-    const query = z.object({ category: grindingPlanningBoardCategorySchema }).parse(request.query);
-    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category });
+    const query = z.object({ category: grindingPlanningBoardCategorySchema, includePieces: z.enum(['true', 'false']).optional().transform((value) => value === 'true') }).parse(request.query);
+    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category, ...(query.includePieces ? { includePieces: true } : {}) });
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-detail', { config: { rateLimit: false } }, async (request) => {

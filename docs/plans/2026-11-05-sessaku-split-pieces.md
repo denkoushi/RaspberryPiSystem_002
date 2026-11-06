@@ -25,11 +25,22 @@
 - [x] (2026-11-05 JST) PR1 の旧分割コード・画面・API・フラグ・実行時 SQL を撤去し、親専用の順位ロック・繰り上げを移設した。Prisma 定義・migration と PR2/PR3 は未変更。
 - [ ] (2026-11-05 JST) PR1 DB 検証は専用 TEST_DATABASE_URL 未提供のため未実行（指定 integration 54件 skip）。指定 API 71件・web 114件・配置契約11件は成功、追加の既存 DB 依存自己検査2件と順位再調整 integration の setup は環境起因で失敗した。
 - [x] (2026-11-05 JST) shared-types build、API/web lint・tsc、git diff --check は成功。旧フラグ参照0件、実行コードの旧分割参照0件（Prisma・migration・無視を証明するテスト fixture のみ残存）。
-- [ ] PR2 相当の保存・API・投影・完了・取り込み同期を実装し、独立デプロイの互換性を検証する。
+- [x] (2026-11-06 JST) PR2 の additive migration、保存・API・投影・既存書込対象解決・親完了集約・数量/外部/取り込み同期を実装した。UI・段取り加算は未変更。
+- [x] (2026-11-06 JST) 追加契約テスト156件（実DB18件を含む）と、後続の片/負荷57件（実DBは追加1件を含む19件）・キー境界6件・CSV公開26件・web API/progressive24件が成功。全対象APIテストもDB skipは0件。
+- [ ] (2026-11-06 JST) PR2 の「指定全対象コマンドが全件pass」は未達。API integration の既存snapshot ID・納期restoreの期待値不一致2件を残した。変更起因のモック2件はfocused検証で解消したが、全対象コマンドの追加反復は行わない。詳細は本書末尾。
+- [x] (2026-11-06 JST) migration deploy と再deploy（pendingなし）、schema validate/generate、shared-types buildを確認。API/web lint・tsc と最終差分検査の結果は本書末尾に記録する。
 - [ ] PR3 相当の製番ボード画面と前向きガントを実装し、数量5→2+3の業務シナリオを検証する。
 - [ ] integrationPending: 各 PR の作成、push 済み SHA、checks、main の merge SHA と CI、稼働確認は、その段階の明示依頼後に別々に記録する。現在は全て未実施。
 
 ## Surprises & Discoveries
+
+PR2 (2026-11-06): 計画後の #2580 の手動「当日着」は itemKey に親の row: を保存する。片GETでは parentItemId に解決して共通で読み、片での記録・取消も同じキーへ書く。#2574 の lslhSurface と材料着・配膳・D社担当は現行の後付け読取を共用し、片にも同じ親属性を返す。
+
+PR2: 補助CSVの既存parseQuantityは0/不正/空をnullへ正規化し、更新時に旧数量を維持する。片を持つキーに限って別の正規化数量を受け渡し、0削除・INVALID_PLANNED_QUANTITYを実行する必要があった。片0件の通常行の既存数量ルールは維持した。
+
+PR2: 既存DB test guardの一部はborrow_returnまたはplanning_due_scope_*だけを許可していた。今回明示された127.0.0.1:55432/sessaku_testをexact URLで追加許可し、他DBを使わず全対象のDB skipを0にした。
+
+PR2: 全対象APIでは、既存の「初回読取ごとに新snapshot IDを作る」処理に対して同じIDを期待するテストと、restoreでdueDateCleared=falseに戻す処理に対してCSV未設定のままを期待するテストが失敗した。当該処理は今回変更していない。mainでの別baseline実行は行っておらず、main CI成功とは扱わない。
 
 
 旧分割には片の完了列がない。`apps/api/prisma/schema.prisma` の `ProductionScheduleOrderSplit` は行 ID の FK と Cascade を持ち、投影 `buildItems` は全片に親の `rowCompleted` を設定する。そのため旧コードの延長では「2だけ済み」を表せない。
@@ -101,6 +112,32 @@
 - Decision: PR1 は親専用の advisory lock・順位競合検証を `order-assignment/` に移し、世代 token の payloadVersion と製番 payloadFormat を2へ更新する。旧片と `split:` override は読み書きせず、Prisma の旧4モデル・relation・migration 履歴は保持する。
   Rationale: 親の409・繰り上げ・場所 fallback を維持し、撤去前の片入り snapshot は既存 stale 応答で再取得させる。補助同期は旧片を変更せず通常の winner へ追従する。補助同期の integration も他の製番テストと同じ専用 TEST_DATABASE_URL 判定を使い、未指定時は DB 検証未実行とする。
   Date/Author: 2026-11-05 / PR1 実装担当。
+
+- Decision: PR2 migration は schema 間の `prisma migrate diff --script` で生成し、CHECK制約を追記した。
+  Rationale: migrate dev --create-only のshadow DBを使わず、ユーザー指定の1DBだけに接続するため。履歴の変更・db push・既存表DROP/DMLはない。
+  Date/Author: 2026-11-06 / PR2実装担当。
+- Decision: 明示includePieces=trueの応答だけに `pieceCapabilities: { createEnabled, includePieces: true }` を追加する。
+  Rationale: 既定の親GET応答の形を維持し、新クライアントには読取対応・作成ゲートを明示する。loadとpayload/query key・継続ページにもincludePiecesを通す。
+  Date/Author: 2026-11-06 / PR2実装担当。
+- Decision: 論理ロック後の再読にはReadCommittedを使う。複数siteのID置換/削除は専用advisory lockで直列化し、siteKey順に全board stateをロックする。
+  Rationale: ロック待ち前のスナップショットを再利用せず、分割/結合のlane再採番と数量減少によるoverride削除が別親でも競争しないようにする。資源並べ替えは対象の論理キー群→site state→親行の順とする。
+  Date/Author: 2026-11-06 / PR2実装担当。
+- Decision: 生産日程の作成/更新/loser削除は100行単位で、同じtx内に片Progress公開を含める。同一ProductNoのwinner ID交換だけ、既存supplementとfkmailの行参照を付け替える。
+  Rationale: 一時的な未完了の公開を避ける。製造orderが変わる場合の補助・メール照合は各正本の同期に任せ、別論理キーへの移行は行わない。補助同期のロック後に対象/winnerが変わっていたらSOURCE_ITEM_MISSINGで明示再計画を要求する。
+  Date/Author: 2026-11-06 / PR2実装担当。
+- Decision: 無変更の同期では集合versionを増やさず、外部完了中のcomplete再送は手動値を書かないno-opとする。
+  Rationale: 古い版の誤受理を防ぐ墓標は維持しつつ、不必要な409と外部訂正後の偽の手動実績を防ぐ。
+  Date/Author: 2026-11-06 / PR2実装担当。
+
+- Decision: PR2 レビュー修正では、同期・公開・既存書込の片用 logical lock / board state lock を live pieces のある set に限定し、全 CsvDashboardRow 論理キーの列挙を廃止する。初回分割は分割側で既存の mail critical lock を logical lock より先に取得する。
+  Rationale: Pi5 の既定共有ロック表を約7,200行分の advisory lock で消費しない。片なし・tombstone では片用ロックを追加せず、完了 no-op の tx 省略、CSV APPEND の createMany、DEDUP の既存 create / update / cleanup、CSV progress の非tx経路、並べ替えの RepeatableRead と親ロック順を維持する。set の判定は一括取得し、行ごとの winner / set 読取を増やさない。
+  Date/Author: 2026-11-06 / PR2レビュー修正担当。
+- Decision: live pieces があるメール同期だけ外部完了・片同期を置換 tx 内で一度公開し、後続の外部完了再同期を省略する。片なしのメール同期は従来の後続同期を使う。今回拡張した interactive tx は timeout=30秒 / maxWait=15秒を明示する（既存のメール・補助同期の専用値は維持）。
+  Rationale: 同じ同期内で長い全件更新・片ロックを繰り返さず、片の公開整合性と既存の片なし経路を両立する。
+  Date/Author: 2026-11-06 / PR2レビュー修正担当。
+- Decision: pieces=0 は数量の妥当性より先に判定し、tombstone に数量警告・数量同期を書かない。親投影は墓標の警告を表示せず、補助CSVの0/null保存は従来 parser の結果に従う。set 読取は fseiban IN の1クエリで候補を取得して正確な論理キーで絞る。
+  Rationale: 墓標は過去の分割版の競合検出に残すだけで、通常親の警告表示・数量保存規則を変えない。
+  Date/Author: 2026-11-06 / PR2レビュー修正担当。
 
 ## Outcomes & Retrospective
 
@@ -445,3 +482,90 @@ PR1 で問題があれば旧データは保持されているため対応する�
 本書作成後は `git status --short`、`git diff --check` と対象ファイルの構造・参照確認で、書込が本書1つだけであることを確認する。開始時の WIP は0件だったため、他ファイルの差分が出たら今回の成果に含めず原因を確認する。
 
 改訂記録: 2026-11-05、初版および整合性レビュー反映。ユーザー確定の片設計を基準に現行コードを調査し、旧分割のOFF経路、ガントの前工程依存、複数のProgress書き手、段階導入・ロールバックの制約を追加した。コード変更は行っていない。レビューでは、旧形式の親書込を409にする境界、片0件の墓標からの自動復活防止、外部完了訂正時の数量再補正、空メールCSVの既存skip方針を明記した。
+
+### PR2 implementation evidence (2026-11-06 JST)
+
+Migration: `20261106000000_add_sessaku_pieces`。新2表・FK・index・CHECKだけを追加し、旧4モデルと履歴を保持した。指定DBへの初回deployと再deploy（No pending migrations）を確認した。migration適用直前/直後の既存fixture件数比較は採取していない。
+
+実行した主な検証（全DB接続は指定のsessaku_testのみ）:
+
+| Command / scope | Result |
+| --- | --- |
+| `prisma migrate diff --from-schema /tmp/sessaku-before.prisma --to-schema prisma/schema.prisma --script` | additive SQL生成、レビュー済み |
+| API `prisma validate` / `prisma generate` / `prisma migrate deploy` | 全てexit 0。再deployは適用なし |
+| `pnpm --filter @raspi-system/shared-types build` | exit 0 |
+| slip-match-core / shelf-layout-core / part-search-core build | 不足していた既存依存の生成物を準備、exit 0 |
+| plan Concrete Stepsの純粋関数・既存投影・process-arrival | 43 passed |
+| API `vitest run src/services/production-schedule src/routes/kiosk/production-schedule` | 最終の広い実行は1163 passed / 4 failed / 0 skipped（56.31秒） |
+| sessaku-pieces全体、追加route、board unit、補助integration、CSV post/importを指定したfocused実行 | 156 passed / 0 skipped（14.82秒）。上記の変更起因board mock 2件は80件のunit内で解消 |
+| 追加のpiece-key境界 | 6 passed（未採番409とBigInt桁保持を含む） |
+| 片・小数負荷の最終追加検証（piece modulesとload-summary integration） | 57 passed / 0 skipped（9.54秒）。SQLとfallback/投影の丸めを一致させた |
+| API `pnpm --filter @raspi-system/api lint` / `exec tsc --noEmit -p tsconfig.build.json` | いずれもexit 0。後続SQL/テストの対象eslintもexit 0 |
+| web `pnpm --filter @raspi-system/web lint` / `exec tsc --noEmit -p tsconfig.json` | いずれもexit 0 |
+| `git diff --check` | exit 0 |
+| 最後のCSV post/import対象 | 26 passed（1.79秒） |
+| web `vitest run src/features/kiosk/grindingPlanningBoard src/pages/kiosk src/api` | 最後の広い実行は1192 passed / 1 failed（41.91秒）。省略引数undefinedによる変更起因1件 |
+| web API client / progressive hookの修正後focused検証 | 24 passed（2.62秒）。上記1件を解消 |
+| web API/query-key・製番page・assembly pageのfocused検証 | 184 passed。初回広い実行のtimeout/一時失敗は再現しなかった |
+
+残っている既存期待値との不一致（無関係な修正は禁止のため保持）:
+
+- `grinding-planning-board.integration.test.ts:1114`: 初回読取ごとに新しいsnapshot IDを発行する既存処理に対して、旧片更新前後の同一IDを期待する。
+- `grinding-planning-board-due-scope.integration.test.ts:716`: 既存restore処理が元納期へ戻してrankを消すのに対し、CSV未設定のnullとrank=5の保持を期待する。
+
+ローカル実装の検証を記録したもので、全対象テスト成功・main統合・本番反映を示すものではない。commit / push / PR / merge / deploy は未実施。段取り時間・PR3 UIは未実装。開始時WIPなしで、以下は全て今回の差分。
+
+Changed files:
+
+- `apps/api/prisma/migrations/20261106000000_add_sessaku_pieces/migration.sql`
+- `apps/api/prisma/schema.prisma`
+- `apps/api/src/routes/kiosk/production-schedule/__tests__/sessaku-pieces.route.test.ts`
+- `apps/api/src/routes/kiosk/production-schedule/grinding-planning-board.ts`
+- `apps/api/src/routes/kiosk/production-schedule/index.ts`
+- `apps/api/src/routes/kiosk/production-schedule/sessaku-pieces.ts`
+- `apps/api/src/services/csv-dashboard/csv-dashboard-dedup-cleanup.service.ts`
+- `apps/api/src/services/csv-dashboard/csv-dashboard-ingestor.ts`
+- `apps/api/src/services/production-schedule/__tests__/fkojunst-status-mail-sync.pipeline.test.ts`
+- `apps/api/src/services/production-schedule/__tests__/grinding-planning-board-due-scope.integration.test.ts`
+- `apps/api/src/services/production-schedule/__tests__/grinding-planning-board-source.test.ts`
+- `apps/api/src/services/production-schedule/__tests__/grinding-planning-board.service.unit.test.ts`
+- `apps/api/src/services/production-schedule/__tests__/order-supplement-sync.service.test.ts`
+- `apps/api/src/services/production-schedule/__tests__/production-schedule-command.service.test.ts`
+- `apps/api/src/services/production-schedule/__tests__/progress-sync-from-csv.service.test.ts`
+- `apps/api/src/services/production-schedule/d-schedule-minutes/apply-d-schedule-minutes.service.test.ts`
+- `apps/api/src/services/production-schedule/d-schedule-minutes/board-due.sql.test.ts`
+- `apps/api/src/services/production-schedule/external-completion/__tests__/fkojunst-external-completion-sync.service.test.ts`
+- `apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.repository.ts`
+- `apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts`
+- `apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board-due-scope.service.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board-load-summary.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board-projection.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board/read.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board/shared.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board/source.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board/state.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board/write.ts`
+- `apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts`
+- `apps/api/src/services/production-schedule/order-supplement-sync.service.ts`
+- `apps/api/src/services/production-schedule/process-arrival.service.ts`
+- `apps/api/src/services/production-schedule/production-schedule-command.service.ts`
+- `apps/api/src/services/production-schedule/progress-sync-from-csv.service.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/__tests__/piece-completion.test.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/__tests__/piece-key.test.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/__tests__/piece-quantity.test.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/__tests__/sessaku-pieces.integration.test.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/piece-completion.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/piece-key.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/piece-load.sql.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/piece-quantity.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/piece-source-publication.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/piece-sync.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/sessaku-pieces.schemas.ts`
+- `apps/api/src/services/production-schedule/sessaku-pieces/sessaku-pieces.service.ts`
+- `apps/web/src/api/domains/production-schedule.grinding-planning-board.test.ts`
+- `apps/web/src/api/domains/production-schedule/grinding-planning-board.ts`
+- `apps/web/src/api/hooks/production-schedule/grinding-planning-board.ts`
+- `apps/web/src/api/queryKeys/productionSchedule.ts`
+- `docs/plans/2026-11-05-sessaku-split-pieces.md`
+- `packages/shared-types/src/common/production-schedule-grinding-planning-board.ts`

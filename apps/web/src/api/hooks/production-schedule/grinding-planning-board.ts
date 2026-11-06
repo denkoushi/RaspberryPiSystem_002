@@ -80,10 +80,10 @@ export function useKioskGrindingPlanningBoard(
   });
 }
 
-export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
+export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory, includePieces?: boolean) {
   return useQuery({
-    queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoad(category),
-    queryFn: () => getKioskGrindingPlanningBoardLoad(category),
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoad(category, includePieces),
+    queryFn: () => includePieces == null ? getKioskGrindingPlanningBoardLoad(category) : getKioskGrindingPlanningBoardLoad(category, includePieces),
     refetchOnWindowFocus: false,
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
   });

@@ -1,9 +1,14 @@
+import { synchronizeSessakuPieceSources } from '../sessaku-pieces/piece-sync.js';
+vi.mock('../sessaku-pieces/piece-sync.js', () => ({ synchronizeSessakuPieceSources: vi.fn() }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProgressSyncFromCsvService } from '../progress-sync-from-csv.service.js';
 import { prisma } from '../../../lib/prisma.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
+    productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
     productionScheduleProgress: {
       findUnique: vi.fn(),
       upsert: vi.fn(),
@@ -19,6 +24,7 @@ describe('ProgressSyncFromCsvService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback) => (callback as (tx: typeof prisma) => Promise<unknown>)(prisma) as never);
   });
 
   it('CSVが新しい場合は完了を反映する', async () => {
@@ -37,6 +43,8 @@ describe('ProgressSyncFromCsvService', () => {
       ],
     });
 
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(1);
     expect(prisma.dueManagementOutcomeEvent.create).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledWith(
@@ -172,5 +180,23 @@ describe('ProgressSyncFromCsvService', () => {
     expect(prisma.productionScheduleProgress.findUnique).not.toHaveBeenCalled();
     expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
     expect(prisma.dueManagementOutcomeEvent.create).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
+  it('batches set detection and only starts a transaction for a live piece key without a progress column', async () => {
+    vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mockResolvedValueOnce([
+      { fseiban: 'live', fhincd: 'p', fsigencd: '1', fkojun: '1', pieces: [{ id: 'p' }] },
+      { fseiban: 'empty', fhincd: 'p', fsigencd: '1', fkojun: '1', pieces: [] }
+    ] as never);
+    const candidates = ['ordinary', 'live', 'empty'].map((FSEIBAN) => ({ rowId: FSEIBAN,
+      rowData: { FSEIBAN, FHINCD: 'p', FSIGENCD: '1', FKOJUN: '1' }, occurredAt: new Date() }));
+    await service.sync({ candidates, hasProgressColumn: false });
+    expect(prisma.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { timeout: 30000, maxWait: 15000 });
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(synchronizeSessakuPieceSources).toHaveBeenCalledExactlyOnceWith(prisma, [{ fseiban: 'live', fhincd: 'p', fsigencd: '1', fkojun: '1' }]);
+    expect(prisma.productionScheduleProgress.findUnique).not.toHaveBeenCalled();
+  });
+
 });

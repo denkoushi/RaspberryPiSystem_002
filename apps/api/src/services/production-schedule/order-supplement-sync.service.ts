@@ -29,7 +29,7 @@ export class ProductionScheduleOrderSupplementSyncService {
       now: new Date(),
     });
     const existingByKey = await loadExistingSupplementsByKey(prisma);
-    const { matched, unmatched, createInputs, updateInputs } = buildReplacementCreateInputs(
+    const { matched, unmatched, createInputs, updateInputs, pieceQuantityByRowId } = buildReplacementCreateInputs(
       dedupedRows,
       winnerIdByKey,
       existingByKey,
@@ -43,6 +43,7 @@ export class ProductionScheduleOrderSupplementSyncService {
       unmatched,
       createInputs,
       updateInputs,
+      pieceQuantityByRowId,
     });
 
     let sourceRowsPruned = 0;

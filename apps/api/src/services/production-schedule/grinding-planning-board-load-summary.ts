@@ -1,3 +1,4 @@
+import { SESSAKU_PIECE_LOAD_JOINS_SQL } from './sessaku-pieces/piece-load.sql.js';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
   GrindingPlanningBoardCategory,
@@ -18,7 +19,7 @@ export type GrindingPlanningBoardLoadSummaryRow = {
   itemId: string;
   /** Source row id. */
   sourceRowId: string;
-  kind: 'row';
+  kind: 'row' | 'piece';
   originalResourceCd: string | null;
   effectiveResourceCd: string | null;
   /** Source required minutes. */
@@ -39,6 +40,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   /** Existing leaderboard materialization predicate. Avoids re-reading ids in 900-row chunks. */
   leaderboardMaterializedBaseWhere?: Prisma.Sql;
   siteKey: string;
+  includePieces?: boolean;
   category: GrindingPlanningBoardCategory;
   isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => boolean;
   cache?: {
@@ -49,6 +51,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
 };
 
 type LoadSummarySourceRow = {
+  pieceId?: string | null; pieceQuantity?: number | null; quantityWarning?: string | null;
   id: string;
   fseiban: string | null;
   fhinCd: string | null;
@@ -180,6 +183,13 @@ function toSummaryRow(
   }
 
   const parentItemId = buildGrindingPlanningBoardRowItemId(rowData);
+  if (row.pieceId) {
+    const itemId = `piece:${row.pieceId}`;
+    const minutes = row.plannedQuantity != null && row.plannedQuantity > 0 && row.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && row.requiredMinutes != null
+      ? Math.round(row.requiredMinutes * (row.pieceQuantity ?? 0) / row.plannedQuantity * 100) / 100 : null; return { itemId, sourceRowId: row.id, kind: 'piece', originalResourceCd,
+      effectiveResourceCd: resolveOverrideResource(overrideByItemKey, overrideByItemKey.has(itemId) ? itemId : parentItemId, originalResourceCd),
+      requiredMinutes: minutes, requiredMinutesKnown: minutes != null, isCompleted: row.isCompleted };
+  }
   const effectiveResourceCd = resolveOverrideResource(overrideByItemKey, parentItemId, originalResourceCd);
   return {
     itemId: parentItemId,
@@ -283,6 +293,7 @@ async function readAggregatedLoadSummary(params: {
   dashboardId: string;
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   overrideRows: readonly LoadSummaryOverrideRow[];
+  siteKey: string;
 }): Promise<LoadSummaryAggregateRow[]> {
   const overrideBindings = params.overrideRows.flatMap((row) => {
     const binding = decodeAggregateOverride(row);
@@ -305,7 +316,7 @@ async function readAggregatedLoadSummary(params: {
           THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::double precision
           ELSE NULL
         END AS "requiredMinutes",
-        "supplement"."plannedQuantity"
+        "supplement"."plannedQuantity", pc."id" AS "pieceId", pc."quantity" AS "pieceQuantity", ps."quantityWarning"
       FROM "CsvDashboardRow"
       LEFT JOIN "ProductionScheduleProgress" AS "p"
         ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
@@ -318,22 +329,23 @@ async function readAggregatedLoadSummary(params: {
         AND "supplement"."csvDashboardId" = ${params.dashboardId}
         AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
           OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
+      ${SESSAKU_PIECE_LOAD_JOINS_SQL}
       WHERE ${params.leaderboardMaterializedBaseWhere}
-        AND NOT (
-          COALESCE("p"."isCompleted", FALSE)
-          OR COALESCE("ext"."isExternallyCompleted", FALSE)
-        )
+        AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
+          OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
     ),
     "items" AS (
       SELECT
-        b."id" AS "sourceRowId",
+        b."id" AS "sourceRowId", b."pieceId",
         b."fseiban",
         b."productNo",
         b."fhincd",
         b."processOrder",
         b."resourceCd" AS "originalResourceCd",
         'row'::text AS "itemKind",
-        b."requiredMinutes"
+        CASE WHEN b."pieceId" IS NULL THEN b."requiredMinutes"
+          WHEN b."plannedQuantity" > 0 AND COALESCE(b."quantityWarning", '') <> 'INVALID_PLANNED_QUANTITY'
+          THEN FLOOR(b."requiredMinutes" * b."pieceQuantity" / b."plannedQuantity" * 100 + 0.5) / 100 ELSE NULL END AS "requiredMinutes"
       FROM "baseRows" AS b
     ),
     "deduplicatedItems" AS (
@@ -342,7 +354,7 @@ async function readAggregatedLoadSummary(params: {
         SELECT
           "items".*,
           ROW_NUMBER() OVER (
-            PARTITION BY
+            PARTITION BY "items"."pieceId",
               COALESCE("items"."fseiban", ''),
               CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
               COALESCE("items"."fhincd", ''),
@@ -371,12 +383,16 @@ async function readAggregatedLoadSummary(params: {
         "deduplicatedItems"."sourceRowId",
         "deduplicatedItems"."originalResourceCd",
         CASE
+          WHEN "pieceOverrides"."itemKey" IS NOT NULL THEN COALESCE("pieceOverrides"."overrideResourceCd", "deduplicatedItems"."originalResourceCd")
           WHEN "rowOverrides"."overrideResourceCd" IS NULL
           THEN "deduplicatedItems"."originalResourceCd"
           ELSE "rowOverrides"."overrideResourceCd"
         END AS "effectiveResourceCd",
         "deduplicatedItems"."requiredMinutes"
       FROM "deduplicatedItems"
+      LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" "pieceOverrides"
+        ON "pieceOverrides"."csvDashboardId" = ${params.dashboardId} AND "pieceOverrides"."siteKey" = ${params.siteKey}
+          AND "pieceOverrides"."itemKey" = ('piece:' || "deduplicatedItems"."pieceId")
       LEFT JOIN "overrides" AS "rowOverrides"
         ON "deduplicatedItems"."itemKind" = 'row'
           AND "rowOverrides"."itemKind" = 'row'
@@ -411,7 +427,7 @@ async function readMaterializedLoadAggregates(
         AND "siteKey" = ${params.siteKey}
     `);
     return readAggregatedLoadSummary({
-      client: params.client, dashboardId,
+      client: params.client, dashboardId, siteKey: params.siteKey,
       leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
       overrideRows
     });
@@ -436,7 +452,7 @@ async function readMaterializedLoadAggregates(
   // The base predicate is dashboard + canonical winner membership. Membership
   // order is immaterial; normalize it so the resolver's row order cannot miss.
   const key = JSON.stringify({
-    siteKey: params.siteKey, dashboardId, generationToken: context.generationToken,
+    siteKey: params.siteKey, dashboardId, includePieces: params.includePieces ?? false, generationToken: context.generationToken,
     baseWhere: {
       strings: params.leaderboardMaterializedBaseWhere.strings,
       values: params.leaderboardMaterializedBaseWhere.values.map((value) => Array.isArray(value) ? [...value].sort() : value)
@@ -503,7 +519,8 @@ export async function readGrindingPlanningBoardLoadSummary(
           THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::double precision
           ELSE NULL
         END AS "requiredMinutes",
-        (COALESCE("p"."isCompleted", FALSE) OR COALESCE("ext"."isExternallyCompleted", FALSE)) AS "isCompleted",
+        (CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END OR COALESCE("ext"."isExternallyCompleted", FALSE)) AS "isCompleted",
+        pc."id" AS "pieceId", pc."quantity" AS "pieceQuantity", ps."quantityWarning",
         "supplement"."plannedQuantity" AS "plannedQuantity"
       FROM "CsvDashboardRow"
       LEFT JOIN "ProductionScheduleProgress" AS "p"
@@ -517,11 +534,10 @@ export async function readGrindingPlanningBoardLoadSummary(
         AND "supplement"."csvDashboardId" = ${dashboardId}
         AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
           OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
+      ${SESSAKU_PIECE_LOAD_JOINS_SQL}
       WHERE ${where}
-        AND NOT (
-          COALESCE("p"."isCompleted", FALSE)
-          OR COALESCE("ext"."isExternallyCompleted", FALSE)
-        )
+        AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
+          OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
       ORDER BY ${orderBy}
     `));
   };
