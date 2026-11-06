@@ -1300,7 +1300,7 @@ class BusinessRoutingContractTests(unittest.TestCase):
         response = io.BytesIO(raw)
         response.status = 200
         response.headers = {'Content-Type': 'text/event-stream'}
-        with patch.object(self.module.urllib.request, 'urlopen', return_value=response) as upstream:
+        with patch.object(self.module, 'business_urlopen', return_value=response) as upstream:
             status, body = self.request(path='/v1/chat/completions/', payload={'stream': True,
                 'response_format': {'type': 'json_object'}, 'messages': []})
         self.assertEqual(status, 200)
@@ -1410,7 +1410,7 @@ class BusinessRoutingContractTests(unittest.TestCase):
         response.read1 = Mock(side_effect=[b'data: {"model":"internal","choices":[{"delta":{"content":"private-output"}}]}\n\n', b''])
         with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}), \
                 patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs, \
-                patch.object(self.module.urllib.request, 'urlopen', return_value=response) as upstream:
+                patch.object(self.module, 'business_urlopen', return_value=response) as upstream:
             status, body = self.request(payload={'stream': True}, shared='3:generation-3')
         self.assertEqual(status, 200)
         self.assertIn(b'private-output', body)
@@ -1491,7 +1491,7 @@ class BusinessRoutingContractTests(unittest.TestCase):
         response.status = 200
         response.headers = {'Content-Type': 'text/event-stream'}
         response.read1 = Mock(side_effect=chunks)
-        with patch.object(self.module.urllib.request, 'urlopen', return_value=response) as upstream:
+        with patch.object(self.module, 'business_urlopen', return_value=response) as upstream:
             status, body = self.request(payload={'model': 'system-prod-primary', 'stream': True, 'messages': []})
         self.assertEqual(status, 200)
         self.assertIn(b'"model": "system-prod-primary"', body)
@@ -1514,7 +1514,7 @@ class BusinessRoutingContractTests(unittest.TestCase):
             response.status = 200
             response.headers = {'Content-Type': 'text/event-stream'}
             response.read1 = Mock(side_effect=chunks)
-            with self.subTest(chunks=len(chunks)), patch.object(self.module.urllib.request, 'urlopen', return_value=response):
+            with self.subTest(chunks=len(chunks)), patch.object(self.module, 'business_urlopen', return_value=response):
                 status, body = self.request(payload={'stream': True, 'messages': []})
             self.assertEqual(status, 200)
             self.assertEqual(body, raw.replace(b'data: {"model":"internal","choices":[]}',
@@ -1567,7 +1567,7 @@ class BusinessRoutingContractTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(body, b'{"model":"upstream-internal-name","choices":[]}')
             self.assertEqual(self.calls[-1][3], {'Content-Type': 'application/json'})
-            with patch.object(self.module.urllib.request, 'urlopen', return_value=response):
+            with patch.object(self.module, 'business_urlopen', return_value=response):
                 status, body = self.request(payload={'stream': True})
             self.assertEqual(status, 200)
             self.assertEqual(body, raw)

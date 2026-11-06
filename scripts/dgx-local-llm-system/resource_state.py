@@ -10,14 +10,16 @@ import shlex
 import re
 
 from model_profiles import ModelProfile
+from glm_runtime_config import glm_runtime_config
 
 
 def verify_rank_stopped(name: str, target: str | None = None) -> None:
     if not re.fullmatch(r"[a-zA-Z0-9_.-]+", name):
         raise RuntimeError("business_runtime_stop_unverified")
+    port = glm_runtime_config()[1]
     script = ('set -eu; names=$(docker ps --filter name=^/' + name +
               '$ --format {{.ID}}); test -z "$names"; '
-              'for port in 38083 8889; do listeners=$(ss -H -ltn "sport = :$port"); test -z "$listeners"; done')
+              f'for port in {port} 8889; do listeners=$(ss -H -ltn "sport = :$port"); test -z "$listeners"; done')
     command = ["bash", "-c", script]
     if target is not None:
         if not re.fullmatch(r"[a-zA-Z0-9_.-]+@[a-zA-Z0-9_.-]+", target):
@@ -28,6 +30,13 @@ def verify_rank_stopped(name: str, target: str | None = None) -> None:
 
 def verify_blue_stopped(marker_path: str, container: str) -> None:
     marker = json.loads(Path(marker_path).read_text())
+    if marker.get("business") is True:
+        from business_tensorfold import runtime_status, pending_generation
+        status = runtime_status(marker["generation"], pending=pending_generation(marker["generation"], marker_path))
+        if not (all(not r["running"] and r["gpuReleased"] for r in status["ranks"])
+                and all(status[k] for k in ("launcherStopped", "watchdogStopped", "apiListenerClosed"))):
+            raise RuntimeError("business_runtime_stop_unverified")
+        return
     verify_rank_stopped(container)
     # Non-business TensorFold retains its legacy commands, followed by proof.
     name = marker.get("containerName", "dsv41-1017-exl3-tf")
@@ -57,8 +66,9 @@ def verify_blue_stopped(marker_path: str, container: str) -> None:
 
 def glm_business_runtime(generation: str) -> dict:
     from business_tensorfold import TARGET
+    name, port, _ = glm_runtime_config()
     ranks = []
-    for rank, (name, target) in enumerate((("system-prod-trtllm", None), ("system-prod-trtllm-rank1", TARGET))):
+    for rank, (name, target) in enumerate(((name, None), ("system-prod-trtllm-rank1", TARGET))):
         script = ('set -eu; docker info >/dev/null; '
                   'names=$(docker ps --filter name=^/' + name + '$ --format {{.ID}}); running=false; if test -n "$names"; then running=true; fi; '
                   # Docker owns the container processes and their GPU contexts;
@@ -72,7 +82,7 @@ def glm_business_runtime(generation: str) -> dict:
         if len(values) != 2 or any(v not in {"true", "false"} for v in values):
             raise RuntimeError("business_runtime_status_unavailable")
         ranks.append({"rank": rank, "generation": generation, "running": values[0] == "true", "gpuReleased": values[1] == "true"})
-    closed = subprocess.run(["ss", "-H", "-ltn", "sport = :38083"], check=True, capture_output=True, text=True, timeout=8).stdout.strip() == ""
+    closed = subprocess.run(["ss", "-H", "-ltn", f"sport = :{port}"], check=True, capture_output=True, text=True, timeout=8).stdout.strip() == ""
     return {"generation": generation, "prepared": True, "ranks": ranks,
             "launcherStopped": True, "watchdogStopped": True, "apiListenerClosed": closed, "failureReason": None}
 

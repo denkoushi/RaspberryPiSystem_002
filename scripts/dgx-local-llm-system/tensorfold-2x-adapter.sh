@@ -61,11 +61,26 @@ path = Path(sys.argv[1])
 path.parent.mkdir(parents=True, exist_ok=True)
 tmp = path.with_suffix(path.suffix + '.tmp')
 tmp.write_text(json.dumps({'adapter': 'dsv41_tensorfold_2x', 'business': True,
-    'generation': sys.argv[2], 'sshTarget': 'ubudgxkoushi@192.168.100.11',
+    'generation': sys.argv[2], 'startPhase': 'pending', 'sshTarget': 'ubudgxkoushi@192.168.100.11',
     'cloneDir': '/srv/dgx/system-prod/kits/deepseek-v41-flash-tp2'}) + '\n')
 tmp.replace(path)
 MARKER
-  exec python3 "${SCRIPT_DIR}/business_tensorfold.py" start
+  # Recovery info must survive even a failure after the detached launch.
+  python3 "${SCRIPT_DIR}/business_tensorfold.py" start
+  python3 - "${MARKER}" "${DGX_BUSINESS_GENERATION}" <<'CONFIRM'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+marker = json.loads(path.read_text())
+if marker.get('generation') != sys.argv[2] or marker.get('startPhase') != 'pending':
+    raise RuntimeError('business_start_marker_changed')
+marker['startPhase'] = 'confirmed'
+tmp = path.with_suffix(path.suffix + '.tmp')
+tmp.write_text(json.dumps(marker) + '\n')
+tmp.replace(path)
+CONFIRM
+  exit 0
 fi
 
 bash "${SCRIPT_DIR}/stop-trtllm-server.sh"

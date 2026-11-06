@@ -327,6 +327,31 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - まずは `vLLM` 単体で起動成立を確認し、その後に必要なら `z-lab/Qwen3.6-27B-DFlash` を追加する
 - blue backend の起動確認が取れるまでは `ACTIVE_LLM_BACKEND=green` を維持し、内部 port `38083` を直接叩いて検証する
 
+### 業務 lifecycle の上限と復旧
+
+control と gateway には同じ値を設定する。秒数は正の有限値のみ。
+
+| 環境変数 | 既定値（秒） | 対象 |
+| --- | ---: | --- |
+| `LLM_RUNTIME_COMMAND_TIMEOUT_SEC` | 120 | control の各コマンドの上限（request の残り予算以内）。超過時は同じ process group を停止して reap |
+| `LLM_RUNTIME_REQUEST_BUDGET_SEC` | 360 | control の `/start`・`/stop`・`/stop-force` 全体の予算。lock 待ちと各コマンドで共有 |
+| `LLM_RUNTIME_FORWARD_MARGIN_SEC` | 30 | gateway の `/start`・`/stop`・`/stop-force` 転送で request budget に足す余裕（既定の転送 timeout は 390 秒） |
+| `BUSINESS_STATE_LOCK_TIMEOUT_SEC` | 30 | lifecycle の通常 lock 待ち |
+| `BUSINESS_FORCE_STOP_DRAIN_SEC` | 30 | `/stop-force` の drain・排他 lock 待ち |
+| `BUSINESS_REQUEST_MAX_LIFETIME_SEC` | 300 | gateway の業務リクエスト・stream 全体 |
+| `BUSINESS_RESPONSE_WRITE_TIMEOUT_SEC` | 10 | gateway の業務レスポンス socket 書き込み |
+
+`/stop-force` は期限付き `.drain` で新規リクエストを拒否する。期限内に reader が完了しなければ
+`503 business_drain_timeout` を返し、稼働中の業務 runtime を維持する。期限切れの drain は新規受付を妨げない。
+DeepSeek の launch marker は `pending` → `confirmed` の二段階。pending の停止後は両 rank の
+container・GPU 解放・launcher・watchdog・listener を確認し、曖昧な状態では marker を保持する。
+選択 state が欠落・破損していても `/stop-force` は両 backend を停止する。復旧用 state は
+`failed` / `business_selection_recovery_required` となり、operator が正しい選択 state を復旧するまで `/start` を拒否する。
+
+GLM の検査・readiness・業務転送は adapter と同じ `BLUE_CONTAINER_NAME` → `TRTLLM_CONTAINER_NAME`
+→ `system-prod-trtllm`、`BLUE_SERVER_PORT` → `TRTLLM_SERVER_PORT` → `38083` を使用する。
+container 名と port（1–65535）は検証する。`BLUE_LLM_BASE_URL` の通常転送契約は従来どおり。
+
 ## 優先順
 
 - まずは **既存の `system-prod-primary` を単一 VLM endpoint として成立**させる

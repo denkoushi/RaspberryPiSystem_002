@@ -30,6 +30,8 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import signal
+from contextlib import nullcontext
 import sys
 import threading
 import time
@@ -53,7 +55,8 @@ from dgx_llm_single_active_guard import (  # noqa: E402
 )
 from active_model_state import (active_model_state_to_api, read_active_model_state, write_active_model_state,
     business_switch_enabled, business_selection_state, business_state_lock, replace_active_payload,
-    BUSINESS_PROFILES, DEEPSEEK_PROFILE, GLM_PROFILE)  # noqa: E402
+    BUSINESS_PROFILES, DEEPSEEK_PROFILE, GLM_PROFILE, BusinessLockTimeout,
+    business_force_drain, positive_env_seconds, control_command_timeout, control_request_budget)  # noqa: E402
 from model_profiles import (  # noqa: E402
     BusinessRestoreUnavailableError,
     ModelProfileError,
@@ -62,6 +65,7 @@ from model_profiles import (  # noqa: E402
 )
 from profile_launcher import launcher_env_for_profile  # noqa: E402
 from resource_state import infer_owner_from_profile, state_to_api, write_resource_state  # noqa: E402
+from glm_runtime_config import glm_runtime_config
 from business_diagnostics import log_business_failure  # noqa: E402
 from vision_readiness import assess_runtime_readiness  # noqa: E402
 from runtime_stop_policy import (  # noqa: E402
@@ -136,18 +140,38 @@ class CommandRunner(Protocol):
     def __call__(self, command: str, extra_env: dict[str, str] | None = None) -> None: ...
 
 
+_control_request = threading.local()
+
+
+def request_timeout(limit: float) -> float:
+    deadline = getattr(_control_request, "deadline", None)
+    if deadline is None:
+        return limit
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired("control request", control_request_budget())
+    return min(limit, remaining)
+
+
 def run_shell(command: str, extra_env: dict[str, str] | None = None) -> None:
+    timeout = request_timeout(control_command_timeout())
     env = os.environ.copy()
     if extra_env:
         env.update(extra_env)
-    subprocess.run(
-        ["bash", "-lc", command],
-        check=True,
-        timeout=120,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    with subprocess.Popen(["bash", "-lc", command], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          text=True, env=env, start_new_session=True) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Detached adapter launchers own a separate session and survive this.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            raise
+        if process.returncode:
+            raise subprocess.CalledProcessError(process.returncode, command, stdout, stderr)
 
 
 def resolve_effective_backend(config: ControlConfig) -> tuple[str, str]:
@@ -332,7 +356,7 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
     deadline = time.monotonic() + 1200
     failure = "business_readiness_timeout"
     last_error = TimeoutError(failure)
-    base = "http://192.168.100.11:8889" if profile.id == DEEPSEEK_PROFILE else "http://127.0.0.1:38083"
+    base = "http://192.168.100.11:8889" if profile.id == DEEPSEEK_PROFILE else glm_runtime_config()[2]
     headers = {}
     if profile.id == DEEPSEEK_PROFILE:
         key = os.environ.get("BUSINESS_DEEPSEEK_UPSTREAM_API_KEY", "").strip()
@@ -406,7 +430,16 @@ def recover_business_loading(config: ControlConfig, state: dict) -> dict:
 def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shell) -> type[BaseHTTPRequestHandler]:
     if business_switch_enabled():
         with business_state_lock(config.active_model_state_path):
-            recover_business_loading(config, business_selection_state(config.active_model_state_path, config.model_registry_root))
+            try:
+                recover_business_loading(config, business_selection_state(config.active_model_state_path, config.model_registry_root))
+            except BusinessRestoreUnavailableError:
+                # Keep the emergency stop endpoint available for operator recovery.
+                pass
+
+    def run_command(command: str, extra_env: dict[str, str] | None = None) -> None:
+        request_timeout(control_command_timeout())
+        command_runner(command, extra_env)
+        request_timeout(control_command_timeout())
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "dgx-llm-runtime-control/1.0"
@@ -449,7 +482,10 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
             if not self._auth_ok():
                 self._send_text(401, "unauthorized")
                 return
+            previous_deadline = getattr(_control_request, "deadline", None)
             try:
+                if self.path in {"/start", "/stop", "/stop-force"}:
+                    _control_request.deadline = time.monotonic() + control_request_budget()
                 if business_switch_enabled() and self.path in {"/start", "/stop", "/stop-force"}:
                     self._business_post(read_json_body(self))
                     return
@@ -468,12 +504,12 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                             blue_stop_cmd=config.blue_stop_cmd,
                             legacy_stop_cmd=config.stop_cmd,
                         )
-                        command_runner(hard_stop)
+                        run_command(hard_stop)
                     start_env = launcher_env_for_profile(profile) if profile is not None else None
                     if start_env:
-                        command_runner(resolve_command(config, "start", start_backend), start_env)
+                        run_command(resolve_command(config, "start", start_backend), start_env)
                     else:
-                        command_runner(resolve_command(config, "start", start_backend))
+                        run_command(resolve_command(config, "start", start_backend))
                     payload: dict[str, object] = {"ok": True, "action": "start", "backend": start_backend}
                     resource_state = write_resource_state_best_effort(
                         config,
@@ -502,7 +538,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     body = read_json_body(self)
                     reason = _string_body_value(body, "reason")
                     stop_backend, stop_source = resolve_effective_backend(config)
-                    command_runner(resolve_command(config, "stop", stop_backend))
+                    run_command(resolve_command(config, "stop", stop_backend))
                     resource_state = write_resource_state_best_effort(
                         config,
                         owner=infer_owner_from_profile(None, reason),
@@ -527,7 +563,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     body = read_json_body(self)
                     reason = _string_body_value(body, "reason")
                     stop_backend, stop_source = resolve_effective_backend(config)
-                    command_runner(resolve_command(config, "stop-force", stop_backend))
+                    run_command(resolve_command(config, "stop-force", stop_backend))
                     resource_state = write_resource_state_best_effort(
                         config,
                         owner="private",
@@ -555,103 +591,151 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                     return
                 detail = exc.stderr or exc.stdout or str(exc)
                 self._send_text(500, detail[:2000])
+            except subprocess.TimeoutExpired:
+                self._send_json(503, {"ok": False, "code": "business_runtime_control_failed"})
+            except BusinessLockTimeout:
+                self._send_json(503, {"ok": False, "code": "business_drain_timeout" if self.path == "/stop-force" else "business_state_lock_timeout"})
             except ModelProfileError as exc:
                 self._send_json(exc.status_code, {"ok": False, "code": exc.code, "message": str(exc)})
             except Exception as exc:  # pragma: no cover
                 self._send_text(500, str(exc))
+            finally:
+                _control_request.deadline = previous_deadline
 
         def _business_post(self, body: dict) -> None:
             reason = _string_body_value(body, "reason")
-            with business_state_lock(config.active_model_state_path):
+            force = self.path == "/stop-force"
+            lock_limit = positive_env_seconds(
+                "BUSINESS_FORCE_STOP_DRAIN_SEC" if force else "BUSINESS_STATE_LOCK_TIMEOUT_SEC", 30)
+            try:
+                lock_timeout = request_timeout(lock_limit)
+            except subprocess.TimeoutExpired as exc:
+                raise BusinessLockTimeout("business_state_lock_timeout") from exc
+            with business_force_drain(config.active_model_state_path, lock_timeout) if force else nullcontext():
+                try:
+                    lock_timeout = request_timeout(lock_timeout)
+                except subprocess.TimeoutExpired as exc:
+                    raise BusinessLockTimeout("business_state_lock_timeout") from exc
+                with business_state_lock(config.active_model_state_path, timeout=lock_timeout):
+                    self._business_post_locked(body, reason)
+
+        def _business_post_locked(self, body: dict, reason: str | None) -> None:
+            recovery = False
+            try:
                 state = business_selection_state(config.active_model_state_path)
-                if self.path == "/start":
-                    state = recover_business_loading(config, state)
-                if reason in {"keep-warm", "business-restore"}:
-                    assert_selection_request(state, body)
-                if self.path != "/start":
-                    backend, source = resolve_effective_backend(config)
-                    # Selection never changes on a private stop or recovery stop.
-                    stop_env = None
-                    if state.get("modelProfileId") == DEEPSEEK_PROFILE:
-                        stop_env = {"DGX_BUSINESS_GENERATION": state.get("businessGeneration", "")}
-                    command = resolve_command(config, self.path[1:], backend)
-                    try:
-                        command_runner(command, stop_env)
-                    except Exception as exc:
-                        log_business_failure(self.path[1:], state.get("modelProfileId"), state.get("businessGeneration"), exc, secrets=(config.token,))
-                        state.update(businessTransition="failed", businessFailureReason="business_runtime_stop_unverified")
-                        replace_active_payload(config.active_model_state_path, state)
-                        self._send_json(503, {"ok": False, "code": "business_runtime_stop_unverified"})
-                        return
-                    if command != ":":
-                        state["businessTransition"] = "idle"
+            except BusinessRestoreUnavailableError:
+                if self.path != "/stop-force":
+                    raise
+                recovery = True
+                state = {"modelProfileId": GLM_PROFILE, "selectedBusinessProfileId": GLM_PROFILE,
+                         "displayNameJa": "GLM 5.3 Flash", "backend": "blue", "servedAlias": "system-prod-primary",
+                         "stateUpdatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                         "runtimeReadyCapabilities": [],
+                         "selectionRevision": 0, "businessTransition": "failed",
+                         "businessFailureReason": "business_selection_recovery_required"}
+            recovery = recovery or state.get("businessFailureReason") == "business_selection_recovery_required"
+            if self.path == "/start" and recovery:
+                raise BusinessRestoreUnavailableError("business selection recovery required")
+            if self.path == "/start":
+                state = recover_business_loading(config, state)
+            if reason in {"keep-warm", "business-restore"} and not (recovery and self.path == "/stop-force"):
+                assert_selection_request(state, body)
+            if self.path != "/start":
+                backend, source = ("blue", "recovery") if recovery else resolve_effective_backend(config)
+                # Selection never changes on a private stop or recovery stop.
+                stop_env = None
+                if state.get("modelProfileId") == DEEPSEEK_PROFILE:
+                    stop_env = {"DGX_BUSINESS_GENERATION": state.get("businessGeneration", "")}
+                command = resolve_command(config, self.path[1:], backend)
+                try:
+                    if self.path == "/stop-force":
+                        # Try both backends even when one stop fails.
+                        errors = []
+                        for stop_backend in ("blue", "green"):
+                            try:
+                                run_command(resolve_command(config, "stop-force", stop_backend), stop_env)
+                            except Exception as error:
+                                errors.append(error)
+                        if errors:
+                            raise errors[0]
+                    else:
+                        run_command(command, stop_env)
+                except Exception as exc:
+                    log_business_failure(self.path[1:], state.get("modelProfileId"), state.get("businessGeneration"), exc, secrets=(config.token,))
+                    state.update(businessTransition="failed", businessFailureReason=(
+                        "business_selection_recovery_required" if recovery else "business_runtime_stop_unverified"))
                     replace_active_payload(config.active_model_state_path, state)
-                    self._send_json(200, {"ok": True, "action": self.path[1:], "backend": backend, "backendSource": source})
+                    self._send_json(503, {"ok": False, "code": "business_runtime_stop_unverified"})
                     return
-                requested = _string_body_value(body, "modelProfileId")
-                selected = state["selectedBusinessProfileId"]
-                profile_id = requested or selected
-                profile = validate_startable_profile(config.model_registry_root, profile_id)
-                explicit = reason == "business-model-selection"
-                if explicit and (profile_id not in BUSINESS_PROFILES or not profile.business_orchestration_eligible):
-                    raise SelectionConflict("unsupported business profile")
-                if profile.business_orchestration_eligible:
-                    if profile_id not in BUSINESS_PROFILES:
-                        raise SelectionConflict("unsupported business profile")
-                    if not explicit:
-                        assert_selection_request(state, body)
-                    if profile_id == DEEPSEEK_PROFILE:
-                        from business_tensorfold import check_prepared
-                        try:
-                            check_prepared()
-                        except RuntimeError as error:
-                            raise BusinessRestoreUnavailableError(str(error)) from error
-                    # Duplicate UI clicks and keep-warm do not create a new generation.
-                    if (profile_id == selected and state.get("modelProfileId") == selected
-                            and (state["businessTransition"] == "loading" or (
-                                state["businessTransition"] == "ready" and business_active_running(config)))):
-                        self._send_json(200, {"ok": True, "action": "start", "backend": profile.backend})
-                        return
-                    if explicit:
-                        state["selectedBusinessProfileId"] = profile_id
-                        state["selectionRevision"] += 1
-                    state.update(businessTransition="loading", businessGeneration=uuid.uuid4().hex)
-                    state.pop("businessFailureReason", None)
-                else:
-                    if not profile.id.startswith("private_"):
-                        raise SelectionConflict("unsupported private profile")
+                if command != ":" and not recovery:
                     state["businessTransition"] = "idle"
                 replace_active_payload(config.active_model_state_path, state)
-                try:
-                    # Drain has completed under the shared gateway/lifecycle lock.
-                    # Always stop blue too: GLM and DeepSeek share that backend.
-                    command_runner(resolve_command(config, "stop-force", "blue"))
-                    if single_active_guard_enabled():
-                        command_runner(resolve_command(config, "stop-force", "green"))
-                    start_env = launcher_env_for_profile(profile)
-                    if profile.business_orchestration_eligible:
-                        start_env["DGX_BUSINESS_GENERATION"] = state["businessGeneration"]
-                    command_runner(resolve_command(config, "start", profile.backend), start_env)
-                    ready_caps, vision_reason = assess_runtime_readiness(profile, start_env=start_env)
-                    active = write_active_model_state(config.active_model_state_path, profile,
-                        runtime_ready_capabilities=ready_caps, vision_ready_reason=vision_reason)
-                    write_resource_state_best_effort(config, owner=infer_owner_from_profile(profile, reason),
-                        status="preparing", action="start", reason=reason, profile=profile,
-                        backend=profile.backend, guarantee_level="post_only")
-                except Exception as exc:
-                    log_business_failure("start", profile.id, state.get("businessGeneration"), exc, secrets=(config.token,))
-                    state = business_selection_state(config.active_model_state_path)
-                    state.update(businessTransition="failed", businessFailureReason="business_runtime_start_failed")
-                    replace_active_payload(config.active_model_state_path, state)
-                    self._send_json(503, {"ok": False, "code": "business_runtime_start_failed"})
+                self._send_json(200, {"ok": True, "action": self.path[1:], "backend": backend, "backendSource": source})
+                return
+            requested = _string_body_value(body, "modelProfileId")
+            selected = state["selectedBusinessProfileId"]
+            profile_id = requested or selected
+            profile = validate_startable_profile(config.model_registry_root, profile_id)
+            explicit = reason == "business-model-selection"
+            if explicit and (profile_id not in BUSINESS_PROFILES or not profile.business_orchestration_eligible):
+                raise SelectionConflict("unsupported business profile")
+            if profile.business_orchestration_eligible:
+                if profile_id not in BUSINESS_PROFILES:
+                    raise SelectionConflict("unsupported business profile")
+                if not explicit:
+                    assert_selection_request(state, body)
+                if profile_id == DEEPSEEK_PROFILE:
+                    from business_tensorfold import check_prepared
+                    try:
+                        check_prepared()
+                    except RuntimeError as error:
+                        raise BusinessRestoreUnavailableError(str(error)) from error
+                # Duplicate UI clicks and keep-warm do not create a new generation.
+                if (profile_id == selected and state.get("modelProfileId") == selected
+                        and (state["businessTransition"] == "loading" or (
+                            state["businessTransition"] == "ready" and business_active_running(config)))):
+                    self._send_json(200, {"ok": True, "action": "start", "backend": profile.backend})
                     return
+                if explicit:
+                    state["selectedBusinessProfileId"] = profile_id
+                    state["selectionRevision"] += 1
+                state.update(businessTransition="loading", businessGeneration=uuid.uuid4().hex)
+                state.pop("businessFailureReason", None)
+            else:
+                if not profile.id.startswith("private_"):
+                    raise SelectionConflict("unsupported private profile")
+                state["businessTransition"] = "idle"
+            replace_active_payload(config.active_model_state_path, state)
+            try:
+                # Drain has completed under the shared gateway/lifecycle lock.
+                # Always stop blue too: GLM and DeepSeek share that backend.
+                run_command(resolve_command(config, "stop-force", "blue"))
+                if single_active_guard_enabled():
+                    run_command(resolve_command(config, "stop-force", "green"))
+                start_env = launcher_env_for_profile(profile)
                 if profile.business_orchestration_eligible:
-                    identity = (state["selectedBusinessProfileId"], state["selectionRevision"], state["businessGeneration"])
-                    monitor = threading.Thread(target=monitor_business_ready, args=(config, identity, profile), daemon=True)
-                    _business_monitors[config.active_model_state_path] = (identity, monitor)
-                    monitor.start()
-                self._send_json(200, {"ok": True, "action": "start", "backend": profile.backend,
-                                      "modelProfile": active_model_state_to_api(active)})
+                    start_env["DGX_BUSINESS_GENERATION"] = state["businessGeneration"]
+                run_command(resolve_command(config, "start", profile.backend), start_env)
+                ready_caps, vision_reason = assess_runtime_readiness(profile, start_env=start_env)
+                active = write_active_model_state(config.active_model_state_path, profile,
+                    runtime_ready_capabilities=ready_caps, vision_ready_reason=vision_reason)
+                write_resource_state_best_effort(config, owner=infer_owner_from_profile(profile, reason),
+                    status="preparing", action="start", reason=reason, profile=profile,
+                    backend=profile.backend, guarantee_level="post_only")
+            except Exception as exc:
+                log_business_failure("start", profile.id, state.get("businessGeneration"), exc, secrets=(config.token,))
+                state = business_selection_state(config.active_model_state_path)
+                state.update(businessTransition="failed", businessFailureReason="business_runtime_start_failed")
+                replace_active_payload(config.active_model_state_path, state)
+                self._send_json(503, {"ok": False, "code": "business_runtime_start_failed"})
+                return
+            if profile.business_orchestration_eligible:
+                identity = (state["selectedBusinessProfileId"], state["selectionRevision"], state["businessGeneration"])
+                monitor = threading.Thread(target=monitor_business_ready, args=(config, identity, profile), daemon=True)
+                _business_monitors[config.active_model_state_path] = (identity, monitor)
+                monitor.start()
+            self._send_json(200, {"ok": True, "action": "start", "backend": profile.backend,
+                                  "modelProfile": active_model_state_to_api(active)})
 
         def log_message(self, fmt: str, *args: object) -> None:
             sys.stderr.write("[dgx-llm-runtime-control] " + (fmt % args) + "\n")

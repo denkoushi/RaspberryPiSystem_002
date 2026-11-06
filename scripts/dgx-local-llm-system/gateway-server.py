@@ -43,6 +43,11 @@ import json
 import sys
 import subprocess
 import time
+import socket
+import http.client
+import threading
+from contextlib import contextmanager
+from urllib.parse import urlsplit
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -50,9 +55,11 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 
+from glm_runtime_config import glm_runtime_config
 from business_diagnostics import log_business_failure  # noqa: E402
 from active_model_state import (active_model_state_to_api, read_active_model_state, business_switch_enabled,
-    business_selection_state, business_state_lock, GLM_PROFILE, DEEPSEEK_PROFILE)
+    business_selection_state, business_state_lock, GLM_PROFILE, DEEPSEEK_PROFILE,
+    business_draining, positive_env_seconds, control_request_budget)
 from gateway_llm_auth import load_llm_shared_tokens_from_env, llm_shared_token_ok
 from model_profiles import UnknownModelProfileError, find_model_profile, load_model_profiles, model_profile_to_api
 from model_storage_delete import (
@@ -222,7 +229,7 @@ def business_route(config: GatewayConfig) -> tuple[str, dict[str, str], str]:
                 or not isinstance(generation, str) or not generation))):
         raise ValueError("business_runtime_unavailable")
     if profile == GLM_PROFILE:
-        return "http://127.0.0.1:38083", {}, profile
+        return glm_runtime_config()[2], {}, profile
     if profile == DEEPSEEK_PROFILE:
         key = os.environ.get("BUSINESS_DEEPSEEK_UPSTREAM_API_KEY", "").strip()
         if not key:
@@ -863,15 +870,119 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
     return True, payload
 
 
+_business_request = threading.local()
+
+
+@contextmanager
+def business_request_lifetime(handler):
+    """Interrupt upstream reads and downstream writes at an absolute deadline."""
+    lifetime = positive_env_seconds("BUSINESS_REQUEST_MAX_LIFETIME_SEC", 300)
+    write_timeout = positive_env_seconds("BUSINESS_RESPONSE_WRITE_TIMEOUT_SEC", 10)
+    handler._business_timed_out = False
+    guard = threading.Lock()
+    sockets = []
+    previous_timeout = None
+    connection = handler.connection
+    if isinstance(connection, socket.socket):
+        previous_timeout = connection.gettimeout()
+        connection.settimeout(min(write_timeout, lifetime))
+        sockets.append(connection)
+    deadline = time.monotonic() + lifetime
+    def expire():
+        with guard:
+            handler._business_timed_out = True
+            for current in sockets:
+                try:
+                    current.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+    _business_request.context = (deadline, guard, sockets, handler)
+    timer = threading.Timer(lifetime, expire)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+        if handler._business_timed_out:
+            raise TimeoutError("business_request_lifetime_exceeded")
+    finally:
+        timer.cancel()
+        timer.join()
+        del _business_request.context
+        if isinstance(connection, socket.socket):
+            connection.settimeout(previous_timeout)
+
+
+def business_upstream_timeout(default: float) -> float:
+    context = getattr(_business_request, "context", None)
+    if context is None:
+        return default
+    remaining = context[0] - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("business_request_lifetime_exceeded")
+    return min(default, remaining)
+
+
+@contextmanager
+def business_upstream_response(response):
+    context = getattr(_business_request, "context", None)
+    upstream = None
+    if context is not None:
+        _, guard, sockets, handler = context
+        # urllib's HTTP(S)Response owns this socket. Shutting it down interrupts
+        # read(), including an indefinitely trickling body or SSE stream.
+        upstream = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+        if isinstance(upstream, socket.socket):
+            with guard:
+                if handler._business_timed_out:
+                    raise TimeoutError("business_request_lifetime_exceeded")
+                sockets.append(upstream)
+    try:
+        yield response
+    finally:
+        if context is not None and isinstance(upstream, socket.socket):
+            with guard:
+                sockets.remove(upstream)
+
+
+class BusinessHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        super().connect()
+        context = getattr(_business_request, "context", None)
+        if context is not None:
+            deadline, guard, sockets, handler = context
+            with guard:
+                if handler._business_timed_out or time.monotonic() >= deadline:
+                    self.close()
+                    raise TimeoutError("business_request_lifetime_exceeded")
+                # Register before sending the request or parsing response headers.
+                # A peer trickling headers cannot extend the absolute deadline.
+                sockets.append(self.sock)
+
+
+class BusinessHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, request):
+        return self.do_open(BusinessHTTPConnection, request)
+
+
+def business_urlopen(request, *, timeout):
+    if getattr(_business_request, "context", None) is None:
+        return urllib.request.urlopen(request, timeout=timeout)
+    return urllib.request.build_opener(BusinessHTTPHandler()).open(request, timeout=timeout)
+
+
 def proxy_request(method: str, url: str, body: bytes, headers: dict[str, str]) -> tuple[int, bytes, str]:
     req = urllib.request.Request(url, data=body if method != "GET" else None, method=method)
     for key, value in headers.items():
         req.add_header(key, value)
     try:
-        with urllib.request.urlopen(req, timeout=120) as response:
+        timeout = 120
+        if urlsplit(url).path in {"/start", "/stop", "/stop-force"}:
+            timeout = control_request_budget() + positive_env_seconds("LLM_RUNTIME_FORWARD_MARGIN_SEC", 30)
+        with business_urlopen(req, timeout=business_upstream_timeout(timeout)) as response, business_upstream_response(response):
             return response.status, response.read(), response.headers.get("Content-Type", "application/octet-stream")
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.read(), exc.headers.get("Content-Type", "text/plain; charset=utf-8")
+        with exc, business_upstream_response(exc):
+            return exc.code, exc.read(), exc.headers.get("Content-Type", "text/plain; charset=utf-8")
     except urllib.error.URLError as exc:
         body = f"bad gateway: {exc.reason}".encode("utf-8")
         return 502, body, "text/plain; charset=utf-8"
@@ -908,7 +1019,7 @@ def make_handler(
             response_started = False
             try:
                 try:
-                    with urllib.request.urlopen(req, timeout=120) as response:
+                    with business_urlopen(req, timeout=business_upstream_timeout(120)) as response, business_upstream_response(response):
                         # Read before committing headers so an initial timeout can still return 502.
                         chunk = response.read1(65536)
                         self.send_response(response.status)
@@ -936,7 +1047,7 @@ def make_handler(
                             self.wfile.write(business_sse_alias(pending))
                             self.wfile.flush()
                 except urllib.error.HTTPError as exc:
-                    with exc:
+                    with exc, business_upstream_response(exc):
                         if not response_started:
                             self._send(
                                 exc.code, exc.read(), exc.headers.get("Content-Type", "text/plain; charset=utf-8")
@@ -1423,7 +1534,12 @@ def make_handler(
             try:
                 # A lifecycle mutation waits for every normal/streaming request to
                 # finish; arrivals during that mutation fail closed immediately.
-                with business_state_lock(config.active_model_state_path, exclusive=False, blocking=False):
+                if business_draining(config.active_model_state_path):
+                    raise ValueError("business_draining")
+                with business_request_lifetime(self), business_state_lock(config.active_model_state_path, exclusive=False, blocking=False):
+                    # Close the admission race between the first check and LOCK_SH.
+                    if business_draining(config.active_model_state_path):
+                        raise ValueError("business_draining")
                     snapshot = business_selection_state(config.active_model_state_path)
                     profile = snapshot["selectedBusinessProfileId"]
                     generation = snapshot.get("businessGeneration")
@@ -1475,6 +1591,9 @@ def make_handler(
                             response = deepseek_json_response(response) if json_mode else business_response_alias(response)
                     self._send(status, response, content_type)
             except Exception as exc:
+                if getattr(self, "_business_timed_out", False) or isinstance(exc, (BrokenPipeError, ConnectionResetError, TimeoutError)):
+                    self.close_connection = True
+                    return
                 log_business_failure("inference", profile, generation, exc,
                     secrets=(*config.llm_shared_tokens, config.runtime_control_token))
                 if shared is not None:

@@ -322,7 +322,30 @@ def check_prepared(*, runner=subprocess.run) -> None:
         raise RuntimeError('business_deepseek_unprepared') from error
 
 
-def runtime_status(generation: str, *, runner=subprocess.run, sharing: bool = False) -> dict:
+def pending_generation(generation: str, marker_path: str | None = None) -> bool:
+    from pathlib import Path
+    path = Path(marker_path or os.environ.get('BLUE_REMOTE_WORKER_MARKER_PATH') or '/srv/dgx/system-prod/state/blue-remote-worker.json')
+    try:
+        marker = json.loads(path.read_text())
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError) as error:
+        raise RuntimeError('business_start_phase_unavailable') from error
+    if not isinstance(marker, dict):
+        raise RuntimeError('business_start_phase_unavailable')
+    if marker.get('business') is not True or marker.get('generation') != generation:
+        return False
+    phase = marker.get('startPhase', 'confirmed')
+    if phase not in {'pending', 'confirmed'}:
+        raise RuntimeError('business_start_phase_unavailable')
+    return phase == 'pending'
+
+
+def runtime_status(generation: str, *, runner=subprocess.run, sharing: bool = False,
+                   pending: bool | None = None) -> dict:
+    pending = pending_generation(generation) if pending is None else pending
+    if pending:
+        sharing = False
     script = kit_prefix() + '\n'
     # Full cache inspection belongs to start/check. Opt-in status additionally
     # checks the prepared identity and live launch metadata without GPU work.
@@ -356,11 +379,27 @@ def runtime_status(generation: str, *, runner=subprocess.run, sharing: bool = Fa
         except ValueError:
             pass
         lines = lines[:18]
-    if len(lines) != 18 or any(lines[i] != generation for i in (6, 15)):
+    if len(lines) != 18:
+        raise RuntimeError('business_runtime_status_unavailable')
+    if pending:
+        # Remote generation may still belong to the preceding launch (or be
+        # absent on first start). Only complete stopped evidence permits recovery.
+        previous = {lines[i] for i in (6, 15) if lines[i] != generation}
+        if len(previous) > 1:
+            raise RuntimeError('business_pending_generation_stop_unverified')
+        for offset in (0, 9):
+            if lines[offset:offset + 5] != ['false', 'true', 'true', 'true', 'true']:
+                raise RuntimeError('business_pending_generation_stop_unverified')
+            remote_generation = lines[offset + 6]
+            if remote_generation and not remote_generation.replace('-', '').isalnum():
+                raise RuntimeError('business_pending_generation_stop_unverified')
+    elif any(lines[i] != generation for i in (6, 15)):
         raise RuntimeError('business_runtime_generation_mismatch')
     nodes = [lines[:9], lines[9:18]]
     from datetime import datetime
     for node in nodes:
+        if pending:
+            continue
         boundary = datetime.fromisoformat(node[8].replace('Z', '+00:00'))
         if node[0] == 'true' and datetime.fromisoformat(node[7].replace('Z', '+00:00')) < boundary:
             raise RuntimeError('business_runtime_generation_mismatch')
