@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -95,7 +96,9 @@ export type KioskGrindingPlanningBoardProgressiveResult = {
   isError: boolean;
   error: unknown;
   isPlaceholderData: boolean;
-  refetch: ReturnType<typeof useKioskGrindingPlanningBoard>['refetch'];
+  refetch: (...args: Parameters<ReturnType<typeof useKioskGrindingPlanningBoard>['refetch']>) => Promise<{
+    data: GrindingPlanningBoardResponse | undefined; isError: boolean; error: unknown;
+  }>;
   hasStableData: boolean;
   scopeReady: boolean;
   isAppending: boolean;
@@ -105,6 +108,7 @@ export type KioskGrindingPlanningBoardProgressiveResult = {
 
 /**
  * 初回ページを先に表示し、同じスナップショットの残りだけを順次追補する。
+ * 同じ条件の全件表示後は、次の全件がそろうまで表示中のスナップショットを保持する。
  * 順位ボードのphased取得と同じ300秒のstale/refetch方針を使うが、契約が異なるため
  * continue部分はこのAPI専用の薄いアダプターとして保持する。
  */
@@ -123,6 +127,18 @@ export function useKioskGrindingPlanningBoardProgressive(
   const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
   const mergedParamsKeyRef = useRef<string | null>(null);
   const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
+  const displayedRef = useRef<{ paramsKey: string; data: GrindingPlanningBoardResponse; complete: boolean } | undefined>(undefined);
+  type Settlement = { paramsKey: string; updatedAt: number; data: GrindingPlanningBoardResponse | undefined; isError: boolean; error: unknown };
+  const settledRef = useRef<Settlement | undefined>(undefined);
+  const [settlement, setSettlement] = useState<Settlement>();
+  const currentScopeRef = useRef<string | null>(paramsKey);
+  currentScopeRef.current = paramsKey;
+  const waitersRef = useRef(new Set<(settlement: Settlement) => void>());
+  useEffect(() => {
+    if (!settlement) return;
+    settledRef.current = settlement;
+    for (const waiter of waitersRef.current) waiter(settlement);
+  }, [settlement]);
   const [isAppending, setIsAppending] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [appendError, setAppendError] = useState<unknown>(null);
@@ -145,13 +161,43 @@ export function useKioskGrindingPlanningBoardProgressive(
 
   const firstData = query.data;
   const refetch = query.refetch;
+  // Refresh consumers must not clear confirmed writes before the replacement is complete.
+  const refetchComplete = useCallback(async (...args: Parameters<typeof refetch>) => {
+    const previousSettlement = settledRef.current;
+    const result = await refetch(...args);
+    if (result.isError) return result;
+    if (currentScopeRef.current !== paramsKey) return { data: undefined, isError: true, error: new Error('一覧の取得が中断されました。') };
+    return new Promise<Settlement>((resolve) => {
+      const waiter = (settlement: Settlement) => {
+        if (settlement !== previousSettlement && (settlement.paramsKey !== paramsKey || settlement.updatedAt >= result.dataUpdatedAt)) {
+          waitersRef.current.delete(waiter);
+          resolve(settlement);
+        }
+      };
+      waitersRef.current.add(waiter);
+      if (settledRef.current) waiter(settledRef.current);
+    });
+  }, [paramsKey, refetch]);
+  useEffect(() => {
+    currentScopeRef.current = paramsKey;
+    const waiters = waitersRef.current;
+    return () => {
+      currentScopeRef.current = null;
+      for (const waiter of waiters) waiter({ paramsKey: '', updatedAt: Infinity, data: undefined, isError: true, error: new Error('一覧の取得が中断されました。') });
+    };
+  }, [paramsKey]);
+  useEffect(() => {
+    if (query.isError && !query.isFetching) {
+      setSettlement({ paramsKey, updatedAt: Infinity, data: displayedRef.current?.data, isError: true, error: query.error });
+    }
+  }, [paramsKey, query.isError, query.isFetching, query.error]);
   const firstDataIsFresh = Boolean(firstData && !query.isPlaceholderData);
   const firstSignature = firstData
     ? `${query.dataUpdatedAt}:${firstData.snapshotId}:${firstData.sourceRevision}`
     : null;
 
   useEffect(() => {
-    if (!firstDataIsFresh || !firstData || query.isFetching) return;
+    if (!firstDataIsFresh || !firstData || query.isFetching || query.isError) return;
     const previous = previousRevisionRef.current;
     previousRevisionRef.current = { paramsKey, revision: firstData.sourceRevision };
     if (previous?.paramsKey === paramsKey && previous.revision !== firstData.sourceRevision) {
@@ -160,10 +206,10 @@ export function useKioskGrindingPlanningBoardProgressive(
         { cancelRefetch: false }
       );
     }
-  }, [firstData, firstDataIsFresh, paramsKey, query.isFetching, queryClient]);
+  }, [firstData, firstDataIsFresh, paramsKey, query.isFetching, query.isError, queryClient]);
 
   useEffect(() => {
-    if (!firstDataIsFresh || !firstData || firstSignature == null || query.isFetching) return;
+    if (!firstDataIsFresh || !firstData || firstSignature == null || query.isFetching || query.isError) return;
     if (syncedSignatureRef.current === firstSignature) return;
     syncedSignatureRef.current = firstSignature;
     const runId = ++runIdRef.current;
@@ -173,17 +219,24 @@ export function useKioskGrindingPlanningBoardProgressive(
     let cursor = initial.nextCursor;
     let previousCursor = -1;
 
-    mergedParamsKeyRef.current = paramsKey;
-    setMergedData({ ...initial, items, nextCursor: cursor });
+    const keepComplete = displayedRef.current?.paramsKey === paramsKey && displayedRef.current.complete;
+    const publish = () => {
+      const data = { ...initial, items, nextCursor: cursor };
+      mergedParamsKeyRef.current = paramsKey;
+      displayedRef.current = { paramsKey, data, complete: cursor == null };
+      setMergedData(data);
+      setIsComplete(cursor == null);
+      if (cursor == null) setSettlement({ paramsKey, updatedAt: query.dataUpdatedAt, data, isError: false, error: null });
+    };
+    if (!keepComplete || cursor == null) publish();
     setAppendError(null);
-    setIsComplete(cursor == null);
     if (cursor == null) {
       staleRefetchCountRef.current = 0;
       setIsAppending(false);
       return;
     }
 
-    setIsAppending(true);
+    setIsAppending(!keepComplete);
     void (async () => {
       try {
         while (!cancelled && runId === runIdRef.current && cursor != null) {
@@ -216,10 +269,7 @@ export function useKioskGrindingPlanningBoardProgressive(
           items = [...items, ...pageItems];
           previousCursor = nextCursor;
           cursor = page.nextCursor;
-          setMergedData((current) => current?.snapshotId === initial.snapshotId
-            ? { ...initial, items, nextCursor: cursor }
-            : current);
-          setIsComplete(cursor == null);
+          if (!keepComplete || cursor == null) publish();
           if (cursor == null) staleRefetchCountRef.current = 0;
         }
       } catch (error) {
@@ -233,8 +283,10 @@ export function useKioskGrindingPlanningBoardProgressive(
             void refetch();
             return;
           }
-          setAppendError(normalizeLeaderboardContinueFailure(error));
-          setIsComplete(false);
+          const failure = normalizeLeaderboardContinueFailure(error);
+          setAppendError(failure);
+          if (!keepComplete) setIsComplete(false);
+          setSettlement({ paramsKey, updatedAt: query.dataUpdatedAt, data: displayedRef.current?.data, isError: true, error: failure });
         }
       } finally {
         if (!cancelled && runId === runIdRef.current) setIsAppending(false);
@@ -245,12 +297,12 @@ export function useKioskGrindingPlanningBoardProgressive(
       syncedSignatureRef.current = null;
       if (runId === runIdRef.current) setIsAppending(false);
     };
-  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, refetch, stableParams, paramsKey]);
+  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, query.isError, refetch, stableParams, paramsKey, query.dataUpdatedAt]);
 
   const displayData = mergedData ?? firstData;
   const hasStableData = Boolean(
     firstData && !query.isPlaceholderData && mergedParamsKeyRef.current === paramsKey &&
-    mergedData?.snapshotId === firstData.snapshotId
+    (mergedData?.snapshotId === firstData.snapshotId || displayedRef.current?.complete)
   );
   // A same-scope revalidation keeps the current snapshot usable. Placeholder
   // data and the first fetch remain unready through hasStableData above.
@@ -262,7 +314,7 @@ export function useKioskGrindingPlanningBoardProgressive(
     isError: query.isError,
     error: query.error,
     isPlaceholderData: query.isPlaceholderData,
-    refetch: query.refetch,
+    refetch: refetchComplete,
     hasStableData,
     scopeReady,
     isAppending,
