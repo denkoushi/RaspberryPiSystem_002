@@ -1,6 +1,7 @@
 import { api } from '../../http';
 
 import type {
+  SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
   GrindingPlanningBoardArrivalRequest,
   GrindingPlanningBoardArrivalResponse,
   GrindingPlanningBoardProcessChipsRequest,
@@ -39,6 +40,7 @@ export async function getKioskGrindingPlanningBoardProcessChips(body: GrindingPl
 }
 
 export type KioskGrindingPlanningBoardQuery = {
+  includePieces?: boolean;
   dueSource?: 'excel' | 'scaw';
   category: GrindingPlanningBoardCategory;
   view: GrindingPlanningBoardView;
@@ -56,6 +58,7 @@ export async function getKioskGrindingPlanningBoard(params: KioskGrindingPlannin
       category: params.category,
       view: params.view,
       includeLoad: false,
+      ...(params.includePieces == null ? {} : { includePieces: params.includePieces }),
       ...(params.fseibans && params.fseibans.length > 0 ? { fseibans: params.fseibans.join(',') } : {}),
       ...(params.cursor == null ? {} : { cursor: params.cursor }),
       ...(params.pageSize == null ? {} : { pageSize: params.pageSize }),
@@ -66,9 +69,9 @@ export async function getKioskGrindingPlanningBoard(params: KioskGrindingPlannin
   return data;
 }
 
-export async function getKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
+export async function getKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory, includePieces?: boolean) {
   const { data } = await api.get<GrindingPlanningBoardLoadResponse>('/kiosk/production-schedule/grinding-planning-board/load', {
-    params: { category }
+    params: { category, ...(includePieces == null ? {} : { includePieces }) }
   });
   return data;
 }
@@ -194,5 +197,18 @@ export async function updateKioskGrindingPlanningBoardArrival(payload: GrindingP
   const url = '/kiosk/production-schedule/grinding-planning-board/arrival';
   const { data } = recorded ? await api.put<GrindingPlanningBoardArrivalResponse>(url, body)
     : await api.delete<GrindingPlanningBoardArrivalResponse>(url, { data: body });
+  return data;
+}
+
+export async function splitKioskSessakuPieces(payload: SessakuPiecesSplitRequest) {
+  const { data } = await api.post<SessakuPiecesMutationResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/split', payload);
+  return data;
+}
+export async function mergeKioskSessakuPieces(payload: SessakuPiecesMergeRequest) {
+  const { data } = await api.post<SessakuPiecesMutationResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/merge', payload);
+  return data;
+}
+export async function setKioskSessakuPieceCompletion(pieceId: string, payload: SessakuPieceCompletionRequest) {
+  const { data } = await api.put<SessakuPiecesMutationResponse>(`/kiosk/production-schedule/grinding-planning-board/pieces/${encodeURIComponent(pieceId)}/completion`, payload);
   return data;
 }

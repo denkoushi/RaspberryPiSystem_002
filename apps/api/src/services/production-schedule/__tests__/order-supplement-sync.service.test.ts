@@ -1,3 +1,5 @@
+vi.mock('../sessaku-pieces/piece-sync.js', () => ({ lockSessakuPieceSourceRows: vi.fn().mockResolvedValue([]), assertSessakuPieceWinnerTargets: vi.fn().mockResolvedValue(undefined), synchronizeSessakuPieceSources: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../sessaku-pieces/piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../sessaku-pieces/piece-key.js')>(), readSessakuPieceSet: vi.fn().mockResolvedValue(null) }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -11,7 +13,9 @@ import {
 } from '../order-supplement-sync.pipeline.js';
 
 type PrismaMock = {
+  productionScheduleSessakuPieceSet: { findMany: ReturnType<typeof vi.fn> };
   csvDashboardRow: {
+    findUniqueOrThrow: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
     deleteMany: ReturnType<typeof vi.fn>;
   };
@@ -37,7 +41,9 @@ type PrismaMock = {
 
 const { prismaMock } = vi.hoisted(() => {
   const mock: PrismaMock = {
+    productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
     csvDashboardRow: {
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ rowData: {} }),
       findMany: vi.fn(),
       deleteMany: vi.fn(),
     },

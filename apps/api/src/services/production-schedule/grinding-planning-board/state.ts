@@ -1,3 +1,4 @@
+import { readSessakuPieceGeneration } from '../sessaku-pieces/piece-key.js';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
@@ -77,14 +78,14 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
 }
 
 export async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<PlanningSnapshotGenerationDetails> {
-  const [leaderboardGeneration, state, overrides, resources, machineNames] = await Promise.all([
+  const [leaderboardGeneration, state, overrides, resources, machineNames, pieces] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
       select: { version: true, updatedAt: true }
     }),
     prisma.productionScheduleGrindingPlanningBoardOverride.aggregate({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: { startsWith: 'row:' } },
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, OR: [{ itemKey: { startsWith: 'row:' } }, { itemKey: { startsWith: 'piece:' } }] },
       _count: { _all: true },
       _max: { updatedAt: true }
     }),
@@ -96,7 +97,8 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       where: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID },
       _count: { _all: true },
       _max: { updatedAt: true }
-    })
+    }),
+    readSessakuPieceGeneration(prisma)
   ]);
   const boardVersion = state?.version ?? 0;
   const boardUpdatedAt = state?.updatedAt?.toISOString() ?? '';
@@ -111,7 +113,9 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       resourceUpdatedAt: resources._max.updatedAt?.toISOString() ?? '',
       machineNameCount: machineNames._count._all,
       machineNameUpdatedAt: machineNames._max.updatedAt?.toISOString() ?? '',
-      payloadFormat: 2
+      pieceSetCount: pieces.count,
+      pieceSetVersion: pieces.version,
+      payloadFormat: 3
     }),
     leaderboardGenerationToken: leaderboardGeneration,
     boardVersion,

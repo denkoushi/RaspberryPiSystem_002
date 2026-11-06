@@ -6,9 +6,23 @@ const put = vi.hoisted(() => vi.fn());
 const remove = vi.hoisted(() => vi.fn());
 vi.mock('../http', () => ({ api: { get, post, put, delete: remove } }));
 
-import { updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
+import { splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
+  it('keeps piece reads and mutations explicit without changing old requests', async () => {
+    get.mockResolvedValue({ data: { items: [], sourceRevision: 'r', nextCursor: null } });
+    await getKioskGrindingPlanningBoard({ category: 'cutting', view: 'resource', includePieces: true });
+    expect(get).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board', expect.objectContaining({ params: expect.objectContaining({ includePieces: true }) }));
+    await getKioskGrindingPlanningBoardLoad('cutting', true);
+    expect(get).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/load', { params: { category: 'cutting', includePieces: true } });
+    post.mockResolvedValue({ data: {} }); put.mockResolvedValue({ data: {} });
+    const split = { parentItemId: 'row:parent', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'r' };
+    await splitKioskSessakuPieces(split); expect(post).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/pieces/split', split);
+    const merge = { parentItemId: 'row:parent', pieceIds: ['a', 'b'], expectedPieceSetVersion: 1, itemRevisions: { 'piece:a': 'a', 'piece:b': 'b' } };
+    await mergeKioskSessakuPieces(merge); expect(post).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/pieces/merge', merge);
+    const completion = { intent: 'incomplete' as const, expectedPieceSetVersion: 2, itemRevision: 'r2' };
+    await setKioskSessakuPieceCompletion('a', completion); expect(put).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/pieces/a/completion', completion);
+  });
   it.each(['excel', 'scaw'] as const)('sends dueSource=%s on all snapshot pages', async (dueSource) => {
     get.mockResolvedValue({ data: { items: [], sourceRevision: 'r', nextCursor: null } });
     await getKioskGrindingPlanningBoardSnapshot({ category: 'grinding', view: 'seiban', dueSource });

@@ -1,3 +1,5 @@
+import { acquireSessakuPieceLogicalLocks, readSessakuPieceSets, encodeSessakuPieceKey, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
+import { synchronizeSessakuPieceSources } from './sessaku-pieces/piece-sync.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
@@ -22,14 +24,22 @@ const normalizeProgress = (value: unknown): string => String(value ?? '').trim()
 export class ProgressSyncFromCsvService {
   async sync(params: SyncProgressFromCsvParams): Promise<void> {
     const { candidates, hasProgressColumn = true } = params;
-    if (!hasProgressColumn) {
-      return;
-    }
     if (candidates.length === 0) {
       return;
     }
 
+    const sets = await readSessakuPieceSets(prisma, candidates);
+    if (!hasProgressColumn && ![...sets.values()].some((set) => set.pieces.length)) return;
     for (const candidate of candidates) {
+      const key = sessakuPieceKeyFromRow(candidate.rowData);
+      if (sets.get(encodeSessakuPieceKey(key))?.pieces.length) {
+        await prisma.$transaction(async (tx) => {
+          await acquireSessakuPieceLogicalLocks(tx, [key]);
+          await synchronizeSessakuPieceSources(tx, [key]);
+        }, { timeout: 30000, maxWait: 15000 });
+        continue;
+      }
+      if (!hasProgressColumn) continue;
       const rowData = candidate.rowData as Record<string, unknown> | null;
       const progress = normalizeProgress(rowData?.progress);
       const csvUpdatedAt = resolveUpdatedAt(candidate.rowData, candidate.occurredAt);

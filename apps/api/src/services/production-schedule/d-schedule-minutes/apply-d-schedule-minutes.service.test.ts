@@ -14,7 +14,7 @@ import { summarizeMinutes } from './import-summary.js';
 import type { DScheduleMinutesBlock } from './parse-d-schedule-minutes.js';
 
 vi.mock('./auto-register-d-schedule-minutes.service.js', () => ({ autoRegisterDScheduleMinutes: vi.fn() }));
-const local = /^postgresql:\/\/[^@]+@(?:localhost|127\.0\.0\.1):5432\/borrow_return(?:\?|$)/.test(process.env.DATABASE_URL ?? '');
+const local = /^postgresql:\/\/[^@]+@(?:localhost|127\.0\.0\.1):5432\/borrow_return(?:\?|$)/.test(process.env.DATABASE_URL ?? '') || (process.env.TEST_DATABASE_URL === 'postgresql://postgres:postgres@127.0.0.1:55432/sessaku_test' && process.env.DATABASE_URL === process.env.TEST_DATABASE_URL);
 const runIds: string[] = [];
 const seibans: string[] = [];
 const rowIds: string[] = [];

@@ -1,3 +1,4 @@
+import { encodeSessakuPieceKey, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
 import { resolveBoardDueDate, type BoardDueSource } from './d-schedule-minutes/resolve-board-due-date.js';
 import { createHash } from 'node:crypto';
 
@@ -80,6 +81,8 @@ export type GrindingPlanningBoardProgressProjection = {
 };
 
 export type GrindingPlanningBoardProjectionInput = {
+  includePieces?: boolean;
+  pieceSets?: ReadonlyMap<string, SessakuPieceSet>;
   dueSource?: BoardDueSource;
   rows: readonly GrindingPlanningBoardProjectionRow[];
   details: ReadonlyMap<string, GrindingPlanningBoardProjectionRowDetail>;
@@ -249,6 +252,11 @@ function compareResourceProcessOrder(a: string, b: string): number {
   return a.localeCompare(b, 'ja');
 }
 
+function comparePiecePosition(left: GrindingPlanningBoardItem, right: GrindingPlanningBoardItem): number {
+  return left.parentItemId != null && left.parentItemId === right.parentItemId
+    ? (left.piecePosition ?? 0) - (right.piecePosition ?? 0) : 0;
+}
+
 export function sortGrindingPlanningBoardProjectionItems(
   items: readonly GrindingPlanningBoardItem[],
   seibanOrder: readonly string[],
@@ -294,12 +302,12 @@ export function sortGrindingPlanningBoardProjectionItems(
         compareText(left.productNo, right.productNo) ||
         compareResourceProcessOrder(left.processOrder, right.processOrder) ||
         compareText(left.fhincd, right.fhincd) ||
-        compareText(left.itemId, right.itemId)
+        comparePiecePosition(left, right) || compareText(left.itemId, right.itemId)
       );
     }
     const process = compareProcessOrder(left.processOrder, right.processOrder);
     if (process !== 0) return process;
-    return left.itemId.localeCompare(right.itemId);
+    return comparePiecePosition(left, right) || left.itemId.localeCompare(right.itemId);
   });
 }
 
@@ -450,7 +458,9 @@ function buildItems(
       },
       progress
     );
+    const pieceSet = params.pieceSets?.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(data)));
     const revisionInput = {
+      ...(pieceSet ? { pieceSetVersion: pieceSet.version, quantityWarning: pieceSet.pieces.length ? pieceSet.quantityWarning : null } : {}),
       rowId: row.id,
       rowUpdatedAt: row.updatedAt?.toISOString() ?? null,
       detailUpdatedAt: detail.updatedAt?.toISOString() ?? null,
@@ -475,6 +485,7 @@ function buildItems(
     items.push({
       itemId,
       kind: 'row',
+      ...(pieceSet ? { pieceSetVersion: pieceSet.version, quantityWarning: (pieceSet.pieces.length ? pieceSet.quantityWarning : null) as GrindingPlanningBoardItem['quantityWarning'] } : {}),
       itemRevision: createItemRevision(revisionInput),
       version: override?.version ?? 0,
       sourceRowId: row.id,
@@ -508,12 +519,53 @@ function buildItems(
   return items;
 }
 
+function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, parents: GrindingPlanningBoardItem[]): GrindingPlanningBoardItem[] {
+  return parents.flatMap((parent) => {
+    const row = params.rows.find((row) => row.id === parent.sourceRowId);
+    const set = row && params.pieceSets?.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)));
+    if (!set?.pieces.length) return [parent];
+    const external = params.details.get(parent.sourceRowId)?.productionScheduleExternalCompletion?.isExternallyCompleted === true;
+    return set.pieces.map((piece): GrindingPlanningBoardItem => {
+      const itemId = `piece:${piece.id}`;
+      const inherited = params.overrides.get(parent.itemId);
+      const own = params.overrides.get(itemId);
+      const override = own ?? inherited;
+      const total = parent.plannedQuantity;
+      const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.requiredMinutes != null
+        ? Math.round(parent.requiredMinutes * piece.quantity / total * 100) / 100 : null;
+      const isCompleted = external || piece.isCompleted;
+      const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
+        originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,
+        plannedEndDate: params.details.get(parent.sourceRowId)?.orderSupplements[0]?.plannedEndDate ?? null,
+        override
+      });
+      return {
+        ...parent, itemId, kind: 'piece', parentItemId: parent.itemId, pieceId: piece.id,
+        piecePosition: piece.position, pieceSetVersion: set.version, quantity: piece.quantity,
+        parentPlannedQuantity: total, plannedQuantity: piece.quantity,
+        quantityWarning: set.quantityWarning as GrindingPlanningBoardItem['quantityWarning'],
+        manualIsCompleted: piece.isCompleted, isCompleted,
+        completionSource: external ? 'import' : piece.isCompleted ? 'manual' : null,
+        effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
+        effectiveDueDate, alternateRank: override?.alternateRank ?? null,
+        orderPinned: override?.orderPinned ?? false, specialDue: specialDueForOverride(override),
+        version: own?.version ?? 0, requiredMinutes: minutes, requiredMinutesKnown: minutes != null,
+        itemRevision: createItemRevision({ parentRevision: parent.itemRevision, pieceId: piece.id, position: piece.position,
+          pieceSetVersion: set.version, quantity: piece.quantity, manualIsCompleted: piece.isCompleted,
+          quantityWarning: set.quantityWarning, external, inherited, own })
+      };
+    });
+  });
+}
+
 export function projectGrindingPlanningBoard(
   params: GrindingPlanningBoardProjectionInput
 ): GrindingPlanningBoardProjectionResult {
   const progressRows = params.progressRows ?? buildProgressRowsFromSource(params.rows, params.details);
   const progress = buildProgressProjection(progressRows);
-  const allItems = buildItems(params, progress);
+  const parents = buildItems(params, progress);
+  const pieces = expandSessakuPieces(params, parents);
+  const allItems = params.includePieces ? pieces : parents;
   const sortedAllItems = sortGrindingPlanningBoardProjectionItems(
     allItems,
     params.seibanOrder,
@@ -523,7 +575,7 @@ export function projectGrindingPlanningBoard(
   const items = params.selectedFseibans
     ? sortedAllItems.filter((item) => params.selectedFseibans?.has(item.fseiban))
     : sortedAllItems;
-  const loadResult = buildLoad(sortedAllItems);
+  const loadResult = buildLoad(pieces);
   return {
     items,
     allItems: sortedAllItems,

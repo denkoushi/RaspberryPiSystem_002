@@ -1,3 +1,4 @@
+import { replaceAllWinnerExternalCompletionStatesFromMailSync } from './external-completion/fkojunst-external-completion-sync.repository.js';
 /**
  * FKOJUNST_Status Gmail CSV sync: read/normalize → FUPDTEDTで最新化 → winner resolve → delete-by-source + createMany.
  */
@@ -399,7 +400,7 @@ export async function runFkojunstMailReplacementTransaction(
     processChangeResidualEvidenceInputs?: Prisma.ProductionScheduleProcessChangeResidualEvidenceCreateManyInput[];
     sourceRowsRevision?: string;
   }
-): Promise<FkojunstMailSyncResult> {
+): Promise<FkojunstMailSyncResult & { externalCompletionSynced?: true }> {
   return client.$transaction(
     async (tx) => {
       await acquireFkojunstStatusMailCriticalTransactionLock(tx);
@@ -440,7 +441,12 @@ export async function runFkojunstMailReplacementTransaction(
         );
       }
 
+      const hasPieces = params.normalized > 0 && await tx.productionScheduleSessakuPieceSet.findFirst({
+        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, pieces: { some: {} } }, select: { id: true }
+      });
+      if (hasPieces) await replaceAllWinnerExternalCompletionStatesFromMailSync(tx, true);
       return {
+        ...(hasPieces ? { externalCompletionSynced: true as const } : {}),
         scanned: params.scanned,
         normalized: params.normalized,
         matched: params.matched,

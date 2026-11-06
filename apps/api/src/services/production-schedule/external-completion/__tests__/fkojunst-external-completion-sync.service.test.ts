@@ -53,7 +53,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
     let txArg: unknown;
     const prismaMock = {
       $transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
-        txArg = { mockTx: true };
+        txArg = { mockTx: true, $executeRaw: vi.fn() };
         await fn(txArg);
       }),
     };

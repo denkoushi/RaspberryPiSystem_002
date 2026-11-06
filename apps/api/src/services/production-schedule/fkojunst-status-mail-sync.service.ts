@@ -57,7 +57,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
       processChangeResidualMaterialization
     );
 
-    const result = await runFkojunstMailReplacementTransaction(prisma, {
+    const { externalCompletionSynced, ...result } = await runFkojunstMailReplacementTransaction(prisma, {
       scanned,
       normalized: dedupedRows.length,
       matched,
@@ -82,6 +82,10 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
 
     logger.info(result, '[ProductionScheduleFkojunstMailStatusSyncService] FKOJUNST_Status mail sync completed');
 
+    if (externalCompletionSynced) {
+      await this.orderAssignmentReconciliationService.reconcileStaleAssignments();
+      return result;
+    }
     const extResult = await this.externalCompletionSyncService.syncFromDedupedStatusMailRows(dedupedRows);
     if (!extResult.skipped) {
       logger.info(

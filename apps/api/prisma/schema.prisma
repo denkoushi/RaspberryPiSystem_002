@@ -1536,6 +1536,7 @@ model CsvDashboard {
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
   grindingPlanningBoardArrivals ProductionScheduleGrindingPlanningBoardArrival[]
+  sessakuPieceSets ProductionScheduleSessakuPieceSet[]
 
   @@index([enabled])
   @@index([gmailScheduleId])
@@ -6380,4 +6381,36 @@ model KnowledgeProcedureBoardAi {
   @@unique([boardId, kind, requestKey])
   @@index([state, retryAt, createdAt])
   @@index([boardId, boardVersion, kind])
+}
+
+model ProductionScheduleSessakuPieceSet {
+  id String @id @default(uuid())
+  csvDashboardId String
+  fseiban String
+  fhincd String
+  fsigencd String
+  fkojun String
+  version Int @default(1)
+  nextPosition Int @default(1)
+  plannedQuantity Int?
+  quantityWarning String? @db.VarChar(40)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSSPieceSet_dashboard_fk")
+  pieces ProductionScheduleSessakuPiece[]
+  @@unique([csvDashboardId, fseiban, fhincd, fsigencd, fkojun], map: "PSSPieceSet_logical_key")
+  @@index([csvDashboardId, fseiban], map: "PSSPieceSet_seiban_idx")
+}
+
+model ProductionScheduleSessakuPiece {
+  id String @id @default(uuid())
+  pieceSetId String
+  position Int
+  quantity Int
+  isCompleted Boolean @default(false)
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  pieceSet ProductionScheduleSessakuPieceSet @relation(fields: [pieceSetId], references: [id], onDelete: Cascade, map: "PSSPiece_set_fk")
+  @@unique([pieceSetId, position], map: "PSSPiece_position_key")
 }
