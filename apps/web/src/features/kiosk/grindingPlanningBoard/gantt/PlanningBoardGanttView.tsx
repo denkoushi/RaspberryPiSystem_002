@@ -380,6 +380,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       .reduce<GanttBar | undefined>((earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
     if (first) scrollToBar(first);
   };
+  // Rows are memoized, so the late-star date buttons get one stable callback that reads the latest focus.
+  const toggleSeibanLatest = useRef((seiban: string) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban); });
+  useLayoutEffect(() => { toggleSeibanLatest.current = (seiban: string) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban); }; });
+  const toggleSeiban = useCallback((seiban: string) => toggleSeibanLatest.current(seiban), []);
   const breaksButton = useCallback((resource: string) => <button type="button"
     className={clsx('h-7 w-9 shrink-0 whitespace-nowrap rounded border px-0 text-[13px] font-bold leading-none disabled:opacity-40',
       !runsThroughBreaks?.has(resource) ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
@@ -461,7 +465,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             </div>}
             <div className="relative">
             {forward ? group.rows.map((row) => {
-              return <PlanningBoardForwardGanttRow window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+              return <PlanningBoardForwardGanttRow window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={layout.start} end={layout.end} now={layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
@@ -472,7 +476,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 insertionLeft={dragPreview?.drop && dragPreview.drop.resource === group.resource ? dragPreview.drop.left : null} onDragPreview={setDragPreview}
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabels.get(group.resource)?.node : undefined} />;
-            }) : group.rows.map((row) => <PlanningBoardGanttRow window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
+            }) : group.rows.map((row) => <PlanningBoardGanttRow window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
               completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completionPendingRowIds={completionPendingRowIds}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
             {forward && group.resource && <div data-later-queue-host={`column-${dragLanes.findIndex((lane) => lane.resource === group.resource)}`}

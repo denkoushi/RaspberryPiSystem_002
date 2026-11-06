@@ -157,10 +157,11 @@ export type PlanningBoardGanttRowProps = InteractionProps & {
   selectedItemIds: ReadonlySet<string>;
   selectedParts: ReadonlySet<string>;
   resourceView: boolean;
+  onToggleSeiban?: (fseiban: string) => void;
 };
 
 export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
-  row, window = null, registerRow, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, ...interaction
+  row, window = null, registerRow, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, onToggleSeiban, ...interaction
 }: PlanningBoardGanttRowProps) {
   const rowRef = useCallback((element: HTMLDivElement | null) => registerRow?.(row.key, element), [registerRow, row.key]);
   const [heldItemId, setHeldItemId] = useState<string | null>(null);
@@ -184,7 +185,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
       <div className={clsx('sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-slate-700 bg-slate-900 px-2 text-xs', row.flagged && 'border-l-2 border-l-rose-400')}
         style={{ width: GANTT_LABEL_WIDTH }}>
         {row.flagged && <span className="text-rose-300" aria-label="工程の重なり">⚠</span>}
-        <span className="min-w-0 flex-1 truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small><PlanningBoardLateStarDates dates={lateStars.dates} /></span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small><PlanningBoardLateStarDates groups={lateStars.groups} focusedSeiban={interaction.focusedSeiban} onToggleSeiban={onToggleSeiban} /></span>
         {row.bars.some((bar) => bar.due == null) && <span className="text-slate-400">納期なし</span>}
       </div>
       <div className="relative shrink-0 overflow-hidden" style={{ width }}>

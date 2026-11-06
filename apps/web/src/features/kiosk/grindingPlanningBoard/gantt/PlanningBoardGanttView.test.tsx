@@ -86,10 +86,36 @@ describe('PlanningBoardGanttView', () => {
     }
     const dateLists = screen.getAllByTestId('planning-gantt-late-star-dates');
     expect(dateLists).toHaveLength(mode === 'backward' ? 2 : 1);
-    for (const badges of dateLists) expect([...badges.children].map((badge) => badge.textContent?.trim())).toEqual(['★10/11', '★10/13']);
+    for (const badges of dateLists) expect([...badges.children].map((badge) => badge.textContent?.trim())).toEqual(['★10/11 10/13']);
     rerender(draw(items.map((entry) => ({ ...entry, isCompleted: true }))));
     expect(screen.queryByTestId('planning-gantt-late-star')).toBeNull();
     expect(screen.queryByTestId('planning-gantt-late-star-dates')).toBeNull();
+  });
+
+  it('lights only one seiban from the late-star dates beside the machine name', () => {
+    const items = [item({ lslhSurface: true }), item({ itemId: 'other', fhincd: 'P2', fseiban: 'OTHER', lslhSurface: true })];
+    const extras = (fseiban: string, dates: string[]) => ({ fseiban, outsourceMarks: [], memo: null,
+      surfaceSendOutDates: dates.map((date) => ({ date, note: null })) });
+    const rows = new Map([['26-1001', extras('26-1001', ['2026-10-13', '2026-10-11'])], ['OTHER', extras('OTHER', ['2026-10-12'])]]);
+    render(<DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
+      <PlanningBoardGanttView {...props(items)} colorBySeiban
+        layout={buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
+          dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 })} />
+    </DScheduleMinutesContext.Provider>);
+    const dates = () => screen.getByTestId('planning-gantt-late-star-dates');
+    const button = (name: string) => within(dates()).getByRole('button', { name });
+    expect([...dates().children].map((chip) => chip.textContent)).toEqual(['★10/11 10/13', '★10/12']);
+    fireEvent.click(button('26-1001 ★10/11 10/13'));
+    expect(button('26-1001 ★10/11 10/13')).toHaveAttribute('aria-pressed', 'true');
+    expect(button('OTHER ★10/12')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-2', 'ring-white');
+    expect(screen.getByTestId('planning-gantt-bar-other')).toHaveClass('opacity-20');
+    fireEvent.click(button('OTHER ★10/12'));
+    expect(button('26-1001 ★10/11 10/13')).toHaveAttribute('aria-pressed', 'false');
+    expect(button('OTHER ★10/12')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(button('OTHER ★10/12'));
+    expect(button('OTHER ★10/12')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('opacity-20');
   });
 
   it('shows a normalized resource monthly average only in forward, without changing lane height', () => {

@@ -34,6 +34,7 @@ type Props = {
   placementByPart: PlanningBoardPlacementByPart;
   seibanColors?: ReadonlyMap<string, string>;
   focusedSeiban?: string | null;
+  onToggleSeiban?: (fseiban: string) => void;
   label?: ReactNode;
   start: number;
   end: number;
@@ -65,7 +66,7 @@ type Props = {
   onFocusChain: (bar: GanttBar) => void;
 };
 
-export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, label, start, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
   lanes, draggedItemId, insertionLeft, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const rowRef = useCallback((element: HTMLDivElement | null) => registerRow?.(row.key, element), [registerRow, row.key]);
@@ -163,7 +164,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
   return <div ref={rowRef} className="flex border-b border-slate-600" style={{ minHeight: 76 + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
     <div data-gantt-lane-label className="sticky left-0 z-20 flex shrink-0 flex-col justify-evenly border-r border-slate-700 bg-slate-900 px-2 py-0.5 text-xs" style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
       {label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
-      <PlanningBoardLateStarDates dates={lateStars.dates} />
+      <PlanningBoardLateStarDates groups={lateStars.groups} focusedSeiban={focusedSeiban} onToggleSeiban={onToggleSeiban} />
     </div>
     <div ref={track} data-gantt-track className="relative shrink-0 overflow-hidden" style={{ width }}>
       <PlanningBoardGanttSendOutStars bars={row.bars} window={window} start={start} dayWidth={dayWidth} />
