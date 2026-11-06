@@ -278,6 +278,8 @@ describe('PlanningBoardGanttView', () => {
     expect(late()).not.toHaveStyle({ outline: '3px solid rgb(251 113 133)' });
     expect(screen.queryByLabelText('遅れ')).not.toBeInTheDocument();
     const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
+    expect(legend).toHaveClass('max-h-[52px]', 'overflow-y-auto', 'snap-y', 'snap-mandatory', 'scroll-pt-1', 'overscroll-contain', 'gap-2', 'py-1');
+    for (const button of within(legend).getAllByRole('button')) expect(button).toHaveClass('min-h-[44px]', 'snap-start');
     expect(within(legend).getAllByText('26-1001')).toHaveLength(1);
     expect(within(legend).getByText('********')).toBeVisible();
     expect(within(legend).queryByText('unused')).not.toBeInTheDocument();
@@ -438,6 +440,7 @@ describe('PlanningBoardGanttView', () => {
     expect(viewport).toHaveStyle({ height: `${window.innerHeight - 10 - 52}px` });
     fireEvent.click(within(legend).getByRole('button', { name: '26-1001' }));
     expect(within(legend).getByRole('button', { name: 'すべて表示' })).toBeVisible();
+    expect(within(legend).getByRole('button', { name: 'すべて表示' })).toHaveClass('min-h-[44px]', 'snap-start');
     Object.defineProperty(legend, 'offsetHeight', { configurable: true, value: 104 });
     act(() => measure());
     expect(viewport).toHaveStyle({ height: `${window.innerHeight - 10 - 104}px` });
