@@ -82,13 +82,14 @@ describe('planningBoardAutoOrder', () => {
       item('ready', 2, '2026-10-20', { requiredMinutes: 30 })
     ]), arrivalFilterEnabled: true };
     const layout = buildForwardPlanningBoardGanttLayout(input);
-    expect(bars(layout)).toHaveLength(3);
-    expect(bars(layout).find((bar) => bar.item.itemId === 'hidden')).toMatchObject({ dimmedByArrival: true, tone: 'late' });
+    expect(bars(layout)).toHaveLength(2);
+    expect(bars(layout).find((bar) => bar.item.itemId === 'hidden')).toBeUndefined();
+    expect(layout.forwardQueue?.find((bar) => bar.item.itemId === 'hidden')).toMatchObject({ arrivalPending: true });
     expect(planningBoardOrderMetrics(layout)).toEqual({ lateCount: 0, waitMinutes: 0 });
     expect(layout.lateCount).toBe(0);
     const unfiltered = buildForwardPlanningBoardGanttLayout({ ...input, arrivalFilterEnabled: false });
     expect(planningBoardOrderMetrics(unfiltered)).toEqual({ lateCount: 1, waitMinutes: 100 });
-    expect(bars(layout).map((bar) => bar.segments)).toEqual(bars(unfiltered).map((bar) => bar.segments));
+    expect(bars(layout).map((bar) => bar.segments)).toEqual(bars(unfiltered).filter((bar) => bar.item.arrived !== false).map((bar) => bar.segments));
   });
   it('preserves current order for ties and reserves pins even when they deadlock precedence', () => {
     const input = options([item('successor', 1, null, { fhincd: 'part', processOrder: '20' }),

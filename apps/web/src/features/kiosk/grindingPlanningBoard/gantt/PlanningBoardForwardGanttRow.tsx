@@ -193,7 +193,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
             const segmentWidth = bar.unknown ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - 2);
             return <button key={index} type="button" data-testid={`planning-gantt-bar-${bar.item.itemId}${index ? `-segment-${index}` : ''}`}
               data-gantt-pinned={bar.item.orderPinned ? 'true' : undefined}
-              data-gantt-late={bar.tone === 'late' && !bar.dimmedByArrival && index === 0 ? 'true' : undefined}
+              data-gantt-late={bar.tone === 'late' && index === 0 ? 'true' : undefined}
               aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
               aria-pressed={pinMode ? Boolean(bar.item.orderPinned) : selected} disabled={disabled || bar.item.isCompleted}
               data-drag-disabled={pinMode || dragDisabled || disabled || !resourceView}
@@ -202,7 +202,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
                 inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
-                focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? clsx('ring-2 ring-white', bar.dimmedByArrival && 'opacity-50') : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : bar.dimmedByArrival && 'opacity-50',
+                focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ boxShadow: bar.item.orderPinned ? `${focusedSeiban === bar.item.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 opacity: draggedItemId === bar.item.itemId ? 0.3 : undefined,

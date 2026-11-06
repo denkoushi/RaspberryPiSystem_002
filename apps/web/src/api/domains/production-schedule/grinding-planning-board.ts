@@ -1,6 +1,8 @@
 import { api } from '../../http';
 
 import type {
+  GrindingPlanningBoardArrivalRequest,
+  GrindingPlanningBoardArrivalResponse,
   GrindingPlanningBoardProcessChipsRequest,
   GrindingPlanningBoardProcessChipsResponse,
   GrindingPlanningBoardResourceCapacityRequest,
@@ -184,5 +186,13 @@ export async function updateKioskGrindingPlanningBoardResourceCapacity(payload: 
   const { data } = await api.put<GrindingPlanningBoardResourceCapacityResponse>(
     '/kiosk/production-schedule/grinding-planning-board/resource-capacity', payload
   );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardArrival(payload: GrindingPlanningBoardArrivalRequest & { recorded: boolean }) {
+  const { recorded, ...body } = payload;
+  const url = '/kiosk/production-schedule/grinding-planning-board/arrival';
+  const { data } = recorded ? await api.put<GrindingPlanningBoardArrivalResponse>(url, body)
+    : await api.delete<GrindingPlanningBoardArrivalResponse>(url, { data: body });
   return data;
 }

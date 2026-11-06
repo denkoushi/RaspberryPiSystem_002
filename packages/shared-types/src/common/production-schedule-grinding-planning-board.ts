@@ -121,6 +121,7 @@ export interface GrindingPlanningBoardItem {
   isCompleted: boolean;
   lslhSurface: boolean;
   arrived?: boolean;
+  manualArrivalDate?: string | null;
   completionSource?: 'manual' | 'import' | null;
   progress: { completed: number; total: number; quantityKnown: boolean };
   /** 材料の購買行が無い部品は null / 省略 */
@@ -271,4 +272,15 @@ export interface GrindingPlanningBoardResourceCapacityRequest {
   resourceCd: string;
   dailyHours?: GrindingPlanningBoardResourceDailyHours;
   runsThroughBreaks?: boolean;
+}
+
+export interface GrindingPlanningBoardArrivalRequest {
+  itemId: string;
+  itemRevision: string;
+  overrideVersion?: number;
+}
+
+export interface GrindingPlanningBoardArrivalResponse {
+  itemId: string;
+  manualArrivalDate: string | null;
 }

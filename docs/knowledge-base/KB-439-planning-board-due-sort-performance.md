@@ -236,25 +236,27 @@ jsdom で計測したため、実ブラウザの layout と paint は含まな�
 
 ## Arrival Filter And Forward Gap Filling Follow-up
 
-「着」ONでもガントには表示対象製番の全未完了工程を積み、未到着の棒を
-`opacity-50`で表示する。工程チェーンの白枠は維持する。一覧、遅れ件数、
-「納期順」「並べ替え」「↶ 戻す」は到着判定の対象を維持し、未到着品の順位枠を保持する。
-並べ替えプレビューと遅れ・待ちの評価は全工程を積んだ同じ前向きレイアウトを使い、
-集計対象から未到着品を除く。
+「着」ONでは未着品のガントバーを描画しない。「次にやる順」は到着品を開始時刻順にし、
+未着品を保存順位の枠へ差し込む。未着カードは灰色の文字・色帯と高さ36px以上の「着」ボタンで表示し、
+ドラッグ対象から除外する。当日着のカードには開始時刻の下に「取り消し」を表示する。
+一覧、遅れ件数、「納期順」「並べ替え」「↶ 戻す」は到着品だけを対象にし、
+`mergeVisibleResourceOrder`で隠れた品の保存順位枠を保持する。
 
-資源の先頭工程の前工程が配置済みで、その終了が資源cursorより後なら、
-後続からcursorで開始できる最も順位の早い工程を先に配置する。
-前工程のない工程、または配置済み前工程がcursorまでに終了した工程だけが候補になる。
-候補がなければ従来の待ちと点線を残す。保存順位は変更せず、資源cursorと前工程終了の
-両方を満たしてから待ち工程を配置する。前工程未配置時と循環時のfallbackは維持する。
+`PUT /kiosk/production-schedule/grinding-planning-board/arrival`で当日着を記録し、同じパスの
+`DELETE`で取り消す。本文は`itemId`、`itemRevision`、任意の`overrideVersion`。
+認証端末のsiteKeyとitemの現在のrevisionを確認し、
+`ProductionScheduleGrindingPlanningBoardArrival`へdashboard・site・JST暦日・itemKeyの一意キーで保存する。
+応答には当日の記録だけを`manualArrivalDate`として付与し、記録があれば`arrived: true`とする。
+スナップショットへは保存しないため、全キオスクで共有され、翌日には前工程などの通常判定へ戻る。
+Webは保存成功時に当日着を即時反映し、ボードのクエリを再取得する。元CSV・保存順位は変更しない。
 
-`heads`の先頭indexと既存memo・描画共有は維持し、後続探索は前工程待ちの場合に限定した。
-`layoutParity.perf.tsx`の5条件は空き詰めによる開始・終了・待ち区間の変更に合わせて更新した。
-上記の既存性能測定値はこの仕様変更前の値である。
+前向き配置は未着工程を含む工程依存を保持する。先頭工程の前工程終了が資源cursorより後なら、
+後続からcursorで開始できる最も順位の早い工程を先に配置する。前工程なし、または配置済み前工程が
+cursorまでに終了した工程だけを候補にし、候補がなければ待ちと点線を残す。
+保存順位、前工程未配置・循環時のfallbackは変更しない。
 
-Follow-up validation: `cd apps/web && pnpm exec vitest run src/features/kiosk src/pages/kiosk`
-は262 files / 2520 tests passed（163.07秒）。`pnpm exec tsc --noEmit -p .`、変更した
-12 TS/TSXファイルへのESLint、`git diff --check`も成功した。`layoutParity`は更新後の期待値で成功。
-追加の`dueSort`性能計測は、既存ハーネスに`QueryClientProvider`がなく、
-`PlanningBoardGanttView`の`useMachineSignalResourceUptime`で停止したため未完了。
-計測ハーネスのこの不備は別件とし、性能値は更新していない。実ブラウザ・Pi実機検証は未実施。
+検証: Web関連32 files / 452 tests、API service/route 149 tests、変更ファイルのESLint、
+Web型検査、APIの`tsconfig.build.json`による型検査が成功。`layoutParity`は既存5条件の期待値を維持した。
+APIの指定`tsc --noEmit -p .`は既存のrootDir/include不整合（TS6059）で未完了。
+既存の性能測定値はこの仕様変更前の値である。localhost:5432に応答がなくDBテスト・migration適用は未実施。
+実ブラウザ・Pi実機検証も未実施。
