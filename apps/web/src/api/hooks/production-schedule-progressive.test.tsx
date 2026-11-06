@@ -44,7 +44,7 @@ function item(id: string): GrindingPlanningBoardItem {
     alternateRank: null,
     plannedQuantity: 5,
     requiredMinutes: 20,
-    requiredMinutesKnown: true,
+    lslhSurface: false, requiredMinutesKnown: true,
     isCompleted: false,
     progress: { completed: 0, total: 1, quantityKnown: false }
   };

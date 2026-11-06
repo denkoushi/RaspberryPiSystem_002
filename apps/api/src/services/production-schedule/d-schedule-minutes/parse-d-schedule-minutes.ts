@@ -5,6 +5,7 @@ import { calendarDate, cellText, formulaWithoutResult, inferDate, normalize, rea
 export type DScheduleMinutesBlock = {
   seiban: string;
   aliasSeibans: string[];
+  assignees: string[];
   partsCompleteDate: string | null;
   outsourceMarks: string[];
   surfaceSendOutDates: { date: string; label: string; note: string | null }[];
@@ -14,7 +15,7 @@ export type DScheduleMinutesBlock = {
 };
 export type DScheduleMinutesWarning = { code: string; seiban: string | null; cell: string | null; rawText: string | null };
 export type DScheduleMinutesParseResult =
-  | { ok: true; meetingDate: string; blocks: DScheduleMinutesBlock[]; warnings: DScheduleMinutesWarning[] }
+  | { ok: true; assigneeColumnFound: boolean; meetingDate: string; blocks: DScheduleMinutesBlock[]; warnings: DScheduleMinutesWarning[] }
   | { ok: false; reason: string; warnings: DScheduleMinutesWarning[] };
 
 const dateHeaders = ['出図', '部品完成', '組立完', '出荷', '組立納期', '出荷日', '注文書納期', '最終部品完'];
@@ -223,7 +224,7 @@ export async function parseDScheduleMinutesXlsx(input: {
     if (match[2] && !alias) warn('UNREADABLE_ALIAS', match[1], seibanCell);
     const partsCell = safeCell(row, columns.get('部品完成')!, row, match[1]);
     blocks.push({ seiban: match[1], aliasSeibans: alias ? [alias[1]] : [], partsCompleteDate: null,
-      outsourceMarks: [], surfaceSendOutDates: [], memo: null, sourceRow: row,
+      assignees: [], outsourceMarks: [], surfaceSendOutDates: [], memo: null, sourceRow: row,
       rawPartsCompleteText: hidden(sheet.getRow(row)) || hidden(sheet.getColumn(columns.get('部品完成')!)) || !partsCell ? null : cellText(partsCell) || null });
   }
   const visibleBlocks = blocks.filter((block) => !hidden(sheet.getRow(block.sourceRow)));
@@ -247,6 +248,17 @@ export async function parseDScheduleMinutesXlsx(input: {
     offsets.set(label, label === '部品完成' ? 0 : scores.indexOf(Math.max(...scores)));
   }
   for (const block of visibleBlocks) {
+    const assigneeColumn = columns.get('担当');
+    if (assigneeColumn && !hidden(sheet.getColumn(assigneeColumn))) {
+      for (let offset = 0; offset < (invalidShapes.has(block.sourceRow) ? 1 : 4); offset++) {
+        const row = block.sourceRow + offset;
+        if (hidden(sheet.getRow(row))) continue;
+        const cell = safeCell(row, assigneeColumn, block.sourceRow, block.seiban);
+        if (!cell || (cell.isMerged && cell.master.address !== cell.address)) continue;
+        const text = normalize(cellText(cell)).trim();
+        if (text && !block.assignees.includes(text)) block.assignees.push(text);
+      }
+    }
     const memos: string[] = [];
     {
       for (const [label, offset] of offsets) {
@@ -333,5 +345,5 @@ export async function parseDScheduleMinutesXlsx(input: {
     // A conflicting main key must not suppress an independently safe alias (or vice versa).
     uniqueBlocks.push({ ...block, seiban: keys[0], aliasSeibans: keys.slice(1) });
   }
-  return { ok: true, meetingDate, blocks: uniqueBlocks, warnings };
+  return { ok: true, assigneeColumnFound: columns.has('担当'), meetingDate, blocks: uniqueBlocks, warnings };
 }

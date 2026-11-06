@@ -9,7 +9,7 @@ const item = (fseiban: string, productNo: string, fhincd = 'PART'): GrindingPlan
   sourceRowId: 'source', fseiban, productNo, fhincd, fhinmei: '部品', machineName: null,
   processOrder: '10', originalResourceCd: '305', effectiveResourceCd: null,
   originalDueDate: null, effectiveDueDate: null, originalRank: null, alternateRank: null,
-  plannedQuantity: 1, requiredMinutes: 20, requiredMinutesKnown: true, isCompleted: false,
+  plannedQuantity: 1, requiredMinutes: 20, lslhSurface: false, requiredMinutesKnown: true, isCompleted: false,
   progress: { completed: 0, total: 1, quantityKnown: false }
 });
 const completed = [{ rowId: 'row-1', resourceCd: '305', resourceNames: ['研削機'], isCompleted: true }];

@@ -16,3 +16,6 @@ export const PRODUCTION_SCHEDULE_CUSTOMER_SCAW_DASHBOARD_ID =
 /** 生産日程に MH/SH 行も補完CSVも無い製番の機種表示（空欄は使わない） */
 export const SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL = '機種名未登録';
 export const COMPLETED_PROGRESS_VALUE = '完了';
+
+/** LSLH identification: docs/analysis/surface-treatment-process-codes-20261105.md */
+export const LSLH_SURFACE_PROCESS_CODES = ['1143016000', '1143016002'] as const;

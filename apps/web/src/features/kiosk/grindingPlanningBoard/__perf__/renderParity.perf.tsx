@@ -10,6 +10,10 @@ import { PlanningBoardGanttView } from '../gantt/PlanningBoardGanttView';
 
 import { productionFixture } from './fixture';
 
+vi.mock('../../../../api/hooks/machine-signal', () => ({
+  useMachineSignalResourceUptime: () => ({ data: undefined })
+}));
+
 it('preserves the original bar, star, now-line, heading and track geometry at every scale', () => {
   const fixture = productionFixture(12, 3);
   const digests: Record<string, string> = {};
@@ -38,22 +42,22 @@ it('preserves the original bar, star, now-line, heading and track geometry at ev
     view.unmount();
   }
   if (process.env.PLANNING_BOARD_RENDER_BASELINE) writeFileSync(process.env.PLANNING_BOARD_RENDER_BASELINE, JSON.stringify(digests, null, 2));
-  // Captured from the implementation before DOM consolidation.
+  // Captured from the current implementation before row-prop optimizations.
   expect(digests).toEqual({
-    "8h-1": "bdf068581ee1b42faf6966448684e79b0d7084973eeb345ad2f81f1aa2fb0a01",
-    "8h-2": "77f55e38efe4fe564ab7ff97805b1e5a5bdf257b90bcbe8e06d4e4c4e5ed11ef",
-    "8h-4": "58ac3df77a640ebabf6c58562b8b83871e1f328d9a0d947b7d6c106bec2ac031",
-    "8h-14": "484fdfbba69d28bdb0fae82bb29c4ea3240f7e269c08cffd2da6ce9538ee17ef",
-    "8h-56": "28cfa3508d1f3592ae1dc3543c0328800822f12f93721b3d1345b5bba6c403cc",
-    "10h-1": "cffe2002914d960f038f22dd5967efb1326a0c53dfb5806467e64e6a17962ea8",
-    "10h-2": "00a6f7d1b96700d9a8285fc57d8d9704de1721b63814daccf0450d2ffe8bdedc",
-    "10h-4": "dfbae4ba650dc74af5550eaee512a41880f2b05e64395267472d2dbe90854131",
-    "10h-14": "c2639b0fa0f55a6b390b4a7ccf0cb4325ebddaddde421b232fc9c9aa87926192",
-    "10h-56": "0fb87be1cda4142c43a7249705c4c54ad9dbbf873dc37e32e09a4deca2d9f7e4",
-    "24h-1": "1d9253dae4e2df10a6367bd6632a4f8dc40d1f6912f301b7fe7300dcdb206629",
-    "24h-2": "b0864b0e18866a738e85e4c4804d75dd14cb332cf304cf2e566c3622174930ff",
-    "24h-4": "db95ff8ae44a5c8575b6da718b6fbdc56f72ea1d75859cd6e20c7eef8b122670",
-    "24h-14": "9115a699f920ebfc2ad0965d6091ea20900c1ef072373b3cf115401e2a8fc108",
-    "24h-56": "8eb3145213f0c87568c274b1a07de3fa6219da117896f3c97c8fa8ecd0664f8d"
+    "8h-1": "5d978d3ae599f308901a7d5eb538619b000ad32afcf907099f40a66c32cbba90",
+    "8h-2": "a213f9574ba9c17b225cf395f513f46fd6c392f524556e92a24646bae300174d",
+    "8h-4": "d11baaa6fa9b472665ce16aa7ccd2ee0a7a95d14e4d2209d311ee2367b3ec435",
+    "8h-14": "21ac5bf9daec2c9de99594ab5a093c788aa686a6d642cc9649b59d017bd9d500",
+    "8h-56": "81405fda77f16d9e96a4abb0dcf4a1a75c1159ee99c6f990d39441ff2f9b52c4",
+    "10h-1": "c61c129cd393930da9f857891ec0a9315aba36db63152fa5fab29ec264c9baa4",
+    "10h-2": "9701afa0f6f69a36eadcebc858cd902936b9656d1c2f71cb4ba3bbed1feecf07",
+    "10h-4": "fdd0ccd17d82d5d97edeb0277f812426fc809a95180a9575b9267a34645a2050",
+    "10h-14": "2504e1a289d67fc7cc31e4dc9a2de82a128c19289440bc7af3cf33696f892e01",
+    "10h-56": "75c0976b1c757e53750b53eaa9b7d1761d1196ce65735de4c76e429a2d1d0379",
+    "24h-1": "39782465c7443823418015fbc71eee4c4d60e42f49f5b83efeb030d71824cef6",
+    "24h-2": "63af65d164d88f0a6a77d1df8e3fe8f05a6d97ad57aab8030a955154941128e8",
+    "24h-4": "4f02cdc51f8c2da0b69e707f24f2a18692c040da86775ca36fe8068656ff968f",
+    "24h-14": "f1ba3fa9479e2c3e69f1e1be6695f050259e94774f7477d500fa759fcabf9492",
+    "24h-56": "45c2f71065b2bfa07b9979e1918ec672c81e7b8556e15bcb501f484f6e137a7f"
 });
 });

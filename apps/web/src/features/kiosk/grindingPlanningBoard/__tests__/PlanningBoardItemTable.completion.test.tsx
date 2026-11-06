@@ -25,7 +25,7 @@ const item = (itemId: string, partial: Partial<GrindingPlanningBoardItem> = {}):
   alternateRank: null,
   plannedQuantity: 2,
   requiredMinutes: 120,
-  requiredMinutesKnown: true,
+  lslhSurface: false, requiredMinutesKnown: true,
   isCompleted: false,
   progress: { completed: 0, total: 1, quantityKnown: true },
   ...partial

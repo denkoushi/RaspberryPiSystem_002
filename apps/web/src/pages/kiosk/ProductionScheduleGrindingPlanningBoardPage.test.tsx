@@ -3,6 +3,9 @@ import { act, fireEvent, render as renderComponent, screen, waitFor, within } fr
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
+import * as chipStrips from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardChipStrips';
+import * as ganttLayout from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout';
+import * as chipData from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChipData';
 import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { LARGE_SCREEN_STORAGE_KEY } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 
@@ -25,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   load: vi.fn(),
   processChips: vi.fn(),
+  minutes: vi.fn(),
   refetch: vi.fn(),
   overrides: vi.fn(),
   pins: vi.fn(),
@@ -37,7 +41,7 @@ const mocks = vi.hoisted(() => ({
   order: vi.fn()
 }));
 
-vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => ({ data: { rows: [] } }) }));
+vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => mocks.minutes() }));
 
 vi.mock('../../api/hooks', () => ({
   useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
@@ -120,7 +124,7 @@ function fixture() {
     specialDue: null as null | { kind: 'today'; expiresAt: string },
     plannedQuantity: 5,
     requiredMinutes: 20,
-    requiredMinutesKnown: true,
+    lslhSurface: false, requiredMinutesKnown: true,
     isCompleted: completed,
     arrived: true,
     progress: { completed: completed ? 1 : 0, total: 1, quantityKnown: false }
@@ -180,6 +184,41 @@ function scanOrder(raw: string) {
 }
 
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
+  it('starts Excel non-machine seibans unchecked while keeping every seiban registered', () => {
+    const data = { ...fixture(), excelNonMachineFseibans: ['26-1042'] };
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    renderSeibanBoard();
+    expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    expect(within(drawer).getByRole('button', { name: /^26-1041 / })).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+    expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
+  });
+
+  it('excludes newly registered Excel non-machine seibans on refetch and preserves user choices', () => {
+    let current = { ...fixture(), excelNonMachineFseibans: [] as string[] };
+    mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, refetch: mocks.refetch }));
+    const view = renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '製番登録' })).getByRole('button', { name: /^26-1042 / }));
+    current = {
+      ...current,
+      registeredFseibans: [...current.registeredFseibans, '26-1043', '26-1044'],
+      seibanOrder: [...current.seibanOrder, '26-1043', '26-1044'],
+      excelNonMachineFseibans: ['26-1041', '26-1043'],
+      items: [...current.items, ...['26-1043', '26-1044'].map((fseiban) => ({
+        ...current.items[0]!, fseiban, itemId: fseiban, sourceRowId: fseiban
+      }))]
+    };
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1043')).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-board-seiban-26-1044')).toBeInTheDocument();
+  });
+
   it('reads Excel by default and switches the board query to SCAW and back', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'excel' }), expect.anything());
@@ -200,6 +239,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.capacity.mockReset();
     mocks.capacity.mockReturnValue({ data: undefined, isLoading: true });
     mocks.snapshot.mockReset();
+    mocks.minutes.mockReturnValue({ data: { rows: [] } });
     mocks.processChips.mockReset();
     mocks.processChips.mockReturnValue({ data: undefined, isError: false });
     mocks.load.mockReset();
@@ -248,7 +288,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it.each(['grinding', 'cutting'] as const)('filters incomplete %s rows in list and gantt, retains special due/completed rows and original ranks', (category) => {
+  it.each(['grinding', 'cutting'] as const)('dims unarrived %s bars, filters only list rows and retains special due/completed rows and ranks', (category) => {
     const data = fixture();
     data.category = category as typeof data.category;
     data.resourceCategories['305'] = category;
@@ -263,7 +303,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(screen.getByRole('button', { name: '研削', exact: true }));
     }
     expect(screen.getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
-    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50');
+    expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('opacity-50');
     expect(screen.getByTestId('planning-gantt-bar-c')).toBeInTheDocument();
     openListView();
     expect(screen.queryByTestId('planning-board-item-b')).not.toBeInTheDocument();
@@ -278,6 +319,19 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '未完', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '前工程が済んだものだけ表示' }));
     expect(screen.getByTestId('planning-board-item-b')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+    expect(screen.getByTestId('planning-gantt-bar-b')).not.toHaveClass('opacity-50');
+  });
+
+  it('keeps unarrived processes in the focused chain with white outlines', () => {
+    const data = fixture();
+    data.items[1] = { ...data.items[1]!, fseiban: data.items[0]!.fseiban, fhincd: data.items[0]!.fhincd,
+      processOrder: '20', arrived: false };
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50', 'outline-white');
+    expect(screen.getByTestId('planning-gantt-chain-badge-b')).toHaveTextContent('2');
   });
 
   it.each(['納期順に並べる', '並べ替え'])('%s preserves hidden rank slots without duplicates and undo restores the full order', async (action) => {
@@ -298,7 +352,11 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.getByRole('button', { name: '遅れなし', exact: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: action }));
-    if (action === '並べ替え') fireEvent.click(screen.getByRole('button', { name: '適用', exact: true }));
+    if (action === '並べ替え') {
+      expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50');
+      expect(screen.getByRole('status', { name: '並べ替えの比較' })).toHaveTextContent('遅れ 0 → 0');
+      fireEvent.click(screen.getByRole('button', { name: '適用', exact: true }));
+    }
     await waitFor(() => expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(1));
     expect(mocks.resourceOrderBulk.mock.calls[0]![0].items.map((item: { itemId: string }) => item.itemId)).toEqual(['d', 'b', 'c', 'a']);
     await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeEnabled());
@@ -340,6 +398,46 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
     expect(screen.getByTestId('planning-board-item-a').closest('[data-resource-scroll]')).toBe(scroll);
     expect(scroll.scrollTop).toBe(120);
+  });
+
+  it('skips layout and chip calculations for equal board/chips/minutes refetches and updates changed payloads', () => {
+    const strips = vi.spyOn(chipStrips, 'layoutChipStrips');
+    const layouts = vi.spyOn(ganttLayout, 'buildPlanningBoardGanttLayout');
+    const chips = vi.spyOn(chipData, 'buildPlanningBoardProcessChipsByPart');
+    let board = fixture();
+    let processChips = { chipsByPartKey: { ['26-1041\0PRODUCT-a\0PART-a']: [{ rowId: 'chip-a', resourceCd: '305', isCompleted: false }] } };
+    let minutes = { rows: [{ fseiban: '26-1041', outsourceMarks: ['A'], memo: null, surfaceSendOutDates: [{ date: '2026-09-11', note: null }] }] };
+    mocks.snapshot.mockImplementation(() => ({ data: board, isLoading: false, isError: false, refetch: mocks.refetch }));
+    mocks.processChips.mockImplementation(() => ({ data: processChips, isError: false }));
+    mocks.minutes.mockImplementation(() => ({ data: minutes }));
+    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).toHaveBeenCalled();
+    expect(chips).toHaveBeenCalled();
+    layouts.mockClear(); chips.mockClear(); strips.mockClear();
+    board = structuredClone(board);
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).not.toHaveBeenCalled(); expect(chips).not.toHaveBeenCalled(); expect(strips).not.toHaveBeenCalled();
+    processChips = structuredClone(processChips);
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).not.toHaveBeenCalled(); expect(chips).not.toHaveBeenCalled(); expect(strips).not.toHaveBeenCalled();
+    minutes = structuredClone(minutes);
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).not.toHaveBeenCalled(); expect(chips).not.toHaveBeenCalled(); expect(strips).not.toHaveBeenCalled();
+    board = { ...board, items: board.items.map((item, i) => i ? item : { ...item, requiredMinutes: item.requiredMinutes + 1 }) };
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).toHaveBeenCalled(); expect(chips).toHaveBeenCalled(); expect(strips).toHaveBeenCalled();
+    layouts.mockClear(); chips.mockClear(); strips.mockClear();
+    processChips = { chipsByPartKey: { ...processChips.chipsByPartKey,
+      ['26-1041\0PRODUCT-a\0PART-a']: [{ rowId: 'chip-a', resourceCd: 'CHANGED', isCompleted: false }] } };
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(chips).toHaveBeenCalledTimes(1);
+    expect(strips).toHaveBeenCalled();
+    expect(chips.mock.calls[0]![1]).toBe(processChips.chipsByPartKey);
+    expect(layouts).not.toHaveBeenCalled();
+    layouts.mockClear(); chips.mockClear();
+    board = { ...board, items: [...board.items].reverse() };
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(layouts).toHaveBeenCalled(); expect(chips).toHaveBeenCalled(); expect(strips).toHaveBeenCalled();
   });
 
   it('provides loaded part chips and hides them after a chip fetch error without breaking the board', () => {

@@ -40,6 +40,7 @@ vi.mock('../gantt/planningBoardGanttLayout', async (importOriginal) => {
     return layout;
   } };
 });
+vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 vi.mock('../../../../api/hooks', () => ({
   useKioskGrindingPlanningBoardResourceCapacity: () => ({ data: undefined }),
   useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false })

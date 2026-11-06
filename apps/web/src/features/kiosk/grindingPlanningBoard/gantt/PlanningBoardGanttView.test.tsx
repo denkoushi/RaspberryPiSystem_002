@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DScheduleMinutesContext } from '../../productionSchedule/DScheduleMinutesContext';
 import { buildPlanningBoardPlacementByPart } from '../planningBoardProcessChipData';
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
@@ -36,7 +37,7 @@ const item = (overrides: Partial<GrindingPlanningBoardItem> = {}): GrindingPlann
   itemId: 'a', kind: 'row', itemRevision: 'r1', version: 1, sourceRowId: 'a',
   fseiban: '26-1001', fhincd: 'P1', fhinmei: '部品', machineName: '機種', productNo: '1', processOrder: '10',
   originalResourceCd: '305', effectiveResourceCd: null, originalDueDate: '2026-10-16', effectiveDueDate: null,
-  originalRank: null, alternateRank: null, plannedQuantity: 1, requiredMinutes: 480, requiredMinutesKnown: true,
+  originalRank: null, alternateRank: null, plannedQuantity: 1, requiredMinutes: 480, lslhSurface: false, requiredMinutesKnown: true,
   isCompleted: false, progress: { completed: 0, total: 1, quantityKnown: true }, ...overrides
 });
 function props(items: GrindingPlanningBoardItem[] = [item()]) {
@@ -58,6 +59,39 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it.each(['backward', 'forward'] as const)('keeps overdue LSLH stars until completion in %s mode', (mode) => {
+    const items = [item({ lslhSurface: true, requiredMinutes: 1 }),
+      item({ itemId: 'b', processOrder: '20', lslhSurface: true }),
+      item({ itemId: 'paint', fhincd: 'P3', fseiban: 'PAINT' }),
+      item({ itemId: 'current', fhincd: 'P4', fseiban: 'CURRENT', lslhSurface: true })];
+    const extras = (fseiban: string, dates: string[]) => ({ fseiban, outsourceMarks: [], memo: null,
+      surfaceSendOutDates: dates.map((date) => ({ date, note: null })) });
+    const rows = new Map([
+      ['26-1001', extras('26-1001', ['2026-10-13', '2026-10-11', '2026-10-13', '2026-10-14', '2026-10-15'])],
+      ['PAINT', extras('PAINT', ['2026-10-10'])],
+      ['CURRENT', extras('CURRENT', ['2026-10-14', '2026-10-15'])]
+    ]);
+    const draw = (visible: GrindingPlanningBoardItem[]) => <DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
+      <PlanningBoardGanttView {...props(visible)} layout={buildPlanningBoardGanttLayout({ items: visible, mode,
+        allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'], dailyHoursByResource: {},
+        today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 })} />
+    </DScheduleMinutesContext.Provider>;
+    const { rerender } = render(draw(items));
+    const stars = screen.getAllByTestId('planning-gantt-late-star');
+    expect(stars).toHaveLength(2);
+    for (const star of stars) {
+      expect(star.closest('button')).toBeNull();
+      expect(star).toHaveClass('pointer-events-none', 'text-violet-300');
+      expect(star.style.textShadow).not.toBe('');
+    }
+    const dateLists = screen.getAllByTestId('planning-gantt-late-star-dates');
+    expect(dateLists).toHaveLength(mode === 'backward' ? 2 : 1);
+    for (const badges of dateLists) expect([...badges.children].map((badge) => badge.textContent?.trim())).toEqual(['★10/11', '★10/13']);
+    rerender(draw(items.map((entry) => ({ ...entry, isCompleted: true }))));
+    expect(screen.queryByTestId('planning-gantt-late-star')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-late-star-dates')).toBeNull();
+  });
+
   it('shows a normalized resource monthly average only in forward, without changing lane height', () => {
     uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: ' ３０５ ', averageRunSeconds: 28080 }] } });
     const values = props();
@@ -291,8 +325,18 @@ describe('PlanningBoardGanttView', () => {
     const viewport = screen.getByLabelText('ガントの日付と工程');
     const rect = (left: number, top: number, width: number) => ({ left, top, right: left + width, bottom: top + 40, width, height: 40 } as DOMRect);
     vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(rect(0, 100, 1000));
-    vi.spyOn(screen.getByTestId(`planning-gantt-bar-${earliest}`), 'getBoundingClientRect').mockReturnValue(rect(3000, 400, 80));
-    vi.spyOn(screen.getByTestId(`planning-gantt-bar-${later}`), 'getBoundingClientRect').mockReturnValue(rect(5000, 200, 80));
+    const rowOf = (id: string) => {
+      const button = screen.getByTestId(`planning-gantt-bar-${id}`);
+      return mode === 'forward' ? button.closest('[data-gantt-track]')!.parentElement! : button.parentElement!.parentElement!;
+    };
+    vi.spyOn(rowOf(earliest), 'getBoundingClientRect').mockReturnValue(rect(0, mode === 'forward' ? 397 : 394, 1000));
+    // Bar geometry comes from layout even when its DOM reports no geometry.
+    const firstButton = screen.getByTestId(`planning-gantt-bar-${earliest}`);
+    const labelWidth = mode === 'forward' ? 168 : 320;
+    const barLeft = parseFloat(firstButton.style.left);
+    const barWidth = parseFloat(firstButton.style.width);
+    vi.spyOn(firstButton, 'getBoundingClientRect').mockImplementation(() => { throw new Error('bar DOM must not be measured'); });
+    expect(screen.getByTestId(`planning-gantt-bar-${later}`)).toBeInTheDocument();
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     const chip = within(screen.getByRole('group', { name: '製番の色分け凡例' })).getByRole('button', { name: '26-1001' });
@@ -300,7 +344,7 @@ describe('PlanningBoardGanttView', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'true');
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo.mock.calls[0]![0]).toMatchObject({ top: 264, behavior: 'smooth' });
-    expect(scrollTo.mock.calls[0]![0].left).toBeGreaterThan(2000);
+    expect(scrollTo.mock.calls[0]![0].left).toBeCloseTo(Math.max(0, Math.min(barLeft + barWidth / 2 - (1120 - labelWidth) / 2, barLeft - 16)));
     // Pressing the same chip again only clears the spotlight.
     fireEvent.click(chip);
     expect(chip).toHaveAttribute('aria-pressed', 'false');
@@ -505,6 +549,127 @@ describe('forward PlanningBoardGanttView', () => {
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
+  function laterProps(special = false) {
+    const values = forwardProps([item({ requiredMinutes: 60, alternateRank: 1,
+      specialDue: special ? { kind: 'today', expiresAt: '2026-10-14T15:00:00Z' } : undefined }),
+    item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 }),
+    item({ itemId: 'c', fhincd: 'P3', requiredMinutes: 60, alternateRank: 3 })]);
+    const bars = values.layout.groups[0]!.rows[0]!.bars;
+    // Keep two jobs beyond even the two-day viewport.
+    for (const [index, bar] of bars.entries()) {
+      bar.start = values.layout.today + (index === 0 ? 9 / 24 : 4 + index);
+      bar.end = bar.start + 1 / 24;
+      bar.segments = [{ start: bar.start, end: bar.end }];
+    }
+    return values;
+  }
+  it('shows a slim edge without counts or cards, toggles the tray and updates on scroll', async () => {
+    const values = laterProps();
+    render(<PlanningBoardGanttView {...values} />);
+    const column = screen.getByRole('button', { name: '305の先の待ち' });
+    expect(column).toHaveTextContent('');
+    expect(column).toHaveClass('sticky', 'right-0');
+    expect(column.style.width).toBe('14px');
+    expect(within(column).queryAllByTestId(/planning-forward-later-/)).toHaveLength(0);
+    fireEvent.click(column);
+    const tray = screen.getByRole('region', { name: '305の先の待ち一覧' });
+    expect(tray).toHaveClass('sticky', 'left-0', 'overflow-x-auto');
+    expect(within(tray).getAllByTestId(/planning-forward-later-card-/)).toHaveLength(2);
+    fireEvent.click(column);
+    expect(screen.queryByRole('region', { name: '305の先の待ち一覧' })).toBeNull();
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    viewport.scrollLeft = 100000;
+    fireEvent.scroll(viewport);
+    await waitFor(() => expect(screen.queryByRole('button', { name: '305の先の待ち' })).toBeNull());
+  });
+  it.each(['before', 'after'] as const)('drags a later card into the track (%s)', (placement) => {
+    const values = laterProps();
+    render(<PlanningBoardGanttView {...values} />);
+    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
+    const card = screen.getByTestId('planning-forward-later-card-b');
+    const capture = vi.fn();
+    card.setPointerCapture = capture;
+    fireEvent.pointerDown(card, { clientX: 100, clientY: 100, button: 0 });
+    expect(capture).not.toHaveBeenCalled();
+    const x = placement === 'before' ? 0 : 100000;
+    fireEvent.pointerMove(card, { clientX: x, clientY: 20 });
+    expect(capture).toHaveBeenCalledWith(1);
+    expect(screen.getByTestId('planning-gantt-insertion')).toHaveClass('bg-emerald-300');
+    expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+    fireEvent.pointerUp(card, { clientX: x, clientY: 20 });
+    expect(values.onResourceReorder).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'b' }), expect.objectContaining({ itemId: placement === 'before' ? 'a' : 'c' }), placement);
+    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+  });
+  it.each(['specialDue', 'disabled', 'dragDisabled', 'pinMode', 'horizontal', 'threshold', 'escape', 'blur', 'cancel'] as const)(
+    'blocks later-card drops for %s', (guard) => {
+      const values = laterProps(guard === 'specialDue');
+      render(<PlanningBoardGanttView {...values} disabled={guard === 'disabled'} dragDisabled={guard === 'dragDisabled'} pinMode={guard === 'pinMode'} />);
+      fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
+      const card = screen.getByTestId('planning-forward-later-card-b');
+      const touch = guard === 'horizontal' || guard === 'threshold';
+      const event = { pointerType: touch ? 'touch' : 'mouse', clientX: 0, clientY: guard === 'threshold' ? 103 : 20 };
+      fireEvent.pointerDown(card, { pointerType: touch ? 'touch' : 'mouse', clientX: 100, clientY: 100, button: 0 });
+      fireEvent.pointerMove(card, event);
+      if (guard === 'escape') fireEvent.keyDown(document, { key: 'Escape' });
+      if (guard === 'blur') fireEvent.blur(window);
+      if (guard === 'cancel') fireEvent.pointerCancel(card);
+      expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+      fireEvent.pointerUp(card, event);
+      expect(values.onResourceReorder).not.toHaveBeenCalled();
+    }
+  );
+  it('moves a later card to another permitted resource and opens only one tray', () => {
+    const values = laterProps();
+    const other = structuredClone(values.layout.groups[0]!);
+    other.key = '306';
+    other.resource = '306';
+    other.label = '306';
+    other.rows[0]!.key = '306';
+    for (const bar of other.rows[0]!.bars) {
+      bar.resource = '306';
+      bar.item.itemId = `other-${bar.item.itemId}`;
+    }
+    values.layout.groups.push(other);
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    fireEvent.click(screen.getByRole('button', { name: '306の先の待ち' }));
+    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
+    expect(screen.queryByRole('region', { name: '306の先の待ち一覧' })).toBeNull();
+    const card = screen.getByTestId('planning-forward-later-card-b');
+    vi.mocked(document.elementsFromPoint).mockReturnValue([document.querySelector('[data-gantt-lane-resource="306"]')!]);
+    fireEvent.pointerDown(card, { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerMove(card, { clientX: 0, clientY: 20 });
+    fireEvent.pointerUp(card, { clientX: 0, clientY: 20 });
+    expect(onResourceMove).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'b' }), '306', expect.objectContaining({ itemId: 'other-a' }), 'before');
+    expect(values.onResourceReorder).not.toHaveBeenCalled();
+  });
+  it('refuses drops on the tray or the edge column', () => {
+    const values = laterProps();
+    render(<PlanningBoardGanttView {...values} />);
+    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
+    const tray = screen.getByRole('region', { name: '305の先の待ち一覧' });
+    const card = screen.getByTestId('planning-forward-later-card-b');
+    const lane = document.querySelector('[data-gantt-lane-resource="305"]')!;
+    vi.mocked(document.elementsFromPoint).mockReturnValue([card, tray, lane]);
+    fireEvent.pointerDown(card, { clientX: 100, clientY: 100, button: 0 });
+    fireEvent.pointerMove(card, { clientX: 0, clientY: 120 });
+    expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+    fireEvent.pointerUp(card, { clientX: 0, clientY: 120 });
+    expect(values.onResourceReorder).not.toHaveBeenCalled();
+  });
+  it('starts touch dragging only after 8px vertically', () => {
+    const values = laterProps();
+    render(<PlanningBoardGanttView {...values} />);
+    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
+    const card = screen.getByTestId('planning-forward-later-card-b');
+    fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 0, clientY: 100, button: 0 });
+    fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 0, clientY: 107 });
+    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+    fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 0, clientY: 108 });
+    expect(screen.getByTestId('planning-gantt-insertion')).toBeInTheDocument();
+    fireEvent.pointerUp(card, { pointerType: 'touch', clientX: 0, clientY: 108 });
+    expect(values.onResourceReorder).toHaveBeenCalledOnce();
+  });
   it('toggles pins without chain focus, selection or drag, and marks pinned segments', () => {
     vi.useFakeTimers();
     const values = forwardProps([item({ orderPinned: true, requiredMinutes: 600 })]);
@@ -665,7 +830,7 @@ describe('forward PlanningBoardGanttView', () => {
     const viewport = screen.getByLabelText('ガントの日付と工程');
     const content = viewport.firstElementChild as HTMLElement;
     const rect = (left: number, top: number, width: number, height: number) => ({ left, top, right: left + width, bottom: top + height, width, height } as DOMRect);
-    vi.spyOn(content, 'getBoundingClientRect').mockReturnValue(rect(10, 50, 3000, 500));
+    vi.spyOn(content, 'getBoundingClientRect').mockImplementation(() => rect(10, 50 - viewport.scrollTop, 3000, 500));
     const viewportBounds = rect(10, 120, 1120, 500);
     vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(viewportBounds);
     const bottomGap = 10; // GANTT_BOTTOM_GAP
@@ -673,33 +838,43 @@ describe('forward PlanningBoardGanttView', () => {
     act(() => { window.dispatchEvent(new Event('resize')); });
     expect(viewport).toHaveStyle({ height: expectedHeight });
     const segments = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)).find(bar => bar.item.itemId === 'a')!.segments!;
-    const last = screen.getByTestId(`planning-gantt-bar-a-segment-${segments.length - 1}`);
-    vi.spyOn(last, 'getBoundingClientRect').mockReturnValue(rect(500, 100, 80, 70));
-    const measureNext = vi.spyOn(screen.getByTestId('planning-gantt-bar-b'), 'getBoundingClientRect').mockReturnValue(rect(700, 300, 40, 70));
+    const dayWidth = (1120 - 168) / 2;
+    segments[segments.length - 1] = { start: values.layout.start + 322 / dayWidth, end: values.layout.start + 404 / dayWidth };
+    const nextBar = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)).find(bar => bar.item.itemId === 'b')!;
+    nextBar.segments = [{ start: values.layout.start + 522 / dayWidth, end: values.layout.start + 564 / dayWidth }];
+    vi.spyOn(screen.getByTestId('planning-gantt-bar-a').closest('[data-gantt-track]')!.parentElement!, 'getBoundingClientRect')
+      .mockImplementation(() => rect(0, 97 - viewport.scrollTop, 1000, 100));
+    vi.spyOn(screen.getByTestId('planning-gantt-bar-b').closest('[data-gantt-track]')!.parentElement!, 'getBoundingClientRect')
+      .mockImplementation(() => rect(0, 297 - viewport.scrollTop, 1000, 100));
     tap(screen.getByTestId('planning-gantt-bar-a'));
     expect(viewport).toHaveStyle({ height: expectedHeight });
     const path = screen.getByTestId('planning-gantt-chain-link');
-    expect(path).toHaveAttribute('d', 'M 570 85 C 630 85, 630 285, 690 285');
+    const expectPath = (pixelsPerDay: number) => {
+      const x1 = 168 + (segments.at(-1)!.end - values.layout.start) * pixelsPerDay - 2;
+      const x2 = 168 + (nextBar.segments![0]!.start - values.layout.start) * pixelsPerDay;
+      const bend = Math.max(24, Math.abs(x2 - x1) / 2);
+      expect(path).toHaveAttribute('d', `M ${x1} 85 C ${x1 + bend} 85, ${x2 - bend} 285, ${x2} 285`);
+      expect(screen.getByTestId('planning-gantt-chain-links').querySelector('circle')).toHaveAttribute('cx', String(x2));
+    };
+    expectPath(dayWidth);
     expect(path).toHaveAttribute('stroke-dasharray', '6 4');
     expect(path).toHaveAttribute('stroke-width', '2.5');
-    expect(screen.getByTestId('planning-gantt-chain-links').querySelector('circle')).toHaveAttribute('cx', '690');
+
     const step = within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /工順20/ });
     fireEvent.click(step);
     expect(step).toHaveAttribute('aria-current', 'step');
     expect(step).toHaveClass('ring-white');
-    expect(viewport.scrollLeft).toBe(66);
+    expect(viewport.scrollLeft).toBeCloseTo(66);
     expect(viewport.scrollTop).toBe(144);
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     fireEvent.click(step);
-    expect(scrollTo).toHaveBeenCalledWith({ left: 132, top: 288, behavior: 'smooth' });
-    measureNext.mockReturnValue(rect(800, 300, 40, 70));
+    expect(scrollTo).toHaveBeenCalledWith({ left: expect.closeTo(66), top: 144, behavior: 'smooth' });
     rerender(<PlanningBoardGanttView {...values} scale={4} />);
-    expect(path).toHaveAttribute('d', 'M 570 85 C 680 85, 680 285, 790 285');
-    measureNext.mockReturnValue(rect(900, 300, 40, 70));
+    expectPath((1120 - 168) / 4);
     Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: 1000 });
     fireEvent(window, new Event('resize'));
-    expect(path).toHaveAttribute('d', 'M 570 85 C 730 85, 730 285, 890 285');
+    expectPath((1000 - 168) / 4);
     fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
     expect(viewport).toHaveStyle({ height: expectedHeight });
   });
@@ -741,12 +916,12 @@ describe('forward PlanningBoardGanttView', () => {
     // In a short viewport the usual 36px top offset would leave the bar under the strip.
     Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 200 });
     vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 100, left: 0 } as DOMRect);
-    vi.spyOn(screen.getByTestId('planning-gantt-bar-b'), 'getBoundingClientRect')
-      .mockReturnValue({ top: 400, bottom: 500, left: 700, width: 40 } as DOMRect);
+    vi.spyOn(screen.getByTestId('planning-gantt-bar-b').closest('[data-gantt-track]')!.parentElement!, 'getBoundingClientRect')
+      .mockReturnValue({ top: 397 } as DOMRect);
     const scrollTo = vi.fn();
     Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scrollTo });
     fireEvent.click(within(strip).getByRole('button', { name: /工順20/ }));
-    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 500 - 100 - 200 + 96, behavior: 'smooth' }));
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 470 - 100 - 200 + 96, behavior: 'smooth' }));
     const heightBeforeClose = viewport.style.height;
     fireEvent.click(within(strip).getByRole('button', { name: '工程のつながりを閉じる' }));
     expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
@@ -801,6 +976,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(bar).toHaveClass('touch-pan-y');
     expect(screen.getByTestId('planning-gantt-drag-ghost')).toHaveTextContent('305 移動する部品');
     expect(within(lane).getByTestId('planning-gantt-insertion')).toHaveStyle({ left: target.style.left });
+    expect(screen.getAllByTestId('planning-gantt-insertion')).toHaveLength(1);
+    expect(bar.closest('[data-gantt-lane]')).not.toContainElement(screen.getByTestId('planning-gantt-insertion'));
     fireEvent.pointerMove(bar, { clientX: x, clientY: y + 1 });
     expect(canMoveResource).toHaveBeenCalledTimes(2);
     fireEvent.pointerUp(bar, { clientX: x, clientY: y });

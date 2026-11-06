@@ -38,6 +38,7 @@ import { usePlanningBoardLargeScreen } from '../../features/kiosk/grindingPlanni
 import { usePlanningBoardNotices } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardNotices';
 import { usePlanningBoardPageGantt } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt';
 import { usePlanningBoardPageItems } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageItems';
+import { usePlanningBoardQueryData } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardQueryData';
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import { isVisibleByArrival } from '../../features/kiosk/isVisibleByArrival';
 import { DScheduleMinutesProvider } from '../../features/kiosk/productionSchedule/DScheduleMinutesContext';
@@ -188,7 +189,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     notify('保存できませんでした。時間をおいて再試行してください。', 'error');
   }, [notify]);
 
-  const data = boardQuery.data;
+  const data = usePlanningBoardQueryData(boardQuery.data);
   const scopeReady = boardQuery.scopeReady;
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady || Boolean(orderPreview);
@@ -241,11 +242,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [queuedItems, completionOverlay, data?.siteKey, category, status, boardQuery.isPlaceholderData]);
   const arrivalItems = useMemo(() => displayItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [displayItems, arrivalFilterEnabled]);
 
+  const ganttItems = useMemo(() => displayItems.filter((item) => view === 'seiban' && focusedFseiban ? item.fseiban === focusedFseiban : activeFseibans.has(item.fseiban)), [displayItems, view, focusedFseiban, activeFseibans]);
+
   const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(arrivalItems), [arrivalItems]);
   const chipsQuery = useKioskGrindingPlanningBoardProcessChips(chipParts);
-  const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(
-    arrivalItems, chipsQuery.isError ? undefined : chipsQuery.data?.chipsByPartKey
-  ), [arrivalItems, chipsQuery.isError, chipsQuery.data]);
+  const chipData = usePlanningBoardQueryData(chipsQuery.data);
+  const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(arrivalItems, chipsQuery.isError ? undefined : chipData?.chipsByPartKey), [arrivalItems, chipsQuery.isError, chipData]);
   const placementByPart = useMemo(() => buildPlanningBoardPlacementByPart(arrivalItems), [arrivalItems]);
 
   useEffect(() => {
@@ -307,7 +309,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const previous = registeredServerFseibansRef.current;
     boardSiteKeyRef.current = data.siteKey;
     if (!activeInitialized || siteChanged) {
-      setActiveFseibans(new Set(data.seibanOrder));
+      setActiveFseibans(new Set(data.seibanOrder.filter((value) => !(data.excelNonMachineFseibans ?? []).includes(value))));
       setActiveInitialized(true);
     }
     if (!openInitialized || siteChanged) {
@@ -315,7 +317,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setOpenInitialized(true);
     }
     if (!writeQueue.pending) {
-      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value));
+      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value) && !(data.excelNonMachineFseibans ?? []).includes(value));
       if (added.length) {
         setActiveFseibans((current) => new Set([...current, ...added]));
         setOpenFseibans((current) => new Set([...current, ...added]));
@@ -630,13 +632,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     focusItems, gantt, orderActionsDisabled, ganttLayout, lastResourceOrder, handleOrderScan,
     moveResourceInGantt, sortResourceOrdersByDue, proposeResourceOrder, applyResourceOrder, togglePin, undoResourceOrder
   } = usePlanningBoardPageGantt({
-    focusedFseiban, sortedItemsBySeiban, view, visibleItems, nowMs, ganttEnabled, allocation, category,
+    focusedFseiban, sortedItemsBySeiban, view, visibleItems, ganttItems, arrivalFilterEnabled, nowMs, ganttEnabled, allocation, category,
     data, registeredFseibans, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
     resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync,
     setColorBySeiban, setFocusedFseiban, setOpenFseibans, setFocusedSeiban, setScanFocusKey, setScanNotice,
     scopeReady, pinMode, canMoveResource, snapshotResourceOrder, notify, resourceOrderHistoryId, enqueueOverrides,
-    setResourceOrderHistory, rememberResourceOrder, setPinMode, setOrderPreview, sourceRevision, rankConflict,
-    orderConflict, updatePinsAsync
+    setResourceOrderHistory, rememberResourceOrder, setPinMode, setOrderPreview, sourceRevision, rankConflict, orderConflict, updatePinsAsync
   });
   const openEditorForItem = useCallback((item: GrindingPlanningBoardItem) => openEditor([item]), [openEditor]);
   const returnFromFocus = useCallback(() => setFocusedFseiban(null), []);

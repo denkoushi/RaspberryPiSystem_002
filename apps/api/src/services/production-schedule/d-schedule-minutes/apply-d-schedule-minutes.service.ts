@@ -121,6 +121,8 @@ export async function applyDScheduleMinutes(input: {
       if (dateChanged) metrics.dateChanged += 1;
       else metrics.unchanged += 1;
       const values = {
+        assignees: block.assignees,
+        assigneesKnown: input.result.assigneeColumnFound,
         partsCompleteDate,
         outsourceMarks: block.outsourceMarks,
         surfaceSendOutDates: block.surfaceSendOutDates,
@@ -132,6 +134,7 @@ export async function applyDScheduleMinutes(input: {
       };
       // Keep provenance and updatedAt intact for an identical file, including a new message ID.
       const unchanged = previous && !dateChanged &&
+        isDeepStrictEqual(previous.assignees, values.assignees) && previous.assigneesKnown === values.assigneesKnown &&
         JSON.stringify(previous.outsourceMarks) === JSON.stringify(values.outsourceMarks) &&
         isDeepStrictEqual(previous.surfaceSendOutDates, values.surfaceSendOutDates) &&
         previous.memo === values.memo && previous.rawPartsCompleteText === values.rawPartsCompleteText &&

@@ -1,5 +1,6 @@
 import { GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 
+import { isVisibleByArrival } from '../../isVisibleByArrival';
 import {
   compareProcessOrder,
   sortPlanningBoardResources,
@@ -44,6 +45,7 @@ export type GanttBar = {
   waitFrom?: number;
   predecessorEnd?: number;
   lateDays?: number;
+  dimmedByArrival?: boolean;
 };
 export type GanttRow = { key: string; label: string; detail: string; bars: GanttBar[]; flagged: boolean; connectors: { start: number; end: number }[] };
 export type GanttGroup = { key: string; label: string; resource: string | null; category?: 'grinding' | 'cutting'; rows: GanttRow[] };
@@ -69,6 +71,7 @@ export type GanttLayoutOptions = {
   mode?: 'forward' | 'backward';
   now?: Date;
   laneOrder?: Record<string, string[]>;
+  arrivalFilterEnabled?: boolean;
 };
 
 export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): GanttLayout {
@@ -88,7 +91,8 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
       // Give the due marker a tiny interval for same-day chain checks; its visual width is fixed.
       start: end == null ? null : unknown ? end - 0.001 : end - item.requiredMinutes! / (hours * 60),
       tone: item.isCompleted ? 'completed' : due && due < options.today ? 'late' : 'planned',
-      overlaps: [], flagged: false
+      overlaps: [], flagged: false,
+      ...(!isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)) ? { dimmedByArrival: true } : {})
     };
     const chain = parts.get(bar.partKey) ?? [];
     chain.push(bar);
@@ -258,6 +262,7 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     scheduled.set(item.itemId, { item, resource, due, unknown, ...timing,
       partKey: planningBoardPartKey(item), tone: lateDays > 0 ? 'late' : 'planned', lateDays,
       overlaps: [], flagged: false,
+      ...(!isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)) ? { dimmedByArrival: true } : {}),
       ...(ready > cursor + 1e-10 ? { waitFrom: cursor, predecessorEnd: ready } : {}) });
     cursors.set(resource, timing.end);
   };
@@ -271,6 +276,25 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
         if (!scheduled.has(item.itemId)) {
           const predecessor = predecessors.get(item.itemId);
           if (predecessor && !scheduled.has(predecessor)) break;
+          const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
+          const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, !options.runsThroughBreaks?.has(resource));
+          const predecessorBar = predecessor ? scheduled.get(predecessor) : undefined;
+          if (predecessorBar && predecessorBar.end! > cursor + 1e-10) {
+            let filler: GrindingPlanningBoardItem | undefined;
+            for (let index = head + 1; index < queue.length; index++) {
+              const candidate = queue[index]!;
+              if (scheduled.has(candidate.itemId)) continue;
+              const previous = predecessors.get(candidate.itemId);
+              if (!previous || (scheduled.has(previous) && scheduled.get(previous)!.end! <= cursor + 1e-10)) {
+                filler = candidate;
+                break;
+              }
+            }
+            if (filler) {
+              place(filler, resource); progressed = true;
+              continue;
+            }
+          }
           place(item, resource); progressed = true;
         }
         head++;
@@ -321,6 +345,6 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     });
   return { groups, start: today, today, now, mode: 'forward', overlapCount: 0,
     end: Math.min(today + 400, Math.max(today + scale + 2, ...bars.map((bar) => Math.ceil(bar.end!) + 1))),
-    lateCount: bars.filter((bar) => bar.tone === 'late').length,
+    lateCount: bars.filter((bar) => bar.tone === 'late' && !bar.dimmedByArrival).length,
     completedOnly: options.items.length > 0 && sorted.length === 0 };
 }
