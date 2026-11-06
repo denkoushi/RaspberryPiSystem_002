@@ -100,6 +100,57 @@ describe('forward planningBoardGanttLayout', () => {
   const forward = (items: GrindingPlanningBoardItem[], options: Partial<GanttLayoutOptions> = {}) => layout(items, {
     mode: 'forward', view: 'resource', now: new Date('2026-10-14T13:00:00+09:00'), ...options
   });
+  it.each([false, true])('compacts arrived work and restores an arrival at its ranked slot (saved order %s)', (explicit) => {
+    const items = ['first', 'pending', 'last'].map((id, index) => item({
+      itemId: id, fhincd: id, alternateRank: explicit ? 3 - index : index + 1,
+      requiredMinutes: 30, arrived: id !== 'pending'
+    }));
+    const options: Partial<GanttLayoutOptions> = { arrivalFilterEnabled: true,
+      ...(explicit ? { laneOrder: { '305': ['first', 'pending', 'last'] } } : {}) };
+    const result = forward(items, options);
+    const [first, last] = bars(result);
+    expect(bars(result).map((bar) => bar.item.itemId)).toEqual(['first', 'last']);
+    expect(last!.start).toBe(first!.end);
+    expect(result.forwardQueue?.map((bar) => bar.item.itemId)).toEqual(['first', 'pending', 'last']);
+    expect(result.forwardQueue?.[0]).toBe(first);
+    expect(result.forwardQueue?.[2]).toBe(last);
+    expect(result.forwardQueue?.[1]).toMatchObject({ arrivalPending: true, start: null, end: null });
+    expect(result.forwardQueue?.[1]?.segments).toBeUndefined();
+
+    const arrived = forward(items.map((value) => ({ ...value, arrived: true })), options);
+    const [arrivedFirst, newlyArrived, shiftedLast] = bars(arrived);
+    expect(bars(arrived).map((bar) => bar.item.itemId)).toEqual(['first', 'pending', 'last']);
+    expect(newlyArrived!.start).toBe(arrivedFirst!.end);
+    expect(shiftedLast!.start).toBe(newlyArrived!.end);
+    expect(shiftedLast!.start! - last!.start!).toBeCloseTo(30 / 1440);
+
+    const unfiltered = forward(items, { ...options, arrivalFilterEnabled: false });
+    expect(unfiltered).toEqual(forward(items, { ...options, arrivalFilterEnabled: undefined }));
+    expect(bars(unfiltered).map(({ start, end, segments }) => ({ start, end, segments })))
+      .toEqual(bars(arrived).map(({ start, end, segments }) => ({ start, end, segments })));
+    expect(unfiltered.forwardQueue).toBeUndefined();
+    const unfilteredBars = bars(unfiltered);
+    expect(unfilteredBars).toHaveLength(3);
+    expect(unfilteredBars[1]!.start).toBe(unfilteredBars[0]!.end);
+    expect(unfilteredBars[2]!.start).toBe(unfilteredBars[1]!.end);
+  });
+  it('excludes pending predecessors across resources and pending fillers from scheduling', () => {
+    const result = forward([
+      item({ itemId: 'pre', originalResourceCd: '584', requiredMinutes: 120 }),
+      item({ itemId: 'pendingPre', processOrder: '20', originalResourceCd: '999', arrived: false }),
+      item({ itemId: 'waiting', processOrder: '30', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'pendingFiller', fhincd: 'P2', alternateRank: 2, arrived: false }),
+      item({ itemId: 'ready', fhincd: 'P3', alternateRank: 3, requiredMinutes: 30 })
+    ], { arrivalFilterEnabled: true, dailyHoursByResource: { '305': 24, '584': 24 } });
+    const byId = new Map(bars(result).map((bar) => [bar.item.itemId, bar]));
+    expect([...byId.keys()]).not.toContain('pendingPre');
+    expect([...byId.keys()]).not.toContain('pendingFiller');
+    expect(byId.get('ready')!.start).toBeCloseTo(today + 13 / 24);
+    expect(byId.get('waiting')!.start).toBe(byId.get('pre')!.end);
+    expect(byId.get('waiting')!.waitFrom).toBe(byId.get('ready')!.end);
+    expect(result.forwardQueue?.filter((bar) => bar.resource === '305').map((bar) => bar.item.itemId))
+      .toEqual(['ready', 'pendingFiller', 'waiting']);
+  });
   it('starts at JST now and follows resource rank back-to-back, with one lane and today as origin', () => {
     const result = forward([item({ itemId: 'b', fhincd: 'P2', alternateRank: 2, requiredMinutes: 30 }), item({ alternateRank: 1, requiredMinutes: 60 })]);
     const [a, b] = bars(result);

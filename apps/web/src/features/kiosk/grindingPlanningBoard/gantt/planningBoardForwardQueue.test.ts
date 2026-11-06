@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { canReorderForwardBars, forwardItemDetails, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
-import { dateToDay } from './planningBoardGanttLayout';
+import { buildForwardPlanningBoardGanttLayout, dateToDay } from './planningBoardGanttLayout';
 
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -49,11 +49,39 @@ describe('forward queue helpers', () => {
   it('inserts unarrived jobs at saved slots while keeping arrived jobs in start order', () => {
     const first = bar('first', today);
     const later = bar('later', today + 1);
-    const hidden = bar('hidden', today, { arrivalPending: true, item: item({ itemId: 'hidden', arrived: false }) });
+    const hidden = bar('hidden', today, { arrivalPending: true, start: null, end: null, item: item({ itemId: 'hidden', arrived: false }) });
     const board = { ...layout([first, later]), forwardQueue: [later, hidden, first] };
     expect(forwardQueueWindow(board, later).map(({ bar }) => bar.item.itemId)).toEqual(['first', 'hidden', 'later']);
     expect(canReorderForwardBars(first, hidden)).toBe(false);
     expect(canReorderForwardBars(hidden, first)).toBe(false);
+  });
+
+  it('keeps saved pending slots without times and inserts newly arrived work before later jobs', () => {
+    const items = ['last', 'pending', 'first'].map((id, index) => item({ itemId: id, fhincd: id,
+      alternateRank: index + 1, requiredMinutes: 30, arrived: id !== 'pending' }));
+    const options = { items, allocation: 'alternate' as const, view: 'resource' as const,
+      resources: ['305'], seibanOrder: [], dailyHoursByResource: {}, today: '2026-10-14', scale: 14,
+      now: new Date('2026-10-14T13:00:00+09:00'), arrivalFilterEnabled: true,
+      laneOrder: { '305': ['first', 'pending', 'last'] } };
+    const board = buildForwardPlanningBoardGanttLayout(options);
+    const queue = forwardQueueWindow(board, board.forwardQueue![0]!);
+    expect(queue.map(({ bar, position }) => [bar.item.itemId, position]))
+      .toEqual([['first', 1], ['pending', 2], ['last', 3]]);
+    expect(queue[1]!.bar).toMatchObject({ arrivalPending: true, start: null, end: null });
+    expect(queue[1]!.bar.segments).toBeUndefined();
+    expect(forwardStartLabel(queue[1]!.bar)).toBeNull();
+    expect(queue[2]!.bar.start).toBe(queue[0]!.bar.end);
+    const arrived = buildForwardPlanningBoardGanttLayout({ ...options,
+      items: items.map((value) => ({ ...value, arrived: true })) });
+    const next = forwardQueueWindow(arrived, arrived.forwardQueue![0]!);
+    expect(next.map(({ bar }) => bar.item.itemId)).toEqual(['first', 'pending', 'last']);
+    expect(next[1]!.bar.arrivalPending).toBeUndefined();
+    expect(next[1]!.bar.start).toBe(next[0]!.bar.end);
+    expect(next[2]!.bar.start).toBe(next[1]!.bar.end);
+    expect(next[2]!.bar.start! - queue[2]!.bar.start!).toBeCloseTo(30 / 1440);
+    const unfiltered = buildForwardPlanningBoardGanttLayout({ ...options, arrivalFilterEnabled: false });
+    expect(forwardQueueWindow(unfiltered, next[0]!.bar).map(({ bar }) => bar.start))
+      .toEqual(next.map(({ bar }) => bar.start));
   });
 
   it('formats the start with weekday and uses the first segment of a bar split by breaks', () => {

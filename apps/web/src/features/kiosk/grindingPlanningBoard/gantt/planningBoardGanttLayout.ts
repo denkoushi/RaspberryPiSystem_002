@@ -1,6 +1,7 @@
 import { GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 
 import { isVisibleByArrival } from '../../isVisibleByArrival';
+import { mergeVisibleResourceOrder } from '../mergeVisibleResourceOrder';
 import {
   compareProcessOrder,
   sortPlanningBoardResources,
@@ -231,20 +232,23 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   const now = jstDay(options.now ?? new Date());
   const today = Math.floor(now);
   const sorted = sortGrindingPlanningBoardItems(options.items.filter((item) => !item.isCompleted), seibanOrder, 'resource', allocation);
-  const { parts, predecessors } = forwardPlanningBoardPredecessors(sorted);
-  const lanes = new Map<string, GrindingPlanningBoardItem[]>();
+  const schedulingItems = sorted.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)));
+  const { parts, predecessors } = forwardPlanningBoardPredecessors(schedulingItems);
+  const allLanes = new Map<string, GrindingPlanningBoardItem[]>();
   for (const item of sorted) {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
-    const queue = lanes.get(resource);
+    const queue = allLanes.get(resource);
     if (queue) queue.push(item);
-    else lanes.set(resource, [item]);
+    else allLanes.set(resource, [item]);
   }
-  for (const [resource, queue] of lanes) {
+  for (const [resource, queue] of allLanes) {
     const order = options.laneOrder?.[resource];
     if (!order) continue;
     const ranks = new Map(order.map((id, index) => [id, index]));
     queue.sort((a, b) => (ranks.get(a.itemId) ?? Infinity) - (ranks.get(b.itemId) ?? Infinity));
   }
+  const lanes = new Map([...allLanes].map(([resource, queue]) => [resource,
+    queue.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)))]));
   const heads = new Map<string, number>();
   const scheduled = new Map<string, GanttBar>();
   const cursors = new Map<string, number>();
@@ -265,7 +269,7 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     cursors.set(resource, timing.end);
   };
   // Resolve resource heads only after their predecessors. Each pass schedules work, so it is bounded.
-  while (scheduled.size < sorted.length) {
+  while (scheduled.size < schedulingItems.length) {
     let progressed = false;
     for (const [resource, queue] of lanes) {
       let head = heads.get(resource) ?? 0;
@@ -324,12 +328,17 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
       place(candidate.item, candidate.resource);
     }
   }
-  const allBars = options.laneOrder ? [...scheduled.values()] : sorted.map((item) => scheduled.get(item.itemId)!);
-  const bars = allBars.filter((bar) => isVisibleByArrival(bar.item, Boolean(options.arrivalFilterEnabled)));
-  // Preserve saved slots for hidden items; only arrived items get start-time ordering in the popover.
-  const forwardQueue = options.arrivalFilterEnabled ? sorted.map((item) => {
-    const bar = scheduled.get(item.itemId)!;
-    return isVisibleByArrival(item, true) ? bar : { ...bar, arrivalPending: true };
+  const bars = options.laneOrder ? [...scheduled.values()] : schedulingItems.map((item) => scheduled.get(item.itemId)!);
+  // Keep pending items in their ranked slots while arrived items follow actual scheduling (including fillers).
+  const forwardQueue = options.arrivalFilterEnabled ? [...allLanes].flatMap(([resource, queue]) => {
+    const byId = new Map(queue.map((item): [string, GanttBar] => [item.itemId, scheduled.get(item.itemId) ?? {
+      item, resource, due: resolveGrindingPlanningBoardDueDate(item, allocation), partKey: planningBoardPartKey(item),
+      start: null, end: null, unknown: !item.requiredMinutesKnown || !item.requiredMinutes,
+      tone: 'planned', overlaps: [], flagged: false, arrivalPending: true
+    }]));
+    const visibleOrder = bars.filter((bar) => bar.resource === resource).sort((a, b) => a.start! - b.start!)
+      .map((bar) => bar.item.itemId);
+    return mergeVisibleResourceOrder(queue.map((item) => item.itemId), visibleOrder).map((id) => byId.get(id)!);
   }) : undefined;
   const row = (key: string, label: string, detail: string, members: GanttBar[]): GanttRow => ({
     key, label, detail, bars: members, flagged: false,
