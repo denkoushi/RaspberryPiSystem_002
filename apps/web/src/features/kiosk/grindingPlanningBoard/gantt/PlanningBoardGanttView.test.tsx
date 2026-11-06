@@ -585,6 +585,20 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.scroll(viewport);
     await waitFor(() => expect(screen.queryByRole('button', { name: '305の先の待ち' })).toBeNull());
   });
+  it('keeps the hover queue closed while a later tray is open', () => {
+    render(<PlanningBoardGanttView {...laterProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    const column = screen.getByRole('button', { name: '305の先の待ち' });
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+    fireEvent.click(column);
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    fireEvent.click(column);
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+  });
   it.each(['before', 'after'] as const)('drags a later card into the track (%s)', (placement) => {
     const values = laterProps();
     render(<PlanningBoardGanttView {...values} />);

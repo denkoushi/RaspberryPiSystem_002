@@ -257,8 +257,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     setFocusedPartKey((current) => current === bar.partKey ? null : bar.partKey);
     setCurrentItemId(null);
   }, []);
+  // The later-queue tray and the hover queue sit in the same place, so the open tray wins.
+  const laterQueueOpen = useRef(false);
+  const onLaterQueueOpenChange = useCallback((open: boolean) => {
+    laterQueueOpen.current = open;
+    if (open) queuePopover.current?.close();
+  }, []);
   const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
-    if (!showChain) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
+    if (!showChain && !laterQueueOpen.current) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
   }, [showChain]);
   const leaveQueue = useCallback(() => queuePopover.current?.hideSoon(), []);
   const closeQueue = useCallback(() => queuePopover.current?.close(), []);
@@ -482,7 +488,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
           </div>)}
           {forward && <PlanningBoardForwardLaterQueue viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth}
             labelWidth={labelWidth} viewportWidth={viewportWidth} disabled={interaction.disabled || interaction.dragDisabled || Boolean(interaction.pinMode) || !interaction.resourceView}
-            onDragPreview={setDragPreview} {...rowActions} />}
+            onDragPreview={setDragPreview} onOpenChange={onLaterQueueOpenChange} {...rowActions} />}
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
