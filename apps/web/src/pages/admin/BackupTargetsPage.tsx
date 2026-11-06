@@ -193,7 +193,7 @@ export function BackupTargetsPage() {
   }
 
   const getStorageProviderLabel = (target?: BackupTarget) => {
-    // Dropboxのアクセストークンが設定されているかチェック（新構造と旧構造の両方に対応）
+    // GETの[REDACTED]を設定済みとして扱う（新構造と旧構造の両方に対応）
     const hasDropboxAccessToken = !!(
       (config?.storage?.options?.dropbox?.accessToken && config.storage.options.dropbox.accessToken !== '') ||
       (config?.storage?.options?.accessToken && config.storage.options.accessToken !== '')
