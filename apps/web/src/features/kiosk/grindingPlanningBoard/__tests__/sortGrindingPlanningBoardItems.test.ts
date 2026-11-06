@@ -36,6 +36,17 @@ const item = (overrides: Partial<GrindingPlanningBoardItem>): GrindingPlanningBo
 });
 
 describe('sortGrindingPlanningBoardItems', () => {
+  it.each(['seiban', 'resource'] as const)('orders sibling pieces by position before UUID in %s view while preserving row ties and saved ranks', (view) => {
+    const pieces = [item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', piecePosition: 2 }),
+      item({ itemId: 'piece:z', kind: 'piece', parentItemId: 'parent', piecePosition: 1 })];
+    expect(sortGrindingPlanningBoardItems(pieces, ['26-1041'], view, 'alternate').map((value) => value.itemId))
+      .toEqual(['piece:z', 'piece:a']);
+    expect(sortGrindingPlanningBoardItems(pieces.map((value) => ({ ...value, kind: 'row' as const })), ['26-1041'], view, 'alternate').map((value) => value.itemId))
+      .toEqual(['piece:a', 'piece:z']);
+    expect(sortGrindingPlanningBoardItems(pieces.map((value, index) => ({ ...value, alternateRank: index + 1 })), ['26-1041'], view, 'alternate').map((value) => value.itemId))
+      .toEqual(['piece:a', 'piece:z']);
+  });
+
   it('resource表示の別割当は手動順位を最優先し、未指定を末尾に置く', () => {
     const rows = [
       item({ itemId: 'other-seiban', fseiban: '26-1042', originalDueDate: '2026-09-10', productNo: 'P-000' }),

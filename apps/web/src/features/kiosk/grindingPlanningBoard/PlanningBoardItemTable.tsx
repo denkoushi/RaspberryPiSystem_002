@@ -1,5 +1,6 @@
+import { replaceEqualDeep } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { memo, useId, useRef, useState } from 'react';
+import { memo, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { MaterialArrivalBadge } from '../../../components/kiosk/MaterialArrivalBadge';
 import { PlacementLocationBadge } from '../../../components/kiosk/PlacementLocationBadge';
@@ -10,6 +11,8 @@ import { normalizeMachineName } from '../productionSchedule/machineName';
 import { planningBoardPartKey } from './gantt/planningBoardGanttLayout';
 import { PlanningBoardCompletionButton } from './PlanningBoardCompletionButton';
 import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
+import { formatPlanningBoardItemMinutes } from './planningBoardLoad';
+import { PlanningBoardPiecePopover, PlanningBoardPiecesContext } from './PlanningBoardPiecePopover';
 import { usePlanningBoardProcessChips } from './planningBoardProcessChips';
 import {
   resolveGrindingPlanningBoardDueDate,
@@ -17,6 +20,7 @@ import {
 } from './sortGrindingPlanningBoardItems';
 
 import type { PlanningBoardAllocation } from './types';
+import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardSpecialDueKind } from '@raspi-system/shared-types';
 
 const rankOptions = [null, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
@@ -28,7 +32,7 @@ export type PlanningBoardItemTableProps = {
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPendingItemIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void;
@@ -39,6 +43,7 @@ export type PlanningBoardItemTableProps = {
   showColumnHeaders?: boolean;
   seibanRankByFseiban?: ReadonlyMap<string, number>;
   disabled?: boolean;
+  bulkDisabled?: boolean;
   rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
   resourceDragDisabled?: boolean;
   onResourcePointerDown?: (
@@ -51,12 +56,14 @@ export type PlanningBoardItemTableProps = {
 
 type PlanningBoardItemTableRowProps = {
   item: GrindingPlanningBoardItem;
+  processChips: readonly KioskResourceProgressProcessChip[] | undefined;
   allocation: PlanningBoardAllocation;
   selected: boolean;
   seibanFocus: 'match' | 'dim' | null;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPending: boolean;
+  pieceDisabled: boolean;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   onSpecialDueClick?: (item: GrindingPlanningBoardItem) => void;
@@ -77,12 +84,14 @@ type PlanningBoardItemTableRowProps = {
 
 const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   item,
+  processChips,
   allocation,
   selected,
   seibanFocus,
   onToggleItem,
   onCompleteToggle,
-  completionPendingRowIds,
+  completionPending,
+  pieceDisabled,
   onResourceClick,
   onRankChange,
   onSpecialDueClick,
@@ -96,13 +105,14 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   specialDueEnabled,
   specialDueExpired
 }: PlanningBoardItemTableRowProps) {
-  const processChips = usePlanningBoardProcessChips().get(planningBoardPartKey(item));
+  const chipNodes = useMemo(() => processChips ? <KioskResourceProcessChips processes={processChips} className="mt-0.5" /> : null, [processChips]);
   const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
   const currentDue = resolveGrindingPlanningBoardDueDate(item, allocation);
   const rank = allocation === 'alternate' ? item.alternateRank : item.originalRank;
-  const plannedQuantity = item.plannedQuantity == null ? '—' : `${item.plannedQuantity}個`;
+  const plannedQuantity = useMemo(() => <PlanningBoardPiecePopover item={item} disabled={pieceDisabled || allocation === 'original'} selected={selected} specialDueMode={specialDueEnabled ? 'today' : null} />,
+    [item, pieceDisabled, allocation, selected, specialDueEnabled]);
   const requiredTime = item.requiredMinutesKnown && item.requiredMinutes != null
-    ? `${item.requiredMinutes}分`
+    ? formatPlanningBoardItemMinutes(item)
     : '時間未定';
   const machineName = normalizeMachineName(item.machineName);
   const pendingSpecialDue = (item as GrindingPlanningBoardItem & { pendingSpecialDue?: 'today' | 'overnight' | null }).pendingSpecialDue;
@@ -126,12 +136,22 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
       className={clsx(
         'border-b border-slate-800/80',
         specialDue && 'outline outline-1 -outline-offset-1',
+        item.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
         specialDue && (pendingSpecialDue === undefined && specialDueExpired ? 'outline-rose-400' : 'outline-amber-300'),
         specialDueEnabled && !item.isCompleted && 'cursor-pointer',
         seibanFocus === 'match' && 'ring-2 ring-inset ring-white',
         seibanFocus === 'dim' ? 'opacity-25' : item.isCompleted && 'opacity-55'
       )}
-      onClick={specialDueEnabled && !item.isCompleted ? () => onSpecialDueClick?.(item) : undefined}
+      onClickCapture={(event) => {
+        if (rankPickerPanelRef.current?.contains(event.target as Node) &&
+          rankPickerAnchorRef.current?.closest('[data-planning-board-pieces-writing="true"]')) {
+          event.preventDefault(); event.stopPropagation();
+        }
+      }}
+      onClick={specialDueEnabled && !item.isCompleted ? (event) => {
+        if (event.currentTarget.closest('[data-planning-board-pieces-writing="true"]')) return;
+        onSpecialDueClick?.(item);
+      } : undefined}
     >
       <td className="px-1 align-middle">
         <label className="grid min-h-11 w-full place-items-center" onClick={(event) => event.stopPropagation()}>
@@ -159,7 +179,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               </span>
               {item.placement ? <PlacementLocationBadge placement={item.placement} /> : <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} />}
             </div>
-            {processChips ? <KioskResourceProcessChips processes={processChips} className="mt-0.5" /> : null}
+            {chipNodes}
           </div>
         ) : (
           <>
@@ -175,7 +195,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                 {item.placement ? <PlacementLocationBadge placement={item.placement} className="mt-0.5" /> : <MaterialArrivalBadge status={item.materialArrivalStatus} basis={item.materialArrivalBasis} className="mt-0.5" />}
               </>
             ) : null}
-            {processChips ? <KioskResourceProcessChips processes={processChips} className="mt-0.5" /> : null}
+            {chipNodes}
           </>
         )}
       </td>
@@ -212,6 +232,8 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                 (allocation === 'original' || item.isCompleted) && 'cursor-not-allowed opacity-60 hover:border-slate-700',
                 resourceDragAllowed && 'touch-none cursor-grab active:cursor-grabbing'
               )}
+              data-planning-board-resource
+              data-planning-board-piece-write="resource"
               aria-label={`資源CD ${currentResource ?? '未設定'}を変更`}
               disabled={disabled || allocation === 'original' || item.isCompleted}
               onPointerDown={resourceDragAllowed ? (event) => onResourcePointerDown?.(event, item, currentResource) : undefined}
@@ -257,6 +279,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
             showSeiban ? (
               <>
                 <button
+                  data-planning-board-piece-write="rank"
                   ref={rankPickerAnchorRef}
                   type="button"
                   disabled={rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
@@ -275,7 +298,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                 >
                   {rank ?? '-'}
                 </button>
-                <LeaderBoardRankPickerDropdown
+                {rankPickerOpen ? <LeaderBoardRankPickerDropdown
                   isOpen={rankPickerOpen && !rankDisabled && allocation !== 'original' && !item.isCompleted && Boolean(onRankChange)}
                   anchorRef={rankPickerAnchorRef}
                   panelRef={rankPickerPanelRef}
@@ -283,14 +306,16 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                   choices={rankChoices.map((option) => ({ value: option, label: option == null ? '-' : String(option) }))}
                   selectedValue={rank}
                   onSelectValue={(value) => {
+                    if (rankPickerAnchorRef.current?.closest('[data-planning-board-pieces-writing="true"]')) return;
                     onRankChange?.(item, value);
                     setRankPickerOpen(false);
                   }}
                   onRequestClose={() => setRankPickerOpen(false)}
-                />
+                /> : null}
               </>
             ) : (
               <select
+                data-planning-board-piece-write="rank"
                 value={rank == null ? '' : String(rank)}
                 disabled={rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
                 aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
@@ -310,7 +335,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
       </td>
       {onCompleteToggle && <td className="px-1 align-middle">
         <PlanningBoardCompletionButton item={item} onToggle={onCompleteToggle}
-          disabled={disabled || completionPendingRowIds?.has(item.sourceRowId)} />
+          disabled={disabled || completionPending} />
       </td>}
     </tr>
   );
@@ -331,7 +356,7 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
     previous.allocation === next.allocation &&
     previous.onToggleItem === next.onToggleItem &&
     previous.onCompleteToggle === next.onCompleteToggle &&
-    previous.completionPendingRowIds === next.completionPendingRowIds &&
+    previous.completionPendingItemIds === next.completionPendingItemIds &&
     previous.onResourceClick === next.onResourceClick &&
     previous.onRankChange === next.onRankChange &&
     previous.onSpecialDueClick === next.onSpecialDueClick &&
@@ -342,6 +367,7 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
     previous.showColumnHeaders === next.showColumnHeaders &&
     previous.seibanRankByFseiban === next.seibanRankByFseiban &&
     previous.disabled === next.disabled &&
+    previous.bulkDisabled === next.bulkDisabled &&
     previous.rankDisabled === next.rankDisabled &&
     previous.resourceDragDisabled === next.resourceDragDisabled &&
     previous.onResourcePointerDown === next.onResourcePointerDown &&
@@ -356,7 +382,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   selectedItemIds,
   onToggleItem,
   onCompleteToggle,
-  completionPendingRowIds,
+  completionPendingItemIds,
   onResourceClick,
   onRankChange,
   onSpecialDueClick,
@@ -367,15 +393,41 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   showColumnHeaders = true,
   seibanRankByFseiban,
   disabled = false,
+  bulkDisabled = false,
   rankDisabled = false,
   resourceDragDisabled = false,
   onResourcePointerDown,
   tableLabel
 }: PlanningBoardItemTableProps) {
+  const pieceActions = useContext(PlanningBoardPiecesContext);
+  const chipsByPart = usePlanningBoardProcessChips();
+  // Match by ID: splitting inserts/removes rows, so array-index sharing is insufficient.
+  const previousItems = useRef(new Map<string, GrindingPlanningBoardItem>());
+  const rowItems = useMemo(() => new Map(items.map((item) =>
+    [item.itemId, replaceEqualDeep(previousItems.current.get(item.itemId), item)])), [items]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const callbacks = { onToggleItem, onCompleteToggle, onResourceClick, onRankChange, onSpecialDueClick, onResourcePointerDown };
+  const latest = useRef({ callbacks, rowItems });
+  useLayoutEffect(() => { latest.current = { callbacks, rowItems }; previousItems.current = rowItems; });
+  // Like the Gantt rows, stable handlers always resolve the latest acknowledged item.
+  const rowActions = useMemo(() => {
+    const current = (item: GrindingPlanningBoardItem) => latest.current.rowItems.get(item.itemId) ?? item;
+    // Read the current outer attribute through a ref without rerendering rows.
+    // This also guards rank choices rendered in a portal.
+    const writable = () => !rootRef.current?.closest('[data-planning-board-pieces-writing="true"]');
+    return {
+      onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => latest.current.callbacks.onToggleItem(current(item), selected),
+      onCompleteToggle: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => writable() && latest.current.callbacks.onCompleteToggle?.(current(item), intent),
+      onResourceClick: (item: GrindingPlanningBoardItem) => writable() && latest.current.callbacks.onResourceClick(current(item)),
+      onRankChange: (item: GrindingPlanningBoardItem, rank: number | null) => writable() && latest.current.callbacks.onRankChange?.(current(item), rank),
+      onSpecialDueClick: (item: GrindingPlanningBoardItem) => latest.current.callbacks.onSpecialDueClick?.(current(item)),
+      onResourcePointerDown: (event: React.PointerEvent<HTMLButtonElement>, item: GrindingPlanningBoardItem, resource: string | null) => writable() && latest.current.callbacks.onResourcePointerDown?.(event, current(item), resource)
+    };
+  }, []);
   const defaultNowMsRef = useRef(Date.now());
   const resolvedNowMs = nowMs ?? defaultNowMsRef.current;
   return (
-    <div className="min-w-0 overflow-hidden">
+    <div ref={rootRef} className="min-w-0 overflow-hidden">
       <table className="w-full table-fixed border-collapse text-left text-[11px] text-slate-300">
         <caption className="sr-only">{tableLabel}</caption>
         <colgroup>
@@ -404,15 +456,20 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
               <PlanningBoardItemTableRow
                 key={item.itemId}
                 seibanFocus={focusedSeiban === null ? null : focusedSeiban === item.fseiban ? 'match' : 'dim'}
-                item={item}
+                item={rowItems.get(item.itemId)!}
+                processChips={chipsByPart.get(planningBoardPartKey(item))}
                 allocation={allocation}
                 selected={selected}
-                onToggleItem={onToggleItem}
-                onCompleteToggle={onCompleteToggle}
-                completionPendingRowIds={completionPendingRowIds}
-                onResourceClick={onResourceClick}
-                onRankChange={onRankChange}
-                onSpecialDueClick={onSpecialDueClick}
+                onToggleItem={rowActions.onToggleItem}
+                onCompleteToggle={onCompleteToggle ? rowActions.onCompleteToggle : undefined}
+                completionPending={Boolean(completionPendingItemIds?.has(item.itemId) || (item.kind === 'piece' &&
+                  (bulkDisabled || (item.parentItemId && pieceActions?.completionPendingParentIds?.has(item.parentItemId)))))}
+                pieceDisabled={Boolean(pieceActions?.enabled && (item.kind === 'piece' || pieceActions.createEnabled) &&
+                  (disabled || (item.kind === 'piece' && (bulkDisabled || itemRankDisabled)) || completionPendingItemIds?.has(item.itemId) ||
+                    (item.parentItemId != null && pieceActions.completionPendingParentIds?.has(item.parentItemId))))}
+                onResourceClick={rowActions.onResourceClick}
+                onRankChange={onRankChange ? rowActions.onRankChange : undefined}
+                onSpecialDueClick={onSpecialDueClick ? rowActions.onSpecialDueClick : undefined}
                 specialDueEnabled={Boolean(specialDueMode) && !disabled}
                 specialDueExpired={item.specialDue != null && new Date(item.specialDue.expiresAt).getTime() <= resolvedNowMs}
                 showRank={showRank}
@@ -421,7 +478,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
                 disabled={disabled}
                 rankDisabled={itemRankDisabled}
                 resourceDragDisabled={resourceDragDisabled}
-                onResourcePointerDown={onResourcePointerDown}
+                onResourcePointerDown={onResourcePointerDown ? rowActions.onResourcePointerDown : undefined}
               />
             );
           })}

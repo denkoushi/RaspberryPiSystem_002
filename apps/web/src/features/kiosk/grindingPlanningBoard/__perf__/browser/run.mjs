@@ -281,6 +281,34 @@ try {
     const beforeNow = await page.locator('[data-testid="planning-gantt-now"]').first().getAttribute('style');
     await measure('now_tick_30s', () => page.clock.fastForward(30_000));
     assert.notEqual(await page.locator('[data-testid="planning-gantt-now"]').first().getAttribute('style'), beforeNow);
+    // Additional piece scenarios run after the unchanged, piece-free sequence.
+    const targetId = await page.evaluate(() => window.perfHarness.enablePieces());
+    await settle(page);
+    await button('切削').click();
+    await button('研削').click();
+    await button('ガント').click();
+    await settle(page);
+    const targetRow = page.getByTestId(`planning-board-item-${targetId}`);
+    const quantity = targetRow.locator('[data-planning-board-quantity-item]');
+    await quantity.scrollIntoViewIfNeeded();
+    await measure('pieces_popup_open', () => quantity.click());
+    const dialog = page.getByRole('dialog', { name: '数量', exact: true });
+    await dialog.waitFor();
+    await page.clock.fastForward(350);
+    const beforePieces = await page.evaluate(() => window.perfHarness.board().items.length);
+    await measure('pieces_split_success', async () => {
+      await dialog.getByRole('button', { name: '分ける', exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      await page.waitForFunction(before => window.perfHarness.board().items.length === before + 1, beforePieces);
+    });
+    const newPieceId = await page.evaluate(() => window.perfHarness.board().items.find(item => item.kind === 'piece' && item.pieceSetVersion === 2 && item.plannedQuantity === 1).itemId);
+    const complete = page.getByTestId(`planning-board-item-${newPieceId}`).getByRole('button', { name: '完了にする', exact: true });
+    await complete.scrollIntoViewIfNeeded();
+    await measure('pieces_piece_complete', async () => {
+      await complete.click();
+      await page.waitForFunction(id => window.perfHarness.board().items.find(item => item.itemId === id)?.isCompleted, newPieceId);
+    });
+    assert.deepEqual(await page.evaluate(() => window.perfHarness.mutations.slice(-2).map(entry => entry.operation)), ['split', 'completion']);
     assert.deepEqual(errors, []);
     await context.close();
   }

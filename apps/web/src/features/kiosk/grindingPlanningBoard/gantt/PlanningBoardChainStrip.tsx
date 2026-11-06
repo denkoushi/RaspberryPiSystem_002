@@ -14,7 +14,7 @@ type Props = {
   ref?: Ref<HTMLDivElement>;
   bottom: number;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPendingItemIds?: ReadonlySet<string>;
   disabled?: boolean;
   bars: GanttBar[];
   resourceNameMap: Record<string, string[]>;
@@ -22,15 +22,16 @@ type Props = {
   onStep: (bar: GanttBar) => void;
   onClose: () => void;
 };
-export function PlanningBoardChainStrip({ ref, bottom, bars, resourceNameMap, currentItemId, onStep, onClose, onCompleteToggle, completionPendingRowIds, disabled }: Props) {
+export function PlanningBoardChainStrip({ ref, bottom, bars, resourceNameMap, currentItemId, onStep, onClose, onCompleteToggle, completionPendingItemIds, disabled }: Props) {
   const part = bars[0]!.item;
+  const processCount = new Set(bars.map(({ item }) => item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId)).size;
   return <div ref={ref} style={{ bottom }} data-testid="planning-gantt-chain-strip" role="region" aria-label="工程のつながり" className="absolute inset-x-0 z-50 flex items-center gap-3 overflow-x-auto border-t border-slate-700 bg-slate-950 p-2 shadow-[0_-4px_12px_rgb(0_0_0/0.35)] text-xs text-slate-100">
     <div className="shrink-0">
       <strong className="text-base">{part.fhinmei || part.fhincd}</strong>
-      <div className="text-sm text-white">{part.fseiban} · {part.fhincd} · {bars.length}工程</div>
+      <div className="text-sm text-white">{part.fseiban} · {part.fhincd} · {processCount}工程</div>
     </div>
     {bars.map((bar, index) => <Fragment key={bar.item.itemId}>
-      {index > 0 && <span aria-hidden="true" className="text-slate-400">→</span>}
+      {index > 0 && (bars[index - 1]!.item.parentItemId ?? bars[index - 1]!.item.itemId) !== (bar.item.parentItemId ?? bar.item.itemId) && <span aria-hidden="true" className="text-slate-400">→</span>}
       <button type="button" aria-current={currentItemId === bar.item.itemId ? 'step' : undefined}
         className={clsx('flex min-h-11 shrink-0 items-center gap-2 rounded border border-slate-700 px-2 py-1 text-left', currentItemId === bar.item.itemId && 'ring-2 ring-white')}
         onClick={() => onStep(bar)}>
@@ -38,7 +39,7 @@ export function PlanningBoardChainStrip({ ref, bottom, bars, resourceNameMap, cu
         <strong>工順{bar.item.processOrder} · {ganttResourceLabel(normalizeMachineName(bar.resource), resourceNameMap[bar.resource])}</strong>
       </button>
       {onCompleteToggle && <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
-        disabled={disabled || completionPendingRowIds?.has(bar.item.sourceRowId)} />}
+        disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
     </Fragment>)}
     <button type="button" aria-label="工程のつながりを閉じる" className="min-h-11 shrink-0 rounded border border-slate-700 px-3 text-xs" onClick={onClose}>× 閉じる</button>
   </div>;

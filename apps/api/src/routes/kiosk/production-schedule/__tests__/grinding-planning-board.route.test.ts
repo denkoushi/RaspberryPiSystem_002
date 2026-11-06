@@ -233,7 +233,7 @@ describe('grinding planning board route scope', () => {
     mocks.getLoad.mockResolvedValue(summary);
     const app = await createApp(requireClientDevice);
     try {
-      const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/load?category=cutting&siteKey=foreign-site', headers: { 'x-client-key': 'key-1' } });
+      const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/load?category=cutting&siteKey=foreign-site&includePieces=true', headers: { 'x-client-key': 'key-1' } });
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(summary);
       expect(requireClientDevice).toHaveBeenCalledWith('key-1');

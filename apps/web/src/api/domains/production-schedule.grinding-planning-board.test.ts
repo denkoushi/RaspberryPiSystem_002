@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { productionScheduleQueryKeys } from '../queryKeys/productionSchedule';
+
+
 const get = vi.hoisted(() => vi.fn());
 const post = vi.hoisted(() => vi.fn());
 const put = vi.hoisted(() => vi.fn());
@@ -9,12 +12,25 @@ vi.mock('../http', () => ({ api: { get, post, put, delete: remove } }));
 import { splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
+  it('separates board and snapshot piece requests while keeping one load cache key', () => {
+    const params = { category: 'cutting' as const, view: 'resource' as const };
+    expect(productionScheduleQueryKeys.grindingPlanningBoard(params)).not.toEqual(productionScheduleQueryKeys.grindingPlanningBoard({ ...params, includePieces: true }));
+    expect(productionScheduleQueryKeys.grindingPlanningBoardSnapshot(params)).not.toEqual(productionScheduleQueryKeys.grindingPlanningBoardSnapshot({ ...params, includePieces: true }));
+    expect(productionScheduleQueryKeys.grindingPlanningBoardLoad('cutting')).toEqual(['kiosk-grinding-planning-board', 'load', 'cutting']);
+  });
+  it('preserves includePieces through snapshot continuation', async () => {
+    get.mockResolvedValueOnce({ data: { items: [], sourceRevision: 'r', snapshotId: 's', nextCursor: '1' } })
+      .mockResolvedValueOnce({ data: { items: [], sourceRevision: 'r', snapshotId: 's', nextCursor: null } });
+    await getKioskGrindingPlanningBoardSnapshot({ category: 'cutting', view: 'resource', includePieces: true });
+    expect(get).toHaveBeenCalledTimes(2);
+    for (const [, config] of get.mock.calls) expect(config.params.includePieces).toBe(true);
+  });
   it('keeps piece reads and mutations explicit without changing old requests', async () => {
     get.mockResolvedValue({ data: { items: [], sourceRevision: 'r', nextCursor: null } });
     await getKioskGrindingPlanningBoard({ category: 'cutting', view: 'resource', includePieces: true });
     expect(get).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board', expect.objectContaining({ params: expect.objectContaining({ includePieces: true }) }));
-    await getKioskGrindingPlanningBoardLoad('cutting', true);
-    expect(get).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/load', { params: { category: 'cutting', includePieces: true } });
+    await getKioskGrindingPlanningBoardLoad('cutting');
+    expect(get).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/load', { params: { category: 'cutting' } });
     post.mockResolvedValue({ data: {} }); put.mockResolvedValue({ data: {} });
     const split = { parentItemId: 'row:parent', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'r' };
     await splitKioskSessakuPieces(split); expect(post).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/pieces/split', split);

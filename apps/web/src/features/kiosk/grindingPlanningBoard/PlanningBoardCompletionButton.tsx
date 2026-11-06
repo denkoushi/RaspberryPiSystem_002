@@ -13,7 +13,7 @@ type Props = {
 
 export function PlanningBoardCompletionButton({ item, onToggle, disabled, className, style }: Props) {
   const imported = item.completionSource === 'import';
-  return <button type="button"
+  return <button type="button" data-planning-board-piece-write="completion"
     className={clsx('flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 hover:bg-white/5 disabled:opacity-60',
       imported ? 'border-sky-400 bg-cyan-700/35 text-sky-50 text-[9px] font-bold'
         : item.isCompleted ? 'border-slate-400 bg-slate-800 text-white/80 text-[11px]'

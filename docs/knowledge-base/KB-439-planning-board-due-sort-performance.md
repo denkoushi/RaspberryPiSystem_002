@@ -322,3 +322,89 @@ kensaku-stonebase01(版 4b355ada)で、研削と切削を切り替えたとき�
 
 - ページテスト `keeps explicit refresh available after dismissing %s feedback`(409 と、409 以外+自動再取得失敗の 2 件)。修正前のコードでは 2 件とも失敗、修正後は成功。
 - 製番ボードのページ・機能・取得フックのテスト 31 ファイル 461 件成功、`tsc --noEmit` と ESLint 成功。
+
+## 2026-11-06 片の操作と保存中切替の再描画削減
+
+1500行／片あり1650行、jsdom、ウォームアップ1回・8試行の中央値。ブラウザのlayout/paintは含まない。
+前回修正後の安定計測は、ユーザー提供の `perf8-b.json`（Node v24.3.0、Apple M3）を読み取り専用で参照した。
+今回の結果は [pieces-after.json](../../apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/pieces-after.json) に全サンプルを保存する。
+全件テスト・lint・型検査などの重い処理と計測を同時実行しない。
+
+### 原因と今回の変更
+
+- 前回まで: `usePlanningBoardWriteQueue.ts` の配列更新が Page の `chipsByPart` を作り直し、各行の全Map購読へ波及していた。data依存callbackもmemoを無効化していた。前回修正で部品別チップ配列、itemId単位の `replaceEqualDeep`、最新版参照の安定handler、閉じた順位メニューの遅延生成を適用した。
+- 保存中の順位・表の資源ドラッグの行propを固定し、常設の `display: contents` に `data-planning-board-pieces-writing` を付ける。対象の順位・資源・✓だけを属性セレクタで薄く表示し、refを読む安定captureでclick/change/keydown/pointer開始を拒否する。pointer-eventsは維持し、下のtd/trへのすり抜けを防ぐ。`fieldset disabled` と片の有無による包みの出し入れは廃止した。順位Portalは行のpanel refと表の安定handlerで拒否する。選択は利用可能とし、特別納期の行callbackは書込み中の包み属性を確認して拒否する。
+- perf-Bの読み取り専用差分 `perf-b2.patch:3413–3420` と現コードの `writeBlocked` 利用箇所を確認した。止める範囲は個別順位、製番順位/登録変更、部品の資源変更・同資源内並べ替え（表/ガント）、ガント納期移動、納期/特別納期の保存、一括変更、納期順・並べ替え・固定の保存と取消、分ける/まとめるの再保存。✓は今回の受入条件どおり書込み中に拒否する。通常キュー保存中の通常行✓は従来どおり利用可能。
+- 選択、製番ペイン開閉、フォーカスの戻る、ガントの拡大縮小・スクロール・工程表示/閉じは止めない。Portalの数量小窓の±、Escape、背景閉じも利用可能とし、保存ボタンだけを既存storeとpendingで抑止する。350msの初期gesture guardと数量上限/下限は維持する。数量小窓に✕ボタンは元々ないため追加せず、既存の工程小窓の「× 閉じる」を回帰確認した。
+- 対象親・兄弟だけのpending props、itemId単位の構造共有、最新版参照callbackを維持する。行ごとの `aria-disabled` 更新は全行の再描画になるため追加せず、CSSとhandlerで拒否する（対象親の既存native disabledは維持）。ボード全体に `aria-disabled` は出さない。
+- 今回B: `Dialog.tsx:83–91` の body overflow書換えと `98–102` の初期focus候補探索（`38` のoffsetParent参照）が、表示直後にレイアウトへ影響する経路だった。`inert`、背景のaria-hidden、backdrop-filterはこのDialogにない。この画面は既に `index.css:9–10` でhtmlのscrollを固定しているため、小窓側だけ `lockScroll={false}` にし、初期focus先を明示して候補探索を避けた。共有Dialogは変更していない。197msの内訳の寄与率とChromiumでの改善幅は未実測であり、body変更を主因と断定しない。共有側の `focus()`（`Dialog.tsx:101`）とfocus復帰（`107`）は引数なしのまま残る。
+
+### 計測手順
+
+`apps/web` で `PLANNING_BOARD_PAGE_PERF_REPS=8 PLANNING_BOARD_PAGE_PERF_OUTPUT=<json> pnpm exec vitest run --config src/features/kiosk/grindingPlanningBoard/__perf__/vitest.config.ts pageInteractions` を実行する。
+`PLANNING_BOARD_PAGE_PERF_REPS` で暖機後の繰り返し回数を変更できる（既定3、安定比較は8）。
+実ブラウザの実行方法と `CHROMIUM_EXECUTABLE` の指定は [browser/README.md](../../apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/browser/README.md) を参照する。今回はjsdomのみ計測し、実ブラウザのlayout/paintは未計測。
+
+### 今回の8回計測と検証
+
+2026-11-07のR1〜R5修正後、指定コマンドを単独で1回実行した（8試行、178.15秒）。分ける388.9ms／tr 8回、まとめる310.4ms／tr 9回、✓274.7ms／tr 3回（いずれも中央値）。
+片なし29場面の描画回数・commit数は基点と不変。先の別時刻の比較では23場面に時間増加が見えたが、ユーザー確認済みの同時間帯・基点との交互計測では差はほぼ無く、表表示のみ約5%の差だった。先の結果だけで「片なしで時間悪化」とは判断しない。今回の単独計測は交互比較ではなく、その確認済み結果とは区別する。以下に最新の全場面の実測値を記録する。
+
+| 場面 | 経過ms（前 → 後） | commit（前 → 後） | tr（前 → 後） | ガント行（前 → 後） |
+| --- | ---: | ---: | ---: | ---: |
+| `gantt_off` | 836.5 → 817.6 | 3 → 3 | 1500 → 1500 | 0 → 0 |
+| `gantt_on` | 737.5 → 727.0 | 2 → 2 | 0 → 0 | 40 → 40 |
+| `left_lane_click` | 0.3 → 0.4 | 0 → 0 | 0 → 0 | 0 → 0 |
+| `focus_seiban_on` | 254.3 → 243.9 | 1 → 1 | 0 → 0 | 20 → 20 |
+| `focus_seiban_off` | 321.0 → 312.2 | 1 → 1 | 0 → 0 | 20 → 20 |
+| `item_selection_on` | 56.9 → 64.2 | 1 → 1 | 0 → 0 | 1 → 1 |
+| `item_selection_off` | 56.6 → 73.2 | 1 → 1 | 0 → 0 | 1 → 1 |
+| `arrival_on` | 263.4 → 302.6 | 2 → 2 | 0 → 0 | 20 → 20 |
+| `arrival_off` | 371.4 → 372.5 | 2 → 2 | 0 → 0 | 20 → 20 |
+| `drag_start` | 132.0 → 125.3 | 1 → 1 | 0 → 0 | 1 → 1 |
+| `drag_hover_20` | 2543.7 → 2401.0 | 35 → 35 | 0 → 0 | 18 → 18 |
+| `drag_drop` | 36.1 → 36.8 | 1 → 1 | 0 → 0 | 1 → 1 |
+| `scroll_20` | 110.1 → 98.4 | 20 → 20 | 0 → 0 | 0 → 0 |
+| `cutting_on` | 437.7 → 405.6 | 3 → 3 | 0 → 0 | 20 → 20 |
+| `grinding_off` | 349.2 → 367.0 | 3 → 3 | 0 → 0 | 20 → 20 |
+| `grinding_on` | 312.7 → 292.1 | 3 → 3 | 0 → 0 | 20 → 20 |
+| `cutting_off` | 383.4 → 295.3 | 3 → 3 | 0 → 0 | 20 → 20 |
+| `refetch_board` | 14.9 → 14.7 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `refetch_chips` | 10.6 → 11.1 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `refetch_minutes` | 0.3 → 0.3 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `refetch_uptime` | 6.8 → 6.5 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `refetch_all` | 15.9 → 15.5 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `now_tick_30s` | 343.8 → 350.2 | 2 → 2 | 0 → 0 | 20 → 20 |
+| `scaw_on` | 208.0 → 202.6 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `scaw_off` | 289.2 → 211.2 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `plain_gantt_queue_pending_true_to_false` | 59.3 → 61.5 | 4 → 4 | 0 → 0 | 0 → 0 |
+| `plain_gantt_refetch_same` | 14.8 → 7.3 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `plain_table_queue_pending_true_to_false` | 82.9 → 83.3 | 4 → 4 | 0 → 0 | 0 → 0 |
+| `plain_table_refetch_same` | 10.8 → 14.8 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `pieces_gantt_queue_pending_true_to_false` | 102.1 → 87.1 | 4 → 4 | 0 → 0 | 0 → 0 |
+| `pieces_gantt_refetch_same` | 16.8 → 15.1 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `pieces_table_queue_pending_true_to_false` | 140.1 → 110.5 | 4 → 4 | 250 → 250 | 0 → 0 |
+| `pieces_table_refetch_same` | 7.8 → 6.8 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `pieces_table_popup_open` | 1.6 → 1.0 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `pieces_table_refetch_same_popup_open` | 9.8 → 7.0 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `pieces_table_popup_plus` | 1.0 → 0.7 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `pieces_table_popup_minus` | 0.6 → 0.5 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `pieces_table_popup_close` | 0.7 → 0.6 | 1 → 1 | 0 → 0 | 0 → 0 |
+| `pieces_table_split_success` | 1031.3 → 388.9 | 6 → 6 | 3304 → 8 | 0 → 0 |
+| `pieces_table_merge_success` | 1013.3 → 310.4 | 6 → 6 | 3305 → 9 | 0 → 0 |
+| `pieces_table_piece_complete` | 781.9 → 274.7 | 6 → 6 | 3299 → 3 | 0 → 0 |
+
+- テスト7件追加: 保存中の選択・製番ペイン開閉・フォーカスから戻る・順位selectの拒否、小窓±/Escape/背景閉じ、作成OFFで最後の片をまとめる時の表/ガントのDOM同一性、ガントの長押し選択・左右送り・幅変更・工程小窓の「× 閉じる」とドラッグ保存拒否、自身の保存中の数量変更/閉じと二重送信拒否。
+- 既存の分割・結合・完了中のクリック/Enter/Space/ドラッグ開始/既存順位Portalの拒否、開始/終了時の無関係行の非再描画、最新callback/版の参照、小窓focus復帰のテストを維持。全画面disabledに依存した期待だけを、対象handlerの拒否と選択の利用可能性へ修正した。
+- 最新検証（2026-11-07）: web/API lint・型検査、web全件698ファイル／6347件（198.26秒）、API投影・負荷単体35件（0.997秒）、指定DB負荷統合20件（skipなし、0.899秒）、SOP source-check、`git diff --check`成功。共有DialogとUI文言は変更していない。commit / push / PR / merge / deployは未実施。
+
+### 2026-11-07 第三者レビュー R1〜R5
+
+- R1: 書込み部品の `pointer-events-none` を撤去し、行の特別納期クリックも包みの最新属性で拒否する。見た目は維持し、td/trを発生元にしたすり抜けの回帰テストを追加した。
+- R2: 完了取消トーストは `piecesWriting` 中もdisabled。保存と再取得の両方で拒否し、終了後は利用できる。別の親の分割後もトーストが残る既存テストは維持した。
+- R3: readyはblockingStoreへ移し、Contextの値から除去。操作可能な数量ボタンだけreadyを、開いたDialogだけblockingを購読する。数量JSXも関連値でmemo化し、片0件・作成OFFでready／orderPreview／blockedが変わっても数量部品を描き直さない。計数は描画前のmock wrapperでContextによる自己再描画も捕捉し、実際の書込み包み・表・ガントのDOM同一性を検証した。
+- R4: 分割・結合後、影響する親と片の選択を全カテゴリから除去する。別カテゴリの無関係な選択を保つテストを追加した。
+- R5: 親の所要分0から作る片はnull／unknownへ統一した。親nullと片なし行の従来処理は維持し、投影・TS列挙・SQL集計の一致を指定DBで検証した。
+
+検証コマンド: `pnpm --filter web lint` / `pnpm --filter api lint`、web `pnpm exec tsc -p tsconfig.json --noEmit`、API `pnpm exec tsc -p tsconfig.build.json --noEmit`、web `pnpm exec vitest run --maxWorkers=4`。
+APIは `pnpm exec vitest run src/services/production-schedule/__tests__/grinding-planning-board-projection.test.ts src/services/production-schedule/__tests__/grinding-planning-board-load-summary.test.ts`、DB統合は両URLを `postgresql://postgres:postgres@127.0.0.1:55432/sessaku_test` に指定して `pnpm exec vitest run src/services/production-schedule/__tests__/grinding-planning-board-load-summary.integration.test.ts` を実行した。lifecycle auditは基点 `cab3d0e9` の指定branch/worktreeを `DIRTY_PROTECTED` と確認。開始時の未コミット・未追跡WIPを保持し、変更はR1〜R5の関連コード・テスト・計測JSON・本KBと計画書だけに限定した。

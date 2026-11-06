@@ -259,6 +259,17 @@ describe('PlanningBoardGanttView', () => {
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
 
+  it.each(['backward', 'forward'] as const)('draws each warning piece with a red border in %s mode', (mode) => {
+    const items = [item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', sourceRowId: 'source', requiredMinutes: 40,
+      quantityWarning: 'INVALID_PLANNED_QUANTITY' }), item({ itemId: 'piece:b', kind: 'piece', parentItemId: 'parent', sourceRowId: 'source', requiredMinutes: 60 })];
+    const values = props(items);
+    const layout = buildPlanningBoardGanttLayout({ items, mode, allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
+      dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T08:00:00+09:00'), scale: 14 });
+    render(<PlanningBoardGanttView {...values} layout={layout} />);
+    expect(screen.getAllByTestId('planning-gantt-bar-piece:a')[0]).toHaveClass(mode === 'forward' ? '!outline-red-500' : 'outline-red-500');
+    expect(screen.getAllByTestId('planning-gantt-bar-piece:b')[0]).not.toHaveClass('!outline-red-500', 'outline-red-500');
+  });
+
   it('completes another parent and disables the target while pending or locked', () => {
     const parents = [item(), item({ itemId: 'b' })];
     const values = props(parents);
@@ -268,7 +279,7 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.click(screen.getByRole('button', { name: '完了にする' }));
     expect(onCompleteToggle).toHaveBeenCalledWith(parents[1], 'complete');
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
-    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} completionPendingRowIds={new Set(['a'])} />);
+    rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} completionPendingItemIds={new Set(['a'])} />);
     expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();
     rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} disabled />);
     expect(screen.getByRole('button', { name: '完了にする' })).toBeDisabled();
@@ -906,6 +917,38 @@ describe('forward PlanningBoardGanttView', () => {
     expect(viewport.style.height).toBe(heightBeforeClose);
     expect(section.firstElementChild).toBe(viewport);
   });
+  it.each(['backward', 'forward'] as const)('disables piece completion in the %s gantt and chain strip using the shared disabled IDs', (mode) => {
+    const items = [item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', requiredMinutes: 40 }),
+      item({ itemId: 'piece:b', kind: 'piece', parentItemId: 'parent', requiredMinutes: 60 })];
+    const values = mode === 'forward' ? forwardProps(items) : props(items);
+    const onCompleteToggle = vi.fn();
+    const draw = (disabledIds: ReadonlySet<string>) => <PlanningBoardGanttView {...values}
+      onCompleteToggle={onCompleteToggle} completionPendingItemIds={disabledIds} />;
+    const view = render(draw(new Set(items.map((entry) => entry.itemId))));
+    if (mode === 'forward') tap(screen.getAllByTestId('planning-gantt-bar-piece:a')[0]!);
+    else fireEvent.click(screen.getByTestId('planning-gantt-bar-piece:a'));
+    if (mode === 'forward') {
+      const strip = screen.getByTestId('planning-gantt-chain-strip');
+      expect(within(strip).getAllByRole('button', { name: '完了にする' })).toHaveLength(2);
+    }
+    expect(screen.getAllByRole('button', { name: '完了にする' }).every((button) => button.hasAttribute('disabled'))).toBe(true);
+    view.rerender(draw(new Set()));
+    expect(screen.getAllByRole('button', { name: '完了にする' }).every((button) => !button.hasAttribute('disabled'))).toBe(true);
+  });
+  it('counts sibling pieces as one process in the chain strip while keeping ordinary rows distinct', () => {
+    const items = [item(), item({ itemId: 'b', processOrder: '10' })];
+    const values = forwardProps(items);
+    const { rerender } = render(<PlanningBoardGanttView {...values} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    expect(within(screen.getByTestId('planning-gantt-chain-strip')).getByText(/· 2工程$/)).toBeInTheDocument();
+    expect(within(screen.getByTestId('planning-gantt-chain-strip')).getAllByText('→')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
+    const pieces = items.map((value) => ({ ...value, kind: 'piece' as const, parentItemId: 'parent' }));
+    rerender(<PlanningBoardGanttView {...forwardProps(pieces)} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    expect(within(screen.getByTestId('planning-gantt-chain-strip')).getByText(/· 1工程$/)).toBeInTheDocument();
+    expect(within(screen.getByTestId('planning-gantt-chain-strip')).queryByText('→')).not.toBeInTheDocument();
+  });
   it('shows only the process order and machine in each strip step, without times', () => {
     const values = forwardProps([item({ requiredMinutes: 480, originalDueDate: '2026-10-13' }), item({ itemId: 'b', processOrder: '20', requiredMinutesKnown: false })]);
     render(<PlanningBoardGanttView {...values} />);
@@ -1300,6 +1343,17 @@ describe('forward PlanningBoardGanttView', () => {
     expect(within(cards[5]!).getByText('納期 10/13(火)')).toHaveClass('text-rose-300');
     expect(popover).not.toHaveTextContent('遅れ見込み');
     expect(popover.parentElement).toBe(document.body);
+  });
+  it('shows quantity ratios for piece queue cards and preserves ordinary row quantities', () => {
+    const values = forwardProps([
+      item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', quantity: 2, parentPlannedQuantity: 5, plannedQuantity: 2, requiredMinutes: 10 }),
+      item({ itemId: 'row', fhincd: 'P2', plannedQuantity: 7, requiredMinutes: 10 })
+    ]);
+    render(<PlanningBoardGanttView {...values} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-piece:a'), { pointerType: 'mouse' });
+    expect(screen.getByTestId('planning-forward-queue-card-piece:a')).toHaveTextContent('P1 · 2／5');
+    expect(screen.getByTestId('planning-forward-queue-card-piece:a')).not.toHaveTextContent('2個');
+    expect(screen.getByTestId('planning-forward-queue-card-row')).toHaveTextContent('P2 · 7個');
   });
   it('scrolls the focused card to 160px from the left on opening', () => {
     const offset = vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockImplementation(function (this: HTMLElement) {

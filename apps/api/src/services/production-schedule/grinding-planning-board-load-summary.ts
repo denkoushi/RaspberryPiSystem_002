@@ -40,7 +40,6 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   /** Existing leaderboard materialization predicate. Avoids re-reading ids in 900-row chunks. */
   leaderboardMaterializedBaseWhere?: Prisma.Sql;
   siteKey: string;
-  includePieces?: boolean;
   category: GrindingPlanningBoardCategory;
   isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => boolean;
   cache?: {
@@ -185,8 +184,8 @@ function toSummaryRow(
   const parentItemId = buildGrindingPlanningBoardRowItemId(rowData);
   if (row.pieceId) {
     const itemId = `piece:${row.pieceId}`;
-    const minutes = row.plannedQuantity != null && row.plannedQuantity > 0 && row.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && row.requiredMinutes != null
-      ? Math.round(row.requiredMinutes * (row.pieceQuantity ?? 0) / row.plannedQuantity * 100) / 100 : null; return { itemId, sourceRowId: row.id, kind: 'piece', originalResourceCd,
+    const minutes = row.plannedQuantity != null && row.plannedQuantity > 0 && row.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && row.requiredMinutes != null && row.requiredMinutes > 0
+      ? row.requiredMinutes * (row.pieceQuantity ?? 0) / row.plannedQuantity : null; return { itemId, sourceRowId: row.id, kind: 'piece', originalResourceCd,
       effectiveResourceCd: resolveOverrideResource(overrideByItemKey, overrideByItemKey.has(itemId) ? itemId : parentItemId, originalResourceCd),
       requiredMinutes: minutes, requiredMinutesKnown: minutes != null, isCompleted: row.isCompleted };
   }
@@ -344,8 +343,8 @@ async function readAggregatedLoadSummary(params: {
         b."resourceCd" AS "originalResourceCd",
         'row'::text AS "itemKind",
         CASE WHEN b."pieceId" IS NULL THEN b."requiredMinutes"
-          WHEN b."plannedQuantity" > 0 AND COALESCE(b."quantityWarning", '') <> 'INVALID_PLANNED_QUANTITY'
-          THEN FLOOR(b."requiredMinutes" * b."pieceQuantity" / b."plannedQuantity" * 100 + 0.5) / 100 ELSE NULL END AS "requiredMinutes"
+          WHEN b."requiredMinutes" > 0 AND b."plannedQuantity" > 0 AND COALESCE(b."quantityWarning", '') <> 'INVALID_PLANNED_QUANTITY'
+          THEN b."requiredMinutes" * b."pieceQuantity" / b."plannedQuantity" ELSE NULL END AS "requiredMinutes"
       FROM "baseRows" AS b
     ),
     "deduplicatedItems" AS (
@@ -381,6 +380,7 @@ async function readAggregatedLoadSummary(params: {
     "effectiveItems" AS (
       SELECT
         "deduplicatedItems"."sourceRowId",
+        "deduplicatedItems"."pieceId",
         "deduplicatedItems"."originalResourceCd",
         CASE
           WHEN "pieceOverrides"."itemKey" IS NOT NULL THEN COALESCE("pieceOverrides"."overrideResourceCd", "deduplicatedItems"."originalResourceCd")
@@ -407,7 +407,7 @@ async function readAggregatedLoadSummary(params: {
       "effectiveResourceCd",
       COUNT(*)::bigint AS "itemCount",
       COUNT(*) FILTER (WHERE "requiredMinutes" IS NULL)::bigint AS "unknownItemCount",
-      SUM("requiredMinutes" ORDER BY "sourceRowId")::double precision AS "requiredMinutesSum"
+      SUM("requiredMinutes" ORDER BY "sourceRowId", "pieceId")::double precision AS "requiredMinutesSum"
     FROM "effectiveItems"
     GROUP BY "originalResourceCd", "effectiveResourceCd"
   `);
@@ -452,7 +452,7 @@ async function readMaterializedLoadAggregates(
   // The base predicate is dashboard + canonical winner membership. Membership
   // order is immaterial; normalize it so the resolver's row order cannot miss.
   const key = JSON.stringify({
-    siteKey: params.siteKey, dashboardId, includePieces: params.includePieces ?? false, generationToken: context.generationToken,
+    siteKey: params.siteKey, dashboardId, generationToken: context.generationToken,
     baseWhere: {
       strings: params.leaderboardMaterializedBaseWhere.strings,
       values: params.leaderboardMaterializedBaseWhere.values.map((value) => Array.isArray(value) ? [...value].sort() : value)
@@ -493,7 +493,7 @@ async function readMaterializedLoadAggregates(
 export async function readGrindingPlanningBoardLoadSummary(
   params: ReadGrindingPlanningBoardLoadSummaryParams
 ): Promise<GrindingPlanningBoardLoadSummary> {
-  const winnerRowIds = [...new Set((params.winnerRowIds ?? []).map((id) => id.trim()).filter(Boolean))];
+  const winnerRowIds = [...new Set((params.winnerRowIds ?? []).map((id) => id.trim()).filter(Boolean))].sort();
   if (params.leaderboardMaterializedBaseWhere === undefined && winnerRowIds.length === 0) {
     return { load: [], unknownRequiredMinutesCount: 0 };
   }
@@ -503,7 +503,7 @@ export async function readGrindingPlanningBoardLoadSummary(
     return buildGrindingPlanningBoardLoadSummaryFromAggregates(rows, params);
   }
   const rows: LoadSummarySourceRow[] = [];
-  const readSourceRows = async (where: Prisma.Sql, orderBy: Prisma.Sql) => {
+  const readSourceRows = async (where: Prisma.Sql) => {
     rows.push(...await params.client.$queryRaw<LoadSummarySourceRow[]>(Prisma.sql`
       SELECT
         "CsvDashboardRow"."id",
@@ -538,14 +538,13 @@ export async function readGrindingPlanningBoardLoadSummary(
       WHERE ${where}
         AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
           OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
-      ORDER BY ${orderBy}
+      ORDER BY "CsvDashboardRow"."id", pc."id"
     `));
   };
 
   if (params.leaderboardMaterializedBaseWhere !== undefined) {
     await readSourceRows(
-      params.leaderboardMaterializedBaseWhere,
-      Prisma.sql`"CsvDashboardRow"."id"`
+      params.leaderboardMaterializedBaseWhere
     );
   } else {
     for (const ids of chunk(winnerRowIds, SOURCE_ROW_CHUNK_SIZE)) {
@@ -554,8 +553,7 @@ export async function readGrindingPlanningBoardLoadSummary(
         Prisma.sql`
           "CsvDashboardRow"."csvDashboardId" = ${dashboardId}
           AND "CsvDashboardRow"."id"::text = ANY(ARRAY[${Prisma.join(idParts)}]::text[])
-        `,
-        Prisma.sql`array_position(ARRAY[${Prisma.join(idParts)}]::text[], "CsvDashboardRow"."id"::text)`
+        `
       );
     }
   }
@@ -625,6 +623,8 @@ export function buildGrindingPlanningBoardLoadSummary(
     return created;
   };
 
+  rows.sort((left, right) => left.sourceRowId < right.sourceRowId ? -1 : left.sourceRowId > right.sourceRowId ? 1
+    : left.itemId < right.itemId ? -1 : left.itemId > right.itemId ? 1 : 0);
   for (const row of rows) {
     if (row.isCompleted) continue;
     const originalResource = row.originalResourceCd?.trim() || null;
