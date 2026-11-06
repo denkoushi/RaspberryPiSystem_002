@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const get = vi.hoisted(() => vi.fn());
 const post = vi.hoisted(() => vi.fn());
-vi.mock('../http', () => ({ api: { get, post } }));
+const put = vi.hoisted(() => vi.fn());
+const remove = vi.hoisted(() => vi.fn());
+vi.mock('../http', () => ({ api: { get, post, put, delete: remove } }));
 
-import { getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
+import { updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
   it.each(['excel', 'scaw'] as const)('sends dueSource=%s on all snapshot pages', async (dueSource) => {
@@ -12,7 +14,17 @@ describe('grinding planning board requests', () => {
     await getKioskGrindingPlanningBoardSnapshot({ category: 'grinding', view: 'seiban', dueSource });
     expect(get).toHaveBeenCalledWith('/kiosk/production-schedule/grinding-planning-board', expect.objectContaining({ params: expect.objectContaining({ dueSource }) }));
   });
-  beforeEach(() => { get.mockReset(); post.mockReset(); });
+  beforeEach(() => { get.mockReset(); post.mockReset(); put.mockReset(); remove.mockReset(); });
+
+  it.each([true, false])('sends arrival recorded=%s with the item revision', async (recorded) => {
+    const body = { itemId: 'row:a', itemRevision: 'r1', overrideVersion: 2 };
+    const data = { itemId: body.itemId, manualArrivalDate: recorded ? '2026-11-06' : null };
+    (recorded ? put : remove).mockResolvedValue({ data });
+    await expect(updateKioskGrindingPlanningBoardArrival({ ...body, recorded })).resolves.toEqual(data);
+    const url = '/kiosk/production-schedule/grinding-planning-board/arrival';
+    if (recorded) expect(put).toHaveBeenCalledExactlyOnceWith(url, body);
+    else expect(remove).toHaveBeenCalledExactlyOnceWith(url, { data: body });
+  });
 
   it('chunks chip requests at 1000 parts and merges their maps', async () => {
     const parts = Array.from({ length: 1001 }, (_, i) => ({ fseiban: `ORDER-${i}`, productNo: '', fhincd: 'PART' }));

@@ -18,6 +18,7 @@ import {
   getKioskGrindingPlanningBoardLoad,
   getKioskGrindingPlanningBoardSnapshot,
   getKioskGrindingPlanningBoardSeibanCandidates,
+  updateKioskGrindingPlanningBoardArrival,
   updateKioskGrindingPlanningBoardOverrides,
   updateKioskGrindingPlanningBoardPins,
   updateKioskGrindingPlanningBoardRank,
@@ -30,6 +31,7 @@ import {
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 import type {
+  GrindingPlanningBoardArrivalRequest,
   GrindingPlanningBoardProcessChipsRequest,
   GrindingPlanningBoardResourceCapacityRequest,
   GrindingPlanningBoardResourceCapacityResponse,
@@ -422,5 +424,15 @@ export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
       queryClient.setQueryData(planningBoardCapacityKey, context?.previous ?? { dailyHoursByResource: {}, runsThroughBreaksResources: [] });
     },
     onSuccess: (response) => queryClient.setQueryData(planningBoardCapacityKey, response)
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardArrival() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardArrivalRequest & { recorded: boolean }) => updateKioskGrindingPlanningBoardArrival(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    }
   });
 }

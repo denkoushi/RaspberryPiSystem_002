@@ -46,6 +46,16 @@ describe('forward queue helpers', () => {
     expect(forwardItemDetails(item({ fseiban: '', fhincd: '', plannedQuantity: 0, machineName: null }))).toBe('0個');
     expect(forwardItemDetails(item({ machineName: 'ｐｓｇ６３　ａ' }))).toBe('26-1001 · P1 · 1個 · PSG63 A');
   });
+  it('inserts unarrived jobs at saved slots while keeping arrived jobs in start order', () => {
+    const first = bar('first', today);
+    const later = bar('later', today + 1);
+    const hidden = bar('hidden', today, { arrivalPending: true, item: item({ itemId: 'hidden', arrived: false }) });
+    const board = { ...layout([first, later]), forwardQueue: [later, hidden, first] };
+    expect(forwardQueueWindow(board, later).map(({ bar }) => bar.item.itemId)).toEqual(['first', 'hidden', 'later']);
+    expect(canReorderForwardBars(first, hidden)).toBe(false);
+    expect(canReorderForwardBars(hidden, first)).toBe(false);
+  });
+
   it('formats the start with weekday and uses the first segment of a bar split by breaks', () => {
     const friday = dateToDay('2026-11-06');
     expect(forwardStartLabel(bar('a', friday + (8 * 60 + 30) / 1440))).toBe('11/06(金) 08:30');
