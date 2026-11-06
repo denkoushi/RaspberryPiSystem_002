@@ -102,7 +102,7 @@ it('renders only the source and lanes whose insertion marker changes during a dr
     fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 10 });
     fireEvent.pointerMove(source, { clientX: 120, clientY: 30 });
     expect(renders).toEqual(['305', '306']);
-    expect(source).toHaveStyle({ opacity: '0.3', outline: '3px solid rgb(251 191 36)', zIndex: '9' });
+    expect(source).toHaveStyle({ outline: '3px dashed rgb(251 191 36)', zIndex: '9' });
     renders.length = 0;
     fireEvent.pointerMove(source, { clientX: 121, clientY: 31 });
     expect(renders).toEqual([]);

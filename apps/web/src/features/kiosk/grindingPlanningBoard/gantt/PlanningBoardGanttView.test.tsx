@@ -592,126 +592,59 @@ describe('forward PlanningBoardGanttView', () => {
     }
     return values;
   }
-  it('shows a slim edge without counts or cards, toggles the tray and updates on scroll', async () => {
-    const values = laterProps();
-    render(<PlanningBoardGanttView {...values} />);
+  it('opens the full pinned queue from the edge and updates the edge on scroll', async () => {
+    render(<PlanningBoardGanttView {...laterProps()} />);
     const column = screen.getByRole('button', { name: '305の先の待ち' });
-    expect(column).toHaveTextContent('');
-    expect(column).toHaveClass('sticky', 'right-0');
     expect(column.style.width).toBe('14px');
-    expect(within(column).queryAllByTestId(/planning-forward-later-/)).toHaveLength(0);
     fireEvent.click(column);
-    const tray = screen.getByRole('region', { name: '305の先の待ち一覧' });
-    expect(tray).toHaveClass('sticky', 'left-0', 'overflow-x-auto');
-    expect(within(tray).getAllByTestId(/planning-forward-later-card-/)).toHaveLength(2);
-    fireEvent.click(column);
-    expect(screen.queryByRole('region', { name: '305の先の待ち一覧' })).toBeNull();
+    const panel = screen.getByRole('region', { name: /の次にやる順/ });
+    expect(panel).toHaveClass('border-2', 'border-amber-400');
+    expect(within(panel).getAllByTestId(/planning-forward-queue-card-/)).toHaveLength(3);
+    expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
+    expect(screen.getByTestId('planning-forward-queue-card-a')).toHaveAttribute('data-viewport-visible', 'true');
+    expect(screen.getByTestId('planning-forward-queue-card-b')).not.toHaveAttribute('data-viewport-visible');
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+    expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
     const viewport = screen.getByLabelText('ガントの日付と工程');
     viewport.scrollLeft = 100000;
     fireEvent.scroll(viewport);
     await waitFor(() => expect(screen.queryByRole('button', { name: '305の先の待ち' })).toBeNull());
+    expect(panel).toBeInTheDocument();
   });
-  it('keeps the hover queue closed while a later tray is open', () => {
-    render(<PlanningBoardGanttView {...laterProps()} />);
-    const bar = screen.getByTestId('planning-gantt-bar-a');
-    const column = screen.getByRole('button', { name: '305の先の待ち' });
-    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
-    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
-    fireEvent.click(column);
-    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
-    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
-    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
-    fireEvent.click(column);
-    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
-    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
-  });
-  it.each(['before', 'after'] as const)('drags a later card into the track (%s)', (placement) => {
-    const values = laterProps();
-    render(<PlanningBoardGanttView {...values} />);
-    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
-    const card = screen.getByTestId('planning-forward-later-card-b');
-    const capture = vi.fn();
-    card.setPointerCapture = capture;
-    fireEvent.pointerDown(card, { clientX: 100, clientY: 100, button: 0 });
-    expect(capture).not.toHaveBeenCalled();
-    const x = placement === 'before' ? 0 : 100000;
-    fireEvent.pointerMove(card, { clientX: x, clientY: 20 });
-    expect(capture).toHaveBeenCalledWith(1);
-    expect(screen.getByTestId('planning-gantt-insertion')).toHaveClass('bg-emerald-300');
-    expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
-    fireEvent.pointerUp(card, { clientX: x, clientY: 20 });
-    expect(values.onResourceReorder).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'b' }), expect.objectContaining({ itemId: placement === 'before' ? 'a' : 'c' }), placement);
-    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
-  });
-  it.each(['specialDue', 'disabled', 'dragDisabled', 'pinMode', 'horizontal', 'threshold', 'escape', 'blur', 'cancel'] as const)(
-    'blocks later-card drops for %s', (guard) => {
-      const values = laterProps(guard === 'specialDue');
-      render(<PlanningBoardGanttView {...values} disabled={guard === 'disabled'} dragDisabled={guard === 'dragDisabled'} pinMode={guard === 'pinMode'} />);
-      fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
-      const card = screen.getByTestId('planning-forward-later-card-b');
-      const touch = guard === 'horizontal' || guard === 'threshold';
-      const event = { pointerType: touch ? 'touch' : 'mouse', clientX: 0, clientY: guard === 'threshold' ? 103 : 20 };
-      fireEvent.pointerDown(card, { pointerType: touch ? 'touch' : 'mouse', clientX: 100, clientY: 100, button: 0 });
-      fireEvent.pointerMove(card, event);
-      if (guard === 'escape') fireEvent.keyDown(document, { key: 'Escape' });
-      if (guard === 'blur') fireEvent.blur(window);
-      if (guard === 'cancel') fireEvent.pointerCancel(card);
-      expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
-      fireEvent.pointerUp(card, event);
-      expect(values.onResourceReorder).not.toHaveBeenCalled();
-    }
-  );
-  it('moves a later card to another permitted resource and opens only one tray', () => {
+  it('moves a queue card onto another permitted lane', () => {
     const values = laterProps();
     const other = structuredClone(values.layout.groups[0]!);
-    other.key = '306';
-    other.resource = '306';
-    other.label = '306';
+    other.key = other.resource = other.label = '306';
     other.rows[0]!.key = '306';
-    for (const bar of other.rows[0]!.bars) {
-      bar.resource = '306';
-      bar.item.itemId = `other-${bar.item.itemId}`;
-    }
+    for (const bar of other.rows[0]!.bars) { bar.resource = '306'; bar.item.itemId = `other-${bar.item.itemId}`; }
     values.layout.groups.push(other);
     const onResourceMove = vi.fn();
     render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
-    fireEvent.click(screen.getByRole('button', { name: '306の先の待ち' }));
     fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
-    expect(screen.queryByRole('region', { name: '306の先の待ち一覧' })).toBeNull();
-    const card = screen.getByTestId('planning-forward-later-card-b');
+    const card = screen.getByTestId('planning-forward-queue-card-b');
     vi.mocked(document.elementsFromPoint).mockReturnValue([document.querySelector('[data-gantt-lane-resource="306"]')!]);
     fireEvent.pointerDown(card, { clientX: 100, clientY: 100, button: 0 });
     fireEvent.pointerMove(card, { clientX: 0, clientY: 20 });
+    expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
     fireEvent.pointerUp(card, { clientX: 0, clientY: 20 });
     expect(onResourceMove).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'b' }), '306', expect.objectContaining({ itemId: 'other-a' }), 'before');
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
   });
-  it('refuses drops on the tray or the edge column', () => {
+  it('blocks gantt drops over the queue for both bar and card drags', () => {
     const values = laterProps();
-    render(<PlanningBoardGanttView {...values} />);
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} />);
     fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
-    const tray = screen.getByRole('region', { name: '305の先の待ち一覧' });
-    const card = screen.getByTestId('planning-forward-later-card-b');
+    const panel = screen.getByRole('region', { name: /の次にやる順/ });
+    const card = screen.getByTestId('planning-forward-queue-card-b');
     const lane = document.querySelector('[data-gantt-lane-resource="305"]')!;
-    vi.mocked(document.elementsFromPoint).mockReturnValue([card, tray, lane]);
-    fireEvent.pointerDown(card, { clientX: 100, clientY: 100, button: 0 });
-    fireEvent.pointerMove(card, { clientX: 0, clientY: 120 });
-    expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
-    fireEvent.pointerUp(card, { clientX: 0, clientY: 120 });
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
-  });
-  it('starts touch dragging only after 8px vertically', () => {
-    const values = laterProps();
-    render(<PlanningBoardGanttView {...values} />);
-    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
-    const card = screen.getByTestId('planning-forward-later-card-b');
-    fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 0, clientY: 100, button: 0 });
-    fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 0, clientY: 107 });
-    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
-    fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 0, clientY: 108 });
-    expect(screen.getByTestId('planning-gantt-insertion')).toBeInTheDocument();
-    fireEvent.pointerUp(card, { pointerType: 'touch', clientX: 0, clientY: 108 });
-    expect(values.onResourceReorder).toHaveBeenCalledOnce();
+    vi.mocked(document.elementsFromPoint).mockReturnValue([card, panel, lane]);
+    for (const source of [card, screen.getByTestId('planning-gantt-bar-a')]) {
+      fireEvent.pointerDown(source, { clientX: 100, clientY: 100, button: 0 });
+      fireEvent.pointerMove(source, { clientX: 0, clientY: 120 });
+      expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+      fireEvent.pointerUp(source, { clientX: 0, clientY: 120 });
+    }
+    expect(onResourceMove).not.toHaveBeenCalled();
   });
   it('toggles pins without chain focus, selection or drag, and marks pinned segments', () => {
     vi.useFakeTimers();
@@ -1014,7 +947,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerMove(bar, { clientX: x, clientY: y });
     expect(lane).toHaveStyle({ outline: '3px solid rgb(110 231 183)', outlineOffset: '-3px' });
     expect(forbidden).toHaveStyle({ opacity: '0.3' });
-    expect(bar).toHaveStyle({ outline: '3px solid rgb(251 191 36)', opacity: '0.3' });
+    expect(bar).toHaveStyle({ outline: '3px dashed rgb(251 191 36)', backgroundColor: 'rgb(15 23 42)' });
     expect(bar.style.transform).toBe('');
     expect(bar).toHaveClass('touch-pan-y');
     expect(screen.getByTestId('planning-gantt-drag-ghost')).toHaveTextContent('305 移動する部品');
@@ -1345,28 +1278,39 @@ describe('forward PlanningBoardGanttView', () => {
     });
     expect(screen.getByTestId('planning-gantt-bar-b')).toHaveStyle({ width: '2px' });
   });
-  it('opens the eight-card window two before the hovered job with queue positions and amber highlight', () => {
+  it('opens the full lane for the hovered job with queue positions and amber highlight', () => {
     const values = forwardProps(Array.from({ length: 12 }, (_, i) => item({ itemId: `job-${i}`, fhincd: `P${i}`,
       fhinmei: `部品${i}`, requiredMinutes: 10, alternateRank: i + 1, originalDueDate: '2026-10-13' })));
     render(<PlanningBoardGanttView {...values} resourceNameMap={{ '305': ['研削盤'] }} />);
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-job-5'), { pointerType: 'mouse' });
     const popover = screen.getByRole('region', { name: '305 研削盤 の次にやる順' });
     const cards = within(popover).getAllByTestId(/planning-forward-queue-card-/);
-    expect(cards).toHaveLength(8);
+    expect(cards).toHaveLength(12);
     expect(cards[0]).toHaveTextContent('26-1001 · 10分');
     expect(cards[0]).not.toHaveTextContent('10分 · 1個');
-    expect(within(cards[0]!).getByText('P3 · 1個')).toBeInTheDocument();
-    expect(within(cards[7]!).getByText('P10 · 1個')).toBeInTheDocument();
-    expect(cards[2]).toHaveClass('outline-amber-400', 'border-rose-400');
+    expect(within(cards[0]!).getByText('P0 · 1個')).toBeInTheDocument();
+    expect(within(cards[7]!).getByText('P7 · 1個')).toBeInTheDocument();
+    expect(cards[5]).toHaveClass('outline-amber-400', 'border-rose-400');
     expect(cards[0]).not.toHaveClass('outline-amber-400');
-    expect(cards[2]).toHaveTextContent('P5');
+    expect(cards[5]).toHaveTextContent('P5');
     expect(cards[0]).not.toHaveTextContent('4.');
-    expect(cards[2]).not.toHaveTextContent('〜');
-    expect(cards[2]).toHaveTextContent('機種');
-    expect(cards[2]).toHaveTextContent(/開始 \d{2}\/\d{2}\(.\) \d{2}:\d{2}/);
-    expect(within(cards[2]!).getByText('納期 10/13(火)')).toHaveClass('text-rose-300');
+    expect(cards[5]).not.toHaveTextContent('〜');
+    expect(cards[5]).toHaveTextContent('機種');
+    expect(cards[5]).toHaveTextContent(/開始 \d{2}\/\d{2}\(.\) \d{2}:\d{2}/);
+    expect(within(cards[5]!).getByText('納期 10/13(火)')).toHaveClass('text-rose-300');
     expect(popover).not.toHaveTextContent('遅れ見込み');
     expect(popover.parentElement).toBe(document.body);
+  });
+  it('scrolls the focused card to 160px from the left on opening', () => {
+    const offset = vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === 'planning-forward-queue-card-job-5' ? 784 : 0;
+    });
+    try {
+      const values = forwardProps(Array.from({ length: 12 }, (_, index) => item({ itemId: `job-${index}`, fhincd: `P${index}`, requiredMinutes: 10, alternateRank: index + 1 })));
+      render(<PlanningBoardGanttView {...values} />);
+      fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-job-5'));
+      expect(screen.getByRole('region', { name: /の次にやる順/ }).firstElementChild!.scrollLeft).toBe(624);
+    } finally { offset.mockRestore(); }
   });
   it('shows grey unarrived cards without start time, prevents dragging, and calls arrival controls', () => {
     const items = [item({ requiredMinutes: 60, alternateRank: 1 }),
@@ -1409,24 +1353,62 @@ describe('forward PlanningBoardGanttView', () => {
       expect(screen.getByRole('region', { name: /の次にやる順/ })).toHaveStyle({ left: `${window.innerWidth - 338}px`, top: `${window.innerHeight - 168}px` });
     } finally { measure.mockRestore(); }
   });
-  it('waits 300ms after leaving and cancels hiding on entering the popover', () => {
+  it('pins on entering, ignores hover changes and leaving, and closes outside or on Escape', () => {
     vi.useFakeTimers();
     render(<PlanningBoardGanttView {...forwardProps()} />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
     fireEvent.pointerEnter(bar);
     fireEvent.pointerLeave(bar);
     act(() => vi.advanceTimersByTime(299));
-    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
-    fireEvent.pointerEnter(screen.getByRole('region', { name: /の次にやる順/ }));
+    const panel = screen.getByRole('region', { name: /の次にやる順/ });
+    fireEvent.pointerEnter(panel);
+    fireEvent.pointerLeave(panel);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'));
     act(() => vi.advanceTimersByTime(500));
-    expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
-    fireEvent.pointerLeave(screen.getByRole('region', { name: /の次にやる順/ }));
-    act(() => vi.advanceTimersByTime(300));
-    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    expect(panel).toHaveAttribute('data-pinned', 'true');
+    expect(screen.getByTestId('planning-forward-queue-card-a')).toHaveClass('outline-amber-400');
+    fireEvent.pointerDown(document.body);
+    expect(panel).not.toBeInTheDocument();
     fireEvent.pointerEnter(bar);
-    fireEvent.pointerLeave(bar);
+    fireEvent.pointerEnter(screen.getByRole('region', { name: /の次にやる順/ }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).toBeNull();
+    fireEvent.pointerEnter(bar); fireEvent.pointerLeave(bar);
     act(() => vi.advanceTimersByTime(300));
-    expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /の次にやる順/ })).toBeNull();
+  });
+  it('keeps pinned position and scroll on refresh, uses latest order and closes if the item disappears', () => {
+    const values = forwardProps();
+    const { rerender } = render(<PlanningBoardGanttView {...values} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+    const panel = screen.getByRole('region', { name: /の次にやる順/ });
+    fireEvent.pointerEnter(panel);
+    const position = panel.getAttribute('style');
+    const scroll = panel.firstElementChild!;
+    scroll.scrollLeft = 42;
+    const next = forwardProps([item({ itemId: 'b', fhincd: 'P2', alternateRank: 1 }), item({ alternateRank: 2 })]);
+    rerender(<PlanningBoardGanttView {...next} />);
+    expect(panel).toBeInTheDocument();
+    expect(panel.getAttribute('style')).toBe(position);
+    expect(scroll.scrollLeft).toBe(42);
+    expect(within(panel).getAllByTestId(/planning-forward-queue-card-/).map((card) => card.dataset.testid)).toEqual(['planning-forward-queue-card-b', 'planning-forward-queue-card-a']);
+    rerender(<PlanningBoardGanttView {...forwardProps([item({ itemId: 'b' })])} />);
+    expect(panel).not.toBeInTheDocument();
+  });
+  it.each([false, true])('requires a stationary 220ms touch hold (early movement: %s)', (earlyMove) => {
+    vi.useFakeTimers();
+    const values = laterProps();
+    render(<PlanningBoardGanttView {...values} />);
+    fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
+    const card = screen.getByTestId('planning-forward-queue-card-b');
+    fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 100, clientY: 100, button: 0 });
+    act(() => vi.advanceTimersByTime(219));
+    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+    if (earlyMove) fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 120, clientY: 100 });
+    act(() => vi.advanceTimersByTime(1));
+    fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 0, clientY: 20 });
+    fireEvent.pointerUp(card, { pointerType: 'touch', clientX: 0, clientY: 20 });
+    expect(values.onResourceReorder).toHaveBeenCalledTimes(earlyMove ? 0 : 1);
   });
   it.each(['touch', 'pen'])('shows the chain on a %s tap without opening the popover or selecting', (pointerType) => {
     vi.useFakeTimers();
@@ -1483,6 +1465,7 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
   });
   function dragQueue(source: string, destination: number) {
+    vi.mocked(document.elementsFromPoint).mockReturnValue([screen.getByRole('region', { name: /の次にやる順/ })]);
     const cards = screen.getAllByTestId(/planning-forward-queue-card-/);
     cards.forEach((card, index) => vi.spyOn(card, 'getBoundingClientRect').mockReturnValue({ left: index * 156, width: 150 } as DOMRect));
     const card = screen.getByTestId(`planning-forward-queue-card-${source}`);
@@ -1496,10 +1479,31 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
     const card = dragQueue(source, destination);
     const marker = screen.getByTestId('planning-forward-queue-insertion');
-    expect(marker).toHaveClass('bg-white', placement === 'before' ? '-left-1.5' : '-right-1');
+    expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
+    expect(card).toHaveClass('outline-dashed');
+    expect(screen.getByTestId(`planning-gantt-bar-${source}`)).toHaveStyle({ outline: '3px dashed rgb(251 191 36)' });
+    expect(marker).toHaveClass('bg-emerald-300', placement === 'before' ? '-left-1.5' : '-right-1');
     fireEvent.pointerUp(card, { clientX: destination });
     expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
     expect(values.onToggleItem).not.toHaveBeenCalled();
+  });
+  it('flashes both the moved card and bar after the saved order changes', () => {
+    const values = forwardProps();
+    const { rerender } = render(<PlanningBoardGanttView {...values} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+    fireEvent.pointerEnter(screen.getByRole('region', { name: /の次にやる順/ }));
+    const card = dragQueue('a', 350);
+    const cardAnimation = vi.fn();
+    const barAnimation = vi.fn();
+    card.animate = cardAnimation;
+    screen.getByTestId('planning-gantt-bar-a').animate = barAnimation;
+    fireEvent.pointerUp(card, { clientX: 350 });
+    expect(cardAnimation).not.toHaveBeenCalled();
+    const next = forwardProps([item({ itemId: 'b', fhincd: 'P2', alternateRank: 1 }), item({ alternateRank: 2 })]);
+    rerender(<PlanningBoardGanttView {...next} />);
+    expect(cardAnimation).toHaveBeenCalledWith(expect.any(Array), { duration: 850 });
+    expect(barAnimation).toHaveBeenCalledWith(expect.any(Array), { duration: 850 });
+    expect(screen.getByRole('region', { name: /の次にやる順/ })).toHaveAttribute('data-pinned', 'true');
   });
   it.each(['dragDisabled', 'disabled', 'resourceView', 'specialDue', 'threshold', 'cancel'] as const)('blocks queue reorder for %s', (guard) => {
     const values = forwardProps(guard === 'specialDue' ? [item({ specialDue: { kind: 'today', expiresAt: '2026-10-14T15:00:00Z' } }), item({ itemId: 'b', fhincd: 'P2' })] : undefined);
