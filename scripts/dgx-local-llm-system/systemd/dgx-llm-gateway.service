@@ -10,6 +10,9 @@ RestartSec=5
 User=__DGX_LLM_USER__
 Group=__DGX_LLM_GROUP__
 WorkingDirectory=/srv/dgx/system-prod
+UMask=0022
+# nohup 時は ssh セッションの上限(500000)を継いでいた。systemd 既定の soft 1024 に落とさない
+LimitNOFILE=65536
 Environment=ACTIVE_LLM_BACKEND=green
 Environment=GATEWAY_LISTEN_HOST=0.0.0.0
 Environment=GATEWAY_LISTEN_PORT=38081
@@ -21,6 +24,9 @@ Environment=EMBEDDING_BASE_URL=http://127.0.0.1:38100
 # LLM_SHARED_TOKEN / LLM_RUNTIME_CONTROL_TOKEN / 任意 EMBEDDING_API_KEY。ACTIVE_LLM_BACKEND は gateway / control で一致させる
 EnvironmentFile=-/srv/dgx/system-prod/secrets/gateway-server.env
 ExecStart=/usr/bin/python3 /srv/dgx/system-prod/bin/gateway-server.py
+# 従来の nohup 運用と同じファイルへ追記する。ローテーションは dgx-llm-logs.logrotate (copytruncate)
+StandardOutput=append:/srv/dgx/system-prod/logs/gateway-server.log
+StandardError=inherit
 
 [Install]
 WantedBy=multi-user.target

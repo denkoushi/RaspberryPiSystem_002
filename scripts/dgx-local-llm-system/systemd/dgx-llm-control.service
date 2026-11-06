@@ -10,6 +10,11 @@ RestartSec=5
 User=__DGX_LLM_USER__
 Group=__DGX_LLM_GROUP__
 WorkingDirectory=/srv/dgx/system-prod
+UMask=0022
+# nohup 時は ssh セッションの上限(500000)を継いでいた。systemd 既定の soft 1024 に落とさない
+LimitNOFILE=65536
+# green の llama-server は control の子として nohup 起動されるため、control の再起動で道連れにしない
+KillMode=process
 Environment=ACTIVE_LLM_BACKEND=green
 Environment=LLM_RUNTIME_LISTEN_HOST=127.0.0.1
 Environment=LLM_RUNTIME_LISTEN_PORT=39090
@@ -22,6 +27,9 @@ Environment="BLUE_LLM_RUNTIME_STOP_CMD=bash /srv/dgx/system-prod/bin/stop-trtllm
 # secrets/control-server.env に LLM_RUNTIME_CONTROL_TOKEN=... を置く（値は DGX secrets/runtime-control-token と同一）
 EnvironmentFile=-/srv/dgx/system-prod/secrets/control-server.env
 ExecStart=/usr/bin/python3 /srv/dgx/system-prod/bin/control-server.py
+# 従来の nohup 運用と同じファイルへ追記する。ローテーションは dgx-llm-logs.logrotate (copytruncate)
+StandardOutput=append:/srv/dgx/system-prod/logs/control-server.log
+StandardError=inherit
 
 [Install]
 WantedBy=multi-user.target

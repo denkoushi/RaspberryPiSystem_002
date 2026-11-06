@@ -92,7 +92,7 @@ python3 ./gateway-server.py
 ./start-embedding-server.sh
 ```
 
-`sudo` や `loginctl enable-linger` を前提にしない最小構成として、DGX ユーザーの `crontab` に次を入れる運用を取れる:
+旧運用（systemd 移行前）では、`sudo` や `loginctl enable-linger` を前提にしない最小構成として、DGX ユーザーの `crontab` に次を入れていた。移行後は外す:
 
 ```cron
 @reboot /srv/dgx/system-prod/bin/start-control-server.sh
@@ -338,7 +338,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 
 - DGX 実機では `node` が未導入だったため、まずは `python3 ./control-server.py` を正とする
 - tailnet 参加前の localhost smoke では `python3 ./gateway-server.py` で `38081` を再現できる
-- 実機確認では、**再起動後に `control-server.py` / `gateway-server.py` が自動復帰しない穴**があったため、現時点では **`start-control-server.sh` / `start-gateway-server.sh` / `start-embedding-server.sh` を `@reboot` で起動**する運用を正とする
+- 常駐は `systemd/` の unit（`dgx-llm-control` / `dgx-llm-gateway` / `dgx-llm-embedding`）を正とする。`@reboot` からの移行と戻し方は [runbook の systemd 移行節](../../docs/runbooks/dgx-system-prod-local-llm.md)
 - この雛形は **実値なし** のテンプレートです。秘密は別ファイルで注入してください
 - `DOCKER_BRIDGE_GATEWAY` は tailscale sidecar から見た host gateway を実機で確認して設定してください
 - `photo_label` の vision 互換は、まず **現行 `Qwen3.5-35B` + `mmproj` の単体疎通**で確認する

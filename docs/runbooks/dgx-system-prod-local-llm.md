@@ -439,13 +439,73 @@ privateの8888やComfyUIのGPU利用は停止条件に含めない。
 
 ### systemd への移行（推奨・`@reboot` の代替）
 
-`@reboot` は起動順が保証されず、journald との統合も弱い。**恒久運用**では systemd ユニットへ寄せることを推奨する（`llama-server` 本体は従来どおり on-demand のみ常駐させない）。
+2026-11-07 時点の node1（`dgx-control-spark`）では、`gateway-server.py`（:38081）と `control-server.py`（:39090）が `nohup` で動き、ユーザ `crontab` の `@reboot` 3 行だけで復帰する。落ちても自動では戻らない。以下で systemd 管理へ移す。`llama-server` 本体は従来どおり control が on-demand で起動する。
 
-1. リポジトリの [`scripts/dgx-local-llm-system/systemd/`](../../scripts/dgx-local-llm-system/systemd/) を DGX 上の同パス（または手元からコピー）で参照する。
-2. `control-server.env.example` / `gateway-server.env.example` を元に、`/srv/dgx/system-prod/secrets/control-server.env` と `gateway-server.env` を作成する（`chmod 600`）。値は既存の `runtime-control-token` / `api-token` と**同一**にする（Pi5 `vault` とも整合）。
-3. root で `install-systemd-units.sh` を実行し、`dgx-llm-embedding.service` → `dgx-llm-control.service` → `dgx-llm-gateway.service` を有効化する。installer は既定で `/srv/dgx/system-prod` の owner/group を unit の `User` / `Group` に埋め込むため、root 実行による log / PID 所有者の崩れを避けられる。
-4. `systemctl status` で `38081` / `39090` / 埋め込みコンテナ相当が復帰することを確認したら、重複起動を避けるため **ユーザ `crontab` の `@reboot` 3 行を削除またはコメントアウト**する。
-5. Pi5 から `POST /start` → `GET /v1/models` → `POST /v1/chat/completions` → `POST /embed` → `POST /stop` のスモークを再実行する。
+**unit が渡す環境（2026-11-07 実機照合）**
+
+- `EnvironmentFile=` は unit の `Environment=` より優先する。`secrets/*.env` の `ACTIVE_LLM_BACKEND=blue` と `GATEWAY_LISTEN_HOST=127.0.0.1` が unit の `green` / `0.0.0.0` に勝つ。127.0.0.1 は必須（Tailscale proxy が別アドレスで :38081 を共有する）。
+- `secrets/gateway-server.env` / `control-server.env` の全キーは、`systemd-run --user -p EnvironmentFile=…` で読んだ値と稼働中プロセスの値が一致した。
+- 唯一の差分は `EMBEDDING_API_KEY`。`start-gateway-server.sh` は `secrets/embedding-api-key` から読むが、unit は読まない。手順 2 で `gateway-server.env` に追記する。
+- unit は `UMask=0022`、`LimitNOFILE=65536`（nohup 時は ssh セッションの 500000 を継いでいた）を持つ。control は `KillMode=process`（control の再起動で nohup 起動の green `llama-server` や子 ssh を止めない）。
+- 標準出力は従来と同じ `logs/gateway-server.log` / `control-server.log` へ追記する。`/etc/logrotate.d/dgx-llm-system-prod`（[`dgx-llm-logs.logrotate`](../../scripts/dgx-local-llm-system/systemd/dgx-llm-logs.logrotate)）が `logs/*.log` を日次＋50MB 超で `copytruncate`、14 世代保持する。
+
+**移行手順**（業務 LLM は手順 4 の数秒〜十数秒止まる。各行を順に実行する。1 は Mac、2 以降は `ssh dgx-control-spark` 上）
+
+1. unit 一式を DGX へ送る（main の checkout から）:
+
+```bash
+git -C ~/RaspberryPiSystem_002 switch main && git -C ~/RaspberryPiSystem_002 pull --ff-only && scp -r ~/RaspberryPiSystem_002/scripts/dgx-local-llm-system/systemd dgx-control-spark:/srv/dgx/system-prod/
+```
+
+2. 状態確認・退避・埋め込みキー追記（停止なし）。`ready` 以外（特に `loading`）なら中止する:
+
+```bash
+cd /srv/dgx/system-prod && python3 -c 'import json;print(json.load(open("state/active-model-profile.json"))["businessTransition"])' && b=$(date +%Y%m%d-%H%M%S) && crontab -l > ~/crontab.bak-$b && cp -p secrets/gateway-server.env secrets/gateway-server.env.bak-$b && echo "$b" > ~/dgx-llm-systemd-backup-id && (grep -q '^EMBEDDING_API_KEY=' secrets/gateway-server.env || { { [ -z "$(tail -c1 secrets/gateway-server.env)" ] || echo >> secrets/gateway-server.env; } && printf 'EMBEDDING_API_KEY=%s\n' "$(tr -d '\n' < secrets/embedding-api-key)" >> secrets/gateway-server.env; }) && echo "backup=$b"
+```
+
+3. systemd が読む値の事前確認（停止なし）。`1` が出ればよい:
+
+```bash
+systemd-run --user --quiet --pipe --wait --collect -p EnvironmentFile=/srv/dgx/system-prod/secrets/gateway-server.env /usr/bin/env | grep -c '^EMBEDDING_API_KEY=.'
+```
+
+4. 切替（ここで止まる）。sudo のパスワードを先に聞くので、入力後に旧プロセスを止めて unit を入れる。30 秒で止まらなければ何も入れずに終わる（その場合は戻す手順を実行）:
+
+```bash
+sudo -v && umask 022 && cd /srv/dgx/system-prod && { pkill -f '^python3 /srv/dgx/system-prod/bin/(gateway|control)-server.py$' || true; } && for i in $(seq 30); do pgrep -f '^python3 /srv/dgx/system-prod/bin/(gateway|control)-server.py$' >/dev/null || break; sleep 1; done && ! pgrep -f '^python3 /srv/dgx/system-prod/bin/(gateway|control)-server.py$' && rm -f logs/control-server.pid logs/gateway-server.pid && sudo bash systemd/install-systemd-units.sh
+```
+
+5. 確認。`active` が 3 つ、`gateway 200`、`control 401`、`models 200`、両 unit で `Umask: 0022`・`system.slice/dgx-llm-*.service`・gateway の `emb=1` を見る:
+
+```bash
+sleep 3; cd /srv/dgx/system-prod; systemctl is-active dgx-llm-embedding dgx-llm-control dgx-llm-gateway; curl -s -o /dev/null -w 'gateway %{http_code}\n' http://127.0.0.1:38081/healthz; curl -s -o /dev/null -w 'control %{http_code}\n' http://127.0.0.1:39090/healthz; curl -s -o /dev/null -w 'models %{http_code}\n' -H "X-LLM-Token: $(tr -d '\n' < secrets/api-token)" http://127.0.0.1:38081/v1/models; for u in dgx-llm-control dgx-llm-gateway; do p=$(systemctl show -p MainPID --value $u); echo "$u pid=$p $(grep Umask /proc/$p/status) $(cat /proc/$p/cgroup) emb=$(tr '\0' '\n' < /proc/$p/environ | grep -c '^EMBEDDING_API_KEY=.')"; done
+```
+
+6. `@reboot` 3 行を外す（重複起動防止）。退避は手順 2 の `~/crontab.bak-*`:
+
+```bash
+crontab -l | grep -vE '^@reboot /srv/dgx/system-prod/bin/start-(control|gateway|embedding)-server\.sh$' | crontab - && crontab -l
+```
+
+7. 大きいログを今回だけ切り替える（50MB 超だけが回る）:
+
+```bash
+sudo logrotate -v /etc/logrotate.d/dgx-llm-system-prod 2>&1 | grep -E 'rotating|truncating|error' ; ls -la /srv/dgx/system-prod/logs/
+```
+
+8. 自動復帰の確認（gateway が 5 秒ほど止まる）。`active` と `200` が出ればよい:
+
+```bash
+sudo systemctl kill -s SIGKILL dgx-llm-gateway && sleep 8 && systemctl is-active dgx-llm-gateway && curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:38081/healthz
+```
+
+**戻す手順**（業務 LLM が数秒止まる）。embedding unit は `--now` を付けない（`ExecStop` が埋め込みコンテナを止めるため）。logrotate 設定は nohup 運用でも有効なので残す。手順 2 で取った crontab 退避を確かめてから止める:
+
+```bash
+b=$(cat ~/dgx-llm-systemd-backup-id) && grep -q 'start-gateway-server.sh' ~/crontab.bak-$b && sudo -v && umask 022 && sudo systemctl disable --now dgx-llm-gateway dgx-llm-control && sudo systemctl disable dgx-llm-embedding && crontab ~/crontab.bak-$b && cd /srv/dgx/system-prod && rm -f logs/control-server.pid logs/gateway-server.pid && bash bin/start-control-server.sh && bash bin/start-gateway-server.sh && sleep 3 && curl -s -o /dev/null -w 'gateway %{http_code}\n' http://127.0.0.1:38081/healthz
+```
+
+**移行後の再起動方法**: `bin/` 更新後などは `sudo systemctl restart dgx-llm-control dgx-llm-gateway`。従来の「PID を `kill` → `start-*.sh`」は使わない。`kill`（SIGTERM）は `Restart=on-failure` で正常終了扱いになり、自動では戻らない。ログは `tail -f /srv/dgx/system-prod/logs/gateway-server.log` のまま見られる。
 
 詳細は [`scripts/dgx-local-llm-system/README.md`](../../scripts/dgx-local-llm-system/README.md) の systemd 節を参照。
 
