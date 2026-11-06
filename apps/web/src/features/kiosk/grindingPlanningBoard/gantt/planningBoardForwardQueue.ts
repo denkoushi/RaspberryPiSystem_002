@@ -14,8 +14,7 @@ export function forwardQueueWindow(layout: GanttLayout, hovered: GanttBar) {
     .map((id) => byId.get(id)!) : scheduled;
   const index = queue.findIndex((bar) => bar.item.itemId === hovered.item.itemId);
   if (index < 0) return [];
-  const from = Math.max(0, index - 2);
-  return queue.slice(from, from + 8).map((bar, i) => ({ bar, position: from + i + 1 }));
+  return queue.map((bar, i) => ({ bar, position: i + 1 }));
 }
 
 export function forwardItemDetails(item: GrindingPlanningBoardItem): string {

@@ -13,6 +13,7 @@ import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 import { ganttResourceLabel } from './ganttResourceLabel';
 import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
+import { PlanningBoardDragArrow } from './PlanningBoardDragArrow';
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardLaterQueue } from './PlanningBoardForwardLaterQueue';
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
@@ -115,13 +116,32 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     row.bars.map((bar) => [bar.item.itemId, bar] as const)))), [currentLayout]);
   const latest = useRef({ interaction, currentBars });
   useLayoutEffect(() => { latest.current = { interaction, currentBars }; });
+  const pendingMove = useRef<{ id: string; layout: GanttLayout } | null>(null);
+  useEffect(() => {
+    const pending = pendingMove.current;
+    if (!pending || currentLayout === pending.layout) return;
+    const signature = (value: GanttLayout) => JSON.stringify([value.forwardQueue?.map((bar) => bar.item.itemId), value.groups.flatMap((group) => group.rows.flatMap((row) => row.bars.map((bar) => [bar.item.itemId, bar.resource, bar.start, bar.end])))]);
+    if (signature(currentLayout) === signature(pending.layout)) return;
+    pendingMove.current = null;
+    for (const element of document.querySelectorAll<HTMLElement>(`[data-testid="planning-gantt-bar-${pending.id}"], [data-testid^="planning-gantt-bar-${pending.id}-segment-"], [data-testid="planning-forward-queue-card-${pending.id}"]`)) {
+      element.animate?.([{ outline: '4px solid rgb(52 211 153)', outlineOffset: '2px' }, { outline: '4px solid transparent', outlineOffset: '6px' }], { duration: 850 });
+    }
+  }, [currentLayout]);
+  const markMoved = (id: string) => {
+    const pending = { id, layout: latestLayout.current };
+    pendingMove.current = pending;
+    // A save that never changes the layout must not flash on a later refresh.
+    setTimeout(() => { if (pendingMove.current === pending) pendingMove.current = null; }, 10_000);
+  };
+  const latestLayout = useRef(currentLayout);
+  useLayoutEffect(() => { latestLayout.current = currentLayout; }, [currentLayout]);
   const rowActions = useMemo(() => {
     const item = (original: GrindingPlanningBoardItem) => latest.current.currentBars.get(original.itemId)?.item ?? original;
     return {
       onToggleItem: (original: GrindingPlanningBoardItem, selected: boolean) => latest.current.interaction.onToggleItem(item(original), selected),
       onTogglePin: (original: GrindingPlanningBoardItem) => latest.current.interaction.onTogglePin?.(item(original)),
-      onResourceReorder: ((original, target, placement) => latest.current.interaction.onResourceReorder?.(item(original), item(target), placement)) as ForwardReorder,
-      onResourceMove: ((original, resource, target, placement) => latest.current.interaction.onResourceMove?.(item(original), resource, target && item(target), placement)) as ForwardMove,
+      onResourceReorder: ((original, target, placement) => { markMoved(original.itemId); latest.current.interaction.onResourceReorder?.(item(original), item(target), placement); }) as ForwardReorder,
+      onResourceMove: ((original, resource, target, placement) => { markMoved(original.itemId); latest.current.interaction.onResourceMove?.(item(original), resource, target && item(target), placement); }) as ForwardMove,
       canMoveResource: (original: GrindingPlanningBoardItem, resource: string) => latest.current.interaction.canMoveResource?.(item(original), resource) ?? false
     };
   }, []);
@@ -257,17 +277,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     setFocusedPartKey((current) => current === bar.partKey ? null : bar.partKey);
     setCurrentItemId(null);
   }, []);
-  // The later-queue tray and the hover queue sit in the same place, so the open tray wins.
-  const laterQueueOpen = useRef(false);
-  const onLaterQueueOpenChange = useCallback((open: boolean) => {
-    laterQueueOpen.current = open;
-    if (open) queuePopover.current?.close();
-  }, []);
   const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
-    if (!showChain && !laterQueueOpen.current) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
+    if (!showChain && !queuePopover.current?.isPinned()) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
   }, [showChain]);
   const leaveQueue = useCallback(() => queuePopover.current?.hideSoon(), []);
-  const closeQueue = useCallback(() => queuePopover.current?.close(), []);
+  const closeQueue = useCallback(() => queuePopover.current?.closeUnlessPinned(), []);
   const [viewportWidth, setViewportWidth] = useState(1120);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const flaggedIndex = useRef(-1);
@@ -421,7 +435,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   return (
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
-      <div ref={viewport} onScroll={() => { queuePopover.current?.close(); updateWindow(); }} className="relative min-h-48 overflow-auto"
+      <div ref={viewport} onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className="relative min-h-48 overflow-auto"
         style={{ height: viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
         onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
@@ -488,11 +502,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
             {forward && group.resource && <div data-later-queue-host={`column-${dragLanes.findIndex((lane) => lane.resource === group.resource)}`}
               className="pointer-events-none absolute inset-0 flex items-stretch justify-end" />}
             </div>
-            {forward && group.resource && <div data-later-queue-host={`tray-${dragLanes.findIndex((lane) => lane.resource === group.resource)}`} />}
           </div>)}
           {forward && <PlanningBoardForwardLaterQueue viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth}
-            labelWidth={labelWidth} viewportWidth={viewportWidth} disabled={interaction.disabled || interaction.dragDisabled || Boolean(interaction.pinMode) || !interaction.resourceView}
-            onDragPreview={setDragPreview} onOpenChange={onLaterQueueOpenChange} {...rowActions} />}
+            labelWidth={labelWidth} viewportWidth={viewportWidth}
+            onOpen={(bar, anchor) => queuePopover.current?.show(bar, anchor, true)} />}
           {showChain && <PlanningBoardChainLinks bars={chain} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
@@ -508,9 +521,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         {focusedSeiban !== null && <button type="button" onClick={() => setFocusedSeiban(null)}
           className="min-h-[44px] snap-start rounded bg-slate-800 px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">すべて表示</button>}
       </div>}
-      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
+      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth} labelWidth={labelWidth} viewportWidth={viewportWidth} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
+      {dragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
-        className="pointer-events-none fixed z-[100] rounded border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
+        className="pointer-events-none fixed z-[110] scale-105 rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
         style={{ left: dragPreview.x / pageZoom() + 12, top: dragPreview.y / pageZoom() + 12 }}>
         <strong className="font-mono">{dragPreview.bar.resource}</strong> {dragPreview.bar.item.fhinmei || dragPreview.bar.item.fhincd}
       </div>, document.body)}

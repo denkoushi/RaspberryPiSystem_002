@@ -33,11 +33,11 @@ describe('forward queue helpers', () => {
     expect(result.map(({ bar, position }) => [bar.item.itemId, position])).toEqual([['first', 1], ['later', 2]]);
     expect(entries[0]!.item.itemId).toBe('later');
   });
-  it('clamps the start to zero and does not backfill at the queue end', () => {
+  it('returns the entire lane independently of the hovered position', () => {
     const entries = Array.from({ length: 12 }, (_, i) => bar(String(i), today + i / 24));
-    expect(forwardQueueWindow(layout(entries), entries[0]!)).toHaveLength(8);
-    expect(forwardQueueWindow(layout(entries), entries[5]!).map(({ position }) => position)).toEqual([4, 5, 6, 7, 8, 9, 10, 11]);
-    expect(forwardQueueWindow(layout(entries), entries[11]!).map(({ position }) => position)).toEqual([10, 11, 12]);
+    expect(forwardQueueWindow(layout(entries), entries[0]!)).toHaveLength(12);
+    expect(forwardQueueWindow(layout(entries), entries[5]!).map(({ position }) => position)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
+    expect(forwardQueueWindow(layout(entries), entries[11]!).map(({ position }) => position)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
     expect(forwardQueueWindow(layout(entries), bar('missing'))).toEqual([]);
   });
   it('omits null/empty parts and preserves zero quantity', () => {

@@ -10,8 +10,8 @@ export function findForwardDrop(clientX: number, clientY: number, source: GanttB
   lanes: readonly { resource: string; bars: GanttBar[] }[], start: number, dayWidth: number
 ): ForwardDragPreview['drop'] {
   const hits = document.elementsFromPoint?.(clientX, clientY) ?? [];
-  // The later-queue column and tray sit inside a lane but are not a place to drop.
-  if (hits.some((element) => element.closest('[data-later-queue]'))) return null;
+  // Overlays may cover a lane but must never receive a Gantt drop.
+  if (hits.some((element) => element.closest('[data-later-queue], [data-forward-queue]'))) return null;
   const lane = hits
     .map((element) => element.closest<HTMLElement>('[data-gantt-lane]')).find((element) => element && board?.contains(element));
   const targetResource = lane?.dataset.resourceCode;

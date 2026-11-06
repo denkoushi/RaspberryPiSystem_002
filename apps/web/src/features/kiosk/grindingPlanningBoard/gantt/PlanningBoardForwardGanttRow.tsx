@@ -24,7 +24,7 @@ import type { PointerEvent, ReactNode } from 'react';
 export type ForwardReorder = (item: GrindingPlanningBoardItem, target: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
 export type ForwardMove = (item: GrindingPlanningBoardItem, resource: string, target: GrindingPlanningBoardItem | null, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
 type Drop = { resource: string; bar: GanttBar | null; placement: GrindingPlanningBoardResourceOrderPlacement; left: number };
-export type ForwardDragPreview = { bar: GanttBar; x: number; y: number; allowed: ReadonlySet<string>; drop: Drop | null };
+export type ForwardDragPreview = { source?: 'queue'; bar: GanttBar; x: number; y: number; allowed: ReadonlySet<string>; drop: Drop | null };
 type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
   row: GanttRow;
@@ -204,10 +204,12 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
                 inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
                 focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
+                draggedItemId === bar.item.itemId && '[&>*]:opacity-30',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ boxShadow: bar.item.orderPinned ? `${focusedSeiban === bar.item.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
-                opacity: draggedItemId === bar.item.itemId ? 0.3 : undefined,
-                outline: draggedItemId === bar.item.itemId ? '3px solid rgb(251 191 36)' : undefined,
+                backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : undefined,
+                color: draggedItemId === bar.item.itemId ? 'rgb(148 163 184)' : undefined,
+                outline: draggedItemId === bar.item.itemId ? '3px dashed rgb(251 191 36)' : undefined,
                 outlineOffset: draggedItemId === bar.item.itemId ? -3 : undefined,
                 zIndex: draggedItemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
               onPointerEnter={(event) => { if (event.pointerType === 'mouse' && !drag.current) onShowQueue(bar, event.currentTarget); }}
@@ -258,7 +260,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
             style={{ left: Math.max(0, (dateToDay(bar.due) + 1 - start) * dayWidth) }}>▲</span>}
         </div>;
       })}
-      {insertionLeft !== null && <span data-testid="planning-gantt-insertion" className="pointer-events-none absolute inset-y-2 z-10 w-0.5 bg-emerald-300" style={{ left: insertionLeft }} />}
+      {insertionLeft !== null && <span data-testid="planning-gantt-insertion" className="pointer-events-none absolute inset-y-2 z-10 w-1 bg-emerald-300" style={{ left: insertionLeft }} />}
     </div>
   </div>;
 });
