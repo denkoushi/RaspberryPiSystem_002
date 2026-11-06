@@ -10,7 +10,7 @@ import { canReorderForwardBars, forwardQueueWindow, forwardStartLabel } from './
 
 import type { ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
-import type { GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent } from 'react';
 
 type OpenQueue = { bar: GanttBar; anchor: HTMLButtonElement };
@@ -29,10 +29,13 @@ type Props = {
   dragDisabled: boolean;
   resourceView: boolean;
   onResourceReorder?: ForwardReorder;
+  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
+  arrivalPending?: boolean;
+  arrivalError?: boolean;
 };
 
 export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, Props>(function PlanningBoardForwardQueuePopover({
-  layout, scale, resourceNameMap, disabled, dragDisabled, resourceView, onResourceReorder
+  layout, scale, resourceNameMap, disabled, dragDisabled, resourceView, onResourceReorder, onArrivalChange, arrivalPending, arrivalError
 }, ref) {
   const [open, setOpen] = useState<OpenQueue | null>(null);
   const [position, setPosition] = useState({ left: 8, top: 8 });
@@ -109,10 +112,10 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
       {cards.map(({ bar, position: queuePosition }) => <div key={bar.item.itemId} data-queue-position={queuePosition}
         data-testid={`planning-forward-queue-card-${bar.item.itemId}`}
         className={clsx('relative min-h-11 w-[150px] shrink-0 touch-pan-y select-none rounded-lg border-l-[5px] bg-slate-950 p-2 text-xs tabular-nums',
-          bar.tone === 'late' ? 'border-rose-400' : 'border-sky-400',
+          bar.arrivalPending ? 'border-slate-600 text-slate-500 [&_.text-slate-400]:text-slate-600' : bar.tone === 'late' ? 'border-rose-400' : 'border-sky-400',
           bar.item.itemId === open.bar.item.itemId && 'outline outline-2 outline-amber-400')}
         onPointerDown={(event) => {
-          if (event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || bar.item.isCompleted) return;
+          if (event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || bar.item.isCompleted || bar.arrivalPending || (event.target instanceof Element && event.target.closest('button'))) return;
           cancelHide();
           drag.current = { bar, x: event.clientX, pointerId: event.pointerId, element: event.currentTarget, moved: false };
           event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -129,10 +132,19 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
         <strong className="my-0.5 block truncate text-sm" title={bar.item.fhinmei || bar.item.fhincd}>{bar.item.fhinmei || bar.item.fhincd}</strong>
         <div className="truncate text-slate-400">{bar.item.fhincd}</div>
         <div className="truncate text-slate-400">{normalizeMachineName(bar.item.machineName)}</div>
-        <div className="truncate text-slate-400">{forwardStartLabel(bar)}</div>
+        {bar.arrivalPending ? (
+          <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
+            disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(bar.item, true)}>着</button>
+        ) : <>
+          <div className="truncate text-slate-400">{forwardStartLabel(bar)}</div>
+          {bar.item.manualArrivalDate && <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
+            disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(bar.item, false)}>取り消し</button>}
+        </>}
+
         {drop?.bar.item.itemId === bar.item.itemId && <span data-testid="planning-forward-queue-insertion"
           className={clsx('pointer-events-none absolute inset-y-0 w-0.5 bg-white', drop.placement === 'before' ? '-left-1.5' : '-right-1')} />}
       </div>)}
     </div>
+    {arrivalError && <div role="alert" className="px-1 text-xs text-rose-300">着の更新に失敗しました。</div>}
   </div>, document.body);
 });

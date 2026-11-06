@@ -1316,6 +1316,35 @@ describe('forward PlanningBoardGanttView', () => {
     expect(popover).not.toHaveTextContent('遅れ見込み');
     expect(popover.parentElement).toBe(document.body);
   });
+  it('shows grey unarrived cards without start time, prevents dragging, and calls arrival controls', () => {
+    const items = [item({ requiredMinutes: 60, alternateRank: 1 }),
+      item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2, arrived: false }),
+      item({ itemId: 'c', fhincd: 'P3', requiredMinutes: 60, alternateRank: 3, manualArrivalDate: '2026-10-14' })];
+    const values = forwardProps(items);
+    values.layout = buildPlanningBoardGanttLayout({ items, mode: 'forward', arrivalFilterEnabled: true,
+      allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'], dailyHoursByResource: {},
+      today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 });
+    const onArrivalChange = vi.fn();
+    render(<PlanningBoardGanttView {...values} onArrivalChange={onArrivalChange} />);
+    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+    const hidden = screen.getByTestId('planning-forward-queue-card-b');
+    expect(hidden).toHaveClass('border-slate-600', 'text-slate-500');
+    expect(hidden).not.toHaveTextContent('10/14(水)');
+    fireEvent.pointerDown(hidden, { button: 0, pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(hidden, { pointerId: 1, clientX: 400 });
+    fireEvent.pointerUp(hidden, { pointerId: 1, clientX: 400 });
+    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    const arrive = within(hidden).getByRole('button', { name: '着', exact: true });
+    expect(arrive).toHaveClass('min-h-9');
+    fireEvent.click(arrive);
+    expect(onArrivalChange).toHaveBeenCalledWith(items[1], true);
+    const arrived = screen.getByTestId('planning-forward-queue-card-c');
+    expect(arrived).toHaveTextContent('10/14(水)');
+    fireEvent.click(within(arrived).getByRole('button', { name: '取り消し' }));
+    expect(onArrivalChange).toHaveBeenLastCalledWith(items[2], false);
+  });
+
   it('clamps the fixed popover inside the viewport near the bottom-right corner', () => {
     const measure = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       return this.getAttribute('role') === 'region'

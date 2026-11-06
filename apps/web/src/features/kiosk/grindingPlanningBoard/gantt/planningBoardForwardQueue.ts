@@ -1,12 +1,17 @@
 import { normalizeMachineName } from '../../productionSchedule/machineName';
+import { mergeVisibleResourceOrder } from '../mergeVisibleResourceOrder';
 
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export function forwardQueueWindow(layout: GanttLayout, hovered: GanttBar) {
-  const queue = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
+  const scheduled = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
     .filter((bar) => bar.resource === hovered.resource && !bar.item.isCompleted && bar.start != null)
     .sort((a, b) => a.start! - b.start!);
+  const saved = layout.forwardQueue?.filter((bar) => bar.resource === hovered.resource && !bar.item.isCompleted);
+  const byId = new Map(saved?.map((bar) => [bar.item.itemId, bar]));
+  const queue = saved ? mergeVisibleResourceOrder(saved.map((bar) => bar.item.itemId), scheduled.map((bar) => bar.item.itemId))
+    .map((id) => byId.get(id)!) : scheduled;
   const index = queue.findIndex((bar) => bar.item.itemId === hovered.item.itemId);
   if (index < 0) return [];
   const from = Math.max(0, index - 2);
@@ -30,6 +35,6 @@ export function forwardStartLabel(bar: GanttBar): string | null {
 
 export function canReorderForwardBars(source: GanttBar, target: GanttBar): boolean {
   return source.item.itemId !== target.item.itemId && source.resource === target.resource &&
-    !source.item.isCompleted && !target.item.isCompleted &&
+    !source.arrivalPending && !target.arrivalPending && !source.item.isCompleted && !target.item.isCompleted &&
     (source.item.specialDue?.expiresAt ?? null) === (target.item.specialDue?.expiresAt ?? null);
 }

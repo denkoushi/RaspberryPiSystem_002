@@ -21,12 +21,12 @@ const rowIds: string[] = [];
 function block(overrides: Partial<DScheduleMinutesBlock> = {}): DScheduleMinutesBlock {
   const seiban = randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
   seibans.push(seiban);
-  return { seiban, aliasSeibans: [], partsCompleteDate: '2026-11-10', outsourceMarks: ['X'],
+  return { seiban, assignees: [], aliasSeibans: [], partsCompleteDate: '2026-11-10', outsourceMarks: ['X'],
     surfaceSendOutDates: [{ date: '2026-11-02', label: '★LSLH処理出', note: null }], memo: 'test memo',
     sourceRow: 8, rawPartsCompleteText: '11/10(X)', ...overrides };
 }
 async function apply(blocks: DScheduleMinutesBlock[], message: string = randomUUID(), meetingDate = '2026-10-30', thresholds?: Parameters<typeof applyDScheduleMinutes>[0]['thresholds']) {
-  const run = await applyDScheduleMinutes({ result: { ok: true, meetingDate, blocks, warnings: [] },
+  const run = await applyDScheduleMinutes({ result: { ok: true, assigneeColumnFound: true, meetingDate, blocks, warnings: [] },
     metadata: { gmailMessageId: message, subject: 'synthetic D minutes', filename: '20261030 test.xlsx', receivedAt: new Date('2026-10-30Z') }, thresholds });
   runIds.push(run.id);
   return run;
@@ -119,7 +119,7 @@ describe.skipIf(!local)('apply D schedule minutes on the local test DB', () => {
     const ingestion = new DScheduleMinutesGmailIngestionService({
       gmailFactory: vi.fn().mockResolvedValue(gmail), db: prisma,
       saveOriginal: vi.fn().mockResolvedValue('synthetic.xlsx'), notify: vi.fn(),
-      parse: vi.fn(async ({ filename }) => ({ ok: true as const, meetingDate: filename.startsWith(oldId) ? '2026-10-30' : '2026-11-06',
+      parse: vi.fn(async ({ filename }) => ({ ok: true as const, assigneeColumnFound: true, meetingDate: filename.startsWith(oldId) ? '2026-10-30' : '2026-11-06',
         blocks: [{ ...main, partsCompleteDate: filename.startsWith(oldId) ? '2026-11-01' : '2026-11-12' }], warnings: [] })),
       apply: async (input) => {
         order.push(input.metadata.gmailMessageId);
@@ -224,10 +224,28 @@ describe('apply D schedule minutes comparison before writes', () => {
     });
     vi.spyOn(prisma.productionScheduleDScheduleMinutesImportRun, 'findUniqueOrThrow').mockResolvedValue(run);
     return { tx, run, execute: (thresholds?: Parameters<typeof applyDScheduleMinutes>[0]['thresholds']) => applyDScheduleMinutes({
-      result: { ok: true, meetingDate: '2026-11-06', blocks, warnings: [] },
+      result: { ok: true, assigneeColumnFound: true, meetingDate: '2026-11-06', blocks, warnings: [] },
       metadata: { gmailMessageId: 'comparison-mail', subject: 'test', filename: 'test.xlsx', receivedAt: new Date('2026-11-06Z') }, thresholds
     }) };
   }
+
+  it.each([
+    { assignees: ['資材課'], assigneesKnown: true },
+    { assignees: ['機械課・資材課'], assigneesKnown: false }
+  ])('updates an assignee-only change from %j', async (stored) => {
+    const main = block({ assignees: ['機械課・資材課'] });
+    const { tx, execute } = harness([main], null);
+    tx.productionScheduleDScheduleMinutes.findUnique.mockResolvedValue({
+      ...main, ...stored, partsCompleteDate: new Date('2026-11-10Z'),
+      sourceRun: { meetingDate: new Date('2026-10-30Z') }, isAlias: false, aliasOf: null
+    });
+    await execute();
+    expect(tx.productionScheduleDScheduleMinutes.upsert).toHaveBeenCalledOnce();
+    expect(tx.productionScheduleDScheduleMinutes.upsert.mock.calls[0][0].update).toMatchObject({
+      assignees: main.assignees, assigneesKnown: true
+    });
+    expect(tx.productionScheduleDScheduleMinutes.upsert.mock.calls[0][0].update).not.toHaveProperty('excelChangedAt');
+  });
 
   it('rejects a drop in distinct main/alias count before creating any run or row', async () => {
     const { tx, execute } = harness([block({ aliasSeibans: ['ALIAS001', 'ALIAS001'] })], 5);

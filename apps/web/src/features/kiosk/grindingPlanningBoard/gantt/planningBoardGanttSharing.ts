@@ -26,6 +26,7 @@ export function sharePlanningBoardGanttLayout(previous: GanttLayout | null, next
   return previous.start === next.start && previous.end === next.end && previous.today === next.today &&
     previous.now === next.now && previous.mode === next.mode && previous.overlapCount === next.overlapCount &&
     previous.lateCount === next.lateCount && previous.completedOnly === next.completedOnly &&
+    JSON.stringify(previous.forwardQueue) === JSON.stringify(next.forwardQueue) &&
     groups.length === previous.groups.length && groups.every((group, index) => group === previous.groups[index])
     ? previous : { ...next, groups };
 }

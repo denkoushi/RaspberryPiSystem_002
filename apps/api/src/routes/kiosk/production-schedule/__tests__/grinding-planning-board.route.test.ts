@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   updateDueScope: vi.fn(),
   getCapacity: vi.fn(),
   updateCapacity: vi.fn(),
+  updateArrival: vi.fn(),
   updateOverrides: vi.fn(),
   updatePins: vi.fn(),
   updateRank: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board.servic
   getGrindingPlanningBoard: mocks.get,
   getGrindingPlanningBoardLoad: mocks.getLoad,
   scheduleGrindingPlanningBoardRewarm: mocks.rewarm,
+  updateGrindingPlanningBoardArrival: mocks.updateArrival,
   updateGrindingPlanningBoardOverrides: mocks.updateOverrides,
   updateGrindingPlanningBoardPins: mocks.updatePins,
   updateGrindingPlanningBoardRank: mocks.updateRank,
@@ -494,6 +496,45 @@ describe('grinding planning board due source query', () => {
       const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board?dueSource=other' });
       expect(response.statusCode).toBe(400);
       expect(mocks.get).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+});
+
+describe('grinding planning board arrival', () => {
+  const url = '/kiosk/production-schedule/grinding-planning-board/arrival';
+  const payload = { itemId: 'row:item-a', itemRevision: 'revision-a', overrideVersion: 1 };
+  afterEach(() => mocks.updateArrival.mockReset());
+  it.each(['PUT', 'DELETE'] as const)('%s uses authenticated site and validated item identity', async (method) => {
+    const auth = vi.fn(async () => ({ id: 'device-1' }));
+    const app = await createApp(auth);
+    const result = { itemId: payload.itemId, manualArrivalDate: method === 'PUT' ? '2026-11-06' : null };
+    mocks.updateArrival.mockResolvedValue(result);
+    try {
+      const response = await app.inject({ method, url, headers: { 'x-client-key': 'key-1' }, payload: { ...payload, siteKey: 'foreign', arrivalDate: '2099-01-01' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(auth).toHaveBeenCalledWith('key-1');
+      expect(mocks.updateArrival).toHaveBeenCalledExactlyOnceWith({ ...payload, siteKey: 'site-a', recorded: method === 'PUT' });
+    } finally { await app.close(); }
+  });
+  it.each(['PUT', 'DELETE'] as const)('%s rejects invalid input and missing device authorization', async (method) => {
+    const app = await createApp(async (key) => {
+      if (!key) throw Object.assign(new Error('unauthorized'), { statusCode: 401 });
+      return { id: 'device-1' };
+    });
+    try {
+      expect((await app.inject({ method, url, payload })).statusCode).toBe(401);
+      for (const invalid of [{ ...payload, itemId: '' }, { ...payload, itemRevision: '' }, { ...payload, overrideVersion: -1 }]) {
+        expect((await app.inject({ method, url, headers: { 'x-client-key': 'key-1' }, payload: invalid })).statusCode).toBe(400);
+      }
+      expect(mocks.updateArrival).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it('propagates a stale item conflict', async () => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.updateArrival.mockRejectedValue(Object.assign(new Error('stale'), { statusCode: 409 }));
+    try {
+      expect((await app.inject({ method: 'PUT', url, headers: { 'x-client-key': 'key-1' }, payload })).statusCode).toBe(409);
     } finally { await app.close(); }
   });
 });

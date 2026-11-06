@@ -15,15 +15,18 @@ import type { GrindingPlanningBoardItem, GrindingPlanningBoardRankResponse } fro
 
 class TestPointerEvent extends MouseEvent {
   readonly pointerId: number;
+  readonly pointerType: string;
 
-  constructor(type: string, init: MouseEventInit & { pointerId?: number } = {}) {
+  constructor(type: string, init: MouseEventInit & { pointerId?: number; pointerType?: string } = {}) {
     super(type, init);
     this.pointerId = init.pointerId ?? 0;
+    this.pointerType = init.pointerType ?? 'mouse';
   }
 }
 
 const mocks = vi.hoisted(() => ({
   completion: vi.fn(),
+  arrival: vi.fn(),
   capacity: vi.fn(),
   snapshot: vi.fn(),
   load: vi.fn(),
@@ -44,6 +47,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => mocks.minutes() }));
 
 vi.mock('../../api/hooks', () => ({
+  useUpdateKioskGrindingPlanningBoardArrival: () => useMutation({ mutationFn: (args: unknown) => mocks.arrival(args) }),
   useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
   useSetKioskProductionScheduleRowCompletion: () => useMutation({ mutationFn: (args: { rowId: string; intent: 'complete' | 'incomplete' }) => mocks.completion(args) }),
   useKioskGrindingPlanningBoardResourceCapacity: (enabled: boolean) => mocks.capacity(enabled),
@@ -184,6 +188,41 @@ function scanOrder(raw: string) {
 }
 
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
+  it('starts Excel non-machine seibans unchecked while keeping every seiban registered', () => {
+    const data = { ...fixture(), excelNonMachineFseibans: ['26-1042'] };
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    renderSeibanBoard();
+    expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    expect(within(drawer).getByRole('button', { name: /^26-1041 / })).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+    expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
+  });
+
+  it('excludes newly registered Excel non-machine seibans on refetch and preserves user choices', () => {
+    let current = { ...fixture(), excelNonMachineFseibans: [] as string[] };
+    mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, refetch: mocks.refetch }));
+    const view = renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '製番登録' })).getByRole('button', { name: /^26-1042 / }));
+    current = {
+      ...current,
+      registeredFseibans: [...current.registeredFseibans, '26-1043', '26-1044'],
+      seibanOrder: [...current.seibanOrder, '26-1043', '26-1044'],
+      excelNonMachineFseibans: ['26-1041', '26-1043'],
+      items: [...current.items, ...['26-1043', '26-1044'].map((fseiban) => ({
+        ...current.items[0]!, fseiban, itemId: fseiban, sourceRowId: fseiban
+      }))]
+    };
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1043')).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-board-seiban-26-1044')).toBeInTheDocument();
+  });
+
   it('reads Excel by default and switches the board query to SCAW and back', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'excel' }), expect.anything());
@@ -268,7 +307,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(screen.getByRole('button', { name: '研削', exact: true }));
     }
     expect(screen.getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
-    expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50');
+    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
     expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('opacity-50');
     expect(screen.getByTestId('planning-gantt-bar-c')).toBeInTheDocument();
     openListView();
@@ -288,15 +327,41 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByTestId('planning-gantt-bar-b')).not.toHaveClass('opacity-50');
   });
 
-  it('keeps unarrived processes in the focused chain with white outlines', () => {
+  it('records arrival from a grey queue card, shows the Gantt immediately, and allows cancellation', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-06T00:00:00Z'));
+    const data = fixture();
+    data.items[1]!.arrived = false;
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    mocks.arrival.mockResolvedValueOnce({ itemId: 'b', manualArrivalDate: '2026-11-06' })
+      .mockResolvedValueOnce({ itemId: 'b', manualArrivalDate: null });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'), { pointerType: 'mouse' });
+    const card = screen.getByTestId('planning-forward-queue-card-b');
+    expect(card).toHaveClass('border-slate-600', 'text-slate-500');
+    const arrive = within(card).getByRole('button', { name: '着', exact: true });
+    expect(arrive).toHaveClass('min-h-9');
+    fireEvent.click(arrive);
+    await waitFor(() => expect(mocks.arrival).toHaveBeenCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: true }));
+    await waitFor(() => expect(screen.getByTestId('planning-gantt-bar-b')).toBeInTheDocument());
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
+    const arrived = screen.getByTestId('planning-forward-queue-card-b');
+    expect(arrived).not.toHaveClass('border-slate-600');
+    fireEvent.click(within(arrived).getByRole('button', { name: '取り消し', exact: true }));
+    await waitFor(() => expect(mocks.arrival).toHaveBeenLastCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: false }));
+    await waitFor(() => expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument());
+  });
+
+  it('hides unarrived processes even in the focused chain', () => {
     const data = fixture();
     data.items[1] = { ...data.items[1]!, fseiban: data.items[0]!.fseiban, fhincd: data.items[0]!.fhincd,
       processOrder: '20', arrived: false };
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
-    expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50', 'outline-white');
-    expect(screen.getByTestId('planning-gantt-chain-badge-b')).toHaveTextContent('2');
+    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('planning-gantt-chain-badge-b')).not.toBeInTheDocument();
   });
 
   it.each(['納期順に並べる', '並べ替え'])('%s preserves hidden rank slots without duplicates and undo restores the full order', async (action) => {
@@ -318,7 +383,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '遅れなし', exact: true })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: action }));
     if (action === '並べ替え') {
-      expect(screen.getByTestId('planning-gantt-bar-b')).toHaveClass('opacity-50');
+      expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
       expect(screen.getByRole('status', { name: '並べ替えの比較' })).toHaveTextContent('遅れ 0 → 0');
       fireEvent.click(screen.getByRole('button', { name: '適用', exact: true }));
     }

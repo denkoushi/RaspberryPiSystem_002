@@ -33,6 +33,7 @@ import {
   sortGrindingPlanningBoardItems
 } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { usePersistedPlanningBoardScawMode } from '../../features/kiosk/grindingPlanningBoard/usePersistedPlanningBoardScawMode';
+import { usePlanningBoardArrival } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardArrival';
 import { usePlanningBoardDueActions } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions';
 import { usePlanningBoardLargeScreen } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 import { usePlanningBoardNotices } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardNotices';
@@ -42,7 +43,6 @@ import { usePlanningBoardQueryData } from '../../features/kiosk/grindingPlanning
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import { isVisibleByArrival } from '../../features/kiosk/isVisibleByArrival';
 import { DScheduleMinutesProvider } from '../../features/kiosk/productionSchedule/DScheduleMinutesContext';
-import { usePersistedArrivalFilter } from '../../features/kiosk/usePersistedArrivalFilter';
 import { useUnsavedChangesGuard } from '../../features/navigation/useUnsavedChangesGuard';
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 
@@ -120,7 +120,6 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const registeredServerFseibansRef = useRef<Set<string> | null>(null);
   const boardSiteKeyRef = useRef<string | null>(null);
 
-  const { arrivalFilterEnabled, toggleArrivalFilter } = usePersistedArrivalFilter('kiosk-planning-board-arrival-filter');
   const { scawEnabled, toggleScawMode } = usePersistedPlanningBoardScawMode();
   const dueSource: 'excel' | 'scaw' = scawEnabled ? 'scaw' : 'excel';
   const queryClient = useQueryClient();
@@ -190,6 +189,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [notify]);
 
   const data = usePlanningBoardQueryData(boardQuery.data);
+  const { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, arrivalPending, arrivalError } = usePlanningBoardArrival(data, nowMs);
   const scopeReady = boardQuery.scopeReady;
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady || Boolean(orderPreview);
@@ -234,12 +234,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       if (!sourceRowIds.has(rowId) && overlay.siteKey === data?.siteKey &&
         (category === 'all' || overlay.category === category)) items.push(overlay.item);
     }
-    return items.map((item) => {
+    return items.map(applyArrival).map((item) => {
       const overlay = completionOverlay.get(item.sourceRowId);
       if (!overlay || overlay.siteKey !== data?.siteKey || item.completionSource === 'import') return item;
       return { ...item, isCompleted: overlay.isCompleted, completionSource: overlay.completionSource };
     }).filter((item) => boardQuery.isPlaceholderData || status === 'all' || item.isCompleted === (status === 'complete'));
-  }, [queuedItems, completionOverlay, data?.siteKey, category, status, boardQuery.isPlaceholderData]);
+  }, [queuedItems, completionOverlay, applyArrival, data?.siteKey, category, status, boardQuery.isPlaceholderData]);
   const arrivalItems = useMemo(() => displayItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [displayItems, arrivalFilterEnabled]);
 
   const ganttItems = useMemo(() => displayItems.filter((item) => view === 'seiban' && focusedFseiban ? item.fseiban === focusedFseiban : activeFseibans.has(item.fseiban)), [displayItems, view, focusedFseiban, activeFseibans]);
@@ -309,7 +309,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const previous = registeredServerFseibansRef.current;
     boardSiteKeyRef.current = data.siteKey;
     if (!activeInitialized || siteChanged) {
-      setActiveFseibans(new Set(data.seibanOrder));
+      setActiveFseibans(new Set(data.seibanOrder.filter((value) => !(data.excelNonMachineFseibans ?? []).includes(value))));
       setActiveInitialized(true);
     }
     if (!openInitialized || siteChanged) {
@@ -317,7 +317,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setOpenInitialized(true);
     }
     if (!writeQueue.pending) {
-      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value));
+      const added = data.registeredFseibans.filter((value) => previous != null && !previous.has(value) && !(data.excelNonMachineFseibans ?? []).includes(value));
       if (added.length) {
         setActiveFseibans((current) => new Set([...current, ...added]));
         setOpenFseibans((current) => new Set([...current, ...added]));
@@ -733,7 +733,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         colorBySeiban={colorBySeiban} registeredFseibans={registeredFseibans} gantt={gantt} ganttLayout={ganttLayout}
         view={view} orderPreview={orderPreview} category={category} resourcesQuery={resourcesQuery}
         pinMode={pinMode} togglePin={togglePin} selectedItemIds={selectedItemIds} toggleItem={toggleItem}
-        toggleCompletion={toggleCompletion} completionPendingRowIds={completionPendingRowIds}
+        toggleCompletion={toggleCompletion} completionPendingRowIds={completionPendingRowIds} onArrivalChange={changeArrival} arrivalPending={arrivalPending} arrivalError={arrivalError}
         moveDueByDrag={moveDueByDrag} reorderResourceByDrag={reorderResourceByDrag} moveResourceInGantt={moveResourceInGantt}
         canMoveResource={canMoveResource} interactionLocked={interactionLocked} writeQueue={writeQueue}
         allocation={allocation} writeBlocked={writeBlocked} rankMutationReady={rankMutationReady}
