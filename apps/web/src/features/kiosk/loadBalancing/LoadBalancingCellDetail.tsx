@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 
 import { LoadBalancingCapacityEditor } from './LoadBalancingCapacityEditor';
-import { formatHours, formatLoadBalancingMachineName, formatYearMonthSlash } from './loadBalancingFormat';
+import { formatHours, formatYearMonthSlash } from './loadBalancingFormat';
 import { LoadBalancingActionIcon } from './LoadBalancingIcons';
 import { LATE_BUCKET, type ScenarioAction, type TransferDestination, listCellRows } from './loadBalancingScenario';
 
@@ -23,6 +23,7 @@ type Props = {
   loadMinutes: number;
   capacityMinutes: number | null;
   cellRows: CellRow[];
+  formattedMachineNames: Map<string, string>;
   canTransfer: boolean;
   day: ProductionScheduleLoadBalancingWorkspaceDayResponse | undefined;
   dayLoading: boolean;
@@ -139,7 +140,7 @@ export function LoadBalancingCellDetail(props: Props) {
               >
                 <td className="p-1.5">
                   <span className="inline-block max-w-[11rem] truncate rounded-md bg-slate-800 px-2 py-0.5 align-middle text-[13px] font-bold">
-                    {formatLoadBalancingMachineName(item.row.machineName)}
+                    {props.formattedMachineNames.get(item.row.machineName)}
                   </span>
                 </td>
                 <td className="p-1.5 font-mono text-sm">{item.row.fseiban}</td>

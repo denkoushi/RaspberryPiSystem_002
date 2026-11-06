@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 
-import { formatLoadBalancingMachineName } from '../../features/kiosk/loadBalancing/loadBalancingFormat';
+import { buildWorkspaceMachineNames } from '../../features/kiosk/loadBalancing/loadBalancingFormat';
 import { LoadBalancingPageHeader } from '../../features/kiosk/loadBalancing/LoadBalancingPageHeader';
+import { buildLoadMatrix } from '../../features/kiosk/loadBalancing/loadBalancingScenario';
 import {
   LOAD_BALANCING_MAX_OFFSET,
   LoadBalancingHeaderControls,
@@ -29,15 +30,12 @@ export function ProductionScheduleLoadBalancingPage() {
   const [panel, setPanel] = useState<'cell' | 'unallocated'>('cell');
 
   const data = state.query.data;
-  const summary = useMemo(() => (data ? computeWorkspaceSummary(data, state.actions) : null), [data, state.actions]);
-  const machines = useMemo(() => {
-    const totals = new Map<string, number>();
-    for (const row of data?.rows ?? []) {
-      const name = formatLoadBalancingMachineName(row.machineName);
-      totals.set(name, (totals.get(name) ?? 0) + row.totalMinutes);
-    }
-    return [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
-  }, [data?.rows]);
+  const baseMatrix = useMemo(() => (data ? buildLoadMatrix(data.rows, [], data.months) : undefined), [data]);
+  const summary = useMemo(
+    () => (data ? computeWorkspaceSummary(data, state.actions, baseMatrix) : null),
+    [data, state.actions, baseMatrix]
+  );
+  const { machines, formattedNames } = useMemo(() => buildWorkspaceMachineNames(data?.rows ?? []), [data?.rows]);
 
   const macContextNote = useMemo(() => {
     if (!macScope.macManualOrderV2) return undefined;
@@ -90,9 +88,11 @@ export function ProductionScheduleLoadBalancingPage() {
 
       {!macScope.scopeEnabled ? (
         <p className="p-4 text-white/60">右上の V から対象端末を選んでください</p>
-      ) : data ? (
+      ) : data && summary ? (
         <LoadBalancingWorkspaceView
           data={data}
+          workspaceSummary={summary}
+          formattedMachineNames={formattedNames}
           thisMonth={state.thisMonth}
           resourceNameMap={state.resourceNameMap}
           actions={state.actions}

@@ -1,9 +1,14 @@
+import { prisma } from '../../../lib/prisma.js';
 import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
-import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../constants.js';
+import {
+  PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+  SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
+} from '../constants.js';
 import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { createGrindingPlanningBoardPerformance } from '../grinding-planning-board-performance.js';
 import { readGrindingPlanningBoardSnapshotGenerationToken } from '../leaderboard/leaderboard-shell-snapshot-generation.js';
 import { resolveSeibanMachineDisplayNamesForWinnerRows } from '../seiban-machine-display-names.service.js';
+import { readLoadBalancingWorkspaceResultWithCache } from './load-balancing-workspace-result-cache.js';
 import {
   buildLoadBalancingWorkspaceSourceKey,
   readLoadBalancingWorkspaceSourceWithCache,
@@ -58,7 +63,17 @@ async function readWorkspaceSource(params: {
   today: Date;
   perf: Performance;
 }): Promise<{ source: LoadBalancingWorkspaceSource; cacheHit: boolean }> {
-  const generationToken = await params.perf.measure('generation', () => readGrindingPlanningBoardSnapshotGenerationToken());
+  const generationToken = await params.perf.measure('generation', async () => {
+    const [boardToken, supplementRevision] = await Promise.all([
+      readGrindingPlanningBoardSnapshotGenerationToken(),
+      prisma.productionScheduleSeibanMachineNameSupplement.aggregate({
+        where: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID },
+        _count: true,
+        _max: { updatedAt: true }
+      })
+    ]);
+    return JSON.stringify([boardToken, supplementRevision]);
+  });
   return readLoadBalancingWorkspaceSourceWithCache({
     key: buildLoadBalancingWorkspaceSourceKey({
       siteKey: params.siteKey,
@@ -71,21 +86,20 @@ async function readWorkspaceSource(params: {
     generationToken,
     load: async () => {
       const winnerRowIds = await params.perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds());
-      const queryRows = await params.perf.measure('queryRows', () =>
-        listStartDateLevelingQueryRows({
-          siteKey: params.siteKey,
-          deviceScopeKey: params.deviceScopeKey,
-          dueSource: params.dueSource,
-          rangeStart: params.range.rangeStart,
-          rangeEndExclusive: params.range.rangeEndExclusive,
-          includeOverdueBefore: params.today,
-          winnerRowIds
-        })
-      );
-      const fseibans = [...new Set(queryRows.map((row) => row.fseiban).filter((value) => value.length > 0))];
-      const { machineNames } = await params.perf.measure('machineNames', () =>
-        resolveSeibanMachineDisplayNamesForWinnerRows({ fseibans, winnerRowIds })
-      );
+      const [queryRows, { machineNames }] = await Promise.all([
+        params.perf.measure('queryRows', () =>
+          listStartDateLevelingQueryRows({
+            siteKey: params.siteKey,
+            deviceScopeKey: params.deviceScopeKey,
+            dueSource: params.dueSource,
+            rangeStart: params.range.rangeStart,
+            rangeEndExclusive: params.range.rangeEndExclusive,
+            includeOverdueBefore: params.today,
+            winnerRowIds
+          })
+        ),
+        params.perf.measure('machineNames', () => resolveSeibanMachineDisplayNamesForWinnerRows({ winnerRowIds }))
+      ]);
       return { queryRows, machineNames };
     }
   });
@@ -122,31 +136,36 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
   ]);
 
   const result = await perf.measure('assemble', async () =>
-    assembleLoadBalancingWorkspace({
-      siteKey: baseCap.siteKey,
-      today,
-      fromMonth: range.fromMonth,
-      toMonth: range.toMonth,
-      months: range.months,
-      queryRows: source.queryRows,
-      machineNameByFseiban: (fseiban) => source.machineNames[fseiban] || SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL,
-      baseCapacity: new Map(baseCap.items.map((item) => [item.resourceCd, item.baseAvailableMinutes])),
-      monthlyCapacityByMonth: new Map(
-        range.months.map((yearMonth) => [
-          yearMonth,
-          new Map((monthlyCap.itemsByMonth[yearMonth] ?? []).map((item) => [item.resourceCd, item.availableMinutes]))
-        ])
-      ),
-      classByResource: new Map(classes.items.map((item) => [item.resourceCd, item.classCode])),
-      calendarByResource: buildWorkCalendarModeMap(calendars.items),
-      transferRules: rules.items
-        .filter((rule) => rule.enabled && rule.efficiencyRatio > 0)
-        .map(({ fromClassCode, toClassCode, priority, efficiencyRatio }) => ({
-          fromClassCode,
-          toClassCode,
-          priority,
-          efficiencyRatio
-        }))
+    readLoadBalancingWorkspaceResultWithCache({
+      source,
+      settingsKey: JSON.stringify([baseCap, monthlyCap, classes, calendars, rules]),
+      assemble: () =>
+        assembleLoadBalancingWorkspace({
+          siteKey: baseCap.siteKey,
+          today,
+          fromMonth: range.fromMonth,
+          toMonth: range.toMonth,
+          months: range.months,
+          queryRows: source.queryRows,
+          machineNameByFseiban: (fseiban) => source.machineNames[fseiban] || SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL,
+          baseCapacity: new Map(baseCap.items.map((item) => [item.resourceCd, item.baseAvailableMinutes])),
+          monthlyCapacityByMonth: new Map(
+            range.months.map((yearMonth) => [
+              yearMonth,
+              new Map((monthlyCap.itemsByMonth[yearMonth] ?? []).map((item) => [item.resourceCd, item.availableMinutes]))
+            ])
+          ),
+          classByResource: new Map(classes.items.map((item) => [item.resourceCd, item.classCode])),
+          calendarByResource: buildWorkCalendarModeMap(calendars.items),
+          transferRules: rules.items
+            .filter((rule) => rule.enabled && rule.efficiencyRatio > 0)
+            .map(({ fromClassCode, toClassCode, priority, efficiencyRatio }) => ({
+              fromClassCode,
+              toClassCode,
+              priority,
+              efficiencyRatio
+            }))
+        })
     })
   );
   perf.flush({ cacheHit, queryRowCount: source.queryRows.length, rowCount: result.rows.length });

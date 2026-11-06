@@ -22,7 +22,7 @@ type Inflight = {
   promise: Promise<LoadBalancingWorkspaceSource>;
 };
 
-const TTL_MS = 5 * 60 * 1000;
+const TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 16;
 
 const entries = new Map<string, Entry>();

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { ApiError } from '../../../lib/errors.js';
+import { serializeLoadBalancingWorkspace } from '../../../services/production-schedule/load-balancing/load-balancing-workspace-result-cache.js';
 import { upsertLoadBalancingCapacityBaseItem } from '../../../services/production-schedule/load-balancing/load-balancing-settings.service.js';
 import {
   getProductionScheduleLoadBalancingWorkspace,
@@ -47,7 +48,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/production-schedule/load-balancing/workspace', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/load-balancing/workspace', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
@@ -60,13 +61,15 @@ export async function registerProductionScheduleLoadBalancingRoutes(
     });
 
     try {
-      return await getProductionScheduleLoadBalancingWorkspace({
+      const result = await getProductionScheduleLoadBalancingWorkspace({
         dueSource: query.dueSource,
         siteKeyInput: resolvedSiteKey,
         deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
         fromMonth: query.fromMonth,
         toMonth: query.toMonth
       });
+      reply.type('application/json').serializer(serializeLoadBalancingWorkspace);
+      return result;
     } catch (error) {
       throw toWorkspaceApiError(error);
     }
