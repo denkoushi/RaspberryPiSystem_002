@@ -28,7 +28,22 @@ const refresh = keys => {
     stores[key].listeners.forEach(listener => listener());
   }
 };
-window.perfHarness = { refresh, mutations: [], listenerCounts: () => Object.fromEntries(Object.entries(stores).map(([key, store]) => [key, store.listeners.size])) };
+// Simulates a category switch: another item set arriving as the first page (160) and then 640-item pages.
+const swapPaged = async (generation, delayMs = 300) => {
+  const next = items.map((item, i) => ({ ...item, itemId: `g${generation}-${item.itemId}`, itemRevision: `g${generation}-${i}`,
+    originalResourceCd: fixture.resources[(i + generation * 3) % fixture.resources.length] }));
+  const sizes = [160];
+  while (sizes.reduce((a, b) => a + b, 0) < next.length) sizes.push(640);
+  let end = 0;
+  for (const size of sizes) {
+    end = Math.min(next.length, end + size);
+    stores.board.data = { ...stores.board.data, snapshotId: `snapshot-${generation}`, items: next.slice(0, end) };
+    stores.board.listeners.forEach(listener => listener());
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+  }
+  return sizes.length;
+};
+window.perfHarness = { refresh, swapPaged, mutations: [], listenerCounts: () => Object.fromEntries(Object.entries(stores).map(([key, store]) => [key, store.listeners.size])) };
 function useStore(key) {
   const store = stores[key];
   const data = useSyncExternalStore(listener => { store.listeners.add(listener); return () => store.listeners.delete(listener); }, () => store.data);
