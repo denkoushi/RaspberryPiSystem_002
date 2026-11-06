@@ -126,6 +126,7 @@ export function useKioskProductionScheduleLoadBalancingWorkspace(
     queryFn: () => getKioskProductionScheduleLoadBalancingWorkspace(params),
     enabled: options?.enabled ?? true,
     staleTime: 120_000,
+    structuralSharing: false,
     placeholderData: (previousData) => previousData
   });
 }

@@ -41,3 +41,18 @@ export function resolveLoadLevel(loadMinutes: number, capacityMinutes: number): 
 export function formatLoadBalancingMachineName(value: string): string {
   return normalizeMachineName(value, { maxChars: Number.MAX_SAFE_INTEGER });
 }
+
+/** 同じ生の機種名は一度だけ正規化し、ヘッダー・絞り込み・明細で共有する。 */
+export function buildWorkspaceMachineNames(rows: Array<{ machineName: string; totalMinutes: number }>) {
+  const formattedNames = new Map<string, string>();
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    let name = formattedNames.get(row.machineName);
+    if (name === undefined) {
+      name = formatLoadBalancingMachineName(row.machineName);
+      formattedNames.set(row.machineName, name);
+    }
+    totals.set(name, (totals.get(name) ?? 0) + row.totalMinutes);
+  }
+  return { formattedNames, machines: [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name) };
+}
