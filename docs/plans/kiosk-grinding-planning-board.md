@@ -210,3 +210,31 @@ The toolbar uses shrinkable feedback and compact controls. Web/API lint and `git
 ## 今日からガントの自動並べ替え
 
 ピン保存・提案比較・適用の実装と検証は [自動並べ替え計画](planning-board-auto-order.md) を参照。
+
+
+## Shared seiban checks and completion removal (2026-11-06)
+
+The board stores `uncheckedFseibans` alongside its site order, keyed by
+`csvDashboardId + siteKey`. Migration `20261106000000_planning_board_unchecked_fseibans`
+adds nullable JSONB. Database NULL preserves the legacy default (registered order
+intersected with known Excel non-machine assignees) until a board write materializes
+the list. Explicit empty lists mean every registered seiban is checked. Order writes
+prune unchecked entries and manual additions start checked. `PUT .../seiban-checks`
+uses the same board revision, row lock, Serializable transaction, and HTTP 409
+contract as order writes; kiosk toggles and 全て解除 use the existing optimistic queue.
+The drawer retains manual registration and up/down controls and has no unregister action.
+
+Excel reconciliation retains absent auto-registered board seibans and their ownership.
+Only new known non-machine seibans start unchecked; existing saved checks are preserved
+atomically with order updates. Shared search-history reconciliation retains its existing
+absence-removal rule and metrics.
+
+Completion removal runs in the existing production-schedule CSV post-ingest hook,
+after external completion synchronization, for both Gmail and manual uploads. Each
+board is locked and projected from fresh winner rows/details with the site's resource
+category policy and piece completion semantics. All eligible cutting/grinding items
+must be complete; no eligible items, missing details, machine-only parts, or any
+unfinished item retain the seiban. Removal and check pruning use the same order
+persistence helper and version increment, with one fresh transaction retry on a
+serialization conflict. Reads never remove registrations. Manual completion changes
+are collected at the next successful production-schedule CSV ingest.

@@ -1,6 +1,7 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { Prisma } from '@prisma/client';
 
+import { isMachineSectionAssigned } from './machine-section-assignee.js';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -47,18 +48,24 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       (a.partsCompleteDate ?? '9999-12-31').localeCompare(b.partsCompleteDate ?? '9999-12-31')
     ).flatMap((block) => [block.seiban, ...block.aliasSeibans]).filter((seiban) => !unavailable.has(seiban));
     const limitWarnings = new Set<string>();
+    const minutes = await prisma.productionScheduleDScheduleMinutes.findMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: eligible } },
+      select: { fseiban: true, assignees: true, assigneesKnown: true }
+    });
+    const newUncheckedFseibans = minutes.filter((row) => row.assigneesKnown && !isMachineSectionAssigned(row.assignees)).map((row) => row.fseiban);
 
     const reconcile = async (
       previousAuto: string[],
       savedAuto: string[],
       read: () => Promise<{ entries: string[]; revision: string }>,
       write: (entries: string[], revision: string) => Promise<unknown>,
-      saveOwnership: (owned: string[]) => void
+      saveOwnership: (owned: string[]) => void,
+      retainAbsent = false
     ) => {
       for (let attempt = 0; attempt < 2; attempt++) {
         const current = await read();
         const auto = new Set([...previousAuto, ...savedAuto]);
-        const entries = current.entries.filter((seiban) => !auto.has(seiban) || all.has(seiban));
+        const entries = current.entries.filter((seiban) => retainAbsent || !auto.has(seiban) || all.has(seiban));
         const owned = entries.filter((seiban) => auto.has(seiban));
         const present = new Set(entries);
         const rejected: string[] = [];
@@ -97,8 +104,8 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       await reconcile(previousOwnership.planningBoards[siteKey] ?? inherited, ownership.planningBoards[siteKey] ?? [], async () => {
         const state = await getOrCreateState(siteKey, []);
         return { entries: stateOrder(state), revision: boardRevision(state) };
-      }, (fseibans, sourceRevision) => updateGrindingPlanningBoardSeibanOrder({ siteKey, fseibans, sourceRevision }),
-      (owned) => { ownership.planningBoards[siteKey] = owned; });
+      }, (fseibans, sourceRevision) => updateGrindingPlanningBoardSeibanOrder({ siteKey, fseibans, sourceRevision, newUncheckedFseibans }),
+      (owned) => { ownership.planningBoards[siteKey] = owned; }, true);
     }
     await reconcile(previousOwnership.searchHistory, ownership.searchHistory, async () => {
       const state = await getProductionScheduleSearchState('shared');

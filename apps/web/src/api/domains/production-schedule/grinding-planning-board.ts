@@ -21,6 +21,8 @@ import type {
   GrindingPlanningBoardPinsRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
+  GrindingPlanningBoardSeibanChecksRequest,
+  GrindingPlanningBoardSeibanChecksResponse,
   GrindingPlanningBoardDueScopeRequest,
   GrindingPlanningBoardDueScopeSnapshot,
   GrindingPlanningBoardSeibanCandidatesResponse
@@ -153,9 +155,16 @@ export async function updateKioskGrindingPlanningBoardResourceOrderBulk(payload:
 }
 
 export async function updateKioskGrindingPlanningBoardSeibanOrder(payload: GrindingPlanningBoardSeibanOrderRequest) {
-  const { data } = await api.put<{ sourceRevision: string; seibanOrder: string[] }>(
+  const { data } = await api.put<{ sourceRevision: string; seibanOrder: string[]; uncheckedFseibans: string[] }>(
     '/kiosk/production-schedule/grinding-planning-board/seiban-order',
     payload
+  );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardSeibanChecks(payload: GrindingPlanningBoardSeibanChecksRequest) {
+  const { data } = await api.put<GrindingPlanningBoardSeibanChecksResponse>(
+    '/kiosk/production-schedule/grinding-planning-board/seiban-checks', payload
   );
   return data;
 }

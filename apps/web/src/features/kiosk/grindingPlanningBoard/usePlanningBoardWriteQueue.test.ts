@@ -55,20 +55,31 @@ describe('planning board background writes', () => {
     await act(async () => h.requests[2].resolve(h.saved('b', 4, 1)));
     expect(h.result.current.items.map((item) => item.alternateRank)).toEqual([1, 4]);
   });
-  it('undoes dependent selection changes in reverse order when removing and re-adding the same seiban fails', async () => {
+  it('keeps optimistic checks above old responses and uses acknowledged revisions for queued checks', async () => {
     const h = setup();
-    let active = true;
-    const enqueue = (order: string[], nextActive: boolean) => {
-      const previousActive = active;
-      act(() => { h.result.current.enqueue({ label: '製番順', itemIds: [], seibans: ['a'], order: true,
-        apply: (display) => ({ ...display, order }), save: h.save,
-        onFailed: () => { active = previousActive; } }); });
-      active = nextActive;
-    };
-    enqueue(['b'], false); enqueue(['a', 'b'], true);
-    await act(async () => h.requests[0].reject(new Error('offline')));
-    expect(active).toBe(true);
+    const check = (uncheckedFseibans: string[]) => act(() => { h.result.current.enqueue({
+      label: '製番チェック', itemIds: [], seibans: ['a', 'b'], order: true,
+      apply: (display) => ({ ...display, uncheckedFseibans }), save: h.save
+    }); });
+    check(['a']); check(['a', 'b']);
+    expect(h.result.current.uncheckedFseibans).toEqual(['a', 'b']);
+    await act(async () => h.requests[0].resolve({ uncheckedFseibans: ['a'], sourceRevision: 'board-1' }));
+    expect(h.save.mock.calls[1][0].sourceRevision).toBe('board-1');
+    await act(async () => h.requests[1].resolve({ uncheckedFseibans: ['a', 'b'], sourceRevision: 'board-2' }));
+    h.rerender({ data: items, scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-0' });
+    expect(h.result.current.uncheckedFseibans).toEqual(['a', 'b']);
     expect(h.result.current.order).toEqual(['a', 'b']);
+  });
+  it('cancels subsequent check intentions on conflict without changing the registered order', async () => {
+    const h = setup();
+    for (const uncheckedFseibans of [['a'], ['a', 'b']]) act(() => { h.result.current.enqueue({
+      label: '製番チェック', itemIds: [], seibans: ['a', 'b'], order: true,
+      apply: (display) => ({ ...display, uncheckedFseibans }), save: h.save, onFailed: h.failed
+    }); });
+    await act(async () => h.requests[0].reject(new Error('conflict')));
+    expect(h.result.current.uncheckedFseibans).toEqual([]);
+    expect(h.result.current.order).toEqual(['a', 'b']);
+    expect(h.failed).toHaveBeenCalledTimes(2);
     expect(h.save).toHaveBeenCalledTimes(1);
   });
   it('blocks further writes after failed recovery without replaying cancelled input', async () => {

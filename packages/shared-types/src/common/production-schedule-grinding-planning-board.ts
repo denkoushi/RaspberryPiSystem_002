@@ -165,6 +165,7 @@ export interface GrindingPlanningBoardResponse {
   boardVersion: number;
   registeredFseibans: string[];
   excelNonMachineFseibans?: string[];
+  uncheckedFseibans: string[];
   seibanOrder: string[];
   resources: string[];
   resourceCategories?: Record<string, 'grinding' | 'cutting'>;
@@ -247,6 +248,16 @@ export interface GrindingPlanningBoardResourceOrderResponse {
 export interface GrindingPlanningBoardSeibanOrderRequest {
   sourceRevision: string;
   fseibans: string[];
+}
+
+export interface GrindingPlanningBoardSeibanChecksRequest {
+  sourceRevision: string;
+  uncheckedFseibans: string[];
+}
+
+export interface GrindingPlanningBoardSeibanChecksResponse {
+  sourceRevision: string;
+  uncheckedFseibans: string[];
 }
 
 /** 製番登録ペインに表示する、期間内の製番候補。 */

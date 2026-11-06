@@ -47,6 +47,7 @@ export type PlanningState = {
   version: number;
   updatedAt?: Date | null;
   seibanOrder: Prisma.JsonValue;
+  uncheckedFseibans?: Prisma.JsonValue;
 };
 export type PlanningSnapshotGenerationDetails = {
   generationToken: string;
