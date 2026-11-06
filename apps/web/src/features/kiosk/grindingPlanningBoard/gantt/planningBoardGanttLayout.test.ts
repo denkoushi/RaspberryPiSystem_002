@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { planningBoardOrderMetrics } from './planningBoardAutoOrder';
 import { buildPlanningBoardGanttLayout, dateToDay, planningBoardPartKey, shiftedDueDate, workingPeriods } from './planningBoardGanttLayout';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
@@ -159,6 +160,68 @@ describe('forward planningBoardGanttLayout', () => {
     expect(b.waitFrom).toBeCloseTo(today + 13 / 24);
     expect(b.predecessorEnd).toBe(a.end);
     expect(result.groups.find((group) => group.resource === '584')!.rows[0]!.connectors).toEqual([{ start: b.waitFrom, end: b.start }]);
+  });
+  it.each([false, true])('fills waiting lanes in queue order without changing ranks (explicit order %s)', (explicit) => {
+    const items = [
+      item({ itemId: 'pre', originalResourceCd: '584', requiredMinutes: 120 }),
+      item({ itemId: 'waiting', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'ready1', fhincd: 'P2', alternateRank: 2, requiredMinutes: 30 }),
+      item({ itemId: 'ready2', fhincd: 'P3', alternateRank: 3, requiredMinutes: 150 })
+    ];
+    const options = { dailyHoursByResource: { '305': 24 as const, '584': 24 as const },
+      ...(explicit ? { laneOrder: { '305': ['waiting', 'ready1', 'ready2'], '584': ['pre'] } } : {}) };
+    const result = forward(items, options);
+    const byId = new Map(bars(result).map((bar) => [bar.item.itemId, bar]));
+    expect(byId.get('ready1')!.start).toBeCloseTo(today + 13 / 24);
+    expect(byId.get('ready2')!.start).toBe(byId.get('ready1')!.end);
+    expect(byId.get('waiting')!.start).toBe(byId.get('ready2')!.end);
+    expect(byId.get('waiting')!.start!).toBeGreaterThanOrEqual(byId.get('pre')!.end!);
+    expect(byId.get('waiting')!.waitFrom).toBeUndefined();
+    expect(planningBoardOrderMetrics(result).waitMinutes).toBe(0);
+    expect(items.map((item) => item.alternateRank)).toEqual([null, 1, 2, 3]);
+    expect(forward(items, options)).toEqual(result);
+  });
+  it('waits after filling a shorter job and does not pull a later unready job forward', () => {
+    const result = forward([
+      item({ itemId: 'pre', originalResourceCd: '584', requiredMinutes: 120 }),
+      item({ itemId: 'waiting', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'unready', processOrder: '30', alternateRank: 2, requiredMinutes: 30 }),
+      item({ itemId: 'ready', fhincd: 'P2', alternateRank: 3, requiredMinutes: 30 })
+    ], { dailyHoursByResource: { '305': 24, '584': 24 } });
+    const byId = new Map(bars(result).map((bar) => [bar.item.itemId, bar]));
+    const waiting = byId.get('waiting')!;
+    expect(waiting.start).toBe(byId.get('pre')!.end);
+    expect(waiting.waitFrom).toBe(byId.get('ready')!.end);
+    expect(byId.get('unready')!.start).toBe(waiting.end);
+    expect(result.groups.find((group) => group.resource === '305')!.rows[0]!.connectors)
+      .toEqual([{ start: waiting.waitFrom, end: waiting.start }]);
+    expect(planningBoardOrderMetrics(result).waitMinutes).toBe(90);
+  });
+  it('fills with a later process whose scheduled predecessor has ended at the cursor', () => {
+    const result = forward([
+      item({ itemId: 'preReady', fhincd: 'P2', originalResourceCd: '584', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'preWaiting', originalResourceCd: '584', alternateRank: 2, requiredMinutes: 120 }),
+      item({ itemId: 'first', fhincd: 'P3', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'waiting', processOrder: '20', alternateRank: 2, requiredMinutes: 30 }),
+      item({ itemId: 'ready', fhincd: 'P2', processOrder: '20', alternateRank: 3, requiredMinutes: 30 })
+    ], { dailyHoursByResource: { '305': 24, '584': 24 } });
+    const byId = new Map(bars(result).map((bar) => [bar.item.itemId, bar]));
+    expect(byId.get('ready')!.start).toBe(byId.get('preReady')!.end);
+    expect(byId.get('ready')!.start).toBe(byId.get('first')!.end);
+    expect(byId.get('waiting')!.start).toBe(byId.get('preWaiting')!.end);
+    expect(byId.get('waiting')!.waitFrom).toBe(byId.get('ready')!.end);
+  });
+  it('keeps the wait when every later job also awaits its predecessor', () => {
+    const result = forward([
+      item({ itemId: 'pre', originalResourceCd: '584', requiredMinutes: 120 }),
+      item({ itemId: 'waiting', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'later', processOrder: '30', alternateRank: 2, requiredMinutes: 30 })
+    ], { dailyHoursByResource: { '305': 24, '584': 24 } });
+    const byId = new Map(bars(result).map((bar) => [bar.item.itemId, bar]));
+    expect(byId.get('waiting')!.start).toBe(byId.get('pre')!.end);
+    expect(byId.get('waiting')!.waitFrom).toBeCloseTo(today + 13 / 24);
+    expect(byId.get('later')!.start).toBe(byId.get('waiting')!.end);
+    expect(planningBoardOrderMetrics(result).waitMinutes).toBe(120);
   });
   it('resolves reversed process ranks without repeatedly pushing the schedule forward', () => {
     const result = forward([item({ itemId: 'b', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }), item({ alternateRank: 2, requiredMinutes: 60 })]);

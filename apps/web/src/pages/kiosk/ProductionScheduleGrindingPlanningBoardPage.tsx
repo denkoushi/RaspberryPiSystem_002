@@ -242,6 +242,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [queuedItems, completionOverlay, data?.siteKey, category, status, boardQuery.isPlaceholderData]);
   const arrivalItems = useMemo(() => displayItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [displayItems, arrivalFilterEnabled]);
 
+  const ganttItems = useMemo(() => displayItems.filter((item) => view === 'seiban' && focusedFseiban ? item.fseiban === focusedFseiban : activeFseibans.has(item.fseiban)), [displayItems, view, focusedFseiban, activeFseibans]);
+
   const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(arrivalItems), [arrivalItems]);
   const chipsQuery = useKioskGrindingPlanningBoardProcessChips(chipParts);
   const chipData = usePlanningBoardQueryData(chipsQuery.data);
@@ -630,13 +632,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     focusItems, gantt, orderActionsDisabled, ganttLayout, lastResourceOrder, handleOrderScan,
     moveResourceInGantt, sortResourceOrdersByDue, proposeResourceOrder, applyResourceOrder, togglePin, undoResourceOrder
   } = usePlanningBoardPageGantt({
-    focusedFseiban, sortedItemsBySeiban, view, visibleItems, nowMs, ganttEnabled, allocation, category,
+    focusedFseiban, sortedItemsBySeiban, view, visibleItems, ganttItems, arrivalFilterEnabled, nowMs, ganttEnabled, allocation, category,
     data, registeredFseibans, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
     resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync,
     setColorBySeiban, setFocusedFseiban, setOpenFseibans, setFocusedSeiban, setScanFocusKey, setScanNotice,
     scopeReady, pinMode, canMoveResource, snapshotResourceOrder, notify, resourceOrderHistoryId, enqueueOverrides,
-    setResourceOrderHistory, rememberResourceOrder, setPinMode, setOrderPreview, sourceRevision, rankConflict,
-    orderConflict, updatePinsAsync
+    setResourceOrderHistory, rememberResourceOrder, setPinMode, setOrderPreview, sourceRevision, rankConflict, orderConflict, updatePinsAsync
   });
   const openEditorForItem = useCallback((item: GrindingPlanningBoardItem) => openEditor([item]), [openEditor]);
   const returnFromFocus = useCallback(() => setFocusedFseiban(null), []);
