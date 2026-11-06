@@ -74,25 +74,40 @@ describe('process arrival', () => {
     expect(sql).toContain('LEFT JOIN "ProductionScheduleExternalCompletion"');
   });
 
-  it('chunks large boards into at most 300 part keys and retains every arrival result', async () => {
-    const rows = Array.from({ length: 601 }, (_, index) => {
+  it('queries 700 distinct part keys once and retains every arrival result', async () => {
+    const rows = Array.from({ length: 700 }, (_, index) => {
       const item = row(`row-${index}`, '30');
       item.rowData.FHINCD = `PART-${index}`;
       return item;
     });
-    for (let offset = 0; offset < rows.length; offset += 300) {
-      mocks.query.mockResolvedValueOnce(rows.slice(offset, offset + 300).map((item) => ({
-        ...process('10', '001'), fhincd: item.rowData.FHINCD
-      })));
-    }
+    mocks.query.mockResolvedValue(rows.map((item) => ({
+      ...process('10', '001'), fhincd: item.rowData.FHINCD
+    })));
     const result = await enrichRowsWithProcessArrival(rows, { locationKey: 'site' });
-    expect(result).toHaveLength(601);
+    expect(result).toHaveLength(700);
     expect(result.every((item) => item.arrived === false)).toBe(true);
-    expect(mocks.query).toHaveBeenCalledTimes(3);
-    expect(mocks.query.mock.calls.map(([sql]) => sql.values.filter((value: unknown) =>
-      typeof value === 'string' && value.startsWith('PART-')).length)).toEqual([300, 300, 1]);
-    expect(mocks.query.mock.calls.map(([sql]) => sql.values.filter((value: unknown) =>
-      typeof value === 'string' && value.startsWith('row-')).length)).toEqual([300, 300, 1]);
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+    const sql = mocks.query.mock.calls[0]![0];
+    expect(sql.strings.join('?')).toContain('SELECT 1 FROM unnest(?::text[], ?::text[], ?::text[])');
+    expect(sql.values.slice(1, 4)).toEqual([
+      rows.map((item) => item.rowData.FSEIBAN), rows.map((item) => item.rowData.FHINCD), Array(700).fill(null)
+    ]);
+    expect(sql.values.filter((value: unknown) => typeof value === 'string' && value.startsWith('row-'))).toHaveLength(700);
+  });
+
+  it('passes NULL for ordinary ProductNos and preserves empty unassigned ProductNos', async () => {
+    mocks.query.mockResolvedValue([]);
+    const unassigned = row('unassigned', '30', '');
+    unassigned.rowData.FSEIBAN = '********';
+    await enrichRowsWithProcessArrival([row('normal', '30'), unassigned], { locationKey: 'site' });
+    expect(mocks.query.mock.calls[0]![0].values[3]).toEqual([null, '']);
+  });
+
+  it('skips the process query when no valid part keys remain', async () => {
+    const invalid = row('invalid', '30');
+    invalid.rowData.FSEIBAN = ' ';
+    expect(await enrichRowsWithProcessArrival([invalid], { locationKey: 'site' })).toEqual([{ ...invalid, arrived: true }]);
+    expect(mocks.query).not.toHaveBeenCalled();
   });
 
   it('attaches leader special due from the same row/split override keys as the planning board', async () => {

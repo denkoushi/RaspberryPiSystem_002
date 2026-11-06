@@ -49,29 +49,24 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
     return [partKey(p), p];
   })).values()].filter((p) => p.fseiban && p.fhincd);
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey, deviceScopeKey: params.locationKey });
-  const preferredIdsByPart = new Map<string, Set<string>>();
-  for (const row of rows) {
-    const key = partKey({ fseiban: field(row.rowData, 'FSEIBAN'), fhincd: field(row.rowData, 'FHINCD'), productNo: field(row.rowData, 'ProductNo') });
-    const ids = preferredIdsByPart.get(key) ?? new Set<string>();
-    ids.add(row.sourceRowId ?? row.id);
-    preferredIdsByPart.set(key, ids);
-  }
+  const preferredIds = [...new Set(rows.map((row) => row.sourceRowId ?? row.id))];
+  const fseibans = keys.map((key) => key.fseiban);
+  const fhincds = keys.map((key) => key.fhincd);
+  const keyProductNos = keys.map((key) => isUnassignedProductionSeiban(key.fseiban) ? key.productNo : null);
   // Footer chips match ProductNo even for ordinary parts; arrival intentionally spans
-  // those ProductNos, so keep its winner query separate and bound each statement.
-  const processes: ArrivalProcess[] = [];
-  for (let offset = 0; offset < keys.length; offset += 300) {
-    const chunk = keys.slice(offset, offset + 300);
-    const preferredIds = [...new Set(chunk.flatMap((key) => [...(preferredIdsByPart.get(partKey(key)) ?? [])]))];
-    processes.push(...await prisma.$queryRaw<ArrivalProcess[]>(Prisma.sql`
+  // those ProductNos, so keep its winner query separate and match keys with a semi-join.
+  const processes = keys.length ? await prisma.$queryRaw<ArrivalProcess[]>(Prisma.sql`
     WITH "winnerRows" AS (
       SELECT DISTINCT ON (
         BTRIM("rowData"->>'FSEIBAN'), BTRIM("rowData"->>'FHINCD'),
         BTRIM("rowData"->>'FSIGENCD'), BTRIM("rowData"->>'FKOJUN'),
         CASE WHEN BTRIM("rowData"->>'FSEIBAN') = '********' THEN BTRIM("rowData"->>'ProductNo') ELSE '' END
       ) * FROM "CsvDashboardRow"
-      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND (${Prisma.join(chunk.map((p) => Prisma.sql`
-        (BTRIM("rowData"->>'FSEIBAN') = ${p.fseiban} AND BTRIM("rowData"->>'FHINCD') = ${p.fhincd}
-        ${isUnassignedProductionSeiban(p.fseiban) ? Prisma.sql`AND BTRIM("rowData"->>'ProductNo') = ${p.productNo}` : Prisma.empty})`), ' OR ')})
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND EXISTS (
+        SELECT 1 FROM unnest(${fseibans}::text[], ${fhincds}::text[], ${keyProductNos}::text[]) AS k(fseiban, fhincd, product_no)
+        WHERE BTRIM("rowData"->>'FSEIBAN') = k.fseiban AND BTRIM("rowData"->>'FHINCD') = k.fhincd
+          AND (k.product_no IS NULL OR BTRIM("rowData"->>'ProductNo') = k.product_no)
+      )
       ORDER BY BTRIM("rowData"->>'FSEIBAN'), BTRIM("rowData"->>'FHINCD'), BTRIM("rowData"->>'FSIGENCD'), BTRIM("rowData"->>'FKOJUN'),
         CASE WHEN BTRIM("rowData"->>'FSEIBAN') = '********' THEN BTRIM("rowData"->>'ProductNo') ELSE '' END,
         ("id" IN (${Prisma.join(preferredIds)})) DESC,
@@ -85,8 +80,7 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
     FROM "winnerRows"
     LEFT JOIN "ProductionScheduleProgress" AS "p" ON "p"."csvDashboardRowId" = "winnerRows"."id" AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext" ON "ext"."csvDashboardRowId" = "winnerRows"."id" AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-    `));
-  }
+    `) : [];
   const productNos = [...new Set(rows.map((r) => field(r.rowData, 'ProductNo')).filter(Boolean))];
   const placements = !params.placedProductNos && productNos.length ? await prisma.orderPlacementBranchState.findMany({
     where: { slipKind: 'manufacturing_order', manufacturingOrderBarcodeRaw: { in: productNos } },
