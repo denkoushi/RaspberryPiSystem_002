@@ -31,6 +31,9 @@ import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours
 
 type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingRowIds' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   onResourceReorder?: ForwardReorder;
+  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
+  arrivalPending?: boolean;
+  arrivalError?: boolean;
   onResourceMove?: ForwardMove;
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
   pinMode?: boolean;

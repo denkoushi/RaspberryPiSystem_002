@@ -10,7 +10,7 @@ import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 export type PlanningBoardOrderMetrics = { lateCount: number; waitMinutes: number };
 
 export function planningBoardOrderMetrics(layout: GanttLayout): PlanningBoardOrderMetrics {
-  const bars = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).filter((bar) => !bar.dimmedByArrival);
+  const bars = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars));
   return { lateCount: bars.filter((bar) => bar.tone === 'late').length,
     waitMinutes: Math.round(bars.reduce((sum, bar) => sum + (bar.start != null && bar.waitFrom != null ? Math.max(0, bar.start - bar.waitFrom) * 1440 : 0), 0)) };
 }

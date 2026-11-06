@@ -1,3 +1,4 @@
+import { trustImmediateProxy } from '../../../lib/trust-proxy.js';
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,7 +11,7 @@ import { registerDeployWorkloadRoute } from '../deploy-workload.js';
 const originalSignageRenderEnabled = env.SIGNAGE_RENDER_ENABLED;
 
 function createApp() {
-  const app = Fastify();
+  const app = Fastify({ trustProxy: trustImmediateProxy });
   let signageRunning = true;
   const scheduler = {
     pauseForDeploy: vi.fn(async () => {
@@ -154,6 +155,21 @@ describe('POST /system/deploy-workload/internal', () => {
       method: 'POST', url: '/system/deploy-workload/internal',
       remoteAddress,
       headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      payload: { action: 'pause-signage' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(scheduler.pauseForDeploy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a spoofed loopback forwarded header even with a valid token', async () => {
+    const { app, scheduler } = createApp();
+    apps.push(app);
+    const response = await app.inject({
+      method: 'POST', url: '/system/deploy-workload/internal', remoteAddress: '172.18.0.2',
+      headers: {
+        'x-forwarded-for': '127.0.0.1',
+        'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET,
+      },
       payload: { action: 'pause-signage' },
     });
     expect(response.statusCode).toBe(403);

@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  useUpdateKioskGrindingPlanningBoardArrival,
   useKioskGrindingPlanningBoardProgressive,
   useKioskGrindingPlanningBoardLoad,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
@@ -11,7 +12,7 @@ import {
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), getLoad: vi.fn(), updateOrder: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), getLoad: vi.fn(), updateOrder: vi.fn(), updateArrival: vi.fn() }));
 
 vi.mock('../../api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/client')>();
@@ -19,6 +20,7 @@ vi.mock('../../api/client', async (importOriginal) => {
     ...original,
     getKioskGrindingPlanningBoard: mocks.getBoard,
     getKioskGrindingPlanningBoardLoad: mocks.getLoad,
+    updateKioskGrindingPlanningBoardArrival: mocks.updateArrival,
     updateKioskGrindingPlanningBoardSeibanOrder: mocks.updateOrder
   };
 });
@@ -355,5 +357,19 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     await waitFor(() => expect(settled).toBe(true));
     releaseInvalidate?.();
     await mutation;
+  });
+});
+
+describe('planning board arrival mutation', () => {
+  it.each([true, false])('refreshes board queries after recording=%s', async (recorded) => {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const invalidate = vi.spyOn(client, 'invalidateQueries').mockResolvedValue();
+    const response = { itemId: 'a', manualArrivalDate: recorded ? '2026-11-06' : null };
+    mocks.updateArrival.mockResolvedValue(response);
+    const { result } = renderHook(() => useUpdateKioskGrindingPlanningBoardArrival(), { wrapper: wrapper(client) });
+    const payload = { itemId: 'a', itemRevision: 'r1', recorded };
+    await act(async () => { await result.current.mutateAsync(payload); });
+    expect(mocks.updateArrival).toHaveBeenLastCalledWith(payload);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['kiosk-grinding-planning-board'] });
   });
 });

@@ -172,6 +172,8 @@ update-frequency: medium
 - **依存分離**: `routes -> services/security -> infra(store)` の方向を維持
 
 **運用設定（追加）**:
+- クライアントIPは Fastify の `trustProxy: trustImmediateProxy`（`hop === 0`、5.12.5では数値指定が無効なため1段を関数で指定） と API 宛て Caddy の `header_up X-Forwarded-For {remote_host}` で直前1段から取得し、ログイン・PIN試行をIP別に計数する。内部APIのlocalhost判定はソケットIPを維持する。
+- `/storage/thumbnails/*` の gateway → slot → API 経路ではIPがgatewayになる（レート制限対象外）。API直結では転送ヘッダーを偽装できるため、この信頼境界はCaddy経由が前提。
 - `RATE_LIMIT_REDIS_URL`（任意）: 設定時はRedis共有レート制限を使用
 - `KIOSK_SUPPORT_RATE_LIMIT_MAX`, `KIOSK_SUPPORT_RATE_LIMIT_WINDOW_MS`
 - `KIOSK_POWER_RATE_LIMIT_MAX`, `KIOSK_POWER_RATE_LIMIT_WINDOW_MS`

@@ -1,5 +1,5 @@
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -10,7 +10,7 @@ import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, sort
 import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from '../load-balancing/load-balancing-settings.service.js';
 import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balancing/work-calendar-policy.js';
 import { isGrindingPlanningBoardSpecialDueKind, resolveGrindingPlanningBoardSpecialDueExpiresAt } from '../grinding-planning-board-special-due.js';
-import { MAX_ALTERNATE_RANK, asRowData, buildGrindingPlanningBoardLogicalKey, decodeRowItemId, isCategoryResource, logicalKeyFseiban, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
+import { MAX_ALTERNATE_RANK, planningBoardArrivalDate, asRowData, buildGrindingPlanningBoardLogicalKey, decodeRowItemId, isCategoryResource, logicalKeyFseiban, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
 import { readMasterResourceCds, readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds, readWinnerRowsByLogicalKeyFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, stateOrder } from './state.js';
 
@@ -491,4 +491,32 @@ export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: 
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ORDER');
     throw error;
   }
+}
+
+export async function updateGrindingPlanningBoardArrival(params: GrindingPlanningBoardArrivalRequest & {
+  siteKey: string; recorded: boolean;
+}): Promise<GrindingPlanningBoardArrivalResponse> {
+  const sourceRowIds = await discoverSourceRows([params.itemId]);
+  await ensurePlanningBoardState(params.siteKey);
+  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  return prisma.$transaction(async (client) => {
+    const sourceRowId = sourceRowIds.get(params.itemId)!;
+    await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
+    const current = await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey,
+      sourceRowIds: [sourceRowId], itemIds: [params.itemId], policy });
+    const item = current.byItemId.get(params.itemId)!;
+    assertItemRevision(params.itemRevision, item, params.overrideVersion);
+    if (item.isCompleted) throw new ApiError(409, '完了済みの工程は変更できません', undefined, 'COMPLETED_ITEM');
+    const arrivalDate = planningBoardArrivalDate();
+    const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
+      itemKey: params.itemId, arrivalDate: new Date(`${arrivalDate}T00:00:00.000Z`) };
+    if (params.recorded) {
+      await client.productionScheduleGrindingPlanningBoardArrival.upsert({
+        where: { csvDashboardId_siteKey_arrivalDate_itemKey: key }, create: key, update: {}
+      });
+    } else {
+      await client.productionScheduleGrindingPlanningBoardArrival.deleteMany({ where: key });
+    }
+    return { itemId: params.itemId, manualArrivalDate: params.recorded ? arrivalDate : null };
+  });
 }
