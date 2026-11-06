@@ -269,9 +269,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     });
   }, [data, boardQuery.isPlaceholderData, completionPendingRowIds]);
 
+  const refreshRequired = orderConflict || rankConflict || (writeQueue.blocked && !writeQueue.pending);
   const writeBlocked = writeQueue.blocked || rankConflict || orderConflict || Boolean(orderPreview);
-  const rankDisabled = useCallback((item: GrindingPlanningBoardItem) =>
-    !rankMutationReady || writeBlocked || hasPendingSeiban(item.fseiban, true),
+  const rankDisabled = useCallback((item: GrindingPlanningBoardItem) => !rankMutationReady || writeBlocked || hasPendingSeiban(item.fseiban, true),
   [rankMutationReady, writeBlocked, hasPendingSeiban]);
   useUnsavedChangesGuard(writeQueue.pending || Boolean(orderPreview));
 
@@ -702,17 +702,17 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         specialDueMode={view === 'resource' ? specialDueMode : null}
         onSpecialDueModeChange={view === 'resource' ? setSpecialDueMode : undefined}
         specialDueDisabled={allocation === 'original' || interactionLocked || resourceDragDisabled}
-        feedback={feedback ? (
+        feedback={feedback || refreshRequired ? (
           <div className={`flex h-full min-w-0 items-center gap-1 rounded-md px-2 text-xs ${
-            feedbackKind === 'error' ? 'bg-rose-950/70 text-rose-100'
+            !feedback || feedbackKind === 'error' ? 'bg-rose-950/70 text-rose-100'
               : feedbackKind === 'processing' ? 'bg-sky-950/60 text-sky-100'
                 : 'bg-emerald-950/60 text-emerald-100'
           }`} role="status">
-            <span className="min-w-0 flex-1 truncate">{feedback}</span>
-            {orderConflict || rankConflict ? (
+            <span className="min-w-0 flex-1 truncate">{feedback ?? '表示中のデータが更新されています。最新状態を取得してください。'}</span>
+            {refreshRequired ? (
               <button type="button" className="h-11 w-11 shrink-0 rounded text-lg text-emerald-100" onClick={() => void refreshAfterOrderConflict()} aria-label="最新状態を取得">↻</button>
             ) : null}
-            <button type="button" className="h-11 w-11 shrink-0 text-slate-300" onClick={clearFeedback} aria-label="通知を閉じる">✕</button>
+            {feedback ? <button type="button" className="h-11 w-11 shrink-0 text-slate-300" onClick={clearFeedback} aria-label="通知を閉じる">✕</button> : null}
           </div>
         ) : boardQuery.appendError ? (
           <div className="flex h-full items-center px-2 text-xs text-rose-200" role="alert"><span className="truncate">一覧の追加取得に失敗しました。再読み込みしてください。</span></div>
