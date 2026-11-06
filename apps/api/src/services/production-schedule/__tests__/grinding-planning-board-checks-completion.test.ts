@@ -13,7 +13,7 @@ vi.mock('../../../lib/prisma.js', () => {
     $queryRaw: vi.fn(async () => [structuredClone(mocks.state)]),
     productionScheduleGrindingPlanningBoardState: {
       findUnique: vi.fn(async () => structuredClone(mocks.state)),
-      findMany: vi.fn(async () => [{ siteKey: 'site' }]), update: mocks.update
+      findMany: vi.fn(async () => [{ siteKey: 'site', seibanOrder: structuredClone(mocks.state.seibanOrder) }]), update: mocks.update
     },
     productionScheduleDScheduleMinutes: { findMany: mocks.minutes }
   };
@@ -117,7 +117,7 @@ describe('post-ingest completion pruning', () => {
     await pruneCompletedGrindingPlanningBoardSeibans();
     expect(mocks.update).not.toHaveBeenCalled();
   });
-  it('retries serialization once using the current locked state and fresh completion data', async () => {
+  it('retries serialization once against the current locked state and keeps seibans added after the snapshot', async () => {
     process('1', 'A', '305', true);
     mocks.transaction.mockImplementationOnce(async () => {
       mocks.state.seibanOrder = ['CONCURRENT', ...mocks.state.seibanOrder];
@@ -128,12 +128,22 @@ describe('post-ingest completion pruning', () => {
     expect(mocks.transaction).toHaveBeenCalledTimes(2);
     expect(mocks.state.seibanOrder).toEqual(['CONCURRENT', 'B', 'C', 'D', 'E', 'F']);
     expect(mocks.state.uncheckedFseibans).toEqual(['CONCURRENT']);
-    expect(mocks.readWinners).toHaveBeenCalledWith(expect.anything(), ['CONCURRENT', 'A', 'B', 'C', 'D', 'E', 'F']);
+    expect(mocks.readWinners).toHaveBeenCalledWith(expect.anything(), ['A', 'B', 'C', 'D', 'E', 'F']);
   });
   it('retains database null on boards with nothing to remove', async () => {
     await pruneCompletedGrindingPlanningBoardSeibans();
     expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.state.uncheckedFseibans).toBeNull();
-    expect(prisma.productionScheduleGrindingPlanningBoardState.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: { siteKey: true } }));
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleGrindingPlanningBoardState.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: { siteKey: true, seibanOrder: true } }));
+  });
+  it('continues with the next site when one site fails', async () => {
+    vi.mocked(prisma.productionScheduleGrindingPlanningBoardState.findMany).mockResolvedValueOnce([
+      { siteKey: 'broken', seibanOrder: ['A'] }, { siteKey: 'site', seibanOrder: structuredClone(mocks.state.seibanOrder) }
+    ] as never);
+    process('1', 'A', '305', true);
+    mocks.readWinners.mockRejectedValueOnce(new Error('boom'));
+    await pruneCompletedGrindingPlanningBoardSeibans();
+    expect(mocks.state.seibanOrder).toEqual(['B', 'C', 'D', 'E', 'F']);
   });
 });

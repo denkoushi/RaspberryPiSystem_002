@@ -327,8 +327,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const registered = new Set(registeredFseibans);
     const prune = (current: ReadonlySet<string>) => [...current].every((value) => registered.has(value))
       ? current : new Set([...current].filter((value) => registered.has(value)));
-    setOpenFseibans(prune);
-    setDueDetailTargetFseiban((current) => current && registered.has(current) ? current : null);
+    const keepRegistered = (current: string | null) => current && registered.has(current) ? current : null;
+    setDueDetailTargetFseiban(keepRegistered); setDueDetailFseiban(keepRegistered); setOpenFseibans(prune);
   }, [registeredFseibans]);
 
   const { itemsBySeiban, sortedItemsBySeiban, machineNames, visibleItems, specialDueCounts, selectedItemIds, selectedVisibleItems } = usePlanningBoardPageItems({
