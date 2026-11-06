@@ -125,6 +125,8 @@ all:
           api_local_llm_runtime_warm_window_timezone: "Asia/Tokyo"
           api_local_llm_runtime_warm_window_start_hour: "7"
           api_local_llm_runtime_warm_window_end_hour: "23"
+          # 製番ボード: 切削の指示数を片に分ける操作（新規分割・再分割）を許可する
+          api_sessaku_pieces_create_enabled: "true"
           # DGXリソース管理（未設定時は監視/起停を自動有効化しない）
           api_dgx_resource_metrics_url: "{{ vault_api_dgx_resource_metrics_url | default('') }}"
           api_business_deepseek_switch_enabled: "{{ vault_api_business_deepseek_switch_enabled | default(false) }}"
