@@ -47,8 +47,9 @@ def verify_blue_stopped(marker_path: str, container: str) -> None:
             'test ! -e "$STATE_DIR/start.lock" || flock -n "$STATE_DIR/start.lock" true; '
             'for file in "$STATE_DIR/memguard.pid"; do if test -e "$file"; then '
             'pid=$(cat "$file"); if test -n "$pid" && kill -0 "$pid" 2>/dev/null; then exit 1; fi; fi; done; '
+            'if test -n "${MEMGUARD_REMOTE_DIR:-}"; then '
             'worker 1 "if test -e $MEMGUARD_REMOTE_DIR/memguard.pid; then '
-            'pid=\\$(cat $MEMGUARD_REMOTE_DIR/memguard.pid); if kill -0 \\$pid 2>/dev/null; then exit 1; fi; fi"',
+            'pid=\\$(cat $MEMGUARD_REMOTE_DIR/memguard.pid); if kill -0 \\$pid 2>/dev/null; then exit 1; fi; fi"; fi',
             "bash", clone]
         subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", marker["sshTarget"],
                         shlex.join(command)], check=True, capture_output=True, text=True, timeout=30)

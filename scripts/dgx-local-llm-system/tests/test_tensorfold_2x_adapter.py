@@ -821,6 +821,69 @@ class BusinessTensorfoldContractTests(unittest.TestCase):
                     self.assertIn(((name,), {}), verify.call_args_list)
                     self.assertIn(((name, 'user@worker'), {}), verify.call_args_list)
 
+    def _verify_private_stop_with_fake_kit(self, adapter, memguard=None, pid=None, failure=None):
+        from unittest.mock import patch
+        import resource_state
+        run = subprocess.run
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / 'scripts'
+            scripts.mkdir()
+            state = root / 'state'
+            state.mkdir()
+            remote = root / 'worker-state'
+            remote.mkdir()
+            config = ('unset MEMGUARD_REMOTE_DIR pid\n'
+                      'CONTAINER_NAME=configured-container\n'
+                      'STATE_DIR=' + shlex.quote(str(state)) + '\n')
+            if memguard is not None:
+                config += 'MEMGUARD_REMOTE_DIR=' + shlex.quote(str(remote) if memguard else '') + '\n'
+            if failure == 'config':
+                config += 'false\n'
+            (scripts / 'config.sh').write_text(config)
+            calls = root / 'worker-calls'
+            (scripts / 'nodes.sh').write_text(
+                'worker() { test "$1" = 1; printf "%s\\n" "$2" >> ' + shlex.quote(str(calls)) + '; '
+                + ('return 255; }\n' if failure == 'worker' else 'bash -eu -c "$2"; }\n'))
+            if pid is not None:
+                (remote / 'memguard.pid').write_text(str(pid))
+            if failure == 'local-pid':
+                (state / 'memguard.pid').write_text(str(os.getpid()))
+            marker = root / 'marker.json'
+            marker.write_text(json.dumps({'adapter': adapter, 'cloneDir': str(root), 'sshTarget': 'user@worker'}))
+
+            def ssh(command, **kwargs):
+                self.assertEqual(command[:7], ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', 'user@worker'])
+                return run(shlex.split(command[7]), **kwargs)
+
+            with patch.object(resource_state.subprocess, 'run', side_effect=ssh), \
+                    patch.object(resource_state, 'verify_rank_stopped'):
+                if failure or pid == os.getpid():
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        resource_state.verify_blue_stopped(str(marker), 'system-prod-trtllm')
+                else:
+                    resource_state.verify_blue_stopped(str(marker), 'system-prod-trtllm')
+            return calls.read_text() if calls.exists() else ''
+
+    def test_glm_stop_proof_skips_unset_or_empty_remote_memguard(self):
+        for memguard in (None, ''):
+            with self.subTest(memguard=memguard):
+                self.assertEqual(self._verify_private_stop_with_fake_kit('glm53_tensorfold_2x', memguard), '')
+        for failure in ('config', 'local-pid'):
+            with self.subTest(failure=failure):
+                self.assertEqual(self._verify_private_stop_with_fake_kit('glm53_tensorfold_2x', failure=failure), '')
+
+    def test_deepseek_stop_proof_checks_remote_memguard_and_propagates_worker_failure(self):
+        # A process that has been reaped is a deterministic stopped PID.
+        dead = subprocess.Popen(['bash', '-c', 'exit 0'])
+        dead.wait()
+        for pid, failure in ((None, None), (dead.pid, None), (os.getpid(), None), (None, 'worker')):
+            with self.subTest(pid=pid, failure=failure):
+                command = self._verify_private_stop_with_fake_kit('dsv41_tensorfold_2x', 'set', pid, failure)
+                self.assertIn('memguard.pid', command)
+                self.assertIn('pid=$(cat ', command)
+                self.assertIn('kill -0 $pid', command)
+
     def test_business_stop_checks_owned_containers_and_ports_with_private_gpu_active(self):
         from unittest.mock import patch
         import resource_state
