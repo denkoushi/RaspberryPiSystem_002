@@ -48,7 +48,7 @@ vi.mock('../production-schedule-search-state.service.js', () => ({
   updateProductionScheduleSearchState: (...args: unknown[]) => mocks.writeHistory(...args)
 }));
 const block = (seiban: string, partsCompleteDate = '2026-11-10', aliases: string[] = []): DScheduleMinutesBlock => ({
-  seiban, aliasSeibans: aliases, partsCompleteDate, outsourceMarks: [], surfaceSendOutDates: [], memo: null, sourceRow: 8, rawPartsCompleteText: null
+  seiban, assignees: [], aliasSeibans: aliases, partsCompleteDate, outsourceMarks: [], surfaceSendOutDates: [], memo: null, sourceRow: 8, rawPartsCompleteText: null
 });
 const register = (blocks: DScheduleMinutesBlock[]) => autoRegisterDScheduleMinutes({ runId: 'current', blocks });
 
@@ -76,7 +76,7 @@ describe('D schedule automatic registration', () => {
       return writeBoard(input);
     });
     const run = await applyDScheduleMinutes({
-      result: { ok: true, meetingDate: '2026-10-30', blocks: [block('SUPERSEDED'), block('MAIN', undefined, ['ALIAS'])], warnings: [] },
+      result: { ok: true, assigneeColumnFound: true, meetingDate: '2026-10-30', blocks: [block('SUPERSEDED'), block('MAIN', undefined, ['ALIAS'])], warnings: [] },
       metadata: { gmailMessageId: 'non-winner-import', subject: 'test', filename: '20261030 test.xlsx', receivedAt: new Date('2026-10-30Z') }
     });
     expect(mocks.readWinners).toHaveBeenCalledTimes(1);

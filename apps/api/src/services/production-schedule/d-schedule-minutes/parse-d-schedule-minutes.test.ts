@@ -15,6 +15,47 @@ function success(result: Awaited<ReturnType<typeof parse>>) {
 }
 
 describe('parseDScheduleMinutesXlsx', () => {
+  it('reads all four assignee rows, normalizes, trims, and deduplicates in order', async () => {
+    const fixture = buildWorkbook('Oct');
+    const col = fixture.memo - 1;
+    [' 資材課　', '機械課・資材課', '資材課', '↑製造課'].forEach((value, offset) => {
+      fixture.sheet.getCell(fixture.start + offset, col).value = value;
+    });
+    const result = success(await parse(fixture));
+    expect(result.assigneeColumnFound).toBe(true);
+    expect(result.blocks[0].assignees).toEqual(['資材課', '機械課・資材課', '↑製造課']);
+    expect(result.blocks[1].assignees).toEqual([]);
+  });
+
+  it.each(['missing', 'hidden'] as const)('treats a %s assignee column as unknown', async (kind) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, fixture.memo - 1).value = '機械課';
+    if (kind === 'missing') fixture.sheet.getCell(3, fixture.memo - 1).value = null;
+    else fixture.sheet.getColumn(fixture.memo - 1).hidden = true;
+    const result = success(await parse(fixture));
+    expect(result.assigneeColumnFound).toBe(false);
+    expect(result.blocks.every((block) => block.assignees.length === 0)).toBe(true);
+  });
+
+  it('skips hidden rows and merged non-master assignee cells', async () => {
+    const fixture = buildWorkbook();
+    const col = fixture.memo - 1;
+    fixture.sheet.mergeCells(fixture.start, col, fixture.start + 1, col);
+    fixture.sheet.getCell(fixture.start, col).value = '機械課';
+    fixture.sheet.getCell(fixture.start + 2, col).value = '資材課';
+    fixture.sheet.getRow(fixture.start + 2).hidden = true;
+    fixture.sheet.getCell(fixture.start + 3, col).value = '組立中　';
+    expect(success(await parse(fixture)).blocks[0].assignees).toEqual(['機械課', '組立中']);
+  });
+
+  it('reads only the first assignee row of an invalid-shape block', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start + 2, 1).value = 4;
+    fixture.sheet.getCell(fixture.start, fixture.memo - 1).value = '資材課';
+    fixture.sheet.getCell(fixture.start + 1, fixture.memo - 1).value = '機械課';
+    expect(success(await parse(fixture)).blocks[0].assignees).toEqual(['資材課']);
+  });
+
   it('reads shifted May and Oct layouts identically, preserving aliases, marks, notes and hidden calendar stars', async () => {
     const may = success(await parse(buildWorkbook('May')));
     const oct = success(await parse(buildWorkbook('Oct')));

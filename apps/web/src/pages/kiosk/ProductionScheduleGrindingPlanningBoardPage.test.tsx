@@ -184,6 +184,41 @@ function scanOrder(raw: string) {
 }
 
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
+  it('starts Excel non-machine seibans unchecked while keeping every seiban registered', () => {
+    const data = { ...fixture(), excelNonMachineFseibans: ['26-1042'] };
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    renderSeibanBoard();
+    expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    expect(within(drawer).getByRole('button', { name: /^26-1041 / })).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+    expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
+  });
+
+  it('excludes newly registered Excel non-machine seibans on refetch and preserves user choices', () => {
+    let current = { ...fixture(), excelNonMachineFseibans: [] as string[] };
+    mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, refetch: mocks.refetch }));
+    const view = renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '製番登録' })).getByRole('button', { name: /^26-1042 / }));
+    current = {
+      ...current,
+      registeredFseibans: [...current.registeredFseibans, '26-1043', '26-1044'],
+      seibanOrder: [...current.seibanOrder, '26-1043', '26-1044'],
+      excelNonMachineFseibans: ['26-1041', '26-1043'],
+      items: [...current.items, ...['26-1043', '26-1044'].map((fseiban) => ({
+        ...current.items[0]!, fseiban, itemId: fseiban, sourceRowId: fseiban
+      }))]
+    };
+    view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByTestId('planning-board-seiban-26-1041')).toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('planning-board-seiban-26-1043')).not.toBeInTheDocument();
+    expect(screen.getByTestId('planning-board-seiban-26-1044')).toBeInTheDocument();
+  });
+
   it('reads Excel by default and switches the board query to SCAW and back', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'excel' }), expect.anything());
