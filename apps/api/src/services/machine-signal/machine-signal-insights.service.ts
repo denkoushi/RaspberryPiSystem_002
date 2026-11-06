@@ -170,7 +170,8 @@ export async function getMachineSignalResourceUptime(input: { days: number }) {
   });
   const totals = new Map<number, { runSeconds: number; recordDays: number }>();
   for (const summary of summaries) {
-    if (!summary.hasRecord) continue;
+    // 止まっていた日(稼働0秒)は平均に入れない
+    if (!summary.hasRecord || summary.runSeconds <= 0) continue;
     const total = totals.get(summary.signalNo) ?? { runSeconds: 0, recordDays: 0 };
     total.runSeconds += summary.runSeconds;
     total.recordDays += 1;

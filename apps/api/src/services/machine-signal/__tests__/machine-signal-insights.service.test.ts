@@ -198,7 +198,7 @@ describe('getMachineSignalResourceUptime', () => {
     expect(await getMachineSignalResourceUptime({ days: 30 })).toEqual({ endDate: null, days: 30, resources: [] });
     expect(mocks.summaries).not.toHaveBeenCalled();
   });
-  it('averages recorded days including zero, rounds seconds, and chooses the smallest signalNo even when hidden', async () => {
+  it('averages only days that ran, rounds seconds, and chooses the smallest signalNo even when hidden', async () => {
     mocks.findFirst.mockResolvedValue({ reportDate: date('2026-11-05') });
     const chosen = sensor(2, { resourceCd: '021', hidden: true });
     const empty = sensor(4, { resourceCd: '305' });
@@ -206,12 +206,11 @@ describe('getMachineSignalResourceUptime', () => {
     mocks.sensors.mockResolvedValue([sensor(3, { resourceCd: '021' }), empty, sensor(), chosen, stopped]);
     const summary = (signalNo: number, hasRecord: boolean, runSeconds: number) => ({ signalNo, hasRecord, runSeconds });
     mocks.summaries.mockResolvedValue([
-      summary(2, true, 101), summary(2, true, 0), summary(2, false, 1000),
+      summary(2, true, 101), summary(2, true, 0), summary(2, true, 50), summary(2, false, 1000),
       summary(4, false, 0), summary(5, true, 0),
     ]);
     expect(await getMachineSignalResourceUptime({ days: 30 })).toEqual({ endDate: '2026-11-05', days: 30, resources: [
-      { resourceCd: '021', signalNo: 2, averageRunSeconds: 51, recordDays: 2 },
-      { resourceCd: '581', signalNo: 5, averageRunSeconds: 0, recordDays: 1 },
+      { resourceCd: '021', signalNo: 2, averageRunSeconds: 76, recordDays: 2 },
     ] });
     expect(mocks.findFirst).toHaveBeenCalledWith({ orderBy: { reportDate: 'desc' }, select: { reportDate: true } });
     expect(mocks.summaries).toHaveBeenCalledWith({ sensors: [chosen, empty, stopped], thresholds: DEFAULT_SIGNAL_THRESHOLDS,
