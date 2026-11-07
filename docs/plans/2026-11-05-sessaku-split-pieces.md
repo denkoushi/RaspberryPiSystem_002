@@ -799,3 +799,5 @@ R1〜R5はいずれも妥当。保存中のtd/trクリックと取消トース�
 ## 片の新規作成を有効化（2026-11-07）
 
 ユーザーの依頼「分配機能ONにして」により、本番の Pi5 で `SESSAKU_PIECES_CREATE_ENABLED=true` にする。経路は `infrastructure/ansible/inventory.yml` の `api_sessaku_pieces_create_enabled` → `infrastructure/ansible/templates/docker.env.j2` → `infrastructure/docker/.env` → API コンテナの環境変数。API 全体の設定なので端末ごとには分けられず、全キオスクの製番ボードで分割と再分割ができるようになる。戻すときは inventory の値を `"false"` にして通常のローリング更新を流す。false に戻しても、すでにある片の表示・結合・完了・取消は動く。
+
+#2603 の反映(run 20261107-013719-7c3394)では API に届かなかった。標準の Pi5 反映は `infrastructure/docker/.env` を描き直さず、前回の compose.env を写して `roles/release_pi5/tasks/business-hermes-chat-prepare.yml` の一覧にある値だけを書き込むため。その一覧と `api.env.j2` に `SESSAKU_PIECES_CREATE_ENABLED` を足し、`scripts/deploy/tests/test_ansible_standard_release.py` で一覧に入っていることを確かめる。
