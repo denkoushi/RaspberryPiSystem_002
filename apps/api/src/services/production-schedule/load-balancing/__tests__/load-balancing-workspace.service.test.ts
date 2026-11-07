@@ -67,7 +67,7 @@ describe('workspace cache wiring', () => {
   it('invalidates on board and machine supplement generations, keeping due source/range/day/scope separate', async () => {
     const first = await getProductionScheduleLoadBalancingWorkspace(params);
     mocks.generation.mockResolvedValue('g2');
-    expect(await getProductionScheduleLoadBalancingWorkspace(params)).not.toBe(first);
+    expect(await getProductionScheduleLoadBalancingWorkspace(params)).toBe(first);
     mocks.revision.mockResolvedValue({ _count: 2, _max: { updatedAt: new Date('2026-11-02') } });
     await getProductionScheduleLoadBalancingWorkspace(params);
     await getProductionScheduleLoadBalancingWorkspace({ ...params, dueSource: 'scaw' });

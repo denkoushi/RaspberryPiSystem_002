@@ -11,8 +11,10 @@ import { resolveSeibanMachineDisplayNamesForWinnerRows } from '../seiban-machine
 import { readLoadBalancingWorkspaceResultWithCache } from './load-balancing-workspace-result-cache.js';
 import {
   buildLoadBalancingWorkspaceSourceKey,
+  buildLoadBalancingWorkspaceSourceBaseKey,
+  registerLoadBalancingWorkspaceSourceWarmer,
   readLoadBalancingWorkspaceSourceWithCache,
-  type LoadBalancingWorkspaceSource
+  type WorkspaceSourceCacheResult
 } from './load-balancing-workspace-source-cache.js';
 import {
   assembleLoadBalancingWorkspace,
@@ -51,10 +53,18 @@ export function resolveLoadBalancingToday(now: Date = new Date()): Date {
   return parseUtcDateKey(dateKey);
 }
 
-/**
- * 表示範囲の未完了工程行と機種名。順位ボード・製番ボードと同じ世代トークンが
- * 変わらない間は保存済みを返す（CSV 取込・進捗・完了・納期の更新で世代が変わる）。
- */
+async function readWorkspaceGenerationToken(): Promise<string> {
+  const [boardToken, supplementRevision] = await Promise.all([
+    readGrindingPlanningBoardSnapshotGenerationToken(),
+    prisma.productionScheduleSeibanMachineNameSupplement.aggregate({
+      where: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID },
+      _count: true,
+      _max: { updatedAt: true }
+    })
+  ]);
+  return JSON.stringify([boardToken, supplementRevision]);
+}
+
 async function readWorkspaceSource(params: {
   siteKey: string;
   deviceScopeKey: string;
@@ -62,47 +72,42 @@ async function readWorkspaceSource(params: {
   range: ReturnType<typeof parseYearMonthRangeInclusive>;
   today: Date;
   perf: Performance;
-}): Promise<{ source: LoadBalancingWorkspaceSource; cacheHit: boolean }> {
-  const generationToken = await params.perf.measure('generation', async () => {
-    const [boardToken, supplementRevision] = await Promise.all([
-      readGrindingPlanningBoardSnapshotGenerationToken(),
-      prisma.productionScheduleSeibanMachineNameSupplement.aggregate({
-        where: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID },
-        _count: true,
-        _max: { updatedAt: true }
-      })
-    ]);
-    return JSON.stringify([boardToken, supplementRevision]);
-  });
-  return readLoadBalancingWorkspaceSourceWithCache({
-    key: buildLoadBalancingWorkspaceSourceKey({
-      siteKey: params.siteKey,
-      deviceScopeKey: params.deviceScopeKey,
-      dueSource: params.dueSource,
-      fromMonth: params.range.fromMonth,
-      toMonth: params.range.toMonth,
-      today: formatUtcDateKey(params.today)
-    }),
-    generationToken,
-    load: async () => {
-      const winnerRowIds = await params.perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds());
-      const [queryRows, { machineNames }] = await Promise.all([
-        params.perf.measure('queryRows', () =>
-          listStartDateLevelingQueryRows({
-            siteKey: params.siteKey,
-            deviceScopeKey: params.deviceScopeKey,
-            dueSource: params.dueSource,
-            rangeStart: params.range.rangeStart,
-            rangeEndExclusive: params.range.rangeEndExclusive,
-            includeOverdueBefore: params.today,
-            winnerRowIds
-          })
-        ),
-        params.perf.measure('machineNames', () => resolveSeibanMachineDisplayNamesForWinnerRows({ winnerRowIds }))
-      ]);
-      return { queryRows, machineNames };
-    }
-  });
+}): Promise<WorkspaceSourceCacheResult> {
+  const keyParams = {
+    siteKey: params.siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource,
+    fromMonth: params.range.fromMonth, toMonth: params.range.toMonth
+  };
+  const baseKey = buildLoadBalancingWorkspaceSourceBaseKey(keyParams);
+  const prepare = async (today: Date, perf: Performance) => {
+    const generationToken = await perf.measure('generation', readWorkspaceGenerationToken);
+    return {
+      baseKey,
+      key: buildLoadBalancingWorkspaceSourceKey({ ...keyParams, today: formatUtcDateKey(today) }),
+      generationToken,
+      load: async () => {
+        const winnerRowIds = await perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds(generationToken));
+        const [queryRows, { machineNames }] = await Promise.all([
+          perf.measure('queryRows', () =>
+            listStartDateLevelingQueryRows({
+              siteKey: params.siteKey,
+              deviceScopeKey: params.deviceScopeKey,
+              dueSource: params.dueSource,
+              rangeStart: params.range.rangeStart,
+              rangeEndExclusive: params.range.rangeEndExclusive,
+              includeOverdueBefore: today,
+              winnerRowIds
+            })
+          ),
+          perf.measure('machineNames', () => resolveSeibanMachineDisplayNamesForWinnerRows({ winnerRowIds }))
+        ]);
+        return { queryRows, machineNames };
+      }
+    };
+  };
+  registerLoadBalancingWorkspaceSourceWarmer(baseKey, () =>
+    prepare(resolveLoadBalancingToday(), createGrindingPlanningBoardPerformance('load-balancing-workspace-warmer'))
+  );
+  return readLoadBalancingWorkspaceSourceWithCache(await prepare(params.today, params.perf));
 }
 
 export async function getProductionScheduleLoadBalancingWorkspace(params: {
@@ -122,7 +127,7 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
   const siteKey = resolveSiteKeyForScopeKey(params.siteKeyInput.trim());
   const today = resolveLoadBalancingToday(params.now);
 
-  const [{ source, cacheHit }, baseCap, monthlyCap, classes, calendars, rules] = await Promise.all([
+  const [{ source, cacheHit, cacheState }, baseCap, monthlyCap, classes, calendars, rules] = await Promise.all([
     readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource, range, today, perf }),
     listLoadBalancingCapacityBaseResolved(siteKey),
     listLoadBalancingMonthlyCapacityRangeResolved({
@@ -168,7 +173,7 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
         })
     })
   );
-  perf.flush({ cacheHit, queryRowCount: source.queryRows.length, rowCount: result.rows.length });
+  perf.flush({ cacheHit, cacheState, queryRowCount: source.queryRows.length, rowCount: result.rows.length });
   return result;
 }
 
@@ -199,7 +204,8 @@ export async function getProductionScheduleLoadBalancingWorkspaceDay(params: {
       const { source } = await readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource, range: viewRange, today, perf });
       return source.queryRows;
     }
-    const winnerRowIds = await perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds());
+    const generationToken = await perf.measure('generation', readWorkspaceGenerationToken);
+    const winnerRowIds = await perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds(generationToken));
     return perf.measure('queryRows', () =>
       listStartDateLevelingQueryRows({
         siteKey,
