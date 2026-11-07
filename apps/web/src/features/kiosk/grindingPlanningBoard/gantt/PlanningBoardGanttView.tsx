@@ -1,11 +1,12 @@
 import { GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS, GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useMachineSignalResourceUptime } from '../../../../api/hooks/machine-signal';
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { pageZoom } from '../pageZoom';
+import { PlanningBoardPiecesContext } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
 import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
@@ -116,6 +117,16 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     row.bars.map((bar) => [bar.item.itemId, bar] as const)))), [currentLayout]);
   const latest = useRef({ interaction, currentBars });
   useLayoutEffect(() => { latest.current = { interaction, currentBars }; });
+  const parentPieceActions = useContext(PlanningBoardPiecesContext);
+  const pieceActions = useMemo(() => {
+    if (!parentPieceActions) return null;
+    const item = (original: GrindingPlanningBoardItem) => latest.current.currentBars.get(original.itemId)?.item ?? original;
+    return {
+      ...parentPieceActions,
+      onSplit: (original: GrindingPlanningBoardItem, quantities: number[]) => parentPieceActions.onSplit(item(original), quantities),
+      onMerge: (items: GrindingPlanningBoardItem[]) => parentPieceActions.onMerge(items.map(item))
+    };
+  }, [parentPieceActions]);
   const pendingMove = useRef<{ id: string; layout: GanttLayout } | null>(null);
   useEffect(() => {
     const pending = pendingMove.current;
@@ -440,6 +451,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   })), [layout.groups, resourceLabel]);
   useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
   return (
+    <PlanningBoardPiecesContext.Provider value={pieceActions}>
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       <div ref={viewport} onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className="relative min-h-48 overflow-auto"
@@ -504,7 +516,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                 focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={group.resource ? resourceLabels.get(group.resource)?.node : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
-              completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds}
+              showPieceQuantity={layout.mode !== 'forward'} completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds}
               today={dayToDate(layout.today)} selectedParts={selectedParts} {...interaction} />)}
             {forward && group.resource && <div data-later-queue-host={`column-${dragLanes.findIndex((lane) => lane.resource === group.resource)}`}
               className="pointer-events-none absolute inset-0 flex items-stretch justify-end" />}
@@ -536,5 +548,6 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         <strong className="font-mono">{dragPreview.bar.resource}</strong> {dragPreview.bar.item.fhinmei || dragPreview.bar.item.fhincd}
       </div>, document.body)}
     </section>
+    </PlanningBoardPiecesContext.Provider>
   );
 });

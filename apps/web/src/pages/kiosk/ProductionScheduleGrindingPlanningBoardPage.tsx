@@ -364,7 +364,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => [key, new Set([...ids].filter((id) => !affectedIds.has(id)))])));
       pieceFocusItemIdRef.current = target; pieceRefreshRef.current = refetchBoard; setPiecePhase('refreshing');
     } catch (error) {
-      const conflict = isAxiosError(error) && error.response?.status === 409; const message = conflict ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存できませんでした。時間をおいて再試行してください。';
+      const conflict = isAxiosError(error) && (error.response?.status === 409 || (error.response?.status === 400 && error.response.data?.errorCode === 'PIECE_QUANTITY_CONFLICT')); const message = conflict ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存できませんでした。時間をおいて再試行してください。';
       pieceFocusItemIdRef.current = null; piecePendingRef.current = false; setPiecePhase('idle');
       notify(message, 'error'); void refetchBoard().catch(() => undefined);
       throw new Error(message);

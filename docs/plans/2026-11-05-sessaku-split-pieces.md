@@ -845,3 +845,14 @@ R1〜R5はいずれも妥当。保存中のtd/trクリックと取消トース�
 - `pnpm --filter @raspi-system/web exec eslint src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardChainStrip.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.test.tsx`: 出力なし、exit 0。
 
 既存作業の上に上記web 5ファイルと本書だけを編集。依頼どおり git 操作（status/diffを含む）と秘密ファイル参照は行っていない。commit/push/PR/merge/release/deploy、実ブラウザー検証は未実施。
+
+### レビュー1回目の指摘と修正（2026-11-07）
+
+- 開いた数量窓は指示数・revisionの更新で2分割へ戻し、送信直前にも各片1以上・合計一致・2片以上を検証する。分け数の±も保存中・blocked中は無効化した。
+- APIの400 `PIECE_QUANTITY_CONFLICT` を既存409と同じ更新通知・再取得へ揃えた。ガント内のContextをuseMemoで包み、分割・結合ともcurrentBarsの最新itemを送る。
+- 棒・帯のContext購読を数量窓へ集約し、同親完了待ちを共通部品内で判定する。棒端の数量はbackwardだけ表示しleftを0以上に丸める。線は帯・番号と同じ親キーで工程をまとめ、隣接工程間の全棒を結び、同親片間を結ばない。
+- 回帰テストに総数5→3／3→2、revision更新、保存中の±、400の文言・再取得、forward/backwardの表示と位置、P→A/B→Nの4接続を追加。既存の保存中カウンター操作の期待は今回の無効化仕様へ更新した。
+
+検証: `apps/web` で `pnpm exec vitest run src/features/kiosk/grindingPlanningBoard src/pages/kiosk` は72ファイル・1161件成功（59.44秒）。その後に追加した左端0pxの境界テストは単独1件成功（2.54秒）。`pnpm exec tsc -b --pretty false` と変更web 9ファイルのeslint（最後に追加したテストも再確認）は成功。初回の関連3ファイル検証は旧仕様のカウンター期待3件が失敗し、仕様に合わせた更新後に上記指定範囲で成功。eslintはページの行数上限を条件式の改行調整で解消した。検証は約4分。
+
+既存WIPを引き継ぎ、今回の編集は上記web 9ファイルと本記録のみ。git操作・秘密ファイル参照・commit・push・PR・merge・release・deployは実施していない。実ブラウザー検証は未実施。

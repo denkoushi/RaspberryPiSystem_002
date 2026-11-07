@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -801,24 +801,55 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.click(screen.getByRole('button', { name: '分ける' }));
     await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([entry], [5, 4, 3]));
   });
+  it('splits from a reused chain bar with the latest item revision', async () => {
+    const entry = item({ plannedQuantity: 5 });
+    const changePieces = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<PieceGantt items={[entry]} changePieces={changePieces} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    const updated = { ...entry, itemRevision: 'r2' };
+    rerender(<PieceGantt items={[updated]} changePieces={changePieces} />);
+    fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /の数量/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([updated], [2, 3]));
+  });
+  it.each([true, false])('shows forward quantities only in the strip (resourceView=%s)', (resourceView) => {
+    render(<PieceGantt items={[item({ plannedQuantity: 5 })]} resourceView={resourceView} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    const buttons = screen.getAllByRole('button', { name: /の数量/ });
+    expect(buttons).toHaveLength(1);
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toContainElement(buttons[0]!);
+  });
+  it('connects adjacent processes across all sibling pieces without linking the siblings', () => {
+    const entries = [item({ itemId: 'P', processOrder: '10', requiredMinutes: 60 }),
+      ...['A', 'B'].map((id) => item({ itemId: id, kind: 'piece', parentItemId: 'parent', processOrder: '20', requiredMinutes: 60 })),
+      item({ itemId: 'N', processOrder: '30', requiredMinutes: 60 })];
+    render(<PlanningBoardGanttView {...forwardProps(entries)} />);
+    tap(screen.getByTestId('planning-gantt-bar-P'));
+    const links = screen.getAllByTestId('planning-gantt-chain-link');
+    expect(links).toHaveLength(4);
+    expect(links.map((link) => link.getAttribute('data-from-to'))).toEqual(['P->A', 'P->B', 'A->N', 'B->N']);
+  });
   it('offers merging after two gantt long presses use the shared piece selection', async () => {
     vi.useFakeTimers();
     const entries = ['a', 'b'].map((id) => item({ itemId: `piece:${id}`, kind: 'piece', pieceId: id, parentItemId: 'parent', plannedQuantity: 1, parentPlannedQuantity: 2, requiredMinutes: 60 }));
     const changePieces = vi.fn().mockResolvedValue(undefined);
-    render(<PieceGantt items={entries} changePieces={changePieces} createEnabled={false} />);
+    const { rerender } = render(<PieceGantt items={entries} changePieces={changePieces} createEnabled={false} />);
     for (const entry of entries) {
       const bar = screen.getByTestId(`planning-gantt-bar-${entry.itemId}`);
       fireEvent.pointerDown(bar, { clientX: 100, button: 0 }); act(() => vi.advanceTimersByTime(500));
       fireEvent.pointerUp(bar, { clientX: 100 }); fireEvent.click(bar);
       expect(bar).toHaveAttribute('aria-pressed', 'true');
     }
+    const updated = entries.map((entry) => ({ ...entry, itemRevision: 'r2' }));
+    rerender(<PieceGantt items={updated} changePieces={changePieces} createEnabled={false} />);
     tap(screen.getByTestId('planning-gantt-bar-piece:a'));
     fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getAllByRole('button', { name: /の数量/ })[0]!);
     act(() => vi.advanceTimersByTime(350));
     expect(screen.queryByRole('button', { name: '分ける' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
     await act(async () => {});
-    expect(changePieces).toHaveBeenCalledExactlyOnceWith(entries);
+    expect(changePieces).toHaveBeenCalledExactlyOnceWith(updated);
   });
   it.each([false, true])('places the backward quantity control immediately before completion (resourceView=%s)', (resourceView) => {
     render(<PieceGantt resourceView={resourceView} items={[item({ plannedQuantity: 12 })]} mode="backward" />);
@@ -826,6 +857,23 @@ describe('forward PlanningBoardGanttView', () => {
     const quantity = screen.getByRole('button', { name: /の数量/ });
     expect(quantity.parentElement!.parentElement!.nextElementSibling).toBe(screen.getByRole('button', { name: '完了にする' }));
     expect(quantity).toHaveTextContent('12個 ▾');
+    expect(parseFloat(quantity.parentElement!.parentElement!.style.left)).toBeGreaterThanOrEqual(0);
+    expect(quantity.parentElement!.parentElement!.style.transform).toBe('');
+  });
+  it('clamps a backward quantity control at the left edge of the row', () => {
+    const entry = item({ plannedQuantity: 5 });
+    const values = props([entry]);
+    for (const group of values.layout.groups) for (const row of group.rows) for (const bar of row.bars) {
+      bar.start = values.layout.start - 2;
+      bar.end = values.layout.start;
+    }
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { '305': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));
+    render(<PlanningBoardPiecesContext.Provider value={result.current}><PlanningBoardGanttView {...values} onCompleteToggle={vi.fn()} /></PlanningBoardPiecesContext.Provider>);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    const position = screen.getByRole('button', { name: /の数量/ }).parentElement!.parentElement!;
+    expect(position.style.left).toBe('0px');
+    expect(position.style.transform).toBe('');
   });
   it.each(['reorder', 'move'] as const)('drags a piece bar to %s with its piece ID intact', (operation) => {
     const entries = [item({ itemId: 'piece:a', kind: 'piece', pieceId: 'a', parentItemId: 'parent', requiredMinutes: 60 }),

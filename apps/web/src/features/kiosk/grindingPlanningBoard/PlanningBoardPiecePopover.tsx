@@ -25,6 +25,11 @@ type PieceActions = {
 
 export const PlanningBoardPiecesContext = createContext<PieceActions | null>(null);
 
+function distributeQuantity(total: number, count: number) {
+  const base = Math.floor(total / count);
+  return Array.from({ length: count }, (_, index) => base + (index >= count - total % count ? 1 : 0));
+}
+
 const EMPTY_SELECTED_PIECES: ReadonlyMap<string, GrindingPlanningBoardItem[]> = new Map();
 
 export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceCategories, selectedItems, changePieces, completionPendingParentIds, ready = true, blocked = false, blockedMessage = '保存中…', blockedIsError = false, onRemoved }: {
@@ -124,7 +129,7 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
   if (item.kind !== 'piece' && !operable && !open) return <>{label}</>;
   return <span className={`inline-block min-w-8 align-middle ${variant === 'gantt' ? 'shrink-0 whitespace-nowrap' : ''}`} onClick={operable || open ? (event) => event.stopPropagation() : undefined}>
     {(operable || open) && actions
-      ? <PiecePopoverControl variant={variant} item={item} actions={actions} canSplit={canSplit} mergeItems={mergeItems} label={label} disabled={disabled || !operable} open={open} setOpen={setOpen} />
+      ? <PiecePopoverControl variant={variant} item={item} actions={actions} canSplit={canSplit} mergeItems={mergeItems} label={label} disabled={disabled || !operable || actions.completionPendingParentIds?.has(item.parentItemId ?? item.itemId) === true} open={open} setOpen={setOpen} />
       : label}
     {item.kind === 'piece' && <span className="block h-0.5 overflow-hidden rounded bg-slate-700" aria-hidden="true">
       <span className="block h-full bg-emerald-400" style={{ width: `${Math.min(100, Math.max(0, (quantity ?? 0) / (item.parentPlannedQuantity || 1) * 100))}%` }} />
@@ -136,14 +141,13 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
   variant: 'table' | 'gantt'; item: GrindingPlanningBoardItem; actions: PieceActions; canSplit: boolean;
   mergeItems?: GrindingPlanningBoardItem[]; label: string; disabled: boolean; open: boolean; setOpen: (open: boolean) => void;
 }) {
-  const distribute = (count: number) => {
-    const total = item.plannedQuantity ?? 0;
-    const base = Math.floor(total / count);
-    return Array.from({ length: count }, (_, index) => base + (index >= count - total % count ? 1 : 0));
-  };
-  const [quantities, setQuantities] = useState(() => distribute(2));
+  const quantity = item.plannedQuantity;
+  const [quantities, setQuantities] = useState(() => distributeQuantity(quantity ?? 0, 2));
+  useEffect(() => {
+    if (open) setQuantities(distributeQuantity(quantity ?? 0, 2));
+  }, [open, quantity, item.itemRevision]);
   const count = quantities.length;
-  const setCount = (value: number) => setQuantities(distribute(value));
+  const setCount = (value: number) => setQuantities(distributeQuantity(quantity ?? 0, value));
   const adjust = (index: number, delta: number) => setQuantities((values) => {
     const last = values.length - 1;
     if (index === last || values[index]! + delta < 1 || values[last]! - delta < 1) return values;
@@ -164,12 +168,17 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
     const current = removalRef.current;
     if (current.open) current.onRemoved?.(current.item);
   }, []);
-  const quantity = item.plannedQuantity;
   const ready = useSyncExternalStore(actions.subscribeBlocking, () => actions.getBlocking().ready !== false);
   const operable = !disabled && ready;
   const close = () => setOpen(false);
   const run = async (merge: boolean) => {
     if (pending || (merge ? !mergeItems : !canSplit || typeof quantity !== 'number')) return;
+    if (!operable || actions.getBlocking().blocked) return;
+    if (!merge && (quantities.length < 2 || quantities.some((value) => !Number.isInteger(value) || value < 1) ||
+      quantities.reduce((total, value) => total + value, 0) !== quantity)) {
+      setCount(2);
+      return;
+    }
     setPending(true);
     setFailure(null);
     try {
@@ -194,9 +203,9 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
       {(blocked) => <div className="flex flex-col gap-2">
         {canSplit && <>
           <div className="flex items-center justify-between gap-2">
-            <button type="button" aria-label="分け数を減らす" disabled={!backdropReady || count <= 2} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count - 1)}>−</button>
+            <button type="button" aria-label="分け数を減らす" disabled={!backdropReady || pending || blocked || count <= 2} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count - 1)}>−</button>
             <output aria-label="分け数" className="tabular-nums">{Math.min(count, quantity ?? 0)}</output>
-            <button type="button" aria-label="分け数を増やす" disabled={!backdropReady || count >= (quantity ?? 0)} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count + 1)}>＋</button>
+            <button type="button" aria-label="分け数を増やす" disabled={!backdropReady || pending || blocked || count >= (quantity ?? 0)} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count + 1)}>＋</button>
           </div>
           <div className="flex flex-col gap-2">
             {quantities.map((value, index) => <div key={index} className="flex items-center justify-between gap-2">
