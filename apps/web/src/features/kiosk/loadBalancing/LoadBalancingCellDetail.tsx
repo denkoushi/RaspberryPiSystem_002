@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
 
 import { LoadBalancingCapacityEditor } from './LoadBalancingCapacityEditor';
 import { formatHours, formatYearMonthSlash } from './loadBalancingFormat';
@@ -6,13 +6,10 @@ import { LoadBalancingActionIcon } from './LoadBalancingIcons';
 import { LATE_BUCKET, type ScenarioAction, type TransferDestination, listCellRows } from './loadBalancingScenario';
 
 import type {
-  ProductionScheduleLoadBalancingWorkspaceDayResponse,
-  ProductionScheduleLoadBalancingWorkspaceResource
+  ProductionScheduleLoadBalancingWorkspaceResource,
+  ProductionScheduleLoadBalancingWorkspaceRow,
+  OutsourceVendor
 } from '../../../api/client';
-
-const LoadBalancingDailyChart = lazy(() =>
-  import('./LoadBalancingDailyChart').then((module) => ({ default: module.LoadBalancingDailyChart }))
-);
 
 type CellRow = ReturnType<typeof listCellRows>[number];
 
@@ -25,40 +22,26 @@ type Props = {
   cellRows: CellRow[];
   formattedMachineNames: Map<string, string>;
   canTransfer: boolean;
-  day: ProductionScheduleLoadBalancingWorkspaceDayResponse | undefined;
-  dayLoading: boolean;
-  /** 日別グラフから差し引く行（外注・移管・後ろへ済み） */
-  removedRowIds: Set<string>;
   editingCapacity: boolean;
   capacitySaving: boolean;
   capacityError: string | null;
   onEditCapacity: () => void;
   onSaveCapacity: (minutes: number) => void;
   onCancelCapacity: () => void;
-  onAutoLevel: () => void;
   onAction: (action: ScenarioAction) => void;
   onUndo: (rowId: string) => void;
-  listDestinations: (rowMinutes: number) => TransferDestination[];
+  listDestinations: (row: ProductionScheduleLoadBalancingWorkspaceRow) => TransferDestination[];
+  vendors: OutsourceVendor[];
+  listVendors: (row: ProductionScheduleLoadBalancingWorkspaceRow) => Array<{ vendor: OutsourceVendor; matches: boolean; fits: boolean }>;
   resolveName: (resourceCd: string) => string;
 };
 
 export function LoadBalancingCellDetail(props: Props) {
   const { resource, bucket, loadMinutes, capacityMinutes } = props;
+  const [outsourceRowId, setOutsourceRowId] = useState<string | null>(null);
   const [transferRowId, setTransferRowId] = useState<string | null>(null);
   const over = capacityMinutes == null ? null : loadMinutes - capacityMinutes;
   const isLate = bucket === LATE_BUCKET;
-
-  const dailyDays =
-    props.day && !isLate
-      ? props.day.days.map((day) => ({
-          date: day.date,
-          requiredMinutes:
-            day.requiredMinutes -
-            props.day!.rowDays
-              .filter((item) => item.date === day.date && props.removedRowIds.has(item.rowId))
-              .reduce((sum, item) => sum + item.minutes, 0)
-        }))
-      : [];
 
   return (
     <section className="flex min-h-0 flex-col rounded-[10px] border border-white/15 bg-slate-900/70" data-testid="load-balancing-cell-detail">
@@ -98,27 +81,7 @@ export function LoadBalancingCellDetail(props: Props) {
             tone={over > 0 ? 'bad' : 'good'}
           />
         ) : null}
-        <button
-          type="button"
-          className="ml-auto h-10 rounded-lg bg-emerald-600 px-4 font-bold text-white disabled:opacity-35"
-          disabled={over == null || over < 30}
-          onClick={props.onAutoLevel}
-        >
-          ⚡ 超過分を自動で崩す
-        </button>
       </header>
-
-      {!isLate ? (
-        <div className="border-b border-white/10 px-3 pt-2">
-          {props.dayLoading && dailyDays.length === 0 ? (
-            <div className="h-[170px] animate-pulse rounded bg-white/5" />
-          ) : (
-            <Suspense fallback={<div className="h-[170px] w-full min-w-0" />}>
-              <LoadBalancingDailyChart days={dailyDays} capacityMinutesPerDay={props.day?.capacityMinutesPerDay ?? null} />
-            </Suspense>
-          )}
-        </div>
-      ) : null}
 
       <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
         <table className="w-full border-collapse text-[15px]">
@@ -128,7 +91,7 @@ export function LoadBalancingCellDetail(props: Props) {
               <th className="sticky top-0 z-[1] bg-slate-900 p-1.5 font-bold">製番</th>
               <th className="sticky top-0 z-[1] bg-slate-900 p-1.5 font-bold">部品</th>
               <th className="sticky top-0 z-[1] bg-slate-900 p-1.5 text-right font-bold">工数</th>
-              <th className="sticky top-0 z-[1] bg-slate-900 p-1.5 font-bold">期間</th>
+              <th className="sticky top-0 z-[1] bg-slate-900 p-1.5 font-bold">納期</th>
               <th className="sticky top-0 z-[1] bg-slate-900 p-1.5 text-right font-bold">操作</th>
             </tr>
           </thead>
@@ -153,7 +116,7 @@ export function LoadBalancingCellDetail(props: Props) {
                   <span className="text-xs font-normal text-white/55"> H</span>
                 </td>
                 <td className="p-1.5">
-                  <Period start={item.row.plannedStartDate} due={item.row.effectiveDueDate} bucket={bucket} late={item.row.late} />
+                  <span className={item.row.late ? 'text-rose-300' : 'tabular-nums'}>{item.row.effectiveDueDate.slice(5).replace('-', '/')}</span>
                 </td>
                 <td className="relative p-1.5 text-right">
                   {item.movedIn ? (
@@ -162,14 +125,14 @@ export function LoadBalancingCellDetail(props: Props) {
                       {item.row.resourceCd}から
                     </span>
                   ) : item.action ? (
-                    <ActionTag action={item.action} onUndo={() => props.onUndo(item.row.rowId)} />
+                    <ActionTag action={item.action} vendorName={item.action.type === 'outsource' ? props.vendors.find((vendor) => item.action?.type === 'outsource' && vendor.id === item.action.vendorId)?.name : undefined} onUndo={() => props.onUndo(item.row.rowId)} />
                   ) : (
                     <div className="flex justify-end gap-1.5">
-                      <ActionButton type="outsource" onClick={() => props.onAction({ rowId: item.row.rowId, type: 'outsource' })} />
+                      <ActionButton type="outsource" onClick={() => { setTransferRowId(null); setOutsourceRowId(outsourceRowId === item.row.rowId ? null : item.row.rowId); }} />
                       {props.canTransfer ? (
                         <ActionButton
                           type="transfer"
-                          onClick={() => setTransferRowId(transferRowId === item.row.rowId ? null : item.row.rowId)}
+                          onClick={() => { setOutsourceRowId(null); setTransferRowId(transferRowId === item.row.rowId ? null : item.row.rowId); }}
                         />
                       ) : null}
                       <ActionButton
@@ -178,9 +141,18 @@ export function LoadBalancingCellDetail(props: Props) {
                       />
                     </div>
                   )}
+                  {outsourceRowId === item.row.rowId ? (
+                    <div className="absolute right-1 top-full z-10 min-w-60 rounded-lg border border-white/15 bg-slate-950 p-2 shadow-xl" onKeyDown={(event) => { if (event.key === 'Escape') setOutsourceRowId(null); }}>
+                      {props.listVendors(item.row).map((option) => <button type="button" key={option.vendor.id} disabled={!option.fits} className="flex w-full items-center justify-between gap-4 rounded p-3 text-left font-bold hover:bg-slate-800 disabled:opacity-30" onClick={() => {
+                        setOutsourceRowId(null);
+                        props.onAction({ rowId: item.row.rowId, type: 'outsource', vendorId: option.vendor.id });
+                      }}>{option.vendor.name}<small className="text-white/55">{!option.matches ? '条件' : !option.fits ? '上限' : ''}</small></button>)}
+                      {props.vendors.length === 0 ? <span className="block p-2 text-white/40">—</span> : null}
+                    </div>
+                  ) : null}
                   {transferRowId === item.row.rowId ? (
                     <TransferMenu
-                      destinations={props.listDestinations(item.originalMinutes)}
+                      destinations={props.listDestinations(item.row)}
                       resolveName={props.resolveName}
                       onPick={(destination) => {
                         setTransferRowId(null);
@@ -236,16 +208,16 @@ function ActionButton({ type, onClick }: { type: ScenarioAction['type']; onClick
       onClick={onClick}
     >
       <LoadBalancingActionIcon type={type} />
-      {ACTION_LABEL[type]}
+      {ACTION_LABEL[type]}{type === 'defer' ? '' : ' ▾'}
     </button>
   );
 }
 
-function ActionTag({ action, onUndo }: { action: ScenarioAction; onUndo: () => void }) {
+function ActionTag({ action, vendorName, onUndo }: { action: ScenarioAction; vendorName?: string; onUndo: () => void }) {
   return (
     <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-extrabold ${ACTION_TAG[action.type]}`}>
       <LoadBalancingActionIcon type={action.type} />
-      {action.type === 'transfer' ? `→ ${action.toResourceCd}` : ACTION_LABEL[action.type]}
+      {action.type === 'transfer' ? `→ ${action.toResourceCd}` : action.type === 'outsource' ? `外注 ${vendorName ?? ''}` : ACTION_LABEL[action.type]}
       <button type="button" className="ml-1 opacity-70 hover:opacity-100" aria-label="取り消す" onClick={onUndo}>
         ×
       </button>
@@ -283,6 +255,7 @@ function TransferMenu({
             className={`flex h-10 w-full items-center justify-between rounded-lg px-2.5 font-bold hover:bg-slate-800 ${
               destination.fits ? '' : 'opacity-60'
             }`}
+            disabled={!destination.fits}
             onClick={() => onPick(destination)}
           >
             <span className="truncate">
@@ -295,34 +268,6 @@ function TransferMenu({
           </button>
         ))
       )}
-    </div>
-  );
-}
-
-/** 着手〜納期のうち、表示中の月にかかる範囲を帯で示す */
-function Period({ start, due, bucket, late }: { start: string; due: string; bucket: string; late: boolean }) {
-  if (late || bucket === LATE_BUCKET) {
-    return (
-      <span className="whitespace-nowrap rounded-md bg-[#2a1320] px-2 py-0.5 text-sm font-bold text-rose-300">
-        納期 {Number(due.slice(5, 7))}/{Number(due.slice(8, 10))}
-      </span>
-    );
-  }
-  const daysInMonth = new Date(Number(bucket.slice(0, 4)), Number(bucket.slice(5, 7)), 0).getDate();
-  const monthStart = `${bucket}-01`;
-  const monthEnd = `${bucket}-${String(daysInMonth).padStart(2, '0')}`;
-  const from = start < monthStart ? 1 : Number(start.slice(8, 10));
-  const to = due > monthEnd ? daysInMonth : Number(due.slice(8, 10));
-  return (
-    <div
-      className="relative h-3.5 w-[150px] rounded bg-slate-800"
-      title={`${start} 〜 ${due}`}
-      aria-label={`着手 ${start} 納期 ${due}`}
-    >
-      <i
-        className="absolute inset-y-0 rounded bg-sky-400/85"
-        style={{ left: `${((from - 1) / daysInMonth) * 100}%`, width: `${Math.max(4, ((to - from + 1) / daysInMonth) * 100)}%` }}
-      />
     </div>
   );
 }

@@ -149,13 +149,13 @@ describe('autoLevelCell', () => {
     expect(actions).toEqual([{ rowId: 'fit', type: 'transfer', toResourceCd: '034', efficiencyRatio: 1 }]);
   });
 
-  it('falls back to outsourcing when no destination has room', () => {
+  it('leaves rows in-house when neither a vendor nor an internal destination is available', () => {
     const rows = [
       row('a', '033', [{ bucket: '2026-10', minutes: 700 }]),
       row('full', '034', [{ bucket: '2026-10', minutes: 600 }])
     ];
     const actions = autoLevelCell({ rows, actions: [], months, resources, rules, resourceCd: '033', bucket: '2026-10' });
-    expect(actions).toEqual([{ rowId: 'a', type: 'outsource' }]);
+    expect(actions).toEqual([]);
   });
 
   it('does nothing for a resource without capacity', () => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ generation: vi.fn(), revision: vi.fn(), winners: vi.fn(), query: vi.fn(), names: vi.fn(), base: vi.fn(), monthly: vi.fn(), classes: vi.fn(), calendars: vi.fn(), rules: vi.fn() }));
+const mocks = vi.hoisted(() => ({ generation: vi.fn(), revision: vi.fn(), winners: vi.fn(), query: vi.fn(), names: vi.fn(), base: vi.fn(), monthly: vi.fn(), classes: vi.fn(), calendars: vi.fn(), rules: vi.fn(), outsource: vi.fn() }));
+vi.mock('../load-balancing-outsource-settings.service.js', () => ({ getLoadBalancingOutsourceSettings: mocks.outsource }));
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { productionScheduleSeibanMachineNameSupplement: { aggregate: mocks.revision } } }));
 vi.mock('../../../../lib/site-directory.js', () => ({ resolveSiteKeyForScopeKey: (key: string) => key }));
 vi.mock('../../leaderboard/leaderboard-shell-snapshot-generation.js', () => ({ readGrindingPlanningBoardSnapshotGenerationToken: mocks.generation }));
@@ -13,6 +14,7 @@ vi.mock('../load-balancing-settings.service.js', () => ({
   listLoadBalancingTransferRulesResolved: mocks.rules, buildWorkCalendarModeMap: (items: Array<{ resourceCd: string; workCalendarMode: string }>) => new Map(items.map((item) => [item.resourceCd, item.workCalendarMode]))
 }));
 
+import { serializeLoadBalancingWorkspace } from '../load-balancing-workspace-result-cache.js';
 import { clearLoadBalancingWorkspaceSourceCacheForTests } from '../load-balancing-workspace-source-cache.js';
 import { getProductionScheduleLoadBalancingWorkspace, getProductionScheduleLoadBalancingWorkspaceDay } from '../load-balancing-workspace.service.js';
 
@@ -28,6 +30,7 @@ describe('workspace cache wiring', () => {
     mocks.names.mockResolvedValue({ machineNames: { S1: '研削盤' } });
     mocks.query.mockResolvedValue([{ rowId: 'r1', fseiban: 'S1', productNo: '1', fhincd: 'P1', fhinmei: '部品', fkojun: '1', resourceCd: '001', requiredMinutes: 600,
       plannedStartDate: new Date('2026-11-06'), effectiveDueDate: new Date('2026-11-30') }]);
+    mocks.outsource.mockResolvedValue({ vendors: [], mode: 'process', order: ['due', 'minutes', 'vendor'] });
     mocks.base.mockResolvedValue({ siteKey: 'site', items: [{ resourceCd: '001', baseAvailableMinutes: 100 }] });
     mocks.monthly.mockResolvedValue({ siteKey: 'site', itemsByMonth: {} });
     for (const mock of [mocks.classes, mocks.calendars, mocks.rules]) mock.mockResolvedValue({ siteKey: 'site', items: [] });
@@ -62,6 +65,25 @@ describe('workspace cache wiring', () => {
     mocks.rules.mockResolvedValue({ siteKey: 'site', items: [{ fromClassCode: 'B', toClassCode: 'C', priority: 1, efficiencyRatio: 0.8, enabled: true }] });
     expect((await getProductionScheduleLoadBalancingWorkspace(params)).transferRules).toHaveLength(1);
     expect(mocks.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes vendor settings and serialization while keeping the cached source', async () => {
+    const first = await getProductionScheduleLoadBalancingWorkspace(params);
+    const changed = { vendors: [{ id: 'v1', name: '加工業者', priority: 1, monthlyCapacityMinutes: 0, conditions: [] }], mode: 'part', order: ['vendor', 'minutes', 'due'] };
+    mocks.outsource.mockResolvedValue(changed);
+    const second = await getProductionScheduleLoadBalancingWorkspace(params);
+    expect(second).not.toBe(first);
+    expect(second.outsourceSettings).toEqual(changed);
+    expect(JSON.parse(serializeLoadBalancingWorkspace(second)).outsourceSettings).toEqual(changed);
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+    expect(mocks.outsource).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes JST today even when returning a stale source across a date boundary', async () => {
+    const first = await getProductionScheduleLoadBalancingWorkspace(params);
+    const next = await getProductionScheduleLoadBalancingWorkspace({ ...params, now: new Date('2026-11-06T15:00:00Z') });
+    expect(first.today).toBe('2026-11-06');
+    expect(next.today).toBe('2026-11-07');
   });
 
   it('invalidates on board and machine supplement generations, keeping due source/range/day/scope separate', async () => {
