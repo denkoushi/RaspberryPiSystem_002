@@ -114,13 +114,13 @@ export async function readLaterPieceAuditSnapshots(tx: Prisma.TransactionClient,
     .map((set) => ({ setId: set.id, pieces: set.pieces.map(({ id, sourcePieceId, quantity, isCompleted }) => ({ id, sourcePieceId, quantity, isCompleted })) })) }));
 }
 
-export type LaterPiecePropagationAudit = PieceAuditContext & { fseiban: string; fhincd: string };
+export type LaterPiecePropagationAudit = PieceAuditContext & { fseiban: string; fhincd: string; representativeKey: SessakuPieceLogicalKey };
 
 export function collectLaterPiecePropagationAudits(before: LaterPieceAuditSnapshot[], after: LaterPieceAuditSnapshot[], siteKey: string): LaterPiecePropagationAudit[] {
   return before.flatMap((previous) => {
     const saved = after.find(({ key }) => key.fseiban === previous.key.fseiban && key.fhincd === previous.key.fhincd);
     if (JSON.stringify(previous.sets) === JSON.stringify(saved?.sets ?? [])) return [];
-    return [{ action: 'propagate', siteKey, fseiban: previous.key.fseiban, fhincd: previous.key.fhincd, parentItemId: sessakuPieceParentItemId(previous.key),
+    return [{ action: 'propagate', siteKey, fseiban: previous.key.fseiban, fhincd: previous.key.fhincd, representativeKey: previous.key, parentItemId: sessakuPieceParentItemId(previous.key),
       beforeJson: { laterProcesses: previous.sets }, afterJson: { laterProcesses: saved?.sets ?? [] },
       resultPieceIds: [...new Set([...previous.sets, ...(saved?.sets ?? [])].flatMap((set) => set.pieces.map((piece) => piece.id)))] }];
   });
@@ -133,7 +133,10 @@ export async function writeLaterPiecePropagationAudits(audits: readonly LaterPie
     for (const audit of audits) {
       const part = JSON.stringify([audit.fseiban, audit.fhincd]);
       const previous = byPart.get(part);
-      byPart.set(part, previous ? { ...previous, afterJson: audit.afterJson,
+      const key = audit.representativeKey;
+      const representative = !previous || !supportsSessakuPieceRelations(previous.representativeKey)
+        || (supportsSessakuPieceRelations(key) && encodeSessakuPieceKey(key) < encodeSessakuPieceKey(previous.representativeKey)) ? audit : previous;
+      byPart.set(part, previous ? { ...previous, representativeKey: representative.representativeKey, parentItemId: representative.parentItemId, afterJson: audit.afterJson,
         resultPieceIds: [...new Set([...(previous.resultPieceIds ?? []), ...(audit.resultPieceIds ?? [])])] } : audit);
     }
     for (const audit of byPart.values()) await runSessakuPieceOperation(audit, async () => undefined);

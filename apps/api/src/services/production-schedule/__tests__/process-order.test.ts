@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLaterProcessOrder } from '../process-order.js';
+import { compareProcessOrder, isLaterProcessOrder } from '../process-order.js';
 
 describe('isLaterProcessOrder', () => {
   it('treats numerically equal process orders as the same process', () => {
@@ -18,6 +18,14 @@ describe('isLaterProcessOrder', () => {
     ['９', '10', false], ['9', '１０', false], ['０１０', '10', false], ['10', '０１０', false]
   ] as const)('compares normalized numeric orders %s and %s', (candidate, base, expected) => {
     expect(isLaterProcessOrder(candidate, base)).toBe(expected);
+  });
+  it.each([['Ａ', 'A'], ['A', 'Ａ'], ['ｶ', 'カ'], ['カ', 'ｶ']])('normalizes non-numeric orders %s and %s before comparison', (candidate, base) => {
+    expect(isLaterProcessOrder(candidate, base)).toBe(false);
+    expect(isLaterProcessOrder('Ｂ', 'A')).toBe(true);
+    expect(isLaterProcessOrder('A', 'Ｂ')).toBe(false);
+    // The board's display ordering keeps its existing lexical tie-break.
+    expect(compareProcessOrder('010', '10')).toBe('010'.localeCompare('10'));
+    expect(compareProcessOrder(candidate, base)).toBe(candidate.localeCompare(base));
   });
   it.each(['', ' ', '\t\u3000'])('excludes blank process orders (%j) on either side', (blank) => {
     for (const order of ['10', 'A', blank]) {

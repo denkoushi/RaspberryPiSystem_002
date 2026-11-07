@@ -236,6 +236,9 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 - 完了済みで空・未リンクの切削 set B は取り込まれず、B に付いた後工程 C もたどらないため、A を分けても C に片ができない。B の完了を取り消して A を分け直せば戻る。
 - 切削の勝者行が CSV から消えると、その set に付いた後工程（取り込んだ切削行を含む）は行が戻るまで固定される。
 - 勝者が消えて外された後工程 set に完了片が残っていると、勝者が戻った後の補助 CSV 同期で、切削側の処理として新しい未リンクの片ができることがある。指示数が無ければ `INVALID_PLANNED_QUANTITY` になる。
+- 未リンクの未完了片の合計が後工程の指示数以上なら、数量調整で未完了のリンク片がすべて0になり、切削との片の対応を失う。15回目の ID・数量保持の規則による既知の制約として維持する。`piece-quantity.test.ts` の指示数1・0の境界と16回目の未リンク片だけの全結合で確認。自動でリンクを付け替えると作業の由来を変えるため行わない。
+- 構造変更で作り直した片は、サイトごとに削除対象のうち板で最初に出る片の配置をまとめて引き継ぐ。数量0で消える末尾片の配置を新片が引き継ぐ場合もある。`replaceSiteItems` の既存規則を確認し、既知の制約として維持する。元片ごとの配置対応へ変えるには別の継承規則が必要になる。
+- 親行完了の set 読み取りは board lock より前に行う。先に取得する関連論理ロックが片・setの変更を直列化しており、既存の分割／数量同期／配置更新も同じ論理ロックを使うため、通常経路の競合は保護される。読み取り順の既知の制約として記録し、今回は再読み取りを追加しない。
 
 ## Ninth Review Revision (2026-11-07)
 
@@ -318,3 +321,15 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 検証: 指定 DB localhost:55491/lpp を両 DB 環境変数に設定し、dotenv 無効化・空の envDir で実行。指定 API 範囲14ファイル323件のうち、初回は322成功・完了片の位置保持1件失敗。保存順を修正後、関連する数量48件＋実 DB 統合139件がすべて成功（38.70秒）し、残る136件は初回成功。追加 DB テストの初回には自動作成済み override の重複作成を修正した。API `tsc --noEmit -p tsconfig.build.json`、package lint、最終変更2ファイルの ESLint、最終 `git diff --check` も成功。検証は約5分で予算内。
 
 開始時に既存 WIP はなく、変更8ファイルは今回の修正のみ。branch feat/later-process-pieces・HEAD 6ce76118 を維持。秘密ファイルの読み取り、git の変更操作、migration/reset、監査テーブル・UI 文言の追加、既知の別件修正、デプロイは未実施。
+
+## Sixteenth Review Revision (2026-11-07)
+
+- 中-1は案(b)を採用。完了集約で片の合計が既知の指示数に満たない場合は未完了とし、割当解除・学習イベント保存を防ぐ。現在の補助 CSV の値を優先し、未同期なら set の保存済み指示数を使う。数量変更や追加ロックを必要とせず、数量が足りる正しい完了・外部完了・空のリンク set の扱いを維持する。`publishSessakuPieceSourceCreates` → `publishSessakuPieceProgress` を通る実 DB テストで、切削指示数0／全結合後の勝者復帰、割当・イベント保持、補助 CSV 再同期、通常完了と外部完了を確認。
+- 中-2は全結合時に後工程の全片を親行への置換対象とし、各サイトの配置を引き継いで全片の override を消してから set を削除する。未リンク片のみ／未リンク完了片を取消後の実 DB テストを追加。
+- 軽-1はバッチ間でも構造化した代表キーを保持し、加工機コード・工順のそろった最小の encode キーを選択する。最初の beforeJson・最後の afterJson は維持。既存バッチテストで入力順と未対応キーを含む parentItemId を検証。軽-2は勝者不在 set の片を変更したとき、リンクを維持する場合も version を上げる。軽-3は後工程の非数値工順比較も NFKC にそろえ、表の compareProcessOrder と表示値は変更しない。全角工順 `２` / `０１０` を operate が拾う実 DB テストも追加。
+- 指定の確認事項3点はいずれも既知の制約として上記 Known Limitations に記録。数量の由来、既存の配置継承規則、関連論理ロックによる直列化を維持するため、追加の仕様変更は行わない。
+
+
+検証: 指定 DB `localhost:55491/lpp` を `DATABASE_URL` / `TEST_DATABASE_URL` に設定し、dotenv 無効化・空の envDir で実行。sessaku-pieces 配下・route、production-schedule-command、process-order と影響する補助 CSV／Progress 同期は13ファイル338件を検証（実 DB の片統合150件を含む）。初回336件成功、正しい完了時の2件はテストの Prisma 全体への transaction spy が内部トランザクションまで捕まえていたため失敗。公開用クライアントだけを Proxy で包む形に訂正し、勝者復帰5件すべて成功（2.51秒）。他の333件は初回成功（全範囲70.54秒）。追加テストの最初の対象実行では割当fixtureの必須項目も訂正した。
+
+API `pnpm exec tsc --noEmit -p tsconfig.build.json`、web `pnpm exec tsc --noEmit`、両 package の `pnpm lint`、最終編集した統合テストの ESLint、最終 `git diff --check` は成功。API は既存の rootDir 設定に合わせ build 設定を使用。検証は45分の予算内。開始時の既存 WIP はなく、変更9ファイルは今回の修正のみ。branch `feat/later-process-pieces`・HEAD `7bc78cfe` を維持。秘密ファイルの読み取り、git の変更操作、migration/reset、監査テーブル・UI 文言の追加、既知の別件修正、PR・デプロイは未実施。

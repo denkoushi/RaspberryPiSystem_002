@@ -5,6 +5,7 @@ import { logger } from '../../../../lib/logger.js';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { z } from 'zod';
 import { ApiError } from '../../../../lib/errors.js';
+import { sessakuPieceParentItemId } from '../piece-key.js';
 import { readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, runSessakuPieceOperation, type PieceAuditContext } from '../piece-audit.js';
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { productionScheduleSessakuPieceAuditLog: { create: vi.fn() } } }));
 vi.mock('../../../../lib/logger.js', () => {
@@ -142,20 +143,24 @@ describe('runSessakuPieceOperation', () => {
     });
   });
   it('warns without rejecting when post-commit audit preparation fails', async () => {
-    const audit = { action: 'propagate', fseiban: 'S1', fhincd: 'P1', afterJson: {} };
+    const audit = { action: 'propagate', fseiban: 'S1', fhincd: 'P1', representativeKey: { fseiban: 'S1', fhincd: 'P1', fsigencd: '1', fkojun: '1' }, afterJson: {} };
     Object.defineProperty(audit, 'afterJson', { get: () => { throw new Error('secret payload'); } });
     await expect(writeLaterPiecePropagationAudits([audit])).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ event: 'sessaku_piece.audit_write_failed', action: 'propagate' }, 'Sessaku piece audit write failed');
   });
-  it('combines committed batches into one propagate audit per manufacturing part', async () => {
+  it.each(['larger', 'smaller', 'unsupported'])('combines committed batches and selects the smallest supported representative (%s first)', async (kind) => {
     const key = { fseiban: 'S1', fhincd: 'P1', fsigencd: '1', fkojun: '1' };
     const snapshot = (quantity: number) => [{ key, sets: [{ setId: 'later-set', pieces: [{ id: 'later-piece', sourcePieceId: 'cut-piece', quantity, isCompleted: false }] }] }];
-    const first = collectLaterPiecePropagationAudits(snapshot(2), snapshot(3), 'site');
-    const second = collectLaterPiecePropagationAudits(snapshot(3), snapshot(4).map((part) => ({ ...part, key: { ...key, fsigencd: '2', fkojun: '2' } })), 'site');
+    const otherKey = { ...key, fsigencd: kind === 'unsupported' ? '' : '2', fkojun: '2' };
+    const withKey = (quantity: number, representative: typeof key) => snapshot(quantity).map((part) => ({ ...part, key: representative }));
+    const firstKey = kind === 'smaller' ? key : otherKey;
+    const lastKey = kind === 'smaller' ? otherKey : key;
+    const first = collectLaterPiecePropagationAudits(withKey(2, firstKey), withKey(3, firstKey), 'site');
+    const second = collectLaterPiecePropagationAudits(withKey(3, lastKey), withKey(4, lastKey), 'site');
     expect(prisma.productionScheduleSessakuPieceAuditLog.create).not.toHaveBeenCalled();
     await writeLaterPiecePropagationAudits([...first, ...second]);
     expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledTimes(1);
-    expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'propagate', actorClientDeviceId: null,
+    expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'propagate', actorClientDeviceId: null, parentItemId: sessakuPieceParentItemId(key),
       beforeJson: { laterProcesses: snapshot(2)[0].sets }, afterJson: { laterProcesses: snapshot(4)[0].sets } }) });
   });
 

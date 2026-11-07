@@ -230,9 +230,11 @@ async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProce
   await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: ids.map((id) => `piece:${id}`) } } });
   await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids } } });
   for (const { set, hasWinner } of later) {
-    if (!hasWinner && set && !set.pieces.some((piece) => piece.sourcePieceId && !removedSourceIds.includes(piece.sourcePieceId))) {
-      await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: null, quantityWarning: null, version: { increment: 1 } } });
-      set.sourcePieceSetId = null;
+    if (hasWinner || !set) continue;
+    const unlink = !set.pieces.some((piece) => piece.sourcePieceId && !removedSourceIds.includes(piece.sourcePieceId));
+    if (unlink || references.some((piece) => piece.pieceSetId === set.id)) {
+      await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { ...(unlink ? { sourcePieceSetId: null, quantityWarning: null } : {}), version: { increment: 1 } } });
+      if (unlink) set.sourcePieceSetId = null;
     }
   }
 }
@@ -254,7 +256,7 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
     }
     if (source?.pieces.length) await reconcileSessakuPieceQuantities(tx, process.key, process.plannedQuantity, true);
     const saved = await readSessakuPieceSet(tx, process.key);
-    const removed = previous.filter((piece) => !saved?.pieces.some((next) => next.id === piece.id));
+    const removed = source?.pieces.length ? previous.filter((piece) => !saved?.pieces.some((next) => next.id === piece.id)) : previous;
     const added = saved?.pieces.filter((piece) => !previous.some((old) => old.id === piece.id)).map((piece) => `piece:${piece.id}`) ?? [];
     if (previous.length || added.length) for (const site of sites) await replaceSiteItems(tx, process.key, before.get(site)!, site,
       previous.length ? removed.map((piece) => `piece:${piece.id}`) : [parentId], source?.pieces.length ? added : [parentId], audit);

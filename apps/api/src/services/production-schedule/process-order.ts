@@ -11,5 +11,5 @@ export function isLaterProcessOrder(candidate: string, base: string): boolean {
   const left = Number(candidate.normalize('NFKC'));
   const right = Number(base.normalize('NFKC'));
   if (Number.isFinite(left) && Number.isFinite(right)) return left > right;
-  return compareProcessOrder(candidate, base) > 0;
+  return compareProcessOrder(candidate.normalize('NFKC'), base.normalize('NFKC')) > 0;
 }
