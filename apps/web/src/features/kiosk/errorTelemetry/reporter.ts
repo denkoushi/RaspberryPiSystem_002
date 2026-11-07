@@ -10,6 +10,7 @@ export const RESEND_INTERVAL_MS = 60000;
 const BENIGN_MESSAGE = /^ResizeObserver loop/;
 const safeSignal = (value: unknown) => typeof value === 'string' && /^[\w.-]{1,100}$/.test(value) ? value : undefined;
 export const urlPath = (url: string): string => new URL(url, 'https://kiosk.invalid').pathname;
+export const isSessakuPiecePath = (url: string): boolean => urlPath(url).includes('/sessaku-pieces/');
 // Never serialize arbitrary rejection objects, axios payloads, or URL query values.
 const safeText = (text: string) => text
   .replace(/([\w/+.-]+)\?[^\s)]+/g, '$1?[redacted]')
@@ -42,6 +43,7 @@ export class KioskErrorReporter {
         for (const item of saved.queue.slice(0, 55)) {
           const c = item?.log?.context;
           if (!c || !KINDS.includes(c.kind) || typeof c.route !== 'string' || !c.route.startsWith('/kiosk') || typeof c.occurredAt !== 'string' || !Number.isFinite(Date.parse(c.occurredAt))) continue;
+          if (c.kind !== 'slow_request' && String(c.kind).startsWith('api_') && typeof c.urlPath === 'string' && isSessakuPiecePath(c.urlPath)) continue;
           // Rebuild from the allowlist, even when storage has been corrupted/edited.
           this.record(c.kind, { ...c, message: item.log.message }, c);
         }

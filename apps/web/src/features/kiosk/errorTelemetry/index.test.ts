@@ -29,6 +29,17 @@ describe('browser kiosk error collection', () => {
       context: expect.objectContaining({ category: 'kiosk_net_stats', requests: 20, failures: 0 })
     }));
   });
+  it('still reports a slow successful piece request', async () => {
+    vi.spyOn(window, 'addEventListener').mockImplementation(() => undefined);
+    const send = vi.fn().mockResolvedValue(undefined);
+    const { initializeKioskErrorTelemetry, reportKioskApi } = await import('./index');
+    initializeKioskErrorTelemetry(send);
+    reportKioskApi({ method: 'post', url: '/api/sessaku-pieces/split', status: 200, durationMs: 15000 });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send.mock.calls.flatMap(([payload]) => payload.logs)).toContainEqual(expect.objectContaining({
+      context: expect.objectContaining({ kind: 'slow_request', urlPath: '/api/sessaku-pieces/split' })
+    }));
+  });
   it('excludes piece operation paths but preserves other paths and query-only matches', async () => {
     vi.spyOn(window, 'addEventListener').mockImplementation(() => undefined);
     const send = vi.fn().mockResolvedValue(undefined);

@@ -102,6 +102,17 @@ describe('kiosk error reporter', () => {
     expect(logs.slice(0, 5).every((log: { context: Record<string, unknown> }) => log.context.droppedCount === undefined)).toBe(true);
     expect(logs[5].context.droppedCount).toBe(8);
   });
+  it('drops saved common API failures for piece paths but keeps slow piece requests', async () => {
+    const s = setup();
+    s.reporter.record('api_4xx', { method: 'put', urlPath: '/api/sessaku-pieces/piece-1/completion', status: 409 });
+    s.reporter.record('slow_request', { method: 'post', urlPath: '/api/sessaku-pieces/split', status: 200 });
+    s.reporter.record('api_4xx', { method: 'get', urlPath: '/api/orders', status: 404 });
+    s.reporter.record('sessaku_piece', { status: 409 });
+    const restored = setup(s.storage.get(QUEUE_KEY)!);
+    await restored.reporter.flush();
+    const kinds = restored.send.mock.calls[0][0].map((log: { context: Record<string, unknown> }) => `${log.context.kind}:${log.context.urlPath ?? ''}`);
+    expect(kinds).toEqual(['slow_request:/api/sessaku-pieces/split', 'api_4xx:/api/orders', 'sessaku_piece:']);
+  });
   it('carries drops over a piece-only send to the next non-piece row', async () => {
     const s = setup();
     for (let i = 0; i < 7; i++) s.reporter.record('sessaku_piece', { status: 409 });

@@ -3,7 +3,7 @@ import { isAxiosError } from 'axios';
 import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 
 import { KioskNetworkReporter } from './networkReporter';
-import { KioskErrorReporter, urlPath, type ErrorKind } from './reporter';
+import { KioskErrorReporter, isSessakuPiecePath, urlPath, type ErrorKind } from './reporter';
 
 let reporter: KioskErrorReporter | undefined;
 let initialized = false;
@@ -39,7 +39,6 @@ export function reportKioskApi(input: { method?: string; url?: string; status?: 
   try {
     getNetworkReporter()?.record(input);
     if (!input.url || input.status === 401 || input.code === 'ERR_CANCELED') return;
-    if (urlPath(input.url).includes('/sessaku-pieces/')) return;
     let kind: ErrorKind;
     if (input.code === 'ECONNABORTED' || input.code === 'ETIMEDOUT') kind = 'api_timeout';
     else if (!input.status) kind = 'api_network';
@@ -48,6 +47,8 @@ export function reportKioskApi(input: { method?: string; url?: string; status?: 
     else if (input.durationMs >= 10000) kind = 'slow_request';
     else return;
     if (input.kioskTelemetry === 'background' && (kind === 'api_timeout' || kind === 'api_network')) return;
+    // Piece operation failures are reported once, by reportSessakuPieceError.
+    if (kind !== 'slow_request' && isSessakuPiecePath(input.url)) return;
     getReporter()?.record(kind, { ...input, urlPath: urlPath(input.url) });
   } catch { /* Best effort. */ }
 }
