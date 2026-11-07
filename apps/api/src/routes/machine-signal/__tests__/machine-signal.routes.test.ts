@@ -347,7 +347,9 @@ describe('machine signal routes', () => {
 describe('resource uptime route', () => {
   beforeEach(() => vi.clearAllMocks());
   it.each([['', 30], ['?days=1', 1], ['?days=92', 92]] as const)('uses allowView and validates days %s', async (query, days) => {
-    const result = { endDate: null, days, resources: [] };
+    const result = { endDate: '2026-11-05', days, resources: [
+      { resourceCd: '305', signalNo: 1, medianRunSeconds: 3600, runningDays: 10, windowDays: days * 2 },
+    ] };
     mocks.getResourceUptime.mockResolvedValue(result);
     const { app, allowView, canManage } = await createApp({ manageAllowed: false });
     const response = await app.inject({ method: 'GET', url: `/machine-signal/resource-uptime${query}` });

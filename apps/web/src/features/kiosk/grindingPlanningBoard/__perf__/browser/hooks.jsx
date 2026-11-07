@@ -16,7 +16,7 @@ for (const item of items) chipsByPartKey[buildLeaderBoardPartResourceProcessKey(
 stores.chips.data = { chipsByPartKey };
 stores.minutes.data = { rows: fixture.seibans.map((fseiban, i) => ({ fseiban, outsourceMarks: [], memo: null,
   surfaceSendOutDates: i % 3 === 0 ? [{ date: '2026-11-06', note: null }, { date: '2026-11-10', note: null }] : [] })) };
-stores.uptime.data = { resources: fixture.resources.map((resourceCd, i) => ({ resourceCd, averageRunSeconds: 20000 + i * 100 })) };
+stores.uptime.data = { resources: fixture.resources.map((resourceCd, i) => ({ resourceCd, medianRunSeconds: 20000 + i * 100 })) };
 stores.capacity.data = { dailyHoursByResource: Object.fromEntries(fixture.resources.map(cd => [cd, 8])), runsThroughBreaksResources: [] };
 stores.resources.data = { resourceNameMap: Object.fromEntries(fixture.resources.map(cd => [cd, [`機械${cd}`]])) };
 stores.load.data = { load: [], unknownRequiredMinutesCount: 0 };

@@ -12,7 +12,7 @@ import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './Pl
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
-const uptimeQuery = vi.hoisted(() => vi.fn((): { data: { resources: Array<{ resourceCd: string; averageRunSeconds: number }> } | undefined } => ({ data: undefined })));
+const uptimeQuery = vi.hoisted(() => vi.fn((): { data: { resources: Array<{ resourceCd: string; medianRunSeconds: number }> } | undefined } => ({ data: undefined })));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: uptimeQuery }));
 
 // Exercise the controlled view with the same state ownership as the page.
@@ -119,12 +119,12 @@ describe('PlanningBoardGanttView', () => {
   });
 
   it('shows a normalized resource monthly average only in forward, without changing lane height', () => {
-    uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: ' ３０５ ', averageRunSeconds: 28080 }] } });
+    uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: ' ３０５ ', medianRunSeconds: 28080 }] } });
     const values = props();
     const layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
     const { rerender } = render(<PlanningBoardGanttView {...values} layout={layout} />);
-    const average = screen.getByTitle('直近30日の1日あたり稼働時間の平均');
+    const average = screen.getByTitle('稼働した日の1日あたり稼働時間の中央値');
     expect(average).toHaveTextContent('月平均7.8h');
     const lane = screen.getByTestId(`planning-forward-lane-${layout.groups[0]!.rows[0]!.key}`);
     expect(lane).toHaveStyle({ minHeight: '76px' });
@@ -136,7 +136,7 @@ describe('PlanningBoardGanttView', () => {
     uptimeQuery.mockReturnValue({ data: { resources: [] } });
     rerender(<PlanningBoardGanttView {...values} layout={layout} />);
     expect(screen.queryByText('月平均')).toBeNull();
-    uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: '305', averageRunSeconds: 0 }] } });
+    uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: '305', medianRunSeconds: 0 }] } });
     rerender(<PlanningBoardGanttView {...values} layout={layout} />);
     expect(screen.getByText('0.0h')).toBeInTheDocument();
   });

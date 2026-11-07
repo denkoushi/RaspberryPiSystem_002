@@ -307,7 +307,7 @@ export async function getMachineSignalWorsening(params: { date: string; site?: s
 export type MachineSignalResourceUptime = {
   endDate: string | null;
   days: number;
-  resources: Array<{ resourceCd: string; signalNo: number; averageRunSeconds: number; recordDays: number }>;
+  resources: Array<{ resourceCd: string; signalNo: number; medianRunSeconds: number; runningDays: number; windowDays: number }>;
 };
 
 export async function getMachineSignalResourceUptime(days = 30): Promise<MachineSignalResourceUptime> {

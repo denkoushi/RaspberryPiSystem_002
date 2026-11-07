@@ -9,7 +9,7 @@ import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { ComponentProps } from 'react';
 
-const uptimeQuery = vi.hoisted(() => vi.fn(() => ({ data: { resources: [{ resourceCd: '305', averageRunSeconds: 28080 }] } })));
+const uptimeQuery = vi.hoisted(() => vi.fn(() => ({ data: { resources: [{ resourceCd: '305', medianRunSeconds: 28080 }] } })));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: uptimeQuery }));
 
 const renders = vi.hoisted(() => [] as string[]);
@@ -64,7 +64,7 @@ it('skips acknowledged rows with fresh equal contexts and uses the latest callba
   rerender(draw(changed, newToggle));
   expect(renders).toEqual(['305']);
   renders.length = 0;
-  uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: '305', averageRunSeconds: 28080 }] } });
+  uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: '305', medianRunSeconds: 28080 }] } });
   rerender(draw(changed, newToggle));
   expect(renders).toEqual([]);
   rerender(draw(changed, newToggle, new Set(['a'])));
@@ -74,7 +74,7 @@ it('skips acknowledged rows with fresh equal contexts and uses the latest callba
   renders.length = 0;
   rerender(draw(changed, newToggle, new Set(['a', 'outside-this-board'])));
   expect(renders).toEqual([]);
-  uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: '305', averageRunSeconds: 14400 }] } });
+  uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: '305', medianRunSeconds: 14400 }] } });
   rerender(draw(changed, newToggle, new Set(['a'])));
   expect(screen.getByText('4.0h')).toBeInTheDocument();
   expect(screen.getByTestId('planning-gantt-bar-a')).toHaveAttribute('aria-label', expect.stringContaining('変更後'));

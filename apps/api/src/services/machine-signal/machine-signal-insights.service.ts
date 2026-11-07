@@ -151,11 +151,16 @@ export async function getMachineSignalTrend(input: {
   return summaries.map(toTrendPoint);
 }
 
+// 暖機運転のみの日を除き、最低10稼働日で中央値を算出する。
+const WARMUP_MAX_RUN_BLOCKS = 2;
+const WARMUP_MAX_RUN_SECONDS = 900;
+const MIN_RUNNING_DAYS = 10;
+
 export async function getMachineSignalResourceUptime(input: { days: number }) {
   const latest = await prisma.machineSignalDailyReport.findFirst({
     orderBy: { reportDate: 'desc' }, select: { reportDate: true },
   });
-  const resources: Array<{ resourceCd: string; signalNo: number; averageRunSeconds: number; recordDays: number }> = [];
+  const resources: Array<{ resourceCd: string; signalNo: number; medianRunSeconds: number; runningDays: number; windowDays: number }> = [];
   if (!latest) return { endDate: null, days: input.days, resources };
   const endDate = toDateKey(latest.reportDate);
   const [settings, allSensors] = await Promise.all([getMachineSignalSettings(), listMachineSignalSensors()]);
@@ -164,23 +169,31 @@ export async function getMachineSignalResourceUptime(input: { days: number }) {
     if (sensor.resourceCd && !byResource.has(sensor.resourceCd)) byResource.set(sensor.resourceCd, sensor);
   }
   if (!byResource.size) return { endDate, days: input.days, resources };
+  const widerDays = input.days * 2;
+  const narrowFrom = toDateKey(new Date(latest.reportDate.getTime() - (input.days - 1) * DAY_MS));
   const summaries = await loadSignalDaySummaries({
     sensors: [...byResource.values()], thresholds: settings.thresholds,
-    from: toDateKey(new Date(latest.reportDate.getTime() - (input.days - 1) * DAY_MS)), to: endDate,
+    from: toDateKey(new Date(latest.reportDate.getTime() - (widerDays - 1) * DAY_MS)), to: endDate,
   });
-  const totals = new Map<number, { runSeconds: number; recordDays: number }>();
+  const runningBySignal = new Map<number, SignalDaySummary[]>();
   for (const summary of summaries) {
-    // 止まっていた日(稼働0秒)は平均に入れない
     if (!summary.hasRecord || summary.runSeconds <= 0) continue;
-    const total = totals.get(summary.signalNo) ?? { runSeconds: 0, recordDays: 0 };
-    total.runSeconds += summary.runSeconds;
-    total.recordDays += 1;
-    totals.set(summary.signalNo, total);
+    if (summary.runBlockCount <= WARMUP_MAX_RUN_BLOCKS && summary.runSeconds < WARMUP_MAX_RUN_SECONDS) continue;
+    const running = runningBySignal.get(summary.signalNo) ?? [];
+    running.push(summary);
+    runningBySignal.set(summary.signalNo, running);
   }
   for (const [resourceCd, sensor] of byResource) {
-    const total = totals.get(sensor.signalNo);
-    if (total) resources.push({ resourceCd, signalNo: sensor.signalNo,
-      averageRunSeconds: Math.round(total.runSeconds / total.recordDays), recordDays: total.recordDays });
+    const wider = runningBySignal.get(sensor.signalNo) ?? [];
+    const narrow = wider.filter((summary) => summary.reportDate >= narrowFrom);
+    const running = narrow.length >= MIN_RUNNING_DAYS ? narrow : wider;
+    if (running.length < MIN_RUNNING_DAYS) continue;
+    const seconds = running.map((summary) => summary.runSeconds).sort((a, b) => a - b);
+    const middle = Math.floor(seconds.length / 2);
+    const median = seconds.length % 2 === 0 ? (seconds[middle - 1]! + seconds[middle]!) / 2 : seconds[middle]!;
+    resources.push({ resourceCd, signalNo: sensor.signalNo,
+      medianRunSeconds: Math.round(median), runningDays: running.length,
+      windowDays: running === narrow ? input.days : widerDays });
   }
   return { endDate, days: input.days, resources };
 }
