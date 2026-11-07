@@ -5,6 +5,8 @@ import os
 import fcntl
 import math
 import time
+import threading
+import subprocess
 from time import monotonic as lock_monotonic, sleep as lock_sleep
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -39,18 +41,40 @@ def control_request_budget() -> float:
     return positive_env_seconds("LLM_RUNTIME_REQUEST_BUDGET_SEC", 360)
 
 
+_control_request = threading.local()
+
+
+def request_timeout(limit: float) -> float:
+    deadline = getattr(_control_request, "deadline", None)
+    if deadline is None:
+        return limit
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired("control request", control_request_budget())
+    return min(limit, remaining)
+
+
 class BusinessLockTimeout(TimeoutError):
     pass
 
 
 def business_draining(path: str) -> bool:
+    flag = Path(path + ".drain")
     try:
-        deadline = float(Path(path + ".drain").read_text())
-        return not math.isfinite(deadline) or deadline > time.time()
+        deadline = float(flag.read_text())
+        if math.isfinite(deadline):
+            return deadline > time.time()
     except FileNotFoundError:
         return False
     except (OSError, ValueError):
-        return True  # Ambiguous drain evidence must not admit private work.
+        pass
+    # A crashed writer must not block business admission indefinitely.
+    try:
+        return time.time() - flag.stat().st_mtime <= positive_env_seconds("BUSINESS_FORCE_STOP_DRAIN_SEC", 30) + 5
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
 
 
 @contextmanager
@@ -64,7 +88,9 @@ def business_force_drain(path: str, seconds: float):
         except BlockingIOError as error:
             raise BusinessLockTimeout("business_drain_in_progress") from error
         flag = Path(path + ".drain")
-        flag.write_text(str(time.time() + seconds))
+        tmp = Path(path + ".drain.tmp")
+        tmp.write_text(str(time.time() + seconds))
+        tmp.replace(flag)
         try:
             yield
         finally:

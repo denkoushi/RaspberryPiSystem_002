@@ -260,8 +260,9 @@ def remote(script: str, *, runner=subprocess.run) -> str:
     command = shlex.join(['env', *[f'{k}={v}' for k, v in ENV.items()],
                           f'EXPECTED_REVISION={REVISION}', 'bash', '-eu', '-c',
                           'cd ' + shlex.quote(RECIPE) + '\n' + script])
+    from active_model_state import request_timeout
     result = runner(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', TARGET, command],
-                    capture_output=True, text=True, timeout=100, check=True)
+                    capture_output=True, text=True, timeout=request_timeout(100), check=True)
     return result.stdout
 
 
@@ -384,9 +385,6 @@ def runtime_status(generation: str, *, runner=subprocess.run, sharing: bool = Fa
     if pending:
         # Remote generation may still belong to the preceding launch (or be
         # absent on first start). Only complete stopped evidence permits recovery.
-        previous = {lines[i] for i in (6, 15) if lines[i] != generation}
-        if len(previous) > 1:
-            raise RuntimeError('business_pending_generation_stop_unverified')
         for offset in (0, 9):
             if lines[offset:offset + 5] != ['false', 'true', 'true', 'true', 'true']:
                 raise RuntimeError('business_pending_generation_stop_unverified')

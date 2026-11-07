@@ -11,7 +11,8 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
+from contextlib import contextmanager
 
 import test_control_server as control_tests
 import test_gateway_server as gateway_tests
@@ -39,10 +40,13 @@ class PendingGenerationTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, 'pending.*unverified'):
                         tensorfold.runtime_status('new', pending=True)
 
-    def test_pending_rejects_unrelated_generations_and_unavailable_rank(self):
+    def test_pending_accepts_different_stale_generations_and_rejects_malformed(self):
         lines = 'true\n' + 'false\ntrue\ntrue\ntrue\ntrue\n\nold\n\n2026-11-02T12:00:00+00:00\n' * 2
         values = lines.splitlines()
         values[16] = 'unrelated'
+        with patch.object(tensorfold, 'remote', return_value='\n'.join(values) + '\n'):
+            self.assertTrue(tensorfold.runtime_status('new', pending=True)['apiListenerClosed'])
+        values[16] = 'bad/generation'
         with patch.object(tensorfold, 'remote', return_value='\n'.join(values) + '\n'):
             with self.assertRaisesRegex(RuntimeError, 'pending.*unverified'):
                 tensorfold.runtime_status('new', pending=True)
@@ -451,3 +455,124 @@ class GatewayHeaderLifetimeTests(unittest.TestCase):
                 sock.close()
             worker.join(1)
             producer.join(1)
+
+
+class ReviewControlTests(unittest.TestCase):
+    def setUp(self):
+        control_tests.BusinessSwitchContractTests.setUp(self)
+        self.real_monitor = self.monitor.temp_original
+
+    request = control_tests.BusinessSwitchContractTests.request
+
+    def test_ssh_probe_shares_control_request_budget_and_standalone_default(self):
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, 'probe'))
+        self.module._control_request.deadline = time.monotonic() + .2
+        try:
+            tensorfold.remote('true', runner=runner)
+            self.assertGreater(runner.call_args.kwargs['timeout'], 0)
+            self.assertLessEqual(runner.call_args.kwargs['timeout'], .2)
+        finally:
+            self.module._control_request.deadline = None
+        tensorfold.remote('true', runner=runner)
+        self.assertEqual(runner.call_args.kwargs['timeout'], 100)
+
+    def test_startup_retries_recovery_lock_timeout(self):
+        real_lock = self.module.business_state_lock
+        attempts = []
+        @contextmanager
+        def contended(*args, **kwargs):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise state.BusinessLockTimeout('busy')
+            with real_lock(*args, **kwargs):
+                yield
+        with patch.object(self.module, 'business_state_lock', contended), patch.object(self.module.time, 'sleep'):
+            self.assertTrue(self.module.make_handler(self.config))
+        self.assertEqual(len(attempts), 2)
+
+    def test_readiness_failure_retries_lock_and_respects_identity(self):
+        # Missing upstream key sends the real monitor straight to final failure.
+        for changed in (False, True):
+            value = json.loads(self.state.read_text())
+            value.update(selectedBusinessProfileId=self.deep, modelProfileId=self.deep,
+                         businessTransition='loading', businessGeneration='original')
+            self.state.write_text(json.dumps(value))
+            identity = (self.deep, value['selectionRevision'], 'original')
+            real_lock = self.module.business_state_lock
+            attempts = []
+            @contextmanager
+            def contended(*args, **kwargs):
+                attempts.append(1)
+                if len(attempts) == 1:
+                    if changed:
+                        value['businessGeneration'] = 'replacement'
+                        self.state.write_text(json.dumps(value))
+                    raise state.BusinessLockTimeout('busy')
+                with real_lock(*args, **kwargs):
+                    yield
+            with patch.object(self.module, 'business_state_lock', contended), \
+                    patch.object(self.module.time, 'sleep'), \
+                    patch.dict(os.environ, {'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': ''}), \
+                    patch.object(self.module, 'write_resource_state_best_effort'), \
+                    patch.object(self.module, 'log_business_failure'):
+                self.real_monitor(self.config, identity, Mock(id=self.deep, backend='blue'))
+            result = json.loads(self.state.read_text())
+            self.assertEqual(result['businessTransition'], 'loading' if changed else 'failed')
+            self.assertEqual(len(attempts), 2)
+
+    def test_force_stop_read_oserror_preserves_selection_and_attempts_both_backends(self):
+        original = self.state.read_bytes()
+        read_text = Path.read_text
+        for error in (PermissionError(13, 'denied'), OSError(5, 'io error')):
+            self.calls.clear()
+            def fail_selection(path, *args, **kwargs):
+                if path == self.state:
+                    raise error
+                return read_text(path, *args, **kwargs)
+            with patch.object(Path, 'read_text', fail_selection):
+                status, payload = self.request('/stop-force')
+            self.assertEqual((status, payload['code']), (503, 'business_runtime_stop_unverified'))
+            self.assertEqual({c[0] for c in self.calls}, {'blue-stop', 'green-stop'})
+            self.assertEqual(self.state.read_bytes(), original)
+
+
+class ReviewDrainTests(unittest.TestCase):
+    def test_drain_is_published_by_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / 'state.json')
+            original = Path.replace
+            published = []
+            def replace(source, target):
+                published.append((source, target))
+                return original(source, target)
+            with patch.object(Path, 'replace', replace):
+                with state.business_force_drain(path, 2):
+                    self.assertTrue(state.business_draining(path))
+                    self.assertEqual(published, [(Path(path + '.drain.tmp'), Path(path + '.drain'))])
+            self.assertFalse(state.business_draining(path))
+
+    def test_garbage_drain_expires_by_mtime(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {'BUSINESS_FORCE_STOP_DRAIN_SEC': '2'}):
+            path = str(Path(directory) / 'state.json')
+            flag = Path(path + '.drain')
+            for content in ('', 'garbage', 'nan', 'inf'):
+                flag.write_text(content)
+                self.assertTrue(state.business_draining(path))
+                os.utime(flag, (time.time() - 60, time.time() - 60))
+                self.assertFalse(state.business_draining(path))
+
+
+class ReviewGatewayTests(unittest.TestCase):
+    setUp = gateway_tests.BusinessRoutingContractTests.setUp
+    request = gateway_tests.BusinessRoutingContractTests.request
+
+    def test_upstream_socket_timeout_logs_and_returns_503(self):
+        import socket
+        proxy = Mock(side_effect=socket.timeout('upstream read stalled'))
+        self.handler = self.module.make_handler(self.config, proxy)
+        with patch.object(self.module, 'log_business_failure') as log:
+            status, body = self.request()
+        self.assertEqual(status, 503)
+        self.assertEqual(json.loads(body)['error']['code'], 'business_runtime_unavailable')
+        self.assertEqual(log.call_args.args[0], 'inference')

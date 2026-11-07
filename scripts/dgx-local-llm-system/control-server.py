@@ -56,7 +56,8 @@ from dgx_llm_single_active_guard import (  # noqa: E402
 from active_model_state import (active_model_state_to_api, read_active_model_state, write_active_model_state,
     business_switch_enabled, business_selection_state, business_state_lock, replace_active_payload,
     BUSINESS_PROFILES, DEEPSEEK_PROFILE, GLM_PROFILE, BusinessLockTimeout,
-    business_force_drain, positive_env_seconds, control_command_timeout, control_request_budget)  # noqa: E402
+    business_force_drain, positive_env_seconds, control_command_timeout, control_request_budget,
+    _control_request, request_timeout)  # noqa: E402
 from model_profiles import (  # noqa: E402
     BusinessRestoreUnavailableError,
     ModelProfileError,
@@ -138,19 +139,6 @@ def require_env(config: ControlConfig) -> None:
 
 class CommandRunner(Protocol):
     def __call__(self, command: str, extra_env: dict[str, str] | None = None) -> None: ...
-
-
-_control_request = threading.local()
-
-
-def request_timeout(limit: float) -> float:
-    deadline = getattr(_control_request, "deadline", None)
-    if deadline is None:
-        return limit
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise subprocess.TimeoutExpired("control request", control_request_budget())
-    return min(limit, remaining)
 
 
 def run_shell(command: str, extra_env: dict[str, str] | None = None) -> None:
@@ -400,17 +388,22 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
         except Exception as exc:
             last_error = exc
             time.sleep(5)
-    with business_state_lock(config.active_model_state_path):
-        state = business_selection_state(config.active_model_state_path)
-        if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
-            state.update(businessTransition="failed", businessFailureReason=failure)
-            replace_active_payload(config.active_model_state_path, state)
-            write_resource_state_best_effort(config, owner="business", status="failed",
-                action="start", reason=failure, profile=profile, backend=profile.backend,
-                guarantee_level="post_only")
-            log_business_failure("readiness", profile.id, identity[2], last_error,
-                secrets=(config.token,), detail=(str(last_error)
-                    if not isinstance(last_error, subprocess.SubprocessError) else ""))
+    while True:
+        try:
+            with business_state_lock(config.active_model_state_path):
+                state = business_selection_state(config.active_model_state_path)
+                if (state["selectedBusinessProfileId"], state["selectionRevision"], state.get("businessGeneration")) == identity and state["businessTransition"] == "loading":
+                    state.update(businessTransition="failed", businessFailureReason=failure)
+                    replace_active_payload(config.active_model_state_path, state)
+                    write_resource_state_best_effort(config, owner="business", status="failed",
+                        action="start", reason=failure, profile=profile, backend=profile.backend,
+                        guarantee_level="post_only")
+                    log_business_failure("readiness", profile.id, identity[2], last_error,
+                        secrets=(config.token,), detail=(str(last_error)
+                            if not isinstance(last_error, subprocess.SubprocessError) else ""))
+            return
+        except BusinessLockTimeout:
+            time.sleep(1)
 
 
 _business_monitors: dict[str, tuple[tuple, threading.Thread]] = {}
@@ -429,12 +422,17 @@ def recover_business_loading(config: ControlConfig, state: dict) -> dict:
 
 def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shell) -> type[BaseHTTPRequestHandler]:
     if business_switch_enabled():
-        with business_state_lock(config.active_model_state_path):
+        while True:
             try:
-                recover_business_loading(config, business_selection_state(config.active_model_state_path, config.model_registry_root))
-            except BusinessRestoreUnavailableError:
-                # Keep the emergency stop endpoint available for operator recovery.
-                pass
+                with business_state_lock(config.active_model_state_path):
+                    try:
+                        recover_business_loading(config, business_selection_state(config.active_model_state_path, config.model_registry_root))
+                    except BusinessRestoreUnavailableError:
+                        # Keep the emergency stop endpoint available for operator recovery.
+                        pass
+                break
+            except BusinessLockTimeout:
+                time.sleep(1)
 
     def run_command(command: str, extra_env: dict[str, str] | None = None) -> None:
         request_timeout(control_command_timeout())
@@ -623,9 +621,20 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
             recovery = False
             try:
                 state = business_selection_state(config.active_model_state_path)
-            except BusinessRestoreUnavailableError:
+            except BusinessRestoreUnavailableError as error:
                 if self.path != "/stop-force":
                     raise
+                if isinstance(error.__cause__, OSError) and not isinstance(error.__cause__, FileNotFoundError):
+                    # Still attempt both stops, but an unreadable selection is
+                    # not evidence that its persisted contents need recovery.
+                    for stop_backend in ("blue", "green"):
+                        try:
+                            run_command(resolve_command(config, "stop-force", stop_backend))
+                        except Exception as stop_error:
+                            log_business_failure("stop-force", None, None, stop_error, secrets=(config.token,))
+                    log_business_failure("stop-force", None, None, error.__cause__, secrets=(config.token,))
+                    self._send_json(503, {"ok": False, "code": "business_runtime_stop_unverified"})
+                    return
                 recovery = True
                 state = {"modelProfileId": GLM_PROFILE, "selectedBusinessProfileId": GLM_PROFILE,
                          "displayNameJa": "GLM 5.3 Flash", "backend": "blue", "servedAlias": "system-prod-primary",
