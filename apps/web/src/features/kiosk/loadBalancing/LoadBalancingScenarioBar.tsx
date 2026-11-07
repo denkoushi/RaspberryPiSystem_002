@@ -7,8 +7,6 @@ type Props = {
   summary: Array<{ type: ScenarioActionType; count: number; minutes: number }>;
   overBeforeMinutes: number;
   overAfterMinutes: number;
-  onUndoLast: () => void;
-  onClear: () => void;
 };
 
 const PILL = {
@@ -19,7 +17,7 @@ const PILL = {
 const LABEL = { outsource: '外注', transfer: '移管', defer: '後ろへ' } as const;
 
 /** 試算の中身と効果。DB は更新しない */
-export function LoadBalancingScenarioBar({ summary, overBeforeMinutes, overAfterMinutes, onUndoLast, onClear }: Props) {
+export function LoadBalancingScenarioBar({ summary, overBeforeMinutes, overAfterMinutes }: Props) {
   const empty = summary.every((item) => item.count === 0);
   return (
     <div className="flex min-h-[56px] items-center gap-2.5 border-t border-white/10 px-3 py-2" data-testid="load-balancing-scenario-bar">
@@ -39,12 +37,6 @@ export function LoadBalancingScenarioBar({ summary, overBeforeMinutes, overAfter
           <span className="text-lg font-extrabold tabular-nums text-emerald-300">
             {formatHours(overBeforeMinutes)} → {formatHours(overAfterMinutes)}H
           </span>
-          <button type="button" className="h-10 rounded-lg border border-white/15 px-3.5 font-bold" onClick={onUndoLast}>
-            ↶ 1つ戻す
-          </button>
-          <button type="button" className="h-10 rounded-lg border border-white/15 px-3.5 font-bold" onClick={onClear}>
-            クリア
-          </button>
         </>
       ) : null}
     </div>

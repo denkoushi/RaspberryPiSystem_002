@@ -13,7 +13,8 @@ import {
   updateProductionScheduleLoadBalancingWorkCalendars,
   getKioskProductionScheduleLoadBalancingWorkspace,
   getKioskProductionScheduleLoadBalancingWorkspaceDay,
-  putKioskProductionScheduleLoadBalancingCapacityBase
+  putKioskProductionScheduleLoadBalancingCapacityBase,
+  putKioskProductionScheduleLoadBalancingOutsourceSettings
 } from '../../client';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
@@ -150,6 +151,16 @@ export function usePutKioskProductionScheduleLoadBalancingCapacityBase() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceAll });
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceDayAll });
+    }
+  });
+}
+
+export function usePutKioskProductionScheduleLoadBalancingOutsourceSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: putKioskProductionScheduleLoadBalancingOutsourceSettings,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceAll });
     }
   });
 }

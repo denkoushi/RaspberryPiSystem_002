@@ -11,6 +11,27 @@ superseded_by: ../guides/kiosk-production-schedule-load-balancing.md
 
 > **履歴（2026-11）**: 2026-09-30 以降、負荷調整は1画面（`GET /kiosk/production-schedule/load-balancing/workspace`）に統合され、3タブと旧 API（overview / suggestions / outsourcing-* / machine-monthly-load / start-date-leveling）は削除されました。本書の3タブ・旧 API・2026-05 の UI 調整の節は履歴です。現行仕様の正本は [ガイド §現行画面](../guides/kiosk-production-schedule-load-balancing.md#現行画面2026-09-30--1画面タブなし) です。生産システムとの突合は [KB-437（負荷調整×生産システム突合）](./KB-437-load-balancing-production-system-reconciliation.md) を正本とします。
 
+## Vendor-aware Outsourcing (2026-11-07 · local implementation)
+
+業者の加工条件・月別受入上限を満たす外注試算へ変更。⚙から登録端末の `x-client-key` で設定する。
+site設定が存在すれば空一覧も含めshared全体を置換し、業者IDで改名・並び替えを維持する。
+業者設定は能力・移管ルール同様にsourceキャッシュ外で毎回読み、結果キャッシュの設定キーへ含める。
+
+通常月は表示範囲内の日割り配分だけ、遅れはJST今日の月に全量を業者使用として計上し、全配分月で上限を確認する。
+1件の加工上限は行総工数と比較。条件内AND/条件間OR、資源CD空集合は全資源、条件0件は不可。
+業者条件の品番・品名比較だけNFKC・trim・連続空白の集約・大文字化で半角カナも一致させる。資源CDはtrim・NFKC・大文字化し、既存のnormalizeComparisonTextは変更しない。NULL上限と0上限を区別する。
+部品ごとはFSEIBAN+FHINCD（********のみProductNo追加）の適格・未操作・機種内の工程を一括外注/取消する。
+
+自動選定は全表示月の超過0.5分超（能力NULL・遅れ除外、能力0は対象）を超過順で処理する。
+社内移管を先に試し、全配分月で元分÷efficiencyRatioが余力内の場合だけ移す（手動も同じ）。
+残りは設定された納期余裕昇順/総工数降順/業者順位昇順で外注し、同点はrowId/業者IDで決定する。
+移管・外注とも未配分や機種外へ操作を付けず、毎回最終操作集合から負荷/業者使用を再集計する。
+未解消分は「出し先なし」に条件/上限理由を表示。右に業者別一覧、左下にセル明細、上部に全体操作を置く。
+日別APIは維持し、画面は承認済みモックに合わせ日別グラフを表示しない。
+
+判定規則は[現行ガイド](../guides/kiosk-production-schedule-load-balancing.md)、設計判断・検証結果は
+[ExecPlan](../plans/load-balancing-outsource-vendors-execplan.md) を参照。migration追加のみで本番未反映。
+
 ## Due Source Contract (2026-11-05)
 
 現行1画面の納期選択は既定 Excel、ヘッダーの **SCAW** で切り替える。
