@@ -1,3 +1,4 @@
+import { readWinnerRowsByLogicalKeyFseibans } from './grinding-planning-board/source.js';
 import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, findSessakuPieceWinner, readSessakuPieceSet, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
 import { reconcileSessakuPieceQuantities } from './sessaku-pieces/piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './sessaku-pieces/piece-completion.js';
@@ -118,20 +119,9 @@ export async function driveProductionScheduleRowCompletion(params: {
   }
 
   const current = row.rowData as Record<string, unknown>;
-  const progress = await prisma.productionScheduleProgress.findUnique({
-    where: { csvDashboardRowId: row.id },
-    select: { isCompleted: true }
-  });
-  let isCompleted = progress?.isCompleted === true;
-
-  let nextIsCompleted: boolean;
-  if (drive.mode === 'toggle') {
-    nextIsCompleted = !isCompleted;
-  } else {
-    nextIsCompleted = drive.intent === 'complete';
-  }
-
-  let unchanged = drive.mode === 'intent' && nextIsCompleted === isCompleted;
+  let isCompleted = false;
+  let nextIsCompleted = false;
+  let unchanged = false;
 
   const tFindAssignmentStart = performance.now();
   const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
@@ -152,18 +142,19 @@ export async function driveProductionScheduleRowCompletion(params: {
 
   let pieceHandled = false;
   const key = sessakuPieceKeyFromRow(current);
-  const plannedSet = await readSessakuPieceSet(prisma, key);
-  if (plannedSet?.pieces.length || !unchanged) await prisma.$transaction(async (tx) => {
-      if (plannedSet?.pieces.length) {
-        await acquireSessakuPieceLogicalLocks(tx, [key]);
-        const set = await readSessakuPieceSet(tx, key);
-        if (!set?.pieces.length) throw new ApiError(409, '片が更新されています', undefined, 'STALE_SESSAKU_PIECES');
-        await acquireSessakuPieceBoardStateLocks(tx);
-        await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
-        const latest = await tx.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: row.id } });
-        isCompleted = latest?.isCompleted === true;
-        nextIsCompleted = drive.mode === 'toggle' ? !isCompleted : drive.intent === 'complete';
-        unchanged = drive.mode === 'intent' && nextIsCompleted === isCompleted;
+  await prisma.$transaction(async (tx) => {
+      // First splits must serialize with ordinary row completion too. Read state only after all locks.
+      const relatedRows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((candidate) => sessakuPieceKeyFromRow(candidate.rowData).fhincd === key.fhincd);
+      await acquireSessakuPieceLogicalLocks(tx, [key, ...relatedRows.map((candidate) => sessakuPieceKeyFromRow(candidate.rowData))]);
+      await acquireSessakuPieceBoardStateLocks(tx);
+      await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+      await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE`;
+      const set = await readSessakuPieceSet(tx, key);
+      const latest = await tx.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: row.id } });
+      isCompleted = latest?.isCompleted === true;
+      nextIsCompleted = drive.mode === 'toggle' ? !isCompleted : drive.intent === 'complete';
+      unchanged = drive.mode === 'intent' && nextIsCompleted === isCompleted;
+      if (set?.pieces.length) {
         pieceHandled = true;
         const winner = await findSessakuPieceWinner(tx, key);
         if (winner?.id !== row.id) throw new ApiError(409, '元行が更新されています', undefined, 'SOURCE_ITEM_MISSING');
@@ -182,6 +173,7 @@ export async function driveProductionScheduleRowCompletion(params: {
         unchanged = !changed && nextIsCompleted === isCompleted;
         return;
       }
+      if (unchanged) return;
       const tUpdateRowStart = performance.now();
       await tx.productionScheduleProgress.upsert({
         where: { csvDashboardRowId: row.id },

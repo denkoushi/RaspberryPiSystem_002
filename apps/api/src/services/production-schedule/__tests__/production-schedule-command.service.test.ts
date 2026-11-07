@@ -10,6 +10,8 @@ import {
 import { prisma } from '../../../lib/prisma.js';
 import { sharedScheduleFieldsRepository } from '../shared-schedule-fields.repository.js';
 
+vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByLogicalKeyFseibans: vi.fn().mockResolvedValue([]) }));
+
 const resetSelfInspectionMachineBoardScheduleRowCaches = vi.hoisted(() => vi.fn());
 
 vi.mock('../../part-measurement/self-inspection-machine-board-cache-invalidation.js', () => ({
@@ -36,8 +38,8 @@ vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', ()
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
-    $queryRaw: vi.fn(),
-    productionScheduleSessakuPieceSet: { findUnique: vi.fn().mockResolvedValue(null) },
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    productionScheduleSessakuPieceSet: { findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
     csvDashboardRow: {
       findFirst: vi.fn(),
     },
@@ -221,7 +223,7 @@ describe('production-schedule-command.service', () => {
     expect(prisma.productionScheduleOrderAssignment.upsert).toHaveBeenCalled();
   });
 
-  it('片なしで intent=complete が既に完了なら従来どおり tx なしで unchanged を返す', async () => {
+  it('片なしで intent=complete が既に完了でもロック後に読み直して unchanged を返す', async () => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({
       id: 'row-done',
       rowData: { FSEIBAN: 'S1', progress: '' },
@@ -239,8 +241,9 @@ describe('production-schedule-command.service', () => {
 
     expect(result.unchanged).toBe(true);
     expect(result.rowData.progress).toBe('完了');
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
     expect(prisma.productionScheduleProgress.findUnique).toHaveBeenCalledTimes(1);
   });
 
@@ -260,7 +263,7 @@ describe('production-schedule-command.service', () => {
 
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
-  it.each([null, { id: 'empty', pieces: [] }])('ordinary/tombstone completion preserves the original read and write order: %j', async (set) => {
+  it.each([null, { id: 'empty', pieces: [] }])('ordinary/tombstone completion takes logical, board and row locks before reading piece and progress state: %j', async (set) => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: { FSEIBAN: 'A' } } as never);
     vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mockResolvedValueOnce(set as never);
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({ isCompleted: false } as never);
@@ -269,8 +272,14 @@ describe('production-schedule-command.service', () => {
     expect(prisma.productionScheduleProgress.findUnique).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(1);
     expect(prisma.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { timeout: 30000, maxWait: 15000 });
-    expect(prisma.$executeRaw).not.toHaveBeenCalled();
-    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(String(vi.mocked(prisma.$executeRaw).mock.calls[0][1])).toContain('sessaku-pieces:');
+    expect(String(vi.mocked(prisma.$executeRaw).mock.calls[1][0])).toContain('sessaku-piece-board-states');
+    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[0][0])).toContain('ProductionScheduleGrindingPlanningBoardState');
+    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[1][0])).toContain('CsvDashboardRow');
+    const lastLock = vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[1];
+    expect(lastLock).toBeLessThan(vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mock.invocationCallOrder[0]);
+    expect(lastLock).toBeLessThan(vi.mocked(prisma.productionScheduleProgress.findUnique).mock.invocationCallOrder[0]);
   });
 
 });

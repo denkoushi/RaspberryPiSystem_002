@@ -15,7 +15,7 @@ import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, de
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
-type LaterProcess = { key: SessakuPieceLogicalKey; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null };
+type LaterProcess = { key: SessakuPieceLogicalKey; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean };
 
 async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>) {
   const rows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => {
@@ -24,33 +24,36 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
   });
   const details = await readRowDetails(tx, rows.map((row) => row.id));
   const sets = await readSessakuPieceSets(tx, rows);
-  if (set?.pieces.length) {
-    const linked = await tx.productionScheduleSessakuPieceSet.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, pieces: { some: { sourcePieceId: { in: set.pieces.map((piece) => piece.id) } } } },
-      include: { pieces: { orderBy: { position: 'asc' } } }
-    });
-    return linked.map((laterSet): LaterProcess => {
-      const row = rows.find((row) => encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)) === encodeSessakuPieceKey(laterSet));
-      return { key: laterSet, set: laterSet, plannedQuantity: row ? details.get(row.id)?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity };
-    });
-  }
-  return rows.flatMap((row): LaterProcess[] => {
+  const linked = set ? await tx.productionScheduleSessakuPieceSet.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [
+      { sourcePieceSetId: set.id },
+      { pieces: { some: { sourcePieceId: { in: set.pieces.map((piece) => piece.id) } } } }
+    ] }, include: { pieces: { orderBy: { position: 'asc' } } }
+  }) : [];
+  const result = linked.map((laterSet): LaterProcess => {
+    const row = rows.find((row) => encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)) === encodeSessakuPieceKey(laterSet));
+    const detail = row ? details.get(row.id) : undefined;
+    return { key: laterSet, set: laterSet, plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
+      completed: detail?.productionScheduleProgress?.isCompleted === true || detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true };
+  });
+  for (const row of rows) {
     const candidate = sessakuPieceKeyFromRow(row.rowData);
+    if (result.some((process) => encodeSessakuPieceKey(process.key) === encodeSessakuPieceKey(candidate))) continue;
     const laterSet = sets.get(encodeSessakuPieceKey(candidate)) ?? null;
     const detail = details.get(row.id);
-    // New rows imported after a split remain unsplit. Only the first split discovers new parents.
-    if (laterSet?.pieces.length || detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) return [];
-    return [{ key: candidate, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null }];
-  });
+    if (laterSet?.pieces.length || detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) continue;
+    result.push({ key: candidate, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false });
+  }
+  return result;
 }
 
 function assertLaterProcessesEditable(later: LaterProcess[]) {
-  if (later.some(({ set }) => set?.pieces.some((piece) => piece.isCompleted))) {
+  if (later.some(({ set, completed }) => completed || set?.pieces.some((piece) => piece.isCompleted))) {
     throw new ApiError(409, '後工程の片が完了しています', undefined, 'LATER_PROCESS_PIECE_COMPLETED');
   }
 }
 function assertCuttingPieceSet(set: Awaited<ReturnType<typeof readSessakuPieceSet>>) {
-  if (set?.pieces.some((piece) => piece.sourcePieceId)) throw new ApiError(409, '後工程の片は分割・結合できません', undefined, 'LATER_PROCESS_PIECE_LOCKED');
+  if (set?.sourcePieceSetId || set?.pieces.some((piece) => piece.sourcePieceId)) throw new ApiError(409, '後工程の片は分割・結合できません', undefined, 'LATER_PROCESS_PIECE_LOCKED');
 }
 
 function conflict(code = 'STALE_SESSAKU_PIECES'): never {
@@ -110,24 +113,16 @@ async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProce
   await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids } } });
 }
 
-async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], source: Awaited<ReturnType<typeof readSessakuPieceSet>>, removedSourceIds: string[], sites: string[], before: Map<string, Awaited<ReturnType<typeof projection>>>) {
+async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], source: Awaited<ReturnType<typeof readSessakuPieceSet>>, sites: string[], before: Map<string, Awaited<ReturnType<typeof projection>>>) {
   for (const process of later) {
     const parentId = sessakuPieceParentItemId(process.key);
     const previous = process.set?.pieces ?? [];
-    const removed = previous.filter((piece) => piece.sourcePieceId && removedSourceIds.includes(piece.sourcePieceId));
     const set = process.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: { ...sessakuPieceSetWhere(process.key), plannedQuantity: process.plannedQuantity } });
-    const offset = Math.max(set.nextPosition, ...previous.map((piece) => piece.position), source?.pieces.length ?? 0) + previous.length + 1;
-    await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { position: { increment: offset } } });
-    const added: string[] = [];
-    for (const piece of source?.pieces ?? []) {
-      const existing = previous.find((old) => old.sourcePieceId === piece.id);
-      if (existing) await tx.productionScheduleSessakuPiece.update({ where: { id: existing.id }, data: { position: piece.position } });
-      else {
-        const id = randomUUID(); added.push(`piece:${id}`);
-        await tx.productionScheduleSessakuPiece.create({ data: { id, pieceSetId: set.id, sourcePieceId: piece.id, quantity: piece.quantity, position: piece.position } });
-      }
-    }
-    await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { version: { increment: 1 }, nextPosition: source?.nextPosition ?? 1 } });
+    await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: source!.id, version: { increment: 1 } } });
+    if (source?.pieces.length) await reconcileSessakuPieceQuantities(tx, process.key, process.plannedQuantity);
+    const saved = await readSessakuPieceSet(tx, process.key);
+    const removed = previous.filter((piece) => !saved?.pieces.some((next) => next.id === piece.id));
+    const added = saved?.pieces.filter((piece) => !previous.some((old) => old.id === piece.id)).map((piece) => `piece:${piece.id}`) ?? [];
     for (const site of sites) await replaceSiteItems(tx, process.key, before.get(site)!, site,
       previous.length ? removed.map((piece) => `piece:${piece.id}`) : [parentId], source?.pieces.length ? added : [parentId]);
     await reconcileSessakuPieceProgress(tx, process.key, { emptyIsIncomplete: true });
@@ -219,7 +214,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     }
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { nextPosition: Math.max(set.nextPosition, ordered.length + 1), ...(c.set ? { version: { increment: 1 } } : {}) } });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`));
-    await replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), target ? [target.id] : [], c.sites, before);
+    await replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before);
   });
 }
 export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { siteKey: string }): Promise<SessakuPiecesMutationResponse> {
@@ -246,7 +241,7 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     if (!all) await tx.productionScheduleSessakuPiece.create({ data: { id, pieceSetId: c.set.id, position: Math.min(...selected.map((p) => p.position)), quantity: selected.reduce((n, p) => n + p.quantity, 0) } });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 }, quantityWarning: null } });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, params.pieceIds.map((p) => `piece:${p}`), [all ? params.parentItemId : `piece:${id}`]);
-    await replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), params.pieceIds, c.sites, before);
+    await replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before);
   });
 }
 export async function setSessakuPieceCompletion(params: SessakuPieceCompletionRequest & { siteKey: string; pieceId: string }): Promise<SessakuPiecesMutationResponse> {

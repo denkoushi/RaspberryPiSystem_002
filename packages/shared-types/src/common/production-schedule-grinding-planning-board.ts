@@ -327,6 +327,7 @@ export interface SessakuPieceCompletionRequest {
   itemRevision: string;
 }
 export interface SessakuPiecesMutationResponse {
+  /** 変更前の ID（選択を外すためのもの） */
   affectedItemIds?: string[];
   parentItemId: string;
   pieceSetVersion: number;

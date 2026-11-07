@@ -6398,6 +6398,9 @@ model ProductionScheduleSessakuPieceSet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSSPieceSet_dashboard_fk")
+  sourcePieceSetId String?
+  sourcePieceSet ProductionScheduleSessakuPieceSet? @relation("LaterProcessSets", fields: [sourcePieceSetId], references: [id], onDelete: NoAction, map: "PSSPieceSet_source_fk")
+  laterProcessSets ProductionScheduleSessakuPieceSet[] @relation("LaterProcessSets")
   pieces ProductionScheduleSessakuPiece[]
   @@unique([csvDashboardId, fseiban, fhincd, fsigencd, fkojun], map: "PSSPieceSet_logical_key")
   @@index([csvDashboardId, fseiban], map: "PSSPieceSet_seiban_idx")
@@ -6413,7 +6416,7 @@ model ProductionScheduleSessakuPiece {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   sourcePieceId String?
-  sourcePiece ProductionScheduleSessakuPiece? @relation("LaterProcessPieces", fields: [sourcePieceId], references: [id], onDelete: Restrict, map: "PSSPiece_source_fk")
+  sourcePiece ProductionScheduleSessakuPiece? @relation("LaterProcessPieces", fields: [sourcePieceId], references: [id], onDelete: NoAction, map: "PSSPiece_source_fk")
   laterProcessPieces ProductionScheduleSessakuPiece[] @relation("LaterProcessPieces")
   @@index([sourcePieceId], map: "PSSPiece_source_idx")
   pieceSet ProductionScheduleSessakuPieceSet @relation(fields: [pieceSetId], references: [id], onDelete: Cascade, map: "PSSPiece_set_fk")

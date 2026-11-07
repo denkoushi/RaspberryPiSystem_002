@@ -73,6 +73,10 @@ describe('later process quantity planning', () => {
     expect(plan.quantityWarning).toBeNull();
     expect(plan.pieces.every((piece) => piece.sourcePieceId)).toBe(true);
   });
+  it.each([-1, 1.5, NaN, Infinity, 2_147_483_648])('keeps existing quantities and positions for invalid later plan %s', (total) => {
+    const existing = later.map((piece, index) => ({ ...piece, quantity: index + 3, position: index + 5 }));
+    expect(planLaterProcessPieceQuantities(existing, sources, total, false, 9)).toEqual({ pieces: existing, quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition: 9 });
+  });
   it('starts from updated cutting quantities and positions, retaining later identities', () => {
     const next = sources.map((piece, index) => ({ ...piece, quantity: [2, 3, 4][index] }));
     const plan = planLaterProcessPieceQuantities(later, next, 10, false, 4);

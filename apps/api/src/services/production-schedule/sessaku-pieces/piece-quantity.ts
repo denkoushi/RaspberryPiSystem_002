@@ -35,6 +35,9 @@ type LinkedQuantityPiece = QuantityPiece & { sourcePieceId: string };
 
 /** Cutting quantities are the baseline; the later row's own plan absorbs the difference at its tail. */
 export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityPiece[], sources: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number) {
+  if (nextTotal == null || !Number.isSafeInteger(nextTotal) || nextTotal < 0 || nextTotal > 2_147_483_647) {
+    return { pieces: pieces.map((piece) => ({ ...piece })), quantityWarning: 'INVALID_PLANNED_QUANTITY' as const, nextPosition };
+  }
   let lastPosition = 0;
   const baseline = sources.flatMap((source): LinkedQuantityPiece[] => {
     const previous = pieces.filter((piece) => piece.sourcePieceId === source.id);
@@ -96,24 +99,32 @@ async function readQuantitySource(tx: Prisma.TransactionClient, key: SessakuPiec
 /** Caller holds all related logical locks. Progress for the requested row is published by its caller. */
 export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, nextTotal: number | null): Promise<boolean> {
   const set = await readSessakuPieceSet(tx, key);
-  if (!set?.pieces.length) return false;
+  if (!set || !set.pieces.length && !set.sourcePieceSetId) return false;
   const source = await readQuantitySource(tx, key);
   const linked = set.pieces.filter((piece) => piece.sourcePieceId);
-  if (linked.length) {
-    const cutting = await tx.productionScheduleSessakuPiece.findFirst({ where: { id: linked[0].sourcePieceId! }, include: { pieceSet: { include: { pieces: { orderBy: { position: 'asc' } } } } } });
+  if (linked.length || set.sourcePieceSetId) {
+    const cutting = set.sourcePieceSetId
+      ? await tx.productionScheduleSessakuPieceSet.findUnique({ where: { id: set.sourcePieceSetId }, include: { pieces: { orderBy: { position: 'asc' } } } })
+      : (await tx.productionScheduleSessakuPiece.findFirst({ where: { id: linked[0].sourcePieceId! }, include: { pieceSet: { include: { pieces: { orderBy: { position: 'asc' } } } } } }))?.pieceSet;
     if (!cutting) return false;
-    const plan = planLaterProcessPieceQuantities(linked as LinkedQuantityPiece[], cutting.pieceSet.pieces, nextTotal, source.external, set.nextPosition);
-    return saveQuantityPlan(tx, set, plan, nextTotal, new Map(plan.pieces.map((piece) => [piece.id, piece.sourcePieceId])));
+    if (!set.sourcePieceSetId) await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: cutting.id } });
+    const cuttingSource = await readQuantitySource(tx, cutting);
+    const total = nextTotal ?? cuttingSource.plannedQuantity ?? cutting.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
+    const plan = planLaterProcessPieceQuantities(linked as LinkedQuantityPiece[], cutting.pieces, total, source.external, set.nextPosition);
+    return saveQuantityPlan(tx, set, plan, total, new Map(plan.pieces.map((piece) => [piece.id, piece.sourcePieceId])));
   }
   const later = await tx.productionScheduleSessakuPieceSet.findMany({
-    where: { csvDashboardId: set.csvDashboardId, pieces: { some: { sourcePieceId: { in: set.pieces.map((piece) => piece.id) } } } },
+    where: { csvDashboardId: set.csvDashboardId, OR: [{ sourcePieceSetId: set.id }, { pieces: { some: { sourcePieceId: { in: set.pieces.map((piece) => piece.id) } } } }] },
     include: { pieces: { orderBy: { position: 'asc' } } }
   });
   const plan = planSessakuPieceQuantities(set.pieces, nextTotal, source.external, set.nextPosition);
   const removed = set.pieces.filter((piece) => !plan.pieces.some((next) => next.id === piece.id)).map((piece) => piece.id);
   // Never discard completed evidence in a later process to satisfy a reduced cutting plan.
   const laterDetails = await Promise.all(later.map((process) => readQuantitySource(tx, process)));
-  if (later.some((process, index) => process.pieces.some((piece) => (piece.isCompleted || laterDetails[index].external) && removed.includes(piece.sourcePieceId!)))) {
+  if (later.some((process, index) => set.pieces.some((cutting) => {
+    const completed = process.pieces.filter((piece) => piece.sourcePieceId === cutting.id && (piece.isCompleted || laterDetails[index].external)).reduce((sum, piece) => sum + piece.quantity, 0);
+    return completed > 0 && completed > (plan.pieces.find((piece) => piece.id === cutting.id)?.quantity ?? 0);
+  }))) {
     plan.pieces = set.pieces;
     plan.quantityWarning = 'COMPLETED_QUANTITY_EXCEEDS_PLAN';
     removed.length = 0;
@@ -121,8 +132,10 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
   const changed = await saveQuantityPlan(tx, set, plan, nextTotal, undefined, true);
   for (const [index, process] of later.entries()) {
     const detail = laterDetails[index];
-    const laterPlan = planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, detail.plannedQuantity, detail.external, process.nextPosition);
-    await saveQuantityPlan(tx, process, laterPlan, detail.plannedQuantity, new Map(laterPlan.pieces.map((piece) => [piece.id, piece.sourcePieceId])));
+    if (!process.sourcePieceSetId) await tx.productionScheduleSessakuPieceSet.update({ where: { id: process.id }, data: { sourcePieceSetId: set.id } });
+    const total = detail.plannedQuantity ?? nextTotal ?? plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
+    const laterPlan = planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition);
+    await saveQuantityPlan(tx, process, laterPlan, total, new Map(laterPlan.pieces.map((piece) => [piece.id, piece.sourcePieceId])));
     await reconcileSessakuPieceProgress(tx, process, { emptyIsIncomplete: true });
   }
   if (removed.length) await removeQuantityPieces(tx, set.csvDashboardId, removed);

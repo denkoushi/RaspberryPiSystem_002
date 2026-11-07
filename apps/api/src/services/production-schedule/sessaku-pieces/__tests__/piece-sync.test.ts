@@ -16,7 +16,7 @@ describe('piece publication lock budget and legacy paths', () => {
   it('mail sync reads only live sets, with no row scan, logical lock or board lock when empty', async () => {
     const tx = client();
     expect(await lockAllSessakuPieceSets(tx as never)).toEqual([]);
-    expect(tx.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ pieces: { some: {} } }) }));
+    expect(tx.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ OR: [{ pieces: { some: {} } }, { sourcePieceSetId: { not: null } }] }) }));
     expect(tx.csvDashboardRow.findMany).not.toHaveBeenCalled();
     expect(tx.$executeRaw).not.toHaveBeenCalled();
     expect(tx.$queryRaw).not.toHaveBeenCalled();

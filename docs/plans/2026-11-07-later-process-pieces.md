@@ -9,10 +9,10 @@ Splitting a cutting row into quantities such as 1・2・2 also creates independe
 ## Progress
 
 - [x] (2026-11-07 JST) Confirmed the requested worktree and clean initial working tree; inspected persistence, projection, quantity synchronization and UI boundaries.
-- [x] (2026-11-07 JST) Added nullable sourcePieceId with a restrictive self reference, shared item contract, structural propagation and quantity synchronization.
+- [x] (2026-11-07 JST) Added nullable sourcePieceId with a NO ACTION self reference, shared item contract, structural propagation and quantity synchronization.
 - [x] (2026-11-07 JST) Added acceptance regression tests; API 90 tests and web 254 tests passed. Shared types build/lint, Prisma generate/validate, API/web type checks and package lint passed.
 - [x] (2026-11-07 JST) Reviewed same-machine placement updates and verified the final service with focused lint and API type check. Final git diff --check passed; all 19 changed/new files belong to this task.
-- [ ] Dedicated-DB verification remains unavailable: final integration file collected 38 tests and skipped all 38. No database migration was executed.
+- [x] Review revision: verified on the approved disposable DB at localhost:55491/lpp; the piece suite passed all 103 tests, including 51 real-DB integration cases.
 - [ ] integrationPending: commit, push, PR, merge and deployment are outside the authorized local implementation stage.
 
 ## Surprises & Discoveries
@@ -23,8 +23,8 @@ The local worktree initially lacked dependencies. Offline installation with the 
 
 ## Decision Log
 
-- Decision: Use ON DELETE RESTRICT and explicitly delete affected later pieces before replacing cutting pieces in the same transaction.
-  Rationale: A database deletion must never silently turn a later piece into a cutting piece.
+- Decision: Use ON DELETE NO ACTION and explicitly delete affected later pieces before replacing cutting pieces in the same transaction.
+  Rationale: Preserve references while allowing dashboard and multi-set cascades in one statement; retain explicit child-first service deletion.
   Date/Author: 2026-11-07 / Codex.
 - Decision: Expand existing same-part keys inside acquireSessakuPieceLogicalLocks before sorting, and include winner row keys before initial splitting.
   Rationale: Completion, CSV progress and supplement synchronization also enter this lock boundary; adding locks after a single-parent lock would allow reversed lock ordering.
@@ -44,7 +44,7 @@ The local worktree initially lacked dependencies. Offline installation with the 
 
 ## Plan of Work
 
-First add persistence and the optional source identifier. Discover current later winners with the same dashboard, seiban and part, compare process orders with the projection's shared comparator, and exclude completed or already split rows on first split. Later structural edits follow only existing links, leaving newly imported rows unsplit.
+First add persistence and the optional source identifier. Discover current later winners with the same dashboard, seiban and part, compare process orders with the projection's shared comparator, and exclude completed or independently split rows. Every split/resplit/merge discovers eligible unsplit later winners, including rows imported after a previous split and parents whose cutting pieces predate this feature. Existing linked rows are rejected if their pieces, Progress or external completion are complete.
 
 Capture the board before mutation at every affected site. Remove linked selected pieces before deleting cutting pieces, recreate them against the new source IDs, retain surviving IDs and position them to match cutting. Reuse replaceSiteItems for each logical parent. Reject direct later split/merge and reject cutting structural edits if any linked piece has manual completion evidence.
 
@@ -60,7 +60,7 @@ Run `pnpm --filter @raspi-system/api exec tsc --noEmit -p tsconfig.build.json` a
 
 The API integration fixture creates current and later rows for the same part. Three-piece splitting must preserve each site's later resource and position overrides. Nonadjacent merge and full merge must mirror cutting. Quantity increases/decreases and differing later totals must reconcile. Later completion must independently aggregate Progress, prohibit cutting structural edits and leave direct later split/merge rejected with specific error codes. UI tests must display N／M without an operable split/merge trigger and keep completion available.
 
-Integration tests require TEST_DATABASE_URL and DATABASE_URL to identify the same dedicated disposable test database; the existing guard excludes borrow_return/postgres/template1. If no approved local test database is reachable, run the file to record its skips and report the verification limitation. Do not read .env files, change infrastructure, or provision/reset an existing database.
+Integration tests require TEST_DATABASE_URL and DATABASE_URL to identify the same dedicated disposable test database; the existing guard excludes borrow_return/postgres/template1. If no approved local test database is reachable, run the file to record its skips and report the verification limitation. Do not read .env files or change infrastructure. The review request explicitly authorizes resetting only the disposable localhost:55491/lpp database.
 
 ## Idempotence and Recovery
 
@@ -72,7 +72,7 @@ No new dependency or feature flag is added. sourcePieceId is nullable on the per
 
 ## Outcomes & Retrospective
 
-Local implementation is complete. API unit/route/projection/load tests passed (90); popup/completion/page tests passed (254). Database persistence, FK execution, multi-connection serialization and transactional override propagation remain unverified on an actual database because the dedicated database is unavailable. The final integration invocation collected 38 tests and skipped them all. No migration, commit, push, history change or deployment was performed. The initial worktree was clean and the final changes are exclusively this task's work.
+Initial implementation evidence (before review): API unit/route/projection/load tests passed (90); popup/completion/page tests passed (254). At that stage database persistence, FK execution, multi-connection serialization and transactional override propagation were unverified; the review validation below supersedes that limitation. The final integration invocation collected 38 tests and skipped them all. No migration, commit, push, history change or deployment was performed. The initial worktree was clean and the final changes are exclusively this task's work.
 
 The later set is deleted on full merge, while the cutting set's existing version tombstone remains. Repeated quantity synchronization preserves additional later tail pieces and their completion evidence. Site placement snapshots are advanced after each replacement so a later parent sharing the cutting machine cannot recreate obsolete cutting overrides.
 
@@ -80,7 +80,7 @@ The later set is deleted on full merge, while the cutting set's existing version
 
 The root historical EXEC_PLAN.md is unchanged. This plan is the task's single detailed record.
 
-Revision 2026-11-07: Created after inspecting existing service boundaries; recorded restrictive deletion and shared lock expansion decisions.
+Revision 2026-11-07: Created after inspecting existing service boundaries; recorded deletion and shared lock expansion decisions.
 
 Revision 2026-11-07: Added affectedItemIds to clear hidden-category selections, retained later tail completion evidence across repeated quantity reconciliation, and included orphaned linked sets in structural replacement.
 
@@ -124,3 +124,13 @@ Commands ran from the repository root. The combined API test command took 5.24 s
 - `packages/shared-types/src/common/production-schedule-grinding-planning-board.ts`
 
 Revision 2026-11-07: Recorded final validation, failed prerequisites and recovery, explicit DB limitations, affected-selection contract and same-machine rank preservation.
+
+## Review Revision (2026-11-07)
+
+Structural propagation now reuses quantity reconciliation immediately and discovers newly eligible later winners on every structural mutation. Each later row uses its own total; a missing supplement falls back to the cutting supplement, then the cutting piece sum. Invalid totals preserve existing piece quantities and positions with a warning. A nullable sourcePieceSetId retains the cutting relationship when a later total of zero removes every piece, so either later-row or cutting-row synchronization can recreate sourcePieceId links. Source publication and supplement locking include these empty linked sets. Full merge still deletes later sets and keeps the original cutting tombstone.
+
+Row completion now always acquires related logical locks, board state locks, then the row lock before reading pieces and Progress, including unchanged intents and ordinary rows. Real DB tests hold the first transaction at its board lock and start the competing transaction on a separate connection: completion-first leaves the completed later row unsplit; split-first completes all newly created later pieces. The barriers wrap transaction clients with a Proxy instead of modifying Prisma's shared methods.
+
+Cutting shrink that would reduce any source below its linked completed quantity retains cutting quantities with COMPLETED_QUANTITY_EXCEEDS_PLAN. sourcePieceId and sourcePieceSetId use NO ACTION references, verified by deleting a dashboard and deleting all its sets in one statement. The existing unreleased migration was edited; no new migration was added. affectedItemIds explicitly documents that its IDs precede mutation and clear selection.
+
+Validation: the approved DB reset passed using Prisma 7's `migrate reset --force` (this version rejects `--skip-seed` and does not automatically seed). Initial reset attempts failed on that unsupported option and Prisma's AI consent guard; the guard was satisfied with the user's existing explicit disposable-DB authorization. The first piece test invocation failed because the new column had not yet been applied. The next run exposed the test barrier's mutation of Prisma methods and an incorrect tail-count expectation; the barrier was fixed, and the expectation now preserves the existing additional unfinished tail according to the quantity planner. The final requested piece command passed 103/103 (51 integration), with no skips; command/projection tests passed 30/30; related web tests passed 254/254. The web run emitted existing jsdom connection errors without failures. API and web type checks passed. Shared-types/API/web package lint passed; API lint was repeated after the final source-publication adjustment and passed. Final git diff --check passed. Validation took approximately 8 minutes including failed attempts and diagnosis, within the 45-minute DB-change budget. Final lifecycle audit retained feat/later-process-pieces at fc8db12e with only this task’s uncommitted changes; there was no initial WIP. No secret file, UI copy, CI or infrastructure was changed, and no commit, push, history operation or deployment was performed.
