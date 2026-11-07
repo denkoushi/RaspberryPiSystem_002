@@ -205,10 +205,10 @@
       ansible.builtin.import_role:
         name: common
         tasks_from: distrusted-intermediates
-    - name: Disable MPTCP before the Pi5 release
+    - name: Restore MPTCP before the Pi5 release
       ansible.builtin.import_role:
         name: common
-        tasks_from: disable-mptcp
+        tasks_from: restore-mptcp
   roles:
     - role: release_pi5
 
@@ -238,10 +238,10 @@
               ansible.builtin.import_role:
                 name: common
                 tasks_from: distrusted-intermediates
-            - name: Disable MPTCP before preparation
+            - name: Restore MPTCP before preparation
               ansible.builtin.import_role:
                 name: common
-                tasks_from: disable-mptcp
+                tasks_from: restore-mptcp
             - name: Prepare the normal Pi4 candidate
               ansible.builtin.include_role:
                 name: release_kiosk
@@ -359,10 +359,10 @@
       ansible.builtin.import_role:
         name: common
         tasks_from: distrusted-intermediates
-    - name: Disable MPTCP before the kiosk release
+    - name: Restore MPTCP before the kiosk release
       ansible.builtin.import_role:
         name: common
-        tasks_from: disable-mptcp
+        tasks_from: restore-mptcp
   roles:
     - role: release_kiosk
   post_tasks:
@@ -422,9 +422,9 @@
       ansible.builtin.import_role:
         name: common
         tasks_from: distrusted-intermediates
-    - name: Disable MPTCP before the signage release
+    - name: Restore MPTCP before the signage release
       ansible.builtin.import_role:
         name: common
-        tasks_from: disable-mptcp
+        tasks_from: restore-mptcp
   roles:
     - role: release_signage
