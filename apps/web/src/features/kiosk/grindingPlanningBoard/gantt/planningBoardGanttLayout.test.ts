@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { planningBoardOrderMetrics } from './planningBoardAutoOrder';
-import { buildPlanningBoardGanttLayout, dateToDay, planningBoardPartKey, shiftedDueDate, workingPeriods } from './planningBoardGanttLayout';
+import { planningBoardAutoOrder, planningBoardOrderMetrics } from './planningBoardAutoOrder';
+import { buildPlanningBoardGanttLayout, dateToDay, forwardPlanningBoardPredecessors, planningBoardPartKey, shiftedDueDate, workingPeriods } from './planningBoardGanttLayout';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -19,6 +19,18 @@ const layout = (items: GrindingPlanningBoardItem[], options: Partial<GanttLayout
 const bars = (value: ReturnType<typeof layout>) => value.groups.flatMap((group) => group.rows.flatMap((row) => row.bars));
 
 describe('planningBoardGanttLayout', () => {
+  it('retains ordinary process dependencies without allocating piece groups', () => {
+    const values = [item(), item({ itemId: 'b', processOrder: '20' }), item({ itemId: 'c', processOrder: '30' })];
+    const { predecessors, processCounts } = forwardPlanningBoardPredecessors(values);
+    expect([...predecessors]).toEqual([['b', ['a']], ['c', ['b']]]);
+    expect(processCounts).toBeUndefined();
+    for (const mode of ['backward', 'forward'] as const) {
+      const result = layout(values, { mode, now: new Date('2026-10-14T08:00:00+09:00') });
+      expect(result.groups[0]?.rows[0]?.detail).toBe('P1 · 3工程');
+      expect(bars(result).map((bar) => bar.item.itemId)).toEqual(['a', 'b', 'c']);
+    }
+  });
+
   it.each(['backward', 'forward'] as const)('groups all resources grinding first in %s mode', (mode) => {
     const options = { mode, view: 'resource' as const, resources: ['100', '584', '200', '305'],
       category: 'all' as const, resourceCategories: { '305': 'grinding', '584': 'grinding', '100': 'cutting', '200': 'cutting' } as const };
@@ -274,6 +286,25 @@ describe('forward planningBoardGanttLayout', () => {
     expect(byId.get('later')!.start).toBe(byId.get('waiting')!.end);
     expect(planningBoardOrderMetrics(result).waitMinutes).toBe(120);
   });
+  it.each(['10', ''])('keeps ordinary rows with the same or empty process order (%s) serial across resources', (processOrder) => {
+    const result = forward([
+      item({ itemId: 'b', processOrder, originalResourceCd: '584', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'a', processOrder, alternateRank: 2, requiredMinutes: 60 })
+    ]);
+    const a = bars(result).find((bar) => bar.item.itemId === 'a')!;
+    const b = bars(result).find((bar) => bar.item.itemId === 'b')!;
+    expect(b.start).toBe(a.end);
+    expect(b.waitFrom).toBeDefined();
+  });
+  it('retains explicit proposal slots when their heads cycle with process precedence', () => {
+    const result = forward([
+      item({ itemId: 'b', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'a', alternateRank: 2, requiredMinutes: 60 })
+    ], { laneOrder: { '305': ['b', 'a'] } });
+    expect(bars(result).map((bar) => bar.item.itemId)).toEqual(['b', 'a']);
+    expect(bars(result)[0]!.start).toBeCloseTo(today + 13 / 24);
+    expect(bars(result)[1]!.start).toBe(bars(result)[0]!.end);
+  });
   it('resolves reversed process ranks without repeatedly pushing the schedule forward', () => {
     const result = forward([item({ itemId: 'b', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }), item({ alternateRank: 2, requiredMinutes: 60 })]);
     const a = bars(result).find((bar) => bar.item.itemId === 'a')!;
@@ -302,5 +333,90 @@ describe('forward planningBoardGanttLayout', () => {
     expect(resourceBar.tone).toBe('planned');
     expect(resourceBar.end).toBeCloseTo(today + 1);
     expect(seibanBar.segments).toEqual(resourceBar.segments);
+  });
+});
+
+
+describe('piece gantt scheduling', () => {
+  const pieces = () => [item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', piecePosition: 1, quantity: 2, parentPlannedQuantity: 5, requiredMinutes: 40, alternateRank: 1 }),
+    item({ itemId: 'piece:b', kind: 'piece', parentItemId: 'parent', piecePosition: 2, quantity: 3, parentPlannedQuantity: 5, requiredMinutes: 60, alternateRank: 3 })];
+  const opts = (items: GrindingPlanningBoardItem[]): GanttLayoutOptions => ({ items, allocation: 'alternate', view: 'resource',
+    seibanOrder: ['26-1001'], resources: ['305', '584', '999'], dailyHoursByResource: { '305': 24, '584': 24, '999': 24 },
+    today: '2026-10-14', now: new Date('2026-10-14T08:00:00+09:00'), scale: 1 });
+  it('orders sibling chains by position before UUID, retaining the UUID fallback for missing positions', () => {
+    const values = [item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', piecePosition: 2 }),
+      item({ itemId: 'piece:z', kind: 'piece', parentItemId: 'parent', piecePosition: 1 }),
+      item({ itemId: 'piece:c', kind: 'piece', parentItemId: 'parent' }),
+      item({ itemId: 'piece:b', kind: 'piece', parentItemId: 'parent' }),
+      item({ itemId: 'next', processOrder: '20' })];
+    const expected = ['piece:z', 'piece:a', 'piece:b', 'piece:c', 'next'];
+    const { parts, predecessors } = forwardPlanningBoardPredecessors(values);
+    expect([...parts.values()][0]!.map((item) => item.itemId)).toEqual(expected);
+    expect(predecessors.get('next')).toEqual(expected.slice(0, -1));
+    const backward = buildPlanningBoardGanttLayout({ ...opts(values), view: 'seiban' });
+    expect(backward.groups[0]!.rows[0]!.bars.map((bar) => bar.item.itemId)).toEqual(expected);
+  });
+  it('keeps 40+60 minutes with B between the pieces and uses the same times in proposal and drawing', () => {
+    const values = [...pieces(), item({ itemId: 'B', fhincd: 'other', requiredMinutes: 20, alternateRank: 2 })];
+    const input = opts(values);
+    const order = planningBoardAutoOrder(input, new Set(values.map((item) => item.itemId)));
+    const result = bars(buildPlanningBoardGanttLayout({ ...input, mode: 'forward', laneOrder: order }));
+    expect(result.map((bar) => bar.item.itemId)).toEqual(['piece:a', 'B', 'piece:b']);
+    expect((result[2]!.end! - result[0]!.start!) * 1440).toBeCloseTo(120);
+    for (const bar of result) expect(bar.segments!.reduce((sum, segment) => sum + (segment.end - segment.start) * 1440, 0)).toBeCloseTo(bar.item.requiredMinutes!);
+  });
+  it('does not count overlapping sibling pieces as process conflicts or extra processes', () => {
+    const values = pieces();
+    values[1] = { ...values[1]!, effectiveResourceCd: '584' };
+    const result = buildPlanningBoardGanttLayout({ ...opts(values), view: 'seiban' });
+    expect(result.overlapCount).toBe(0);
+    expect(bars(result).every((bar) => !bar.flagged && bar.overlaps.length === 0)).toBe(true);
+    expect(result.groups[0]!.rows[0]!.detail).toBe('P1 · 1工程');
+    expect(result.groups[0]!.rows[0]!.connectors).toEqual([]);
+    const resource = buildPlanningBoardGanttLayout(opts(values));
+    expect(resource.overlapCount).toBe(0);
+    expect(bars(resource).every((bar) => !bar.flagged)).toBe(true);
+    const next = item({ itemId: 'next', processOrder: '20', requiredMinutes: 10 });
+    const conflicted = buildPlanningBoardGanttLayout({ ...opts([...values, next]), view: 'seiban' });
+    expect(conflicted.overlapCount).toBe(1);
+    expect(bars(conflicted).every((bar) => bar.flagged)).toBe(true);
+    expect(conflicted.groups[0]!.rows[0]!.detail).toBe('P1 · 2工程');
+  });
+  it.each(['backward', 'forward'] as const)('shares the process count with seiban details for mixed chains in %s mode', (mode) => {
+    const values = [...pieces(), item({ itemId: 'next', processOrder: '20', requiredMinutes: 10 }),
+      item({ itemId: 'independent', fhincd: 'P2' }), item({ itemId: 'independent-next', fhincd: 'P2', processOrder: '20' })];
+    const result = buildPlanningBoardGanttLayout({ ...opts(values), mode, view: 'seiban' });
+    expect(result.groups[0]?.rows.map((row) => row.detail)).toEqual(['P1 · 2工程', 'P2 · 2工程']);
+    const { predecessors, processCounts } = forwardPlanningBoardPredecessors(values);
+    expect(predecessors.get('next')).toEqual(['piece:a', 'piece:b']);
+    expect(processCounts?.get(planningBoardPartKey(values[0]!))).toBe(2);
+    expect(predecessors.get('independent-next')).toEqual(['independent']);
+  });
+  it('runs sibling pieces on separate resources and waits for every earlier unfinished item', () => {
+    const values = pieces(); values[1] = { ...values[1]!, effectiveResourceCd: '584' };
+    values.push(item({ itemId: 'next', processOrder: '20', effectiveResourceCd: '999', requiredMinutes: 10 }));
+    const input = opts(values);
+    const result = bars(buildPlanningBoardGanttLayout({ ...input, mode: 'forward' }));
+    const a = result.find((bar) => bar.item.itemId === 'piece:a')!;
+    const b = result.find((bar) => bar.item.itemId === 'piece:b')!;
+    expect(a.start).toBe(b.start);
+    expect(result.find((bar) => bar.item.itemId === 'next')!.start).toBe(b.end);
+    expect(planningBoardAutoOrder(input, new Set())).toEqual({ '305': ['piece:a'], '584': ['piece:b'], '999': ['next'] });
+    const done = values.map((value) => value.itemId === 'piece:b' ? { ...value, isCompleted: true } : value);
+    const compact = bars(buildPlanningBoardGanttLayout({ ...opts(done), mode: 'forward' }));
+    expect(compact.find((bar) => bar.item.itemId === 'next')!.start).toBe(a.end);
+  });
+  it.each(['backward', 'forward'] as const)('retains fractional minutes and treats zero as known in %s mode', (mode) => {
+    const values = pieces().map((value, index) => ({ ...value, requiredMinutes: index ? 2 / 3 : 1 / 3 }));
+    const result = bars(buildPlanningBoardGanttLayout({ ...opts(values), mode }));
+    expect(result.reduce((sum, bar) => sum + (bar.end! - bar.start!) * 1440, 0)).toBeCloseTo(1);
+    const zero = bars(buildPlanningBoardGanttLayout({ ...opts([item({ kind: 'piece', parentItemId: 'parent', requiredMinutes: 0 })]), mode }))[0]!;
+    expect(zero.unknown).toBe(false); expect(zero.start).toBe(zero.end);
+  });
+  it('resolves reversed saved resource ranks without bypassing unfinished predecessors', () => {
+    const values = [...pieces(), item({ itemId: 'next', processOrder: '20', alternateRank: 0, requiredMinutes: 10 })];
+    const result = bars(buildPlanningBoardGanttLayout({ ...opts(values), mode: 'forward' }));
+    const next = result.find((bar) => bar.item.itemId === 'next')!;
+    expect(next.start).toBe(Math.max(...result.filter((bar) => bar.item.kind === 'piece').map((bar) => bar.end!)));
   });
 });

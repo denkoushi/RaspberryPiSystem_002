@@ -34,7 +34,7 @@ export function createGrindingPlanningBoardStartupWarmup(options: {
           try {
             await warmGrindingPlanningBoardPayload({
               siteKey, category, view: 'resource', completionFilter: 'incomplete',
-              includeLoad: false, snapshotStore: options.snapshotStore
+              includeLoad: false, includePieces: true, snapshotStore: options.snapshotStore
             });
           } catch (error) {
             logger.warn({ err: error, siteKey, category }, 'Grinding planning board startup payload warmup failed');

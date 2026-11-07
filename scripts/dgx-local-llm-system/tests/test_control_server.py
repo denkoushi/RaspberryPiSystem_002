@@ -1000,6 +1000,9 @@ class BusinessSwitchContractTests(unittest.TestCase):
              patch.object(self.module.time, 'sleep', side_effect=AssertionError('probe retried')):
             real_monitor(config, identity, profile)
         self.assertEqual(self.state_value()['businessTransition'], 'ready')
+        resource = json.loads(Path(config.resource_state_path).read_text())
+        self.assertEqual(resource['status'], 'ready')
+        self.assertEqual(resource['modelProfileId'], profile.id)
 
     def test_monitor_accepts_glm_probe_answered_only_in_reasoning(self):
         from unittest.mock import patch
@@ -1018,6 +1021,9 @@ class BusinessSwitchContractTests(unittest.TestCase):
              patch.object(self.module.time, 'sleep', side_effect=AssertionError('probe retried')):
             real_monitor(config, identity, profile)
         self.assertEqual(self.state_value()['businessTransition'], 'ready')
+        resource = json.loads(Path(config.resource_state_path).read_text())
+        self.assertEqual(resource['status'], 'ready')
+        self.assertEqual(resource['modelProfileId'], profile.id)
 
     def test_start_defensively_fails_loading_when_monitor_died(self):
         self.request(modelProfileId=self.deep, reason='business-model-selection')
@@ -1156,3 +1162,67 @@ class BusinessSwitchContractTests(unittest.TestCase):
         self.assertEqual(current['selectionRevision'], previous['selectionRevision'])
         self.assertEqual(current['businessTransition'], 'failed')
         self.assertEqual(current['businessFailureReason'], 'business_runtime_stop_unverified')
+
+
+    def test_readiness_failure_logs_last_error_once_and_updates_resource(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        errors = [subprocess.CalledProcessError(1, 'secret command', stderr='first error'),
+                  subprocess.CalledProcessError(1, 'secret command', output='probe stdout', stderr='last error')]
+        output = io.StringIO()
+        with patch.dict('os.environ', {'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': 'test-key'}), \
+             patch.object(self.module.time, 'monotonic', side_effect=[0, 1, 2, 1201]), \
+             patch.object(self.module.time, 'sleep'), \
+             patch.object(self.module.urllib.request, 'urlopen', side_effect=errors), \
+             patch('sys.stderr', output):
+            self.monitor.temp_original(config, identity, profile)
+        record = json.loads(output.getvalue())
+        self.assertEqual(record['action'], 'readiness')
+        self.assertEqual(record['generation'], identity[2])
+        self.assertEqual(record['stderr'], 'last error')
+        self.assertEqual(record['stdout'], 'probe stdout')
+        self.assertNotIn('first error', output.getvalue())
+        self.assertEqual(self.state_value()['businessTransition'], 'failed')
+        self.assertEqual(json.loads(Path(config.resource_state_path).read_text())['status'], 'failed')
+
+    def test_stale_readiness_does_not_overwrite_resource_state(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        value = self.state_value()
+        self.state.write_text(json.dumps({**value, 'businessGeneration': 'new-generation'}))
+        before = Path(config.resource_state_path).read_text()
+        with patch.dict('os.environ', {'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': 'test-key'}), \
+             patch.object(self.module.urllib.request, 'urlopen') as probe:
+            self.monitor.temp_original(config, identity, profile)
+        probe.assert_not_called()
+        self.assertEqual(Path(config.resource_state_path).read_text(), before)
+
+    def test_business_command_failures_log_bounded_redacted_output(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.deep, reason='business-model-selection')
+        def fail(*args):
+            raise subprocess.CalledProcessError(1, 'never log command',
+                output='runtime-token stdout-tail', stderr='x' * 5000 + '\nAPI_KEY=hidden Bearer unknown-token stderr-tail')
+        self.handler = self.module.make_handler(self.config, fail)
+        for path, code in (('/start', 'business_runtime_start_failed'),
+                           ('/stop', 'business_runtime_stop_unverified'),
+                           ('/stop-force', 'business_runtime_stop_unverified')):
+            value = self.state_value()
+            self.state.write_text(json.dumps({**value, 'businessTransition': 'failed'}))
+            output = io.StringIO()
+            with patch('sys.stderr', output):
+                status, payload = self.request(path)
+            self.assertEqual((status, payload['code']), (503, code))
+            line = next(line for line in output.getvalue().splitlines() if line.startswith('{'))
+            self.assertLessEqual(len(line), 2000)
+            record = json.loads(line)
+            self.assertEqual(record['action'], path[1:])
+            self.assertEqual(record['profileId'], self.deep)
+            self.assertEqual(record['generation'], self.state_value()['businessGeneration'])
+            self.assertEqual(record['exceptionType'], 'CalledProcessError')
+            self.assertIn('stderr-tail', record['stderr'])
+            self.assertIn('stdout-tail', record['stdout'])
+            for secret in ('runtime-token', 'hidden', 'unknown-token', 'never log command'):
+                self.assertNotIn(secret, line)

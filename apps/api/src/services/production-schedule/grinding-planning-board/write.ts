@@ -1,6 +1,6 @@
 import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, readSessakuPieceSets, resolveSessakuPieceItemKeys, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardSeibanChecksRequest, GrindingPlanningBoardSeibanChecksResponse, GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -13,7 +13,7 @@ import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balan
 import { isGrindingPlanningBoardSpecialDueKind, resolveGrindingPlanningBoardSpecialDueExpiresAt } from '../grinding-planning-board-special-due.js';
 import { MAX_ALTERNATE_RANK, planningBoardArrivalDate, asRowData, buildGrindingPlanningBoardLogicalKey, decodeRowItemId, isCategoryResource, logicalKeyFseiban, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
 import { readMasterResourceCds, readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds, readWinnerRowsByLogicalKeyFseibans } from './source.js';
-import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, stateOrder } from './state.js';
+import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, readStateUncheckedFseibans, stateUncheckedFseibans, stateOrder } from './state.js';
 
 
 async function readLivePieceKeys(client: Prisma.TransactionClient, rowIds: readonly string[]): Promise<SessakuPieceLogicalKey[]> {
@@ -499,7 +499,34 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
   }
 }
 
-export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: string; sourceRevision: string; fseibans: string[] }): Promise<{ sourceRevision: string; seibanOrder: string[] }> {
+export async function saveSeibanOrderInTransaction(client: Prisma.TransactionClient, current: PlanningState, nextOrder: string[], newUncheckedFseibans: readonly string[] = []): Promise<PlanningState> {
+  if (JSON.stringify(stateOrder(current)) === JSON.stringify(nextOrder)) return current;
+  const previousOrder = new Set(stateOrder(current));
+  const unchecked = new Set([...await readStateUncheckedFseibans(current, client), ...newUncheckedFseibans.filter((fseiban) => !previousOrder.has(fseiban))]);
+  return client.productionScheduleGrindingPlanningBoardState.update({ where: { id: current.id }, data: {
+    seibanOrder: nextOrder, uncheckedFseibans: nextOrder.filter((fseiban) => unchecked.has(fseiban)), version: { increment: 1 }
+  } });
+}
+
+export async function updateGrindingPlanningBoardSeibanChecks(params: GrindingPlanningBoardSeibanChecksRequest & { siteKey: string }): Promise<GrindingPlanningBoardSeibanChecksResponse> {
+  await ensurePlanningBoardState(params.siteKey);
+  try {
+    const state = await prisma.$transaction(async (client) => {
+      const current = await lockState(client, params.siteKey);
+      assertBoardRevision(params.sourceRevision, current);
+      const requested = new Set(normalizeUniqueFseibans(params.uncheckedFseibans));
+      const uncheckedFseibans = stateOrder(current).filter((fseiban) => requested.has(fseiban));
+      if (current.uncheckedFseibans != null && JSON.stringify(stateUncheckedFseibans(current)) === JSON.stringify(uncheckedFseibans)) return current;
+      return client.productionScheduleGrindingPlanningBoardState.update({ where: { id: current.id }, data: { uncheckedFseibans, version: { increment: 1 } } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return { sourceRevision: boardRevision(state), uncheckedFseibans: stateUncheckedFseibans(state) };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ORDER');
+    throw error;
+  }
+}
+
+export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: string; sourceRevision: string; fseibans: string[]; newUncheckedFseibans?: readonly string[] }): Promise<{ sourceRevision: string; seibanOrder: string[]; uncheckedFseibans: string[] }> {
   const normalizedOrder = normalizeUniqueFseibans(params.fseibans);
   if (normalizedOrder.length > KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX) {
     throw new ApiError(400, `登録できる製番は${KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX}件までです`, undefined, 'SEIBAN_LIMIT_EXCEEDED');
@@ -514,10 +541,9 @@ export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: 
     const state = await prisma.$transaction(async (client) => {
       const current = await lockState(client, params.siteKey);
       assertBoardRevision(params.sourceRevision, current);
-      if (JSON.stringify(stateOrder(current)) === JSON.stringify(nextOrder)) return current;
-      return await client.productionScheduleGrindingPlanningBoardState.update({ where: { id: current.id }, data: { seibanOrder: nextOrder, version: { increment: 1 } } }) as PlanningState;
+      return saveSeibanOrderInTransaction(client, current, nextOrder, params.newUncheckedFseibans);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    return { sourceRevision: boardRevision(state), seibanOrder: stateOrder(state) };
+    return { sourceRevision: boardRevision(state), seibanOrder: stateOrder(state), uncheckedFseibans: await readStateUncheckedFseibans(state, prisma) };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ORDER');
     throw error;

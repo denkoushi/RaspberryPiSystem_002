@@ -35,7 +35,7 @@ export type PlanningBoardResourceViewProps = {
   selectedItemIds: ReadonlySet<string>;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPendingItemIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onResourceDrop?: (item: GrindingPlanningBoardItem, resourceCd: string) => void;
   onResourceReorder?: (
@@ -49,6 +49,7 @@ export type PlanningBoardResourceViewProps = {
   nowMs?: number;
   disabled?: boolean;
   resourceDragDisabled?: boolean;
+  bulkDisabled?: boolean;
   rankDisabled?: boolean | ((item: GrindingPlanningBoardItem) => boolean);
 };
 
@@ -162,7 +163,7 @@ export function PlanningBoardResourceView({
   selectedItemIds,
   onToggleItem,
   onCompleteToggle,
-  completionPendingRowIds,
+  completionPendingItemIds,
   onResourceClick,
   onResourceDrop,
   onResourceReorder,
@@ -172,7 +173,8 @@ export function PlanningBoardResourceView({
   nowMs,
   disabled = false,
   resourceDragDisabled = false,
-  rankDisabled = false
+  rankDisabled = false,
+  bulkDisabled = false
 }: PlanningBoardResourceViewProps) {
   const pendingResourceDragRef = useRef<PendingResourceDrag | null>(null);
   const suppressedResourceClickPointerIdRef = useRef<number | null>(null);
@@ -612,7 +614,7 @@ export function PlanningBoardResourceView({
                     selectedItemIds={selectedItemIds}
                     onToggleItem={onToggleItem}
                     onCompleteToggle={onCompleteToggle}
-                    completionPendingRowIds={completionPendingRowIds}
+                    completionPendingItemIds={completionPendingItemIds}
                     onResourceClick={handleResourceClick}
                     onResourcePointerDown={handleResourcePointerDown}
                     resourceDragDisabled={resourceDragDisabled}
@@ -622,6 +624,7 @@ export function PlanningBoardResourceView({
                     nowMs={nowMs}
                     disabled={disabled}
                     rankDisabled={rankDisabled}
+                    bulkDisabled={bulkDisabled}
                     showRank
                     showSeiban
                     seibanRankByFseiban={seibanRankByFseiban}

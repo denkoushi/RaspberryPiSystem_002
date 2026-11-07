@@ -8,7 +8,7 @@ import {
 } from '../../../api/hooks';
 
 import { LoadBalancingCellDetail } from './LoadBalancingCellDetail';
-import { addMonths, currentYearMonth, formatHours, formatLoadBalancingMachineName, formatYearMonthSlash } from './loadBalancingFormat';
+import { addMonths, currentYearMonth, formatHours, formatYearMonthSlash } from './loadBalancingFormat';
 import { LoadBalancingHeatmap, type HeatmapResourceRow, type HeatmapSelection } from './LoadBalancingHeatmap';
 import {
   LATE_BUCKET,
@@ -21,7 +21,7 @@ import {
   sumOverMinutes,
   type LoadMatrix,
   type ScenarioAction,
-  type ScenarioActionType
+  summarizeScenarioActions
 } from './loadBalancingScenario';
 import { LoadBalancingScenarioBar } from './LoadBalancingScenarioBar';
 import { LoadBalancingUnallocatedPanel } from './LoadBalancingUnallocatedPanel';
@@ -34,6 +34,7 @@ import type {
 
 const SPAN_MONTHS = 6;
 const MAX_OFFSET = 6;
+const EMPTY_ACTIONS: ScenarioAction[] = [];
 
 export function useLoadBalancingWorkspaceState({
   scopeParams,
@@ -61,7 +62,7 @@ export function useLoadBalancingWorkspaceState({
   );
 
   const [scenario, setScenario] = useState<{ key: string; actions: ScenarioAction[] }>({ key: scenarioKey, actions: [] });
-  const actions = scenario.key === scenarioKey ? scenario.actions : [];
+  const actions = scenario.key === scenarioKey ? scenario.actions : EMPTY_ACTIONS;
   const setActions = useCallback(
     (update: (current: ScenarioAction[]) => ScenarioAction[]) =>
       setScenario((current) => ({ key: scenarioKey, actions: update(current.key === scenarioKey ? current.actions : []) })),
@@ -83,6 +84,8 @@ export function useLoadBalancingWorkspaceState({
 
 type WorkspaceViewProps = {
   data: ProductionScheduleLoadBalancingWorkspaceResponse;
+  workspaceSummary: ReturnType<typeof computeWorkspaceSummary>;
+  formattedMachineNames: Map<string, string>;
   thisMonth: string;
   resourceNameMap: Record<string, string[]>;
   actions: ScenarioAction[];
@@ -97,10 +100,10 @@ type WorkspaceViewProps = {
 
 export function computeWorkspaceSummary(
   data: ProductionScheduleLoadBalancingWorkspaceResponse,
-  actions: ScenarioAction[]
+  actions: ScenarioAction[],
+  baseMatrix = buildLoadMatrix(data.rows, [], data.months)
 ) {
-  const baseMatrix = buildLoadMatrix(data.rows, [], data.months);
-  const matrix = buildLoadMatrix(data.rows, actions, data.months);
+  const matrix = actions.length > 0 ? buildLoadMatrix(data.rows, actions, data.months) : baseMatrix;
   const before = sumOverMinutes(baseMatrix, data.resources, data.months);
   const after = sumOverMinutes(matrix, data.resources, data.months);
   let lateMinutes = 0;
@@ -128,6 +131,8 @@ function hasAnyLoad(matrix: LoadMatrix, resourceCd: string): boolean {
 
 export function LoadBalancingWorkspaceView({
   data,
+  workspaceSummary,
+  formattedMachineNames,
   thisMonth,
   resourceNameMap,
   actions,
@@ -140,10 +145,10 @@ export function LoadBalancingWorkspaceView({
   dueSource
 }: WorkspaceViewProps) {
   const buckets = useMemo(() => [LATE_BUCKET, ...data.months], [data.months]);
-  const { baseMatrix, matrix, before, after } = useMemo(() => computeWorkspaceSummary(data, actions), [data, actions]);
+  const { baseMatrix, matrix, before, after } = workspaceSummary;
   const machineRows = useMemo(
-    () => (machine ? data.rows.filter((row) => formatLoadBalancingMachineName(row.machineName) === machine) : null),
-    [data.rows, machine]
+    () => (machine ? data.rows.filter((row) => formattedMachineNames.get(row.machineName) === machine) : null),
+    [data.rows, formattedMachineNames, machine]
   );
   const machineMatrix = useMemo(
     () => (machineRows ? buildLoadMatrix(machineRows, actions, data.months) : null),
@@ -269,24 +274,7 @@ export function LoadBalancingWorkspaceView({
     />
   );
 
-  const summary: Array<{ type: ScenarioActionType; count: number; minutes: number }> = (
-    ['outsource', 'transfer', 'defer'] as const
-  ).map((type) => {
-    const ofType = actions.filter((action) => action.type === type);
-    const rowsById = new Map(data.rows.map((row) => [row.rowId, row]));
-    return {
-      type,
-      count: ofType.length,
-      minutes: ofType.reduce((sum, action) => {
-        const row = rowsById.get(action.rowId);
-        if (!row) return sum;
-        if (action.type === 'defer') {
-          return sum + (row.allocations.find((allocation) => allocation.bucket === action.fromBucket)?.minutes ?? 0);
-        }
-        return sum + row.totalMinutes;
-      }, 0)
-    };
-  });
+  const summary = useMemo(() => summarizeScenarioActions(data.rows, actions), [data.rows, actions]);
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-2">
@@ -319,6 +307,7 @@ export function LoadBalancingWorkspaceView({
           loadMinutes={readLoad(matrix, effectiveSelected.resourceCd, effectiveSelected.bucket)}
           capacityMinutes={readCapacity(selectedResource, effectiveSelected.bucket)}
           cellRows={cellRows}
+          formattedMachineNames={formattedMachineNames}
           canTransfer={Boolean(selectedResource.classCode) && effectiveSelected.bucket !== LATE_BUCKET}
           day={dayEnabled ? dayQuery.data : undefined}
           dayLoading={dayQuery.isFetching}

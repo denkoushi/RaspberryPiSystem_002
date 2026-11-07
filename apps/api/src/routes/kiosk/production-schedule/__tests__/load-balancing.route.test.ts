@@ -38,6 +38,8 @@ describe('load-balancing due source routes', () => {
         service.mockClear();
         const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/load-balancing/' + path + suffix });
         expect(response.statusCode).toBe(200);
+        expect(response.headers['content-type']).toContain('application/json');
+        expect(response.json()).toEqual({ siteKey: 'site-a' });
         expect(service).toHaveBeenCalledWith(expect.objectContaining({ dueSource }));
       }
       service.mockClear();

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   updateRank: vi.fn(),
   updateResourceOrder: vi.fn(),
   updateResourceOrderBulk: vi.fn(),
+  updateChecks: vi.fn(),
   updateOrder: vi.fn()
 }));
 
@@ -34,6 +35,7 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board.servic
   updateGrindingPlanningBoardRank: mocks.updateRank,
   updateGrindingPlanningBoardResourceOrder: mocks.updateResourceOrder,
   updateGrindingPlanningBoardResourceOrderBulk: mocks.updateResourceOrderBulk,
+  updateGrindingPlanningBoardSeibanChecks: mocks.updateChecks,
   updateGrindingPlanningBoardSeibanOrder: mocks.updateOrder
 }));
 
@@ -233,7 +235,7 @@ describe('grinding planning board route scope', () => {
     mocks.getLoad.mockResolvedValue(summary);
     const app = await createApp(requireClientDevice);
     try {
-      const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/load?category=cutting&siteKey=foreign-site', headers: { 'x-client-key': 'key-1' } });
+      const response = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/load?category=cutting&siteKey=foreign-site&includePieces=true', headers: { 'x-client-key': 'key-1' } });
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(summary);
       expect(requireClientDevice).toHaveBeenCalledWith('key-1');
@@ -535,6 +537,49 @@ describe('grinding planning board arrival', () => {
     mocks.updateArrival.mockRejectedValue(Object.assign(new Error('stale'), { statusCode: 409 }));
     try {
       expect((await app.inject({ method: 'PUT', url, headers: { 'x-client-key': 'key-1' }, payload })).statusCode).toBe(409);
+    } finally { await app.close(); }
+  });
+});
+
+
+describe('planning board seiban checks', () => {
+  afterEach(() => mocks.updateChecks.mockReset());
+  const url = '/kiosk/production-schedule/grinding-planning-board/seiban-checks';
+  it('writes checks using the authenticated board scope', async () => {
+    const auth = vi.fn(async () => ({ id: 'device-1' }));
+    const app = await createApp(auth);
+    const result = { sourceRevision: 'next', uncheckedFseibans: ['A'] };
+    mocks.updateChecks.mockResolvedValue(result);
+    try {
+      const response = await app.inject({ method: 'PUT', url, headers: { 'x-client-key': 'key-1' },
+        payload: { siteKey: 'foreign', sourceRevision: 'current', uncheckedFseibans: [' A '] } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(auth).toHaveBeenCalledWith('key-1');
+      expect(mocks.updateChecks).toHaveBeenCalledWith({ siteKey: 'site-a', sourceRevision: 'current', uncheckedFseibans: ['A'] });
+    } finally { await app.close(); }
+  });
+  it('returns 409 on a concurrent update', async () => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.updateChecks.mockRejectedValue(Object.assign(new Error('stale'), { statusCode: 409 }));
+    try {
+      const response = await app.inject({ method: 'PUT', url, payload: { sourceRevision: 'stale', uncheckedFseibans: [] } });
+      expect(response.statusCode).toBe(409);
+    } finally { await app.close(); }
+  });
+  it.each([{ sourceRevision: '', uncheckedFseibans: [] }, { sourceRevision: 'r', uncheckedFseibans: [''] },
+    { sourceRevision: 'r', uncheckedFseibans: Array(101).fill('A') }])('rejects invalid checks: %j', async (payload) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      expect((await app.inject({ method: 'PUT', url, payload })).statusCode).toBe(400);
+      expect(mocks.updateChecks).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it('requires client authentication', async () => {
+    const app = await createApp(async () => { throw Object.assign(new Error('unauthorized'), { statusCode: 401 }); });
+    try {
+      expect((await app.inject({ method: 'PUT', url, payload: { sourceRevision: 'r', uncheckedFseibans: [] } })).statusCode).toBe(401);
+      expect(mocks.updateChecks).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
 });

@@ -17,7 +17,8 @@ import {
   updateGrindingPlanningBoardRank,
   updateGrindingPlanningBoardResourceOrder,
   updateGrindingPlanningBoardResourceOrderBulk,
-  updateGrindingPlanningBoardSeibanOrder
+  updateGrindingPlanningBoardSeibanOrder,
+  updateGrindingPlanningBoardSeibanChecks
 } from '../../../services/production-schedule/grinding-planning-board.service.js';
 import {
   getGrindingPlanningBoardDueScope,
@@ -221,8 +222,9 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
   app.get('/kiosk/production-schedule/grinding-planning-board/load', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
+    // Older clients may send includePieces; load always includes pieces, so accept and ignore it.
     const query = z.object({ category: grindingPlanningBoardCategorySchema, includePieces: z.enum(['true', 'false']).optional().transform((value) => value === 'true') }).parse(request.query);
-    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category, ...(query.includePieces ? { includePieces: true } : {}) });
+    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category });
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-detail', { config: { rateLimit: false } }, async (request) => {
@@ -294,6 +296,17 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceOrderBulkBodySchema.parse(request.body);
     const result = await updateGrindingPlanningBoardResourceOrderBulk({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/seiban-checks', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = z.object({ sourceRevision: sourceRevisionSchema,
+      uncheckedFseibans: z.array(z.string().trim().min(1).max(100)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX)
+    }).parse(request.body);
+    const result = await updateGrindingPlanningBoardSeibanChecks({ siteKey: scope.siteKey, ...body });
     void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
     return result;
   });

@@ -144,6 +144,33 @@ describe('resolveSeibanMachineDisplayNamesForWinnerRows', () => {
     expect(queryRaw).not.toHaveBeenCalled();
   });
 
+  it('winner が空なら全製番モードはクエリせず、明示製番モードは補完を維持する', async () => {
+    expect(await resolveSeibanMachineDisplayNamesForWinnerRows({ winnerRowIds: [] })).toEqual({ machineNames: {} });
+    expect(queryRaw).not.toHaveBeenCalled();
+    queryRaw.mockResolvedValue([]);
+    findByFseibans.mockResolvedValue(new Map([['S1', '補完機種']]));
+    expect(await resolveSeibanMachineDisplayNamesForWinnerRows({ fseibans: ['S1'], winnerRowIds: [] })).toEqual({ machineNames: { S1: '補完機種' } });
+  });
+
+  it('winner 集合のみから全製番を解決し、MH/SH がない製番も補完する', async () => {
+    queryRaw.mockResolvedValue([
+      { fseiban: 'S1', machineName: '機種１' },
+      { fseiban: 'S2', machineName: null },
+      { fseiban: 'S3', machineName: null },
+      { fseiban: ' S4 ', machineName: 'padded key must use supplement' }
+    ]);
+    findByFseibans.mockResolvedValue(new Map([['S2', '補完機種']]));
+    expect(await resolveSeibanMachineDisplayNamesForWinnerRows({ winnerRowIds: ['r1', 'r2', 'r3'] })).toEqual({
+      machineNames: { S1: '機種１', S2: '補完機種', S3: SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL, S4: SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL }
+    });
+    expect(findByFseibans).toHaveBeenCalledWith(['S2', 'S3', 'S4']);
+    const sql = (queryRaw.mock.calls[0]![0] as string[]).join('?');
+    expect(sql).toContain('MIN(CASE WHEN');
+    expect(sql).toContain("LIKE 'MH%'");
+    expect(sql).toContain("LIKE 'SH%'");
+    expect(sql).not.toContain('LATERAL');
+  });
+
   it('100 件を超えても 1 回のクエリで引き、進捗集計は使わず、MH/SH → 補完 → 未登録の順で埋める', async () => {
     const fseibans = Array.from({ length: 250 }, (_, index) => `S-${index}`);
     queryRaw.mockResolvedValue([

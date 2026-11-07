@@ -2,12 +2,17 @@ import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-q
 import { act, fireEvent, render as renderComponent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as machineSignalApi from '../../api/domains/machine-signal';
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
+import * as dialog from '../../components/ui/Dialog';
 import * as chipStrips from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardChipStrips';
 import * as ganttLayout from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout';
+import * as piecePopover from '../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover';
 import * as chipData from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChipData';
 import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { LARGE_SCREEN_STORAGE_KEY } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
+import * as pageGanttHook from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt';
+import * as writeQueueHook from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 
 import { ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
@@ -26,6 +31,7 @@ class TestPointerEvent extends MouseEvent {
 
 const mocks = vi.hoisted(() => ({
   completion: vi.fn(),
+  pieceCompletion: vi.fn(), pieceSplit: vi.fn(), pieceMerge: vi.fn(),
   arrival: vi.fn(),
   capacity: vi.fn(),
   snapshot: vi.fn(),
@@ -41,12 +47,24 @@ const mocks = vi.hoisted(() => ({
   rank: vi.fn(),
   resourceOrder: vi.fn(),
   resourceOrderBulk: vi.fn(),
+  checks: vi.fn(),
   order: vi.fn()
 }));
+
+// Keep the counter on the mounted component, including its own context/store renders.
+vi.mock('../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover', async (importOriginal) => {
+  const actual = await importOriginal<typeof piecePopover>();
+  return { ...actual, PlanningBoardPiecePopover: vi.fn((props: Parameters<typeof actual.PlanningBoardPiecePopover>[0]) => actual.PlanningBoardPiecePopover(props)) };
+});
 
 vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => mocks.minutes() }));
 
 vi.mock('../../api/hooks', () => ({
+  useKioskSessakuPieceMutations: () => ({
+    completion: useMutation({ mutationFn: (args: unknown) => mocks.pieceCompletion(args) }),
+    split: useMutation({ mutationFn: (args: unknown) => mocks.pieceSplit(args) }),
+    merge: useMutation({ mutationFn: (args: unknown) => mocks.pieceMerge(args) })
+  }),
   useUpdateKioskGrindingPlanningBoardArrival: () => useMutation({ mutationFn: (args: unknown) => mocks.arrival(args) }),
   useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
   useSetKioskProductionScheduleRowCompletion: () => useMutation({ mutationFn: (args: { rowId: string; intent: 'complete' | 'incomplete' }) => mocks.completion(args) }),
@@ -97,6 +115,7 @@ vi.mock('../../api/hooks', () => ({
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
   useUpdateKioskGrindingPlanningBoardResourceOrderBulk: () => ({ mutateAsync: mocks.resourceOrderBulk, isPending: false }),
   useUpdateKioskGrindingPlanningBoardResourceOrder: () => ({ mutateAsync: mocks.resourceOrder, isPending: false }),
+  useUpdateKioskGrindingPlanningBoardSeibanChecks: () => ({ mutateAsync: mocks.checks, isPending: false }),
   useUpdateKioskGrindingPlanningBoardSeibanOrder: () => ({ mutateAsync: mocks.order, isPending: false })
 }));
 
@@ -188,6 +207,976 @@ function scanOrder(raw: string) {
 }
 
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
+  const splitBoard = () => {
+    const data = fixture();
+    const parent = data.items[0]!;
+    const pieces: GrindingPlanningBoardItem[] = [2, 3].map((quantity, index) => ({ ...parent,
+      itemId: `piece:${index}`, kind: 'piece', parentItemId: parent.itemId, pieceId: `id-${index}`,
+      pieceSetVersion: 4, plannedQuantity: quantity, quantity, parentPlannedQuantity: 5, requiredMinutes: quantity * 20 }));
+    return { ...data, pieceCapabilities: { createEnabled: true, includePieces: true }, items: pieces };
+  };
+  describe('piece interactions', () => {
+    beforeEach(() => {
+      vi.spyOn(machineSignalApi, 'getMachineSignalResourceUptime').mockResolvedValue({ endDate: null, days: 30, resources: [] });
+    });
+    it.each(['split', 'merge'])('keeps unrelated selection interactive during %s', async (operation) => {
+      const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
+      if (operation === 'merge') data.items.push(fixture().items[2]!);
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let finish!: (value: unknown) => void;
+      const mutation = operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge;
+      mutation.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+      renderSeibanBoard();
+      const affected = operation === 'split' ? [data.items[0]!] : data.items.filter((item) => item.kind === 'piece');
+      for (const item of affected) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${affected[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
+      const unrelated = within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox');
+      expect(unrelated).toBeEnabled();
+      const completion = within(screen.getByTestId('planning-board-item-c')).getByRole('button', { name: '完了にする' });
+      fireEvent.click(completion); expect(mocks.completion).not.toHaveBeenCalled();
+      fireEvent.click(unrelated);
+      expect(screen.queryByText('一覧を読み込み中…')).not.toBeInTheDocument();
+      await act(async () => { finish({ pieces: [] }); });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument());
+      expect(unrelated).toBeChecked();
+      expect(unrelated).toBeEnabled(); fireEvent.click(unrelated); expect(unrelated).not.toBeChecked();
+      for (const item of affected) expect(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox')).not.toBeChecked();
+    });
+
+    it('keeps scanned seiban focus when Escape closes a quantity dialog', () => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting'; data.items[0]!.productNo = '1234567890';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      renderSeibanBoard();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+      scanOrder('1234567890');
+      const row = screen.getByTestId('planning-board-item-a');
+      expect(row).toHaveClass('ring-white');
+      fireEvent.click(within(row).getByRole('button', { name: /の数量/ }));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
+      expect(row).toHaveClass('ring-white');
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(row).not.toHaveClass('ring-white');
+    });
+
+    it.each(['editor', 'drawer'])('clears scanned seiban focus on Escape in the %s with zero pieces', (mode) => {
+      const data = fixture(); data.items[0]!.productNo = '1234567890';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      renderSeibanBoard();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      fireEvent.click(screen.getByRole('button', { name: '移動票で製番を探す' }));
+      scanOrder('1234567890');
+      const row = screen.getByTestId('planning-board-item-a');
+      expect(row).toHaveClass('ring-white');
+      if (mode === 'editor') fireEvent.click(within(row).getByRole('button', { name: '部品aの個別指定' }));
+      else fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      if (mode === 'editor') expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      else expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(row).not.toHaveClass('ring-white');
+    });
+    it.each(['split', 'merge'])('finishes %s in the page even when an in-flight GET removes the trigger first', async (operation) => {
+      let data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      const oldItems = data.items;
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      let finish!: (value: unknown) => void;
+      const mutation = operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge;
+      mutation.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+      const page = renderSeibanBoard();
+      const affected = operation === 'split' ? [oldItems[0]!] : oldItems;
+      for (const item of affected) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      const trigger = within(screen.getByTestId(`planning-board-item-${affected[0]!.itemId}`)).getByRole('button', { name: /の数量/ });
+      trigger.focus(); fireEvent.click(trigger);
+      const action = screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' });
+      await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
+      await waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
+      expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.anything(), { refetchIntervalMs: false });
+      const replacements = operation === 'split' ? splitBoard().items : [fixture().items[0]!];
+      data = { ...data, snapshotId: 'poll-before-save', items: replacements };
+      page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      expect(trigger).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
+      await act(async () => { finish({ pieces: operation === 'split' ? replacements : [] }); });
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledExactlyOnceWith({ loadAlreadyInvalidated: true }));
+      await waitFor(() => expect(within(screen.getByTestId(`planning-board-item-${replacements[0]!.itemId}`)).getByRole('button', { name: /の数量/ })).toHaveFocus());
+      expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.anything(), { refetchIntervalMs: undefined });
+      data = { ...data, snapshotId: 'old-rows-visible', items: oldItems };
+      page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      for (const item of affected) expect(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox')).not.toBeChecked();
+    });
+    it.each(['split', 'merge'])('shows a %s failure immediately and allows closing during a stalled recovery GET', async (operation) => {
+      const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      const mutation = operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge;
+      mutation.mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
+      mocks.refetch.mockReturnValue(new Promise(() => {}));
+      renderSeibanBoard();
+      if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
+      const action = screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' });
+      await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
+      const popup = screen.getByRole('dialog', { name: '数量' });
+      await waitFor(() => expect(within(popup).getByRole('alert')).toHaveTextContent('表示中のデータが更新されています。最新状態を取得してください。'));
+      expect(within(popup).queryByText('保存中…')).not.toBeInTheDocument();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
+      expect(mocks.refetch).toHaveBeenCalledTimes(1);
+    });
+    it.each(['split', 'merge'])('gates old quantities and piece completion until the %s refresh settles', async (operation) => {
+      const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard(); data.resourceCategories['305'] = 'cutting';
+      data.items.push({ ...splitBoard().items[0]!, itemId: 'piece:other', parentItemId: 'other', pieceId: 'other' });
+      if (operation === 'merge') data.items.push(fixture().items[2]!);
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      (operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge).mockResolvedValue({ pieces: data.items });
+      let finish!: (value: unknown) => void;
+      mocks.refetch.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+      renderSeibanBoard();
+      if (operation === 'merge') for (const item of data.items.slice(0, 2)) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
+      const action = screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' });
+      await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
+      for (const item of data.items) {
+        const row = within(screen.getByTestId(`planning-board-item-${item.itemId}`));
+        if (item.itemId === data.items[0]!.itemId || item.parentItemId === data.items[0]!.parentItemId && item.kind === 'piece') {
+          expect(row.getByRole('button', { name: /の数量/ })).toBeDisabled();
+        }
+        fireEvent.click(row.getByRole('button', { name: '完了にする' }));
+        expect(mocks.completion).not.toHaveBeenCalled(); expect(mocks.pieceCompletion).not.toHaveBeenCalled();
+      }
+      expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.anything(), { refetchIntervalMs: false });
+      await act(async () => { finish({ isError: true }); });
+      expect(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: '完了にする' })).toBeEnabled();
+      expect(within(screen.getByTestId('planning-board-item-c')).getByRole('button', { name: /の数量/ })).toBeEnabled();
+      expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.anything(), { refetchIntervalMs: undefined });
+    });
+    it('keeps the unrelated completion undo after splitting another parent', async () => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceSplit.mockResolvedValue({ pieces: splitBoard().items });
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-c')).getByRole('button', { name: '完了にする' }));
+      await screen.findByRole('button', { name: '↶ 戻す' });
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument());
+      expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeInTheDocument();
+    });
+    it('disables the unrelated completion undo throughout piece save and refresh', async () => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let saved!: (value: unknown) => void; let refreshed!: (value: unknown) => void;
+      mocks.pieceSplit.mockReturnValue(new Promise((resolve) => { saved = resolve; }));
+      mocks.refetch.mockReturnValue(new Promise((resolve) => { refreshed = resolve; }));
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-c')).getByRole('button', { name: '完了にする' }));
+      const undo = await screen.findByRole('button', { name: '↶ 戻す' });
+      expect(undo).toBeEnabled();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledTimes(1));
+      expect(undo).toBeDisabled(); fireEvent.click(undo);
+      expect(mocks.completion).toHaveBeenCalledTimes(1);
+      await act(async () => { saved({ pieces: splitBoard().items }); });
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+      expect(undo).toBeDisabled(); fireEvent.click(undo);
+      expect(mocks.completion).toHaveBeenCalledTimes(1);
+      await act(async () => { refreshed({ isError: false }); });
+      expect(undo).toBeEnabled(); fireEvent.click(undo);
+      await waitFor(() => expect(mocks.completion).toHaveBeenLastCalledWith(expect.objectContaining({ intent: 'incomplete' })));
+    });
+    it.each(['split', 'merge'] as const)('clears affected selections in every category after %s and keeps unrelated selections', async (operation) => {
+      const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      if (operation === 'merge') data.items.push(fixture().items[2]!);
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      (operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge).mockResolvedValue({ pieces: [] });
+      renderSeibanBoard();
+      const ids = operation === 'split' ? ['a', 'c'] : ['piece:0', 'piece:1', 'c'];
+      const select = () => { for (const id of ids) fireEvent.click(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('checkbox')); };
+      select();
+      fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
+      select();
+      // Merge requires a same-parent selection; leave the unrelated row selected in the other scope.
+      if (operation === 'merge') fireEvent.click(within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${ids[0]}`)).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+      for (const scope of ['all', 'cutting']) {
+        for (const id of ids.filter((id) => id !== 'c')) expect(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('checkbox')).not.toBeChecked();
+        if (scope === 'cutting' || operation === 'split') expect(within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox')).toBeChecked();
+        if (scope === 'all') fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
+      }
+    });
+    it('keeps zero-piece rows stable when blocked writes switch pending off', () => {
+      const data = { ...fixture(), view: 'resource' as const, pieceCapabilities: { createEnabled: false, includePieces: true } };
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let pending = false; let blocked = false;
+      const originalQueue = writeQueueHook.usePlanningBoardWriteQueue;
+      vi.spyOn(writeQueueHook, 'usePlanningBoardWriteQueue').mockImplementation((options) => ({ ...originalQueue(options), pending, blocked }));
+      const page = render(<ProductionScheduleGrindingPlanningBoardPage />); openListView();
+      pending = true; blocked = true; page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      const renders = vi.mocked(piecePopover.PlanningBoardPiecePopover); renders.mockClear();
+      const due = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardDueDate');
+      pending = false; page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      expect(renders).not.toHaveBeenCalled(); expect(due).not.toHaveBeenCalled();
+      expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.anything(), { refetchIntervalMs: undefined });
+    });
+    it.each(['ready', 'blocked', 'orderPreview'] as const)('keeps zero-piece quantity consumers stable when %s switches both ways', (mode) => {
+      const data = { ...fixture(), view: 'resource' as const, pieceCapabilities: { createEnabled: false, includePieces: true } };
+      let ready = true; let blocked = false;
+      let setPreview!: Parameters<typeof pageGanttHook.usePlanningBoardPageGantt>[0]['setOrderPreview'];
+      const originalGantt = pageGanttHook.usePlanningBoardPageGantt;
+      vi.spyOn(pageGanttHook, 'usePlanningBoardPageGantt').mockImplementation((options) => {
+        setPreview = options.setOrderPreview; return originalGantt(options);
+      });
+      mocks.snapshot.mockImplementation(() => ({ data, isComplete: ready, isLoading: false, isError: false, refetch: mocks.refetch }));
+      const originalQueue = writeQueueHook.usePlanningBoardWriteQueue;
+      vi.spyOn(writeQueueHook, 'usePlanningBoardWriteQueue').mockImplementation((options) => ({ ...originalQueue(options), blocked }));
+      const page = render(<ProductionScheduleGrindingPlanningBoardPage />); openListView();
+      const renders = vi.mocked(piecePopover.PlanningBoardPiecePopover); renders.mockClear();
+      const set = (active: boolean) => {
+        if (mode === 'orderPreview') {
+          // Exercise the preview state while keeping quantity consumers mounted in the list.
+          act(() => setPreview(active ? { sourceRevision: data.sourceRevision, current: {}, proposal: {},
+            before: { lateCount: 0, waitMinutes: 0 }, after: { lateCount: 0, waitMinutes: 0 },
+            options: { items: data.items, seibanOrder: data.seibanOrder, resources: data.resources,
+              dailyHoursByResource: {}, today: '2026-09-11', scale: 2, allocation: 'alternate', view: 'resource' } } : null));
+        }
+        else { ready = mode === 'ready' ? !active : true; blocked = mode === 'blocked' && active; page.rerender(<ProductionScheduleGrindingPlanningBoardPage />); }
+      };
+      set(true); expect(renders).not.toHaveBeenCalled();
+      set(false); expect(renders).not.toHaveBeenCalled();
+    });
+    it('refreshes after a successful merge with creation disabled even when its trigger disappears', async () => {
+      const data = splitBoard(); data.pieceCapabilities.createEnabled = false;
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceMerge.mockResolvedValue({ pieces: [] });
+      renderSeibanBoard();
+      for (const entry of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${entry.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /の数量/ })).not.toBeInTheDocument();
+    });
+    it('closes a saved popup before starting a slow refresh and uses the existing list failure display', async () => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceSplit.mockResolvedValue({ pieces: splitBoard().items });
+      let finish!: (result: unknown) => void;
+      mocks.refetch.mockImplementation(() => {
+        expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
+        return new Promise((resolve) => { finish = resolve; });
+      });
+      const page = renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+      expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: true, refetch: mocks.refetch });
+      await act(async () => { finish({ isError: true }); });
+      page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      expect(screen.getByText('一覧を読み込めませんでした。')).toBeInTheDocument();
+    });
+    it.each(['loading', 'saving'])('disables all table completion while %s (loading keeps ordinary completion enabled)', async (phase) => {
+      const data = splitBoard(); data.resourceCategories['305'] = 'cutting';
+      data.items.push({ ...data.items[0]!, itemId: 'piece:other', pieceId: 'other', parentItemId: 'other' }, fixture().items[2]!);
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, isComplete: phase !== 'loading', refetch: mocks.refetch });
+      mocks.pieceSplit.mockReturnValue(new Promise(() => {}));
+      renderSeibanBoard();
+      if (phase === 'saving') {
+        fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
+        await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+        await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledTimes(1));
+      }
+      for (const entry of data.items) {
+        const button = within(screen.getByTestId(`planning-board-item-${entry.itemId}`)).getByRole('button', { name: '完了にする' });
+        if (phase === 'saving') { fireEvent.click(button); expect(mocks.completion).not.toHaveBeenCalled(); expect(mocks.pieceCompletion).not.toHaveBeenCalled(); }
+        else if (entry.kind === 'piece') expect(button).toBeDisabled();
+        else expect(button).toBeEnabled();
+      }
+    });
+    it('opens a saving explanation without rerendering all ordinary quantities when the write queue becomes pending', async () => {
+      const data = { ...fixture(), view: 'resource' as const, pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let pending = false;
+      const originalQueue = writeQueueHook.usePlanningBoardWriteQueue;
+      vi.spyOn(writeQueueHook, 'usePlanningBoardWriteQueue').mockImplementation((options) => ({ ...originalQueue(options), pending }));
+      const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+      openListView();
+      const renders = vi.mocked(piecePopover.PlanningBoardPiecePopover); renders.mockClear();
+      pending = true;
+      page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      expect(renders).not.toHaveBeenCalled();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
+      const popup = screen.getByRole('dialog', { name: '数量' });
+      expect(within(popup).getByText('保存中…')).toBeInTheDocument();
+      expect(popup.firstElementChild).not.toHaveClass('!border-red-500');
+      expect(within(popup).getByRole('button', { name: '分ける' })).toBeDisabled();
+      expect(mocks.pieceSplit).not.toHaveBeenCalled();
+    });
+
+    it.each(['seiban', 'resource'])('updates only the changed piece row while merging across panes (%s)', async (view) => {
+      const data = splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      data.items[1] = { ...data.items[1]!, fseiban: '26-1042' };
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      renderSeibanBoard();
+      if (view === 'resource') fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      const dueSpy = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardDueDate');
+      const select = (index: number) => fireEvent.click(within(screen.getByTestId(`planning-board-item-piece:${index}`)).getByRole('checkbox'));
+      try {
+        select(0);
+        expect(dueSpy.mock.calls.map(([item]) => item.itemId)).toEqual(['piece:0']);
+        dueSpy.mockClear(); select(1);
+        expect(dueSpy.mock.calls.map(([item]) => item.itemId)).toEqual(['piece:1']);
+        fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'まとめる' })).toBeEnabled());
+        fireEvent.keyDown(window, { key: 'Escape' });
+        dueSpy.mockClear(); select(1);
+        expect(dueSpy.mock.calls.map(([item]) => item.itemId)).toEqual(['piece:1']);
+        fireEvent.click(within(screen.getByTestId('planning-board-item-piece:1')).getByRole('button', { name: /の数量/ }));
+        expect(screen.queryByRole('button', { name: 'まとめる' })).not.toBeInTheDocument();
+        fireEvent.keyDown(window, { key: 'Escape' });
+        fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
+        expect(screen.queryByRole('button', { name: 'まとめる' })).not.toBeInTheDocument();
+      } finally { dueSpy.mockRestore(); }
+    });
+    it.each(['split', 'merge'])('refreshes a failed %s for validation, server and network failures', async (operation) => {
+      const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      const mutation = operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge;
+      mutation.mockRejectedValueOnce({ isAxiosError: true, response: { status: 400 } })
+        .mockRejectedValueOnce({ isAxiosError: true, response: { status: 500 } })
+        .mockRejectedValueOnce(new Error('network unavailable'));
+      renderSeibanBoard();
+      if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+        await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(attempt));
+        expect(mutation).toHaveBeenCalledTimes(attempt);
+        expect(screen.getByRole('dialog', { name: '数量' })).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled());
+      }
+    });
+    it.each(['pieceId', 'pieceSetVersion'] as const)('disables invalid pieces when %s is missing', (field) => {
+      const data = splitBoard();
+      data.pieceCapabilities.createEnabled = false;
+      data.items = data.items.map((item) => ({ ...item, [field]: undefined }));
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      renderSeibanBoard();
+      for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      const row = within(screen.getByTestId('planning-board-item-piece:0'));
+      expect(row.getByRole('button', { name: /の数量/ })).toBeDisabled();
+      expect(row.getByRole('button', { name: '完了にする' })).toBeDisabled();
+      expect(mocks.pieceMerge).not.toHaveBeenCalled();
+    });
+    it('keeps an open split action disabled after a rank conflict without calling it saving', async () => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.rank.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
+      renderSeibanBoard();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
+      chooseResourceRank('部品b', 1);
+      await screen.findByRole('button', { name: '最新状態を取得' });
+      expect(screen.getByRole('button', { name: '分ける' })).toBeDisabled();
+      expect(screen.queryByText('保存中…')).not.toBeInTheDocument();
+      expect(mocks.pieceSplit).not.toHaveBeenCalled();
+    });
+    it('disables piece completion during queued writes while retaining ordinary completion', async () => {
+      const data = splitBoard();
+      const ordinary = fixture().items[2]!;
+      data.items.push(ordinary);
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.rank.mockReturnValue(new Promise(() => {}));
+      renderSeibanBoard();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      chooseResourceRank('部品c', 1);
+      await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(1));
+      for (const item of data.items) {
+        const button = within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('button', { name: '完了にする' });
+        if (item.kind === 'piece') expect(button).toBeDisabled();
+        else expect(button).toBeEnabled();
+      }
+    });
+    it.each([2, 3])('keeps a pinned proposal unchanged with the HEAD fallback when precedence conflicts (rank=%s)', (rank) => {
+      const data = fixture();
+      data.items = [{ ...data.items[0]!, alternateRank: 1, processOrder: '20', orderPinned: true },
+        { ...data.items[0]!, itemId: 'pre', alternateRank: rank, processOrder: '10' }];
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      fireEvent.click(screen.getByRole('button', { name: '今日から' }));
+      fireEvent.click(screen.getByRole('button', { name: '並べ替え', exact: true }));
+      expect(screen.getByText('並べ替える必要はありません')).toBeInTheDocument();
+      expect(screen.queryByText('工程順と固定した順番が競合しています。')).not.toBeInTheDocument();
+      expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+    });
+    it.each(['split', 'merge'])('refreshes a stale %s without resending or locking the board', async (operation) => {
+      const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      const mutation = operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge;
+      mutation.mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
+      renderSeibanBoard();
+      if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+      expect(mutation).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: '最新状態を取得' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      expect(screen.getAllByRole('button', { name: '部品aの個別指定' }).every((button) => !button.hasAttribute('disabled'))).toBe(true);
+    });
+    it('requests pieces and load explicitly while hiding splitting on an older server', () => {
+      renderSeibanBoard();
+      expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ includePieces: true }), expect.anything());
+      expect(mocks.load).toHaveBeenLastCalledWith('grinding');
+      expect(screen.queryByRole('button', { name: /の数量/ })).not.toBeInTheDocument();
+    });
+    it.each(['seiban', 'focus', 'resource'])('keeps piece operations disabled until the full board is loaded (%s)', (mode) => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, isComplete: false, refetch: mocks.refetch });
+      renderSeibanBoard();
+      if (mode === 'resource') fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      if (mode === 'focus') fireEvent.click(screen.getByRole('button', { name: '製番26-1041を広げる' }));
+      expect(screen.getAllByRole('button', { name: /の数量/ }).every((button) => button.hasAttribute('disabled'))).toBe(true);
+      expect(mocks.pieceSplit).not.toHaveBeenCalled();
+    });
+    it('splits a parent and refreshes the full snapshot', async () => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.items[0]!.plannedQuantity = 5; data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceSplit.mockResolvedValue({ pieces: splitBoard().items });
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledExactlyOnceWith({ parentItemId: 'a', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'revision-a' }));
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+    });
+    it.each([2, 5])('hands focus to the first new piece after splitting quantity %s (including unsplittable pieces)', async (quantity) => {
+      let data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      data.items[0]!.plannedQuantity = quantity;
+      const pieces = splitBoard().items.map((item, index) => ({ ...item, plannedQuantity: quantity === 2 ? 1 : index + 2 }));
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      mocks.pieceSplit.mockResolvedValue({ pieces });
+      mocks.refetch.mockImplementation(async () => {
+        data = { ...data, snapshotId: 'split-snapshot', items: pieces };
+        return { data };
+      });
+      renderSeibanBoard();
+      const trigger = within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ });
+      trigger.focus(); fireEvent.click(trigger);
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(quantity === 2
+        ? within(screen.getByTestId('planning-board-item-piece:0')).getByRole('checkbox')
+        : within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ })).toHaveFocus());
+      expect(trigger).not.toBeInTheDocument();
+    });
+    it.each(['split', 'merge'])('keeps the %s popup open when a completion starts before its action', async (operation) => {
+      const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let finish!: (value: unknown) => void;
+      mocks.completion.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+      mocks.pieceCompletion.mockReturnValue(new Promise(() => {}));
+      if (operation === 'merge') data.items.push(fixture().items[1]!);
+      renderSeibanBoard();
+      if (operation === 'merge') for (const item of data.items.filter((candidate) => candidate.kind === 'piece')) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      const row = screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`);
+      fireEvent.click(within(row).getByRole('button', { name: /の数量/ }));
+      const action = screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' });
+      await waitFor(() => expect(action).toBeEnabled());
+      act(() => {
+        fireEvent.click(within(screen.getByTestId('planning-board-item-b')).getByRole('button', { name: '完了にする' }));
+        fireEvent.click(action);
+      });
+      await waitFor(() => expect(within(screen.getByRole('dialog', { name: '数量' })).getByText('保存中…')).toBeInTheDocument());
+      expect(screen.getByRole('dialog', { name: '数量' }).firstElementChild).not.toHaveClass('!border-red-500');
+      expect(mocks.pieceSplit).not.toHaveBeenCalled(); expect(mocks.pieceMerge).not.toHaveBeenCalled();
+      await act(async () => { finish({}); });
+      await waitFor(() => expect(action).toBeEnabled());
+      expect(within(screen.getByRole('dialog', { name: '数量' })).queryByText('保存中…')).not.toBeInTheDocument();
+    });
+    it('uses all acknowledged sibling revisions for consecutive completions before refetch', async () => {
+      const data = splitBoard();
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      const savedPieces = data.items.map((item, index) => ({ ...item, itemRevision: `saved-${index}`, pieceSetVersion: 5,
+        isCompleted: index === 0, completionSource: index === 0 ? 'manual' as const : null }));
+      mocks.pieceCompletion.mockResolvedValueOnce({ pieces: savedPieces }).mockResolvedValueOnce({
+        pieces: savedPieces.map((item) => ({ ...item, isCompleted: true, completionSource: 'manual', pieceSetVersion: 6 }))
+      });
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
+      await screen.findByText('完了にしました');
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:1')).getByRole('button', { name: '完了にする' }));
+      await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenLastCalledWith({ pieceId: 'id-1', intent: 'complete',
+        expectedPieceSetVersion: 5, itemRevision: 'saved-1' }));
+      expect(mocks.pieceCompletion).toHaveBeenCalledTimes(2);
+      expect(mocks.refetch).toHaveBeenCalledTimes(2);
+    });
+    it('ignores a second sibling completion before the first PUT responds', async () => {
+      const data = splitBoard();
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let finish!: (value: unknown) => void;
+      mocks.pieceCompletion.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+      renderSeibanBoard();
+      const clickComplete = (id: number) => fireEvent.click(within(screen.getByTestId(`planning-board-item-piece:${id}`)).getByRole('button', { name: '完了にする' }));
+      act(() => { clickComplete(0); });
+      expect(screen.queryByTestId('planning-board-item-piece:0')).not.toBeInTheDocument();
+      act(() => { clickComplete(1); });
+      await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1));
+      const pieces = data.items.map((item, index) => ({ ...item, pieceSetVersion: 5, itemRevision: `saved-${index}`,
+        isCompleted: index === 0, completionSource: index === 0 ? 'manual' as const : null }));
+      await act(async () => finish({ pieces }));
+      mocks.pieceCompletion.mockResolvedValue({ pieces });
+      clickComplete(1);
+      await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenLastCalledWith({ pieceId: 'id-1', intent: 'complete', expectedPieceSetVersion: 5, itemRevision: 'saved-1' }));
+    });
+    it('uses the GET revision for a split after only the parent CSV changed at the same piece set and own version', async () => {
+      let data = splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      const pieces = data.items.map((item, index) => ({ ...item, pieceSetVersion: 5, itemRevision: `saved-${index}`,
+        isCompleted: index === 0, completionSource: index === 0 ? 'manual' as const : null }));
+      mocks.pieceCompletion.mockResolvedValue({ pieces });
+      const view = renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
+      await screen.findByText('完了にしました');
+      data = { ...data, snapshotId: 'matched', items: pieces };
+      view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      data = { ...data, snapshotId: 'csv-only', items: pieces.map((item) => ({ ...item, itemRevision: 'parent-csv-new' })) };
+      view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      mocks.pieceSplit.mockResolvedValue({ pieces: data.items });
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:1')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledWith(expect.objectContaining({ expectedPieceSetVersion: 5, itemRevision: 'parent-csv-new' })));
+    });
+    it.each(['parent-gone', 'import', 'merged', 'sibling-gone'])('does not resurrect pieces removed by a GET (%s)', async (change) => {
+      let data = splitBoard();
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      mocks.pieceCompletion.mockResolvedValue({ pieces: data.items.map((item, index) => ({ ...item, pieceSetVersion: 5,
+        isCompleted: index === 0, completionSource: index === 0 ? 'manual' : null })) });
+      const view = renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
+      await screen.findByText('完了にしました');
+      data = { ...data, snapshotId: 'external-change', items: change === 'sibling-gone' ? [data.items[1]!] : change === 'merged' ? [fixture().items[0]!] : [] };
+      view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+      expect(screen.queryByTestId('planning-board-item-piece:0')).not.toBeInTheDocument();
+      if (change !== 'sibling-gone') expect(screen.queryByTestId('planning-board-item-piece:1')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+      expect(screen.queryByTestId('planning-gantt-bar-piece:0')).not.toBeInTheDocument();
+    });
+    it.each([false, true])('rerenders only the selected row and mounts no closed Dialog (create=%s)', (createEnabled) => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      const renders = vi.mocked(piecePopover.PlanningBoardPiecePopover);
+      const dialogs = vi.spyOn(dialog, 'Dialog');
+      renderSeibanBoard();
+      expect(dialogs.mock.calls.filter(([props]) => props.ariaLabel === '数量')).toHaveLength(0);
+      renders.mockClear(); dialogs.mockClear();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('checkbox'));
+      expect(renders.mock.calls.map(([props]) => props.item.itemId)).toEqual(['a']);
+      // Other board dialogs remain mounted; the quantity dialog must never run while closed.
+      expect(dialogs.mock.calls.filter(([props]) => props.ariaLabel === '数量')).toHaveLength(0);
+    });
+    it.each([false, true])('keeps a successful split successful when refresh fails (reject=%s)', async (reject) => {
+      let data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      mocks.pieceSplit.mockResolvedValue({ pieces: splitBoard().items });
+      if (reject) mocks.refetch.mockRejectedValueOnce(new Error('refresh failed'));
+      else mocks.refetch.mockResolvedValueOnce({ isError: true, error: new Error('refresh failed') });
+      const page = renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument());
+      expect(screen.queryByText('保存できませんでした。時間をおいて再試行してください。')).not.toBeInTheDocument();
+      expect(mocks.pieceSplit).toHaveBeenCalledTimes(1);
+      expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ })).toBeEnabled();
+      const other = screen.getByRole('button', { name: '資源CD', exact: true }); other.focus();
+      data = { ...data, snapshotId: 'recovered-after-failure', items: splitBoard().items };
+      page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      expect(other).toHaveFocus();
+      expect(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ })).not.toHaveFocus();
+    });
+    it.each(['parent', 'sibling', 'table'])('returns to the %s when a conflict refresh removes an open popup', async (target) => {
+      let data = splitBoard(); data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      mocks.pieceSplit.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
+      mocks.refetch.mockImplementationOnce(async () => {
+        const remaining = target === 'parent' ? fixture().items[0]! : data.items[1]!;
+        data = { ...data, snapshotId: 'conflict-refreshed', items: target === 'table' ? [fixture().items[2]!] : [remaining] };
+        return { data };
+      });
+      renderSeibanBoard();
+      const trigger = within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ });
+      trigger.focus(); fireEvent.click(trigger);
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument());
+      if (target === 'table') expect(screen.getByRole('table')).toHaveFocus();
+      else expect(within(screen.getByTestId(`planning-board-item-${target === 'parent' ? 'a' : 'piece:1'}`)).getByRole('button', { name: /の数量/ })).toHaveFocus();
+    });
+    it('clears retained sibling overlays when a later merge replaces the pieces', async () => {
+      let data = splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      const saved = data.items.map((item, index) => ({ ...item, pieceSetVersion: 5, isCompleted: index === 0,
+        completionSource: index === 0 ? 'manual' as const : null }));
+      mocks.pieceCompletion.mockResolvedValueOnce({ pieces: saved }).mockResolvedValueOnce({
+        pieces: saved.map((item) => ({ ...item, pieceSetVersion: 6, isCompleted: false, completionSource: null }))
+      });
+      mocks.pieceMerge.mockResolvedValue({ pieces: [] });
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
+      await screen.findByText('完了にしました');
+      fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+      await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenCalledTimes(2));
+      for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      mocks.refetch.mockImplementationOnce(async () => {
+        data = { ...data, snapshotId: 'merged', items: [fixture().items[0]!] };
+        return { data };
+      });
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
+      await waitFor(() => expect(screen.getByTestId('planning-board-item-a')).toBeInTheDocument());
+      expect(screen.queryByTestId('planning-board-item-piece:0')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('planning-board-item-piece:1')).not.toBeInTheDocument();
+    });
+    it('completes just one sibling and undoes using the acknowledged version', async () => {
+      const data = splitBoard();
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let finish!: (value: unknown) => void;
+      mocks.pieceCompletion.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
+      await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenCalledExactlyOnceWith({ pieceId: 'id-0', intent: 'complete', expectedPieceSetVersion: 4, itemRevision: 'revision-a' }));
+      expect(within(screen.getByTestId('planning-board-item-piece:1')).getByRole('button', { name: '完了にする' })).toBeDisabled();
+      const saved = { ...data.items[0]!, isCompleted: true, itemRevision: 'saved', pieceSetVersion: 5 };
+      await act(async () => finish({ pieces: [saved, { ...data.items[1], pieceSetVersion: 5 }] }));
+      mocks.pieceCompletion.mockResolvedValue({ pieces: [{ ...saved, isCompleted: false }] });
+      fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+      await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenLastCalledWith({ pieceId: 'id-0', intent: 'incomplete', expectedPieceSetVersion: 5, itemRevision: 'saved' }));
+      expect(mocks.completion).not.toHaveBeenCalled();
+    });
+    it('updates piece merge controls when selection changes in another seiban pane', () => {
+      const data = splitBoard();
+      data.pieceCapabilities.createEnabled = false;
+      data.items.push(fixture().items[2]!);
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      renderSeibanBoard();
+      for (const id of ['piece:0', 'piece:1']) fireEvent.click(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('checkbox'));
+      expect(screen.getAllByRole('button', { name: /の数量/ })).toHaveLength(2);
+      fireEvent.click(within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox'));
+      expect(screen.queryByRole('button', { name: /の数量/ })).not.toBeInTheDocument();
+    });
+    it('merges selected unfinished siblings with their revisions', async () => {
+      const data = splitBoard();
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceMerge.mockResolvedValue({ pieces: [] });
+      renderSeibanBoard();
+      for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
+      await waitFor(() => expect(mocks.pieceMerge).toHaveBeenCalledExactlyOnceWith({ parentItemId: 'a', pieceIds: ['id-0', 'id-1'], expectedPieceSetVersion: 4,
+        itemRevisions: { 'piece:0': 'revision-a', 'piece:1': 'revision-a' } }));
+    });
+    it('refreshes on piece completion conflict without automatically resending', async () => {
+      const data = splitBoard();
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceCompletion.mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+      expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1);
+      expect(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: '最新状態を取得' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      expect(screen.getAllByRole('button', { name: '部品aの個別指定' }).every((button) => !button.hasAttribute('disabled'))).toBe(true);
+    });
+    it('keeps imported quantity warnings visible in the incomplete filter', () => {
+      const data = splitBoard(); data.items = data.items.map((item) => ({ ...item, isCompleted: true, completionSource: 'import', quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN' }));
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      renderSeibanBoard();
+      expect(screen.getAllByRole('button', { name: '取込で完了' })).toHaveLength(2);
+      expect(screen.getByTestId('planning-board-item-piece:0')).toHaveClass('!outline-red-500');
+    });
+    it('keeps incomplete warnings out of the complete filter', () => {
+      const data = splitBoard();
+      data.items = data.items.map((item) => ({ ...item, quantityWarning: 'INVALID_PLANNED_QUANTITY' }));
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      renderSeibanBoard();
+      expect(screen.getByTestId('planning-board-item-piece:0')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '完了', exact: true }));
+      expect(screen.queryByTestId('planning-board-item-piece:0')).not.toBeInTheDocument();
+    });
+    it.each([false, true])('focuses the remaining merge result (parent=%s)', async (allMerged) => {
+      let data = splitBoard(); data.resourceCategories['305'] = 'cutting';
+      const remaining = allMerged ? fixture().items[0]! : { ...data.items[1]!, itemId: 'piece:merged', pieceId: 'merged', plannedQuantity: 5, itemRevision: 'merged' };
+      const completed = { ...data.items[0]!, itemId: 'piece:done', pieceId: 'done', isCompleted: true, completionSource: 'manual' as const };
+      if (!allMerged) data.items.push(completed);
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      mocks.pieceMerge.mockResolvedValue({ pieces: allMerged ? [] : [completed, remaining] });
+      mocks.refetch.mockImplementation(async () => { data = { ...data, snapshotId: 'merged', items: allMerged ? [remaining] : [completed, remaining] }; return { data }; });
+      renderSeibanBoard();
+      for (const item of data.items.filter((item) => !item.isCompleted)) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      const trigger = within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ });
+      trigger.focus(); fireEvent.click(trigger);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
+      await waitFor(() => {
+        const row = screen.getByTestId(`planning-board-item-${remaining.itemId}`);
+        expect(allMerged ? row.contains(document.activeElement) : within(row).getByRole('button', { name: /の数量/ }) === document.activeElement).toBe(true);
+      });
+    });
+    it('clears the parent row undo overlay before splitting it', async () => {
+      let data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } }; data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      mocks.pieceSplit.mockResolvedValue({ pieces: splitBoard().items });
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
+      await screen.findByText('完了にしました');
+      fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+      await waitFor(() => expect(mocks.completion).toHaveBeenCalledTimes(2));
+      mocks.refetch.mockImplementation(async () => { data = { ...data, snapshotId: 'split', items: splitBoard().items }; return { data }; });
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByTestId('planning-board-item-piece:0')).toBeInTheDocument());
+      expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
+    });
+    it.each(['split', 'merge'])('refreshes capabilities after a forbidden %s', async (operation) => {
+      let data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      const mutation = operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge;
+      mutation.mockRejectedValue({ isAxiosError: true, response: { status: 403, data: { code: 'SESSAKU_PIECES_CREATE_DISABLED' } } });
+      mocks.refetch.mockImplementation(async () => { data = { ...data, pieceCapabilities: { createEnabled: false, includePieces: true } }; return { data }; });
+      renderSeibanBoard();
+      if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
+      expect(mutation).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: '分ける' })).not.toBeInTheDocument();
+    });
+    it('keeps the actual writing wrapper and table/gantt DOM when there are zero pieces and creation is off', () => {
+      const data = { ...fixture(), view: 'resource' as const, pieceCapabilities: { createEnabled: false, includePieces: true } };
+      let pending = false;
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      const originalQueue = writeQueueHook.usePlanningBoardWriteQueue;
+      vi.spyOn(writeQueueHook, 'usePlanningBoardWriteQueue').mockImplementation((options) => ({ ...originalQueue(options), pending }));
+      const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+      const gantt = screen.getByTestId('planning-board-gantt');
+      const wrapper = gantt.closest('[data-planning-board-pieces-writing]');
+      expect(wrapper).toHaveAttribute('data-planning-board-pieces-writing', 'false');
+      expect(wrapper).toHaveClass('contents');
+      pending = true; page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      expect(screen.getByTestId('planning-board-gantt')).toBe(gantt);
+      expect(gantt.closest('[data-planning-board-pieces-writing]')).toBe(wrapper);
+      openListView();
+      const tables = screen.getAllByRole('table');
+      expect(tables.every((table) => table.closest('[data-planning-board-pieces-writing]') === wrapper)).toBe(true);
+      pending = false; page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      expect(screen.getAllByRole('table')).toEqual(tables);
+      for (const [index, table] of tables.entries()) expect(screen.getAllByRole('table')[index]).toBe(table);
+      expect(wrapper).toHaveAttribute('data-planning-board-pieces-writing', 'false');
+      expect(screen.getAllByRole('button', { name: '完了にする' }).every((button) => !button.matches(':disabled'))).toBe(true);
+    });
+    it.each(['split', 'merge', 'complete'] as const)('isolates unrelated rows and blocks mouse, keyboard and drag during %s', async (operation) => {
+      const data = splitBoard();
+      data.items.push(fixture().items[2]!);
+      data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let finish!: (value: unknown) => void;
+      const mutation = operation === 'split' ? mocks.pieceSplit : operation === 'merge' ? mocks.pieceMerge : mocks.pieceCompletion;
+      mutation.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+      renderSeibanBoard();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      const unrelated = screen.getByTestId('planning-board-item-c');
+      const rank = within(unrelated).getByRole('button', { name: /の個別指定$/ });
+      const resource = within(unrelated).getByRole('button', { name: /資源CD .*を変更/ });
+      const complete = within(unrelated).getByRole('button', { name: '完了にする' });
+      if (operation === 'merge') for (const id of ['piece:0', 'piece:1']) {
+        fireEvent.click(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('checkbox'));
+      }
+      if (operation !== 'complete') {
+        fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
+        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled());
+      }
+      // Keep a portaled rank menu open too: DOM containment cannot guard it.
+      fireEvent.click(rank);
+      const panel = document.getElementById(rank.getAttribute('aria-controls')!)!;
+      const chooseRank = within(panel).getByRole('button', { name: '2', exact: true });
+      const renders = vi.spyOn(planningBoardSorting, 'resolveGrindingPlanningBoardDueDate');
+      renders.mockClear();
+      fireEvent.click(operation === 'complete'
+        ? within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' })
+        : screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
+      expect(renders.mock.calls.some(([item]) => item.itemId === 'c')).toBe(false);
+      expect(unrelated.closest('[data-planning-board-pieces-writing]')).toHaveAttribute('data-planning-board-pieces-writing', 'true');
+      expect(screen.getByTestId('planning-board-item-c')).toBe(unrelated);
+      for (const button of [rank, resource, complete]) {
+        expect(button).toBeEnabled();
+        button.focus(); expect(button).toHaveFocus();
+        fireEvent.click(button);
+        for (const key of ['Enter', ' ']) {
+          fireEvent.keyDown(button, { key }); fireEvent.keyUp(button, { key }); fireEvent.click(button);
+        }
+      }
+      for (const key of ['Enter', ' ']) {
+        fireEvent.keyDown(chooseRank, { key }); fireEvent.click(chooseRank); fireEvent.keyUp(chooseRank, { key });
+      }
+      const pane = resource.closest('[data-planning-board-resource-pane]')!;
+      const beforeDragNodes = document.body.childElementCount;
+      fireEvent.pointerDown(resource, { pointerId: 88, button: 0, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(pane, { pointerId: 88, clientX: 100, clientY: 100 });
+      expect(document.body.childElementCount).toBe(beforeDragNodes);
+      fireEvent.pointerUp(pane, { pointerId: 88, clientX: 100, clientY: 100 });
+      expect(mocks.rank).not.toHaveBeenCalled(); expect(mocks.overrides).not.toHaveBeenCalled();
+      expect(mocks.resourceOrder).not.toHaveBeenCalled(); expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+      expect(mocks.completion).not.toHaveBeenCalled();
+      expect(mocks.pieceCompletion).toHaveBeenCalledTimes(operation === 'complete' ? 1 : 0);
+      expect(screen.queryByRole('dialog', { name: '対象を変更' })).not.toBeInTheDocument();
+      await act(async () => finish({ pieces: data.items.filter((item) => item.kind === 'piece') }));
+      await waitFor(() => expect(unrelated.closest('[data-planning-board-pieces-writing]')).toHaveAttribute('data-planning-board-pieces-writing', 'false'));
+      expect(screen.getByTestId('planning-board-item-c')).toBe(unrelated);
+      expect(renders.mock.calls.some(([item]) => item.itemId === 'c')).toBe(false);
+      fireEvent.click(chooseRank);
+      await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(1));
+    });
+    it.each(['backdrop', 'Escape'] as const)('keeps selection, pane navigation and popup counters/%s active while writing', async (close) => {
+      const data = splitBoard(); data.items.push(fixture().items[2]!); data.resourceCategories['305'] = 'cutting';
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceCompletion.mockReturnValue(new Promise(() => {}));
+      renderSeibanBoard();
+      const other = screen.getByTestId('planning-board-item-c');
+      fireEvent.click(within(other).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
+      await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1));
+      fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+      expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+      fireEvent.click(screen.getByRole('button', { name: '分け数を減らす' }));
+      expect(screen.getByLabelText('分け数')).toHaveTextContent('2');
+      if (close === 'Escape') fireEvent.keyDown(window, { key: 'Escape' });
+      else fireEvent.mouseDown(screen.getByRole('dialog', { name: '数量' }));
+      expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
+      const checkbox = within(other).getByRole('checkbox');
+      fireEvent.click(checkbox); expect(checkbox).toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: '製番26-1042を広げる' }));
+      expect(screen.getByTestId('planning-board-focus-view')).toBeInTheDocument();
+      const rank = screen.getByRole('combobox', { name: /の個別指定$/ });
+      fireEvent.keyDown(rank, { key: 'ArrowDown' }); fireEvent.change(rank, { target: { value: '2' } });
+      expect(mocks.rank).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: '製番26-1042を一覧に戻す' }));
+      expect(screen.queryByTestId('planning-board-focus-view')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '製番26-1042の明細を閉じる' }));
+      expect(screen.queryByTestId('planning-board-item-c')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '製番26-1042の明細を開く' }));
+      expect(screen.getByTestId('planning-board-item-c')).toBeInTheDocument();
+    });
+    it.each(['table', 'gantt'] as const)('keeps %s nodes when merging the last pieces with creation off', async (view) => {
+      let data = splitBoard(); data.pieceCapabilities.createEnabled = false; data.items.push(fixture().items[2]!);
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      let finish!: (value: unknown) => void;
+      mocks.pieceMerge.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+      mocks.refetch.mockImplementation(async () => { data = { ...data, items: [fixture().items[0]!, fixture().items[2]!] }; return { data }; });
+      renderSeibanBoard(); fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      const other = screen.getByTestId('planning-board-item-c'); const table = other.closest('table');
+      const pane = other.closest('[data-planning-board-resource-pane]')!; pane.scrollTop = 77;
+      for (const id of ['piece:0', 'piece:1']) fireEvent.click(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'まとめる' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
+      await waitFor(() => expect(mocks.pieceMerge).toHaveBeenCalledTimes(1));
+      expect(screen.getByTestId('planning-board-item-c')).toBe(other);
+      if (view === 'gantt') fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
+      const chart = view === 'gantt' ? screen.getByTestId('planning-board-gantt') : null;
+      await act(async () => finish({ pieces: [] }));
+      if (chart) {
+        await waitFor(() => expect(chart.closest('[data-planning-board-pieces-writing]')).toHaveAttribute('data-planning-board-pieces-writing', 'false'));
+        expect(screen.getByTestId('planning-board-gantt')).toBe(chart);
+        return;
+      }
+      await waitFor(() => expect(screen.getByTestId('planning-board-item-a')).toBeInTheDocument());
+      expect(screen.getByTestId('planning-board-item-c')).toBe(other);
+      expect(other.closest('table')).toBe(table); expect(pane.scrollTop).toBe(77);
+      expect(other.closest('[data-planning-board-pieces-writing]')).toHaveAttribute('data-planning-board-pieces-writing', 'false');
+    });
+    it('keeps Gantt mounted and interactive across piece completion while blocking writes', async () => {
+      const data = splitBoard(); data.items.push(fixture().items[2]!);
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      let finish!: (value: unknown) => void;
+      mocks.pieceCompletion.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      const gantt = screen.getByTestId('planning-board-gantt');
+      const other = screen.getByTestId('planning-gantt-bar-c');
+      fireEvent.click(screen.getByTestId('planning-gantt-bar-piece:0'));
+      fireEvent.click(within(gantt).getAllByRole('button', { name: '完了にする' })[0]!);
+      await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1));
+      expect(screen.getByTestId('planning-board-gantt')).toBe(gantt);
+      fireEvent.pointerDown(other, { pointerId: 87, button: 0, clientX: 10, clientY: 10 });
+      await waitFor(() => expect(other).toHaveAttribute('aria-pressed', 'true'));
+      fireEvent.pointerUp(other, { pointerId: 87, clientX: 10, clientY: 10 });
+      fireEvent.click(other); fireEvent.click(other);
+      fireEvent.click(within(gantt).getAllByRole('button', { name: '完了にする' })[0]!);
+      expect(mocks.completion).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
+      expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '2日', exact: true }));
+      expect(screen.getByRole('button', { name: '2日', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      const scroll = screen.getByLabelText('ガントの日付と工程'); scroll.scrollLeft = 100; fireEvent.scroll(scroll);
+      fireEvent.click(screen.getByRole('button', { name: '2時間進む' }));
+      expect(scroll.scrollLeft).not.toBe(100);
+      fireEvent.pointerDown(other, { pointerId: 88, button: 0, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(other, { pointerId: 88, clientX: 200, clientY: 10 });
+      fireEvent.pointerUp(other, { pointerId: 88, clientX: 200, clientY: 10 });
+      expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
+      expect(mocks.overrides).not.toHaveBeenCalled(); expect(mocks.resourceOrder).not.toHaveBeenCalled();
+      await act(async () => finish({ pieces: data.items.filter((item) => item.kind === 'piece') }));
+      await waitFor(() => expect(gantt.closest('[data-planning-board-pieces-writing]')).toHaveAttribute('data-planning-board-pieces-writing', 'false'));
+      expect(screen.getByTestId('planning-board-gantt')).toBe(gantt); expect(screen.getByTestId('planning-gantt-bar-c')).toBe(other);
+    });
+    it('blocks sibling rank and resource writes during piece completion', async () => {
+      const data = splitBoard();
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceCompletion.mockReturnValue(new Promise(() => {}));
+      renderSeibanBoard();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
+      const sibling = screen.getByTestId('planning-board-item-piece:1');
+      fireEvent.click(within(sibling).getByRole('button', { name: '部品aの個別指定' }));
+      expect(screen.queryByRole('dialog', { name: '順位を選択' })).not.toBeInTheDocument();
+      expect(within(sibling).getByRole('button', { name: '完了にする' })).toBeDisabled();
+      fireEvent.click(within(sibling).getByRole('button', { name: '資源CD 305を変更' }));
+      expect(screen.queryByRole('dialog', { name: '対象を変更' })).not.toBeInTheDocument();
+      expect(mocks.rank).not.toHaveBeenCalled(); expect(mocks.overrides).not.toHaveBeenCalled();
+    });
+  });
   it('starts Excel non-machine seibans unchecked while keeping every seiban registered', () => {
     const data = { ...fixture(), excelNonMachineFseibans: ['26-1042'] };
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
@@ -201,17 +1190,16 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
   });
 
-  it('excludes newly registered Excel non-machine seibans on refetch and preserves user choices', () => {
-    let current = { ...fixture(), excelNonMachineFseibans: [] as string[] };
+  it('reflects shared saved checks and newly registered seibans on refetch', () => {
+    let current = { ...fixture(), uncheckedFseibans: [] as string[] };
     mocks.snapshot.mockImplementation(() => ({ data: current, isLoading: false, isError: false, refetch: mocks.refetch }));
     const view = renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
-    fireEvent.click(within(screen.getByRole('dialog', { name: '製番登録' })).getByRole('button', { name: /^26-1042 / }));
     current = {
       ...current,
       registeredFseibans: [...current.registeredFseibans, '26-1043', '26-1044'],
       seibanOrder: [...current.seibanOrder, '26-1043', '26-1044'],
-      excelNonMachineFseibans: ['26-1041', '26-1043'],
+      uncheckedFseibans: ['26-1042', '26-1043'],
       items: [...current.items, ...['26-1043', '26-1044'].map((fseiban) => ({
         ...current.items[0]!, fseiban, itemId: fseiban, sourceRowId: fseiban
       }))]
@@ -221,6 +1209,35 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
     expect(screen.queryByTestId('planning-board-seiban-26-1043')).not.toBeInTheDocument();
     expect(screen.getByTestId('planning-board-seiban-26-1044')).toBeInTheDocument();
+  });
+
+  it('persists optimistic toggles and clear-all through the write queue, with no remove control', async () => {
+    let finish!: (result: { sourceRevision: string; uncheckedFseibans: string[] }) => void;
+    mocks.checks.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    expect(within(drawer).queryByRole('button', { name: /登録を解除/ })).not.toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+    expect(screen.queryByTestId('planning-board-seiban-26-1042')).not.toBeInTheDocument();
+    expect(mocks.checks).toHaveBeenCalledWith({ sourceRevision: 'board-1', uncheckedFseibans: ['26-1042'] });
+    fireEvent.click(within(drawer).getByRole('button', { name: '全て解除' }));
+    expect(mocks.checks).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ sourceRevision: 'checks-2', uncheckedFseibans: ['26-1042'] }));
+    expect(mocks.checks).toHaveBeenLastCalledWith({ sourceRevision: 'checks-2', uncheckedFseibans: ['26-1041', '26-1042'] });
+    expect(mocks.order).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a conflicting check write and offers the existing refresh flow', async () => {
+    const error = { isAxiosError: true, response: { status: 409 } };
+    mocks.checks.mockRejectedValueOnce(error);
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+    await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+    expect(screen.getByTestId('planning-board-seiban-26-1042')).toBeInTheDocument();
+    expect(mocks.checks).toHaveBeenCalledTimes(1);
   });
 
   it('reads Excel by default and switches the board query to SCAW and back', () => {
@@ -238,6 +1255,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     localStorage.removeItem('kiosk-planning-board-gantt-scale');
     localStorage.removeItem('kiosk-planning-board-gantt-mode');
     localStorage.removeItem(LARGE_SCREEN_STORAGE_KEY);
+    mocks.pieceCompletion.mockReset(); mocks.pieceSplit.mockReset(); mocks.pieceMerge.mockReset();
     mocks.completion.mockReset();
     mocks.completion.mockResolvedValue({});
     mocks.capacity.mockReset();
@@ -258,6 +1276,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.resourceOrderBulk.mockReset();
     mocks.pins.mockReset();
     mocks.order.mockReset();
+    mocks.checks.mockReset();
+    mocks.checks.mockImplementation(async ({ uncheckedFseibans }) => ({ sourceRevision: 'board-checks', uncheckedFseibans }));
     mocks.refetch.mockResolvedValue({ data: fixture() });
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
     mocks.overrides.mockResolvedValue({ sourceRevision: 'board-2' });
@@ -499,6 +1519,62 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.queryByText('完了にしました')).not.toBeInTheDocument();
   });
 
+  describe('completion revision compatibility', () => {
+    beforeEach(() => {
+      vi.spyOn(machineSignalApi, 'getMachineSignalResourceUptime').mockResolvedValue({ endDate: null, days: 30, resources: [] });
+    });
+    it.each(['rank', 'resource'])('uses an acknowledged row revision after completion for the next %s write', async (operation) => {
+      let data = fixture();
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      const view = renderSeibanBoard();
+      // Keep the row visible after completing it.
+      fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
+      await screen.findByText('完了にしました');
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      // Undo retains the completion overlay while subsequent writes acknowledge a newer revision.
+      fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
+      await waitFor(() => expect(mocks.completion).toHaveBeenCalledTimes(2));
+      chooseResourceRank('部品a', 1);
+      await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(1));
+      // A GET can acknowledge the rank while still carrying the earlier completion state.
+      data = { ...data, snapshotId: 'rank-ack', items: data.items.map((item) => item.itemId === 'a'
+        ? { ...item, version: 3, itemRevision: 'revision-a-after-rank-3', alternateRank: 1, isCompleted: true, completionSource: 'manual' } : item) };
+      view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+      if (operation === 'rank') {
+        chooseResourceRank('部品a', 2);
+        await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(2));
+        expect(mocks.rank.mock.calls[1]?.[0]).toMatchObject({ itemId: 'a', itemRevision: 'revision-a-after-rank-3', overrideVersion: 3 });
+      } else {
+        fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '資源CD 305を変更' }));
+        const editor = screen.getByRole('dialog', { name: '一括変更' });
+        fireEvent.click(within(editor).getByRole('button', { name: '資源CD 584へ変更' }));
+        fireEvent.click(within(editor).getByRole('button', { name: '適用' }));
+        await waitFor(() => expect(mocks.overrides).toHaveBeenCalled());
+        expect(mocks.overrides.mock.calls[0]?.[0].items[0]).toMatchObject({ itemId: 'a', itemRevision: 'revision-a-after-rank-3', overrideVersion: 3 });
+      }
+    });
+    it('keeps ordinary row completion available during an order save', async () => {
+      mocks.rank.mockReturnValue(new Promise(() => {}));
+      renderSeibanBoard();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      chooseResourceRank('部品b', 1);
+      await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(1));
+      fireEvent.click(within(screen.getByTestId('planning-board-item-b')).getByRole('button', { name: '完了にする' }));
+      await waitFor(() => expect(mocks.completion).toHaveBeenCalledWith({ rowId: 'source-b', intent: 'complete' }));
+    });
+    it('treats an ordinary row completion 409 as a toast and keeps ordering editable', async () => {
+      mocks.completion.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
+      await screen.findByText('完了状態を保存できませんでした。時間をおいて再試行してください。');
+      expect(mocks.refetch).not.toHaveBeenCalled();
+      expect(screen.queryByRole('button', { name: '最新状態を取得' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
+      chooseResourceRank('部品b', 1);
+      await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(1));
+    });
+  });
   it('replaces the undo notice and expires it five seconds after the latest completion', async () => {
     vi.useFakeTimers();
     const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
@@ -1229,7 +2305,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '製番26-1041の明細を開く' })).toBeInTheDocument();
   });
 
-  it('新規登録はactive/openへ追加し、既存の閉じた・除外した状態を変えず、再登録は新規として扱う', () => {
+  it('新規登録はactive/openへ追加し、既存の閉じた・除外した状態を変えず、再登録は新規として扱う', async () => {
     let current = fixture();
     const view = renderSeibanBoard();
 
@@ -1237,6 +2313,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     fireEvent.click(within(drawer).getByRole('button', { name: /^26-1042 / }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '切削', exact: true })).toBeEnabled());
 
     const newItem = {
       ...current.items[0]!,
@@ -1250,6 +2328,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     current = {
       ...current,
       sourceRevision: 'board-2',
+      uncheckedFseibans: ['26-1042'],
       registeredFseibans: ['26-1041', '26-1042', '26-1043'],
       seibanOrder: ['26-1041', '26-1042', '26-1043'],
       items: [...current.items, newItem]
@@ -1264,6 +2343,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const reopenedDrawer = screen.getByRole('dialog', { name: '製番登録' });
     fireEvent.click(within(reopenedDrawer).getByRole('button', { name: /^26-1043 / }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '切削', exact: true })).toBeEnabled());
     current = {
       ...current,
       sourceRevision: 'board-3',
@@ -1617,7 +2697,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByText('305（研削機Ａ）')).toBeInTheDocument();
     expect(screen.queryByText(/未完\d+件/)).not.toBeInTheDocument();
     expect(screen.queryByText(/合計分/)).not.toBeInTheDocument();
-    expect(screen.getAllByText('5個 · 20分').length).toBeGreaterThan(0);
+    expect(screen.getAllByText((_, element) => element?.tagName === 'SPAN' && element.textContent === '5個 · 20分').length).toBeGreaterThan(0);
     expect(screen.getAllByText('26-1041 · 自動組立機 AX-200')).toHaveLength(2);
     expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })[0]).toHaveClass('text-[15px]', 'text-white');
     expect(screen.getByTestId('planning-board-item-a').querySelector('td:nth-child(3)')).toHaveTextContent('1305');
@@ -2411,7 +3491,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     expect(within(drawer).getByRole('button', { name: '製番26-1041を上へ' })).toBeDisabled();
-    expect(within(drawer).getByRole('button', { name: '製番26-1041の登録を解除' })).toBeDisabled();
+    expect(within(drawer).queryByRole('button', { name: /登録を解除/ })).not.toBeInTheDocument();
     expect(within(drawer).getByRole('button', { name: '登録' })).toBeDisabled();
   });
 

@@ -3,7 +3,7 @@
 
 この ExecPlan は生きた文書である。実装時は `.agent/PLANS.md` に従い、`Progress`、`Surprises & Discoveries`、`Decision Log`、`Outcomes & Retrospective` を更新する。本文のパスはリポジトリルートからの相対パスである。
 
-本書の作業場所は `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--sessaku-split-pieces`。2026-11-05 の依頼は調査と本書作成までであり、実装、commit、push、PR 作成、merge、release、deploy は未承認である。今回の唯一の書き込み先は本書とする。索引追加も今回は行わない。秘密情報や `.env` は読まない。将来の実装者も、その時点で承認された段階までにとどめる。
+PR3 の作業場所は `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--sessaku-split-pieces-ui`。2026-11-06 の依頼で PR3 のローカル実装・検証と本書更新が承認された。PR2 はユーザー申告で main マージ・本番反映済み。commit、push、PR 作成、merge、release、deploy は今回の範囲外。秘密情報や `.env` は読まない。
 
 ## Purpose / Big Picture
 
@@ -16,11 +16,26 @@
 
 ## Progress
 
+- [ ] (2026-11-06 JST) 第7回の全件成功はAPI既存問題1件のみ未達。API対象は2506件成功 / 23件skip / `Loan_terminal_state_check` 1件失敗（baseでも既知の準備処理、変更なし）。web全6320件、指定DB統合40件、lint・型検査・取説・差分検査は成功。
+
+- [x] (2026-11-06 JST) PR3 第7回レビュー Y1・Y2 / Z1・Z2 / C1〜C7を修正。保存→再取得→focus復帰をページの状態遷移へ集約し、片操作中のpolling停止、再取得settleまでの操作抑止、失敗時の即時エラーとfocus目標破棄、操作不能時も開いた小窓の維持、350ms全ボタンguard、不正片の完了disabled、対象親だけの通知解除、position優先順を回帰テストへ反映。Z3〜Z6は記録済みとしてコード変更なし。指定の最終検証は末尾へ記録する。
+
+- [ ] (2026-11-06 JST) 第6回の指定検証はAPI全体のみ未達。再実行で2506件成功 / 23件skip / サイネージ既存準備処理1件失敗（Loan_terminal_state_check）。単独確認でも再現したため、依頼外のコードやDB状態を変更せず停止。web全6306件、指定DB統合40件、lint/型検査/取説/差分検査は成功。
+- [x] (2026-11-06 JST) PR3 第6回レビュー V1〜V3 / W1〜W3・W5〜W7 / X1・X4を修正。待機はstore由来だけにし、全片の完了disabledを統一。小窓の成功close後に再取得し、復帰focusは次の成功取得1回まで、他入力へは移さない。負荷のWeb includePiecesを除去し、SQL/列挙/TSの加算順と兄弟間矢印を修正。W4・X2・X3・X5は記録のみ。
+
+- [x] (2026-11-06 JST) PR3 第5回レビュー A1〜A3・U1〜U12・F1〜F4を対応。SQLの兄弟順、負荷GET重複/直列、未使用引数、小窓内の待機/失敗表示、操作範囲、選択保持、完了ガード、focus復帰、Escapeと連続tapを修正。指定の受入検証はすべて成功。
+
+- [x] (2026-11-06 JST) PR3 第4回レビュー R1〜R5・G1〜G12・H1〜H4を修正。片の完了disabled、選択行だけの更新、整数互換の負荷表示、競合/失敗時処理、ウォームアップと集計キャッシュ、片なしの数量クリックを回帰テストへ反映。XHRは初期forward表示の稼働率取得で発生し、HEADの同じテストでも再現。既存110件は維持し、新規49件だけ稼働率取得をモックした。指定の受入検証はすべて成功。最終結果は末尾に記録した。
+
+- [x] (2026-11-06 JST) PR3 第3回レビュー C1〜C7・P1〜P4・T1〜T5/T7〜T11・F1/F2/F4・N1 を修正。親単位のoverlay寿命、保存ガード、片なしのcallback安定性、全片の数量帯、結合focus、消費側無効化と1回GET、並び・計算・非丸めを回帰テストへ追加。指定の受入検証はすべて成功。結果は末尾の第3回レビュー検証記録を参照。
+
+- [x] (2026-11-06 JST) PR3 再レビュー2回目 A〜H を修正。安定Contextと行prop、操作不可数量の文字列、通常行revision保持、兄弟完了の受付制限と版保持、片の負荷表示丸め、focus復帰抑止、片409非ロックと保存後GET失敗の分離、auto-order死catch撤去を回帰テストへ反映。指定5検証はすべて成功。詳細は末尾に記録した。
+
 
 - [x] (2026-11-05 JST) 入口ルール、`.agent/PLANS.md`、関連品質・Git・ドキュメント・UI・境界ルールを確認した。開始時の `git status --short` と `git diff --stat` は出力なしで、既存 WIP はなかった。
 - [x] (2026-11-05 JST) 製番ボード投影・順番・完了、ガント、着、補助CSV同期、旧分割の参照経路を読み取り調査した。
 - [x] (2026-11-05 JST) PR ごとの安全境界、Prisma 定義案、API、競合・同期規則、検証案を本書に記録した。
-- [ ] 実装前の保留事項を解決する。段取り時間の値と設定粒度、未採番製番の対象範囲を確定する。
+- [x] (2026-11-06 JST) 段取りは追加せず数量按分だけとするユーザー決定で段取りの保留を解消。未採番の新規分割拒否は既存 API 契約を維持する。
 - [ ] PR1 相当の旧分割撤去を実装し、対象検証を行う。
 - [x] (2026-11-05 JST) PR1 の旧分割コード・画面・API・フラグ・実行時 SQL を撤去し、親専用の順位ロック・繰り上げを移設した。Prisma 定義・migration と PR2/PR3 は未変更。
 - [ ] (2026-11-05 JST) PR1 DB 検証は専用 TEST_DATABASE_URL 未提供のため未実行（指定 integration 54件 skip）。指定 API 71件・web 114件・配置契約11件は成功、追加の既存 DB 依存自己検査2件と順位再調整 integration の setup は環境起因で失敗した。
@@ -29,10 +44,13 @@
 - [x] (2026-11-06 JST) 追加契約テスト156件（実DB18件を含む）と、後続の片/負荷57件（実DBは追加1件を含む19件）・キー境界6件・CSV公開26件・web API/progressive24件が成功。全対象APIテストもDB skipは0件。
 - [ ] (2026-11-06 JST) PR2 の「指定全対象コマンドが全件pass」は未達。API integration の既存snapshot ID・納期restoreの期待値不一致2件を残した。変更起因のモック2件はfocused検証で解消したが、全対象コマンドの追加反復は行わない。詳細は本書末尾。
 - [x] (2026-11-06 JST) migration deploy と再deploy（pendingなし）、schema validate/generate、shared-types buildを確認。API/web lint・tsc と最終差分検査の結果は本書末尾に記録する。
-- [ ] PR3 相当の製番ボード画面と前向きガントを実装し、数量5→2+3の業務シナリオを検証する。
-- [ ] integrationPending: 各 PR の作成、push 済み SHA、checks、main の merge SHA と CI、稼働確認は、その段階の明示依頼後に別々に記録する。現在は全て未実施。
+- [x] (2026-11-06 JST) PR3 の数量小窓・片完了・能力ゲート・片GETを接続し、ガントの工程依存と数量按分を実装。5→2+3、3→1+2、未済み結合、片単独完了と取消、409再取得、40/60分・小数・0分・前詰めを component/client/layout テストで検証した。詳細は末尾 PR3 evidence。
+- [x] (2026-11-06 JST) PR3 レビュー12件を修正。片0件時の HEAD の完了条件・競合通知・ピン保持fallback・直列依存・0分不明・explicitHeadを復元し、兄弟版の即時反映、重なり/工程数、操作skip、表示丸め、分割後focus、Mapとmemoの回帰テストを追加した。検証結果は末尾へ追記する。
+- [ ] integrationPending: PR3 の commit / push / PR / merge / deploy は今回未実施。PR2 はユーザー申告で main 統合・本番反映済みであり、本タスクでは再確認・再実行しない。
 
 ## Surprises & Discoveries
+
+PR3 (2026-11-06): API 投影が片の所要分を小数2桁へ丸めていた。web に元の親所要分は無いため、投影の丸めだけを除去した。ページの既存 ESLint 行数上限を守るため、今回変更した完了状態・pending・取消を `usePlanningBoardCompletion.ts` へ移した。既存 API client と includePieces の query key は PR2 に含まれており、その経路を利用した。
 
 PR2 (2026-11-06): 計画後の #2580 の手動「当日着」は itemKey に親の row: を保存する。片GETでは parentItemId に解決して共通で読み、片での記録・取消も同じキーへ書く。#2574 の lslhSurface と材料着・配膳・D社担当は現行の後付け読取を共用し、片にも同じ親属性を返す。
 
@@ -59,6 +77,46 @@ PR2: 全対象APIでは、既存の「初回読取ごとに新snapshot IDを作�
 
 ## Decision Log
 
+- Decision: 第7回は分割・結合の成功後処理を小窓のeffectからページへ移し、idle / saving / refreshingで管理する。操作中はpollingを止め、成功再取得のsettleまで全片・数量・対象親の完了ゲートを維持し、無関係な通常行の完了は保つ。保存失敗は再取得を待たず小窓へ返し、成功後の再取得失敗はfocus目標を即破棄する（第5・6回の失敗後保持方針を置換）。行消失時は親/兄弟/一覧へ復帰し、operable低下だけなら開いた小窓を維持する。
+  Rationale: Y1 / C1〜C4 / C7。小窓のunmountに保存完了処理を依存させず、無関係な完了取消通知を保持する。
+  Date/Author: 2026-11-06 / PR3第7回レビュー修正担当。
+
+- Decision: readyは書込pendingに依存させず、blocked / rankConflict / orderConflictで決める。兄弟の順序はpiecePositionをUUID比較より優先する。350msのguardを全操作ボタンへ広げ、識別子・版・親が欠けた片は完了disabledにする。Z2のContext分割はZ1修正で不要とし、Z3〜Z6（負荷加算順、小数1桁、boardキー/capabilities、ローリングwarmup）は記録済みのため変更しない。
+  Rationale: Y2 / Z1・Z2 / C5・C6。片0件・ゲートOFFのpending切替では、追加の行再描画・片走査・polling変更を発生させない。共有Dialog、selection membership比較、起動includePieces:true、既存UI文言を維持する。
+  Date/Author: 2026-11-06 / PR3第7回レビュー修正担当。
+
+- Decision: 第6回の非エラー待機はfailureへ保存せず、小窓だけが購読するblockedとガードを通常行の完了pendingまで一致させる。片の完了disabledはpiecePending / !bulkReadyも含め、片0件では追加走査・行再描画を発生させない。保存成功のcloseと再取得を分離し、focus要求は成功close経路だけで設定し、次の成功取得で消費する。別入力やモーダルへ移った利用者のfocusは奪わない。
+  Rationale: V1〜V3 / W1・W2・W7 / X1。共有DialogとHEADのselection membership比較、起動warmupのincludePieces:trueを維持する。
+  Date/Author: 2026-11-06 / PR3第6回レビュー修正担当。
+
+- Decision: 負荷のWeb URL・hook・query keyからincludePiecesを外し、旧端末のAPI引数は受理して無視する。includeLoadの負荷は常に片込み。集計SQL・行列挙・TS加算はsourceRowId / pieceIdの順に揃える。チェーン帯は同じ親の兄弟間に矢印を出さない。
+  Rationale: W3・W5・W6 / X4。複数行×割り切れない片の一致をDB統合テストで固定する。
+  Date/Author: 2026-11-06 / PR3第6回レビュー修正担当。
+
+- Decision: W4・X2・X3・X5は記録のみでコードを変更しない。片0.04分は小数1桁方針により「0分」。片0件でも小数の合計は1桁表示になる（HEADの浮動小数の誤差表示も消える）。テーブルのContext購読・bulkDisabledによるスコープ切替/初回ロードの再描画は1回程度として維持し、ローリング中の古い端末によるincludePiecesなしの別boardキャッシュの一時的コールド生成も許容する。
+  Rationale: 第6回の記録のみ指示と既決の表示方針を維持する。
+  Date/Author: 2026-11-06 / PR3第6回レビュー修正担当。
+
+- Decision: 第5回は片mutationでloadを独立に無効化し、呼出側の明示board再取得だけrevision由来の重複load取得を抑制する。書込pendingの理由は開いた数量小窓だけが購読し、全行へpending変更を伝播させない。待機は既存「保存中…」、実際の失敗は既存エラー文言と赤枠にする。
+  Rationale: 片完了はboard versionが変わらず、board再取得が失敗してもloadの無効化が必要。piecePendingはwriteBlockedと片操作だけに使う。Dialog標準のreturnFocusを使い、行差替時のみ親/兄弟/表を補完し、再取得失敗中は復帰先を保持する。
+  Date/Author: 2026-11-06 / PR3第5回レビュー修正担当。
+
+- Decision: U10の未完了表示は変更しない。HEADの通常行も完了overlay適用後に未完了フィルターで消え、既存通知の「戻す」で取消できる。片は第3回決定どおり、GETに無い片を補完表示しない。
+  Rationale: HEAD同等のフィルターと、他端末の分割/結合で消えた片を復活させない規則を維持し、通常行/片の両方で通知と取消を回帰確認する。
+  Date/Author: 2026-11-06 / PR3第5回レビュー修正担当。
+
+- Decision: 第4回は選択membership比較をHEADへ戻し、結合候補を行propから数量コントロールへ移す。通常行の片操作は書込pendingをrefで開く際に確認し、片だけ完了disabledを兄弟/書込待ちへ拡張する。起動payloadはページと同じincludePieces:trueで温め、結果が同じload集計のキャッシュキーからincludePiecesを除く。
+  Rationale: 片0件では選択とpendingの追加再描画を避け、通常行の完了条件を維持する。分割/結合は全失敗でGETし、保存前の欠損はthrowで小窓を維持する。整数負荷の文字列は維持し、小数だけ1桁へ丸める。
+  Date/Author: 2026-11-06 / PR3第4回レビュー修正担当。
+
+- Decision: 片overlayは同じ親のGETが同版以上・片消失・親消失/import完了になった時点で親単位に破棄し、GETにない片を補完表示しない。revisionはGETの片集合が古い間だけ引き継ぐ（前回の一致GET後も版を下限として保持する決定を置換）。
+  Rationale: 親CSVだけのrevision変更と他端末の分割/結合へ追従し、409ループと幽霊行を防ぐ。親Setで完了PUTを排他し、その間の書込を止める。mutationは二次消費側を更新し、全件board GETは呼出側の1回に揃える。片なしではpendingをref参照し、ガントの通常チェーンをHEAD同様に計算する。
+  Date/Author: 2026-11-06 / PR3第3回レビュー修正担当。
+
+- Decision: 片Contextは能力・資源分類・安定した関数に加え、選択片の親Mapと完了待ちの親Setを配る。結合候補は選択中の片の数量コントロールだけがContextから参照し、行propは選択とpendingのbooleanにする。数量小窓は開いた間だけDialogをマウントし、操作不可では数量文字列を返す。
+  Rationale: 片0件の選択切替で他行へ再描画を波及させず、数量クリックの特別納期への伝播をHEADどおり保つ。完了overlayのrevision適用は片だけとし、片の応答版はGETの片集合が古い間だけ保持し、同版以上のGETまたは片の置換・消失で親単位に破棄する。分割/結合成功時も対象親のoverlayを破棄する。同一親の完了PUTは応答待ち中に次を受け付けない。片409は通知と再取得に留め、保存後のGET失敗は保存失敗にしない。
+  Date/Author: 2026-11-06 / PR3再レビュー2回目修正担当。
+
 
 - Decision: 通常アイテムの4列論理キーに、全端末共通の子として片を保存する。行 ID の FK にしない。
   Rationale: ユーザー確定事項1。再取り込み後も分け方を失わず、元資源CDをキーとし代替資源はキーにしない。
@@ -78,8 +136,8 @@ PR2: 全対象APIでは、既存の「初回読取ごとに新snapshot IDを作�
 - Decision: 指示数差分は共通の片順の最後の未済み片で吸収し、減少は後ろの未済み片から減らし0を削除する。済み合計超過時は数量を変えず警告を保存し赤枠にする。
   Rationale: ユーザー確定事項6。場所別 alternateRank は同期の末尾判定に使わない。
   Date/Author: 2026-11-05 / ユーザー確定、調査担当記録。
-- Decision: 前向きガントは片ごとに棒を出す。加工時間を数量比で按分し、段取りを片ごとに加えるが同一資源の実行順の直前が同じ論理親の片なら加えない。
-  Rationale: ユーザー確定事項7。別アイテムを挟むと再段取りが必要になる。
+- Decision: 前向きガントは片ごとに棒を出す。2026-11-05 の片ごとの段取り加算・連続時省略案は、2026-11-06 のユーザー確認で数量按分だけに置き換えた（後記）。
+  Rationale: FSIGENSHOYORYO は全数量の合計で段取り1回を含み、追加加算はしない。
   Date/Author: 2026-11-05 / ユーザー確定、調査担当記録。
 - Decision: 片の画面は製番ボードだけとする。順位ボードの表示・件数・自己検査導線は親1行を維持する。
   Rationale: ユーザー確定事項8。旧分割の順位ボード展開を新機能へ流用しない。
@@ -102,9 +160,9 @@ PR2: 全対象APIでは、既存の「初回読取ごとに新snapshot IDを作�
 - Decision: 分け数 n は元数量 q を floor(q/n)、余りを末尾側から1ずつ加える決定的な数量列にする。q=5,n=2 の結果は [2,3] とする。
   Rationale: API は明示数量列を受け、UI は均等分割を組み立てる。未合意の数量入力画面を追加しない。
   Date/Author: 2026-11-05 / 調査担当提案。
-- Decision: 保留: 段取り時間の正本と値の粒度。暫定案は既存 resource-capacity に資源別 setupMinutes（分、null=未設定）を追加する。数量按分の元 FSIGENSHOYORYO に段取りが含まれるかも確認する。
-  Rationale: 現行ガントに値も概念も無い。架空の時間や未設定=0を本番仕様にしない。段取り加算規則は確定であり、値の取得だけが未確定。PR3 の本番有効化条件とし、テストは10分等の明示値で進められる。
-  Date/Author: 2026-11-05 / 調査担当、保留。
+- Decision: 段取り保存の保留と resource-capacity の setupMinutes 暫定案を撤回する。列・migration・設定画面・連続時省略規則は作らない。
+  Rationale: 2026-11-06 ユーザー確認の数量按分のみの決定に置き換えた。段取り値の取得・設定は PR3 の前提条件ではない。
+  Date/Author: 2026-11-06 / ユーザー確認、PR3 実装担当記録。
 - Decision: 保留: 未採番 `********` を新しい片の対象にするか。暫定的に既存未採番表示は維持し、新規分割だけ409で拒否する。
   Rationale: 既存は ProductNo を足すがユーザー確定キーは4列。複数の未採番指示を誤結合しないため、確認前に仕様を拡張しない。通常製番の実装は進行可能。
   Date/Author: 2026-11-05 / 調査担当、保留。
@@ -139,10 +197,23 @@ PR2: 全対象APIでは、既存の「初回読取ごとに新snapshot IDを作�
   Rationale: 墓標は過去の分割版の競合検出に残すだけで、通常親の警告表示・数量保存規則を変えない。
   Date/Author: 2026-11-06 / PR2レビュー修正担当。
 
+- Decision: 片の所要分は `sourceMinutes * piece.quantity / plannedQuantity` の浮動小数のままとし、片ごとに丸めず段取りを加算しない。続けて加工して早く終わった時間は、片の完了入力後に既存の前向き配置が後続予定を前へ詰めることで吸収する。
+  Rationale: 移動票の FSIGENSHOYORYO は全数量分の合計で段取り1回分を既に含む。連続加工するかは実行時まで未確定。従前の段取り加算 Decision と Milestone 3 の保存案を置き換える。
+  Date/Author: 2026-11-06 / ユーザー確認、PR3 実装担当記録。
+- Decision: API の変更は投影 `expandSessakuPieces` の小数2桁丸め除去だけとする。
+  Rationale: web には親の元所要分が渡らず、既存 API の丸めを画面だけでは復元できない。数量按分の合計保持に必要な最小修正。DB・API の入出力形は変えない。
+  Date/Author: 2026-11-06 / PR3 実装担当。
+
+- Decision: PR3 は片0件時の HEAD の動作を維持する。通常行の完了は納期/順番保存中も許可し、完了409は全体の編集停止にしない。片409は再取得と既存トーストに留める。工程/ピン競合時の既存フォールバックと explicitHead を維持し、兄弟片だけを同一工程として扱う。
+  Rationale: 本番の作成ゲートOFF・片0件で既存操作を変えない。片の完了応答は全兄弟の版を直ちにoverlay/refへ反映する。数量按分は計算を丸めず表示だけ小数1桁とし、選択片を親Mapで一度集計しProvider値をmemo化する。分割後は最初の新片の数量へfocusを渡し、ガードで拒否した操作は小窓を閉じない。
+  Date/Author: 2026-11-06 / PR3レビュー修正担当。
+
 ## Outcomes & Retrospective
 
 
 調査と設計文書の作成を完了した。実装・テスト実行・migration 適用・PR・統合・本番反映は未実施である。旧分割の OFF 経路にも撤去対象があり、全片完了を Progress に書くだけでは、CSV progress 同期や既存親完了 API から上書きされることが分かった。本書ではそれらの書き手も同じ集約処理へ接続する。実装完了時は、数量5のシナリオ、競合、取り込み訂正、PR単独稼働の証拠をここへ追記する。
+
+PR3 (2026-11-06): ローカル実装と要求された検証を完了。片の数量操作、itemId 単位の完了・取消、能力ゲート、全前工程待ち、按分所要分を接続した。実端末・実DBをつないだ通し操作、別site保存、再取り込みは今回実行していない。commit / push / PR / merge / deploy も行っていない。PR2 の実DB検証記録と PR3 の component/client/layout 検証を区別する。
 
 ## Context and Orientation
 
@@ -231,7 +302,7 @@ web は `apps/web/src/pages/kiosk/ProductionScheduleLeaderOrderBoardPage.tsx`、
 
 `state.ts:readPlanningSnapshotGenerationDetails` に全端末共通の片集合の版を加え、payload の形式版も上げる。件数と MAX(updatedAt) だけに頼らず、親集合に残す単調増加 version の集計（件数と SUM(version) 等）で削除・同時刻更新も検出する。片の変更・数量同期・外部状態変更では同じトランザクションで親集合 version を増やす。SUM はDBの bigint / PrismaのBigIntとして扱い、JSONには10進文字列で含め、Numberへの桁落ち変換をしない。場所別 override の世代は従来どおりとする。全 siteKey の古い reusable payload が再利用されないテストを置く。
 
-`grinding-planning-board-load-summary.ts` の SQL 経路と fallback を同じ片数量・実効完了で計算し、親と片を二重計上しない。これは表示前の未選択製番を含む負荷にも適用する。負荷表示は従来の加工所要分を使い、順序に依存する段取り込み所要時間はガントの配置評価に使う。両者の意味を型・テストで分け、順序を知らない SQL 集計に固定の段取りを足さない。
+`grinding-planning-board-load-summary.ts` の SQL 経路と fallback を同じ片数量・実効完了で計算し、親と片を二重計上しない。これは表示前の未選択製番を含む負荷にも適用する。負荷表示・ガントとも数量按分した所要分だけを使い、段取りを追加しない。
 
 `grinding-planning-board-due-scope.service.ts` の読取・一括書込・revision は親の論理キーから片とその override を列挙する。既存納期一括変更による片の rank 失効や親納期の継承を維持する。`process-arrival.service.ts` の specialDue 用 itemKey は `piece:` を認識するが、着の完了計算 SQL は変えない。自己検査・順位 shell・配膳に新しい片展開を追加しない。
 
@@ -252,13 +323,13 @@ PR2 単独デプロイではゲート OFF、片0件の本番は従来と同じ�
 
 前向きガントでは `forwardPlanningBoardPredecessors` の返り値を、各アイテムから「厳密に前の工程の全未済みアイテムID集合」へ変える。論理親の兄弟片同士は前工程にしない。次工程の ready はその集合の end の最大値とし、一部完了で先へ流さない。資源の順番が工程依存と衝突する場合の既存フォールバックを維持しつつ、未配置の前工程を現在時刻扱いで黙って通さない。実現できない提案順は既存のエラー経路で差し戻す。
 
-`planningBoardGanttLayout.ts:buildForwardPlanningBoardGanttLayout` と `planningBoardAutoOrder.ts:planningBoardAutoOrder` が同じ小さな純粋関数 `resolvePlanningBoardRunMinutes` を使うようにする。入力は加工所要分、段取り分、同資源の実行直前アイテムの parentItemId、現在の parentItemId。通常行は従来どおり、片は加工分+段取り分、直前が同じ親の片なら加工分だけとする。直前判定は itemId 順や全体表示順でなく、各資源で実際に配置される未完了キューの順番を使う。別資源の同じ親は段取りを省かない。
+`planningBoardGanttLayout.ts:buildForwardPlanningBoardGanttLayout` と `planningBoardAutoOrder.ts:planningBoardAutoOrder` は API 投影の同じ `requiredMinutes` を既存 `placeForward` に渡す。段取り加算用の `resolvePlanningBoardRunMinutes` は作らない。
 
-段取りの暫定保存案は既存 `ProductionScheduleGrindingPlanningBoardResourceCapacity` への `setupMinutes Float?` 追加、既存 resource-capacity GET/PUT への任意の非負有限数の入出力追加である。default は null とし、未設定を0分とみなさない。新しい settings 画面は作らない。段取り未確定の片はガント上の所要時間不明として既存不明表示・提案不可の経路へ流し、明示0なら0分として扱う。元所要分が既に段取りを含むと確認された場合は二重加算を避ける加工分の抽出規則を Decision Log に追記してから実装する。
+従前の resource-capacity への `setupMinutes Float?` 保存案は 2026-11-06 のユーザー確認で撤回した。列・migration・設定画面は追加せず、段取り未設定による不明時間も導入しない。
 
-数量比例の加工分は浮動小数の分のまま `sourceMinutes * piece.quantity / plannedQuantity` とし、片ごとの Math.round で総所要時間を増減させない。0分は既知の0として扱い、現行の `!item.requiredMinutes` による「不明」判定を null/known 判定へ狭く修正する。元数量不明・0または数量不整合は所要分不明とする。休憩・日跨ぎの分割は既存 `placeForward` を使う。後ろ向きガントも片別の加工分を使うが、今回の段取り加算は前向き配置だけに限定する。
+数量比例の加工分は浮動小数の分のまま `sourceMinutes * piece.quantity / plannedQuantity` とし、片ごとの Math.round で総所要時間を増減させない。0分は既知の0として扱い、現行の `!item.requiredMinutes` による「不明」判定を null/known 判定へ狭く修正する。元数量不明・0または数量不整合は所要分不明とする。休憩・日跨ぎの分割は既存 `placeForward` を使う。後ろ向きガントも同じ片別の按分所要分を使い、段取りを加算しない。
 
-PR3 単独で PR2 上にデプロイしてもゲート OFF なら既存操作を維持する。能力応答を見て分割操作を有効にし、ゲート ON は全APIがPR2以降・新UI配信済み・段取りの保留解決済みという確認後に、明示承認された本番設定変更として行う。ゲートを OFF に戻しても既存片を消したり親1行だけにして隠したりしない。
+PR3 単独で PR2 上にデプロイしてもゲート OFF なら既存操作を維持する。能力応答を見て分割操作を有効にし、ゲート ON は全APIがPR2以降・新UI配信済みという確認後に、明示承認された本番設定変更として行う。ゲートを OFF に戻しても既存片を消したり親1行だけにして隠したりしない。
 
 ## Interfaces and Dependencies
 
@@ -306,7 +377,7 @@ PR3 単独で PR2 上にデプロイしてもゲート OFF なら既存操作を
 
 場所ごとの順番は新テーブルを作らず、既存 `ProductionScheduleGrindingPlanningBoardOverride` の `itemKey = piece:<id>` と `alternateRank` を使う。これが Prisma 上の場所別保存定義であり、unique は既存 `[csvDashboardId, siteKey, itemKey]` を用いる。不要になった片の override は全 siteKey 分を同じトランザクションで削除する。旧 split override は削除せず無視する。
 
-migration は `apps/api/prisma/migrations/<timestamp>_add_sessaku_pieces/migration.sql` とする。CREATE TABLE、FK、index に加え、quantity>0、position>0、version>0、nextPosition>0、plannedQuantity>=0またはnull、completedAt と isCompleted の整合の CHECK を付ける。warning は `COMPLETED_QUANTITY_EXCEEDS_PLAN` / `INVALID_PLANNED_QUANTITY` の既知値だけ許す。全片合計=指示数は行を跨ぐためサービスの同一トランザクションとテストで保証する。段取り列を採用する場合は setupMinutes が null または非負有限数となる CHECK を同じ additive migration または PR3 の追加 migration に入れる。
+migration は `apps/api/prisma/migrations/<timestamp>_add_sessaku_pieces/migration.sql` とする。CREATE TABLE、FK、index に加え、quantity>0、position>0、version>0、nextPosition>0、plannedQuantity>=0またはnull、completedAt と isCompleted の整合の CHECK を付ける。warning は `COMPLETED_QUANTITY_EXCEEDS_PLAN` / `INVALID_PLANNED_QUANTITY` の既知値だけ許す。全片合計=指示数は行を跨ぐためサービスの同一トランザクションとテストで保証する。段取り列とその migration は追加しない（2026-11-06 ユーザー確認）。
 
 旧モデルの DROP や移し替えSQLを含めず、既存行へ片を自動生成しない。隔離DBで migration 前後の旧4テーブル・親データが保持されること、追加 migration を2回 deploy して2回目は適用なしになることを検証する。履歴を書き換えたり `prisma db push` で代用したりしない。
 
@@ -378,7 +449,7 @@ site が未作成なら集合の position 順を同順位時の安定した初�
 ## Concrete Steps
 
 
-今回実行するのは本書の作成と差分確認だけである。以下は実装が依頼された後の手順であり、今この場で実行しない。作業前に `.cursor/rules/00-core-safety.mdc`、`10-quality-ci-and-tests.mdc`、`20-git-workflow.mdc` を読み、その段階に必要なルールを追加で読む。Git 操作は承認範囲を超えない。既存task worktreeを引き継ぎ、ユーザーWIPの reset / stash / checkout をしない。
+以下の PR1 / PR2 手順は各段階の記録として保持する。2026-11-06 の PR3 では末尾 PR3 evidence のローカル実装・検証だけを実行した。作業前に `.cursor/rules/00-core-safety.mdc`、`10-quality-ci-and-tests.mdc`、`20-git-workflow.mdc` を読み、その段階に必要なルールを追加で読む。Git 操作は承認範囲を超えない。既存task worktreeを引き継ぎ、ユーザーWIPの reset / stash / checkout をしない。
 
 全コマンドの cwd は上記リポジトリルート。依存関係が導入済みでなければ承認された開発環境を用意する。テスト接続先は運用DBから隔離した専用 PostgreSQL とし、TEST_DATABASE_URL は管理された環境から渡す。資格情報をログへ表示しない。`grinding-planning-board.integration.test.ts` は専用 TEST_DATABASE_URL がないと skip するため、exit 0 だけではDB検証成功ではない。
 
@@ -439,7 +510,7 @@ PR2 は gate OFF で新規分割403、既存行は不変。隔離環境の gate 
 
 PR3 は数量枠から分け数2を選び「分ける」で2／5と3／5、割合帯が出る。片2を済みにして、片3をBの後ろへ動かし、端末を再読込してもその位置と状態が残る。別siteでは数量と済みだけ共通で、そのsite固有の並びを保つ。未済み3を [1,2] に再分割でき、未済み同士だけを結合できる。全未済みを結合して通常行へ戻した場合は片0件、従来の数量枠に戻る。済み片の分割・結合はできない。
 
-前向きガントはAの片2の加工40分、片3の加工60分を別棒にする。明示段取り10分の場合、同資源の A2→A3 は50+60=110分、A2→B→A3 はAの棒だけで50+70=120分となり、B自身の所要分は別に足される。別資源のA3にも段取り10分を加える。描画・提案順の評価で同じ時刻になり、次工程の棒はAの両片が終わるまで始まらない。休憩、日跨ぎ、不明所要時間、0分、pin・特別納期を含む既存テストも維持する。
+前向きガントはAの片2の加工40分、片3の加工60分を別棒にする。同資源の A2→A3 は40+60=100分、A2→B→A3 もAの棒だけで40+60=100分となり、B自身の所要分は別に足される。別資源へ置いても片2=40分・片3=60分で加算しない。描画・提案順の評価で同じ時刻になり、次工程の棒はAの両片が終わるまで始まらない。休憩、日跨ぎ、不明所要時間、0分、pin・特別納期を含む既存テストも維持する。
 
 再取り込みでAの row ID を入れ替えても pieceId と数量・済み・site別 override は保たれ、新 winner の Progress が正しい。補助CSV5→7/4/2/1、全片済みからの増加、0、不明数量を上記規則で検証する。済2に対して指示1なら数量を維持して赤枠となり、無断縮小はない。全片が外部完了の数量警告も未完了フィルターで見えるが、完了値はtrueのままとする。外部メール C/X は全片import完了で取消不可、未完了訂正時は手動実績が残り、親 Progress と着が一致する。
 
@@ -479,7 +550,7 @@ PR1 で問題があれば旧データは保持されているため対応する�
 
 実装者は各PRで変更ファイル、対象テスト名とpass/skip件数、lint/typecheck結果、migration適用先が隔離DBであること、互換動作の確認を短く残す。承認された場合のみPR URL、push SHA、checks、main merge SHA、deploy run IDとhealth等を段階別に追記する。ローカル成功を統合・本番成功と書かない。
 
-本書作成後は `git status --short`、`git diff --check` と対象ファイルの構造・参照確認で、書込が本書1つだけであることを確認する。開始時の WIP は0件だったため、他ファイルの差分が出たら今回の成果に含めず原因を確認する。
+PR3 終了時は `git status --short`、`git diff --check` と対象ファイルの差分を確認し、末尾の変更ファイル一覧と一致することを確認する。開始時 WIP は0件であり、今回の差分と他作業を混ぜない。
 
 改訂記録: 2026-11-05、初版および整合性レビュー反映。ユーザー確定の片設計を基準に現行コードを調査し、旧分割のOFF経路、ガントの前工程依存、複数のProgress書き手、段階導入・ロールバックの制約を追加した。コード変更は行っていない。レビューでは、旧形式の親書込を409にする境界、片0件の墓標からの自動復活防止、外部完了訂正時の数量再補正、空メールCSVの既存skip方針を明記した。
 
@@ -569,3 +640,158 @@ Changed files:
 - `apps/web/src/api/queryKeys/productionSchedule.ts`
 - `docs/plans/2026-11-05-sessaku-split-pieces.md`
 - `packages/shared-types/src/common/production-schedule-grinding-planning-board.ts`
+
+改訂記録: 2026-11-06 PR3。ユーザー確認の数量按分のみの決定で旧段取り Decision・保存案・業務シナリオを置き換えた。ローカル実装・検証結果は PR3 evidence に記録する。
+
+### PR3 implementation evidence (2026-11-06 JST)
+
+API client / query key は PR2 の既存契約を使用し、ページ・load を includePieces=true にした。数量小窓は既存 Dialog を使用する。片作成は能力応答・切削区分で制御し、作成ゲート OFF でも未済み片の結合と完了・取消は可能。409 は再送せず最新ボードを取得する。
+
+| Command / scope | Result |
+| --- | --- |
+| `pnpm -r --filter "./packages/**" build` | exit 0、5パッケージ。初回は依存未導入で tsc 不在、frozen-lockfile install 後に解消 |
+| `pnpm --filter @raspi-system/web lint` | 最終 exit 0。初回の import 順とページ行数上限を修正 |
+| `pnpm --filter @raspi-system/web exec tsc -p tsconfig.json --noEmit` | 最終 exit 0、約7秒 |
+| web `vitest run src/features/kiosk/grindingPlanningBoard src/features/kiosk/productionSchedule src/features/kiosk/leaderOrderBoard src/pages/kiosk/ProductionSchedule src/api/domains/production-schedule src/api/hooks/production-schedule` | 141 files / 1161 passed、30.55秒 |
+| 完了hook移設・画面追加ケース後の web `vitest run src/features/kiosk/grindingPlanningBoard src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.test.tsx src/api/hooks/production-schedule-pieces.test.tsx` | 32 files / 455 passed、17.22秒。上記後に追加した赤枠2件と競合提案・分割409の2件を含む |
+| API `vitest run src/services/production-schedule/__tests__/grinding-planning-board-projection.test.ts` | 19 passed、0.30秒。1/3+2/3=1と既知0を含む |
+| `pnpm --filter @raspi-system/api lint` / `exec tsc --noEmit -p tsconfig.build.json` | いずれも exit 0 |
+| `pnpm kiosk-sop:source-check` | exit 0、source digests current。manifest更新不要 |
+| `git diff --check` | 最終 exit 0 |
+
+初回 focused web の失敗3件は includePieces に伴う load 引数と数量セルの DOM に対する旧期待値であり、更新後は上記全体検証で成功。初期環境には node_modules と Prisma Client 生成物が無く、`pnpm install --frozen-lockfile` と `XDG_CACHE_HOME=/tmp/pr3-prisma-cache pnpm --filter @raspi-system/api exec prisma generate` で準備した。通常の Prisma cache は sandbox 外への utime で失敗したため一時cacheへ切り替えた。DB接続・migration・依存追加・lockfile変更はない。ブラウザーおよび実機の通し確認は未実施。
+
+計画との差分はユーザー確認の段取り撤回、必要最小限の API 投影丸め除去、既存ページ行数制限に合わせた完了hook移設。開始時 WIP なし、以下は今回の変更ファイル（既存ファイルの変更と新規ファイルを含む）。
+
+- `apps/api/src/services/production-schedule/__tests__/grinding-planning-board-projection.test.ts`
+- `apps/api/src/services/production-schedule/grinding-planning-board-projection.ts`
+- `apps/web/src/api/domains/production-schedule.grinding-planning-board.test.ts`
+- `apps/web/src/api/hooks/production-schedule-pieces.test.tsx`
+- `apps/web/src/api/hooks/production-schedule/grinding-planning-board.ts`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardFocusView.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardItemTable.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardPageView.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.test.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardResourceView.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardSeibanPane.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/__tests__/PlanningBoardItemTable.completion.test.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardChainStrip.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardGanttRow.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.test.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardAutoOrder.test.ts`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardAutoOrder.ts`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout.test.ts`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout.ts`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion.ts`
+- `apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.test.tsx`
+- `apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx`
+- `docs/plans/2026-11-05-sessaku-split-pieces.md`
+
+### PR3 review corrections evidence (2026-11-06 JST)
+
+レビュー開始時は前回PR3の未コミットWIPが存在し、その差分を保持して追補した。今回の修正はwebと本計画書のみで、前回WIPのAPI投影変更には手を加えていない。DB・API契約・依存・秘密情報の変更、commit / push / PR / merge / deploy は行っていない。
+
+通常行の完了条件・409通知と、ピン競合fallback・同一/欠損工順の直列・通常行0分不明・explicitHeadをHEADへ戻した。片は全兄弟の応答版をoverlay/refへ反映し、兄弟を重なりと工程数から除外（工程stripの件数も親単位）。拒否された分割/結合は既存通知を出して小窓を維持し、分割後は最初の新片の数量へfocusを渡す。数量1でそのボタンが無効な場合は同じ行の選択欄へ渡す。分の表示だけ小数1桁に整え、通常行の書式と計算値を保った。Provider値をmemo化し、選択片の親Mapと結合可能IDを一括集計して行側を定数時間の参照にした。
+
+| Command / scope | Result |
+| --- | --- |
+| `pnpm --filter web lint` | 最終exit 0（約2分）。hook依存のwarningは追補の対象ESLintで解消、0 errors / 0 warnings |
+| apps/web `pnpm exec tsc -p tsconfig.json --noEmit` | 最終exit 0、約8秒 |
+| web `vitest run src/features/kiosk/grindingPlanningBoard src/features/kiosk/productionSchedule src/features/kiosk/leaderOrderBoard src/pages/kiosk/ProductionSchedule src/pages/admin/ProductionScheduleLoadBalancingSettingsSection.test.tsx src/api/domains/production-schedule src/api/hooks/production-schedule src/api/queryKeys/productionSchedule.test.ts` | 144 files / 1227 passed / 0 failed / 0 skipped、36.10秒 |
+| 最終focus・1000行memo/親Mapのpage/popover検証 | 2 files / 136 passed、15.75秒。数量2→1+1のfocusを含む |
+| 工程stripの件数追補後の `vitest run src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.test.tsx` | 1 file / 137 passed。片なし2工程・兄弟片1工程を同じcomponentで比較 |
+| 最終追補のpage・工程strip・対応テストの対象ESLint | exit 0、0 errors / 0 warnings |
+| `pnpm kiosk-sop:source-check` | exit 0、source digests current |
+| `git diff --check` | exit 0 |
+
+初期のfocusedテストは、復元したfallbackの期待値と操作拒否raceのfixtureを修正して解消した。lintのページ行数上限は片のmemo/focus処理を同じfeatureのhookへまとめて解消した。工程stripの追加テストはforward専用の既存UIへ合わせて修正した。Pi4実機とブラウザーでの実測は未実施であり、1000行の線形集計・無関係な再描画でMap/Providerが安定するcomponent/hookテストを性能の根拠とする。
+
+レビュー追補の対象（それ以外の開始時WIPは維持）:
+
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.tsx` と対応test、`usePlanningBoardCompletion.ts`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardItemTable.tsx`、`planningBoardLoad.ts`、`__tests__/PlanningBoardRequiredMinutes.test.tsx`
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardAutoOrder.ts`、`planningBoardGanttLayout.ts` と各対応test
+- `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardGanttRow.tsx`、`PlanningBoardForwardQueuePopover.tsx`、`PlanningBoardChainStrip.tsx`、`PlanningBoardGanttView.test.tsx`
+- `apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx` と対応test、本計画書
+
+
+### PR3 second re-review corrections evidence (2026-11-06 JST)
+
+A〜Hを対象に、Contextの安定参照化と行prop、閉じた数量Dialogの非mount、操作不可数量から特別納期へのclick伝播、通常行の完了overlayと順位/機械書込revisionの分離を修正した。同一親の兄弟片はPUT応答待ち中の2件目を拒否し、保存版は一致GETの後に古いGETが届いても保持する。新しいoverride版を優先し、分割/結合成功時は対象親のoverlayを消す。片を含む一括変更の負荷予測だけ表示を小数1桁へ丸める。数量DialogはreturnFocusを無効にし、取消時だけ自分のtriggerへ戻す。片409は再取得と既存通知に留め、保存後GET失敗は保存成功として小窓を閉じる。auto-orderの死catchを除去した。
+
+回帰テストには、能力OFF/ONで片0件の選択変更が対象行だけを描画すること、数量Dialogが閉じている間は呼ばれないこと、別paneの選択で結合可否が変わること、全件読込前の3表示で片操作を禁止すること、応答前の兄弟完了、版の逆着、通常行の新revisionでの順位/機械保存、片/通常行の負荷書式、保存後focusの非上書き、分割/結合409の非ロック、保存済みGET失敗を含めた。
+
+| Command / scope | Result |
+| --- | --- |
+| `pnpm --filter web lint` | 最終exit 0、0 errors / 0 warnings、約4分 |
+| apps/web `pnpm exec tsc -p tsconfig.json --noEmit` | 最終exit 0、約1分（全件検証と並行） |
+| apps/web `pnpm exec vitest run` | 最終696 files / 6212 tests passed、0 failed / 0 skipped、261.98秒 |
+| `pnpm kiosk-sop:source-check` | exit 0、source digests current、約1秒 |
+| `git diff --check` | exit 0、約1秒 |
+
+最初の全件Vitestも696 files / 6208 tests pass（267.53秒）。読込制限と新override版優先を追補したため最終全件を1回再実行した。focused検証の新規テストで判明したラベル/fixtureと、lintのimport順・未使用変数・既存ページ行数上限は修正済み。編集中のソースを並行読取したlintは位置情報の不整合で失敗したため、ソース確定後に上記コマンドを再実行して成功を確認した。ブラウザー/実機計測は未実施。開始時のAPIその他WIPは維持し、今回API/DBの追加変更、commit/push/PR/merge/deployは行っていない。
+
+
+### PR3 third review corrections evidence (2026-11-06 JST)
+
+C1〜C7・P1〜P4・T1〜T5/T7〜T11・F1/F2/F4・N1 を対象とした。通常行の完了・描画は HEAD の規則を保ち、片 overlay の親単位破棄、同じ親の保存排他、callback/Map の安定参照、操作可否によらない数量帯、結合の新しい片/親行への focus、二次消費側の無効化と全件 GET 1回、比較順・計算割当・非丸めを修正し、各回帰テストを追加した。完了済み兄弟が先頭にある部分結合も、新しい未完了片へ focus する。
+
+検証: `pnpm --filter web lint`（ソース確定後、約4分）、`pnpm --filter api lint`、web の `pnpm exec tsc -p tsconfig.json --noEmit`、API の `pnpm exec tsc -p tsconfig.build.json --noEmit`、`pnpm kiosk-sop:source-check`、`git diff --check` はすべて exit 0。web 全件 `pnpm exec vitest run --maxWorkers=4` は697 files / 6251 tests pass（294.88秒）。API の projection / load-summary の DB不要単体テスト33件 pass。最後の focus 追補は対象4件 pass。
+
+初回 web 全件は無関係な組立PDF timeout と Service Worker Response.clone の2件が失敗したが、個別89件と上記の制限ワーカー全件で成功した。初回 lint のページ行数上限・import順は修正し、編集中の並行解析で生じた位置ずれはソース確定後の lint / tsc で再検証した。開始時 WIP は保持し、今回の API 追加変更は load-summary とそのテストだけ。DB/schema/migration、commit/push/PR/merge/deploy は実施していない。
+
+
+## PR3 第4回レビュー修正記録（2026-11-06）
+
+R1/G7は兄弟片の完了待ちと書込待ちを片だけのdisabledへ反映した。片0件・1000行ではpending切替による行走査とpending集合の変更がないことを確認する。R5/G1はHEADのmembership比較へ戻し、結合候補を数量コントロールへ移して、選択されている片だけに「まとめる」を出す。別pane/資源表示でも選択変更行だけが再描画されることを検証した。H3は特別納期モードで数量を文字列にし、H4は通常行の数量操作の書込ガードをrefで開く際に確認する。
+
+R2は集計負荷の整数を従来どおり、小数を1桁で表示し、値自体は丸めない。R3は競合通知と操作不可を保存待ちから分け、R4は400/500/通信失敗もGETする。G6は欠損した結合入力をthrowし、小窓が成功扱いで閉じないようにした。G5の未使用引数、G11の到達不能分岐を削除し、G8のfocus理由をコメント化、G9の空配列と重なり判定を共通化、G10の親別overlay照合をMapで1回の走査へ変更した。G2/G3/G4はContext、版保持、変更証拠を実装に合わせ、H2はインデントを修正した。
+
+H1は起動payload/loadをincludePieces:trueへ揃え、結果が同じload集計はincludePiecesによらず同じキャッシュを使う。ウォームアップ要求とfalse/true間のSQL再利用をテストした。G12はHEADのwebソースを一時ディレクトリへ展開し、同じ `records arrival from a grey queue card, shows the Gantt immediately, and allows cancellation` を実行して、1 passedとXHR AggregateErrorを確認した。初期forward表示の `/machine-signal/resource-uptime` が発生源であり、既存テストは指示どおり変更せず、新規Pageテスト49件は2つのdescribe内で稼働率取得をモックした（49 passed、AggregateErrorなし）。
+
+
+第4回の最終検証は、`pnpm --filter web lint` / `pnpm --filter api lint`、webの `pnpm exec tsc -p tsconfig.json --noEmit` / APIの `pnpm exec tsc -p tsconfig.build.json --noEmit`、`pnpm kiosk-sop:source-check`、`git diff --check` が成功した。webの `pnpm exec vitest run --maxWorkers=4` は697 files / 6269 tests pass（最終280.85秒）。最初の全件も同数で成功したが、その実行中に片0件の走査防止・HTTPモックを確定したため、最終ソースで1回再確認した。
+
+APIの `pnpm exec vitest run grinding-planning-board-projection grinding-planning-board-load-summary startup-warmup` は41 passed（1.25秒、DB用16件はこのコマンドではskip）。指定のTEST_DATABASE_URL / DATABASE_URLを使い、`grinding-planning-board-load-summary.integration.test.ts` と `sessaku-pieces.integration.test.ts` を別途実行して38 passed（16.10秒）を確認した。新規Pageテスト49件は稼働率HTTPなしで成功し、片0件1000行・親別overlay走査・小数負荷も対象検証で成功した。
+
+開始時の未コミット変更を保持し、指摘対象へ修正を重ねた。最終auditは指定branch/worktreeをDIRTY_PROTECTEDと認識し、履歴とworktreeを維持している。commit/push/PR/merge/release/deployは未実施。ブラウザー・実機の計測は今回の検証に含めていない。
+
+
+## PR3 第5回レビュー修正記録（2026-11-06）
+
+A1はSQL集計とTS fallbackの兄弟片順をIDで固定し、7→[1,2,4]の非整数按分で両経路の完全一致を検証した。A2は二次GET完了待ちを外し、分割/結合のload GETを追加1回に固定した。片完了のload無効化、board失敗時のstale、load/boardの完了順をテストした。A3はloadの未使用includePiecesを除去し、HTTP query互換と起動boardのincludePieces:trueを維持した。
+
+U1/U3/U12/F2は小窓の操作近くへ既存文言を出し、待機と失敗を分けた。U2はpiecePendingによる全画面ロックを除去、U4は有効数量の当たり判定を44pxへ広げた（ゲートOFFの通常数量は文字列のまま）。U5は対象親/片だけ選択を解除する。U6/F3はガント/チェーンからも片完了にbulkReadyを適用、通常行の条件は維持した。U7/U8/F1はDialogの標準focus復帰と差替時の親/兄弟/表fallbackへ変更し、取得失敗後の次回取得まで復帰先を保持する。U9は開いたdialogがあるEscapeをページ側で無視、U11は開いて350ms以内の背景tapを無視する。U10はDecision Logの根拠により変更せず、F4はrender中のpending参照をstate集合へ揃えた。
+
+検証: `pnpm --filter web lint` / `pnpm --filter api lint`、web `pnpm exec tsc -p tsconfig.json --noEmit` / API `pnpm exec tsc -p tsconfig.build.json --noEmit`、`pnpm kiosk-sop:source-check`、`git diff --check` は成功。web全件 `pnpm exec vitest run --maxWorkers=4` は697 files / 6293 tests pass（235.68秒）、対象web回帰5ファイルは233件 pass（18.03秒）。APIのprojection / load-summary / startup-warmupとrouteの対象単体は113件 pass。指定TEST_DATABASE_URL / DATABASE_URL（127.0.0.1:55432/sessaku_test）で指定DB統合2ファイルは39件 pass。
+
+最初のweb lintのimport空行2件は修正して全件lintを再確認した。新規Pageテストの2件は表示モードとpending単独切替のfixtureを修正し、対象・全件とも成功した。既存の稼働率XHR stderrは前回確認済みの範囲に留め、無関係なコードは変更していない。片0件のpending切替では追加行再描画なし、選択はHEADのmembership比較、起動board warmupはincludePieces:trueを維持した。
+
+開始時WIPは保持し、第5回の変更を指摘対象に重ねた。最終auditは指定branch/worktreeをDIRTY_PROTECTEDと認識し、HEADは開始時と同じcab3d0e9のまま。共有Dialog、DB/schema/migration、秘密情報は変更していない。commit/push/PR/merge/release/deployは未実施。
+
+## PR3 第6回レビュー検証記録（2026-11-06）
+
+- `pnpm --filter web lint` / `pnpm --filter api lint`、web `pnpm exec tsc -p tsconfig.json --noEmit` / API `pnpm exec tsc -p tsconfig.build.json --noEmit`、`pnpm kiosk-sop:source-check`、`git diff --check` は成功。Pageの既存行数上限773は変更せず、追加箇所の整形で収めた。
+- web `pnpm exec vitest run --maxWorkers=4` は697ファイル / 6306件成功（250.90秒）。片操作Page対象は58件成功。初回の依頼外の組立画面2件は単独確認で成功し、全件の再実行も成功した。並列負荷下の失敗として記録し、組立画面のコード・テストは変更していない。
+- 指定の `TEST_DATABASE_URL` / `DATABASE_URL`（127.0.0.1:55432/sessaku_test）で指定DB統合2ファイルは40件成功（24.86秒）。追加の「複数行 × 割り切れない片」はSQL集計、逆順のwinnerRowIdsによる行列挙、TS投影の完全一致を確認した。
+- APIの指定全体検証は起動済みのテストDBを `DATABASE_URL` に指定。既定localhost:5432では接続失敗のため中断した。最初のDB指定実行は2506件成功 / 23件skip、依頼外のCSV 10000行取込1件が30秒timeout。対象1件は単独実行で成功（テスト部分6.59秒）し、他の並列検証が終了した状態で全体を1回再実行した。再実行は2506件成功 / 23件skip / 1件失敗（337.07秒）。Dropbox取込14件は成功したが、未変更の `src/routes/__tests__/signage.integration.test.ts:1354` のbeforeEachが `prisma.loan.updateMany({ data: { returnedAt: new Date() } })` で `Loan_terminal_state_check`（23514）に違反した。対象1件の単独確認でも再現（8.53秒）した。片機能との因果がない既存テスト準備処理の問題として記録し、無関係変更禁止と再実行上限に従い修正・DB手編集・追加全面再実行は行わない。API全体の全件成功は未達。
+- 最終auditは指定branch/worktreeをDIRTY_PROTECTEDと確認し、HEADは開始時と同じcab3d0e9。既存WIPを保持し、共有Dialog、秘密情報、schema/migrationは変更していない。commit/push/PR/merge/release/deployは未実施。
+
+## PR3 第7回レビュー検証記録（2026-11-06）
+
+- 関連web回帰4ファイルは298件成功（45.96秒）。保存中にGETでtriggerが消える分割/結合、再取得中の全片・対象親の操作抑止、失敗時の即時エラーとEscape、失敗後の定期GETによるfocus奪取防止、無関係な取消通知、片0件・ゲートOFFのblocked/pending切替描画回数、350ms全操作guard、不正片の完了disabled、position優先を確認した。
+- web全件 `pnpm exec vitest run --maxWorkers=4` は697ファイル / 6320件成功（276.91秒）。最終コード前に開始した全件実行は、C2の対象親完了ゲート追加のため中断し、最終コードで上記1回を完走した。
+- `pnpm --filter web lint` / `pnpm --filter api lint`、web `pnpm exec tsc -p tsconfig.json --noEmit` / API `pnpm exec tsc -p tsconfig.build.json --noEmit`、`pnpm kiosk-sop:source-check` は成功。ページの既存773行上限を維持した。
+- API指定 `pnpm exec vitest run grinding-planning-board-projection grinding-planning-board-load-summary startup-warmup src/routes` は `DATABASE_URL` に指定DB（127.0.0.1:55432/sessaku_test）を明示し、2506件成功 / 23件skip / 既知1件失敗（579.39秒）。既定5432への接続失敗で最初の実行を中断し、上記環境で1回完走した。失敗はユーザー申告どおり `src/routes/__tests__/signage.integration.test.ts:1354` のbeforeEachにあるloan.updateManyと `Loan_terminal_state_check`（23514）。片機能との因果がない既存問題としてコード・DBを修正せず、追加のbaseline確認・再実行も行わない。
+- 指定 `TEST_DATABASE_URL` / `DATABASE_URL` で、指定DB統合2ファイルは40件成功。`git diff --check` も成功。
+- lifecycle auditと最終statusで指定branch/worktreeのDIRTY_PROTECTEDを確認。今回の追加変更はweb 8ファイルと本計画書だけで、APIを含む既存WIPは保持した。共有DialogとUI文言は変更せず、commit / push / PR / merge / release / deployは未実施。
+
+- 2026-11-06: 保存中の全画面fieldset/captureを対象操作限定へ修正。常設の `display: contents` と属性CSS、最新状態をrefで読むhandlerにより、片0件・作成OFFへの遷移でも包みを出し入れしない。止めるのはperf-Bの `writeBlocked` 経由の順位・資源/納期保存・並べ替え等と✓/片操作の再保存。選択・開閉・戻る・ガント表示操作・小窓の±/Escape/背景閉じは利用可能。最新の単独8回計測（2026-11-07）は分ける388.9ms（tr 8）、まとめる310.4ms（tr 9）、✓274.7ms（tr 3）。片なし29場面の描画/commitは不変。ユーザー確認済みの同時間帯・基点との交互計測では時間差はほぼ無く、表表示のみ約5%だったため、先の別時刻比較を時間悪化の根拠としない。最新のlint・型検査・web全698ファイル/6347件（198.26秒）・差分検査は成功。詳細な範囲・最終数値・検証は[KB-439「片の操作と保存中切替の再描画削減」](../knowledge-base/KB-439-planning-board-due-sort-performance.md#2026-11-06-片の操作と保存中切替の再描画削減)を正本とする。
+- 最新検証（2026-11-07）: web/API lint・型検査、web全698ファイル・6347件、API関連単体35件、指定DB統合20件（skipなし）、単独perf（8試行・178.15秒）、SOP source-check、diff check成功。既存WIPを保持し、共有Dialog・UI文言の変更とcommit・push等は未実施。
+
+## PR3 第三者レビュー R1〜R5（2026-11-07）
+
+R1〜R5はいずれも妥当。保存中のtd/trクリックと取消トーストを拒否し、readyを外部storeへ移してContextを安定化した。数量部品は関連値だけでmemo化し、計数を描画前へ移してready／orderPreview／blockedとDOM同一性を検証する。分割・結合の選択解除は全カテゴリに適用し、親0分の片を不明として投影・TS・SQLを揃えた（親nullの扱いは維持）。詳細と最新計測は[KB-439のR1〜R5記録](../knowledge-base/KB-439-planning-board-due-sort-performance.md#2026-11-07-第三者レビュー-r1r5)を参照。

@@ -342,7 +342,9 @@ function buildLoad(items: readonly GrindingPlanningBoardItem[]): {
     return created;
   };
 
-  for (const item of items) {
+  const orderedItems = [...items].sort((left, right) => left.sourceRowId < right.sourceRowId ? -1 : left.sourceRowId > right.sourceRowId ? 1
+    : (left.pieceId ?? '') < (right.pieceId ?? '') ? -1 : (left.pieceId ?? '') > (right.pieceId ?? '') ? 1 : 0);
+  for (const item of orderedItems) {
     if (item.isCompleted) continue;
     const originalResource = item.originalResourceCd;
     const alternateResource = item.effectiveResourceCd;
@@ -531,8 +533,8 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const own = params.overrides.get(itemId);
       const override = own ?? inherited;
       const total = parent.plannedQuantity;
-      const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.requiredMinutes != null
-        ? Math.round(parent.requiredMinutes * piece.quantity / total * 100) / 100 : null;
+      const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.requiredMinutes != null && parent.requiredMinutes > 0
+        ? parent.requiredMinutes * piece.quantity / total : null;
       const isCompleted = external || piece.isCompleted;
       const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
         originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,

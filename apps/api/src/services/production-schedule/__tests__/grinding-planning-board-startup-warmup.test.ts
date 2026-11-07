@@ -49,8 +49,10 @@ describe('grinding planning board startup warmup', () => {
     expect(calls).toEqual(['persisted-site', 'override-site'].flatMap((site) =>
       ['grinding', 'cutting', 'all'].flatMap((category) => [`${site}:${category}:payload`, `${site}:${category}:load`])));
     expect(mocks.payload).toHaveBeenCalledWith(expect.objectContaining({
-      view: 'resource', completionFilter: 'incomplete', includeLoad: false
+      view: 'resource', completionFilter: 'incomplete', includeLoad: false, includePieces: true
     }));
+    expect(mocks.payload.mock.calls.every(([request]) => request.includePieces === true)).toBe(true);
+    expect(mocks.load.mock.calls.every(([request]) => !('includePieces' in request))).toBe(true);
     await warmup.stop();
     await vi.advanceTimersByTimeAsync(45_000);
     expect(mocks.query).toHaveBeenCalledTimes(1);

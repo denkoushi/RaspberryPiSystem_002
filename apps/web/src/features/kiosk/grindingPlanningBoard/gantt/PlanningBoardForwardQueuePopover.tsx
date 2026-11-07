@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { pageZoom } from '../pageZoom';
+import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
 import { findForwardDrop } from './planningBoardForwardDrop';
@@ -216,9 +217,9 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           const rect = panel.current?.getBoundingClientRect();
           if (rect && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) hideSoon();
         }} onPointerCancel={() => { clearDrag(); hideSoon(); }} onLostPointerCapture={() => { if (drag.current) { clearDrag(); hideSoon(); } }}>
-        <div className="truncate text-slate-400">{[bar.item.fseiban, bar.unknown ? '所要不明' : `${bar.item.requiredMinutes}分`].filter((part) => part !== '').join(' · ')}</div>
+        <div className="truncate text-slate-400">{[bar.item.fseiban, bar.unknown ? '所要不明' : formatPlanningBoardItemMinutes(bar.item)].filter((part) => part !== '').join(' · ')}</div>
         <strong className="my-0.5 block truncate text-sm" title={bar.item.fhinmei || bar.item.fhincd}>{bar.item.fhinmei || bar.item.fhincd}</strong>
-        <div className="truncate text-slate-400">{[bar.item.fhincd, bar.item.plannedQuantity == null ? null : `${bar.item.plannedQuantity}個`].filter((part) => part != null && part !== '').join(' · ')}</div>
+        <div className="truncate text-slate-400">{[bar.item.fhincd, bar.item.kind === 'piece' ? `${bar.item.quantity ?? '—'}／${bar.item.parentPlannedQuantity ?? '—'}` : bar.item.plannedQuantity == null ? null : `${bar.item.plannedQuantity}個`].filter((part) => part != null && part !== '').join(' · ')}</div>
         <div className="truncate text-slate-400">{normalizeMachineName(bar.item.machineName)}</div>
         {!bar.arrivalPending && forwardStartLabel(bar) && <div className="truncate text-slate-400">開始 {forwardStartLabel(bar)}</div>}
         {bar.due && <div className={clsx('truncate', !bar.arrivalPending && bar.tone === 'late' ? 'text-rose-300' : 'text-slate-400')}>納期 {forwardDueLabel(bar.due)}</div>}
