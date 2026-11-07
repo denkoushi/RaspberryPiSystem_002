@@ -1,4 +1,4 @@
-import { runSessakuPieceOperation, type PieceAuditContext } from './piece-audit.js';
+import { runSessakuPieceOperation, type PieceAuditContext, type PieceOperationTiming } from './piece-audit.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -6,8 +6,9 @@ import type { GrindingPlanningBoardItem, SessakuPieceCompletionRequest, SessakuP
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
-import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans } from '../grinding-planning-board/source.js';
+import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
+import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, type SessakuLaneSourceScope } from '../grinding-planning-board/source.js';
+import { decodeRowItemId } from '../grinding-planning-board/shared.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
@@ -18,38 +19,80 @@ import { reconcileSessakuPieceProgress } from './piece-completion.js';
 function conflict(code = 'STALE_SESSAKU_PIECES'): never {
   throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, code);
 }
-async function timed<T>(audit: PieceAuditContext | undefined, stage: 'lockWaitMs' | 'beforeProjectionMs' | 'writeMs' | 'afterProjectionMs', work: () => Promise<T>): Promise<T> {
+async function timed<T>(audit: PieceAuditContext | undefined, stage: Exclude<keyof PieceOperationTiming, 'siteCount' | 'upsertCount' | 'sourceRowCount'>, work: () => Promise<T>): Promise<T> {
   const started = performance.now();
   try { return await work(); }
   finally { if (audit?.timing) audit.timing[stage] += performance.now() - started; }
 }
-async function readProjectionSource(tx: Prisma.TransactionClient, fseibans: string[]) {
-  const rows = await readWinnerRowsByFseibans(tx, fseibans);
-  const details = await readRowDetails(tx, rows.map((row) => row.id));
-  const pieceSets = await readSessakuPieceSets(tx, rows);
+async function readProjectionSource(tx: Prisma.TransactionClient, fseibans: string[], audit?: PieceAuditContext, laneScope?: SessakuLaneSourceScope) {
+  const rows = await timed(audit, 'sourceWinnerMs', () => readWinnerRowsByFseibans(tx, fseibans, laneScope));
+  if (audit?.timing) audit.timing.sourceRowCount += rows.length;
+  const details = await timed(audit, 'sourceDetailsMs', () => readRowDetails(tx, rows.map((row) => row.id)));
+  const pieceSets = await timed(audit, 'sourcePieceSetsMs', () => readSessakuPieceSets(tx, rows));
   return { rows, details, pieceSets };
 }
 async function projection(tx: Prisma.TransactionClient, siteKey: string, key: SessakuPieceLogicalKey, allSiteRows = false,
-  source?: Awaited<ReturnType<typeof readProjectionSource>>) {
+  source?: Awaited<ReturnType<typeof readProjectionSource>>, audit?: PieceAuditContext) {
   const state = await tx.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } } });
   const fseibans = allSiteRows ? [...stateOrder(state), key.fseiban] : [key.fseiban];
   const shared = source ?? await readProjectionSource(tx, fseibans);
   const scope = new Set(fseibans.map((value) => value.trim()).filter(Boolean));
   const rows = source ? shared.rows.filter((row) => scope.has(sessakuPieceKeyFromRow(row.rowData).fseiban)) : shared.rows;
-  const overrides = await readOverrides(tx, siteKey);
-  const ranks = await readRanks(tx, rows.map((row) => row.id), siteKey);
+  const itemKeys = [...rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
+    ...[...shared.pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))];
+  const overrides = await timed(audit, 'overridesMs', () => readOverrides(tx, siteKey, itemKeys));
+  const ranks = await timed(audit, 'ranksMs', () => readRanks(tx, rows.map((row) => row.id), siteKey));
   const input = { rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
   // Lane replacement only consumes pieces; avoid projecting every parent a second time.
-  return { parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, overrides };
+  return timed(audit, 'projectMs', async () => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, overrides }));
 }
-async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, audit?: PieceAuditContext) {
+async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[]): Promise<SessakuLaneSourceScope> {
+  const parentItemId = sessakuPieceParentItemId(key);
+  const selectedOverrides = await tx.productionScheduleGrindingPlanningBoardOverride.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: sites }, itemKey: { in: [parentItemId, ...removed] } }
+  });
+  const normalize = (value: string) => value.trim() || null;
+  const resources = new Set<string | null>();
+  for (const site of sites) {
+    const overrides = new Map(selectedOverrides.filter((o) => o.siteKey === site).map((o) => [o.itemKey, o]));
+    for (const itemId of removed) {
+      // An existing piece override (even with a null resource) replaces parent inheritance.
+      const override = overrides.get(itemId) ?? overrides.get(parentItemId);
+      resources.add(normalize(override?.overrideResourceCd ?? key.fsigencd));
+    }
+  }
+  // Discover inbound rows/pieces without loading every site's full override records.
+  // Keep trim semantics identical to the projection; empty overrides can create a null lane.
+  const resourceOverrides = await tx.productionScheduleGrindingPlanningBoardOverride.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: sites }, overrideResourceCd: { not: null } },
+    select: { itemKey: true, overrideResourceCd: true }
+  });
+  const inboundIds = [...new Set(resourceOverrides.filter((o) => resources.has(normalize(o.overrideResourceCd!))).map((o) => o.itemKey))];
+  const inboundKeys = new Map<string, SessakuPieceLogicalKey>();
+  for (const itemId of inboundIds) {
+    const encoded = decodeRowItemId(itemId);
+    if (!encoded) continue;
+    const [fseiban, fhincd, fsigencd, fkojun] = JSON.parse(encoded) as string[];
+    const inbound = { fseiban, fhincd, fsigencd, fkojun };
+    inboundKeys.set(encoded, inbound);
+  }
+  const pieceIds = inboundIds.filter((id) => id.startsWith('piece:')).map((id) => id.slice(6));
+  if (pieceIds.length) {
+    const pieces = await tx.productionScheduleSessakuPiece.findMany({ where: { id: { in: pieceIds } },
+      select: { pieceSet: { select: { fseiban: true, fhincd: true, fsigencd: true, fkojun: true } } } });
+    for (const { pieceSet } of pieces) inboundKeys.set(sessakuPieceParentItemId(pieceSet), pieceSet);
+  }
+  return { targetFseiban: key.fseiban, resourceCds: [...resources].filter((value): value is string => value != null), inboundKeys: [...inboundKeys.values()] };
+}
+async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], audit?: PieceAuditContext) {
   const started = performance.now();
   try {
     const states = await tx.productionScheduleGrindingPlanningBoardState.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: sites } } });
     // Source rows, details and piece sets are site independent and stable under the operation locks.
-    const source = await readProjectionSource(tx, [...new Set([key.fseiban, ...states.flatMap(stateOrder)])]);
+    const laneScope = await timed(audit, 'laneDiscoveryMs', () => readLaneScope(tx, sites, key, removed));
+    const source = await readProjectionSource(tx, [...new Set([key.fseiban, ...states.flatMap(stateOrder)])], audit, laneScope);
     const before = new Map<string, Awaited<ReturnType<typeof projection>>>();
-    for (const site of sites) before.set(site, await projection(tx, site, key, true, source));
+    for (const site of sites) before.set(site, await projection(tx, site, key, true, source, audit));
     return before;
   } finally {
     if (audit?.timing) audit.timing.beforeProjectionMs += performance.now() - started;
@@ -187,7 +230,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     if (params.quantities.length < 2 || params.quantities.some((q) => !Number.isSafeInteger(q) || q <= 0 || q > 2_147_483_647) || params.quantities.reduce((a, b) => a + b, 0) !== total) {
       throw new ApiError(400, '分割数量の合計が指示数と一致しません', undefined, 'PIECE_QUANTITY_CONFLICT');
     }
-    const before = await beforeProjections(tx, c.sites, c.key, params.audit);
+    const before = await beforeProjections(tx, c.sites, c.key, [itemId], params.audit);
     const set = c.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: { ...sessakuPieceSetWhere(c.key), plannedQuantity: total } });
     const pieces = c.set?.pieces ?? [];
     const insertAt = target ? pieces.findIndex((p) => p.id === target.id) : 0;
@@ -218,7 +261,7 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
       if (piece.isCompleted) conflict('COMPLETED_PIECE');
       assertRevision(c.current.pieces.find((item) => item.pieceId === piece.id), params.itemRevisions[`piece:${piece.id}`]);
     }
-    const before = await beforeProjections(tx, c.sites, c.key, params.audit);
+    const before = await beforeProjections(tx, c.sites, c.key, params.pieceIds.map((id) => `piece:${id}`), params.audit);
     await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: params.pieceIds } } });
     const all = selected.length === c.set.pieces.length;
     const id = randomUUID();

@@ -73,8 +73,10 @@ describe('runSessakuPieceOperation', () => {
   it.each([false, true])('preserves requested quantities and timing separately from snapshots (failure=%s)', async (failed) => {
     const audit = context();
     audit.requestedQuantities = Array.from({ length: 25 }, (_, i) => i + 1);
+    const stages = { sourceWinnerMs: 10, sourceDetailsMs: 11, sourcePieceSetsMs: 2, overridesMs: 3, ranksMs: 4, projectMs: 1, laneDiscoveryMs: 2, sourceRowCount: 70 };
     const run = runSessakuPieceOperation(audit, async (a) => {
-      Object.assign(a.timing!, { lockWaitMs: 12, beforeProjectionMs: 34, siteCount: 4, writeMs: 56, upsertCount: 180, afterProjectionMs: 7 });
+      expect(a.timing).toMatchObject(Object.fromEntries(Object.keys(stages).map((key) => [key, 0])));
+      Object.assign(a.timing!, { lockWaitMs: 12, beforeProjectionMs: 34, siteCount: 4, writeMs: 56, upsertCount: 180, afterProjectionMs: 7, ...stages });
       if (failed) throw new Error('rollback');
     });
     if (failed) await expect(run).rejects.toThrow('rollback'); else await run;
@@ -83,7 +85,7 @@ describe('runSessakuPieceOperation', () => {
     expect(data.timing).toEqual({ ...audit.timing, totalMs: expect.any(Number) });
     expect(data.afterJson).not.toHaveProperty('requestedQuantities');
     expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ requestedQuantities: audit.requestedQuantities.slice(0, 20),
-      lockWaitMs: 12, beforeProjectionMs: 34, siteCount: 4, writeMs: 56, upsertCount: 180, afterProjectionMs: 7, totalMs: expect.any(Number) }), expect.any(String));
+      lockWaitMs: 12, beforeProjectionMs: 34, siteCount: 4, writeMs: 56, upsertCount: 180, afterProjectionMs: 7, totalMs: expect.any(Number), ...stages }), expect.any(String));
   });
   it('keeps all IDs and revisions in the DB but logs only the ID count and first five', async () => {
     const audit = context();

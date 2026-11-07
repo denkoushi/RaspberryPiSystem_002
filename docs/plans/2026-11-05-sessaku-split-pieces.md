@@ -882,6 +882,8 @@ WHERE "parentItemId" = '<parentItemId>' ORDER BY "createdAt" DESC LIMIT 100;
 
 `requestedQuantities` はsplitで要求された数量配列を成功・拒否・失敗とも別のnullable Json列に保存する（数値配列として解決できない入力はnull）。pinoには先頭20件まで記録する。`timing` も `afterJson` とは別のnullable Json列で、pinoには各項目を直接出す: `lockWaitMs`（transaction開始待ちとロック取得）、`beforeProjectionMs`（操作サイトの検証用投影と各サイトの変更前投影）、`siteCount`（対象サイト数）、`writeMs`（片・順位・進捗の書き込み等、変更前投影を除く）、`upsertCount`（override更新/挿入行数）、`afterProjectionMs`（応答用投影）、`totalMs`（監査保存を除く操作全体）。時間はms。拒否・失敗では到達した段階まで、未到達は0。migrationは既存監査表への上記2列追加のみ。
 
+変更前の全サイト投影には、追加で `sourceWinnerMs`（winner SQL）、`sourceDetailsMs`（関連詳細）、`sourcePieceSetsMs`（片集合）、`overridesMs` / `ranksMs` / `projectMs`（各サイト分の合計）、`sourceRowCount`（共有sourceのwinner行数）、`laneDiscoveryMs`（対象列と流入候補の探索）を記録する。これらは `beforeProjections()` 内の内訳であり、操作サイトの検証用投影は従来どおり `beforeProjectionMs` に含む。各値は未到達時0、失敗時も到達分を保持し、行データそのものは保存しない。
+
 管理者など既存の閲覧権限で `GET /api/clients/logs?category=sessaku-pieces`（ルートは `/clients/logs?category=sessaku-pieces`）を開き、contextの `action`、`itemId` / `parentItemId`、`errorCode`、`status`、`requestId` を確認する。画面側の失敗だけを既存errorTelemetryのキュー経由で送る。通常は5秒周期で送信し、オフライン時は既存キューに保持する。従業員名、NFCタグ、トークン、ヘッダー全体、任意のエラーオブジェクトは送らない。
 
 保持期間は既存 `ClientNetworkLogRetentionScheduler`（毎日03:20 JST）の30日・最大5000件×10バッチを共有する。ClientLogの対象categoryに `sessaku-pieces` を追加し、監査表も同じcutoffで別途最大10バッチを削除する。旧 `ProductionScheduleOrderSplitAuditLog` は利用・変更しない。
@@ -889,3 +891,28 @@ WHERE "parentItemId" = '<parentItemId>' ORDER BY "createdAt" DESC LIMIT 100;
 後の工程への分割は `runSessakuPieceOperation({ action: 'propagate', requestId, siteKey, actorClientDeviceId, actorDeviceName, parentItemId, pieceIds, expectedVersion }, async (audit) => { /* transaction内でaudit.beforeJson/afterJson/resultVersionを設定 */ })` を使える。外側にラップし、transactionの完了・rollback後に監査を書く。監査保存失敗は `sessaku_piece.audit_write_failed` のWARNだけを残し、元の応答・例外を維持する。実行中のauditを既存サービスに渡すと二重記録を防ぐ。
 
 本変更のローカル検証: APIの監査・route・保持ジョブ対象21件、webのerrorTelemetry・ページ対象238件が成功（最終ページ再確認198件も成功）。web `tsc --noEmit` / 全体lint、API変更ファイルeslint / `tsc -p tsconfig.build.json --noEmit`、Prisma format / validate、`git diff --check` は成功。既存schemaの無関係な整形差分は残さず、新モデルの整形を確認した。webテストでは既存のjsdom通信エラー出力があるが全件成功。専用 `TEST_DATABASE_URL` がないためDB統合27件はskip（追加した成功・409、既存400への監査assertionを含む）。migration適用・本番反映は未実施。検証時はdotenv自動読込を止め、ViteのenvDirを空の一時パスへ向けた。
+
+## 2026-11-07 分割・結合の before projection 絞り込み（ローカル実装）
+
+- `replaceSiteItems()` が書き換えるのは、選択した片の effectiveResourceCd 列の未完了項目。列内の相対順序、最初の選択項目、親／片のoverrideが必要で、他列の投影は不要。
+- 各サイトの選択項目から対象列の和集合を求める。片自身のoverrideが存在すると、resourceがnullでも親のresourceは継承せず元の加工機に戻る。空文字のoverrideによるnull列も扱う。
+- winner SQLを、登録製番の範囲内で「対象製番全行、元の加工機が対象列にある行、overrideで対象列へ流入する親／片の論理キー」に制限する。条件はwinnerの論理キー列だけに依存し、同じpartition内のProductNo比較を変えない。加工機のtrimはJSとSQLでタブ・Unicode空白まで合わせる。
+- 流入候補の探索はresource指定のあるoverrideからitemKey/resourceのみを読む。詳細、片集合、順位、通常のoverride取得、投影は候補行へ絞り、サイトごとの登録範囲・製番順序を保つ。DBのschema変更はない。
+- 統合計測ケースを4サイト、重複除外90製番、7,478行、各サイト約1,600件の無関係overrideへ拡張。各列の未完了行は数十件。サイト別の列・登録製番の違い、overrideだけで対象になるサイト、親／片の流入、流出、完了行、特殊納期、空白の加工機、片自身のnull overrideを含める。
+- 比較は全行source・サイト全件override読み込みを復元した参照操作をtransaction内で実行し、業務フィールドのsnapshotを取ってrollbackした後、絞り込み後の操作を実行する。UUIDは片位置で対応づけ、override全項目・version、片、board state、元順位、親進捗を比較する。初回分割、再分割、非隣接片の部分結合、全片結合を対象にする。
+- consoleに全行参照／絞り込み後のbeforeProjectionと段階別時間・比率を出す。参照側のbeforeProjectionから新設のlaneDiscovery時間を除き、従来にない探索コストで基準を水増ししない。各操作で1/5未満、絞り込み後の操作全体は15秒未満を確認する。参照側totalMsはsnapshot取得を含むため総時間の比較値には使わない。
+- 検証結果: 関連service単体231件（約7.4秒）、追加の列探索4件とroute96件（約5.1秒）、監査の変更テスト19件（約2.5秒のfocused実行内）成功。変更TypeScriptのESLint成功。
+- 指定DBへの統合実行は `connect EPERM 127.0.0.1:55609` でfixture作成前に停止。このセッションのネットワーク制限のため、変更前後のDB実測値、結果一致、1/5条件は未確認。本番接続・migration・commit/pushは行っていない。
+- 型検査: 指定の `pnpm exec tsc --noEmit -p .` は既存のrootDir/include不整合（TS6059）で失敗。補助の `--rootDir .` 実行はNode既定heapでOOM、`NODE_OPTIONS=--max-old-space-size=8192 pnpm exec tsc --noEmit -p . --rootDir .` は未変更箇所の型エラー551件で終了（変更ファイルの診断なし）。無関係な型エラーは修正していない。
+- 再検証コマンド（apps/api、専用DBを明示）: `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55609/split_fix_test TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55609/split_fix_test pnpm exec vitest run sessaku-pieces grinding-planning-board`。変更前後の実測・DB結果一致の受入は、このコマンドの統合ケースが実行可能になってから確定する。
+
+
+### 2026-11-07 統合テストの手直しと null 列の確認
+
+- 比較fixtureのProductNoを製番ごとに分け、補足データにも同じ値を使う。`ProductionScheduleOrderSupplement_unique_source_key` の衝突を解消した。snapshot比較では参照側・実行側の両方をJSON化し、Dateと文字列の型差だけで失敗しないようにした。
+- `normalizeResourceCd()` は空文字・空白をnullへ正規化するが、元の加工機がnullの行は `isInCategory()` によりcategory=allでも投影対象外。overrideでnull列へ入る親・片は流入探索で読み込まれるため、サービス本体の変更は不要だった。
+- 空文字／タブ・全角空白のoverrideを使う統合ケース2件を追加。別製番の元FSIGENCDが空・空白の行、overrideでnull列へ入る行、親overrideの継承、片自身のnull overrideによる継承抑止を含む。split・resplit・mergeごとに全行参照操作をrollbackし、絞り込み操作後のoverride全業務フィールド・versionと比較して一致を確認した。
+- apps/apiで `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55609/split_fix_test TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55609/split_fix_test NODE_OPTIONS='--require=/tmp/sessaku-followup-review/disable-dotenv.cjs' pnpm exec vitest run --config /tmp/sessaku-followup-review/vitest.config.mjs src/services/production-schedule/sessaku-pieces src/services/production-schedule/grinding-planning-board` が7ファイル・92件成功（36.71秒）。一時preloadでdotenv.config/configDotenvを無効化し、一時configで既存Vitest設定を継承してenvDirをenvファイルのない一時ディレクトリへ指定した。
+- 既存の「7500 rows」テスト名に対するfixture実数は7,478行。fullは7,478行、scopedは72行。4操作の全業務フィールドが一致し、beforeProjectionは全操作でfull（laneDiscoveryを除く）の1/5未満、scoped総時間は15秒未満。計測console原文は `/tmp/sessaku-followup-review/vitest-final.log` に保存した。
+- `pnpm exec eslint src/services/production-schedule/sessaku-pieces/__tests__/sessaku-pieces.integration.test.ts` 成功。初回はTEST_DATABASE_URLだけでは主クライアントの接続先が切り替わらず31件失敗。両URL指定後はDate比較の型差1件だけ失敗し、修正後に上記92件成功を確認した。
+- 今回の編集は統合テストと本追記のみ。既存WIPを保持し、git操作・apps/web変更・migration追加・本番接続・commit/push/PR/merge/release/deployは行っていない。
