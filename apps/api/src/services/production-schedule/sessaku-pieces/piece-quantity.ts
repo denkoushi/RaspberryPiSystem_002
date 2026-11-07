@@ -63,8 +63,8 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
       return { ...piece, position: lastPosition };
     });
   });
-  // Detached completed pieces remain evidence and count toward this process's plan.
-  for (const piece of pieces.filter((piece) => piece.sourcePieceId === null && piece.isCompleted)) {
+  // Without cutting sources, also reuse detached unfinished work and its identity.
+  for (const piece of pieces.filter((piece) => piece.sourcePieceId === null && (piece.isCompleted || !sources.length))) {
     baseline.push({ ...piece, position: ++lastPosition });
   }
   const plan = planSessakuPieceQuantities(baseline, nextTotal, externalCompleted, Math.max(nextPosition, lastPosition + 1));
