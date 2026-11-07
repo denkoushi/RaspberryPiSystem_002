@@ -11,6 +11,9 @@ const auditLogger = logger.child({}, { level: 'info' });
 export type PieceOperationTiming = {
   lockWaitMs: number; beforeProjectionMs: number; siteCount: number; writeMs: number;
   upsertCount: number; afterProjectionMs: number; totalMs: number;
+  sourceWinnerMs: number; sourceDetailsMs: number; sourcePieceSetsMs: number;
+  overridesMs: number; ranksMs: number; projectMs: number; sourceRowCount: number;
+  laneDiscoveryMs: number;
 };
 
 export type PieceAuditContext = {
@@ -34,7 +37,8 @@ const boundedSnapshot = (snapshot: Prisma.InputJsonObject | undefined): Prisma.I
 
 export async function runSessakuPieceOperation<T>(context: PieceAuditContext, operation: (audit: PieceAuditContext) => Promise<T>): Promise<T> {
   const started = performance.now();
-  context.timing = { lockWaitMs: 0, beforeProjectionMs: 0, siteCount: 0, writeMs: 0, upsertCount: 0, afterProjectionMs: 0, totalMs: 0 };
+  context.timing = { lockWaitMs: 0, beforeProjectionMs: 0, siteCount: 0, writeMs: 0, upsertCount: 0, afterProjectionMs: 0, totalMs: 0,
+    sourceWinnerMs: 0, sourceDetailsMs: 0, sourcePieceSetsMs: 0, overridesMs: 0, ranksMs: 0, projectMs: 0, sourceRowCount: 0, laneDiscoveryMs: 0 };
   let failure: unknown;
   let failed = false;
   try {

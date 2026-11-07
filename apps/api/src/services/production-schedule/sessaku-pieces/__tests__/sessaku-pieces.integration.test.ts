@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
-import { projectGrindingPlanningBoard } from '../../grinding-planning-board-projection.js';
+import * as projectionSource from '../../grinding-planning-board/source.js';
+import { runSessakuPieceOperation, type PieceAuditContext, type PieceOperationTiming } from '../piece-audit.js';
+import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../../grinding-planning-board-projection.js';
 import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans } from '../../grinding-planning-board/source.js';
 import { registerErrorHandler } from '../../../../plugins/error-handler.js';
 import { registerSessakuPiecesRoutes } from '../../../../routes/kiosk/production-schedule/sessaku-pieces.js';
@@ -25,7 +27,7 @@ import { setProductionScheduleRowCompletionIntent } from '../../production-sched
 import { ProgressSyncFromCsvService } from '../../progress-sync-from-csv.service.js';
 import { readGrindingPlanningBoardLoadSummary } from '../../grinding-planning-board-load-summary.js';
 import { enrichRowsWithProcessArrival } from '../../process-arrival.service.js';
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, SessakuPiecesMutationResponse } from '@raspi-system/shared-types';
 
 const winnerMaterializations = vi.hoisted(() => ({ count: 0 }));
 vi.mock('../../row-resolver/max-product-no-winner-materialization.js', async (importOriginal) => {
@@ -87,90 +89,254 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     vi.unstubAllEnvs();
   });
   afterAll(async () => { await reader.$disconnect(); await prisma.$disconnect(); });
-  it('measures split and merge across four 80-seiban sites and preserves every lane', async () => {
+  it('compares full and lane-scoped split/merge across four sites, 90 seiban and 7500 rows', async () => {
     const sites = [site, other, `${site}-third`, `${site}-fourth`];
-    const orders = sites.map((_, index) => Array.from({ length: 79 }, (_, i) => `P${index}${i}-${seiban}`));
-    const rows = orders.flatMap((order, siteIndex) => order.flatMap((fseiban, i) =>
-      ['1', '2', '3'].map((processOrder) => ({ id: randomUUID(), csvDashboardId: dashboardId,
-        rowData: { ...rowData, FSEIBAN: fseiban, FKOJUN: processOrder,
-          FSIGENCD: processOrder === '1' && i < 40 ? '1' : '2' },
-        dataHash: `${site}-perf-${siteIndex}-${i}-${processOrder}`, occurredAt: new Date() }))));
+    const seibans = Array.from({ length: 89 }, (_, i) => `P${i}-${seiban}`);
+    const orders = sites.map((_, index) => {
+      const order = [...seibans.slice(index * 10), ...seibans.slice(0, index * 10)]
+        .filter((_, i) => index === 0 || (i + index) % 5 !== 0);
+      // The fourth site is affected through an override despite not registering the target seiban.
+      if (index !== 3) order.splice(20 + index, 0, seiban);
+      return order;
+    });
+    const rows = seibans.flatMap((fseiban, i) =>
+      Array.from({ length: 84 }, (_, j) => ({ id: randomUUID(), csvDashboardId: dashboardId,
+        rowData: { ...rowData, FSEIBAN: fseiban, ProductNo: String(1000 + i), FKOJUN: String(j + 1),
+          FSIGENCD: j === 0 && i < 40 ? (i === 0 ? '\t1\u3000' : '1') : j === 1 && i < 25 ? '3' : '2' },
+        dataHash: `${site}-perf-${i}-${j}`, occurredAt: new Date() })));
+    const pieceKeys = [seiban, ...seibans];
+    const project = async (targetSite: string) => {
+      const order = orders[sites.indexOf(targetSite)];
+      const winners = await readWinnerRowsByFseibans(prisma, [...order, seiban]);
+      return projectGrindingPlanningBoard({ rows: winners, details: await readRowDetails(prisma, winners.map((r) => r.id)),
+        overrides: await readOverrides(prisma, targetSite), ranks: await readRanks(prisma, winners.map((r) => r.id), targetSite),
+        pieceSets: await readSessakuPieceSets(prisma, winners), seibanOrder: order, category: 'all', view: 'resource', includePieces: true }).items;
+    };
+    const snapshot = async (client: Prisma.TransactionClient) => ({
+      overrides: await client.productionScheduleGrindingPlanningBoardOverride.findMany({
+        where: { csvDashboardId: dashboardId, siteKey: { in: sites } },
+        select: { siteKey: true, itemKey: true, overrideResourceCd: true, overrideDueDate: true, dueDateCleared: true,
+          alternateRank: true, orderPinned: true, specialDueKind: true, specialDueExpiresAt: true, version: true }
+      }),
+      states: await client.productionScheduleGrindingPlanningBoardState.findMany({ where: { csvDashboardId: dashboardId, siteKey: { in: sites } },
+        select: { siteKey: true, version: true, seibanOrder: true }, orderBy: { siteKey: 'asc' } }),
+      pieceSets: await client.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: dashboardId, fseiban: { in: pieceKeys } },
+        select: { fseiban: true, fhincd: true, fsigencd: true, fkojun: true, version: true, plannedQuantity: true, nextPosition: true, quantityWarning: true,
+          pieces: { select: { id: true, position: true, quantity: true, isCompleted: true, completedAt: true }, orderBy: { position: 'asc' } } },
+        orderBy: [{ fseiban: 'asc' }, { fhincd: 'asc' }, { fsigencd: 'asc' }, { fkojun: 'asc' }] }),
+      ranks: await client.productionScheduleOrderAssignment.findMany({ where: { csvDashboardId: dashboardId, siteKey: { in: sites } },
+        select: { csvDashboardRowId: true, resourceCd: true, location: true, siteKey: true, orderNumber: true }, orderBy: { id: 'asc' } }),
+      progress: await client.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: rowId }, select: { isCompleted: true } })
+    });
+    const measurements: Array<{ action: string; full: PieceOperationTiming; scoped: PieceOperationTiming }> = [];
+    const compareOperation = async (action: string, operation: (audit: PieceAuditContext) => Promise<SessakuPiecesMutationResponse>) => {
+      const fullAudit: PieceAuditContext = { action, siteKey: site };
+      const scopedAudit: PieceAuditContext = { action, siteKey: site };
+      const rollback = new Error('rollback full-projection reference operation');
+      const originalTransaction = prisma.$transaction.bind(prisma);
+      const originalSource = projectionSource.readWinnerRowsByFseibans;
+      const originalOverrides = projectionSource.readOverrides;
+      // Restore the previous full source and site-wide override reads for the reference.
+      const sourceSpy = vi.spyOn(projectionSource, 'readWinnerRowsByFseibans').mockImplementation((client, fseibans) => originalSource(client, fseibans));
+      const overrideSpy = vi.spyOn(projectionSource, 'readOverrides').mockImplementation((client, targetSite) => originalOverrides(client, targetSite));
+      let fullSnapshot!: Awaited<ReturnType<typeof snapshot>>;
+      let fullResult!: SessakuPiecesMutationResponse;
+      const transactionSpy = vi.spyOn(prisma, '$transaction').mockImplementation(((callback: (tx: Prisma.TransactionClient) => Promise<SessakuPiecesMutationResponse>, options: object) =>
+        originalTransaction(async (tx) => {
+          fullResult = await callback(tx);
+          fullSnapshot = await snapshot(tx);
+          throw rollback;
+        }, options).catch((error: unknown) => { if (error === rollback) return fullResult; throw error; })) as never);
+      try { await runSessakuPieceOperation(fullAudit, operation); }
+      finally { transactionSpy.mockRestore(); sourceSpy.mockRestore(); overrideSpy.mockRestore(); }
+      const result = await runSessakuPieceOperation(scopedAudit, operation);
+      const actual = JSON.parse(JSON.stringify(await snapshot(prisma))) as Awaited<ReturnType<typeof snapshot>>;
+      // UUIDs/timestamps are generated per attempt. Compare every persisted business field,
+      // mapping only the new piece IDs by their position (source rows and surviving IDs stay fixed).
+      let expectedJson = JSON.stringify(fullSnapshot);
+      for (const piece of fullResult.pieces) {
+        const actualPiece = result.pieces.find((p) => p.piecePosition === piece.piecePosition)!;
+        expect(actualPiece).toBeDefined();
+        expectedJson = expectedJson.replaceAll(piece.pieceId!, actualPiece.pieceId!);
+      }
+      const expected = JSON.parse(expectedJson) as typeof actual;
+      for (const value of [expected, actual]) value.overrides.sort((a, b) => `${a.siteKey}:${a.itemKey}`.localeCompare(`${b.siteKey}:${b.itemKey}`));
+      expect(actual).toEqual(expected);
+      expect(fullAudit.timing!.sourceRowCount).toBe(rows.length + 2);
+      expect(scopedAudit.timing!.sourceRowCount).toBeLessThan(200);
+      measurements.push({ action, full: fullAudit.timing!, scoped: scopedAudit.timing! });
+      return result;
+    };
     try {
       await prisma.csvDashboardRow.createMany({ data: rows });
+      await prisma.productionScheduleOrderSupplement.createMany({ data: rows.map((row) => ({
+        csvDashboardId: dashboardId, csvDashboardRowId: row.id, sourceCsvDashboardId: site,
+        productNo: row.rowData.ProductNo, resourceCd: row.rowData.FSIGENCD, processOrder: row.rowData.FKOJUN,
+        plannedQuantity: 5, plannedEndDate: new Date('2026-12-15')
+      })) });
+      // Completed neighbours must remain unchanged; the selected lanes still have dozens of unfinished rows.
+      await prisma.productionScheduleProgress.createMany({ data: rows.filter((row, i) => i % 84 === 0 && i / 84 < 8)
+        .map((row) => ({ csvDashboardId: dashboardId, csvDashboardRowId: row.id, isCompleted: true })) });
+      const inboundParent = rows.find((row) => row.rowData.FSEIBAN === seibans[60] && row.rowData.FKOJUN === '1')!;
+      const inboundSet = await prisma.productionScheduleSessakuPieceSet.create({ data: { csvDashboardId: dashboardId,
+        ...sessakuPieceKeyFromRow(inboundParent.rowData), plannedQuantity: 5, nextPosition: 3,
+        pieces: { create: [{ quantity: 2, position: 1 }, { quantity: 3, position: 2 }] } }, include: { pieces: { orderBy: { position: 'asc' } } } });
+      const p = await parent();
       for (const [index, targetSite] of sites.entries()) {
-        const order = [...orders[index]];
-        order.splice(20 + index, 0, seiban);
         await prisma.productionScheduleGrindingPlanningBoardState.upsert({
           where: { csvDashboardId_siteKey: { csvDashboardId: dashboardId, siteKey: targetSite } },
-          create: { csvDashboardId: dashboardId, siteKey: targetSite, seibanOrder: order }, update: { seibanOrder: order }
+          create: { csvDashboardId: dashboardId, siteKey: targetSite, seibanOrder: orders[index] }, update: { seibanOrder: orders[index] }
         });
-      }
-      const project = async (targetSite: string) => {
-        const index = sites.indexOf(targetSite);
-        const order = [...orders[index]]; order.splice(20 + index, 0, seiban);
-        const winners = await readWinnerRowsByFseibans(prisma, order);
-        return projectGrindingPlanningBoard({ rows: winners, details: await readRowDetails(prisma, winners.map((r) => r.id)),
-          overrides: await readOverrides(prisma, targetSite), ranks: await readRanks(prisma, winners.map((r) => r.id), targetSite),
-          pieceSets: await readSessakuPieceSets(prisma, winners), seibanOrder: order, category: 'all', view: 'resource', includePieces: true }).items;
-      };
-      const p = await parent();
-      // A row from a different original resource must join the affected lane via its override.
-      for (const [index, targetSite] of sites.entries()) {
-        const inbound = (await project(targetSite)).find((item) => item.fseiban === orders[index][60] && item.processOrder === '1')!;
+        await prisma.productionScheduleOrderAssignment.createMany({ data: rows.map((row, i) => ({
+          csvDashboardId: dashboardId, csvDashboardRowId: row.id, siteKey: targetSite, location: targetSite,
+          resourceCd: row.rowData.FSIGENCD, orderNumber: rows.length - i
+        })) });
+        const resource = index % 2 === 0 ? '1' : '3';
+        const inboundRow = rows.find((row) => row.rowData.FSEIBAN === seibans[70 + index] && row.rowData.FKOJUN === '1')!;
+        const outbound = rows.find((row) => row.rowData.FSEIBAN === seibans[15] && row.rowData.FKOJUN === '1')!;
         await prisma.productionScheduleGrindingPlanningBoardOverride.createMany({ data: [
+          ...rows.filter((row) => row.rowData.FSIGENCD === '2' && row.rowData.FKOJUN !== '1').slice(0, 1600).map((row, i) => ({
+            csvDashboardId: dashboardId, siteKey: targetSite, itemKey: buildGrindingPlanningBoardRowItemId(row.rowData),
+            alternateRank: i + 1, orderPinned: i % 2 === 0, dueDateCleared: true
+          })),
           { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: p.itemId, alternateRank: 20 + index,
-            overrideResourceCd: '1', overrideDueDate: new Date('2026-12-01'), dueDateCleared: false, orderPinned: true },
-          { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: inbound.itemId, overrideResourceCd: '1', alternateRank: 2 }
+            overrideResourceCd: resource, overrideDueDate: new Date('2026-12-01'), dueDateCleared: false, orderPinned: true },
+          { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: buildGrindingPlanningBoardRowItemId(inboundRow.rowData), overrideResourceCd: resource, alternateRank: 2,
+            specialDueKind: 'overnight', specialDueExpiresAt: new Date('2099-12-01') },
+          { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: buildGrindingPlanningBoardRowItemId(outbound.rowData), overrideResourceCd: '2', alternateRank: 3 },
+          // One piece moves into the lane. Its sibling has its own null override and stays on original resource 2.
+          { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: buildGrindingPlanningBoardRowItemId(inboundParent.rowData), overrideResourceCd: '4' },
+          { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: `piece:${inboundSet.pieces[0].id}`, overrideResourceCd: `\t${resource}\u3000`, alternateRank: 4 },
+          { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: `piece:${inboundSet.pieces[1].id}`, overrideResourceCd: null, alternateRank: 5 }
         ] });
       }
       const before = await Promise.all(sites.map(project));
-      const beforeOverrides = await Promise.all(sites.map((targetSite) => readOverrides(prisma, targetSite)));
-      const versions = await Promise.all(sites.map(async (targetSite) => (await prisma.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { csvDashboardId_siteKey: { csvDashboardId: dashboardId, siteKey: targetSite } } })).version));
       const current = before[0].find((item) => item.itemId === p.itemId)!;
       winnerMaterializations.count = 0;
-      const splitStart = performance.now();
-      const result = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: current.itemRevision, expectedPieceSetVersion: 0, quantities: [1, 2, 2] });
-      const splitMs = performance.now() - splitStart;
-      const added = result.pieces.map((item) => item.itemId);
+      let result = await compareOperation('split', (audit) => splitSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+        itemRevision: current.itemRevision, expectedPieceSetVersion: 0, quantities: [1, 2, 2], audit }));
       expect(result.pieces.map((item) => item.quantity)).toEqual([1, 2, 2]);
       for (const [index, targetSite] of sites.entries()) {
-        const lane = before[index].filter((item) => item.effectiveResourceCd === '1' && !item.isCompleted);
-        const expected = lane.flatMap((item) => item.itemId === p.itemId ? added : [item.itemId]);
-        const projected = await project(targetSite);
-        expect(projected.filter((item) => item.effectiveResourceCd !== '1').map((item) => [item.itemId, item.alternateRank, item.version]))
-          .toEqual(before[index].filter((item) => item.effectiveResourceCd !== '1').map((item) => [item.itemId, item.alternateRank, item.version]));
-        const after = projected.filter((item) => item.effectiveResourceCd === '1' && !item.isCompleted);
-        expect(after.map((item) => item.itemId)).toEqual(expected);
-        expect(after.map((item) => item.alternateRank)).toEqual(expected.map((_, i) => i + 1));
-        const overrides = await readOverrides(prisma, targetSite);
-        for (const id of added) expect(overrides.get(id)).toMatchObject({ overrideResourceCd: '1', overrideDueDate: new Date('2026-12-01'), dueDateCleared: false, orderPinned: true, version: 1 });
-        for (const id of expected) expect(overrides.get(id)?.version).toBe((beforeOverrides[index].get(id)?.version ?? 0) + 1);
+        const resource = index % 2 === 0 ? '1' : '3';
+        const expected = before[index].filter((item) => item.effectiveResourceCd === resource && !item.isCompleted)
+          .flatMap((item) => item.itemId === p.itemId ? result.pieces.map((piece) => piece.itemId) : [item.itemId]);
+        const actual = (await project(targetSite)).filter((item) => item.effectiveResourceCd === resource && !item.isCompleted);
+        expect(actual.map((item) => item.itemId)).toEqual(expected);
+        expect(actual.map((item) => item.alternateRank)).toEqual(expected.map((_, i) => i + 1));
       }
-      const mergeStart = performance.now();
-      const merged = await mergeSessakuPieces({ siteKey: site, parentItemId: result.parentItemId, expectedPieceSetVersion: result.pieceSetVersion,
-        pieceIds: result.pieces.map((item) => item.pieceId!), itemRevisions: Object.fromEntries(result.pieces.map((item) => [item.itemId, item.itemRevision])) });
-      const mergeMs = performance.now() - mergeStart;
-      // Split/merge must not materialize every winner of the dashboard.
-      expect(winnerMaterializations.count).toBe(0);
-      console.info(`sessaku 4 sites x 80 seiban: split=${splitMs.toFixed(1)}ms merge=${mergeMs.toFixed(1)}ms`);
+      // The middle piece has a different resource at each site. Re-split and non-adjacent merges must retain both affected lanes.
+      for (const [index, targetSite] of sites.entries()) await prisma.productionScheduleGrindingPlanningBoardOverride.update({
+        where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: result.pieces[1].itemId } },
+        data: { overrideResourceCd: index % 2 === 0 ? '3' : '1', overrideDueDate: null, dueDateCleared: true }
+      });
+      const middle = (await project(site)).find((item) => item.pieceId === result.pieces[1].pieceId)!;
+      const resplitVersion = result.pieceSetVersion;
+      result = await compareOperation('resplit', (audit) => splitSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+        targetPieceId: middle.pieceId!, itemRevision: middle.itemRevision, expectedPieceSetVersion: resplitVersion, quantities: [1, 1], audit }));
+      const partial = result.pieces.filter((item) => item.piecePosition === 1 || item.piecePosition === 4);
+      const partialVersion = result.pieceSetVersion;
+      result = await compareOperation('partial-merge', (audit) => mergeSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+        expectedPieceSetVersion: partialVersion, pieceIds: partial.map((item) => item.pieceId!), itemRevisions: Object.fromEntries(partial.map((item) => [item.itemId, item.itemRevision])), audit }));
+      const remaining = result.pieces;
+      const mergeVersion = result.pieceSetVersion;
+      const merged = await compareOperation('merge', (audit) => mergeSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+        expectedPieceSetVersion: mergeVersion, pieceIds: remaining.map((item) => item.pieceId!), itemRevisions: Object.fromEntries(remaining.map((item) => [item.itemId, item.itemRevision])), audit }));
       expect(merged.pieces).toEqual([]);
-      expect(merged.pieceSetVersion).toBe(result.pieceSetVersion + 1);
-      for (const [index, targetSite] of sites.entries()) {
-        const expected = before[index].filter((item) => item.effectiveResourceCd === '1' && !item.isCompleted).map((item) => item.itemId);
-        const after = (await project(targetSite)).filter((item) => item.effectiveResourceCd === '1' && !item.isCompleted);
-        expect(after.map((item) => item.itemId)).toEqual(expected);
-        expect(after.map((item) => item.alternateRank)).toEqual(expected.map((_, i) => i + 1));
-        const overrides = await readOverrides(prisma, targetSite);
-        expect(overrides.get(p.itemId)).toMatchObject({ overrideResourceCd: '1', orderPinned: true, version: 2 });
-        expect(added.some((id) => overrides.has(id))).toBe(false);
-        expect((await prisma.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { csvDashboardId_siteKey: { csvDashboardId: dashboardId, siteKey: targetSite } } })).version).toBe(versions[index] + 2);
+      expect(winnerMaterializations.count).toBe(0);
+      console.info(`sessaku 4 sites / 90 seiban / ${rows.length + 2} rows`, measurements.map(({ action, full, scoped }) => ({
+        // The reference still discovers lanes, but the old path did not. Exclude that new overhead.
+        action, fullBeforeProjectionMs: full.beforeProjectionMs - full.laneDiscoveryMs, scopedBeforeProjectionMs: scoped.beforeProjectionMs,
+        ratio: scoped.beforeProjectionMs / (full.beforeProjectionMs - full.laneDiscoveryMs), fullTiming: full, scopedTiming: scoped
+      })));
+      for (const { full, scoped } of measurements) {
+        expect(scoped.beforeProjectionMs).toBeLessThan((full.beforeProjectionMs - full.laneDiscoveryMs) / 5);
+        expect(scoped.totalMs).toBeLessThan(15000);
       }
-      expect(splitMs).toBeLessThan(5000); expect(mergeMs).toBeLessThan(5000);
     } finally {
       await prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: { in: sites } } });
       await prisma.productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: { in: sites.slice(2) } } });
+      await prisma.productionScheduleSessakuPieceSet.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: { in: seibans } } });
       await prisma.csvDashboardRow.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
     }
+  }, 60000);
+  it.each(['', '\t \u3000'])('matches full split/resplit/merge persistence for a null lane (override=%j)', async (emptyResource) => {
+    const neighbourSeiban = `NULL-${seiban}`;
+    const neighbours = ['', '\t \u3000', '2'].map((resource, i) => ({
+      id: randomUUID(), csvDashboardId: dashboardId, dataHash: `${site}-null-${i}`, occurredAt: new Date(),
+      rowData: { ...rowData, FSEIBAN: neighbourSeiban, FHINCD: `NULL-${i}`, FSIGENCD: resource }
+    }));
+    const p = await parent();
+    const inboundId = buildGrindingPlanningBoardRowItemId(neighbours[2].rowData);
+    const project = async () => {
+      const rows = await readWinnerRowsByFseibans(prisma, [seiban, neighbourSeiban]);
+      return projectGrindingPlanningBoard({ rows, details: await readRowDetails(prisma, rows.map((r) => r.id)),
+        overrides: await readOverrides(prisma, site), ranks: await readRanks(prisma, rows.map((r) => r.id), site),
+        pieceSets: await readSessakuPieceSets(prisma, rows), seibanOrder: [neighbourSeiban, seiban],
+        category: 'all', view: 'resource', includePieces: true }).items;
+    };
+    const snapshot = (client: Prisma.TransactionClient) => client.productionScheduleGrindingPlanningBoardOverride.findMany({
+      where: { csvDashboardId: dashboardId, siteKey: { in: [site, other] } },
+      select: { siteKey: true, itemKey: true, overrideResourceCd: true, overrideDueDate: true, dueDateCleared: true,
+        alternateRank: true, orderPinned: true, specialDueKind: true, specialDueExpiresAt: true, version: true }
+    });
+    const compare = async (action: string, operation: (audit: PieceAuditContext) => Promise<SessakuPiecesMutationResponse>) => {
+      const originalSource = projectionSource.readWinnerRowsByFseibans;
+      const originalOverrides = projectionSource.readOverrides;
+      const originalTransaction = prisma.$transaction.bind(prisma);
+      const rollback = new Error('rollback null-lane full reference');
+      let expected!: Awaited<ReturnType<typeof snapshot>>;
+      let fullResult!: SessakuPiecesMutationResponse;
+      const sourceSpy = vi.spyOn(projectionSource, 'readWinnerRowsByFseibans').mockImplementation((client, fseibans) => originalSource(client, fseibans));
+      const overrideSpy = vi.spyOn(projectionSource, 'readOverrides').mockImplementation((client, targetSite) => originalOverrides(client, targetSite));
+      const transactionSpy = vi.spyOn(prisma, '$transaction').mockImplementation(((callback: (tx: Prisma.TransactionClient) => Promise<SessakuPiecesMutationResponse>, options: object) =>
+        originalTransaction(async (tx) => {
+          fullResult = await callback(tx); expected = await snapshot(tx); throw rollback;
+        }, options).catch((error: unknown) => { if (error === rollback) return fullResult; throw error; })) as never);
+      try { await runSessakuPieceOperation({ action, siteKey: site }, operation); }
+      finally { transactionSpy.mockRestore(); sourceSpy.mockRestore(); overrideSpy.mockRestore(); }
+      const result = await runSessakuPieceOperation({ action, siteKey: site }, operation);
+      let expectedJson = JSON.stringify(expected);
+      for (const piece of fullResult.pieces) {
+        const actualPiece = result.pieces.find((item) => item.piecePosition === piece.piecePosition)!;
+        expect(actualPiece).toBeDefined();
+        expectedJson = expectedJson.replaceAll(piece.pieceId!, actualPiece.pieceId!);
+      }
+      const actual = JSON.parse(JSON.stringify(await snapshot(prisma))) as Awaited<ReturnType<typeof snapshot>>;
+      const normalized = JSON.parse(expectedJson) as typeof actual;
+      for (const entries of [normalized, actual]) entries.sort((a, b) => `${a.siteKey}:${a.itemKey}`.localeCompare(`${b.siteKey}:${b.itemKey}`));
+      expect(actual).toEqual(normalized);
+      return result;
+    };
+    await prisma.csvDashboardRow.createMany({ data: neighbours });
+    await prisma.productionScheduleGrindingPlanningBoardState.updateMany({ where: { siteKey: { in: [site, other] } }, data: { seibanOrder: [neighbourSeiban, seiban] } });
+    await prisma.productionScheduleGrindingPlanningBoardOverride.createMany({ data: [site, other].flatMap((siteKey) => [
+      { csvDashboardId: dashboardId, siteKey, itemKey: p.itemId, overrideResourceCd: emptyResource, alternateRank: 2 },
+      { csvDashboardId: dashboardId, siteKey, itemKey: inboundId, overrideResourceCd: emptyResource, alternateRank: 1 }
+    ]) });
+    let items = await project();
+    // Original empty/whitespace resources are excluded even for category=all.
+    expect(items.some((item) => neighbours.slice(0, 2).some((row) => row.id === item.sourceRowId))).toBe(false);
+    expect(items.filter((item) => item.effectiveResourceCd === null).map((item) => item.itemId)).toEqual([inboundId, p.itemId]);
+    const current = items.find((item) => item.itemId === p.itemId)!;
+    let result = await compare('split', (audit) => splitSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+      itemRevision: current.itemRevision, expectedPieceSetVersion: 0, quantities: [2, 3], audit }));
+    // A piece's own null override suppresses parent inheritance and falls back to original resource 1.
+    await prisma.productionScheduleGrindingPlanningBoardOverride.updateMany({ where: { itemKey: result.pieces[1].itemId, siteKey: { in: [site, other] } }, data: { overrideResourceCd: null } });
+    items = await project();
+    expect(items.find((item) => item.itemId === result.pieces[1].itemId)?.effectiveResourceCd).toBe('1');
+    const target = items.find((item) => item.itemId === result.pieces[0].itemId)!;
+    expect(target.effectiveResourceCd).toBeNull();
+    const version = result.pieceSetVersion;
+    result = await compare('resplit', (audit) => splitSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+      targetPieceId: target.pieceId!, itemRevision: target.itemRevision, expectedPieceSetVersion: version, quantities: [1, 1], audit }));
+    const remaining = result.pieces;
+    const mergeVersion = result.pieceSetVersion;
+    await compare('merge', (audit) => mergeSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+      expectedPieceSetVersion: mergeVersion, pieceIds: remaining.map((item) => item.pieceId!),
+      itemRevisions: Object.fromEntries(remaining.map((item) => [item.itemId, item.itemRevision])), audit }));
+    const nullLane = (await project()).filter((item) => item.effectiveResourceCd === null);
+    expect(nullLane.map((item) => item.itemId)).toEqual([inboundId, p.itemId]);
+    expect(nullLane.map((item) => item.alternateRank)).toEqual([1, 2]);
   });
   it('keeps success and rolled-back 409 audit rows', async () => {
     const p = await parent();
@@ -180,6 +346,8 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     const logs = await prisma.productionScheduleSessakuPieceAuditLog.findMany({ where: { siteKey: site }, orderBy: { createdAt: 'asc' } });
     expect(logs).toHaveLength(2);
     expect(logs[0]).toMatchObject({ outcome: 'success', requestedQuantities: [2, 3], timing: { siteCount: 2, upsertCount: 4, lockWaitMs: expect.any(Number), beforeProjectionMs: expect.any(Number), writeMs: expect.any(Number), afterProjectionMs: expect.any(Number), totalMs: expect.any(Number) }, resultVersion: result.pieceSetVersion, afterJson: { count: 2, quantities: [2, 3] } });
+    expect(logs[0].timing).toMatchObject({ sourceWinnerMs: expect.any(Number), sourceDetailsMs: expect.any(Number), sourcePieceSetsMs: expect.any(Number),
+      overridesMs: expect.any(Number), ranksMs: expect.any(Number), projectMs: expect.any(Number), laneDiscoveryMs: expect.any(Number), sourceRowCount: 2 });
     expect(logs[1]).toMatchObject({ outcome: 'rejected', requestedQuantities: [2, 3], timing: expect.objectContaining({ totalMs: expect.any(Number) }), httpStatus: 409, errorCode: 'STALE_SESSAKU_PIECES', beforeJson: { count: 2, quantities: [2, 3] }, afterJson: { count: 2, quantities: [2, 3] } });
   });
   it('gate OFF rejects creation while parent response stays unchanged', async () => {
