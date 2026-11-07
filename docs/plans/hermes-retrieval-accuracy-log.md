@@ -1009,3 +1009,19 @@ Recall outside the row: `not_in_pool` 7 then 3 (4 on night 30, 3 on night 29), `
 Open caveat carried from the night-30 entry, still unobserved: the pool takes its content tokens from `semanticQuery` and the check from `contentSpan`, so a planner rewrite that separates them could make the pool and the check disagree again; nothing in these two nights exercised that. The dense-only path still has no verbatim gate (production is hybrid, so not reached).
 
 Private files: `work/flywheel/real-2026-11-03.jsonl`, `real-2026-11-04.jsonl`, `runner-2026-11-03.log`, `runner-2026-11-04.log`, `questions-2026-11-03.jsonl`, `questions-2026-11-04.jsonl`, `regressions.jsonl`, `learned-queries.jsonl`.
+
+### 2026-11-07: nights 33 and 34, the 異物付着 row retires after its third ok night; the regression file is empty (measurement)
+
+Night of 2026-11-05 (Pi 5 unchanged since #2508; first live row 22:22 JST, completed 22:33 JST): generated 82, kept 77, shown 63, dropped 23, labelled 60, label pending 48, learned 2 proposed / rejected (held-out n 64, gained 0 / lost 1; real n 0), `lossStages other_shown 10, not_in_pool 4`, synthetic filter questions 10 of 10 correct, ambiguous filters dropped for content search 2 (machineName 1, partName 1).
+
+- 「異物付着の最近の不適合３件」: `followUpCheck.ok true`, `matchedCount 1`, shown = expectedIds = the one verbatim record, `followUpAction add`, for the third night in a row (nights 31, 32, 33). Retired from `regressions.jsonl`, which is now empty: every row that the real conversations of 2026-10-27 to 2026-10-29 put there has either passed three nights or been `unsupported` three nights. Its first failed night was 2026-10-29; the fixes it drove were #2348 (display-pool cut), the 2026-10-30 department carry, #2462 (content word required in the recent pool) and #2508 (verbatim records first).
+
+Night of 2026-11-06 (Pi 5 at 222d88dc; `dgx not ready reason=http_503` at 22:02 JST, completed 22:59 JST, a late start): generated 79, kept 70, shown 59, dropped 30, labelled 60, label pending 35, learned 2 proposed / active (held-out n 58, gained 1 / lost 1; real n 0), `lossStages other_shown 8, not_in_pool 3`, synthetic filter questions 10 of 10 correct, ambiguous filters dropped 2 (originDepartmentName 1, partName 1). No real replay file for this night: the regression file was empty, so there was nothing to replay (`real=0`).
+
+Recall across the four nights since #2508: live relevant-shown 56/79, 57/73, 63/77 (82%), 59/70 (84%); `not_in_pool` 7, 3, 4, 3; `other_shown` 16, 12, 10, 8. The two latest nights are the best since night 27 (88%), and no night since the change is below night 30 (75%); no recall loss attributable to the verbatim-first pool.
+
+Note on the night-34 learned decision: two candidates were accepted with held-out gained 1 / lost 1, that is, net zero. The acceptance rule counts a tie as acceptable; it has not been a problem, but a rule that requires gained > lost would have rejected them. Left as is, flagged for the ⑤ acceptance-rule step of the ExecPlan.
+
+What the loop now lacks is a supply of real follow-up turns: the regression file is empty, so until the kiosk produces new follow-up conversations, the only follow-up-shaped evidence each night is synthetic first-turn questions. Next step, in order: the ExecPlan's ④ follow-up-shaped synthetic questions (count, add, replace, drop, with computed expected answers), then ⑤ the acceptance rule.
+
+Private files: `work/flywheel/real-2026-11-05.jsonl`, `runner-2026-11-05.log`, `runner-2026-11-06.log`, `questions-2026-11-05.jsonl`, `questions-2026-11-06.jsonl`, `regressions.jsonl` (empty), `learned-queries.jsonl`.
