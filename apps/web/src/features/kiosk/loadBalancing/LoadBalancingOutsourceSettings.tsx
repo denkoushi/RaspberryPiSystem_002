@@ -2,7 +2,9 @@ import { useState } from 'react';
 
 import { Dialog } from '../../../components/ui/Dialog';
 
-import type { OutsourceCondition, OutsourceSettings, OutsourceVendor } from '../../../api/client';
+import { LoadBalancingNamedSettings } from './LoadBalancingNamedSettings';
+
+import type { ProductionScheduleLoadBalancingWorkspaceRow, OutsourceCondition, OutsourceSettings, OutsourceVendor } from '../../../api/client';
 
 const labels = { due: '納期の余裕', minutes: '工数', vendor: '業者の順位' };
 const inputClass = 'rounded-md border border-white/20 bg-slate-800 px-2 py-2 text-white';
@@ -18,25 +20,30 @@ const normalizePriorities = (settings: OutsourceSettings): OutsourceSettings => 
   ...settings, vendors: settings.vendors.map((item, index) => ({ ...item, priority: index + 1 }))
 });
 
-export function LoadBalancingOutsourceSettings({ settings, resources, saving, error, onSave, onClose }: {
+export function LoadBalancingOutsourceSettings({ settings, resources, rows = [], months = [], today = '', saving, error, onSave, onClose }: {
   settings: OutsourceSettings;
   resources: string[];
+  rows?: ProductionScheduleLoadBalancingWorkspaceRow[];
+  months?: string[];
+  today?: string;
   saving: boolean;
   error: string | null;
   onSave: (settings: OutsourceSettings) => void;
   onClose: () => void;
 }) {
-  const [draft, setDraft] = useState<OutsourceSettings>(() => ({ ...structuredClone(settings), vendors: [...structuredClone(settings.vendors)].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id)) }));
+  const [draft, setDraft] = useState<OutsourceSettings>(() => ({ ...structuredClone(settings), namedTargets: structuredClone(settings.namedTargets ?? []), vendors: [...structuredClone(settings.vendors)].sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id)) }));
   const [initial] = useState(() => normalizePriorities(draft));
   const [selected, setSelected] = useState(settings.vendors[0]?.id ?? '');
+  const [tab, setTab] = useState<'vendor' | 'named'>('vendor');
   const [invalid, setInvalid] = useState<string | null>(null);
   const vendor = draft.vendors.find((item) => item.id === selected) ?? draft.vendors[0];
   const updateVendor = (update: (current: OutsourceVendor) => OutsourceVendor) => setDraft((current) => ({ ...current, vendors: current.vendors.map((item) => item.id === vendor?.id ? update(item) : item) }));
   const updateCondition = (index: number, change: Partial<OutsourceCondition>) => updateVendor((current) => ({ ...current, conditions: current.conditions.map((condition, i) => i === index ? { ...condition, ...change } : condition) }));
+  const identity = (value: OutsourceSettings) => JSON.stringify({ ...value, namedTargets: [...value.namedTargets ?? []].sort((a, b) => a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key)) });
   const close = () => {
     if (saving) return;
     const normalized = normalizePriorities(draft);
-    if (JSON.stringify(normalized) === JSON.stringify(initial)) { onClose(); return; }
+    if (identity(normalized) === identity(initial)) { onClose(); return; }
     if (draft.vendors.some((item) => !item.name.trim())) { setInvalid('名前を入力してください'); return; }
     if (draft.vendors.some((item) => [item.monthlyCapacityMinutes, ...item.conditions.map((condition) => condition.maxMinutes)].some((value) => value !== null && (!Number.isFinite(value) || value < 0 || value > 100_000_000)))) {
       setInvalid('上限は0以上の数値で入力してください'); return;
@@ -44,12 +51,12 @@ export function LoadBalancingOutsourceSettings({ settings, resources, saving, er
     setInvalid(null);
     onSave(normalized);
   };
+  const tabs = <div className="flex shrink-0 gap-1 rounded-lg bg-slate-800 p-1">{(['vendor', 'named'] as const).map((value) => <button type="button" key={value} disabled={saving} aria-pressed={tab === value} className={`h-10 rounded-md px-3 font-bold ${tab === value ? 'bg-sky-600' : ''}`} onClick={() => setTab(value)}>{value === 'vendor' ? '業者' : '名指し'}<b className="ml-2 text-xs opacity-70">{value === 'vendor' ? draft.vendors.length : draft.namedTargets?.length ?? 0}</b></button>)}</div>;
+  const closeButton = <><span role={invalid || error ? 'alert' : undefined} className="text-rose-300">{invalid ?? error}</span><button type="button" className={`${buttonClass} !bg-emerald-600`} onClick={close} disabled={saving}>{saving ? '保存中' : '閉じる'}</button></>;
   return <Dialog isOpen onClose={close} ariaLabel="業者の設定" size="full" closeOnBackdrop={false}
-    className="!my-auto flex h-[min(880px,calc(100dvh-48px))] !max-w-[1500px] flex-col !border !border-white/20 !bg-slate-900 !p-0 !text-white" overlayClassName="!items-center">
-    <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/15 px-5"><h2 className="flex-1 text-xl font-extrabold">業者</h2>
-      {invalid || error ? <span role="alert" className="text-rose-300">{invalid ?? error}</span> : null}
-      <button type="button" className={`${buttonClass} !bg-emerald-600`} onClick={close} disabled={saving}>{saving ? '保存中' : '閉じる'}</button>
-    </header>
+    className="!m-0 flex !h-dvh !max-h-none !w-screen !max-w-none flex-col !rounded-none !border-0 !bg-slate-900 !p-0 !text-white" overlayClassName="!p-0">
+    {tab === 'named' ? <LoadBalancingNamedSettings settings={draft} rows={rows} months={months} today={today} selected={selected} onSelect={setSelected} onChange={(namedTargets) => setDraft({ ...draft, namedTargets })} tabs={tabs} closeButton={closeButton} saving={saving} /> : <>
+    <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/15 px-5">{tabs}<div className="flex-1" />{closeButton}</header>
     <fieldset disabled={saving} className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] border-0 p-0">
       <div className="min-h-0 overflow-auto border-r border-white/15 p-3">
         {draft.vendors.map((item, index) => <div key={item.id} className={`mb-2 flex items-center gap-2 rounded-lg border p-2 ${vendor?.id === item.id ? 'border-sky-400 bg-sky-950' : 'border-white/10'}`}>
@@ -69,7 +76,7 @@ export function LoadBalancingOutsourceSettings({ settings, resources, saving, er
       <div className="min-h-0 overflow-auto p-6">
         {vendor ? <>
           <div className="mb-5 flex items-center gap-4"><label htmlFor="vendor-name" className="w-28 shrink-0 font-bold">名前</label><input id="vendor-name" className={`${inputClass} w-80`} value={vendor.name} maxLength={120} onChange={(event) => updateVendor((item) => ({ ...item, name: event.target.value }))} />
-            <button type="button" className="ml-auto text-rose-300" onClick={() => setDraft({ ...draft, vendors: draft.vendors.filter((item) => item.id !== vendor.id) })}>業者を削除</button>
+            <button type="button" className="ml-auto text-rose-300" onClick={() => setDraft({ ...draft, vendors: draft.vendors.filter((item) => item.id !== vendor.id), namedTargets: draft.namedTargets?.filter((target) => target.vendorId !== vendor.id) })}>業者を削除</button>
           </div>
           <div className="mb-5 flex items-center gap-4"><label htmlFor="vendor-capacity" className="w-28 shrink-0 font-bold">月の上限</label><HoursInput id="vendor-capacity" value={vendor.monthlyCapacityMinutes} onChange={(value) => updateVendor((item) => ({ ...item, monthlyCapacityMinutes: value }))} /><span className="text-white/55">H</span></div>
           <div className="flex items-start gap-4"><span className="w-28 shrink-0 pt-9 font-bold">加工できるもの</span><div className="min-w-0 flex-1 overflow-auto">
@@ -94,6 +101,7 @@ export function LoadBalancingOutsourceSettings({ settings, resources, saving, er
         <button type="button" aria-label={`${labels[key]} を後ろへ`} className="disabled:opacity-20" disabled={saving || index === 2} onClick={() => setDraft({ ...draft, order: swap(draft.order, index, 1) })}>▶</button>
       </span>)}</div>
     </footer>
+    </>}
   </Dialog>;
 }
 

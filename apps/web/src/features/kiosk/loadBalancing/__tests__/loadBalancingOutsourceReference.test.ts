@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { namedTargetKey, resolveNamedTarget } from '../loadBalancingNamedTargets';
 import { autoSelect, aggregateScenario, readLoad, vendorMatches, type ScenarioAction } from '../loadBalancingScenario';
 
 // @ts-expect-error The independent JavaScript fixture intentionally has no type declarations.
 import { referenceAutoSelect } from './fixtures/outsourceReference.mjs';
+
+import type { OutsourceNamedTarget } from '../../../../api/client';
 
 const MONTHS = ['2026-11', '2026-12', '2027-01'];
 const TODAY = '2026-11-07';
@@ -66,7 +69,14 @@ function gen(seed: number, big = false) {
     }))
   }));
   const orders: Array<Array<'due' | 'minutes' | 'vendor'>> = [['due', 'minutes', 'vendor'], ['due', 'vendor', 'minutes'], ['minutes', 'due', 'vendor'], ['minutes', 'vendor', 'due'], ['vendor', 'due', 'minutes'], ['vendor', 'minutes', 'due']];
-  const settings = { vendors, mode: (r() < 0.5 ? 'part' : 'process') as 'part' | 'process', order: pick(orders) };
+  const namedTargets: OutsourceNamedTarget[] = [];
+  if (vendors.length) for (const row of rows) {
+    if (r() > 0.25) continue;
+    const kind = pick<OutsourceNamedTarget['kind']>(['machine', 'seiban', 'part']);
+    const key = namedTargetKey(kind, row);
+    if (!namedTargets.some((target) => target.kind === kind && target.key === key)) namedTargets.push({ kind, key, vendorId: pick(vendors).id });
+  }
+  const settings = { namedTargets, vendors, mode: (r() < 0.5 ? 'part' : 'process') as 'part' | 'process', order: pick(orders) };
   const machine = r() < 0.4 ? pick(['', 'NVD', 'ｎｖｄ', 'HX']) : undefined;
   // a few pre-existing manual actions
   const actions: ScenarioAction[] = [];
@@ -90,7 +100,20 @@ function checkInvariants(input: ReturnType<typeof gen>, result: ReturnType<typeo
   // outsourced rows match vendor
   for (const a of added) {
     const row = input.rows.find((x) => x.rowId === a.rowId)!;
-    if (a.type === 'outsource') expect(vendorMatches(input.settings.vendors.find((v) => v.id === a.vendorId)!, row)).toBe(true);
+    if (a.type === 'outsource' && !resolveNamedTarget(input.settings.namedTargets, row)) expect(vendorMatches(input.settings.vendors.find((v) => v.id === a.vendorId)!, row)).toBe(true);
+  }
+  // Every eligible named row is assigned exactly to its winner, or blocked by its cap.
+  for (const row of input.rows) {
+    if (input.actions.some((a) => a.rowId === row.rowId)) continue;
+    const machineName = (value: string) => value.trim().replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/\u3000/g, ' ').toUpperCase();
+    if (!row.plannedStartDate || !row.effectiveDueDate || row.totalMinutes <= 0 ||
+      (input.machine && machineName(input.machine) !== machineName(row.machineName)) ||
+      !row.allocations.some((a) => (a.bucket === 'late' || MONTHS.includes(a.bucket)) && a.minutes > 0)) continue;
+    const target = resolveNamedTarget(input.settings.namedTargets, row);
+    if (!target) continue;
+    const action = result.actions.find((a) => a.rowId === row.rowId);
+    if (action) expect(action).toMatchObject({ type: 'outsource', vendorId: target.vendorId });
+    else expect(result.noTaker).toContainEqual({ rowId: row.rowId, reason: '上限' });
   }
   // transfer creates no new overflow on capacity cells
   for (const res of input.resources) for (const m of MONTHS) {
@@ -105,7 +128,7 @@ const norm = (actions: unknown[]) => JSON.stringify(actions);
 
 describe('differential vs independent reference', () => {
   const failures: string[] = [];
-  for (let c = 0; c < 2000; c += 1) {
+  for (let c = 0; c < Number(process.env.OUTSOURCE_REFERENCE_CASES ?? 2000); c += 1) {
     it(`case ${c}`, () => {
       const input = gen(0xabc000 + c, c % 10 === 9);
       const got = autoSelect(structuredClone(input) as never);

@@ -85,13 +85,13 @@ export function ProductionScheduleLoadBalancingPage() {
           loading={state.query.isFetching && Boolean(data)}
         />
         <span className="inline-flex h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-slate-800 px-2 font-bold"><small className="text-[13px] text-white/60">外注</small><b className="text-lg tabular-nums">{Math.round(outsourceMinutes / 6) / 10}</b><small className="text-white/60">H</small></span>
-        <button type="button" className="ml-auto h-10 shrink-0 rounded-lg bg-emerald-600 px-3 text-sm font-bold disabled:opacity-30" disabled={!input || !summary || summary.after.overMinutes <= 0.5} onClick={() => input && state.commitResult(autoSelect(input))}>自動選定</button>
+        <button type="button" className="ml-auto h-10 shrink-0 rounded-lg bg-emerald-600 px-3 text-sm font-bold disabled:opacity-30" disabled={!input || !summary || (summary.after.overMinutes <= 0.5 && !input.settings.namedTargets?.length)} onClick={() => input && state.commitResult(autoSelect(input))}>自動選定</button>
         <button type="button" className="h-10 shrink-0 rounded-lg bg-slate-800 px-2 text-sm font-bold disabled:opacity-30" disabled={!state.canUndo} onClick={state.undo}>1つ戻す</button>
         <button type="button" className="h-10 shrink-0 rounded-lg bg-slate-800 px-2 text-sm font-bold disabled:opacity-30" disabled={!state.actions.length && !state.result.noTaker.length} onClick={() => state.commitResult({ actions: [], noTaker: [] })}>クリア</button>
         <button type="button" className="h-10 w-10 shrink-0 rounded-lg bg-slate-800 text-xl" aria-label="業者の設定" disabled={!data || state.query.isPlaceholderData} onClick={() => { settingsMutation.reset(); setSettingsOpen(true); }}>⚙</button>
       </LoadBalancingPageHeader>
 
-      {settingsOpen && data && !state.query.isPlaceholderData ? <LoadBalancingOutsourceSettings key={`${data.siteKey}|${macScope.scopeParams.targetDeviceScopeKey ?? ''}`} settings={data.outsourceSettings ?? DEFAULT_OUTSOURCE_SETTINGS} resources={data.resources.map((resource) => resource.resourceCd)} saving={settingsMutation.isPending} error={settingsMutation.error ? '保存できませんでした' : null} onClose={() => setSettingsOpen(false)} onSave={(settings) => settingsMutation.mutate({ ...settings, ...macScope.scopeParams }, { onSuccess: () => { setSettingsOpen(false); state.reset(); } })} /> : null}
+      {settingsOpen && data && !state.query.isPlaceholderData ? <LoadBalancingOutsourceSettings key={`${data.siteKey}|${macScope.scopeParams.targetDeviceScopeKey ?? ''}`} settings={data.outsourceSettings ?? DEFAULT_OUTSOURCE_SETTINGS} rows={data.rows} months={data.months} today={data.today} resources={data.resources.map((resource) => resource.resourceCd)} saving={settingsMutation.isPending} error={settingsMutation.error ? '保存できませんでした' : null} onClose={() => setSettingsOpen(false)} onSave={(settings) => settingsMutation.mutate({ ...settings, ...macScope.scopeParams }, { onSuccess: () => { setSettingsOpen(false); state.reset(); } })} /> : null}
       {state.query.error ? (
         <div className="rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-rose-100" role="alert">
           読み込めませんでした

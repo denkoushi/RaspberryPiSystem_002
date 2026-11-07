@@ -82,8 +82,17 @@ describe('kiosk outsource settings routes', () => {
       expect(mocks.getOutsource).toHaveBeenCalledWith('site-a');
       const put = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/load-balancing/outsource-settings', headers: { 'x-client-key': 'registered-key' }, payload: value });
       expect(put.statusCode).toBe(200);
-      expect(mocks.saveOutsource).toHaveBeenCalledWith('site-a', value);
+      expect(mocks.saveOutsource).toHaveBeenCalledWith('site-a', { ...value, namedTargets: [] });
       expect(requireClientDevice).toHaveBeenCalledWith('registered-key');
+    } finally { await app.close(); }
+  });
+  it('passes named targets through the client-authenticated settings route', async () => {
+    const { app } = await appForSettings();
+    const payload = { ...value, namedTargets: [{ kind: 'seiban', key: 'S1', vendorId: value.vendors[0]!.id }] };
+    try {
+      const put = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/load-balancing/outsource-settings', headers: { 'x-client-key': 'registered-key' }, payload });
+      expect(put.statusCode).toBe(200);
+      expect(mocks.saveOutsource).toHaveBeenCalledWith('site-a', payload);
     } finally { await app.close(); }
   });
   it.each(['GET', 'PUT'] as const)('requires x-client-key for %s', async (method) => {

@@ -59,6 +59,39 @@ The lifecycle read-only audit could not reach api.github.com; the existing task 
   Rationale: A stale source can cross midnight; overdue receiving usage must still charge the true current month. Old trials must not resurrect deleted vendors after a settings edit.
   Date/Author: 2026-11-07 / Codex.
 
+- Decision: Persist named targets as config children with stable vendorId and unique (configId, kind, key). Missing namedTargets in older requests means an empty list. Reject supplied orphan/duplicate targets; replacing a snapshot deletes all previous named children before recreating the validated list, so deleted vendors leave no targets.
+  Rationale: Preserve the existing authenticated site/shared snapshot path and existing tables/data.
+  Date/Author: 2026-11-07 / Codex.
+- Decision: Run pure stage zero before any overload handling, with part > seiban > machine precedence; order by vendor priority, effective due date, rowId. Ignore conditions/part mode, enforce every charged month, and reserve failed rows against transfer and conditional part expansion.
+  Rationale: Named work must reach its specified vendor or report 上限 even when internal capacity is sufficient.
+  Date/Author: 2026-11-07 / Codex.
+- Decision: Use normalizeMachineName with no character truncation for named machine identity, matching existing machine filters. Search normalizes NFKC/uppercase separately. Tiles show uncapped named demand, applying specificity once per eligible row and existing monthly accounting; right-hand target lines show the total matching workload.
+  Rationale: Distinct long machine names must not collide. Demand must expose over-cap months rather than hiding rejected work.
+  Date/Author: 2026-11-07 / Codex.
+
+## Named outsourcing (2026-11-07)
+
+The existing ⚙ editor now fills the viewport for both 業者 and 名指し. The named view uses loaded workspace rows only: kind/search/prefix/keypad controls, one candidate column (40 maximum), four-column scrollable vendor tiles, and removable targets for the selected vendor. Candidate presses toggle or reassign the exact target; vendor deletion removes its targets. Closing an unchanged draft does not save.
+
+Named keys are normalized machine names, trimmed FSEIBAN, or the existing JSON partKey (FSEIBAN + FHINCD, with ProductNo for ********). All key creation/matching is shared between the editor and pure calculation. A target covers eligible, visible, machine-filtered, unacted process rows only. Caps use final-action aggregation, visible normal months and JST current month for late allocations. Named successes and 上限 failures are unavailable to subsequent stages. Undo/clear retain existing scenario/history behavior.
+
+The new migration only creates ProductionScheduleOutsourceNamedTarget and its cascading config relation/unique index. The API reads/saves namedTargets additively through the existing x-client-key route. Site snapshots, including empty snapshots, remain authoritative over shared.
+
+Validation covers kind/precedence, condition bypass, NULL/zero/insufficient caps, late and multi-month allocation, existing actions, filters, deterministic order, unnumbered keys, recomputed downstream selection and blocked part expansion. The independent JavaScript reference expresses stage zero without importing production helpers; random differential cases include named settings and assert winner-or-cap-failure and monthly limits. Browser and live-DB evidence depend on the local environment; see final validation evidence below.
+
+### Named validation evidence
+
+- `pnpm install --frozen-lockfile`, `pnpm --filter './packages/*' build`, API `prisma generate` and `prisma validate`: passed. All five workspace packages built locally; no external dependency symlinks were created manually.
+- `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/loadBalancing src/pages/kiosk/ProductionScheduleLoadBalancingPage.test.tsx`: 9 files / 2,492 tests passed (11.87s). Includes 400 existing seeded property cases and 2,000 named differential cases, editor interactions and no-overload automatic selection/undo/clear.
+- `OUTSOURCE_REFERENCE_CASES=10000 pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/loadBalancing/__tests__/loadBalancingOutsourceReference.test.ts`: 10,000/10,000 passed (172.44s), including winner-or-cap-failure and per-month vendor cap properties. Repository default remains 2,000.
+- `pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/load-balancing src/routes/kiosk/production-schedule/__tests__/load-balancing.route.test.ts`: 16 files / 92 tests passed (24.81s); settings service has 22 cases, including named persistence, shared fallback/site replacement, normalized duplicate/orphan rejection and deletion.
+- `pnpm --filter @raspi-system/web exec tsc --noEmit -p .`: passed on the final source.
+- `pnpm --filter @raspi-system/api exec tsc --noEmit -p .`: blocked by existing TS6059 rootDir/include conflicts for seed, scripts and vitest config. A supplemental whole-project run with `--rootDir .` exhausted the default 4GB Node heap. A temporary focused config extending the existing config, rootDir '.', and including the changed settings service/test passed; repository compiler configuration was not changed.
+- ESLint on all changed TS/TSX/MJS files (including `--no-ignore` for the independent fixture): passed without warnings. `git diff --check`: passed. New migration sorts after the vendor migration and leaves existing tables/data unchanged.
+- Live database verification unavailable: localhost:5432 did not respond; isolated `initdb` failed at `shmget` with Operation not permitted. No existing database or device was modified.
+- Visual verification unavailable: Browser plugin service module is missing; installed bundled Chromium headless shell failed macOS MachPortRendezvous bootstrap with Permission denied. The approved mock HTML was read without modification; actual 1920px rendering/toolbar fit and interactive mock inspection remain unverified.
+- Local implementation only. No commit, push, PR, merge, release or deploy performed. Initial worktree was clean; final source changes belong to this task.
+
 ## Outcomes & Retrospective
 
 

@@ -247,6 +247,25 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     expect(screen.getByTestId('load-balancing-scenario-bar')).not.toHaveTextContent('移管');
   });
 
+  it('undo and clear restore the complete named selection even without overload', () => {
+    const data = workspace();
+    for (const resource of data.resources) for (const month of data.months) resource.capacityByMonth[month] = 10000 * H;
+    data.outsourceSettings!.namedTargets = [{ kind: 'machine', key: 'NVD-5000', vendorId: 'v1' }];
+    mockUseWorkspace.mockReturnValue({ data, isFetching: false, error: null });
+    render(<ProductionScheduleLoadBalancingPage />);
+    expect(screen.getByRole('button', { name: '自動選定' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '自動選定' }));
+    const output = screen.getByTestId('load-balancing-outsource');
+    expect(within(output).getAllByRole('button', { name: /外注を取り消す/ })).toHaveLength(4);
+    fireEvent.click(screen.getByRole('button', { name: '1つ戻す' }));
+    expect(within(output).queryByRole('button', { name: /外注を取り消す/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '自動選定' }));
+    fireEvent.click(screen.getByRole('button', { name: 'クリア' }));
+    expect(within(output).queryByRole('button', { name: /外注を取り消す/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '1つ戻す' }));
+    expect(within(output).getAllByRole('button', { name: /外注を取り消す/ })).toHaveLength(4);
+  });
+
   it('saves vendor hours as minutes and persists mode and candidate order from the gear dialog', () => {
     render(<ProductionScheduleLoadBalancingPage />);
     fireEvent.click(screen.getByRole('button', { name: '業者の設定' }));

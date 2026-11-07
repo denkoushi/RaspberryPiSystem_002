@@ -1,5 +1,8 @@
 
 import { formatLoadBalancingMachineName } from './loadBalancingFormat';
+import { partKey, resolveNamedTarget } from './loadBalancingNamedTargets';
+
+export { partKey } from './loadBalancingNamedTargets';
 
 import type {
   OutsourceSettings,
@@ -275,6 +278,8 @@ export type ScenarioInput = {
   machine?: string;
   /** JST calendar date supplied by the workspace API. */
   today?: string;
+  /** Rows reserved by stage zero cannot be picked by later stages, including part expansion. */
+  excludedRowIds?: ReadonlySet<string>;
 };
 const compareId = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 
@@ -289,12 +294,8 @@ export function vendorMatches(vendor: OutsourceVendor, row: ProductionScheduleLo
   );
 }
 
-export function partKey(row: ProductionScheduleLoadBalancingWorkspaceRow): string {
-  return JSON.stringify([row.fseiban.trim(), row.fhincd.trim(), ...(row.fseiban.trim() === '********' ? [row.productNo.trim()] : [])]);
-}
-
-export function isScenarioCandidate(row: ProductionScheduleLoadBalancingWorkspaceRow, input: Pick<ScenarioInput, 'months' | 'machine'>): boolean {
-  return Boolean(row.plannedStartDate && row.effectiveDueDate) && Number.isFinite(row.totalMinutes) && row.totalMinutes > 0 &&
+export function isScenarioCandidate(row: ProductionScheduleLoadBalancingWorkspaceRow, input: Pick<ScenarioInput, 'months' | 'machine' | 'excludedRowIds'>): boolean {
+  return !input.excludedRowIds?.has(row.rowId) && Boolean(row.plannedStartDate && row.effectiveDueDate) && Number.isFinite(row.totalMinutes) && row.totalMinutes > 0 &&
     (!input.machine || formatLoadBalancingMachineName(row.machineName) === formatLoadBalancingMachineName(input.machine)) &&
     row.allocations.some((allocation) => (allocation.bucket === LATE_BUCKET || input.months.includes(allocation.bucket)) &&
       Number.isFinite(allocation.minutes) && allocation.minutes > 0);
@@ -407,9 +408,33 @@ export function collectNoTaker(input: ScenarioInput): NoTaker[] {
   return [...result.values()].sort((a, b) => dueCompare(rowsById.get(a.rowId)!, rowsById.get(b.rowId)!));
 }
 
+/** Stage zero ignores vendor conditions and part mode, but shares the final-action usage ledger. */
+export function selectNamedTargets(input: ScenarioInput): ScenarioResult {
+  const actions = [...input.actions];
+  const noTaker: NoTaker[] = [];
+  const acted = indexActions(actions);
+  const vendors = new Map((input.settings?.vendors ?? []).map((vendor) => [vendor.id, vendor]));
+  const candidates = input.rows.flatMap((row) => {
+    if (acted.has(row.rowId) || !isScenarioCandidate(row, input)) return [];
+    const target = resolveNamedTarget(input.settings?.namedTargets ?? [], row);
+    const vendor = target && vendors.get(target.vendorId);
+    return vendor ? [{ row, vendor }] : [];
+  }).sort((a, b) => a.vendor.priority - b.vendor.priority || dueCompare(a.row, b.row));
+  for (const { row, vendor } of candidates) {
+    const used = aggregateScenario({ ...input, actions }).vendorUsage.get(vendor.id);
+    const fits = [...vendorRowUsage(row, input.months, input.today ?? '')].every(([month, minutes]) =>
+      vendor.monthlyCapacityMinutes === null || (used?.get(month) ?? 0) + minutes <= vendor.monthlyCapacityMinutes);
+    if (fits) actions.push({ rowId: row.rowId, type: 'outsource', vendorId: vendor.id });
+    else noTaker.push({ rowId: row.rowId, reason: '上限' });
+  }
+  return { actions, noTaker };
+}
+
 /** All overloads, largest first. Every selection rebuilds loads and usage from the complete action set. */
 export function autoSelect(initial: ScenarioInput, onlyCell?: { resourceCd: string; bucket: string }): ScenarioResult {
-  const input = { ...initial, settings: initial.settings ?? DEFAULT_OUTSOURCE_SETTINGS, actions: [...initial.actions] };
+  const named = selectNamedTargets(initial);
+  const input = { ...initial, settings: initial.settings ?? DEFAULT_OUTSOURCE_SETTINGS, actions: named.actions,
+    excludedRowIds: new Set([...initial.excludedRowIds ?? [], ...named.noTaker.map((item) => item.rowId)]) };
   const processed = new Set<string>();
   let steps = 0;
   let activeCell: { resourceCd: string; bucket: string } | undefined;
@@ -461,5 +486,7 @@ export function autoSelect(initial: ScenarioInput, onlyCell?: { resourceCd: stri
     processed.add(JSON.stringify([cell.resourceCd, cell.bucket]));
     activeCell = undefined;
   }
-  return { actions: input.actions, noTaker: collectNoTaker(input) };
+  const rowsById = new Map(input.rows.map((row) => [row.rowId, row]));
+  return { actions: input.actions, noTaker: [...named.noTaker, ...collectNoTaker(input)]
+    .sort((a, b) => dueCompare(rowsById.get(a.rowId)!, rowsById.get(b.rowId)!)) };
 }
