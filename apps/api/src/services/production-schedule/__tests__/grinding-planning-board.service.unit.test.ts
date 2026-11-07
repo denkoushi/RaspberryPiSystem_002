@@ -1276,7 +1276,7 @@ describe('bulk grinding resource order service', () => {
     expect(mocks.prisma.$executeRaw).not.toHaveBeenCalled();
     expect(mocks.prisma.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { isolationLevel: 'RepeatableRead', timeout: 30000, maxWait: 15000 });
     const winnerQueries = mocks.prisma.$queryRaw.mock.calls.filter(([query]) => JSON.stringify(query).includes('rowData'));
-    expect(winnerQueries).toHaveLength(2); // registered winners + candidate projection, as on main
+    expect(winnerQueries).toHaveLength(1); // one FSEIBAN-scoped winner read; no dashboard-wide winner materialization
 
     expect(result.items.find((item) => item.itemId === hidden.itemId)?.alternateRank).toBe(hidden.alternateRank);
     expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert.mock.calls.map(([args]) => args.create.itemKey))

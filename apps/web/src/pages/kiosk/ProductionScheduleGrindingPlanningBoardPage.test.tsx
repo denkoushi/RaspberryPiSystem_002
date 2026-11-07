@@ -234,7 +234,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       const affected = operation === 'split' ? [data.items[0]!] : data.items.filter((item) => item.kind === 'piece');
       for (const item of affected) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
       fireEvent.click(within(screen.getByTestId(`planning-board-item-${affected[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' }));
       await waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
       const unrelated = within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox');
       expect(unrelated).toBeEnabled();
@@ -297,7 +297,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       for (const item of affected) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
       const trigger = within(screen.getByTestId(`planning-board-item-${affected[0]!.itemId}`)).getByRole('button', { name: /の数量/ });
       trigger.focus(); fireEvent.click(trigger);
-      const action = screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' });
+      const action = screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' });
       await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
       await waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
       expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.anything(), { refetchIntervalMs: false });
@@ -325,7 +325,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
       fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
-      const action = screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' });
+      const action = screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' });
       await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
       const popup = screen.getByRole('dialog', { name: '数量' });
       await waitFor(() => expect(within(popup).getByRole('alert')).toHaveTextContent('表示中のデータが更新されています。最新状態を取得してください。'));
@@ -346,7 +346,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       if (operation === 'merge') for (const item of data.items.slice(0, 2)) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
       fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
-      const action = screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' });
+      const action = screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' });
       await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
       expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
@@ -373,8 +373,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(within(screen.getByTestId('planning-board-item-c')).getByRole('button', { name: '完了にする' }));
       await screen.findByRole('button', { name: '↶ 戻す' });
       fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
-      fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument());
       expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeInTheDocument();
     });
@@ -390,8 +390,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       const undo = await screen.findByRole('button', { name: '↶ 戻す' });
       expect(undo).toBeEnabled();
       fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
-      fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledTimes(1));
       expect(undo).toBeDisabled(); fireEvent.click(undo);
       expect(mocks.completion).toHaveBeenCalledTimes(1);
@@ -418,8 +418,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       // Merge requires a same-parent selection; leave the unrelated row selected in the other scope.
       if (operation === 'merge') fireEvent.click(within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox'));
       fireEvent.click(within(screen.getByTestId(`planning-board-item-${ids[0]}`)).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled());
-      fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' }));
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
       for (const scope of ['all', 'cutting']) {
         for (const id of ids.filter((id) => id !== 'c')) expect(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('checkbox')).not.toBeChecked();
@@ -491,7 +491,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       });
       const page = renderSeibanBoard();
       fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
       expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
       mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: true, refetch: mocks.refetch });
@@ -507,7 +507,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       if (phase === 'saving') {
         fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
-        await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+        await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
         await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledTimes(1));
       }
       for (const entry of data.items) {
@@ -534,7 +534,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       const popup = screen.getByRole('dialog', { name: '数量' });
       expect(within(popup).getByText('保存中…')).toBeInTheDocument();
       expect(popup.firstElementChild).not.toHaveClass('!border-red-500');
-      expect(within(popup).getByRole('button', { name: '分ける' })).toBeDisabled();
+      expect(within(popup).getByRole('button', { name: '2つに分ける' })).toBeDisabled();
       expect(mocks.pieceSplit).not.toHaveBeenCalled();
     });
 
@@ -576,11 +576,11 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
       fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
       for (let attempt = 1; attempt <= 3; attempt++) {
-        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' }));
         await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(attempt));
         expect(mutation).toHaveBeenCalledTimes(attempt);
         expect(screen.getByRole('dialog', { name: '数量' })).toBeInTheDocument();
-        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled());
+        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' })).toBeEnabled());
       }
     });
     it.each(['pieceId', 'pieceSetVersion'] as const)('disables invalid pieces when %s is missing', (field) => {
@@ -605,7 +605,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
       chooseResourceRank('部品b', 1);
       await screen.findByRole('button', { name: '最新状態を取得' });
-      expect(screen.getByRole('button', { name: '分ける' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '2つに分ける' })).toBeDisabled();
       expect(screen.queryByText('保存中…')).not.toBeInTheDocument();
       expect(mocks.pieceSplit).not.toHaveBeenCalled();
     });
@@ -646,7 +646,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
       fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' }));
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
       expect(mutation).toHaveBeenCalledTimes(1);
       expect(screen.queryByRole('button', { name: '最新状態を取得' })).not.toBeInTheDocument();
@@ -676,7 +676,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       mocks.pieceSplit.mockResolvedValue({ pieces: splitBoard().items });
       renderSeibanBoard();
       fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledExactlyOnceWith({ parentItemId: 'a', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'revision-a' }));
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
     });
@@ -694,7 +694,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       const trigger = within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ });
       trigger.focus(); fireEvent.click(trigger);
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(quantity === 2
         ? within(screen.getByTestId('planning-board-item-piece:0')).getByRole('checkbox')
         : within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ })).toHaveFocus());
@@ -712,7 +712,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       if (operation === 'merge') for (const item of data.items.filter((candidate) => candidate.kind === 'piece')) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
       const row = screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`);
       fireEvent.click(within(row).getByRole('button', { name: /の数量/ }));
-      const action = screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' });
+      const action = screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' });
       await waitFor(() => expect(action).toBeEnabled());
       act(() => {
         fireEvent.click(within(screen.getByTestId('planning-board-item-b')).getByRole('button', { name: '完了にする' }));
@@ -776,7 +776,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
       mocks.pieceSplit.mockResolvedValue({ pieces: data.items });
       fireEvent.click(within(screen.getByTestId('planning-board-item-piece:1')).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledWith(expect.objectContaining({ expectedPieceSetVersion: 5, itemRevision: 'parent-csv-new' })));
     });
     it.each(['parent-gone', 'import', 'merged', 'sibling-gone'])('does not resurrect pieces removed by a GET (%s)', async (change) => {
@@ -818,7 +818,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       else mocks.refetch.mockResolvedValueOnce({ isError: true, error: new Error('refresh failed') });
       const page = renderSeibanBoard();
       fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument());
       expect(screen.queryByText('保存できませんでした。時間をおいて再試行してください。')).not.toBeInTheDocument();
       expect(mocks.pieceSplit).toHaveBeenCalledTimes(1);
@@ -841,7 +841,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       const trigger = within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ });
       trigger.focus(); fireEvent.click(trigger);
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument());
       if (target === 'table') expect(screen.getByRole('table')).toHaveFocus();
       else expect(within(screen.getByTestId(`planning-board-item-${target === 'parent' ? 'a' : 'piece:1'}`)).getByRole('button', { name: /の数量/ })).toHaveFocus();
@@ -970,7 +970,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       await waitFor(() => expect(mocks.completion).toHaveBeenCalledTimes(2));
       mocks.refetch.mockImplementation(async () => { data = { ...data, snapshotId: 'split', items: splitBoard().items }; return { data }; });
       fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '2つに分ける' }));
       await waitFor(() => expect(screen.getByTestId('planning-board-item-piece:0')).toBeInTheDocument());
       expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
     });
@@ -984,10 +984,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
       fireEvent.click(within(screen.getByTestId(`planning-board-item-${data.items[0]!.itemId}`)).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' }));
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
       expect(mutation).toHaveBeenCalledTimes(1);
-      expect(screen.queryByRole('button', { name: '分ける' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '2つに分ける' })).not.toBeInTheDocument();
     });
     it('keeps the actual writing wrapper and table/gantt DOM when there are zero pieces and creation is off', () => {
       const data = { ...fixture(), view: 'resource' as const, pieceCapabilities: { createEnabled: false, includePieces: true } };
@@ -1031,7 +1031,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       }
       if (operation !== 'complete') {
         fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: /の数量/ }));
-        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled());
+        await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' })).toBeEnabled());
       }
       // Keep a portaled rank menu open too: DOM containment cannot guard it.
       fireEvent.click(rank);
@@ -1041,7 +1041,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renders.mockClear();
       fireEvent.click(operation === 'complete'
         ? within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' })
-        : screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
+        : screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' }));
       await waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
       expect(renders.mock.calls.some(([item]) => item.itemId === 'c')).toBe(false);
       expect(unrelated.closest('[data-planning-board-pieces-writing]')).toHaveAttribute('data-planning-board-pieces-writing', 'true');
@@ -1082,13 +1082,13 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       const other = screen.getByTestId('planning-board-item-c');
       fireEvent.click(within(other).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
+      await waitFor(() => expect(screen.getByRole('button', { name: '2つに分ける' })).toBeEnabled());
       fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
       await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1));
-      expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeDisabled();
-      expect(screen.getByRole('button', { name: '分け数を減らす' })).toBeDisabled();
-      fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
-      expect(screen.getByLabelText('分け数')).toHaveTextContent('2');
+      expect(screen.getByRole('button', { name: '3つに分ける数' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '2つに分ける数' })).toBeDisabled();
+      fireEvent.click(screen.getByRole('button', { name: '3つに分ける数' }));
+      expect(screen.getByRole('button', { name: '2つに分ける数' })).toHaveAttribute('aria-pressed', 'true');
       if (close === 'Escape') fireEvent.keyDown(window, { key: 'Escape' });
       else fireEvent.mouseDown(screen.getByRole('dialog', { name: '数量' }));
       expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();

@@ -202,9 +202,9 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
     <button type="button" data-planning-board-quantity-item={item.itemId} disabled={!operable} aria-label={`${item.fhinmei ?? item.fhincd}の数量 ${label}`}
       aria-haspopup="dialog" aria-expanded={open} className={`min-h-11 min-w-11 rounded px-1 tabular-nums disabled:border-transparent ${variant === 'gantt' ? 'border-2 border-sky-400 bg-sky-900' : 'border border-slate-600'}`}
       onClick={() => { setShowSplit(canSplit); setCount(2); setFailure(null); setBackdropReady(false); setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
-    {open && <PieceDialog actions={actions} showSplit={showSplit} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
+    {open && <PieceDialog actions={actions} showSplit={showSplit && actions.createEnabled} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">
-        {showSplit && <>
+        {showSplit && actions.createEnabled && <>
           <div role="group" aria-label="分け数" className="grid grid-cols-5 gap-1">
             {[2, 3, 4, 5, 6].map((value) => <button key={value} type="button" aria-label={`${value}つに分ける数`} aria-pressed={count === value}
               disabled={pending || blocked || value > (quantity ?? 0)} onClick={() => setCount(value)}
