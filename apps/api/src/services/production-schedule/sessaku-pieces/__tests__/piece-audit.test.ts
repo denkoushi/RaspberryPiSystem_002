@@ -10,7 +10,7 @@ vi.mock('../../../../lib/logger.js', () => {
   const log = { info: vi.fn(), warn: vi.fn() };
   return { logger: { ...log, child: (_bindings: object, options: object) => { expect(options).toEqual({ level: 'info' }); return log; } } };
 });
-const context = (): PieceAuditContext => ({ action: 'split', requestId: 'req-1', siteKey: 'site', actorClientDeviceId: 'client', actorDeviceName: 'device', parentItemId: 'parent', fseiban: 'S1', pieceIds: ['piece-1'], expectedVersion: 1, itemRevision: 'revision', beforeJson: { count: 1, quantities: [5] } });
+const context = (): PieceAuditContext => ({ action: 'split', requestId: 'req-1', siteKey: 'site', actorClientDeviceId: 'client', actorDeviceName: 'device', parentItemId: 'parent', fseiban: 'S1', pieceIds: ['piece-1'], requestedQuantities: [2, 3], expectedVersion: 1, itemRevision: 'revision', beforeJson: { count: 1, quantities: [5] } });
 beforeEach(() => vi.resetAllMocks());
 describe('runSessakuPieceOperation', () => {
   it('records one success after the operation settles', async () => {
@@ -22,7 +22,7 @@ describe('runSessakuPieceOperation', () => {
     expect(result).toBe('response');
     const data = vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.create).mock.calls[0][0].data;
     expect(data).toMatchObject({ ...context(), outcome: 'success', httpStatus: 200, errorCode: null, resultVersion: 2, afterJson: { count: 2, quantities: [2, 3] } });
-    expect(logger.info).toHaveBeenCalledExactlyOnceWith({ event: 'sessaku_piece.split', requestId: 'req-1', action: 'split', outcome: 'success', httpStatus: 200, errorCode: null, siteKey: 'site', actorClientDeviceId: 'client', actorDeviceName: 'device', fseiban: 'S1', parentItemId: 'parent', pieceCount: 1, pieceIds: ['piece-1'], expectedVersion: 1, resultVersion: 2 }, 'Sessaku piece operation');
+    expect(logger.info).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ event: 'sessaku_piece.split', requestId: 'req-1', action: 'split', outcome: 'success', httpStatus: 200, errorCode: null, siteKey: 'site', actorClientDeviceId: 'client', actorDeviceName: 'device', fseiban: 'S1', parentItemId: 'parent', pieceCount: 1, pieceIds: ['piece-1'], expectedVersion: 1, resultVersion: 2, requestedQuantities: [2, 3], totalMs: expect.any(Number), lockWaitMs: 0, beforeProjectionMs: 0, siteCount: 0, writeMs: 0, upsertCount: 0, afterProjectionMs: 0 }), 'Sessaku piece operation');
   });
   it.each([400, 409, 500])('records rejection/failure %s and preserves the original error', async (status) => {
     const error = new ApiError(status, 'Safe domain message', undefined, 'PIECE_QUANTITY_CONFLICT');
@@ -30,7 +30,7 @@ describe('runSessakuPieceOperation', () => {
       audit.afterJson = { quantities: [999] }; throw error;
     })).rejects.toBe(error);
     const data = vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.create).mock.calls[0][0].data;
-    expect(data).toMatchObject({ outcome: status < 500 ? 'rejected' : 'failed', httpStatus: status, errorCode: error.code, afterJson: context().beforeJson, resultVersion: null });
+    expect(data).toMatchObject({ outcome: status < 500 ? 'rejected' : 'failed', httpStatus: status, errorCode: error.code, requestedQuantities: [2, 3], timing: expect.objectContaining({ totalMs: expect.any(Number) }), afterJson: context().beforeJson, resultVersion: null });
     expect(logger.info).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ event: 'sessaku_piece.split', outcome: status < 500 ? 'rejected' : 'failed', httpStatus: status, errorCode: error.code }), 'Sessaku piece operation');
   });
   it.each([
@@ -69,6 +69,21 @@ describe('runSessakuPieceOperation', () => {
     expect(Buffer.byteLength(JSON.stringify(data.afterJson))).toBeLessThan(65536);
     const logged = vi.mocked(logger.info).mock.calls[0][0];
     for (const field of ['beforeJson', 'afterJson', 'itemRevision', 'itemRevisions']) expect(logged).not.toHaveProperty(field);
+  });
+  it.each([false, true])('preserves requested quantities and timing separately from snapshots (failure=%s)', async (failed) => {
+    const audit = context();
+    audit.requestedQuantities = Array.from({ length: 25 }, (_, i) => i + 1);
+    const run = runSessakuPieceOperation(audit, async (a) => {
+      Object.assign(a.timing!, { lockWaitMs: 12, beforeProjectionMs: 34, siteCount: 4, writeMs: 56, upsertCount: 180, afterProjectionMs: 7 });
+      if (failed) throw new Error('rollback');
+    });
+    if (failed) await expect(run).rejects.toThrow('rollback'); else await run;
+    const data = vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.create).mock.calls[0][0].data;
+    expect(data.requestedQuantities).toEqual(audit.requestedQuantities);
+    expect(data.timing).toEqual({ ...audit.timing, totalMs: expect.any(Number) });
+    expect(data.afterJson).not.toHaveProperty('requestedQuantities');
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ requestedQuantities: audit.requestedQuantities.slice(0, 20),
+      lockWaitMs: 12, beforeProjectionMs: 34, siteCount: 4, writeMs: 56, upsertCount: 180, afterProjectionMs: 7, totalMs: expect.any(Number) }), expect.any(String));
   });
   it('keeps all IDs and revisions in the DB but logs only the ID count and first five', async () => {
     const audit = context();

@@ -142,9 +142,12 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
   mergeItems?: GrindingPlanningBoardItem[]; label: string; disabled: boolean; open: boolean; setOpen: (open: boolean) => void;
 }) {
   const quantity = item.plannedQuantity;
+  const [showSplit, setShowSplit] = useState(canSplit);
   const [quantities, setQuantities] = useState(() => distributeQuantity(quantity ?? 0, 2));
   useEffect(() => {
-    if (open) setQuantities(distributeQuantity(quantity ?? 0, 2));
+    if (open && typeof quantity === 'number' && Number.isInteger(quantity) && quantity >= 2) {
+      setQuantities((values) => distributeQuantity(quantity, Math.min(values.length, quantity)));
+    }
   }, [open, quantity]);
   const count = quantities.length;
   const setCount = (value: number) => setQuantities(distributeQuantity(quantity ?? 0, value));
@@ -171,14 +174,12 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
   const ready = useSyncExternalStore(actions.subscribeBlocking, () => actions.getBlocking().ready !== false);
   const operable = !disabled && ready;
   const close = () => setOpen(false);
+  const validSplit = canSplit && quantities.length >= 2 && quantities.length <= 2000 && quantities.every((value) => Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647) &&
+    quantities.reduce((total, value) => total + value, 0) === quantity;
   const run = async (merge: boolean) => {
     if (pending || (merge ? !mergeItems : !canSplit || typeof quantity !== 'number')) return;
     if (!operable || actions.getBlocking().blocked) return;
-    if (!merge && (quantities.length < 2 || quantities.some((value) => !Number.isInteger(value) || value < 1) ||
-      quantities.reduce((total, value) => total + value, 0) !== quantity)) {
-      setCount(2);
-      return;
-    }
+    if (!merge && !validSplit) return;
     setPending(true);
     setFailure(null);
     try {
@@ -198,25 +199,25 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
   return <>
     <button type="button" data-planning-board-quantity-item={item.itemId} disabled={!operable} aria-label={`${item.fhinmei ?? item.fhincd}の数量 ${label}`}
       aria-haspopup="dialog" aria-expanded={open} className={`min-h-11 min-w-11 rounded px-1 tabular-nums disabled:border-transparent ${variant === 'gantt' ? 'border-2 border-sky-400 bg-sky-900' : 'border border-slate-600'}`}
-      onClick={() => { setCount(2); setFailure(null); setBackdropReady(false); setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
+      onClick={() => { setShowSplit(canSplit); setCount(2); setFailure(null); setBackdropReady(false); setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
     {open && <PieceDialog actions={actions} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">
-        {canSplit && <>
+        {showSplit && <>
           <div className="flex items-center justify-between gap-2">
-            <button type="button" aria-label="分け数を減らす" disabled={!backdropReady || pending || blocked || count <= 2} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count - 1)}>−</button>
-            <output aria-label="分け数" className="tabular-nums">{Math.min(count, quantity ?? 0)}</output>
-            <button type="button" aria-label="分け数を増やす" disabled={!backdropReady || pending || blocked || count >= (quantity ?? 0)} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count + 1)}>＋</button>
+            <button type="button" aria-label="分け数を減らす" disabled={pending || blocked || count <= 2} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count - 1)}>−</button>
+            <output aria-label="分け数" className="tabular-nums">{count}</output>
+            <button type="button" aria-label="分け数を増やす" disabled={pending || blocked || count >= (quantity ?? 0)} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count + 1)}>＋</button>
           </div>
           <div className="flex flex-col gap-2">
             {quantities.map((value, index) => <div key={index} className="flex items-center justify-between gap-2">
               <button type="button" aria-label={`${index + 1}片目の数量を減らす`} style={{ visibility: index === count - 1 ? 'hidden' : undefined }}
-                disabled={!backdropReady || pending || blocked || value <= 1} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => adjust(index, -1)}>−</button>
+                disabled={pending || blocked || value <= 1} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => adjust(index, -1)}>−</button>
               <output aria-label={`${index + 1}片目の数量`} className="tabular-nums">{value}</output>
               <button type="button" aria-label={`${index + 1}片目の数量を増やす`} style={{ visibility: index === count - 1 ? 'hidden' : undefined }}
-                disabled={!backdropReady || pending || blocked || quantities[count - 1]! <= 1} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => adjust(index, 1)}>＋</button>
+                disabled={pending || blocked || quantities[count - 1]! <= 1} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => adjust(index, 1)}>＋</button>
             </div>)}
           </div>
-          <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(false)}>分ける</button>
+          <button type="button" disabled={!backdropReady || pending || blocked || !operable || !validSplit} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(false)}>分ける</button>
         </>}
         {mergeItems && <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(true)}>まとめる</button>}
       </div>}
