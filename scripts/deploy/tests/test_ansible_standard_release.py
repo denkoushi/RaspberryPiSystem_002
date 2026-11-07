@@ -666,6 +666,8 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("inspection_drawing_semantic_placement_enabled | default(true)", bindings["INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED"])
         # The business GLM/DeepSeek switch flag reaches the API the same way, off unless the inventory sets it
         self.assertIn("api_business_deepseek_switch_enabled | default(false)", bindings["BUSINESS_DEEPSEEK_SWITCH_ENABLED"])
+        # The sessaku piece creation gate reaches the API the same way, off unless the inventory sets it
+        self.assertIn("api_sessaku_pieces_create_enabled | default(false)", bindings["SESSAKU_PIECES_CREATE_ENABLED"])
         self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
         self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
         self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")
