@@ -169,31 +169,27 @@ export async function getMachineSignalResourceUptime(input: { days: number }) {
     if (sensor.resourceCd && !byResource.has(sensor.resourceCd)) byResource.set(sensor.resourceCd, sensor);
   }
   if (!byResource.size) return { endDate, days: input.days, resources };
-  const widerDays = input.days * 2;
-  const narrowFrom = toDateKey(new Date(latest.reportDate.getTime() - (input.days - 1) * DAY_MS));
+  const from = toDateKey(new Date(latest.reportDate.getTime() - (input.days - 1) * DAY_MS));
   const summaries = await loadSignalDaySummaries({
-    sensors: [...byResource.values()], thresholds: settings.thresholds,
-    from: toDateKey(new Date(latest.reportDate.getTime() - (widerDays - 1) * DAY_MS)), to: endDate,
+    sensors: [...byResource.values()], thresholds: settings.thresholds, from, to: endDate,
   });
   const runningBySignal = new Map<number, SignalDaySummary[]>();
   for (const summary of summaries) {
-    if (!summary.hasRecord || summary.runSeconds <= 0) continue;
+    if (summary.reportDate < from || !summary.hasRecord || summary.runSeconds <= 0) continue;
     if (summary.runBlockCount <= WARMUP_MAX_RUN_BLOCKS && summary.runSeconds < WARMUP_MAX_RUN_SECONDS) continue;
     const running = runningBySignal.get(summary.signalNo) ?? [];
     running.push(summary);
     runningBySignal.set(summary.signalNo, running);
   }
   for (const [resourceCd, sensor] of byResource) {
-    const wider = runningBySignal.get(sensor.signalNo) ?? [];
-    const narrow = wider.filter((summary) => summary.reportDate >= narrowFrom);
-    const running = narrow.length >= MIN_RUNNING_DAYS ? narrow : wider;
+    const running = runningBySignal.get(sensor.signalNo) ?? [];
+    // 稼働した日が少ない機械は、ふだんの1日を表せないので出さない。
     if (running.length < MIN_RUNNING_DAYS) continue;
     const seconds = running.map((summary) => summary.runSeconds).sort((a, b) => a - b);
     const middle = Math.floor(seconds.length / 2);
     const median = seconds.length % 2 === 0 ? (seconds[middle - 1]! + seconds[middle]!) / 2 : seconds[middle]!;
     resources.push({ resourceCd, signalNo: sensor.signalNo,
-      medianRunSeconds: Math.round(median), runningDays: running.length,
-      windowDays: running === narrow ? input.days : widerDays });
+      medianRunSeconds: Math.round(median), runningDays: running.length, windowDays: input.days });
   }
   return { endDate, days: input.days, resources };
 }

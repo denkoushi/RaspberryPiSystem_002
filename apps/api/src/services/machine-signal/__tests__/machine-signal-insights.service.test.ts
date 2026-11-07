@@ -217,7 +217,7 @@ describe('getMachineSignalResourceUptime', () => {
     ] });
     expect(mocks.findFirst).toHaveBeenCalledWith({ orderBy: { reportDate: 'desc' }, select: { reportDate: true } });
     expect(mocks.summaries).toHaveBeenCalledExactlyOnceWith({ sensors: [chosen, empty], thresholds: DEFAULT_SIGNAL_THRESHOLDS,
-      from: '2026-09-07', to: '2026-11-05' });
+      from: '2026-10-07', to: '2026-11-05' });
   });
 
   it('excludes warm-up-only, zero-run and no-record days but keeps short multi-block and long single-block days', async () => {
@@ -233,37 +233,27 @@ describe('getMachineSignalResourceUptime', () => {
     ]);
   });
 
-  it('widens only resources with fewer than 10 running days and includes the wider window boundary', async () => {
+  it('omits resources with fewer than 10 running days in the window without widening it', async () => {
     mocks.findFirst.mockResolvedValue({ reportDate: date('2026-11-05') });
     mocks.sensors.mockResolvedValue([sensor(1, { resourceCd: '305' }), sensor(2, { resourceCd: '021' })]);
     mocks.summaries.mockResolvedValue([
       ...Array.from({ length: 9 }, (_, index) => summary(1, index, 2000)),
       summary(1, 29, 2000), summary(1, 30, 20000),
       ...Array.from({ length: 9 }, (_, index) => summary(2, index, 3000)),
-      summary(2, 59, 5000),
+      ...Array.from({ length: 20 }, (_, index) => summary(2, 30 + index, 5000)),
+      summary(2, 1, 600, 1), summary(2, 2, 0), summary(2, 3, 3600, 1, false),
     ]);
     expect(await getMachineSignalResourceUptime({ days: 30 })).toEqual({ endDate: '2026-11-05', days: 30, resources: [
       { resourceCd: '305', signalNo: 1, medianRunSeconds: 2000, runningDays: 10, windowDays: 30 },
-      { resourceCd: '021', signalNo: 2, medianRunSeconds: 3000, runningDays: 10, windowDays: 60 },
     ] });
     expect(mocks.summaries).toHaveBeenCalledTimes(1);
   });
 
-  it('omits resources with fewer than 10 running days even in the wider window', async () => {
-    mocks.findFirst.mockResolvedValue({ reportDate: date('2026-11-05') });
-    mocks.sensors.mockResolvedValue([sensor(1, { resourceCd: '305' }), sensor(2, { resourceCd: '021' })]);
-    mocks.summaries.mockResolvedValue([
-      ...Array.from({ length: 9 }, (_, index) => summary(1, index * 6, 3600)),
-      summary(1, 1, 600, 1), summary(1, 2, 0), summary(1, 3, 3600, 1, false), summary(2, 0, 0),
-    ]);
-    expect((await getMachineSignalResourceUptime({ days: 30 })).resources).toEqual([]);
-  });
-
-  it.each([1, 92])('loads an inclusive doubled window for days=%i', async (days) => {
+  it.each([1, 92])('loads an inclusive window of days=%i', async (days) => {
     mocks.findFirst.mockResolvedValue({ reportDate: date('2026-11-05') });
     mocks.sensors.mockResolvedValue([sensor(1, { resourceCd: '305' })]);
     await getMachineSignalResourceUptime({ days });
-    expect(mocks.summaries.mock.calls[0][0]).toMatchObject({ from: days === 1 ? '2026-11-04' : '2026-05-06', to: '2026-11-05' });
+    expect(mocks.summaries.mock.calls[0][0]).toMatchObject({ from: days === 1 ? '2026-11-05' : '2026-08-06', to: '2026-11-05' });
   });
   it('skips summaries when no sensors have resource codes', async () => {
     mocks.findFirst.mockResolvedValue({ reportDate: date('2026-11-05') });
