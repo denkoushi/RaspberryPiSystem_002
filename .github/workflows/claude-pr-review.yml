@@ -60,7 +60,7 @@ jobs:
           if [ "$HAS_FABLE_LABEL" = "true" ]; then
             echo "name=claude-fable-5-1" >> "$GITHUB_OUTPUT"
           else
-            echo "name=claude-sonnet-5-5" >> "$GITHUB_OUTPUT"
+            echo "name=claude-opus-5-5" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Review
