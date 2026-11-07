@@ -1,0 +1,50 @@
+---
+# Retire the CVE-2026-98432 mitigation only on a fixed running kernel.
+- name: Restore MPTCP after the kernel security update
+  become: true
+  vars:
+    common_mptcp_kernel_version: >-
+      {{ (common_mptcp_kernel.stdout | default('') | trim).split('+')[0].split('-')[0].split('.') |
+         map('int') | list }}
+    common_mptcp_kernel_fixed: >-
+      {{ common_mptcp_kernel_version | length >= 3 and
+         (common_mptcp_kernel_version[:2] >= [6, 19] or
+          (common_mptcp_kernel_version[:2] == [6, 18] and common_mptcp_kernel_version[2] >= 56) or
+          (common_mptcp_kernel_version[:2] == [6, 12] and common_mptcp_kernel_version[2] >= 113)) }}
+  block:
+    # Release plays do not gather facts; query the running kernel directly.
+    - name: Read the running kernel version
+      ansible.builtin.command: uname -r
+      register: common_mptcp_kernel
+      changed_when: false
+      failed_when: false
+
+    - name: Warn when the running kernel still needs the MPTCP mitigation
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: Running kernel {{ common_mptcp_kernel.stdout | default('unknown') }}
+          is not confirmed fixed for CVE-2026-98432; retaining the MPTCP mitigation.
+      when: not common_mptcp_kernel_fixed
+
+    - name: Remove the MPTCP mitigation on a fixed kernel
+      when: common_mptcp_kernel_fixed
+      block:
+        - name: Remove the persistent MPTCP mitigation
+          ansible.builtin.file:
+            path: /etc/sysctl.d/90-raspi-disable-mptcp.conf
+            state: absent
+
+        - name: Read the running MPTCP setting
+          ansible.builtin.command: sysctl -n net.mptcp.enabled
+          register: common_mptcp_enabled_current
+          changed_when: false
+          failed_when: false
+
+        - name: Restore net.mptcp.enabled=1 to the running kernel
+          ansible.builtin.command: sysctl -w net.mptcp.enabled=1
+          register: common_mptcp_restore
+          changed_when: common_mptcp_restore.rc == 0
+          failed_when: false
+          when:
+            - common_mptcp_enabled_current.rc == 0
+            - common_mptcp_enabled_current.stdout | trim == '0'

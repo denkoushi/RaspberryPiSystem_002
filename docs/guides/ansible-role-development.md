@@ -23,7 +23,7 @@ update-frequency: medium
 - **`release_kiosk`**: Pi4のprepare、switch、health、失敗時rollback
 - **`release_signage`**: Pi3のprepare、switch、health、失敗時rollback
 
-`server`、`client`、`kiosk`、`signage` は標準playbookが直接実行するroleではありません。`common` は各playの pre_tasks で `tasks_from: distrusted-intermediates` と `disable-mptcp` だけを import します。
+`server`、`client`、`kiosk`、`signage` は標準playbookが直接実行するroleではありません。`common` は各playの pre_tasks で `tasks_from: distrusted-intermediates` と `restore-mptcp` だけを import します。
 それらの既存callerを修正する場合は、標準routeの実行対象だと仮定せず、実際のcallerと受入契約を先に確認します。
 
 ## ロール構造の理解
