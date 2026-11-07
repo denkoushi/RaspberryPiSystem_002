@@ -795,3 +795,7 @@ U1/U3/U12/F2は小窓の操作近くへ既存文言を出し、待機と失敗�
 ## PR3 第三者レビュー R1〜R5（2026-11-07）
 
 R1〜R5はいずれも妥当。保存中のtd/trクリックと取消トーストを拒否し、readyを外部storeへ移してContextを安定化した。数量部品は関連値だけでmemo化し、計数を描画前へ移してready／orderPreview／blockedとDOM同一性を検証する。分割・結合の選択解除は全カテゴリに適用し、親0分の片を不明として投影・TS・SQLを揃えた（親nullの扱いは維持）。詳細と最新計測は[KB-439のR1〜R5記録](../knowledge-base/KB-439-planning-board-due-sort-performance.md#2026-11-07-第三者レビュー-r1r5)を参照。
+
+## 片の新規作成を有効化（2026-11-07）
+
+ユーザーの依頼「分配機能ONにして」により、本番の Pi5 で `SESSAKU_PIECES_CREATE_ENABLED=true` にする。経路は `infrastructure/ansible/inventory.yml` の `api_sessaku_pieces_create_enabled` → `infrastructure/ansible/templates/docker.env.j2` → `infrastructure/docker/.env` → API コンテナの環境変数。API 全体の設定なので端末ごとには分けられず、全キオスクの製番ボードで分割と再分割ができるようになる。戻すときは inventory の値を `"false"` にして通常のローリング更新を流す。false に戻しても、すでにある片の表示・結合・完了・取消は動く。
