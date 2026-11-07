@@ -166,8 +166,9 @@ describe('shared error classification preserves responses and logs', () => {
       expect(classifyErrorResponse(error)).toEqual({ status, errorCode });
       expect(response.statusCode).toBe(status);
       expect(response.json().errorCode).toBe(responseCode);
-      await new Promise((resolve) => setImmediate(resolve));
-      expect(logs).toContainEqual(expect.objectContaining({ errorCode }));
+      await vi.waitFor(() => {
+        expect(logs).toContainEqual(expect.objectContaining({ errorCode }));
+      });
     } finally {
       await instance.close();
     }

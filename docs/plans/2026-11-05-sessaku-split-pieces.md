@@ -859,7 +859,8 @@ R1〜R5はいずれも妥当。保存中のtd/trクリックと取消トース�
 
 ## 不具合時に操作を追う
 
-`requestId` はAPI再起動でリセットされる連番のため、`createdAt` と組で検索する。端末認証に失敗した401は監査表に残らず、pinoログのみで追跡する。
+`requestId` はAPI再起動でリセットされる連番のため、`createdAt` と組で検索する。端末認証に失敗した401は監査表に残らず、pinoの `sessaku_piece.auth_failed`（outcome: `rejected`）で追跡する。
+pinoは操作の要点だけを記録し、前後の状態は監査表 `ProductionScheduleSessakuPieceAuditLog` に保存する。監査表の記録は30日を超えると削除される。
 
 片操作は `sessaku_piece.split` / `sessaku_piece.merge` / `sessaku_piece.complete` / `sessaku_piece.uncomplete` の固定eventで、成功・拒否・失敗を各操作1行記録する。APIのエラー応答の `requestId` はFastifyの `request.id` と同じ。例（APIコンテナ名は環境に合わせる）:
 

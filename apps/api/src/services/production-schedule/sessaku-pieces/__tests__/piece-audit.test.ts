@@ -22,7 +22,7 @@ describe('runSessakuPieceOperation', () => {
     expect(result).toBe('response');
     const data = vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.create).mock.calls[0][0].data;
     expect(data).toMatchObject({ ...context(), outcome: 'success', httpStatus: 200, errorCode: null, resultVersion: 2, afterJson: { count: 2, quantities: [2, 3] } });
-    expect(logger.info).toHaveBeenCalledExactlyOnceWith({ event: 'sessaku_piece.split', ...data, itemRevisions: null }, 'Sessaku piece operation');
+    expect(logger.info).toHaveBeenCalledExactlyOnceWith({ event: 'sessaku_piece.split', requestId: 'req-1', action: 'split', outcome: 'success', httpStatus: 200, errorCode: null, siteKey: 'site', actorClientDeviceId: 'client', actorDeviceName: 'device', fseiban: 'S1', parentItemId: 'parent', pieceCount: 1, pieceIds: ['piece-1'], expectedVersion: 1, resultVersion: 2 }, 'Sessaku piece operation');
   });
   it.each([400, 409, 500])('records rejection/failure %s and preserves the original error', async (status) => {
     const error = new ApiError(status, 'Safe domain message', undefined, 'PIECE_QUANTITY_CONFLICT');
@@ -58,7 +58,7 @@ describe('runSessakuPieceOperation', () => {
     expect(data.pieceIds).toEqual(rollback ? ['piece-1'] : ['piece-1', 'new-uncommitted-id']);
     expect(data).not.toHaveProperty('resultPieceIds');
   });
-  it('bounds both snapshots by serialized UTF-8 bytes in the DB and pino', async () => {
+  it('bounds both DB snapshots by serialized UTF-8 bytes and omits them from pino', async () => {
     const audit = context();
     audit.beforeJson = { count: 2, pieceIds: ['a', 'b'], padding: '片'.repeat(23000) };
     await runSessakuPieceOperation(audit, async (a) => { a.afterJson = { count: 3, padding: '片'.repeat(23000) }; });
@@ -67,14 +67,24 @@ describe('runSessakuPieceOperation', () => {
     expect(data.afterJson).toMatchObject({ truncated: true, pieceCount: 3 });
     expect(Buffer.byteLength(JSON.stringify(data.beforeJson))).toBeLessThan(65536);
     expect(Buffer.byteLength(JSON.stringify(data.afterJson))).toBeLessThan(65536);
-    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ beforeJson: data.beforeJson, afterJson: data.afterJson }), expect.any(String));
+    const logged = vi.mocked(logger.info).mock.calls[0][0];
+    for (const field of ['beforeJson', 'afterJson', 'itemRevision', 'itemRevisions']) expect(logged).not.toHaveProperty(field);
+  });
+  it('keeps all IDs and revisions in the DB but logs only the ID count and first five', async () => {
+    const audit = context();
+    audit.resultPieceIds = Array.from({ length: 20 }, (_, i) => `piece-${i}`);
+    audit.itemRevisions = { parent: 'revision' };
+    await runSessakuPieceOperation(audit, async () => 'ok');
+    expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ pieceIds: audit.resultPieceIds, itemRevisions: audit.itemRevisions }) });
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ pieceCount: 20, pieceIds: audit.resultPieceIds.slice(0, 5) }), expect.any(String));
+    expect(vi.mocked(logger.info).mock.calls[0][0]).not.toHaveProperty('itemRevisions');
   });
   it.each([false, true])('audit failure does not change the response (operation throws=%s)', async (throws) => {
     vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.create).mockRejectedValue(new Error('secret DB message'));
     const error = new Error('secret token');
     const pending = runSessakuPieceOperation(context(), async () => { if (throws) throw error; return 42; });
     if (throws) await expect(pending).rejects.toBe(error); else await expect(pending).resolves.toBe(42);
-    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ event: 'sessaku_piece.audit_write_failed', requestId: 'req-1', action: 'split' }, 'Sessaku piece audit write failed');
     expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain('secret');
     expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain('secret');
   });

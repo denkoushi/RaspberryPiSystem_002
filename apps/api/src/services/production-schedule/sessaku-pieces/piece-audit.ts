@@ -41,20 +41,29 @@ export async function runSessakuPieceOperation<T>(context: PieceAuditContext, op
     const outcome = failed ? (httpStatus < 500 ? 'rejected' : 'failed') : 'success';
     // Unknown exceptions can contain SQL, credentials or user input. Keep their message generic.
     const message = failed ? (httpStatus < 500 && (failure instanceof ApiError || failure instanceof DomainHttpError) ? failure.message : httpStatus === 400 ? 'Invalid request' : 'Internal server error') : null;
-    const { itemRevision, itemRevisions, resultPieceIds, ...fields } = context;
     const beforeJson = boundedSnapshot(context.beforeJson);
-    const data = {
-      ...fields, createdAt: new Date(), requestId: context.requestId ?? null, siteKey: context.siteKey ?? null,
-      pieceIds: (failed ? context.pieceIds : resultPieceIds ?? context.pieceIds) ?? [], beforeJson,
-      afterJson: outcome === 'success' ? boundedSnapshot(context.afterJson) : beforeJson,
-      itemRevision: itemRevision ?? null, itemRevisions: itemRevisions ?? null,
-      resultVersion: outcome === 'success' ? context.resultVersion ?? null : null,
-      outcome, errorCode: classification?.errorCode ?? null, httpStatus, message
+    const pieceIds = (failed ? context.pieceIds : context.resultPieceIds ?? context.pieceIds) ?? [];
+    const data: Prisma.ProductionScheduleSessakuPieceAuditLogCreateInput = {
+      createdAt: new Date(), requestId: context.requestId ?? null, siteKey: context.siteKey ?? null,
+      actorClientDeviceId: context.actorClientDeviceId ?? null, actorDeviceName: context.actorDeviceName ?? null,
+      action: context.action, outcome, errorCode: classification?.errorCode ?? null, httpStatus, message,
+      fseiban: context.fseiban ?? null, parentItemId: context.parentItemId ?? null, pieceIds,
+      beforeJson: beforeJson ?? Prisma.JsonNull,
+      afterJson: (outcome === 'success' ? boundedSnapshot(context.afterJson) : beforeJson) ?? Prisma.JsonNull,
+      expectedVersion: context.expectedVersion ?? null, itemRevision: context.itemRevision ?? null,
+      itemRevisions: context.itemRevisions ?? Prisma.JsonNull,
+      resultVersion: outcome === 'success' ? context.resultVersion ?? null : null
     };
-    auditLogger.info({ event: `sessaku_piece.${context.action}`, ...data }, 'Sessaku piece operation');
+    auditLogger.info({
+      event: `sessaku_piece.${context.action}`, requestId: data.requestId, action: data.action,
+      outcome, httpStatus, errorCode: data.errorCode, siteKey: data.siteKey,
+      actorClientDeviceId: data.actorClientDeviceId, actorDeviceName: data.actorDeviceName,
+      fseiban: data.fseiban, parentItemId: data.parentItemId, pieceCount: pieceIds.length,
+      pieceIds: pieceIds.slice(0, 5), expectedVersion: data.expectedVersion, resultVersion: data.resultVersion
+    }, 'Sessaku piece operation');
     try {
       // Deliberately outside the business transaction, including its rejection/rollback path.
-      await prisma.productionScheduleSessakuPieceAuditLog.create({ data: { ...data, beforeJson: data.beforeJson ?? Prisma.JsonNull, afterJson: data.afterJson ?? Prisma.JsonNull, itemRevisions: data.itemRevisions ?? Prisma.JsonNull } });
+      await prisma.productionScheduleSessakuPieceAuditLog.create({ data });
     } catch {
       logger.warn({ event: 'sessaku_piece.audit_write_failed', requestId: context.requestId, action: context.action }, 'Sessaku piece audit write failed');
     }

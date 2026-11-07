@@ -93,7 +93,7 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
       const saved = await readSessakuPieceSet(tx, key);
       const result = await reconcileSessakuPieceProgress(tx, key, { emptyIsIncomplete: true });
       const after = await projection(tx, params.siteKey, key);
-      if (params.audit) Object.assign(params.audit, { resultPieceIds: [...new Set([...(params.audit.pieceIds ?? []), ...(saved?.pieces ?? []).filter((p) => !set?.pieces.some((before) => before.id === p.id)).map((p) => p.id)])], resultVersion: saved?.version ?? 0, afterJson: { count: saved?.pieces.length ?? 0, quantities: (saved?.pieces ?? []).map((p) => p.quantity), pieceIds: (saved?.pieces ?? []).map((p) => p.id), completedPieceIds: (saved?.pieces ?? []).filter((p) => p.isCompleted).map((p) => p.id), plannedQuantity: saved?.plannedQuantity ?? null } });
+      if (params.audit) Object.assign(params.audit, { resultPieceIds: [...new Set([...(params.audit.pieceIds ?? []), ...(saved?.pieces ?? []).filter((p) => !set?.pieces.some((before) => before.id === p.id)).map((p) => p.id)])], resultVersion: saved?.version ?? 0, afterJson: { count: saved?.pieces.length ?? 0, quantities: (saved?.pieces ?? []).map((p) => p.quantity), pieceIds: (saved?.pieces ?? []).map((p) => p.id), completedPieceIds: (saved?.pieces ?? []).filter((p) => p.isCompleted).map((p) => p.id), plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null } });
       return { parentItemId: params.parentItemId, pieceSetVersion: saved?.version ?? 0,
         quantityWarning: saved?.quantityWarning as SessakuPiecesMutationResponse['quantityWarning'],
         pieces: after.pieces.filter((item) => item.parentItemId === params.parentItemId),
@@ -140,7 +140,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
       if (pieces.some((p) => p.id === piece.id)) await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id }, data: { position: index + 1 } });
       else await tx.productionScheduleSessakuPiece.create({ data: { ...piece, pieceSetId: set.id, position: index + 1 } });
     }
-    await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { nextPosition: Math.max(set.nextPosition, ordered.length + 1), ...(c.set ? { version: { increment: 1 } } : {}) } });
+    await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { ...(!pieces.length ? { plannedQuantity: total } : {}), nextPosition: Math.max(set.nextPosition, ordered.length + 1), ...(c.set ? { version: { increment: 1 } } : {}) } });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`));
   });
 }

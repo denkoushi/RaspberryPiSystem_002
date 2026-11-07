@@ -32,6 +32,45 @@ describe('kiosk error reporter', () => {
     await s.reporter.flush();
     expect(s.send.mock.calls[1][0][0].context.droppedCount).toBe(1);
   });
+  it('keeps piece queue and attempt budgets separate from crashes and existing reports', async () => {
+    const s = setup();
+    for (let i = 0; i < 100; i++) s.reporter.record('sessaku_piece', { status: 500 });
+    expect(JSON.parse(s.storage.get(QUEUE_KEY)!).queue).toHaveLength(5);
+    s.reporter.record('render_crash', { message: 'crash after piece failures' });
+    expect(s.send.mock.calls[0][0]).toHaveLength(6);
+    expect(s.send.mock.calls[0][0]).toContainEqual(expect.objectContaining({ context: expect.objectContaining({ kind: 'render_crash' }) }));
+    await s.reporter.flush();
+    for (let i = 0; i < 100; i++) s.reporter.record('sessaku_piece', { status: 500 });
+    for (let i = 0; i < 19; i++) s.reporter.record('api_network', { urlPath: `/orders/${i}` });
+    await s.reporter.flush();
+    expect(s.send.mock.calls[1][0]).toHaveLength(19);
+    expect(s.send.mock.calls.flatMap(([logs]) => logs).filter((log) => log.context.kind === 'sessaku_piece')).toHaveLength(5);
+    const restored = setup(s.storage.get(QUEUE_KEY));
+    restored.reporter.record('sessaku_piece', { status: 500 });
+    await restored.reporter.flush();
+    expect(restored.send).not.toHaveBeenCalled();
+    restored.time(160001);
+    restored.reporter.record('sessaku_piece', { status: 500 });
+    await restored.reporter.flush();
+    expect(restored.send.mock.calls[0][0]).toHaveLength(1);
+  });
+  it('can send a crash immediately after exhausting the piece attempt budget', async () => {
+    const s = setup();
+    for (let i = 0; i < 20; i++) {
+      s.reporter.record('sessaku_piece');
+      await s.reporter.flush();
+    }
+    expect(s.send).toHaveBeenCalledTimes(5);
+    s.reporter.record('render_crash', { message: 'crash' });
+    expect(s.send.mock.calls[5][0][0].context.kind).toBe('render_crash');
+  });
+  it.each([[409, 'WARN'], [400, 'ERROR'], [500, 'ERROR'], [undefined, 'ERROR']])('uses %s piece status level %s, including after reload', async (status, level) => {
+    const s = setup();
+    s.reporter.record('sessaku_piece', { status });
+    const restored = setup(s.storage.get(QUEUE_KEY));
+    await restored.reporter.flush();
+    expect(restored.send.mock.calls[0][0][0].level).toBe(level);
+  });
   it('restores persistent queue after failed sending and offline reload', async () => {
     const s = setup();
     s.send.mockRejectedValue(new Error('offline'));

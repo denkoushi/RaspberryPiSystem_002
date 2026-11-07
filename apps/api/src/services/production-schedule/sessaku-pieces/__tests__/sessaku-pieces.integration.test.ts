@@ -136,6 +136,21 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     await expect(splitSessakuPieces({ siteKey: site, parentItemId: old.itemId, itemRevision: old.itemRevision, expectedPieceSetVersion: 0, quantities: [2, 3] })).rejects.toMatchObject({ code: 'STALE_SESSAKU_PIECES' });
     expect((await split()).pieceSetVersion).toBeGreaterThan(merged.pieceSetVersion);
   });
+  it('refreshes an empty set quantity on resplit after the order changes from 5 to 7', async () => {
+    const first = await split();
+    const merged = await mergeSessakuPieces({ siteKey: site, parentItemId: first.parentItemId,
+      expectedPieceSetVersion: first.pieceSetVersion, pieceIds: first.pieces.map((p) => p.pieceId!),
+      itemRevisions: Object.fromEntries(first.pieces.map((p) => [p.itemId, p.itemRevision])) });
+    expect(merged.pieces).toEqual([]);
+    await quantity(7);
+    expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ plannedQuantity: 5, pieces: [] });
+    const p = await parent();
+    const result = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+      itemRevision: p.itemRevision, expectedPieceSetVersion: p.pieceSetVersion!, quantities: [3, 4] });
+    expect(result.pieces.map((piece) => piece.quantity)).toEqual([3, 4]);
+    expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ plannedQuantity: 7 });
+    expect(await prisma.productionScheduleSessakuPieceAuditLog.findFirst({ where: { siteKey: site, action: 'split', resultVersion: result.pieceSetVersion } })).toMatchObject({ beforeJson: { count: 0, plannedQuantity: 7 }, afterJson: { count: 2, quantities: [3, 4], plannedQuantity: 7 } });
+  });
   it('rejects legacy writes and shares manual arrival at the parent', async () => {
     const old = await parent(); const r = await split(); const b = await board();
     await expect(updateGrindingPlanningBoardRank({ siteKey: site, sourceRevision: b.sourceRevision, itemId: old.itemId, itemRevision: old.itemRevision, alternateRank: 1 })).rejects.toMatchObject({ code: 'PIECES_REQUIRE_PIECE_TARGET' });

@@ -43,7 +43,7 @@ describe('sessaku piece routes', () => {
       expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'uncomplete', httpStatus: 400, errorCode: 'VALIDATION_ERROR' }) });
     } else {
       expect(prisma.productionScheduleSessakuPieceAuditLog.create).not.toHaveBeenCalled();
-      expect(logs).toContainEqual(expect.objectContaining({ event: 'sessaku_piece.uncomplete', action: 'uncomplete', httpStatus: 401 }));
+      expect(logs).toContainEqual(expect.objectContaining({ event: 'sessaku_piece.auth_failed', outcome: 'rejected', action: 'uncomplete', httpStatus: 401 }));
     }
     expect(mocks.completion).not.toHaveBeenCalled();
     await instance.close();

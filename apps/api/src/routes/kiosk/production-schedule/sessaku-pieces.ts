@@ -12,7 +12,7 @@ export async function registerSessakuPiecesRoutes(app: FastifyInstance, deps: Ki
   const perform = async (request: FastifyRequest, action: string, operation: (audit: PieceAuditContext) => Promise<unknown>) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']).catch((error: unknown) => {
       const { status: httpStatus, errorCode } = classifyErrorResponse(error);
-      request.log.warn({ event: `sessaku_piece.${action}`, requestId: request.id, action, httpStatus, errorCode }, 'Sessaku piece authentication failed');
+      request.log.warn({ event: 'sessaku_piece.auth_failed', outcome: 'rejected', requestId: request.id, action, httpStatus, errorCode }, 'Sessaku piece authentication failed');
       throw error;
     });
     return runSessakuPieceOperation({ requestId: request.id, action, actorClientDeviceId: clientDevice.id,

@@ -40,12 +40,24 @@ describe('network ClientLog retention', () => {
     expect(rows.map((row) => row.id)).toEqual(['boundary', 'new-network', 'old-ui', 'old-storage', 'old-legacy']);
   });
 
-  it('prunes audit rows using the same cutoff and bounded batches', async () => {
+  it('deletes audit rows older than 30 days while preserving boundary and newer rows', async () => {
     vi.mocked(prisma.clientLog.findMany).mockResolvedValue([]);
-    vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.findMany).mockResolvedValue([{ id: 'audit' }] as never);
-    vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.deleteMany).mockResolvedValue({ count: 1 });
+    const rows = [
+      { id: 'old-audit', createdAt: new Date(cutoff.getTime() - 1) },
+      { id: 'boundary-audit', createdAt: cutoff },
+      { id: 'recent-audit', createdAt: now }
+    ];
+    vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.findMany).mockImplementation(async (args) => {
+      expect(args).toEqual({ where: { createdAt: { lt: cutoff } }, select: { id: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: NETWORK_LOG_BATCH_SIZE });
+      return rows.filter((row) => row.createdAt < cutoff).map(({ id }) => ({ id })) as never;
+    });
+    vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.deleteMany).mockImplementation(async (args) => {
+      expect(args).toEqual({ where: { createdAt: { lt: cutoff }, id: { in: ['old-audit'] } } });
+      rows.splice(0, 1);
+      return { count: 1 };
+    });
     expect(await pruneClientNetworkLogs(now)).toBe(1);
-    expect(prisma.productionScheduleSessakuPieceAuditLog.deleteMany).toHaveBeenCalledWith({ where: { createdAt: { lt: cutoff }, id: { in: ['audit'] } } });
+    expect(rows.map((row) => row.id)).toEqual(['boundary-audit', 'recent-audit']);
   });
 
   it('does not delete when nothing matches', async () => {
