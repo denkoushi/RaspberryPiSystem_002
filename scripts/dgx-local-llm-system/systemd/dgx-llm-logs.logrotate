@@ -1,0 +1,13 @@
+# コピー先: /etc/logrotate.d/dgx-llm-system-prod（install-systemd-units.sh が __DGX_LLM_USER__ を置換して配置）
+# gateway / control は systemd が、llama / trtllm は nohup がファイルを開いたまま追記するため copytruncate を使う
+/srv/dgx/system-prod/logs/*.log {
+    su __DGX_LLM_USER__ __DGX_LLM_GROUP__
+    daily
+    maxsize 50M
+    rotate 14
+    compress
+    delaycompress
+    copytruncate
+    missingok
+    notifempty
+}

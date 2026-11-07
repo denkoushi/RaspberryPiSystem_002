@@ -33,6 +33,13 @@ for u in "${UNITS[@]}"; do
   chmod 0644 "/etc/systemd/system/${u}"
 done
 
+LOGROTATE_DEST="/etc/logrotate.d/dgx-llm-system-prod"
+sed \
+  -e "s/__DGX_LLM_USER__/${RUN_USER}/g" \
+  -e "s/__DGX_LLM_GROUP__/${RUN_GROUP}/g" \
+  "${SCRIPT_DIR}/dgx-llm-logs.logrotate" > "${LOGROTATE_DEST}"
+chmod 0644 "${LOGROTATE_DEST}"
+
 systemctl daemon-reload
 systemctl enable dgx-llm-embedding.service dgx-llm-control.service dgx-llm-gateway.service
 systemctl start dgx-llm-embedding.service dgx-llm-control.service dgx-llm-gateway.service
