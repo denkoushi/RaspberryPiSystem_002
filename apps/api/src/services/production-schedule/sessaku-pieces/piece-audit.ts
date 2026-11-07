@@ -1,5 +1,5 @@
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { supportsSessakuPieceRelations, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
+import { encodeSessakuPieceKey, supportsSessakuPieceRelations, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError, DomainHttpError } from '../../../lib/errors.js';
@@ -100,7 +100,8 @@ export async function readLaterPieceAuditSnapshots(tx: Prisma.TransactionClient,
   for (const key of keys) {
     const part = JSON.stringify([key.fseiban, key.fhincd]);
     const previous = byPart.get(part);
-    if (!previous || supportsSessakuPieceRelations(key) || !supportsSessakuPieceRelations(previous)) byPart.set(part, key);
+    if (!previous || !supportsSessakuPieceRelations(previous)
+      || (supportsSessakuPieceRelations(key) && encodeSessakuPieceKey(key) < encodeSessakuPieceKey(previous))) byPart.set(part, key);
   }
   const parts = [...byPart.values()];
   if (!parts.length) return [];

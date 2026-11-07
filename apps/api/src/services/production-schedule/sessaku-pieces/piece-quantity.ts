@@ -44,7 +44,10 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
       quantityWarning: pieces.reduce((sum, piece) => sum + piece.quantity, 0) > nextTotal ? 'COMPLETED_QUANTITY_EXCEEDS_PLAN' as const : null, nextPosition };
   }
   let lastPosition = 0;
-  const baseline = sources.flatMap((source): LinkedQuantityPiece[] => {
+  // Reserve detached work first, even after cancellation; source-linked work absorbs the difference at the tail.
+  const baseline: LinkedQuantityPiece[] = pieces.filter((piece) => piece.sourcePieceId === null)
+    .map((piece) => ({ ...piece, position: ++lastPosition }));
+  baseline.push(...sources.flatMap((source): LinkedQuantityPiece[] => {
     const previous = pieces.filter((piece) => piece.sourcePieceId === source.id);
     const completedTotal = previous.filter((piece) => piece.isCompleted || externalCompleted).reduce((sum, piece) => sum + piece.quantity, 0);
     let assignedUnfinished = false;
@@ -62,21 +65,19 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
       lastPosition = Math.max(lastPosition + 1, source.position);
       return { ...piece, position: lastPosition };
     });
-  });
-  // Without cutting sources, also reuse detached unfinished work and its identity.
-  for (const piece of pieces.filter((piece) => piece.sourcePieceId === null && (piece.isCompleted || !sources.length))) {
-    baseline.push({ ...piece, position: ++lastPosition });
-  }
+  }));
   const plan = planSessakuPieceQuantities(baseline, nextTotal, externalCompleted, Math.max(nextPosition, lastPosition + 1));
   // Additional work after all later pieces completed still belongs to the final cutting piece.
   lastPosition = 0;
   const linked = plan.pieces.map((piece) => {
     const previous = baseline.find((old) => old.id === piece.id);
     const sourcePieceId = previous ? previous.sourcePieceId : sources[sources.length - 1]?.id ?? null;
-    // Assign persisted positions only after zero quantities have been removed.
-    const sourcePosition = sources.find((source) => source.id === sourcePieceId)?.position ?? 0;
+    return { ...piece, sourcePieceId };
+  }).sort((a, b) => Number(a.sourcePieceId === null) - Number(b.sourcePieceId === null)).map((piece) => {
+    // Keep the existing source order before detached work; assign positions after removing zero quantities.
+    const sourcePosition = sources.find((source) => source.id === piece.sourcePieceId)?.position ?? 0;
     lastPosition = Math.max(lastPosition + 1, sourcePosition);
-    return { ...piece, sourcePieceId, position: lastPosition };
+    return { ...piece, position: lastPosition };
   });
   return { ...plan, pieces: linked };
 }

@@ -1059,6 +1059,38 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.slice(0, 2)).toEqual(later.pieces.slice(0, 2));
       await quantity(2); // A repeated import must not be stuck on the FK again.
     });
+    it.each(['split', 'merge'])('retains detached identity, quantity and placement after cancellation when the later winner returns (%s)', async (operation) => {
+      const r = await splitThree();
+      await complete((await laterItems())[2]);
+      const done = (await readSessakuPieceSet(prisma, laterKey()))!.pieces[2];
+      const itemKey = `piece:${done.id}`;
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.updateMany({ where: { csvDashboardId: dashboardId, siteKey: site, itemKey }, data: { overrideResourceCd: '581', alternateRank: 7, orderPinned: true } })).toMatchObject({ count: 1 });
+      const overrides = await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: site, itemKey } });
+      const oldRow = await prisma.csvDashboardRow.findUniqueOrThrow({ where: { id: nextRowId } });
+      await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
+      if (operation === 'split') await resplit(r, 2);
+      else await merge(r, r.pieces.slice(1));
+      const hidden = (await readSessakuPieceSet(prisma, laterKey()))!;
+      expect(hidden.sourcePieceSetId).not.toBeNull();
+      expect(hidden.pieces.some((piece) => piece.sourcePieceId !== null)).toBe(true);
+      expect(hidden.pieces.find((piece) => piece.id === done.id)).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: true });
+      nextRowId = (await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: oldRow.rowData!, occurredAt: new Date(), dataHash: `${site}-returned` } })).id;
+      await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: nextRowId, sourceCsvDashboardId: site, productNo: '123', resourceCd: '2', processOrder: '2', plannedQuantity: 5 } });
+      await laterQuantity(5);
+      await complete((await laterItems()).find((piece) => piece.pieceId === done.id)!, 'incomplete');
+      const cancelled = (await readSessakuPieceSet(prisma, laterKey()))!;
+      expect(cancelled.pieces.find((piece) => piece.id === done.id)).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: false, completedAt: null });
+      expect(cancelled.pieces.reduce((sum, piece) => sum + piece.quantity, 0)).toBe(5);
+      expect(cancelled.quantityWarning).toBeNull();
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: site, itemKey } })).toEqual(overrides);
+      await laterQuantity(5);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toEqual(cancelled);
+      await complete((await laterItems()).find((piece) => piece.pieceId === done.id)!);
+      const completed = (await readSessakuPieceSet(prisma, laterKey()))!;
+      expect(completed.pieces.find((piece) => piece.id === done.id)).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: true, completedAt: expect.any(Date) });
+      expect(completed.pieces.reduce((sum, piece) => sum + piece.quantity, 0)).toBe(5);
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: site, itemKey } })).toEqual(overrides);
+    });
     it.each(['cutting', 'later'])('retains detached completed quantities when the later winner returns (%s sync)', async (direction) => {
       await splitThree();
       await complete((await laterItems())[2]);

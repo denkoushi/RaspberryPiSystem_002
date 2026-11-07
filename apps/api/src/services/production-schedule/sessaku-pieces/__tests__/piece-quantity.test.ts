@@ -67,15 +67,33 @@ describe('empty piece-set quantity warnings', () => {
 describe('later process quantity planning', () => {
   const sources = [1, 2, 2].map((quantity, index) => ({ id: `source-${index}`, position: index + 1, quantity, isCompleted: false }));
   const later = sources.map((piece) => ({ ...piece, id: `later-${piece.id}`, sourcePieceId: piece.id }));
-  it('reuses detached unfinished work without sources and replaces it stably when sources return', () => {
+  it('reuses detached unfinished work stably even when sources return', () => {
     const completed = { id: 'done', sourcePieceId: null, position: 1, quantity: 2, isCompleted: true };
     const first = planLaterProcessPieceQuantities([completed], [], 3, false, 3);
     expect(first.pieces).toMatchObject([completed, { sourcePieceId: null, position: 2, quantity: 1, isCompleted: false }]);
     expect(planLaterProcessPieceQuantities(first.pieces, [], 3, false, first.nextPosition)).toEqual(first);
     const returned = planLaterProcessPieceQuantities(first.pieces, sources, 3, false, first.nextPosition);
-    expect(returned.pieces.some((piece) => piece.id === first.pieces[1].id)).toBe(false);
+    expect(returned.pieces).toEqual(first.pieces);
     expect(returned.pieces.find((piece) => piece.id === completed.id)).toMatchObject({ quantity: 2, isCompleted: true, sourcePieceId: null });
     expect(planLaterProcessPieceQuantities(returned.pieces, sources, 3, false, returned.nextPosition)).toEqual(returned);
+  });
+  it.each([[7, [1, 2, 2, 2]], [5, [1, 2, 2]], [1, [1]], [0, []]])('reserves cancelled detached work before reducing unfinished tails for total %s', (total, quantities) => {
+    const detached = { id: 'detached', sourcePieceId: null, position: 4, quantity: 2, isCompleted: false };
+    const plan = planLaterProcessPieceQuantities([...later, detached], sources, total, false, 5);
+    expect(plan.pieces.map((piece) => piece.quantity)).toEqual(quantities);
+    expect(plan.quantityWarning).toBeNull();
+    expect(plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0)).toBe(total);
+    if (total > 0) expect(plan.pieces.find((piece) => piece.id === detached.id)).toMatchObject({ sourcePieceId: null, quantity: Math.min(2, total) });
+    expect(planLaterProcessPieceQuantities(plan.pieces, sources, total, false, plan.nextPosition)).toEqual(plan);
+  });
+  it('retains detached completion evidence and invalid-plan warnings', () => {
+    const detached = { id: 'detached', sourcePieceId: null, position: 4, quantity: 2, isCompleted: true };
+    const current = [...later, detached];
+    expect(planLaterProcessPieceQuantities(current, sources, 1, false, 5)).toMatchObject({
+      pieces: [...later.map(({ id, quantity }) => ({ id, quantity })), { id: detached.id, sourcePieceId: null, quantity: 2, isCompleted: true }],
+      quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN'
+    });
+    expect(planLaterProcessPieceQuantities(current, sources, null, false, 5)).toEqual({ pieces: current, quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition: 5 });
   });
   it.each([[7, [1, 2, 4]], [5, [1, 2, 2]], [4, [1, 2, 1]], [2, [1, 1]], [0, []]])('absorbs later total %s from the final unfinished piece', (total, quantities) => {
     const plan = planLaterProcessPieceQuantities(later, sources, total, false, 4);

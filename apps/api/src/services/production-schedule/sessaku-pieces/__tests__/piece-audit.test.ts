@@ -116,6 +116,16 @@ describe('runSessakuPieceOperation', () => {
     const fallback = { ...blank, fsigencd: '' };
     expect((await readLaterPieceAuditSnapshots(tx, [blank, fallback]))[0].key).toEqual(fallback);
   });
+  it('selects the smallest supported encoded key regardless of input order', async () => {
+    const first = { fseiban: 'S1', fhincd: 'P1', fsigencd: '1', fkojun: '20' };
+    const second = { ...first, fkojun: '30' };
+    const third = { ...first, fsigencd: '2', fkojun: '10' };
+    const blank = { ...first, fkojun: '' };
+    const tx = { productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) } } as unknown as Prisma.TransactionClient;
+    for (const keys of [[first, second, third, blank], [blank, third, second, first], [second, first, blank, third]]) {
+      expect((await readLaterPieceAuditSnapshots(tx, keys))[0].key).toEqual(first);
+    }
+  });
   it('groups blank parent keys by manufacturing part without decoding and keeps different parts separate', async () => {
     const snapshot = (fhincd: string, quantity: number, fsigencd = '') => [{
       key: { fseiban: 'S1', fhincd, fsigencd, fkojun: '' },

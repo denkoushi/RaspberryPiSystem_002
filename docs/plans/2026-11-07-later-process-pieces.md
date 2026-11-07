@@ -229,6 +229,7 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 
 ## Known Limitations
 
+- 製番が `********` の分割要求は、同じ品番の行をロックしてから `UNSUPPORTED_PIECE_PARENT` を返す。性能・競合への影響のみで、データは壊れない。
 - 片が0個になったリンク済み後工程 set の行には CSV の完了フラグが反映されない。片の完了を正とするため、キオスクの完了ボタンで完了する。
 
 - 後工程の勝者行が消えている間に切削を分け直す／まとめると、勝者が戻ってもその後工程 set は切削の片と対応づかないことがある（数量の合計は保たれる）。
@@ -306,3 +307,14 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 検証: 指定 DB localhost:55491/lpp を `DATABASE_URL` / `TEST_DATABASE_URL` に設定し、dotenv 無効化・空の envDir で実行。API `vitest run` の sessaku-pieces・production-schedule-command・order-supplement-sync・progress-sync は13ファイル・302件すべて成功（片の実 DB 統合137件を含む、49.99秒）。API `tsc --noEmit -p tsconfig.build.json`、`pnpm lint`、最終 `git diff --check` も成功。
 
 開始時の既存 WIP はなく、変更6ファイルは今回の修正のみ。秘密ファイルの読み取り、git の変更操作、新規 migration／監査テーブル、UI 文言変更、既知の別件修正、デプロイは未実施。
+
+## Fifteenth Review Revision (2026-11-07)
+
+- 数量計画では完了状態にかかわらず未リンク片を残す。勝者不在中の分け直し／まとめるで元を失った完了片も、取消後に同じ ID・数量・`sourcePieceId=null`・override を保ち、再同期・再完了できる。保存する並び順はリンク片→未リンク片を維持し、構造変更時の `removeLaterPieces` と既存 detached 系 DB テストは変更しない。
+- 合計調整は未リンク片→リンク片の順で既存の `planSessakuPieceQuantities` に委ねる。超過時は末尾の未完了リンク片から減らし、それでも超過する場合だけ未完了の未リンク片を後ろから減らす（数量0は削除）。単体テストでは未リンク2＋リンク1/2/2に対し、指示数5でリンク1/2＋未リンク2、指示数1で未リンク1、指示数0で空になること、完了片の保護と既存警告も確認する。
+- `isLaterProcessOrder` の数値判定前に両辺を NFKC 正規化する。`compareProcessOrder` は変更しない。取り込み監査の代表キーは、そろったキーを優先し、その中で `encodeSessakuPieceKey` が最小のものを選ぶ。そろったキーがない場合の最後のキーへの fallback は維持する。
+- 分け直し／まとめるの実 DB 回帰2件、数量の境界値・全角工順・代表キーの入力順に関する単体テストを追加。上記未採番製番の制約は記録のみでコードは変更しない。
+
+検証: 指定 DB localhost:55491/lpp を両 DB 環境変数に設定し、dotenv 無効化・空の envDir で実行。指定 API 範囲14ファイル323件のうち、初回は322成功・完了片の位置保持1件失敗。保存順を修正後、関連する数量48件＋実 DB 統合139件がすべて成功（38.70秒）し、残る136件は初回成功。追加 DB テストの初回には自動作成済み override の重複作成を修正した。API `tsc --noEmit -p tsconfig.build.json`、package lint、最終変更2ファイルの ESLint、最終 `git diff --check` も成功。検証は約5分で予算内。
+
+開始時に既存 WIP はなく、変更8ファイルは今回の修正のみ。branch feat/later-process-pieces・HEAD 6ce76118 を維持。秘密ファイルの読み取り、git の変更操作、migration/reset、監査テーブル・UI 文言の追加、既知の別件修正、デプロイは未実施。
