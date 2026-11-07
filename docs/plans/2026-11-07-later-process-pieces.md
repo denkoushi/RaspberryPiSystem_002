@@ -229,6 +229,8 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 
 ## Known Limitations
 
+- 片が0個になったリンク済み後工程 set の行には CSV の完了フラグが反映されない。片の完了を正とするため、キオスクの完了ボタンで完了する。
+
 - 後工程の勝者行が消えている間に切削を分け直す／まとめると、勝者が戻ってもその後工程 set は切削の片と対応づかないことがある（数量の合計は保たれる）。
 - 完了済みで空・未リンクの切削 set B は取り込まれず、B に付いた後工程 C もたどらないため、A を分けても C に片ができない。B の完了を取り消して A を分け直せば戻る。
 - 切削の勝者行が CSV から消えると、その set に付いた後工程（取り込んだ切削行を含む）は行が戻るまで固定される。
@@ -273,3 +275,13 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 検証: API `tsc --noEmit -p tsconfig.build.json`、web `tsc --noEmit -p tsconfig.json`、両 package の `pnpm lint` は成功。API の sessaku-pieces 配下・route と production-schedule-command の `vitest run` は9ファイル・240件すべて成功（実 DB 統合122件を含む、64.13秒）。追加の7件は修正前に旧勝者への完了2件だけが失敗し、修正後の対象検証も成功。
 
 指定 DB localhost:55491/lpp と既存の dotenv 無効化 preload・空の envDir 設定を使用し、秘密ファイルは読んでいない。検証は約3分で予算内。最終 `git diff --check` 成功。開始時の既存 WIP はなく、変更4ファイルは今回の修正のみ。branch feat/later-process-pieces・HEAD ae4e443a を維持。git の変更操作、migration/reset、既知の別件修正、UI 文言変更、デプロイは未実施。
+
+## Twelfth Review Revision (2026-11-07)
+
+- `isLaterProcessOrder` で数値として等しい工順（`010` / `10`）を同じ工程として扱い、後工程への片の伝播から除外する。
+- 勝者の無い後工程 set のリンク解除をメモリ上にも反映し、空の切削 set 経由で取り込んだ場合も付け直さない。直接リンクと同じく version は1回だけ上がる。
+- 実 DB 統合テストで工順の数値同値、直接／取り込み経由の分け直し・一部結合時のリンク解除と version、全結合時の FK 整合性を確認する。
+
+検証: 指定 DB localhost:55491/lpp を両 DB 環境変数に設定し、dotenv 無効化・空の envDir で実行。sessaku-pieces 配下・route、production-schedule-command、process-order は10ファイル・248件すべて成功（実 DB 統合127件を含む、60.22秒）。API `tsc --noEmit -p tsconfig.build.json`、`pnpm lint`、最終 `git diff --check` も成功。最初の型チェックは `tsconfig.json` を指定したため既存の rootDir 設定エラーになり、計画文書指定の build 設定に訂正した。
+
+今回の追加は統合テスト5件と既存2件の期待値更新、本文書への追記。本体の追加修正は不要だった。既存の未コミット修正3ファイルは保持し、branch feat/later-process-pieces・HEAD 7a174b4b を維持。秘密ファイルの読み取り、git の変更操作、migration/reset、既知の別件修正、デプロイは未実施。

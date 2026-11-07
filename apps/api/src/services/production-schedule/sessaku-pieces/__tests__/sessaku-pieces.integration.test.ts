@@ -779,6 +779,37 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(restored.pieces.every((piece) => !piece.isCompleted && piece.completedAt === null)).toBe(true);
       expect((await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: replacementId } }))?.isCompleted).not.toBe(true);
     });
+    it('does not propagate cutting order 010 to the numerically equal order 10', async () => {
+      rowData = { ...rowData, FKOJUN: '010' };
+      await prisma.csvDashboardRow.update({ where: { id: rowId }, data: { rowData } });
+      await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: { ...rowData, FSIGENCD: '2', FKOJUN: '10' } } });
+      const result = await splitThree();
+      expect(result.pieces).toHaveLength(3);
+      expect(await readSessakuPieceSet(prisma, { ...key(), fsigencd: '2', fkojun: '10' })).toBeNull();
+      expect(await laterItems()).toMatchObject([{ kind: 'row', plannedQuantity: 5 }]);
+    });
+    it.each(['direct', 'adopted'].flatMap((path) => ['split', 'merge'].map((operation) => ({ path, operation }))))('detaches a winnerless empty later set once during $operation ($path link)', async ({ path, operation }) => {
+      const cutting = await splitThree();
+      await laterQuantity(0);
+      const later = (await readSessakuPieceSet(prisma, laterKey()))!;
+      expect(later).toMatchObject({ sourcePieceSetId: (await readSessakuPieceSet(prisma, key()))!.id, pieces: [] });
+      let adoptedId: string | undefined;
+      if (path === 'adopted') {
+        const intermediate = await createCuttingRow('1.5');
+        const empty = await prisma.productionScheduleSessakuPieceSet.create({ data: { csvDashboardId: dashboardId, ...intermediate.key, plannedQuantity: 0 } });
+        adoptedId = empty.id;
+        await prisma.productionScheduleSessakuPieceSet.update({ where: { id: later.id }, data: { sourcePieceSetId: empty.id } });
+      }
+      await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
+      const result = operation === 'split' ? await resplit(cutting) : await merge(cutting, cutting.pieces.slice(1));
+      const detached = await readSessakuPieceSet(prisma, laterKey());
+      expect(detached).toMatchObject({ id: later.id, sourcePieceSetId: null, quantityWarning: null, version: later.version + 1, pieces: [] });
+      if (adoptedId) expect(await prisma.productionScheduleSessakuPieceSet.findUniqueOrThrow({ where: { id: adoptedId } })).toMatchObject({ sourcePieceSetId: (await readSessakuPieceSet(prisma, key()))!.id });
+      const merged = await merge(result);
+      expect(merged.pieces).toEqual([]);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toEqual(detached);
+      if (adoptedId) expect(await prisma.productionScheduleSessakuPieceSet.findUnique({ where: { id: adoptedId } })).toBeNull();
+    });
     it.each([false, true])('adopts an empty cutting set with a missing later winner and fully merges (completed evidence=%s)', async (completed) => {
       const a = await createCuttingRow('0');
       await splitThree();
@@ -787,17 +818,18 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
       await quantity(0);
       expect((await readSessakuPieceSet(prisma, key()))?.pieces).toEqual([]);
+      const beforeAdoption = (await readSessakuPieceSet(prisma, laterKey()))!;
       const r = await splitRow(a.id);
       const source = (await readSessakuPieceSet(prisma, a.key))!;
       expect((await readSessakuPieceSet(prisma, key()))?.sourcePieceSetId).toBe(source.id);
-      expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ sourcePieceSetId: source.id,
+      expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ sourcePieceSetId: null, version: beforeAdoption.version + 1,
         pieces: completed ? [{ id: c.pieces[2].id, sourcePieceId: null, isCompleted: true, quantity: 2 }] : [] });
       await merge(r);
       expect(await readSessakuPieceSet(prisma, key())).toBeNull();
       const retained = await readSessakuPieceSet(prisma, laterKey());
       if (completed) expect(retained).toMatchObject({ sourcePieceSetId: null, quantityWarning: null,
         pieces: [{ id: c.pieces[2].id, sourcePieceId: null, isCompleted: true, quantity: 2, completedAt: c.pieces[2].completedAt }] });
-      else expect(retained).toBeNull();
+      else expect(retained).toMatchObject({ sourcePieceSetId: null, version: beforeAdoption.version + 1, pieces: [] });
     });
     it.each([false, true])('adopts an empty cutting set during partial merge with direct links (noncontiguous=%s)', async (noncontiguous) => {
       const a = await createCuttingRow('0');

@@ -1,4 +1,4 @@
-import { compareProcessOrder } from '../process-order.js';
+import { isLaterProcessOrder } from '../process-order.js';
 import { runSessakuPieceOperation, readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, type PieceAuditContext, type PieceOperationTiming } from './piece-audit.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
 import { randomUUID } from 'node:crypto';
@@ -22,7 +22,7 @@ type LaterProcess = { key: SessakuPieceLogicalKey; set: Awaited<ReturnType<typeo
 async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>, discoverUnsplit: boolean) {
   const rows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => {
     const candidate = sessakuPieceKeyFromRow(row.rowData);
-    return candidate.fhincd === key.fhincd && compareProcessOrder(candidate.fkojun, key.fkojun) > 0;
+    return candidate.fhincd === key.fhincd && isLaterProcessOrder(candidate.fkojun, key.fkojun);
   });
   const details = await readRowDetails(tx, rows.map((row) => row.id));
   const sets = await readSessakuPieceSets(tx, rows);
@@ -232,13 +232,15 @@ async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProce
   for (const { set, hasWinner } of later) {
     if (!hasWinner && set && !set.pieces.some((piece) => piece.sourcePieceId && !removedSourceIds.includes(piece.sourcePieceId))) {
       await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: null, quantityWarning: null, version: { increment: 1 } } });
+      set.sourcePieceSetId = null;
     }
   }
 }
 
 async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], source: Awaited<ReturnType<typeof readSessakuPieceSet>>, sites: string[], before: Map<string, Awaited<ReturnType<typeof projection>>>, audit?: PieceAuditContext) {
   // Flatten adopted ownership before quantity synchronization or deleting any later set.
-  for (const { set } of later) if (set && set.sourcePieceSetId !== source!.id) {
+  // A winnerless set unlinked by removeLaterPieces stays unlinked.
+  for (const { set, hasWinner } of later) if (set && set.sourcePieceSetId !== source!.id && (hasWinner || set.sourcePieceSetId !== null)) {
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: source!.id, version: { increment: 1 } } });
   }
   for (const process of later) {
