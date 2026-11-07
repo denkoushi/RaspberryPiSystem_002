@@ -26,7 +26,7 @@ describe('piece publication lock budget and legacy paths', () => {
     const tx = client([{ ...key, pieces: [{ id: 'p' }] }, { ...key, fseiban: 'B', pieces: [{ id: 'q' }] }]);
     tx.csvDashboardRow.findMany.mockResolvedValue([]);
     await lockAllSessakuPieceSets(tx as never, true);
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(tx.csvDashboardRow.findMany).not.toHaveBeenCalled();
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.$queryRaw.mock.calls[0][0].values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, 'A', 'P', 'B', 'P']);

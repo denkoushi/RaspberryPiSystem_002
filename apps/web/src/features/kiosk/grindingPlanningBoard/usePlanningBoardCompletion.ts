@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useSetKioskProductionScheduleRowCompletion } from '../../../api/hooks';
 import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
+import { reportSessakuPieceError } from '../errorTelemetry';
 
 import type { CompletionOverlay, FeedbackKind } from './planningBoardPageModel';
 import type { PlanningBoardStatus } from './types';
@@ -138,6 +139,7 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
       if (intent === 'complete') onCompleted(savedItem);
       else onIncomplete();
     } catch (error) {
+      if (currentItem.kind === 'piece') reportSessakuPieceError(intent === 'complete' ? 'complete' : 'uncomplete', currentItem, error);
       setCompletionOverlay((current) => {
         const next = new Map(current);
         next.delete(item.itemId);

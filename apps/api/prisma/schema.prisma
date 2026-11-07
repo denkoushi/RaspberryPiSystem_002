@@ -6423,3 +6423,31 @@ model ProductionScheduleSessakuPiece {
   pieceSet ProductionScheduleSessakuPieceSet @relation(fields: [pieceSetId], references: [id], onDelete: Cascade, map: "PSSPiece_set_fk")
   @@unique([pieceSetId, position], map: "PSSPiece_position_key")
 }
+
+// 旧受注分割とは対象・操作・寿命が異なるため、切削の片の監査を独立して保存する。
+model ProductionScheduleSessakuPieceAuditLog {
+  id                  String   @id @default(uuid())
+  createdAt           DateTime @default(now())
+  requestId           String?
+  siteKey             String?
+  actorClientDeviceId String?
+  actorDeviceName     String?
+  action              String
+  outcome             String
+  errorCode           String?
+  httpStatus          Int
+  message             String?
+  fseiban             String?
+  parentItemId        String?
+  pieceIds            Json
+  beforeJson          Json
+  afterJson           Json
+  expectedVersion     Int?
+  itemRevision        String?
+  itemRevisions       Json
+  resultVersion       Int?
+
+  @@index([parentItemId, createdAt], map: "SessakuPieceAudit_parent_created_idx")
+  @@index([requestId])
+  @@index([createdAt])
+}

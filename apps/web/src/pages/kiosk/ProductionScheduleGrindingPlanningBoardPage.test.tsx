@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as machineSignalApi from '../../api/domains/machine-signal';
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import * as dialog from '../../components/ui/Dialog';
+import * as errorTelemetry from '../../features/kiosk/errorTelemetry';
 import * as chipStrips from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardChipStrips';
 import * as ganttLayout from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout';
 import * as piecePopover from '../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover';
@@ -28,6 +29,8 @@ class TestPointerEvent extends MouseEvent {
     this.pointerType = init.pointerType ?? 'mouse';
   }
 }
+
+vi.mock('../../features/kiosk/errorTelemetry', async (importOriginal) => ({ ...await importOriginal<typeof errorTelemetry>(), reportSessakuPieceError: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
   completion: vi.fn(),
@@ -330,12 +333,13 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
       for (const item of affected) expect(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox')).not.toBeChecked();
     });
-    it.each(['split', 'merge'])('shows a %s failure immediately and allows closing during a stalled recovery GET', async (operation) => {
+    it.each([['split', 409], ['merge', 409], ['split', 400]] as const)('shows a %s conflict (%s) immediately and allows closing during a stalled recovery GET', async (operation, status) => {
       const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
       data.resourceCategories['305'] = 'cutting';
       mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
       const mutation = operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge;
-      mutation.mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
+      const report = vi.spyOn(errorTelemetry, 'reportSessakuPieceError');
+      mutation.mockRejectedValue({ isAxiosError: true, response: { status, data: { errorCode: 'PIECE_QUANTITY_CONFLICT', requestId: 'server-request' } } });
       mocks.refetch.mockReturnValue(new Promise(() => {}));
       renderSeibanBoard();
       if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
@@ -344,6 +348,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
       const popup = screen.getByRole('dialog', { name: '数量' });
       await waitFor(() => expect(within(popup).getByRole('alert')).toHaveTextContent('表示中のデータが更新されています。最新状態を取得してください。'));
+      expect(report).toHaveBeenCalledWith(operation, data.items[0], expect.anything());
       expect(within(popup).queryByText('保存中…')).not.toBeInTheDocument();
       fireEvent.keyDown(window, { key: 'Escape' });
       expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
@@ -925,6 +930,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
         itemRevisions: { 'piece:0': 'revision-a', 'piece:1': 'revision-a' } }));
     });
     it('refreshes on piece completion conflict without automatically resending', async () => {
+      const report = vi.spyOn(errorTelemetry, 'reportSessakuPieceError');
       const data = splitBoard();
       mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
       mocks.pieceCompletion.mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
@@ -932,6 +938,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
       expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1);
+      expect(report).toHaveBeenCalledWith('complete', data.items[0], expect.anything());
       expect(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' })).toBeEnabled();
       expect(screen.queryByRole('button', { name: '最新状態を取得' })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
@@ -1087,7 +1094,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(chooseRank);
       await waitFor(() => expect(mocks.rank).toHaveBeenCalledTimes(1));
     });
-    it.each(['backdrop', 'Escape'] as const)('keeps selection, pane navigation and popup counters/%s active while writing', async (close) => {
+    it.each(['backdrop', 'Escape'] as const)('keeps selection, pane navigation and popup %s active while blocking counters during writing', async (close) => {
       const data = splitBoard(); data.items.push(fixture().items[2]!); data.resourceCategories['305'] = 'cutting';
       mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
       mocks.pieceCompletion.mockReturnValue(new Promise(() => {}));
@@ -1097,9 +1104,9 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
       fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
       await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1));
+      expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '分け数を減らす' })).toBeDisabled();
       fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
-      expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
-      fireEvent.click(screen.getByRole('button', { name: '分け数を減らす' }));
       expect(screen.getByLabelText('分け数')).toHaveTextContent('2');
       if (close === 'Escape') fireEvent.keyDown(window, { key: 'Escape' });
       else fireEvent.mouseDown(screen.getByRole('dialog', { name: '数量' }));

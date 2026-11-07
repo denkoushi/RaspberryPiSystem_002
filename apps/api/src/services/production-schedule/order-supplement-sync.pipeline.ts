@@ -1,3 +1,4 @@
+import { readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, type PieceAuditContext } from './sessaku-pieces/piece-audit.js';
 import { encodeSessakuPieceKey, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
 import { assertSessakuPieceWinnerTargets, lockSessakuPieceSourceRows, synchronizeSessakuPieceSources } from './sessaku-pieces/piece-sync.js';
 /**
@@ -412,96 +413,106 @@ export async function runOrderSupplementReplacementTransaction(
   const retentionCutoff = new Date();
   retentionCutoff.setUTCFullYear(retentionCutoff.getUTCFullYear() - RETENTION_YEARS);
 
-  let inserted = 0;
-  for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {
-    const chunk = params.createInputs.slice(i, i + CREATE_MANY_CHUNK_SIZE);
-    if (chunk.length === 0) continue;
-    const batchCount = await client.$transaction(
-      async (tx) => {
-        const keys = await lockSessakuPieceSourceRows(tx, chunk.map((entry) => entry.csvDashboardRowId));
-        if (keys.length) await assertSessakuPieceWinnerTargets(tx, chunk.map((entry) => entry.csvDashboardRowId));
-        const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: chunk.map((entry) => entry.csvDashboardRowId) } }, select: { id: true, rowData: true } }) : [];
-        const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
-        const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
-        const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
-        const partsWithSets = new Set(relatedSets.map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
-        const rowsWithSets = new Set(rows.filter((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return partsWithSets.has(JSON.stringify([fseiban, fhincd])); }).map((row) => row.id));
-        const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
-        const data = [];
-        for (const entry of chunk) {
-          if (!keys.length) { data.push(entry); continue; }
-          data.push((liveRowIds.has(entry.csvDashboardRowId) || rowsWithSets.has(entry.csvDashboardRowId) && params.pieceQuantityByRowId?.get(entry.csvDashboardRowId) === 0) && params.pieceQuantityByRowId?.has(entry.csvDashboardRowId) ? { ...entry, plannedQuantity: params.pieceQuantityByRowId.get(entry.csvDashboardRowId) } : entry);
-        }
-        const batch = await tx.productionScheduleOrderSupplement.createMany({ data });
-        await synchronizeSessakuPieceSources(tx, keys);
-        return batch.count;
-      },
-      {
-        maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
-        timeout: REPLACEMENT_TX_TIMEOUT_MS,
-      }
-    );
-    inserted += batchCount;
-  }
-
-  for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
-    const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
-    await client.$transaction(
-      async (tx) => {
-        const previous = await tx.productionScheduleOrderSupplement.findMany({ where: { id: { in: chunk.map((entry) => entry.id) } }, select: { id: true, csvDashboardRowId: true } });
-        const nextRowIds = chunk.flatMap((entry) => typeof entry.data.csvDashboardRowId === 'string' ? [entry.data.csvDashboardRowId] : []);
-        const keys = await lockSessakuPieceSourceRows(tx, [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds]);
-        if (keys.length) await assertSessakuPieceWinnerTargets(tx, nextRowIds);
-        const targetIds = [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds];
-        const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: targetIds } }, select: { id: true, rowData: true } }) : [];
-        const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
-        const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
-        const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
-        const partsWithSets = new Set(relatedSets.map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
-        const rowsWithSets = new Set(rows.filter((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return partsWithSets.has(JSON.stringify([fseiban, fhincd])); }).map((row) => row.id));
-        const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
-        for (const entry of chunk) {
-          const targetRowId = !keys.length ? undefined : typeof entry.data.csvDashboardRowId === 'string' ? entry.data.csvDashboardRowId : previous.find((p) => p.id === entry.id)?.csvDashboardRowId;
-          await tx.productionScheduleOrderSupplement.update({
-            where: { id: entry.id },
-            data: targetRowId && (liveRowIds.has(targetRowId) || rowsWithSets.has(targetRowId) && params.pieceQuantityByRowId?.get(targetRowId) === 0) && params.pieceQuantityByRowId?.has(targetRowId) ? { ...entry.data, plannedQuantity: params.pieceQuantityByRowId.get(targetRowId) } : entry.data,
-          });
-        }
-        await synchronizeSessakuPieceSources(tx, keys);
-      },
-      {
-        maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
-        timeout: REPLACEMENT_TX_TIMEOUT_MS,
-      }
-    );
-  }
-
-  const pruned = await client.$transaction(
-    async (tx) => {
-      const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({
-        where: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
-          plannedStartDate: { lt: retentionCutoff },
-          plannedStartDateManuallySet: false,
+  const propagationAudits: PieceAuditContext[] = [];
+  try {
+    let inserted = 0;
+    for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {
+      const chunk = params.createInputs.slice(i, i + CREATE_MANY_CHUNK_SIZE);
+      if (chunk.length === 0) continue;
+      const committed = await client.$transaction(
+        async (tx) => {
+          const keys = await lockSessakuPieceSourceRows(tx, chunk.map((entry) => entry.csvDashboardRowId));
+          if (keys.length) await assertSessakuPieceWinnerTargets(tx, chunk.map((entry) => entry.csvDashboardRowId));
+          const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: chunk.map((entry) => entry.csvDashboardRowId) } }, select: { id: true, rowData: true } }) : [];
+          const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
+          const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
+          const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
+          const partsWithSets = new Set(relatedSets.filter((set) => set.pieces.length || set.sourcePieceSetId).map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
+          const rowsWithSets = new Set(rows.filter((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return partsWithSets.has(JSON.stringify([fseiban, fhincd])); }).map((row) => row.id));
+          const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
+          const before = await readLaterPieceAuditSnapshots(tx, keys);
+          const data = [];
+          for (const entry of chunk) {
+            if (!keys.length) { data.push(entry); continue; }
+            data.push((liveRowIds.has(entry.csvDashboardRowId) || rowsWithSets.has(entry.csvDashboardRowId) && params.pieceQuantityByRowId?.get(entry.csvDashboardRowId) === 0) && params.pieceQuantityByRowId?.has(entry.csvDashboardRowId) ? { ...entry, plannedQuantity: params.pieceQuantityByRowId.get(entry.csvDashboardRowId) } : entry);
+          }
+          const batch = await tx.productionScheduleOrderSupplement.createMany({ data });
+          await synchronizeSessakuPieceSources(tx, keys);
+          return { count: batch.count, audits: collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys), '__shared__') };
         },
-      });
-      return pruneResult.count;
-    },
-    {
-      maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
-      timeout: REPLACEMENT_TX_TIMEOUT_MS,
+        {
+          maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
+          timeout: REPLACEMENT_TX_TIMEOUT_MS,
+        }
+      );
+      inserted += committed.count;
+      propagationAudits.push(...committed.audits);
     }
-  );
 
-  return {
-    scanned: params.scanned,
-    normalized: params.normalized,
-    matched: params.matched,
-    unmatched: params.unmatched,
-    upserted: inserted + params.updateInputs.length,
-    pruned,
-  };
+    for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
+      const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
+      const audits = await client.$transaction(
+        async (tx) => {
+          const previous = await tx.productionScheduleOrderSupplement.findMany({ where: { id: { in: chunk.map((entry) => entry.id) } }, select: { id: true, csvDashboardRowId: true } });
+          const nextRowIds = chunk.flatMap((entry) => typeof entry.data.csvDashboardRowId === 'string' ? [entry.data.csvDashboardRowId] : []);
+          const keys = await lockSessakuPieceSourceRows(tx, [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds]);
+          if (keys.length) await assertSessakuPieceWinnerTargets(tx, nextRowIds);
+          const targetIds = [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds];
+          const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: targetIds } }, select: { id: true, rowData: true } }) : [];
+          const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
+          const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
+          const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
+          const partsWithSets = new Set(relatedSets.filter((set) => set.pieces.length || set.sourcePieceSetId).map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
+          const rowsWithSets = new Set(rows.filter((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return partsWithSets.has(JSON.stringify([fseiban, fhincd])); }).map((row) => row.id));
+          const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
+          const before = await readLaterPieceAuditSnapshots(tx, keys);
+          for (const entry of chunk) {
+            const targetRowId = !keys.length ? undefined : typeof entry.data.csvDashboardRowId === 'string' ? entry.data.csvDashboardRowId : previous.find((p) => p.id === entry.id)?.csvDashboardRowId;
+            await tx.productionScheduleOrderSupplement.update({
+              where: { id: entry.id },
+              data: targetRowId && (liveRowIds.has(targetRowId) || rowsWithSets.has(targetRowId) && params.pieceQuantityByRowId?.get(targetRowId) === 0) && params.pieceQuantityByRowId?.has(targetRowId) ? { ...entry.data, plannedQuantity: params.pieceQuantityByRowId.get(targetRowId) } : entry.data,
+            });
+          }
+          await synchronizeSessakuPieceSources(tx, keys);
+          return collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys), '__shared__');
+        },
+        {
+          maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
+          timeout: REPLACEMENT_TX_TIMEOUT_MS,
+        }
+      );
+      propagationAudits.push(...audits);
+    }
+
+    const pruned = await client.$transaction(
+      async (tx) => {
+        const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({
+          where: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+            plannedStartDate: { lt: retentionCutoff },
+            plannedStartDateManuallySet: false,
+          },
+        });
+        return pruneResult.count;
+      },
+      {
+        maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
+        timeout: REPLACEMENT_TX_TIMEOUT_MS,
+      }
+    );
+
+    return {
+      scanned: params.scanned,
+      normalized: params.normalized,
+      matched: params.matched,
+      unmatched: params.unmatched,
+      upserted: inserted + params.updateInputs.length,
+      pruned,
+    };
+  } finally {
+    await writeLaterPiecePropagationAudits(propagationAudits);
+  }
 }
 
 export async function loadExistingSupplementsByKey(client: PrismaClient): Promise<ExistingSupplementMap> {

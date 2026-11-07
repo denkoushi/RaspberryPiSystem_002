@@ -1,9 +1,9 @@
 import clsx from 'clsx';
-import { Fragment, useContext } from 'react';
+import { Fragment } from 'react';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
-import { PlanningBoardPiecePopover, PlanningBoardPiecesContext } from '../PlanningBoardPiecePopover';
+import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
 
@@ -27,7 +27,6 @@ type Props = {
 };
 export function PlanningBoardChainStrip({ ref, bottom, selectedItemIds, bars, resourceNameMap, currentItemId, onStep, onClose, onCompleteToggle, completionPendingItemIds, disabled, pieceDisabled }: Props) {
   const part = bars[0]!.item;
-  const pieceActions = useContext(PlanningBoardPiecesContext);
   const processPositions = new Map<string, number>();
   const positions = bars.map(({ item }) => {
     const key = item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
@@ -48,7 +47,7 @@ export function PlanningBoardChainStrip({ ref, bottom, selectedItemIds, bars, re
         <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-slate-800 font-mono font-bold text-white">{positions[index]}</span>
         <strong>工順{bar.item.processOrder} · {ganttResourceLabel(normalizeMachineName(bar.resource), resourceNameMap[bar.resource])}</strong>
       </button>
-      <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selectedItemIds.has(bar.item.itemId)} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId) || (bar.item.parentItemId != null && pieceActions?.completionPendingParentIds?.has(bar.item.parentItemId))} />
+      <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selectedItemIds.has(bar.item.itemId)} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId)} />
       {onCompleteToggle && <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
         disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
     </Fragment>)}

@@ -147,6 +147,36 @@ describe('PlanningBoardPiecePopover', () => {
     expect(screen.getByLabelText('1片目の数量')).toHaveTextContent('3');
     expect(screen.getByLabelText('2片目の数量')).toHaveTextContent('3');
   });
+  it.each([[5, 3], [3, 2]])('redistributes an open dialog when total changes from %s to %s', async (before, after) => {
+    const h = setup({ ...row, plannedQuantity: before });
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
+    if (before === 5) fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    const updated = { ...row, plannedQuantity: after };
+    h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={updated} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByLabelText('分け数')).toHaveTextContent('2');
+    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(updated, after === 3 ? [1, 2] : [1, 1]));
+  });
+  it('preserves an edited distribution when only the revision changes', async () => {
+    const h = setup();
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    fireEvent.click(screen.getByLabelText('1片目の数量を増やす'));
+    const updated = { ...row, itemRevision: 'new' };
+    h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={updated} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(updated, [2, 2, 1]));
+  });
+  it.each([false, true])('blocks a completing parent inside the popover even with external disabled=%s', (disabled) => {
+    const h = setup(piece('a', 3));
+    h.rerender(<PlanningBoardPiecesContext.Provider value={{ ...h.value, completionPendingParentIds: new Set([row.itemId]) }}>
+      <PlanningBoardPiecePopover item={piece('a', 3)} disabled={disabled} />
+    </PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByRole('button')).toBeDisabled();
+  });
   it('scrolls many piece rows inside the viewport-bounded dialog', async () => {
     setup({ ...row, plannedQuantity: 30 });
     fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
@@ -202,6 +232,8 @@ describe('PlanningBoardPiecePopover', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('保存中…')).toHaveAttribute('role', 'status');
     expect(screen.getByRole('button', { name: '分ける' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '分け数を減らす' })).toBeDisabled();
     rerender(options);
     expect(screen.queryByText('保存中…')).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
@@ -272,14 +304,17 @@ describe('PlanningBoardPiecePopover', () => {
       expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled();
     } finally { vi.useRealTimers(); }
   });
-  it('keeps counters and Escape active during its own save without resubmitting', async () => {
+  it('disables count controls during its own save while keeping Escape active', async () => {
     const h = setup();
     let finish!: () => void;
     h.onSplit.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; }));
     fireEvent.click(screen.getByRole('button'));
     await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
     fireEvent.click(screen.getByRole('button', { name: '分ける' }));
-    expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(row, [2, 3]);
+    expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(row, [1, 2, 2]);
+    expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '分け数を減らす' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
     expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
     fireEvent.click(screen.getByRole('button', { name: '分ける' }));

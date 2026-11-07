@@ -22,7 +22,11 @@ describe('piece identity and monotonic generation', () => {
       const execute = vi.fn();
       const tx = { $queryRaw: vi.fn().mockResolvedValue([]), csvDashboardRow: { findMany: vi.fn().mockResolvedValue([]) }, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([later, cutting]) }, $executeRaw: execute };
       await acquireSessakuPieceLogicalLocks(tx as never, [key]);
-      calls.push(execute.mock.calls.map((call) => call[1] as string));
+      expect(execute).toHaveBeenCalledTimes(1);
+      const sql = execute.mock.calls[0][0].join('');
+      expect(sql).toContain('WITH ORDINALITY');
+      expect(sql).toContain('ORDER BY ordinal');
+      calls.push(execute.mock.calls[0][1] as string[]);
     }
     expect(calls[0]).toHaveLength(2);
     expect(calls[0]).toEqual(calls[1]);
@@ -42,11 +46,28 @@ describe('piece identity and monotonic generation', () => {
       expect(query.text).toContain(`COALESCE(r."rowData"->>'FSEIBAN', '') =`);
       expect(query.text).toContain(`COALESCE(r."rowData"->>'FHINCD', '') =`);
       expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, 'A', 'P']);
-      locks.push(tx.$executeRaw.mock.calls.map((call) => call[1]));
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+      locks.push(tx.$executeRaw.mock.calls[0][1]);
     }
     expect(locks[0]).toHaveLength(2);
     expect(locks[0]).toEqual(locks[1]);
     expect(locks[0]).toEqual([...locks[0]].sort());
   });
 
+  it('expands only parts with sets for CSV while locking ordinary keys once', async () => {
+    const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1' };
+    const later = { ...cutting, fsigencd: '2', fkojun: '2' };
+    const ordinary = { ...cutting, fseiban: 'B' };
+    const tx = { productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([cutting]) },
+      $queryRaw: vi.fn().mockResolvedValue([{ rowData: { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '2', FKOJUN: '2' } }]), $executeRaw: vi.fn() };
+    await acquireSessakuPieceLogicalLocks(tx as never, [ordinary, cutting, ordinary], { onlyPartsWithSets: true });
+    expect(tx.$queryRaw.mock.calls[0][0].values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, 'A', 'P']);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$executeRaw.mock.calls[0][1]).toEqual([cutting, later, ordinary].map((key) => `sessaku-pieces:${PRODUCTION_SCHEDULE_DASHBOARD_ID}:${encodeSessakuPieceKey(key)}`).sort());
+    tx.productionScheduleSessakuPieceSet.findMany.mockResolvedValue([]);
+    tx.$queryRaw.mockClear(); tx.$executeRaw.mockClear();
+    await acquireSessakuPieceLogicalLocks(tx as never, [ordinary], { onlyPartsWithSets: true });
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.$executeRaw.mock.calls[0][1]).toEqual([`sessaku-pieces:${PRODUCTION_SCHEDULE_DASHBOARD_ID}:${encodeSessakuPieceKey(ordinary)}`]);
+  });
 });

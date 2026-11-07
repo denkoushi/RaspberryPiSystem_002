@@ -1,3 +1,5 @@
+import { logger } from '../../../lib/logger.js';
+vi.mock('../../../lib/logger.js', () => ({ logger: { warn: vi.fn(), child: () => ({ info: vi.fn() }) } }));
 import { synchronizeSessakuPieceSources } from '../sessaku-pieces/piece-sync.js';
 vi.mock('../sessaku-pieces/piece-sync.js', () => ({ synchronizeSessakuPieceSources: vi.fn() }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,7 +42,7 @@ describe('ProgressSyncFromCsvService', () => {
     ] as never);
     await service.sync({ candidates: [candidate] });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
     if (expected === null) expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
     else expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       where: { csvDashboardRowId: candidate.rowId }, create: expect.objectContaining({ isCompleted: expected }), update: expect.objectContaining({ isCompleted: expected })
@@ -86,4 +88,14 @@ describe('ProgressSyncFromCsvService', () => {
     expect(prisma.productionScheduleProgress.findMany).toHaveBeenCalledTimes(3);
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(250);
   });
+  it('continues later batches after a rollback and logs only count and a few row IDs', async () => {
+    const candidates = Array.from({ length: 250 }, (_, index) => ({ ...candidate, rowId: `row-${index}` }));
+    vi.mocked(prisma.$transaction).mockRejectedValueOnce(new Error('SQL private values'));
+    vi.mocked(prisma.csvDashboardRow.findMany).mockImplementation(async (args) => candidates.filter((row) => (args?.where?.id as { in: string[] }).in.includes(row.rowId)).map((row) => ({ id: row.rowId, rowData: row.rowData, occurredAt: row.occurredAt })) as never);
+    await expect(service.sync({ candidates })).resolves.toBeUndefined();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(150);
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ count: 100, rowIds: ['row-0', 'row-1', 'row-2', 'row-3', 'row-4'] }, 'CSV progress sync batch failed');
+  });
+
 });

@@ -35,31 +35,35 @@ export function decodeSessakuPieceParentItemId(value: string): SessakuPieceLogic
 export function sessakuPieceSetWhere(key: SessakuPieceLogicalKey) {
   return { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: key.fseiban, fhincd: key.fhincd, fsigencd: key.fsigencd, fkojun: key.fkojun };
 }
-export async function acquireSessakuPieceLogicalLocks(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[]): Promise<void> {
-  for (const encoded of [...new Set((await readRelatedSessakuPieceKeys(tx, keys)).map(encodeSessakuPieceKey))].sort()) {
-    const lock = `sessaku-pieces:${PRODUCTION_SCHEDULE_DASHBOARD_ID}:${encoded}`;
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`;
-  }
+export async function acquireSessakuPieceLogicalLocks(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[], options: { onlyPartsWithSets?: boolean } = {}): Promise<void> {
+  const locks = [...new Set((await readRelatedSessakuPieceKeys(tx, keys, options.onlyPartsWithSets)).map(encodeSessakuPieceKey))].sort()
+    .map((encoded) => `sessaku-pieces:${PRODUCTION_SCHEDULE_DASHBOARD_ID}:${encoded}`);
+  if (!locks.length) return;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(k, 0))
+    FROM unnest(${locks}::text[]) WITH ORDINALITY AS logical_locks(k, ordinal)
+    ORDER BY ordinal`;
 }
 export function supportsSessakuPieceRelations(key: SessakuPieceLogicalKey) {
   return [key.fseiban, key.fhincd, key.fsigencd, key.fkojun].every((value) => value.trim().length > 0) && key.fseiban.trim() !== '********';
 }
 /** Include row keys before their first set exists, in the same order from either process. */
-async function readRelatedSessakuPieceKeys(client: SessakuPieceClient, keys: readonly SessakuPieceLogicalKey[]) {
+async function readRelatedSessakuPieceKeys(client: SessakuPieceClient, keys: readonly SessakuPieceLogicalKey[], onlyPartsWithSets = false) {
   const supported = keys.filter(supportsSessakuPieceRelations);
   if (!supported.length) return [...keys];
-  const parts = [...new Map(supported.map(({ fseiban, fhincd }) => [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }])).values()];
-  const [sets, rows] = await Promise.all([
-    client.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts } }),
-    client.$queryRaw<Array<{ rowData: Prisma.JsonValue }>>(Prisma.sql`
+  let parts = [...new Map(supported.map(({ fseiban, fhincd }) => [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }])).values()];
+  const sets = await client.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts } });
+  if (onlyPartsWithSets) {
+    parts = parts.filter((part) => sets.some((set) => set.fseiban === part.fseiban && set.fhincd === part.fhincd));
+    if (!parts.length) return [...keys];
+  }
+  const rows = await client.$queryRaw<Array<{ rowData: Prisma.JsonValue }>>(Prisma.sql`
       SELECT r."rowData" FROM "CsvDashboardRow" r
       WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND (${Prisma.join(parts.map(({ fseiban, fhincd }) => Prisma.sql`
           (COALESCE(r."rowData"->>'FSEIBAN', '') = ${fseiban}
             AND COALESCE(r."rowData"->>'FHINCD', '') = ${fhincd})
         `), ' OR ')})
-    `)
-  ]);
+    `);
   return [...keys, ...sets, ...rows.map((row) => sessakuPieceKeyFromRow(row.rowData))];
 }
 export async function readSessakuPieceSet(client: SessakuPieceClient, key: SessakuPieceLogicalKey): Promise<SessakuPieceSet | null> {

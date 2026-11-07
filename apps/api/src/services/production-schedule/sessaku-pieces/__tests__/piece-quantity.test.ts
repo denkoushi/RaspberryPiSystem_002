@@ -77,6 +77,12 @@ describe('later process quantity planning', () => {
     const existing = later.map((piece, index) => ({ ...piece, quantity: index + 3, position: index + 5 }));
     expect(planLaterProcessPieceQuantities(existing, sources, total, false, 9)).toEqual({ pieces: existing, quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition: 9 });
   });
+  it.each([2, 0])('external completion protects only existing pieces for later total %s', (total) => {
+    const existing = planLaterProcessPieceQuantities(later, sources, total, false, 4);
+    const plan = planLaterProcessPieceQuantities(existing.pieces as typeof later, sources, total, true, existing.nextPosition);
+    expect(plan).toEqual(existing);
+    expect(planLaterProcessPieceQuantities(existing.pieces as typeof later, sources, 7, true, existing.nextPosition).pieces).toEqual(existing.pieces);
+  });
   it('starts from updated cutting quantities and positions, retaining later identities', () => {
     const next = sources.map((piece, index) => ({ ...piece, quantity: [2, 3, 4][index] }));
     const plan = planLaterProcessPieceQuantities(later, next, 10, false, 4);
