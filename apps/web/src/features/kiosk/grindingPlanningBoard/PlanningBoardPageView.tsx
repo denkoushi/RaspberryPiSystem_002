@@ -99,6 +99,7 @@ export function PlanningBoardPageView({
           pinMode={gantt.mode === 'forward' && view === 'resource' && pinMode} onTogglePin={togglePin}
           selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingItemIds={completionPendingItemIds} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
           onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
+          pieceDisabled={allocation === 'original' || Boolean(specialDueMode)}
           disabled={interactionLocked || (pinMode && writeQueue.pending)} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
       ) : data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
         <div className="mt-2">

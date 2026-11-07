@@ -116,6 +116,33 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     r = await mergeSessakuPieces({ siteKey: site, parentItemId: r.parentItemId, expectedPieceSetVersion: r.pieceSetVersion, pieceIds: unfinished.map((p) => p.pieceId!), itemRevisions: Object.fromEntries(unfinished.map((p) => [p.itemId, p.itemRevision])) });
     expect(r.pieces.map((p) => p.quantity)).toEqual([2, 3]); expect(r.pieces[0].isCompleted).toBe(true);
   });
+  it('merges non-adjacent first and third pieces at the first position, preserving the middle', async () => {
+    const p = await parent();
+    const r = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [1, 2, 2] });
+    const selected = [r.pieces[0], r.pieces[2]];
+    const merged = await mergeSessakuPieces({ siteKey: site, parentItemId: r.parentItemId, expectedPieceSetVersion: r.pieceSetVersion,
+      pieceIds: selected.map((piece) => piece.pieceId!), itemRevisions: Object.fromEntries(selected.map((piece) => [piece.itemId, piece.itemRevision])) });
+    expect(merged.pieces.map((piece) => piece.quantity)).toEqual([3, 2]);
+    expect(merged.pieces[1].pieceId).toBe(r.pieces[1].pieceId);
+    const stored = await readSessakuPieceSet(prisma, key());
+    expect(stored?.pieces.map((piece) => [piece.position, piece.quantity])).toEqual([[1, 3], [2, 2]]);
+    expect(stored?.pieces[1].id).toBe(r.pieces[1].pieceId);
+  });
+  it('re-splits a middle target into three pieces and renumbers surviving positions in order', async () => {
+    await quantity(12); const p = await parent();
+    const r = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [2, 7, 3] });
+    const target = r.pieces[1];
+    const splitAgain = await splitSessakuPieces({ siteKey: site, parentItemId: r.parentItemId, targetPieceId: target.pieceId,
+      itemRevision: target.itemRevision, expectedPieceSetVersion: r.pieceSetVersion, quantities: [1, 2, 4] });
+    expect(splitAgain.pieces.map((piece) => piece.quantity)).toEqual([2, 1, 2, 4, 3]);
+    expect(splitAgain.pieces[0].pieceId).toBe(r.pieces[0].pieceId);
+    expect(splitAgain.pieces[4].pieceId).toBe(r.pieces[2].pieceId);
+    const stored = await readSessakuPieceSet(prisma, key());
+    expect(stored?.pieces.map((piece) => piece.position)).toEqual([1, 2, 3, 4, 5]);
+    expect(stored?.pieces.map((piece) => piece.id)).toEqual(splitAgain.pieces.map((piece) => piece.pieceId));
+    expect(stored?.pieces.some((piece) => piece.id === target.pieceId)).toBe(false);
+    expect(stored?.nextPosition).toBe(6);
+  });
   it('quantity sync, warnings, external correction and CSV progress protect manual evidence', async () => {
     let r = await split(); r = await complete(r.pieces[0]);
     for (const [total, quantities] of [[7, [2, 5]], [4, [2, 2]]] as const) { await quantity(total); expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((p) => p.quantity)).toEqual(quantities); }

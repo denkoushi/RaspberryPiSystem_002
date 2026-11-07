@@ -111,6 +111,37 @@ describe('PlanningBoardPiecePopover', () => {
     fireEvent.click(trigger); await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
     await waitFor(() => expect(onSplit).toHaveBeenCalledExactlyOnceWith(row, [2, 3]));
   });
+  it('bounds every piece at one, balances the last and resets distribution when count changes', async () => {
+    setup({ ...row, plannedQuantity: 6 });
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    expect(screen.getByLabelText('3片目の数量')).toHaveTextContent('2');
+    const minus = screen.getByRole('button', { name: '1片目の数量を減らす' });
+    fireEvent.click(minus); fireEvent.click(minus);
+    expect(minus).toBeDisabled();
+    expect(screen.getByLabelText('1片目の数量')).toHaveTextContent('1');
+    expect(screen.getByLabelText('3片目の数量')).toHaveTextContent('3');
+    const plus = screen.getByRole('button', { name: '2片目の数量を増やす' });
+    fireEvent.click(plus); fireEvent.click(plus); fireEvent.click(plus);
+    expect(plus).toBeDisabled();
+    expect(screen.getByRole('button', { name: '1片目の数量を増やす' })).toBeDisabled();
+    expect(screen.getByLabelText('3片目の数量')).toHaveTextContent('1');
+    expect(screen.getByLabelText('3片目の数量を増やす')).toHaveStyle({ visibility: 'hidden' });
+    expect(screen.getByLabelText('3片目の数量を減らす')).toHaveStyle({ visibility: 'hidden' });
+    fireEvent.click(screen.getByRole('button', { name: '分け数を減らす' }));
+    expect(screen.getByLabelText('1片目の数量')).toHaveTextContent('3');
+    expect(screen.getByLabelText('2片目の数量')).toHaveTextContent('3');
+  });
+  it('scrolls many piece rows inside the viewport-bounded dialog', async () => {
+    setup({ ...row, plannedQuantity: 30 });
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
+    for (let i = 2; i < 30; i++) fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    expect(screen.getByLabelText('30片目の数量')).toHaveTextContent('1');
+    expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeDisabled();
+    expect(document.querySelector('[data-planning-board-piece-dialog]')!.parentElement).toHaveClass('overflow-y-auto', '!max-h-[calc(100dvh-4rem)]');
+  });
   it('opens without changing body scroll styles or querying focusable element layout', () => {
     const originalOverflow = document.body.style.overflow;
     const offsetParent = vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get');
