@@ -856,3 +856,31 @@ R1〜R5はいずれも妥当。保存中のtd/trクリックと取消トース�
 検証: `apps/web` で `pnpm exec vitest run src/features/kiosk/grindingPlanningBoard src/pages/kiosk` は72ファイル・1161件成功（59.44秒）。その後に追加した左端0pxの境界テストは単独1件成功（2.54秒）。`pnpm exec tsc -b --pretty false` と変更web 9ファイルのeslint（最後に追加したテストも再確認）は成功。初回の関連3ファイル検証は旧仕様のカウンター期待3件が失敗し、仕様に合わせた更新後に上記指定範囲で成功。eslintはページの行数上限を条件式の改行調整で解消した。検証は約4分。
 
 既存WIPを引き継ぎ、今回の編集は上記web 9ファイルと本記録のみ。git操作・秘密ファイル参照・commit・push・PR・merge・release・deployは実施していない。実ブラウザー検証は未実施。
+
+## 不具合時に操作を追う
+
+片操作は `sessaku_piece.split` / `sessaku_piece.merge` / `sessaku_piece.complete` / `sessaku_piece.uncomplete` の固定eventで、成功・拒否・失敗を各操作1行記録する。APIのエラー応答の `requestId` はFastifyの `request.id` と同じ。例（APIコンテナ名は環境に合わせる）:
+
+```sh
+docker logs --since 1h <api-container> 2>&1 | grep -E '"event":"sessaku_piece\.(split|merge|complete|uncomplete)"'
+docker logs --since 1h <api-container> 2>&1 | grep '"requestId":"req-xxx"'
+```
+
+操作ログは既存loggerの子loggerでINFO出力を有効にし、本番の既定 `LOG_LEVEL=warn` でも各操作を記録する。他のloggerのレベルは変更しない。監査DBもログレベルに依存せず保存する。
+
+```sql
+SELECT * FROM "ProductionScheduleSessakuPieceAuditLog"
+WHERE "requestId" = 'req-xxx' ORDER BY "createdAt";
+SELECT * FROM "ProductionScheduleSessakuPieceAuditLog"
+WHERE "parentItemId" = '<parentItemId>' ORDER BY "createdAt" DESC LIMIT 100;
+```
+
+`beforeJson` / `afterJson` は片数 `count`、位置順の数量 `quantities` と対応する `pieceIds`、完了片ID `completedPieceIds`、親指示数 `plannedQuantity`。未分割・全片結合後の片数は0、配分は空配列。拒否・失敗では変更後も変更前と同じ値（rollback）、読める前に失敗した場合はJSON null。`expectedVersion` と `itemRevision` / `itemRevisions` は送信値、`resultVersion` は成功時だけ保存する。認証・入力検証前に失敗した場合や削除済みの片など、解決できないID・端末・数量は未記録/nullとなる。予期しない例外のメッセージは秘密情報を避けるため一般化する。
+
+管理者など既存の閲覧権限で `GET /api/clients/logs?category=sessaku-pieces`（ルートは `/clients/logs?category=sessaku-pieces`）を開き、contextの `action`、`itemId` / `parentItemId`、`errorCode`、`status`、`requestId` を確認する。画面側の失敗だけを既存errorTelemetryのキュー経由で送る。通常は5秒周期で送信し、オフライン時は既存キューに保持する。従業員名、NFCタグ、トークン、ヘッダー全体、任意のエラーオブジェクトは送らない。
+
+保持期間は既存 `ClientNetworkLogRetentionScheduler`（毎日03:20 JST）の30日・最大5000件×10バッチを共有する。ClientLogの対象categoryに `sessaku-pieces` を追加し、監査表も同じcutoffで別途最大10バッチを削除する。旧 `ProductionScheduleOrderSplitAuditLog` は利用・変更しない。
+
+後の工程への分割は `runSessakuPieceOperation({ action: 'propagate', requestId, siteKey, actorClientDeviceId, actorDeviceName, parentItemId, pieceIds, expectedVersion }, async (audit) => { /* transaction内でaudit.beforeJson/afterJson/resultVersionを設定 */ })` を使える。外側にラップし、transactionの完了・rollback後に監査を書く。監査保存失敗は `sessaku_piece.audit_write_failed` のWARNだけを残し、元の応答・例外を維持する。実行中のauditを既存サービスに渡すと二重記録を防ぐ。
+
+本変更のローカル検証: APIの監査・route・保持ジョブ対象21件、webのerrorTelemetry・ページ対象238件が成功（最終ページ再確認198件も成功）。web `tsc --noEmit` / 全体lint、API変更ファイルeslint / `tsc -p tsconfig.build.json --noEmit`、Prisma format / validate、`git diff --check` は成功。既存schemaの無関係な整形差分は残さず、新モデルの整形を確認した。webテストでは既存のjsdom通信エラー出力があるが全件成功。専用 `TEST_DATABASE_URL` がないためDB統合27件はskip（追加した成功・409、既存400への監査assertionを含む）。migration適用・本番反映は未実施。検証時はdotenv自動読込を止め、ViteのenvDirを空の一時パスへ向けた。

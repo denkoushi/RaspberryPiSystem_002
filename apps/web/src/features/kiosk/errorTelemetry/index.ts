@@ -1,3 +1,5 @@
+import { isAxiosError } from 'axios';
+
 import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 
 import { KioskNetworkReporter } from './networkReporter';
@@ -62,4 +64,15 @@ export function initializeKioskErrorTelemetry(send: (payload: { clientId: string
     window.setInterval(() => { void current?.flush(); void network?.flush(); }, 5000);
     void current?.flush();
   } catch { /* Best effort. */ }
+}
+
+export function reportSessakuPieceError(action: string, item: { itemId: string; parentItemId?: string | null }, error: unknown) {
+  try {
+    const response = isAxiosError(error) ? error.response : undefined;
+    getReporter()?.record('sessaku_piece', {
+      action, itemId: item.itemId, parentItemId: item.parentItemId ?? item.itemId,
+      errorCode: typeof response?.data?.errorCode === 'string' ? response.data.errorCode : undefined,
+      status: response?.status, requestId: response?.data?.requestId
+    });
+  } catch { /* Telemetry must never affect an operation. */ }
 }

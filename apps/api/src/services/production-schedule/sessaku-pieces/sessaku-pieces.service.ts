@@ -1,3 +1,4 @@
+import { runSessakuPieceOperation, type PieceAuditContext } from './piece-audit.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
@@ -62,12 +63,13 @@ async function replaceSiteItems(tx: Prisma.TransactionClient, key: SessakuPieceL
   await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: { in: removed.filter((id) => id.startsWith('piece:')) } } });
   await tx.productionScheduleGrindingPlanningBoardState.update({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } }, data: { version: { increment: 1 } } });
 }
-async function operate(params: { siteKey: string; parentItemId: string; expectedPieceSetVersion: number }, action: (tx: Prisma.TransactionClient, context: {
+async function operate(params: { siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext }, action: (tx: Prisma.TransactionClient, context: {
   key: SessakuPieceLogicalKey; winner: NonNullable<Awaited<ReturnType<typeof findSessakuPieceWinner>>>;
   set: Awaited<ReturnType<typeof readSessakuPieceSet>>; current: Awaited<ReturnType<typeof projection>>;
   external: boolean; plannedQuantity: number | null; sites: string[];
 }) => Promise<void>): Promise<SessakuPiecesMutationResponse> {
   const key = decodeSessakuPieceParentItemId(params.parentItemId);
+  if (params.audit) Object.assign(params.audit, { parentItemId: params.parentItemId, fseiban: key.fseiban });
   await ensurePlanningBoardState(params.siteKey);
   try {
     return await prisma.$transaction(async (tx) => {
@@ -83,13 +85,15 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
       if (!winner) conflict('SOURCE_ITEM_MISSING');
       await acquireProductionScheduleParentRowLockInTransaction(tx, winner.id);
       await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${winner.id} FOR UPDATE`;
-      if ((set?.version ?? 0) !== params.expectedPieceSetVersion) conflict();
       const detail = (await readRowDetails(tx, [winner.id])).get(winner.id);
+      if (params.audit) params.audit.beforeJson = { count: set?.pieces.length ?? 0, quantities: (set?.pieces ?? []).map((p) => p.quantity), pieceIds: (set?.pieces ?? []).map((p) => p.id), completedPieceIds: (set?.pieces ?? []).filter((p) => p.isCompleted).map((p) => p.id), plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null };
+      if ((set?.version ?? 0) !== params.expectedPieceSetVersion) conflict();
       const current = await projection(tx, params.siteKey, key);
       await action(tx, { key, winner, set, current, external: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, sites });
       const saved = await readSessakuPieceSet(tx, key);
       const result = await reconcileSessakuPieceProgress(tx, key, { emptyIsIncomplete: true });
       const after = await projection(tx, params.siteKey, key);
+      if (params.audit) Object.assign(params.audit, { pieceIds: [...new Set([...(params.audit.pieceIds ?? []), ...(saved?.pieces ?? []).filter((p) => !set?.pieces.some((before) => before.id === p.id)).map((p) => p.id)])], resultVersion: saved?.version ?? 0, afterJson: { count: saved?.pieces.length ?? 0, quantities: (saved?.pieces ?? []).map((p) => p.quantity), pieceIds: (saved?.pieces ?? []).map((p) => p.id), completedPieceIds: (saved?.pieces ?? []).filter((p) => p.isCompleted).map((p) => p.id), plannedQuantity: saved?.plannedQuantity ?? null } });
       return { parentItemId: params.parentItemId, pieceSetVersion: saved?.version ?? 0,
         quantityWarning: saved?.quantityWarning as SessakuPiecesMutationResponse['quantityWarning'],
         pieces: after.pieces.filter((item) => item.parentItemId === params.parentItemId),
@@ -100,7 +104,10 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
 function assertRevision(item: GrindingPlanningBoardItem | undefined, expected: string | undefined) {
   if (!item || item.itemRevision !== expected) conflict();
 }
-export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { siteKey: string }): Promise<SessakuPiecesMutationResponse> {
+export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
+  if (!params.audit) return runSessakuPieceOperation({ action: 'split', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
+    parentItemId: params.parentItemId, pieceIds: params.targetPieceId ? [params.targetPieceId] : [], itemRevision: params.itemRevision }, (audit) => splitSessakuPieces({ ...params, audit }));
+  try { params.audit.fseiban = decodeSessakuPieceParentItemId(params.parentItemId).fseiban; } catch { /* Invalid IDs are rejected by operate when enabled. */ }
   if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true') throw new ApiError(403, '分割作成は無効です', undefined, 'SESSAKU_PIECES_CREATE_DISABLED');
   return operate(params, async (tx, c) => {
     const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
@@ -137,7 +144,9 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`));
   });
 }
-export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { siteKey: string }): Promise<SessakuPiecesMutationResponse> {
+export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
+  if (!params.audit) return runSessakuPieceOperation({ action: 'merge', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
+    parentItemId: params.parentItemId, pieceIds: params.pieceIds, itemRevisions: params.itemRevisions }, (audit) => mergeSessakuPieces({ ...params, audit }));
   return operate(params, async (tx, c) => {
     if (c.external) conflict('EXTERNALLY_COMPLETED_ITEM');
     if (c.set?.quantityWarning) conflict('PIECE_QUANTITY_CONFLICT');
@@ -158,7 +167,9 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, params.pieceIds.map((p) => `piece:${p}`), [all ? params.parentItemId : `piece:${id}`]);
   });
 }
-export async function setSessakuPieceCompletion(params: SessakuPieceCompletionRequest & { siteKey: string; pieceId: string }): Promise<SessakuPiecesMutationResponse> {
+export async function setSessakuPieceCompletion(params: SessakuPieceCompletionRequest & { siteKey: string; pieceId: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
+  if (!params.audit) return runSessakuPieceOperation({ action: params.intent === 'complete' ? 'complete' : 'uncomplete', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
+    pieceIds: [params.pieceId], itemRevision: params.itemRevision }, (audit) => setSessakuPieceCompletion({ ...params, audit }));
   const keys = await resolveSessakuPieceItemKeys(prisma, [`piece:${params.pieceId}`]);
   const key = keys.get(`piece:${params.pieceId}`)!;
   return operate({ ...params, parentItemId: sessakuPieceParentItemId(key) }, async (tx, c) => {

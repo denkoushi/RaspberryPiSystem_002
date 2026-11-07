@@ -8,6 +8,19 @@ describe('browser kiosk error collection', () => {
     window.history.replaceState({}, '', '/kiosk/borrow');
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); window.history.replaceState({}, '', '/'); });
+  it.each(['split', 'merge', 'complete', 'uncomplete'])('sends one %s failure using the sessaku-pieces category and safe response fields', async (action) => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const { initializeKioskErrorTelemetry, reportSessakuPieceError } = await import('./index');
+    initializeKioskErrorTelemetry(send);
+    reportSessakuPieceError(action, { itemId: 'piece:1', parentItemId: 'parent:1' }, {
+      isAxiosError: true, response: { status: 409, data: { errorCode: 'STALE_SESSAKU_PIECES', requestId: 'server-request', employeeName: 'secret' } }, config: { headers: { Authorization: 'secret' } }
+    });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][0].logs).toHaveLength(1);
+    expect(send.mock.calls[0][0].logs[0].context).toMatchObject({ category: 'sessaku-pieces', action, itemId: 'piece:1', parentItemId: 'parent:1', errorCode: 'STALE_SESSAKU_PIECES', status: 409, requestId: 'server-request' });
+    expect(JSON.stringify(send.mock.calls)).not.toContain('secret');
+  });
   it('registers once and flushes window errors, rejections, online event and timer', async () => {
     const listeners = new Map<string, EventListener>();
     vi.spyOn(window, 'addEventListener').mockImplementation((name, listener) => { listeners.set(name, listener as EventListener); });

@@ -1,8 +1,8 @@
-export type ErrorKind = 'render_crash' | 'window_error' | 'unhandled_rejection' | 'api_network' | 'api_timeout' | 'api_5xx' | 'api_4xx' | 'slow_request';
+export type ErrorKind = 'sessaku_piece' | 'render_crash' | 'window_error' | 'unhandled_rejection' | 'api_network' | 'api_timeout' | 'api_5xx' | 'api_4xx' | 'slow_request';
 type Log = { level: 'ERROR' | 'WARN'; message: string; context: Record<string, unknown> };
 type Pending = { fingerprint: string; log: Log };
 export const QUEUE_KEY = 'kiosk-ui-error-queue-v1';
-const KINDS: ErrorKind[] = ['render_crash', 'window_error', 'unhandled_rejection', 'api_network', 'api_timeout', 'api_5xx', 'api_4xx', 'slow_request'];
+const KINDS: ErrorKind[] = ['sessaku_piece', 'render_crash', 'window_error', 'unhandled_rejection', 'api_network', 'api_timeout', 'api_5xx', 'api_4xx', 'slow_request'];
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 // The same failure keeps aggregating locally and reaches the server at most once per minute.
 export const RESEND_INTERVAL_MS = 60000;
@@ -61,7 +61,7 @@ export class KioskErrorReporter {
       if (kind === 'window_error' && typeof data.message === 'string' && BENIGN_MESSAGE.test(data.message)) return;
       const message = exception ? safeText(typeof data.message === 'string' ? data.message : 'Unknown exception').slice(0, 1000) || 'Unknown exception' : `Kiosk API: ${kind}`;
       const context: Record<string, unknown> = {
-        category: 'kiosk_ui_error', kind, route: restored ? restored.route : this.env.route(), occurredAt,
+        category: kind === 'sessaku_piece' ? 'sessaku-pieces' : 'kiosk_ui_error', kind, route: restored ? restored.route : this.env.route(), occurredAt,
         count: restored && Number.isSafeInteger(restored.count) && Number(restored.count) > 0 ? restored.count : 1,
         incidentCode, online: restored ? restored.online === true : this.env.online()
       };
@@ -78,7 +78,12 @@ export class KioskErrorReporter {
         context.requestId = safeSignal(data.requestId);
         context.durationMs = typeof data.durationMs === 'number' && Number.isFinite(data.durationMs) ? Math.max(0, Math.round(data.durationMs)) : 0;
       }
-      const fingerprint = JSON.stringify(exception ? [kind, context.name, message.slice(0, 200)] : [kind, context.method, path, context.status]);
+      if (kind === 'sessaku_piece') {
+        for (const key of ['action', 'itemId', 'parentItemId', 'errorCode']) {
+          if (typeof data[key] === 'string' && String(data[key]).length <= 2000) context[key] = data[key];
+        }
+      }
+      const fingerprint = kind === 'sessaku_piece' ? incidentCode : JSON.stringify(exception ? [kind, context.name, message.slice(0, 200)] : [kind, context.method, path, context.status]);
       const existing = this.queue.find((item) => item.fingerprint === fingerprint);
       if (existing) {
         Object.assign(existing.log.context, context, { count: Number(existing.log.context.count) + Number(context.count) });

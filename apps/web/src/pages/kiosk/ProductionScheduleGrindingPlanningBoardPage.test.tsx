@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as machineSignalApi from '../../api/domains/machine-signal';
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import * as dialog from '../../components/ui/Dialog';
+import * as errorTelemetry from '../../features/kiosk/errorTelemetry';
 import * as chipStrips from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardChipStrips';
 import * as ganttLayout from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout';
 import * as piecePopover from '../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover';
@@ -28,6 +29,8 @@ class TestPointerEvent extends MouseEvent {
     this.pointerType = init.pointerType ?? 'mouse';
   }
 }
+
+vi.mock('../../features/kiosk/errorTelemetry', async (importOriginal) => ({ ...await importOriginal<typeof errorTelemetry>(), reportSessakuPieceError: vi.fn() }));
 
 const mocks = vi.hoisted(() => ({
   completion: vi.fn(),
@@ -316,7 +319,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       data.resourceCategories['305'] = 'cutting';
       mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
       const mutation = operation === 'split' ? mocks.pieceSplit : mocks.pieceMerge;
-      mutation.mockRejectedValue({ isAxiosError: true, response: { status, data: { errorCode: 'PIECE_QUANTITY_CONFLICT' } } });
+      const report = vi.spyOn(errorTelemetry, 'reportSessakuPieceError');
+      mutation.mockRejectedValue({ isAxiosError: true, response: { status, data: { errorCode: 'PIECE_QUANTITY_CONFLICT', requestId: 'server-request' } } });
       mocks.refetch.mockReturnValue(new Promise(() => {}));
       renderSeibanBoard();
       if (operation === 'merge') for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
@@ -325,6 +329,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
       const popup = screen.getByRole('dialog', { name: '数量' });
       await waitFor(() => expect(within(popup).getByRole('alert')).toHaveTextContent('表示中のデータが更新されています。最新状態を取得してください。'));
+      expect(report).toHaveBeenCalledWith(operation, data.items[0], expect.anything());
       expect(within(popup).queryByText('保存中…')).not.toBeInTheDocument();
       fireEvent.keyDown(window, { key: 'Escape' });
       expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument();
@@ -906,6 +911,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
         itemRevisions: { 'piece:0': 'revision-a', 'piece:1': 'revision-a' } }));
     });
     it('refreshes on piece completion conflict without automatically resending', async () => {
+      const report = vi.spyOn(errorTelemetry, 'reportSessakuPieceError');
       const data = splitBoard();
       mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
       mocks.pieceCompletion.mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
@@ -913,6 +919,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
       expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1);
+      expect(report).toHaveBeenCalledWith('complete', data.items[0], expect.anything());
       expect(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' })).toBeEnabled();
       expect(screen.queryByRole('button', { name: '最新状態を取得' })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
