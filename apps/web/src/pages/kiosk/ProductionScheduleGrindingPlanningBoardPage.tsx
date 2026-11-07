@@ -343,12 +343,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     }
     piecePendingParentRef.current = items[0]?.parentItemId ?? items[0]?.itemId ?? null; piecePendingRef.current = true; setPiecePhase('saving');
     try {
-      let target: { itemId: string; parentItemId: string }; const item = items[0]; if (!item) throw new Error('Missing piece item'); const previousIds = new Set(currentItemsRef.current.map((candidate) => candidate.itemId));
+      let target: { itemId: string; parentItemId: string }; let affectedItemIds: string[] = []; const item = items[0]; if (!item) throw new Error('Missing piece item'); const previousItems = currentItemsRef.current; const previousIds = new Set(previousItems.map((candidate) => candidate.itemId));
       if (quantities) {
         const response = await splitPieces({ parentItemId: item.parentItemId ?? item.itemId,
           ...(item.kind === 'piece' ? { targetPieceId: item.pieceId } : {}), quantities,
           expectedPieceSetVersion: item.pieceSetVersion ?? 0, itemRevision: item.itemRevision });
-        target = { itemId: response.pieces.find((piece) => !piece.isCompleted && !previousIds.has(piece.itemId))?.itemId ?? item.itemId, parentItemId: item.parentItemId ?? item.itemId };
+        affectedItemIds = response.affectedItemIds ?? []; target = { itemId: response.pieces.find((piece) => !piece.isCompleted && !previousIds.has(piece.itemId))?.itemId ?? item.itemId, parentItemId: item.parentItemId ?? item.itemId };
       } else if (item.parentItemId && item.pieceSetVersion != null) {
         const pieceIds: string[] = [];
         for (const piece of items) {
@@ -357,11 +357,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         }
         const response = await mergePieces({ parentItemId: item.parentItemId, pieceIds,
           expectedPieceSetVersion: item.pieceSetVersion, itemRevisions: Object.fromEntries(items.map((piece) => [piece.itemId, piece.itemRevision])) });
-        target = { itemId: response.pieces.find((piece) => !piece.isCompleted && !previousIds.has(piece.itemId))?.itemId ?? item.parentItemId, parentItemId: item.parentItemId };
+        affectedItemIds = response.affectedItemIds ?? []; target = { itemId: response.pieces.find((piece) => !piece.isCompleted && !previousIds.has(piece.itemId))?.itemId ?? item.parentItemId, parentItemId: item.parentItemId };
       } else throw new Error('Missing piece set');
       // Saving owns the whole transition, even if a GET has already removed the popup.
       clearPieceCompletion(target.parentItemId); setCompletionNotice((current) => current && (current.item.itemId === target.parentItemId || current.item.parentItemId === target.parentItemId) ? null : current);
-      const affectedIds = new Set([target.parentItemId, ...items.map((piece) => piece.itemId), ...currentItemsRef.current.filter((piece) => piece.parentItemId === target.parentItemId).map((piece) => piece.itemId)]);
+      const affectedIds = new Set([...affectedItemIds, target.parentItemId, ...items.map((piece) => piece.itemId), ...previousItems.concat(currentItemsRef.current).filter((piece) => piece.parentItemId === target.parentItemId).map((piece) => piece.itemId)]);
       setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => [key, new Set([...ids].filter((id) => !affectedIds.has(id)))])));
       pieceFocusItemIdRef.current = target; pieceRefreshRef.current = refetchBoard; setPiecePhase('refreshing');
     } catch (error) { if (items[0]) reportSessakuPieceError(quantities ? 'split' : 'merge', items[0], error);

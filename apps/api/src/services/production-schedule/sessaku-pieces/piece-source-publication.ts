@@ -9,7 +9,10 @@ export async function publishSessakuPieceSourceCreates(client: PrismaClient, row
 } = {}) {
   const sets = options.pieceSets ?? await readSessakuPieceSets(client, rows);
   const published: Array<{ rowId: string; rowData: Prisma.JsonValue; occurredAt: Date }> = [];
-  const hasPieces = (row: typeof rows[number]) => Boolean(sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length);
+  const hasPieces = (row: typeof rows[number]) => {
+    const set = sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)));
+    return Boolean(set?.pieces.length || set?.sourcePieceSetId);
+  };
   if (!rows.some(hasPieces)) {
     if (options.collectCreatedRows === false) await client.csvDashboardRow.createMany({ data: [...rows] });
     else for (const row of rows) {

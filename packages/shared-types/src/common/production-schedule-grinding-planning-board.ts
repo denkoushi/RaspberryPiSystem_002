@@ -103,6 +103,8 @@ export interface GrindingPlanningBoardItem {
   sourceRowId: string;
   parentItemId?: string;
   pieceId?: string;
+  sourcePieceId?: string;
+  isLaterProcess?: boolean;
   piecePosition?: number;
   pieceSetVersion?: number;
   quantity?: number;
@@ -326,6 +328,8 @@ export interface SessakuPieceCompletionRequest {
   itemRevision: string;
 }
 export interface SessakuPiecesMutationResponse {
+  /** 変更前の ID（選択を外すためのもの） */
+  affectedItemIds?: string[];
   parentItemId: string;
   pieceSetVersion: number;
   quantityWarning: SessakuPieceQuantityWarning | null;

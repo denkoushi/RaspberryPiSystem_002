@@ -65,7 +65,7 @@ export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceC
   const selectedItemsByParent = useMemo(() => {
     const parent = selectedItems[0]?.parentItemId;
     const mergeable = selectedItems.length >= 2 && selectedItems.every((item) => item.kind === 'piece' &&
-      item.parentItemId === parent && !item.isCompleted && !item.quantityWarning);
+      item.parentItemId === parent && !item.isLaterProcess && !item.isCompleted && !item.quantityWarning);
     return mergeable && parent
       ? new Map([[parent, [...selectedItems]]])
       : EMPTY_SELECTED_PIECES;
@@ -119,15 +119,15 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
 }) {
   const actions = useContext(PlanningBoardPiecesContext);
   const [open, setOpen] = useState(false);
-  const mergeItems = selected && item.kind === 'piece' && item.parentItemId
+  const mergeItems = !item.isLaterProcess && actions?.isCutting(item) && selected && item.kind === 'piece' && item.parentItemId
     ? actions?.selectedItemsByParent.get(item.parentItemId) : undefined;
   const quantity = item.plannedQuantity;
-  const canSplit = Boolean(actions?.createEnabled && actions.isCutting(item) && item.fseiban?.trim() !== '********' && !item.isCompleted && !item.quantityWarning &&
+  const canSplit = Boolean(!item.isLaterProcess && actions?.createEnabled && actions.isCutting(item) && item.fseiban?.trim() !== '********' && !item.isCompleted && !item.quantityWarning &&
     typeof quantity === 'number' && Number.isInteger(quantity) && quantity >= 2);
   const canMerge = Boolean(item.kind === 'piece' && mergeItems);
   const label = item.kind === 'piece' ? `${quantity ?? '—'}／${item.parentPlannedQuantity ?? '—'}` : quantity == null ? '—' : `${quantity}個`;
   const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge);
-  if (variant === 'gantt' && !operable && !open) return null;
+  if (variant === 'gantt' && !item.isLaterProcess && !operable && !open) return null;
   if (item.kind !== 'piece' && !operable && !open) return <>{label}</>;
   return <span className={`inline-block min-w-8 align-middle ${variant === 'gantt' ? 'shrink-0 whitespace-nowrap' : ''}`} onClick={operable || open ? (event) => event.stopPropagation() : undefined}>
     {(operable || open) && actions
