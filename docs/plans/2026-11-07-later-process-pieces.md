@@ -230,6 +230,8 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 ## Known Limitations
 
 - 後工程の勝者行が消えている間に切削を分け直す／まとめると、勝者が戻ってもその後工程 set は切削の片と対応づかないことがある（数量の合計は保たれる）。
+- 完了済みで空・未リンクの切削 set B は取り込まれず、B に付いた後工程 C もたどらないため、A を分けても C に片ができない。B の完了を取り消して A を分け直せば戻る。
+- 切削の勝者行が CSV から消えると、その set に付いた後工程（取り込んだ切削行を含む）は行が戻るまで固定される。
 
 ## Ninth Review Revision (2026-11-07)
 
@@ -261,3 +263,13 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 検証: API `tsc --noEmit -p tsconfig.build.json`、web `tsc --noEmit -p tsconfig.json` と両 package の lint は成功。API の sessaku-pieces 配下と route テストは219件成功（実 DB 統合115件を含む、109.15秒）。web `vitest run src/features/kiosk/grindingPlanningBoard` は34ファイル・494件成功（16.20秒）。追加テストの修正前失敗と修正後成功も確認。
 
 指定 DB localhost:55491/lpp、dotenv 無効化・空の envDir で検証し、一時設定は削除。検証は約4分、最終 git diff --check 成功。開始時の既存 WIP はなく、変更5ファイルは本修正のみ。branch feat/later-process-pieces・HEAD 60585c1c を維持。秘密ファイルの読み取り、git の変更操作、migration/reset、既知の別件修正、UI 文言変更、デプロイは未実施。
+
+## Eleventh Review Revision (2026-11-07)
+
+- 親行の完了処理は、片の有無にかかわらず set が存在すればロック取得後に勝者を確認し、旧勝者への要求を 409 `SOURCE_ITEM_MISSING` で拒否する。未リンクで空の切削 set も同じ判定漏れを実 DB で再現できたため対象に含める。set がない通常行の処理とロック順は維持。
+- 実 DB 回帰テストを7件追加。後工程・切削の空 set の勝者交代→旧行への完了要求（intent/toggle）→数量復帰、勝者不在の後工程の未完了片削除／完了証跡保持、隣接／飛び飛びの部分結合での空 set 取り込み、切削3行＋研削1行で連続する空 set の一段リンク・数量復帰・全結合を確認。リンク関連の5件は修正前から成功し、追加の不具合修正は不要だった。
+- Known Limitations に、完了済みの空・未リンク切削 set の取り込み除外と、切削勝者不在中の後工程固定を追記。これらのコードは変更しない。
+
+検証: API `tsc --noEmit -p tsconfig.build.json`、web `tsc --noEmit -p tsconfig.json`、両 package の `pnpm lint` は成功。API の sessaku-pieces 配下・route と production-schedule-command の `vitest run` は9ファイル・240件すべて成功（実 DB 統合122件を含む、64.13秒）。追加の7件は修正前に旧勝者への完了2件だけが失敗し、修正後の対象検証も成功。
+
+指定 DB localhost:55491/lpp と既存の dotenv 無効化 preload・空の envDir 設定を使用し、秘密ファイルは読んでいない。検証は約3分で予算内。最終 `git diff --check` 成功。開始時の既存 WIP はなく、変更4ファイルは今回の修正のみ。branch feat/later-process-pieces・HEAD ae4e443a を維持。git の変更操作、migration/reset、既知の別件修正、UI 文言変更、デプロイは未実施。

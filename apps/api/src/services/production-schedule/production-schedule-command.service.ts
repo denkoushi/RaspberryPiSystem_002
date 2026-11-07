@@ -156,10 +156,12 @@ export async function driveProductionScheduleRowCompletion(params: {
       isCompleted = latest?.isCompleted === true;
       nextIsCompleted = drive.mode === 'toggle' ? !isCompleted : drive.intent === 'complete';
       unchanged = drive.mode === 'intent' && nextIsCompleted === isCompleted;
-      if (set?.pieces.length) {
-        pieceHandled = true;
+      if (set) {
         const winner = await findSessakuPieceWinner(tx, key);
         if (winner?.id !== row.id) throw new ApiError(409, '元行が更新されています', undefined, 'SOURCE_ITEM_MISSING');
+      }
+      if (set?.pieces.length) {
+        pieceHandled = true;
         const external = await tx.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: row.id } });
         if (external?.isExternallyCompleted && !nextIsCompleted) throw new ApiError(409, '外部完了は取消できません', undefined, 'EXTERNALLY_COMPLETED_ITEM');
         if (external?.isExternallyCompleted) { unchanged = true; nextIsCompleted = true; return; }

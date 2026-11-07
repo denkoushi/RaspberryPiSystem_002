@@ -23,7 +23,7 @@ import { encodeSessakuPieceKey, acquireSessakuPieceLogicalLocks, sessakuPieceKey
 import { reconcileSessakuPieceQuantities } from '../piece-quantity.js';
 import { reconcileSessakuPieceProgress } from '../piece-completion.js';
 import { lockSessakuPieceSourceRows, publishSessakuPieceProgress, readSessakuPiecePublicationState, synchronizeSessakuPieceSources } from '../piece-sync.js';
-import { setProductionScheduleRowCompletionIntent } from '../../production-schedule-command.service.js';
+import { driveProductionScheduleRowCompletion, setProductionScheduleRowCompletionIntent } from '../../production-schedule-command.service.js';
 import { ProgressSyncFromCsvService } from '../../progress-sync-from-csv.service.js';
 import { CsvDashboardIngestor } from '../../../csv-dashboard/csv-dashboard-ingestor.js';
 import { calculateProductionScheduleDataHash, PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from '../../row-resolver/index.js';
@@ -725,6 +725,130 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       await runOrderSupplementReplacementTransaction(prisma, { ...plan, scanned: 1, normalized: 1 });
       return source;
     };
+    const createCuttingRow = async (order: string) => {
+      const data = { ...rowData, FKOJUN: order };
+      const row = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: data, dataHash: `${site}-cutting-${order}`, occurredAt: new Date() } });
+      await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: row.id, sourceCsvDashboardId: site, productNo: '123', resourceCd: '1', processOrder: order, plannedQuantity: 5 } });
+      return { id: row.id, key: sessakuPieceKeyFromRow(data) };
+    };
+    const splitRow = async (id: string) => {
+      const p = (await board(false)).items.find((item) => item.sourceRowId === id)!;
+      return splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [1, 2, 2] });
+    };
+    const importRowQuantities = async (ids: string[], raw: string) => {
+      const rows = await prisma.csvDashboardRow.findMany({ where: { id: { in: ids } } });
+      const sources = rows.map((row) => {
+        const data = row.rowData as Record<string, string>;
+        return { id: row.id, source: toSupplementNormalizedRow('source', { ...data, plannedQuantity: raw })! };
+      });
+      const supplements = await prisma.productionScheduleOrderSupplement.findMany({ where: { csvDashboardRowId: { in: ids } } });
+      const plan = buildReplacementCreateInputs(sources.map(({ source }) => source),
+        new Map(sources.map(({ id, source }) => [buildOrderSupplementKey(source), id])),
+        new Map(supplements.map((supplement) => [buildOrderSupplementKey(supplement), supplement])), new Date());
+      await runOrderSupplementReplacementTransaction(prisma, { ...plan, scanned: ids.length, normalized: ids.length });
+    };
+    it.each(['later', 'cutting'])('rejects completion of the old winner of an empty %s set before quantity restoration', async (kind) => {
+      await splitThree();
+      if (kind === 'later') await laterQuantity(0); else await quantity(0);
+      const targetKey = kind === 'later' ? laterKey() : key();
+      const previousId = kind === 'later' ? nextRowId : rowId;
+      const before = (await readSessakuPieceSet(prisma, targetKey))!;
+      expect(before.pieces).toEqual([]);
+      expect(Boolean(before.sourcePieceSetId)).toBe(kind === 'later');
+      const replacementId = await reader.$transaction(async (tx) => {
+        await acquireSessakuPieceLogicalLocks(tx, [targetKey]);
+        const states = await readSessakuPiecePublicationState(tx, [targetKey]);
+        const previous = await tx.csvDashboardRow.findUniqueOrThrow({ where: { id: previousId } });
+        const replacement = await tx.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...previous.rowData as Prisma.InputJsonObject, ProductNo: '999' }, dataHash: `${site}-replacement`, occurredAt: new Date() } });
+        await tx.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: replacement.id, sourceCsvDashboardId: site, productNo: '999', resourceCd: targetKey.fsigencd, processOrder: targetKey.fkojun, plannedQuantity: 0 } });
+        await publishSessakuPieceProgress(tx, states);
+        return replacement.id;
+      });
+      expect((await findSessakuPieceWinner(prisma, targetKey))?.id).toBe(replacementId);
+      const oldProgress = await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: previousId } });
+      const newProgress = await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: replacementId } });
+      for (const drive of [{ mode: 'intent', intent: 'complete' }, { mode: 'toggle' }] as const) {
+        await expect(driveProductionScheduleRowCompletion({ rowId: previousId, locationKey: site, drive })).rejects.toMatchObject({ statusCode: 409, code: 'SOURCE_ITEM_MISSING' });
+      }
+      expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: previousId } })).toEqual(oldProgress);
+      expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: replacementId } })).toEqual(newProgress);
+      if (kind === 'later') { nextRowId = replacementId; await laterQuantity(5); }
+      else { rowId = replacementId; await quantity(5); await splitThree(); }
+      const restored = (await readSessakuPieceSet(prisma, targetKey))!;
+      expect(restored.pieces.map((piece) => piece.quantity)).toEqual([1, 2, 2]);
+      expect(restored.pieces.every((piece) => !piece.isCompleted && piece.completedAt === null)).toBe(true);
+      expect((await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: replacementId } }))?.isCompleted).not.toBe(true);
+    });
+    it.each([false, true])('adopts an empty cutting set with a missing later winner and fully merges (completed evidence=%s)', async (completed) => {
+      const a = await createCuttingRow('0');
+      await splitThree();
+      if (completed) await complete((await laterItems())[2]);
+      const c = (await readSessakuPieceSet(prisma, laterKey()))!;
+      await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
+      await quantity(0);
+      expect((await readSessakuPieceSet(prisma, key()))?.pieces).toEqual([]);
+      const r = await splitRow(a.id);
+      const source = (await readSessakuPieceSet(prisma, a.key))!;
+      expect((await readSessakuPieceSet(prisma, key()))?.sourcePieceSetId).toBe(source.id);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ sourcePieceSetId: source.id,
+        pieces: completed ? [{ id: c.pieces[2].id, sourcePieceId: null, isCompleted: true, quantity: 2 }] : [] });
+      await merge(r);
+      expect(await readSessakuPieceSet(prisma, key())).toBeNull();
+      const retained = await readSessakuPieceSet(prisma, laterKey());
+      if (completed) expect(retained).toMatchObject({ sourcePieceSetId: null, quantityWarning: null,
+        pieces: [{ id: c.pieces[2].id, sourcePieceId: null, isCompleted: true, quantity: 2, completedAt: c.pieces[2].completedAt }] });
+      else expect(retained).toBeNull();
+    });
+    it.each([false, true])('adopts an empty cutting set during partial merge with direct links (noncontiguous=%s)', async (noncontiguous) => {
+      const a = await createCuttingRow('0');
+      await splitThree();
+      await importRowQuantities([rowId, nextRowId], '0');
+      // A first skips completed, empty B and its already-owned C (a known limitation).
+      await setProductionScheduleRowCompletionIntent({ rowId, locationKey: site, intent: 'complete' });
+      const r = await splitRow(a.id);
+      expect((await readSessakuPieceSet(prisma, key()))?.sourcePieceSetId).toBeNull();
+      await setProductionScheduleRowCompletionIntent({ rowId, locationKey: site, intent: 'incomplete' });
+      const merged = await merge(r, [r.pieces[0], r.pieces[noncontiguous ? 2 : 1]]);
+      expect(merged.pieces).toHaveLength(2);
+      const source = (await readSessakuPieceSet(prisma, a.key))!;
+      for (const target of [key(), laterKey()]) expect(await readSessakuPieceSet(prisma, target)).toMatchObject({ sourcePieceSetId: source.id, pieces: [] });
+      await importRowQuantities([rowId, nextRowId], '5');
+      for (const target of [key(), laterKey()]) {
+        const saved = (await readSessakuPieceSet(prisma, target))!;
+        expect(saved.sourcePieceSetId).toBe(source.id);
+        expect(saved.pieces.map(({ sourcePieceId, quantity, position }) => ({ sourcePieceId, quantity, position })))
+          .toEqual(source.pieces.map(({ id, quantity, position }) => ({ sourcePieceId: id, quantity, position })));
+      }
+      await merge(merged);
+      for (const target of [key(), laterKey()]) expect(await readSessakuPieceSet(prisma, target)).toBeNull();
+    });
+    it('flattens two consecutive empty cutting sets before restoring quantities and fully merging', async () => {
+      const a = await createCuttingRow('0');
+      const c = await createCuttingRow('2');
+      const grindingData = { ...rowData, FSIGENCD: '2', FKOJUN: '3' };
+      const grindingKey = sessakuPieceKeyFromRow(grindingData);
+      await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: grindingData } });
+      await prisma.productionScheduleOrderSupplement.update({ where: { csvDashboardRowId: nextRowId }, data: { processOrder: '3' } });
+      await splitRow(c.id);
+      await importRowQuantities([c.id, nextRowId], '0');
+      await splitThree();
+      await importRowQuantities([rowId], '0');
+      const b = (await readSessakuPieceSet(prisma, key()))!;
+      expect(b).toMatchObject({ sourcePieceSetId: null, pieces: [] });
+      for (const target of [c.key, grindingKey]) expect(await readSessakuPieceSet(prisma, target)).toMatchObject({ sourcePieceSetId: b.id, pieces: [] });
+      const r = await splitRow(a.id);
+      const source = (await readSessakuPieceSet(prisma, a.key))!;
+      for (const target of [key(), c.key, grindingKey]) expect(await readSessakuPieceSet(prisma, target)).toMatchObject({ sourcePieceSetId: source.id, pieces: [] });
+      await importRowQuantities([rowId, c.id, nextRowId], '5');
+      for (const target of [key(), c.key, grindingKey]) {
+        const saved = (await readSessakuPieceSet(prisma, target))!;
+        expect(saved.sourcePieceSetId).toBe(source.id);
+        expect(saved.pieces.map(({ sourcePieceId, quantity, position }) => ({ sourcePieceId, quantity, position })))
+          .toEqual(source.pieces.map(({ id, quantity, position }) => ({ sourcePieceId: id, quantity, position })));
+      }
+      await merge(r);
+      for (const target of [key(), c.key, grindingKey]) expect(await readSessakuPieceSet(prisma, target)).toBeNull();
+    });
     it('preserves detached unfinished IDs, positions, quantities and overrides on repeated quantity sync', async () => {
       await quantity(3); await laterQuantity(3);
       const p = await parent();
