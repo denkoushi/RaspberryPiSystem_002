@@ -6438,6 +6438,8 @@ model ProductionScheduleSessakuPieceAuditLog {
   itemRevision        String?
   itemRevisions       Json
   resultVersion       Int?
+  requestedQuantities Json?
+  timing              Json?
 
   @@index([parentItemId, createdAt], map: "SessakuPieceAudit_parent_created_idx")
   @@index([requestId])

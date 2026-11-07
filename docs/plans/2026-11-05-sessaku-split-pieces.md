@@ -880,6 +880,8 @@ WHERE "parentItemId" = '<parentItemId>' ORDER BY "createdAt" DESC LIMIT 100;
 
 `beforeJson` / `afterJson` は片数 `count`、位置順の数量 `quantities` と対応する `pieceIds`、完了片ID `completedPieceIds`、親指示数 `plannedQuantity`。未分割・全片結合後の片数は0、配分は空配列。拒否・失敗では変更後も変更前と同じ値（rollback）、読める前に失敗した場合はJSON null。`expectedVersion` と `itemRevision` / `itemRevisions` は送信値、`resultVersion` は成功時だけ保存する。認証・入力検証前に失敗した場合や削除済みの片など、解決できないID・端末・数量は未記録/nullとなる。予期しない例外のメッセージは秘密情報を避けるため一般化する。
 
+`requestedQuantities` はsplitで要求された数量配列を成功・拒否・失敗とも別のnullable Json列に保存する（数値配列として解決できない入力はnull）。pinoには先頭20件まで記録する。`timing` も `afterJson` とは別のnullable Json列で、pinoには各項目を直接出す: `lockWaitMs`（transaction開始待ちとロック取得）、`beforeProjectionMs`（操作サイトの検証用投影と各サイトの変更前投影）、`siteCount`（対象サイト数）、`writeMs`（片・順位・進捗の書き込み等、変更前投影を除く）、`upsertCount`（override更新/挿入行数）、`afterProjectionMs`（応答用投影）、`totalMs`（監査保存を除く操作全体）。時間はms。拒否・失敗では到達した段階まで、未到達は0。migrationは既存監査表への上記2列追加のみ。
+
 管理者など既存の閲覧権限で `GET /api/clients/logs?category=sessaku-pieces`（ルートは `/clients/logs?category=sessaku-pieces`）を開き、contextの `action`、`itemId` / `parentItemId`、`errorCode`、`status`、`requestId` を確認する。画面側の失敗だけを既存errorTelemetryのキュー経由で送る。通常は5秒周期で送信し、オフライン時は既存キューに保持する。従業員名、NFCタグ、トークン、ヘッダー全体、任意のエラーオブジェクトは送らない。
 
 保持期間は既存 `ClientNetworkLogRetentionScheduler`（毎日03:20 JST）の30日・最大5000件×10バッチを共有する。ClientLogの対象categoryに `sessaku-pieces` を追加し、監査表も同じcutoffで別途最大10バッチを削除する。旧 `ProductionScheduleOrderSplitAuditLog` は利用・変更しない。

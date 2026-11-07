@@ -15,51 +15,58 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { isSendaiResourceGroupCd } from '../resource-master.service.js';
 import { type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
 import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
-import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
+import { buildMaxProductNoLogicalKeyPartitionExprs, buildMaxProductNoWinnerCondition, buildMaxProductNoWinnerSelectionOrderBySql } from '../row-resolver/index.js';
 import { asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
 
 
 export async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]): Promise<WinnerRow[]> {
-  return readWinnerRowsScoped(client, rowIds);
+  const ids = [...new Set(rowIds)];
+  if (ids.length === 0) return [];
+  // Small id sets: per-row winner lookup (same rule as the materialized winner set).
+  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
+    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
+    FROM "CsvDashboardRow"
+    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "CsvDashboardRow"."id"::text = ANY(${ids}::text[])
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+  `);
+}
+
+/**
+ * Winners among rows matching `fseibanFilter`, ranked only inside that subset.
+ * Equivalent to the dashboard-wide winner set because FSEIBAN is the first
+ * column of the winner PARTITION BY: a filter that depends only on the row's
+ * FSEIBAN keeps each partition either fully in or fully out, so ROW_NUMBER
+ * inside every kept partition is unchanged. Avoids materializing all winners
+ * of the dashboard (~100k rows) on every call.
+ */
+async function readWinnerRowsByFseibanFilter(client: DbClient, fseibanFilter: Prisma.Sql): Promise<WinnerRow[]> {
+  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
+    WITH "ranked" AS (
+      SELECT "r"."id", "r"."rowData", "r"."updatedAt",
+        ROW_NUMBER() OVER (
+          PARTITION BY ${Prisma.raw(buildMaxProductNoLogicalKeyPartitionExprs('r'))}
+          ORDER BY ${Prisma.raw(buildMaxProductNoWinnerSelectionOrderBySql('r'))}
+        ) AS "rn"
+      FROM "CsvDashboardRow" AS "r"
+      WHERE "r"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${fseibanFilter}
+    )
+    SELECT "id", "rowData", "updatedAt" FROM "ranked" WHERE "rn" = 1
+  `);
 }
 
 export async function readWinnerRowsByFseibans(client: DbClient, fseibans: readonly string[]): Promise<WinnerRow[]> {
   const values = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))];
   if (values.length === 0) return [];
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
-  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
-    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
-    FROM "CsvDashboardRow"
-    WHERE ${baseWhere}
-      AND "CsvDashboardRow"."rowData"->>'FSEIBAN' = ANY(${values}::text[])
-  `);
+  return readWinnerRowsByFseibanFilter(client, Prisma.sql`"r"."rowData"->>'FSEIBAN' = ANY(${values}::text[])`);
 }
 
 /** Matches the logical-key identity (`COALESCE(raw, '')`) exactly, unlike the trimmed FSEIBAN lookup. */
 export async function readWinnerRowsByLogicalKeyFseibans(client: DbClient, fseibans: readonly string[]): Promise<WinnerRow[]> {
   const values = [...new Set(fseibans)];
   if (values.length === 0) return [];
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
-  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
-    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
-    FROM "CsvDashboardRow"
-    WHERE ${baseWhere}
-      AND COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '') = ANY(${values}::text[])
-  `);
-}
-
-async function readWinnerRowsScoped(client: DbClient, rowIds?: readonly string[]): Promise<WinnerRow[]> {
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
-  const scope = rowIds === undefined
-    ? Prisma.empty
-    : rowIds.length === 0
-      ? Prisma.sql`AND FALSE`
-      : Prisma.sql`AND "CsvDashboardRow"."id"::text = ANY(${[...new Set(rowIds)]}::text[])`;
-  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
-    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
-    FROM "CsvDashboardRow"
-    WHERE ${baseWhere} ${scope}
-  `);
+  return readWinnerRowsByFseibanFilter(client, Prisma.sql`COALESCE("r"."rowData"->>'FSEIBAN', '') = ANY(${values}::text[])`);
 }
 
 function planningDetailToRowDetail(row: LeaderboardScheduleRowSql): RowDetail {

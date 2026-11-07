@@ -140,9 +140,9 @@ describe('PlanningBoardPiecePopover', () => {
     if (before === 5) fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
     const updated = { ...row, plannedQuantity: after };
     h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={updated} /></PlanningBoardPiecesContext.Provider>);
-    expect(screen.getByLabelText('分け数')).toHaveTextContent('2');
+    expect(screen.getByLabelText('分け数')).toHaveTextContent(after === 3 ? '3' : '2');
     fireEvent.click(screen.getByRole('button', { name: '分ける' }));
-    await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(updated, after === 3 ? [1, 2] : [1, 1]));
+    await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(updated, after === 3 ? [1, 1, 1] : [1, 1]));
   });
   it('preserves an edited distribution when only the revision changes', async () => {
     const h = setup();
@@ -153,6 +153,7 @@ describe('PlanningBoardPiecePopover', () => {
     const updated = { ...row, itemRevision: 'new' };
     h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={updated} /></PlanningBoardPiecesContext.Provider>);
     expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '分ける' }));
     await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(updated, [2, 2, 1]));
   });
@@ -274,20 +275,66 @@ describe('PlanningBoardPiecePopover', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     } finally { vi.useRealTimers(); }
   });
-  it.each(['split', 'merge'])('guards counter and %s buttons for the whole opening gesture', (operation) => {
+  it.each(['split', 'merge'])('allows counters immediately and guards %s for the opening gesture', (operation) => {
     vi.useFakeTimers();
     try {
       const items = [piece('a', 2), piece('b', 3)];
       const h = setup(items[1], items);
       fireEvent.click(screen.getByRole('button'));
-      for (const button of screen.getAllByRole('button').slice(1)) expect(button).toBeDisabled();
+      expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: '1片目の数量を増やす' })).toBeEnabled();
       fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' }));
       act(() => { vi.advanceTimersByTime(349); });
       expect(h.onSplit).not.toHaveBeenCalled(); expect(h.onMerge).not.toHaveBeenCalled();
-      expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled();
       act(() => { vi.advanceTimersByTime(1); });
       expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled();
       expect(screen.getByRole('button', { name: operation === 'split' ? '分ける' : 'まとめる' })).toBeEnabled();
+    } finally { vi.useRealTimers(); }
+  });
+  it.each([6, undefined, 1, NaN])('retains three parts across quantity 5 → %s → 5', (temporary) => {
+    vi.useFakeTimers();
+    try {
+      const h = setup();
+      fireEvent.click(screen.getByRole('button'));
+      fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+      expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+      const update = (plannedQuantity: number | undefined) => h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={{ ...row, plannedQuantity }} /></PlanningBoardPiecesContext.Provider>);
+      update(temporary);
+      act(() => { vi.advanceTimersByTime(350); });
+      if (temporary === 6) {
+        expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+        for (let i = 1; i <= 3; i++) expect(screen.getByLabelText(`${i}片目の数量`)).toHaveTextContent('2');
+      } else {
+        expect(screen.getByRole('button', { name: '分ける' })).toBeDisabled();
+        expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+        expect(screen.getByLabelText('1片目の数量')).toHaveTextContent('1');
+      }
+      update(5);
+      expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+      fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ plannedQuantity: 5 }), [1, 2, 2]);
+    } finally { vi.useRealTimers(); }
+  });
+  it('clamps the count to a smaller valid quantity', () => {
+    const h = setup(); fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={{ ...row, plannedQuantity: 2 }} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByLabelText('分け数')).toHaveTextContent('2');
+    expect(screen.getByLabelText('1片目の数量')).toHaveTextContent('1');
+    expect(screen.getByLabelText('2片目の数量')).toHaveTextContent('1');
+  });
+  it('disables invalid splits without silently resetting the count', () => {
+    vi.useFakeTimers();
+    try {
+      const h = setup(); fireEvent.click(screen.getByRole('button'));
+      fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+      h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={{ ...row, plannedQuantity: 6_442_450_944 }} /></PlanningBoardPiecesContext.Provider>);
+      act(() => { vi.advanceTimersByTime(350); });
+      expect(screen.getByRole('button', { name: '分ける' })).toBeDisabled();
+      fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+      expect(h.onSplit).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
   it('disables count controls during its own save while keeping Escape active', async () => {

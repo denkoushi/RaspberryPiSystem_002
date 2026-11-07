@@ -1082,7 +1082,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       renderSeibanBoard();
       const other = screen.getByTestId('planning-board-item-c');
       fireEvent.click(within(other).getByRole('button', { name: /の数量/ }));
-      await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
       fireEvent.click(within(screen.getByTestId('planning-board-item-piece:0')).getByRole('button', { name: '完了にする' }));
       await waitFor(() => expect(mocks.pieceCompletion).toHaveBeenCalledTimes(1));
       expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeDisabled();

@@ -21,18 +21,22 @@ describe('sessaku piece routes', () => {
     const instance = await app(); mocks.split.mockResolvedValue({ pieceSetVersion: 1 });
     const payload = { parentItemId: 'row:parent', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'a'.repeat(64), siteKey: 'untrusted' };
     expect((await instance.inject({ method: 'POST', headers: { 'x-client-key': 'test-client' }, url: `${base}/split`, payload })).statusCode).toBe(200);
-    expect(mocks.split).toHaveBeenCalledWith({ ...payload, siteKey: 'server-site', audit: expect.objectContaining({ actorClientDeviceId: 'device-1', actorDeviceName: expect.any(String), requestId: expect.any(String) }) }); await instance.close();
+    expect(mocks.split).toHaveBeenCalledWith({ ...payload, siteKey: 'server-site', audit: expect.objectContaining({ requestedQuantities: [2, 3], actorClientDeviceId: 'device-1', actorDeviceName: expect.any(String), requestId: expect.any(String) }) }); await instance.close();
   });
   it.each([[0, 5], [-1, 6], [1.5, 3.5], [5]])('rejects invalid quantities %j', async (...quantities) => {
     const instance = await app();
     expect((await instance.inject({ method: 'POST', headers: { 'x-client-key': 'test-client' }, url: `${base}/split`, payload: { parentItemId: 'row:parent', quantities, expectedPieceSetVersion: 0, itemRevision: 'a'.repeat(64) } })).statusCode).toBe(400);
-    expect(mocks.split).not.toHaveBeenCalled(); await instance.close();
+    expect(mocks.split).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ requestedQuantities: quantities, outcome: 'rejected', httpStatus: 400 }) });
+    await instance.close();
   });
   it('requires authentication and preserves gate errors', async () => {
     const denied = await app(false); expect((await denied.inject({ method: 'POST', headers: { 'x-client-key': 'test-client' }, url: `${base}/split`, payload: {} })).statusCode).toBe(401);
     expect(prisma.productionScheduleSessakuPieceAuditLog.create).not.toHaveBeenCalled(); await denied.close();
     const instance = await app(); mocks.split.mockRejectedValue(new ApiError(403, 'disabled', undefined, 'SESSAKU_PIECES_CREATE_DISABLED'));
-    expect((await instance.inject({ method: 'POST', headers: { 'x-client-key': 'test-client' }, url: `${base}/split`, payload: { parentItemId: 'row:parent', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'a'.repeat(64) } })).statusCode).toBe(403); await instance.close();
+    expect((await instance.inject({ method: 'POST', headers: { 'x-client-key': 'test-client' }, url: `${base}/split`, payload: { parentItemId: 'row:parent', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'a'.repeat(64) } })).statusCode).toBe(403);
+    expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ requestedQuantities: [2, 3], outcome: 'rejected', httpStatus: 403 }) });
+    await instance.close();
   });
   it.each([true, false])('records uncomplete for an invalid incomplete request (authenticated=%s)', async (authenticated) => {
     const logs: unknown[] = [];

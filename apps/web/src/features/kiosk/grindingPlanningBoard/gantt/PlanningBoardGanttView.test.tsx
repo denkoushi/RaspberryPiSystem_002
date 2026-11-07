@@ -799,8 +799,24 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
     fireEvent.click(screen.getByRole('button', { name: '1片目の数量を増やす' }));
     expect(screen.getByLabelText('3片目の数量')).toHaveTextContent('3');
+    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '分ける' }));
     await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([entry], [5, 4, 3]));
+  });
+  it('retains three parts in an open chain dialog across quantity refreshes and submits the latest item', async () => {
+    const entry = item({ plannedQuantity: 5 }); const changePieces = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<PieceGantt items={[entry]} changePieces={changePieces} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /の数量/ }));
+    fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    rerender(<PieceGantt items={[{ ...entry, plannedQuantity: 6 }]} changePieces={changePieces} />);
+    expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+    const updated = { ...entry, itemRevision: 'r3' };
+    rerender(<PieceGantt items={[updated]} changePieces={changePieces} />);
+    expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([updated], [1, 2, 2]));
   });
   it('splits from a reused chain bar with the latest item revision', async () => {
     const entry = item({ plannedQuantity: 5 });
