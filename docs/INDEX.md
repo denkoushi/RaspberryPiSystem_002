@@ -2089,6 +2089,7 @@ APIの概要と詳細。
 
 - [Hermes spare-capacity preparation](plans/hermes-background-admission.md)
 
+- [Carry cutting pieces into later processes](plans/2026-11-07-later-process-pieces.md) — linked piece structure, independent completion and quantity reconciliation.
 - [Hermes background worker implementation](plans/hermes-background-worker.md)
 - [Nightly security review runbook](runbooks/nightly-security-review.md) — enable, read private reports, manage known findings, and disable.
 - [Nightly security and error review](plans/nightly-security-review-execplan.md) — business LLM reads deployed changes and log digests at night; Claude verifies in the morning.

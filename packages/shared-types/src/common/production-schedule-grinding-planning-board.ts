@@ -103,6 +103,7 @@ export interface GrindingPlanningBoardItem {
   sourceRowId: string;
   parentItemId?: string;
   pieceId?: string;
+  sourcePieceId?: string;
   piecePosition?: number;
   pieceSetVersion?: number;
   quantity?: number;
@@ -326,6 +327,7 @@ export interface SessakuPieceCompletionRequest {
   itemRevision: string;
 }
 export interface SessakuPiecesMutationResponse {
+  affectedItemIds?: string[];
   parentItemId: string;
   pieceSetVersion: number;
   quantityWarning: SessakuPieceQuantityWarning | null;

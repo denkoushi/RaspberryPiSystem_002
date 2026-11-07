@@ -219,6 +219,25 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     beforeEach(() => {
       vi.spyOn(machineSignalApi, 'getMachineSignalResourceUptime').mockResolvedValue({ endDate: null, days: 30, resources: [] });
     });
+    it.each([false, true])('clears affected later selections returned by split and preserves other parts (piece=%s)', async (asPiece) => {
+      const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
+      data.resourceCategories['305'] = 'cutting';
+      const root = data.items[0]!;
+      const later: GrindingPlanningBoardItem = { ...root, itemId: asPiece ? 'piece:later' : 'later-parent', sourceRowId: 'later-source',
+        kind: asPiece ? 'piece' : 'row', parentItemId: asPiece ? 'later-parent' : undefined, pieceId: asPiece ? 'later-id' : undefined,
+        sourcePieceId: asPiece ? 'cut-id' : undefined, plannedQuantity: 2, parentPlannedQuantity: asPiece ? 5 : undefined };
+      const other = data.items[2]!; data.items = [root, later, other];
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.pieceSplit.mockResolvedValue({ pieces: [], affectedItemIds: [root.itemId, 'later-parent', later.itemId] });
+      renderSeibanBoard();
+      for (const item of data.items) fireEvent.click(within(screen.getByTestId(`planning-board-item-${item.itemId}`)).getByRole('checkbox'));
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${root.itemId}`)).getByRole('button', { name: /の数量/ }));
+      await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled()); fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+      await waitFor(() => expect(mocks.pieceSplit).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(within(screen.getByTestId(`planning-board-item-${later.itemId}`)).getByRole('checkbox')).not.toBeChecked());
+      expect(within(screen.getByTestId(`planning-board-item-${root.itemId}`)).getByRole('checkbox')).not.toBeChecked();
+      expect(within(screen.getByTestId(`planning-board-item-${other.itemId}`)).getByRole('checkbox')).toBeChecked();
+    });
     it.each(['split', 'merge'])('keeps unrelated selection interactive during %s', async (operation) => {
       const data = operation === 'split' ? { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } } : splitBoard();
       if (operation === 'merge') data.items.push(fixture().items[2]!);

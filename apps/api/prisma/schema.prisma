@@ -6412,6 +6412,10 @@ model ProductionScheduleSessakuPiece {
   completedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  sourcePieceId String?
+  sourcePiece ProductionScheduleSessakuPiece? @relation("LaterProcessPieces", fields: [sourcePieceId], references: [id], onDelete: Restrict, map: "PSSPiece_source_fk")
+  laterProcessPieces ProductionScheduleSessakuPiece[] @relation("LaterProcessPieces")
+  @@index([sourcePieceId], map: "PSSPiece_source_idx")
   pieceSet ProductionScheduleSessakuPieceSet @relation(fields: [pieceSetId], references: [id], onDelete: Cascade, map: "PSSPiece_set_fk")
   @@unique([pieceSetId, position], map: "PSSPiece_position_key")
 }

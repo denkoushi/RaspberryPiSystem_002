@@ -36,10 +36,18 @@ export function sessakuPieceSetWhere(key: SessakuPieceLogicalKey) {
   return { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: key.fseiban, fhincd: key.fhincd, fsigencd: key.fsigencd, fkojun: key.fkojun };
 }
 export async function acquireSessakuPieceLogicalLocks(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[]): Promise<void> {
-  for (const encoded of [...new Set(keys.map(encodeSessakuPieceKey))].sort()) {
+  for (const encoded of [...new Set((await readRelatedSessakuPieceKeys(tx, keys)).map(encodeSessakuPieceKey))].sort()) {
     const lock = `sessaku-pieces:${PRODUCTION_SCHEDULE_DASHBOARD_ID}:${encoded}`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`;
   }
+}
+/** Lock every existing set of the same part together, including its cutting source. */
+async function readRelatedSessakuPieceKeys(client: SessakuPieceClient, keys: readonly SessakuPieceLogicalKey[]) {
+  if (!keys.length) return [];
+  const sets = await client.productionScheduleSessakuPieceSet.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [...new Map(keys.map(({ fseiban, fhincd }) => [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }])).values()] }
+  });
+  return [...keys, ...sets];
 }
 export async function readSessakuPieceSet(client: SessakuPieceClient, key: SessakuPieceLogicalKey): Promise<SessakuPieceSet | null> {
   return client.productionScheduleSessakuPieceSet.findUnique({

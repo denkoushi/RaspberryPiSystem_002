@@ -56,6 +56,19 @@ describe('PlanningBoardItemTable completion', () => {
     expect(screen.getByRole('table').querySelectorAll('col')).toHaveLength(5);
   });
 
+  it('keeps the linked later piece completion button available without structural controls', () => {
+    const later = item('piece:later', { kind: 'piece', pieceId: 'later', sourcePieceId: 'cut', parentItemId: 'parent', pieceSetVersion: 1,
+      quantity: 2, plannedQuantity: 2, parentPlannedQuantity: 5 });
+    const onCompleteToggle = vi.fn();
+    const actions = { enabled: true, createEnabled: true, isCutting: () => true, selectedItemsByParent: new Map(),
+      subscribeBlocking: () => () => {}, getBlocking: () => ({ blocked: false, message: '保存中…', isError: false }), onSplit: vi.fn(), onMerge: vi.fn() };
+    render(<PlanningBoardPiecesContext.Provider value={actions}><PlanningBoardItemTable {...props} items={[later]} onCompleteToggle={onCompleteToggle} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByText('2／5')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /の数量/ })).not.toBeInTheDocument();
+    const button = screen.getByRole('button', { name: '完了にする' }); expect(button).toBeEnabled(); fireEvent.click(button);
+    expect(onCompleteToggle).toHaveBeenCalledWith(later, 'complete');
+  });
+
   it.each(['td', 'tr'])('blocks special-due clicks falling through locked controls to %s without replacing the row', (target) => {
     const onSpecialDueClick = vi.fn();
     const table = <PlanningBoardItemTable {...props} onCompleteToggle={vi.fn()} specialDueMode="today" onSpecialDueClick={onSpecialDueClick} />;

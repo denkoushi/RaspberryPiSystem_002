@@ -96,6 +96,20 @@ describe('PlanningBoardPiecePopover', () => {
     expect(getParent).toHaveBeenCalledTimes(1000);
     expect(screen.getAllByRole('button').every((button) => !button.hasAttribute('disabled'))).toBe(true);
   });
+  it.each(['table', 'gantt'] as const)('shows linked later quantity without split/merge controls (%s)', (variant) => {
+    const items = [piece('a', 2, { sourcePieceId: 'cut-a' }), piece('b', 3, { sourcePieceId: 'cut-b' })];
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { 'CUT-1': 'cutting' }, selectedItems: items, changePieces: vi.fn() }));
+    expect(result.current.selectedItemsByParent.size).toBe(0);
+    render(<PlanningBoardPiecesContext.Provider value={result.current}><PlanningBoardPiecePopover item={items[0]} selected variant={variant} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByText('2／5')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByText('▾')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('2／5'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('分ける')).not.toBeInTheDocument();
+    expect(screen.queryByText('まとめる')).not.toBeInTheDocument();
+  });
   it('splits five into 2+3, bounds the counter and restores focus on Escape', async () => {
     const { onSplit } = setup();
     const trigger = screen.getByRole('button', { name: '部品Aの数量 5個' });

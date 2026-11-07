@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planSessakuPieceQuantities } from '../piece-quantity.js';
+import { planLaterProcessPieceQuantities, planSessakuPieceQuantities } from '../piece-quantity.js';
 const pieces = (completed = true) => [{ id: 'a', position: 1, quantity: 2, isCompleted: completed }, { id: 'b', position: 2, quantity: 3, isCompleted: false }];
 describe('sessaku piece quantity reconciliation', () => {
   it.each([[7, [2, 5]], [4, [2, 2]], [2, [2]]])('keeps completed quantities and absorbs total %s at the tail', (total, expected) => {
@@ -62,4 +62,37 @@ describe('empty piece-set quantity warnings', () => {
   it.each([null, -1, NaN, 0, 7])('keeps tombstones warning-free for total %s', (total) => {
     expect(planSessakuPieceQuantities([], total, false, 3)).toEqual({ pieces: [], quantityWarning: null, nextPosition: 3 });
   });
+});
+
+describe('later process quantity planning', () => {
+  const sources = [1, 2, 2].map((quantity, index) => ({ id: `source-${index}`, position: index + 1, quantity, isCompleted: false }));
+  const later = sources.map((piece) => ({ ...piece, id: `later-${piece.id}`, sourcePieceId: piece.id }));
+  it.each([[7, [1, 2, 4]], [5, [1, 2, 2]], [4, [1, 2, 1]], [2, [1, 1]], [0, []]])('absorbs later total %s from the final unfinished piece', (total, quantities) => {
+    const plan = planLaterProcessPieceQuantities(later, sources, total, false, 4);
+    expect(plan.pieces.map((piece) => piece.quantity)).toEqual(quantities);
+    expect(plan.quantityWarning).toBeNull();
+    expect(plan.pieces.every((piece) => piece.sourcePieceId)).toBe(true);
+  });
+  it('starts from updated cutting quantities and positions, retaining later identities', () => {
+    const next = sources.map((piece, index) => ({ ...piece, quantity: [2, 3, 4][index] }));
+    const plan = planLaterProcessPieceQuantities(later, next, 10, false, 4);
+    expect(plan.pieces.map((piece) => [piece.id, piece.quantity])).toEqual(later.map((piece, index) => [piece.id, [2, 3, 5][index]]));
+    expect(later.map((piece) => piece.quantity)).toEqual([1, 2, 2]);
+  });
+  it('preserves later completion independently of cutting and warns on impossible totals', () => {
+    const completed = later.map((piece) => ({ ...piece, isCompleted: true }));
+    const plan = planLaterProcessPieceQuantities(completed, sources, 4, false, 4);
+    expect(plan.pieces).toEqual(completed);
+    expect(plan.quantityWarning).toBe('COMPLETED_QUANTITY_EXCEEDS_PLAN');
+    expect(planLaterProcessPieceQuantities(later, sources, null, false, 4).quantityWarning).toBe('INVALID_PLANNED_QUANTITY');
+  });  it('retains completed and unfinished tail identities when a later plan grew after completion', () => {
+    const completed = later.map((piece) => ({ ...piece, isCompleted: true }));
+    const grown = planLaterProcessPieceQuantities(completed, sources, 7, false, 4);
+    expect(grown.pieces.map((piece) => piece.quantity)).toEqual([1, 2, 2, 2]);
+    const again = planLaterProcessPieceQuantities(grown.pieces as typeof later, sources, 7, false, grown.nextPosition);
+    expect(again).toEqual(grown);
+    const finished = grown.pieces.map((piece) => ({ ...piece, isCompleted: true })) as typeof later;
+    expect(planLaterProcessPieceQuantities(finished, sources, 7, false, grown.nextPosition).pieces).toEqual(finished);
+  });
+
 });
