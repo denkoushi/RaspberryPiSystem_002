@@ -23,7 +23,7 @@ import { deployWindowEndedAt } from './kiosk-deploy-window.js';
 import { loadHeartbeatAlertConfig } from './client-heartbeat-alert-policy.js';
 
 const isKioskLog = (entry: ClientTelemetryLogEntry) =>
-  entry.context?.category === 'kiosk_ui_error' || entry.context?.category === 'kiosk_net_stats';
+  entry.context?.category === 'kiosk_ui_error' || entry.context?.category === 'kiosk_net_stats' || entry.context?.category === 'sessaku-pieces';
 
 async function createTelemetrySlackAlerts(params: {
   clientId: string;

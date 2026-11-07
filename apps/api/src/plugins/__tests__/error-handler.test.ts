@@ -1,6 +1,8 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
+import { z } from 'zod';
+import { classifyErrorResponse } from '../../lib/error-response.js';
 import { registerErrorHandler } from '../error-handler.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError, DomainHttpError } from '../../lib/errors.js';
@@ -134,6 +136,38 @@ describe('Prisma record not found (P2025)', () => {
       const res = await instance.inject({ method: 'PUT', url: '/items/x' });
       expect(res.statusCode).toBe(400);
       expect(res.json()).toMatchObject({ errorCode: 'P2000' });
+    } finally {
+      await instance.close();
+    }
+  });
+});
+
+
+describe('shared error classification preserves responses and logs', () => {
+  const known = (code: string) => new PrismaClientKnownRequestError('database failure', { code, clientVersion: 'test' });
+  it.each([
+    [new ApiError(409, 'conflict', undefined, 'CONFLICT'), 409, 'CONFLICT', 'CONFLICT'],
+    [new ApiError(403, 'disabled'), 403, 'API_ERROR_403', undefined],
+    [new DomainHttpError(403, 'disabled'), 403, 'API_ERROR_403', undefined],
+    [z.string().safeParse(null).error, 400, 'VALIDATION_ERROR', 'VALIDATION_ERROR'],
+    [Object.assign(new Error('schema'), { validation: [] }), 400, 'SCHEMA_VALIDATION_ERROR', 'SCHEMA_VALIDATION_ERROR'],
+    ...['P2025', 'P2002', 'P2003', 'P2010'].map((code) => [known(code), code === 'P2025' ? 404 : 400, code, code]),
+    ...['P2025', 'P2002', 'P2003'].map((code) => [Object.assign(new Error('fallback'), { code }), code === 'P2025' ? 404 : 400, code, code]),
+    [Object.assign(new Error('limited'), { statusCode: 429, code: 'FST_LIMIT' }), 429, 'HTTP_429', 'HTTP_429'],
+    [Object.assign(new Error('unknown Prisma-like'), { code: 'P2010' }), 500, 'UNHANDLED_ERROR', 'UNHANDLED_ERROR'],
+    [new Error('unknown'), 500, 'UNHANDLED_ERROR', 'UNHANDLED_ERROR']
+  ])('preserves classification for %s', async (error, status, errorCode, responseCode) => {
+    const logs: unknown[] = [];
+    const instance = Fastify({ logger: { stream: { write: (line: string) => { logs.push(JSON.parse(line)); } } } });
+    registerErrorHandler(instance);
+    instance.get('/fail', async () => { throw error; });
+    try {
+      const response = await instance.inject('/fail');
+      expect(classifyErrorResponse(error)).toEqual({ status, errorCode });
+      expect(response.statusCode).toBe(status);
+      expect(response.json().errorCode).toBe(responseCode);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(logs).toContainEqual(expect.objectContaining({ errorCode }));
     } finally {
       await instance.close();
     }

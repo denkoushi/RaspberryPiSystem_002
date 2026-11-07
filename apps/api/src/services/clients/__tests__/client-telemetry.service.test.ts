@@ -341,13 +341,13 @@ describe('kiosk UI logs', () => {
     expect(prisma.alert.findFirst).not.toHaveBeenCalled();
     uptime.mockRestore();
   });
-  it('identifies kiosk_net_stats by the registered device and never alerts', async () => {
+  it.each(['kiosk_net_stats', 'sessaku-pieces'])('identifies %s by the registered device and never alerts', async (category) => {
     await storeClientLogs({ clientKey: 'key', clientId: 'kiosk-web', requestId: 'req', logs: [
-      { level: 'ERROR', message: 'stats', context: { category: 'kiosk_net_stats', requests: 100, failures: 90, clientDeviceId: 'spoof', clientDeviceName: 'spoof' } },
+      { level: 'ERROR', message: 'stats', context: { category, requests: 100, failures: 90, clientDeviceId: 'spoof', clientDeviceName: 'spoof' } },
       { level: 'WARN', message: 'weak wifi', context: { category: 'network_health', signalDbm: -90 } }
     ] });
     expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [
-      expect.objectContaining({ clientId: 'pi4-real', context: { category: 'kiosk_net_stats', requests: 100, failures: 90, clientDeviceId: 'device-1', clientDeviceName: '組立端末' } }),
+      expect.objectContaining({ clientId: 'pi4-real', context: { category, requests: 100, failures: 90, clientDeviceId: 'device-1', clientDeviceName: '組立端末' } }),
       expect.objectContaining({ clientId: 'kiosk-web', context: { category: 'network_health', signalDbm: -90 } })
     ] });
     expect(prisma.alert.findFirst).not.toHaveBeenCalled();
