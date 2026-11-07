@@ -18,7 +18,7 @@ import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
 type LaterProcess = { key: SessakuPieceLogicalKey; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean };
 
-async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>) {
+async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>, discoverUnsplit: boolean) {
   const rows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => {
     const candidate = sessakuPieceKeyFromRow(row.rowData);
     return candidate.fhincd === key.fhincd && compareProcessOrder(candidate.fkojun, key.fkojun) > 0;
@@ -37,6 +37,7 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
     return { key: laterSet, set: laterSet, hasWinner: Boolean(row), plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
       completed: detail?.productionScheduleProgress?.isCompleted === true || detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true };
   });
+  if (!discoverUnsplit) return result;
   for (const row of rows) {
     const candidate = sessakuPieceKeyFromRow(row.rowData);
     if (result.some((process) => encodeSessakuPieceKey(process.key) === encodeSessakuPieceKey(candidate))) continue;
@@ -50,7 +51,7 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
 
 function assertLaterProcessesEditable(later: LaterProcess[]) {
   if (later.some(({ set }) => set?.quantityWarning)) conflict('PIECE_QUANTITY_CONFLICT');
-  if (later.some(({ set, completed }) => completed || set?.pieces.some((piece) => piece.isCompleted))) {
+  if (later.some(({ set, completed, hasWinner }) => hasWinner && (completed || set?.pieces.some((piece) => piece.isCompleted)))) {
     throw new ApiError(409, '後工程の片が完了しています', undefined, 'LATER_PROCESS_PIECE_COMPLETED');
   }
 }
@@ -110,9 +111,16 @@ async function replaceSiteItems(tx: Prisma.TransactionClient, key: SessakuPieceL
   await tx.productionScheduleGrindingPlanningBoardState.update({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } }, data: { version: { increment: 1 } } });
 }
 async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], removedSourceIds: string[]) {
-  const ids = later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId && removedSourceIds.includes(piece.sourcePieceId)).map((piece) => piece.id) ?? []);
+  const references = later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId && removedSourceIds.includes(piece.sourcePieceId)) ?? []);
+  const ids = references.filter((piece) => !piece.isCompleted).map((piece) => piece.id);
+  await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: references.filter((piece) => piece.isCompleted).map((piece) => piece.id) } }, data: { sourcePieceId: null } });
   await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: ids.map((id) => `piece:${id}`) } } });
   await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids } } });
+  for (const { set, hasWinner } of later) {
+    if (!hasWinner && set && !set.pieces.some((piece) => piece.sourcePieceId && !removedSourceIds.includes(piece.sourcePieceId))) {
+      await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: null, version: { increment: 1 } } });
+    }
+  }
 }
 
 async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], source: Awaited<ReturnType<typeof readSessakuPieceSet>>, sites: string[], before: Map<string, Awaited<ReturnType<typeof projection>>>) {
@@ -133,7 +141,7 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
   }
 }
 
-async function operate(params: { siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext }, action: (tx: Prisma.TransactionClient, context: {
+async function operate(params: { siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext; discoverUnsplitLater?: boolean }, action: (tx: Prisma.TransactionClient, context: {
   key: SessakuPieceLogicalKey; winner: NonNullable<Awaited<ReturnType<typeof findSessakuPieceWinner>>>;
   set: Awaited<ReturnType<typeof readSessakuPieceSet>>; current: Awaited<ReturnType<typeof projection>>;
   external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
@@ -153,7 +161,7 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
         await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE`;
       }
       const set = await readSessakuPieceSet(tx, key);
-      const later = await readLaterProcesses(tx, key, set);
+      const later = await readLaterProcesses(tx, key, set, params.discoverUnsplitLater === true);
       const relatedItemIds = later.flatMap((process) => [sessakuPieceParentItemId(process.key), ...(process.set?.pieces ?? []).map((piece) => `piece:${piece.id}`)]);
       const siteOverrides = await tx.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: [...relatedItemIds, params.parentItemId, ...(set?.pieces ?? []).map((piece) => `piece:${piece.id}`)] } }, select: { siteKey: true } });
       const overrideSites = new Set(siteOverrides.map((o) => o.siteKey));
@@ -196,7 +204,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     parentItemId: params.parentItemId, pieceIds: params.targetPieceId ? [params.targetPieceId] : [], itemRevision: params.itemRevision }, (audit) => splitSessakuPieces({ ...params, audit }));
   try { params.audit.fseiban = decodeSessakuPieceParentItemId(params.parentItemId).fseiban; } catch { /* Invalid IDs are rejected by operate when enabled. */ }
   if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true') throw new ApiError(403, '分割作成は無効です', undefined, 'SESSAKU_PIECES_CREATE_DISABLED');
-  return operate(params, async (tx, c) => {
+  return operate({ ...params, discoverUnsplitLater: true }, async (tx, c) => {
     assertCuttingPieceSet(c.set);
     const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
     if (!isProductionScheduleCuttingResourceCd(c.key.fsigencd, policy)) throw new ApiError(403, '切削工程だけ分割できます', undefined, 'RESOURCE_CATEGORY_MISMATCH');
@@ -238,7 +246,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
 export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
   if (!params.audit) return runSessakuPieceOperation({ action: 'merge', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
     parentItemId: params.parentItemId, pieceIds: params.pieceIds, itemRevisions: params.itemRevisions }, (audit) => mergeSessakuPieces({ ...params, audit }));
-  return operate(params, async (tx, c) => {
+  return operate({ ...params, discoverUnsplitLater: true }, async (tx, c) => {
     assertCuttingPieceSet(c.set);
     const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
     if (!isProductionScheduleCuttingResourceCd(c.key.fsigencd, policy)) throw new ApiError(403, '切削工程だけ結合できます', undefined, 'RESOURCE_CATEGORY_MISMATCH');

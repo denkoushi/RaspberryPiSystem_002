@@ -26,6 +26,7 @@ describe('ProgressSyncFromCsvService', () => {
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([persisted] as never);
     vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mockResolvedValue([]);
     vi.mocked(prisma.productionScheduleProgress.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.productionScheduleProgress.upsert).mockResolvedValue({} as never);
   });
 
   it.each([
@@ -42,7 +43,7 @@ describe('ProgressSyncFromCsvService', () => {
     ] as never);
     await service.sync({ candidates: [candidate] });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     if (expected === null) expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
     else expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       where: { csvDashboardRowId: candidate.rowId }, create: expect.objectContaining({ isCompleted: expected }), update: expect.objectContaining({ isCompleted: expected })
@@ -88,14 +89,46 @@ describe('ProgressSyncFromCsvService', () => {
     expect(prisma.productionScheduleProgress.findMany).toHaveBeenCalledTimes(3);
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(250);
   });
-  it('continues later batches after a rollback and logs only count and a few row IDs', async () => {
+  it('retries a failed batch row by row and continues later batches', async () => {
     const candidates = Array.from({ length: 250 }, (_, index) => ({ ...candidate, rowId: `row-${index}` }));
     vi.mocked(prisma.$transaction).mockRejectedValueOnce(new Error('SQL private values'));
     vi.mocked(prisma.csvDashboardRow.findMany).mockImplementation(async (args) => candidates.filter((row) => (args?.where?.id as { in: string[] }).in.includes(row.rowId)).map((row) => ({ id: row.rowId, rowData: row.rowData, occurredAt: row.occurredAt })) as never);
     await expect(service.sync({ candidates })).resolves.toBeUndefined();
-    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
-    expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(150);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(103);
+    expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(250);
     expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ count: 100, rowIds: ['row-0', 'row-1', 'row-2', 'row-3', 'row-4'] }, 'CSV progress sync batch failed');
+  });
+
+  it('finishes other batches but rejects if an individual row still times out', async () => {
+    const candidates = Array.from({ length: 250 }, (_, index) => ({ ...candidate, rowId: `row-${index}` }));
+    vi.mocked(prisma.$transaction).mockRejectedValueOnce(new Error('Transaction expired waiting for lock'));
+    vi.mocked(prisma.csvDashboardRow.findMany).mockImplementation(async (args) => candidates.filter((row) => (args?.where?.id as { in: string[] }).in.includes(row.rowId)).map((row) => ({ id: row.rowId, rowData: row.rowData, occurredAt: row.occurredAt })) as never);
+    vi.mocked(prisma.productionScheduleProgress.upsert).mockImplementation(async (args) => {
+      if (args.where.csvDashboardRowId === 'row-0') throw new Error('Transaction expired waiting for lock');
+      return {} as never;
+    });
+    await expect(service.sync({ candidates })).rejects.toThrow('CSV progress sync failed for 1 rows');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(103);
+    expect(prisma.dueManagementOutcomeEvent.create).toHaveBeenCalledTimes(249);
+    expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { csvDashboardRowId: 'row-249' } }));
+  });
+  it('takes no mail critical lock for ordinary rows', async () => {
+    await service.sync({ candidates: [candidate] });
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(prisma.$executeRaw).mock.calls[0][0])).not.toContain('fkojunst-status-mail-critical');
+  });
+  it('restarts with critical before logical locks when a first split appeared while waiting', async () => {
+    vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mockResolvedValueOnce([]).mockResolvedValue([
+      { fseiban: '', fhincd: '', fsigencd: '', fkojun: '', pieces: [{ id: 'piece' }] }
+    ] as never);
+    await service.sync({ candidates: [candidate] });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    const locks = vi.mocked(prisma.$executeRaw).mock.calls.map((args) => String(args[0]));
+    expect(locks[0]).not.toContain('fkojunst-status-mail-critical');
+    expect(locks[1]).toContain('fkojunst-status-mail-critical');
+    expect(locks[2]).toContain('logical_locks');
+    expect(synchronizeSessakuPieceSources).toHaveBeenCalledTimes(1);
+    expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
   });
 
 });

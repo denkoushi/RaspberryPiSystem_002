@@ -31,7 +31,7 @@ export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nex
   return { pieces: sorted.filter((p) => p.quantity > 0), quantityWarning: null, nextPosition };
 }
 
-type LinkedQuantityPiece = QuantityPiece & { sourcePieceId: string };
+type LinkedQuantityPiece = QuantityPiece & { sourcePieceId: string | null };
 
 /** Cutting quantities are the baseline; the later row's own plan absorbs the difference at its tail. */
 export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityPiece[], sources: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number, consolidateUnfinished = false) {
@@ -60,13 +60,20 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
       return { ...piece, position: lastPosition };
     });
   });
+  // Detached completed pieces remain evidence and count toward this process's plan.
+  for (const piece of pieces.filter((piece) => piece.sourcePieceId === null && piece.isCompleted)) {
+    baseline.push({ ...piece, position: ++lastPosition });
+  }
   const plan = planSessakuPieceQuantities(baseline, nextTotal, externalCompleted, Math.max(nextPosition, lastPosition + 1));
   // Additional work after all later pieces completed still belongs to the final cutting piece.
-  const linked = plan.pieces.map((piece) => ({ ...piece, sourcePieceId: baseline.find((old) => old.id === piece.id)?.sourcePieceId ?? sources[sources.length - 1]?.id }));
+  const linked = plan.pieces.map((piece) => {
+    const previous = baseline.find((old) => old.id === piece.id);
+    return { ...piece, sourcePieceId: previous ? previous.sourcePieceId : sources[sources.length - 1]?.id ?? null };
+  });
   return { ...plan, pieces: linked };
 }
 
-async function saveQuantityPlan(tx: Prisma.TransactionClient, set: SessakuPieceSet, plan: ReturnType<typeof planSessakuPieceQuantities>, nextTotal: number | null, sources?: Map<string, string | undefined>, deferRemoval = false) {
+async function saveQuantityPlan(tx: Prisma.TransactionClient, set: SessakuPieceSet, plan: ReturnType<typeof planSessakuPieceQuantities>, nextTotal: number | null, sources?: Map<string, string | null>, deferRemoval = false) {
   plan = { ...plan, pieces: plan.pieces.filter((piece) => piece.quantity > 0) };
   const plannedQuantity = nextTotal != null && Number.isSafeInteger(nextTotal) && nextTotal >= 0 && nextTotal <= 2_147_483_647 ? nextTotal : null;
   const ids = new Set(plan.pieces.map((piece) => piece.id));
@@ -119,7 +126,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
     if (!set.sourcePieceSetId) await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: cutting.id } });
     const cuttingSource = await readQuantitySource(tx, cutting);
     const total = nextTotal ?? cuttingSource.plannedQuantity ?? cutting.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
-    const plan = planLaterProcessPieceQuantities(linked as LinkedQuantityPiece[], cutting.pieces, total, source.external, set.nextPosition, consolidateUnfinished);
+    const plan = planLaterProcessPieceQuantities(set.pieces, cutting.pieces, total, source.external, set.nextPosition, consolidateUnfinished);
     if (!set.pieces.length && source.manualCompleted) plan.pieces = plan.pieces.map((piece) => ({ ...piece, isCompleted: true }));
     return saveQuantityPlan(tx, set, plan, total, new Map(plan.pieces.map((piece) => [piece.id, piece.sourcePieceId])));
   }
@@ -146,7 +153,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
     if (!detail.hasWinner) return false;
     const total = detail.plannedQuantity ?? nextTotal ?? plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
     return planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition).pieces
-      .some((piece) => removed.includes(piece.sourcePieceId));
+      .some((piece) => piece.sourcePieceId !== null && removed.includes(piece.sourcePieceId));
   })) {
     plan.pieces = set.pieces;
     plan.quantityWarning = 'INVALID_PLANNED_QUANTITY';

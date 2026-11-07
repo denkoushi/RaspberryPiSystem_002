@@ -430,6 +430,67 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.slice(0, 2)).toEqual(later.pieces.slice(0, 2));
       await quantity(2); // A repeated import must not be stuck on the FK again.
     });
+    it.each(['cutting', 'later'])('retains detached completed quantities when the later winner returns (%s sync)', async (direction) => {
+      await splitThree();
+      await complete((await laterItems())[2]);
+      const done = (await readSessakuPieceSet(prisma, laterKey()))!.pieces[2];
+      const oldRow = await prisma.csvDashboardRow.findUniqueOrThrow({ where: { id: nextRowId } });
+      await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
+      await quantity(2);
+      expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toMatchObject({ sourcePieceId: null, isCompleted: true, quantity: 2 });
+      nextRowId = (await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: oldRow.rowData!, occurredAt: new Date(), dataHash: `${site}-returned` } })).id;
+      await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: nextRowId, sourceCsvDashboardId: site, productNo: '123', resourceCd: '2', processOrder: '2', plannedQuantity: 5 } });
+      if (direction === 'cutting') await quantity(5); else await laterQuantity(5);
+      const saved = (await readSessakuPieceSet(prisma, laterKey()))!;
+      expect(saved.pieces.find((piece) => piece.id === done.id)).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: true, completedAt: done.completedAt });
+      expect(saved.pieces.reduce((sum, piece) => sum + piece.quantity, 0)).toBe(5);
+      expect(saved.pieces.filter((piece) => !piece.isCompleted).reduce((sum, piece) => sum + piece.quantity, 0)).toBe(3);
+      await laterQuantity(1);
+      expect((await readSessakuPieceSet(prisma, laterKey()))?.quantityWarning).toBe('COMPLETED_QUANTITY_EXCEEDS_PLAN');
+      expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: true });
+    });
+    it.each(['split', 'merge', 'full-merge'])('allows cutting %s after the completed later winner disappears', async (operation) => {
+      const r = await splitThree();
+      await complete((await laterItems())[2]);
+      const later = (await readSessakuPieceSet(prisma, laterKey()))!;
+      const done = later.pieces[2];
+      await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
+      if (operation === 'split') await resplit(r, 2);
+      else await merge(r, operation === 'merge' ? r.pieces.slice(1) : r.pieces);
+      if (operation === 'full-merge') expect(await readSessakuPieceSet(prisma, laterKey())).toBeNull();
+      else {
+        expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: true, completedAt: done.completedAt });
+        const cutting = (await readSessakuPieceSet(prisma, key()))!;
+        const items = (await board()).items.filter((item) => item.sourceRowId === rowId);
+        // Removing the final old source detaches the hidden set without recreating pieces.
+        const current = { ...r, pieces: items, pieceSetVersion: cutting.version };
+        if (operation === 'split') await merge(current, items.slice(0, 2));
+        if (operation === 'split') expect((await readSessakuPieceSet(prisma, laterKey()))?.sourcePieceSetId).toBeNull();
+      }
+    });
+    it('preserves a later parent placement when resplitting cutting after raw supplement zero', async () => {
+      const cutting = await splitThree();
+      await importLaterQuantity('0');
+      const laterParent = (await laterItems())[0];
+      await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: { csvDashboardId: dashboardId, siteKey: site, itemKey: laterParent.itemId, overrideResourceCd: '3', alternateRank: 7, orderPinned: true } });
+      const before = await prisma.productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({ where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: dashboardId, siteKey: site, itemKey: laterParent.itemId } } });
+      await resplit(cutting);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ pieces: [], sourcePieceSetId: (await readSessakuPieceSet(prisma, key()))!.id, plannedQuantity: 0 });
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({ where: { id: before.id } })).toEqual(before);
+    });
+    it.each(['complete', 'incomplete'] as const)('excludes an unsplit third process from later %s responses and audits', async (intent) => {
+      await splitThree();
+      const finish = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...rowData, FSIGENCD: '3', FKOJUN: '3' }, occurredAt: new Date(), dataHash: `${site}-third` } });
+      if (intent === 'incomplete') await complete((await laterItems())[0]);
+      const item = (await laterItems())[0];
+      const result = await complete(item, intent);
+      expect(result.affectedItemIds).toEqual([item.parentItemId, ...(await readSessakuPieceSet(prisma, laterKey()))!.pieces.map((piece) => `piece:${piece.id}`)]);
+      const audit = await prisma.productionScheduleSessakuPieceAuditLog.findFirstOrThrow({ where: { fseiban: seiban, action: intent === 'complete' ? 'complete' : 'uncomplete' }, orderBy: { createdAt: 'desc' } });
+      expect(JSON.stringify(audit.afterJson)).not.toContain(finish.id);
+      expect(audit.afterJson).toMatchObject({ laterProcesses: [{ setId: (await readSessakuPieceSet(prisma, laterKey()))!.id }] });
+      expect((audit.afterJson as { laterProcesses: unknown[] }).laterProcesses).toHaveLength(1);
+      expect((await allBoard()).items.find((row) => row.sourceRowId === finish.id)?.kind).toBe('row');
+    });
     it.each([2, 0])('does not add later quantities during external completion sync (plan=%s)', async (total) => {
       await laterQuantity(total); await splitThree();
       const before = (await readSessakuPieceSet(prisma, laterKey()))!;
@@ -795,6 +856,17 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       const results = await serializeAtLogicalLock(first === 'import' ? importRequest : splitRequest, first === 'import' ? splitRequest : importRequest);
       expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
       expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.map((piece) => piece.quantity)).toEqual([1, 1]);
+    });
+    it.each(['import', 'split'])('serializes supplement logical/board locks against cutting critical/logical/board locks (%s first)', async (first) => {
+      const r = await splitThree();
+      const importRequest = () => importLaterQuantity('7');
+      const splitRequest = () => resplit(r);
+      const results = await serializeAtLogicalLock(first === 'import' ? importRequest : splitRequest, first === 'import' ? splitRequest : importRequest);
+      for (const result of results) {
+        if (result.status === 'rejected') expect(result.reason).toMatchObject({ statusCode: 409 });
+      }
+      expect(results[0].status).toBe('fulfilled');
+      expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.reduce((sum, piece) => sum + piece.quantity, 0)).toBe(7);
     });
     it.each(['completion', 'split'])('serializes later piece completion against cutting resplit (%s first)', async (first) => {
       const r = await splitThree(); const later = (await laterItems())[1];
