@@ -1136,6 +1136,54 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(later.pieces.map((piece) => piece.sourcePieceId)).toEqual(r.pieces.map((piece) => piece.pieceId));
       expect(later.pieces.map((piece) => piece.quantity)).toEqual([1, 2, 2]);
     });
+    it.each([false, true])('adopts an empty cutting set and its later sets into one source before full merge (restore quantities=%s)', async (restore) => {
+      const earlierData = { ...rowData, FKOJUN: '0' };
+      const earlier = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: earlierData, dataHash: `${site}-earlier-cutting`, occurredAt: new Date() } });
+      const earlierKey = sessakuPieceKeyFromRow(earlierData);
+      await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: earlier.id, sourceCsvDashboardId: site, productNo: '123', resourceCd: '1', processOrder: '0', plannedQuantity: 5 } });
+      await splitThree(); // B owns C before A is split.
+      const importQuantities = async (raw: string) => {
+        const sources = ['1', '2'].map((order) => toSupplementNormalizedRow('source', { ProductNo: '123', FSIGENCD: order, FKOJUN: order, plannedQuantity: raw })!);
+        const supplements = await prisma.productionScheduleOrderSupplement.findMany({ where: { csvDashboardRowId: { in: [rowId, nextRowId] } } });
+        const plan = buildReplacementCreateInputs(sources,
+          new Map(sources.map((source, index) => [buildOrderSupplementKey(source), [rowId, nextRowId][index]])),
+          new Map(supplements.map((supplement) => [buildOrderSupplementKey(supplement), supplement])), new Date());
+        await runOrderSupplementReplacementTransaction(prisma, { ...plan, scanned: 2, normalized: 2 });
+      };
+      await importQuantities('0');
+      const b = (await readSessakuPieceSet(prisma, key()))!;
+      const c = (await readSessakuPieceSet(prisma, laterKey()))!;
+      expect(b).toMatchObject({ pieces: [], sourcePieceSetId: null });
+      expect(c).toMatchObject({ pieces: [], sourcePieceSetId: b.id });
+      const splitEarlier = async () => {
+        const p = (await board(false)).items.find((item) => item.sourceRowId === earlier.id)!;
+        return splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [2, 3] });
+      };
+      await setProductionScheduleRowCompletionIntent({ rowId: nextRowId, locationKey: site, intent: 'complete' });
+      const protectedSet = await readSessakuPieceSet(prisma, laterKey());
+      await expect(splitEarlier()).rejects.toMatchObject({ code: 'LATER_PROCESS_PIECE_COMPLETED' });
+      expect(await readSessakuPieceSet(prisma, earlierKey)).toBeNull();
+      expect(await readSessakuPieceSet(prisma, key())).toEqual(b);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toEqual(protectedSet);
+      await setProductionScheduleRowCompletionIntent({ rowId: nextRowId, locationKey: site, intent: 'incomplete' });
+      const r = await splitEarlier();
+      const a = (await readSessakuPieceSet(prisma, earlierKey))!;
+      for (const target of [key(), laterKey()]) expect(await readSessakuPieceSet(prisma, target)).toMatchObject({ sourcePieceSetId: a.id, pieces: [] });
+      if (restore) {
+        await importQuantities('5');
+        for (const target of [key(), laterKey()]) {
+          const saved = (await readSessakuPieceSet(prisma, target))!;
+          expect(saved.sourcePieceSetId).toBe(a.id);
+          expect(saved.pieces.map(({ sourcePieceId, quantity, position }) => ({ sourcePieceId, quantity, position })))
+            .toEqual(a.pieces.map(({ id, quantity, position }) => ({ sourcePieceId: id, quantity, position })));
+        }
+      }
+      await merge(r);
+      expect(await readSessakuPieceSet(prisma, key())).toBeNull();
+      expect(await readSessakuPieceSet(prisma, laterKey())).toBeNull();
+      const items = (await allBoard()).items;
+      for (const id of [earlier.id, rowId, nextRowId]) expect(items.filter((item) => item.sourceRowId === id)).toMatchObject([{ kind: 'row' }]);
+    });
     it('keeps an empty later set attached to its first cutting owner when another cutting row splits', async () => {
       await laterQuantity(0); const first = await splitThree();
       const second = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...rowData, FKOJUN: '0' }, dataHash: `${site}-second-cutting`, occurredAt: new Date() } });

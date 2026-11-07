@@ -119,7 +119,7 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
 }) {
   const actions = useContext(PlanningBoardPiecesContext);
   const [open, setOpen] = useState(false);
-  const mergeItems = !item.isLaterProcess && selected && item.kind === 'piece' && item.parentItemId
+  const mergeItems = !item.isLaterProcess && actions?.isCutting(item) && selected && item.kind === 'piece' && item.parentItemId
     ? actions?.selectedItemsByParent.get(item.parentItemId) : undefined;
   const quantity = item.plannedQuantity;
   const canSplit = Boolean(!item.isLaterProcess && actions?.createEnabled && actions.isCutting(item) && item.fseiban?.trim() !== '********' && !item.isCompleted && !item.quantityWarning &&

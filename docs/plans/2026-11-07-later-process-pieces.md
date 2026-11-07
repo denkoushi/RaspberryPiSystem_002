@@ -251,3 +251,13 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 検証: 指定 API 範囲は1,699成功・16 skip・既知の snapshotId 失敗1件のみ（121.63秒）。片の DB 統合113件は全成功。各操作の読み取りは7,478行から108行になり、従来方式と永続化結果が一致。指定 web 範囲は1,199件全成功（53.60秒）。API/web 型チェック・package lint・最終編集テストの個別 lint も成功。
 
 指定 DB の migrate deploy は未適用なし。dotenv 無効化・空の envDir で秘密ファイルを読まず検証し、一時設定を削除。検証は約5分。マーカー0件・git diff --check 成功。既存 staged 差分を保護し、編集は6ファイル。HEAD 1d05b1a2・branch・UU 3件を維持。git add・commit・push・merge 完了／中止・新規 migration／reset・CI・infrastructure・UI 文言・デプロイの変更は未実施。
+
+## Tenth Review Revision (2026-11-07)
+
+- 空の独立した切削 set を取り込むとき、その set を参照する後工程も再帰的に対象へ含め、数量同期・削除の前に分割元へ直接付け替える。完了保護・数量同期・全結合を同じ対象へ適用する。既存の関連論理キー収集は勝者不在の set も含むため、メール critical → 論理キー → board state → 行のロック順は変更しない。
+- B 分割 → 補助 CSV の B・C 指示数0 → A 分割 → 全結合を実 DB で検証する回帰テスト2件を追加。C の完了保護とロールバック、空のままの全結合、数量復帰後の B・C と A の sourcePieceId・数量・順序の一致、親行への復帰を確認する。
+- 画面の mergeItems に isCutting 条件を追加し、非切削の兄弟片を選択しても「まとめる」を表示しないテストを追加。UI 文言は変更しない。
+
+検証: API `tsc --noEmit -p tsconfig.build.json`、web `tsc --noEmit -p tsconfig.json` と両 package の lint は成功。API の sessaku-pieces 配下と route テストは219件成功（実 DB 統合115件を含む、109.15秒）。web `vitest run src/features/kiosk/grindingPlanningBoard` は34ファイル・494件成功（16.20秒）。追加テストの修正前失敗と修正後成功も確認。
+
+指定 DB localhost:55491/lpp、dotenv 無効化・空の envDir で検証し、一時設定は削除。検証は約4分、最終 git diff --check 成功。開始時の既存 WIP はなく、変更5ファイルは本修正のみ。branch feat/later-process-pieces・HEAD 60585c1c を維持。秘密ファイルの読み取り、git の変更操作、migration/reset、既知の別件修正、UI 文言変更、デプロイは未実施。
